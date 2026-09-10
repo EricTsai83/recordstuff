@@ -40,7 +40,7 @@ export interface LibraryBridge {
 
 ### 5. 當機修復
 - 打包 FFmpeg 靜態執行檔（LGPL 版本，發行前檢查編譯選項，spawn 時檢查 hash）
-- 啟動時掃描 `*.recording.webm`，用 `ffmpeg -c copy` 重新封裝補 duration 與 seek 索引，成功改名 `<name>.recovered.webm` 並在錄影庫標示「已復原」，失敗保留原檔標示「無法修復」
+- 啟動時掃描 `*.recording.mp4`，用 `ffmpeg -c copy` 重新封裝成非 fragmented MP4、補 duration，成功改名 `<name>.recovered.mp4` 並在錄影庫標示「已復原」，失敗保留原檔標示「無法修復」
 - 正常停止時也跑一次 `-c copy`，讓每個檔案都能拖曳進度條
 - 當機注入測試：錄製中隨機殺 capture host / main，斷言事後有可播放的檔案
 
@@ -53,8 +53,9 @@ export interface LibraryBridge {
 ## 第三版候選：錄製選項
 
 ### 7. 輸出格式
-- 若 PLAN.md §17 第 4 題證實 `MediaRecorder` 在兩平台都支援 MP4（H.264 + AAC）且 CPU 可接受：直接錄 MP4
-- 否則：停止後用 FFmpeg 轉 MP4，或提供「錄完自動轉」開關
+- 第一版已是 MP4（H.264 + AAC，PLAN.md ADR-3）。若第一版因 Spike 失敗退回 WebM，這裡第一項就是：停止後用 FFmpeg 轉 MP4，或提供「錄完自動轉」開關
+- 正常停止後用 `ffmpeg -c copy` 把 fragmented MP4 重封裝成一般 MP4，讓 duration 與拖曳在所有播放器都準
+- WebM 輸出選項（給只需要瀏覽器播放、想要更小檔案的人）
 - GIF 輸出
 - 品質預設：解析度上限、fps、位元率
 
@@ -153,13 +154,14 @@ export interface PlatformRecorder {
 ## 備案
 
 ### 20. 原生擷取引擎（若 Chromium 路線撞牆）
-- **觸發**：畫質、音畫同步、CPU 任一項在真機上無法達到可接受水準，且 Chromium 端沒有可調的參數
+- **觸發**：畫質、音畫同步、CPU 任一項在真機上無法達到可接受水準，且 Chromium 端沒有可調的參數；或產品需要 60fps、4K、游標特效這類需要每幀原始資料的功能
+- **預期差距**（1080p30、硬體 H.264）：CPU 兩到三倍、待命記憶體約一半，幀率上限從約 30fps 解開。抓畫面與編碼用的 OS API 兩條路相同，差距來自 Chromium 管線的中間搬運與時間戳控制權
 - **做法**：保留 Electron 外殼，把 capture host 換成 Rust sidecar。Cap（github.com/CapSoftware/Cap）的 `scap-screencapturekit`、`scap-direct3d`、`scap-cpal`、`scap-targets` 是 MIT 授權，可直接引用；編碼接 AVAssetWriter（macOS）與 MediaFoundation（Windows）。Cap 其餘部分是 AGPLv3，不能拿來改
 - **不預先做的理由**：需要 Rust 能力，開發時程至少三倍。先用最便宜的路線驗證產品
 
 ### 21. Windows loopback keepalive
 - WASAPI loopback 在沒有聲音播放時不送資料，音軌時間軸會漂移。Cap 與 OBS 都在被錄的裝置上開一條靜音輸出串流當 keepalive
-- Chromium 內部是否已處理要在 PLAN.md §17 第 2 題驗證。若沒有，選項是在 capture host 用 `AudioContext` 持續播放靜音，或在 sidecar 路線處理
+- Chromium 內部是否已處理要在 PLAN.md §17 第 4 題驗證。若沒有，選項是在 capture host 用 `AudioContext` 持續播放靜音，或在 sidecar 路線處理
 
 ### 22. Linux
 - UI 可跑，錄製顯示「不支援」並說明

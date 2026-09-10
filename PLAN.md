@@ -1,6 +1,8 @@
 # RecordStuff 第一版計畫：選單列上的一個按鈕
 
-版本：v5，2026-09-11
+版本：v6，2026-09-11
+
+v6 變更：預設輸出改為 MP4（H.264 + AAC），WebM 降為退路（ADR-3）；套件版本改為當下最新穩定版（§6、ADR-8）；§17 以 MP4 驗證為首要問題。
 第一版之後的功能全部在 `ROADMAP.md`，本檔只寫第一版。
 
 ---
@@ -29,7 +31,7 @@ macOS 選單列（Windows 是系統匣）上一個圖示。點一下開始錄主
 - 圖示反映狀態：待命、錄製中（macOS 圖示旁多一個 `REC` 字樣，Windows 換紅色圖示）、儲存中
 - 右鍵：一個小選單，內容是目前狀態的一行文字、儲存位置、必要時的權限動作、「結束」
 - 更改儲存位置：右鍵選單「更改儲存位置…」開系統的選資料夾對話框，選了之後之後的錄影都存那裡，重開 app 仍記得
-- 停止後一則系統通知：「已儲存 2026-09-11 14-30-00.webm」，點通知在 Finder / 檔案總管顯示
+- 停止後一則系統通知：「已儲存 2026-09-11 14-30-00.mp4」，點通知在 Finder / 檔案總管顯示
 - 失敗時一則系統通知，一行白話錯誤
 - macOS 螢幕錄製權限的處理：沒權限時選單多一項「開啟系統設定」，授權後若需要重啟則多一項「重新啟動」
 - 錄製中結束 app：先停止並收尾，再退出
@@ -41,7 +43,7 @@ macOS 選單列（Windows 是系統匣）上一個圖示。點一下開始錄主
 - 計時器、音量表
 - 選螢幕、選視窗、區域
 - 麥克風
-- 當機修復、FFmpeg、MP4 轉檔
+- 當機修復、FFmpeg、轉檔
 - 自動更新
 - 休眠、拔螢幕的特別處理
 
@@ -68,7 +70,8 @@ macOS 選單列（Windows 是系統匣）上一個圖示。點一下開始錄主
 
 ## 4. 完成標準
 
-- macOS 13 以上與 Windows 10 20H2 以上，各錄出 10 分鐘有畫面有聲音、可用系統播放器或瀏覽器播放的檔案
+- macOS 13 以上與 Windows 10 20H2 以上，各錄出 10 分鐘有畫面有聲音的 MP4，在 Finder 雙擊用 QuickTime Player 開、在檔案總管雙擊用「媒體播放器」開，都能直接播放
+- 10 分鐘錄製結束時音畫偏移小於 100 ms（用畫面上的節拍器與聲音對照）
 - 從點下到圖示變錄製中少於 1.5 秒
 - 1080p 錄製時，錄製程序總 CPU 在 M1 與近三年 x86 筆電上低於 25%
 - 新使用者在 macOS 第一次就能完成權限流程，包括需要重啟的情況
@@ -93,7 +96,7 @@ macOS 選單列（Windows 是系統匣）上一個圖示。點一下開始錄主
 │  ┌───────────────────────┴─────────────────────────────┐ │
 │  │ 隱藏的 capture-host renderer                        │ │
 │  │  getDisplayMedia(video + loopback)                  │ │
-│  │  MediaRecorder，每秒送一個 chunk                    │ │
+│  │  MediaRecorder → MP4（H.264 + AAC），每秒送一個 chunk │ │
 │  └─────────────────────────────────────────────────────┘ │
 │                                                          │
 │  macOS：ScreenCaptureKit（Electron 39+ 內建）             │
@@ -105,18 +108,22 @@ macOS 選單列（Windows 是系統匣）上一個圖示。點一下開始錄主
 
 **為什麼要有 capture host 而不在 main 錄**：`getDisplayMedia` 與 `MediaRecorder` 只存在於 renderer。這是 Electron 的限制，不是設計選擇。
 
+**為什麼第一版走 Chromium 內建擷取而不是原生**：抓畫面用的 OS API（ScreenCaptureKit、Windows.Graphics.Capture）與硬體編碼器（VideoToolbox、Media Foundation）兩條路是同一套，1080p30 下 CPU 差距估計在兩到三倍以內，兩邊都遠低於 §4 門檻。差距在 60fps、4K、編碼參數與音畫同步的控制權，第一版都不需要。Capture host 是唯一碰擷取與編碼的模組，main 只認 §9 的協定，將來換成原生 sidecar 只換這一層（ROADMAP 第 20 項）。
+
 ## 6. 技術選擇
 
 | 領域 | 選擇 | 備註 |
 |---|---|---|
-| 外殼 | Electron 39 以上 | 39 起 macOS loopback 內建，不需 flag |
-| 語言 | TypeScript，`strict` + `noUncheckedIndexedAccess` | |
+| 外殼 | Electron 44（2026-09 穩定版），最低 39 | 39 起 macOS loopback 內建；43 起 `restrictOwnAudio` 修好，app 自己的聲音不會被錄進去 |
+| 語言 | TypeScript 7，`strict` + `noUncheckedIndexedAccess` | |
 | UI | Electron `Tray` + `Menu` + `Notification` | 沒有 HTML UI |
-| 建置 | electron-vite | main / preload / renderer 三個入口，renderer 就是 capture host |
-| 打包 | electron-builder | 公證與 Windows 簽章成熟，一個設定檔 |
+| 建置 | electron-vite 5 | main / preload / renderer 三個入口，renderer 就是 capture host |
+| 打包 | electron-builder 26 | 公證與 Windows 簽章成熟，一個設定檔 |
 | 擷取 | `session.setDisplayMediaRequestHandler` 回傳 `{ video: 主螢幕, audio: 'loopback' }` | 兩個平台同一段程式碼 |
-| 編碼 | `MediaRecorder`，WebM（VP9 + Opus） | 見 ADR-3 |
+| 編碼 | `MediaRecorder`，MP4，`video/mp4;codecs=avc1,mp4a.40.2`（H.264 + AAC，走系統硬體編碼器） | 見 ADR-3。WebM 只是退路 |
 | 訊息驗證 | 手寫 type guard | 訊息只有幾種，不引入 schema 庫 |
+
+**版本策略**：每個里程碑開始時把所有套件升到當下的最新穩定版，不用 alpha / beta（ADR-8）。上表的版本是 2026-09-11 查到的。
 
 初始化：
 
@@ -197,17 +204,18 @@ Main 與 capture host 用 `postMessage` 交換一對 `MessagePort`。
 
 規則：
 - `MediaRecorder` timeslice 1000 ms。每個 chunk 到 main 就 append，任何時刻最多丟 1 秒。
+- 建立 `MediaRecorder` 前先 `MediaRecorder.isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')`。回 false 就回 `error { code: "mp4_unsupported" }`，不默默改錄 WebM。第一版支援的 OS 版本都有系統 H.264 與 AAC 編碼器，這個錯誤理論上不會發生，發生了就是要查的 bug。
 - 沒拿到 audio track 就回 `error { code: "no_audio_track" }`，不錄無聲影片。
-- `ping` 每 5 秒一次，連續兩次沒 `pong`、或 `render-process-gone`，視為當機：進 failed，保留 `.recording.webm`。不自動重啟。
+- `ping` 每 5 秒一次，連續兩次沒 `pong`、或 `render-process-gone`，視為當機：進 failed，保留 `.recording.mp4`。不自動重啟。
 - Capture host 在第一次 start 時建立，之後保留待命。`show: false`、`sandbox: true`、`webSecurity: true`，只載入打包好的檔案。
 
 ## 10. 檔案
 
 - Main 是唯一持有檔案 handle 的程序。
-- 先寫 `<時間>.recording.webm`，收到 `stopped` 且最後一個 chunk 寫完後改名為 `<時間>.webm`。
+- 先寫 `<時間>.recording.mp4`，收到 `stopped` 且最後一個 chunk 寫完後改名為 `<時間>.mp4`。
 - 每 5 秒 fsync 一次。
 - 資料夾不存在就建立。建立失敗或寫入失敗：進 failed，通知說明。
-- 已知限制：當機留下的 `.recording.webm` 缺 duration 與 seek 索引，多數播放器仍能播但不能拖曳。修復工具在 ROADMAP。
+- Chromium 的 MediaRecorder 寫的是 fragmented MP4：`moov` 在檔頭，之後每個 chunk 是自成一體的 `moof + mdat` 片段。所以當機留下的 `.recording.mp4` 理論上多數播放器能播，但 duration 可能缺、拖曳可能不準。§17 第 2 題要實測。修復工具在 ROADMAP。
 
 ## 10.1 儲存位置
 
@@ -252,7 +260,7 @@ Windows 不需要任何權限。
 
 **停止**：`recording → stopping` → `stop` → 10 秒內要收到 `stopped`，否則 failed → 關檔 → 改名 → `idle` 帶 `lastSavedPath` → 通知。
 
-**退出**：選單「結束」或 Cmd+Q → `before-quit` 時若在錄製，攔下來先跑停止流程，完成後再 quit。超過 10 秒就直接關檔留 `.recording.webm`。
+**退出**：選單「結束」或 Cmd+Q → `before-quit` 時若在錄製，攔下來先跑停止流程，完成後再 quit。超過 10 秒就直接關檔留 `.recording.mp4`。
 
 **沒有視窗**：`window-all-closed` 不做任何事，capture host 關閉不等於退出。只有選單「結束」與 Cmd+Q 會退出。
 
@@ -260,7 +268,7 @@ Windows 不需要任何權限。
 
 全部轉成一行白話文送通知。代碼：
 
-`permission_denied`、`permission_needs_relaunch`、`unsupported_os_version`、`no_display`、`no_audio_track`、`capture_start_failed`、`capture_host_crashed`、`capture_host_unresponsive`、`output_open_failed`、`output_write_failed`、`disk_full`、`stop_timeout`
+`permission_denied`、`permission_needs_relaunch`、`unsupported_os_version`、`no_display`、`no_audio_track`、`mp4_unsupported`、`capture_start_failed`、`capture_host_crashed`、`capture_host_unresponsive`、`output_open_failed`、`output_write_failed`、`disk_full`、`stop_timeout`
 
 ## 14. 測試
 
@@ -268,7 +276,7 @@ Windows 不需要任何權限。
 - `file-writer.ts`：append 順序、fsync、改名、磁碟錯誤。
 - `tray.ts` 的狀態對應表：每個狀態產生的圖示、標題、選單項目，純函式可測。
 - `settings.ts`：不存在、壞 JSON、舊版本、正常讀寫、原子寫入（tmp 檔殘留時的行為）。
-- 手動檢查表（每次發版前，兩個 OS 各跑一次）：錄 10 分鐘、播放、CPU、權限拒絕與允許、需重啟、錄製中結束、更改位置到外接硬碟後拔掉、資料夾不存在、硬碟滿、深淺色選單列圖示。
+- 手動檢查表（每次發版前，兩個 OS 各跑一次）：錄 10 分鐘、在 Finder / 檔案總管雙擊用系統預設播放器播放、音畫偏移、CPU、權限拒絕與允許、需重啟、錄製中結束、更改位置到外接硬碟後拔掉、資料夾不存在、硬碟滿、深淺色選單列圖示。
 
 自動化端對端與當機注入在 ROADMAP。
 
@@ -282,29 +290,34 @@ Windows 不需要任何權限。
 
 | # | 里程碑 | 交付 | 完成標準 |
 |---|---|---|---|
-| 1 | Spike | 未打包的 app，選單列一個圖示，兩個 OS 各錄出 60 秒有聲影片 | §17 問題有答案 |
+| 1 | Spike | 未打包的 app，選單列一個圖示，兩個 OS 各錄出 60 秒有聲 MP4，QuickTime Player 與 Windows 媒體播放器雙擊可開 | §17 問題有答案，且第 1、2 題答案為可行 |
 | 2 | 收斂 | 狀態機、capture host 監督、progressive write、權限流程、退出處理、通知文案、圖示 | §4 除簽章外全部達成 |
 | 3 | 發行 | 簽章、公證、安裝檔、LSUIElement | **第一版發布** |
 
-里程碑 1 若發現 Chromium 內建路線不可行（拿不到系統音、CPU 太高、同步問題），停下來看 ROADMAP 的備案，不要硬撐。
+里程碑 1 有兩層退路，依序：
+1. MP4 不可行（不支援、CPU 高、當機半成品不能播）但 Chromium 擷取本身沒問題：第一版改出 WebM（VP9 + Opus），MP4 轉檔進 ROADMAP。要接受 macOS 上 QuickTime 打不開，通知文案要說明用瀏覽器開。
+2. Chromium 擷取本身不可行（拿不到系統音、掉幀嚴重、音畫漂移無法接受）：停下來看 ROADMAP 第 20 項的原生 sidecar 備案，不要硬撐。
 
 ## 17. 里程碑 1 要回答的問題
 
-1. Electron 目前穩定版在 macOS 13、14、15 與 Windows 10、11 上，`audio: 'loopback'` 是否穩定拿到系統音訊？
-2. Windows 上系統沒聲音在播時，loopback 是否停止送資料、導致音軌漂移？Cap 用一條靜音輸出串流當 keepalive，我們是否需要？
-3. macOS 螢幕錄製權限第一次授權後是否必須重啟 app？沒有視窗的 app，TCC 提示是否仍正常出現？
-4. `MediaRecorder` 在兩個平台是否支援 `video/mp4; codecs=avc1,mp4a.40.2`？（第一版仍出 WebM，這題是為 ROADMAP 收集資料）
-5. 1080p30 錄製的 CPU 與檔案大小。
-6. HiDPI 下 `getDisplayMedia` 給的是邏輯還是實體解析度？
-7. 錄主螢幕時選單列圖示本身會被錄進去，`REC` 字樣是否會出現在影片裡？可接受，還是要在錄製中改用不顯眼的圖示？
+前兩題決定第一版的輸出格式，先答。
+
+1. `MediaRecorder` 在 Electron 44 於 macOS 13、14、15 與 Windows 10、11 上，`isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')` 是否都回 true？實際錄出的檔案是否真的走硬體編碼（macOS 用 Activity Monitor 看 VTEncoderXPCService，Windows 看 GPU 使用率）？1080p30 錄 10 分鐘的 CPU 與檔案大小。
+2. 錄製中強制殺掉 capture host，留下的 `.recording.mp4` 在 QuickTime Player、Windows 媒體播放器、Chrome 是否能播？duration 是否正確？
+3. `audio: 'loopback'` 在上述 OS 版本是否穩定拿到系統音訊？
+4. Windows 上系統沒聲音在播時，loopback 是否停止送資料、導致音軌漂移？Cap 用一條靜音輸出串流當 keepalive，我們是否需要？
+5. 10 分鐘錄製結束時音畫偏移多少？
+6. macOS 螢幕錄製權限第一次授權後是否必須重啟 app？沒有視窗的 app，TCC 提示是否仍正常出現？
+7. HiDPI 下 `getDisplayMedia` 給的是邏輯還是實體解析度？
+8. 錄主螢幕時選單列圖示本身會被錄進去，`REC` 字樣是否會出現在影片裡？可接受，還是要在錄製中改用不顯眼的圖示？
 
 ## 18. 決策摘要
 
 **ADR-1：Electron。** 一個 TypeScript 開發者能獨立完成全部功能。Tauri + Rust 的路線與理由在 ROADMAP。
 
-**ADR-2：兩個平台都用 Chromium 內建的 `getDisplayMedia` loopback，不寫原生程式。** 產品要錄螢幕，螢幕錄製權限本來就要，沒有理由再為系統音訊另闢原生路徑。代價：最低 macOS 13、抓的是混音後的音訊、macOS 會亮紫色指示燈。
+**ADR-2：兩個平台都用 Chromium 內建的 `getDisplayMedia` loopback，不寫原生程式。** 產品要錄螢幕，螢幕錄製權限本來就要，沒有理由再為系統音訊另闢原生路徑。代價：最低 macOS 13、抓的是混音後的音訊、macOS 會亮紫色指示燈、幀率約 30fps 上限、編碼參數只能調位元率。這是「先驗證產品」的選擇，不是品質上限的選擇；原生路線的觸發條件與做法在 ROADMAP 第 20 項。
 
-**ADR-3：第一版出 WebM。** `MediaRecorder` 一定支援 WebM，不需要 FFmpeg。MP4 與轉檔在 ROADMAP。
+**ADR-3：第一版出 MP4（H.264 + AAC），不出 WebM。** 理由兩個。第一，macOS 的 QuickTime Player 與 Finder 預覽打不開 .webm，使用者雙擊就失敗，違反 §1.1 第一條。第二，WebM 的 VP9 是軟體編碼，1080p 會吃掉 30% 以上 CPU；MP4 的 H.264 走系統硬體編碼器，CPU 低一個量級。Chromium 從 126 起支援 MediaRecorder 出 MP4，Electron 44 遠高於此。代價：Linux 沒有 AAC 編碼器（第一版不做 Linux），檔案是 fragmented MP4。WebM 是 §16 第一層退路，只在 §17 第 1、2 題失敗時啟用。不用 FFmpeg。
 
 **ADR-4：沒有 UI renderer。** UI 是原生 Tray、Menu、Notification，全在 main。這砍掉 React、UI preload、IPC bridge 三層，且媒體資料天然不可能進 UI。將來需要視窗（錄影庫、設定）時再加 renderer，那時它一樣碰不到媒體資料。
 
@@ -313,6 +326,8 @@ Windows 不需要任何權限。
 **ADR-6：electron-builder，不用 Forge。** 與 electron-vite 配套、一個設定檔。可接受的偏好選擇。
 
 **ADR-7：左鍵切換、右鍵選單。** 一個按鈕的產品，主要動作必須是單擊。選單只放狀態、權限動作、結束，不放任何功能。
+
+**ADR-8：套件一律用最新穩定版。** 每個里程碑開始時升到當下最新穩定版，不用 alpha / beta，不刻意停在舊版。Electron 每兩個月一個大版，loopback、`restrictOwnAudio` 這類擷取相關修正都在新版，停在舊版只會累積要繞的 bug。
 
 ## 19. 守則
 
