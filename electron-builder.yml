@@ -1,0 +1,51 @@
+appId: com.recordstuff.app
+productName: RecordStuff
+copyright: Copyright © 2026 Eric Tsai
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**
+  - package.json
+extraResources:
+  - from: resources
+    to: .
+    filter:
+      - "*.png"
+      - "*.ico"
+asar: true
+mac:
+  category: public.app-category.video
+  target:
+    - dmg
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
+  # Signed with the Developer ID found in the keychain; notarized when
+  # APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID are set.
+  notarize: true
+  extendInfo:
+    LSUIElement: true
+    NSScreenCaptureUsageDescription: RecordStuff 需要螢幕錄製權限來錄製主螢幕與系統音訊。
+    NSAudioCaptureUsageDescription: RecordStuff 錄製系統播放的聲音。
+dmg:
+  contents:
+    - x: 130
+      y: 150
+    - x: 410
+      y: 150
+      type: link
+      path: /Applications
+win:
+  target:
+    - nsis
+  # Signing uses the certificate in CSC_LINK / CSC_KEY_PASSWORD when present;
+  # otherwise an unsigned build is produced (see README).
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  runAfterFinish: true
+  createDesktopShortcut: false
+  deleteAppDataOnUninstall: false
