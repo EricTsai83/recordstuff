@@ -1,9 +1,10 @@
 # RecordStuff 第一版計畫：選單列上的一個按鈕
 
-版本：v6，2026-09-11
+版本：v7，2026-09-12
 
+v7 變更：依實作與真機測試更新。§9 chunk 改為複製；§11 改寫為兩段式權限偵測並加入「系統音訊錄製」這個第二個權限；§13 新增 `capture_failed`；§17 記錄已有答案的題目；新增 §20 開發流程與下一步。
 v6 變更：預設輸出改為 MP4（H.264 + AAC），WebM 降為退路（ADR-3）；套件版本改為當下最新穩定版（§6、ADR-8）；§17 以 MP4 驗證為首要問題。
-第一版之後的功能全部在 `ROADMAP.md`，本檔只寫第一版。
+第一版之後的功能全部在 `roadmap.md`，本檔只寫第一版。其他獨立計畫與執行狀態見 `plans/README.md`。
 
 ---
 
@@ -37,7 +38,7 @@ macOS 選單列（Windows 是系統匣）上一個圖示。點一下開始錄主
 - 錄製中結束 app：先停止並收尾，再退出
 - macOS 與 Windows 各一個可安裝、已簽章的版本
 
-**第一版沒有**（全部在 ROADMAP.md）
+**第一版沒有**（全部在 roadmap.md）
 - 任何視窗：錄影庫、設定頁、歡迎頁
 - 全域快捷鍵
 - 計時器、音量表
@@ -155,10 +156,9 @@ recordstuff/
 │       ├── state.ts           # RecordingState 型別
 │       └── protocol.ts        # capture-host 訊息型別與 type guard
 ├── resources/                 # tray icon（macOS template 圖、Windows ico）、entitlements
+├── plans/                     # 計畫：README 是索引與狀態，001 是本檔，roadmap 是第一版之後
 ├── electron-builder.yml
-├── electron.vite.config.ts
-├── PLAN.md
-└── ROADMAP.md
+└── electron.vite.config.ts
 ```
 
 單一 app，不做 monorepo。`shared/` 不 import Electron。
@@ -197,7 +197,7 @@ Main 與 capture host 用 `postMessage` 交換一對 `MessagePort`。
 **Capture host → main**
 - `ready`
 - `started { sessionId, mimeType }`
-- `chunk { sessionId, seq, bytes: ArrayBuffer }`，transfer 不複製
+- `chunk { sessionId, seq, bytes: ArrayBuffer }`，結構化複製。原本打算 transfer，但 Electron 44.3 實測 transfer 的 ArrayBuffer 會讓 main process 卡死；每秒約 1 MB 的複製可忽略
 - `stopped { sessionId }`
 - `error { sessionId?, code, detail }`
 - `pong`
@@ -205,7 +205,7 @@ Main 與 capture host 用 `postMessage` 交換一對 `MessagePort`。
 規則：
 - `MediaRecorder` timeslice 1000 ms。每個 chunk 到 main 就 append，任何時刻最多丟 1 秒。
 - 建立 `MediaRecorder` 前先 `MediaRecorder.isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')`。回 false 就回 `error { code: "mp4_unsupported" }`，不默默改錄 WebM。第一版支援的 OS 版本都有系統 H.264 與 AAC 編碼器，這個錯誤理論上不會發生，發生了就是要查的 bug。
-- 沒拿到 audio track 就回 `error { code: "no_audio_track" }`，不錄無聲影片。
+- 沒拿到 audio track、或拿到的 audio track 一開始就是 `ended` 狀態，都回 `error { code: "no_audio_track" }`，不錄無聲影片。後者是 macOS 沒給「系統音訊錄製」權限時 Chromium 的實際行為：不報錯，只給一條死的音軌（§11）。
 - `ping` 每 5 秒一次，連續兩次沒 `pong`、或 `render-process-gone`，視為當機：進 failed，保留 `.recording.mp4`。不自動重啟。
 - Capture host 在第一次 start 時建立，之後保留待命。`show: false`、`sandbox: true`、`webSecurity: true`，只載入打包好的檔案。
 
@@ -244,11 +244,29 @@ Main 與 capture host 用 `postMessage` 交換一對 `MessagePort`。
 
 ## 11. 權限（僅 macOS）
 
-- 啟動時用 `systemPreferences.getMediaAccessStatus('screen')` 偵測。
-- 未授權：狀態 `needsPermission`，送通知，選單多「開啟系統設定」，開 `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`。
-- 授權後 app 收到 `activate` 或每 5 秒輪詢一次重新偵測（沒有視窗，沒有 focus 事件可靠）。若狀態是 granted 但 `getDisplayMedia` 仍失敗，設 `needsRelaunch: true`，選單改成「重新啟動」，點了 `app.relaunch()` 再 `app.quit()`。
+macOS 上有**兩個**獨立權限，都在「系統設定 → 隱私權與安全性 → 螢幕與系統音訊錄製」這一頁：上半是螢幕錄製，下半「僅系統音訊錄製」是 macOS 14.2 起 CoreAudio Tap 用的第二個權限。Electron 39 起 Chromium 用 CoreAudio Tap 抓系統音訊，沒有 fallback。
+
+設計原則借自 Cap：OS 回報的授權狀態只是線索，擷取實際看得到什麼才是真相；而驗證有成本，所以要有界、要快取、要退避。
+
+**螢幕錄製，兩段式偵測**
+
+1. 每 5 秒與 `activate` 時查 `systemPreferences.getMediaAccessStatus('screen')`，便宜、不會彈框。
+2. 第一段回 granted 且尚未驗證過時，呼叫 `desktopCapturer.getSources({ types: ['screen'] })` 確認至少看得到一個螢幕，包 4 秒 timeout，同時間只跑一次。成功後整個程序生命週期快取，之後不再呼叫。失敗（零個螢幕、拋 `Failed to get sources`、超時）就是「剛授權但 TCC 還沒生效」：`needsRelaunch: true`，選單改「重新啟動」，點了 `app.relaunch()` 再 `app.quit()`；每次輪詢仍重驗，暫時性故障會自行復原。
+
+- 未授權：狀態 `needsPermission`，送通知，選單多「開啟系統設定」，開 `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`。同時呼叫一次 `getSources`（每個程序最多一次），讓 macOS 把 app 列進清單並跳出系統提示，使用者不用手動按「+」。Electron 沒有包 `CGRequestScreenCaptureAccess`，這是零依賴的替代；若真機發現它只註冊不彈框，再換 `node-mac-permissions`。
+- 進入 `needsPermission`、或 `needsRelaunch` 由 false 變 true 時各送一則通知；狀態沒變不重發。
+- 錄製失敗且原因是 `permission_denied`、而 OS 仍說 granted，同樣進 `needsRelaunch`。
+
+**系統音訊錄製**
+
+- 需要 Info.plist 的 `NSAudioCaptureUsageDescription`（electron-builder `extendInfo` 已帶）加使用者在「僅系統音訊錄製」允許。第一次 `getDisplayMedia` 時 macOS 會自己彈框。
+- 缺任何一項時 Chromium 不報錯，回一條一建立就 `ended` 的音軌。Capture host 檢查 `readyState` 後回 `no_audio_track`，通知文字直接指向設定頁。沒有「granted 但要重啟」的問題。
+- 這個權限算在**負責程式**頭上。從 Terminal 啟動時負責程式是 Terminal，它沒有那個 key，永遠不會被詢問，開發時一定錄不到聲音。見 §20。
+
+**共同**
+
 - 錄製中系統會亮紫色錄製指示燈，這是正常的。
-- 要用簽章版本測，ad-hoc 簽章會重置 TCC。
+- 要用簽章版本測，ad-hoc 簽章會重置 TCC。macOS 15 起每月會再確認一次，這是系統行為。
 
 Windows 不需要任何權限。
 
@@ -268,7 +286,9 @@ Windows 不需要任何權限。
 
 全部轉成一行白話文送通知。代碼：
 
-`permission_denied`、`permission_needs_relaunch`、`unsupported_os_version`、`no_display`、`no_audio_track`、`mp4_unsupported`、`capture_start_failed`、`capture_host_crashed`、`capture_host_unresponsive`、`output_open_failed`、`output_write_failed`、`disk_full`、`stop_timeout`
+`permission_denied`、`permission_needs_relaunch`、`unsupported_os_version`、`no_display`、`no_audio_track`、`mp4_unsupported`、`capture_start_failed`、`capture_failed`、`capture_host_crashed`、`capture_host_unresponsive`、`output_open_failed`、`output_write_failed`、`disk_full`、`stop_timeout`
+
+`capture_failed` 是擷取在錄製中自己結束（螢幕或音軌 `ended`、MediaRecorder error）。不是使用者要求停止，就不能當成功。
 
 ## 14. 測試
 
@@ -291,7 +311,7 @@ Windows 不需要任何權限。
 | # | 里程碑 | 交付 | 完成標準 |
 |---|---|---|---|
 | 1 | Spike | 未打包的 app，選單列一個圖示，兩個 OS 各錄出 60 秒有聲 MP4，QuickTime Player 與 Windows 媒體播放器雙擊可開 | §17 問題有答案，且第 1、2 題答案為可行 |
-| 2 | 收斂 | 狀態機、capture host 監督、progressive write、權限流程、退出處理、通知文案、圖示 | §4 除簽章外全部達成 |
+| 2 | 收斂 | 狀態機、capture host 監督、progressive write、權限流程、退出處理、通知文案、圖示、檔案 log | §4 除簽章外全部達成 |
 | 3 | 發行 | 簽章、公證、安裝檔、LSUIElement | **第一版發布** |
 
 里程碑 1 有兩層退路，依序：
@@ -303,11 +323,14 @@ Windows 不需要任何權限。
 前兩題決定第一版的輸出格式，先答。
 
 1. `MediaRecorder` 在 Electron 44 於 macOS 13、14、15 與 Windows 10、11 上，`isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')` 是否都回 true？實際錄出的檔案是否真的走硬體編碼（macOS 用 Activity Monitor 看 VTEncoderXPCService，Windows 看 GPU 使用率）？1080p30 錄 10 分鐘的 CPU 與檔案大小。
+   **部分已答**：macOS 26 / Electron 44.3 / Chrome 152 回 true。硬體編碼、CPU、檔案大小未測。
 2. 錄製中強制殺掉 capture host，留下的 `.recording.mp4` 在 QuickTime Player、Windows 媒體播放器、Chrome 是否能播？duration 是否正確？
 3. `audio: 'loopback'` 在上述 OS 版本是否穩定拿到系統音訊？
 4. Windows 上系統沒聲音在播時，loopback 是否停止送資料、導致音軌漂移？Cap 用一條靜音輸出串流當 keepalive，我們是否需要？
+   **已答，不需要**：Chromium 的 `audio_low_latency_input_win.cc` 在 loopback 模式會自己開一條 event-driven 的 render stream（註解：「to ensure that we can deliver a loopback stream … also when no output audio is playing」），並對 `AUDCLNT_BUFFERFLAGS_SILENT` 補零。Cap 與 OBS 要自己做是因為它們直接碰 WASAPI。Windows 實測時仍要看一次前十秒無聲的檔案音畫是否對齊，當作驗證而不是問題。
 5. 10 分鐘錄製結束時音畫偏移多少？
 6. macOS 螢幕錄製權限第一次授權後是否必須重啟 app？沒有視窗的 app，TCC 提示是否仍正常出現？
+   **部分已答**：系統音訊是另一個權限，缺了會拿到死音軌而非錯誤（§11）。螢幕錄製是否需重啟、無視窗時提示是否出現，尚未在乾淨的 TCC 狀態下測（要先 `tccutil reset ScreenCapture com.github.Electron`）。
 7. HiDPI 下 `getDisplayMedia` 給的是邏輯還是實體解析度？
 8. 錄主螢幕時選單列圖示本身會被錄進去，`REC` 字樣是否會出現在影片裡？可接受，還是要在錄製中改用不顯眼的圖示？
 
@@ -338,3 +361,18 @@ Windows 不需要任何權限。
 5. 在簽章打包版本裡能正常運作。
 6. 任何不在 §2「第一版有」清單裡的東西，寫進 ROADMAP，不寫進程式碼。
 7. 檔案只寫到使用者選的位置。位置不可用就失敗並說明，絕不默默改存別處。
+
+## 20. 開發流程
+
+三種啟動方式，各有用途；差別在 macOS 把權限記在誰頭上，以及看不看得到 log。
+
+| 方式 | 指令 | 負責程式 | log | 用途 |
+|---|---|---|---|---|
+| 開發 | `pnpm dev` | 啟動它的終端機 | 終端機 | 改邏輯、改 UI，熱重載。從 Terminal／iTerm 啟動時**錄不到系統音訊**（它們沒有 `NSAudioCaptureUsageDescription`）；從 VS Code／Cursor 內建終端機可以，權限記在 VS Code 名下 |
+| 近似真機 | `pnpm start` | Electron.app（`com.github.Electron`） | 檔案 log（見下） | 測權限、系統音訊、通知。build 後用 `open` 啟動，`open` 立刻返回，app 由 launchd 接管，關掉終端機也不影響。改了程式要重跑 |
+| 真機 | `electron-builder --dir` | RecordStuff.app | 檔案 log | 權限提示與設定頁顯示的是 RecordStuff，與使用者看到的一致。驗證簽章、公證、`LSUIElement` 時用 |
+
+- 這些 shell 若帶著 `ELECTRON_RUN_AS_NODE=1`（Claude Code 等工具會設），Electron 會以純 Node 模式啟動而崩潰；`pnpm start` 已在腳本內清掉，`pnpm dev` 要自己 `unset`。`open` 會把 shell 環境變數傳給 app，所以同樣要清。
+- 升級 Electron 版本後 TCC 對 Electron.app 的授權會失效，用 `tccutil reset ScreenCapture com.github.Electron` 清掉重授權比在清單裡找快。
+
+**下一步**：拆成獨立計畫，順序與狀態見 `plans/README.md`。

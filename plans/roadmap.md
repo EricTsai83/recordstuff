@@ -1,7 +1,7 @@
 # RecordStuff Roadmap：第一版之後
 
 版本：v1，2026-09-11
-第一版的範圍在 `PLAN.md`。這裡是所有被移出第一版的功能、架構升級、備案，以及先前討論過但尚未定案的細節。順序是建議，不是承諾。每一項動手前先寫一頁短計畫，並確認不違反 PLAN.md §1.1 的優先順序。
+第一版的範圍在 `001-first-version.md`。這裡是所有被移出第一版的功能、架構升級、備案，以及先前討論過但尚未定案的細節。順序是建議，不是承諾。每一項動手前先寫一頁短計畫，並確認不違反 001-first-version.md §1.1 的優先順序。
 
 ---
 
@@ -53,7 +53,7 @@ export interface LibraryBridge {
 ## 第三版候選：錄製選項
 
 ### 7. 輸出格式
-- 第一版已是 MP4（H.264 + AAC，PLAN.md ADR-3）。若第一版因 Spike 失敗退回 WebM，這裡第一項就是：停止後用 FFmpeg 轉 MP4，或提供「錄完自動轉」開關
+- 第一版已是 MP4（H.264 + AAC，001-first-version.md ADR-3）。若第一版因 Spike 失敗退回 WebM，這裡第一項就是：停止後用 FFmpeg 轉 MP4，或提供「錄完自動轉」開關
 - 正常停止後用 `ffmpeg -c copy` 把 fragmented MP4 重封裝成一般 MP4，讓 duration 與拖曳在所有播放器都準
 - WebM 輸出選項（給只需要瀏覽器播放、想要更小檔案的人）
 - GIF 輸出
@@ -107,7 +107,7 @@ export interface LibraryBridge {
 ### 14. Effect 與 Effect Schema
 - **觸發**：main 裡的非同步流程超過三個彼此有 timeout 與取消關係的地方，或跨程序訊息種類超過 15 種
 - **做法**：Effect 只在 main（Service、Scope、Stream、型別化錯誤），Effect Schema 統一 IPC、協定、設定、索引。Renderer 維持普通 React
-- **不做的理由**：第一版五個狀態、六種訊息，手寫比框架好讀（PLAN.md §1.1 第二條）
+- **不做的理由**：第一版五個狀態、六種訊息，手寫比框架好讀（001-first-version.md §1.1 第二條）
 
 ### 15. Monorepo
 - **觸發**：出現第二個 app（CLI、瀏覽器擴充）或第一個要獨立測試、零 Electron 依賴的 domain（例如編輯模型）
@@ -161,7 +161,7 @@ export interface PlatformRecorder {
 
 ### 21. Windows loopback keepalive
 - WASAPI loopback 在沒有聲音播放時不送資料，音軌時間軸會漂移。Cap 與 OBS 都在被錄的裝置上開一條靜音輸出串流當 keepalive
-- Chromium 內部是否已處理要在 PLAN.md §17 第 4 題驗證。若沒有，選項是在 capture host 用 `AudioContext` 持續播放靜音，或在 sidecar 路線處理
+- 已驗證（001-first-version.md §17 第 4 題）：Chromium 內部已用靜音 render stream 處理，不需要我們做
 
 ### 22. Linux
 - UI 可跑，錄製顯示「不支援」並說明
