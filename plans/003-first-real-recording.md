@@ -1,12 +1,16 @@
 # 003 第一次有聲音的真實錄製
 
-狀態：待執行
-前置：002
+狀態：進行中（基本有聲有影已確認；完整驗收待 007 完成後補齊）
+前置：007（包含 002 log）
 後續：004
 
 ## 目標
 
-用 `pnpm start` 在這台 Mac 錄出第一個有畫面、有聲音、長度正確、QuickTime 雙擊能播的 MP4。這是 001 里程碑 1 的核心交付；之前只驗證過 `isTypeSupported` 回 true 與 app 能啟動。
+用 `pnpm start` 在這台 Mac 錄出第一個有畫面、有聲音、長度正確、QuickTime 雙擊能播的 MP4。這是 001 里程碑 1 的核心交付；使用者已確認停止後有聲有影；目前尚無完整時長、播放器、同步與效能紀錄。使用 007 的最終設定補齊驗收，不必重查已排除的缺音訊權限原因。
+
+## 已確認的進度
+
+2026-09-12 使用者回報錄完有畫面、有聲音，但品質與來源有差距。這只確認基本擷取成功，不代表下列各項已驗收；品質差異由 007 追蹤。
 
 ## 步驟
 
@@ -14,7 +18,7 @@
 2. `pnpm start`，另開終端機 `tail -f` log（002）。
 3. 放一段有節拍的音樂或影片。左鍵點圖示；第一次應出現「Electron 想要錄製系統音訊」，允許。若進 `no_audio_track`，看設定頁下方「僅系統音訊錄製」是否有 Electron 並開啟，再點一次。
 4. 錄 60 秒，再點一下停止。確認：通知「已儲存 …」、點通知在 Finder 顯示、檔案在 `~/Movies/RecordStuff`、QuickTime 雙擊能播、有聲音、長度約 60 秒、拖曳進度條是否可用。
-5. 錄 10 分鐘 1080p30。看 Activity Monitor：Electron 各程序 CPU 合計、是否有 `VTEncoderXPCService` 活動（硬體編碼）。記檔案大小。
+5. 用 007 的選單指定 1080p 上限、30 fps，確認實際輸出後錄 10 分鐘；記錄影像與音訊品質選項。看 Activity Monitor：Electron 各程序 CPU 合計、是否有 `VTEncoderXPCService` 活動（硬體編碼）。記檔案大小。
 6. 音畫偏移：畫面放一個節拍器或秒表，錄 10 分鐘，結尾對照聲音與畫面。
 7. 當機測試：錄製中用 Activity Monitor 強制結束 capture host 的 renderer（Electron Helper (Renderer)）。確認通知「錄製程序當機，已保留部分錄影」、`.recording.mp4` 留下、QuickTime 與 Chrome 是否能播、duration 是否正確。
 8. 錄製中從右鍵選單「結束」：確認檔案完整、改名為 `.mp4`。

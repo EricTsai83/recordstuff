@@ -1,6 +1,14 @@
 # RecordStuff 第一版計畫：選單列上的一個按鈕
 
-版本：v7，2026-09-12
+狀態：已完成（初始實作與基本錄製，2026-09-12）
+
+執行範圍已拆分：001 以初始實作與使用者確認有聲有影作為結案範圍。下列 §4、§16、§17 繼續作為第一版整體發布的規格與驗收依據，並非全部已通過；剩餘工作由 002（log）、007（品質與設定）、003／004／005（驗收）、006（打包與發行）追蹤。
+
+版本：v9，2026-09-12
+
+v9 變更：區分 001 初始實作結案與整體第一版發布；001 標為已完成，未完成驗收仍保留並交由後續計畫追蹤。
+
+v8 變更：記錄使用者已確認基本有聲有影；將品質量測與 Tray 可調設定提前納入第一版（007）。其餘驗收未宣告完成。
 
 v7 變更：依實作與真機測試更新。§9 chunk 改為複製；§11 改寫為兩段式權限偵測並加入「系統音訊錄製」這個第二個權限；§13 新增 `capture_failed`；§17 記錄已有答案的題目；新增 §20 開發流程與下一步。
 v6 變更：預設輸出改為 MP4（H.264 + AAC），WebM 降為退路（ADR-3）；套件版本改為當下最新穩定版（§6、ADR-8）；§17 以 MP4 驗證為首要問題。
@@ -30,7 +38,8 @@ macOS 選單列（Windows 是系統匣）上一個圖示。點一下開始錄主
 - 左鍵點一下：開始錄主螢幕加系統音訊
 - 再點一下：停止，檔案存到 `~/Movies/RecordStuff`（Windows 是 `~/Videos/RecordStuff`），檔名用時間
 - 圖示反映狀態：待命、錄製中（macOS 圖示旁多一個 `REC` 字樣，Windows 換紅色圖示）、儲存中
-- 右鍵：一個小選單，內容是目前狀態的一行文字、儲存位置、必要時的權限動作、「結束」
+- 右鍵：一個小選單，內容是目前狀態的一行文字、儲存位置、錄製品質、必要時的權限動作、「結束」
+- 錄製品質（007 待實作）：Tray 子選單調整影像品質、解析度上限、30／60 fps、音訊品質；永久保存，開始時固定設定，錄製期間停用。60 fps 依平台驗證後開放，不新增視窗。
 - 更改儲存位置：右鍵選單「更改儲存位置…」開系統的選資料夾對話框，選了之後之後的錄影都存那裡，重開 app 仍記得
 - 停止後一則系統通知：「已儲存 2026-09-11 14-30-00.mp4」，點通知在 Finder / 檔案總管顯示
 - 失敗時一則系統通知，一行白話錯誤
@@ -79,6 +88,7 @@ macOS 選單列（Windows 是系統匣）上一個圖示。點一下開始錄主
 - 簽章打包後的版本行為與開發版相同
 - 錄製中從選單「結束」或 Cmd+Q，檔案完整
 - 待命時記憶體低於 150 MB（capture host 尚未建立）
+- 007 的品質調校、設定保存與平台能力驗證完成；003／005 使用最終設定驗收
 
 ## 5. 架構
 
@@ -188,9 +198,11 @@ export type RecordingState =
 - 通知用 Electron `Notification`。「已儲存」通知的 click 用 `shell.showItemInFolder`。
 - Windows 可能把圖示收進系統匣溢位區。第一次啟動送一則通知「RecordStuff 在系統匣待命」。
 
+007 將在 idle／needsPermission 選單加入「錄製品質」子選單；starting／recording／stopping 顯示停用項目。上表為現行基本選單。
+
 ## 9. Capture host 協定
 
-Main 與 capture host 用 `postMessage` 交換一對 `MessagePort`。
+Main 與 capture host 用 `postMessage` 交換一對 `MessagePort`。下列為現行協定；007 實作時擴充 start 的品質設定快照及實際擷取參數回報，同步更新本節。
 
 **Main → capture host**：`start { sessionId }`、`stop { sessionId }`、`ping`
 
@@ -225,7 +237,7 @@ Main 與 capture host 用 `postMessage` 交換一對 `MessagePort`。
 
 **顯示**：選單裡「儲存位置：<資料夾名稱>」，滑鼠移上去 tooltip 是完整路徑（Windows 支援；macOS 選單沒有 tooltip，就直接顯示 `~` 縮寫的完整路徑）。點這一項用 `shell.openPath` 開該資料夾。
 
-**儲存**：`app.getPath('userData')/settings.json`，內容只有一個欄位：
+**儲存**：`app.getPath('userData')/settings.json`，現行內容只有 outputDir；007 將新增品質設定並保留舊檔相容性，完成後同步更新下列 schema：
 
 ```json
 { "version": 1, "outputDir": "/Users/eric/Movies/RecordStuff" }
@@ -311,7 +323,7 @@ Windows 不需要任何權限。
 | # | 里程碑 | 交付 | 完成標準 |
 |---|---|---|---|
 | 1 | Spike | 未打包的 app，選單列一個圖示，兩個 OS 各錄出 60 秒有聲 MP4，QuickTime Player 與 Windows 媒體播放器雙擊可開 | §17 問題有答案，且第 1、2 題答案為可行 |
-| 2 | 收斂 | 狀態機、capture host 監督、progressive write、權限流程、退出處理、通知文案、圖示、檔案 log | §4 除簽章外全部達成 |
+| 2 | 收斂 | 狀態機、capture host 監督、progressive write、權限流程、退出處理、通知文案、圖示、檔案 log、品質調校與可調設定（007） | §4 除簽章外全部達成 |
 | 3 | 發行 | 簽章、公證、安裝檔、LSUIElement | **第一版發布** |
 
 里程碑 1 有兩層退路，依序：
@@ -326,6 +338,7 @@ Windows 不需要任何權限。
    **部分已答**：macOS 26 / Electron 44.3 / Chrome 152 回 true。硬體編碼、CPU、檔案大小未測。
 2. 錄製中強制殺掉 capture host，留下的 `.recording.mp4` 在 QuickTime Player、Windows 媒體播放器、Chrome 是否能播？duration 是否正確？
 3. `audio: 'loopback'` 在上述 OS 版本是否穩定拿到系統音訊？
+   **部分已答（2026-09-12 使用者回報）**：目前測試環境錄製停止後有聲音也有畫面；使用者觀察到品質差距，交由 007 量測。尚未提供長時間穩定性、音畫同步與 Windows 驗收結果。
 4. Windows 上系統沒聲音在播時，loopback 是否停止送資料、導致音軌漂移？Cap 用一條靜音輸出串流當 keepalive，我們是否需要？
    **已答，不需要**：Chromium 的 `audio_low_latency_input_win.cc` 在 loopback 模式會自己開一條 event-driven 的 render stream（註解：「to ensure that we can deliver a loopback stream … also when no output audio is playing」），並對 `AUDCLNT_BUFFERFLAGS_SILENT` 補零。Cap 與 OBS 要自己做是因為它們直接碰 WASAPI。Windows 實測時仍要看一次前十秒無聲的檔案音畫是否對齊，當作驗證而不是問題。
 5. 10 分鐘錄製結束時音畫偏移多少？
@@ -338,7 +351,7 @@ Windows 不需要任何權限。
 
 **ADR-1：Electron。** 一個 TypeScript 開發者能獨立完成全部功能。Tauri + Rust 的路線與理由在 ROADMAP。
 
-**ADR-2：兩個平台都用 Chromium 內建的 `getDisplayMedia` loopback，不寫原生程式。** 產品要錄螢幕，螢幕錄製權限本來就要，沒有理由再為系統音訊另闢原生路徑。代價：最低 macOS 13、抓的是混音後的音訊、macOS 會亮紫色指示燈、幀率約 30fps 上限、編碼參數只能調位元率。這是「先驗證產品」的選擇，不是品質上限的選擇；原生路線的觸發條件與做法在 ROADMAP 第 20 項。
+**ADR-2：兩個平台都用 Chromium 內建的 `getDisplayMedia` loopback，不寫原生程式。** 產品要錄螢幕，螢幕錄製權限本來就要，沒有理由再為系統音訊另闢原生路徑。代價：最低 macOS 13、抓的是混音後的音訊、macOS 會亮紫色指示燈、目前程式將幀率限制為 30fps；007 將驗證 60fps 與品質設定，實際能力以平台測試為準。這是「先驗證產品」的選擇，不是品質上限的選擇；原生路線的觸發條件與做法在 ROADMAP 第 20 項。
 
 **ADR-3：第一版出 MP4（H.264 + AAC），不出 WebM。** 理由兩個。第一，macOS 的 QuickTime Player 與 Finder 預覽打不開 .webm，使用者雙擊就失敗，違反 §1.1 第一條。第二，WebM 的 VP9 是軟體編碼，1080p 會吃掉 30% 以上 CPU；MP4 的 H.264 走系統硬體編碼器，CPU 低一個量級。Chromium 從 126 起支援 MediaRecorder 出 MP4，Electron 44 遠高於此。代價：Linux 沒有 AAC 編碼器（第一版不做 Linux），檔案是 fragmented MP4。WebM 是 §16 第一層退路，只在 §17 第 1、2 題失敗時啟用。不用 FFmpeg。
 

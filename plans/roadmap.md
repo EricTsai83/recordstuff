@@ -1,6 +1,8 @@
 # RecordStuff Roadmap：第一版之後
 
-版本：v1，2026-09-11
+版本：v2，2026-09-12
+
+v2 變更：第 7 項的錄製品質設定提前到第一版 Plan 007；其餘項目仍為第一版之後。
 第一版的範圍在 `001-first-version.md`。這裡是所有被移出第一版的功能、架構升級、備案，以及先前討論過但尚未定案的細節。順序是建議，不是承諾。每一項動手前先寫一頁短計畫，並確認不違反 001-first-version.md §1.1 的優先順序。
 
 ---
@@ -57,7 +59,7 @@ export interface LibraryBridge {
 - 正常停止後用 `ffmpeg -c copy` 把 fragmented MP4 重封裝成一般 MP4，讓 duration 與拖曳在所有播放器都準
 - WebM 輸出選項（給只需要瀏覽器播放、想要更小檔案的人）
 - GIF 輸出
-- 品質預設：解析度上限、fps、位元率
+- 錄製品質預設已提前至 [007 錄製品質與可調設定](007-recording-quality-settings.md)：影像品質、解析度上限、30／60 fps、音訊品質、參數量測與保存。此處不重複排程；未來編輯器的匯出品質設定仍留在後續。
 
 ### 8. 來源選擇
 - 選螢幕、視窗、區域。預設仍是主螢幕，選項藏在第二層，不違反「一個按鈕」
@@ -154,8 +156,8 @@ export interface PlatformRecorder {
 ## 備案
 
 ### 20. 原生擷取引擎（若 Chromium 路線撞牆）
-- **觸發**：畫質、音畫同步、CPU 任一項在真機上無法達到可接受水準，且 Chromium 端沒有可調的參數；或產品需要 60fps、4K、游標特效這類需要每幀原始資料的功能
-- **預期差距**（1080p30、硬體 H.264）：CPU 兩到三倍、待命記憶體約一半，幀率上限從約 30fps 解開。抓畫面與編碼用的 OS API 兩條路相同，差距來自 Chromium 管線的中間搬運與時間戳控制權
+- **觸發**：畫質、音畫同步、CPU 任一項在真機上無法達到可接受水準，且 Chromium 端沒有可調的參數；或產品需要游標特效等必須控制每幀原始資料的功能。60fps、4K 先由 007 驗證現有架構，不能只因需要這些選項就判定要換引擎
+- **預期差距**（1080p30、硬體 H.264）：CPU 兩到三倍、待命記憶體約一半，幀率控制能力須與 007 的真機結果比較；30fps 是目前程式限制，不是已驗證的 Chromium 固定上限。抓畫面與編碼用的 OS API 兩條路相同，差距來自 Chromium 管線的中間搬運與時間戳控制權
 - **做法**：保留 Electron 外殼，把 capture host 換成 Rust sidecar。Cap（github.com/CapSoftware/Cap）的 `scap-screencapturekit`、`scap-direct3d`、`scap-cpal`、`scap-targets` 是 MIT 授權，可直接引用；編碼接 AVAssetWriter（macOS）與 MediaFoundation（Windows）。Cap 其餘部分是 AGPLv3，不能拿來改
 - **不預先做的理由**：需要 Rust 能力，開發時程至少三倍。先用最便宜的路線驗證產品
 
