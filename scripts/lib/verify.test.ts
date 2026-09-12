@@ -234,18 +234,22 @@ describe("measure + judge", () => {
     expect(byMetric["影像位元率"]?.verdict).toBe("pass");
     expect(byMetric["音訊位元率"]?.verdict).toBe("pass");
     expect(byMetric["CPU（Electron 各程序合計）"]?.verdict).toBe("n/a");
+    const busy = judge(measure("cpu.mp4", 1, info(), [evenFrames(900, 30)], { cpu: { averagePercent: 55, peakPercent: 80 } }), ENTRY);
+    expect(busy.find((c) => c.metric.startsWith("CPU"))?.verdict).toBe("fail");
+    const calm = judge(measure("cpu.mp4", 1, info(), [evenFrames(900, 30)], { cpu: { averagePercent: 15, peakPercent: 20 } }), ENTRY);
+    expect(calm.find((c) => c.metric.startsWith("CPU"))?.verdict).toBe("pass");
     expect(byMetric["檔案可播（ffprobe 解碼全部影格）"]?.verdict).toBe("pass");
     expect(overallVerdict(checks)).toBe("pass");
   });
 
   it("fails size, aspect, fps, drops, offsets, mono audio and clamped bitrate", () => {
-    // Square output from a 1440p cap on a 16:9 screen, mono, 20 fps, audio 80 ms late, bitrate at 55 % of target.
+    // Square output from a 1440p cap on a 16:9 screen, mono, 20 fps, audio 130 ms late, bitrate at 55 % of target.
     const entry = parseCaptureLine(
       "recorder: session s capture: requested video=standard cap=1440p fps=30 audio=high; track size=1440x1440 fps=30 sampleRate=48000 Hz channels=1; target videoBps=8100000 audioBps=256000",
     )!;
     const probe = info({
       video: { width: 1440, height: 1440, nb_read_frames: "600", start_time: "0.000" },
-      audio: { channels: 1, channel_layout: "mono", start_time: "0.080", duration: "30.250" },
+      audio: { channels: 1, channel_layout: "mono", start_time: "0.130", duration: "30.250" },
       format: { duration: "30.25", bit_rate: "4700000", size: "17770000" },
     });
     const frames = evenFrames(600, 20);
@@ -284,6 +288,11 @@ describe("measure + judge", () => {
     expect(byMetric["影像位元率"]?.verdict).toBe("n/a");
     expect(byMetric["音訊−影像偏移（閃光／短音）"]?.verdict).toBe("pass");
     expect(byMetric["結尾音畫漂移"]?.verdict).toBe("n/a");
+    // ITU-R BT.1359 asymmetry: 80 ms late is fine, 60 ms early is not.
+    const late = judge(measure("l.mp4", 1, info(), [], { sync: { pairs: 20, medianOffsetMs: 80, headOffsetMs: 80, tailOffsetMs: undefined, driftMs: undefined } }), undefined);
+    expect(late.find((c) => c.metric.startsWith("音訊−影像偏移（閃光"))?.verdict).toBe("pass");
+    const early = judge(measure("e.mp4", 1, info(), [], { sync: { pairs: 20, medianOffsetMs: -60, headOffsetMs: -60, tailOffsetMs: undefined, driftMs: undefined } }), undefined);
+    expect(early.find((c) => c.metric.startsWith("音訊−影像偏移（閃光"))?.verdict).toBe("fail");
     expect(byMetric["取樣率／聲道"]?.verdict).toBe("fail");
     expect(byMetric["取樣率／聲道"]?.actual).toContain("−∞");
   });

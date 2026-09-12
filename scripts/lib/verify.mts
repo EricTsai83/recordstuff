@@ -452,13 +452,21 @@ export const THRESHOLDS = {
   fpsToleranceFps: 2,
   maxDropRate: 0.02,
   maxDurationDiffMs: 100,
-  maxStartOffsetMs: 50,
+  /**
+   * ITU-R BT.1359 detectability: audio may run up to 125 ms late or 45 ms
+   * early before viewers notice (sound after light is natural). Offsets are
+   * audio − video, so positive = late.
+   */
+  maxAudioLateMs: 125,
+  maxAudioEarlyMs: 45,
   maxDriftMs: 100,
   sampleRateHz: 48_000,
   channels: 2,
   /** A channel below this RMS is treated as silent. */
   minChannelRmsDb: -60,
   bitrateTolerance: 0.3,
+  /** Set from the first measurements (1080p30 all levels ≈ 15%, 1080p60 ≈ 23%); generous headroom for slower machines. */
+  maxCpuAveragePercent: 40,
 } as const;
 
 export type Verdict = "pass" | "fail" | "n/a";
@@ -488,6 +496,9 @@ const mbps = (bps: number | undefined): string => (bps === undefined ? "—" : `
 const kbps = (bps: number | undefined): string => (bps === undefined ? "—" : `${Math.round(bps / 1000)} kbps`);
 const ms = (value: number | undefined): string => (value === undefined || Number.isNaN(value) ? "—" : `${value.toFixed(0)} ms`);
 const pass = (ok: boolean): Verdict => (ok ? "pass" : "fail");
+/** audio − video in ms: late audio is tolerated up to 125 ms, early audio up to 45 ms (ITU-R BT.1359). */
+const offsetWithinLimits = (offsetMs: number): boolean => offsetMs < THRESHOLDS.maxAudioLateMs && offsetMs > -THRESHOLDS.maxAudioEarlyMs;
+const OFFSET_EXPECTED = `音訊晚 < ${THRESHOLDS.maxAudioLateMs} ms／早 < ${THRESHOLDS.maxAudioEarlyMs} ms（ITU-R BT.1359）`;
 
 function aspectMatches(a: Dimensions, b: Dimensions): boolean {
   // Even-rounding of a scaled edge moves the ratio by less than 1%.
@@ -581,17 +592,17 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
     m.video?.startTime !== undefined && m.audio?.startTime !== undefined ? (m.audio.startTime - m.video.startTime) * 1000 : undefined;
   checks.push({
     metric: "音訊−影像起始偏移（容器）",
-    expected: `< ${THRESHOLDS.maxStartOffsetMs} ms`,
+    expected: OFFSET_EXPECTED,
     actual: ms(startOffsetMs),
-    verdict: startOffsetMs === undefined ? "n/a" : pass(Math.abs(startOffsetMs) < THRESHOLDS.maxStartOffsetMs),
+    verdict: startOffsetMs === undefined ? "n/a" : pass(offsetWithinLimits(startOffsetMs)),
   });
 
   // 同步標記（素材頁）
   checks.push({
     metric: "音訊−影像偏移（閃光／短音）",
-    expected: `< ${THRESHOLDS.maxStartOffsetMs} ms；穩定超過記為固有延遲`,
+    expected: `${OFFSET_EXPECTED}；穩定超過記為固有延遲`,
     actual: m.sync ? `${ms(m.sync.medianOffsetMs)}（${m.sync.pairs} 對；頭 ${ms(m.sync.headOffsetMs)}，尾 ${ms(m.sync.tailOffsetMs)}）` : "—",
-    verdict: m.sync ? pass(Math.abs(m.sync.medianOffsetMs) < THRESHOLDS.maxStartOffsetMs) : "n/a",
+    verdict: m.sync ? pass(offsetWithinLimits(m.sync.medianOffsetMs)) : "n/a",
     ...(m.sync ? {} : { note: m.syncAttempted ? "--sync 偵測不到閃光／短音配對：素材頁不在被錄的螢幕，或音訊未被錄到" : "需 --sync 與測試素材頁" }),
   });
   checks.push({
@@ -641,12 +652,12 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
         : "n/a",
   });
 
-  // CPU（無門檻，先記錄）
+  // CPU
   checks.push({
     metric: "CPU（Electron 各程序合計）",
-    expected: "記錄；門檻待第一次量測後定",
+    expected: `平均 ≤ ${THRESHOLDS.maxCpuAveragePercent}%`,
     actual: m.cpu ? `平均 ${m.cpu.averagePercent.toFixed(0)}%，峰值 ${m.cpu.peakPercent.toFixed(0)}%` : "—",
-    verdict: "n/a",
+    verdict: m.cpu ? pass(m.cpu.averagePercent <= THRESHOLDS.maxCpuAveragePercent) : "n/a",
   });
 
   // 檔案可播
