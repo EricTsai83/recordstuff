@@ -186,11 +186,11 @@ export type RecordingState =
 
 | 狀態 | 圖示 | macOS 標題 | 左鍵 | 右鍵選單 |
 |---|---|---|---|---|
-| needsPermission | 待命圖（灰） | 無 | 顯示權限通知 | 「需要螢幕錄製權限」（灰字）、「開啟系統設定」或「重新啟動」、「儲存位置：RecordStuff」、「更改儲存位置…」、「顯示 log」、「結束」 |
-| idle | 待命圖 | 無 | 開始 | 「待命中」（灰字）、有的話「顯示最後一個錄影」、「儲存位置：RecordStuff」、「更改儲存位置…」、「顯示 log」、「結束」 |
-| starting | 待命圖 | `…` | 忽略 | 「啟動中…」（灰字）、「顯示 log」、「結束」 |
-| recording | 錄製圖（紅） | `REC` | 停止 | 「錄製中」（灰字）、「停止」、「儲存位置：RecordStuff」（灰字）、「顯示 log」、「結束」 |
-| stopping | 待命圖 | `…` | 忽略 | 「儲存中…」（灰字）、「顯示 log」、「結束」 |
+| needsPermission | 待命圖（灰） | 無 | 顯示權限通知 | 「需要螢幕錄製權限」（灰字）、「開啟系統設定」或「重新啟動」、「儲存位置：RecordStuff」、「更改儲存位置…」、「錄製品質 ▸」、「顯示 log」、「結束」 |
+| idle | 待命圖 | 無 | 開始 | 「待命中」（灰字）、有的話「顯示最後一個錄影」、「儲存位置：RecordStuff」、「更改儲存位置…」、「錄製品質 ▸」、「顯示 log」、「結束」 |
+| starting | 待命圖 | `…` | 忽略 | 「啟動中…」（灰字）、「錄製品質」（灰字）、「顯示 log」、「結束」 |
+| recording | 錄製圖（紅） | `REC` | 停止 | 「錄製中」（灰字）、「停止」、「儲存位置：RecordStuff」（灰字）、「更改儲存位置…」（灰字）、「錄製品質」（灰字）、「顯示 log」、「結束」 |
+| stopping | 待命圖 | `…` | 忽略 | 「儲存中…」（灰字）、「錄製品質」（灰字）、「顯示 log」、「結束」 |
 
 - macOS 用 template 圖示，自動適應深淺色選單列。`tray.setTitle('REC')` 只在 macOS 有效，Windows 靠換圖示。
 - 不用 `tray.setContextMenu`，否則 macOS 左鍵會彈選單。左鍵走 `tray.on('click')`，右鍵走 `tray.on('right-click')` 再 `tray.popUpContextMenu(menu)`。
@@ -199,17 +199,19 @@ export type RecordingState =
 - 「顯示 log」（002）：每個狀態都有，`shell.showItemInFolder` 選取 log 檔；檔案不存在時改開 log 資料夾。放在「結束」正上方、與儲存位置同一組之後，低頻除錯用途不搶眼。
 - Windows 可能把圖示收進系統匣溢位區。第一次啟動送一則通知「RecordStuff 在系統匣待命」。
 
-007 將在 idle／needsPermission 選單加入「錄製品質」子選單；starting／recording／stopping 顯示停用項目。上表為現行基本選單。
+- 「錄製品質 ▸」（007）：四個單選子選單，各自的標籤帶目前值——「影像品質：標準」（精省／標準／高品質）、「解析度上限：原尺寸」（1080p／1440p／4K／原尺寸）、「幀率：30 fps」（30／60；60 只在 macOS 開放，Windows 顯示「60 fps（此平台尚未驗證，暫不開放）」停用）、「音訊品質：高品質（AAC 256 kbps）」（標準 192／高品質 256）。選一項即寫入 settings.json 並重繪選單；寫入失敗保留原值並通知「無法儲存錄製品質設定」。starting／recording／stopping 只顯示停用的「錄製品質」，進行中的錄製沿用開始時的快照。
 
 ## 9. Capture host 協定
 
-Main 與 capture host 用 `postMessage` 交換一對 `MessagePort`。下列為現行協定；007 實作時擴充 start 的品質設定快照及實際擷取參數回報，同步更新本節。
+Main 與 capture host 用 `postMessage` 交換一對 `MessagePort`。
 
-**Main → capture host**：`start { sessionId }`、`stop { sessionId }`、`ping`
+**Main → capture host**：`start { sessionId, quality }`、`stop { sessionId }`、`ping`
+
+- `quality`（007）是 main 在建立 session 時讀取的設定快照 `{ videoQuality, resolutionCap, frameRate, audioQuality }`；host 不自己讀設定。type guard 拒絕不支援的值。
 
 **Capture host → main**
 - `ready`
-- `started { sessionId, mimeType }`
+- `started { sessionId, mimeType, capture }`；`capture`（007）= `{ width?, height?, frameRate?, sampleRate?, channelCount?, videoBitsPerSecond, audioBitsPerSecond, warnings: string[] }`：前五項來自 `track.getSettings()`，平台沒給的欄位省略（log 印「未知」）；兩個位元率是送給 `MediaRecorder` 的目標值，不是成品實測；`warnings` 是非致命問題（例如解析度上限的 `applyConstraints` 被拒，改以來源尺寸錄）
 - `chunk { sessionId, seq, bytes: ArrayBuffer }`，結構化複製。原本打算 transfer，但 Electron 44.3 實測 transfer 的 ArrayBuffer 會讓 main process 卡死；每秒約 1 MB 的複製可忽略
 - `stopped { sessionId }`
 - `error { sessionId?, code, detail }`
@@ -217,6 +219,8 @@ Main 與 capture host 用 `postMessage` 交換一對 `MessagePort`。下列為�
 
 規則：
 - `MediaRecorder` timeslice 1000 ms。每個 chunk 到 main 就 append，任何時刻最多丟 1 秒。
+- 品質套用順序（007）：`getDisplayMedia({ video: { frameRate: { ideal, max } } })` → 讀 video track 尺寸 → `fitWithinCap` 算不放大、保持比例、直向交換長短邊的目標尺寸 → 需要時 `applyConstraints({ width, height, frameRate })`（`applyConstraints` 會整組取代約束，所以幀率要重帶）→ 重新確認所有 track 仍為 live（套用期間結束的音軌不能錄成無聲檔）→ 依實際尺寸 × 幀率 × 品質係數算 `videoBitsPerSecond`（1.5–60 Mbps）、`audioBitsPerSecond`（192k／256k）→ 建立 `MediaRecorder`。套用期間 session 仍算 pending，`stop` 到達會取消並釋放串流。
+- 要求 60 fps 而 `capture.frameRate` ≤ 30 時，main 記 log 並通知「系統只提供 N fps」；track 未回報幀率不視為降級。
 - 建立 `MediaRecorder` 前先 `MediaRecorder.isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')`。回 false 就回 `error { code: "mp4_unsupported" }`，不默默改錄 WebM。第一版支援的 OS 版本都有系統 H.264 與 AAC 編碼器，這個錯誤理論上不會發生，發生了就是要查的 bug。
 - 沒拿到 audio track、或拿到的 audio track 一開始就是 `ended` 狀態，都回 `error { code: "no_audio_track" }`，不錄無聲影片。後者是 macOS 沒給「系統音訊錄製」權限時 Chromium 的實際行為：不報錯，只給一條死的音軌（§11）。
 - `ping` 每 5 秒一次，連續兩次沒 `pong`、或 `render-process-gone`，視為當機：進 failed，保留 `.recording.mp4`。不自動重啟。
@@ -238,13 +242,17 @@ Main 與 capture host 用 `postMessage` 交換一對 `MessagePort`。下列為�
 
 **顯示**：選單裡「儲存位置：<資料夾名稱>」，滑鼠移上去 tooltip 是完整路徑（Windows 支援；macOS 選單沒有 tooltip，就直接顯示 `~` 縮寫的完整路徑）。點這一項用 `shell.openPath` 開該資料夾。
 
-**儲存**：`app.getPath('userData')/settings.json`，現行內容只有 outputDir；007 將新增品質設定並保留舊檔相容性，完成後同步更新下列 schema：
+**儲存**：`app.getPath('userData')/settings.json`，version 2（007）：
 
 ```json
-{ "version": 1, "outputDir": "/Users/eric/Movies/RecordStuff" }
+{
+  "version": 2,
+  "outputDir": "/Users/eric/Movies/RecordStuff",
+  "quality": { "videoQuality": "standard", "resolutionCap": "source", "frameRate": 30, "audioQuality": "high" }
+}
 ```
 
-存絕對路徑。寫入用先寫 `settings.json.tmp` 再 rename，避免寫一半當機留下壞檔。讀取時任何錯誤（檔案不存在、JSON 壞掉、欄位不對、版本不認得）都回預設值並記 log，不彈通知。
+`videoQuality`：`economy | standard | high`；`resolutionCap`：`1080p | 1440p | 4k | source`；`frameRate`：`30 | 60`；`audioQuality`：`standard | high`。存絕對路徑。寫入用先寫 `settings.json.tmp` 再 rename，避免寫一半當機留下壞檔。讀取：version 1（只有 outputDir）照讀並補預設 quality，下次儲存改寫成 version 2；version 2 的 `quality` 缺少或含不支援的值時只把 quality 重設為預設、保留 outputDir 並記 log；檔案不存在、JSON 壞掉、outputDir 不對、版本不認得則整份回預設值並記 log，不彈通知。Windows 上讀到 `frameRate: 60` 不改檔，開始錄製時以 30 執行（60 fps 尚未在 Windows 驗證）。
 
 **錄製中**：「更改儲存位置…」變灰字。改了位置只影響下一次錄製，進行中的錄製寫到開始時決定的路徑。
 

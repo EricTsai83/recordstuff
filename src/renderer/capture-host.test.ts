@@ -4,15 +4,32 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OUTPUT_MIME_TYPE, type HostMessage, type MainMessage } from "../shared/protocol";
+import { DEFAULT_QUALITY, type QualitySettings } from "../shared/quality";
 import { CaptureHost, type HostPort } from "./capture-host";
 
 class FakeTrack {
   stopped = false;
   readyState: "live" | "ended" = "live";
+  settings: Record<string, number> = {};
+  applied: MediaTrackConstraints[] = [];
+  applyError: Error | undefined;
   private listeners: (() => void)[] = [];
-  constructor(readonly kind: "video" | "audio") {}
+  constructor(readonly kind: "video" | "audio") {
+    this.settings = kind === "video" ? { width: 1920, height: 1080, frameRate: 30 } : { sampleRate: 48_000, channelCount: 2 };
+  }
   stop(): void {
     this.stopped = true;
+  }
+  getSettings(): Record<string, number> {
+    return this.settings;
+  }
+  async applyConstraints(constraints: MediaTrackConstraints): Promise<void> {
+    if (this.applyError) throw this.applyError;
+    this.applied.push(constraints);
+    // Chromium scales the capture to the requested max while keeping the aspect ratio.
+    const w = constraints.width as { max: number };
+    const h = constraints.height as { max: number };
+    this.settings = { ...this.settings, width: w.max, height: h.max };
   }
   addEventListener(_type: "ended", listener: () => void): void {
     this.listeners.push(listener);
@@ -48,7 +65,7 @@ class FakeMediaRecorder {
   onerror: ((event: unknown) => void) | null = null;
   constructor(
     readonly stream: FakeStream,
-    options: { mimeType: string },
+    readonly options: { mimeType: string; videoBitsPerSecond?: number; audioBitsPerSecond?: number },
   ) {
     this.mimeType = options.mimeType;
     FakeMediaRecorder.instances.push(this);
@@ -105,6 +122,18 @@ afterEach(() => vi.unstubAllGlobals());
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 const stream = () => new FakeStream([new FakeTrack("video"), new FakeTrack("audio")]);
+const start = (sessionId: string, quality: QualitySettings = DEFAULT_QUALITY): MainMessage => ({ type: "start", sessionId, quality });
+/** The `started` report for a 1080p30 source at default quality. */
+const DEFAULT_CAPTURE = {
+  width: 1920,
+  height: 1080,
+  frameRate: 30,
+  sampleRate: 48_000,
+  channelCount: 2,
+  videoBitsPerSecond: 8_100_000,
+  audioBitsPerSecond: 256_000,
+  warnings: [],
+};
 
 function boot(): FakePort {
   const port = new FakePort();
@@ -123,11 +152,16 @@ describe("renderer CaptureHost", () => {
 
   it("records: started, ordered chunks, stopped after the final chunk", async () => {
     const port = boot();
-    port.receive({ type: "start", sessionId: "s1" });
+    port.receive(start("s1"));
     const s = stream();
     pendingStream!.resolve(s);
     await flush();
-    expect(port.sent[0]).toEqual({ type: "started", sessionId: "s1", mimeType: OUTPUT_MIME_TYPE });
+    expect(port.sent[0]).toEqual({ type: "started", sessionId: "s1", mimeType: OUTPUT_MIME_TYPE, capture: DEFAULT_CAPTURE });
+    expect(FakeMediaRecorder.instances[0]!.options).toEqual({
+      mimeType: OUTPUT_MIME_TYPE,
+      videoBitsPerSecond: 8_100_000,
+      audioBitsPerSecond: 256_000,
+    });
     const rec = FakeMediaRecorder.instances[0]!;
     rec.emitChunk([1, 2]);
     rec.emitChunk([3]);
@@ -144,14 +178,14 @@ describe("renderer CaptureHost", () => {
   it("refuses when MP4 is unsupported and never asks for a stream", () => {
     FakeMediaRecorder.supported = false;
     const port = boot();
-    port.receive({ type: "start", sessionId: "s1" });
+    port.receive(start("s1"));
     expect(port.sent[0]).toMatchObject({ type: "error", sessionId: "s1", code: "mp4_unsupported" });
     expect(getDisplayMedia).not.toHaveBeenCalled();
   });
 
   it("refuses a stream without an audio track and releases it", async () => {
     const port = boot();
-    port.receive({ type: "start", sessionId: "s1" });
+    port.receive(start("s1"));
     const s = new FakeStream([new FakeTrack("video")]);
     pendingStream!.resolve(s);
     await flush();
@@ -161,7 +195,7 @@ describe("renderer CaptureHost", () => {
 
   it("refuses an audio track that is already ended (macOS CoreAudio Tap without permission)", async () => {
     const port = boot();
-    port.receive({ type: "start", sessionId: "s1" });
+    port.receive(start("s1"));
     const dead = new FakeTrack("audio");
     dead.readyState = "ended";
     const s = new FakeStream([new FakeTrack("video"), dead]);
@@ -174,7 +208,7 @@ describe("renderer CaptureHost", () => {
 
   it("maps getDisplayMedia errors to codes", async () => {
     const port = boot();
-    port.receive({ type: "start", sessionId: "s1" });
+    port.receive(start("s1"));
     pendingStream!.reject(Object.assign(new Error("denied"), { name: "NotAllowedError" }));
     await flush();
     expect(port.sent[0]).toMatchObject({ type: "error", code: "permission_denied" });
@@ -182,7 +216,7 @@ describe("renderer CaptureHost", () => {
 
   it("a stop that arrives while getDisplayMedia is pending cancels the session (review finding 1)", async () => {
     const port = boot();
-    port.receive({ type: "start", sessionId: "s1" });
+    port.receive(start("s1"));
     port.receive({ type: "stop", sessionId: "s1" });
     const s = stream();
     pendingStream!.resolve(s);
@@ -193,7 +227,7 @@ describe("renderer CaptureHost", () => {
 
     // and the host is free for the next session
     port.sent = [];
-    port.receive({ type: "start", sessionId: "s2" });
+    port.receive(start("s2"));
     pendingStream!.resolve(stream());
     await flush();
     expect(port.sent[0]).toMatchObject({ type: "started", sessionId: "s2" });
@@ -201,10 +235,10 @@ describe("renderer CaptureHost", () => {
 
   it("a cancelled session still waiting on the OS does not block the next start (pass-2 finding 1)", async () => {
     const port = boot();
-    port.receive({ type: "start", sessionId: "s1" });
+    port.receive(start("s1"));
     const first = pendingStream!;
     port.receive({ type: "stop", sessionId: "s1" });
-    port.receive({ type: "start", sessionId: "s2" });
+    port.receive(start("s2"));
     expect(getDisplayMedia).toHaveBeenCalledTimes(2);
     const s2 = stream();
     pendingStream!.resolve(s2);
@@ -221,7 +255,7 @@ describe("renderer CaptureHost", () => {
 
   it("a cancelled session whose getDisplayMedia fails stays silent", async () => {
     const port = boot();
-    port.receive({ type: "start", sessionId: "s1" });
+    port.receive(start("s1"));
     port.receive({ type: "stop", sessionId: "s1" });
     pendingStream!.reject(Object.assign(new Error("x"), { name: "NotAllowedError" }));
     await flush();
@@ -230,15 +264,15 @@ describe("renderer CaptureHost", () => {
 
   it("a second start while one is pending is refused", () => {
     const port = boot();
-    port.receive({ type: "start", sessionId: "s1" });
-    port.receive({ type: "start", sessionId: "s2" });
+    port.receive(start("s1"));
+    port.receive(start("s2"));
     expect(port.sent[0]).toMatchObject({ type: "error", sessionId: "s2", code: "capture_start_failed" });
     expect(getDisplayMedia).toHaveBeenCalledTimes(1);
   });
 
   it("a track ending on its own reports capture_failed, not stopped", async () => {
     const port = boot();
-    port.receive({ type: "start", sessionId: "s1" });
+    port.receive(start("s1"));
     const s = stream();
     pendingStream!.resolve(s);
     await flush();
@@ -247,6 +281,127 @@ describe("renderer CaptureHost", () => {
     await flush();
     expect(port.types()).toEqual(["started", "chunk", "error"]);
     expect(port.sent.at(-1)).toMatchObject({ type: "error", sessionId: "s1", code: "capture_failed" });
+  });
+
+  it("passes the requested frame rate to getDisplayMedia", () => {
+    const port = boot();
+    port.receive(start("s1", { ...DEFAULT_QUALITY, frameRate: 60 }));
+    expect(getDisplayMedia).toHaveBeenCalledWith({
+      video: { frameRate: { ideal: 60, max: 60 } },
+      audio: { restrictOwnAudio: true },
+    });
+  });
+
+  it("scales a source above the cap, keeps the aspect ratio and encodes for the scaled size", async () => {
+    const port = boot();
+    port.receive(start("s1", { ...DEFAULT_QUALITY, resolutionCap: "1080p", videoQuality: "high" }));
+    const s = stream();
+    s.tracks[0]!.settings = { width: 3840, height: 2160, frameRate: 30 };
+    pendingStream!.resolve(s);
+    await flush();
+    expect(s.tracks[0]!.applied).toEqual([
+      { width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 30, max: 30 } },
+    ]);
+    expect(port.sent[0]).toMatchObject({
+      type: "started",
+      capture: { width: 1920, height: 1080, videoBitsPerSecond: 14_900_000, audioBitsPerSecond: 256_000, warnings: [] },
+    });
+  });
+
+  it("does not touch a source already within the cap", async () => {
+    const port = boot();
+    port.receive(start("s1", { ...DEFAULT_QUALITY, resolutionCap: "4k" }));
+    const s = stream();
+    pendingStream!.resolve(s);
+    await flush();
+    expect(s.tracks[0]!.applied).toEqual([]);
+    expect(port.sent[0]).toMatchObject({ type: "started", capture: DEFAULT_CAPTURE });
+  });
+
+  it("a rejected constraint is a warning, not a failure; the source size is encoded", async () => {
+    const port = boot();
+    port.receive(start("s1", { ...DEFAULT_QUALITY, resolutionCap: "1080p" }));
+    const s = stream();
+    s.tracks[0]!.settings = { width: 2560, height: 1440, frameRate: 30 };
+    s.tracks[0]!.applyError = Object.assign(new Error("nope"), { name: "OverconstrainedError" });
+    pendingStream!.resolve(s);
+    await flush();
+    expect(port.sent[0]).toMatchObject({
+      type: "started",
+      capture: { width: 2560, height: 1440, videoBitsPerSecond: 14_400_000 },
+    });
+    const report = port.sent[0]!.type === "started" ? port.sent[0]!.capture : undefined;
+    expect(report?.warnings[0]).toMatch(/1080p.*OverconstrainedError/);
+  });
+
+  it("missing track settings are left out of the report and the encoder assumes 1080p", async () => {
+    const port = boot();
+    port.receive(start("s1", { ...DEFAULT_QUALITY, videoQuality: "economy", audioQuality: "standard" }));
+    const s = stream();
+    s.tracks[0]!.settings = {};
+    s.tracks[1]!.settings = {};
+    pendingStream!.resolve(s);
+    await flush();
+    const message = port.sent[0]!;
+    expect(message.type).toBe("started");
+    if (message.type !== "started") return;
+    expect(message.capture).toEqual({
+      videoBitsPerSecond: 4_400_000,
+      audioBitsPerSecond: 192_000,
+      warnings: ["video track 未回報尺寸，無法套用解析度上限"],
+    });
+    expect(Object.keys(message.capture)).not.toContain("width");
+  });
+
+  it("a stop that lands while the constraint is being applied releases the stream", async () => {
+    const port = boot();
+    port.receive(start("s1", { ...DEFAULT_QUALITY, resolutionCap: "1080p" }));
+    const s = stream();
+    s.tracks[0]!.settings = { width: 3840, height: 2160, frameRate: 30 };
+    let releaseApply: (() => void) | undefined;
+    s.tracks[0]!.applyConstraints = () => new Promise<void>((r) => (releaseApply = r));
+    pendingStream!.resolve(s);
+    await flush();
+    expect(releaseApply).toBeDefined();
+    port.receive({ type: "stop", sessionId: "s1" });
+    releaseApply!();
+    await flush();
+    expect(s.tracks.every((t) => t.stopped)).toBe(true);
+    expect(FakeMediaRecorder.instances).toHaveLength(0);
+    expect(port.types()).toEqual(["stopped"]);
+  });
+
+  it("repeats the requested frame rate when applying the size cap (review F1)", async () => {
+    const port = boot();
+    port.receive(start("s1", { ...DEFAULT_QUALITY, resolutionCap: "1080p", frameRate: 60 }));
+    const s = stream();
+    s.tracks[0]!.settings = { width: 3840, height: 2160, frameRate: 60 };
+    pendingStream!.resolve(s);
+    await flush();
+    expect(s.tracks[0]!.applied[0]).toMatchObject({ frameRate: { ideal: 60, max: 60 } });
+  });
+
+  it("an audio track that ends while the constraint is applied fails the start instead of recording silence (review F3)", async () => {
+    const port = boot();
+    port.receive(start("s1", { ...DEFAULT_QUALITY, resolutionCap: "1080p" }));
+    const s = stream();
+    s.tracks[0]!.settings = { width: 3840, height: 2160, frameRate: 30 };
+    let releaseApply: (() => void) | undefined;
+    s.tracks[0]!.applyConstraints = () => new Promise<void>((r) => (releaseApply = r));
+    pendingStream!.resolve(s);
+    await flush();
+    s.tracks[1]!.readyState = "ended";
+    releaseApply!();
+    await flush();
+    expect(port.sent[0]).toMatchObject({ type: "error", sessionId: "s1", code: "capture_start_failed" });
+    expect(FakeMediaRecorder.instances).toHaveLength(0);
+    expect(s.tracks.every((t) => t.stopped)).toBe(true);
+    // and the host is free again
+    port.sent = [];
+    port.receive(start("s2"));
+    pendingStream!.resolve(stream());
+    await flush();
+    expect(port.sent[0]).toMatchObject({ type: "started", sessionId: "s2" });
   });
 
   it("ignores stop for an unknown session", () => {

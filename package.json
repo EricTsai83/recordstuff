@@ -19,6 +19,7 @@
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "icons": "node scripts/make-icons.mjs",
     "log": "tail -f \"$HOME/Library/Logs/recordstuff/recordstuff.log\"",
+    "probe": "node scripts/probe-recording.mjs",
     "dist:mac": "electron-vite build && electron-builder --mac",
     "dist:win": "electron-vite build && electron-builder --win"
   },

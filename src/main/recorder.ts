@@ -8,6 +8,7 @@
  */
 import path from "node:path";
 import type { HostMessage } from "../shared/protocol";
+import { describeCapture, type CaptureReport, type QualitySettings } from "../shared/quality";
 import { isErrorCode, type ErrorCode, type RecordingState } from "../shared/state";
 
 export interface RecorderWriter {
@@ -19,8 +20,8 @@ export interface RecorderWriter {
 }
 
 export interface RecorderHost {
-  /** Ensures the capture host is up and posts `start`; rejects if it cannot. */
-  start(sessionId: string): Promise<void>;
+  /** Ensures the capture host is up and posts `start` with the quality snapshot; rejects if it cannot. */
+  start(sessionId: string, quality: QualitySettings): Promise<void>;
   stop(sessionId: string): void;
   onMessage(listener: (message: HostMessage) => void): void;
   onFailure(
@@ -31,6 +32,8 @@ export interface RecorderHost {
 export interface RecorderDeps {
   host: RecorderHost;
   outputDir: () => string;
+  /** Read once per session when it starts; later changes affect the next recording only (plan 007). */
+  quality: () => QualitySettings;
   ensureWritableDir: (dir: string) => Promise<void>;
   openWriter: (recordingPath: string, finalPath: string) => Promise<RecorderWriter>;
   now?: () => Date;
@@ -52,6 +55,8 @@ export interface RecorderDeps {
 export type RecorderEvent =
   | { type: "state"; state: RecordingState }
   | { type: "saved"; path: string }
+  /** The host confirmed capture; `requested` is the session snapshot, `capture` what it got. */
+  | { type: "captureStarted"; requested: QualitySettings; capture: CaptureReport }
   | { type: "failed"; code: ErrorCode; detail: string; partialPath?: string }
   | { type: "permissionRequested"; needsRelaunch: boolean };
 
@@ -63,6 +68,8 @@ export interface PermissionStatus {
 interface Session {
   id: string;
   phase: "opening" | "starting" | "recording" | "stopping";
+  /** Quality snapshot taken when the session was created (plan 007 §B2). */
+  quality: QualitySettings;
   /** `stopped` arrived and the writer is being finished; a hard cap must not call this a failure. */
   finalizing: boolean;
   writer?: RecorderWriter;
@@ -233,6 +240,7 @@ export class Recorder {
     const session: Session = {
       id: this.deps.newSessionId(),
       phase: "opening",
+      quality: this.deps.quality(),
       finalizing: false,
       nextSeq: 0,
       writes: Promise.resolve(),
@@ -275,7 +283,7 @@ export class Recorder {
 
     session.phase = "starting";
     try {
-      await this.deps.host.start(session.id);
+      await this.deps.host.start(session.id, session.quality);
     } catch (cause) {
       await this.fail(session.id, "capture_start_failed", messageOf(cause));
     }
@@ -326,7 +334,9 @@ export class Recorder {
       case "started":
         if (session.phase === "starting") {
           session.phase = "recording";
+          this.deps.log(`recorder: session ${session.id} capture: ${describeCapture(session.quality, message.capture)}`);
           this.setState({ type: "recording", startedAt: this.deps.now().toISOString() });
+          this.emit({ type: "captureStarted", requested: session.quality, capture: message.capture });
         }
         return;
       case "chunk":

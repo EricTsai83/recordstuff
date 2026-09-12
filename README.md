@@ -6,12 +6,12 @@
 
 ## 目前進度
 
-更新：2026-09-13。**基本錄製已測通、檔案 log 已完成，第一版整體仍在進行中。** 使用者已確認停止錄製後有畫面、有聲音；畫質與音質差距交由 Plan 007 改善。
+更新：2026-09-13。**基本錄製已測通、檔案 log 與錄製品質設定已完成，第一版整體仍在進行中。** 使用者已確認停止錄製後有畫面、有聲音；畫質與音質的量測與調校由 Plan 008 的驗收工具完成。
 
-- 已完成：Plan 001 初始實作與基本錄製；Plan 002 檔案 log（`~/Library/Logs/<app>/recordstuff.log`、輪替、右鍵選單「顯示 log」）。
-- 進行中：Plan 003 已有基本錄製結果，完整驗收待 007 完成後補。Plan 001 文件保留產品總規格。
-- 下一步：Plan 007 品質調校與設定 → Plan 003 完整錄製驗收 → Plan 004 權限流程 → Plan 006 打包與簽章。
-- Plan 005 Windows 環境可先準備，錄製驗收使用 Plan 007 最終設定；第一版發布前仍須完成兩平台驗收。
+- 已完成：Plan 001 初始實作與基本錄製；Plan 002 檔案 log（`~/Library/Logs/<app>/recordstuff.log`、輪替、右鍵選單「顯示 log」）；Plan 007 右鍵選單「錄製品質」（影像品質、解析度上限、幀率、音訊品質）、settings.json v2、每次開始錄製的品質快照與 `capture:` log、`pnpm probe`。品質係數是未經真機驗證的起點，預設輸出與原本相同。
+- 進行中：Plan 003 已有基本錄製結果，完整驗收改用 Plan 008 的工具補。Plan 001 文件保留產品總規格。
+- 下一步：Plan 008 驗收工具（`pnpm verify`、`pnpm matrix`、測試素材）並完成 007 遺留的量測與係數回填 → Plan 003 完整錄製驗收 → Plan 004 權限流程 → Plan 006 打包與簽章。
+- Plan 005 Windows 環境可先準備，錄製驗收使用 Plan 007 的設定與 Plan 008 的工具；第一版發布前仍須完成兩平台驗收。
 
 各項完成標準與狀態見 [計畫進度](plans/README.md)。
 
@@ -23,6 +23,7 @@ pnpm dev          # electron-vite dev（main / preload / capture host 皆熱重�
 pnpm check        # typecheck + vitest + build
 pnpm icons        # 由 scripts/make-icons.mjs 重新產生 resources/ 與 build/ 的圖示
 pnpm log          # macOS：tail -f 開發版的 log 檔（見下方「Log」）
+pnpm probe -- <mp4>   # 開發用：用 ffprobe 印出成品的尺寸、平均 fps、位元率、取樣率、聲道、時長（需 brew install ffmpeg）
 ```
 
 在 Claude Code 之類把 `ELECTRON_RUN_AS_NODE=1` 塞進環境的 shell 裡，啟動前要先 `unset ELECTRON_RUN_AS_NODE`，否則 Electron 會以純 Node 模式啟動。
@@ -54,6 +55,21 @@ Get-Content -Wait "$env:APPDATA\recordstuff\logs\recordstuff.log"   # Windows
 
 每行格式是 `[ISO 時間] 訊息`；啟動時第一行是版本、Electron 版本、平台與儲存位置。main 程序的未捕捉例外與未處理的 Promise rejection 也會寫進去。檔案超過 5 MB 會輪替成 `recordstuff.1.log`、`.2`、`.3`，最多保留三個舊檔。寫檔失敗不影響 app：stderr 印一次後只寫 stdout。
 
+### 錄製品質
+
+右鍵選單「錄製品質」有四個單選子選單，標籤顯示目前值：
+
+| 項目 | 選項 | 預設 |
+|---|---|---|
+| 影像品質 | 精省／標準／高品質 | 標準 |
+| 解析度上限 | 1080p／1440p／4K／原尺寸 | 原尺寸 |
+| 幀率 | 30／60 fps | 30；60 fps 目前只在 macOS 開放，Windows 顯示停用 |
+| 音訊品質 | 標準（AAC 192 kbps）／高品質（AAC 256 kbps） | 高品質 |
+
+選項存進 `settings.json`，重啟保留。每次開始錄製時固定一份設定快照，錄製中選單變灰、改動只影響下一次。解析度上限保持來源比例、不放大，直向螢幕交換長短邊；影像位元率依實際擷取尺寸 × 幀率 × 品質係數計算（標準 1080p30 約 8 Mbps，上下界 1.5–60 Mbps）。要求 60 fps 但系統只給 ≤ 30 時會跳通知說明實際幀率。
+
+每次開始錄製 log 都有一行 `capture:`，列出要求的設定、track 回報的尺寸／幀率／取樣率／聲道，以及送給編碼器的目標位元率（不是成品實測值）。成品要用 `pnpm probe` 量。
+
 ## 打包與簽章
 
 ```bash
@@ -71,11 +87,13 @@ src/main/log.ts          stdout + 檔案 log（app.getPath('logs')/recordstuff.l
 src/main/recorder.ts     狀態機（唯一的權威狀態），無 Electron 依賴，可單元測試
 src/main/capture-host.ts 隱藏 renderer 的建立、MessagePort、heartbeat、當機偵測
 src/main/file-writer.ts  唯一的檔案 handle：append、每 5 秒 fsync、收尾改名
-src/main/tray-model.ts   狀態 → 圖示 / 標題 / 選單（含「顯示 log」）/ 通知文案的純函式
-src/main/tray.ts         Electron Tray / Menu / Notification
-src/main/settings.ts     settings.json（只有 outputDir），tmp + rename 原子寫入
+src/main/tray-model.ts   狀態 → 圖示 / 標題 / 選單（含「錄製品質」子選單、「顯示 log」）/ 通知文案的純函式
+src/main/tray.ts         Electron Tray / Menu（含 submenu 與 radio）/ Notification
+src/main/settings.ts     settings.json v2（outputDir + quality；v1 相容），tmp + rename 原子寫入
 src/main/permission.ts   macOS 螢幕錄製權限偵測與輪詢
 src/preload/index.ts     只做 MessagePort 交換
-src/renderer/            capture host：getDisplayMedia → MediaRecorder（MP4）→ 每秒一個 chunk
+src/renderer/            capture host：getDisplayMedia → 套用解析度上限 → MediaRecorder（MP4，依品質算位元率）→ 每秒一個 chunk
+src/shared/quality.ts    品質設定型別／驗證、解析度上限計算、位元率公式、擷取回報與 log 文字（無 Electron／DOM）
 src/shared/              RecordingState、ErrorCode、協定與 type guard
+scripts/probe-recording.mjs  開發用：ffprobe 量測成品參數（pnpm probe），不打包
 ```

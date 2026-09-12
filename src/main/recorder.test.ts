@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostMessage } from "../shared/protocol";
+import { DEFAULT_QUALITY, type CaptureReport, type QualitySettings } from "../shared/quality";
 import type { RecordingState } from "../shared/state";
 import { Recorder, formatTimestamp, type RecorderEvent, type RecorderHost, type RecorderWriter } from "./recorder";
 
 class FakeHost implements RecorderHost {
   started: string[] = [];
+  /** Quality snapshot each `start` was called with. */
+  startedWith: QualitySettings[] = [];
   stopped: string[] = [];
   startError: Error | undefined;
   private messageListener: ((m: HostMessage) => void) | undefined;
@@ -12,9 +15,10 @@ class FakeHost implements RecorderHost {
     | ((code: "capture_host_crashed" | "capture_host_unresponsive", detail: string) => void)
     | undefined;
 
-  async start(sessionId: string): Promise<void> {
+  async start(sessionId: string, quality: QualitySettings): Promise<void> {
     if (this.startError) throw this.startError;
     this.started.push(sessionId);
+    this.startedWith.push(quality);
   }
   stop(sessionId: string): void {
     this.stopped.push(sessionId);
@@ -65,10 +69,27 @@ function chunk(sessionId: string, seq: number, size = 4): HostMessage {
   return { type: "chunk", sessionId, seq, bytes: new ArrayBuffer(size) };
 }
 
+const CAPTURE: CaptureReport = {
+  width: 1920,
+  height: 1080,
+  frameRate: 30,
+  sampleRate: 48_000,
+  channelCount: 2,
+  videoBitsPerSecond: 8_100_000,
+  audioBitsPerSecond: 256_000,
+  warnings: [],
+};
+
+function started(sessionId: string, capture: CaptureReport = CAPTURE): HostMessage {
+  return { type: "started", sessionId, mimeType: "video/mp4", capture };
+}
+
 function setup(
   overrides: {
     ensureWritableDir?: () => Promise<void>;
     openWriter?: (recordingPath: string, finalPath: string) => Promise<FakeWriter>;
+    quality?: () => QualitySettings;
+    log?: (message: string) => void;
   } = {},
 ) {
   const host = new FakeHost();
@@ -78,6 +99,8 @@ function setup(
   const recorder = new Recorder({
     host,
     outputDir: () => "/out",
+    quality: overrides.quality ?? (() => DEFAULT_QUALITY),
+    ...(overrides.log ? { log: overrides.log } : {}),
     ensureWritableDir: overrides.ensureWritableDir ?? (async () => undefined),
     openWriter:
       overrides.openWriter ??
@@ -103,7 +126,7 @@ const flush = () => vi.advanceTimersByTimeAsync(0);
 async function startRecording(ctx: ReturnType<typeof setup>): Promise<void> {
   ctx.recorder.toggle();
   await flush();
-  ctx.host.emit({ type: "started", sessionId: "s1", mimeType: "video/mp4" });
+  ctx.host.emit(started("s1"));
   ctx.host.emit(chunk("s1", 0));
   await flush();
 }
@@ -169,7 +192,7 @@ describe("Recorder ignores illegal transitions", () => {
     expect(ctx.recorder.state.type).toBe("starting");
     expect(ctx.host.started).toEqual(["s1"]);
 
-    ctx.host.emit({ type: "started", sessionId: "s1", mimeType: "video/mp4" });
+    ctx.host.emit(started("s1"));
     ctx.host.emit(chunk("s1", 0));
     ctx.recorder.toggle();
     expect(ctx.recorder.state.type).toBe("stopping");
@@ -210,7 +233,7 @@ describe("Recorder timeouts", () => {
     const ctx = setup();
     ctx.recorder.toggle();
     await flush();
-    ctx.host.emit({ type: "started", sessionId: "s1", mimeType: "video/mp4" });
+    ctx.host.emit(started("s1"));
     await vi.advanceTimersByTimeAsync(7999);
     expect(ctx.recorder.state.type).toBe("recording");
     await vi.advanceTimersByTimeAsync(1);
@@ -245,7 +268,7 @@ describe("Recorder timeouts", () => {
     const ctx = setup();
     ctx.recorder.toggle();
     await flush();
-    ctx.host.emit({ type: "started", sessionId: "s1", mimeType: "video/mp4" });
+    ctx.host.emit(started("s1"));
     ctx.recorder.toggle(); // stop before the first chunk
     await vi.advanceTimersByTimeAsync(9000);
     expect(ctx.recorder.state.type).toBe("stopping");
@@ -363,6 +386,7 @@ describe("Recorder failures", () => {
     const recorder = new Recorder({
       host,
       outputDir: () => "/out",
+      quality: () => DEFAULT_QUALITY,
       ensureWritableDir: async () => undefined,
       openWriter: async () => new FakeWriter("a", "b"),
       preflight: () => "unsupported_os_version",
@@ -383,7 +407,7 @@ describe("Recorder review fixes", () => {
     // start timeout fires while the host is still inside getDisplayMedia
     await vi.advanceTimersByTimeAsync(8000);
     expect(ctx.recorder.state).toEqual({ type: "idle" });
-    ctx.host.emit({ type: "started", sessionId: "s1", mimeType: "video/mp4" });
+    ctx.host.emit(started("s1"));
     ctx.host.emit(chunk("s1", 0));
     expect(ctx.host.stopped).toEqual(["s1", "s1", "s1"]);
     expect(ctx.recorder.state).toEqual({ type: "idle" });
@@ -523,6 +547,7 @@ describe("Recorder review fixes", () => {
     const recorder = new Recorder({
       host,
       outputDir: () => "/out",
+      quality: () => DEFAULT_QUALITY,
       ensureWritableDir: async () => undefined,
       openWriter: async () => new FakeWriter("a", "b"),
       newSessionId: () => "s1",
@@ -539,6 +564,7 @@ describe("Recorder review fixes", () => {
     const recorder = new Recorder({
       host,
       outputDir: () => "/out",
+      quality: () => DEFAULT_QUALITY,
       ensureWritableDir: async () => undefined,
       openWriter: async () => new FakeWriter("a", "b"),
       newSessionId: () => "s1",
@@ -612,7 +638,7 @@ describe("Recorder shutdown", () => {
     ctx.recorder.toggle();
     await flush();
     const shutdown = ctx.recorder.shutdown();
-    ctx.host.emit({ type: "started", sessionId: "s1", mimeType: "video/mp4" });
+    ctx.host.emit(started("s1"));
     ctx.host.emit(chunk("s1", 0));
     await flush();
     expect(ctx.recorder.state.type).toBe("stopping");
@@ -632,3 +658,31 @@ describe("Recorder shutdown", () => {
     expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "stop_timeout" });
   });
 });
+
+describe("quality snapshot (plan 007 §B2)", () => {
+  it("passes the quality read at session start to the host and ignores later changes", async () => {
+    let current: QualitySettings = { ...DEFAULT_QUALITY, videoQuality: "high" };
+    const ctx = setup({ quality: () => current });
+    ctx.recorder.toggle();
+    current = { ...DEFAULT_QUALITY, videoQuality: "economy" };
+    await flush();
+    expect(ctx.host.startedWith).toEqual([{ ...DEFAULT_QUALITY, videoQuality: "high" }]);
+  });
+
+  it("logs the capture report and emits captureStarted with the session's snapshot", async () => {
+    const logs: string[] = [];
+    const quality: QualitySettings = { ...DEFAULT_QUALITY, frameRate: 60 };
+    const ctx = setup({ quality: () => quality, log: (m) => logs.push(m) });
+    ctx.recorder.toggle();
+    await flush();
+    const report: CaptureReport = { ...CAPTURE, frameRate: 30, warnings: ["x"] };
+    ctx.host.emit(started("s1", report));
+    expect(ctx.events.at(-1)).toEqual({ type: "captureStarted", requested: quality, capture: report });
+    const line = logs.find((l) => l.includes("capture:"));
+    expect(line).toContain("fps=60");
+    expect(line).toContain("track size=1920x1080 fps=30");
+    expect(line).toContain("target videoBps=8100000 audioBps=256000");
+    expect(line).toContain("warnings: x");
+  });
+});
+

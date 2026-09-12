@@ -6,6 +6,7 @@
  */
 import { BrowserWindow, MessageChannelMain, type MessagePortMain } from "electron";
 import { isHostMessage, type HostMessage, type MainMessage } from "../shared/protocol";
+import type { QualitySettings } from "../shared/quality";
 import type { RecorderHost } from "./recorder";
 
 export interface CaptureHostOptions {
@@ -46,9 +47,9 @@ export class CaptureHost implements RecorderHost {
     this.failureListeners.add(listener);
   }
 
-  async start(sessionId: string): Promise<void> {
+  async start(sessionId: string, quality: QualitySettings): Promise<void> {
     await this.ensureReady();
-    this.post({ type: "start", sessionId });
+    this.post({ type: "start", sessionId, quality });
   }
 
   stop(sessionId: string): void {

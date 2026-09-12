@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { isHostMessage, isMainMessage } from "./protocol";
+import { DEFAULT_QUALITY } from "./quality";
+
+const capture = { videoBitsPerSecond: 8_000_000, audioBitsPerSecond: 256_000, warnings: [] };
 
 describe("isMainMessage", () => {
   it("accepts the three main → host shapes", () => {
-    expect(isMainMessage({ type: "start", sessionId: "a" })).toBe(true);
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY })).toBe(true);
     expect(isMainMessage({ type: "stop", sessionId: "a" })).toBe(true);
     expect(isMainMessage({ type: "ping" })).toBe(true);
   });
   it("rejects anything else", () => {
     expect(isMainMessage({ type: "start" })).toBe(false);
-    expect(isMainMessage({ type: "start", sessionId: "" })).toBe(false);
+    expect(isMainMessage({ type: "start", sessionId: "a" })).toBe(false);
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: { ...DEFAULT_QUALITY, frameRate: 24 } })).toBe(false);
+    expect(isMainMessage({ type: "start", sessionId: "", quality: DEFAULT_QUALITY })).toBe(false);
     expect(isMainMessage({ type: "pong" })).toBe(false);
     expect(isMainMessage(null)).toBe(false);
     expect(isMainMessage("start")).toBe(false);
@@ -20,7 +25,15 @@ describe("isHostMessage", () => {
   it("accepts every host → main shape", () => {
     expect(isHostMessage({ type: "ready" })).toBe(true);
     expect(isHostMessage({ type: "pong" })).toBe(true);
-    expect(isHostMessage({ type: "started", sessionId: "a", mimeType: "video/mp4" })).toBe(true);
+    expect(isHostMessage({ type: "started", sessionId: "a", mimeType: "video/mp4", capture })).toBe(true);
+    expect(
+      isHostMessage({
+        type: "started",
+        sessionId: "a",
+        mimeType: "video/mp4",
+        capture: { ...capture, width: 1920, height: 1080, frameRate: 30, sampleRate: 48_000, channelCount: 2, warnings: ["w"] },
+      }),
+    ).toBe(true);
     expect(isHostMessage({ type: "chunk", sessionId: "a", seq: 0, bytes: new ArrayBuffer(1) })).toBe(true);
     expect(isHostMessage({ type: "stopped", sessionId: "a" })).toBe(true);
     expect(isHostMessage({ type: "error", code: "no_audio_track", detail: "" })).toBe(true);
@@ -33,6 +46,10 @@ describe("isHostMessage", () => {
     expect(isHostMessage({ type: "error", code: "made_up", detail: "" })).toBe(false);
     expect(isHostMessage({ type: "error", sessionId: "", code: "no_display", detail: "" })).toBe(false);
     expect(isHostMessage({ type: "started", sessionId: "a" })).toBe(false);
+    expect(isHostMessage({ type: "started", sessionId: "a", mimeType: "video/mp4" })).toBe(false);
+    expect(isHostMessage({ type: "started", sessionId: "a", mimeType: "video/mp4", capture: { ...capture, width: "1920" } })).toBe(false);
+    expect(isHostMessage({ type: "started", sessionId: "a", mimeType: "video/mp4", capture: { ...capture, videoBitsPerSecond: NaN } })).toBe(false);
+    expect(isHostMessage({ type: "started", sessionId: "a", mimeType: "video/mp4", capture: { ...capture, warnings: [1] } })).toBe(false);
     expect(isHostMessage({ type: "nope" })).toBe(false);
   });
 });

@@ -25,6 +25,7 @@ import { Recorder } from "./recorder";
 import { SettingsStore } from "./settings";
 import { AppTray } from "./tray";
 import { APP_NAME, type TrayAction } from "./tray-model";
+import { effectiveQuality, frameRateDowngrade, type QualitySettings } from "../shared/quality";
 import type { ErrorCode } from "../shared/state";
 
 const APP_ID = "com.recordstuff.app";
@@ -138,8 +139,11 @@ async function main(): Promise<void> {
   });
   log(
     `start: ${APP_NAME} ${app.getVersion()}; electron ${process.versions.electron}; ` +
-      `${process.platform} ${os.release()}; outputDir ${settings.outputDir}; log ${logPath}`,
+      `${process.platform} ${os.release()}; outputDir ${settings.outputDir}; ` +
+      `quality ${JSON.stringify(settings.quality)}; log ${logPath}`,
   );
+  /** A stored 60 fps on a platform where it is not yet verified records at 30 (plan 007). */
+  const quality = (): QualitySettings => effectiveQuality(settings.quality, process.platform);
 
   session.defaultSession.setDisplayMediaRequestHandler(
     (request, callback) => void chooseDisplayMedia(request, callback),
@@ -156,6 +160,7 @@ async function main(): Promise<void> {
   const recorder = new Recorder({
     host,
     outputDir: () => settings.outputDir,
+    quality,
     ensureWritableDir,
     openWriter: (recordingPath, finalPath) => FileWriter.open(recordingPath, finalPath),
     preflight: () => (osSupported() ? undefined : "unsupported_os_version"),
@@ -180,13 +185,17 @@ async function main(): Promise<void> {
   let quitting = false;
   const tray = new AppTray({
     resourcesDir: resourcesDir(),
-    context: () => ({ platform: process.platform, outputDir: settings.outputDir, homeDir: os.homedir() }),
+    context: () => ({ platform: process.platform, outputDir: settings.outputDir, homeDir: os.homedir(), quality: quality() }),
     onToggle: () => recorder.toggle(),
     onAction: (action) => void handleAction(action),
   });
   tray.render(recorder.state);
 
   async function handleAction(action: TrayAction): Promise<void> {
+    if (typeof action !== "string") {
+      await setQuality(action.setQuality);
+      return;
+    }
     switch (action) {
       case "stop":
         recorder.stop();
@@ -260,6 +269,25 @@ async function main(): Promise<void> {
     tray.refresh();
   }
 
+  /**
+   * Plan 007 §B3: the choice is applied only after settings.json is written;
+   * a failed write keeps the previous value and says so. The menu is
+   * disabled outside idle / needsPermission, so a running session's
+   * snapshot is never touched.
+   */
+  async function setQuality(patch: Partial<QualitySettings>): Promise<void> {
+    if (recorder.state.type !== "idle" && recorder.state.type !== "needsPermission") return;
+    try {
+      await settings.setQuality(patch);
+    } catch (cause) {
+      log(`settings: failed to save quality ${JSON.stringify(patch)}: ${String(cause)}`);
+      tray.notifyQualityWriteFailed();
+      return;
+    }
+    log(`settings: quality ${JSON.stringify(settings.quality)}`);
+    tray.refresh();
+  }
+
   let previous = recorder.state;
   recorder.subscribe((event) => {
     switch (event.type) {
@@ -282,6 +310,14 @@ async function main(): Promise<void> {
         log(`saved ${event.path}`);
         tray.notifySaved(event.path);
         return;
+      case "captureStarted": {
+        const actual = frameRateDowngrade(event.requested, event.capture);
+        if (actual !== undefined) {
+          log(`frame rate downgraded: requested ${event.requested.frameRate}, track reports ${actual}`);
+          tray.notifyFrameRateDowngrade(event.requested.frameRate, actual);
+        }
+        return;
+      }
       case "failed":
         log(`failed: ${event.code} ${event.detail}${event.partialPath ? ` (kept ${event.partialPath})` : ""}`);
         tray.notifyError(event.code, event.detail, event.partialPath);

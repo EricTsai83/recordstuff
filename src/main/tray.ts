@@ -8,9 +8,12 @@
 import { Menu, Notification, Tray, nativeImage, shell, type MenuItemConstructorOptions } from "electron";
 import path from "node:path";
 import type { ErrorCode, RecordingState } from "../shared/state";
+import type { FrameRate } from "../shared/quality";
 import {
   errorNotification,
+  frameRateDowngradeNotification,
   permissionNotification,
+  qualityWriteFailedNotification,
   savedNotification,
   settingsWriteFailedNotification,
   trayHintNotification,
@@ -87,6 +90,14 @@ export class AppTray {
     this.show(settingsWriteFailedNotification(chosenDir, this.options.context().homeDir));
   }
 
+  notifyQualityWriteFailed(): void {
+    this.show(qualityWriteFailedNotification());
+  }
+
+  notifyFrameRateDowngrade(requested: FrameRate, actual: number): void {
+    this.show(frameRateDowngradeNotification(requested, actual));
+  }
+
   notifyTrayHint(): void {
     this.show(trayHintNotification());
   }
@@ -104,12 +115,27 @@ export class AppTray {
   }
 
   private toTemplate(entry: TrayMenuItem): MenuItemConstructorOptions {
-    if (entry.kind === "separator") return { type: "separator" };
-    const template: MenuItemConstructorOptions = { label: entry.label, enabled: entry.enabled };
-    if (entry.toolTip !== undefined) template.toolTip = entry.toolTip;
-    const action = entry.action;
-    if (action) template.click = () => this.options.onAction(action);
-    return template;
+    switch (entry.kind) {
+      case "separator":
+        return { type: "separator" };
+      case "submenu":
+        return { label: entry.label, enabled: entry.enabled, submenu: entry.items.map((e) => this.toTemplate(e)) };
+      case "radio":
+        return {
+          type: "radio",
+          label: entry.label,
+          enabled: entry.enabled,
+          checked: entry.checked,
+          click: () => this.options.onAction(entry.action),
+        };
+      case "item": {
+        const template: MenuItemConstructorOptions = { label: entry.label, enabled: entry.enabled };
+        if (entry.toolTip !== undefined) template.toolTip = entry.toolTip;
+        const action = entry.action;
+        if (action) template.click = () => this.options.onAction(action);
+        return template;
+      }
+    }
   }
 }
 

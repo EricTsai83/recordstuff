@@ -3,6 +3,7 @@
  * host (plans/001-first-version.md §9). Hand-written type guards; there are only a few shapes.
  * This module must not import Electron.
  */
+import { isCaptureReport, isQualitySettings, type CaptureReport, type QualitySettings } from "./quality";
 import { isErrorCode, type ErrorCode } from "./state";
 
 /** MP4 (H.264 + AAC) is the only output the first version produces (ADR-3). */
@@ -12,13 +13,15 @@ export const OUTPUT_MIME_TYPE = "video/mp4;codecs=avc1,mp4a.40.2";
 export const CHUNK_INTERVAL_MS = 1000;
 
 export type MainMessage =
-  | { type: "start"; sessionId: string }
+  /** `quality` is main's snapshot for this session (plan 007 §B2); the host never reads settings itself. */
+  | { type: "start"; sessionId: string; quality: QualitySettings }
   | { type: "stop"; sessionId: string }
   | { type: "ping" };
 
 export type HostMessage =
   | { type: "ready" }
-  | { type: "started"; sessionId: string; mimeType: string }
+  /** `capture` is what the tracks reported and what the encoder was asked for. */
+  | { type: "started"; sessionId: string; mimeType: string; capture: CaptureReport }
   /** `bytes` is structured-cloned (see capture-host.ts for why not transferred). */
   | { type: "chunk"; sessionId: string; seq: number; bytes: ArrayBuffer }
   | { type: "stopped"; sessionId: string }
@@ -37,6 +40,7 @@ export function isMainMessage(value: unknown): value is MainMessage {
   if (!isRecord(value)) return false;
   switch (value["type"]) {
     case "start":
+      return isNonEmptyString(value["sessionId"]) && isQualitySettings(value["quality"]);
     case "stop":
       return isNonEmptyString(value["sessionId"]);
     case "ping":
@@ -53,7 +57,11 @@ export function isHostMessage(value: unknown): value is HostMessage {
     case "pong":
       return true;
     case "started":
-      return isNonEmptyString(value["sessionId"]) && typeof value["mimeType"] === "string";
+      return (
+        isNonEmptyString(value["sessionId"]) &&
+        typeof value["mimeType"] === "string" &&
+        isCaptureReport(value["capture"])
+      );
     case "chunk":
       return (
         isNonEmptyString(value["sessionId"]) &&

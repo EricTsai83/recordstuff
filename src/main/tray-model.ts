@@ -4,6 +4,15 @@
  * `tray.ts` turns this model into real `Tray` / `Menu` calls.
  */
 import path from "node:path";
+import {
+  AUDIO_BITRATES,
+  isFrameRateAvailable,
+  type AudioQuality,
+  type FrameRate,
+  type QualitySettings,
+  type ResolutionCap,
+  type VideoQuality,
+} from "../shared/quality";
 import type { ErrorCode, RecordingState } from "../shared/state";
 
 export type TrayIcon = "idle" | "recording";
@@ -16,11 +25,16 @@ export type TrayAction =
   | "openOutputDir"
   | "changeOutputDir"
   | "revealLog"
-  | "quit";
+  | "quit"
+  /** One radio choice in the「錄製品質」submenu (plan 007 §B1). */
+  | { setQuality: Partial<QualitySettings> };
 
 export type TrayMenuItem =
   | { kind: "separator" }
-  | { kind: "item"; label: string; enabled: boolean; action?: TrayAction; toolTip?: string };
+  | { kind: "item"; label: string; enabled: boolean; action?: TrayAction; toolTip?: string }
+  /** Exactly one radio item is `checked`; the group is the whole submenu. */
+  | { kind: "radio"; label: string; enabled: boolean; checked: boolean; action: TrayAction }
+  | { kind: "submenu"; label: string; enabled: boolean; items: TrayMenuItem[] };
 
 export interface TrayModel {
   icon: TrayIcon;
@@ -34,7 +48,29 @@ export interface TrayContext {
   platform: NodeJS.Platform;
   outputDir: string;
   homeDir: string;
+  /** The effective quality for this platform (a Windows file storing 60 fps shows 30). */
+  quality: QualitySettings;
 }
+
+export const VIDEO_QUALITY_LABELS: Record<VideoQuality, string> = {
+  economy: "精省",
+  standard: "標準",
+  high: "高品質",
+};
+
+export const RESOLUTION_CAP_LABELS: Record<ResolutionCap, string> = {
+  "1080p": "1080p",
+  "1440p": "1440p",
+  "4k": "4K",
+  source: "原尺寸",
+};
+
+export const AUDIO_QUALITY_LABELS: Record<AudioQuality, string> = {
+  standard: `標準（AAC ${AUDIO_BITRATES.standard / 1000} kbps）`,
+  high: `高品質（AAC ${AUDIO_BITRATES.high / 1000} kbps）`,
+};
+
+const QUALITY_MENU_LABEL = "錄製品質";
 
 export const APP_NAME = "RecordStuff";
 
@@ -79,6 +115,67 @@ function outputDirItems(ctx: TrayContext, enabled: boolean): TrayMenuItem[] {
   return [open, change];
 }
 
+function radioGroup<K extends keyof QualitySettings>(
+  key: K,
+  current: QualitySettings[K],
+  choices: readonly QualitySettings[K][],
+  label: (choice: QualitySettings[K]) => string,
+  available: (choice: QualitySettings[K]) => boolean = () => true,
+): TrayMenuItem[] {
+  return choices.map((choice) => ({
+    kind: "radio",
+    label: label(choice),
+    enabled: available(choice),
+    checked: choice === current,
+    action: { setQuality: { [key]: choice } as Partial<QualitySettings> },
+  }));
+}
+
+/**
+ * 「錄製品質」: four nested single-choice submenus, each labelled with its
+ * current value so the whole configuration is readable without opening them.
+ * Only offered while idle / needsPermission; a recording keeps the snapshot
+ * it started with, so the other states show the entry greyed out.
+ */
+function qualityMenu(ctx: TrayContext): TrayMenuItem {
+  const q = ctx.quality;
+  const frameRateLabel = (fps: FrameRate): string =>
+    isFrameRateAvailable(fps, ctx.platform) ? `${fps} fps` : `${fps} fps（此平台尚未驗證，暫不開放）`;
+  return {
+    kind: "submenu",
+    label: QUALITY_MENU_LABEL,
+    enabled: true,
+    items: [
+      {
+        kind: "submenu",
+        label: `影像品質：${VIDEO_QUALITY_LABELS[q.videoQuality]}`,
+        enabled: true,
+        items: radioGroup("videoQuality", q.videoQuality, ["economy", "standard", "high"], (v) => VIDEO_QUALITY_LABELS[v]),
+      },
+      {
+        kind: "submenu",
+        label: `解析度上限：${RESOLUTION_CAP_LABELS[q.resolutionCap]}`,
+        enabled: true,
+        items: radioGroup("resolutionCap", q.resolutionCap, ["1080p", "1440p", "4k", "source"], (v) => RESOLUTION_CAP_LABELS[v]),
+      },
+      {
+        kind: "submenu",
+        label: `幀率：${q.frameRate} fps`,
+        enabled: true,
+        items: radioGroup("frameRate", q.frameRate, [30, 60], frameRateLabel, (fps) => isFrameRateAvailable(fps, ctx.platform)),
+      },
+      {
+        kind: "submenu",
+        label: `音訊品質：${AUDIO_QUALITY_LABELS[q.audioQuality]}`,
+        enabled: true,
+        items: radioGroup("audioQuality", q.audioQuality, ["standard", "high"], (v) => AUDIO_QUALITY_LABELS[v]),
+      },
+    ],
+  };
+}
+
+const QUALITY_LOCKED: TrayMenuItem = disabled(QUALITY_MENU_LABEL);
+
 export function trayModel(state: RecordingState, ctx: TrayContext): TrayModel {
   switch (state.type) {
     case "needsPermission":
@@ -91,6 +188,7 @@ export function trayModel(state: RecordingState, ctx: TrayContext): TrayModel {
           state.needsRelaunch ? item("重新啟動", "relaunch") : item("開啟系統設定", "openPermissionSettings"),
           SEPARATOR,
           ...outputDirItems(ctx, true),
+          qualityMenu(ctx),
           ...FOOTER,
         ],
       };
@@ -101,7 +199,7 @@ export function trayModel(state: RecordingState, ctx: TrayContext): TrayModel {
       if (state.lastSavedPath) {
         menu.push(item("顯示最後一個錄影", "revealLastSaved", state.lastSavedPath));
       }
-      menu.push(SEPARATOR, ...outputDirItems(ctx, true), ...FOOTER);
+      menu.push(SEPARATOR, ...outputDirItems(ctx, true), qualityMenu(ctx), ...FOOTER);
       return {
         icon: "idle",
         title: "",
@@ -114,21 +212,28 @@ export function trayModel(state: RecordingState, ctx: TrayContext): TrayModel {
         icon: "idle",
         title: "…",
         tooltip: `${APP_NAME}：啟動中…`,
-        menu: [disabled("啟動中…"), ...FOOTER],
+        menu: [disabled("啟動中…"), SEPARATOR, QUALITY_LOCKED, ...FOOTER],
       };
     case "recording":
       return {
         icon: "recording",
         title: "REC",
         tooltip: `${APP_NAME}：錄製中`,
-        menu: [disabled("錄製中"), item("停止", "stop"), SEPARATOR, ...outputDirItems(ctx, false), ...FOOTER],
+        menu: [
+          disabled("錄製中"),
+          item("停止", "stop"),
+          SEPARATOR,
+          ...outputDirItems(ctx, false),
+          QUALITY_LOCKED,
+          ...FOOTER,
+        ],
       };
     case "stopping":
       return {
         icon: "idle",
         title: "…",
         tooltip: `${APP_NAME}：儲存中…`,
-        menu: [disabled("儲存中…"), ...FOOTER],
+        menu: [disabled("儲存中…"), SEPARATOR, QUALITY_LOCKED, ...FOOTER],
       };
   }
 }
@@ -152,6 +257,18 @@ export function settingsWriteFailedNotification(chosenDir: string, homeDir: stri
   return {
     title: APP_NAME,
     body: `無法儲存設定，儲存位置仍是原本的資料夾。想改成 ${abbreviateHome(chosenDir, homeDir)} 請再試一次`,
+  };
+}
+
+export function qualityWriteFailedNotification(): NotificationText {
+  return { title: APP_NAME, body: "無法儲存錄製品質設定，仍使用原本的選項。請再試一次" };
+}
+
+/** Plan 007: a clear frame-rate downgrade is shown, not just logged. */
+export function frameRateDowngradeNotification(requested: FrameRate, actual: number): NotificationText {
+  return {
+    title: APP_NAME,
+    body: `系統只提供 ${actual} fps，本次以 ${actual} fps 錄製（設定為 ${requested} fps）`,
   };
 }
 
