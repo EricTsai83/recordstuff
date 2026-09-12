@@ -421,5 +421,1670 @@
       }
     ],
     "verdict": "fail"
+  },
+  {
+    "recordedAt": "2026-09-12T19:20:39.444Z",
+    "title": "1080p 精省（30 s）",
+    "runLabel": "pnpm matrix -- levels",
+    "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-18-31.mp4",
+    "requested": {
+      "videoQuality": "economy",
+      "resolutionCap": "1080p",
+      "frameRate": 30,
+      "audioQuality": "high"
+    },
+    "track": {
+      "width": 1080,
+      "height": 1080,
+      "frameRate": 30,
+      "sampleRate": 48000,
+      "channelCount": 1
+    },
+    "target": {
+      "videoBps": 2400000,
+      "audioBps": 256000
+    },
+    "measurement": {
+      "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-18-31.mp4",
+      "fileBytes": 9011225,
+      "durationSeconds": 30.002033,
+      "video": {
+        "codec": "h264",
+        "width": 1080,
+        "height": 606,
+        "frames": 881,
+        "durationSeconds": 30.002033,
+        "startTime": 0,
+        "bitsPerSecond": 2354280,
+        "pixelFormat": "yuv420p"
+      },
+      "audio": {
+        "codec": "aac",
+        "sampleRate": 48000,
+        "channels": 1,
+        "durationSeconds": 29.99275,
+        "startTime": 0,
+        "bitsPerSecond": 43721,
+        "channelRmsDb": [
+          -16.56611
+        ]
+      },
+      "frames": {
+        "frames": 881,
+        "dropped": 2,
+        "dropRate": 0.0022650056625141564,
+        "maxGapMs": 57.632999999999996
+      },
+      "sync": {
+        "pairs": 27,
+        "medianOffsetMs": 70.82500000000103,
+        "headOffsetMs": 70.82500000000103,
+        "tailOffsetMs": 70.82500000000103
+      },
+      "syncAttempted": true,
+      "decodable": true,
+      "cpu": {
+        "averagePercent": 15.463636363636363,
+        "peakPercent": 18.9
+      }
+    },
+    "checks": [
+      {
+        "metric": "成品尺寸",
+        "expected": "1080x1080",
+        "actual": "1080x606",
+        "verdict": "fail",
+        "note": "與 track size 1080x1080 不同"
+      },
+      {
+        "metric": "錄製時長",
+        "expected": "30 ± 2 s",
+        "actual": "30.0 s",
+        "verdict": "pass"
+      },
+      {
+        "metric": "平均幀率",
+        "expected": "30 ± 2 fps",
+        "actual": "29.36 fps（881 張）",
+        "verdict": "pass",
+        "note": "素材需持續動態；靜態畫面不適用"
+      },
+      {
+        "metric": "掉幀",
+        "expected": "< 2%",
+        "actual": "0.23%（2 張／取樣 881 張，最大間隔 58 ms）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像時長差",
+        "expected": "< 100 ms",
+        "actual": "-9 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像起始偏移（容器）",
+        "expected": "< 50 ms",
+        "actual": "0 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像偏移（閃光／短音）",
+        "expected": "< 50 ms；穩定超過記為固有延遲",
+        "actual": "71 ms（27 對；頭 71 ms，尾 71 ms）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "結尾音畫漂移",
+        "expected": "< 100 ms",
+        "actual": "—",
+        "verdict": "n/a",
+        "note": "需 --sync 且檔案長於 60 秒"
+      },
+      {
+        "metric": "取樣率／聲道",
+        "expected": "48 kHz、2 聲道、左右皆有能量",
+        "actual": "48000 Hz、1 聲道，RMS -16.6 dB（track 回報 1 聲道）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "影像位元率",
+        "expected": "2.40 Mbps ± 30%",
+        "actual": "2.35 Mbps（目標的 98%）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊位元率",
+        "expected": "256 kbps",
+        "actual": "44 kbps",
+        "verdict": "fail"
+      },
+      {
+        "metric": "CPU（Electron 各程序合計）",
+        "expected": "記錄；門檻待第一次量測後定",
+        "actual": "平均 15%，峰值 19%",
+        "verdict": "n/a"
+      },
+      {
+        "metric": "檔案可播（ffprobe 解碼全部影格）",
+        "expected": "無解碼錯誤",
+        "actual": "可解碼，30.0 s，8.6 MB",
+        "verdict": "pass",
+        "note": "QuickTime／Chrome 雙擊與拖曳仍需人工"
+      }
+    ],
+    "verdict": "fail"
+  },
+  {
+    "recordedAt": "2026-09-12T19:20:39.444Z",
+    "title": "1080p 標準（原 8 Mbps 基準）（30 s）",
+    "runLabel": "pnpm matrix -- levels",
+    "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-19-17.mp4",
+    "requested": {
+      "videoQuality": "standard",
+      "resolutionCap": "1080p",
+      "frameRate": 30,
+      "audioQuality": "high"
+    },
+    "track": {
+      "width": 1080,
+      "height": 1080,
+      "frameRate": 30,
+      "sampleRate": 48000,
+      "channelCount": 1
+    },
+    "target": {
+      "videoBps": 4500000,
+      "audioBps": 256000
+    },
+    "measurement": {
+      "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-19-17.mp4",
+      "fileBytes": 16762759,
+      "durationSeconds": 30.0243,
+      "video": {
+        "codec": "h264",
+        "width": 1080,
+        "height": 606,
+        "frames": 881,
+        "durationSeconds": 30.0243,
+        "startTime": 0,
+        "bitsPerSecond": 4418983,
+        "pixelFormat": "yuv420p"
+      },
+      "audio": {
+        "codec": "aac",
+        "sampleRate": 48000,
+        "channels": 1,
+        "durationSeconds": 29.99275,
+        "startTime": 0,
+        "bitsPerSecond": 44477,
+        "channelRmsDb": [
+          -19.276956
+        ]
+      },
+      "frames": {
+        "frames": 881,
+        "dropped": 0,
+        "dropRate": 0,
+        "maxGapMs": 43.26699999999839
+      },
+      "sync": {
+        "pairs": 30,
+        "medianOffsetMs": 60.06400000000056,
+        "headOffsetMs": 60.06400000000056,
+        "tailOffsetMs": 60.06400000000056
+      },
+      "syncAttempted": true,
+      "decodable": true,
+      "cpu": {
+        "averagePercent": 15.152380952380952,
+        "peakPercent": 18.6
+      }
+    },
+    "checks": [
+      {
+        "metric": "成品尺寸",
+        "expected": "1080x1080",
+        "actual": "1080x606",
+        "verdict": "fail",
+        "note": "與 track size 1080x1080 不同"
+      },
+      {
+        "metric": "錄製時長",
+        "expected": "30 ± 2 s",
+        "actual": "30.0 s",
+        "verdict": "pass"
+      },
+      {
+        "metric": "平均幀率",
+        "expected": "30 ± 2 fps",
+        "actual": "29.34 fps（881 張）",
+        "verdict": "pass",
+        "note": "素材需持續動態；靜態畫面不適用"
+      },
+      {
+        "metric": "掉幀",
+        "expected": "< 2%",
+        "actual": "0.00%（0 張／取樣 881 張，最大間隔 43 ms）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像時長差",
+        "expected": "< 100 ms",
+        "actual": "-32 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像起始偏移（容器）",
+        "expected": "< 50 ms",
+        "actual": "0 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像偏移（閃光／短音）",
+        "expected": "< 50 ms；穩定超過記為固有延遲",
+        "actual": "60 ms（30 對；頭 60 ms，尾 60 ms）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "結尾音畫漂移",
+        "expected": "< 100 ms",
+        "actual": "—",
+        "verdict": "n/a",
+        "note": "需 --sync 且檔案長於 60 秒"
+      },
+      {
+        "metric": "取樣率／聲道",
+        "expected": "48 kHz、2 聲道、左右皆有能量",
+        "actual": "48000 Hz、1 聲道，RMS -19.3 dB（track 回報 1 聲道）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "影像位元率",
+        "expected": "4.50 Mbps ± 30%",
+        "actual": "4.42 Mbps（目標的 98%）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊位元率",
+        "expected": "256 kbps",
+        "actual": "44 kbps",
+        "verdict": "fail"
+      },
+      {
+        "metric": "CPU（Electron 各程序合計）",
+        "expected": "記錄；門檻待第一次量測後定",
+        "actual": "平均 15%，峰值 19%",
+        "verdict": "n/a"
+      },
+      {
+        "metric": "檔案可播（ffprobe 解碼全部影格）",
+        "expected": "無解碼錯誤",
+        "actual": "可解碼，30.0 s，16.0 MB",
+        "verdict": "pass",
+        "note": "QuickTime／Chrome 雙擊與拖曳仍需人工"
+      }
+    ],
+    "verdict": "fail"
+  },
+  {
+    "recordedAt": "2026-09-12T19:20:39.444Z",
+    "title": "1080p 高品質（30 s）",
+    "runLabel": "pnpm matrix -- levels",
+    "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-20-04.mp4",
+    "requested": {
+      "videoQuality": "high",
+      "resolutionCap": "1080p",
+      "frameRate": 30,
+      "audioQuality": "high"
+    },
+    "track": {
+      "width": 1080,
+      "height": 1080,
+      "frameRate": 30,
+      "sampleRate": 48000,
+      "channelCount": 1
+    },
+    "target": {
+      "videoBps": 8400000,
+      "audioBps": 256000
+    },
+    "measurement": {
+      "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-20-04.mp4",
+      "fileBytes": 31003934,
+      "durationSeconds": 30.010933,
+      "video": {
+        "codec": "h264",
+        "width": 1080,
+        "height": 606,
+        "frames": 879,
+        "durationSeconds": 30.010933,
+        "startTime": 0,
+        "bitsPerSecond": 8219999,
+        "pixelFormat": "yuv420p"
+      },
+      "audio": {
+        "codec": "aac",
+        "sampleRate": 48000,
+        "channels": 1,
+        "durationSeconds": 29.992792,
+        "startTime": 0,
+        "bitsPerSecond": 43342,
+        "channelRmsDb": [
+          -19.411455
+        ]
+      },
+      "frames": {
+        "frames": 879,
+        "dropped": 0,
+        "dropRate": 0,
+        "maxGapMs": 47.83300000000068
+      },
+      "sync": {
+        "pairs": 29,
+        "medianOffsetMs": 67.7500000000002,
+        "headOffsetMs": 67.7500000000002,
+        "tailOffsetMs": 67.7500000000002
+      },
+      "syncAttempted": true,
+      "decodable": true,
+      "cpu": {
+        "averagePercent": 15.442857142857143,
+        "peakPercent": 19.5
+      }
+    },
+    "checks": [
+      {
+        "metric": "成品尺寸",
+        "expected": "1080x1080",
+        "actual": "1080x606",
+        "verdict": "fail",
+        "note": "與 track size 1080x1080 不同"
+      },
+      {
+        "metric": "錄製時長",
+        "expected": "30 ± 2 s",
+        "actual": "30.0 s",
+        "verdict": "pass"
+      },
+      {
+        "metric": "平均幀率",
+        "expected": "30 ± 2 fps",
+        "actual": "29.29 fps（879 張）",
+        "verdict": "pass",
+        "note": "素材需持續動態；靜態畫面不適用"
+      },
+      {
+        "metric": "掉幀",
+        "expected": "< 2%",
+        "actual": "0.00%（0 張／取樣 879 張，最大間隔 48 ms）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像時長差",
+        "expected": "< 100 ms",
+        "actual": "-18 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像起始偏移（容器）",
+        "expected": "< 50 ms",
+        "actual": "0 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像偏移（閃光／短音）",
+        "expected": "< 50 ms；穩定超過記為固有延遲",
+        "actual": "68 ms（29 對；頭 68 ms，尾 68 ms）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "結尾音畫漂移",
+        "expected": "< 100 ms",
+        "actual": "—",
+        "verdict": "n/a",
+        "note": "需 --sync 且檔案長於 60 秒"
+      },
+      {
+        "metric": "取樣率／聲道",
+        "expected": "48 kHz、2 聲道、左右皆有能量",
+        "actual": "48000 Hz、1 聲道，RMS -19.4 dB（track 回報 1 聲道）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "影像位元率",
+        "expected": "8.40 Mbps ± 30%",
+        "actual": "8.22 Mbps（目標的 98%）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊位元率",
+        "expected": "256 kbps",
+        "actual": "43 kbps",
+        "verdict": "fail"
+      },
+      {
+        "metric": "CPU（Electron 各程序合計）",
+        "expected": "記錄；門檻待第一次量測後定",
+        "actual": "平均 15%，峰值 20%",
+        "verdict": "n/a"
+      },
+      {
+        "metric": "檔案可播（ffprobe 解碼全部影格）",
+        "expected": "無解碼錯誤",
+        "actual": "可解碼，30.0 s，29.6 MB",
+        "verdict": "pass",
+        "note": "QuickTime／Chrome 雙擊與拖曳仍需人工"
+      }
+    ],
+    "verdict": "fail"
+  },
+  {
+    "recordedAt": "2026-09-12T19:41:58.460Z",
+    "title": "1080p 精省（15 s）",
+    "runLabel": "pnpm matrix -- all",
+    "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-34-39.mp4",
+    "requested": {
+      "videoQuality": "economy",
+      "resolutionCap": "1080p",
+      "frameRate": 30,
+      "audioQuality": "high"
+    },
+    "track": {
+      "width": 1920,
+      "height": 1080,
+      "frameRate": 30,
+      "sampleRate": 48000,
+      "channelCount": 1
+    },
+    "target": {
+      "videoBps": 4400000,
+      "audioBps": 256000
+    },
+    "measurement": {
+      "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-34-39.mp4",
+      "fileBytes": 8322975,
+      "durationSeconds": 14.996229,
+      "video": {
+        "codec": "h264",
+        "width": 1920,
+        "height": 1080,
+        "frames": 440,
+        "durationSeconds": 14.988367,
+        "startTime": 0,
+        "bitsPerSecond": 4401873,
+        "pixelFormat": "yuv420p"
+      },
+      "audio": {
+        "codec": "aac",
+        "sampleRate": 48000,
+        "channels": 1,
+        "durationSeconds": 14.996229,
+        "startTime": 0,
+        "bitsPerSecond": 36716,
+        "channelRmsDb": [
+          -23.799379
+        ]
+      },
+      "frames": {
+        "frames": 440,
+        "dropped": 0,
+        "dropRate": 0,
+        "maxGapMs": 41.63399999999995
+      },
+      "sync": {
+        "pairs": 14,
+        "medianOffsetMs": 56.4789999999995,
+        "headOffsetMs": 56.4789999999995,
+        "tailOffsetMs": 56.4789999999995
+      },
+      "syncAttempted": true,
+      "decodable": true,
+      "cpu": {
+        "averagePercent": 15.13,
+        "peakPercent": 17.3
+      }
+    },
+    "checks": [
+      {
+        "metric": "成品尺寸",
+        "expected": "1920x1080",
+        "actual": "1920x1080",
+        "verdict": "pass"
+      },
+      {
+        "metric": "錄製時長",
+        "expected": "15 ± 2 s",
+        "actual": "15.0 s",
+        "verdict": "pass"
+      },
+      {
+        "metric": "平均幀率",
+        "expected": "30 ± 2 fps",
+        "actual": "29.36 fps（440 張）",
+        "verdict": "pass",
+        "note": "素材需持續動態；靜態畫面不適用"
+      },
+      {
+        "metric": "掉幀",
+        "expected": "< 2%",
+        "actual": "0.00%（0 張／取樣 440 張，最大間隔 42 ms）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像時長差",
+        "expected": "< 100 ms",
+        "actual": "8 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像起始偏移（容器）",
+        "expected": "< 50 ms",
+        "actual": "0 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像偏移（閃光／短音）",
+        "expected": "< 50 ms；穩定超過記為固有延遲",
+        "actual": "56 ms（14 對；頭 56 ms，尾 56 ms）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "結尾音畫漂移",
+        "expected": "< 100 ms",
+        "actual": "—",
+        "verdict": "n/a",
+        "note": "需 --sync 且檔案長於 60 秒"
+      },
+      {
+        "metric": "取樣率／聲道",
+        "expected": "48 kHz、2 聲道、左右皆有能量",
+        "actual": "48000 Hz、1 聲道，RMS -23.8 dB（track 回報 1 聲道）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "影像位元率",
+        "expected": "4.40 Mbps ± 30%",
+        "actual": "4.40 Mbps（目標的 100%）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊位元率",
+        "expected": "256 kbps",
+        "actual": "37 kbps",
+        "verdict": "fail"
+      },
+      {
+        "metric": "CPU（Electron 各程序合計）",
+        "expected": "記錄；門檻待第一次量測後定",
+        "actual": "平均 15%，峰值 17%",
+        "verdict": "n/a"
+      },
+      {
+        "metric": "檔案可播（ffprobe 解碼全部影格）",
+        "expected": "無解碼錯誤",
+        "actual": "可解碼，15.0 s，7.9 MB",
+        "verdict": "pass",
+        "note": "QuickTime／Chrome 雙擊與拖曳仍需人工"
+      }
+    ],
+    "verdict": "fail"
+  },
+  {
+    "recordedAt": "2026-09-12T19:41:58.460Z",
+    "title": "1080p 標準（原 8 Mbps 基準）（15 s）",
+    "runLabel": "pnpm matrix -- all",
+    "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-35-11.mp4",
+    "requested": {
+      "videoQuality": "standard",
+      "resolutionCap": "1080p",
+      "frameRate": 30,
+      "audioQuality": "high"
+    },
+    "track": {
+      "width": 1920,
+      "height": 1080,
+      "frameRate": 30,
+      "sampleRate": 48000,
+      "channelCount": 1
+    },
+    "target": {
+      "videoBps": 8100000,
+      "audioBps": 256000
+    },
+    "measurement": {
+      "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-35-11.mp4",
+      "fileBytes": 15186244,
+      "durationSeconds": 15.013333,
+      "video": {
+        "codec": "h264",
+        "width": 1920,
+        "height": 1080,
+        "frames": 441,
+        "durationSeconds": 15.013333,
+        "startTime": 0,
+        "bitsPerSecond": 8049364,
+        "pixelFormat": "yuv420p"
+      },
+      "audio": {
+        "codec": "aac",
+        "sampleRate": 48000,
+        "channels": 1,
+        "durationSeconds": 14.996229,
+        "startTime": 0,
+        "bitsPerSecond": 41408,
+        "channelRmsDb": [
+          -16.817931
+        ]
+      },
+      "frames": {
+        "frames": 441,
+        "dropped": 0,
+        "dropRate": 0,
+        "maxGapMs": 39.46700000000014
+      },
+      "sync": {
+        "pairs": 14,
+        "medianOffsetMs": 69.46300000000005,
+        "headOffsetMs": 69.46300000000005,
+        "tailOffsetMs": 69.46300000000005
+      },
+      "syncAttempted": true,
+      "decodable": true,
+      "cpu": {
+        "averagePercent": 14.48,
+        "peakPercent": 16.4
+      }
+    },
+    "checks": [
+      {
+        "metric": "成品尺寸",
+        "expected": "1920x1080",
+        "actual": "1920x1080",
+        "verdict": "pass"
+      },
+      {
+        "metric": "錄製時長",
+        "expected": "15 ± 2 s",
+        "actual": "15.0 s",
+        "verdict": "pass"
+      },
+      {
+        "metric": "平均幀率",
+        "expected": "30 ± 2 fps",
+        "actual": "29.37 fps（441 張）",
+        "verdict": "pass",
+        "note": "素材需持續動態；靜態畫面不適用"
+      },
+      {
+        "metric": "掉幀",
+        "expected": "< 2%",
+        "actual": "0.00%（0 張／取樣 441 張，最大間隔 39 ms）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像時長差",
+        "expected": "< 100 ms",
+        "actual": "-17 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像起始偏移（容器）",
+        "expected": "< 50 ms",
+        "actual": "0 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像偏移（閃光／短音）",
+        "expected": "< 50 ms；穩定超過記為固有延遲",
+        "actual": "69 ms（14 對；頭 69 ms，尾 69 ms）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "結尾音畫漂移",
+        "expected": "< 100 ms",
+        "actual": "—",
+        "verdict": "n/a",
+        "note": "需 --sync 且檔案長於 60 秒"
+      },
+      {
+        "metric": "取樣率／聲道",
+        "expected": "48 kHz、2 聲道、左右皆有能量",
+        "actual": "48000 Hz、1 聲道，RMS -16.8 dB（track 回報 1 聲道）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "影像位元率",
+        "expected": "8.10 Mbps ± 30%",
+        "actual": "8.05 Mbps（目標的 99%）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊位元率",
+        "expected": "256 kbps",
+        "actual": "41 kbps",
+        "verdict": "fail"
+      },
+      {
+        "metric": "CPU（Electron 各程序合計）",
+        "expected": "記錄；門檻待第一次量測後定",
+        "actual": "平均 14%，峰值 16%",
+        "verdict": "n/a"
+      },
+      {
+        "metric": "檔案可播（ffprobe 解碼全部影格）",
+        "expected": "無解碼錯誤",
+        "actual": "可解碼，15.0 s，14.5 MB",
+        "verdict": "pass",
+        "note": "QuickTime／Chrome 雙擊與拖曳仍需人工"
+      }
+    ],
+    "verdict": "fail"
+  },
+  {
+    "recordedAt": "2026-09-12T19:41:58.460Z",
+    "title": "1080p 高品質（15 s）",
+    "runLabel": "pnpm matrix -- all",
+    "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-35-42.mp4",
+    "requested": {
+      "videoQuality": "high",
+      "resolutionCap": "1080p",
+      "frameRate": 30,
+      "audioQuality": "high"
+    },
+    "track": {
+      "width": 1920,
+      "height": 1080,
+      "frameRate": 30,
+      "sampleRate": 48000,
+      "channelCount": 1
+    },
+    "target": {
+      "videoBps": 14900000,
+      "audioBps": 256000
+    },
+    "measurement": {
+      "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-35-42.mp4",
+      "fileBytes": 27736907,
+      "durationSeconds": 15.010633,
+      "video": {
+        "codec": "h264",
+        "width": 1920,
+        "height": 1080,
+        "frames": 440,
+        "durationSeconds": 15.010633,
+        "startTime": 0,
+        "bitsPerSecond": 14743688,
+        "pixelFormat": "yuv420p"
+      },
+      "audio": {
+        "codec": "aac",
+        "sampleRate": 48000,
+        "channels": 1,
+        "durationSeconds": 14.99625,
+        "startTime": 0,
+        "bitsPerSecond": 39172,
+        "channelRmsDb": [
+          -25.115305
+        ]
+      },
+      "frames": {
+        "frames": 440,
+        "dropped": 0,
+        "dropRate": 0,
+        "maxGapMs": 42.466999999999814
+      },
+      "sync": {
+        "pairs": 15,
+        "medianOffsetMs": 71.09599999999993,
+        "headOffsetMs": 71.09599999999993,
+        "tailOffsetMs": 71.09599999999993
+      },
+      "syncAttempted": true,
+      "decodable": true,
+      "cpu": {
+        "averagePercent": 15.989999999999998,
+        "peakPercent": 19
+      }
+    },
+    "checks": [
+      {
+        "metric": "成品尺寸",
+        "expected": "1920x1080",
+        "actual": "1920x1080",
+        "verdict": "pass"
+      },
+      {
+        "metric": "錄製時長",
+        "expected": "15 ± 2 s",
+        "actual": "15.0 s",
+        "verdict": "pass"
+      },
+      {
+        "metric": "平均幀率",
+        "expected": "30 ± 2 fps",
+        "actual": "29.31 fps（440 張）",
+        "verdict": "pass",
+        "note": "素材需持續動態；靜態畫面不適用"
+      },
+      {
+        "metric": "掉幀",
+        "expected": "< 2%",
+        "actual": "0.00%（0 張／取樣 440 張，最大間隔 42 ms）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像時長差",
+        "expected": "< 100 ms",
+        "actual": "-14 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像起始偏移（容器）",
+        "expected": "< 50 ms",
+        "actual": "0 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像偏移（閃光／短音）",
+        "expected": "< 50 ms；穩定超過記為固有延遲",
+        "actual": "71 ms（15 對；頭 71 ms，尾 71 ms）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "結尾音畫漂移",
+        "expected": "< 100 ms",
+        "actual": "—",
+        "verdict": "n/a",
+        "note": "需 --sync 且檔案長於 60 秒"
+      },
+      {
+        "metric": "取樣率／聲道",
+        "expected": "48 kHz、2 聲道、左右皆有能量",
+        "actual": "48000 Hz、1 聲道，RMS -25.1 dB（track 回報 1 聲道）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "影像位元率",
+        "expected": "14.90 Mbps ± 30%",
+        "actual": "14.74 Mbps（目標的 99%）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊位元率",
+        "expected": "256 kbps",
+        "actual": "39 kbps",
+        "verdict": "fail"
+      },
+      {
+        "metric": "CPU（Electron 各程序合計）",
+        "expected": "記錄；門檻待第一次量測後定",
+        "actual": "平均 16%，峰值 19%",
+        "verdict": "n/a"
+      },
+      {
+        "metric": "檔案可播（ffprobe 解碼全部影格）",
+        "expected": "無解碼錯誤",
+        "actual": "可解碼，15.0 s，26.5 MB",
+        "verdict": "pass",
+        "note": "QuickTime／Chrome 雙擊與拖曳仍需人工"
+      }
+    ],
+    "verdict": "fail"
+  },
+  {
+    "recordedAt": "2026-09-12T19:41:58.460Z",
+    "title": "原尺寸 標準 60 fps（15 s）",
+    "runLabel": "pnpm matrix -- all",
+    "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-36-15.mp4",
+    "requested": {
+      "videoQuality": "standard",
+      "resolutionCap": "source",
+      "frameRate": 60,
+      "audioQuality": "high"
+    },
+    "track": {
+      "width": 1920,
+      "height": 1080,
+      "frameRate": 60,
+      "sampleRate": 48000,
+      "channelCount": 1
+    },
+    "target": {
+      "videoBps": 16200000,
+      "audioBps": 256000
+    },
+    "measurement": {
+      "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-36-15.mp4",
+      "fileBytes": 58485274,
+      "durationSeconds": 14.996458,
+      "video": {
+        "codec": "h264",
+        "width": 1920,
+        "height": 1080,
+        "frames": 859,
+        "durationSeconds": 14.982667,
+        "startTime": 0,
+        "bitsPerSecond": 31200661,
+        "pixelFormat": "yuv420p"
+      },
+      "audio": {
+        "codec": "aac",
+        "sampleRate": 48000,
+        "channels": 1,
+        "durationSeconds": 14.996458,
+        "startTime": 0,
+        "bitsPerSecond": 41406,
+        "channelRmsDb": [
+          -16.635612
+        ]
+      },
+      "frames": {
+        "frames": 859,
+        "dropped": 2,
+        "dropRate": 0.0023228803716608595,
+        "maxGapMs": 39.11699999999985
+      },
+      "sync": {
+        "pairs": 15,
+        "medianOffsetMs": 85.58299999999974,
+        "headOffsetMs": 85.58299999999974,
+        "tailOffsetMs": 85.58299999999974
+      },
+      "syncAttempted": true,
+      "decodable": true,
+      "cpu": {
+        "averagePercent": 22.759999999999998,
+        "peakPercent": 24.1
+      }
+    },
+    "checks": [
+      {
+        "metric": "成品尺寸",
+        "expected": "1920x1080",
+        "actual": "1920x1080",
+        "verdict": "pass"
+      },
+      {
+        "metric": "錄製時長",
+        "expected": "15 ± 2 s",
+        "actual": "15.0 s",
+        "verdict": "pass"
+      },
+      {
+        "metric": "平均幀率",
+        "expected": "60 ± 2 fps",
+        "actual": "57.33 fps（859 張）",
+        "verdict": "fail",
+        "note": "素材需持續動態；靜態畫面不適用"
+      },
+      {
+        "metric": "掉幀",
+        "expected": "< 2%",
+        "actual": "0.23%（2 張／取樣 859 張，最大間隔 39 ms）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像時長差",
+        "expected": "< 100 ms",
+        "actual": "14 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像起始偏移（容器）",
+        "expected": "< 50 ms",
+        "actual": "0 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像偏移（閃光／短音）",
+        "expected": "< 50 ms；穩定超過記為固有延遲",
+        "actual": "86 ms（15 對；頭 86 ms，尾 86 ms）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "結尾音畫漂移",
+        "expected": "< 100 ms",
+        "actual": "—",
+        "verdict": "n/a",
+        "note": "需 --sync 且檔案長於 60 秒"
+      },
+      {
+        "metric": "取樣率／聲道",
+        "expected": "48 kHz、2 聲道、左右皆有能量",
+        "actual": "48000 Hz、1 聲道，RMS -16.6 dB（track 回報 1 聲道）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "影像位元率",
+        "expected": "16.20 Mbps ± 30%",
+        "actual": "31.20 Mbps（目標的 193%）",
+        "verdict": "fail",
+        "note": "超出即為 Chromium 實際夾住的值"
+      },
+      {
+        "metric": "音訊位元率",
+        "expected": "256 kbps",
+        "actual": "41 kbps",
+        "verdict": "fail"
+      },
+      {
+        "metric": "CPU（Electron 各程序合計）",
+        "expected": "記錄；門檻待第一次量測後定",
+        "actual": "平均 23%，峰值 24%",
+        "verdict": "n/a"
+      },
+      {
+        "metric": "檔案可播（ffprobe 解碼全部影格）",
+        "expected": "無解碼錯誤",
+        "actual": "可解碼，15.0 s，55.8 MB",
+        "verdict": "pass",
+        "note": "QuickTime／Chrome 雙擊與拖曳仍需人工"
+      }
+    ],
+    "verdict": "fail"
+  },
+  {
+    "recordedAt": "2026-09-12T19:41:58.460Z",
+    "title": "1440p 標準（15 s）",
+    "runLabel": "pnpm matrix -- all",
+    "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-36-51.mp4",
+    "requested": {
+      "videoQuality": "standard",
+      "resolutionCap": "1440p",
+      "frameRate": 30,
+      "audioQuality": "high"
+    },
+    "track": {
+      "width": 1920,
+      "height": 1080,
+      "frameRate": 30,
+      "sampleRate": 48000,
+      "channelCount": 1
+    },
+    "target": {
+      "videoBps": 8100000,
+      "audioBps": 256000
+    },
+    "measurement": {
+      "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-36-51.mp4",
+      "fileBytes": 15144485,
+      "durationSeconds": 14.99625,
+      "video": {
+        "codec": "h264",
+        "width": 1920,
+        "height": 1080,
+        "frames": 439,
+        "durationSeconds": 14.969433,
+        "startTime": 0,
+        "bitsPerSecond": 8049956,
+        "pixelFormat": "yuv420p"
+      },
+      "audio": {
+        "codec": "aac",
+        "sampleRate": 48000,
+        "channels": 1,
+        "durationSeconds": 14.99625,
+        "startTime": 0,
+        "bitsPerSecond": 41862,
+        "channelRmsDb": [
+          -16.841538
+        ]
+      },
+      "frames": {
+        "frames": 439,
+        "dropped": 0,
+        "dropRate": 0,
+        "maxGapMs": 40.49999999999976
+      },
+      "sync": {
+        "pairs": 15,
+        "medianOffsetMs": 91.63299999999985,
+        "headOffsetMs": 91.63299999999985,
+        "tailOffsetMs": 91.63299999999985
+      },
+      "syncAttempted": true,
+      "decodable": true,
+      "cpu": {
+        "averagePercent": 15.760000000000002,
+        "peakPercent": 18.7
+      }
+    },
+    "checks": [
+      {
+        "metric": "成品尺寸",
+        "expected": "1920x1080",
+        "actual": "1920x1080",
+        "verdict": "pass"
+      },
+      {
+        "metric": "錄製時長",
+        "expected": "15 ± 2 s",
+        "actual": "15.0 s",
+        "verdict": "pass"
+      },
+      {
+        "metric": "平均幀率",
+        "expected": "30 ± 2 fps",
+        "actual": "29.33 fps（439 張）",
+        "verdict": "pass",
+        "note": "素材需持續動態；靜態畫面不適用"
+      },
+      {
+        "metric": "掉幀",
+        "expected": "< 2%",
+        "actual": "0.00%（0 張／取樣 439 張，最大間隔 40 ms）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像時長差",
+        "expected": "< 100 ms",
+        "actual": "27 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像起始偏移（容器）",
+        "expected": "< 50 ms",
+        "actual": "0 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像偏移（閃光／短音）",
+        "expected": "< 50 ms；穩定超過記為固有延遲",
+        "actual": "92 ms（15 對；頭 92 ms，尾 92 ms）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "結尾音畫漂移",
+        "expected": "< 100 ms",
+        "actual": "—",
+        "verdict": "n/a",
+        "note": "需 --sync 且檔案長於 60 秒"
+      },
+      {
+        "metric": "取樣率／聲道",
+        "expected": "48 kHz、2 聲道、左右皆有能量",
+        "actual": "48000 Hz、1 聲道，RMS -16.8 dB（track 回報 1 聲道）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "影像位元率",
+        "expected": "8.10 Mbps ± 30%",
+        "actual": "8.05 Mbps（目標的 99%）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊位元率",
+        "expected": "256 kbps",
+        "actual": "42 kbps",
+        "verdict": "fail"
+      },
+      {
+        "metric": "CPU（Electron 各程序合計）",
+        "expected": "記錄；門檻待第一次量測後定",
+        "actual": "平均 16%，峰值 19%",
+        "verdict": "n/a"
+      },
+      {
+        "metric": "檔案可播（ffprobe 解碼全部影格）",
+        "expected": "無解碼錯誤",
+        "actual": "可解碼，15.0 s，14.4 MB",
+        "verdict": "pass",
+        "note": "QuickTime／Chrome 雙擊與拖曳仍需人工"
+      }
+    ],
+    "verdict": "fail"
+  },
+  {
+    "recordedAt": "2026-09-12T19:41:58.460Z",
+    "title": "1440p 高品質（15 s）",
+    "runLabel": "pnpm matrix -- all",
+    "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-37-23.mp4",
+    "requested": {
+      "videoQuality": "high",
+      "resolutionCap": "1440p",
+      "frameRate": 30,
+      "audioQuality": "high"
+    },
+    "track": {
+      "width": 1920,
+      "height": 1080,
+      "frameRate": 30,
+      "sampleRate": 48000,
+      "channelCount": 1
+    },
+    "target": {
+      "videoBps": 14900000,
+      "audioBps": 256000
+    },
+    "measurement": {
+      "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-37-23.mp4",
+      "fileBytes": 27729495,
+      "durationSeconds": 14.996229,
+      "video": {
+        "codec": "h264",
+        "width": 1920,
+        "height": 1080,
+        "frames": 440,
+        "durationSeconds": 14.992267,
+        "startTime": 0,
+        "bitsPerSecond": 14752975,
+        "pixelFormat": "yuv420p"
+      },
+      "audio": {
+        "codec": "aac",
+        "sampleRate": 48000,
+        "channels": 1,
+        "durationSeconds": 14.996229,
+        "startTime": 0,
+        "bitsPerSecond": 40750,
+        "channelRmsDb": [
+          -19.227782
+        ]
+      },
+      "frames": {
+        "frames": 440,
+        "dropped": 0,
+        "dropRate": 0,
+        "maxGapMs": 44.53299999999993
+      },
+      "sync": {
+        "pairs": 15,
+        "medianOffsetMs": 58.74999999999986,
+        "headOffsetMs": 58.74999999999986,
+        "tailOffsetMs": 58.74999999999986
+      },
+      "syncAttempted": true,
+      "decodable": true,
+      "cpu": {
+        "averagePercent": 16.27,
+        "peakPercent": 17
+      }
+    },
+    "checks": [
+      {
+        "metric": "成品尺寸",
+        "expected": "1920x1080",
+        "actual": "1920x1080",
+        "verdict": "pass"
+      },
+      {
+        "metric": "錄製時長",
+        "expected": "15 ± 2 s",
+        "actual": "15.0 s",
+        "verdict": "pass"
+      },
+      {
+        "metric": "平均幀率",
+        "expected": "30 ± 2 fps",
+        "actual": "29.35 fps（440 張）",
+        "verdict": "pass",
+        "note": "素材需持續動態；靜態畫面不適用"
+      },
+      {
+        "metric": "掉幀",
+        "expected": "< 2%",
+        "actual": "0.00%（0 張／取樣 440 張，最大間隔 45 ms）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像時長差",
+        "expected": "< 100 ms",
+        "actual": "4 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像起始偏移（容器）",
+        "expected": "< 50 ms",
+        "actual": "0 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像偏移（閃光／短音）",
+        "expected": "< 50 ms；穩定超過記為固有延遲",
+        "actual": "59 ms（15 對；頭 59 ms，尾 59 ms）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "結尾音畫漂移",
+        "expected": "< 100 ms",
+        "actual": "—",
+        "verdict": "n/a",
+        "note": "需 --sync 且檔案長於 60 秒"
+      },
+      {
+        "metric": "取樣率／聲道",
+        "expected": "48 kHz、2 聲道、左右皆有能量",
+        "actual": "48000 Hz、1 聲道，RMS -19.2 dB（track 回報 1 聲道）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "影像位元率",
+        "expected": "14.90 Mbps ± 30%",
+        "actual": "14.75 Mbps（目標的 99%）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊位元率",
+        "expected": "256 kbps",
+        "actual": "41 kbps",
+        "verdict": "fail"
+      },
+      {
+        "metric": "CPU（Electron 各程序合計）",
+        "expected": "記錄；門檻待第一次量測後定",
+        "actual": "平均 16%，峰值 17%",
+        "verdict": "n/a"
+      },
+      {
+        "metric": "檔案可播（ffprobe 解碼全部影格）",
+        "expected": "無解碼錯誤",
+        "actual": "可解碼，15.0 s，26.4 MB",
+        "verdict": "pass",
+        "note": "QuickTime／Chrome 雙擊與拖曳仍需人工"
+      }
+    ],
+    "verdict": "fail"
+  },
+  {
+    "recordedAt": "2026-09-12T19:41:58.460Z",
+    "title": "原尺寸 標準 音訊 192k（15 s）",
+    "runLabel": "pnpm matrix -- all",
+    "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-37-56.mp4",
+    "requested": {
+      "videoQuality": "standard",
+      "resolutionCap": "source",
+      "frameRate": 30,
+      "audioQuality": "standard"
+    },
+    "track": {
+      "width": 1920,
+      "height": 1080,
+      "frameRate": 30,
+      "sampleRate": 48000,
+      "channelCount": 1
+    },
+    "target": {
+      "videoBps": 8100000,
+      "audioBps": 192000
+    },
+    "measurement": {
+      "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-37-56.mp4",
+      "fileBytes": 15099415,
+      "durationSeconds": 14.997167,
+      "video": {
+        "codec": "h264",
+        "width": 1920,
+        "height": 1080,
+        "frames": 440,
+        "durationSeconds": 14.997167,
+        "startTime": 0,
+        "bitsPerSecond": 8029545,
+        "pixelFormat": "yuv420p"
+      },
+      "audio": {
+        "codec": "aac",
+        "sampleRate": 48000,
+        "channels": 1,
+        "durationSeconds": 14.99625,
+        "startTime": 0,
+        "bitsPerSecond": 25459,
+        "channelRmsDb": [
+          -25.065692
+        ]
+      },
+      "frames": {
+        "frames": 440,
+        "dropped": 0,
+        "dropRate": 0,
+        "maxGapMs": 40.20000000000046
+      },
+      "sync": {
+        "pairs": 15,
+        "medianOffsetMs": 59.23799999999879,
+        "headOffsetMs": 59.23799999999879,
+        "tailOffsetMs": 59.23799999999879
+      },
+      "syncAttempted": true,
+      "decodable": true,
+      "cpu": {
+        "averagePercent": 15.580000000000002,
+        "peakPercent": 17.7
+      }
+    },
+    "checks": [
+      {
+        "metric": "成品尺寸",
+        "expected": "1920x1080",
+        "actual": "1920x1080",
+        "verdict": "pass"
+      },
+      {
+        "metric": "錄製時長",
+        "expected": "15 ± 2 s",
+        "actual": "15.0 s",
+        "verdict": "pass"
+      },
+      {
+        "metric": "平均幀率",
+        "expected": "30 ± 2 fps",
+        "actual": "29.34 fps（440 張）",
+        "verdict": "pass",
+        "note": "素材需持續動態；靜態畫面不適用"
+      },
+      {
+        "metric": "掉幀",
+        "expected": "< 2%",
+        "actual": "0.00%（0 張／取樣 440 張，最大間隔 40 ms）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像時長差",
+        "expected": "< 100 ms",
+        "actual": "-1 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像起始偏移（容器）",
+        "expected": "< 50 ms",
+        "actual": "0 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像偏移（閃光／短音）",
+        "expected": "< 50 ms；穩定超過記為固有延遲",
+        "actual": "59 ms（15 對；頭 59 ms，尾 59 ms）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "結尾音畫漂移",
+        "expected": "< 100 ms",
+        "actual": "—",
+        "verdict": "n/a",
+        "note": "需 --sync 且檔案長於 60 秒"
+      },
+      {
+        "metric": "取樣率／聲道",
+        "expected": "48 kHz、2 聲道、左右皆有能量",
+        "actual": "48000 Hz、1 聲道，RMS -25.1 dB（track 回報 1 聲道）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "影像位元率",
+        "expected": "8.10 Mbps ± 30%",
+        "actual": "8.03 Mbps（目標的 99%）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊位元率",
+        "expected": "192 kbps",
+        "actual": "25 kbps",
+        "verdict": "fail"
+      },
+      {
+        "metric": "CPU（Electron 各程序合計）",
+        "expected": "記錄；門檻待第一次量測後定",
+        "actual": "平均 16%，峰值 18%",
+        "verdict": "n/a"
+      },
+      {
+        "metric": "檔案可播（ffprobe 解碼全部影格）",
+        "expected": "無解碼錯誤",
+        "actual": "可解碼，15.0 s，14.4 MB",
+        "verdict": "pass",
+        "note": "QuickTime／Chrome 雙擊與拖曳仍需人工"
+      }
+    ],
+    "verdict": "fail"
+  },
+  {
+    "recordedAt": "2026-09-12T19:41:58.460Z",
+    "title": "1080p 標準 30 fps 3 分鐘（漂移）（180 s）",
+    "runLabel": "pnpm matrix -- all",
+    "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-38-28.mp4",
+    "requested": {
+      "videoQuality": "standard",
+      "resolutionCap": "1080p",
+      "frameRate": 30,
+      "audioQuality": "high"
+    },
+    "track": {
+      "width": 1920,
+      "height": 1080,
+      "frameRate": 30,
+      "sampleRate": 48000,
+      "channelCount": 1
+    },
+    "target": {
+      "videoBps": 8100000,
+      "audioBps": 256000
+    },
+    "measurement": {
+      "file": "/Users/eric/Movies/RecordStuff/2026-09-13 03-38-28.mp4",
+      "fileBytes": 179436947,
+      "durationSeconds": 180.014567,
+      "video": {
+        "codec": "h264",
+        "width": 1920,
+        "height": 1080,
+        "frames": 5270,
+        "durationSeconds": 180.014567,
+        "startTime": 0,
+        "bitsPerSecond": 7933091,
+        "pixelFormat": "yuv420p"
+      },
+      "audio": {
+        "codec": "aac",
+        "sampleRate": 48000,
+        "channels": 1,
+        "durationSeconds": 179.988667,
+        "startTime": 0,
+        "bitsPerSecond": 41568,
+        "channelRmsDb": [
+          -27.785426
+        ]
+      },
+      "frames": {
+        "frames": 3597,
+        "dropped": 0,
+        "dropRate": 0,
+        "maxGapMs": 46.999999999997044
+      },
+      "sync": {
+        "pairs": 179,
+        "medianOffsetMs": 69.81599999999588,
+        "headOffsetMs": 70.67049999999497,
+        "tailOffsetMs": 73.39999999999236,
+        "driftMs": 2.729499999997387
+      },
+      "syncAttempted": true,
+      "decodable": true,
+      "cpu": {
+        "averagePercent": 16.269629629629634,
+        "peakPercent": 20.900000000000002
+      }
+    },
+    "checks": [
+      {
+        "metric": "成品尺寸",
+        "expected": "1920x1080",
+        "actual": "1920x1080",
+        "verdict": "pass"
+      },
+      {
+        "metric": "錄製時長",
+        "expected": "180 ± 2 s",
+        "actual": "180.0 s",
+        "verdict": "pass"
+      },
+      {
+        "metric": "平均幀率",
+        "expected": "30 ± 2 fps",
+        "actual": "29.28 fps（5270 張）",
+        "verdict": "pass",
+        "note": "素材需持續動態；靜態畫面不適用"
+      },
+      {
+        "metric": "掉幀",
+        "expected": "< 2%",
+        "actual": "0.00%（0 張／取樣 3597 張，最大間隔 47 ms）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像時長差",
+        "expected": "< 100 ms",
+        "actual": "-26 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像起始偏移（容器）",
+        "expected": "< 50 ms",
+        "actual": "0 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像偏移（閃光／短音）",
+        "expected": "< 50 ms；穩定超過記為固有延遲",
+        "actual": "70 ms（179 對；頭 71 ms，尾 73 ms）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "結尾音畫漂移",
+        "expected": "< 100 ms",
+        "actual": "3 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "取樣率／聲道",
+        "expected": "48 kHz、2 聲道、左右皆有能量",
+        "actual": "48000 Hz、1 聲道，RMS -27.8 dB（track 回報 1 聲道）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "影像位元率",
+        "expected": "8.10 Mbps ± 30%",
+        "actual": "7.93 Mbps（目標的 98%）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊位元率",
+        "expected": "256 kbps",
+        "actual": "42 kbps",
+        "verdict": "fail"
+      },
+      {
+        "metric": "CPU（Electron 各程序合計）",
+        "expected": "記錄；門檻待第一次量測後定",
+        "actual": "平均 16%，峰值 21%",
+        "verdict": "n/a"
+      },
+      {
+        "metric": "檔案可播（ffprobe 解碼全部影格）",
+        "expected": "無解碼錯誤",
+        "actual": "可解碼，180.0 s，171.1 MB",
+        "verdict": "pass",
+        "note": "QuickTime／Chrome 雙擊與拖曳仍需人工"
+      }
+    ],
+    "verdict": "fail"
   }
 ]
