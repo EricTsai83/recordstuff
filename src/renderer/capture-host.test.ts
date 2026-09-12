@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OUTPUT_MIME_TYPE, type HostMessage, type MainMessage } from "../shared/protocol";
 import { DEFAULT_QUALITY, type QualitySettings } from "../shared/quality";
-import { CaptureHost, type HostPort } from "./capture-host";
+import { CaptureHost, type CaptureHostOptions, type FrameSizeMeasurer, type HostPort } from "./capture-host";
 
 class FakeTrack {
   stopped = false;
@@ -135,9 +135,15 @@ const DEFAULT_CAPTURE = {
   warnings: [],
 };
 
-function boot(): FakePort {
+/** By default the frames are the size `getSettings()` claims; tests override this to model a lying track. */
+const measureFromSettings: FrameSizeMeasurer = async (stream) => {
+  const settings = (stream as unknown as FakeStream).getVideoTracks()[0]?.getSettings() ?? {};
+  return settings["width"] !== undefined && settings["height"] !== undefined ? { width: settings["width"], height: settings["height"] } : undefined;
+};
+
+function boot(options: CaptureHostOptions = { measureFrameSize: measureFromSettings }): FakePort {
   const port = new FakePort();
-  new CaptureHost(port);
+  new CaptureHost(port, options);
   expect(port.types()).toEqual(["ready"]);
   port.sent = [];
   return port;
@@ -283,12 +289,13 @@ describe("renderer CaptureHost", () => {
     expect(port.sent.at(-1)).toMatchObject({ type: "error", sessionId: "s1", code: "capture_failed" });
   });
 
-  it("passes the requested frame rate to getDisplayMedia", () => {
+  it("passes the requested frame rate and asks for stereo system audio in getDisplayMedia", () => {
     const port = boot();
     port.receive(start("s1", { ...DEFAULT_QUALITY, frameRate: 60 }));
     expect(getDisplayMedia).toHaveBeenCalledWith({
       video: { frameRate: { ideal: 60, max: 60 } },
-      audio: { restrictOwnAudio: true },
+      // Plan 008: without channelCount the macOS loopback track is mono.
+      audio: { restrictOwnAudio: true, channelCount: { ideal: 2 } },
     });
   });
 
@@ -332,6 +339,86 @@ describe("renderer CaptureHost", () => {
     });
     const report = port.sent[0]!.type === "started" ? port.sent[0]!.capture : undefined;
     expect(report?.warnings[0]).toMatch(/1080p.*OverconstrainedError/);
+  });
+
+  it("sizes the cap from the frames, not from a track that reports the wrong height (plan 008 finding)", async () => {
+    // Observed on a 1920x1080 main display next to a portrait monitor: getSettings() says 1920x1920.
+    const port = boot({ measureFrameSize: async () => ({ width: 1920, height: 1080 }) });
+    port.receive(start("s1", { ...DEFAULT_QUALITY, resolutionCap: "1080p" }));
+    const s = stream();
+    s.tracks[0]!.settings = { width: 1920, height: 1920, frameRate: 30 };
+    pendingStream!.resolve(s);
+    await flush();
+    // Already within 1080p: no constraint, so no 1080x1080 → 1080x606 squeeze.
+    expect(s.tracks[0]!.applied).toEqual([]);
+    expect(port.sent[0]).toMatchObject({
+      type: "started",
+      capture: {
+        width: 1920,
+        height: 1080,
+        videoBitsPerSecond: 8_100_000,
+        warnings: ["track.getSettings() 回報 1920x1920，實際影格 1920x1080，以實際影格為準"],
+      },
+    });
+  });
+
+  it("reports the frames measured after the constraint, not the target, when they differ (review R2-F1)", async () => {
+    // The display shrank to 1280x720 while the 1080p constraint was being applied.
+    const sizes = [{ width: 3840, height: 2160 }, { width: 1280, height: 720 }];
+    const expects: (unknown | undefined)[] = [];
+    const port = boot({
+      measureFrameSize: async (_stream, options) => {
+        expects.push(options?.expect);
+        return sizes.shift();
+      },
+    });
+    port.receive(start("s1", { ...DEFAULT_QUALITY, resolutionCap: "1080p" }));
+    const s = stream();
+    s.tracks[0]!.settings = { width: 3840, height: 2160, frameRate: 30 };
+    pendingStream!.resolve(s);
+    await flush();
+    expect(expects).toEqual([undefined, { width: 1920, height: 1080 }]);
+    expect(port.sent[0]).toMatchObject({
+      type: "started",
+      capture: {
+        width: 1280,
+        height: 720,
+        videoBitsPerSecond: 3_600_000,
+        warnings: ["套用上限後實際影格 1280x720，與目標 1920x1080 不同"],
+      },
+    });
+  });
+
+  it("reports the target with a warning when the frames cannot be re-measured after the constraint", async () => {
+    let calls = 0;
+    const port = boot({ measureFrameSize: async () => (calls++ === 0 ? { width: 3840, height: 2160 } : undefined) });
+    port.receive(start("s1", { ...DEFAULT_QUALITY, resolutionCap: "1080p" }));
+    const s = stream();
+    s.tracks[0]!.settings = { width: 3840, height: 2160, frameRate: 30 };
+    pendingStream!.resolve(s);
+    await flush();
+    expect(port.sent[0]).toMatchObject({
+      type: "started",
+      capture: { width: 1920, height: 1080, videoBitsPerSecond: 8_100_000, warnings: ["套用上限後未能重新量測影格，以目標 1920x1080 回報"] },
+    });
+  });
+
+  it("falls back to getSettings() with a warning when no frame can be measured", async () => {
+    const port = boot({ measureFrameSize: async () => undefined });
+    port.receive(start("s1", { ...DEFAULT_QUALITY, resolutionCap: "1080p" }));
+    const s = stream();
+    s.tracks[0]!.settings = { width: 3840, height: 2160, frameRate: 30 };
+    pendingStream!.resolve(s);
+    await flush();
+    expect(s.tracks[0]!.applied).toHaveLength(1);
+    expect(port.sent[0]).toMatchObject({
+      type: "started",
+      capture: {
+        width: 1920,
+        height: 1080,
+        warnings: ["無法讀取實際影格尺寸，以 track.getSettings() 為準", "套用上限後未能重新量測影格，以目標 1920x1080 回報"],
+      },
+    });
   });
 
   it("missing track settings are left out of the report and the encoder assumes 1080p", async () => {

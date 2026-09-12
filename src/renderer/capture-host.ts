@@ -10,6 +10,7 @@ import {
   fitWithinCap,
   videoBitsPerSecond,
   type CaptureReport,
+  type Dimensions,
   type QualitySettings,
 } from "../shared/quality";
 import type { ErrorCode } from "../shared/state";
@@ -35,6 +36,68 @@ export interface HostPort {
   postMessage(message: unknown): void;
 }
 
+export interface CaptureHostOptions {
+  /** Size of the frames a stream actually delivers; defaults to `measureFrameSize`. */
+  measureFrameSize?: FrameSizeMeasurer;
+}
+
+export interface MeasureOptions {
+  timeoutMs?: number;
+  /**
+   * After a constraint was applied the first frames may still be the old
+   * size: keep watching `resize` until the frames match this, or time out
+   * and return the last size seen.
+   */
+  expect?: Dimensions;
+}
+
+export type FrameSizeMeasurer = (stream: MediaStream, options?: MeasureOptions) => Promise<Dimensions | undefined>;
+
+/**
+ * The size of the frames a stream really carries, read from a hidden
+ * `<video>` element's intrinsic size. Plan 008's first measurements showed
+ * `track.getSettings()` reporting 1920x1920 for a 1920x1080 display (the
+ * height of another monitor), which made the 1080p cap scale the picture to
+ * 1080x606; the frames themselves never lie. Undefined when there is no DOM,
+ * no video track, or no frame arrives within the timeout.
+ */
+export async function measureFrameSize(stream: MediaStream, options: MeasureOptions = {}): Promise<Dimensions | undefined> {
+  if (typeof document === "undefined") return undefined;
+  const track = stream.getVideoTracks()[0];
+  if (!track) return undefined;
+  const timeoutMs = options.timeoutMs ?? 3000;
+  const video = document.createElement("video");
+  video.muted = true;
+  video.srcObject = new MediaStream([track]);
+  const current = (): Dimensions | undefined =>
+    video.videoWidth > 0 && video.videoHeight > 0 ? { width: video.videoWidth, height: video.videoHeight } : undefined;
+  const matches = (size: Dimensions | undefined): boolean =>
+    size !== undefined && (!options.expect || (size.width === options.expect.width && size.height === options.expect.height));
+  try {
+    return await new Promise<Dimensions | undefined>((resolve) => {
+      let last: Dimensions | undefined;
+      const timer = setTimeout(() => resolve(last), timeoutMs);
+      const check = (): void => {
+        last = current() ?? last;
+        if (matches(last)) {
+          clearTimeout(timer);
+          resolve(last);
+        }
+      };
+      video.onloadedmetadata = check;
+      video.onresize = check;
+      video.onerror = () => {
+        clearTimeout(timer);
+        resolve(last);
+      };
+      void video.play().catch(() => undefined);
+    });
+  } finally {
+    video.pause();
+    video.srcObject = null;
+  }
+}
+
 export class CaptureHost {
   private session: Session | undefined;
   /** Session ids whose `start` is still inside `getDisplayMedia` and still wanted. */
@@ -45,7 +108,13 @@ export class CaptureHost {
    */
   private readonly cancelled = new Set<string>();
 
-  constructor(private readonly port: HostPort) {
+  private readonly measureFrameSize: FrameSizeMeasurer;
+
+  constructor(
+    private readonly port: HostPort,
+    options: CaptureHostOptions = {},
+  ) {
+    this.measureFrameSize = options.measureFrameSize ?? measureFrameSize;
     port.addEventListener("message", (event) => this.handle(event.data));
     port.start();
     this.send({ type: "ready" });
@@ -84,7 +153,9 @@ export class CaptureHost {
         // on the source's orientation, which is only known once we have it.
         video: { frameRate: { ideal: quality.frameRate, max: quality.frameRate } },
         // `restrictOwnAudio` (Electron 43+) keeps this app's own sounds out.
-        audio: { restrictOwnAudio: true } as MediaTrackConstraints,
+        // `channelCount` asks for stereo: plan 008 measured the macOS
+        // loopback track as mono without it.
+        audio: { restrictOwnAudio: true, channelCount: { ideal: 2 } } as MediaTrackConstraints,
       });
     } catch (cause) {
       if (this.cancelled.delete(sessionId)) return;
@@ -128,7 +199,7 @@ export class CaptureHost {
       return;
     }
 
-    const capture = await applyQuality(stream, quality);
+    const capture = await applyQuality(stream, quality, this.measureFrameSize);
     if (cancelled()) return;
     // Nobody listened for `ended` while the constraint was applied (review
     // pass 1, F3): a track that died meanwhile would otherwise be recorded as
@@ -257,19 +328,35 @@ function finiteOrUndefined(value: unknown): number | undefined {
 /**
  * Plan 007 §B2: fit the captured size into the resolution cap (same aspect
  * ratio, never upscaled), then derive the encoder targets from the size the
- * track actually settled on. A rejected constraint is reported as a warning
- * and the recording proceeds at the source size rather than failing.
+ * recording will have. The source size comes from the frames themselves
+ * (`measureFrameSize`), falling back to `track.getSettings()` only when no
+ * frame could be read; a disagreement between the two is reported as a
+ * warning so the log shows it. A rejected constraint is reported as a
+ * warning and the recording proceeds at the source size rather than failing.
  */
-async function applyQuality(stream: MediaStream, quality: QualitySettings): Promise<CaptureReport> {
+async function applyQuality(stream: MediaStream, quality: QualitySettings, measure: FrameSizeMeasurer): Promise<CaptureReport> {
   const warnings: string[] = [];
   const video = stream.getVideoTracks()[0];
   const audio = stream.getAudioTracks()[0];
-  let settings: MediaTrackSettings = video?.getSettings() ?? {};
-  const width = finiteOrUndefined(settings.width);
-  const height = finiteOrUndefined(settings.height);
-  if (video && width !== undefined && height !== undefined) {
-    const target = fitWithinCap({ width, height }, quality.resolutionCap);
-    if (target.width !== width || target.height !== height) {
+  const settings: MediaTrackSettings = video?.getSettings() ?? {};
+  const reported =
+    finiteOrUndefined(settings.width) !== undefined && finiteOrUndefined(settings.height) !== undefined
+      ? { width: settings.width as number, height: settings.height as number }
+      : undefined;
+  const measured = video ? await measure(stream) : undefined;
+  if (measured && reported && (measured.width !== reported.width || measured.height !== reported.height)) {
+    warnings.push(`track.getSettings() 回報 ${reported.width}x${reported.height}，實際影格 ${measured.width}x${measured.height}，以實際影格為準`);
+  }
+  if (!measured && reported) warnings.push("無法讀取實際影格尺寸，以 track.getSettings() 為準");
+  const source = measured ?? reported;
+  // What the recording will be: after an accepted constraint the frames are
+  // measured again (an accepted max is not proof of the delivered size — the
+  // display could have changed meanwhile, review R2-F1); without a frame to
+  // read, the target is reported with a warning.
+  let actual: Dimensions | undefined = source;
+  if (video && source) {
+    const target = fitWithinCap(source, quality.resolutionCap);
+    if (target.width !== source.width || target.height !== source.height) {
       try {
         // `applyConstraints` replaces the whole constraint set, so the frame
         // rate asked for in `getDisplayMedia` must be repeated here (F1).
@@ -278,31 +365,37 @@ async function applyQuality(stream: MediaStream, quality: QualitySettings): Prom
           height: { ideal: target.height, max: target.height },
           frameRate: { ideal: quality.frameRate, max: quality.frameRate },
         });
-        settings = video.getSettings();
+        const settled = await measure(stream, { expect: target, timeoutMs: 1500 });
+        if (!settled) {
+          warnings.push(`套用上限後未能重新量測影格，以目標 ${target.width}x${target.height} 回報`);
+          actual = target;
+        } else {
+          if (settled.width !== target.width || settled.height !== target.height) {
+            warnings.push(`套用上限後實際影格 ${settled.width}x${settled.height}，與目標 ${target.width}x${target.height} 不同`);
+          }
+          actual = settled;
+        }
       } catch (cause) {
         warnings.push(`解析度上限 ${quality.resolutionCap} 無法套用，以來源尺寸錄製：${describe(cause)}`);
       }
     }
-  } else {
+  } else if (!source) {
     warnings.push("video track 未回報尺寸，無法套用解析度上限");
   }
-  const actual = {
-    width: finiteOrUndefined(settings.width),
-    height: finiteOrUndefined(settings.height),
-  };
-  const encodeSize =
-    actual.width !== undefined && actual.height !== undefined ? { width: actual.width, height: actual.height } : ASSUMED_SIZE;
+  const encodeSize = actual ?? ASSUMED_SIZE;
   const audioSettings = audio?.getSettings() ?? {};
   const report: CaptureReport = {
     videoBitsPerSecond: videoBitsPerSecond(encodeSize, quality.frameRate, quality.videoQuality),
     audioBitsPerSecond: AUDIO_BITS_PER_SECOND,
     warnings,
   };
-  // Only fields the platform reported; `undefined` must not travel as a key
-  // with exactOptionalPropertyTypes.
-  if (actual.width !== undefined) report.width = actual.width;
-  if (actual.height !== undefined) report.height = actual.height;
-  const frameRate = finiteOrUndefined(settings.frameRate);
+  // Only fields we know; `undefined` must not travel as a key with exactOptionalPropertyTypes.
+  if (actual) {
+    report.width = actual.width;
+    report.height = actual.height;
+  }
+  const afterSettings: MediaTrackSettings = video?.getSettings() ?? settings;
+  const frameRate = finiteOrUndefined(afterSettings.frameRate);
   if (frameRate !== undefined) report.frameRate = frameRate;
   const sampleRate = finiteOrUndefined(audioSettings.sampleRate);
   if (sampleRate !== undefined) report.sampleRate = sampleRate;
