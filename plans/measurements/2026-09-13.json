@@ -1,0 +1,425 @@
+[
+  {
+    "recordedAt": "2026-09-12T18:28:37.615Z",
+    "title": "1440p 標準（30 s）",
+    "runLabel": "pnpm matrix -- quick",
+    "file": "/Users/eric/Movies/RecordStuff/2026-09-13 02-26-31.mp4",
+    "requested": {
+      "videoQuality": "standard",
+      "resolutionCap": "1440p",
+      "frameRate": 30,
+      "audioQuality": "high"
+    },
+    "track": {
+      "width": 1440,
+      "height": 1440,
+      "frameRate": 30,
+      "sampleRate": 48000,
+      "channelCount": 1
+    },
+    "target": {
+      "videoBps": 8100000,
+      "audioBps": 256000
+    },
+    "measurement": {
+      "file": "/Users/eric/Movies/RecordStuff/2026-09-13 02-26-31.mp4",
+      "fileBytes": 9526511,
+      "durationSeconds": 30.0063,
+      "video": {
+        "codec": "h264",
+        "width": 1440,
+        "height": 810,
+        "frames": 883,
+        "durationSeconds": 30.0063,
+        "startTime": 0,
+        "bitsPerSecond": 2498105,
+        "pixelFormat": "yuv420p"
+      },
+      "audio": {
+        "codec": "aac",
+        "sampleRate": 48000,
+        "channels": 1,
+        "durationSeconds": 29.992708,
+        "startTime": 0,
+        "bitsPerSecond": 37632,
+        "channelRmsDb": [
+          -26.667565
+        ]
+      },
+      "frames": {
+        "frames": 883,
+        "dropped": 1,
+        "dropRate": 0.0011312217194570137,
+        "maxGapMs": 59.466999999999715
+      },
+      "decodable": true,
+      "cpu": {
+        "averagePercent": 0,
+        "peakPercent": 0
+      }
+    },
+    "checks": [
+      {
+        "metric": "成品尺寸",
+        "expected": "1440x1440",
+        "actual": "1440x810",
+        "verdict": "fail",
+        "note": "與 track size 1440x1440 不同"
+      },
+      {
+        "metric": "平均幀率",
+        "expected": "30 ± 2 fps",
+        "actual": "29.43 fps（883 張）",
+        "verdict": "pass",
+        "note": "素材需持續動態；靜態畫面不適用"
+      },
+      {
+        "metric": "掉幀",
+        "expected": "< 2%",
+        "actual": "0.11%（1 張／取樣 883 張，最大間隔 59 ms）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像時長差",
+        "expected": "< 100 ms",
+        "actual": "-14 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像起始偏移（容器）",
+        "expected": "< 50 ms",
+        "actual": "0 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像偏移（閃光／短音）",
+        "expected": "< 50 ms；穩定超過記為固有延遲",
+        "actual": "—",
+        "verdict": "n/a",
+        "note": "需 --sync 與測試素材頁"
+      },
+      {
+        "metric": "結尾音畫漂移",
+        "expected": "< 100 ms",
+        "actual": "—",
+        "verdict": "n/a",
+        "note": "需 --sync 且檔案長於 60 秒"
+      },
+      {
+        "metric": "取樣率／聲道",
+        "expected": "48 kHz、2 聲道、左右皆有能量",
+        "actual": "48000 Hz、1 聲道，RMS -26.7 dB（track 回報 1 聲道）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "影像位元率",
+        "expected": "8.10 Mbps ± 30%",
+        "actual": "2.50 Mbps（目標的 31%）",
+        "verdict": "fail",
+        "note": "超出即為 Chromium 實際夾住的值"
+      },
+      {
+        "metric": "音訊位元率",
+        "expected": "256 kbps",
+        "actual": "38 kbps",
+        "verdict": "fail"
+      },
+      {
+        "metric": "CPU（Electron 各程序合計）",
+        "expected": "記錄；門檻待第一次量測後定",
+        "actual": "平均 0%，峰值 0%",
+        "verdict": "n/a"
+      },
+      {
+        "metric": "檔案可播（ffprobe 解碼全部影格）",
+        "expected": "無解碼錯誤",
+        "actual": "可解碼，30.0 s，9.1 MB",
+        "verdict": "pass",
+        "note": "QuickTime／Chrome 雙擊與拖曳仍需人工"
+      }
+    ],
+    "verdict": "fail"
+  },
+  {
+    "recordedAt": "2026-09-12T18:28:37.615Z",
+    "title": "1440p 高品質（30 s）",
+    "runLabel": "pnpm matrix -- quick",
+    "file": "/Users/eric/Movies/RecordStuff/2026-09-13 02-27-17.mp4",
+    "requested": {
+      "videoQuality": "high",
+      "resolutionCap": "1440p",
+      "frameRate": 30,
+      "audioQuality": "high"
+    },
+    "track": {
+      "width": 1440,
+      "height": 1440,
+      "frameRate": 30,
+      "sampleRate": 48000,
+      "channelCount": 1
+    },
+    "target": {
+      "videoBps": 14900000,
+      "audioBps": 256000
+    },
+    "measurement": {
+      "file": "/Users/eric/Movies/RecordStuff/2026-09-13 02-27-17.mp4",
+      "fileBytes": 4732712,
+      "durationSeconds": 29.997633,
+      "video": {
+        "codec": "h264",
+        "width": 1440,
+        "height": 810,
+        "frames": 879,
+        "durationSeconds": 29.997633,
+        "startTime": 0,
+        "bitsPerSecond": 1210689,
+        "pixelFormat": "yuv420p"
+      },
+      "audio": {
+        "codec": "aac",
+        "sampleRate": 48000,
+        "channels": 1,
+        "durationSeconds": 29.992792,
+        "startTime": 0,
+        "bitsPerSecond": 46614,
+        "channelRmsDb": [
+          -19.401101
+        ]
+      },
+      "frames": {
+        "frames": 879,
+        "dropped": 1,
+        "dropRate": 0.0011363636363636363,
+        "maxGapMs": 63.50000000000122
+      },
+      "decodable": true,
+      "cpu": {
+        "averagePercent": 0,
+        "peakPercent": 0
+      }
+    },
+    "checks": [
+      {
+        "metric": "成品尺寸",
+        "expected": "1440x1440",
+        "actual": "1440x810",
+        "verdict": "fail",
+        "note": "與 track size 1440x1440 不同"
+      },
+      {
+        "metric": "平均幀率",
+        "expected": "30 ± 2 fps",
+        "actual": "29.30 fps（879 張）",
+        "verdict": "pass",
+        "note": "素材需持續動態；靜態畫面不適用"
+      },
+      {
+        "metric": "掉幀",
+        "expected": "< 2%",
+        "actual": "0.11%（1 張／取樣 879 張，最大間隔 64 ms）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像時長差",
+        "expected": "< 100 ms",
+        "actual": "-5 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像起始偏移（容器）",
+        "expected": "< 50 ms",
+        "actual": "0 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像偏移（閃光／短音）",
+        "expected": "< 50 ms；穩定超過記為固有延遲",
+        "actual": "—",
+        "verdict": "n/a",
+        "note": "需 --sync 與測試素材頁"
+      },
+      {
+        "metric": "結尾音畫漂移",
+        "expected": "< 100 ms",
+        "actual": "—",
+        "verdict": "n/a",
+        "note": "需 --sync 且檔案長於 60 秒"
+      },
+      {
+        "metric": "取樣率／聲道",
+        "expected": "48 kHz、2 聲道、左右皆有能量",
+        "actual": "48000 Hz、1 聲道，RMS -19.4 dB（track 回報 1 聲道）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "影像位元率",
+        "expected": "14.90 Mbps ± 30%",
+        "actual": "1.21 Mbps（目標的 8%）",
+        "verdict": "fail",
+        "note": "超出即為 Chromium 實際夾住的值"
+      },
+      {
+        "metric": "音訊位元率",
+        "expected": "256 kbps",
+        "actual": "47 kbps",
+        "verdict": "fail"
+      },
+      {
+        "metric": "CPU（Electron 各程序合計）",
+        "expected": "記錄；門檻待第一次量測後定",
+        "actual": "平均 0%，峰值 0%",
+        "verdict": "n/a"
+      },
+      {
+        "metric": "檔案可播（ffprobe 解碼全部影格）",
+        "expected": "無解碼錯誤",
+        "actual": "可解碼，30.0 s，4.5 MB",
+        "verdict": "pass",
+        "note": "QuickTime／Chrome 雙擊與拖曳仍需人工"
+      }
+    ],
+    "verdict": "fail"
+  },
+  {
+    "recordedAt": "2026-09-12T18:28:37.615Z",
+    "title": "原尺寸 標準 音訊 192k（30 s）",
+    "runLabel": "pnpm matrix -- quick",
+    "file": "/Users/eric/Movies/RecordStuff/2026-09-13 02-28-02.mp4",
+    "requested": {
+      "videoQuality": "standard",
+      "resolutionCap": "source",
+      "frameRate": 30,
+      "audioQuality": "standard"
+    },
+    "track": {
+      "width": 1920,
+      "height": 1920,
+      "frameRate": 30,
+      "sampleRate": 48000,
+      "channelCount": 1
+    },
+    "target": {
+      "videoBps": 14400000,
+      "audioBps": 192000
+    },
+    "measurement": {
+      "file": "/Users/eric/Movies/RecordStuff/2026-09-13 02-28-02.mp4",
+      "fileBytes": 5670112,
+      "durationSeconds": 29.9986,
+      "video": {
+        "codec": "h264",
+        "width": 1920,
+        "height": 1080,
+        "frames": 878,
+        "durationSeconds": 29.9986,
+        "startTime": 0,
+        "bitsPerSecond": 1474664,
+        "pixelFormat": "yuv420p"
+      },
+      "audio": {
+        "codec": "aac",
+        "sampleRate": 48000,
+        "channels": 1,
+        "durationSeconds": 29.992812,
+        "startTime": 0,
+        "bitsPerSecond": 32529,
+        "channelRmsDb": [
+          -16.567049
+        ]
+      },
+      "frames": {
+        "frames": 878,
+        "dropped": 1,
+        "dropRate": 0.0011376564277588168,
+        "maxGapMs": 68.46700000000183
+      },
+      "decodable": true,
+      "cpu": {
+        "averagePercent": 0,
+        "peakPercent": 0
+      }
+    },
+    "checks": [
+      {
+        "metric": "成品尺寸",
+        "expected": "1920x1920",
+        "actual": "1920x1080",
+        "verdict": "fail",
+        "note": "與 track size 1920x1920 不同"
+      },
+      {
+        "metric": "平均幀率",
+        "expected": "30 ± 2 fps",
+        "actual": "29.27 fps（878 張）",
+        "verdict": "pass",
+        "note": "素材需持續動態；靜態畫面不適用"
+      },
+      {
+        "metric": "掉幀",
+        "expected": "< 2%",
+        "actual": "0.11%（1 張／取樣 878 張，最大間隔 68 ms）",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像時長差",
+        "expected": "< 100 ms",
+        "actual": "-6 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像起始偏移（容器）",
+        "expected": "< 50 ms",
+        "actual": "0 ms",
+        "verdict": "pass"
+      },
+      {
+        "metric": "音訊−影像偏移（閃光／短音）",
+        "expected": "< 50 ms；穩定超過記為固有延遲",
+        "actual": "—",
+        "verdict": "n/a",
+        "note": "需 --sync 與測試素材頁"
+      },
+      {
+        "metric": "結尾音畫漂移",
+        "expected": "< 100 ms",
+        "actual": "—",
+        "verdict": "n/a",
+        "note": "需 --sync 且檔案長於 60 秒"
+      },
+      {
+        "metric": "取樣率／聲道",
+        "expected": "48 kHz、2 聲道、左右皆有能量",
+        "actual": "48000 Hz、1 聲道，RMS -16.6 dB（track 回報 1 聲道）",
+        "verdict": "fail"
+      },
+      {
+        "metric": "影像位元率",
+        "expected": "14.40 Mbps ± 30%",
+        "actual": "1.47 Mbps（目標的 10%）",
+        "verdict": "fail",
+        "note": "超出即為 Chromium 實際夾住的值"
+      },
+      {
+        "metric": "音訊位元率",
+        "expected": "192 kbps",
+        "actual": "33 kbps",
+        "verdict": "fail"
+      },
+      {
+        "metric": "CPU（Electron 各程序合計）",
+        "expected": "記錄；門檻待第一次量測後定",
+        "actual": "平均 0%，峰值 0%",
+        "verdict": "n/a"
+      },
+      {
+        "metric": "檔案可播（ffprobe 解碼全部影格）",
+        "expected": "無解碼錯誤",
+        "actual": "可解碼，30.0 s，5.4 MB",
+        "verdict": "pass",
+        "note": "QuickTime／Chrome 雙擊與拖曳仍需人工"
+      }
+    ],
+    "verdict": "fail"
+  }
+]

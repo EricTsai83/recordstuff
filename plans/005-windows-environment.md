@@ -17,7 +17,7 @@
 3. 錄 60 秒有聲音，檔案總管雙擊用「媒體播放器」播。
 4. §17 第 4 題的驗證：錄一段前十秒完全無聲、之後才有聲音的內容，確認音畫對齊、音軌長度等於影片長度。這是驗證 Chromium 的 keepalive 確實生效，預期通過。
 5. §17 第 3 題：loopback 是否穩定拿到系統音；切換輸出裝置（耳機 ↔ 喇叭）時的行為。
-6. 10 分鐘 1080p30 的 CPU 與檔案大小；工作管理員看 GPU 影片編碼是否有活動。
+6. 10 分鐘 1080p30 的 CPU 與檔案大小；工作管理員看 GPU 影片編碼是否有活動。`pnpm matrix` 目前只有 macOS 啟動流程（`open`／`ps`），Windows 上用 `RECORDSTUFF_AUTORECORD` 環境變數配合 `pnpm start` 的等價啟動自動錄製，成品與 `%APPDATA%\recordstuff\logs\recordstuff.log` 複製到 Mac 後用 `pnpm verify -- <mp4> --log <log> --sync` 對 008 的門檻表（素材用 `scripts/test-material.html`）。
 7. 儲存位置測試：改到一個之後拔掉的 USB 或網路磁碟，確認「儲存位置無法寫入」的通知與選單第一行。
 8. `pnpm dist:win` 產出未簽章 NSIS 安裝檔，安裝、啟動、SmartScreen 警告的實際文字記進 README。
 

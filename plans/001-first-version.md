@@ -317,7 +317,8 @@ Windows 不需要任何權限。
 - `file-writer.ts`：append 順序、fsync、改名、磁碟錯誤。
 - `tray.ts` 的狀態對應表：每個狀態產生的圖示、標題、選單項目，純函式可測。
 - `settings.ts`：不存在、壞 JSON、舊版本、正常讀寫、原子寫入（tmp 檔殘留時的行為）。
-- 手動檢查表（每次發版前，兩個 OS 各跑一次）：錄 10 分鐘、在 Finder / 檔案總管雙擊用系統預設播放器播放、音畫偏移、CPU、權限拒絕與允許、需重啟、錄製中結束、更改位置到外接硬碟後拔掉、資料夾不存在、硬碟滿、深淺色選單列圖示。
+- 錄製驗收（008）：`pnpm verify` 用 ffprobe／ffmpeg 對成品逐項對 008 的門檻表（尺寸、幀率、掉幀、時長差、起始偏移、閃光／beep 同步與漂移、取樣率／聲道、位元率、可解碼），`pnpm matrix` 用 `RECORDSTUFF_AUTORECORD` 無人值守錄一組矩陣並取 CPU，結果進 `plans/measurements/`。純邏輯有假 ffprobe 輸出的單元測試。
+- 手動檢查表（每次發版前，兩個 OS 各跑一次）：錄 10 分鐘、在 Finder / 檔案總管雙擊用系統預設播放器播放、音畫偏移、CPU、權限拒絕與允許、需重啟、錄製中結束、更改位置到外接硬碟後拔掉、資料夾不存在、硬碟滿、深淺色選單列圖示。錄 10 分鐘、音畫偏移與 CPU 改用 `pnpm matrix -- long`。
 
 自動化端對端與當機注入在 ROADMAP。
 
@@ -393,6 +394,7 @@ Windows 不需要任何權限。
 | 開發 | `pnpm dev` | 啟動它的終端機 | 終端機 | 改邏輯、改 UI，熱重載。從 Terminal／iTerm 啟動時**錄不到系統音訊**（它們沒有 `NSAudioCaptureUsageDescription`）；從 VS Code／Cursor 內建終端機可以，權限記在 VS Code 名下 |
 | 近似真機 | `pnpm start` | Electron.app（`com.github.Electron`） | 檔案 log（見下） | 測權限、系統音訊、通知。build 後用 `open` 啟動，`open` 立刻返回，app 由 launchd 接管，關掉終端機也不影響。改了程式要重跑 |
 | 真機 | `electron-builder --dir` | RecordStuff.app | 檔案 log | 權限提示與設定頁顯示的是 RecordStuff，與使用者看到的一致。驗證簽章、公證、`LSUIElement` 時用 |
+| 自動錄製 | `pnpm matrix -- <矩陣>` | Electron.app | 檔案 log + `plans/measurements/` | 008：build 後帶 `RECORDSTUFF_AUTORECORD` 用 `open -W` 啟動，app 自己開始、停止、存檔、結束；runner 取 CPU 並跑 `pnpm verify`。只有開發版讀這個變數 |
 
 - 檔案 log（002）：所有 log 同時寫 stdout 與 `app.getPath('logs')/recordstuff.log`，超過 5 MB 輪替成 `.1`／`.2`／`.3`；macOS 開發版在 `~/Library/Logs/recordstuff/`，RecordStuff.app 在 `~/Library/Logs/RecordStuff/`，Windows 在 `%APPDATA%\<app>\logs\`。main 的未捕捉例外也寫進同一個檔。指令見 README「Log」一節。
 - 這些 shell 若帶著 `ELECTRON_RUN_AS_NODE=1`（Claude Code 等工具會設），Electron 會以純 Node 模式啟動而崩潰；`pnpm start` 已在腳本內清掉，`pnpm dev` 要自己 `unset`。`open` 會把 shell 環境變數傳給 app，所以同樣要清。
