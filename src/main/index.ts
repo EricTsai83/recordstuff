@@ -227,11 +227,13 @@ async function main(): Promise<void> {
   async function revealLog(): Promise<void> {
     try {
       await fs.access(logPath);
+      log("reveal log: showing file in Finder");
       shell.showItemInFolder(logPath);
       return;
     } catch {
       // No log file yet: open (or fail to open) the folder instead.
     }
+    log("reveal log: file missing, opening folder");
     const error = await shell.openPath(path.dirname(logPath));
     if (error) log(`openPath(${path.dirname(logPath)}) failed: ${error}`);
   }
