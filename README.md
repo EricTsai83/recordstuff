@@ -6,12 +6,12 @@
 
 ## 目前進度
 
-更新：2026-09-12。**基本錄製已測通，第一版整體仍在進行中。** 使用者已確認停止錄製後有畫面、有聲音；畫質與音質差距交由 Plan 007 改善。
+更新：2026-09-13。**基本錄製已測通、檔案 log 已完成，第一版整體仍在進行中。** 使用者已確認停止錄製後有畫面、有聲音；畫質與音質差距交由 Plan 007 改善。
 
-- 已完成：Plan 001 初始實作與基本錄製，使用者已確認有聲有影。
-- 進行中：Plan 003 已有基本錄製結果，完整驗收待補。Plan 001 文件保留產品總規格，剩餘品質、驗收與發布工作由 002～007 追蹤。
-- 下一步：Plan 002 檔案 log → Plan 007 品質調校與設定 → Plan 003 完整錄製驗收 → Plan 004 權限流程 → Plan 006 打包與簽章。
-- Plan 005 Windows 環境可先準備，使用 Plan 007 最終設定驗收；第一版發布前仍須完成兩平台驗收。
+- 已完成：Plan 001 初始實作與基本錄製；Plan 002 檔案 log（`~/Library/Logs/<app>/recordstuff.log`、輪替、右鍵選單「顯示 log」）。
+- 進行中：Plan 003 已有基本錄製結果，完整驗收待 007 完成後補。Plan 001 文件保留產品總規格。
+- 下一步：Plan 007 品質調校與設定 → Plan 003 完整錄製驗收 → Plan 004 權限流程 → Plan 006 打包與簽章。
+- Plan 005 Windows 環境可先準備，錄製驗收使用 Plan 007 最終設定；第一版發布前仍須完成兩平台驗收。
 
 各項完成標準與狀態見 [計畫進度](plans/README.md)。
 
@@ -22,6 +22,7 @@ pnpm install
 pnpm dev          # electron-vite dev（main / preload / capture host 皆熱重載）
 pnpm check        # typecheck + vitest + build
 pnpm icons        # 由 scripts/make-icons.mjs 重新產生 resources/ 與 build/ 的圖示
+pnpm log          # macOS：tail -f 開發版的 log 檔（見下方「Log」）
 ```
 
 在 Claude Code 之類把 `ELECTRON_RUN_AS_NODE=1` 塞進環境的 shell 裡，啟動前要先 `unset ELECTRON_RUN_AS_NODE`，否則 Electron 會以純 Node 模式啟動。
@@ -43,6 +44,7 @@ pnpm start        # build 後以 open 啟動 Electron.app，Electron 自己成�
 選單列 app 沒有 console，所有 log 除了 stdout 之外也寫到 `app.getPath('logs')/recordstuff.log`；`pnpm start` 與正式版只能從這裡看狀態轉移、session 失敗原因與權限驗證結果。macOS 上這是 `~/Library/Logs/<app 名稱>/`，Console.app 的「Log Reports」也會列出；Windows 是 `%APPDATA%\<app 名稱>\logs\`。開發版（Electron.app）的 app 名稱是 `recordstuff`，打包後的 RecordStuff.app 是 `RecordStuff`：
 
 ```bash
+pnpm log                                                 # 等同下一行
 tail -f ~/Library/Logs/recordstuff/recordstuff.log        # macOS，pnpm start
 tail -f ~/Library/Logs/RecordStuff/recordstuff.log        # macOS，RecordStuff.app
 Get-Content -Wait "$env:APPDATA\recordstuff\logs\recordstuff.log"   # Windows
@@ -64,11 +66,12 @@ macOS 公證需要 `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`�
 ## 架構一覽
 
 ```text
-src/main/index.ts        app 生命週期、Dock 隱藏、setDisplayMediaRequestHandler、退出處理
+src/main/index.ts        app 生命週期、Dock 隱藏、setDisplayMediaRequestHandler、退出處理、未捕捉例外寫 log
+src/main/log.ts          stdout + 檔案 log（app.getPath('logs')/recordstuff.log），5 MB 輪替保留 3 個，寫檔失敗不影響 app
 src/main/recorder.ts     狀態機（唯一的權威狀態），無 Electron 依賴，可單元測試
 src/main/capture-host.ts 隱藏 renderer 的建立、MessagePort、heartbeat、當機偵測
 src/main/file-writer.ts  唯一的檔案 handle：append、每 5 秒 fsync、收尾改名
-src/main/tray-model.ts   狀態 → 圖示 / 標題 / 選單 / 通知文案的純函式
+src/main/tray-model.ts   狀態 → 圖示 / 標題 / 選單（含「顯示 log」）/ 通知文案的純函式
 src/main/tray.ts         Electron Tray / Menu / Notification
 src/main/settings.ts     settings.json（只有 outputDir），tmp + rename 原子寫入
 src/main/permission.ts   macOS 螢幕錄製權限偵測與輪詢
