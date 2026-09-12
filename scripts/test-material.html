@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>RecordStuff 測試素材</title>
+<!--
+  Plan 008 §C: a static page to record while `pnpm matrix` runs. Open it full
+  screen (or let the matrix runner open it in Chrome kiosk mode). Nothing here
+  is part of the app.
+
+  What it shows, and which threshold each part serves:
+  - scrolling small text            → text sharpness at each quality level
+  - thin red / blue lines, coloured text → 4:2:0 chroma edges
+  - a square moving every frame     → frame-rate and drop measurements need motion
+  - top-right box: black, flashes white 100 ms once per second, while a short
+    1 kHz beep (alternating left / right) plays on the same AudioContext clock
+                                     → audio−video offset and 10-minute drift
+                                       (ffmpeg blackdetect / silencedetect)
+  Audio must be otherwise silent for silencedetect to see the beeps.
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #202020; color: #e8e8e8; font-family: -apple-system, "Helvetica Neue", sans-serif; overflow: hidden; }
+  #start { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #111; z-index: 10; font-size: 4vmin; cursor: pointer; }
+  #start small { display: block; font-size: 2vmin; margin-top: 2vmin; color: #999; }
+  #marker { position: fixed; top: 0; right: 0; width: 15vmin; height: 15vmin; background: #000; }
+  #flash { position: absolute; inset: 0; background: #000; }
+  #flash.on { background: #fff; }
+  #clock { position: fixed; top: 1vmin; right: 16vmin; font: 4vmin ui-monospace, Menlo, monospace; color: #fff; text-align: right; }
+  #lines { position: fixed; left: 0; right: 0; top: 16vmin; height: 6vmin; background:
+    repeating-linear-gradient(90deg, #f00 0 1px, transparent 1px 7px, #00f 7px 8px, transparent 8px 14px); }
+  #colours { position: fixed; top: 23vmin; left: 2vmin; right: 2vmin; font-size: 2.2vmin; line-height: 1.6; }
+  #colours span { margin-right: 1.2em; }
+  #track { position: fixed; top: 30vmin; left: 0; right: 0; height: 8vmin; background: #303030; }
+  #box { position: absolute; top: 1vmin; width: 6vmin; height: 6vmin; background: #ffb000; }
+  #scroll { position: fixed; top: 40vmin; bottom: 0; left: 4vmin; right: 4vmin; overflow: hidden; font-size: 1.3vmin; line-height: 1.5; color: #d0d0d0; }
+  #scroll div { will-change: transform; }
+  #scroll p { margin: 0 0 0.8em; columns: 3; column-gap: 3vmin; }
+</style>
+</head>
+<body>
+<div id="start">點一下開始（啟動聲音，並進入全螢幕）<small>可用 pnpm matrix -- &lt;矩陣&gt; --open-material 由 Chrome kiosk 自動開啟</small></div>
+<div id="marker"><div id="flash"></div></div>
+<div id="clock">0.000</div>
+<div id="lines"></div>
+<div id="colours">
+  <span style="color:#f00">紅色文字 Red 0123</span><span style="color:#0f0">綠色文字 Green 4567</span><span style="color:#00f">藍色文字 Blue 89</span>
+  <span style="color:#ff0">黃 Yellow</span><span style="color:#0ff">青 Cyan</span><span style="color:#f0f">洋紅 Magenta</span>
+  <span style="color:#fff;background:#000">白底黑字反轉</span><span style="color:#000;background:#fff">黑字白底</span>
+</div>
+<div id="track"><div id="box"></div></div>
+<div id="scroll"><div id="text"></div></div>
+<script>
+(() => {
+  const start = document.getElementById("start");
+  const flash = document.getElementById("flash");
+  const clock = document.getElementById("clock");
+  const box = document.getElementById("box");
+  const text = document.getElementById("text");
+  const scroll = document.getElementById("scroll");
+
+  // Enough small text to scroll for ten minutes: ASCII, CJK and digits so
+  // sharpness can be judged on all three.
+  const sample = "RecordStuff 錄製品質測試素材。The quick brown fox jumps over the lazy dog 0123456789. 靜夜思：床前明月光，疑是地上霜；舉頭望明月，低頭思故鄉。 Sphinx of black quartz, judge my vow. 天地玄黃，宇宙洪荒，日月盈昃，辰宿列張。 ";
+  let body = "";
+  for (let i = 0; i < 400; i += 1) body += `<p>${i.toString().padStart(4, "0")} ${sample.repeat(3)}</p>`;
+  text.innerHTML = body + body;
+
+  let ctx;
+  let running = false;
+  let nextBeep = 0;
+  let beepIndex = 0;
+
+  function scheduleBeep(at, pan) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const panner = ctx.createStereoPanner();
+    osc.type = "sine";
+    osc.frequency.value = 1000;
+    gain.gain.setValueAtTime(0, at);
+    gain.gain.linearRampToValueAtTime(0.5, at + 0.003);
+    gain.gain.setValueAtTime(0.5, at + 0.055);
+    gain.gain.linearRampToValueAtTime(0, at + 0.06);
+    panner.pan.value = pan;
+    osc.connect(gain).connect(panner).connect(ctx.destination);
+    osc.start(at);
+    osc.stop(at + 0.07);
+  }
+
+  function frame() {
+    if (!running) return;
+    const t = ctx.currentTime;
+    // Beeps are scheduled on the audio clock one second ahead; the flash
+    // follows the same clock, so both markers share one time base.
+    while (nextBeep < t + 1.0) {
+      scheduleBeep(nextBeep, beepIndex % 2 === 0 ? -1 : 1);
+      beepIndex += 1;
+      nextBeep += 1;
+    }
+    const phase = t - Math.floor(t);
+    flash.classList.toggle("on", phase < 0.1);
+    clock.textContent = t.toFixed(3);
+    const width = window.innerWidth;
+    const boxWidth = box.offsetWidth;
+    // Sweeps the full width every 4 seconds: about 8 px per frame at 60 fps on 1920 px.
+    const sweep = (t % 4) / 4;
+    box.style.transform = `translateX(${sweep * (width - boxWidth)}px)`;
+    // Scroll 60 px per second; loop when the first copy is out of view.
+    const half = text.scrollHeight / 2;
+    const y = (t * 60) % half;
+    text.style.transform = `translateY(${-y}px)`;
+    requestAnimationFrame(frame);
+  }
+
+  start.addEventListener("click", async () => {
+    start.remove();
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+    await ctx.resume();
+    nextBeep = Math.ceil(ctx.currentTime) + 1;
+    running = true;
+    requestAnimationFrame(frame);
+    if (document.fullscreenElement === null && document.documentElement.requestFullscreen) {
+      try { await document.documentElement.requestFullscreen(); } catch (e) { /* kiosk mode is already full screen */ }
+    }
+  });
+
+  // `?auto=1` (used by pnpm matrix --open-material together with Chrome's
+  // --autoplay-policy=no-user-gesture-required): start without a click.
+  if (new URLSearchParams(location.search).has("auto")) {
+    setTimeout(() => { if (!running && start.isConnected) start.click(); }, 1500);
+  }
+})();
+</script>
+</body>
+</html>
