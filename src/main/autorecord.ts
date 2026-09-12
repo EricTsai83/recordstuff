@@ -6,7 +6,6 @@
  * is never written. A packaged build ignores the variable entirely.
  */
 import {
-  AUDIO_QUALITIES,
   DEFAULT_QUALITY,
   FRAME_RATES,
   RESOLUTION_CAPS,
@@ -31,7 +30,6 @@ const QUALITY_KEYS: Record<keyof QualitySettings, readonly unknown[]> = {
   videoQuality: VIDEO_QUALITIES,
   resolutionCap: RESOLUTION_CAPS,
   frameRate: FRAME_RATES,
-  audioQuality: AUDIO_QUALITIES,
 };
 
 /**

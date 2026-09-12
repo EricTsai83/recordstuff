@@ -36,21 +36,21 @@ interface MatrixEntry {
 /** Fixed matrices; every entry merges over DEFAULT_QUALITY inside the app, not over settings.json. */
 const MATRICES: Record<string, MatrixEntry[]> = {
   quick: [
-    { name: "1440p 標準", seconds: 30, quality: { resolutionCap: "1440p", videoQuality: "standard", frameRate: 30, audioQuality: "high" } },
-    { name: "1440p 高品質", seconds: 30, quality: { resolutionCap: "1440p", videoQuality: "high", frameRate: 30, audioQuality: "high" } },
-    { name: "原尺寸 標準 音訊 192k", seconds: 30, quality: { resolutionCap: "source", videoQuality: "standard", frameRate: 30, audioQuality: "standard" } },
+    { name: "1440p 標準", seconds: 30, quality: { resolutionCap: "1440p", videoQuality: "standard", frameRate: 30 } },
+    { name: "1440p 高品質", seconds: 30, quality: { resolutionCap: "1440p", videoQuality: "high", frameRate: 30 } },
+    { name: "原尺寸 標準", seconds: 30, quality: { resolutionCap: "source", videoQuality: "standard", frameRate: 30 } },
   ],
   levels: [
-    { name: "1080p 精省", seconds: 30, quality: { resolutionCap: "1080p", videoQuality: "economy", frameRate: 30, audioQuality: "high" } },
-    { name: "1080p 標準（原 8 Mbps 基準）", seconds: 30, quality: { resolutionCap: "1080p", videoQuality: "standard", frameRate: 30, audioQuality: "high" } },
-    { name: "1080p 高品質", seconds: 30, quality: { resolutionCap: "1080p", videoQuality: "high", frameRate: 30, audioQuality: "high" } },
+    { name: "1080p 精省", seconds: 30, quality: { resolutionCap: "1080p", videoQuality: "economy", frameRate: 30 } },
+    { name: "1080p 標準（原 8 Mbps 基準）", seconds: 30, quality: { resolutionCap: "1080p", videoQuality: "standard", frameRate: 30 } },
+    { name: "1080p 高品質", seconds: 30, quality: { resolutionCap: "1080p", videoQuality: "high", frameRate: 30 } },
   ],
   fps: [
-    { name: "原尺寸 標準 30 fps", seconds: 30, quality: { resolutionCap: "source", videoQuality: "standard", frameRate: 30, audioQuality: "high" } },
-    { name: "原尺寸 標準 60 fps", seconds: 30, quality: { resolutionCap: "source", videoQuality: "standard", frameRate: 60, audioQuality: "high" } },
+    { name: "原尺寸 標準 30 fps", seconds: 30, quality: { resolutionCap: "source", videoQuality: "standard", frameRate: 30 } },
+    { name: "原尺寸 標準 60 fps", seconds: 30, quality: { resolutionCap: "source", videoQuality: "standard", frameRate: 60 } },
   ],
   long: [
-    { name: "1080p 標準 30 fps 10 分鐘", seconds: 600, quality: { resolutionCap: "1080p", videoQuality: "standard", frameRate: 30, audioQuality: "high" } },
+    { name: "1080p 標準 30 fps 10 分鐘", seconds: 600, quality: { resolutionCap: "1080p", videoQuality: "standard", frameRate: 30 } },
   ],
 };
 

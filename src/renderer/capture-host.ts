@@ -6,7 +6,7 @@
  */
 import { CHUNK_INTERVAL_MS, OUTPUT_MIME_TYPE, isMainMessage, type HostMessage } from "../shared/protocol";
 import {
-  audioBitsPerSecond,
+  AUDIO_BITS_PER_SECOND,
   fitWithinCap,
   videoBitsPerSecond,
   type CaptureReport,
@@ -295,7 +295,7 @@ async function applyQuality(stream: MediaStream, quality: QualitySettings): Prom
   const audioSettings = audio?.getSettings() ?? {};
   const report: CaptureReport = {
     videoBitsPerSecond: videoBitsPerSecond(encodeSize, quality.frameRate, quality.videoQuality),
-    audioBitsPerSecond: audioBitsPerSecond(quality.audioQuality),
+    audioBitsPerSecond: AUDIO_BITS_PER_SECOND,
     warnings,
   };
   // Only fields the platform reported; `undefined` must not travel as a key

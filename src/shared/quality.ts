@@ -9,26 +9,22 @@
 export type VideoQuality = "economy" | "standard" | "high";
 export type ResolutionCap = "1080p" | "1440p" | "4k" | "source";
 export type FrameRate = 30 | 60;
-export type AudioQuality = "standard" | "high";
 
 export interface QualitySettings {
   videoQuality: VideoQuality;
   resolutionCap: ResolutionCap;
   frameRate: FrameRate;
-  audioQuality: AudioQuality;
 }
 
 export const VIDEO_QUALITIES: readonly VideoQuality[] = ["economy", "standard", "high"];
 export const RESOLUTION_CAPS: readonly ResolutionCap[] = ["1080p", "1440p", "4k", "source"];
 export const FRAME_RATES: readonly FrameRate[] = [30, 60];
-export const AUDIO_QUALITIES: readonly AudioQuality[] = ["standard", "high"];
 
-/** Plan 007 defaults: standard video, source size, 30 fps, high audio. */
+/** Plan 007 defaults: standard video, source size, 30 fps. */
 export const DEFAULT_QUALITY: QualitySettings = {
   videoQuality: "standard",
   resolutionCap: "source",
   frameRate: 30,
-  audioQuality: "high",
 };
 
 export function isQualitySettings(value: unknown): value is QualitySettings {
@@ -37,8 +33,7 @@ export function isQualitySettings(value: unknown): value is QualitySettings {
   return (
     (VIDEO_QUALITIES as readonly unknown[]).includes(record["videoQuality"]) &&
     (RESOLUTION_CAPS as readonly unknown[]).includes(record["resolutionCap"]) &&
-    (FRAME_RATES as readonly unknown[]).includes(record["frameRate"]) &&
-    (AUDIO_QUALITIES as readonly unknown[]).includes(record["audioQuality"])
+    (FRAME_RATES as readonly unknown[]).includes(record["frameRate"])
   );
 }
 
@@ -92,9 +87,12 @@ export function fitWithinCap(source: Dimensions, cap: ResolutionCap): Dimensions
 
 /**
  * Encoder target in bits per pixel per frame. `standard` at 1080p30 lands on
- * the 8 Mbps the first version shipped with, so the baseline is unchanged;
- * the other two are the plan 007 §A starting points, to be tuned against
- * real recordings.
+ * the 8 Mbps the first version shipped with, so the baseline is unchanged.
+ * Plan 008 (2026-09-13, macOS 26 / Electron 44, 1920x1080) measured the
+ * encoder honouring these targets within 2% at 30 fps for all three levels
+ * (4.4 / 8.1 / 14.9 Mbps); at 60 fps Chromium delivered about twice the
+ * target (31 Mbps for 16.2). The values are kept; whether they *look* right
+ * is the subjective comparison tracked in plans/measurements/.
  */
 export const BITS_PER_PIXEL: Record<VideoQuality, number> = {
   economy: 0.07,
@@ -112,14 +110,14 @@ export function videoBitsPerSecond(size: Dimensions, frameRate: number, quality:
   return Math.min(VIDEO_BITRATE_MAX, Math.max(VIDEO_BITRATE_MIN, rounded));
 }
 
-export const AUDIO_BITRATES: Record<AudioQuality, number> = {
-  standard: 192_000,
-  high: 256_000,
-};
-
-export function audioBitsPerSecond(quality: AudioQuality): number {
-  return AUDIO_BITRATES[quality];
-}
+/**
+ * One AAC target for every recording. Plan 008 measured Chromium's AAC
+ * encoder on macOS delivering about 160 kbps whatever was asked (192 k and
+ * 256 k came out the same), so a user-facing audio quality choice would have
+ * promised a difference that does not exist; the former `audioQuality`
+ * setting was removed and an old settings.json key is ignored.
+ */
+export const AUDIO_BITS_PER_SECOND = 256_000;
 
 /**
  * What the capture host observed and asked the encoder for, reported in
@@ -178,7 +176,7 @@ const unknown = (value: number | undefined, unit = ""): string => (value === und
 export function describeCapture(requested: QualitySettings, report: CaptureReport): string {
   const size = report.width === undefined || report.height === undefined ? "未知" : `${report.width}x${report.height}`;
   const parts = [
-    `requested video=${requested.videoQuality} cap=${requested.resolutionCap} fps=${requested.frameRate} audio=${requested.audioQuality}`,
+    `requested video=${requested.videoQuality} cap=${requested.resolutionCap} fps=${requested.frameRate}`,
     `track size=${size} fps=${unknown(report.frameRate)} sampleRate=${unknown(report.sampleRate, " Hz")} channels=${unknown(report.channelCount)}`,
     `target videoBps=${report.videoBitsPerSecond} audioBps=${report.audioBitsPerSecond}`,
   ];

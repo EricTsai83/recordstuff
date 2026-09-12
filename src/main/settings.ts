@@ -61,7 +61,6 @@ export function parseSettings(text: string): ParsedSettings | undefined {
       videoQuality: record["quality"].videoQuality,
       resolutionCap: record["quality"].resolutionCap,
       frameRate: record["quality"].frameRate,
-      audioQuality: record["quality"].audioQuality,
     };
   } else {
     warnings.push("quality is missing or has unsupported values: using defaults");

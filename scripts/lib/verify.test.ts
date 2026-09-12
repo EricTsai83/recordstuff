@@ -25,7 +25,7 @@ describe("log parsing", () => {
   it("reads a capture line into requested / track / target", () => {
     expect(parseCaptureLine(CAPTURE_LINE)).toEqual({
       sessionId: "mtynus3n-i3lxyd",
-      requested: { videoQuality: "standard", resolutionCap: "1440p", frameRate: 60, audioQuality: "high" },
+      requested: { videoQuality: "standard", resolutionCap: "1440p", frameRate: 60 },
       track: { width: 1440, height: 1440, frameRate: 60, sampleRate: 48000, channelCount: 1 },
       targetVideoBps: 16_200_000,
       targetAudioBps: 256_000,
@@ -33,7 +33,10 @@ describe("log parsing", () => {
     });
   });
 
-  it("keeps unknown track fields undefined and carries warnings", () => {
+  it("keeps unknown track fields undefined, carries warnings, and reads the current line format without audio=", () => {
+    expect(
+      parseCaptureLine("recorder: session s0 capture: requested video=high cap=4k fps=60; track size=1920x1080 fps=60 sampleRate=48000 Hz channels=2; target videoBps=16200000 audioBps=256000")?.requested,
+    ).toEqual({ videoQuality: "high", resolutionCap: "4k", frameRate: 60 });
     const entry = parseCaptureLine(
       "recorder: session s1 capture: requested video=economy cap=source fps=30 audio=standard; track size=未知 fps=未知 sampleRate=未知 channels=未知; target videoBps=8100000 audioBps=192000; warnings: video track 未回報尺寸，無法套用解析度上限",
     );

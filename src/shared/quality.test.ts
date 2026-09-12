@@ -3,7 +3,7 @@ import {
   DEFAULT_QUALITY,
   VIDEO_BITRATE_MAX,
   VIDEO_BITRATE_MIN,
-  audioBitsPerSecond,
+  AUDIO_BITS_PER_SECOND,
   describeCapture,
   effectiveQuality,
   fitWithinCap,
@@ -18,7 +18,9 @@ import {
 describe("isQualitySettings", () => {
   it("accepts every supported combination and rejects anything else", () => {
     expect(isQualitySettings(DEFAULT_QUALITY)).toBe(true);
-    expect(isQualitySettings({ videoQuality: "economy", resolutionCap: "4k", frameRate: 60, audioQuality: "standard" })).toBe(true);
+    expect(isQualitySettings({ videoQuality: "economy", resolutionCap: "4k", frameRate: 60 })).toBe(true);
+    // A settings.json written before the audio quality setting was removed still validates.
+    expect(isQualitySettings({ ...DEFAULT_QUALITY, audioQuality: "standard" })).toBe(true);
     expect(isQualitySettings({ ...DEFAULT_QUALITY, frameRate: 24 })).toBe(false);
     expect(isQualitySettings({ ...DEFAULT_QUALITY, frameRate: "30" })).toBe(false);
     expect(isQualitySettings({ ...DEFAULT_QUALITY, resolutionCap: "720p" })).toBe(false);
@@ -95,10 +97,9 @@ describe("videoBitsPerSecond", () => {
   });
 });
 
-describe("audioBitsPerSecond", () => {
-  it("192 kbps standard, 256 kbps high", () => {
-    expect(audioBitsPerSecond("standard")).toBe(192_000);
-    expect(audioBitsPerSecond("high")).toBe(256_000);
+describe("AUDIO_BITS_PER_SECOND", () => {
+  it("is one fixed AAC target (plan 008: Chromium clamps to ~160 kbps whatever is asked)", () => {
+    expect(AUDIO_BITS_PER_SECOND).toBe(256_000);
   });
 });
 
@@ -133,7 +134,7 @@ describe("frameRateDowngrade", () => {
 describe("describeCapture", () => {
   it("marks unreported fields as unknown and labels bitrates as targets", () => {
     expect(describeCapture(DEFAULT_QUALITY, report)).toBe(
-      "requested video=standard cap=source fps=30 audio=high; " +
+      "requested video=standard cap=source fps=30; " +
         "track size=未知 fps=未知 sampleRate=未知 channels=未知; " +
         "target videoBps=8100000 audioBps=256000",
     );

@@ -84,7 +84,7 @@ describe("SettingsStore", () => {
 });
 
 describe("quality settings (plan 007 §B3)", () => {
-  const custom = { videoQuality: "high", resolutionCap: "1080p", frameRate: 60, audioQuality: "standard" } as const;
+  const custom = { videoQuality: "high", resolutionCap: "1080p", frameRate: 60 } as const;
 
   it("a version 1 file keeps its outputDir, gets the default quality and logs the upgrade", async () => {
     await fs.writeFile(filePath, JSON.stringify({ version: 1, outputDir: "/old" }));
@@ -97,7 +97,7 @@ describe("quality settings (plan 007 §B3)", () => {
   it("round-trips a full quality block and persists it as version 2", async () => {
     const first = store();
     await first.setQuality({ videoQuality: "high", resolutionCap: "1080p" });
-    await first.setQuality({ frameRate: 60, audioQuality: "standard" });
+    await first.setQuality({ frameRate: 60 });
     expect(first.quality).toEqual(custom);
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({ version: 2, outputDir: DEFAULT, quality: custom });
     const second = store();
@@ -148,11 +148,10 @@ describe("quality settings (plan 007 §B3)", () => {
     const s = store();
     await Promise.all([
       s.setQuality({ videoQuality: "high" }),
-      s.setQuality({ audioQuality: "standard" }),
       s.setOutputDir("/picked"),
       s.setQuality({ frameRate: 60 }),
     ]);
-    const expected = { ...DEFAULT_QUALITY, videoQuality: "high", audioQuality: "standard", frameRate: 60 };
+    const expected = { ...DEFAULT_QUALITY, videoQuality: "high", frameRate: 60 };
     expect(s.quality).toEqual(expected);
     expect(s.outputDir).toBe("/picked");
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({ version: 2, outputDir: "/picked", quality: expected });

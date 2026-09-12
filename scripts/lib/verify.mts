@@ -44,12 +44,13 @@ const numberOrUndefined = (text: string | undefined): number | undefined => {
 
 export function parseCaptureLine(line: string): CaptureLogEntry | undefined {
   const match =
-    /recorder: session (\S+) capture: requested video=(\S+) cap=(\S+) fps=(\S+) audio=(\S+); track size=(\S+) fps=(\S+) sampleRate=(\S+)(?: Hz)? channels=(\S+); target videoBps=(\d+) audioBps=(\d+)(?:; warnings: (.*))?$/.exec(
+    /recorder: session (\S+) capture: requested video=(\S+) cap=(\S+) fps=(\S+)(?: audio=\S+)?; track size=(\S+) fps=(\S+) sampleRate=(\S+)(?: Hz)? channels=(\S+); target videoBps=(\d+) audioBps=(\d+)(?:; warnings: (.*))?$/.exec(
       line,
     );
   if (!match) return undefined;
-  const [, sessionId, video, cap, fps, audio, size, trackFps, sampleRate, channels, videoBps, audioBps, warnings] = match;
-  const requested = { videoQuality: video, resolutionCap: cap, frameRate: Number(fps), audioQuality: audio };
+  // `audio=` appeared in logs before 2026-09-13 (the audio quality setting was removed); it is skipped.
+  const [, sessionId, video, cap, fps, size, trackFps, sampleRate, channels, videoBps, audioBps, warnings] = match;
+  const requested = { videoQuality: video, resolutionCap: cap, frameRate: Number(fps) };
   if (!isQualitySettings(requested)) return undefined;
   const track: TrackReport = {};
   const sizeMatch = size === undefined ? undefined : /^(\d+)x(\d+)$/.exec(size);
@@ -674,7 +675,7 @@ export const VERDICT_MARK: Record<Verdict, string> = { pass: "✅", fail: "❌",
 export function describeRequested(entry: CaptureLogEntry | undefined): string {
   if (!entry) return "log 中找不到對應 session";
   const q = entry.requested;
-  return `影像 ${q.videoQuality}，上限 ${q.resolutionCap}，${q.frameRate} fps，音訊 ${q.audioQuality}；track ${entry.track.width ?? "?"}x${entry.track.height ?? "?"} @ ${entry.track.frameRate ?? "?"} fps，${entry.track.sampleRate ?? "?"} Hz × ${entry.track.channelCount ?? "?"} 聲道；目標 ${mbps(entry.targetVideoBps)} / ${kbps(entry.targetAudioBps)}` +
+  return `影像 ${q.videoQuality}，上限 ${q.resolutionCap}，${q.frameRate} fps；track ${entry.track.width ?? "?"}x${entry.track.height ?? "?"} @ ${entry.track.frameRate ?? "?"} fps，${entry.track.sampleRate ?? "?"} Hz × ${entry.track.channelCount ?? "?"} 聲道；目標 ${mbps(entry.targetVideoBps)} / ${kbps(entry.targetAudioBps)}` +
     (entry.warnings ? `；warnings: ${entry.warnings}` : "");
 }
 

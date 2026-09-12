@@ -336,7 +336,7 @@ describe("renderer CaptureHost", () => {
 
   it("missing track settings are left out of the report and the encoder assumes 1080p", async () => {
     const port = boot();
-    port.receive(start("s1", { ...DEFAULT_QUALITY, videoQuality: "economy", audioQuality: "standard" }));
+    port.receive(start("s1", { ...DEFAULT_QUALITY, videoQuality: "economy" }));
     const s = stream();
     s.tracks[0]!.settings = {};
     s.tracks[1]!.settings = {};
@@ -347,7 +347,7 @@ describe("renderer CaptureHost", () => {
     if (message.type !== "started") return;
     expect(message.capture).toEqual({
       videoBitsPerSecond: 4_400_000,
-      audioBitsPerSecond: 192_000,
+      audioBitsPerSecond: 256_000,
       warnings: ["video track 未回報尺寸，無法套用解析度上限"],
     });
     expect(Object.keys(message.capture)).not.toContain("width");

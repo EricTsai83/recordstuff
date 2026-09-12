@@ -161,23 +161,21 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
 });
 
 describe("錄製品質 submenu (plan 007 §B1)", () => {
-  it("shows the four groups with their current value in the label", () => {
+  it("shows the three groups with their current value in the label", () => {
     const m = trayModel({ type: "idle" }, mac);
     expect(qualitySubmenus(m.menu)).toEqual([
       "影像品質：標準",
       "解析度上限：原尺寸",
       "幀率：30 fps",
-      "音訊品質：高品質（AAC 256 kbps）",
     ]);
     const custom = trayModel(
       { type: "idle" },
-      { ...mac, quality: { videoQuality: "economy", resolutionCap: "1080p", frameRate: 60, audioQuality: "standard" } },
+      { ...mac, quality: { videoQuality: "economy", resolutionCap: "1080p", frameRate: 60 } },
     );
     expect(qualitySubmenus(custom.menu)).toEqual([
       "影像品質：精省",
       "解析度上限：1080p",
       "幀率：60 fps",
-      "音訊品質：標準（AAC 192 kbps）",
     ]);
   });
 
@@ -216,7 +214,7 @@ describe("錄製品質 submenu (plan 007 §B1)", () => {
 
   it("is available in needsPermission too", () => {
     const m = trayModel({ type: "needsPermission", needsRelaunch: false }, mac);
-    expect(qualitySubmenus(m.menu)).toHaveLength(4);
+    expect(qualitySubmenus(m.menu)).toHaveLength(3);
   });
 });
 

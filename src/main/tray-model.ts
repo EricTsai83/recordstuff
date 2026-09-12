@@ -5,9 +5,7 @@
  */
 import path from "node:path";
 import {
-  AUDIO_BITRATES,
   isFrameRateAvailable,
-  type AudioQuality,
   type FrameRate,
   type QualitySettings,
   type ResolutionCap,
@@ -63,11 +61,6 @@ export const RESOLUTION_CAP_LABELS: Record<ResolutionCap, string> = {
   "1440p": "1440p",
   "4k": "4K",
   source: "原尺寸",
-};
-
-export const AUDIO_QUALITY_LABELS: Record<AudioQuality, string> = {
-  standard: `標準（AAC ${AUDIO_BITRATES.standard / 1000} kbps）`,
-  high: `高品質（AAC ${AUDIO_BITRATES.high / 1000} kbps）`,
 };
 
 const QUALITY_MENU_LABEL = "錄製品質";
@@ -163,12 +156,6 @@ function qualityMenu(ctx: TrayContext): TrayMenuItem {
         label: `幀率：${q.frameRate} fps`,
         enabled: true,
         items: radioGroup("frameRate", q.frameRate, [30, 60], frameRateLabel, (fps) => isFrameRateAvailable(fps, ctx.platform)),
-      },
-      {
-        kind: "submenu",
-        label: `音訊品質：${AUDIO_QUALITY_LABELS[q.audioQuality]}`,
-        enabled: true,
-        items: radioGroup("audioQuality", q.audioQuality, ["standard", "high"], (v) => AUDIO_QUALITY_LABELS[v]),
       },
     ],
   };
