@@ -23,6 +23,7 @@ import { createFileLogger } from "./log";
 import { PermissionWatcher, openScreenCaptureSettings } from "./permission";
 import { Recorder } from "./recorder";
 import { SettingsStore } from "./settings";
+import { parseAutoRecord, runAutoRecord } from "./autorecord";
 import { AppTray } from "./tray";
 import { APP_NAME, type TrayAction } from "./tray-model";
 import { effectiveQuality, frameRateDowngrade, type QualitySettings } from "../shared/quality";
@@ -142,8 +143,14 @@ async function main(): Promise<void> {
       `${process.platform} ${os.release()}; outputDir ${settings.outputDir}; ` +
       `quality ${JSON.stringify(settings.quality)}; log ${logPath}`,
   );
+  // Plan 008 §B: a development-only unattended run driven by an environment
+  // variable; its quality override lives in memory only. Packaged builds
+  // never read it (`parseAutoRecord` returns undefined).
+  const autoRecord = parseAutoRecord(process.env["RECORDSTUFF_AUTORECORD"], app.isPackaged);
+  if (autoRecord && !autoRecord.ok) log(`autorecord: ignoring RECORDSTUFF_AUTORECORD: ${autoRecord.error}`);
+  const qualityOverride = autoRecord?.ok ? autoRecord.config.quality : undefined;
   /** A stored 60 fps on a platform where it is not yet verified records at 30 (plan 007). */
-  const quality = (): QualitySettings => effectiveQuality(settings.quality, process.platform);
+  const quality = (): QualitySettings => effectiveQuality(qualityOverride ?? settings.quality, process.platform);
 
   session.defaultSession.setDisplayMediaRequestHandler(
     (request, callback) => void chooseDisplayMedia(request, callback),
@@ -333,6 +340,16 @@ async function main(): Promise<void> {
   permission?.start();
   if (process.platform === "win32" && (await isFirstRun(app.getPath("userData")))) {
     tray.notifyTrayHint();
+  }
+  if (autoRecord?.ok) {
+    runAutoRecord(autoRecord.config, {
+      state: () => recorder.state,
+      toggle: () => recorder.toggle(),
+      stop: () => recorder.stop(),
+      subscribe: (listener) => recorder.subscribe(listener),
+      quit: () => app.quit(),
+      log,
+    });
   }
 
   app.on("before-quit", (event) => {
