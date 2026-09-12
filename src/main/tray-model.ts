@@ -15,6 +15,7 @@ export type TrayAction =
   | "revealLastSaved"
   | "openOutputDir"
   | "changeOutputDir"
+  | "revealLog"
   | "quit";
 
 export type TrayMenuItem =
@@ -57,7 +58,12 @@ function item(label: string, action: TrayAction, toolTip?: string): TrayMenuItem
 }
 
 const SEPARATOR: TrayMenuItem = { kind: "separator" };
-const QUIT: TrayMenuItem = item("結束", "quit");
+/**
+ * Every menu ends with these two (plans/002-file-logging.md): the log is the
+ * only way a user of a window-less app can find out why something failed, so
+ * it stays reachable in every state; revealing it has no effect on a recording.
+ */
+const FOOTER: TrayMenuItem[] = [{ kind: "separator" }, item("顯示 log", "revealLog"), item("結束", "quit")];
 
 function outputDirItems(ctx: TrayContext, enabled: boolean): TrayMenuItem[] {
   // Electron menu tooltips exist only on macOS, so both platforms show the
@@ -85,8 +91,7 @@ export function trayModel(state: RecordingState, ctx: TrayContext): TrayModel {
           state.needsRelaunch ? item("重新啟動", "relaunch") : item("開啟系統設定", "openPermissionSettings"),
           SEPARATOR,
           ...outputDirItems(ctx, true),
-          SEPARATOR,
-          QUIT,
+          ...FOOTER,
         ],
       };
     case "idle": {
@@ -96,7 +101,7 @@ export function trayModel(state: RecordingState, ctx: TrayContext): TrayModel {
       if (state.lastSavedPath) {
         menu.push(item("顯示最後一個錄影", "revealLastSaved", state.lastSavedPath));
       }
-      menu.push(SEPARATOR, ...outputDirItems(ctx, true), SEPARATOR, QUIT);
+      menu.push(SEPARATOR, ...outputDirItems(ctx, true), ...FOOTER);
       return {
         icon: "idle",
         title: "",
@@ -109,21 +114,21 @@ export function trayModel(state: RecordingState, ctx: TrayContext): TrayModel {
         icon: "idle",
         title: "…",
         tooltip: `${APP_NAME}：啟動中…`,
-        menu: [disabled("啟動中…"), SEPARATOR, QUIT],
+        menu: [disabled("啟動中…"), ...FOOTER],
       };
     case "recording":
       return {
         icon: "recording",
         title: "REC",
         tooltip: `${APP_NAME}：錄製中`,
-        menu: [disabled("錄製中"), item("停止", "stop"), SEPARATOR, ...outputDirItems(ctx, false), SEPARATOR, QUIT],
+        menu: [disabled("錄製中"), item("停止", "stop"), SEPARATOR, ...outputDirItems(ctx, false), ...FOOTER],
       };
     case "stopping":
       return {
         icon: "idle",
         title: "…",
         tooltip: `${APP_NAME}：儲存中…`,
-        menu: [disabled("儲存中…"), SEPARATOR, QUIT],
+        menu: [disabled("儲存中…"), ...FOOTER],
       };
   }
 }

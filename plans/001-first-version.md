@@ -38,7 +38,7 @@ macOS 選單列（Windows 是系統匣）上一個圖示。點一下開始錄主
 - 左鍵點一下：開始錄主螢幕加系統音訊
 - 再點一下：停止，檔案存到 `~/Movies/RecordStuff`（Windows 是 `~/Videos/RecordStuff`），檔名用時間
 - 圖示反映狀態：待命、錄製中（macOS 圖示旁多一個 `REC` 字樣，Windows 換紅色圖示）、儲存中
-- 右鍵：一個小選單，內容是目前狀態的一行文字、儲存位置、錄製品質、必要時的權限動作、「結束」
+- 右鍵：一個小選單，內容是目前狀態的一行文字、儲存位置、錄製品質、必要時的權限動作、「顯示 log」、「結束」
 - 錄製品質（007 待實作）：Tray 子選單調整影像品質、解析度上限、30／60 fps、音訊品質；永久保存，開始時固定設定，錄製期間停用。60 fps 依平台驗證後開放，不新增視窗。
 - 更改儲存位置：右鍵選單「更改儲存位置…」開系統的選資料夾對話框，選了之後之後的錄影都存那裡，重開 app 仍記得
 - 停止後一則系統通知：「已儲存 2026-09-11 14-30-00.mp4」，點通知在 Finder / 檔案總管顯示
@@ -186,16 +186,17 @@ export type RecordingState =
 
 | 狀態 | 圖示 | macOS 標題 | 左鍵 | 右鍵選單 |
 |---|---|---|---|---|
-| needsPermission | 待命圖（灰） | 無 | 顯示權限通知 | 「需要螢幕錄製權限」（灰字）、「開啟系統設定」或「重新啟動」、「儲存位置：RecordStuff」、「更改儲存位置…」、「結束」 |
-| idle | 待命圖 | 無 | 開始 | 「待命中」（灰字）、有的話「顯示最後一個錄影」、「儲存位置：RecordStuff」、「更改儲存位置…」、「結束」 |
-| starting | 待命圖 | `…` | 忽略 | 「啟動中…」（灰字）、「結束」 |
-| recording | 錄製圖（紅） | `REC` | 停止 | 「錄製中」（灰字）、「停止」、「儲存位置：RecordStuff」（灰字）、「結束」 |
-| stopping | 待命圖 | `…` | 忽略 | 「儲存中…」（灰字）、「結束」 |
+| needsPermission | 待命圖（灰） | 無 | 顯示權限通知 | 「需要螢幕錄製權限」（灰字）、「開啟系統設定」或「重新啟動」、「儲存位置：RecordStuff」、「更改儲存位置…」、「顯示 log」、「結束」 |
+| idle | 待命圖 | 無 | 開始 | 「待命中」（灰字）、有的話「顯示最後一個錄影」、「儲存位置：RecordStuff」、「更改儲存位置…」、「顯示 log」、「結束」 |
+| starting | 待命圖 | `…` | 忽略 | 「啟動中…」（灰字）、「顯示 log」、「結束」 |
+| recording | 錄製圖（紅） | `REC` | 停止 | 「錄製中」（灰字）、「停止」、「儲存位置：RecordStuff」（灰字）、「顯示 log」、「結束」 |
+| stopping | 待命圖 | `…` | 忽略 | 「儲存中…」（灰字）、「顯示 log」、「結束」 |
 
 - macOS 用 template 圖示，自動適應深淺色選單列。`tray.setTitle('REC')` 只在 macOS 有效，Windows 靠換圖示。
 - 不用 `tray.setContextMenu`，否則 macOS 左鍵會彈選單。左鍵走 `tray.on('click')`，右鍵走 `tray.on('right-click')` 再 `tray.popUpContextMenu(menu)`。
 - 選單每次彈出時依目前狀態重建，不快取。
 - 通知用 Electron `Notification`。「已儲存」通知的 click 用 `shell.showItemInFolder`。
+- 「顯示 log」（002）：每個狀態都有，`shell.showItemInFolder` 選取 log 檔；檔案不存在時改開 log 資料夾。放在「結束」正上方、與儲存位置同一組之後，低頻除錯用途不搶眼。
 - Windows 可能把圖示收進系統匣溢位區。第一次啟動送一則通知「RecordStuff 在系統匣待命」。
 
 007 將在 idle／needsPermission 選單加入「錄製品質」子選單；starting／recording／stopping 顯示停用項目。上表為現行基本選單。
@@ -385,6 +386,7 @@ Windows 不需要任何權限。
 | 近似真機 | `pnpm start` | Electron.app（`com.github.Electron`） | 檔案 log（見下） | 測權限、系統音訊、通知。build 後用 `open` 啟動，`open` 立刻返回，app 由 launchd 接管，關掉終端機也不影響。改了程式要重跑 |
 | 真機 | `electron-builder --dir` | RecordStuff.app | 檔案 log | 權限提示與設定頁顯示的是 RecordStuff，與使用者看到的一致。驗證簽章、公證、`LSUIElement` 時用 |
 
+- 檔案 log（002）：所有 log 同時寫 stdout 與 `app.getPath('logs')/recordstuff.log`，超過 5 MB 輪替成 `.1`／`.2`／`.3`；macOS 開發版在 `~/Library/Logs/recordstuff/`，RecordStuff.app 在 `~/Library/Logs/RecordStuff/`，Windows 在 `%APPDATA%\<app>\logs\`。main 的未捕捉例外也寫進同一個檔。指令見 README「Log」一節。
 - 這些 shell 若帶著 `ELECTRON_RUN_AS_NODE=1`（Claude Code 等工具會設），Electron 會以純 Node 模式啟動而崩潰；`pnpm start` 已在腳本內清掉，`pnpm dev` 要自己 `unset`。`open` 會把 shell 環境變數傳給 app，所以同樣要清。
 - 升級 Electron 版本後 TCC 對 Electron.app 的授權會失效，用 `tccutil reset ScreenCapture com.github.Electron` 清掉重授權比在清單裡找快。
 

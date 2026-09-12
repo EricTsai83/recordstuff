@@ -35,10 +35,11 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
       "儲存位置：~/Movies/RecordStuff",
       "更改儲存位置…",
       "—",
+      "顯示 log",
       "結束",
     ]);
     expect(m.menu[0]).toMatchObject({ enabled: false });
-    expect(enabledActions(m.menu)).toEqual(["openPermissionSettings", "openOutputDir", "changeOutputDir", "quit"]);
+    expect(enabledActions(m.menu)).toEqual(["openPermissionSettings", "openOutputDir", "changeOutputDir", "revealLog", "quit"]);
   });
 
   it("needsPermission with needsRelaunch shows relaunch instead", () => {
@@ -52,14 +53,14 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
     const m = trayModel({ type: "idle" }, mac);
     expect(m.icon).toBe("idle");
     expect(m.title).toBe("");
-    expect(labels(m.menu)).toEqual(["待命中", "—", "儲存位置：~/Movies/RecordStuff", "更改儲存位置…", "—", "結束"]);
-    expect(enabledActions(m.menu)).toEqual(["openOutputDir", "changeOutputDir", "quit"]);
+    expect(labels(m.menu)).toEqual(["待命中", "—", "儲存位置：~/Movies/RecordStuff", "更改儲存位置…", "—", "顯示 log", "結束"]);
+    expect(enabledActions(m.menu)).toEqual(["openOutputDir", "changeOutputDir", "revealLog", "quit"]);
   });
 
   it("idle with a last recording adds the reveal item", () => {
     const m = trayModel({ type: "idle", lastSavedPath: "/Users/eric/Movies/RecordStuff/a.mp4" }, mac);
     expect(labels(m.menu)[1]).toBe("顯示最後一個錄影");
-    expect(enabledActions(m.menu)).toEqual(["revealLastSaved", "openOutputDir", "changeOutputDir", "quit"]);
+    expect(enabledActions(m.menu)).toEqual(["revealLastSaved", "openOutputDir", "changeOutputDir", "revealLog", "quit"]);
   });
 
   it("idle with an unusable output dir says so on the first line", () => {
@@ -68,28 +69,28 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
     expect(enabledActions(m.menu)).toContain("changeOutputDir");
   });
 
-  it("starting: idle icon, ellipsis title, only quit", () => {
+  it("starting: idle icon, ellipsis title, only log and quit", () => {
     const m = trayModel({ type: "starting" }, mac);
     expect(m.icon).toBe("idle");
     expect(m.title).toBe("…");
-    expect(labels(m.menu)).toEqual(["啟動中…", "—", "結束"]);
-    expect(enabledActions(m.menu)).toEqual(["quit"]);
+    expect(labels(m.menu)).toEqual(["啟動中…", "—", "顯示 log", "結束"]);
+    expect(enabledActions(m.menu)).toEqual(["revealLog", "quit"]);
   });
 
   it("recording: red icon, REC title, stop; output dir items greyed", () => {
     const m = trayModel({ type: "recording", startedAt: "2026-09-11T06:30:00Z" }, mac);
     expect(m.icon).toBe("recording");
     expect(m.title).toBe("REC");
-    expect(labels(m.menu)).toEqual(["錄製中", "停止", "—", "儲存位置：~/Movies/RecordStuff", "更改儲存位置…", "—", "結束"]);
-    expect(enabledActions(m.menu)).toEqual(["stop", "quit"]);
+    expect(labels(m.menu)).toEqual(["錄製中", "停止", "—", "儲存位置：~/Movies/RecordStuff", "更改儲存位置…", "—", "顯示 log", "結束"]);
+    expect(enabledActions(m.menu)).toEqual(["stop", "revealLog", "quit"]);
   });
 
-  it("stopping: idle icon, ellipsis, only quit", () => {
+  it("stopping: idle icon, ellipsis, only log and quit", () => {
     const m = trayModel({ type: "stopping" }, mac);
     expect(m.icon).toBe("idle");
     expect(m.title).toBe("…");
-    expect(labels(m.menu)).toEqual(["儲存中…", "—", "結束"]);
-    expect(enabledActions(m.menu)).toEqual(["quit"]);
+    expect(labels(m.menu)).toEqual(["儲存中…", "—", "顯示 log", "結束"]);
+    expect(enabledActions(m.menu)).toEqual(["revealLog", "quit"]);
   });
 
   it("Windows shows the abbreviated path and keeps the full path as toolTip", () => {
@@ -98,7 +99,7 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
     expect(dirItem).toMatchObject({ label: "儲存位置：~\\Videos\\RecordStuff", toolTip: win.outputDir });
   });
 
-  it("every state yields a non-empty menu ending in 結束", () => {
+  it("every state yields a menu ending in 顯示 log then 結束, both enabled", () => {
     const states: RecordingState[] = [
       { type: "needsPermission", needsRelaunch: false },
       { type: "idle" },
@@ -108,6 +109,8 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
     ];
     for (const state of states) {
       const menu = trayModel(state, mac).menu;
+      expect(menu.at(-3)).toEqual({ kind: "separator" });
+      expect(menu.at(-2)).toMatchObject({ label: "顯示 log", action: "revealLog", enabled: true });
       expect(menu.at(-1)).toMatchObject({ label: "結束", action: "quit", enabled: true });
     }
   });

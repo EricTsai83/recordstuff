@@ -19,6 +19,7 @@ import os from "node:os";
 import path from "node:path";
 import { CaptureHost } from "./capture-host";
 import { FileWriter, ensureWritableDir } from "./file-writer";
+import { createFileLogger } from "./log";
 import { PermissionWatcher, openScreenCaptureSettings } from "./permission";
 import { Recorder } from "./recorder";
 import { SettingsStore } from "./settings";
@@ -28,9 +29,24 @@ import type { ErrorCode } from "../shared/state";
 
 const APP_ID = "com.recordstuff.app";
 
-function log(message: string): void {
-  console.log(`[${new Date().toISOString()}] ${message}`);
-}
+/**
+ * stdout plus a rotated file (plans/002-file-logging.md). `app.getPath("logs")` is
+ * `~/Library/Logs/<app name>` on macOS (where Console.app looks) and
+ * `<userData>/logs` on Windows.
+ */
+const logPath = path.join(app.getPath("logs"), "recordstuff.log");
+const log = createFileLogger({ filePath: logPath });
+
+// The main process has no window: an uncaught error would otherwise leave no
+// trace at all. Electron's default for the exception case is a modal error
+// dialog and the process keeps running; keep that, but write the log line first.
+process.on("uncaughtException", (error) => {
+  log(`uncaught exception: ${error.stack ?? String(error)}`);
+  dialog.showErrorBox(APP_NAME, `發生未預期的錯誤：${error.message}`);
+});
+process.on("unhandledRejection", (reason) => {
+  log(`unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`);
+});
 
 /** `~/Movies/RecordStuff` on macOS, `~/Videos/RecordStuff` on Windows. */
 function defaultOutputDir(): string {
@@ -120,6 +136,10 @@ async function main(): Promise<void> {
     defaultOutputDir: defaultOutputDir(),
     log,
   });
+  log(
+    `start: ${APP_NAME} ${app.getVersion()}; electron ${process.versions.electron}; ` +
+      `${process.platform} ${os.release()}; outputDir ${settings.outputDir}; log ${logPath}`,
+  );
 
   session.defaultSession.setDisplayMediaRequestHandler(
     (request, callback) => void chooseDisplayMedia(request, callback),
@@ -186,6 +206,9 @@ async function main(): Promise<void> {
           shell.showItemInFolder(recorder.state.lastSavedPath);
         }
         return;
+      case "revealLog":
+        await revealLog();
+        return;
       case "openOutputDir": {
         const error = await shell.openPath(settings.outputDir);
         if (error) log(`openPath(${settings.outputDir}) failed: ${error}`);
@@ -195,6 +218,22 @@ async function main(): Promise<void> {
         await changeOutputDir();
         return;
     }
+  }
+
+  /**
+   * Select the log file in Finder / Explorer. If file logging was disabled
+   * (no file was ever written) fall back to opening the logs folder.
+   */
+  async function revealLog(): Promise<void> {
+    try {
+      await fs.access(logPath);
+      shell.showItemInFolder(logPath);
+      return;
+    } catch {
+      // No log file yet: open (or fail to open) the folder instead.
+    }
+    const error = await shell.openPath(path.dirname(logPath));
+    if (error) log(`openPath(${path.dirname(logPath)}) failed: ${error}`);
   }
 
   async function changeOutputDir(): Promise<void> {
