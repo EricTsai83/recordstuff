@@ -38,7 +38,7 @@
 </style>
 </head>
 <body>
-<div id="start">點一下開始（啟動聲音，並進入全螢幕）<small>可用 pnpm matrix -- &lt;矩陣&gt; --open-material 由 Chrome kiosk 自動開啟</small></div>
+<div id="start">點一下開始（啟動聲音，並進入全螢幕）<small>pnpm matrix 預設會由 Chrome kiosk 在主螢幕自動開啟這一頁</small></div>
 <div id="marker"><div id="flash"></div></div>
 <div id="clock">0.000</div>
 <div id="lines"></div>
@@ -123,7 +123,7 @@
     }
   });
 
-  // `?auto=1` (used by pnpm matrix --open-material together with Chrome's
+  // `?auto=1` (pnpm matrix opens this by default, together with Chrome's
   // --autoplay-policy=no-user-gesture-required): start without a click.
   if (new URLSearchParams(location.search).has("auto")) {
     setTimeout(() => { if (!running && start.isConnected) start.click(); }, 1500);

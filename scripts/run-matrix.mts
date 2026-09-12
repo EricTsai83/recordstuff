@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 /**
- * `pnpm matrix -- <quick|levels|fps|long> [--open-material] [--screen WxH] [--dry-run]`
+ * `pnpm matrix -- <all|quick|levels|fps|long> [--no-open-material] [--screen WxH] [--dry-run]`
+ *
+ * Defaults do the right thing: the test material page is opened full screen
+ * on the main display by Chrome (kiosk, private profile) and the main
+ * display's size is detected for the aspect check. `--no-open-material`
+ * when you are showing the material yourself; `--screen` to override.
  *
  * Plan 008 §B: build the app once, then for each entry of the matrix launch
  * Electron.app with `RECORDSTUFF_AUTORECORD` so it records unattended and
@@ -54,6 +59,20 @@ const MATRICES: Record<string, MatrixEntry[]> = {
   ],
 };
 
+/**
+ * One sitting, about 7 minutes: 15 s is enough for size / fps / drop /
+ * bitrate / offset statistics (the sync window needs ≥ 3 marker pairs), the
+ * 30 fps source case is covered by `quick`, and drift is measured on a
+ * 3-minute segment. The formal 10-minute answer to 001 §17 stays in `long`.
+ */
+const shorten = (entries: MatrixEntry[], seconds: number): MatrixEntry[] => entries.map((e) => ({ ...e, seconds }));
+MATRICES["all"] = [
+  ...shorten(MATRICES["levels"]!, 15),
+  ...shorten(MATRICES["fps"]!.filter((e) => e.quality.frameRate === 60), 15),
+  ...shorten(MATRICES["quick"]!, 15),
+  { name: "1080p 標準 30 fps 3 分鐘（漂移）", seconds: 180, quality: { resolutionCap: "1080p", videoQuality: "standard", frameRate: 30 } },
+];
+
 const REST_SECONDS = 10;
 const ELECTRON_APP = path.join(REPO_ROOT, "node_modules/electron/dist/Electron.app");
 /** pnpm symlinks `node_modules/electron`; process command lines show the resolved `.pnpm/…` path. */
@@ -64,18 +83,19 @@ const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
 const MATERIAL_PROFILE = path.join(os.tmpdir(), "recordstuff-material-profile");
 
 function usage(): never {
-  console.error(`usage: pnpm matrix -- <${Object.keys(MATRICES).join("|")}> [--open-material] [--screen 1920x1080] [--dry-run]`);
+  console.error(`usage: pnpm matrix -- <${Object.keys(MATRICES).join("|")}> [--no-open-material] [--screen 1920x1080] [--dry-run]`);
   process.exit(2);
 }
 
 const argv = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--"));
 let matrixName: string | undefined;
-let openMaterial = false;
+let openMaterial = true;
 let dryRun = false;
 let screen: { width: number; height: number } | undefined;
 for (let i = 0; i < argv.length; i += 1) {
   const arg = argv[i] ?? "";
   if (arg === "--open-material") openMaterial = true;
+  else if (arg === "--no-open-material") openMaterial = false;
   else if (arg === "--dry-run") dryRun = true;
   else if (arg === "--screen") {
     screen = parseDimensions(argv[i + 1] ?? "");
@@ -86,9 +106,25 @@ for (let i = 0; i < argv.length; i += 1) {
 }
 const matrix = matrixName ? MATRICES[matrixName] : undefined;
 if (!matrixName || !matrix) usage();
+screen ??= mainDisplaySize();
+if (!screen) console.error("偵測不到主螢幕尺寸；成品比例檢查會是 —（可用 --screen WxH 指定）");
 if (process.platform !== "darwin") {
   console.error("pnpm matrix 目前只支援 macOS（open／ps／pgrep）；Windows 由 plan 005 決定啟動方式");
   process.exit(2);
+}
+
+/**
+ * Logical size of the main display (the one the app records) from
+ * `system_profiler`: the block marked `Main Display: Yes`, using `UI Looks
+ * like` when present (HiDPI) and `Resolution` otherwise.
+ */
+function mainDisplaySize(): { width: number; height: number } | undefined {
+  const text = spawnSync("system_profiler", ["SPDisplaysDataType"], { encoding: "utf8" }).stdout ?? "";
+  const blocks = text.split(/\n(?=\s{8}\S)/);
+  const main = blocks.find((block) => /Main Display: Yes/.test(block));
+  if (!main) return undefined;
+  const ui = /UI Looks like:\s*(\d+) x (\d+)/.exec(main) ?? /Resolution:\s*(\d+) x (\d+)/.exec(main);
+  return ui ? { width: Number(ui[1]), height: Number(ui[2]) } : undefined;
 }
 
 function outputDir(): string {
@@ -222,7 +258,7 @@ async function recordOnce(entry: MatrixEntry): Promise<RunOutcome> {
 
 async function main(): Promise<void> {
   const dir = outputDir();
-  console.log(`矩陣 ${matrixName}：${matrix!.length} 段；輸出 ${dir}；log ${LOG_PATH}`);
+  console.log(`矩陣 ${matrixName}：${matrix!.length} 段；輸出 ${dir}；log ${LOG_PATH}；主螢幕 ${screen ? `${screen.width}x${screen.height}` : "未知"}；素材頁 ${openMaterial ? "自動開啟（Chrome kiosk）" : "自行開啟"}`);
   if (dryRun) {
     for (const entry of matrix!) console.log(`  ${entry.name}: ${entry.seconds} s ${JSON.stringify(entry.quality)}`);
     return;
