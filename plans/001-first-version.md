@@ -39,7 +39,7 @@ macOS 選單列（Windows 是系統匣）上一個圖示。點一下開始錄主
 - 再點一下：停止，檔案存到 `~/Movies/RecordStuff`（Windows 是 `~/Videos/RecordStuff`），檔名用時間
 - 圖示反映狀態：待命、錄製中（macOS 圖示旁多一個 `REC` 字樣，Windows 換紅色圖示）、儲存中
 - 右鍵：一個小選單，內容是目前狀態的一行文字、儲存位置、錄製品質、必要時的權限動作、「顯示 log」、「結束」
-- 錄製品質（007 待實作）：Tray 子選單調整影像品質、解析度上限、30／60 fps、音訊品質；永久保存，開始時固定設定，錄製期間停用。60 fps 依平台驗證後開放，不新增視窗。
+- 錄製品質（007）：Tray 子選單調整影像品質、解析度上限、30／60 fps；永久保存，開始時固定設定，錄製期間停用。60 fps 依平台驗證後開放，不新增視窗。音訊固定一個 AAC 目標（008 實測 Chromium 夾在約 160 kbps，選項無意義，已移除）。
 - 更改儲存位置：右鍵選單「更改儲存位置…」開系統的選資料夾對話框，選了之後之後的錄影都存那裡，重開 app 仍記得
 - 停止後一則系統通知：「已儲存 2026-09-11 14-30-00.mp4」，點通知在 Finder / 檔案總管顯示
 - 失敗時一則系統通知，一行白話錯誤
@@ -199,7 +199,7 @@ export type RecordingState =
 - 「顯示 log」（002）：每個狀態都有，`shell.showItemInFolder` 選取 log 檔；檔案不存在時改開 log 資料夾。放在「結束」正上方、與儲存位置同一組之後，低頻除錯用途不搶眼。
 - Windows 可能把圖示收進系統匣溢位區。第一次啟動送一則通知「RecordStuff 在系統匣待命」。
 
-- 「錄製品質 ▸」（007）：四個單選子選單，各自的標籤帶目前值——「影像品質：標準」（精省／標準／高品質）、「解析度上限：原尺寸」（1080p／1440p／4K／原尺寸）、「幀率：30 fps」（30／60；60 只在 macOS 開放，Windows 顯示「60 fps（此平台尚未驗證，暫不開放）」停用）、「音訊品質：高品質（AAC 256 kbps）」（標準 192／高品質 256）。選一項即寫入 settings.json 並重繪選單；寫入失敗保留原值並通知「無法儲存錄製品質設定」。starting／recording／stopping 只顯示停用的「錄製品質」，進行中的錄製沿用開始時的快照。
+- 「錄製品質 ▸」（007）：三個單選子選單，各自的標籤帶目前值——「影像品質：標準」（精省／標準／高品質）、「解析度上限：原尺寸」（1080p／1440p／4K／原尺寸）、「幀率：30 fps」（30／60；60 只在 macOS 開放，Windows 顯示「60 fps（此平台尚未驗證，暫不開放）」停用）。選一項即寫入 settings.json 並重繪選單；寫入失敗保留原值並通知「無法儲存錄製品質設定」。starting／recording／stopping 只顯示停用的「錄製品質」，進行中的錄製沿用開始時的快照。
 
 ## 9. Capture host 協定
 
@@ -207,7 +207,7 @@ Main 與 capture host 用 `postMessage` 交換一對 `MessagePort`。
 
 **Main → capture host**：`start { sessionId, quality }`、`stop { sessionId }`、`ping`
 
-- `quality`（007）是 main 在建立 session 時讀取的設定快照 `{ videoQuality, resolutionCap, frameRate, audioQuality }`；host 不自己讀設定。type guard 拒絕不支援的值。
+- `quality`（007）是 main 在建立 session 時讀取的設定快照 `{ videoQuality, resolutionCap, frameRate }`；host 不自己讀設定。音訊位元率固定 `AUDIO_BITS_PER_SECOND`（008 移除了音訊品質選項）。type guard 拒絕不支援的值。
 
 **Capture host → main**
 - `ready`
@@ -248,11 +248,11 @@ Main 與 capture host 用 `postMessage` 交換一對 `MessagePort`。
 {
   "version": 2,
   "outputDir": "/Users/eric/Movies/RecordStuff",
-  "quality": { "videoQuality": "standard", "resolutionCap": "source", "frameRate": 30, "audioQuality": "high" }
+  "quality": { "videoQuality": "standard", "resolutionCap": "source", "frameRate": 30 }
 }
 ```
 
-`videoQuality`：`economy | standard | high`；`resolutionCap`：`1080p | 1440p | 4k | source`；`frameRate`：`30 | 60`；`audioQuality`：`standard | high`。存絕對路徑。寫入用先寫 `settings.json.tmp` 再 rename，避免寫一半當機留下壞檔。讀取：version 1（只有 outputDir）照讀並補預設 quality，下次儲存改寫成 version 2；version 2 的 `quality` 缺少或含不支援的值時只把 quality 重設為預設、保留 outputDir 並記 log；檔案不存在、JSON 壞掉、outputDir 不對、版本不認得則整份回預設值並記 log，不彈通知。Windows 上讀到 `frameRate: 60` 不改檔，開始錄製時以 30 執行（60 fps 尚未在 Windows 驗證）。
+`videoQuality`：`economy | standard | high`；`resolutionCap`：`1080p | 1440p | 4k | source`；`frameRate`：`30 | 60`。2026-09-13 前寫入的 `audioQuality` 鍵照讀忽略，版本不變。存絕對路徑。寫入用先寫 `settings.json.tmp` 再 rename，避免寫一半當機留下壞檔。讀取：version 1（只有 outputDir）照讀並補預設 quality，下次儲存改寫成 version 2；version 2 的 `quality` 缺少或含不支援的值時只把 quality 重設為預設、保留 outputDir 並記 log；檔案不存在、JSON 壞掉、outputDir 不對、版本不認得則整份回預設值並記 log，不彈通知。Windows 上讀到 `frameRate: 60` 不改檔，開始錄製時以 30 執行（60 fps 尚未在 Windows 驗證）。
 
 **錄製中**：「更改儲存位置…」變灰字。改了位置只影響下一次錄製，進行中的錄製寫到開始時決定的路徑。
 
@@ -345,16 +345,18 @@ Windows 不需要任何權限。
 前兩題決定第一版的輸出格式，先答。
 
 1. `MediaRecorder` 在 Electron 44 於 macOS 13、14、15 與 Windows 10、11 上，`isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')` 是否都回 true？實際錄出的檔案是否真的走硬體編碼（macOS 用 Activity Monitor 看 VTEncoderXPCService，Windows 看 GPU 使用率）？1080p30 錄 10 分鐘的 CPU 與檔案大小。
-   **部分已答**：macOS 26 / Electron 44.3 / Chrome 152 回 true。硬體編碼、CPU、檔案大小未測。
+   **部分已答**：macOS 26 / Electron 44.3 / Chrome 152 回 true。2026-09-13（008，M1 Pro）：1080p30 三等級 Electron 各程序 CPU 合計平均 14–16%、峰值 ≤ 19%，1080p60 平均 23%；1080p30 標準 ≈ 58 MB/分（10 分鐘 ≈ 580 MB），高品質 ≈ 106 MB/分，60 fps 標準 ≈ 223 MB/分。硬體編碼（VTEncoderXPCService）與 10 分鐘實跑由 003 用 `pnpm matrix -- long` 補；Windows 未測。
 2. 錄製中強制殺掉 capture host，留下的 `.recording.mp4` 在 QuickTime Player、Windows 媒體播放器、Chrome 是否能播？duration 是否正確？
 3. `audio: 'loopback'` 在上述 OS 版本是否穩定拿到系統音訊？
    **部分已答（2026-09-12 使用者回報）**：目前測試環境錄製停止後有聲音也有畫面；使用者觀察到品質差距，交由 007 量測。尚未提供長時間穩定性、音畫同步與 Windows 驗收結果。
 4. Windows 上系統沒聲音在播時，loopback 是否停止送資料、導致音軌漂移？Cap 用一條靜音輸出串流當 keepalive，我們是否需要？
    **已答，不需要**：Chromium 的 `audio_low_latency_input_win.cc` 在 loopback 模式會自己開一條 event-driven 的 render stream（註解：「to ensure that we can deliver a loopback stream … also when no output audio is playing」），並對 `AUDCLNT_BUFFERFLAGS_SILENT` 補零。Cap 與 OBS 要自己做是因為它們直接碰 WASAPI。Windows 實測時仍要看一次前十秒無聲的檔案音畫是否對齊，當作驗證而不是問題。
 5. 10 分鐘錄製結束時音畫偏移多少？
+   **部分已答（2026-09-13，008）**：3 分鐘漂移 3 ms；固有延遲 45–80 ms（音訊晚，每段內穩定）。10 分鐘由 003 用 `pnpm matrix -- long` 補。
 6. macOS 螢幕錄製權限第一次授權後是否必須重啟 app？沒有視窗的 app，TCC 提示是否仍正常出現？
    **部分已答**：系統音訊是另一個權限，缺了會拿到死音軌而非錯誤（§11）。螢幕錄製是否需重啟、無視窗時提示是否出現，尚未在乾淨的 TCC 狀態下測（要先 `tccutil reset ScreenCapture com.github.Electron`）。
 7. HiDPI 下 `getDisplayMedia` 給的是邏輯還是實體解析度？
+   **部分已答（2026-09-13，008）**：外接 1:1 螢幕下實際影格 1920x1080（邏輯 = 實體）。另發現 `track.getSettings()` 在多螢幕下回報錯誤高度（1920x1920），capture host 已改讀實際影格。HiDPI 內建螢幕為主螢幕時再看 `capture:` log。
 8. 錄主螢幕時選單列圖示本身會被錄進去，`REC` 字樣是否會出現在影片裡？可接受，還是要在錄製中改用不顯眼的圖示？
 
 ## 18. 決策摘要

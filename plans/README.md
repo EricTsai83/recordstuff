@@ -6,9 +6,9 @@
 
 ## 目前進度
 
-**001 初始實作、002 檔案 log、007 錄製品質設定已完成；008 的工具（`pnpm verify`、`pnpm matrix`、`RECORDSTUFF_AUTORECORD`、測試素材頁）已完成並試跑成功。** 008 剩下用工具做正式量測並回填 007 的係數；第一次試跑就發現 `track size=` 在套上限後不是實際尺寸、系統音訊為單聲道（見 `plans/measurements/2026-09-13.md`）。003 已有部分實測結果，剩餘驗收改用 008 的工具補齊。權限、Windows 與發行驗收尚未完成。
+**001 初始實作、002 檔案 log、007 錄製品質設定、008 錄製驗收工具與量測已完成。** 008 的 `pnpm matrix -- all` 量到 1080p30 三等級位元率為目標的 99–100%、CPU 15%、3 分鐘漂移 3 ms，係數維持、60 fps 維持開放；過程中修了 `getSettings()` 尺寸錯誤導致 1080p 錄成 1080x606 的 bug，並確認系統音訊為單聲道內容（dual-mono）、AAC 夾在約 160 k，據此移除了「音訊品質」選單；音畫固有延遲 45–80 ms 落在 ITU-R BT.1359 察覺門檻內，不補償、門檻改採該標準（見 `plans/measurements/2026-09-13.md`）。權限、Windows 與發行驗收尚未完成。
 
-**下一個執行項目仍是 008**：主螢幕空出來時跑 `pnpm matrix -- levels|fps|quick|long --open-material`，填主觀比對，回填 `src/shared/quality.ts` 係數與 60 fps 決定，並決定單聲道與 `track size=` 的處理；完成後進 003。
+**下一個執行項目是 003 第一次有聲音的真實錄製**：填 `plans/measurements/2026-09-13.md` 的主觀比對、QuickTime 雙擊與拖曳、`pnpm matrix -- long` 10 分鐘、當機測試、`REC` 字樣。
 
 ## 完成一個計畫後的收尾（每次都要做）
 
@@ -29,8 +29,8 @@
 | 1 | 001 | [初始實作與基本錄製（含產品規格）](001-first-version.md) | 已完成 | 2026-09-12 | 程式骨架、狀態機、檔案寫入、Tray、設定與權限偵測已完成；使用者確認停止後有聲有影。品質、完整驗收與發布工作由 002～007 追蹤 |
 | 2 | 002 | [檔案 log](002-file-logging.md) | 已完成 | 2026-09-12 | `src/main/log.ts`：stdout + `app.getPath('logs')/recordstuff.log`（macOS `~/Library/Logs/<app>/`），5 MB 輪替保留 3 個，寫檔失敗不影響 app；main 未捕捉例外寫 log；右鍵選單「顯示 log」 |
 | 3 | 007 | [錄製品質與可調設定](007-recording-quality-settings.md) | 已完成 | 2026-09-13 | 範圍縮小為設定能力與診斷：`shared/quality.ts`、Tray「錄製品質」四個單選子選單、settings v2（v1 相容）、`start`/`started` 協定快照與回報、`capture:` log、60 fps 降級通知、`pnpm probe`。係數為未驗證起點，預設輸出同原 8 Mbps／30 fps；量測與回填移交 008 |
-| 4 | 008 | [錄製驗收工具與量測流程](008-recording-verification-toolkit.md) | 進行中 | 2026-09-13 | **下一個（剩量測）。** 工具已完成：`pnpm verify`（ffprobe／ffmpeg 對門檻表，結果進 `plans/measurements/`）、`pnpm matrix`（`RECORDSTUFF_AUTORECORD` 自動錄製矩陣 quick／levels／fps／long，含 CPU 取樣）、`scripts/test-material.html`（閃光／beep 同步標記）。待主螢幕可用時做正式量測，回填 007 係數與 60 fps 決定，並處理 `track size=` 與單聲道兩個發現 |
-| 5 | 003 | [第一次有聲音的真實錄製](003-first-real-recording.md) | 進行中 | 2026-09-13 | 基本有聲有影已確認；待用 008 工具補 §17 第 1、2、3、5、7、8 題 |
+| 4 | 008 | [錄製驗收工具與量測流程](008-recording-verification-toolkit.md) | 已完成 | 2026-09-13 | 工具：`pnpm verify`（ffprobe／ffmpeg 對門檻表，結果進 `plans/measurements/`）、`pnpm matrix`（`RECORDSTUFF_AUTORECORD` 自動錄製矩陣 quick／levels／fps／long，含 CPU 取樣）、`scripts/test-material.html`（閃光／beep 同步標記）。`all` 矩陣（約 7 分鐘）有效量測：係數維持、60 fps 開放（檔案約四倍）、CPU 門檻 ≤ 40%、固有延遲 45–80 ms。修了 `getSettings()` 尺寸錯誤（1080p 錄成 1080x606），加 `channelCount: 2`（成品 stereo 但 dual-mono）。主觀比對與 10 分鐘交 003 |
+| 5 | 003 | [第一次有聲音的真實錄製](003-first-real-recording.md) | 進行中 | 2026-09-13 | **下一個。** 基本有聲有影已確認，008 已量到 CPU／位元率／漂移；剩主觀比對、QuickTime 拖曳、`pnpm matrix -- long`、當機測試、`REC` 字樣、固有延遲決定（§17 第 1、2、5、8 題） |
 | 6 | 004 | [乾淨 TCC 下的權限流程測試](004-permission-flow-clean-tcc.md) | 待執行 | 2026-09-12 | 回答 §17 第 6 題；驅動 §11 的最後修正 |
 | 7 | 006 | [RecordStuff.app 開發包與簽章](006-dev-app-bundle-and-signing.md) | 待執行 | 2026-09-12 | 里程碑 3 的前半；完成後第一版可發布 |
 | 平行 | 005 | [Windows 環境與驗收](005-windows-environment.md) | 待執行 | 2026-09-13 | 環境建置可隨時做；錄製驗收用 007 的設定與 008 的工具。只有 Mac，需先建 VM。006 的 Windows 部分依賴它 |
@@ -55,4 +55,6 @@
 | 2026-09-12 | 使用者確認基本錄製測通 | 停止後有畫面、有聲音；觀察到影像與音訊品質差距，交由 007 量測。未提供時長、播放器、同步、CPU 或 Windows 驗收數據 |
 | 2026-09-13 | 007 程式部分（A1、B1–B4） | `src/shared/quality.ts`（型別、驗證、`fitWithinCap`、位元率公式）、settings.json v2 與 v1 相容、Tray「錄製品質」子選單、`start { quality }`／`started { capture }` 協定、capture log、60 fps 降級通知、`pnpm probe`；152 個測試；兩輪 Codex GPT-6 Astra review，4 個 findings 全部修正。係數為起點，待 008 量測修正 |
 | 2026-09-13 | 008 工具（A、B、C） | `scripts/lib/verify.mts` 等 TypeScript 腳本以 Node 24 直接執行；`src/main/autorecord.ts`；`pnpm matrix -- quick` 試跑三段成功寫入 `plans/measurements/2026-09-13.md`（該輪畫面不是素材頁，不算有效量測）；175 個測試。發現：套上限後 `track size=` 是約束值非實際尺寸（1440x1440 vs 成品 1440x810）；macOS loopback 音訊單聲道；靜態內容位元率遠低於目標。同步偵測器以合成檔驗證，偏差約 +10 ms；兩輪 Codex GPT-6 Astra review，7 個 findings 全部修正 |
+| 2026-09-13 | 008 第二輪：`levels` 量測與 capture host 尺寸修正 | 1080p × 三等級成品 1080x606，源頭是 `getSettings()` 回報 1920x1920；`src/renderer/capture-host.ts` 新增 `measureFrameSize`（隱藏 `<video>` 讀實際影格），真機 5 秒實錄確認 1920x1080／8.1 Mbps；`pnpm matrix -- all` 縮為約 7 分鐘；177 個測試。CPU 1080p30 平均 15%；音畫偏移固有約 50–60 ms |
+| 2026-09-13 | 008 第三輪：`all` 量測與結案 | 九段有效量測；係數 0.07／0.13／0.24 維持（實測 99–100%）；60 fps 開放（57 fps、31 Mbps 為兩倍目標、CPU 23%）；CPU 門檻 ≤ 40%；3 分鐘漂移 3 ms；固有延遲 45–80 ms；`channelCount: 2` 給 stereo 容器但 dual-mono；AAC 夾約 160 k。使用者決定：移除音訊品質選單（固定 256 k 目標）、音畫偏移門檻改採 ITU-R BT.1359（晚 < 125／早 < 45 ms）不補償 |
 | 2026-09-13 | 查 Cap 的驗收方式並寫成 008 | Cap `crates/cap-test` 用真機錄 + ffprobe 對門檻（30 ± 2 fps、掉幀 < 2%、音畫 < 50 ms、時長差 < 100 ms），無 PSNR／SSIM，畫質靠人眼；bpp 常數 0.15／0.30／1.0（錄製）、0.04～0.30（匯出）。007 縮小範圍結案，量測交 008 |
