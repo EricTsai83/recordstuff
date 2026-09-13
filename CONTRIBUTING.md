@@ -1,34 +1,79 @@
-# Contributing and Translations
+# Contributing
 
 [English](CONTRIBUTING.md) | [繁體中文](docs/zh-TW/CONTRIBUTING.md)
 
-English is the source language for this repository: README, system design, plans, developer instructions, code comments, diagnostics, and new issue/PR descriptions. Traditional Chinese is supported through explicit translations, not mixed-language canonical documents.
+You can contribute by reporting bugs, improving documentation and translations, adding tests, or fixing and extending the app.
 
-## Documentation layout
+## Report a bug or propose a change
 
-| English source | Traditional Chinese translation |
+For bugs, include steps to reproduce, expected and actual behavior, the app version or commit, and your OS version and hardware. For recording issues, also include display resolution, quality settings, and the audio output device. Attach relevant logs or a short sample when useful, after removing private information. On macOS, `pnpm log` follows the application log.
+
+For a feature or a substantial design change, open an issue describing the problem and proposed behavior so the scope can be discussed before implementation. The [system design](docs/system-design/README.md) and [remaining plans](plans/README.md) provide context for existing behavior and work in progress.
+
+## Set up development
+
+1. Fork the repository if you do not have write access, then clone your fork.
+2. Install Node.js and pnpm. The project requires Node ≥22.12; use Node 24 if you will run the TypeScript measurement scripts.
+3. Install dependencies and create a branch for your change:
+
+   ```bash
+   pnpm install
+   git switch -c fix/describe-your-change
+   ```
+
+4. Start the development app:
+
+   ```bash
+   pnpm dev
+   ```
+
+Only macOS has been verified so far. On macOS, `pnpm start` builds and opens the development Electron app and is useful for recording checks. Grant screen/system-audio recording permission when prompted; when using `pnpm dev`, permission may be associated with the launching terminal or editor. Relaunch if a permission change has not taken effect.
+
+For testing a packaged macOS app, `pnpm start:app` builds, self-signs, verifies, and opens a local bundle. This requires a local code-signing identity; see [build and verification tooling](docs/system-design/tooling.md) for setup details. Packaging is not required for ordinary source edits.
+
+## Find the relevant code
+
+| Location | Responsibility |
 | --- | --- |
-| README.md | README.zh-TW.md |
-| CONTRIBUTING.md | docs/zh-TW/CONTRIBUTING.md |
-| docs/system-design/*.md | docs/zh-TW/system-design/*.md |
-| docs/verification/README.md | docs/zh-TW/verification/README.md |
-| plans/*.md | docs/zh-TW/plans/*.md |
-| resources/INSTALL.md | resources/INSTALL.zh-TW.md |
+| `src/main/` | App lifecycle, recording coordination, file writing, permissions, settings, tray, and logs |
+| `src/renderer/` | Hidden capture host, media streams, and encoding |
+| `src/preload/` | MessagePort handoff |
+| `src/shared/` | State, message protocol, recording quality, and translations |
+| `scripts/` | Build, signing, and recording verification tools |
+| `docs/system-design/` | Architecture and module documentation |
 
-Pair every reader-facing document with a language switch at the top. Update both versions for behavior, scope, command, or path changes. English is authoritative if translations diverge. Links to code must resolve from each language's directory. Machine-readable identifiers, paths, commands, and hashes stay unchanged.
+Keep a change focused on the problem it addresses and follow the surrounding code's conventions. Tests live alongside the source as `*.test.ts`. Add or update tests when behavior changes; for a bug fix, cover the regression where practical.
 
-Historical raw measurement files retain their original language and values as evidence; they are explicitly marked as original records and explained by the bilingual verification summary. Chinese strings are also expected in translation catalogs, localization assertions, and intentional CJK rendering fixtures. Do not translate identifiers or alter historical measurements merely to remove non-ASCII text.
+App messages live in `src/shared/i18n.ts`. When adding or changing a message, update the English and Traditional Chinese entries and keep named placeholders consistent. When changing documented behavior or commands, update the relevant documentation and its existing translation. Keep document links valid relative to each file.
 
-## Application localization
+## Verify your change
 
-English messages are typed keys in src/shared/i18n.ts, with matching Traditional Chinese templates in ZH_TW. Use named placeholders rather than assembling translated fragments. English is the default regardless of OS locale. Language changes are persisted only after a successful settings write.
+For application changes, run:
 
-Localize menu/tooltip/dialog/notification and user-recovery text. Keep machine diagnostics and new measurement output English so reports can be compared. Do not embed raw technical diagnostics into localized error summaries; details remain in logs. Native OS dialogs follow the OS locale.
+```bash
+pnpm check
+```
 
-For a new message, add both languages and test placeholder parity. For a new setting, test old-file defaults, persistence, failed saves, and concurrent updates when relevant. Tests should cover actual behavior rather than snapshots of the entire implementation.
+This runs TypeScript checks, Vitest tests, and the production build. You can run `pnpm typecheck`, `pnpm test`, or `pnpm build` separately while developing. Before submitting any change, run `git diff --check`; for documentation-only edits, also check the affected links and commands.
 
-## Development and documentation checks
+For recording changes, make a recording and check that starting, stopping, saving, and playback work. Note your OS, hardware, settings, and any cases you could not test. Automated checks alone do not verify actual screen and system-audio capture.
 
-Run `pnpm check` after application changes and `git diff --check` before handoff. Verify local document links and paired translations after moving files. Media changes need appropriate capture/measurement checks; document hardware limitations honestly. Publishing a build and creating release assets belong to the explicit delivery plan, not routine documentation maintenance.
+FFmpeg and ffprobe are needed for developer media analysis, not to run the app. For example:
 
-Keep lasting product/design/evidence in docs. Plans contain unfinished work only; on completion move durable conclusions into design/verification, remove the completed plan and its translation, and update the indexes. Do not commit, push, or publish unless requested.
+```bash
+pnpm probe -- /absolute/path/recording.mp4
+pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
+```
+
+Use your actual source dimensions for `--screen`; sync analysis needs the test material described in the [tooling guide](docs/system-design/tooling.md). That guide also covers the recording matrix and audio fidelity checks. Keep new measurements separate from historical results and state any verification limitations.
+
+## Submit a pull request
+
+Commit your changes, push your branch to your fork or the repository, and open a pull request against the default branch. Include:
+
+- The problem being solved and a related issue, if one exists.
+- What behavior changes and any design choices a reviewer needs to understand.
+- Checks you ran and their results, including relevant manual recording checks and untested cases.
+- Screenshots or a short recording when they help demonstrate a visible change.
+
+Keep unrelated cleanup in separate changes so reviewers can assess the contribution. If review leads to further edits, rerun the checks affected by those edits and update the PR description with the final behavior and verification results.

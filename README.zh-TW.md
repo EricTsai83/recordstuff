@@ -40,7 +40,7 @@ Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前
 - [System design](docs/zh-TW/system-design/README.md)：產品總覽、架構、錄製流程、桌面功能、函式細節、工具與決策。
 - [驗證紀錄](docs/zh-TW/verification/README.md)：已取得證據與限制。
 - [剩餘計畫](docs/zh-TW/plans/README.md)：只保留 macOS 下載交付。
-- [貢獻與翻譯](docs/zh-TW/CONTRIBUTING.md)：英文正式文件、繁體中文對應版本與 App 翻譯規則。
+- [貢獻指南](docs/zh-TW/CONTRIBUTING.md)：開發環境、問題回報、測試與 PR 提交流程。
 
 ## 開發
 

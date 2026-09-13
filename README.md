@@ -39,7 +39,7 @@ The local app has been verified for recording/playback, Retina 3456×2234 captur
 
 - [System design](docs/system-design/README.md): overview, architecture, recording, desktop behavior, every module's functions, tooling, and decisions.
 - [Remaining work](plans/README.md): only downloadable macOS delivery; completed/canceled plans have been removed.
-- [Contributing and translations](CONTRIBUTING.md): English source documentation, paired Traditional Chinese translations, and UI catalogs.
+- [Contributing](CONTRIBUTING.md): development setup, bug reports, testing, and pull requests.
 
 ## Development
 
