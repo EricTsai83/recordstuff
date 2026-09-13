@@ -282,3 +282,18 @@ See [tooling](tooling.md) for pipeline and thresholds. These tools are developme
 | cell, formatMarkdown | Escape table cells and produce evidence section |
 
 [scripts/test-material.html](../../scripts/test-material.html): `scheduleBeep` builds a timed alternating-channel tone; `frame` advances visual motion/flash using the audio clock. The click callback initializes/resumes AudioContext and fullscreen playback. Mixed Latin/CJK sample text intentionally tests glyph sharpness rather than representing application UI localization.
+
+
+### Audio diagnostics v2
+
+The [design guide](audio-quality.md) explains the mathematics, gates, and limitations.
+
+| Module/functions | Contract |
+| --- | --- |
+| [audio-quality.mts](../../scripts/lib/audio-quality.mts): fixture, wav | Generate known stereo v2 material and serialize PCM16 WAV |
+| Same: fit, estimateFrequency | Least-squares sinusoid model including DC, bounded frequency search; no external processes |
+| Same: markerOnset, energy, analyze | Identify markers, measure power, judge format/frequency/channels/continuity; return pass, fail, or invalid |
+| [audio-quality-tools.mts](../../scripts/lib/audio-quality-tools.mts): inspectAudio | Check format first; bounded decode of first 60 seconds without resampling/remixing |
+| Same: recordAudio | Build/drive development app, play after capture starts, verify completion, clean up only owned children |
+| [audio-quality-summary.mts](../../scripts/lib/audio-quality-summary.mts): summarize | Requested/completed counts, verdict counts, min/median/max and missing counts; incomplete batches remain incomplete |
+| [CLI](../../scripts/audio-quality.mts): inspect, context, read, exitCode | Report provenance, environment snapshots, bounded external reads, exit mapping; top level owns new directory and 1–10 repeats |

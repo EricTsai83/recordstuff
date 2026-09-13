@@ -12,6 +12,7 @@ Updated: 2026-09-14. These documents describe the current implementation and rep
 | [Desktop features](desktop.md) | Tray, notifications, permissions, settings, and logging |
 | [Function reference](functions.md) | Named functions and methods, contracts, side effects, and collaborators |
 | [Build, packaging, and verification](tooling.md) | Developer workflows, signing, measurement tools, and delivery |
+| [Audio quality testing](audio-quality.md) | Why each audio metric matters, fixture design, frequency fitting, failure interpretation, and evidence |
 | [Design decisions](decisions.md) | Rationale, accepted tradeoffs, and conditions for architectural changes |
 | [Verification record](../verification/README.md) | Evidence, accepted limitations, and original measurements |
 

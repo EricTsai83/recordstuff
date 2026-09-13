@@ -64,6 +64,7 @@ pnpm dist:mac:local    # 自簽 DMG → dist/local
 pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 pnpm matrix -- all
+pnpm audio:quality -- record /tmp/audio-run-001 --repeat 3  # 音質迴歸測試（macOS；會播放測試音）
 ```
 
 結果存至 `docs/verification/measurements/`；matrix 只供 macOS 未打包開發版。long 現為 3 分鐘漂移回歸，10 分鐘基準已完成。詳見 [工具文件](docs/zh-TW/system-design/tooling.md)。
@@ -77,3 +78,5 @@ src/main 是生命週期、錄製狀態機、寫檔、權限與原生 UI；rende
 ## 授權
 
 本專案採用 [MIT License](LICENSE)。
+
+音質測試背後的設計與原理：[教學文件](docs/zh-TW/system-design/audio-quality.md)。

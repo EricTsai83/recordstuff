@@ -23,6 +23,7 @@ These are adopted decisions, not a future-work checklist. Current code and measu
 | macOS-only verification commitment | Available hardware is Mac; other platforms are not release blockers | Keep portability code without claiming untested behavior works |
 | English source and optional Traditional Chinese | GitHub documentation and diagnostics use a common source language; users may choose Chinese UI | Catalog and paired documentation must be maintained together |
 | Separate design from plans | Execution logs are poor long-term specifications | Keep behavior/evidence in docs and unfinished work in plans |
+| [Known-fixture audio diagnostics](audio-quality.md) | Simultaneous pilot, frequency fitting, and continuity windows distinguish spectral loss, gain, and clock error | Invalid measurements cannot support quality claims; retain repeated failures, never learn a bad baseline automatically; not a substitute for listening or long-duration verification |
 
 ## Evolution boundaries
 

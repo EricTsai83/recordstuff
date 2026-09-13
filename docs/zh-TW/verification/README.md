@@ -56,3 +56,21 @@
 本次英文正式文件及可保存的英文／繁體中文 App 功能已通過 pnpm check：14 個測試檔、221 tests、typecheck 與 build。涵蓋 placeholder 一致性、舊設定英文預設、保存失敗與並行更新、錄製中切換呈現，以及通知語言與點擊動作。pnpm matrix -- quick --dry-run 的英文輸出正常；文件本機連結與 git diff --check 已檢查，搬移的歷史 Markdown／JSON 與 Git 原檔逐位元相同。
 
 此次未產生新的自簽安裝包、未做新的原生介面錄製驗收或公開發布；這些仍由下載版計畫追蹤。
+
+## 音質自動化測試 — 2026-09-14
+
+新增 `pnpm audio:quality`（[用法與門檻](../system-design/tooling.md#音質迴歸測試)）。`pnpm check` 通過：15 個測試檔、232 個測試、型別檢查與建置，包含實際 FFmpeg AAC／低通／格式／CLI 整合測試。正常 PCM 與 FFmpeg AAC 通過，刻意劣化的素材失敗。新增開頭短暫聲音的迴歸案例保護標記對齊；標記或靜音間隔無效時，不輸出會造成誤判的頻率量測。
+
+完成版 macOS 自動流程透過未修改的程式擷取路徑錄製 16 秒。[原始報告](../../verification/measurements/2026-09-14-audio-quality.json) 為 **fail**，不是音質通過的基準：48 kHz／雙聲道格式與標記檢查通過，但 1 kHz 聲道分離約 0 dB（要求 ≥30 dB）；左右探測序列的 12 kHz 響應相對各自 1 kHz 為 −20.44／−12.64 dB，16 kHz 為 −74.72／−66.73 dB。其餘增益／殘餘能量失敗也保留在報告。PCM 素材與 FFmpeg AAC 對照組能通過相同頻率檢查。
+
+這證明此機器的「播放 → 系統擷取 → AAC」路徑有高頻流失與雙單聲道現象，與使用者反映聲音悶的情況一致，但尚未定位負責的環節。依序播放音調也可能量到隨時間變化的增益，因此兩個聲道序列的響應差異不代表硬體不對稱。未控制或量測裝置／音量，門檻屬初始工程標準。工具未更改程式音訊設定，也尚未修復音質。素材與擷取紀錄保留在 `/tmp/recordstuff-audio-quality-20260914-final`，MP4 路徑在原始報告中；暫存檔日後可能被清除。本次未產生新安裝檔。
+
+## 音質診斷 v2 穩健性修復 — 2026-09-14
+
+[設計教學](../system-design/audio-quality.md)記錄原因、演算法、門檻與限制。已重現兩個 v1 問題：刪掉每段 600 ms 探測音的前後各 100 ms 仍通過，而只有 10 ppm 時鐘偏差的乾淨訊號卻會在殘差檢查失敗。v2 以各成分的重疊視窗，以及有限頻率估計／最小平方擬合修正這些案例。同時 pilot 正規化也將區段間增益變化與頻率響應分開；結尾標記避免只靠補靜音就冒充完整素材。
+
+`pnpm check` 通過：15 個測試檔、254 個測試，其中 **33 個是音質工具測試**，另包含型別檢查與建置。對照涵蓋獨立相位的 ±10／20／100 ppm、過大時鐘偏差、實際 FFmpeg AAC／低通／格式解碼、邊緣／中央／僅目標音斷音、結尾插入 50 ms、局部削波、無效標記、多次摘要、未完成 batch，以及 CLI 保存與結束碼。文件目標、雙語章節與 `git diff --check` 通過。本次未修改正式音訊處理。
+
+完成三次真實 v2 擷取：**0 次 pass、2 次 fail、1 次 invalid**。[摘要](../../verification/measurements/2026-09-14-audio-v2/summary.json)維持 invalid。第 1 次標記間隔量得 −22.63 dB，未達素材辨識要求的 −30 dB，因此未輸出缺乏依據的頻譜欄位。第 2／3 次標記有效並保留失敗：1 kHz 聲道分離約 0 dB，16 kHz 相對同時 pilot 的響應，左側為 −46.64 到 −46.48 dB，右側為 −44.14 到 −43.85 dB。另有部分殘差／增益／12 kHz 失敗，詳見[第 1 次](../../verification/measurements/2026-09-14-audio-v2/run-1.json)、[第 2 次](../../verification/measurements/2026-09-14-audio-v2/run-2.json)及[第 3 次](../../verification/measurements/2026-09-14-audio-v2/run-3.json)。
+
+[前](../../verification/measurements/2026-09-14-audio-v2/environment-before.json)／[後](../../verification/measurements/2026-09-14-audio-v2/environment-after.json)裝置與音量快照相同。這是端點證據，不代表持續控制了整個環境。無效量測不納入各指標範圍，並明確計入缺少數量。這些是失敗證據，不是經校準的通過基準。v1／v2 的素材與估計方式不同，不能把精確 dB 差異當作產品改善前後比較。原本 v1 證據未改寫。暫存素材／log 留在 `/tmp/recordstuff-audio-v2-20260914`，每份報告都有 MP4 路徑。本次未產生新安裝檔。

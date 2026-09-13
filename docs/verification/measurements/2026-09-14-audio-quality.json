@@ -1,0 +1,370 @@
+{
+  "date": "2026-09-13T18:05:08.200Z",
+  "file": "/Users/eric/Movies/RecordStuff/2026-09-14 02-04-51.mp4",
+  "environment": {
+    "platform": "darwin",
+    "release": "25.6.0",
+    "arch": "arm64"
+  },
+  "version": 1,
+  "verdict": "fail",
+  "onsetSeconds": 0.76,
+  "limits": {
+    "responseDb": 3,
+    "gainDb": 6,
+    "separationDb": 30,
+    "residualDb": -25,
+    "dropoutDb": -15,
+    "clippingFraction": 0.001
+  },
+  "checks": [
+    {
+      "metric": "Sample rate",
+      "value": 48000,
+      "expected": "48000 Hz",
+      "pass": true
+    },
+    {
+      "metric": "Channels",
+      "value": 2,
+      "expected": "2",
+      "pass": true
+    },
+    {
+      "metric": "Valid PCM",
+      "value": 1,
+      "expected": "nonempty, finite stereo PCM",
+      "pass": true
+    },
+    {
+      "metric": "Clipped sample fraction",
+      "value": 0,
+      "expected": "<= 0.001",
+      "pass": true
+    },
+    {
+      "metric": "Start marker detected",
+      "value": 0.2401197754231932,
+      "expected": "300 ms coherent 1 kHz above -80 dBFS",
+      "pass": true
+    },
+    {
+      "metric": "Complete fixture",
+      "value": 15.74,
+      "expected": ">= 11.5 s",
+      "pass": true
+    },
+    {
+      "metric": "1 kHz start marker residual (dB)",
+      "value": -11.199886946767329,
+      "expected": "<= -10 dB (marker identity)",
+      "pass": true
+    },
+    {
+      "metric": "Marker gap (dB)",
+      "value": -150,
+      "expected": "<= -30 dB relative to marker",
+      "pass": true
+    },
+    {
+      "metric": "L 250 Hz response (dB)",
+      "value": 5.240040351592629,
+      "expected": "1 kHz ±3 dB",
+      "pass": false
+    },
+    {
+      "metric": "L 250 Hz separation (dB)",
+      "value": -0.015510760642032217,
+      "expected": ">= 30 dB",
+      "pass": false
+    },
+    {
+      "metric": "L 250 Hz residual (dB)",
+      "value": -24.463754464714608,
+      "expected": "<= -25 dB",
+      "pass": false
+    },
+    {
+      "metric": "L 250 Hz minimum 10 ms level (dB)",
+      "value": -0.9006928419505178,
+      "expected": ">= -15 dB relative to window RMS",
+      "pass": true
+    },
+    {
+      "metric": "L 1000 Hz response (dB)",
+      "value": 0,
+      "expected": "1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 1000 Hz separation (dB)",
+      "value": -0.014459740671369535,
+      "expected": ">= 30 dB",
+      "pass": false
+    },
+    {
+      "metric": "L 1000 Hz residual (dB)",
+      "value": -24.76900619507898,
+      "expected": "<= -25 dB",
+      "pass": false
+    },
+    {
+      "metric": "L 1000 Hz minimum 10 ms level (dB)",
+      "value": -0.8861739009585552,
+      "expected": ">= -15 dB relative to window RMS",
+      "pass": true
+    },
+    {
+      "metric": "L 1000 Hz gain (dB)",
+      "value": -4.166639428831958,
+      "expected": "0 ±6 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 4000 Hz response (dB)",
+      "value": -2.1756861740868074,
+      "expected": "1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 4000 Hz separation (dB)",
+      "value": -0.000008106145869009739,
+      "expected": ">= 30 dB",
+      "pass": false
+    },
+    {
+      "metric": "L 4000 Hz residual (dB)",
+      "value": -57.289694914404706,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 4000 Hz minimum 10 ms level (dB)",
+      "value": -0.006439647329155468,
+      "expected": ">= -15 dB relative to window RMS",
+      "pass": true
+    },
+    {
+      "metric": "L 8000 Hz response (dB)",
+      "value": -2.319795830851166,
+      "expected": "1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 8000 Hz separation (dB)",
+      "value": -0.00001212267631983094,
+      "expected": ">= 30 dB",
+      "pass": false
+    },
+    {
+      "metric": "L 8000 Hz residual (dB)",
+      "value": -55.541851956863944,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 8000 Hz minimum 10 ms level (dB)",
+      "value": -0.006235076767039595,
+      "expected": ">= -15 dB relative to window RMS",
+      "pass": true
+    },
+    {
+      "metric": "L 12000 Hz response (dB)",
+      "value": -20.440347887483703,
+      "expected": "1 kHz ±3 dB",
+      "pass": false
+    },
+    {
+      "metric": "L 12000 Hz separation (dB)",
+      "value": -0.002968991087579409,
+      "expected": ">= 30 dB",
+      "pass": false
+    },
+    {
+      "metric": "L 12000 Hz residual (dB)",
+      "value": -31.650269593713197,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 12000 Hz minimum 10 ms level (dB)",
+      "value": -0.15923836478309006,
+      "expected": ">= -15 dB relative to window RMS",
+      "pass": true
+    },
+    {
+      "metric": "L 16000 Hz response (dB)",
+      "value": -74.71968006254261,
+      "expected": "1 kHz ±3 dB",
+      "pass": false
+    },
+    {
+      "metric": "L 16000 Hz separation (dB)",
+      "value": -0.0014922906963740772,
+      "expected": ">= 30 dB",
+      "pass": false
+    },
+    {
+      "metric": "L 16000 Hz residual (dB)",
+      "value": -34.63856263225881,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 16000 Hz minimum 10 ms level (dB)",
+      "value": -0.2795788043769677,
+      "expected": ">= -15 dB relative to window RMS",
+      "pass": true
+    },
+    {
+      "metric": "R 250 Hz response (dB)",
+      "value": 0.5305634864469286,
+      "expected": "1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 250 Hz separation (dB)",
+      "value": -1.239790450550002e-7,
+      "expected": ">= 30 dB",
+      "pass": false
+    },
+    {
+      "metric": "R 250 Hz residual (dB)",
+      "value": -75.44436018477693,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 250 Hz minimum 10 ms level (dB)",
+      "value": -0.0014421236078875324,
+      "expected": ">= -15 dB relative to window RMS",
+      "pass": true
+    },
+    {
+      "metric": "R 1000 Hz response (dB)",
+      "value": 0,
+      "expected": "1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 1000 Hz separation (dB)",
+      "value": -0.00040064893884423963,
+      "expected": ">= 30 dB",
+      "pass": false
+    },
+    {
+      "metric": "R 1000 Hz residual (dB)",
+      "value": -40.35000281889958,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 1000 Hz minimum 10 ms level (dB)",
+      "value": -0.07246975257831446,
+      "expected": ">= -15 dB relative to window RMS",
+      "pass": true
+    },
+    {
+      "metric": "R 1000 Hz gain (dB)",
+      "value": -6.401076846528943,
+      "expected": "0 ±6 dB",
+      "pass": false
+    },
+    {
+      "metric": "R 4000 Hz response (dB)",
+      "value": -0.11768118813815637,
+      "expected": "1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 4000 Hz separation (dB)",
+      "value": -0.000003366927730124292,
+      "expected": ">= 30 dB",
+      "pass": false
+    },
+    {
+      "metric": "R 4000 Hz residual (dB)",
+      "value": -61.10550348467903,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 4000 Hz minimum 10 ms level (dB)",
+      "value": -0.0006514594764185538,
+      "expected": ">= -15 dB relative to window RMS",
+      "pass": true
+    },
+    {
+      "metric": "R 8000 Hz response (dB)",
+      "value": -0.2254434502616403,
+      "expected": "1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 8000 Hz separation (dB)",
+      "value": -0.000015720197730627663,
+      "expected": ">= 30 dB",
+      "pass": false
+    },
+    {
+      "metric": "R 8000 Hz residual (dB)",
+      "value": -54.4132552093862,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 8000 Hz minimum 10 ms level (dB)",
+      "value": -0.0023151663848601425,
+      "expected": ">= -15 dB relative to window RMS",
+      "pass": true
+    },
+    {
+      "metric": "R 12000 Hz response (dB)",
+      "value": -12.64126135094141,
+      "expected": "1 kHz ±3 dB",
+      "pass": false
+    },
+    {
+      "metric": "R 12000 Hz separation (dB)",
+      "value": -0.08899105248932956,
+      "expected": ">= 30 dB",
+      "pass": false
+    },
+    {
+      "metric": "R 12000 Hz residual (dB)",
+      "value": -16.839808175769647,
+      "expected": "<= -25 dB",
+      "pass": false
+    },
+    {
+      "metric": "R 12000 Hz minimum 10 ms level (dB)",
+      "value": -1.0159017826214602,
+      "expected": ">= -15 dB relative to window RMS",
+      "pass": true
+    },
+    {
+      "metric": "R 16000 Hz response (dB)",
+      "value": -66.72788141967557,
+      "expected": "1 kHz ±3 dB",
+      "pass": false
+    },
+    {
+      "metric": "R 16000 Hz separation (dB)",
+      "value": -0.00021715742698482035,
+      "expected": ">= 30 dB",
+      "pass": false
+    },
+    {
+      "metric": "R 16000 Hz residual (dB)",
+      "value": -43.00998766158925,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 16000 Hz minimum 10 ms level (dB)",
+      "value": -0.05147625282038306,
+      "expected": ">= -15 dB relative to window RMS",
+      "pass": true
+    }
+  ]
+}

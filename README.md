@@ -63,6 +63,7 @@ Use a compatible Node version (package requirement ≥22.12); the TypeScript mea
 pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 pnpm matrix -- all
+pnpm audio:quality -- record /tmp/audio-run-001 --repeat 3  # Audio fidelity regression (macOS; plays diagnostic tones)
 ```
 
 Matrix is macOS-only and drives unpackaged builds. Results go to `docs/verification/measurements/`. Long is a three-minute drift regression; the ten-minute baseline was already recorded. See [tooling](docs/system-design/tooling.md) for prerequisites and interpretation.
@@ -87,3 +88,5 @@ App recordings and settings stay local. No upload backend, account, telemetry, o
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+Learn why and how the audio checks work in the [audio quality design guide](docs/system-design/audio-quality.md).

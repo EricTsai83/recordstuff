@@ -286,3 +286,18 @@
 | `cell(text)`、`formatMarkdown(title, file, entry, checks, context)` | escape 表格分隔並產 Markdown；供追加證據 |
 
 `test-material.html` 的頁面事件、動畫迴圈與 Web Audio callback 提供持續動態畫面、閃光和短音；它不是產品視窗或正式版功能。
+
+
+### 音質診斷 v2
+
+[設計教學](audio-quality.md)說明數學、門檻與限制。
+
+| 模組／函式 | 契約 |
+| --- | --- |
+| [audio-quality.mts](../../../scripts/lib/audio-quality.mts): fixture, wav | 產生 v2 已知雙聲道素材並序列化 PCM16 WAV |
+| 同上：fit, estimateFrequency | 含 DC 的最小平方正弦模型，以及有範圍限制的頻率搜尋；不呼叫外部程序 |
+| 同上：markerOnset, energy, analyze | 辨識標記、量功率、判定格式／頻率／聲道／連續性；回傳 pass、fail 或 invalid |
+| [audio-quality-tools.mts](../../../scripts/lib/audio-quality-tools.mts): inspectAudio | 先檢查格式，限時解碼前 60 秒，不重取樣、不混音 |
+| 同上：recordAudio | 建置並驅動開發版程式，擷取開始後播放素材，驗證完成並只清理自有子程序 |
+| [audio-quality-summary.mts](../../../scripts/lib/audio-quality-summary.mts): summarize | 預期／完成 run 數、結果計數、min／median／max 與缺少值數；未完成為 incomplete |
+| [CLI](../../../scripts/audio-quality.mts): inspect, context, read, exitCode | 報告來源、環境快照、有限外部讀取與結束碼；頂層負責新目錄及 1–10 次重跑 |

@@ -79,3 +79,24 @@ Media-tools runs ffprobe/ffmpeg; verify.mts parses and judges pure data; verify-
 These are the project's current constants in THRESHOLDS, not a guarantee for arbitrary content. Without ffmpeg, channel-energy measurement may be absent while sample format still passes; read notes and n/a rows. A beep-heavy source has low AAC bitrate, and dual-mono passes the two-channel energy check without proving stereo separation. Any fail makes the aggregate fail; at least one pass with no fail yields pass; all unavailable yields n/a.
 
 English is the default for new diagnostic output and measurement reports. Historical raw results retain the language and labels they had when recorded; the English verification summary explains their meaning. Do not rewrite measured values or old failures to resemble a new passing run.
+
+## Audio fidelity regression
+
+Read [Audio Quality: What We Measure and Why](audio-quality.md) for fixture v2, mathematics, threshold rationale, regression cases, and limitations.
+
+```bash
+pnpm audio:quality -- record /tmp/audio-run-001
+pnpm audio:quality -- record /tmp/audio-repeat-001 --repeat 3
+pnpm audio:quality -- fixture /tmp/audio-reference-v2.wav
+pnpm audio:quality -- verify /absolute/path/recording-of-v2.mp4
+```
+
+`record` builds and drives the actual development app for 16 seconds, playing 12.1 seconds of diagnostic tones with macOS `afplay` once capture starts. Quit this project's development app first. Screen/system-audio grants and FFmpeg/ffprobe are required. Keep output device/volume fixed and pause other audio; the tool does not change settings. It records the primary screen and plays audible sound. `--repeat` accepts 1–10 runs; default 1. This requires a desktop session, not headless CI.
+
+Use a new directory with an existing parent. Each run retains `reference.wav`, `capture.log`, and `report.json`; multiple runs use `run-1`, `run-2`, etc. MP4 files remain in the app's configured output directory, referenced by reports. The root contains `summary.json` and before/after environment snapshots with versions, source/fixture hashes, device inventory, and volume when available. Repeated summaries include min/median/max and missing counts, never hide a failed run, and become invalid if endpoint device/volume snapshots changed. A partial summary remains `incomplete` until the batch and its environment checks finish; errors also produce `error.json`.
+
+`fixture` writes a new WAV without overwriting a file. `verify` prints JSON; direct Node invocation avoids pnpm's banner when redirecting stdout. Only v2 diagnostic recordings are valid inputs, not arbitrary music/speech or v1 recordings. Decode is limited to the first 60 seconds; format is checked without resampling or upmixing. Owned capture children time out after 60 seconds; external decode/tool operations also have bounded timeouts.
+
+Exit status is 0 for pass, 1 for measured failure, 2 for invalid measurement or execution/input error. Marker/PCM ambiguity suppresses unsupported frequency measurements. New gates include frequency fitting, a simultaneous pilot, terminal marker, per-component overlapping dropout windows, and local clipping/gap checks. All thresholds and guard regions are explained in the design chapter; none are calibrated product-wide guarantees.
+
+`pnpm test` runs clean/degraded PCM and repeat-summary tests. With FFmpeg/ffprobe installed it also tests real AAC, low-pass, mono/44.1 kHz, and CLI contracts. The integration case is explicitly skipped without those tools. These controls validate the detector; real `record` runs validate the local app/OS path. Keep historical [evidence](../verification/README.md) unchanged when fixture or analyzer versions change.

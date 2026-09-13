@@ -1,0 +1,852 @@
+{
+  "requestedRuns": 3,
+  "version": 2,
+  "runs": 3,
+  "passed": 0,
+  "failed": 2,
+  "invalid": 1,
+  "verdict": "invalid",
+  "metrics": [
+    {
+      "metric": "Sample rate",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 48000,
+      "median": 48000,
+      "max": 48000
+    },
+    {
+      "metric": "Channels",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 2,
+      "median": 2,
+      "max": 2
+    },
+    {
+      "metric": "Valid PCM",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 1,
+      "median": 1,
+      "max": 1
+    },
+    {
+      "metric": "Start marker detected",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0.75,
+      "median": 0.78,
+      "max": 0.81
+    },
+    {
+      "metric": "Clock offset (ppm)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -1.2216961399191817,
+      "median": 0.19996367478514188,
+      "max": 1.6216234894894654
+    },
+    {
+      "metric": "Complete fixture",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 16,
+      "median": 16,
+      "max": 16
+    },
+    {
+      "metric": "Marker gap (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -133.61453629546781,
+      "median": -85.19499794209912,
+      "max": -36.77545958873044
+    },
+    {
+      "metric": "End marker detected",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 11.35,
+      "median": 11.379999999999999,
+      "max": 11.41
+    },
+    {
+      "metric": "End timing error (ms)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.020833333334024928,
+      "median": 0,
+      "max": 0.020833333334024928
+    },
+    {
+      "metric": "L 250 Hz pilot offset (ppm)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 1.3052318785788941,
+      "median": 1.4321017820506654,
+      "max": 1.5589716855224367
+    },
+    {
+      "metric": "L 250 Hz response (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0.6395802448249897,
+      "median": 0.9562029315517693,
+      "max": 1.272825618278549
+    },
+    {
+      "metric": "L 250 Hz gain (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0.43434243223301205,
+      "median": 1.21182809472404,
+      "max": 1.989313757215068
+    },
+    {
+      "metric": "L 250 Hz separation (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.2749037049953735,
+      "median": -0.14521279521616973,
+      "max": -0.015521885436965992
+    },
+    {
+      "metric": "L 250 Hz residual (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -24.460864691701673,
+      "median": -18.154351781765435,
+      "max": -11.847838871829197
+    },
+    {
+      "metric": "L 250 Hz minimum 10 ms level (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -1.6701047400966984,
+      "median": -1.5581470890943132,
+      "max": -1.4461894380919282
+    },
+    {
+      "metric": "L 250 Hz maximum clipped block fraction",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0,
+      "median": 0,
+      "max": 0
+    },
+    {
+      "metric": "L 250 Hz following gap (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -110.41050559435284,
+      "median": -102.67911735852688,
+      "max": -94.94772912270092
+    },
+    {
+      "metric": "L 1000 Hz pilot offset (ppm)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.38718716111052487,
+      "median": -0.34193863601705843,
+      "max": -0.296690110923592
+    },
+    {
+      "metric": "L 1000 Hz response (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0,
+      "median": 0,
+      "max": 0
+    },
+    {
+      "metric": "L 1000 Hz gain (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -4.1034383629811035,
+      "median": -3.1472952925385664,
+      "max": -2.1911522220960293
+    },
+    {
+      "metric": "L 1000 Hz separation (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.012808683684782517,
+      "median": -0.01046238012134371,
+      "max": -0.008116076557904901
+    },
+    {
+      "metric": "L 1000 Hz residual (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -27.28117367892574,
+      "median": -26.288877475482405,
+      "max": -25.29658127203907
+    },
+    {
+      "metric": "L 1000 Hz minimum 10 ms level (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -1.6049536010062793,
+      "median": -1.0130868677002005,
+      "max": -0.4212201343941216
+    },
+    {
+      "metric": "L 1000 Hz maximum clipped block fraction",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0,
+      "median": 0,
+      "max": 0
+    },
+    {
+      "metric": "L 1000 Hz following gap (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -150,
+      "median": -133.34804075835007,
+      "max": -116.6960815167001
+    },
+    {
+      "metric": "L 4000 Hz pilot offset (ppm)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -1.6513250854499617,
+      "median": -0.37612836562006535,
+      "max": 0.899068354209831
+    },
+    {
+      "metric": "L 4000 Hz response (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0.14927017662611772,
+      "median": 0.2743564937603167,
+      "max": 0.3994428108945156
+    },
+    {
+      "metric": "L 4000 Hz gain (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -4.363788225038347,
+      "median": -4.162864862872446,
+      "max": -3.961941500706545
+    },
+    {
+      "metric": "L 4000 Hz separation (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.0018614277772562918,
+      "median": -0.0017302373217410413,
+      "max": -0.0015990468662257906
+    },
+    {
+      "metric": "L 4000 Hz residual (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -34.35413217883269,
+      "median": -34.01210740858081,
+      "max": -33.67008263832893
+    },
+    {
+      "metric": "L 4000 Hz minimum 10 ms level (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.46968308106706097,
+      "median": -0.41470283954493126,
+      "max": -0.3597225980228015
+    },
+    {
+      "metric": "L 4000 Hz maximum clipped block fraction",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0,
+      "median": 0,
+      "max": 0
+    },
+    {
+      "metric": "L 4000 Hz following gap (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -116.78309001342734,
+      "median": -111.90517954800083,
+      "max": -107.02726908257432
+    },
+    {
+      "metric": "L 8000 Hz pilot offset (ppm)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.6090137051328881,
+      "median": -0.5482218764507607,
+      "max": -0.4874300477686333
+    },
+    {
+      "metric": "L 8000 Hz response (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -1.3218774505211677,
+      "median": -0.8921846521013258,
+      "max": -0.462491853681484
+    },
+    {
+      "metric": "L 8000 Hz gain (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -4.450248161758429,
+      "median": -4.224012733451212,
+      "max": -3.9977773051439947
+    },
+    {
+      "metric": "L 8000 Hz separation (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.00043332359370780297,
+      "median": -0.0002798250313294579,
+      "max": -0.00012632646895111284
+    },
+    {
+      "metric": "L 8000 Hz residual (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -45.39940533348088,
+      "median": -42.717263004122074,
+      "max": -40.03512067476328
+    },
+    {
+      "metric": "L 8000 Hz minimum 10 ms level (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.5289674646188424,
+      "median": -0.3725356847910559,
+      "max": -0.21610390496326942
+    },
+    {
+      "metric": "L 8000 Hz maximum clipped block fraction",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0,
+      "median": 0,
+      "max": 0
+    },
+    {
+      "metric": "L 8000 Hz following gap (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -121.648948449022,
+      "median": -120.16900340335619,
+      "max": -118.68905835769039
+    },
+    {
+      "metric": "L 12000 Hz pilot offset (ppm)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.5143471194513083,
+      "median": -0.4368445171709645,
+      "max": -0.35934191489062073
+    },
+    {
+      "metric": "L 12000 Hz response (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -8.73587332082699,
+      "median": -5.617848756616695,
+      "max": -2.4998241924064004
+    },
+    {
+      "metric": "L 12000 Hz gain (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -4.89296398620311,
+      "median": -4.4967138357037815,
+      "max": -4.100463685204453
+    },
+    {
+      "metric": "L 12000 Hz separation (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.004241633865325728,
+      "median": -0.002357032812451538,
+      "max": -0.0004724317595773483
+    },
+    {
+      "metric": "L 12000 Hz residual (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -39.639920341247134,
+      "median": -34.870780423691144,
+      "max": -30.101640506135162
+    },
+    {
+      "metric": "L 12000 Hz minimum 10 ms level (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -2.7202338967241246,
+      "median": -2.3807087222423102,
+      "max": -2.041183547760496
+    },
+    {
+      "metric": "L 12000 Hz maximum clipped block fraction",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0,
+      "median": 0,
+      "max": 0
+    },
+    {
+      "metric": "L 12000 Hz following gap (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -113.65526042654685,
+      "median": -111.61443799444322,
+      "max": -109.57361556233961
+    },
+    {
+      "metric": "L 16000 Hz pilot offset (ppm)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.35934191489062073,
+      "median": -0.34286681094286564,
+      "max": -0.32639170699511055
+    },
+    {
+      "metric": "L 16000 Hz response (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -46.643932305144645,
+      "median": -46.56268846752004,
+      "max": -46.481444629895435
+    },
+    {
+      "metric": "L 16000 Hz gain (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -3.8273025396702343,
+      "median": -3.739671545550886,
+      "max": -3.652040551431538
+    },
+    {
+      "metric": "L 16000 Hz separation (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.012616296280616553,
+      "median": -0.006728347892900733,
+      "max": -0.0008403995051849129
+    },
+    {
+      "metric": "L 16000 Hz residual (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -37.139542767617975,
+      "median": -31.25099668347867,
+      "max": -25.36245059933937
+    },
+    {
+      "metric": "L 16000 Hz minimum 10 ms level (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -4.645707988061139,
+      "median": -2.7918658341669973,
+      "max": -0.9380236802728554
+    },
+    {
+      "metric": "L 16000 Hz maximum clipped block fraction",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0,
+      "median": 0,
+      "max": 0
+    },
+    {
+      "metric": "L 16000 Hz following gap (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -117.60612878623583,
+      "median": -114.59778734037293,
+      "max": -111.58944589451004
+    },
+    {
+      "metric": "R 250 Hz pilot offset (ppm)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 1.6438996865986155,
+      "median": 2.333801013554293,
+      "max": 3.0237023405099706
+    },
+    {
+      "metric": "R 250 Hz response (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0.5924069335023704,
+      "median": 1.0540459204647747,
+      "max": 1.5156849074271792
+    },
+    {
+      "metric": "R 250 Hz gain (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -3.744731019625398,
+      "median": -3.6265677317990015,
+      "max": -3.508404443972605
+    },
+    {
+      "metric": "R 250 Hz separation (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.004281728732513857,
+      "median": -0.002343448077643109,
+      "max": -0.0004051674227723612
+    },
+    {
+      "metric": "R 250 Hz residual (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -40.30844229277467,
+      "median": -35.18215921198545,
+      "max": -30.05587613119622
+    },
+    {
+      "metric": "R 250 Hz minimum 10 ms level (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.41160854817384823,
+      "median": -0.3170718967818724,
+      "max": -0.22253524538989655
+    },
+    {
+      "metric": "R 250 Hz maximum clipped block fraction",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0,
+      "median": 0,
+      "max": 0
+    },
+    {
+      "metric": "R 250 Hz following gap (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -108.5588272700347,
+      "median": -106.05069990498174,
+      "max": -103.54257253992877
+    },
+    {
+      "metric": "R 1000 Hz pilot offset (ppm)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.3890435109621393,
+      "median": -0.3465795104240499,
+      "max": -0.3041155098859605
+    },
+    {
+      "metric": "R 1000 Hz response (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0,
+      "median": 0,
+      "max": 0
+    },
+    {
+      "metric": "R 1000 Hz gain (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -3.452855581026676,
+      "median": -3.4180420630895147,
+      "max": -3.3832285451523534
+    },
+    {
+      "metric": "R 1000 Hz separation (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.009543904244449319,
+      "median": -0.007234436431705652,
+      "max": -0.004924968618961984
+    },
+    {
+      "metric": "R 1000 Hz residual (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -29.45283695572648,
+      "median": -28.014458675274156,
+      "max": -26.576080394821837
+    },
+    {
+      "metric": "R 1000 Hz minimum 10 ms level (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.5387387133175467,
+      "median": -0.387676978552412,
+      "max": -0.23661524378727727
+    },
+    {
+      "metric": "R 1000 Hz maximum clipped block fraction",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0,
+      "median": 0,
+      "max": 0
+    },
+    {
+      "metric": "R 1000 Hz following gap (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -117.00950462366308,
+      "median": -116.00398537993163,
+      "max": -114.99846613620021
+    },
+    {
+      "metric": "R 4000 Hz pilot offset (ppm)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.9139191520235457,
+      "median": 0.06305788063931672,
+      "max": 1.0400349133021791
+    },
+    {
+      "metric": "R 4000 Hz response (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0.3159969257031045,
+      "median": 0.5868135879053631,
+      "max": 0.8576302501076217
+    },
+    {
+      "metric": "R 4000 Hz gain (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -3.1841263730812064,
+      "median": -3.1046406934734603,
+      "max": -3.025155013865714
+    },
+    {
+      "metric": "R 4000 Hz separation (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.0038865897747081897,
+      "median": -0.003170057573428661,
+      "max": -0.0024535253721491325
+    },
+    {
+      "metric": "R 4000 Hz residual (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -32.4714310179793,
+      "median": -31.47607284232307,
+      "max": -30.48071466666684
+    },
+    {
+      "metric": "R 4000 Hz minimum 10 ms level (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.36958544284528927,
+      "median": -0.3178002889172993,
+      "max": -0.26601513498930923
+    },
+    {
+      "metric": "R 4000 Hz maximum clipped block fraction",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0,
+      "median": 0,
+      "max": 0
+    },
+    {
+      "metric": "R 4000 Hz following gap (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -113.74636177103453,
+      "median": -113.65921374091502,
+      "max": -113.57206571079551
+    },
+    {
+      "metric": "R 8000 Hz pilot offset (ppm)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.5143471194513083,
+      "median": -0.16446098588529523,
+      "max": 0.18542514768071783
+    },
+    {
+      "metric": "R 8000 Hz response (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.5276623628490917,
+      "median": -0.3760768573099782,
+      "max": -0.22449135177086468
+    },
+    {
+      "metric": "R 8000 Hz gain (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -3.652374620215841,
+      "median": -3.58973252994822,
+      "max": -3.527090439680599
+    },
+    {
+      "metric": "R 8000 Hz separation (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.009961575313340342,
+      "median": -0.00756120668258,
+      "max": -0.005160838051819658
+    },
+    {
+      "metric": "R 8000 Hz residual (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -29.24971105283508,
+      "median": -27.81958628034205,
+      "max": -26.389461507849017
+    },
+    {
+      "metric": "R 8000 Hz minimum 10 ms level (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.6141463406932233,
+      "median": -0.559018904225209,
+      "max": -0.5038914677571946
+    },
+    {
+      "metric": "R 8000 Hz maximum clipped block fraction",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0,
+      "median": 0,
+      "max": 0
+    },
+    {
+      "metric": "R 8000 Hz following gap (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -109.55868702701459,
+      "median": -108.13508469741798,
+      "max": -106.71148236782138
+    },
+    {
+      "metric": "R 12000 Hz pilot offset (ppm)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.2242924703743654,
+      "median": -0.16865998880843946,
+      "max": -0.11302750724251354
+    },
+    {
+      "metric": "R 12000 Hz response (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -5.162222706991275,
+      "median": -5.150418876653751,
+      "max": -5.138615046316226
+    },
+    {
+      "metric": "R 12000 Hz gain (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -6.4980747380857915,
+      "median": -5.0710654370990635,
+      "max": -3.6440561361123356
+    },
+    {
+      "metric": "R 12000 Hz separation (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.042618395967213174,
+      "median": -0.03376924933117065,
+      "max": -0.02492010269512812
+    },
+    {
+      "metric": "R 12000 Hz residual (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -22.39997241121298,
+      "median": -21.230190841607087,
+      "max": -20.060409272001195
+    },
+    {
+      "metric": "R 12000 Hz minimum 10 ms level (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -3.367908717933197,
+      "median": -3.2384290502100956,
+      "max": -3.108949382486994
+    },
+    {
+      "metric": "R 12000 Hz maximum clipped block fraction",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0,
+      "median": 0,
+      "max": 0
+    },
+    {
+      "metric": "R 12000 Hz following gap (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -117.0883266630027,
+      "median": -114.64294074837143,
+      "max": -112.19755483374016
+    },
+    {
+      "metric": "R 16000 Hz pilot offset (ppm)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.4540157522159305,
+      "median": -0.3085823513937491,
+      "max": -0.16314895057156775
+    },
+    {
+      "metric": "R 16000 Hz response (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -44.13544242248594,
+      "median": -43.99335020752023,
+      "max": -43.85125799255452
+    },
+    {
+      "metric": "R 16000 Hz gain (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -5.047493011384545,
+      "median": -3.905770595131952,
+      "max": -2.7640481788793587
+    },
+    {
+      "metric": "R 16000 Hz separation (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -0.027656067554991344,
+      "median": -0.01820001381353657,
+      "max": -0.008743960072081796
+    },
+    {
+      "metric": "R 16000 Hz residual (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -26.95736826357121,
+      "median": -24.451747336074266,
+      "max": -21.94612640857732
+    },
+    {
+      "metric": "R 16000 Hz minimum 10 ms level (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -4.593846487707721,
+      "median": -3.3401785485378084,
+      "max": -2.0865106093678953
+    },
+    {
+      "metric": "R 16000 Hz maximum clipped block fraction",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": 0,
+      "median": 0,
+      "max": 0
+    },
+    {
+      "metric": "R 16000 Hz following gap (dB)",
+      "measuredCount": 2,
+      "missingCount": 1,
+      "min": -115.77786668768849,
+      "median": -111.40389946712148,
+      "max": -107.02993224655447
+    }
+  ],
+  "environmentConsistency": "unchanged"
+}
