@@ -9,7 +9,11 @@ dmg:
   writeUpdateInfo: false
   # extends concatenates arrays: inherit the app and Applications entries.
   contents:
-    - x: 270
+    - x: 130
       y: 270
       type: file
-      path: resources/安裝說明.txt
+      path: resources/INSTALL.md
+    - x: 410
+      y: 270
+      type: file
+      path: resources/INSTALL.zh-TW.md

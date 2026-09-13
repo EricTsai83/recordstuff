@@ -93,7 +93,7 @@ Get-Content -Wait "$env:APPDATA\recordstuff\logs\recordstuff.log"   # Windows
 
 交付方式已確定為「DMG 內含已自簽 App」：簽章由開發者在本機完成，接收者只安裝 App，不安裝憑證；不需要與 Google 互動，也不需要 Apple 會員或公證服務。首次開啟的人工允許與錄影權限分開處理。DMG 本身不簽章，不產生自動更新 metadata／blockmap；固定憑證簽署的是裡面的 App。
 
-本機專用設定 `electron-builder.local.yml` 繼承共用打包設定，輸出 `RecordStuff-<version>-<arch>-selfsigned.dmg`，附帶 [安裝說明](resources/安裝說明.txt)。DMG 內可把 RecordStuff 拖到 Applications，之後從「應用程式」啟動，避免繼續使用 DMG／開發包中的副本。arm64 包供 Apple 晶片 Mac、x64 包供 Intel Mac；不把目前產物稱為通用版。
+本機專用設定 `electron-builder.local.yml` 繼承共用打包設定，輸出 `RecordStuff-<version>-<arch>-selfsigned.dmg`，附帶 [English installation instructions](resources/INSTALL.md) 與 [繁體中文安裝說明](resources/INSTALL.zh-TW.md)。DMG 內可把 RecordStuff 拖到 Applications，之後從「應用程式」啟動，避免繼續使用 DMG／開發包中的副本。arm64 包供 Apple 晶片 Mac、x64 包供 Intel Mac；不把目前產物稱為通用版。
 
 故障紀錄：2026-09-13，舊 ad-hoc 授權在切換自簽後，即使開關開啟仍失敗。`tccd` 明確記錄舊 `cdhash` 與新 certificate requirement 不符；已針對 `com.recordstuff.app` 重置 ScreenCapture，重置後授權尚待使用者完成。這是身分切換復原，不是同一憑證 A/B 重建驗收；打包程式不會自動重置權限。
 
@@ -127,7 +127,8 @@ src/shared/quality.ts    品質設定型別／驗證、解析度上限計算、�
 src/shared/              RecordingState、ErrorCode、協定與 type guard
 build/icon.icns              原生 macOS 多尺寸 App 圖示（pnpm icons 在 macOS 產生）
 electron-builder.local.yml   免費 DMG 設定：自簽標示、停用公證、內附安裝說明
-resources/安裝說明.txt       接收者安裝／單一 App 人工允許／錄影權限操作
+resources/INSTALL.md        英文安裝說明
+resources/INSTALL.zh-TW.md  繁體中文安裝說明
 scripts/start-app.mjs        macOS 本機自簽：唯一憑證解析、期限／自簽檢查、共用 lock 保護、build／巢狀憑證驗證／open／DMG；--open 只驗證重開
 scripts/start-app.test.ts    macOS CLI 回歸：隔離臨時憑證／替身指令，測重名／期限／錯誤 helper 簽章、失敗不交付、憑證環境隔離、重開／DMG 與空白路徑
 scripts/probe-recording.mjs  開發用：ffprobe 量測成品參數（pnpm probe），不打包
