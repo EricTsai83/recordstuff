@@ -69,17 +69,32 @@ export class AppTray {
   }
 
   notifySaved(savedPath: string): void {
-    this.show(savedNotification(savedPath), () => shell.showItemInFolder(savedPath));
+    this.show(savedNotification(savedPath), () => this.revealFromNotification(savedPath));
   }
 
   notifyError(code: ErrorCode, detail: string, partialPath: string | undefined): void {
     const ctx = this.options.context();
     this.show(errorNotification(code, detail, partialPath, ctx), () => {
-      if (partialPath) shell.showItemInFolder(partialPath);
+      if (partialPath) this.revealFromNotification(partialPath);
       else if (code === "output_open_failed") this.options.onAction("changeOutputDir");
       else if (code === "permission_denied") this.options.onAction("openPermissionSettings");
       else if (code === "permission_needs_relaunch") this.options.onAction("relaunch");
     });
+  }
+
+  private revealFromNotification(filePath: string): void {
+    const reveal = (): void => {
+      try {
+        shell.showItemInFolder(filePath);
+        this.log(`notification: reveal requested ${filePath}`);
+      } catch (error) {
+        this.log(`notification: reveal failed (${String(error)}): ${filePath}`);
+      }
+    };
+    // Let macOS finish the native notification response before asking Finder
+    // to take focus. Its completion handler runs after our click callback.
+    if (process.platform === "darwin") setImmediate(reveal);
+    else reveal();
   }
 
   notifyPermission(needsRelaunch: boolean): void {

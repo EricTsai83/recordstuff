@@ -64,13 +64,14 @@ vi.mock("electron", () => {
   };
 });
 
-import { Notification } from "electron";
+import { Notification, shell } from "electron";
 import { DEFAULT_QUALITY } from "../shared/quality";
 import { AppTray } from "./tray";
 
 const Fake = Notification as unknown as FakeNotificationCtor;
 
 function setup(supported = true): { tray: AppTray; logs: string[] } {
+  vi.mocked(shell.showItemInFolder).mockReset();
   Fake.instances.length = 0;
   Fake.supported = supported;
   const logs: string[] = [];
@@ -109,6 +110,19 @@ describe("AppTray notifications (plans/004-permission-flow-clean-tcc.md)", () =>
     tray.notifyError("no_audio_track", "", undefined);
     expect(Fake.instances).toHaveLength(0);
     expect(logs.at(-1)).toContain("notification: not supported");
+  });
+
+  it("reveals the saved file after the native macOS click callback returns", async () => {
+    const { tray, logs } = setup();
+    const file = "/Users/eric/Movies/RecordStuff/a.mp4";
+    tray.notifySaved(file);
+    Fake.instances.at(-1)?.listeners.get("click")?.();
+    if (process.platform === "darwin") {
+      expect(shell.showItemInFolder).not.toHaveBeenCalled();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    expect(shell.showItemInFolder).toHaveBeenCalledExactlyOnceWith(file);
+    expect(logs).toContain(`notification: reveal requested ${file}`);
   });
 
   it("keeps the click handler working alongside the failure listener", () => {
