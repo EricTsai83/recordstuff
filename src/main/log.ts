@@ -1,5 +1,5 @@
 /**
- * File log for the window-less app (plans/002-file-logging.md). Every line goes to stdout
+ * File log for the window-less app (docs/system-design/desktop.md). Every line goes to stdout
  * (visible under `pnpm dev`) and is appended to `<userData>/logs/recordstuff.log`
  * (the only trace under `pnpm start` or a packaged build). Rotation happens
  * before a write once the active file exceeds `maxBytes`: `recordstuff.log`

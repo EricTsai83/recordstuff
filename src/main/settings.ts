@@ -1,15 +1,17 @@
 /**
- * `settings.json` in userData: `outputDir` (plans/001-first-version.md §10.1)
- * and the recording `quality` (plans/007-recording-quality-settings.md).
+ * Persistent output folder, recording quality, and presentation language.
+ * See docs/system-design/desktop.md for the schema and migration rules.
  * Writes go to `settings.json.tmp` then rename, so a crash mid-write never
  * leaves a half file. Any read problem falls back to the default and logs.
  *
  * Version 1 files (outputDir only) are read as-is and get the default
  * quality; they are rewritten as version 2 on the next successful save.
+ * Older v1/v2 files without a language field default to English.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { DEFAULT_QUALITY, isQualitySettings, type QualitySettings } from "../shared/quality";
+import { DEFAULT_LANGUAGE, isLanguage, type Language } from "../shared/i18n";
 
 export const SETTINGS_VERSION = 2;
 
@@ -17,6 +19,7 @@ export interface Settings {
   version: typeof SETTINGS_VERSION;
   outputDir: string;
   quality: QualitySettings;
+  language: Language;
 }
 
 export interface SettingsStoreOptions {
@@ -65,7 +68,11 @@ export function parseSettings(text: string): ParsedSettings | undefined {
   } else {
     warnings.push("quality is missing or has unsupported values: using defaults");
   }
-  return { settings: { version: SETTINGS_VERSION, outputDir, quality }, warnings };
+  const language = isLanguage(record["language"]) ? record["language"] : DEFAULT_LANGUAGE;
+  if (record["language"] !== undefined && !isLanguage(record["language"])) {
+    warnings.push("language is unsupported: using English");
+  }
+  return { settings: { version: SETTINGS_VERSION, outputDir, quality, language }, warnings };
 }
 
 export class SettingsStore {
@@ -87,6 +94,15 @@ export class SettingsStore {
 
   get quality(): QualitySettings {
     return this.settings.quality;
+  }
+
+  get language(): Language {
+    return this.settings.language;
+  }
+
+  setLanguage(language: Language): Promise<void> {
+    if (!isLanguage(language)) return Promise.reject(new Error("unsupported language"));
+    return this.save((current) => ({ ...current, language }));
   }
 
   setOutputDir(outputDir: string): Promise<void> {
@@ -120,7 +136,7 @@ export class SettingsStore {
   }
 
   private load(defaultOutputDir: string): Settings {
-    const fallback: Settings = { version: SETTINGS_VERSION, outputDir: defaultOutputDir, quality: DEFAULT_QUALITY };
+    const fallback: Settings = { version: SETTINGS_VERSION, outputDir: defaultOutputDir, quality: DEFAULT_QUALITY, language: DEFAULT_LANGUAGE };
     let text: string;
     try {
       text = fs.readFileSync(this.filePath, "utf8");

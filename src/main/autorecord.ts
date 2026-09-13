@@ -1,5 +1,5 @@
 /**
- * Development-only unattended recording (plans/008-recording-verification-toolkit.md §B).
+ * Development-only unattended recording (docs/system-design/tooling.md).
  * `RECORDSTUFF_AUTORECORD='{"seconds":30,"quality":{...}}'` makes the app
  * start recording once it is ready, stop after `seconds`, and quit after the
  * file is saved. The quality override is applied in memory only; settings.json

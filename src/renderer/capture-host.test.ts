@@ -295,7 +295,7 @@ describe("renderer CaptureHost", () => {
     port.receive(start("s1", { ...DEFAULT_QUALITY, frameRate: 60 }));
     expect(getDisplayMedia).toHaveBeenCalledWith({
       video: { frameRate: { ideal: 60, max: 60 } },
-      // Plan 008: without channelCount the macOS loopback track is mono.
+      // without channelCount the macOS loopback track is mono.
       audio: { restrictOwnAudio: true, channelCount: { ideal: 2 } },
     });
   });
@@ -342,7 +342,7 @@ describe("renderer CaptureHost", () => {
     expect(report?.warnings[0]).toMatch(/1080p.*OverconstrainedError/);
   });
 
-  it("sizes the cap from the frames, not from a track that reports the wrong height (plan 008 finding)", async () => {
+  it("sizes the cap from the frames, not from a track that reports the wrong height (the system design finding)", async () => {
     // Observed on a 1920x1080 main display next to a portrait monitor: getSettings() says 1920x1920.
     const port = boot({ measureFrameSize: async () => ({ width: 1920, height: 1080 }) });
     port.receive(start("s1", { ...DEFAULT_QUALITY, resolutionCap: "1080p" }));
@@ -358,7 +358,7 @@ describe("renderer CaptureHost", () => {
         width: 1920,
         height: 1080,
         videoBitsPerSecond: 8_100_000,
-        warnings: ["track.getSettings() 回報 1920x1920，實際影格 1920x1080，以實際影格為準"],
+        warnings: ["track.getSettings() reported 1920x1920; actual frames 1920x1080; using actual frames"],
       },
     });
   });
@@ -385,7 +385,7 @@ describe("renderer CaptureHost", () => {
         width: 1280,
         height: 720,
         videoBitsPerSecond: 3_600_000,
-        warnings: ["套用上限後實際影格 1280x720，與目標 1920x1080 不同"],
+        warnings: ["constrained frames 1280x720 differ from target 1920x1080"],
       },
     });
   });
@@ -400,7 +400,7 @@ describe("renderer CaptureHost", () => {
     await flush();
     expect(port.sent[0]).toMatchObject({
       type: "started",
-      capture: { width: 1920, height: 1080, videoBitsPerSecond: 8_100_000, warnings: ["套用上限後未能重新量測影格，以目標 1920x1080 回報"] },
+      capture: { width: 1920, height: 1080, videoBitsPerSecond: 8_100_000, warnings: ["could not remeasure constrained frames; reporting target 1920x1080"] },
     });
   });
 
@@ -417,7 +417,7 @@ describe("renderer CaptureHost", () => {
       capture: {
         width: 1920,
         height: 1080,
-        warnings: ["無法讀取實際影格尺寸，以 track.getSettings() 為準", "套用上限後未能重新量測影格，以目標 1920x1080 回報"],
+        warnings: ["actual frame size unavailable; using track.getSettings()", "could not remeasure constrained frames; reporting target 1920x1080"],
       },
     });
   });
@@ -436,7 +436,7 @@ describe("renderer CaptureHost", () => {
     expect(message.capture).toEqual({
       videoBitsPerSecond: 4_400_000,
       audioBitsPerSecond: 256_000,
-      warnings: ["video track 未回報尺寸，無法套用解析度上限"],
+      warnings: ["video track has no dimensions; cannot apply resolution cap"],
     });
     expect(Object.keys(message.capture)).not.toContain("width");
   });

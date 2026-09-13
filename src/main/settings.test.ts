@@ -52,6 +52,7 @@ describe("SettingsStore", () => {
     expect(first.outputDir).toBe("/Volumes/External/Recordings");
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
       version: 2,
+      language: "en",
       outputDir: "/Volumes/External/Recordings",
       quality: DEFAULT_QUALITY,
     });
@@ -83,7 +84,7 @@ describe("SettingsStore", () => {
   });
 });
 
-describe("quality settings (plan 007 §B3)", () => {
+describe("quality settings", () => {
   const custom = { videoQuality: "high", resolutionCap: "1080p", frameRate: 60 } as const;
 
   it("a version 1 file keeps its outputDir, gets the default quality and logs the upgrade", async () => {
@@ -99,7 +100,7 @@ describe("quality settings (plan 007 §B3)", () => {
     await first.setQuality({ videoQuality: "high", resolutionCap: "1080p" });
     await first.setQuality({ frameRate: 60 });
     expect(first.quality).toEqual(custom);
-    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({ version: 2, outputDir: DEFAULT, quality: custom });
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({ language: "en", version: 2, outputDir: DEFAULT, quality: custom });
     const second = store();
     expect(second.quality).toEqual(custom);
     expect(second.outputDir).toBe(DEFAULT);
@@ -111,6 +112,7 @@ describe("quality settings (plan 007 §B3)", () => {
     await s.setOutputDir("/elsewhere");
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
       version: 2,
+      language: "en",
       outputDir: "/elsewhere",
       quality: { ...DEFAULT_QUALITY, videoQuality: "economy" },
     });
@@ -154,7 +156,7 @@ describe("quality settings (plan 007 §B3)", () => {
     const expected = { ...DEFAULT_QUALITY, videoQuality: "high", frameRate: 60 };
     expect(s.quality).toEqual(expected);
     expect(s.outputDir).toBe("/picked");
-    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({ version: 2, outputDir: "/picked", quality: expected });
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({ language: "en", version: 2, outputDir: "/picked", quality: expected });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -178,15 +180,59 @@ describe("parseSettings", () => {
   it("accepts version 1 and 2 with an absolute string outputDir", () => {
     expect(parseSettings('{"version":1,"outputDir":"/a"}')?.settings).toEqual({
       version: 2,
+      language: "en",
       outputDir: "/a",
       quality: DEFAULT_QUALITY,
     });
     expect(parseSettings('{"version":2,"outputDir":"/a","quality":' + JSON.stringify(DEFAULT_QUALITY) + "}")).toEqual({
-      settings: { version: 2, outputDir: "/a", quality: DEFAULT_QUALITY },
+      settings: { language: "en", version: 2, outputDir: "/a", quality: DEFAULT_QUALITY },
       warnings: [],
     });
     expect(parseSettings('{"version":1,"outputDir":""}')).toBeUndefined();
     expect(parseSettings("null")).toBeUndefined();
     expect(parseSettings("[]")).toBeUndefined();
+  });
+});
+
+describe("language settings", () => {
+  it("defaults existing v1/v2 files to English without losing their folder or quality", async () => {
+    for (const version of [1, 2]) {
+      await fs.writeFile(filePath, JSON.stringify({ version, outputDir: "/kept", quality: DEFAULT_QUALITY }));
+      const s = store();
+      expect(s.language).toBe("en");
+      expect(s.outputDir).toBe("/kept");
+      expect(s.quality).toEqual(DEFAULT_QUALITY);
+    }
+  });
+
+  it("persists language alongside overlapping quality and folder changes", async () => {
+    const s = store();
+    await Promise.all([s.setLanguage("zh-TW"), s.setQuality({ videoQuality: "high" }), s.setOutputDir("/new")]);
+    const reloaded = store();
+    expect(reloaded.language).toBe("zh-TW");
+    expect(reloaded.outputDir).toBe("/new");
+    expect(reloaded.quality.videoQuality).toBe("high");
+    await reloaded.setLanguage("en");
+    expect(store().language).toBe("en");
+  });
+
+  it("preserves language on failed save, then allows recovery", async () => {
+    const s = store();
+    await fs.mkdir(filePath);
+    await expect(s.setLanguage("zh-TW")).rejects.toThrow();
+    expect(s.language).toBe("en");
+    await fs.rmdir(filePath);
+    await s.setLanguage("zh-TW");
+    expect(store().language).toBe("zh-TW");
+  });
+
+  it("defaults corrupt language independently and rejects invalid mutations", async () => {
+    await fs.writeFile(filePath, JSON.stringify({ version: 2, outputDir: "/kept", quality: DEFAULT_QUALITY, language: "fr" }));
+    const s = store();
+    expect(s.language).toBe("en");
+    expect(s.outputDir).toBe("/kept");
+    expect(logs).toContain("settings: language is unsupported: using English");
+    await expect(s.setLanguage("fr" as "en")).rejects.toThrow("unsupported language");
+    expect(JSON.parse(await fs.readFile(filePath, "utf8")).language).toBe("fr");
   });
 });

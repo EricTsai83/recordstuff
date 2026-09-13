@@ -1,5 +1,5 @@
 /**
- * Recording quality settings (plans/007-recording-quality-settings.md) and the
+ * Recording quality settings (docs/system-design/recording.md) and the
  * pure arithmetic that turns them into capture constraints and encoder
  * targets. Shared by main (settings, tray, log) and the capture host (which
  * computes the actual encoder target once it knows the captured size). No
@@ -20,7 +20,7 @@ export const VIDEO_QUALITIES: readonly VideoQuality[] = ["economy", "standard", 
 export const RESOLUTION_CAPS: readonly ResolutionCap[] = ["1080p", "1440p", "4k", "source"];
 export const FRAME_RATES: readonly FrameRate[] = [30, 60];
 
-/** Plan 007 defaults: standard video, source size, 30 fps. */
+/** Recording defaults: standard video, source size, 30 fps. */
 export const DEFAULT_QUALITY: QualitySettings = {
   videoQuality: "standard",
   resolutionCap: "source",
@@ -38,9 +38,9 @@ export function isQualitySettings(value: unknown): value is QualitySettings {
 }
 
 /**
- * 60 fps is offered only where plan 007 §A5 has (or can) verify it. Windows
- * stays at 30 until plan 005 measures it on a real machine; a stored 60 is
- * clamped at use, never silently rewritten in settings.json.
+ * 60 fps is enabled only on the verified macOS platform. Other platforms
+ * remain unverified and use 30 fps. A stored 60 is clamped at use, never
+ * silently rewritten in settings.json.
  */
 export function isFrameRateAvailable(frameRate: FrameRate, platform: string): boolean {
   return frameRate === 30 || platform === "darwin";
@@ -88,11 +88,11 @@ export function fitWithinCap(source: Dimensions, cap: ResolutionCap): Dimensions
 /**
  * Encoder target in bits per pixel per frame. `standard` at 1080p30 lands on
  * the 8 Mbps the first version shipped with, so the baseline is unchanged.
- * Plan 008 (2026-09-13, macOS 26 / Electron 44, 1920x1080) measured the
+ * Local verification (2026-09-13, macOS 26 / Electron 44, 1920x1080) measured the
  * encoder honouring these targets within 2% at 30 fps for all three levels
  * (4.4 / 8.1 / 14.9 Mbps); at 60 fps Chromium delivered about twice the
  * target (31 Mbps for 16.2). The values are kept; whether they *look* right
- * is the subjective comparison tracked in plans/measurements/.
+ * is the subjective comparison tracked in docs/verification/measurements/.
  */
 export const BITS_PER_PIXEL: Record<VideoQuality, number> = {
   economy: 0.07,
@@ -111,7 +111,7 @@ export function videoBitsPerSecond(size: Dimensions, frameRate: number, quality:
 }
 
 /**
- * One AAC target for every recording. Plan 008 measured Chromium's AAC
+ * One AAC target for every recording. Local verification measured Chromium's AAC
  * encoder on macOS delivering about 160 kbps whatever was asked (192 k and
  * 256 k came out the same), so a user-facing audio quality choice would have
  * promised a difference that does not exist; the former `audioQuality`
@@ -160,7 +160,7 @@ export function isCaptureReport(value: unknown): value is CaptureReport {
 
 /**
  * A clear frame-rate downgrade: 60 was requested and the track settled on a
- * rate at or below 30. Plan 007 requires telling the user, not just the log.
+ * rate at or below 30. A clear downgrade is reported to the user as well as the log.
  * Fewer frames because the content is static is not a downgrade, so anything
  * the track does not report, or reports above 30, is not flagged.
  */
@@ -170,11 +170,11 @@ export function frameRateDowngrade(requested: QualitySettings, report: CaptureRe
   return Math.round(report.frameRate);
 }
 
-const unknown = (value: number | undefined, unit = ""): string => (value === undefined ? "未知" : `${value}${unit}`);
+const unknown = (value: number | undefined, unit = ""): string => (value === undefined ? "unknown" : `${value}${unit}`);
 
-/** One log line per session (plan 007 §A1); target bitrates are labelled as such. */
+/** One log line per session; target bitrates are labelled as such. */
 export function describeCapture(requested: QualitySettings, report: CaptureReport): string {
-  const size = report.width === undefined || report.height === undefined ? "未知" : `${report.width}x${report.height}`;
+  const size = report.width === undefined || report.height === undefined ? "unknown" : `${report.width}x${report.height}`;
   const parts = [
     `requested video=${requested.videoQuality} cap=${requested.resolutionCap} fps=${requested.frameRate}`,
     `track size=${size} fps=${unknown(report.frameRate)} sampleRate=${unknown(report.sampleRate, " Hz")} channels=${unknown(report.channelCount)}`,

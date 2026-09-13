@@ -13,12 +13,14 @@ import {
 
 const mac: TrayContext = {
   platform: "darwin",
+  language: "zh-TW",
   outputDir: "/Users/eric/Movies/RecordStuff",
   homeDir: "/Users/eric",
   quality: DEFAULT_QUALITY,
 };
 const win: TrayContext = {
   platform: "win32",
+  language: "zh-TW",
   outputDir: "C:\\Users\\eric\\Videos\\RecordStuff",
   homeDir: "C:\\Users\\eric",
   quality: DEFAULT_QUALITY,
@@ -44,7 +46,7 @@ describe("abbreviateHome", () => {
   });
 });
 
-describe("trayModel per state (plans/001-first-version.md §8)", () => {
+describe("trayModel per state (docs/system-design/recording.md)", () => {
   it("needsPermission shows the settings action", () => {
     const m = trayModel({ type: "needsPermission", needsRelaunch: false }, mac);
     expect(m.icon).toBe("idle");
@@ -58,6 +60,7 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
       "更改儲存位置…",
       "錄製品質",
       "—",
+      "語言",
       "顯示 log",
       "結束",
     ]);
@@ -72,7 +75,7 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
     ]);
   });
 
-  // plan 004: after the user grants the permission, macOS keeps refusing this
+  // after the user grants the permission, macOS keeps refusing this
   // process, so stage 1 never reports granted and `needsRelaunch` stays false.
   // A restart is the only way out, so it must be reachable in this state too.
   it("needsPermission offers the relaunch even while needsRelaunch is false", () => {
@@ -102,6 +105,7 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
       "更改儲存位置…",
       "錄製品質",
       "—",
+      "語言",
       "顯示 log",
       "結束",
     ]);
@@ -120,11 +124,11 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
     expect(enabledActions(m.menu)).toContain("changeOutputDir");
   });
 
-  it("starting: idle icon, ellipsis title, only log and quit", () => {
+  it("starting: idle icon, ellipsis title, language, log and quit", () => {
     const m = trayModel({ type: "starting" }, mac);
     expect(m.icon).toBe("idle");
     expect(m.title).toBe("…");
-    expect(labels(m.menu)).toEqual(["啟動中，請留意系統權限提示…", "—", "錄製品質", "—", "顯示 log", "結束"]);
+    expect(labels(m.menu)).toEqual(["啟動中，請留意系統權限提示…", "—", "錄製品質", "—", "語言", "顯示 log", "結束"]);
     expect(m.menu[2]).toEqual({ kind: "item", label: "錄製品質", enabled: false });
     expect(enabledActions(m.menu)).toEqual(["revealLog", "quit"]);
   });
@@ -141,6 +145,7 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
       "更改儲存位置…",
       "錄製品質",
       "—",
+      "語言",
       "顯示 log",
       "結束",
     ]);
@@ -148,11 +153,11 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
     expect(enabledActions(m.menu)).toEqual(["stop", "revealLog", "quit"]);
   });
 
-  it("stopping: idle icon, ellipsis, only log and quit", () => {
+  it("stopping: idle icon, ellipsis, language, log and quit", () => {
     const m = trayModel({ type: "stopping" }, mac);
     expect(m.icon).toBe("idle");
     expect(m.title).toBe("…");
-    expect(labels(m.menu)).toEqual(["儲存中…", "—", "錄製品質", "—", "顯示 log", "結束"]);
+    expect(labels(m.menu)).toEqual(["儲存中…", "—", "錄製品質", "—", "語言", "顯示 log", "結束"]);
     expect(m.menu[2]).toEqual({ kind: "item", label: "錄製品質", enabled: false });
     expect(enabledActions(m.menu)).toEqual(["revealLog", "quit"]);
   });
@@ -163,7 +168,7 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
     expect(dirItem).toMatchObject({ label: "儲存位置：~\\Videos\\RecordStuff", toolTip: win.outputDir });
   });
 
-  it("every state yields a menu ending in 顯示 log then 結束, both enabled", () => {
+  it("every state ends with enabled Show log and Quit actions", () => {
     const states: RecordingState[] = [
       { type: "needsPermission", needsRelaunch: false },
       { type: "idle" },
@@ -173,14 +178,14 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
     ];
     for (const state of states) {
       const menu = trayModel(state, mac).menu;
-      expect(menu.at(-3)).toEqual({ kind: "separator" });
+      expect(menu.at(-4)).toEqual({ kind: "separator" });
       expect(menu.at(-2)).toMatchObject({ label: "顯示 log", action: "revealLog", enabled: true });
       expect(menu.at(-1)).toMatchObject({ label: "結束", action: "quit", enabled: true });
     }
   });
 });
 
-describe("錄製品質 submenu (plan 007 §B1)", () => {
+describe("Recording quality submenu", () => {
   it("shows the three groups with their current value in the label", () => {
     const m = trayModel({ type: "idle" }, mac);
     expect(qualitySubmenus(m.menu)).toEqual([
@@ -240,11 +245,11 @@ describe("錄製品質 submenu (plan 007 §B1)", () => {
 
 describe("notification text", () => {
   it("frame-rate downgrade names both numbers", () => {
-    expect(frameRateDowngradeNotification(60, 30).body).toBe("系統只提供 30 fps，本次以 30 fps 錄製（設定為 60 fps）");
+    expect(frameRateDowngradeNotification(60, 30, "zh-TW").body).toBe("系統只提供 30 fps，本次以 30 fps 錄製（設定為 60 fps）");
   });
 
   it("saved notification uses the file name", () => {
-    expect(savedNotification("/Users/eric/Movies/RecordStuff/2026-09-11 14-30-00.mp4").body).toBe(
+    expect(savedNotification("/Users/eric/Movies/RecordStuff/2026-09-11 14-30-00.mp4", "zh-TW").body).toBe(
       "已儲存 2026-09-11 14-30-00.mp4",
     );
   });
@@ -253,12 +258,39 @@ describe("notification text", () => {
     const kept = errorNotification("capture_host_crashed", "", "/x/2026-09-11 14-30-00.recording.mp4", mac);
     expect(kept.body).toContain("2026-09-11 14-30-00.recording.mp4");
     const none = errorNotification("capture_start_failed", "boom", undefined, mac);
-    expect(none.body).toContain("boom");
+    expect(none.body).not.toContain("boom");
     expect(none.body).toContain("沒有錄到任何內容");
   });
 
   it("output_open_failed names the folder and the menu action", () => {
     const text = errorNotification("output_open_failed", "", undefined, mac);
     expect(text.body).toBe("儲存位置無法寫入：~/Movies/RecordStuff。右鍵選單可以更改儲存位置");
+  });
+});
+
+describe("English default and language switching", () => {
+  it("defaults an older context to English and exposes both language actions", () => {
+    const { language: _language, ...ctx } = mac;
+    const m = trayModel({ type: "idle" }, ctx);
+    expect(labels(m.menu)[0]).toBe("Ready");
+    expect(submenu(m.menu, "Language")).toEqual([
+      { kind: "radio", label: "English", enabled: true, checked: true, action: { setLanguage: "en" } },
+      { kind: "radio", label: "繁體中文", enabled: true, checked: false, action: { setLanguage: "zh-TW" } },
+    ]);
+    expect(savedNotification("/tmp/demo.mp4").body).toBe("Saved demo.mp4");
+  });
+
+  it("changes presentation during recording without changing recording controls", () => {
+    const state: RecordingState = { type: "recording", startedAt: "2026-09-14T00:00:00Z" };
+    const english = trayModel(state, { ...mac, language: "en" });
+    const chinese = trayModel(state, { ...mac, language: "zh-TW" });
+    expect(english.title).toBe("REC");
+    expect(chinese.title).toBe("REC");
+    expect(english.tooltip).toBe("RecordStuff: Recording");
+    expect(chinese.tooltip).toBe("RecordStuff: 錄製中");
+    expect(enabledActions(english.menu)).toEqual(enabledActions(chinese.menu));
+    expect(submenu(chinese.menu, "語言")[1]).toMatchObject({ checked: true });
+    expect(english.menu.find((m) => m.kind === "item" && m.label === "Recording quality")).toMatchObject({ enabled: false });
+    expect(state.type).toBe("recording");
   });
 });

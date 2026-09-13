@@ -98,7 +98,7 @@ describe("videoBitsPerSecond", () => {
 });
 
 describe("AUDIO_BITS_PER_SECOND", () => {
-  it("is one fixed AAC target (plan 008: Chromium clamps to ~160 kbps whatever is asked)", () => {
+  it("is one fixed AAC target (Chromium clamps to ~160 kbps whatever is asked)", () => {
     expect(AUDIO_BITS_PER_SECOND).toBe(256_000);
   });
 });
@@ -135,7 +135,7 @@ describe("describeCapture", () => {
   it("marks unreported fields as unknown and labels bitrates as targets", () => {
     expect(describeCapture(DEFAULT_QUALITY, report)).toBe(
       "requested video=standard cap=source fps=30; " +
-        "track size=未知 fps=未知 sampleRate=未知 channels=未知; " +
+        "track size=unknown fps=unknown sampleRate=unknown channels=unknown; " +
         "target videoBps=8100000 audioBps=256000",
     );
   });

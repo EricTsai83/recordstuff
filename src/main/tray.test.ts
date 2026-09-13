@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 /**
  * A notification the OS refuses to show is invisible to the user *and* to the
- * developer (plan 004: a save whose notification never appeared, with nothing
+ * developer (a save whose notification never appeared, with nothing
  * in the log to say who dropped it). These tests pin the diagnostics down: the
  * `failed` listener is always attached, and neither an unsupported system nor
  * a failure escapes into the caller — a notification must never affect a
@@ -65,6 +65,7 @@ vi.mock("electron", () => {
 });
 
 import { Notification, shell } from "electron";
+import type { Language } from "../shared/i18n";
 import { DEFAULT_QUALITY } from "../shared/quality";
 import { AppTray } from "./tray";
 
@@ -90,7 +91,7 @@ function setup(supported = true): { tray: AppTray; logs: string[] } {
   return { tray, logs };
 }
 
-describe("AppTray notifications (plans/004-permission-flow-clean-tcc.md)", () => {
+describe("AppTray notifications (docs/system-design/desktop.md)", () => {
   it("logs the reason when the OS refuses to show a notification", () => {
     const { tray, logs } = setup();
     tray.notifySaved("/Users/eric/Movies/RecordStuff/a.mp4");
@@ -102,7 +103,7 @@ describe("AppTray notifications (plans/004-permission-flow-clean-tcc.md)", () =>
     // Electron's listener signature is (event, error); the error text is the
     // only clue the user's machine gives us.
     expect(() => failed?.({}, "Notification permission denied")).not.toThrow();
-    expect(logs).toEqual(["notification: failed (Notification permission denied): 已儲存 a.mp4"]);
+    expect(logs).toEqual(["notification: failed (Notification permission denied): Saved a.mp4"]);
   });
 
   it("logs and gives up when notifications are not supported at all", () => {
@@ -131,5 +132,39 @@ describe("AppTray notifications (plans/004-permission-flow-clean-tcc.md)", () =>
     const notification = Fake.instances.at(-1);
     expect(notification?.listeners.get("click")).toBeTypeOf("function");
     expect(() => notification?.listeners.get("click")?.()).not.toThrow();
+  });
+});
+
+
+describe("notification language follows current settings", () => {
+  it("uses the new language for subsequent notifications and preserves recovery actions", () => {
+    Fake.instances.length = 0;
+    Fake.supported = true;
+    let language: Language = "en";
+    const action = vi.fn();
+    const tray = new AppTray({
+      resourcesDir: "/resources",
+      context: () => ({ platform: process.platform, outputDir: "/tmp/recordings", homeDir: "/tmp", quality: DEFAULT_QUALITY, language }),
+      onToggle: vi.fn(), onAction: action,
+    });
+    tray.notifySaved("/tmp/demo.mp4");
+    expect(Fake.instances.at(-1)?.options.body).toBe("Saved demo.mp4");
+    language = "zh-TW";
+    tray.refresh();
+    tray.notifySaved("/tmp/demo.mp4");
+    expect(Fake.instances.at(-1)?.options.body).toBe("已儲存 demo.mp4");
+    tray.notifyError("permission_denied", "technical detail", undefined);
+    expect(Fake.instances.at(-1)?.options.body).toContain("沒有螢幕錄製權限");
+    expect(Fake.instances.at(-1)?.options.body).not.toContain("technical detail");
+    Fake.instances.at(-1)?.listeners.get("click")?.();
+    expect(action).toHaveBeenCalledWith("openPermissionSettings");
+    tray.notifyLanguageWriteFailed();
+    expect(Fake.instances.at(-1)?.options.body).toContain("無法儲存語言設定");
+    language = "en";
+    tray.notifyPermission(true);
+    expect(Fake.instances.at(-1)?.options.body).toContain("needs to relaunch");
+    Fake.instances.at(-1)?.listeners.get("click")?.();
+    expect(action).toHaveBeenCalledWith("relaunch");
+    tray.destroy();
   });
 });

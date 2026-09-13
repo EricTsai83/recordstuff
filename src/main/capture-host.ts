@@ -1,5 +1,5 @@
 /**
- * Supervises the hidden capture-host renderer (plans/001-first-version.md §9): creates it on the
+ * Supervises the hidden capture-host renderer (docs/system-design/recording.md): creates it on the
  * first start and keeps it alive afterwards, exchanges the MessagePort,
  * validates every inbound message, and detects crashes / hangs
  * (`render-process-gone`, two missed pongs).
@@ -103,7 +103,7 @@ export class CaptureHost implements RecorderHost {
     let readyTimer: ReturnType<typeof setTimeout> | undefined;
     const readyReceived = new Promise<void>((resolve, reject) => {
       readyTimer = setTimeout(
-        () => reject(new Error("capture host 未在時限內回報 ready")),
+        () => reject(new Error("capture host did not report ready before the deadline")),
         this.readyTimeoutMs,
       );
       port1.on("message", (event) => {
@@ -139,7 +139,7 @@ export class CaptureHost implements RecorderHost {
     if (this.missedPongs >= 2) {
       this.log("capture host: two pings unanswered");
       this.teardown();
-      this.emitFailure("capture_host_unresponsive", "連續兩次 ping 沒有回應");
+      this.emitFailure("capture_host_unresponsive", "two consecutive pings received no response");
       return;
     }
     this.missedPongs += 1;

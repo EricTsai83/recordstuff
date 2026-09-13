@@ -1,6 +1,6 @@
 /**
  * Messages exchanged over the MessagePort between main and the hidden capture
- * host (plans/001-first-version.md §9). Hand-written type guards; there are only a few shapes.
+ * host (docs/system-design/recording.md). Hand-written type guards; there are only a few shapes.
  * This module must not import Electron.
  */
 import { isCaptureReport, isQualitySettings, type CaptureReport, type QualitySettings } from "./quality";
@@ -13,7 +13,7 @@ export const OUTPUT_MIME_TYPE = "video/mp4;codecs=avc1,mp4a.40.2";
 export const CHUNK_INTERVAL_MS = 1000;
 
 export type MainMessage =
-  /** `quality` is main's snapshot for this session (plan 007 §B2); the host never reads settings itself. */
+  /** `quality` is main's snapshot for this session; the host never reads settings itself. */
   | { type: "start"; sessionId: string; quality: QualitySettings }
   | { type: "stop"; sessionId: string }
   | { type: "ping" };

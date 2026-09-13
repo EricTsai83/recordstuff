@@ -1,5 +1,5 @@
 /**
- * App lifecycle (plans/001-first-version.md §12): hide the Dock icon, create the tray, register
+ * App lifecycle (docs/system-design/recording.md): hide the Dock icon, create the tray, register
  * the display-media handler (primary display + system audio loopback), detect
  * permission, and make quitting wait for a running recording to finish.
  * No window is ever created here; the only renderer is the hidden capture host.
@@ -29,10 +29,13 @@ import { APP_NAME, type TrayAction } from "./tray-model";
 import { effectiveQuality, frameRateDowngrade, type QualitySettings } from "../shared/quality";
 import type { ErrorCode } from "../shared/state";
 
+import { DEFAULT_LANGUAGE, translate, type Language } from "../shared/i18n";
+
+let currentLanguage: Language = DEFAULT_LANGUAGE;
 const APP_ID = "com.recordstuff.app";
 
 /**
- * stdout plus a rotated file (plans/002-file-logging.md). `app.getPath("logs")` is
+ * stdout plus a rotated file (docs/system-design/desktop.md). `app.getPath("logs")` is
  * `~/Library/Logs/<app name>` on macOS (where Console.app looks) and
  * `<userData>/logs` on Windows.
  */
@@ -44,7 +47,7 @@ const log = createFileLogger({ filePath: logPath });
 // dialog and the process keeps running; keep that, but write the log line first.
 process.on("uncaughtException", (error) => {
   log(`uncaught exception: ${error.stack ?? String(error)}`);
-  dialog.showErrorBox(APP_NAME, `發生未預期的錯誤：${error.message}`);
+  dialog.showErrorBox(APP_NAME, translate("An unexpected error occurred. See the log for details.", currentLanguage));
 });
 process.on("unhandledRejection", (reason) => {
   log(`unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`);
@@ -64,8 +67,8 @@ function osSupported(): boolean {
 
 /**
  * Windows may tuck the icon into the tray overflow, so the first launch shows
- * a hint notification (plans/001-first-version.md §8). A marker file in userData records that it
- * was shown; settings.json stays limited to `outputDir`.
+ * a hint notification (docs/system-design/recording.md). A marker file in userData records that it
+ * was shown; settings.json stores user preferences independently.
  */
 async function isFirstRun(userDataDir: string): Promise<boolean> {
   try {
@@ -83,11 +86,11 @@ function resourcesDir(): string {
 
 /**
  * Why main refused the last display-media request. The renderer only sees a
- * generic `AbortError`; this lets the recorder report the real cause (§13).
+ * generic `AbortError`; this lets the recorder report the real cause.
  */
 let lastDenialReason: ErrorCode | undefined;
 
-/** Always the primary display, always with system audio (plans/001-first-version.md §6). */
+/** Always the primary display, always with system audio (docs/system-design/recording.md). */
 async function chooseDisplayMedia(
   _request: DisplayMediaRequestHandlerHandlerRequest,
   callback: (streams: Streams) => void,
@@ -128,7 +131,7 @@ if (!app.requestSingleInstanceLock()) {
 
 async function main(): Promise<void> {
   app.setAppUserModelId(app.isPackaged ? APP_ID : process.execPath);
-  // No window: neither of these may quit the app (plans/001-first-version.md §12).
+  // No window: neither of these may quit the app (docs/system-design/recording.md).
   app.on("window-all-closed", () => undefined);
 
   await app.whenReady();
@@ -139,19 +142,20 @@ async function main(): Promise<void> {
     defaultOutputDir: defaultOutputDir(),
     log,
   });
+  currentLanguage = settings.language;
   log(
     `start: ${APP_NAME} ${app.getVersion()}; electron ${process.versions.electron}; ` +
       `${process.platform} ${os.release()}; outputDir ${settings.outputDir}; ` +
       `quality ${JSON.stringify(settings.quality)}; log ${logPath}; ` +
       `packaged ${app.isPackaged}; executable ${process.execPath}`,
   );
-  // Plan 008 §B: a development-only unattended run driven by an environment
+  // a development-only unattended run driven by an environment
   // variable; its quality override lives in memory only. Packaged builds
   // never read it (`parseAutoRecord` returns undefined).
   const autoRecord = parseAutoRecord(process.env["RECORDSTUFF_AUTORECORD"], app.isPackaged);
   if (autoRecord && !autoRecord.ok) log(`autorecord: ignoring RECORDSTUFF_AUTORECORD: ${autoRecord.error}`);
   const qualityOverride = autoRecord?.ok ? autoRecord.config.quality : undefined;
-  /** A stored 60 fps on a platform where it is not yet verified records at 30 (plan 007). */
+  /** A stored 60 fps on a platform where it is not yet verified records at 30. */
   const quality = (): QualitySettings => effectiveQuality(qualityOverride ?? settings.quality, process.platform);
 
   session.defaultSession.setDisplayMediaRequestHandler(
@@ -194,7 +198,7 @@ async function main(): Promise<void> {
   let quitting = false;
   const tray = new AppTray({
     resourcesDir: resourcesDir(),
-    context: () => ({ platform: process.platform, outputDir: settings.outputDir, homeDir: os.homedir(), quality: quality() }),
+    context: () => ({ platform: process.platform, outputDir: settings.outputDir, homeDir: os.homedir(), quality: quality(), language: settings.language }),
     onToggle: () => recorder.toggle(),
     onAction: (action) => void handleAction(action),
     log,
@@ -203,7 +207,18 @@ async function main(): Promise<void> {
 
   async function handleAction(action: TrayAction): Promise<void> {
     if (typeof action !== "string") {
-      await setQuality(action.setQuality);
+      if ("setLanguage" in action) {
+        try {
+          await settings.setLanguage(action.setLanguage);
+          currentLanguage = settings.language;
+          tray.refresh();
+        } catch (cause) {
+          log(`settings: failed to save language: ${String(cause)}`);
+          tray.notifyLanguageWriteFailed();
+        }
+      } else {
+        await setQuality(action.setQuality);
+      }
       return;
     }
     switch (action) {
@@ -262,7 +277,7 @@ async function main(): Promise<void> {
     // A window-less app's dialog may open behind the frontmost app on macOS.
     if (process.platform === "darwin") app.focus({ steal: true });
     const result = await dialog.showOpenDialog({
-      title: "選擇錄影儲存位置",
+      title: translate("Choose a recording folder", settings.language),
       defaultPath: settings.outputDir,
       properties: ["openDirectory", "createDirectory"],
     });
@@ -280,7 +295,7 @@ async function main(): Promise<void> {
   }
 
   /**
-   * Plan 007 §B3: the choice is applied only after settings.json is written;
+   * the choice is applied only after settings.json is written;
    * a failed write keeps the previous value and says so. The menu is
    * disabled outside idle / needsPermission, so a running session's
    * snapshot is never touched.

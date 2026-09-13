@@ -1,5 +1,5 @@
 /**
- * The only file handle in the app (plans/001-first-version.md §10, §19-1). Appends chunks in
+ * The only media-file writer in the app (docs/system-design/recording.md). Appends chunks in
  * arrival order, fsyncs every 5 seconds, and renames
  * `<stamp>.recording.mp4` → `<stamp>.mp4` once the last chunk is on disk.
  * Any failure keeps what was written; nothing is ever silently discarded.
@@ -57,7 +57,7 @@ export function classifyWriteError(cause: unknown): ErrorCode {
 }
 
 /**
- * plans/001-first-version.md §10.1: before starting, `mkdir -p` the directory, then write and
+ * docs/system-design/recording.md: before starting, `mkdir -p` the directory, then write and
  * delete a probe file. Fails loudly instead of falling back to another folder.
  */
 export async function ensureWritableDir(dir: string, io: FileWriterFs = nodeFs): Promise<void> {

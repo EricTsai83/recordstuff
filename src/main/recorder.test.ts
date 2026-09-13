@@ -255,7 +255,7 @@ describe("Recorder timeouts", () => {
     expect(ctx.recorder.state.type).toBe("idle");
     expect(ctx.host.stopped).toEqual(["s1"]);
     expect(ctx.writers[0]!.abandoned).toBe(true);
-    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", detail: expect.stringContaining("系統權限提示") });
+    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", detail: expect.stringContaining("system permission prompts") });
   });
 
   it("fails with capture_start_failed when no chunk arrives within 8 s", async () => {
@@ -688,7 +688,7 @@ describe("Recorder shutdown", () => {
   });
 });
 
-describe("quality snapshot (plan 007 §B2)", () => {
+describe("quality snapshot", () => {
   it("passes the quality read at session start to the host and ignores later changes", async () => {
     let current: QualitySettings = { ...DEFAULT_QUALITY, videoQuality: "high" };
     const ctx = setup({ quality: () => current });

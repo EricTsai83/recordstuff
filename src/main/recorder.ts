@@ -1,10 +1,10 @@
 /**
- * The state machine (plans/001-first-version.md §12) and the single owner of `RecordingState`
- * (§19-2). Everything with side effects — capture host, file writer, clock —
+ * The state machine (docs/system-design/recording.md) and the single owner of `RecordingState`
+ *. Everything with side effects — capture host, file writer, clock —
  * is injected, so this file has no Electron import and is unit-testable.
  *
  * Failure never fakes success: any error goes back to `idle` with a `failed`
- * event and, when bytes were written, a kept `.recording.mp4` (§19-3).
+ * event and, when bytes were written, a kept `.recording.mp4`.
  */
 import path from "node:path";
 import type { HostMessage } from "../shared/protocol";
@@ -32,7 +32,7 @@ export interface RecorderHost {
 export interface RecorderDeps {
   host: RecorderHost;
   outputDir: () => string;
-  /** Read once per session when it starts; later changes affect the next recording only (plan 007). */
+  /** Read once per session when it starts; later changes affect the next recording only. */
   quality: () => QualitySettings;
   ensureWritableDir: (dir: string) => Promise<void>;
   openWriter: (recordingPath: string, finalPath: string) => Promise<RecorderWriter>;
@@ -70,7 +70,7 @@ export interface PermissionStatus {
 interface Session {
   id: string;
   phase: "opening" | "starting" | "recording" | "stopping";
-  /** Quality snapshot taken when the session was created (plan 007 §B2). */
+  /** Quality snapshot taken when the session was created. */
   quality: QualitySettings;
   /** `stopped` arrived and the writer is being finished; a hard cap must not call this a failure. */
   finalizing: boolean;
@@ -172,13 +172,13 @@ export class Recorder {
     this.setState({ type: "stopping" });
     this.clearTimer(session);
     session.timer = setTimeout(() => {
-      void this.fail(session.id, "stop_timeout", "capture host 未在時限內停止");
+      void this.fail(session.id, "stop_timeout", "capture host did not stop before the deadline");
     }, this.deps.stopTimeoutMs);
     this.deps.host.stop(session.id);
   }
 
   /**
-   * Quit path (§12): let a start finish, then stop and wait for the state to
+   * Quit path: let a start finish, then stop and wait for the state to
    * settle. Bounded by the start and stop timeouts.
    */
   async shutdown(): Promise<void> {
@@ -187,7 +187,7 @@ export class Recorder {
       await this.pendingFailure;
       return;
     }
-    // Hard cap (plans/001-first-version.md §12): past the stop timeout, stop waiting for the host.
+    // Hard cap (docs/system-design/recording.md): past the stop timeout, stop waiting for the host.
     // If the host never answered, close the file as is and keep
     // `.recording.mp4`, giving the close a short grace period. If the host did
     // stop and only the final fsync/rename is slow, let it finish in the
@@ -207,7 +207,7 @@ export class Recorder {
     if (capTimer) clearTimeout(capTimer);
     if (outcome === "settled") return;
     if (this.session === session && !session.finalizing) {
-      const failing = this.fail(session.id, "stop_timeout", "結束時停止錄製逾時，保留部分錄影");
+      const failing = this.fail(session.id, "stop_timeout", "shutdown stop timed out; preserving partial recording");
       await Promise.race([failing, delay(SHUTDOWN_GRACE_MS)]);
     }
   }
@@ -257,7 +257,7 @@ export class Recorder {
       if (session.phase === "opening") {
         void this.fail(session.id, "output_open_failed", this.deps.outputDir(), { outputDirUnavailable: true });
       } else {
-        void this.fail(session.id, "capture_start_failed", "capture host 未在時限內送出畫面");
+        void this.fail(session.id, "capture_start_failed", "capture host did not send media before the deadline");
       }
     }, this.deps.startTimeoutMs);
 
@@ -287,7 +287,7 @@ export class Recorder {
     session.phase = "starting";
     this.clearTimer(session);
     session.timer = setTimeout(() => {
-      void this.fail(session.id, "capture_start_failed", "等待螢幕／音訊擷取逾時；請完成系統權限提示後再試一次");
+      void this.fail(session.id, "capture_start_failed", "screen/audio capture request timed out; complete system permission prompts and retry");
     }, this.deps.captureRequestTimeoutMs);
     try {
       await this.deps.host.start(session.id, session.quality);
@@ -344,7 +344,7 @@ export class Recorder {
           this.clearTimer(session);
           if (session.nextSeq === 0) {
             session.timer = setTimeout(() => {
-              void this.fail(session.id, "capture_start_failed", "capture host 未在時限內送出畫面");
+              void this.fail(session.id, "capture_start_failed", "capture host did not send media before the deadline");
             }, this.deps.startTimeoutMs);
           }
           this.deps.log(`recorder: session ${session.id} capture: ${describeCapture(session.quality, message.capture)}`);
@@ -361,7 +361,7 @@ export class Recorder {
           session.finalizing = true;
           void this.finalize(session);
         } else {
-          void this.fail(session.id, "capture_failed", "capture host 在未要求停止時結束了擷取");
+          void this.fail(session.id, "capture_failed", "capture host ended capture without a stop request");
         }
         return;
     }
@@ -372,7 +372,7 @@ export class Recorder {
       return;
     }
     if (seq !== session.nextSeq) {
-      void this.fail(session.id, "capture_failed", `chunk 順序錯誤：預期 ${session.nextSeq}，收到 ${seq}`);
+      void this.fail(session.id, "capture_failed", `chunk sequence mismatch: expected ${session.nextSeq}, received ${seq}`);
       return;
     }
     session.nextSeq += 1;
@@ -425,7 +425,7 @@ export class Recorder {
     if (session.phase !== "opening") this.deps.host.stop(session.id);
     this.deps.log(`recorder: session ${session.id} failed: ${code} ${detail}`);
     // The icon must never claim "recording" once the session is dead, even if
-    // closing the file takes long on a stalled disk (plans/001-first-version.md §19-3).
+    // closing the file takes long on a stalled disk (docs/system-design/recording.md).
     this.setState({ type: "idle", ...idleFlags });
     const finish = (async (): Promise<void> => {
       const partialPath = session.writer ? await session.writer.abandon() : undefined;

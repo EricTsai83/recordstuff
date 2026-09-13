@@ -1,9 +1,6 @@
-/**
- * Pure projection of `RecordingState` onto tray icon, title and menu
- * (plans/001-first-version.md §8 table). No Electron import so the table is unit-testable;
- * `tray.ts` turns this model into real `Tray` / `Menu` calls.
- */
+/** Pure state-to-presentation projection. See docs/system-design/desktop.md. */
 import path from "node:path";
+import { DEFAULT_LANGUAGE, translate as t, type Language, type MessageKey } from "../shared/i18n";
 import {
   isFrameRateAvailable,
   type FrameRate,
@@ -14,7 +11,6 @@ import {
 import type { ErrorCode, RecordingState } from "../shared/state";
 
 export type TrayIcon = "idle" | "recording";
-
 export type TrayAction =
   | "openPermissionSettings"
   | "relaunch"
@@ -24,50 +20,40 @@ export type TrayAction =
   | "changeOutputDir"
   | "revealLog"
   | "quit"
-  /** One radio choice in the「錄製品質」submenu (plan 007 §B1). */
-  | { setQuality: Partial<QualitySettings> };
-
+  | { setQuality: Partial<QualitySettings> }
+  | { setLanguage: Language };
 export type TrayMenuItem =
   | { kind: "separator" }
   | { kind: "item"; label: string; enabled: boolean; action?: TrayAction; toolTip?: string }
-  /** Exactly one radio item is `checked`; the group is the whole submenu. */
   | { kind: "radio"; label: string; enabled: boolean; checked: boolean; action: TrayAction }
   | { kind: "submenu"; label: string; enabled: boolean; items: TrayMenuItem[] };
-
 export interface TrayModel {
   icon: TrayIcon;
-  /** Text next to the icon; macOS only (`tray.setTitle`). */
   title: string;
   tooltip: string;
   menu: TrayMenuItem[];
 }
-
 export interface TrayContext {
   platform: NodeJS.Platform;
   outputDir: string;
   homeDir: string;
-  /** The effective quality for this platform (a Windows file storing 60 fps shows 30). */
   quality: QualitySettings;
+  /** Omitted by older callers: English is always the default. */
+  language?: Language;
 }
-
-export const VIDEO_QUALITY_LABELS: Record<VideoQuality, string> = {
-  economy: "精省",
-  standard: "標準",
-  high: "高品質",
+export const VIDEO_QUALITY_LABELS: Record<VideoQuality, MessageKey> = {
+  economy: "Economy",
+  standard: "Standard",
+  high: "High",
 };
-
 export const RESOLUTION_CAP_LABELS: Record<ResolutionCap, string> = {
   "1080p": "1080p",
   "1440p": "1440p",
   "4k": "4K",
-  source: "原尺寸",
+  source: "Source",
 };
-
-const QUALITY_MENU_LABEL = "錄製品質";
-
 export const APP_NAME = "RecordStuff";
 
-/** `/Users/eric/Movies/RecordStuff` → `~/Movies/RecordStuff`. */
 export function abbreviateHome(filePath: string, homeDir: string): string {
   const home = homeDir.replace(/[\\/]+$/, "");
   if (home.length === 0) return filePath;
@@ -75,39 +61,45 @@ export function abbreviateHome(filePath: string, homeDir: string): string {
   const sep = filePath.startsWith(home + "/") ? "/" : filePath.startsWith(home + "\\") ? "\\" : "";
   return sep ? `~${sep}${filePath.slice(home.length + 1)}` : filePath;
 }
-
 function disabled(label: string): TrayMenuItem {
   return { kind: "item", label, enabled: false };
 }
-
 function item(label: string, action: TrayAction, toolTip?: string): TrayMenuItem {
   return toolTip === undefined
     ? { kind: "item", label, enabled: true, action }
     : { kind: "item", label, enabled: true, action, toolTip };
 }
-
 const SEPARATOR: TrayMenuItem = { kind: "separator" };
-/**
- * Every menu ends with these two (plans/002-file-logging.md): the log is the
- * only way a user of a window-less app can find out why something failed, so
- * it stays reachable in every state; revealing it has no effect on a recording.
- */
-const FOOTER: TrayMenuItem[] = [{ kind: "separator" }, item("顯示 log", "revealLog"), item("結束", "quit")];
-
-function outputDirItems(ctx: TrayContext, enabled: boolean): TrayMenuItem[] {
-  // Electron menu tooltips exist only on macOS, so both platforms show the
-  // `~`-abbreviated path in the label; macOS additionally gets the full path
-  // as a tooltip.
-  const label = `儲存位置：${abbreviateHome(ctx.outputDir, ctx.homeDir)}`;
-  const open: TrayMenuItem = enabled
-    ? item(label, "openOutputDir", ctx.outputDir)
-    : { kind: "item", label, enabled: false, toolTip: ctx.outputDir };
-  const change: TrayMenuItem = enabled
-    ? item("更改儲存位置…", "changeOutputDir")
-    : disabled("更改儲存位置…");
-  return [open, change];
+function footer(language: Language): TrayMenuItem[] {
+  return [
+    SEPARATOR,
+    {
+      kind: "submenu",
+      label: t("Language", language),
+      enabled: true,
+      items: (["en", "zh-TW"] as const).map((value) => ({
+        kind: "radio",
+        label: value === "en" ? "English" : "繁體中文",
+        enabled: true,
+        checked: value === language,
+        action: { setLanguage: value },
+      })),
+    },
+    item(t("Show log", language), "revealLog"),
+    item(t("Quit", language), "quit"),
+  ];
 }
-
+function outputDirItems(ctx: TrayContext, enabled: boolean): TrayMenuItem[] {
+  const label = t("Output folder: {path}", ctx.language, { path: abbreviateHome(ctx.outputDir, ctx.homeDir) });
+  return [
+    enabled
+      ? item(label, "openOutputDir", ctx.outputDir)
+      : { kind: "item", label, enabled: false, toolTip: ctx.outputDir },
+    enabled
+      ? item(t("Change output folder…", ctx.language), "changeOutputDir")
+      : disabled(t("Change output folder…", ctx.language)),
+  ];
+}
 function radioGroup<K extends keyof QualitySettings>(
   key: K,
   current: QualitySettings[K],
@@ -123,209 +115,200 @@ function radioGroup<K extends keyof QualitySettings>(
     action: { setQuality: { [key]: choice } as Partial<QualitySettings> },
   }));
 }
-
-/**
- * 「錄製品質」: four nested single-choice submenus, each labelled with its
- * current value so the whole configuration is readable without opening them.
- * Only offered while idle / needsPermission; a recording keeps the snapshot
- * it started with, so the other states show the entry greyed out.
- */
 function qualityMenu(ctx: TrayContext): TrayMenuItem {
   const q = ctx.quality;
-  const frameRateLabel = (fps: FrameRate): string =>
-    isFrameRateAvailable(fps, ctx.platform) ? `${fps} fps` : `${fps} fps（此平台尚未驗證，暫不開放）`;
+  const language = ctx.language;
   return {
     kind: "submenu",
-    label: QUALITY_MENU_LABEL,
+    label: t("Recording quality", language),
     enabled: true,
     items: [
       {
         kind: "submenu",
-        label: `影像品質：${VIDEO_QUALITY_LABELS[q.videoQuality]}`,
+        label: t("Video quality: {value}", language, { value: t(VIDEO_QUALITY_LABELS[q.videoQuality], language) }),
         enabled: true,
-        items: radioGroup("videoQuality", q.videoQuality, ["economy", "standard", "high"], (v) => VIDEO_QUALITY_LABELS[v]),
+        items: radioGroup("videoQuality", q.videoQuality, ["economy", "standard", "high"], (v) =>
+          t(VIDEO_QUALITY_LABELS[v], language),
+        ),
       },
       {
         kind: "submenu",
-        label: `解析度上限：${RESOLUTION_CAP_LABELS[q.resolutionCap]}`,
+        label: t("Resolution cap: {value}", language, {
+          value: q.resolutionCap === "source" ? t("Source", language) : RESOLUTION_CAP_LABELS[q.resolutionCap],
+        }),
         enabled: true,
-        items: radioGroup("resolutionCap", q.resolutionCap, ["1080p", "1440p", "4k", "source"], (v) => RESOLUTION_CAP_LABELS[v]),
+        items: radioGroup("resolutionCap", q.resolutionCap, ["1080p", "1440p", "4k", "source"], (v) =>
+          v === "source" ? t("Source", language) : RESOLUTION_CAP_LABELS[v],
+        ),
       },
       {
         kind: "submenu",
-        label: `幀率：${q.frameRate} fps`,
+        label: t("Frame rate: {value} fps", language, { value: q.frameRate }),
         enabled: true,
-        items: radioGroup("frameRate", q.frameRate, [30, 60], frameRateLabel, (fps) => isFrameRateAvailable(fps, ctx.platform)),
+        items: radioGroup(
+          "frameRate",
+          q.frameRate,
+          [30, 60],
+          (fps) =>
+            isFrameRateAvailable(fps, ctx.platform)
+              ? `${fps} fps`
+              : t("{value} fps (unverified on this platform)", language, { value: fps }),
+          (fps) => isFrameRateAvailable(fps, ctx.platform),
+        ),
       },
     ],
   };
 }
-
-const QUALITY_LOCKED: TrayMenuItem = disabled(QUALITY_MENU_LABEL);
-
-const RELAUNCH_TOOLTIP =
-  `在系統設定允許之後，執行中的這個程序仍然會被拒絕（macOS 自己的提示也說要結束 app 後才生效）；重新啟動 ${APP_NAME} 就會生效。`;
-
-/**
- * plan 004: macOS keeps refusing screen capture for the life of a process
- * that was started without the grant, even after the user flips the switch —
- * its own dialog says the change applies once the app is restarted. Stage 1
- * therefore never reports granted, `needsRelaunch` never becomes true, and a
- * measured run sat in `needsPermission` for six polls while an immediate
- * restart saw the grant. The state stays truthful (we never claim a grant we
- * cannot see); the menu always offers the restart and says why it is needed.
- */
-function permissionActions(needsRelaunch: boolean): TrayMenuItem[] {
+function permissionActions(needsRelaunch: boolean, language: Language): TrayMenuItem[] {
+  const hint = t(
+    "After allowing access in System Settings, relaunch RecordStuff if this process still cannot capture.",
+    language,
+  );
   return needsRelaunch
-    ? [item("重新啟動", "relaunch", RELAUNCH_TOOLTIP)]
+    ? [item(t("Relaunch", language), "relaunch", hint)]
     : [
-        item("開啟系統設定", "openPermissionSettings"),
-        item(`已經允許了？重新啟動 ${APP_NAME}`, "relaunch", RELAUNCH_TOOLTIP),
+        item(t("Open System Settings", language), "openPermissionSettings"),
+        item(t("Already allowed? Relaunch RecordStuff", language), "relaunch", hint),
       ];
 }
-
 export function trayModel(state: RecordingState, ctx: TrayContext): TrayModel {
+  const language = ctx.language ?? DEFAULT_LANGUAGE;
+  const text = (key: MessageKey): string => t(key, language);
+  const end = footer(language);
+  const locked = disabled(text("Recording quality"));
+  const model = (icon: TrayIcon, title: string, status: string, menu: TrayMenuItem[]): TrayModel => ({
+    icon,
+    title,
+    tooltip: `${APP_NAME}: ${status}`,
+    menu,
+  });
   switch (state.type) {
     case "needsPermission":
-      return {
-        icon: "idle",
-        title: "",
-        tooltip: `${APP_NAME}：需要螢幕錄製權限`,
-        menu: [
-          disabled("需要螢幕錄製權限"),
-          ...permissionActions(state.needsRelaunch),
-          SEPARATOR,
-          ...outputDirItems(ctx, true),
-          qualityMenu(ctx),
-          ...FOOTER,
-        ],
-      };
+      return model("idle", "", text("Screen recording permission required"), [
+        disabled(text("Screen recording permission required")),
+        ...permissionActions(state.needsRelaunch, language),
+        SEPARATOR,
+        ...outputDirItems(ctx, true),
+        qualityMenu(ctx),
+        ...end,
+      ]);
     case "idle": {
-      const menu: TrayMenuItem[] = [
-        disabled(state.outputDirUnavailable ? "儲存位置無法使用" : "待命中"),
-      ];
-      if (state.lastSavedPath) {
-        menu.push(item("顯示最後一個錄影", "revealLastSaved", state.lastSavedPath));
-      }
-      menu.push(SEPARATOR, ...outputDirItems(ctx, true), qualityMenu(ctx), ...FOOTER);
-      return {
-        icon: "idle",
-        title: "",
-        tooltip: state.outputDirUnavailable ? `${APP_NAME}：儲存位置無法使用` : `${APP_NAME}：待命中`,
-        menu,
-      };
+      const status = text(state.outputDirUnavailable ? "Output folder unavailable" : "Ready");
+      const menu = [disabled(status)];
+      if (state.lastSavedPath) menu.push(item(text("Show last recording"), "revealLastSaved", state.lastSavedPath));
+      return model("idle", "", status, [...menu, SEPARATOR, ...outputDirItems(ctx, true), qualityMenu(ctx), ...end]);
     }
     case "starting":
-      return {
-        icon: "idle",
-        title: "…",
-        tooltip: `${APP_NAME}：啟動中，請留意系統權限提示…`,
-        menu: [disabled("啟動中，請留意系統權限提示…"), SEPARATOR, QUALITY_LOCKED, ...FOOTER],
-      };
+      return model("idle", "…", text("Starting… Check for system permission prompts"), [
+        disabled(text("Starting… Check for system permission prompts")),
+        SEPARATOR,
+        locked,
+        ...end,
+      ]);
     case "recording":
-      return {
-        icon: "recording",
-        title: "REC",
-        tooltip: `${APP_NAME}：錄製中`,
-        menu: [
-          disabled("錄製中"),
-          item("停止", "stop"),
-          SEPARATOR,
-          ...outputDirItems(ctx, false),
-          QUALITY_LOCKED,
-          ...FOOTER,
-        ],
-      };
+      return model("recording", "REC", text("Recording"), [
+        disabled(text("Recording")),
+        item(text("Stop"), "stop"),
+        SEPARATOR,
+        ...outputDirItems(ctx, false),
+        locked,
+        ...end,
+      ]);
     case "stopping":
-      return {
-        icon: "idle",
-        title: "…",
-        tooltip: `${APP_NAME}：儲存中…`,
-        menu: [disabled("儲存中…"), SEPARATOR, QUALITY_LOCKED, ...FOOTER],
-      };
+      return model("idle", "…", text("Saving…"), [disabled(text("Saving…")), SEPARATOR, locked, ...end]);
   }
 }
-
 export interface NotificationText {
   title: string;
   body: string;
 }
-
-export function savedNotification(savedPath: string): NotificationText {
-  return { title: APP_NAME, body: `已儲存 ${path.basename(savedPath)}` };
+const notice = (body: string): NotificationText => ({ title: APP_NAME, body });
+export function savedNotification(savedPath: string, language?: Language): NotificationText {
+  return notice(t("Saved {file}", language, { file: path.basename(savedPath) }));
 }
-
-export function permissionNotification(needsRelaunch: boolean): NotificationText {
-  return needsRelaunch
-    ? { title: APP_NAME, body: "已取得螢幕錄製權限，但需要重新啟動 RecordStuff。點這則通知重新啟動" }
-    : { title: APP_NAME, body: "RecordStuff 需要螢幕錄製權限，點這則通知開啟系統設定" };
+export function permissionNotification(needsRelaunch: boolean, language?: Language): NotificationText {
+  return notice(
+    t(
+      needsRelaunch
+        ? "Screen recording access was granted, but RecordStuff needs to relaunch. Click to relaunch."
+        : "RecordStuff needs screen recording access. Click to open System Settings.",
+      language,
+    ),
+  );
 }
-
-export function settingsWriteFailedNotification(chosenDir: string, homeDir: string): NotificationText {
-  return {
-    title: APP_NAME,
-    body: `無法儲存設定，儲存位置仍是原本的資料夾。想改成 ${abbreviateHome(chosenDir, homeDir)} 請再試一次`,
-  };
+export function settingsWriteFailedNotification(
+  chosenDir: string,
+  homeDir: string,
+  language?: Language,
+): NotificationText {
+  return notice(
+    t("Could not save settings. The output folder is unchanged. Try choosing {path} again.", language, {
+      path: abbreviateHome(chosenDir, homeDir),
+    }),
+  );
 }
-
-export function qualityWriteFailedNotification(): NotificationText {
-  return { title: APP_NAME, body: "無法儲存錄製品質設定，仍使用原本的選項。請再試一次" };
+export function qualityWriteFailedNotification(language?: Language): NotificationText {
+  return notice(t("Could not save recording quality. Your previous settings are still in use.", language));
 }
-
-/** Plan 007: a clear frame-rate downgrade is shown, not just logged. */
-export function frameRateDowngradeNotification(requested: FrameRate, actual: number): NotificationText {
-  return {
-    title: APP_NAME,
-    body: `系統只提供 ${actual} fps，本次以 ${actual} fps 錄製（設定為 ${requested} fps）`,
-  };
+export function languageWriteFailedNotification(language?: Language): NotificationText {
+  return notice(t("Could not save the language. Your previous language is still in use.", language));
 }
-
-export function trayHintNotification(): NotificationText {
-  return { title: APP_NAME, body: "RecordStuff 在系統匣待命。左鍵點圖示開始錄製，再點一下停止" };
+export function frameRateDowngradeNotification(
+  requested: FrameRate,
+  actual: number,
+  language?: Language,
+): NotificationText {
+  return notice(
+    t("The system provides {actual} fps. This recording uses {actual} fps (requested {requested} fps).", language, {
+      actual,
+      requested,
+    }),
+  );
 }
-
-/** One plain sentence per error code (plans/001-first-version.md §13). */
+export function trayHintNotification(language?: Language): NotificationText {
+  return notice(t("RecordStuff is ready in the system tray. Click to start recording; click again to stop.", language));
+}
 export function errorNotification(
   code: ErrorCode,
-  detail: string,
+  _detail: string,
   partialPath: string | undefined,
-  ctx: Pick<TrayContext, "homeDir" | "outputDir">,
+  ctx: Pick<TrayContext, "homeDir" | "outputDir" | "language">,
 ): NotificationText {
+  // Technical detail remains in English logs; user recovery guidance is fully localized.
+  const language = ctx.language;
   const kept = partialPath
-    ? `已保留部分錄影：${path.basename(partialPath)}。點這則通知顯示檔案`
-    : "沒有錄到任何內容";
-  const why = detail ? `（${detail}）` : "";
-  const body = ((): string => {
-    switch (code) {
-      case "permission_denied":
-        return "沒有螢幕錄製權限，無法開始錄製。右鍵選單可以開啟系統設定";
-      case "permission_needs_relaunch":
-        return "已取得螢幕錄製權限，但需要重新啟動 RecordStuff。右鍵選單可以重新啟動";
-      case "unsupported_os_version":
-        return "這個系統版本不支援錄製系統音訊，需要 macOS 13 或 Windows 10 20H2 以上";
-      case "no_display":
-        return `找不到可以錄製的螢幕${why}`;
-      case "no_audio_track":
-        return "拿不到系統音訊，沒有開始錄製。macOS 請確認「系統設定 → 隱私權與安全性 → 螢幕與系統音訊錄製」已允許 RecordStuff";
-      case "mp4_unsupported":
-        return "這台電腦的錄製元件不支援 MP4，沒有開始錄製";
-      case "capture_start_failed":
-        return `無法開始錄製${why}。${kept}`;
-      case "capture_failed":
-        return `錄製中斷${why}。${kept}`;
-      case "capture_host_crashed":
-        return `錄製程序當機。${kept}`;
-      case "capture_host_unresponsive":
-        return `錄製程序沒有回應。${kept}`;
-      case "output_open_failed":
-        return `儲存位置無法寫入：${abbreviateHome(ctx.outputDir, ctx.homeDir)}。右鍵選單可以更改儲存位置`;
-      case "output_write_failed":
-        return `寫入錄影失敗${why}。${kept}`;
-      case "disk_full":
-        return `磁碟已滿。${kept}`;
-      case "stop_timeout":
-        return `停止錄製逾時。${kept}`;
-    }
-  })();
-  return { title: APP_NAME, body };
+    ? t("Partial recording kept: {file}. Click to show the file.", language, { file: path.basename(partialPath) })
+    : t("No content was recorded.", language);
+  const reasons: Record<ErrorCode, MessageKey> = {
+    permission_denied: "Screen recording access is missing. Open System Settings from the tray menu.",
+    permission_needs_relaunch:
+      "Screen recording access was granted, but RecordStuff needs to relaunch. Use the tray menu.",
+    unsupported_os_version:
+      "This system version does not support system audio capture. macOS 13 or newer is required on Mac.",
+    no_display: "No display is available for recording.",
+    no_audio_track:
+      "System audio is unavailable. On macOS, allow RecordStuff in System Settings > Privacy & Security > Screen & System Audio Recording.",
+    mp4_unsupported: "MP4 recording is not supported on this computer.",
+    capture_start_failed: "Could not start recording.",
+    capture_failed: "Recording was interrupted.",
+    capture_host_crashed: "The recording process crashed.",
+    capture_host_unresponsive: "The recording process is not responding.",
+    output_open_failed: "Cannot write to {path}. Choose another output folder from the tray menu.",
+    output_write_failed: "Could not write the recording.",
+    disk_full: "The disk is full.",
+    stop_timeout: "Stopping the recording timed out.",
+  };
+  const body = t(reasons[code], language, { path: abbreviateHome(ctx.outputDir, ctx.homeDir) });
+  const preserve =
+    partialPath ||
+    [
+      "capture_start_failed",
+      "capture_failed",
+      "capture_host_crashed",
+      "capture_host_unresponsive",
+      "output_write_failed",
+      "disk_full",
+      "stop_timeout",
+    ].includes(code);
+  return notice(preserve ? `${body} ${kept}` : body);
 }

@@ -1,10 +1,10 @@
 /**
  * The authoritative recording state. Owned by `main/recorder.ts`; the tray is
- * only a projection of it (plans/001-first-version.md §8, §19-2).
+ * only a projection of it (docs/system-design/recording.md).
  *
  * `idle.outputDirUnavailable` is set when the last start attempt failed
- * because the chosen output directory could not be written (plans/001-first-version.md §10.1:
- * the menu's first line must read「儲存位置無法使用」). It is cleared by the
+ * because the chosen output directory could not be written (docs/system-design/recording.md:
+ * the menu's first line must read"Output folder unavailable"). It is cleared by the
  * next successful start or by changing the output directory.
  */
 export type RecordingState =
@@ -15,9 +15,9 @@ export type RecordingState =
   | { type: "stopping" };
 
 /**
- * Every failure the app can report (plans/001-first-version.md §13). `capture_failed` covers a
+ * Every failure the app can report (docs/system-design/recording.md). `capture_failed` covers a
  * capture that stopped on its own mid-recording (track ended, MediaRecorder
- * error); the plan's list has no code for that path and we do not fake success.
+ * error); unexpected termination must not be reported as a successful stop.
  */
 export type ErrorCode =
   | "permission_denied"

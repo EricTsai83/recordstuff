@@ -50,3 +50,9 @@ Local package verification does not mean installation and recording have been
 validated on another Mac.
 
 Apple's instructions: https://support.apple.com/102445
+
+## Language
+
+RecordStuff starts in English. Right-click its menu bar icon and choose
+Language → 繁體中文 for Traditional Chinese. The choice is saved for future launches.
+App diagnostics remain English; macOS permission dialogs follow the system language.

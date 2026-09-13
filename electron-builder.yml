@@ -28,8 +28,8 @@ mac:
   notarize: true
   extendInfo:
     LSUIElement: true
-    NSScreenCaptureUsageDescription: RecordStuff 需要螢幕錄製權限來錄製主螢幕與系統音訊。
-    NSAudioCaptureUsageDescription: RecordStuff 錄製系統播放的聲音。
+    NSScreenCaptureUsageDescription: RecordStuff needs screen recording access to capture the primary display and system audio.
+    NSAudioCaptureUsageDescription: RecordStuff records audio played by your computer.
 dmg:
   contents:
     - x: 130

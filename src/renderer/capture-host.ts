@@ -1,5 +1,5 @@
 /**
- * The hidden capture host (plans/001-first-version.md §5, §9): `getDisplayMedia` (main decides
+ * The hidden capture host (docs/system-design/recording.md): `getDisplayMedia` (main decides
  * the source and adds `audio: 'loopback'`) → `MediaRecorder` producing
  * fragmented MP4 (H.264 + AAC) → one chunk per second over the MessagePort.
  * It never touches the file system; main writes every byte.
@@ -55,7 +55,7 @@ export type FrameSizeMeasurer = (stream: MediaStream, options?: MeasureOptions) 
 
 /**
  * The size of the frames a stream really carries, read from a hidden
- * `<video>` element's intrinsic size. Plan 008's first measurements showed
+ * `<video>` element's intrinsic size. The first measurements showed
  * `track.getSettings()` reporting 1920x1920 for a 1920x1080 display (the
  * height of another monitor), which made the 1080p cap scale the picture to
  * 1080x606; the frames themselves never lie. Undefined when there is no DOM,
@@ -137,7 +137,7 @@ export class CaptureHost {
 
   private async start(sessionId: string, quality: QualitySettings): Promise<void> {
     if (this.session || this.pending.size > 0) {
-      this.fail(sessionId, "capture_start_failed", "已有進行中的錄製");
+      this.fail(sessionId, "capture_start_failed", "a recording is already in progress");
       return;
     }
     if (!MediaRecorder.isTypeSupported(OUTPUT_MIME_TYPE)) {
@@ -153,7 +153,7 @@ export class CaptureHost {
         // on the source's orientation, which is only known once we have it.
         video: { frameRate: { ideal: quality.frameRate, max: quality.frameRate } },
         // `restrictOwnAudio` (Electron 43+) keeps this app's own sounds out.
-        // `channelCount` asks for stereo: plan 008 measured the macOS
+        // `channelCount` asks for stereo: Local verification measured the macOS
         // loopback track as mono without it.
         audio: { restrictOwnAudio: true, channelCount: { ideal: 2 } } as MediaTrackConstraints,
       });
@@ -182,12 +182,12 @@ export class CaptureHost {
     };
     if (cancelled()) return;
     if (this.session) {
-      refuse("capture_start_failed", "已有進行中的錄製");
+      refuse("capture_start_failed", "a recording is already in progress");
       return;
     }
     const audioTracks = stream.getAudioTracks();
     if (audioTracks.length === 0) {
-      refuse("no_audio_track", "getDisplayMedia 沒有回傳音訊軌");
+      refuse("no_audio_track", "getDisplayMedia returned no audio track");
       return;
     }
     // Electron 39+ on macOS 14.2+ uses CoreAudio Tap. Without the
@@ -195,7 +195,7 @@ export class CaptureHost {
     // grant, Chromium still hands back an audio track — already ended, never
     // delivering samples, with no error. Recording it would be a silent file.
     if (audioTracks.some((track) => track.readyState === "ended")) {
-      refuse("no_audio_track", "系統音訊軌已結束（macOS 未授權「系統音訊錄製」或缺少 NSAudioCaptureUsageDescription）");
+      refuse("no_audio_track", "system audio track already ended (system audio permission or NSAudioCaptureUsageDescription may be missing)");
       return;
     }
 
@@ -205,13 +205,13 @@ export class CaptureHost {
     // pass 1, F3): a track that died meanwhile would otherwise be recorded as
     // a silent or frozen file that reports success.
     if (stream.getTracks().some((track) => track.readyState === "ended")) {
-      refuse("capture_start_failed", "套用品質設定期間擷取軌已結束");
+      refuse("capture_start_failed", "capture track ended while applying quality settings");
       return;
     }
     this.pending.delete(sessionId);
     if (this.session) {
       stopTracks(stream);
-      this.fail(sessionId, "capture_start_failed", "已有進行中的錄製");
+      this.fail(sessionId, "capture_start_failed", "a recording is already in progress");
       return;
     }
 
@@ -252,7 +252,7 @@ export class CaptureHost {
     recorder.onstop = () => {
       this.finish(session, () => {
         if (session.stopRequested) this.send({ type: "stopped", sessionId: session.id });
-        else this.fail(session.id, "capture_failed", "擷取來源結束（螢幕或音訊軌已停止）");
+        else this.fail(session.id, "capture_failed", "capture source ended (display or audio track stopped)");
       });
     };
     for (const track of stream.getTracks()) {
@@ -302,7 +302,7 @@ export class CaptureHost {
         this.port.postMessage({ type: "chunk", sessionId: session.id, seq, bytes } satisfies HostMessage);
       })
       .catch((cause: unknown) => {
-        this.fail(session.id, "capture_failed", `chunk 讀取失敗：${describe(cause)}`);
+        this.fail(session.id, "capture_failed", `chunk read failed: ${describe(cause)}`);
       });
   }
 
@@ -331,7 +331,7 @@ function finiteOrUndefined(value: unknown): number | undefined {
 }
 
 /**
- * Plan 007 §B2: fit the captured size into the resolution cap (same aspect
+ * fit the captured size into the resolution cap (same aspect
  * ratio, never upscaled), then derive the encoder targets from the size the
  * recording will have. The source size comes from the frames themselves
  * (`measureFrameSize`), falling back to `track.getSettings()` only when no
@@ -350,9 +350,9 @@ async function applyQuality(stream: MediaStream, quality: QualitySettings, measu
       : undefined;
   const measured = video ? await measure(stream) : undefined;
   if (measured && reported && (measured.width !== reported.width || measured.height !== reported.height)) {
-    warnings.push(`track.getSettings() 回報 ${reported.width}x${reported.height}，實際影格 ${measured.width}x${measured.height}，以實際影格為準`);
+    warnings.push(`track.getSettings() reported ${reported.width}x${reported.height}; actual frames ${measured.width}x${measured.height}; using actual frames`);
   }
-  if (!measured && reported) warnings.push("無法讀取實際影格尺寸，以 track.getSettings() 為準");
+  if (!measured && reported) warnings.push("actual frame size unavailable; using track.getSettings()");
   const source = measured ?? reported;
   // What the recording will be: after an accepted constraint the frames are
   // measured again (an accepted max is not proof of the delivered size — the
@@ -372,20 +372,20 @@ async function applyQuality(stream: MediaStream, quality: QualitySettings, measu
         });
         const settled = await measure(stream, { expect: target, timeoutMs: 1500 });
         if (!settled) {
-          warnings.push(`套用上限後未能重新量測影格，以目標 ${target.width}x${target.height} 回報`);
+          warnings.push(`could not remeasure constrained frames; reporting target ${target.width}x${target.height}`);
           actual = target;
         } else {
           if (settled.width !== target.width || settled.height !== target.height) {
-            warnings.push(`套用上限後實際影格 ${settled.width}x${settled.height}，與目標 ${target.width}x${target.height} 不同`);
+            warnings.push(`constrained frames ${settled.width}x${settled.height} differ from target ${target.width}x${target.height}`);
           }
           actual = settled;
         }
       } catch (cause) {
-        warnings.push(`解析度上限 ${quality.resolutionCap} 無法套用，以來源尺寸錄製：${describe(cause)}`);
+        warnings.push(`could not apply resolution cap ${quality.resolutionCap}; using source size: ${describe(cause)}`);
       }
     }
   } else if (!source) {
-    warnings.push("video track 未回報尺寸，無法套用解析度上限");
+    warnings.push("video track has no dimensions; cannot apply resolution cap");
   }
   const encodeSize = actual ?? ASSUMED_SIZE;
   const audioSettings = audio?.getSettings() ?? {};

@@ -1,5 +1,5 @@
 /**
- * macOS screen-recording permission (plans/001-first-version.md §11), designed after Cap's
+ * macOS screen-recording permission (docs/system-design/recording.md), designed after Cap's
  * lesson: what the OS *says* is only a hint; what capture can actually *see*
  * is the truth, and that check is expensive so it is bounded and cached.
  *
@@ -127,7 +127,7 @@ export class PermissionWatcher {
     void this.validate();
   }
 
-  /** Make macOS list the app and show its own prompt (plans/001-first-version.md §3, §11). */
+  /** Make macOS list the app and show its own prompt (docs/system-design/recording.md). */
   private promptOnce(): void {
     if (this.prompted) return;
     this.prompted = true;

@@ -1,5 +1,5 @@
 /**
- * Tray icon, right-click menu and notifications (plans/001-first-version.md §8). This is a
+ * Tray icon, right-click menu and notifications (docs/system-design/recording.md). This is a
  * projection of `RecordingState`; every decision lives in `recorder.ts`.
  * Left click toggles (`tray.on('click')`); right click pops a menu rebuilt
  * from the current state each time — never `setContextMenu`, which would make
@@ -11,6 +11,7 @@ import type { ErrorCode, RecordingState } from "../shared/state";
 import type { FrameRate } from "../shared/quality";
 import {
   errorNotification,
+  languageWriteFailedNotification,
   frameRateDowngradeNotification,
   permissionNotification,
   qualityWriteFailedNotification,
@@ -29,7 +30,7 @@ export interface TrayOptions {
   context: () => TrayContext;
   onToggle: () => void;
   onAction: (action: TrayAction) => void;
-  /** Diagnostics for notifications the OS refuses to show (plan 004). */
+  /** Diagnostics for notifications the OS refuses to show. */
   log?: (message: string) => void;
 }
 
@@ -69,7 +70,7 @@ export class AppTray {
   }
 
   notifySaved(savedPath: string): void {
-    this.show(savedNotification(savedPath), () => this.revealFromNotification(savedPath));
+    this.show(savedNotification(savedPath, this.options.context().language), () => this.revealFromNotification(savedPath));
   }
 
   notifyError(code: ErrorCode, detail: string, partialPath: string | undefined): void {
@@ -98,34 +99,38 @@ export class AppTray {
   }
 
   notifyPermission(needsRelaunch: boolean): void {
-    this.show(permissionNotification(needsRelaunch), () =>
+    this.show(permissionNotification(needsRelaunch, this.options.context().language), () =>
       this.options.onAction(needsRelaunch ? "relaunch" : "openPermissionSettings"),
     );
   }
 
   notifySettingsWriteFailed(chosenDir: string): void {
-    this.show(settingsWriteFailedNotification(chosenDir, this.options.context().homeDir));
+    this.show(settingsWriteFailedNotification(chosenDir, this.options.context().homeDir, this.options.context().language));
+  }
+
+  notifyLanguageWriteFailed(): void {
+    this.show(languageWriteFailedNotification(this.options.context().language));
   }
 
   notifyQualityWriteFailed(): void {
-    this.show(qualityWriteFailedNotification());
+    this.show(qualityWriteFailedNotification(this.options.context().language));
   }
 
   notifyFrameRateDowngrade(requested: FrameRate, actual: number): void {
-    this.show(frameRateDowngradeNotification(requested, actual));
+    this.show(frameRateDowngradeNotification(requested, actual, this.options.context().language));
   }
 
   notifyTrayHint(): void {
-    this.show(trayHintNotification());
+    this.show(trayHintNotification(this.options.context().language));
   }
 
   /**
    * A notification is a best-effort hint, never part of recording: nothing
-   * here may throw into the caller. plan 004 found a save whose notification
+   * here may throw into the caller. Local verification found a save whose notification
    * never appeared, with nothing in the log to say whether the app or the OS
    * dropped it — on macOS `UNUserNotificationCenter` can refuse an unsigned
    * or ad-hoc-signed build outright. Electron's `failed` event is the only
-   * trace, so it goes to the log; plan 006 re-checks this on a signed build.
+   * trace, so it goes to the log; signed-build evidence is in docs/verification/README.md.
    */
   private show(text: { title: string; body: string }, onClick?: () => void): void {
     if (!Notification.isSupported()) {

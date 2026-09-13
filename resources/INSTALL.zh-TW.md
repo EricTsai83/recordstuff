@@ -36,3 +36,8 @@
 本機打包驗證不代表已完成另一台 Mac 的安裝／錄製驗收。
 
 Apple 操作說明：https://support.apple.com/102445
+
+## 語言
+
+RecordStuff 預設英文。右鍵點選單列圖示，選 Language → 繁體中文即可切換，
+下次開啟會保留選擇。App 診斷維持英文，macOS 原生權限提示依系統語言。

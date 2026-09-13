@@ -1,6 +1,6 @@
 /**
  * Capture-host preload: the only job is to hand the MessagePort from main to
- * the page (plans/001-first-version.md §9). Runs sandboxed; no API is exposed to the renderer.
+ * the page (docs/system-design/recording.md). Runs sandboxed; no API is exposed to the renderer.
  */
 import { ipcRenderer } from "electron";
 
