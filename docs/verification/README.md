@@ -6,7 +6,7 @@ This document preserves conclusions from completed plans separately from the sys
 
 ## Environment and evidence
 
-Verified environment: Apple M1 Pro, macOS 26, Electron 44.3/Chromium 152; external 1920×1080 displays and built-in Liquid Retina XDR at 3456×2234. The installed artifact was macOS arm64, self-signed with RecordStuff Dev and bundle ID com.recordstuff.app.
+Verified environment: Apple M1 Pro, macOS 26, Electron 44.3/Chromium 152; external 1920×1080 displays and built-in Liquid Retina XDR at 3456×2234. The installed artifact was macOS arm64, self-signed with recordstuff Dev and bundle ID com.recordstuff.app.
 
 Intel Macs, other macOS versions, Windows, Linux, another Mac, and a clean account remain unverified. They are not prerequisites for this delivery, as decided by the user.
 
@@ -39,7 +39,7 @@ These fingerprints identify the historical artifact, not a future rebuild or pub
 
 | Item | Value |
 | --- | --- |
-| DMG | dist/local/RecordStuff-0.1.0-arm64-selfsigned.dmg |
+| DMG | dist/local/recordstuff-0.1.0-arm64-selfsigned.dmg |
 | Size | 126,081,923 bytes |
 | DMG SHA-256 | `a1b7fcd31b7cde79aa652e5b87e17e45a251dbfc7fc1bc705473df37ca9245cc` |
 | app.asar SHA-256 | `c29a2ef8f9c1790fcecd597079776474cbab0eff11ec654d40099a05a3320274` |
@@ -85,4 +85,4 @@ The repeated final-code batch was **2 pass, 0 fail, 1 invalid**, with unchanged 
 
 Environment evidence: [before](measurements/2026-09-14-audio-processing-off/environment-before.json), [after](measurements/2026-09-14-audio-processing-off/environment-after.json). The code warnings report explicitly enabled processing despite false requests; missing settings remain unknown. This experiment identifies the combined-constraint correction on this local path, not each effect's individual contribution. Previously saved files remain unchanged.
 
-Validation of the correction: `pnpm check` passed 15 files/255 tests, typecheck, and build. `pnpm start:app` built, self-signed, verified nine bundle identities and opened `dist/dev/mac-arm64/RecordStuff.app`. This is the local rebuilt app for listening; it does not replace the copy in `/Applications`. Local document targets and `git diff --check` passed.
+Validation of the correction: `pnpm check` passed 15 files/255 tests, typecheck, and build. `pnpm start:app` built, self-signed, verified nine bundle identities and opened `dist/dev/mac-arm64/recordstuff.app`. This is the local rebuilt app for listening; it does not replace the copy in `/Applications`. Local document targets and `git diff --check` passed.

@@ -1,8 +1,8 @@
-# RecordStuff System Design
+# recordstuff System Design
 
 [English](README.md) | [繁體中文](../zh-TW/system-design/README.md)
 
-Updated: 2026-09-14. These documents describe the current implementation and replace completed execution plans. RecordStuff is a local desktop recorder, with no backend service.
+Updated: 2026-09-14. These documents describe the current implementation and replace completed execution plans. recordstuff is a local desktop recorder, with no backend service.
 
 | Document | What it explains |
 | --- | --- |

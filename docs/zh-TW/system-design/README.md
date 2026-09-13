@@ -1,8 +1,8 @@
-# RecordStuff System Design
+# recordstuff System Design
 
 [English](../../system-design/README.md) | [繁體中文](README.md)
 
-更新：2026-09-14。這組文件描述目前程式的設計與已驗證行為，取代已完成的執行計畫。RecordStuff 是本機桌面錄影工具，沒有後端服務。
+更新：2026-09-14。這組文件描述目前程式的設計與已驗證行為，取代已完成的執行計畫。recordstuff 是本機桌面錄影工具，沒有後端服務。
 
 ## 閱讀順序
 

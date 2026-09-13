@@ -1,4 +1,4 @@
-# RecordStuff
+# recordstuff
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
@@ -6,7 +6,7 @@ A menu bar button that records your primary display and system audio. Click to s
 
 ## Platform status
 
-Electron supports Windows, Linux, and macOS. **Due to available hardware, RecordStuff has only been verified on macOS.** The tested environment is Apple M1 Pro, macOS 26, and Electron 44.3; the verified installer is arm64. Windows, Linux, Intel Macs, and other macOS versions are unverified. Existing cross-platform code does not imply verified recording or installation support. See [Electron's platform information](https://github.com/electron/electron#platform-support).
+Electron supports Windows, Linux, and macOS. **Due to available hardware, recordstuff has only been verified on macOS.** The tested environment is Apple M1 Pro, macOS 26, and Electron 44.3; the verified installer is arm64. Windows, Linux, Intel Macs, and other macOS versions are unverified. Existing cross-platform code does not imply verified recording or installation support. See [Electron's platform information](https://github.com/electron/electron#platform-support).
 
 The product target is a downloadable, self-signed macOS app. Apple certification/notarization and Windows/Linux verification are not planned release requirements.
 
@@ -14,13 +14,13 @@ The product target is a downloadable, self-signed macOS app. Apple certification
 
 **A public download has not been published yet.** A self-signed DMG has been built and verified locally; the remaining [downloadable release plan](plans/010-downloadable-macos-release.md) covers preparing the current build, a stable download location, checksums, and installation from the actual downloaded file.
 
-When available, download the arm64 DMG, drag RecordStuff into Applications, and follow the [installation instructions](resources/INSTALL.md). Recipients do not need Node, pnpm, FFmpeg, or certificates. Because the app is not notarized, first launch may require **System Settings → Privacy & Security → Open Anyway**. A warning-free first launch is not promised; see [Apple's guidance](https://support.apple.com/102445).
+When available, download the arm64 DMG, drag recordstuff into Applications, and follow the [installation instructions](resources/INSTALL.md). Recipients do not need Node, pnpm, FFmpeg, or certificates. Because the app is not notarized, first launch may require **System Settings → Privacy & Security → Open Anyway**. A warning-free first launch is not promised; see [Apple's guidance](https://support.apple.com/102445).
 
 ## Use
 
-1. Launch RecordStuff from Applications and grant screen/system-audio recording permission when requested. Relaunch if access does not take effect.
+1. Launch recordstuff from Applications and grant screen/system-audio recording permission when requested. Relaunch if access does not take effect.
 2. Left-click its menu bar icon to record the primary display and system audio.
-3. Click again to stop. Recordings default to `~/Movies/RecordStuff`; click the saved notification or use the menu to find the file.
+3. Click again to stop. Recordings default to `~/Movies/recordstuff`; click the saved notification or use the menu to find the file.
 4. Right-click for recording quality, output folder, language, logs, and quit.
 
 **English is the default.** Choose **Language → 繁體中文** to switch the app to Traditional Chinese. The choice persists and can change during recording without changing capture settings. Application diagnostics remain English; native permission dialogs follow macOS settings.
@@ -47,7 +47,7 @@ The local app has been verified for recording/playback, Retina 3456×2234 captur
 pnpm install
 pnpm start             # Build and open development Electron.app on macOS
 pnpm dev               # Hot reload; capture permissions may belong to the launching app
-pnpm start:app         # Build, self-sign, verify, and open RecordStuff.app
+pnpm start:app         # Build, self-sign, verify, and open recordstuff.app
 pnpm open:app          # Verify/open the existing development bundle without rebuilding
 pnpm check             # Typecheck, tests, build
 pnpm icons             # Regenerate PNG/ICO; regenerate ICNS on macOS
@@ -55,7 +55,7 @@ pnpm log               # Follow the macOS diagnostic log
 pnpm dist:mac:local    # Produce the self-signed DMG in dist/local
 ```
 
-The self-signed workflow requires a valid, uniquely named local code-signing identity, default `RecordStuff Dev`; RECORDSTUFF_SIGN_IDENTITY may select its exact name or SHA-1. Quit RecordStuff/project Electron before rebuilding. It does not publish or notarize, and recipients do not install the signing certificate. The legacy `dist:mac` and `dist:win` commands are not the chosen release workflow.
+The self-signed workflow requires a valid, uniquely named local code-signing identity, default `recordstuff Dev`; RECORDSTUFF_SIGN_IDENTITY may select its exact name or SHA-1. Quit recordstuff/project Electron before rebuilding. It does not publish or notarize, and recipients do not install the signing certificate. The legacy `dist:mac` and `dist:win` commands are not the chosen release workflow.
 
 Use a compatible Node version (package requirement ≥22.12); the TypeScript measurement tools are run with Node 24. Install FFmpeg only for developer verification:
 

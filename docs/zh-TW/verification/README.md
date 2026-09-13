@@ -6,7 +6,7 @@
 
 ## 環境與證據
 
-已測環境：Apple M1 Pro、macOS 26、Electron 44.3／Chromium 152；外接 1920×1080 與內建 Liquid Retina XDR 3456×2234。安裝產物為 macOS arm64，自簽身分 `RecordStuff Dev`、bundle id `com.recordstuff.app`。Intel、其他 macOS 版本、Windows、Linux 與另一台 Mac／新帳號未驗；使用者已決定不以這些驗收作為目前發布前置。
+已測環境：Apple M1 Pro、macOS 26、Electron 44.3／Chromium 152；外接 1920×1080 與內建 Liquid Retina XDR 3456×2234。安裝產物為 macOS arm64，自簽身分 `recordstuff Dev`、bundle id `com.recordstuff.app`。Intel、其他 macOS 版本、Windows、Linux 與另一台 Mac／新帳號未驗；使用者已決定不以這些驗收作為目前發布前置。
 
 原始量測：[2026-09-13 Markdown](../../verification/measurements/2026-09-13.md)、[JSON](../../verification/measurements/2026-09-13.json)。舊結果中的 fail／n/a 與錯誤試跑如實保留，不能因後續調整門檻而回寫成當時全過。
 
@@ -37,7 +37,7 @@
 
 | 項目 | 值 |
 | --- | --- |
-| DMG | `dist/local/RecordStuff-0.1.0-arm64-selfsigned.dmg` |
+| DMG | `dist/local/recordstuff-0.1.0-arm64-selfsigned.dmg` |
 | DMG bytes | 126,081,923 |
 | DMG SHA-256 | `a1b7fcd31b7cde79aa652e5b87e17e45a251dbfc7fc1bc705473df37ca9245cc` |
 | app.asar SHA-256 | `c29a2ef8f9c1790fcecd597079776474cbab0eff11ec654d40099a05a3320274` |
@@ -83,4 +83,4 @@
 
 環境證據：[前](../../verification/measurements/2026-09-14-audio-processing-off/environment-before.json)／[後](../../verification/measurements/2026-09-14-audio-processing-off/environment-after.json)。若請求 false 後音軌明確回報效果仍啟用，程式會留下 warning；沒有回報則維持未知。本次實驗定位的是三個設定一起更改對本機路徑的修正效果，不是每個效果各自的貢獻。既有錄音檔未改動。
 
-修正驗證：`pnpm check` 通過 15 個測試檔／255 個測試、型別檢查與建置。`pnpm start:app` 建置、自簽、驗證九個 bundle 身分後，開啟 `dist/dev/mac-arm64/RecordStuff.app` 供聽感比較；未取代 `/Applications` 的副本。文件目標與 `git diff --check` 通過。
+修正驗證：`pnpm check` 通過 15 個測試檔／255 個測試、型別檢查與建置。`pnpm start:app` 建置、自簽、驗證九個 bundle 身分後，開啟 `dist/dev/mac-arm64/recordstuff.app` 供聽感比較；未取代 `/Applications` 的副本。文件目標與 `git diff --check` 通過。

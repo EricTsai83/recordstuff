@@ -1,4 +1,4 @@
-# RecordStuff
+# recordstuff
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
@@ -6,7 +6,7 @@
 
 ## 平台狀態
 
-Electron 支援 Windows、Linux、macOS。**因設備限制，RecordStuff 目前只有 macOS 版本經過驗證。** 已測環境為 Apple M1 Pro、macOS 26、Electron 44.3，安裝產物為 arm64。Windows、Linux、Intel Mac 與其他 macOS 版本未驗證；現有跨平台程式不代表錄製或安裝已通過。參見 [Electron 平台資訊](https://github.com/electron/electron#platform-support)。
+Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前只有 macOS 版本經過驗證。** 已測環境為 Apple M1 Pro、macOS 26、Electron 44.3，安裝產物為 arm64。Windows、Linux、Intel Mac 與其他 macOS 版本未驗證；現有跨平台程式不代表錄製或安裝已通過。參見 [Electron 平台資訊](https://github.com/electron/electron#platform-support)。
 
 交付目標是可下載的 macOS 自簽 App；不規劃 Apple 認證／公證，也不以 Windows／Linux 驗收作為發布條件。
 
@@ -20,7 +20,7 @@ Electron 支援 Windows、Linux、macOS。**因設備限制，RecordStuff 目前
 
 1. 從 Applications 啟動，依提示允許螢幕與系統音訊錄製；授權未生效時重啟 App。
 2. 左鍵點選單列圖示開始錄製，再點一次停止。
-3. 預設影片存在 `~/Movies/RecordStuff`；點存檔通知或用選單尋找檔案。
+3. 預設影片存在 `~/Movies/recordstuff`；點存檔通知或用選單尋找檔案。
 4. 右鍵可調整品質、位置、語言、顯示 log 或結束。
 
 **App 預設英文。** 從 **Language → 繁體中文** 切換，選擇會保存；錄製中切換不改動本次擷取設定。診斷日誌維持英文，macOS 原生權限提示依系統語言。
@@ -48,7 +48,7 @@ Electron 支援 Windows、Linux、macOS。**因設備限制，RecordStuff 目前
 pnpm install
 pnpm start             # 建置並以 macOS open 啟動 Electron.app
 pnpm dev               # 熱重載；權限可能歸於啟動它的終端機／編輯器
-pnpm start:app         # 建置、自簽、驗證並開啟 RecordStuff.app
+pnpm start:app         # 建置、自簽、驗證並開啟 recordstuff.app
 pnpm open:app          # 驗證並開啟現有開發包，不重建
 pnpm check             # typecheck、測試、build
 pnpm icons             # 產生圖示；macOS 額外產生 ICNS
@@ -56,7 +56,7 @@ pnpm log               # 追蹤 macOS log
 pnpm dist:mac:local    # 自簽 DMG → dist/local
 ```
 
-開發者需有唯一名稱的有效自簽憑證，預設 `RecordStuff Dev`；可用 RECORDSTUFF_SIGN_IDENTITY 精確指定名稱或 SHA-1。重建前先結束 App。這條流程不公證、不發布；收件者不安裝憑證。既有 dist:mac 與 dist:win 不是目前選用的發行流程。
+開發者需有唯一名稱的有效自簽憑證，預設 `recordstuff Dev`；可用 RECORDSTUFF_SIGN_IDENTITY 精確指定名稱或 SHA-1。重建前先結束 App。這條流程不公證、不發布；收件者不安裝憑證。既有 dist:mac 與 dist:win 不是目前選用的發行流程。
 
 專案 Node 要求為 ≥22.12，TypeScript 量測工具使用 Node 24。FFmpeg 只供開發驗收：
 
