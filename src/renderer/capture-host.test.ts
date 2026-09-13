@@ -3,7 +3,7 @@
  * `getDisplayMedia` and a fake `MediaRecorder`; no DOM needed.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { OUTPUT_MIME_TYPE, type HostMessage, type MainMessage } from "../shared/protocol";
+import { CHUNK_INTERVAL_MS, OUTPUT_MIME_TYPE, type HostMessage, type MainMessage } from "../shared/protocol";
 import { DEFAULT_QUALITY, type QualitySettings } from "../shared/quality";
 import { CaptureHost, type CaptureHostOptions, type FrameSizeMeasurer, type HostPort } from "./capture-host";
 
@@ -65,7 +65,7 @@ class FakeMediaRecorder {
   onerror: ((event: unknown) => void) | null = null;
   constructor(
     readonly stream: FakeStream,
-    readonly options: { mimeType: string; videoBitsPerSecond?: number; audioBitsPerSecond?: number },
+    readonly options: { mimeType: string; videoBitsPerSecond?: number; audioBitsPerSecond?: number; videoKeyFrameIntervalDuration?: number },
   ) {
     this.mimeType = options.mimeType;
     FakeMediaRecorder.instances.push(this);
@@ -167,6 +167,7 @@ describe("renderer CaptureHost", () => {
       mimeType: OUTPUT_MIME_TYPE,
       videoBitsPerSecond: 8_100_000,
       audioBitsPerSecond: 256_000,
+      videoKeyFrameIntervalDuration: CHUNK_INTERVAL_MS,
     });
     const rec = FakeMediaRecorder.instances[0]!;
     rec.emitChunk([1, 2]);

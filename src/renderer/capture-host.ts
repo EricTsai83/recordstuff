@@ -217,11 +217,16 @@ export class CaptureHost {
 
     let recorder: MediaRecorder;
     try {
-      recorder = new MediaRecorder(stream, {
+      // Chromium's MP4 muxer flushes at keyframes. A timeslice alone does
+      // not request them, so low-motion screen captures can buffer past the
+      // main process's first-chunk deadline. Align both nominal intervals.
+      const options: MediaRecorderOptions & { videoKeyFrameIntervalDuration: number } = {
         mimeType: OUTPUT_MIME_TYPE,
         videoBitsPerSecond: capture.videoBitsPerSecond,
         audioBitsPerSecond: capture.audioBitsPerSecond,
-      });
+        videoKeyFrameIntervalDuration: CHUNK_INTERVAL_MS,
+      };
+      recorder = new MediaRecorder(stream, options);
     } catch (cause) {
       stopTracks(stream);
       this.fail(sessionId, "capture_start_failed", describe(cause));

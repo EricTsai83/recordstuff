@@ -9,7 +9,7 @@ import { isErrorCode, type ErrorCode } from "./state";
 /** MP4 (H.264 + AAC) is the only output the first version produces (ADR-3). */
 export const OUTPUT_MIME_TYPE = "video/mp4;codecs=avc1,mp4a.40.2";
 
-/** MediaRecorder timeslice: at most one second of media is ever at risk. */
+/** Nominal MediaRecorder slice/keyframe interval; actual delivery can be delayed. */
 export const CHUNK_INTERVAL_MS = 1000;
 
 export type MainMessage =
