@@ -124,7 +124,7 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
     const m = trayModel({ type: "starting" }, mac);
     expect(m.icon).toBe("idle");
     expect(m.title).toBe("…");
-    expect(labels(m.menu)).toEqual(["啟動中…", "—", "錄製品質", "—", "顯示 log", "結束"]);
+    expect(labels(m.menu)).toEqual(["啟動中，請留意系統權限提示…", "—", "錄製品質", "—", "顯示 log", "結束"]);
     expect(m.menu[2]).toEqual({ kind: "item", label: "錄製品質", enabled: false });
     expect(enabledActions(m.menu)).toEqual(["revealLog", "quit"]);
   });

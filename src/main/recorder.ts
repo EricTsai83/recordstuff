@@ -48,6 +48,8 @@ export interface RecorderDeps {
   /** Called when a new session begins; lets the owner reset per-session state. */
   onSessionStart?: (sessionId: string) => void;
   startTimeoutMs?: number;
+  /** Time for the OS capture request, including interactive permission prompts. */
+  captureRequestTimeoutMs?: number;
   stopTimeoutMs?: number;
   log?: (message: string) => void;
 }
@@ -80,6 +82,7 @@ interface Session {
 }
 
 const DEFAULT_START_TIMEOUT_MS = 8000;
+const DEFAULT_CAPTURE_REQUEST_TIMEOUT_MS = 120_000;
 const MAX_NAME_ATTEMPTS = 10;
 const DEFAULT_STOP_TIMEOUT_MS = 10_000;
 /** After the quit cap fires, how long to still wait for the partial file to close. */
@@ -117,7 +120,7 @@ export class Recorder {
   private pendingFailure: Promise<void> = Promise.resolve();
   private readonly listeners = new Set<(event: RecorderEvent) => void>();
   private readonly deps: Required<
-    Pick<RecorderDeps, "now" | "newSessionId" | "startTimeoutMs" | "stopTimeoutMs" | "log">
+    Pick<RecorderDeps, "now" | "newSessionId" | "startTimeoutMs" | "captureRequestTimeoutMs" | "stopTimeoutMs" | "log">
   > &
     RecorderDeps;
 
@@ -126,6 +129,7 @@ export class Recorder {
       now: () => new Date(),
       newSessionId: () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
       startTimeoutMs: DEFAULT_START_TIMEOUT_MS,
+      captureRequestTimeoutMs: DEFAULT_CAPTURE_REQUEST_TIMEOUT_MS,
       stopTimeoutMs: DEFAULT_STOP_TIMEOUT_MS,
       log: () => undefined,
       ...deps,
@@ -248,8 +252,7 @@ export class Recorder {
     this.session = session;
     this.deps.onSessionStart?.(session.id);
     this.setState({ type: "starting" });
-    // One deadline covers directory check, file open, host start and first
-    // chunk, so a hung external volume cannot leave us in `starting` forever.
+    // File-system work stays bounded independently of interactive OS prompts.
     session.timer = setTimeout(() => {
       if (session.phase === "opening") {
         void this.fail(session.id, "output_open_failed", this.deps.outputDir(), { outputDirUnavailable: true });
@@ -282,6 +285,10 @@ export class Recorder {
     }
 
     session.phase = "starting";
+    this.clearTimer(session);
+    session.timer = setTimeout(() => {
+      void this.fail(session.id, "capture_start_failed", "等待螢幕／音訊擷取逾時；請完成系統權限提示後再試一次");
+    }, this.deps.captureRequestTimeoutMs);
     try {
       await this.deps.host.start(session.id, session.quality);
     } catch (cause) {
@@ -334,6 +341,12 @@ export class Recorder {
       case "started":
         if (session.phase === "starting") {
           session.phase = "recording";
+          this.clearTimer(session);
+          if (session.nextSeq === 0) {
+            session.timer = setTimeout(() => {
+              void this.fail(session.id, "capture_start_failed", "capture host 未在時限內送出畫面");
+            }, this.deps.startTimeoutMs);
+          }
           this.deps.log(`recorder: session ${session.id} capture: ${describeCapture(session.quality, message.capture)}`);
           this.setState({ type: "recording", startedAt: this.deps.now().toISOString() });
           this.emit({ type: "captureStarted", requested: session.quality, capture: message.capture });
@@ -363,6 +376,7 @@ export class Recorder {
       return;
     }
     session.nextSeq += 1;
+    if (seq === 0) this.deps.log(`recorder: session ${session.id} first chunk ${bytes.byteLength} bytes`);
     if (seq === 0 && session.phase !== "stopping") this.clearTimer(session);
     const writer = session.writer;
     if (!writer) return;

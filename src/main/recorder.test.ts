@@ -90,6 +90,7 @@ function setup(
     openWriter?: (recordingPath: string, finalPath: string) => Promise<FakeWriter>;
     quality?: () => QualitySettings;
     log?: (message: string) => void;
+    captureRequestTimeoutMs?: number | "default";
   } = {},
 ) {
   const host = new FakeHost();
@@ -112,6 +113,7 @@ function setup(
     now: () => new Date(2026, 8, 11, 14, 30, 0),
     newSessionId: () => "s1",
     startTimeoutMs: 8000,
+    ...(overrides.captureRequestTimeoutMs === "default" ? {} : { captureRequestTimeoutMs: overrides.captureRequestTimeoutMs ?? 8000 }),
     stopTimeoutMs: 10_000,
   });
   recorder.subscribe((event) => {
@@ -229,6 +231,33 @@ describe("Recorder ignores illegal transitions", () => {
 });
 
 describe("Recorder timeouts", () => {
+  it("allows a user to answer OS prompts after 30 s, then bounds the first chunk separately", async () => {
+    const ctx = setup({ captureRequestTimeoutMs: "default" });
+    ctx.recorder.toggle();
+    await flush();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(ctx.recorder.state.type).toBe("starting");
+    ctx.host.emit(started("s1"));
+    await vi.advanceTimersByTimeAsync(7999);
+    expect(ctx.recorder.state.type).toBe("recording");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(ctx.recorder.state.type).toBe("idle");
+    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "capture_start_failed" });
+  });
+
+  it("bounds unanswered OS prompts at two minutes and cancels the pending capture", async () => {
+    const ctx = setup({ captureRequestTimeoutMs: "default" });
+    ctx.recorder.toggle();
+    await flush();
+    await vi.advanceTimersByTimeAsync(119_999);
+    expect(ctx.recorder.state.type).toBe("starting");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(ctx.recorder.state.type).toBe("idle");
+    expect(ctx.host.stopped).toEqual(["s1"]);
+    expect(ctx.writers[0]!.abandoned).toBe(true);
+    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", detail: expect.stringContaining("系統權限提示") });
+  });
+
   it("fails with capture_start_failed when no chunk arrives within 8 s", async () => {
     const ctx = setup();
     ctx.recorder.toggle();
@@ -685,4 +714,3 @@ describe("quality snapshot (plan 007 §B2)", () => {
     expect(line).toContain("warnings: x");
   });
 });
-

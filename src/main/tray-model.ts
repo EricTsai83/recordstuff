@@ -219,8 +219,8 @@ export function trayModel(state: RecordingState, ctx: TrayContext): TrayModel {
       return {
         icon: "idle",
         title: "…",
-        tooltip: `${APP_NAME}：啟動中…`,
-        menu: [disabled("啟動中…"), SEPARATOR, QUALITY_LOCKED, ...FOOTER],
+        tooltip: `${APP_NAME}：啟動中，請留意系統權限提示…`,
+        menu: [disabled("啟動中，請留意系統權限提示…"), SEPARATOR, QUALITY_LOCKED, ...FOOTER],
       };
     case "recording":
       return {
