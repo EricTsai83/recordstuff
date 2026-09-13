@@ -6,9 +6,11 @@
 
 ## 目前進度
 
-**001 初始實作、002 檔案 log、007 錄製品質設定、008 錄製驗收工具與量測、003 第一次有聲音的真實錄製已完成。** 003（2026-09-13）：`pnpm matrix -- long` 1080p30 十分鐘 569.6 MB、CPU 平均 17%、結尾漂移 3 ms，錄製時出現 `VTEncoderXPCService` 確認硬體編碼；QuickTime Player 是 `.mp4` 預設 app、開檔與拖曳正常；錄製中 `kill -9` capture host 留下的 `.recording.mp4` 全部影格可解碼、QuickTime 與 Chrome 可播；錄製中「結束」會先停止存檔改名；`REC` 字樣會錄進非全螢幕影片的選單列。001 §17 第 1、2、3、5、8 題 macOS 已答，里程碑 1 的兩題（MP4 可行、當機殘檔可播）答案皆為可行，不需退路。008 先前量到係數維持、60 fps 開放、dual-mono、固有延遲 45–80 ms 不補償。權限、Windows 與發行驗收尚未完成。
+**001 初始實作、002 檔案 log、007 錄製品質設定、008 錄製驗收工具與量測、003 第一次有聲音的真實錄製已完成。** 003（2026-09-13）：`pnpm matrix -- long` 1080p30 十分鐘 569.6 MB、CPU 平均 17%、結尾漂移 3 ms，錄製時出現 `VTEncoderXPCService` 確認硬體編碼；QuickTime Player 是 `.mp4` 預設 app、開檔與拖曳正常；錄製中 `kill -9` capture host 留下的 `.recording.mp4` 全部影格可解碼、QuickTime 與 Chrome 可播；錄製中「結束」會先停止存檔改名；`REC` 字樣會錄進非全螢幕影片的選單列。001 §17 第 1、2、3、5、8 題 macOS 已答，里程碑 1 的兩題（MP4 可行、當機殘檔可播）答案皆為可行，不需退路。008 先前量到係數維持、60 fps 開放、dual-mono、固有延遲 45–80 ms 不補償。**004 權限流程（乾淨 TCC）已於 2026-09-13 結案**（範圍經使用者同意調整，見下段）。Windows（005）與發行驗收（006）尚未完成。
 
-**下一個執行項目是 004 乾淨 TCC 下的權限流程測試**：`tccutil reset ScreenCapture com.github.Electron` 後跑第一次授權、系統音訊第二個權限、是否需重啟，回答 §17 第 6 題。使用者仍可自行看 `plans/measurements/2026-09-13.md` 的主觀比對欄並覆寫 Claude 的影格觀察。
+**下一個是 006 RecordStuff.app 開發包與簽章**（前置 004 已完成）。004 於 2026-09-13 結案，範圍經使用者同意調整為「開發版（`pnpm start` 的 Electron.app）身分驗得到的部分」：已答的 §17 第 6 題——無視窗的 app 在乾淨 TCC 下**會**出現系統提示、也會被列進設定頁；**授權後必須重新啟動**——在未授權狀態啟動的程序，授權後超過 30 秒、六次輪詢仍停在 `needsPermission`，重新啟動則立刻看到 granted（在「開→關→開」的復原路徑實測，乾淨 TCC 第一次授權未逐字重跑，因此不寫成 macOS 一律如此）。其他已確認：缺系統音訊權限時 0.35 秒回 `no_audio_track` 且不留殘檔；授權後 5 秒錄製成功（h264 1920x1080 + AAC 2 聲道）；錄製中撤銷螢幕權限時 macOS 跳「結束並重新打開／稍後」，選「稍後」則 90 秒錄製完整跑完存檔。**實測逼出兩個修正**（已完成，183 個測試通過）：`needsPermission` 的選單一律提供「重新啟動」並說明原因；通知失敗改寫進 log（`isSupported` 為 false 與 Electron `failed` 事件）。開發版存檔後使用者完全沒收到通知，診斷 log 抓到的是通知中心拒收（`notification: failed (無法完成作業。（UNErrorDomain錯誤1 。）)`，與 ad-hoc 簽章一致）。
+
+**移交 006 的七項真機驗收（都還沒有結論，不要當成已通過）**：第一次系統音訊提示按「拒絕」（004 在 17:31 與 17:59 兩次嘗試都沒能讓提示出現，原因未查明）、同一個 process 在設定頁開啟音訊權限後直接錄、修正後的權限選單與「重新啟動」在真機逐項點過、存檔／權限通知是否顯示與點擊開 Finder、HiDPI（內建 Retina 為主螢幕）、乾淨 TCC 下**第一次**授予螢幕錄製的完整流程、以及錄製中撤銷權限選「結束並重新打開」那條分支的殘檔狀態。這些留在 004 沒有意義：`pnpm start` 用的是多個 Electron bundle 共用的 `com.github.Electron`，006 才會用 `com.recordstuff.app`。日後要 `tccutil reset` 一律指定已確認過的 bundle id，不要用不帶 bundle id 的全域重置。使用者仍可自行看 `plans/measurements/2026-09-13.md` 的主觀比對欄並覆寫 Claude 的影格觀察。
 
 ## 完成一個計畫後的收尾（每次都要做）
 
@@ -30,15 +32,15 @@
 | 2 | 002 | [檔案 log](002-file-logging.md) | 已完成 | 2026-09-12 | `src/main/log.ts`：stdout + `app.getPath('logs')/recordstuff.log`（macOS `~/Library/Logs/<app>/`），5 MB 輪替保留 3 個，寫檔失敗不影響 app；main 未捕捉例外寫 log；右鍵選單「顯示 log」 |
 | 3 | 007 | [錄製品質與可調設定](007-recording-quality-settings.md) | 已完成 | 2026-09-13 | 範圍縮小為設定能力與診斷：`shared/quality.ts`、Tray「錄製品質」四個單選子選單、settings v2（v1 相容）、`start`/`started` 協定快照與回報、`capture:` log、60 fps 降級通知、`pnpm probe`。係數為未驗證起點，預設輸出同原 8 Mbps／30 fps；量測與回填移交 008 |
 | 4 | 008 | [錄製驗收工具與量測流程](008-recording-verification-toolkit.md) | 已完成 | 2026-09-13 | 工具：`pnpm verify`（ffprobe／ffmpeg 對門檻表，結果進 `plans/measurements/`）、`pnpm matrix`（`RECORDSTUFF_AUTORECORD` 自動錄製矩陣 quick／levels／fps／long，含 CPU 取樣）、`scripts/test-material.html`（閃光／beep 同步標記）。`all` 矩陣（約 7 分鐘）有效量測：係數維持、60 fps 開放（檔案約四倍）、CPU 門檻 ≤ 40%、固有延遲 45–80 ms。修了 `getSettings()` 尺寸錯誤（1080p 錄成 1080x606），加 `channelCount: 2`（成品 stereo 但 dual-mono）。主觀比對與 10 分鐘交 003 |
-| 5 | 003 | [第一次有聲音的真實錄製](003-first-real-recording.md) | 已完成 | 2026-09-13 | `pnpm matrix -- long` 10 分鐘影像／同步／CPU 各列過（CPU 17%、漂移 3 ms、硬體編碼；音訊位元率列 ❌ 為 beep 素材限制，工具總結因此為 fail）；QuickTime 雙擊／拖曳、當機殘檔可播、錄製中結束、`REC` 會錄進去皆以 AppleScript／`kill -9`／quit event 驗過。§17 第 1、2、3、5、8 題已答。未由人做、延後到 004：點通知開 Finder、內建 Retina 主螢幕的 §17 第 7 題；親眼親耳比對由使用者覆寫 Claude 的影格觀察 |
-| 6 | 004 | [乾淨 TCC 下的權限流程測試](004-permission-flow-clean-tcc.md) | 待執行 | 2026-09-13 | **下一個。** 回答 §17 第 6 題；驅動 §11 的最後修正 |
-| 7 | 006 | [RecordStuff.app 開發包與簽章](006-dev-app-bundle-and-signing.md) | 待執行 | 2026-09-12 | 里程碑 3 的前半；完成後第一版可發布 |
+| 5 | 003 | [第一次有聲音的真實錄製](003-first-real-recording.md) | 已完成 | 2026-09-13 | `pnpm matrix -- long` 10 分鐘影像／同步／CPU 各列過（CPU 17%、漂移 3 ms、硬體編碼；音訊位元率列 ❌ 為 beep 素材限制，工具總結因此為 fail）；QuickTime 雙擊／拖曳、當機殘檔可播、錄製中結束、`REC` 會錄進去皆以 AppleScript／`kill -9`／quit event 驗過。§17 第 1、2、3、5、8 題已答。未由人做的兩項原延後到 004，2026-09-13 再移交 006：「點通知開 Finder」因開發版 ad-hoc 簽章收不到通知（`UNErrorDomain` 錯誤 1）、內建 Retina 主螢幕的 §17 第 7 題因該機器只有外接螢幕；親眼親耳比對由使用者覆寫 Claude 的影格觀察 |
+| 6 | 004 | [乾淨 TCC 下的權限流程測試](004-permission-flow-clean-tcc.md) | 已完成 | 2026-09-13 | 範圍經使用者同意調整為「開發版身分驗得到的部分」並結案：§17 第 6 題答「必須重啟」（限「開→關→開」復原路徑）、步驟 3 的零依賴註冊成立、缺音訊權限 0.35 秒回 `no_audio_track` 且不留殘檔、步驟 7「稍後」那條錄製完整存檔；兩個修正完成（`needsPermission` 一律可重新啟動、通知失敗寫 log），183 個測試通過。需要真實 app 身分的七項驗收（含第一次音訊提示拒絕、同一 process 開音訊後直接錄、選單實地確認、通知顯示／點擊、HiDPI、乾淨 TCC 第一次授權、「結束並重新打開」分支）全數移交 006，004 不聲稱通過 |
+| 7 | 006 | [RecordStuff.app 開發包與簽章](006-dev-app-bundle-and-signing.md) | 待執行 | 2026-09-13 | **下一個**（前置 004 已完成）。里程碑 3：用 `com.recordstuff.app` 的 RecordStuff.app 取代共用的 `com.github.Electron`，再做簽章、公證、安裝檔。步驟 6 擁有 004／003 移交的全部七項真機驗收，每項都要寫下實際結果；「未重現」只是實驗紀錄、不算通過，未驗證的項目仍阻擋 006 結案與發布。發布另需 005 的 Windows 驗收 |
 | 平行 | 005 | [Windows 環境與驗收](005-windows-environment.md) | 待執行 | 2026-09-13 | 環境建置可隨時做；錄製驗收用 007 的設定與 008 的工具。只有 Mac，需先建 VM。006 的 Windows 部分依賴它 |
 | — | — | [Roadmap（第一版之後）](roadmap.md) | 擱置 | 2026-09-12 | 第一版發布前不動 |
 
 依賴：002 → 007（設定與診斷）→ 008（驗收工具，並完成 007 遺留的量測與係數回填）→ 003 → 004 → 006。005 的環境建置可隨時進行，錄製驗收使用 007 的設定與 008 的工具，並補 Windows 品質／60 fps 驗證；發布仍須完成兩平台驗收。
 
-001 的執行範圍調整為初始實作與基本錄製，已完成結案；文件繼續保留第一版總規格供後續計畫引用。007 於 2026-09-13 縮小範圍結案，量測移交 008。整體發布尚未完成：002 負責 log、007 負責品質設定、008 負責驗收工具與量測、003／004／005 負責驗收、006 負責打包與發行。007 為已同意提前的第一版品質工作，其餘 Roadmap 項目仍維持第一版之後。
+001 的執行範圍調整為初始實作與基本錄製，已完成結案；文件繼續保留第一版總規格供後續計畫引用。007 於 2026-09-13 縮小範圍結案，量測移交 008。004 於 2026-09-13 結案（範圍經使用者同意調整為開發版身分驗得到的部分，其餘移交 006 步驟 6）。整體發布尚未完成：002 負責 log、007 負責品質設定、008 負責驗收工具與量測、003／004／005 負責驗收、006 負責打包與發行。007 為已同意提前的第一版品質工作，其餘 Roadmap 項目仍維持第一版之後。
 
 ## 已完成的工作紀錄
 
@@ -59,4 +61,6 @@
 | 2026-09-13 | 008 第三輪：`all` 量測與結案 | 九段有效量測；係數 0.07／0.13／0.24 維持（實測 99–100%）；60 fps 開放（57 fps、31 Mbps 為兩倍目標、CPU 23%）；CPU 門檻 ≤ 40%；3 分鐘漂移 3 ms；固有延遲 45–80 ms；`channelCount: 2` 給 stereo 容器但 dual-mono；AAC 夾約 160 k。使用者決定：移除音訊品質選單（固定 256 k 目標）、音畫偏移門檻改採 ITU-R BT.1359（晚 < 125／早 < 45 ms）不補償 |
 | 2026-09-13 | 003 驗收（10 分鐘、QuickTime、當機、結束、`REC`） | `pnpm matrix -- long`：600 s、569.6 MB、7.92 Mbps、29.30 fps、掉幀 0.39%、CPU 17%／21%、漂移 3 ms、固有延遲 91 ms；`VTEncoderXPCService` 1.4–1.9% CPU 證實硬體編碼。AppleScript 操作 QuickTime（預設 app）開檔、跳 30%／90%、播放三個檔皆正常；`kill -9` renderer → `capture_host_crashed`、殘檔 17.6 s 全可解碼、QuickTime／Chrome 可播；quit event → 14 ms 內停止存檔改名；`REC` 錄進非全螢幕影片。程式碼無需修改 |
 | 2026-09-13 | 使用者決定 `long` 矩陣縮為 3 分鐘 | 10 分鐘已量過一次（3 與 10 分鐘漂移同為 3 ms），之後回歸只跑 3 分鐘；`scripts/run-matrix.mts` 的 `long` 改 180 s、`all` 的漂移段改為引用同一筆，001 §17／§4 檢查表、008 使用方式、README 同步註記 |
+| 2026-09-13 | 004 實測逼出的兩個修正 | `src/main/tray-model.ts`：`needsPermission` 一律提供重新啟動（`needsRelaunch` 為 false 時標籤「已經允許了？重新啟動 RecordStuff」＋說明 tooltip），因為授權後執行中的程序永遠看不到，狀態機與輪詢不變、不假裝偵測得到授權；`src/main/tray.ts`＋`index.ts`：通知失敗寫 log（`notification: not supported …`／`notification: failed (<error>): <body>`），新增 `src/main/tray.test.ts` 以 mock Electron 驗證。183 個測試通過。實測抓到 `notification: failed (無法完成作業。（UNErrorDomain錯誤1 。）)`，錄製不受影響 |
 | 2026-09-13 | 查 Cap 的驗收方式並寫成 008 | Cap `crates/cap-test` 用真機錄 + ffprobe 對門檻（30 ± 2 fps、掉幀 < 2%、音畫 < 50 ms、時長差 < 100 ms），無 PSNR／SSIM，畫質靠人眼；bpp 常數 0.15／0.30／1.0（錄製）、0.04～0.30（匯出）。007 縮小範圍結案，量測交 008 |
+| 2026-09-13 | 004 結案與範圍調整（使用者同意） | 004 只以「開發版身分驗得到的部分」結案：§17 第 6 題、§11 的行為差異、兩個程式修正、通知失敗診斷。需要真實 app 身分的七項驗收整批移交 006 步驟 6 並逐項列出，004 明確不聲稱通過。原因是 `pnpm start` 用共用的 `com.github.Electron`，006 才用 `com.recordstuff.app`；留在 004 會與「006 前置是 004」互相等待。同時記下第二次未重現的音訊提示嘗試（17:59:25 重啟後 granted、17:59:36 開始、17:59:53 存成 `2026-09-13 17-59-36.mp4`、通知仍 `UNErrorDomain` 錯誤 1、全程沒有音訊提示），未作歸因。日後 `tccutil reset` 須指定已確認的 bundle id，不使用全域重置 |

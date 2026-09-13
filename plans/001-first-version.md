@@ -2,7 +2,7 @@
 
 狀態：已完成（初始實作與基本錄製，2026-09-12）
 
-執行範圍已拆分：001 以初始實作與使用者確認有聲有影作為結案範圍。下列 §4、§16、§17 繼續作為第一版整體發布的規格與驗收依據，並非全部已通過；剩餘工作由 002（log）、007（品質與設定）、003／004／005（驗收）、006（打包與發行）追蹤。
+執行範圍已拆分：001 以初始實作與使用者確認有聲有影作為結案範圍。下列 §4、§16、§17 繼續作為第一版整體發布的規格與驗收依據，並非全部已通過；剩餘工作由 002（log）、007（品質與設定）、003／004／005（驗收）、006（打包與發行）追蹤。002、007、008、003 與 004 已結案；004 以「開發版身分（`com.github.Electron`）驗得到的部分」結案，需要真實 app 身分的權限驗收整批移交 006 步驟 6，尚未有結論。
 
 版本：v9，2026-09-12
 
@@ -84,7 +84,7 @@ macOS 選單列（Windows 是系統匣）上一個圖示。點一下開始錄主
 - 10 分鐘錄製結束時音畫偏移小於 100 ms（用畫面上的節拍器與聲音對照）
 - 從點下到圖示變錄製中少於 1.5 秒
 - 1080p 錄製時，錄製程序總 CPU 在 M1 與近三年 x86 筆電上低於 25%
-- 新使用者在 macOS 第一次就能完成權限流程，包括需要重啟的情況
+- 新使用者在 macOS 第一次就能完成權限流程，包括需要重啟的情況（2026-09-13 004：重啟這條路徑已驗並改了選單；乾淨 TCC 下**第一次**授權的完整流程尚未在真實 app 身分下走過，由 006 步驟 6 驗收）
 - 簽章打包後的版本行為與開發版相同
 - 錄製中從選單「結束」或 Cmd+Q，檔案完整
 - 待命時記憶體低於 150 MB（capture host 尚未建立）
@@ -186,7 +186,7 @@ export type RecordingState =
 
 | 狀態 | 圖示 | macOS 標題 | 左鍵 | 右鍵選單 |
 |---|---|---|---|---|
-| needsPermission | 待命圖（灰） | 無 | 顯示權限通知 | 「需要螢幕錄製權限」（灰字）、「開啟系統設定」或「重新啟動」、「儲存位置：RecordStuff」、「更改儲存位置…」、「錄製品質 ▸」、「顯示 log」、「結束」 |
+| needsPermission | 待命圖（灰） | 無 | 顯示權限通知 | 「需要螢幕錄製權限」（灰字）、「開啟系統設定」＋「已經允許了？重新啟動 RecordStuff」（`needsRelaunch` 時只有「重新啟動」）、「儲存位置：RecordStuff」、「更改儲存位置…」、「錄製品質 ▸」、「顯示 log」、「結束」 |
 | idle | 待命圖 | 無 | 開始 | 「待命中」（灰字）、有的話「顯示最後一個錄影」、「儲存位置：RecordStuff」、「更改儲存位置…」、「錄製品質 ▸」、「顯示 log」、「結束」 |
 | starting | 待命圖 | `…` | 忽略 | 「啟動中…」（灰字）、「錄製品質」（灰字）、「顯示 log」、「結束」 |
 | recording | 錄製圖（紅） | `REC` | 停止 | 「錄製中」（灰字）、「停止」、「儲存位置：RecordStuff」（灰字）、「更改儲存位置…」（灰字）、「錄製品質」（灰字）、「顯示 log」、「結束」 |
@@ -195,7 +195,7 @@ export type RecordingState =
 - macOS 用 template 圖示，自動適應深淺色選單列。`tray.setTitle('REC')` 只在 macOS 有效，Windows 靠換圖示。
 - 不用 `tray.setContextMenu`，否則 macOS 左鍵會彈選單。左鍵走 `tray.on('click')`，右鍵走 `tray.on('right-click')` 再 `tray.popUpContextMenu(menu)`。
 - 選單每次彈出時依目前狀態重建，不快取。
-- 通知用 Electron `Notification`。「已儲存」通知的 click 用 `shell.showItemInFolder`。
+- 通知用 Electron `Notification`。「已儲存」通知的 click 用 `shell.showItemInFolder`。通知是盡力而為，失敗不影響錄製：`Notification.isSupported()` 為 false、或 Electron 的 `failed` 事件（macOS／Windows）發生時，只寫一行 log（`notification: not supported …`／`notification: failed (<error>): <body>`）。macOS 的 `UNUserNotificationCenter` 會直接拒收未簽章／ad-hoc 簽章的 app：2026-09-13（004）存檔後使用者完全沒看到通知，加上診斷後 log 為 `notification: failed (無法完成作業。（UNErrorDomain錯誤1 。）)`；簽章版的通知顯示與點擊由 006 驗收。
 - 「顯示 log」（002）：每個狀態都有，`shell.showItemInFolder` 選取 log 檔；檔案不存在時改開 log 資料夾。放在「結束」正上方、與儲存位置同一組之後，低頻除錯用途不搶眼。
 - Windows 可能把圖示收進系統匣溢位區。第一次啟動送一則通知「RecordStuff 在系統匣待命」。
 
@@ -274,8 +274,9 @@ macOS 上有**兩個**獨立權限，都在「系統設定 → 隱私權與安�
 1. 每 5 秒與 `activate` 時查 `systemPreferences.getMediaAccessStatus('screen')`，便宜、不會彈框。
 2. 第一段回 granted 且尚未驗證過時，呼叫 `desktopCapturer.getSources({ types: ['screen'] })` 確認至少看得到一個螢幕，包 4 秒 timeout，同時間只跑一次。成功後整個程序生命週期快取，之後不再呼叫。失敗（零個螢幕、拋 `Failed to get sources`、超時）就是「剛授權但 TCC 還沒生效」：`needsRelaunch: true`，選單改「重新啟動」，點了 `app.relaunch()` 再 `app.quit()`；每次輪詢仍重驗，暫時性故障會自行復原。
 
-- 未授權：狀態 `needsPermission`，送通知，選單多「開啟系統設定」，開 `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`。同時呼叫一次 `getSources`（每個程序最多一次），讓 macOS 把 app 列進清單並跳出系統提示，使用者不用手動按「+」。Electron 沒有包 `CGRequestScreenCaptureAccess`，這是零依賴的替代；若真機發現它只註冊不彈框，再換 `node-mac-permissions`。
+- 未授權：狀態 `needsPermission`，送通知，選單多「開啟系統設定」，開 `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`。同時呼叫一次 `getSources`（每個程序最多一次），讓 macOS 把 app 列進清單並跳出系統提示，使用者不用手動按「+」。Electron 沒有包 `CGRequestScreenCaptureAccess`，這是零依賴的替代。**2026-09-13 乾淨 TCC 實測（004 步驟 3）成立**：`tccutil reset` 後啟動，這一次 `getSources` 讓 Electron.app 以「關閉」狀態出現在設定頁清單，使用者也確認看到並操作了系統提示；維持零依賴作法，不引入 `node-mac-permissions`。
 - 進入 `needsPermission`、或 `needsRelaunch` 由 false 變 true 時各送一則通知；狀態沒變不重發。
+- **在未授權狀態啟動的程序，之後就算使用者在設定頁打開開關也看不到**：2026-09-13（004 步驟 4）在「開→關→開」的復原路徑實測，授權後超過 30 秒、六次輪詢，`getMediaAccessStatus` 都還是不給 granted，第二段驗證因此從未被觸發，`needsRelaunch` 也永遠不會變 true；立刻重新啟動的程序馬上就看到 granted。所以 `needsPermission` 的選單**一律**提供重新啟動（`needsRelaunch` 為 false 時標籤是「已經允許了？重新啟動 RecordStuff」），狀態本身維持誠實，不假裝偵測到授權。
 - 錄製失敗且原因是 `permission_denied`、而 OS 仍說 granted，同樣進 `needsRelaunch`。
 
 **系統音訊錄製**
@@ -287,6 +288,7 @@ macOS 上有**兩個**獨立權限，都在「系統設定 → 隱私權與安�
 **共同**
 
 - 錄製中系統會亮紫色錄製指示燈，這是正常的。
+- 錄製中被撤銷螢幕錄製權限時 macOS 不會立刻終止 app：會跳「直到結束前，「<app>」都能錄製你的螢幕內容。你可以選擇立即結束「<app>」，或稍後再執行此動作。」，按鈕是「結束並重新打開」與「稍後」。2026-09-13 實測（004 步驟 7）選「稍後」時，進行中的 90 秒錄製完整跑完並正常存檔改名，沒有進 `capture_failed`；撤銷只對之後啟動的 process 生效（新 process 直接進 `needsPermission`）。「結束並重新打開」那一條尚未測——殘檔還在不在、能不能播都沒有答案，移交 006 步驟 6。
 - 要用簽章版本測，ad-hoc 簽章會重置 TCC。macOS 15 起每月會再確認一次，這是系統行為。
 
 Windows 不需要任何權限。
@@ -355,9 +357,9 @@ Windows 不需要任何權限。
 5. 10 分鐘錄製結束時音畫偏移多少？
    **macOS 已答（2026-09-13，003）**：`pnpm matrix -- long` 10 分鐘結尾漂移 3 ms（頭 89 ms、尾 93 ms，552 對標記）；固有延遲這段量到 91 ms（扣偵測器約 10 ms 為 80 ms），與 008 的 45–80 ms 同一量級，音訊晚，在 ITU-R BT.1359 察覺門檻（晚 125 ms）內，不補償。
 6. macOS 螢幕錄製權限第一次授權後是否必須重啟 app？沒有視窗的 app，TCC 提示是否仍正常出現？
-   **部分已答**：系統音訊是另一個權限，缺了會拿到死音軌而非錯誤（§11）。螢幕錄製是否需重啟、無視窗時提示是否出現，尚未在乾淨的 TCC 狀態下測（要先 `tccutil reset ScreenCapture com.github.Electron`）。
+   **已答（2026-09-13，004）：必須重新啟動。** 一個在未授權狀態啟動的程序（PID 33163），在使用者於設定頁把螢幕錄製打開（macOS 的對話框選「稍後」）之後，超過 30 秒、六次輪詢都停在 `needsPermission`，`getMediaAccessStatus` 從未回 granted，第二段驗證也就沒被觸發；同時間重新啟動的程序（17:21:07）立刻 `permission: granted and capture sees 2 screen(s)`。這次走的是「開→關→開」的復原路徑（該程序自己從未取得過授權）；乾淨 TCC 第一次授權的同一情境尚未逐字重跑，因此結論限於已測到的這個情境，不寫成 macOS 一律如此。因應作法見 §11 與 §8（選單一律提供重新啟動）。乾淨 TCC 第一次授權的完整流程、第一次系統音訊提示按「拒絕」、同一 process 開啟音訊後直接錄，以及修正後選單的真機逐項確認，都移交 006 步驟 6（004 兩次想造出「第一次音訊授權」狀態都沒重現，原因未查明）。**無視窗時提示會出現**：乾淨 TCC 下啟動，那一次 `getSources` 把 Electron.app 列進設定頁（關閉狀態），使用者確認看到並操作了系統提示。系統音訊是另一個權限，缺了會拿到死音軌而非錯誤（§11）；缺權限時 `state → starting` 後約 0.35 秒回 `no_audio_track`，不留任何殘檔。
 7. HiDPI 下 `getDisplayMedia` 給的是邏輯還是實體解析度？
-   **部分已答（2026-09-13，008）**：外接 1:1 螢幕下實際影格 1920x1080（邏輯 = 實體）。另發現 `track.getSettings()` 在多螢幕下回報錯誤高度（1920x1920），capture host 已改讀實際影格。HiDPI 內建螢幕為主螢幕時再看 `capture:` log。
+   **部分已答（2026-09-13，008）**：外接 1:1 螢幕下實際影格 1920x1080（邏輯 = 實體）。另發現 `track.getSettings()` 在多螢幕下回報錯誤高度（1920x1920），capture host 已改讀實際影格。HiDPI 內建螢幕為主螢幕時再看 `capture:` log。（2026-09-13，004 步驟 8：這台機器目前只接兩台外接 BenQ、沒有偵測到內建 Retina 螢幕，HiDPI 這部分延到 006 真機驗收。）
 8. 錄主螢幕時選單列圖示本身會被錄進去，`REC` 字樣是否會出現在影片裡？可接受，還是要在錄製中改用不顯眼的圖示？
    **已答，會出現（2026-09-13，003）**：非全螢幕錄製時，影片右上角選單列可清楚看到 `REC` 字樣與圖示（`plans/measurements/2026-09-13.md` 003 段有影格截圖說明）；全螢幕內容（kiosk）時選單列隱藏，不會錄到。是否可接受、或改為錄製中只換圖示不顯字，交使用者決定；目前維持顯示 `REC`（錄製狀態一眼可辨優先），若要改列入 Roadmap。
 

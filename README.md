@@ -6,11 +6,11 @@
 
 ## 目前進度
 
-更新：2026-09-13。**基本錄製已測通、檔案 log、錄製品質設定、錄製驗收工具與量測、第一次有聲音的真實錄製驗收已完成，第一版整體仍在進行中。** 1080p30 十分鐘連續錄製 569.6 MB、CPU 平均 17%、結尾漂移 3 ms、硬體編碼；QuickTime 可播可拖曳；錄製中當機留下的 `.recording.mp4` 可播、時長正確。
+更新：2026-09-13。**基本錄製已測通、檔案 log、錄製品質設定、錄製驗收工具與量測、第一次有聲音的真實錄製驗收、macOS 權限流程（開發版可驗的部分）已完成，第一版整體仍在進行中。** 1080p30 十分鐘連續錄製 569.6 MB、CPU 平均 17%、結尾漂移 3 ms、硬體編碼；QuickTime 可播可拖曳；錄製中當機留下的 `.recording.mp4` 可播、時長正確。
 
-- 已完成：Plan 001 初始實作與基本錄製；Plan 002 檔案 log（`~/Library/Logs/<app>/recordstuff.log`、輪替、右鍵選單「顯示 log」）；Plan 007 右鍵選單「錄製品質」（影像品質、解析度上限、幀率）、settings.json v2、每次開始錄製的品質快照與 `capture:` log、`pnpm probe`；Plan 008 的工具：`pnpm verify`（ffprobe／ffmpeg 對門檻表）、`pnpm matrix`（環境變數自動錄製矩陣 + CPU 取樣）、`scripts/test-material.html`（含音畫同步標記），並以 `pnpm matrix -- all` 完成量測：係數維持、60 fps 在 macOS 開放、CPU 門檻 ≤ 40%。過程中修了多螢幕下 `getSettings()` 回報錯誤尺寸導致 1080p 上限錄成 1080x606 的 bug；Plan 003 macOS 錄製驗收：`pnpm matrix -- long` 十分鐘影像、同步、CPU 各列通過（音訊位元率一列因 beep 素材靜音多而 ❌，屬素材限制）、`VTEncoderXPCService` 證實硬體編碼、QuickTime Player（`.mp4` 預設 app）開檔與拖曳、`kill -9` capture host 的殘檔在 QuickTime 與 Chrome 可播、錄製中「結束」先停止存檔、`REC` 字樣會錄進非全螢幕影片；固有音畫延遲約 80 ms 不補償。
-- 進行中：無。Plan 001 文件保留產品總規格。使用者可自行覆核 `plans/measurements/2026-09-13.md` 的主觀比對欄。
-- 下一步：Plan 004 權限流程（乾淨 TCC）→ Plan 006 打包與簽章。
+- 已完成：Plan 001 初始實作與基本錄製；Plan 002 檔案 log（`~/Library/Logs/<app>/recordstuff.log`、輪替、右鍵選單「顯示 log」）；Plan 007 右鍵選單「錄製品質」（影像品質、解析度上限、幀率）、settings.json v2、每次開始錄製的品質快照與 `capture:` log、`pnpm probe`；Plan 008 的工具：`pnpm verify`（ffprobe／ffmpeg 對門檻表）、`pnpm matrix`（環境變數自動錄製矩陣 + CPU 取樣）、`scripts/test-material.html`（含音畫同步標記），並以 `pnpm matrix -- all` 完成量測：係數維持、60 fps 在 macOS 開放、CPU 門檻 ≤ 40%。過程中修了多螢幕下 `getSettings()` 回報錯誤尺寸導致 1080p 上限錄成 1080x606 的 bug；Plan 003 macOS 錄製驗收：`pnpm matrix -- long` 十分鐘影像、同步、CPU 各列通過（音訊位元率一列因 beep 素材靜音多而 ❌，屬素材限制）、`VTEncoderXPCService` 證實硬體編碼、QuickTime Player（`.mp4` 預設 app）開檔與拖曳、`kill -9` capture host 的殘檔在 QuickTime 與 Chrome 可播、錄製中「結束」先停止存檔、`REC` 字樣會錄進非全螢幕影片；固有音畫延遲約 80 ms 不補償。Plan 004 macOS 權限流程（乾淨 TCC）以「開發版身分驗得到的部分」結案（範圍經使用者同意調整）：001 §17 第 6 題已答——無視窗的 app 在乾淨 TCC 下會出現系統提示並自動列進設定頁，而**授權後必須重新啟動**（執行中的程序在授權後六次輪詢仍看不到，重新啟動立刻看到；在「開→關→開」的復原路徑實測，不推論成 macOS 一律如此）；另確認缺系統音訊權限時 0.35 秒回 `no_audio_track` 且不留殘檔、錄製中撤銷螢幕權限選「稍後」時錄製完整存檔。實測逼出兩個修正：`needsPermission` 的右鍵選單一律提供「重新啟動」並說明原因；通知失敗（不支援或 Electron `failed` 事件）現在會寫進 log。
+- 進行中：無。下一個是 Plan 006 RecordStuff.app 開發包與簽章（前置 Plan 004 已完成）。
+- 下一步：Plan 006——先用 `com.recordstuff.app` 的 RecordStuff.app 取代 `pnpm start` 共用的 `com.github.Electron`，再做簽章、公證、安裝檔。Plan 006 步驟 6 同時擁有 Plan 003／004 移交的全部真機驗收，這些**都還沒有結論**：存檔通知是否顯示與點擊開 Finder（開發版是 ad-hoc 簽章，診斷抓到通知中心拒收，`notification: failed (無法完成作業。（UNErrorDomain錯誤1 。）)`）、HiDPI（內建 Retina 為主螢幕）、乾淨 TCC 下第一次授予螢幕錄製的完整流程、第一次系統音訊提示按「拒絕」、同一個 process 開啟音訊權限後直接錄、修正後的權限選單在真機逐項點過、以及錄製中撤銷權限選「結束並重新打開」那條分支。
 - Plan 005 Windows 環境可先準備，錄製驗收使用 Plan 007 的設定與 Plan 008 的工具；第一版發布前仍須完成兩平台驗收。
 
 各項完成標準與狀態見 [計畫進度](plans/README.md)。
