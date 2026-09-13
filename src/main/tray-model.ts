@@ -163,6 +163,27 @@ function qualityMenu(ctx: TrayContext): TrayMenuItem {
 
 const QUALITY_LOCKED: TrayMenuItem = disabled(QUALITY_MENU_LABEL);
 
+const RELAUNCH_TOOLTIP =
+  `在系統設定允許之後，執行中的這個程序仍然會被拒絕（macOS 自己的提示也說要結束 app 後才生效）；重新啟動 ${APP_NAME} 就會生效。`;
+
+/**
+ * plan 004: macOS keeps refusing screen capture for the life of a process
+ * that was started without the grant, even after the user flips the switch —
+ * its own dialog says the change applies once the app is restarted. Stage 1
+ * therefore never reports granted, `needsRelaunch` never becomes true, and a
+ * measured run sat in `needsPermission` for six polls while an immediate
+ * restart saw the grant. The state stays truthful (we never claim a grant we
+ * cannot see); the menu always offers the restart and says why it is needed.
+ */
+function permissionActions(needsRelaunch: boolean): TrayMenuItem[] {
+  return needsRelaunch
+    ? [item("重新啟動", "relaunch", RELAUNCH_TOOLTIP)]
+    : [
+        item("開啟系統設定", "openPermissionSettings"),
+        item(`已經允許了？重新啟動 ${APP_NAME}`, "relaunch", RELAUNCH_TOOLTIP),
+      ];
+}
+
 export function trayModel(state: RecordingState, ctx: TrayContext): TrayModel {
   switch (state.type) {
     case "needsPermission":
@@ -172,7 +193,7 @@ export function trayModel(state: RecordingState, ctx: TrayContext): TrayModel {
         tooltip: `${APP_NAME}：需要螢幕錄製權限`,
         menu: [
           disabled("需要螢幕錄製權限"),
-          state.needsRelaunch ? item("重新啟動", "relaunch") : item("開啟系統設定", "openPermissionSettings"),
+          ...permissionActions(state.needsRelaunch),
           SEPARATOR,
           ...outputDirItems(ctx, true),
           qualityMenu(ctx),

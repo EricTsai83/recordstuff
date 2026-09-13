@@ -52,6 +52,7 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
     expect(labels(m.menu)).toEqual([
       "需要螢幕錄製權限",
       "開啟系統設定",
+      "已經允許了？重新啟動 RecordStuff",
       "—",
       "儲存位置：~/Movies/RecordStuff",
       "更改儲存位置…",
@@ -61,10 +62,29 @@ describe("trayModel per state (plans/001-first-version.md §8)", () => {
       "結束",
     ]);
     expect(m.menu[0]).toMatchObject({ enabled: false });
-    expect(enabledActions(m.menu)).toEqual(["openPermissionSettings", "openOutputDir", "changeOutputDir", "revealLog", "quit"]);
+    expect(enabledActions(m.menu)).toEqual([
+      "openPermissionSettings",
+      "relaunch",
+      "openOutputDir",
+      "changeOutputDir",
+      "revealLog",
+      "quit",
+    ]);
   });
 
-  it("needsPermission with needsRelaunch shows relaunch instead", () => {
+  // plan 004: after the user grants the permission, macOS keeps refusing this
+  // process, so stage 1 never reports granted and `needsRelaunch` stays false.
+  // A restart is the only way out, so it must be reachable in this state too.
+  it("needsPermission offers the relaunch even while needsRelaunch is false", () => {
+    const m = trayModel({ type: "needsPermission", needsRelaunch: false }, mac);
+    const relaunch = m.menu.find((entry) => entry.kind === "item" && entry.action === "relaunch");
+    expect(relaunch).toMatchObject({ kind: "item", enabled: true });
+    // The wording must not claim a grant we cannot see, and must say why a
+    // restart is needed.
+    expect(relaunch && relaunch.kind === "item" ? relaunch.toolTip : undefined).toContain("重新啟動");
+  });
+
+  it("needsPermission with needsRelaunch shows only the relaunch", () => {
     const m = trayModel({ type: "needsPermission", needsRelaunch: true }, mac);
     expect(labels(m.menu)[1]).toBe("重新啟動");
     expect(enabledActions(m.menu)).toContain("relaunch");
