@@ -1,7 +1,11 @@
-# RecordStuff — repo 指示
+# RecordStuff repository instructions
 
-- 計畫在 `plans/`；執行順序以 `plans/README.md`「順序與狀態」表的「順序」欄為準，不是檔名編號。
-- 使用者說「執行下一個 plan」時，取該表中順序最前、狀態為「待執行」或「進行中」且前置已完成的計畫。
-- **完成一個計畫（或對計畫做了 follow-up 修改）後，必須執行 `plans/README.md`「完成一個計畫後的收尾」的五個步驟**：計畫檔狀態、順序表、目前進度、根目錄 `README.md`（目前進度、架構一覽、開發段落）、001 規格章節。沒做完不算完成，最終報告要列出更新了哪些文件。
-- 設計優先順序見 `plans/001-first-version.md` §1.1：正確性 → 整潔 → robust → 效能。不引入框架或為將來寫的抽象。
-- 檢查命令：`pnpm check`（typecheck + vitest + build）。不要 commit、push，除非使用者要求。
+- English is the canonical repository language. Keep paired Traditional Chinese reader documentation and the app's zh-TW catalog in sync; follow [CONTRIBUTING.md](CONTRIBUTING.md).
+- The product and architecture are documented in [docs/system-design/README.md](docs/system-design/README.md). Keep function contracts, settings, IPC, and design decisions current when behavior changes.
+- Preserve measured evidence under docs/verification. Raw historical records keep their original data/language; never turn an unverified result into a passing claim.
+- Plans live in plans/. Follow the order and status in plans/README.md when asked to execute the next plan. Plans contain unfinished work only; completed/canceled plans are removed after durable information is captured in docs.
+- After completing or changing a plan: update its scope/status, the plan index, README progress/commands, affected design documents, verification evidence, and paired translations. Remove completed plans and their translations when all conclusions have been migrated.
+- Priorities: correctness, clarity, resilience, then performance. Avoid frameworks and abstractions for unscheduled work.
+- Only macOS has been verified. Windows/Linux verification and Apple certification/notarization are not required for current delivery. The target is a downloadable self-signed macOS app with accurate first-launch instructions.
+- Run pnpm check (typecheck + Vitest + build) after application changes. Check document links and git diff --check for documentation changes.
+- Do not commit, push, or publish unless the user requests it.

@@ -1,0 +1,112 @@
+# Recording Pipeline and Storage
+
+[English](recording.md) | [繁體中文](../zh-TW/system-design/recording.md)
+
+Sources: [Recorder](../../src/main/recorder.ts), [renderer CaptureHost](../../src/renderer/capture-host.ts), [FileWriter](../../src/main/file-writer.ts), [quality](../../src/shared/quality.ts).
+
+## State and user actions
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> needsPermission: Screen capture unavailable
+    needsPermission --> idle: Grant and source validated
+    idle --> starting: toggle
+    starting --> recording: started
+    recording --> stopping: stop / quit
+    stopping --> idle: File finalized / saved
+    starting --> idle: failed
+    recording --> idle: failed
+    stopping --> idle: failed
+```
+
+NeedsPermission carries needsRelaunch. Idle may carry lastSavedPath or outputDirUnavailable. Recording carries an ISO startedAt. Failure is an event, not a persistent failed state. Clicking without permission emits permissionRequested; clicks during starting/stopping are ignored.
+
+## Start
+
+1. Recorder checks idle/no existing session and OS preflight, captures quality, creates a session ID, and enters starting.
+2. ensureWritableDir creates the folder and writes/removes a probe. Failure never silently selects a different folder.
+3. Open `YYYY-MM-DD HH-mm-ss.recording.mp4` using local time and exclusive `wx`. A temporary-file collision retries suffixes `-2` through `-10`.
+4. Wait for host readiness and send start. Main selects the primary display ID, falling back to the first source, and requests system loopback audio.
+5. Renderer checks MP4 support, requests the stream, and rejects absent/ended audio tracks after cleaning up.
+6. Measure actual frames, apply quality, recheck that all tracks are live, create MediaRecorder, register callbacks, and send started.
+7. Main enters recording. A first chunk must still arrive before its deadline.
+
+## Deadlines and supervision
+
+| Protection | Default | Outcome |
+| --- | --- | --- |
+| Folder/open phase | 8 s | output_open_failed; a late writer is abandoned |
+| Host ready | 8 s | Start rejects; host can be recreated |
+| Capture/interactive permission request | 120 s | capture_start_failed and stop session |
+| First chunk after started | 8 s | capture_start_failed; preserve any written data |
+| Stop response | 10 s | stop_timeout |
+| Quit wait | 10 s, plus up to 3 s failure-close grace | Best-effort partial-file cleanup; avoid falsely failing an already-finalizing file |
+| Heartbeat | Check/send every 5 s | Tear down when the check finds two unanswered pings |
+
+These are project waiting limits, not OS standards or exact end-to-end timing guarantees. A timed-out disk operation is not actually canceled.
+
+## Quality and encoding
+
+| Setting | Rule |
+| --- | --- |
+| Video quality | Economy 0.07, Standard 0.13, High 0.24 bits/pixel/frame |
+| Video bitrate | Width × height × requested fps × coefficient, rounded to 100 kbps, clamped to 1.5–60 Mbps |
+| Resolution | Source unchanged; 1080p/1440p/4K caps preserve aspect/orientation, never upscale, and use even dimensions when downscaling |
+| Frame rate | 30/60; only darwin enables 60; other platforms use 30 without rewriting stored settings |
+| Audio | 256,000 bps target; requests ideal 2 channels and restrictOwnAudio |
+| Format | `video/mp4;codecs=avc1,mp4a.40.2`; reject unsupported encoding rather than switch format |
+| Chunking | Timeslice and videoKeyFrameIntervalDuration are both 1000 ms; actual delivery may be delayed |
+
+MeasureFrameSize uses a muted video's intrinsic size with a default 3-second limit. Actual frames take priority because getSettings once reported an incorrect multi-monitor height. Only when frames cannot be read does it fall back to track settings. Applying a cap repeats frame-rate constraints and remeasures for up to 1.5 seconds. Rejected constraints preserve source size with warnings. If remeasurement fails, report target dimensions with a warning. With no size information, calculate the target bitrate from 1920×1080 without claiming those dimensions were measured.
+
+CaptureReport includes known dimensions/fps/sample rate/channel count, requested encoder bitrates, and warnings. Unknown fields are omitted. Output still needs ffprobe measurement. A downgrade notification requires requested 60 fps and a reported track rate ≤30; static-content frame reduction alone does not trigger it.
+
+## Chunk and stop ordering
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant R as Recorder
+    participant H as Renderer host
+    participant W as FileWriter
+    U->>R: toggle start
+    R->>W: open .recording.mp4
+    R->>H: start(id, quality)
+    H-->>R: started(capture)
+    loop Nonempty chunks
+      H-->>R: chunk(id, seq, bytes)
+      R->>W: append(bytes)
+    end
+    U->>R: toggle stop
+    R->>H: stop(id)
+    H-->>R: final chunk
+    H-->>R: stopped(id)
+    R->>W: Drain, sync, close, rename
+    W-->>R: finalPath
+    R-->>U: idle and saved notification
+```
+
+Renderer serializes Blob-to-ArrayBuffer conversion through a Promise chain and skips empty Blobs. Main validates session ID and consecutive seq; a gap fails the session. Stale started/chunk messages trigger stop so an abandoned request cannot keep capturing unseen.
+
+Stopping a pending start moves its ID from pending to cancelled. When the OS request settles, the returned stream is released. A normal stop flushes the final dataavailable; finish waits for the send chain before posting stopped. Unexpected track termination or recorder errors produce failure, not a successful stop.
+
+## File completion and failure
+
+Append, periodic sync, and finish use one FileWriter queue. Fsync is scheduled every five seconds. The first I/O failure is retained, and later queued operations reject with the same error. ENOSPC maps to disk_full; other write failures map to output_write_failed.
+
+Finish drains prior writes, syncs, closes, and renames the temporary file to `.mp4`; only then does Recorder emit saved. Failure first detaches the session, clears deadlines, stops the host, and returns the UI to idle; it then abandons the writer and reports a partial path when byte accounting is nonzero. Empty files are removed on a best-effort basis. Partial files are not automatically repaired or remuxed; a playable crash sample does not guarantee recovery from every interruption.
+
+Exclusive naming currently checks the temporary filename. This document does not claim comprehensive guarantees for pre-existing final names or all partial-write cases. There is no disk reservation, bounded backpressure, or unlimited-recording guarantee. Stronger durability requirements need targeted tests before implementation changes.
+
+## Errors
+
+| Category | Codes | User outcome |
+| --- | --- | --- |
+| Permission/environment | permission_denied, permission_needs_relaunch, unsupported_os_version | Settings/relaunch guidance or version explanation |
+| Source/codec | no_display, no_audio_track, mp4_unsupported | Refuse start and explain missing capability |
+| Capture | capture_start_failed, capture_failed, capture_host_crashed, capture_host_unresponsive | Return idle and reveal any preserved partial file |
+| Storage | output_open_failed, output_write_failed, disk_full | Explain location/disk failure and preserve bytes where possible |
+| Stop | stop_timeout | Stop waiting for capture and attempt partial-file cleanup |
+
+Main may replace a generic renderer failure with the concrete source-denial reason, but only for errors that source denial can explain. Permission_needs_relaunch is a supported protocol code; routine relaunch guidance primarily follows PermissionWatcher state.

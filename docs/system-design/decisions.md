@@ -1,0 +1,33 @@
+# Design Decisions
+
+[English](decisions.md) | [繁體中文](../zh-TW/system-design/decisions.md)
+
+These are adopted decisions, not a future-work checklist. Current code and measured results supersede assumptions from old execution plans.
+
+| Decision | Rationale | Tradeoff or reconsideration trigger |
+| --- | --- | --- |
+| Electron and TypeScript | Implement desktop lifecycle, native UI, and Chromium capture with one language | Electron resource cost; consider native capture only after measuring a concrete limitation |
+| Built-in getDisplayMedia and MediaRecorder | Avoid custom audio devices and native sidecars | Limited codec/timestamp/audio separation control; accepted dual-mono and AAC clamping |
+| Hidden capture renderer | DOM media APIs belong in a renderer; visible UI can remain native | Requires port readiness, session IDs, ordering, and heartbeat |
+| Main owns state and media writer | UI and capture must not independently claim success | Main coordinates cleanup and file completion |
+| H.264/AAC MP4 | Verified QuickTime playback and hardware encoding | Fragmented MP4; no universal repair guarantee or format fallback |
+| Native Tray/Menu/Notification | A one-button recorder does not need a UI framework | OS controls notifications and foreground ordering |
+| Handwritten guards and one repository | Small protocol/state surface stays readable and testable | No protocol negotiation; independently shipped peers would need a stronger contract |
+| Copy media buffers | An Electron 44 ArrayBuffer-transfer probe hung main | Extra copy and no bounded backpressure |
+| Measure actual frame size | getSettings once caused an incorrect 1080×606 output from a 1080p display | Additional startup measurement and explicit fallback warnings |
+| Align timeslice and keyframe interval | Low-motion Retina recordings exceeded the first-chunk deadline with timeslice alone | Nominal 1-second settings are not delivery guarantees |
+| Retain quality coefficients | 30 fps outputs were near target; 60 fps remained useful despite excess bitrate | Larger 60 fps files; distinguish requests, track reports, and measured output |
+| Remove audio-quality selector | Different requests produced about 160 kbps AAC on this setup | Fixed 256 kbps request does not promise that bitrate or stereo separation |
+| Do not compensate inherent A/V latency | Measured latency/drift met the project's accepted limits | Remeasure after capture-engine changes |
+| Fixed self-signing identity and DMG | Recipients can install without developer tools or certificates | No Apple notarization; first-launch exception may be needed; TCC behavior is not universally guaranteed |
+| macOS-only verification commitment | Available hardware is Mac; other platforms are not release blockers | Keep portability code without claiming untested behavior works |
+| English source and optional Traditional Chinese | GitHub documentation and diagnostics use a common source language; users may choose Chinese UI | Catalog and paired documentation must be maintained together |
+| Separate design from plans | Execution logs are poor long-term specifications | Keep behavior/evidence in docs and unfinished work in plans |
+
+## Evolution boundaries
+
+Builds use electron-vite and electron-builder. Follow stable dependency releases and rerun relevant checks and media verification when upgrading; an old measurement is not proof about a new engine.
+
+There is no speculative Effect, schema framework, monorepo, React, Rust, or full PlatformRecorder layer. A future UI renderer should remain outside the media byte path. If Chromium proves inadequate, evaluate a replacement host while preserving Recorder's contract. Recording libraries, editing, shortcuts, automatic updating, and additional platform support are not prerequisites for the current downloadable build.
+
+Third-party comparisons and native-engine candidates from historical planning are not current dependencies or commitments. Reevaluate their APIs and suitability if an actual need arises.

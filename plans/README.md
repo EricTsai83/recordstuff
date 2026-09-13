@@ -1,90 +1,17 @@
-# Plans
+# Remaining Work
 
-每個計畫一個檔案，檔名 `NNN-slug.md`，編號是穩定識別；實際執行順序以本頁依賴為準。開始一個計畫前先在這裡把狀態改成「進行中」，做完改成「已完成」並填日期；計畫內容有變就直接改該檔，不另開版本。
+[English](README.md) | [繁體中文](../docs/zh-TW/plans/README.md)
 
-狀態只有四種：**待執行**、**進行中**、**已完成**、**擱置**（寫原因）。
+Updated: 2026-09-14. Completed plans have been replaced by the [system design](../docs/system-design/README.md) and [verification record](../docs/verification/README.md). Windows verification and Apple-certified distribution were canceled by the user. The speculative roadmap was removed from execution planning; current boundaries and evolution triggers remain in the design decisions.
 
-## 目前進度
+## Order and status
 
-**001、002、003、004、006、007、008 已完成。** 006 於 2026-09-14 依使用者調整的本機範圍結案：固定自簽 App／DMG、安裝更新後權限保留、通知與存檔、內建 Retina 3456×2234、首次授權／拒絕、權限選單、同程序音訊恢復的實測結論，以及錄影中撤銷權限與最後復原均已記錄。音訊啟用後本次必須重啟；撤銷時完整保留 47.59 秒 MP4，復原後再錄 12.65 秒可播影片。211 測試、typecheck／build 通過。通知清單舊圖示依使用者決定不阻擋，未聲稱修好；跨 Mac／新帳號跳過，009 付費公證維持擱置。
+| Order | Plan | Status | Completion target |
+| --- | --- | --- | --- |
+| 1 | [010 Downloadable macOS release](010-downloadable-macos-release.md) | Pending | A versioned self-signed arm64 DMG available through a stable download, with checksums, bilingual installation guidance, and recorded download/install verification |
 
-**下一個是 005 Windows 環境與驗收，目前待執行。** 本次未啟動 005 或建立 VM，也未宣稱兩平台版本已驗完。既有 macOS 十分鐘錄製／硬體編碼／同步／當機殘檔證據沿用，不重跑；各階段的歷史工作紀錄見下表，006 詳細結果見其結案表。使用者要求不再做 Fable review；沒有 commit／push／對外發布。
+English/Traditional Chinese app support and repository documentation are implemented in the working tree. The next installer must be rebuilt and verified with these changes; the previously verified DMG is not the new language-enabled release.
 
-## 完成一個計畫後的收尾（每次都要做）
+## Completing a plan
 
-計畫的程式碼與測試通過後，還沒把下面五項做完就不算完成：
-
-1. 該計畫檔第 2 行的「狀態」改成「已完成（日期）」；計畫內容若在執行中有變（範圍、決定、路徑），直接改該檔。
-2. 本頁「順序與狀態」表：改狀態與日期、更新備註、標出新的「下一個」，並確認順序欄仍正確。
-3. 本頁「目前進度」兩段與「已完成的工作紀錄」表。
-4. 根目錄 `README.md`：「目前進度」段落（已完成、進行中、下一步）、「架構一覽」若有新增或刪除檔案、「開發」段落若有新指令或路徑。
-5. `plans/001-first-version.md` 若該計畫改變了規格（選單內容、協定、設定 schema、§20 開發流程），同步對應章節。
-
-## 順序與狀態
-
-依執行順序排列，不是依編號。編號只是檔名識別；「順序」欄才是實際先後，狀態改變時要一併檢查這張表的順序是否仍正確。
-
-| 順序 | # | 計畫 | 狀態 | 更新 | 備註 |
-|---|---|---|---|---|---|
-| 1 | 001 | [初始實作與基本錄製（含產品規格）](001-first-version.md) | 已完成 | 2026-09-12 | 程式骨架、狀態機、檔案寫入、Tray、設定與權限偵測已完成；使用者確認停止後有聲有影。品質、完整驗收與發布工作由 002～007 追蹤 |
-| 2 | 002 | [檔案 log](002-file-logging.md) | 已完成 | 2026-09-12 | `src/main/log.ts`：stdout + `app.getPath('logs')/recordstuff.log`（macOS `~/Library/Logs/<app>/`），5 MB 輪替保留 3 個，寫檔失敗不影響 app；main 未捕捉例外寫 log；右鍵選單「顯示 log」 |
-| 3 | 007 | [錄製品質與可調設定](007-recording-quality-settings.md) | 已完成 | 2026-09-13 | 範圍縮小為設定能力與診斷：`shared/quality.ts`、Tray「錄製品質」四個單選子選單、settings v2（v1 相容）、`start`/`started` 協定快照與回報、`capture:` log、60 fps 降級通知、`pnpm probe`。係數為未驗證起點，預設輸出同原 8 Mbps／30 fps；量測與回填移交 008 |
-| 4 | 008 | [錄製驗收工具與量測流程](008-recording-verification-toolkit.md) | 已完成 | 2026-09-13 | 工具：`pnpm verify`（ffprobe／ffmpeg 對門檻表，結果進 `plans/measurements/`）、`pnpm matrix`（`RECORDSTUFF_AUTORECORD` 自動錄製矩陣 quick／levels／fps／long，含 CPU 取樣）、`scripts/test-material.html`（閃光／beep 同步標記）。`all` 矩陣（約 7 分鐘）有效量測：係數維持、60 fps 開放（檔案約四倍）、CPU 門檻 ≤ 40%、固有延遲 45–80 ms。修了 `getSettings()` 尺寸錯誤（1080p 錄成 1080x606），加 `channelCount: 2`（成品 stereo 但 dual-mono）。主觀比對與 10 分鐘交 003 |
-| 5 | 003 | [第一次有聲音的真實錄製](003-first-real-recording.md) | 已完成 | 2026-09-13 | `pnpm matrix -- long` 10 分鐘影像／同步／CPU 各列過（CPU 17%、漂移 3 ms、硬體編碼；音訊位元率列 ❌ 為 beep 素材限制，工具總結因此為 fail）；QuickTime 雙擊／拖曳、當機殘檔可播、錄製中結束、`REC` 會錄進去皆以 AppleScript／`kill -9`／quit event 驗過。§17 第 1、2、3、5、8 題已答。未由人做的兩項原延後到 004，2026-09-13 再移交 006：「點通知開 Finder」因開發版 ad-hoc 簽章收不到通知（`UNErrorDomain` 錯誤 1）、內建 Retina 主螢幕的 §17 第 7 題因該機器只有外接螢幕；親眼親耳比對由使用者覆寫 Claude 的影格觀察 |
-| 6 | 004 | [乾淨 TCC 下的權限流程測試](004-permission-flow-clean-tcc.md) | 已完成 | 2026-09-13 | 範圍經使用者同意調整為「開發版身分驗得到的部分」並結案：§17 第 6 題答「必須重啟」（限「開→關→開」復原路徑）、步驟 3 的零依賴註冊成立、缺音訊權限 0.35 秒回 `no_audio_track` 且不留殘檔、步驟 7「稍後」那條錄製完整存檔；兩個修正完成（`needsPermission` 一律可重新啟動、通知失敗寫 log），183 個測試通過。需要真實 app 身分的七項驗收（含第一次音訊提示拒絕、同一 process 開音訊後直接錄、選單實地確認、通知顯示／點擊、HiDPI、乾淨 TCC 第一次授權、「結束並重新打開」分支）全數移交 006，004 不聲稱通過 |
-| 7 | 006 | [RecordStuff.app 本機自簽開發包與驗收](006-dev-app-bundle-and-signing.md) | 已完成 | 2026-09-14 | 本機自簽／DMG、更新權限、Retina、通知、首次授權／音訊拒絕、需重啟的音訊恢復、錄影中撤銷及復原已驗。211 測試通過。通知清單舊圖示不阻擋，跨機／新帳號跳過，009 擱置。 |
-| 平行 | 005 | [Windows 環境與驗收](005-windows-environment.md) | 待執行 | 2026-09-13 | **下一個**。環境建置待執行；錄製驗收用 007 的設定與 008 的工具。只有 Mac，需先建 VM。Windows 錄製與安裝驗收由本計畫持有；兩平台試用版仍依賴它 |
-| 選配 | 009 | [Apple 認證發行](009-apple-notarized-distribution.md) | 擱置 | 2026-09-13 | 使用者暫不付費；Developer ID、公證、免人工例外的 Gatekeeper 與發行身分驗收。啟用後依賴 006，不阻擋本機自簽／少量分享 |
-| — | — | [Roadmap（第一版之後）](roadmap.md) | 擱置 | 2026-09-12 | 第一版發布前不動 |
-
-依賴：002 → 007（設定與診斷）→ 008（驗收工具，並完成 007 遺留的量測與係數回填）→ 003 → 004 → 006。005 的環境建置可隨時進行，錄製驗收使用 007 的設定與 008 的工具，並補 Windows 品質／60 fps 驗證；兩平台試用版仍須完成兩平台驗收；009 僅在選擇 Apple 認證發行時啟用。
-
-001 的執行範圍調整為初始實作與基本錄製，已完成結案；文件繼續保留第一版總規格供後續計畫引用。007 於 2026-09-13 縮小範圍結案，量測移交 008。004 於 2026-09-13 結案（範圍經使用者同意調整為開發版身分驗得到的部分，其餘移交 006 步驟 6）。整體發布尚未完成：002 負責 log、007 負責品質設定、008 負責驗收工具與量測、003／004／005 負責驗收、006 負責本機自簽與少量分享；009 負責選配的 Apple 認證發行。007 為已同意提前的第一版品質工作，其餘 Roadmap 項目仍維持第一版之後。
-
-## 已完成的工作紀錄
-
-沒有獨立計畫檔、但已完成並影響後續計畫的工作，記在這裡以免重做。
-
-| 日期 | 工作 | 結果 |
-|---|---|---|
-| 2026-09-11 | 001 的初始實作（骨架、狀態機、檔案寫入、tray、設定、capture host、協定） | 89 個測試；兩輪獨立 review，17 個 findings 全部處置 |
-| 2026-09-11 | MessagePort transfer 實測 | Electron 44.3 transfer ArrayBuffer 會讓 main 卡死，改為複製（001 §9） |
-| 2026-09-12 | 權限偵測改為兩段式（借 Cap 的設計） | `permission.ts` 重寫，12 個測試；未授權時觸發系統提示（001 §11） |
-| 2026-09-12 | 查明「錄得到但沒聲音」 | macOS 14.2+ 的系統音訊是第二個權限、算在負責程式頭上；加死音軌偵測與 `pnpm start`（001 §11、§20） |
-| 2026-09-12 | Windows loopback 無聲時是否斷資料 | 查 Chromium 原始碼：已內建 keepalive，不需自做（001 §17 第 4 題） |
-| 2026-09-12 | 002 檔案 log | `createFileLogger`；輪替與寫入失敗各有單元測試；README 補 log 路徑與 `tail -f` |
-| 2026-09-12 | 使用者確認基本錄製測通 | 停止後有畫面、有聲音；觀察到影像與音訊品質差距，交由 007 量測。未提供時長、播放器、同步、CPU 或 Windows 驗收數據 |
-| 2026-09-13 | 007 程式部分（A1、B1–B4） | `src/shared/quality.ts`（型別、驗證、`fitWithinCap`、位元率公式）、settings.json v2 與 v1 相容、Tray「錄製品質」子選單、`start { quality }`／`started { capture }` 協定、capture log、60 fps 降級通知、`pnpm probe`；152 個測試；兩輪 Codex GPT-6 Astra review，4 個 findings 全部修正。係數為起點，待 008 量測修正 |
-| 2026-09-13 | 008 工具（A、B、C） | `scripts/lib/verify.mts` 等 TypeScript 腳本以 Node 24 直接執行；`src/main/autorecord.ts`；`pnpm matrix -- quick` 試跑三段成功寫入 `plans/measurements/2026-09-13.md`（該輪畫面不是素材頁，不算有效量測）；175 個測試。發現：套上限後 `track size=` 是約束值非實際尺寸（1440x1440 vs 成品 1440x810）；macOS loopback 音訊單聲道；靜態內容位元率遠低於目標。同步偵測器以合成檔驗證，偏差約 +10 ms；兩輪 Codex GPT-6 Astra review，7 個 findings 全部修正 |
-| 2026-09-13 | 008 第二輪：`levels` 量測與 capture host 尺寸修正 | 1080p × 三等級成品 1080x606，源頭是 `getSettings()` 回報 1920x1920；`src/renderer/capture-host.ts` 新增 `measureFrameSize`（隱藏 `<video>` 讀實際影格），真機 5 秒實錄確認 1920x1080／8.1 Mbps；`pnpm matrix -- all` 縮為約 7 分鐘；177 個測試。CPU 1080p30 平均 15%；音畫偏移固有約 50–60 ms |
-| 2026-09-13 | 008 第三輪：`all` 量測與結案 | 九段有效量測；係數 0.07／0.13／0.24 維持（實測 99–100%）；60 fps 開放（57 fps、31 Mbps 為兩倍目標、CPU 23%）；CPU 門檻 ≤ 40%；3 分鐘漂移 3 ms；固有延遲 45–80 ms；`channelCount: 2` 給 stereo 容器但 dual-mono；AAC 夾約 160 k。使用者決定：移除音訊品質選單（固定 256 k 目標）、音畫偏移門檻改採 ITU-R BT.1359（晚 < 125／早 < 45 ms）不補償 |
-| 2026-09-13 | 003 驗收（10 分鐘、QuickTime、當機、結束、`REC`） | `pnpm matrix -- long`：600 s、569.6 MB、7.92 Mbps、29.30 fps、掉幀 0.39%、CPU 17%／21%、漂移 3 ms、固有延遲 91 ms；`VTEncoderXPCService` 1.4–1.9% CPU 證實硬體編碼。AppleScript 操作 QuickTime（預設 app）開檔、跳 30%／90%、播放三個檔皆正常；`kill -9` renderer → `capture_host_crashed`、殘檔 17.6 s 全可解碼、QuickTime／Chrome 可播；quit event → 14 ms 內停止存檔改名；`REC` 錄進非全螢幕影片。程式碼無需修改 |
-| 2026-09-13 | 使用者決定 `long` 矩陣縮為 3 分鐘 | 10 分鐘已量過一次（3 與 10 分鐘漂移同為 3 ms），之後回歸只跑 3 分鐘；`scripts/run-matrix.mts` 的 `long` 改 180 s、`all` 的漂移段改為引用同一筆，001 §17／§4 檢查表、008 使用方式、README 同步註記 |
-| 2026-09-13 | 004 實測逼出的兩個修正 | `src/main/tray-model.ts`：`needsPermission` 一律提供重新啟動（`needsRelaunch` 為 false 時標籤「已經允許了？重新啟動 RecordStuff」＋說明 tooltip），因為授權後執行中的程序永遠看不到，狀態機與輪詢不變、不假裝偵測得到授權；`src/main/tray.ts`＋`index.ts`：通知失敗寫 log（`notification: not supported …`／`notification: failed (<error>): <body>`），新增 `src/main/tray.test.ts` 以 mock Electron 驗證。183 個測試通過。實測抓到 `notification: failed (無法完成作業。（UNErrorDomain錯誤1 。）)`，錄製不受影響 |
-| 2026-09-13 | 查 Cap 的驗收方式並寫成 008 | Cap `crates/cap-test` 用真機錄 + ffprobe 對門檻（30 ± 2 fps、掉幀 < 2%、音畫 < 50 ms、時長差 < 100 ms），無 PSNR／SSIM，畫質靠人眼；bpp 常數 0.15／0.30／1.0（錄製）、0.04～0.30（匯出）。007 縮小範圍結案，量測交 008 |
-| 2026-09-13 | 004 結案與範圍調整（使用者同意） | 004 只以「開發版身分驗得到的部分」結案：§17 第 6 題、§11 的行為差異、兩個程式修正、通知失敗診斷。需要真實 app 身分的七項驗收整批移交 006 步驟 6 並逐項列出，004 明確不聲稱通過。原因是 `pnpm start` 用共用的 `com.github.Electron`，006 才用 `com.recordstuff.app`；留在 004 會與「006 前置是 004」互相等待。同時記下第二次未重現的音訊提示嘗試（17:59:25 重啟後 granted、17:59:36 開始、17:59:53 存成 `2026-09-13 17-59-36.mp4`、通知仍 `UNErrorDomain` 錯誤 1、全程沒有音訊提示），未作歸因。日後 `tccutil reset` 須指定已確認的 bundle id，不使用全域重置 |
-| 2026-09-13 | 006 本機開發包（部分完成，計畫仍進行中） | `pnpm start:app` 建置與驗證獨立 `com.recordstuff.app`；共用 lock 的 app 執行中阻擋重建、非 ad-hoc 不啟動；review 修正後 188 個測試通過。實測 log／設定仍共用小寫 `recordstuff`。尚無 Developer ID 憑證、未公證，七項驗收全部保留，細節見 006 執行紀錄 |
-| 2026-09-13 | 006 改按本機自簽規劃（使用者同意） | 固定 Code Signing 憑證、重建 A/B 身分與 TCC 測試、自簽 DMG 分享；七項驗收不豁免。新增擱置的 009 接手 Developer ID／公證。查 T3 Code 官方 build／release 與本機 Nightly：官方包是已公證 Developer ID；不冒稱本機固定自簽是其作法。本次僅修改文件，未建立憑證或更動啟動腳本 |
-| 2026-09-13 | 006 本機自簽接入（進行中） | 使用者建立 `RecordStuff Dev`，有效至 2036-09-10。腳本改精確解析憑證、核對巢狀 bundle 的公開指紋與 runtime；新增 `open:app`、`dist:mac:local`。不匯出私鑰、不公證／發布；尚未聲稱真機與跨機器驗收完成 |
-| 2026-09-13 | 006 免費分享 follow-up | 使用者確認免費自簽 App → DMG 交付，新增本機專用設定與接收者安裝說明；辨識並清除舊 ad-hoc ScreenCapture 授權（僅 com.recordstuff.app），新授權待完成；修正 pnpm realpath 程序攔截。付費 009 維持擱置。 |
-| 2026-09-13 | 006 免費 DMG 成品 | 免費 arm64 DMG（125,976,937 bytes）完成，內附安裝說明；hdiutil、唯讀掛載內容、指定簽章驗證通過，pnpm check 208 測試通過。跨機器與七項真機驗收仍待完成。 |
-| 2026-09-13 | 006 自簽／DMG review 收尾 | Claude Fable 5.1 high 完成兩輪：第一輪 6 項，接受 5／拒絕假設性日期格式問題 1；第二輪接受 DMG 繼承重複項目問題，修正後合併配置恰好 3 項。208 測試通過，完整 finding 與處置見 006；未 commit／push，真機與跨機器驗收仍待完成。 |
-| 2026-09-13 | 006 本機安裝優先 | 使用者要求先在本機驗證，另一台 Mac 暫緩。Applications 原無 RecordStuff，從 DMG 安裝後簽章通過，23:04:34 log 確認 packaged true 與 /Applications 執行路徑；ready 後 needsPermission，待使用者授權再測錄製。不是既有安裝的覆蓋更新，也不代表跨機器通過。 |
-| 2026-09-13 | 006 小尺寸圖示修正 | 安裝版 23:09:30 授權成功、可見兩個螢幕。發現 ICNS 16／32 像素圖示損壞，改以 macOS iconutil 原生產生並明確指定 mac.icon；待更新成品驗證權限保留。同步 pnpm start 授權 Electron.app、pnpm dev 可能歸於終端機／編輯器、打包驗收授權 RecordStuff.app 的說明。 |
-| 2026-09-13 | 006 圖示與更新驗證完成 | 原生 ICNS 修正小尺寸雜訊；重新安裝同路徑、同憑證、同 identifier 後不重置權限，23:16:52 直接 granted／2 screens。系統設定重新開啟後圖示正常、開關 on。208 測試及成品／安裝簽章驗證通過；Fable review 2 項 Low，拒絕排版建議、接受待 commit 文案澄清；006 其餘驗收保留。 |
-| 2026-09-13 | 006 結案範圍調整 | 使用者要求跳過另一台 Mac，完成本機可做的驗收後收尾，本輪不再使用 Fable review；不將跳過項目寫成通過。正在補安裝版錄製、通知及權限失敗分支，Computer Use 無法取得無視窗 tray，錄影按鈕與系統提示需使用者代點。 |
-| 2026-09-13 | 006 授權等待修正 | 兩個系統提示尚在回答時原 8 秒啟動期限已到；拆成檔案 8 秒／擷取請求 120 秒／開始後首筆資料 8 秒，選單提示留意授權。參考 Cap 權限實作，區分狀態重查與人機互動等待；210 測試通過，真機待驗，不做 Fable review。 |
-| 2026-09-13 | 006 安裝版音訊拒絕 | 23:31／23:32 兩次拒絕狀態錄製均快速回 no_audio_track、idle，不留空檔；使用者截圖確認錯誤通知顯示且圖示正常。成功存檔通知／點擊及同程序音訊復原仍待驗。 |
-| 2026-09-13 | 006 安裝版有聲錄製 | 18.0959 秒 H.264 1080p＋AAC 48 kHz 雙聲道、非靜音、全段可解碼；使用者確認停止後 REC 消失、通知點擊開 Finder，但未到前景。macOS 通知 reveal 改延後至 callback 返回後並記診斷，211 測試通過，新版已安裝、螢幕授權保留，待原尺寸 Retina 與通知前景實測。音訊恢復時程序曾重啟，不算同程序通過。 |
-| 2026-09-13 | 006 最後驗收清單 | 使用者要求一次列清並做完；整併成三輪：Retina＋通知前景、乾淨授權＋選單＋音訊拒絕／同程序復原、錄製撤銷＋重啟殘檔＋恢復可用。內建螢幕已上線且為主螢幕，Retina 實錄前先保持上蓋開啟；其後可用外接螢幕。 |
-| 2026-09-13 | 006 Retina 首片段修正 | 安裝版兩次原尺寸錄製在 8 秒首 chunk 期限被中止，開發版同設定重現；MP4 新增 1000 ms 關鍵影格間隔後約 1.31 秒收到首片段、20 秒 3456×2234 有聲成品完整可解碼。211 測試通過，重新製作安裝包；未延長逾時或降低畫質設定。 |
-| 2026-09-13 | 006 Retina 安裝版通過 | 22.55／17.43 秒手動錄影，log 與 MP4 均 3456×2234，約 1.2 秒首 chunk，最新段有聲且完整可解碼。可關上上蓋；通知點擊有 reveal log，桌面提示及 Finder 前景仍待明確確認。通知設定桌面勾選／暫時，全域共享時關閉，未改動偏好。 |
-| 2026-09-13 | 006 通知清單舊圖示登錄排查 | LaunchServices 同時登錄含破圖的舊 dist/dev 與正確的 /Applications，已僅取消舊包登錄並重登安裝版，資料庫確認只剩安裝版；重啟設定，UI 待使用者確認。未改權限或通知偏好，Computer Use 保持關閉。 |
-| 2026-09-14 | 006 通知清單圖示仍待確認 | 重登錄後使用者仍見破圖；重啟本帳號通知服務，未刪通知資料／改偏好。NSWorkspace 查詢安裝版圖示為正常新版；圖示服務強制重啟被 SIP 拒絕，未繞過。通知頁結果仍待確認，不宣稱修好。 |
-| 2026-09-14 | 006 第二輪授權驗收開始 | 使用者將通知清單舊圖示改為暫不阻擋（未確認修好）。確認 idle 後只重置 com.recordstuff.app 的 ScreenCapture／AudioCapture，兩者成功；原包重開，等待缺權限選單與首次螢幕授權操作，不改通知設定。 |
-| 2026-09-14 | 006 首次螢幕授權／選單通過 | Scoped 重置後首次提示與灰色權限選單均有使用者截圖，使用者操作開設定／授權／App 重啟，00:04:52 新程序 PID 18310 立即 granted／2 screens，仍為 /Applications 安裝版。接續首次音訊拒絕及同程序復原。 |
-| 2026-09-14 | 006 同程序音訊啟用仍失敗 | 使用者確認下方音訊開關開啟、選稍後；PID 18310 兩次重試仍 no_audio_track，確認此情境不能同程序立即恢復。已重啟原安裝版，待短錄驗證復原。 |
-| 2026-09-14 | 006 音訊權限重啟恢復通過 | 使用者已開音訊並選稍後，原 PID 18310 重試失敗；重啟後 PID 29544 錄製 15.34 秒 1080p＋AAC 成功、非靜音且全段可解碼。同程序恢復的結論為此情境需重啟，接續錄影中撤銷權限與復原。 |
-| 2026-09-14 | 006 首次音訊拒絕通過 | 使用者明確確認首次系統音訊提示有跳出且按不允許；結合 scoped reset、no_audio_track 日誌、通知截圖及無新增檔案，6(d) 正式通過，不需再重跑。 |
-| 2026-09-14 | 006 錄製中撤銷權限通過 | 使用者關 ScreenCapture 並選系統結束重開，App 先停止收尾，保留完整 47.59 秒 1080p＋AAC MP4，全段可解碼；新 PID 40919 正確 needsPermission。最後僅待恢復權限／短錄與 Finder 選取確認，然後文件結案。 |
-| 2026-09-14 | 006 結案 | 全部本機核心驗收有實測結論，最後恢復授權後 12.65 秒有聲 MP4 完整可解碼且使用者確認可播。通知清單舊圖示依使用者決定不阻擋；跨機／新帳號跳過。211 測試，文件收尾完成；下一個 005，未開始。 |
+Update product/design documents and verification evidence, including translations. Update README and this index. Once all durable conclusions are captured, remove the completed plan and its translation. Preserve history in Git rather than keeping completed execution checklists as product specifications.

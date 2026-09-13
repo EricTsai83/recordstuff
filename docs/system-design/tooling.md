@@ -1,0 +1,81 @@
+# Build, Packaging, and Verification
+
+[English](tooling.md) | [繁體中文](../zh-TW/system-design/tooling.md)
+
+## Developer workflow
+
+Use pnpm and a compatible Node version; the verification TypeScript scripts use Node 24 directly. Package.json declares Node ≥22.12 for the project. FFmpeg/ffprobe are development tools, not recipient dependencies.
+
+| Command | Purpose |
+| --- | --- |
+| `pnpm install` | Install dependencies |
+| `pnpm dev` | electron-vite hot reload; capture permission identity may belong to the launching terminal/editor |
+| `pnpm start` | Build and launch development Electron.app through macOS open; suitable for audio experiments |
+| `pnpm start:app` | Build, self-sign, verify, and open RecordStuff.app |
+| `pnpm open:app` | Verify and open an existing development bundle; does not rebuild it |
+| `pnpm check` | Typecheck, all Vitest tests, and production build |
+| `pnpm icons` | Generate PNG/ICO assets and native ICNS on macOS |
+| `pnpm log` | Follow the current macOS log |
+| `pnpm dist:mac:local` | Build/verify a self-signed app, then create a DMG in dist/local |
+
+Main, preload, and renderer are separate electron-vite entries. Only out files, package metadata, and selected resources enter the app. Tests, measurement tools, and documentation are not runtime dependencies. The app has no FFmpeg subprocess.
+
+## Current signing and packaging
+
+[Start-app](../../scripts/start-app.mjs) resolves exactly one valid signing identity, default `RecordStuff Dev`. RECORDSTUFF_SIGN_IDENTITY may specify an exact name or SHA-1. It rejects missing/ambiguous identities, duplicate certificate names, invalid dates, non-self-signed certificates, or a mismatched final signature. SHA-1 identifies the public signing certificate here; release-file integrity uses SHA-256.
+
+The script checks for a running RecordStuff/project Electron process before rebuilding. It removes Apple/CSC release variables from child environments, disables identity auto-discovery, forces signing, sets notarization false, and passes publish never. It does not reset permissions, import keys, notarize, or publish.
+
+Verification performs strict deep codesign checks, inspects nested app/framework certificates without following symlinks, checks identifiers/runtime flags, and matches the outer designated requirement. Only after this succeeds does it package the existing verified app into a DMG.
+
+The [local configuration](../../electron-builder.local.yml) extends the [base configuration](../../electron-builder.yml), disables notarization/timestamps and DMG signing/update metadata, and includes both installation guides. Output is `RecordStuff-<version>-<arch>-selfsigned.dmg`; arm64 and x64 are architecture-specific, not universal. Only arm64 has been verified.
+
+The repository still contains legacy `dist:mac` notarization configuration and a `dist:win` command. They are not the chosen delivery workflow and are not proof of supported releases. The remaining release plan includes making the public packaging entry point unambiguous.
+
+Self-signing is not Apple approval. Recipients may need Open Anyway for an unnotarized app; managed Macs may restrict that option. Use the ordinary per-app workflow in the [installation guide](../../resources/INSTALL.md), not global security changes. See [Apple](https://support.apple.com/102445).
+
+## Verification tools
+
+```bash
+pnpm probe -- /absolute/path/recording.mp4
+pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
+pnpm matrix -- quick
+pnpm matrix -- all
+pnpm matrix -- long
+```
+
+Verify accepts multiple files, an optional log path, source dimensions, sync detection, Markdown/JSON output, and an explicit JSON destination. The default evidence directory is docs/verification/measurements. It reads the active log and newest rotated archive so capture and saved records can still be paired across rotation.
+
+Matrix is macOS-only developer automation. It launches the test material in Chrome kiosk on the primary display unless --no-open-material is supplied, samples the app's process CPU, and drives an unpackaged app through RECORDSTUFF_AUTORECORD. Keep source display/audio stable during the run. Packaged builds ignore this variable. The internal automatic-recording parser accepts durations in (0,3600] and validated quality overrides merged over defaults, not user settings.
+
+| Matrix | Cases |
+| --- | --- |
+| quick | Three 30-second recordings: 1440p Standard/High and Source Standard |
+| levels | Three 30-second 1080p recordings: Economy/Standard/High |
+| fps | Source Standard at 30 and 60 fps, 30 seconds each |
+| long | 180-second 1080p Standard/30 fps drift regression |
+| all | Shortened 15-second cases plus long; roughly seven minutes including gaps |
+
+The historical ten-minute baseline has already been recorded. Long now uses three minutes by user decision. [Raw evidence](../verification/README.md) retains the older run's duration and verdicts.
+
+## Measurement pipeline and thresholds
+
+Media-tools runs ffprobe/ffmpeg; verify.mts parses and judges pure data; verify-recording.mts pairs files with logs and saves results; CLI/matrix orchestrate. For long files, frame timestamps are sampled in separate head/tail intervals so the unobserved middle is not counted as dropped frames. The test page supplies moving content plus flash/beep markers on an audio clock.
+
+| Metric | Current project threshold |
+| --- | --- |
+| Output dimensions | Match capture report; satisfy cap and source aspect when known |
+| Duration | Requested duration ±2 s when provided |
+| Average fps | Requested ±2 fps, using continuously moving material |
+| Dropped frames | <2% |
+| Audio/video duration difference | Absolute difference <100 ms |
+| Audio minus video offset | Strictly between −45 and +125 ms |
+| End-to-end drift | Absolute drift <100 ms; needs sufficient marker coverage |
+| Audio | 48 kHz, two channels; measured channel RMS above −60 dBFS |
+| Video/audio bitrate | Within ±30% of requested target |
+| CPU | Aggregate Electron average ≤40% |
+| Decode | No ffprobe full-frame decode errors; interactive playback remains a separate check |
+
+These are the project's current constants in THRESHOLDS, not a guarantee for arbitrary content. Without ffmpeg, channel-energy measurement may be absent while sample format still passes; read notes and n/a rows. A beep-heavy source has low AAC bitrate, and dual-mono passes the two-channel energy check without proving stereo separation. Any fail makes the aggregate fail; at least one pass with no fail yields pass; all unavailable yields n/a.
+
+English is the default for new diagnostic output and measurement reports. Historical raw results retain the language and labels they had when recorded; the English verification summary explains their meaning. Do not rewrite measured values or old failures to resemble a new passing run.
