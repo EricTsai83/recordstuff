@@ -54,11 +54,13 @@ These are project waiting limits, not OS standards or exact end-to-end timing gu
 | Video bitrate | Width × height × requested fps × coefficient, rounded to 100 kbps, clamped to 1.5–60 Mbps |
 | Resolution | Source unchanged; 1080p/1440p/4K caps preserve aspect/orientation, never upscale, and use even dimensions when downscaling |
 | Frame rate | 30/60; only darwin enables 60; other platforms use 30 without rewriting stored settings |
-| Audio | 256,000 bps target; requests ideal 2 channels and restrictOwnAudio |
+| Audio | 256,000 bps target; ideal 2 channels, restrictOwnAudio true; echoCancellation/noiseSuppression/autoGainControl false |
 | Format | `video/mp4;codecs=avc1,mp4a.40.2`; reject unsupported encoding rather than switch format |
 | Chunking | Timeslice and videoKeyFrameIntervalDuration are both 1000 ms; actual delivery may be delayed |
 
 MeasureFrameSize uses a muted video's intrinsic size with a default 3-second limit. Actual frames take priority because getSettings once reported an incorrect multi-monitor height. Only when frames cannot be read does it fall back to track settings. Applying a cap repeats frame-rate constraints and remeasures for up to 1.5 seconds. Rejected constraints preserve source size with warnings. If remeasurement fails, report target dimensions with a warning. With no size information, calculate the target bitrate from 1920×1080 without claiming those dimensions were measured.
+
+System audio uses explicit unprocessed capture constraints: speech-oriented processing changed high-frequency balance and collapsed stereo in the local baseline. Disabling EC/NS/AGC together restored the v2 probes; own-audio exclusion remains enabled. These are requests, not universal platform guarantees. A track explicitly reporting one of these effects as true adds a warning; absent settings stay unknown. See the [audio design comparison](audio-quality.md#15-system-capture-correction--2026-09-14).
 
 CaptureReport includes known dimensions/fps/sample rate/channel count, requested encoder bitrates, and warnings. Unknown fields are omitted. Output still needs ffprobe measurement. A downgrade notification requires requested 60 fps and a reported track rate ≤30; static-content frame reduction alone does not trigger it.
 

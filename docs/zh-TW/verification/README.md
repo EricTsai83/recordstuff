@@ -74,3 +74,13 @@
 完成三次真實 v2 擷取：**0 次 pass、2 次 fail、1 次 invalid**。[摘要](../../verification/measurements/2026-09-14-audio-v2/summary.json)維持 invalid。第 1 次標記間隔量得 −22.63 dB，未達素材辨識要求的 −30 dB，因此未輸出缺乏依據的頻譜欄位。第 2／3 次標記有效並保留失敗：1 kHz 聲道分離約 0 dB，16 kHz 相對同時 pilot 的響應，左側為 −46.64 到 −46.48 dB，右側為 −44.14 到 −43.85 dB。另有部分殘差／增益／12 kHz 失敗，詳見[第 1 次](../../verification/measurements/2026-09-14-audio-v2/run-1.json)、[第 2 次](../../verification/measurements/2026-09-14-audio-v2/run-2.json)及[第 3 次](../../verification/measurements/2026-09-14-audio-v2/run-3.json)。
 
 [前](../../verification/measurements/2026-09-14-audio-v2/environment-before.json)／[後](../../verification/measurements/2026-09-14-audio-v2/environment-after.json)裝置與音量快照相同。這是端點證據，不代表持續控制了整個環境。無效量測不納入各指標範圍，並明確計入缺少數量。這些是失敗證據，不是經校準的通過基準。v1／v2 的素材與估計方式不同，不能把精確 dB 差異當作產品改善前後比較。原本 v1 證據未改寫。暫存素材／log 留在 `/tmp/recordstuff-audio-v2-20260914`，每份報告都有 MP4 路徑。本次未產生新安裝檔。
+
+## 系統音訊處理修正 — 2026-09-14
+
+擷取端現在明確關閉回音消除、降噪與自動增益，保留排除自身聲音與 ideal 立體聲，詳見[設計說明](../system-design/audio-quality.md#15-系統擷取修正2026-09-14)。對照期間沒有改變素材、分析器或門檻。[第一輪試驗](../../verification/measurements/2026-09-14-audio-processing-off/initial-trial.json)已恢復高頻響應，但開頭仍有雜訊／聲道分離／間隔失敗。
+
+最終程式的重複量測為 **2 pass、0 fail、1 invalid**，前後裝置與音量快照相同。[摘要](../../verification/measurements/2026-09-14-audio-processing-off/summary.json)刻意維持 invalid：[第 1 次](../../verification/measurements/2026-09-14-audio-processing-off/run-1.json)標記間隔辨識失敗（−18.81 dB）。[第 2 次](../../verification/measurements/2026-09-14-audio-processing-off/run-2.json)和[第 3 次](../../verification/measurements/2026-09-14-audio-processing-off/run-3.json)所有門檻都通過。這兩次有效量測的左右 16 kHz 相對同時 pilot 差異在 0.004 dB 內，先前有效基準則約 −44 到 −47 dB；立體聲分離也從約 0 dB 恢復到超過 30 dB 門檻。接近數值下限的極大分離值，代表漏入另一聲道的能量極低，不是經校準的硬體規格。
+
+環境證據：[前](../../verification/measurements/2026-09-14-audio-processing-off/environment-before.json)／[後](../../verification/measurements/2026-09-14-audio-processing-off/environment-after.json)。若請求 false 後音軌明確回報效果仍啟用，程式會留下 warning；沒有回報則維持未知。本次實驗定位的是三個設定一起更改對本機路徑的修正效果，不是每個效果各自的貢獻。既有錄音檔未改動。
+
+修正驗證：`pnpm check` 通過 15 個測試檔／255 個測試、型別檢查與建置。`pnpm start:app` 建置、自簽、驗證九個 bundle 身分後，開啟 `dist/dev/mac-arm64/RecordStuff.app` 供聽感比較；未取代 `/Applications` 的副本。文件目標與 `git diff --check` 通過。

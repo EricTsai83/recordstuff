@@ -31,7 +31,7 @@ When available, download the arm64 DMG, drag RecordStuff into Applications, and 
 | Resolution cap | 1080p / 1440p / 4K / Source | Source |
 | Frame rate | 30 / 60 fps | 30; 60 is enabled only on macOS |
 
-Output is H.264/AAC MP4. Audio requests 256 kbps; the tested encoder produced about 160 kbps and dual-mono, not separated stereo. At 60 fps the tested output was about 57 fps with substantially larger files. These are measured limitations, not hidden quality guarantees.
+Output is H.264/AAC MP4. Audio requests 256 kbps with voice processing explicitly disabled; local diagnostic recordings preserve high frequencies and left/right separation. Actual bitrate depends on the encoder and content. At 60 fps the tested output was about 57 fps with substantially larger files. These are measured limitations, not hidden quality guarantees.
 
 ## Current status and design
 

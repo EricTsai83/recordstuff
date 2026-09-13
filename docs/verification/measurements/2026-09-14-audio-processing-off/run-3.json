@@ -1,0 +1,664 @@
+{
+  "date": "2026-09-13T18:35:29.912Z",
+  "file": "/Users/eric/Movies/RecordStuff/2026-09-14 02-35-13.mp4",
+  "environment": {
+    "implementation": {
+      "./lib/audio-quality.mts": "284b8d83c36f5eda55901339c28364c3d5d419653e0cd4a653c2907d1da3170f",
+      "./lib/audio-quality-tools.mts": "ede7721380145ede549b768476739d8b3ba65deca87d9e677f9a413a1cd38ee8",
+      "../src/renderer/capture-host.ts": "20d64da91344ec093f1282f77ab751bf2cd42dd3f1e991bc83846ca299acf2aa"
+    },
+    "fixtureSha256": "92945ff3e030f577a378dbe7e28bf6d4249fe9834f2a513048a41e4d28c8a38d",
+    "platform": "darwin",
+    "release": "25.6.0",
+    "arch": "arm64",
+    "node": "v24.21.0"
+  },
+  "version": 2,
+  "fixtureVersion": 2,
+  "verdict": "pass",
+  "onsetSeconds": 0.79,
+  "clockPpm": -0.7862951068027257,
+  "limits": {
+    "responseDb": 3,
+    "gainDb": 6,
+    "separationDb": 30,
+    "residualDb": -25,
+    "dropoutDb": -15,
+    "clippingFraction": 0.001,
+    "clockPpm": 200,
+    "timingMs": 20,
+    "gapDb": -35
+  },
+  "checks": [
+    {
+      "metric": "Sample rate",
+      "value": 48000,
+      "expected": "48000 Hz",
+      "pass": true
+    },
+    {
+      "metric": "Channels",
+      "value": 2,
+      "expected": "2",
+      "pass": true
+    },
+    {
+      "metric": "Valid PCM",
+      "value": 1,
+      "expected": "nonempty, finite stereo PCM",
+      "pass": true
+    },
+    {
+      "metric": "Start marker detected",
+      "value": 0.79,
+      "expected": "300 ms coherent 1 kHz above -80 dBFS",
+      "pass": true
+    },
+    {
+      "metric": "Clock offset (ppm)",
+      "value": -0.7862951068027257,
+      "expected": "±200 ppm",
+      "pass": true
+    },
+    {
+      "metric": "Complete fixture",
+      "value": 16,
+      "expected": ">= 12.370 s",
+      "pass": true
+    },
+    {
+      "metric": "Marker gap (dB)",
+      "value": -150,
+      "expected": "<= -30 dB relative to marker",
+      "pass": true
+    },
+    {
+      "metric": "End marker detected",
+      "value": 11.39,
+      "expected": "fixture v2 2 kHz end marker",
+      "pass": true
+    },
+    {
+      "metric": "End timing error (ms)",
+      "value": 0,
+      "expected": "±20 ms",
+      "pass": true
+    },
+    {
+      "metric": "L 250 Hz pilot offset (ppm)",
+      "value": 1.926296892662549,
+      "expected": "±200 ppm",
+      "pass": true
+    },
+    {
+      "metric": "L 250 Hz response (dB)",
+      "value": 0.00040083099551210095,
+      "expected": "simultaneous 1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 250 Hz gain (dB)",
+      "value": -0.000601174341952387,
+      "expected": "0 ±6 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 250 Hz separation (dB)",
+      "value": 131.93779950594126,
+      "expected": ">= 30 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 250 Hz residual (dB)",
+      "value": -61.05560932655007,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 250 Hz minimum 10 ms level (dB)",
+      "value": -0.0031906977780178513,
+      "expected": ">= -15 dB relative to each local component",
+      "pass": true
+    },
+    {
+      "metric": "L 250 Hz maximum clipped block fraction",
+      "value": 0,
+      "expected": "<= 0.001",
+      "pass": true
+    },
+    {
+      "metric": "L 250 Hz following gap (dB)",
+      "value": -150,
+      "expected": "<= -35 dB relative to local RMS",
+      "pass": true
+    },
+    {
+      "metric": "L 1000 Hz pilot offset (ppm)",
+      "value": -0.4725792498438963,
+      "expected": "±200 ppm",
+      "pass": true
+    },
+    {
+      "metric": "L 1000 Hz response (dB)",
+      "value": 0,
+      "expected": "simultaneous 1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 1000 Hz gain (dB)",
+      "value": -0.0008600525150546213,
+      "expected": "0 ±6 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 1000 Hz separation (dB)",
+      "value": 128.92704025100625,
+      "expected": ">= 30 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 1000 Hz residual (dB)",
+      "value": -66.49484022268253,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 1000 Hz minimum 10 ms level (dB)",
+      "value": -0.003104233556939037,
+      "expected": ">= -15 dB relative to each local component",
+      "pass": true
+    },
+    {
+      "metric": "L 1000 Hz maximum clipped block fraction",
+      "value": 0,
+      "expected": "<= 0.001",
+      "pass": true
+    },
+    {
+      "metric": "L 1000 Hz following gap (dB)",
+      "value": -150,
+      "expected": "<= -35 dB relative to local RMS",
+      "pass": true
+    },
+    {
+      "metric": "L 4000 Hz pilot offset (ppm)",
+      "value": -0.2242924703743654,
+      "expected": "±200 ppm",
+      "pass": true
+    },
+    {
+      "metric": "L 4000 Hz response (dB)",
+      "value": -0.0018863515289298809,
+      "expected": "simultaneous 1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 4000 Hz gain (dB)",
+      "value": -0.00042578922900126265,
+      "expected": "0 ±6 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 4000 Hz separation (dB)",
+      "value": 114.37830971239826,
+      "expected": ">= 30 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 4000 Hz residual (dB)",
+      "value": -62.628833416512435,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 4000 Hz minimum 10 ms level (dB)",
+      "value": -0.004524655787481147,
+      "expected": ">= -15 dB relative to each local component",
+      "pass": true
+    },
+    {
+      "metric": "L 4000 Hz maximum clipped block fraction",
+      "value": 0,
+      "expected": "<= 0.001",
+      "pass": true
+    },
+    {
+      "metric": "L 4000 Hz following gap (dB)",
+      "value": -150,
+      "expected": "<= -35 dB relative to local RMS",
+      "pass": true
+    },
+    {
+      "metric": "L 8000 Hz pilot offset (ppm)",
+      "value": 0.32639170699511055,
+      "expected": "±200 ppm",
+      "pass": true
+    },
+    {
+      "metric": "L 8000 Hz response (dB)",
+      "value": -0.0002875493109321477,
+      "expected": "simultaneous 1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 8000 Hz gain (dB)",
+      "value": -0.00044872467638491944,
+      "expected": "0 ±6 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 8000 Hz separation (dB)",
+      "value": 131.93760776320912,
+      "expected": ">= 30 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 8000 Hz residual (dB)",
+      "value": -53.001662758458664,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 8000 Hz minimum 10 ms level (dB)",
+      "value": -0.007853703627522506,
+      "expected": ">= -15 dB relative to each local component",
+      "pass": true
+    },
+    {
+      "metric": "L 8000 Hz maximum clipped block fraction",
+      "value": 0,
+      "expected": "<= 0.001",
+      "pass": true
+    },
+    {
+      "metric": "L 8000 Hz following gap (dB)",
+      "value": -150,
+      "expected": "<= -35 dB relative to local RMS",
+      "pass": true
+    },
+    {
+      "metric": "L 12000 Hz pilot offset (ppm)",
+      "value": -0.7138974663645214,
+      "expected": "±200 ppm",
+      "pass": true
+    },
+    {
+      "metric": "L 12000 Hz response (dB)",
+      "value": -0.0006513150430351349,
+      "expected": "simultaneous 1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 12000 Hz gain (dB)",
+      "value": -0.0003461064227497392,
+      "expected": "0 ±6 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 12000 Hz separation (dB)",
+      "value": 131.93752850842662,
+      "expected": ">= 30 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 12000 Hz residual (dB)",
+      "value": -55.309472471693624,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 12000 Hz minimum 10 ms level (dB)",
+      "value": -0.001792055242873376,
+      "expected": ">= -15 dB relative to each local component",
+      "pass": true
+    },
+    {
+      "metric": "L 12000 Hz maximum clipped block fraction",
+      "value": 0,
+      "expected": "<= 0.001",
+      "pass": true
+    },
+    {
+      "metric": "L 12000 Hz following gap (dB)",
+      "value": -150,
+      "expected": "<= -35 dB relative to local RMS",
+      "pass": true
+    },
+    {
+      "metric": "L 16000 Hz pilot offset (ppm)",
+      "value": -0.5941629072081511,
+      "expected": "±200 ppm",
+      "pass": true
+    },
+    {
+      "metric": "L 16000 Hz response (dB)",
+      "value": -0.0008849801750847839,
+      "expected": "simultaneous 1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 16000 Hz gain (dB)",
+      "value": -0.00034659547537298436,
+      "expected": "0 ±6 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 16000 Hz separation (dB)",
+      "value": 131.93741119714022,
+      "expected": ">= 30 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 16000 Hz residual (dB)",
+      "value": -55.00312317593267,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "L 16000 Hz minimum 10 ms level (dB)",
+      "value": -0.005777196535980727,
+      "expected": ">= -15 dB relative to each local component",
+      "pass": true
+    },
+    {
+      "metric": "L 16000 Hz maximum clipped block fraction",
+      "value": 0,
+      "expected": "<= 0.001",
+      "pass": true
+    },
+    {
+      "metric": "L 16000 Hz following gap (dB)",
+      "value": -150,
+      "expected": "<= -35 dB relative to local RMS",
+      "pass": true
+    },
+    {
+      "metric": "R 250 Hz pilot offset (ppm)",
+      "value": 1.6216234894894654,
+      "expected": "±200 ppm",
+      "pass": true
+    },
+    {
+      "metric": "R 250 Hz response (dB)",
+      "value": 0.00026888124179348855,
+      "expected": "simultaneous 1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 250 Hz gain (dB)",
+      "value": -0.000474496297257632,
+      "expected": "0 ±6 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 250 Hz separation (dB)",
+      "value": 131.93786020656563,
+      "expected": ">= 30 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 250 Hz residual (dB)",
+      "value": -61.84878895447867,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 250 Hz minimum 10 ms level (dB)",
+      "value": -0.002448364320247357,
+      "expected": ">= -15 dB relative to each local component",
+      "pass": true
+    },
+    {
+      "metric": "R 250 Hz maximum clipped block fraction",
+      "value": 0,
+      "expected": "<= 0.001",
+      "pass": true
+    },
+    {
+      "metric": "R 250 Hz following gap (dB)",
+      "value": -150,
+      "expected": "<= -35 dB relative to local RMS",
+      "pass": true
+    },
+    {
+      "metric": "R 1000 Hz pilot offset (ppm)",
+      "value": -0.33706571778147065,
+      "expected": "±200 ppm",
+      "pass": true
+    },
+    {
+      "metric": "R 1000 Hz response (dB)",
+      "value": 0,
+      "expected": "simultaneous 1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 1000 Hz gain (dB)",
+      "value": -0.0008897320003653781,
+      "expected": "0 ±6 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 1000 Hz separation (dB)",
+      "value": 128.92701057152095,
+      "expected": ">= 30 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 1000 Hz residual (dB)",
+      "value": -76.73666084039773,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 1000 Hz minimum 10 ms level (dB)",
+      "value": -0.001994234632470892,
+      "expected": ">= -15 dB relative to each local component",
+      "pass": true
+    },
+    {
+      "metric": "R 1000 Hz maximum clipped block fraction",
+      "value": 0,
+      "expected": "<= 0.001",
+      "pass": true
+    },
+    {
+      "metric": "R 1000 Hz following gap (dB)",
+      "value": -150,
+      "expected": "<= -35 dB relative to local RMS",
+      "pass": true
+    },
+    {
+      "metric": "R 4000 Hz pilot offset (ppm)",
+      "value": -0.24656866748351547,
+      "expected": "±200 ppm",
+      "pass": true
+    },
+    {
+      "metric": "R 4000 Hz response (dB)",
+      "value": 0.00023673483056681744,
+      "expected": "simultaneous 1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 4000 Hz gain (dB)",
+      "value": -0.0010570779070196343,
+      "expected": "0 ±6 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 4000 Hz separation (dB)",
+      "value": 120.64507678046077,
+      "expected": ">= 30 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 4000 Hz residual (dB)",
+      "value": -67.77986698676237,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 4000 Hz minimum 10 ms level (dB)",
+      "value": -0.0021437433435282306,
+      "expected": ">= -15 dB relative to each local component",
+      "pass": true
+    },
+    {
+      "metric": "R 4000 Hz maximum clipped block fraction",
+      "value": 0,
+      "expected": "<= 0.001",
+      "pass": true
+    },
+    {
+      "metric": "R 4000 Hz following gap (dB)",
+      "value": -150,
+      "expected": "<= -35 dB relative to local RMS",
+      "pass": true
+    },
+    {
+      "metric": "R 8000 Hz pilot offset (ppm)",
+      "value": 0.5941629070971288,
+      "expected": "±200 ppm",
+      "pass": true
+    },
+    {
+      "metric": "R 8000 Hz response (dB)",
+      "value": 0.0005861485126472954,
+      "expected": "simultaneous 1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 8000 Hz gain (dB)",
+      "value": -0.00108280981619179,
+      "expected": "0 ±6 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 8000 Hz separation (dB)",
+      "value": 131.93741053449,
+      "expected": ">= 30 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 8000 Hz residual (dB)",
+      "value": -52.33625864245254,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 8000 Hz minimum 10 ms level (dB)",
+      "value": -0.001704799243455468,
+      "expected": ">= -15 dB relative to each local component",
+      "pass": true
+    },
+    {
+      "metric": "R 8000 Hz maximum clipped block fraction",
+      "value": 0,
+      "expected": "<= 0.001",
+      "pass": true
+    },
+    {
+      "metric": "R 8000 Hz following gap (dB)",
+      "value": -150,
+      "expected": "<= -35 dB relative to local RMS",
+      "pass": true
+    },
+    {
+      "metric": "R 12000 Hz pilot offset (ppm)",
+      "value": -0.6507815746292778,
+      "expected": "±200 ppm",
+      "pass": true
+    },
+    {
+      "metric": "R 12000 Hz response (dB)",
+      "value": -0.000399178677784174,
+      "expected": "simultaneous 1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 12000 Hz gain (dB)",
+      "value": -0.0004371346813233099,
+      "expected": "0 ±6 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 12000 Hz separation (dB)",
+      "value": 131.93756354072718,
+      "expected": ">= 30 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 12000 Hz residual (dB)",
+      "value": -57.24901354014703,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 12000 Hz minimum 10 ms level (dB)",
+      "value": -0.009594044121570404,
+      "expected": ">= -15 dB relative to each local component",
+      "pass": true
+    },
+    {
+      "metric": "R 12000 Hz maximum clipped block fraction",
+      "value": 0,
+      "expected": "<= 0.001",
+      "pass": true
+    },
+    {
+      "metric": "R 12000 Hz following gap (dB)",
+      "value": -150,
+      "expected": "<= -35 dB relative to local RMS",
+      "pass": true
+    },
+    {
+      "metric": "R 16000 Hz pilot offset (ppm)",
+      "value": -0.6841958701819806,
+      "expected": "±200 ppm",
+      "pass": true
+    },
+    {
+      "metric": "R 16000 Hz response (dB)",
+      "value": -0.003090452069538867,
+      "expected": "simultaneous 1 kHz ±3 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 16000 Hz gain (dB)",
+      "value": -0.00014365645716842915,
+      "expected": "0 ±6 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 16000 Hz separation (dB)",
+      "value": 131.936511652566,
+      "expected": ">= 30 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 16000 Hz residual (dB)",
+      "value": -53.12817635642021,
+      "expected": "<= -25 dB",
+      "pass": true
+    },
+    {
+      "metric": "R 16000 Hz minimum 10 ms level (dB)",
+      "value": -0.004832724904045555,
+      "expected": ">= -15 dB relative to each local component",
+      "pass": true
+    },
+    {
+      "metric": "R 16000 Hz maximum clipped block fraction",
+      "value": 0,
+      "expected": "<= 0.001",
+      "pass": true
+    },
+    {
+      "metric": "R 16000 Hz following gap (dB)",
+      "value": -150,
+      "expected": "<= -35 dB relative to local RMS",
+      "pass": true
+    }
+  ]
+}

@@ -152,10 +152,18 @@ export class CaptureHost {
         // The size cap is applied after the fact (`applyQuality`): it depends
         // on the source's orientation, which is only known once we have it.
         video: { frameRate: { ideal: quality.frameRate, max: quality.frameRate } },
-        // `restrictOwnAudio` (Electron 43+) keeps this app's own sounds out.
-        // `channelCount` asks for stereo: Local verification measured the macOS
-        // loopback track as mono without it.
-        audio: { restrictOwnAudio: true, channelCount: { ideal: 2 } } as MediaTrackConstraints,
+        // Preserve system sound rather than applying voice-call processing.
+        // Local v2 probes measured high-frequency loss and dual-mono with the
+        // defaults; explicitly disabling EC/NS/AGC restored both. See
+        // docs/system-design/audio-quality.md for the controlled comparison.
+        // Keep own-audio exclusion and request stereo independently.
+        audio: {
+          restrictOwnAudio: true,
+          channelCount: { ideal: 2 },
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        } as MediaTrackConstraints,
       });
     } catch (cause) {
       if (this.cancelled.delete(sessionId)) return;
@@ -389,6 +397,9 @@ async function applyQuality(stream: MediaStream, quality: QualitySettings, measu
   }
   const encodeSize = actual ?? ASSUMED_SIZE;
   const audioSettings = audio?.getSettings() ?? {};
+  for (const effect of ["echoCancellation", "noiseSuppression", "autoGainControl"] as const) {
+    if (audioSettings[effect] === true) warnings.push(`system audio reports ${effect}=true despite requesting false`);
+  }
   const report: CaptureReport = {
     videoBitsPerSecond: videoBitsPerSecond(encodeSize, quality.frameRate, quality.videoQuality),
     audioBitsPerSecond: AUDIO_BITS_PER_SECOND,

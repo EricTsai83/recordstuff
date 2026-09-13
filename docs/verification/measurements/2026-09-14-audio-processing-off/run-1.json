@@ -1,0 +1,82 @@
+{
+  "date": "2026-09-13T18:34:51.392Z",
+  "file": "/Users/eric/Movies/RecordStuff/2026-09-14 02-34-34.mp4",
+  "environment": {
+    "implementation": {
+      "./lib/audio-quality.mts": "284b8d83c36f5eda55901339c28364c3d5d419653e0cd4a653c2907d1da3170f",
+      "./lib/audio-quality-tools.mts": "ede7721380145ede549b768476739d8b3ba65deca87d9e677f9a413a1cd38ee8",
+      "../src/renderer/capture-host.ts": "20d64da91344ec093f1282f77ab751bf2cd42dd3f1e991bc83846ca299acf2aa"
+    },
+    "fixtureSha256": "92945ff3e030f577a378dbe7e28bf6d4249fe9834f2a513048a41e4d28c8a38d",
+    "platform": "darwin",
+    "release": "25.6.0",
+    "arch": "arm64",
+    "node": "v24.21.0"
+  },
+  "version": 2,
+  "fixtureVersion": 2,
+  "verdict": "invalid",
+  "onsetSeconds": 0.75,
+  "clockPpm": -0.8266707136606044,
+  "limits": {
+    "responseDb": 3,
+    "gainDb": 6,
+    "separationDb": 30,
+    "residualDb": -25,
+    "dropoutDb": -15,
+    "clippingFraction": 0.001,
+    "clockPpm": 200,
+    "timingMs": 20,
+    "gapDb": -35
+  },
+  "checks": [
+    {
+      "metric": "Sample rate",
+      "value": 48000,
+      "expected": "48000 Hz",
+      "pass": true
+    },
+    {
+      "metric": "Channels",
+      "value": 2,
+      "expected": "2",
+      "pass": true
+    },
+    {
+      "metric": "Valid PCM",
+      "value": 1,
+      "expected": "nonempty, finite stereo PCM",
+      "pass": true
+    },
+    {
+      "metric": "Start marker detected",
+      "value": 0.75,
+      "expected": "300 ms coherent 1 kHz above -80 dBFS",
+      "pass": true
+    },
+    {
+      "metric": "Clock offset (ppm)",
+      "value": -0.8266707136606044,
+      "expected": "±200 ppm",
+      "pass": true
+    },
+    {
+      "metric": "Complete fixture",
+      "value": 16,
+      "expected": ">= 12.330 s",
+      "pass": true
+    },
+    {
+      "metric": "Marker gap (dB)",
+      "value": -18.807947292783606,
+      "expected": "<= -30 dB relative to marker",
+      "pass": false
+    },
+    {
+      "metric": "End marker detected",
+      "value": 11.35,
+      "expected": "fixture v2 2 kHz end marker",
+      "pass": true
+    }
+  ]
+}

@@ -212,3 +212,25 @@ Their speech benchmark decodes to mono at 16 kHz, so it cannot replace our stere
 | [Tests](../../scripts/lib/audio-quality.test.ts) | Clean/damaged controls, real codecs, CLI contracts, summary behavior |
 
 Invariants: no upmixing/resampling to hide format faults; decode only the first 60 seconds with bounded buffers/timeouts; do not change production audio processing or user settings; do not overwrite an existing evidence directory; terminate only owned child processes; preserve prior raw measurements. Fixture v1 recordings must not be evaluated as v2. Generate and record v2 material, and keep the original v1 report as historical evidence.
+
+## 15. System capture correction — 2026-09-14
+
+The production capture request now explicitly sets `echoCancellation: false`, `noiseSuppression: false`, and `autoGainControl: false`. It retains `restrictOwnAudio: true`, ideal two channels, and the 256 kbps AAC target. No equalizer, post-recording transcode, or new capture engine was introduced.
+
+Why these settings matter: echo cancellation, noise suppression, and automatic gain are useful for interactive voice capture, but a recorder should preserve the digital system mix, including music's spectral detail and dynamics. Processing designed for speech can change that signal. Chromium's [audio processing layout](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/modules/mediastream/media_stream_audio_processing_layout.cc) has a processed-display-capture path conditional on echo cancellation. This supports a plausible mechanism; our experiment establishes the effect of disabling the three constraints **together**, not the isolated contribution of each effect or every Chromium revision.
+
+| Effect | Useful voice-call goal | Why a system recorder disables it |
+| --- | --- | --- |
+| Echo cancellation | Remove loudspeaker playback recaptured by a microphone, preventing the remote speaker from hearing themselves | This recorder captures a digital mix, not microphone feedback; extra cancellation is unnecessary for that goal |
+| Noise suppression | Make speech easier to hear in noisy microphone input | Music detail, ambience, or reverberation can be treated as unwanted content; preservation is the recorder's goal |
+| Automatic gain | Keep changing speech levels intelligible | Changes intended loud/quiet dynamics; existing source processing should not be applied again by the recorder |
+
+These features optimize a different objective: intelligible conversation rather than faithful reproduction. If a meeting application already processes its microphone, its resulting playback is what RecordStuff records; disabling processing here does not disable processing inside that application. The [WebRTC Audio Processing API](https://webrtc.googlesource.com/src/+/refs/heads/main/api/audio/audio_processing.h) describes its voice enhancement role and capture/reverse-stream model.
+
+The same v2 fixture and analyzer thresholds were used for the comparison. The earlier valid baseline runs had approximately 0 dB separation and 16 kHz response around −44 to −47 dB. After the change, two valid repeated runs passed every diagnostic gate: 16 kHz response was within 0.004 dB of the simultaneous pilot, and separation exceeded the 30 dB gate. Very large separation numbers approach the analyzer's numerical floor and should not be interpreted as calibrated analog dynamic range.
+
+The final three-run batch contains **2 pass, 0 fail, 1 invalid**; it remains invalid overall. The first run's marker gap was contaminated (−18.81 dB versus the −30 dB identity gate), so its spectral measurements were suppressed. An earlier single trial also retained some early noise/gap failures despite restored high frequencies. All are preserved in the [evidence](../verification/README.md). We did not relax thresholds, filter the reference, delete failed trials, or turn the invalid batch into a passing claim.
+
+The capture host warns when `getSettings()` explicitly reports one of the disabled effects as true. An absent property is unknown, not proof that processing is off. Regression tests assert the explicit constraints and the warning behavior. Real probes remain necessary because a mocked constraint assertion cannot establish what an OS actually captured. Own-audio exclusion stays enabled because the experiment restored fidelity without removing it.
+
+This correction applies to **new recordings made with the rebuilt app**. It does not restore information missing from old files. The local spectral/stereo result is improved; subjective comparisons using the user's original content and broader device/platform coverage remain separate evidence.

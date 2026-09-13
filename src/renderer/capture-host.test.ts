@@ -10,7 +10,7 @@ import { CaptureHost, type CaptureHostOptions, type FrameSizeMeasurer, type Host
 class FakeTrack {
   stopped = false;
   readyState: "live" | "ended" = "live";
-  settings: Record<string, number> = {};
+  settings: MediaTrackSettings = {};
   applied: MediaTrackConstraints[] = [];
   applyError: Error | undefined;
   private listeners: (() => void)[] = [];
@@ -20,7 +20,7 @@ class FakeTrack {
   stop(): void {
     this.stopped = true;
   }
-  getSettings(): Record<string, number> {
+  getSettings(): MediaTrackSettings {
     return this.settings;
   }
   async applyConstraints(constraints: MediaTrackConstraints): Promise<void> {
@@ -290,14 +290,35 @@ describe("renderer CaptureHost", () => {
     expect(port.sent.at(-1)).toMatchObject({ type: "error", sessionId: "s1", code: "capture_failed" });
   });
 
-  it("passes the requested frame rate and asks for stereo system audio in getDisplayMedia", () => {
+  it("requests stereo system audio with voice processing disabled while retaining own-audio exclusion", () => {
     const port = boot();
     port.receive(start("s1", { ...DEFAULT_QUALITY, frameRate: 60 }));
     expect(getDisplayMedia).toHaveBeenCalledWith({
       video: { frameRate: { ideal: 60, max: 60 } },
       // without channelCount the macOS loopback track is mono.
-      audio: { restrictOwnAudio: true, channelCount: { ideal: 2 } },
+      audio: {
+        restrictOwnAudio: true,
+        channelCount: { ideal: 2 },
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
     });
+  });
+
+  it("reports voice processing that remains active on the captured audio track", async () => {
+    const port = boot();
+    port.receive(start("s1", DEFAULT_QUALITY));
+    const s = stream();
+    const audio = s.tracks.find(track => track.kind === "audio")!;
+    audio.settings = { ...audio.settings, echoCancellation: true, noiseSuppression: true, autoGainControl: false };
+    pendingStream!.resolve(s);
+    await flush();
+    const message = port.sent.find(message => message.type === "started");
+    expect(message).toMatchObject({ capture: { warnings: [
+      "system audio reports echoCancellation=true despite requesting false",
+      "system audio reports noiseSuppression=true despite requesting false",
+    ] } });
   });
 
   it("scales a source above the cap, keeps the aspect ratio and encodes for the scaled size", async () => {

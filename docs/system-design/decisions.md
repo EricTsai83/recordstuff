@@ -7,7 +7,7 @@ These are adopted decisions, not a future-work checklist. Current code and measu
 | Decision | Rationale | Tradeoff or reconsideration trigger |
 | --- | --- | --- |
 | Electron and TypeScript | Implement desktop lifecycle, native UI, and Chromium capture with one language | Electron resource cost; consider native capture only after measuring a concrete limitation |
-| Built-in getDisplayMedia and MediaRecorder | Avoid custom audio devices and native sidecars | Limited codec/timestamp/audio separation control; accepted dual-mono and AAC clamping |
+| Built-in getDisplayMedia and MediaRecorder | Avoid custom audio devices and native sidecars | Limited codec/timestamp control; explicit EC/NS/AGC false restored local spectral fidelity and stereo, so remeasure on engine/platform changes |
 | Hidden capture renderer | DOM media APIs belong in a renderer; visible UI can remain native | Requires port readiness, session IDs, ordering, and heartbeat |
 | Main owns state and media writer | UI and capture must not independently claim success | Main coordinates cleanup and file completion |
 | H.264/AAC MP4 | Verified QuickTime playback and hardware encoding | Fragmented MP4; no universal repair guarantee or format fallback |

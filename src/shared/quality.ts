@@ -111,11 +111,12 @@ export function videoBitsPerSecond(size: Dimensions, frameRate: number, quality:
 }
 
 /**
- * One AAC target for every recording. Local verification measured Chromium's AAC
- * encoder on macOS delivering about 160 kbps whatever was asked (192 k and
- * 256 k came out the same), so a user-facing audio quality choice would have
- * promised a difference that does not exist; the former `audioQuality`
- * setting was removed and an old settings.json key is ignored.
+ * One AAC target for every recording. Early measurements with voice processing
+ * enabled delivered about 160 kbps for both 192 k and 256 k requests, so the
+ * former audio-quality selector was removed. Explicitly disabling capture
+ * voice processing later restored spectral fidelity and stereo separation;
+ * bitrate still depends on the encoder/content and is not a fidelity metric.
+ * Old settings.json audioQuality keys remain ignored.
  */
 export const AUDIO_BITS_PER_SECOND = 256_000;
 
