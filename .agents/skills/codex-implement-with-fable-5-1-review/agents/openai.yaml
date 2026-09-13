@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Implement with Fable 5.1 Review"
+  short_description: "Codex implements; Claude Fable 5.1 performs review."
+  default_prompt: "Use $codex-implement-with-fable-5-1-review to implement this change and have Claude Fable 5.1 review it."
