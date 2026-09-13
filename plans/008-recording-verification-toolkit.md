@@ -57,7 +57,7 @@ pnpm verify -- <mp4> --sync --out                                # 加閃光／�
 pnpm matrix -- quick     # 1440p 標準／1440p 高品質／原尺寸 標準 192k，各 30 s
 pnpm matrix -- levels    # 1080p 精省／標準／高品質（007 §A4）
 pnpm matrix -- fps       # 原尺寸 30 與 60 fps（007 §A5）
-pnpm matrix -- long      # 1080p 標準 30 fps 10 分鐘，回答 §17 第 1、5 題
+pnpm matrix -- long      # 1080p 標準 30 fps 3 分鐘（漂移回歸；10 分鐘已於 2026-09-13 量過一次，使用者決定之後以 3 分鐘為準）
 caffeinate -dims pnpm matrix -- all   # 一次坐下跑完：三個等級、60 fps、quick 三段各 15 s，加一段 3 分鐘量漂移，約 7 分鐘；caffeinate 讓螢幕不睡、不鎖，人可離開
 ```
 

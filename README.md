@@ -25,7 +25,7 @@ pnpm icons        # 由 scripts/make-icons.mjs 重新產生 resources/ 與 build
 pnpm log          # macOS：tail -f 開發版的 log 檔（見下方「Log」）
 pnpm probe -- <mp4>   # 開發用：用 ffprobe 印出成品的尺寸、平均 fps、位元率、取樣率、聲道、時長（需 brew install ffmpeg）
 pnpm verify -- <mp4...> [--screen 1920x1080] [--sync] [--out]   # 開發用：對 plans/008 的門檻表逐項 ✅／❌，--out 附加到 plans/measurements/<日期>.md
-pnpm matrix -- all|quick|levels|fps|long                         # 開發用（macOS）：自動開素材頁到主螢幕、自動錄製矩陣 + CPU 取樣 + 驗收，結果進 plans/measurements/；all 約 7 分鐘
+pnpm matrix -- all|quick|levels|fps|long                         # 開發用（macOS）：自動開素材頁到主螢幕、自動錄製矩陣 + CPU 取樣 + 驗收，結果進 plans/measurements/；all 約 7 分鐘；long 為 3 分鐘漂移回歸（10 分鐘已於 2026-09-13 量過一次）
 ```
 
 `pnpm verify`／`pnpm matrix` 是 TypeScript 腳本，由 Node 24 直接執行（不經 build）。`pnpm matrix` 靠環境變數 `RECORDSTUFF_AUTORECORD='{"seconds":30,"quality":{...}}'` 讓開發版 app 啟動後自動錄、到時停、存檔後結束；打包版忽略這個變數。跑矩陣時主螢幕要播 `scripts/test-material.html`：預設由 Chrome kiosk 自動全螢幕開在主螢幕、主螢幕尺寸自動偵測，自己開時加 `--no-open-material`。期間音量固定、不播其他聲音、不動主螢幕。細節見 `plans/008-recording-verification-toolkit.md`。

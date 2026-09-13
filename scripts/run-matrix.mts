@@ -54,8 +54,13 @@ const MATRICES: Record<string, MatrixEntry[]> = {
     { name: "原尺寸 標準 30 fps", seconds: 30, quality: { resolutionCap: "source", videoQuality: "standard", frameRate: 30 } },
     { name: "原尺寸 標準 60 fps", seconds: 30, quality: { resolutionCap: "source", videoQuality: "standard", frameRate: 60 } },
   ],
+  /**
+   * The formal 10-minute answer to 001 §17 questions 1 and 5 was recorded once
+   * on 2026-09-13 (drift 3 ms at both 3 and 10 minutes). Regression runs use
+   * 3 minutes since then; the length is a user decision, not a tool limit.
+   */
   long: [
-    { name: "1080p 標準 30 fps 10 分鐘", seconds: 600, quality: { resolutionCap: "1080p", videoQuality: "standard", frameRate: 30 } },
+    { name: "1080p 標準 30 fps 3 分鐘", seconds: 180, quality: { resolutionCap: "1080p", videoQuality: "standard", frameRate: 30 } },
   ],
 };
 
@@ -63,14 +68,14 @@ const MATRICES: Record<string, MatrixEntry[]> = {
  * One sitting, about 7 minutes: 15 s is enough for size / fps / drop /
  * bitrate / offset statistics (the sync window needs ≥ 3 marker pairs), the
  * 30 fps source case is covered by `quick`, and drift is measured on a
- * 3-minute segment. The formal 10-minute answer to 001 §17 stays in `long`.
+ * 3-minute segment shared with `long`.
  */
 const shorten = (entries: MatrixEntry[], seconds: number): MatrixEntry[] => entries.map((e) => ({ ...e, seconds }));
 MATRICES["all"] = [
   ...shorten(MATRICES["levels"]!, 15),
   ...shorten(MATRICES["fps"]!.filter((e) => e.quality.frameRate === 60), 15),
   ...shorten(MATRICES["quick"]!, 15),
-  { name: "1080p 標準 30 fps 3 分鐘（漂移）", seconds: 180, quality: { resolutionCap: "1080p", videoQuality: "standard", frameRate: 30 } },
+  ...MATRICES["long"]!.map((e) => ({ ...e, name: `${e.name}（漂移）` })),
 ];
 
 const REST_SECONDS = 10;
