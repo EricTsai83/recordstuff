@@ -6,19 +6,19 @@
 
 ## 目前進度
 
-更新：2026-09-13。**基本錄製已測通、檔案 log、錄製品質設定、錄製驗收工具與量測、第一次有聲音的真實錄製驗收、macOS 權限流程（開發版可驗的部分）已完成，第一版整體仍在進行中。** 1080p30 十分鐘連續錄製 569.6 MB、CPU 平均 17%、結尾漂移 3 ms、硬體編碼；QuickTime 可播可拖曳；錄製中當機留下的 `.recording.mp4` 可播、時長正確。
+更新：2026-09-14。**Plan 006 已依本機範圍結案，macOS 自簽開發版可正常錄製。** 已完成的計畫為 001、002、003、004、006、007、008；下一個是 005 Windows 環境與驗收，尚未開始。009 Apple Developer ID／公證為擱置的選配。
 
-- 已完成：Plan 001 初始實作與基本錄製；Plan 002 檔案 log（`~/Library/Logs/<app>/recordstuff.log`、輪替、右鍵選單「顯示 log」）；Plan 007 右鍵選單「錄製品質」（影像品質、解析度上限、幀率）、settings.json v2、每次開始錄製的品質快照與 `capture:` log、`pnpm probe`；Plan 008 的工具：`pnpm verify`（ffprobe／ffmpeg 對門檻表）、`pnpm matrix`（環境變數自動錄製矩陣 + CPU 取樣）、`scripts/test-material.html`（含音畫同步標記），並以 `pnpm matrix -- all` 完成量測：係數維持、60 fps 在 macOS 開放、CPU 門檻 ≤ 40%。過程中修了多螢幕下 `getSettings()` 回報錯誤尺寸導致 1080p 上限錄成 1080x606 的 bug；Plan 003 macOS 錄製驗收：`pnpm matrix -- long` 十分鐘影像、同步、CPU 各列通過（音訊位元率一列因 beep 素材靜音多而 ❌，屬素材限制）、`VTEncoderXPCService` 證實硬體編碼、QuickTime Player（`.mp4` 預設 app）開檔與拖曳、`kill -9` capture host 的殘檔在 QuickTime 與 Chrome 可播、錄製中「結束」先停止存檔、`REC` 字樣會錄進非全螢幕影片；固有音畫延遲約 80 ms 不補償。Plan 004 macOS 權限流程（乾淨 TCC）以「開發版身分驗得到的部分」結案（範圍經使用者同意調整）：001 §17 第 6 題已答——無視窗的 app 在乾淨 TCC 下會出現系統提示並自動列進設定頁，而**授權後必須重新啟動**（執行中的程序在授權後六次輪詢仍看不到，重新啟動立刻看到；在「開→關→開」的復原路徑實測，不推論成 macOS 一律如此）；另確認缺系統音訊權限時 0.35 秒回 `no_audio_track` 且不留殘檔、錄製中撤銷螢幕權限選「稍後」時錄製完整存檔。實測逼出兩個修正：`needsPermission` 的右鍵選單一律提供「重新啟動」並說明原因；通知失敗（不支援或 Electron `failed` 事件）現在會寫進 log。
-- 進行中：無。下一個是 Plan 006 RecordStuff.app 開發包與簽章（前置 Plan 004 已完成）。
-- 下一步：Plan 006——先用 `com.recordstuff.app` 的 RecordStuff.app 取代 `pnpm start` 共用的 `com.github.Electron`，再做簽章、公證、安裝檔。Plan 006 步驟 6 同時擁有 Plan 003／004 移交的全部真機驗收，這些**都還沒有結論**：存檔通知是否顯示與點擊開 Finder（開發版是 ad-hoc 簽章，診斷抓到通知中心拒收，`notification: failed (無法完成作業。（UNErrorDomain錯誤1 。）)`）、HiDPI（內建 Retina 為主螢幕）、乾淨 TCC 下第一次授予螢幕錄製的完整流程、第一次系統音訊提示按「拒絕」、同一個 process 開啟音訊權限後直接錄、修正後的權限選單在真機逐項點過、以及錄製中撤銷權限選「結束並重新打開」那條分支。
-- Plan 005 Windows 環境可先準備，錄製驗收使用 Plan 007 的設定與 Plan 008 的工具；第一版發布前仍須完成兩平台驗收。
+本機已驗證自簽／DMG 安裝、更新後權限保留、通知點擊開 Finder、內建 Retina 原尺寸 3456×2234、首次授權與音訊拒絕、權限選單，以及錄影中撤銷權限後的檔案收尾。音訊權限開啟後本次需重啟；撤銷測試保留完整 47.59 秒 MP4，恢復權限後另錄 12.65 秒並由使用者確認可播。最後程式檢查為 211 測試、typecheck／build 通過。
 
-各項完成標準與狀態見 [計畫進度](plans/README.md)。
+通知設定清單舊圖示依使用者決定暫不阻擋，尚未確認修好；安裝包與系統圖示查詢已是正常新版。另一台 Mac／新帳號依要求跳過，不將本機結果稱為跨機器或 Windows 通過。Finder 前景排序仍受系統影響，不能僅以 reveal 日誌保證每次置頂。詳見 [006 結案與證據](plans/006-dev-app-bundle-and-signing.md)。
 
 ## 開發
 
 ```bash
 pnpm install
+pnpm start:app    # macOS：build → 指定本機自簽 RecordStuff.app → 驗證 → open（先結束 app）
+pnpm open:app     # 驗證並重開既有 dist/dev app，不重建／不重簽
+pnpm dist:mac:local # 指定本機自簽 app 驗證後產 DMG 至 dist/local，不公證／不發布
 pnpm dev          # electron-vite dev（main / preload / capture host 皆熱重載）
 pnpm check        # typecheck + vitest + build
 pnpm icons        # 由 scripts/make-icons.mjs 重新產生 resources/ 與 build/ 的圖示
@@ -44,20 +44,34 @@ pnpm start        # build 後以 open 啟動 Electron.app，Electron 自己成�
 
 第一次啟動錄製時 macOS 會跳「Electron 想要錄製系統音訊」，允許即可。VS Code／Cursor 內建終端機本身帶有這個 key，從那裡 `pnpm dev` 也可以，但授權對象會是 VS Code。
 
-### Log
+**日常測有聲錄影用 `pnpm start`，錄影權限開給 Electron.app。** `pnpm dev` 用於熱重載開發，權限可能歸於啟動它的終端機／編輯器；`pnpm start` 先 build 再透過 LaunchServices 開啟 Electron，讓 Electron 自己成為負責程式。驗證打包後的 App 才用 `pnpm start:app`／`pnpm open:app`，權限對象是 RecordStuff.app；安裝版則從「應用程式」啟動。同一時間只開一種，避免共用設定／lock 與不同身分混淆。
 
-選單列 app 沒有 console，所有 log 除了 stdout 之外也寫到 `app.getPath('logs')/recordstuff.log`；`pnpm start` 與正式版只能從這裡看狀態轉移、session 失敗原因與權限驗證結果。macOS 上這是 `~/Library/Logs/<app 名稱>/`，Console.app 的「Log Reports」也會列出；Windows 是 `%APPDATA%\<app 名稱>\logs\`。開發版（Electron.app）的 app 名稱是 `recordstuff`，打包後的 RecordStuff.app 是 `RecordStuff`：
+`pnpm start:app`、`pnpm open:app` 與 `pnpm dist:mac:local` 共用 `scripts/start-app.mjs`。預設精確選擇鑰匙圈中名為 `RecordStuff Dev` 的有效簽章身分，也可用 `RECORDSTUFF_SIGN_IDENTITY` 指定完整名稱或 40 位 SHA-1 指紋（名稱仍須唯一；electron-builder 最後以名稱簽署，重名時指紋也無法排除歧義）。這只是公開的憑證選擇資訊，不存私鑰；憑證與私鑰留在登入鑰匙圈。缺少、重名、過期、尚未生效、非自簽或成品簽章不符都會失敗，不會退回 ad-hoc。首次使用私鑰若出現系統提示，由使用者在 macOS 輸入密碼允許。
+
+目前 Node 架構決定產物：arm64 使用 `dist/dev/mac-arm64/RecordStuff.app`，x64 使用 `dist/dev/mac/RecordStuff.app`；Rosetta 下的 x64 Node 會產 x64 包。DMG 模式改用 `dist/local`。所有模式先攔截正在執行的 RecordStuff.app 與本 checkout 的 Electron.app，請先從選單結束並存檔。`open:app` 不打包，適合固定產物的權限驗收；它也會重新核對憑證與簽章，不會啟動無法驗證的舊包。
+
+本機流程清除 `ELECTRON_RUN_AS_NODE`、Apple／CSC 發行認證環境變數，停用憑證自動搜尋，明確指定所選指紋、停用時間戳與公證，強制簽章且 `--publish never`。簽完先 `codesign --verify --deep --strict`，抽取外層 app 與巢狀 app／framework 的公開憑證比對指紋，確認 app identifier、hardened runtime 與固定 certificate leaf 的 designated requirement，再開啟或製作 DMG。
+
+RecordStuff.app 與 Electron.app 的執行期名稱均來自 package 的 `name: recordstuff`，因此設定／single-instance lock 共用 `~/Library/Application Support/recordstuff/`，log 共用 `~/Library/Logs/recordstuff/recordstuff.log`。預設錄影位置仍為 `~/Movies/RecordStuff`。
+
+自簽憑證的固定身分是否保留 TCC 權限與通知能否顯示仍須實測；切換原 ad-hoc 包到自簽包應建立新的授權基線。之後的 A/B 重建測試保留同一憑證，刻意修改內容後比較 designated requirement 與權限，途中不預先重置。一般權限案例固定產物。任何 TCC 重置都只限已核對的 `com.recordstuff.app`，第一次授權流程不可用「關→開」的復原代替。
+
+#音訊授權後若仍顯示拿不到系統音訊，請先結束並重新開啟 RecordStuff；本機驗收確認選「稍後」的原程序仍可能失敗。通知的桌面顯示及暫時／持續樣式由系統設定控制。
+
+## Log
+
+選單列 app 沒有 console，所有 log 除了 stdout 之外也寫到 `app.getPath('logs')/recordstuff.log`；`pnpm start` 與正式版只能從這裡看狀態轉移、session 失敗原因與權限驗證結果。macOS 上這是 `~/Library/Logs/<app 名稱>/`，Console.app 的「Log Reports」也會列出；Windows 是 `%APPDATA%\<app 名稱>\logs\`。開發版（Electron.app）的 app 名稱是 `recordstuff`，本機打包後的 RecordStuff.app 執行期名稱也是 `recordstuff`（bundle 顯示名稱仍是 RecordStuff）：
 
 ```bash
 pnpm log                                                 # 等同下一行
 tail -f ~/Library/Logs/recordstuff/recordstuff.log        # macOS，pnpm start
-tail -f ~/Library/Logs/RecordStuff/recordstuff.log        # macOS，RecordStuff.app
+tail -f ~/Library/Logs/recordstuff/recordstuff.log        # macOS，pnpm start:app 也使用這個路徑
 Get-Content -Wait "$env:APPDATA\recordstuff\logs\recordstuff.log"   # Windows
 ```
 
 右鍵選單的「顯示 log」會在 Finder／檔案總管選取這個檔案。`tail -f` 先印最後 10 行，之後停在那裡等新內容；點圖示開始／停止錄製才會多出 `state → …` 與 `saved …` 幾行，`Ctrl+C` 結束。時間是 UTC。
 
-每行格式是 `[ISO 時間] 訊息`；啟動時第一行是版本、Electron 版本、平台與儲存位置。main 程序的未捕捉例外與未處理的 Promise rejection 也會寫進去。檔案超過 5 MB 會輪替成 `recordstuff.1.log`、`.2`、`.3`，最多保留三個舊檔。寫檔失敗不影響 app：stderr 印一次後只寫 stdout。
+每行格式是 `[ISO 時間] 訊息`；啟動時第一行是版本、Electron 版本、平台、儲存位置、`packaged` 與 `executable`，可區分共用 log 來自 Electron.app 或哪一份打包 app。main 程序的未捕捉例外與未處理的 Promise rejection 也會寫進去。檔案超過 5 MB 會輪替成 `recordstuff.1.log`、`.2`、`.3`，最多保留三個舊檔。寫檔失敗不影響 app：stderr 印一次後只寫 stdout。
 
 ### 錄製品質
 
@@ -75,6 +89,18 @@ Get-Content -Wait "$env:APPDATA\recordstuff\logs\recordstuff.log"   # Windows
 
 ## 打包與簽章
 
+**免費自簽分享用 `pnpm dist:mac:local`**：使用固定自簽憑證，產物在 `dist/local`，不購買 Apple 會員、不公證。收件者可能需要在「系統設定 → 隱私權與安全性」對單一 app 選「仍要打開」。不要求安裝私鑰、根憑證或停用 Gatekeeper；可分享性仍須另一台 Mac 實測，不代表 Apple 認證。
+
+交付方式已確定為「DMG 內含已自簽 App」：簽章由開發者在本機完成，接收者只安裝 App，不安裝憑證；不需要與 Google 互動，也不需要 Apple 會員或公證服務。首次開啟的人工允許與錄影權限分開處理。DMG 本身不簽章，不產生自動更新 metadata／blockmap；固定憑證簽署的是裡面的 App。
+
+本機專用設定 `electron-builder.local.yml` 繼承共用打包設定，輸出 `RecordStuff-<version>-<arch>-selfsigned.dmg`，附帶 [安裝說明](resources/安裝說明.txt)。DMG 內可把 RecordStuff 拖到 Applications，之後從「應用程式」啟動，避免繼續使用 DMG／開發包中的副本。arm64 包供 Apple 晶片 Mac、x64 包供 Intel Mac；不把目前產物稱為通用版。
+
+故障紀錄：2026-09-13，舊 ad-hoc 授權在切換自簽後，即使開關開啟仍失敗。`tccd` 明確記錄舊 `cdhash` 與新 certificate requirement 不符；已針對 `com.recordstuff.app` 重置 ScreenCapture，重置後授權尚待使用者完成。這是身分切換復原，不是同一憑證 A/B 重建驗收；打包程式不會自動重置權限。
+
+目前本機產物：`dist/local/RecordStuff-0.1.0-arm64-selfsigned.dmg`（約 126 MB），同目錄有本次驗收產生的 SHA-256 核對檔。只驗過本機成品完整性，尚未通過另一台 Mac 安裝／錄製。
+
+以下是既有發行指令；Developer ID／公證驗收維持擱置的 [Plan 009](plans/009-apple-notarized-distribution.md)，本機流程不呼叫它們。
+
 ```bash
 pnpm dist:mac     # DMG；有 Developer ID 就簽章，設定下列環境變數則公證
 pnpm dist:win     # NSIS 安裝檔；有 CSC_LINK / CSC_KEY_PASSWORD 就簽章
@@ -87,7 +113,7 @@ macOS 公證需要 `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`�
 ```text
 src/main/index.ts        app 生命週期、Dock 隱藏、setDisplayMediaRequestHandler、退出處理、未捕捉例外寫 log
 src/main/log.ts          stdout + 檔案 log（app.getPath('logs')/recordstuff.log），5 MB 輪替保留 3 個，寫檔失敗不影響 app
-src/main/recorder.ts     狀態機（唯一的權威狀態），無 Electron 依賴，可單元測試
+src/main/recorder.ts     狀態機、分段啟動期限與首片段診斷；無 Electron 依賴，可單元測試
 src/main/capture-host.ts 隱藏 renderer 的建立、MessagePort、heartbeat、當機偵測
 src/main/file-writer.ts  唯一的檔案 handle：append、每 5 秒 fsync、收尾改名
 src/main/tray-model.ts   狀態 → 圖示 / 標題 / 選單（含「錄製品質」三個子選單、「顯示 log」）/ 通知文案的純函式
@@ -99,9 +125,20 @@ src/preload/index.ts     只做 MessagePort 交換
 src/renderer/            capture host：getDisplayMedia → 量實際影格尺寸 → 套用解析度上限 → MediaRecorder（MP4，依品質算位元率）→ 每秒一個 chunk
 src/shared/quality.ts    品質設定型別／驗證、解析度上限計算、位元率公式、擷取回報與 log 文字（無 Electron／DOM）
 src/shared/              RecordingState、ErrorCode、協定與 type guard
+build/icon.icns              原生 macOS 多尺寸 App 圖示（pnpm icons 在 macOS 產生）
+electron-builder.local.yml   免費 DMG 設定：自簽標示、停用公證、內附安裝說明
+resources/安裝說明.txt       接收者安裝／單一 App 人工允許／錄影權限操作
+scripts/start-app.mjs        macOS 本機自簽：唯一憑證解析、期限／自簽檢查、共用 lock 保護、build／巢狀憑證驗證／open／DMG；--open 只驗證重開
+scripts/start-app.test.ts    macOS CLI 回歸：隔離臨時憑證／替身指令，測重名／期限／錯誤 helper 簽章、失敗不交付、憑證環境隔離、重開／DMG 與空白路徑
 scripts/probe-recording.mjs  開發用：ffprobe 量測成品參數（pnpm probe），不打包
 scripts/verify-recording.mts 開發用：pnpm verify CLI；scripts/lib/verify.mts 純邏輯（log 配對、掉幀／偏移／漂移、門檻判定、輸出）、media-tools.mts（ffprobe／ffmpeg）、verify-recording.mts（單檔流程、附加 plans/measurements/）
 scripts/run-matrix.mts       開發用（macOS）：pnpm matrix 自動錄製矩陣、CPU 取樣、驗收
 scripts/test-material.html   開發用錄製素材：捲動小字、紅藍細線、移動方塊、每秒閃光 + beep 同步標記；不進 app、不進 CSP
 plans/measurements/          量測結果（Markdown + JSON），由 verify／matrix 附加，主觀比對由人填
 ```
+
+### App 圖示再生
+
+`pnpm icons` 保留跨平台 PNG／ICO 產生流程；在 macOS 額外以 `/usr/bin/iconutil` 將各尺寸 PNG iconset 轉成 `build/icon.icns`。此 ICNS 已產生、尚未 commit，之後需與本次變更一起提交；`electron-builder.yml` 的 `mac.icon` 明確使用它，避免 PNG 自動轉 ICNS 後 16／32 像素圖示出現彩色雜訊。其他平台不重製 ICNS；改 App 圖樣後需在 macOS 執行本指令並一併提交 PNG／ICNS。圖示只在打包前產生，不能直接改已簽好的 App。
+
+若系統設定仍顯示舊圖示，檢查是否登錄了相同 bundle id 的舊開發包；本次僅取消舊 dist/dev App 的登錄、重新登錄 /Applications 安裝版，沒有清空系統資料庫或重置權限。舊開發產物再次啟動前，請用 `pnpm start:app` 重建，避免 `pnpm open:app` 重新登錄含舊圖示的包。

@@ -2,7 +2,7 @@
 
 狀態：已完成（初始實作與基本錄製，2026-09-12）
 
-執行範圍已拆分：001 以初始實作與使用者確認有聲有影作為結案範圍。下列 §4、§16、§17 繼續作為第一版整體發布的規格與驗收依據，並非全部已通過；剩餘工作由 002（log）、007（品質與設定）、003／004／005（驗收）、006（打包與發行）追蹤。002、007、008、003 與 004 已結案；004 以「開發版身分（`com.github.Electron`）驗得到的部分」結案，需要真實 app 身分的權限驗收整批移交 006 步驟 6，尚未有結論。
+執行範圍已拆分：001 以初始實作與使用者確認有聲有影作為結案範圍。下列 §4、§16、§17 繼續作為第一版整體發布的規格與驗收依據，並非全部已通過；剩餘工作由 002（log）、007（品質與設定）、003／004／005（驗收）、006（打包與發行）追蹤。002、007、008、003、004 與 006 已結案；004 移交的真實 app 身分權限驗收已於 006 完成本機實測。005 Windows 尚待執行；跨機／新帳號依使用者要求跳過，009 付費發行維持擱置。
 
 版本：v9，2026-09-12
 
@@ -45,7 +45,7 @@ macOS 選單列（Windows 是系統匣）上一個圖示。點一下開始錄主
 - 失敗時一則系統通知，一行白話錯誤
 - macOS 螢幕錄製權限的處理：沒權限時選單多一項「開啟系統設定」，授權後若需要重啟則多一項「重新啟動」
 - 錄製中結束 app：先停止並收尾，再退出
-- macOS 與 Windows 各一個可安裝、已簽章的版本
+- macOS 與 Windows 各一個可安裝的試用版本；macOS 採固定本機自簽憑證，Windows 無憑證時允許未簽章並揭露提示。Apple 認證發行另屬選配 009
 
 **第一版沒有**（全部在 roadmap.md）
 - 任何視窗：錄影庫、設定頁、歡迎頁
@@ -195,7 +195,7 @@ export type RecordingState =
 - macOS 用 template 圖示，自動適應深淺色選單列。`tray.setTitle('REC')` 只在 macOS 有效，Windows 靠換圖示。
 - 不用 `tray.setContextMenu`，否則 macOS 左鍵會彈選單。左鍵走 `tray.on('click')`，右鍵走 `tray.on('right-click')` 再 `tray.popUpContextMenu(menu)`。
 - 選單每次彈出時依目前狀態重建，不快取。
-- 通知用 Electron `Notification`。「已儲存」通知的 click 用 `shell.showItemInFolder`。通知是盡力而為，失敗不影響錄製：`Notification.isSupported()` 為 false、或 Electron 的 `failed` 事件（macOS／Windows）發生時，只寫一行 log（`notification: not supported …`／`notification: failed (<error>): <body>`）。macOS 的 `UNUserNotificationCenter` 會直接拒收未簽章／ad-hoc 簽章的 app：2026-09-13（004）存檔後使用者完全沒看到通知，加上診斷後 log 為 `notification: failed (無法完成作業。（UNErrorDomain錯誤1 。）)`；簽章版的通知顯示與點擊由 006 驗收。
+- 通知用 Electron `Notification`。「已儲存」通知的 click 用 `shell.showItemInFolder`；macOS 延至下一輪事件循環，讓原生通知 response completion 先完成，再要求 Finder 顯示檔案。成功只記錄 reveal requested，不冒稱已取得前景；失敗記錄 reveal failed。通知是盡力而為，失敗不影響錄製：`Notification.isSupported()` 為 false、或 Electron 的 `failed` 事件（macOS／Windows）發生時，只寫一行 log（`notification: not supported …`／`notification: failed (<error>): <body>`）。macOS 的 `UNUserNotificationCenter` 會直接拒收未簽章／ad-hoc 簽章的 app：2026-09-13（004）存檔後使用者完全沒看到通知，加上診斷後 log 為 `notification: failed (無法完成作業。（UNErrorDomain錯誤1 。）)`；簽章版的通知顯示與點擊由 006 驗收。
 - 「顯示 log」（002）：每個狀態都有，`shell.showItemInFolder` 選取 log 檔；檔案不存在時改開 log 資料夾。放在「結束」正上方、與儲存位置同一組之後，低頻除錯用途不搶眼。
 - Windows 可能把圖示收進系統匣溢位區。第一次啟動送一則通知「RecordStuff 在系統匣待命」。
 
@@ -218,7 +218,7 @@ Main 與 capture host 用 `postMessage` 交換一對 `MessagePort`。
 - `pong`
 
 規則：
-- `MediaRecorder` timeslice 1000 ms。每個 chunk 到 main 就 append，任何時刻最多丟 1 秒。
+- `MediaRecorder` timeslice 與 `videoKeyFrameIntervalDuration` 均設 1000 ms，讓 MP4 以關鍵影格定期輸出片段。每個 chunk 到 main 就 append；這是名義間隔，實際輸出可能延遲，不能保證任何時刻最多只丟 1 秒。
 - 品質套用順序（007）：`getDisplayMedia({ video: { frameRate: { ideal, max } } })` → 讀 video track 尺寸 → `fitWithinCap` 算不放大、保持比例、直向交換長短邊的目標尺寸 → 需要時 `applyConstraints({ width, height, frameRate })`（`applyConstraints` 會整組取代約束，所以幀率要重帶）→ 重新確認所有 track 仍為 live（套用期間結束的音軌不能錄成無聲檔）→ 依實際尺寸 × 幀率 × 品質係數算 `videoBitsPerSecond`（1.5–60 Mbps）、`audioBitsPerSecond`（192k／256k）→ 建立 `MediaRecorder`。套用期間 session 仍算 pending，`stop` 到達會取消並釋放串流。
 - 要求 60 fps 而 `capture.frameRate` ≤ 30 時，main 記 log 並通知「系統只提供 N fps」；track 未回報幀率不視為降級。
 - 建立 `MediaRecorder` 前先 `MediaRecorder.isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')`。回 false 就回 `error { code: "mp4_unsupported" }`，不默默改錄 WebM。第一版支援的 OS 版本都有系統 H.264 與 AAC 編碼器，這個錯誤理論上不會發生，發生了就是要查的 bug。
@@ -297,7 +297,7 @@ Windows 不需要任何權限。
 
 **啟動**：ready → macOS `app.dock.hide()` → 建 Tray → 註冊 `setDisplayMediaRequestHandler`（回主螢幕 + `audio: 'loopback'`）→ 偵測權限 → 更新圖示。沒有任何視窗被建立。
 
-**開始**：確認 idle → 檢查儲存位置可寫（§10.1）→ 開檔 → 建立或喚醒 capture host → `start` → 8 秒內要收到 `started` 與第一個 chunk，否則 failed → `recording`。
+**開始**：確認 idle → 檢查儲存位置可寫（§10.1）→ 開檔 → 建立或喚醒 capture host → `start` → 等候系統擷取／授權最多 120 秒 → `started` → 8 秒內要收到第一個 chunk，否則 failed。儲存位置檢查／開檔仍限 8 秒；啟動中選單提醒留意系統權限提示，避免使用者還在回答兩個 macOS 提示時就逾時。
 
 **停止**：`recording → stopping` → `stop` → 10 秒內要收到 `stopped`，否則 failed → 關檔 → 改名 → `idle` 帶 `lastSavedPath` → 通知。
 
@@ -326,7 +326,8 @@ Windows 不需要任何權限。
 
 ## 15. 發行
 
-- macOS：Developer ID 簽章、hardened runtime、公證。DMG。Info.plist 設 `LSUIElement: true`，不出現在 Dock 與 Cmd+Tab。
+- macOS 本機開發／少量分享（006，2026-09-14 結案）：固定 `RecordStuff Dev` 自簽 Code Signing 憑證與私鑰，保留 hardened runtime／必要 entitlements，產內含自簽 App 的未公證 arm64 DMG（DMG 本身不簽章）。Info.plist 設 `LSUIElement: true`，不出現在 Dock 與 Cmd+Tab。DMG 掛載、簽章、安裝至 `/Applications/RecordStuff.app`、重建更新後權限、本機錄製、Retina 及權限分支均已驗收；詳見 006 結案紀錄。接收端可能需對單一 app 人工允許；另一台 Mac／新帳號依使用者要求跳過，本機結果不代表跨機器可用已驗證。
+- macOS Apple 認證發行（009，擱置、選配）：Developer ID、公證及 Gatekeeper 正常接受；只有使用者決定採用才開始，不是自簽試用版的前置。
 - Windows：程式碼簽章、NSIS 安裝檔，安裝後啟動並可選「登入時啟動」。無簽章憑證時先出未簽章版並在 README 註明 SmartScreen 警告。
 - 沒有自動更新。
 
@@ -336,7 +337,7 @@ Windows 不需要任何權限。
 |---|---|---|---|
 | 1 | Spike | 未打包的 app，選單列一個圖示，兩個 OS 各錄出 60 秒有聲 MP4，QuickTime Player 與 Windows 媒體播放器雙擊可開 | §17 問題有答案，且第 1、2 題答案為可行 |
 | 2 | 收斂 | 狀態機、capture host 監督、progressive write、權限流程、退出處理、通知文案、圖示、檔案 log、品質調校與可調設定（007） | §4 除簽章外全部達成 |
-| 3 | 發行 | 簽章、公證、安裝檔、LSUIElement | **第一版發布** |
+| 3 | 試用版交付 | macOS 本機自簽 DMG、Windows 安裝檔與兩平台驗收；Apple 認證發行另見 009 | §4 適用條件完成；清楚標示自簽／未公證與手動允許限制 |
 
 里程碑 1 有兩層退路，依序：
 1. MP4 不可行（不支援、CPU 高、當機半成品不能播）但 Chromium 擷取本身沒問題：第一版改出 WebM（VP9 + Opus），MP4 轉檔進 ROADMAP。要接受 macOS 上 QuickTime 打不開，通知文案要說明用瀏覽器開。
@@ -358,8 +359,9 @@ Windows 不需要任何權限。
    **macOS 已答（2026-09-13，003）**：`pnpm matrix -- long` 10 分鐘結尾漂移 3 ms（頭 89 ms、尾 93 ms，552 對標記）；固有延遲這段量到 91 ms（扣偵測器約 10 ms 為 80 ms），與 008 的 45–80 ms 同一量級，音訊晚，在 ITU-R BT.1359 察覺門檻（晚 125 ms）內，不補償。
 6. macOS 螢幕錄製權限第一次授權後是否必須重啟 app？沒有視窗的 app，TCC 提示是否仍正常出現？
    **已答（2026-09-13，004）：必須重新啟動。** 一個在未授權狀態啟動的程序（PID 33163），在使用者於設定頁把螢幕錄製打開（macOS 的對話框選「稍後」）之後，超過 30 秒、六次輪詢都停在 `needsPermission`，`getMediaAccessStatus` 從未回 granted，第二段驗證也就沒被觸發；同時間重新啟動的程序（17:21:07）立刻 `permission: granted and capture sees 2 screen(s)`。這次走的是「開→關→開」的復原路徑（該程序自己從未取得過授權）；乾淨 TCC 第一次授權的同一情境尚未逐字重跑，因此結論限於已測到的這個情境，不寫成 macOS 一律如此。因應作法見 §11 與 §8（選單一律提供重新啟動）。乾淨 TCC 第一次授權的完整流程、第一次系統音訊提示按「拒絕」、同一 process 開啟音訊後直接錄，以及修正後選單的真機逐項確認，都移交 006 步驟 6（004 兩次想造出「第一次音訊授權」狀態都沒重現，原因未查明）。**無視窗時提示會出現**：乾淨 TCC 下啟動，那一次 `getSources` 把 Electron.app 列進設定頁（關閉狀態），使用者確認看到並操作了系統提示。系統音訊是另一個權限，缺了會拿到死音軌而非錯誤（§11）；缺權限時 `state → starting` 後約 0.35 秒回 `no_audio_track`，不留任何殘檔。
+   **006 安裝版補充（2026-09-14）**：scoped reset 後首次螢幕提示、缺權限選單及選單重啟均通過，重啟後立即 granted；首次音訊提示拒絕產生 no_audio_track 且不留檔。已啟用音訊並選「稍後」時，同 PID 18310 仍失敗，重啟後成功錄製 15.34 秒有聲影片，故本次情境需重啟。錄影中撤銷螢幕權限並選「結束並重新打開」時，App 在退出前成功收尾 47.59 秒 MP4，完整可解碼，新程序正確回 needsPermission；最後恢復權限重啟後再錄 12.65 秒有聲影片，使用者確認可正常播放，006 於 2026-09-14 依本機範圍結案。
 7. HiDPI 下 `getDisplayMedia` 給的是邏輯還是實體解析度？
-   **部分已答（2026-09-13，008）**：外接 1:1 螢幕下實際影格 1920x1080（邏輯 = 實體）。另發現 `track.getSettings()` 在多螢幕下回報錯誤高度（1920x1920），capture host 已改讀實際影格。HiDPI 內建螢幕為主螢幕時再看 `capture:` log。（2026-09-13，004 步驟 8：這台機器目前只接兩台外接 BenQ、沒有偵測到內建 Retina 螢幕，HiDPI 這部分延到 006 真機驗收。）
+   **macOS 已答：原尺寸為實體解析度（2026-09-13，006）**。內建 Liquid Retina XDR 設為主螢幕，system_profiler 為 3456×2234；安裝版原尺寸錄影兩段 22.55／17.43 秒，capture log 與 MP4 均為 3456×2234，最新段完整可解碼。先前外接 1:1 螢幕為 1920×1080；多螢幕 getSettings() 錯報高度仍以實際影格量測校正。Retina 測試另修正 MP4 關鍵影格間隔，避免首片段過晚觸發 8 秒逾時，見 006。
 8. 錄主螢幕時選單列圖示本身會被錄進去，`REC` 字樣是否會出現在影片裡？可接受，還是要在錄製中改用不顯眼的圖示？
    **已答，會出現（2026-09-13，003）**：非全螢幕錄製時，影片右上角選單列可清楚看到 `REC` 字樣與圖示（`plans/measurements/2026-09-13.md` 003 段有影格截圖說明）；全螢幕內容（kiosk）時選單列隱藏，不會錄到。是否可接受、或改為錄製中只換圖示不顯字，交使用者決定；目前維持顯示 `REC`（錄製狀態一眼可辨優先），若要改列入 Roadmap。
 
@@ -393,17 +395,27 @@ Windows 不需要任何權限。
 
 ## 20. 開發流程
 
-三種啟動方式，各有用途；差別在 macOS 把權限記在誰頭上，以及看不看得到 log。
+四種啟動方式，各有用途；差別在 macOS 把權限記在誰頭上，以及看不看得到 log。
 
 | 方式 | 指令 | 負責程式 | log | 用途 |
 |---|---|---|---|---|
 | 開發 | `pnpm dev` | 啟動它的終端機 | 終端機 | 改邏輯、改 UI，熱重載。從 Terminal／iTerm 啟動時**錄不到系統音訊**（它們沒有 `NSAudioCaptureUsageDescription`）；從 VS Code／Cursor 內建終端機可以，權限記在 VS Code 名下 |
 | 近似真機 | `pnpm start` | Electron.app（`com.github.Electron`） | 檔案 log（見下） | 測權限、系統音訊、通知。build 後用 `open` 啟動，`open` 立刻返回，app 由 launchd 接管，關掉終端機也不影響。改了程式要重跑 |
-| 真機 | `electron-builder --dir` | RecordStuff.app | 檔案 log | 權限提示與設定頁顯示的是 RecordStuff，與使用者看到的一致。驗證簽章、公證、`LSUIElement` 時用 |
+| 本機 app 包 | `pnpm start:app`／`pnpm open:app` | RecordStuff.app（`com.recordstuff.app`） | 檔案 log | start 依 Node 架構在 `dist/dev/mac-arm64`（x64 為 `dist/dev/mac`）打本機自簽包；open 只驗證重開同一產物。核對精確憑證指紋、巢狀 bundle 與 runtime 後才開啟。先結束共用 userData lock 的 RecordStuff／本專案 Electron；lock 衝突退出寫 log |
 | 自動錄製 | `pnpm matrix -- <矩陣>` | Electron.app | 檔案 log + `plans/measurements/` | 008：build 後帶 `RECORDSTUFF_AUTORECORD` 用 `open -W` 啟動，app 自己開始、停止、存檔、結束；runner 取 CPU 並跑 `pnpm verify`。只有開發版讀這個變數 |
 
-- 檔案 log（002）：所有 log 同時寫 stdout 與 `app.getPath('logs')/recordstuff.log`，超過 5 MB 輪替成 `.1`／`.2`／`.3`；macOS 開發版在 `~/Library/Logs/recordstuff/`，RecordStuff.app 在 `~/Library/Logs/RecordStuff/`，Windows 在 `%APPDATA%\<app>\logs\`。main 的未捕捉例外也寫進同一個檔。指令見 README「Log」一節。
-- 這些 shell 若帶著 `ELECTRON_RUN_AS_NODE=1`（Claude Code 等工具會設），Electron 會以純 Node 模式啟動而崩潰；`pnpm start` 已在腳本內清掉，`pnpm dev` 要自己 `unset`。`open` 會把 shell 環境變數傳給 app，所以同樣要清。
+- 檔案 log（002）：所有 log 同時寫 stdout 與 `app.getPath('logs')/recordstuff.log`，超過 5 MB 輪替成 `.1`／`.2`／`.3`；macOS 開發版在 `~/Library/Logs/recordstuff/`，RecordStuff.app 也在 `~/Library/Logs/recordstuff/`（006 實測，執行期名稱取 package name），Windows 在 `%APPDATA%\<app>\logs\`。main 的未捕捉例外也寫進同一個檔。指令見 README「Log」一節。
+- 這些 shell 若帶著 `ELECTRON_RUN_AS_NODE=1`（Claude Code 等工具會設），Electron 會以純 Node 模式啟動而崩潰；`pnpm start`／`pnpm start:app` 已在腳本內清掉，`pnpm dev` 要自己 `unset`。`open` 會把 shell 環境變數傳給 app，所以同樣要清。
 - 升級 Electron 版本後 TCC 對 Electron.app 的授權會失效，用 `tccutil reset ScreenCapture com.github.Electron` 清掉重授權比在清單裡找快。
 
+- 本機流程預設精確選擇 `RecordStuff Dev`，可用 `RECORDSTUFF_SIGN_IDENTITY` 指定完整名稱／SHA-1；因 builder 最後以名稱簽署，名稱仍須唯一，指紋不作為重名的解法。缺少／重名／期限錯誤／非自簽／成品指紋不符就停止；不退回 ad-hoc，不公證／發布。`pnpm dist:mac:local` 先核對 app 再產 DMG 至 `dist/local`，使用 `electron-builder.local.yml`，檔名含架構與 selfsigned，內附安裝說明。接收者只安裝 App，不安裝憑證，首次人工允許與錄影授權分開；不用 Apple 會員／Google 服務。設定仍與 Electron.app 共用小寫 `recordstuff`。006 的 A/B 測試保留同一憑證、改內容重建後驗證 requirement 與 TCC，期間不先重置權限；自簽不保證通知正常。006 已於 2026-09-14 按本機範圍結案：通知／Retina／首次授權／音訊拒絕／選單／撤銷與復原皆有實測結論；同程序音訊恢復在本次需重啟。通知清單舊圖示不阻擋，跨機／新帳號依使用者要求跳過；009 付費發行維持擱置。
+
 **下一步**：拆成獨立計畫，順序與狀態見 `plans/README.md`。
+
+- 006 圖示 follow-up：macOS 打包明確使用 `build/icon.icns`（新檔已產生，尚待與本次變更一起提交）；`pnpm icons` 在 macOS 用 iconutil 產生原生多尺寸圖示，避免 16／32 px 損壞。日常測有聲錄影用 `pnpm start`，權限對象為 Electron.app；`pnpm dev` 用於熱重載，權限可能歸於終端機／編輯器，打包／安裝版為 RecordStuff.app；不可用其中一方的 granted 作為另一方驗收成功證據。
+
+- 006 本機更新結果：圖示資源改變、同路徑／同憑證更新後，安裝版 23:16:52 未重新授權即 granted／2 screens；系統設定重開後小圖示正常。這只驗證螢幕授權持續性，不代替系統音訊、錄製與其餘真機驗收。
+
+- 006 最新範圍調整（2026-09-13 使用者決定）：跳過另一台 Mac／跨機器驗收，結案依本機可執行的安裝、錄製、權限與通知實測；無法取得的環境／未重現的系統提示如實記錄，不宣稱通過。本輪不再做 Fable review。這不表示 Windows（005）或 Apple 認證發行（009）已完成。
+
+006 結案限制：通知設定清單舊圖示未確認修好，依使用者決定不阻擋；安裝包及 NSWorkspace 圖示正常。通知前景與 Finder 置頂受系統管理，不以 API 呼叫成功推論視窗排序。自簽未公證，本機驗收不代表另一台 Mac／新帳號／Windows 通過；後者由 005 接手。
