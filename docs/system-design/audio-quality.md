@@ -4,6 +4,8 @@
 
 This chapter explains the development-only audio diagnostic system, fixture/report version 2. It is a guide to reasoning about audio failures, not a claim that every recording now sounds correct. Commands are in [tooling](tooling.md#audio-fidelity-regression); actual outcomes belong in the [verification record](../verification/README.md). The production recording path is described in [recording](recording.md).
 
+For the roles of Electron, Chromium, browser media APIs, and internal WebRTC audio processing, see [Electron, Chromium, and WebRTC](webrtc.md).
+
 ## 1. The question behind the test
 
 A user reported that recordings sounded muffled. "The MP4 has an audio track" cannot answer that complaint. We need to ask whether the recording preserves the parts of the source that matter: frequency balance, independent left/right information, level, waveform shape, and continuity over time.

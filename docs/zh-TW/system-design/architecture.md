@@ -2,6 +2,8 @@
 
 [English](../../system-design/architecture.md) | [繁體中文](architecture.md)
 
+Electron、Chromium、瀏覽器媒體 API 與內部 WebRTC 音訊處理的角色，見 [Electron、Chromium 與 WebRTC](webrtc.md)。
+
 ## 程序與責任
 
 應用層分成 main 與隱藏 capture renderer。Electron 自身還會建立 GPU／helper 等程序；「兩層」不是作業系統只會看到兩個 PID。

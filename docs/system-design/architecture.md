@@ -2,6 +2,8 @@
 
 [English](architecture.md) | [繁體中文](../zh-TW/system-design/architecture.md)
 
+For the roles of Electron, Chromium, browser media APIs, and internal WebRTC audio processing, see [Electron, Chromium, and WebRTC](webrtc.md).
+
 ## Processes and responsibilities
 
 The application has a main layer and a hidden capture renderer. Electron also creates GPU/helper processes; this is not a claim that only two operating-system processes exist.
