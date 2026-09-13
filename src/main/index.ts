@@ -195,6 +195,7 @@ async function main(): Promise<void> {
     context: () => ({ platform: process.platform, outputDir: settings.outputDir, homeDir: os.homedir(), quality: quality() }),
     onToggle: () => recorder.toggle(),
     onAction: (action) => void handleAction(action),
+    log,
   });
   tray.render(recorder.state);
 

@@ -29,6 +29,8 @@ export interface TrayOptions {
   context: () => TrayContext;
   onToggle: () => void;
   onAction: (action: TrayAction) => void;
+  /** Diagnostics for notifications the OS refuses to show (plan 004). */
+  log?: (message: string) => void;
 }
 
 export class AppTray {
@@ -102,11 +104,30 @@ export class AppTray {
     this.show(trayHintNotification());
   }
 
+  /**
+   * A notification is a best-effort hint, never part of recording: nothing
+   * here may throw into the caller. plan 004 found a save whose notification
+   * never appeared, with nothing in the log to say whether the app or the OS
+   * dropped it — on macOS `UNUserNotificationCenter` can refuse an unsigned
+   * or ad-hoc-signed build outright. Electron's `failed` event is the only
+   * trace, so it goes to the log; plan 006 re-checks this on a signed build.
+   */
   private show(text: { title: string; body: string }, onClick?: () => void): void {
-    if (!Notification.isSupported()) return;
+    if (!Notification.isSupported()) {
+      this.log(`notification: not supported on this system, dropped: ${text.body}`);
+      return;
+    }
     const notification = new Notification({ title: text.title, body: text.body, silent: true });
     if (onClick) notification.on("click", onClick);
+    // `(event, error)` per Electron's Notification docs; darwin and win32 only.
+    notification.on("failed", (_event, error) => {
+      this.log(`notification: failed (${error}): ${text.body}`);
+    });
     notification.show();
+  }
+
+  private log(message: string): void {
+    this.options.log?.(message);
   }
 
   private popUpMenu(): void {
