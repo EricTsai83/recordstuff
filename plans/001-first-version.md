@@ -345,19 +345,21 @@ Windows 不需要任何權限。
 前兩題決定第一版的輸出格式，先答。
 
 1. `MediaRecorder` 在 Electron 44 於 macOS 13、14、15 與 Windows 10、11 上，`isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')` 是否都回 true？實際錄出的檔案是否真的走硬體編碼（macOS 用 Activity Monitor 看 VTEncoderXPCService，Windows 看 GPU 使用率）？1080p30 錄 10 分鐘的 CPU 與檔案大小。
-   **部分已答**：macOS 26 / Electron 44.3 / Chrome 152 回 true。2026-09-13（008，M1 Pro）：1080p30 三等級 Electron 各程序 CPU 合計平均 14–16%、峰值 ≤ 19%，1080p60 平均 23%；1080p30 標準 ≈ 58 MB/分（10 分鐘 ≈ 580 MB），高品質 ≈ 106 MB/分，60 fps 標準 ≈ 223 MB/分。硬體編碼（VTEncoderXPCService）與 10 分鐘實跑由 003 用 `pnpm matrix -- long` 補；Windows 未測。
+   **macOS 已答（2026-09-13，003）**：macOS 26 / Electron 44.3 / Chrome 152 回 true。`pnpm matrix -- long` 1080p30 標準 10 分鐘（M1 Pro）：Electron 各程序 CPU 合計平均 17%、峰值 21%；檔案 569.6 MB（7.92 Mbps，目標的 98%）；29.30 fps、掉幀 0.39%、時長 600.0 s；之後 `long` 矩陣縮為 3 分鐘（使用者決定，10 分鐘不再重跑）。**確認走硬體編碼**：app 啟動錄製時系統多出一個 `VTEncoderXPCService` 程序（由 launchd 帶起，PPID 1，錄完即消失），錄製中約 1.4–1.9% CPU；其餘為 GPU helper 8–10%、capture host renderer 5–6%、main 1–3%。008 先前量到 1080p30 三等級平均 14–16%、1080p60 平均 23%；高品質 ≈ 106 MB/分，60 fps 標準 ≈ 223 MB/分。Windows 未測（005）。
 2. 錄製中強制殺掉 capture host，留下的 `.recording.mp4` 在 QuickTime Player、Windows 媒體播放器、Chrome 是否能播？duration 是否正確？
+   **macOS 已答，可行（2026-09-13，003）**：錄到 18.4 秒時 `kill -9` capture host renderer，main 在同一秒內收到 `render process gone (killed, exit 9)` → `capture_host_crashed` → idle，通知「錄製程序當機。已保留部分錄影」，留下 `2026-09-13 16-24-59.recording.mp4`（11.5 MB）。ffprobe 時長 17.64 s（影像 17.56 s，最後不到一秒的 chunk 未到 main，符合預期）、404 張影格全部可解碼、無錯誤；QuickTime Player 開得起來，時長 17.68 s，拖曳到 30%／90% 與播放皆正常；Chrome 直接開檔可播到結尾（0:17／0:17）。Windows 媒體播放器由 005 補。
 3. `audio: 'loopback'` 在上述 OS 版本是否穩定拿到系統音訊？
-   **部分已答（2026-09-12 使用者回報）**：目前測試環境錄製停止後有聲音也有畫面；使用者觀察到品質差距，交由 007 量測。尚未提供長時間穩定性、音畫同步與 Windows 驗收結果。
+   **macOS 已答（2026-09-13，003）**：10 分鐘連續錄製音軌完整（音訊−影像時長差 −2 ms、552 對閃光／短音全部配對、結尾漂移 3 ms），2026-09-13 全天十餘段自動錄製沒有一段拿到死音軌。已知限制：內容為 dual-mono（左右相同，008）。Windows 由 005 驗收。
 4. Windows 上系統沒聲音在播時，loopback 是否停止送資料、導致音軌漂移？Cap 用一條靜音輸出串流當 keepalive，我們是否需要？
    **已答，不需要**：Chromium 的 `audio_low_latency_input_win.cc` 在 loopback 模式會自己開一條 event-driven 的 render stream（註解：「to ensure that we can deliver a loopback stream … also when no output audio is playing」），並對 `AUDCLNT_BUFFERFLAGS_SILENT` 補零。Cap 與 OBS 要自己做是因為它們直接碰 WASAPI。Windows 實測時仍要看一次前十秒無聲的檔案音畫是否對齊，當作驗證而不是問題。
 5. 10 分鐘錄製結束時音畫偏移多少？
-   **部分已答（2026-09-13，008）**：3 分鐘漂移 3 ms；固有延遲 45–80 ms（音訊晚，每段內穩定）。10 分鐘由 003 用 `pnpm matrix -- long` 補。
+   **macOS 已答（2026-09-13，003）**：`pnpm matrix -- long` 10 分鐘結尾漂移 3 ms（頭 89 ms、尾 93 ms，552 對標記）；固有延遲這段量到 91 ms（扣偵測器約 10 ms 為 80 ms），與 008 的 45–80 ms 同一量級，音訊晚，在 ITU-R BT.1359 察覺門檻（晚 125 ms）內，不補償。
 6. macOS 螢幕錄製權限第一次授權後是否必須重啟 app？沒有視窗的 app，TCC 提示是否仍正常出現？
    **部分已答**：系統音訊是另一個權限，缺了會拿到死音軌而非錯誤（§11）。螢幕錄製是否需重啟、無視窗時提示是否出現，尚未在乾淨的 TCC 狀態下測（要先 `tccutil reset ScreenCapture com.github.Electron`）。
 7. HiDPI 下 `getDisplayMedia` 給的是邏輯還是實體解析度？
    **部分已答（2026-09-13，008）**：外接 1:1 螢幕下實際影格 1920x1080（邏輯 = 實體）。另發現 `track.getSettings()` 在多螢幕下回報錯誤高度（1920x1920），capture host 已改讀實際影格。HiDPI 內建螢幕為主螢幕時再看 `capture:` log。
 8. 錄主螢幕時選單列圖示本身會被錄進去，`REC` 字樣是否會出現在影片裡？可接受，還是要在錄製中改用不顯眼的圖示？
+   **已答，會出現（2026-09-13，003）**：非全螢幕錄製時，影片右上角選單列可清楚看到 `REC` 字樣與圖示（`plans/measurements/2026-09-13.md` 003 段有影格截圖說明）；全螢幕內容（kiosk）時選單列隱藏，不會錄到。是否可接受、或改為錄製中只換圖示不顯字，交使用者決定；目前維持顯示 `REC`（錄製狀態一眼可辨優先），若要改列入 Roadmap。
 
 ## 18. 決策摘要
 
