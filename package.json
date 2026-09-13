@@ -12,6 +12,8 @@
   "scripts": {
     "dev": "electron-vite dev",
     "start": "electron-vite build && env -u ELECTRON_RUN_AS_NODE open -a \"$PWD/node_modules/electron/dist/Electron.app\" --args \"$PWD\"",
+    "start:app": "node scripts/start-app.mjs",
+    "open:app": "node scripts/start-app.mjs --open",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
@@ -22,6 +24,7 @@
     "probe": "node scripts/probe-recording.mjs",
     "verify": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/verify-recording.mts",
     "matrix": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/run-matrix.mts",
+    "dist:mac:local": "node scripts/start-app.mjs --dmg",
     "dist:mac": "electron-vite build && electron-builder --mac",
     "dist:win": "electron-vite build && electron-builder --win"
   },

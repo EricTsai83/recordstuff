@@ -1,0 +1,15 @@
+# Free local signing. The App is signed; the DMG is only its container.
+extends: ./electron-builder.yml
+artifactName: RecordStuff-${version}-${arch}-selfsigned.${ext}
+mac:
+  notarize: false
+  timestamp: none
+dmg:
+  sign: false
+  writeUpdateInfo: false
+  # extends concatenates arrays: inherit the app and Applications entries.
+  contents:
+    - x: 270
+      y: 270
+      type: file
+      path: resources/安裝說明.txt

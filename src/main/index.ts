@@ -120,6 +120,7 @@ async function chooseDisplayMedia(
 }
 
 if (!app.requestSingleInstanceLock()) {
+  log("start: another instance already holds the userData lock; exiting");
   app.quit();
 } else {
   void main();
@@ -141,7 +142,8 @@ async function main(): Promise<void> {
   log(
     `start: ${APP_NAME} ${app.getVersion()}; electron ${process.versions.electron}; ` +
       `${process.platform} ${os.release()}; outputDir ${settings.outputDir}; ` +
-      `quality ${JSON.stringify(settings.quality)}; log ${logPath}`,
+      `quality ${JSON.stringify(settings.quality)}; log ${logPath}; ` +
+      `packaged ${app.isPackaged}; executable ${process.execPath}`,
   );
   // Plan 008 §B: a development-only unattended run driven by an environment
   // variable; its quality override lives in memory only. Packaged builds
