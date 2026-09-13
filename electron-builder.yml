@@ -15,6 +15,7 @@ extraResources:
       - "*.ico"
 asar: true
 mac:
+  icon: build/icon.icns
   category: public.app-category.video
   target:
     - dmg

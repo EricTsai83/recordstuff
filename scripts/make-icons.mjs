@@ -3,7 +3,11 @@
 //   resources/trayRecordingTemplate.png(@2x)  macOS template: filled dot
 //   resources/tray-idle.ico / tray-recording.ico  Windows: gray ring / red dot
 //   build/icon.png                            512px app icon for electron-builder
-import { mkdirSync, writeFileSync } from "node:fs";
+//   build/icon.icns                           native macOS icon set (generated on macOS)
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { deflateSync, crc32 } from "node:zlib";
 
 const SUPER = 4; // supersampling factor for anti-aliased edges
@@ -162,20 +166,42 @@ for (const [name, shapeOf, color] of [
 }
 
 // App icon: red dot with a white ring on a dark rounded square.
-{
-  const size = 512;
+function appIcon(size) {
   const c = size / 2;
-  writeFileSync(
-    "build/icon.png",
-    png(
+  return png(
       size,
       rasterize(size, [
         { shape: roundedSquare(size, size * 0.22), rgba: DARK },
         { shape: ring(c, c, size * 0.34, size * 0.3), rgba: WHITE },
         { shape: circle(c, c, size * 0.22), rgba: RED },
       ]),
-    ),
-  );
+    );
+}
+
+writeFileSync("build/icon.png", appIcon(512));
+
+// Avoid electron-builder's PNG -> ICNS conversion: its legacy 16/32px
+// representations rendered as noise in macOS privacy settings. Ship the
+// native ICNS in the repo so Windows development does not need iconutil.
+if (process.platform === "darwin") {
+  const scratch = mkdtempSync(path.join(tmpdir(), "recordstuff-icons-"));
+  const iconset = path.join(scratch, "RecordStuff.iconset");
+  try {
+    mkdirSync(iconset);
+    const images = new Map();
+    for (const size of [16, 32, 128, 256, 512]) {
+      for (const scale of [1, 2]) {
+        const pixels = size * scale;
+        if (!images.has(pixels)) images.set(pixels, appIcon(pixels));
+        writeFileSync(path.join(iconset, `icon_${size}x${size}${scale === 2 ? "@2x" : ""}.png`), images.get(pixels));
+      }
+    }
+    execFileSync("/usr/bin/iconutil", ["-c", "icns", "-o", path.resolve("build/icon.icns"), iconset]);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+} else {
+  console.log("macOS ICNS unchanged; run pnpm icons on macOS after changing the app artwork.");
 }
 
 console.log("icons written to resources/ and build/");
