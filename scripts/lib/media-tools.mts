@@ -17,7 +17,7 @@ const MAX_BUFFER = 256 * 1024 * 1024;
 
 export class ToolMissingError extends Error {
   constructor(tool: string) {
-    super(`找不到 ${tool}，請先 brew install ffmpeg`);
+    super(`${tool} is missing; install it with brew install ffmpeg`);
     this.name = "ToolMissingError";
   }
 }
@@ -43,13 +43,13 @@ export function probe(file: string): { info: ProbeInfo; decodeErrors: string } {
   const { stdout, stderr, status } = run("ffprobe", [
     "-v", "error", "-show_format", "-show_streams", "-count_frames", "-of", "json", file,
   ]);
-  if (status !== 0) throw new Error(`ffprobe 失敗（${status}）：${stderr.trim()}`);
+  if (status !== 0) throw new Error(`ffprobe failed (${status}): ${stderr.trim()}`);
   return { info: JSON.parse(stdout) as ProbeInfo, decodeErrors: stderr };
 }
 
 /**
  * Video presentation timestamps. A file longer than `2 × edgeSeconds` is
- * sampled at its head and tail only (plan 008 §A2) and returns two lists.
+ * sampled at its head and tail only and returns two lists.
  */
 export function frameTimes(file: string, durationSeconds: number | undefined, edgeSeconds = 60): number[][] {
   const read = (interval?: string): number[] => {
@@ -57,7 +57,7 @@ export function frameTimes(file: string, durationSeconds: number | undefined, ed
     if (interval) args.push("-read_intervals", interval);
     args.push(file);
     const { stdout, status, stderr } = run("ffprobe", args);
-    if (status !== 0) throw new Error(`ffprobe frames 失敗（${status}）：${stderr.trim()}`);
+    if (status !== 0) throw new Error(`ffprobe frames failed (${status}): ${stderr.trim()}`);
     return parseFrameTimes(stdout);
   };
   if (durationSeconds === undefined || durationSeconds <= edgeSeconds * 2) return [read()];

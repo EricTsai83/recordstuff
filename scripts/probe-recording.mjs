@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Development-only measurement for plan 007 §A3: print the actual size,
+ * Development-only measurement for print the actual size,
  * average frame rate, bitrate, sample rate, channels, duration and file size
  * of one or more recordings. Wraps `ffprobe` (brew install ffmpeg); nothing
  * here ships with the app.
@@ -32,8 +32,8 @@ function ratio(text) {
   return den ? num / den : num;
 }
 
-const kbps = (bps) => (bps === undefined || Number.isNaN(bps) ? "未知" : `${Math.round(bps / 1000)} kbps`);
-const fixed = (n, digits = 2) => (n === undefined || Number.isNaN(n) ? "未知" : n.toFixed(digits));
+const kbps = (bps) => (bps === undefined || Number.isNaN(bps) ? "unknown" : `${Math.round(bps / 1000)} kbps`);
+const fixed = (n, digits = 2) => (n === undefined || Number.isNaN(n) ? "unknown" : n.toFixed(digits));
 
 let failed = false;
 for (const file of files) {
@@ -43,7 +43,7 @@ for (const file of files) {
   } catch (cause) {
     failed = true;
     const missing = cause?.code === "ENOENT";
-    console.error(`${file}: ${missing ? "找不到 ffprobe，請先 brew install ffmpeg" : String(cause.stderr ?? cause.message ?? cause)}`);
+    console.error(`${file}: ${missing ? "ffprobe is missing; install it with brew install ffmpeg" : String(cause.stderr ?? cause.message ?? cause)}`);
     if (missing) break;
     continue;
   }
@@ -58,20 +58,20 @@ for (const file of files) {
   const totalBps = duration ? (size * 8) / duration : undefined;
 
   console.log(file);
-  console.log(`  時長          ${fixed(duration, 1)} s`);
-  console.log(`  檔案大小      ${(size / 1024 / 1024).toFixed(1)} MB（整體 ${kbps(totalBps)}）`);
+  console.log(`  Duration          ${fixed(duration, 1)} s`);
+  console.log(`  File size      ${(size / 1024 / 1024).toFixed(1)} MB (total ${kbps(totalBps)})`);
   console.log(
-    `  影像          ${video ? `${video.codec_name} ${video.width}x${video.height}` : "無"}` +
-      `，平均 ${fixed(avgFps, 2)} fps（${frames ?? "未知"} 張，宣告 ${video?.r_frame_rate ?? "未知"}）` +
-      `，位元率 ${kbps(videoBps)}${video?.pix_fmt ? `，${video.pix_fmt}` : ""}`,
+    `  Video          ${video ? `${video.codec_name} ${video.width}x${video.height}` : "none"}` +
+      `, average ${fixed(avgFps, 2)} fps (${frames ?? "unknown"} frames, declared ${video?.r_frame_rate ?? "unknown"})` +
+      `, Bitrate ${kbps(videoBps)}${video?.pix_fmt ? `, ${video.pix_fmt}` : ""}`,
   );
   console.log(
-    `  音訊          ${audio ? `${audio.codec_name} ${audio.sample_rate} Hz，${audio.channels} 聲道（${audio.channel_layout ?? "未知"}）` : "無"}` +
-      `，位元率 ${kbps(audioBps)}`,
+    `  Audio          ${audio ? `${audio.codec_name} ${audio.sample_rate} Hz, ${audio.channels} channels (${audio.channel_layout ?? "unknown"})` : "none"}` +
+      `, Bitrate ${kbps(audioBps)}`,
   );
   if (video?.start_time !== undefined && audio?.start_time !== undefined) {
     const offset = Number(audio.start_time) - Number(video.start_time);
-    console.log(`  起始偏移      音訊 − 影像 = ${fixed(offset * 1000, 0)} ms`);
+    console.log(`  Start offset      Audio − Video = ${fixed(offset * 1000, 0)} ms`);
   }
 }
 process.exit(failed ? 1 : 0);

@@ -38,10 +38,10 @@ describe("log parsing", () => {
       parseCaptureLine("recorder: session s0 capture: requested video=high cap=4k fps=60; track size=1920x1080 fps=60 sampleRate=48000 Hz channels=2; target videoBps=16200000 audioBps=256000")?.requested,
     ).toEqual({ videoQuality: "high", resolutionCap: "4k", frameRate: 60 });
     const entry = parseCaptureLine(
-      "recorder: session s1 capture: requested video=economy cap=source fps=30 audio=standard; track size=未知 fps=未知 sampleRate=未知 channels=未知; target videoBps=8100000 audioBps=192000; warnings: video track 未回報尺寸，無法套用解析度上限",
+      "recorder: session s1 capture: requested video=economy cap=source fps=30 audio=standard; track size=unknown fps=unknown sampleRate=unknown channels=unknown; target videoBps=8100000 audioBps=192000; warnings: video track has no dimensions; cannot apply resolution cap",
     );
     expect(entry?.track).toEqual({});
-    expect(entry?.warnings).toBe("video track 未回報尺寸，無法套用解析度上限");
+    expect(entry?.warnings).toBe("video track has no dimensions; cannot apply resolution cap");
     expect(parseCaptureLine("state → recording")).toBeUndefined();
     expect(parseCaptureLine(CAPTURE_LINE.replace("fps=60 audio", "fps=24 audio"))).toBeUndefined();
   });
@@ -223,22 +223,22 @@ describe("measure + judge", () => {
     expect(m.video?.bitsPerSecond).toBe(8_356_000 - 256_000); // total minus audio when the stream has no bit_rate
     const checks = judge(m, ENTRY, { screen: { width: 1920, height: 1080 } });
     const byMetric = Object.fromEntries(checks.map((c) => [c.metric, c]));
-    expect(byMetric["成品尺寸"]?.verdict).toBe("pass");
-    expect(byMetric["平均幀率"]?.verdict).toBe("pass");
-    expect(byMetric["掉幀"]?.verdict).toBe("pass");
-    expect(byMetric["音訊−影像時長差"]?.verdict).toBe("pass");
-    expect(byMetric["音訊−影像起始偏移（容器）"]?.verdict).toBe("pass");
-    expect(byMetric["音訊−影像偏移（閃光／短音）"]?.verdict).toBe("n/a");
-    expect(byMetric["音訊−影像偏移（閃光／短音）"]?.note).toBe("需 --sync 與測試素材頁");
-    expect(byMetric["取樣率／聲道"]?.verdict).toBe("pass");
-    expect(byMetric["影像位元率"]?.verdict).toBe("pass");
-    expect(byMetric["音訊位元率"]?.verdict).toBe("pass");
-    expect(byMetric["CPU（Electron 各程序合計）"]?.verdict).toBe("n/a");
+    expect(byMetric["Output dimensions"]?.verdict).toBe("pass");
+    expect(byMetric["Average frame rate"]?.verdict).toBe("pass");
+    expect(byMetric["Dropped frames"]?.verdict).toBe("pass");
+    expect(byMetric["Audio-video duration difference"]?.verdict).toBe("pass");
+    expect(byMetric["Audio-video start offset (container)"]?.verdict).toBe("pass");
+    expect(byMetric["Audio-video offset (flash/beep)"]?.verdict).toBe("n/a");
+    expect(byMetric["Audio-video offset (flash/beep)"]?.note).toBe("Requires --sync and the test material page");
+    expect(byMetric["Sample rate/channels"]?.verdict).toBe("pass");
+    expect(byMetric["Video bitrate"]?.verdict).toBe("pass");
+    expect(byMetric["Audio bitrate"]?.verdict).toBe("pass");
+    expect(byMetric["CPU (all Electron processes)"]?.verdict).toBe("n/a");
     const busy = judge(measure("cpu.mp4", 1, info(), [evenFrames(900, 30)], { cpu: { averagePercent: 55, peakPercent: 80 } }), ENTRY);
     expect(busy.find((c) => c.metric.startsWith("CPU"))?.verdict).toBe("fail");
     const calm = judge(measure("cpu.mp4", 1, info(), [evenFrames(900, 30)], { cpu: { averagePercent: 15, peakPercent: 20 } }), ENTRY);
     expect(calm.find((c) => c.metric.startsWith("CPU"))?.verdict).toBe("pass");
-    expect(byMetric["檔案可播（ffprobe 解碼全部影格）"]?.verdict).toBe("pass");
+    expect(byMetric["Decodability (ffprobe full frame decode)"]?.verdict).toBe("pass");
     expect(overallVerdict(checks)).toBe("pass");
   });
 
@@ -256,23 +256,23 @@ describe("measure + judge", () => {
     const m = measure("b.mp4", 17_770_000, probe, [frames], { channelRmsDb: [-20], nominalFps: 30 });
     const checks = judge(m, entry, { screen: { width: 1920, height: 1080 } });
     const byMetric = Object.fromEntries(checks.map((c) => [c.metric, c]));
-    expect(byMetric["成品尺寸"]?.verdict).toBe("fail");
-    expect(byMetric["成品尺寸"]?.note).toContain("比例與螢幕 1920x1080 不一致（預期 1920x1080）");
+    expect(byMetric["Output dimensions"]?.verdict).toBe("fail");
+    expect(byMetric["Output dimensions"]?.note).toContain("aspect ratio differs from screen 1920x1080 (expected 1920x1080)");
     // F3: a 1080p cap that produced 4K fails even without --screen, and even when the track agrees.
     const uncapped = parseCaptureLine(
       "recorder: session s capture: requested video=standard cap=1080p fps=30 audio=high; track size=3840x2160 fps=30 sampleRate=48000 Hz channels=2; target videoBps=8100000 audioBps=256000",
     )!;
     const big = measure("big.mp4", 1, info({ video: { width: 3840, height: 2160 } }), [evenFrames(900, 30)], {});
-    const size = judge(big, uncapped).find((c) => c.metric === "成品尺寸");
+    const size = judge(big, uncapped).find((c) => c.metric === "Output dimensions");
     expect(size?.verdict).toBe("fail");
-    expect(size?.note).toContain("超過上限 1080p");
-    expect(byMetric["平均幀率"]?.verdict).toBe("fail");
-    expect(byMetric["掉幀"]?.verdict).toBe("fail"); // 20 fps against a 30 fps nominal: every gap is 1.5× → drops
-    expect(byMetric["音訊−影像時長差"]?.verdict).toBe("fail");
-    expect(byMetric["音訊−影像起始偏移（容器）"]?.verdict).toBe("fail");
-    expect(byMetric["取樣率／聲道"]?.verdict).toBe("fail");
-    expect(byMetric["影像位元率"]?.verdict).toBe("fail");
-    expect(byMetric["影像位元率"]?.note).toContain("夾住");
+    expect(size?.note).toContain("exceeds cap 1080p");
+    expect(byMetric["Average frame rate"]?.verdict).toBe("fail");
+    expect(byMetric["Dropped frames"]?.verdict).toBe("fail"); // 20 fps against a 30 fps nominal: every gap is 1.5× → drops
+    expect(byMetric["Audio-video duration difference"]?.verdict).toBe("fail");
+    expect(byMetric["Audio-video start offset (container)"]?.verdict).toBe("fail");
+    expect(byMetric["Sample rate/channels"]?.verdict).toBe("fail");
+    expect(byMetric["Video bitrate"]?.verdict).toBe("fail");
+    expect(byMetric["Video bitrate"]?.note).toContain("Outside target tolerance");
     expect(overallVerdict(checks)).toBe("fail");
   });
 
@@ -283,45 +283,45 @@ describe("measure + judge", () => {
     });
     const checks = judge(m, undefined);
     const byMetric = Object.fromEntries(checks.map((c) => [c.metric, c]));
-    expect(byMetric["成品尺寸"]?.verdict).toBe("n/a");
-    expect(byMetric["平均幀率"]?.verdict).toBe("n/a");
-    expect(byMetric["影像位元率"]?.verdict).toBe("n/a");
-    expect(byMetric["音訊−影像偏移（閃光／短音）"]?.verdict).toBe("pass");
-    expect(byMetric["結尾音畫漂移"]?.verdict).toBe("n/a");
+    expect(byMetric["Output dimensions"]?.verdict).toBe("n/a");
+    expect(byMetric["Average frame rate"]?.verdict).toBe("n/a");
+    expect(byMetric["Video bitrate"]?.verdict).toBe("n/a");
+    expect(byMetric["Audio-video offset (flash/beep)"]?.verdict).toBe("pass");
+    expect(byMetric["End-to-end A/V drift"]?.verdict).toBe("n/a");
     // ITU-R BT.1359 asymmetry: 80 ms late is fine, 60 ms early is not.
     const late = judge(measure("l.mp4", 1, info(), [], { sync: { pairs: 20, medianOffsetMs: 80, headOffsetMs: 80, tailOffsetMs: undefined, driftMs: undefined } }), undefined);
-    expect(late.find((c) => c.metric.startsWith("音訊−影像偏移（閃光"))?.verdict).toBe("pass");
+    expect(late.find((c) => c.metric.startsWith("Audio-video offset (flash"))?.verdict).toBe("pass");
     const early = judge(measure("e.mp4", 1, info(), [], { sync: { pairs: 20, medianOffsetMs: -60, headOffsetMs: -60, tailOffsetMs: undefined, driftMs: undefined } }), undefined);
-    expect(early.find((c) => c.metric.startsWith("音訊−影像偏移（閃光"))?.verdict).toBe("fail");
-    expect(byMetric["取樣率／聲道"]?.verdict).toBe("fail");
-    expect(byMetric["取樣率／聲道"]?.actual).toContain("−∞");
+    expect(early.find((c) => c.metric.startsWith("Audio-video offset (flash"))?.verdict).toBe("fail");
+    expect(byMetric["Sample rate/channels"]?.verdict).toBe("fail");
+    expect(byMetric["Sample rate/channels"]?.actual).toContain("−∞");
   });
 
   it("treats decode errors and a missing audio track as failures, and says when --sync found nothing", () => {
     const m = measure("d.mp4", 100, info({ audio: null }), [evenFrames(10, 30)], { decodeErrors: "moov atom not found", syncAttempted: true });
     const byMetric = Object.fromEntries(judge(m, ENTRY).map((c) => [c.metric, c]));
-    expect(byMetric["音訊−影像偏移（閃光／短音）"]?.note).toContain("偵測不到");
-    expect(byMetric["錄製時長"]?.verdict).toBe("n/a");
-    const cut = judge(measure("e.mp4", 1, info(), [evenFrames(900, 30)], {}), ENTRY, { expectedDurationSeconds: 600 }).find((c) => c.metric === "錄製時長");
+    expect(byMetric["Audio-video offset (flash/beep)"]?.note).toContain("found no");
+    expect(byMetric["Recording duration"]?.verdict).toBe("n/a");
+    const cut = judge(measure("e.mp4", 1, info(), [evenFrames(900, 30)], {}), ENTRY, { expectedDurationSeconds: 600 }).find((c) => c.metric === "Recording duration");
     expect(cut?.verdict).toBe("fail");
-    const full = judge(measure("f.mp4", 1, info(), [evenFrames(900, 30)], {}), ENTRY, { expectedDurationSeconds: 30 }).find((c) => c.metric === "錄製時長");
+    const full = judge(measure("f.mp4", 1, info(), [evenFrames(900, 30)], {}), ENTRY, { expectedDurationSeconds: 30 }).find((c) => c.metric === "Recording duration");
     expect(full?.verdict).toBe("pass");
     expect(m.decodable).toBe(false);
-    expect(byMetric["檔案可播（ffprobe 解碼全部影格）"]?.verdict).toBe("fail");
-    expect(byMetric["取樣率／聲道"]?.verdict).toBe("fail");
-    expect(byMetric["音訊−影像時長差"]?.verdict).toBe("n/a");
+    expect(byMetric["Decodability (ffprobe full frame decode)"]?.verdict).toBe("fail");
+    expect(byMetric["Sample rate/channels"]?.verdict).toBe("fail");
+    expect(byMetric["Audio-video duration difference"]?.verdict).toBe("n/a");
   });
 
   it("formats text and markdown with the verdict marks and a human section", () => {
     const m = measure("e.mp4", 31_335_000, info(), [evenFrames(900, 30)], { channelRmsDb: [-20, -21], cpu: { averagePercent: 42.4, peakPercent: 61 } });
     const checks = judge(m, ENTRY);
     const text = formatText("e.mp4", ENTRY, checks);
-    expect(text).toContain("✅ 成品尺寸");
-    expect(text).toContain("平均 42%，峰值 61%");
-    const md = formatMarkdown("1080p 標準（30 s）", "e.mp4", ENTRY, checks, { material: "scripts/test-material.html" });
-    expect(md).toContain("### 1080p 標準（30 s）");
-    expect(md).toContain("| 指標 | 門檻／要求 | 實測 | 判定 |");
-    expect(md).toContain("主觀比對（人填）");
+    expect(text).toContain("✅ Output dimensions");
+    expect(text).toContain("average 42%, peak 61%");
+    const md = formatMarkdown("1080p Standard (30 s)", "e.mp4", ENTRY, checks, { material: "scripts/test-material.html" });
+    expect(md).toContain("### 1080p Standard (30 s)");
+    expect(md).toContain("| Metric | Threshold/request | Measured | Verdict |");
+    expect(md).toContain("Subjective comparison (manual)");
     expect(md).toContain(`< ${THRESHOLDS.maxDropRate * 100}%`);
   });
 });

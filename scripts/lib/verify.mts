@@ -1,6 +1,6 @@
 /**
  * Pure logic for the recording verification toolkit
- * (plans/008-recording-verification-toolkit.md §A): parse the app's `capture:`
+ * (docs/system-design/tooling.md): parse the app's `capture:`
  * log lines, turn ffprobe / ffmpeg output into numbers, judge them against
  * the threshold table and format the result. No I/O here; everything that
  * runs a process lives in `media-tools.ts`. Development only, never shipped.
@@ -26,7 +26,7 @@ export interface TrackReport {
   channelCount?: number;
 }
 
-/** One `recorder: session <id> capture: …` line (plan 007 §A1). */
+/** One `recorder: session <id> capture: …` line. */
 export interface CaptureLogEntry {
   sessionId: string;
   requested: QualitySettings;
@@ -37,7 +37,7 @@ export interface CaptureLogEntry {
 }
 
 const numberOrUndefined = (text: string | undefined): number | undefined => {
-  if (text === undefined || text === "未知") return undefined;
+  if (text === undefined || (text === "unknown" || text === "未知")) return undefined;
   const value = Number(text);
   return Number.isFinite(value) ? value : undefined;
 };
@@ -447,7 +447,7 @@ export function measure(
   };
 }
 
-/** The threshold table of plan 008; a change here must be mirrored in the plan file. */
+/** Project thresholds; a change here must be mirrored in docs/system-design/tooling.md. */
 export const THRESHOLDS = {
   fpsToleranceFps: 2,
   maxDropRate: 0.02,
@@ -498,7 +498,7 @@ const ms = (value: number | undefined): string => (value === undefined || Number
 const pass = (ok: boolean): Verdict => (ok ? "pass" : "fail");
 /** audio − video in ms: late audio is tolerated up to 125 ms, early audio up to 45 ms (ITU-R BT.1359). */
 const offsetWithinLimits = (offsetMs: number): boolean => offsetMs < THRESHOLDS.maxAudioLateMs && offsetMs > -THRESHOLDS.maxAudioEarlyMs;
-const OFFSET_EXPECTED = `音訊晚 < ${THRESHOLDS.maxAudioLateMs} ms／早 < ${THRESHOLDS.maxAudioEarlyMs} ms（ITU-R BT.1359）`;
+const OFFSET_EXPECTED = `Audio late < ${THRESHOLDS.maxAudioLateMs} ms / early < ${THRESHOLDS.maxAudioEarlyMs} ms (ITU-R BT.1359)`;
 
 function aspectMatches(a: Dimensions, b: Dimensions): boolean {
   // Even-rounding of a scaled edge moves the ratio by less than 1%.
@@ -511,7 +511,7 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
   const requestedFps = entry?.requested.frameRate;
   const cap: ResolutionCap | undefined = entry?.requested.resolutionCap;
 
-  // 成品尺寸
+  // Output dimensions
   if (m.video) {
     const actual = `${m.video.width}x${m.video.height}`;
     const trackSize = entry?.track.width !== undefined && entry.track.height !== undefined ? `${entry.track.width}x${entry.track.height}` : undefined;
@@ -519,35 +519,35 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
     let ok: boolean | undefined;
     if (trackSize !== undefined) {
       ok = trackSize === actual;
-      if (!ok) notes.push(`與 track size ${trackSize} 不同`);
+      if (!ok) notes.push(`differs from track size ${trackSize}`);
     }
     if (cap && cap !== "source") {
       // Within the cap: fitting the output into the cap must leave it unchanged (review F3: no --screen needed).
       const refit = fitWithinCap(m.video, cap);
       const within = refit.width === m.video.width && refit.height === m.video.height;
-      if (!within) notes.push(`超過上限 ${cap}`);
+      if (!within) notes.push(`exceeds cap ${cap}`);
       ok = (ok ?? true) && within;
     }
     if (options.screen && !aspectMatches(m.video, options.screen)) {
-      const expected = cap && cap !== "source" ? `（預期 ${fitWithinCap(options.screen, cap).width}x${fitWithinCap(options.screen, cap).height}）` : "";
-      notes.push(`比例與螢幕 ${options.screen.width}x${options.screen.height} 不一致${expected}`);
+      const expected = cap && cap !== "source" ? ` (expected ${fitWithinCap(options.screen, cap).width}x${fitWithinCap(options.screen, cap).height})` : "";
+      notes.push(`aspect ratio differs from screen ${options.screen.width}x${options.screen.height}${expected}`);
       ok = false;
     }
     checks.push({
-      metric: "成品尺寸",
+      metric: "Output dimensions",
       expected: trackSize ?? (cap ? `cap ${cap}` : "—"),
       actual,
       verdict: ok === undefined ? "n/a" : pass(ok),
-      ...(notes.length > 0 ? { note: notes.join("；") } : {}),
+      ...(notes.length > 0 ? { note: notes.join("; ") } : {}),
     });
   } else {
-    checks.push({ metric: "成品尺寸", expected: "—", actual: "無影像軌", verdict: "fail" });
+    checks.push({ metric: "Output dimensions", expected: "—", actual: "No video track", verdict: "fail" });
   }
 
-  // 錄製時長（矩陣要求的秒數）
+  // Recording duration (requested matrix duration)
   const expectedSeconds = options.expectedDurationSeconds;
   checks.push({
-    metric: "錄製時長",
+    metric: "Recording duration",
     expected: expectedSeconds === undefined ? "—" : `${expectedSeconds} ± ${DURATION_TOLERANCE_SECONDS} s`,
     actual: m.durationSeconds === undefined ? "—" : `${fmt(m.durationSeconds, 1)} s`,
     verdict:
@@ -556,94 +556,94 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
         : pass(Math.abs(m.durationSeconds - expectedSeconds) <= DURATION_TOLERANCE_SECONDS),
   });
 
-  // 平均幀率
+  // Average frame rate
   const avgFps =
     m.video?.frames !== undefined && m.video.durationSeconds ? m.video.frames / m.video.durationSeconds : undefined;
   checks.push({
-    metric: "平均幀率",
+    metric: "Average frame rate",
     expected: requestedFps === undefined ? "—" : `${requestedFps} ± ${THRESHOLDS.fpsToleranceFps} fps`,
-    actual: avgFps === undefined ? "—" : `${fmt(avgFps, 2)} fps（${m.video?.frames} 張）`,
+    actual: avgFps === undefined ? "—" : `${fmt(avgFps, 2)} fps (${m.video?.frames} frames)`,
     verdict: avgFps === undefined || requestedFps === undefined ? "n/a" : pass(Math.abs(avgFps - requestedFps) <= THRESHOLDS.fpsToleranceFps),
-    note: "素材需持續動態；靜態畫面不適用",
+    note: "Requires continuously moving material; not applicable to static scenes",
   });
 
-  // 掉幀
+  // Dropped frames
   checks.push({
-    metric: "掉幀",
+    metric: "Dropped frames",
     expected: `< ${THRESHOLDS.maxDropRate * 100}%`,
-    actual: m.frames ? `${(m.frames.dropRate * 100).toFixed(2)}%（${m.frames.dropped} 張／取樣 ${m.frames.frames} 張，最大間隔 ${ms(m.frames.maxGapMs)}）` : "—",
+    actual: m.frames ? `${(m.frames.dropRate * 100).toFixed(2)}% (${m.frames.dropped} frames / sampled ${m.frames.frames} frames, max gap ${ms(m.frames.maxGapMs)})` : "—",
     verdict: m.frames ? pass(m.frames.dropRate < THRESHOLDS.maxDropRate) : "n/a",
   });
 
-  // 音訊與影像時長差
+  // Audio-video duration difference
   const durationDiffMs =
     m.video?.durationSeconds !== undefined && m.audio?.durationSeconds !== undefined
       ? (m.audio.durationSeconds - m.video.durationSeconds) * 1000
       : undefined;
   checks.push({
-    metric: "音訊−影像時長差",
+    metric: "Audio-video duration difference",
     expected: `< ${THRESHOLDS.maxDurationDiffMs} ms`,
     actual: ms(durationDiffMs),
     verdict: durationDiffMs === undefined ? "n/a" : pass(Math.abs(durationDiffMs) < THRESHOLDS.maxDurationDiffMs),
   });
 
-  // 起始偏移（容器）
+  // Start offset (container)
   const startOffsetMs =
     m.video?.startTime !== undefined && m.audio?.startTime !== undefined ? (m.audio.startTime - m.video.startTime) * 1000 : undefined;
   checks.push({
-    metric: "音訊−影像起始偏移（容器）",
+    metric: "Audio-video start offset (container)",
     expected: OFFSET_EXPECTED,
     actual: ms(startOffsetMs),
     verdict: startOffsetMs === undefined ? "n/a" : pass(offsetWithinLimits(startOffsetMs)),
   });
 
-  // 同步標記（素材頁）
+  // Sync markers (test material)
   checks.push({
-    metric: "音訊−影像偏移（閃光／短音）",
-    expected: `${OFFSET_EXPECTED}；穩定超過記為固有延遲`,
-    actual: m.sync ? `${ms(m.sync.medianOffsetMs)}（${m.sync.pairs} 對；頭 ${ms(m.sync.headOffsetMs)}，尾 ${ms(m.sync.tailOffsetMs)}）` : "—",
+    metric: "Audio-video offset (flash/beep)",
+    expected: `${OFFSET_EXPECTED}; a stable excess indicates inherent latency`,
+    actual: m.sync ? `${ms(m.sync.medianOffsetMs)} (${m.sync.pairs} pairs; head ${ms(m.sync.headOffsetMs)}, tail ${ms(m.sync.tailOffsetMs)})` : "—",
     verdict: m.sync ? pass(offsetWithinLimits(m.sync.medianOffsetMs)) : "n/a",
-    ...(m.sync ? {} : { note: m.syncAttempted ? "--sync 偵測不到閃光／短音配對：素材頁不在被錄的螢幕，或音訊未被錄到" : "需 --sync 與測試素材頁" }),
+    ...(m.sync ? {} : { note: m.syncAttempted ? "--sync found no flash/beep pairs: check the recorded display and system audio" : "Requires --sync and the test material page" }),
   });
   checks.push({
-    metric: "結尾音畫漂移",
+    metric: "End-to-end A/V drift",
     expected: `< ${THRESHOLDS.maxDriftMs} ms`,
     actual: ms(m.sync?.driftMs),
     verdict: m.sync?.driftMs === undefined ? "n/a" : pass(Math.abs(m.sync.driftMs) < THRESHOLDS.maxDriftMs),
-    ...(m.sync?.driftMs === undefined ? { note: "需 --sync 且檔案長於 60 秒" } : {}),
+    ...(m.sync?.driftMs === undefined ? { note: "Requires --sync and a file longer than 60 seconds" } : {}),
   });
 
-  // 取樣率／聲道
+  // Sample rate/channels
   if (m.audio) {
     const rms = m.audio.channelRmsDb;
     const energetic = rms?.map((db) => db > THRESHOLDS.minChannelRmsDb);
-    const rmsText = rms ? rms.map((db) => (Number.isFinite(db) ? `${db.toFixed(1)} dB` : "−∞")).join(" / ") : "未量";
+    const rmsText = rms ? rms.map((db) => (Number.isFinite(db) ? `${db.toFixed(1)} dB` : "−∞")).join(" / ") : "not measured";
     const formatOk = m.audio.sampleRate === THRESHOLDS.sampleRateHz && m.audio.channels === THRESHOLDS.channels;
     const energyOk = energetic === undefined ? undefined : energetic.length === THRESHOLDS.channels && energetic.every(Boolean);
     checks.push({
-      metric: "取樣率／聲道",
-      expected: `${THRESHOLDS.sampleRateHz / 1000} kHz、${THRESHOLDS.channels} 聲道、左右皆有能量`,
-      actual: `${m.audio.sampleRate ?? "—"} Hz、${m.audio.channels ?? "—"} 聲道，RMS ${rmsText}` + (entry?.track.channelCount !== undefined ? `（track 回報 ${entry.track.channelCount} 聲道）` : ""),
+      metric: "Sample rate/channels",
+      expected: `${THRESHOLDS.sampleRateHz / 1000} kHz, ${THRESHOLDS.channels} channels, energy in both channels`,
+      actual: `${m.audio.sampleRate ?? "—"} Hz, ${m.audio.channels ?? "—"} channels, RMS ${rmsText}` + (entry?.track.channelCount !== undefined ? ` (track reports ${entry.track.channelCount} channels)` : ""),
       verdict: pass(formatOk && energyOk !== false),
-      ...(energyOk === undefined ? { note: "聲道能量需 ffmpeg" } : {}),
+      ...(energyOk === undefined ? { note: "Channel energy requires ffmpeg" } : {}),
     });
   } else {
-    checks.push({ metric: "取樣率／聲道", expected: `${THRESHOLDS.sampleRateHz / 1000} kHz、${THRESHOLDS.channels} 聲道`, actual: "無音訊軌", verdict: "fail" });
+    checks.push({ metric: "Sample rate/channels", expected: `${THRESHOLDS.sampleRateHz / 1000} kHz, ${THRESHOLDS.channels} channels`, actual: "No audio track", verdict: "fail" });
   }
 
-  // 位元率
+  // Bitrate
   const target = entry?.targetVideoBps;
   const videoBps = m.video?.bitsPerSecond;
   const ratio = target && videoBps !== undefined ? videoBps / target : undefined;
   checks.push({
-    metric: "影像位元率",
+    metric: "Video bitrate",
     expected: target === undefined ? "—" : `${mbps(target)} ± ${THRESHOLDS.bitrateTolerance * 100}%`,
-    actual: ratio === undefined ? mbps(videoBps) : `${mbps(videoBps)}（目標的 ${(ratio * 100).toFixed(0)}%）`,
+    actual: ratio === undefined ? mbps(videoBps) : `${mbps(videoBps)} (of target ${(ratio * 100).toFixed(0)}%)`,
     verdict: ratio === undefined ? "n/a" : pass(Math.abs(ratio - 1) <= THRESHOLDS.bitrateTolerance),
-    ...(ratio !== undefined && Math.abs(ratio - 1) > THRESHOLDS.bitrateTolerance ? { note: "超出即為 Chromium 實際夾住的值" } : {}),
+    ...(ratio !== undefined && Math.abs(ratio - 1) > THRESHOLDS.bitrateTolerance ? { note: "Outside target tolerance; record the actual Chromium output" } : {}),
   });
   checks.push({
-    metric: "音訊位元率",
+    metric: "Audio bitrate",
     expected: entry ? kbps(entry.targetAudioBps) : "—",
     actual: kbps(m.audio?.bitsPerSecond),
     verdict:
@@ -654,19 +654,19 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
 
   // CPU
   checks.push({
-    metric: "CPU（Electron 各程序合計）",
-    expected: `平均 ≤ ${THRESHOLDS.maxCpuAveragePercent}%`,
-    actual: m.cpu ? `平均 ${m.cpu.averagePercent.toFixed(0)}%，峰值 ${m.cpu.peakPercent.toFixed(0)}%` : "—",
+    metric: "CPU (all Electron processes)",
+    expected: `average ≤ ${THRESHOLDS.maxCpuAveragePercent}%`,
+    actual: m.cpu ? `average ${m.cpu.averagePercent.toFixed(0)}%, peak ${m.cpu.peakPercent.toFixed(0)}%` : "—",
     verdict: m.cpu ? pass(m.cpu.averagePercent <= THRESHOLDS.maxCpuAveragePercent) : "n/a",
   });
 
-  // 檔案可播
+  // Decodability
   checks.push({
-    metric: "檔案可播（ffprobe 解碼全部影格）",
-    expected: "無解碼錯誤",
-    actual: m.decodable ? `可解碼，${fmt(m.durationSeconds, 1)} s，${(m.fileBytes / 1024 / 1024).toFixed(1)} MB` : `解碼錯誤：${m.decodeErrors ?? ""}`,
+    metric: "Decodability (ffprobe full frame decode)",
+    expected: "No decode errors",
+    actual: m.decodable ? `Decodable, ${fmt(m.durationSeconds, 1)} s, ${(m.fileBytes / 1024 / 1024).toFixed(1)} MB` : `Decode errors: ${m.decodeErrors ?? ""}`,
     verdict: pass(m.decodable),
-    note: "QuickTime／Chrome 雙擊與拖曳仍需人工",
+    note: "Opening and seeking in QuickTime/Chrome still requires manual verification",
   });
 
   return checks;
@@ -684,10 +684,10 @@ export function overallVerdict(checks: Check[]): Verdict {
 export const VERDICT_MARK: Record<Verdict, string> = { pass: "✅", fail: "❌", "n/a": "—" };
 
 export function describeRequested(entry: CaptureLogEntry | undefined): string {
-  if (!entry) return "log 中找不到對應 session";
+  if (!entry) return "No matching session in log";
   const q = entry.requested;
-  return `影像 ${q.videoQuality}，上限 ${q.resolutionCap}，${q.frameRate} fps；track ${entry.track.width ?? "?"}x${entry.track.height ?? "?"} @ ${entry.track.frameRate ?? "?"} fps，${entry.track.sampleRate ?? "?"} Hz × ${entry.track.channelCount ?? "?"} 聲道；目標 ${mbps(entry.targetVideoBps)} / ${kbps(entry.targetAudioBps)}` +
-    (entry.warnings ? `；warnings: ${entry.warnings}` : "");
+  return `Video ${q.videoQuality}, cap ${q.resolutionCap}, ${q.frameRate} fps; track ${entry.track.width ?? "?"}x${entry.track.height ?? "?"} @ ${entry.track.frameRate ?? "?"} fps, ${entry.track.sampleRate ?? "?"} Hz × ${entry.track.channelCount ?? "?"} channels; target ${mbps(entry.targetVideoBps)} / ${kbps(entry.targetAudioBps)}` +
+    (entry.warnings ? `; warnings: ${entry.warnings}` : "");
 }
 
 /** Plain-text table for the terminal. */
@@ -700,13 +700,13 @@ export function formatText(file: string, entry: CaptureLogEntry | undefined, che
   for (const c of checks) {
     lines.push(`  ${VERDICT_MARK[c.verdict]} ${pad(c.metric, w1)}  ${pad(c.expected, w2)}  ${c.actual}${c.note ? `  (${c.note})` : ""}`);
   }
-  lines.push(`  結果：${VERDICT_MARK[overallVerdict(checks)]}`);
+  lines.push(`  Result: ${VERDICT_MARK[overallVerdict(checks)]}`);
   return lines.join("\n");
 }
 
 const cell = (text: string): string => text.replace(/\|/g, "\\|");
 
-/** One Markdown section per file for `plans/measurements/<date>.md`. */
+/** One Markdown section per file for `docs/verification/measurements/<date>.md`. */
 export function formatMarkdown(
   title: string,
   file: string,
@@ -717,16 +717,16 @@ export function formatMarkdown(
   const lines = [
     `### ${title}`,
     "",
-    `- 檔案：\`${file}\``,
-    `- 要求與 track：${describeRequested(entry)}`,
+    `- File: \`${file}\``,
+    `- Request and track: ${describeRequested(entry)}`,
   ];
-  if (context.material) lines.push(`- 素材：${context.material}`);
-  if (context.note) lines.push(`- 備註：${context.note}`);
-  lines.push("", "| 指標 | 門檻／要求 | 實測 | 判定 |", "|---|---|---|---|");
+  if (context.material) lines.push(`- Material: ${context.material}`);
+  if (context.note) lines.push(`- Note: ${context.note}`);
+  lines.push("", "| Metric | Threshold/request | Measured | Verdict |", "|---|---|---|---|");
   for (const c of checks) {
-    lines.push(`| ${cell(c.metric)} | ${cell(c.expected)} | ${cell(c.actual)}${c.note ? `（${cell(c.note)}）` : ""} | ${VERDICT_MARK[c.verdict]} |`);
+    lines.push(`| ${cell(c.metric)} | ${cell(c.expected)} | ${cell(c.actual)}${c.note ? ` (${cell(c.note)})` : ""} | ${VERDICT_MARK[c.verdict]} |`);
   }
-  lines.push("", `結果：${VERDICT_MARK[overallVerdict(checks)]}`, "", "主觀比對（人填）：", "", "- 文字清晰度：", "- 捲動與動態：", "- 色彩邊緣（紅藍細線）：", "- 音量／失真／左右聲道：", "");
+  lines.push("", `Result: ${VERDICT_MARK[overallVerdict(checks)]}`, "", "Subjective comparison (manual):", "", "- Text sharpness:", "- Scrolling and motion:", "- Color edges (thin red/blue lines):", "- Volume/distortion/channel separation:", "");
   return lines.join("\n");
 }
 

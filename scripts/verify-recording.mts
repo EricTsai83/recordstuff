@@ -2,9 +2,9 @@
 /**
  * `pnpm verify -- <mp4...> [--log <path>] [--screen WxH] [--sync] [--out] [--json <path>]`
  *
- * Plan 008 §A: measure one or more recordings with ffprobe / ffmpeg, pair
+ * measure one or more recordings with ffprobe / ffmpeg, pair
  * each with its `capture:` log line, judge against the threshold table and
- * print a table. `--out` appends the result to `plans/measurements/<date>.md`
+ * print a table. `--out` appends the result to `docs/verification/measurements/<date>.md`
  * (+ `.json`); `--json` writes the raw results somewhere of your choosing.
  * Development only (brew install ffmpeg); nothing here ships with the app.
  */
@@ -64,10 +64,10 @@ let pairs;
 try {
   pairs = readLogPairs(logPath);
 } catch (cause) {
-  console.error(`無法讀取 log ${logPath}: ${String(cause)}`);
+  console.error(`Cannot read log ${logPath}: ${String(cause)}`);
   process.exit(2);
 }
-if (!logPath) console.error("沒有 log 檔（--log），要求設定與目標位元率欄位會是 —");
+if (!logPath) console.error("No log file (--log); requested settings and target bitrate fields will be unavailable");
 
 const results: VerifyResult[] = [];
 let failed = false;
@@ -92,6 +92,6 @@ if (jsonPath && results.length > 0) {
 if (out && results.length > 0) {
   const target = measurementsPath();
   appendMeasurements(target, results, { title: (r) => path.basename(r.file), runLabel: "pnpm verify" });
-  console.log(`已附加到 ${path.relative(process.cwd(), target)}（與同名 .json）`);
+  console.log(`Appended to ${path.relative(process.cwd(), target)} (and matching .json)`);
 }
 process.exit(failed ? 1 : 0);
