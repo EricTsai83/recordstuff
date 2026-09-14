@@ -144,7 +144,7 @@ try {
     // Generate the disk image only after the embedded app has passed identity checks.
     run("pnpm", ["exec", "electron-builder", "--mac", "dmg", `--${process.arch}`,
       "--prepackaged", appPath, "--publish", "never", ...config]);
-    console.log(`Local DMG generated in ${output}. Self-signed, not notarized; follow plans/010-downloadable-macos-release.md for download/install verification.`);
+    console.log(`Local DMG generated in ${output}. Self-signed, not notarized; follow docs/verification/releases/0.1.0.md for download/install verification.`);
   } else {
     run("open", ["-a", appPath]);
     console.log(`Opened ${appPath}\nLog: ~/Library/Logs/recordstuff/recordstuff.log`);

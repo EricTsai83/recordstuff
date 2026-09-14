@@ -16,7 +16,7 @@ Download **[RecordStuff 0.1.0 for macOS Apple silicon (arm64)](https://github.co
 
 SHA-256: `11449bc59ed2dd5f5a361511995937771394715b2d7b9146d83b58e6c31dc34d`.
 
-The installed candidate passed recording/playback and language checks. Browser-download installation is still being verified; see [release evidence](docs/verification/releases/0.1.0.md). Clicking a saved notification selects the file in Finder, but may leave Finder behind other windows.
+Browser-downloaded installation, recording/playback and language checks passed on the available Mac after per-app Open Anyway approval; see [release evidence](docs/verification/releases/0.1.0.md). Clicking a saved notification selects the file in Finder, but may leave Finder behind other windows.
 
 Download the arm64 DMG, drag recordstuff into Applications, and follow the [installation instructions](resources/INSTALL.md). Recipients do not need Node, pnpm, FFmpeg, or certificates. Because the app is not notarized, first launch may require **System Settings → Privacy & Security → Open Anyway**. A warning-free first launch is not promised; see [Apple's guidance](https://support.apple.com/102445).
 

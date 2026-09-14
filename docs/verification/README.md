@@ -51,7 +51,7 @@ The private key is not part of the repository or download. Temporary logs and re
 
 See [tooling](../system-design/tooling.md) for commands and thresholds. Use short recordings plus full decode for basic regression, and relevant matrices after capture/quality changes. Long is now three minutes; do not rerun the ten-minute baseline solely for documentation work. Separate automated fail/n/a, material limitations, and accepted deviations.
 
-A local DMG is not evidence of public availability or the actual browser-download installation path. Those remaining steps belong to the [downloadable release plan](../../plans/010-downloadable-macos-release.md).
+A local DMG is not evidence of public availability or the actual browser-download installation path. The subsequently completed public-download checks are recorded in [v0.1.0 evidence](releases/0.1.0.md).
 
 ## Documentation and localization follow-up — 2026-09-14
 
@@ -89,4 +89,4 @@ Validation of the correction: `pnpm check` passed 15 files/255 tests, typecheck,
 
 ## macOS 0.1.0 release — 2026-09-15
 
-[Current artifact and download-path evidence](releases/0.1.0.md). The public release is available; installed-candidate checks passed with a Finder foreground limitation. Browser-download installation remains pending. Historical hashes above are unchanged.
+[Current artifact and download-path evidence](releases/0.1.0.md). The public release is available; installed-candidate checks passed with a Finder foreground limitation. Browser-download installation and recording passed after per-app Open Anyway approval; see the linked record for user-reported checks and local limits. Historical hashes above are unchanged.

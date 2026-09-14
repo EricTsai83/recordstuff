@@ -6,11 +6,10 @@
 
 | 順序 | 計畫 | 狀態 | 交付目標 |
 | --- | --- | --- | --- |
-| 1 | [010 macOS 下載版](010-downloadable-macos-release.md) | 待執行，優先 | 本機建置驗證第一版 arm64 自簽包，發布 DMG／checksum／說明至 GitHub Releases，驗實際下載安裝 |
 | 010 之後 | [011 GitHub 發布自動化](011-github-release-automation.md) | 後續選項 | 可重複產生候選包並明確提升發布，保留固定簽署身分與驗證 |
 | 010 之後 | [012 官網與下載入口](012-download-website.md) | 後續選項 | 雙語產品頁連到已驗 GitHub 下載 |
 
-目前進度：v0.1.0 已公開；候選版檢查通過但有 Finder 未置前限制。瀏覽器下載後的安裝仍待驗證，詳見[本版證據](../verification/releases/0.1.0.md)。
+目前進度：v0.1.0 已公開；候選版檢查通過但有 Finder 未置前限制。瀏覽器下載後的安裝已通過（首次需「仍要打開」）；Plan 010 已完成，詳見[本版證據](../verification/releases/0.1.0.md)。
 
 ## 排序理由
 

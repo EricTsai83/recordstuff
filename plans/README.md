@@ -4,13 +4,12 @@
 
 Updated: 2026-09-15. Completed plans have been replaced by the [system design](../docs/system-design/README.md) and [verification record](../docs/verification/README.md). Windows verification and Apple-certified distribution were canceled by the user. The speculative roadmap was removed from execution planning; current boundaries and evolution triggers remain in the design decisions.
 
-Current execution: v0.1.0 is public; candidate checks passed with a Finder foreground limitation. Browser-download installation remains pending. See [release evidence](../docs/verification/releases/0.1.0.md).
+Current execution: v0.1.0 is public; candidate checks passed with a Finder foreground limitation. Browser-download installation passed after per-app Open Anyway approval; Plan 010 is complete. See [release evidence](../docs/verification/releases/0.1.0.md).
 
 ## Order and status
 
 | Order | Plan | Status | Completion target |
 | --- | --- | --- | --- |
-| 1 | [010 Downloadable macOS release](010-downloadable-macos-release.md) | In progress; execute first | Locally build and verify the first arm64 self-signed release, publish DMG/checksum/notes to GitHub Releases, and verify the actual download and install |
 | After 010 | [011 GitHub release automation](011-github-release-automation.md) | Deferred; optional | Repeatable release candidates and explicit promotion, preserving signing identity and verification |
 | After 010 | [012 Product and download website](012-download-website.md) | Deferred; optional | Bilingual product page linking to the verified GitHub download |
 

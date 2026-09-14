@@ -42,4 +42,4 @@ Region/window selection, global shortcuts, pause/resume, file segmentation, FFmp
 3. Resilience: give resources a cleanup path, preserve media where possible, and retain diagnostics.
 4. Performance: measure before optimizing; encoder requests are not output guarantees.
 
-See the [verification record](../verification/README.md) for measured results and the [downloadable release plan](../../plans/010-downloadable-macos-release.md) for remaining delivery work.
+See the [verification record](../verification/README.md) for measured results and the [remaining plans](../../plans/README.md) for remaining delivery work.
