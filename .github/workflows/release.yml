@@ -24,7 +24,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: recordstuff-release
+  group: recordstuff-macos-delivery
   cancel-in-progress: false
 jobs:
   build:
