@@ -2,7 +2,7 @@
 
 [English](011-github-release-automation.md) | [繁體中文](011-github-release-automation.zh-TW.md)
 
-Status: Deferred; activate after 010 when repeated releases justify automation. Updated: 2026-09-15.
+Status: in progress; workflow implemented, live CI and manual candidate acceptance pending. Updated: 2026-09-15.
 
 Signing background and provisioning contract: [macOS signing identities and self-signing](../docs/system-design/signing.md). CI provisioning remains pending under this plan.
 

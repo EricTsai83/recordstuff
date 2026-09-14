@@ -116,11 +116,19 @@ function verifyBundle(appPath, identity) {
   console.log(`Verified ${bundles.length} bundle identities; SHA-1 ${identity.hash}\n${requirement.stdout}${requirement.stderr}`);
 }
 
-try {
+function main() {
   if (process.platform !== "darwin" || !["arm64", "x64"].includes(process.arch)) {
     throw new Error("Local app builds require macOS arm64 or x64.");
   }
   const args = process.argv.slice(2);
+  if (args[0] === "--verify-app") {
+    const hash = process.env.RECORDSTUFF_SIGN_IDENTITY;
+    if (args.length !== 2 || !/^[A-Fa-f0-9]{40}$/.test(hash ?? "")) {
+      throw new Error("--verify-app requires an app path and RECORDSTUFF_SIGN_IDENTITY SHA-1.");
+    }
+    verifyBundle(path.resolve(args[1]), { hash: hash.toUpperCase() });
+    return;
+  }
   if (args.length > 1 || (args.length === 1 && !["--dmg", "--open"].includes(args[0]))) {
     throw new Error("Usage: node scripts/start-app.mjs [--dmg | --open]");
   }
@@ -149,7 +157,9 @@ try {
     run("open", ["-a", appPath]);
     console.log(`Opened ${appPath}\nLog: ~/Library/Logs/recordstuff/recordstuff.log`);
   }
-} catch (error) {
+}
+
+try { main(); } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 }

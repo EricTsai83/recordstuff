@@ -94,3 +94,5 @@ App recordings and settings stay local. No upload backend, account, telemetry, o
 This project is licensed under the [MIT License](LICENSE).
 
 Learn why and how the audio checks work in the [audio quality design guide](docs/system-design/audio-quality.md).
+
+Release maintainers: see [GitHub release automation](docs/system-design/releases.md) for Actions candidates and promotion of the same manually accepted bytes.

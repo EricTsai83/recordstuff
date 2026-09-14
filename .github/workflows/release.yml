@@ -1,0 +1,153 @@
+name: macOS release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Build a draft, or promote already installed and reviewed draft bytes
+        required: true
+        type: choice
+        options: [candidate, promote]
+        default: candidate
+      tag:
+        description: Exact package version tag (vX.Y.Z)
+        required: true
+        type: string
+      sha256:
+        description: Promotion only — SHA-256 of the candidate you installed
+        type: string
+      manual_acceptance:
+        description: Promotion only — installed this candidate; recording, audio playback, language persistence and quit/relaunch passed
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: recordstuff-release
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.event_name == 'push' || inputs.operation == 'candidate'
+    runs-on: macos-15
+    timeout-minutes: 30
+    environment: release
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      RECORDSTUFF_SIGN_IDENTITY: 01B373511530BBF287CA35E54C10A5F017AAD637
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+      - name: Validate source and version
+        run: |
+          test "$(uname -m)" = arm64
+          node scripts/release.mts preflight "$RELEASE_TAG"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - name: Import fixed identity, build, and verify candidate
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$BUILD_CERTIFICATE_BASE64" && test -n "$P12_PASSWORD"
+          keychain="$RUNNER_TEMP/recordstuff-signing.keychain-db"
+          cert="$RUNNER_TEMP/recordstuff-signing.pem"
+          archive="$RUNNER_TEMP/recordstuff-signing.p12"
+          keychain_password="$(openssl rand -hex 32)"
+          echo "::add-mask::$keychain_password"
+          cleanup() {
+            sudo security remove-trusted-cert -d "$cert" 2>/dev/null || true
+            security delete-keychain "$keychain" 2>/dev/null || true
+            rm -f "$cert" "$archive"
+          }
+          trap cleanup EXIT
+          printf '%s' "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$archive"
+          chmod 600 "$archive"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 1800 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$archive" -k "$keychain" -P "$P12_PASSWORD" -T /usr/bin/codesign >/dev/null
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain"
+          security find-certificate -c 'RecordStuff Dev' -p "$keychain" > "$cert"
+          fingerprint="$(openssl x509 -in "$cert" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d ':')"
+          test "$fingerprint" = "$RECORDSTUFF_SIGN_IDENTITY"
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k "$keychain" "$cert"
+          security find-identity -v -p codesigning "$keychain" | grep -F "$RECORDSTUFF_SIGN_IDENTITY"
+          unset BUILD_CERTIFICATE_BASE64 P12_PASSWORD
+          pnpm dist:mac
+          node scripts/release.mts candidate "$RELEASE_TAG" dist/local
+      - name: Cleanup even after cancellation or setup failure
+        if: always()
+        run: |
+          sudo security remove-trusted-cert -d "$RUNNER_TEMP/recordstuff-signing.pem" 2>/dev/null || true
+          security delete-keychain "$RUNNER_TEMP/recordstuff-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/recordstuff-signing.pem" "$RUNNER_TEMP/recordstuff-signing.p12"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verified-candidate
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/local/RecordStuff-*-arm64-selfsigned.dmg
+            dist/local/SHA256SUMS
+            dist/local/release.json
+  draft:
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: verified-candidate
+          path: candidate
+      - name: Reverify mounted candidate and create draft
+        run: node scripts/release.mts draft "$RELEASE_TAG" candidate
+  promote:
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'promote'
+    runs-on: macos-15
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_EXPECTED_SHA256: ${{ inputs.sha256 }}
+      RELEASE_MANUAL_ACCEPTANCE: ${{ inputs.manual_acceptance }}
+    steps:
+      - name: Require manual acceptance and checksum before downloading
+        run: |
+          test "$RELEASE_MANUAL_ACCEPTANCE" = true
+          test "${#RELEASE_EXPECTED_SHA256}" = 64
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+      - name: Download existing draft without rebuilding
+        run: gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir candidate
+      - name: Reverify and publish identical assets
+        run: node scripts/release.mts promote "$RELEASE_TAG" candidate

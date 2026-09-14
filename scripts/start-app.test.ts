@@ -35,7 +35,7 @@ function invoke(overrides: Record<string, string> = {}, args: string[] = []) {
     writeFileSync(path.join(electron, "dist/Electron.app/Contents/MacOS/Electron"), "");
     symlinkSync(electron, path.join(root, "node_modules/electron"));
     copyFileSync(path.resolve("scripts/start-app.mjs"), path.join(root, "scripts/start-app.mjs"));
-    if (args.includes("--open")) {
+    if (args.includes("--open") || args.includes("--verify-app")) {
       mkdirSync(path.join(root, "dist/dev", process.arch === "arm64" ? "mac-arm64" : "mac",
         "RecordStuff.app/Contents/Frameworks/RecordStuff Helper.app/Contents"), { recursive: true });
     }
@@ -225,6 +225,16 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () =
     expect(result.commands.some(call => call.name === "pnpm")).toBe(false);
     expect(result.commands.at(-1)?.name).toBe("open");
     expectNoDelivery(invoke({ WRONG_CERT: "outer" }, ["--open"]));
+  });
+
+  it("verifies a packaged App without private keys, building or launching", () => {
+    const app = `dist/dev/${process.arch === "arm64" ? "mac-arm64" : "mac"}/RecordStuff.app`;
+    const result = invoke({ RECORDSTUFF_SIGN_IDENTITY: hash }, ["--verify-app", app]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.commands.every(call => call.name === "codesign")).toBe(true);
+    expectNoDelivery(invoke({ RECORDSTUFF_SIGN_IDENTITY: hash, WRONG_CERT: "helper" }, ["--verify-app", app]));
+    expectNoDelivery(invoke({ RECORDSTUFF_SIGN_IDENTITY: hash, FAIL_VERIFY: "1" }, ["--verify-app", app]));
+    expectNoDelivery(invoke({}, ["--verify-app", app]));
   });
 
   it("rejects unsupported arguments without side effects", () => {

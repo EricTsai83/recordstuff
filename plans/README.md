@@ -10,7 +10,7 @@ Updated: 2026-09-15. v0.1.0 is public; installed-candidate and API-download chec
 | --- | --- | --- | --- |
 | Next | [013 Installation experience](013-macos-installation-experience.md) | Planned | DMG without help documents; online guides; manual update/removal and data retention instructions |
 | With next release | [014 Finder notification focus](014-finder-notification-focus.md) | Planned | Reproduce and fix explicit-click foreground behavior; verify native focus |
-| When releases repeat | [011 Release automation](011-github-release-automation.md) | Deferred; optional | Reproducible candidates and explicit publication |
+| In progress | [011 Release automation](011-github-release-automation.md) | Workflow implemented; delivery acceptance pending | Reproducible candidates and explicit promotion |
 | Ready for implementation | [012 Official website](012-download-website.md) | Planned | Bilingual product/help website with direct DMG downloads and version/checksum details |
 | When update convenience is prioritized | [015 App update assessment](015-app-update-assessment.md) | Deferred decision only | Compare manual, user-triggered check and automatic update; establish self-signing feasibility |
 

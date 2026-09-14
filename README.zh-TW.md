@@ -84,3 +84,5 @@ src/main 是生命週期、錄製狀態機、寫檔、權限與原生 UI；rende
 本專案採用 [MIT License](LICENSE)。
 
 音質測試背後的設計與原理：[教學文件](docs/zh-TW/system-design/audio-quality.md)。
+
+發布維護者：見 [GitHub 發布自動化](docs/zh-TW/system-design/releases.md)，以 Actions 建立 draft，人工驗收後提升相同產物。

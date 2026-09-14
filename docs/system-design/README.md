@@ -12,6 +12,7 @@ Updated: 2026-09-15. These documents describe the current implementation and rep
 | [Recording pipeline](recording.md) | Start, capture, encoding, chunks, stop, failure, and file durability |
 | [Desktop features](desktop.md) | Tray, notifications, permissions, settings, and logging |
 | [Function reference](functions.md) | Named functions and methods, contracts, side effects, and collaborators |
+| [GitHub release automation](releases.md) | Candidates, signing secrets, acceptance, promotion and failure handling |
 | [macOS signing identities and self-signing](signing.md) | Identity design, certificate creation/backup, local signing, and planned CI provisioning |
 | [Build, packaging, and verification](tooling.md) | Developer workflows, signing, measurement tools, and delivery |
 | [Audio quality testing](audio-quality.md) | Why each audio metric matters, fixture design, frequency fitting, failure interpretation, and evidence |

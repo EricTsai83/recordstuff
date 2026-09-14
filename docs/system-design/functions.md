@@ -301,3 +301,7 @@ The [design guide](audio-quality.md) explains the mathematics, gates, and limita
 ## Signing identity creation
 
 [create-signing-identity.mts](../../scripts/create-signing-identity.mts) separates archive generation from Keychain provisioning. `createIdentity(name, output, password, days)` validates inputs and destination, exclusively creates a private directory, generates and checks a self-signed code-signing identity, exports encrypted PKCS#12, and returns public metadata. It removes intermediate files on success and the new directory on failure. `openssl(args, password)` passes the password through a child environment and suppresses sensitive diagnostics. `main()` parses CLI options, preserves existing matching Keychain certificates, and requires explicit creation inputs. No Keychain mutation occurs.
+
+## Release verification tools
+
+[release.mts](../../scripts/release.mts) defines release gates in `validateTag`, `validateDigest`, `assertUnreleased`, and `assertPromotion`. `verifyDmg` mounts read-only and checks packaging/signatures; `verifyCandidate` checks final checksums/metadata. `context` resolves source/version/repository and `notes` produces English notes. CLI `main` dispatches preflight, candidate, verify, draft and promote; only the last two write to GitHub, and only promote publishes. `start-app.mjs --verify-app` reuses `verifyBundle` without Keychain private keys.

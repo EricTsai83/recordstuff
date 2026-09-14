@@ -2,7 +2,7 @@
 
 [English](signing.md) | [繁體中文](../zh-TW/system-design/signing.md)
 
-Updated: 2026-09-15. This document covers the implemented local signing contract, developer operations, and the CI identity provisioning still pending in 011. Writing this document does not export keys, configure secrets, or establish CI verification.
+Updated: 2026-09-15. This document covers the implemented local signing contract, developer operations, and CI identity provisioning from 011. Implementation and live verification status are tracked in [release automation](releases.md).
 
 ## Purpose and terminology
 
@@ -42,7 +42,7 @@ Signing tools use the private key to produce a digital signature over signing da
 | --- | --- | --- |
 | Generate a private key and self-signed certificate | Yes, using certificate tools/scripts | `pnpm signing:create` generates an encrypted identity archive; Keychain import/trust remains separate |
 | Sign each build using the existing identity | Yes | Implemented in `pnpm start:app` and `pnpm dist:mac`; initial private-key access may prompt |
-| Import, unlock, and use the identity in CI | Yes | Implementation and noninteractive verification pending in 011 |
+| Import, unlock, and use the identity in CI | Yes | Implemented in the release workflow; see release automation evidence |
 | Submit to Apple notarization and check results | Yes | Outside current implementation scope |
 
 Automated identity creation should be one-time initialization or explicit migration, never a per-release step. A fresh temporary keychain on each CI run is appropriate as long as it receives the same certificate and private key. Developer ID requires Apple's issuance eligibility and process; a locally generated self-signed certificate cannot substitute for it.
@@ -169,9 +169,9 @@ shasum -a 256 "dist/local/RecordStuff-0.1.0-arm64-selfsigned.dmg"
 
 These do not replace the script's complete identity checks, mounted DMG content checks, or manual recording/playback acceptance. See [v0.1.0 evidence](../verification/releases/0.1.0.md).
 
-## Reusing the identity in CI (pending implementation)
+## Reusing the identity in CI
 
-“Resolve signing first” in [011](../../plans/011-github-release-automation.md) means securely provisioning the existing certificate and private key on a clean runner. It does not require a new Apple certificate. The following is the target configuration, not an implemented or verified workflow:
+“Resolve signing first” in [011](../../plans/011-github-release-automation.md) means securely provisioning the existing certificate and private key on a clean runner. It does not require a new Apple certificate. The following configuration is implemented; see [release automation](releases.md) for live CI and manual acceptance status:
 
 | Configuration | Suggested location | Purpose |
 | --- | --- | --- |

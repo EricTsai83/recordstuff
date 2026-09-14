@@ -2,7 +2,7 @@
 
 [English](011-github-release-automation.md) | [繁體中文](011-github-release-automation.zh-TW.md)
 
-狀態：後續選項；010 完成且重複發布值得自動化時啟動。更新：2026-09-15。
+狀態：執行中；workflow 已實作，待真實 CI 與候選包人工驗收。更新：2026-09-15。
 
 簽署原理與配置契約見 [macOS 簽署身分與自簽設計](../docs/zh-TW/system-design/signing.md)；CI 配置仍屬本計畫待辦。
 
