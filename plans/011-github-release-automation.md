@@ -2,7 +2,7 @@
 
 [English](011-github-release-automation.md) | [繁體中文](011-github-release-automation.zh-TW.md)
 
-Status: in progress; workflow implemented, live CI and manual candidate acceptance pending. Updated: 2026-09-15.
+Status: CI and draft verified; manual candidate acceptance, public promotion and browser download checks pending. Updated: 2026-09-15.
 
 Signing background and provisioning contract: [macOS signing identities and self-signing](../docs/system-design/signing.md). CI provisioning remains pending under this plan.
 
@@ -30,3 +30,5 @@ An explicit version tag or manual GitHub Actions run produces a traceable macOS 
 No Windows/Linux/Intel Mac expansion, Apple certification/notarization, Nightly channel, npm distribution, or automatic app updater is included. T3 Code’s [release orchestration](https://github.com/pingdotgg/t3code/blob/main/.github/workflows/release.yml) and [desktop build](https://github.com/pingdotgg/t3code/blob/main/.github/workflows/release-desktop.yml) illustrate build jobs followed by asset aggregation and GitHub publication; its full multi-platform pipeline is not required here. Recheck upstream implementation when executing this plan.
 
 App-side update delivery is separate; see [015](015-app-update-assessment.md). Use the latest packaging contract from [013](013-macos-installation-experience.md) when it has shipped.
+
+Implementation/operation: [release automation](../docs/system-design/releases.md). Live success/failure evidence: [0.1.1](../docs/verification/releases/0.1.1.md). Retain this plan until final manual acceptance and delivery verification.

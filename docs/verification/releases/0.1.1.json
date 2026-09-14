@@ -1,0 +1,14 @@
+{
+  "tag": "v0.1.1",
+  "version": "0.1.1",
+  "sourceCommit": "e98d2feb04b7975a90cf25193f108fbefdf04f1e",
+  "repository": "EricTsai83/recordstuff",
+  "platform": "darwin-arm64",
+  "file": "RecordStuff-0.1.1-arm64-selfsigned.dmg",
+  "size": 127310755,
+  "sha256": "be8119c6405c21a5b19f7cab968af5e488435412c8bbc1fc0c663550d40bb512",
+  "signingCertificateSHA1": "01B373511530BBF287CA35E54C10A5F017AAD637",
+  "appAsarSHA256": "4eec2a330d0ed9d22a08e88b30d613e7dc491f4d35e30e393078642d7ea43aa8",
+  "node": "24.21.0",
+  "pnpm": "10.33.4"
+}

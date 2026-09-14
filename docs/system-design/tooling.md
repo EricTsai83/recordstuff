@@ -115,3 +115,5 @@ Exit status is 0 for pass, 1 for measured failure, 2 for invalid measurement or 
 `pnpm test` runs clean/degraded PCM and repeat-summary tests. With FFmpeg/ffprobe installed it also tests real AAC, low-pass, mono/44.1 kHz, and CLI contracts. The integration case is explicitly skipped without those tools. These controls validate the detector; real `record` runs validate the local app/OS path. Keep historical [evidence](../verification/README.md) unchanged when fixture or analyzer versions change.
 
 Release v0.1.0 completed browser-download/install verification on the available Mac; Gatekeeper required per-app Open Anyway approval. See [release evidence](../verification/releases/0.1.0.md). Self-signing does not remove that first-launch barrier. Developer ID signing and Apple notarization are the separate distribution route if the scope is reconsidered.
+
+After installing dependencies in a clean environment, run `node node_modules/electron/install.js` to install Electron 44 runtime (the package has no postinstall). CI includes this step; see [release automation](releases.md).

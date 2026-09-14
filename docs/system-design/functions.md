@@ -305,3 +305,5 @@ The [design guide](audio-quality.md) explains the mathematics, gates, and limita
 ## Release verification tools
 
 [release.mts](../../scripts/release.mts) defines release gates in `validateTag`, `validateDigest`, `assertUnreleased`, and `assertPromotion`. `verifyDmg` mounts read-only and checks packaging/signatures; `verifyCandidate` checks final checksums/metadata. `context` resolves source/version/repository and `notes` produces English notes. CLI `main` dispatches preflight, candidate, verify, draft and promote; only the last two write to GitHub, and only promote publishes. `start-app.mjs --verify-app` reuses `verifyBundle` without Keychain private keys.
+
+`cleanup-release-keychain.py` only runs on disposable GitHub-hosted runners. It removes per-run trust and keychain state with a 15-second bound per command, kills timed-out process groups with a warning, and removes temporary certificate/archive files.

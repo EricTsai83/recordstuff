@@ -2,7 +2,7 @@
 
 [English](releases.md) | [繁體中文](../zh-TW/system-design/releases.md)
 
-Updated: 2026-09-15. 011 is in progress. The workflow and verification tools are implemented; see [0.1.1](../verification/releases/0.1.1.md) for live evidence. Manual installation acceptance is not yet claimed.
+Updated: 2026-09-15. CI and draft creation are verified. 011 remains in progress until manual acceptance and public delivery; see [0.1.1](../verification/releases/0.1.1.md) for live evidence. Manual installation acceptance is not yet claimed.
 
 ## Release contract
 
@@ -49,3 +49,5 @@ Wrong/reused versions, missing identities and signature/checksum/metadata mismat
 Apple notarization, automatic App updates, Windows/Intel delivery and warning-free installation remain outside scope. See [signing design](signing.md) for T3 Code comparisons.
 
 After frozen installation, CI explicitly runs Electron 44 install.js because the package has no postinstall. cleanup-release-keychain.py bounds each OS cleanup operation to 15 seconds, warns on failure, and removes temporary files. Disposable runner teardown removes any remaining OS state.
+
+For local verify/draft/promote, check out the source commit recorded in release.json. CI promotion checks out the candidate tag automatically. Later documentation commits on main do not change candidate bytes.

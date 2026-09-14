@@ -2,7 +2,7 @@
 
 [English](011-github-release-automation.md) | [繁體中文](011-github-release-automation.zh-TW.md)
 
-狀態：執行中；workflow 已實作，待真實 CI 與候選包人工驗收。更新：2026-09-15。
+狀態：CI 與 draft 已驗；待候選包人工驗收、公開提升與瀏覽器下載核對。更新：2026-09-15。
 
 簽署原理與配置契約見 [macOS 簽署身分與自簽設計](../docs/zh-TW/system-design/signing.md)；CI 配置仍屬本計畫待辦。
 
@@ -30,3 +30,5 @@
 不包含 Windows／Linux／Intel Mac 擴充、Apple 認證／公證、Nightly、npm 發行或 App 自動更新。參考 T3 Code 的 [發布流程](https://github.com/pingdotgg/t3code/blob/main/.github/workflows/release.yml) 與 [桌面打包](https://github.com/pingdotgg/t3code/blob/main/.github/workflows/release-desktop.yml)：建置後彙整資產並發布 GitHub；不需搬入它整套跨平台流程。執行時重新確認上游實作。
 
 App 端更新機制另見 [015](015-app-update-assessment.zh-TW.md)；[013](013-macos-installation-experience.zh-TW.md) 交付後沿用其最新封裝規格。
+
+實作與操作：[發布自動化](../docs/zh-TW/system-design/releases.md)。實際成功／失敗證據：[0.1.1](../docs/zh-TW/verification/releases/0.1.1.md)。目前未完成最後人工驗收，保留此計畫。

@@ -2,7 +2,7 @@
 
 [English](../../system-design/releases.md) | [繁體中文](releases.md)
 
-更新：2026-09-15。011 實作中；workflow 與驗證工具已建立，真實執行證據見 [0.1.1](../verification/releases/0.1.1.md)。目前不宣告人工安裝驗收通過。
+更新：2026-09-15。CI 與 draft 已驗；011 待人工驗收及公開交付，真實執行證據見 [0.1.1](../verification/releases/0.1.1.md)。目前不宣告人工安裝驗收通過。
 
 ## 發布契約
 
@@ -49,3 +49,5 @@ gh workflow run release.yml --ref main -f operation=promote -f tag=v0.1.1 -f sha
 本流程沒有 Apple 公證、App 自動更新、Windows／Intel 發行或無提示安裝。T3 Code 的參考與差異見 [簽署設計](signing.md)。
 
 CI 在 frozen install 後明確執行 Electron 44 的 `install.js`，因套件沒有 postinstall。`cleanup-release-keychain.py` 對系統清理設定每項 15 秒上限；逾時會警告並清除暫存檔，殘餘系統狀態由 disposable runner 銷毀清除。
+
+本機執行 verify／draft／promote 時，工作樹必須 checkout 到 release.json 的 source commit；CI 已自動 checkout 候選 tag。main 上後續文件提交不會改變已建候選產物。
