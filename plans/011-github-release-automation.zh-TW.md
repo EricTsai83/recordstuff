@@ -1,6 +1,6 @@
 # 011 GitHub 發布自動化
 
-[English](../../../plans/011-github-release-automation.md) | [繁體中文](011-github-release-automation.md)
+[English](011-github-release-automation.md) | [繁體中文](011-github-release-automation.zh-TW.md)
 
 狀態：後續選項；010 完成且重複發布值得自動化時啟動。更新：2026-09-15。
 

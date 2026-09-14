@@ -1,6 +1,6 @@
 # 012 官網與下載入口
 
-[English](../../../plans/012-download-website.md) | [繁體中文](012-download-website.md)
+[English](012-download-website.md) | [繁體中文](012-download-website.zh-TW.md)
 
 狀態：後續選項；010 完成且需要獨立產品入口時啟動。更新：2026-09-15。
 

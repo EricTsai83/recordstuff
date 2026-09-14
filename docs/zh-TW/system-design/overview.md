@@ -42,4 +42,4 @@ Electron 是可用於 Windows、Linux、macOS 的框架；RecordStuff 因設備�
 3. 韌性：資源有釋放路徑，故障時盡力保留媒體並留下診斷。
 4. 效能：用量測決定是否需要優化，不把編碼要求值當成成品保證。
 
-目前成品與限制見 [本機驗證紀錄](../verification/README.md)；交付剩餘工作見 [剩餘計畫](../plans/README.md)。
+目前成品與限制見 [本機驗證紀錄](../verification/README.md)；交付剩餘工作見 [剩餘計畫](../../../plans/README.zh-TW.md)。

@@ -8,7 +8,7 @@
 
 回報 bug 時，請提供重現步驟、預期與實際行為、App 版本或 commit，以及作業系統版本與硬體。錄製問題也請附上螢幕解析度、錄影品質設定及音訊輸出裝置。必要時附上相關 log 或簡短範例，並先移除私人資訊。在 macOS 上可用 `pnpm log` 追蹤 App log。
 
-新增功能或大幅調整設計前，可以先開 issue 說明要解決的問題及預期行為，方便在實作前討論範圍。[系統設計](system-design/README.md)與[待辦計畫](plans/README.md)可用來了解現有行為與進行中的工作。
+新增功能或大幅調整設計前，可以先開 issue 說明要解決的問題及預期行為，方便在實作前討論範圍。[系統設計](system-design/README.md)與[待辦計畫](../../plans/README.zh-TW.md)可用來了解現有行為與進行中的工作。
 
 ## 建立開發環境
 
@@ -77,3 +77,5 @@ pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 - 若有助於呈現介面變更，附上截圖或簡短錄影。
 
 將無關的整理拆成獨立修改，方便 reviewer 評估這次貢獻。若依 review 再次修改，請重跑受影響的檢查，並更新 PR 描述中的最終行為與驗證結果。
+
+所有執行計畫集中放在根目錄 `plans/`：英文為 `<name>.md`，繁中為 `<name>.zh-TW.md`；索引分別為 `plans/README.md` 與 `plans/README.zh-TW.md`。其他翻譯文件仍放在 `docs/zh-TW/`。

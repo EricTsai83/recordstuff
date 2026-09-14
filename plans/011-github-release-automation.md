@@ -1,6 +1,6 @@
 # 011 GitHub Release Automation
 
-[English](011-github-release-automation.md) | [繁體中文](../docs/zh-TW/plans/011-github-release-automation.md)
+[English](011-github-release-automation.md) | [繁體中文](011-github-release-automation.zh-TW.md)
 
 Status: Deferred; activate after 010 when repeated releases justify automation. Updated: 2026-09-15.
 

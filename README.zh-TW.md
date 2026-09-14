@@ -43,7 +43,7 @@ SHA-256：`11449bc59ed2dd5f5a361511995937771394715b2d7b9146d83b58e6c31dc34d`。
 
 - [System design](docs/zh-TW/system-design/README.md)：產品總覽、架構、錄製流程、桌面功能、函式細節、工具與決策。
 - [驗證紀錄](docs/zh-TW/verification/README.md)：已取得證據與限制。
-- [剩餘計畫](docs/zh-TW/plans/README.md)：只保留 macOS 下載交付。
+- [剩餘計畫](plans/README.zh-TW.md)：只保留 macOS 下載交付。
 - [貢獻指南](docs/zh-TW/CONTRIBUTING.md)：開發環境、問題回報、測試與 PR 提交流程。
 
 ## 開發

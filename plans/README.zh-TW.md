@@ -1,15 +1,15 @@
 # 剩餘工作
 
-[English](../../../plans/README.md) | [繁體中文](README.md)
+[English](README.md) | [繁體中文](README.zh-TW.md)
 
-更新：2026-09-15。已完成計畫已由 [system design](../system-design/README.md) 與 [驗證紀錄](../verification/README.md) 取代。Windows 驗收及 Apple 認證發行依使用者決定取消；舊 roadmap 不再作為排程，產品邊界與演進條件保留於設計決策。
+更新：2026-09-15。已完成計畫已由 [system design](../docs/zh-TW/system-design/README.md) 與 [驗證紀錄](../docs/zh-TW/verification/README.md) 取代。Windows 驗收及 Apple 認證發行依使用者決定取消；舊 roadmap 不再作為排程，產品邊界與演進條件保留於設計決策。
 
 | 順序 | 計畫 | 狀態 | 交付目標 |
 | --- | --- | --- | --- |
-| 010 之後 | [011 GitHub 發布自動化](011-github-release-automation.md) | 後續選項 | 可重複產生候選包並明確提升發布，保留固定簽署身分與驗證 |
-| 010 之後 | [012 官網與下載入口](012-download-website.md) | 後續選項 | 雙語產品頁連到已驗 GitHub 下載 |
+| 010 之後 | [011 GitHub 發布自動化](011-github-release-automation.zh-TW.md) | 後續選項 | 可重複產生候選包並明確提升發布，保留固定簽署身分與驗證 |
+| 010 之後 | [012 官網與下載入口](012-download-website.zh-TW.md) | 後續選項 | 雙語產品頁連到已驗 GitHub 下載 |
 
-目前進度：v0.1.0 已公開；候選版檢查通過但有 Finder 未置前限制。瀏覽器下載後的安裝已通過（首次需「仍要打開」）；Plan 010 已完成，詳見[本版證據](../verification/releases/0.1.0.md)。
+目前進度：v0.1.0 已公開；候選版檢查通過但有 Finder 未置前限制。瀏覽器下載後的安裝已通過（首次需「仍要打開」）；Plan 010 已完成，詳見[本版證據](../docs/zh-TW/verification/releases/0.1.0.md)。
 
 ## 排序理由
 

@@ -1,6 +1,6 @@
 # Remaining Work
 
-[English](README.md) | [繁體中文](../docs/zh-TW/plans/README.md)
+[English](README.md) | [繁體中文](README.zh-TW.md)
 
 Updated: 2026-09-15. Completed plans have been replaced by the [system design](../docs/system-design/README.md) and [verification record](../docs/verification/README.md). Windows verification and Apple-certified distribution were canceled by the user. The speculative roadmap was removed from execution planning; current boundaries and evolution triggers remain in the design decisions.
 

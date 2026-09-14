@@ -46,6 +46,9 @@ Keep a change focused on the problem it addresses and follow the surrounding cod
 
 App messages live in `src/shared/i18n.ts`. When adding or changing a message, update the English and Traditional Chinese entries and keep named placeholders consistent. When changing documented behavior or commands, update the relevant documentation and its existing translation. Keep document links valid relative to each file.
 
+
+Keep all execution plans in the root `plans/` directory: `<name>.md` for English and `<name>.zh-TW.md` for Traditional Chinese. Their indexes are `plans/README.md` and `plans/README.zh-TW.md`; other translated documentation remains under `docs/zh-TW/`.
+
 ## Verify your change
 
 For application changes, run:

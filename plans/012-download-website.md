@@ -1,6 +1,6 @@
 # 012 Product and Download Website
 
-[English](012-download-website.md) | [繁體中文](../docs/zh-TW/plans/012-download-website.md)
+[English](012-download-website.md) | [繁體中文](012-download-website.zh-TW.md)
 
 Status: Deferred; activate after 010 if a separate product entry point is desired. Updated: 2026-09-15.
 
