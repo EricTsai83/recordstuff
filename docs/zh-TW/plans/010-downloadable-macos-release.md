@@ -4,6 +4,8 @@
 
 狀態：執行中。更新：2026-09-15。
 
+執行偏好：使用者要求 GitHub Release 說明統一英文；DMG 安裝指南及專案文件仍保留雙語。
+
 ## 執行進度 — 2026-09-15
 
 已由乾淨來源 2746d1b 發布 [v0.1.0](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.0)，255 個測試、簽章／內容及已安裝候選版錄影／語言檢查通過。詳見[產物與驗證證據](../verification/releases/0.1.0.md)。通知可定位檔案，但 Finder 未置前，已揭露於發行說明。瀏覽器下載遇到 ERR_BLOCKED_BY_CLIENT，實際瀏覽器下載後的雜湊／安裝／錄影仍待驗證；完成前保留本計畫。

@@ -4,6 +4,8 @@
 
 Status: In progress. Updated: 2026-09-15.
 
+Execution preference: public GitHub Release notes are English-only by user request; bundled installation guides and repository documentation remain bilingual.
+
 ## Execution status — 2026-09-15
 
 Published [v0.1.0](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.0) from clean source 2746d1b after 255 tests, signing/content checks and installed-candidate recording/language checks. See [artifact and verification evidence](../docs/verification/releases/0.1.0.md). Finder selects the notified file but did not come forward; disclosed in release notes. Browser asset navigation hit ERR_BLOCKED_BY_CLIENT; actual browser-download hash/install/recording remains open. Keep this plan until that path is verified.

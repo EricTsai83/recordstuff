@@ -12,7 +12,7 @@ Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前
 
 ## 下載與安裝
 
-下載 **[RecordStuff 0.1.0：macOS Apple silicon（arm64）](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.0/RecordStuff-0.1.0-arm64-selfsigned.dmg)**（126,066,842 bytes）。[雙語發行說明](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.0) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.0/SHA256SUMS) · [最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)。
+下載 **[RecordStuff 0.1.0：macOS Apple silicon（arm64）](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.0/RecordStuff-0.1.0-arm64-selfsigned.dmg)**（126,066,842 bytes）。[英文發行說明](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.0) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.0/SHA256SUMS) · [最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)。
 
 SHA-256：`11449bc59ed2dd5f5a361511995937771394715b2d7b9146d83b58e6c31dc34d`。
 
