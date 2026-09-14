@@ -12,9 +12,13 @@ Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前
 
 ## 下載與安裝
 
-**目前尚未發布公開下載。** 已有本機打包與安裝驗證過的自簽 DMG；[下載版計畫](docs/zh-TW/plans/010-downloadable-macos-release.md) 追蹤新版產物、固定下載入口、checksum 與實際下載檔安裝流程。
+下載 **[RecordStuff 0.1.0：macOS Apple silicon（arm64）](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.0/RecordStuff-0.1.0-arm64-selfsigned.dmg)**（126,066,842 bytes）。[雙語發行說明](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.0) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.0/SHA256SUMS) · [最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)。
 
-發布後下載 arm64 DMG，拖曳到 Applications，依照 [繁體中文安裝說明](resources/INSTALL.zh-TW.md) 操作。收件者不需要 Node、pnpm、FFmpeg 或憑證。未公證 App 首次開啟可能需要在「系統設定 → 隱私權與安全性」選「仍要打開」；不保證免提示，參見 [Apple 說明](https://support.apple.com/102445)。
+SHA-256：`11449bc59ed2dd5f5a361511995937771394715b2d7b9146d83b58e6c31dc34d`。
+
+已安裝候選版通過錄影／播放與語言檢查，瀏覽器下載後的安裝仍在驗證；詳見[本版驗證紀錄](docs/zh-TW/verification/releases/0.1.0.md)。點擊儲存通知可定位 Finder 檔案，但 Finder 可能沒有跳到最前景。
+
+下載 arm64 DMG，拖曳到 Applications，依照 [繁體中文安裝說明](resources/INSTALL.zh-TW.md) 操作。收件者不需要 Node、pnpm、FFmpeg 或憑證。未公證 App 首次開啟可能需要在「系統設定 → 隱私權與安全性」選「仍要打開」；不保證免提示，參見 [Apple 說明](https://support.apple.com/102445)。
 
 ## 使用方式
 

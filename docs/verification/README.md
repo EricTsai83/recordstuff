@@ -86,3 +86,7 @@ The repeated final-code batch was **2 pass, 0 fail, 1 invalid**, with unchanged 
 Environment evidence: [before](measurements/2026-09-14-audio-processing-off/environment-before.json), [after](measurements/2026-09-14-audio-processing-off/environment-after.json). The code warnings report explicitly enabled processing despite false requests; missing settings remain unknown. This experiment identifies the combined-constraint correction on this local path, not each effect's individual contribution. Previously saved files remain unchanged.
 
 Validation of the correction: `pnpm check` passed 15 files/255 tests, typecheck, and build. `pnpm start:app` built, self-signed, verified nine bundle identities and opened `dist/dev/mac-arm64/recordstuff.app`. This is the local rebuilt app for listening; it does not replace the copy in `/Applications`. Local document targets and `git diff --check` passed.
+
+## macOS 0.1.0 release — 2026-09-15
+
+[Current artifact and download-path evidence](releases/0.1.0.md). The public release is available; installed-candidate checks passed with a Finder foreground limitation. Browser-download installation remains pending. Historical hashes above are unchanged.

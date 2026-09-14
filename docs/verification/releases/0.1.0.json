@@ -1,0 +1,13 @@
+{
+  "version": "0.1.0",
+  "sourceCommit": "2746d1bbb37df0b32fe146d2499f9266e675ca5c",
+  "dirtyTreeAtBuild": false,
+  "platform": "darwin-arm64",
+  "node": "24.21.0",
+  "pnpm": "10.33.4",
+  "file": "RecordStuff-0.1.0-arm64-selfsigned.dmg",
+  "size": 126066842,
+  "sha256": "11449bc59ed2dd5f5a361511995937771394715b2d7b9146d83b58e6c31dc34d",
+  "signingCertificateSHA1": "01B373511530BBF287CA35E54C10A5F017AAD637",
+  "checks": "pnpm check: 15 test files, 255 tests; typecheck/build pass; 9 bundle identities verified"
+}

@@ -84,3 +84,7 @@
 環境證據：[前](../../verification/measurements/2026-09-14-audio-processing-off/environment-before.json)／[後](../../verification/measurements/2026-09-14-audio-processing-off/environment-after.json)。若請求 false 後音軌明確回報效果仍啟用，程式會留下 warning；沒有回報則維持未知。本次實驗定位的是三個設定一起更改對本機路徑的修正效果，不是每個效果各自的貢獻。既有錄音檔未改動。
 
 修正驗證：`pnpm check` 通過 15 個測試檔／255 個測試、型別檢查與建置。`pnpm start:app` 建置、自簽、驗證九個 bundle 身分後，開啟 `dist/dev/mac-arm64/recordstuff.app` 供聽感比較；未取代 `/Applications` 的副本。文件目標與 `git diff --check` 通過。
+
+## macOS 0.1.0 發行 — 2026-09-15
+
+[本版產物及下載路徑證據](releases/0.1.0.md)。已公開發布，安裝候選版檢查通過但有 Finder 未置前限制；瀏覽器下載後安裝仍待驗證。上方歷史雜湊保留原值。

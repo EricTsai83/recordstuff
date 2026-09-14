@@ -4,6 +4,8 @@
 
 Updated: 2026-09-15. Completed plans have been replaced by the [system design](../docs/system-design/README.md) and [verification record](../docs/verification/README.md). Windows verification and Apple-certified distribution were canceled by the user. The speculative roadmap was removed from execution planning; current boundaries and evolution triggers remain in the design decisions.
 
+Current execution: v0.1.0 is public; candidate checks passed with a Finder foreground limitation. Browser-download installation remains pending. See [release evidence](../docs/verification/releases/0.1.0.md).
+
 ## Order and status
 
 | Order | Plan | Status | Completion target |
