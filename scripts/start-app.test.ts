@@ -79,7 +79,7 @@ if (name === 'codesign' && args.includes('-r-')) process.stderr.write(env.WRONG_
     const clock = path.join(dir, "clock.mjs");
     writeFileSync(clock, 'if (process.env.TEST_NOW) Date.now = () => Number(process.env.TEST_NOW);');
     const result = spawnSync(process.execPath, ["--import", clock, path.join(root, "scripts/start-app.mjs"), ...args], {
-      encoding: "utf8",
+      encoding: "utf8", cwd: root,
       env: {
         ...process.env, PATH: bin, CALLS: calls, ROOT: root, TEST_NODE: testNode, TEST_STUB: stub,
         HASH: hash, PUBLIC_CERT: path.join(fixtures, "selected.pem"), OTHER_CERT: path.join(fixtures, "other.pem"),
