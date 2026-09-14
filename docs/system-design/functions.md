@@ -189,7 +189,7 @@ The page's window-message callback checks source/marker/port before creating the
 | qualityWriteFailedNotification / languageWriteFailedNotification | Explain retained quality/language |
 | frameRateDowngradeNotification | Include actual and requested fps |
 | trayHintNotification | Windows first-run tray discovery text |
-| errorNotification | Localize error summary/recovery and preserved-file guidance; technical detail stays in logs |
+| errorNotification(code, partialPath, ctx) | Localize error summary/recovery and preserved-file guidance; technical detail stays in logs |
 
 [main/tray.ts](../../src/main/tray.ts):
 
@@ -199,7 +199,7 @@ The page's window-message callback checks source/marker/port before creating the
 | render / refresh | Remember presentation state and update image/title/tooltip; refresh rereads context |
 | destroy | Destroy native Tray |
 | notifySaved | Current-language saved notice with reveal callback |
-| notifyError | Error notice; partial path takes precedence over recovery actions |
+| notifyError(code, partial) | Error notice; partial path takes precedence over recovery actions |
 | revealFromNotification / reveal | Defer macOS Finder call and record requested/failed |
 | notifyPermission | Current-language guidance with settings/relaunch callback |
 | notifySettingsWriteFailed / notifyQualityWriteFailed / notifyLanguageWriteFailed | Current-language failed-save notices |

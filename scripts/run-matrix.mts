@@ -344,7 +344,7 @@ async function main(): Promise<void> {
       target,
       verified.map((r) => r.result!),
       {
-        title: (r, i) => `${verified[i]?.entry.name ?? ""} (${verified[i]?.entry.seconds ?? 0} s)`,
+        title: (_result, i) => `${verified[i]?.entry.name ?? ""} (${verified[i]?.entry.seconds ?? 0} s)`,
         material: `scripts/test-material.html${openMaterial ? " (Chrome kiosk)" : ""}`,
         runLabel: `pnpm matrix -- ${matrixName}`,
       },

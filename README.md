@@ -59,7 +59,7 @@ pnpm log               # Follow the macOS diagnostic log
 pnpm dist:mac    # Produce the self-signed DMG in dist/local
 ```
 
-The self-signed workflow requires a valid, uniquely named local code-signing identity, default `RecordStuff Dev`; RECORDSTUFF_SIGN_IDENTITY may select its exact name or SHA-1. Quit recordstuff/project Electron before rebuilding. It does not publish or notarize, and recipients do not install the signing certificate. `dist:mac:local` is a compatibility alias for the same workflow; `dist:win` is unverified.
+The self-signed workflow requires a valid, uniquely named local code-signing identity, default `RecordStuff Dev`; RECORDSTUFF_SIGN_IDENTITY may select its exact name or SHA-1. Quit recordstuff/project Electron before rebuilding. It does not publish or notarize, and recipients do not install the signing certificate. `dist:win` is unverified.
 
 Use a compatible Node version (package requirement ≥22.12); the TypeScript measurement tools are run with Node 24. Install FFmpeg only for developer verification:
 

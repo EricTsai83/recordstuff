@@ -20,6 +20,15 @@
 
 main、preload、renderer 分別建置，打包只納入 out、package metadata 與指定 resources。測試、量測與文件不屬 runtime；App 不呼叫 FFmpeg。
 
+## 資源與產生的輸出
+
+- `build/` 是納入版本控制的打包資源：`icon.png` 和 macOS 原生 `icon.icns`。打包設定以此作為 `buildResources`，並明確指定 macOS 使用 ICNS。請保留；修改圖案後以 `pnpm icons` 重新產生。
+- `resources/` 包含執行時使用的選單列圖示、macOS entitlements 與安裝說明。
+- `out/` 由 `pnpm build` 產生；`dist/` 放產生的 App 與安裝檔。兩者都由 Git 忽略，可以重新產生。清理 `dist/` 前應保留仍需要的安裝檔；`pnpm open:app` 需要已有的 App bundle。
+- `node_modules/` 放已安裝的開發依賴，可透過 `pnpm install` 還原。
+
+品質選項與錯誤碼各自只維護一份常數清單，TypeScript 型別由清單推導，選單也共用品質清單。型別檢查會拒絕未使用的區域變數與參數。設定檔 v1 遷移仍保留，以延續既有的輸出資料夾偏好。
+
 ## 簽章與打包
 
 [start-app.mjs](../../../scripts/start-app.mjs) 預設精確挑選 RecordStuff Dev，可用 RECORDSTUFF_SIGN_IDENTITY 的完整名稱或 SHA-1 指定。缺少、重名、過期、非自簽、成品身分不同均停止。憑證用 SHA-1 辨識，下載檔完整性用 SHA-256。
@@ -28,7 +37,7 @@ main、preload、renderer 分別建置，打包只納入 out、package metadata 
 
 驗證深度 codesign、巢狀 app／framework 公開憑證、identifier、runtime 與最外層 designated requirement；不追 symlink。先驗過 App 才封 DMG。
 
-[local 設定](../../../electron-builder.local.yml) 繼承 [共用設定](../../../electron-builder.yml)，停用公證／timestamp／DMG 簽章與更新 metadata，附兩種安裝說明。檔名為 RecordStuff-版本-架構-selfsigned.dmg，arm64 與 x64 非 universal；目前只有 arm64 驗過。pnpm dist:mac 是主要發行指令，dist:mac:local 保留為相容別名；共用設定停用公證。dist:win 尚未驗證，不代表已支援發行。
+[local 設定](../../../electron-builder.local.yml) 繼承 [共用設定](../../../electron-builder.yml)，停用公證／timestamp／DMG 簽章與更新 metadata，附兩種安裝說明。檔名為 RecordStuff-版本-架構-selfsigned.dmg，arm64 與 x64 非 universal；目前只有 arm64 驗過。pnpm dist:mac 是發行指令（取代舊的 dist:mac:local 別名）；共用設定停用公證。dist:win 尚未驗證，不代表已支援發行。
 
 收件者可能需要單一 App 的「仍要打開」，受管理 Mac 也可能不允許；依 [安裝指南](../../../resources/INSTALL.zh-TW.md) 與 [Apple](https://support.apple.com/102445) 正常操作，不修改全域安全設定。
 

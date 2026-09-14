@@ -108,7 +108,7 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
 
   it("logs and gives up when notifications are not supported at all", () => {
     const { tray, logs } = setup(false);
-    tray.notifyError("no_audio_track", "", undefined);
+    tray.notifyError("no_audio_track", undefined);
     expect(Fake.instances).toHaveLength(0);
     expect(logs.at(-1)).toContain("notification: not supported");
   });
@@ -153,9 +153,8 @@ describe("notification language follows current settings", () => {
     tray.refresh();
     tray.notifySaved("/tmp/demo.mp4");
     expect(Fake.instances.at(-1)?.options.body).toBe("已儲存 demo.mp4");
-    tray.notifyError("permission_denied", "technical detail", undefined);
+    tray.notifyError("permission_denied", undefined);
     expect(Fake.instances.at(-1)?.options.body).toContain("沒有螢幕錄製權限");
-    expect(Fake.instances.at(-1)?.options.body).not.toContain("technical detail");
     Fake.instances.at(-1)?.listeners.get("click")?.();
     expect(action).toHaveBeenCalledWith("openPermissionSettings");
     tray.notifyLanguageWriteFailed();

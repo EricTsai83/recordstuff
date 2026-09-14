@@ -60,7 +60,7 @@ pnpm log               # 追蹤 macOS log
 pnpm dist:mac    # 自簽 DMG → dist/local
 ```
 
-開發者需有唯一名稱的有效自簽憑證，預設 `RecordStuff Dev`；可用 RECORDSTUFF_SIGN_IDENTITY 精確指定名稱或 SHA-1。重建前先結束 App。這條流程不公證、不發布；收件者不安裝憑證。dist:mac:local 保留為相同流程的相容別名；dist:win 尚未驗證。
+開發者需有唯一名稱的有效自簽憑證，預設 `RecordStuff Dev`；可用 RECORDSTUFF_SIGN_IDENTITY 精確指定名稱或 SHA-1。重建前先結束 App。這條流程不公證、不發布；收件者不安裝憑證。dist:win 尚未驗證。
 
 專案 Node 要求為 ≥22.12，TypeScript 量測工具使用 Node 24。FFmpeg 只供開發驗收：
 

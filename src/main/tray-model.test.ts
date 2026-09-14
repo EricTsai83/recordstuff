@@ -255,15 +255,14 @@ describe("notification text", () => {
   });
 
   it("errors with a partial file mention it; without one say nothing was recorded", () => {
-    const kept = errorNotification("capture_host_crashed", "", "/x/2026-09-11 14-30-00.recording.mp4", mac);
+    const kept = errorNotification("capture_host_crashed", "/x/2026-09-11 14-30-00.recording.mp4", mac);
     expect(kept.body).toContain("2026-09-11 14-30-00.recording.mp4");
-    const none = errorNotification("capture_start_failed", "boom", undefined, mac);
-    expect(none.body).not.toContain("boom");
+    const none = errorNotification("capture_start_failed", undefined, mac);
     expect(none.body).toContain("沒有錄到任何內容");
   });
 
   it("output_open_failed names the folder and the menu action", () => {
-    const text = errorNotification("output_open_failed", "", undefined, mac);
+    const text = errorNotification("output_open_failed", undefined, mac);
     expect(text.body).toBe("儲存位置無法寫入：~/Movies/RecordStuff。右鍵選單可以更改儲存位置");
   });
 });

@@ -3,10 +3,9 @@
  * (docs/system-design/tooling.md): parse the app's `capture:`
  * log lines, turn ffprobe / ffmpeg output into numbers, judge them against
  * the threshold table and format the result. No I/O here; everything that
- * runs a process lives in `media-tools.ts`. Development only, never shipped.
+ * runs a process lives in `media-tools.mts`. Development only, never shipped.
  */
 import {
-  RESOLUTION_CAPS,
   fitWithinCap,
   isQualitySettings,
   type Dimensions,
@@ -729,5 +728,3 @@ export function formatMarkdown(
   lines.push("", `Result: ${VERDICT_MARK[overallVerdict(checks)]}`, "", "Subjective comparison (manual):", "", "- Text sharpness:", "- Scrolling and motion:", "- Color edges (thin red/blue lines):", "- Volume/distortion/channel separation:", "");
   return lines.join("\n");
 }
-
-export { RESOLUTION_CAPS };

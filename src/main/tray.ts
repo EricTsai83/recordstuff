@@ -73,9 +73,9 @@ export class AppTray {
     this.show(savedNotification(savedPath, this.options.context().language), () => this.revealFromNotification(savedPath));
   }
 
-  notifyError(code: ErrorCode, detail: string, partialPath: string | undefined): void {
+  notifyError(code: ErrorCode, partialPath: string | undefined): void {
     const ctx = this.options.context();
-    this.show(errorNotification(code, detail, partialPath, ctx), () => {
+    this.show(errorNotification(code, partialPath, ctx), () => {
       if (partialPath) this.revealFromNotification(partialPath);
       else if (code === "output_open_failed") this.options.onAction("changeOutputDir");
       else if (code === "permission_denied") this.options.onAction("openPermissionSettings");

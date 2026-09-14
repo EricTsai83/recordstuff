@@ -6,19 +6,19 @@
  * Electron or DOM import.
  */
 
-export type VideoQuality = "economy" | "standard" | "high";
-export type ResolutionCap = "1080p" | "1440p" | "4k" | "source";
-export type FrameRate = 30 | 60;
+export const VIDEO_QUALITIES = ["economy", "standard", "high"] as const;
+export const RESOLUTION_CAPS = ["1080p", "1440p", "4k", "source"] as const;
+export const FRAME_RATES = [30, 60] as const;
+
+export type VideoQuality = (typeof VIDEO_QUALITIES)[number];
+export type ResolutionCap = (typeof RESOLUTION_CAPS)[number];
+export type FrameRate = (typeof FRAME_RATES)[number];
 
 export interface QualitySettings {
   videoQuality: VideoQuality;
   resolutionCap: ResolutionCap;
   frameRate: FrameRate;
 }
-
-export const VIDEO_QUALITIES: readonly VideoQuality[] = ["economy", "standard", "high"];
-export const RESOLUTION_CAPS: readonly ResolutionCap[] = ["1080p", "1440p", "4k", "source"];
-export const FRAME_RATES: readonly FrameRate[] = [30, 60];
 
 /** Recording defaults: standard video, source size, 30 fps. */
 export const DEFAULT_QUALITY: QualitySettings = {

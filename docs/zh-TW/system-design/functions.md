@@ -189,7 +189,7 @@
 | `qualityWriteFailedNotification()` / `languageWriteFailedNotification()` | 說明品質／語言設定未保存 |
 | `frameRateDowngradeNotification(requested, actual)` | 說明系統實際提供的 fps |
 | `trayHintNotification()` | Windows 首次啟動尋找系統匣提示 |
-| `errorNotification(code, detail, partialPath, ctx)` | 各錯誤與部分檔的本地化說明；技術 detail 留在英文 log，不放通知摘要 |
+| `errorNotification(code, partialPath, ctx)` | 各錯誤與部分檔的本地化說明；技術 detail 留在英文 log，不放通知摘要 |
 
 [tray.ts](../../../src/main/tray.ts)：
 
@@ -199,7 +199,7 @@
 | `render(state)` / `refresh()` | 保存呈現用 lastState，更新必要圖示／title／tooltip；refresh 用同狀態重讀 context |
 | `destroy()` | 銷毀原生 Tray |
 | `notifySaved(path)` | show 存檔通知，點擊 reveal |
-| `notifyError(code, detail, partial)` | show 錯誤，點擊優先部分檔，其次位置／權限 action |
+| `notifyError(code, partial)` | show 錯誤，點擊優先部分檔，其次位置／權限 action |
 | `revealFromNotification(path)` / `reveal()` | macOS setImmediate 後 showItemInFolder，記 requested／failed |
 | `notifyPermission(needsRelaunch)` | 文案＋開設定／重啟 callback |
 | `notifySettingsWriteFailed(dir)` / `notifyQualityWriteFailed()` / `notifyLanguageWriteFailed()` | 保存失敗通知，無設定 mutation |

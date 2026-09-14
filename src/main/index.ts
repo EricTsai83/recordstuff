@@ -345,7 +345,7 @@ async function main(): Promise<void> {
       }
       case "failed":
         log(`failed: ${event.code} ${event.detail}${event.partialPath ? ` (kept ${event.partialPath})` : ""}`);
-        tray.notifyError(event.code, event.detail, event.partialPath);
+        tray.notifyError(event.code, event.partialPath);
         // The OS says granted, yet capture is refused: TCC needs a relaunch.
         if (event.code === "permission_denied" && permission) permission.markRelaunchRequired();
         return;

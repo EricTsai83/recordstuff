@@ -2,6 +2,9 @@
 import path from "node:path";
 import { DEFAULT_LANGUAGE, translate as t, type Language, type MessageKey } from "../shared/i18n";
 import {
+  FRAME_RATES,
+  RESOLUTION_CAPS,
+  VIDEO_QUALITIES,
   isFrameRateAvailable,
   type FrameRate,
   type QualitySettings,
@@ -127,7 +130,7 @@ function qualityMenu(ctx: TrayContext): TrayMenuItem {
         kind: "submenu",
         label: t("Video quality: {value}", language, { value: t(VIDEO_QUALITY_LABELS[q.videoQuality], language) }),
         enabled: true,
-        items: radioGroup("videoQuality", q.videoQuality, ["economy", "standard", "high"], (v) =>
+        items: radioGroup("videoQuality", q.videoQuality, VIDEO_QUALITIES, (v) =>
           t(VIDEO_QUALITY_LABELS[v], language),
         ),
       },
@@ -137,7 +140,7 @@ function qualityMenu(ctx: TrayContext): TrayMenuItem {
           value: q.resolutionCap === "source" ? t("Source", language) : RESOLUTION_CAP_LABELS[q.resolutionCap],
         }),
         enabled: true,
-        items: radioGroup("resolutionCap", q.resolutionCap, ["1080p", "1440p", "4k", "source"], (v) =>
+        items: radioGroup("resolutionCap", q.resolutionCap, RESOLUTION_CAPS, (v) =>
           v === "source" ? t("Source", language) : RESOLUTION_CAP_LABELS[v],
         ),
       },
@@ -148,7 +151,7 @@ function qualityMenu(ctx: TrayContext): TrayMenuItem {
         items: radioGroup(
           "frameRate",
           q.frameRate,
-          [30, 60],
+          FRAME_RATES,
           (fps) =>
             isFrameRateAvailable(fps, ctx.platform)
               ? `${fps} fps`
@@ -270,7 +273,6 @@ export function trayHintNotification(language?: Language): NotificationText {
 }
 export function errorNotification(
   code: ErrorCode,
-  _detail: string,
   partialPath: string | undefined,
   ctx: Pick<TrayContext, "homeDir" | "outputDir" | "language">,
 ): NotificationText {
