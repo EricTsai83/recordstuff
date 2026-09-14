@@ -6,7 +6,7 @@ Status: Deferred; activate after 010 when repeated releases justify automation. 
 
 ## Outcome and dependencies
 
-An explicit version tag or manual GitHub Actions run produces a traceable macOS arm64 release candidate with consistent signing, checksums, and bilingual notes. Reuse the release contract established by 010. First-release delivery must not wait for this plan. A website is independent.
+An explicit version tag or manual GitHub Actions run produces a traceable macOS arm64 release candidate with consistent signing, checksums, and English release notes with links to bilingual installation guidance. Reuse the release contract established by 010. First-release delivery must not wait for this plan. A website is independent.
 
 ## Work
 
@@ -26,3 +26,5 @@ An explicit version tag or manual GitHub Actions run produces a traceable macOS 
 ## Scope and reference
 
 No Windows/Linux/Intel Mac expansion, Apple certification/notarization, Nightly channel, npm distribution, or automatic app updater is included. T3 Code’s [release orchestration](https://github.com/pingdotgg/t3code/blob/main/.github/workflows/release.yml) and [desktop build](https://github.com/pingdotgg/t3code/blob/main/.github/workflows/release-desktop.yml) illustrate build jobs followed by asset aggregation and GitHub publication; its full multi-platform pipeline is not required here. Recheck upstream implementation when executing this plan.
+
+App-side update delivery is separate; see [015](015-app-update-assessment.md). Use the latest packaging contract from [013](013-macos-installation-experience.md) when it has shipped.

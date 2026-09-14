@@ -2,21 +2,24 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-更新：2026-09-15。已完成計畫已由 [system design](../docs/zh-TW/system-design/README.md) 與 [驗證紀錄](../docs/zh-TW/verification/README.md) 取代。Windows 驗收及 Apple 認證發行依使用者決定取消；舊 roadmap 不再作為排程，產品邊界與演進條件保留於設計決策。
+更新：2026-09-15。v0.1.0 已公開，安裝候選版及 API 下載檢查見[本版證據](../docs/zh-TW/verification/releases/0.1.0.md)。瀏覽器下載後的安裝與錄影已通過，首次需「仍要打開」；010 已完成，未重建產物。
+
+## 順序與狀態
 
 | 順序 | 計畫 | 狀態 | 交付目標 |
 | --- | --- | --- | --- |
-| 010 之後 | [011 GitHub 發布自動化](011-github-release-automation.zh-TW.md) | 後續選項 | 可重複產生候選包並明確提升發布，保留固定簽署身分與驗證 |
-| 010 之後 | [012 官網與下載入口](012-download-website.zh-TW.md) | 後續選項 | 雙語產品頁連到已驗 GitHub 下載 |
+| 接續 | [013 安裝體驗](013-macos-installation-experience.zh-TW.md) | 已規劃 | DMG 不附說明文件、線上指引、手動更新／移除與資料保留指引 |
+| 配合下版 | [014 Finder 通知焦點](014-finder-notification-focus.zh-TW.md) | 已規劃 | 重現並修正明確點擊後的置前，驗證原生焦點 |
+| 重複發布需要時 | [011 發布自動化](011-github-release-automation.zh-TW.md) | 延後選項 | 可重現候選版與明確發布流程 |
+| 可開始實作 | [012 官方網站](012-download-website.zh-TW.md) | 已規劃 | 雙語產品／說明網站、DMG 直接下載與版本／checksum 資訊 |
+| 優先改善更新便利性時 | [015 App 更新評估](015-app-update-assessment.zh-TW.md) | 僅延後決策 | 比較手動、主動檢查、自動更新及固定自簽可行性 |
 
-目前進度：v0.1.0 已公開；候選版檢查通過但有 Finder 未置前限制。瀏覽器下載後的安裝已通過（首次需「仍要打開」）；Plan 010 已完成，詳見[本版證據](../docs/zh-TW/verification/releases/0.1.0.md)。
+013 與 014 可合併新版本，皆不依賴 CI 或官網。011 自動化發布，不更新使用者的 App；015 不代表已選定實作更新器。公開發行說明維持全英文，App 與讀者指引保留雙語，不覆寫已發布的 v0.1.0 產物。
 
-## 排序理由
+不規劃專用解除安裝器：結束後移到垃圾桶，使用者資料保留，清理另行處理。不排入僅為減小體積而原生重寫、Apple 認證、Windows／Linux／Intel 驗證或擴充。DMG 大小已說明主要來自 Electron 執行環境，討論本身不建立重寫專案。
 
-眼前目標是讓別人能下載、安裝並使用。010 原本就負責完整交付，現在明定公開的 `EricTsai83/recordstuff` 為發布目的地，不再拆出重複的「第一次發布」計畫。本機打包加 GitHub Release 就能完成第一版，不必等 CI 或官網。
+所有計畫的語言版本都放在本資料夾：英文 `<name>.md`，繁中 `<name>.zh-TW.md`。
 
-010 完成後，重複發布需要省工時選 011，需要產品介紹入口時選 012。兩者彼此獨立，沒有固定先後，也不是第一次發布的要求。App 自動更新、擴充平台與 Apple 認證仍不在範圍內。本次只有規劃，尚未發布 Release 或部署網站。
+## 完成計畫
 
-repo 文件與 App 英文／繁體中文功能已實作於工作目錄；下一份安裝包仍需重建驗證，舊 DMG 不是新的雙語版本。
-
-完成計畫後更新 README、設計、驗證紀錄與翻譯，再刪除計畫及對應翻譯。執行歷史由 Git 保留，不繼續把已完成 checklist 當產品規格。
+計畫只保留未完成工作。永久結論寫入[系統設計](../docs/zh-TW/system-design/README.md)及[驗證紀錄](../docs/zh-TW/verification/README.md)，同步 README、索引與翻譯，再移除已完成計畫及翻譯。保留失敗與歷史證據，執行歷史由 Git 保存。

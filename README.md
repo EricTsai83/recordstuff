@@ -42,7 +42,7 @@ Output is H.264/AAC MP4. Audio requests 256 kbps with voice processing explicitl
 The local app has been verified for recording/playback, Retina 3456×2234 capture, permissions and recovery, partial-file preservation, self-signed DMG installation, and same-identity updates. The notification icon was confirmed normal after reboot on 2026-09-14. The new language implementation is covered by automated checks; the release plan includes checking it in the next packaged build. Full evidence and limitations are in the [verification record](docs/verification/README.md).
 
 - [System design](docs/system-design/README.md): overview, architecture, recording, desktop behavior, every module's functions, tooling, and decisions.
-- [Remaining work](plans/README.md): only downloadable macOS delivery; completed/canceled plans have been removed.
+- [Remaining work](plans/README.md): macOS delivery and scoped follow-ups, including the [official website and DMG downloads](plans/012-download-website.md), a [simpler installer](plans/013-macos-installation-experience.md), [Finder notification focus](plans/014-finder-notification-focus.md), and a deferred [update assessment](plans/015-app-update-assessment.md); completed/canceled plans have been removed.
 - [Contributing](CONTRIBUTING.md): development setup, bug reports, testing, and pull requests.
 
 ## Development

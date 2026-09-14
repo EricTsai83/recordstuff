@@ -6,7 +6,7 @@
 
 ## 目標與依賴
 
-透過明確的版本 tag 或手動 GitHub Actions，產生可追溯的 macOS arm64 候選版本，保持一致簽署、checksum 與雙語說明。沿用 010 確立的發布規格，第一次交付不等待本計畫。官網可獨立進行。
+透過明確的版本 tag 或手動 GitHub Actions，產生可追溯的 macOS arm64 候選版本，保持一致簽署、checksum 與英文發行說明與雙語安裝指引連結。沿用 010 確立的發布規格，第一次交付不等待本計畫。官網可獨立進行。
 
 ## 工作
 
@@ -26,3 +26,5 @@
 ## 範圍與參考
 
 不包含 Windows／Linux／Intel Mac 擴充、Apple 認證／公證、Nightly、npm 發行或 App 自動更新。參考 T3 Code 的 [發布流程](https://github.com/pingdotgg/t3code/blob/main/.github/workflows/release.yml) 與 [桌面打包](https://github.com/pingdotgg/t3code/blob/main/.github/workflows/release-desktop.yml)：建置後彙整資產並發布 GitHub；不需搬入它整套跨平台流程。執行時重新確認上游實作。
+
+App 端更新機制另見 [015](015-app-update-assessment.zh-TW.md)；[013](013-macos-installation-experience.zh-TW.md) 交付後沿用其最新封裝規格。

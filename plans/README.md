@@ -2,25 +2,24 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-Updated: 2026-09-15. Completed plans have been replaced by the [system design](../docs/system-design/README.md) and [verification record](../docs/verification/README.md). Windows verification and Apple-certified distribution were canceled by the user. The speculative roadmap was removed from execution planning; current boundaries and evolution triggers remain in the design decisions.
-
-Current execution: v0.1.0 is public; candidate checks passed with a Finder foreground limitation. Browser-download installation passed after per-app Open Anyway approval; Plan 010 is complete. See [release evidence](../docs/verification/releases/0.1.0.md).
+Updated: 2026-09-15. v0.1.0 is public; installed-candidate and API-download checks are recorded in [release evidence](../docs/verification/releases/0.1.0.md). Browser-download installation and recording passed after per-app Open Anyway approval; 010 is complete. No new binary was built.
 
 ## Order and status
 
 | Order | Plan | Status | Completion target |
 | --- | --- | --- | --- |
-| After 010 | [011 GitHub release automation](011-github-release-automation.md) | Deferred; optional | Repeatable release candidates and explicit promotion, preserving signing identity and verification |
-| After 010 | [012 Product and download website](012-download-website.md) | Deferred; optional | Bilingual product page linking to the verified GitHub download |
+| Next | [013 Installation experience](013-macos-installation-experience.md) | Planned | DMG without help documents; online guides; manual update/removal and data retention instructions |
+| With next release | [014 Finder notification focus](014-finder-notification-focus.md) | Planned | Reproduce and fix explicit-click foreground behavior; verify native focus |
+| When releases repeat | [011 Release automation](011-github-release-automation.md) | Deferred; optional | Reproducible candidates and explicit publication |
+| Ready for implementation | [012 Official website](012-download-website.md) | Planned | Bilingual product/help website with direct DMG downloads and version/checksum details |
+| When update convenience is prioritized | [015 App update assessment](015-app-update-assessment.md) | Deferred decision only | Compare manual, user-triggered check and automatic update; establish self-signing feasibility |
 
-## Why this order
+013 and 014 may share a new release; neither requires CI or a website. 011 automates publishing, not installed-app updates. 015 does not authorize implementation of an updater. Public release notes stay English-only; app UI and reader guides remain bilingual. Published v0.1.0 bytes must not be overwritten.
 
-The immediate goal is a downloadable, installable product. Plan 010 already owns that full outcome and now names the public `EricTsai83/recordstuff` repository as its release destination. Do not split off or duplicate a second first-release project. A local build plus GitHub Release satisfies the first delivery without CI or a website.
+No dedicated uninstaller is planned: quit and move the app to Trash; user data remains unless separately removed. No native-platform rewrite solely for size reduction, Apple certification, Windows/Linux/Intel verification or expansion is scheduled. DMG size was explained by Electron's runtime cost; discussion alone does not create a rewrite project.
 
-After 010, choose 011 when release repetition warrants automation, or 012 when a product entry point matters. These two plans are independent and neither must precede the other. They are scoped follow-up options, not requirements for the first release. Automatic app updates, additional platforms, and Apple certification remain outside this work. This update records planning only; no release or deployment was performed.
-
-English/Traditional Chinese app support and repository documentation are implemented in the working tree. The next installer must be rebuilt and verified with these changes; the previously verified DMG is not the new language-enabled release.
+All plan language versions live in this directory: English `<name>.md`, Traditional Chinese `<name>.zh-TW.md`.
 
 ## Completing a plan
 
-Update product/design documents and verification evidence, including translations. Update README and this index. Once all durable conclusions are captured, remove the completed plan and its translation. Preserve history in Git rather than keeping completed execution checklists as product specifications.
+Keep plans limited to unfinished work. Capture durable conclusions in [system design](../docs/system-design/README.md) and [verification](../docs/verification/README.md), update README/index and translations, then remove completed plans and their translations. Preserve failures and historical evidence; Git retains execution history.
