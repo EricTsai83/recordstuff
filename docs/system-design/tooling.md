@@ -16,7 +16,7 @@ Use pnpm and a compatible Node version; the verification TypeScript scripts use 
 | `pnpm check` | Typecheck, all Vitest tests, and production build |
 | `pnpm icons` | Generate PNG/ICO assets and native ICNS on macOS |
 | `pnpm log` | Follow the current macOS log |
-| `pnpm dist:mac:local` | Build/verify a self-signed app, then create a DMG in dist/local |
+| `pnpm dist:mac` | Build/verify a self-signed app, then create a DMG in dist/local |
 
 Main, preload, and renderer are separate electron-vite entries. Only out files, package metadata, and selected resources enter the app. Tests, measurement tools, and documentation are not runtime dependencies. The app has no FFmpeg subprocess.
 
@@ -30,7 +30,7 @@ Verification performs strict deep codesign checks, inspects nested app/framework
 
 The [local configuration](../../electron-builder.local.yml) extends the [base configuration](../../electron-builder.yml), disables notarization/timestamps and DMG signing/update metadata, and includes both installation guides. Output is `RecordStuff-<version>-<arch>-selfsigned.dmg`; arm64 and x64 are architecture-specific, not universal. Only arm64 has been verified.
 
-The repository still contains legacy `dist:mac` notarization configuration and a `dist:win` command. They are not the chosen delivery workflow and are not proof of supported releases. The remaining release plan includes making the public packaging entry point unambiguous.
+`pnpm dist:mac` is the canonical release command; `dist:mac:local` remains its compatibility alias. The base configuration disables notarization. `dist:win` remains unverified and is not a supported release.
 
 Self-signing is not Apple approval. Recipients may need Open Anyway for an unnotarized app; managed Macs may restrict that option. Use the ordinary per-app workflow in the [installation guide](../../resources/INSTALL.md), not global security changes. See [Apple](https://support.apple.com/102445).
 

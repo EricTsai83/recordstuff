@@ -16,7 +16,7 @@
 | pnpm check | typecheck、完整 Vitest、build |
 | pnpm icons | PNG／ICO；macOS 額外產 native ICNS |
 | pnpm log | 追蹤 macOS log |
-| pnpm dist:mac:local | 自簽 App 驗證後封成 dist/local 中的 DMG |
+| pnpm dist:mac | 自簽 App 驗證後封成 dist/local 中的 DMG |
 
 main、preload、renderer 分別建置，打包只納入 out、package metadata 與指定 resources。測試、量測與文件不屬 runtime；App 不呼叫 FFmpeg。
 
@@ -28,7 +28,7 @@ main、preload、renderer 分別建置，打包只納入 out、package metadata 
 
 驗證深度 codesign、巢狀 app／framework 公開憑證、identifier、runtime 與最外層 designated requirement；不追 symlink。先驗過 App 才封 DMG。
 
-[local 設定](../../../electron-builder.local.yml) 繼承 [共用設定](../../../electron-builder.yml)，停用公證／timestamp／DMG 簽章與更新 metadata，附兩種安裝說明。檔名為 RecordStuff-版本-架構-selfsigned.dmg，arm64 與 x64 非 universal；目前只有 arm64 驗過。舊 dist:mac 公證設定與 dist:win 不屬目前交付流程；剩餘計畫需把主要入口整理明確。
+[local 設定](../../../electron-builder.local.yml) 繼承 [共用設定](../../../electron-builder.yml)，停用公證／timestamp／DMG 簽章與更新 metadata，附兩種安裝說明。檔名為 RecordStuff-版本-架構-selfsigned.dmg，arm64 與 x64 非 universal；目前只有 arm64 驗過。pnpm dist:mac 是主要發行指令，dist:mac:local 保留為相容別名；共用設定停用公證。dist:win 尚未驗證，不代表已支援發行。
 
 收件者可能需要單一 App 的「仍要打開」，受管理 Mac 也可能不允許；依 [安裝指南](../../../resources/INSTALL.zh-TW.md) 與 [Apple](https://support.apple.com/102445) 正常操作，不修改全域安全設定。
 

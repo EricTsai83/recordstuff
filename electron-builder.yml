@@ -23,9 +23,8 @@ mac:
   gatekeeperAssess: false
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.plist
-  # Signed with the Developer ID found in the keychain; notarized when
-  # APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID are set.
-  notarize: true
+  # The supported release command supplies and verifies the fixed self-signed identity.
+  notarize: false
   extendInfo:
     LSUIElement: true
     NSScreenCaptureUsageDescription: RecordStuff needs screen recording access to capture the primary display and system audio.

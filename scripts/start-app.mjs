@@ -1,4 +1,4 @@
-// Local self-signed app/DMG. Apple-certified distribution stays in dist:mac.
+// Self-signed app/DMG for development and macOS releases.
 import { spawnSync } from "node:child_process";
 import { X509Certificate } from "node:crypto";
 import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
