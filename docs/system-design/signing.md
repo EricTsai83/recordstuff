@@ -171,7 +171,7 @@ These do not replace the script's complete identity checks, mounted DMG content 
 
 ## Reusing the identity in CI
 
-“Resolve signing first” in [011](../../plans/011-github-release-automation.md) means securely provisioning the existing certificate and private key on a clean runner. It does not require a new Apple certificate. The following configuration is implemented; see [release automation](releases.md) for live CI and manual acceptance status:
+“Resolve signing first” in [release automation](releases.md) means securely provisioning the existing certificate and private key on a clean runner. It does not require a new Apple certificate. The following configuration is implemented; see [release automation](releases.md) for live CI and manual acceptance status:
 
 | Configuration | Suggested location | Purpose |
 | --- | --- | --- |
@@ -191,7 +191,7 @@ Workflow sequence:
 
 See [GitHub's official workflow](https://docs.github.com/en/actions/how-tos/deploy/deploy-to-third-party-platforms/sign-xcode-applications) for secrets, temporary keychains, and cleanup. This project's self-signing flow does not use the Xcode example's provisioning profile.
 
-Signing provisioning is complete when a clean runner signs with the **same fingerprint**, passes existing verification, stops on missing/wrong identities, and leaves no secrets after failure. Completing all of 011 still requires a real release, download/hash verification, and manual installation acceptance. If secure private-key provisioning is unavailable, keep local builds and automate only candidate checks/upload, explicitly reporting partial automation.
+Signing provisioning is complete when a clean runner signs with the **same fingerprint**, passes existing verification, stops on missing/wrong identities, and leaves no secrets after failure. 011 completed real release, download/hash verification, and manual installation acceptance in [v0.1.1](../verification/releases/0.1.1.md). If secure private-key provisioning is unavailable, keep local builds and automate only candidate checks/upload, explicitly reporting partial automation.
 
 ## Troubleshooting
 

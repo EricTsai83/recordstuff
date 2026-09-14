@@ -171,7 +171,7 @@ shasum -a 256 "dist/local/RecordStuff-0.1.0-arm64-selfsigned.dmg"
 
 ## CI 如何沿用同一身分
 
-[011](../../../plans/011-github-release-automation.zh-TW.md) 的「先解決簽署身分」是將既有憑證與私鑰安全提供給乾淨 runner；不需要重新申請 Apple 憑證。下列配置已實作；首次 CI 執行與人工驗收狀態見 [發布自動化](releases.md)：
+[發布自動化](releases.md) 的「先解決簽署身分」是將既有憑證與私鑰安全提供給乾淨 runner；不需要重新申請 Apple 憑證。下列配置已實作；首次 CI 執行與人工驗收狀態見 [發布自動化](releases.md)：
 
 | 配置 | 建議儲存位置 | 用途 |
 | --- | --- | --- |
@@ -191,7 +191,7 @@ Workflow 順序：
 
 Secrets、暫存 keychain 與清理模式參考 [GitHub 官方流程](https://docs.github.com/en/actions/how-tos/deploy/deploy-to-third-party-platforms/sign-xcode-applications)。本專案自簽流程不使用該 Xcode 範例的 provisioning profile。
 
-簽署配置的完成標準是乾淨 runner 能以**相同指紋**簽出 App、通過既有驗證，缺少／錯誤身分會停止，且失敗後沒有殘留秘密。011 整體完成仍需真實發布、下載 checksum 核對與人工安裝驗收。無法安全提供私鑰時，保留本機建置，只自動化候選包檢查與上傳，明確記為部分自動化。
+簽署配置的完成標準是乾淨 runner 能以**相同指紋**簽出 App、通過既有驗證，缺少／錯誤身分會停止，且失敗後沒有殘留秘密。011 已在 [v0.1.1](../verification/releases/0.1.1.md) 完成真實發布、下載 checksum 核對與人工安裝驗收。無法安全提供私鑰時，保留本機建置，只自動化候選包檢查與上傳，明確記為部分自動化。
 
 ## 常見問題與處理
 

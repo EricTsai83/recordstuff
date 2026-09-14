@@ -16,7 +16,7 @@ Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前
 
 SHA-256：`be8119c6405c21a5b19f7cab968af5e488435412c8bbc1fc0c663550d40bb512`。
 
-CI 候選版安裝、錄影／播放與語言檢查已在本機通過；公開瀏覽器下載 checksum 尚待核對。自簽首次開啟可能需「仍要打開」；詳見[本版驗證紀錄](docs/zh-TW/verification/releases/0.1.1.md)。點擊儲存通知可定位 Finder 檔案，但 Finder 可能沒有跳到最前景。
+CI 候選版安裝、錄影／播放與語言檢查已在本機通過；使用者提供的公開瀏覽器下載 checksum 亦已吻合。自簽首次開啟可能需「仍要打開」；詳見[本版驗證紀錄](docs/zh-TW/verification/releases/0.1.1.md)。點擊儲存通知可定位 Finder 檔案，但 Finder 可能沒有跳到最前景。
 
 下載 arm64 DMG，拖曳到 Applications，依照 [繁體中文安裝說明](resources/INSTALL.zh-TW.md) 操作。收件者不需要 Node、pnpm、FFmpeg 或憑證。未公證 App 首次開啟可能需要在「系統設定 → 隱私權與安全性」選「仍要打開」；不保證免提示，參見 [Apple 說明](https://support.apple.com/102445)。
 
