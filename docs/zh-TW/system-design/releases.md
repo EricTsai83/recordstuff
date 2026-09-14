@@ -47,3 +47,5 @@ gh workflow run release.yml --ref main -f operation=promote -f tag=v0.1.1 -f sha
 版本錯誤、重複版本、缺身分、簽章／checksum／metadata 不符都停止。上傳中途失敗可能留下不完整 draft；不會公開。先保留失敗證據並人工處理該 draft，再決定重試或採用新版本。不要以移除檢查解決發布問題。
 
 本流程沒有 Apple 公證、App 自動更新、Windows／Intel 發行或無提示安裝。T3 Code 的參考與差異見 [簽署設計](signing.md)。
+
+CI 在 frozen install 後明確執行 Electron 44 的 `install.js`，因套件沒有 postinstall。`cleanup-release-keychain.py` 對系統清理設定每項 15 秒上限；逾時會警告並清除暫存檔，殘餘系統狀態由 disposable runner 銷毀清除。

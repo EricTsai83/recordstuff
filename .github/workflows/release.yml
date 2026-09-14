@@ -52,6 +52,8 @@ jobs:
           test "$(uname -m)" = arm64
           node scripts/release.mts preflight "$RELEASE_TAG"
       - run: pnpm install --frozen-lockfile
+      - name: Install Electron runtime explicitly (Electron 44 has no postinstall)
+        run: node node_modules/electron/install.js
       - run: pnpm check
       - name: Import fixed identity, build, and verify candidate
         env:
@@ -65,12 +67,7 @@ jobs:
           archive="$RUNNER_TEMP/recordstuff-signing.p12"
           keychain_password="$(openssl rand -hex 32)"
           echo "::add-mask::$keychain_password"
-          cleanup() {
-            sudo security remove-trusted-cert -d "$cert" 2>/dev/null || true
-            security delete-keychain "$keychain" 2>/dev/null || true
-            rm -f "$cert" "$archive"
-          }
-          trap cleanup EXIT
+          trap 'python3 scripts/cleanup-release-keychain.py' EXIT
           printf '%s' "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$archive"
           chmod 600 "$archive"
           security create-keychain -p "$keychain_password" "$keychain"
@@ -89,10 +86,7 @@ jobs:
           node scripts/release.mts candidate "$RELEASE_TAG" dist/local
       - name: Cleanup even after cancellation or setup failure
         if: always()
-        run: |
-          sudo security remove-trusted-cert -d "$RUNNER_TEMP/recordstuff-signing.pem" 2>/dev/null || true
-          security delete-keychain "$RUNNER_TEMP/recordstuff-signing.keychain-db" 2>/dev/null || true
-          rm -f "$RUNNER_TEMP/recordstuff-signing.pem" "$RUNNER_TEMP/recordstuff-signing.p12"
+        run: python3 scripts/cleanup-release-keychain.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: verified-candidate

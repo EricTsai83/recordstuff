@@ -47,3 +47,5 @@ This is the operator's attestation for those bytes; CI cannot establish the manu
 Wrong/reused versions, missing identities and signature/checksum/metadata mismatches stop delivery. An interrupted upload may leave an incomplete draft, never an automatically public release. Preserve failure evidence and handle that draft explicitly before retrying or choosing a new version. Do not remove verification gates to unblock delivery.
 
 Apple notarization, automatic App updates, Windows/Intel delivery and warning-free installation remain outside scope. See [signing design](signing.md) for T3 Code comparisons.
+
+After frozen installation, CI explicitly runs Electron 44 install.js because the package has no postinstall. cleanup-release-keychain.py bounds each OS cleanup operation to 15 seconds, warns on failure, and removes temporary files. Disposable runner teardown removes any remaining OS state.
