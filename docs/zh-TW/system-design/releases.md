@@ -2,7 +2,7 @@
 
 [English](../../system-design/releases.md) | [繁體中文](releases.md)
 
-更新：2026-09-15。CI 與 draft 已驗；011 待人工驗收及公開交付，真實執行證據見 [0.1.1](../verification/releases/0.1.1.md)。目前不宣告人工安裝驗收通過。
+更新：2026-09-15。CI、人工驗收及公開提升已通過；待最後瀏覽器下載 checksum，真實執行證據見 [0.1.1](../verification/releases/0.1.1.md)。人工安裝驗收已由使用者確認，已安裝 App 身分核對通過。
 
 ## 發布契約
 

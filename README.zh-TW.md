@@ -12,11 +12,11 @@ Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前
 
 ## 下載與安裝
 
-下載 **[RecordStuff 0.1.0：macOS Apple silicon（arm64）](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.0/RecordStuff-0.1.0-arm64-selfsigned.dmg)**（126,066,842 bytes）。[英文發行說明](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.0) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.0/SHA256SUMS) · [最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)。
+下載 **[RecordStuff 0.1.1：macOS Apple silicon（arm64）](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.1/RecordStuff-0.1.1-arm64-selfsigned.dmg)**（127,310,755 bytes）。[英文發行說明](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.1) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.1/SHA256SUMS) · [最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)。
 
-SHA-256：`11449bc59ed2dd5f5a361511995937771394715b2d7b9146d83b58e6c31dc34d`。
+SHA-256：`be8119c6405c21a5b19f7cab968af5e488435412c8bbc1fc0c663550d40bb512`。
 
-瀏覽器下載後安裝、錄影／播放與語言檢查已在本機通過，首次開啟需要「仍要打開」放行；詳見[本版驗證紀錄](docs/zh-TW/verification/releases/0.1.0.md)。點擊儲存通知可定位 Finder 檔案，但 Finder 可能沒有跳到最前景。
+CI 候選版安裝、錄影／播放與語言檢查已在本機通過；公開瀏覽器下載 checksum 尚待核對。自簽首次開啟可能需「仍要打開」；詳見[本版驗證紀錄](docs/zh-TW/verification/releases/0.1.1.md)。點擊儲存通知可定位 Finder 檔案，但 Finder 可能沒有跳到最前景。
 
 下載 arm64 DMG，拖曳到 Applications，依照 [繁體中文安裝說明](resources/INSTALL.zh-TW.md) 操作。收件者不需要 Node、pnpm、FFmpeg 或憑證。未公證 App 首次開啟可能需要在「系統設定 → 隱私權與安全性」選「仍要打開」；不保證免提示，參見 [Apple 說明](https://support.apple.com/102445)。
 

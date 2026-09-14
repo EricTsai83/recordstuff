@@ -2,7 +2,7 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-Updated: 2026-09-15. v0.1.0 is public; installed-candidate and API-download checks are recorded in [release evidence](../docs/verification/releases/0.1.0.md). Browser-download installation and recording passed after per-app Open Anyway approval; 010 is complete. No new binary was built.
+Updated: 2026-09-15. v0.1.1 was built in CI, manually accepted, and published without rebuilding; see [release evidence](../docs/verification/releases/0.1.1.md). 011 only awaits the public browser-downloaded file checksum because macOS denied file access.
 
 ## Order and status
 
@@ -10,7 +10,7 @@ Updated: 2026-09-15. v0.1.0 is public; installed-candidate and API-download chec
 | --- | --- | --- | --- |
 | Next | [013 Installation experience](013-macos-installation-experience.md) | Planned | DMG without help documents; online guides; manual update/removal and data retention instructions |
 | With next release | [014 Finder notification focus](014-finder-notification-focus.md) | Planned | Reproduce and fix explicit-click foreground behavior; verify native focus |
-| In progress | [011 Release automation](011-github-release-automation.md) | Workflow implemented; delivery acceptance pending | Reproducible candidates and explicit promotion |
+| In progress | [011 Release automation](011-github-release-automation.md) | Published; browser-file checksum pending | Reproducible candidates and explicit promotion |
 | Ready for implementation | [012 Official website](012-download-website.md) | Planned | Bilingual product/help website with direct DMG downloads and version/checksum details |
 | When update convenience is prioritized | [015 App update assessment](015-app-update-assessment.md) | Deferred decision only | Compare manual, user-triggered check and automatic update; establish self-signing feasibility |
 

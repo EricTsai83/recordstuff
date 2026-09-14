@@ -2,7 +2,7 @@
 
 [English](releases.md) | [繁體中文](../zh-TW/system-design/releases.md)
 
-Updated: 2026-09-15. CI and draft creation are verified. 011 remains in progress until manual acceptance and public delivery; see [0.1.1](../verification/releases/0.1.1.md) for live evidence. Manual installation acceptance is not yet claimed.
+Updated: 2026-09-15. CI, manual acceptance and public promotion are verified. The final browser-download checksum is pending; see [0.1.1](../verification/releases/0.1.1.md) for live evidence. Manual installation acceptance is user-reported and installed App identity checks passed.
 
 ## Release contract
 

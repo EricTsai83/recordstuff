@@ -2,7 +2,7 @@
 
 [English](011-github-release-automation.md) | [繁體中文](011-github-release-automation.zh-TW.md)
 
-Status: CI and draft verified; manual candidate acceptance, public promotion and browser download checks pending. Updated: 2026-09-15.
+Status: CI, manual acceptance and public promotion passed; public browser-download checksum pending. Updated: 2026-09-15.
 
 Signing background and provisioning contract: [macOS signing identities and self-signing](../docs/system-design/signing.md). CI provisioning remains pending under this plan.
 

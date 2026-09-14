@@ -2,7 +2,7 @@
 
 [English](011-github-release-automation.md) | [繁體中文](011-github-release-automation.zh-TW.md)
 
-狀態：CI 與 draft 已驗；待候選包人工驗收、公開提升與瀏覽器下載核對。更新：2026-09-15。
+狀態：CI、人工驗收、公開提升已通過；僅待公開瀏覽器下載 checksum。更新：2026-09-15。
 
 簽署原理與配置契約見 [macOS 簽署身分與自簽設計](../docs/zh-TW/system-design/signing.md)；CI 配置仍屬本計畫待辦。
 
@@ -31,4 +31,4 @@
 
 App 端更新機制另見 [015](015-app-update-assessment.zh-TW.md)；[013](013-macos-installation-experience.zh-TW.md) 交付後沿用其最新封裝規格。
 
-實作與操作：[發布自動化](../docs/zh-TW/system-design/releases.md)。實際成功／失敗證據：[0.1.1](../docs/zh-TW/verification/releases/0.1.1.md)。目前未完成最後人工驗收，保留此計畫。
+實作與操作：[發布自動化](../docs/zh-TW/system-design/releases.md)。實際成功／失敗證據：[0.1.1](../docs/zh-TW/verification/releases/0.1.1.md)。最後瀏覽器下載 checksum 尚待完成，保留此計畫。
