@@ -29,7 +29,11 @@ Main, preload, and renderer are separate electron-vite entries. Only out files, 
 
 Quality options and error codes are each defined once as constant lists; their TypeScript types are derived from those lists, and the tray reuses the quality lists. Typechecking also rejects unused locals and parameters. Settings v1 migration remains supported to preserve existing output-folder preferences.
 
+`pnpm signing:create` preserves existing matching Keychain certificates or creates an encrypted identity archive with explicit output/password inputs; see [identity setup](signing.md). It does not import keys or configure trust.
+
 ## Current signing and packaging
+
+See [macOS signing identities and self-signing](signing.md) for identity design, certificate creation/backup, troubleshooting, and planned CI provisioning.
 
 [Start-app](../../scripts/start-app.mjs) resolves exactly one valid signing identity, default `RecordStuff Dev`. RECORDSTUFF_SIGN_IDENTITY may specify an exact name or SHA-1. It rejects missing/ambiguous identities, duplicate certificate names, invalid dates, non-self-signed certificates, or a mismatched final signature. SHA-1 identifies the public signing certificate here; release-file integrity uses SHA-256.
 

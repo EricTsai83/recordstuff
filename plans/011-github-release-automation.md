@@ -4,6 +4,8 @@
 
 Status: Deferred; activate after 010 when repeated releases justify automation. Updated: 2026-09-15.
 
+Signing background and provisioning contract: [macOS signing identities and self-signing](../docs/system-design/signing.md). CI provisioning remains pending under this plan.
+
 ## Outcome and dependencies
 
 An explicit version tag or manual GitHub Actions run produces a traceable macOS arm64 release candidate with consistent signing, checksums, and English release notes with links to bilingual installation guidance. Reuse the release contract established by 010. First-release delivery must not wait for this plan. A website is independent.

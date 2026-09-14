@@ -301,3 +301,7 @@
 | 同上：recordAudio | 建置並驅動開發版程式，擷取開始後播放素材，驗證完成並只清理自有子程序 |
 | [audio-quality-summary.mts](../../../scripts/lib/audio-quality-summary.mts): summarize | 預期／完成 run 數、結果計數、min／median／max 與缺少值數；未完成為 incomplete |
 | [CLI](../../../scripts/audio-quality.mts): inspect, context, read, exitCode | 報告來源、環境快照、有限外部讀取與結束碼；頂層負責新目錄及 1–10 次重跑 |
+
+## 簽署身分建立
+
+[create-signing-identity.mts](../../../scripts/create-signing-identity.mts) 將身分檔建立與鑰匙圈配置分開。`createIdentity(name, output, password, days)` 驗參數與輸出位置、排他建立私人目錄、產生並核對自簽 Code Signing 身分、匯出加密 PKCS#12，回傳公開 metadata；成功移除中間檔，失敗清理新目錄。`openssl(args, password)` 以子程序環境傳密碼並隱藏敏感診斷。`main()` 解析 CLI、保留既有符合名稱的憑證，要求明確新建參數；不修改鑰匙圈。
