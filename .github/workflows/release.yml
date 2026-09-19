@@ -1,10 +1,18 @@
 name: macOS release
 # Tag = release. Pushing vX.Y.Z (or vX.Y.Z-rc.1 for a pre-release) builds,
-# signs, verifies and publishes; nothing is published from branch pushes or
-# by hand. Manual checks happen before tagging (docs/system-design/releases.md).
+# signs, verifies and publishes, then re-downloads the public assets as an
+# anonymous user and verifies them again. Nothing is published from branch
+# pushes or by hand; manual checks happen before tagging
+# (docs/system-design/releases.md). Dispatch runs only the published check.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to re-verify from its public download URL (vX.Y.Z)
+        required: true
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -12,6 +20,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
+    if: github.event_name == 'push'
     runs-on: macos-15
     timeout-minutes: 30
     environment: release
@@ -83,6 +92,7 @@ jobs:
             dist/SHA256SUMS
             dist/release.json
   publish:
+    if: github.event_name == 'push'
     needs: build
     runs-on: macos-15
     timeout-minutes: 15
@@ -104,3 +114,34 @@ jobs:
           path: candidate
       - name: Reverify the candidate without private keys and publish it
         run: node scripts/release.mts publish "$RELEASE_TAG" candidate
+  verify-published:
+    # Runs after a successful publish, or alone on dispatch. Downloads what an
+    # anonymous user gets from the public URL and reruns every artifact gate.
+    # A failure here flags the release for the maintainer; it never unpublishes.
+    if: always() && (github.event_name == 'workflow_dispatch' || needs.publish.result == 'success')
+    needs: publish
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+      - name: Download the public assets anonymously
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          test "v$version" = "$RELEASE_TAG"
+          mkdir published
+          for name in "RecordStuff-$version-arm64-selfsigned.dmg" SHA256SUMS release.json; do
+            curl -fsSL --retry 3 -o "published/$name" "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$name"
+          done
+          (cd published && shasum -a 256 -c SHA256SUMS)
+      - name: Verify mounted contents, signatures, metadata and GitHub asset digests
+        run: node scripts/release.mts published "$RELEASE_TAG" published

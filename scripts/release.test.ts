@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { assertDmgContents, assertUnreleased, isPrerelease, notes, validateDigest, validateTag } from './release.mts';
+import { assertDmgContents, assertPublishedAssets, assertUnreleased, isPrerelease, notes, validateDigest, validateTag } from './release.mts';
 
 describe('release gates', () => {
   it('accepts only a tag equal to v + package version, stable or pre-release', () => {
@@ -20,6 +20,18 @@ describe('release gates', () => {
   it('rejects reuse of drafts as well as published versions', () => {
     expect(() => assertUnreleased([{ tag_name: 'v0.1.0' }], 'v0.1.1')).not.toThrow();
     expect(() => assertUnreleased([{ tag_name: 'v0.1.1' }], 'v0.1.1')).toThrow();
+  });
+  it('accepts a public release only when every asset matches the verified files by name, size and digest', () => {
+    const sha = 'a'.repeat(64);
+    const files = [{ name: 'RecordStuff-0.1.2-arm64-selfsigned.dmg', size: 10, sha256: sha }, { name: 'SHA256SUMS', size: 1, sha256: sha }, { name: 'release.json', size: 2, sha256: sha }];
+    const ok = { draft: false, assets: files.map(f => ({ name: f.name, size: f.size, digest: `sha256:${sha}` })) };
+    expect(() => assertPublishedAssets(ok, files)).not.toThrow();
+    expect(() => assertPublishedAssets({ ...ok, draft: true }, files)).toThrow(/draft/);
+    expect(() => assertPublishedAssets({ ...ok, assets: ok.assets.slice(1) }, files)).toThrow(/Expected 3 assets/);
+    expect(() => assertPublishedAssets({ ...ok, assets: ok.assets.map(a => a.name === 'SHA256SUMS' ? { ...a, size: 99 } : a) }, files)).toThrow(/99 bytes/);
+    expect(() => assertPublishedAssets({ ...ok, assets: ok.assets.map(a => a.name.endsWith('.dmg') ? { ...a, digest: `sha256:${'b'.repeat(64)}` } : a) }, files)).toThrow(/digest/);
+    expect(() => assertPublishedAssets({ ...ok, assets: ok.assets.map(a => ({ ...a, digest: null })) }, files)).toThrow(/missing/);
+    expect(() => assertPublishedAssets({ ...ok, assets: [...ok.assets.slice(0, 2), { name: 'extra.txt', size: 2, digest: `sha256:${sha}` }] }, files)).toThrow(/Missing published asset release.json/);
   });
   it('rejects incorrect and malformed checksums', () => {
     expect(() => validateDigest('a'.repeat(64), 'a'.repeat(64))).not.toThrow();

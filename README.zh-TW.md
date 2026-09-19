@@ -12,13 +12,13 @@ Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前
 
 ## 下載與安裝
 
-下載 **[RecordStuff 0.1.1：macOS Apple silicon（arm64）](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.1/RecordStuff-0.1.1-arm64-selfsigned.dmg)**（127,310,755 bytes）。[英文發行說明](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.1) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.1/SHA256SUMS) · [最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)。
+下載 **[RecordStuff 0.1.2：macOS Apple silicon（arm64）](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.2/RecordStuff-0.1.2-arm64-selfsigned.dmg)**（127,314,171 bytes）。[英文發行說明](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.2) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.2/SHA256SUMS) · [最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)。
 
-SHA-256：`be8119c6405c21a5b19f7cab968af5e488435412c8bbc1fc0c663550d40bb512`。
+SHA-256：`2de49bbd552e46934ef4573ca8c8b103e3a0b1334dd12b2022dee1f332f7fc7f`。
 
-CI 候選版安裝、錄影／播放與語言檢查已在本機通過；使用者提供的公開瀏覽器下載 checksum 亦已吻合。自簽首次開啟可能需「仍要打開」；詳見[本版驗證紀錄](docs/zh-TW/verification/releases/0.1.1.md)。點擊儲存通知可定位 Finder 檔案，但 Finder 可能沒有跳到最前景。
+0.1.2 由 CI 從 tag `v0.1.2` 建置、簽署、驗證並公開；錄影、播放與權限保留在打 tag 前以同一份原始碼在本機檢查。詳見[本版驗證紀錄](docs/zh-TW/verification/releases/0.1.2.md)。點擊儲存通知可定位 Finder 檔案，但 Finder 可能沒有跳到最前景。
 
-下載 arm64 DMG，把 RecordStuff 拖到磁碟映像檔中顯示的 Applications 資料夾。自 0.1.2 起 DMG 只有 App 與該 Applications 捷徑；目前的 0.1.1 映像檔還附兩份指南檔，可忽略。[安裝指南](resources/INSTALL.zh-TW.md)涵蓋首次開啟、手動更新（結束、下載、在相同路徑取代；設定保留）與移除（結束、把 App 移到垃圾桶；錄影、設定與 log 除非自行刪除否則保留）。沒有自動更新器或解除安裝器。收件者不需要 Node、pnpm、FFmpeg 或憑證。未公證 App 首次開啟可能需要在「系統設定 → 隱私權與安全性」選「仍要打開」；不保證免提示，參見 [Apple 說明](https://support.apple.com/102445)。
+下載 arm64 DMG，把 RecordStuff 拖到磁碟映像檔中顯示的 Applications 資料夾；DMG 只有 App 與該 Applications 捷徑。[安裝指南](resources/INSTALL.zh-TW.md)涵蓋首次開啟、手動更新（結束、下載、在相同路徑取代；設定保留）與移除（結束、把 App 移到垃圾桶；錄影、設定與 log 除非自行刪除否則保留）。沒有自動更新器或解除安裝器。收件者不需要 Node、pnpm、FFmpeg 或憑證。未公證 App 首次開啟可能需要在「系統設定 → 隱私權與安全性」選「仍要打開」；不保證免提示，參見 [Apple 說明](https://support.apple.com/102445)。
 
 ## 使用方式
 
@@ -39,11 +39,11 @@ CI 候選版安裝、錄影／播放與語言檢查已在本機通過；使用�
 
 ## 目前進度與設計
 
-本機已驗證錄製與播放、3456×2234 Retina、權限拒絕與復原、部分檔案保留、自簽 DMG 安裝與同身分更新。0.1.2 原始碼改為精簡 DMG（只有 App 與 Applications 連結）；本機建置已通過發布閘門與 Finder 版面檢查，公開發布待完成，見 [0.1.2 證據](docs/zh-TW/verification/releases/0.1.2.md)。通知縮圖已於 2026-09-14 重開機後由使用者確認正常。新語言功能有自動化檢查，下一份安裝包的介面驗證列入交付計畫。
+本機已驗證錄製與播放、3456×2234 Retina、權限拒絕與復原、部分檔案保留、自簽 DMG 安裝與同身分更新。0.1.2 改為精簡 DMG（只有 App 與 Applications 連結），安裝、更新與移除指引改為線上；見 [0.1.2 證據](docs/zh-TW/verification/releases/0.1.2.md)。通知縮圖已於 2026-09-14 重開機後由使用者確認正常。新語言功能有自動化檢查，下一份安裝包的介面驗證列入交付計畫。
 
 - [System design](docs/zh-TW/system-design/README.md)：產品總覽、架構、錄製流程、桌面功能、函式細節、工具與決策。
 - [驗證紀錄](docs/zh-TW/verification/README.md)：已取得證據與限制。
-- [剩餘計畫](plans/README.zh-TW.md)：macOS 下載交付與後續工作，包含[官網與 DMG 下載](plans/012-download-website.zh-TW.md)、[精簡安裝介面](plans/013-macos-installation-experience.zh-TW.md)、[Finder 通知焦點](plans/014-finder-notification-focus.zh-TW.md)與延後的[更新評估](plans/015-app-update-assessment.zh-TW.md)。
+- [剩餘計畫](plans/README.zh-TW.md)：後續工作，包含[Finder 通知焦點](plans/014-finder-notification-focus.zh-TW.md)、[官網與 DMG 下載](plans/012-download-website.zh-TW.md)與延後的[更新評估](plans/015-app-update-assessment.zh-TW.md)；已完成或取消的計畫已移除。
 - [貢獻指南](docs/zh-TW/CONTRIBUTING.md)：開發環境、問題回報、測試與 PR 提交流程。
 
 ## 開發

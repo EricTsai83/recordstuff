@@ -2,13 +2,13 @@
 
 [English](../../system-design/releases.md) | [繁體中文](releases.md)
 
-更新：2026-09-19。推送版本 tag 是唯一的發布動作：CI 在一次執行中建置、簽署、驗證並公開。含 pipeline 內人工驗收閘門的 draft／promote 流程用於 [0.1.1](../verification/releases/0.1.1.md)，並在準備 0.1.2 的同一天退役；人工檢查改在打 tag 之前進行。[0.1.2](../verification/releases/0.1.2.md) 是此流程的第一個版本。
+更新：2026-09-19。推送版本 tag 是唯一的發布動作：CI 在一次執行中建置、簽署、驗證並公開。含 pipeline 內人工驗收閘門的 draft／promote 流程用於 [0.1.1](../verification/releases/0.1.1.md)，並在準備 0.1.2 的同一天退役；人工檢查改在打 tag 之前進行。[0.1.2](../verification/releases/0.1.2.md) 是此流程的第一個版本：從推送 tag 到公開不到三分鐘。
 
 ## 發布契約
 
-[release.yml](../../../.github/workflows/release.yml) 只在推送 `v*` tag 時觸發。沒有分支、PR 或手動觸發，所以一般 commit 到 main 不會建置或發布任何東西。使用 `macos-15`，執行時要求 arm64；Node 24.21.0、pnpm 10.33.4 與 frozen lockfile。Actions 固定完整 commit SHA，更新時需重新檢查上游版本。
+[release.yml](../../../.github/workflows/release.yml) 只在推送 `v*` tag 時建置與發布。沒有分支或 PR 觸發，所以一般 commit 到 main 不會建置或發布任何東西。以既有 tag 手動 dispatch 只會執行發布後驗證 job，不會建置或發布。使用 `macos-15`，執行時要求 arm64；Node 24.21.0、pnpm 10.33.4 與 frozen lockfile。Actions 固定完整 commit SHA，更新時需重新檢查上游版本。
 
-單次 workflow 的順序：tag／來源檢查 → 程式檢查（`pnpm check`）→ 匯入固定身分 → `pnpm dist:mac` → 掛載驗證 → 候選 artifact → 獨立 publish job 不用私鑰重驗後建立公開 release。build job 僅有 contents:read；只有 publish job 有 contents:write。Secrets 只提供給 build 的簽署 step。release environment 只允許 `v*` tag，由 repository 的可信任維護者控制。全發布 workflow 共用 concurrency group，執行中不取消。
+單次 workflow 的順序：tag／來源檢查 → 程式檢查（`pnpm check`）→ 匯入固定身分 → `pnpm dist:mac` → 掛載驗證 → 候選 artifact → 獨立 publish job 不用私鑰重驗後建立公開 release → `verify-published` job 以匿名身分從公開 release 網址下載三個 assets、核對 SHA256SUMS、重跑掛載／簽章／metadata 閘門並比對 GitHub 自己算的 asset digest（`release.mts published`）。build job 僅有 contents:read；只有 publish job 有 contents:write；驗證 job 不需要 secrets 或寫入權限。Secrets 只提供給 build 的簽署 step。release environment 只允許 `v*` tag，由 repository 的可信任維護者控制。全發布 workflow 共用 concurrency group，執行中不取消。
 
 會停止發布的閘門，依序為：tag 指向的 commit 不是 `origin/main` 的祖先；package.json 版本與去掉 `v` 的 tag 不同；工作樹不乾淨；該 tag 已有 release（含 draft）；程式檢查失敗；缺 secrets 或匯入的憑證指紋不是 `01B373511530BBF287CA35E54C10A5F017AAD637`；bundle 簽章、identifier、hardened runtime 或 designated requirement 失敗；DMG 根目錄不是恰為 `Applications` 與 `RecordStuff.app` 加允許的隱藏 Finder 版面檔；App 版本或架構不符；重驗時候選 metadata 或 SHA256SUMS 不同；tag 不再指向已驗證的 commit。沒有未簽署或部分驗證的後備路徑。
 
@@ -34,13 +34,17 @@ git push origin main v0.1.2
 gh run watch --exit-status "$(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
 ```
 
-約十分鐘後 `gh release view v0.1.2` 顯示公開 release 與三個 assets：DMG、SHA256SUMS、release.json。把 run 連結、大小與 SHA-256 記入 `docs/verification/releases/<version>.md`，再更新 README 下載區。在另一台機器用瀏覽器下載並執行 `shasum -a 256 -c SHA256SUMS` 仍是有用的抽查，但不再阻擋任何流程。
+約十分鐘後 `gh release view v0.1.2` 顯示公開 release 與三個 assets：DMG、SHA256SUMS、release.json。把 run 連結、大小與 SHA-256 記入 `docs/verification/releases/<version>.md`，再更新 README 下載區。`verify-published` job 就是下載檢查：它抓取匿名使用者會拿到的檔案，在 GitHub 的網路上重跑所有產物閘門，本機不需要再下載。若它失敗，release 仍為公開，由維護者決定發修正版或保留；此 job 絕不撤回發布。之後要重驗既有版本，以其 tag dispatch workflow：
+
+```bash
+gh workflow run release.yml --ref main -f tag=v0.1.2
+```
 
 回滾就是發新版本：絕不覆寫、刪除或重打已公開的 release。若 workflow 在公開前失敗，修正原始碼、升版本、重新打 tag；失敗 run 的 tag 可留可刪，但一旦該版本存在任何 release 物件（即使不完整），版本號不得再用於發布。若 run 在建立 release 物件後才失敗，該版本視為已消耗，人工處理不完整的 release。不要以移除檢查解決發布問題。
 
 ## 工具邊界與失敗
 
-`node scripts/release.mts preflight|candidate|verify|publish vX.Y.Z [directory]` 共用本機與 CI 驗證。`preflight` 要求乾淨工作樹、版本相符與未用過的 release。`candidate` 在最終 DMG bytes 上產生 `SHA256SUMS`、`release.json`，記錄版本、source commit、repository、平台、檔名、大小、SHA-256、憑證指紋、app.asar 雜湊、Node 與 pnpm。`verify` 以這些檔案重驗候選目錄。`publish` 重驗、確認 tag 指向已驗證 commit、寫出英文說明，並以 `gh release create --verify-tag`（`--latest` 或 `--prerelease`）建立公開 release。
+`node scripts/release.mts preflight|candidate|verify|publish vX.Y.Z [directory]` 共用本機與 CI 驗證。`preflight` 要求乾淨工作樹、版本相符與未用過的 release。`candidate` 在最終 DMG bytes 上產生 `SHA256SUMS`、`release.json`，記錄版本、source commit、repository、平台、檔名、大小、SHA-256、憑證指紋、app.asar 雜湊、Node 與 pnpm。`verify` 以這些檔案重驗候選目錄。`published` 對從公開網址下載的檔案做同樣檢查，並額外要求 GitHub release 非 draft、恰有這三個 assets，且名稱、大小與 GitHub 計算的 SHA-256 digest 相符。`publish` 重驗、確認 tag 指向已驗證 commit、寫出英文說明，並以 `gh release create --verify-tag`（`--latest` 或 `--prerelease`）建立公開 release。
 
 `start-app.mjs --verify-app APP_PATH` 只使用 `RECORDSTUFF_SIGN_IDENTITY` 公開 SHA-1，重用原本的深度簽章、憑證、identifier、runtime 與 designated requirement 驗證，不需要私鑰、不建置、不啟動 App。`assertDmgContents` 要求根目錄恰為 `Applications` 與 `RecordStuff.app`，隱藏項目最多只能是一般檔案 `.DS_Store`、`.VolumeIcon.icns` 與 `.background.png`／`.background.tiff`；任何其他項目、任何隱藏資料夾或符號連結，或以 `.` 開頭藏起來的指南，都會讓發布失敗。
 

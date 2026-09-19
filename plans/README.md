@@ -2,18 +2,17 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-Updated: 2026-09-19. v0.1.1 is published; see [release evidence](../docs/verification/releases/0.1.1.md). The 013 source changes are implemented and locally verified; local acceptance, the removal check and the tag-triggered 0.1.2 release remain, tracked in [0.1.2 evidence](../docs/verification/releases/0.1.2.md). See [release automation](../docs/system-design/releases.md).
+Updated: 2026-09-19. v0.1.2 is published from tag `v0.1.2` with the simplified DMG; see [0.1.2 evidence](../docs/verification/releases/0.1.2.md). 013 is complete and removed. Releases follow [release automation](../docs/system-design/releases.md).
 
 ## Order and status
 
 | Order | Plan | Status | Completion target |
 | --- | --- | --- | --- |
-| Next | [013 Installation experience](013-macos-installation-experience.md) | Implemented in source; release pending | Accept installation/replacement/recording locally, verify removal on a disposable copy, push tag v0.1.2 |
-| With next release | [014 Finder notification focus](014-finder-notification-focus.md) | Planned | Reproduce and fix explicit-click foreground behavior; verify native focus |
+| Next | [014 Finder notification focus](014-finder-notification-focus.md) | Planned | Reproduce and fix explicit-click foreground behavior; verify native focus |
 | Ready for implementation | [012 Official website](012-download-website.md) | Planned | Bilingual product/help website with direct DMG downloads and version/checksum details |
 | When update convenience is prioritized | [015 App update assessment](015-app-update-assessment.md) | Deferred decision only | Compare manual, user-triggered check and automatic update; establish self-signing feasibility |
 
-013 and 014 may share a new release; neither requires CI or a website. 011 automates publishing, not installed-app updates. 015 does not authorize implementation of an updater. Public release notes stay English-only; app UI and reader guides remain bilingual. Published v0.1.0 bytes must not be overwritten.
+014 does not require a website. Publishing is automated by tag push; installed-app updates are manual. 015 does not authorize implementation of an updater. Public release notes stay English-only; app UI and reader guides remain bilingual. Published release bytes must not be overwritten.
 
 No dedicated uninstaller is planned: quit and move the app to Trash; user data remains unless separately removed. No native-platform rewrite solely for size reduction, Apple certification, Windows/Linux/Intel verification or expansion is scheduled. DMG size was explained by Electron's runtime cost; discussion alone does not create a rewrite project.
 

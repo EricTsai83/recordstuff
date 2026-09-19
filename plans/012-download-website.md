@@ -2,11 +2,11 @@
 
 [English](012-download-website.md) | [繁體中文](012-download-website.zh-TW.md)
 
-Status: Planned by user request; public launch after 010 download verification. Updated: 2026-09-15. This task records the plan only, not website implementation or deployment.
+Status: Planned by user request; ready for implementation. Updated: 2026-09-19. This task records the plan only, not website implementation or deployment.
 
 ## Outcome and dependencies
 
-An official English/Traditional Chinese RecordStuff website explains the product, offers a prominent direct DMG download, and hosts installation/use/update/removal guidance. The installer itself contains no help documents, as specified in [013](013-macos-installation-experience.md). Draft design and content can proceed while 010 is open; public download claims must match its verified results. The site does not require CI automation (011), an app updater (015), or a custom domain.
+An official English/Traditional Chinese RecordStuff website explains the product, offers a prominent direct DMG download, and hosts installation/use/update/removal guidance. The installer itself contains no help documents (shipped in 0.1.2; see [release automation](../docs/system-design/releases.md) and the [installation guide](../resources/INSTALL.md)). Public download claims must match the published release metadata. The site does not require an app updater (015) or a custom domain.
 
 ## Content and navigation
 
@@ -26,6 +26,6 @@ An official English/Traditional Chinese RecordStuff website explains the product
 
 ## Acceptance and exclusions
 
-The official public URL loads, the direct DMG link downloads the advertised verified artifact, metadata/checksum agree, and guidance is usable in both languages. No placeholder claims or broken links remain. The next installer under 013 contains no help documents; the website describes older v0.1.0 accurately until a replacement version ships.
+The official public URL loads, the direct DMG link downloads the advertised verified artifact, metadata/checksum agree, and guidance is usable in both languages. No placeholder claims or broken links remain. The website links the current release's DMG, SHA256SUMS and guides, and is updated whenever a new tag is published.
 
 No account system, backend, payment, analytics, artifact mirror, domain purchase or app updater is required. T3 Code's [download page](https://t3.codes/download) is a design reference to inspect when implementing, not a requirement to copy its layout or infrastructure.

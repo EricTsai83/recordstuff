@@ -6,7 +6,7 @@ Status: Deferred decision option, not scheduled implementation. Updated: 2026-09
 
 ## Current boundary
 
-RecordStuff has no in-app update check or automatic updater. Manual replacement is covered by 013. Plan 011 automates release production/publication, not installed apps. Asking about update mechanisms does not select an automatic-install policy. Keep the first-release path and installer cleanup independent of this assessment.
+RecordStuff has no in-app update check or automatic updater. Manual replacement is documented in the [installation guide](../resources/INSTALL.md). Tag-triggered publishing ([release automation](../docs/system-design/releases.md)) produces releases, not installed-app updates. Asking about update mechanisms does not select an automatic-install policy. Keep the first-release path and installer cleanup independent of this assessment.
 
 ## Assessment when activated
 

@@ -18,6 +18,18 @@ export function validateDigest(actual: string, expected: string) {
 export function assertUnreleased(releases: { tag_name: string }[], tag: string) {
   if (releases.some(r => r.tag_name === tag)) throw new Error('Version already has a release (including drafts); refusing reuse.');
 }
+export interface PublishedRelease { draft: boolean; assets: { name: string; size: number; digest?: string | null }[] }
+/** The public release must be exactly the verified files: same names, sizes and GitHub-computed SHA-256 digests. */
+export function assertPublishedAssets(release: PublishedRelease, expected: { name: string; size: number; sha256: string }[]) {
+  if (release.draft) throw new Error('Release is still a draft.');
+  if (release.assets.length !== expected.length) throw new Error(`Expected ${expected.length} assets, found ${release.assets.length}.`);
+  for (const file of expected) {
+    const asset = release.assets.find(a => a.name === file.name);
+    if (!asset) throw new Error(`Missing published asset ${file.name}.`);
+    if (asset.size !== file.size) throw new Error(`Published ${file.name} has ${asset.size} bytes, verified file has ${file.size}.`);
+    if (asset.digest !== `sha256:${file.sha256}`) throw new Error(`Published ${file.name} digest ${asset.digest ?? 'missing'} differs from verified sha256:${file.sha256}.`);
+  }
+}
 const root = fileURLToPath(new URL('..', import.meta.url));
 function run(command: string, args: string[], input?: string) {
   const r = spawnSync(command, args, { cwd: root, encoding: 'utf8', input, maxBuffer: 16 * 1024 * 1024 });
@@ -111,7 +123,7 @@ function verifyCandidate(directory: string, tag: string) {
 }
 function main() {
   const [mode, tag, directoryArg] = process.argv.slice(2);
-  if (!tag || !['preflight', 'candidate', 'verify', 'publish'].includes(mode ?? '')) throw new Error('Usage: release.mts preflight|candidate|verify|publish vX.Y.Z [candidate-directory]');
+  if (!tag || !['preflight', 'candidate', 'verify', 'publish', 'published'].includes(mode ?? '')) throw new Error('Usage: release.mts preflight|candidate|verify|publish|published vX.Y.Z [directory]');
   const c = context(tag);
   if (mode === 'preflight') {
     if (run('git', ['status', '--porcelain'])) throw new Error('Release source must be clean.');
@@ -130,6 +142,16 @@ function main() {
   }
   const metadata = verifyCandidate(directory, tag);
   if (mode === 'verify') { console.log(`Verified ${metadata.file}: ${metadata.sha256}`); return; }
+  if (mode === 'published') {
+    // The directory holds files downloaded anonymously from the public release URL; they passed verifyCandidate above.
+    const release = api(`repos/${c.repository}/releases/tags/${tag}`) as PublishedRelease;
+    assertPublishedAssets(release, [metadata.file, 'SHA256SUMS', 'release.json'].map(name => {
+      const local = path.join(directory, name);
+      return { name, size: statSync(local).size, sha256: digest(local) };
+    }));
+    console.log(`Published ${tag} matches the verified bytes: ${metadata.sha256}`);
+    return;
+  }
   // publish: the tag already exists (pushed by the maintainer); the release must not.
   assertUnreleased(releases(c.repository), tag);
   if (api(`repos/${c.repository}/commits/${tag}`).sha !== c.sourceCommit) throw new Error('Tag does not point to the verified source commit.');

@@ -12,13 +12,13 @@ The product target is a downloadable, self-signed macOS app. Apple certification
 
 ## Download and install
 
-Download **[RecordStuff 0.1.1 for macOS Apple silicon (arm64)](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.1/RecordStuff-0.1.1-arm64-selfsigned.dmg)** (127,310,755 bytes). [Release notes](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.1) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.1/SHA256SUMS) · [Latest release](https://github.com/EricTsai83/recordstuff/releases/latest).
+Download **[RecordStuff 0.1.2 for macOS Apple silicon (arm64)](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.2/RecordStuff-0.1.2-arm64-selfsigned.dmg)** (127,314,171 bytes). [Release notes](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.2) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.2/SHA256SUMS) · [Latest release](https://github.com/EricTsai83/recordstuff/releases/latest).
 
-SHA-256: `be8119c6405c21a5b19f7cab968af5e488435412c8bbc1fc0c663550d40bb512`.
+SHA-256: `2de49bbd552e46934ef4573ca8c8b103e3a0b1334dd12b2022dee1f332f7fc7f`.
 
-CI-built candidate installation, recording/playback and language checks passed on the available Mac. The user-provided public browser-download checksum also matches; see [release evidence](docs/verification/releases/0.1.1.md). Clicking a saved notification selects the file in Finder, but may leave Finder behind other windows.
+0.1.2 was built, signed, verified and published by CI from tag `v0.1.2`; recording, playback and permission retention were checked locally on the same source before tagging. See [release evidence](docs/verification/releases/0.1.2.md). Clicking a saved notification selects the file in Finder, but may leave Finder behind other windows.
 
-Download the arm64 DMG and drag RecordStuff onto the Applications folder shown in the disk image. From 0.1.2 the DMG contains only the app and that Applications shortcut; the current 0.1.1 image also carries two guide files, which you can ignore. The [installation guide](resources/INSTALL.md) covers first launch, manual update (quit, download, replace at the same path; settings are kept) and removal (quit, move the app to Trash; recordings, settings and logs stay unless you delete them). There is no automatic updater or uninstaller. Recipients do not need Node, pnpm, FFmpeg, or certificates. Because the app is not notarized, first launch may require **System Settings → Privacy & Security → Open Anyway**. A warning-free first launch is not promised; see [Apple's guidance](https://support.apple.com/102445).
+Download the arm64 DMG and drag RecordStuff onto the Applications folder shown in the disk image; the DMG contains only the app and that Applications shortcut. The [installation guide](resources/INSTALL.md) covers first launch, manual update (quit, download, replace at the same path; settings are kept) and removal (quit, move the app to Trash; recordings, settings and logs stay unless you delete them). There is no automatic updater or uninstaller. Recipients do not need Node, pnpm, FFmpeg, or certificates. Because the app is not notarized, first launch may require **System Settings → Privacy & Security → Open Anyway**. A warning-free first launch is not promised; see [Apple's guidance](https://support.apple.com/102445).
 
 ## Use
 
@@ -39,10 +39,10 @@ Output is H.264/AAC MP4. Audio requests 256 kbps with voice processing explicitl
 
 ## Current status and design
 
-The local app has been verified for recording/playback, Retina 3456×2234 capture, permissions and recovery, partial-file preservation, self-signed DMG installation, and same-identity updates. The 0.1.2 source ships a simplified DMG (app and Applications link only); its local build passed the release gate and Finder layout check, and the public release is pending, see [0.1.2 evidence](docs/verification/releases/0.1.2.md). The notification icon was confirmed normal after reboot on 2026-09-14. The new language implementation is covered by automated checks; the release plan includes checking it in the next packaged build. Full evidence and limitations are in the [verification record](docs/verification/README.md).
+The local app has been verified for recording/playback, Retina 3456×2234 capture, permissions and recovery, partial-file preservation, self-signed DMG installation, and same-identity updates. 0.1.2 ships a simplified DMG (app and Applications link only) with online install, update and removal guidance; see [0.1.2 evidence](docs/verification/releases/0.1.2.md). The notification icon was confirmed normal after reboot on 2026-09-14. The new language implementation is covered by automated checks; the release plan includes checking it in the next packaged build. Full evidence and limitations are in the [verification record](docs/verification/README.md).
 
 - [System design](docs/system-design/README.md): overview, architecture, recording, desktop behavior, every module's functions, tooling, and decisions.
-- [Remaining work](plans/README.md): macOS delivery and scoped follow-ups, including the [official website and DMG downloads](plans/012-download-website.md), a [simpler installer](plans/013-macos-installation-experience.md), [Finder notification focus](plans/014-finder-notification-focus.md), and a deferred [update assessment](plans/015-app-update-assessment.md); completed/canceled plans have been removed.
+- [Remaining work](plans/README.md): scoped follow-ups, including [Finder notification focus](plans/014-finder-notification-focus.md), the [official website and DMG downloads](plans/012-download-website.md), and a deferred [update assessment](plans/015-app-update-assessment.md); completed/canceled plans have been removed.
 - [Contributing](CONTRIBUTING.md): development setup, bug reports, testing, and pull requests.
 
 ## Development
