@@ -44,7 +44,7 @@ gh workflow run release.yml --ref main -f tag=v0.1.2
 
 ## 工具邊界與失敗
 
-`node scripts/release.mts preflight|candidate|verify|publish vX.Y.Z [directory]` 共用本機與 CI 驗證。`preflight` 要求乾淨工作樹、版本相符與未用過的 release。`candidate` 在最終 DMG bytes 上產生 `SHA256SUMS`、`release.json`，記錄版本、source commit、repository、平台、檔名、大小、SHA-256、憑證指紋、app.asar 雜湊、Node 與 pnpm。`verify` 以這些檔案重驗候選目錄。`published` 對從公開網址下載的檔案做同樣檢查，並額外要求 GitHub release 非 draft、恰有這三個 assets，且名稱、大小與 GitHub 計算的 SHA-256 digest 相符。`publish` 重驗、確認 tag 指向已驗證 commit、寫出英文說明，並以 `gh release create --verify-tag`（`--latest` 或 `--prerelease`）建立公開 release。
+`node scripts/release.mts preflight|candidate|verify|publish vX.Y.Z [directory]` 共用本機與 CI 驗證。`preflight` 要求乾淨工作樹、版本相符與未用過的 release。`candidate` 在最終 DMG bytes 上產生 `SHA256SUMS`、`release.json`，記錄版本、source commit、repository、平台、檔名、大小、SHA-256、憑證指紋、app.asar 雜湊、Node 與 pnpm。`verify` 以這些檔案重驗候選目錄。`published` 對從公開網址下載的檔案做同樣檢查，版本取自 tag、source commit 取自 tag 指向的 commit（因此在 main checkout 上可用目前工具驗任何舊版本），並額外要求 GitHub release 非 draft、恰有這三個 assets，且名稱、大小與 GitHub 計算的 SHA-256 digest 相符。`publish` 重驗、確認 tag 指向已驗證 commit、寫出英文說明，並以 `gh release create --verify-tag`（`--latest` 或 `--prerelease`）建立公開 release。
 
 `start-app.mjs --verify-app APP_PATH` 只使用 `RECORDSTUFF_SIGN_IDENTITY` 公開 SHA-1，重用原本的深度簽章、憑證、identifier、runtime 與 designated requirement 驗證，不需要私鑰、不建置、不啟動 App。`assertDmgContents` 要求根目錄恰為 `Applications` 與 `RecordStuff.app`，隱藏項目最多只能是一般檔案 `.DS_Store`、`.VolumeIcon.icns` 與 `.background.png`／`.background.tiff`；任何其他項目、任何隱藏資料夾或符號連結，或以 `.` 開頭藏起來的指南，都會讓發布失敗。
 

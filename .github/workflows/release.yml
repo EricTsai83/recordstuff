@@ -118,6 +118,8 @@ jobs:
     # Runs after a successful publish, or alone on dispatch. Downloads what an
     # anonymous user gets from the public URL and reruns every artifact gate.
     # A failure here flags the release for the maintainer; it never unpublishes.
+    # The checkout is the workflow's own ref (main on dispatch), so current
+    # tooling can verify older tags; version and commit come from the tag.
     if: always() && (github.event_name == 'workflow_dispatch' || needs.publish.result == 'success')
     needs: publish
     runs-on: macos-15
@@ -128,7 +130,6 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ inputs.tag || github.ref_name }}
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -136,8 +137,7 @@ jobs:
       - name: Download the public assets anonymously
         run: |
           set -euo pipefail
-          version="$(node -p "require('./package.json').version")"
-          test "v$version" = "$RELEASE_TAG"
+          version="${RELEASE_TAG#v}"
           mkdir published
           for name in "RecordStuff-$version-arm64-selfsigned.dmg" SHA256SUMS release.json; do
             curl -fsSL --retry 3 -o "published/$name" "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$name"

@@ -48,6 +48,21 @@ function context(tag: string) {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) throw new Error('Invalid repository.');
   return { tag, version, sourceCommit, repository };
 }
+/**
+ * Context for verifying an already published tag from any checkout: the
+ * version is the tag itself and the source commit is what the tag points to,
+ * so the tooling can be newer than the release being checked.
+ */
+function contextFromTag(tag: string) {
+  const version = tag.replace(/^v/, '');
+  validateTag(tag, version);
+  const repository = process.env.GITHUB_REPOSITORY ?? run('gh', ['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner']);
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) throw new Error('Invalid repository.');
+  const sourceCommit = api(`repos/${repository}/commits/${tag}`).sha as string;
+  if (!/^[0-9a-f]{40}$/.test(sourceCommit)) throw new Error('Tag does not resolve to a commit.');
+  return { tag, version, sourceCommit, repository };
+}
+type ReleaseContext = ReturnType<typeof context>;
 function releases(repository: string) {
   return JSON.parse(run('gh', ['api', `repos/${repository}/releases`, '--paginate', '--slurp'])).flat();
 }
@@ -84,9 +99,8 @@ export function assertDmgContents(root: string) {
   const hidden = entries.filter(n => n.startsWith('.') && !(permittedHiddenDmgEntries.includes(n) && lstatSync(path.join(root, n)).isFile()));
   if (hidden.length) throw new Error(`Unexpected hidden DMG entries: ${hidden.join(', ')}. Only Finder layout files may be hidden; documents and folders must not be bundled.`);
 }
-function verifyDmg(directory: string, tag: string) {
+function verifyDmg(directory: string, tag: string, c: ReleaseContext = context(tag)) {
   if (process.platform !== 'darwin' || process.arch !== 'arm64') throw new Error('Release verification requires macOS arm64.');
-  const c = context(tag);
   const file = `RecordStuff-${c.version}-arm64-selfsigned.dmg`;
   const dmg = path.join(directory, file);
   if (!statSync(dmg).isFile()) throw new Error('Missing DMG.');
@@ -112,9 +126,9 @@ function verifyDmg(directory: string, tag: string) {
     rmSync(mount, { recursive: true, force: true });
   }
 }
-function verifyCandidate(directory: string, tag: string) {
+function verifyCandidate(directory: string, tag: string, c: ReleaseContext = context(tag)) {
   const metadata = JSON.parse(readFileSync(path.join(directory, 'release.json'), 'utf8'));
-  const actual = verifyDmg(directory, tag);
+  const actual = verifyDmg(directory, tag, c);
   for (const [key, value] of Object.entries(actual)) {
     if (metadata[key] !== value) throw new Error(`Candidate metadata mismatch: ${key}`);
   }
@@ -124,6 +138,20 @@ function verifyCandidate(directory: string, tag: string) {
 function main() {
   const [mode, tag, directoryArg] = process.argv.slice(2);
   if (!tag || !['preflight', 'candidate', 'verify', 'publish', 'published'].includes(mode ?? '')) throw new Error('Usage: release.mts preflight|candidate|verify|publish|published vX.Y.Z [directory]');
+  if (mode === 'published') {
+    // Files downloaded anonymously from the public release URL, checked with the tooling of this checkout.
+    if (!directoryArg) throw new Error('Downloaded-assets directory is required.');
+    const published = contextFromTag(tag);
+    const directory = path.resolve(directoryArg);
+    const metadata = verifyCandidate(directory, tag, published);
+    const release = api(`repos/${published.repository}/releases/tags/${tag}`) as PublishedRelease;
+    assertPublishedAssets(release, [metadata.file, 'SHA256SUMS', 'release.json'].map(name => {
+      const local = path.join(directory, name);
+      return { name, size: statSync(local).size, sha256: digest(local) };
+    }));
+    console.log(`Published ${tag} (${published.sourceCommit}) matches the verified bytes: ${metadata.sha256}`);
+    return;
+  }
   const c = context(tag);
   if (mode === 'preflight') {
     if (run('git', ['status', '--porcelain'])) throw new Error('Release source must be clean.');
@@ -142,16 +170,6 @@ function main() {
   }
   const metadata = verifyCandidate(directory, tag);
   if (mode === 'verify') { console.log(`Verified ${metadata.file}: ${metadata.sha256}`); return; }
-  if (mode === 'published') {
-    // The directory holds files downloaded anonymously from the public release URL; they passed verifyCandidate above.
-    const release = api(`repos/${c.repository}/releases/tags/${tag}`) as PublishedRelease;
-    assertPublishedAssets(release, [metadata.file, 'SHA256SUMS', 'release.json'].map(name => {
-      const local = path.join(directory, name);
-      return { name, size: statSync(local).size, sha256: digest(local) };
-    }));
-    console.log(`Published ${tag} matches the verified bytes: ${metadata.sha256}`);
-    return;
-  }
   // publish: the tag already exists (pushed by the maintainer); the release must not.
   assertUnreleased(releases(c.repository), tag);
   if (api(`repos/${c.repository}/commits/${tag}`).sha !== c.sourceCommit) throw new Error('Tag does not point to the verified source commit.');
