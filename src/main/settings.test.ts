@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DEFAULT_HOTKEY } from "../shared/hotkey";
 import { DEFAULT_QUALITY } from "../shared/quality";
 import { SettingsStore, parseSettings } from "./settings";
 
@@ -34,7 +35,7 @@ describe("SettingsStore", () => {
   });
 
   it("falls back on an unknown version", async () => {
-    await fs.writeFile(filePath, JSON.stringify({ version: 3, outputDir: "/somewhere" }));
+    await fs.writeFile(filePath, JSON.stringify({ version: 4, outputDir: "/somewhere" }));
     expect(store().outputDir).toBe(DEFAULT);
     expect(logs).toHaveLength(1);
   });
@@ -51,10 +52,11 @@ describe("SettingsStore", () => {
     await first.setOutputDir("/Volumes/External/Recordings");
     expect(first.outputDir).toBe("/Volumes/External/Recordings");
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
-      version: 2,
+      version: 3,
       language: "en",
       outputDir: "/Volumes/External/Recordings",
       quality: DEFAULT_QUALITY,
+      hotkey: DEFAULT_HOTKEY,
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -92,7 +94,10 @@ describe("quality settings", () => {
     const s = store();
     expect(s.outputDir).toBe("/old");
     expect(s.quality).toEqual(DEFAULT_QUALITY);
-    expect(logs).toEqual(["settings: version 1 file: quality set to defaults"]);
+    expect(logs).toEqual([
+      "settings: version 1 file: quality set to defaults",
+      "settings: version 1 file: shortcut set to default",
+    ]);
   });
 
   it("round-trips a full quality block and persists it as version 2", async () => {
@@ -100,7 +105,13 @@ describe("quality settings", () => {
     await first.setQuality({ videoQuality: "high", resolutionCap: "1080p" });
     await first.setQuality({ frameRate: 60 });
     expect(first.quality).toEqual(custom);
-    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({ language: "en", version: 2, outputDir: DEFAULT, quality: custom });
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
+      language: "en",
+      version: 3,
+      outputDir: DEFAULT,
+      quality: custom,
+      hotkey: DEFAULT_HOTKEY,
+    });
     const second = store();
     expect(second.quality).toEqual(custom);
     expect(second.outputDir).toBe(DEFAULT);
@@ -111,20 +122,24 @@ describe("quality settings", () => {
     await s.setQuality({ videoQuality: "economy" });
     await s.setOutputDir("/elsewhere");
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
-      version: 2,
+      version: 3,
       language: "en",
       outputDir: "/elsewhere",
       quality: { ...DEFAULT_QUALITY, videoQuality: "economy" },
+      hotkey: DEFAULT_HOTKEY,
     });
   });
 
   it("an invalid quality block falls back to defaults but keeps the outputDir", async () => {
-    await fs.writeFile(filePath, JSON.stringify({ version: 2, outputDir: "/kept", quality: { ...custom, frameRate: 24 } }));
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({ version: 3, outputDir: "/kept", quality: { ...custom, frameRate: 24 }, hotkey: DEFAULT_HOTKEY }),
+    );
     const s = store();
     expect(s.outputDir).toBe("/kept");
     expect(s.quality).toEqual(DEFAULT_QUALITY);
     expect(logs).toEqual(["settings: quality is missing or has unsupported values: using defaults"]);
-    await fs.writeFile(filePath, JSON.stringify({ version: 2, outputDir: "/kept" }));
+    await fs.writeFile(filePath, JSON.stringify({ version: 3, outputDir: "/kept", hotkey: DEFAULT_HOTKEY }));
     expect(store().quality).toEqual(DEFAULT_QUALITY);
   });
 
@@ -156,7 +171,13 @@ describe("quality settings", () => {
     const expected = { ...DEFAULT_QUALITY, videoQuality: "high", frameRate: 60 };
     expect(s.quality).toEqual(expected);
     expect(s.outputDir).toBe("/picked");
-    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({ language: "en", version: 2, outputDir: "/picked", quality: expected });
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
+      language: "en",
+      version: 3,
+      outputDir: "/picked",
+      quality: expected,
+      hotkey: DEFAULT_HOTKEY,
+    });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -170,24 +191,29 @@ describe("quality settings", () => {
   });
 
   it("ignores unknown extra keys inside quality", () => {
-    const parsed = parseSettings(JSON.stringify({ version: 2, outputDir: "/a", quality: { ...custom, extra: 1 } }));
+    const parsed = parseSettings(
+      JSON.stringify({ version: 3, outputDir: "/a", quality: { ...custom, extra: 1 }, hotkey: DEFAULT_HOTKEY }),
+    );
     expect(parsed?.settings.quality).toEqual(custom);
     expect(parsed?.warnings).toEqual([]);
   });
 });
 
 describe("parseSettings", () => {
-  it("accepts version 1 and 2 with an absolute string outputDir", () => {
+  it("accepts versions 1 to 3 with an absolute string outputDir", () => {
     expect(parseSettings('{"version":1,"outputDir":"/a"}')?.settings).toEqual({
-      version: 2,
+      version: 3,
       language: "en",
       outputDir: "/a",
       quality: DEFAULT_QUALITY,
+      hotkey: DEFAULT_HOTKEY,
     });
     expect(parseSettings('{"version":2,"outputDir":"/a","quality":' + JSON.stringify(DEFAULT_QUALITY) + "}")).toEqual({
-      settings: { language: "en", version: 2, outputDir: "/a", quality: DEFAULT_QUALITY },
-      warnings: [],
+      settings: { language: "en", version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY },
+      warnings: ["version 2 file: shortcut set to default"],
     });
+    const v3 = { version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
+    expect(parseSettings(JSON.stringify(v3))).toEqual({ settings: { ...v3, language: "en" }, warnings: [] });
     expect(parseSettings('{"version":1,"outputDir":""}')).toBeUndefined();
     expect(parseSettings("null")).toBeUndefined();
     expect(parseSettings("[]")).toBeUndefined();
@@ -227,12 +253,87 @@ describe("language settings", () => {
   });
 
   it("defaults corrupt language independently and rejects invalid mutations", async () => {
-    await fs.writeFile(filePath, JSON.stringify({ version: 2, outputDir: "/kept", quality: DEFAULT_QUALITY, language: "fr" }));
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({ version: 3, outputDir: "/kept", quality: DEFAULT_QUALITY, language: "fr", hotkey: DEFAULT_HOTKEY }),
+    );
     const s = store();
     expect(s.language).toBe("en");
     expect(s.outputDir).toBe("/kept");
     expect(logs).toContain("settings: language is unsupported: using English");
     await expect(s.setLanguage("fr" as "en")).rejects.toThrow("unsupported language");
     expect(JSON.parse(await fs.readFile(filePath, "utf8")).language).toBe("fr");
+  });
+});
+
+describe("hotkey settings (plan 016)", () => {
+  const custom = { enabled: true, accelerator: "CommandOrControl+Shift+R" } as const;
+
+  it("v1 and v2 files get the default shortcut and keep folder, quality and language", async () => {
+    for (const version of [1, 2]) {
+      logs.length = 0;
+      await fs.writeFile(
+        filePath,
+        JSON.stringify({ version, outputDir: "/kept", quality: { ...DEFAULT_QUALITY, videoQuality: "high" }, language: "zh-TW" }),
+      );
+      const s = store();
+      expect(s.hotkey).toEqual(DEFAULT_HOTKEY);
+      expect(s.outputDir).toBe("/kept");
+      expect(s.language).toBe("zh-TW");
+      if (version === 2) expect(s.quality.videoQuality).toBe("high");
+      expect(logs).toContain(`settings: version ${version} file: shortcut set to default`);
+    }
+  });
+
+  it("round-trips a preset and the disabled state as version 3", async () => {
+    const s = store();
+    await s.setHotkey(custom);
+    expect(s.hotkey).toEqual(custom);
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
+      version: 3,
+      language: "en",
+      outputDir: DEFAULT,
+      quality: DEFAULT_QUALITY,
+      hotkey: custom,
+    });
+    expect(store().hotkey).toEqual(custom);
+    // Disabling remembers the chosen accelerator so re-enabling restores it.
+    await s.setHotkey({ ...custom, enabled: false });
+    expect(store().hotkey).toEqual({ enabled: false, accelerator: custom.accelerator });
+  });
+
+  it("an unknown accelerator or a broken hotkey block falls back to the default and keeps the rest", async () => {
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({ version: 3, outputDir: "/kept", quality: DEFAULT_QUALITY, hotkey: { enabled: true, accelerator: "F13" } }),
+    );
+    const s = store();
+    expect(s.hotkey).toEqual(DEFAULT_HOTKEY);
+    expect(s.outputDir).toBe("/kept");
+    expect(logs).toEqual(["settings: hotkey is missing or has unsupported values: using the default shortcut"]);
+    await fs.writeFile(filePath, JSON.stringify({ version: 3, outputDir: "/kept", quality: DEFAULT_QUALITY }));
+    expect(store().hotkey).toEqual(DEFAULT_HOTKEY);
+  });
+
+  it("rejects a non-preset accelerator without touching the file, and keeps the choice on a failed write", async () => {
+    const s = store();
+    await s.setHotkey(custom);
+    await expect(s.setHotkey({ enabled: true, accelerator: "Command+Q" as typeof custom.accelerator })).rejects.toThrow(
+      /unsupported shortcut/,
+    );
+    expect(JSON.parse(await fs.readFile(filePath, "utf8")).hotkey).toEqual(custom);
+    await fs.rm(filePath);
+    await fs.mkdir(filePath);
+    await expect(s.setHotkey({ ...custom, enabled: false })).rejects.toThrow();
+    expect(s.hotkey).toEqual(custom);
+  });
+
+  it("persists alongside overlapping saves of other fields", async () => {
+    const s = store();
+    await Promise.all([s.setHotkey({ ...custom, enabled: false }), s.setLanguage("zh-TW"), s.setOutputDir("/new")]);
+    const reloaded = store();
+    expect(reloaded.hotkey).toEqual({ ...custom, enabled: false });
+    expect(reloaded.language).toBe("zh-TW");
+    expect(reloaded.outputDir).toBe("/new");
   });
 });

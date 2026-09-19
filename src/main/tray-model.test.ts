@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_QUALITY } from "../shared/quality";
 import type { RecordingState } from "../shared/state";
+import { DEFAULT_HOTKEY, HOTKEY_PRESETS } from "../shared/hotkey";
 import {
   abbreviateHome,
   errorNotification,
   frameRateDowngradeNotification,
+  hotkeyRegistrationFailedNotification,
   savedNotification,
   trayModel,
   type TrayContext,
@@ -291,5 +293,81 @@ describe("English default and language switching", () => {
     expect(submenu(chinese.menu, "語言")[1]).toMatchObject({ checked: true });
     expect(english.menu.find((m) => m.kind === "item" && m.label === "Recording quality")).toMatchObject({ enabled: false });
     expect(state.type).toBe("recording");
+  });
+});
+
+describe("Shortcut submenu (plan 016)", () => {
+  const withHotkey = (registered = true, enabled = true): TrayContext => ({
+    ...mac,
+    language: "en",
+    hotkey: { ...DEFAULT_HOTKEY, enabled, registered },
+  });
+  const shortcutEntry = (menu: TrayMenuItem[]) =>
+    menu.find((m) => m.kind === "submenu" && (m.label.startsWith("Shortcut") || m.label.startsWith("快捷鍵")));
+
+  it("is absent for callers that do not provide a hotkey context", () => {
+    expect(shortcutEntry(trayModel({ type: "idle" }, mac).menu)).toBeUndefined();
+  });
+
+  it("shows the registered accelerator with macOS symbols, one radio per preset plus Off", () => {
+    const m = trayModel({ type: "idle" }, withHotkey());
+    const entry = shortcutEntry(m.menu);
+    expect(entry).toMatchObject({ kind: "submenu", label: "Shortcut: ⌘⌥⇧R", enabled: true });
+    const items = submenu(m.menu, "Shortcut: ⌘⌥⇧R");
+    expect(items).toEqual([
+      { kind: "radio", label: "⌘⌥⇧R", enabled: true, checked: true, action: { setHotkey: { enabled: true, accelerator: HOTKEY_PRESETS[0] } } },
+      { kind: "radio", label: "⌘⇧R", enabled: true, checked: false, action: { setHotkey: { enabled: true, accelerator: HOTKEY_PRESETS[1] } } },
+      { kind: "radio", label: "⌘⌥R", enabled: true, checked: false, action: { setHotkey: { enabled: true, accelerator: HOTKEY_PRESETS[2] } } },
+      { kind: "radio", label: "Off", enabled: true, checked: false, action: { setHotkey: { enabled: false, accelerator: HOTKEY_PRESETS[0] } } },
+    ]);
+    // Electron splits radio groups at separators and checks one item per group:
+    // Off must share the presets' group or it would show checked too (review F1).
+    expect(items.some((i) => i.kind === "separator")).toBe(false);
+    expect(items.filter((i) => i.kind === "radio" && i.checked)).toHaveLength(1);
+    // The menu sits between quality and the footer in every state that shows it.
+    const names = labels(m.menu);
+    expect(names.indexOf("Shortcut: ⌘⌥⇧R")).toBe(names.indexOf("Recording quality") + 1);
+  });
+
+  it("spells out a refused registration instead of hiding the conflict", () => {
+    const m = trayModel({ type: "idle" }, withHotkey(false));
+    expect(shortcutEntry(m.menu)).toMatchObject({ label: "Shortcut unavailable (in use by another app): ⌘⌥⇧R", enabled: true });
+    const zh = trayModel({ type: "idle" }, { ...withHotkey(false), language: "zh-TW" });
+    expect(labels(zh.menu)).toContain("快捷鍵無法使用（被其他 App 佔用）：⌘⌥⇧R");
+    expect(hotkeyRegistrationFailedNotification(HOTKEY_PRESETS[0], "darwin", "zh-TW").body).toBe(
+      "無法註冊快捷鍵 ⌘⌥⇧R，可能被其他 App 佔用。右鍵選單可以改用其他快捷鍵",
+    );
+    expect(hotkeyRegistrationFailedNotification(HOTKEY_PRESETS[0], "win32").body).toContain("Ctrl+Alt+Shift+R");
+  });
+
+  it("Off is checked while disabled and the remembered accelerator is kept in the Off action", () => {
+    const m = trayModel({ type: "idle" }, { ...mac, hotkey: { enabled: false, accelerator: HOTKEY_PRESETS[1], registered: false } });
+    expect(shortcutEntry(m.menu)).toMatchObject({ label: "快捷鍵：關閉", enabled: true });
+    const items = submenu(m.menu, "快捷鍵：關閉");
+    expect(items.filter((i) => i.kind === "radio" && i.checked).map((i) => (i.kind === "radio" ? i.label : ""))).toEqual(["關閉"]);
+    expect(items.at(-1)).toMatchObject({ action: { setHotkey: { enabled: false, accelerator: HOTKEY_PRESETS[1] } } });
+  });
+
+  it("is visible but locked outside idle/needsPermission, like quality", () => {
+    const ctx = withHotkey();
+    expect(shortcutEntry(trayModel({ type: "needsPermission", needsRelaunch: false }, ctx).menu)).toMatchObject({ enabled: true });
+    for (const state of [
+      { type: "starting" },
+      { type: "recording", startedAt: "2026-09-14T00:00:00Z" },
+      { type: "stopping" },
+    ] as RecordingState[]) {
+      expect(shortcutEntry(trayModel(state, ctx).menu)).toMatchObject({ label: "Shortcut: ⌘⌥⇧R", enabled: false });
+    }
+  });
+
+  it("uses Windows-style names off macOS and reminds of the shortcut on Stop", () => {
+    const m = trayModel({ type: "idle" }, { ...win, language: "en", hotkey: { ...DEFAULT_HOTKEY, registered: true } });
+    expect(shortcutEntry(m.menu)).toMatchObject({ label: "Shortcut: Ctrl+Alt+Shift+R" });
+    const rec = trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, withHotkey());
+    expect(rec.menu.find((i) => i.kind === "item" && i.label === "Stop")).toMatchObject({
+      toolTip: "Start / stop recording with ⌘⌥⇧R",
+    });
+    const unregistered = trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, withHotkey(false));
+    expect(unregistered.menu.find((i) => i.kind === "item" && i.label === "Stop")).not.toHaveProperty("toolTip");
   });
 });

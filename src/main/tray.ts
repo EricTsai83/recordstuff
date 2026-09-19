@@ -9,10 +9,13 @@ import { Menu, Notification, Tray, nativeImage, shell, type MenuItemConstructorO
 import path from "node:path";
 import type { ErrorCode, RecordingState } from "../shared/state";
 import type { FrameRate } from "../shared/quality";
+import type { HotkeyAccelerator } from "../shared/hotkey";
 import {
   errorNotification,
   languageWriteFailedNotification,
   frameRateDowngradeNotification,
+  hotkeyRegistrationFailedNotification,
+  hotkeyWriteFailedNotification,
   permissionNotification,
   qualityWriteFailedNotification,
   savedNotification,
@@ -114,6 +117,15 @@ export class AppTray {
 
   notifyQualityWriteFailed(): void {
     this.show(qualityWriteFailedNotification(this.options.context().language));
+  }
+
+  notifyHotkeyRegistrationFailed(accelerator: HotkeyAccelerator): void {
+    const ctx = this.options.context();
+    this.show(hotkeyRegistrationFailedNotification(accelerator, ctx.platform, ctx.language));
+  }
+
+  notifyHotkeyWriteFailed(): void {
+    this.show(hotkeyWriteFailedNotification(this.options.context().language));
   }
 
   notifyFrameRateDowngrade(requested: FrameRate, actual: number): void {

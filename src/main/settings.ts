@@ -5,21 +5,24 @@
  * leaves a half file. Any read problem falls back to the default and logs.
  *
  * Version 1 files (outputDir only) are read as-is and get the default
- * quality; they are rewritten as version 2 on the next successful save.
- * Older v1/v2 files without a language field default to English.
+ * quality; version 2 files get the default shortcut. Both are rewritten as
+ * version 3 on the next successful save. Older files without a language
+ * field default to English.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { DEFAULT_QUALITY, isQualitySettings, type QualitySettings } from "../shared/quality";
 import { DEFAULT_LANGUAGE, isLanguage, type Language } from "../shared/i18n";
+import { DEFAULT_HOTKEY, isHotkeySettings, type HotkeySettings } from "../shared/hotkey";
 
-export const SETTINGS_VERSION = 2;
+export const SETTINGS_VERSION = 3;
 
 export interface Settings {
   version: typeof SETTINGS_VERSION;
   outputDir: string;
   quality: QualitySettings;
   language: Language;
+  hotkey: HotkeySettings;
 }
 
 export interface SettingsStoreOptions {
@@ -50,7 +53,7 @@ export function parseSettings(text: string): ParsedSettings | undefined {
   if (typeof parsed !== "object" || parsed === null) return undefined;
   const record = parsed as Record<string, unknown>;
   const version = record["version"];
-  if (version !== 1 && version !== SETTINGS_VERSION) return undefined;
+  if (version !== 1 && version !== 2 && version !== SETTINGS_VERSION) return undefined;
   const outputDir = record["outputDir"];
   if (typeof outputDir !== "string" || outputDir.length === 0 || !path.isAbsolute(outputDir)) {
     return undefined;
@@ -72,7 +75,15 @@ export function parseSettings(text: string): ParsedSettings | undefined {
   if (record["language"] !== undefined && !isLanguage(record["language"])) {
     warnings.push("language is unsupported: using English");
   }
-  return { settings: { version: SETTINGS_VERSION, outputDir, quality, language }, warnings };
+  let hotkey: HotkeySettings = DEFAULT_HOTKEY;
+  if (version !== SETTINGS_VERSION) {
+    warnings.push(`version ${version} file: shortcut set to default`);
+  } else if (isHotkeySettings(record["hotkey"])) {
+    hotkey = { enabled: record["hotkey"].enabled, accelerator: record["hotkey"].accelerator };
+  } else {
+    warnings.push("hotkey is missing or has unsupported values: using the default shortcut");
+  }
+  return { settings: { version: SETTINGS_VERSION, outputDir, quality, language, hotkey }, warnings };
 }
 
 export class SettingsStore {
@@ -98,6 +109,16 @@ export class SettingsStore {
 
   get language(): Language {
     return this.settings.language;
+  }
+
+  get hotkey(): HotkeySettings {
+    return this.settings.hotkey;
+  }
+
+  /** Rejects (and keeps the previous choice) when the accelerator is not a preset or the write fails. */
+  setHotkey(hotkey: HotkeySettings): Promise<void> {
+    if (!isHotkeySettings(hotkey)) return Promise.reject(new Error(`unsupported shortcut: ${JSON.stringify(hotkey)}`));
+    return this.save((current) => ({ ...current, hotkey: { enabled: hotkey.enabled, accelerator: hotkey.accelerator } }));
   }
 
   setLanguage(language: Language): Promise<void> {
@@ -136,7 +157,13 @@ export class SettingsStore {
   }
 
   private load(defaultOutputDir: string): Settings {
-    const fallback: Settings = { version: SETTINGS_VERSION, outputDir: defaultOutputDir, quality: DEFAULT_QUALITY, language: DEFAULT_LANGUAGE };
+    const fallback: Settings = {
+      version: SETTINGS_VERSION,
+      outputDir: defaultOutputDir,
+      quality: DEFAULT_QUALITY,
+      language: DEFAULT_LANGUAGE,
+      hotkey: DEFAULT_HOTKEY,
+    };
     let text: string;
     try {
       text = fs.readFileSync(this.filePath, "utf8");

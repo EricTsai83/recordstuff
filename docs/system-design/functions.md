@@ -18,12 +18,14 @@ Named application and tool functions are grouped by source file. Follow source l
 | deny | Record concrete source failure and invoke callback without streams |
 | main | Wait ready, compose dependencies, register events/actions, start permission polling and optional development recording |
 | quality | Development override or persisted settings → platform-effective quality |
-| handleAction | Dispatch stop/quit/settings/relaunch/Finder, quality patches, and serialized language changes |
+| handleAction | Dispatch stop/quit/settings/relaunch/Finder, quality patches, shortcut changes, and serialized language changes |
+| applyHotkey / reportHotkey | Request registration of the persisted shortcut (deferred while a session runs); notify on refusal; refresh the menu label either way |
+| setHotkey | Only idle/needsPermission; persist first, notify on failed write, then applyHotkey |
 | revealLog | Reveal the file, otherwise open its directory; log open failures |
 | changeOutputDir | Native folder dialog → persist choice; failure notification or successful refresh |
 | setQuality | Only idle/needsPermission; persist patch, notify on failure, refresh on success |
 
-Process callbacks log uncaught exceptions/rejections. Recorder events render state, notify saved/error/permission, and report clear frame-rate downgrades. Before-quit coordinates shutdown; will-quit releases resources. CurrentLanguage is updated only after a successful settings save and localizes unexpected-error dialogs.
+Process callbacks log uncaught exceptions/rejections. Recorder events render state, notify saved/error/permission, and report clear frame-rate downgrades. The tray left click and the global shortcut share one `toggle` closure. Before-quit coordinates shutdown; will-quit disposes the shortcut and releases resources. CurrentLanguage is updated only after a successful settings save and localizes unexpected-error dialogs.
 
 ## Recording state machine
 
@@ -120,9 +122,10 @@ The page's window-message callback checks source/marker/port before creating the
 
 | Function/method | Contract |
 | --- | --- |
-| parseSettings | Validate v1/v2 JSON; preserve valid folder when quality/language need defaults; return warnings |
+| parseSettings | Validate v1/v2/v3 JSON; preserve valid folder when quality/language/hotkey need defaults; return warnings |
 | constructor / load | Read synchronously, validate, fall back and log; do not immediately rewrite defaults |
-| outputDir / quality / language | Read successfully committed preferences |
+| outputDir / quality / language / hotkey | Read successfully committed preferences |
+| setHotkey | Validate enabled flag and preset accelerator, then enqueue update |
 | setOutputDir | Validate absolute path, then enqueue update |
 | setQuality | Validate patch, then merge with latest committed quality inside the save queue |
 | setLanguage | Validate en/zh-TW, then enqueue update without dropping folder/quality |
@@ -143,6 +146,21 @@ The page's window-message callback checks source/marker/port before creating the
 | isCaptureReport | Validate optional numbers and required target bitrates/warnings; not comprehensive value-range validation |
 | frameRateDowngrade | Requested 60 and reported ≤30 → rounded actual fps, otherwise undefined |
 | unknown / describeCapture | Format unknown values / English requested, track, target, and warning diagnostics |
+
+[shared/hotkey.ts](../../src/shared/hotkey.ts): `HOTKEY_PRESETS` lists the three allowed accelerators, `DEFAULT_HOTKEY` enables the first; `isHotkeyAccelerator` / `isHotkeySettings` validate persisted values; `describeAccelerator(accelerator, platform)` renders `⌘⌥⇧R` on darwin and `Ctrl+Alt+Shift+R` elsewhere for menus, notifications and logs.
+
+[main/hotkey.ts](../../src/main/hotkey.ts):
+
+| Function/method | Contract |
+| --- | --- |
+| RecordingHotkey constructor | Inject a `globalShortcut` subset (register/unregister), the tray's toggle action and a logger |
+| status | `disabled`, `registered` with accelerator, or `failed` with accelerator and reason |
+| apply(settings) | Drop any pending request, release the current registration, then register when enabled; return the new status; a refusal or thrown register becomes `failed` and is logged |
+| request(settings, settled) | `apply` when the recorder is idle/needsPermission; otherwise hold the request, log it and return `deferred` |
+| flush(settled) | Apply the held request once settled; undefined when nothing was pending |
+| dispose | Release and reset to disabled; idempotent |
+| pressed | Log `hotkey: <accelerator> pressed` and call the toggle |
+| release | Unregister only a `registered` accelerator; log an unregister error |
 
 [shared/i18n.ts](../../src/shared/i18n.ts): `isLanguage(value)` validates en/zh-TW; `translate(key, language, values)` selects an English-keyed template or Traditional Chinese translation and substitutes every named placeholder. DEFAULT_LANGUAGE is en; ZH_TW is a typed complete translation catalog. Technical logs do not use it.
 
@@ -180,13 +198,16 @@ The page's window-message callback checks source/marker/port before creating the
 | outputDirItems | Folder label and selection action with state-dependent enablement |
 | radioGroup | Checked/enabled quality options carrying setQuality patches |
 | qualityMenu | Three translated quality submenus; disable unverified platform frame rates |
+| hotkeyMenu(ctx, enabled) | Shortcut submenu: label shows the accelerator, Off, or the unavailable notice; one radio per preset plus Off carrying setHotkey; empty when the context has no hotkey |
+| stopHint | Stop tooltip naming the registered accelerator; undefined when disabled or unregistered |
 | permissionActions | Relaunch alone when required; otherwise settings and fallback relaunch |
 | trayModel / text / model | Pure state/context projection with local translation/status helpers |
 | notice | Wrap body with product title |
 | savedNotification | Basename → localized completion text |
 | permissionNotification | Localized settings/relaunch guidance |
 | settingsWriteFailedNotification | Explain unchanged output folder after failed save |
-| qualityWriteFailedNotification / languageWriteFailedNotification | Explain retained quality/language |
+| qualityWriteFailedNotification / languageWriteFailedNotification / hotkeyWriteFailedNotification | Explain retained quality/language/shortcut |
+| hotkeyRegistrationFailedNotification(accelerator, platform) | Localized conflict notice with the platform rendering of the accelerator |
 | frameRateDowngradeNotification | Include actual and requested fps |
 | trayHintNotification | Windows first-run tray discovery text |
 | errorNotification(code, partialPath, ctx) | Localize error summary/recovery and preserved-file guidance; technical detail stays in logs |
@@ -202,7 +223,8 @@ The page's window-message callback checks source/marker/port before creating the
 | notifyError(code, partial) | Error notice; partial path takes precedence over recovery actions |
 | revealFromNotification / reveal | Defer macOS Finder call and record requested/failed |
 | notifyPermission | Current-language guidance with settings/relaunch callback |
-| notifySettingsWriteFailed / notifyQualityWriteFailed / notifyLanguageWriteFailed | Current-language failed-save notices |
+| notifySettingsWriteFailed / notifyQualityWriteFailed / notifyLanguageWriteFailed / notifyHotkeyWriteFailed | Current-language failed-save notices |
+| notifyHotkeyRegistrationFailed(accelerator) | Current-language conflict notice |
 | notifyFrameRateDowngrade / notifyTrayHint | Informational localized notifications |
 | show | Support check, silent Notification, click/failed handlers, show |
 | log | Invoke optional injected logger |

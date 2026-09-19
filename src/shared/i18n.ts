@@ -70,6 +70,15 @@ export const ZH_TW = {
   "Could not write the recording.": "寫入錄影失敗",
   "The disk is full.": "磁碟已滿",
   "Stopping the recording timed out.": "停止錄製逾時",
+  "Shortcut: {value}": "快捷鍵：{value}",
+  "Shortcut: off": "快捷鍵：關閉",
+  "Shortcut unavailable (in use by another app): {value}": "快捷鍵無法使用（被其他 App 佔用）：{value}",
+  "Start / stop recording with {value}": "以 {value} 開始／停止錄製",
+  Off: "關閉",
+  "Could not register the shortcut {value}. Another app may be using it. Choose another shortcut from the tray menu.":
+    "無法註冊快捷鍵 {value}，可能被其他 App 佔用。右鍵選單可以改用其他快捷鍵",
+  "Could not save the shortcut. Your previous shortcut is still in use.":
+    "無法儲存快捷鍵設定，仍使用原本的快捷鍵。請再試一次",
   "Choose a recording folder": "選擇錄影儲存位置",
   "An unexpected error occurred. See the log for details.": "發生未預期的錯誤，請查看 log 取得詳細資訊。",
 } as const;

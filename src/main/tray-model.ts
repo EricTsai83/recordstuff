@@ -12,6 +12,7 @@ import {
   type VideoQuality,
 } from "../shared/quality";
 import type { ErrorCode, RecordingState } from "../shared/state";
+import { HOTKEY_PRESETS, describeAccelerator, type HotkeyAccelerator, type HotkeySettings } from "../shared/hotkey";
 
 export type TrayIcon = "idle" | "recording";
 export type TrayAction =
@@ -24,7 +25,8 @@ export type TrayAction =
   | "revealLog"
   | "quit"
   | { setQuality: Partial<QualitySettings> }
-  | { setLanguage: Language };
+  | { setLanguage: Language }
+  | { setHotkey: HotkeySettings };
 export type TrayMenuItem =
   | { kind: "separator" }
   | { kind: "item"; label: string; enabled: boolean; action?: TrayAction; toolTip?: string }
@@ -43,6 +45,12 @@ export interface TrayContext {
   quality: QualitySettings;
   /** Omitted by older callers: English is always the default. */
   language?: Language;
+  /** Omitted by older callers: the menu then shows no shortcut entry. */
+  hotkey?: TrayHotkey;
+}
+/** The persisted choice plus whether the OS actually accepted the registration. */
+export interface TrayHotkey extends HotkeySettings {
+  registered: boolean;
 }
 export const VIDEO_QUALITY_LABELS: Record<VideoQuality, MessageKey> = {
   economy: "Economy",
@@ -162,6 +170,49 @@ function qualityMenu(ctx: TrayContext): TrayMenuItem {
     ],
   };
 }
+/**
+ * "Shortcut: ⌘⌥⇧R" with a radio per preset and Off. A registration the OS
+ * refused is spelled out in the label so a conflict is never silent
+ * (plan 016). `enabled` follows the quality menu: idle/needsPermission only.
+ * Off shares the presets' radio group without a separator: Electron splits
+ * radio groups at separators and forces one checked item per group, so a
+ * separated Off would show checked next to an active preset (review F1).
+ */
+function hotkeyMenu(ctx: TrayContext, enabled: boolean): TrayMenuItem[] {
+  const hotkey = ctx.hotkey;
+  if (!hotkey) return [];
+  const language = ctx.language;
+  const shown = describeAccelerator(hotkey.accelerator, ctx.platform);
+  const label = !hotkey.enabled
+    ? t("Shortcut: off", language)
+    : hotkey.registered
+      ? t("Shortcut: {value}", language, { value: shown })
+      : t("Shortcut unavailable (in use by another app): {value}", language, { value: shown });
+  const preset = (accelerator: HotkeyAccelerator): TrayMenuItem => ({
+    kind: "radio",
+    label: describeAccelerator(accelerator, ctx.platform),
+    enabled: true,
+    checked: hotkey.enabled && accelerator === hotkey.accelerator,
+    action: { setHotkey: { enabled: true, accelerator } },
+  });
+  return [
+    {
+      kind: "submenu",
+      label,
+      enabled,
+      items: [
+        ...HOTKEY_PRESETS.map(preset),
+        {
+          kind: "radio",
+          label: t("Off", language),
+          enabled: true,
+          checked: !hotkey.enabled,
+          action: { setHotkey: { enabled: false, accelerator: hotkey.accelerator } },
+        },
+      ],
+    },
+  ];
+}
 function permissionActions(needsRelaunch: boolean, language: Language): TrayMenuItem[] {
   const hint = t(
     "After allowing access in System Settings, relaunch RecordStuff if this process still cannot capture.",
@@ -173,6 +224,14 @@ function permissionActions(needsRelaunch: boolean, language: Language): TrayMenu
         item(t("Open System Settings", language), "openPermissionSettings"),
         item(t("Already allowed? Relaunch RecordStuff", language), "relaunch", hint),
       ];
+}
+/** Tooltip on Stop reminding the user of the registered shortcut, if any. */
+function stopHint(ctx: TrayContext): string | undefined {
+  const hotkey = ctx.hotkey;
+  if (!hotkey || !hotkey.enabled || !hotkey.registered) return undefined;
+  return t("Start / stop recording with {value}", ctx.language, {
+    value: describeAccelerator(hotkey.accelerator, ctx.platform),
+  });
 }
 export function trayModel(state: RecordingState, ctx: TrayContext): TrayModel {
   const language = ctx.language ?? DEFAULT_LANGUAGE;
@@ -193,32 +252,48 @@ export function trayModel(state: RecordingState, ctx: TrayContext): TrayModel {
         SEPARATOR,
         ...outputDirItems(ctx, true),
         qualityMenu(ctx),
+        ...hotkeyMenu(ctx, true),
         ...end,
       ]);
     case "idle": {
       const status = text(state.outputDirUnavailable ? "Output folder unavailable" : "Ready");
       const menu = [disabled(status)];
       if (state.lastSavedPath) menu.push(item(text("Show last recording"), "revealLastSaved", state.lastSavedPath));
-      return model("idle", "", status, [...menu, SEPARATOR, ...outputDirItems(ctx, true), qualityMenu(ctx), ...end]);
+      return model("idle", "", status, [
+        ...menu,
+        SEPARATOR,
+        ...outputDirItems(ctx, true),
+        qualityMenu(ctx),
+        ...hotkeyMenu(ctx, true),
+        ...end,
+      ]);
     }
     case "starting":
       return model("idle", "…", text("Starting… Check for system permission prompts"), [
         disabled(text("Starting… Check for system permission prompts")),
         SEPARATOR,
         locked,
+        ...hotkeyMenu(ctx, false),
         ...end,
       ]);
     case "recording":
       return model("recording", "REC", text("Recording"), [
         disabled(text("Recording")),
-        item(text("Stop"), "stop"),
+        item(text("Stop"), "stop", stopHint(ctx)),
         SEPARATOR,
         ...outputDirItems(ctx, false),
         locked,
+        ...hotkeyMenu(ctx, false),
         ...end,
       ]);
     case "stopping":
-      return model("idle", "…", text("Saving…"), [disabled(text("Saving…")), SEPARATOR, locked, ...end]);
+      return model("idle", "…", text("Saving…"), [
+        disabled(text("Saving…")),
+        SEPARATOR,
+        locked,
+        ...hotkeyMenu(ctx, false),
+        ...end,
+      ]);
   }
 }
 export interface NotificationText {
@@ -255,6 +330,22 @@ export function qualityWriteFailedNotification(language?: Language): Notificatio
 }
 export function languageWriteFailedNotification(language?: Language): NotificationText {
   return notice(t("Could not save the language. Your previous language is still in use.", language));
+}
+export function hotkeyRegistrationFailedNotification(
+  accelerator: HotkeyAccelerator,
+  platform: NodeJS.Platform,
+  language?: Language,
+): NotificationText {
+  return notice(
+    t(
+      "Could not register the shortcut {value}. Another app may be using it. Choose another shortcut from the tray menu.",
+      language,
+      { value: describeAccelerator(accelerator, platform) },
+    ),
+  );
+}
+export function hotkeyWriteFailedNotification(language?: Language): NotificationText {
+  return notice(t("Could not save the shortcut. Your previous shortcut is still in use.", language));
 }
 export function frameRateDowngradeNotification(
   requested: FrameRate,

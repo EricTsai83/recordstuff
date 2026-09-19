@@ -6,21 +6,31 @@
 
 Sources: [tray-model.ts](../../src/main/tray-model.ts), [tray.ts](../../src/main/tray.ts), [index.ts](../../src/main/index.ts).
 
-TrayModel is a pure projection containing icon, title, tooltip, and a recursive menu. AppTray maps it to Electron without a separate business state machine. Left-click toggles recording; right-click builds the menu from current state and settings. It does not use setContextMenu, which would change left-click behavior on macOS.
+TrayModel is a pure projection containing icon, title, tooltip, and a recursive menu. AppTray maps it to Electron without a separate business state machine. Left-click toggles recording; right-click builds the menu from current state and settings. It does not use setContextMenu, which would change left-click behavior on macOS. The [global shortcut](#recording-shortcut) calls the same toggle as the left click.
 
 | State | Icon/title | Actions |
 | --- | --- | --- |
-| needsPermission | Idle/empty | Permission guidance, settings/relaunch, output folder and quality |
-| idle | Idle/empty | Ready or folder unavailable; reveal last recording when its path exists in state |
-| starting | Idle/`…` | Permission-prompt guidance; quality locked |
-| recording | Recording/`REC` | Stop; output folder and quality locked |
-| stopping | Idle/`…` | Saving; quality locked |
+| needsPermission | Idle/empty | Permission guidance, settings/relaunch, output folder, quality and shortcut |
+| idle | Idle/empty | Ready or folder unavailable; reveal last recording when its path exists in state; output folder, quality and shortcut |
+| starting | Idle/`…` | Permission-prompt guidance; quality and shortcut locked |
+| recording | Recording/`REC` | Stop (tooltip names the shortcut when registered); output folder, quality and shortcut locked |
+| stopping | Idle/`…` | Saving; quality and shortcut locked |
 
 Every state offers Language, Show log, and Quit. macOS uses template PNG/@2x assets and a title; Windows branches use ICO assets. REC may appear in full-display recordings; this is an accepted visibility tradeoff.
 
 Pure functions generate localized notification text. Native notifications are silent. Saved/partial-file notifications reveal the file. Without a partial file, output-open failure opens folder selection, permission denial opens System Settings, and a relaunch error invokes relaunch. Quality/language save failures and frame-rate downgrade notifications are informational.
 
 On macOS, notification file reveal runs in setImmediate after the native click response. Logs distinguish reveal requested/failed. Unsupported notifications and failed events are logged. OS preferences and foreground ordering still determine whether a banner is visible or Finder comes to the front. The notification icon was confirmed normal after the user's reboot on 2026-09-14.
+
+## Recording shortcut
+
+Sources: [hotkey.ts](../../src/main/hotkey.ts), [shared/hotkey.ts](../../src/shared/hotkey.ts), [index.ts](../../src/main/index.ts). Plan 016 added a global start/stop shortcut so recording can be toggled while another app is frontmost and so unattended acceptance has a system-level entry point on a process with no window.
+
+RecordingHotkey wraps Electron `globalShortcut`. A press calls the same `toggle` function as a tray left click, so `Recorder.toggle()` remains the only decision point: it starts when idle, stops when recording, re-issues the permission notification in needsPermission, and ignores presses while starting or stopping. Every press is logged as `hotkey: <accelerator> pressed` before the toggle. `apply(settings)` releases the previous registration before registering the new one, so a change never leaves two combinations active; `dispose()` runs on will-quit.
+
+The user chooses one of three presets or Off from the tray's **Shortcut** submenu (idle/needsPermission only, like quality). The default is `CommandOrControl+Alt+Shift+R` (⌘⌥⇧R on macOS, Ctrl+Alt+Shift+R elsewhere). The plan proposed ⌘⇧R; the conflict check on 2026-09-19 found it bound to hard reload in Chrome and Firefox, Reader in Safari and local recording in Zoom, and a global shortcut takes precedence over the frontmost app, so a browser user would start a screen recording by accident. The three-modifier default was unbound in Chrome, Safari, Firefox, Finder, Xcode, VS Code, Slack and Zoom; ⌘⇧R and ⌘⌥R remain presets. A free-form shortcut recorder is out of scope.
+
+A registration the OS refuses (another app owns the combination, or `register` throws) is never silent: it is logged as `hotkey: registration failed for …`, shown in the menu label as "Shortcut unavailable (in use by another app): …", and announced by a notification. The setting is still saved so the user's choice survives a relaunch; the tray keeps working. Disabling the shortcut leaves tray behavior unchanged and remembers the accelerator so re-enabling restores it. Changing the shortcut persists first and registers second: a failed write keeps the old registration and reports "Could not save the shortcut". If a recording starts while that write is pending, the registration change is deferred (`request` → `flush` on the next settled state) so the combination that started the session can still stop it; until then the menu shows the saved choice as unavailable.
 
 ## Language
 
@@ -52,20 +62,21 @@ Sources: [settings.ts](../../src/main/settings.ts), [quality.ts](../../src/share
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "outputDir": "/Users/example/Movies/RecordStuff",
   "quality": { "videoQuality": "standard", "resolutionCap": "source", "frameRate": 30 },
-  "language": "en"
+  "language": "en",
+  "hotkey": { "enabled": true, "accelerator": "CommandOrControl+Alt+Shift+R" }
 }
 ```
 
-OutputDir must be a nonempty absolute path. Version 1 loads with default quality and is written as version 2 on the next save. The additive language field is optional on disk for older v1/v2 files; it defaults to English. Unsupported language values default to English with a warning, preserving valid folder/quality settings. Unsupported versions or invalid folder data fall back to defaults; an invalid quality block alone does not discard a valid folder. Obsolete audioQuality fields are ignored.
+OutputDir must be a nonempty absolute path. Version 1 loads with default quality, version 1 and 2 load with the default shortcut (each logged as a warning), and both are written as version 3 on the next save. The additive language field is optional on disk for older files; it defaults to English. Unsupported language values default to English with a warning, preserving valid folder/quality settings. `hotkey.accelerator` must be one of the presets in shared/hotkey.ts; a missing or unsupported hotkey block in a v3 file falls back to the default shortcut with a warning and keeps the other fields. Unsupported versions or invalid folder data fall back to defaults; an invalid quality block alone does not discard a valid folder. Obsolete audioQuality fields are ignored.
 
 Save operations are serialized and derive each update from the last committed settings. Write settings.json.tmp, rename it, then update memory. A failed save rejects its caller without blocking later saves. This avoids half-written JSON but does not promise power-loss durability through directory fsync.
 
 Folder selection uses a native dialog, with app focus on macOS. A successful save clears the idle folder-unavailable flag and refreshes labels. Actual writability is probed when recording starts. There is no automatic fallback to a different output folder.
 
-Quality can change only while idle/needsPermission, and each recording has a snapshot. Platform frame-rate clamping affects effective settings, not persisted preferences.
+Quality and the shortcut can change only while idle/needsPermission, and each recording has a quality snapshot. Platform frame-rate clamping affects effective settings, not persisted preferences.
 
 ## Logs
 

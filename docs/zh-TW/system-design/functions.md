@@ -18,12 +18,14 @@
 | `deny(reason, why)` | 記 log 與 lastDenialReason，空 streams callback 拒絕；讓 renderer 泛用錯誤可還原具體原因 |
 | `main()` | 等 ready、組裝依賴、建立 Tray／watcher、註冊動作與退出；錯誤事件寫 log |
 | `quality()` | 開發記憶體 override 或已保存設定 → 平台可用的有效品質 |
-| `handleAction(action)` | 字串 action、setQuality patch 或 setLanguage → 對應 stop／quit／設定／relaunch／Finder 動作 |
+| `handleAction(action)` | 字串 action、setQuality patch、setHotkey 或 setLanguage → 對應 stop／quit／設定／relaunch／Finder 動作 |
+| `applyHotkey(setting)` / `reportHotkey(result)` | 依已保存設定請求註冊（session 進行中延後）；被拒絕時通知；無論結果都 refresh 選單標題 |
+| `setHotkey(setting)` | 僅 idle／needsPermission；先保存，寫入失敗通知並保留舊註冊，成功再 applyHotkey |
 | `revealLog()` | 有 log 選檔，沒有則開 logs 目錄；開啟失敗留 log |
 | `changeOutputDir()` | 系統對話框 → 保存使用者選擇，失敗通知；成功清位置錯誤並 refresh |
 | `setQuality(patch)` | 僅 idle／needsPermission 保存合法 patch；失敗通知且保留舊值；成功 refresh |
 
-事件：uncaughtException 留 log 並顯示對話框；unhandledRejection 留 log。Recorder state／saved／captureStarted／failed／permissionRequested 分別更新 Tray、發通知、處理降級與失效授權。before-quit 忙碌時等待 shutdown；will-quit 釋放資源。
+事件：uncaughtException 留 log 並顯示對話框；unhandledRejection 留 log。Recorder state／saved／captureStarted／failed／permissionRequested 分別更新 Tray、發通知、處理降級與失效授權。tray 左鍵與全域快捷鍵共用同一個 `toggle` closure。before-quit 忙碌時等待 shutdown；will-quit 釋放快捷鍵與其他資源。
 
 ## 狀態機 — main/recorder.ts
 
@@ -121,14 +123,30 @@
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
-| `parseSettings(text)` | v1／v2 JSON → settings＋warnings；整體不合法回 undefined；壞 quality 保留 outputDir |
+| `parseSettings(text)` | v1／v2／v3 JSON → settings＋warnings；整體不合法回 undefined；壞 quality／hotkey 保留 outputDir |
 | `constructor(options)` / `load(defaultDir)` | 同步讀檔、檢查、fallback 與 log；不立刻把 fallback 回寫 |
-| `outputDir` / `quality` / `language` getters | 讀目前已成功提交的設定 |
+| `outputDir` / `quality` / `language` / `hotkey` getters | 讀目前已成功提交的設定 |
+| `setHotkey(hotkey)` | 驗 enabled 布林與 preset 組合鍵 → save 更新 |
 | `setLanguage(language)` | 驗 en／zh-TW，排入保存佇列，保留品質與位置 |
 | `setOutputDir(dir)` | 驗絕對路徑 → save 更新 |
 | `setQuality(patch)` | 驗合併值合法 → save；實際入列後再合併最新 committed 值 |
 | `save(update)` | 序列化寫入；write 成功才換記憶體；失敗不阻斷後續 queue |
 | `write(settings)` | mkdir、JSON.tmp、rename；不負責通知 |
+
+[shared/hotkey.ts](../../../src/shared/hotkey.ts)：`HOTKEY_PRESETS` 列出三個允許的組合鍵，`DEFAULT_HOTKEY` 啟用第一個；`isHotkeyAccelerator` / `isHotkeySettings` 驗證保存值；`describeAccelerator(accelerator, platform)` 在 darwin 顯示 `⌘⌥⇧R`、其他平台 `Ctrl+Alt+Shift+R`，供選單、通知與 log 使用。
+
+[main/hotkey.ts](../../../src/main/hotkey.ts)：
+
+| 函式／方法 | 契約與副作用 |
+| --- | --- |
+| `RecordingHotkey.constructor(options)` | 注入 `globalShortcut` 子集（register／unregister）、tray 的 toggle 動作與 logger |
+| `status` | `disabled`、帶組合鍵的 `registered`，或帶組合鍵與原因的 `failed` |
+| `apply(settings)` | 丟棄 pending 請求、釋放現有註冊，啟用時再註冊；回傳新狀態；被拒絕或 register 擲出時記 log 並回 `failed` |
+| `request(settings, settled)` | recorder 在 idle／needsPermission 時直接 `apply`；否則暫存請求、記 log 並回 `deferred` |
+| `flush(settled)` | settled 時套用暫存請求；沒有 pending 時回 undefined |
+| `dispose()` | 釋放並重設為 disabled；可重複呼叫 |
+| `pressed(accelerator)` | 記 `hotkey: <accelerator> pressed` 後呼叫 toggle |
+| `release()` | 只對 `registered` 狀態 unregister；失敗留 log |
 
 [shared/quality.ts](../../../src/shared/quality.ts)：
 
@@ -181,12 +199,15 @@
 | `outputDirItems(ctx, enabled)` | 產生位置與更改位置項目，按狀態鎖定 |
 | `radioGroup(key, current, choices, label, available)` | 建各 radio 的 checked／enabled 與 setQuality patch |
 | `qualityMenu(ctx)` | 三個品質子選單；未驗平台的 60 fps 標示停用 |
+| `hotkeyMenu(ctx, enabled)` | 快捷鍵子選單：標題顯示組合鍵、關閉或無法使用提示；每個 preset 一個 radio 加「關閉」，帶 setHotkey；context 沒有 hotkey 時為空 |
+| `stopHint(ctx)` | 「停止」的 tooltip 提示已註冊組合鍵；關閉或未註冊時為 undefined |
 | `permissionActions(needsRelaunch, language)` | 已判斷需重啟只給重啟；否則給設定與「已經允許了？」重啟 |
 | `trayModel(state, ctx)` | 狀態 → 完整圖示／標題／tooltip／menu |
 | `savedNotification(path)` | filename → 存檔文案 |
 | `permissionNotification(needsRelaunch)` | 設定／重啟的提示文案 |
 | `settingsWriteFailedNotification(dir, home)` | 說明位置設定未保存、仍使用原值 |
-| `qualityWriteFailedNotification()` / `languageWriteFailedNotification()` | 說明品質／語言設定未保存 |
+| `qualityWriteFailedNotification()` / `languageWriteFailedNotification()` / `hotkeyWriteFailedNotification()` | 說明品質／語言／快捷鍵設定未保存 |
+| `hotkeyRegistrationFailedNotification(accelerator, platform)` | 本地化的佔用提示，含平台顯示形式的組合鍵 |
 | `frameRateDowngradeNotification(requested, actual)` | 說明系統實際提供的 fps |
 | `trayHintNotification()` | Windows 首次啟動尋找系統匣提示 |
 | `errorNotification(code, partialPath, ctx)` | 各錯誤與部分檔的本地化說明；技術 detail 留在英文 log，不放通知摘要 |
@@ -202,7 +223,8 @@
 | `notifyError(code, partial)` | show 錯誤，點擊優先部分檔，其次位置／權限 action |
 | `revealFromNotification(path)` / `reveal()` | macOS setImmediate 後 showItemInFolder，記 requested／failed |
 | `notifyPermission(needsRelaunch)` | 文案＋開設定／重啟 callback |
-| `notifySettingsWriteFailed(dir)` / `notifyQualityWriteFailed()` / `notifyLanguageWriteFailed()` | 保存失敗通知，無設定 mutation |
+| `notifySettingsWriteFailed(dir)` / `notifyQualityWriteFailed()` / `notifyLanguageWriteFailed()` / `notifyHotkeyWriteFailed()` | 保存失敗通知，無設定 mutation |
+| `notifyHotkeyRegistrationFailed(accelerator)` | 目前語言的快捷鍵佔用通知 |
 | `notifyFrameRateDowngrade(requested, actual)` / `notifyTrayHint()` | 對應純文案的原生通知 |
 | `show(text, onClick?)` | 檢查支援、建立 silent Notification、掛 click／failed、show |
 | `log(message)` | 呼叫注入 logger（若有） |

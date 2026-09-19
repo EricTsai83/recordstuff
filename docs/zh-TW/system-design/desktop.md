@@ -6,21 +6,31 @@
 
 來源：[tray-model.ts](../../../src/main/tray-model.ts)、[tray.ts](../../../src/main/tray.ts)、[index.ts](../../../src/main/index.ts)。
 
-TrayModel 是純函式產物，包含 icon、title、tooltip 與遞迴 menu。AppTray 只把模型映射到 Electron；不保存第二份業務狀態。左鍵呼叫 toggle，右鍵才動態組選單；不使用會攔截左鍵的 `setContextMenu`。
+TrayModel 是純函式產物，包含 icon、title、tooltip 與遞迴 menu。AppTray 只把模型映射到 Electron；不保存第二份業務狀態。左鍵呼叫 toggle，右鍵才動態組選單；不使用會攔截左鍵的 `setContextMenu`。[全域快捷鍵](#錄影快捷鍵)呼叫與左鍵相同的 toggle。
 
 | 狀態 | 圖示／標題 | 主要選單與限制 |
 | --- | --- | --- |
-| needsPermission | idle／空白 | 權限說明、開設定或重啟；可調資料夾與品質 |
-| idle | idle／空白 | 待命或位置不可用；有 lastSavedPath 才能顯示最後錄影 |
-| starting | idle／`…` | 提醒完成系統提示；品質鎖定 |
-| recording | recording／`REC` | 可停止；資料夾與品質鎖定 |
-| stopping | idle／`…` | 儲存中；品質鎖定 |
+| needsPermission | idle／空白 | 權限說明、開設定或重啟；可調資料夾、品質與快捷鍵 |
+| idle | idle／空白 | 待命或位置不可用；有 lastSavedPath 才能顯示最後錄影；可調資料夾、品質與快捷鍵 |
+| starting | idle／`…` | 提醒完成系統提示；品質與快捷鍵鎖定 |
+| recording | recording／`REC` | 可停止（已註冊快捷鍵時 tooltip 顯示組合鍵）；資料夾、品質與快捷鍵鎖定 |
+| stopping | idle／`…` | 儲存中；品質與快捷鍵鎖定 |
 
 每個狀態都有「語言」、「顯示 log」與「結束」。macOS 使用 template PNG／@2x，Windows 分支使用 ICO；macOS 才顯示圖示旁 title。錄整個螢幕時 `REC` 可能出現在影片，這是目前接受的呈現。
 
 通知文案由純函式產生，通知使用 silent 模式。存檔通知點擊顯示影片；有 partialPath 的失敗通知顯示部分檔；無部分檔時，位置不可用開資料夾選擇、缺權限開系統設定、需要重啟則 relaunch。品質保存失敗與幀率降級只有說明。
 
 macOS 點通知後以 `setImmediate` 延到下一個事件循環呼叫 Finder，記錄 reveal requested／failed。原生通知不支援或 `failed` event 會留下 log。通知是否顯示、Finder 是否置頂仍受系統設定與前景排序影響，不能把 API 呼叫成功當成視覺驗證。通知縮圖已由使用者於 2026-09-14 重開機後確認正常。
+
+## 錄影快捷鍵
+
+來源：[hotkey.ts](../../../src/main/hotkey.ts)、[shared/hotkey.ts](../../../src/shared/hotkey.ts)、[index.ts](../../../src/main/index.ts)。計畫 016 加入全域開始／停止快捷鍵：其他 App 在最前景時也能切換錄製，而且讓沒有視窗的程序有一個系統層級入口，可供無人值守驗收使用。
+
+RecordingHotkey 包裝 Electron `globalShortcut`。按下快捷鍵呼叫與 tray 左鍵相同的 `toggle` 函式，所以 `Recorder.toggle()` 仍是唯一決策點：idle 開始、recording 停止、needsPermission 重發權限通知，starting／stopping 期間忽略。每次按下都先寫 log `hotkey: <accelerator> pressed` 再 toggle。`apply(settings)` 先釋放前一個註冊再註冊新的，更改時不會同時有兩個組合鍵生效；`dispose()` 在 will-quit 執行。
+
+使用者在 tray 的「快捷鍵」子選單選三個 preset 之一或「關閉」（與品質相同，只在 idle／needsPermission 可改）。預設 `CommandOrControl+Alt+Shift+R`（macOS 顯示 ⌘⌥⇧R，其他平台 Ctrl+Alt+Shift+R）。計畫原提案 ⌘⇧R；2026-09-19 衝突檢查發現它是 Chrome／Firefox 的強制重新載入、Safari 的閱讀器、Zoom 的本機錄製，而全域快捷鍵優先於最前景 App，瀏覽器使用者會誤觸開始錄影。三修飾鍵預設在 Chrome、Safari、Firefox、Finder、Xcode、VS Code、Slack、Zoom 均未綁定；⌘⇧R 與 ⌘⌥R 仍列為 preset。自訂錄製快捷鍵的對話框不在範圍內。
+
+OS 拒絕註冊（其他 App 佔用，或 `register` 擲出）不會被吞掉：寫 log `hotkey: registration failed for …`、選單標題顯示「快捷鍵無法使用（被其他 App 佔用）：…」並發通知。設定仍會保存，使用者的選擇在重啟後保留；tray 照常可用。關閉快捷鍵不影響 tray 行為，並記住組合鍵，重新開啟即還原。更改快捷鍵先保存再註冊：寫入失敗保留舊註冊並通知「無法儲存快捷鍵設定」。若寫入期間開始了錄影，註冊變更會延後（`request` → 下一次回到 settled 狀態時 `flush`），讓開始這次錄影的組合鍵仍能停止它；期間選單把已保存的選擇顯示為無法使用。
 
 ## 語言
 
@@ -50,24 +60,25 @@ TrayContext 提供目前語言，通知建立時讀當前 context；已發送的
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "outputDir": "/Users/example/Movies/RecordStuff",
   "quality": {
     "videoQuality": "standard",
     "resolutionCap": "source",
     "frameRate": 30
   },
-  "language": "en"
+  "language": "en",
+  "hotkey": { "enabled": true, "accelerator": "CommandOrControl+Alt+Shift+R" }
 }
 ```
 
-`language` 是 v2 的相容新增欄位：舊 v1／v2 未填時預設 en；不支援的值回 en 並記 warning，但保留合法位置與品質。`outputDir` 必須是非空絕對路徑。版本 1 可讀，補預設 quality，下次保存寫成 v2。整份無效／未知版本／路徑無效回預設並記 log；僅 quality 壞掉則保留合法 outputDir，重設品質。舊 audioQuality 額外欄位不參與目前設定。
+`language` 是相容新增欄位：舊檔未填時預設 en；不支援的值回 en 並記 warning，但保留合法位置與品質。`hotkey.accelerator` 必須是 shared/hotkey.ts 的 preset 之一；v3 檔缺少或不合法的 hotkey 區塊回預設快捷鍵並記 warning，保留其他欄位。`outputDir` 必須是非空絕對路徑。版本 1 可讀，補預設 quality；版本 1／2 補預設快捷鍵（各記 warning），下次保存寫成 v3。整份無效／未知版本／路徑無效回預設並記 log；僅 quality 壞掉則保留合法 outputDir，重設品質。舊 audioQuality 額外欄位不參與目前設定。
 
 保存以 Promise 佇列依「上一份成功提交的設定」合併更新，避免連點遺失前一次修改；先寫 `settings.json.tmp` 再 rename，成功才切換記憶體。單次失敗拒絕自己的 caller，後續儲存仍可執行。這是避免半份 JSON 的策略，不是附帶目錄 fsync 的斷電耐久性保證。
 
 更改位置使用原生選資料夾對話框，macOS 先 focus 以免藏在別的視窗後方。保存設定成功會清除 idle 的位置錯誤旗標並刷新選單；真正能不能寫入於開始錄製時用 probe 驗證。沒有背景自動改存預設位置。
 
-品質只能在 idle／needsPermission 修改；每個 session 保存自己的快照。設定檔即使有其他平台不開放的 60 fps，effectiveQuality 只調整本次有效值，不重寫設定。
+品質與快捷鍵只能在 idle／needsPermission 修改；每個 session 保存自己的品質快照。設定檔即使有其他平台不開放的 60 fps，effectiveQuality 只調整本次有效值，不重寫設定。
 
 ## Log 與診斷
 
