@@ -50,6 +50,7 @@ main、preload、renderer 分別建置，打包只納入 out、package metadata 
 ```bash
 pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
+pnpm verify -- /absolute/path/any-desktop-recording.mp4 --screen 1920x1080   # 只驗完整性
 pnpm matrix -- quick
 pnpm matrix -- all
 pnpm matrix -- long
@@ -73,21 +74,25 @@ matrix 只支援 macOS 開發環境。預設 Chrome kiosk 在主螢幕開素材�
 
 media-tools 呼叫 ffprobe／ffmpeg；verify.mts 純解析／計算／判定；verify-recording.mts 配對與寫結果；CLI／matrix 編排。長片分開取頭尾影格時間戳，不把未取樣中間區間算掉幀。素材頁提供持續動態畫面與同一 audio clock 上的閃光／短音。
 
-| 指標 | 目前專案門檻 |
-| --- | --- |
-| 尺寸 | 符合 capture report、上限與已知來源比例 |
-| 時長 | 有指定時長時 ±2 秒 |
-| fps | 要求 ±2 fps；素材需持續動態 |
-| 掉幀 | <2% |
-| 音訊／影像時長差 | 絕對值 <100 ms |
-| 音訊−影像偏移 | 嚴格介於 −45 與 +125 ms |
-| 結尾漂移 | 絕對值 <100 ms，需足夠同步標記 |
-| 音訊 | 48 kHz、2 聲道；有量時各聲道 RMS >−60 dBFS |
-| 碼率 | 要求值 ±30% |
-| CPU | Electron 合計平均 ≤40% |
-| 解碼 | ffprobe 全影格無錯；播放器操作另驗 |
+檢查分兩層。**完整性**檢查適用於任何內容，也是發布驗收所需：它們問的是「檔案是否就是該次錄影產生的東西」。**效能**檢查只有在畫面持續變動時才有意義，因為螢幕擷取在畫面靜止時不會送出影格；只在 `--moving` 或 `--sync`（測試素材頁，`pnpm matrix` 使用）時判定，否則標 n/a 但仍顯示量測值。
 
-這些是 THRESHOLDS 常數，不是任意素材的品質保證。缺 ffmpeg 時可能只有格式檢查通過而無能量量測；需讀 notes／n/a。beep 素材碼率低，dual-mono 也會通過雙聲道能量檢查。任一 fail 整體 fail，有 pass 且無 fail 為 pass，全部無法判定則 n/a。
+| 層 | 指標 | 目前專案門檻 |
+| --- | --- | --- |
+| 完整性 | 尺寸 | 符合 capture report、上限與已知來源比例 |
+| 完整性 | 時長 | 有指定 matrix 時長則用它，否則用 log 的 session 長度（`state → recording` 到 `state → stopping`），±2 秒 |
+| 完整性 | 音訊／影像時長差 | 絕對值 <100 ms |
+| 完整性 | 音訊−影像起始偏移（容器） | 嚴格介於 −45 與 +125 ms |
+| 完整性 | 音訊 | 48 kHz、2 聲道；有量時各聲道 RMS >−60 dBFS |
+| 完整性 | 視訊碼率 | 至少為要求目標的 70%；超過只是檔案較大，不算失敗 |
+| 完整性 | 音訊碼率 | 至少為要求目標的 50%；AAC 隨內容變化 |
+| 完整性 | 解碼 | ffprobe 全影格無錯；播放器操作另驗 |
+| 效能 | fps | 要求 ±2 fps |
+| 效能 | 掉幀 | <2% |
+| 效能 | 音訊−影像偏移（閃光／短音） | 嚴格介於 −45 與 +125 ms |
+| 效能 | 結尾漂移 | 絕對值 <100 ms，需足夠同步標記 |
+| 效能 | CPU | Electron 合計平均 ≤40%（僅 matrix） |
+
+碼率採下限而非目標，因為 Chromium 編碼器在 60 fps 時會超出要求 1.5–2 倍但仍達到預期品質；只有碼率不足才代表問題。這些是 THRESHOLDS 常數，不是任意素材的品質保證。缺 ffmpeg 時可能只有格式檢查通過而無能量量測；需讀 notes／n/a。beep 素材碼率低，dual-mono 也會通過雙聲道能量檢查。任一 fail 整體 fail，有 pass 且無 fail 為 pass，全部無法判定則 n/a。
 
 新 log 與量測輸出以英文為主；歷史 raw 記錄保留當時語言與判定，由雙語摘要解釋，不改數字或舊 fail。
 

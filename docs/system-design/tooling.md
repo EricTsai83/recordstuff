@@ -52,12 +52,13 @@ Self-signing is not Apple approval. Recipients may need Open Anyway for an unnot
 ```bash
 pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
+pnpm verify -- /absolute/path/any-desktop-recording.mp4 --screen 1920x1080   # integrity only
 pnpm matrix -- quick
 pnpm matrix -- all
 pnpm matrix -- long
 ```
 
-Verify accepts multiple files, an optional log path, source dimensions, sync detection, Markdown/JSON output, and an explicit JSON destination. The default evidence directory is docs/verification/measurements. It reads the active log and newest rotated archive so capture and saved records can still be paired across rotation.
+Verify accepts multiple files, an optional log path, source dimensions, `--moving` (the content moved continuously), sync detection (implies `--moving`), Markdown/JSON output, and an explicit JSON destination. The default evidence directory is docs/verification/measurements. It reads the active log and newest rotated archive so capture and saved records can still be paired across rotation.
 
 Matrix is macOS-only developer automation. It launches the test material in Chrome kiosk on the primary display unless --no-open-material is supplied, samples the app's process CPU, and drives an unpackaged app through RECORDSTUFF_AUTORECORD. Keep source display/audio stable during the run. Packaged builds ignore this variable. The internal automatic-recording parser accepts durations in (0,3600] and validated quality overrides merged over defaults, not user settings.
 
@@ -75,21 +76,25 @@ The historical ten-minute baseline has already been recorded. Long now uses thre
 
 Media-tools runs ffprobe/ffmpeg; verify.mts parses and judges pure data; verify-recording.mts pairs files with logs and saves results; CLI/matrix orchestrate. For long files, frame timestamps are sampled in separate head/tail intervals so the unobserved middle is not counted as dropped frames. The test page supplies moving content plus flash/beep markers on an audio clock.
 
-| Metric | Current project threshold |
-| --- | --- |
-| Output dimensions | Match capture report; satisfy cap and source aspect when known |
-| Duration | Requested duration ±2 s when provided |
-| Average fps | Requested ±2 fps, using continuously moving material |
-| Dropped frames | <2% |
-| Audio/video duration difference | Absolute difference <100 ms |
-| Audio minus video offset | Strictly between −45 and +125 ms |
-| End-to-end drift | Absolute drift <100 ms; needs sufficient marker coverage |
-| Audio | 48 kHz, two channels; measured channel RMS above −60 dBFS |
-| Video/audio bitrate | Within ±30% of requested target |
-| CPU | Aggregate Electron average ≤40% |
-| Decode | No ffprobe full-frame decode errors; interactive playback remains a separate check |
+Checks are in two tiers. **Integrity** checks hold for any content and are what a release acceptance needs: they ask whether the file is what the session produced. **Performance** checks are only meaningful when the recorded picture moved continuously, because screen capture emits no frames while the picture is still; they are judged only with `--moving` or `--sync` (the test material page, as `pnpm matrix` uses) and otherwise reported as n/a with the measured value still shown.
 
-These are the project's current constants in THRESHOLDS, not a guarantee for arbitrary content. Without ffmpeg, channel-energy measurement may be absent while sample format still passes; read notes and n/a rows. A beep-heavy source has low AAC bitrate, and dual-mono passes the two-channel energy check without proving stereo separation. Any fail makes the aggregate fail; at least one pass with no fail yields pass; all unavailable yields n/a.
+| Tier | Metric | Current project threshold |
+| --- | --- | --- |
+| Integrity | Output dimensions | Match capture report; satisfy cap and source aspect when known |
+| Integrity | Duration | Requested matrix duration, else the log session length (`state → recording` to `state → stopping`), ±2 s |
+| Integrity | Audio/video duration difference | Absolute difference <100 ms |
+| Integrity | Audio minus video start offset (container) | Strictly between −45 and +125 ms |
+| Integrity | Audio | 48 kHz, two channels; measured channel RMS above −60 dBFS |
+| Integrity | Video bitrate | At least 70% of the requested target; more is a larger file, not a failure |
+| Integrity | Audio bitrate | At least 50% of the requested target; AAC follows content |
+| Integrity | Decode | No ffprobe full-frame decode errors; interactive playback remains a separate check |
+| Performance | Average fps | Requested ±2 fps |
+| Performance | Dropped frames | <2% |
+| Performance | Audio minus video offset (flash/beep) | Strictly between −45 and +125 ms |
+| Performance | End-to-end drift | Absolute drift <100 ms; needs sufficient marker coverage |
+| Performance | CPU | Aggregate Electron average ≤40% (matrix only) |
+
+Bitrate is a floor rather than a target because Chromium's encoder overshoots the request at 60 fps by 1.5–2× while still producing the intended quality; only a starved stream indicates a problem. These are the project's current constants in THRESHOLDS, not a guarantee for arbitrary content. Without ffmpeg, channel-energy measurement may be absent while sample format still passes; read notes and n/a rows. A beep-heavy source has low AAC bitrate, and dual-mono passes the two-channel energy check without proving stereo separation. Any fail makes the aggregate fail; at least one pass with no fail yields pass; all unavailable yields n/a.
 
 English is the default for new diagnostic output and measurement reports. Historical raw results retain the language and labels they had when recorded; the English verification summary explains their meaning. Do not rewrite measured values or old failures to resemble a new passing run.
 

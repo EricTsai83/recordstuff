@@ -14,6 +14,7 @@ import {
   parseChannelRms,
   parseFrameTimes,
   parseSilencedetect,
+  sessionDurationSeconds,
   syncStats,
   type ProbeInfo,
 } from "./verify.mts";
@@ -100,6 +101,28 @@ describe("log parsing", () => {
     expect(pairs.get("2026-09-13 01-30-15.mp4")?.requested.resolutionCap).toBe("1440p");
     expect(pairs.has("no-capture-line.mp4")).toBe(false);
     expect(pairs.get("2026-09-13 01-32-00.recording.mp4")?.requested.resolutionCap).toBe("1080p");
+  });
+
+  it("reads the session length from the recording/stopping state lines, falling back to saved", () => {
+    const log = [
+      "[2026-09-19T10:02:38.300Z] state → starting",
+      `[2026-09-19T10:02:38.407Z] ${CAPTURE_LINE}`,
+      "[2026-09-19T10:02:38.407Z] state → recording",
+      "[2026-09-19T10:02:55.130Z] state → stopping",
+      "[2026-09-19T10:02:55.155Z] state → idle",
+      "[2026-09-19T10:02:55.156Z] saved /Users/eric/Movies/RecordStuff/2026-09-19 18-02-38.mp4",
+      `[2026-09-19T10:05:00.000Z] ${CAPTURE_LINE.replace("mtynus3n-i3lxyd", "s2")}`,
+      "[2026-09-19T10:05:00.100Z] state → recording",
+      "[2026-09-19T10:05:20.100Z] saved /Users/eric/Movies/RecordStuff/second.mp4",
+      `${CAPTURE_LINE.replace("mtynus3n-i3lxyd", "s3")}`,
+      "state → recording",
+      "saved /Users/eric/Movies/RecordStuff/unstamped.mp4",
+    ].join("\n");
+    const pairs = pairRecordingsWithLog(log);
+    expect(sessionDurationSeconds(pairs.get("2026-09-19 18-02-38.mp4"))).toBeCloseTo(16.723, 3);
+    expect(sessionDurationSeconds(pairs.get("second.mp4"))).toBeCloseTo(20, 3);
+    expect(sessionDurationSeconds(pairs.get("unstamped.mp4"))).toBeUndefined();
+    expect(sessionDurationSeconds(undefined)).toBeUndefined();
   });
 });
 
@@ -221,7 +244,7 @@ describe("measure + judge", () => {
   it("passes a recording that matches the log and every threshold", () => {
     const m = measure("a.mp4", 31_335_000, info(), [evenFrames(900, 30)], { channelRmsDb: [-20, -21], nominalFps: 30 });
     expect(m.video?.bitsPerSecond).toBe(8_356_000 - 256_000); // total minus audio when the stream has no bit_rate
-    const checks = judge(m, ENTRY, { screen: { width: 1920, height: 1080 } });
+    const checks = judge(m, ENTRY, { screen: { width: 1920, height: 1080 }, movingMaterial: true });
     const byMetric = Object.fromEntries(checks.map((c) => [c.metric, c]));
     expect(byMetric["Output dimensions"]?.verdict).toBe("pass");
     expect(byMetric["Average frame rate"]?.verdict).toBe("pass");
@@ -234,9 +257,9 @@ describe("measure + judge", () => {
     expect(byMetric["Video bitrate"]?.verdict).toBe("pass");
     expect(byMetric["Audio bitrate"]?.verdict).toBe("pass");
     expect(byMetric["CPU (all Electron processes)"]?.verdict).toBe("n/a");
-    const busy = judge(measure("cpu.mp4", 1, info(), [evenFrames(900, 30)], { cpu: { averagePercent: 55, peakPercent: 80 } }), ENTRY);
+    const busy = judge(measure("cpu.mp4", 1, info(), [evenFrames(900, 30)], { cpu: { averagePercent: 55, peakPercent: 80 } }), ENTRY, { movingMaterial: true });
     expect(busy.find((c) => c.metric.startsWith("CPU"))?.verdict).toBe("fail");
-    const calm = judge(measure("cpu.mp4", 1, info(), [evenFrames(900, 30)], { cpu: { averagePercent: 15, peakPercent: 20 } }), ENTRY);
+    const calm = judge(measure("cpu.mp4", 1, info(), [evenFrames(900, 30)], { cpu: { averagePercent: 15, peakPercent: 20 } }), ENTRY, { movingMaterial: true });
     expect(calm.find((c) => c.metric.startsWith("CPU"))?.verdict).toBe("pass");
     expect(byMetric["Decodability (ffprobe full frame decode)"]?.verdict).toBe("pass");
     expect(overallVerdict(checks)).toBe("pass");
@@ -254,7 +277,7 @@ describe("measure + judge", () => {
     });
     const frames = evenFrames(600, 20);
     const m = measure("b.mp4", 17_770_000, probe, [frames], { channelRmsDb: [-20], nominalFps: 30 });
-    const checks = judge(m, entry, { screen: { width: 1920, height: 1080 } });
+    const checks = judge(m, entry, { screen: { width: 1920, height: 1080 }, movingMaterial: true });
     const byMetric = Object.fromEntries(checks.map((c) => [c.metric, c]));
     expect(byMetric["Output dimensions"]?.verdict).toBe("fail");
     expect(byMetric["Output dimensions"]?.note).toContain("aspect ratio differs from screen 1920x1080 (expected 1920x1080)");
@@ -271,9 +294,55 @@ describe("measure + judge", () => {
     expect(byMetric["Audio-video duration difference"]?.verdict).toBe("fail");
     expect(byMetric["Audio-video start offset (container)"]?.verdict).toBe("fail");
     expect(byMetric["Sample rate/channels"]?.verdict).toBe("fail");
-    expect(byMetric["Video bitrate"]?.verdict).toBe("fail");
-    expect(byMetric["Video bitrate"]?.note).toContain("Outside target tolerance");
+    expect(byMetric["Video bitrate"]?.verdict).toBe("fail"); // 55 % of target is below the 70 % floor
     expect(overallVerdict(checks)).toBe("fail");
+  });
+
+  it("does not judge frame timing for content of unknown motion, and reports the reason", () => {
+    // A desktop recording: the encoder emitted 57.5 fps of a 60 fps request because the picture was often still.
+    const entry = parseCaptureLine(
+      "recorder: session s capture: requested video=standard cap=source fps=60; track size=1920x1080 fps=60 sampleRate=48000 Hz channels=2; target videoBps=16200000 audioBps=256000",
+    )!;
+    const probe = info({ video: { r_frame_rate: "60/1", nb_read_frames: "1725", duration: "30.000" } });
+    const m = measure("desk.mp4", 90_000_000, probe, [evenFrames(1725, 57.5)], { channelRmsDb: [-29, -29], nominalFps: 60 });
+    const unknown = Object.fromEntries(judge(m, entry).map((c) => [c.metric, c]));
+    expect(unknown["Average frame rate"]?.verdict).toBe("n/a");
+    expect(unknown["Average frame rate"]?.note).toContain("--moving");
+    expect(unknown["Dropped frames"]?.verdict).toBe("n/a");
+    expect(unknown["Dropped frames"]?.actual).toContain("%"); // still measured and shown
+    const moving = Object.fromEntries(judge(m, entry, { movingMaterial: true }).map((c) => [c.metric, c]));
+    expect(moving["Average frame rate"]?.verdict).toBe("fail");
+    expect(moving["Average frame rate"]?.note).toBeUndefined();
+  });
+
+  it("treats bitrate as a floor: overshoot passes with a note, undershoot fails, audio has its own floor", () => {
+    const over = info({ format: { duration: "30.000", bit_rate: "24_000_000".replace(/_/g, ""), size: "90000000" } });
+    const m = measure("over.mp4", 90_000_000, over, [evenFrames(900, 30)], { channelRmsDb: [-20, -20] });
+    const byMetric = Object.fromEntries(judge(m, ENTRY).map((c) => [c.metric, c]));
+    expect(byMetric["Video bitrate"]?.verdict).toBe("pass"); // 23.7 Mbps against an 8.1 Mbps target
+    expect(byMetric["Video bitrate"]?.note).toContain("Above target");
+    expect(byMetric["Video bitrate"]?.expected).toContain("≥ 70%");
+    const quiet = measure("quiet.mp4", 1, info({ audio: { bit_rate: "160000" } }), [evenFrames(900, 30)], { channelRmsDb: [-20, -20] });
+    const quietAudio = judge(quiet, ENTRY).find((c) => c.metric === "Audio bitrate");
+    expect(quietAudio?.verdict).toBe("pass"); // 62.5 % of the request, above the 50 % floor
+    expect(quietAudio?.note).toContain("below the request is normal");
+    const starved = measure("starved.mp4", 1, info({ audio: { bit_rate: "96000" } }), [evenFrames(900, 30)], { channelRmsDb: [-20, -20] });
+    expect(judge(starved, ENTRY).find((c) => c.metric === "Audio bitrate")?.verdict).toBe("fail");
+  });
+
+  it("judges duration against the log session length when no matrix duration is given", () => {
+    const entry = { ...ENTRY, recordingStartedAtMs: Date.parse("2026-09-19T10:00:00.000Z"), stoppedAtMs: Date.parse("2026-09-19T10:00:30.100Z") };
+    const m = measure("s.mp4", 1, info(), [evenFrames(900, 30)], {});
+    const fromLog = judge(m, entry).find((c) => c.metric === "Recording duration");
+    expect(fromLog?.verdict).toBe("pass");
+    expect(fromLog?.expected).toContain("log session");
+    const cut = judge(m, { ...entry, stoppedAtMs: Date.parse("2026-09-19T10:01:00.000Z") }).find((c) => c.metric === "Recording duration");
+    expect(cut?.verdict).toBe("fail"); // the session ran 60 s but the file holds 30 s
+    const requested = judge(m, entry, { expectedDurationSeconds: 30 }).find((c) => c.metric === "Recording duration");
+    expect(requested?.expected).toContain("requested");
+    const noInfo = judge(m, ENTRY).find((c) => c.metric === "Recording duration");
+    expect(noInfo?.verdict).toBe("n/a");
+    expect(noInfo?.note).toContain("timestamped log session");
   });
 
   it("marks log-dependent checks not applicable without a log entry and flags a silent channel", () => {
@@ -281,7 +350,7 @@ describe("measure + judge", () => {
       channelRmsDb: [-20, Number.NEGATIVE_INFINITY],
       sync: { pairs: 29, medianOffsetMs: 35, headOffsetMs: 35, tailOffsetMs: undefined, driftMs: undefined },
     });
-    const checks = judge(m, undefined);
+    const checks = judge(m, undefined, { movingMaterial: true });
     const byMetric = Object.fromEntries(checks.map((c) => [c.metric, c]));
     expect(byMetric["Output dimensions"]?.verdict).toBe("n/a");
     expect(byMetric["Average frame rate"]?.verdict).toBe("n/a");

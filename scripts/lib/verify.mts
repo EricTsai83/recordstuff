@@ -33,6 +33,17 @@ export interface CaptureLogEntry {
   targetVideoBps: number;
   targetAudioBps: number;
   warnings: string | undefined;
+  /** Epoch ms of the session's `state → recording` line, when the log carried timestamps. */
+  recordingStartedAtMs?: number;
+  /** Epoch ms of its `state → stopping` line (or `saved` when no stopping line was seen). */
+  stoppedAtMs?: number;
+}
+
+/** Seconds between the session's recording and stopping lines; the file should be about this long. */
+export function sessionDurationSeconds(entry: CaptureLogEntry | undefined): number | undefined {
+  if (entry?.recordingStartedAtMs === undefined || entry.stoppedAtMs === undefined) return undefined;
+  const seconds = (entry.stoppedAtMs - entry.recordingStartedAtMs) / 1000;
+  return seconds > 0 ? seconds : undefined;
 }
 
 const numberOrUndefined = (text: string | undefined): number | undefined => {
@@ -88,10 +99,21 @@ export function pairRecordingsWithLog(logText: string): Map<string, CaptureLogEn
   const pairs = new Map<string, CaptureLogEntry>();
   const sessions: { entry: CaptureLogEntry; failed: boolean; paired: boolean }[] = [];
   for (const raw of logText.split(/\r?\n/)) {
+    const stamp = /^\[([^\]]*)\]\s*/.exec(raw);
+    const at = stamp?.[1] === undefined ? Number.NaN : Date.parse(stamp[1]);
     const line = raw.replace(/^\[[^\]]*\]\s*/, "");
     const capture = parseCaptureLine(line);
     if (capture) {
       sessions.push({ entry: capture, failed: false, paired: false });
+      continue;
+    }
+    // The state machine lines bracket the recording; they belong to the newest open session.
+    if (line === "state → recording" || line === "state → stopping") {
+      const session = [...sessions].reverse().find((s) => !s.failed && !s.paired);
+      if (session && Number.isFinite(at)) {
+        if (line === "state → recording") session.entry.recordingStartedAtMs = at;
+        else session.entry.stoppedAtMs = at;
+      }
       continue;
     }
     const failedSession = /^recorder: session (\S+) failed:/.exec(line);
@@ -105,6 +127,7 @@ export function pairRecordingsWithLog(logText: string): Map<string, CaptureLogEn
       const session = [...sessions].reverse().find((s) => !s.failed && !s.paired);
       if (session) {
         session.paired = true;
+        if (session.entry.stoppedAtMs === undefined && Number.isFinite(at)) session.entry.stoppedAtMs = at;
         pairs.set(basename(saved[1]), session.entry);
       }
       continue;
@@ -463,7 +486,15 @@ export const THRESHOLDS = {
   channels: 2,
   /** A channel below this RMS is treated as silent. */
   minChannelRmsDb: -60,
-  bitrateTolerance: 0.3,
+  /**
+   * Bitrate is a quality floor, not a size target: an encoder that delivers
+   * more than requested makes larger files, one that delivers much less may
+   * be starving the picture. Chromium's 60 fps output is routinely 1.5–2×
+   * the request, so only the lower bound is judged.
+   */
+  minVideoBitrateRatio: 0.7,
+  /** AAC output depends on content; sparse or quiet material legitimately encodes well below the request. */
+  minAudioBitrateRatio: 0.5,
   /** Set from the first measurements (1080p30 all levels ≈ 15%, 1080p60 ≈ 23%); generous headroom for slower machines. */
   maxCpuAveragePercent: 40,
 } as const;
@@ -483,8 +514,15 @@ export interface Check {
 export interface VerifyOptions {
   /** Logical or physical size of the recorded screen, for the aspect-ratio check. */
   screen?: Dimensions;
-  /** Seconds the run asked for (matrix); the file must be about that long. */
+  /** Seconds the run asked for (matrix); overrides the log-derived session length. */
   expectedDurationSeconds?: number;
+  /**
+   * The recorded content moved continuously (the test material page). Only
+   * then do frame-timing metrics mean anything: screen capture emits no
+   * frames while the picture is still, so an ordinary desktop recording has
+   * a low average fps and long gaps by design, not by fault.
+   */
+  movingMaterial?: boolean;
 }
 
 /** A recording this far from the requested length was cut short or ran long. */
@@ -543,17 +581,21 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
     checks.push({ metric: "Output dimensions", expected: "—", actual: "No video track", verdict: "fail" });
   }
 
-  // Recording duration (requested matrix duration)
-  const expectedSeconds = options.expectedDurationSeconds;
+  // Recording duration: the requested matrix length, else the session length from the log.
+  const sessionSeconds = sessionDurationSeconds(entry);
+  const expectedSeconds = options.expectedDurationSeconds ?? sessionSeconds;
+  const expectedSource = options.expectedDurationSeconds !== undefined ? "requested" : "log session";
   checks.push({
     metric: "Recording duration",
-    expected: expectedSeconds === undefined ? "—" : `${expectedSeconds} ± ${DURATION_TOLERANCE_SECONDS} s`,
+    expected: expectedSeconds === undefined ? "—" : `${fmt(expectedSeconds, 1)} ± ${DURATION_TOLERANCE_SECONDS} s (${expectedSource})`,
     actual: m.durationSeconds === undefined ? "—" : `${fmt(m.durationSeconds, 1)} s`,
     verdict:
       expectedSeconds === undefined || m.durationSeconds === undefined
         ? "n/a"
         : pass(Math.abs(m.durationSeconds - expectedSeconds) <= DURATION_TOLERANCE_SECONDS),
+    ...(expectedSeconds === undefined ? { note: "Needs a timestamped log session or an expected duration" } : {}),
   });
+  const MATERIAL_NOTE = "Frame timing is judged only for continuously moving material: pass --moving, or --sync with the test page";
 
   // Average frame rate
   const avgFps =
@@ -562,8 +604,11 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
     metric: "Average frame rate",
     expected: requestedFps === undefined ? "—" : `${requestedFps} ± ${THRESHOLDS.fpsToleranceFps} fps`,
     actual: avgFps === undefined ? "—" : `${fmt(avgFps, 2)} fps (${m.video?.frames} frames)`,
-    verdict: avgFps === undefined || requestedFps === undefined ? "n/a" : pass(Math.abs(avgFps - requestedFps) <= THRESHOLDS.fpsToleranceFps),
-    note: "Requires continuously moving material; not applicable to static scenes",
+    verdict:
+      avgFps === undefined || requestedFps === undefined || !options.movingMaterial
+        ? "n/a"
+        : pass(Math.abs(avgFps - requestedFps) <= THRESHOLDS.fpsToleranceFps),
+    ...(options.movingMaterial ? {} : { note: MATERIAL_NOTE }),
   });
 
   // Dropped frames
@@ -571,7 +616,8 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
     metric: "Dropped frames",
     expected: `< ${THRESHOLDS.maxDropRate * 100}%`,
     actual: m.frames ? `${(m.frames.dropRate * 100).toFixed(2)}% (${m.frames.dropped} frames / sampled ${m.frames.frames} frames, max gap ${ms(m.frames.maxGapMs)})` : "—",
-    verdict: m.frames ? pass(m.frames.dropRate < THRESHOLDS.maxDropRate) : "n/a",
+    verdict: m.frames && options.movingMaterial ? pass(m.frames.dropRate < THRESHOLDS.maxDropRate) : "n/a",
+    ...(options.movingMaterial ? {} : { note: MATERIAL_NOTE }),
   });
 
   // Audio-video duration difference
@@ -636,19 +682,18 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
   const ratio = target && videoBps !== undefined ? videoBps / target : undefined;
   checks.push({
     metric: "Video bitrate",
-    expected: target === undefined ? "—" : `${mbps(target)} ± ${THRESHOLDS.bitrateTolerance * 100}%`,
+    expected: target === undefined ? "—" : `≥ ${THRESHOLDS.minVideoBitrateRatio * 100}% of ${mbps(target)}`,
     actual: ratio === undefined ? mbps(videoBps) : `${mbps(videoBps)} (of target ${(ratio * 100).toFixed(0)}%)`,
-    verdict: ratio === undefined ? "n/a" : pass(Math.abs(ratio - 1) <= THRESHOLDS.bitrateTolerance),
-    ...(ratio !== undefined && Math.abs(ratio - 1) > THRESHOLDS.bitrateTolerance ? { note: "Outside target tolerance; record the actual Chromium output" } : {}),
+    verdict: ratio === undefined ? "n/a" : pass(ratio >= THRESHOLDS.minVideoBitrateRatio),
+    ...(ratio !== undefined && ratio > 1.3 ? { note: "Above target: larger file, not a quality loss (Chromium overshoots at 60 fps)" } : {}),
   });
+  const audioRatio = entry && m.audio?.bitsPerSecond !== undefined ? m.audio.bitsPerSecond / entry.targetAudioBps : undefined;
   checks.push({
     metric: "Audio bitrate",
-    expected: entry ? kbps(entry.targetAudioBps) : "—",
-    actual: kbps(m.audio?.bitsPerSecond),
-    verdict:
-      entry && m.audio?.bitsPerSecond !== undefined
-        ? pass(Math.abs(m.audio.bitsPerSecond / entry.targetAudioBps - 1) <= THRESHOLDS.bitrateTolerance)
-        : "n/a",
+    expected: entry ? `≥ ${THRESHOLDS.minAudioBitrateRatio * 100}% of ${kbps(entry.targetAudioBps)}` : "—",
+    actual: audioRatio === undefined ? kbps(m.audio?.bitsPerSecond) : `${kbps(m.audio?.bitsPerSecond)} (of target ${(audioRatio * 100).toFixed(0)}%)`,
+    verdict: audioRatio === undefined ? "n/a" : pass(audioRatio >= THRESHOLDS.minAudioBitrateRatio),
+    ...(audioRatio !== undefined && audioRatio < 1 ? { note: "AAC output follows content; below the request is normal for quiet or sparse audio" } : {}),
   });
 
   // CPU
