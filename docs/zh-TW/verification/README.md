@@ -91,4 +91,4 @@
 
 ## 精簡安裝介面與 tag 觸發發布 0.1.2 — 2026-09-19
 
-0.1.2 原始碼從 DMG 移除隨附指南並加入程式產生的箭頭背景；發布閘門現在要求恰為 App 與 Applications 連結。本機 `pnpm dist:mac` 建置通過候選閘門與 Finder 版面檢查；`pnpm start:app` 加手動 16.7 秒錄影通過完整性檢查；可丟棄副本移除後使用者資料未變；推送 `v0.1.2` tag 後不到三分鐘公開。見 [0.1.2 證據](releases/0.1.2.md)與[發布自動化](../system-design/releases.md)。verifier 同日改為完整性與效能兩層，見[工具鏈](../system-design/tooling.md#驗收門檻)。
+0.1.2 原始碼從 DMG 移除隨附指南並加入程式產生的箭頭背景；發布閘門現在要求恰為 App 與 Applications 連結。本機 `pnpm dist:mac` 建置通過候選閘門與 Finder 版面檢查；`pnpm start:app` 加手動 16.7 秒錄影通過完整性檢查；可丟棄副本移除後使用者資料未變；推送 `v0.1.2` tag 後不到三分鐘公開，匿名公開下載驗證 job 於 22 秒內通過。見 [0.1.2 證據](releases/0.1.2.md)與[發布自動化](../system-design/releases.md)。verifier 同日改為完整性與效能兩層，見[工具鏈](../system-design/tooling.md#驗收門檻)。
