@@ -1,0 +1,1 @@
+const {contextBridge,ipcRenderer}=require('electron');contextBridge.exposeInMainWorld('probe',{hide:()=>ipcRenderer.send('hide-probe'),quit:()=>ipcRenderer.send('quit-probe')});
