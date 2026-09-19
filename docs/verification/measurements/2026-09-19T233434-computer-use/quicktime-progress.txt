@@ -1,0 +1,4 @@
+The following is a diff from the previous accessibility tree for Window: "2026-09-19 23-35-23.mp4" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+~	91 滑桿 (settable, float) Description: 時間列, Value: 8.358903610503283, Details: 八秒
+~		92 數值指示器 (settable, float) 8.358903610503283
+The focused UI element is 68 標準視窗 2026-09-19 23-35-23.mp4, URL: file:///Users/eric/Movies/RecordStuff/2026-09-19%2023-35-23.mp4, Secondary Actions: Raise

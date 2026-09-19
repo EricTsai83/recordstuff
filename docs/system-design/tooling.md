@@ -17,6 +17,7 @@ Use pnpm and a compatible Node version; the verification TypeScript scripts use 
 | `pnpm icons` | Generate PNG/ICO assets, the DMG background pair, and native ICNS on macOS |
 | `pnpm log` | Follow the current macOS log |
 | `pnpm dist:mac` | Build/verify a self-signed app, then create a DMG next to it in dist/ |
+| `pnpm acceptance` | Against the running app: open the material fullscreen, start/stop a recording with the global shortcut through System Events, verify the integrity tier (test-material mode), write a report under docs/verification/measurements |
 
 Main, preload, and renderer are separate electron-vite entries. Only out files, package metadata, and selected resources enter the app. Tests, measurement tools, and documentation are not runtime dependencies. The app has no FFmpeg subprocess.
 
@@ -53,6 +54,7 @@ Self-signing is not Apple approval. Recipients may need Open Anyway for an unnot
 pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 pnpm verify -- /absolute/path/any-desktop-recording.mp4 --screen 1920x1080   # integrity only
+pnpm acceptance -- --seconds 10        # unattended shortcut acceptance of the running app
 pnpm matrix -- quick
 pnpm matrix -- all
 pnpm matrix -- long
@@ -60,7 +62,11 @@ pnpm matrix -- long
 
 Verify accepts multiple files, an optional log path, source dimensions, `--moving` (the content moved continuously), sync detection (implies `--moving`), Markdown/JSON output, and an explicit JSON destination. The default evidence directory is docs/verification/measurements. It reads the active log and newest rotated archive so capture and saved records can still be paired across rotation.
 
-Matrix is macOS-only developer automation. It launches the test material in Chrome kiosk on the primary display unless --no-open-material is supplied, samples the app's process CPU, and drives an unpackaged app through RECORDSTUFF_AUTORECORD. Keep source display/audio stable during the run. Packaged builds ignore this variable. The internal automatic-recording parser accepts durations in (0,3600] and validated quality overrides merged over defaults, not user settings.
+### Test material
+
+`scripts/test-material.html` is the one fixed page every measurement records: scrolling small text (sharpness), thin red/blue lines and coloured text (chroma edges), a square moving every frame (frame timing), a top-right box that flashes white for 100 ms once a second, and a soft 660 Hz tone (120 ms, about −10 dBFS, alternating left/right) on the same audio clock. Flash and tone are the sync markers: `verify --sync` finds them with ffmpeg blackdetect on the box and silencedetect (−35 dB, 0.4 s) on the audio, so the page must otherwise stay silent and nothing else may play on the machine. Because the audio is sparse, the AAC bitrate of these recordings is reported, not judged (`--test-material`). Opened by hand, the page starts on a click (browser autoplay policy); `pnpm matrix` and `pnpm acceptance` open it in a fresh-profile Chrome app-mode fullscreen window on the primary display with autoplay allowed and `?auto=1`, so no click is needed. Acceptance reports record the page's SHA-256 so results can be tied to a material version. Version history: until 2026-09-19 the tone was a 1 kHz, 60 ms beep at 0.5; on 2026-09-20 it became the softer 660 Hz tone above, and the first run with it detected 20 flashes and 19 beeps in 20 s with a 79 ms flash/beep offset, inside the historical 45–80 ms latency, so earlier sync results stay comparable. Current SHA-256: `e631b973a793cde1d5326a9cc58da0d88a522ca3c3041b1c9a2d0f3561c41459`.
+
+Matrix is macOS-only developer automation. It launches the test material in a Chrome app-mode fullscreen window on the primary display unless --no-open-material is supplied, samples the app's process CPU, and drives an unpackaged app through RECORDSTUFF_AUTORECORD. Keep source display/audio stable during the run. Packaged builds ignore this variable. The internal automatic-recording parser accepts durations in (0,3600] and validated quality overrides merged over defaults, not user settings.
 
 | Matrix | Cases |
 | --- | --- |
@@ -86,7 +92,7 @@ Checks are in two tiers. **Integrity** checks hold for any content and are what 
 | Integrity | Audio minus video start offset (container) | Strictly between −45 and +125 ms |
 | Integrity | Audio | 48 kHz, two channels; measured channel RMS above −60 dBFS |
 | Integrity | Video bitrate | At least 70% of the requested target; more is a larger file, not a failure |
-| Integrity | Audio bitrate | At least 50% of the requested target; AAC follows content |
+| Integrity | Audio bitrate | At least 50% of the requested target; AAC follows content. With `--test-material` (implied by `--sync`, set by `pnpm acceptance`) it is reported, not judged: the page's sparse beeps encode far below any request, and dense-audio bitrate belongs to the [audio-quality diagnostics](audio-quality.md) |
 | Integrity | Decode | No ffprobe full-frame decode errors; interactive playback remains a separate check |
 | Performance | Average fps | Requested ±2 fps |
 | Performance | Dropped frames | <2% |

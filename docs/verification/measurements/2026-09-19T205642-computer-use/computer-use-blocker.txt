@@ -1,0 +1,4 @@
+cua.getState(): native App/Target API available, including pressKey(key: string), xdotool-style syntax.
+App inventory: Google Chrome and QuickTime Player were already running.
+cua.getApp("com.google.Chrome") -> Computer Use was not approved to use Google Chrome
+No key presses, recording, browser tab creation or QuickTime interactions were performed.

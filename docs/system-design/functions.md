@@ -261,6 +261,9 @@ See [tooling](tooling.md) for pipeline and thresholds. These tools are developme
 
 | Source/functions | Contract |
 | --- | --- |
+| [acceptance-hotkey.mts](../../scripts/acceptance-hotkey.mts) top level | Require a running idle RecordStuff and its `hotkey: registered` line; open the kiosk material; send the accelerator through System Events; wait ≤30 s each for `pressed`, `state → recording`, second `pressed`, `saved`; verify the integrity tier with `testMaterial`; write report.md/verify.json/app-session.log; exit 1 on any failing check |
+| [lib/acceptance.mts](../../scripts/lib/acceptance.mts) `acceleratorToKeystroke` / `keystrokeScript` | Electron accelerator → System Events `keystroke … using {…}`; undefined for keys it cannot type |
+| Same file `lastStartIndex` / `registeredAccelerator` / `currentState` / `findAfter` / `lineTime` | Scope log reading to the current process; find events after an offset; parse the line timestamp |
 | [probe-recording.mjs](../../scripts/probe-recording.mjs): probe, ratio, kbps, fixed | Run ffprobe, parse ratios, format quick inspection output |
 | [verify-recording.mts](../../scripts/verify-recording.mts): usage, next | CLI help/exit 2 and argument values; top-level loop verifies files and returns failure exit status |
 | [lib/media-tools.mts](../../scripts/lib/media-tools.mts): ToolMissingError, run, hasTool | External-tool error, bounded-buffer subprocess invocation, availability check |

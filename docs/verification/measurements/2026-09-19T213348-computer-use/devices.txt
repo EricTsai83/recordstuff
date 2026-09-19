@@ -1,0 +1,15 @@
+Audio:
+
+    Devices:
+
+Graphics/Displays:
+
+    Apple M1 Pro:
+
+      Chipset Model: Apple M1 Pro
+      Type: GPU
+      Bus: Built-In
+      Total Number of Cores: 16
+      Vendor: Apple (0x106b)
+      Metal: Supported
+

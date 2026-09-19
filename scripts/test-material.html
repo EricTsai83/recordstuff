@@ -12,11 +12,15 @@
   - scrolling small text            → text sharpness at each quality level
   - thin red / blue lines, coloured text → 4:2:0 chroma edges
   - a square moving every frame     → frame-rate and drop measurements need motion
-  - top-right box: black, flashes white 100 ms once per second, while a short
-    1 kHz beep (alternating left / right) plays on the same AudioContext clock
+  - top-right box: black, flashes white 100 ms once per second, while a soft
+    660 Hz tone (120 ms, alternating left / right) plays on the same AudioContext clock
                                      → audio−video offset and 10-minute drift
                                        (ffmpeg blackdetect / silencedetect)
-  Audio must be otherwise silent for silencedetect to see the beeps.
+  Audio must be otherwise silent for silencedetect (−35 dB, 0.4 s) to see the
+  beeps; the tone peaks at about −10 dBFS with 10 ms attack and 40 ms release so
+  it reads as a gentle tick rather than an alarm while still crossing the
+  detector threshold within the first millisecond. Because the audio is sparse,
+  `pnpm verify` reports the AAC bitrate for this page instead of judging it.
 -->
 <style>
   html, body { margin: 0; height: 100%; background: #202020; color: #e8e8e8; font-family: -apple-system, "Helvetica Neue", sans-serif; overflow: hidden; }
@@ -75,15 +79,15 @@
     const gain = ctx.createGain();
     const panner = ctx.createStereoPanner();
     osc.type = "sine";
-    osc.frequency.value = 1000;
+    osc.frequency.value = 660;
     gain.gain.setValueAtTime(0, at);
-    gain.gain.linearRampToValueAtTime(0.5, at + 0.003);
-    gain.gain.setValueAtTime(0.5, at + 0.055);
-    gain.gain.linearRampToValueAtTime(0, at + 0.06);
+    gain.gain.linearRampToValueAtTime(0.3, at + 0.01);
+    gain.gain.setValueAtTime(0.3, at + 0.08);
+    gain.gain.linearRampToValueAtTime(0, at + 0.12);
     panner.pan.value = pan;
     osc.connect(gain).connect(panner).connect(ctx.destination);
     osc.start(at);
-    osc.stop(at + 0.07);
+    osc.stop(at + 0.13);
   }
 
   function frame() {

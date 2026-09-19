@@ -59,7 +59,7 @@ pnpm check
 
 This runs TypeScript checks, Vitest tests, and the production build. You can run `pnpm typecheck`, `pnpm test`, or `pnpm build` separately while developing. Before submitting any change, run `git diff --check`; for documentation-only edits, also check the affected links and commands.
 
-For recording changes, make a recording and check that starting, stopping, saving, and playback work. Note your OS, hardware, settings, and any cases you could not test. Automated checks alone do not verify actual screen and system-audio capture.
+For recording changes, make a recording and check that starting, stopping, saving, and playback work. With the app running from `pnpm start:app`, `pnpm acceptance` does the start/stop/save/verify part unattended through the global shortcut; playback is still checked by eye. Note your OS, hardware, settings, and any cases you could not test. Automated checks alone do not verify actual screen and system-audio capture.
 
 FFmpeg and ffprobe are needed for developer media analysis, not to run the app. For example:
 

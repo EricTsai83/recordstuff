@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 /**
- * `pnpm verify -- <mp4...> [--log <path>] [--screen WxH] [--moving] [--sync] [--out] [--json <path>]`
+ * `pnpm verify -- <mp4...> [--log <path>] [--screen WxH] [--moving] [--test-material] [--sync] [--out] [--json <path>]`
  *
  * measure one or more recordings with ffprobe / ffmpeg, pair
  * each with its `capture:` log line, judge against the threshold table and
  * print a table. `--out` appends the result to `docs/verification/measurements/<date>.md`
  * (+ `.json`); `--json` writes the raw results somewhere of your choosing.
  * `--moving` states that the recorded content moved continuously (the test
- * material page) so frame-rate and drop checks are judged; `--sync` implies it.
+ * material page) so frame-rate and drop checks are judged; `--test-material` says the
+ * audio is the page's sparse beeps so the audio bitrate is reported, not judged;
+ * `--sync` implies both.
  * Development only (brew install ffmpeg); nothing here ships with the app.
  */
 import fs from "node:fs";
@@ -29,7 +31,7 @@ const DEFAULT_LOG = path.join(os.homedir(), "Library/Logs/recordstuff/recordstuf
 
 function usage(): never {
   console.error(
-    "usage: pnpm verify -- <recording.mp4> [...] [--log <recordstuff.log>] [--screen 1920x1080] [--moving] [--sync] [--out] [--json <file>]",
+    "usage: pnpm verify -- <recording.mp4> [...] [--log <recordstuff.log>] [--screen 1920x1080] [--moving] [--test-material] [--sync] [--out] [--json <file>]",
   );
   process.exit(2);
 }
@@ -56,6 +58,7 @@ for (let i = 0; i < argv.length; i += 1) {
     options.screen = screen;
   } else if (arg === "--sync") options.sync = true;
   else if (arg === "--moving") options.movingMaterial = true;
+  else if (arg === "--test-material") options.testMaterial = true;
   else if (arg === "--out") out = true;
   else if (arg === "--json") jsonPath = next();
   else if (arg.startsWith("--")) usage();

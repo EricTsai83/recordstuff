@@ -23,6 +23,7 @@
     "log": "tail -f \"$HOME/Library/Logs/recordstuff/recordstuff.log\"",
     "probe": "node scripts/probe-recording.mjs",
     "verify": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/verify-recording.mts",
+    "acceptance": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-hotkey.mts",
     "matrix": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/run-matrix.mts",
     "dist:mac": "node scripts/start-app.mjs --dmg",
     "dist:win": "electron-vite build && electron-builder --win",

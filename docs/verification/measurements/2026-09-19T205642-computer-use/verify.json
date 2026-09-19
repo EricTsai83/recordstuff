@@ -1,0 +1,10 @@
+{
+  "status": "blocked",
+  "executed": false,
+  "reason": "Chrome computer use approval denied; no acceptance recording was created.",
+  "recordingPath": null,
+  "integrity": null,
+  "sampleRateHz": null,
+  "channels": null,
+  "rmsDbfsPerChannel": null
+}

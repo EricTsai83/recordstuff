@@ -1,0 +1,32 @@
+ M .agents/skills/astra-acceptance-with-computer-use/SKILL.md
+ M README.md
+ M README.zh-TW.md
+ M docs/system-design/desktop.md
+ M docs/system-design/functions.md
+ M docs/system-design/releases.md
+ M docs/verification/README.md
+ M docs/zh-TW/system-design/desktop.md
+ M docs/zh-TW/system-design/functions.md
+ M docs/zh-TW/system-design/releases.md
+ M docs/zh-TW/verification/README.md
+ M plans/016-recording-hotkey.md
+ M plans/016-recording-hotkey.zh-TW.md
+ M plans/README.md
+ M plans/README.zh-TW.md
+ M resources/INSTALL.md
+ M resources/INSTALL.zh-TW.md
+ M src/main/index.ts
+ M src/main/settings.test.ts
+ M src/main/settings.ts
+ M src/main/tray-model.test.ts
+ M src/main/tray-model.ts
+ M src/main/tray.ts
+ M src/shared/i18n.ts
+?? docs/verification/measurements/2026-09-19T205642-computer-use/
+?? docs/verification/measurements/2026-09-19T205941-computer-use/
+?? docs/verification/measurements/2026-09-19T2101-hotkey-osascript/
+?? docs/verification/measurements/2026-09-19T2120-computer-use/
+?? docs/verification/measurements/2026-09-19T213348-computer-use/
+?? src/main/hotkey.test.ts
+?? src/main/hotkey.ts
+?? src/shared/hotkey.ts

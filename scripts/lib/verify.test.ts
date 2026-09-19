@@ -328,6 +328,11 @@ describe("measure + judge", () => {
     expect(quietAudio?.note).toContain("below the request is normal");
     const starved = measure("starved.mp4", 1, info({ audio: { bit_rate: "96000" } }), [evenFrames(900, 30)], { channelRmsDb: [-20, -20] });
     expect(judge(starved, ENTRY).find((c) => c.metric === "Audio bitrate")?.verdict).toBe("fail");
+    // The test material's sparse beeps: the same starved bitrate is reported, not judged.
+    const material = judge(starved, ENTRY, { testMaterial: true }).find((c) => c.metric === "Audio bitrate");
+    expect(material?.verdict).toBe("n/a");
+    expect(material?.actual).toContain("96 kbps");
+    expect(material?.note).toContain("Reported only");
   });
 
   it("judges duration against the log session length when no matrix duration is given", () => {

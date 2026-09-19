@@ -22,7 +22,7 @@
 
 驗證是開發活動，在 tag 存在之前完成。發布只是對已推送的 main 下兩個指令：
 
-1. 執行 `pnpm start:app`：它建置、簽署、驗證並打開 CI 將打包的同一個 App bundle。短錄影並播放。這就是完整的功能檢查；DMG 對 App 行為不增加任何資訊，CI 每次 tag 都會驗證 DMG 結構。只有在打包設定變更時（electron-builder 檔案、圖示、背景、DMG 版面）才另外執行 `pnpm dist:mac`，從 `dist/` 開啟 DMG，確認 Finder 視窗只有 App、箭頭與 Applications。
+1. 執行 `pnpm start:app`（建置、簽署、驗證並打開 CI 將打包的同一個 App bundle），接著執行 `pnpm acceptance`：它用全域快捷鍵開始與停止一段錄影、驗證檔案的完整性層級，並把報告寫入 `docs/verification/measurements/`。可選擇再讓 [computer-use 驗收 skill](../../../.agents/skills/astra-acceptance-with-computer-use/SKILL.md) 讀取該報告並在 QuickTime 播放。`pnpm acceptance` 無法執行時（快捷鍵被拒、終端機沒有輔助使用權限、沒有 Chrome）改用人工後備：短錄影並播放。兩者都算完整的功能檢查；DMG 對 App 行為不增加任何資訊，CI 每次 tag 都會驗證 DMG 結構。只有在打包設定變更時（electron-builder 檔案、圖示、背景、DMG 版面）才另外執行 `pnpm dist:mac`，從 `dist/` 開啟 DMG，確認 Finder 視窗只有 App、箭頭與 Applications。
 2. 在已推送的 commit 上打下一個未用過的版本 tag 並推送。repo 裡事先不需要寫版本號。
 
 ```bash
@@ -31,7 +31,7 @@ git push origin v0.1.3
 gh run watch --exit-status "$(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
 ```
 
-約四分鐘後 `gh release view v0.1.3` 顯示公開 release 與三個 assets，main 上多出 record job 的 `docs(release): record published v0.1.3` commit，含 package.json 0.1.3、兩語言 README 下載區塊，以及 `docs/verification/releases/0.1.3.md` 與其翻譯。pull main 後，依步驟 1 實際做過的事填寫紀錄的「打 tag 前的本機驗收」與「未記錄」段落；產生的骨架絕不宣稱未執行的檢查。`verify-published` job 就是下載檢查：它抓取匿名使用者會拿到的檔案，在 GitHub 的網路上重跑所有產物閘門，本機不需要再下載。若它失敗，release 仍為公開，由維護者決定發修正版或保留；此 job 絕不撤回發布。之後要重驗既有版本，以其 tag dispatch workflow：
+約四分鐘後 `gh release view v0.1.3` 顯示公開 release 與三個 assets，main 上多出 record job 的 `docs(release): record published v0.1.3` commit，含 package.json 0.1.3、兩語言 README 下載區塊，以及 `docs/verification/releases/0.1.3.md` 與其翻譯。pull main 後，依步驟 1 實際做過的事填寫紀錄的「打 tag 前的本機驗收」與「未記錄」段落（驗收 skill 會把摘要寫在那裡，人工後備則手動填寫）；產生的骨架絕不宣稱未執行的檢查。`verify-published` job 就是下載檢查：它抓取匿名使用者會拿到的檔案，在 GitHub 的網路上重跑所有產物閘門，本機不需要再下載。若它失敗，release 仍為公開，由維護者決定發修正版或保留；此 job 絕不撤回發布。之後要重驗既有版本，以其 tag dispatch workflow：
 
 ```bash
 gh workflow run release.yml --ref main -f tag=v0.1.2

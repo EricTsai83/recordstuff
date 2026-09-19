@@ -261,6 +261,9 @@
 
 | 原始碼／函式 | 輸入 → 結果與副作用 |
 | --- | --- |
+| [acceptance-hotkey.mts](../../../scripts/acceptance-hotkey.mts) 頂層 | 要求 RecordStuff 執行中、idle 且有 `hotkey: registered`；開 kiosk 素材；以 System Events 送組合鍵；各 30 秒內等 `pressed`、`state → recording`、第二個 `pressed`、`saved`；以 `testMaterial` 驗完整性層級；寫 report.md／verify.json／app-session.log；任一 fail 以 1 退出 |
+| [lib/acceptance.mts](../../../scripts/lib/acceptance.mts) `acceleratorToKeystroke` / `keystrokeScript` | Electron accelerator → System Events `keystroke … using {…}`；無法輸入的鍵回 undefined |
+| 同檔 `lastStartIndex` / `registeredAccelerator` / `currentState` / `findAfter` / `lineTime` | 只讀目前程序的 log；在偏移之後找事件；解析行時間戳 |
 | [probe-recording.mjs](../../../scripts/probe-recording.mjs) `probe(file)` | ffprobe JSON → stream／container 數據；CLI 逐檔列出 |
 | 同檔 `ratio(text)`、`kbps(bps)`、`fixed(n, digits)` | 解析比例／格式化量測，未知以文字表示 |
 | [verify-recording.mts](../../../scripts/verify-recording.mts) `usage()` | 列參數格式並 exit 2；頂層解析 CLI，逐檔驗證、輸出、以 fail 決定 exit 1 |

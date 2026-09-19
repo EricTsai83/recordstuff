@@ -287,8 +287,10 @@ async function main(): Promise<void> {
       "open",
       [
         "-na", "Google Chrome", "--args",
-        `--user-data-dir=${MATERIAL_PROFILE}`, "--kiosk", "--window-position=0,0",
-        "--autoplay-policy=no-user-gesture-required", "--no-first-run", `file://${MATERIAL}?auto=1`,
+        // `--app` + `--start-fullscreen`: Chrome 153 ignored `--kiosk` alone while another Chrome was running.
+        `--user-data-dir=${MATERIAL_PROFILE}`, `--app=file://${MATERIAL}?auto=1`, "--start-fullscreen",
+        "--kiosk", "--window-position=0,0", "--autoplay-policy=no-user-gesture-required",
+        "--no-first-run", "--no-default-browser-check", "--disable-features=Translate",
       ],
       { stdio: "ignore" },
     );

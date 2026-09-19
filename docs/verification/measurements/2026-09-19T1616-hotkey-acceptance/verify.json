@@ -1,0 +1,146 @@
+{
+  "file": "/Users/eric/Movies/RecordStuff/2026-09-20 00-16-32.mp4",
+  "entry": {
+    "sessionId": "mu8laxwp-nyyumg",
+    "requested": {
+      "videoQuality": "standard",
+      "resolutionCap": "source",
+      "frameRate": 60
+    },
+    "track": {
+      "width": 1920,
+      "height": 1080,
+      "frameRate": 60,
+      "sampleRate": 48000,
+      "channelCount": 2
+    },
+    "targetVideoBps": 16200000,
+    "targetAudioBps": 256000,
+    "warnings": "track.getSettings() reported 1920x1920; actual frames 1920x1080; using actual frames",
+    "recordingStartedAtMs": 1789834592137,
+    "stoppedAtMs": 1789834612504
+  },
+  "measurement": {
+    "file": "/Users/eric/Movies/RecordStuff/2026-09-20 00-16-32.mp4",
+    "fileBytes": 78878958,
+    "durationSeconds": 20.351583,
+    "video": {
+      "codec": "h264",
+      "width": 1920,
+      "height": 1080,
+      "frames": 1159,
+      "durationSeconds": 20.34375,
+      "startTime": 0,
+      "bitsPerSecond": 31014023,
+      "pixelFormat": "yuv420p"
+    },
+    "audio": {
+      "codec": "aac",
+      "sampleRate": 48000,
+      "channels": 2,
+      "durationSeconds": 20.351583,
+      "startTime": 0,
+      "bitsPerSecond": 30369,
+      "channelRmsDb": [
+        -27.054009,
+        -27.17562
+      ]
+    },
+    "frames": {
+      "frames": 1159,
+      "dropped": 6,
+      "dropRate": 0.005150214592274678,
+      "maxGapMs": 33.182999999999296
+    },
+    "syncAttempted": false,
+    "decodable": true
+  },
+  "checks": [
+    {
+      "metric": "Output dimensions",
+      "expected": "1920x1080",
+      "actual": "1920x1080",
+      "verdict": "pass"
+    },
+    {
+      "metric": "Recording duration",
+      "expected": "20.0 ± 2 s (requested)",
+      "actual": "20.4 s",
+      "verdict": "pass"
+    },
+    {
+      "metric": "Average frame rate",
+      "expected": "60 ± 2 fps",
+      "actual": "56.97 fps (1159 frames)",
+      "verdict": "n/a",
+      "note": "Frame timing is judged only for continuously moving material: pass --moving, or --sync with the test page"
+    },
+    {
+      "metric": "Dropped frames",
+      "expected": "< 2%",
+      "actual": "0.52% (6 frames / sampled 1159 frames, max gap 33 ms)",
+      "verdict": "n/a",
+      "note": "Frame timing is judged only for continuously moving material: pass --moving, or --sync with the test page"
+    },
+    {
+      "metric": "Audio-video duration difference",
+      "expected": "< 100 ms",
+      "actual": "8 ms",
+      "verdict": "pass"
+    },
+    {
+      "metric": "Audio-video start offset (container)",
+      "expected": "Audio late < 125 ms / early < 45 ms (ITU-R BT.1359)",
+      "actual": "0 ms",
+      "verdict": "pass"
+    },
+    {
+      "metric": "Audio-video offset (flash/beep)",
+      "expected": "Audio late < 125 ms / early < 45 ms (ITU-R BT.1359); a stable excess indicates inherent latency",
+      "actual": "—",
+      "verdict": "n/a",
+      "note": "Requires --sync and the test material page"
+    },
+    {
+      "metric": "End-to-end A/V drift",
+      "expected": "< 100 ms",
+      "actual": "—",
+      "verdict": "n/a",
+      "note": "Requires --sync and a file longer than 60 seconds"
+    },
+    {
+      "metric": "Sample rate/channels",
+      "expected": "48 kHz, 2 channels, energy in both channels",
+      "actual": "48000 Hz, 2 channels, RMS -27.1 dB / -27.2 dB (track reports 2 channels)",
+      "verdict": "pass"
+    },
+    {
+      "metric": "Video bitrate",
+      "expected": "≥ 70% of 16.20 Mbps",
+      "actual": "31.01 Mbps (of target 191%)",
+      "verdict": "pass",
+      "note": "Above target: larger file, not a quality loss (Chromium overshoots at 60 fps)"
+    },
+    {
+      "metric": "Audio bitrate",
+      "expected": "≥ 50% of 256 kbps",
+      "actual": "30 kbps (of target 12%)",
+      "verdict": "n/a",
+      "note": "Reported only: the test material's sparse beeps encode far below any request; use the audio-quality diagnostics for bitrate"
+    },
+    {
+      "metric": "CPU (all Electron processes)",
+      "expected": "average ≤ 40%",
+      "actual": "—",
+      "verdict": "n/a"
+    },
+    {
+      "metric": "Decodability (ffprobe full frame decode)",
+      "expected": "No decode errors",
+      "actual": "Decodable, 20.4 s, 75.2 MB",
+      "verdict": "pass",
+      "note": "Opening and seeking in QuickTime/Chrome still requires manual verification"
+    }
+  ],
+  "verdict": "pass"
+}

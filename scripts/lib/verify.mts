@@ -523,6 +523,14 @@ export interface VerifyOptions {
    * a low average fps and long gaps by design, not by fault.
    */
   movingMaterial?: boolean;
+  /**
+   * The recorded audio is the test material page: short beeps once a second
+   * with silence between them (the sync detector needs that silence). AAC
+   * spends almost nothing on silence, so the audio bitrate says nothing about
+   * the recorder here; it is reported, not judged. Bitrate and fidelity of
+   * dense audio are measured by the audio-quality diagnostics instead.
+   */
+  testMaterial?: boolean;
 }
 
 /** A recording this far from the requested length was cut short or ran long. */
@@ -692,8 +700,12 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
     metric: "Audio bitrate",
     expected: entry ? `≥ ${THRESHOLDS.minAudioBitrateRatio * 100}% of ${kbps(entry.targetAudioBps)}` : "—",
     actual: audioRatio === undefined ? kbps(m.audio?.bitsPerSecond) : `${kbps(m.audio?.bitsPerSecond)} (of target ${(audioRatio * 100).toFixed(0)}%)`,
-    verdict: audioRatio === undefined ? "n/a" : pass(audioRatio >= THRESHOLDS.minAudioBitrateRatio),
-    ...(audioRatio !== undefined && audioRatio < 1 ? { note: "AAC output follows content; below the request is normal for quiet or sparse audio" } : {}),
+    verdict: audioRatio === undefined || options.testMaterial ? "n/a" : pass(audioRatio >= THRESHOLDS.minAudioBitrateRatio),
+    ...(options.testMaterial
+      ? { note: "Reported only: the test material's sparse beeps encode far below any request; use the audio-quality diagnostics for bitrate" }
+      : audioRatio !== undefined && audioRatio < 1
+        ? { note: "AAC output follows content; below the request is normal for quiet or sparse audio" }
+        : {}),
   });
 
   // CPU

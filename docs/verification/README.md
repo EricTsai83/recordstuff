@@ -6,7 +6,7 @@ This document preserves conclusions from completed plans separately from the sys
 
 ## Environment and evidence
 
-Verified environment: Apple M1 Pro, macOS 26, Electron 44.3/Chromium 152; external 1920×1080 displays and built-in Liquid Retina XDR at 3456×2234. The installed artifact was macOS arm64, self-signed with recordstuff Dev and bundle ID com.recordstuff.app.
+Verified environment: Apple M1 Pro, macOS 26, Electron 44.3/Chromium 152; external 1920×1080 displays and built-in Liquid Retina XDR at 3456×2234. The installed artifact was macOS arm64, self-signed with recordstuff Dev.
 
 Intel Macs, other macOS versions, Windows, Linux, another Mac, and a clean account remain unverified. They are not prerequisites for this delivery, as decided by the user.
 
@@ -32,6 +32,7 @@ Original evidence: [2026-09-13 Markdown](measurements/2026-09-13.md) and [JSON](
 | Final recovery | 2026-09-14 00-17-33.mp4: 12.653633 s, 45,041,905 bytes, 1080p H.264 + 48 kHz two-channel AAC; full decode and user playback confirmation | Local result at that time |
 | Notifications | User saw error/saved notifications; click/Finder reports and reveal logs | No guarantee of Finder always becoming frontmost |
 | Notification icon | User confirmed normal after reboot on 2026-09-14 | Follow-up closed; exact cause not established |
+| Global shortcut | `pnpm acceptance` against the windowless `/Applications` build (softened 660 Hz material, Chrome app-mode fullscreen): ⌘⌥⇧R through System Events reached the app in 166 ms (pressed → recording 96 ms), 20 s recorded and saved, integrity tier passed, 48 kHz two-channel RMS −27.1/−27.2 dB, 20 flashes and 19 beeps detected, flash/beep offset 79 ms ([report](measurements/2026-09-19T1616-hotkey-acceptance/report.md)); the Codex computer-use run with the same key path completed material, recording, verify and QuickTime playback ([23:34 run](measurements/2026-09-19T233434-computer-use/report.md)) | Audio bitrate is reported only for the sparse test material; a run with a video playing in the background was rejected by the beep guard (0 beeps separable from silence), so background audio must be off; Computer Use `pressKey` cannot reach a global shortcut and three non-interactive runs were blocked by per-app approvals ([20:56](measurements/2026-09-19T205642-computer-use/report.md), [20:59](measurements/2026-09-19T205941-computer-use/report.md), [21:20](measurements/2026-09-19T2120-computer-use/report.md), [21:33 fail](measurements/2026-09-19T213348-computer-use/report.md), [root cause](measurements/2026-09-19T2101-hotkey-osascript/report.md)); tray menu cases and listening remain unverified by tooling |
 
 ## Verified artifact identity
 

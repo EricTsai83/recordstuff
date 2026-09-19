@@ -6,7 +6,7 @@
 
 ## 環境與證據
 
-已測環境：Apple M1 Pro、macOS 26、Electron 44.3／Chromium 152；外接 1920×1080 與內建 Liquid Retina XDR 3456×2234。安裝產物為 macOS arm64，自簽身分 `recordstuff Dev`、bundle id `com.recordstuff.app`。Intel、其他 macOS 版本、Windows、Linux 與另一台 Mac／新帳號未驗；使用者已決定不以這些驗收作為目前發布前置。
+已測環境：Apple M1 Pro、macOS 26、Electron 44.3／Chromium 152；外接 1920×1080 與內建 Liquid Retina XDR 3456×2234。安裝產物為 macOS arm64，自簽身分 `recordstuff Dev`。Intel、其他 macOS 版本、Windows、Linux 與另一台 Mac／新帳號未驗；使用者已決定不以這些驗收作為目前發布前置。
 
 原始量測：[2026-09-13 Markdown](../../verification/measurements/2026-09-13.md)、[JSON](../../verification/measurements/2026-09-13.json)。舊結果中的 fail／n/a 與錯誤試跑如實保留，不能因後續調整門檻而回寫成當時全過。
 
@@ -30,6 +30,7 @@
 | 最後復原 | `2026-09-14 00-17-33.mp4` 12.653633 秒、45,041,905 bytes，1080p H.264＋48 kHz AAC 雙聲道，全解碼成功；使用者確認可播 | 完成當時的本機結果 |
 | 通知 | 使用者看到錯誤與存檔通知，點擊有 Finder 回報與 reveal 日誌 | Finder 每次置頂仍不保證 |
 | 通知縮圖 | 2026-09-14 使用者確認整台 Mac 重開機後正常 | 原待確認項目已關閉，具體原因未查明 |
+| 全域快捷鍵 | 對無視窗的 `/Applications` 建置執行 `pnpm acceptance`（柔化後的 660 Hz 素材、Chrome app 模式全螢幕）：System Events 送出 ⌘⌥⇧R 後 166 ms 收到、再 96 ms 進入 recording，錄 20 秒存檔，完整性層級通過，48 kHz 雙聲道 RMS −27.1／−27.2 dB，偵測到 20 次閃光與 19 個嗶聲，音畫偏移 79 ms（[報告](../../verification/measurements/2026-09-19T1616-hotkey-acceptance/report.md)）；Codex computer-use 以同一送鍵路徑完成素材、錄影、verify 與 QuickTime 播放（[23:34 執行](../../verification/measurements/2026-09-19T233434-computer-use/report.md)） | 稀疏素材的音訊碼率只回報；背景播影片的一次執行被嗶聲守門拒絕（0 個嗶聲可與靜音分離），驗收時背景音訊必須關閉；Computer Use 的 `pressKey` 到不了全域快捷鍵，三次非互動執行被 per-app 核准擋下（[20:56](../../verification/measurements/2026-09-19T205642-computer-use/report.md)、[20:59](../../verification/measurements/2026-09-19T205941-computer-use/report.md)、[21:20](../../verification/measurements/2026-09-19T2120-computer-use/report.md)、[21:33 fail](../../verification/measurements/2026-09-19T213348-computer-use/report.md)、[根因](../../verification/measurements/2026-09-19T2101-hotkey-osascript/report.md)）；Tray 選單案例與聽感仍未由工具驗證 |
 
 ## 已驗安裝產物識別
 

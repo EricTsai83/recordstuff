@@ -17,6 +17,7 @@
 | pnpm icons | PNG／ICO、DMG 背景圖（1x／2x）；macOS 額外產 native ICNS |
 | pnpm log | 追蹤 macOS log |
 | pnpm dist:mac | 自簽 App 驗證後，在 dist/ 旁邊產生 DMG |
+| pnpm acceptance | 對執行中的 App：全螢幕開素材、以 System Events 送全域快捷鍵開始／停止錄影、驗完整性層級（test-material 模式）、把報告寫到 docs/verification/measurements |
 
 main、preload、renderer 分別建置，打包只納入 out、package metadata 與指定 resources。測試、量測與文件不屬 runtime；App 不呼叫 FFmpeg。
 
@@ -51,6 +52,7 @@ main、preload、renderer 分別建置，打包只納入 out、package metadata 
 pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 pnpm verify -- /absolute/path/any-desktop-recording.mp4 --screen 1920x1080   # 只驗完整性
+pnpm acceptance -- --seconds 10        # 對執行中的 App 做無人值守快捷鍵驗收
 pnpm matrix -- quick
 pnpm matrix -- all
 pnpm matrix -- long
@@ -58,7 +60,11 @@ pnpm matrix -- long
 
 verify 支援多檔、log、來源尺寸、同步標記、Markdown／JSON 與指定 JSON 輸出。結果預設存至 docs/verification/measurements；讀 active log 與最新 .1 archive，以免 session 因輪替無法配對。
 
-matrix 只支援 macOS 開發環境。預設 Chrome kiosk 在主螢幕開素材頁，可用 --no-open-material 自行開；固定音量與來源螢幕。以 RECORDSTUFF_AUTORECORD 驅動未打包 App，打包版忽略。seconds 範圍 (0,3600]，quality override 合併固定預設，不讀使用者品質作為基準。
+### 測試素材
+
+`scripts/test-material.html` 是所有量測共用的唯一固定頁面：捲動小字（銳利度）、紅藍細線與彩色文字（色度邊緣）、每幀移動的方塊（幀率時序）、右上角每秒閃白 100 ms 的方框，以及同一音訊時鐘上的柔和 660 Hz 音（120 ms、約 −10 dBFS、左右交替）。閃光與音是同步標記：`verify --sync` 以 ffmpeg blackdetect 看方框、silencedetect（−35 dB、0.4 秒）看音訊找出它們，所以頁面其餘時間必須靜音，機器上也不能有別的聲音在播。音訊稀疏，這類錄影的 AAC 碼率只回報不判定（`--test-material`）。手動開啟時要點一下才開始（瀏覽器自動播放政策）；`pnpm matrix` 與 `pnpm acceptance` 用全新 profile 的 Chrome app 模式全螢幕在主螢幕開啟、允許自動播放並帶 `?auto=1`，不需點擊。驗收報告會記錄頁面的 SHA-256，結果可對應素材版本。版本沿革：2026-09-19 以前是 1 kHz、60 ms、音量 0.5 的嗶聲；2026-09-20 改為上述較柔和的 660 Hz 音，首次執行在 20 秒內偵測到 20 次閃光與 19 個音、音畫偏移 79 ms，落在歷史 45–80 ms 延遲範圍內，先前的同步結果仍可比較。目前 SHA-256：`e631b973a793cde1d5326a9cc58da0d88a522ca3c3041b1c9a2d0f3561c41459`。
+
+matrix 只支援 macOS 開發環境。預設以 Chrome app 模式全螢幕在主螢幕開素材頁，可用 --no-open-material 自行開；固定音量與來源螢幕。以 RECORDSTUFF_AUTORECORD 驅動未打包 App，打包版忽略。seconds 範圍 (0,3600]，quality override 合併固定預設，不讀使用者品質作為基準。
 
 | 矩陣 | 內容 |
 | --- | --- |
@@ -84,7 +90,7 @@ media-tools 呼叫 ffprobe／ffmpeg；verify.mts 純解析／計算／判定；v
 | 完整性 | 音訊−影像起始偏移（容器） | 嚴格介於 −45 與 +125 ms |
 | 完整性 | 音訊 | 48 kHz、2 聲道；有量時各聲道 RMS >−60 dBFS |
 | 完整性 | 視訊碼率 | 至少為要求目標的 70%；超過只是檔案較大，不算失敗 |
-| 完整性 | 音訊碼率 | 至少為要求目標的 50%；AAC 隨內容變化 |
+| 完整性 | 音訊碼率 | 至少為要求目標的 50%；AAC 隨內容變化。帶 `--test-material`（`--sync` 隱含、`pnpm acceptance` 會設定）時只回報不判定：素材頁的稀疏嗶聲遠低於任何要求值，連續音訊的碼率交給[音質診斷](audio-quality.md) |
 | 完整性 | 解碼 | ffprobe 全影格無錯；播放器操作另驗 |
 | 效能 | fps | 要求 ±2 fps |
 | 效能 | 掉幀 | <2% |

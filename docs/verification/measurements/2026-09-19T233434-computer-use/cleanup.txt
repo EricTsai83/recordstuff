@@ -1,0 +1,3 @@
+Chrome: Escape exited fullscreen; Command+W closed the test-material tab, AX returned to the pre-existing tab.
+QuickTime: Command+Q; following AX read returned Computer Use server error -10005: App quit.
+RecordStuff: not quit or relaunched; last session state idle.

@@ -1,0 +1,26 @@
+本次 native computer-use 工具：mcp__cua_repl.js
+cua.getState(): 成功；文件提供 Target.pressKey(key: string)，支援 xdotool syntax，例如 super+c。沒有文件化的 cua.pressKey 全域入口。原生 App/Tab 物件必須由 getApp/getTab 等取得。
+
+先前 Chrome 結果（使用者提供，本次未重試）：
+cua.getApp('com.google.Chrome')
+Computer Use was not approved to use Google Chrome
+
+本次 shell：open -a Safari scripts/test-material.html
+exit=1
+Unable to find application named 'Safari'
+
+本次 computer use，依呼叫順序：
+var safari = await cua.getApp('com.apple.Safari');
+Computer Use was not approved to use Safari
+
+var finder = await cua.getApp('com.apple.finder');
+Computer Use was not approved to use Finder
+
+await safari.pressKey('super+alt+shift+r');
+safari is not defined
+
+var quicktime = await cua.getApp('com.apple.QuickTimePlayerX');
+Computer Use was not approved to use QuickTime Player
+
+判讀：pressKey API 存在，但 getApp 被自動核准拒絕，沒有建立可呼叫 Target。直接送鍵嘗試在物件解析階段失敗，不能聲稱 pressKey 本身遭拒，也不能聲稱已送出快捷鍵。未使用未記載 API 或其他按鍵技術繞過限制。
+初始 inventory 顯示 QuickTime Player 已在執行；本次沒有建立播放器視窗或素材分頁。未取得任何可保存的 UI 截圖。

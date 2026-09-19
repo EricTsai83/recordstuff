@@ -85,8 +85,9 @@ export function verifyRecording(
   const judgeOptions: VerifyOptions = {};
   if (options.screen) judgeOptions.screen = options.screen;
   if (options.expectedDurationSeconds !== undefined) judgeOptions.expectedDurationSeconds = options.expectedDurationSeconds;
-  // --sync only makes sense on the test material page, which moves continuously.
+  // --sync only makes sense on the test material page, which moves continuously and has sparse audio.
   if (options.movingMaterial ?? options.sync) judgeOptions.movingMaterial = true;
+  if (options.testMaterial ?? options.sync) judgeOptions.testMaterial = true;
   const checks = judge(measurement, entry, judgeOptions);
   return { file, entry, measurement, checks, verdict: overallVerdict(checks) };
 }
