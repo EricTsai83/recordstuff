@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 
 /**
@@ -47,7 +48,10 @@ vi.mock("electron", () => {
   }
 
   const image = { setTemplateImage: vi.fn() };
+  // `app` only needs the activation events the reveal listens to.
+  const app = new EventEmitter();
   return {
+    app,
     Menu: { buildFromTemplate: vi.fn(() => ({})) },
     Notification: FakeNotification,
     Tray: class {
@@ -64,15 +68,16 @@ vi.mock("electron", () => {
   };
 });
 
-import { Notification, shell } from "electron";
+import { app, Notification, shell } from "electron";
 import type { Language } from "../shared/i18n";
 import { DEFAULT_QUALITY } from "../shared/quality";
-import { AppTray } from "./tray";
+import { ACTIVATION_WINDOW_MS, AppTray } from "./tray";
 
 const Fake = Notification as unknown as FakeNotificationCtor;
 
 function setup(supported = true): { tray: AppTray; logs: string[] } {
   vi.mocked(shell.showItemInFolder).mockReset();
+  app.removeAllListeners();
   Fake.instances.length = 0;
   Fake.supported = supported;
   const logs: string[] = [];
@@ -103,7 +108,21 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
     // Electron's listener signature is (event, error); the error text is the
     // only clue the user's machine gives us.
     expect(() => failed?.({}, "Notification permission denied")).not.toThrow();
-    expect(logs).toEqual(["notification: failed (Notification permission denied): Saved a.mp4"]);
+    expect(logs).toContain("notification: failed (Notification permission denied): Saved a.mp4");
+  });
+
+  it("records requested, shown, clicked and closed with the notification body", async () => {
+    const { tray, logs } = setup();
+    tray.notifySaved("/tmp/diagnostic.mp4");
+    const notification = Fake.instances.at(-1)!;
+    expect(logs).toEqual(["notification: show requested: Saved diagnostic.mp4"]);
+    notification.listeners.get("show")?.();
+    notification.listeners.get("close")?.();
+    expect(logs).toContain("notification: shown: Saved diagnostic.mp4");
+    expect(logs).toContain("notification: closed: Saved diagnostic.mp4");
+    notification.listeners.get("click")?.();
+    expect(logs).toContain("notification: clicked: Saved diagnostic.mp4");
+    await new Promise<void>((resolve) => setImmediate(resolve));
   });
 
   it("logs and gives up when notifications are not supported at all", () => {
@@ -124,6 +143,71 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
     }
     expect(shell.showItemInFolder).toHaveBeenCalledExactlyOnceWith(file);
     expect(logs).toContain(`notification: reveal requested ${file}`);
+  });
+
+  const darwin = process.platform === "darwin" ? describe : describe.skip;
+  darwin("macOS foreground after the notification click (plan 014)", () => {
+    const flush = (): Promise<void> => new Promise<void>((resolve) => setImmediate(resolve));
+
+    it("saving in the background never touches Finder or listens for activation", () => {
+      const { tray } = setup();
+      tray.notifySaved("/Users/eric/Movies/RecordStuff/a.mp4");
+      expect(shell.showItemInFolder).not.toHaveBeenCalled();
+      expect(app.listenerCount("did-become-active")).toBe(0);
+    });
+
+    it("reveals again when macOS activates the app after the first reveal, so Finder ends in front", async () => {
+      vi.useFakeTimers();
+      try {
+        const { tray, logs } = setup();
+        const file = "/Users/eric/Movies/RecordStuff/測試 錄影 2026-09-20 01-27-11.mp4";
+        tray.notifySaved(file);
+        Fake.instances.at(-1)?.listeners.get("click")?.();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(shell.showItemInFolder).toHaveBeenCalledTimes(1);
+        expect(app.listenerCount("did-become-active")).toBe(1);
+        // The system's activation for the click lands ~110 ms after our callback (measured on macOS 26.6).
+        await vi.advanceTimersByTimeAsync(110);
+        app.emit("did-become-active");
+        expect(shell.showItemInFolder).toHaveBeenCalledTimes(2);
+        expect(shell.showItemInFolder).toHaveBeenLastCalledWith(file);
+        expect(logs.filter((line) => line.startsWith("notification: reveal"))).toEqual([`notification: reveal requested ${file}`, `notification: reveal repeated after activation ${file}`]);
+        // One-shot: a later activation (the user switching apps) does not re-open Finder.
+        app.emit("did-become-active");
+        expect(shell.showItemInFolder).toHaveBeenCalledTimes(2);
+        expect(app.listenerCount("did-become-active")).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("stops listening after the activation window so a later app switch is not treated as the click", async () => {
+      vi.useFakeTimers();
+      try {
+        const { tray } = setup();
+        tray.notifySaved("/Users/eric/Movies/RecordStuff/a.mp4");
+        Fake.instances.at(-1)?.listeners.get("click")?.();
+        await vi.advanceTimersByTimeAsync(ACTIVATION_WINDOW_MS + 1);
+        expect(app.listenerCount("did-become-active")).toBe(0);
+        app.emit("did-become-active");
+        expect(shell.showItemInFolder).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("logs a failed reveal without throwing into the click handler or the activation listener", async () => {
+      const { tray, logs } = setup();
+      const file = "/Users/eric/Movies/RecordStuff/a b.mp4";
+      vi.mocked(shell.showItemInFolder).mockImplementation(() => {
+        throw new Error("Finder is gone");
+      });
+      tray.notifySaved(file);
+      expect(() => Fake.instances.at(-1)?.listeners.get("click")?.()).not.toThrow();
+      await flush();
+      expect(() => app.emit("did-become-active")).not.toThrow();
+      expect(logs.filter((l) => l.startsWith("notification: reveal failed (Error: Finder is gone)"))).toHaveLength(2);
+    });
   });
 
   it("keeps the click handler working alongside the failure listener", () => {

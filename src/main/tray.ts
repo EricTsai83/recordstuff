@@ -5,7 +5,7 @@
  * from the current state each time — never `setContextMenu`, which would make
  * macOS pop the menu on left click too.
  */
-import { Menu, Notification, Tray, nativeImage, shell, type MenuItemConstructorOptions } from "electron";
+import { Menu, Notification, Tray, app, nativeImage, shell, type MenuItemConstructorOptions } from "electron";
 import path from "node:path";
 import type { ErrorCode, RecordingState } from "../shared/state";
 import type { FrameRate } from "../shared/quality";
@@ -27,6 +27,14 @@ import {
   type TrayIcon,
   type TrayMenuItem,
 } from "./tray-model";
+
+/**
+ * How long after a notification-click reveal the system's activation of this
+ * app is still treated as part of that click. Measured on macOS 26.6: the
+ * activation arrived ~110 ms after the click callback in local runs. This
+ * heuristic bounds the retry; it cannot distinguish a user switch within the window.
+ */
+export const ACTIVATION_WINDOW_MS = 1000;
 
 export interface TrayOptions {
   resourcesDir: string;
@@ -86,19 +94,44 @@ export class AppTray {
     });
   }
 
+  /**
+   * Reveal a file in response to an explicit notification click (plan 014).
+   *
+   * On macOS the click does two things: it delivers the response to us, and it
+   * asks the system to activate the notifying app. The second part lands about
+   * 100 ms after our callback. Finder is asked to select the file right away,
+   * but if the system then makes this windowless app active, Finder is pushed
+   * back behind the user's previous window and nothing visible happens — the
+   * v0.1.0 report. Windowless RecordStuff cannot decline that activation, so
+   * when `did-become-active` arrives after the reveal, the file is revealed
+   * again from the now-active app: Finder's activation then lands last and it
+   * stays in front. The listener is armed only by the click and only for a
+   * bounded window; saving in the background never touches Finder.
+   */
   private revealFromNotification(filePath: string): void {
-    const reveal = (): void => {
+    const reveal = (repeat: boolean): void => {
       try {
         shell.showItemInFolder(filePath);
-        this.log(`notification: reveal requested ${filePath}`);
+        this.log(`notification: reveal ${repeat ? "repeated after activation" : "requested"} ${filePath}`);
       } catch (error) {
         this.log(`notification: reveal failed (${String(error)}): ${filePath}`);
       }
     };
+    if (process.platform !== "darwin") {
+      reveal(false);
+      return;
+    }
     // Let macOS finish the native notification response before asking Finder
     // to take focus. Its completion handler runs after our click callback.
-    if (process.platform === "darwin") setImmediate(reveal);
-    else reveal();
+    setImmediate(() => {
+      reveal(false);
+      const onActive = (): void => {
+        clearTimeout(timer);
+        reveal(true);
+      };
+      const timer = setTimeout(() => app.removeListener("did-become-active", onActive), ACTIVATION_WINDOW_MS);
+      app.once("did-become-active", onActive);
+    });
   }
 
   notifyPermission(needsRelaunch: boolean): void {
@@ -150,11 +183,17 @@ export class AppTray {
       return;
     }
     const notification = new Notification({ title: text.title, body: text.body, silent: true });
-    if (onClick) notification.on("click", onClick);
+    notification.on("show", () => this.log(`notification: shown: ${text.body}`));
+    notification.on("close", () => this.log(`notification: closed: ${text.body}`));
+    notification.on("click", () => {
+      this.log(`notification: clicked: ${text.body}`);
+      onClick?.();
+    });
     // `(event, error)` per Electron's Notification docs; darwin and win32 only.
     notification.on("failed", (_event, error) => {
       this.log(`notification: failed (${error}): ${text.body}`);
     });
+    this.log(`notification: show requested: ${text.body}`);
     notification.show();
   }
 

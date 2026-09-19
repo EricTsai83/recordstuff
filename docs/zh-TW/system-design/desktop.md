@@ -20,7 +20,7 @@ TrayModel 是純函式產物，包含 icon、title、tooltip 與遞迴 menu。Ap
 
 通知文案由純函式產生，通知使用 silent 模式。存檔通知點擊顯示影片；有 partialPath 的失敗通知顯示部分檔；無部分檔時，位置不可用開資料夾選擇、缺權限開系統設定、需要重啟則 relaunch。品質保存失敗與幀率降級只有說明。
 
-macOS 點通知後以 `setImmediate` 延到下一個事件循環呼叫 Finder，記錄 reveal requested／failed。原生通知不支援或 `failed` event 會留下 log。通知是否顯示、Finder 是否置頂仍受系統設定與前景排序影響，不能把 API 呼叫成功當成視覺驗證。通知縮圖已由使用者於 2026-09-14 重開機後確認正常。
+macOS 點通知會做兩件事：把回應交給 App，並要求系統啟動發通知的 App；後者約在點擊回呼後 110 ms 才落地。reveal 以 `setImmediate` 立刻請 Finder 選取檔案；若系統隨後把這個無視窗 App 設為前景，Finder 會被壓回使用者原本的視窗後方，看起來什麼都沒發生（v0.1.0 的回報；macOS 26.6 上約三次點擊出現一次，同一程序的第一次點擊很少發生）。計畫 014 因此在 reveal 之後掛一個一次性的 `did-become-active` 監聽，時窗 `ACTIVATION_WINDOW_MS`（1 秒）：啟動若落在時窗內，就從已是前景的 App 再 reveal 一次，讓 Finder 的置前最後落地。log 區分 `reveal requested`、`reveal repeated after activation` 與 `reveal failed`。只有點擊會掛監聽；背景存檔不會碰 Finder。原生通知不支援或 `failed` event 會留下 log。通知是否顯示仍受系統通知設定影響。原生證據由 `pnpm acceptance:notification` 產生（[工具鏈](tooling.md#通知驗收)）。通知縮圖已由使用者於 2026-09-14 重開機後確認正常。
 
 ## 錄影快捷鍵
 
