@@ -54,7 +54,7 @@ recordstuff 沿用固定自簽身分，讓本機與後續版本有一致的簽�
 ```text
 名稱：RecordStuff Dev
 公開憑證 SHA-1：01B373511530BBF287CA35E54C10A5F017AAD637
-App identifier：com.recordstuff.app
+App identifier：com.ericts.record
 ```
 
 2026-09-15 本機唯讀檢查也找到相同指紋的有效身分。此指紋是既有發行的基準，不是所有新開發者都能自行產生的值。
@@ -62,8 +62,20 @@ App identifier：com.recordstuff.app
 程式要求的最外層 designated requirement（macOS 用來辨認這份程式的條件）為：
 
 ```text
-identifier "com.recordstuff.app" and certificate leaf = H"01b373511530bbf287ca35e54c10a5f017aad637"
+identifier "com.ericts.record" and certificate leaf = H"01b373511530bbf287ca35e54c10a5f017aad637"
 ```
+
+identifier 的說明見下節。
+
+## Bundle identifier
+
+Bundle identifier（`CFBundleIdentifier`，由 `electron-builder.yml` 的 `appId` 決定，`src/main/index.ts` 的 `APP_ID` 與 `scripts/start-app.mjs` 的 identifier 檢查與之一致）是 `com.ericts.record`：維護者的網域 `ericts.com` 反過來寫，再加產品名。Apple 的慣例是反向網域（reverse-DNS），本專案把它當作規則，原因如下：
+
+- **沒有註冊機構卻要唯一。** 沒有人負責分配 bundle identifier；macOS、App Store 與各種工具都直接假設它唯一。把自己控制的網域反過來寫，是唯一能讓這個假設成立的方法，因為網域所有權本身就是全球唯一的。以專案並不擁有的網域自創名稱，可能和真正的擁有者撞名。
+- **它就是 App 在權限系統裡的身分。** TCC 以 bundle identifier 加簽章身分記錄螢幕錄製與系統音訊授權；通知歸屬與 `app.setAppUserModelId` 用它；designated requirement 把它燒進簽章。一改，macOS 就把結果視為另一個 App：使用者要重新允許螢幕錄製，原地覆蓋更新也不再繼承舊授權。所以 identifier 是「選一次、之後不動」。
+- **命名空間。** Helper 與相關產品掛在同一前綴下（Electron helper bundle 是 `com.ericts.record.helper`），其他工具（Computer Use 核准、`defaults`、`lsappinfo`、Launch Services）也以同一字串為 key，穩定且自有的前綴讓所有引用一致。
+
+規則：全小寫、以點分隔、不含版本號或建置變體（beta 之類的通道另加後綴，如 `com.google.Chrome.beta`），且不可把同一 identifier 拿給不同產品重用。`pnpm dev` 對 macOS 而言不是 RecordStuff：它執行的是 Electron 自己的 bundle（`com.github.Electron`），這也是開發模式權限行為與封裝版不同的原因之一。
 
 因此重新建立名為 `RecordStuff Dev` 的憑證仍會改變身分。腳本預設依名稱選取，亦接受 `RECORDSTUFF_SIGN_IDENTITY` 指紋；它核對成品與「此次選中的憑證」一致，並未把歷史發布指紋寫死。CI 必須另外固定並核對預期指紋，才不會默默換身分。
 

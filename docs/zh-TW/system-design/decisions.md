@@ -7,6 +7,7 @@
 | 決策 | 原因 | 代價／重新評估條件 |
 | --- | --- | --- |
 | Electron + TypeScript | 以現有語言完成桌面生命週期、原生選單與 Chromium 擷取 | 有 Electron 常駐成本；只在實測效能或擷取能力不足時評估原生引擎 |
+| Bundle identifier 用維護者自有網域反寫（`com.ericts.record`；[原因](signing.md#bundle-identifier)） | identifier 沒有註冊機構，自有網域是唯一的唯一性保證；它也是 App 在 TCC 授權、通知與簽章裡的身分 | 選一次就不再動：改了 macOS 會視為新 App，使用者需重新允許螢幕錄製 |
 | Chromium getDisplayMedia + MediaRecorder | 不自寫音訊裝置或原生 sidecar，先完成錄影核心 | 對 codec／時間戳控制有限；明確要求 EC／NS／AGC false 已恢復本機高頻與立體聲，引擎／平台變更需重測 |
 | 隱藏 renderer 專做擷取 | DOM 媒體 API 位於 renderer；UI 仍可用原生 API | 多一條 MessagePort；需 ready、session、順序与心跳管理 |
 | Main 擁有狀態與影片 writer | UI、擷取程序不能各自宣稱錄製成功 | 程序中止時 main 要協調故障收尾 |

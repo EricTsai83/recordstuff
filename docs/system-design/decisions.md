@@ -7,6 +7,7 @@ These are adopted decisions, not a future-work checklist. Current code and measu
 | Decision | Rationale | Tradeoff or reconsideration trigger |
 | --- | --- | --- |
 | Electron and TypeScript | Implement desktop lifecycle, native UI, and Chromium capture with one language | Electron resource cost; consider native capture only after measuring a concrete limitation |
+| Bundle identifier is the reverse of a domain the maintainer controls (`com.ericts.record`; [why](signing.md#bundle-identifier)) | Identifiers have no registry, so an owned domain is the only uniqueness guarantee; the identifier is the app's identity for TCC grants, notifications and the signature | Chosen once and kept: changing it makes macOS treat the app as new and users must re-allow screen recording |
 | Built-in getDisplayMedia and MediaRecorder | Avoid custom audio devices and native sidecars | Limited codec/timestamp control; explicit EC/NS/AGC false restored local spectral fidelity and stereo, so remeasure on engine/platform changes |
 | Hidden capture renderer | DOM media APIs belong in a renderer; visible UI can remain native | Requires port readiness, session IDs, ordering, and heartbeat |
 | Main owns state and media writer | UI and capture must not independently claim success | Main coordinates cleanup and file completion |

@@ -66,10 +66,10 @@ if (name === 'codesign' && args.some(arg => arg.startsWith('--extract-certificat
   const isHelper = bundle.endsWith('Helper.app');
   const cert = env.WRONG_CERT === 'outer' && !isHelper || env.WRONG_CERT === 'helper' && isHelper ? env.OTHER_CERT : env.PUBLIC_CERT;
   if (!env.ADHOC) fs.copyFileSync(cert, args.find(arg => arg.startsWith('--extract-certificates=')).slice('--extract-certificates='.length) + '0');
-  process.stderr.write('Identifier=' + (env.WRONG_ID || (isHelper ? 'com.recordstuff.app.helper' : 'com.recordstuff.app')) + '\\n');
+  process.stderr.write('Identifier=' + (env.WRONG_ID || (isHelper ? 'com.ericts.record.helper' : 'com.ericts.record')) + '\\n');
   process.stderr.write('CodeDirectory v=20500 flags=0x10000(' + (env.NO_RUNTIME ? '' : 'runtime') + ')\\n');
 }
-if (name === 'codesign' && args.includes('-r-')) process.stderr.write(env.WRONG_REQUIREMENT ? 'designated => cdhash H"abcd"\\n' : 'designated => identifier "com.recordstuff.app" and certificate leaf = H"' + env.HASH.toLowerCase() + '"\\n');
+if (name === 'codesign' && args.includes('-r-')) process.stderr.write(env.WRONG_REQUIREMENT ? 'designated => cdhash H"abcd"\\n' : 'designated => identifier "com.ericts.record" and certificate leaf = H"' + env.HASH.toLowerCase() + '"\\n');
 `);
     const wrapper = path.join(bin, "wrapper");
     writeFileSync(wrapper, '#!/bin/sh\nexec "$TEST_NODE" "$TEST_STUB" "$0" "$@"\n', { mode: 0o755 });

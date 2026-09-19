@@ -54,16 +54,26 @@ The [v0.1.0 release record](../verification/releases/0.1.0.json) uses:
 ```text
 Name: RecordStuff Dev
 Public certificate SHA-1: 01B373511530BBF287CA35E54C10A5F017AAD637
-App identifier: com.recordstuff.app
+App identifier: com.ericts.record
 ```
 
-A read-only local check on 2026-09-15 found that same valid identity. This fingerprint is the existing release baseline, not a value an independent developer can recreate.
+A read-only local check on 2026-09-15 found that same valid identity. This fingerprint is the existing release baseline, not a value an independent developer can recreate. The identifier is explained under [Bundle identifier](#bundle-identifier).
 
 The script expects the following outer designated requirement, the condition macOS uses to identify this code:
 
 ```text
-identifier "com.recordstuff.app" and certificate leaf = H"01b373511530bbf287ca35e54c10a5f017aad637"
+identifier "com.ericts.record" and certificate leaf = H"01b373511530bbf287ca35e54c10a5f017aad637"
 ```
+
+## Bundle identifier
+
+The bundle identifier (`CFBundleIdentifier`, set by `appId` in `electron-builder.yml` and mirrored by `APP_ID` in `src/main/index.ts` and by the identifier checks in `scripts/start-app.mjs`) is `com.ericts.record`: the maintainer's domain `ericts.com` reversed, plus the product. Apple's convention is reverse-DNS and this project treats it as a rule, for these reasons:
+
+- **Uniqueness without a registry.** Nobody assigns bundle identifiers; macOS, the App Store and third-party tooling simply assume they are unique. Reversing a domain you control is the only way to make that assumption true, because domain ownership is already globally unique. A made-up name built on a domain the project does not own could collide with whoever does.
+- **It is the app's identity for permissions.** TCC stores screen-recording and system-audio grants under the bundle identifier together with the code-signing identity, `Notification` attributions and `app.setAppUserModelId` use it, and the designated requirement bakes it into the signature. Changing it means macOS treats the result as a different app: users must allow screen recording again, and an in-place update no longer inherits the previous grant. That is why the identifier is chosen once and kept.
+- **Namespacing.** Helpers and related products hang off the same prefix (`com.ericts.record.helper` for the Electron helper bundles), and other tools (Computer Use approvals, `defaults`, `lsappinfo`, launch services) key on the same string, so a stable, owned prefix keeps every reference consistent.
+
+Rules: lower-case, dots as separators, no version numbers or build variants in the identifier (channels such as beta get their own suffix, as `com.google.Chrome.beta` does), and never reuse an identifier for a different product. Development runs through `pnpm dev` are not RecordStuff to macOS: they execute Electron's own bundle (`com.github.Electron`), which is one reason permission behavior there differs from the packaged app.
 
 Creating another certificate named `RecordStuff Dev` changes the identity. The script selects by name by default, or by `RECORDSTUFF_SIGN_IDENTITY` fingerprint. It checks the finished App against the selected certificate; it does not hardcode the historical release fingerprint. CI must separately pin and check that expected fingerprint to prevent an unnoticed identity change.
 

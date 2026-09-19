@@ -35,7 +35,8 @@ import type { ErrorCode } from "../shared/state";
 import { DEFAULT_LANGUAGE, translate, type Language } from "../shared/i18n";
 
 let currentLanguage: Language = DEFAULT_LANGUAGE;
-const APP_ID = "com.recordstuff.app";
+/** Reverse-DNS of the maintainer's domain (docs/system-design/signing.md#bundle-identifier). */
+const APP_ID = "com.ericts.record";
 
 /**
  * stdout plus a rotated file (docs/system-design/desktop.md). `app.getPath("logs")` is

@@ -99,7 +99,7 @@ function verifyBundle(appPath, identity) {
       const cert = new X509Certificate(readFileSync(`${prefix}0`));
       if (fingerprint(cert) !== identity.hash) throw new Error(`Unexpected signing certificate: ${bundle}`);
       checkCertificate(cert);
-      const expectedId = index === 0 ? /^Identifier=com\.recordstuff\.app$/m : /^Identifier=.+$/m;
+      const expectedId = index === 0 ? /^Identifier=com\.ericts\.record$/m : /^Identifier=.+$/m;
       if (!expectedId.test(details)) throw new Error(`Missing or incorrect bundle identifier: ${bundle}`);
       if (bundle.endsWith(".app") && !/^CodeDirectory .*flags=.*\bruntime\b/m.test(details)) {
         throw new Error(`Hardened runtime is missing: ${bundle}`);
@@ -109,7 +109,7 @@ function verifyBundle(appPath, identity) {
     rmSync(scratch, { recursive: true, force: true });
   }
   const requirement = run("codesign", ["-d", "-r-", appPath], true);
-  const expected = `designated => identifier "com.recordstuff.app" and certificate leaf = H"${identity.hash.toLowerCase()}"`;
+  const expected = `designated => identifier "com.ericts.record" and certificate leaf = H"${identity.hash.toLowerCase()}"`;
   if (!`${requirement.stdout}${requirement.stderr}`.split(/\r?\n/).includes(expected)) {
     throw new Error("Unexpected designated requirement; refusing to open or package this app.");
   }
