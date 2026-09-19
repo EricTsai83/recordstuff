@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { assertPromotion, assertUnreleased, notes, validateDigest, validateTag } from './release.mts';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { assertDmgContents, assertPromotion, assertUnreleased, notes, validateDigest, validateTag } from './release.mts';
 
 describe('release gates', () => {
   it('accepts only the exact stable package tag', () => {
@@ -24,11 +27,54 @@ describe('release gates', () => {
     expect(() => assertPromotion('true', 'b'.repeat(64), hash, true)).toThrow();
     expect(() => assertPromotion('true', hash, hash, false)).toThrow();
   });
-  it('preserves English self-signing instructions and commit-pinned bilingual guide links', () => {
-    const body = notes('0.1.1', 'owner/repo', 'a'.repeat(40));
+  it('preserves English self-signing, update and removal instructions with commit-pinned bilingual guide links', () => {
+    const body = notes('0.1.2', 'owner/repo', 'a'.repeat(40));
     expect(body).toContain('Open Anyway');
     expect(body).toContain('not notarized');
+    expect(body).toContain('Screen & System Audio Recording');
+    expect(body).toContain('Update manually');
+    expect(body).toContain('no automatic updater');
+    expect(body).toContain('Remove');
+    expect(body).toContain('Trash');
+    expect(body).toContain(`/blob/${'a'.repeat(40)}/resources/INSTALL.md`);
     expect(body).toContain(`/blob/${'a'.repeat(40)}/resources/INSTALL.zh-TW.md`);
     expect(body).toContain('Finder');
+  });
+});
+
+describe('mounted DMG contents gate', () => {
+  const roots: string[] = [];
+  afterEach(() => { for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); });
+  /** Builds a fake mount root: strings become empty files, `name/` a directory, `name->target` a symlink. */
+  function mountRoot(...entries: string[]) {
+    const root = mkdtempSync(path.join(tmpdir(), 'recordstuff-dmg-gate-'));
+    roots.push(root);
+    for (const e of entries) {
+      if (e.endsWith('/')) mkdirSync(path.join(root, e.slice(0, -1)));
+      else if (e.includes('->')) { const [name, target] = e.split('->') as [string, string]; symlinkSync(target, path.join(root, name)); }
+      else writeFileSync(path.join(root, e), '');
+    }
+    return root;
+  }
+  const layout = ['.DS_Store', '.VolumeIcon.icns', '.background.tiff', 'Applications->/Applications', 'RecordStuff.app/'];
+  it('accepts only the App and Applications link as visible contents', () => {
+    expect(() => assertDmgContents(mountRoot('RecordStuff.app/', 'Applications->/Applications'))).not.toThrow();
+    expect(() => assertDmgContents(mountRoot(...layout))).not.toThrow();
+    expect(() => assertDmgContents(mountRoot(...layout, 'INSTALL.md', 'INSTALL.zh-TW.md'))).toThrow(/INSTALL\.md/);
+    expect(() => assertDmgContents(mountRoot('Applications->/Applications'))).toThrow();
+    expect(() => assertDmgContents(mountRoot(...layout, 'README.txt'))).toThrow();
+    expect(() => assertDmgContents(mountRoot())).toThrow();
+  });
+  it('permits only regular Finder layout files as hidden entries', () => {
+    expect(() => assertDmgContents(mountRoot(...layout, '.INSTALL.md'))).toThrow(/hidden.*\.INSTALL\.md/);
+    expect(() => assertDmgContents(mountRoot(...layout, '.help/'))).toThrow(/hidden.*\.help/);
+    expect(() => assertDmgContents(mountRoot(...layout, '.INSTALL.zh-TW.md', '.notes.html'))).toThrow(/\.INSTALL\.zh-TW\.md, \.notes\.html/);
+  });
+  it('rejects hidden directories or links even under permitted names', () => {
+    expect(() => assertDmgContents(mountRoot('.DS_Store', '.VolumeIcon.icns', '.background/', 'Applications->/Applications', 'RecordStuff.app/'))).toThrow(/hidden.*\.background/);
+    const root = mountRoot('.DS_Store', '.VolumeIcon.icns', '.background.tiff/', 'Applications->/Applications', 'RecordStuff.app/');
+    writeFileSync(path.join(root, '.background.tiff', 'INSTALL.md'), '');
+    expect(() => assertDmgContents(root)).toThrow(/hidden.*\.background\.tiff/);
+    expect(() => assertDmgContents(mountRoot(...layout.filter(e => e !== '.DS_Store'), '.DS_Store->RecordStuff.app'))).toThrow(/hidden.*\.DS_Store/);
   });
 });

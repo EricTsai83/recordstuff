@@ -90,3 +90,7 @@ Validation of the correction: `pnpm check` passed 15 files/255 tests, typecheck,
 ## macOS 0.1.0 release — 2026-09-15
 
 [Current artifact and download-path evidence](releases/0.1.0.md). The public release is available; installed-candidate checks passed with a Finder foreground limitation. Browser-download installation and recording passed after per-app Open Anyway approval; see the linked record for user-reported checks and local limits. Historical hashes above are unchanged.
+
+## Simplified installer source — 2026-09-19
+
+The 0.1.2 source removes the bundled guides from the DMG and adds a generated arrow background; the release gate now requires exactly the App and Applications link. A local `pnpm dist:mac` build passed the candidate gate and a Finder layout check; see [0.1.2 evidence](releases/0.1.2.md). No CI candidate, installation acceptance, removal check or public release has been performed yet.

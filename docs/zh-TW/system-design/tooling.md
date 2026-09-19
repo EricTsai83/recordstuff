@@ -14,7 +14,7 @@
 | pnpm start:app | 建置、自簽、驗證、開啟 RecordStuff.app |
 | pnpm open:app | 驗證並開啟既有開發包，不重建 |
 | pnpm check | typecheck、完整 Vitest、build |
-| pnpm icons | PNG／ICO；macOS 額外產 native ICNS |
+| pnpm icons | PNG／ICO、DMG 背景圖（1x／2x）；macOS 額外產 native ICNS |
 | pnpm log | 追蹤 macOS log |
 | pnpm dist:mac | 自簽 App 驗證後封成 dist/local 中的 DMG |
 
@@ -22,8 +22,8 @@ main、preload、renderer 分別建置，打包只納入 out、package metadata 
 
 ## 資源與產生的輸出
 
-- `build/` 是納入版本控制的打包資源：`icon.png` 和 macOS 原生 `icon.icns`。打包設定以此作為 `buildResources`，並明確指定 macOS 使用 ICNS。請保留；修改圖案後以 `pnpm icons` 重新產生。
-- `resources/` 包含執行時使用的選單列圖示、macOS entitlements 與安裝說明。
+- `build/` 是納入版本控制的打包資源：`icon.png`、macOS 原生 `icon.icns`，以及 DMG 背景 `background.png` 與 Retina 配對 `background@2x.png`（540×380 點）。打包設定以此作為 `buildResources`，明確指定 macOS 使用 ICNS，並用 `tiffutil` 把背景配對合成多解析度 TIFF。請保留；修改圖案後以 `pnpm icons` 重新產生。所有圖像都由程式產生，repo 沒有手繪二進位檔。
+- `resources/` 包含執行時使用的選單列圖示、macOS entitlements，以及雙語安裝／更新／移除指南（`INSTALL.md`、`INSTALL.zh-TW.md`）。指南是由 GitHub release 與 README 連結的文件；打包 filter 只複製 PNG／ICO，因此指南不會進入 App 或 DMG。
 - `out/` 由 `pnpm build` 產生；`dist/` 放產生的 App 與安裝檔。兩者都由 Git 忽略，可以重新產生。清理 `dist/` 前應保留仍需要的安裝檔；`pnpm open:app` 需要已有的 App bundle。
 - `node_modules/` 放已安裝的開發依賴，可透過 `pnpm install` 還原。
 
@@ -41,9 +41,9 @@ main、preload、renderer 分別建置，打包只納入 out、package metadata 
 
 驗證深度 codesign、巢狀 app／framework 公開憑證、identifier、runtime 與最外層 designated requirement；不追 symlink。先驗過 App 才封 DMG。
 
-[local 設定](../../../electron-builder.local.yml) 繼承 [共用設定](../../../electron-builder.yml)，停用公證／timestamp／DMG 簽章與更新 metadata，附兩種安裝說明。檔名為 RecordStuff-版本-架構-selfsigned.dmg，arm64 與 x64 非 universal；目前只有 arm64 驗過。pnpm dist:mac 是發行指令（取代舊的 dist:mac:local 別名）；共用設定停用公證。dist:win 尚未驗證，不代表已支援發行。
+[共用設定](../../../electron-builder.yml) 定義安裝介面：540×380 的 Finder 視窗、程式產生的箭頭背景、128 點圖示，以及恰好兩個項目——App 在 x=130、`/Applications` 連結在 x=410，中心皆在 y=190。[local 設定](../../../electron-builder.local.yml) 繼承它並停用公證／timestamp／DMG 簽章與更新 metadata；不得再加 `dmg.contents`，因為 `extends` 會串接陣列，而發布閘門拒絕 `Applications`、`RecordStuff.app` 與隱藏 Finder 版面檔以外的任何根目錄項目。刻意不附任何格式的說明檔，安裝、更新與移除指引放在線上。檔名為 RecordStuff-版本-架構-selfsigned.dmg，arm64 與 x64 非 universal；目前只有 arm64 驗過。pnpm dist:mac 是發行指令（取代舊的 dist:mac:local 別名）；共用設定停用公證。dist:win 尚未驗證，不代表已支援發行。
 
-收件者可能需要單一 App 的「仍要打開」，受管理 Mac 也可能不允許；依 [安裝指南](../../../resources/INSTALL.zh-TW.md) 與 [Apple](https://support.apple.com/102445) 正常操作，不修改全域安全設定。
+收件者可能需要單一 App 的「仍要打開」，受管理 Mac 也可能不允許；依 [安裝指南](../../../resources/INSTALL.zh-TW.md) 與 [Apple](https://support.apple.com/102445) 正常操作，不修改全域安全設定。同一份指南也說明手動更新（結束、下載、在相同 Applications 路徑取代；身分與設定保留）與移除（結束、把 App 移到垃圾桶；錄影、`~/Library/Application Support/recordstuff` 與 `~/Library/Logs/recordstuff` 除非使用者自行刪除否則保留）。沒有解除安裝器、背景服務或自動權限重置。
 
 ## 量測工具
 

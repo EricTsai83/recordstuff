@@ -4,6 +4,7 @@
 //   resources/tray-idle.ico / tray-recording.ico  Windows: gray ring / red dot
 //   build/icon.png                            512px app icon for electron-builder
 //   build/icon.icns                           native macOS icon set (generated on macOS)
+//   build/background.png (@2x)                DMG drag-to-Applications background
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -42,10 +43,10 @@ function roundedSquare(size, radius) {
 }
 
 /** layers: [{ shape, rgba: [r,g,b,a] }] painted in order with alpha blending. */
-function rasterize(size, layers) {
-  const px = new Uint8Array(size * size * 4);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
+function rasterize(width, layers, height = width) {
+  const px = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
       let [r, g, b, a] = [0, 0, 0, 0];
       for (const layer of layers) {
         const c = coverage(layer.shape, x, y) * (layer.rgba[3] / 255);
@@ -57,7 +58,7 @@ function rasterize(size, layers) {
         b = (lb * c + b * a * (1 - c)) / na;
         a = na;
       }
-      const o = (y * size + x) * 4;
+      const o = (y * width + x) * 4;
       px[o] = Math.round(r);
       px[o + 1] = Math.round(g);
       px[o + 2] = Math.round(b);
@@ -76,15 +77,15 @@ function chunk(type, data) {
   return Buffer.concat([len, body, crc]);
 }
 
-function png(size, rgba) {
-  const raw = Buffer.alloc((size * 4 + 1) * size);
-  for (let y = 0; y < size; y++) {
-    raw[y * (size * 4 + 1)] = 0; // filter: none
-    Buffer.from(rgba.buffer, y * size * 4, size * 4).copy(raw, y * (size * 4 + 1) + 1);
+function png(width, rgba, height = width) {
+  const raw = Buffer.alloc((width * 4 + 1) * height);
+  for (let y = 0; y < height; y++) {
+    raw[y * (width * 4 + 1)] = 0; // filter: none
+    Buffer.from(rgba.buffer, y * width * 4, width * 4).copy(raw, y * (width * 4 + 1) + 1);
   }
   const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(size, 0);
-  ihdr.writeUInt32BE(size, 4);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
   ihdr[8] = 8; // bit depth
   ihdr[9] = 6; // RGBA
   ihdr[10] = 0;
@@ -179,6 +180,42 @@ function appIcon(size) {
 }
 
 writeFileSync("build/icon.png", appIcon(512));
+
+// DMG background: the installer UI is the familiar "drag the app onto the
+// Applications folder" layout used by most macOS apps, so the image is only
+// a neutral canvas with an arrow between the two icon slots. No text is drawn:
+// it would need font rendering and a translation, and the two icons already
+// explain the gesture. Layout coordinates in points (1x) must match the
+// window/icon positions in electron-builder.yml (window 540×380, icon
+// centers at x=130/410, y=190; iconSize 128).
+const BACKGROUND_WIDTH = 540;
+const BACKGROUND_HEIGHT = 380;
+const CANVAS = [242, 242, 247, 255]; // Apple systemGray6 light; readable in dark mode too
+const ARROW = [142, 142, 147, 255]; // systemGray
+
+/** Right-pointing arrow: rectangular shaft plus triangular head, all in points. */
+function arrow(x0, x1, cy, shaft, head) {
+  const headStart = x1 - head;
+  return (x, y) => {
+    if (x < x0 || x > x1) return false;
+    if (x <= headStart) return Math.abs(y - cy) <= shaft / 2;
+    const t = (x1 - x) / head; // 1 at head base, 0 at tip
+    return Math.abs(y - cy) <= t * head * 0.5;
+  };
+}
+
+function background(scale) {
+  const w = BACKGROUND_WIDTH * scale;
+  const h = BACKGROUND_HEIGHT * scale;
+  const shape = arrow(215 * scale, 325 * scale, 190 * scale, 10 * scale, 40 * scale);
+  return png(w, rasterize(w, [
+    { shape: () => true, rgba: CANVAS },
+    { shape, rgba: ARROW },
+  ], h), h);
+}
+
+writeFileSync("build/background.png", background(1));
+writeFileSync("build/background@2x.png", background(2));
 
 // Avoid electron-builder's PNG -> ICNS conversion: its legacy 16/32px
 // representations rendered as noise in macOS privacy settings. Ship the

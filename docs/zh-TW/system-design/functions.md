@@ -308,6 +308,6 @@
 
 ## 發布驗證工具
 
-[release.mts](../../../scripts/release.mts) 的 `validateTag`、`validateDigest`、`assertUnreleased` 與 `assertPromotion` 定義發布閘門。`verifyDmg` 唯讀掛載、核對封裝與簽章，`verifyCandidate` 比對最終 checksum／metadata；`context` 取得來源／版本／repository，`notes` 產生英文發行說明。CLI `main` 分派 preflight、candidate、verify、draft 與 promote；僅最後兩者寫入 GitHub，只有 promote 可公開發布。`start-app.mjs --verify-app` 共用 `verifyBundle`，不需要 Keychain 私鑰。
+[release.mts](../../../scripts/release.mts) 的 `validateTag`、`validateDigest`、`assertUnreleased` 與 `assertPromotion` 定義發布閘門。`verifyDmg` 唯讀掛載、核對封裝與簽章，`assertDmgContents` 要求可見根目錄恰為 `Applications` 與 `RecordStuff.app`，並拒絕允許的 Finder 版面檔以外的隱藏項目，以 `lstat` 確認每個都是一般檔案而非目錄或符號連結，`verifyCandidate` 比對最終 checksum／metadata；`context` 取得來源／版本／repository，`notes` 產生英文發行說明。CLI `main` 分派 preflight、candidate、verify、draft 與 promote；僅最後兩者寫入 GitHub，只有 promote 可公開發布。`start-app.mjs --verify-app` 共用 `verifyBundle`，不需要 Keychain 私鑰。
 
 `cleanup-release-keychain.py` 僅在 disposable GitHub-hosted runner 清理該次憑證信任與 keychain，每項命令最多等待 15 秒，逾時終止該程序群組並警告，最後移除公開憑證與加密封裝暫存檔。

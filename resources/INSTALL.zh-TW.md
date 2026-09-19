@@ -1,16 +1,19 @@
-# RecordStuff — macOS 自簽試用版
+# RecordStuff — macOS 安裝、更新與移除
 
 [English](INSTALL.md) | [繁體中文](INSTALL.zh-TW.md)
 
-這份 DMG 裡的 RecordStuff.app 已由開發者自己的憑證簽署，尚未經 Apple 公證。
+RecordStuff.app 已由開發者自己的憑證簽署，尚未經 Apple 公證。
 使用者不需要購買 Apple 會員，也不需要安裝任何憑證。
-檔名含 arm64 的版本適用 Apple 晶片 Mac；x64 版本適用 Intel Mac。
+檔名含 arm64 的版本適用 Apple 晶片 Mac。
+
+DMG 裡只有 App 與 Applications（應用程式）捷徑，本頁就是安裝說明，
+每個 GitHub release 都會連到這裡。
 
 ## 安裝與第一次開啟（全程可用滑鼠）
 
-1. 開啟 DMG，把 RecordStuff 拖到 Applications（應用程式）。
-   更新既有版本前，請先停止錄影，從 RecordStuff 選單結束程式。
-2. 在 Finder 的「應用程式」中連按兩下 RecordStuff。
+1. 開啟 DMG，把 RecordStuff 拖到旁邊的 Applications 資料夾。
+   若要更新既有版本，請先看下方「手動更新」。
+2. 在 Finder 退出 DMG，開啟「應用程式」，連按兩下 RecordStuff。
 3. 若 macOS 因無法驗證開發者或未公證而阻擋，在確認檔案來源可信後，
    開啟左上角 Apple 選單 → 系統設定 → 隱私權與安全性，
    找到 RecordStuff 被阻擋的訊息，點「仍要打開」，依系統提示確認。
@@ -23,7 +26,39 @@
    若另有系統音訊錄製提示，錄製電腦聲音時也需要允許。
 6. 點選單列圖示開始錄製，再點一次停止；影片預設存放在
    使用者的「影片 → RecordStuff」，可由 App 選單開啟輸出資料夾。
-7. 安裝完成後可在 Finder 退出 DMG，日後從「應用程式」啟動。
+
+## 手動更新
+
+RecordStuff 不會自動更新，也不會檢查更新。安裝新版本的方式：
+
+1. 停止錄影，從 RecordStuff 選單列圖示選「結束」。
+2. 從[最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)下載新的 DMG，
+   可選擇與 release 的 SHA256SUMS 比對 SHA-256。
+3. 開啟 DMG，把 RecordStuff 拖到 Applications；Finder 詢問時選「取代」，
+   讓新版位於與舊版相同的路徑。
+4. 退出 DMG，從「應用程式」啟動 RecordStuff。
+
+每個版本都使用同一張憑證簽署並安裝在同一路徑，因此語言、輸出資料夾等設定會保留，
+macOS 通常也會保留螢幕與系統錄音權限。若再次出現權限提示，允許後依上述方式重新啟動。
+
+## 移除 RecordStuff
+
+沒有另外的解除安裝程式，也沒有背景服務。
+
+1. 停止錄影，從 RecordStuff 選單列圖示選「結束」。
+2. 開啟「應用程式」，把 RecordStuff.app 拖到垃圾桶並清空。
+   在 Finder 退出 DMG 不等於移除已安裝的 App。
+
+移除 App 後你的資料會保留。只有在確定不再需要時才自行刪除，App 不會刪除任何錄影：
+
+| 資料 | 位置 |
+| --- | --- |
+| 錄影 | 使用者的「影片 → RecordStuff」，或你自行選擇的輸出資料夾 |
+| 設定與快取 | `~/Library/Application Support/recordstuff` |
+| Log | `~/Library/Logs/recordstuff` |
+
+在 Finder 選「前往 → 前往檔案夾」貼上路徑即可開啟。系統設定 → 隱私權與安全性 →
+螢幕與系統錄音中若還留有 RecordStuff 的項目可自行移除；這是選擇性步驟，移除 App 不需要它。
 
 ## 若已授權仍重複要求權限
 
@@ -33,7 +68,6 @@
 也不要安裝憑證、關閉整台 Mac 的 Gatekeeper，或清除其他 App 的權限。
 
 人工允許開啟 App 與授予錄影權限是兩件事，必須分別完成。
-本機打包驗證不代表已完成另一台 Mac 的安裝／錄製驗收。
 
 Apple 操作說明：https://support.apple.com/102445
 

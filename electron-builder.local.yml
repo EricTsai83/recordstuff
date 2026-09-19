@@ -7,13 +7,5 @@ mac:
 dmg:
   sign: false
   writeUpdateInfo: false
-  # extends concatenates arrays: inherit the app and Applications entries.
-  contents:
-    - x: 130
-      y: 270
-      type: file
-      path: resources/INSTALL.md
-    - x: 410
-      y: 270
-      type: file
-      path: resources/INSTALL.zh-TW.md
+  # Do not add dmg.contents here: `extends` concatenates arrays, and the DMG
+  # must contain only the App and Applications entries from the base config.

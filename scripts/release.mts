@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -42,8 +42,37 @@ function releases(repository: string) {
   return JSON.parse(run('gh', ['api', `repos/${repository}/releases`, '--paginate', '--slurp'])).flat();
 }
 export function notes(version: string, repository: string, commit: string) {
-  const base = `https://github.com/${repository}/blob/${commit}`;
-  return `RecordStuff ${version} for Apple silicon Macs (arm64).\n\nThis release uses the automated, fixed-identity self-signed packaging pipeline. Download the DMG and drag RecordStuff.app into Applications. Stop recording and quit the existing app before replacing it. Updates are manual.\n\nThe app is self-signed and not notarized by Apple. First launch may require System Settings → Privacy & Security → Open Anyway. Recipients do not install certificates. Then allow Screen & System Audio Recording and relaunch as prompted.\n\nInstallation: [English](${base}/resources/INSTALL.md) · [Traditional Chinese](${base}/resources/INSTALL.zh-TW.md).\n\nKnown limitation: clicking a recording notification may select the file without bringing Finder to the front.\n\nVerify the download using SHA256SUMS. release.json records the source commit, version, platform, size, and signing certificate fingerprint.\n`;
+  const base = `https://github.com/${repository}/blob/${commit}/resources`;
+  return `RecordStuff ${version} for Apple silicon Macs (arm64).
+
+Install: open the DMG and drag RecordStuff onto the Applications folder, then eject the disk image. The DMG contains only the app and an Applications shortcut; the guides below are the installation documentation.
+
+The app is self-signed and not notarized by Apple. First launch may require System Settings → Privacy & Security → Open Anyway. Recipients do not install certificates. Then allow Screen & System Audio Recording and relaunch when macOS asks.
+
+Update manually: stop recording, quit RecordStuff from its menu, download the new DMG and drag the app into Applications, replacing the existing copy. The signing identity is unchanged, so settings and permissions carry over. There is no automatic updater.
+
+Remove: quit the app and move RecordStuff.app from Applications to the Trash. Recordings, settings and logs stay on disk; the guide explains optional cleanup.
+
+Guides: [English](${base}/INSTALL.md) · [Traditional Chinese](${base}/INSTALL.zh-TW.md).
+
+Known limitation: clicking a recording notification may select the file without bringing Finder to the front.
+
+Verify the download using SHA256SUMS. release.json records the source commit, version, platform, size, and signing certificate fingerprint.
+`;
+}
+/** Visible root entries of a mounted release DMG: the App and the Applications link only (013). */
+export const expectedDmgContents = ['Applications', 'RecordStuff.app'];
+/** Hidden root files Finder/dmgbuild need for the window layout. dmg-builder merges the PNG pair into one `.background.tiff`; hidden directories are never permitted, so nothing can be tucked inside one. */
+export const permittedHiddenDmgEntries = ['.DS_Store', '.VolumeIcon.icns', '.background.png', '.background.tiff'];
+/** `root` is the mounted DMG root; every hidden entry must be a permitted regular file, not a directory or symlink. */
+export function assertDmgContents(root: string) {
+  const entries = readdirSync(root);
+  const visible = entries.filter(n => !n.startsWith('.')).sort();
+  if (JSON.stringify(visible) !== JSON.stringify(expectedDmgContents)) {
+    throw new Error(`Unexpected mounted DMG contents: ${visible.join(', ') || '(empty)'}; expected ${expectedDmgContents.join(', ')}.`);
+  }
+  const hidden = entries.filter(n => n.startsWith('.') && !(permittedHiddenDmgEntries.includes(n) && lstatSync(path.join(root, n)).isFile()));
+  if (hidden.length) throw new Error(`Unexpected hidden DMG entries: ${hidden.join(', ')}. Only Finder layout files may be hidden; documents and folders must not be bundled.`);
 }
 function verifyDmg(directory: string, tag: string) {
   if (process.platform !== 'darwin' || process.arch !== 'arm64') throw new Error('Release verification requires macOS arm64.');
@@ -57,12 +86,8 @@ function verifyDmg(directory: string, tag: string) {
   try {
     run('hdiutil', ['attach', '-readonly', '-nobrowse', '-noautoopen', '-mountpoint', mount, dmg]);
     attached = true;
-    const visible = readdirSync(mount).filter(n => !n.startsWith('.')).sort();
-    if (JSON.stringify(visible) !== JSON.stringify(['Applications', 'INSTALL.md', 'INSTALL.zh-TW.md', 'RecordStuff.app'])) throw new Error('Unexpected mounted DMG contents.');
+    assertDmgContents(mount);
     if (readlinkSync(path.join(mount, 'Applications')) !== '/Applications') throw new Error('Invalid Applications link.');
-    for (const guide of ['INSTALL.md', 'INSTALL.zh-TW.md']) {
-      validateDigest(digest(path.join(mount, guide)), digest(path.join(root, 'resources', guide)));
-    }
     const app = path.join(mount, 'RecordStuff.app');
     if (run('plutil', ['-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', path.join(app, 'Contents/Info.plist')]) !== c.version) throw new Error('Packaged App version mismatch.');
     if (run('lipo', ['-archs', path.join(app, 'Contents/MacOS/RecordStuff')]) !== 'arm64') throw new Error('Packaged App architecture mismatch.');

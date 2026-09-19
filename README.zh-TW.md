@@ -18,7 +18,7 @@ SHA-256：`be8119c6405c21a5b19f7cab968af5e488435412c8bbc1fc0c663550d40bb512`。
 
 CI 候選版安裝、錄影／播放與語言檢查已在本機通過；使用者提供的公開瀏覽器下載 checksum 亦已吻合。自簽首次開啟可能需「仍要打開」；詳見[本版驗證紀錄](docs/zh-TW/verification/releases/0.1.1.md)。點擊儲存通知可定位 Finder 檔案，但 Finder 可能沒有跳到最前景。
 
-下載 arm64 DMG，拖曳到 Applications，依照 [繁體中文安裝說明](resources/INSTALL.zh-TW.md) 操作。收件者不需要 Node、pnpm、FFmpeg 或憑證。未公證 App 首次開啟可能需要在「系統設定 → 隱私權與安全性」選「仍要打開」；不保證免提示，參見 [Apple 說明](https://support.apple.com/102445)。
+下載 arm64 DMG，把 RecordStuff 拖到磁碟映像檔中顯示的 Applications 資料夾。自 0.1.2 起 DMG 只有 App 與該 Applications 捷徑；目前的 0.1.1 映像檔還附兩份指南檔，可忽略。[安裝指南](resources/INSTALL.zh-TW.md)涵蓋首次開啟、手動更新（結束、下載、在相同路徑取代；設定保留）與移除（結束、把 App 移到垃圾桶；錄影、設定與 log 除非自行刪除否則保留）。沒有自動更新器或解除安裝器。收件者不需要 Node、pnpm、FFmpeg 或憑證。未公證 App 首次開啟可能需要在「系統設定 → 隱私權與安全性」選「仍要打開」；不保證免提示，參見 [Apple 說明](https://support.apple.com/102445)。
 
 ## 使用方式
 
@@ -39,7 +39,7 @@ CI 候選版安裝、錄影／播放與語言檢查已在本機通過；使用�
 
 ## 目前進度與設計
 
-本機已驗證錄製與播放、3456×2234 Retina、權限拒絕與復原、部分檔案保留、自簽 DMG 安裝與同身分更新。通知縮圖已於 2026-09-14 重開機後由使用者確認正常。新語言功能有自動化檢查，下一份安裝包的介面驗證列入交付計畫。
+本機已驗證錄製與播放、3456×2234 Retina、權限拒絕與復原、部分檔案保留、自簽 DMG 安裝與同身分更新。0.1.2 原始碼改為精簡 DMG（只有 App 與 Applications 連結）；本機建置已通過發布閘門與 Finder 版面檢查，公開發布待完成，見 [0.1.2 證據](docs/zh-TW/verification/releases/0.1.2.md)。通知縮圖已於 2026-09-14 重開機後由使用者確認正常。新語言功能有自動化檢查，下一份安裝包的介面驗證列入交付計畫。
 
 - [System design](docs/zh-TW/system-design/README.md)：產品總覽、架構、錄製流程、桌面功能、函式細節、工具與決策。
 - [驗證紀錄](docs/zh-TW/verification/README.md)：已取得證據與限制。

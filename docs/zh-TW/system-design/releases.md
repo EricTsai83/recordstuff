@@ -2,11 +2,11 @@
 
 [English](../../system-design/releases.md) | [繁體中文](releases.md)
 
-更新：2026-09-15。CI、人工驗收及公開提升已通過；使用者提供的最終瀏覽器下載 checksum 亦吻合，011 已完成，真實執行證據見 [0.1.1](../verification/releases/0.1.1.md)。人工安裝驗收已由使用者確認，已安裝 App 身分核對通過。
+更新：2026-09-19。[0.1.1](../verification/releases/0.1.1.md) 的 CI、人工驗收及公開提升已通過。0.1.2 原始碼實作精簡安裝介面（013），其發布證據在 CI 與人工驗收完成前記錄於 [0.1.2](../verification/releases/0.1.2.md)。
 
 ## 發布契約
 
-[release.yml](../../../.github/workflows/release.yml) 使用 `macos-15`，執行時要求 arm64；Node 24.21.0、pnpm 10.33.4 與 frozen lockfile 沿用 010。Actions 固定完整 commit SHA，更新時需重新檢查上游版本。現在的 DMG 仍包含 App、Applications 連結與雙語安裝說明；013 尚未交付。
+[release.yml](../../../.github/workflows/release.yml) 使用 `macos-15`，執行時要求 arm64；Node 24.21.0、pnpm 10.33.4 與 frozen lockfile 沿用 010。Actions 固定完整 commit SHA，更新時需重新檢查上游版本。自 0.1.2 起，DMG 只包含 App 與 Applications 連結，背景是程式產生的拖曳箭頭；不附任何格式的說明文件。安裝、手動更新與移除指引放在發行說明及固定到 commit 的[安裝指南](../../../resources/INSTALL.zh-TW.md)。
 
 流程為「版本／來源檢查 → 程式檢查 → 匯入同一身分 → `pnpm dist:mac` → 掛載驗證 → 候選 artifact → 獨立 job 再驗 → draft」。build job 僅有 contents:read；draft／promote job 才有 contents:write。Secrets 只提供給 build 的簽署 step；不設 PR 觸發。release environment 只允許 main 與 v* tag；repository 的可信任維護者控制這些 refs。全發布 workflow 共用 concurrency group，執行中不取消，避免同時覆蓋版本。
 
@@ -17,23 +17,23 @@
 先修改 package.json 到未用過的正式版本，完成檢查並提交／推送 main。手動建立候選版：
 
 ```bash
-gh workflow run release.yml --ref main -f operation=candidate -f tag=v0.1.1
+gh workflow run release.yml --ref main -f operation=candidate -f tag=v0.1.2
 ```
 
 也可推送與 package.json 相符的 `vX.Y.Z` tag。任何既有 draft 或公開 Release 都視為已使用版本；不覆寫、不自動刪除。若僅留下 tag，只有它指向相同 source commit 才可建立 draft。CI artifact 成功後由 draft job 建立缺少的 tag；GitHub token 建立 tag 不會另觸發重複建置。
 
-下載 draft 的全部三個 assets，確認 checksum，掛載並安裝 DMG，測試錄影、系統音訊播放、語言切換／重開保存、選單退出與重啟。保留原有通知 Finder 未置前的限制說明。
+下載 draft 的全部三個 assets，確認 checksum，掛載 DMG 並確認 Finder 視窗只顯示 App、Applications 連結與箭頭且不需捲動，安裝後測試錄影、系統音訊播放、語言切換／重開保存、選單退出與重啟。取代既有安裝時，確認設定與錄影權限保留。保留原有通知 Finder 未置前的限制說明。
 
 ```bash
-gh release download v0.1.1 --dir /tmp/recordstuff-candidate-0.1.1
-cd /tmp/recordstuff-candidate-0.1.1
+gh release download v0.1.2 --dir /tmp/recordstuff-candidate-0.1.2
+cd /tmp/recordstuff-candidate-0.1.2
 shasum -a 256 -c SHA256SUMS
 ```
 
 只有上述人工驗收完成後，才在 Actions 選 promote，填入**實際安裝候選包的 SHA-256** 並勾選 manual_acceptance。或執行：
 
 ```bash
-gh workflow run release.yml --ref main -f operation=promote -f tag=v0.1.1 -f sha256=ACTUAL_VERIFIED_SHA256 -f manual_acceptance=true
+gh workflow run release.yml --ref main -f operation=promote -f tag=v0.1.2 -f sha256=ACTUAL_VERIFIED_SHA256 -f manual_acceptance=true
 ```
 
 這是操作者對該份候選包的驗收聲明，CI 無法自行證明人工操作。promote checkout 候選 tag，下載既有 draft，重驗簽章、掛載內容、metadata、SHA256SUMS、tag source 與 GitHub asset digest，才把 draft 改成公開；不打包、不替換 assets。公開後仍需瀏覽器下載／hash 核對，不能把 API 下載當作瀏覽器安裝證據。
@@ -42,7 +42,7 @@ gh workflow run release.yml --ref main -f operation=promote -f tag=v0.1.1 -f sha
 
 `node scripts/release.mts preflight|candidate|verify|draft|promote vX.Y.Z [directory]` 共用本機與 CI 驗證。`candidate` 在最終 DMG bytes 上產生 `SHA256SUMS`、`release.json`，記錄版本、source commit、repository、平台、檔名、大小、SHA-256、憑證指紋、app.asar hash、Node／pnpm。
 
-`start-app.mjs --verify-app APP_PATH` 只使用 `RECORDSTUFF_SIGN_IDENTITY` 公開 SHA-1，重用原本的深度簽章、憑證、identifier、runtime 與 designated requirement 驗證，不需要私鑰、不建置、不啟動 App。verify／draft／promote 都檢查 DMG 檔案系統、App 版本及 arm64、安裝指南 bytes、Applications 連結與可見根目錄內容。
+`start-app.mjs --verify-app APP_PATH` 只使用 `RECORDSTUFF_SIGN_IDENTITY` 公開 SHA-1，重用原本的深度簽章、憑證、identifier、runtime 與 designated requirement 驗證，不需要私鑰、不建置、不啟動 App。verify／draft／promote 都檢查 DMG 檔案系統、App 版本及 arm64、Applications 連結，並要求根目錄恰為 `Applications` 與 `RecordStuff.app`，隱藏項目最多只能是一般檔案 `.DS_Store`、`.VolumeIcon.icns` 與 `.background.png`／`.background.tiff`（`assertDmgContents`）；任何其他項目、任何隱藏資料夾或符號連結，或以 `.` 開頭藏起來的指南，都會讓發布失敗。
 
 版本錯誤、重複版本、缺身分、簽章／checksum／metadata 不符都停止。上傳中途失敗可能留下不完整 draft；不會公開。先保留失敗證據並人工處理該 draft，再決定重試或採用新版本。不要以移除檢查解決發布問題。
 
