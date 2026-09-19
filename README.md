@@ -12,9 +12,11 @@ The product target is a downloadable, self-signed macOS app. Apple certification
 
 ## Download and install
 
+<!-- release-download:start -->
 Download **[RecordStuff 0.1.2 for macOS Apple silicon (arm64)](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.2/RecordStuff-0.1.2-arm64-selfsigned.dmg)** (127,314,171 bytes). [Release notes](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.2) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.2/SHA256SUMS) · [Latest release](https://github.com/EricTsai83/recordstuff/releases/latest).
 
 SHA-256: `2de49bbd552e46934ef4573ca8c8b103e3a0b1334dd12b2022dee1f332f7fc7f`.
+<!-- release-download:end -->
 
 0.1.2 was built, signed, verified and published by CI from tag `v0.1.2`; recording, playback and permission retention were checked locally on the same source before tagging. See [release evidence](docs/verification/releases/0.1.2.md). Clicking a saved notification selects the file in Finder, but may leave Finder behind other windows.
 
@@ -42,7 +44,7 @@ Output is H.264/AAC MP4. Audio requests 256 kbps with voice processing explicitl
 The local app has been verified for recording/playback, Retina 3456×2234 capture, permissions and recovery, partial-file preservation, self-signed DMG installation, and same-identity updates. 0.1.2 ships a simplified DMG (app and Applications link only) with online install, update and removal guidance; see [0.1.2 evidence](docs/verification/releases/0.1.2.md). The notification icon was confirmed normal after reboot on 2026-09-14. The new language implementation is covered by automated checks; the release plan includes checking it in the next packaged build. Full evidence and limitations are in the [verification record](docs/verification/README.md).
 
 - [System design](docs/system-design/README.md): overview, architecture, recording, desktop behavior, every module's functions, tooling, and decisions.
-- [Remaining work](plans/README.md): scoped follow-ups, including [Finder notification focus](plans/014-finder-notification-focus.md), the [official website and DMG downloads](plans/012-download-website.md), and a deferred [update assessment](plans/015-app-update-assessment.md); completed/canceled plans have been removed.
+- [Remaining work](plans/README.md): scoped follow-ups, including a [recording hotkey](plans/016-recording-hotkey.md), [Finder notification focus](plans/014-finder-notification-focus.md), the [official website and DMG downloads](plans/012-download-website.md), and a deferred [update assessment](plans/015-app-update-assessment.md); completed/canceled plans have been removed.
 - [Contributing](CONTRIBUTING.md): development setup, bug reports, testing, and pull requests.
 
 ## Development

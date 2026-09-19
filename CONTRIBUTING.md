@@ -72,7 +72,7 @@ Use your actual source dimensions for `--screen`; sync analysis needs the test m
 
 ## Releasing (maintainers)
 
-Contributors do not need to release. Maintainers verify a release commit locally, then push a `vX.Y.Z` tag; GitHub Actions builds, signs, verifies and publishes it. The checklist, version rules and failure handling are in [GitHub release automation](docs/system-design/releases.md).
+Contributors do not need to release. Maintainers verify a pushed commit locally, then push a `vX.Y.Z` tag; the tag is the version. GitHub Actions builds, signs, verifies, publishes, re-verifies the public download and records the release facts back on main. The checklist, version rules and failure handling are in [GitHub release automation](docs/system-design/releases.md).
 
 ## Submit a pull request
 

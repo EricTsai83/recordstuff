@@ -2,7 +2,7 @@
 
 [English](014-finder-notification-focus.md) | [繁體中文](014-finder-notification-focus.zh-TW.md)
 
-Status: Planned; next in order. Updated: 2026-09-19.
+Status: Planned; after 016. Updated: 2026-09-19.
 
 ## Problem and outcome
 

@@ -2,13 +2,14 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-更新：2026-09-19。v0.1.2 已由 tag `v0.1.2` 公開，附精簡 DMG；見 [0.1.2 證據](../docs/zh-TW/verification/releases/0.1.2.md)。013 已完成並移除。發布依[發布自動化](../docs/zh-TW/system-design/releases.md)。
+更新：2026-09-19。v0.1.2 已由 tag `v0.1.2` 公開，附精簡 DMG；見 [0.1.2 證據](../docs/zh-TW/verification/releases/0.1.2.md)。013 已完成並移除。發布依[發布自動化](../docs/zh-TW/system-design/releases.md)：tag 就是版本，CI 會把每次發布回寫到 main。
 
 ## 順序與狀態
 
 | 順序 | 計畫 | 狀態 | 交付目標 |
 | --- | --- | --- | --- |
-| 接續 | [014 Finder 通知焦點](014-finder-notification-focus.zh-TW.md) | 已規劃 | 重現並修正明確點擊後的置前，驗證原生焦點 |
+| 接續 | [016 錄影快捷鍵](016-recording-hotkey.zh-TW.md) | 已規劃 | 與托盤動作共用的全域開始／停止快捷鍵；讓無人值守驗收成為可能 |
+| 其次 | [014 Finder 通知焦點](014-finder-notification-focus.zh-TW.md) | 已規劃 | 重現並修正明確點擊後的置前，驗證原生焦點 |
 | 可開始實作 | [012 官方網站](012-download-website.zh-TW.md) | 已規劃 | 雙語產品／說明網站、DMG 直接下載與版本／checksum 資訊 |
 | 優先改善更新便利性時 | [015 App 更新評估](015-app-update-assessment.zh-TW.md) | 僅延後決策 | 比較手動、主動檢查、自動更新及固定自簽可行性 |
 

@@ -2,7 +2,7 @@
 
 [English](014-finder-notification-focus.md) | [繁體中文](014-finder-notification-focus.zh-TW.md)
 
-狀態：已規劃；順序上為下一個。更新：2026-09-19。
+狀態：已規劃；排在 016 之後。更新：2026-09-19。
 
 ## 問題與目標
 

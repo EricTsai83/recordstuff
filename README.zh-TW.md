@@ -12,9 +12,11 @@ Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前
 
 ## 下載與安裝
 
+<!-- release-download:start -->
 下載 **[RecordStuff 0.1.2：macOS Apple silicon（arm64）](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.2/RecordStuff-0.1.2-arm64-selfsigned.dmg)**（127,314,171 bytes）。[英文發行說明](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.2) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.2/SHA256SUMS) · [最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)。
 
 SHA-256：`2de49bbd552e46934ef4573ca8c8b103e3a0b1334dd12b2022dee1f332f7fc7f`。
+<!-- release-download:end -->
 
 0.1.2 由 CI 從 tag `v0.1.2` 建置、簽署、驗證並公開；錄影、播放與權限保留在打 tag 前以同一份原始碼在本機檢查。詳見[本版驗證紀錄](docs/zh-TW/verification/releases/0.1.2.md)。點擊儲存通知可定位 Finder 檔案，但 Finder 可能沒有跳到最前景。
 
@@ -43,7 +45,7 @@ SHA-256：`2de49bbd552e46934ef4573ca8c8b103e3a0b1334dd12b2022dee1f332f7fc7f`。
 
 - [System design](docs/zh-TW/system-design/README.md)：產品總覽、架構、錄製流程、桌面功能、函式細節、工具與決策。
 - [驗證紀錄](docs/zh-TW/verification/README.md)：已取得證據與限制。
-- [剩餘計畫](plans/README.zh-TW.md)：後續工作，包含[Finder 通知焦點](plans/014-finder-notification-focus.zh-TW.md)、[官網與 DMG 下載](plans/012-download-website.zh-TW.md)與延後的[更新評估](plans/015-app-update-assessment.zh-TW.md)；已完成或取消的計畫已移除。
+- [剩餘計畫](plans/README.zh-TW.md)：後續工作，包含[錄影快捷鍵](plans/016-recording-hotkey.zh-TW.md)、[Finder 通知焦點](plans/014-finder-notification-focus.zh-TW.md)、[官網與 DMG 下載](plans/012-download-website.zh-TW.md)與延後的[更新評估](plans/015-app-update-assessment.zh-TW.md)；已完成或取消的計畫已移除。
 - [貢獻指南](docs/zh-TW/CONTRIBUTING.md)：開發環境、問題回報、測試與 PR 提交流程。
 
 ## 開發

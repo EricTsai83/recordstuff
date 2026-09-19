@@ -69,7 +69,7 @@ pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 
 ## 發布（維護者）
 
-貢獻者不需要發布。維護者在本機驗證發布 commit 後推送 `vX.Y.Z` tag；GitHub Actions 會建置、簽署、驗證並公開。檢查清單、版本規則與失敗處理見 [GitHub 發布自動化](system-design/releases.md)。
+貢獻者不需要發布。維護者在本機驗證已推送的 commit 後推送 `vX.Y.Z` tag；tag 就是版本。GitHub Actions 會建置、簽署、驗證、公開、重驗公開下載，並把發布事實回寫到 main。檢查清單、版本規則與失敗處理見 [GitHub 發布自動化](system-design/releases.md)。
 
 ## 提交 Pull Request
 

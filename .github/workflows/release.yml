@@ -1,9 +1,11 @@
 name: macOS release
-# Tag = release. Pushing vX.Y.Z (or vX.Y.Z-rc.1 for a pre-release) builds,
-# signs, verifies and publishes, then re-downloads the public assets as an
-# anonymous user and verifies them again. Nothing is published from branch
-# pushes or by hand; manual checks happen before tagging
-# (docs/system-design/releases.md). Dispatch runs only the published check.
+# Tag = release, and the tag is the version. Pushing vX.Y.Z (or vX.Y.Z-rc.1
+# for a pre-release) stamps that version into the build, signs, verifies and
+# publishes, re-downloads the public assets as an anonymous user and verifies
+# them again, then records the release facts back on main (stable tags only).
+# Nothing is published from branch pushes or by hand; manual checks happen
+# before tagging (docs/system-design/releases.md). Dispatch runs only the
+# published check.
 on:
   push:
     tags: ['v*']
@@ -46,6 +48,8 @@ jobs:
           # Release only commits that are on main; a tag on a side branch stops here.
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
           node scripts/release.mts preflight "$RELEASE_TAG"
+      - name: Stamp the tag's version into package.json for this build
+        run: node scripts/release.mts version "$RELEASE_TAG"
       - run: pnpm install --frozen-lockfile
       - name: Install Electron runtime explicitly (Electron 44 has no postinstall)
         run: node node_modules/electron/install.js
@@ -145,3 +149,36 @@ jobs:
           (cd published && shasum -a 256 -c SHA256SUMS)
       - name: Verify mounted contents, signatures, metadata and GitHub asset digests
         run: node scripts/release.mts published "$RELEASE_TAG" published
+  record:
+    # Stable tag pushes only: after the public download verified, write the
+    # release facts (package.json version, README download block, bilingual
+    # verification record skeleton) back to main. Only these files change;
+    # the maintainer completes the record's fill-in sections afterwards.
+    if: github.event_name == 'push'
+    needs: verify-published
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+      - name: Write release facts into the repository
+        run: node scripts/release.mts record "$RELEASE_TAG"
+      - name: Commit and push to main
+        run: |
+          set -euo pipefail
+          git add package.json README.md README.zh-TW.md docs/verification/releases docs/zh-TW/verification/releases
+          if git diff --cached --quiet; then echo "Nothing to record."; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(release): record published $RELEASE_TAG"
+          git push origin HEAD:main

@@ -2,7 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { assertDmgContents, assertPublishedAssets, assertUnreleased, isPrerelease, notes, validateDigest, validateTag } from './release.mts';
+import { readFileSync } from 'node:fs';
+import { assertDmgContents, assertPublishedAssets, assertUnreleased, compareVersions, isPrerelease, notes, renderDownloadSection, renderVerificationRecord, replaceMarked, setPackageVersion, validateDigest, validateTag, type ReleaseFacts } from './release.mts';
 
 describe('release gates', () => {
   it('accepts only a tag equal to v + package version, stable or pre-release', () => {
@@ -50,6 +51,55 @@ describe('release gates', () => {
     expect(body).toContain(`/blob/${'a'.repeat(40)}/resources/INSTALL.md`);
     expect(body).toContain(`/blob/${'a'.repeat(40)}/resources/INSTALL.zh-TW.md`);
     expect(body).toContain('Finder');
+  });
+});
+
+describe('record helpers', () => {
+  const facts: ReleaseFacts = {
+    version: '0.1.2', tag: 'v0.1.2', repository: 'EricTsai83/recordstuff', sourceCommit: '122a854fffb98d0ef2c9783af7d9d07329d5bb6c',
+    file: 'RecordStuff-0.1.2-arm64-selfsigned.dmg', size: 127314171, sha256: '2de49bbd552e46934ef4573ca8c8b103e3a0b1334dd12b2022dee1f332f7fc7f',
+    runUrl: 'https://github.com/EricTsai83/recordstuff/actions/runs/35437124200', publishedAt: '2026-09-19T10:23:02Z', date: '2026-09-19',
+  };
+  it('orders versions numerically with pre-releases below their release', () => {
+    expect(compareVersions('0.1.2', '0.1.2')).toBe(0);
+    expect(compareVersions('0.1.10', '0.1.9')).toBe(1);
+    expect(compareVersions('0.2.0', '0.10.0')).toBe(-1);
+    expect(compareVersions('0.2.0-rc.1', '0.2.0')).toBe(-1);
+    expect(compareVersions('0.2.0', '0.2.0-rc.1')).toBe(1);
+    expect(compareVersions('0.2.0-rc.1', '0.2.0-rc.2')).toBe(-1);
+    expect(compareVersions('0.2.0-rc.1', '0.1.9')).toBe(1);
+  });
+  it('rewrites only the top-level package version and keeps formatting', () => {
+    const text = '{\n  "name": "recordstuff",\n  "version": "0.1.2",\n  "engines": { "node": ">=22.12.0" }\n}\n';
+    expect(setPackageVersion(text, '0.1.3')).toBe(text.replace('"0.1.2"', '"0.1.3"'));
+    expect(setPackageVersion(text, '0.1.2')).toBe(text);
+    expect(() => setPackageVersion('{ "name": "x" }', '1.0.0')).toThrow(/no top-level version/);
+  });
+  it('replaces marked blocks and rejects missing markers', () => {
+    const doc = 'before\n<!-- x:start -->\nold\n<!-- x:end -->\nafter\n';
+    expect(replaceMarked(doc, 'x', 'new')).toBe('before\n<!-- x:start -->\nnew\n<!-- x:end -->\nafter\n');
+    expect(() => replaceMarked('no markers', 'x', 'new')).toThrow(/Markers/);
+  });
+  it('renders the README download blocks exactly as the committed READMEs carry them', () => {
+    for (const [file, lang] of [['README.md', 'en'], ['README.zh-TW.md', 'zh-TW']] as const) {
+      const readme = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+      expect(readme).toContain(`<!-- release-download:start -->\n${renderDownloadSection(lang, facts)}\n<!-- release-download:end -->`);
+    }
+  });
+  it('renders bilingual verification skeletons with the facts and explicit fill-in sections', () => {
+    const en = renderVerificationRecord('en', facts);
+    const zh = renderVerificationRecord('zh-TW', facts);
+    for (const text of [en, zh]) {
+      expect(text).toContain(facts.sha256);
+      expect(text).toContain('127,314,171 bytes');
+      expect(text).toContain(facts.runUrl);
+      expect(text).toContain(facts.sourceCommit);
+    }
+    expect(en).toContain('## Local acceptance before tagging — fill in');
+    expect(en).toContain('## Not recorded');
+    expect(en).toContain('[繁體中文](../../zh-TW/verification/releases/0.1.2.md)');
+    expect(zh).toContain('## 打 tag 前的本機驗收 — 待填');
+    expect(zh).toContain('[English](../../../verification/releases/0.1.2.md)');
   });
 });
 
