@@ -155,23 +155,23 @@ flowchart LR
 - 核對外層 designated requirement 與選中憑證一致，驗證失敗即停止，不能退回 ad-hoc 或略過核對。
 - 通過後才將既有 App 封成 DMG；不匯入私鑰、不公證、不發布、不重置系統權限。
 
-[local 封裝設定](../../../electron-builder.local.yml) 關閉 timestamp、公證、DMG 簽章及更新 metadata。**App 有簽章，DMG 是未簽章容器**。arm64 輸出為 `dist/local/RecordStuff-<version>-arm64-selfsigned.dmg`；目前僅 arm64 有交付驗證。
+[local 封裝設定](../../../electron-builder.local.yml) 關閉 timestamp、公證、DMG 簽章及更新 metadata。**App 有簽章，DMG 是未簽章容器**。arm64 輸出為 `dist/RecordStuff-<version>-arm64-selfsigned.dmg`；目前僅 arm64 有交付驗證。
 
 唯讀手動檢查範例：
 
 ```bash
-codesign --verify --deep --strict "dist/local/mac-arm64/RecordStuff.app"
-codesign -d --verbose=4 "dist/local/mac-arm64/RecordStuff.app"
-codesign -d -r- "dist/local/mac-arm64/RecordStuff.app"
+codesign --verify --deep --strict "dist/mac-arm64/RecordStuff.app"
+codesign -d --verbose=4 "dist/mac-arm64/RecordStuff.app"
+codesign -d -r- "dist/mac-arm64/RecordStuff.app"
 # 換成實際版本檔名
-shasum -a 256 "dist/local/RecordStuff-0.1.0-arm64-selfsigned.dmg"
+shasum -a 256 "dist/RecordStuff-0.1.0-arm64-selfsigned.dmg"
 ```
 
 這些命令不取代腳本的完整身分核對、掛載 DMG 後的內容檢查或人工錄影／播放驗收。已發布版本的實際證據見 [v0.1.0](../../verification/releases/0.1.0.md)。
 
 ## CI 如何沿用同一身分
 
-[發布自動化](releases.md) 的「先解決簽署身分」是將既有憑證與私鑰安全提供給乾淨 runner；不需要重新申請 Apple 憑證。下列配置已實作；首次 CI 執行與人工驗收狀態見 [發布自動化](releases.md)：
+[發布自動化](releases.md) 的「先解決簽署身分」是將既有憑證與私鑰安全提供給乾淨 runner；不需要重新申請 Apple 憑證。下列配置已實作；tag 觸發的發布流程見 [發布自動化](releases.md)：
 
 | 配置 | 建議儲存位置 | 用途 |
 | --- | --- | --- |

@@ -36,7 +36,7 @@ function invoke(overrides: Record<string, string> = {}, args: string[] = []) {
     symlinkSync(electron, path.join(root, "node_modules/electron"));
     copyFileSync(path.resolve("scripts/start-app.mjs"), path.join(root, "scripts/start-app.mjs"));
     if (args.includes("--open") || args.includes("--verify-app")) {
-      mkdirSync(path.join(root, "dist/dev", process.arch === "arm64" ? "mac-arm64" : "mac",
+      mkdirSync(path.join(root, "dist", process.arch === "arm64" ? "mac-arm64" : "mac",
         "RecordStuff.app/Contents/Frameworks/RecordStuff Helper.app/Contents"), { recursive: true });
     }
     writeFileSync(calls, "");
@@ -118,7 +118,7 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () =
 
   it.each([
     "/Applications/RecordStuff.app/Contents/MacOS/RecordStuff",
-    "{root}/dist/dev/mac-arm64/RecordStuff.app/Contents/MacOS/RecordStuff",
+    "{root}/dist/mac-arm64/RecordStuff.app/Contents/MacOS/RecordStuff",
     "{root}/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron {root}",
     "{root}/node_modules/.pnpm/electron@fixture/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron {root}",
   ])("blocks competing main process before touching the keychain: %s", (running) => {
@@ -215,7 +215,7 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () =
     const final = result.commands.at(-1);
     expect(final?.name).toBe("pnpm");
     expect(final?.args).toContain("--prepackaged");
-    expect(final?.args).toContain("-c.directories.output=dist/local");
+    expect(final?.args).toContain("-c.directories.output=dist");
     expect(final?.args).toContain("never");
   });
 
@@ -228,7 +228,7 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () =
   });
 
   it("verifies a packaged App without private keys, building or launching", () => {
-    const app = `dist/dev/${process.arch === "arm64" ? "mac-arm64" : "mac"}/RecordStuff.app`;
+    const app = `dist/${process.arch === "arm64" ? "mac-arm64" : "mac"}/RecordStuff.app`;
     const result = invoke({ RECORDSTUFF_SIGN_IDENTITY: hash }, ["--verify-app", app]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.commands.every(call => call.name === "codesign")).toBe(true);

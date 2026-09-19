@@ -93,4 +93,4 @@ Validation of the correction: `pnpm check` passed 15 files/255 tests, typecheck,
 
 ## Simplified installer source — 2026-09-19
 
-The 0.1.2 source removes the bundled guides from the DMG and adds a generated arrow background; the release gate now requires exactly the App and Applications link. A local `pnpm dist:mac` build passed the candidate gate and a Finder layout check; see [0.1.2 evidence](releases/0.1.2.md). No CI candidate, installation acceptance, removal check or public release has been performed yet.
+The 0.1.2 source removes the bundled guides from the DMG and adds a generated arrow background; the release gate now requires exactly the App and Applications link. A local `pnpm dist:mac` build passed the candidate gate and a Finder layout check; see [0.1.2 evidence](releases/0.1.2.md). No local installation acceptance, removal check or tag-triggered release has been performed yet; the release flow was simplified the same day to tag-triggered direct publishing, see [release automation](../system-design/releases.md).

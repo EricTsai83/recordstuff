@@ -155,23 +155,23 @@ The final checksum and release acceptance are delivery steps, not fully automate
 - Match the outer designated requirement to the selected certificate. Failures stop the operation; no ad-hoc fallback or skipped identity verification is allowed.
 - Package the already verified App into a DMG. Do not import keys, notarize, publish, or reset OS permissions.
 
-The [local packaging configuration](../../electron-builder.local.yml) disables timestamps, notarization, DMG signing, and update metadata. **The App is signed; the DMG is an unsigned container.** The arm64 output is `dist/local/RecordStuff-<version>-arm64-selfsigned.dmg`; only arm64 has delivery evidence.
+The [local packaging configuration](../../electron-builder.local.yml) disables timestamps, notarization, DMG signing, and update metadata. **The App is signed; the DMG is an unsigned container.** The arm64 output is `dist/RecordStuff-<version>-arm64-selfsigned.dmg`; only arm64 has delivery evidence.
 
 Read-only inspection examples:
 
 ```bash
-codesign --verify --deep --strict "dist/local/mac-arm64/RecordStuff.app"
-codesign -d --verbose=4 "dist/local/mac-arm64/RecordStuff.app"
-codesign -d -r- "dist/local/mac-arm64/RecordStuff.app"
+codesign --verify --deep --strict "dist/mac-arm64/RecordStuff.app"
+codesign -d --verbose=4 "dist/mac-arm64/RecordStuff.app"
+codesign -d -r- "dist/mac-arm64/RecordStuff.app"
 # Substitute the actual release filename
-shasum -a 256 "dist/local/RecordStuff-0.1.0-arm64-selfsigned.dmg"
+shasum -a 256 "dist/RecordStuff-0.1.0-arm64-selfsigned.dmg"
 ```
 
 These do not replace the script's complete identity checks, mounted DMG content checks, or manual recording/playback acceptance. See [v0.1.0 evidence](../verification/releases/0.1.0.md).
 
 ## Reusing the identity in CI
 
-“Resolve signing first” in [release automation](releases.md) means securely provisioning the existing certificate and private key on a clean runner. It does not require a new Apple certificate. The following configuration is implemented; see [release automation](releases.md) for live CI and manual acceptance status:
+“Resolve signing first” in [release automation](releases.md) means securely provisioning the existing certificate and private key on a clean runner. It does not require a new Apple certificate. The following configuration is implemented; see [release automation](releases.md) for the tag-triggered release flow:
 
 | Configuration | Suggested location | Purpose |
 | --- | --- | --- |

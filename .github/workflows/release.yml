@@ -1,26 +1,10 @@
 name: macOS release
+# Tag = release. Pushing vX.Y.Z (or vX.Y.Z-rc.1 for a pre-release) builds,
+# signs, verifies and publishes; nothing is published from branch pushes or
+# by hand. Manual checks happen before tagging (docs/system-design/releases.md).
 on:
   push:
     tags: ['v*']
-  workflow_dispatch:
-    inputs:
-      operation:
-        description: Build a draft, or promote already installed and reviewed draft bytes
-        required: true
-        type: choice
-        options: [candidate, promote]
-        default: candidate
-      tag:
-        description: Exact package version tag (vX.Y.Z)
-        required: true
-        type: string
-      sha256:
-        description: Promotion only — SHA-256 of the candidate you installed
-        type: string
-      manual_acceptance:
-        description: Promotion only — installed this candidate; recording, audio playback, language persistence and quit/relaunch passed
-        type: boolean
-        default: false
 permissions:
   contents: read
 concurrency:
@@ -28,17 +12,17 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
-    if: github.event_name == 'push' || inputs.operation == 'candidate'
     runs-on: macos-15
     timeout-minutes: 30
     environment: release
     env:
-      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      RELEASE_TAG: ${{ github.ref_name }}
       GH_TOKEN: ${{ github.token }}
       RECORDSTUFF_SIGN_IDENTITY: 01B373511530BBF287CA35E54C10A5F017AAD637
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
@@ -50,6 +34,8 @@ jobs:
       - name: Validate source and version
         run: |
           test "$(uname -m)" = arm64
+          # Release only commits that are on main; a tag on a side branch stops here.
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
           node scripts/release.mts preflight "$RELEASE_TAG"
       - run: pnpm install --frozen-lockfile
       - name: Install Electron runtime explicitly (Electron 44 has no postinstall)
@@ -83,7 +69,7 @@ jobs:
           security find-identity -v -p codesigning "$keychain" | grep -F "$RECORDSTUFF_SIGN_IDENTITY"
           unset BUILD_CERTIFICATE_BASE64 P12_PASSWORD
           pnpm dist:mac
-          node scripts/release.mts candidate "$RELEASE_TAG" dist/local
+          node scripts/release.mts candidate "$RELEASE_TAG" dist
       - name: Cleanup even after cancellation or setup failure
         if: always()
         run: python3 scripts/cleanup-release-keychain.py
@@ -93,10 +79,10 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           path: |
-            dist/local/RecordStuff-*-arm64-selfsigned.dmg
-            dist/local/SHA256SUMS
-            dist/local/release.json
-  draft:
+            dist/RecordStuff-*-arm64-selfsigned.dmg
+            dist/SHA256SUMS
+            dist/release.json
+  publish:
     needs: build
     runs-on: macos-15
     timeout-minutes: 15
@@ -104,7 +90,7 @@ jobs:
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      RELEASE_TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -116,32 +102,5 @@ jobs:
         with:
           name: verified-candidate
           path: candidate
-      - name: Reverify mounted candidate and create draft
-        run: node scripts/release.mts draft "$RELEASE_TAG" candidate
-  promote:
-    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'promote'
-    runs-on: macos-15
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ inputs.tag }}
-      RELEASE_EXPECTED_SHA256: ${{ inputs.sha256 }}
-      RELEASE_MANUAL_ACCEPTANCE: ${{ inputs.manual_acceptance }}
-    steps:
-      - name: Require manual acceptance and checksum before downloading
-        run: |
-          test "$RELEASE_MANUAL_ACCEPTANCE" = true
-          test "${#RELEASE_EXPECTED_SHA256}" = 64
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          ref: ${{ inputs.tag }}
-          persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 24.21.0
-      - name: Download existing draft without rebuilding
-        run: gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir candidate
-      - name: Reverify and publish identical assets
-        run: node scripts/release.mts promote "$RELEASE_TAG" candidate
+      - name: Reverify the candidate without private keys and publish it
+        run: node scripts/release.mts publish "$RELEASE_TAG" candidate

@@ -2,13 +2,13 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-Updated: 2026-09-19. v0.1.1 is published; see [release evidence](../docs/verification/releases/0.1.1.md). The 013 source changes are implemented and locally verified; the 0.1.2 release, installation acceptance and removal check remain, tracked in [0.1.2 evidence](../docs/verification/releases/0.1.2.md). See [release automation](../docs/system-design/releases.md).
+Updated: 2026-09-19. v0.1.1 is published; see [release evidence](../docs/verification/releases/0.1.1.md). The 013 source changes are implemented and locally verified; local acceptance, the removal check and the tag-triggered 0.1.2 release remain, tracked in [0.1.2 evidence](../docs/verification/releases/0.1.2.md). See [release automation](../docs/system-design/releases.md).
 
 ## Order and status
 
 | Order | Plan | Status | Completion target |
 | --- | --- | --- | --- |
-| Next | [013 Installation experience](013-macos-installation-experience.md) | Implemented in source; release pending | Ship 0.1.2 through CI, accept installation/replacement/recording manually, verify removal on a disposable copy |
+| Next | [013 Installation experience](013-macos-installation-experience.md) | Implemented in source; release pending | Accept installation/replacement/recording locally, verify removal on a disposable copy, push tag v0.1.2 |
 | With next release | [014 Finder notification focus](014-finder-notification-focus.md) | Planned | Reproduce and fix explicit-click foreground behavior; verify native focus |
 | Ready for implementation | [012 Official website](012-download-website.md) | Planned | Bilingual product/help website with direct DMG downloads and version/checksum details |
 | When update convenience is prioritized | [015 App update assessment](015-app-update-assessment.md) | Deferred decision only | Compare manual, user-triggered check and automatic update; establish self-signing feasibility |

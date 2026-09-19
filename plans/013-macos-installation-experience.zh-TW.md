@@ -2,7 +2,7 @@
 
 [English](013-macos-installation-experience.md) | [繁體中文](013-macos-installation-experience.zh-TW.md)
 
-狀態：原始碼變更已於 2026-09-19 實作並在本機驗證；0.1.2 發布與人工驗收尚待完成。更新：2026-09-19。不替換已發布的 v0.1.0 與 v0.1.1 資產。
+狀態：原始碼變更已於 2026-09-19 實作並在本機驗證；打 tag 前的本機驗收與 0.1.2 發布尚待完成。更新：2026-09-19。不替換已發布的 v0.1.0 與 v0.1.1 資產。
 
 ## 目標
 
@@ -19,10 +19,10 @@ DMG 清楚呈現 RecordStuff → Applications，不附任何安裝／說明文�
 
 ## 剩餘工作
 
-1. 提交並推送 0.1.2 原始碼，依[發布自動化](../docs/zh-TW/system-design/releases.md)觸發 CI 候選版（`operation=candidate`、`tag=v0.1.2`）。CI 產物取代本機候選版成為發布產物。
-2. 以瀏覽器下載 draft，核對 SHA256SUMS，在可用的 Mac 上掛載並確認 Finder 版面，覆蓋既有 0.1.1 安裝，確認設定與錄影權限保留，並記錄短錄影／播放檢查。
-3. 在隔離、可丟棄的 App 副本（例如暫存資料夾或帳號中的副本）上驗證移除流程，確認錄影與設定未被更動。記錄暫存副本的用途與清理。
-4. 以驗收的 SHA-256 提升為公開版本，核對公開瀏覽器下載 checksum，再更新 README 下載區、[0.1.2 驗證](../docs/zh-TW/verification/releases/0.1.2.md)、計畫索引與翻譯。所有結論收錄後移除本計畫及其翻譯。
+1. 打 tag 前的本機驗收，依[發布檢查清單](../docs/zh-TW/system-design/releases.md#操作)：`pnpm start:app`、短錄影並播放。因本計畫變更了打包，另開一次本機 0.1.2 DMG 確認 Finder 版面（實作者已於 2026-09-19 完成；維護者再看一次為選做）。
+2. 已於 2026-09-19 完成：在可丟棄副本上驗證移除，錄影、設定與 log 未變；見 [0.1.2 驗證](../docs/zh-TW/verification/releases/0.1.2.md)。
+3. 推送 tag `v0.1.2`；CI 建置、驗證並公開。把 run 連結、大小與 SHA-256 記入 [0.1.2 驗證](../docs/zh-TW/verification/releases/0.1.2.md)；瀏覽器下載 checksum 是選做的抽查。
+4. 更新 README 下載區、計畫索引與翻譯。所有結論收錄後移除本計畫及其翻譯。
 
 ## 參考及驗收
 

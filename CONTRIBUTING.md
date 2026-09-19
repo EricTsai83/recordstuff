@@ -70,6 +70,10 @@ pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 
 Use your actual source dimensions for `--screen`; sync analysis needs the test material described in the [tooling guide](docs/system-design/tooling.md). That guide also covers the recording matrix and audio fidelity checks. Keep new measurements separate from historical results and state any verification limitations.
 
+## Releasing (maintainers)
+
+Contributors do not need to release. Maintainers verify a release commit locally, then push a `vX.Y.Z` tag; GitHub Actions builds, signs, verifies and publishes it. The checklist, version rules and failure handling are in [GitHub release automation](docs/system-design/releases.md).
+
 ## Submit a pull request
 
 Commit your changes, push your branch to your fork or the repository, and open a pull request against the default branch. Include:

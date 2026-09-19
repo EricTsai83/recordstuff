@@ -91,4 +91,4 @@
 
 ## 精簡安裝介面原始碼 — 2026-09-19
 
-0.1.2 原始碼從 DMG 移除隨附指南並加入程式產生的箭頭背景；發布閘門現在要求恰為 App 與 Applications 連結。本機 `pnpm dist:mac` 建置通過候選閘門與 Finder 版面檢查；見 [0.1.2 證據](releases/0.1.2.md)。尚未進行 CI 候選版、安裝驗收、移除檢查或公開發布。
+0.1.2 原始碼從 DMG 移除隨附指南並加入程式產生的箭頭背景；發布閘門現在要求恰為 App 與 Applications 連結。本機 `pnpm dist:mac` 建置通過候選閘門與 Finder 版面檢查；見 [0.1.2 證據](releases/0.1.2.md)。尚未進行本機安裝驗收、移除檢查或 tag 觸發的發布；同日發布流程簡化為 tag 觸發直接公開，見[發布自動化](../system-design/releases.md)。

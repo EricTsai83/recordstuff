@@ -57,7 +57,7 @@ pnpm open:app          # 驗證並開啟現有開發包，不重建
 pnpm check             # typecheck、測試、build
 pnpm icons             # 產生圖示；macOS 額外產生 ICNS
 pnpm log               # 追蹤 macOS log
-pnpm dist:mac    # 自簽 DMG → dist/local
+pnpm dist:mac    # 自簽 DMG → dist/（發布用的由 CI 建）
 ```
 
 開發者需有唯一名稱的有效自簽憑證，預設 `RecordStuff Dev`；可用 RECORDSTUFF_SIGN_IDENTITY 精確指定名稱或 SHA-1。重建前先結束 App。這條流程不公證、不發布；收件者不安裝憑證。dist:win 尚未驗證。
@@ -85,4 +85,4 @@ src/main 是生命週期、錄製狀態機、寫檔、權限與原生 UI；rende
 
 音質測試背後的設計與原理：[教學文件](docs/zh-TW/system-design/audio-quality.md)。
 
-發布維護者：見 [GitHub 發布自動化](docs/zh-TW/system-design/releases.md)，以 Actions 建立 draft，人工驗收後提升相同產物。
+發布維護者：先在本機驗證，再推送版本 tag；檢查清單與閘門見 [GitHub 發布自動化](docs/zh-TW/system-design/releases.md)。

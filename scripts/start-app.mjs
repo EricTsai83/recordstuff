@@ -136,7 +136,9 @@ function main() {
   assertNotRunning();
   const identity = resolveIdentity();
   console.log(`Local signing: ${identity.name}; SHA-1 ${identity.hash}; expires ${identity.expires}`);
-  const output = dmg ? "dist/local" : "dist/dev";
+  // One output directory for development and release builds: the App is the same
+  // signed bundle either way, and dist:mac only adds the DMG next to it.
+  const output = "dist";
   const appPath = path.join(root, output, process.arch === "arm64" ? "mac-arm64" : "mac", "RecordStuff.app");
   const config = [
     "--config", "electron-builder.local.yml",
@@ -152,7 +154,7 @@ function main() {
     // Generate the disk image only after the embedded app has passed identity checks.
     run("pnpm", ["exec", "electron-builder", "--mac", "dmg", `--${process.arch}`,
       "--prepackaged", appPath, "--publish", "never", ...config]);
-    console.log(`Local DMG generated in ${output}. Self-signed, not notarized; follow docs/verification/releases/0.1.0.md for download/install verification.`);
+    console.log(`Local DMG generated in ${output}/. Self-signed, not notarized; CI builds the release DMG from the tag (docs/system-design/releases.md).`);
   } else {
     run("open", ["-a", appPath]);
     console.log(`Opened ${appPath}\nLog: ~/Library/Logs/recordstuff/recordstuff.log`);

@@ -56,7 +56,7 @@ pnpm open:app          # Verify/open the existing development bundle without reb
 pnpm check             # Typecheck, tests, build
 pnpm icons             # Regenerate PNG/ICO; regenerate ICNS on macOS
 pnpm log               # Follow the macOS diagnostic log
-pnpm dist:mac    # Produce the self-signed DMG in dist/local
+pnpm dist:mac    # Produce the self-signed DMG in dist/ (CI builds the released one)
 ```
 
 The self-signed workflow requires a valid, uniquely named local code-signing identity, default `RecordStuff Dev`; RECORDSTUFF_SIGN_IDENTITY may select its exact name or SHA-1. Quit recordstuff/project Electron before rebuilding. It does not publish or notarize, and recipients do not install the signing certificate. `dist:win` is unverified.
@@ -95,4 +95,4 @@ This project is licensed under the [MIT License](LICENSE).
 
 Learn why and how the audio checks work in the [audio quality design guide](docs/system-design/audio-quality.md).
 
-Release maintainers: see [GitHub release automation](docs/system-design/releases.md) for Actions candidates and promotion of the same manually accepted bytes.
+Release maintainers: verify locally, then push a version tag; see [GitHub release automation](docs/system-design/releases.md) for the checklist and gates.

@@ -67,6 +67,10 @@ pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 
 `--screen` 請填入實際來源尺寸；同步分析需要使用[工具指南](system-design/tooling.md)所述的測試素材。該指南也說明錄製測試矩陣與音訊品質檢查。新增量測請與歷史結果分開保存，並註明驗證限制。
 
+## 發布（維護者）
+
+貢獻者不需要發布。維護者在本機驗證發布 commit 後推送 `vX.Y.Z` tag；GitHub Actions 會建置、簽署、驗證並公開。檢查清單、版本規則與失敗處理見 [GitHub 發布自動化](system-design/releases.md)。
+
 ## 提交 Pull Request
 
 將修改 commit、push 到自己的 fork 或 repository 分支，再向預設分支開啟 PR。請包含：

@@ -6,19 +6,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const signingSHA1 = '01B373511530BBF287CA35E54C10A5F017AAD637';
+/** Stable `1.2.3` or pre-release `1.2.3-rc.1`; the tag is always `v` + version. */
 export function validateTag(tag: string, version: string) {
-  if (!/^\d+\.\d+\.\d+$/.test(version) || tag !== `v${version}`) throw new Error('Tag must match the stable package version.');
+  if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$/.test(version) || tag !== `v${version}`) throw new Error('Tag must match the package version (vX.Y.Z or vX.Y.Z-suffix).');
 }
+/** Pre-release versions are published flagged as pre-release and never marked latest. */
+export const isPrerelease = (version: string) => version.includes('-');
 export function validateDigest(actual: string, expected: string) {
   if (!/^[a-f0-9]{64}$/.test(expected) || actual !== expected) throw new Error('Checksum mismatch.');
 }
 export function assertUnreleased(releases: { tag_name: string }[], tag: string) {
   if (releases.some(r => r.tag_name === tag)) throw new Error('Version already has a release (including drafts); refusing reuse.');
-}
-export function assertPromotion(accepted: string | undefined, expected: string, actual: string, draft: boolean) {
-  if (accepted !== 'true') throw new Error('Manual installation/recording/playback/language acceptance is required.');
-  validateDigest(actual, expected);
-  if (!draft) throw new Error('Promotion requires an existing draft.');
 }
 const root = fileURLToPath(new URL('..', import.meta.url));
 function run(command: string, args: string[], input?: string) {
@@ -113,7 +111,7 @@ function verifyCandidate(directory: string, tag: string) {
 }
 function main() {
   const [mode, tag, directoryArg] = process.argv.slice(2);
-  if (!tag || !['preflight', 'candidate', 'verify', 'draft', 'promote'].includes(mode ?? '')) throw new Error('Usage: release.mts preflight|candidate|verify|draft|promote vX.Y.Z [candidate-directory]');
+  if (!tag || !['preflight', 'candidate', 'verify', 'publish'].includes(mode ?? '')) throw new Error('Usage: release.mts preflight|candidate|verify|publish vX.Y.Z [candidate-directory]');
   const c = context(tag);
   if (mode === 'preflight') {
     if (run('git', ['status', '--porcelain'])) throw new Error('Release source must be clean.');
@@ -132,34 +130,16 @@ function main() {
   }
   const metadata = verifyCandidate(directory, tag);
   if (mode === 'verify') { console.log(`Verified ${metadata.file}: ${metadata.sha256}`); return; }
-  const existing = releases(c.repository);
-  if (mode === 'draft') {
-    assertUnreleased(existing, tag);
-    const refs = api(`repos/${c.repository}/git/matching-refs/tags/${tag}`) as { ref: string }[];
-    if (refs.some(r => r.ref === `refs/tags/${tag}`)) {
-      if (api(`repos/${c.repository}/commits/${tag}`).sha !== c.sourceCommit) throw new Error('Existing tag points to another commit.');
-    } else {
-      api(`repos/${c.repository}/git/refs`, 'POST', { ref: `refs/tags/${tag}`, sha: c.sourceCommit });
-    }
-    const body = path.join(directory, 'release-notes.md');
-    writeFileSync(body, notes(c.version, c.repository, c.sourceCommit));
-    run('gh', ['release', 'create', tag, '--repo', c.repository, '--verify-tag', '--draft', '--title', `RecordStuff ${c.version} — macOS arm64`, '--notes-file', body,
-      ...[metadata.file, 'SHA256SUMS', 'release.json'].map(f => path.join(directory, f))]);
-    console.log(`Created draft ${tag}; installation and manual acceptance are required before promotion.`);
-  } else if (mode === 'promote') {
-    const release = existing.find((r: { tag_name: string }) => r.tag_name === tag);
-    assertPromotion(process.env.RELEASE_MANUAL_ACCEPTANCE, process.env.RELEASE_EXPECTED_SHA256 ?? '', metadata.sha256, release?.draft === true);
-    if (api(`repos/${c.repository}/commits/${tag}`).sha !== c.sourceCommit) throw new Error('Tag source mismatch.');
-    const assets = api(`repos/${c.repository}/releases/${release.id}/assets`) as { name: string; size: number; digest?: string }[];
-    if (assets.length !== 3) throw new Error('Unexpected release assets.');
-    for (const file of [metadata.file, 'SHA256SUMS', 'release.json']) {
-      const asset = assets.find(a => a.name === file);
-      const local = path.join(directory, file);
-      if (!asset || asset.size !== statSync(local).size || asset.digest !== `sha256:${digest(local)}`) throw new Error('Remote asset changed or has no verifiable digest.');
-    }
-    api(`repos/${c.repository}/releases/${release.id}`, 'PATCH', { draft: false, make_latest: 'true' });
-    console.log(`Published existing verified assets for ${tag}; no rebuild.`);
-  }
+  // publish: the tag already exists (pushed by the maintainer); the release must not.
+  assertUnreleased(releases(c.repository), tag);
+  if (api(`repos/${c.repository}/commits/${tag}`).sha !== c.sourceCommit) throw new Error('Tag does not point to the verified source commit.');
+  const body = path.join(directory, 'release-notes.md');
+  writeFileSync(body, notes(c.version, c.repository, c.sourceCommit));
+  const prerelease = isPrerelease(c.version);
+  run('gh', ['release', 'create', tag, '--repo', c.repository, '--verify-tag', prerelease ? '--prerelease' : '--latest',
+    '--title', `RecordStuff ${c.version} — macOS arm64`, '--notes-file', body,
+    ...[metadata.file, 'SHA256SUMS', 'release.json'].map(f => path.join(directory, f))]);
+  console.log(`Published ${tag}${prerelease ? ' as a pre-release' : ' as latest'} from verified candidate ${metadata.sha256}.`);
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { main(); } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; }

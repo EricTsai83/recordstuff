@@ -2,7 +2,7 @@
 
 [English](013-macos-installation-experience.md) | [繁體中文](013-macos-installation-experience.zh-TW.md)
 
-Status: Source changes implemented and locally verified on 2026-09-19; the 0.1.2 release and its manual acceptance remain. Updated: 2026-09-19. Do not replace published v0.1.0 or v0.1.1 assets.
+Status: Source changes implemented and locally verified on 2026-09-19; local acceptance before tagging and the 0.1.2 release remain. Updated: 2026-09-19. Do not replace published v0.1.0 or v0.1.1 assets.
 
 ## Outcome
 
@@ -19,10 +19,10 @@ Durable descriptions live in [release automation](../docs/system-design/releases
 
 ## Remaining work
 
-1. Commit and push the 0.1.2 source, then dispatch the CI candidate (`operation=candidate`, `tag=v0.1.2`) per [release automation](../docs/system-design/releases.md). CI bytes replace the local candidate as the release artifact.
-2. Download the draft in a browser, verify SHA256SUMS, mount and confirm the Finder layout on the available Mac, install over the existing 0.1.1 copy, and confirm settings and the recording permission are retained. Record a short recording/playback check.
-3. Verify removal on an isolated disposable copy of the app (for example a copy in a temporary folder or account), confirming that recordings and settings are untouched. Record the purpose and cleanup of any temporary copy.
-4. Promote with the accepted SHA-256, verify the public browser download checksum, then update the README download section, [0.1.2 verification](../docs/verification/releases/0.1.2.md), the plan index and translations. Remove this plan and its translation once every conclusion is captured.
+1. Local acceptance before tagging, per the [release checklist](../docs/system-design/releases.md#operation): `pnpm start:app`, short recording and playback. Because this plan changed packaging, also open the local 0.1.2 DMG once and confirm the Finder layout (already done by the implementer on 2026-09-19; a second look by the maintainer is optional).
+2. Done 2026-09-19: removal verified on a disposable copy with recordings, settings and logs unchanged; see [0.1.2 verification](../docs/verification/releases/0.1.2.md).
+3. Push tag `v0.1.2`; CI builds, verifies and publishes. Record the run link, size and SHA-256 in [0.1.2 verification](../docs/verification/releases/0.1.2.md); a browser download checksum is an optional spot check.
+4. Update the README download section, the plan index and translations. Remove this plan and its translation once every conclusion is captured.
 
 ## Reference and acceptance
 
