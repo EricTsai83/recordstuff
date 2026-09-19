@@ -2,11 +2,15 @@
 
 [English](014-finder-notification-focus.md) | [繁體中文](014-finder-notification-focus.zh-TW.md)
 
-狀態：已規劃；排在 016 之後。更新：2026-09-19。
+狀態：已在本地實作；流程完成與清理已驗證；通知點擊未送達仍未解，待發布。更新：2026-09-20。
 
 ## 問題與目標
 
 v0.1.0 使用者實測可在 Finder 選取正確錄影，但 Finder 留在其他視窗後方。既有 tray 測試以 mock 驗證 shell.showItemInFolder 延後呼叫，未驗證原生前景狀態。使用者明確點擊儲存通知後，應定位正確檔案並將該 Finder 視窗置前；單純完成錄影不可搶焦點。
+
+## 剩餘工作
+
+步驟 1–4 與步驟 5 的本機部分已有本地實作與先前原生驗證紀錄（設計：[桌面](../docs/zh-TW/system-design/desktop.md#tray-與通知)；工具：[通知驗收](../docs/zh-TW/system-design/tooling.md#通知驗收)；證據：[驗證紀錄](../docs/zh-TW/verification/README.md#通知點擊後-finder-置前--2026-09-20)）。強化後腳本已完成預設、中斷及完整六組矩陣實測；完整結果為 25 通過、1 次點擊未送達失敗、4 次缺少通知，需先釐清未解點擊問題才能視為驗收完成，收到發布指示後再發布：推送新版本 tag 讓修正後的 bytes 上線（[發布自動化](../docs/zh-TW/system-design/releases.md)），再對安裝的公開版跑 `pnpm acceptance:notification -- --full`，然後移除本計畫。
 
 ## 工作及驗收
 

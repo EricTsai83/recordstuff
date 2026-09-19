@@ -28,7 +28,7 @@
 | 音訊權限復原 | 同程序啟用並選稍後仍失敗；重啟後 15.34 秒有聲檔可解碼 | 該情境需要重啟 |
 | 錄製中撤銷／退出 | OS 結束重開前收尾完整 47.594271 秒 MP4，新程序 needsPermission | 不是強制斷電測試 |
 | 最後復原 | `2026-09-14 00-17-33.mp4` 12.653633 秒、45,041,905 bytes，1080p H.264＋48 kHz AAC 雙聲道，全解碼成功；使用者確認可播 | 完成當時的本機結果 |
-| 通知 | 使用者看到錯誤與存檔通知，點擊有 Finder 回報與 reveal 日誌 | Finder 每次置頂仍不保證 |
+| 通知 | 使用者看到錯誤與存檔通知，點擊有 Finder 回報與 reveal 日誌。點擊後的前景現由 `pnpm acceptance:notification` 覆蓋（[2026-09-20](#通知點擊後-finder-置前--2026-09-20)） | macOS 26.6 上約 40 次點擊會有一次橫幅按下去但點擊未送達 App；分開回報，尚未修正 |
 | 通知縮圖 | 2026-09-14 使用者確認整台 Mac 重開機後正常 | 原待確認項目已關閉，具體原因未查明 |
 | 全域快捷鍵 | 對無視窗的 `/Applications` 建置執行 `pnpm acceptance`（柔化後的 660 Hz 素材、Chrome app 模式全螢幕）：System Events 送出 ⌘⌥⇧R 後 166 ms 收到、再 96 ms 進入 recording，錄 20 秒存檔，完整性層級通過，48 kHz 雙聲道 RMS −27.1／−27.2 dB，偵測到 20 次閃光與 19 個嗶聲，音畫偏移 79 ms（報告）；Codex computer-use 以同一送鍵路徑完成素材、錄影、verify 與 QuickTime 播放（23:34 執行） | 稀疏素材的音訊碼率只回報；背景播影片的一次執行被嗶聲守門拒絕（0 個嗶聲可與靜音分離），驗收時背景音訊必須關閉；Computer Use 的 `pressKey` 到不了全域快捷鍵，三次非互動執行被 per-app 核准擋下（20:56、20:59、21:20、21:33 fail、根因）；Tray 選單案例與聽感仍未由工具驗證 |
 
@@ -93,3 +93,26 @@
 ## 精簡安裝介面與 tag 觸發發布 0.1.2 — 2026-09-19
 
 0.1.2 原始碼從 DMG 移除隨附指南並加入程式產生的箭頭背景；發布閘門現在要求恰為 App 與 Applications 連結。本機 `pnpm dist:mac` 建置通過候選閘門與 Finder 版面檢查；`pnpm start:app` 加手動 16.7 秒錄影通過完整性檢查；可丟棄副本移除後使用者資料未變；推送 `v0.1.2` tag 後不到三分鐘公開，匿名公開下載驗證 job 於 22 秒內通過。見 [0.1.2 證據](releases/0.1.2.md)與[發布自動化](../system-design/releases.md)。verifier 同日改為完整性與效能兩層，見[工具鏈](../system-design/tooling.md#驗收門檻)。
+
+## 通知點擊後 Finder 置前 — 2026-09-20
+
+計畫 014 以新的無人值守檢查 `pnpm acceptance:notification`（[工具鏈](../system-design/tooling.md#通知驗收)）在已安裝的 0.1.2 與 macOS 26.6.2 上重現 v0.1.0 的回報：在新的 TextEdit 視窗在前時透過輔助使用按下「已儲存 …」橫幅，取樣前景 App 3 秒。加了 `did-become-active` 診斷的 App log 給出機制：macOS 在點擊回呼後約 110 ms 才啟動發通知的 App，且只針對登錄在 `/Applications` 的那份；當這個啟動晚於 Finder 的啟動，無視窗的 App 就留在最前面，Finder 在使用者視窗後方選著檔案。同一程序的第一次點擊很少發生。未修正的 0.1.2 在 Finder 關閉狀態點 6 次，2 次 RecordStuff 留在最前面（1756 執行）；同一版本後來的 5 次點擊有 3 次失敗、包含第一次（1818 執行，其中一次是點擊未送達）；診斷版同樣 6 次中 2 次，且每次失敗的 reveal 後 4 ms 就記到 `did-become-active`（1748 執行）。
+
+修法（reveal 後掛 1 秒的一次性 `did-become-active` 監聽，收到就從已是前景的 App 再 reveal 一次，見[桌面](../system-design/desktop.md#tray-與通知)）在本次被裝進 `/Applications`，以 `--full` 的 5 次點擊 × 3 種 Finder 狀態 × 2 種語言判定。30 次預定點擊（含重試共 35 次錄影；1759 執行）中 26 次通過，3 次無法判定（通知中心沒有為該次存檔顯示橫幅），1 次以另一種方式失敗：橫幅按下、App 被啟動，但點擊沒有送達 App（log 沒有 reveal），Finder 根本沒被叫到；未修正版在 1756 執行也出現過一次同樣的未送達點擊。26 次通過中有 13 次 log 記到 `reveal repeated after activation`，也就是 macOS 確實在第一次 reveal 後啟動了 App，第二次 reveal 在約 0.4 秒內把 Finder 放回最前面；沒有任何已送達的點擊以 RecordStuff 留在最前面收場。 每次點擊的檔案選取與前景分開記錄在報告中；英文與繁中橫幅內文皆符合。未涵蓋：tray 選單自己的顯示檔案（輔助使用碰不到 tray，見 016 紀錄）、其他桌面空間、橫幅消失後從通知中心清單點擊；修正後的 bytes 尚未發布。
+
+
+### 強化後通知腳本實測 — 2026-09-20
+
+以 `pnpm start:app` 建置並簽章目前未提交的程式，在 macOS 26.6.2 arm64 執行預設 `pnpm acceptance:notification -- --install`：退出碼 0，4 次通過、1 次未出現通知（未執行）、無失敗，從首筆 planned 事件到清理完成為 63.555 秒，不需重跑即可結束。另在第二段錄影 starting 時送 SIGINT，訊號後 2.00 秒退出；錄影中送 SIGTERM，1.90 秒退出。兩次取消都正確回傳退出碼 1、停止並存檔、還原 App 與設定。已安裝 app.asar 雜湊與設定檔 bytes 均符合原始快照，八段測試錄影與三份 App 備份皆已刪除；computer use 確認 Finder 沒有殘留視窗。原始證據：`docs/verification/measurements/2026-09-20-notification-live/report.md`（僅本地）。未重測完整六組矩陣、播放／音訊、權限失敗及系統層卡死。未出現通知不算該次點擊通過；本次耗時也不保證能從無回應的 OS 或檔案系統恢復。
+
+
+### 完整通知矩陣與空白 TextEdit 清理 — 2026-09-20
+
+快速測試後使用者回報的殘留視窗是 TextEdit「打開」面板，不是錄影存檔。舊流程只關閉測試文件、保留空的 TextEdit 程序，再喚起可能重開面板。清理現在會在沒有其他文件時退出 TextEdit，並等待程序消失；有其他文件則保留。
+
+`pnpm acceptance:notification -- --install --full` 在 371.74 秒內完成全部 30 個案例，沒有卡住：**25 通過、1 失敗、4 未執行**，退出碼 1。每個語言／Finder 狀態組都有多次通過。失敗案例為 zh-TW/closed/click 5：橫幅被按下，但 App 沒有 reveal log，RecordStuff 留在前景；根因尚未確認。未出現的通知沒有算通過。程序查詢與 computer-use inventory 均確認 TextEdit 已退出，Finder 沒有視窗；原安裝 app.asar 與設定符合測前快照，30 段錄影與備份均已刪除。`pnpm check` 通過 320 個測試、型別檢查及建置。原始證據：`docs/verification/measurements/2026-09-20-notification-full/report.md`。這證明流程可完成與清理，不代表通知矩陣全數通過。測試不判定視窗所在螢幕；App 錄製主螢幕，且通知點擊發生在停止錄影之後。
+
+
+### 通知事件與 Accessibility 診斷 — 2026-09-20
+
+補上通知請求、shown、clicked、closed 紀錄並重建後，英文 15 案例 `--full` 於 199.59 秒完成：8 通過、1 前景失敗、6 未執行，退出碼 1。使用者確認期間有操作桌面；該次前景失敗有 shown／clicked／reveal，但 Chrome 變成前景，因此不能認定為產品缺陷。後續兩案例複測均通過。六次未按到通知都有 shown callback，但保存的 Accessibility 搜尋沒有匹配的橫幅節點；其中一次另有視窗索引變動造成的 System Events -1719。問題縮小到通知呈現／存續或 Accessibility 觀察，尚不能證明每次的根因；最後一筆搜尋 timeout 是 5 秒期限，不是另一項 OS 通知錯誤。App／設定已還原、17 段錄影及備份已清除、TextEdit 已退出；321 個測試、型別檢查及建置通過。原始證據：`docs/verification/measurements/2026-09-20-notification-diagnostics/report.md`。

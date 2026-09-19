@@ -2,13 +2,14 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-Updated: 2026-09-19. v0.1.2 is published from tag `v0.1.2` with the simplified DMG; see [0.1.2 evidence](../docs/verification/releases/0.1.2.md). 013 and 016 are complete and removed; the recording shortcut and its unattended acceptance (`pnpm acceptance`) are documented in [desktop design](../docs/system-design/desktop.md#recording-shortcut), [tooling](../docs/system-design/tooling.md) and the [verification record](../docs/verification/README.md). Releases follow [release automation](../docs/system-design/releases.md): the tag is the version and CI records each release back on main.
+Updated: 2026-09-20. v0.1.2 is published from tag `v0.1.2` with the simplified DMG; see [0.1.2 evidence](../docs/verification/releases/0.1.2.md). 013 and 016 are complete and removed; the recording shortcut and its unattended acceptance (`pnpm acceptance`) are documented in [desktop design](../docs/system-design/desktop.md#recording-shortcut), [tooling](../docs/system-design/tooling.md) and the [verification record](../docs/verification/README.md). Releases follow [release automation](../docs/system-design/releases.md): the tag is the version and CI records each release back on main.
 
 ## Order and status
 
 | Order | Plan | Status | Completion target |
 | --- | --- | --- | --- |
-| Next | [014 Finder notification focus](014-finder-notification-focus.md) | Planned | Reproduce and fix explicit-click foreground behavior; verify native focus |
+| Next | [017 Saved notification timing](017-saved-notification-timing.md) | Planned; system suppression identified in correlated cases | Fix and verify notification timing after capture stops, with two complete local full runs |
+| After 017 and remaining click investigation | [014 Finder notification focus](014-finder-notification-focus.md) | Implemented locally; acceptance incomplete | Resolve outstanding acceptance failures; release only when requested, then verify the public build and remove the plan |
 | Ready for implementation | [012 Official website](012-download-website.md) | Planned | Bilingual product/help website with direct DMG downloads and version/checksum details |
 | When update convenience is prioritized | [015 App update assessment](015-app-update-assessment.md) | Deferred decision only | Compare manual, user-triggered check and automatic update; establish self-signing feasibility |
 
