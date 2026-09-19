@@ -17,7 +17,7 @@
 3. 把 accelerator 存入設定（v3 migration，保留 v1／v2 行為），可停用。托盤選單顯示目前快捷鍵、啟用／停用切換與少量預設組合，或「更改快捷鍵」子選單；除非預設組合證明不夠用，否則不做自由錄製對話框。
 4. i18n：依 src/shared/i18n.ts 慣例提供英文與繁體中文選單字串與 log。
 5. 測試：以 mock 的 globalShortcut 驗證註冊／取消註冊生命週期、設定 migration、衝突處理，以及快捷鍵與托盤點擊共用同一動作。`pnpm check`。
-6. 自動化接續：擴充 computer-use 驗收 skill 改用快捷鍵（送出按鍵組合，再以 log 與 `pnpm verify` 驗證），並記錄一次完整無人值守驗收作為證據。然後決定發布檢查清單的人工錄影步驟能否由該次執行取代。
+6. 無人值守驗收（本計畫排第一的原因）：擴充 computer-use 驗收 skill，在沒有可見視窗下以送出快捷鍵開始錄影、等待 log 出現 `state → recording`、錄約十秒測試素材頁、以快捷鍵停止、等待 `saved`、對檔案執行 `pnpm verify`（完整性層，含聲道能量作為聲音證據）、用 QuickTime 開啟檔案並擷取播放中的畫面。在 docs/verification/measurements 下記錄一次完整無人值守執行作為證據。然後修改[發布自動化](../docs/zh-TW/system-design/releases.md)的檢查清單，第 1 步改為「執行驗收 skill」、人工錄影為備援，並讓 skill 把摘要寫進 record job 產生的「打 tag 前的本機驗收」段落。仍需托盤選單的案例（語言、Show last recording）維持 blocked 並如實列出；聽感仍無法由工具驗證。
 7. 文件：桌面設計（托盤、設定、快捷鍵）、函式參考、README 功能列表、安裝指南（提及預設快捷鍵）、計畫索引與翻譯。推送下一個版本的 tag 交付。
 
 ## 驗收

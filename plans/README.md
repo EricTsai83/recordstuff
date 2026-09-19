@@ -8,7 +8,7 @@ Updated: 2026-09-19. v0.1.2 is published from tag `v0.1.2` with the simplified D
 
 | Order | Plan | Status | Completion target |
 | --- | --- | --- | --- |
-| Next | [016 Recording hotkey](016-recording-hotkey.md) | Planned | Global start/stop shortcut shared with the tray action; enables unattended acceptance |
+| Next | [016 Recording hotkey](016-recording-hotkey.md) | Planned, highest priority | Global start/stop shortcut shared with the tray action; one unattended computer-use acceptance run replaces the manual recording step of the release checklist |
 | Then | [014 Finder notification focus](014-finder-notification-focus.md) | Planned | Reproduce and fix explicit-click foreground behavior; verify native focus |
 | Ready for implementation | [012 Official website](012-download-website.md) | Planned | Bilingual product/help website with direct DMG downloads and version/checksum details |
 | When update convenience is prioritized | [015 App update assessment](015-app-update-assessment.md) | Deferred decision only | Compare manual, user-triggered check and automatic update; establish self-signing feasibility |
