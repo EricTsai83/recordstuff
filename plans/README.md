@@ -2,14 +2,13 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-Updated: 2026-09-19. v0.1.2 is published from tag `v0.1.2` with the simplified DMG; see [0.1.2 evidence](../docs/verification/releases/0.1.2.md). 013 is complete and removed. Releases follow [release automation](../docs/system-design/releases.md): the tag is the version and CI records each release back on main.
+Updated: 2026-09-19. v0.1.2 is published from tag `v0.1.2` with the simplified DMG; see [0.1.2 evidence](../docs/verification/releases/0.1.2.md). 013 and 016 are complete and removed; the recording shortcut and its unattended acceptance (`pnpm acceptance`) are documented in [desktop design](../docs/system-design/desktop.md#recording-shortcut), [tooling](../docs/system-design/tooling.md) and the [verification record](../docs/verification/README.md). Releases follow [release automation](../docs/system-design/releases.md): the tag is the version and CI records each release back on main.
 
 ## Order and status
 
 | Order | Plan | Status | Completion target |
 | --- | --- | --- | --- |
-| Next | [016 Recording hotkey](016-recording-hotkey.md) | Planned, highest priority | Global start/stop shortcut shared with the tray action; one unattended computer-use acceptance run replaces the manual recording step of the release checklist |
-| Then | [014 Finder notification focus](014-finder-notification-focus.md) | Planned | Reproduce and fix explicit-click foreground behavior; verify native focus |
+| Next | [014 Finder notification focus](014-finder-notification-focus.md) | Planned | Reproduce and fix explicit-click foreground behavior; verify native focus |
 | Ready for implementation | [012 Official website](012-download-website.md) | Planned | Bilingual product/help website with direct DMG downloads and version/checksum details |
 | When update convenience is prioritized | [015 App update assessment](015-app-update-assessment.md) | Deferred decision only | Compare manual, user-triggered check and automatic update; establish self-signing feasibility |
 

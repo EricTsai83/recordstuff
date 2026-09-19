@@ -46,7 +46,7 @@ SHA-256：`2de49bbd552e46934ef4573ca8c8b103e3a0b1334dd12b2022dee1f332f7fc7f`。
 
 - [System design](docs/zh-TW/system-design/README.md)：產品總覽、架構、錄製流程、桌面功能、函式細節、工具與決策。
 - [驗證紀錄](docs/zh-TW/verification/README.md)：已取得證據與限制。
-- [剩餘計畫](plans/README.zh-TW.md)：後續工作，包含[錄影快捷鍵](plans/016-recording-hotkey.zh-TW.md)、[Finder 通知焦點](plans/014-finder-notification-focus.zh-TW.md)、[官網與 DMG 下載](plans/012-download-website.zh-TW.md)與延後的[更新評估](plans/015-app-update-assessment.zh-TW.md)；已完成或取消的計畫已移除。
+- [剩餘計畫](plans/README.zh-TW.md)：後續工作，包含[Finder 通知焦點](plans/014-finder-notification-focus.zh-TW.md)、[官網與 DMG 下載](plans/012-download-website.zh-TW.md)與延後的[更新評估](plans/015-app-update-assessment.zh-TW.md)；已完成或取消的計畫已移除。
 - [貢獻指南](docs/zh-TW/CONTRIBUTING.md)：開發環境、問題回報、測試與 PR 提交流程。
 
 ## 開發
