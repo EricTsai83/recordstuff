@@ -18,6 +18,7 @@
 | pnpm log | 追蹤 macOS log |
 | pnpm dist:mac | 自簽 App 驗證後，在 dist/ 旁邊產生 DMG |
 | pnpm acceptance | 對執行中的 App：全螢幕開素材、以 System Events 送全域快捷鍵開始／停止錄影、驗完整性層級（test-material 模式）、把報告寫到 docs/verification/measurements（已 gitignore，只留本機） |
+| pnpm acceptance:notification | 對 /Applications 裡的 App（可用 `--install` 在本次換成 dist 的建置）：錄影、透過輔助使用按下「已儲存」橫幅、判定 Finder 是否在最前面且顯示該檔，每個 Finder 狀態連點多次，預設英文；報告寫到 docs/verification/measurements |
 
 main、preload、renderer 分別建置，打包只納入 out、package metadata 與指定 resources。測試、量測與文件不屬 runtime；App 不呼叫 FFmpeg。
 
@@ -53,6 +54,8 @@ pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 pnpm verify -- /absolute/path/any-desktop-recording.mp4 --screen 1920x1080   # 只驗完整性
 pnpm acceptance -- --seconds 10        # 對執行中的 App 做無人值守快捷鍵驗收
+pnpm acceptance:notification -- --install          # 點「已儲存」通知 → Finder 置前；約 1 分鐘；本次把建置好的 App 換進 /Applications
+pnpm acceptance:notification -- --install --full   # 三種 Finder 狀態、英文；估計約 3 分鐘
 pnpm matrix -- quick
 pnpm matrix -- all
 pnpm matrix -- long
@@ -75,6 +78,22 @@ matrix 只支援 macOS 開發環境。預設以 Chrome app 模式全螢幕在主
 | all | 縮短至 15 秒的案例加 long，含間隔約七分鐘 |
 
 10 分鐘基準已做過，long 改 3 分鐘是使用者決定，不更改舊結果。
+
+### 通知驗收
+
+每個案例另外保存 `<language>-<finder>-<click>-diagnostics.json`：帶時間的搜尋嘗試、有限長度的 Accessibility 結構文字／錯誤，以及 App 通知生命週期事件。未通過案例會再取一份只觀察、不點擊的快照（最多 5 秒，因此失敗案例可能較久）。App 分別記錄請求顯示、shown、clicked、closed、failed；shown 事件本身不代表腳本找到可見橫幅。這些本地檔案可能包含通知文字，不會提交。
+
+`pnpm acceptance:notification` 檢查明確點擊儲存通知後，是否選到檔案且 Finder 置前。每個案例錄影 2 秒、最多搜尋該次通知 5 秒、取樣前景 App 3 秒，再讀取 Finder 選取與輔助使用反白列。找不到橫幅記為未執行，不再額外錄影重試。每組至少需要兩次通過且沒有失敗；未執行次數仍會列出。
+
+預設為英文、Finder 關閉、五次點擊，約一分鐘；`--full` 涵蓋三種 Finder 狀態 × 五次點擊，維持英文，共 15 個案例；依先前單次耗時推估約三分鐘，實際時間受輔助使用操作影響。它只擴充 Finder 覆蓋，不改語言。通知翻譯由單元測試覆蓋；原生繁中驗證可指定 `--languages zh-TW`，明確需要雙語時使用 `--full --languages en,zh-TW`（30 個案例）。每個案例印出開始、進度與耗時。較短的 smoke check 可用 `--clicks 2`，低於二會拒絕。其他選項：`--finder closed,behind,minimized`、`--languages en,zh-TW`、`--seconds`、`--front <app>`、`--keep-recordings`、`--out`。
+
+先前在安裝版重現了本地 dist 執行未出現的焦點競態：通知 callback 後 macOS 才啟動 RecordStuff。因此測試 `/Applications/RecordStuff.app`；`--install` 暫時將已簽章的 `dist/mac-arm64/RecordStuff.app` 複製進去，再還原已驗證的原 App。成功還原後刪除備份，失敗則保留並回報路徑。原始報告保存在 `docs/verification/measurements`。
+
+使用專用桌面執行：開始前關閉 Finder 視窗，執行中不要操作桌面，並授予終端機輔助使用及對 Finder、TextEdit 的自動化權限。既有 Finder 視窗會讓前置檢查停止，不會被關閉。每個案例開啟一份暫存 TextEdit 檔案，只關閉該檔案，不碰其他文件。Finder 視窗在建立或確認 reveal 後以 ID 追蹤；無法辨識的視窗（例如取得 ID 前就被中斷的 reveal）保留並回報需手動清理。關閉測試文件後，TextEdit 若沒有其他文件就正常退出；若有其他文件則保留。這避免引入通用視窗快照／還原系統。 通知判定檢查整個登入工作階段的前景 App 與 Finder 選取，不檢查視窗位於哪一個螢幕。測試視窗在副螢幕仍可符合判定；RecordStuff 仍錄製主螢幕，所以錄影中未必會出現那些視窗。指定螢幕或 Space 的視窗位置不在驗收範圍。
+
+Ctrl-C 或 SIGTERM 會取消命令與等待。命令上限為 10 秒（程序查詢 5 秒，App 複製 60 秒）；快捷鍵送出與 Finder 建立視窗會先完成其最多 5 秒的命令，再處理取消。清理有獨立的 120 秒期限，給本段錄影最多 30 秒完成停止／存檔，停止只送一次，不會用前段紀錄判定本段已停止。若無法確認錄影停止，保留執行中的 App 與備份，不結束或替換它。App 停止後才還原語言設定，若原先在執行則重開。未完成、取消或清理失敗都讓報告失敗。期限涵蓋非同步操作，不保證能處理無回應的檔案系統或 OS。
+
+未涵蓋 tray 選單定位、其他 Spaces、橫幅消失後從通知中心清單點擊。強化後腳本於 2026-09-20 實測約 64 秒完成預設五次流程，SIGINT／SIGTERM 取消約 2 秒完成清理，見驗證紀錄。後續當時預設的雙語 `--full`（現在需指定 `--full --languages en,zh-TW`）於 371.74 秒完成，25 通過、1 次點擊未送達失敗、4 次未出現通知；清理及空白 TextEdit 退出成功。未解失敗見驗證紀錄。
 
 ## 驗收門檻
 

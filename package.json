@@ -24,6 +24,7 @@
     "probe": "node scripts/probe-recording.mjs",
     "verify": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/verify-recording.mts",
     "acceptance": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-hotkey.mts",
+    "acceptance:notification": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-notification.mts",
     "matrix": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/run-matrix.mts",
     "dist:mac": "node scripts/start-app.mjs --dmg",
     "audio:quality": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/audio-quality.mts",

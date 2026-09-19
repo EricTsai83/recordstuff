@@ -18,6 +18,7 @@ Use pnpm and a compatible Node version; the verification TypeScript scripts use 
 | `pnpm log` | Follow the current macOS log |
 | `pnpm dist:mac` | Build/verify a self-signed app, then create a DMG next to it in dist/ |
 | `pnpm acceptance` | Against the running app: open the material fullscreen, start/stop a recording with the global shortcut through System Events, verify the integrity tier (test-material mode), write a report under docs/verification/measurements (gitignored, local) |
+| `pnpm acceptance:notification` | Against the app in /Applications (optionally `--install` the dist bundle for the run): record, press the "Saved …" banner through Accessibility, judge whether Finder is frontmost and shows the file, several clicks per Finder state, English by default; report under docs/verification/measurements |
 
 Main, preload, and renderer are separate electron-vite entries. Only out files, package metadata, and selected resources enter the app. Tests, measurement tools, and documentation are not runtime dependencies. The app has no FFmpeg subprocess.
 
@@ -55,6 +56,8 @@ pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 pnpm verify -- /absolute/path/any-desktop-recording.mp4 --screen 1920x1080   # integrity only
 pnpm acceptance -- --seconds 10        # unattended shortcut acceptance of the running app
+pnpm acceptance:notification -- --install          # saved-notification click → Finder in front; ~1 min; built app swapped into /Applications for the run
+pnpm acceptance:notification -- --install --full   # all three Finder states, English; ~3 min (estimate)
 pnpm matrix -- quick
 pnpm matrix -- all
 pnpm matrix -- long
@@ -77,6 +80,22 @@ Matrix is macOS-only developer automation. It launches the test material in a Ch
 | all | Shortened 15-second cases plus long; roughly seven minutes including gaps |
 
 The historical ten-minute baseline has already been recorded. Long now uses three minutes by user decision. [Raw evidence](../verification/README.md) retains the older run's duration and verdicts.
+
+### Notification acceptance
+
+Each case also writes `<language>-<finder>-<click>-diagnostics.json`: timestamped search attempts, bounded Accessibility traversal text/errors, and app notification lifecycle events. A non-passing case gets an additional observation-only snapshot (up to 5 s, so failed cases may take longer). The app logs show-requested/shown/clicked/closed/failed separately; a shown event alone is not proof that the script found a visible banner. These local files can contain notification text and are not committed.
+
+`pnpm acceptance:notification` checks whether clicking the saved notification selects the file and brings Finder forward. Each case records for 2 s, searches for that save's banner for at most 5 s, samples the frontmost app for 3 s, then reads Finder's selection and Accessibility row. Missing banners are recorded as not run; the script does not make extra recordings to retry. A group needs at least two passing clicks and no failed clicks; not-run counts remain visible.
+
+The default is five clicks with Finder closed, in English (roughly one minute). `--full` covers three Finder states × five clicks in English (15 cases, roughly three minutes estimated from prior case timings; actual time depends on Accessibility). It changes only Finder coverage, not the language. Localized notification text is unit-tested; use `--languages zh-TW` for native Traditional Chinese checks, or `--full --languages en,zh-TW` to explicitly request both languages (30 cases). Every case prints its start, progress and elapsed time. Use `--clicks 2` for a shorter smoke check; values below two are rejected. Other options: `--finder closed,behind,minimized`, `--languages en,zh-TW`, `--seconds`, `--front <app>`, `--keep-recordings`, `--out`.
+
+The installed bundle reproduced a focus race that local dist runs did not: macOS activated RecordStuff after the notification callback. Consequently the script tests `/Applications/RecordStuff.app`. `--install` temporarily copies the signed `dist/mac-arm64/RecordStuff.app` there, then restores the verified previous app; successful restoration removes the backup, failed restoration preserves it and reports its path. Raw reports stay under `docs/verification/measurements`.
+
+Run on a dedicated desktop: close Finder windows first, leave the desktop alone during the run, and grant the terminal Accessibility plus Automation access to Finder and TextEdit. Existing Finder windows cause preflight to stop without closing them. A fresh temporary TextEdit file is opened for each case; only that file is closed, not other documents. Finder windows are tracked by their IDs after setup or a matching reveal. Unknown windows, including a reveal interrupted before its ID was observed, are left open and reported for manual cleanup. After closing the test document, TextEdit quits if no other documents remain; otherwise it stays running to preserve those documents. This avoids a general-purpose window snapshot/restore system. The notification verdict checks the session-wide frontmost application and Finder selection, not the monitor containing the windows. Test windows on a secondary monitor are valid for that verdict; RecordStuff still records the primary monitor, so those windows need not appear in the recording. Placement on a particular monitor or Space is not asserted.
+
+Ctrl-C or SIGTERM cancels commands and waits. Commands have a 10 s timeout (process lookup 5 s, app copies 60 s); shortcut delivery and Finder window creation finish within their 5 s command limit before cancellation takes effect. Cleanup uses an independent 120 s budget, gives the current recording up to 30 s to settle, and sends stop at most once. It never reads a previous recording as evidence that the current one stopped. If recording settlement cannot be established, it leaves the app running and preserves the backup instead of quitting or replacing it. Settings are restored only after the app stops; an originally running app is relaunched. Incomplete runs, cancellation and cleanup failures fail the report. These bounds cover asynchronous operations, not an unresponsive filesystem or OS.
+
+Not covered: tray menu reveal, other Spaces and Notification Center list clicks after the banner disappears. The hardened runner completed the default five-click run in about 64 s and cleaned up SIGINT/SIGTERM cancellations in about 2 s on 2026-09-20; see the verification record. The subsequent then-default bilingual `--full` run (now requested with `--full --languages en,zh-TW`) completed in 371.74 s with 25 pass, 1 undelivered-click failure and 4 missing banners; cleanup (including empty TextEdit exit) succeeded. See the verification record for the unresolved failure.
 
 ## Measurement pipeline and thresholds
 
