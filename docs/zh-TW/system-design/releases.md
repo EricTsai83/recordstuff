@@ -22,7 +22,7 @@
 
 驗證是開發活動，在 tag 存在之前完成。發布只是對已推送的 main 下兩個指令：
 
-1. 執行 `pnpm start:app`（建置、簽署、驗證並打開 CI 將打包的同一個 App bundle），接著執行 `pnpm acceptance`：它用全域快捷鍵開始與停止一段錄影、驗證檔案的完整性層級，並把報告寫入 `docs/verification/measurements/`。可選擇再讓 [computer-use 驗收 skill](../../../.agents/skills/astra-acceptance-with-computer-use/SKILL.md) 讀取該報告並在 QuickTime 播放。`pnpm acceptance` 無法執行時（快捷鍵被拒、終端機沒有輔助使用權限、沒有 Chrome）改用人工後備：短錄影並播放。兩者都算完整的功能檢查；DMG 對 App 行為不增加任何資訊，CI 每次 tag 都會驗證 DMG 結構。只有在打包設定變更時（electron-builder 檔案、圖示、背景、DMG 版面）才另外執行 `pnpm dist:mac`，從 `dist/` 開啟 DMG，確認 Finder 視窗只有 App、箭頭與 Applications。
+1. 執行 `pnpm start:app`（建置、簽署、驗證並打開 CI 將打包的同一個 App bundle），接著執行 `pnpm acceptance`：它用全域快捷鍵開始與停止一段錄影、驗證檔案的完整性層級，並把報告寫入 `docs/verification/measurements/`（本機、已 gitignore）。可選擇再讓 [computer-use 驗收 skill](../../../.agents/skills/astra-acceptance-with-computer-use/SKILL.md) 讀取該報告並在 QuickTime 播放。`pnpm acceptance` 無法執行時（快捷鍵被拒、終端機沒有輔助使用權限、沒有 Chrome）改用人工後備：短錄影並播放。兩者都算完整的功能檢查；DMG 對 App 行為不增加任何資訊，CI 每次 tag 都會驗證 DMG 結構。只有在打包設定變更時（electron-builder 檔案、圖示、背景、DMG 版面）才另外執行 `pnpm dist:mac`，從 `dist/` 開啟 DMG，確認 Finder 視窗只有 App、箭頭與 Applications。
 2. 在已推送的 commit 上打下一個未用過的版本 tag 並推送。repo 裡事先不需要寫版本號。
 
 ```bash

@@ -62,7 +62,7 @@ pnpm log               # Follow the macOS diagnostic log
 pnpm dist:mac    # Produce the self-signed DMG in dist/ (CI builds the released one)
 ```
 
-The self-signed workflow requires a valid, uniquely named local code-signing identity, default `RecordStuff Dev`; RECORDSTUFF_SIGN_IDENTITY may select its exact name or SHA-1. Quit recordstuff/project Electron before rebuilding. It does not publish or notarize, and recipients do not install the signing certificate. `dist:win` is unverified.
+The self-signed workflow requires a valid, uniquely named local code-signing identity, default `RecordStuff Dev`; RECORDSTUFF_SIGN_IDENTITY may select its exact name or SHA-1. Quit recordstuff/project Electron before rebuilding. It does not publish or notarize, and recipients do not install the signing certificate. Only macOS packaging is provided; the cross-platform code paths are kept but no Windows or Linux build target exists.
 
 Use a compatible Node version (package requirement ≥22.12); the TypeScript measurement tools are run with Node 24. Install FFmpeg only for developer verification:
 
@@ -73,7 +73,7 @@ pnpm matrix -- all
 pnpm audio:quality -- record /tmp/audio-run-001 --repeat 3  # Audio fidelity regression (macOS; plays diagnostic tones)
 ```
 
-Matrix is macOS-only and drives unpackaged builds. Results go to `docs/verification/measurements/`. Long is a three-minute drift regression; the ten-minute baseline was already recorded. See [tooling](docs/system-design/tooling.md) for prerequisites and interpretation.
+Matrix is macOS-only and drives unpackaged builds. Results go to `docs/verification/measurements/`, a gitignored local directory; curated conclusions belong in the [verification record](docs/verification/README.md). Long is a three-minute drift regression; the ten-minute baseline was already recorded. See [tooling](docs/system-design/tooling.md) for prerequisites and interpretation.
 
 ## Repository map
 

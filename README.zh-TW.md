@@ -63,7 +63,7 @@ pnpm log               # 追蹤 macOS log
 pnpm dist:mac    # 自簽 DMG → dist/（發布用的由 CI 建）
 ```
 
-開發者需有唯一名稱的有效自簽憑證，預設 `RecordStuff Dev`；可用 RECORDSTUFF_SIGN_IDENTITY 精確指定名稱或 SHA-1。重建前先結束 App。這條流程不公證、不發布；收件者不安裝憑證。dist:win 尚未驗證。
+開發者需有唯一名稱的有效自簽憑證，預設 `RecordStuff Dev`；可用 RECORDSTUFF_SIGN_IDENTITY 精確指定名稱或 SHA-1。重建前先結束 App。這條流程不公證、不發布；收件者不安裝憑證。只提供 macOS 打包；跨平台程式碼保留，但沒有 Windows／Linux 的打包目標。
 
 專案 Node 要求為 ≥22.12，TypeScript 量測工具使用 Node 24。FFmpeg 只供開發驗收：
 
@@ -74,7 +74,7 @@ pnpm matrix -- all
 pnpm audio:quality -- record /tmp/audio-run-001 --repeat 3  # 音質迴歸測試（macOS；會播放測試音）
 ```
 
-結果存至 `docs/verification/measurements/`；matrix 只供 macOS 未打包開發版。long 現為 3 分鐘漂移回歸，10 分鐘基準已完成。詳見 [工具文件](docs/zh-TW/system-design/tooling.md)。
+結果存至 `docs/verification/measurements/`（已 gitignore 的本機目錄；整理後的結論寫進[驗證紀錄](docs/zh-TW/verification/README.md)）；matrix 只供 macOS 未打包開發版。long 現為 3 分鐘漂移回歸，10 分鐘基準已完成。詳見 [工具文件](docs/zh-TW/system-design/tooling.md)。
 
 ## 目錄
 

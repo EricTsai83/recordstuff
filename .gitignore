@@ -4,3 +4,14 @@ dist/
 .DS_Store
 *.log
 *.tsbuildinfo
+
+# Local verification runs (pnpm verify/matrix/acceptance/audio:quality write here).
+# Curated conclusions live in docs/verification/README.md and docs/verification/releases/.
+docs/verification/measurements/
+
+# Signing material and local secrets must never enter the repository.
+*.p12
+*.pem
+*.cer
+.env
+.env.*

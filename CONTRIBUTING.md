@@ -68,7 +68,7 @@ pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 ```
 
-Use your actual source dimensions for `--screen`; sync analysis needs the test material described in the [tooling guide](docs/system-design/tooling.md). That guide also covers the recording matrix and audio fidelity checks. Keep new measurements separate from historical results and state any verification limitations.
+Use your actual source dimensions for `--screen`; sync analysis needs the test material described in the [tooling guide](docs/system-design/tooling.md). That guide also covers the recording matrix and audio fidelity checks. Raw runs land in the gitignored `docs/verification/measurements/` directory and stay on your machine; when a result should be preserved, summarize it with its numbers and limitations in [the verification record](docs/verification/README.md).
 
 ## Releasing (maintainers)
 

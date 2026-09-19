@@ -78,7 +78,7 @@ There is no per-chunk ACK or bounded backpressure. Blob conversion and disk writ
 | `.recording.mp4` | User-selected folder | Active recording or preserved partial file |
 | `.mp4` | Same folder | Successfully finalized recording |
 | recordstuff.log | Electron logs directory | Rotation above 5 MiB, three archives |
-| Measurement Markdown/JSON | docs/verification/measurements | Development evidence, excluded from packaged app |
+| Measurement Markdown/JSON | docs/verification/measurements | Local development evidence; gitignored and excluded from the packaged app |
 
 The single media writer rule does not prohibit settings and logging modules from opening their own files.
 

@@ -25,7 +25,7 @@ Defaults are Standard, Source resolution, and 30 fps. Audio always requests AAC 
 
 Electron supports Windows, Linux, and macOS. Due to available hardware, **RecordStuff has only been verified on macOS**, specifically Apple M1 Pro/macOS 26/Electron 44.3. Framework portability is not proof that this application's recording, system audio, or installation works on every platform.
 
-The repository retains Windows tray branches and NSIS configuration, but they have not been tested on hardware. Linux has no dedicated packaging or recording verification. The macOS preflight checks Darwin 22/macOS 13 or newer; this code threshold is not a claim of testing every supported OS version. Intel Macs are also unverified; the verified artifact is arm64.
+The repository retains Windows tray branches (ICO assets, first-run hint), but they have not been tested on hardware and no Windows packaging target is configured. Linux has no dedicated packaging or recording verification. The macOS preflight checks Darwin 22/macOS 13 or newer; this code threshold is not a claim of testing every supported OS version. Intel Macs are also unverified; the verified artifact is arm64.
 
 The delivery target is a downloadable, self-signed macOS DMG. Recipients need no Node, pnpm, FFmpeg, compiler, or signing certificate. They install the app into Applications and grant the necessary OS permissions. Apple certification/notarization, App Store distribution, and Windows/Linux verification are not release prerequisites. An unnotarized app may require a first-launch security exception; a warning-free launch is not promised. See [Apple's instructions](https://support.apple.com/102445).
 

@@ -25,7 +25,7 @@ RecordStuff 在 macOS 選單列提供一個錄影按鈕：點一下錄下主螢�
 
 Electron 是可用於 Windows、Linux、macOS 的框架；RecordStuff 因設備限制，只驗證過 macOS 版本，具體環境是 Apple M1 Pro／macOS 26／Electron 44.3。框架跨平台不等於錄影、系統音訊或安裝流程在所有平台都通過。
 
-現有程式保留 Windows 系統匣分支與 NSIS 打包設定，但未實機驗證；Linux 沒有專用打包／錄製驗證。macOS 程式有 Darwin 22（macOS 13）最低版本檢查，這只是程式門檻，不能視為已測遍 macOS 13 以上版本。Intel Mac 也未驗證，目前已驗的安裝產物是 arm64。
+現有程式保留 Windows 系統匣分支（ICO 素材、首次啟動提示），但未實機驗證，也沒有設定 Windows 打包目標；Linux 沒有專用打包／錄製驗證。macOS 程式有 Darwin 22（macOS 13）最低版本檢查，這只是程式門檻，不能視為已測遍 macOS 13 以上版本。Intel Mac 也未驗證，目前已驗的安裝產物是 arm64。
 
 目標交付是可下載的 macOS 自簽 DMG：收件者不需 Node、pnpm、FFmpeg 或編譯工具。安裝到 Applications，完成系統允許開啟與錄影授權後即可操作。Apple 認證／公證、App Store、Windows／Linux 驗收不是交付條件。未公證 App 首次開啟可能需要手動安全例外，不能承諾免提示；見 [Apple 說明](https://support.apple.com/102445)。
 

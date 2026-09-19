@@ -8,7 +8,7 @@
 
 已測環境：Apple M1 Pro、macOS 26、Electron 44.3／Chromium 152；外接 1920×1080 與內建 Liquid Retina XDR 3456×2234。安裝產物為 macOS arm64，自簽身分 `recordstuff Dev`。Intel、其他 macOS 版本、Windows、Linux 與另一台 Mac／新帳號未驗；使用者已決定不以這些驗收作為目前發布前置。
 
-原始量測：[2026-09-13 Markdown](../../verification/measurements/2026-09-13.md)、[JSON](../../verification/measurements/2026-09-13.json)。舊結果中的 fail／n/a 與錯誤試跑如實保留，不能因後續調整門檻而回寫成當時全過。
+原始量測（`pnpm verify`、`pnpm matrix`、`pnpm acceptance`、`pnpm audio:quality` 與 computer-use 驗收報告）寫到 `docs/verification/measurements/`；該目錄已 gitignore，只留在產生它的機器上。本文與 [releases/](releases/) 是對外發布的整理結論。下文提到的歷史原始檔（2026-09-13 到 2026-09-19）在 commit `acc6342` 之前曾被追蹤，仍可從 Git 歷史讀取；舊結果中的 fail／n/a 與錯誤試跑如實保留，不能因後續調整門檻而回寫成當時全過。
 
 ## 已取得的結果
 
@@ -30,7 +30,7 @@
 | 最後復原 | `2026-09-14 00-17-33.mp4` 12.653633 秒、45,041,905 bytes，1080p H.264＋48 kHz AAC 雙聲道，全解碼成功；使用者確認可播 | 完成當時的本機結果 |
 | 通知 | 使用者看到錯誤與存檔通知，點擊有 Finder 回報與 reveal 日誌 | Finder 每次置頂仍不保證 |
 | 通知縮圖 | 2026-09-14 使用者確認整台 Mac 重開機後正常 | 原待確認項目已關閉，具體原因未查明 |
-| 全域快捷鍵 | 對無視窗的 `/Applications` 建置執行 `pnpm acceptance`（柔化後的 660 Hz 素材、Chrome app 模式全螢幕）：System Events 送出 ⌘⌥⇧R 後 166 ms 收到、再 96 ms 進入 recording，錄 20 秒存檔，完整性層級通過，48 kHz 雙聲道 RMS −27.1／−27.2 dB，偵測到 20 次閃光與 19 個嗶聲，音畫偏移 79 ms（[報告](../../verification/measurements/2026-09-19T1616-hotkey-acceptance/report.md)）；Codex computer-use 以同一送鍵路徑完成素材、錄影、verify 與 QuickTime 播放（[23:34 執行](../../verification/measurements/2026-09-19T233434-computer-use/report.md)） | 稀疏素材的音訊碼率只回報；背景播影片的一次執行被嗶聲守門拒絕（0 個嗶聲可與靜音分離），驗收時背景音訊必須關閉；Computer Use 的 `pressKey` 到不了全域快捷鍵，三次非互動執行被 per-app 核准擋下（[20:56](../../verification/measurements/2026-09-19T205642-computer-use/report.md)、[20:59](../../verification/measurements/2026-09-19T205941-computer-use/report.md)、[21:20](../../verification/measurements/2026-09-19T2120-computer-use/report.md)、[21:33 fail](../../verification/measurements/2026-09-19T213348-computer-use/report.md)、[根因](../../verification/measurements/2026-09-19T2101-hotkey-osascript/report.md)）；Tray 選單案例與聽感仍未由工具驗證 |
+| 全域快捷鍵 | 對無視窗的 `/Applications` 建置執行 `pnpm acceptance`（柔化後的 660 Hz 素材、Chrome app 模式全螢幕）：System Events 送出 ⌘⌥⇧R 後 166 ms 收到、再 96 ms 進入 recording，錄 20 秒存檔，完整性層級通過，48 kHz 雙聲道 RMS −27.1／−27.2 dB，偵測到 20 次閃光與 19 個嗶聲，音畫偏移 79 ms（報告）；Codex computer-use 以同一送鍵路徑完成素材、錄影、verify 與 QuickTime 播放（23:34 執行） | 稀疏素材的音訊碼率只回報；背景播影片的一次執行被嗶聲守門拒絕（0 個嗶聲可與靜音分離），驗收時背景音訊必須關閉；Computer Use 的 `pressKey` 到不了全域快捷鍵，三次非互動執行被 per-app 核准擋下（20:56、20:59、21:20、21:33 fail、根因）；Tray 選單案例與聽感仍未由工具驗證 |
 
 ## 已驗安裝產物識別
 
@@ -62,7 +62,7 @@
 
 新增 `pnpm audio:quality`（[用法與門檻](../system-design/tooling.md#音質迴歸測試)）。`pnpm check` 通過：15 個測試檔、232 個測試、型別檢查與建置，包含實際 FFmpeg AAC／低通／格式／CLI 整合測試。正常 PCM 與 FFmpeg AAC 通過，刻意劣化的素材失敗。新增開頭短暫聲音的迴歸案例保護標記對齊；標記或靜音間隔無效時，不輸出會造成誤判的頻率量測。
 
-完成版 macOS 自動流程透過未修改的程式擷取路徑錄製 16 秒。[原始報告](../../verification/measurements/2026-09-14-audio-quality.json) 為 **fail**，不是音質通過的基準：48 kHz／雙聲道格式與標記檢查通過，但 1 kHz 聲道分離約 0 dB（要求 ≥30 dB）；左右探測序列的 12 kHz 響應相對各自 1 kHz 為 −20.44／−12.64 dB，16 kHz 為 −74.72／−66.73 dB。其餘增益／殘餘能量失敗也保留在報告。PCM 素材與 FFmpeg AAC 對照組能通過相同頻率檢查。
+完成版 macOS 自動流程透過未修改的程式擷取路徑錄製 16 秒。原始報告 為 **fail**，不是音質通過的基準：48 kHz／雙聲道格式與標記檢查通過，但 1 kHz 聲道分離約 0 dB（要求 ≥30 dB）；左右探測序列的 12 kHz 響應相對各自 1 kHz 為 −20.44／−12.64 dB，16 kHz 為 −74.72／−66.73 dB。其餘增益／殘餘能量失敗也保留在報告。PCM 素材與 FFmpeg AAC 對照組能通過相同頻率檢查。
 
 這證明此機器的「播放 → 系統擷取 → AAC」路徑有高頻流失與雙單聲道現象，與使用者反映聲音悶的情況一致，但尚未定位負責的環節。依序播放音調也可能量到隨時間變化的增益，因此兩個聲道序列的響應差異不代表硬體不對稱。未控制或量測裝置／音量，門檻屬初始工程標準。工具未更改程式音訊設定，也尚未修復音質。素材與擷取紀錄保留在 `/tmp/recordstuff-audio-quality-20260914-final`，MP4 路徑在原始報告中；暫存檔日後可能被清除。本次未產生新安裝檔。
 
@@ -72,17 +72,17 @@
 
 `pnpm check` 通過：15 個測試檔、254 個測試，其中 **33 個是音質工具測試**，另包含型別檢查與建置。對照涵蓋獨立相位的 ±10／20／100 ppm、過大時鐘偏差、實際 FFmpeg AAC／低通／格式解碼、邊緣／中央／僅目標音斷音、結尾插入 50 ms、局部削波、無效標記、多次摘要、未完成 batch，以及 CLI 保存與結束碼。文件目標、雙語章節與 `git diff --check` 通過。本次未修改正式音訊處理。
 
-完成三次真實 v2 擷取：**0 次 pass、2 次 fail、1 次 invalid**。[摘要](../../verification/measurements/2026-09-14-audio-v2/summary.json)維持 invalid。第 1 次標記間隔量得 −22.63 dB，未達素材辨識要求的 −30 dB，因此未輸出缺乏依據的頻譜欄位。第 2／3 次標記有效並保留失敗：1 kHz 聲道分離約 0 dB，16 kHz 相對同時 pilot 的響應，左側為 −46.64 到 −46.48 dB，右側為 −44.14 到 −43.85 dB。另有部分殘差／增益／12 kHz 失敗，詳見[第 1 次](../../verification/measurements/2026-09-14-audio-v2/run-1.json)、[第 2 次](../../verification/measurements/2026-09-14-audio-v2/run-2.json)及[第 3 次](../../verification/measurements/2026-09-14-audio-v2/run-3.json)。
+完成三次真實 v2 擷取：**0 次 pass、2 次 fail、1 次 invalid**。摘要維持 invalid。第 1 次標記間隔量得 −22.63 dB，未達素材辨識要求的 −30 dB，因此未輸出缺乏依據的頻譜欄位。第 2／3 次標記有效並保留失敗：1 kHz 聲道分離約 0 dB，16 kHz 相對同時 pilot 的響應，左側為 −46.64 到 −46.48 dB，右側為 −44.14 到 −43.85 dB。另有部分殘差／增益／12 kHz 失敗，詳見第 1 次、第 2 次及第 3 次。
 
-[前](../../verification/measurements/2026-09-14-audio-v2/environment-before.json)／[後](../../verification/measurements/2026-09-14-audio-v2/environment-after.json)裝置與音量快照相同。這是端點證據，不代表持續控制了整個環境。無效量測不納入各指標範圍，並明確計入缺少數量。這些是失敗證據，不是經校準的通過基準。v1／v2 的素材與估計方式不同，不能把精確 dB 差異當作產品改善前後比較。原本 v1 證據未改寫。暫存素材／log 留在 `/tmp/recordstuff-audio-v2-20260914`，每份報告都有 MP4 路徑。本次未產生新安裝檔。
+前／後裝置與音量快照相同。這是端點證據，不代表持續控制了整個環境。無效量測不納入各指標範圍，並明確計入缺少數量。這些是失敗證據，不是經校準的通過基準。v1／v2 的素材與估計方式不同，不能把精確 dB 差異當作產品改善前後比較。原本 v1 證據未改寫。暫存素材／log 留在 `/tmp/recordstuff-audio-v2-20260914`，每份報告都有 MP4 路徑。本次未產生新安裝檔。
 
 ## 系統音訊處理修正 — 2026-09-14
 
-擷取端現在明確關閉回音消除、降噪與自動增益，保留排除自身聲音與 ideal 立體聲，詳見[設計說明](../system-design/audio-quality.md#15-系統擷取修正2026-09-14)。對照期間沒有改變素材、分析器或門檻。[第一輪試驗](../../verification/measurements/2026-09-14-audio-processing-off/initial-trial.json)已恢復高頻響應，但開頭仍有雜訊／聲道分離／間隔失敗。
+擷取端現在明確關閉回音消除、降噪與自動增益，保留排除自身聲音與 ideal 立體聲，詳見[設計說明](../system-design/audio-quality.md#15-系統擷取修正2026-09-14)。對照期間沒有改變素材、分析器或門檻。第一輪試驗已恢復高頻響應，但開頭仍有雜訊／聲道分離／間隔失敗。
 
-最終程式的重複量測為 **2 pass、0 fail、1 invalid**，前後裝置與音量快照相同。[摘要](../../verification/measurements/2026-09-14-audio-processing-off/summary.json)刻意維持 invalid：[第 1 次](../../verification/measurements/2026-09-14-audio-processing-off/run-1.json)標記間隔辨識失敗（−18.81 dB）。[第 2 次](../../verification/measurements/2026-09-14-audio-processing-off/run-2.json)和[第 3 次](../../verification/measurements/2026-09-14-audio-processing-off/run-3.json)所有門檻都通過。這兩次有效量測的左右 16 kHz 相對同時 pilot 差異在 0.004 dB 內，先前有效基準則約 −44 到 −47 dB；立體聲分離也從約 0 dB 恢復到超過 30 dB 門檻。接近數值下限的極大分離值，代表漏入另一聲道的能量極低，不是經校準的硬體規格。
+最終程式的重複量測為 **2 pass、0 fail、1 invalid**，前後裝置與音量快照相同。摘要刻意維持 invalid：第 1 次標記間隔辨識失敗（−18.81 dB）。第 2 次和第 3 次所有門檻都通過。這兩次有效量測的左右 16 kHz 相對同時 pilot 差異在 0.004 dB 內，先前有效基準則約 −44 到 −47 dB；立體聲分離也從約 0 dB 恢復到超過 30 dB 門檻。接近數值下限的極大分離值，代表漏入另一聲道的能量極低，不是經校準的硬體規格。
 
-環境證據：[前](../../verification/measurements/2026-09-14-audio-processing-off/environment-before.json)／[後](../../verification/measurements/2026-09-14-audio-processing-off/environment-after.json)。若請求 false 後音軌明確回報效果仍啟用，程式會留下 warning；沒有回報則維持未知。本次實驗定位的是三個設定一起更改對本機路徑的修正效果，不是每個效果各自的貢獻。既有錄音檔未改動。
+環境證據：前／後。若請求 false 後音軌明確回報效果仍啟用，程式會留下 warning；沒有回報則維持未知。本次實驗定位的是三個設定一起更改對本機路徑的修正效果，不是每個效果各自的貢獻。既有錄音檔未改動。
 
 修正驗證：`pnpm check` 通過 15 個測試檔／255 個測試、型別檢查與建置。`pnpm start:app` 建置、自簽、驗證九個 bundle 身分後，開啟 `dist/dev/mac-arm64/recordstuff.app` 供聽感比較；未取代 `/Applications` 的副本。文件目標與 `git diff --check` 通過。
 

@@ -65,7 +65,7 @@ pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 ```
 
-`--screen` 請填入實際來源尺寸；同步分析需要使用[工具指南](system-design/tooling.md)所述的測試素材。該指南也說明錄製測試矩陣與音訊品質檢查。新增量測請與歷史結果分開保存，並註明驗證限制。
+`--screen` 請填入實際來源尺寸；同步分析需要使用[工具指南](system-design/tooling.md)所述的測試素材。該指南也說明錄製測試矩陣與音訊品質檢查。原始執行結果會寫進已 gitignore 的 `docs/verification/measurements/`，只留在你的機器；需要保存的結果請連同數字與限制摘要到[驗證紀錄](verification/README.md)。
 
 ## 發布（維護者）
 

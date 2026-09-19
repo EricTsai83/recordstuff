@@ -1,6 +1,0 @@
-ProductName:		macOS
-ProductVersion:		26.6.2
-BuildVersion:		25G83
-arm64
-HEAD e4b24dbd82e0be6ab0761f39c9b8d98761308f30
-material SHA256 a327547a798cd75f2bc4320fbd670ce107481335eeb47243ea997e03b514b965

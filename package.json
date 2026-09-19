@@ -26,7 +26,6 @@
     "acceptance": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-hotkey.mts",
     "matrix": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/run-matrix.mts",
     "dist:mac": "node scripts/start-app.mjs --dmg",
-    "dist:win": "electron-vite build && electron-builder --win",
     "audio:quality": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/audio-quality.mts",
     "signing:create": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/create-signing-identity.mts",
     "release": "node scripts/release.mts"
@@ -43,8 +42,7 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "electron",
-      "esbuild",
-      "electron-winstaller"
+      "esbuild"
     ]
   },
   "packageManager": "pnpm@10.33.4"

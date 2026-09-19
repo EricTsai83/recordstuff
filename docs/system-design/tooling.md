@@ -17,7 +17,7 @@ Use pnpm and a compatible Node version; the verification TypeScript scripts use 
 | `pnpm icons` | Generate PNG/ICO assets, the DMG background pair, and native ICNS on macOS |
 | `pnpm log` | Follow the current macOS log |
 | `pnpm dist:mac` | Build/verify a self-signed app, then create a DMG next to it in dist/ |
-| `pnpm acceptance` | Against the running app: open the material fullscreen, start/stop a recording with the global shortcut through System Events, verify the integrity tier (test-material mode), write a report under docs/verification/measurements |
+| `pnpm acceptance` | Against the running app: open the material fullscreen, start/stop a recording with the global shortcut through System Events, verify the integrity tier (test-material mode), write a report under docs/verification/measurements (gitignored, local) |
 
 Main, preload, and renderer are separate electron-vite entries. Only out files, package metadata, and selected resources enter the app. Tests, measurement tools, and documentation are not runtime dependencies. The app has no FFmpeg subprocess.
 
@@ -60,7 +60,7 @@ pnpm matrix -- all
 pnpm matrix -- long
 ```
 
-Verify accepts multiple files, an optional log path, source dimensions, `--moving` (the content moved continuously), sync detection (implies `--moving`), Markdown/JSON output, and an explicit JSON destination. The default evidence directory is docs/verification/measurements. It reads the active log and newest rotated archive so capture and saved records can still be paired across rotation.
+Verify accepts multiple files, an optional log path, source dimensions, `--moving` (the content moved continuously), sync detection (implies `--moving`), Markdown/JSON output, and an explicit JSON destination. The default evidence directory is docs/verification/measurements; it is gitignored, so raw runs stay local and only interpreted conclusions go into the verification record. It reads the active log and newest rotated archive so capture and saved records can still be paired across rotation.
 
 ### Test material
 

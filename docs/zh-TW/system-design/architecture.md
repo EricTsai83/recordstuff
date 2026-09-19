@@ -80,7 +80,7 @@ Main 建立 `MessageChannelMain`，透過 `capture-host-port` 將其中一端交
 | `.recording.mp4` | 使用者指定資料夾 | 錄製中的檔案，失敗時可保留 |
 | `.mp4` | 同一資料夾 | 正常完成並改名後的檔案 |
 | `recordstuff.log` | `app.getPath('logs')` | 5 MiB 輪替、3 個舊檔 |
-| 量測 Markdown／JSON | `docs/verification/measurements/` | 開發證據，不隨 App 發行 |
+| 量測 Markdown／JSON | `docs/verification/measurements/` | 本機開發證據；已 gitignore，不隨 App 發行 |
 
 Main 持有影片 handle；設定與 log 模組也會寫自己的檔案，因此「單一 writer」僅指影片資料，不是整個 App 只能有一個檔案 handle。
 
