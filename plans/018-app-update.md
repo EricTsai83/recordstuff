@@ -2,7 +2,7 @@
 
 [English](018-app-update.md) | [繁體中文](018-app-update.zh-TW.md)
 
-Status: Ready to execute after [012](012-download-website.md) is deployed (the site hosts the version feed). Updated: 2026-09-20.
+Status: Ready to execute. The [official website](https://record.ericts.com) is live and Plan 012 is closed; this plan adds the version feed to the site. Updated: 2026-09-20.
 
 This plan replaces `015-app-update-assessment.md`. That file existed to decide whether an update mechanism was worth building; the maintainer took the decision on 2026-09-20 and asked for the work itself, so the assessment is folded into the decision table below and the file is removed. Until this plan ships, the app still does not check for updates and the READMEs, installation guide and website Help continue to describe manual replacement.
 

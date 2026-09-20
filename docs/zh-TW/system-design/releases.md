@@ -16,7 +16,7 @@
 
 憑證指紋固定。每次建置把加密 PKCS#12 匯入暫時 keychain，設定 codesign 金鑰存取與該憑證的 Code Signing 信任。trap 與 always cleanup 移除憑證檔、keychain 與信任。此設計支援可拋棄的 GitHub-hosted runner，持久 runner 需另行調整。
 
-自 0.1.2 起，DMG 只包含 App 與 Applications 連結，背景是程式產生的拖曳箭頭；不附任何格式的說明文件。安裝、手動更新與移除指引放在發行說明及固定到 commit 的[安裝指南](../../../resources/INSTALL.zh-TW.md)。
+自 0.1.2 起，DMG 只包含 App 與 Applications 連結，背景是程式產生的拖曳箭頭；不附任何格式的說明文件。安裝、手動更新與移除指引放在[官網 Help](https://record.ericts.com/help)、發行說明及固定到 commit 的[安裝指南](../../../resources/INSTALL.zh-TW.md)。未來英文發行說明應同時連到官網 Help 與固定到 commit 的指南。
 
 ## 操作
 

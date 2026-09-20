@@ -12,6 +12,8 @@ Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前
 
 ## 下載與安裝
 
+[官方網站](https://record.ericts.com) · [下載頁](https://record.ericts.com/download) · [使用說明](https://record.ericts.com/help)（網站為英文）。
+
 <!-- release-download:start -->
 下載 **[RecordStuff 0.1.2：macOS Apple silicon（arm64）](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.2/RecordStuff-0.1.2-arm64-selfsigned.dmg)**（127,314,171 bytes）。[英文發行說明](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.2) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.2/SHA256SUMS) · [最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)。
 
@@ -46,7 +48,7 @@ SHA-256：`2de49bbd552e46934ef4573ca8c8b103e3a0b1334dd12b2022dee1f332f7fc7f`。
 
 - [System design](docs/zh-TW/system-design/README.md)：產品總覽、架構、錄製流程、桌面功能、函式細節、工具與決策。
 - [驗證紀錄](docs/zh-TW/verification/README.md)：已取得證據與限制。
-- [剩餘計畫](plans/README.zh-TW.md)：後續工作，包含[官網與 DMG 下載](plans/012-download-website.zh-TW.md)與 [App 內更新檢查](plans/018-app-update.zh-TW.md)；已完成或取消的計畫已移除。
+- [剩餘計畫](plans/README.zh-TW.md)：後續工作，包含 [App 內更新檢查](plans/018-app-update.zh-TW.md)；已完成或取消的計畫已移除。
 - [貢獻指南](docs/zh-TW/CONTRIBUTING.md)：開發環境、問題回報、測試與 PR 提交流程。
 
 ## 開發

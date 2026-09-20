@@ -8,12 +8,13 @@ Updated: 2026-09-20. v0.1.2 is published from tag `v0.1.2` with the simplified D
 
 014 is complete and removed: the maintainer accepted the bilingual 30/30 local notification matrix as plan completion. Historical uncertainty and untested cases remain documented in [verification](../docs/verification/README.md#notification-lifetime-investigation--2026-09-20). Publication and public-build checks belong to a separately requested release.
 
+012 is complete and removed: the [official website](https://record.ericts.com) is live, and the maintainer confirmed the launch and requested documentation-only closure on 2026-09-20. See the [verification record](../docs/verification/README.md#plan-012-closure--2026-09-20) for the closure basis and historical verification scope. 018 is next.
+
 ## Order and status
 
 | Order | Plan | Status | Completion target |
 | --- | --- | --- | --- |
-| Next | [012 Official website](012-download-website.md) | Ready to execute (English-only Astro site styled after T3 Code in `website/`, build-time verified manifest, Vercel set up by the maintainer; three variants compared before deployment) | Product/help website with direct DMG downloads and version/checksum details |
-| After the website is live | [018 In-app update check](018-app-update.md) | Ready to execute; replaces the deferred 015 assessment, which the maintainer closed on 2026-09-20 by choosing to build the check | A tray check against the published version feed that points at the download; installation stays manual |
+| Next | [018 In-app update check](018-app-update.md) | Ready to execute; replaces the deferred 015 assessment, which the maintainer closed on 2026-09-20 by choosing to build the check | A tray check against the published version feed that points at the download; installation stays manual |
 
 Publishing is automated by tag push; installed-app updates stay manual. 018 adds a check that reports a newer version and links to it; it does not authorize downloading or installing an update from inside the app. Public release notes stay English-only; app UI and reader guides remain bilingual. Published release bytes must not be overwritten.
 

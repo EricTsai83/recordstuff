@@ -16,7 +16,7 @@ Version semantics: the tag is the single source of the version. The build job wr
 
 The certificate fingerprint is pinned. Each build imports encrypted PKCS#12 into a temporary keychain, configures codesign key access and certificate-specific Code Signing trust. A trap and always-cleanup remove certificate files, keychain, and trust. This supports disposable GitHub-hosted runners, not persistent runners without adaptation.
 
-Since 0.1.2 the DMG contains only the App and the Applications link over a generated drag-arrow background; no help documents are bundled in any format. Installation, manual update and removal guidance lives in the release notes and the commit-pinned [installation guide](../../resources/INSTALL.md).
+Since 0.1.2 the DMG contains only the App and the Applications link over a generated drag-arrow background; no help documents are bundled in any format. Installation, manual update and removal guidance lives in the [website Help](https://record.ericts.com/help), release notes and the commit-pinned [installation guide](../../resources/INSTALL.md). Future English release notes should link the website Help alongside the commit-pinned guide.
 
 ## Operation
 
