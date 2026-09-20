@@ -1,0 +1,134 @@
+---
+import AppleMark from "../AppleMark.astro";
+import GitHubMark from "../GitHubMark.astro";
+import DesktopScene from "../DesktopScene.astro";
+import { hero } from "../../content/site";
+import { links, release } from "../../lib/release";
+---
+
+<section class="hero">
+  <div class="container hero-inner">
+    <h1 class="hero-title display">
+      {hero.titleLines.map((line, index) => (
+        <Fragment>{index > 0 && <br />}<span class={index > 0 ? "accent" : undefined}>{line}</span></Fragment>
+      ))}
+    </h1>
+    <div class="hero-actions">
+      <a class="btn btn-primary btn-lg" href={release.dmgUrl}><AppleMark size={18} /><span>{hero.primaryCta}</span></a>
+      <a class="hero-source-link" href={links.repository} target="_blank" rel="noopener noreferrer"><GitHubMark size={15} /><span>{hero.secondaryCta}</span></a>
+      <p class="hero-version dim">v{release.version} · {release.sizeLabel} · Apple silicon · <a class="link" href="/download">checksum</a></p>
+    </div>
+    <div class="hero-scene">
+      <div class="scene-frame" data-scene-frame><DesktopScene /></div>
+    </div>
+  </div>
+</section>
+
+<script>
+  // Save work when the scene is scrolled away: everything inside pauses.
+  const frame = document.querySelector<HTMLElement>("[data-scene-frame]");
+  if (frame && "IntersectionObserver" in window) {
+    new IntersectionObserver(
+      (entries) => entries.forEach((entry) => frame.toggleAttribute("data-offscreen", !entry.isIntersecting)),
+      { threshold: 0.05 },
+    ).observe(frame);
+  }
+</script>
+
+<style>
+  /*
+   * No overflow: hidden here. The scene below carries a 100 px drop shadow that
+   * reaches past the hero's padding, and clipping it drew a hard horizontal
+   * seam across the page right under the demo.
+   */
+  .hero {
+    position: relative;
+    padding: calc(var(--section-y) * 1.5) 0 var(--section-y);
+  }
+  .hero-inner {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 2rem;
+  }
+  .hero-title {
+    font-size: clamp(2.4rem, 5.6vw, 4.6rem);
+    max-width: 24ch;
+    text-wrap: balance;
+  }
+  .hero-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.9rem;
+  }
+  .hero-source-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--fg-muted);
+    font-size: 0.9rem;
+  }
+  .hero-source-link:hover {
+    color: var(--fg);
+  }
+  .hero-version {
+    font-size: 0.85rem;
+  }
+  .hero-scene {
+    width: 100%;
+    max-width: 820px;
+    margin-top: 0.5rem;
+  }
+  .scene-frame {
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 138, 61, 0.08);
+    overflow: hidden;
+    line-height: 0;
+  }
+  /*
+   * The headline, the buttons and the version line are simply there on the
+   * first frame: no entrance, nothing to wait through before the page can be
+   * read. Only the demo moves, lifting into place under text that is already
+   * settled, and it starts right away so the motion belongs to the page
+   * arriving rather than arriving after it. The hero is above the fold on
+   * every screen, so it runs itself instead of waiting for the scroll reveal
+   * the rest of the page uses. Armed only once Layout.astro has set
+   * data-motion: without scripting the demo is in place from the first frame.
+   *
+   * Two animations, because the lift has to outlast the fade: with one, the
+   * frame went fully opaque a third of the way up and the travel that was
+   * meant to read as floating happened after the eye had stopped watching.
+   */
+  :global(:root[data-motion="on"]) .hero-scene {
+    animation:
+      hero-lift 0.6s cubic-bezier(0.215, 0.61, 0.355, 1) 0.06s both,
+      hero-fade 0.45s cubic-bezier(0.4, 0, 0.2, 1) 0.06s both;
+    will-change: transform;
+  }
+  @keyframes hero-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes hero-lift {
+    from {
+      transform: translateY(36px);
+    }
+    to {
+      transform: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(:root[data-motion="on"]) .hero-scene {
+      animation: none;
+    }
+  }
+
+</style>

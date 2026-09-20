@@ -1,0 +1,310 @@
+---
+/**
+ * Inline SVG of a low-poly Mac desktop at a campsite that tells the product
+ * story on a nineteen-second loop: three seconds of stillness so the viewer
+ * notices the screen first; the camera pushes in on the top-right corner as
+ * the pointer arrives; click → the ring becomes a filled dot with "REC" beside
+ * it and the status item shifts left to make room (exactly what the app does:
+ * tray-model.ts swaps the template image and sets the title; nothing blinks);
+ * the camera pulls back; a callout arrow points at the recording dot and says
+ * "Click again to stop recording", then holds for three seconds so it can be
+ * read; the pointer clicks, and half a second later the "Saved <timestamp>.mp4"
+ * notification pops in, the same beat the app waits before posting it
+ * (SAVED_NOTIFICATION_DELAY_MS). The hero pauses the loop while the scene is
+ * off-screen; prefers-reduced-motion shows the final frame. Cost:
+ * transform/opacity on a handful of nodes, composited by the browser. Zero
+ * image requests.
+ */
+import Landscape from "./scenes/FacetLandscape.astro";
+import { generateStars, starsToSvg } from "../lib/stars";
+
+interface Props {
+  class?: string;
+}
+const { class: className } = Astro.props;
+const stars = starsToSvg(generateStars({ width: 1600, skyBottom: 520, seed: 11 }));
+const savedFile = "2026-09-20 21-14-33.mp4";
+---
+
+<svg
+  class:list={["ds", className]}
+  viewBox="0 0 1600 900"
+  role="img"
+  aria-label="Animation: the pointer clicks the RecordStuff ring in the macOS menu bar, the ring becomes a filled dot with REC beside it while recording, a callout says to click again to stop, the second click stops it and a notification says the recording was saved."
+>
+  <defs>
+    <clipPath id="ds-clip"><rect width="1600" height="900" rx="18" /></clipPath>
+  </defs>
+  <g clip-path="url(#ds-clip)">
+   <g class="ds-camera">
+    <Landscape>
+      <g slot="stars" class="ds-stars"><Fragment set:html={stars} /></g>
+    </Landscape>
+
+    <!-- menu bar -->
+    <rect width="1600" height="52" class="ds-bar" />
+    <path transform="translate(28 16) scale(0.95)" d="M17.6 12.7c-.1-2.9 2.4-4.3 2.5-4.4-1.4-2-3.5-2.3-4.2-2.3-1.8-.2-3.5 1-4.4 1s-2.3-1-3.8-1c-2 0-3.8 1.2-4.8 2.9-2.1 3.6-.5 8.9 1.5 11.8 1 1.4 2.2 3 3.7 2.9 1.5-.1 2-1 3.8-1s2.3 1 3.8.9c1.6 0 2.6-1.4 3.6-2.8 1.1-1.6 1.6-3.2 1.6-3.3-.1 0-3.2-1.2-3.3-4.7zM14.7 4.1c.8-1 1.4-2.4 1.2-3.8-1.2 0-2.6.8-3.5 1.8-.8.9-1.4 2.3-1.2 3.7 1.3.1 2.7-.7 3.5-1.7z" class="ds-bar-fill" />
+    <text x="62" y="26" class="ds-bar-text ds-bold">Finder</text>
+    <text x="134" y="26" class="ds-bar-text">File</text>
+    <text x="180" y="26" class="ds-bar-text">Edit</text>
+    <text x="230" y="26" class="ds-bar-text">View</text>
+    <text x="288" y="26" class="ds-bar-text">Go</text>
+    <text x="330" y="26" class="ds-bar-text">Window</text>
+    <text x="418" y="26" class="ds-bar-text">Help</text>
+
+    <!-- RecordStuff status item: ring while idle; filled dot plus the title "REC" while recording (the item widens leftwards, as macOS does) -->
+    <g class="ds-rs">
+      <circle cx="1370" cy="26" r="8.5" class="ds-rs-ring" />
+      <circle cx="1370" cy="26" r="8.5" class="ds-rs-dot" />
+      <text x="1386" y="26" class="ds-bar-text ds-rs-title">REC</text>
+    </g>
+    <rect x="1392" y="19" width="26" height="14" rx="3" fill="none" stroke="var(--ds-bar-fg)" stroke-width="1.8" />
+    <rect x="1419" y="23" width="2.5" height="6" rx="1" fill="var(--ds-bar-fg)" />
+    <rect x="1394.5" y="21.5" width="17" height="9" fill="var(--ds-bar-fg)" />
+    <text x="1436" y="26" class="ds-bar-text">Sat 20 Sep  21:14</text>
+
+    <!-- callout: how to stop, drawn by hand (two slightly offset strokes, open arrowhead, handwriting font, no box) -->
+    <g class="ds-callout">
+      <g class="ds-sketch">
+        <!-- from the middle of the sentence, curving up to the recording dot at (1322, 26); the tip stops just under it -->
+        <path d="M1298 192 C1276 156 1288 104 1310 66 C1315 57 1319 50 1322 44" />
+        <path d="M1301 194 C1279 158 1291 106 1313 68 C1318 59 1322 52 1325 46" class="ds-sketch-2" />
+        <path d="M1309 49 C1314 47 1319 45 1322 44 C1323 49 1324 53 1326 58" />
+      </g>
+      <text x="1292" y="250" text-anchor="middle" class="ds-callout-text" transform="rotate(-9 1292 250)">Click again to stop recording</text>
+    </g>
+
+    <!-- saved notification -->
+    <g class="ds-toast">
+      <rect width="396" height="76" rx="16" class="ds-toast-bg" />
+      <g transform="translate(20 20)">
+        <circle cx="18" cy="18" r="13" fill="none" stroke="var(--ds-bar-fg)" stroke-width="3" />
+        <circle cx="18" cy="18" r="6.5" fill="var(--rec, #ff4d3d)" />
+      </g>
+      <text x="72" y="34" class="ds-toast-title">RecordStuff</text>
+      <text x="72" y="56" class="ds-toast-body">Saved {savedFile}</text>
+      <text x="372" y="30" class="ds-toast-time" text-anchor="end">now</text>
+    </g>
+
+    <!-- pointer -->
+    <g class="ds-pointer">
+      <path d="M0 0 L0 22 L6 17 L10 26 L14 24 L10 15 L17 15 Z" fill="#fff" stroke="#000" stroke-width="1.5" stroke-linejoin="round" />
+    </g>
+   </g>
+  </g>
+</svg>
+
+<style>
+  .ds {
+    width: 100%;
+    height: auto;
+    display: block;
+    --ds-bar-bg: rgba(12, 12, 20, 0.72);
+    --ds-bar-fg: #f4f4f5;
+    --ds-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    --story: 19s; /* 3 s idle, slow camera moves, a 3 s beat to read the callout, a ~0.5 s beat before the notification, rest on the saved frame */
+  }
+  .ds :global(.st) {
+    fill: #fff;
+    opacity: var(--o, 0.6);
+  }
+  .ds :global(.st-spark) {
+    stroke: #fff;
+    stroke-width: 0.7;
+    opacity: calc(var(--o, 0.6) * 0.7);
+  }
+  /* Camera: the whole desktop pushes in toward the menu-bar icon on each click. */
+  .ds-camera {
+    transform-box: view-box;
+    /* Anchored at the screen's top-right corner: the whole corner block grows together and the icon sits inside the thicker bar. */
+    transform-origin: 1600px 0px;
+    animation: ds-camera var(--story) cubic-bezier(0.45, 0, 0.15, 1) infinite;
+  }
+  .ds :global(.st) {
+    fill: #e6ebf2;
+  }
+  /* Ambient flicker runs a few cycles after load, then rests. */
+  .ds :global(.ds-flame) {
+    transform-origin: 0 0;
+    animation: ds-flicker 0.9s ease-in-out infinite alternate;
+  }
+  .ds :global(.ds-embers) {
+    animation: ds-embers 2.4s ease-out infinite both;
+  }
+  .ds-bar {
+    fill: var(--ds-bar-bg);
+  }
+  .ds-bar-fill {
+    fill: var(--ds-bar-fg);
+  }
+  .ds-bar-text {
+    fill: var(--ds-bar-fg);
+    font-family: var(--ds-font);
+    font-size: 15px;
+    dominant-baseline: central;
+  }
+  .ds-bold {
+    font-weight: 700;
+  }
+  .ds-rs {
+    animation: ds-rs-shift var(--story) linear infinite;
+  }
+  .ds-rs-ring {
+    fill: none;
+    stroke: var(--ds-bar-fg);
+    stroke-width: 2.4;
+    animation: ds-ring var(--story) linear infinite;
+  }
+  /* macOS tints the template image itself, so the filled dot is the bar's foreground colour, not red. */
+  .ds-rs-dot {
+    fill: var(--ds-bar-fg);
+    opacity: 0;
+    animation: ds-dot var(--story) linear infinite;
+  }
+  .ds-rs-title {
+    font-weight: 600;
+    opacity: 0;
+    animation: ds-dot var(--story) linear infinite;
+  }
+  .ds-toast {
+    opacity: 0;
+    transform: translate(1176px, 40px);
+    animation: ds-toast var(--story) linear infinite;
+  }
+  .ds-callout {
+    opacity: 0;
+    animation: ds-callout var(--story) linear infinite;
+  }
+  /* The arrow grows from its tip at the recording dot, so it gets longer and
+     bolder while the tip stays on the menu bar item. */
+  .ds-sketch {
+    transform-box: view-box;
+    transform-origin: 1322px 26px;
+    transform: scale(1.1);
+  }
+  .ds-sketch path {
+    fill: none;
+    stroke: #f5f5f4;
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .ds-sketch .ds-sketch-2 {
+    stroke-width: 2.5;
+    opacity: 0.55;
+  }
+  .ds-callout-text {
+    fill: #f5f5f4;
+    font-family: "Kalam", "Comic Sans MS", "Bradley Hand", cursive;
+    font-size: 40px;
+    font-weight: 700;
+  }
+  .ds-toast-bg {
+    fill: rgba(40, 40, 52, 0.96);
+    stroke: rgba(255, 255, 255, 0.14);
+    filter: drop-shadow(0 16px 28px rgba(0, 0, 0, 0.45));
+  }
+  .ds-toast-title {
+    fill: #f4f4f5;
+    font-family: var(--ds-font);
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .ds-toast-body {
+    fill: rgba(255, 255, 255, 0.78);
+    font-family: var(--ds-font);
+    font-size: 14px;
+  }
+  .ds-toast-time {
+    fill: rgba(255, 255, 255, 0.45);
+    font-family: var(--ds-font);
+    font-size: 12px;
+  }
+  .ds-pointer {
+    transform: translate(1040px, 520px);
+    animation: ds-pointer var(--story) cubic-bezier(0.45, 0, 0.15, 1) infinite;
+  }
+
+  @keyframes ds-pointer {
+    0%, 16% { transform: translate(1040px, 520px) scale(1); }
+    23.5%, 27.5% { transform: translate(1372px, 30px) scale(1); }
+    28% { transform: translate(1372px, 30px) scale(0.85); }
+    28.5%, 30% { transform: translate(1372px, 30px) scale(1); }
+    38%, 59.5% { transform: translate(1180px, 330px) scale(1); }
+    65%, 66% { transform: translate(1324px, 30px) scale(1); }
+    66.5% { transform: translate(1324px, 30px) scale(0.85); }
+    67%, 69% { transform: translate(1324px, 30px) scale(1); }
+    79%, 100% { transform: translate(1040px, 520px) scale(1); }
+  }
+  /*
+    Timeline (percent of 19 s): 0–16 idle; 16–23.5 pointer in, camera pushes in 18.5–26; 28 click;
+    30–38 pull back; 41–43 the callout "Click again to stop recording" is drawn while the pointer
+    waits beside it; 43–59.5 a 3 s beat to read it; 59.5–65 pointer returns; 66.5 stop click, then a
+    ~0.5 s beat before the notification pops in by 70.5, matching the app's delay;
+    69–79 pointer leaves; 94 notification fades; rest to 100.
+  */
+  @keyframes ds-camera {
+    0%, 18.5% { transform: scale(1); }
+    26%, 30% { transform: scale(2.1); }
+    38%, 100% { transform: scale(1); }
+  }
+  @keyframes ds-dot {
+    0%, 28% { opacity: 0; }
+    28.5%, 66.5% { opacity: 1; }
+    67%, 100% { opacity: 0; }
+  }
+  @keyframes ds-ring {
+    0%, 28% { opacity: 1; }
+    28.5%, 66.5% { opacity: 0; }
+    67%, 100% { opacity: 1; }
+  }
+  /* The status item grows by the width of "REC"; macOS pushes it left of the items that follow. */
+  @keyframes ds-rs-shift {
+    0%, 28% { transform: translateX(0); }
+    28.5%, 66.5% { transform: translateX(-48px); }
+    67%, 100% { transform: translateX(0); }
+  }
+  @keyframes ds-callout {
+    0%, 41% { opacity: 0; }
+    43%, 65.5% { opacity: 1; }
+    66.5%, 100% { opacity: 0; }
+  }
+  @keyframes ds-toast {
+    0%, 69% { opacity: 0; transform: translate(1176px, 40px); }
+    70.5%, 94% { opacity: 1; transform: translate(1176px, 66px); }
+    96%, 100% { opacity: 0; transform: translate(1176px, 40px); }
+  }
+  @keyframes ds-flicker {
+    from { transform: scale(1, 1); }
+    to { transform: scale(0.94, 1.08); }
+  }
+  @keyframes ds-embers {
+    from { transform: translateY(0); opacity: 1; }
+    to { transform: translateY(-40px); opacity: 0; }
+  }
+  :global([data-offscreen] .ds *) {
+    animation-play-state: paused !important;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ds-camera,
+    .ds :global(.ds-flame),
+    .ds :global(.ds-embers),
+    .ds-rs,
+    .ds-rs-ring,
+    .ds-rs-title,
+    .ds-rs-dot,
+    .ds-callout,
+    .ds-toast,
+    .ds-pointer {
+      animation: none;
+    }
+    /* Final frame: recording finished, notification shown. */
+    .ds-toast {
+      opacity: 1;
+      transform: translate(1176px, 66px);
+    }
+    .ds-pointer {
+      display: none;
+    }
+  }
+</style>

@@ -1,0 +1,66 @@
+---
+/** Low-poly: flat triangular facets in indigo, teal and coral; a faceted tent and moon; crisp edges, no gradients except the sky. */
+---
+<defs>
+  <linearGradient id="lf-sky" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#07080c" />
+    <stop offset="0.6" stop-color="#141922" />
+    <stop offset="1" stop-color="#2b3340" />
+  </linearGradient>
+  <radialGradient id="lf-fire" cx="0.5" cy="0.5" r="0.5">
+    <stop offset="0" stop-color="#ff8a3d" stop-opacity="0.5" />
+    <stop offset="1" stop-color="#ff8a3d" stop-opacity="0" />
+  </radialGradient>
+</defs>
+<rect width="1600" height="900" fill="url(#lf-sky)" />
+<slot name="stars" />
+<!-- faceted moon -->
+<g transform="translate(980 170)">
+  <polygon points="0,-30 26,-15 26,15 0,30 -26,15 -26,-15" fill="#f3e8c9" />
+  <polygon points="0,-30 26,-15 0,0" fill="#e2d4b0" />
+  <polygon points="26,15 0,30 0,0" fill="#d8c9a4" />
+  <polygon points="-26,15 -26,-15 0,0" fill="#fff6dd" />
+</g>
+<!-- far range -->
+<g>
+  <polygon points="0,900 0,560 140,500 260,560" fill="#232a36" /><polygon points="140,500 260,560 380,470 480,540" fill="#2a3240" /><polygon points="380,470 480,540 600,440 720,520" fill="#20262f" /><polygon points="600,440 720,520 860,430 980,510" fill="#2e3644" /><polygon points="860,430 980,510 1100,420 1220,500" fill="#222833" /><polygon points="1100,420 1220,500 1360,450 1480,530" fill="#303846" /><polygon points="1360,450 1480,530 1600,470 1600,900" fill="#252c38" />
+  <polygon points="0,560 140,500 260,560 0,900" fill="#1c222b" /><polygon points="260,560 380,470 480,540 260,900" fill="#1f252f" opacity="0.9" />
+  <polygon points="0,900 0,560 1600,470 1600,900" fill="#1a1f27" />
+</g>
+<!-- near range -->
+<g>
+  <polygon points="0,900 0,660 120,610 240,690" fill="#141820" /><polygon points="120,610 240,690 360,600 480,680" fill="#181d25" /><polygon points="360,600 480,680 620,590 740,690" fill="#11151b" /><polygon points="620,590 740,690 880,610 1000,700" fill="#191e26" /><polygon points="880,610 1000,700 1140,620 1260,700" fill="#12161d" /><polygon points="1140,620 1260,700 1380,640 1500,710" fill="#1a1f27" /><polygon points="1380,640 1500,710 1600,660 1600,900" fill="#14181f" />
+  <polygon points="0,900 0,660 1600,660 1600,900" fill="#0f1216" />
+</g>
+<!-- ground facets -->
+<polygon points="0,900 0,790 400,770 800,790 1200,775 1600,790 1600,900" fill="#0b0d10" />
+<polygon points="0,790 400,770 300,900 0,900" fill="#0d0f13" /><polygon points="800,790 1200,775 1300,900 700,900" fill="#0e1014" />
+<!-- pines -->
+{[[110, 780, 1.15], [190, 792, 0.85], [1400, 782, 1.05], [1490, 796, 0.75], [1560, 774, 0.95]].map(([x, b, s]) => (
+  <g transform={`translate(${x} ${b}) scale(${s})`}>
+    <polygon points="0,-170 34,-76 -34,-76" fill="#0a0d12" /><polygon points="0,-170 34,-76 0,-76" fill="#10141a" />
+    <polygon points="0,-120 60,-6 -60,-6" fill="#090b0f" /><polygon points="0,-120 60,-6 0,-6" fill="#0e1116" />
+    <rect x="-5" y="-6" width="10" height="26" fill="#06080a" />
+  </g>
+))}
+<!-- tent -->
+<g transform="translate(560 796)">
+  <polygon points="-130,0 0,-132 -30,0" fill="#d9d4c5" />
+  <polygon points="-30,0 0,-132 120,0" fill="#8f8a7a" />
+  <polygon points="-30,0 0,-132 40,0" fill="#b5b0a0" />
+  <polygon points="-36,0 0,-96 36,0" fill="#ffd9a0" />
+  <polygon points="-36,0 0,-96 0,0" fill="#ffc47a" />
+  <line x1="0" y1="-132" x2="0" y2="-150" stroke="#2a1a10" stroke-width="3" />
+  <line x1="0" y1="-132" x2="-190" y2="8" stroke="#aab4c2" stroke-width="1.4" opacity="0.6" />
+  <line x1="0" y1="-132" x2="180" y2="8" stroke="#aab4c2" stroke-width="1.4" opacity="0.6" />
+</g>
+<!-- fire -->
+<g transform="translate(820 806)">
+  <ellipse cx="0" cy="0" rx="220" ry="90" fill="url(#lf-fire)" />
+  <polygon points="-48,8 44,-14 46,-6 -46,16" fill="#2a1a12" /><polygon points="-46,-12 48,10 46,18 -48,-4" fill="#3a2418" />
+  <g class="ds-flame">
+    <polygon points="0,-84 24,-20 0,0 -24,-20" fill="#ff7a59" />
+    <polygon points="0,-84 24,-20 0,-30" fill="#d9d4c5" />
+    <polygon points="0,-46 10,-12 0,0 -10,-12" fill="#ffe08a" />
+  </g>
+</g>
