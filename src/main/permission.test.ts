@@ -12,6 +12,7 @@ import { PermissionWatcher, type PermissionStatus } from "./permission";
 function setup(initial: { granted: boolean; screens: number | Error | "hang" }) {
   const state = { ...initial };
   const changes: PermissionStatus[] = [];
+  const granted = vi.fn(() => state.granted);
   const countScreens = vi.fn(
     () =>
       new Promise<number>((resolve, reject) => {
@@ -24,11 +25,11 @@ function setup(initial: { granted: boolean; screens: number | Error | "hang" }) 
   const watcher = new PermissionWatcher((s) => changes.push(s), {
     intervalMs: 5000,
     validateTimeoutMs: 4000,
-    isGranted: () => state.granted,
+    isGranted: granted,
     countScreens,
     onActivate: (l) => (activate = l),
   });
-  return { watcher, state, changes, countScreens, activate: () => activate?.() };
+  return { watcher, state, changes, countScreens, granted, activate: () => activate?.() };
 }
 
 const flush = () => vi.advanceTimersByTimeAsync(0);
@@ -56,6 +57,32 @@ describe("PermissionWatcher", () => {
     await vi.advanceTimersByTimeAsync(20_000);
     expect(ctx.countScreens).toHaveBeenCalledTimes(1);
     expect(ctx.changes).toHaveLength(1);
+  });
+
+  // Cap's poller re-ran the expensive macOS display-list call for the whole
+  // process lifetime and leaked ~15 MB/min (CapSoftware/Cap issue #2023).
+  // Stage 1 may be polled forever; stage 2 must stop after one success.
+  it("never repeats the expensive validation once capture is proven", async () => {
+    const ctx = setup({ granted: true, screens: 1 });
+    ctx.watcher.start();
+    await flush();
+    const cheap = ctx.granted.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(ctx.countScreens).toHaveBeenCalledTimes(1);
+    expect(ctx.granted.mock.calls.length).toBeGreaterThan(cheap);
+    ctx.activate();
+    await flush();
+    expect(ctx.countScreens).toHaveBeenCalledTimes(1);
+  });
+
+  it("an activation re-checks immediately without waiting for the next poll", async () => {
+    const ctx = setup({ granted: true, screens: 1 });
+    ctx.watcher.start();
+    await flush();
+    ctx.state.granted = false;
+    ctx.activate();
+    await flush();
+    expect(ctx.changes.at(-1)).toEqual({ granted: false, needsRelaunch: false });
   });
 
   it("granted but capture sees nothing → needsRelaunch, retried each poll, heals when capture works", async () => {

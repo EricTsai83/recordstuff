@@ -15,6 +15,15 @@
  * app in the Screen Recording list and shows its own prompt; the user then
  * only has to flip the switch instead of adding the app by hand.
  *
+ * Only stage 1 is polled, and polling it is cheap on purpose: it never
+ * prompts and materialises nothing, so it costs a syscall every 5 seconds.
+ * Stage 2 is the expensive one and is never polled — Cap's screen-recording
+ * poller re-ran the equivalent macOS call (`SCShareableContent`, which
+ * materialises every window/app/display) for the whole process lifetime and
+ * leaked ~15 MB/min until macOS exhausted swap (CapSoftware/Cap issue #2023).
+ * Caching one success for the process is what makes that safe, and a runtime
+ * revocation is still caught by stage 1 and by the capture attempt itself.
+ *
  * There is no window, so `activate` is unreliable; poll every 5 seconds.
  * Windows needs nothing and this module is never used there.
  */
