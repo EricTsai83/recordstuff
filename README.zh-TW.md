@@ -46,7 +46,7 @@ SHA-256：`2de49bbd552e46934ef4573ca8c8b103e3a0b1334dd12b2022dee1f332f7fc7f`。
 
 - [System design](docs/zh-TW/system-design/README.md)：產品總覽、架構、錄製流程、桌面功能、函式細節、工具與決策。
 - [驗證紀錄](docs/zh-TW/verification/README.md)：已取得證據與限制。
-- [剩餘計畫](plans/README.zh-TW.md)：後續工作，包含[官網與 DMG 下載](plans/012-download-website.zh-TW.md)與延後的[更新評估](plans/015-app-update-assessment.zh-TW.md)；已完成或取消的計畫已移除。
+- [剩餘計畫](plans/README.zh-TW.md)：後續工作，包含[官網與 DMG 下載](plans/012-download-website.zh-TW.md)與 [App 內更新檢查](plans/018-app-update.zh-TW.md)；已完成或取消的計畫已移除。
 - [貢獻指南](docs/zh-TW/CONTRIBUTING.md)：開發環境、問題回報、測試與 PR 提交流程。
 
 ## 開發
@@ -78,7 +78,7 @@ pnpm audio:quality -- record /tmp/audio-run-001 --repeat 3  # 音質迴歸測試
 
 ## 目錄
 
-src/main 是生命週期、錄製狀態機、寫檔、權限與原生 UI；renderer 是隱藏擷取宿主；preload 只轉交 MessagePort；shared 是狀態、協定、品質及語言 catalog。scripts 放開發工具，resources 放素材與雙語安裝指南，docs/system-design 是英文正式設計，docs/zh-TW 是翻譯，docs/verification 是證據，plans 只放尚未完成工作。
+src/main 是生命週期、錄製狀態機、寫檔、權限與原生 UI；renderer 是隱藏擷取宿主；preload 只轉交 MessagePort；shared 是狀態、協定、品質及語言 catalog。scripts 放開發工具，resources 放素材與雙語安裝指南，docs/system-design 是英文正式設計，docs/zh-TW 是翻譯，docs/verification 是證據，plans 只放尚未完成工作，website 是官方網站（Astro，獨立套件，見 docs/zh-TW/system-design/tooling.md）。
 
 影片與設定留在本機；沒有雲端後端、遙測或自動更新。故障時盡力保留部分影片，不保證所有當機／斷電都可復原。
 
