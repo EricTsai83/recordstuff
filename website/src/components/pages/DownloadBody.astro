@@ -1,19 +1,15 @@
 ---
-import BrandMark from "../BrandMark.astro";
+import TextPage from "./TextPage.astro";
 import ChecksumBlock from "../ChecksumBlock.astro";
 import DownloadCard from "../DownloadCard.astro";
 import { links, release } from "../../lib/release";
 
 ---
 
-<div class="download-page">
-  <header class="download-head">
-    <BrandMark size={56} />
-    <h1 class="heading display">Download RecordStuff</h1>
-    <p class="head-meta">
-      <a class="link" href={release.notesUrl} target="_blank" rel="noopener noreferrer">v{release.version} release notes ↗</a>
-    </p>
-  </header>
+<TextPage title="Download RecordStuff">
+  <p slot="meta" class="head-meta">
+    <a class="link" href={release.notesUrl} target="_blank" rel="noopener noreferrer">v{release.version} release notes ↗</a>
+  </p>
 
   <div class="platforms">
     <section class="platform-section" aria-labelledby="macos-title">
@@ -39,33 +35,14 @@ import { links, release } from "../../lib/release";
       </p>
     </section>
   </div>
-</div>
+</TextPage>
 
 <style>
-  .download-page {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 0 1.5rem 4rem;
-  }
-  .download-head {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-    padding: 9vh 1.5rem 2.5rem;
-    text-align: center;
-  }
-  .heading {
-    font-size: clamp(1.9rem, 4.5vw, 3rem);
-  }
   .head-meta {
     font-size: 0.85rem;
   }
   .platforms {
     width: 100%;
-    max-width: 720px;
     display: flex;
     flex-direction: column;
     gap: 2.5rem;
@@ -92,10 +69,5 @@ import { links, release } from "../../lib/release";
   .platform-note,
   .platform-fine {
     font-size: 0.82rem;
-  }
-  @media (max-width: 640px) {
-    .download-head {
-      padding: 6vh 1rem 2rem;
-    }
   }
 </style>

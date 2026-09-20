@@ -1,5 +1,5 @@
 ---
-/** Shared shell for the Help and Support text pages. */
+/** Shared shell for the Download, Help and Support pages. */
 interface Props {
   title: string;
   toc?: Array<{ href: string; label: string }>;
@@ -10,6 +10,7 @@ const { title, toc } = Astro.props;
 <article class="text-page container container--narrow">
   <header class="text-head">
     <h1 class="display">{title}</h1>
+    <slot name="meta" />
     {
       toc && (
         <nav class="toc" aria-label="On this page">
