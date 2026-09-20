@@ -56,7 +56,7 @@ export const installSteps: Step[] = [
   },
   {
     title: "Allow the app to open",
-    body: "RecordStuff is signed with the developer's own certificate and is not notarized by Apple, so macOS may block it after either a first installation or an update. If it does, make sure you trust the file source, then open System Settings → Privacy & Security, find the message about RecordStuff and click Open Anyway. You do not install any certificate. Organization-managed Macs may not allow this. If macOS explicitly warns about malware or a damaged file, stop and report it.",
+    body: "Open RecordStuff from Applications. If macOS blocks it, see ‘App blocked by macOS?’ below.",
   },
   {
     title: "Grant Screen & System Audio Recording",
@@ -80,7 +80,7 @@ export const updateSteps: Step[] = [
   },
   {
     title: "Launch the updated app and allow it to open",
-    body: "Eject the DMG and open RecordStuff from Applications. After either a first installation or an update, if macOS blocks the app because the developer cannot be verified or the app is not notarized, make sure you trust the file source, then go to System Settings → Privacy & Security, find the RecordStuff message and click Open Anyway. Follow the confirmation prompts.",
+    body: "Eject the DMG and open RecordStuff from Applications. If blocked, see ‘App blocked by macOS?’ below.",
   },
 ];
 

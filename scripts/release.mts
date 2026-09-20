@@ -166,7 +166,7 @@ export function notes(version: string, repository: string, commit: string) {
 
 Install: open the DMG and drag RecordStuff onto the Applications folder, then eject the disk image. The DMG contains only the app and an Applications shortcut; the guides below are the installation documentation.
 
-The app is self-signed and not notarized by Apple. After either a first installation or an update, if macOS blocks the app, go to System Settings → Privacy & Security → Open Anyway. Recipients do not install certificates. Then allow Screen & System Audio Recording and relaunch when macOS asks.
+The app is self-signed and not notarized by Apple. If blocked after installing or updating, manually open System Settings → Privacy & Security, scroll down to Security, find RecordStuff and click Open Anyway. Done only dismisses the warning. Recipients do not install certificates. Then allow Screen & System Audio Recording and relaunch when macOS asks.
 
 Update manually: stop recording, quit RecordStuff from its menu, download the new DMG and drag the app into Applications, replacing the existing copy. The signing identity is unchanged, so settings and permissions carry over. Use Check for updates… in the app menu to find new releases; the optional launch check runs at most once per 24 hours. Downloads and installation remain manual.
 

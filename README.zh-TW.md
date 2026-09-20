@@ -22,7 +22,7 @@ SHA-256：`46040e168a55780556fcb8014fe79272698b6a790f52a71a9a4692e55435be93`。
 
 0.1.2 由 CI 從 tag `v0.1.2` 建置、簽署、驗證並公開；錄影、播放與權限保留在打 tag 前以同一份原始碼在本機檢查。詳見[本版驗證紀錄](docs/zh-TW/verification/releases/0.1.2.md)。點擊儲存通知可定位 Finder 檔案，但 Finder 可能沒有跳到最前景。
 
-下載 arm64 DMG，把 RecordStuff 拖到磁碟映像檔中顯示的 Applications 資料夾；DMG 只有 App 與該 Applications 捷徑。[安裝指南](resources/INSTALL.zh-TW.md)涵蓋首次開啟、手動更新（結束、下載、在相同路徑取代；設定保留）與移除（結束、把 App 移到垃圾桶；錄影、設定與 log 除非自行刪除否則保留）。「設定 → 一般」提供「檢查更新…」與可關閉的啟動檢查（預設開啟，每 24 小時最多一次）。安裝仍需手動完成，沒有自動安裝器或解除安裝器。收件者不需要 Node、pnpm、FFmpeg 或憑證。無論初次安裝或更新，若 macOS 因 App 未公證而阻擋開啟，請到「系統設定 → 隱私權與安全性」選「強制打開」；不保證免提示，參見 [Apple 說明](https://support.apple.com/102445)。
+下載 arm64 DMG，把 RecordStuff 拖到磁碟映像檔中顯示的 Applications 資料夾；DMG 只有 App 與該 Applications 捷徑。[安裝指南](resources/INSTALL.zh-TW.md)涵蓋首次開啟、手動更新（結束、下載、在相同路徑取代；設定保留）與移除（結束、把 App 移到垃圾桶；錄影、設定與 log 除非自行刪除否則保留）。「設定 → 一般」提供「檢查更新…」與可關閉的啟動檢查（預設開啟，每 24 小時最多一次）。安裝仍需手動完成，沒有自動安裝器或解除安裝器。收件者不需要 Node、pnpm、FFmpeg 或憑證。初次安裝或更新若被 macOS 阻擋，請手動開啟「系統設定 → 隱私權與安全性」，往下捲到「安全性」，找到 RecordStuff 並點「強制打開」；提示中的「完成」不會解除封鎖；不保證免提示，參見 [Apple 說明](https://support.apple.com/102445)。
 
 ## 使用方式
 

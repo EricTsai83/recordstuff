@@ -14,11 +14,9 @@ installation guide; it is linked from every GitHub release.
 1. Open the DMG and drag RecordStuff onto the Applications folder shown next to it.
    Before updating an existing installation, follow "Update manually" below.
 2. Eject the disk image in Finder, open Applications, and double-click RecordStuff.
-3. If macOS blocks the app because the developer cannot be verified or the app
-   is not notarized, first make sure you trust the source of the file.
-   Open the Apple menu in the top-left corner → System Settings → Privacy & Security.
-   Find the message about RecordStuff being blocked, click Open Anyway,
-   and follow the confirmation prompts.
+3. If macOS blocks the app, verify you trust the download, then manually open
+   System Settings → Privacy & Security. Scroll down to Security, find RecordStuff,
+   click Open Anyway and confirm. Done only dismisses the warning; it does not unblock the app.
    Organization-managed Macs may not allow this; contact your administrator.
    If macOS explicitly warns about malware or a damaged file, stop the installation
    and report the issue to the developer.
@@ -45,10 +43,8 @@ Use **Check for updates…** in **Settings → General** to check for a newer re
 3. Open the DMG and drag RecordStuff onto Applications. When Finder asks,
    choose Replace so the new app takes the same path as the old one.
 4. Eject the disk image and launch RecordStuff from Applications.
-5. After either a first installation or an update, if macOS blocks the app because
-   the developer cannot be verified or the app is not notarized, make sure you trust
-   the file source, then open System Settings → Privacy & Security. Find the message
-   about RecordStuff being blocked, click Open Anyway, and follow the confirmation prompts.
+5. If the update is blocked, use Privacy & Security → Security → Open Anyway
+   as described above. Clicking Done does not unblock the app.
 
 Every release is signed with the same certificate and installed at the same path,
 so your language choice, output folder, and other settings are kept, and macOS
