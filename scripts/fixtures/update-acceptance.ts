@@ -5,7 +5,10 @@ import path from 'node:path';
 import type { Recorder } from '../../src/main/recorder';
 import type { SettingsStore } from '../../src/main/settings';
 import type { AppTray } from '../../src/main/tray';
-import { trayModel, type TrayAction, type TrayContext, type TrayModel } from '../../src/main/tray-model';
+import { trayModel, type TrayModel } from '../../src/main/tray-model';
+import { settingsView } from '../../src/main/settings-model';
+import type { AppAction, AppContext } from '../../src/main/ui-model';
+import type { SettingsView } from '../../src/shared/settings-panel';
 import { API_URL, DOWNLOAD_URL, FEED_URL, RELEASES_URL, fetchVersion, type UpdateChecker, type UpdateState } from '../../src/main/updates';
 import type { RecordingState } from '../../src/shared/state';
 
@@ -13,14 +16,16 @@ export type Scenario = 'current' | 'newer' | 'older' | 'delayed' | 'offline' | '
 export interface AcceptanceConfig { now: number; scenario: Scenario }
 export interface AcceptanceSnapshot {
   pid: number; version: string; recording: RecordingState; update: UpdateState; model: TrayModel;
-  hotkey: TrayContext['hotkey'] | null;
+  /** What the settings window would show right now; the panel itself is not opened. */
+  settings: SettingsView;
+  hotkey: AppContext['hotkey'] | null;
   language: string; preference: { enabled: boolean; lastAttempt: number };
   calls: Array<{ url: string; scenario: Scenario }>; pending: number; aborted: number;
   opened: string[]; errors: string[];
 }
 interface Attached {
   recorder: Recorder; updates: UpdateChecker; settings: SettingsStore; tray: AppTray;
-  handleAction: (action: TrayAction) => Promise<void>;
+  handleAction: (action: AppAction) => Promise<void>;
 }
 export function configureAcceptance(dir: string) {
   const configPath = path.join(dir, 'config.json');
@@ -81,10 +86,11 @@ export function attachAcceptance(a: ReturnType<typeof configureAcceptance>, atta
   // Notification delivery has its own acceptance runner. Do not let a save banner obscure the next capture's marker.
   tray.notifySaved = (savedPath: string) => a.events({ type: 'saved-notification-intercepted', path: savedPath });
   // Read the real AppTray context, not a second reconstruction of the production settings wiring.
-  const context = (): TrayContext => (tray as unknown as { options: { context: () => TrayContext } }).options.context();
+  const context = (): AppContext => (tray as unknown as { options: { context: () => AppContext } }).options.context();
   const snapshot = (): AcceptanceSnapshot => ({
     pid: process.pid, version: app.getVersion(), recording: recorder.state, update: updates.state,
-    model: trayModel(recorder.state, context()), hotkey: context().hotkey ?? null, language: settings.language, preference: settings.updates,
+    model: trayModel(recorder.state, context()), settings: settingsView(recorder.state, context()),
+    hotkey: context().hotkey ?? null, language: settings.language, preference: settings.updates,
     calls: [...a.calls], pending: a.pending(), aborted: a.aborted(), opened: [...a.opened], errors: [...a.errors],
   });
   recorder.subscribe(event => { if (event.type === 'state' || event.type === 'saved') a.events({ type: 'recorder', event }); });
@@ -95,7 +101,7 @@ export function attachAcceptance(a: ReturnType<typeof configureAcceptance>, atta
       seen.add(name);
       void (async () => {
         try {
-          const command = JSON.parse(fs.readFileSync(path.join(a.dir, 'requests', name), 'utf8')) as { kind: string; action?: TrayAction; config?: AcceptanceConfig };
+          const command = JSON.parse(fs.readFileSync(path.join(a.dir, 'requests', name), 'utf8')) as { kind: string; action?: AppAction; config?: AcceptanceConfig };
           switch (command.kind) {
             case 'snapshot': break;
             case 'configure': if (!command.config) throw new Error('missing config'); a.set(command.config); break;

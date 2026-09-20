@@ -3,53 +3,49 @@ import { DEFAULT_QUALITY } from "../shared/quality";
 import type { RecordingState } from "../shared/state";
 import { DEFAULT_HOTKEY, HOTKEY_PRESETS } from "../shared/hotkey";
 import {
-  abbreviateHome,
   errorNotification,
   frameRateDowngradeNotification,
   hotkeyRegistrationFailedNotification,
   savedNotification,
   trayModel,
-  type TrayContext,
   type TrayMenuItem,
 } from "./tray-model";
+import type { AppContext } from "./ui-model";
 
-const mac: TrayContext = {
+const mac: AppContext = {
   platform: "darwin",
   language: "zh-TW",
   outputDir: "/Users/eric/Movies/RecordStuff",
   homeDir: "/Users/eric",
   quality: DEFAULT_QUALITY,
+  hotkey: { ...DEFAULT_HOTKEY, registered: true },
+  updates: { state: { kind: "idle" }, enabled: true },
 };
-const win: TrayContext = {
+const win: AppContext = {
   platform: "win32",
   language: "zh-TW",
   outputDir: "C:\\Users\\eric\\Videos\\RecordStuff",
   homeDir: "C:\\Users\\eric",
   quality: DEFAULT_QUALITY,
+  hotkey: { ...DEFAULT_HOTKEY, registered: true },
+  updates: { state: { kind: "idle" }, enabled: true },
 };
+const STATES: RecordingState[] = [
+  { type: "needsPermission", needsRelaunch: false },
+  { type: "needsPermission", needsRelaunch: true },
+  { type: "idle" },
+  { type: "idle", lastSavedPath: "/tmp/a.mp4" },
+  { type: "starting" },
+  { type: "recording", startedAt: "2026-09-14T00:00:00Z" },
+  { type: "stopping" },
+];
 
 const labels = (menu: TrayMenuItem[]) => menu.map((m) => (m.kind === "separator" ? "—" : m.label));
 const enabledActions = (menu: TrayMenuItem[]) =>
   menu.flatMap((m) => (m.kind === "item" && m.enabled && m.action ? [m.action] : []));
-const submenu = (menu: TrayMenuItem[], label: string): TrayMenuItem[] => {
-  const entry = menu.find((m) => m.kind === "submenu" && m.label === label);
-  if (!entry || entry.kind !== "submenu") throw new Error(`no submenu ${label}`);
-  return entry.items;
-};
-const qualitySubmenus = (menu: TrayMenuItem[]) => submenu(menu, "錄製品質").map((m) => (m.kind === "submenu" ? m.label : m.kind));
 
-describe("abbreviateHome", () => {
-  it("replaces the home prefix on both path styles", () => {
-    expect(abbreviateHome("/Users/eric/Movies/RecordStuff", "/Users/eric")).toBe("~/Movies/RecordStuff");
-    expect(abbreviateHome("C:\\Users\\eric\\Videos\\RecordStuff", "C:\\Users\\eric")).toBe("~\\Videos\\RecordStuff");
-    expect(abbreviateHome("/Volumes/Ext/Rec", "/Users/eric")).toBe("/Volumes/Ext/Rec");
-    expect(abbreviateHome("/Users/eric", "/Users/eric")).toBe("~");
-    expect(abbreviateHome("/Users/erica/x", "/Users/eric")).toBe("/Users/erica/x");
-  });
-});
-
-describe("trayModel per state (docs/system-design/recording.md)", () => {
-  it("needsPermission shows the settings action", () => {
+describe("trayModel per state (docs/system-design/desktop.md)", () => {
+  it("needsPermission shows the permission actions above the folder and Settings", () => {
     const m = trayModel({ type: "needsPermission", needsRelaunch: false }, mac);
     expect(m.icon).toBe("idle");
     expect(m.title).toBe("");
@@ -60,9 +56,9 @@ describe("trayModel per state (docs/system-design/recording.md)", () => {
       "—",
       "儲存位置：~/Movies/RecordStuff",
       "更改儲存位置…",
-      "錄製品質",
+      "檢查更新…",
       "—",
-      "語言",
+      "設定…",
       "顯示 log",
       "結束",
     ]);
@@ -72,6 +68,8 @@ describe("trayModel per state (docs/system-design/recording.md)", () => {
       "relaunch",
       "openOutputDir",
       "changeOutputDir",
+      "checkUpdates",
+      "openSettings",
       "revealLog",
       "quit",
     ]);
@@ -105,19 +103,26 @@ describe("trayModel per state (docs/system-design/recording.md)", () => {
       "—",
       "儲存位置：~/Movies/RecordStuff",
       "更改儲存位置…",
-      "錄製品質",
+      "檢查更新…",
       "—",
-      "語言",
+      "設定…",
       "顯示 log",
       "結束",
     ]);
-    expect(enabledActions(m.menu)).toEqual(["openOutputDir", "changeOutputDir", "revealLog", "quit"]);
+    expect(enabledActions(m.menu)).toEqual([
+      "openOutputDir",
+      "changeOutputDir",
+      "checkUpdates",
+      "openSettings",
+      "revealLog",
+      "quit",
+    ]);
   });
 
   it("idle with a last recording adds the reveal item", () => {
     const m = trayModel({ type: "idle", lastSavedPath: "/Users/eric/Movies/RecordStuff/a.mp4" }, mac);
     expect(labels(m.menu)[1]).toBe("顯示最後一個錄影");
-    expect(enabledActions(m.menu)).toEqual(["revealLastSaved", "openOutputDir", "changeOutputDir", "revealLog", "quit"]);
+    expect(enabledActions(m.menu)[0]).toBe("revealLastSaved");
   });
 
   it("idle with an unusable output dir says so on the first line", () => {
@@ -126,13 +131,12 @@ describe("trayModel per state (docs/system-design/recording.md)", () => {
     expect(enabledActions(m.menu)).toContain("changeOutputDir");
   });
 
-  it("starting: idle icon, ellipsis title, language, log and quit", () => {
+  it("starting: idle icon, ellipsis title, Settings, log and quit", () => {
     const m = trayModel({ type: "starting" }, mac);
     expect(m.icon).toBe("idle");
     expect(m.title).toBe("…");
-    expect(labels(m.menu)).toEqual(["啟動中，請留意系統權限提示…", "—", "錄製品質", "—", "語言", "顯示 log", "結束"]);
-    expect(m.menu[2]).toEqual({ kind: "item", label: "錄製品質", enabled: false });
-    expect(enabledActions(m.menu)).toEqual(["revealLog", "quit"]);
+    expect(labels(m.menu)).toEqual(["啟動中，請留意系統權限提示…", "檢查更新…", "—", "設定…", "顯示 log", "結束"]);
+    expect(enabledActions(m.menu)).toEqual(["openSettings", "revealLog", "quit"]);
   });
 
   it("recording: red icon, REC title, stop; output dir items greyed", () => {
@@ -145,23 +149,21 @@ describe("trayModel per state (docs/system-design/recording.md)", () => {
       "—",
       "儲存位置：~/Movies/RecordStuff",
       "更改儲存位置…",
-      "錄製品質",
+      "檢查更新…",
       "—",
-      "語言",
+      "設定…",
       "顯示 log",
       "結束",
     ]);
-    expect(m.menu[5]).toEqual({ kind: "item", label: "錄製品質", enabled: false });
-    expect(enabledActions(m.menu)).toEqual(["stop", "revealLog", "quit"]);
+    expect(enabledActions(m.menu)).toEqual(["stop", "openSettings", "revealLog", "quit"]);
   });
 
-  it("stopping: idle icon, ellipsis, language, log and quit", () => {
+  it("stopping: idle icon, ellipsis, Settings, log and quit", () => {
     const m = trayModel({ type: "stopping" }, mac);
     expect(m.icon).toBe("idle");
     expect(m.title).toBe("…");
-    expect(labels(m.menu)).toEqual(["儲存中…", "—", "錄製品質", "—", "語言", "顯示 log", "結束"]);
-    expect(m.menu[2]).toEqual({ kind: "item", label: "錄製品質", enabled: false });
-    expect(enabledActions(m.menu)).toEqual(["revealLog", "quit"]);
+    expect(labels(m.menu)).toEqual(["儲存中…", "檢查更新…", "—", "設定…", "顯示 log", "結束"]);
+    expect(enabledActions(m.menu)).toEqual(["openSettings", "revealLog", "quit"]);
   });
 
   it("Windows shows the abbreviated path and keeps the full path as toolTip", () => {
@@ -170,78 +172,23 @@ describe("trayModel per state (docs/system-design/recording.md)", () => {
     expect(dirItem).toMatchObject({ label: "儲存位置：~\\Videos\\RecordStuff", toolTip: win.outputDir });
   });
 
-  it("every state ends with enabled Show log and Quit actions", () => {
-    const states: RecordingState[] = [
-      { type: "needsPermission", needsRelaunch: false },
-      { type: "idle" },
-      { type: "starting" },
-      { type: "recording", startedAt: "" },
-      { type: "stopping" },
-    ];
-    for (const state of states) {
+  it("is a flat command list in every state: no preference ever renders in the tray", () => {
+    for (const state of STATES) {
+      const menu = trayModel(state, { ...mac, hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: "available", version: "9.0.0" }, enabled: true } }).menu;
+      expect(menu.every((entry) => entry.kind === "separator" || entry.kind === "item"), state.type).toBe(true);
+      const actions = menu.flatMap((entry) => (entry.kind === "item" && entry.action ? [entry.action] : []));
+      expect(actions.every((action) => typeof action === "string"), state.type).toBe(true);
+    }
+  });
+
+  it("every state ends with enabled Settings, Show log and Quit", () => {
+    for (const state of STATES) {
       const menu = trayModel(state, mac).menu;
-      expect(menu.at(-4)).toEqual({ kind: "separator" });
+      expect(menu.at(-4), state.type).toEqual({ kind: "separator" });
+      expect(menu.at(-3)).toMatchObject({ label: "設定…", action: "openSettings", enabled: true });
       expect(menu.at(-2)).toMatchObject({ label: "顯示 log", action: "revealLog", enabled: true });
       expect(menu.at(-1)).toMatchObject({ label: "結束", action: "quit", enabled: true });
     }
-  });
-});
-
-describe("Recording quality submenu", () => {
-  it("shows the three groups with their current value in the label", () => {
-    const m = trayModel({ type: "idle" }, mac);
-    expect(qualitySubmenus(m.menu)).toEqual([
-      "影像品質：標準",
-      "解析度上限：原尺寸",
-      "幀率：30 fps",
-    ]);
-    const custom = trayModel(
-      { type: "idle" },
-      { ...mac, quality: { videoQuality: "economy", resolutionCap: "1080p", frameRate: 60 } },
-    );
-    expect(qualitySubmenus(custom.menu)).toEqual([
-      "影像品質：精省",
-      "解析度上限：1080p",
-      "幀率：60 fps",
-    ]);
-  });
-
-  it("each group is a radio list with exactly the current choice checked and a setQuality action", () => {
-    const m = trayModel({ type: "idle" }, mac);
-    const groups = submenu(m.menu, "錄製品質");
-    const video = groups[0];
-    expect(video?.kind).toBe("submenu");
-    if (video?.kind !== "submenu") return;
-    expect(video.items).toEqual([
-      { kind: "radio", label: "精省", enabled: true, checked: false, action: { setQuality: { videoQuality: "economy" } } },
-      { kind: "radio", label: "標準", enabled: true, checked: true, action: { setQuality: { videoQuality: "standard" } } },
-      { kind: "radio", label: "高品質", enabled: true, checked: false, action: { setQuality: { videoQuality: "high" } } },
-    ]);
-    for (const group of groups) {
-      if (group.kind !== "submenu") continue;
-      expect(group.items.filter((i) => i.kind === "radio" && i.checked)).toHaveLength(1);
-    }
-    const cap = groups[1];
-    if (cap?.kind === "submenu") {
-      expect(cap.items.map((i) => (i.kind === "radio" ? i.label : ""))).toEqual(["1080p", "1440p", "4K", "原尺寸"]);
-    }
-  });
-
-  it("offers 60 fps on macOS and disables it with an explanation on Windows", () => {
-    const macFps = submenu(trayModel({ type: "idle" }, mac).menu, "錄製品質")[2];
-    if (macFps?.kind !== "submenu") throw new Error("no fps submenu");
-    expect(macFps.items).toEqual([
-      { kind: "radio", label: "30 fps", enabled: true, checked: true, action: { setQuality: { frameRate: 30 } } },
-      { kind: "radio", label: "60 fps", enabled: true, checked: false, action: { setQuality: { frameRate: 60 } } },
-    ]);
-    const winFps = submenu(trayModel({ type: "idle" }, win).menu, "錄製品質")[2];
-    if (winFps?.kind !== "submenu") throw new Error("no fps submenu");
-    expect(winFps.items[1]).toMatchObject({ label: "60 fps（此平台尚未驗證，暫不開放）", enabled: false, checked: false });
-  });
-
-  it("is available in needsPermission too", () => {
-    const m = trayModel({ type: "needsPermission", needsRelaunch: false }, mac);
-    expect(qualitySubmenus(m.menu)).toHaveLength(3);
   });
 });
 
@@ -267,17 +214,21 @@ describe("notification text", () => {
     const text = errorNotification("output_open_failed", undefined, mac);
     expect(text.body).toBe("儲存位置無法寫入：~/Movies/RecordStuff。右鍵選單可以更改儲存位置");
   });
+
+  it("a refused shortcut registration points at Settings, in the user's language", () => {
+    expect(hotkeyRegistrationFailedNotification(HOTKEY_PRESETS[0], "darwin", "zh-TW").body).toBe(
+      "無法註冊快捷鍵 ⌘⌥⇧R，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵",
+    );
+    expect(hotkeyRegistrationFailedNotification(HOTKEY_PRESETS[0], "win32").body).toContain("Ctrl+Alt+Shift+R");
+  });
 });
 
 describe("English default and language switching", () => {
-  it("defaults an older context to English and exposes both language actions", () => {
-    const { language: _language, ...ctx } = mac;
+  it("renders the explicit English context", () => {
+    const ctx = { ...mac, language: "en" as const };
     const m = trayModel({ type: "idle" }, ctx);
     expect(labels(m.menu)[0]).toBe("Ready");
-    expect(submenu(m.menu, "Language")).toEqual([
-      { kind: "radio", label: "English", enabled: true, checked: true, action: { setLanguage: "en" } },
-      { kind: "radio", label: "繁體中文", enabled: true, checked: false, action: { setLanguage: "zh-TW" } },
-    ]);
+    expect(labels(m.menu)).toContain("Settings…");
     expect(savedNotification("/tmp/demo.mp4").body).toBe("Saved demo.mp4");
   });
 
@@ -287,95 +238,38 @@ describe("English default and language switching", () => {
     const chinese = trayModel(state, { ...mac, language: "zh-TW" });
     expect(english.title).toBe("REC");
     expect(chinese.title).toBe("REC");
-    expect(english.tooltip).toBe("RecordStuff: Recording");
-    expect(chinese.tooltip).toBe("RecordStuff: 錄製中");
+    expect(english.tooltip).toBe("RecordStuff: Recording\nRight-click to open the menu");
+    expect(chinese.tooltip).toBe("RecordStuff: 錄製中\n右鍵開啟選單");
     expect(enabledActions(english.menu)).toEqual(enabledActions(chinese.menu));
-    expect(submenu(chinese.menu, "語言")[1]).toMatchObject({ checked: true });
-    expect(english.menu.find((m) => m.kind === "item" && m.label === "Recording quality")).toMatchObject({ enabled: false });
     expect(state.type).toBe("recording");
   });
 });
 
-describe("Shortcut submenu (plan 016)", () => {
-  const withHotkey = (registered = true, enabled = true): TrayContext => ({
+describe("Stop tooltip (plan 016)", () => {
+  const withHotkey = (registered = true, enabled = true): AppContext => ({
     ...mac,
     language: "en",
     hotkey: { ...DEFAULT_HOTKEY, enabled, registered },
   });
-  const shortcutEntry = (menu: TrayMenuItem[]) =>
-    menu.find((m) => m.kind === "submenu" && (m.label.startsWith("Shortcut") || m.label.startsWith("快捷鍵")));
-
-  it("is absent for callers that do not provide a hotkey context", () => {
-    expect(shortcutEntry(trayModel({ type: "idle" }, mac).menu)).toBeUndefined();
-  });
-
-  it("shows the registered accelerator with macOS symbols, one radio per preset plus Off", () => {
-    const m = trayModel({ type: "idle" }, withHotkey());
-    const entry = shortcutEntry(m.menu);
-    expect(entry).toMatchObject({ kind: "submenu", label: "Shortcut: ⌘⌥⇧R", enabled: true });
-    const items = submenu(m.menu, "Shortcut: ⌘⌥⇧R");
-    expect(items).toEqual([
-      { kind: "radio", label: "⌘⌥⇧R", enabled: true, checked: true, action: { setHotkey: { enabled: true, accelerator: HOTKEY_PRESETS[0] } } },
-      { kind: "radio", label: "⌘⇧R", enabled: true, checked: false, action: { setHotkey: { enabled: true, accelerator: HOTKEY_PRESETS[1] } } },
-      { kind: "radio", label: "⌘⌥R", enabled: true, checked: false, action: { setHotkey: { enabled: true, accelerator: HOTKEY_PRESETS[2] } } },
-      { kind: "radio", label: "Off", enabled: true, checked: false, action: { setHotkey: { enabled: false, accelerator: HOTKEY_PRESETS[0] } } },
-    ]);
-    // Electron splits radio groups at separators and checks one item per group:
-    // Off must share the presets' group or it would show checked too (review F1).
-    expect(items.some((i) => i.kind === "separator")).toBe(false);
-    expect(items.filter((i) => i.kind === "radio" && i.checked)).toHaveLength(1);
-    // The menu sits between quality and the footer in every state that shows it.
-    const names = labels(m.menu);
-    expect(names.indexOf("Shortcut: ⌘⌥⇧R")).toBe(names.indexOf("Recording quality") + 1);
-  });
-
-  it("spells out a refused registration instead of hiding the conflict", () => {
-    const m = trayModel({ type: "idle" }, withHotkey(false));
-    expect(shortcutEntry(m.menu)).toMatchObject({ label: "Shortcut unavailable (in use by another app): ⌘⌥⇧R", enabled: true });
-    const zh = trayModel({ type: "idle" }, { ...withHotkey(false), language: "zh-TW" });
-    expect(labels(zh.menu)).toContain("快捷鍵無法使用（被其他 App 佔用）：⌘⌥⇧R");
-    expect(hotkeyRegistrationFailedNotification(HOTKEY_PRESETS[0], "darwin", "zh-TW").body).toBe(
-      "無法註冊快捷鍵 ⌘⌥⇧R，可能被其他 App 佔用。右鍵選單可以改用其他快捷鍵",
+  const stop = (ctx: AppContext) =>
+    trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, ctx).menu.find(
+      (i) => i.kind === "item" && i.action === "stop",
     );
-    expect(hotkeyRegistrationFailedNotification(HOTKEY_PRESETS[0], "win32").body).toContain("Ctrl+Alt+Shift+R");
+
+  it("names the registered accelerator with macOS symbols", () => {
+    expect(stop(withHotkey())).toMatchObject({ toolTip: "Start / stop recording with ⌘⌥⇧R" });
   });
 
-  it("Off is checked while disabled and the remembered accelerator is kept in the Off action", () => {
-    const m = trayModel({ type: "idle" }, { ...mac, hotkey: { enabled: false, accelerator: HOTKEY_PRESETS[1], registered: false } });
-    expect(shortcutEntry(m.menu)).toMatchObject({ label: "快捷鍵：關閉", enabled: true });
-    const items = submenu(m.menu, "快捷鍵：關閉");
-    expect(items.filter((i) => i.kind === "radio" && i.checked).map((i) => (i.kind === "radio" ? i.label : ""))).toEqual(["關閉"]);
-    expect(items.at(-1)).toMatchObject({ action: { setHotkey: { enabled: false, accelerator: HOTKEY_PRESETS[1] } } });
-  });
-
-  it("is visible but locked outside idle/needsPermission, like quality", () => {
-    const ctx = withHotkey();
-    expect(shortcutEntry(trayModel({ type: "needsPermission", needsRelaunch: false }, ctx).menu)).toMatchObject({ enabled: true });
-    for (const state of [
-      { type: "starting" },
-      { type: "recording", startedAt: "2026-09-14T00:00:00Z" },
-      { type: "stopping" },
-    ] as RecordingState[]) {
-      expect(shortcutEntry(trayModel(state, ctx).menu)).toMatchObject({ label: "Shortcut: ⌘⌥⇧R", enabled: false });
-    }
-  });
-
-  it("uses Windows-style names off macOS and reminds of the shortcut on Stop", () => {
-    const m = trayModel({ type: "idle" }, { ...win, language: "en", hotkey: { ...DEFAULT_HOTKEY, registered: true } });
-    expect(shortcutEntry(m.menu)).toMatchObject({ label: "Shortcut: Ctrl+Alt+Shift+R" });
-    const rec = trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, withHotkey());
-    expect(rec.menu.find((i) => i.kind === "item" && i.label === "Stop")).toMatchObject({
-      toolTip: "Start / stop recording with ⌘⌥⇧R",
-    });
-    const unregistered = trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, withHotkey(false));
-    expect(unregistered.menu.find((i) => i.kind === "item" && i.label === "Stop")).not.toHaveProperty("toolTip");
+  it("says nothing when the shortcut is off or unregistered", () => {
+    expect(stop(withHotkey(false))).not.toHaveProperty("toolTip");
+    expect(stop(withHotkey(true, false))).not.toHaveProperty("toolTip");
   });
 });
 
 describe("update menu", () => {
   it("shows bilingual results and retry while leaving the recording title alone", () => {
     for (const language of ["en", "zh-TW"] as const) {
-      const ctx: TrayContext = { ...mac, language, updates: { state: { kind: "available", version: "0.2.0" }, enabled: true } };
+      const ctx: AppContext = { ...mac, language, updates: { state: { kind: "available", version: "0.2.0" }, enabled: true } };
       const model = trayModel({ type: "idle" }, ctx);
       expect(model.title).toBe("");
       expect(labels(model.menu)).toContain(language === "en" ? "Update available: 0.2.0" : "有可用更新：0.2.0");
@@ -384,7 +278,7 @@ describe("update menu", () => {
     }
   });
   it("keeps recording controls at the top and hides update results throughout capture", () => {
-    const ctx: TrayContext = { ...mac, updates: { state: { kind: "available", version: "0.2.0" }, enabled: true } };
+    const ctx: AppContext = { ...mac, updates: { state: { kind: "available", version: "0.2.0" }, enabled: true } };
     const recording = trayModel({ type: "recording", startedAt: "2026-09-20T00:00:00Z" }, ctx);
     expect(labels(recording.menu).slice(0, 2)).toEqual(["錄製中", "停止"]);
     expect(recording.title).toBe("REC");
@@ -396,7 +290,7 @@ describe("update menu", () => {
     }
   });
   it("disables checks while pending and shows a successful local timestamp", () => {
-    const context: TrayContext = { ...mac, updates: { state: { kind: "checking" }, enabled: false } };
+    const context: AppContext = { ...mac, updates: { state: { kind: "checking" }, enabled: false } };
     expect(enabledActions(trayModel({ type: "idle" }, context).menu)).not.toContain("checkUpdates");
     context.updates!.state = { kind: "current", checkedAt: 1234567890000 };
     expect(labels(trayModel({ type: "idle" }, context).menu)).toContain(`已是最新版本（檢查時間：${new Date(1234567890000).toLocaleString("zh-TW")}）`);

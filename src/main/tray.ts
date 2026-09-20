@@ -3,7 +3,8 @@
  * projection of `RecordingState`; every decision lives in `recorder.ts`.
  * Left click toggles (`tray.on('click')`); right click pops a menu rebuilt
  * from the current state each time — never `setContextMenu`, which would make
- * macOS pop the menu on left click too.
+ * macOS pop the menu on left click too. The menu is a flat list of commands:
+ * preferences live in the settings window (docs/system-design/desktop.md).
  */
 import { Menu, Notification, Tray, app, nativeImage, shell, type MenuItemConstructorOptions } from "electron";
 import path from "node:path";
@@ -22,11 +23,10 @@ import {
   settingsWriteFailedNotification,
   trayHintNotification,
   trayModel,
-  type TrayAction,
-  type TrayContext,
   type TrayIcon,
   type TrayMenuItem,
 } from "./tray-model";
+import type { AppAction, AppContext } from "./ui-model";
 
 /**
  * How long after a notification-click reveal the system's activation of this
@@ -38,9 +38,9 @@ export const ACTIVATION_WINDOW_MS = 1000;
 
 export interface TrayOptions {
   resourcesDir: string;
-  context: () => TrayContext;
+  context: () => AppContext;
   onToggle: () => void;
-  onAction: (action: TrayAction) => void;
+  onAction: (action: AppAction) => void;
   /** Diagnostics for notifications the OS refuses to show. */
   log?: (message: string) => void;
 }
@@ -225,27 +225,12 @@ export class AppTray {
   }
 
   private toTemplate(entry: TrayMenuItem): MenuItemConstructorOptions {
-    switch (entry.kind) {
-      case "separator":
-        return { type: "separator" };
-      case "submenu":
-        return { label: entry.label, enabled: entry.enabled, submenu: entry.items.map((e) => this.toTemplate(e)) };
-      case "radio":
-        return {
-          type: "radio",
-          label: entry.label,
-          enabled: entry.enabled,
-          checked: entry.checked,
-          click: () => this.options.onAction(entry.action),
-        };
-      case "item": {
-        const template: MenuItemConstructorOptions = { label: entry.label, enabled: entry.enabled };
-        if (entry.toolTip !== undefined) template.toolTip = entry.toolTip;
-        const action = entry.action;
-        if (action) template.click = () => this.options.onAction(action);
-        return template;
-      }
-    }
+    if (entry.kind === "separator") return { type: "separator" };
+    const template: MenuItemConstructorOptions = { label: entry.label, enabled: entry.enabled };
+    if (entry.toolTip !== undefined) template.toolTip = entry.toolTip;
+    const action = entry.action;
+    if (action) template.click = () => this.options.onAction(action);
+    return template;
   }
 }
 

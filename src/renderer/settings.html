@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RecordStuff</title>
+  <link rel="stylesheet" href="./settings.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <p class="brand">RecordStuff</p>
+      <h1 id="title"></h1>
+      <p id="hint"></p>
+    </header>
+    <form id="settings"></form>
+    <p id="feedback" role="status" aria-live="polite"></p>
+  </main>
+  <script type="module" src="./settings.ts"></script>
+</body>
+</html>

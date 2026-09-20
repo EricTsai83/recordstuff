@@ -2,7 +2,7 @@
  * App lifecycle (docs/system-design/recording.md): hide the Dock icon, create the tray, register
  * the display-media handler (primary display + system audio loopback), detect
  * permission, and make quitting wait for a running recording to finish.
- * No window is ever created here; the only renderer is the hidden capture host.
+ * Settings use a separate sandboxed window; capture keeps its hidden host.
  */
 import {
   app,
@@ -30,10 +30,11 @@ import { SettingsStore } from "./settings";
 import { parseAutoRecord, runAutoRecord } from "./autorecord";
 import { UpdateChecker, fetchVersion, DOWNLOAD_URL, RELEASES_URL } from "./updates";
 import { AppTray } from "./tray";
-import { APP_NAME, type TrayAction } from "./tray-model";
+import { SettingsWindow } from "./settings-window";
+import { APP_NAME, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 import { effectiveQuality, frameRateDowngrade, type QualitySettings } from "../shared/quality";
 import type { HotkeyAccelerator, HotkeySettings } from "../shared/hotkey";
-import type { ErrorCode } from "../shared/state";
+import type { ErrorCode, RecordingState } from "../shared/state";
 
 import { DEFAULT_LANGUAGE, translate, type Language } from "../shared/i18n";
 
@@ -138,7 +139,7 @@ if (!app.requestSingleInstanceLock()) {
 
 async function main(): Promise<void> {
   app.setAppUserModelId(app.isPackaged ? APP_ID : process.execPath);
-  // No window: neither of these may quit the app (docs/system-design/recording.md).
+  // Closing Settings must leave the menu-bar recorder running.
   app.on("window-all-closed", () => undefined);
 
   await app.whenReady();
@@ -208,35 +209,52 @@ async function main(): Promise<void> {
   const toggle = (): void => recorder.toggle();
   const hotkey = new RecordingHotkey({ globalShortcut, onToggle: toggle, log });
   /** Settings that touch a session (quality, shortcut) change only here. */
-  const settled = (): boolean => recorder.state.type === "idle" || recorder.state.type === "needsPermission";
+  const settled = (): boolean => preferencesUnlocked(recorder.state);
   const updates = new UpdateChecker({
     localVersion: app.getVersion(), settled,
     preference: () => settings.updates,
     saveAttempt: (lastAttempt) => settings.setUpdates({ lastAttempt }),
     fetch: (signal) => fetchVersion(process.platform, process.arch, signal, (url, init) => net.fetch(url, init)),
-    changed: () => { if (settled()) tray.refresh(); }, log,
+    changed: () => { if (settled()) refreshUi(); }, log,
+  });
+  const appContext = (): AppContext => ({
+    platform: process.platform,
+    outputDir: settings.outputDir,
+    homeDir: os.homedir(),
+    quality: quality(),
+    language: settings.language,
+    updates: { state: updates.state, enabled: settings.updates.enabled },
+    hotkey: {
+      ...settings.hotkey,
+      // "registered" means the saved combination is the live one; a deferred
+      // change shows as unavailable until the recorder settles and it applies.
+      registered: hotkey.status.kind === "registered" && hotkey.status.accelerator === settings.hotkey.accelerator,
+    },
+  });
+  const settingsWindow = new SettingsWindow({
+    state: () => recorder.state,
+    context: appContext,
+    act: handleAction,
+    log,
   });
   const tray = new AppTray({
     resourcesDir: resourcesDir(),
-    context: () => ({
-      platform: process.platform,
-      outputDir: settings.outputDir,
-      homeDir: os.homedir(),
-      quality: quality(),
-      language: settings.language,
-      updates: { state: updates.state, enabled: settings.updates.enabled },
-      hotkey: {
-        ...settings.hotkey,
-        // "registered" means the saved combination is the live one; a deferred
-        // change shows as unavailable until the recorder settles and it applies.
-        registered: hotkey.status.kind === "registered" && hotkey.status.accelerator === settings.hotkey.accelerator,
-      },
-    }),
+    context: appContext,
     onToggle: toggle,
     onAction: (action) => void handleAction(action),
     log,
   });
-  tray.render(recorder.state);
+  /** The tray and the settings panel project the same state; they move together. */
+  function renderUi(state: RecordingState): void {
+    tray.render(state);
+    settingsWindow.refresh();
+  }
+  /** Context changed while the state did not (output folder, language, quality). */
+  function refreshUi(): void {
+    tray.refresh();
+    settingsWindow.refresh();
+  }
+  renderUi(recorder.state);
   applyHotkey(settings.hotkey);
 
   /** Register with the OS and surface a refusal in the menu and a notification. */
@@ -247,7 +265,7 @@ async function main(): Promise<void> {
   function reportHotkey(result: { kind: string; accelerator?: HotkeyAccelerator } | undefined): void {
     if (!result) return;
     if (result.kind === "failed" && result.accelerator) tray.notifyHotkeyRegistrationFailed(result.accelerator);
-    tray.refresh();
+    refreshUi();
   }
 
   /**
@@ -268,18 +286,18 @@ async function main(): Promise<void> {
     applyHotkey(settings.hotkey);
   }
 
-  async function handleAction(action: TrayAction): Promise<void> {
+  async function handleAction(action: AppAction): Promise<void> {
     if (typeof action !== "string") {
       if ("setUpdateChecks" in action) {
         if (!settled()) return;
         try { await settings.setUpdates({ enabled: action.setUpdateChecks }); }
         catch (error) { log(`updates: preference save failed: ${String(error)}`); }
-        if (settled()) tray.refresh();
+        if (settled()) refreshUi();
       } else if ("setLanguage" in action) {
         try {
           await settings.setLanguage(action.setLanguage);
           currentLanguage = settings.language;
-          tray.refresh();
+          refreshUi();
         } catch (cause) {
           log(`settings: failed to save language: ${String(cause)}`);
           tray.notifyLanguageWriteFailed();
@@ -292,6 +310,9 @@ async function main(): Promise<void> {
       return;
     }
     switch (action) {
+      case "openSettings":
+        settingsWindow.show();
+        return;
       case "checkUpdates":
         await updates.check(true);
         return;
@@ -367,17 +388,17 @@ async function main(): Promise<void> {
       return;
     }
     recorder.outputDirChanged();
-    tray.refresh();
+    refreshUi();
   }
 
   /**
    * the choice is applied only after settings.json is written;
-   * a failed write keeps the previous value and says so. The menu is
-   * disabled outside idle / needsPermission, so a running session's
-   * snapshot is never touched.
+   * a failed write keeps the previous value and says so. The settings panel
+   * locks these controls outside idle / needsPermission and this guard repeats
+   * the rule, so a running session's snapshot is never touched.
    */
   async function setQuality(patch: Partial<QualitySettings>): Promise<void> {
-    if (recorder.state.type !== "idle" && recorder.state.type !== "needsPermission") return;
+    if (!settled()) return;
     try {
       await settings.setQuality(patch);
     } catch (cause) {
@@ -386,7 +407,7 @@ async function main(): Promise<void> {
       return;
     }
     log(`settings: quality ${JSON.stringify(settings.quality)}`);
-    tray.refresh();
+    refreshUi();
   }
 
   const savedNotification = new SavedNotification({
@@ -400,7 +421,7 @@ async function main(): Promise<void> {
       case "state": {
         savedNotification.stateChanged(event.state);
         log(`state → ${event.state.type}`);
-        tray.render(event.state);
+        renderUi(event.state);
         updates.flush();
         // A shortcut change saved during a session applies now that it is over.
         reportHotkey(hotkey.flush(settled()));
@@ -476,6 +497,7 @@ async function main(): Promise<void> {
     hotkey.dispose();
     permission?.stop();
     host.destroy();
+    settingsWindow.destroy();
     tray.destroy();
   });
 

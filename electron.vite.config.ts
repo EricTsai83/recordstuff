@@ -1,15 +1,32 @@
+import { resolve } from "node:path";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 
-// Three entries, no framework: main (Tray, state machine, file writer), preload
-// (MessagePort hand-off only) and renderer (the hidden capture host).
+// Main, one preload per renderer, and two renderer entries (hidden capture
+// host, settings panel); no framework.
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
   },
   preload: {
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, "src/preload/index.ts"),
+          settings: resolve(__dirname, "src/preload/settings.ts"),
+        },
+      },
+    },
     plugins: [externalizeDepsPlugin()],
   },
   renderer: {
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, "src/renderer/index.html"),
+          settings: resolve(__dirname, "src/renderer/settings.html"),
+        },
+      },
+    },
     plugins: [
       {
         // The shipped CSP allows no network at all; only the dev server's HMR

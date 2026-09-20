@@ -1,3 +1,4 @@
+import { DEFAULT_HOTKEY } from "../shared/hotkey";
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 
@@ -90,6 +91,9 @@ function setup(supported = true): { tray: AppTray; logs: string[] } {
       outputDir: "/Users/eric/Movies/RecordStuff",
       homeDir: "/Users/eric",
       quality: DEFAULT_QUALITY,
+      language: "en",
+      hotkey: { ...DEFAULT_HOTKEY, registered: true },
+      updates: { state: { kind: "idle" }, enabled: true },
     }),
     onToggle: vi.fn(),
     onAction: vi.fn(),
@@ -278,7 +282,7 @@ describe("notification language follows current settings", () => {
     const action = vi.fn();
     const tray = new AppTray({
       resourcesDir: "/resources",
-      context: () => ({ platform: process.platform, outputDir: "/tmp/recordings", homeDir: "/tmp", quality: DEFAULT_QUALITY, language }),
+      context: () => ({ platform: process.platform, outputDir: "/tmp/recordings", homeDir: "/tmp", quality: DEFAULT_QUALITY, language, hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: "idle" }, enabled: true } }),
       onToggle: vi.fn(), onAction: action,
     });
     tray.notifySaved("/tmp/demo.mp4");

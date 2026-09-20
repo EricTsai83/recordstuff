@@ -1,0 +1,55 @@
+:root {
+  color-scheme: light dark;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: light-dark(#202124, #eeeeef);
+  background: light-dark(#f5f5f7, #202124);
+}
+body { margin: 0; }
+main { max-width: 560px; padding: 24px 26px; margin: auto; }
+header { margin-bottom: 20px; }
+.brand { font-size: 12px; font-weight: 600; letter-spacing: .03em; color: light-dark(#666, #aaa); margin: 0; }
+h1 { font-size: 24px; margin: 6px 0; }
+#hint, #feedback, .note { font-size: 13px; line-height: 1.5; color: light-dark(#626269, #b3b3bc); }
+#hint { margin: 0; }
+.row {
+  padding: 13px 14px;
+  background: light-dark(#fff, #2b2c30);
+  border: 1px solid light-dark(#dedee3, #414249);
+  border-radius: 10px;
+  margin-bottom: 9px;
+}
+label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; overflow-wrap: anywhere; }
+.note { margin: -4px 0 8px; color: light-dark(#a15c00, #ffbe5c); }
+.select-control { position: relative; }
+.select-control::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+}
+.select-control:has(select:disabled)::after { opacity: .5; }
+select {
+  appearance: none;
+  box-sizing: border-box;
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+  padding: 7px 36px 7px 12px;
+  border: 1px solid light-dark(#c7c7ce, #65656d);
+  border-radius: 6px;
+  background: light-dark(#fafafa, #35363b);
+  color: inherit;
+}
+select:focus-visible { outline: 3px solid light-dark(#2476db, #82b7ff); outline-offset: 2px; }
+select:disabled { opacity: .5; }
+#feedback { color: light-dark(#b12424, #ff9999); min-height: 20px; margin: 4px 0 0; }
+@media (forced-colors: active) {
+  select { appearance: auto; padding-right: 12px; }
+  .select-control::after { display: none; }
+}

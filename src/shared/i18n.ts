@@ -7,6 +7,13 @@ export function isLanguage(value: unknown): value is Language {
 }
 
 export const ZH_TW = {
+  Settings: "設定",
+  "Settings…": "設定…",
+  "Right-click to open the menu": "右鍵開啟選單",
+  "Changes are saved automatically.": "變更會自動儲存。",
+  "Recording in progress. Recording settings are locked.": "錄製作業進行中，錄製相關設定暫時鎖定。",
+  "Could not apply this setting. Your current settings are shown.": "無法套用這項設定，目前顯示的是實際使用的設定。",
+  "Could not open settings. Close this window and open it again.": "無法開啟設定，請關閉這個視窗後再開一次。",
   "Check for updates…": "檢查更新…",
   "Checking for updates…": "正在檢查更新…",
   "Update available: {version}": "有可用更新：{version}",
@@ -18,10 +25,9 @@ export const ZH_TW = {
   Standard: "標準",
   High: "高品質",
   Source: "原尺寸",
-  "Recording quality": "錄製品質",
-  "Video quality: {value}": "影像品質：{value}",
-  "Resolution cap: {value}": "解析度上限：{value}",
-  "Frame rate: {value} fps": "幀率：{value} fps",
+  "Video quality": "影像品質",
+  "Resolution cap": "解析度上限",
+  "Frame rate": "幀率",
   "{value} fps (unverified on this platform)": "{value} fps（此平台尚未驗證，暫不開放）",
   Language: "語言",
   "Show log": "顯示 log",
@@ -77,13 +83,12 @@ export const ZH_TW = {
   "Could not write the recording.": "寫入錄影失敗",
   "The disk is full.": "磁碟已滿",
   "Stopping the recording timed out.": "停止錄製逾時",
-  "Shortcut: {value}": "快捷鍵：{value}",
-  "Shortcut: off": "快捷鍵：關閉",
-  "Shortcut unavailable (in use by another app): {value}": "快捷鍵無法使用（被其他 App 佔用）：{value}",
+  Shortcut: "快捷鍵",
+  "Unavailable: another app is using this shortcut.": "無法使用：這個快捷鍵被其他 App 佔用。",
   "Start / stop recording with {value}": "以 {value} 開始／停止錄製",
   Off: "關閉",
-  "Could not register the shortcut {value}. Another app may be using it. Choose another shortcut from the tray menu.":
-    "無法註冊快捷鍵 {value}，可能被其他 App 佔用。右鍵選單可以改用其他快捷鍵",
+  "Could not register the shortcut {value}. Another app may be using it. Choose another shortcut in Settings.":
+    "無法註冊快捷鍵 {value}，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵",
   "Could not save the shortcut. Your previous shortcut is still in use.":
     "無法儲存快捷鍵設定，仍使用原本的快捷鍵。請再試一次",
   "Choose a recording folder": "選擇錄影儲存位置",

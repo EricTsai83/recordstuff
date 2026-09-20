@@ -12,7 +12,8 @@ import { acceleratorToKeystroke, keystrokeScript, materialOpenArgs } from './lib
 import { hasTool } from './lib/media-tools.mts';
 import { readLogPairs, verifyRecording } from './lib/verify-recording.mts';
 import type { AcceptanceSnapshot, AcceptanceConfig, Scenario } from './fixtures/update-acceptance';
-import type { TrayAction, TrayMenuItem } from '../src/main/tray-model';
+import type { TrayMenuItem } from '../src/main/tray-model';
+import type { AppAction } from '../src/main/ui-model';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const DAY = 86_400_000;
@@ -79,14 +80,19 @@ const snapshot = (): Promise<AcceptanceSnapshot> => command({ kind: 'snapshot' }
 async function until(predicate: (s: AcceptanceSnapshot) => boolean, label: string, timeout = 30_000): Promise<AcceptanceSnapshot> {
   return wait(async () => { const s = await snapshot(); return predicate(s) ? s : undefined; }, label, timeout);
 }
-const action = (action: TrayAction): Promise<AcceptanceSnapshot> => command({ kind: 'action', action });
+const action = (action: AppAction): Promise<AcceptanceSnapshot> => command({ kind: 'action', action });
 async function scenario(scenario: Scenario, advance = 0): Promise<void> {
   config = { scenario, now: config.now + advance }; await command({ kind: 'configure', config });
 }
-function flat(items: TrayMenuItem[]): TrayMenuItem[] { return items.flatMap(i => i.kind === 'submenu' ? [i, ...flat(i.items)] : [i]); }
-function menuAction(s: AcceptanceSnapshot, action: TrayAction): Exclude<TrayMenuItem, { kind: 'separator' } | { kind: 'submenu' }> {
-  const item = flat(s.model.menu).find(i => (i.kind === 'item' || i.kind === 'radio') && JSON.stringify(i.action) === JSON.stringify(action));
-  assert(item && (item.kind === 'item' || item.kind === 'radio'), `Menu action missing: ${JSON.stringify(action)}`);
+function settingsChoice(s: AcceptanceSnapshot, group: string): { id: string; label: string } {
+  const found = s.settings.groups.find(g => g.id === group);
+  const checked = found?.choices.find(c => c.checked);
+  assert(found && checked, `Settings group missing or unset: ${group}`);
+  return { id: checked.id, label: checked.label };
+}
+function menuAction(s: AcceptanceSnapshot, action: AppAction): Exclude<TrayMenuItem, { kind: 'separator' }> {
+  const item = s.model.menu.find(i => i.kind === 'item' && JSON.stringify(i.action) === JSON.stringify(action));
+  assert(item && item.kind === 'item', `Menu action missing: ${JSON.stringify(action)}`);
   return item;
 }
 function assertNoUpdateActions(s: AcceptanceSnapshot): void {
@@ -95,6 +101,8 @@ function assertNoUpdateActions(s: AcceptanceSnapshot): void {
   const entries = s.model.menu.filter(i => i.kind !== 'separator');
   assert.equal(entries[1]?.kind === 'item' && entries[1].action, 'stop');
   assert(!JSON.stringify(s.model.menu).includes('Update available:'));
+  // Recording locks every preference in the panel except the language.
+  for (const group of s.settings.groups) assert.equal(group.enabled, group.id === 'language', `settings group ${group.id}`);
 }
 async function run(program: string, args: string[], cwd: string, label: string, timeout = 300_000): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -225,8 +233,15 @@ try {
     await scenario('current', DAY + 1); await restart();
     const s = await snapshot(); assert.equal(s.language, 'zh-TW'); assert.equal(s.preference.enabled, false); assert.equal(s.calls.length, 0);
     assert.equal(menuAction(s, 'checkUpdates').label, '檢查更新…');
+    // The settings panel projects the same committed values, in the same language.
+    assert.equal(s.settings.title, '設定');
+    assert.equal(settingsChoice(s, 'language').label, '繁體中文');
+    assert.equal(settingsChoice(s, 'updateChecks').id, 'off');
     await action('checkUpdates'); await until(s => s.update.kind === 'current', 'manual while preference off');
     await action({ setLanguage: 'en' }); await action({ setUpdateChecks: true });
+    const restored = await snapshot();
+    assert.equal(settingsChoice(restored, 'language').id, 'en');
+    assert.equal(settingsChoice(restored, 'updateChecks').id, 'on');
   });
   await check('launch rate limit and due launch failure', async () => {
     await restart(); assert.equal((await snapshot()).calls.length, 0);
