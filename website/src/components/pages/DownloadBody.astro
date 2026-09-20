@@ -1,30 +1,35 @@
 ---
 import TextPage from "./TextPage.astro";
 import ChecksumBlock from "../ChecksumBlock.astro";
-import DownloadCard from "../DownloadCard.astro";
+import AppleMark from "../AppleMark.astro";
 import { links, release } from "../../lib/release";
 
 ---
 
-<TextPage title="Download RecordStuff">
+<TextPage title="Your next recording starts here." description="A small menu bar app for your screen and system audio. Download RecordStuff for your Apple silicon Mac.">
   <p slot="meta" class="head-meta">
     <a class="link" href={release.notesUrl} target="_blank" rel="noopener noreferrer">v{release.version} release notes ↗</a>
   </p>
 
   <div class="platforms">
-    <section class="platform-section" aria-labelledby="macos-title">
+    <section class="platform-section platform-section--download" aria-labelledby="macos-title">
       <div class="platform-header">
         <h2 id="macos-title" class="platform-name">macOS</h2>
-        <span class="platform-note dim">Apple silicon only. Intel Macs, Windows and Linux are not supported.</span>
+        <span class="platform-note dim">For Apple silicon Macs.</span>
       </div>
-      <DownloadCard detailed={false} />
+      <div class="download-action">
+        <a class="btn btn-primary" href={release.dmgUrl} download={release.fileName} data-download-dmg>
+          <AppleMark /> Download for macOS
+        </a>
+        <p class="download-details dim">v{release.version} · {release.architectureLabel} · .dmg · {release.sizeLabel}</p>
+      </div>
       <p class="platform-fine dim">
-        Not notarized by Apple: first launch may need <a class="link" href="/help#install">Open Anyway</a>. No certificate is installed.
+        Intel Macs, Windows and Linux are not supported. Not notarized by Apple: first launch may need <a class="link" href="/help#install">Open Anyway</a>. No certificate is installed.
       </p>
     </section>
 
     <section class="platform-section" aria-labelledby="verify-title">
-      <div class="platform-header"><h2 id="verify-title" class="platform-name">Verify</h2></div>
+      <div class="platform-header"><h2 id="verify-title" class="platform-name">Verify your download</h2></div>
       <ChecksumBlock />
     </section>
 
@@ -45,12 +50,12 @@ import { links, release } from "../../lib/release";
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 2.5rem;
+    gap: 4.5rem;
   }
   .platform-section {
     display: flex;
     flex-direction: column;
-    gap: 0.9rem;
+    gap: 2rem;
   }
   .platform-header {
     display: flex;
@@ -63,11 +68,19 @@ import { links, release } from "../../lib/release";
   }
   .platform-name {
     font-weight: 500;
-    font-size: 1.1rem;
+    font-size: 1.35rem;
     letter-spacing: -0.01em;
   }
   .platform-note,
   .platform-fine {
-    font-size: 0.82rem;
+    font-size: 0.9rem;
+    line-height: 1.8;
+  }
+  .platform-fine { max-width: 720px; }
+  .download-action { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem 1.5rem; }
+  .download-details { font-size: 0.85rem; line-height: 1.8; }
+  @media (max-width: 640px) {
+    .platforms { gap: 3.5rem; }
+    .platform-section { gap: 1.75rem; }
   }
 </style>

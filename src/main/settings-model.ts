@@ -47,7 +47,8 @@ function group(
   choices: Group["choices"],
   note?: string,
 ): Group {
-  return note === undefined ? { id, label, enabled, choices } : { id, label, note, enabled, choices };
+  const tab = ["videoQuality", "resolutionCap", "frameRate"].includes(id) ? "recording" : "general";
+  return { id, label, enabled, choices, tab, ...(note === undefined ? {} : { note }) };
 }
 
 function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {
@@ -60,14 +61,14 @@ function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {
       enabled: true,
       checked: value === videoQuality,
       action: { setQuality: { videoQuality: value } },
-    }))),
+    })), t("Higher quality preserves more detail and uses more space at the same resolution.", language)),
     group("resolutionCap", t("Resolution cap", language), enabled, RESOLUTION_CAPS.map((value) => ({
       id: value,
       label: value === "source" ? t("Source", language) : RESOLUTION_CAP_LABELS[value],
       enabled: true,
       checked: value === resolutionCap,
       action: { setQuality: { resolutionCap: value } },
-    }))),
+    })), t("Limits pixel dimensions while keeping the aspect ratio. Smaller sources are not enlarged.", language)),
     // A frame rate that is not verified on this platform stays visible and
     // says why, rather than silently disappearing from the list.
     group("frameRate", t("Frame rate", language), enabled, FRAME_RATES.map((value) => ({
@@ -123,6 +124,25 @@ function updateChecksGroup(ctx: AppContext, enabled: boolean): Group[] {
   })))];
 }
 
+function updateActions(ctx: AppContext, enabled: boolean): Group {
+  const { state } = ctx.updates;
+  const language = ctx.language;
+  const choices: Group["choices"] = [{
+    id: "check", label: t(state.kind === "checking" ? "Checking for updates…" : "Check for updates…", language),
+    enabled: state.kind !== "checking", checked: false, action: "checkUpdates",
+  }];
+  if (state.kind === "available" || state.kind === "failed") choices.push({
+    id: "open", label: state.kind === "available"
+      ? t("Update available: {version}", language, { version: state.version })
+      : t("Update check failed — open releases", language),
+    enabled: true, checked: false, action: "openUpdate",
+  });
+  const note = state.kind === "current"
+    ? t("Up to date (checked {time})", language, { time: new Date(state.checkedAt).toLocaleString(language) })
+    : undefined;
+  return { ...group("updates", t("Updates", language), enabled, choices, note), kind: "actions" };
+}
+
 /** Language is presentation only: it never touches a running capture, so it is never locked. */
 function languageGroup(language: Language): Group[] {
   return [group("language", t("Language", language), true, (["en", "zh-TW"] as const).map((value) => ({
@@ -140,6 +160,7 @@ function settingsGroups(state: RecordingState, ctx: AppContext): Group[] {
     ...qualityGroups(ctx, unlocked),
     ...hotkeyGroup(ctx, unlocked),
     ...updateChecksGroup(ctx, unlocked),
+    updateActions(ctx, unlocked),
     ...languageGroup(ctx.language),
   ];
 }
@@ -156,6 +177,7 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
       language,
     ),
     failure: t("Could not apply this setting. Your current settings are shown.", language),
+    tabs: [{ id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) }],
     groups: settingsGroups(state, ctx).map(({ choices, ...rest }) => ({
       ...rest,
       choices: choices.map(({ action: _action, ...choice }) => choice),

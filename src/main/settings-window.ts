@@ -133,7 +133,7 @@ export class SettingsWindow {
     await this.options.act(action);
     return {
       view: this.view(),
-      applied: settingsChecked(this.options.state(), this.options.context(), group, choice),
+      applied: action === "checkUpdates" || action === "openUpdate" || settingsChecked(this.options.state(), this.options.context(), group, choice),
     };
   }
 

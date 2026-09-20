@@ -2,17 +2,10 @@
 import Layout from "../layouts/Layout.astro";
 import TextPage from "../components/pages/TextPage.astro";
 import HelpContent from "../components/HelpContent.astro";
-const toc = [
-  { href: "#install", label: "Install" },
-  { href: "#use", label: "Record" },
-  { href: "#language", label: "Language" },
-  { href: "#update", label: "Update" },
-  { href: "#remove", label: "Remove" },
-];
 ---
 
 <Layout title="Help — install, record, update and remove RecordStuff" description="How to install RecordStuff on macOS, allow it to open, grant screen and system audio permission, record, update manually and remove it.">
-  <TextPage title="Install, record, update, remove" toc={toc}>
+  <TextPage title="A little guidance. Then hit record." description="From your first launch to your next recording. Everything you need to feel at home with RecordStuff." narrow>
     <HelpContent />
   </TextPage>
 </Layout>

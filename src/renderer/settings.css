@@ -18,8 +18,8 @@ h1 { font-size: 24px; margin: 6px 0; }
   border-radius: 10px;
   margin-bottom: 9px;
 }
-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; overflow-wrap: anywhere; }
-.note { margin: -4px 0 8px; color: light-dark(#a15c00, #ffbe5c); }
+label, .group-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; overflow-wrap: anywhere; }
+.note { margin: 0 0 8px; }
 .select-control { position: relative; }
 .select-control::after {
   content: "";
@@ -53,3 +53,21 @@ select:disabled { opacity: .5; }
   select { appearance: auto; padding-right: 12px; }
   .select-control::after { display: none; }
 }
+
+button {
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  background: light-dark(#fafafa, #35363b);
+  border: 1px solid light-dark(#c7c7ce, #65656d);
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+button:disabled { opacity: .5; cursor: default; }
+button:focus-visible { outline: 3px solid light-dark(#2476db, #82b7ff); outline-offset: 2px; }
+.row button { display: block; margin-top: 8px; max-width: 100%; text-align: start; }
+.group-label { margin-top: 0; }
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+.tabs button { flex: 1; }
+.tabs button[aria-selected="true"] { background: light-dark(#e1edfc, #284466); border-color: light-dark(#2476db, #82b7ff); }

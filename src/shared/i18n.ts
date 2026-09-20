@@ -8,6 +8,11 @@ export function isLanguage(value: unknown): value is Language {
 
 export const ZH_TW = {
   Settings: "設定",
+  "Recording settings": "錄影",
+  General: "一般",
+  Updates: "更新",
+  "Higher quality preserves more detail and uses more space at the same resolution.": "在相同解析度下，較高品質可保留更多細節，也會使用更多儲存空間。",
+  "Limits pixel dimensions while keeping the aspect ratio. Smaller sources are not enlarged.": "限制畫面像素尺寸並維持長寬比，不會放大較小的來源畫面。",
   "Settings…": "設定…",
   "Right-click to open the menu": "右鍵開啟選單",
   "Changes are saved automatically.": "變更會自動儲存。",

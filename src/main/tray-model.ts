@@ -3,7 +3,7 @@
  * docs/system-design/desktop.md.
  *
  * The tray holds the commands that must stay one click away — start/stop, the
- * output folder, updates, log, quit — and an entry that opens the settings
+ * output folder, log, quit — and an entry that opens the settings
  * window. Preferences themselves live in [settings-model.ts](settings-model.ts);
  * this model never builds a submenu, so what it returns is exactly what the
  * menu shows.
@@ -14,7 +14,7 @@ import type { FrameRate } from "../shared/quality";
 import type { ErrorCode, RecordingState } from "../shared/state";
 import { describeAccelerator, type HotkeyAccelerator } from "../shared/hotkey";
 
-import { APP_NAME, abbreviateHome, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
+import { APP_NAME, abbreviateHome, type AppAction, type AppContext } from "./ui-model";
 
 export type TrayIcon = "idle" | "recording";
 export type TrayMenuItem =
@@ -77,33 +77,10 @@ function stopHint(ctx: AppContext): string | undefined {
     value: describeAccelerator(hotkey.accelerator, ctx.platform),
   });
 }
-/** Check for updates plus, when there is one, the result to act on. */
-function updateItems(ctx: AppContext, unlocked: boolean): TrayMenuItem[] {
-  const updates = ctx.updates;
-  const language = ctx.language;
-  const text = (key: MessageKey): string => t(key, language);
-  const status = updates.state;
-  const label = !unlocked ? text("Check for updates…")
-    : status.kind === "checking" ? text("Checking for updates…")
-    : status.kind === "available" ? t("Update available: {version}", language, { version: status.version })
-    : status.kind === "current" ? t("Up to date (checked {time})", language, { time: new Date(status.checkedAt).toLocaleString(language) })
-    : status.kind === "failed" ? text("Update check failed — open releases")
-    : text("Check for updates…");
-  const actionable = status.kind === "available" || status.kind === "failed";
-  const items: TrayMenuItem[] = [{
-    kind: "item",
-    label,
-    enabled: unlocked && status.kind !== "checking",
-    action: actionable ? "openUpdate" : "checkUpdates",
-  }];
-  if (actionable) items.push({ kind: "item", label: text("Check for updates…"), enabled: unlocked, action: "checkUpdates" });
-  return items;
-}
-
 export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
   const language = ctx.language;
   const text = (key: MessageKey): string => t(key, language);
-  const end = [...updateItems(ctx, preferencesUnlocked(state)), ...footer(language)];
+  const end = footer(language);
   const model = (icon: TrayIcon, title: string, status: string, menu: TrayMenuItem[]): TrayModel => ({
     icon,
     title,

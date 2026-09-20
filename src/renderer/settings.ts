@@ -26,6 +26,7 @@ const startupLanguage = ((value: string | null) => (isLanguage(value) ? value : 
 );
 
 let view: SettingsView | undefined;
+let selectedTab: "recording" | "general" = "recording";
 /** Pending user intent is kept until every queued save has settled. */
 let pending = 0;
 let requestId = 0;
@@ -38,6 +39,29 @@ function controlId(group: SettingsGroup): string {
 function row(group: SettingsGroup): HTMLElement {
   const container = document.createElement("div");
   container.className = "row";
+  if (group.kind === "actions") {
+    const label = document.createElement("p");
+    label.className = "group-label";
+    label.textContent = group.label;
+    container.append(label);
+    if (group.note) {
+      const note = document.createElement("p");
+      note.className = "note";
+      note.setAttribute("role", "status");
+      note.textContent = group.note;
+      container.append(note);
+    }
+    for (const choice of group.choices) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.id = `${controlId(group)}-${choice.id}`;
+      button.textContent = choice.label;
+      button.disabled = !group.enabled || !choice.enabled || saving !== undefined;
+      button.addEventListener("click", () => void choose(group.id, choice.id, button.id));
+      container.append(button);
+    }
+    return container;
+  }
   const select = document.createElement("select");
   select.id = controlId(group);
   select.disabled = !group.enabled || (saving !== undefined && saving.control !== select.id);
@@ -80,7 +104,35 @@ function draw(): void {
   // so a push or a save does not drop the user out of the form.
   const active = document.activeElement;
   const restore = active instanceof HTMLElement && form.contains(active) ? active.id : "";
-  form.replaceChildren(...current.groups.map(row));
+  const tabs = document.createElement("div");
+  tabs.className = "tabs";
+  tabs.setAttribute("role", "tablist");
+  tabs.setAttribute("aria-label", current.title);
+  for (const tab of current.tabs) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.id = `tab-${tab.id}`;
+    button.textContent = tab.label;
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", String(selectedTab === tab.id));
+    button.setAttribute("aria-controls", "settings-panel");
+    button.tabIndex = selectedTab === tab.id ? 0 : -1;
+    button.addEventListener("click", () => { selectedTab = tab.id; draw(); document.getElementById(button.id)?.focus(); });
+    button.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      selectedTab = event.key === "Home" ? "recording" : event.key === "End" ? "general" : selectedTab === "recording" ? "general" : "recording";
+      draw();
+      document.getElementById(`tab-${selectedTab}`)?.focus();
+    });
+    tabs.append(button);
+  }
+  const panel = document.createElement("div");
+  panel.id = "settings-panel";
+  panel.setAttribute("role", "tabpanel");
+  panel.setAttribute("aria-labelledby", `tab-${selectedTab}`);
+  panel.append(...current.groups.filter((group) => group.tab === selectedTab).map(row));
+  form.replaceChildren(tabs, panel);
   if (restore) document.getElementById(restore)?.focus({ preventScroll: true });
 }
 

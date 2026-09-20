@@ -17,6 +17,8 @@ export interface SettingsChoice {
 export interface SettingsGroup {
   id: string;
   label: string;
+  tab: "recording" | "general";
+  kind?: "actions";
   /** Extra line under the control, e.g. a shortcut the OS refused to register. */
   note?: string;
   enabled: boolean;
@@ -28,6 +30,7 @@ export interface SettingsView {
   hint: string;
   /** Shown when a choice did not take effect; already localized. */
   failure: string;
+  tabs: Array<{ id: "recording" | "general"; label: string }>;
   groups: SettingsGroup[];
 }
 export interface SettingsChoiceResult {

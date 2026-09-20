@@ -40,8 +40,8 @@ const rows = [
     </div>
   </dl>
   <p class="verify-note">
-    Verify after downloading: <code>shasum -a 256 ~/Downloads/{release.fileName}</code>. The published
-    <a class="link" href={release.sha256sumsUrl} target="_blank" rel="noopener noreferrer">SHA256SUMS</a> and
+    Verify after downloading: <code>shasum -a 256 ~/Downloads/{release.fileName}</code>. The published{" "}
+    <a class="link" href={release.sha256sumsUrl} target="_blank" rel="noopener noreferrer">SHA256SUMS</a> and{" "}
     <a class="link" href={release.releaseJsonUrl} target="_blank" rel="noopener noreferrer">release.json</a> carry the same value.
   </p>
 </div>
@@ -66,23 +66,19 @@ const rows = [
 
 <style>
   .checksum {
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: rgba(255, 255, 255, 0.02);
-    padding: 1.1rem 1.2rem;
     display: flex;
     flex-direction: column;
-    gap: 0.9rem;
+    gap: 1.75rem;
   }
   .facts {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.75rem 1.5rem;
+    gap: 1.5rem 2rem;
   }
   .fact {
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
+    gap: 0.5rem;
     min-width: 0;
   }
   .fact--hash {
@@ -100,18 +96,18 @@ const rows = [
     color: var(--fg);
     overflow-wrap: anywhere;
   }
+  .fact--hash dd { display: flex; align-items: center; gap: 0.75rem; }
   .hash {
+    min-width: 0;
     display: inline-block;
     font-size: 0.8rem;
     color: var(--fg-muted);
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 0.45rem 0.6rem;
-    margin-right: 0.5rem;
+    flex: 1;
     word-break: break-all;
   }
   .copy {
+    min-height: 44px;
+    flex-shrink: 0;
     font-size: 0.75rem;
     color: var(--fg-muted);
     border: 1px solid var(--border-strong);
@@ -124,7 +120,8 @@ const rows = [
     border-color: rgba(255, 255, 255, 0.25);
   }
   .verify-note {
-    font-size: 0.8rem;
+    font-size: 0.85rem;
+    line-height: 1.8;
     color: var(--fg-dim);
   }
   .verify-note code {
@@ -133,6 +130,7 @@ const rows = [
     overflow-wrap: anywhere;
   }
   @media (max-width: 640px) {
+    .fact--hash dd { flex-direction: column; align-items: flex-start; }
     .facts {
       grid-template-columns: 1fr;
     }

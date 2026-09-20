@@ -68,7 +68,6 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
       "relaunch",
       "openOutputDir",
       "changeOutputDir",
-      "checkUpdates",
       "openSettings",
       "revealLog",
       "quit",
@@ -112,7 +111,6 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(enabledActions(m.menu)).toEqual([
       "openOutputDir",
       "changeOutputDir",
-      "checkUpdates",
       "openSettings",
       "revealLog",
       "quit",
@@ -266,33 +264,12 @@ describe("Stop tooltip (plan 016)", () => {
   });
 });
 
-describe("update menu", () => {
-  it("shows bilingual results and retry while leaving the recording title alone", () => {
-    for (const language of ["en", "zh-TW"] as const) {
-      const ctx: AppContext = { ...mac, language, updates: { state: { kind: "available", version: "0.2.0" }, enabled: true } };
-      const model = trayModel({ type: "idle" }, ctx);
-      expect(model.title).toBe("");
-      expect(labels(model.menu)).toContain(language === "en" ? "Update available: 0.2.0" : "有可用更新：0.2.0");
-      expect(enabledActions(model.menu)).toContain("openUpdate");
-      expect(enabledActions(model.menu)).toContain("checkUpdates");
-    }
-  });
-  it("keeps recording controls at the top and hides update results throughout capture", () => {
+describe("updates live in settings", () => {
+  it("keeps settings reachable without update commands in the tray", () => {
     const ctx: AppContext = { ...mac, updates: { state: { kind: "available", version: "0.2.0" }, enabled: true } };
-    const recording = trayModel({ type: "recording", startedAt: "2026-09-20T00:00:00Z" }, ctx);
-    expect(labels(recording.menu).slice(0, 2)).toEqual(["錄製中", "停止"]);
-    expect(recording.title).toBe("REC");
-    for (const state of [{ type: "starting" }, { type: "recording", startedAt: "2026-09-20T00:00:00Z" }, { type: "stopping" }] as RecordingState[]) {
-      const menu = trayModel(state, ctx).menu;
-      expect(labels(menu).join()).not.toContain("0.2.0");
-      expect(enabledActions(menu)).not.toContain("checkUpdates");
-      expect(enabledActions(menu)).not.toContain("openUpdate");
-    }
-  });
-  it("disables checks while pending and shows a successful local timestamp", () => {
-    const context: AppContext = { ...mac, updates: { state: { kind: "checking" }, enabled: false } };
-    expect(enabledActions(trayModel({ type: "idle" }, context).menu)).not.toContain("checkUpdates");
-    context.updates!.state = { kind: "current", checkedAt: 1234567890000 };
-    expect(labels(trayModel({ type: "idle" }, context).menu)).toContain(`已是最新版本（檢查時間：${new Date(1234567890000).toLocaleString("zh-TW")}）`);
+    const actions = enabledActions(trayModel({ type: "idle" }, ctx).menu);
+    expect(actions).toContain("openSettings");
+    expect(actions).not.toContain("checkUpdates");
+    expect(actions).not.toContain("openUpdate");
   });
 });

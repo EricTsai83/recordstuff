@@ -34,10 +34,11 @@ describe("settingsView", () => {
       "frameRate",
       "hotkey",
       "updateChecks",
+      "updates",
       "language",
     ]);
     for (const entry of view.groups) {
-      expect(entry.choices.filter((choice) => choice.checked), entry.id).toHaveLength(1);
+      expect(entry.choices.filter((choice) => choice.checked), entry.id).toHaveLength(entry.kind === "actions" ? 0 : 1);
       expect(entry.enabled, entry.id).toBe(true);
     }
     expect(checked(idle, context, "videoQuality")).toBe("standard");
@@ -148,5 +149,29 @@ describe("settingsChecked reports whether a save took effect", () => {
     expect(settingsChecked(idle, context, "nope", "30")).toBe(false);
     // A locked group still reports the truth; only `settingsAction` gates writes.
     expect(settingsChecked(busy[0]!, context, "frameRate", "30")).toBe(true);
+  });
+});
+
+describe("update actions in General", () => {
+  it("offers manual checks even when startup checks are off", () => {
+    const ctx = { ...context, updates: { state: { kind: "idle" } as const, enabled: false } };
+    expect(group(idle, ctx, "updates")).toMatchObject({ tab: "general", kind: "actions" });
+    expect(settingsAction(idle, ctx, "updates", "check")).toBe("checkUpdates");
+    for (const state of busy) expect(settingsAction(state, ctx, "updates", "check")).toBeUndefined();
+  });
+  it("disables duplicate checks and exposes results and retry", () => {
+    const ctx: AppContext = { ...context, updates: { state: { kind: "checking" }, enabled: true } };
+    expect(settingsAction(idle, ctx, "updates", "check")).toBeUndefined();
+    for (const state of [{ kind: "available", version: "9.0.0" }, { kind: "failed" }] as const) {
+      ctx.updates.state = state;
+      expect(settingsAction(idle, ctx, "updates", "open")).toBe("openUpdate");
+      expect(settingsAction(idle, ctx, "updates", "check")).toBe("checkUpdates");
+    }
+    ctx.updates.state = { kind: "current", checkedAt: 1234567890000 };
+    expect(group(idle, ctx, "updates")?.note).toContain(new Date(1234567890000).toLocaleString("en"));
+    expect(settingsAction(idle, ctx, "updates", "open")).toBeUndefined();
+  });
+  it("places quality controls in Recording", () => {
+    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["videoQuality", "resolutionCap", "frameRate"]);
   });
 });
