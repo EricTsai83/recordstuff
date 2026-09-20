@@ -1,0 +1,10 @@
+{
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "scripts/**/*", "astro.config.mjs", "vercel.ts", ".astro/types.d.ts"],
+  "exclude": ["dist", "node_modules"]
+}
