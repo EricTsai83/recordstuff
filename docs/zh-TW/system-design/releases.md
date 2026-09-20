@@ -4,6 +4,8 @@
 
 更新：2026-09-19。推送版本 tag 是唯一的發布動作，而且 tag 就是版本：CI 在一次執行中把它寫入建置、簽署、驗證、公開、重驗公開下載，並把事實回寫到 main。含 pipeline 內人工驗收閘門的 draft／promote 流程用於 [0.1.1](../verification/releases/0.1.1.md)，並在準備 0.1.2 的同一天退役；人工檢查改在打 tag 之前進行。[0.1.2](../verification/releases/0.1.2.md) 是此流程的第一個版本：從推送 tag 到公開不到三分鐘。
 
+網站與 App 的分工、部署負責者及更新 feed 流程，見[交付設計圖](delivery.md)。
+
 ## 發布契約
 
 [release.yml](../../../.github/workflows/release.yml) 只在推送 `v*` tag 時建置與發布。App 發布沒有分支或 PR 觸發。以既有 tag 手動 dispatch 只執行發布後驗證，不會建置 App、發布版本或部署網站。網站交付由獨立的 [website.yml](../../../.github/workflows/website.yml) 處理：main 的 push 若修改 `website/**` 或該 workflow，就自動部署網站；在 main 手動 dispatch 可重試網站部署，不需要版本 tag 或 macOS job。使用 `macos-15`，執行時要求 arm64；Node 24.21.0、pnpm 10.33.4 與 frozen lockfile。Actions 固定完整 commit SHA，更新時需重新檢查上游版本。

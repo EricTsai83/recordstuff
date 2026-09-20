@@ -4,6 +4,8 @@
 
 Updated: 2026-09-19. Pushing a version tag is the only release action, and the tag is the version: CI stamps it into the build, signs, verifies, publishes, re-verifies the public download and records the facts back on main in one run. The draft/promote flow with an in-pipeline manual acceptance gate was used for [0.1.1](../verification/releases/0.1.1.md) and retired the same day 0.1.2 was prepared; manual checks now happen before tagging. [0.1.2](../verification/releases/0.1.2.md) was the first release on this flow: tag push to public release in under three minutes.
 
+See [delivery diagrams](delivery.md) for the website/App split, deployment ownership, and update-feed flow.
+
 ## Release contract
 
 [release.yml](../../.github/workflows/release.yml) builds and publishes only on `v*` tag pushes. There is no branch or pull-request trigger for App publication. A manual dispatch with an existing tag runs only the post-publish verification job, never an App build, publication or website deployment. Website delivery runs independently through [website.yml](../../.github/workflows/website.yml): pushes to main affecting `website/**` or that workflow automatically deploy the website; `workflow_dispatch` on main retries website delivery without a release tag or macOS job. It uses `macos-15` with an arm64 runtime assertion, Node 24.21.0, pnpm 10.33.4 and frozen lockfile installation. Actions are pinned to full commit SHAs; recheck upstream when updating.

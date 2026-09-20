@@ -12,6 +12,7 @@ Updated: 2026-09-19. These documents describe the current implementation and rep
 | [Recording pipeline](recording.md) | Start, capture, encoding, chunks, stop, failure, and file durability |
 | [Desktop features](desktop.md) | Tray, notifications, permissions, settings, and logging |
 | [Function reference](functions.md) | Named functions and methods, contracts, side effects, and collaborators |
+| [Website, App, and update-feed delivery](delivery.md) | Flow diagrams, deployment ownership, token requirements, and release boundaries |
 | [GitHub release automation](releases.md) | Tag-triggered build, signing secrets, gates, publishing and failure handling |
 | [macOS signing identities and self-signing](signing.md) | Identity design, certificate creation/backup, local signing, and planned CI provisioning |
 | [Build, packaging, and verification](tooling.md) | Developer workflows, signing, measurement tools, and delivery |
