@@ -68,4 +68,4 @@ For example, main can contain unreleased update-check functionality while the pu
 - Deployment token: authorize the correct team and manage expiry. Investigate permissions and configuration after a 403; a retry alone does not establish a fix.
 - Local website checks do not prove hosted delivery. Verify public feed content, caching, and actual App transport. CI does not prove screen or system-audio capture.
 
-Implementation: [website workflow](../../.github/workflows/website.yml), [App release workflow](../../.github/workflows/release.yml), [Vercel configuration](../../website/vercel.ts), [feed endpoint](../../website/src/pages/release.json.ts).
+Implementation: [website workflow](../../.github/workflows/website.yml), [App release workflow](../../.github/workflows/release.yml), [Vercel configuration](../../website/vercel.json), [feed endpoint](../../website/src/pages/release.json.ts).

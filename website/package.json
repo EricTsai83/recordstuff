@@ -27,7 +27,6 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@types/node": "24.13.4",
-    "@vercel/config": "^0.7.1",
     "puppeteer-core": "^25.11.0",
     "typescript": "~6.0.3"
   },

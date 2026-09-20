@@ -171,7 +171,7 @@ v0.1.0 已在本機完成瀏覽器下載／安裝驗證，Gatekeeper 需要單�
 
 ## 官方網站
 
-來源：[website/](../../../website/)，獨立的 pnpm 套件（Astro 7、TypeScript 6，因為 `astro check` 尚不能使用 TypeScript 7 的原生編譯器）。它不屬於 Electron 建置，也不在根目錄 `pnpm check` 之內。版面與 CSS 結構改作自 T3 Code 官網（MIT，見 [website/THIRD_PARTY.md](../../../website/THIRD_PARTY.md)）；視覺方向（石墨中性色、白字、紅色只用於錄影點、Geist）是 RecordStuff 自己的；主題檔仍沿用早先橘色方向的名稱 `ember.css`。Geist、JetBrains Mono 與 Kalam（手繪標註）透過 Fontsource 自行託管，執行時不向第三方發出請求。正式網址為 `https://record.ericts.com`；預覽可用 `SITE_URL` 覆寫。Hosting 是維護者在 Vercel 平台自行設定的專案（根目錄 `website/`，[website/vercel.ts](../../../website/vercel.ts) 關閉 Git 自動部署）。
+來源：[website/](../../../website/)，獨立的 pnpm 套件（Astro 7、TypeScript 6，因為 `astro check` 尚不能使用 TypeScript 7 的原生編譯器）。它不屬於 Electron 建置，也不在根目錄 `pnpm check` 之內。版面與 CSS 結構改作自 T3 Code 官網（MIT，見 [website/THIRD_PARTY.md](../../../website/THIRD_PARTY.md)）；視覺方向（石墨中性色、白字、紅色只用於錄影點、Geist）是 RecordStuff 自己的；主題檔仍沿用早先橘色方向的名稱 `ember.css`。Geist、JetBrains Mono 與 Kalam（手繪標註）透過 Fontsource 自行託管，執行時不向第三方發出請求。正式網址為 `https://record.ericts.com`；預覽可用 `SITE_URL` 覆寫。Hosting 是維護者在 Vercel 平台自行設定的專案（根目錄 `website/`，[website/vercel.json](../../../website/vercel.json) 關閉 Git 自動部署）。
 
 | 指令（repo 根目錄） | 用途 |
 | --- | --- |
@@ -187,6 +187,8 @@ Release 資訊只從已提交的 manifest 渲染：沒有瀏覽器端 GitHub API
 [網站部署](../../../.github/workflows/website.yml) 在 main 的 push 修改 `website/**` 或 workflow 本身時自動執行，穩定版本記錄完成後也會呼叫，並支援在 main 手動重試。所有入口共用正式部署鎖，取得鎖後才 checkout 最新 main。三個儲存庫 Vercel secrets 的設定見[網站交付](releases.md#網站交付)。
 
 CI 從 repository 根目錄執行 Vercel CLI，平台專案的 Root Directory 設為 `website/`。以 `vercel deploy --archive=tgz --prod --yes` 提交原始碼，不執行 `pull`、本機 Vercel 建置或 `--prebuilt`。Vercel 依設定執行 `pnpm test && pnpm check`：測試、Astro 診斷、manifest 線上驗證、正式建置、建置 feed 比對與 `dist/` 連結檢查。本機 `site:check` 使用相同的套件檢查。GitHub runner 的環境變數不會自動傳入遠端建置；除非另在 Vercel 設定，manifest 驗證使用公開 GitHub 端點。
+
+部署設定使用靜態 JSON，讓 CLI 在尚未安裝網站依賴時即可讀取，不必解析 Astro 的 TypeScript 基底設定。
 
 專案限定 token 透過既設的 `VERCEL_ORG_ID`／`VERCEL_PROJECT_ID` 指定目標，不加顯式 `--scope`：CLI 59.23.2 否則會在部署前要求使用者／團隊查詢權限。
 

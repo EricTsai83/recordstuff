@@ -103,7 +103,7 @@ jobs:
         run: |
           set -euo pipefail
           # Root Directory is website/. Vercel runs tests and all build gates
-          # from website/vercel.ts before making the deployment live.
+          # from website/vercel.json before making the deployment live.
           # Use VERCEL_ORG_ID/VERCEL_PROJECT_ID; --scope requires user/team
           # discovery that project-scoped tokens deliberately cannot access.
           url="$(npx --yes vercel@59.23.2 deploy --archive=tgz --prod --yes --token "$VERCEL_TOKEN")"

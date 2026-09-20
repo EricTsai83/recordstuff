@@ -68,4 +68,4 @@ flowchart LR
 - 部署 token：授權正確團隊並管理到期更新。403 表示需要查權限與設定，不能靠重跑假設已修復。
 - 本機網站測試通過不等於線上部署成功；仍需確認正式 feed 的內容、快取與 App 的實際讀取。CI 不證明畫面或系統聲音錄製成功。
 
-實作來源：[網站 workflow](../../../.github/workflows/website.yml)、[App release workflow](../../../.github/workflows/release.yml)、[Vercel 設定](../../../website/vercel.ts)、[feed 端點](../../../website/src/pages/release.json.ts)。
+實作來源：[網站 workflow](../../../.github/workflows/website.yml)、[App release workflow](../../../.github/workflows/release.yml)、[Vercel 設定](../../../website/vercel.json)、[feed 端點](../../../website/src/pages/release.json.ts)。
