@@ -58,6 +58,50 @@ jobs:
           node-version: 24.21.0
           cache: pnpm
           cache-dependency-path: website/pnpm-lock.yaml
+      - name: Verify Vercel project access
+        if: steps.vercel.outputs.configured == 'true'
+        run: |
+          node --input-type=module <<'NODE'
+          const { VERCEL_TOKEN: token, VERCEL_ORG_ID: org, VERCEL_PROJECT_ID: project } = process.env;
+          function fail(message) {
+            console.error(`::error::${message}`);
+            process.exit(1);
+          }
+          for (const [name, value, pattern] of [
+            ["VERCEL_ORG_ID", org, /^team_[a-zA-Z0-9]+$/],
+            ["VERCEL_PROJECT_ID", project, /^prj_[a-zA-Z0-9]+$/],
+          ]) {
+            if (!pattern.test(value ?? "")) fail(`${name} has an invalid format. Copy the ID without quotes, spaces, or backticks.`);
+          }
+          if (!token || /\s/.test(token)) fail("VERCEL_TOKEN is empty or contains whitespace. Replace the repository secret with the token only.");
+          async function get(path, label) {
+            let response;
+            try {
+              response = await fetch(`https://api.vercel.com${path}`, {
+                headers: { Authorization: `Bearer ${token}` },
+                signal: AbortSignal.timeout(15000),
+              });
+            } catch {
+              fail(`${label}: network request failed or timed out. No deployment attempted.`);
+            }
+            if (!response.ok) {
+              const hint = response.status === 401 || response.status === 403
+                ? "Check token expiry and access to the project's Vercel team; also verify both IDs."
+                : response.status === 404
+                  ? "Check the project/team IDs and whether this token can see them."
+                  : "Vercel returned an unexpected status; retry after checking service availability.";
+              fail(`${label}: HTTP ${response.status}. ${hint}`);
+            }
+            try { return await response.json(); }
+            catch { fail(`${label}: invalid JSON response.`); }
+          }
+          // The CLI reads both the team and project. Never print API bodies or credentials.
+          await get(`/v2/teams/${encodeURIComponent(org)}`, "Vercel team access");
+          const settings = await get(`/v9/projects/${encodeURIComponent(project)}?teamId=${encodeURIComponent(org)}`, "Vercel project access");
+          if (settings.id !== project || settings.accountId !== org) fail("Vercel project ownership does not match the configured IDs.");
+          if (settings.name !== "recordstuff" || settings.rootDirectory !== "website") fail("Expected the recordstuff project with Root Directory website. Check project configuration.");
+          console.log("Vercel team and project access verified. No deployment performed by this check.");
+          NODE
       - name: Install and check the website source
         if: steps.vercel.outputs.configured == 'true'
         run: |

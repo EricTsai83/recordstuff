@@ -231,3 +231,7 @@ Vercel 唯讀檢查確認既有 `recordstuff` 專案、根目錄 `website` 與�
 首次線上網站檢查回報 47 個 TypeScript 錯誤：獨立網站套件的 tsconfig 指定 Node 型別，卻未宣告 `@types/node`。先前本機檢查可解析根目錄的依賴，因此漏掉這個隔離環境問題。已在網站 devDependencies 加入 `@types/node` 24.13.4，並重新產生網站 pnpm lockfile。
 
 在 repository 外的全新目錄，只複製網站原始碼、不繼承根目錄 node_modules，以 `pnpm install --frozen-lockfile` 安裝後驗證：15 項測試全過，Astro 檢查 39 個檔案無錯誤／警告，經線上驗證的正式建置與已發布 0.1.2 feed 相符，59 個內部引用／13 個外部網址全過。忽略 esbuild build script 的警告仍存在，但未阻擋建置。這是在 macOS 的依賴隔離驗證，尚未重跑 Linux Actions 或 Vercel 部署；未測試 App 或錄影行為。`git diff --check` 通過。
+
+## Vercel 存取診斷 — 2026-09-20
+
+網站 workflow 現在於安裝／建置前檢查憑證與 ID 格式，並讀取團隊、專案 API；只輸出 HTTP 狀態與設定提示，不輸出憑證或回應內容。六種模擬案例通過（成功、團隊／專案 403、404、ID 格式錯誤、token 空白）；同一檢查以本機 CLI 憑證唯讀存取既有專案也通過。這不代表無法讀回的 GitHub secret 有效。Actionlint（未啟用 ShellCheck）與 diff 格式檢查通過。未觸發部署或線上 workflow；CI 專案設定授權失敗仍待核對儲存庫 secrets。
