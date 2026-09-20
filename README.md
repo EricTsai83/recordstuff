@@ -47,7 +47,7 @@ Output is H.264/AAC MP4. Audio requests 256 kbps with voice processing explicitl
 The local app has been verified for recording/playback, Retina 3456×2234 capture, permissions and recovery, partial-file preservation, self-signed DMG installation, and same-identity updates. 0.1.2 ships a simplified DMG (app and Applications link only) with online install, update and removal guidance; see [0.1.2 evidence](docs/verification/releases/0.1.2.md). The notification icon was confirmed normal after reboot on 2026-09-14. The new language implementation is covered by automated checks; the release plan includes checking it in the next packaged build. Full evidence and limitations are in the [verification record](docs/verification/README.md).
 
 - [System design](docs/system-design/README.md): overview, architecture, recording, desktop behavior, every module's functions, tooling, and decisions.
-- [Remaining work](plans/README.md): scoped follow-ups, including an [in-app update check](plans/018-app-update.md); completed/canceled plans have been removed.
+- [Remaining work](plans/README.md): plan status and verification references; completed/canceled plans have been removed.
 - [Contributing](CONTRIBUTING.md): development setup, bug reports, testing, and pull requests.
 
 ## Development

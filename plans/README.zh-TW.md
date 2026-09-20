@@ -2,19 +2,17 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-更新：2026-09-20。v0.1.2 已由 tag `v0.1.2` 公開，附精簡 DMG；見 [0.1.2 證據](../docs/zh-TW/verification/releases/0.1.2.md)。013 與 016 已完成並移除；錄影快捷鍵與其無人值守驗收（`pnpm acceptance`）記錄在[桌面設計](../docs/zh-TW/system-design/desktop.md#錄影快捷鍵)、[工具](../docs/zh-TW/system-design/tooling.md)與[驗證紀錄](../docs/zh-TW/verification/README.md)。發布依[發布自動化](../docs/zh-TW/system-design/releases.md)：tag 就是版本，CI 會把每次發布回寫到 main。
+更新：2026-09-20。v0.1.3 已由 tag `v0.1.3` 公開，附精簡 DMG；見 [0.1.3 證據](../docs/zh-TW/verification/releases/0.1.3.md)。013 與 016 已完成並移除；錄影快捷鍵與其無人值守驗收（`pnpm acceptance`）記錄在[桌面設計](../docs/zh-TW/system-design/desktop.md#錄影快捷鍵)、[工具](../docs/zh-TW/system-design/tooling.md)與[驗證紀錄](../docs/zh-TW/verification/README.md)。發布依[發布自動化](../docs/zh-TW/system-design/releases.md)：tag 就是版本，CI 會把每次發布回寫到 main。
 
 017 已完成：儲存通知時序修正、連續兩輪 15/15 驗收，以及取消／重疊／播放檢查皆完成；詳見[驗證紀錄](../docs/zh-TW/verification/README.md#儲存通知時序2026-09-20)。
 
 014 已完成並移除：維護者接受雙語通知矩陣 30/30 的本機結果作為計畫結案依據。歷史根因不確定性與未測項目保留於[驗證紀錄](../docs/zh-TW/verification/README.md#通知生命週期調查--2026-09-20)。發布及公開版檢查改由另行要求的發布流程處理。
 
-012 已完成並移除：[官網](https://record.ericts.com)已上線，維護者於 2026-09-20 確認上線並要求文件收尾；結案依據與歷史驗證範圍見[驗證紀錄](../docs/zh-TW/verification/README.md#plan-012-結案--2026-09-20)。下一個為 018。
+012 已完成並移除：[官網](https://record.ericts.com)已上線，維護者於 2026-09-20 確認上線並要求文件收尾；結案依據與歷史驗證範圍見[驗證紀錄](../docs/zh-TW/verification/README.md#plan-012-結案--2026-09-20)。018 現已完成。
 
 ## 順序與狀態
 
-| 順序 | 計畫 | 狀態 | 交付目標 |
-| --- | --- | --- | --- |
-| 下一個 | [018 App 內更新檢查](018-app-update.zh-TW.md) | 本機人工驗收與自動整合／真實錄影通過；公開 feed 已部署並驗證；待已安裝 App 對正式 feed 檢查 | Tray 對已發布版本 feed 做檢查並連到下載頁，安裝仍為手動 |
+目前沒有未完成計畫。018 的本機驗收、公開 feed 與 0.1.3 發布已完成；見[結案紀錄](../docs/zh-TW/verification/README.md#plan-018-結案--2026-09-20)。未測範圍仍保留在驗證文件。
 
 發布由推送 tag 自動化；已安裝 App 的更新仍為手動。018 只新增「有新版就告知並連到下載頁」的檢查，不授權由 App 下載或安裝更新。公開發行說明維持全英文，App 與讀者指引保留雙語，不覆寫已發布的產物。
 

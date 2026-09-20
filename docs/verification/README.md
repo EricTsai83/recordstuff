@@ -259,3 +259,7 @@ The first source-deployment attempt failed before project lookup with `User not 
 ## Release 0.1.3 authorization — 2026-09-20
 
 After public feed delivery succeeded, the maintainer confirmed local acceptance was already complete and requested publication. The recorded native/manual and automated capture evidence above is reused; no new native check against the live feed or public-build upgrade is claimed. Pre-release `pnpm check` passed 395 tests in 24 files, types and production build. Release preparation removes the obsolete Finder limitation from generated release notes and adds Website Help. No App was stopped or rebuilt through start:app for this release preparation.
+
+## Plan 018 closure — 2026-09-20
+
+Closed on the basis of maintainer-confirmed local acceptance, verified public feed delivery, and successful [0.1.3 publication](releases/0.1.3.md). The release workflow completed build, signing, publication, anonymous public-download verification, release recording and website deployment. The live feed now advertises 0.1.3 with matching metadata. Earlier local evidence and all historical failures remain above. No new native live-feed or public-build upgrade test is claimed; the release record retains those limits. The completed bilingual plan files were removed and indexes updated.

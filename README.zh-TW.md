@@ -48,7 +48,7 @@ SHA-256：`2d8c2ab1b1a52eba6b367f4419ea1551bb4750b00ac61a31ef8bb5afb11babee`。
 
 - [System design](docs/zh-TW/system-design/README.md)：產品總覽、架構、錄製流程、桌面功能、函式細節、工具與決策。
 - [驗證紀錄](docs/zh-TW/verification/README.md)：已取得證據與限制。
-- [剩餘計畫](plans/README.zh-TW.md)：後續工作，包含 [App 內更新檢查](plans/018-app-update.zh-TW.md)；已完成或取消的計畫已移除。
+- [剩餘計畫](plans/README.zh-TW.md)：計畫狀態與驗證索引；已完成或取消的計畫已移除。
 - [貢獻指南](docs/zh-TW/CONTRIBUTING.md)：開發環境、問題回報、測試與 PR 提交流程。
 
 ## 開發
