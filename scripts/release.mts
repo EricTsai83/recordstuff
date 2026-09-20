@@ -4,6 +4,8 @@ import { existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, readlink
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fetchManifest } from './lib/release-manifest-client.mts';
+import { assertManifestShape, REPOSITORY, type ReleaseManifest } from './lib/release-manifest.mts';
 
 export const signingSHA1 = '01B373511530BBF287CA35E54C10A5F017AAD637';
 /** Stable `1.2.3` or pre-release `1.2.3-rc.1`; the tag is always `v` + version. */
@@ -54,6 +56,16 @@ export function replaceMarked(text: string, name: string, block: string): string
   return `${text.slice(0, from + start.length)}\n${block}\n${text.slice(to)}`;
 }
 export interface ReleaseFacts { version: string; tag: string; repository: string; sourceCommit: string; file: string; size: number; sha256: string; runUrl: string; publishedAt: string; date: string }
+/** Stable documentation and the website share the same verified release snapshot. */
+export function releaseFactsFromManifest(value: unknown, runUrl: string): ReleaseFacts {
+  const manifest = assertManifestShape(value);
+  return {
+    version: manifest.version, tag: manifest.tag, repository: REPOSITORY,
+    sourceCommit: manifest.sourceCommit, file: manifest.dmg.name,
+    size: manifest.dmg.size, sha256: manifest.dmg.sha256,
+    publishedAt: manifest.publishedAt, date: manifest.publishedAt.slice(0, 10), runUrl,
+  };
+}
 const bytes = (n: number) => n.toLocaleString('en-US');
 /** README download paragraphs; the English and Chinese texts are maintained here so a release updates both. */
 export function renderDownloadSection(lang: 'en' | 'zh-TW', f: ReleaseFacts): string {
@@ -215,7 +227,7 @@ function verifyCandidate(directory: string, tag: string, c: ReleaseContext = con
   if (readFileSync(path.join(directory, 'SHA256SUMS'), 'utf8') !== `${actual.sha256}  ${actual.file}\n`) throw new Error('SHA256SUMS mismatch.');
   return actual;
 }
-function main() {
+async function main() {
   const [mode, tag, directoryArg] = process.argv.slice(2);
   if (!tag || !['preflight', 'version', 'candidate', 'verify', 'publish', 'published', 'record'].includes(mode ?? '')) throw new Error('Usage: release.mts preflight|version|candidate|verify|publish|published|record vX.Y.Z [directory]');
   const packageJsonPath = path.join(root, 'package.json');
@@ -230,23 +242,39 @@ function main() {
   if (mode === 'record') {
     // After a successful release: write the facts CI knows back into the repository (committed by the workflow).
     const c = contextFromTag(tag);
-    const release = api(`repos/${c.repository}/releases/tags/${tag}`) as PublishedRelease & { html_url: string; published_at: string; prerelease: boolean };
-    const file = `RecordStuff-${c.version}-arm64-selfsigned.dmg`;
-    const asset = release.assets.find(a => a.name === file);
-    if (release.draft || !asset || !asset.digest?.startsWith('sha256:')) throw new Error('Release is not public or its DMG digest is unavailable.');
-    const facts: ReleaseFacts = { ...c, file, size: asset.size, sha256: asset.digest.slice('sha256:'.length), runUrl: process.env.RELEASE_RUN_URL ?? `https://github.com/${c.repository}/actions`, publishedAt: release.published_at, date: release.published_at.slice(0, 10) };
-    const changed: string[] = [];
-    const write = (rel: string, text: string) => { writeFileSync(path.join(root, rel), text); changed.push(rel); };
+    const runUrl = process.env.RELEASE_RUN_URL ?? `https://github.com/${c.repository}/actions`;
+    let manifest: ReleaseManifest | undefined;
+    let facts: ReleaseFacts;
+    if (isPrerelease(c.version)) {
+      // Pre-releases get a historical record, never a stable download pointer.
+      const release = api(`repos/${c.repository}/releases/tags/${tag}`) as PublishedRelease & { published_at: string; prerelease: boolean };
+      const file = `RecordStuff-${c.version}-arm64-selfsigned.dmg`;
+      const asset = release.assets.find(a => a.name === file);
+      if (release.draft || !release.prerelease || !asset || !asset.digest?.startsWith('sha256:')) throw new Error('Pre-release is not public or its DMG digest is unavailable.');
+      facts = { ...c, file, size: asset.size, sha256: asset.digest.slice('sha256:'.length), runUrl, publishedAt: release.published_at, date: release.published_at.slice(0, 10) };
+    } else {
+      // Validate public release.json, checksums and assets once, then render every output.
+      manifest = await fetchManifest(tag);
+      facts = releaseFactsFromManifest(manifest, runUrl);
+      if (facts.sourceCommit !== c.sourceCommit) throw new Error('Published manifest source commit does not match the tag.');
+    }
+    // Prepare all outputs before touching disk: invalid README markers or
+    // unreadable inputs cannot leave an earlier output partially updated.
+    const outputs = new Map<string, string>();
+    const prepare = (rel: string, text: string) => { outputs.set(rel, text); };
     for (const [rel, lang] of [['docs/verification/releases', 'en'], ['docs/zh-TW/verification/releases', 'zh-TW']] as const) {
       const target = `${rel}/${c.version}.md`;
-      if (!existsSync(path.join(root, target))) write(target, renderVerificationRecord(lang, facts));
+      if (!existsSync(path.join(root, target))) prepare(target, renderVerificationRecord(lang, facts));
     }
-    if (!release.prerelease) {
-      if (compareVersions(packageVersion(), c.version) < 0) write('package.json', setPackageVersion(readFileSync(packageJsonPath, 'utf8'), c.version));
+    if (manifest) {
+      prepare('website/release-manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
+      if (compareVersions(packageVersion(), c.version) < 0) prepare('package.json', setPackageVersion(readFileSync(packageJsonPath, 'utf8'), c.version));
       for (const [rel, lang] of [['README.md', 'en'], ['README.zh-TW.md', 'zh-TW']] as const) {
-        write(rel, replaceMarked(readFileSync(path.join(root, rel), 'utf8'), 'release-download', renderDownloadSection(lang, facts)));
+        prepare(rel, replaceMarked(readFileSync(path.join(root, rel), 'utf8'), 'release-download', renderDownloadSection(lang, facts)));
       }
     }
+    for (const [rel, text] of outputs) writeFileSync(path.join(root, rel), text);
+    const changed = [...outputs.keys()];
     console.log(changed.length ? `Recorded ${tag}: ${changed.join(', ')}` : `Nothing to record for ${tag}.`);
     return;
   }
@@ -295,5 +323,5 @@ function main() {
   console.log(`Published ${tag}${prerelease ? ' as a pre-release' : ' as latest'} from verified candidate ${metadata.sha256}.`);
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try { main(); } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; }
+  void main().catch((error: unknown) => { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; });
 }

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { assertDmgContents, assertPublishedAssets, assertUnreleased, compareVersions, isPrerelease, notes, renderDownloadSection, renderVerificationRecord, replaceMarked, setPackageVersion, validateDigest, validateTag, type ReleaseFacts } from './release.mts';
+import { assertDmgContents, assertPublishedAssets, assertUnreleased, compareVersions, isPrerelease, notes, renderDownloadSection, releaseFactsFromManifest, renderVerificationRecord, replaceMarked, setPackageVersion, validateDigest, validateTag, type ReleaseFacts } from './release.mts';
 
 describe('release gates', () => {
   it('accepts only a tag equal to v + package version, stable or pre-release', () => {
@@ -83,10 +83,25 @@ describe('record helpers', () => {
     expect(() => replaceMarked('no markers', 'x', 'new')).toThrow(/Markers/);
   });
   it('renders the README download blocks exactly as the committed READMEs carry them', () => {
+    const manifest: unknown = JSON.parse(readFileSync(new URL('../website/release-manifest.json', import.meta.url), 'utf8'));
+    const published = releaseFactsFromManifest(manifest, 'https://github.com/EricTsai83/recordstuff/actions');
     for (const [file, lang] of [['README.md', 'en'], ['README.zh-TW.md', 'zh-TW']] as const) {
       const readme = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
-      expect(readme).toContain(`<!-- release-download:start -->\n${renderDownloadSection(lang, facts)}\n<!-- release-download:end -->`);
+      expect(readme, file).toContain(`<!-- release-download:start -->\n${renderDownloadSection(lang, published)}\n<!-- release-download:end -->`);
     }
+  });
+  it('derives stable document facts from structured data and rejects malformed snapshots', () => {
+    const manifest = JSON.parse(readFileSync(new URL('../website/release-manifest.json', import.meta.url), 'utf8'));
+    const runUrl = 'https://github.com/EricTsai83/recordstuff/actions/runs/123';
+    const published = releaseFactsFromManifest(manifest, runUrl);
+    expect(published).toEqual({
+      version: manifest.version, tag: manifest.tag, repository: 'EricTsai83/recordstuff',
+      sourceCommit: manifest.sourceCommit, file: manifest.dmg.name, size: manifest.dmg.size,
+      sha256: manifest.dmg.sha256, publishedAt: manifest.publishedAt,
+      date: manifest.publishedAt.slice(0, 10), runUrl,
+    });
+    expect(() => releaseFactsFromManifest({ ...manifest, tag: 'v99.0.0' }, runUrl)).toThrow();
+    expect(() => releaseFactsFromManifest({ ...manifest, dmg: { ...manifest.dmg, sha256: 'invalid' } }, runUrl)).toThrow();
   });
   it('renders bilingual verification skeletons with the facts and explicit fill-in sections', () => {
     const en = renderVerificationRecord('en', facts);

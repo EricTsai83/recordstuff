@@ -6,6 +6,12 @@
 
 網站與 App 的分工、部署負責者及更新 feed 流程，見[交付設計圖](delivery.md)。
 
+正式版的 `record` 步驟與網站共用 `scripts/lib/release-manifest*.mts` 的驗證器，一次取得並交叉驗證 GitHub release、`release.json`、SHA256SUMS 與下載資產；同一份資料產生 `website/release-manifest.json`、中英文 README 下載區塊及缺少的驗證紀錄。README 與驗證紀錄都是輸出，不再反向解析 Markdown 作為資料來源。離線測試讀取已提交的 JSON manifest 驗證 README，不依賴 CI 建置時寫入的候選 `package.json` 版本；這只驗證提交資料的一致性，不宣稱已查詢 GitHub 的最新版本。預發布版本只產生歷史驗證紀錄，不修改正式版 manifest 或 README。
+
+發布工具與網站只共用根目錄 `scripts/lib/release-manifest.mts`（資料模型與驗證）及 `release-manifest-client.mts`（公開發布資料讀取）；網站 CLI 保留自己的輸出路徑與命令。record 會先讀取、驗證所有輸入並在記憶體產生全部輸出，成功後才開始寫檔；這避免標記或輸入錯誤造成局部更新，但不是跨檔案的斷電交易。`scripts/release-record.test.ts` 透過暫存 checkout 執行真正 CLI，網路與 gh 邊界使用固定資料，涵蓋正式版、預發布版、人工紀錄保留、候選版本、commit 不符及 README 標記錯誤。
+
+Vercel 的 Root Directory 仍為 `website`，必須啟用 **Include source files outside of the Root Directory in the Build Step**，讓建置可讀取共用模組；部署 workflow 會檢查此設定，並在 `scripts/lib/release-manifest*.mts` 變更時觸發網站建置。
+
 ## 發布契約
 
 [release.yml](../../../.github/workflows/release.yml) 只在推送 `v*` tag 時建置與發布。App 發布沒有分支或 PR 觸發。以既有 tag 手動 dispatch 只執行發布後驗證，不會建置 App、發布版本或部署網站。網站交付由獨立的 [website.yml](../../../.github/workflows/website.yml) 處理：main 的 push 若修改 `website/**` 或該 workflow，就自動部署網站；在 main 手動 dispatch 可重試網站部署，不需要版本 tag 或 macOS job。使用 `macos-15`，執行時要求 arm64；Node 24.21.0、pnpm 10.33.4 與 frozen lockfile。Actions 固定完整 commit SHA，更新時需重新檢查上游版本。
@@ -53,7 +59,7 @@ gh workflow run release.yml --ref main -f tag=v0.1.2
 
 ## 工具邊界與失敗
 
-`node scripts/release.mts preflight|candidate|verify|publish vX.Y.Z [directory]` 共用本機與 CI 驗證。`preflight` 要求乾淨工作樹、tag 不比 package.json 最後記錄的版本舊，以及未用過的 release。`version` 把 tag 的版本寫入工作樹的 package.json 供建置。`record` 讀取公開 release，寫入 package.json、README 的標記區塊（`<!-- release-download:start/end -->`）與缺少的驗證紀錄；絕不覆寫既有紀錄。`candidate` 在最終 DMG bytes 上產生 `SHA256SUMS`、`release.json`，記錄版本、source commit、repository、平台、檔名、大小、SHA-256、憑證指紋、app.asar 雜湊、Node 與 pnpm。`verify` 以這些檔案重驗候選目錄。`published` 對從公開網址下載的檔案做同樣檢查，版本取自 tag、source commit 取自 tag 指向的 commit（因此在 main checkout 上可用目前工具驗任何舊版本），並額外要求 GitHub release 非 draft、恰有這三個 assets，且名稱、大小與 GitHub 計算的 SHA-256 digest 相符。`publish` 重驗、確認 tag 指向已驗證 commit、寫出英文說明，並以 `gh release create --verify-tag`（`--latest` 或 `--prerelease`）建立公開 release。
+`node scripts/release.mts preflight|candidate|verify|publish vX.Y.Z [directory]` 共用本機與 CI 驗證。`preflight` 要求乾淨工作樹、tag 不比 package.json 最後記錄的版本舊，以及未用過的 release。`version` 把 tag 的版本寫入工作樹的 package.json 供建置。`record` 讀取公開 release，寫入 package.json、正式版網站 manifest、README 的標記區塊（`<!-- release-download:start/end -->`）與缺少的驗證紀錄；絕不覆寫既有紀錄。`candidate` 在最終 DMG bytes 上產生 `SHA256SUMS`、`release.json`，記錄版本、source commit、repository、平台、檔名、大小、SHA-256、憑證指紋、app.asar 雜湊、Node 與 pnpm。`verify` 以這些檔案重驗候選目錄。`published` 對從公開網址下載的檔案做同樣檢查，版本取自 tag、source commit 取自 tag 指向的 commit（因此在 main checkout 上可用目前工具驗任何舊版本），並額外要求 GitHub release 非 draft、恰有這三個 assets，且名稱、大小與 GitHub 計算的 SHA-256 digest 相符。`publish` 重驗、確認 tag 指向已驗證 commit、寫出英文說明，並以 `gh release create --verify-tag`（`--latest` 或 `--prerelease`）建立公開 release。
 
 `start-app.mjs --verify-app APP_PATH` 只使用 `RECORDSTUFF_SIGN_IDENTITY` 公開 SHA-1，重用原本的深度簽章、憑證、identifier、runtime 與 designated requirement 驗證，不需要私鑰、不建置、不啟動 App。`assertDmgContents` 要求根目錄恰為 `Applications` 與 `RecordStuff.app`，隱藏項目最多只能是一般檔案 `.DS_Store`、`.VolumeIcon.icns` 與 `.background.png`／`.background.tiff`；任何其他項目、任何隱藏資料夾或符號連結，或以 `.` 開頭藏起來的指南，都會讓發布失敗。
 

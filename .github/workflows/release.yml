@@ -151,9 +151,10 @@ jobs:
       - name: Verify mounted contents, signatures, metadata and GitHub asset digests
         run: node scripts/release.mts published "$RELEASE_TAG" published
   record:
-    # Stable tag pushes only: after the public download verified, write the
+    # After the public download verified, write the
     # release facts (package.json version, README download block, bilingual
-    # verification record skeleton) back to main. Only these files change;
+    # verification record skeleton and website manifest) back to main.
+    # Pre-releases write only verification records. Only these files change;
     # the maintainer completes the record's fill-in sections afterwards.
     if: github.event_name == 'push'
     needs: verify-published
@@ -174,11 +175,6 @@ jobs:
           node-version: 24.21.0
       - name: Write release facts into the repository
         run: node scripts/release.mts record "$RELEASE_TAG"
-      - name: Refresh the website release manifest from the published release (stable tags only)
-        # Pre-release tags (vX.Y.Z-suffix) still get their verification record above,
-        # but the website only ever advertises stable releases.
-        if: ${{ !contains(github.ref_name, '-') }}
-        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON website/scripts/manifest.mts generate "$RELEASE_TAG"
       - name: Commit and push to main
         run: |
           set -euo pipefail
