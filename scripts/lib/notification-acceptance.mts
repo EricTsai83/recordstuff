@@ -76,11 +76,13 @@ export function judgeClick(
       reasons: ["the banner was not found in Notification Center (grouped, hidden or already gone)"],
     };
   const reasons: string[] = [];
-  if (!clickDelivered(observation)) {
-    // Pressed banner, no `reveal requested` in the app log: the response never reached the
-    // app, so neither Finder fact below can be blamed on the reveal. Kept apart from the
-    // foreground verdict; seen on macOS 26 right after Notification Center skipped a banner.
-    reasons.push("the click did not reach the app (no `notification: reveal` line after the save)");
+  if (!clickDelivered(observation, observation.bannerBody ?? expectedBannerBody(savedPath, language))) {
+    reasons.push("no click callback was logged for this saved notification");
+  }
+  if (!observation.appLog.some((line) =>
+    line.endsWith(`notification: reveal requested ${savedPath}`) ||
+    line.endsWith(`notification: reveal repeated after activation ${savedPath}`))) {
+    reasons.push("no successful reveal request was logged for this saved file");
   }
   const expected = expectedBannerBody(savedPath, language);
   if (observation.bannerBody !== undefined && observation.bannerBody !== expected) {
@@ -96,9 +98,9 @@ export function judgeClick(
   return { ...base, verdict: reasons.length === 0 ? "pass" : "fail", reasons };
 }
 
-/** The app logged a reveal for this click, i.e. macOS delivered the notification response. */
-export function clickDelivered(o: Pick<ClickObservation, "appLog">): boolean {
-  return o.appLog.some((line) => /notification: reveal (requested|repeated after activation|failed)/.test(line));
+/** Callback evidence is separate from reveal success, and tied to this save. */
+export function clickDelivered(o: Pick<ClickObservation, "appLog">, body: string): boolean {
+  return o.appLog.some((line) => line.endsWith(`notification: clicked: ${body}`));
 }
 
 /**

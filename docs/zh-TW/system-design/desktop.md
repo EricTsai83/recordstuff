@@ -22,6 +22,8 @@ TrayModel 是純函式產物，包含 icon、title、tooltip 與遞迴 menu。Ap
 
 macOS 點通知會做兩件事：把回應交給 App，並要求系統啟動發通知的 App；後者約在點擊回呼後 110 ms 才落地。reveal 以 `setImmediate` 立刻請 Finder 選取檔案；若系統隨後把這個無視窗 App 設為前景，Finder 會被壓回使用者原本的視窗後方，看起來什麼都沒發生（v0.1.0 的回報；macOS 26.6 上約三次點擊出現一次，同一程序的第一次點擊很少發生）。計畫 014 因此在 reveal 之後掛一個一次性的 `did-become-active` 監聽，時窗 `ACTIVATION_WINDOW_MS`（1 秒）：啟動若落在時窗內，就從已是前景的 App 再 reveal 一次，讓 Finder 的置前最後落地。log 區分 `reveal requested`、`reveal repeated after activation` 與 `reveal failed`。只有點擊會掛監聽；背景存檔不會碰 Finder。原生通知不支援或 `failed` event 會留下 log。通知是否顯示仍受系統通知設定影響。原生證據由 `pnpm acceptance:notification` 產生（[工具鏈](tooling.md#通知驗收)）。通知縮圖已由使用者於 2026-09-14 重開機後確認正常。
 
+`AppTray` 持有每個原生 `Notification`，直到 `click`、`close` 或 `failed`；單純 `show` 不會釋放。退出時關閉尚未處理的通知並清除參照；同步 `show()` 例外也會釋放並記錄。這讓 `show()` 返回後 callback 仍可到達：Electron 44.3.0 的[通知 wrapper](https://github.com/electron/electron/blob/v44.3.0/shell/browser/api/electron_api_notification.cc) 由 GC 管理，解構時會清除原生 delegate。此生命週期修正不代表已證實歷史未送達點擊的原因。不使用 timer 淘汰通知；沒有終止事件的通知會持有到退出。 Windows Action Center 的生命週期未在本次修正或驗證：Windows `close` 可能只是橫幅逾時，歷史通知仍可點擊。
+
 儲存通知由 `SavedNotification` 在檔案完成且回到 idle 後排程：macOS 使用單次 500 ms timer，其他平台立即請求。這讓 macOS 有時間清除擷取造成的通知抑制狀態，但只是依實測選定的啟發式延遲，不是就緒訊號或送達保證；專注模式、其他擷取與通知偏好仍有效。離開 idle（新錄影或進入權限恢復狀態）會永久取消前次待送通知，權限提示優先於舊存檔通知；`before-quit` 取消 timer，也拒絕退出過程中完成的儲存通知。不保留佇列、不重試；請求通知時的例外只記錄日誌，不影響已存檔案。寫檔與 idle 不等待通知。參見[時序證據](../verification/README.md#儲存通知時序2026-09-20)。
 
 ## 錄影快捷鍵

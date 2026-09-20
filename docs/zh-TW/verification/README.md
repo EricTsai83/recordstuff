@@ -28,7 +28,7 @@
 | 音訊權限復原 | 同程序啟用並選稍後仍失敗；重啟後 15.34 秒有聲檔可解碼 | 該情境需要重啟 |
 | 錄製中撤銷／退出 | OS 結束重開前收尾完整 47.594271 秒 MP4，新程序 needsPermission | 不是強制斷電測試 |
 | 最後復原 | `2026-09-14 00-17-33.mp4` 12.653633 秒、45,041,905 bytes，1080p H.264＋48 kHz AAC 雙聲道，全解碼成功；使用者確認可播 | 完成當時的本機結果 |
-| 通知 | 使用者看到錯誤與存檔通知，點擊有 Finder 回報與 reveal 日誌。點擊後的前景現由 `pnpm acceptance:notification` 覆蓋（[2026-09-20](#通知點擊後-finder-置前--2026-09-20)） | macOS 26.6 上約 40 次點擊會有一次橫幅按下去但點擊未送達 App；分開回報，尚未修正 |
+| 通知 | 使用者看到錯誤與存檔通知，點擊有 Finder 回報與 reveal 日誌。點擊後的前景現由 `pnpm acceptance:notification` 覆蓋（[2026-09-20](#通知點擊後-finder-置前--2026-09-20)） | macOS 26.6 上約 40 次點擊會有一次橫幅按下去但點擊未送達 App；根因未證實；後續 30/30 本機矩陣已獲接受作為計畫結案依據 |
 | 通知縮圖 | 2026-09-14 使用者確認整台 Mac 重開機後正常 | 原待確認項目已關閉，具體原因未查明 |
 | 全域快捷鍵 | 對無視窗的 `/Applications` 建置執行 `pnpm acceptance`（柔化後的 660 Hz 素材、Chrome app 模式全螢幕）：System Events 送出 ⌘⌥⇧R 後 166 ms 收到、再 96 ms 進入 recording，錄 20 秒存檔，完整性層級通過，48 kHz 雙聲道 RMS −27.1／−27.2 dB，偵測到 20 次閃光與 19 個嗶聲，音畫偏移 79 ms（報告）；Codex computer-use 以同一送鍵路徑完成素材、錄影、verify 與 QuickTime 播放（23:34 執行） | 稀疏素材的音訊碼率只回報；背景播影片的一次執行被嗶聲守門拒絕（0 個嗶聲可與靜音分離），驗收時背景音訊必須關閉；Computer Use 的 `pressKey` 到不了全域快捷鍵，三次非互動執行被 per-app 核准擋下（20:56、20:59、21:20、21:33 fail、根因）；Tray 選單案例與聽感仍未由工具驗證 |
 
@@ -150,3 +150,13 @@ API 查核：[Electron desktopCapturer](https://www.electronjs.org/docs/latest/a
 最終 `pnpm check`：334 個測試、型別檢查與建置通過。Claude Fable 5.1（high、唯讀）完成 review：補上 autorecord 退出與權限狀態取消政策的文件及權限恢復邊界測試，epoch 格式建議因僅屬可讀性而拒絕。簽章建置後沒有執行邏輯變更。本機總報告：`measurements/2026-09-20-plan17/report.md`。
 
 Plan 017 已完成並移除計畫檔；不代表 Plan 014 舊有的點擊未送達案例已解決，也未發布。刻意設定的專注／螢幕分享抑制、其他 OS 版本、純 Tray UI、通知中心歷史點擊及長錄影不在本次結論內。未變更系統通知設定或權限。
+
+### 通知生命週期調查 — 2026-09-20
+
+接續 Plan 014 調查，發現 `AppTray.show()` 未持有由 GC 管理的 Electron `Notification`。現在持有待處理通知直到 click／close／失敗，同步 show 失敗會釋放並記錄，退出時關閉尚未處理的通知。這修正具體的生命週期風險，**不代表已證實歷史點擊未送達的根因**。runner 現在分開判定實際通知文字的 click callback 與本次完整路徑的 reveal 要求，不再只靠 reveal 日誌推論 callback 送達。
+
+`pnpm check` 通過 342 個測試、typecheck 與 build。`pnpm start:app` 在 macOS 26.6.2 arm64、Electron 44.3.0 驗證九個簽章 bundle；來源為 HEAD `13b325d64f68320d2715bf8cd5f7b45cae1957f6` 加本次未提交變更。候選 app.asar SHA-256 為 `23a94f071d47468a57fe1f96c5f85fa7ef2a2749c2d856f4ee33f635b8db2cae`，dist 與暫時安裝副本一致。`pnpm acceptance:notification -- --install --full --languages en,zh-TW --keep-recordings` **30/30 通過**，零失敗／缺少通知、無重試：英文／繁中 × Finder 關閉／背景／最小化，各五次；首個事件到清理完成共 452.8 秒。每例均完成兩秒錄影存檔、匹配 callback／reveal、選中正確檔案，最終 Finder 在前景。審查修正診斷文字後，使用最終 helper 重判全部觀察仍為 30 次通過；該修正未改 App 程式。
+
+runner 已還原原安裝版／語言並重開 App，退出測試 TextEdit，保留全部 30 個錄影。收尾後 computer use 只見 Finder 桌面，沒有測試 Finder 視窗。選單列 App 本身回 `timeoutReached`，由使用者退出後才建置簽章版。本輪是無人值守腳本檢查，不是 computer-use Tray 驗收；未新增播放、音質、其他 Space、通知中心歷史、強制 GC A/B 或 Windows 驗證。沒有終止事件的通知會持有到退出；Windows 逾時／歷史行為不在本次修正內。以上歷史失敗的根因仍未確認；下方結案決定接受此限制。原始本機證據：`docs/verification/measurements/2026-09-20-plan014-lifetime/`（`native/report.md`、`candidate.json`、`final-judgement.json`、檢查／建置／review 日誌）。
+
+**Plan 014 結案 — 2026-09-20：** 維護者接受雙語本機矩陣 30/30 為通過結果，並明確要求計畫收尾。已移除雙語計畫檔，下一個為 Plan 012。歷史失敗與未測項目照實保留，不宣稱已證明根因或未執行的檢查也通過。發布與安裝公開版驗收移交另行要求的發布工作，不再作為本次接受結案的前置；本次沒有發布版本。未來英文發行說明應列入通知生命週期保留，以及退出會關閉本次程序尚未處理的通知。

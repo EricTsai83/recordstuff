@@ -83,6 +83,8 @@ The historical ten-minute baseline has already been recorded. Long now uses thre
 
 ### Notification acceptance
 
+The verdict now requires a `clicked` event matching the observed banner body (falling back to this save's expected localized body when absent) and a successful reveal request matching its full path. These are separate diagnostics: missing reveal evidence alone is no longer labeled an undelivered callback. Old builds without click logging cannot pass this stricter runner; historical reports retain their original conclusions.
+
 Plan 017 timing diagnostics add `tracksStoppedAt` (renderer wall-clock milliseconds after stopping tracks), main-process `host stopped` and `file finalized`, plus `saved scheduled`, `saved cancelled`, and `saved request failed`. The JS timestamp does not prove OS readiness. Correlate these with the existing request/show/click logs, AX observations and narrowly filtered macOS logs when available. No system-log access is required by the app. The saved request delay is 500 ms on macOS; the runner still searches for only 5 s after save. Plan 017 requires **all 15 cases in each of two consecutive full runs** to pass; the runner's ordinary coverage threshold alone is insufficient.
 
 Each case also writes `<language>-<finder>-<click>-diagnostics.json`: timestamped search attempts, bounded Accessibility traversal text/errors, and app notification lifecycle events. A non-passing case gets an additional observation-only snapshot (up to 5 s, so failed cases may take longer). The app logs show-requested/shown/clicked/closed/failed separately; a shown event alone is not proof that the script found a visible banner. These local files can contain notification text and are not committed.

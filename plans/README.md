@@ -6,15 +6,16 @@ Updated: 2026-09-20. v0.1.2 is published from tag `v0.1.2` with the simplified D
 
 017 is complete: saved-notification timing, two consecutive 15/15 runs, cancellation, overlap and playback checks are recorded in [verification](../docs/verification/README.md#saved-notification-timing--2026-09-20).
 
+014 is complete and removed: the maintainer accepted the bilingual 30/30 local notification matrix as plan completion. Historical uncertainty and untested cases remain documented in [verification](../docs/verification/README.md#notification-lifetime-investigation--2026-09-20). Publication and public-build checks belong to a separately requested release.
+
 ## Order and status
 
 | Order | Plan | Status | Completion target |
 | --- | --- | --- | --- |
-| Next: remaining click investigation | [014 Finder notification focus](014-finder-notification-focus.md) | Implemented locally; acceptance incomplete | Resolve outstanding acceptance failures; release only when requested, then verify the public build and remove the plan |
-| Ready for implementation | [012 Official website](012-download-website.md) | Planned | Bilingual product/help website with direct DMG downloads and version/checksum details |
+| Next | [012 Official website](012-download-website.md) | Planned | Bilingual product/help website with direct DMG downloads and version/checksum details |
 | When update convenience is prioritized | [015 App update assessment](015-app-update-assessment.md) | Deferred decision only | Compare manual, user-triggered check and automatic update; establish self-signing feasibility |
 
-014 does not require a website. Publishing is automated by tag push; installed-app updates are manual. 015 does not authorize implementation of an updater. Public release notes stay English-only; app UI and reader guides remain bilingual. Published release bytes must not be overwritten.
+Publishing is automated by tag push; installed-app updates are manual. 015 does not authorize implementation of an updater. Public release notes stay English-only; app UI and reader guides remain bilingual. Published release bytes must not be overwritten.
 
 No dedicated uninstaller is planned: quit and move the app to Trash; user data remains unless separately removed. No native-platform rewrite solely for size reduction, Apple certification, Windows/Linux/Intel verification or expansion is scheduled. DMG size was explained by Electron's runtime cost; discussion alone does not create a rewrite project.
 

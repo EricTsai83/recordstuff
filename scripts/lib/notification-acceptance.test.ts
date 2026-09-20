@@ -18,7 +18,10 @@ const good: ClickObservation = {
   selectedRow: "2026-09-20 01-27-11.mp4",
   windowTarget: "/Users/eric/Movies/RecordStuff/",
   bannerBody: "Saved 2026-09-20 01-27-11.mp4",
-  appLog: [`[2026-09-19T17:27:15.843Z] notification: reveal requested ${saved}`],
+  appLog: [
+    `[2026-09-19T17:27:15.840Z] notification: clicked: ${expectedBannerBody(saved, "en")}`,
+    `[2026-09-19T17:27:15.843Z] notification: reveal requested ${saved}`,
+  ],
 };
 
 describe("notification acceptance judgement (plan 014)", () => {
@@ -44,8 +47,25 @@ describe("notification acceptance judgement (plan 014)", () => {
       appLog: [],
     });
     expect(r.verdict).toBe("fail");
-    expect(r.reasons[0]).toContain("did not reach the app");
-    expect(r.reasons).toHaveLength(3);
+    expect(r.reasons[0]).toContain("no click callback");
+    expect(r.reasons).toHaveLength(4);
+  });
+
+  it("separates a delivered callback with failed reveal from a missing callback", () => {
+    const r = judgeClick("en", "closed", 1, saved, { ...good, appLog: [
+      good.appLog[0]!, `notification: reveal failed (Error: refused): ${saved}`,
+    ] });
+    expect(r.reasons).toEqual(["no successful reveal request was logged for this saved file"]);
+  });
+
+  it("does not accept callback or reveal evidence for another saved file", () => {
+    const r = judgeClick("en", "closed", 1, saved, { ...good, appLog: [
+      "notification: clicked: Saved other.mp4", "notification: reveal requested /tmp/other.mp4",
+    ] });
+    expect(r.reasons).toEqual([
+      "no click callback was logged for this saved notification",
+      "no successful reveal request was logged for this saved file",
+    ]);
   });
 
   it("fails when Finder is in front but shows another file", () => {
@@ -85,9 +105,12 @@ describe("notification acceptance judgement (plan 014)", () => {
     expect(expectedBannerBody(saved, "zh-TW")).toBe("已儲存 2026-09-20 01-27-11.mp4");
     const r = judgeClick("zh-TW", "closed", 1, saved, good);
     expect(r.verdict).toBe("fail");
+    expect(r.reasons).toHaveLength(1);
     expect(r.reasons[0]).toContain('expected "已儲存');
     expect(
-      judgeClick("zh-TW", "closed", 1, saved, { ...good, bannerBody: "已儲存 2026-09-20 01-27-11.mp4" }).verdict,
+      judgeClick("zh-TW", "closed", 1, saved, { ...good, bannerBody: "已儲存 2026-09-20 01-27-11.mp4",
+        appLog: [`notification: clicked: ${expectedBannerBody(saved, "zh-TW")}`, good.appLog[1]!],
+      }).verdict,
     ).toBe("pass");
   });
 

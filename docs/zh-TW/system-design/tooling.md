@@ -83,6 +83,8 @@ Autorecord 存檔後立即退出，因此 macOS 待送的儲存通知會被退�
 
 ### 通知驗收
 
+驗收現在分別要求：與實際觀察到的通知文字相符的 `clicked` 事件（缺少文字時才用本次儲存的預期語言／檔名），以及完整路徑相符的成功 reveal 要求。兩者各自判定，不再只因缺少 reveal 紀錄就宣稱 callback 未送達。沒有 click 日誌的舊版無法通過此較嚴格的 runner；歷史報告保留原判定。
+
 Plan 017 時序診斷新增 `tracksStoppedAt`（renderer 停止 tracks 後的 wall-clock 毫秒）、主程序 `host stopped`、`file finalized`，以及 `saved scheduled`、`saved cancelled`、`saved request failed`。JS 時間戳不代表 OS 已就緒；需與既有 request／show／click 日誌、AX 觀察及可取得的窄範圍 macOS 紀錄對照。App 不要求系統日誌存取。macOS 的儲存通知延遲 500 ms，runner 仍只在存檔後搜尋 5 秒。Plan 017 要求**連續兩輪完整驗收各 15 案例全部通過**，只達 runner 一般覆蓋門檻不算完成。
 
 每個案例另外保存 `<language>-<finder>-<click>-diagnostics.json`：帶時間的搜尋嘗試、有限長度的 Accessibility 結構文字／錯誤，以及 App 通知生命週期事件。未通過案例會再取一份只觀察、不點擊的快照（最多 5 秒，因此失敗案例可能較久）。App 分別記錄請求顯示、shown、clicked、closed、failed；shown 事件本身不代表腳本找到可見橫幅。這些本地檔案可能包含通知文字，不會提交。

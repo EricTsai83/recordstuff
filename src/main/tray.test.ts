@@ -12,6 +12,7 @@ import { describe, expect, it, vi } from "vitest";
 interface FakeNotification {
   options: { title: string; body: string };
   shown: number;
+  close: ReturnType<typeof vi.fn>;
   listeners: Map<string, (...args: unknown[]) => void>;
 }
 
@@ -26,6 +27,7 @@ vi.mock("electron", () => {
   class FakeNotification {
     readonly listeners = new Map<string, (...args: unknown[]) => void>();
     shown = 0;
+    close = vi.fn();
     static instances: FakeNotification[] = [];
     static supported = true;
 
@@ -97,6 +99,54 @@ function setup(supported = true): { tray: AppTray; logs: string[] } {
 }
 
 describe("AppTray notifications (docs/system-design/desktop.md)", () => {
+  it("keeps multiple pending notifications owned until shutdown, even after show", () => {
+    const { tray } = setup();
+    tray.notifySaved("/tmp/第一 段.mp4");
+    tray.notifySaved("/tmp/second.mp4");
+    const pending = [...Fake.instances];
+    for (const notification of pending) notification.listeners.get("show")?.();
+    Fake.instances.length = 0;
+    expect(shell.showItemInFolder).not.toHaveBeenCalled();
+    tray.destroy();
+    for (const notification of pending) expect(notification.close).toHaveBeenCalledOnce();
+    tray.destroy();
+    for (const notification of pending) expect(notification.close).toHaveBeenCalledOnce();
+  });
+
+  it.each(["click", "close", "failed"])("releases a notification on %s without releasing another", async (event) => {
+    const { tray } = setup();
+    tray.notifySaved("/tmp/handled.mp4");
+    tray.notifySaved("/tmp/pending.mp4");
+    const handled = Fake.instances[0]!;
+    const pending = Fake.instances[1]!;
+    handled.listeners.get(event)?.({}, "delivery failed");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    tray.destroy();
+    expect(handled.close).not.toHaveBeenCalled();
+    expect(pending.close).toHaveBeenCalledOnce();
+  });
+
+  it("releases a synchronous show failure and does not throw into recording", () => {
+    const { tray, logs } = setup();
+    const show = vi.spyOn(Notification.prototype, "show").mockImplementationOnce(() => { throw new Error("show refused"); });
+    try {
+      expect(() => tray.notifySaved("/tmp/failed.mp4")).not.toThrow();
+      expect(logs).toContain("notification: failed (Error: show refused): Saved failed.mp4");
+      tray.destroy();
+      expect(Fake.instances[0]!.close).not.toHaveBeenCalled();
+    } finally { show.mockRestore(); }
+  });
+
+  it("continues shutdown after one native close throws", () => {
+    const { tray, logs } = setup();
+    tray.notifySaved("/tmp/first.mp4");
+    tray.notifySaved("/tmp/second.mp4");
+    Fake.instances[0]!.close.mockImplementation(() => { throw new Error("close refused"); });
+    expect(() => tray.destroy()).not.toThrow();
+    expect(Fake.instances[1]!.close).toHaveBeenCalledOnce();
+    expect(logs).toContain("notification: close failed (Error: close refused)");
+  });
+
   it("logs the reason when the OS refuses to show a notification", () => {
     const { tray, logs } = setup();
     tray.notifySaved("/Users/eric/Movies/RecordStuff/a.mp4");

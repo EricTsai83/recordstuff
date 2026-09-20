@@ -49,6 +49,9 @@ export class AppTray {
   private readonly tray: Tray;
   private readonly icons: Record<TrayIcon, Electron.NativeImage>;
   private currentIcon: TrayIcon | undefined;
+  // Electron notifications are GC-owned. Keep callbacks alive until the user
+  // handles/dismisses the notification, delivery fails, or the tray shuts down.
+  private readonly notifications = new Set<Notification>();
 
   constructor(private readonly options: TrayOptions) {
     this.icons = loadIcons(options.resourcesDir);
@@ -77,6 +80,11 @@ export class AppTray {
   }
 
   destroy(): void {
+    for (const notification of this.notifications) {
+      try { notification.close(); }
+      catch (error) { this.log(`notification: close failed (${String(error)})`); }
+    }
+    this.notifications.clear();
     this.tray.destroy();
   }
 
@@ -183,18 +191,28 @@ export class AppTray {
       return;
     }
     const notification = new Notification({ title: text.title, body: text.body, silent: true });
+    this.notifications.add(notification);
     notification.on("show", () => this.log(`notification: shown: ${text.body}`));
-    notification.on("close", () => this.log(`notification: closed: ${text.body}`));
+    notification.on("close", () => {
+      this.notifications.delete(notification);
+      this.log(`notification: closed: ${text.body}`);
+    });
     notification.on("click", () => {
+      this.notifications.delete(notification);
       this.log(`notification: clicked: ${text.body}`);
       onClick?.();
     });
     // `(event, error)` per Electron's Notification docs; darwin and win32 only.
     notification.on("failed", (_event, error) => {
+      this.notifications.delete(notification);
       this.log(`notification: failed (${error}): ${text.body}`);
     });
     this.log(`notification: show requested: ${text.body}`);
-    notification.show();
+    try { notification.show(); }
+    catch (error) {
+      this.notifications.delete(notification);
+      this.log(`notification: failed (${String(error)}): ${text.body}`);
+    }
   }
 
   private log(message: string): void {
