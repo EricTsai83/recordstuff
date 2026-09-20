@@ -18,6 +18,7 @@
 | pnpm log | 追蹤 macOS log |
 | pnpm dist:mac | 自簽 App 驗證後，在 dist/ 旁邊產生 DMG |
 | pnpm acceptance | 對執行中的 App：全螢幕開素材、以 System Events 送全域快捷鍵開始／停止錄影、驗完整性層級（test-material 模式）、把報告寫到 docs/verification/measurements（已 gitignore，只留本機） |
+| pnpm acceptance:settings | 對已建置的產物：在真實 Electron 視窗載入 `out/preload/settings.js` 與 `out/renderer/settings.html`，判定出貨 CSP、sandbox preload 邊界與真實 IPC 往返；報告與截圖寫到 docs/verification/measurements。需要先 `pnpm build`，不需要 tray 或已安裝的 App |
 | pnpm acceptance:notification | 對 /Applications 裡的 App（可用 `--install` 在本次換成 dist 的建置）：錄影、透過輔助使用按下「已儲存」橫幅、判定 Finder 是否在最前面且顯示該檔，每個 Finder 狀態連點多次，預設英文；報告寫到 docs/verification/measurements |
 
 main、preload、renderer 分別建置，打包只納入 out、package metadata 與指定 resources。測試、量測與文件不屬 runtime；App 不呼叫 FFmpeg。
@@ -54,6 +55,7 @@ pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 pnpm verify -- /absolute/path/any-desktop-recording.mp4 --screen 1920x1080   # 只驗完整性
 pnpm acceptance -- --seconds 10        # 對執行中的 App 做無人值守快捷鍵驗收
+pnpm acceptance:settings                           # 設定頁面與 preload 在真實 Electron 視窗；約 5 秒
 pnpm acceptance:notification -- --install --clicks 2  # 通知日常 smoke：兩次點擊
 pnpm acceptance:notification -- --install          # 點「已儲存」通知 → Finder 置前；約 1 分鐘；本次把建置好的 App 換進 /Applications
 pnpm acceptance:notification -- --install --full   # 三種 Finder 狀態、英文；估計約 3 分鐘
@@ -89,6 +91,7 @@ App 變更執行 `pnpm check`，並對建置後的 App 做一次基本錄影驗�
 | 變更 | 追加檢查 |
 | --- | --- |
 | 更新功能 | `pnpm acceptance:updates`；feed 篩選或逾時變更加 `--full` |
+| 設定面板 | `pnpm build` 後跑 `pnpm acceptance:settings`；唯一會在 Electron 裡跑出貨頁面與 preload 的檢查 |
 | 通知／Finder 定位 | 日常 smoke 用 `pnpm acceptance:notification -- --install --clicks 2`；偶發問題與通知修正保留五次／完整矩陣 |
 | 擷取／品質／時序 | 對應的 `pnpm matrix` 子集；音質受影響時追加音訊診斷 |
 | 語言／設定／啟動 | 原生 UI 設定操作與重開保存檢查 |

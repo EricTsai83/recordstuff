@@ -18,6 +18,7 @@ Use pnpm and a compatible Node version; the verification TypeScript scripts use 
 | `pnpm log` | Follow the current macOS log |
 | `pnpm dist:mac` | Build/verify a self-signed app, then create a DMG next to it in dist/ |
 | `pnpm acceptance:updates` | Build an isolated signed copy; exercise production update handlers/model/settings, process restarts and two real shortcut recordings; retain reports and recordings, then clean up the owned app |
+| `pnpm acceptance:settings` | Against the built artifacts: load `out/preload/settings.js` and `out/renderer/settings.html` in a real Electron window, judge the shipped CSP, the sandboxed preload boundary and a real IPC round trip; report and screenshot under docs/verification/measurements. Needs `pnpm build`, no tray and no installed app |
 | `pnpm acceptance` | Against the running app: open the material fullscreen, start/stop a recording with the global shortcut through System Events, verify the integrity tier (test-material mode), write a report under docs/verification/measurements (gitignored, local) |
 | `pnpm acceptance:notification` | Against the app in /Applications (optionally `--install` the dist bundle for the run): record, press the "Saved …" banner through Accessibility, judge whether Finder is frontmost and shows the file, several clicks per Finder state, English by default; report under docs/verification/measurements |
 
@@ -57,6 +58,7 @@ pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 pnpm verify -- /absolute/path/any-desktop-recording.mp4 --screen 1920x1080   # integrity only
 pnpm acceptance -- --seconds 10        # unattended shortcut acceptance of the running app
+pnpm acceptance:settings                           # settings page + preload in a real Electron window; ~5 s
 pnpm acceptance:notification -- --install --clicks 2  # short notification smoke check
 pnpm acceptance:notification -- --install          # saved-notification click → Finder in front; ~1 min; built app swapped into /Applications for the run
 pnpm acceptance:notification -- --install --full   # all three Finder states, English; ~3 min (estimate)
@@ -90,6 +92,7 @@ For application changes, run `pnpm check` and one basic recording acceptance aga
 | Change | Additional check |
 | --- | --- |
 | Updates | `pnpm acceptance:updates`; add `--full` for feed filtering or timeout changes |
+| Settings panel | `pnpm acceptance:settings` after `pnpm build`; the only check that runs the shipped page and preload in Electron |
 | Notifications / Finder reveal | `pnpm acceptance:notification -- --install --clicks 2` for smoke; retain five-click/full runs for intermittent failures and notification fixes |
 | Capture / quality / timing | Relevant `pnpm matrix` subset; audio diagnostics when fidelity is affected |
 | Language / settings / startup | Native UI setting changes and persistence across restart |
