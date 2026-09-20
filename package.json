@@ -29,7 +29,12 @@
     "dist:mac": "node scripts/start-app.mjs --dmg",
     "audio:quality": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/audio-quality.mts",
     "signing:create": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/create-signing-identity.mts",
-    "release": "node scripts/release.mts"
+    "release": "node scripts/release.mts",
+    "site:dev": "pnpm --dir website dev",
+    "site:build": "pnpm --dir website build",
+    "site:check": "pnpm --dir website test && pnpm --dir website check",
+    "site:manifest": "pnpm --dir website manifest",
+    "site:screenshots": "pnpm --dir website screenshots"
   },
   "devDependencies": {
     "@types/node": "^24.13.4",
