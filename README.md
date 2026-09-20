@@ -22,16 +22,16 @@ SHA-256: `11f451284e41e4a82281fc8fa401c170b7a907be9e8022e209a2a0175dc00df5`.
 
 0.1.2 was built, signed, verified and published by CI from tag `v0.1.2`; recording, playback and permission retention were checked locally on the same source before tagging. See [release evidence](docs/verification/releases/0.1.2.md). Clicking a saved notification selects the file in Finder, but may leave Finder behind other windows.
 
-Download the arm64 DMG and drag RecordStuff onto the Applications folder shown in the disk image; the DMG contains only the app and that Applications shortcut. The [installation guide](resources/INSTALL.md) covers first launch, manual update (quit, download, replace at the same path; settings are kept) and removal (quit, move the app to Trash; recordings, settings and logs stay unless you delete them). The tray offers Check for updates… and an optional launch check (on by default, at most once per 24 hours). Installation remains manual; there is no automatic installer or uninstaller. Recipients do not need Node, pnpm, FFmpeg, or certificates. Because the app is not notarized, first launch may require **System Settings → Privacy & Security → Open Anyway**. A warning-free first launch is not promised; see [Apple's guidance](https://support.apple.com/102445).
+Download the arm64 DMG and drag RecordStuff onto the Applications folder shown in the disk image; the DMG contains only the app and that Applications shortcut. The [installation guide](resources/INSTALL.md) covers first launch, manual update (quit, download, replace at the same path; settings are kept) and removal (quit, move the app to Trash; recordings, settings and logs stay unless you delete them). Settings → General offers Check for updates… and an optional launch check (on by default, at most once per 24 hours). Installation remains manual; there is no automatic installer or uninstaller. Recipients do not need Node, pnpm, FFmpeg, or certificates. Because the app is not notarized, first launch may require **System Settings → Privacy & Security → Open Anyway**. A warning-free first launch is not promised; see [Apple's guidance](https://support.apple.com/102445).
 
 ## Use
 
 1. Launch recordstuff from Applications and grant screen/system-audio recording permission when requested. Relaunch if access does not take effect.
 2. Left-click its menu bar icon, or press **⌘⌥⇧R** from any app, to record the primary display and system audio.
 3. Click or press the shortcut again to stop. Recordings default to `~/Movies/recordstuff`; click the saved notification or use the menu to find the file.
-4. Right-click for the output folder, updates, logs, and quit. Open **Settings…** to adjust language, recording quality, the shortcut, and launch update checks without closing the settings window.
+4. Right-click for the output folder, logs, and quit. Open **Settings** to adjust language, recording quality, the shortcut, and update checks without closing the settings window.
 
-**English is the default.** Choose **Settings… → Language → 繁體中文** to switch the app to Traditional Chinese. The choice persists and can change during recording without changing capture settings. Application diagnostics remain English; native permission dialogs follow macOS settings.
+**English is the default.** Choose **Settings → General → Language → 繁體中文** to switch the app to Traditional Chinese. The choice persists and can change during recording without changing capture settings. Application diagnostics remain English; native permission dialogs follow macOS settings.
 
 | Setting | Options | Default |
 | --- | --- | --- |

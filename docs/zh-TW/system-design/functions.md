@@ -234,9 +234,8 @@
 | 函式 | 契約 |
 | --- | --- |
 | `disabled(label)` / `item(label, action, tooltip?)` | 建灰色／可點模型項目 |
-| `footer(language)` | 產生「設定…」、顯示 log、結束，所有狀態皆可用 |
+| `footer(language)` | 產生「設定」、顯示 log、結束，所有狀態皆可用 |
 | `outputDirItems(ctx, enabled)` | 產生位置與更改位置項目，按狀態鎖定 |
-| `updateItems(ctx, unlocked)` | 檢查更新，以及可採取行動時的結果項目；idle／needsPermission 以外停用 |
 | `stopHint(ctx)` | 「停止」的 tooltip 提示已註冊組合鍵；關閉或未註冊時為 undefined |
 | `permissionActions(needsRelaunch, language)` | 已判斷需重啟只給重啟；否則給設定與「已經允許了？」重啟 |
 | `trayModel(state, ctx)` | 狀態 → 完整圖示／標題／tooltip／menu；tooltip 含狀態與右鍵提示 |

@@ -37,7 +37,7 @@ installation guide; it is linked from every GitHub release.
 
 ## Update manually
 
-Use **Check for updates…** in the tray menu to check for a newer release and open its download page. **Check for updates on launch** is on by default and checks at most once per 24 hours; you can switch it off. Checks and results wait while recording. A failed manual check offers the releases page; launch failures only go to the log. There is no automatic download or installation. To install a new version:
+Use **Check for updates…** in **Settings → General** to check for a newer release and open its download page. **Check for updates on launch** is on by default and checks at most once per 24 hours; you can switch it off. Checks and results wait while recording. A failed manual check offers the releases page; launch failures only go to the log. There is no automatic download or installation. To install a new version:
 
 1. Stop any recording, then choose Quit from the RecordStuff menu bar icon.
 2. Download the new DMG from the [latest release](https://github.com/EricTsai83/recordstuff/releases/latest)
@@ -90,5 +90,5 @@ Apple's instructions: https://support.apple.com/102445
 ## Language
 
 RecordStuff starts in English. Right-click its menu bar icon and choose
-Settings… → Language → 繁體中文 for Traditional Chinese. The choice is saved for future launches.
+Settings → General → Language → 繁體中文 for Traditional Chinese. The choice is saved for future launches.
 App diagnostics remain English; macOS permission dialogs follow the system language.

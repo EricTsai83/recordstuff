@@ -235,9 +235,8 @@ The page's window-message callback checks source/marker/port before creating the
 | Function | Contract |
 | --- | --- |
 | disabled / item | Build disabled/enabled model entries |
-| footer | Settings…, Show log, and Quit in every state |
+| footer | Settings, Show log, and Quit in every state |
 | outputDirItems | Folder label and selection action with state-dependent enablement |
-| updateItems | Check for updates plus, when a result can be acted on, the result entry; disabled outside idle/needsPermission |
 | stopHint | Stop tooltip naming the registered accelerator; undefined when disabled or unregistered |
 | permissionActions | Relaunch alone when required; otherwise settings and fallback relaunch |
 | trayModel / text / model | Pure state/context projection with local translation/status helpers; the tooltip carries the status and the right-click hint |
