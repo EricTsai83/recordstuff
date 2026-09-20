@@ -51,7 +51,8 @@ describe('release gates', () => {
     expect(body).toContain('Trash');
     expect(body).toContain(`/blob/${'a'.repeat(40)}/resources/INSTALL.md`);
     expect(body).toContain(`/blob/${'a'.repeat(40)}/resources/INSTALL.zh-TW.md`);
-    expect(body).toContain('Finder');
+    expect(body).toContain('https://record.ericts.com/help');
+    expect(body).not.toContain('Known limitation: clicking a recording notification');
   });
 });
 

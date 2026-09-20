@@ -249,3 +249,11 @@ Vercel 支援專案限定 token，且明確禁止其讀取團隊／使用者資�
 ### 直接部署的 scope 修正
 
 首次原始碼部署在查詢專案前因 `User not found (404)` 失敗。CLI 59.23.2 的顯式 `--scope` 路徑要求查詢使用者／團隊，不相容於專案限定 token。已移除 `--scope`，仍以 `VERCEL_ORG_ID` 與 `VERCEL_PROJECT_ID` 指定目標。使用實際釘版 CLI 與本機 HTTP 模擬伺服器重現：有 `--scope` 時使用者 404 立即中止；移除後相同 404 不再阻止 CLI 查詢指定專案。模擬請求全為 GET，未進行真實部署。Actionlint（未啟用 ShellCheck）與 `git diff --check` 通過。這驗證的是啟動路徑修正，不是完整部署成功；前一節含 `--scope` 的指令說明以本修正為準。
+
+## 公開 feed 交付成功 — 2026-09-20
+
+[網站執行 35520447965](https://github.com/EricTsai83/recordstuff/actions/runs/35520447965) 由 `ab4b42201bd4dbe5ab78e4d6e68e5b90f5317256` 成功部署。15:46 UTC 匿名 HTTPS GET `https://record.ericts.com/release.json` 回傳 200、JSON 類型與 `Cache-Control: public, max-age=300, s-maxage=300`。完整 JSON 與已驗證的 0.1.2 manifest 對應欄位一致。以 Node fetch 執行正式 `fetchVersion` 得到 0.1.2，只有一個官網請求，沒有 GitHub 備援。本次未操作已安裝 App／Electron 傳輸或原生選單，未發布 App 或錄影。公開 feed 交付已驗證；結案前仍待已安裝 App 對正式 feed 的最後檢查。前述歷史失敗保留。
+
+## 0.1.3 發布授權 — 2026-09-20
+
+公開 feed 交付成功後，維護者確認本機驗收已完成並要求發布。沿用前述原生／人工與自動錄影證據，不宣稱本次另做正式 feed 原生檢查或公開版升級。發布前 `pnpm check` 通過 24 個檔案的 395 項測試、型別與正式建置。發布準備移除自動發行說明中过時的 Finder 限制並加入官網 Help。本次未停止 App，也未透過 start:app 重建。

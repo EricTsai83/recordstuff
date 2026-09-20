@@ -251,3 +251,11 @@ Local validation passed actionlint 1.7.12 (without ShellCheck), all 15 website t
 ### Direct-deploy scope correction
 
 The first source-deployment attempt failed before project lookup with `User not found (404)`. CLI 59.23.2's explicit `--scope` path requires user/team discovery, which is incompatible with project-scoped tokens. Removed `--scope`; `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` still select the target. A local HTTP mock with the actual pinned CLI reproduced the immediate user-404 failure with `--scope`; without it, the same user 404 allowed the CLI to reach the configured project endpoint. All mocked requests were GETs; no real deployment occurred. Actionlint (without ShellCheck) and `git diff --check` passed. This verifies the startup-path correction, not successful end-to-end deployment. The preceding source-deployment command description is superseded by this correction.
+
+## Public feed delivery succeeded — 2026-09-20
+
+[Website run 35520447965](https://github.com/EricTsai83/recordstuff/actions/runs/35520447965) succeeded from `ab4b42201bd4dbe5ab78e4d6e68e5b90f5317256`. Anonymous HTTPS GET of `https://record.ericts.com/release.json` at 15:46 UTC returned 200, JSON content type and `Cache-Control: public, max-age=300, s-maxage=300`. The entire JSON matched the stored verified 0.1.2 manifest projection. Production `fetchVersion` executed with Node fetch returned 0.1.2 using exactly one request to the public website, without GitHub fallback. No installed App/Electron transport or native tray was exercised in this follow-up, and no App release or recording was performed. Public feed delivery is verified; the final installed-App check against the live feed remains before plan closure. Historical failures above are preserved.
+
+## Release 0.1.3 authorization — 2026-09-20
+
+After public feed delivery succeeded, the maintainer confirmed local acceptance was already complete and requested publication. The recorded native/manual and automated capture evidence above is reused; no new native check against the live feed or public-build upgrade is claimed. Pre-release `pnpm check` passed 395 tests in 24 files, types and production build. Release preparation removes the obsolete Finder limitation from generated release notes and adds Website Help. No App was stopped or rebuilt through start:app for this release preparation.

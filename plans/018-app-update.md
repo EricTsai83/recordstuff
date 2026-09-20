@@ -6,7 +6,7 @@
 
 Implemented locally: verified static feed/cache policy, update checker, persisted preference and bilingual tray. The maintainer subsequently passed native manual checks for version/time, restart persistence, recording controls and picture/audio, and the delayed newer-version result/browser link. Real network-disconnection acceptance was waived. The packaged handler/model automation and two real recordings passed; native computer-use Tray automation remains unavailable. See the [verification follow-up](../docs/verification/README.md#update-acceptance-automation-and-manual-follow-up--2026-09-20) and [tooling](../docs/system-design/tooling.md#update-acceptance). Feed deployment and a published upgrade remain unverified; no release was authorized or published.
 
-Status: Local implementation and acceptance passed within the documented scope; public feed delivery remains pending. The [official website](https://record.ericts.com) is live and Plan 012 is closed. Updated: 2026-09-20.
+Status: Local implementation and acceptance passed within the documented scope; public feed delivery passed; installed-App verification against the live feed remains pending. The [official website](https://record.ericts.com) is live and Plan 012 is closed. Updated: 2026-09-20.
 
 This plan replaces `015-app-update-assessment.md`. That file existed to decide whether an update mechanism was worth building; the maintainer took the decision on 2026-09-20 and asked for the work itself, so the assessment is folded into the decision table below and the file is removed. The source now checks for updates and the reader guides describe that capability; the published 0.1.2 build remains manual-only until a new release ships.
 

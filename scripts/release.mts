@@ -160,9 +160,7 @@ Update manually: stop recording, quit RecordStuff from its menu, download the ne
 
 Remove: quit the app and move RecordStuff.app from Applications to the Trash. Recordings, settings and logs stay on disk; the guide explains optional cleanup.
 
-Guides: [English](${base}/INSTALL.md) · [Traditional Chinese](${base}/INSTALL.zh-TW.md).
-
-Known limitation: clicking a recording notification may select the file without bringing Finder to the front.
+Guides: [Website Help](https://record.ericts.com/help) · [English](${base}/INSTALL.md) · [Traditional Chinese](${base}/INSTALL.zh-TW.md).
 
 Verify the download using SHA256SUMS. release.json records the source commit, version, platform, size, and signing certificate fingerprint.
 `;
