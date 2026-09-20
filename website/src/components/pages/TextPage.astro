@@ -37,6 +37,7 @@ const { title, description } = Astro.props;
   .reading-content :global(.prose li) { margin-bottom: 1rem; }
   .reading-content :global(.prose .steps) { padding-left: 0; margin: 2.25rem 0; gap: 0; }
   .reading-content :global(.prose .step) { margin: 0; padding: 2rem 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: none; grid-template-columns: 1.8rem minmax(0, 1fr); }
+  .reading-content :global(.prose .steps:has(+ h2) > .step:last-child) { border-bottom: 0; }
   .reading-content :global(.prose .step-title) { margin: 0 0 0.5rem; line-height: 1.5; }
   .reading-content :global(.prose .step-body p) { margin: 0; }
   .reading-content :global(.callout) { padding: 0 0 0 1.25rem; margin: 2.75rem 0; border: 0; border-left: 2px solid var(--warn); border-radius: 0; background: none; }
