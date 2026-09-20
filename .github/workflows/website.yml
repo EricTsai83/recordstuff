@@ -95,7 +95,7 @@ jobs:
           const settings = await get(`/v9/projects/${encodeURIComponent(project)}?teamId=${encodeURIComponent(org)}`, "Vercel project access");
           if (settings.id !== project || settings.accountId !== org) fail("Vercel project ownership does not match the configured IDs.");
           if (settings.name !== "recordstuff" || settings.rootDirectory !== "website") fail("Expected the recordstuff project with Root Directory website. Check project configuration.");
-          if (settings.includeFilesOutsideRootDirectory !== true) fail("Enable Include source files outside of the Root Directory in the Build Step: website imports shared release modules from scripts/lib/.");
+          if (settings.sourceFilesOutsideRootDirectory !== true) fail("Enable Include source files outside of the Root Directory in the Build Step: website imports shared release modules from scripts/lib/.");
           console.log("Vercel project access verified. Ready to submit source for remote build.");
           NODE
       - name: Submit website source to Vercel production
