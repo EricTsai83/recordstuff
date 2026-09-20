@@ -15,9 +15,9 @@ The product target is a downloadable, self-signed macOS app. Apple certification
 [Official website](https://record.ericts.com) · [Downloads](https://record.ericts.com/download) · [Help](https://record.ericts.com/help).
 
 <!-- release-download:start -->
-Download **[RecordStuff 0.1.4 for macOS Apple silicon (arm64)](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.4/RecordStuff-0.1.4-arm64-selfsigned.dmg)** (127,322,041 bytes). [Release notes](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.4) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.4/SHA256SUMS) · [Latest release](https://github.com/EricTsai83/recordstuff/releases/latest).
+Download **[RecordStuff 0.1.5 for macOS Apple silicon (arm64)](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.5/RecordStuff-0.1.5-arm64-selfsigned.dmg)** (127,323,950 bytes). [Release notes](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.5) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.5/SHA256SUMS) · [Latest release](https://github.com/EricTsai83/recordstuff/releases/latest).
 
-SHA-256: `11f451284e41e4a82281fc8fa401c170b7a907be9e8022e209a2a0175dc00df5`.
+SHA-256: `46040e168a55780556fcb8014fe79272698b6a790f52a71a9a4692e55435be93`.
 <!-- release-download:end -->
 
 0.1.2 was built, signed, verified and published by CI from tag `v0.1.2`; recording, playback and permission retention were checked locally on the same source before tagging. See [release evidence](docs/verification/releases/0.1.2.md). Clicking a saved notification selects the file in Finder, but may leave Finder behind other windows.
