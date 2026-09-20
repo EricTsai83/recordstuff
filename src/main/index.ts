@@ -24,6 +24,7 @@ import { RecordingHotkey } from "./hotkey";
 import { createFileLogger } from "./log";
 import { PermissionWatcher, openScreenCaptureSettings } from "./permission";
 import { Recorder } from "./recorder";
+import { SavedNotification } from "./saved-notification";
 import { SettingsStore } from "./settings";
 import { parseAutoRecord, runAutoRecord } from "./autorecord";
 import { AppTray } from "./tray";
@@ -367,10 +368,16 @@ async function main(): Promise<void> {
     tray.refresh();
   }
 
+  const savedNotification = new SavedNotification({
+    platform: process.platform,
+    show: (savedPath) => tray.notifySaved(savedPath),
+    log,
+  });
   let previous = recorder.state;
   recorder.subscribe((event) => {
     switch (event.type) {
       case "state": {
+        savedNotification.stateChanged(event.state);
         log(`state → ${event.state.type}`);
         tray.render(event.state);
         // A shortcut change saved during a session applies now that it is over.
@@ -389,7 +396,7 @@ async function main(): Promise<void> {
       }
       case "saved":
         log(`saved ${event.path}`);
-        tray.notifySaved(event.path);
+        savedNotification.schedule(event.path);
         return;
       case "captureStarted": {
         const actual = frameRateDowngrade(event.requested, event.capture);
@@ -427,6 +434,7 @@ async function main(): Promise<void> {
   }
 
   app.on("before-quit", (event) => {
+    savedNotification.dispose();
     if (quitting) return;
     const busy = recorder.state.type === "starting" || recorder.state.type === "recording" || recorder.state.type === "stopping";
     if (!busy) {

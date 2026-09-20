@@ -356,6 +356,7 @@ export class Recorder {
         this.handleChunk(session, message.seq, message.bytes);
         return;
       case "stopped":
+        this.deps.log(`recorder: session ${session.id} host stopped; tracksStoppedAt=${message.tracksStoppedAt ?? "unknown"}`);
         if (session.phase === "stopping") {
           this.clearTimer(session);
           session.finalizing = true;
@@ -400,6 +401,7 @@ export class Recorder {
       return;
     }
     if (this.session !== session) return;
+    this.deps.log(`recorder: session ${session.id} file finalized ${finalPath}`);
     this.session = undefined;
     this.setState({ type: "idle", lastSavedPath: finalPath });
     this.emit({ type: "saved", path: finalPath });

@@ -24,7 +24,7 @@ export type HostMessage =
   | { type: "started"; sessionId: string; mimeType: string; capture: CaptureReport }
   /** `bytes` is structured-cloned (see capture-host.ts for why not transferred). */
   | { type: "chunk"; sessionId: string; seq: number; bytes: ArrayBuffer }
-  | { type: "stopped"; sessionId: string }
+  | { type: "stopped"; sessionId: string; tracksStoppedAt?: number }
   | { type: "error"; sessionId?: string; code: ErrorCode; detail: string }
   | { type: "pong" };
 
@@ -71,7 +71,9 @@ export function isHostMessage(value: unknown): value is HostMessage {
         value["bytes"] instanceof ArrayBuffer
       );
     case "stopped":
-      return isNonEmptyString(value["sessionId"]);
+      return isNonEmptyString(value["sessionId"]) &&
+        (value["tracksStoppedAt"] === undefined ||
+          (typeof value["tracksStoppedAt"] === "number" && Number.isFinite(value["tracksStoppedAt"])));
     case "error":
       return (
         (value["sessionId"] === undefined || isNonEmptyString(value["sessionId"])) &&

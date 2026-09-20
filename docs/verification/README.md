@@ -118,3 +118,37 @@ The residual window reported after the quick run was TextEdit's Open panel, not 
 ### Notification event and Accessibility diagnostics — 2026-09-20
 
 After rebuilding with notification show-requested/shown/clicked/closed logs, the English 15-case `--full` completed in 199.59 s: 8 pass, 1 foreground failure, 6 not run, exit 1. The user confirmed desktop interaction; the foreground failure had shown/clicked/reveal events but Chrome became frontmost, so it cannot establish a product defect. A subsequent two-case check passed both. All six unpressed cases had shown callbacks but no matching banner node in the captured Accessibility traces; one also recorded System Events -1719 from a changing window index. This narrows the symptom to presentation/lifetime or Accessibility observation, without proving which caused every case. The last timed-out search attempt reflects the 5 s budget, not a separate OS notification error. App/settings restored, all 17 recordings/backups removed, TextEdit exited; 321 tests/typecheck/build passed. Raw evidence: `measurements/2026-09-20-notification-diagnostics/report.md`.
+
+## Saved notification timing — 2026-09-20
+
+Plan 017 development target: macOS 26.6.2 (25G83), arm64, Electron 44.3.0; base commit `2f1109e53d1033ead10e9866eb7e88cad49fbab9` with local changes. The capture host already stopped tracks before `stopped`; no missing stop call was found. New diagnostics record renderer `tracksStoppedAt`, main receipt and file finalization. JS track release is not proof that the OS notification suppression state is ready.
+
+The earlier full run had six missing banners. Correlation identifies a suppression race in specific cases, not every missing banner. Privacy-filtered example, local time (UTC+8), saved file `03-29-21.mp4`:
+
+| Event | Time |
+| --- | --- |
+| Stop requested | 03:29:24.198 |
+| Idle / file saved / notification requested | .216 / .217 / .217 |
+| Electron shown callback | .219 |
+| NotificationCenter display sharing false | .228 |
+| DND auxiliary state cleared | .330 |
+| Notification decision | .330: `resolutionReason: display shared`, `muted by DND suppression: silence`, `canDisplayWhileCenterIsClosed: false` |
+| Accessibility | No matching banner; no click callback |
+
+Across 17 earlier stops, display-sharing false preceded DND auxiliary clear by 101–106 ms. In a successful comparison at 03:28:10, sharing false was .520, auxiliary clear .621, decision .629 (`resolutionReason: disabled`), display allowed .630. Settings were not changed: those logs report Focus inactive and capture-dependent suppression active. The earlier raw track-release timestamp was not recorded and cannot be reconstructed.
+
+API investigation: [Electron desktopCapturer](https://www.electronjs.org/docs/latest/api/desktop-capturer) exposes source enumeration, and [Notification](https://www.electronjs.org/docs/latest/api/notification) exposes delivery events; neither documents a screen-sharing suppression-ready signal. Apple's [SCStream stopCapture](https://developer.apple.com/documentation/screencapturekit/scstream/stopcapture(completionhandler:)) is not an Electron MediaStream readiness API. No suitable supported signal was identified in these interfaces. A single 500 ms macOS delay is evaluated as margin beyond the observed ~113 ms save-to-DND-clear race; it does not guarantee delivery or bypass intentional suppression. No retry or longer AX polling is added.
+
+Pending saves are cancelled on a new capture and on the first quit request; saves finalized during shutdown are dropped. File writes and idle finish before scheduling. Notification exceptions cannot turn a saved recording into a failure. Local evidence lives in `measurements/2026-09-20-plan17/`; native results follow below.
+
+
+Two consecutive `pnpm acceptance:notification -- --install --full --keep-recordings` runs of the same signed candidate passed **15/15 each**, zero fail/not-run, no retries (226.217 s and 227.824 s from first event through cleanup). English, five clicks each with Finder closed/behind/minimized; user desktop interaction paused. Every file had exactly one request and click callback, a visible matching AX banner, correct file selection and Finder foreground. Track stop to saved was 12–24 ms, notification request followed saved by 500–512 ms, and correlated DND auxiliary clear occurred 107–136 ms after track stop. First after-fix example: track stop at 12:04:30.952, main receipt +2 ms, saved +13 ms, sharing false +17 ms, DND clear +118 ms, request +516 ms, AX/click passed. The delay moves this request past the observed race; it is not a universal OS bound.
+
+A SIGTERM sent during a pending notification cancelled the timer before delivery (`saved cancelled (shutdown)` at +159 ms), exited the runner with the expected failure status 1, and completed cleanup in 1.80 s. The recording was already saved; no recording remained active. Installed app.asar and settings SHA-256 matched before/after; test-owned TextEdit/Finder resources and app backup were restored/removed. Test recordings are retained. Two separate overlap cases started a new capture during the old save's delay: both old files remained saved, their notifications were cancelled and never requested; both next saves produced exactly one clickable banner. Sampling after the next notification was requested but before clicking confirmed TextEdit retained focus. These local checks use the existing runner and a preserved local derivative (`overlap.mts`), not product hooks or settings changes.
+
+
+`pnpm acceptance` against the same candidate recorded a 10.346 s, 1920×1080 H.264/AAC MP4 (standard/source/60 fps requested): all seven judged integrity checks passed, 10 flashes/9 beeps, 48 kHz stereo with RMS −26.8/−27.2 dBFS, no decode errors. Frame timing, subjective listening, channel isolation, fidelity and long-run sync were not judged. Native QuickTime computer use confirmed play advanced from 0 to 4.68 s; seeking to 2.01 s then advanced to 7.58 s, with the changing test material visible. Screenshots were observed through the tool but not saved as local image files. QuickTime exited; Finder showed only Desktop; TextEdit and test Chrome material processes were cleaned up. The previous installed app is restored and running idle; the new signed candidate remains in `dist/mac-arm64/RecordStuff.app`. All 36 test recordings are retained locally.
+
+Final `pnpm check`: 334 tests, typecheck/build passed. Claude Fable 5.1 (high, read-only) reviewed the change: autorecord shutdown behavior and permission-state cancellation policy were documented, a permission-recovery boundary test was added, and the epoch-format suggestion was rejected as readability-only. No runtime edits followed the signed build. Local report: `measurements/2026-09-20-plan17/report.md`.
+
+Plan 017 is complete and its plan files are removed. This does not resolve Plan 014's older undelivered-click case or publish a release. Intentional Focus/screen-sharing suppression, other OS versions, tray-only UI, Notification Center history clicks and long recordings remain outside this result. No system notification settings or permissions were changed.

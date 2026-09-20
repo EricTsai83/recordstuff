@@ -1,3 +1,4 @@
+import { SavedNotification, SAVED_NOTIFICATION_DELAY_MS } from "./saved-notification";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostMessage } from "../shared/protocol";
 import { DEFAULT_QUALITY, type CaptureReport, type QualitySettings } from "../shared/quality";
@@ -143,6 +144,30 @@ describe("formatTimestamp", () => {
 });
 
 describe("Recorder happy path", () => {
+  it("finalizes the file and returns idle before a delayed notification can fail", async () => {
+    const ctx = setup();
+    const show = vi.fn(() => { throw new Error("notification unavailable"); });
+    const log = vi.fn();
+    const notification = new SavedNotification({ platform: "darwin", show, log });
+    ctx.recorder.subscribe((event) => {
+      if (event.type === "state") notification.stateChanged(event.state);
+      if (event.type === "saved") notification.schedule(event.path);
+    });
+    await startRecording(ctx);
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1", tracksStoppedAt: Date.now() });
+    await flush();
+    expect(ctx.writers[0]!.finished).toBe(true);
+    expect(ctx.recorder.state.type).toBe("idle");
+    expect(ctx.events.at(-1)?.type).toBe("saved");
+    expect(show).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(SAVED_NOTIFICATION_DELAY_MS);
+    expect(show).toHaveBeenCalledTimes(1);
+    expect(ctx.recorder.state.type).toBe("idle");
+    expect(ctx.events.filter((event) => event.type === "failed")).toHaveLength(0);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("saved request failed"));
+  });
+
   it("idle → starting → recording → stopping → idle with lastSavedPath", async () => {
     const ctx = setup();
     await startRecording(ctx);

@@ -116,3 +116,37 @@
 ### 通知事件與 Accessibility 診斷 — 2026-09-20
 
 補上通知請求、shown、clicked、closed 紀錄並重建後，英文 15 案例 `--full` 於 199.59 秒完成：8 通過、1 前景失敗、6 未執行，退出碼 1。使用者確認期間有操作桌面；該次前景失敗有 shown／clicked／reveal，但 Chrome 變成前景，因此不能認定為產品缺陷。後續兩案例複測均通過。六次未按到通知都有 shown callback，但保存的 Accessibility 搜尋沒有匹配的橫幅節點；其中一次另有視窗索引變動造成的 System Events -1719。問題縮小到通知呈現／存續或 Accessibility 觀察，尚不能證明每次的根因；最後一筆搜尋 timeout 是 5 秒期限，不是另一項 OS 通知錯誤。App／設定已還原、17 段錄影及備份已清除、TextEdit 已退出；321 個測試、型別檢查及建置通過。原始證據：`docs/verification/measurements/2026-09-20-notification-diagnostics/report.md`。
+
+## 儲存通知時序—2026-09-20
+
+Plan 017 開發目標：macOS 26.6.2（25G83）、arm64、Electron 44.3.0；基底 commit `2f1109e53d1033ead10e9866eb7e88cad49fbab9` 加本機修改。capture host 原本已在 `stopped` 前停止 tracks，未發現漏停；新增 renderer `tracksStoppedAt`、主程序收到停止與檔案完成的時間戳。JS track 釋放不代表 OS 通知抑制已解除。
+
+先前完整測試缺少六個橫幅，目前只對有對應證據的案例判定抑制競態。以下為過濾私人內容後的本機時間（UTC+8），檔案 `03-29-21.mp4`：
+
+| 事件 | 時間 |
+| --- | --- |
+| 請求停止 | 03:29:24.198 |
+| Idle／存檔／請求通知 | .216／.217／.217 |
+| Electron shown callback | .219 |
+| NotificationCenter 螢幕分享 false | .228 |
+| DND auxiliary state 清除 | .330 |
+| 通知決策 | .330：`resolutionReason: display shared`、`muted by DND suppression: silence`、`canDisplayWhileCenterIsClosed: false` |
+| Accessibility | 沒有相符橫幅、沒有 click callback |
+
+先前 17 次停止，螢幕分享 false 到 DND auxiliary clear 相差 101–106 ms。成功對照為 03:28:10：分享 false 在 .520、auxiliary clear 在 .621、決策 .629（`resolutionReason: disabled`），.630 允許顯示。未改系統設定；當時日誌顯示專注模式未啟用、擷取期間抑制有效。舊資料沒有 track-release 時間戳，不能事後重建。
+
+API 查核：[Electron desktopCapturer](https://www.electronjs.org/docs/latest/api/desktop-capturer) 提供來源列舉，[Notification](https://www.electronjs.org/docs/latest/api/notification) 提供通知事件，皆未記載螢幕分享抑制已就緒的訊號。Apple 的 [SCStream stopCapture](https://developer.apple.com/documentation/screencapturekit/scstream/stopcapture(completionhandler:)) 不是 Electron MediaStream 的就緒 API。在這些介面未找到合適的受支援訊號，因此評估 macOS 單次 500 ms 延遲，留出超過實測約 113 ms 存檔到 DND 清除落差的餘裕。這不保證送達、不繞過刻意抑制，不加重試或延長 AX 搜尋。
+
+新擷取與首次退出請求會取消待送通知，退出期間才完成的存檔通知也會略過。寫檔／idle 先完成，再排程；通知例外不會把成功存檔改成失敗。本機證據位於 `measurements/2026-09-20-plan17/`；原生結果如下。
+
+
+同一份簽章產物連續執行兩輪 `pnpm acceptance:notification -- --install --full --keep-recordings`，**各 15/15 全通過**，fail／not-run 皆為零，沒有重試；從首事件到清理完成分別 226.217 秒、227.824 秒。英文，每種 Finder 關閉／背景／最小化狀態各五次，使用者暫停桌面操作。每個檔案都只有一次請求與 click callback，AX 看見相符橫幅、選取正確檔案且 Finder 在前景。Track stop 到存檔 12–24 ms，通知於存檔後 500–512 ms 請求，DND auxiliary clear 在 track stop 後 107–136 ms。修正後首例：12:04:30.952 track stop、+2 ms 主程序收到、+13 ms 存檔、+17 ms 分享 false、+118 ms DND clear、+516 ms 請求，AX／點擊通過。延遲讓此請求避開實測競態，不代表 OS 的通用上限。
+
+通知待送期間送 SIGTERM，timer 在送達前取消（+159 ms 的 `saved cancelled (shutdown)`），runner 依預期以失敗狀態 1 結束，清理 1.80 秒完成。錄影已存檔，沒有遺留錄製；安裝 app.asar 與設定的 SHA-256 前後一致，測試 TextEdit／Finder 資源及 App 備份完成還原／移除，測試影片保留。另兩次重疊案例在舊通知待送時開始新擷取：舊檔存在、舊通知取消且未請求；新錄影存檔後皆只有一次可點擊橫幅。新通知請求後、點擊前確認文字編輯仍在前景。使用既有 runner 與保留於本機的衍生腳本 `overlap.mts`，未加入產品 hook 或變更系統設定。
+
+
+同份產物的 `pnpm acceptance` 錄得 10.346 秒、1920×1080 H.264／AAC MP4（standard／source／要求 60 fps）：七個有判定的完整性指標全通過，10 次閃光／9 次嗶聲，48 kHz 雙聲道 RMS −26.8／−27.2 dBFS，沒有解碼錯誤。未判定幀率品質、主觀聽感、聲道分離、音質或長時間同步。原生 QuickTime computer use 確認播放從 0 前進到 4.68 秒，跳到 2.01 秒後繼續前進至 7.58 秒，畫面可見變動中的測試素材。截圖由工具直接觀察，未另存本機圖片。QuickTime 已結束、Finder 只剩桌面，TextEdit 與測試 Chrome 素材程序已清理。原安裝版已還原且待命，新簽章產物留在 `dist/mac-arm64/RecordStuff.app`，36 個測試影片保留於本機。
+
+最終 `pnpm check`：334 個測試、型別檢查與建置通過。Claude Fable 5.1（high、唯讀）完成 review：補上 autorecord 退出與權限狀態取消政策的文件及權限恢復邊界測試，epoch 格式建議因僅屬可讀性而拒絕。簽章建置後沒有執行邏輯變更。本機總報告：`measurements/2026-09-20-plan17/report.md`。
+
+Plan 017 已完成並移除計畫檔；不代表 Plan 014 舊有的點擊未送達案例已解決，也未發布。刻意設定的專注／螢幕分享抑制、其他 OS 版本、純 Tray UI、通知中心歷史點擊及長錄影不在本次結論內。未變更系統通知設定或權限。

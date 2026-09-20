@@ -180,7 +180,7 @@ export class CaptureHost {
       // keep capturing with nobody listening.
       this.pending.delete(sessionId);
       stopTracks(stream);
-      this.send({ type: "stopped", sessionId });
+      this.send({ type: "stopped", sessionId, tracksStoppedAt: Date.now() });
       return true;
     };
     const refuse = (code: ErrorCode, detail: string): void => {
@@ -258,8 +258,8 @@ export class CaptureHost {
       this.finish(session, () => this.fail(session.id, session.seq === 0 ? "capture_start_failed" : "capture_failed", detail));
     };
     recorder.onstop = () => {
-      this.finish(session, () => {
-        if (session.stopRequested) this.send({ type: "stopped", sessionId: session.id });
+      this.finish(session, (tracksStoppedAt) => {
+        if (session.stopRequested) this.send({ type: "stopped", sessionId: session.id, tracksStoppedAt });
         else this.fail(session.id, "capture_failed", "capture source ended (display or audio track stopped)");
       });
     };
@@ -290,7 +290,7 @@ export class CaptureHost {
     if (session.stopRequested) return;
     session.stopRequested = true;
     if (session.recorder.state === "inactive") {
-      this.finish(session, () => this.send({ type: "stopped", sessionId: session.id }));
+      this.finish(session, (tracksStoppedAt) => this.send({ type: "stopped", sessionId: session.id, tracksStoppedAt }));
       return;
     }
     // `stop()` flushes a final dataavailable before firing `onstop`.
@@ -315,13 +315,14 @@ export class CaptureHost {
   }
 
   /** Runs `then` after every pending chunk has been posted, exactly once. */
-  private finish(session: Session, then: () => void): void {
+  private finish(session: Session, then: (tracksStoppedAt: number) => void): void {
     if (session.finished) return;
     session.finished = true;
     stopTracks(session.stream);
+    const tracksStoppedAt = Date.now();
     void session.chain.then(() => {
       if (this.session === session) this.session = undefined;
-      then();
+      then(tracksStoppedAt);
     });
   }
 

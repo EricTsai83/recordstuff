@@ -39,6 +39,12 @@ describe("isHostMessage", () => {
     expect(isHostMessage({ type: "error", code: "no_audio_track", detail: "" })).toBe(true);
     expect(isHostMessage({ type: "error", sessionId: "a", code: "mp4_unsupported", detail: "x" })).toBe(true);
   });
+  it("accepts optional stop diagnostics but rejects invalid timestamps", () => {
+    expect(isHostMessage({ type: "stopped", sessionId: "a", tracksStoppedAt: 123 })).toBe(true);
+    for (const tracksStoppedAt of [NaN, Infinity, "123", null]) {
+      expect(isHostMessage({ type: "stopped", sessionId: "a", tracksStoppedAt })).toBe(false);
+    }
+  });
   it("rejects malformed chunks and unknown error codes", () => {
     expect(isHostMessage({ type: "chunk", sessionId: "a", seq: -1, bytes: new ArrayBuffer(1) })).toBe(false);
     expect(isHostMessage({ type: "chunk", sessionId: "a", seq: 1.5, bytes: new ArrayBuffer(1) })).toBe(false);

@@ -176,6 +176,7 @@ describe("renderer CaptureHost", () => {
     await flush();
     await flush();
     expect(port.types()).toEqual(["started", "chunk", "chunk", "chunk", "stopped"]);
+    expect(port.sent.at(-1)).toMatchObject({ tracksStoppedAt: expect.any(Number) });
     const chunks = port.sent.filter((m) => m.type === "chunk");
     expect(chunks.map((c) => (c.type === "chunk" ? c.seq : -1))).toEqual([0, 1, 2]);
     expect(chunks.map((c) => (c.type === "chunk" ? Array.from(new Uint8Array(c.bytes)) : []))).toEqual([[1, 2], [3], [9]]);
@@ -257,7 +258,7 @@ describe("renderer CaptureHost", () => {
     await flush();
     expect(s1.tracks.every((t) => t.stopped)).toBe(true);
     expect(s2.tracks.every((t) => !t.stopped)).toBe(true);
-    expect(port.sent.at(-1)).toEqual({ type: "stopped", sessionId: "s1" });
+    expect(port.sent.at(-1)).toEqual({ type: "stopped", sessionId: "s1", tracksStoppedAt: expect.any(Number) });
   });
 
   it("a cancelled session whose getDisplayMedia fails stays silent", async () => {
