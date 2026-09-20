@@ -42,7 +42,7 @@ NeedsPermission carries needsRelaunch. Idle may carry lastSavedPath or outputDir
 | First chunk after started | 8 s | capture_start_failed; preserve any written data |
 | Stop response | 10 s | stop_timeout |
 | Quit wait | 10 s, plus up to 3 s failure-close grace | Best-effort partial-file cleanup; avoid falsely failing an already-finalizing file |
-| Heartbeat | Check/send every 5 s | Tear down when the check finds two unanswered pings |
+| Heartbeat | Check/send every 5 s while a session is in flight | Tear down when the check finds two unanswered pings |
 
 These are project waiting limits, not OS standards or exact end-to-end timing guarantees. A timed-out disk operation is not actually canceled.
 

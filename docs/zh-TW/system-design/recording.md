@@ -42,7 +42,7 @@ stateDiagram-v2
 | started 後首 chunk | 8 秒 | capture_start_failed，保留已寫入資料 |
 | stop 回應 | 10 秒 | stop_timeout |
 | 退出等待 | 10 秒，失敗收尾另給最多 3 秒 | 未完成 capture 時盡力 close／保留；已 finalizing 不誤報失敗 |
-| 心跳 | 每 5 秒檢查／送 ping | 檢查時已有 2 次未回 pong 就 teardown、回 unresponsive |
+| 心跳 | session 進行中每 5 秒檢查／送 ping | 檢查時已有 2 次未回 pong 就 teardown、回 unresponsive |
 
 這些是專案的等待上限，不是 OS 標準或精準的全流程耗時保證。磁碟 I/O 不能因此被真正取消。
 

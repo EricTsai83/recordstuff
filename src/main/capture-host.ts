@@ -3,6 +3,12 @@
  * first start and keeps it alive afterwards, exchanges the MessagePort,
  * validates every inbound message, and detects crashes / hangs
  * (`render-process-gone`, two missed pongs).
+ *
+ * The heartbeat runs only while a session is in flight. A hang matters when
+ * bytes are expected; between sessions it would only cost timers and turn a
+ * wedged idle renderer into an error the user cannot act on. Before reuse,
+ * `start` probes responsiveness and replaces an unresponsive host. A crash is
+ * still reported at any time by `render-process-gone`.
  */
 import { BrowserWindow, MessageChannelMain, type MessagePortMain } from "electron";
 import { isHostMessage, type HostMessage, type MainMessage } from "../shared/protocol";
@@ -25,7 +31,10 @@ export class CaptureHost implements RecorderHost {
   private window: BrowserWindow | undefined;
   private port: MessagePortMain | undefined;
   private ready: Promise<void> | undefined;
+  private generation = 0;
   private pingTimer: ReturnType<typeof setInterval> | undefined;
+  /** The session the heartbeat is watching, if any. */
+  private watching: string | undefined;
   private missedPongs = 0;
   private readonly messageListeners = new Set<(message: HostMessage) => void>();
   private readonly failureListeners = new Set<(code: FailureCode, detail: string) => void>();
@@ -48,7 +57,16 @@ export class CaptureHost implements RecorderHost {
   }
 
   async start(sessionId: string, quality: QualitySettings): Promise<void> {
+    if (this.ready && this.window && !this.window.isDestroyed()) {
+      const generation = this.generation;
+      const responsive = await this.probe();
+      if (generation !== this.generation) throw new Error("capture host was destroyed during the readiness probe");
+      if (!responsive) this.teardown();
+    }
     await this.ensureReady();
+    this.watching = sessionId;
+    this.missedPongs = 0;
+    this.pingTimer ??= setInterval(() => this.ping(), this.pingIntervalMs);
     this.post({ type: "start", sessionId, quality });
   }
 
@@ -59,6 +77,23 @@ export class CaptureHost implements RecorderHost {
 
   destroy(): void {
     this.teardown();
+  }
+
+  /** One bounded round trip on reuse; no polling or renderer churn while idle. */
+  private probe(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const finish = (responsive: boolean): void => {
+        clearTimeout(timer);
+        this.messageListeners.delete(listener);
+        resolve(responsive);
+      };
+      const listener = (message: HostMessage): void => {
+        if (message.type === "pong") finish(true);
+      };
+      const timer = setTimeout(() => finish(false), 1000);
+      this.messageListeners.add(listener);
+      this.post({ type: "ping" });
+    });
   }
 
   private ensureReady(): Promise<void> {
@@ -114,6 +149,14 @@ export class CaptureHost implements RecorderHost {
         }
         if (message.type === "ready") resolve();
         if (message.type === "pong") this.missedPongs = 0;
+        // The session is over once the host reports it stopped or failed;
+        // nothing is expected from the renderer until the next start.
+        if (
+          (message.type === "stopped" && message.sessionId === this.watching) ||
+          (message.type === "error" && (message.sessionId === undefined || message.sessionId === this.watching))
+        ) {
+          this.stopHeartbeat();
+        }
         for (const listener of this.messageListeners) listener(message);
       });
     });
@@ -130,9 +173,13 @@ export class CaptureHost implements RecorderHost {
     } finally {
       if (readyTimer) clearTimeout(readyTimer);
     }
+  }
 
+  private stopHeartbeat(): void {
+    if (this.pingTimer) clearInterval(this.pingTimer);
+    this.pingTimer = undefined;
+    this.watching = undefined;
     this.missedPongs = 0;
-    this.pingTimer = setInterval(() => this.ping(), this.pingIntervalMs);
   }
 
   private ping(): void {
@@ -155,8 +202,8 @@ export class CaptureHost implements RecorderHost {
   }
 
   private teardown(): void {
-    if (this.pingTimer) clearInterval(this.pingTimer);
-    this.pingTimer = undefined;
+    this.generation += 1;
+    this.stopHeartbeat();
     this.port?.close();
     this.port = undefined;
     this.ready = undefined;
