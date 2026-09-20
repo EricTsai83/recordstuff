@@ -1,7 +1,7 @@
 /**
- * Pure helpers for the website release manifest.
+ * Shared release manifest schema, validation and presentation helpers.
  *
- * The manifest is the single source of download facts rendered by the site.
+ * The manifest supplies published download facts for release records and the site.
  * It is generated from a published GitHub release (release.json, SHA256SUMS and
  * the asset list) and re-verified before every build, so the page can only ever
  * advertise a release that exists and matches its checksum.
@@ -92,7 +92,7 @@ export function parseSha256Sums(text: string): Map<string, string> {
     if (!line) continue;
     const match = /^([0-9a-f]{64})\s+\*?(.+)$/.exec(line);
     if (!match) throw new Error(`Unparseable SHA256SUMS line: ${JSON.stringify(rawLine)}`);
-    entries.set(match[2], match[1]);
+    entries.set(match[2]!, match[1]!);
   }
   if (entries.size === 0) throw new Error("SHA256SUMS is empty.");
   return entries;

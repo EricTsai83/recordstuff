@@ -10,7 +10,7 @@ import {
   parseStableTag,
   type GitHubRelease,
   type ReleaseJson,
-} from "./manifest-lib.mts";
+} from "../../scripts/lib/release-manifest.mts";
 
 const TAG = "v0.1.2";
 const VERSION = "0.1.2";
