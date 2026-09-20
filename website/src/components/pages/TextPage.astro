@@ -3,12 +3,11 @@
 interface Props {
   title: string;
   description: string;
-  narrow?: boolean;
 }
-const { title, description, narrow = false } = Astro.props;
+const { title, description } = Astro.props;
 ---
 
-<article class:list={["text-page", "container", { "text-page--guide": narrow }]}>
+<article class="text-page container">
   <header class="text-head">
     <h1 class="display">{title}</h1>
     <p class="intro">{description}</p>
@@ -20,14 +19,14 @@ const { title, description, narrow = false } = Astro.props;
 </article>
 
 <style>
-  .text-page { max-width: 1120px; padding: 5rem 32px 6rem; }
+  .text-page { max-width: 960px; padding: 5rem 32px 6rem; }
   .text-head { display: flex; flex-direction: column; align-items: flex-start; gap: 1.25rem; margin-bottom: 4.5rem; }
   .text-head h1 { max-width: 850px; font-size: clamp(2.3rem, 4.8vw, 3.8rem); line-height: 1.1; text-wrap: balance; }
   .intro { max-width: 620px; font-size: 1.05rem; line-height: 1.75; color: var(--fg-muted); text-wrap: pretty; }
-  .reading-layout { padding-top: 3.5rem; }
-  .text-page--guide .text-head,
-  .text-page--guide .reading-content {
-    max-width: 800px;
+  .reading-layout { padding-top: 2.5rem; }
+  .text-head,
+  .reading-content {
+    max-width: 700px;
     margin-inline: auto;
   }
   .reading-content { min-width: 0; }
@@ -47,7 +46,7 @@ const { title, description, narrow = false } = Astro.props;
   @media (max-width: 640px) {
     .text-page { padding: 3rem 20px 4rem; }
     .text-head { gap: 1rem; margin-bottom: 3rem; }
-    .reading-layout { padding-top: 2.5rem; }
+    .reading-layout { padding-top: 1.75rem; }
     .reading-content :global(.prose > h2) { margin-top: 3.5rem; padding-top: 2.75rem; }
     .reading-content :global(.prose .step) { padding: 1.75rem 0; gap: 0.5rem; grid-template-columns: 1.5rem minmax(0, 1fr); }
     .reading-content :global(.callout) { padding: 0 0 0 1rem; }
