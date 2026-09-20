@@ -219,3 +219,9 @@ Opus 5 第二輪確認前七項修正，另提出五項，全部接受：退出�
 Vercel 唯讀檢查確認既有 `recordstuff` 專案、根目錄 `website` 與已驗證的 `record.ericts.com` 網域。儲存庫 Actions secrets 清單為空。本機 CLI 登入有效；維護者要求只透過 CI/CD 部署後，已移除剛下載的本機專案／環境檔案。未部署、commit、push、建立 tag 或發布版本。維護者將設定儲存庫 Actions secrets `VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID`，確認 feed 與 workflow 變更已在 main，再手動觸發 `macOS release`，使用既有 tag `v0.1.2` 並啟用 `deploy-website=true`。部署後仍需驗證公開 JSON／內容／快取標頭，以及正式 App 傳輸直接取得 feed 而未走 GitHub 備援，才結束 018。
 
 本次提交前 `pnpm check` 通過 24 個檔案的 395 項測試、型別檢查與正式建置；`git diff --check` 亦通過。未另行執行原生 UI 或錄影驗收。
+
+## 獨立網站 CI/CD — 2026-09-20
+
+網站交付移至 `.github/workflows/website.yml`，由 main 的 push 修改 `website/**` 或該 workflow、在 main 手動重試，以及穩定版本記錄成功後明確呼叫共用 workflow 三種入口執行。移除 `release.yml` 的 `deploy-website` dispatch 選項；重試改用 `gh workflow run website.yml --ref main`。這取代前一節部署前檢查所述的手動 release dispatch 操作。部署仍需 Vercel secrets，缺少設定會印出略過提示。各入口共用正式部署鎖，取得鎖後才讀取最新 main。release 明確呼叫可涵蓋不會觸發 push workflow 的 `GITHUB_TOKEN` 提交。
+
+本機驗證：actionlint 1.7.12 通過兩份 workflow（未啟用 ShellCheck 整合）；`pnpm site:check` 通過 15 項測試、Astro 診斷、0.1.2 manifest 線上驗證、建置 feed 比對及 59 個內部引用／13 個外部網址。文件連結與 `git diff --check` 通過。未執行 GitHub workflow、Vercel 建置／部署、App 啟動或錄影；線上端到端交付仍未驗證，plan 018 維持未結案。

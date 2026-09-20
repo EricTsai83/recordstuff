@@ -181,6 +181,8 @@ v0.1.0 已在本機完成瀏覽器下載／安裝驗證，Gatekeeper 需要單�
 
 Release 資訊只從已提交的 manifest 渲染：沒有瀏覽器端 GitHub API 呼叫、沒有執行時依賴。每個下載控制項都指向已驗證的 DMG 連結，旁邊提供 Releases 頁作為可見 fallback，因此過期的 manifest 會讓建置失敗，而不是渲染錯誤的按鈕。只有 `pnpm site:build` 可以設定 `SITE_MANIFEST_VERIFIED`；`astro dev` 與 `build:offline` 一律顯示頁尾警語。首頁視覺是內嵌 SVG（`website/src/components/DesktopScene.astro`）：露營地的 Mac 桌面，選單列以十九秒 CSS 循環（開頭靜止三秒、緩慢的鏡頭推拉、停止前的指示標註、延遲約半秒才彈出的通知、最後停留）演出產品故事——游標靠近時整個桌面向選單列圖示推近、游標點擊 RecordStuff 環形圖示、環變成實心圓點並在旁邊顯示「REC」（與 App 完全一致：tray-model.ts 切換 template 圖示並設定標題；不閃爍）、鏡頭拉回、手繪風標註（Kalam 手寫字型、雙筆觸草稿箭頭、無外框）顯示「Click again to stop recording」、游標點擊後約半秒，真實格式的「Saved <時間戳>.mp4」通知才彈出（與 App 的 `SAVED_NOTIFICATION_DELAY_MS` 一致）。地景為低多邊形（`src/components/scenes/FacetLandscape.astro`），上方是共用的選單列；星空由 `src/lib/stars.ts` 以固定種子產生。不需任何圖片請求，只動 transform／opacity；捲出畫面時 hero 會暫停它，`prefers-reduced-motion` 下靜態顯示最後一幀。依維護者決定沒有可見的暫停控制，因此對未開啟 reduced-motion 的使用者而言，WCAG 2.2.2（超過五秒的動態內容需可暫停／停止／隱藏）未達成。選單列文字與檔名格式與 App 一致。
 
+[網站部署](../../../.github/workflows/website.yml) 在 main 的 push 修改 `website/**` 或 workflow 本身時自動執行，穩定版本記錄完成後也會呼叫，並支援在 main 手動重試。所有入口共用正式部署鎖，取得鎖後才 checkout 最新 main。三個儲存庫 Vercel secrets 的設定見[網站交付](releases.md#網站交付)。
+
 CI 從 repository 根目錄執行 Vercel CLI，平台專案的 Root Directory 設為 `website/`。只透過 `vercel build --prod` 建置一次（內含網站的線上驗證），再以 `website/scripts/check-links.mts --dir .vercel/output/static --offline` 檢查 `.vercel/output/static`，最後用 `--prebuilt` 部署同一份產物。本機 `site:check` 則檢查重新建置的 `website/dist/`。
 
 

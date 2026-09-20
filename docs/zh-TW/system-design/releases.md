@@ -6,9 +6,9 @@
 
 ## 發布契約
 
-[release.yml](../../../.github/workflows/release.yml) 只在推送 `v*` tag 時建置與發布。沒有分支或 PR 觸發，所以一般 commit 到 main 不會建置或發布任何東西。以既有 tag 手動 dispatch 只會執行發布後驗證 job，不會建置或發布；其選用的 `deploy-website` 輸入會另外從 main 重建並重新部署網站，這是純網站內容修改不發版就能上線的方式。使用 `macos-15`，執行時要求 arm64；Node 24.21.0、pnpm 10.33.4 與 frozen lockfile。Actions 固定完整 commit SHA，更新時需重新檢查上游版本。
+[release.yml](../../../.github/workflows/release.yml) 只在推送 `v*` tag 時建置與發布。App 發布沒有分支或 PR 觸發。以既有 tag 手動 dispatch 只執行發布後驗證，不會建置 App、發布版本或部署網站。網站交付由獨立的 [website.yml](../../../.github/workflows/website.yml) 處理：main 的 push 若修改 `website/**` 或該 workflow，就自動部署網站；在 main 手動 dispatch 可重試網站部署，不需要版本 tag 或 macOS job。使用 `macos-15`，執行時要求 arm64；Node 24.21.0、pnpm 10.33.4 與 frozen lockfile。Actions 固定完整 commit SHA，更新時需重新檢查上游版本。
 
-單次 workflow 的順序：tag／來源檢查 → 程式檢查（`pnpm check`）→ 匯入固定身分 → `pnpm dist:mac` → 掛載驗證 → 候選 artifact → 獨立 publish job 不用私鑰重驗後建立公開 release → `verify-published` job 以匿名身分從公開 release 網址下載三個 assets、核對 SHA256SUMS、重跑掛載／簽章／metadata 閘門並比對 GitHub 自己算的 asset digest（`release.mts published`）→ `record` job（僅穩定 tag）把發布事實寫回 main：package.json 版本、兩語言 README 的標記下載區塊、雙語驗證紀錄骨架，以 `github-actions[bot]` 身分 commit；此 job 在穩定 tag 時同時以 `website/scripts/manifest.mts generate` 從公開 release 重新產生網站的 `website/release-manifest.json` 並一起提交（prerelease tag 仍有 record commit，但永不進入網站）→ `deploy-website` job（僅穩定 tag）checkout 該 main、安裝、測試並建置 `website/`（建置前先對公開 release 重新驗證 manifest），再以釘版的 Vercel CLI（`pull`、`build`、`deploy --prebuilt --prod`）部署到維護者的 Vercel 專案。未設定 `VERCEL_TOKEN`、`VERCEL_ORG_ID` 或 `VERCEL_PROJECT_ID` 時略過並印出提示；只有 `contents: read`，絕不碰 release；網站失敗時 release 維持公開、前一版網站維持上線。build job 僅有 contents:read；publish 與 record job 有 contents:write；驗證 job 不需要 secrets 或寫入權限。Secrets 只提供給 build 的簽署 step。release environment 只允許 `v*` tag，由 repository 的可信任維護者控制。全發布 workflow 共用 concurrency group，執行中不取消。
+單次 workflow 的順序：tag／來源檢查 → 程式檢查（`pnpm check`）→ 匯入固定身分 → `pnpm dist:mac` → 掛載驗證 → 候選 artifact → 獨立 publish job 不用私鑰重驗後建立公開 release → `verify-published` job 以匿名身分從公開 release 網址下載三個 assets、核對 SHA256SUMS、重跑掛載／簽章／metadata 閘門並比對 GitHub 自己算的 asset digest（`release.mts published`）→ `record` job（僅穩定 tag）把發布事實寫回 main：package.json 版本、兩語言 README 的標記下載區塊、雙語驗證紀錄骨架，以 `github-actions[bot]` 身分 commit；此 job 在穩定 tag 時同時以 `website/scripts/manifest.mts generate` 從公開 release 重新產生網站的 `website/release-manifest.json` 並一起提交（prerelease tag 仍有 record commit，但永不進入網站）→ `deploy-website` job（僅穩定 tag）呼叫可重用的 `website.yml` workflow，由它 checkout main、安裝、測試並建置 `website/`（建置前先對公開 release 重新驗證 manifest），再以釘版的 Vercel CLI（`pull`、`build`、`deploy --prebuilt --prod`）部署到維護者的 Vercel 專案。未設定 `VERCEL_TOKEN`、`VERCEL_ORG_ID` 或 `VERCEL_PROJECT_ID` 時略過並印出提示；只有 `contents: read`，絕不碰 release；網站失敗時 release 維持公開、前一版網站維持上線。build job 僅有 contents:read；publish 與 record job 有 contents:write；驗證 job 不需要 secrets 或寫入權限。Secrets 只提供給 build 的簽署 step。release environment 只允許 `v*` tag，由 repository 的可信任維護者控制。全發布 workflow 共用 concurrency group，執行中不取消。網站所有入口共用另一個正式部署 concurrency group，亦不取消執行中的部署；取得鎖後才 checkout 最新 main，避免較舊的排隊觸發還原舊產物。release job 明確呼叫共用 workflow，因為以 `GITHUB_TOKEN` 推送的 manifest commit 不會觸發 push workflow。
 
 會停止發布的閘門，依序為：tag 指向的 commit 不是 `origin/main` 的祖先；tag 格式錯誤或比 package.json 最後記錄的版本舊；工作樹不乾淨；該 tag 已有 release（含 draft）；程式檢查失敗；缺 secrets 或匯入的憑證指紋不是 `01B373511530BBF287CA35E54C10A5F017AAD637`；bundle 簽章、identifier、hardened runtime 或 designated requirement 失敗；DMG 根目錄不是恰為 `Applications` 與 `RecordStuff.app` 加允許的隱藏 Finder 版面檔；App 版本或架構不符；重驗時候選 metadata 或 SHA256SUMS 不同；tag 不再指向已驗證的 commit。沒有未簽署或部分驗證的後備路徑。
 
@@ -17,6 +17,16 @@
 憑證指紋固定。每次建置把加密 PKCS#12 匯入暫時 keychain，設定 codesign 金鑰存取與該憑證的 Code Signing 信任。trap 與 always cleanup 移除憑證檔、keychain 與信任。此設計支援可拋棄的 GitHub-hosted runner，持久 runner 需另行調整。
 
 自 0.1.2 起，DMG 只包含 App 與 Applications 連結，背景是程式產生的拖曳箭頭；不附任何格式的說明文件。安裝、手動更新與移除指引放在[官網 Help](https://record.ericts.com/help)、發行說明及固定到 commit 的[安裝指南](../../../resources/INSTALL.zh-TW.md)。未來英文發行說明應同時連到官網 Help 與固定到 commit 的指南。
+
+## 網站交付
+
+在儲存庫 Actions secrets 設定 `VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID`；Vercel 專案 Root Directory 維持 `website/`，Git 自動部署維持關閉，避免重複部署。缺少 secret 時略過部署並印出提示。網站 push 與穩定版 App 發布共用相同的 manifest 線上驗證、網站測試、Astro 診斷、建置 feed 比對及產物連結檢查，之後部署同一份 prebuilt 產物。非網站變更不觸發獨立網站部署；預覽版 tag 不呼叫它。補好 secrets 或修正部署失敗後，可重試：
+
+```bash
+gh workflow run website.yml --ref main
+```
+
+此 workflow 不建置、簽署或發布 App。部署後仍需驗證公開 feed 與實際 App 傳輸，才算通過更新交付驗收。
 
 ## 操作
 

@@ -1,8 +1,7 @@
 import type { VercelConfig } from "@vercel/config/v1";
 
-// Deployments come from the maintainer or the release workflow, never from
-// Vercel's Git integration, so a documentation commit on main cannot publish a
-// site whose manifest was not re-verified.
+// GitHub Actions deploys verified output through website.yml on website changes
+// and after stable releases. Disable Vercel Git deployments to avoid duplicates.
 export const config: VercelConfig = {
   git: {
     deploymentEnabled: false,

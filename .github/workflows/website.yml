@@ -1,0 +1,83 @@
+name: Website deployment
+# All entry points share the same checks and production deployment lock.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - '.github/workflows/website.yml'
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      VERCEL_TOKEN:
+        required: false
+      VERCEL_ORG_ID:
+        required: false
+      VERCEL_PROJECT_ID:
+        required: false
+permissions:
+  contents: read
+jobs:
+  deploy:
+    # Release callers run on a tag; direct/manual deployments must run on main.
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    concurrency:
+      group: recordstuff-website-production
+      cancel-in-progress: false
+    # Resolve main only after acquiring the lock so queued deployments cannot
+    # restore an older manifest or site. Running deployments are never cancelled.
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Check whether the Vercel project is configured
+        id: vercel
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::notice::Website not deployed: VERCEL_TOKEN, VERCEL_ORG_ID or VERCEL_PROJECT_ID is not configured."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        if: steps.vercel.outputs.configured == 'true'
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        if: steps.vercel.outputs.configured == 'true'
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        if: steps.vercel.outputs.configured == 'true'
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: website/pnpm-lock.yaml
+      - name: Install and check the website source
+        if: steps.vercel.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          pnpm --dir website install --frozen-lockfile
+          pnpm --dir website test
+          pnpm --dir website exec astro check
+      - name: Build, check and deploy the website to Vercel production
+        if: steps.vercel.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          # Run from the repository root: the Vercel project's Root Directory is website/.
+          npx --yes vercel@59.23.2 pull --yes --environment=production --token "$VERCEL_TOKEN"
+          npx --yes vercel@59.23.2 build --prod --token "$VERCEL_TOKEN"
+          node website/scripts/check-release.mts --dir .vercel/output/static
+          node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON website/scripts/check-links.mts --dir .vercel/output/static --offline
+          url="$(npx --yes vercel@59.23.2 deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN")"
+          echo "Deployed $url"
+          {
+            echo "### Website"
+            echo
+            echo "Deployed \`$url\` from main commit $(git rev-parse HEAD)."
+          } >> "$GITHUB_STEP_SUMMARY"
