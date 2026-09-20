@@ -20,10 +20,10 @@ flowchart TD
     R -->|明確呼叫共用 workflow| D
     S -->|否| Q["記錄預覽版本；不部署網站"]
     D --> L["取得網站部署鎖，checkout 最新 main"]
-    L --> C["網站測試、型別檢查、線上驗證 manifest、建置"]
+    L --> H["Vercel CLI 提交原始碼壓縮檔"]
+    H --> C["Vercel：網站測試、型別檢查、線上驗證 manifest、建置"]
     C --> F["比對建置 feed，檢查產物連結"]
-    F --> H["Vercel CLI 部署同一份 prebuilt 產物"]
-    H --> O["官網與 release.json 上線"]
+    F --> O["官網與 release.json 上線"]
 ```
 
 網站入口只監聽 `website/**` 與 `.github/workflows/website.yml` 的 main push；一般文件或 App 原始碼變更不會單獨觸發網站部署。release 的 record job 使用 `GITHUB_TOKEN` 推送，這不會觸發另一個 push workflow，因此 release 必須明確呼叫共用網站 workflow。
@@ -35,9 +35,9 @@ flowchart TD
 ```mermaid
 flowchart LR
     P["push 到 main"] --> G["目前：GitHub Actions"]
-    G --> C["驗證與建置"]
-    C --> K["Vercel CLI + VERCEL_TOKEN"]
-    K --> V["Vercel 託管網站"]
+    G --> K["Vercel CLI + VERCEL_TOKEN 提交原始碼"]
+    K --> C["Vercel 驗證與建置"]
+    C --> V["Vercel 託管網站"]
     P -. "替代方案，目前關閉" .-> I["Vercel 原生 GitHub 整合"]
     I -.-> B["由 Vercel 建置與部署"]
     B -.-> V
@@ -45,7 +45,7 @@ flowchart LR
 
 `push` 是觸發事件，不決定由誰部署。目前由 Actions 負責，GitHub Repository Actions secrets 需要 `VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID`。token 提供 Vercel 授權；兩個 ID 指定團隊與專案。本機 CLI 的登入不會傳到 GitHub runner。
 
-採用 Actions 的理由是共用驗證流程、明確接在 App 公開產物驗證之後，並部署同一份已檢查產物。代價是維護 workflow 與 token。Vercel 原生整合也可行，而且不需在 GitHub 保存部署 token，但切換時須搬移所有部署前驗證、驗證 bot 更新 manifest 能觸發交付，並移除重複部署入口。兩套部署機制不應同時接管正式網站。
+採用 Actions 的理由是共用驗證流程、明確接在 App 公開產物驗證之後，並由共用的遠端建置在產物上線前完成檢查。代價是維護 workflow 與 token。Vercel 原生整合也可行，而且不需在 GitHub 保存部署 token，但切換時須保留所有遠端建置驗證、驗證 bot 更新 manifest 能觸發交付，並移除重複部署入口。兩套部署機制不應同時接管正式網站。
 
 ## Feed 只描述已發布版本
 

@@ -1,13 +1,13 @@
 import type { VercelConfig } from "@vercel/config/v1";
 
-// GitHub Actions deploys verified output through website.yml on website changes
-// and after stable releases. Disable Vercel Git deployments to avoid duplicates.
+// GitHub Actions submits source through website.yml; Vercel verifies and builds.
+// Disable Vercel Git deployments to avoid duplicate production deployments.
 export const config: VercelConfig = {
   git: {
     deploymentEnabled: false,
   },
   installCommand: "pnpm install --frozen-lockfile",
-  buildCommand: "pnpm build",
+  buildCommand: "pnpm test && pnpm check",
   outputDirectory: "dist",
   headers: [
     { source: "/release.json", headers: [{ key: "Cache-Control", value: "public, max-age=300, s-maxage=300" }] },

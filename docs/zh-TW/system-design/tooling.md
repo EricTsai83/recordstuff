@@ -183,7 +183,7 @@ Release 資訊只從已提交的 manifest 渲染：沒有瀏覽器端 GitHub API
 
 [網站部署](../../../.github/workflows/website.yml) 在 main 的 push 修改 `website/**` 或 workflow 本身時自動執行，穩定版本記錄完成後也會呼叫，並支援在 main 手動重試。所有入口共用正式部署鎖，取得鎖後才 checkout 最新 main。三個儲存庫 Vercel secrets 的設定見[網站交付](releases.md#網站交付)。
 
-CI 從 repository 根目錄執行 Vercel CLI，平台專案的 Root Directory 設為 `website/`。只透過 `vercel build --prod` 建置一次（內含網站的線上驗證），再以 `website/scripts/check-links.mts --dir .vercel/output/static --offline` 檢查 `.vercel/output/static`，最後用 `--prebuilt` 部署同一份產物。本機 `site:check` 則檢查重新建置的 `website/dist/`。
+CI 從 repository 根目錄執行 Vercel CLI，平台專案的 Root Directory 設為 `website/`。以 `vercel deploy --archive=tgz --prod --yes` 提交原始碼，不執行 `pull`、本機 Vercel 建置或 `--prebuilt`。Vercel 依設定執行 `pnpm test && pnpm check`：測試、Astro 診斷、manifest 線上驗證、正式建置、建置 feed 比對與 `dist/` 連結檢查。本機 `site:check` 使用相同的套件檢查。GitHub runner 的環境變數不會自動傳入遠端建置；除非另在 Vercel 設定，manifest 驗證使用公開 GitHub 端點。
 
 
 ### 更新功能驗收

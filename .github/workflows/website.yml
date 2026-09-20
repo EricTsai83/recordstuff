@@ -48,16 +48,10 @@ jobs:
         with:
           ref: main
           persist-credentials: false
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-        if: steps.vercel.outputs.configured == 'true'
-        with:
-          version: 10.33.4
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         if: steps.vercel.outputs.configured == 'true'
         with:
           node-version: 24.21.0
-          cache: pnpm
-          cache-dependency-path: website/pnpm-lock.yaml
       - name: Verify Vercel project access
         if: steps.vercel.outputs.configured == 'true'
         run: |
@@ -86,7 +80,7 @@ jobs:
             }
             if (!response.ok) {
               const hint = response.status === 401 || response.status === 403
-                ? "Check token expiry and access to the project's Vercel team; also verify both IDs."
+                ? "Check token expiry and access to the target Vercel project; also verify both IDs."
                 : response.status === 404
                   ? "Check the project/team IDs and whether this token can see them."
                   : "Vercel returned an unexpected status; retry after checking service availability.";
@@ -100,25 +94,15 @@ jobs:
           const settings = await get(`/v9/projects/${encodeURIComponent(project)}?teamId=${encodeURIComponent(org)}`, "Vercel project access");
           if (settings.id !== project || settings.accountId !== org) fail("Vercel project ownership does not match the configured IDs.");
           if (settings.name !== "recordstuff" || settings.rootDirectory !== "website") fail("Expected the recordstuff project with Root Directory website. Check project configuration.");
-          console.log("Vercel project access verified. CLI pull compatibility is checked separately by the next deployment step.");
+          console.log("Vercel project access verified. Ready to submit source for remote build.");
           NODE
-      - name: Install and check the website source
+      - name: Submit website source to Vercel production
         if: steps.vercel.outputs.configured == 'true'
         run: |
           set -euo pipefail
-          pnpm --dir website install --frozen-lockfile
-          pnpm --dir website test
-          pnpm --dir website exec astro check
-      - name: Build, check and deploy the website to Vercel production
-        if: steps.vercel.outputs.configured == 'true'
-        run: |
-          set -euo pipefail
-          # Run from the repository root: the Vercel project's Root Directory is website/.
-          npx --yes vercel@59.23.2 pull --yes --environment=production --token "$VERCEL_TOKEN"
-          npx --yes vercel@59.23.2 build --prod --token "$VERCEL_TOKEN"
-          node website/scripts/check-release.mts --dir .vercel/output/static
-          node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON website/scripts/check-links.mts --dir .vercel/output/static --offline
-          url="$(npx --yes vercel@59.23.2 deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN")"
+          # Root Directory is website/. Vercel runs tests and all build gates
+          # from website/vercel.ts before making the deployment live.
+          url="$(npx --yes vercel@59.23.2 deploy --archive=tgz --prod --yes --token "$VERCEL_TOKEN" --scope "$VERCEL_ORG_ID")"
           echo "Deployed $url"
           {
             echo "### Website"

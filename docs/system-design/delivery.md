@@ -20,10 +20,10 @@ flowchart TD
     R -->|Explicit reusable workflow call| D
     S -->|No| Q["Record prerelease; do not deploy website"]
     D --> L["Acquire website deployment lock; check out current main"]
-    L --> C["Website tests, types, online manifest verification, build"]
+    L --> H["Vercel CLI submits source archive"]
+    H --> C["Vercel: tests, types, online manifest verification, build"]
     C --> F["Compare generated feed; check built links"]
-    F --> H["Vercel CLI deploys the same prebuilt output"]
-    H --> O["Website and release.json go live"]
+    F --> O["Website and release.json go live"]
 ```
 
 The standalone website trigger watches main pushes affecting `website/**` or `.github/workflows/website.yml`. Other documentation or App-only commits do not trigger it. The release record job pushes with `GITHUB_TOKEN`, which does not trigger another push workflow, so the release explicitly calls the reusable website workflow.
@@ -35,9 +35,9 @@ All website entry points share a deployment lock without cancelling active deplo
 ```mermaid
 flowchart LR
     P["Push to main"] --> G["Current: GitHub Actions"]
-    G --> C["Verify and build"]
-    C --> K["Vercel CLI + VERCEL_TOKEN"]
-    K --> V["Vercel hosts the website"]
+    G --> K["Vercel CLI + VERCEL_TOKEN submits source"]
+    K --> C["Vercel verifies and builds"]
+    C --> V["Vercel hosts the website"]
     P -. "Alternative, currently disabled" .-> I["Native Vercel GitHub integration"]
     I -.-> B["Vercel builds and deploys"]
     B -.-> V
@@ -45,7 +45,7 @@ flowchart LR
 
 A push is an event, not the deployment owner. Actions currently owns deployment and requires repository Actions secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID`. The token authorizes Vercel access; the IDs select the team and project. Local CLI login is not transferred to the GitHub runner.
 
-Actions provides shared verification, explicit ordering after public App verification, and deployment of the checked artifact. The cost is maintaining the workflow and token. Native Vercel Git integration is a viable alternative without a deployment token stored in GitHub, but migration must move all pre-deployment checks, verify bot manifest updates trigger delivery, and remove duplicate deployment entry points. Only one mechanism should own production website deployment.
+Actions provides shared verification, explicit ordering after public App verification, and a shared remote build that verifies its output before publishing. The cost is maintaining the workflow and token. Native Vercel Git integration is a viable alternative without a deployment token stored in GitHub, but migration must preserve all remote build checks, verify bot manifest updates trigger delivery, and remove duplicate deployment entry points. Only one mechanism should own production website deployment.
 
 ## The feed describes published versions only
 

@@ -184,7 +184,7 @@ Release facts are rendered only from the committed manifest: no browser-side Git
 
 [Website deployment](../../.github/workflows/website.yml) runs automatically for main pushes changing `website/**` or the workflow itself, is called after stable release recording, and supports manual retries on main. All entry points share a production lock and check out current main after acquiring it. Configure the three repository Vercel secrets described in [website delivery](releases.md#website-delivery).
 
-CI runs Vercel CLI from the repository root with the project Root Directory set to `website/`. It builds once through `vercel build --prod` (which runs the online-verified website build), checks `.vercel/output/static` with `website/scripts/check-links.mts --dir .vercel/output/static --offline`, then deploys that same output with `--prebuilt`. Local `site:check` checks a fresh `website/dist/` instead.
+CI runs Vercel CLI from the repository root with the project Root Directory set to `website/`. It submits source with `vercel deploy --archive=tgz --prod --yes`; there is no `pull`, local Vercel build or `--prebuilt`. Vercel runs the configured `pnpm test && pnpm check`: tests, Astro diagnostics, online manifest verification, production build, exact generated feed comparison and link checks against `dist/`. Local `site:check` runs the same package checks. GitHub runner environment variables are not automatically forwarded to the remote build; manifest verification uses public GitHub endpoints unless separately configured in Vercel.
 
 
 ### Update acceptance

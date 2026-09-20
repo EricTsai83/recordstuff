@@ -239,3 +239,9 @@ Vercel 唯讀檢查確認既有 `recordstuff` 專案、根目錄 `website` 與�
 ### 專案限定 token 說明修正
 
 Vercel 支援專案限定 token，且明確禁止其讀取團隊／使用者資源（見[官方公告](https://vercel.com/changelog/project-scoped-tokens)）。因此團隊 API 403 不代表 token 無效。診斷已改成只查目標專案及其歸屬／設定。目前固定的 CLI 59.23.2 在 pull 路徑仍未啟用 owner lookup fallback；相符的未結案[上游問題 #17506](https://github.com/vercel/vercel/issues/17506) 記錄了專案讀取成功、團隊讀取失敗導致 `vercel pull` 失敗的情形。移除診斷的團隊閘門不等於修復 CLI 限制；現有 pull／build／deploy 流程可能仍需團隊限定 token 作為替代，沒有證據顯示必須使用 Full Account。專案限定 token 的端到端部署仍未驗證。先前將團隊 403 直接視為 Scope 設錯的說法不夠準確。
+
+## Vercel 原始碼部署 — 2026-09-20
+
+採用 [T3 Code 官網](https://github.com/pingdotgg/t3code/blob/main/.github/workflows/release.yml)的原始碼部署方式：Actions 驗證專案存取，再用既有釘版 CLI 59.23.2 執行 `deploy --archive=tgz --prod --yes --scope`，不再執行 `pull`、本機 `vercel build` 或 `--prebuilt`。Vercel 建置命令改為 `pnpm test && pnpm check`，測試、型別、manifest 線上驗證、正式建置、建置 feed 比對及連結檢查都必須通過才上線。觸發條件、部署鎖與 App 發布邊界維持原設計；GitHub 憑證不傳入遠端建置。
+
+本機通過 actionlint 1.7.12（未啟用 ShellCheck）、15 項網站測試、39 個檔案診斷、0.1.2 manifest 線上／建置 feed 驗證、59 個內部引用與 13 個外部網址、文件連結目標及 `git diff --check`。未執行遠端建置／部署、啟動 App 或錄影。這移除了已知有問題的 pull 路徑，但不代表專案限定 token 的完整原始碼部署已驗證；線上驗收與公開 feed 交付仍待完成。先前 prebuilt 部署記錄保留為歷史。
