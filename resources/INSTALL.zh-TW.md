@@ -25,7 +25,7 @@ DMG 裡只有 App 與 Applications（應用程式）捷徑，本頁就是安裝�
    選單也提供「已經允許了？重新啟動 RecordStuff」。
    若另有系統音訊錄製提示，錄製電腦聲音時也需要允許。
 6. 點選單列圖示開始錄製，再點一次停止；也可以在任何 App 中按
-   Command-Option-Shift-R（⌘⌥⇧R），App 選單可改用其他組合鍵或關閉快捷鍵。
+   Command-Option-Shift-R（⌘⌥⇧R），App 的「設定…」可改用其他組合鍵或關閉快捷鍵。
    影片預設存放在使用者的「影片 → RecordStuff」，可由 App 選單開啟輸出資料夾。
 
 ## 手動更新
@@ -74,5 +74,5 @@ Apple 操作說明：https://support.apple.com/102445
 
 ## 語言
 
-RecordStuff 預設英文。右鍵點選單列圖示，選 Language → 繁體中文即可切換，
+RecordStuff 預設英文。右鍵點選單列圖示，選 Settings… → Language → 繁體中文即可切換，
 下次開啟會保留選擇。App 診斷維持英文，macOS 原生權限提示依系統語言。

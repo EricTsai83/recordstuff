@@ -6,17 +6,17 @@
 
 Sources: [tray-model.ts](../../src/main/tray-model.ts), [tray.ts](../../src/main/tray.ts), [index.ts](../../src/main/index.ts).
 
-TrayModel is a pure projection containing icon, title, tooltip, and a recursive menu. AppTray maps it to Electron without a separate business state machine. Left-click toggles recording; right-click builds the menu from current state and settings. It does not use setContextMenu, which would change left-click behavior on macOS. The [global shortcut](#recording-shortcut) calls the same toggle as the left click.
+TrayModel is a pure projection containing icon, title, tooltip, and a flat list of commands; preferences are not in the tray at all, so what the model returns is exactly what the menu shows. AppTray maps it to Electron without a separate business state machine. Left-click toggles recording; right-click builds the menu from current state and settings. Hovering over the tray icon shows the current status and a localized “Right-click to open the menu” hint in the native tooltip. It does not use setContextMenu, which would change left-click behavior on macOS. The [global shortcut](#recording-shortcut) calls the same toggle as the left click.
 
-| State | Icon/title | Actions |
-| --- | --- | --- |
-| needsPermission | Idle/empty | Permission guidance, settings/relaunch, output folder, quality and shortcut |
-| idle | Idle/empty | Ready or folder unavailable; reveal last recording when its path exists in state; output folder, quality and shortcut |
-| starting | Idle/`…` | Permission-prompt guidance; quality and shortcut locked |
-| recording | Recording/`REC` | Stop (tooltip names the shortcut when registered); output folder, quality and shortcut locked |
-| stopping | Idle/`…` | Saving; quality and shortcut locked |
+| State | Icon/title | Tray commands | Preferences in Settings |
+| --- | --- | --- | --- |
+| needsPermission | Idle/empty | Permission guidance, settings/relaunch, output folder | All editable |
+| idle | Idle/empty | Ready or folder unavailable; reveal last recording when its path exists in state; output folder | All editable |
+| starting | Idle/`…` | Permission-prompt guidance | Language only |
+| recording | Recording/`REC` | Stop (tooltip names the shortcut when registered); output folder greyed | Language only |
+| stopping | Idle/`…` | Saving | Language only |
 
-Every state offers Language, Show log, and Quit. macOS uses template PNG/@2x assets and a title; Windows branches use ICO assets. REC may appear in full-display recordings; this is an accepted visibility tradeoff.
+Every state offers Settings…, Show log, and Quit, and Settings… is never disabled: the panel itself says which preferences are locked. macOS uses template PNG/@2x assets and a title; Windows branches use ICO assets. REC may appear in full-display recordings; this is an accepted visibility tradeoff.
 
 Pure functions generate localized notification text. Native notifications are silent. Saved/partial-file notifications reveal the file. Without a partial file, output-open failure opens folder selection, permission denial opens System Settings, and a relaunch error invokes relaunch. Quality/language save failures and frame-rate downgrade notifications are informational.
 
@@ -26,19 +26,29 @@ On macOS, a notification click does two things: it delivers the response to the 
 
 Saved notifications are scheduled by `SavedNotification` after file finalization and idle, with one 500 ms timer on macOS; other platforms request immediately. This gives macOS time to clear the capture-related notification suppression state. It is a measured heuristic, not a readiness signal or delivery guarantee: Focus, another capture, and notification preferences still apply. Leaving idle (a new recording or a permission-recovery state) cancels the old pending notification permanently; permission guidance takes priority over that old save; `before-quit` cancels it and rejects subsequent saves during shutdown. No queue or retry is retained. Notification request exceptions are logged without affecting the saved file. Saving and idle never wait for notification delivery. See [timing evidence](../verification/README.md#saved-notification-timing--2026-09-20).
 
+## Settings window
+
+Sources: [ui-model.ts](../../src/main/ui-model.ts), [settings-model.ts](../../src/main/settings-model.ts), [settings-window.ts](../../src/main/settings-window.ts), [renderer/settings.ts](../../src/renderer/settings.ts).
+
+The tray keeps the commands that must stay one click away; every preference lives in one separate, sandboxed window. Settings… opens it or focuses the existing one. On macOS the app focuses itself first, because a Dock-less app does not come forward when it merely shows a window. Changes save immediately and the window stays open; a language change relabels it and retitles it in place. Closing it — including with Escape or the platform close shortcut, which the panel handles itself because a Dock-less app has no application menu — leaves the menu-bar recorder running. Capture still uses its own hidden renderer.
+
+[settings-model.ts](../../src/main/settings-model.ts) declares every preference once, with stable group and choice ids, and is the only place that knows what a choice does. It produces both the view the panel renders and the answer to "is this request allowed right now". The tray model is a sibling projection of the same state and context, not a source the panel reads from.
+
+Main owns committed preferences; the panel only retains pending user choices. It renders the view it is given and sends back a group id and a choice id — never an action. Main refuses any sender but the panel's own main frame, resolves the pair against a freshly built model, and only then calls the same action handler the tray uses, which re-checks the recording state before saving. Starting, recording and saving lock every preference except the language, in the panel and again at that boundary. Saves are serialized in request order, so a second change waits instead of being reported as a failure. While saves are pending, the panel keeps the latest selection visible across older replies and pushes, and keeps other controls locked until all requests settle. It then shows committed values, with an inline message when the latest choice did not take effect, and a shortcut the OS refused keeps its selection plus a note saying it is inert. The control being changed stays live while its neighbours go inert, because a disabled element cannot hold keyboard focus. The preload exposes only read, choose and change subscription; the one string the panel can need before its first view — a failed initial read — is localized from the language main puts in the page URL.
+
 ## Recording shortcut
 
 Sources: [hotkey.ts](../../src/main/hotkey.ts), [shared/hotkey.ts](../../src/shared/hotkey.ts), [index.ts](../../src/main/index.ts). Plan 016 added a global start/stop shortcut so recording can be toggled while another app is frontmost and so unattended acceptance has a system-level entry point on a process with no window.
 
 RecordingHotkey wraps Electron `globalShortcut`. A press calls the same `toggle` function as a tray left click, so `Recorder.toggle()` remains the only decision point: it starts when idle, stops when recording, re-issues the permission notification in needsPermission, and ignores presses while starting or stopping. Every press is logged as `hotkey: <accelerator> pressed` before the toggle. `apply(settings)` releases the previous registration before registering the new one, so a change never leaves two combinations active; `dispose()` runs on will-quit.
 
-The user chooses one of three presets or Off from the tray's **Shortcut** submenu (idle/needsPermission only, like quality). The default is `CommandOrControl+Alt+Shift+R` (⌘⌥⇧R on macOS, Ctrl+Alt+Shift+R elsewhere). The plan proposed ⌘⇧R; the conflict check on 2026-09-19 found it bound to hard reload in Chrome and Firefox, Reader in Safari and local recording in Zoom, and a global shortcut takes precedence over the frontmost app, so a browser user would start a screen recording by accident. The three-modifier default was unbound in Chrome, Safari, Firefox, Finder, Xcode, VS Code, Slack and Zoom; ⌘⇧R and ⌘⌥R remain presets. A free-form shortcut recorder is out of scope.
+The user chooses one of three presets or Off from **Settings… → Shortcut** (idle/needsPermission only, like quality). The default is `CommandOrControl+Alt+Shift+R` (⌘⌥⇧R on macOS, Ctrl+Alt+Shift+R elsewhere). The plan proposed ⌘⇧R; the conflict check on 2026-09-19 found it bound to hard reload in Chrome and Firefox, Reader in Safari and local recording in Zoom, and a global shortcut takes precedence over the frontmost app, so a browser user would start a screen recording by accident. The three-modifier default was unbound in Chrome, Safari, Firefox, Finder, Xcode, VS Code, Slack and Zoom; ⌘⇧R and ⌘⌥R remain presets. A free-form shortcut recorder is out of scope.
 
 A registration the OS refuses (another app owns the combination, or `register` throws) is never silent: it is logged as `hotkey: registration failed for …`, shown in the menu label as "Shortcut unavailable (in use by another app): …", and announced by a notification. The setting is still saved so the user's choice survives a relaunch; the tray keeps working. Disabling the shortcut leaves tray behavior unchanged and remembers the accelerator so re-enabling restores it. Changing the shortcut persists first and registers second: a failed write keeps the old registration and reports "Could not save the shortcut". If a recording starts while that write is pending, the registration change is deferred (`request` → `flush` on the next settled state) so the combination that started the session can still stop it; until then the menu shows the saved choice as unavailable.
 
 ## Language
 
-Source: [i18n.ts](../../src/shared/i18n.ts). English (`en`) is the default, including upgrades from settings files without a language field. The user can choose English or Traditional Chinese (`zh-TW`) from the Language submenu. There is no implicit OS-locale selection.
+Source: [i18n.ts](../../src/shared/i18n.ts). English (`en`) is the default, including upgrades from settings files without a language field. The user can choose English or Traditional Chinese (`zh-TW`) from Settings… → Language. There is no implicit OS-locale selection.
 
 English source messages are typed catalog keys; ZH_TW supplies each translation. Translate selects a template and substitutes named placeholders. The model receives language through TrayContext. Notifications read the current context when created; existing OS notifications are not rewritten retroactively.
 
@@ -50,11 +60,13 @@ Menu labels, tooltips, permission guidance, folder dialog title, application err
 
 Source: [permission.ts](../../src/main/permission.ts). PermissionWatcher is created only on macOS.
 
-1. Check getMediaAccessStatus('screen') every five seconds and on activate. A windowless app cannot rely on activate alone.
+1. Check getMediaAccessStatus('screen') every five seconds and on activate. A windowless app cannot rely on activate alone. This stage never prompts and materialises nothing, so polling it is cheap.
 2. If not granted, clear validation, emit needsPermission, and call getSources at most once per process to register the app/show the system prompt.
 3. If granted but unvalidated, require at least one capturable screen within four seconds.
 4. Cache success; failure requires relaunch and is retried on later polls. A validating flag prevents overlapping checks.
 5. An actual permission-denied capture can clear the cache through markRelaunchRequired. Revocation also clears it.
+
+Only stage 1 is polled, and caching stage 2 for the process is what makes that safe. Cap polled the equivalent macOS call for permission state — `SCShareableContent`, which materialises every window, app and display — for the whole process lifetime, leaking about 15 MB/min until macOS exhausted swap ([CapSoftware/Cap issue #2023](https://github.com/CapSoftware/Cap/issues/2023), fixed in 0.5.9 as "Memory growth while idle on macOS"). Their post-incident design is the one used here: a cheap preflight gate polled freely, an expensive validation cached after one success and retried no more often than the poll period, with the same five-second and four-second constants. A runtime revocation is caught by stage 1, by the capture attempt itself, and in practice by macOS asking the app to relaunch.
 
 Only changed permission states are emitted. Recorder applies them only while idle/needsPermission; polling does not directly interrupt a running session. Actual track termination, capture failure, or an OS-requested quit follows the recording cleanup path.
 
@@ -98,7 +110,7 @@ The website ([website/](../../website/), see [tooling](tooling.md#official-websi
 
 ## Update checks
 
-[updates.ts](../../src/main/updates.ts) owns the update-check lifecycle, independently of recording. The tray adds Check for updates…, a result entry, and Check for updates on launch below the recording controls. Results never change the tray title or produce notifications/dialogs. Starting, recording and saving disable update actions; checks and pending results wait for idle/needsPermission.
+[updates.ts](../../src/main/updates.ts) owns the update-check lifecycle, independently of recording. The tray adds Check for updates… and a result entry below the recording controls; Settings contains Check for updates on launch. Results never change the tray title or produce notifications/dialogs. Starting, recording and saving disable update actions; checks and pending results wait for idle/needsPermission.
 
 Settings version 3 gains an optional `updates: { enabled, lastAttempt }` block. Older files default to enabled and no prior attempt. Atomic serialized writes preserve unrelated settings. The launch attempt timestamp is persisted before networking, including failed checks, to enforce a 24-hour limit across restarts. Future timestamps after a clock correction are treated as due. Manual checks bypass this limit and still proceed if timestamp persistence fails (with a log entry). No timer polls during the app lifetime. Disabling the preference affects launch checks only.
 

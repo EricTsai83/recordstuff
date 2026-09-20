@@ -29,16 +29,16 @@ SHA-256：`2d8c2ab1b1a52eba6b367f4419ea1551bb4750b00ac61a31ef8bb5afb11babee`。
 1. 從 Applications 啟動，依提示允許螢幕與系統音訊錄製；授權未生效時重啟 App。
 2. 左鍵點選單列圖示，或在任何 App 中按 **⌘⌥⇧R** 開始錄製，再點一次或再按一次停止。
 3. 預設影片存在 `~/Movies/recordstuff`；點存檔通知或用選單尋找檔案。
-4. 右鍵可調整品質、快捷鍵、位置、語言、顯示 log 或結束。
+4. 右鍵可開啟儲存位置、檢查更新、顯示 log 或結束。開啟「設定…」可連續調整語言、錄製品質、快捷鍵與啟動更新檢查，設定視窗不會因選取而關閉。
 
-**App 預設英文。** 從 **Language → 繁體中文** 切換，選擇會保存；錄製中切換不改動本次擷取設定。診斷日誌維持英文，macOS 原生權限提示依系統語言。
+**App 預設英文。** 從 **Settings… → Language → 繁體中文** 切換，選擇會保存；錄製中切換不改動本次擷取設定。診斷日誌維持英文，macOS 原生權限提示依系統語言。
 
 | 設定 | 選項 | 預設 |
 | --- | --- | --- |
 | 影像品質 | 精省／標準／高品質 | 標準 |
 | 解析度上限 | 1080p／1440p／4K／原尺寸 | 原尺寸 |
 | 幀率 | 30／60 fps | 30；60 只在 macOS 開放 |
-| 快捷鍵 | ⌘⌥⇧R／⌘⇧R／⌘⌥R／關閉 | ⌘⌥⇧R；被其他 App 佔用時選單會標示 |
+| 快捷鍵 | ⌘⌥⇧R／⌘⇧R／⌘⌥R／關閉 | ⌘⌥⇧R；被其他 App 佔用時設定視窗會標示 |
 
 輸出 H.264／AAC MP4。音訊要求 256 kbps，並明確關閉語音處理；本機診斷錄音能保留高頻與左右聲道分離。實際位元率取決於編碼器與內容。60 fps 實測約 57 fps 且檔案明顯較大。
 
@@ -80,7 +80,7 @@ pnpm audio:quality -- record /tmp/audio-run-001 --repeat 3  # 音質迴歸測試
 
 ## 目錄
 
-src/main 是生命週期、錄製狀態機、寫檔、權限與原生 UI；renderer 是隱藏擷取宿主；preload 只轉交 MessagePort；shared 是狀態、協定、品質及語言 catalog。scripts 放開發工具，resources 放素材與雙語安裝指南，docs/system-design 是英文正式設計，docs/zh-TW 是翻譯，docs/verification 是證據，plans 只放尚未完成工作，website 是官方網站（Astro，獨立套件，見 docs/zh-TW/system-design/tooling.md）。
+src/main 是生命週期、錄製狀態機、寫檔、權限、原生 UI 與設定視窗；renderer 包含隱藏擷取宿主與設定面板；preload 轉交 MessagePort 並提供設定橋接；shared 是狀態、協定、品質及語言 catalog。scripts 放開發工具，resources 放素材與雙語安裝指南，docs/system-design 是英文正式設計，docs/zh-TW 是翻譯，docs/verification 是證據，plans 只放尚未完成工作，website 是官方網站（Astro，獨立套件，見 docs/zh-TW/system-design/tooling.md）。
 
 影片與設定留在本機；更新檢查會連線至網站的靜態版本 feed，失敗時改查 GitHub Releases，不傳送安裝識別碼或遙測；沒有雲端後端或自動安裝。故障時盡力保留部分影片，不保證所有當機／斷電都可復原。
 

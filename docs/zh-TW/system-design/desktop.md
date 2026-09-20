@@ -6,17 +6,17 @@
 
 來源：[tray-model.ts](../../../src/main/tray-model.ts)、[tray.ts](../../../src/main/tray.ts)、[index.ts](../../../src/main/index.ts)。
 
-TrayModel 是純函式產物，包含 icon、title、tooltip 與遞迴 menu。AppTray 只把模型映射到 Electron；不保存第二份業務狀態。左鍵呼叫 toggle，右鍵才動態組選單；不使用會攔截左鍵的 `setContextMenu`。[全域快捷鍵](#錄影快捷鍵)呼叫與左鍵相同的 toggle。
+TrayModel 是純函式產物，包含 icon、title、tooltip 與一份扁平的指令清單；偏好設定完全不在 tray 裡，所以模型回傳什麼、選單就顯示什麼。AppTray 只把模型映射到 Electron；不保存第二份業務狀態。左鍵呼叫 toggle，右鍵才動態組選單；不使用會攔截左鍵的 `setContextMenu`。[全域快捷鍵](#錄影快捷鍵)呼叫與左鍵相同的 toggle。
 
-| 狀態 | 圖示／標題 | 主要選單與限制 |
-| --- | --- | --- |
-| needsPermission | idle／空白 | 權限說明、開設定或重啟；可調資料夾、品質與快捷鍵 |
-| idle | idle／空白 | 待命或位置不可用；有 lastSavedPath 才能顯示最後錄影；可調資料夾、品質與快捷鍵 |
-| starting | idle／`…` | 提醒完成系統提示；品質與快捷鍵鎖定 |
-| recording | recording／`REC` | 可停止（已註冊快捷鍵時 tooltip 顯示組合鍵）；資料夾、品質與快捷鍵鎖定 |
-| stopping | idle／`…` | 儲存中；品質與快捷鍵鎖定 |
+| 狀態 | 圖示／標題 | Tray 指令 | 設定視窗中的偏好 |
+| --- | --- | --- | --- |
+| needsPermission | idle／空白 | 權限說明、開設定或重啟、儲存位置 | 全部可調 |
+| idle | idle／空白 | 待命或位置不可用；有 lastSavedPath 才能顯示最後錄影；儲存位置 | 全部可調 |
+| starting | idle／`…` | 提醒完成系統提示 | 只有語言 |
+| recording | recording／`REC` | 可停止（已註冊快捷鍵時 tooltip 顯示組合鍵）；儲存位置變灰 | 只有語言 |
+| stopping | idle／`…` | 儲存中 | 只有語言 |
 
-每個狀態都有「語言」、「顯示 log」與「結束」。macOS 使用 template PNG／@2x，Windows 分支使用 ICO；macOS 才顯示圖示旁 title。錄整個螢幕時 `REC` 可能出現在影片，這是目前接受的呈現。
+每個狀態都有「設定…」、「顯示 log」與「結束」，而且「設定…」永遠可點：哪些偏好被鎖定由面板自己說明。macOS 使用 template PNG／@2x，Windows 分支使用 ICO；macOS 才顯示圖示旁 title。錄整個螢幕時 `REC` 可能出現在影片，這是目前接受的呈現。
 
 通知文案由純函式產生，通知使用 silent 模式。存檔通知點擊顯示影片；有 partialPath 的失敗通知顯示部分檔；無部分檔時，位置不可用開資料夾選擇、缺權限開系統設定、需要重啟則 relaunch。品質保存失敗與幀率降級只有說明。
 
@@ -26,19 +26,31 @@ macOS 點通知會做兩件事：把回應交給 App，並要求系統啟動發�
 
 儲存通知由 `SavedNotification` 在檔案完成且回到 idle 後排程：macOS 使用單次 500 ms timer，其他平台立即請求。這讓 macOS 有時間清除擷取造成的通知抑制狀態，但只是依實測選定的啟發式延遲，不是就緒訊號或送達保證；專注模式、其他擷取與通知偏好仍有效。離開 idle（新錄影或進入權限恢復狀態）會永久取消前次待送通知，權限提示優先於舊存檔通知；`before-quit` 取消 timer，也拒絕退出過程中完成的儲存通知。不保留佇列、不重試；請求通知時的例外只記錄日誌，不影響已存檔案。寫檔與 idle 不等待通知。參見[時序證據](../verification/README.md#儲存通知時序2026-09-20)。
 
+圖示的原生 hover 提示保留目前狀態，並加上「右鍵開啟選單」；提示依 App 語言顯示英文或繁體中文。
+
+## 設定視窗
+
+來源：[ui-model.ts](../../../src/main/ui-model.ts)、[settings-model.ts](../../../src/main/settings-model.ts)、[settings-window.ts](../../../src/main/settings-window.ts)、[renderer/settings.ts](../../../src/renderer/settings.ts)。
+
+Tray 只保留必須一鍵可達的指令，所有偏好設定都在同一個獨立的 sandbox 視窗。「設定…」會開啟視窗，已開啟則聚焦。macOS 會先讓 App 取得前景，因為沒有 Dock 圖示的 App 單純顯示視窗並不會被帶到最前。變更立即儲存且視窗保持開啟；切換語言會就地更新標籤與標題。關閉視窗（含 Escape 與平台的關閉快捷鍵，這兩個由面板自己處理，因為沒有 Dock 圖示的 App 沒有應用選單）不會結束選單列 App，錄製仍使用獨立的隱藏 renderer。
+
+[settings-model.ts](../../../src/main/settings-model.ts) 只宣告每項偏好一次，配上穩定的群組與選項 id，也是唯一知道某個選項代表什麼的地方；它同時產生面板要畫的 view，以及「這個請求現在允不允許」的答案。Tray 模型是同一份狀態與 context 的兄弟投影，不是面板讀取的來源。
+
+已提交設定由主程序持有，面板只暫存尚未完成的選擇：畫出收到的 view，回傳群組 id 與選項 id，不回傳 action。主程序只接受設定視窗自身 main frame 的請求，依當下重新產生的模型解析這組 id，然後才呼叫與 tray 相同的 action handler，而該 handler 在保存前會再檢查一次錄製狀態。啟動錄製、錄製中與存檔中，除了語言以外的設定在面板與該邊界都會鎖定。保存依請求順序序列化，第二個變更是排隊而不是被回報為失敗。保存期間保留最新選擇，不被較早的回覆或推播蓋掉；所有請求完成後才解除其他控制項的鎖定，顯示實際提交的值，最新選擇未生效時顯示行內訊息；被 OS 拒絕註冊的快捷鍵會保留選取並加上「目前無效」的註解。保存期間正在操作的控制項維持可用、其餘暫時停用，因為停用中的元素無法保有鍵盤焦點。設定 preload 僅提供讀取、選取與變更訂閱；面板在第一份 view 之前唯一可能需要的字串（首次讀取失敗）依主程序寫在頁面 URL 的語言在地化。
+
 ## 錄影快捷鍵
 
 來源：[hotkey.ts](../../../src/main/hotkey.ts)、[shared/hotkey.ts](../../../src/shared/hotkey.ts)、[index.ts](../../../src/main/index.ts)。計畫 016 加入全域開始／停止快捷鍵：其他 App 在最前景時也能切換錄製，而且讓沒有視窗的程序有一個系統層級入口，可供無人值守驗收使用。
 
 RecordingHotkey 包裝 Electron `globalShortcut`。按下快捷鍵呼叫與 tray 左鍵相同的 `toggle` 函式，所以 `Recorder.toggle()` 仍是唯一決策點：idle 開始、recording 停止、needsPermission 重發權限通知，starting／stopping 期間忽略。每次按下都先寫 log `hotkey: <accelerator> pressed` 再 toggle。`apply(settings)` 先釋放前一個註冊再註冊新的，更改時不會同時有兩個組合鍵生效；`dispose()` 在 will-quit 執行。
 
-使用者在 tray 的「快捷鍵」子選單選三個 preset 之一或「關閉」（與品質相同，只在 idle／needsPermission 可改）。預設 `CommandOrControl+Alt+Shift+R`（macOS 顯示 ⌘⌥⇧R，其他平台 Ctrl+Alt+Shift+R）。計畫原提案 ⌘⇧R；2026-09-19 衝突檢查發現它是 Chrome／Firefox 的強制重新載入、Safari 的閱讀器、Zoom 的本機錄製，而全域快捷鍵優先於最前景 App，瀏覽器使用者會誤觸開始錄影。三修飾鍵預設在 Chrome、Safari、Firefox、Finder、Xcode、VS Code、Slack、Zoom 均未綁定；⌘⇧R 與 ⌘⌥R 仍列為 preset。自訂錄製快捷鍵的對話框不在範圍內。
+使用者在 「設定…」視窗的「快捷鍵」欄位選三個 preset 之一或「關閉」（與品質相同，只在 idle／needsPermission 可改）。預設 `CommandOrControl+Alt+Shift+R`（macOS 顯示 ⌘⌥⇧R，其他平台 Ctrl+Alt+Shift+R）。計畫原提案 ⌘⇧R；2026-09-19 衝突檢查發現它是 Chrome／Firefox 的強制重新載入、Safari 的閱讀器、Zoom 的本機錄製，而全域快捷鍵優先於最前景 App，瀏覽器使用者會誤觸開始錄影。三修飾鍵預設在 Chrome、Safari、Firefox、Finder、Xcode、VS Code、Slack、Zoom 均未綁定；⌘⇧R 與 ⌘⌥R 仍列為 preset。自訂錄製快捷鍵的對話框不在範圍內。
 
 OS 拒絕註冊（其他 App 佔用，或 `register` 擲出）不會被吞掉：寫 log `hotkey: registration failed for …`、選單標題顯示「快捷鍵無法使用（被其他 App 佔用）：…」並發通知。設定仍會保存，使用者的選擇在重啟後保留；tray 照常可用。關閉快捷鍵不影響 tray 行為，並記住組合鍵，重新開啟即還原。更改快捷鍵先保存再註冊：寫入失敗保留舊註冊並通知「無法儲存快捷鍵設定」。若寫入期間開始了錄影，註冊變更會延後（`request` → 下一次回到 settled 狀態時 `flush`），讓開始這次錄影的組合鍵仍能停止它；期間選單把已保存的選擇顯示為無法使用。
 
 ## 語言
 
-來源：[i18n.ts](../../../src/shared/i18n.ts)。預設為英文 en，不自動沿用 OS 語言；可由 Language／語言選單切換 English 或繁體中文 zh-TW。英文文案為具型別的 key，ZH_TW 對應完整繁體中文模板，translate 代入具名 placeholder。
+來源：[i18n.ts](../../../src/shared/i18n.ts)。預設為英文 en，不自動沿用 OS 語言；可由 Settings…／設定… 視窗的 Language／語言欄位切換 English 或繁體中文 zh-TW。英文文案為具型別的 key，ZH_TW 對應完整繁體中文模板，translate 代入具名 placeholder。
 
 TrayContext 提供目前語言，通知建立時讀當前 context；已發送的 OS 通知不追溯改寫。語言操作排入 SettingsStore 保存佇列，成功後才更新記憶體與刷新選單，失敗保留舊語言並以原語言通知。錄製中可切換，但不改來源、品質快照、位置或錄製狀態。
 
@@ -48,11 +60,13 @@ TrayContext 提供目前語言，通知建立時讀當前 context；已發送的
 
 來源：[permission.ts](../../../src/main/permission.ts)。只在 macOS 建立 PermissionWatcher。
 
-1. 每 5 秒及 activate 時檢查 `getMediaAccessStatus('screen')`，不依賴無視窗 App 的 activate 一定出現。
+1. 每 5 秒及 activate 時檢查 `getMediaAccessStatus('screen')`，不依賴無視窗 App 的 activate 一定出現。這一段不會跳提示、也不會產生任何物件，所以輪詢很便宜。
 2. 未 granted：清除驗證快取，發 needsPermission；每個程序最多主動呼叫一次 getSources，以便系統註冊與提示。
 3. granted 但未驗證：用最多 4 秒的 getSources 查是否有螢幕，避免只相信設定開關。
 4. 查得到來源就快取成功；失敗則 needsRelaunch，下次輪詢再驗。重入驗證由 validating 旗標阻止。
 5. 擷取實際被拒絕時，main 可呼叫 markRelaunchRequired 清快取；授權被撤回也清快取。
+
+只有第一段會被輪詢，而讓這件事安全的正是「第二段成功一次就快取整個程序」。Cap 曾經長期輪詢對應的 macOS 呼叫 `SCShareableContent`（它會實體化系統上每個視窗、App 與顯示器），整個程序生命週期每次呼叫都洩漏，約 15 MB／分鐘，直到 macOS 耗盡 swap（[CapSoftware/Cap issue #2023](https://github.com/CapSoftware/Cap/issues/2023)，於 0.5.9 以「Memory growth while idle on macOS」修正）。這裡採用的就是他們事故後的設計：便宜的 preflight 可以自由輪詢，昂貴的驗證成功一次即快取、失敗重試不快於輪詢週期，連 5 秒與 4 秒兩個常數都相同。執行期撤銷仍由第一段、由擷取嘗試本身、以及實務上 macOS 要求 App 重啟三者抓到。
 
 只有狀態改變才通知 Recorder。Recorder 只在 idle／needsPermission 接受權限狀態更新，不以輪詢直接打斷正在錄的 session；實際軌道结束、host 錯誤或 OS 要求退出走錄製管線的收尾。
 
@@ -100,7 +114,7 @@ TrayContext 提供目前語言，通知建立時讀當前 context；已發送的
 
 ## 更新檢查
 
-[updates.ts](../../../src/main/updates.ts) 獨立管理更新檢查生命週期。Tray 在錄製操作下方提供「檢查更新…」、結果及「啟動時檢查更新」。結果不改變 Tray 標題，也不產生通知或對話框；啟動錄製、錄製中與存檔時停用更新操作，檢查及待顯示結果延至 idle／needsPermission。
+[updates.ts](../../../src/main/updates.ts) 獨立管理更新檢查生命週期。Tray 在錄製操作下方提供「檢查更新…」及結果；「啟動時檢查更新」位於設定視窗。結果不改變 Tray 標題，也不產生通知或對話框；啟動錄製、錄製中與存檔時停用更新操作，檢查及待顯示結果延至 idle／needsPermission。
 
 設定版本 3 新增可選的 `updates: { enabled, lastAttempt }`。舊檔預設開啟且無檢查紀錄。原子、序列化寫入保留其他設定。發出網路請求前保存嘗試時間，失敗亦計入，避免重開繞過 24 小時限制；系統時鐘回調造成的未來時間戳視為應重新檢查。手動檢查不受此限制，時間戳寫入失敗時記錄錯誤後仍繼續連線。App 執行期間沒有輪詢計時器。關閉偏好只影響啟動檢查。
 

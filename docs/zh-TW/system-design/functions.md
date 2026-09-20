@@ -13,6 +13,7 @@
 | `defaultOutputDir()` | Electron videos 路徑 → 加上 RecordStuff；不在此建立資料夾 |
 | `osSupported()` | process.platform／Darwin release → boolean；macOS major ≥22，其他平台目前直接 true |
 | `isFirstRun(userDataDir)` | 以 wx 建 marker；首次成功為 true，已存在或 I/O 失敗為 false；只用於 Windows 提示 |
+| `renderUi(state)` / `refreshUi()` | 狀態改變或 context 改變時，Tray 與設定面板一起更新 |
 | `resourcesDir()` | packaged → resourcesPath；開發版 → appPath/resources |
 | `chooseDisplayMedia(request, callback)` | 查 sources 與 primary id → callback(video, loopback)；無匹配用第一來源，無來源／拒絕走 deny |
 | `deny(reason, why)` | 記 log 與 lastDenialReason，空 streams callback 拒絕；讓 renderer 泛用錯誤可還原具體原因 |
@@ -63,15 +64,17 @@
 | --- | --- |
 | `constructor(options)` | 保存 preload／HTML／devUrl，預設 ping 5 秒、ready 8 秒 |
 | `onMessage(listener)` / `onFailure(listener)` | 登錄有效訊息／host 故障 callback |
-| `start(id, quality)` | await ensureReady，再送 start；建立／load 失敗 reject |
+| `start(id, quality)` | 先探測現有 host，無回應則重建；await ensureReady，啟動本次 session 的心跳，再送 start；建立／load 失敗 reject |
 | `stop(id)` | 有 port 才送 stop，無 port 時無作用 |
 | `destroy()` | 呼叫 teardown，供 App 退出 |
+| `probe()` | 重用前做一次 ping／pong，期限 1 秒；探測期間若 host 被銷毀則取消啟動 |
 | `ensureReady()` | 重用存活視窗 ready Promise，否則 teardown＋create；失敗清資源 |
-| `create()` | 建 sandbox 視窗／channel、裝 guards／crash handler、載頁／交 port、等 ready、啟動心跳 |
+| `create()` | 建 sandbox 視窗／channel、裝 guards／crash handler、載頁／交 port、等 ready |
+| `stopHeartbeat()` | 被監看的 session 回報 stopped／error 時，以及 teardown 時停止心跳 |
 | `ping()` | 先查兩次未回覆，逾限 teardown＋failed；否則累計 missedPongs 並送 ping |
 | `post(message)` | 透過目前 port 發 MainMessage |
 | `emitFailure(code, detail)` | 發送程序失敗事件，由 Recorder 決定 session 收尾 |
-| `teardown()` | 清 interval、close port、清 ready、destroy 視窗，允許下次重建 |
+| `teardown()` | 停心跳、close port、清 ready、destroy 視窗，允許下次重建 |
 
 ## 擷取與編碼 — renderer/capture-host.ts
 
@@ -187,27 +190,61 @@
 | `emit(status)` | 相同 granted／needsRelaunch 不重送 |
 | `withTimeout(promise, ms)` | timer 與 Promise 競速；settle 清 timer；不取消底層 OS 請求 |
 
-## Tray 模型與原生呈現
+## 共用 UI 語彙 — main/ui-model.ts
 
-[tray-model.ts](../../../src/main/tray-model.ts)：
+[原始碼](../../../src/main/ui-model.ts)。Tray 與設定面板共同的基礎；兩個投影互不衍生。
+
+| 函式／型別 | 契約 |
+| --- | --- |
+| `AppAction` / `AppContext` / `AppHotkey` | 所有介面能發出的 action union，以及兩者共同投影的唯讀 context 快照 |
+| `preferencesUnlocked(state)` | 設定能否更改的唯一規則：只有 idle 與 needsPermission |
+| `abbreviateHome(path, home)` | 只縮寫相同 home 或完整路徑前綴，避免誤縮其他同名字首資料夾 |
+
+## 設定面板模型 — main/settings-model.ts
+
+[原始碼](../../../src/main/settings-model.ts)。每項偏好設定只宣告一次，並配穩定 id。
 
 | 函式 | 契約 |
 | --- | --- |
-| `abbreviateHome(path, home)` | 只縮寫相同 home 或完整路徑前綴，避免误縮其他同名字首資料夾 |
+| `qualityGroups(ctx, enabled)` | 影像品質、解析度上限、幀率；此平台未驗證的幀率仍列出但不可選 |
+| `hotkeyGroup(ctx, enabled)` | 每個 preset 一個選項加「關閉」；註冊被拒時加註解而不是隱藏衝突；「關閉」保留記住的組合鍵；context 沒有 hotkey 時為空 |
+| `updateChecksGroup(ctx, enabled)` | 啟動檢查的開／關；context 沒有更新狀態時為空 |
+| `languageGroup(language)` | 英文與繁體中文；永不鎖定，因為語言不影響擷取 |
+| `settingsView(state, ctx)` | 面板完整 view：標題、說明、失敗文案，以及移除 action 後的群組 |
+| `settingsAction(state, ctx, group, choice)` | 當下有提供且可用的 group/choice 才回傳對應 action，否則 undefined |
+| `settingsChecked(state, ctx, group, choice)` | 該選項是否為實際提交值；main 用它回報保存是否生效 |
+
+## 設定視窗 — main/settings-window.ts、renderer/settings.ts
+
+| 函式／方法 | 契約與副作用 |
+| --- | --- |
+| `SettingsWindow.constructor(options)` | 註冊兩個 IPC handler，非設定視窗 main frame 的來源一律拒絕 |
+| `show()` | 先讓選單列 App 取得前景，已有視窗就聚焦，否則建 sandbox 視窗並帶當前語言載入頁面 |
+| `refresh()` | 推送目前 view 並更新標題；視窗關閉時不做事 |
+| `destroy()` | 退出時移除 handler 與視窗 |
+| `apply(group, choice)` | 解析 id、呼叫共用 action handler，回傳新 view 與是否真的提交 |
+| `settings:choose` 佇列 | 依請求順序序列化保存，第二個請求是等待而不是失敗 |
+| 面板 `draw()` / `row()` | 畫出 view，並把焦點還給重建後取代的同一個控制項 |
+| 面板 `choose()` | 送出 id；保存期間正在操作的控制項保持可用、其餘暫時停用；未提交時顯示失敗文案 |
+
+## Tray 模型與原生呈現
+
+[tray-model.ts](../../../src/main/tray-model.ts)：扁平指令選單，不含任何偏好設定。
+
+| 函式 | 契約 |
+| --- | --- |
 | `disabled(label)` / `item(label, action, tooltip?)` | 建灰色／可點模型項目 |
-| `footer(language)` | 產生語言單選、顯示 log、結束，所有狀態皆可用 |
+| `footer(language)` | 產生「設定…」、顯示 log、結束，所有狀態皆可用 |
 | `outputDirItems(ctx, enabled)` | 產生位置與更改位置項目，按狀態鎖定 |
-| `radioGroup(key, current, choices, label, available)` | 建各 radio 的 checked／enabled 與 setQuality patch |
-| `qualityMenu(ctx)` | 三個品質子選單；未驗平台的 60 fps 標示停用 |
-| `hotkeyMenu(ctx, enabled)` | 快捷鍵子選單：標題顯示組合鍵、關閉或無法使用提示；每個 preset 一個 radio 加「關閉」，帶 setHotkey；context 沒有 hotkey 時為空 |
+| `updateItems(ctx, unlocked)` | 檢查更新，以及可採取行動時的結果項目；idle／needsPermission 以外停用 |
 | `stopHint(ctx)` | 「停止」的 tooltip 提示已註冊組合鍵；關閉或未註冊時為 undefined |
 | `permissionActions(needsRelaunch, language)` | 已判斷需重啟只給重啟；否則給設定與「已經允許了？」重啟 |
-| `trayModel(state, ctx)` | 狀態 → 完整圖示／標題／tooltip／menu |
+| `trayModel(state, ctx)` | 狀態 → 完整圖示／標題／tooltip／menu；tooltip 含狀態與右鍵提示 |
 | `savedNotification(path)` | filename → 存檔文案 |
 | `permissionNotification(needsRelaunch)` | 設定／重啟的提示文案 |
 | `settingsWriteFailedNotification(dir, home)` | 說明位置設定未保存、仍使用原值 |
 | `qualityWriteFailedNotification()` / `languageWriteFailedNotification()` / `hotkeyWriteFailedNotification()` | 說明品質／語言／快捷鍵設定未保存 |
-| `hotkeyRegistrationFailedNotification(accelerator, platform)` | 本地化的佔用提示，含平台顯示形式的組合鍵 |
+| `hotkeyRegistrationFailedNotification(accelerator, platform)` | 本地化的佔用提示，含平台顯示形式的組合鍵，並指向設定視窗 |
 | `frameRateDowngradeNotification(requested, actual)` | 說明系統實際提供的 fps |
 | `trayHintNotification()` | Windows 首次啟動尋找系統匣提示 |
 | `errorNotification(code, partialPath, ctx)` | 各錯誤與部分檔的本地化說明；技術 detail 留在英文 log，不放通知摘要 |
@@ -229,7 +266,7 @@
 | `show(text, onClick?)` | 檢查支援、建立 silent Notification、掛 click／failed、show |
 | `log(message)` | 呼叫注入 logger（若有） |
 | `popUpMenu()` | 依現在 state/context 重建 menu 後彈出 |
-| `toTemplate(entry)` | 遞迴模型 → Electron MenuItemConstructorOptions，click 分派 action |
+| `toTemplate(entry)` | 分隔線或指令項目 → Electron MenuItemConstructorOptions，click 分派 action |
 | `loadIcons(dir)` | Windows ICO；其他走 template PNG，macOS 配合 @2x 素材 |
 
 ## Log 與自動錄製
@@ -261,6 +298,8 @@
 
 | 原始碼／函式 | 輸入 → 結果與副作用 |
 | --- | --- |
+| [acceptance-settings.mts](../../../scripts/acceptance-settings.mts) 頂層 | 要求已有建置產物與本機 Electron；以 90 秒上限在全新證據目錄執行 fixture；印出每個案例；寫 report.md；缺前置或無結果以 2 退出，任一 fail 以 1 退出 |
+| [fixtures/settings-panel.mjs](../../../scripts/fixtures/settings-panel.mjs) | 在隱藏的 sandbox 視窗載入已建置的 preload 與頁面，自備 view 與 IPC handler；判定 CSP／console、暴露的 bridge、沒有 Node API、URL 語言、畫出的控制項、不可用選項、被拒絕快捷鍵的註解、真實變更往返，以及未提交的選擇；寫出 results.json 與 panel.png |
 | [acceptance-hotkey.mts](../../../scripts/acceptance-hotkey.mts) 頂層 | 要求 RecordStuff 執行中、idle 且有 `hotkey: registered`；開 kiosk 素材；以 System Events 送組合鍵；各 30 秒內等 `pressed`、`state → recording`、第二個 `pressed`、`saved`；以 `testMaterial` 驗完整性層級；寫 report.md／verify.json／app-session.log；任一 fail 以 1 退出 |
 | [lib/acceptance.mts](../../../scripts/lib/acceptance.mts) `acceleratorToKeystroke` / `keystrokeScript` | Electron accelerator → System Events `keystroke … using {…}`；無法輸入的鍵回 undefined |
 | 同檔 `lastStartIndex` / `registeredAccelerator` / `currentState` / `findAfter` / `lineTime` | 只讀目前程序的 log；在偏移之後找事件；解析行時間戳 |

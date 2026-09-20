@@ -17,6 +17,7 @@ Named application and tool functions are grouped by source file. Follow source l
 | chooseDisplayMedia | Enumerate screens, match primary ID or first source, provide loopback; refuse unavailable capture |
 | deny | Record concrete source failure and invoke callback without streams |
 | main | Wait ready, compose dependencies, register events/actions, start permission polling and optional development recording |
+| renderUi / refreshUi | Move the tray and the settings panel together on a state change or a context change |
 | quality | Development override or persisted settings → platform-effective quality |
 | handleAction | Dispatch stop/quit/settings/relaunch/Finder, quality patches, shortcut changes, and serialized language changes |
 | applyHotkey / reportHotkey | Request registration of the persisted shortcut (deferred while a session runs); notify on refusal; refresh the menu label either way |
@@ -63,14 +64,16 @@ Process callbacks log uncaught exceptions/rejections. Recorder events render sta
 | --- | --- |
 | constructor | Paths/dev URL plus default 5-second ping and 8-second readiness deadline |
 | onMessage / onFailure | Register valid-message and host-failure callbacks |
-| start | Ensure readiness, then post start with session quality |
+| start | Probe an existing host and replace it if unresponsive; ensure readiness, begin the session heartbeat, then post start with session quality |
 | stop | Post stop when a port exists |
 | destroy | Tear down during app quit |
+| probe | One ping/pong round trip before reuse, with a 1-second deadline; destruction cancels the start |
 | ensureReady | Reuse a live window's readiness promise, otherwise create; clean up failure |
-| create | Build sandbox window/channel, install guards/crash handlers, load page, hand off port, wait ready, start heartbeat |
+| create | Build sandbox window/channel, install guards/crash handlers, load page, hand off port, wait ready |
+| stopHeartbeat | End the heartbeat when the watched session reports stopped or failed, and on teardown |
 | ping | Check for two unanswered pings before sending another; on failure tear down and emit |
 | post / emitFailure | Send MainMessage / notify failure listeners |
-| teardown | Clear timer, close port, reset readiness, destroy window for future recreation |
+| teardown | Stop the heartbeat, close port, reset readiness, destroy window for future recreation |
 
 ## Renderer capture and encoding
 
@@ -186,28 +189,64 @@ The page's window-message callback checks source/marker/port before creating the
 | emit | Suppress identical permission states |
 | withTimeout | Race promise with timer and clear timer on settlement; does not cancel OS request |
 
-## Tray presentation
+## Shared UI vocabulary
 
-[main/tray-model.ts](../../src/main/tray-model.ts):
+[main/ui-model.ts](../../src/main/ui-model.ts): what the tray and the settings panel both build on. Neither projection is derived from the other.
 
 | Function | Contract |
 | --- | --- |
+| AppAction / AppContext / AppHotkey | The action union every interface raises, and the read-only context snapshot both project from |
+| preferencesUnlocked | The single rule for whether a preference may change: idle or needsPermission only |
 | abbreviateHome | Shorten exact home or complete path prefix, avoiding similarly named folders |
+
+## Settings panel model
+
+[main/settings-model.ts](../../src/main/settings-model.ts): every preference declared once, with stable ids.
+
+| Function | Contract |
+| --- | --- |
+| qualityGroups | Video quality, resolution cap and frame rate; an unverified frame rate stays listed but not selectable |
+| hotkeyGroup | One choice per preset plus Off; a refused registration adds a note instead of hiding the conflict; Off keeps the remembered accelerator; empty when the context has no hotkey |
+| updateChecksGroup | On/Off for the launch check; empty when the context has no update state |
+| languageGroup | English and Traditional Chinese; never locked, because language cannot touch a capture |
+| settingsView | The panel's whole view: title, hint, failure text and groups with the actions stripped |
+| settingsAction | The action for a group/choice pair that is offered and enabled right now, or nothing |
+| settingsChecked | Whether a choice is the committed one; how main reports that a save took effect |
+
+## Settings window
+
+[main/settings-window.ts](../../src/main/settings-window.ts) and [renderer/settings.ts](../../src/renderer/settings.ts).
+
+| Function/method | Contract |
+| --- | --- |
+| SettingsWindow constructor | Register the two IPC handlers, each refusing any sender but the panel's main frame |
+| show | Focus the menu-bar app first, reuse a live window, otherwise create a sandboxed one and load the page with the current language |
+| refresh | Push the current view and retitle; a closed panel needs nothing |
+| destroy | Remove the handlers and the window on quit |
+| apply | Resolve the group/choice pair, run the shared action handler, answer with the new view and whether it committed |
+| queue (settings:choose) | Serialize saves in request order so a second request waits instead of being reported as a failure |
+| panel: draw / row | Render a view, restoring focus to the control the rebuild replaced |
+| panel: choose | Send the ids, keep the control in use live while its neighbours go inert, and show the failure text if the value did not commit |
+
+## Tray presentation
+
+[main/tray-model.ts](../../src/main/tray-model.ts): a flat command menu; preferences are not in it.
+
+| Function | Contract |
+| --- | --- |
 | disabled / item | Build disabled/enabled model entries |
-| footer | Localized Language radio group, Show log, and Quit in every state |
+| footer | Settings…, Show log, and Quit in every state |
 | outputDirItems | Folder label and selection action with state-dependent enablement |
-| radioGroup | Checked/enabled quality options carrying setQuality patches |
-| qualityMenu | Three translated quality submenus; disable unverified platform frame rates |
-| hotkeyMenu(ctx, enabled) | Shortcut submenu: label shows the accelerator, Off, or the unavailable notice; one radio per preset plus Off carrying setHotkey; empty when the context has no hotkey |
+| updateItems | Check for updates plus, when a result can be acted on, the result entry; disabled outside idle/needsPermission |
 | stopHint | Stop tooltip naming the registered accelerator; undefined when disabled or unregistered |
 | permissionActions | Relaunch alone when required; otherwise settings and fallback relaunch |
-| trayModel / text / model | Pure state/context projection with local translation/status helpers |
+| trayModel / text / model | Pure state/context projection with local translation/status helpers; the tooltip carries the status and the right-click hint |
 | notice | Wrap body with product title |
 | savedNotification | Basename → localized completion text |
 | permissionNotification | Localized settings/relaunch guidance |
 | settingsWriteFailedNotification | Explain unchanged output folder after failed save |
 | qualityWriteFailedNotification / languageWriteFailedNotification / hotkeyWriteFailedNotification | Explain retained quality/language/shortcut |
-| hotkeyRegistrationFailedNotification(accelerator, platform) | Localized conflict notice with the platform rendering of the accelerator |
+| hotkeyRegistrationFailedNotification(accelerator, platform) | Localized conflict notice with the platform rendering of the accelerator, pointing at Settings |
 | frameRateDowngradeNotification | Include actual and requested fps |
 | trayHintNotification | Windows first-run tray discovery text |
 | errorNotification(code, partialPath, ctx) | Localize error summary/recovery and preserved-file guidance; technical detail stays in logs |
@@ -229,7 +268,7 @@ The page's window-message callback checks source/marker/port before creating the
 | show | Support check, silent Notification, click/failed handlers, show |
 | log | Invoke optional injected logger |
 | popUpMenu | Rebuild current model and show native menu |
-| toTemplate | Recursively map model to Electron menu templates/actions |
+| toTemplate | Map a separator or command entry to an Electron menu template |
 | loadIcons | Windows ICO or template PNG assets |
 
 ## Logging and automatic recording
@@ -261,6 +300,8 @@ See [tooling](tooling.md) for pipeline and thresholds. These tools are developme
 
 | Source/functions | Contract |
 | --- | --- |
+| [acceptance-settings.mts](../../scripts/acceptance-settings.mts) top level | Require the build output and a local Electron; run the fixture with a 90-second deadline into a fresh evidence directory; print each case; write report.md; exit 2 on a missing prerequisite or no results, 1 on any failing case |
+| [fixtures/settings-panel.mjs](../../scripts/fixtures/settings-panel.mjs) | Load the built preload and page in a hidden sandboxed window with its own view and IPC handlers; judge CSP/console, the exposed bridge, absent Node APIs, the URL language, the rendered controls, an unavailable option, a refused shortcut's note, a real change round trip and an uncommitted choice; write results.json and panel.png |
 | [acceptance-hotkey.mts](../../scripts/acceptance-hotkey.mts) top level | Require a running idle RecordStuff and its `hotkey: registered` line; open the kiosk material; send the accelerator through System Events; wait ≤30 s each for `pressed`, `state → recording`, second `pressed`, `saved`; verify the integrity tier with `testMaterial`; write report.md/verify.json/app-session.log; exit 1 on any failing check |
 | [lib/acceptance.mts](../../scripts/lib/acceptance.mts) `acceleratorToKeystroke` / `keystrokeScript` | Electron accelerator → System Events `keystroke … using {…}`; undefined for keys it cannot type |
 | Same file `lastStartIndex` / `registeredAccelerator` / `currentState` / `findAfter` / `lineTime` | Scope log reading to the current process; find events after an offset; parse the line timestamp |
