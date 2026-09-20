@@ -12,10 +12,10 @@ Updated: 2026-09-20. v0.1.2 is published from tag `v0.1.2` with the simplified D
 
 | Order | Plan | Status | Completion target |
 | --- | --- | --- | --- |
-| Next | [012 Official website](012-download-website.md) | Planned | Bilingual product/help website with direct DMG downloads and version/checksum details |
-| When update convenience is prioritized | [015 App update assessment](015-app-update-assessment.md) | Deferred decision only | Compare manual, user-triggered check and automatic update; establish self-signing feasibility |
+| Next | [012 Official website](012-download-website.md) | Ready to execute (English-only Astro site styled after T3 Code in `website/`, build-time verified manifest, Vercel set up by the maintainer; three variants compared before deployment) | Product/help website with direct DMG downloads and version/checksum details |
+| After the website is live | [018 In-app update check](018-app-update.md) | Ready to execute; replaces the deferred 015 assessment, which the maintainer closed on 2026-09-20 by choosing to build the check | A tray check against the published version feed that points at the download; installation stays manual |
 
-Publishing is automated by tag push; installed-app updates are manual. 015 does not authorize implementation of an updater. Public release notes stay English-only; app UI and reader guides remain bilingual. Published release bytes must not be overwritten.
+Publishing is automated by tag push; installed-app updates stay manual. 018 adds a check that reports a newer version and links to it; it does not authorize downloading or installing an update from inside the app. Public release notes stay English-only; app UI and reader guides remain bilingual. Published release bytes must not be overwritten.
 
 No dedicated uninstaller is planned: quit and move the app to Trash; user data remains unless separately removed. No native-platform rewrite solely for size reduction, Apple certification, Windows/Linux/Intel verification or expansion is scheduled. DMG size was explained by Electron's runtime cost; discussion alone does not create a rewrite project.
 
