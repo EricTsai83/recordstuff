@@ -1,19 +1,19 @@
 {
-  "version": "0.1.3",
-  "tag": "v0.1.3",
-  "sourceCommit": "1de516c2299046f6a5b737bb94167347ed86308e",
-  "publishedAt": "2026-09-20T15:52:42Z",
+  "version": "0.1.4",
+  "tag": "v0.1.4",
+  "sourceCommit": "11c1f1cbbbbae84d39bb75d61451e6d69a709547",
+  "publishedAt": "2026-09-20T18:44:29Z",
   "platform": "darwin-arm64",
   "architecture": "arm64",
   "dmg": {
-    "name": "RecordStuff-0.1.3-arm64-selfsigned.dmg",
-    "size": 127306174,
-    "sha256": "2d8c2ab1b1a52eba6b367f4419ea1551bb4750b00ac61a31ef8bb5afb11babee",
-    "url": "https://github.com/EricTsai83/recordstuff/releases/download/v0.1.3/RecordStuff-0.1.3-arm64-selfsigned.dmg"
+    "name": "RecordStuff-0.1.4-arm64-selfsigned.dmg",
+    "size": 127322041,
+    "sha256": "11f451284e41e4a82281fc8fa401c170b7a907be9e8022e209a2a0175dc00df5",
+    "url": "https://github.com/EricTsai83/recordstuff/releases/download/v0.1.4/RecordStuff-0.1.4-arm64-selfsigned.dmg"
   },
-  "sha256sumsUrl": "https://github.com/EricTsai83/recordstuff/releases/download/v0.1.3/SHA256SUMS",
-  "releaseJsonUrl": "https://github.com/EricTsai83/recordstuff/releases/download/v0.1.3/release.json",
-  "releaseUrl": "https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.3",
-  "notesUrl": "https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.3",
-  "verifiedAt": "2026-09-20T15:53:27.732Z"
+  "sha256sumsUrl": "https://github.com/EricTsai83/recordstuff/releases/download/v0.1.4/SHA256SUMS",
+  "releaseJsonUrl": "https://github.com/EricTsai83/recordstuff/releases/download/v0.1.4/release.json",
+  "releaseUrl": "https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.4",
+  "notesUrl": "https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.4",
+  "verifiedAt": "2026-09-20T18:45:21.670Z"
 }
