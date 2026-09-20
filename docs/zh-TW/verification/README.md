@@ -261,3 +261,13 @@ Vercel 支援專案限定 token，且明確禁止其讀取團隊／使用者資�
 ## Plan 018 結案 — 2026-09-20
 
 依維護者確認的本機驗收、已驗證公開 feed 交付與成功的 [0.1.3 發布](releases/0.1.3.md)結案。發布 workflow 已完成建置、簽署、公開發布、匿名公開下載重驗、版本記錄與網站部署。正式 feed 已宣告 0.1.3 並符合版本 metadata。先前本機證據與歷史失敗完整保留；不宣稱新增正式 feed 原生檢查或公開版升級測試，限制保留在發布紀錄。完成的雙語計畫已移除並更新索引。
+
+## 設定視窗與待機成本 — 2026-09-21
+
+Tray 選單改為扁平指令清單，所有偏好設定移入單一 sandbox 設定視窗。`pnpm check` 通過 28 個檔案的 425 項測試、型別檢查與正式建置。
+
+`pnpm acceptance:settings` 在真實 Electron 視窗載入已建置的 `out/preload/settings.js` 與 `out/renderer/settings.html`，11 項案例全過：出貨頁面在出貨 CSP 下載入且無 console 錯誤、preload 只暴露 read／choose／onChanged、沙箱頁面拿不到任何 Node API、`?lang` query 讓首次繪製即為正確語言、每個群組畫出一個可用控制項並顯示實際提交值、此平台不可用的選項列出但不可選、被拒絕的快捷鍵顯示註解並以 `aria-describedby` 連結、真實 change 事件以 `("language", "en")` 抵達主程序並讓整個面板換語言重繪、主程序未提交的選擇會回報失敗並顯示實際值。退出碼雙向驗證過：缺建置產物為 2、刻意弄錯斷言為 1、正常為 0。此 fixture 自備 view 與 IPC handler，因此判的是頁面、preload 邊界與 IPC 往返；`settings-model` 與 `SettingsWindow` 由單元測試涵蓋。原本短暫存在、以 `happy-dom` 測同一頁面的單元測試已由這個執行器取代：它跑的是真實瀏覽器引擎而非模擬 DOM，且不需要新增依賴。
+
+待機成本量測對象為 `pnpm start:app` 啟動的打包 App，程序生命週期內未錄製、也未開啟設定視窗。機器無其他負載時的 240 秒視窗內，四個程序合計使用 0.10 秒 CPU，約單核 0.042%（main 0.033%、GPU 0.008%、network 與 renderer 0.000%）；`top` 回報 %CPU 0.0、power 分數 0.0。另外三個較短視窗（含與本機建置重疊者）介於 0.033% 與 0.063% 之間。曾把已驗證後的權限輪詢改為 60 秒，實測與原本 5 秒同為 0.033%，因此已還原：便宜的第一段回到單一 5 秒間隔，與 Cap 事故後的設計一致（見[桌面設計](../system-design/desktop.md#螢幕權限)）。擷取宿主心跳的改動則保留——現在只在 session 進行中運作，而不是第一次錄製後永久執行，同時也避免待機時的卡死變成使用者無從處理的錯誤。
+
+**未驗證。** 未點擊原生 tray、未經由「設定…」項目開啟視窗、未驗證 macOS 上實際的視窗置前行為，也未做任何螢幕或系統音訊擷取。`SettingsWindow.show()` 的 macOS 置前修正與 tray 選單本身仍未由機器驗證；專案的 [computer-use 驗收 skill](../../../.agents/skills/astra-acceptance-with-computer-use/SKILL.md) 已記錄無視窗 App 的 tray 無法自動化，需要互動式執行。
