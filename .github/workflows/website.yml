@@ -95,12 +95,12 @@ jobs:
             try { return await response.json(); }
             catch { fail(`${label}: invalid JSON response.`); }
           }
-          // The CLI reads both the team and project. Never print API bodies or credentials.
-          await get(`/v2/teams/${encodeURIComponent(org)}`, "Vercel team access");
+          // Project-scoped tokens intentionally cannot read team resources.
+          // Validate the target project; never print API bodies or credentials.
           const settings = await get(`/v9/projects/${encodeURIComponent(project)}?teamId=${encodeURIComponent(org)}`, "Vercel project access");
           if (settings.id !== project || settings.accountId !== org) fail("Vercel project ownership does not match the configured IDs.");
           if (settings.name !== "recordstuff" || settings.rootDirectory !== "website") fail("Expected the recordstuff project with Root Directory website. Check project configuration.");
-          console.log("Vercel team and project access verified. No deployment performed by this check.");
+          console.log("Vercel project access verified. CLI pull compatibility is checked separately by the next deployment step.");
           NODE
       - name: Install and check the website source
         if: steps.vercel.outputs.configured == 'true'

@@ -235,3 +235,7 @@ Vercel 唯讀檢查確認既有 `recordstuff` 專案、根目錄 `website` 與�
 ## Vercel 存取診斷 — 2026-09-20
 
 網站 workflow 現在於安裝／建置前檢查憑證與 ID 格式，並讀取團隊、專案 API；只輸出 HTTP 狀態與設定提示，不輸出憑證或回應內容。六種模擬案例通過（成功、團隊／專案 403、404、ID 格式錯誤、token 空白）；同一檢查以本機 CLI 憑證唯讀存取既有專案也通過。這不代表無法讀回的 GitHub secret 有效。Actionlint（未啟用 ShellCheck）與 diff 格式檢查通過。未觸發部署或線上 workflow；CI 專案設定授權失敗仍待核對儲存庫 secrets。
+
+### 專案限定 token 說明修正
+
+Vercel 支援專案限定 token，且明確禁止其讀取團隊／使用者資源（見[官方公告](https://vercel.com/changelog/project-scoped-tokens)）。因此團隊 API 403 不代表 token 無效。診斷已改成只查目標專案及其歸屬／設定。目前固定的 CLI 59.23.2 在 pull 路徑仍未啟用 owner lookup fallback；相符的未結案[上游問題 #17506](https://github.com/vercel/vercel/issues/17506) 記錄了專案讀取成功、團隊讀取失敗導致 `vercel pull` 失敗的情形。移除診斷的團隊閘門不等於修復 CLI 限制；現有 pull／build／deploy 流程可能仍需團隊限定 token 作為替代，沒有證據顯示必須使用 Full Account。專案限定 token 的端到端部署仍未驗證。先前將團隊 403 直接視為 Scope 設錯的說法不夠準確。
