@@ -1,0 +1,381 @@
+/* Design tokens and base rules adapted from T3 Code's marketing Layout.astro (MIT, see THIRD_PARTY.md). */
+
+:root {
+  --bg: #09090b;
+  --bg-elev: #0c0c0e;
+  --bg-card: #111113;
+  --fg: #fafafa;
+  --fg-muted: #a1a1aa;
+  --fg-dim: #8b8b93; /* 5.9:1 on --bg, 5.6:1 on --bg-card; T3 Code's #71717a fails 4.5:1 */
+  --fg-faint: #52525b;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --accent-h: 250;
+  --accent: oklch(0.68 0.17 var(--accent-h));
+  --accent-dim: oklch(0.68 0.17 var(--accent-h) / 0.15);
+  --accent-ring: oklch(0.78 0.14 var(--accent-h));
+  --ok: oklch(0.72 0.16 150);
+  --warn: oklch(0.76 0.15 75);
+  --font-sans: "Geist Variable", "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+  --nav-h: 56px;
+  /* Vertical rhythm. Every block on the page pads half a gap above and below
+     itself, so the space between any two of them is the same 2 x --section-y
+     regardless of which pair meets. Blocks own no other outer spacing: a
+     margin or an inner top padding on the first child breaks the pairing. */
+  --section-y: 5rem;
+  --section-head-gap: 2rem;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  /* 18px base at the browser default: the maintainer asked for larger, plainer
+     type across the site. Every size below is in rem, so this scales the whole
+     scale at once; the container widths stay as they are. */
+  font-size: 112.5%;
+  color-scheme: dark;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  overflow-x: hidden;
+  line-height: 1.5;
+}
+
+/* Fine fractal noise over everything, as on t3.codes; purely decorative. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+  z-index: 9999;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: 0;
+  background: none;
+  color: inherit;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+code,
+kbd,
+pre {
+  font-family: var(--font-mono);
+}
+
+kbd {
+  font-size: 0.85em;
+  padding: 0.1em 0.45em;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--fg);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+::selection {
+  background: var(--accent-dim);
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  font-weight: 500;
+}
+
+.display {
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+}
+
+.container {
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+.container--narrow {
+  max-width: 760px;
+}
+
+.muted {
+  color: var(--fg-muted);
+}
+
+.dim {
+  color: var(--fg-dim);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* Buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  font-weight: 500;
+  border-radius: 999px;
+  padding: 0.7rem 1.25rem;
+  font-size: 0.95rem;
+  border: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.04);
+  transition: background 0.25s ease, border-color 0.25s ease, transform 0.2s ease;
+}
+
+.btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  background: var(--fg);
+  color: var(--bg);
+  border-color: var(--fg);
+}
+
+.btn-primary:hover {
+  background: #ffffff;
+  border-color: #ffffff;
+}
+
+.btn-lg {
+  padding: 0.9rem 1.6rem;
+  font-size: 1.05rem;
+}
+
+.btn svg {
+  width: 1.1em;
+  height: 1.1em;
+  flex-shrink: 0;
+}
+
+/* Text links */
+
+.link {
+  color: var(--fg-muted);
+  text-decoration: underline;
+  text-decoration-color: rgba(161, 161, 170, 0.4);
+  text-underline-offset: 3px;
+  transition: color 0.3s ease, text-decoration-color 0.3s ease;
+}
+
+.link:hover {
+  color: var(--fg);
+  text-decoration-color: var(--fg);
+}
+
+/* Prose for help/support text pages */
+
+.prose {
+  font-size: 1rem;
+  color: var(--fg-muted);
+}
+
+.prose h2 {
+  color: var(--fg);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  font-size: 1.5rem;
+  margin: 3rem 0 1rem;
+  scroll-margin-top: calc(var(--nav-h) + 16px);
+}
+
+.prose h3 {
+  color: var(--fg);
+  font-weight: 500;
+  font-size: 1.1rem;
+  margin: 2rem 0 0.6rem;
+  scroll-margin-top: calc(var(--nav-h) + 16px);
+}
+
+.prose p,
+.prose li {
+  margin-bottom: 0.75rem;
+}
+
+.prose ol,
+.prose ul {
+  padding-left: 1.4rem;
+}
+
+.prose a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-decoration-color: rgba(250, 250, 250, 0.35);
+  text-underline-offset: 3px;
+}
+
+.prose a:hover {
+  text-decoration-color: var(--fg);
+}
+
+.prose strong {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0 1.5rem;
+  font-size: 0.95rem;
+}
+
+.prose th,
+.prose td {
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.prose th {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.prose code {
+  font-size: 0.875em;
+  /* Paths are the longest unbreakable tokens on the help page; at the larger
+     base size they push the retained-data table past a phone's width. */
+  overflow-wrap: anywhere;
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  padding: 0.1em 0.4em;
+  border-radius: 6px;
+}
+
+.callout {
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-sm);
+  padding: 0.9rem 1rem;
+  background: rgba(255, 255, 255, 0.02);
+  margin: 1.25rem 0;
+}
+
+/*
+ * Block reveal: a section arrives as one unit the moment it scrolls into view,
+ * so attention moves block by block instead of trickling down the page at load.
+ * Only hidden once the inline script in Layout.astro has set data-motion="on";
+ * without scripting every block stays visible.
+ */
+
+:root[data-motion="on"] [data-reveal] {
+  opacity: 0;
+  transform: translateY(16px);
+}
+
+:root[data-motion="on"] [data-reveal].is-revealed {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.6s cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  :root[data-motion="on"] [data-reveal] {
+    opacity: 1;
+    transform: none;
+  }
+  :root[data-motion="on"] [data-reveal].is-revealed {
+    transition: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: absolute;
+  left: 16px;
+  top: -48px;
+  z-index: 10000;
+  background: var(--fg);
+  color: var(--bg);
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  font-weight: 500;
+  transition: top 0.2s ease;
+}
+
+.skip-link:focus {
+  top: 12px;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --section-y: 3.5rem;
+  }
+
+  .container {
+    padding: 0 20px;
+  }
+}

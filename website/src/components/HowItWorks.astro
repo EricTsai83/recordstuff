@@ -1,0 +1,220 @@
+---
+/** The three states a user actually sees: the ring, the ring with a red dot, the saved notification. */
+const steps = [
+  { title: "Click", body: "Left-click the ring, or press ⌘⌥⇧R." },
+  { title: "Recording", body: "The ring fills and REC appears. Screen and system audio are captured." },
+  { title: "Saved", body: "Click again. The notification reveals the file in Finder." },
+];
+---
+
+<section class="how container" aria-label="How it works" data-reveal>
+  <ol class="how-list">
+    <li class="how-step">
+      <div class="how-glyph-row">
+        <span class="how-glyph" aria-hidden="true"><svg viewBox="0 0 32 32" width="40" height="40"><circle cx="16" cy="16" r="11" fill="none" stroke="currentColor" stroke-width="3" /></svg></span>
+        <span class="how-link" aria-hidden="true"></span>
+      </div>
+      <div><h3>{steps[0].title}</h3><p>{steps[0].body}</p></div>
+    </li>
+    <li class="how-step">
+      <div class="how-glyph-row">
+        <span class="how-glyph how-glyph--rec" aria-hidden="true"><svg viewBox="0 0 32 32" width="28" height="28"><circle cx="16" cy="16" r="11" fill="currentColor" /></svg><span class="how-rec">REC</span></span>
+        <span class="how-link" aria-hidden="true"></span>
+      </div>
+      <div><h3>{steps[1].title}</h3><p>{steps[1].body}</p></div>
+    </li>
+    <li class="how-step">
+      <div class="how-glyph-row">
+        <span class="how-glyph how-glyph--toast" aria-hidden="true">
+          <span class="how-toast">
+            <svg viewBox="0 0 32 32" width="22" height="22"><circle cx="16" cy="16" r="11" fill="none" stroke="currentColor" stroke-width="3" /><circle cx="16" cy="16" r="5.5" fill="var(--rec)" /></svg>
+            <span class="how-toast-text"><b>RecordStuff</b><i>Saved 2026-09-20 21-14-33.mp4</i></span><span class="how-toast-time">now</span>
+          </span>
+        </span>
+      </div>
+      <div><h3>{steps[2].title}</h3><p>{steps[2].body}</p></div>
+    </li>
+  </ol>
+</section>
+
+<style>
+  .how {
+    padding: var(--section-y) 32px;
+    /* Shared by the grid gap and by the connector, which bridges that gap. */
+    --how-gap: 1.6rem;
+  }
+  .how-list {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--how-gap);
+    align-items: start;
+  }
+  .how-step {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+  /* Every glyph sits in the same 56 px tall row so the three titles line up. */
+  .how-glyph-row {
+    width: 100%;
+    height: 56px;
+    display: flex;
+    align-items: center;
+  }
+  /*
+   * The connector, not a loose arrow character: a hairline that starts at the
+   * glyph it belongs to and runs to just before the next one, with a small head
+   * at the end. It fills whatever the glyph leaves over, so the three glyphs
+   * (ring, REC pill, notification) can be any width and the spacing still reads
+   * as one flow. The negative right margin carries it across the grid gap.
+   */
+  .how-link {
+    position: relative;
+    flex: 1;
+    min-width: 1.5rem;
+    height: 12px;
+    margin-left: 0.85rem;
+    margin-right: calc(0.65rem - var(--how-gap));
+  }
+  .how-link::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 0;
+    left: 0;
+    height: 1px;
+    transform: translateY(-50%);
+    background: linear-gradient(
+      to right,
+      rgba(245, 245, 244, 0.04),
+      rgba(245, 245, 244, 0.26)
+    );
+  }
+  .how-link::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 0;
+    width: 6px;
+    height: 6px;
+    border-top: 1px solid rgba(245, 245, 244, 0.32);
+    border-right: 1px solid rgba(245, 245, 244, 0.32);
+    transform: translateY(-50%) rotate(45deg);
+  }
+  /* The last step ends the flow, so its row carries no connector. */
+  .how-step:last-child .how-link {
+    display: none;
+  }
+  /*
+   * The connectors draw themselves left to right once the block arrives, one
+   * after the other. Only armed when the inline script in Layout.astro has set
+   * data-motion="on"; without scripting they are simply drawn.
+   */
+  :global(:root[data-motion="on"]) .how-link {
+    clip-path: inset(0 100% 0 0);
+  }
+  :global(:root[data-motion="on"]) .how.is-revealed .how-link {
+    clip-path: inset(0 0 0 0);
+    transition: clip-path 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.25s;
+  }
+  :global(:root[data-motion="on"]) .how.is-revealed .how-step:nth-child(2) .how-link {
+    transition-delay: 0.5s;
+  }
+  .how-glyph {
+    position: relative;
+    flex-shrink: 0;
+    width: 56px;
+    height: 56px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    border: 1px solid var(--border-strong);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--fg);
+  }
+  .how-glyph--rec {
+    width: auto;
+    padding: 0 0.7rem;
+    gap: 0.4rem;
+    display: inline-flex;
+    align-items: center;
+  }
+  .how-rec {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 0.8rem;
+    letter-spacing: 0.04em;
+  }
+  .how-glyph--toast {
+    width: auto;
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+  .how-toast {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.55rem 0.8rem 0.55rem 0.65rem;
+    border-radius: 12px;
+    border: 1px solid var(--border-strong);
+    background: rgba(40, 40, 46, 0.96);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+    animation: how-toast-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .how-toast-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+    white-space: nowrap;
+  }
+  .how-toast-text b {
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+  .how-toast-text i {
+    font-style: normal;
+    font-size: 0.66rem;
+    color: var(--fg-muted);
+  }
+  .how-toast-time {
+    align-self: flex-start;
+    margin-left: 0.6rem;
+    font-size: 0.62rem;
+    color: var(--fg-dim);
+  }
+  @keyframes how-toast-in {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .how-toast { animation: none; }
+    :global(:root[data-motion="on"]) .how-link,
+    :global(:root[data-motion="on"]) .how.is-revealed .how-link {
+      clip-path: none;
+      transition: none;
+    }
+  }
+  .how-step h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-bottom: 0.25rem;
+  }
+  .how-step p {
+    color: var(--fg-muted);
+    font-size: 0.92rem;
+  }
+  @media (max-width: 900px) {
+    .how-list {
+      grid-template-columns: 1fr;
+      gap: 2rem;
+    }
+    .how-link {
+      display: none;
+    }
+  }
+</style>

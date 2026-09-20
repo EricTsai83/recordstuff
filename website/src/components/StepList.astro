@@ -1,0 +1,74 @@
+---
+import type { Step } from "../content/site";
+import { renderInlineCode } from "../lib/text";
+
+/** Numbered steps with an optional body; inline `code` spans in bodies are rendered as code. */
+interface Props {
+  steps: Step[];
+}
+const { steps } = Astro.props;
+
+---
+
+<ol class="steps">
+  {
+    steps.map((step, index) => (
+      <li class="step">
+        <span class="step-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+        <div class="step-body">
+          <h3 class="step-title">{step.title}</h3>
+          {step.body && <p set:html={renderInlineCode(step.body)} />}
+        </div>
+      </li>
+    ))
+  }
+</ol>
+
+<style>
+  .steps {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+    counter-reset: step;
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 2.6rem 1fr;
+    gap: 0.9rem;
+    padding: 1.1rem 1.2rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .step-index {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--fg-dim);
+    padding-top: 0.25rem;
+  }
+  .step-title {
+    font-weight: 500;
+    font-size: 1rem;
+    color: var(--fg);
+    margin-bottom: 0.3rem;
+  }
+  .step-body p {
+    color: var(--fg-muted);
+    font-size: 0.95rem;
+  }
+  .step-body :global(code) {
+    font-size: 0.85em;
+    color: var(--fg);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border);
+    padding: 0.1em 0.4em;
+    border-radius: 6px;
+  }
+  @media (max-width: 640px) {
+    .step {
+      grid-template-columns: 1fr;
+      gap: 0.3rem;
+    }
+  }
+</style>

@@ -1,0 +1,140 @@
+---
+/** Verified release facts: filename, size, date, source commit and SHA-256 with a copy button. */
+import { release } from "../lib/release";
+
+interface Props {
+  class?: string;
+}
+const { class: className } = Astro.props;
+const rows = [
+  { label: "File", value: release.fileName, mono: true },
+  { label: "Size", value: `${release.sizeBytes.toLocaleString("en")} bytes (${release.sizeLabel})` },
+  { label: "Published", value: release.publishedLabel },
+  { label: "Architecture", value: "arm64 (Apple silicon)" },
+];
+---
+
+<div class:list={["checksum", className]}>
+  <dl class="facts">
+    {
+      rows.map((row) => (
+        <div class="fact">
+          <dt>{row.label}</dt>
+          <dd class:list={[row.mono && "mono"]}>{row.value}</dd>
+        </div>
+      ))
+    }
+    <div class="fact">
+      <dt>Source</dt>
+      <dd>
+        <a class="link mono" href={release.sourceCommitUrl} target="_blank" rel="noopener noreferrer">{release.sourceCommitShort}</a>
+        <span class="dim"> · tag </span><span class="mono">{release.tag}</span>
+      </dd>
+    </div>
+    <div class="fact fact--hash">
+      <dt>SHA-256</dt>
+      <dd>
+        <code class="hash" id="dmg-sha256">{release.sha256}</code>
+        <button type="button" class="copy" data-copy-target="dmg-sha256" aria-label="Copy SHA-256 to clipboard">Copy</button>
+      </dd>
+    </div>
+  </dl>
+  <p class="verify-note">
+    Verify after downloading: <code>shasum -a 256 ~/Downloads/{release.fileName}</code>. The published
+    <a class="link" href={release.sha256sumsUrl} target="_blank" rel="noopener noreferrer">SHA256SUMS</a> and
+    <a class="link" href={release.releaseJsonUrl} target="_blank" rel="noopener noreferrer">release.json</a> carry the same value.
+  </p>
+</div>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>("button[data-copy-target]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const target = document.getElementById(button.dataset.copyTarget ?? "");
+      if (!target) return;
+      try {
+        await navigator.clipboard.writeText(target.textContent ?? "");
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Select to copy";
+      }
+      window.setTimeout(() => {
+        button.textContent = "Copy";
+      }, 1600);
+    });
+  });
+</script>
+
+<style>
+  .checksum {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: rgba(255, 255, 255, 0.02);
+    padding: 1.1rem 1.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+  .facts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem 1.5rem;
+  }
+  .fact {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+  .fact--hash {
+    grid-column: 1 / -1;
+  }
+  dt {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+  }
+  dd {
+    font-size: 0.92rem;
+    color: var(--fg);
+    overflow-wrap: anywhere;
+  }
+  .hash {
+    display: inline-block;
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.45rem 0.6rem;
+    margin-right: 0.5rem;
+    word-break: break-all;
+  }
+  .copy {
+    font-size: 0.75rem;
+    color: var(--fg-muted);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    padding: 0.25rem 0.7rem;
+    transition: color 0.2s ease, border-color 0.2s ease;
+  }
+  .copy:hover {
+    color: var(--fg);
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+  .verify-note {
+    font-size: 0.8rem;
+    color: var(--fg-dim);
+  }
+  .verify-note code {
+    font-size: 0.75rem;
+    color: var(--fg-muted);
+    overflow-wrap: anywhere;
+  }
+  @media (max-width: 640px) {
+    .facts {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

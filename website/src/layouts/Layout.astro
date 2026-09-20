@@ -1,0 +1,270 @@
+---
+/**
+ * Page shell shared by every page: metadata, sticky nav, footer, motion and
+ * the skip link. Visual tokens live in ../themes/ember.css.
+ */
+import { getImage } from "astro:assets";
+import ogSource from "../assets/og.png";
+import "../styles/fonts.css";
+// Preloaded so the real faces are ready for the first paint: fonts.css declares
+// them font-display: optional, which drops a face that arrives late rather than
+// re-painting the page in it.
+import geistLatin from "@fontsource-variable/geist/files/geist-latin-wght-normal.woff2?url";
+import monoLatin from "@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2?url";
+import monoLatinMedium from "@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2?url";
+import handLatin from "@fontsource/kalam/files/kalam-latin-700-normal.woff2?url";
+import "../styles/global.css";
+import "../themes/ember.css";
+import { SITE_NAME, footer, meta } from "../content/site";
+import { links, reverified } from "../lib/release";
+import BrandMark from "../components/BrandMark.astro";
+import GitHubMark from "../components/GitHubMark.astro";
+
+interface Props {
+  title?: string;
+  description?: string;
+  pageClass?: string;
+}
+
+const { title = meta.title, description = meta.description, pageClass } = Astro.props;
+
+const nav = [
+  { href: "/download", label: "Download" },
+  { href: "/help", label: "Help" },
+  { href: "/support", label: "Support" },
+];
+const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
+const social = await getImage({ src: ogSource, width: 1200, height: 630, fit: "cover", format: "png" });
+const socialImageUrl = new URL(social.src, Astro.site);
+const year = 2026;
+// Matches --bg in themes/ember.css, so the browser chrome is the same colour
+// as the page rather than a slightly bluer one.
+const themeColor = "#0a0a0b";
+// Favicon: the real mark (ring + red dot), no square background.
+const favicon =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12.5" fill="none" stroke="#f4f4f5" stroke-width="3"/><circle cx="16" cy="16" r="6" fill="#ef4444"/></svg>`,
+  );
+---
+
+<!doctype html>
+<html lang="en" data-theme="ember">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    {[geistLatin, monoLatin, monoLatinMedium, handLatin].map((href) => (
+      <link rel="preload" href={href} as="font" type="font/woff2" crossorigin />
+    ))}
+    <link rel="canonical" href={canonicalUrl} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={SITE_NAME} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={socialImageUrl} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={meta.ogImageAlt} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={socialImageUrl} />
+    <meta name="theme-color" content={themeColor} />
+    <link rel="icon" type="image/svg+xml" href={favicon} />
+    <title>{title}</title>
+    <script is:inline>
+      // Arms the block reveal before first paint; without scripting nothing hides.
+      document.documentElement.dataset.motion = "on";
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <div class:list={["page", pageClass]}>
+      <nav class="nav" aria-label="Primary">
+        <div class="nav-inner container">
+          <a href="/" class="nav-brand" aria-label={`${SITE_NAME} home`}>
+            <BrandMark size={20} />
+            <span class="nav-brand-name">{SITE_NAME}</span>
+          </a>
+          <div class="nav-right">
+            {nav.map((item) => <a class="nav-link" href={item.href}>{item.label}</a>)}
+            <a class="nav-link nav-github" href={links.repository} target="_blank" rel="noopener noreferrer" aria-label={`${SITE_NAME} on GitHub`}>
+              <GitHubMark size={15} />
+              <span>GitHub</span>
+            </a>
+          </div>
+        </div>
+      </nav>
+      <main id="main" class="main">
+        <slot />
+      </main>
+      <footer class="footer">
+        <div class="footer-inner container">
+          <div class="footer-brand">
+            <BrandMark size={16} />
+            <span>&copy; {year} {footer.author} · <a class="footer-license" href={links.license} target="_blank" rel="noopener noreferrer">{footer.license}</a></span>
+            {!reverified && <span class="footer-warn">Preview build: release manifest not re-verified</span>}
+          </div>
+          <div class="footer-links">
+            <a href={links.repository} target="_blank" rel="noopener noreferrer">GitHub</a>
+            <a href="/download">Download</a>
+          </div>
+        </div>
+      </footer>
+    </div>
+    <script>
+      const nav = document.querySelector(".nav");
+      const onScroll = () => nav?.classList.toggle("is-scrolled", window.scrollY > 12);
+      window.addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
+
+      // Each [data-reveal] block fades up as a whole when its top reaches the
+      // lower part of the viewport, so the page arrives one block at a time.
+      const blocks = document.querySelectorAll<HTMLElement>("[data-reveal]");
+      const show = (el: HTMLElement) => el.classList.add("is-revealed");
+      if ("IntersectionObserver" in window) {
+        const observer = new IntersectionObserver(
+          (entries) =>
+            entries.forEach((entry) => {
+              if (!entry.isIntersecting) return;
+              show(entry.target as HTMLElement);
+              observer.unobserve(entry.target);
+            }),
+          { rootMargin: "0px 0px -12% 0px" },
+        );
+        blocks.forEach((block) => observer.observe(block));
+      } else {
+        blocks.forEach(show);
+      }
+    </script>
+  </body>
+</html>
+
+<style>
+  .page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    height: var(--nav-h);
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid transparent;
+    background: color-mix(in srgb, var(--bg) 60%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    transition: border-color 0.3s ease, background 0.3s ease;
+  }
+  .nav.is-scrolled {
+    border-bottom-color: var(--border);
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+  }
+  .nav-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .nav-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  .nav-right {
+    display: flex;
+    align-items: center;
+    gap: 1.4rem;
+  }
+  .nav-link {
+    font-size: 0.9rem;
+    color: var(--fg-muted);
+    transition: color 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .nav-link:hover {
+    color: var(--fg);
+  }
+  .footer {
+    border-top: 1px solid var(--border);
+    padding: 2rem 0 2.5rem;
+    color: var(--fg-dim);
+    font-size: 0.85rem;
+  }
+  .footer-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+  .footer-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+  .footer-license {
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 3px;
+    transition: color 0.2s ease, text-decoration-color 0.2s ease;
+  }
+  .footer-license:hover {
+    color: var(--fg);
+    text-decoration-color: var(--fg);
+  }
+  .footer-warn {
+    color: var(--warn);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+  }
+  .footer-links {
+    display: flex;
+    gap: 1.25rem;
+  }
+  .footer-links a {
+    transition: color 0.2s ease;
+  }
+  .footer-links a:hover {
+    color: var(--fg);
+  }
+  /* Centre the mark on the cap band of the word beside it. Plain flex centring
+     aligns it to the line box, whose descender space leaves the mark sitting
+     about a pixel low next to the small footer text. */
+  @supports (height: 1cap) {
+    .nav-brand :global(svg),
+    .footer-brand :global(svg) {
+      align-self: baseline;
+      transform: translateY(calc(50% - 0.5cap));
+    }
+  }
+  @media (max-width: 640px) {
+    .nav-right {
+      gap: 1rem;
+    }
+    .nav-github span,
+    .nav-brand-name {
+      display: none;
+    }
+    /* No wordmark here, so there is no cap band to align to. */
+    .nav-brand :global(svg) {
+      align-self: center;
+      transform: none;
+    }
+  }
+</style>

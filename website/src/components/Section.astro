@@ -1,0 +1,38 @@
+---
+/** A titled page section with the eyebrow/heading pair used across the site. */
+interface Props {
+  id?: string;
+  title: string;
+  narrow?: boolean;
+  class?: string;
+}
+const { id, title, narrow = false, class: className } = Astro.props;
+---
+
+<section id={id} class:list={["section", className]} aria-labelledby={id ? `${id}-title` : undefined} data-reveal>
+  <div class:list={["container", narrow && "container--narrow"]}>
+    <header class="section-head">
+      <h2 id={id ? `${id}-title` : undefined} class="section-title">{title}</h2>
+    </header>
+    <slot />
+  </div>
+</section>
+
+<style>
+  .section {
+    padding: var(--section-y) 0;
+    scroll-margin-top: var(--nav-h);
+  }
+  .section-head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-bottom: var(--section-head-gap);
+  }
+  .section-title {
+    font-weight: 500;
+    letter-spacing: -0.03em;
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    line-height: 1.15;
+  }
+</style>

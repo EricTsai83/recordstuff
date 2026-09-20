@@ -1,0 +1,101 @@
+---
+/**
+ * The single macOS download control. Its href is the verified DMG from the
+ * manifest; the Releases page is offered next to it as the visible fallback.
+ */
+import AppleMark from "./AppleMark.astro";
+import { release } from "../lib/release";
+
+interface Props {
+  /** Show version/size/date under the card. */
+  detailed?: boolean;
+  class?: string;
+}
+const { detailed = true, class: className } = Astro.props;
+---
+
+<div class:list={["download", className]}>
+  <a class="download-card" href={release.dmgUrl} download={release.fileName} data-download-dmg>
+    <span class="card-icon" aria-hidden="true"><AppleMark /></span>
+    <span class="card-text">
+      <span class="card-arch">macOS · {release.architectureLabel}</span>
+      <span class="card-format">.dmg · {release.sizeLabel}</span>
+    </span>
+    <span class="card-version mono">v{release.version}</span>
+  </a>
+  {
+    detailed && (
+      <p class="download-meta">
+        Version {release.version}, published {release.publishedLabel}. <a class="link" href={release.notesUrl} target="_blank" rel="noopener noreferrer">Release notes</a> · <a class="link" href={release.releaseUrl} target="_blank" rel="noopener noreferrer">All files on GitHub</a>
+      </p>
+    )
+  }
+</div>
+
+<style>
+  .download {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 440px;
+  }
+  .download-card {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.95rem 1.1rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-strong);
+    background: rgba(255, 255, 255, 0.03);
+    transition: background 0.35s ease, border-color 0.35s ease, transform 0.2s ease;
+  }
+  .download-card:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.22);
+    transform: translateY(-1px);
+  }
+  .download-card:active {
+    transform: translateY(0);
+  }
+  .card-icon {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--fg);
+    flex-shrink: 0;
+  }
+  .card-icon :global(svg) {
+    width: 18px;
+    height: 18px;
+  }
+  .card-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    flex: 1;
+    min-width: 0;
+  }
+  .card-arch {
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+  .card-format {
+    font-size: 0.8rem;
+    color: var(--fg-dim);
+  }
+  .card-version {
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+  }
+  .download-meta {
+    font-size: 0.8rem;
+    color: var(--fg-dim);
+  }
+</style>

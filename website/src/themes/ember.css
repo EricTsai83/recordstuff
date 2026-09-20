@@ -1,0 +1,53 @@
+/* Graphite: near-black neutrals, white type, one red for the recording dot. No coloured glows. Landscape: low-poly (Facet). */
+[data-theme="ember"] {
+  --bg: #0a0a0b;
+  --bg-elev: #0f0f11;
+  --bg-card: #121214;
+  --fg: #f5f5f4;
+  --fg-muted: #a3a3a0;
+  --fg-dim: #8a8a87;
+  --border: rgba(245, 245, 244, 0.08);
+  --border-strong: rgba(245, 245, 244, 0.16);
+  --accent: #f5f5f4;
+  --accent-dim: rgba(245, 245, 244, 0.1);
+  --accent-ring: #ffffff;
+  --rec: #ff3b30;
+  --font-sans: "Geist Variable", "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --radius: 14px;
+  --radius-lg: 22px;
+}
+[data-theme="ember"] .display {
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  line-height: 1;
+}
+[data-theme="ember"] .display .accent {
+  color: var(--fg-muted);
+}
+[data-theme="ember"] .btn-primary {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: #0a0a0b;
+}
+[data-theme="ember"] .btn-primary:hover {
+  background: #ffffff;
+  border-color: #ffffff;
+}
+[data-theme="ember"] .section-title,
+[data-theme="ember"] .prose h2,
+[data-theme="ember"] .heading {
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+/*
+ * One flat background for the whole site. Earlier versions layered a top light
+ * on .page and a viewport-anchored vignette on body; both made the background
+ * shade drift down the page, and any element that clipped its own overflow
+ * (the hero did) left a visible seam where one layer stopped. The page is now
+ * a single colour, var(--bg), painted once on body.
+ */
+[data-theme="ember"] .page {
+  position: relative;
+  background: var(--bg);
+}

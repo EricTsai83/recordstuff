@@ -1,0 +1,85 @@
+---
+/** Four verified behaviours as an editorial index: hairlines and numbers instead of boxes. Capture specs live in SpecsBand; the click story in HowItWorks. */
+import { features } from "../content/site";
+---
+
+<ol class="features">
+  {features.map((feature, index) => (
+    <li class="feature">
+      <span class="feature-index mono">{String(index + 1).padStart(2, "0")}</span>
+      <div class="feature-text">
+        <h3>{feature.title}</h3>
+        <p>{feature.body}</p>
+      </div>
+    </li>
+  ))}
+</ol>
+
+<style>
+  .features {
+    list-style: none;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 4rem;
+  }
+  .feature {
+    display: grid;
+    grid-template-columns: 3.5rem 1fr;
+    gap: 0.5rem 1rem;
+    padding: 2rem 0 2.2rem;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+  .feature::after {
+    /* hover: the hairline below brightens from the left */
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -1px;
+    height: 1px;
+    width: 0;
+    background: var(--fg);
+    transition: width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .feature:hover::after {
+    width: 100%;
+  }
+  .feature-index {
+    font-size: 0.78rem;
+    color: var(--fg-dim);
+    padding-top: 0.55rem;
+    letter-spacing: 0.08em;
+  }
+  .feature h3 {
+    font-size: 1.45rem;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    margin-bottom: 0.6rem;
+  }
+  .feature p {
+    color: var(--fg-muted);
+    font-size: 0.98rem;
+    max-width: 44ch;
+  }
+  /* Top row only: the section head already carries the gap above it. */
+  .feature:nth-child(-n + 2) {
+    padding-top: 0;
+  }
+  @media (max-width: 900px) {
+    /* One column now, so the second card is no longer in the top row. */
+    .feature:nth-child(2) {
+      padding-top: 1.5rem;
+    }
+    .features {
+      grid-template-columns: 1fr;
+      column-gap: 0;
+    }
+    .feature {
+      padding: 1.5rem 0 1.7rem;
+    }
+    .feature h3 {
+      font-size: 1.25rem;
+    }
+  }
+</style>
