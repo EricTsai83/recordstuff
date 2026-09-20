@@ -154,6 +154,12 @@ describe("settings window lifecycle", () => {
 });
 
 describe("settings window IPC", () => {
+  it("reports a completed update command as applied without a checked preference", async () => {
+    const s = setup({ act: vi.fn(async () => undefined) });
+    s.panel.show();
+    expect(await s.choose(s.event(), "updates", "check")).toMatchObject({ applied: true });
+    expect(s.act).toHaveBeenCalledWith("checkUpdates");
+  });
   it("answers only its own window's main frame", async () => {
     const s = setup();
     s.panel.show();

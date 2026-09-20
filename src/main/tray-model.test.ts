@@ -55,10 +55,9 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
       "已經允許了？重新啟動 RecordStuff",
       "—",
       "儲存位置：~/Movies/RecordStuff",
-      "更改儲存位置…",
-      "檢查更新…",
+      "更改儲存位置",
       "—",
-      "設定…",
+      "設定",
       "顯示 log",
       "結束",
     ]);
@@ -101,10 +100,9 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
       "待命中",
       "—",
       "儲存位置：~/Movies/RecordStuff",
-      "更改儲存位置…",
-      "檢查更新…",
+      "更改儲存位置",
       "—",
-      "設定…",
+      "設定",
       "顯示 log",
       "結束",
     ]);
@@ -133,7 +131,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     const m = trayModel({ type: "starting" }, mac);
     expect(m.icon).toBe("idle");
     expect(m.title).toBe("…");
-    expect(labels(m.menu)).toEqual(["啟動中，請留意系統權限提示…", "檢查更新…", "—", "設定…", "顯示 log", "結束"]);
+    expect(labels(m.menu)).toEqual(["啟動中，請留意系統權限提示…", "—", "設定", "顯示 log", "結束"]);
     expect(enabledActions(m.menu)).toEqual(["openSettings", "revealLog", "quit"]);
   });
 
@@ -146,10 +144,9 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
       "停止",
       "—",
       "儲存位置：~/Movies/RecordStuff",
-      "更改儲存位置…",
-      "檢查更新…",
+      "更改儲存位置",
       "—",
-      "設定…",
+      "設定",
       "顯示 log",
       "結束",
     ]);
@@ -160,7 +157,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     const m = trayModel({ type: "stopping" }, mac);
     expect(m.icon).toBe("idle");
     expect(m.title).toBe("…");
-    expect(labels(m.menu)).toEqual(["儲存中…", "檢查更新…", "—", "設定…", "顯示 log", "結束"]);
+    expect(labels(m.menu)).toEqual(["儲存中…", "—", "設定", "顯示 log", "結束"]);
     expect(enabledActions(m.menu)).toEqual(["openSettings", "revealLog", "quit"]);
   });
 
@@ -183,7 +180,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     for (const state of STATES) {
       const menu = trayModel(state, mac).menu;
       expect(menu.at(-4), state.type).toEqual({ kind: "separator" });
-      expect(menu.at(-3)).toMatchObject({ label: "設定…", action: "openSettings", enabled: true });
+      expect(menu.at(-3)).toMatchObject({ label: "設定", action: "openSettings", enabled: true });
       expect(menu.at(-2)).toMatchObject({ label: "顯示 log", action: "revealLog", enabled: true });
       expect(menu.at(-1)).toMatchObject({ label: "結束", action: "quit", enabled: true });
     }
@@ -226,7 +223,7 @@ describe("English default and language switching", () => {
     const ctx = { ...mac, language: "en" as const };
     const m = trayModel({ type: "idle" }, ctx);
     expect(labels(m.menu)[0]).toBe("Ready");
-    expect(labels(m.menu)).toContain("Settings…");
+    expect(labels(m.menu)).toContain("Settings");
     expect(savedNotification("/tmp/demo.mp4").body).toBe("Saved demo.mp4");
   });
 

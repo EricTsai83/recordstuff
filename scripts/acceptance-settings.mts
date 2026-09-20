@@ -9,7 +9,7 @@
  * round trip; `settings-model` and `SettingsWindow` are covered by unit
  * tests, so the fixture supplies its own view and handlers.
  *
- * It does not click the tray, open the window through Settings…, or claim
+ * It does not click the tray, open the window through Settings, or claim
  * anything about macOS window focus — a windowless app's tray is not
  * automatable (see .agents/skills/astra-acceptance-with-computer-use).
  *
@@ -95,7 +95,7 @@ const report = [
   "Built artifacts under test: `out/preload/settings.js`, `out/renderer/settings.html`.",
   "The fixture supplies its own view and IPC handlers, so this run judges the page,",
   "the preload boundary and the IPC round trip — not `settings-model` or `SettingsWindow`.",
-  "No tray click, no Settings… item and no macOS window focus behaviour was exercised.",
+  "No tray click, no Settings item and no macOS window focus behaviour was exercised.",
   "",
   ...cases.map((result) => `- ${result.ok ? "PASS" : "FAIL"} — ${result.name}\n  - ${result.detail}`),
   "",

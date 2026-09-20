@@ -41,7 +41,7 @@ const SEPARATOR: TrayMenuItem = { kind: "separator" };
 function footer(language: Language): TrayMenuItem[] {
   return [
     SEPARATOR,
-    item(t("Settings…", language), "openSettings"),
+    item(t("Settings", language), "openSettings"),
     item(t("Show log", language), "revealLog"),
     item(t("Quit", language), "quit"),
   ];
@@ -53,8 +53,8 @@ function outputDirItems(ctx: AppContext, enabled: boolean): TrayMenuItem[] {
       ? item(label, "openOutputDir", ctx.outputDir)
       : { kind: "item", label, enabled: false, toolTip: ctx.outputDir },
     enabled
-      ? item(t("Change output folder…", ctx.language), "changeOutputDir")
-      : disabled(t("Change output folder…", ctx.language)),
+      ? item(t("Change output folder", ctx.language), "changeOutputDir")
+      : disabled(t("Change output folder", ctx.language)),
   ];
 }
 function permissionActions(needsRelaunch: boolean, language: Language): TrayMenuItem[] {

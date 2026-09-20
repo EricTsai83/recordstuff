@@ -91,6 +91,12 @@ function settingsChoice(s: AcceptanceSnapshot, group: string): { id: string; lab
   return { id: checked.id, label: checked.label };
 }
 function menuAction(s: AcceptanceSnapshot, action: AppAction): Exclude<TrayMenuItem, { kind: 'separator' }> {
+  if (action === 'checkUpdates' || action === 'openUpdate') {
+    const group = s.settings.groups.find(g => g.id === 'updates');
+    const choice = group?.choices.find(c => c.id === (action === 'checkUpdates' ? 'check' : 'open'));
+    assert(group && choice, `Settings update action missing: ${action}`);
+    return { kind: 'item', action, label: choice.label, enabled: group.enabled && choice.enabled };
+  }
   const item = s.model.menu.find(i => i.kind === 'item' && JSON.stringify(i.action) === JSON.stringify(action));
   assert(item && item.kind === 'item', `Menu action missing: ${JSON.stringify(action)}`);
   return item;
@@ -204,7 +210,7 @@ try {
     await scenario('current', 1000); await action('checkUpdates');
     const current = await until(s => s.update.kind === 'current', 'current version');
     assert.equal(current.update.kind === 'current' && current.update.checkedAt, config.now);
-    assert(menuAction(current, 'checkUpdates').label.includes(new Date(config.now).toLocaleString('en')));
+    assert(current.settings.groups.find(g => g.id === 'updates')?.note?.includes(new Date(config.now).toLocaleString('en')));
   });
   await check(feedCase, async () => {
     for (const name of feedScenarios) {
