@@ -245,3 +245,7 @@ Vercel 支援專案限定 token，且明確禁止其讀取團隊／使用者資�
 採用 [T3 Code 官網](https://github.com/pingdotgg/t3code/blob/main/.github/workflows/release.yml)的原始碼部署方式：Actions 驗證專案存取，再用既有釘版 CLI 59.23.2 執行 `deploy --archive=tgz --prod --yes --scope`，不再執行 `pull`、本機 `vercel build` 或 `--prebuilt`。Vercel 建置命令改為 `pnpm test && pnpm check`，測試、型別、manifest 線上驗證、正式建置、建置 feed 比對及連結檢查都必須通過才上線。觸發條件、部署鎖與 App 發布邊界維持原設計；GitHub 憑證不傳入遠端建置。
 
 本機通過 actionlint 1.7.12（未啟用 ShellCheck）、15 項網站測試、39 個檔案診斷、0.1.2 manifest 線上／建置 feed 驗證、59 個內部引用與 13 個外部網址、文件連結目標及 `git diff --check`。未執行遠端建置／部署、啟動 App 或錄影。這移除了已知有問題的 pull 路徑，但不代表專案限定 token 的完整原始碼部署已驗證；線上驗收與公開 feed 交付仍待完成。先前 prebuilt 部署記錄保留為歷史。
+
+### 直接部署的 scope 修正
+
+首次原始碼部署在查詢專案前因 `User not found (404)` 失敗。CLI 59.23.2 的顯式 `--scope` 路徑要求查詢使用者／團隊，不相容於專案限定 token。已移除 `--scope`，仍以 `VERCEL_ORG_ID` 與 `VERCEL_PROJECT_ID` 指定目標。使用實際釘版 CLI 與本機 HTTP 模擬伺服器重現：有 `--scope` 時使用者 404 立即中止；移除後相同 404 不再阻止 CLI 查詢指定專案。模擬請求全為 GET，未進行真實部署。Actionlint（未啟用 ShellCheck）與 `git diff --check` 通過。這驗證的是啟動路徑修正，不是完整部署成功；前一節含 `--scope` 的指令說明以本修正為準。

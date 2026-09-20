@@ -186,6 +186,8 @@ Release facts are rendered only from the committed manifest: no browser-side Git
 
 CI runs Vercel CLI from the repository root with the project Root Directory set to `website/`. It submits source with `vercel deploy --archive=tgz --prod --yes`; there is no `pull`, local Vercel build or `--prebuilt`. Vercel runs the configured `pnpm test && pnpm check`: tests, Astro diagnostics, online manifest verification, production build, exact generated feed comparison and link checks against `dist/`. Local `site:check` runs the same package checks. GitHub runner environment variables are not automatically forwarded to the remote build; manifest verification uses public GitHub endpoints unless separately configured in Vercel.
 
+Project-scoped tokens must use the configured `VERCEL_ORG_ID`/`VERCEL_PROJECT_ID` without an explicit `--scope`: CLI 59.23.2 otherwise requires user/team discovery before deployment.
+
 
 ### Update acceptance
 

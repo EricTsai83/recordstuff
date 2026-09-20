@@ -185,6 +185,8 @@ Release 資訊只從已提交的 manifest 渲染：沒有瀏覽器端 GitHub API
 
 CI 從 repository 根目錄執行 Vercel CLI，平台專案的 Root Directory 設為 `website/`。以 `vercel deploy --archive=tgz --prod --yes` 提交原始碼，不執行 `pull`、本機 Vercel 建置或 `--prebuilt`。Vercel 依設定執行 `pnpm test && pnpm check`：測試、Astro 診斷、manifest 線上驗證、正式建置、建置 feed 比對與 `dist/` 連結檢查。本機 `site:check` 使用相同的套件檢查。GitHub runner 的環境變數不會自動傳入遠端建置；除非另在 Vercel 設定，manifest 驗證使用公開 GitHub 端點。
 
+專案限定 token 透過既設的 `VERCEL_ORG_ID`／`VERCEL_PROJECT_ID` 指定目標，不加顯式 `--scope`：CLI 59.23.2 否則會在部署前要求使用者／團隊查詢權限。
+
 
 ### 更新功能驗收
 
