@@ -1,0 +1,101 @@
+---
+import BrandMark from "../BrandMark.astro";
+import ChecksumBlock from "../ChecksumBlock.astro";
+import DownloadCard from "../DownloadCard.astro";
+import { links, release } from "../../lib/release";
+
+---
+
+<div class="download-page">
+  <header class="download-head">
+    <BrandMark size={56} />
+    <h1 class="heading display">Download RecordStuff</h1>
+    <p class="head-meta">
+      <a class="link" href={release.notesUrl} target="_blank" rel="noopener noreferrer">v{release.version} release notes ↗</a>
+    </p>
+  </header>
+
+  <div class="platforms">
+    <section class="platform-section" aria-labelledby="macos-title">
+      <div class="platform-header">
+        <h2 id="macos-title" class="platform-name">macOS</h2>
+        <span class="platform-note dim">Apple silicon only. Intel Macs, Windows and Linux are not supported.</span>
+      </div>
+      <DownloadCard detailed={false} />
+      <p class="platform-fine dim">
+        Not notarized by Apple: first launch may need <a class="link" href="/help#install">Open Anyway</a>. No certificate is installed.
+      </p>
+    </section>
+
+    <section class="platform-section" aria-labelledby="verify-title">
+      <div class="platform-header"><h2 id="verify-title" class="platform-name">Verify</h2></div>
+      <ChecksumBlock />
+    </section>
+
+    <section class="platform-section" aria-labelledby="older-title">
+      <div class="platform-header"><h2 id="older-title" class="platform-name">Older versions</h2></div>
+      <p class="muted">
+        Every release, with its SHA256SUMS and release.json, is on the <a class="link" href={links.releases} target="_blank" rel="noopener noreferrer">GitHub releases page</a>. Updating is a manual download and replace; see <a class="link" href="/help#update">Help</a>.
+      </p>
+    </section>
+  </div>
+</div>
+
+<style>
+  .download-page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 1.5rem 4rem;
+  }
+  .download-head {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 9vh 1.5rem 2.5rem;
+    text-align: center;
+  }
+  .heading {
+    font-size: clamp(1.9rem, 4.5vw, 3rem);
+  }
+  .head-meta {
+    font-size: 0.85rem;
+  }
+  .platforms {
+    width: 100%;
+    max-width: 720px;
+    display: flex;
+    flex-direction: column;
+    gap: 2.5rem;
+  }
+  .platform-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+  .platform-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .platform-name {
+    font-weight: 500;
+    font-size: 1.1rem;
+    letter-spacing: -0.01em;
+  }
+  .platform-note,
+  .platform-fine {
+    font-size: 0.82rem;
+  }
+  @media (max-width: 640px) {
+    .download-head {
+      padding: 6vh 1rem 2rem;
+    }
+  }
+</style>

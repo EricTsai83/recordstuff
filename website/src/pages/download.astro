@@ -1,0 +1,9 @@
+---
+import Layout from "../layouts/Layout.astro";
+import DownloadBody from "../components/pages/DownloadBody.astro";
+import { release } from "../lib/release";
+---
+
+<Layout title={`Download — RecordStuff ${release.version} for macOS`} description={`Download RecordStuff ${release.version} for macOS on Apple silicon. Direct DMG from GitHub Releases with SHA-256 checksum.`}>
+  <DownloadBody />
+</Layout>

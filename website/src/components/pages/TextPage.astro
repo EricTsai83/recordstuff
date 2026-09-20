@@ -1,0 +1,60 @@
+---
+/** Shared shell for the Help and Support text pages. */
+interface Props {
+  title: string;
+  toc?: Array<{ href: string; label: string }>;
+}
+const { title, toc } = Astro.props;
+---
+
+<article class="text-page container container--narrow">
+  <header class="text-head">
+    <h1 class="display">{title}</h1>
+    {
+      toc && (
+        <nav class="toc" aria-label="On this page">
+          {toc.map((item) => <a href={item.href}>{item.label}</a>)}
+        </nav>
+      )
+    }
+  </header>
+  <slot />
+</article>
+
+<style>
+  .text-page {
+    padding: 5rem 32px 5rem;
+  }
+  .text-head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    margin-bottom: 1rem;
+  }
+  .text-head h1 {
+    font-size: clamp(2rem, 4.5vw, 3rem);
+  }
+  .toc {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+  }
+  .toc a {
+    color: var(--fg-muted);
+    padding: 0.3rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    transition: color 0.2s ease, border-color 0.2s ease;
+  }
+  .toc a:hover {
+    color: var(--fg);
+    border-color: var(--border-strong);
+  }
+  @media (max-width: 640px) {
+    .text-page {
+      padding: 3rem 20px 4rem;
+    }
+  }
+</style>

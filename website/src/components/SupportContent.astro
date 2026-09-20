@@ -1,0 +1,30 @@
+---
+/** Verified platform boundary, privacy facts and where to get help. */
+import { platformBoundary, privacy } from "../content/site";
+import { links, release } from "../lib/release";
+
+interface Props {
+  level?: 2 | 3;
+}
+const { level = 2 } = Astro.props;
+const H = level === 2 ? "h2" : "h3";
+---
+
+<div class="prose">
+  <H id="platforms">Verified platforms</H>
+  <p>{platformBoundary.verified}</p>
+  <p>{platformBoundary.unverified}</p>
+
+  <H id="privacy">Privacy and data</H>
+  <ul>
+    {privacy.map((item) => <li>{item}</li>)}
+  </ul>
+
+  <H id="source">Source and issues</H>
+  <p>
+    RecordStuff is MIT licensed. The code, design documents and the <a href={links.verificationRecord} target="_blank" rel="noopener noreferrer">verification record</a> behind every claim on this site are on <a href={links.repository} target="_blank" rel="noopener noreferrer">GitHub</a>. Version {release.version} was built by CI from commit <a href={release.sourceCommitUrl} target="_blank" rel="noopener noreferrer"><code>{release.sourceCommitShort}</code></a>.
+  </p>
+  <p>
+    To report a problem, <a href={links.issues} target="_blank" rel="noopener noreferrer">open an issue</a> and include the relevant lines from the log; right-click the menu bar icon and choose <em>Show log</em> to find it.
+  </p>
+</div>
