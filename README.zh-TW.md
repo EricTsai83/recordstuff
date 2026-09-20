@@ -15,9 +15,9 @@ Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前
 [官方網站](https://record.ericts.com) · [下載頁](https://record.ericts.com/download) · [使用說明](https://record.ericts.com/help)（網站為英文）。
 
 <!-- release-download:start -->
-下載 **[RecordStuff 0.1.2：macOS Apple silicon（arm64）](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.2/RecordStuff-0.1.2-arm64-selfsigned.dmg)**（127,314,171 bytes）。[英文發行說明](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.2) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.2/SHA256SUMS) · [最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)。
+下載 **[RecordStuff 0.1.3：macOS Apple silicon（arm64）](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.3/RecordStuff-0.1.3-arm64-selfsigned.dmg)**（127,306,174 bytes）。[英文發行說明](https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.3) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v0.1.3/SHA256SUMS) · [最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)。
 
-SHA-256：`2de49bbd552e46934ef4573ca8c8b103e3a0b1334dd12b2022dee1f332f7fc7f`。
+SHA-256：`2d8c2ab1b1a52eba6b367f4419ea1551bb4750b00ac61a31ef8bb5afb11babee`。
 <!-- release-download:end -->
 
 0.1.2 由 CI 從 tag `v0.1.2` 建置、簽署、驗證並公開；錄影、播放與權限保留在打 tag 前以同一份原始碼在本機檢查。詳見[本版驗證紀錄](docs/zh-TW/verification/releases/0.1.2.md)。點擊儲存通知可定位 Finder 檔案，但 Finder 可能沒有跳到最前景。
