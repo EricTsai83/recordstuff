@@ -225,3 +225,9 @@ Vercel 唯讀檢查確認既有 `recordstuff` 專案、根目錄 `website` 與�
 網站交付移至 `.github/workflows/website.yml`，由 main 的 push 修改 `website/**` 或該 workflow、在 main 手動重試，以及穩定版本記錄成功後明確呼叫共用 workflow 三種入口執行。移除 `release.yml` 的 `deploy-website` dispatch 選項；重試改用 `gh workflow run website.yml --ref main`。這取代前一節部署前檢查所述的手動 release dispatch 操作。部署仍需 Vercel secrets，缺少設定會印出略過提示。各入口共用正式部署鎖，取得鎖後才讀取最新 main。release 明確呼叫可涵蓋不會觸發 push workflow 的 `GITHUB_TOKEN` 提交。
 
 本機驗證：actionlint 1.7.12 通過兩份 workflow（未啟用 ShellCheck 整合）；`pnpm site:check` 通過 15 項測試、Astro 診斷、0.1.2 manifest 線上驗證、建置 feed 比對及 59 個內部引用／13 個外部網址。文件連結與 `git diff --check` 通過。未執行 GitHub workflow、Vercel 建置／部署、App 啟動或錄影；線上端到端交付仍未驗證，plan 018 維持未結案。
+
+## 網站獨立 CI 依賴修正 — 2026-09-20
+
+首次線上網站檢查回報 47 個 TypeScript 錯誤：獨立網站套件的 tsconfig 指定 Node 型別，卻未宣告 `@types/node`。先前本機檢查可解析根目錄的依賴，因此漏掉這個隔離環境問題。已在網站 devDependencies 加入 `@types/node` 24.13.4，並重新產生網站 pnpm lockfile。
+
+在 repository 外的全新目錄，只複製網站原始碼、不繼承根目錄 node_modules，以 `pnpm install --frozen-lockfile` 安裝後驗證：15 項測試全過，Astro 檢查 39 個檔案無錯誤／警告，經線上驗證的正式建置與已發布 0.1.2 feed 相符，59 個內部引用／13 個外部網址全過。忽略 esbuild build script 的警告仍存在，但未阻擋建置。這是在 macOS 的依賴隔離驗證，尚未重跑 Linux Actions 或 Vercel 部署；未測試 App 或錄影行為。`git diff --check` 通過。
