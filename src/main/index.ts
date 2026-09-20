@@ -9,6 +9,7 @@ import {
   desktopCapturer,
   dialog,
   globalShortcut,
+  net,
   screen,
   session,
   shell,
@@ -27,6 +28,7 @@ import { Recorder } from "./recorder";
 import { SavedNotification } from "./saved-notification";
 import { SettingsStore } from "./settings";
 import { parseAutoRecord, runAutoRecord } from "./autorecord";
+import { UpdateChecker, fetchVersion, DOWNLOAD_URL, RELEASES_URL } from "./updates";
 import { AppTray } from "./tray";
 import { APP_NAME, type TrayAction } from "./tray-model";
 import { effectiveQuality, frameRateDowngrade, type QualitySettings } from "../shared/quality";
@@ -207,6 +209,13 @@ async function main(): Promise<void> {
   const hotkey = new RecordingHotkey({ globalShortcut, onToggle: toggle, log });
   /** Settings that touch a session (quality, shortcut) change only here. */
   const settled = (): boolean => recorder.state.type === "idle" || recorder.state.type === "needsPermission";
+  const updates = new UpdateChecker({
+    localVersion: app.getVersion(), settled,
+    preference: () => settings.updates,
+    saveAttempt: (lastAttempt) => settings.setUpdates({ lastAttempt }),
+    fetch: (signal) => fetchVersion(process.platform, process.arch, signal, (url, init) => net.fetch(url, init)),
+    changed: () => { if (settled()) tray.refresh(); }, log,
+  });
   const tray = new AppTray({
     resourcesDir: resourcesDir(),
     context: () => ({
@@ -215,6 +224,7 @@ async function main(): Promise<void> {
       homeDir: os.homedir(),
       quality: quality(),
       language: settings.language,
+      updates: { state: updates.state, enabled: settings.updates.enabled },
       hotkey: {
         ...settings.hotkey,
         // "registered" means the saved combination is the live one; a deferred
@@ -260,7 +270,12 @@ async function main(): Promise<void> {
 
   async function handleAction(action: TrayAction): Promise<void> {
     if (typeof action !== "string") {
-      if ("setLanguage" in action) {
+      if ("setUpdateChecks" in action) {
+        if (!settled()) return;
+        try { await settings.setUpdates({ enabled: action.setUpdateChecks }); }
+        catch (error) { log(`updates: preference save failed: ${String(error)}`); }
+        if (settled()) tray.refresh();
+      } else if ("setLanguage" in action) {
         try {
           await settings.setLanguage(action.setLanguage);
           currentLanguage = settings.language;
@@ -277,6 +292,12 @@ async function main(): Promise<void> {
       return;
     }
     switch (action) {
+      case "checkUpdates":
+        await updates.check(true);
+        return;
+      case "openUpdate":
+        if (settled()) await shell.openExternal(updates.state.kind === "available" ? DOWNLOAD_URL : RELEASES_URL);
+        return;
       case "stop":
         recorder.stop();
         return;
@@ -380,6 +401,7 @@ async function main(): Promise<void> {
         savedNotification.stateChanged(event.state);
         log(`state → ${event.state.type}`);
         tray.render(event.state);
+        updates.flush();
         // A shortcut change saved during a session applies now that it is over.
         reportHotkey(hotkey.flush(settled()));
         // Tell the user each time the permission ask changes: first "open
@@ -434,6 +456,7 @@ async function main(): Promise<void> {
   }
 
   app.on("before-quit", (event) => {
+    updates.dispose();
     savedNotification.dispose();
     if (quitting) return;
     const busy = recorder.state.type === "starting" || recorder.state.type === "recording" || recorder.state.type === "stopping";
@@ -456,5 +479,6 @@ async function main(): Promise<void> {
     tray.destroy();
   });
 
+  updates.flush();
   log(`ready; output dir ${settings.outputDir}; hotkey ${JSON.stringify(hotkey.status)}`);
 }

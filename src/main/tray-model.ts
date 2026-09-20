@@ -14,6 +14,8 @@ import {
 import type { ErrorCode, RecordingState } from "../shared/state";
 import { HOTKEY_PRESETS, describeAccelerator, type HotkeyAccelerator, type HotkeySettings } from "../shared/hotkey";
 
+import type { UpdateState } from "./updates";
+
 export type TrayIcon = "idle" | "recording";
 export type TrayAction =
   | "openPermissionSettings"
@@ -24,6 +26,9 @@ export type TrayAction =
   | "changeOutputDir"
   | "revealLog"
   | "quit"
+  | "checkUpdates"
+  | "openUpdate"
+  | { setUpdateChecks: boolean }
   | { setQuality: Partial<QualitySettings> }
   | { setLanguage: Language }
   | { setHotkey: HotkeySettings };
@@ -47,6 +52,7 @@ export interface TrayContext {
   language?: Language;
   /** Omitted by older callers: the menu then shows no shortcut entry. */
   hotkey?: TrayHotkey;
+  updates?: { state: UpdateState; enabled: boolean };
 }
 /** The persisted choice plus whether the OS actually accepted the registration. */
 export interface TrayHotkey extends HotkeySettings {
@@ -236,7 +242,20 @@ function stopHint(ctx: TrayContext): string | undefined {
 export function trayModel(state: RecordingState, ctx: TrayContext): TrayModel {
   const language = ctx.language ?? DEFAULT_LANGUAGE;
   const text = (key: MessageKey): string => t(key, language);
-  const end = footer(language);
+  const safe = state.type === "idle" || state.type === "needsPermission";
+  const u = ctx.updates;
+  const updateItems: TrayMenuItem[] = [];
+  if (u) {
+    const status = u.state;
+    const label = !safe ? text("Check for updates…") : status.kind === "checking" ? text("Checking for updates…")
+      : status.kind === "available" ? t("Update available: {version}", language, { version: status.version })
+      : status.kind === "current" ? t("Up to date (checked {time})", language, { time: new Date(status.checkedAt).toLocaleString(language) })
+      : status.kind === "failed" ? text("Update check failed — open releases") : text("Check for updates…");
+    updateItems.push({ kind: "item", label, enabled: safe && status.kind !== "checking", action: status.kind === "available" || status.kind === "failed" ? "openUpdate" : "checkUpdates" });
+    if (status.kind === "available" || status.kind === "failed") updateItems.push({ kind: "item", label: text("Check for updates…"), enabled: safe, action: "checkUpdates" });
+    updateItems.push({ kind: "submenu", label: text("Check for updates on launch"), enabled: safe, items: [true, false].map((enabled) => ({ kind: "radio", label: text(enabled ? "On" : "Off"), enabled: true, checked: enabled === u.enabled, action: { setUpdateChecks: enabled } })) });
+  }
+  const end = [...updateItems, ...footer(language)];
   const locked = disabled(text("Recording quality"));
   const model = (icon: TrayIcon, title: string, status: string, menu: TrayMenuItem[]): TrayModel => ({
     icon,

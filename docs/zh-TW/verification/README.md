@@ -174,3 +174,48 @@ runner 已還原原安裝版／語言並重開 App，退出測試 TextEdit，保
 雙語 README 已補官網、下載頁與 Help 連結；發布指南記錄未來發行說明使用的公開 Help 網址。雙語計畫 012 已移除，下一個為計畫 018。既有本機測試結果、review 發現與驗證限制保留於上方。
 
 最後視覺微調：場景的 Apple 圖示與左側選單整組右移 12 SVG 單位（場景寬 820 px 時約 6 px），保留原有間距，並重新產生社群預覽圖。`pnpm site:check` 通過（12 項測試、Astro 零診斷、4 頁、59 個站內參照與 13 個外部 URL）；`pnpm check` 通過（342 項測試及正式建置）。`pnpm site:screenshots` 的四頁在 320、390、1440 px 均無水平溢出，重新產生的場景圖亦已目視確認。文件連結檢查與 `git diff --check` 通過。
+
+## 更新檢查實作 — 2026-09-20
+
+Plan 018 已在 macOS 26.6.2 arm64 本機實作，以 `45a7cb3540d4ee1b5b484e5549609e28abba3e3b` 加未提交變更為基礎。`pnpm check` 通過 23 個檔案、382 個測試、TypeScript 檢查與正式建置。涵蓋新版／相等／舊版／無效語意版本、feed 缺欄位、架構／平台不符、HTTP／逾時備援、關閉偏好、跨重開的檢查間隔、錄製延後（含保存設定或請求途中開始錄製）、重疊、結束取消及雙語選單狀態。`pnpm site:check` 通過 15 個測試、Astro 診斷、線上 manifest 驗證、建置 feed 與 0.1.2 manifest 完整比對、59 個內部參照及 13 個外部 URL 檢查。
+
+原生驗收受阻：computer use 無法讀取既有 `/Applications/RecordStuff.app`，回傳 `-10005 timeoutReached`。無法確認錄製狀態，因此保留 App 執行，未結束或重建。本次未操作安裝舊版對新版 feed 的瀏覽器開啟、原生錄製延後／離線選單、偏好保存，也未測擷取、音訊、存檔或播放。未部署 feed 或發布 App；Plan 018 保留原生驗收與交付待辦，真正已發布版本升級需有新版本後才能證明。本機 log／報告位於 `docs/verification/measurements/2026-09-20-update-check/`（gitignored）。
+
+另以 Node 直接呼叫 `fetchVersion` 實測線上備援：網站 `/release.json` 回傳 HTTP 404（尚未部署）、GitHub latest 回傳 HTTP 200，檢查器取得 `0.1.2`。這是網路檢查，不代表原生 UI 驗收通過。
+
+Opus 5 第一輪提出五項 findings。F1（Medium，GitHub 請求未明定標頭）拒絕：正式網路函式已實際取得 GitHub HTTP 200，未重現所稱故障。F2（Low/Medium，未來時間戳壓住檢查）與 F3（Low，手動檢查依賴設定寫入）接受並加入回歸測試。F4（Low，部署略過 feed 驗證）接受：檢查器支援 `--dir`，在部署前驗證 Vercel 產物。F5（Low，未驗證端點分支缺測試）接受：獨立程序測試實際端點在已驗證／缺少／無效旗標下的輸出，部署檢查器也拒絕缺失、版本不符與預覽 feed。這些檢查不代表原生 UI 通過。
+
+Opus 5 第二輪確認第一輪判定成立，另提出三項 Low，皆接受：網站隱私清單未交代對外檢查（`website/src/content/site.ts`）；架構總覽及翻譯未更新資料邊界（`docs/system-design/overview.md` 與繁中版）；正式傳輸使用 Node fetch，未採用支援系統代理的 Electron 網路層（`src/main/index.ts`）。文案已交代 feed、備援、關閉選項及手動安裝，App 改為注入 Electron `net.fetch`。最後修正後再次通過 `pnpm check` 的 382 個測試與型別／建置，以及 `pnpm site:check` 的 15 個測試和所有建置／feed／連結檢查。另以暫存 user-data 目錄的獨立 Electron 程序實測最終傳輸：網站 404 → GitHub 200 → 版本 0.1.2，exit 0；沒有存取既有 App 或錄製。所選 API 支援系統代理／PAC，但未使用實際代理環境驗證。已達兩輪 review 上限，最後修正由 Codex 驗證，未送第三輪。CLI 最終訊息僅有摘要，因此完整本機審查紀錄另存 `opus-pass2-full.txt`。
+
+## 更新驗收自動化與人工後續 — 2026-09-20
+
+先前 computer-use 逾時後，維護者已退出 App，並完成人工驗收本機已簽章候選包：目前版本／時間顯示、英文與啟動檢查偏好於重啟後保存、關閉偏好仍能手動檢查、錄製時更新選項停用、Stop／REC 正常、存檔後恢復操作，以及影片畫面／聲音播放正常。另以暫時調低版本且延遲回應的候選包確認：錄製期間隱藏結果，存檔後顯示新版，瀏覽器開啟正確下載頁。以上是維護者回報的原生驗收，並非自動原生點擊。維護者免除真實斷網驗收；公開 feed 部署與已發布版本的升級仍未驗證。
+
+`pnpm acceptance:updates` 已能執行隔離安裝包的 handler／model 整合驗收與真實快捷鍵錄影；前置條件、範圍與退出碼見[工具指南](../system-design/tooling.md#更新功能驗收)。`pnpm check` 通過 24 個檔案的 389 項測試及型別／建置。只測邏輯的執行通過。第一次完整執行正確因音訊素材守門失敗（第一段 10 次閃光、未偵測到提示音；第二段 11／11）；影片解碼與錄製狀態斷言通過，清理保留原有設定。第一段缺少標記的原因未獲證實。維護者確認其他聲音已停止後，完整重跑通過全部 11 組必要檢查，包含退出／清理與原始碼／設定保護。
+
+| 最終真實錄影 | 長度 | 畫面 | 聲音 | 素材標記 | 完整性 |
+| --- | --- | --- | --- | --- | --- |
+| 第一段 | 10.5895 秒 | 1920×1080 H.264 | 48 kHz 雙聲道 AAC；RMS −27.3／−27.3 dBFS | 10 次閃光／10 次提示音 | 7 項判定通過；完整解碼通過 |
+| 第二段 | 10.7727 秒 | 1920×1080 H.264 | 48 kHz 雙聲道 AAC；RMS −26.6／−27.4 dBFS | 11 次閃光／11 次提示音 | 7 項判定通過；完整解碼通過 |
+
+要求設定為 standard／source／30 fps。兩段分別驗證錄製中請求檢查，以及已有請求的結果在下一段錄製中回傳；更新操作停用、Stop 位置與 REC 標題不變，存檔後才顯示結果。這些 UI 斷言檢查實際 handler／model，不檢查原生選單像素。驅動器攔截下載 URL，並以可控傳輸回應取代網路請求，不更改網路連線。主觀播放、保真度、影格時序、長時間同步與實體影音延遲不在判定範圍。測試 App 與素材瀏覽器已退出；真實設定與原始碼入口／package 雜湊不變。未加入正式 App 測試入口，未安裝或發布。
+
+本機證據保留於 `measurements/2026-09-20T13-32-09-101Z-updates-9VF5g4/`（只測邏輯）、`measurements/2026-09-20T13-34-15-543Z-updates-Cw8hBk/`（第一次完整執行失敗）與 `measurements/2026-09-20T13-37-57-101Z-updates-g9HHOz/`（完整通過），包含報告、請求／回應、簽章記錄、影片及 `recording-verify.json`。人工後續紀錄位於 `measurements/2026-09-20-update-manual/`。原始產物由 gitignore 排除，此處摘要保留結果與限制。
+
+### Review 修正與最終重跑
+
+Opus 5 第一輪提出七項，全部接受：連續錄影間的存檔通知遮擋、累積 fixture 錯誤導致錯報 App 仍在執行、缺少失敗時 releases 連結驗證、影格時序／影音偏移未判定、錯誤回應未以原子方式寫入、既存輸出目錄的退出碼不明確，以及逾時取消次數未按案例計算。Fixture 現在攔截存檔通知（通知顯示不在此 runner 範圍）、原子寫入錯誤回應，並允許退出時帶著先前錯誤仍觀察正常退出。Runner 驗證兩種連結、判定同步與影格時序且至少要有五組配對標記、比較取消增量，並以 exit 2 拒絕且保留既存輸出目錄。退出案例會先刻意觸發 fixture 錯誤。新增 CLI 回歸測試曾找出暫時直接引入 production module 與 Node strip-only 模式不相容；已移除該 import，才完成下列通過檢查。
+
+最終 `pnpm check`：24 個檔案的 390 項測試及型別／建置通過。修正後完整重跑通過全部 11 組必要檢查，包含注入錯誤後退出。兩段影片長 10.6661／10.7571 秒，皆為 1920×1080 H.264、48 kHz 雙聲道 AAC、29.28 fps；分別有 11／10 組閃光提示音配對，聲音延遲中位數 60.5／90.6 ms，量測掉幀為零，每段十項媒體判定均通過。未判定長時間漂移、CPU、稀疏素材音訊碼率及主觀保真度。原始碼／設定不變，測試 App 已退出。最終證據：`measurements/2026-09-20T13-55-46-607Z-updates-U7nSds/`；檢查／review 紀錄：`measurements/2026-09-20-update-automation/`。先前證據完整保留。
+
+Opus 5 第二輪確認前七項修正，另提出五項，全部接受：退出末期錯誤可能未檢查、通知攔截缺少接線保護、CLI 回歸測試在目錄防護退化時可能意外啟動驗收、ready／stopped 快照未原子寫入，以及不足三組同步配對被寫成零組。Runner 現在核對最終預期錯誤清單、插樁時驗證正式通知呼叫、目錄測試直接測純檔案 helper 而不啟動 CLI、啟停快照用暫存檔更名，並準確說明同步統計不足。`pnpm check` 再次通過 390 項測試及型別／建置；既存完整錄影證據符合最終退出／媒體斷言。已達兩輪 review 上限，這些最後修改由 Codex 驗證，未送第三輪或再次錄影。完整 review 位於自動化證據目錄的 `opus-pass1-full.txt` 與 `opus-pass2.txt`。
+
+第二輪修正後的最終安裝包邏輯驗收也通過（10 組必要檢查，明確不錄影）：`measurements/2026-09-20T14-04-45-217Z-updates-1js1Dw/report.md`。測試 App 已退出，原始碼／使用者設定不變。
+
+## 公開更新 feed 部署前檢查 — 2026-09-20
+
+`pnpm site:check` 通過：15 項測試、Astro 診斷（39 個檔案，無錯誤／警告）、已發布 0.1.2 manifest 線上驗證、建置 feed 完整比對，以及 59 個內部引用／13 個外部網址。14:18 UTC 對 `https://record.ericts.com/release.json` 的 HTTPS GET 回傳 HTTP 404；正式 feed 交付仍待辦。本次未啟動 App 或測試錄影。
+
+Vercel 唯讀檢查確認既有 `recordstuff` 專案、根目錄 `website` 與已驗證的 `record.ericts.com` 網域。儲存庫 Actions secrets 清單為空。本機 CLI 登入有效；維護者要求只透過 CI/CD 部署後，已移除剛下載的本機專案／環境檔案。未部署、commit、push、建立 tag 或發布版本。維護者將設定儲存庫 Actions secrets `VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID`，確認 feed 與 workflow 變更已在 main，再手動觸發 `macOS release`，使用既有 tag `v0.1.2` 並啟用 `deploy-website=true`。部署後仍需驗證公開 JSON／內容／快取標頭，以及正式 App 傳輸直接取得 feed 而未走 GitHub 備援，才結束 018。
+
+本次提交前 `pnpm check` 通過 24 個檔案的 395 項測試、型別檢查與正式建置；`git diff --check` 亦通過。未另行執行原生 UI 或錄影驗收。

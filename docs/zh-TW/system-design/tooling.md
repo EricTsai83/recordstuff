@@ -54,6 +54,7 @@ pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 pnpm verify -- /absolute/path/any-desktop-recording.mp4 --screen 1920x1080   # 只驗完整性
 pnpm acceptance -- --seconds 10        # 對執行中的 App 做無人值守快捷鍵驗收
+pnpm acceptance:notification -- --install --clicks 2  # 通知日常 smoke：兩次點擊
 pnpm acceptance:notification -- --install          # 點「已儲存」通知 → Finder 置前；約 1 分鐘；本次把建置好的 App 換進 /Applications
 pnpm acceptance:notification -- --install --full   # 三種 Finder 狀態、英文；估計約 3 分鐘
 pnpm matrix -- quick
@@ -80,6 +81,19 @@ matrix 只支援 macOS 開發環境。預設以 Chrome app 模式全螢幕在主
 10 分鐘基準已做過，long 改 3 分鐘是使用者決定，不更改舊結果。
 
 Autorecord 存檔後立即退出，因此 macOS 待送的儲存通知會被退出流程取消；橫幅不屬於 autorecord 完成條件。
+
+### 選擇驗收範圍
+
+App 變更執行 `pnpm check`，並對建置後的 App 做一次基本錄影驗收。播放沿用該錄影與驗證報告，不重跑相同媒體分析；依變更追加檢查：
+
+| 變更 | 追加檢查 |
+| --- | --- |
+| 更新功能 | `pnpm acceptance:updates`；feed 篩選或逾時變更加 `--full` |
+| 通知／Finder 定位 | 日常 smoke 用 `pnpm acceptance:notification -- --install --clicks 2`；偶發問題與通知修正保留五次／完整矩陣 |
+| 擷取／品質／時序 | 對應的 `pnpm matrix` 子集；音質受影響時追加音訊診斷 |
+| 語言／設定／啟動 | 原生 UI 設定操作與重開保存檢查 |
+
+Updates 使用插樁副本，matrix 使用 autorecord，兩者都不能代替正常建置 App 的驗收。通知驗收保留安裝路徑與不同 Finder 狀態的覆蓋。同一未變更檔案與相同驗證範圍可共用媒體證據；不同產物或 UI 操作不可互相替代。素材參數、log 游標與有時限的 log 等待共用 `scripts/lib/acceptance.mts` 與 `scripts/lib/acceptance-runtime.mts`；各 runner 保留自己的 App 生命週期與判定。快捷鍵與通知 runner 共用中斷錄影的收尾，等待存檔，成功送出停止命令後不再次切換快捷鍵。
 
 ### 通知驗收
 
@@ -168,3 +182,18 @@ v0.1.0 已在本機完成瀏覽器下載／安裝驗證，Gatekeeper 需要單�
 Release 資訊只從已提交的 manifest 渲染：沒有瀏覽器端 GitHub API 呼叫、沒有執行時依賴。每個下載控制項都指向已驗證的 DMG 連結，旁邊提供 Releases 頁作為可見 fallback，因此過期的 manifest 會讓建置失敗，而不是渲染錯誤的按鈕。只有 `pnpm site:build` 可以設定 `SITE_MANIFEST_VERIFIED`；`astro dev` 與 `build:offline` 一律顯示頁尾警語。首頁視覺是內嵌 SVG（`website/src/components/DesktopScene.astro`）：露營地的 Mac 桌面，選單列以十九秒 CSS 循環（開頭靜止三秒、緩慢的鏡頭推拉、停止前的指示標註、延遲約半秒才彈出的通知、最後停留）演出產品故事——游標靠近時整個桌面向選單列圖示推近、游標點擊 RecordStuff 環形圖示、環變成實心圓點並在旁邊顯示「REC」（與 App 完全一致：tray-model.ts 切換 template 圖示並設定標題；不閃爍）、鏡頭拉回、手繪風標註（Kalam 手寫字型、雙筆觸草稿箭頭、無外框）顯示「Click again to stop recording」、游標點擊後約半秒，真實格式的「Saved <時間戳>.mp4」通知才彈出（與 App 的 `SAVED_NOTIFICATION_DELAY_MS` 一致）。地景為低多邊形（`src/components/scenes/FacetLandscape.astro`），上方是共用的選單列；星空由 `src/lib/stars.ts` 以固定種子產生。不需任何圖片請求，只動 transform／opacity；捲出畫面時 hero 會暫停它，`prefers-reduced-motion` 下靜態顯示最後一幀。依維護者決定沒有可見的暫停控制，因此對未開啟 reduced-motion 的使用者而言，WCAG 2.2.2（超過五秒的動態內容需可暫停／停止／隱藏）未達成。選單列文字與檔名格式與 App 一致。
 
 CI 從 repository 根目錄執行 Vercel CLI，平台專案的 Root Directory 設為 `website/`。只透過 `vercel build --prod` 建置一次（內含網站的線上驗證），再以 `website/scripts/check-links.mts --dir .vercel/output/static --offline` 檢查 `.vercel/output/static`，最後用 `--prebuilt` 部署同一份產物。本機 `site:check` 則檢查重新建置的 `website/dist/`。
+
+
+### 更新功能驗收
+
+在 RecordStuff 已結束時執行 `pnpm acceptance:updates`。需要 macOS arm64、Node 24、既有本機簽章身分、Chrome、ffmpeg／ffprobe，以及 System Events 輔助使用權限。會在主螢幕進行兩段短錄影；擷取期間停止其他音訊並避免操作桌面。腳本不會結束既有 RecordStuff、不取代安裝版、不斷網，也不寫入真正的使用者設定。
+
+Runner 將原始碼與建置資源複製至專用報告目錄，只修改該副本，再執行 `pnpm start:app`。沿用正式更新 action handler、AppTray context、SettingsStore、Recorder、隱藏擷取主機與 shutdown 流程。只在測試副本中替換固定 HTTP 回應與時鐘，隔離設定／log／錄影，並攔截 `shell.openExternal` 核對 URL。正常建置沒有測試命令通道；若正式程式接線改變，anchor 檢查會停止，避免測到過期的替代流程。
+
+預設案例涵蓋檢查中／重疊、相同／新版、GitHub 備援、失敗後恢復、語言／偏好跨程序重開、已到期但關閉啟動檢查、24 小時間隔（含失敗嘗試）、錄製中延後請求、存檔後才顯示結果，以及請求中結束。`--full` 另測舊版、無效／預覽／不相容 feed 與實際逾時取消；這些邊界已有單元測試，不必每次 smoke 都重跑。報告會記錄模式與所選 feed 情境。真實擷取沿用 System Events 全域快捷鍵、Chrome 固定素材、媒體完整性檢查與閃光／嗶聲門檻。兩種模式都保留兩段各約十秒的錄影，分別測延後請求與延後顯示結果。權限／工具缺失或素材受背景聲音污染，都不算通過。
+
+`--logic-only` 明確略過真實擷取。`--require-native-ui` 把原生 UI 未驗證列為必要缺口（exit 2）；預設將它列在必要範圍之外。Handler／model 斷言**不代表**點過原生 Tray、確認瀏覽器畫面、聆聽播放、首次授權或公開版升級。現有 computer-use 無視窗 Tray 限制仍保留；不把呼叫 action handler 宣稱為滑鼠點擊。
+
+報告位於 `docs/verification/measurements/<timestamp>-updates-*/`；`--out <新目錄>` 可指定路徑，既有目錄會被拒絕。`report.json`／`report.md` 列出每個必要案例，包含先前失敗後未執行的項目；保留請求／回應、事件、建置／簽章輸出、來源／產物雜湊與錄影驗證。Exit 0 表示所述範圍全部必要案例通過、1 表示失敗、2 表示受阻／不完整。SIGINT／SIGTERM 會要求收尾：測試 App 透過正式 shutdown 停止並保存錄影，只關閉專用素材瀏覽器 profile；無法安全退出的測試程序保留並回報清理失敗，不使用全域 kill。App 退出後才移除來源工作目錄，錄影與證據保留。
+
+此隔離 fixture 也攔截存檔通知並記錄事件，避免第一段的通知遮擋第二段測試素材；通知顯示不在這項驗收範圍。影音分析會判定影格時序與閃光／提示音偏移，至少須有 5 組配對標記；短片不判定長時間同步漂移。已存在的 `--out` 目錄會保留原內容，以明確訊息及退出碼 2 拒絕，不寫入報告。

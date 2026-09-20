@@ -9,7 +9,7 @@
  * re-verified so a design preview cannot be mistaken for a publishable site.
  */
 
-import manifestJson from "../../release-manifest.json";
+import manifestJson from "../../release-manifest.json" with { type: "json" };
 import {
   LATEST_RELEASE_URL,
   RELEASES_URL,

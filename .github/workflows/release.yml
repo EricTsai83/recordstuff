@@ -253,6 +253,7 @@ jobs:
           # Run from the repository root: the Vercel project's Root Directory is website/.
           npx --yes vercel@59.23.2 pull --yes --environment=production --token "$VERCEL_TOKEN"
           npx --yes vercel@59.23.2 build --prod --token "$VERCEL_TOKEN"
+          node website/scripts/check-release.mts --dir .vercel/output/static
           node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON website/scripts/check-links.mts --dir .vercel/output/static --offline
           url="$(npx --yes vercel@59.23.2 deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN")"
           echo "Deployed $url"

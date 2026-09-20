@@ -14,7 +14,7 @@ Updated: 2026-09-20. v0.1.2 is published from tag `v0.1.2` with the simplified D
 
 | Order | Plan | Status | Completion target |
 | --- | --- | --- | --- |
-| Next | [018 In-app update check](018-app-update.md) | Ready to execute; replaces the deferred 015 assessment, which the maintainer closed on 2026-09-20 by choosing to build the check | A tray check against the published version feed that points at the download; installation stays manual |
+| Next | [018 In-app update check](018-app-update.md) | Local manual acceptance and automated integration/real capture passed; public feed delivery pending | A tray check against the published version feed that points at the download; installation stays manual |
 
 Publishing is automated by tag push; installed-app updates stay manual. 018 adds a check that reports a newer version and links to it; it does not authorize downloading or installing an update from inside the app. Public release notes stay English-only; app UI and reader guides remain bilingual. Published release bytes must not be overwritten.
 

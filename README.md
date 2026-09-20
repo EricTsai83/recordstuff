@@ -22,7 +22,7 @@ SHA-256: `2de49bbd552e46934ef4573ca8c8b103e3a0b1334dd12b2022dee1f332f7fc7f`.
 
 0.1.2 was built, signed, verified and published by CI from tag `v0.1.2`; recording, playback and permission retention were checked locally on the same source before tagging. See [release evidence](docs/verification/releases/0.1.2.md). Clicking a saved notification selects the file in Finder, but may leave Finder behind other windows.
 
-Download the arm64 DMG and drag RecordStuff onto the Applications folder shown in the disk image; the DMG contains only the app and that Applications shortcut. The [installation guide](resources/INSTALL.md) covers first launch, manual update (quit, download, replace at the same path; settings are kept) and removal (quit, move the app to Trash; recordings, settings and logs stay unless you delete them). There is no automatic updater or uninstaller. Recipients do not need Node, pnpm, FFmpeg, or certificates. Because the app is not notarized, first launch may require **System Settings → Privacy & Security → Open Anyway**. A warning-free first launch is not promised; see [Apple's guidance](https://support.apple.com/102445).
+Download the arm64 DMG and drag RecordStuff onto the Applications folder shown in the disk image; the DMG contains only the app and that Applications shortcut. The [installation guide](resources/INSTALL.md) covers first launch, manual update (quit, download, replace at the same path; settings are kept) and removal (quit, move the app to Trash; recordings, settings and logs stay unless you delete them). The tray offers Check for updates… and an optional launch check (on by default, at most once per 24 hours). Installation remains manual; there is no automatic installer or uninstaller. Recipients do not need Node, pnpm, FFmpeg, or certificates. Because the app is not notarized, first launch may require **System Settings → Privacy & Security → Open Anyway**. A warning-free first launch is not promised; see [Apple's guidance](https://support.apple.com/102445).
 
 ## Use
 
@@ -93,7 +93,7 @@ plans/                  Unfinished delivery work only
 website/                Official website (Astro, independent package); see docs/system-design/tooling.md
 ```
 
-App recordings and settings stay local. No upload backend, account, telemetry, or automatic updater is implemented. Errors preserve partial recordings where possible; recovery is not guaranteed after every crash or power loss.
+App recordings and settings stay local. Update checks contact the static website feed, with GitHub Releases as fallback, without installation identifiers or telemetry. No upload backend, account, or automatic installer is implemented. Errors preserve partial recordings where possible; recovery is not guaranteed after every crash or power loss.
 
 ## License
 

@@ -118,6 +118,7 @@ export const platformBoundary = {
 export const privacy = [
   "Recordings, settings and logs stay on your Mac in the locations listed under Help.",
   "The app has no upload backend, account, telemetry or crash reporting.",
+  "Update checks contact the website version feed, with GitHub Releases as fallback, without installation identifiers. You can turn off the default-on launch check in the app menu; manual checks remain available.",
   "This website is static and sets no cookies. Downloads are served by GitHub Releases.",
 ] as const;
 

@@ -37,8 +37,7 @@ installation guide; it is linked from every GitHub release.
 
 ## Update manually
 
-RecordStuff does not update itself and does not check for updates. To install
-a new version:
+Use **Check for updates…** in the tray menu to check for a newer release and open its download page. **Check for updates on launch** is on by default and checks at most once per 24 hours; you can switch it off. Checks and results wait while recording. A failed manual check offers the releases page; launch failures only go to the log. There is no automatic download or installation. To install a new version:
 
 1. Stop any recording, then choose Quit from the RecordStuff menu bar icon.
 2. Download the new DMG from the [latest release](https://github.com/EricTsai83/recordstuff/releases/latest)

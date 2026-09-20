@@ -7,6 +7,13 @@ export function isLanguage(value: unknown): value is Language {
 }
 
 export const ZH_TW = {
+  "Check for updates…": "檢查更新…",
+  "Checking for updates…": "正在檢查更新…",
+  "Update available: {version}": "有可用更新：{version}",
+  "Up to date (checked {time})": "已是最新版本（檢查時間：{time}）",
+  "Update check failed — open releases": "更新檢查失敗 — 開啟版本發布頁",
+  "Check for updates on launch": "啟動時檢查更新",
+  On: "開啟",
   Economy: "精省",
   Standard: "標準",
   High: "高品質",

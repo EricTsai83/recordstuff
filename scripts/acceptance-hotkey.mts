@@ -17,6 +17,8 @@
  * page's sparse beeps is reported, not judged (see docs/system-design/tooling.md).
  * macOS only (`open`, `osascript`, `pgrep`). Nothing here ships with the app.
  */
+import { setTimeout as delay } from "node:timers/promises";
+import { command, finishRecording, waitForLog } from "./lib/acceptance-runtime.mts";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -26,9 +28,10 @@ import { fileURLToPath } from "node:url";
 import {
   acceleratorToKeystroke,
   currentState,
-  findAfter,
+  nextLogIndex,
   keystrokeScript,
   lineTime,
+  materialOpenArgs,
   registeredAccelerator,
 } from "./lib/acceptance.mts";
 import { hasTool, syncMarkers } from "./lib/media-tools.mts";
@@ -40,7 +43,6 @@ const LOG_PATH = path.join(os.homedir(), "Library/Logs/recordstuff/recordstuff.l
 const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
 /** A fresh profile per run: a reused one that was killed restores its last window and ignores `--kiosk`. */
 const MATERIAL_PROFILE = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-acceptance-profile-"));
-const UI_TIMEOUT_MS = 30_000;
 
 let seconds = 10;
 let openMaterial = true;
@@ -61,13 +63,14 @@ if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 600) {
   process.exit(2);
 }
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+const controller = new AbortController();
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, () => controller.abort(new Error(`run interrupted by ${signal}`)));
+}
+const sleep = async (ms: number): Promise<void> => { await delay(ms, undefined, { signal: controller.signal }); };
 const readLines = (): string[] => fs.readFileSync(LOG_PATH, "utf8").split(/\r?\n/);
 /** Index at which the next log line will appear (the split leaves a trailing "" after the final newline). */
-const nextIndex = (): number => {
-  const lines = readLines();
-  return lines[lines.length - 1] === "" ? lines.length - 1 : lines.length;
-};
+const nextIndex = (): number => nextLogIndex(readLines());
 const now = (): string => new Date().toISOString();
 
 class AcceptanceFailure extends Error {}
@@ -83,23 +86,16 @@ function appRunning(): string | undefined {
   return pid ? pid : undefined;
 }
 
-function sendKey(script: string): string {
+async function sendKey(script: string): Promise<string> {
+  controller.signal.throwIfAborted();
   const at = now();
-  const r = spawnSync("osascript", ["-e", script], { encoding: "utf8" });
-  if (r.status !== 0) fail(`osascript failed (System Events needs Accessibility access for this terminal): ${r.stderr.trim()}`);
+  // Finish bounded delivery before handling cancellation, so cleanup knows whether stop was sent.
+  await command("osascript", ["-e", script], AbortSignal.timeout(5000), 5000);
   return at;
 }
 
-async function waitFor(from: number, pattern: RegExp, what: string): Promise<{ line: string; index: number }> {
-  const deadline = Date.now() + UI_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const lines = readLines();
-    const hit = findAfter(lines, from, pattern);
-    if (hit) return { line: lines[hit.index] ?? "", index: hit.index };
-    await sleep(250);
-  }
-  const tail = readLines().slice(from).filter(Boolean).slice(-6).join("\n  ");
-  return fail(`timed out after ${UI_TIMEOUT_MS / 1000} s waiting for ${what}. Log since the key press:\n  ${tail || "(nothing)"}`);
+function waitFor(from: number, pattern: RegExp, what: string): Promise<{ line: string; index: number }> {
+  return waitForLog(readLines, from, pattern, what, controller.signal);
 }
 
 async function main(): Promise<void> {
@@ -118,6 +114,8 @@ async function main(): Promise<void> {
   fs.mkdirSync(dir, { recursive: true });
 
   let material: ReturnType<typeof spawn> | undefined;
+  let recordingFrom: number | undefined;
+  let stopSent = false;
   const events: string[] = [];
   const note = (s: string): void => {
     events.push(`${now()} ${s}`);
@@ -127,14 +125,7 @@ async function main(): Promise<void> {
     if (openMaterial) {
       material = spawn(
         "open",
-        [
-          "-na", "Google Chrome", "--args",
-          // `--app` (no tabs or toolbar) plus `--start-fullscreen`: Chrome 153 opened a
-          // plain window when given `--kiosk` alone while another Chrome was running.
-          `--user-data-dir=${MATERIAL_PROFILE}`, `--app=file://${MATERIAL}?auto=1`, "--start-fullscreen",
-          "--kiosk", "--window-position=0,0", "--autoplay-policy=no-user-gesture-required",
-          "--no-first-run", "--no-default-browser-check", "--disable-features=Translate",
-        ],
+        materialOpenArgs(MATERIAL, MATERIAL_PROFILE),
         { stdio: "ignore" },
       );
       note("opened test material in Chrome kiosk on the primary display; waiting 5 s");
@@ -144,7 +135,8 @@ async function main(): Promise<void> {
     }
 
     const before = nextIndex();
-    const sentStart = sendKey(script);
+    recordingFrom = before;
+    const sentStart = await sendKey(script);
     note(`sent ${accelerator} via System Events (start)`);
     const pressed = await waitFor(before, /hotkey: \S+ pressed/, "`hotkey: … pressed`");
     const recording = await waitFor(pressed.index, /state → recording/, "`state → recording`");
@@ -153,11 +145,13 @@ async function main(): Promise<void> {
 
     await sleep(seconds * 1000);
     const beforeStop = nextIndex();
-    sendKey(script);
+    await sendKey(script);
+    stopSent = true;
     note(`sent ${accelerator} via System Events (stop)`);
     await waitFor(beforeStop, /hotkey: \S+ pressed/, "second `pressed`");
     const saved = await waitFor(beforeStop, /\] saved (.+)$/, "`saved <path>`");
     const file = /\] saved (.+)$/.exec(saved.line)?.[1] ?? fail("saved line without a path");
+    recordingFrom = undefined;
     note(`saved ${file}`);
 
     if (material) {
@@ -212,8 +206,17 @@ async function main(): Promise<void> {
     if (guards.length > 0) fail(guards.join("; "));
     console.log("✅ shortcut acceptance passed");
   } finally {
-    if (material) spawnSync("pkill", ["-f", MATERIAL_PROFILE]);
-    fs.rmSync(MATERIAL_PROFILE, { recursive: true, force: true });
+    try {
+      if (recordingFrom !== undefined) {
+        await finishRecording({
+          read: readLines, from: recordingFrom, stopSent, signal: AbortSignal.timeout(30_000),
+          stop: () => command("osascript", ["-e", script], AbortSignal.timeout(5000), 5000),
+        });
+      }
+    } finally {
+      if (material) spawnSync("pkill", ["-f", MATERIAL_PROFILE]);
+      fs.rmSync(MATERIAL_PROFILE, { recursive: true, force: true });
+    }
   }
 }
 

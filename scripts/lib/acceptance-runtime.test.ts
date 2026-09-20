@@ -1,9 +1,9 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it, vi } from "vitest";
-import { command, finishRecording } from "./notification-runtime.mts";
+import { command, finishRecording, waitForLog } from "./acceptance-runtime.mts";
 
 
-describe("notification subprocess bounds", () => {
+describe("acceptance subprocess bounds", () => {
   it("cancels a running child even if it ignores SIGTERM", async () => {
     const controller = new AbortController();
     const pending = command(process.execPath, ["-e", 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000)'], controller.signal);
@@ -63,5 +63,25 @@ describe("interrupted recording cleanup", () => {
     await delay(50);
     controller.abort();
     await assertion;
+  });
+});
+
+describe("session log waits", () => {
+  it("ignores a previous save and observes a newly appended event", async () => {
+    const lines = ["[t] saved old.mp4", "[t] state → recording"];
+    const pending = waitForLog(() => lines, 1, /saved /, "save", new AbortController().signal, 1000);
+    lines.push("[t] saved new.mp4");
+    await expect(pending).resolves.toEqual({ index: 2, line: "[t] saved new.mp4" });
+  });
+
+  it("bounds waiting with this session's diagnostic tail", async () => {
+    await expect(waitForLog(() => ["old error", "new event"], 1, /saved /, "save", new AbortController().signal, 10))
+      .rejects.toThrow("Log:\n  new event");
+  });
+
+  it("honours cancellation even when a matching event already exists", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("cancelled"));
+    await expect(waitForLog(() => ["saved file.mp4"], 0, /saved /, "save", controller.signal)).rejects.toThrow("cancelled");
   });
 });

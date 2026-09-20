@@ -31,7 +31,7 @@ The delivery target is a downloadable, self-signed macOS DMG. Recipients need no
 
 ## Data and product boundaries
 
-Recordings and settings stay local. There is no account, cloud storage, upload service, telemetry, recording library, editor, or automatic updater. The application exposes no remote recording API. Packaged builds ignore the development-only automatic-recording environment variable.
+Recordings and settings stay local. There is no account, cloud storage, upload service, telemetry, recording library, editor, or automatic download/installation. Update checks contact the website version feed, with GitHub Releases as fallback, without installation identifiers; the default-on launch check can be disabled. The application exposes no remote recording API. Packaged builds ignore the development-only automatic-recording environment variable.
 
 Region/window selection, global shortcuts, pause/resume, file segmentation, FFmpeg repair, and dedicated sleep/display-removal handlers are not implemented or required for the current delivery. Add a scoped plan only when a concrete requirement arises.
 

@@ -13,7 +13,7 @@
     "build:offline": "SITE_MANIFEST_OFFLINE=1 astro build",
     "preview": "astro preview",
     "manifest": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/manifest.mts",
-    "check": "astro check && pnpm build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-links.mts",
+    "check": "astro check && pnpm build && node scripts/check-release.mts && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-links.mts",
     "screenshots": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/screenshots.mts",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/*.test.mts"
   },

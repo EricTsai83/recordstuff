@@ -156,7 +156,7 @@ Install: open the DMG and drag RecordStuff onto the Applications folder, then ej
 
 The app is self-signed and not notarized by Apple. First launch may require System Settings → Privacy & Security → Open Anyway. Recipients do not install certificates. Then allow Screen & System Audio Recording and relaunch when macOS asks.
 
-Update manually: stop recording, quit RecordStuff from its menu, download the new DMG and drag the app into Applications, replacing the existing copy. The signing identity is unchanged, so settings and permissions carry over. There is no automatic updater.
+Update manually: stop recording, quit RecordStuff from its menu, download the new DMG and drag the app into Applications, replacing the existing copy. The signing identity is unchanged, so settings and permissions carry over. Use Check for updates… in the app menu to find new releases; the optional launch check runs at most once per 24 hours. Downloads and installation remain manual.
 
 Remove: quit the app and move RecordStuff.app from Applications to the Trash. Recordings, settings and logs stay on disk; the guide explains optional cleanup.
 

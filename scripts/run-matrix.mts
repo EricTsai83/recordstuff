@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { materialOpenArgs } from "./lib/acceptance.mts";
 /**
  * `pnpm matrix -- <all|quick|levels|fps|long> [--no-open-material] [--screen WxH] [--dry-run]`
  *
@@ -285,13 +286,7 @@ async function main(): Promise<void> {
     // one the app records; without this, Chrome may pick another screen.
     material = spawn(
       "open",
-      [
-        "-na", "Google Chrome", "--args",
-        // `--app` + `--start-fullscreen`: Chrome 153 ignored `--kiosk` alone while another Chrome was running.
-        `--user-data-dir=${MATERIAL_PROFILE}`, `--app=file://${MATERIAL}?auto=1`, "--start-fullscreen",
-        "--kiosk", "--window-position=0,0", "--autoplay-policy=no-user-gesture-required",
-        "--no-first-run", "--no-default-browser-check", "--disable-features=Translate",
-      ],
+      materialOpenArgs(MATERIAL, MATERIAL_PROFILE),
       { stdio: "ignore" },
     );
     console.log("Opened test material in Chrome kiosk on the primary display; waiting 5 seconds for fullscreen");

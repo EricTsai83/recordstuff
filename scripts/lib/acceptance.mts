@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+
 /**
  * Pure helpers for `pnpm acceptance` (scripts/acceptance-hotkey.mts): read the
  * app log to learn which global shortcut the running app registered, turn an
@@ -88,4 +90,22 @@ export function lineTime(line: string): Date | undefined {
   if (!m) return undefined;
   const t = new Date(m[1] ?? "");
   return Number.isNaN(t.getTime()) ? undefined : t;
+}
+
+/** The split of a newline-terminated log includes an empty final element. */
+export function nextLogIndex(lines: readonly string[]): number {
+  return lines[lines.length - 1] === "" ? lines.length - 1 : lines.length;
+}
+
+/** Shared fullscreen/autoplay setup; callers own the profile and process lifetime. */
+export function materialOpenArgs(file: string, profile: string): string[] {
+  const url = pathToFileURL(file);
+  url.searchParams.set("auto", "1");
+  return [
+    "-na", "Google Chrome", "--args", `--user-data-dir=${profile}`, `--app=${url.href}`,
+    // Chrome can ignore --kiosk alone when another Chrome instance is running.
+    "--start-fullscreen", "--kiosk", "--window-position=0,0",
+    "--autoplay-policy=no-user-gesture-required", "--no-first-run",
+    "--no-default-browser-check", "--disable-features=Translate",
+  ];
 }

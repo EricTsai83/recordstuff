@@ -34,7 +34,8 @@
     "site:build": "pnpm --dir website build",
     "site:check": "pnpm --dir website test && pnpm --dir website check",
     "site:manifest": "pnpm --dir website manifest",
-    "site:screenshots": "pnpm --dir website screenshots"
+    "site:screenshots": "pnpm --dir website screenshots",
+    "acceptance:updates": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-updates.mts"
   },
   "devDependencies": {
     "@types/node": "^24.13.4",

@@ -22,7 +22,7 @@ SHA-256：`2de49bbd552e46934ef4573ca8c8b103e3a0b1334dd12b2022dee1f332f7fc7f`。
 
 0.1.2 由 CI 從 tag `v0.1.2` 建置、簽署、驗證並公開；錄影、播放與權限保留在打 tag 前以同一份原始碼在本機檢查。詳見[本版驗證紀錄](docs/zh-TW/verification/releases/0.1.2.md)。點擊儲存通知可定位 Finder 檔案，但 Finder 可能沒有跳到最前景。
 
-下載 arm64 DMG，把 RecordStuff 拖到磁碟映像檔中顯示的 Applications 資料夾；DMG 只有 App 與該 Applications 捷徑。[安裝指南](resources/INSTALL.zh-TW.md)涵蓋首次開啟、手動更新（結束、下載、在相同路徑取代；設定保留）與移除（結束、把 App 移到垃圾桶；錄影、設定與 log 除非自行刪除否則保留）。沒有自動更新器或解除安裝器。收件者不需要 Node、pnpm、FFmpeg 或憑證。未公證 App 首次開啟可能需要在「系統設定 → 隱私權與安全性」選「仍要打開」；不保證免提示，參見 [Apple 說明](https://support.apple.com/102445)。
+下載 arm64 DMG，把 RecordStuff 拖到磁碟映像檔中顯示的 Applications 資料夾；DMG 只有 App 與該 Applications 捷徑。[安裝指南](resources/INSTALL.zh-TW.md)涵蓋首次開啟、手動更新（結束、下載、在相同路徑取代；設定保留）與移除（結束、把 App 移到垃圾桶；錄影、設定與 log 除非自行刪除否則保留）。選單提供「檢查更新…」與可關閉的啟動檢查（預設開啟，每 24 小時最多一次）。安裝仍需手動完成，沒有自動安裝器或解除安裝器。收件者不需要 Node、pnpm、FFmpeg 或憑證。未公證 App 首次開啟可能需要在「系統設定 → 隱私權與安全性」選「仍要打開」；不保證免提示，參見 [Apple 說明](https://support.apple.com/102445)。
 
 ## 使用方式
 
@@ -82,7 +82,7 @@ pnpm audio:quality -- record /tmp/audio-run-001 --repeat 3  # 音質迴歸測試
 
 src/main 是生命週期、錄製狀態機、寫檔、權限與原生 UI；renderer 是隱藏擷取宿主；preload 只轉交 MessagePort；shared 是狀態、協定、品質及語言 catalog。scripts 放開發工具，resources 放素材與雙語安裝指南，docs/system-design 是英文正式設計，docs/zh-TW 是翻譯，docs/verification 是證據，plans 只放尚未完成工作，website 是官方網站（Astro，獨立套件，見 docs/zh-TW/system-design/tooling.md）。
 
-影片與設定留在本機；沒有雲端後端、遙測或自動更新。故障時盡力保留部分影片，不保證所有當機／斷電都可復原。
+影片與設定留在本機；更新檢查會連線至網站的靜態版本 feed，失敗時改查 GitHub Releases，不傳送安裝識別碼或遙測；沒有雲端後端或自動安裝。故障時盡力保留部分影片，不保證所有當機／斷電都可復原。
 
 ## 授權
 

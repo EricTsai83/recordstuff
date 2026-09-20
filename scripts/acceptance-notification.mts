@@ -8,7 +8,7 @@
  * Finder window creation finish their bounded command before cancellation.
  */
 import { setTimeout as delay } from "node:timers/promises";
-import { command, finishRecording } from "./lib/notification-runtime.mts";
+import { command, finishRecording, waitForLog } from "./lib/acceptance-runtime.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import {
   acceleratorToKeystroke,
   currentState,
-  findAfter,
+  nextLogIndex,
   keystrokeScript,
   registeredAccelerator,
 } from "./lib/acceptance.mts";
@@ -43,7 +43,6 @@ const INSTALLED_APP = "/Applications/RecordStuff.app";
 const BUILT_APP = path.join(REPO_ROOT, "dist/mac-arm64/RecordStuff.app");
 const LOG_PATH = path.join(os.homedir(), "Library/Logs/recordstuff/recordstuff.log");
 const SETTINGS_PATH = path.join(os.homedir(), "Library/Application Support/recordstuff/settings.json");
-const UI_TIMEOUT_MS = 30_000;
 /** How long the frontmost app is sampled after the click; the OS activation lands ~110 ms after it. */
 const SAMPLE_MS = 3000;
 
@@ -95,10 +94,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 const now = (): string => new Date().toISOString();
 const readLines = (): string[] => (fs.existsSync(LOG_PATH) ? fs.readFileSync(LOG_PATH, "utf8").split(/\r?\n/) : []);
-const nextIndex = (): number => {
-  const lines = readLines();
-  return lines[lines.length - 1] === "" ? lines.length - 1 : lines.length;
-};
+const nextIndex = (): number => nextLogIndex(readLines());
 
 class AcceptanceFailure extends Error {}
 /** Signal received while the run was in progress; loops stop at their next check. */
@@ -151,17 +147,8 @@ async function launchApp(): Promise<string> {
   );
 }
 
-async function waitFor(from: number, pattern: RegExp, what: string): Promise<{ line: string; index: number }> {
-  const deadline = Date.now() + UI_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    operationSignal.throwIfAborted();
-    const lines = readLines();
-    const hit = findAfter(lines, from, pattern);
-    if (hit) return { line: lines[hit.index] ?? "", index: hit.index };
-    await sleep(200);
-  }
-  const tail = readLines().slice(from).filter(Boolean).slice(-6).join("\n  ");
-  return fail(`timed out after ${UI_TIMEOUT_MS / 1000} s waiting for ${what}. Log:\n  ${tail || "(nothing)"}`);
+function waitFor(from: number, pattern: RegExp, what: string): Promise<{ line: string; index: number }> {
+  return waitForLog(readLines, from, pattern, what, operationSignal);
 }
 
 interface Settings {

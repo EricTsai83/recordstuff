@@ -23,6 +23,7 @@ export interface Settings {
   quality: QualitySettings;
   language: Language;
   hotkey: HotkeySettings;
+  updates: { enabled: boolean; lastAttempt: number };
 }
 
 export interface SettingsStoreOptions {
@@ -83,7 +84,12 @@ export function parseSettings(text: string): ParsedSettings | undefined {
   } else {
     warnings.push("hotkey is missing or has unsupported values: using the default shortcut");
   }
-  return { settings: { version: SETTINGS_VERSION, outputDir, quality, language, hotkey }, warnings };
+  const u = record["updates"] as Record<string, unknown> | undefined;
+  const updates = {
+    enabled: typeof u?.["enabled"] === "boolean" ? u["enabled"] : true,
+    lastAttempt: typeof u?.["lastAttempt"] === "number" && Number.isFinite(u["lastAttempt"]) && u["lastAttempt"] >= 0 ? u["lastAttempt"] : 0,
+  };
+  return { settings: { version: SETTINGS_VERSION, outputDir, quality, language, hotkey, updates }, warnings };
 }
 
 export class SettingsStore {
@@ -109,6 +115,12 @@ export class SettingsStore {
 
   get language(): Language {
     return this.settings.language;
+  }
+
+  get updates(): Settings["updates"] { return this.settings.updates; }
+
+  setUpdates(patch: Partial<Settings["updates"]>): Promise<void> {
+    return this.save((current) => ({ ...current, updates: { ...current.updates, ...patch } }));
   }
 
   get hotkey(): HotkeySettings {
@@ -163,6 +175,7 @@ export class SettingsStore {
       quality: DEFAULT_QUALITY,
       language: DEFAULT_LANGUAGE,
       hotkey: DEFAULT_HOTKEY,
+      updates: { enabled: true, lastAttempt: 0 },
     };
     let text: string;
     try {

@@ -1,7 +1,7 @@
-/** Bounded subprocesses and recording cleanup for notification acceptance. */
+/** Bounded subprocesses and recording cleanup for acceptance runners. */
 import { execFile } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
-import { currentState } from "./acceptance.mts";
+import { currentState, findAfter } from "./acceptance.mts";
 
 export function command(
   file: string,
@@ -58,4 +58,22 @@ export async function finishRecording(options: {
     }
     await delay(100, undefined, { signal });
   }
+}
+
+/** Wait only for this run's events; preserve a bounded diagnostic tail on timeout. */
+export async function waitForLog(
+  read: () => string[], from: number, pattern: RegExp, what: string,
+  signal: AbortSignal, timeout = 30_000,
+): Promise<{ line: string; index: number }> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    signal.throwIfAborted();
+    const lines = read();
+    const hit = findAfter(lines, from, pattern);
+    if (hit) return { line: lines[hit.index] ?? "", index: hit.index };
+    await delay(Math.min(200, Math.max(1, deadline - Date.now())), undefined, { signal });
+  }
+  signal.throwIfAborted();
+  const tail = read().slice(from).filter(Boolean).slice(-6).join("\n  ");
+  throw new Error(`timed out after ${timeout / 1000} s waiting for ${what}. Log:\n  ${tail || "(nothing)"}`);
 }

@@ -45,7 +45,8 @@ describe('release gates', () => {
     expect(body).toContain('not notarized');
     expect(body).toContain('Screen & System Audio Recording');
     expect(body).toContain('Update manually');
-    expect(body).toContain('no automatic updater');
+    expect(body).toContain('Check for updates…');
+    expect(body).toContain('Downloads and installation remain manual');
     expect(body).toContain('Remove');
     expect(body).toContain('Trash');
     expect(body).toContain(`/blob/${'a'.repeat(40)}/resources/INSTALL.md`);

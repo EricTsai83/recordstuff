@@ -96,14 +96,16 @@ pnpm acceptance     # 全螢幕開素材 → System Events 送快捷鍵 → 錄 
 Astra 在這條路徑的工作：
 
 1. 呼叫者先在 sandbox 外依序執行 `pnpm start:app` 與 `pnpm acceptance`（sandbox 禁止 `ps`／`pgrep`，見「非互動執行的前置」），把兩者的輸出檔路徑與報告目錄寫進 prompt。Astra 不重跑這兩個指令、不重建、不重開 App。
-2. 讀取腳本報告、`verify.json` 與本次 App log；核對送鍵到 `pressed` 的延遲、`state` 順序、`saved` 路徑與完整性層級結果；把每個 verify 指標如實列入案例表，不把腳本的 pass 直接當整份 verify 通過。
+2. 讀取腳本報告、`verify.json` 與本次 App log；核對送鍵到 `pressed` 的延遲、`state` 順序、`saved` 路徑與完整性層級結果；引用原始報告與 `verify.json`，摘要整體判定、fail／n/a 和證據限制，不逐項重抄指標，也不重跑同一檔案的相同分析；不把腳本的 pass 當成未執行的 UI 或播放案例通過。
 3. 可選的原生 UI 案例：`open -a "QuickTime Player" <path>` 只負責開啟播放器，之後用 computer use 按播放、確認進度前進並截一張播放中畫面存入報告目錄，再關閉 QuickTime。QuickTime 需在 Computer Use 核准清單內；不在則記 blocked。
-4. 仍需 Tray 選單的案例（語言與保存、顯示最後錄影、錄製中選單狀態、更改快捷鍵）一律記 blocked 並列出；主觀聽感維持未驗。不要用 `osascript` 或其他自動化代按 Tray UI；全域快捷鍵由腳本送出是唯一例外，因為它不是 UI 元件，且 App 收到的是與使用者按鍵相同的系統事件。
+4. 本次範圍需要但工具無法操作的 Tray 案例（例如顯示最後錄影、錄製中選單狀態）記 blocked；語言／快捷鍵設定僅在相關變更或使用者指定時加入。主觀聽感維持未驗。不要用 `osascript` 或其他自動化代按 Tray UI；全域快捷鍵由腳本送出是唯一例外，因為它不是 UI 元件，且 App 收到的是與使用者按鍵相同的系統事件。
 5. 報告依「證據、收尾與報告」寫入 `docs/verification/measurements/<timestamp>-computer-use/report.md`，明確標示「無人值守快捷鍵路徑（pnpm acceptance 送鍵）」，並連結腳本的報告目錄。用於發布時，待 record job 的 commit 落到 main 並 pull 後，把英文結論摘要填進 `docs/verification/releases/<version>.md` 的「Local acceptance before tagging — fill in」段落（錄影長度、verify 結果、播放結果、blocked 清單），並同步既存的繁中對應檔；沒有做的檢查寫進「Not recorded」。
 
 沒有 Codex 或 computer use 時，`pnpm start:app` 加 `pnpm acceptance` 本身就是可接受的無人值守錄影檢查；只是播放器畫面與 Tray 案例沒有人觀察，報告要如此標示。
 
 ## 基本驗收
+
+基本驗收共用一次短錄影完成錄製、存檔、定位、播放與媒體檢查。若本次已有同一產物、同一錄影檔的有效腳本報告，沿用其媒體證據，只補做尚未覆蓋的 UI／播放操作；快捷鍵結果不能代替 Tray 點擊。
 
 每個案例記錄「操作、預期、實際、狀態、證據」。狀態使用 pass／fail／blocked／not run；觀察不到的瞬間過渡狀態不要猜測。
 
@@ -116,13 +118,14 @@ Astra 在這條路徑的工作：
 | 定位檔案 | 經通知或 `Show last recording`／「顯示最後一個錄影」開啟 Finder（依 `src/shared/i18n.ts` 當前語言字串定位）。分別記錄是否選中正確檔案及 Finder 是否置前；某一路徑失敗時保留結果，再測另一條路徑。 |
 | 實際播放 | 從 Finder 開啟新錄影，使用播放器播放與拖曳，確認畫面內容及播放進度正常。工具若不能聽取音訊，僅將主觀聽感標示未驗；客觀聲音檢查依下一案例判定，不以音軌存在推論有聲。 |
 | 客觀聲音檢查 | 對本次 MP4 執行 `pnpm verify -- /absolute/path/file.mp4 --json /absolute/path/report-dir/verify.json`（先建立報告目錄），保存輸出、退出碼及 JSON。核對 `Sample rate/channels`：48 kHz、2 聲道、每聲道 RMS 均 > −60 dBFS，記錄實際數值；符合時可判定錄到非靜音訊號。這不證明聽感、聲道分離、音質或同步。缺失／n/a 不算通過，缺工具記 blocked；其他指標的 fail 也要保留，不能因音訊通過就宣稱整份 verify 通過。 |
-| 語言與保存 | 透過選單切換 English／繁體中文，觀察文字及勾選狀態；正常重開同一產物確認保存，再還原原語言。 |
 
 需要權限時，先觀察實際提示與 App 引導，再依已有授權操作；若需使用者完成 OS 授權，明確指出卡在哪一步。一般驗收不重設 TCC、不撤銷既有權限，也不宣稱已驗首次授權。
 
 ## 依變更增加案例
 
 只加入與需求相關的案例，避免每次驗收都跑完整矩陣：
+
+- 語言／設定持久化／啟動流程：透過選單切換 English／繁體中文，確認文字與勾選狀態；正常重開同一產物確認保存，再還原原語言。
 
 - 品質／解析度／幀率：從 UI 選取受影響選項，短錄後對照產物與設定；記錄實際顯示器及設定，不強行把歷史效能數字當通過門檻。
 - 輸出資料夾：用原生選擇器選擇專用測試資料夾，驗證檔案落點並還原；不直接修改設定檔來代替操作。

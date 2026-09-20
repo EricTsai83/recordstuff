@@ -6,6 +6,8 @@ import {
   keystrokeScript,
   lastStartIndex,
   lineTime,
+  nextLogIndex,
+  materialOpenArgs,
   registeredAccelerator,
 } from "./acceptance.mts";
 
@@ -49,5 +51,25 @@ describe("acceptance helpers", () => {
     expect(earlier?.match[1]).toBe("recording");
     expect(lineTime(LOG[5]!)?.toISOString()).toBe("2026-09-19T15:31:00.916Z");
     expect(lineTime("no timestamp")).toBeUndefined();
+  });
+});
+
+describe("shared capture setup", () => {
+  it("does not skip the next event in a newline-terminated log", () => {
+    for (const text of ["", "saved old.mp4\n", "saved old.mp4"]) {
+      const lines = text.split(/\r?\n/);
+      const from = nextLogIndex(lines);
+      const updated = (text + (text && !text.endsWith("\n") ? "\n" : "") + "saved new.mp4\n").split(/\r?\n/);
+      expect(findAfter(updated, from, /saved new/)?.index).toBe(from);
+    }
+  });
+
+  it("opens the intended local material even with URL metacharacters in its path", () => {
+    const args = materialOpenArgs("/tmp/test #1?/素材.html", "/tmp/profile with spaces");
+    const url = new URL(args.find(a => a.startsWith("--app="))!.slice(6));
+    expect(decodeURIComponent(url.pathname)).toBe("/tmp/test #1?/素材.html");
+    expect(url.searchParams.get("auto")).toBe("1");
+    expect(url.hash).toBe("");
+    expect(args).toContain("--user-data-dir=/tmp/profile with spaces");
   });
 });

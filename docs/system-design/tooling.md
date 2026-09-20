@@ -17,6 +17,7 @@ Use pnpm and a compatible Node version; the verification TypeScript scripts use 
 | `pnpm icons` | Generate PNG/ICO assets, the DMG background pair, and native ICNS on macOS |
 | `pnpm log` | Follow the current macOS log |
 | `pnpm dist:mac` | Build/verify a self-signed app, then create a DMG next to it in dist/ |
+| `pnpm acceptance:updates` | Build an isolated signed copy; exercise production update handlers/model/settings, process restarts and two real shortcut recordings; retain reports and recordings, then clean up the owned app |
 | `pnpm acceptance` | Against the running app: open the material fullscreen, start/stop a recording with the global shortcut through System Events, verify the integrity tier (test-material mode), write a report under docs/verification/measurements (gitignored, local) |
 | `pnpm acceptance:notification` | Against the app in /Applications (optionally `--install` the dist bundle for the run): record, press the "Saved …" banner through Accessibility, judge whether Finder is frontmost and shows the file, several clicks per Finder state, English by default; report under docs/verification/measurements |
 
@@ -56,6 +57,7 @@ pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 pnpm verify -- /absolute/path/any-desktop-recording.mp4 --screen 1920x1080   # integrity only
 pnpm acceptance -- --seconds 10        # unattended shortcut acceptance of the running app
+pnpm acceptance:notification -- --install --clicks 2  # short notification smoke check
 pnpm acceptance:notification -- --install          # saved-notification click → Finder in front; ~1 min; built app swapped into /Applications for the run
 pnpm acceptance:notification -- --install --full   # all three Finder states, English; ~3 min (estimate)
 pnpm matrix -- quick
@@ -80,6 +82,19 @@ Matrix is macOS-only developer automation. It launches the test material in a Ch
 | all | Shortened 15-second cases plus long; roughly seven minutes including gaps |
 
 The historical ten-minute baseline has already been recorded. Long now uses three minutes by user decision. [Raw evidence](../verification/README.md) retains the older run's duration and verdicts.
+
+### Selecting acceptance coverage
+
+For application changes, run `pnpm check` and one basic recording acceptance against the built app. Reuse that recording and its verification report for playback; do not repeat the same media analysis. Add checks according to the change:
+
+| Change | Additional check |
+| --- | --- |
+| Updates | `pnpm acceptance:updates`; add `--full` for feed filtering or timeout changes |
+| Notifications / Finder reveal | `pnpm acceptance:notification -- --install --clicks 2` for smoke; retain five-click/full runs for intermittent failures and notification fixes |
+| Capture / quality / timing | Relevant `pnpm matrix` subset; audio diagnostics when fidelity is affected |
+| Language / settings / startup | Native UI setting changes and persistence across restart |
+
+The update fixture is instrumented and matrix uses autorecord; neither replaces acceptance of the normal built app. Notification acceptance retains its installed-app path and distinct Finder-state coverage. An unchanged file and verification scope can reuse media evidence; different artifacts or UI actions cannot. Shared material arguments, log cursors and bounded log waits live in `scripts/lib/acceptance.mts` and `scripts/lib/acceptance-runtime.mts`; each runner retains its own app lifecycle and verdicts. Hotkey and notification runners share interrupted-recording settlement, which waits for saving and never toggles stop twice after a successful stop command.
 
 ### Notification acceptance
 
@@ -168,3 +183,18 @@ Source: [website/](../../website/), an independent pnpm package (Astro 7, TypeSc
 Release facts are rendered only from the committed manifest: no browser-side GitHub API call, no runtime dependency. Every download control points at the verified DMG URL and the Releases page is offered next to it, so a stale manifest fails the build rather than rendering a wrong button. Only `pnpm site:build` may set `SITE_MANIFEST_VERIFIED`; `astro dev` and `build:offline` always render the footer warning. The hero visual is an inline SVG (`website/src/components/DesktopScene.astro`): a Mac desktop at a campsite whose menu bar plays the product story in a nineteen-second CSS loop (three seconds of stillness first, slow eased camera moves, a callout before the stop click, a half-second beat before the notification, then rest) — the desktop pushes in toward the menu-bar icon as the pointer arrives, the pointer clicks the RecordStuff ring, the ring becomes a filled dot with "REC" beside it exactly as in the app (tray-model.ts swaps the template image and sets the title; nothing blinks), the camera pulls back, a hand-drawn callout (Kalam handwriting, two-stroke sketched arrow, no box) says "Click again to stop recording", the pointer clicks and the real "Saved <timestamp>.mp4" notification pops in half a second later, matching the app's `SAVED_NOTIFICATION_DELAY_MS`. The landscape is low-poly (`src/components/scenes/FacetLandscape.astro`) under a shared menu bar; the star field is generated deterministically (`src/lib/stars.ts`). It costs no image request and only animates transform/opacity; the hero pauses it while scrolled out of view, and `prefers-reduced-motion` shows the final frame statically. There is no visible pause control by maintainer decision, which leaves WCAG 2.2.2 (pause/stop/hide for motion over five seconds) unmet for users without the reduced-motion preference. Menu-bar labels and the filename format match the app.
 
 CI runs Vercel CLI from the repository root with the project Root Directory set to `website/`. It builds once through `vercel build --prod` (which runs the online-verified website build), checks `.vercel/output/static` with `website/scripts/check-links.mts --dir .vercel/output/static --offline`, then deploys that same output with `--prebuilt`. Local `site:check` checks a fresh `website/dist/` instead.
+
+
+### Update acceptance
+
+Run `pnpm acceptance:updates` with RecordStuff closed, on macOS arm64, using Node 24, the existing local signing identity, Chrome, ffmpeg/ffprobe and System Events Accessibility access. It takes over the primary display for two short recordings; stop other audio and avoid interacting with the desktop during capture. It never quits an existing RecordStuff process, modifies the installed app, disconnects the network or writes the real user settings.
+
+The runner copies source/build resources into a unique report workspace, instruments only that copy, and runs `pnpm start:app`. Production update handlers, the real AppTray context, SettingsStore, Recorder, hidden capture host and shutdown path remain in use. The build-only fixture substitutes deterministic HTTP responses and a clock, stores settings/logs/recordings under the report directory, and intercepts `shell.openExternal` to assert the requested URL. There is no test command channel in normal builds. Anchor checks stop preparation if production wiring changes instead of silently testing a stale substitute.
+
+Default cases cover checking/overlap, current/newer versions, GitHub fallback, failure followed by recovery, language/preference across process restarts, launch checks disabled when due, the 24-hour limit including failed attempts, delayed requests during capture and results withheld until saving, and quitting during a pending check. `--full` also exercises older versions, invalid/prerelease/incompatible feeds and real bounded timeout cancellation; those boundary cases already have unit coverage and need not run in every smoke check. Reports identify the mode and selected feed scenarios. The real-capture phase uses the existing System Events shortcut mechanism, fixed Chrome test material, media integrity checks and flash/beep guards. Both modes retain two recordings of about ten seconds each: one checks a deferred request, the other a deferred result. Missing permission/tools or contaminated material cannot count as a successful capture.
+
+`--logic-only` explicitly omits real capture. `--require-native-ui` makes missing native UI evidence a required gap (exit 2); the default scope reports it separately. Handler/model assertions are **not** native Tray clicks, browser visual confirmation, playback listening, first permission grant or public-build upgrade acceptance. The current computer-use windowless Tray limitation remains documented; this runner does not simulate a mouse click by claiming an action-handler invocation was one.
+
+Reports live under `docs/verification/measurements/<timestamp>-updates-*/`; `--out <new-directory>` chooses a new directory and refuses an existing one. `report.json`/`report.md` include every required case, including ones not run after an earlier failure; requests/responses, events, build/signing output, source/artifact hashes and recording verification are retained. Exit 0 means every required case in the stated scope passed, 1 means a failure, and 2 means blocked/incomplete. SIGINT/SIGTERM request cleanup: the owned fixture quits through the production shutdown path to stop/save a recording, and only the unique material-browser profile is closed. A fixture that cannot be safely stopped is left intact and reported as a cleanup failure; it is never replaced with a global kill. Source workspace is removed only after the app exits; recordings and evidence remain.
+
+The isolated fixture also intercepts saved notifications and records the event so the first recording’s banner cannot obscure the second recording’s material; notification delivery is outside this acceptance scope. Media analysis judges frame timing and flash/beep offset and requires at least five matched pairs; short clips do not judge long-run drift. An existing `--out` directory is preserved and rejected with a clear message and exit 2, without writing a report there.

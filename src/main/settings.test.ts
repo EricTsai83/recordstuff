@@ -57,6 +57,7 @@ describe("SettingsStore", () => {
       outputDir: "/Volumes/External/Recordings",
       quality: DEFAULT_QUALITY,
       hotkey: DEFAULT_HOTKEY,
+      updates: { enabled: true, lastAttempt: 0 },
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -111,6 +112,7 @@ describe("quality settings", () => {
       outputDir: DEFAULT,
       quality: custom,
       hotkey: DEFAULT_HOTKEY,
+      updates: { enabled: true, lastAttempt: 0 },
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -127,6 +129,7 @@ describe("quality settings", () => {
       outputDir: "/elsewhere",
       quality: { ...DEFAULT_QUALITY, videoQuality: "economy" },
       hotkey: DEFAULT_HOTKEY,
+      updates: { enabled: true, lastAttempt: 0 },
     });
   });
 
@@ -177,6 +180,7 @@ describe("quality settings", () => {
       outputDir: "/picked",
       quality: expected,
       hotkey: DEFAULT_HOTKEY,
+      updates: { enabled: true, lastAttempt: 0 },
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -207,13 +211,14 @@ describe("parseSettings", () => {
       outputDir: "/a",
       quality: DEFAULT_QUALITY,
       hotkey: DEFAULT_HOTKEY,
+      updates: { enabled: true, lastAttempt: 0 },
     });
     expect(parseSettings('{"version":2,"outputDir":"/a","quality":' + JSON.stringify(DEFAULT_QUALITY) + "}")).toEqual({
-      settings: { language: "en", version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY },
+      settings: { language: "en", version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, updates: { enabled: true, lastAttempt: 0 } },
       warnings: ["version 2 file: shortcut set to default"],
     });
     const v3 = { version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
-    expect(parseSettings(JSON.stringify(v3))).toEqual({ settings: { ...v3, language: "en" }, warnings: [] });
+    expect(parseSettings(JSON.stringify(v3))).toEqual({ settings: { ...v3, language: "en", updates: { enabled: true, lastAttempt: 0 } }, warnings: [] });
     expect(parseSettings('{"version":1,"outputDir":""}')).toBeUndefined();
     expect(parseSettings("null")).toBeUndefined();
     expect(parseSettings("[]")).toBeUndefined();
@@ -295,6 +300,7 @@ describe("hotkey settings (plan 016)", () => {
       outputDir: DEFAULT,
       quality: DEFAULT_QUALITY,
       hotkey: custom,
+      updates: { enabled: true, lastAttempt: 0 },
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.
@@ -335,5 +341,21 @@ describe("hotkey settings (plan 016)", () => {
     expect(reloaded.hotkey).toEqual({ ...custom, enabled: false });
     expect(reloaded.language).toBe("zh-TW");
     expect(reloaded.outputDir).toBe("/new");
+  });
+});
+
+
+describe("update preferences", () => {
+  it("defaults legacy files to enabled without a previous attempt", () => {
+    expect(parseSettings('{"version":1,"outputDir":"/a"}')?.settings.updates).toEqual({ enabled: true, lastAttempt: 0 });
+  });
+  it("serializes concurrent update and language changes and persists across restart", async () => {
+    const s = store();
+    await Promise.all([s.setUpdates({ enabled: false }), s.setUpdates({ lastAttempt: 123 }), s.setLanguage("zh-TW")]);
+    expect(store().updates).toEqual({ enabled: false, lastAttempt: 123 });
+    expect(store().language).toBe("zh-TW");
+  });
+  it("defaults malformed timestamps and flags", () => {
+    expect(parseSettings(JSON.stringify({ version: 1, outputDir: "/a", updates: { enabled: "no", lastAttempt: -1 } }))?.settings.updates).toEqual({ enabled: true, lastAttempt: 0 });
   });
 });
