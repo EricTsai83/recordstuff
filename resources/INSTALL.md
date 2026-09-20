@@ -45,6 +45,10 @@ Use **Check for updates…** in **Settings → General** to check for a newer re
 3. Open the DMG and drag RecordStuff onto Applications. When Finder asks,
    choose Replace so the new app takes the same path as the old one.
 4. Eject the disk image and launch RecordStuff from Applications.
+5. After either a first installation or an update, if macOS blocks the app because
+   the developer cannot be verified or the app is not notarized, make sure you trust
+   the file source, then open System Settings → Privacy & Security. Find the message
+   about RecordStuff being blocked, click Open Anyway, and follow the confirmation prompts.
 
 Every release is signed with the same certificate and installed at the same path,
 so your language choice, output folder, and other settings are kept, and macOS
