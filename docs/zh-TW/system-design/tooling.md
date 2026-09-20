@@ -151,3 +151,20 @@ pnpm audio:quality -- verify /absolute/path/recording-of-v2.mp4
 v0.1.0 已在本機完成瀏覽器下載／安裝驗證，Gatekeeper 需要單一 App 的「仍要打開」放行。詳見[本版證據](../verification/releases/0.1.0.md)。自簽不會消除此首次啟動阻擋；若重新考慮範圍，Developer ID 簽署及 Apple 公證是另一條發行路徑。
 
 乾淨環境安裝依賴後，執行 `node node_modules/electron/install.js` 安裝 Electron 44 runtime（套件沒有 postinstall）。CI 發布流程已包含此步驟，見 [發布自動化](releases.md)。
+
+## 官方網站
+
+來源：[website/](../../../website/)，獨立的 pnpm 套件（Astro 7、TypeScript 6，因為 `astro check` 尚不能使用 TypeScript 7 的原生編譯器）。它不屬於 Electron 建置，也不在根目錄 `pnpm check` 之內。版面與 CSS 結構改作自 T3 Code 官網（MIT，見 [website/THIRD_PARTY.md](../../../website/THIRD_PARTY.md)）；視覺方向（石墨中性色、白字、紅色只用於錄影點、Geist）是 RecordStuff 自己的；主題檔仍沿用早先橘色方向的名稱 `ember.css`。Geist、JetBrains Mono 與 Kalam（手繪標註）透過 Fontsource 自行託管，執行時不向第三方發出請求。正式網址為 `https://record.ericts.com`；預覽可用 `SITE_URL` 覆寫。Hosting 是維護者在 Vercel 平台自行設定的專案（根目錄 `website/`，[website/vercel.ts](../../../website/vercel.ts) 關閉 Git 自動部署）。
+
+| 指令（repo 根目錄） | 用途 |
+| --- | --- |
+| `pnpm site:dev` | Astro 開發伺服器 `http://localhost:4173/`；因未執行驗證，頁尾會顯示「manifest not re-verified」警語。Astro 7 會讓它常駐背景：以 `pnpm --dir website exec astro dev stop` 停止 |
+| `pnpm site:manifest generate vX.Y.Z` | 抓取公開 release（GitHub API、release.json、SHA256SUMS）交叉核對後寫入 `website/release-manifest.json`；拒絕草稿、prerelease、多出或缺少的 asset，以及三個來源間任何不一致 |
+| `pnpm site:manifest verify [--online\|--offline]` | 重新抓取並逐欄比對已存 manifest，並對 DMG 連結做 HEAD 檢查；`--offline` 只做結構檢查 |
+| `pnpm site:build` | 先 `manifest verify --online`，再以 `SITE_MANIFEST_VERIFIED=1` 執行 `astro build`；輸出到 `website/dist/` |
+| `pnpm site:check` | 網站單元測試、`astro check`、重新執行線上驗證與建置，再檢查該次產物的連結（站內路徑、fragment id、外部 URL）；不需預先存在 `dist/` |
+| `pnpm site:screenshots` | 以 puppeteer-core 驅動已安裝的 Chrome，對每頁產生桌機（1440 px）、手機（390 px）與窄螢幕（320 px）整頁截圖到 `website/compare/`（已 gitignore）；同時把首頁場景停在錄影中的那一幀重新輸出 `website/src/assets/og.png`（1200×630 社群預覽圖；場景變動時需一併提交） |
+
+Release 資訊只從已提交的 manifest 渲染：沒有瀏覽器端 GitHub API 呼叫、沒有執行時依賴。每個下載控制項都指向已驗證的 DMG 連結，旁邊提供 Releases 頁作為可見 fallback，因此過期的 manifest 會讓建置失敗，而不是渲染錯誤的按鈕。只有 `pnpm site:build` 可以設定 `SITE_MANIFEST_VERIFIED`；`astro dev` 與 `build:offline` 一律顯示頁尾警語。首頁視覺是內嵌 SVG（`website/src/components/DesktopScene.astro`）：露營地的 Mac 桌面，選單列以十九秒 CSS 循環（開頭靜止三秒、緩慢的鏡頭推拉、停止前的指示標註、延遲約半秒才彈出的通知、最後停留）演出產品故事——游標靠近時整個桌面向選單列圖示推近、游標點擊 RecordStuff 環形圖示、環變成實心圓點並在旁邊顯示「REC」（與 App 完全一致：tray-model.ts 切換 template 圖示並設定標題；不閃爍）、鏡頭拉回、手繪風標註（Kalam 手寫字型、雙筆觸草稿箭頭、無外框）顯示「Click again to stop recording」、游標點擊後約半秒，真實格式的「Saved <時間戳>.mp4」通知才彈出（與 App 的 `SAVED_NOTIFICATION_DELAY_MS` 一致）。地景為低多邊形（`src/components/scenes/FacetLandscape.astro`），上方是共用的選單列；星空由 `src/lib/stars.ts` 以固定種子產生。不需任何圖片請求，只動 transform／opacity；捲出畫面時 hero 會暫停它，`prefers-reduced-motion` 下靜態顯示最後一幀。依維護者決定沒有可見的暫停控制，因此對未開啟 reduced-motion 的使用者而言，WCAG 2.2.2（超過五秒的動態內容需可暫停／停止／隱藏）未達成。選單列文字與檔名格式與 App 一致。
+
+CI 從 repository 根目錄執行 Vercel CLI，平台專案的 Root Directory 設為 `website/`。只透過 `vercel build --prod` 建置一次（內含網站的線上驗證），再以 `website/scripts/check-links.mts --dir .vercel/output/static --offline` 檢查 `.vercel/output/static`，最後用 `--prebuilt` 部署同一份產物。本機 `site:check` 則檢查重新建置的 `website/dist/`。
