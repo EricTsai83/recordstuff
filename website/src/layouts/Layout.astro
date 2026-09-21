@@ -253,6 +253,19 @@ const favicon =
       transform: translateY(calc(50% - 0.5cap));
     }
   }
+  /* Give mobile browsers a solid edge colour to extend behind their chrome.
+     Keep it opaque in both scroll states; a translucent, filtered sticky bar
+     can leave scrolling content visible above it in iOS Safari. Include touch
+     devices in landscape, where the viewport can be wider than 640px. */
+  @media (max-width: 640px), (hover: none) and (pointer: coarse) {
+    .nav,
+    .nav.is-scrolled {
+      background: var(--bg);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      transition: border-color 0.3s ease;
+    }
+  }
   @media (max-width: 640px) {
     .nav-right {
       gap: 1rem;
