@@ -14,6 +14,16 @@ export interface AppleScriptKeystroke {
   modifiers: string[];
 }
 
+/**
+ * ANSI key codes for the digit row. `keystroke` types a *character*, so with
+ * shift held `keystroke "1"` sends `!`, which never matches a shortcut Electron
+ * registered by key code. Digits therefore go out as `key code`.
+ */
+const DIGIT_KEY_CODES: Record<string, number> = {
+  "1": 18, "2": 19, "3": 20, "4": 21, "5": 23,
+  "6": 22, "7": 26, "8": 28, "9": 25, "0": 29,
+};
+
 const MODIFIERS: Record<string, string> = {
   CommandOrControl: "command down",
   Command: "command down",
@@ -43,7 +53,9 @@ export function acceleratorToKeystroke(accelerator: string): AppleScriptKeystrok
 
 export function keystrokeScript(k: AppleScriptKeystroke): string {
   const using = k.modifiers.length > 0 ? ` using {${k.modifiers.join(", ")}}` : "";
-  return `tell application "System Events" to keystroke "${k.key}"${using}`;
+  const code = DIGIT_KEY_CODES[k.key];
+  const press = code === undefined ? `keystroke "${k.key}"` : `key code ${code}`;
+  return `tell application "System Events" to ${press}${using}`;
 }
 
 /** Index of the last `start:` line (the current process) or -1. */

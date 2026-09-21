@@ -27,6 +27,11 @@ describe("acceptance helpers", () => {
       key: "r",
       modifiers: ["command down", "option down", "shift down"],
     });
+    // A digit must go out as a key code: `keystroke "1"` with shift held types
+    // `!`, which never matches a shortcut Electron registered by key code.
+    expect(keystrokeScript(acceleratorToKeystroke("CommandOrControl+Shift+1")!)).toBe(
+      'tell application "System Events" to key code 18 using {command down, shift down}',
+    );
     expect(keystrokeScript(acceleratorToKeystroke("CommandOrControl+Shift+R")!)).toBe(
       'tell application "System Events" to keystroke "r" using {command down, shift down}',
     );

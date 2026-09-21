@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_HOTKEY, HOTKEY_PRESETS, describeAccelerator, isHotkeySettings } from "../shared/hotkey";
+import { DEFAULT_HOTKEY, HOTKEY_PRESETS, describeAccelerator, isHotkeyAccelerator, isHotkeySettings } from "../shared/hotkey";
 import { RecordingHotkey, type GlobalShortcutApi } from "./hotkey";
 
 /**
@@ -74,7 +74,7 @@ describe("RecordingHotkey (plan 016)", () => {
     const status = hotkey.apply(DEFAULT_HOTKEY);
     expect(status).toMatchObject({ kind: "failed", accelerator: DEFAULT_ACCELERATOR });
     expect(fake.registered.size).toBe(0);
-    expect(logs.at(-1)).toMatch(/^hotkey: registration failed for CommandOrControl\+Alt\+Shift\+R: /);
+    expect(logs.at(-1)).toMatch(new RegExp(`^hotkey: registration failed for ${DEFAULT_ACCELERATOR.replace(/\+/g, "\\+")}: `));
     // Nothing to unregister on the next apply: a failed accelerator is not held.
     hotkey.apply({ enabled: true, accelerator: SECOND });
     expect(fake.api.unregister).not.toHaveBeenCalled();
@@ -144,10 +144,26 @@ describe("hotkey definitions", () => {
     expect(isHotkeySettings(null)).toBe(false);
   });
 
+  /**
+   * `isHotkeyAccelerator` rejects anything outside the preset list, and
+   * `parseSettings` then falls back to the default. Dropping an accelerator
+   * therefore silently resets everyone who had chosen it, so every value the
+   * app has ever offered has to stay valid.
+   */
+  it("keeps every accelerator the app has ever offered valid", () => {
+    for (const shipped of [
+      "CommandOrControl+Alt+Shift+R",
+      "CommandOrControl+Shift+R",
+      "CommandOrControl+Alt+R",
+      "CommandOrControl+Shift+1",
+    ]) expect(isHotkeyAccelerator(shipped)).toBe(true);
+    expect(DEFAULT_HOTKEY).toEqual({ enabled: true, accelerator: "CommandOrControl+Shift+1" });
+  });
+
   it("describes accelerators with macOS symbols and Windows-style names elsewhere", () => {
-    expect(describeAccelerator(DEFAULT_ACCELERATOR, "darwin")).toBe("⌘⌥⇧R");
-    expect(describeAccelerator(SECOND, "darwin")).toBe("⌘⇧R");
-    expect(describeAccelerator(DEFAULT_ACCELERATOR, "win32")).toBe("Ctrl+Alt+Shift+R");
+    expect(describeAccelerator(DEFAULT_ACCELERATOR, "darwin")).toBe("⌘⇧1");
+    expect(describeAccelerator(SECOND, "darwin")).toBe("⌘⌥⇧R");
+    expect(describeAccelerator(DEFAULT_ACCELERATOR, "win32")).toBe("Ctrl+Shift+1");
     expect(describeAccelerator("Control+Alt+R", "linux")).toBe("Ctrl+Alt+R");
   });
 });

@@ -27,7 +27,7 @@ Download the arm64 DMG and drag RecordStuff onto the Applications folder shown i
 ## Use
 
 1. Launch recordstuff from Applications and grant screen/system-audio recording permission when requested. Relaunch if access does not take effect.
-2. Left-click its menu bar icon, or press **⌘⌥⇧R** from any app, to record the primary display and system audio.
+2. Left-click its menu bar icon, or press **⌘⇧1** from any app, to record the primary display and system audio.
 3. Click or press the shortcut again to stop. Recordings default to `~/Movies/recordstuff`; click the saved notification or use the menu to find the file.
 4. Right-click for the output folder, logs, and quit. Open **Settings** to adjust language, recording quality, the shortcut, and update checks without closing the settings window.
 
@@ -38,7 +38,7 @@ Download the arm64 DMG and drag RecordStuff onto the Applications folder shown i
 | Video quality | Economy / Standard / High | Standard |
 | Resolution cap | 1080p / 1440p / 4K / Source | Source |
 | Frame rate | 30 / 60 fps | 30; 60 is enabled only on macOS |
-| Shortcut | ⌘⌥⇧R / ⌘⇧R / ⌘⌥R / Off | ⌘⌥⇧R; Settings says so if another app already owns the combination |
+| Shortcut | ⌘⇧1 / ⌘⌥⇧R / ⌘⇧R / ⌘⌥R / Off | ⌘⇧1; Settings says so if another app already owns the combination |
 
 Output is H.264/AAC MP4. Audio requests 256 kbps with voice processing explicitly disabled; local diagnostic recordings preserve high frequencies and left/right separation. Actual bitrate depends on the encoder and content. At 60 fps the tested output was about 57 fps with substantially larger files. These are measured limitations, not hidden quality guarantees.
 

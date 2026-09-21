@@ -46,7 +46,7 @@ Tray 只保留必須一鍵可達的指令，所有偏好設定都在同一個獨
 
 RecordingHotkey 包裝 Electron `globalShortcut`。按下快捷鍵呼叫與 tray 左鍵相同的 `toggle` 函式，所以 `Recorder.toggle()` 仍是唯一決策點：idle 開始、recording 停止、needsPermission 重發權限通知，starting／stopping 期間忽略。每次按下都先寫 log `hotkey: <accelerator> pressed` 再 toggle。`apply(settings)` 先釋放前一個註冊再註冊新的，更改時不會同時有兩個組合鍵生效；`dispose()` 在 will-quit 執行。
 
-使用者在 「設定」視窗的「快捷鍵」欄位選三個 preset 之一或「關閉」（與品質相同，只在 idle／needsPermission 可改）。預設 `CommandOrControl+Alt+Shift+R`（macOS 顯示 ⌘⌥⇧R，其他平台 Ctrl+Alt+Shift+R）。計畫原提案 ⌘⇧R；2026-09-19 衝突檢查發現它是 Chrome／Firefox 的強制重新載入、Safari 的閱讀器、Zoom 的本機錄製，而全域快捷鍵優先於最前景 App，瀏覽器使用者會誤觸開始錄影。三修飾鍵預設在 Chrome、Safari、Firefox、Finder、Xcode、VS Code、Slack、Zoom 均未綁定；⌘⇧R 與 ⌘⌥R 仍列為 preset。自訂錄製快捷鍵的對話框不在範圍內。
+使用者在 「設定」視窗的「快捷鍵」欄位選四個 preset 之一或「關閉」（與品質相同，只在 idle／needsPermission 可改）。預設 `CommandOrControl+Shift+1`（macOS 顯示 ⌘⇧1，其他平台 Ctrl+Shift+1），2026-09-21 由維護者決定。全域快捷鍵優先於最前景 App，因此預設必須是常見 App 都不會預期的組合。最直覺的 ⌘⇧R 因此被否決過兩次：2026-09-19 的衝突檢查發現它是 Chrome／Firefox 的強制重新載入、Safari 的閱讀器、Zoom 的本機錄製，在瀏覽器按下去會變成開始螢幕錄影而不是重新載入。它仍保留為 preset 供需要的人選用。數字鍵是比較安靜的區段 — macOS 以 ⌘⇧3/4/5 佔用截圖與螢幕錄製，而 App 綁定的是不加 Shift 的 ⌘1…9（分頁與檢視模式）— 但 ⌘⇧1 尚未經過同樣逐一 App 的查核，那屬於原生驗收範圍。前一個預設 `CommandOrControl+Alt+Shift+R` 在 2026-09 已驗證於 Chrome、Safari、Firefox、Finder、Xcode、VS Code、Slack 與 Zoom 均未被佔用，現為第一個替代選項。App 曾經提供過的每個組合鍵都保留在 `HOTKEY_PRESETS` 中：`isHotkeyAccelerator` 會拒絕清單外的值，`parseSettings` 隨即回退到預設，因此移除任何一個都會靜默重設選了它的使用者。
 
 OS 拒絕註冊（其他 App 佔用，或 `register` 擲出）不會被吞掉：寫 log `hotkey: registration failed for …`、選單標題顯示「快捷鍵無法使用（被其他 App 佔用）：…」並發通知。設定仍會保存，使用者的選擇在重啟後保留；tray 照常可用。關閉快捷鍵不影響 tray 行為，並記住組合鍵，重新開啟即還原。更改快捷鍵先保存再註冊：寫入失敗保留舊註冊並通知「無法儲存快捷鍵設定」。若寫入期間開始了錄影，註冊變更會延後（`request` → 下一次回到 settled 狀態時 `flush`），讓開始這次錄影的組合鍵仍能停止它；期間選單把已保存的選擇顯示為無法使用。
 
@@ -88,7 +88,7 @@ TrayContext 提供目前語言，通知建立時讀當前 context；已發送的
     "frameRate": 30
   },
   "language": "en",
-  "hotkey": { "enabled": true, "accelerator": "CommandOrControl+Alt+Shift+R" }
+  "hotkey": { "enabled": true, "accelerator": "CommandOrControl+Shift+1" }
 }
 ```
 

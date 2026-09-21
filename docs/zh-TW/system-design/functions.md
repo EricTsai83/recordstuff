@@ -136,7 +136,7 @@
 | `save(update)` | 序列化寫入；write 成功才換記憶體；失敗不阻斷後續 queue |
 | `write(settings)` | mkdir、JSON.tmp、rename；不負責通知 |
 
-[shared/hotkey.ts](../../../src/shared/hotkey.ts)：`HOTKEY_PRESETS` 列出三個允許的組合鍵，`DEFAULT_HOTKEY` 啟用第一個；`isHotkeyAccelerator` / `isHotkeySettings` 驗證保存值；`describeAccelerator(accelerator, platform)` 在 darwin 顯示 `⌘⌥⇧R`、其他平台 `Ctrl+Alt+Shift+R`，供選單、通知與 log 使用。
+[shared/hotkey.ts](../../../src/shared/hotkey.ts)：`HOTKEY_PRESETS` 列出允許的組合鍵，`DEFAULT_HOTKEY` 啟用第一個；App 曾經提供過的每個組合鍵都必須留在清單裡，移除任何一個都會使驗證失敗，讓選了它的使用者被靜默重設；`isHotkeyAccelerator` / `isHotkeySettings` 驗證保存值；`describeAccelerator(accelerator, platform)` 在 darwin 顯示 `⌘⌥⇧R`、其他平台 `Ctrl+Alt+Shift+R`，供選單、通知與 log 使用。
 
 [main/hotkey.ts](../../../src/main/hotkey.ts)：
 

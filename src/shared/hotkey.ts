@@ -3,14 +3,27 @@
  * one of a small set of presets or turns the shortcut off; a free-form
  * recorder is out of scope. Values are Electron accelerator strings.
  *
- * Default: `CommandOrControl+Alt+Shift+R` (⌘⌥⇧R on macOS). The plan proposed
- * ⌘⇧R, but a global shortcut wins over the frontmost app and ⌘⇧R is hard
- * reload in Chrome/Firefox, Reader in Safari and local recording in Zoom;
- * pressing it in a browser would start a screen recording by accident. The
- * three-modifier default is unbound in Chrome, Safari, Firefox, Finder,
- * Xcode, VS Code, Slack and Zoom as of 2026-09. ⌘⇧R stays available as a preset.
+ * Default: `CommandOrControl+Shift+1` (⌘⇧1 on macOS), by maintainer decision
+ * on 2026-09-21, replacing `CommandOrControl+Alt+Shift+R`. A global shortcut
+ * wins over the frontmost app, so the default has to be a combination no
+ * common app expects. ⌘⇧R — the obvious mnemonic — is hard reload in
+ * Chrome/Firefox, Reader in Safari and local recording in Zoom, so it starts a
+ * screen recording where the user meant to reload; it stays a preset for
+ * anyone who wants it. Digits are the quieter range: macOS owns ⌘⇧3/4/5 for
+ * screenshots and screen recording, and apps bind plain ⌘1…9 for tabs and
+ * view modes rather than the shifted form. This combination has not been
+ * re-checked against the app list below; that belongs to native acceptance.
+ *
+ * Every accelerator ever offered stays in this list. `isHotkeyAccelerator`
+ * rejects anything outside it, so dropping one would silently reset the
+ * settings of everyone who had chosen it.
+ *
+ * The default is always `HOTKEY_PRESETS[0]`; reorder the list to change it.
+ * `CommandOrControl+Alt+Shift+R` was verified unbound in Chrome, Safari,
+ * Firefox, Finder, Xcode, VS Code, Slack and Zoom as of 2026-09.
  */
 export const HOTKEY_PRESETS = [
+  "CommandOrControl+Shift+1",
   "CommandOrControl+Alt+Shift+R",
   "CommandOrControl+Shift+R",
   "CommandOrControl+Alt+R",

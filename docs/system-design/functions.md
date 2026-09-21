@@ -150,7 +150,7 @@ The page's window-message callback checks source/marker/port before creating the
 | frameRateDowngrade | Requested 60 and reported ≤30 → rounded actual fps, otherwise undefined |
 | unknown / describeCapture | Format unknown values / English requested, track, target, and warning diagnostics |
 
-[shared/hotkey.ts](../../src/shared/hotkey.ts): `HOTKEY_PRESETS` lists the three allowed accelerators, `DEFAULT_HOTKEY` enables the first; `isHotkeyAccelerator` / `isHotkeySettings` validate persisted values; `describeAccelerator(accelerator, platform)` renders `⌘⌥⇧R` on darwin and `Ctrl+Alt+Shift+R` elsewhere for menus, notifications and logs.
+[shared/hotkey.ts](../../src/shared/hotkey.ts): `HOTKEY_PRESETS` lists the allowed accelerators, `DEFAULT_HOTKEY` enables the first; every accelerator the app has ever offered stays in the list, because dropping one would fail validation and silently reset the users who chose it; `isHotkeyAccelerator` / `isHotkeySettings` validate persisted values; `describeAccelerator(accelerator, platform)` renders `⌘⌥⇧R` on darwin and `Ctrl+Alt+Shift+R` elsewhere for menus, notifications and logs.
 
 [main/hotkey.ts](../../src/main/hotkey.ts):
 

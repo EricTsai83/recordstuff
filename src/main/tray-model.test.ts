@@ -212,9 +212,9 @@ describe("notification text", () => {
 
   it("a refused shortcut registration points at Settings, in the user's language", () => {
     expect(hotkeyRegistrationFailedNotification(HOTKEY_PRESETS[0], "darwin", "zh-TW").body).toBe(
-      "無法註冊快捷鍵 ⌘⌥⇧R，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵",
+      "無法註冊快捷鍵 ⌘⇧1，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵",
     );
-    expect(hotkeyRegistrationFailedNotification(HOTKEY_PRESETS[0], "win32").body).toContain("Ctrl+Alt+Shift+R");
+    expect(hotkeyRegistrationFailedNotification(HOTKEY_PRESETS[0], "win32").body).toContain("Ctrl+Shift+1");
   });
 });
 
@@ -252,7 +252,7 @@ describe("Stop tooltip (plan 016)", () => {
     );
 
   it("names the registered accelerator with macOS symbols", () => {
-    expect(stop(withHotkey())).toMatchObject({ toolTip: "Start / stop recording with ⌘⌥⇧R" });
+    expect(stop(withHotkey())).toMatchObject({ toolTip: "Start / stop recording with ⌘⇧1" });
   });
 
   it("says nothing when the shortcut is off or unregistered", () => {
