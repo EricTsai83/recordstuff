@@ -2,7 +2,7 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-Updated: 2026-09-20. v0.1.3 is published from tag `v0.1.3` with the simplified DMG; see [0.1.3 evidence](../docs/verification/releases/0.1.3.md). 013 and 016 are complete and removed; the recording shortcut and its unattended acceptance (`pnpm acceptance`) are documented in [desktop design](../docs/system-design/desktop.md#recording-shortcut), [tooling](../docs/system-design/tooling.md) and the [verification record](../docs/verification/README.md). Releases follow [release automation](../docs/system-design/releases.md): the tag is the version and CI records each release back on main.
+Updated: 2026-09-21. v0.1.3 is published from tag `v0.1.3` with the simplified DMG; see [0.1.3 evidence](../docs/verification/releases/0.1.3.md). 013 and 016 are complete and removed; the recording shortcut and its unattended acceptance (`pnpm acceptance`) are documented in [desktop design](../docs/system-design/desktop.md#recording-shortcut), [tooling](../docs/system-design/tooling.md) and the [verification record](../docs/verification/README.md). Releases follow [release automation](../docs/system-design/releases.md): the tag is the version and CI records each release back on main.
 
 017 is complete: saved-notification timing, two consecutive 15/15 runs, cancellation, overlap and playback checks are recorded in [verification](../docs/verification/README.md#saved-notification-timing--2026-09-20).
 
@@ -12,7 +12,9 @@ Updated: 2026-09-20. v0.1.3 is published from tag `v0.1.3` with the simplified D
 
 ## Order and status
 
-No unfinished plans remain. 018 local acceptance, public feed delivery and 0.1.3 publication are complete; see the [closure record](../docs/verification/README.md#plan-018-closure--2026-09-20). Untested cases remain documented in verification.
+Next: [019 — Notification permission guidance](019-notification-permission.md) (planned). Add first-use and upgrade guidance, authorization status and recovery in Settings, and signed-package acceptance for missing notification permission.
+
+018 local acceptance, public feed delivery and 0.1.3 publication are complete; see the [closure record](../docs/verification/README.md#plan-018-closure--2026-09-20). Untested cases remain documented in verification.
 
 Publishing is automated by tag push; installed-app updates stay manual. 018 adds a check that reports a newer version and links to it; it does not authorize downloading or installing an update from inside the app. Public release notes stay English-only; app UI and reader guides remain bilingual. Published release bytes must not be overwritten.
 

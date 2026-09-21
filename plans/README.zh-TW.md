@@ -2,7 +2,7 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-更新：2026-09-20。v0.1.3 已由 tag `v0.1.3` 公開，附精簡 DMG；見 [0.1.3 證據](../docs/zh-TW/verification/releases/0.1.3.md)。013 與 016 已完成並移除；錄影快捷鍵與其無人值守驗收（`pnpm acceptance`）記錄在[桌面設計](../docs/zh-TW/system-design/desktop.md#錄影快捷鍵)、[工具](../docs/zh-TW/system-design/tooling.md)與[驗證紀錄](../docs/zh-TW/verification/README.md)。發布依[發布自動化](../docs/zh-TW/system-design/releases.md)：tag 就是版本，CI 會把每次發布回寫到 main。
+更新：2026-09-21。v0.1.3 已由 tag `v0.1.3` 公開，附精簡 DMG；見 [0.1.3 證據](../docs/zh-TW/verification/releases/0.1.3.md)。013 與 016 已完成並移除；錄影快捷鍵與其無人值守驗收（`pnpm acceptance`）記錄在[桌面設計](../docs/zh-TW/system-design/desktop.md#錄影快捷鍵)、[工具](../docs/zh-TW/system-design/tooling.md)與[驗證紀錄](../docs/zh-TW/verification/README.md)。發布依[發布自動化](../docs/zh-TW/system-design/releases.md)：tag 就是版本，CI 會把每次發布回寫到 main。
 
 017 已完成：儲存通知時序修正、連續兩輪 15/15 驗收，以及取消／重疊／播放檢查皆完成；詳見[驗證紀錄](../docs/zh-TW/verification/README.md#儲存通知時序2026-09-20)。
 
@@ -12,7 +12,9 @@
 
 ## 順序與狀態
 
-目前沒有未完成計畫。018 的本機驗收、公開 feed 與 0.1.3 發布已完成；見[結案紀錄](../docs/zh-TW/verification/README.md#plan-018-結案--2026-09-20)。未測範圍仍保留在驗證文件。
+下一項：[019 — 通知權限引導](019-notification-permission.zh-TW.md)（待執行）。補上首次／升級引導、設定中的授權狀態與復原入口，以及缺少通知權限時的簽署套件驗收。
+
+018 的本機驗收、公開 feed 與 0.1.3 發布已完成；見[結案紀錄](../docs/zh-TW/verification/README.md#plan-018-結案--2026-09-20)。未測範圍仍保留在驗證文件。
 
 發布由推送 tag 自動化；已安裝 App 的更新仍為手動。018 只新增「有新版就告知並連到下載頁」的檢查，不授權由 App 下載或安裝更新。公開發行說明維持全英文，App 與讀者指引保留雙語，不覆寫已發布的產物。
 
