@@ -243,7 +243,10 @@ async function main(): Promise<void> {
     context: appContext,
     canNotify: () => settings.notifications,
     onToggle: toggle,
-    onAction: (action) => void handleAction(action),
+    // The tray has no reply channel, so a rejected action would otherwise only
+    // reach process-level `unhandledRejection`. Keep it attributable instead.
+    onAction: (action) => void handleAction(action).catch((cause: unknown) =>
+      log(`action ${JSON.stringify(action)} failed: ${String(cause)}`)),
     log,
   });
   /** The tray and the settings panel project the same state; they move together. */
