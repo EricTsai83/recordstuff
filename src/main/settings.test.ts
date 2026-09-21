@@ -58,9 +58,27 @@ describe("SettingsStore", () => {
       quality: DEFAULT_QUALITY,
       hotkey: DEFAULT_HOTKEY,
       updates: { enabled: true, lastAttempt: 0 },
+      notifications: true,
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("defaults notifications to on for a file written before the field existed", async () => {
+    await fs.writeFile(filePath, JSON.stringify({ version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY }));
+    expect(store().notifications).toBe(true);
+    // A missing switch is not a broken file: nothing to warn about.
+    expect(logs).toEqual([]);
+  });
+
+  it("round-trips the notification switch and ignores a non-boolean value", async () => {
+    const first = store();
+    await first.setNotifications(false);
+    expect(first.notifications).toBe(false);
+    expect(JSON.parse(await fs.readFile(filePath, "utf8")).notifications).toBe(false);
+    expect(store().notifications).toBe(false);
+    await fs.writeFile(filePath, JSON.stringify({ version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, notifications: "off" }));
+    expect(store().notifications).toBe(true);
   });
 
   it("creates the parent directory on first write", async () => {
@@ -113,6 +131,7 @@ describe("quality settings", () => {
       quality: custom,
       hotkey: DEFAULT_HOTKEY,
       updates: { enabled: true, lastAttempt: 0 },
+      notifications: true,
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -130,6 +149,7 @@ describe("quality settings", () => {
       quality: { ...DEFAULT_QUALITY, videoQuality: "economy" },
       hotkey: DEFAULT_HOTKEY,
       updates: { enabled: true, lastAttempt: 0 },
+      notifications: true,
     });
   });
 
@@ -181,6 +201,7 @@ describe("quality settings", () => {
       quality: expected,
       hotkey: DEFAULT_HOTKEY,
       updates: { enabled: true, lastAttempt: 0 },
+      notifications: true,
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -212,13 +233,14 @@ describe("parseSettings", () => {
       quality: DEFAULT_QUALITY,
       hotkey: DEFAULT_HOTKEY,
       updates: { enabled: true, lastAttempt: 0 },
+      notifications: true,
     });
     expect(parseSettings('{"version":2,"outputDir":"/a","quality":' + JSON.stringify(DEFAULT_QUALITY) + "}")).toEqual({
-      settings: { language: "en", version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, updates: { enabled: true, lastAttempt: 0 } },
+      settings: { language: "en", version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, updates: { enabled: true, lastAttempt: 0 }, notifications: true },
       warnings: ["version 2 file: shortcut set to default"],
     });
     const v3 = { version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
-    expect(parseSettings(JSON.stringify(v3))).toEqual({ settings: { ...v3, language: "en", updates: { enabled: true, lastAttempt: 0 } }, warnings: [] });
+    expect(parseSettings(JSON.stringify(v3))).toEqual({ settings: { ...v3, language: "en", updates: { enabled: true, lastAttempt: 0 }, notifications: true }, warnings: [] });
     expect(parseSettings('{"version":1,"outputDir":""}')).toBeUndefined();
     expect(parseSettings("null")).toBeUndefined();
     expect(parseSettings("[]")).toBeUndefined();
@@ -301,6 +323,7 @@ describe("hotkey settings (plan 016)", () => {
       quality: DEFAULT_QUALITY,
       hotkey: custom,
       updates: { enabled: true, lastAttempt: 0 },
+      notifications: true,
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.

@@ -8,6 +8,9 @@
  * quality; version 2 files get the default shortcut. Both are rewritten as
  * version 3 on the next successful save. Older files without a language
  * field default to English.
+ *
+ * `updates` and `notifications` are read leniently rather than versioned: a
+ * file written before either existed keeps working and takes the default.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -24,6 +27,8 @@ export interface Settings {
   language: Language;
   hotkey: HotkeySettings;
   updates: { enabled: boolean; lastAttempt: number };
+  /** Whether the app sends any notification at all; the OS permission is separate. */
+  notifications: boolean;
 }
 
 export interface SettingsStoreOptions {
@@ -89,7 +94,8 @@ export function parseSettings(text: string): ParsedSettings | undefined {
     enabled: typeof u?.["enabled"] === "boolean" ? u["enabled"] : true,
     lastAttempt: typeof u?.["lastAttempt"] === "number" && Number.isFinite(u["lastAttempt"]) && u["lastAttempt"] >= 0 ? u["lastAttempt"] : 0,
   };
-  return { settings: { version: SETTINGS_VERSION, outputDir, quality, language, hotkey, updates }, warnings };
+  const notifications = typeof record["notifications"] === "boolean" ? record["notifications"] : true;
+  return { settings: { version: SETTINGS_VERSION, outputDir, quality, language, hotkey, updates, notifications }, warnings };
 }
 
 export class SettingsStore {
@@ -121,6 +127,12 @@ export class SettingsStore {
 
   setUpdates(patch: Partial<Settings["updates"]>): Promise<void> {
     return this.save((current) => ({ ...current, updates: { ...current.updates, ...patch } }));
+  }
+
+  get notifications(): boolean { return this.settings.notifications; }
+
+  setNotifications(enabled: boolean): Promise<void> {
+    return this.save((current) => ({ ...current, notifications: enabled }));
   }
 
   get hotkey(): HotkeySettings {
@@ -176,6 +188,7 @@ export class SettingsStore {
       language: DEFAULT_LANGUAGE,
       hotkey: DEFAULT_HOTKEY,
       updates: { enabled: true, lastAttempt: 0 },
+      notifications: true,
     };
     let text: string;
     try {
