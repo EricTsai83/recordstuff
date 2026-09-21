@@ -21,7 +21,8 @@
   --radius: 12px;
   --radius-sm: 8px;
   --radius-lg: 16px;
-  --nav-h: 56px;
+  --nav-h: calc(56px + env(safe-area-inset-top, 0px));
+  --container-gutter: 32px;
   /* Vertical rhythm. Every block on the page pads half a gap above and below
      itself, so the space between any two of them is the same 2 x --section-y
      regardless of which pair meets. Blocks own no other outer spacing: a
@@ -37,6 +38,7 @@
 }
 
 html {
+  background: var(--bg);
   /* 18px base at the browser default: the maintainer asked for larger, plainer
      type across the site. Every size below is in rem, so this scales the whole
      scale at once; the container widths stay as they are. */
@@ -134,7 +136,8 @@ kbd {
   width: 100%;
   max-width: 1240px;
   margin: 0 auto;
-  padding: 0 32px;
+  padding: 0 max(var(--container-gutter), env(safe-area-inset-right, 0px))
+    0 max(var(--container-gutter), env(safe-area-inset-left, 0px));
 }
 
 .container--narrow {
@@ -373,9 +376,6 @@ kbd {
 @media (max-width: 640px) {
   :root {
     --section-y: 3.5rem;
-  }
-
-  .container {
-    padding: 0 20px;
+    --container-gutter: 20px;
   }
 }
