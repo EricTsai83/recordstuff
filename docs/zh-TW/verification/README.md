@@ -271,3 +271,15 @@ Tray 選單改為扁平指令清單，所有偏好設定移入單一 sandbox 設
 待機成本量測對象為 `pnpm start:app` 啟動的打包 App，程序生命週期內未錄製、也未開啟設定視窗。機器無其他負載時的 240 秒視窗內，四個程序合計使用 0.10 秒 CPU，約單核 0.042%（main 0.033%、GPU 0.008%、network 與 renderer 0.000%）；`top` 回報 %CPU 0.0、power 分數 0.0。另外三個較短視窗（含與本機建置重疊者）介於 0.033% 與 0.063% 之間。曾把已驗證後的權限輪詢改為 60 秒，實測與原本 5 秒同為 0.033%，因此已還原：便宜的第一段回到單一 5 秒間隔，與 Cap 事故後的設計一致（見[桌面設計](../system-design/desktop.md#螢幕權限)）。擷取宿主心跳的改動則保留——現在只在 session 進行中運作，而不是第一次錄製後永久執行，同時也避免待機時的卡死變成使用者無從處理的錯誤。
 
 **未驗證。** 未點擊原生 tray、未經由「設定…」項目開啟視窗、未驗證 macOS 上實際的視窗置前行為，也未做任何螢幕或系統音訊擷取。`SettingsWindow.show()` 的 macOS 置前修正與 tray 選單本身仍未由機器驗證；專案的 [computer-use 驗收 skill](../../../.agents/skills/astra-acceptance-with-computer-use/SKILL.md) 已記錄無視窗 App 的 tray 無法自動化，需要互動式執行。
+
+## 通知開關取代原生橋接 — 2026-09-21
+
+Plan 019 最初實作為通往 macOS `UserNotifications` 的 Node-API 橋接（保存在 `wip/019-native-notification-bridge`）：權限狀態機、啟動時引導對話框、設定中的狀態顯示，以及每次建置都編譯 `.node` 的建置與打包管線。審查發現該橋接把失敗方向反了。`AppTray.show` 以一個初值為 `unknown` 的狀態為閘門，因此橋接載入失敗就會丟棄每一則通知 — 而由於該閘門同時擋住 `Notification.show()`，也就一併擋掉 Electron 在該呼叫內部發出的授權請求。兩個現實觸發點確實存在：建置腳本只針對 `process.arch` 編譯，且寫死 `-mmacosx-version-min=13.0`，而 App 並未宣告 `minimumSystemVersion`。受影響的使用者拿到的可用通知會比改動前更少。
+
+Electron 44.3.0 的行為改以檢視實際隨附的 framework 二進位確立 — 這正是計畫第一步要求卻未完成的項目。`Electron Framework` 內含 `requestAuthorizationWithOptions:completionHandler:` 以及 Electron 自己的 log 字串 `Notification authorization granted: `，所以 `Notification.show()` 確實會向 macOS 請求授權。其中不存在 `getNotificationSettingsWithCompletionHandler`，而 `systemPreferences.getMediaAccessStatus` 的型別只接受 `microphone | camera | screen`，因此無從讀取狀態。`setPermissionRequestHandler` 中的 `'notifications'` 是 Chromium 的網頁內容權限，不是 App 本身的權限。這是二進位符號檢查而非原始碼閱讀；Objective-C selector 以字串常量儲存，因此出現與不出現都算相當可靠。
+
+替代方案沿用 Cap（`apps/desktop/src-tauri/src/notifications.rs`）：settings.json 中一個 `notifications` 布林值，預設開啟，寬鬆讀取，使欄位出現之前寫下的檔案不會產生 warning；`AppTray.show` 會最先檢查它；「設定 → 一般」提供開／關與 macOS 的「開啟通知設定…」，說明文字標示「系統設定 → 通知 → RecordStuff」，而非 App 讀不到的狀態。打開開關會送出一則確認通知，那正是 Electron 的授權請求能依使用者自身意願送達的時機，同時也是可重複執行的送達測試。`native/`、`scripts/build-notifications.mjs`、`electron.vite.config.ts` 的編譯掛鉤、`electron-builder.yml` 的 `asarUnpack` 項目、`node-api-headers` 相依與三個主行程模組皆已移除。
+
+`pnpm check` 通過：兩個 project 的 TypeScript 檢查、29 個檔案 445 項測試（新增 8 項 — 設定的預設值／往返／非布林值、tray 關閉時丟棄與啟用確認，以及 settings-model 的四項：已提交的開關、錄製鎖定、說明文字、僅 macOS 的面板操作），以及正式建置。
+
+**未驗證。** 未啟動 App。沒有送出任何通知、沒有觀察到 macOS 授權提示、沒有開啟系統設定面板，也沒有執行任何螢幕或系統音訊擷取。原始回報的版本為何收不到通知（拒絕、忽略或其他原因）仍未重現 — 計畫 019 的第一步仍然開放。「Electron 在 `show()` 內部請求授權」這項結論由二進位符號推得，尚未在已簽章的打包版本上實際觀察。
