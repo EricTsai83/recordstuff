@@ -2,11 +2,14 @@
 
 [English](README.md) | [繁體中文](../zh-TW/system-design/README.md)
 
-Updated: 2026-09-19. These documents describe the current implementation and replace completed execution plans. recordstuff is a local desktop recorder, with no backend service.
+Updated: 2026-09-21. These documents describe the current implementation and replace completed execution plans. recordstuff is a local desktop recorder, with no backend service.
 
-| Document | What it explains |
+## Reading order
+
+| Document | What it answers |
 | --- | --- |
 | [Product overview](overview.md) | Product goals, features, platform scope, and delivery expectations |
+| [Design overview](design-overview.md) | The design spine, layer direction, one recording end to end, and cross-cutting invariants |
 | [Architecture](architecture.md) | Process boundaries, ownership, IPC, and persistent data |
 | [Electron, Chromium, and WebRTC](webrtc.md) | Media engine layers, local recording versus peer transport, audio processing, and verification boundaries |
 | [Recording pipeline](recording.md) | Start, capture, encoding, chunks, stop, failure, and file durability |
