@@ -52,7 +52,7 @@ const favicon =
 <html lang="en" data-theme="ember">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
     {[geistLatin, monoLatin, monoLatinMedium, handLatin].map((href) => (
       <link rel="preload" href={href} as="font" type="font/woff2" crossorigin />
@@ -158,7 +158,6 @@ const favicon =
     top: 0;
     z-index: 50;
     height: var(--nav-h);
-    padding-top: env(safe-area-inset-top, 0px);
     display: flex;
     align-items: center;
     border-bottom: 1px solid transparent;
@@ -202,7 +201,7 @@ const favicon =
   }
   .footer {
     border-top: 1px solid var(--border);
-    padding: 2rem 0 calc(2.5rem + env(safe-area-inset-bottom, 0px));
+    padding: 2rem 0 2.5rem;
     color: var(--fg-dim);
     font-size: 0.85rem;
   }
@@ -265,18 +264,6 @@ const favicon =
       backdrop-filter: none;
       -webkit-backdrop-filter: none;
       transition: border-color 0.3s ease;
-    }
-    /* Cover the inset above the sticky box as Safari collapses its controls.
-       This paints only the background; navigation stays inside the safe area. */
-    .nav::before {
-      content: "";
-      position: absolute;
-      bottom: 100%;
-      left: 0;
-      right: 0;
-      height: env(safe-area-inset-top, 0px);
-      background: var(--bg);
-      pointer-events: none;
     }
   }
   @media (max-width: 640px) {

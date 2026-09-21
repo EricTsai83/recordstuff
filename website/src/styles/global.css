@@ -21,8 +21,7 @@
   --radius: 12px;
   --radius-sm: 8px;
   --radius-lg: 16px;
-  --nav-h: calc(56px + env(safe-area-inset-top, 0px));
-  --container-gutter: 32px;
+  --nav-h: 56px;
   /* Vertical rhythm. Every block on the page pads half a gap above and below
      itself, so the space between any two of them is the same 2 x --section-y
      regardless of which pair meets. Blocks own no other outer spacing: a
@@ -38,7 +37,6 @@
 }
 
 html {
-  background: var(--bg);
   /* 18px base at the browser default: the maintainer asked for larger, plainer
      type across the site. Every size below is in rem, so this scales the whole
      scale at once; the container widths stay as they are. */
@@ -59,7 +57,9 @@ body {
   line-height: 1.5;
 }
 
-/* Fine fractal noise over everything, as on t3.codes; purely decorative. */
+/* Decorative grain stays below the sticky nav (z-index: 50). WebKit's toolbar
+   colour sampling can hit fixed overlays even with pointer-events: none, so a
+   full-screen layer above the nav can hide its solid background from Safari. */
 body::after {
   content: "";
   position: fixed;
@@ -69,7 +69,7 @@ body::after {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-repeat: repeat;
   background-size: 256px 256px;
-  z-index: 9999;
+  z-index: 1;
 }
 
 a {
@@ -136,8 +136,7 @@ kbd {
   width: 100%;
   max-width: 1240px;
   margin: 0 auto;
-  padding: 0 max(var(--container-gutter), env(safe-area-inset-right, 0px))
-    0 max(var(--container-gutter), env(safe-area-inset-left, 0px));
+  padding: 0 32px;
 }
 
 .container--narrow {
@@ -376,6 +375,9 @@ kbd {
 @media (max-width: 640px) {
   :root {
     --section-y: 3.5rem;
-    --container-gutter: 20px;
+  }
+
+  .container {
+    padding: 0 20px;
   }
 }
