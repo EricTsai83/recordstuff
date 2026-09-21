@@ -2,76 +2,61 @@
 
 [English](019-notification-permission.md) | [繁體中文](019-notification-permission.zh-TW.md)
 
-Status: planned. Priority: next. Created: 2026-09-21.
+Status: switch implemented and unit-checked; cause unreproduced and native acceptance pending. Priority: current. Created: 2026-09-21.
 
 ## Problem and outcome
 
-A user reported that a downloaded release neither displayed notifications nor offered guidance to enable notification permission. Current [notification delivery](../src/main/tray.ts) calls Electron `Notification.show()` and logs unsupported/failed delivery; it has no application-owned notification authorization check, request flow, or recovery UI. The existing [permission watcher](../src/main/permission.ts) covers screen recording only. The specific release and macOS cause have not been reproduced.
+A user reported that a downloaded release neither displayed notifications nor offered guidance to enable notification permission. The specific release and macOS cause have still not been reproduced.
 
-Provide a visible, bilingual way to enable notifications for saved recordings and errors, including users upgrading from an older release. Recording must remain usable when permission is declined or unavailable. Scope is the supported macOS app; preserve existing behavior on other platforms without claiming their acceptance.
+Give the user a visible, bilingual way to control notifications for saved recordings and errors, and a stated recovery path when macOS is blocking them. Recording must remain usable whatever the notification state. Scope is the supported macOS app; preserve existing behavior on other platforms without claiming their acceptance.
+
+## Design decision — 2026-09-21
+
+Electron cannot read notification authorization. `systemPreferences.getMediaAccessStatus` is typed for `microphone | camera | screen`, and the shipped `Electron Framework` binary contains no `getNotificationSettingsWithCompletionHandler`. It does contain `requestAuthorizationWithOptions:completionHandler:`, so `Notification.show()` already asks macOS for authorization — notifications were never missing an authorization request, only a recovery path.
+
+The app therefore does not mirror the OS permission. It ships one `notifications` boolean, after Cap's design, and names the recovery path in the settings note instead of a status line it cannot substantiate. A Node-API bridge to `UserNotifications` was implemented first and reverted; see the [verification record](../docs/verification/README.md#notification-switch-replaces-the-native-bridge--2026-09-21) for why, and `wip/019-native-notification-bridge` for the code.
 
 ## Expected experience
 
-| State | Guidance and action |
-| --- | --- |
-| Not determined | At the first safe idle opportunity, show an app-owned explanation with “Enable notifications” and “Not now”. Enable requests system authorization; Not now keeps recording available. |
-| Denied | Show a one-time explanation with “Open notification settings” and “Not now”. Do not repeatedly request system authorization. |
-| Authorized | No onboarding prompt. Settings shows permission status and a way to open system notification settings. |
-| Authorized but alerts disabled, or other restricted delivery state | When supported by the native status API, explain the specific limitation in Settings and offer system settings. Do not label every non-banner configuration as permission denial. |
-| Unknown / query or request failed | Show an honest unavailable status in Settings, a retry action and manual settings instructions. Log the diagnostic; never assume authorization or enter a prompt loop. |
-
-- Add a Notifications section in Settings → General, with current status, the appropriate enable/settings/retry action, and a user-triggered test notification after authorization. Say that permission does not guarantee a visible banner.
-- Persist an app-owned onboarding version/acknowledgement separately from OS permission. Apply it to existing installations too; do not reuse the Windows `tray-hint-shown` marker. Dismissing guidance suppresses automatic repeats across launches and app updates, while Settings remains available. Persist only after the guidance was actually presented/handled; a deferred or failed presentation must not consume it.
-- Defer automatic guidance during starting, recording, saving, and screen-permission/relaunch recovery. Avoid overlapping permission dialogs and focus stealing at save completion. Present when idle and existing recovery UI has finished; recheck state before presenting.
-- Refresh status at startup, on opening Settings, after requesting authorization, and when returning from system settings. Since this is a menu-bar app, also refresh while its settings panel is visible using a bounded mechanism; do not rely solely on app activation.
-- Revoking permission later updates Settings without restarting automatic onboarding. Notification failure must not trigger repeated modal dialogs, block saving, or change the recording state.
-- Guidance must use an app dialog/settings UI that is visible without notification permission. Do not use a notification to explain missing notification permission.
+- Settings → General shows Notifications On/Off, default On, and on macOS an Open notification settings… action. The note says what notifications are for and that macOS must also allow RecordStuff in System Settings → Notifications.
+- The macOS Open notification settings… button lives in the switch's own card, so changing the switch and checking the OS read as one decision.
+- macOS offers its authorization prompt only while the status is `notDetermined`, once per bundle ID, surviving reinstalls. The app spends that one chance on the first-run hint at launch, where macOS is already asking for screen recording, rather than at the end of the user's first recording. The switch stays on by default.
+- Turning the switch off and on again sends one confirmation notification, a delivery test the user can repeat.
+- Turning the switch off drops every notification the app would send, before Electron is asked, with one log line per drop. The note then states the cost — an interrupted or unsaved recording will not announce itself — and points at the output folder, which already holds any partial file. The app stores no error state of its own: the choice is obeyed, not compensated for.
+- The switch is locked during a capture, like every other preference, and no notification state ever blocks saving or changes the recording state.
 
 ## Implementation order
 
 ### 1. Establish actual authorization behavior
 
 - [ ] Record the affected release version, macOS version, installation path, bundle ID, signing identity, notification preferences and relevant delivery logs where available. Distinguish user evidence from independently reproduced results.
-- [ ] Inspect the repository's resolved Electron version and its macOS notification implementation. On a signed packaged app, establish whether the first `Notification.show()` requests authorization and what happens for not-determined and denied states. `Notification.isSupported()` is capability detection, not authorization status; failed/show events are not a reliable permission query or proof of a visible banner.
-- [ ] Prove a way to query native notification settings and explicitly request authorization for the **RecordStuff app identity**. Prefer a supported Electron API if the installed version exposes one; otherwise implement a minimal in-process macOS native bridge to UserNotifications. Do not use a standalone helper whose permission belongs to another app, renderer web-notification permission as a proxy, or APNs registration for this local-notification feature.
-- [ ] If a bridge is required, cover native compilation, Electron ABI/architecture, packaging, signing and CI release builds. Verify the native module loads from the packaged app before integrating UX. Request only needed notification options; existing notifications remain silent.
-- [ ] Verify the notification-settings destination on supported macOS. If direct navigation fails or only opens the general pane, show manual steps: System Settings → Notifications → RecordStuff. Do not make an unverified private deep link the only recovery path.
+- [x] Inspect the repository's resolved Electron version and its macOS notification implementation. Done by binary symbol inspection of Electron 44.3.0, not by observing a signed packaged build.
+- [x] Decide whether a native bridge is required. It is not: the missing capability is status reading, which is a nice-to-have, and a bridge load failure suppresses more than it adds.
 
-### 2. Implement permission state and guidance
+### 2. Implement the switch
 
-- [ ] Add a main-process permission adapter/controller with explicit not-determined, denied, authorized, limited and unknown states, bounded asynchronous operations, deduplicated requests and shutdown cleanup. Keep it separate from screen-capture permission and recording state.
-- [ ] Add the onboarding persistence/migration and idle scheduling described above. Serialize authorization requests against ordinary notification delivery so the first notification cannot race the explicit request. Drop stale notifications rather than replaying a backlog after authorization.
-- [ ] Wire status and whitelisted actions through existing Settings models/preload; add English and Traditional Chinese strings. Handle query, request, opening-settings and native-load errors without crashing or falsely reporting success.
-- [ ] Retain current saved-notification delay/cancellation, notification ownership, file reveal and diagnostics. Add permission-transition/request diagnostics without logging unrelated private data.
+- [x] Add an additive `notifications` boolean to [settings](../src/main/settings.ts), default on, read leniently with no warning for older files.
+- [x] Gate [`AppTray.show`](../src/main/tray.ts) on the switch before any OS call, and log each drop.
+- [x] Add the Settings group, the macOS settings-pane action and the enable confirmation, with English and Traditional Chinese strings.
+- [x] Run `pnpm check` and `git diff --check`.
 
 ### 3. Verify behavior
 
-- [ ] Add focused tests for state mapping, first-run and upgrade guidance, persistent dismissal, unknown/error/timeout cases, concurrent requests, settings refresh and shutdown. Test deferral during recording/recovery and ensure notification failures cannot block file finalization.
-- [ ] Run `pnpm check` and `git diff --check` after application changes.
-- [ ] Use the [native computer-use acceptance skill](../.agents/skills/astra-acceptance-with-computer-use/SKILL.md) with `pnpm start:app`; record bilingual evidence for the matrix below. Stop/save only recordings started by the tester; check for an existing user recording before rebuilding or quitting.
-
-| Native case | Required evidence |
-| --- | --- |
-| Fresh notification authorization state | Explanation is visible; Enable produces the actual system authorization flow for RecordStuff; allow leads to a visible test/saved notification. Use a fresh test account or controlled environment; reinstall alone is not proof of a fresh permission state. |
-| Deny, dismiss, relaunch | Recording/save/playback still work; automatic guidance does not recur; Settings still offers recovery. |
-| Existing installation without permission | Upgrade receives the one-time guidance even with existing app preferences. |
-| Open settings, grant, return | Correct pane or usable fallback; status refreshes; subsequent notification appears without an unnecessary restart. |
-| Already authorized / permission revoked | No unsolicited prompt when authorized; revocation is reflected and recording still works. |
-| Recording and screen-permission recovery | No overlapping prompts, save interruption or focus stealing from an automatically deferred prompt. |
-| Focus or banners disabled | No false “permission denied” claim; test requests and actual visual delivery are reported separately. |
-| Technical failure | Query/request/native-load/settings-open failures produce usable fallback and logs, without repeated prompts or hangs. |
-
-- [ ] Regress start/stop/save/playback with screen and system audio, saved-banner click/Finder reveal, and a new recording during pending saved notification. Record actual behaviors tested and remaining gaps.
-- [ ] Validate an installed release-style signed package using the release packaging path and production bundle identity. Record version/commit, signing facts, OS, permission state and evidence. A locally signed development bundle alone does not establish downloaded-release behavior. After a separately authorized publication, verify the downloaded public artifact and append that evidence; do not claim this check was done beforehand.
+- [x] Unit tests for the default, round-trip and non-boolean value; the drop-while-off path; the confirmation; and the settings model's committed value, recording lock, note text and macOS-only pane action.
+- [ ] Launch the app and confirm the switch reaches real delivery: turning it on produces a visible confirmation banner, turning it off stops saved-recording notifications, and Open notification settings… lands on the RecordStuff pane. Use the [native computer-use acceptance skill](../.agents/skills/astra-acceptance-with-computer-use/SKILL.md) with `pnpm start:app`. Check for an existing user recording before rebuilding or quitting.
+- [ ] Confirm on a fresh notification authorization state that turning the switch on raises the macOS prompt. A reinstall alone is not a fresh permission state; use a test account or controlled environment.
+- [ ] Regress start/stop/save/playback with screen and system audio, saved-banner click and Finder reveal. Record what was actually tested and what was not.
+- [ ] Validate an installed release-style signed package built by the release packaging path. Record version/commit, signing facts, OS and evidence.
 
 ## Completion and boundaries
 
 No commit, push, tag or publication is authorized by this plan. No APNs service, auto-update system, screen-permission redesign or platform expansion is included. Do not reset a user's existing notification preferences merely to create a test fixture.
 
-Complete the implementation and local release-style acceptance, preserve failures and untested cases in the bilingual [verification record](../docs/verification/README.md), update [desktop design](../docs/system-design/desktop.md) and relevant Help/install guidance with translations, then follow [plan completion](README.md#completing-a-plan). Public-download acceptance remains explicitly tracked as release follow-up if unpublished.
+The durable conclusions are already in [desktop design](../docs/system-design/desktop.md#notification-switch) and the [verification record](../docs/verification/README.md#notification-switch-replaces-the-native-bridge--2026-09-21). This plan stays open until the native acceptance above is resolved, then follows [plan completion](README.md#completing-a-plan). Reproducing the original report is tracked here and is not blocked by the switch.
 
 ## Technical references
 
 - [Apple: asking permission to use notifications](https://developer.apple.com/documentation/usernotifications/asking-permission-to-use-notifications): native authorization request and contextual guidance.
-- [Electron: notifications](https://www.electronjs.org/docs/latest/tutorial/notifications): macOS signing requirement; inspect the resolved version before choosing APIs.
+- [Electron: notifications](https://www.electronjs.org/docs/latest/tutorial/notifications): macOS signing requirement.
 - [Electron: Notification API](https://www.electronjs.org/docs/latest/api/notification): delivery API and lifecycle events.
+- [Cap: desktop notifications](https://github.com/CapSoftware/Cap/blob/main/apps/desktop/src-tauri/src/notifications.rs): the one-boolean send path this design follows.

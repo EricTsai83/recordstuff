@@ -12,7 +12,7 @@ Updated: 2026-09-21. v0.1.3 is published from tag `v0.1.3` with the simplified D
 
 ## Order and status
 
-Next: [019 — Notification permission guidance](019-notification-permission.md) (planned). Add first-use and upgrade guidance, authorization status and recovery in Settings, and signed-package acceptance for missing notification permission.
+Next: [019 — Notification permission guidance](019-notification-permission.md) (in progress). Settings now carries a Notifications switch and a macOS settings-pane action instead of an authorization status the app cannot read; see the [design decision](019-notification-permission.md#design-decision--2026-09-21). Remaining: reproduce the original report, and native acceptance that the switch reaches real delivery on a signed package.
 
 018 local acceptance, public feed delivery and 0.1.3 publication are complete; see the [closure record](../docs/verification/README.md#plan-018-closure--2026-09-20). Untested cases remain documented in verification.
 
