@@ -183,8 +183,22 @@ export function frameRateDowngradeNotification(
     }),
   );
 }
-export function trayHintNotification(language?: Language): NotificationText {
-  return notice(t("RecordStuff is ready in the system tray. Click to start recording; click again to stop.", language));
+/** Sent when the user turns the switch on, so the confirmation is also the test. */
+export function notificationsEnabledNotification(language?: Language): NotificationText {
+  return notice(t("Notifications are on. This is what a RecordStuff notification looks like.", language));
+}
+/**
+ * First launch only. On macOS this is also the moment the app spends its one
+ * chance at the notification authorization prompt: `Notification.show()` is
+ * what raises it, and `UNUserNotificationCenter` only ever offers it while the
+ * status is notDetermined. Launch is when the user is already granting this
+ * app screen recording, so the ask is in context instead of arriving at the
+ * end of their first recording (docs/system-design/desktop.md).
+ */
+export function trayHintNotification(platform: NodeJS.Platform, language?: Language): NotificationText {
+  return notice(platform === "darwin"
+    ? t("RecordStuff is ready in the menu bar. Click to start recording; click again to stop.", language)
+    : t("RecordStuff is ready in the system tray. Click to start recording; click again to stop.", language));
 }
 export function errorNotification(
   code: ErrorCode,

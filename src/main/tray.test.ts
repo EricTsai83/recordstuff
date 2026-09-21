@@ -78,7 +78,7 @@ import { ACTIVATION_WINDOW_MS, AppTray } from "./tray";
 
 const Fake = Notification as unknown as FakeNotificationCtor;
 
-function setup(supported = true): { tray: AppTray; logs: string[] } {
+function setup(supported = true, canNotify?: () => boolean): { tray: AppTray; logs: string[] } {
   vi.mocked(shell.showItemInFolder).mockReset();
   app.removeAllListeners();
   Fake.instances.length = 0;
@@ -94,10 +94,12 @@ function setup(supported = true): { tray: AppTray; logs: string[] } {
       language: "en",
       hotkey: { ...DEFAULT_HOTKEY, registered: true },
       updates: { state: { kind: "idle" }, enabled: true },
+      notifications: true,
     }),
     onToggle: vi.fn(),
     onAction: vi.fn(),
     log: (message) => logs.push(message),
+    ...(canNotify ? { canNotify } : {}),
   });
   return { tray, logs };
 }
@@ -177,6 +179,23 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
     notification.listeners.get("click")?.();
     expect(logs).toContain("notification: clicked: Saved diagnostic.mp4");
     await new Promise<void>((resolve) => setImmediate(resolve));
+  });
+
+  it("drops every notification while the user's switch is off, before asking the OS", () => {
+    const { tray, logs } = setup(true, () => false);
+    tray.notifySaved("/tmp/a.mp4");
+    tray.notifyError("no_audio_track", undefined);
+    expect(Fake.instances).toHaveLength(0);
+    expect(logs.filter((line) => line.includes("turned off in settings"))).toHaveLength(2);
+    expect(logs.some((line) => line.includes("not supported"))).toBe(false);
+  });
+
+  it("sends the enable confirmation through the same path as any other notification", () => {
+    const { tray } = setup();
+    tray.notifyNotificationsEnabled();
+    expect(Fake.instances).toHaveLength(1);
+    expect(Fake.instances[0]?.options.body).toContain("Notifications are on");
+    expect(Fake.instances[0]?.shown).toBe(1);
   });
 
   it("logs and gives up when notifications are not supported at all", () => {
@@ -282,7 +301,7 @@ describe("notification language follows current settings", () => {
     const action = vi.fn();
     const tray = new AppTray({
       resourcesDir: "/resources",
-      context: () => ({ platform: process.platform, outputDir: "/tmp/recordings", homeDir: "/tmp", quality: DEFAULT_QUALITY, language, hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: "idle" }, enabled: true } }),
+      context: () => ({ platform: process.platform, outputDir: "/tmp/recordings", homeDir: "/tmp", quality: DEFAULT_QUALITY, language, hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: "idle" }, enabled: true }, notifications: true }),
       onToggle: vi.fn(), onAction: action,
     });
     tray.notifySaved("/tmp/demo.mp4");

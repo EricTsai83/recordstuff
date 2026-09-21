@@ -4,6 +4,7 @@ import type { RecordingState } from "../shared/state";
 import { DEFAULT_HOTKEY, HOTKEY_PRESETS } from "../shared/hotkey";
 import {
   errorNotification,
+  trayHintNotification,
   frameRateDowngradeNotification,
   hotkeyRegistrationFailedNotification,
   savedNotification,
@@ -20,6 +21,7 @@ const mac: AppContext = {
   quality: DEFAULT_QUALITY,
   hotkey: { ...DEFAULT_HOTKEY, registered: true },
   updates: { state: { kind: "idle" }, enabled: true },
+  notifications: true,
 };
 const win: AppContext = {
   platform: "win32",
@@ -29,6 +31,7 @@ const win: AppContext = {
   quality: DEFAULT_QUALITY,
   hotkey: { ...DEFAULT_HOTKEY, registered: true },
   updates: { state: { kind: "idle" }, enabled: true },
+  notifications: true,
 };
 const STATES: RecordingState[] = [
   { type: "needsPermission", needsRelaunch: false },
@@ -268,5 +271,15 @@ describe("updates live in settings", () => {
     expect(actions).toContain("openSettings");
     expect(actions).not.toContain("checkUpdates");
     expect(actions).not.toContain("openUpdate");
+  });
+});
+
+describe("first-run hint", () => {
+  /** The same notification spends macOS's one authorization prompt, in context. */
+  it("names the surface the app actually lives in on each platform", () => {
+    expect(trayHintNotification("darwin", "en").body).toContain("menu bar");
+    expect(trayHintNotification("win32", "en").body).toContain("system tray");
+    expect(trayHintNotification("darwin", "zh-TW").body).toContain("選單列");
+    expect(trayHintNotification("win32", "zh-TW").body).toContain("系統匣");
   });
 });

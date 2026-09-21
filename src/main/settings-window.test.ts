@@ -66,6 +66,7 @@ const context: AppContext = {
   language: "en",
   hotkey: { ...DEFAULT_HOTKEY, registered: true },
   updates: { state: { kind: "idle" }, enabled: true },
+  notifications: true,
 };
 
 /** A panel wired to a mutable copy of the committed settings. */

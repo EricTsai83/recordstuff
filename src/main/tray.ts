@@ -17,6 +17,7 @@ import {
   frameRateDowngradeNotification,
   hotkeyRegistrationFailedNotification,
   hotkeyWriteFailedNotification,
+  notificationsEnabledNotification,
   permissionNotification,
   qualityWriteFailedNotification,
   savedNotification,
@@ -43,6 +44,8 @@ export interface TrayOptions {
   onAction: (action: AppAction) => void;
   /** Diagnostics for notifications the OS refuses to show. */
   log?: (message: string) => void;
+  /** The user's switch. Absent means always allowed, which is the test default. */
+  canNotify?: () => boolean;
 }
 
 export class AppTray {
@@ -174,7 +177,12 @@ export class AppTray {
   }
 
   notifyTrayHint(): void {
-    this.show(trayHintNotification(this.options.context().language));
+    const ctx = this.options.context();
+    this.show(trayHintNotification(ctx.platform, ctx.language));
+  }
+
+  notifyNotificationsEnabled(): void {
+    this.show(notificationsEnabledNotification(this.options.context().language));
   }
 
   /**
@@ -186,6 +194,10 @@ export class AppTray {
    * trace, so it goes to the log; signed-build evidence is in docs/verification/README.md.
    */
   private show(text: { title: string; body: string }, onClick?: () => void): void {
+    if (this.options.canNotify && !this.options.canNotify()) {
+      this.log(`notification: turned off in settings, dropped: ${text.body}`);
+      return;
+    }
     if (!Notification.isSupported()) {
       this.log(`notification: not supported on this system, dropped: ${text.body}`);
       return;

@@ -66,6 +66,8 @@ export const ZH_TW = {
     "系統只提供 {actual} fps，本次以 {actual} fps 錄製（設定為 {requested} fps）",
   "RecordStuff is ready in the system tray. Click to start recording; click again to stop.":
     "RecordStuff 在系統匣待命。左鍵點圖示開始錄製，再點一下停止",
+  "RecordStuff is ready in the menu bar. Click to start recording; click again to stop.":
+    "RecordStuff 在選單列待命。左鍵點圖示開始錄製，再點一下停止",
   "Partial recording kept: {file}. Click to show the file.": "已保留部分錄影：{file}。點這則通知顯示檔案",
   "No content was recorded.": "沒有錄到任何內容",
   "Screen recording access is missing. Open System Settings from the tray menu.":
@@ -95,6 +97,8 @@ export const ZH_TW = {
     "無法註冊快捷鍵 {value}，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵",
   "Could not save the shortcut. Your previous shortcut is still in use.":
     "無法儲存快捷鍵設定，仍使用原本的快捷鍵。請再試一次",
+  "Notifications are on. This is what a RecordStuff notification looks like.":
+    "通知已開啟，RecordStuff 的通知會像這樣顯示。",
   "Choose a recording folder": "選擇錄影儲存位置",
   "An unexpected error occurred. See the log for details.": "發生未預期的錯誤，請查看 log 取得詳細資訊。",
 } as const;

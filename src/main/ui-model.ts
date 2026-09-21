@@ -47,6 +47,8 @@ export interface AppContext {
   language: Language;
   hotkey: AppHotkey;
   updates: { state: UpdateState; enabled: boolean };
+  /** The app's own switch. Electron cannot read the OS notification permission. */
+  notifications: boolean;
 }
 
 /**

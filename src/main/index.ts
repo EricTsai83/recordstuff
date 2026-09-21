@@ -224,6 +224,7 @@ async function main(): Promise<void> {
     quality: quality(),
     language: settings.language,
     updates: { state: updates.state, enabled: settings.updates.enabled },
+    notifications: settings.notifications,
     hotkey: {
       ...settings.hotkey,
       // "registered" means the saved combination is the live one; a deferred
@@ -240,6 +241,7 @@ async function main(): Promise<void> {
   const tray = new AppTray({
     resourcesDir: resourcesDir(),
     context: appContext,
+    canNotify: () => settings.notifications,
     onToggle: toggle,
     onAction: (action) => void handleAction(action),
     log,
@@ -462,7 +464,9 @@ async function main(): Promise<void> {
   });
 
   permission?.start();
-  if (process.platform === "win32" && (await isFirstRun(app.getPath("userData")))) {
+  // Every platform: a menu-bar app is hard to find, and on macOS this is the
+  // one moment the notification authorization prompt can appear in context.
+  if (await isFirstRun(app.getPath("userData"))) {
     tray.notifyTrayHint();
   }
   if (autoRecord?.ok) {

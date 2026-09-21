@@ -13,6 +13,7 @@ const context: AppContext = {
   language: "en",
   hotkey: { ...DEFAULT_HOTKEY, registered: true },
   updates: { state: { kind: "idle" }, enabled: true },
+  notifications: true,
 };
 const idle: RecordingState = { type: "idle" };
 const busy: RecordingState[] = [
