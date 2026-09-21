@@ -75,6 +75,17 @@ const H = level === 2 ? "h2" : "h3";
 </div>
 
 <style>
+  /* Fragment navigation focuses this heading, whose box includes the section's
+     top padding. Mark the text instead of outlining that entire box. */
+  #open-anyway:focus {
+    outline: none;
+    border-radius: 0;
+  }
+  #open-anyway:focus-visible {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.2em;
+  }
   .table-scroll {
     overflow-x: auto;
     margin: 1rem 0 1.5rem;
