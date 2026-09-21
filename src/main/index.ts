@@ -337,8 +337,15 @@ async function main(): Promise<void> {
       case "quit":
         app.quit();
         return;
+      // A pressed button that opens nothing must say so: this state blocks
+      // recording entirely, and the tray menu is its only route.
       case "openPermissionSettings":
-        await openScreenCaptureSettings();
+        try { await openScreenCaptureSettings(); }
+        catch (cause) {
+          log(`permission: open settings failed: ${String(cause)}`);
+          await dialog.showMessageBox({ type: "info", title: APP_NAME, message: APP_NAME,
+            detail: translate("Could not open System Settings. Allow RecordStuff in System Settings → Privacy & Security → Screen & System Audio Recording.", settings.language) });
+        }
         return;
       // An actions choice has no committed value to compare, so it reports its
       // own outcome: a refused pane leaves the note's manual path as recovery.
