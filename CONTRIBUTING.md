@@ -41,6 +41,9 @@ For testing a packaged macOS app, `pnpm start:app` builds, self-signs, verifies,
 | `src/shared/` | State, message protocol, recording quality, and translations |
 | `scripts/` | Build, signing, and recording verification tools |
 | `docs/system-design/` | Architecture and module documentation |
+| `website/` | The Astro site, a separate package run through the root `pnpm site:*` scripts |
+
+[Repository layout](docs/system-design/repository.md) covers the rest of the tree — packaging inputs, documentation, generated paths, and the configuration that enforces the structure.
 
 Keep a change focused on the problem it addresses and follow the surrounding code's conventions. Tests live alongside the source as `*.test.ts`. Add or update tests when behavior changes; for a bug fix, cover the regression where practical.
 

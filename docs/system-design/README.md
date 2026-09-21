@@ -11,6 +11,7 @@ Updated: 2026-09-21. These documents describe the current implementation and rep
 | [Product overview](overview.md) | Product goals, features, platform scope, and delivery expectations |
 | [Design overview](design-overview.md) | The design spine, layer direction, one recording end to end, and cross-cutting invariants |
 | [Architecture](architecture.md) | Process boundaries, ownership, IPC, and persistent data |
+| [Repository layout](repository.md) | What each directory holds, the naming and translation conventions, and what enforces the structure |
 | [Electron, Chromium, and WebRTC](webrtc.md) | Media engine layers, local recording versus peer transport, audio processing, and verification boundaries |
 | [Recording pipeline](recording.md) | Start, capture, encoding, chunks, stop, failure, and file durability |
 | [Desktop features](desktop.md) | Tray, notifications, permissions, settings, and logging |
