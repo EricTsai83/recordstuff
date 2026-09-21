@@ -36,7 +36,7 @@ Tray 只保留必須一鍵可達的指令，所有偏好設定都在同一個獨
 
 [settings-model.ts](../../../src/main/settings-model.ts) 只宣告每項偏好一次，配上穩定的群組與選項 id，也是唯一知道某個選項代表什麼的地方；它同時產生面板要畫的 view，以及「這個請求現在允不允許」的答案。Tray 模型是同一份狀態與 context 的兄弟投影，不是面板讀取的來源。
 
-已提交設定由主程序持有，面板只暫存尚未完成的選擇：畫出收到的 view，回傳群組 id 與選項 id，不回傳 action。主程序只接受設定視窗自身 main frame 的請求，依當下重新產生的模型解析這組 id，然後才呼叫與 tray 相同的 action handler，而該 handler 在保存前會再檢查一次錄製狀態。啟動錄製、錄製中與存檔中，除了語言以外的設定在面板與該邊界都會鎖定。保存依請求順序序列化，第二個變更是排隊而不是被回報為失敗。保存期間保留最新選擇，不被較早的回覆或推播蓋掉；所有請求完成後才解除其他控制項的鎖定，顯示實際提交的值，最新選擇未生效時顯示行內訊息；被 OS 拒絕註冊的快捷鍵會保留選取並加上「目前無效」的註解。保存期間正在操作的控制項維持可用、其餘暫時停用，因為停用中的元素無法保有鍵盤焦點。設定 preload 僅提供讀取、選取與變更訂閱；面板在第一份 view 之前唯一可能需要的字串（首次讀取失敗）依主程序寫在頁面 URL 的語言在地化。
+已提交設定由主程序持有，面板只暫存尚未完成的選擇：畫出收到的 view，回傳群組 id 與選項 id，不回傳 action。主程序只接受設定視窗自身 main frame 的請求，依當下重新產生的模型解析這組 id，然後才呼叫與 tray 相同的 action handler，而該 handler 在保存前會再檢查一次錄製狀態。啟動錄製、錄製中與存檔中，除了語言以外的設定在面板與該邊界都會鎖定。保存依請求順序序列化，第二個變更是排隊而不是被回報為失敗。保存期間保留最新選擇，不被較早的回覆或推播蓋掉；所有請求完成後才解除其他控制項的鎖定，顯示實際提交的值，最新選擇未生效時顯示行內訊息；被 OS 拒絕註冊的快捷鍵會保留選取並加上「目前無效」的註解。群組也可以帶 `actions`：渲染在該控制項下方的按鈕，用於同一張卡片內可能凌駕該偏好的系統面板。actions 群組的選項、以及該 `actions` 清單中的選項，都沒有可比對的已提交值，因此由其 handler 以布林值回報自身結果並直接採用；其餘選項仍以「要求的值是否成為已提交值」判定，所以一個什麼都不回報的 handler 永遠無法把未保存的變更變成成功。保存期間正在操作的控制項維持可用、其餘暫時停用，因為停用中的元素無法保有鍵盤焦點。設定 preload 僅提供讀取、選取與變更訂閱；面板在第一份 view 之前唯一可能需要的字串（首次讀取失敗）依主程序寫在頁面 URL 的語言在地化。
 
 「錄影」分頁包含影像品質、解析度上限與幀率，並說明編碼品質與像素尺寸的差異。「一般」包含快捷鍵、語言與更新控制。分頁支援方向鍵、Home 和 End，變更設定後保留目前分頁。更新操作使用按鈕，其完成狀態與偏好儲存分開處理。
 
@@ -88,11 +88,12 @@ TrayContext 提供目前語言，通知建立時讀當前 context；已發送的
     "frameRate": 30
   },
   "language": "en",
-  "hotkey": { "enabled": true, "accelerator": "CommandOrControl+Shift+1" }
+  "hotkey": { "enabled": true, "accelerator": "CommandOrControl+Shift+1" },
+  "notifications": true
 }
 ```
 
-`language` 是相容新增欄位：舊檔未填時預設 en；不支援的值回 en 並記 warning，但保留合法位置與品質。`hotkey.accelerator` 必須是 shared/hotkey.ts 的 preset 之一；v3 檔缺少或不合法的 hotkey 區塊回預設快捷鍵並記 warning，保留其他欄位。`outputDir` 必須是非空絕對路徑。版本 1 可讀，補預設 quality；版本 1／2 補預設快捷鍵（各記 warning），下次保存寫成 v3。整份無效／未知版本／路徑無效回預設並記 log；僅 quality 壞掉則保留合法 outputDir，重設品質。舊 audioQuality 額外欄位不參與目前設定。
+`language` 是相容新增欄位：舊檔未填時預設 en；不支援的值回 en 並記 warning，但保留合法位置與品質。`hotkey.accelerator` 必須是 shared/hotkey.ts 的 preset 之一；v3 檔缺少或不合法的 hotkey 區塊回預設快捷鍵並記 warning，保留其他欄位。`outputDir` 必須是非空絕對路徑。版本 1 可讀，補預設 quality；版本 1／2 補預設快捷鍵（各記 warning），下次保存寫成 v3。整份無效／未知版本／路徑無效回預設並記 log；僅 quality 壞掉則保留合法 outputDir，重設品質。舊 audioQuality 額外欄位不參與目前設定。`notifications` 與 `updates` 同屬相容新增欄位：缺少或非布林值一律讀為 `true` 且不記 warning，因為在這個開關存在之前寫下的檔案並不是壞檔。
 
 保存以 Promise 佇列依「上一份成功提交的設定」合併更新，避免連點遺失前一次修改；先寫 `settings.json.tmp` 再 rename，成功才切換記憶體。單次失敗拒絕自己的 caller，後續儲存仍可執行。這是避免半份 JSON 的策略，不是附帶目錄 fsync 的斷電耐久性保證。
 
@@ -121,5 +122,13 @@ TrayContext 提供目前語言，通知建立時讀當前 context；已發送的
 設定版本 3 新增可選的 `updates: { enabled, lastAttempt }`。舊檔預設開啟且無檢查紀錄。原子、序列化寫入保留其他設定。發出網路請求前保存嘗試時間，失敗亦計入，避免重開繞過 24 小時限制；系統時鐘回調造成的未來時間戳視為應重新檢查。手動檢查不受此限制，時間戳寫入失敗時記錄錯誤後仍繼續連線。App 執行期間沒有輪詢計時器。關閉偏好只影響啟動檢查。
 
 App 注入 Electron `net.fetch`，採用 Chromium 網路層及系統代理／PAC 設定；單元測試注入測試用傳輸。檢查先讀取 `https://record.ericts.com/release.json`，失敗改查儲存庫的 GitHub latest-release API。每個來源最多等待 8 秒，結束 App 時取消請求。與 `app.getVersion()` 比較穩定語意版本；不相容的產物、無效資料與預覽版不會產生更新提示。啟動檢查失敗恢復先前選單並寫 log；手動失敗提供發布頁與重試。成功顯示本地檢查時間，或顯示新版並開啟固定官網下載頁；下載、取代仍為手動。
+
+## 通知開關
+
+「設定 → 一般」提供「通知」開／關；macOS 的「開啟通知設定…」按鈕就放在同一張卡片內，讓開關與可能凌駕它的系統權限讀起來是同一個決定，而不是兩個無關的設定。`AppTray.show` 在任何其他判斷之前先檢查這個開關，並寫下 `notification: turned off in settings, dropped: …`，因此單一布林值管轄 App 發出的每一則通知 — 存檔完成、錯誤，以及各種寫入失敗提示。錄製進行中這個開關與其他偏好一樣鎖定。
+
+App 刻意不映射作業系統的通知權限。Electron 沒有任何方式可以讀取：`systemPreferences.getMediaAccessStatus` 只接受 `microphone`、`camera` 與 `screen`，而 `Electron Framework` 二進位中不存在 `getNotificationSettingsWithCompletionHandler`。其中確實存在 `requestAuthorizationWithOptions:completionHandler:`，所以 Electron 是在 `Notification.show()` 內部向 macOS 請求授權 — 全新安裝的第一則通知就是觸發系統提示的那一刻。`UNUserNotificationCenter` 只在狀態為 `notDetermined` 時提供該提示，而狀態按 bundle ID 保存、重新安裝 App 也不會重置，因此顯示提示的機會一輩子只有一次，被拒絕之後就 App 而言即為終局。所以這次機會花在首次啟動，由那則同時告訴使用者選單列 App 位置的首次啟動提示來使用：啟動正是 macOS 已經在為這個 App 索取螢幕錄製權限的時刻，通知的請求因此落在同一個脈絡裡，而不是出現在使用者第一次錄影結束的瞬間。開關維持預設開啟 — 一個從不說自己存好了的錄影工具讀起來像壞掉，而一個使用者永遠找不到、從未動用的提示機會，並不比被拒絕好。把開關關掉再打開同樣會送出確認通知，那也是可重複執行的送達測試。狀態列必然要宣稱一個 App 讀不到的權限狀態，所以群組的說明文字改為標示恢復路徑 —「系統設定 → 通知 → RecordStuff」— macOS 的操作按鈕則直接開啟該面板。關閉開關是照辦而非補償：說明文字此時改為交代代價與替代查看位置。十四個錯誤碼中只有六個僅能透過通知抵達使用者 — `capture_failed`、`capture_host_crashed`、`capture_host_unresponsive`、`output_write_failed`、`disk_full` 與 `stop_timeout`，也就是圖示已經是 REC 後又悄悄回到 Ready 的那些。其餘要嘛帶有 tray 狀態（`permission_denied` 與 `permission_needs_relaunch` 會進入 `needsPermission`；`output_open_failed` 設定 `outputDirUnavailable`），要嘛根本沒有開始擷取，而圖示沒有變成 REC 本身就是訊號。中斷的錄影只要寫入過任何內容，仍會在儲存位置留下 `<stamp>.recording.mp4`，而 tray 一鍵即可開啟該資料夾，所以資料夾始終是持久紀錄，App 自身不保存任何錯誤狀態。
+
+此設計沿用 Cap（`apps/desktop/src-tauri/src/notifications.rs`）：送出路徑只檢查一個 `enable_notifications` 布林值，別無其他。Cap 另外會以 `isPermissionGranted()` 管控開關，該 API 由 `@tauri-apps/plugin-notification` 提供，Electron 沒有對應品；這段落差改由說明文字承擔。Plan 019 最初實作了通往 macOS `UserNotifications` 的 Node-API 橋接來補上它，後來撤回：該橋接使得載入失敗（架構不符或最低系統版本過新的 `.node`）會靜默壓制每一則通知，連 Electron 原本會發出的隱式授權請求也一併消失，比完全沒有狀態資訊嚴格更糟。橋接保存在 `wip/019-native-notification-bridge` 分支。
 
 網站靜態端點由已線上驗證的 manifest 產生版本、tag、平台／架構、DMG 資訊、發布日期與可信頁面 URL。未驗證的預覽建置輸出錯誤物件，不宣告可下載版本。Vercel 快取 feed 五分鐘，App 請求不使用快取。`pnpm site:check` 比對建置 feed 與 manifest；部署 workflow 也會以 `check-release.mts --dir .vercel/output/static` 檢查實際發布產物。不新增安裝識別碼、查詢參數、遙測、更新器依賴或簽章身分。
