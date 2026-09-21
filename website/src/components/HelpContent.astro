@@ -1,8 +1,8 @@
 ---
 /**
- * The full help text (install, permissions, use, update, remove, retained
- * data) shared by every variant. Headings carry ids so single-page variants
- * can deep-link to them.
+ * The full help text (allowing the app to open, install, permissions, use,
+ * update, remove, retained data) shared by every variant. Headings carry ids
+ * so single-page variants can deep-link to them.
  */
 import StepList from "./StepList.astro";
 import {
@@ -24,6 +24,15 @@ const H = level === 2 ? "h2" : "h3";
 ---
 
 <div class="prose help">
+  <H id="open-anyway">App blocked by macOS?</H>
+  <p>RecordStuff is not notarized by Apple, so macOS can block it the first time you open it and again after an update. Clicking Done only dismisses the warning; allow the app here instead.</p>
+  <ol>
+    <li>Manually open <strong>System Settings → Privacy &amp; Security</strong>.</li>
+    <li>Scroll down to <strong>Security</strong> near the bottom.</li>
+    <li>Find the RecordStuff message, click <strong>Open Anyway</strong> and confirm.</li>
+  </ol>
+  <p class="dim">Only allow a download you trust. Managed Macs may restrict this. For malware or damaged-file warnings, stop and report the issue. <a href={links.appleOpenAnyway} target="_blank" rel="noopener noreferrer">Apple’s instructions ↗</a></p>
+
   <H id="install">Install and first launch</H>
   <p>No Terminal, developer tools or certificates are needed. Files with <code>arm64</code> in the name are for Apple silicon Macs.</p>
   <StepList steps={installSteps} />
@@ -63,29 +72,9 @@ const H = level === 2 ? "h2" : "h3";
   </div>
   <p>In Finder choose Go → Go to Folder and paste a path to open it. Any remaining entry under Privacy &amp; Security → Screen &amp; System Audio Recording can be removed there; this is optional.</p>
   <p class="dim">The same guide is on GitHub in <a href={links.installGuide} target="_blank" rel="noopener noreferrer">English</a> and <a href={links.installGuideZh} target="_blank" rel="noopener noreferrer">Traditional Chinese</a>, pinned to the released commit.</p>
-
-  <H id="open-anyway" tabindex="-1">App blocked by macOS?</H>
-  <p>RecordStuff is not notarized by Apple. This can affect first installs and updates. Clicking Done only dismisses the warning.</p>
-  <ol>
-    <li>Manually open <strong>System Settings → Privacy &amp; Security</strong>.</li>
-    <li>Scroll down to <strong>Security</strong> near the bottom.</li>
-    <li>Find the RecordStuff message, click <strong>Open Anyway</strong> and confirm.</li>
-  </ol>
-  <p class="dim">Only allow a download you trust. Managed Macs may restrict this. For malware or damaged-file warnings, stop and report the issue. <a href={links.appleOpenAnyway} target="_blank" rel="noopener noreferrer">Apple’s instructions ↗</a></p>
 </div>
 
 <style>
-  /* Fragment navigation focuses this heading, whose box includes the section's
-     top padding. Mark the text instead of outlining that entire box. */
-  #open-anyway:focus {
-    outline: none;
-    border-radius: 0;
-  }
-  #open-anyway:focus-visible {
-    text-decoration: underline;
-    text-decoration-thickness: 2px;
-    text-underline-offset: 0.2em;
-  }
   .table-scroll {
     overflow-x: auto;
     margin: 1rem 0 1.5rem;

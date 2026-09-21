@@ -5,29 +5,7 @@ import HelpContent from "../components/HelpContent.astro";
 ---
 
 <Layout title="Help — install, record, update and remove RecordStuff" description="How to install RecordStuff on macOS, allow it to open, grant screen and system audio permission, record, update manually and remove it.">
-  <TextPage title="Help" description="Instructions for installing RecordStuff, recording, changing settings, updating, and uninstalling.">
-    <a slot="meta" class="blocked-notice" href="#open-anyway">
-      <strong>App blocked by macOS?</strong>
-      <span>After installing or updating, allow it in Privacy &amp; Security. See steps ↓</span>
-    </a>
+  <TextPage title="Help" description="What to do when macOS blocks the app, then installing RecordStuff, recording, changing settings, updating, and uninstalling.">
     <HelpContent />
   </TextPage>
 </Layout>
-
-<style>
-  .blocked-notice {
-    display: grid;
-    gap: 0.35rem;
-    width: 100%;
-    padding: 1rem 1.25rem;
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--warn);
-    border-radius: var(--radius);
-    background: rgba(255, 255, 255, 0.04);
-    color: var(--fg);
-    text-decoration: none;
-  }
-  .blocked-notice span { color: var(--fg-muted); font-size: 0.95rem; }
-  .blocked-notice:hover strong { text-decoration: underline; }
-  .blocked-notice:focus-visible { outline: 2px solid var(--fg); outline-offset: 4px; }
-</style>

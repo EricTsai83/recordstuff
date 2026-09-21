@@ -56,7 +56,7 @@ export const installSteps: Step[] = [
   },
   {
     title: "Allow the app to open",
-    body: "Open RecordStuff from Applications. If macOS blocks it, see ‘App blocked by macOS?’ below.",
+    body: "Open RecordStuff from Applications. If macOS blocks it, follow ‘App blocked by macOS?’ at the top of this page.",
   },
   {
     title: "Grant Screen & System Audio Recording",
@@ -80,7 +80,7 @@ export const updateSteps: Step[] = [
   },
   {
     title: "Launch the updated app and allow it to open",
-    body: "Eject the DMG and open RecordStuff from Applications. If blocked, see ‘App blocked by macOS?’ below.",
+    body: "Eject the DMG and open RecordStuff from Applications. If blocked, follow ‘App blocked by macOS?’ at the top of this page.",
   },
 ];
 
