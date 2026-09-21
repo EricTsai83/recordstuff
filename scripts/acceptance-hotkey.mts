@@ -215,7 +215,12 @@ async function main(): Promise<void> {
       }
     } finally {
       if (material) spawnSync("pkill", ["-f", MATERIAL_PROFILE]);
-      fs.rmSync(MATERIAL_PROFILE, { recursive: true, force: true });
+      // Chrome keeps writing for a moment after pkill returns, so a single rm
+      // races it. Cleanup of a temp profile must never fail the acceptance.
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        try { fs.rmSync(MATERIAL_PROFILE, { recursive: true, force: true }); break; }
+        catch { await delay(400); }
+      }
     }
   }
 }
