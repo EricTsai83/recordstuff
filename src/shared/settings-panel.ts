@@ -23,6 +23,12 @@ export interface SettingsGroup {
   note?: string;
   enabled: boolean;
   choices: SettingsChoice[];
+  /**
+   * Buttons rendered under this group's control. They carry no committed
+   * value, so a preference and the system pane that can override it can share
+   * one card: changing the switch and checking the OS are one decision.
+   */
+  actions?: SettingsChoice[];
 }
 export interface SettingsView {
   language: Language;

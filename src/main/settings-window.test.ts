@@ -70,7 +70,7 @@ const context: AppContext = {
 };
 
 /** A panel wired to a mutable copy of the committed settings. */
-function setup(overrides: { act?: (action: AppAction) => Promise<void>; state?: () => RecordingState } = {}) {
+function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState } = {}) {
   const live = { ...context };
   let state: RecordingState = { type: "idle" };
   const act = overrides.act ?? vi.fn(async (action: AppAction) => {
@@ -155,6 +155,27 @@ describe("settings window lifecycle", () => {
 });
 
 describe("settings window IPC", () => {
+  it("trusts an action's own outcome when there is no committed value to compare", async () => {
+    // Regression: the macOS notification pane is an action inside the switch's
+    // own card, so its `checked` is always false; judging it that way reported
+    // every success as "Could not apply this setting" while the pane did open.
+    let opened = true;
+    const s = setup({ act: vi.fn(async () => opened) });
+    s.panel.show();
+    await s.read(s.event());
+    expect(await s.choose(s.event(), "notifications", "openSettings")).toMatchObject({ applied: true });
+    opened = false;
+    expect(await s.choose(s.event(), "notifications", "openSettings")).toMatchObject({ applied: false });
+  });
+
+  it("still judges a real preference by what is committed, not by the handler", async () => {
+    // A handler that claims nothing must not turn an unsaved choice into success.
+    const s = setup({ act: vi.fn(async () => undefined) });
+    s.panel.show();
+    await s.read(s.event());
+    expect(await s.choose(s.event(), "notifications", "off")).toMatchObject({ applied: false });
+  });
+
   it("reports a completed update command as applied without a checked preference", async () => {
     const s = setup({ act: vi.fn(async () => undefined) });
     s.panel.show();

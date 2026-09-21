@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_QUALITY } from "../shared/quality";
 import { DEFAULT_HOTKEY, HOTKEY_PRESETS } from "../shared/hotkey";
 import type { RecordingState } from "../shared/state";
+import { translate as t } from "../shared/i18n";
 import { settingsAction, settingsChecked, settingsView } from "./settings-model";
 import type { AppContext } from "./ui-model";
 
@@ -36,6 +37,7 @@ describe("settingsView", () => {
       "hotkey",
       "updateChecks",
       "updates",
+      "notifications",
       "language",
     ]);
     for (const entry of view.groups) {
@@ -174,5 +176,50 @@ describe("update actions in General", () => {
   });
   it("places quality controls in Recording", () => {
     expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["videoQuality", "resolutionCap", "frameRate"]);
+  });
+});
+
+describe("notifications in General", () => {
+  it("reflects the committed switch and maps both ids to the action", () => {
+    expect(checked(idle, context, "notifications")).toBe("on");
+    expect(checked(idle, { ...context, notifications: false }, "notifications")).toBe("off");
+    expect(settingsAction(idle, context, "notifications", "off")).toEqual({ setNotifications: false });
+    expect(settingsAction(idle, context, "notifications", "on")).toEqual({ setNotifications: true });
+  });
+
+  it("is locked while a capture is running, like every other preference", () => {
+    for (const state of busy) expect(settingsAction(state, context, "notifications", "off")).toBeUndefined();
+  });
+
+  /** Off is obeyed, not compensated for: the cost is stated where the choice is. */
+  it("states what turning it off costs and where to look instead", () => {
+    const off = group(idle, { ...context, notifications: false }, "notifications")?.note ?? "";
+    expect(off).toContain(t("Notifications are off. An interrupted or unsaved recording will not tell you; check the output folder to confirm a recording was saved.", "en"));
+    // The macOS caveat is about a permission the user did not choose; it would
+    // only confuse the reading of a switch the user did choose to turn off.
+    expect(off).not.toContain("System Settings");
+    expect(group(idle, { ...context, notifications: false }, "notifications")?.choices.find((c) => c.checked)?.id).toBe("off");
+  });
+
+  /** Claiming an OS state the app cannot read would be worse than saying nothing. */
+  it("names the macOS recovery path in the note without reporting a permission state", () => {
+    const note = group(idle, context, "notifications")?.note ?? "";
+    expect(note).toContain("System Settings");
+    expect(note).not.toMatch(/denied|authoriz/i);
+    expect(group(idle, { ...context, platform: "win32" }, "notifications")?.note).not.toContain("System Settings");
+  });
+
+  /** One card: changing the switch and checking the OS are one decision. */
+  it("carries the settings pane as an action in the switch's own card, on macOS only", () => {
+    const mac = group(idle, context, "notifications");
+    expect(mac?.actions?.map((a) => a.id)).toEqual(["openSettings"]);
+    expect(settingsAction(idle, context, "notifications", "openSettings")).toBe("openNotificationSettings");
+    // The action has no committed value and must not be mistaken for one.
+    expect(mac?.actions?.every((a) => !a.checked)).toBe(true);
+    expect(settingsChecked(idle, context, "notifications", "openSettings")).toBe(false);
+
+    const win = group(idle, { ...context, platform: "win32" }, "notifications");
+    expect(win?.actions).toBeUndefined();
+    expect(settingsAction(idle, { ...context, platform: "win32" }, "notifications", "openSettings")).toBeUndefined();
   });
 });

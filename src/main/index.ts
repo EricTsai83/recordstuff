@@ -23,7 +23,7 @@ import { CaptureHost } from "./capture-host";
 import { FileWriter, ensureWritableDir } from "./file-writer";
 import { RecordingHotkey } from "./hotkey";
 import { createFileLogger } from "./log";
-import { PermissionWatcher, openScreenCaptureSettings } from "./permission";
+import { PermissionWatcher, openNotificationSettings, openScreenCaptureSettings } from "./permission";
 import { Recorder } from "./recorder";
 import { SavedNotification } from "./saved-notification";
 import { SettingsStore } from "./settings";
@@ -288,13 +288,23 @@ async function main(): Promise<void> {
     applyHotkey(settings.hotkey);
   }
 
-  async function handleAction(action: AppAction): Promise<void> {
+  async function handleAction(action: AppAction): Promise<boolean | void> {
     if (typeof action !== "string") {
       if ("setUpdateChecks" in action) {
         if (!settled()) return;
         try { await settings.setUpdates({ enabled: action.setUpdateChecks }); }
         catch (error) { log(`updates: preference save failed: ${String(error)}`); }
         if (settled()) refreshUi();
+      } else if ("setNotifications" in action) {
+        if (!settled()) return;
+        const turningOn = action.setNotifications && !settings.notifications;
+        try { await settings.setNotifications(action.setNotifications); }
+        catch (error) { log(`notifications: preference save failed: ${String(error)}`); }
+        if (settled()) refreshUi();
+        // Electron asks macOS for authorization inside `show()`, so turning the
+        // switch on is the one moment the system prompt can appear at the
+        // user's own request. The confirmation doubles as the delivery test.
+        if (turningOn && settings.notifications) tray.notifyNotificationsEnabled();
       } else if ("setLanguage" in action) {
         try {
           await settings.setLanguage(action.setLanguage);
@@ -330,6 +340,11 @@ async function main(): Promise<void> {
       case "openPermissionSettings":
         await openScreenCaptureSettings();
         return;
+      // An actions choice has no committed value to compare, so it reports its
+      // own outcome: a refused pane leaves the note's manual path as recovery.
+      case "openNotificationSettings":
+        try { await openNotificationSettings(); return true; }
+        catch (error) { log(`notifications: open settings failed: ${String(error)}`); return false; }
       case "relaunch":
         app.relaunch();
         app.quit();

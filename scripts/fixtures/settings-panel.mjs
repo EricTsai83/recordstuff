@@ -30,9 +30,14 @@ const view = (language) => {
     failure: zh
       ? "無法套用這項設定，目前顯示的是實際使用的設定。"
       : "Could not apply this setting. Your current settings are shown.",
+    tabs: [
+      { id: "recording", label: zh ? "錄影" : "Recording settings" },
+      { id: "general", label: zh ? "一般" : "General" },
+    ],
     groups: [
       {
         id: "frameRate",
+        tab: "recording",
         label: zh ? "幀率" : "Frame rate",
         enabled: true,
         choices: [
@@ -47,6 +52,7 @@ const view = (language) => {
       },
       {
         id: "hotkey",
+        tab: "recording",
         label: zh ? "快捷鍵" : "Shortcut",
         note: zh ? "無法使用：這個快捷鍵被其他 App 佔用。" : "Unavailable: another app is using this shortcut.",
         enabled: true,
@@ -56,7 +62,22 @@ const view = (language) => {
         ],
       },
       {
+        id: "notifications",
+        tab: "general",
+        label: zh ? "通知" : "Notifications",
+        note: zh ? "錄影儲存完成或發生錯誤時顯示通知。" : "Shows a notification when a recording is saved or an error occurs.",
+        enabled: true,
+        choices: [
+          { id: "on", label: zh ? "開啟" : "On", enabled: true, checked: notifications },
+          { id: "off", label: zh ? "關閉" : "Off", enabled: true, checked: !notifications },
+        ],
+        actions: [
+          { id: "openSettings", label: zh ? "開啟通知設定…" : "Open notification settings…", enabled: true, checked: false },
+        ],
+      },
+      {
         id: "language",
+        tab: "recording",
         label: zh ? "語言" : "Language",
         enabled: true,
         choices: [
@@ -69,6 +90,7 @@ const view = (language) => {
 };
 
 let language = "zh-TW";
+let notifications = true;
 const chooseCalls = [];
 let holdSaves = false;
 const heldSaves = [];
@@ -77,7 +99,12 @@ ipcMain.handle("settings:choose", (_event, group, choice) => {
   chooseCalls.push([group, choice]);
   const commit = () => {
     if (group === "language") language = choice;
-    return { view: view(language), applied: group === "language" };
+    if (group === "notifications" && choice !== "openSettings") notifications = choice === "on";
+    // The pane has no committed value; main uses the handler's own boolean.
+    const applied = group === "language"
+      || (group === "notifications" && choice === "openSettings")
+      || (group === "notifications" && (choice === "on") === notifications);
+    return { view: view(language), applied };
   };
   if (holdSaves) return new Promise(resolve => heldSaves.push(() => resolve(commit())));
   return commit();
@@ -238,6 +265,70 @@ async function run() {
   })`);
   record("the final completion unlocks controls and displays committed settings",
     finished.value === "en" && !finished.locked && finished.title === "Settings", JSON.stringify(finished));
+
+  // Stop holding saves: the cases below judge settled state, and a still-pending
+  // save keeps `saving` set, which renders every button disabled.
+  holdSaves = false;
+  if (heldSaves.length !== 0) throw new Error("Held saves were left pending");
+
+  // A preference and the system pane that can override it, in one card.
+  await read(window, `document.querySelector("#tab-general").click()`);
+  await settle(200);
+  const general = await read(window, `(() => {
+    const row = document.querySelector("#setting-notifications")?.closest(".row");
+    const kids = row ? [...row.children].map(el => el.tagName.toLowerCase() + (el.id ? "#" + el.id : "." + el.className)) : [];
+    return {
+      controls: [...document.querySelectorAll("select")].map(s => s.id),
+      buttons: [...document.querySelectorAll(".row button")].map(b => ({ id: b.id, text: b.textContent, disabled: b.disabled })),
+      value: document.querySelector("#setting-notifications")?.value ?? null,
+      order: kids,
+    };
+  })()`);
+  record(
+    "the general tab renders the notification switch with its pane button in one card",
+    general.controls.join(",") === "setting-notifications" &&
+      general.buttons.length === 1 &&
+      general.buttons[0].id === "setting-notifications-openSettings" &&
+      general.buttons[0].disabled === false &&
+      general.order.at(-1) === "button#setting-notifications-openSettings",
+    JSON.stringify(general),
+  );
+
+  chooseCalls.length = 0;
+  await read(window, `document.querySelector("#setting-notifications-openSettings").click()`);
+  await settle(700);
+  const pane = await read(window, `({
+    feedback: document.querySelector("#feedback").textContent,
+    value: document.querySelector("#setting-notifications").value,
+  })`);
+  record(
+    "the pane button reaches main as ids and its own outcome counts as applied",
+    JSON.stringify(chooseCalls) === '[["notifications","openSettings"]]' && pane.feedback === "",
+    JSON.stringify({ chooseCalls, ...pane }),
+  );
+
+  chooseCalls.length = 0;
+  await read(window, `(() => {
+    const select = document.querySelector("#setting-notifications");
+    select.value = "off";
+    select.dispatchEvent(new Event("change"));
+  })()`);
+  await settle(700);
+  const off = await read(window, `(() => {
+    const row = document.querySelector("#setting-notifications").closest(".row");
+    return {
+      value: document.querySelector("#setting-notifications").value,
+      feedback: document.querySelector("#feedback").textContent,
+      buttons: [...row.querySelectorAll("button")].map(b => ({ id: b.id, disabled: b.disabled })),
+    };
+  })()`);
+  record(
+    "turning the switch off commits and leaves the pane button usable",
+    off.value === "off" && off.feedback === "" &&
+      off.buttons.length === 1 && off.buttons[0].id === "setting-notifications-openSettings" &&
+      off.buttons[0].disabled === false,
+    JSON.stringify(off),
+  );
 
   fs.writeFileSync(path.join(outDir, "panel.png"), (await window.webContents.capturePage()).toPNG());
   fs.writeFileSync(path.join(outDir, "results.json"), `${JSON.stringify(results, null, 2)}\n`);

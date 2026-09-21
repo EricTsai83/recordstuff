@@ -19,8 +19,12 @@ import type { AppAction, AppContext } from "./ui-model";
 export interface SettingsWindowOptions {
   state: () => RecordingState;
   context: () => AppContext;
-  /** The same handler the tray uses; it re-checks the recording state itself. */
-  act: (action: AppAction) => Promise<void>;
+  /**
+   * The same handler the tray uses; it re-checks the recording state itself.
+   * An action with no committed value reports its own outcome as a boolean;
+   * anything else is judged by whether the requested choice is committed now.
+   */
+  act: (action: AppAction) => Promise<boolean | void>;
   log?: (message: string) => void;
 }
 
@@ -130,10 +134,12 @@ export class SettingsWindow {
       this.log(`settings window: refused ${JSON.stringify({ group, choice })}`);
       return { view: this.view(), applied: false };
     }
-    await this.options.act(action);
+    const outcome = await this.options.act(action);
     return {
       view: this.view(),
-      applied: action === "checkUpdates" || action === "openUpdate" || settingsChecked(this.options.state(), this.options.context(), group, choice),
+      applied: typeof outcome === "boolean"
+        ? outcome
+        : action === "checkUpdates" || action === "openUpdate" || settingsChecked(this.options.state(), this.options.context(), group, choice),
     };
   }
 

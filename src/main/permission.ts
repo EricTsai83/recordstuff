@@ -40,6 +40,18 @@ export function openScreenCaptureSettings(): Promise<void> {
   return shell.openExternal(SCREEN_CAPTURE_SETTINGS_URL);
 }
 
+/**
+ * Notification permission has no status API to poll — `getMediaAccessStatus`
+ * covers microphone, camera and screen only — so the app never mirrors it.
+ * This is the recovery path the settings panel offers instead.
+ */
+export const NOTIFICATION_SETTINGS_URL =
+  "x-apple.systempreferences:com.apple.Notifications-Settings.extension";
+
+export function openNotificationSettings(): Promise<void> {
+  return shell.openExternal(NOTIFICATION_SETTINGS_URL);
+}
+
 /** Number of screens capture can currently see; throws when macOS refuses. */
 export async function countCapturableScreens(): Promise<number> {
   const sources = await desktopCapturer.getSources({

@@ -36,6 +36,16 @@ function controlId(group: SettingsGroup): string {
   return `setting-${group.id}`;
 }
 
+function actionButton(group: SettingsGroup, choice: SettingsGroup["choices"][number]): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.id = `${controlId(group)}-${choice.id}`;
+  button.textContent = choice.label;
+  button.disabled = !group.enabled || !choice.enabled || saving !== undefined;
+  button.addEventListener("click", () => void choose(group.id, choice.id, button.id));
+  return button;
+}
+
 function row(group: SettingsGroup): HTMLElement {
   const container = document.createElement("div");
   container.className = "row";
@@ -51,15 +61,7 @@ function row(group: SettingsGroup): HTMLElement {
       note.textContent = group.note;
       container.append(note);
     }
-    for (const choice of group.choices) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.id = `${controlId(group)}-${choice.id}`;
-      button.textContent = choice.label;
-      button.disabled = !group.enabled || !choice.enabled || saving !== undefined;
-      button.addEventListener("click", () => void choose(group.id, choice.id, button.id));
-      container.append(button);
-    }
+    for (const choice of group.choices) container.append(actionButton(group, choice));
     return container;
   }
   const select = document.createElement("select");
@@ -90,6 +92,9 @@ function row(group: SettingsGroup): HTMLElement {
   control.className = "select-control";
   control.append(select);
   container.append(control);
+  // Buttons belonging to this preference, e.g. the system pane that can
+  // override it. They follow the control so the card reads top to bottom.
+  for (const choice of group.actions ?? []) container.append(actionButton(group, choice));
   return container;
 }
 

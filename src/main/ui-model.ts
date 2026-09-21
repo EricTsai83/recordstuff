@@ -20,6 +20,7 @@ export const APP_NAME = "RecordStuff";
 export type AppAction =
   | "openSettings"
   | "openPermissionSettings"
+  | "openNotificationSettings"
   | "relaunch"
   | "stop"
   | "revealLastSaved"
@@ -30,6 +31,7 @@ export type AppAction =
   | "checkUpdates"
   | "openUpdate"
   | { setUpdateChecks: boolean }
+  | { setNotifications: boolean }
   | { setQuality: Partial<QualitySettings> }
   | { setLanguage: Language }
   | { setHotkey: HotkeySettings };

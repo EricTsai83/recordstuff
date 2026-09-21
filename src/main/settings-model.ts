@@ -19,7 +19,7 @@ import {
   type VideoQuality,
 } from "../shared/quality";
 import { HOTKEY_PRESETS, describeAccelerator } from "../shared/hotkey";
-import type { SettingsGroup, SettingsView } from "../shared/settings-panel";
+import type { SettingsChoice, SettingsGroup, SettingsView } from "../shared/settings-panel";
 import type { RecordingState } from "../shared/state";
 
 import { preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
@@ -27,6 +27,7 @@ import { preferencesUnlocked, type AppAction, type AppContext } from "./ui-model
 /** A group as main knows it: exactly the wire shape plus the action per choice. */
 interface Group extends SettingsGroup {
   choices: Array<SettingsGroup["choices"][number] & { action: AppAction }>;
+  actions?: Array<SettingsChoice & { action: AppAction }>;
 }
 
 const VIDEO_QUALITY_LABELS: Record<VideoQuality, MessageKey> = {
@@ -143,6 +144,46 @@ function updateActions(ctx: AppContext, enabled: boolean): Group {
   return { ...group("updates", t("Updates", language), enabled, choices, note), kind: "actions" };
 }
 
+/**
+ * One switch for every notification the app sends, after Cap's design
+ * (CapSoftware/Cap, apps/desktop/src-tauri/src/notifications.rs): the send
+ * path checks one boolean and nothing else. Cap can also gate its switch on
+ * the OS permission because Tauri exposes `isPermissionGranted`; Electron has
+ * no equivalent — `getMediaAccessStatus` accepts microphone, camera and
+ * screen only — so the app never claims to know the OS state. The note
+ * carries the recovery path instead of a status line that could be wrong.
+ */
+function notificationsGroup(ctx: AppContext, enabled: boolean): Group[] {
+  const language = ctx.language;
+  const what = t("Shows a notification when a recording is saved or an error occurs.", language);
+  // Off is obeyed, not compensated for. Six error codes reach the user only as
+  // a notification (the rest leave a tray state or never start the capture), so
+  // the cost and the place to look instead are stated where the choice is made.
+  const note = !ctx.notifications
+    ? t("Notifications are off. An interrupted or unsaved recording will not tell you; check the output folder to confirm a recording was saved.", language)
+    : ctx.platform === "darwin"
+      ? `${what} ${t("macOS must also allow RecordStuff in System Settings → Notifications.", language)}`
+      : what;
+  const switchGroup = group("notifications", t("Notifications", language), enabled, [true, false].map((value) => ({
+    id: value ? "on" : "off",
+    label: t(value ? "On" : "Off", language),
+    enabled: true,
+    checked: value === ctx.notifications,
+    action: { setNotifications: value },
+  })), note);
+  // Only macOS hides notifications behind a pane worth linking to. It sits in
+  // this card so the switch and the permission that can override it read as
+  // one decision rather than two unrelated settings.
+  if (ctx.platform !== "darwin") return [switchGroup];
+  return [{ ...switchGroup, actions: [{
+    id: "openSettings",
+    label: t("Open notification settings…", language),
+    enabled: true,
+    checked: false,
+    action: "openNotificationSettings" satisfies AppAction,
+  }] }];
+}
+
 /** Language is presentation only: it never touches a running capture, so it is never locked. */
 function languageGroup(language: Language): Group[] {
   return [group("language", t("Language", language), true, (["en", "zh-TW"] as const).map((value) => ({
@@ -161,6 +202,7 @@ function settingsGroups(state: RecordingState, ctx: AppContext): Group[] {
     ...hotkeyGroup(ctx, unlocked),
     ...updateChecksGroup(ctx, unlocked),
     updateActions(ctx, unlocked),
+    ...notificationsGroup(ctx, unlocked),
     ...languageGroup(ctx.language),
   ];
 }
@@ -178,9 +220,10 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
     ),
     failure: t("Could not apply this setting. Your current settings are shown.", language),
     tabs: [{ id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) }],
-    groups: settingsGroups(state, ctx).map(({ choices, ...rest }) => ({
+    groups: settingsGroups(state, ctx).map(({ choices, actions, ...rest }) => ({
       ...rest,
       choices: choices.map(({ action: _action, ...choice }) => choice),
+      ...(actions === undefined ? {} : { actions: actions.map(({ action: _action, ...choice }) => choice) }),
     })),
   };
 }
@@ -214,6 +257,6 @@ function find(
 ): (Group["choices"][number] & { group: Group }) | undefined {
   if (typeof groupId !== "string" || typeof choiceId !== "string") return undefined;
   const group = settingsGroups(state, ctx).find((candidate) => candidate.id === groupId);
-  const choice = group?.choices.find((candidate) => candidate.id === choiceId);
+  const choice = [...(group?.choices ?? []), ...(group?.actions ?? [])].find((candidate) => candidate.id === choiceId);
   return group && choice ? { ...choice, group } : undefined;
 }

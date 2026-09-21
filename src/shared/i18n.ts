@@ -97,6 +97,15 @@ export const ZH_TW = {
     "無法註冊快捷鍵 {value}，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵",
   "Could not save the shortcut. Your previous shortcut is still in use.":
     "無法儲存快捷鍵設定，仍使用原本的快捷鍵。請再試一次",
+  Notifications: "通知",
+  "Shows a notification when a recording is saved or an error occurs.": "錄影儲存完成或發生錯誤時顯示通知。",
+  "macOS must also allow RecordStuff in System Settings → Notifications.":
+    "macOS 另外還要在「系統設定 → 通知」中允許 RecordStuff。",
+  "Notifications are off. An interrupted or unsaved recording will not tell you; check the output folder to confirm a recording was saved.":
+    "通知已關閉。錄影中斷或存檔失敗時不會有提示，請到儲存位置確認檔案是否存在。",
+  "Could not open System Settings. Allow RecordStuff in System Settings → Privacy & Security → Screen & System Audio Recording.":
+    "無法開啟系統設定。請在「系統設定 → 隱私權與安全性 → 螢幕與系統音訊錄製」中允許 RecordStuff",
+  "Open notification settings…": "開啟通知設定…",
   "Notifications are on. This is what a RecordStuff notification looks like.":
     "通知已開啟，RecordStuff 的通知會像這樣顯示。",
   "Choose a recording folder": "選擇錄影儲存位置",
