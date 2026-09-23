@@ -89,15 +89,7 @@ Autorecord 存檔後立即退出，因此 macOS 待送的儲存通知會被退�
 
 ### 選擇驗收範圍
 
-App 變更執行 `pnpm check`，並對建置後的 App 做一次基本錄影驗收。播放沿用該錄影與驗證報告，不重跑相同媒體分析；依變更追加檢查：
-
-| 變更 | 追加檢查 |
-| --- | --- |
-| 更新功能 | `pnpm acceptance:updates`；feed 篩選或逾時變更加 `--full` |
-| 設定面板 | `pnpm build` 後跑 `pnpm acceptance:settings`；唯一會在 Electron 裡跑出貨頁面與 preload 的檢查 |
-| 通知／Finder 定位 | 日常 smoke 用 `pnpm acceptance:notification -- --install --clicks 2`；偶發問題與通知修正保留五次／完整矩陣 |
-| 擷取／品質／時序 | 對應的 `pnpm matrix` 子集；音質受影響時追加音訊診斷 |
-| 語言／設定／啟動 | 原生 UI 設定操作與重開保存檢查 |
+依[共用測試規則](../testing.md)選擇必要及可排除的檢查。原生／錄影使用[共用案例與報告](../acceptance.md)。本頁維護指令操作及門檻，不另定一套測試選擇規則。
 
 Updates 使用插樁副本，matrix 使用 autorecord，兩者都不能代替正常建置 App 的驗收。通知驗收保留安裝路徑與不同 Finder 狀態的覆蓋。同一未變更檔案與相同驗證範圍可共用媒體證據；不同產物或 UI 操作不可互相替代。素材參數、log 游標與有時限的 log 等待共用 `scripts/lib/acceptance.mts` 與 `scripts/lib/acceptance-runtime.mts`；各 runner 保留自己的 App 生命週期與判定。快捷鍵與通知 runner 共用中斷錄影的收尾，等待存檔，成功送出停止命令後不再次切換快捷鍵。
 
@@ -105,7 +97,7 @@ Updates 使用插樁副本，matrix 使用 autorecord，兩者都不能代替正
 
 驗收現在分別要求：與實際觀察到的通知文字相符的 `clicked` 事件（缺少文字時才用本次儲存的預期語言／檔名），以及完整路徑相符的成功 reveal 要求。兩者各自判定，不再只因缺少 reveal 紀錄就宣稱 callback 未送達。沒有 click 日誌的舊版無法通過此較嚴格的 runner；歷史報告保留原判定。
 
-Plan 017 時序診斷新增 `tracksStoppedAt`（renderer 停止 tracks 後的 wall-clock 毫秒）、主程序 `host stopped`、`file finalized`，以及 `saved scheduled`、`saved cancelled`、`saved request failed`。JS 時間戳不代表 OS 已就緒；需與既有 request／show／click 日誌、AX 觀察及可取得的窄範圍 macOS 紀錄對照。App 不要求系統日誌存取。macOS 的儲存通知延遲 500 ms，runner 仍只在存檔後搜尋 5 秒。Plan 017 要求**連續兩輪完整驗收各 15 案例全部通過**，只達 runner 一般覆蓋門檻不算完成。
+通知時序診斷包含 `tracksStoppedAt`（renderer 停止 tracks 後的 wall-clock 毫秒）、主程序 `host stopped`、`file finalized`，以及 `saved scheduled`、`saved cancelled`、`saved request failed`。JS 時間戳不代表 OS 已就緒；需與既有 request／show／click 日誌、AX 觀察及可取得的窄範圍 macOS 紀錄對照。App 不要求系統日誌存取。macOS 的儲存通知延遲 500 ms，runner 仍只在存檔後搜尋 5 秒。歷史 Plan 017 結案門檻與結果保留於[驗證歷史](../verification/history-2026-09.md#儲存通知時序2026-09-20)，不作為每次修改的預設門檻。
 
 每個案例另外保存 `<language>-<finder>-<click>-diagnostics.json`：帶時間的搜尋嘗試、有限長度的 Accessibility 結構文字／錯誤，以及 App 通知生命週期事件。未通過案例會再取一份只觀察、不點擊的快照（最多 5 秒，因此失敗案例可能較久）。App 分別記錄請求顯示、shown、clicked、closed、failed；shown 事件本身不代表腳本找到可見橫幅。這些本地檔案可能包含通知文字，不會提交。
 
@@ -119,7 +111,7 @@ Plan 017 時序診斷新增 `tracksStoppedAt`（renderer 停止 tracks 後的 wa
 
 Ctrl-C 或 SIGTERM 會取消命令與等待。命令上限為 10 秒（程序查詢 5 秒，App 複製 60 秒）；快捷鍵送出與 Finder 建立視窗會先完成其最多 5 秒的命令，再處理取消。清理有獨立的 120 秒期限，給本段錄影最多 30 秒完成停止／存檔，停止只送一次，不會用前段紀錄判定本段已停止。若無法確認錄影停止，保留執行中的 App 與備份，不結束或替換它。App 停止後才還原語言設定；即使原先在執行，收尾後也保持關閉。未完成、取消或清理失敗都讓報告失敗。期限涵蓋非同步操作，不保證能處理無回應的檔案系統或 OS。
 
-未涵蓋 tray 選單定位、其他 Spaces、橫幅消失後從通知中心清單點擊。強化後腳本於 2026-09-20 實測約 64 秒完成預設五次流程，SIGINT／SIGTERM 取消約 2 秒完成清理，見驗證紀錄。後續當時預設的雙語 `--full`（現在需指定 `--full --languages en,zh-TW`）於 371.74 秒完成，25 通過、1 次點擊未送達失敗、4 次未出現通知；清理及空白 TextEdit 退出成功。未解失敗見驗證紀錄。
+未涵蓋 Tray 選單定位、其他 Spaces、橫幅消失後從通知中心清單點擊。歷史耗時、失敗及後續完成證據保留於[通知歷史](../verification/history-2026-09.md#通知點擊後-finder-置前--2026-09-20)，不要把舊失敗狀態當成本次結果。
 
 ## 驗收門檻
 
@@ -226,7 +218,7 @@ pnpm acceptance:settings-shortcut
 
 ## 驗收收尾
 
-完整 App 驗收每輪無論成功、失敗或中斷，都須保存測試錄影、還原設定、清理測試視窗、退出受測 App 並確認程序已消失。清理失敗算驗收失敗；保留證據，不得中斷使用者既有錄影或重設權限。退出只重設程序狀態，不會清除偏好。
+完整 App 驗收每輪無論成功、失敗或中斷，都須保存測試錄影、還原設定、清理測試視窗、退出受測 App 並確認程序已消失。清理失敗算驗收失敗；保留證據，不重設權限。開發期間已授權按需停止錄影、退出、重啟或重建 RecordStuff，不需另行確認。退出只重設程序狀態，不會清除偏好。
 
 `pnpm acceptance` 會讓受測 App 保持關閉，並在 `report.md` 記錄包含收尾的最終結果；若程序已更換或無法確認待命，拒絕退出。通知驗收還原安裝產物與設定後保持 App 關閉。設定驗收管理自己的程序群組，包含中斷與逾時清理，結果寫入 `cleanup.json`。隔離 runner 只清理自己的程序；單元檢查不關閉無關 App。設定快捷鍵入口仍保留面板供原生操作，由完整 Computer Use 驗收負責退出。下一輪錄影驗收前需重新啟動；程式改動後用 `pnpm start:app` 重建。
 

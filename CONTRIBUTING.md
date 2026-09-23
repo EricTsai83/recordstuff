@@ -54,26 +54,21 @@ Keep all execution plans in the root `plans/` directory: `<name>.md` for English
 
 ## Verify your change
 
-For application changes, run:
+Use the [shared testing policy](docs/testing.md) to select checks by behavior, including what can be omitted. It applies equally to contributors and AI agents.
 
-```bash
-pnpm check
-```
+| Typical change | Starting point |
+| --- | --- |
+| Documentation only | Check affected links/anchors, commands and translations; `git diff --check`. No app launch or recording |
+| App code | `pnpm check` (TypeScript, Vitest, production build), plus impact-specific checks from the policy |
+| Settings / shortcut integration | `pnpm acceptance:regression`, which already includes `pnpm check`; inspect affected UI/screenshots |
+| Recording behavior | `pnpm check`, then a fresh `pnpm start:app` bundle and the [recording smoke cases](docs/acceptance.md). `pnpm acceptance` automates start/stop/save/verify; observe playback separately |
+| Website | `pnpm site:check`; inspect affected pages for visual edits |
 
-This runs TypeScript checks, Vitest tests, and the production build. You can run `pnpm typecheck`, `pnpm test`, or `pnpm build` separately while developing. Before submitting any change, run `git diff --check`; for documentation-only edits, also check the affected links and commands.
+Run `git diff --check` for every change. During development, use `pnpm typecheck`, `pnpm test` or `pnpm build` separately as useful; do not repeat checks already covered by a successful composite command on the final revision.
 
-For recording changes, make a recording and check that starting, stopping, saving, and playback work. With the app running from `pnpm start:app`, `pnpm acceptance` does the start/stop/save/verify part unattended through the global shortcut; playback is still checked by eye. Note your OS, hardware, settings, and any cases you could not test. Automated checks alone do not verify actual screen and system-audio capture.
+The [acceptance guide](docs/acceptance.md) defines shared cases, cleanup and reporting. The [tooling guide](docs/system-design/tooling.md) covers signing, FFmpeg/ffprobe, media analysis and specialized runners. Complete app rounds leave the tested app closed after saving, restoring settings and confirming exit. During development, stopping recordings and quitting/restarting/rebuilding RecordStuff as needed is authorized without additional confirmation.
 
-Complete app acceptance runs finish by saving their test recording, restoring changed settings, closing test UI, quitting the tested app and confirming process exit, including on failure or interruption. Cleanup failures fail acceptance; never interrupt an existing user recording. `pnpm acceptance` leaves RecordStuff closed, so start it again before the next run. Unit checks and the settings-shortcut entry step do not close an unrelated running app.
-
-FFmpeg and ffprobe are needed for developer media analysis, not to run the app. For example:
-
-```bash
-pnpm probe -- /absolute/path/recording.mp4
-pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
-```
-
-Use your actual source dimensions for `--screen`; sync analysis needs the test material described in the [tooling guide](docs/system-design/tooling.md). That guide also covers the recording matrix and audio fidelity checks. Raw runs land in the gitignored `docs/verification/measurements/` directory and stay on your machine; when a result should be preserved, summarize it with its numbers and limitations in [the verification record](docs/verification/README.md).
+Report actual checks, scope-based exclusions, and required-but-unverified cases separately. Automated checks do not prove screen/system-audio capture. Raw results under `docs/verification/measurements/` are gitignored and local; preserve durable conclusions through the [verification index](docs/verification/README.md).
 
 ## Releasing (maintainers)
 

@@ -22,6 +22,7 @@ Updated: 2026-09-21. These documents describe the current implementation and rep
 | [Build, packaging, and verification](tooling.md) | Developer workflows, signing, measurement tools, and delivery |
 | [Audio quality testing](audio-quality.md) | Why each audio metric matters, fixture design, frequency fitting, failure interpretation, and evidence |
 | [Design decisions](decisions.md) | Rationale, accepted tradeoffs, and conditions for architectural changes |
+| [Testing policy and acceptance](../testing.md) | Select required checks, exclusions, shared cases and reporting |
 | [Verification record](../verification/README.md) | Evidence, accepted limitations, and original measurements |
 
 Source code defines implemented behavior. Update the corresponding design document whenever behavior changes. The function reference covers production code and developer tools; anonymous event callbacks are documented with their owning flow. Test cases remain in adjacent `*.test.ts` files.

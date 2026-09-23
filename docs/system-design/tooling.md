@@ -90,15 +90,7 @@ The historical ten-minute baseline has already been recorded. Long now uses thre
 
 ### Selecting acceptance coverage
 
-For application changes, run `pnpm check` and one basic recording acceptance against the built app. Reuse that recording and its verification report for playback; do not repeat the same media analysis. Add checks according to the change:
-
-| Change | Additional check |
-| --- | --- |
-| Updates | `pnpm acceptance:updates`; add `--full` for feed filtering or timeout changes |
-| Settings panel | `pnpm acceptance:settings` after `pnpm build`; the only check that runs the shipped page and preload in Electron |
-| Notifications / Finder reveal | `pnpm acceptance:notification -- --install --clicks 2` for smoke; retain five-click/full runs for intermittent failures and notification fixes |
-| Capture / quality / timing | Relevant `pnpm matrix` subset; audio diagnostics when fidelity is affected |
-| Language / settings / startup | Native UI setting changes and persistence across restart |
+Choose required checks and exclusions using the [shared testing policy](../testing.md). Use the [shared acceptance cases and report](../acceptance.md) for native/recording work. This guide owns command mechanics and thresholds, not a separate test-selection policy.
 
 The update fixture is instrumented and matrix uses autorecord; neither replaces acceptance of the normal built app. Notification acceptance retains its installed-app path and distinct Finder-state coverage. An unchanged file and verification scope can reuse media evidence; different artifacts or UI actions cannot. Shared material arguments, log cursors and bounded log waits live in `scripts/lib/acceptance.mts` and `scripts/lib/acceptance-runtime.mts`; each runner retains its own app lifecycle and verdicts. Hotkey and notification runners share interrupted-recording settlement, which waits for saving and never toggles stop twice after a successful stop command.
 
@@ -106,7 +98,7 @@ The update fixture is instrumented and matrix uses autorecord; neither replaces 
 
 The verdict now requires a `clicked` event matching the observed banner body (falling back to this save's expected localized body when absent) and a successful reveal request matching its full path. These are separate diagnostics: missing reveal evidence alone is no longer labeled an undelivered callback. Old builds without click logging cannot pass this stricter runner; historical reports retain their original conclusions.
 
-Plan 017 timing diagnostics add `tracksStoppedAt` (renderer wall-clock milliseconds after stopping tracks), main-process `host stopped` and `file finalized`, plus `saved scheduled`, `saved cancelled`, and `saved request failed`. The JS timestamp does not prove OS readiness. Correlate these with the existing request/show/click logs, AX observations and narrowly filtered macOS logs when available. No system-log access is required by the app. The saved request delay is 500 ms on macOS; the runner still searches for only 5 s after save. Plan 017 requires **all 15 cases in each of two consecutive full runs** to pass; the runner's ordinary coverage threshold alone is insufficient.
+Notification timing diagnostics include `tracksStoppedAt` (renderer wall-clock milliseconds after stopping tracks), main-process `host stopped` and `file finalized`, plus `saved scheduled`, `saved cancelled`, and `saved request failed`. The JS timestamp does not prove OS readiness. Correlate these with the existing request/show/click logs, AX observations and narrowly filtered macOS logs when available. No system-log access is required by the app. The saved request delay is 500 ms on macOS; the runner still searches for only 5 s after save. Historical Plan 017 completion criteria and results are retained in the [verification history](../verification/history-2026-09.md#saved-notification-timing--2026-09-20); they are not the default gate for every change.
 
 Each case also writes `<language>-<finder>-<click>-diagnostics.json`: timestamped search attempts, bounded Accessibility traversal text/errors, and app notification lifecycle events. A non-passing case gets an additional observation-only snapshot (up to 5 s, so failed cases may take longer). The app logs show-requested/shown/clicked/closed/failed separately; a shown event alone is not proof that the script found a visible banner. These local files can contain notification text and are not committed.
 
@@ -120,7 +112,7 @@ Run on a dedicated desktop: close Finder windows first, leave the desktop alone 
 
 Ctrl-C or SIGTERM cancels commands and waits. Commands have a 10 s timeout (process lookup 5 s, app copies 60 s); shortcut delivery and Finder window creation finish within their 5 s command limit before cancellation takes effect. Cleanup uses an independent 120 s budget, gives the current recording up to 30 s to settle, and sends stop at most once. It never reads a previous recording as evidence that the current one stopped. If recording settlement cannot be established, it leaves the app running and preserves the backup instead of quitting or replacing it. Settings are restored only after the app stops; the app stays closed even if it was running before the test. Incomplete runs, cancellation and cleanup failures fail the report. These bounds cover asynchronous operations, not an unresponsive filesystem or OS.
 
-Not covered: tray menu reveal, other Spaces and Notification Center list clicks after the banner disappears. The hardened runner completed the default five-click run in about 64 s and cleaned up SIGINT/SIGTERM cancellations in about 2 s on 2026-09-20; see the verification record. The subsequent then-default bilingual `--full` run (now requested with `--full --languages en,zh-TW`) completed in 371.74 s with 25 pass, 1 undelivered-click failure and 4 missing banners; cleanup (including empty TextEdit exit) succeeded. See the verification record for the unresolved failure.
+Not covered: tray menu reveal, other Spaces and Notification Center list clicks after the banner disappears. Historical timings, failures and later completion evidence are preserved in the [notification history](../verification/history-2026-09.md#finder-foreground-after-a-notification-click--2026-09-20); do not treat an older failure status as the current result.
 
 ## Measurement pipeline and thresholds
 
@@ -227,7 +219,7 @@ Then use native Computer Use to inspect the actual Settings panel, navigate by k
 
 ## Acceptance cleanup
 
-Complete app acceptance rounds save test recordings, restore settings, close test UI, quit the tested app and confirm exit, on success, failure and cancellation. Cleanup failure fails acceptance. Preserve evidence and never interrupt an existing user recording or reset permissions. Quitting resets process state, not stored preferences.
+Complete app acceptance rounds save test recordings, restore settings, close test UI, quit the tested app and confirm exit, on success, failure and cancellation. Cleanup failure fails acceptance. Preserve evidence and do not reset permissions. During development, stopping recordings and quitting/restarting/rebuilding RecordStuff as needed is authorized without additional confirmation. Quitting resets process state, not stored preferences.
 
 `pnpm acceptance` leaves the accepted app closed and reports the final cleanup verdict in `report.md`; it refuses to quit a replaced process or an app not confirmed idle. Notification acceptance restores the bundle and settings but keeps the app closed. Settings acceptance supervises its own process group and writes `cleanup.json`, including timeout and interruption outcomes. Isolated runners clean only their own processes. Unit checks do not close unrelated apps. The settings-shortcut entry step leaves its panel open for native inspection; the complete Computer Use round owns final shutdown. Start the app before the next recording round; use `pnpm start:app` to rebuild changed code.
 

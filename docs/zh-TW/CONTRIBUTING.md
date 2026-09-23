@@ -51,26 +51,21 @@ App 文案位於 `src/shared/i18n.ts`。新增或修改文案時，同步更新�
 
 ## 驗證修改
 
-修改 App 後，執行：
+依[共用測試規則](testing.md)按行為選擇檢查及可省略項目，人工協作者與 AI 使用同一套判準。
 
-```bash
-pnpm check
-```
+| 常見修改 | 起點 |
+| --- | --- |
+| 僅文件 | 檢查受影響連結／錨點、指令與翻譯；`git diff --check`。不啟動 App、不錄影 |
+| App 程式 | `pnpm check`（TypeScript、Vitest、正式建置），加規則中依影響選取的檢查 |
+| 設定／快捷鍵整合 | `pnpm acceptance:regression`，已包含 `pnpm check`；檢視受影響 UI／截圖 |
+| 錄製行為 | `pnpm check`，再用新 `pnpm start:app` 產物執行[錄影 smoke 案例](acceptance.md)。`pnpm acceptance` 自動開始／停止／存檔／verify，播放另行觀察 |
+| 網站 | `pnpm site:check`；視覺修改檢視受影響頁面 |
 
-此指令會執行 TypeScript 檢查、Vitest 測試與正式建置。開發過程也可以分別執行 `pnpm typecheck`、`pnpm test` 或 `pnpm build`。提交任何修改前，執行 `git diff --check`；若只修改文件，也請檢查受影響的連結與指令。
+每次修改都執行 `git diff --check`。開發中可按需單獨執行 `pnpm typecheck`、`pnpm test` 或 `pnpm build`；最終版本已被成功組合指令涵蓋的檢查不重跑。
 
-修改錄製行為時，請實際錄製，確認開始、停止、儲存與播放正常。App 以 `pnpm start:app` 啟動後，`pnpm acceptance` 會透過全域快捷鍵無人值守完成開始／停止／儲存／verify；播放仍需親自檢查。記錄作業系統、硬體、設定及無法測試的情境。自動化檢查無法單獨證明實際螢幕與系統音訊擷取正常。
+[驗收指南](acceptance.md)定義共用案例、收尾及報告；[工具指南](system-design/tooling.md)說明簽章、FFmpeg／ffprobe、媒體分析與專用 runner。完整 App 驗收保存錄影、還原設定並確認退出後，讓受測 App 保持關閉。開發期間已授權按需停止錄影、退出、重啟或重建 RecordStuff，不需另行確認。
 
-完整 App 驗收每輪結束時（包含失敗或中斷），須保存測試錄影、還原設定、清理測試視窗、退出受測 App 並確認程序已結束；清理失敗算驗收失敗，不得中斷使用者既有錄影。`pnpm acceptance` 會讓 RecordStuff 保持關閉，下一輪前需重新啟動。單元檢查與設定快捷鍵的中途開啟步驟不會關閉無關 App。
-
-開發用媒體分析需要 FFmpeg 與 ffprobe，執行 App 本身不需要。例如：
-
-```bash
-pnpm probe -- /absolute/path/recording.mp4
-pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
-```
-
-`--screen` 請填入實際來源尺寸；同步分析需要使用[工具指南](system-design/tooling.md)所述的測試素材。該指南也說明錄製測試矩陣與音訊品質檢查。原始執行結果會寫進已 gitignore 的 `docs/verification/measurements/`，只留在你的機器；需要保存的結果請連同數字與限制摘要到[驗證紀錄](verification/README.md)。
+分開回報真正檢查、範圍排除及必要但未驗項目。自動化檢查不能證明螢幕／系統音訊擷取。`docs/verification/measurements/` 原始結果已 gitignore，只在本機；透過[驗證索引](verification/README.md)保留長期結論。
 
 ## 發布（維護者）
 

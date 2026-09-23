@@ -7,6 +7,8 @@ description: 由 Codex GPT-6 Astra（預設 medium reasoning）使用 computer u
 
 以使用者操作路徑驗收目前原始碼建置的 App。預設用繁體中文回報。只有建立或修改本 skill 的請求，不代表要立即啟動錄影驗收。
 
+先依[共用測試規則](../../../docs/zh-TW/testing.md)選定範圍；案例、預期結果及報告格式以[共用驗收指南](../../../docs/zh-TW/acceptance.md)為準。本 skill 補充 Astra 與原生工具的執行方式，不另定測試門檻。純文件修改不啟動 App；純設定 UI 驗收不因使用本 skill 就加入錄影。
+
 ## Codex GPT-6 Astra 執行
 
 使用 **`gpt-6-astra`、medium reasoning** 執行 computer use。若目前已是 Astra 且具備原生桌面工具，直接執行下方驗收流程，不再委派；否則從專案根目錄呼叫：
@@ -38,18 +40,18 @@ codex exec -C "$PWD" \
 App 已由呼叫者以 pnpm start:app 建置並啟動，輸出在 <start-app.log 路徑>；讀取它作為啟動證據，不要再執行 pnpm start:app、pnpm open:app 或重開 App。
 驗收範圍：<計畫路徑或需求、預期行為；未指定則做基本驗收>。
 驗收模式：<開發驗收，或發布驗收的版本與候選 commit；無人值守時加註「無人值守快捷鍵」>。
-保留既有變更及使用者錄影，不修改程式、不 commit、push 或發布。
+保留既有變更；開發期間可按需停止錄影、退出、重啟或重建 RecordStuff，不需另行確認。單純驗收不修改程式、不 commit、push 或發布。
 以繁體中文回報案例結果、證據與報告路徑，以及仍未驗證的項目。
 ```
 
 ### 非互動執行的前置
 
-`codex exec` 預設 `approval: never`、`sandbox: workspace-write`。2026-09-19 的四次非互動執行證明這兩個預設會讓驗收在動手前就受阻：
+以下是 2026-09-19 非互動環境的已知限制，不代表所有協作者的預設。先檢查本次工具與權限；不要因歷史失敗就假設本次一定受阻。當時 `approval: never`、`sandbox: workspace-write` 造成以下阻礙：
 
 - **App 操作核准**：computer use 第一次控制某個原生 App（Chrome、Safari、Finder、QuickTime Player…）都會發出核准請求；`approval: never` 直接拒絕，回傳 `Computer Use was not approved to use <App>`，而 `pressKey` 需要先由 `getApp` 取得 App 物件，所以連快捷鍵也送不出去。指令因此加 `--approve-for-me`，讓核准請求走 Codex 的自動審查；但 2026-09-19 21:20 的執行顯示自動審查同樣拒絕 Chrome、Safari、Finder、QuickTime Player（見 `docs/verification/measurements/2026-09-19T2120-computer-use/`）。因此**首次必須在互動式 Codex（ChatGPT App 或 `codex` TUI）跑一次本 skill，由使用者逐一允許需要的 App**，之後才嘗試非互動執行；仍被拒就維持互動式執行。不要用 `--dangerously-bypass-approvals-and-sandbox` 換取通過。
 - **`pnpm start:app` 的既有程序檢查**：`scripts/start-app.mjs` 用 `pgrep` 確認沒有 RecordStuff 在跑，workspace-write sandbox 禁止 `ps`／`pgrep`，腳本會以 `Could not check for a running RecordStuff.app.` 失敗。因此由呼叫者在 sandbox 外執行 `pnpm start:app`（先依「啟動正確的 App」處理既有副本），把輸出檔路徑寫進 prompt；Astra 讀該檔與本次 App log 作為啟動證據，不重建、不重開。發布驗收時呼叫者同樣要在乾淨 commit 上執行並記錄 HEAD SHA。
 - 若目前已是互動式 Astra 且具備原生桌面工具，這一節不適用：直接依「啟動正確的 App」自己執行 `pnpm start:app`。
-- **核准清單可預先寫入**：使用者在互動式 Codex 按「永久允許」後，服務會把 bundle ID 寫進 `~/Library/Group Containers/2DC432GLL2.com.openai.sky.CUAService/Library/Application Support/Software/ComputerUseAppApprovals.json`（格式 `{"approvedBundleIdentifiers": ["com.google.Chrome", …]}`）。驗收需要的 `com.apple.Safari`、`com.apple.finder`、`com.apple.QuickTimePlayerX` 可直接補進陣列後重啟 Computer Use 服務。把 RecordStuff 的 ID 加進去沒有用：無視窗 App 的 AX 介面仍回 `-10005 timeoutReached`，Tray 案例照樣 blocked。
+- App 控制權限透過目前工具支援的正式核准流程取得；不直接修改核准清單或重啟服務繞過核准。缺少權限時標示相關案例 blocked，繼續可獨立完成的檢查。
 
 - 計畫只需列出驗收範圍與預期結果，指定 Astra 並引用本 skill；委派時將相關需求及操作限制帶入 prompt。
 - 使用可持續追蹤的程序工作階段執行，每 60 秒內確認存活並更新進度；同一時間只由一個執行者操作桌面。
@@ -60,8 +62,8 @@ App 已由呼叫者以 pnpm start:app 建置並啟動，輸出在 <start-app.log
 
 - 使用使用者指定的 checkout 或目前工作目錄定位專案根目錄；找不到時詢問專案位置。確認 `package.json` 的名稱與 `start:app`，不要在不明目錄執行。
 - 讀取適用的 `AGENTS.md`、`package.json`、`scripts/start-app.mjs` 及本次功能需求／diff。必要時參考 `README.zh-TW.md`、`src/main/tray-model.ts`、`src/shared/i18n.ts` 與 `docs/zh-TW/system-design/tooling.md`。目前原始碼決定產物路徑與行為，舊驗收紀錄只提供背景。
-- 使用者指定功能時，以該功能及相鄰錄製流程為範圍；未指定時採下方基本驗收。先簡述範圍與會進行的短錄影，不因一般可逆操作重複索取確認。
-- 記錄時間、OS／架構、commit 與是否有未提交變更、原有語言／品質／輸出資料夾，以及本次新增錄影的位置。使用專案 `scripts/test-material.html` 作為固定素材：在主螢幕的瀏覽器開啟，透過 computer use 點擊「Click to start audio and enter fullscreen」，確認動態畫面已開始。它提供動態畫面與左右交替嗶聲；不要使用 `?auto=1` 或腳本代按開始。記錄素材版本、瀏覽器、輸出裝置及音量，避免其他聲音混入。若全螢幕遮住選單列，透過 UI 顯示選單列或退出全螢幕，保持素材播放。
+- 使用者指定功能時，依共用測試規則選取受影響案例；只有明確要求完整基本驗收且未限縮功能時才做完整原生基本案例。先簡述範圍，需要錄影才說明短錄影，不因一般可逆操作重複索取確認。
+- 僅在本輪包含錄影時準備下述素材；環境與偏好記錄依共用指南。記錄時間、OS／架構、commit 與是否有未提交變更、原有語言／品質／輸出資料夾，以及本次新增錄影的位置。使用專案 `scripts/test-material.html` 作為固定素材：在主螢幕的瀏覽器開啟，透過 computer use 點擊「Click to start audio and enter fullscreen」，確認動態畫面已開始。它提供動態畫面與左右交替嗶聲；不要使用 `?auto=1` 或腳本代按開始。記錄素材版本、瀏覽器、輸出裝置及音量，避免其他聲音混入。若全螢幕遮住選單列，透過 UI 顯示選單列或退出全螢幕，保持素材播放。
 
 ## Computer use 操作規則
 
@@ -76,7 +78,7 @@ App 已由呼叫者以 pnpm start:app 建置並啟動，輸出在 <start-app.log
 
 ## 啟動正確的 App
 
-1. 用 computer use 查看既有 RecordStuff／此專案 Electron 狀態。若是使用者原有且仍在錄影，先詢問是否可停止，不中斷其工作。閒置副本可由選單正常結束；本次自己啟動的錄影則正常停止並等候存檔。不要用全域 `killall`。
+1. 開發期間可按需停止錄影、退出、重啟或重建 RecordStuff，不需先確認是否有人使用或詢問停止授權。用 computer use 操作目標 RecordStuff／此專案 Electron；正常停止錄影並等候存檔，再從選單退出。不要用全域 `killall`。
    退出後以唯讀程序檢查確認停止；若 computer-use 工具會在取得 App 狀態時自動啟動 App，不要再呼叫該狀態讀取來驗證退出，否則會重新啟動舊產物並阻擋重建。
 2. 在專案根目錄執行 **`pnpm start:app`**，保留退出碼及建置／簽章／開啟結果。依該腳本目前輸出確認實際 `.app` 路徑；不可拿 `/Applications` 的舊副本或 `pnpm dev` 替代。
 3. 指令會建置、自簽、驗證並開啟 App。缺依賴或憑證時報告具體錯誤；不要略過簽章驗證、擅自建立憑證或更改 Keychain 信任。一次失敗後只在有明確原因及修正時重試。
@@ -116,35 +118,11 @@ Astra 在這條路徑的工作：
 
 沒有 Codex 或 computer use 時，`pnpm start:app` 加 `pnpm acceptance` 本身就是可接受的無人值守錄影檢查；只是播放器畫面與 Tray 案例沒有人觀察，報告要如此標示。
 
-## 基本驗收
+## 共用案例與追加範圍
 
-基本驗收共用一次短錄影完成錄製、存檔、定位、播放與媒體檢查。若本次已有同一產物、同一錄影檔的有效腳本報告，沿用其媒體證據，只補做尚未覆蓋的 UI／播放操作；快捷鍵結果不能代替 Tray 點擊。
+依[共用驗收案例](../../../docs/zh-TW/acceptance.md)執行本輪選定的操作、預期觀察及媒體檢查；依[測試選擇表](../../../docs/zh-TW/testing.md)決定追加或不適用的項目。共用同一短錄影與有效分析，不重複相同檔案的相同驗證；快捷鍵送達不能代替 Tray 點擊。
 
-每個案例記錄「操作、預期、實際、狀態、證據」。狀態使用 pass／fail／blocked／not run；觀察不到的瞬間過渡狀態不要猜測。
-
-| 案例 | 操作與可觀察結果 |
-| --- | --- |
-| 啟動與選單 | 右鍵開啟選單，確認 Ready／待命或實際權限狀態，主要選項可見，沒有重複副本造成誤操作。 |
-| 開始錄製 | 左鍵圖示，確認進入 REC／Recording。錄製約 10–15 秒，持續播放 `scripts/test-material.html` 的動態畫面與左右交替嗶聲。 |
-| 錄製中狀態 | 開啟選單，確認停止操作可用、品質與輸出位置等鎖定項目符合目前需求／tray model。 |
-| 停止與存檔 | 再次左鍵停止，確認最終回到待命，記錄新 MP4 路徑與通知。若可觀察到 Saving，保存證據；未捕捉到不等於失敗。 |
-| 定位檔案 | 經通知或 `Show last recording`／「顯示最後一個錄影」開啟 Finder（依 `src/shared/i18n.ts` 當前語言字串定位）。分別記錄是否選中正確檔案及 Finder 是否置前；某一路徑失敗時保留結果，再測另一條路徑。 |
-| 實際播放 | 從 Finder 開啟新錄影，使用播放器播放與拖曳，確認畫面內容及播放進度正常。工具若不能聽取音訊，僅將主觀聽感標示未驗；客觀聲音檢查依下一案例判定，不以音軌存在推論有聲。 |
-| 客觀聲音檢查 | 對本次 MP4 執行 `pnpm verify -- /absolute/path/file.mp4 --json /absolute/path/report-dir/verify.json`（先建立報告目錄），保存輸出、退出碼及 JSON。核對 `Sample rate/channels`：48 kHz、2 聲道、每聲道 RMS 均 > −60 dBFS，記錄實際數值；符合時可判定錄到非靜音訊號。這不證明聽感、聲道分離、音質或同步。缺失／n/a 不算通過，缺工具記 blocked；其他指標的 fail 也要保留，不能因音訊通過就宣稱整份 verify 通過。 |
-
-需要權限時，先觀察實際提示與 App 引導，再依已有授權操作；若需使用者完成 OS 授權，明確指出卡在哪一步。一般驗收不重設 TCC、不撤銷既有權限，也不宣稱已驗首次授權。
-
-## 依變更增加案例
-
-只加入與需求相關的案例，避免每次驗收都跑完整矩陣：
-
-- 語言／設定持久化／啟動流程：透過選單切換 English／繁體中文，確認文字與勾選狀態；正常重開同一產物確認保存，再還原原語言。
-
-- 品質／解析度／幀率：從 UI 選取受影響選項，短錄後對照產物與設定；記錄實際顯示器及設定，不強行把歷史效能數字當通過門檻。
-- 輸出資料夾：用原生選擇器選擇專用測試資料夾，驗證檔案落點並還原；不直接修改設定檔來代替操作。
-- 錄製中語言切換：確認顯示更新且錄製持續，完成存檔播放。
-- 權限拒絕／復原、故障注入、強制退出、長時間錄製、安裝／更新：只有需求包含時才做。涉及撤銷權限或中斷既有錄影時確認具體操作範圍；沒有跑過就列 not run。
-- 發現缺陷時保存重現步驟與證據。單純驗收不自行擴張為改程式；若已獲授權修復，修復後重建並重新操作受影響案例，保留修復前後結果。
+原生案例仍須遵守本 skill 的工具操作規則。無法觀察的狀態標示限制，缺權限／工具列 blocked；不把必要但未測的案例改稱不適用。保存失敗步驟，授權修復後只重跑受影響案例。
 
 ## 發布驗收
 
@@ -166,8 +144,8 @@ Astra 在這條路徑的工作：
 - 按需以 `pnpm probe -- /absolute/path/file.mp4`、`ffprobe` 或完整解碼輔助檢查格式／時長／解碼錯誤。採用專案工具前讀其用法；只有已知測試素材才套用品質或同步門檻。工具缺失應揭露，不因此宣稱 UI 失敗。
 - 只截取本次時間範圍的相關 log，避免把舊錯誤當本次失敗。短錄通過不能推論長時間穩定、音質、同步、首次授權或發布版安裝通過。
 - 每輪完整驗收無論成功、失敗或中斷，都要停止自己建立的錄影並等待存檔、結束素材播放、從 UI 還原改過的設定，清理本次新增視窗，最後從選單正常退出 RecordStuff。即使測試前已開啟，驗收後也預設保持關閉；不要為恢復原本的開啟狀態而重啟。
-- 退出後以程序檢查確認本次 RecordStuff 與其 helper 已消失，記錄程序與 UI 證據。App 沒有視窗不代表已退出；若仍有程序、錄影未確認存妥或無法操作退出，列出 cleanup fail／blocked 與遺留原因，不能宣稱完整驗收通過，也不能直接重建或強制殺掉 App。使用者原有錄影仍須先取得停止授權。
+- 退出後以程序檢查確認本次 RecordStuff 與其 helper 已消失，記錄程序與 UI 證據。App 沒有視窗不代表已退出；若仍有程序、錄影未確認存妥或無法操作退出，列出 cleanup fail／blocked 與遺留原因，不能宣稱完整驗收通過，也不能直接重建或強制殺掉 App。
 - 同一輪的連續錄影、持久化等案例依測試目的重啟；`acceptance:settings-shortcut` 只是中途開啟面板，待原生驗收完成才退出。`pnpm acceptance` 現在會自行退出 App，後續播放驗收只需開啟保存的影片。
 - 保留測試影片與報告，不刪除使用者既有資料、不重設 TCC；報告明列 App 最終程序狀態、清理結果與未還原項目。
-- 除非指定其他位置，在專案 `docs/verification/measurements/<timestamp>-computer-use/` 寫入 `report.md` 及可保存的證據，不覆寫歷史紀錄。該目錄已 gitignore，報告只留本機；本文其他段落引用的 2026-09-19 目錄是維護者機器上的紀錄，其他機器上可能不存在，結論已摘要在 `docs/verification/README.md`。報告包含驗收範圍、環境與產物路徑、案例結果表、影片／截圖／log 連結、失敗重現及限制。
+- 除非指定其他位置，在專案 `docs/verification/measurements/<timestamp>-computer-use/` 寫入 `report.md` 及可保存的證據，不覆寫歷史紀錄。該目錄已 gitignore，報告只留本機；本文其他段落引用的 2026-09-19 目錄是維護者機器上的紀錄，其他機器上可能不存在，結論已摘要在 `docs/verification/README.md`。報告使用[共用範本](../../../docs/zh-TW/acceptance.md#報告範本)，包含驗收範圍、環境與產物路徑、案例結果表、影片／截圖／log 連結、失敗重現及限制。
 - 最終用繁體中文提供整體結論、通過／失敗／受阻／未執行數量與報告連結。有受阻或未測項時限定通過範圍；不能把建置成功或自動化檢查通過寫成全面驗收通過。
