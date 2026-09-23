@@ -4,6 +4,84 @@
 
 本頁保留原已完成計畫中的驗證結論，與正式 system design 分開維護。2026-09-14 文件整併時沒有重跑錄製，也沒有把本機結果推論到其他機器。原始計畫已移除，逐次變更可由 Git 歷史追溯。
 
+
+
+## 設定視窗尺寸記憶 — 2026-09-24
+
+Plan 022 結案後的追加需求：保存使用者調整的寬高，關閉重開與下次 App 啟動還原。預設改為 560×680，最小 380×360；已檢視繁中淺色一般分頁，精簡頁首後可容納一般內容且減少空白。獨立 `settings-window.json` 採 250ms 合併與關閉／退出 flush，不更動錄影偏好；開啟時配合游標所在螢幕工作區限制並置中。
+
+`pnpm acceptance:regression` 通過 555 tests、[76/76 設定面板](../../verification/measurements/2026-09-23T17-33-22-411Z-settings-acceptance/report.md)、[40/40 整合案例](../../verification/measurements/2026-09-23T17-33-37-631Z-shortcut-failure/report.md)，測試程序及暫存資料清理完成，`git diff --check` 通過。新增單元測試涵蓋跨實例持久化、無效檔案、失敗保存、螢幕限制、合併寫入、關閉重開與退出 flush；真正 Electron 視窗 resize 後兩輪重開維持 620×740，下一個程序還原 640×760，錄影偏好未被更動。GPT-6 Astra 獨立 review 無 findings。本輪未重建使用者正式 App，也未新增錄影或原生 computer-use 驗收。
+
+## Plan 022 結案 — 2026-09-24
+
+最終 `pnpm acceptance:regression`：549 tests、[76/76 面板案例](../../verification/measurements/2026-09-23T17-24-28-392Z-settings-acceptance/report.md)、[36/36 整合案例](../../verification/measurements/2026-09-23T17-24-43-761Z-shortcut-failure/report.md) 全部通過，程序及暫存資料清理完成；`git diff --check` 通過。已檢視繁中淺色一般分頁的最終 footer 截圖。Review Pass 2 無新增 findings，R4 已確認修正。
+
+維護者明確確認：最新版自訂快捷鍵按「確定」已成功；先前亦確認設定入口、錄製／播放、快捷鍵與外觀操作正常。最後要求底部左側顯示「由 Eric Tsai 製作」（英文 Built by Eric Tsai），右側以官方網站與 GitHub 原始碼圖示表達，保留雙語名稱、hover 提示、鍵盤操作與既有固定網址授權。內容區維持精簡分頁，不重複 App 名稱；底部捲動提示僅模糊漸層、不含箭頭，游標只在可操作區使用手形。
+
+維護者指示完成上述修改後結案，並明確不再執行剩餘人工驗收。因此 VoiceOver、原生增加對比、完整原生狀態矩陣、新錯誤介面的實體螢幕拔插／恢復及易用性、最終圖示連結由外部瀏覽器開啟，保留為**已接受的未測限制，不標示測試通過**。歷史測試、失敗、工具阻礙及 review findings 保留下文；此結案記錄取代舊段落的待辦狀態，不回寫歷史結果。沒有新增錄製品質或跨平台驗證宣稱。
+
+最終 footer scoped GPT-6 Astra review：R4/P2 指出 `.about button` 的 32px 圖示尺寸會擠壓失敗後的文字重試按鈕；接受，限定為 `.about .controls > button`，並加入連結失敗後重試按鈕可讀且圖示保留的 fixture。先前 review 的 R1（錯用靜態說明作儲存錯誤）、R2（Tab 落在即將隱藏的取消按鈕）、R3（fixture 等錯儲存列）均已修正，詳見原紀錄。Claude 因維護者額度限制未使用；review 為獨立 GPT-6 Astra。
+
+設計定案已移入雙語 desktop 文件，計畫索引已更新，022 雙語計畫檔依 plans/README 規則移除。不包含 commit、push、tag 或發布。
+
+## 快捷鍵確定按鈕滑鼠修正 — 2026-09-24
+
+最終 `pnpm acceptance:regression` 全部通過：549 tests、75/75 面板、36/36 整合；證據目錄 17-08-05 settings-acceptance、17-08-20 shortcut-failure，清理完成。
+
+維護者回報按確定沒有變化。將原本 `element.click()` 測試換成 Electron 真正 mouseDown/mouseUp 後，[修正前案例](../../verification/measurements/2026-09-23T17-05-57-796Z-shortcut-failure/report.md) 重現：候選仍在預覽，按鈕點擊讓擷取先取消，設定維持原值。修正確定按鈕左鍵 mousedown 的預設焦點行為，讓 click 完成前保留擷取焦點，避免 focusout 清除候選；主程序驗證、儲存及鍵盤操作不變。
+
+加入 mousedown 回歸並將所有正常提交與保留組合驗證改用真實滑鼠事件。[修正後整合](../../verification/measurements/2026-09-23T17-07-29-281Z-shortcut-failure/report.md) 36/36 通過，含持久化、重啟、拒絕與恢復，清理完成。首次修正後執行另在候選前遇到 renderer evaluation 錯誤（17-07-04），未視為通過；已改善腳本錯誤上下文，保留該失敗證據，後續重跑通過。GPT-6 Astra scoped review 無 findings。本轮未更新使用者正式 bundle，不冒充原生 computer-use 驗收。
+
+## 單一建議快捷鍵 — 2026-09-24
+
+依維護者確認，選單只提供「建議：⌘⇧1」、目前自訂值（若有）、自訂入口及關閉。舊 preset 已儲存者保留原快捷鍵並標為自訂；改回建議值不保留自訂歷史。未更動儲存格式或預設快捷鍵。`pnpm acceptance:regression` 通過 549 tests、75/75 面板、36/36 整合，清理完成；`git diff --check` 通過。新增模型回歸涵蓋各舊 preset 的保留與標示、單一建議及重設後選單精簡。GPT-6 Astra scoped review 無 findings。證據：[面板](../../verification/measurements/2026-09-23T17-02-07-655Z-settings-acceptance/report.md)、[整合](../../verification/measurements/2026-09-23T17-02-23-046Z-shortcut-failure/report.md)。本輪未重建使用者正式 App，原生待驗範圍不變。
+
+## 快捷鍵確認與捲動提示 — 2026-09-24
+
+自訂快捷鍵現在先保留本地候選，按確定或無修飾鍵 Enter 才保存；取消、失焦或既有 15 秒逾時不保存。有候選時 Tab 可移到確定／取消，提交中不重複送出並保留焦點。再次檢查更新保留上次結果，避免結果區收合再展開。正常配色隱藏 scrollbar，以底部非互動漸層玻璃提示剩餘內容，捲到底／可完全容納時消失；輔助對比及透明度模式有替代呈現。
+
+`pnpm acceptance:regression`：548 單元測試、75/75 設定面板案例、36/36 正式 main 整合通過；型別／建置與 `git diff --check` 通過。新增確認前未保存、取消候選與防重送、更新前次結果保留、真實 Electron 節點／下方座標穩定及捲動提示 top/bottom/fits 斷言。已檢視最小尺寸深色玻璃提示截圖。證據：[面板](../../verification/measurements/2026-09-23T16-55-43-040Z-settings-acceptance/report.md)、[整合](../../verification/measurements/2026-09-23T16-55-58-586Z-shortcut-failure/report.md)。清理完成。GPT-6 Astra 獨立 scoped review 無 findings。
+
+本輪未重建或操作使用者的正式 bundle，確認步驟與新捲動提示尚無原生人工驗收。先前使用者確認的錄製／播放、快捷鍵及外觀測試仍有效，但不擴張到本輪新互動。Plan 022 尚待原生 VoiceOver／增加對比、新錯誤介面實體螢幕恢復／易用性、官方連結開啟，以及結案文件整理；自動測試全過不代表所有人工測試皆完成。
+
+## 設定互動與精簡頁首 — 2026-09-24
+
+維護者明確回報上一版「最新版實際操作」全部正常：自訂／取消／預設／關閉快捷鍵、深淺色／系統外觀與重啟保留，以及短錄影／播放與錄影鎖定。此為人工回報，並非本輪新增原生觀測，也不表示 VoiceOver／增加對比或實體拔插新錯誤介面已驗收。
+
+後續依回饋移除內容區圖示、大標題、自動儲存說明；保留原生標題與輔助使用 h1。滑鼠不留焦點外框，鍵盤導覽保留；快捷鍵選項與 action 依 id 就地更新，儲存狀態不再推動下方版面，暫時停用不讓分段選擇閃暗。新增三線監聽動畫，遵循減少動態效果；開啟通知設定不顯示套用文字，失敗才顯示操作錯誤。
+
+`pnpm acceptance:regression` 通過 546 tests、70/70 面板案例、34/34 正式 main 整合案例；`git diff --check` 通過。新增 DOM 身分保留、動態 action 失敗與無套用文案測試，實際 Electron 驗證鍵盤焦點框／pointer 移除、儲存期間下方座標穩定、監聽指示及減少動態效果。已檢視繁中淺色監聽截圖，確認內容由分頁開始。證據：[面板](../../verification/measurements/2026-09-23T16-45-11-148Z-settings-acceptance/report.md)、[整合](../../verification/measurements/2026-09-23T16-45-25-800Z-shortcut-failure/report.md)。測試程序及暫存資料清理完成；未重建使用者 bundle、未新增原生錄製或 VoiceOver 證據。獨立 GPT-6 Astra scoped review 無 findings，Claude 依先前 quota 指示未使用。
+
+## 快捷鍵選單與外觀偏好 — 2026-09-24
+
+依使用者要求移除獨立自訂快捷鍵按鈕，統一從選單進入；目前自訂值標示「自訂」，取消保留原值，擷取中不重複啟動。新增可保存的跟隨系統／淺色／深色外觀，啟動時還原，錄影中亦可改。既有設定已自動跟隨系統。
+
+`pnpm check`：546 tests 通過。設定面板 fixture：66/66 通過，含雙語、深淺色、窄視窗及真實 Tab／Shift+Tab。正式 main/IPC/preload/page 整合：34/34 通過，含啟動套用深色、三種外觀切換、CSS media query 與存檔一致；所有測試程序與暫存資料清理完成。證據：[設定面板](../../verification/measurements/2026-09-23T16-26-51-185Z-settings-acceptance/report.md)、[整合](../../verification/measurements/2026-09-23T16-27-54-858Z-shortcut-failure/report.md)。未重建使用者正式 bundle，未重測實際錄製或 VoiceOver。
+
+獨立 GPT-6 Astra scoped review（依使用者指定，Claude usage 已達上限）：Pass 1 R3/P2 指出 fixture 等錯 hotkey 列，通知／外觀仍在儲存便開始擷取造成逾時；接受並改為等待所有 Applying 清空。另調整外觀測試順序，避免合法儲存先標準化舊快捷鍵而干擾 migration 斷言。兩次失敗保留於 16-27-05、16-27-33 測量目錄，清理皆完成。Pass 2 無 findings；最終整合通過。
+
+## Plan 022 頁首與底部精簡 — 2026-09-24
+
+依維護者要求移除底部重複名稱，保留官方連結；頁首改用既有 icon 加「RecordStuff - 設置」／「RecordStuff - Settings」，原生視窗標題同步文字。`pnpm acceptance:regression` 通過 543 單元測試／型別／建置、[設定 fixture 66/66](../../verification/measurements/2026-09-23T16-20-21-125Z-settings-acceptance/report.md) 及 [快捷鍵整合 30/30](../../verification/measurements/2026-09-23T16-20-36-342Z-shortcut-failure/report.md)，清理完成。新增斷言確認圖示在正式 CSP 下從打包資產載入，以及底部保留兩個連結但沒有名稱。已檢視繁中淺色一般分頁截圖；本輪未重建或操作維護者正在使用的原生 App。
+
+## Plan 022 人工入口驗收 — 2026-09-24
+
+維護者回報已完成並通過：無錄影時以 ⌘⌥, 開啟設定、⌘W 關閉、由 Tray「設定」重開。兩個入口可用，關閉面板不退出 App 或開始錄影。這是維護者回報，不是新增 computer-use 觀測；不擴張為其餘原生矩陣已通過。此案例在沒有相關變更前不必重做。維護者要求將可重複案例腳本化，新增 `pnpm acceptance:regression`，整合 fixture 補上重複入口／關閉回歸。
+
+本次 `pnpm acceptance:regression` 全部通過：36 檔／543 單元測試、型別與建置、[設定 fixture 64/64](../../verification/measurements/2026-09-23T16-17-01-163Z-settings-acceptance/report.md)、[快捷鍵整合 30/30](../../verification/measurements/2026-09-23T16-17-15-711Z-shortcut-failure/report.md)，隔離程序與暫存資料清理完成；此輪未操作或退出維護者的 App，未新增錄影。追加範圍由 GPT-6 Astra 獨立唯讀 review，無實質 findings。
+
+## Plan 022 開發驗證 — 2026-09-23
+
+設定面板已具備分組控制項、行內診斷／復原、單一自訂快捷鍵入口、固定標題／分頁與固定網址連結。**下列範圍已驗證，計畫仍保留待完成的原生／人工矩陣。** `pnpm check` 通過 36 檔／543 測試、TypeScript 與正式建置。[設定 fixture](../../verification/measurements/2026-09-23T15-44-30-335Z-settings-acceptance/report.md) 64/64：保留 CSP／sandbox／只傳 id IPC／儲存順序，加入開關／分段／行內失敗、40 組雙語明暗預設／最小尺寸狀態截圖（無水平或外層溢位）、實際 Tab／Shift+Tab 退出及模擬 forced-colors 的原生控制項退場。[快捷鍵整合](../../verification/measurements/2026-09-23T15-39-13-638Z-shortcut-failure/report.md) 25/25 且清理完成；受控失敗不等於 OS 衝突或通知橫幅實測。
+
+[原生報告](../../verification/measurements/2026-09-23T1547-plan022-computer-use/report.md) 保留 9 pass、2 歷史 fail、1 blocked、7 not run。已觀察雙語淺色排版、首輪擷取／Esc、最終深色錄影分頁與紫色系統 accent 下的 App 配色、還原及播放。首輪把擷取暫停誤顯示成快捷鍵衝突，已修正並通過測試；最終啟動前過早送設定快捷鍵曾逾時，ready 後重跑通過。最終擷取視覺重測因 AX／截圖不同步及 `noWindowsAvailable` 受阻，不以 log 代替通過。曾與同台 Mac 的系統設定比較，並還原淺色／多色。改版前僅有舊 fixture 四組語言／配色截圖，不是完整原生狀態矩陣；改版後截圖在 fixture 報告，原生截圖僅為對話中的工具觀察，不虛構本機路徑。
+
+[最終產物錄影](../../verification/measurements/2026-09-23T15-43-34-401Z-hotkey-acceptance/report.md) 通過開始／停止／存檔及完整性驗證：10.2 秒、1920×1080、48 kHz 雙聲道、RMS −26.5/−27.2 dBFS、6 閃光／9 嗶聲。QuickTime 播放至 10.2258 秒，跳轉至 4.98985 秒。素材實際為視窗並與設定並列，不宣稱全螢幕覆蓋；幀時序、同步及主觀聽感未驗。原偏好及系統外觀已還原，RecordStuff/helpers 已退出，測試影片及後續選檔視窗已清理。基底 `ae06f8177fe942f6d4301c3ac532927123c4e569` 加未提交變更，Darwin 25.6.0 arm64／Electron 44.3.0，本機簽章 0.1.5。
+
+依使用者要求，Claude 額度不足而改用同模型 GPT-6 Astra 獨立 review。Pass 1 的 R1（靜態說明誤當儲存拒絕原因）、R2（Tab 焦點移至即將消失的取消按鈕）均接受、修正並補回歸測試；Pass 2 無 findings。CLI 未產出完成結果，兩輪由獨立 reviewer agent 完成；詳見 [review 紀錄](../../verification/measurements/2026-09-23T1547-plan022-computer-use/review.md)。Fixture import／舊 selector／3px 外層溢位的歷史失敗也保留於原生報告。
+
+待驗：實體螢幕拔除／重接／復原及通知開關、操作者理解與復原、完整原生雙語明暗最小尺寸錯誤／擷取／鎖定矩陣、VoiceOver／增加對比、原生官方連結開啟及失敗、最終 Custom／preset／Off 與錄影中語言操作、Tray 入口（入口已於 2026-09-24 人工驗收通過，見上節；其餘未驗項保留）。未做發布、跨平台驗收、commit、push 或公開發布。
+
 ## Plan 020 開發驗證 — 2026-09-23
 
 自訂快捷鍵實作通過 `pnpm check`：31 個測試檔、466 個測試、TypeScript 與正式建置。涵蓋驗證與標準化（含 Shift 標點／保留組合別名）、自訂值與 Off 儲存、模型授權、暫停／延後請求／退出、錄入生命週期、提交焦點與 Tab、實體鍵映射、失敗通知去重，以及驗收工具讀取最新註冊狀態。
