@@ -2,7 +2,7 @@
 
 [English](022-settings-visual-design.md) | [繁體中文](022-settings-visual-design.zh-TW.md)
 
-Status: not started; design proposed, nothing implemented. Priority: 021 → 022. Created: 2026-09-21. Updated: 2026-09-23 to incorporate focus and custom shortcut UI polish.
+Status: not started; design proposed, nothing implemented. Priority: next; 021 is complete. Created: 2026-09-21. Updated: 2026-09-23 to incorporate focus and custom shortcut UI polish.
 
 ## Problem and outcome
 
@@ -135,7 +135,7 @@ The panel's real test already exists: [`pnpm acceptance:settings`](../scripts/ac
 
 ### Relationship to existing plans
 
-020 has completed custom shortcut support. Completed [023](../docs/system-design/desktop.md#settings-shortcut) owns the global Settings shortcut and capture suspension; [021](021-screen-selection.md) adds screen selection. Execution order is 021 → 022. This plan delivers layout, focus and shortcut editing together, avoiding two rounds of styling. Preserve the existing shortcut cleanup and registration lifecycle.
+020 has completed custom shortcut support. Completed [023](../docs/system-design/desktop.md#settings-shortcut) owns the global Settings shortcut and capture suspension; completed [021 screen selection](../docs/system-design/desktop.md#screen-preference-and-diagnostics) supplies the screen choice. 021 is closed; 022 is next. This plan delivers layout, focus and shortcut editing together, avoiding two rounds of styling. Preserve the existing shortcut cleanup and registration lifecycle.
 
 ## Expected experience
 
