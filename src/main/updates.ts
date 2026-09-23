@@ -4,9 +4,9 @@ export const DOWNLOAD_URL = "https://record.ericts.com/download";
 export const FEED_URL = "https://record.ericts.com/release.json";
 export const API_URL = "https://api.github.com/repos/EricTsai83/recordstuff/releases/latest";
 export const DAY_MS = 86_400_000;
-export type UpdateState = { kind: "idle" } | { kind: "checking" } |
-  { kind: "current"; checkedAt: number } | { kind: "available"; version: string } |
+export type UpdateResult = { kind: "current"; checkedAt: number } | { kind: "available"; version: string } |
   { kind: "failed" };
+export type UpdateState = { kind: "idle" } | { kind: "checking"; previous?: UpdateResult } | UpdateResult;
 
 export function stableVersion(value: unknown): bigint[] | undefined {
   if (typeof value !== "string" || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(value)) return;
@@ -94,7 +94,7 @@ export class UpdateChecker {
     this.retryLaunch = false;
     const controller = this.controller = new AbortController();
     const previous = this.state;
-    this.state = { kind: "checking" }; this.options.changed();
+    this.state = { kind: "checking", ...(previous.kind !== "idle" && previous.kind !== "checking" ? { previous } : {}) }; this.options.changed();
     let result: UpdateState = previous;
     try {
       // Persist before networking, so fast relaunches (including failures) respect the limit.

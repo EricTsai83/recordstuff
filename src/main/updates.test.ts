@@ -107,3 +107,19 @@ describe("lifecycle", () => {
     h.checker.flush(); await h.checker.check(true); expect(h.options.changed).not.toHaveBeenCalled();
   });
 });
+
+
+it("preserves the last result throughout a repeated check", async () => {
+  const h = harness();
+  await h.checker.check(true);
+  const previous = h.checker.state;
+  let finish!: (version: string) => void;
+  h.options.fetch.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const checking = h.checker.check(true);
+  await vi.waitFor(() => expect(h.options.fetch).toHaveBeenCalledTimes(2));
+  expect(h.checker.state).toEqual({ kind: "checking", previous });
+  await h.checker.check(true);
+  expect(h.options.fetch).toHaveBeenCalledTimes(2);
+  finish("0.1.2"); await checking;
+  expect(h.checker.state.kind).toBe("current");
+});

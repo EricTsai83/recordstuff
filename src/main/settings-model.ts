@@ -150,19 +150,20 @@ function updateChecksGroup(ctx: AppContext, enabled: boolean): Group[] {
 
 function updateActions(ctx: AppContext, enabled: boolean): Group {
   const { state } = ctx.updates;
+  const result = state.kind === "checking" ? state.previous : state;
   const language = ctx.language;
   const choices: Group["choices"] = [{
     id: "check", label: t(state.kind === "checking" ? "Checking for updates…" : "Check for updates…", language),
     enabled: state.kind !== "checking", checked: false, action: "checkUpdates",
   }];
-  if (state.kind === "available" || state.kind === "failed") choices.push({
-    id: "open", label: state.kind === "available"
-      ? t("Update available: {version}", language, { version: state.version })
+  if (result?.kind === "available" || result?.kind === "failed") choices.push({
+    id: "open", label: result.kind === "available"
+      ? t("Update available: {version}", language, { version: result.version })
       : t("Update check failed — open releases", language),
-    enabled: true, checked: false, action: "openUpdate",
+    enabled: state.kind !== "checking", checked: false, action: "openUpdate",
   });
-  const note = state.kind === "current"
-    ? t("Up to date (checked {time})", language, { time: new Date(state.checkedAt).toLocaleString(language) })
+  const note = result?.kind === "current"
+    ? t("Up to date (checked {time})", language, { time: new Date(result.checkedAt).toLocaleString(language) })
     : undefined;
   return { ...group("updates", t("Updates", language), enabled, choices, note), kind: "actions" };
 }

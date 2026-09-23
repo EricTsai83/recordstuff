@@ -272,3 +272,14 @@ it("offers appearance during recording and rejects unknown themes", () => {
   }
   expect(settingsAction(idle, context, "appearance", "unknown")).toBeUndefined();
 });
+
+
+it("keeps the previous update result visible while checking again", () => {
+  for (const previous of [{ kind: "current", checkedAt: 1000 }, { kind: "available", version: "0.2.0" }, { kind: "failed" }] as const) {
+    const before = group(idle, { ...context, updates: { enabled: true, state: previous } }, "updates")!;
+    const during = group(idle, { ...context, updates: { enabled: true, state: { kind: "checking", previous } } }, "updates")!;
+    expect(during.note).toBe(before.note);
+    expect(during.choices.map(c => c.id)).toEqual(before.choices.map(c => c.id));
+    expect(during.choices[0]!.label).toBe("Checking for updates…");
+  }
+});
