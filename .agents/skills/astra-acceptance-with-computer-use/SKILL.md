@@ -77,6 +77,7 @@ App 已由呼叫者以 pnpm start:app 建置並啟動，輸出在 <start-app.log
 ## 啟動正確的 App
 
 1. 用 computer use 查看既有 RecordStuff／此專案 Electron 狀態。若是使用者原有且仍在錄影，先詢問是否可停止，不中斷其工作。閒置副本可由選單正常結束；本次自己啟動的錄影則正常停止並等候存檔。不要用全域 `killall`。
+   退出後以唯讀程序檢查確認停止；若 computer-use 工具會在取得 App 狀態時自動啟動 App，不要再呼叫該狀態讀取來驗證退出，否則會重新啟動舊產物並阻擋重建。
 2. 在專案根目錄執行 **`pnpm start:app`**，保留退出碼及建置／簽章／開啟結果。依該腳本目前輸出確認實際 `.app` 路徑；不可拿 `/Applications` 的舊副本或 `pnpm dev` 替代。
 3. 指令會建置、自簽、驗證並開啟 App。缺依賴或憑證時報告具體錯誤；不要略過簽章驗證、擅自建立憑證或更改 Keychain 信任。一次失敗後只在有明確原因及修正時重試。
 4. 以程序執行路徑等唯讀證據核對啟動的副本，再用 computer use 確認選單列狀態與選單。指令成功不等於 UI 已驗收。
@@ -97,7 +98,7 @@ Astra 在這條路徑的工作：
 
 1. 呼叫者先在 sandbox 外依序執行 `pnpm start:app` 與 `pnpm acceptance`（sandbox 禁止 `ps`／`pgrep`，見「非互動執行的前置」），把兩者的輸出檔路徑與報告目錄寫進 prompt。Astra 不重跑這兩個指令、不重建、不重開 App。
 2. 讀取腳本報告、`verify.json` 與本次 App log；核對送鍵到 `pressed` 的延遲、`state` 順序、`saved` 路徑與完整性層級結果；引用原始報告與 `verify.json`，摘要整體判定、fail／n/a 和證據限制，不逐項重抄指標，也不重跑同一檔案的相同分析；不把腳本的 pass 當成未執行的 UI 或播放案例通過。
-3. 可選的原生 UI 案例：`open -a "QuickTime Player" <path>` 只負責開啟播放器，之後用 computer use 按播放、確認進度前進並截一張播放中畫面存入報告目錄，再關閉 QuickTime。QuickTime 需在 Computer Use 核准清單內；不在則記 blocked。
+3. 可選的原生 UI 案例：`open -a "QuickTime Player" <path>` 只負責開啟播放器，之後用 computer use 按播放、確認進度前進並截一張播放中畫面存入報告目錄，再依下方「播放器收尾」清理本次視窗。QuickTime 需在 Computer Use 核准清單內；不在則記 blocked。
 4. 本次範圍需要但工具無法操作的 Tray 案例（例如顯示最後錄影、錄製中選單狀態）記 blocked；語言／快捷鍵設定僅在相關變更或使用者指定時加入。主觀聽感維持未驗。不要用 `osascript` 或其他自動化代按 Tray UI；全域快捷鍵由腳本送出是唯一例外，因為它不是 UI 元件，且 App 收到的是與使用者按鍵相同的系統事件。
 5. 報告依「證據、收尾與報告」寫入 `docs/verification/measurements/<timestamp>-computer-use/report.md`，明確標示「無人值守快捷鍵路徑（pnpm acceptance 送鍵）」，並連結腳本的報告目錄。用於發布時，待 record job 的 commit 落到 main 並 pull 後，把英文結論摘要填進 `docs/verification/releases/<version>.md` 的「Local acceptance before tagging — fill in」段落（錄影長度、verify 結果、播放結果、blocked 清單），並同步既存的繁中對應檔；沒有做的檢查寫進「Not recorded」。
 
@@ -139,6 +140,13 @@ Astra 在這條路徑的工作：
 - 必須從該乾淨 commit 執行 `pnpm start:app`。預定 `v<version>` tag 的目標必須等於此 SHA；若 tag 已存在，核對其解析後的 commit。建置後改程式、版本或改用另一 commit，必須重新建置驗收，不沿用原結果。
 - 除完整測量報告，將英文結論摘要寫入 `docs/verification/releases/<version>.md`；有既存繁中對應檔時同步更新。包括版本、已驗 SHA、產物路徑、案例結論、限制及詳細報告相對連結；保留原紀錄，不提前宣稱已發布。
 - 本次產生的報告是驗收後的證據，與建置前就存在的髒工作樹分開記錄。若將報告提交成另一 commit，不可把新 commit 直接當作已驗收目標；可另存證據於後續文件 commit、讓 tag 仍指向原已驗 SHA。發布前再次核對目標 SHA 與工作樹符合發布工具要求，否則標示發布條件未滿足。此 skill 不自動 commit、打 tag、push 或發布。
+
+## 播放器收尾
+
+- 開啟測試影片前，記錄 QuickTime 是否已執行、既有文件與檔案選擇器；收尾只處理本次測試新增的 UI，保留使用者原有文件與未儲存內容。
+- 關閉測試影片後，重新取得原生 UI 狀態。QuickTime 在最後一個影片關閉後可能自動顯示「打開」／Open 檔案選擇器；必須按「取消」或 Escape，不能把關閉影片當作完成收尾。
+- 操作後再次觀察，確認測試影片與本次新增的檔案選擇器均已消失。若第一次點擊只取得焦點，依新狀態再取消。沒有視窗時回傳 `noWindowsAvailable` 可作為沒有殘留視窗的證據；`timeoutReached` 本身不能作此判定。
+- 若 QuickTime 原先未執行，且確認沒有使用者文件，可正常退出；原先已執行時不必退出。不要用 killall、關閉所有視窗或強制退出清理。無法清乾淨時，在報告列出具體遺留視窗與原因。
 
 ## 證據、收尾與報告
 
