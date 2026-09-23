@@ -1,3 +1,4 @@
+import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE, fitSettingsSize, type SettingsWindowState, type WindowSize } from "./settings-window-state";
 /**
  * The settings window (docs/system-design/desktop.md): one sandboxed panel
  * that opens from the tray, stays open while the user changes preferences,
@@ -8,7 +9,7 @@
  * freshly built model and hands the resulting action to the same handler the
  * tray uses. Closing the window does not quit the menu-bar app.
  */
-import { BrowserWindow, app, ipcMain, type IpcMainInvokeEvent } from "electron";
+import { BrowserWindow, app, ipcMain, screen, type IpcMainInvokeEvent } from "electron";
 import path from "node:path";
 import type { SettingsChoiceResult, SettingsView } from "../shared/settings-panel";
 import type { RecordingState } from "../shared/state";
@@ -29,6 +30,7 @@ export interface SettingsWindowOptions {
    */
   act: (action: AppAction) => Promise<boolean | void>;
   capture?: (armed: boolean) => void;
+  geometry?: Pick<SettingsWindowState, "size" | "save">;
   log?: (message: string) => void;
 }
 
@@ -37,6 +39,10 @@ export class SettingsWindow {
   private committingHotkey = false;
   private captureTimer: ReturnType<typeof setTimeout> | undefined;
   private window: BrowserWindow | undefined;
+  private resizeTimer: ReturnType<typeof setTimeout> | undefined;
+  private pendingSize: WindowSize | undefined;
+  private rememberedSize: WindowSize | undefined;
+
   /** One save at a time, in request order: a queued request is never a failure. */
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -87,11 +93,15 @@ export class SettingsWindow {
       return;
     }
     const view = this.view();
+    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const workArea = display.workAreaSize;
+    const size = fitSettingsSize(this.rememberedSize ?? this.options.geometry?.size ?? DEFAULT_SETTINGS_SIZE, workArea);
     const window = new BrowserWindow({
-      width: 460,
-      height: 560,
-      minWidth: 380,
-      minHeight: 360,
+      ...size,
+      x: Math.round(display.workArea.x + (workArea.width - size.width) / 2),
+      y: Math.round(display.workArea.y + (workArea.height - size.height) / 2),
+      minWidth: Math.min(MIN_SETTINGS_SIZE.width, workArea.width),
+      minHeight: Math.min(MIN_SETTINGS_SIZE.height, workArea.height),
       show: false,
       title: view.title,
       maximizable: false,
@@ -107,6 +117,18 @@ export class SettingsWindow {
       },
     });
     this.window = window;
+    let lastSize = size;
+    window.on("resize", () => {
+      if (window.isMinimized()) return;
+      const [width, height] = window.getSize();
+      if (width === undefined || height === undefined) return;
+      if (width === lastSize.width && height === lastSize.height) return;
+      lastSize = { width, height };
+      this.pendingSize = this.rememberedSize = lastSize;
+      clearTimeout(this.resizeTimer);
+      this.resizeTimer = setTimeout(() => this.flushSize(), 250);
+    });
+    window.on("close", () => this.flushSize());
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
     window.once("ready-to-show", () => {
@@ -116,6 +138,7 @@ export class SettingsWindow {
     window.on("blur", () => { this.endCapture(); this.refresh(); });
     window.webContents.on("render-process-gone", () => this.endCapture());
     window.on("closed", () => {
+      this.flushSize();
       this.endCapture();
       if (this.window === window) this.window = undefined;
     });
@@ -142,12 +165,22 @@ export class SettingsWindow {
   }
 
   destroy(): void {
+    this.flushSize();
     this.endCapture();
     ipcMain.removeHandler("settings:capture");
     ipcMain.removeHandler("settings:read");
     ipcMain.removeHandler("settings:choose");
     this.window?.destroy();
     this.window = undefined;
+  }
+
+  private flushSize(): void {
+    clearTimeout(this.resizeTimer);
+    this.resizeTimer = undefined;
+    if (this.pendingSize) {
+      this.options.geometry?.save(this.pendingSize);
+      this.pendingSize = undefined;
+    }
   }
 
   private view(): SettingsView {

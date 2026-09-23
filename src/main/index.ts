@@ -1,3 +1,4 @@
+import { SettingsWindowState } from "./settings-window-state";
 import { DisplayRequest } from "./display-source";
 import { isDisplayInfo, type DisplayInfo, type DisplayFailure } from "../shared/display";
 /**
@@ -245,6 +246,7 @@ async function main(): Promise<void> {
     },
   });
   const settingsWindow = new SettingsWindow({
+    geometry: new SettingsWindowState(path.join(app.getPath("userData"), "settings-window.json"), log),
     state: () => recorder.state,
     context: appContext,
     act: handleAction,

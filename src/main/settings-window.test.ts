@@ -22,6 +22,7 @@ const mock = vi.hoisted(() => {
     show = vi.fn();
     focus = vi.fn();
     setTitle = vi.fn();
+    getSize = vi.fn(() => [this.options.width, this.options.height]);
     loadFile = vi.fn(() => load());
     loadURL = vi.fn(() => load());
     destroyed = false;
@@ -53,12 +54,13 @@ const mock = vi.hoisted(() => {
 vi.mock("electron", () => ({
   app: { isPackaged: true, focus: mock.focus },
   BrowserWindow: mock.Window,
+  screen: { getCursorScreenPoint: () => ({ x: 0, y: 0 }), getDisplayNearestPoint: () => ({ workAreaSize: { width: 1440, height: 900 }, workArea: { x: 0, y: 0, width: 1440, height: 900 } }) },
   ipcMain: {
     handle: (name: string, fn: (...args: any[]) => any) => mock.handlers.set(name, fn),
     removeHandler: (name: string) => mock.handlers.delete(name),
   },
 }));
-import { SettingsWindow } from "./settings-window";
+import { SettingsWindow, type SettingsWindowOptions } from "./settings-window";
 import type { AppAction, AppContext } from "./ui-model";
 
 const context: AppContext = {
@@ -74,7 +76,7 @@ const context: AppContext = {
 };
 
 /** A panel wired to a mutable copy of the committed settings. */
-function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState } = {}) {
+function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"] } = {}) {
   const live = { ...context };
   let state: RecordingState = { type: "idle" };
   const act = overrides.act ?? vi.fn(async (action: AppAction) => {
@@ -83,6 +85,7 @@ function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>
   const log = vi.fn();
   const capture = vi.fn();
   const panel = new SettingsWindow({
+    ...(overrides.geometry ? { geometry: overrides.geometry } : {}),
     capture,
     state: overrides.state ?? (() => state),
     context: () => live,
@@ -344,4 +347,44 @@ it("restores capture ownership after renderer failure", () => {
   mock.handlers.get("settings:capture")!(s.event(), true);
   const handler = s.window().webContents.on.mock.calls.find((call: any[]) => call[0] === "render-process-gone")[1];
   handler(); expect(s.capture).toHaveBeenLastCalledWith(false);
+});
+
+
+describe("settings window size", () => {
+  it("uses a compact default and fits saved dimensions to the display", () => {
+    const fresh = setup(); fresh.panel.show();
+    expect(fresh.window().options).toMatchObject({ width: 560, height: 680 });
+    fresh.panel.destroy(); mock.windows.length = 0;
+    const saved = setup({ geometry: { size: { width: 2000, height: 1500 }, save: vi.fn() } });
+    saved.panel.show();
+    expect(saved.window().options).toMatchObject({ width: 1440, height: 900 });
+    saved.panel.destroy();
+  });
+  it("debounces resize writes and flushes the final size before closing/reopening", () => {
+    vi.useFakeTimers();
+    try {
+      const geometry = { size: { width: 600, height: 700 }, save: vi.fn() };
+      const s = setup({ geometry }); s.panel.show();
+      s.window().getSize.mockReturnValue([620, 710]); s.window().events.get("resize")!();
+      s.window().getSize.mockReturnValue([640, 730]); s.window().events.get("resize")!();
+      expect(geometry.save).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(250);
+      expect(geometry.save).toHaveBeenCalledExactlyOnceWith({ width: 640, height: 730 });
+      s.window().getSize.mockReturnValue([660, 750]); s.window().events.get("resize")!();
+      s.window().events.get("close")!(); s.window().events.get("closed")!();
+      expect(geometry.save).toHaveBeenLastCalledWith({ width: 660, height: 750 });
+      s.panel.show(); expect(mock.windows[1].options).toMatchObject({ width: 660, height: 750 });
+      s.panel.destroy(); vi.runAllTimers(); expect(geometry.save).toHaveBeenCalledTimes(2);
+    } finally { vi.useRealTimers(); }
+  });
+  it("flushes pending size on shutdown and ignores minimize dimensions", () => {
+    const geometry = { size: { width: 600, height: 700 }, save: vi.fn() };
+    const s = setup({ geometry }); s.panel.show();
+    s.window().isMinimized.mockReturnValue(true);
+    s.window().getSize.mockReturnValue([0, 0]); s.window().events.get("resize")!();
+    s.window().isMinimized.mockReturnValue(false);
+    s.window().getSize.mockReturnValue([700, 800]); s.window().events.get("resize")!();
+    s.panel.destroy();
+    expect(geometry.save).toHaveBeenCalledExactlyOnceWith({ width: 700, height: 800 });
+  });
 });
