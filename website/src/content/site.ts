@@ -104,8 +104,8 @@ export const settings = [
   { setting: "Frame rate", options: "30 / 60 fps", fallback: "30; 60 is enabled only on macOS" },
   {
     setting: "Shortcut",
-    options: "⌘⌥⇧R / ⌘⇧R / ⌘⌥R / Off",
-    fallback: "⌘⌥⇧R; the menu says so if another app already owns the combination",
+    options: "⌘⇧1 (recommended) / Custom shortcut / Off",
+    fallback: "⌘⇧1; Settings shows a warning if another app already owns the combination",
   },
 ] as const;
 

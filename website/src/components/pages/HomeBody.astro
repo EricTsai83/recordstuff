@@ -13,11 +13,23 @@ import InstallFlow from "../InstallFlow.astro";
 </Section>
 
 <SpecsBand />
-<Section id="get" title="Download, drag, open, allow, record">
+<Section id="get" title="Ready in five steps.">
   <InstallFlow />
 </Section>
 
 <style>
+  /* Match the installation diagram's visible content: its first icon starts
+     36px inside the desktop art band, and 14px inside the mobile band. */
+  :global(#features),
+  :global(.specs) {
+    --section-head-gap: calc(2rem + 36px);
+  }
+  @media (max-width: 900px) {
+    :global(#features),
+    :global(.specs) {
+      --section-head-gap: calc(2rem + 14px);
+    }
+  }
   :global(#get) {
     padding-bottom: calc(var(--section-y) * 1.6);
   }
