@@ -24,6 +24,7 @@ export const ERROR_CODES = [
   "permission_needs_relaunch",
   "unsupported_os_version",
   "no_display",
+  "display_unavailable",
   "no_audio_track",
   "mp4_unsupported",
   "capture_start_failed",

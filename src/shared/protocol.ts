@@ -25,7 +25,7 @@ export type HostMessage =
   /** `bytes` is structured-cloned (see capture-host.ts for why not transferred). */
   | { type: "chunk"; sessionId: string; seq: number; bytes: ArrayBuffer }
   | { type: "stopped"; sessionId: string; tracksStoppedAt?: number }
-  | { type: "error"; sessionId?: string; code: ErrorCode; detail: string }
+  | { type: "error"; sessionId?: string; code: ErrorCode; detail: string; displayFailure?: "track_ended" }
   | { type: "pong" };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -78,7 +78,8 @@ export function isHostMessage(value: unknown): value is HostMessage {
       return (
         (value["sessionId"] === undefined || isNonEmptyString(value["sessionId"])) &&
         isErrorCode(value["code"]) &&
-        typeof value["detail"] === "string"
+        typeof value["detail"] === "string" &&
+        (value["displayFailure"] === undefined || value["displayFailure"] === "track_ended")
       );
     default:
       return false;

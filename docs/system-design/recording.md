@@ -27,7 +27,7 @@ NeedsPermission carries needsRelaunch. Idle may carry lastSavedPath or outputDir
 1. Recorder checks idle/no existing session and OS preflight, captures quality, creates a session ID, and enters starting.
 2. ensureWritableDir creates the folder and writes/removes a probe. Failure never silently selects a different folder.
 3. Open `YYYY-MM-DD HH-mm-ss.recording.mp4` using local time and exclusive `wx`. A temporary-file collision retries suffixes `-2` through `-10`.
-4. Wait for host readiness and send start. Main selects the primary display ID, falling back to the first source, and requests system loopback audio.
+4. Wait for host readiness and send start. Main resolves the saved screen preference: Primary display keeps the primary-id/first-source policy; an explicit display requires one exact id match. Request system loopback audio unchanged.
 5. Renderer checks MP4 support, requests the stream, and rejects absent/ended audio tracks after cleaning up.
 6. Measure actual frames, apply quality, recheck that all tracks are live, create MediaRecorder, register callbacks, and send started.
 7. Main enters recording. A first chunk must still arrive before its deadline.
@@ -106,9 +106,17 @@ Exclusive naming currently checks the temporary filename. This document does not
 | Category | Codes | User outcome |
 | --- | --- | --- |
 | Permission/environment | permission_denied, permission_needs_relaunch, unsupported_os_version | Settings/relaunch guidance or version explanation |
-| Source/codec | no_display, no_audio_track, mp4_unsupported | Refuse start and explain missing capability |
+| Source/codec | no_display, display_unavailable, no_audio_track, mp4_unsupported | Refuse start and explain missing capability |
 | Capture | capture_start_failed, capture_failed, capture_host_crashed, capture_host_unresponsive | Return idle and reveal any preserved partial file |
 | Storage | output_open_failed, output_write_failed, disk_full | Explain location/disk failure and preserve bytes where possible |
 | Stop | stop_timeout | Stop waiting for capture and attempt partial-file cleanup |
 
 Main may replace a generic renderer failure with the concrete source-denial reason, but only for errors that source denial can explain. Permission_needs_relaunch is a supported protocol code; routine relaunch guidance primarily follows PermissionWatcher state.
+
+## Screen selection
+
+`display-source.ts` separates live Screen API resolution from capture-source matching. Explicit choices store `{ kind: "display", id, label }`; labels are presentation only. Missing/duplicate targets fail immediately. Missing/duplicate capture sources or topology changes retry at 150 ms intervals, at most three enumerations. Enumeration exceptions preserve permission-denied on macOS / no-display elsewhere. The recorder timeout remains the outer bound for a hung enumeration. Settling or superseding an attempt cancels callbacks and retry timers; delayed completions cannot grant capture or replace diagnostics.
+
+`display_unavailable` means the exact target could not safely resolve, with separate `target_missing`, `source_missing` or `topology_changed` detail. No matching by name, size or position occurs, and stored ids are never rewritten automatically. Id reuse is not proof of physical hardware identity. Display removal invokes the recorder's idempotent `capture_failed` path and preserves recoverable partial content without switching targets. Screen metadata is logical DIP size and scale; output dimensions still come from the actual track and resolution cap.
+
+Main destroys the capture host when an attempt settles; the next attempt has a new frame. A media request must match both the current frame and session, so delayed handler arrival cannot inherit a newer attempt. Unexpected video-track termination carries structured `displayFailure: "track_ended"`; Recorder retains this diagnostic before idle. Audio-track termination is not mislabeled as display loss. Removal after normal track shutdown during file finalization does not create a failure diagnostic.

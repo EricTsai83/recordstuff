@@ -59,3 +59,10 @@ describe("isHostMessage", () => {
     expect(isHostMessage({ type: "nope" })).toBe(false);
   });
 });
+
+it("validates optional structured display track failure", () => {
+  const message = { type: "error", sessionId: "s1", code: "capture_failed", detail: "ended" };
+  expect(isHostMessage({ ...message, displayFailure: "track_ended" })).toBe(true);
+  expect(isHostMessage({ ...message, displayFailure: true })).toBe(false);
+  expect(isHostMessage({ ...message, displayFailure: "audio" })).toBe(false);
+});

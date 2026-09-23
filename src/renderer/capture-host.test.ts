@@ -35,6 +35,7 @@ class FakeTrack {
     this.listeners.push(listener);
   }
   end(): void {
+    this.readyState = "ended";
     for (const l of this.listeners) l();
   }
 }
@@ -278,16 +279,18 @@ describe("renderer CaptureHost", () => {
     expect(getDisplayMedia).toHaveBeenCalledTimes(1);
   });
 
-  it("a track ending on its own reports capture_failed, not stopped", async () => {
+  it.each(["video", "audio"])("a %s track ending identifies display loss only for video", async (kind) => {
     const port = boot();
     port.receive(start("s1"));
     const s = stream();
     pendingStream!.resolve(s);
     await flush();
-    s.tracks[0]!.end();
+    s.tracks.find((track) => track.kind === kind)!.end();
     await flush();
     await flush();
     expect(port.types()).toEqual(["started", "chunk", "error"]);
+    expect(port.sent.at(-1)).toMatchObject(kind === "video" ? { displayFailure: "track_ended" } : {});
+    if (kind === "audio") expect(port.sent.at(-1)).not.toHaveProperty("displayFailure");
     expect(port.sent.at(-1)).toMatchObject({ type: "error", sessionId: "s1", code: "capture_failed" });
   });
 

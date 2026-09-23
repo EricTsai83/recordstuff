@@ -22,6 +22,7 @@ const mac: AppContext = {
   hotkey: { ...DEFAULT_HOTKEY, registered: true },
   updates: { state: { kind: "idle" }, enabled: true },
   notifications: true,
+  displays: [], display: { kind: "primary" },
 };
 const win: AppContext = {
   platform: "win32",
@@ -32,6 +33,7 @@ const win: AppContext = {
   hotkey: { ...DEFAULT_HOTKEY, registered: true },
   updates: { state: { kind: "idle" }, enabled: true },
   notifications: true,
+  displays: [], display: { kind: "primary" },
 };
 const STATES: RecordingState[] = [
   { type: "needsPermission", needsRelaunch: false },
@@ -294,4 +296,18 @@ it("only advertises a working Settings key and explains unavailable access in bo
       expect(menu.some(item => item.kind === "item" && !item.enabled && item.label.includes(language === "en" ? "Settings shortcut unavailable" : "設定快捷鍵無法使用"))).toBe(true);
     }
   }
+});
+
+describe("display tray feedback", () => {
+  it("keeps default Ready and names an explicit target", () => {
+    const ctx: AppContext = { ...mac, language: "en", displays: [{ id: "7", label: "Studio", logicalWidth: 100, logicalHeight: 100, scaleFactor: 1, internal: false, primary: true }] };
+    expect(trayModel({ type: "idle" }, ctx).menu[0]).toMatchObject({ label: "Ready" });
+    expect(trayModel({ type: "idle" }, { ...ctx, display: { kind: "display", id: "7", label: "Old label" } }).menu[0]).toMatchObject({ label: "Ready — Studio" });
+  });
+  it("distinguishes current absence from last source failure with notifications off", () => {
+    const ctx: AppContext = { ...mac, language: "en", notifications: false, display: { kind: "display", id: "7", label: "Studio" }, displayFailure: "source_missing" };
+    const menu = trayModel({ type: "idle" }, ctx).menu;
+    expect(menu[0]).toMatchObject({ label: "Selected display is unavailable. Choose another screen." });
+    expect(menu[1]).toMatchObject({ label: "Last display failure: Display is connected but its capture source is unavailable. Retry or choose another screen." });
+  });
 });

@@ -95,6 +95,7 @@ function setup(supported = true, canNotify?: () => boolean): { tray: AppTray; lo
       hotkey: { ...DEFAULT_HOTKEY, registered: true },
       updates: { state: { kind: "idle" }, enabled: true },
       notifications: true,
+  displays: [], display: { kind: "primary" },
     }),
     onToggle: vi.fn(),
     onAction: vi.fn(),
@@ -301,7 +302,7 @@ describe("notification language follows current settings", () => {
     const action = vi.fn();
     const tray = new AppTray({
       resourcesDir: "/resources",
-      context: () => ({ platform: process.platform, outputDir: "/tmp/recordings", homeDir: "/tmp", quality: DEFAULT_QUALITY, language, hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: "idle" }, enabled: true }, notifications: true }),
+      context: () => ({ platform: process.platform, outputDir: "/tmp/recordings", homeDir: "/tmp", quality: DEFAULT_QUALITY, language, hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: "idle" }, enabled: true }, notifications: true, displays: [], display: { kind: "primary" } }),
       onToggle: vi.fn(), onAction: action,
     });
     tray.notifySaved("/tmp/demo.mp4");

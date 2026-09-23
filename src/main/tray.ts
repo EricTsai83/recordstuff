@@ -1,3 +1,5 @@
+import { translate } from "../shared/i18n";
+import { APP_NAME } from "./ui-model";
 /**
  * Tray icon, right-click menu and notifications (docs/system-design/recording.md). This is a
  * projection of `RecordingState`; every decision lives in `recorder.ts`.
@@ -157,6 +159,10 @@ export class AppTray {
 
   notifyLanguageWriteFailed(): void {
     this.show(languageWriteFailedNotification(this.options.context().language));
+  }
+
+  notifyDisplayWriteFailed(): void {
+    this.show({ title: APP_NAME, body: translate("Could not save the screen setting.", this.options.context().language) });
   }
 
   notifyQualityWriteFailed(): void {

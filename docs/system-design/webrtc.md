@@ -36,7 +36,7 @@ flowchart TD
 | Layer | Owns | Why the boundary matters |
 | --- | --- | --- |
 | Operating system | Screen/audio sources and capture permission | Missing permission or a different audio route cannot be fixed by increasing encoder bitrate. |
-| Electron main | Selects the primary display and requests `audio: "loopback"`; owns lifecycle and file writing | Source selection and filesystem access stay outside the sandboxed capture renderer. |
+| Electron main | Resolves the saved screen choice (primary by default, exact id for a specific display) and requests `audio: "loopback"`; owns lifecycle and file writing | Source selection and filesystem access stay outside the sandboxed capture renderer. |
 | Chromium media engine | Implements capture, track settings, internal processing, and recording support | Electron/Chromium upgrades can change behavior without an application-code change. |
 | Hidden capture renderer | Requests constraints, inspects track settings, runs `MediaRecorder`, emits chunks | This is where the app expresses its fidelity policy and gathers runtime evidence. |
 | Local IPC and writer | Move encoded bytes between processes and persist them | MessagePort is local IPC, not `RTCDataChannel`; file failures are distinct from capture distortion. |

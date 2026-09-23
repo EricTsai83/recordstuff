@@ -10,7 +10,7 @@
  * `start` probes responsiveness and replaces an unresponsive host. A crash is
  * still reported at any time by `render-process-gone`.
  */
-import { BrowserWindow, MessageChannelMain, type MessagePortMain } from "electron";
+import { BrowserWindow, MessageChannelMain, type WebFrameMain, type MessagePortMain } from "electron";
 import { isHostMessage, type HostMessage, type MainMessage } from "../shared/protocol";
 import type { QualitySettings } from "../shared/quality";
 import type { RecorderHost } from "./recorder";
@@ -63,11 +63,20 @@ export class CaptureHost implements RecorderHost {
       if (generation !== this.generation) throw new Error("capture host was destroyed during the readiness probe");
       if (!responsive) this.teardown();
     }
-    await this.ensureReady();
+    const ready = this.ensureReady();
+    const generation = this.generation;
+    await ready;
+    if (generation !== this.generation) throw new Error("capture host was invalidated during startup");
     this.watching = sessionId;
     this.missedPongs = 0;
     this.pingTimer ??= setInterval(() => this.ping(), this.pingIntervalMs);
     this.post({ type: "start", sessionId, quality });
+  }
+
+  /** The request must originate from this attempt's actual main frame. */
+  ownsDisplayRequest(frame: WebFrameMain | null, sessionId: string | undefined): boolean {
+    return !!frame && !!sessionId && this.watching === sessionId && !!this.window
+      && !this.window.isDestroyed() && this.window.webContents.mainFrame === frame;
   }
 
   stop(sessionId: string): void {
@@ -100,7 +109,8 @@ export class CaptureHost implements RecorderHost {
     if (this.ready && this.window && !this.window.isDestroyed()) return this.ready;
     this.teardown();
     this.ready = this.create();
-    this.ready.catch(() => this.teardown());
+    const generation = this.generation;
+    this.ready.catch(() => { if (generation === this.generation) this.teardown(); });
     return this.ready;
   }
 

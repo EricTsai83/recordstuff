@@ -1,3 +1,5 @@
+import { displayLabel, displayFailureText } from "../shared/display";
+import { displayResolution } from "./display-source";
 /**
  * Pure state-to-presentation projection for the native tray. See
  * docs/system-design/desktop.md.
@@ -104,8 +106,12 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
         ...end,
       ]);
     case "idle": {
-      const status = text(state.outputDirUnavailable ? "Output folder unavailable" : "Ready");
+      const resolution = displayResolution(ctx.displays, ctx.display);
+      const status = state.outputDirUnavailable ? text("Output folder unavailable")
+        : !resolution.ok ? displayFailureText(resolution.detail, language)
+        : ctx.display.kind === "display" ? t("Ready — {label}", language, { label: displayLabel(resolution, language) }) : text("Ready");
       const menu = [disabled(status)];
+      if (ctx.displayFailure) menu.push(disabled(t("Last display failure: {reason}", language, { reason: displayFailureText(ctx.displayFailure, language) })));
       if (state.lastSavedPath) menu.push(item(text("Show last recording"), "revealLastSaved", state.lastSavedPath));
       return model("idle", "", status, [...menu, SEPARATOR, ...outputDirItems(ctx, true), ...end]);
     }
@@ -223,6 +229,7 @@ export function errorNotification(
       "Screen recording access was granted, but RecordStuff needs to relaunch. Use the tray menu.",
     unsupported_os_version:
       "This system version does not support system audio capture. macOS 13 or newer is required on Mac.",
+    display_unavailable: "Selected display is unavailable. Choose another screen.",
     no_display: "No display is available for recording.",
     no_audio_track:
       "System audio is unavailable. On macOS, allow RecordStuff in System Settings > Privacy & Security > Screen & System Audio Recording.",

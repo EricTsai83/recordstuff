@@ -1,3 +1,5 @@
+import { displayLabel, displayFailureText } from "../shared/display";
+import { displayResolution } from "./display-source";
 /**
  * The settings panel's model (docs/system-design/desktop.md): one declaration
  * of every preference the user can change, projected for the panel and used
@@ -48,8 +50,27 @@ function group(
   choices: Group["choices"],
   note?: string,
 ): Group {
-  const tab = ["videoQuality", "resolutionCap", "frameRate"].includes(id) ? "recording" : "general";
+  const tab = ["screen", "videoQuality", "resolutionCap", "frameRate"].includes(id) ? "recording" : "general";
   return { id, label, enabled, choices, tab, ...(note === undefined ? {} : { note }) };
+}
+
+function screenGroup(ctx: AppContext, enabled: boolean): Group {
+  const preference = ctx.display;
+  const resolution = displayResolution(ctx.displays, preference);
+  const choices: Group["choices"] = [{ id: "primary", label: t("Primary display", ctx.language), enabled: true,
+    checked: preference.kind === "primary", action: { setDisplay: { kind: "primary" } } }];
+  for (const display of ctx.displays) {
+    if (ctx.displays.filter((d) => d.id === display.id).length !== 1) continue;
+    choices.push({ id: display.id, label: displayLabel(display, ctx.language), enabled: true,
+      checked: preference.kind === "display" && preference.id === display.id,
+      action: { setDisplay: { kind: "display", id: display.id, label: display.label } } });
+  }
+  if (preference.kind === "display" && !resolution.ok) choices.push({ id: preference.id,
+    label: displayLabel(preference, ctx.language), enabled: false, checked: true, action: { setDisplay: preference } });
+  const notes = [t("Captures one whole screen. System audio is unaffected.", ctx.language)];
+  if (!resolution.ok) notes.push(displayFailureText(resolution.detail, ctx.language));
+  if (ctx.displayFailure) notes.push(t("Last display failure: {reason}", ctx.language, { reason: displayFailureText(ctx.displayFailure, ctx.language) }));
+  return group("screen", t("Screen", ctx.language), enabled, choices, notes.join(" "));
 }
 
 function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {
@@ -200,6 +221,7 @@ function languageGroup(language: Language): Group[] {
 function settingsGroups(state: RecordingState, ctx: AppContext): Group[] {
   const unlocked = preferencesUnlocked(state);
   return [
+    screenGroup(ctx, unlocked),
     ...qualityGroups(ctx, unlocked),
     ...hotkeyGroup(ctx, unlocked),
     ...updateChecksGroup(ctx, unlocked),

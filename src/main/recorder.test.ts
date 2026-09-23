@@ -739,3 +739,40 @@ describe("quality snapshot", () => {
     expect(line).toContain("warnings: x");
   });
 });
+
+describe("display loss races", () => {
+  it.each(["removal", "stop", "track"])("finalizes once when %s happens first", async (first) => {
+    const ctx = setup(); await startRecording(ctx);
+    const remove = () => ctx.recorder.displayRemoved();
+    const stop = () => ctx.recorder.stop();
+    const track = () => ctx.host.emit({ type: "error", sessionId: "s1", code: "capture_failed", detail: "video ended" });
+    if (first === "removal") remove(); else if (first === "stop") stop(); else track();
+    remove(); track(); stop(); await flush();
+    expect(ctx.events.filter((e) => e.type === "failed")).toHaveLength(1);
+    expect(ctx.events.filter((e) => e.type === "saved")).toHaveLength(0);
+    expect(ctx.writers[0]?.abandoned).toBe(true);
+    expect(ctx.recorder.state.type).toBe("idle");
+  });
+  it("does not abandon a file already finalizing after a normal stop", async () => {
+    const ctx = setup(); await startRecording(ctx); ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" }); ctx.recorder.displayRemoved(); await flush();
+    expect(ctx.events.filter((e) => e.type === "saved")).toHaveLength(1);
+    expect(ctx.writers[0]?.abandoned).toBe(false);
+  });
+});
+
+it("retains video-loss diagnostics before idle even if removal arrives later", async () => {
+  const ctx = setup(); await startRecording(ctx);
+  ctx.host.emit({ type: "error", sessionId: "s1", code: "capture_failed", detail: "ended", displayFailure: "track_ended" });
+  ctx.recorder.displayRemoved(); await flush();
+  const diagnostic = ctx.events.findIndex((e) => e.type === "displayFailed");
+  const idle = ctx.events.findIndex((e) => e.type === "state" && e.state.type === "idle");
+  expect(diagnostic).toBeGreaterThan(-1); expect(diagnostic).toBeLessThan(idle);
+  expect(ctx.events.filter((e) => e.type === "displayFailed")).toEqual([{ type: "displayFailed", detail: "track_ended" }]);
+});
+it("normal finalization followed by removal does not emit a display failure", async () => {
+  const ctx = setup(); await startRecording(ctx); ctx.recorder.stop();
+  ctx.host.emit({ type: "stopped", sessionId: "s1" }); ctx.recorder.displayRemoved(); await flush();
+  expect(ctx.events.filter((e) => e.type === "displayFailed")).toEqual([]);
+  expect(ctx.events.filter((e) => e.type === "saved")).toHaveLength(1);
+});

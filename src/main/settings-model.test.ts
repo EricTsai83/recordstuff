@@ -15,6 +15,7 @@ const context: AppContext = {
   hotkey: { ...DEFAULT_HOTKEY, registered: true },
   updates: { state: { kind: "idle" }, enabled: true },
   notifications: true,
+  displays: [], display: { kind: "primary" },
 };
 const idle: RecordingState = { type: "idle" };
 const busy: RecordingState[] = [
@@ -31,6 +32,7 @@ describe("settingsView", () => {
   it("offers every preference with a stable id and exactly one committed choice", () => {
     const view = settingsView(idle, context);
     expect(view.groups.map((entry) => entry.id)).toEqual([
+      "screen",
       "videoQuality",
       "resolutionCap",
       "frameRate",
@@ -175,7 +177,7 @@ describe("update actions in General", () => {
     expect(settingsAction(idle, ctx, "updates", "open")).toBeUndefined();
   });
   it("places quality controls in Recording", () => {
-    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["videoQuality", "resolutionCap", "frameRate"]);
+    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "videoQuality", "resolutionCap", "frameRate"]);
   });
 });
 
@@ -231,4 +233,32 @@ it("accepts canonical custom candidates only in the unlocked shortcut group", ()
   const ctx = { ...context, hotkey: { enabled: true, registered: true, accelerator: "Control+Shift+F12" } };
   expect(checked(idle, ctx, "hotkey")).toBe("Control+Shift+F12");
   expect(settingsChecked(idle, ctx, "hotkey", "Shift+Control+F12")).toBe(true);
+});
+
+describe("screen choice", () => {
+  const d = { id: "7", label: "Studio", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: false, primary: true };
+  const selected: AppContext = { ...context, displays: [d], display: { kind: "display", id: "7", label: "Studio" } };
+  it("offers live ids, authorizes the main-owned label and locks while busy", () => {
+    expect(group(idle, selected, "screen")?.tab).toBe("recording");
+    expect(checked(idle, selected, "screen")).toBe("7");
+    expect(settingsAction(idle, selected, "screen", "7")).toEqual({ setDisplay: selected.display });
+    expect(settingsAction(idle, selected, "screen", "unknown")).toBeUndefined();
+    for (const state of busy) expect(settingsAction(state, selected, "screen", "primary")).toBeUndefined();
+  });
+  it("retains one disabled stale choice, including duplicate ids", () => {
+    for (const displays of [[], [d, d]]) {
+      const ctx = { ...selected, displays };
+      const screen = group(idle, ctx, "screen")!;
+      expect(screen.choices.filter((c) => c.id === "7")).toHaveLength(1);
+      expect(screen.choices.find((c) => c.checked)).toMatchObject({ id: "7", enabled: false });
+      expect(settingsAction(idle, ctx, "screen", "7")).toBeUndefined();
+      expect(screen.note).toContain("Selected display is unavailable");
+      expect(settingsAction(idle, ctx, "screen", "primary")).toEqual({ setDisplay: { kind: "primary" } });
+    }
+  });
+  it("keeps last source failure visible with notifications off without calling it disconnected", () => {
+    const ctx = { ...selected, notifications: false, displayFailure: "source_missing" as const };
+    expect(group(idle, ctx, "screen")?.note).toContain("Last display failure: Display is connected");
+    expect(group(idle, ctx, "screen")?.choices.find((c) => c.checked)?.enabled).toBe(true);
+  });
 });

@@ -70,6 +70,7 @@ const context: AppContext = {
   hotkey: { ...DEFAULT_HOTKEY, registered: true },
   updates: { state: { kind: "idle" }, enabled: true },
   notifications: true,
+  displays: [], display: { kind: "primary" },
 };
 
 /** A panel wired to a mutable copy of the committed settings. */

@@ -36,7 +36,7 @@ flowchart TD
 | 層級 | 負責什麼 | 為什麼這個邊界重要 |
 | --- | --- | --- |
 | 作業系統 | 畫面、音訊來源與擷取權限 | 權限不足或音訊路由不同，不能靠提高編碼 bitrate 解決。 |
-| Electron main | 選主螢幕、要求 `audio: "loopback"`，管理生命週期與寫檔 | 來源選擇與檔案存取不交給 sandbox 中的 capture renderer。 |
+| Electron main | 解析保存的螢幕選擇（預設主螢幕、指定目標精確匹配 id）、要求 `audio: "loopback"`，管理生命週期與寫檔 | 來源選擇與檔案存取不交給 sandbox 中的 capture renderer。 |
 | Chromium 媒體引擎 | 實作擷取、軌道設定、內部處理與錄製支援 | 即使應用程式碼沒改，升級 Electron／Chromium 也可能改變行為。 |
 | 隱藏 capture renderer | 提出擷取條件、讀取軌道設定、操作 `MediaRecorder`、送出 chunks | 我們在這裡表達音質政策，並取得執行時證據。 |
 | 本機 IPC 與 writer | 跨程序搬運編碼資料、保存檔案 | MessagePort 是本機 IPC，不是 `RTCDataChannel`；寫檔錯誤與擷取失真是不同問題。 |

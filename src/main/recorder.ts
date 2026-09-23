@@ -1,3 +1,4 @@
+import type { DisplayFailure } from "../shared/display";
 /**
  * The state machine (docs/system-design/recording.md) and the single owner of `RecordingState`
  *. Everything with side effects — capture host, file writer, clock —
@@ -59,6 +60,7 @@ export type RecorderEvent =
   | { type: "saved"; path: string }
   /** The host confirmed capture; `requested` is the session snapshot, `capture` what it got. */
   | { type: "captureStarted"; requested: QualitySettings; capture: CaptureReport }
+  | { type: "displayFailed"; detail: DisplayFailure }
   | { type: "failed"; code: ErrorCode; detail: string; partialPath?: string }
   | { type: "permissionRequested"; needsRelaunch: boolean };
 
@@ -324,6 +326,7 @@ export class Recorder {
     if (message.type === "error") {
       if (session && (message.sessionId === undefined || message.sessionId === session.id)) {
         const code = this.deps.mapHostError ? this.deps.mapHostError(message.code) : message.code;
+        if (message.displayFailure && !session.finalizing) this.emit({ type: "displayFailed", detail: message.displayFailure });
         void this.fail(session.id, code, message.detail);
       }
       return;
@@ -405,6 +408,15 @@ export class Recorder {
     this.session = undefined;
     this.setState({ type: "idle", lastSavedPath: finalPath });
     this.emit({ type: "saved", path: finalPath });
+  }
+
+  /** Display loss shares the idempotent failure path with track end and host failure. */
+  displayRemoved(): void {
+    const session = this.session;
+    if (session && !session.finalizing) {
+      this.emit({ type: "displayFailed", detail: "target_removed" });
+      void this.fail(session.id, "capture_failed", "recording display removed");
+    }
   }
 
   private handleHostFailure(

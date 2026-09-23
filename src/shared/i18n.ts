@@ -7,6 +7,20 @@ export function isLanguage(value: unknown): value is Language {
 }
 
 export const ZH_TW = {
+  "The display capture ended unexpectedly. Retry or choose another screen.": "螢幕錄製非預期結束，請重試或選擇其他螢幕。",
+  "Screen": "螢幕",
+  "Primary display": "主螢幕",
+  "Display {id}": "螢幕 {id}",
+  "{label} (Primary)": "{label}（主螢幕）",
+  "Captures one whole screen. System audio is unaffected.": "錄製一個完整螢幕，不影響系統音訊。",
+  "Selected display is unavailable. Choose another screen.": "所選螢幕無法使用，請重新選擇。",
+  "Display is connected but its capture source is unavailable. Retry or choose another screen.": "螢幕已連接，但無法取得錄製來源。請重試或選擇其他螢幕。",
+  "Display configuration changed. Retry.": "螢幕配置已變更，請重試。",
+  "The recording display was removed. Choose another screen.": "錄製中的螢幕已移除，請選擇其他螢幕。",
+  "Last display failure: {reason}": "上次螢幕錯誤：{reason}",
+  "Ready — {label}": "待命 — {label}",
+  "Could not save the screen setting.": "無法儲存螢幕設定。",
+
   Settings: "設定",
   "Custom…": "自訂…",
   "Press a combination": "請按下快捷鍵組合",

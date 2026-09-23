@@ -1,3 +1,4 @@
+import { DEFAULT_DISPLAY_PREFERENCE, isDisplayPreference, type DisplayPreference } from "../shared/display";
 /**
  * Persistent output folder, recording quality, and presentation language.
  * See docs/system-design/desktop.md for the schema and migration rules.
@@ -29,6 +30,7 @@ export interface Settings {
   updates: { enabled: boolean; lastAttempt: number };
   /** Whether the app sends any notification at all; the OS permission is separate. */
   notifications: boolean;
+  display: DisplayPreference;
 }
 
 export interface SettingsStoreOptions {
@@ -95,7 +97,9 @@ export function parseSettings(text: string): ParsedSettings | undefined {
     lastAttempt: typeof u?.["lastAttempt"] === "number" && Number.isFinite(u["lastAttempt"]) && u["lastAttempt"] >= 0 ? u["lastAttempt"] : 0,
   };
   const notifications = typeof record["notifications"] === "boolean" ? record["notifications"] : true;
-  return { settings: { version: SETTINGS_VERSION, outputDir, quality, language, hotkey, updates, notifications }, warnings };
+  const display = isDisplayPreference(record["display"]) ? record["display"] : DEFAULT_DISPLAY_PREFERENCE;
+  if (record["display"] !== undefined && !isDisplayPreference(record["display"])) warnings.push("display is invalid: using primary display");
+  return { settings: { display, version: SETTINGS_VERSION, outputDir, quality, language, hotkey, updates, notifications }, warnings };
 }
 
 export class SettingsStore {
@@ -109,6 +113,14 @@ export class SettingsStore {
     this.filePath = options.filePath;
     this.log = options.log ?? (() => undefined);
     this.settings = this.load(options.defaultOutputDir);
+  }
+
+  get display(): DisplayPreference { return this.settings.display; }
+
+  setDisplay(display: DisplayPreference): Promise<void> {
+    if (!isDisplayPreference(display)) return Promise.reject(new Error("invalid display preference"));
+    const snapshot = { ...display };
+    return this.save((current) => ({ ...current, display: snapshot }));
   }
 
   get outputDir(): string {
@@ -189,6 +201,7 @@ export class SettingsStore {
       hotkey: DEFAULT_HOTKEY,
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
+      display: DEFAULT_DISPLAY_PREFERENCE,
     };
     let text: string;
     try {

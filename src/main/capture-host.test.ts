@@ -32,6 +32,7 @@ const mock = vi.hoisted(() => {
     contentEvents = new Map<string, (...args: any[]) => void>();
     destroyed = false;
     webContents = {
+      mainFrame: {},
       setWindowOpenHandler: vi.fn(),
       on: (name: string, listener: (...args: any[]) => void) => this.contentEvents.set(name, listener),
       // Handing over the port is what lets the page answer; the fake page
@@ -240,4 +241,27 @@ describe("the heartbeat runs only while a session is in flight", () => {
     expect(s.pings()).toBe(0);
     expect(s.window().destroy).toHaveBeenCalled();
   });
+});
+
+it("rejects old handler arrival after cancellation and a new host start", async () => {
+  const s = setup(); await s.start("old");
+  const oldFrame = s.window().webContents.mainFrame;
+  expect(s.host.ownsDisplayRequest(oldFrame, "old")).toBe(true);
+  s.host.destroy();
+  expect(s.host.ownsDisplayRequest(oldFrame, "old")).toBe(false);
+  await s.start("new");
+  expect(s.host.ownsDisplayRequest(oldFrame, "new")).toBe(false);
+  expect(s.host.ownsDisplayRequest(s.window().webContents.mainFrame, "new")).toBe(true);
+  expect(s.host.ownsDisplayRequest(s.window().webContents.mainFrame, "old")).toBe(false);
+  s.host.destroy();
+});
+
+it("cannot post a start after its host was invalidated during readiness", async () => {
+  const s = setup();
+  const pending = s.host.start("old", DEFAULT_QUALITY);
+  const rejected = expect(pending).rejects.toThrow();
+  s.host.destroy();
+  await vi.advanceTimersByTimeAsync(8000);
+  await rejected;
+  expect(mock.ports.flatMap((p) => p.sent).filter((m: MainMessage) => m.type === "start")).toEqual([]);
 });

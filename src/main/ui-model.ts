@@ -1,3 +1,4 @@
+import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../shared/display";
 /**
  * The vocabulary both user interfaces share (docs/system-design/desktop.md):
  * one action union and one read-only context snapshot.
@@ -32,6 +33,7 @@ export type AppAction =
   | "openUpdate"
   | { setUpdateChecks: boolean }
   | { setNotifications: boolean }
+  | { setDisplay: DisplayPreference }
   | { setQuality: Partial<QualitySettings> }
   | { setLanguage: Language }
   | { setHotkey: HotkeySettings };
@@ -42,6 +44,9 @@ export interface AppHotkey extends HotkeySettings {
 }
 
 export interface AppContext {
+  displays: DisplayInfo[];
+  display: DisplayPreference;
+  displayFailure?: DisplayFailure;
   platform: NodeJS.Platform;
   outputDir: string;
   homeDir: string;

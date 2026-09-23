@@ -59,6 +59,7 @@ describe("SettingsStore", () => {
       hotkey: DEFAULT_HOTKEY,
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
+      display: { kind: "primary" },
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -132,6 +133,7 @@ describe("quality settings", () => {
       hotkey: DEFAULT_HOTKEY,
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
+      display: { kind: "primary" },
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -150,6 +152,7 @@ describe("quality settings", () => {
       hotkey: DEFAULT_HOTKEY,
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
+      display: { kind: "primary" },
     });
   });
 
@@ -202,6 +205,7 @@ describe("quality settings", () => {
       hotkey: DEFAULT_HOTKEY,
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
+      display: { kind: "primary" },
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -234,13 +238,14 @@ describe("parseSettings", () => {
       hotkey: DEFAULT_HOTKEY,
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
+      display: { kind: "primary" },
     });
     expect(parseSettings('{"version":2,"outputDir":"/a","quality":' + JSON.stringify(DEFAULT_QUALITY) + "}")).toEqual({
-      settings: { language: "en", version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, updates: { enabled: true, lastAttempt: 0 }, notifications: true },
+      settings: { language: "en", version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" } },
       warnings: ["version 2 file: shortcut set to default"],
     });
     const v3 = { version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
-    expect(parseSettings(JSON.stringify(v3))).toEqual({ settings: { ...v3, language: "en", updates: { enabled: true, lastAttempt: 0 }, notifications: true }, warnings: [] });
+    expect(parseSettings(JSON.stringify(v3))).toEqual({ settings: { ...v3, language: "en", updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" } }, warnings: [] });
     expect(parseSettings('{"version":1,"outputDir":""}')).toBeUndefined();
     expect(parseSettings("null")).toBeUndefined();
     expect(parseSettings("[]")).toBeUndefined();
@@ -324,6 +329,7 @@ describe("hotkey settings (plan 016)", () => {
       hotkey: custom,
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
+      display: { kind: "primary" },
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.
@@ -389,4 +395,24 @@ it("round-trips a canonical custom shortcut and remembers it while Off", async (
   expect(store().hotkey).toEqual({ enabled: true, accelerator: "Control+Shift+F12" });
   await s.setHotkey({ ...s.hotkey, enabled: false });
   expect(store().hotkey).toEqual({ enabled: false, accelerator: "Control+Shift+F12" });
+});
+
+describe("display preference storage", () => {
+  it("round-trips exact and primary selections and preserves them through unrelated saves", async () => {
+    const settings = store();
+    const display = { kind: "display", id: "999", label: "" } as const;
+    await settings.setDisplay(display); await settings.setNotifications(false);
+    expect(store().display).toEqual(display);
+    await settings.setDisplay({ kind: "primary" }); expect(store().display).toEqual({ kind: "primary" });
+  });
+  it.each([1, 2, 3])("defaults missing display in version %s", (version) => {
+    expect(parseSettings(JSON.stringify({ version, outputDir: DEFAULT }))?.settings.display).toEqual({ kind: "primary" });
+  });
+  it("warns about invalid data and rejects invalid saves", async () => {
+    const result = parseSettings(JSON.stringify({ version: 3, outputDir: DEFAULT, display: { kind: "display", id: "-1", label: "bad" } }));
+    expect(result?.settings.display).toEqual({ kind: "primary" });
+    expect(result?.warnings).toContain("display is invalid: using primary display");
+    const settings = store(); await expect(settings.setDisplay({ kind: "display", id: "", label: "" })).rejects.toThrow();
+    expect(settings.display).toEqual({ kind: "primary" });
+  });
 });

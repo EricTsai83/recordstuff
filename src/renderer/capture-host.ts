@@ -258,9 +258,10 @@ export class CaptureHost {
       this.finish(session, () => this.fail(session.id, session.seq === 0 ? "capture_start_failed" : "capture_failed", detail));
     };
     recorder.onstop = () => {
+      const videoEnded = stream.getVideoTracks().some((track) => track.readyState === "ended");
       this.finish(session, (tracksStoppedAt) => {
         if (session.stopRequested) this.send({ type: "stopped", sessionId: session.id, tracksStoppedAt });
-        else this.fail(session.id, "capture_failed", "capture source ended (display or audio track stopped)");
+        else this.fail(session.id, "capture_failed", "capture source ended (display or audio track stopped)", videoEnded ? "track_ended" : undefined);
       });
     };
     for (const track of stream.getTracks()) {
@@ -326,8 +327,8 @@ export class CaptureHost {
     });
   }
 
-  private fail(sessionId: string, code: ErrorCode, detail: string): void {
-    this.send({ type: "error", sessionId, code, detail });
+  private fail(sessionId: string, code: ErrorCode, detail: string, displayFailure?: "track_ended"): void {
+    this.send({ type: "error", sessionId, code, detail, ...(displayFailure ? { displayFailure } : {}) });
   }
 
   private send(message: HostMessage): void {
