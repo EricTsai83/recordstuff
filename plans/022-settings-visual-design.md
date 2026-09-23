@@ -2,7 +2,7 @@
 
 [English](022-settings-visual-design.md) | [繁體中文](022-settings-visual-design.zh-TW.md)
 
-Status: not started; design proposed, nothing implemented. Priority: next; 021 is complete. Created: 2026-09-21. Updated: 2026-09-23 to incorporate focus and custom shortcut UI polish.
+Status: not started; design proposed, nothing implemented. Priority: next; 021 is complete. Created: 2026-09-21. Updated: 2026-09-23 to incorporate focus/custom shortcut polish and error visibility feedback from 021 manual acceptance.
 
 ## Problem and outcome
 
@@ -64,7 +64,49 @@ The panel has two kinds of note and currently treats them alike. "Higher quality
 
 ### A failure is reported at the control that failed
 
-`#feedback` at the bottom of the window is the wrong place for "Could not apply this setting": on a window with six groups the message can be a screen away from the control the user just touched. The renderer already knows which group it was asking about — `saving.group` — and `SettingsChoiceResult.applied` already tells it the answer, so no contract change is needed. The failure renders in the failing group's row, and a visually hidden live region keeps the announcement for anyone not looking at the row. The failure text still comes from main's `view.failure`, unchanged.
+`#feedback` at the bottom of the window is the wrong place for "Could not apply this setting": on a window with six groups the message can be a screen away from the control the user just touched. The renderer already knows which group it was asking about — `saving.group` — and `SettingsChoiceResult.applied` already tells it the answer, so no contract change is needed. The failure renders in the failing group's row, and a visually hidden live region keeps the announcement for anyone not looking at the row. Failure text remains main-owned: prefer a specific save result and retain existing `view.failure` as the fallback when details are unavailable.
+
+### Errors must be visible without reading ordinary help text
+
+During 021 manual acceptance on 2026-09-23, the maintainer unplugged BenQ BL2480T: capture was correctly refused and Settings showed the unavailable reason, but it was concatenated with the ordinary whole-screen/system-audio explanation in the same secondary text. The row still looked healthy, making the error easy to miss. A hover tooltip may supplement feedback but must not be required to recognize failure. This is a 022 presentation improvement, preserving 021 source resolution and diagnostic lifetime; it does not establish that the remaining manual acceptance passed.
+
+- Place a separate, persistently visible diagnostic area beside the affected control. Separate ordinary help from current errors using a warning icon, explicit heading, typographic hierarchy and restrained surface/border treatment. Color alone, hover and system notifications are insufficient.
+- State the affected choice, current consequence and next step. For example: “Selected display is unavailable” and “Recording cannot start. Choose Primary display or another available screen.” A missing capture source must not be mislabeled as a disconnected display.
+- Distinguish current unavailability from “Last recording failure”; historical feedback must not imply a recovered screen is still unavailable. Preserve main's retention/clearing rules, show feedback with notifications off, and never imply recovery after a failed save.
+- Main supplies structured current/historical diagnostics, headings and reasons separately from static `note`, extending `SettingsGroup` with optional fields as needed. `noteKind` announcement semantics do not replace visual error semantics; the renderer must not parse translated prose to identify failures. Omitted fields remain compatible with existing fixtures.
+- Share these presentation semantics across unavailable displays, shortcut conflicts and failed saves. Healthy rows have no permanent warning box. Associate diagnostics with controls and announce a change once; verify both languages, light/dark and forced colors, keeping warnings distinguishable from recording-state indicators.
+
+### Recovery interaction: understand and resolve the problem in place
+
+The maintainer additionally requests better UI and usage, beyond conspicuous warnings. Use the original control, adjacent diagnostics and a concrete recovery action together. Preserve the saved screen selection when unavailable; let the user understand and change it in the same place without dismissing a dialog, hovering or finding another settings page. Default to nonblocking inline feedback; do not add modals or repeated toasts for these recoverable settings problems.
+
+```text
+Screen                  [ BenQ BL2480T — Unavailable ▾ ]
+
+⚠ The selected screen cannot currently be recorded
+  BenQ BL2480T is unavailable, so recording cannot start.
+  Use Primary display or choose another screen above.
+
+  [ Use Primary display ]
+
+Captures the whole screen. System audio is unaffected.
+```
+
+This illustrates hierarchy, not a requirement for nested cards. Use restrained warm warning treatment, a clear heading and spacing; ordinary help stays secondary. Add an Unavailable suffix to the disabled saved native option, while keeping the menu itself usable. Keep status suffixes separate from ids and persisted labels. Offer at most one primary recovery button; the existing menu already provides other screen choices, so do not add a duplicate Choose another button.
+
+| Situation | Presentation | Next action |
+| --- | --- | --- |
+| Specific target currently missing or ambiguous | Explicitly say recording cannot currently start and name the target; say disconnected only when established | Use Primary display saves the existing primary choice directly; the native menu offers alternatives. Neither starts recording automatically. |
+| Display present but previous source enumeration failed or topology changed | Say the last start failed and give the accurate reason; historical failure does not prove a current blocker | Explain retry through the existing recording shortcut/tray entry or change the original selection. Do not label a UI refresh Retry. Opening Settings still never enumerates capture sources. |
+| Previous recording interrupted by display removal | Use a Last recording interrupted heading; if the current target is also unavailable, combine in one diagnostic area with current impact first and history secondary | Offer the same recovery where an alternative is available. Do not promise partial-file playback or show an Open file action without a known file path. |
+| Saved shortcut registration conflict | Say the shortcut is unavailable and that recording remains accessible through the tray | Reuse the shortcut menu or Custom/Change entry, without duplicate edit controls. |
+| Current preference save failed | Retain the committed value and explicitly say the change was not saved, separately from source availability; show concurrent issues as two clear messages within one area | Offer Retry save only while the failed candidate remains valid and unlocked. If it disappeared or another edit superseded it, request reselection instead of overwriting newer choices. |
+| Alternative saved successfully | Update the committed control before briefly confirming Switched to Primary display; clear diagnostics only under existing rules | Do not start recording or require an extra confirmation. A successful save does not prove capture availability. |
+| Target becomes available on reconnect | Remove current-unavailable treatment; downgrade any retained failure to clearly labeled history | Do not clear history or start automatically; successful capture or a different saved choice clears it under 021 rules. |
+
+During recovery saves, prevent duplicate submission, retain the committed value and show Applying…. If capture starts concurrently, preserve main's locking and session-snapshot rules. Main reauthorizes currently offered actions; renderer echoes existing group/choice ids, without arbitrary payloads or a new capture entry point. If a successful action removes the focused button, return focus to the screen menu only when focus was still on that button. Do not steal focus after Tab/window blur, or move focus/scroll on hotplug pushes. Current blockers have no dismiss button that hides the problem; historical messages do not repeatedly pop up.
+
+Structured diagnostics distinguish current state, historical cause and the current save result; recovery references existing authorized choices or editing entry points. Acceptance measures successful understanding and recovery: without hover, logs or relaunch, the user can identify the affected choice, whether capture is currently blocked, the next step and whether the save succeeded. More red borders are not a completion criterion.
 
 ### Tabs are a segmented control, and stop assuming there are exactly two
 
@@ -159,6 +201,8 @@ First capture the pre-redesign baseline in both languages and schemes, including
 - [ ] Mark the shortcut-refused, updates-result and notifications-off notes as `status`, and the quality explanations as `explanation`.
 - [ ] Tests in [settings-model.test.ts](../src/main/settings-model.test.ts): each group's declared control and section, the note kinds, and that no group id, choice id, default or lock behaviour changed.
 
+- [ ] Add structured current/historical diagnostics and model tests, keeping ordinary help separate; cover missing displays, missing sources, historical failures and recovery without changing diagnostic lifetime.
+
 ### 2. Stylesheet
 
 - [ ] Rewrite [settings.css](../src/renderer/settings.css) around one token block: surfaces, borders, two text levels, radii, the platform accent with a fallback, and the macOS type scale.
@@ -174,6 +218,8 @@ First capture the pre-redesign baseline in both languages and schemes, including
 - [ ] Preserve in-place updates and focus/scroll position; rebuild only for structural changes and restore focus by id.
 - [ ] Update [settings.ts](../src/renderer/settings.ts), [settings.css](../src/renderer/settings.css) and, if needed, the presentation interface of [shortcut-capture.ts](../src/renderer/shortcut-capture.ts). Keep validation and registration in existing main/shared logic. Update both languages in [i18n.ts](../src/shared/i18n.ts).
 - [ ] Implement one custom entry point, inline capture, cancellation, editing states and local feedback; manage focus and exit cleanup using the state table.
+
+- [ ] Render distinct diagnostic icon/heading/reason/recovery guidance, separating current errors, history and ordinary help without depending on hover, color or notifications; preserve focus and accessible announcements.
 
 ### 4. Window
 
@@ -204,6 +250,11 @@ First capture the pre-redesign baseline in both languages and schemes, including
 - [ ] Start a recording, open the panel, confirm recording preferences are dimmed with the stated reason and Language still works, then stop and save normally.
 - [ ] Exercise custom/preset/Off and shortcut recovery after each exit path. With a test-owned recording, verify start → stop → save → playback and recording locks. Retain an explicit limitation if actual OS conflicts were not tested. Restore preferences and stop/save test-owned recordings.
 - [ ] Record what was actually tested and what was not in the [verification record](../docs/verification/README.md), with the before and after screenshots.
+
+- [ ] Reproduce 021 unplugged-selection feedback with notifications on/off: without hovering, identify the error, blocked recording and recovery path; reopening Settings preserves feedback and successfully choosing an available display clears it. Also cover source missing, historical failure, shortcut conflict and save failure; capture both languages/schemes at minimum size to verify help and diagnostics are visually distinct.
+
+- [ ] Verify the complete recovery flow: Use Primary saves without capturing; success/failure, duplicate clicks, disappeared/superseded candidates, recording during save, focus after button removal, and current status versus retained history on reconnect. Concurrent source and save errors stay accurate; unresolved failures never show false success.
+- [ ] In manual acceptance, have the operator identify the affected setting, current recording availability, next step and action outcome without hover or logs, then recover using the existing control or adjacent action. Record confusion and unnecessary steps as usability findings.
 
 ## Completion and boundaries
 
