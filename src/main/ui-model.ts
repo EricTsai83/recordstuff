@@ -1,3 +1,4 @@
+import type { Appearance } from "../shared/appearance";
 import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../shared/display";
 /**
  * The vocabulary both user interfaces share (docs/system-design/desktop.md):
@@ -35,6 +36,7 @@ export type AppAction =
   | { setNotifications: boolean }
   | { setDisplay: DisplayPreference }
   | { setQuality: Partial<QualitySettings> }
+  | { setAppearance: Appearance }
   | { setLanguage: Language }
   | { setHotkey: HotkeySettings };
 
@@ -52,6 +54,7 @@ export interface AppContext {
   homeDir: string;
   quality: QualitySettings;
   language: Language;
+  appearance?: Appearance;
   hotkey: AppHotkey;
   settingsShortcut?: import("./settings-hotkey").SettingsHotkeyStatus;
   updates: { state: UpdateState; enabled: boolean };

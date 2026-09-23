@@ -53,7 +53,7 @@ describe("SettingsStore", () => {
     expect(first.outputDir).toBe("/Volumes/External/Recordings");
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
       version: 3,
-      language: "en",
+      language: "en", appearance: "system",
       outputDir: "/Volumes/External/Recordings",
       quality: DEFAULT_QUALITY,
       hotkey: DEFAULT_HOTKEY,
@@ -126,7 +126,7 @@ describe("quality settings", () => {
     await first.setQuality({ frameRate: 60 });
     expect(first.quality).toEqual(custom);
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
-      language: "en",
+      language: "en", appearance: "system",
       version: 3,
       outputDir: DEFAULT,
       quality: custom,
@@ -146,7 +146,7 @@ describe("quality settings", () => {
     await s.setOutputDir("/elsewhere");
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
       version: 3,
-      language: "en",
+      language: "en", appearance: "system",
       outputDir: "/elsewhere",
       quality: { ...DEFAULT_QUALITY, videoQuality: "economy" },
       hotkey: DEFAULT_HOTKEY,
@@ -198,7 +198,7 @@ describe("quality settings", () => {
     expect(s.quality).toEqual(expected);
     expect(s.outputDir).toBe("/picked");
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
-      language: "en",
+      language: "en", appearance: "system",
       version: 3,
       outputDir: "/picked",
       quality: expected,
@@ -232,7 +232,7 @@ describe("parseSettings", () => {
   it("accepts versions 1 to 3 with an absolute string outputDir", () => {
     expect(parseSettings('{"version":1,"outputDir":"/a"}')?.settings).toEqual({
       version: 3,
-      language: "en",
+      language: "en", appearance: "system",
       outputDir: "/a",
       quality: DEFAULT_QUALITY,
       hotkey: DEFAULT_HOTKEY,
@@ -241,11 +241,11 @@ describe("parseSettings", () => {
       display: { kind: "primary" },
     });
     expect(parseSettings('{"version":2,"outputDir":"/a","quality":' + JSON.stringify(DEFAULT_QUALITY) + "}")).toEqual({
-      settings: { language: "en", version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" } },
+      settings: { language: "en", appearance: "system", version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" } },
       warnings: ["version 2 file: shortcut set to default"],
     });
     const v3 = { version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
-    expect(parseSettings(JSON.stringify(v3))).toEqual({ settings: { ...v3, language: "en", updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" } }, warnings: [] });
+    expect(parseSettings(JSON.stringify(v3))).toEqual({ settings: { ...v3, language: "en", appearance: "system", updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" } }, warnings: [] });
     expect(parseSettings('{"version":1,"outputDir":""}')).toBeUndefined();
     expect(parseSettings("null")).toBeUndefined();
     expect(parseSettings("[]")).toBeUndefined();
@@ -323,7 +323,7 @@ describe("hotkey settings (plan 016)", () => {
     expect(s.hotkey).toEqual(custom);
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
       version: 3,
-      language: "en",
+      language: "en", appearance: "system",
       outputDir: DEFAULT,
       quality: DEFAULT_QUALITY,
       hotkey: custom,
@@ -414,5 +414,27 @@ describe("display preference storage", () => {
     expect(result?.warnings).toContain("display is invalid: using primary display");
     const settings = store(); await expect(settings.setDisplay({ kind: "display", id: "", label: "" })).rejects.toThrow();
     expect(settings.display).toEqual({ kind: "primary" });
+  });
+});
+
+
+describe("appearance", () => {
+  it("defaults old files to system and persists each explicit choice", async () => {
+    expect(store().appearance).toBe("system");
+    expect(parseSettings('{"version":1,"outputDir":"/a"}')?.settings.appearance).toBe("system");
+    for (const appearance of ["dark", "light", "system"] as const) {
+      await store().setAppearance(appearance);
+      expect(store().appearance).toBe(appearance);
+    }
+  });
+  it("rejects invalid changes and preserves the committed appearance on failed writes", async () => {
+    const s = store();
+    await s.setAppearance("dark");
+    await expect(s.setAppearance("invalid" as "light")).rejects.toThrow();
+    await fs.mkdir(`${filePath}.tmp`);
+    await expect(s.setAppearance("light")).rejects.toThrow();
+    expect(s.appearance).toBe("dark");
+    expect(store().appearance).toBe("dark");
+    expect(parseSettings('{"version":1,"outputDir":"/a","appearance":"invalid"}')?.settings.appearance).toBe("system");
   });
 });

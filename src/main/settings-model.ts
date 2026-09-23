@@ -228,6 +228,10 @@ function settingsGroups(state: RecordingState, ctx: AppContext): Group[] {
     updateActions(ctx, unlocked),
     ...notificationsGroup(ctx, unlocked),
     ...languageGroup(ctx.language),
+    group("appearance", t("Appearance", ctx.language), true, (["system", "light", "dark"] as const).map(value => ({
+      id: value, label: t(value === "system" ? "System default" : value === "light" ? "Light" : "Dark", ctx.language),
+      enabled: true, checked: value === (ctx.appearance ?? "system"), action: { setAppearance: value },
+    }))),
   ];
 }
 

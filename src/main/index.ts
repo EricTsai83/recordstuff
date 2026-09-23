@@ -12,6 +12,7 @@ import {
   dialog,
   globalShortcut,
   net,
+  nativeTheme,
   screen,
   session,
   shell,
@@ -120,6 +121,7 @@ async function main(): Promise<void> {
     defaultOutputDir: defaultOutputDir(),
     log,
   });
+  nativeTheme.themeSource = settings.appearance;
   currentLanguage = settings.language;
   log(
     `start: ${APP_NAME} ${app.getVersion()}; electron ${process.versions.electron}; ` +
@@ -231,6 +233,7 @@ async function main(): Promise<void> {
     homeDir: os.homedir(),
     quality: quality(),
     language: settings.language,
+    appearance: settings.appearance,
     updates: { state: updates.state, enabled: settings.updates.enabled },
     notifications: settings.notifications,
     settingsShortcut: settingsHotkey.status,
@@ -340,6 +343,12 @@ async function main(): Promise<void> {
         // switch on is the one moment the system prompt can appear at the
         // user's own request. The confirmation doubles as the delivery test.
         if (turningOn && settings.notifications) tray.notifyNotificationsEnabled();
+      } else if ("setAppearance" in action) {
+        try {
+          await settings.setAppearance(action.setAppearance);
+          nativeTheme.themeSource = settings.appearance;
+        } catch (cause) { log(`settings: failed to save appearance: ${String(cause)}`); }
+        refreshUi();
       } else if ("setLanguage" in action) {
         try {
           await settings.setLanguage(action.setLanguage);

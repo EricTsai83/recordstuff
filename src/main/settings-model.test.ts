@@ -41,6 +41,7 @@ describe("settingsView", () => {
       "updates",
       "notifications",
       "language",
+      "appearance",
     ]);
     for (const entry of view.groups) {
       expect(entry.choices.filter((choice) => choice.checked), entry.id).toHaveLength(entry.kind === "actions" ? 0 : 1);
@@ -105,7 +106,7 @@ describe("recording locks every preference except the language", () => {
   it.each(busy)("$type", (state) => {
     const view = settingsView(state, context);
     expect(view.hint).toBe("Recording in progress. Recording settings are locked.");
-    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(entry.id === "language");
+    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["language", "appearance"].includes(entry.id));
     expect(settingsAction(state, context, "language", "zh-TW")).toEqual({ setLanguage: "zh-TW" });
     for (const [group, choice] of [["videoQuality", "high"], ["frameRate", "60"], ["hotkey", "off"], ["updateChecks", "off"]]) {
       expect(settingsAction(state, context, group, choice), group).toBeUndefined();
@@ -261,4 +262,13 @@ describe("screen choice", () => {
     expect(group(idle, ctx, "screen")?.note).toContain("Last display failure: Display is connected");
     expect(group(idle, ctx, "screen")?.choices.find((c) => c.checked)?.enabled).toBe(true);
   });
+});
+
+
+it("offers appearance during recording and rejects unknown themes", () => {
+  for (const appearance of ["system", "light", "dark"] as const) {
+    expect(checked(idle, { ...context, appearance }, "appearance")).toBe(appearance);
+    expect(settingsAction({ type: "starting" }, context, "appearance", appearance)).toEqual({ setAppearance: appearance });
+  }
+  expect(settingsAction(idle, context, "appearance", "unknown")).toBeUndefined();
 });

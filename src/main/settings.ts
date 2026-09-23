@@ -1,3 +1,4 @@
+import { isAppearance, type Appearance } from "../shared/appearance";
 import { DEFAULT_DISPLAY_PREFERENCE, isDisplayPreference, type DisplayPreference } from "../shared/display";
 /**
  * Persistent output folder, recording quality, and presentation language.
@@ -26,6 +27,7 @@ export interface Settings {
   outputDir: string;
   quality: QualitySettings;
   language: Language;
+  appearance: Appearance;
   hotkey: HotkeySettings;
   updates: { enabled: boolean; lastAttempt: number };
   /** Whether the app sends any notification at all; the OS permission is separate. */
@@ -79,6 +81,8 @@ export function parseSettings(text: string): ParsedSettings | undefined {
   } else {
     warnings.push("quality is missing or has unsupported values: using defaults");
   }
+  const appearance = isAppearance(record["appearance"]) ? record["appearance"] : "system";
+  if (record["appearance"] !== undefined && !isAppearance(record["appearance"])) warnings.push("appearance is unsupported: using system");
   const language = isLanguage(record["language"]) ? record["language"] : DEFAULT_LANGUAGE;
   if (record["language"] !== undefined && !isLanguage(record["language"])) {
     warnings.push("language is unsupported: using English");
@@ -99,7 +103,7 @@ export function parseSettings(text: string): ParsedSettings | undefined {
   const notifications = typeof record["notifications"] === "boolean" ? record["notifications"] : true;
   const display = isDisplayPreference(record["display"]) ? record["display"] : DEFAULT_DISPLAY_PREFERENCE;
   if (record["display"] !== undefined && !isDisplayPreference(record["display"])) warnings.push("display is invalid: using primary display");
-  return { settings: { display, version: SETTINGS_VERSION, outputDir, quality, language, hotkey, updates, notifications }, warnings };
+  return { settings: { appearance, display, version: SETTINGS_VERSION, outputDir, quality, language, hotkey, updates, notifications }, warnings };
 }
 
 export class SettingsStore {
@@ -129,6 +133,13 @@ export class SettingsStore {
 
   get quality(): QualitySettings {
     return this.settings.quality;
+  }
+
+  get appearance(): Appearance { return this.settings.appearance; }
+
+  setAppearance(appearance: Appearance): Promise<void> {
+    if (!isAppearance(appearance)) return Promise.reject(new Error("unsupported appearance"));
+    return this.save(current => ({ ...current, appearance }));
   }
 
   get language(): Language {
@@ -198,6 +209,7 @@ export class SettingsStore {
       outputDir: defaultOutputDir,
       quality: DEFAULT_QUALITY,
       language: DEFAULT_LANGUAGE,
+      appearance: "system",
       hotkey: DEFAULT_HOTKEY,
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
