@@ -2,23 +2,29 @@
 
 [English](022-settings-visual-design.md) | [繁體中文](022-settings-visual-design.zh-TW.md)
 
-Status: not started; design proposed, nothing implemented. Priority: next; 021 is complete. Created: 2026-09-21. Updated: 2026-09-23 to incorporate focus/custom shortcut polish and error visibility feedback from 021 manual acceptance.
+Status: not started; design proposed, nothing implemented. Priority: next; 021 is complete. Created: 2026-09-21. Updated: 2026-09-23 to incorporate focus/custom shortcut polish, 021 error visibility, independent visual identity, official links and restrained recovery actions.
 
 ## Problem and outcome
 
-The settings panel is the only window RecordStuff has. Everything else the user sees is a tray icon, a notification and a file, so this one window carries the whole visual impression of the app — and it currently looks like an unstyled form. Every preference, including the two that are simply on or off, renders as the same full-width `<select>` inside the same bordered card ([renderer/settings.ts](../src/renderer/settings.ts), [settings.css](../src/renderer/settings.css)). General stacks six identical cards with no grouping, so the shortcut, the two update controls, notifications and language all read as equally weighted strangers. Three cards carry a permanently visible paragraph of explanation. A failed save reports itself in a red line at the bottom of the window, away from the control that failed. The focus ring is one hard-coded blue that ignores the user's macOS accent colour, and the content column is capped at 560px inside a 460px window, so that cap has never once applied.
+The settings panel is the only window RecordStuff has. Everything else the user sees is a tray icon, a notification and a file, so this one window carries the whole visual impression of the app — and it currently looks like an unstyled form. Every preference, including the two that are simply on or off, renders as the same full-width `<select>` inside the same bordered card ([renderer/settings.ts](../src/renderer/settings.ts), [settings.css](../src/renderer/settings.css)). General stacks six identical cards with no grouping, so the shortcut, the two update controls, notifications and language all read as equally weighted strangers. Three cards carry a permanently visible paragraph of explanation. A failed save reports itself in a red line at the bottom of the window, away from the control that failed. The focus blue is repeated across rules instead of shared app tokens; a fixed brand color is not itself a problem, and the content column is capped at 560px inside a 460px window, so that cap has never once applied.
 
-Give the panel the shape a macOS user already knows: grouped inset lists, a switch for a switchable thing, a popup menu where a list is genuinely a list, system colours, and a failure that appears where it happened. The panel must stay exactly as truthful as it is now — same preferences, same ids, same lock rule, same save path — and must not become slower to read in Traditional Chinese than in English. Scope is the settings window; the tray, the notifications and the first-run hint are not part of this plan.
+Give the panel the shape a macOS user already knows: grouped inset lists, a switch for a switchable thing, a popup menu where a list is genuinely a list, consistent app colours, and a failure that appears where it happened. The panel must stay exactly as truthful as it is now — same preferences, same ids, same lock rule, same save path — and must not become slower to read in Traditional Chinese than in English. Scope is the settings window; the tray, the notifications and the first-run hint are not part of this plan.
 
 ## Design decisions
 
-### Visual direction: at home on macOS, refined in the details
+### Visual direction: independent app identity with macOS character
 
-The user's 2026-09-23 preference establishes a refined macOS utility as the visual direction. Use system typography, the native window frame, familiar control proportions, neutral surfaces, fine separators, restrained corner radii and the system accent. Create character through spacing, alignment, typographic hierarchy and consistent interaction details. Keep native popup and keyboard conventions, with lightweight shortcut symbols and keycaps.
+The user's 2026-09-23 preference establishes an independent, refined app identity with macOS character. Allow future Windows adaptation without adding platform support or acceptance to this plan. Use system typography, the native window frame, familiar control proportions, neutral surfaces, fine separators, restrained corner radii and an app-owned accent. Create character through spacing, alignment, typographic hierarchy and consistent interaction details. Keep native popup and keyboard conventions, with lightweight shortcut symbols and keycaps.
 
 Avoid oversized branding, decorative gradients, heavy shadows, oversized pill buttons, broad accent fills and nested cards. Do not introduce glass/transparency effects or custom window chrome just to imitate the system. Keep branding limited to small identification elements and preserve recording red's state meaning. This direction guides settings and future UI without expanding this plan into tray or notification redesign.
 
 For visual acceptance, compare the real app alongside System Settings on the same Mac: control density, type scale, colors and focus should feel compatible, while grouping and hierarchy should improve on the current panel. Preserve comparison screenshots and observations; pixel-for-pixel imitation is not required. Apply this check in both languages and color schemes. Focus and shortcut polish in this plan follow the same direction; the expanded capture area should belong to the same family of settings controls.
+
+### Official website and source links
+
+Keep a recognizable, quiet About RecordStuff area at the bottom of General, with the app name and Official website / GitHub source text links targeting the project's https://record.ericts.com and https://github.com/EricTsai83/recordstuff. Place it at the end of the scrollable content, separated by spacing or a fine rule; no new tab, large branding card or fixed footer. Allow wrapping at narrow sizes, provide visible keyboard focus and accessible names, and keep links available during recording.
+
+Open main-authorized fixed destinations in the default browser; never navigate the settings window or accept arbitrary renderer URLs. Necessary link action ids may be added, while existing preference/choice ids and the save contract remain unchanged: these are navigation actions, not new preferences. Include bilingual labels, opening failures and the authorization boundary in fixture/native acceptance.
 
 ### Refine presentation and editing interactions; preserve preference contracts
 
@@ -92,7 +98,7 @@ Screen                  [ BenQ BL2480T — Unavailable ▾ ]
 Captures the whole screen. System audio is unaffected.
 ```
 
-This illustrates hierarchy, not a requirement for nested cards. Use restrained warm warning treatment, a clear heading and spacing; ordinary help stays secondary. Add an Unavailable suffix to the disabled saved native option, while keeping the menu itself usable. Keep status suffixes separate from ids and persisted labels. Offer at most one primary recovery button; the existing menu already provides other screen choices, so do not add a duplicate Choose another button.
+This illustrates hierarchy, not a requirement for nested cards. Use restrained warm warning treatment, a clear heading and spacing; ordinary help stays secondary. Add an Unavailable suffix to the disabled saved native option, while keeping the menu itself usable. Keep status suffixes separate from ids and persisted labels. Offer at most one small secondary recovery button; the existing menu already provides other screen choices, so do not add a duplicate Choose another button.
 
 | Situation | Presentation | Next action |
 | --- | --- | --- |
@@ -108,15 +114,17 @@ During recovery saves, prevent duplicate submission, retain the committed value 
 
 Structured diagnostics distinguish current state, historical cause and the current save result; recovery references existing authorized choices or editing entry points. Acceptance measures successful understanding and recovery: without hover, logs or relaunch, the user can identify the affected choice, whether capture is currently blocked, the next step and whether the save succeeded. More red borders are not a completion criterion.
 
+Quick fixes are not required on every diagnostic. Prefer the adjacent existing control; show Use Primary display only when recording is currently blocked, main offers a valid alternative and the next step is concrete. It is optional convenience, not a claim that Primary is the user's intended content. Use the same small, neutral secondary-button style as other actions, beneath and aligned with the reason; avoid broad accent fills, separate cards or empty space in normal states. History alone does not trigger this button; shortcut conflicts use the existing menu/edit entry. Save retries still follow the validity rules above. Compare normal/error density at minimum size; if the shortcut action is redundant or crowded, prioritize the existing control and clear guidance, record the tradeoff, and do not judge completion by button count.
+
 ### Tabs are a segmented control, and stop assuming there are exactly two
 
 The tab strip becomes one macOS-style segmented control sitting under the header rather than two full-width buttons tinted with a hard-coded blue.
 
 The keyboard handler is rewritten at the same time, because it is currently written against the literal ids `"recording"` and `"general"`: Home selects `"recording"`, End selects `"general"`, and either arrow key swaps between them. Arrow keys, Home and End become index arithmetic over `view.tabs`, so the day a third tab is added — 021 already adds a group to Recording — the keyboard does not quietly stop working. The [ARIA tabs pattern](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/) stays as implemented: roving `tabIndex`, `aria-selected`, `aria-controls`.
 
-### System colours, not one hard-coded blue
+### App-owned colours and shared tokens
 
-`color-scheme: light dark` and `light-dark()` stay; they are already right. What changes is that the accent stops being `#2476db`. Focus rings and selected states use the platform accent — `AccentColor`/`AccentColorText` and `accent-color` on the native controls, with the current blue kept as the fallback for engines that do not resolve the system keyword — so a user who has set a different macOS accent sees their accent. Text, border and surface values are restated as a small set of custom properties in one block instead of being repeated inline at every rule, and each pair keeps a contrast ratio of at least 4.5:1 in both schemes.
+Keep `color-scheme: light dark` and `light-dark()` so the scheme follows the system. Ordinary focus, selection and switches use an app-owned accent, without requiring the user's macOS accent or adding a theme preference. Start from the existing blue and centralize semantic tokens; confirm final values in real bilingual light/dark views. Platform-drawn popups retain platform behavior. Centralize text, border and surface colors, keep text pairs at least 4.5:1, and let accessibility system colors take precedence in forced colors. Future ports can retain semantic tokens while adapting native controls and interaction conventions.
 
 The recording red from the [website's theme](../website/src/themes/ember.css) is deliberately not imported. Red means "recording" in this app, and the settings window is the one surface where nothing is ever recording; a red accent here would be the first time the app used its state colour decoratively.
 
@@ -125,7 +133,7 @@ The recording red from the [website's theme](../website/src/themes/ember.css) is
 - Use shared color, width, offset and radius tokens for popups, buttons, tabs and the switches/segments introduced by this plan.
 - Start with a 2px solid outline and 1px offset following the control radius, without extra glows or duplicate rings. Tune using real Electron light/dark screenshots; keep at least 3:1 contrast against adjacent backgrounds rather than reducing opacity until focus is indistinct.
 - Use `:focus-visible` for ordinary controls and respect browser modality decisions. Do not globally remove outlines or blur controls to hide focus. Tab, Shift+Tab and restored keyboard focus must remain visible.
-- Provide a system-accent fallback. In forced colors, use system colors and a solid outline rather than relying on box-shadow. Avoid clipping and layout shifts; distinguish selection, hover, focus and disabled states.
+- Provide readable light/dark app-accent pairs. In forced colors, use system colors and a solid outline rather than relying on box-shadow. Avoid clipping and layout shifts; distinguish selection, hover, focus and disabled states.
 - Express shortcut listening with a field surface, border and text, without another competing focus outline or pulsing animation.
 
 ### Shortcut row and one custom entry point
@@ -187,7 +195,7 @@ The panel's real test already exists: [`pnpm acceptance:settings`](../scripts/ac
 - A change that does not take effect says so in the row that failed, in the panel's language, while the committed value stays displayed; screen-reader users hear it once.
 - A shortcut the OS refused keeps its selection and its note, and the note is now announced when it appears.
 - During a recording, recording preferences are dimmed and the section states why; Language stays usable; nothing about the panel can block starting, stopping or saving.
-- Light and dark both follow the system, the focus ring is the user's macOS accent colour, keyboard-only operation reaches every control in visible order, and ⌘W still closes the window; Escape cancels capture first and otherwise retains its close behavior.
+- Light and dark both follow the system, the focus ring uses the consistent app accent, keyboard-only operation reaches every control in visible order, and ⌘W still closes the window; Escape cancels capture first and otherwise retains its close behavior.
 - Traditional Chinese and English both fit without truncation or a horizontal scrollbar, at the default window size and at the minimum size.
 
 ## Implementation order
@@ -205,7 +213,7 @@ First capture the pre-redesign baseline in both languages and schemes, including
 
 ### 2. Stylesheet
 
-- [ ] Rewrite [settings.css](../src/renderer/settings.css) around one token block: surfaces, borders, two text levels, radii, the platform accent with a fallback, and the macOS type scale.
+- [ ] Rewrite [settings.css](../src/renderer/settings.css) around one token block: surfaces, borders, two text levels, radii, the app accent with light/dark pairs, and the macOS type scale.
 - [ ] Build the section list, the row (label leading, control trailing, note beneath, stacked below the narrow threshold), the switch, the segmented control and the restyled popup.
 - [ ] Keep the `forced-colors: active` escape hatch for all three control types, honour `prefers-reduced-motion` for any transition, and keep focus rings visible in both schemes.
 - [ ] Implement shared refined focus tokens and shortcut keycap/capture-area styles following the macOS direction above.
@@ -236,6 +244,9 @@ First capture the pre-redesign baseline in both languages and schemes, including
 - [ ] Keep `panel.png` and capture it in both languages and both colour schemes as before/after evidence.
 - [ ] Update [renderer tests](../src/renderer/settings.test.ts) and the [settings fixture](../scripts/fixtures/settings-panel.ts) for one entry point, armed acknowledgment, candidate preview, Cancel/Esc/Tab, success focus restoration, error retry, focus-preserving pushes and locks. Retain failure/registration-recovery coverage; do not add unit tests that merely mirror CSS constants.
 
+- [ ] Implement the General footer links, main-authorized fixed destinations and bilingual labels; verify keyboard access, external browser opening, opening failures, availability during recording and narrow layouts.
+- [ ] Verify quick recovery appears only under the specified conditions and remains secondary; history and ordinary states do not gain redundant buttons.
+
 ### 7. Documentation
 
 - [ ] Update the Settings window section of [desktop design](../docs/system-design/desktop.md#settings-window) and its [translation](../docs/zh-TW/system-design/desktop.md) for the control vocabulary, sections and inline failure.
@@ -244,7 +255,7 @@ First capture the pre-redesign baseline in both languages and schemes, including
 ### 8. Verify behavior
 
 - [ ] Run `pnpm check`, `pnpm acceptance:settings`, `pnpm acceptance:shortcut`, `pnpm acceptance` and `git diff --check`. Fixture results do not substitute for native acceptance.
-- [ ] Follow the [native computer-use acceptance skill](../.agents/skills/astra-acceptance-with-computer-use/SKILL.md) on the real app launched with `pnpm start:app`. Check for a user's active recording before rebuilding or quitting. Exercise keyboard-only input, pointer input, VoiceOver, a non-default accent, Increase contrast and forced colors where testable; list omissions.
+- [ ] Follow the [native computer-use acceptance skill](../.agents/skills/astra-acceptance-with-computer-use/SKILL.md) on the real app launched with `pnpm start:app`. Check for a user's active recording before rebuilding or quitting. Exercise keyboard-only input, pointer input, VoiceOver, consistent app colors with a non-default system accent, Increase contrast and forced colors where testable; list omissions.
 - [ ] Open the real Settings panel through 023’s global shortcut, also verify tray access, and inspect both tabs.
 - [ ] Check both languages and schemes at default and minimum window sizes in focus, listening, error and locked states. No clipping, overlap, horizontal scrolling or duplicate rings. Preserve before/after screenshots.
 - [ ] Start a recording, open the panel, confirm recording preferences are dimmed with the stated reason and Language still works, then stop and save normally.
@@ -271,6 +282,6 @@ On completion, move the durable conclusions into [desktop design](../docs/system
 - [Apple: Segmented controls](https://developer.apple.com/design/human-interface-guidelines/segmented-controls): the count and label limits behind the at-most-three rule.
 - [Apple: Typography](https://developer.apple.com/design/human-interface-guidelines/typography): the macOS text styles the type scale follows.
 - [MDN: light-dark()](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/light-dark): the scheme-aware colour function already in use.
-- [MDN: accent-color](https://developer.mozilla.org/en-US/docs/Web/CSS/accent-color): tinting native checkboxes and radios with the platform accent.
+- [MDN: accent-color](https://developer.mozilla.org/en-US/docs/Web/CSS/accent-color): tinting native checkboxes and radios with the app accent.
 - [MDN: forced-colors](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/forced-colors): the escape hatch each custom control needs.
 - [ARIA APG: Switch](https://www.w3.org/WAI/ARIA/apg/patterns/switch/) and [Tabs](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/): the roles, states and keyboard behaviour the panel must keep.
