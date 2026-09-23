@@ -132,3 +132,5 @@ App 刻意不映射作業系統的通知權限。Electron 沒有任何方式可�
 此設計沿用 Cap（`apps/desktop/src-tauri/src/notifications.rs`）：送出路徑只檢查一個 `enable_notifications` 布林值，別無其他。Cap 另外會以 `isPermissionGranted()` 管控開關，該 API 由 `@tauri-apps/plugin-notification` 提供，Electron 沒有對應品；這段落差改由說明文字承擔。Plan 019 最初實作了通往 macOS `UserNotifications` 的 Node-API 橋接來補上它，後來撤回：該橋接使得載入失敗（架構不符或最低系統版本過新的 `.node`）會靜默壓制每一則通知，連 Electron 原本會發出的隱式授權請求也一併消失，比完全沒有狀態資訊嚴格更糟。橋接保存在 `wip/019-native-notification-bridge` 分支。
 
 網站靜態端點由已線上驗證的 manifest 產生版本、tag、平台／架構、DMG 資訊、發布日期與可信頁面 URL。未驗證的預覽建置輸出錯誤物件，不宣告可下載版本。Vercel 快取 feed 五分鐘，App 請求不使用快取。`pnpm site:check` 比對建置 feed 與 manifest；部署 workflow 也會以 `check-release.mts --dir .vercel/output/static` 檢查實際發布產物。不新增安裝識別碼、查詢參數、遙測、更新器依賴或簽章身分。
+
+macOS 設定入口會開啟通知總覽，再選 RecordStuff 即可進入權限控制；plan 019 結案保留此路徑。一般設定值／文字更新保留既有表單控制項、焦點與捲動位置，只有分頁／結構改變才重建表單。僅因儲存而暫時鎖定的操作維持原本亮度，避免整個面板短暫變淡；錄製或平台限制造成的停用仍有停用外觀。

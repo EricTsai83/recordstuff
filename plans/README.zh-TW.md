@@ -2,7 +2,7 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-更新：2026-09-21。v0.1.3 已由 tag `v0.1.3` 公開，附精簡 DMG；見 [0.1.3 證據](../docs/zh-TW/verification/releases/0.1.3.md)。013 與 016 已完成並移除；錄影快捷鍵與其無人值守驗收（`pnpm acceptance`）記錄在[桌面設計](../docs/zh-TW/system-design/desktop.md#錄影快捷鍵)、[工具](../docs/zh-TW/system-design/tooling.md)與[驗證紀錄](../docs/zh-TW/verification/README.md)。發布依[發布自動化](../docs/zh-TW/system-design/releases.md)：tag 就是版本，CI 會把每次發布回寫到 main。
+更新：2026-09-23。v0.1.3 已由 tag `v0.1.3` 公開，附精簡 DMG；見 [0.1.3 證據](../docs/zh-TW/verification/releases/0.1.3.md)。013 與 016 已完成並移除；錄影快捷鍵與其無人值守驗收（`pnpm acceptance`）記錄在[桌面設計](../docs/zh-TW/system-design/desktop.md#錄影快捷鍵)、[工具](../docs/zh-TW/system-design/tooling.md)與[驗證紀錄](../docs/zh-TW/verification/README.md)。發布依[發布自動化](../docs/zh-TW/system-design/releases.md)：tag 就是版本，CI 會把每次發布回寫到 main。
 
 017 已完成：儲存通知時序修正、連續兩輪 15/15 驗收，以及取消／重疊／播放檢查皆完成；詳見[驗證紀錄](../docs/zh-TW/verification/README.md#儲存通知時序2026-09-20)。
 
@@ -12,9 +12,9 @@
 
 ## 順序與狀態
 
-下一項：[019 — 通知權限引導](019-notification-permission.zh-TW.md)（進行中）。設定改為提供「通知」開關與 macOS 設定面板入口，取代 App 讀不到的授權狀態；見[設計決策](019-notification-permission.zh-TW.md#設計決策--2026-09-21)。尚待處理：重現原始回報，以及在已簽章套件上驗收開關確實通到真實送達。
+019 已依維護者手動驗收與設定閃爍修正／回歸結果結案並移除。保留目前「通知總覽 → RecordStuff」的操作路徑；歷史發現與未測條件見[結案紀錄](../docs/zh-TW/verification/README.md#plan-019-結案--2026-09-23)。
 
-接著：[020 — 自訂錄影快捷鍵](020-custom-shortcut.zh-TW.md)（尚未開始）。快捷鍵目前只有四組預設與「關閉」，四組都被自己的 App 佔用的使用者就只剩「關閉」可選。020 以共用驗證器接受使用者錄下的自訂組合，錄製期間暫停現有註冊，並維持作業系統拒絕時的既有回報。
+下一項：[020 — 自訂錄影快捷鍵](020-custom-shortcut.zh-TW.md)（尚未開始）。快捷鍵目前只有四組預設與「關閉」，四組都被自己的 App 佔用的使用者就只剩「關閉」可選。020 以共用驗證器接受使用者錄下的自訂組合，錄製期間暫停現有註冊，並維持作業系統拒絕時的既有回報。
 
 再接著：[021 — 選擇要錄哪一個螢幕](021-screen-selection.zh-TW.md)（尚未開始）。display-media handler 一律解析主要顯示器，第二台螢幕根本錄不到。021 在「設定 → 錄影」新增「螢幕」選擇，預設維持「主要顯示器」，儲存能撐過重新接上的指紋，並在已儲存的選擇無法解析時以明確理由拒絕開始，而不是改錄另一個螢幕。
 

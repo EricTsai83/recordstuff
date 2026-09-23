@@ -2,7 +2,7 @@
 
 [English](020-custom-shortcut.md) | [繁體中文](020-custom-shortcut.zh-TW.md)
 
-Status: not started; design proposed, nothing implemented. Priority: after 019. Created: 2026-09-21.
+Status: not started; design proposed, nothing implemented. Priority: next. Created: 2026-09-21.
 
 ## Problem and outcome
 
