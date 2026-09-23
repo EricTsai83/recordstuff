@@ -28,21 +28,6 @@ import { features } from "../content/site";
     gap: 0.5rem 1rem;
     padding: 2rem 0 2.2rem;
     border-bottom: 1px solid var(--border);
-    position: relative;
-  }
-  .feature::after {
-    /* hover: the hairline below brightens from the left */
-    content: "";
-    position: absolute;
-    left: 0;
-    bottom: -1px;
-    height: 1px;
-    width: 0;
-    background: var(--fg);
-    transition: width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
-  }
-  .feature:hover::after {
-    width: 100%;
   }
   .feature-index {
     font-size: 0.78rem;
