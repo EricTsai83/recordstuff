@@ -2,126 +2,147 @@
 
 [English](021-screen-selection.md) | [繁體中文](021-screen-selection.zh-TW.md)
 
-狀態：尚未開始；設計已提出，程式尚未動工。優先順序：023（設定快捷鍵）之後，023 緊接 020；除了 [settings-model.ts](../src/main/settings-model.ts) 與 [i18n.ts](../src/shared/i18n.ts) 的共用改動之外，與 019、020 互相獨立。建立：2026-09-21。
+狀態：實作尚未開始；2026-09-23 已同意修訂設計。023 已完成，接下來順序為 021 → 022。建立：2026-09-21。本次只修改計畫，尚未實作或驗證 App 行為。
 
 ## 問題與目標
 
-`chooseDisplayMedia` 一律解析主要顯示器，並在找不到時退回第一個螢幕來源（[index.ts](../src/main/index.ts)、[錄製設計](../docs/zh-TW/system-design/recording.md#開始流程)）。在接了第二台螢幕的機器上，這不是偏好而是規定：想錄的東西得先拖到主要顯示器上，而且 App 完全不提示另一個螢幕存在。App 本來就會擷取任何一個螢幕來源 — 只是「選哪一個」被寫死了。
+目前 [index.ts](../src/main/index.ts) 的 `chooseDisplayMedia` 選擇主要顯示器，找不到對應來源時退回第一個螢幕來源。使用者無法自行選擇外接螢幕。
 
-讓使用者在「設定 → 錄影」選擇目標顯示器。這個選擇能在重新啟動後保留，在平台允許辨識的情況下也能在重新接上後保留；而無法再解析的選擇會以明確理由拒絕開始，而不是默默改錄另一個螢幕。範圍是支援的 macOS App 上的整個顯示器，音訊政策完全不變；其他平台維持既有行為，不宣稱已驗收。單一視窗錄製、區域錄製與同時錄兩個螢幕維持在範圍外（見[範圍](#完成條件與範圍)）。
+在「設定 → 錄影」新增螢幕選擇，重新啟動後保留偏好。預設繼續跟隨主要顯示器；指定螢幕只以已儲存的 id 解析，重新接上後若 id 改變就要求重選，無法解析時拒絕開始，不自動改錄另一台。範圍是支援的 macOS App 上的整個顯示器，音訊政策不變；其他平台保留既有行為，不宣稱已驗收。見[範圍](#完成條件與範圍)。
 
 ## 設計決策
 
-### 預設是「主要顯示器」，而且不是一個存下來的 display id
+### 預設仍是主要顯示器
 
-`{ kind: "primary" }` 是預設值，走的是現行程式路徑：主要顯示器的 id，找不到時退回第一個螢幕來源。從未打開這項設定的使用者完全感覺不到差異 — 同一個來源、同一行 log、同一套無人驗收流程；而換過螢幕擺法的使用者，錄到的一直是 macOS 當下認定的主要顯示器。這是唯一不會過期的選擇，所以它是預設值，也因此下面每一條新的失敗路徑，都只有刻意離開預設的人才會遇到。
+`{ kind: "primary" }` 代表 macOS 當下的主要顯示器，不是存下來的固定 id。保留現有來源選擇政策：先找主要顯示器 id 對應來源，找不到就退回第一個來源。來源、正常 tray、既有 log 與預設驗收行為維持相容。這個 fallback 只適用於 `primary`，不適用於指定螢幕。
 
-### 指定的選擇儲存的是指紋，不只是 id
+### 指定螢幕只保存 id 與顯示名稱，不做啟發式恢復
 
-在 macOS 上 `Display.id` 是 CGDirectDisplayID：螢幕保持連接時穩定，但不保證跨越重新接上、重新開機或換底座。只存 id 會讓使用者的選擇在每次拔掉螢幕時默默消失，而 App 會改用另一個螢幕，雙方都不會發現。
+儲存 `{ kind: "display", id, label }`，只接受當下顯示器清單中的精確 id 匹配。名稱只是失去連接後仍可呈現的說明資料，不是身分；不依名稱、尺寸、型號或清單順序匹配，不自動改寫已儲存的 id。即使只有一台同名同尺寸螢幕，id 改變仍要求明確重選。
 
-因此指定的選擇儲存 `{ kind: "display", id, label, width, height }`，並在每次開始時依序解析：id 相符的顯示器；否則是 `label`、`width`、`height` 三者皆相符且只有一台的顯示器；否則視為無法解析。第二條規則就是撐過重新接上的那一條。它刻意在有歧義時拒絕猜測 — 兩台相同型號的外接螢幕會互相符合，而在同一次連線期間 id 規則本來就已經給出答案；重新接上之後，App 會說它無法判斷，而不是挑一個。實際命中哪一條規則會連同選到的顯示器記進 log，讓「錄錯螢幕」事後仍能被解釋。
+保證是「解析失敗時不自動代換來源」，不是永久實體硬體身分。平台 id 不是永久硬體識別碼，本設計無法排除 id 重用；同 id 重接可以解析，新 id 則需要重選。原生硬體識別與跨重接自動匹配不在第一版範圍內。
 
-### 無法解析的選擇會拒絕開始
+id 必須是支援顯示器 id 的非空字串；指定選擇拒絕已知無效／合成特殊值，例如 Electron 的 -1、-10。空名稱有效，以穩定、可翻譯的顯示文字替代。輸入清單出現重複 id 時視為歧義，不任選一筆。
 
-新增錯誤代碼 `display_unavailable`。App 不會代換成別的螢幕：`ensureWritableDir` 早已立下「失敗絕不默默改用另一個資料夾」的原則（[錄製設計](../docs/zh-TW/system-design/recording.md#開始流程)），而錄錯螢幕比沒錄到更糟，因為使用者是在會議結束後才發現。拒絕會沿用其他開始失敗的既有路徑 — 理由記在 `lastDenialReason`、由 `mapHostError` 對應、寫進 log、以通知呈現 — 另外在設定面板加一行說明，保留那個過期的選擇為選取狀態並說明該螢幕未連接，就像被作業系統拒絕的快捷鍵一樣維持選取並說明它沒有作用（[桌面設計](../docs/zh-TW/system-design/desktop.md#錄影快捷鍵)）。
+### 無法使用時拒絕開始，並保留可見原因
 
-### 來源選擇變成有測試的純函式，並移出 index.ts
+指定目標不存在、有歧義、沒有對應擷取來源，或拓撲變動後仍無法安全解析時，使用 `display_unavailable`。另外保留結構化原因，區分「指定螢幕無法使用，請重新選擇」、「螢幕仍連接但擷取來源無法使用」與「顯示器配置已變更，請重試」，不能全部說成未連接。
 
-display-media handler 是唯一真正啟動擷取的路徑，而它今天沒有任何單元測試，因為它和 `app`、`screen`、`session` 一起住在 `index.ts`。選擇邏輯移到 `src/main/display-source.ts`：`selectScreenSource({ sources, displays, primaryDisplayId, preference })`，回傳選中的來源與命中的規則，或是它解析不到任何東西的理由。`index.ts` 只保留 callback 接線、deny 輔助函式與 `getSources` 的錯誤對應。
+沿用既有拒絕、錯誤映射與 log 路徑，通知遵守現有開關。main 另在記憶體保留最近一次顯示器相關的開始／擷取失敗，投影到 tray 與「設定 → 錄影」，關閉通知仍看得到。直到錄影成功開始，或成功儲存不同的螢幕偏好才清除；嘗試開始、刷新 UI、儲存失敗都不能清除。診斷不跨 App 重啟保存，重啟後重新計算當下目標是否存在。log 記錄要求與解析的 id、選擇規則、重試次數及失敗原因。
 
-既有行為是原封保留並用測試釘住，不是重新推導一次：沒有來源符合主要顯示器 id 時退回第一個來源、來源清單為空是 `no_display`、`getSources` 丟出例外在 darwin 是 `permission_denied`、其他平台是 `no_display`。Electron 文件說明 `display_id` 可能為空字串；在沒有任何螢幕來源提供 id 的平台上，指定的選擇會是無法解析並直說，而 `primary` 仍能透過第一個來源的退路運作。
+過期選項維持選取但不能當作新的 action 提交。使用者可選「主要顯示器」或已連接的可用選項，不需重啟。目標當下不存在時 tray 顯示無法使用；歷史錯誤標成「上次失敗」，不能在重接後仍誤稱螢幕未連接。
 
-### 面板的顯示器清單來自 Screen API，不是 desktopCapturer
+### 共用顯示器解析，再選擷取來源
 
-`screen.getAllDisplays()` 是同步的、不需要擷取權限、不會觸發任何提示，所以 `settingsView` 仍是 (state, context) 的純投影，打開設定也不會碰到擷取堆疊或向 macOS 要任何東西。`desktopCapturer` 只在錄影開始時才問。兩份清單之間的落差不會被藏起來：面板提供了、但擷取看不到的顯示器，就是上面那條 `display_unavailable`。
+將純邏輯移至 `src/main/display-source.ts`：`resolveDisplayPreference({ displays, primaryDisplayId, preference })` 提供設定、tray 與錄製共用的目前目標結果；`selectScreenSource({ sources, resolution, preference })` 再映射到實際擷取來源。設定列出顯示器不代表已確認能擷取。
 
-### Renderer 依然只回傳 id
+`primary` 保留主要 id 優先、第一來源 fallback，空來源清單為 `no_display`。指定螢幕必須有唯一的目前顯示器，以及唯一 `display_id` 相符的來源；缺少、空 id 或歧義都是 `display_unavailable`，包括空來源清單。`getSources` 丟出例外仍沿用 darwin → `permission_denied`、其他平台 → `no_display`。以測試固定錯誤優先順序。
 
-新群組的每個選項都由當下的顯示器清單組出，所以 main 授權的 action 本來就帶著它要儲存的完整指紋；面板送回來的只有一個顯示器 id 字串。這個群組不需要像 020 為錄製 accelerator 提出的那種帶值通道，`settingsAction` 仍然是把 id 對到一份重新組出的模型。
+### 有限重試與過期請求防護
 
-### 顯示器數量改變時，兩個投影一起刷新
+開始時固定偏好與錄影嘗試身分。每次顯示器新增、移除或資訊變動事件都增加拓撲世代值，偏好鎖定期間也要追蹤。指定螢幕的流程：讀取目前顯示器與世代值、等待 `getSources`、交付來源前再次確認世代、精確目標與嘗試仍有效。
 
-`screen` 會發出 `display-added`、`display-removed` 與 `display-metrics-changed`。在錄影器處於已結束狀態時，每一個事件都呼叫 `refreshUi()`，所以拔掉的螢幕會從面板消失、過期的選擇會長出說明，不需要重開視窗。錄製途中的事件不改變任何事：工作階段開始時拿到的快照就是這次的來源。
+暫時缺少來源或拓撲變動最多列舉三次，每次間隔 150 ms，始終使用同一份偏好。明確不存在或有歧義的目標立即拒絕；權限／列舉例外不重試，不替換目標。
 
-### 不做 tray 子選單，但 tray 會說出非預設的目標
+取消或新的嘗試使舊結果與計時器失效。每個 callback 最多完成一次；過期請求不可授予擷取，也不可覆寫新嘗試的拒絕理由或 UI 診斷。既有錄影開始 timeout 仍是外層限制，三次重試不能限制永不返回的 `getSources`。測試取消／timeout 後延遲完成，以及接著開始新錄影。兩種模式都套用請求生命週期防護，primary 的來源選擇政策不變。這些檢查無法使 OS 擷取成為原子操作；交付後失敗沿用擷取失敗路徑。
 
-[tray-model.ts](../src/main/tray-model.ts) 刻意不建任何子選單，而逐一列出顯示器不可能是平面選單。因此選擇只住在設定裡。這帶來的風險是使用者忘了這項設定、結果錄了一個閒置的第二螢幕，所以當偏好不是 `primary` 時，待命中 tray 的第一行會顯示 `待命中 — <顯示器名稱>`。維持預設時它仍然只是「待命中」，所以從未動過這項設定的使用者，看到的 tray 與今天完全相同。
+### 尺寸是顯示資訊，不是身分或成品尺寸
 
-### 不用系統挑選器
+即時 `DisplayInfo` 包含 `id`、`label`、`logicalWidth`、`logicalHeight`（DIP）、`scaleFactor`、`internal`、`primary`；偏好不保存尺寸。若設定顯示尺寸，明確標示為邏輯尺寸，不稱為錄影原生像素。成品像素依實際 video track 與既有解析度上限／品質政策驗證，不從 Screen API 推算。旋轉與縮放更新資訊，不改變 id 偏好。
 
-`useSystemPicker`（macOS 15+、實驗性）可以把選擇交給 Apple 自己的挑選器，本計畫的介面也就不必做；但 Electron 文件明講那時 handler 不會被呼叫 — 而 handler 正是 `audio: "loopback"` 與這個 App 賴以立足的每個音訊決定所在之處（[音訊設計](../docs/zh-TW/system-design/audio-quality.md)）。用實測過的音訊政策去換一個免費的挑選器，不是這個 App 換得起的交易。只有在 Electron 允許系統挑選器與由 App 指定的音訊來源並存時才重新評估。
+### 設定清單不啟動擷取
 
-### 錄製途中消失的顯示器早已有處理
+清單來自 `screen.getAllDisplays()`，維持 `settingsView` 對 state/context 的純投影；開啟設定不呼叫 `desktopCapturer` 或要求擷取權限。開始時才能確認擷取可用性，兩份清單不一致時保留明確失敗原因。
 
-視訊軌結束、host 回報 `capture_failed`（「擷取來源已結束」）、已寫入的部分檔案保留。這條路徑已經存在且不變；寫在這裡是為了避免這份計畫再發明第二條。
+Renderer 只回傳選項 id，main 依重新建立的模型授權並取得 id 與名稱，不新增帶值 IPC。未知、過期或停用選項不能執行。錄影分頁的 id 清單必須加入 `screen`。
+
+### 顯示器事件更新 UI，不改錄其他來源
+
+訂閱 `display-added`、`display-removed`、`display-metrics-changed`，每次都增加拓撲世代值；錄影器已結束時刷新設定與 tray，從忙碌回到已結束時也重新投影，涵蓋忙碌期間的變動。事件不切換進行中的錄製來源。
+
+選擇只放在設定，不新增 tray 子選單。指定目標可用時，tray 顯示「待命中 — <名稱>」；預設正常狀態仍是「待命中」。無法使用與上次失敗依前述規則呈現。
+
+### 不使用系統挑選器
+
+維持目前 display-media handler 與 `audio: "loopback"` 音訊政策，不啟用會繞過 handler 的 `useSystemPicker`。只有系統挑選器能與 App 指定音訊來源並存時才重新評估，見[音訊設計](../docs/zh-TW/system-design/audio-quality.md)。
+
+### 錄製中失去目標就結束，不替換或自動重建
+
+沿用 host 的 video-track-ended／`capture_failed` 與既有部分檔案保留流程。另以顯示器事件偵測本次實際目標 id 被移除，導向相同、可重複呼叫但只收尾一次的失敗流程，不只依賴 OS 發出 `ended`。保留可救回內容，在 tray／設定說明原因，絕不切換來源。測試移除、track end、使用者停止同時發生。部分檔案不保證可播放，需實際驗證並記錄。自動重建串流不在本計畫範圍。
 
 ## 預期體驗
 
-- 「設定 → 錄影」新增「螢幕」控制項，第一項是「主要顯示器」，接著依名稱列出每個已連接的顯示器 — `內建 Retina 顯示器 — 3456×2234（主要）`、`Studio Display — 5120×2880` — 並附說明：錄製的是一整個螢幕，且這個選擇不影響系統音訊。
-- 預設是「主要顯示器」。變更會像其他錄影偏好一樣立即儲存，並在啟動中、錄製中或存檔中鎖定。
-- 視窗開著時接上或拔掉顯示器，清單會跟著更新。若被拔掉的正是已儲存的選擇，它仍維持選取，說明文字指出它未連接、無法錄製。
-- 在選擇無法解析的情況下開始錄影不會錄：log 說明哪一個已儲存的顯示器對不上、通知說選定的螢幕無法使用、tray 回到待命中。改選「主要顯示器」或任何已連接的顯示器即可恢復，不需要重新啟動。
-- 在非主要顯示器上開始的錄影，內容是那個螢幕、尺寸是那個螢幕的尺寸、品質設定不變；開始的那行 log 會寫出顯示器與命中的規則。
-- 維持預設選擇時，tray、log 與 `pnpm acceptance` 的行為與今天完全一致。
+- 「設定 → 錄影」新增「螢幕」，首先是「主要顯示器」，接著是各顯示器名稱，如「內建 Retina 顯示器（主要）」；說明錄製整個螢幕，音訊仍為系統音訊。
+- 選擇立即儲存，啟動、錄製、存檔期間鎖定。
+- 待命時插拔會更新清單，過期選擇仍選取且顯示原因。
+- 指定目標無法解析就拒絕開始；通知開啟時通知，tray 回到待命但保留錯誤。重選後不需重啟。
+- 非主要螢幕錄影內容正確，輸出尺寸符合實際來源與解析度上限，品質設定不變；log 記錄目標與選擇規則。
+- 預設正常路徑維持 tray、log 與 `pnpm acceptance` 的既有行為。
 
 ## 執行順序
 
 ### 1. 共用偏好與詞彙
 
-- [ ] 新增 `src/shared/display.ts`：`DisplayPreference`、`DEFAULT_DISPLAY_PREFERENCE`（`{ kind: "primary" }`）、`isDisplayPreference`、`DisplayInfo` 形狀（`id`、`label`、`width`、`height`、`internal`、`primary`），以及兩個投影共用的名稱組字邏輯，包含 `Display.label` 為空時的退路。
-- [ ] 於 [state.ts](../src/shared/state.ts) 的 `ERROR_CODES` 加入 `display_unavailable`。
-- [ ] 測試：guard 接受兩種 kind，拒絕缺少 id、非字串 id、非有限尺寸與未知 `kind`；未命名顯示器的名稱穩定，且主要顯示器有標記。
+- [ ] 新增 `src/shared/display.ts`：兩種 `DisplayPreference`、預設 primary、`isDisplayPreference`、前述 `DisplayInfo` 與共用名稱組字邏輯。
+- [ ] 在 [state.ts](../src/shared/state.ts) 加入 `display_unavailable`。
+- [ ] 測試缺少／空／非字串／無效 id、非字串名稱、未知 kind；即時尺寸與 scale 拒絕非有限或非正值；空名稱退路與主要標記穩定。
 
 ### 2. 儲存
 
-- [ ] 於 [settings.ts](../src/main/settings.ts) 寬鬆讀取 `display`，無效值回退 `DEFAULT_DISPLAY_PREFERENCE` 並記 warning，另加 `setDisplay`。不動 `SETTINGS_VERSION`：`updates` 與 `notifications` 已立下先例 — 後來新增的欄位用寬鬆讀取處理，而不是升版。
-- [ ] 測試：primary 與指定值皆能往返、無效值回退並記 warning、version 1–3 的檔案沒有這個欄位時取預設、儲存其他設定不會弄掉顯示器選擇。
+- [ ] 在 [settings.ts](../src/main/settings.ts) 寬鬆讀取 `display`，無效設定回退預設並記 warning，增加 `setDisplay`；沿用後加欄位慣例，不升 `SETTINGS_VERSION`。有效但不存在的 id 必須保留，不當成無效設定。
+- [ ] 測試兩種偏好往返、無效值回退、version 1–3 缺欄位使用預設、儲存其他設定不遺失選擇。
 
-### 3. 來源選擇
+### 3. 來源解析與非同步協調
 
-- [ ] 新增 `src/main/display-source.ts` 與 `selectScreenSource`，並讓 [index.ts](../src/main/index.ts) 的 `chooseDisplayMedia` 改用它，包含 `display_unavailable` 的拒絕，以及一行寫出顯示器、id 與命中規則的開始 log。
-- [ ] 測試：primary 由 display id 解析；primary 在沒有 id 相符時退回第一個來源；已儲存的 id 相符；重新接上的顯示器由名稱與尺寸相符；兩台相同顯示器在重新接上後視為無法解析；來源清單為空是 `no_display`；來源沒有 `display_id` 時指定的選擇無法解析、primary 仍可運作。
+- [ ] 新增共用 resolver 與 `selectScreenSource`，接到 [index.ts](../src/main/index.ts)，包含拒絕、結構化原因與診斷 log。
+- [ ] 測試 primary id 匹配與第一來源 fallback；指定 id 匹配；同名同尺寸但不同 id（一台或多台）均不恢復；重複 id／來源拒絕；空來源與缺少 `display_id` 的錯誤優先順序。
+- [ ] 受控非同步測試：列舉中拓撲變動、重試成功／耗盡、目標消失、取消／timeout 後舊結果返回且已有新嘗試；callback 最多一次，舊拒絕不污染新嘗試。移除／track end／停止競態只收尾一次。
 
-### 4. 面板與 tray
+### 4. 設定與 tray
 
-- [ ] 於 [ui-model.ts](../src/main/ui-model.ts) 的 `AppContext` 增加 `displays` 與 `display`、在 `AppAction` 增加 `{ setDisplay: DisplayPreference }`，並在 `appContext()` 從 `screen.getAllDisplays()` 填入兩者。
-- [ ] 於 [settings-model.ts](../src/main/settings-model.ts) 在錄影分頁新增 `screen` 群組（它的分頁歸屬是用 id 清單決定的，必須一併加入），附上未連接的說明，並套用與品質相同的鎖定規則。
-- [ ] 於 [tray-model.ts](../src/main/tray-model.ts) 在待命中那一行顯示非預設的目標，並於 [tray.ts](../src/main/tray.ts) 加上 `display_unavailable` 的通知訊息。
-- [ ] 測試：群組列出 primary 加上每個顯示器，已儲存的那個為選取；已儲存但不存在的顯示器維持選取並帶說明；錄製中群組鎖定；`settingsAction` 對清單內的 id 回傳完整指紋、對未知 id 不回傳任何東西；`primary` 時待命中那行不變，其他情況會寫出顯示器名稱。
+- [ ] 在 [ui-model.ts](../src/main/ui-model.ts) 的 context 加入顯示器、偏好與保留的失敗資訊；action 加入 `setDisplay`。
+- [ ] 在 [settings-model.ts](../src/main/settings-model.ts) 新增 recording 的 `screen` 群組，包含失效說明與品質設定相同的鎖定規則。
+- [ ] 在 [tray-model.ts](../src/main/tray-model.ts) 呈現目標／無法使用／上次失敗；[tray.ts](../src/main/tray.ts) 增加通知。
+- [ ] 測試選項、唯一選取、過期選項停用且不重複、未知 id 不授權、有效 id 回傳 id 與名稱、錄製期間鎖定。各投影對缺少目標／缺少來源結果一致；正常 primary 不變。通知關閉仍保留失敗，只在規定條件清除；不把 id 重用宣稱為硬體身分保證。
 
 ### 5. Main 接線
 
-- [ ] 在 `handleAction` 處理 `setDisplay`（已結束狀態檢查、寫檔、log、刷新、寫檔失敗通知），並訂閱 `display-added`、`display-removed`、`display-metrics-changed` 在已結束狀態時呼叫 `refreshUi()`；`will-quit` 時解除監聽。
+- [ ] `handleAction` 再檢查已結束狀態、儲存、log、刷新與寫入失敗處理；失敗不改偏好或清診斷。
+- [ ] 訂閱顯示器事件，追蹤拓撲與實際錄影目標移除；已結束與返回已結束時刷新。`will-quit` 解除監聽並使待處理嘗試／計時器失效。
 
 ### 6. 訊息
 
-- [ ] 所有新字串加入 [i18n.ts](../src/shared/i18n.ts) 的英文與繁體中文條目，具名參數保持一致：群組標籤、說明、未連接說明、tray 待命中那行，以及 `display_unavailable` 通知。
+- [ ] 在 [i18n.ts](../src/shared/i18n.ts) 加入英文與繁中標籤、說明、無法使用／缺少來源／拓撲變動、上次失敗、恢復指引、邏輯尺寸單位及通知，具名參數一致。
 
-### 7. 文件
+### 7. 文件與檢查
 
-- [ ] 更新[錄製設計](../docs/zh-TW/system-design/recording.md)（開始流程第 4 步與錯誤分類表）、[桌面設計](../docs/zh-TW/system-design/desktop.md)（設定視窗）、[webrtc.md](../docs/zh-TW/system-design/webrtc.md) 中寫著 main 選擇主要顯示器的那一列，以及三份[英文版](../docs/system-design/)。
-- [ ] 執行 `pnpm check` 與 `git diff --check`。
+- [ ] 更新[錄製設計](../docs/zh-TW/system-design/recording.md)、[桌面設計](../docs/zh-TW/system-design/desktop.md)、[webrtc.md](../docs/zh-TW/system-design/webrtc.md) 與三份[英文版](../docs/system-design/)。
+- [ ] 實作後執行 `pnpm check` 與 `git diff --check`。
 
-### 8. 驗證行為
+### 8. 行為驗收
 
-- [ ] 維持預設選擇：開始 → 停止 → 存檔 → 播放，並確認 log 與 tray 與今天一致。使用[原生 computer-use 驗收 skill](../.agents/skills/astra-acceptance-with-computer-use/SKILL.md) 搭配 `pnpm start:app`；重建或結束前先確認沒有使用者正在進行的錄影。
-- [ ] 手動把 `settings.json` 改成一個不存在的顯示器、重新啟動，確認拒絕行為：面板的說明、通知、log、之後回到待命中，以及不需重新啟動、改選「主要顯示器」即可恢復。這一項不需要第二台螢幕。
-- [ ] 在已儲存指定顯示器與維持預設兩種情況下各跑一次 `pnpm acceptance`。
-- [ ] 若有第二台螢幕的硬體：錄它、確認檔案內容是那個螢幕、在面板開著時拔掉它並確認清單與說明更新，再接回去確認選擇由名稱與尺寸規則救回。沒有硬體時，所有多螢幕項目一律記為未測試，不做任何宣稱。
-- [ ] 鏡像輸出與兩次啟動之間解析度改變的顯示器屬於已知未確定項；硬體允許就測，無論結果如何都記錄下來。
-- [ ] 於[驗證紀錄](../docs/zh-TW/verification/README.md)寫下實際測試與未測試的項目。
+- [ ] 依[原生驗收 skill](../.agents/skills/astra-acceptance-with-computer-use/SKILL.md) 以 `pnpm start:app` 驗證預設開始 → 停止 → 存檔 → 播放、tray 與 log；重建或結束前確認沒有使用者錄影。
+- [ ] 人為設定不存在但格式有效的 id，重啟驗證拒絕、設定說明、通知、log、待命保留原因，改選 primary 不重啟即可恢復。關閉通知再測；僅成功開始或成功儲存不同選擇才清除診斷。此項不需第二台螢幕。
+- [ ] 預設與有效指定螢幕各執行一次 `pnpm acceptance`，每輪後 App 會關閉，下輪先重啟。
+- [ ] 有第二台硬體時，確認錄到該螢幕與成品尺寸；設定開啟時拔除並確認清單／原因。重接相同 id 可解析，改變 id 必須重選，不按名稱／尺寸恢復。錄製中拔除另測結束、保留原因與檔案實際可救回程度。
+- [ ] 鏡像、旋轉、縮放及兩次啟動間解析度改變，硬體允許就測。沒有硬體的項目明記未測，不以單元測試代替實測。
+- [ ] 每輪原生驗收後儲存自己開始的錄影、還原設定、關閉測試 UI、正常退出 App 並確認程序結束；清理不完整記為失敗／阻礙。
+- [ ] 在[驗證紀錄](../docs/zh-TW/verification/README.md) 保存實測、失敗、未測與證據限制。
 
 ## 完成條件與範圍
 
-本計畫不授權任何 commit、push、tag 或發布。範圍外：單一視窗或單一 App 錄製（自成一份計畫 — 音訊語意、視窗身分與錄製途中改變尺寸這三個問題都還沒有答案）、區域錄製與跟隨游標、同一次錄製多個顯示器、依顯示器區分品質、面板縮圖、tray 子選單、macOS 系統挑選器，以及任何 Windows 或 Linux 已驗收的宣稱。音訊政策不變：錄到的是系統音訊，不是被選螢幕上那些內容的音訊。
+本計畫不授權 commit、push、tag 或發布。範圍外：視窗／App／區域／跟隨游標錄製、同時錄多螢幕、跨重接自動辨識、原生硬體身分、自動重建串流、依螢幕區分品質、縮圖、tray 子選單、系統挑選器及 Windows／Linux 驗收宣稱。音訊仍是系統音訊，不是只錄選定螢幕上內容的聲音。
 
-完成後把長期結論寫入[錄製設計](../docs/zh-TW/system-design/recording.md)與[驗證紀錄](../docs/zh-TW/verification/README.md)，再依[計畫完成流程](README.zh-TW.md#完成計畫)處理。
+完成後把長期結論與證據寫入設計與驗證文件，再依[完成計畫流程](README.zh-TW.md#完成計畫)更新索引並移除雙語計畫。
 
 ## 技術參考
 
-- [Electron：desktopCapturer](https://www.electronjs.org/docs/latest/api/desktop-capturer)：來源 id、`display_id` 以及它可能為空的情況。
-- [Electron：Display](https://www.electronjs.org/docs/latest/api/structures/display)：`id`、`label`、`internal`、`size` 與 `scaleFactor`。
-- [Electron：screen](https://www.electronjs.org/docs/latest/api/screen)：`getAllDisplays`、`getPrimaryDisplay` 與顯示器變動事件。
-- [Electron：session.setDisplayMediaRequestHandler](https://www.electronjs.org/docs/latest/api/session#sessetdisplaymediarequesthandlerhandler-opts)：handler 的契約與 `useSystemPicker`。
-- [Apple：CGDirectDisplayID](https://developer.apple.com/documentation/coregraphics/cgdirectdisplayid)：為什麼 display id 是限於本次連線期間的識別碼，而不是長期識別碼。
+- [Electron desktopCapturer](https://www.electronjs.org/docs/latest/api/desktop-capturer)：擷取來源。
+- [Electron Display](https://www.electronjs.org/docs/latest/api/structures/display)：id、名稱、尺寸、scaleFactor 與特殊 id。
+- [Electron screen](https://www.electronjs.org/docs/latest/api/screen)：顯示器清單與事件。
+- [Electron display-media handler](https://www.electronjs.org/docs/latest/api/session#sessetdisplaymediarequesthandlerhandler-opts)：handler 與系統挑選器。
+- [Apple CGDirectDisplayID](https://developer.apple.com/documentation/coregraphics/cgdirectdisplayid)：顯示器 id；不把它視為永久硬體識別碼。
+
+## Cap 參考與刻意保留的差異
+
+僅閱讀 [Cap commit ce785e7](https://github.com/CapSoftware/Cap/tree/ce785e705e79652adba4b8bf752669c4093499e0) 原始碼，未執行 Cap。[macOS 開始準備](https://github.com/CapSoftware/Cap/blob/ce785e705e79652adba4b8bf752669c4093499e0/apps/desktop/src-tauri/src/recording.rs#L645-L713) 會以三次嘗試、150 ms 間隔檢查目標；[擷取監控](https://github.com/CapSoftware/Cap/blob/ce785e705e79652adba4b8bf752669c4093499e0/crates/recording/src/sources/screen_capture/macos.rs#L665-L789) 在重建串流前確認目標仍存在。借鏡有限檢查與目標遺失處理，不引入自動重建。Cap 主介面有第一台 fallback，但 picker 直接提交指定目標；RecordStuff 對明確選擇採所有入口一致、不替代的政策。此參考不能證明永久硬體身分，也不是 RecordStuff 已驗證的證據。
