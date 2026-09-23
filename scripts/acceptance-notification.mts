@@ -204,7 +204,6 @@ async function main(): Promise<void> {
   if (await appPid() && initialState && initialState !== "idle") fail(`RecordStuff is ${initialState}; not interrupting it`);
 
   const originalSettings = readSettings() ?? fail("cannot read settings; launch the app once first");
-  const wasRunning = Boolean(await appPid());
   /** A backup is used for restoration only after its signature passes. */
   let backup: string | undefined;
   /** True once /Applications no longer holds the original app; restoration is owed. */
@@ -493,14 +492,7 @@ end tell`, "quit empty TextEdit");
       }
       if (recordings.length) cleanup.push(`deleted ${recordings.length} recording(s) made by this run`);
     }
-    if (wasRunning && !appStillRunning && !installedReplaced) {
-      try {
-        await run("open", ["-a", INSTALLED_APP], "relaunch RecordStuff");
-        cleanup.push("relaunched RecordStuff because it was running before");
-      } catch (error) {
-        problem(`relaunch: ${String(error)}`);
-      }
-    } else if (wasRunning && !appStillRunning) problem("RecordStuff was running before and could not be relaunched");
+    if (!appStillRunning) cleanup.push("RecordStuff left closed for the next run");
     for (const c of cleanup) note(`cleanup: ${c}`);
 
     // The verdict covers the whole requested matrix: an interrupted run (even when the

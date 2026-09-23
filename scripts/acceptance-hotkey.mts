@@ -18,7 +18,8 @@
  * macOS only (`open`, `osascript`, `pgrep`). Nothing here ships with the app.
  */
 import { setTimeout as delay } from "node:timers/promises";
-import { command, finishRecording, waitForLog } from "./lib/acceptance-runtime.mts";
+import { command, confirmedIdle, finishRecording, quitIdleApp, waitForLog } from "./lib/acceptance-runtime.mts";
+import { inputDiagnostics } from "./lib/acceptance-diagnostics.mts";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -42,7 +43,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const LOG_PATH = path.join(os.homedir(), "Library/Logs/recordstuff/recordstuff.log");
 const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
 /** A fresh profile per run: a reused one that was killed restores its last window and ignores `--kiosk`. */
-const MATERIAL_PROFILE = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-acceptance-profile-"));
+let MATERIAL_PROFILE: string;
 
 let seconds = 10;
 let openMaterial = true;
@@ -80,9 +81,11 @@ function fail(message: string): never {
 }
 
 function appRunning(): string | undefined {
-  const r = spawnSync("pgrep", ["-f", "RecordStuff.app/Contents/MacOS/RecordStuff$"], { encoding: "utf8" });
+  const r = spawnSync("pgrep", ["-f", "RecordStuff\\.app/Contents/MacOS/RecordStuff($| )"], { encoding: "utf8" });
   if (r.error || ![0, 1].includes(r.status ?? -1)) fail("could not check for a running RecordStuff.app (pgrep)");
-  const pid = r.stdout.trim().split("\n")[0];
+  const pids = r.stdout.trim().split("\n").filter(Boolean);
+  if (pids.length > 1) fail("multiple RecordStuff processes; refusing to choose one");
+  const pid = pids[0];
   return pid ? pid : undefined;
 }
 
@@ -104,18 +107,28 @@ async function main(): Promise<void> {
   const lines = readLines();
   const accelerator = registeredAccelerator(lines) ?? fail("the running app did not log `hotkey: registered …` after its last start (shortcut disabled or refused)");
   const state = currentState(lines);
-  if (state !== undefined && state !== "idle") fail(`the app is in state ${state}; it must be idle (screen recording permission granted, no session running)`);
+  if (!confirmedIdle(lines)) fail(`the app is in state ${state}; it must be idle (screen recording permission granted, no session running)`);
   const keystroke = acceleratorToKeystroke(accelerator) ?? fail(`cannot type accelerator ${accelerator} through System Events`);
   const script = keystrokeScript(keystroke);
   console.log(`RecordStuff pid ${pid}; shortcut ${accelerator}; ${seconds} s recording; log ${LOG_PATH}`);
 
-  const stamp = now().slice(0, 16).replace(/:/g, "");
+  const stamp = now().replace(/[:.]/g, "-");
   const dir = outDir ?? path.join(REPO_ROOT, "docs/verification/measurements", `${stamp}-hotkey-acceptance`);
+  if (fs.existsSync(dir) && fs.readdirSync(dir).length) fail("output directory is not empty; preserving existing evidence");
   fs.mkdirSync(dir, { recursive: true });
 
+  MATERIAL_PROFILE = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-acceptance-profile-"));
+  let runError: unknown;
+  const cleanupErrors: string[] = [];
   let material: ReturnType<typeof spawn> | undefined;
   let recordingFrom: number | undefined;
   let stopSent = false;
+  const sessionFrom = nextIndex();
+  const diagnostics: Array<Record<string, unknown>> = [];
+  const diagnose = async (phase: string): Promise<void> => {
+    diagnostics.push({ phase, pid, accelerator, appleScript: script, ...await inputDiagnostics(pid) });
+    fs.writeFileSync(path.join(dir, "input-diagnostics.json"), JSON.stringify(diagnostics, null, 2));
+  };
   const events: string[] = [];
   const note = (s: string): void => {
     events.push(`${now()} ${s}`);
@@ -134,6 +147,7 @@ async function main(): Promise<void> {
       note("material not opened (--no-open-material): show the test material yourself");
     }
 
+    await diagnose("before-start");
     const before = nextIndex();
     recordingFrom = before;
     const sentStart = await sendKey(script);
@@ -204,25 +218,73 @@ async function main(): Promise<void> {
     console.log(`Report ${path.relative(REPO_ROOT, dir)}/report.md`);
     if (failing.length > 0) fail(`${failing.length} verifier check(s) failed: ${failing.map((c) => c.metric).join(", ")}`);
     if (guards.length > 0) fail(guards.join("; "));
-    console.log("✅ shortcut acceptance passed");
+  } catch (error) {
+    runError = error;
+    await diagnose("failure");
   } finally {
     try {
       if (recordingFrom !== undefined) {
-        await finishRecording({
-          read: readLines, from: recordingFrom, stopSent, signal: AbortSignal.timeout(30_000),
-          stop: () => command("osascript", ["-e", script], AbortSignal.timeout(5000), 5000),
-        });
+        try {
+          await finishRecording({
+            read: readLines, from: recordingFrom, stopSent, signal: AbortSignal.timeout(30_000),
+            stop: () => command("osascript", ["-e", script], AbortSignal.timeout(5000), 5000),
+          });
+        } catch (error) {
+          // After the settlement deadline, a ready app with no session events
+          // never started recording. It is safe to quit, but the run still fails.
+          const lines = readLines();
+          if (currentState(lines.slice(recordingFrom)) !== undefined || !confirmedIdle(lines)) throw error;
+          note("cleanup: no recording started; app remains idle");
+        }
       }
+      const signal = AbortSignal.timeout(15_000);
+      let bundle: string | undefined;
+      await quitIdleApp({
+        pid, running: appRunning, read: readLines, signal,
+        quit: async () => {
+          const executable = (await command("ps", ["-p", pid, "-o", "comm="], signal)).trim();
+          const suffix = "/Contents/MacOS/RecordStuff";
+          if (!executable.endsWith(`RecordStuff.app${suffix}`)) fail("unexpected executable; refusing to quit");
+          bundle = executable.slice(0, -suffix.length);
+          await command("osascript", ["-e", `tell application ${JSON.stringify(bundle)} to quit`], signal);
+        },
+      });
+      if (bundle) {
+        const pattern = `${bundle}/Contents/`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        while ((await command("pgrep", ["-f", `^${pattern}`], signal, 5000, [0, 1])).trim()) {
+          await delay(100, undefined, { signal });
+        }
+      }
+      note("cleanup: RecordStuff exited; recordings and reports preserved");
+    } catch (error) {
+      cleanupErrors.push(String(error));
     } finally {
       if (material) spawnSync("pkill", ["-f", MATERIAL_PROFILE]);
+      try {
+        const signal = AbortSignal.timeout(5000);
+        while ((await command("pgrep", ["-f", MATERIAL_PROFILE], signal, 1000, [0, 1])).trim()) {
+          await delay(100, undefined, { signal });
+        }
+      } catch (error) { cleanupErrors.push(`material process: ${String(error)}`); }
       // Chrome keeps writing for a moment after pkill returns, so a single rm
-      // races it. Cleanup of a temp profile must never fail the acceptance.
+      // races it. Report any residue after bounded retries.
       for (let attempt = 0; attempt < 5; attempt += 1) {
         try { fs.rmSync(MATERIAL_PROFILE, { recursive: true, force: true }); break; }
-        catch { await delay(400); }
+        catch (error) {
+          if (attempt === 4) cleanupErrors.push(`material profile: ${String(error)}`);
+          else await delay(400);
+        }
       }
     }
+    fs.writeFileSync(path.join(dir, "app-session.log"), readLines().slice(sessionFrom).join("\n"));
+    fs.writeFileSync(path.join(dir, "events.log"), events.join("\n"));
+    const report = path.join(dir, "report.md");
+    const passed = !runError && cleanupErrors.length === 0;
+    if (!fs.existsSync(report)) fs.writeFileSync(report, "# Global shortcut acceptance\n");
+    fs.appendFileSync(report, `\n\n## Final result (including cleanup)\n\nInput context: [input-diagnostics.json](input-diagnostics.json). Run events: [events.log](events.log). App callbacks: [app-session.log](app-session.log).\n\n${passed ? "PASS" : "FAIL"}\n\n${runError ? `Run: ${String(runError)}\n` : ""}Cleanup: ${cleanupErrors.length ? cleanupErrors.join("; ") : "complete; RecordStuff exited"}\n`);
+    if (!passed) fail([runError && String(runError), ...cleanupErrors].filter(Boolean).join("; "));
   }
+  console.log("✅ shortcut acceptance and cleanup passed");
 }
 
 main().catch((error: unknown) => {

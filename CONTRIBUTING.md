@@ -64,6 +64,8 @@ This runs TypeScript checks, Vitest tests, and the production build. You can run
 
 For recording changes, make a recording and check that starting, stopping, saving, and playback work. With the app running from `pnpm start:app`, `pnpm acceptance` does the start/stop/save/verify part unattended through the global shortcut; playback is still checked by eye. Note your OS, hardware, settings, and any cases you could not test. Automated checks alone do not verify actual screen and system-audio capture.
 
+Complete app acceptance runs finish by saving their test recording, restoring changed settings, closing test UI, quitting the tested app and confirming process exit, including on failure or interruption. Cleanup failures fail acceptance; never interrupt an existing user recording. `pnpm acceptance` leaves RecordStuff closed, so start it again before the next run. Unit checks and the settings-shortcut entry step do not close an unrelated running app.
+
 FFmpeg and ffprobe are needed for developer media analysis, not to run the app. For example:
 
 ```bash

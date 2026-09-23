@@ -1,7 +1,38 @@
 /** Bounded subprocesses and recording cleanup for acceptance runners. */
 import { execFile } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
-import { currentState, findAfter } from "./acceptance.mts";
+import { currentState, findAfter, lastStartIndex } from "./acceptance.mts";
+
+/** A newly launched app logs ready/permission but no initial state transition. */
+export function confirmedIdle(lines: readonly string[]): boolean {
+  const state = currentState(lines);
+  if (state !== undefined) return state === "idle";
+  const start = lastStartIndex(lines);
+  if (start < 0) return false;
+  const session = lines.slice(start + 1);
+  return session.some(line => /\] ready;/.test(line))
+    && session.some(line => /\] permission: granted and capture sees/.test(line));
+}
+
+/** Quit only the accepted idle process; a replaced app or unknown state is not ours to close. */
+export async function quitIdleApp(options: {
+  pid: string;
+  running: () => string | undefined;
+  read: () => string[];
+  quit: () => Promise<unknown>;
+  signal: AbortSignal;
+}): Promise<void> {
+  options.signal.throwIfAborted();
+  const pid = options.running();
+  if (!pid) return;
+  if (pid !== options.pid) throw new Error("RecordStuff process changed; leaving it untouched");
+  if (!confirmedIdle(options.read())) throw new Error("RecordStuff is not confirmed idle; refusing to quit");
+  await options.quit();
+  while (options.running()) {
+    options.signal.throwIfAborted();
+    await delay(100, undefined, { signal: options.signal });
+  }
+}
 
 export function command(
   file: string,

@@ -18,7 +18,7 @@
  * Requires `pnpm build` output. Nothing here ships with the app.
  */
 import { buildFixture } from "./lib/build-fixture.mts";
-import { spawn } from "node:child_process";
+import { runIsolatedProcess } from "./lib/isolated-process.mts";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,24 +60,24 @@ const fixture = await buildFixture("settings-panel", dir);
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 
-const code = await new Promise<number>((resolve, reject) => {
-  const log = fs.openSync(path.join(dir, "electron.log"), "a");
-  const child = spawn(ELECTRON, [fixture, dir, REPO_ROOT], { cwd: REPO_ROOT, env, stdio: ["ignore", log, log] });
-  const timer = setTimeout(() => {
-    child.kill("SIGKILL");
-    reject(new Error(`the fixture did not finish within ${TIMEOUT_MS / 1000} s; see electron.log`));
-  }, TIMEOUT_MS);
-  child.on("error", (error) => {
-    clearTimeout(timer);
-    fs.closeSync(log);
-    reject(error);
+const controller = new AbortController();
+const interrupt = (): void => controller.abort();
+process.on("SIGINT", interrupt);
+process.on("SIGTERM", interrupt);
+const log = fs.openSync(path.join(dir, "electron.log"), "a");
+let execution;
+try {
+  execution = await runIsolatedProcess({
+    executable: ELECTRON, args: [fixture, dir, REPO_ROOT], cwd: REPO_ROOT,
+    env, logFd: log, timeoutMs: TIMEOUT_MS, signal: controller.signal,
   });
-  child.on("exit", (status) => {
-    clearTimeout(timer);
-    fs.closeSync(log);
-    resolve(status ?? 1);
-  });
-});
+} finally {
+  fs.closeSync(log);
+  process.removeListener("SIGINT", interrupt);
+  process.removeListener("SIGTERM", interrupt);
+}
+fs.writeFileSync(path.join(dir, "cleanup.json"), JSON.stringify(execution, null, 2));
+const code = execution.code === 0 && !execution.error && !execution.stopped && execution.groupGone ? 0 : 1;
 
 const resultsPath = path.join(dir, "results.json");
 if (!fs.existsSync(resultsPath)) {
@@ -91,7 +91,8 @@ const passed = cases.filter((result) => result.ok).length;
 const report = [
   `# Settings panel acceptance — ${stamp}`,
   "",
-  `Electron exit code ${code}; ${passed}/${cases.length} cases passed.`,
+  `Runner exit code ${code}; ${passed}/${cases.length} cases passed.`,
+  `Cleanup: process group gone=${execution.groupGone}; stopped=${execution.stopped ?? "no"}; error=${execution.error ?? "none"}. See cleanup.json.`,
   "",
   "Built artifacts under test: `out/preload/settings.js`, `out/renderer/settings.html`.",
   "The fixture supplies its own view and IPC handlers, so this run judges the page,",

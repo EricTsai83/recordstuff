@@ -1,6 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it, vi } from "vitest";
-import { command, finishRecording, waitForLog } from "./acceptance-runtime.mts";
+import { command, confirmedIdle, finishRecording, quitIdleApp, waitForLog } from "./acceptance-runtime.mts";
 
 
 describe("acceptance subprocess bounds", () => {
@@ -83,5 +83,44 @@ describe("session log waits", () => {
     const controller = new AbortController();
     controller.abort(new Error("cancelled"));
     await expect(waitForLog(() => ["saved file.mp4"], 0, /saved /, "save", controller.signal)).rejects.toThrow("cancelled");
+  });
+});
+
+
+describe("acceptance app shutdown", () => {
+  it.each(["recording", "starting", "stopping", undefined])("preserves an app in state %s", async state => {
+    const quit = vi.fn();
+    await expect(quitIdleApp({ pid: "42", running: () => "42", read: () => state ? [`[t] state → ${state}`] : [], quit, signal: AbortSignal.timeout(1000) })).rejects.toThrow("not confirmed idle");
+    expect(quit).not.toHaveBeenCalled();
+  });
+  it("does not quit a replacement process or launch an exited app", async () => {
+    const quit = vi.fn();
+    const options = { pid: "42", read: () => ["[t] state → idle"], quit, signal: AbortSignal.timeout(1000) };
+    await expect(quitIdleApp({ ...options, running: () => "43" })).rejects.toThrow("process changed");
+    await quitIdleApp({ ...options, running: () => undefined });
+    expect(quit).not.toHaveBeenCalled();
+  });
+  it("waits for exit after requesting graceful quit", async () => {
+    let running: string | undefined = "42";
+    const quit = vi.fn(async () => { setTimeout(() => { running = undefined; }, 30); });
+    await quitIdleApp({ pid: "42", running: () => running, read: () => ["[t] state → idle"], quit, signal: AbortSignal.timeout(1000) });
+    expect(running).toBeUndefined();
+    expect(quit).toHaveBeenCalledOnce();
+  });
+  it("fails when the app remains alive instead of force killing it", async () => {
+    await expect(quitIdleApp({ pid: "42", running: () => "42", read: () => ["[t] state → idle"], quit: async () => {}, signal: AbortSignal.timeout(30) })).rejects.toThrow();
+  });
+});
+
+
+describe("startup idle evidence", () => {
+  const ready = ["[t] start: RecordStuff", "[t] ready; output dir /tmp", "[t] permission: granted and capture sees 2 screen(s)"];
+  it("accepts a fresh ready app without an initial idle transition", () => {
+    expect(confirmedIdle(ready)).toBe(true);
+  });
+  it("rejects incomplete startup, stale readiness and a subsequent recording", () => {
+    expect(confirmedIdle(ready.slice(0, 2))).toBe(false);
+    expect(confirmedIdle([...ready, "[t] start: RecordStuff"])).toBe(false);
+    expect(confirmedIdle([...ready, "[t] state → starting"])).toBe(false);
   });
 });
