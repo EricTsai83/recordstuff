@@ -126,3 +126,16 @@ export function materialOpenArgs(file: string, profile: string): string[] {
     "--no-default-browser-check", "--disable-features=Translate",
   ];
 }
+
+/** Read only the latest process and ownership transition, not a historical registration. */
+export function registeredSettingsAccelerator(lines: readonly string[]): string | undefined {
+  const start = lastStartIndex(lines);
+  if (start < 0) return undefined;
+  for (let i = lines.length - 1; i > start; i -= 1) {
+    const message = lines[i]?.split("] settings shortcut: ")[1];
+    if (!message) continue;
+    if (message.startsWith("registered ")) return message.slice("registered ".length);
+    if (/^(disabled|suspended|registration failed|unavailable)/.test(message)) return undefined;
+  }
+  return undefined;
+}

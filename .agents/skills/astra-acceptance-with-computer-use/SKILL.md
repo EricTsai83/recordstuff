@@ -83,9 +83,21 @@ App 已由呼叫者以 pnpm start:app 建置並啟動，輸出在 <start-app.log
 4. 以程序執行路徑等唯讀證據核對啟動的副本，再用 computer use 確認選單列狀態與選單。指令成功不等於 UI 已驗收。
 5. 本次重建完成後，如需測試設定持久化，可正常結束後用 `pnpm open:app` 重開同一產物；不得用它取代首次重建。
 
+## 開啟 RecordStuff 設定：System Events ＋ Computer Use
+
+使用者已採用混合驗收流程時，以 `pnpm acceptance:settings-shortcut` 送出 ⌘⌥,，由 Computer Use 操作真正面板。這是無人值守的「System Events 送鍵＋Computer Use 操作」，不是全程 Computer Use。純 `Target.pressKey()` 在本機多次沒有觸發全域 callback；保留失敗紀錄，不要求維護者先點開設定。
+
+1. 沿用本次由 `pnpm start:app` 建置啟動的 bundle，先透過 Computer Use 將另一個 App 置前。設定若已開啟，先記錄狀態，再透過 UI 關閉。
+2. 執行 `pnpm acceptance:settings-shortcut`。它核對本 checkout 的 arm64 bundle 程序及最新 App log，只有設定快捷鍵仍註冊時才用 System Events 送一次按鍵；擷取暫停、衝突、舊版本或失敗時拒絕送鍵。送鍵命令最多 10 秒，callback 最多等 30 秒。
+3. 命令成功只證明 App 收到快捷鍵。接著用原生 Computer Use 取得 RecordStuff，觀察可見面板與焦點、鍵盤導覽、重複開啟、最小化還原、關閉重開。每次需重新開啟時可再執行相同指令。UI 受阻仍記 blocked，不以腳本成功代替。
+4. 依本次範圍繼續雙語、快捷鍵擷取與錄製中鎖定等案例。註冊衝突與失敗的 deterministic 測試不能當成 OS 實測。
+5. 每次執行會留下 `docs/verification/measurements/<timestamp>-settings-entry-<suffix>/report.md` 與本次 log；原生操作另記錄步驟、結果和限制。還原偏好並關閉本次新增面板。這個指令不建置、不啟動錄影、不修改偏好或權限。
+
+System Events 缺少權限時如實回報，不自動更改權限或繞過核准。此例外只允許已授權的全域送鍵；其他 UI 仍用 Computer Use，不使用 IPC 或測試專用開窗入口。
+
 ## 無人值守快捷鍵驗收（沒有可見視窗時）
 
-RecordStuff 沒有視窗，本環境的 computer use 對純 Tray 的 Electron 程序會回 `-10005 timeoutReached`（見 `docs/verification/measurements/2026-09-19T1753-computer-use-window-probe/`），而 Codex computer use 的 `Target.pressKey()` 只把按鍵投遞給目標 App，到不了系統層的全域快捷鍵（`docs/verification/measurements/2026-09-19T213348-computer-use/` 對照 `2026-09-19T2101-hotkey-osascript/`）。因此這條路徑的核心由專案腳本 **`pnpm acceptance`** 完成，不需要 computer use 點擊，也不依賴 Chrome 核准：
+RecordStuff 沒有視窗，本環境的 computer use 對純 Tray 的 Electron 程序會回 `-10005 timeoutReached`（見 `docs/verification/measurements/2026-09-19T1753-computer-use-window-probe/`），而本機 Codex computer use 的 `Target.pressKey()` 實測未觸發全域快捷鍵，與只投遞給目標 App 的行為一致（`docs/verification/measurements/2026-09-19T213348-computer-use/` 對照 `2026-09-19T2101-hotkey-osascript/`）。因此這條路徑的核心由專案腳本 **`pnpm acceptance`** 完成，不需要 computer use 點擊，也不依賴 Chrome 核准：
 
 ```bash
 pnpm start:app      # 建置、自簽、驗證、開啟；App 進入 idle 且 permission granted

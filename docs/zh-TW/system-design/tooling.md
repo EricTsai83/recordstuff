@@ -208,3 +208,17 @@ Runner 將原始碼與建置資源複製至專用報告目錄，只修改該副�
 報告位於 `docs/verification/measurements/<timestamp>-updates-*/`；`--out <新目錄>` 可指定路徑，既有目錄會被拒絕。`report.json`／`report.md` 列出每個必要案例，包含先前失敗後未執行的項目；保留請求／回應、事件、建置／簽章輸出、來源／產物雜湊與錄影驗證。Exit 0 表示所述範圍全部必要案例通過、1 表示失敗、2 表示受阻／不完整。SIGINT／SIGTERM 會要求收尾：測試 App 透過正式 shutdown 停止並保存錄影，只關閉專用素材瀏覽器 profile；無法安全退出的測試程序保留並回報清理失敗，不使用全域 kill。App 退出後才移除來源工作目錄，錄影與證據保留。
 
 此隔離 fixture 也攔截存檔通知並記錄事件，避免第一段的通知遮擋第二段測試素材；通知顯示不在這項驗收範圍。影音分析會判定影格時序與閃光／提示音偏移，至少須有 5 組配對標記；短片不判定長時間同步漂移。已存在的 `--out` 目錄會保留原內容，以明確訊息及退出碼 2 拒絕，不寫入報告。
+
+## 設定快捷鍵驗收
+
+在 `pnpm start:app` 之後採用 **System Events ＋ Computer Use** 混合流程：
+
+```bash
+pnpm acceptance:settings-shortcut
+```
+
+設定關閉、另一個 App 在前景時，這個 macOS arm64 腳本會核對本機 bundle 程序、最新 log session 與目前設定鍵註冊，再透過 System Events 送出 ⌘⌥,。擷取暫停、衝突或註冊失敗時拒絕送鍵。成功退出只代表收到本次設定 callback（最多等 30 秒），不代表視窗可見或聚焦。每次報告與 log 都寫入 `docs/verification/measurements/` 下的獨立目錄。
+
+接著以原生 Computer Use 觀察真正面板、鍵盤導覽、重複執行指令、最小化還原、關閉重開，依[驗收 skill](../../../.agents/skills/astra-acceptance-with-computer-use/SKILL.md)記錄 UI 結果。權限拒絕只回報，不自動修改。這是無人值守混合驗收，不是純 Computer Use 送鍵；沒有使用 IPC 或測試專用開窗入口。OS 衝突與錄製持續需各自驗證。
+
+`pnpm acceptance:shortcut` 另執行第三個隔離的設定階段，使用正式 main／preload／頁面，透過受控註冊 adapter 驗證既存平台等價衝突、恢復、雙語拒絕、擷取暫停與 renderer 崩潰清理。測試會最小化真正的 Electron 視窗，再經註冊 callback 還原，斷言視窗數量與焦點。這屬於整合證據，與原生 Computer Use、真正 OS 衝突測試分開記錄；三個程序及暫存偏好皆會清理。

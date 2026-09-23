@@ -209,3 +209,17 @@ Default cases cover checking/overlap, current/newer versions, GitHub fallback, f
 Reports live under `docs/verification/measurements/<timestamp>-updates-*/`; `--out <new-directory>` chooses a new directory and refuses an existing one. `report.json`/`report.md` include every required case, including ones not run after an earlier failure; requests/responses, events, build/signing output, source/artifact hashes and recording verification are retained. Exit 0 means every required case in the stated scope passed, 1 means a failure, and 2 means blocked/incomplete. SIGINT/SIGTERM request cleanup: the owned fixture quits through the production shutdown path to stop/save a recording, and only the unique material-browser profile is closed. A fixture that cannot be safely stopped is left intact and reported as a cleanup failure; it is never replaced with a global kill. Source workspace is removed only after the app exits; recordings and evidence remain.
 
 The isolated fixture also intercepts saved notifications and records the event so the first recording’s banner cannot obscure the second recording’s material; notification delivery is outside this acceptance scope. Media analysis judges frame timing and flash/beep offset and requires at least five matched pairs; short clips do not judge long-run drift. An existing `--out` directory is preserved and rejected with a clear message and exit 2, without writing a report there.
+
+## Settings shortcut acceptance
+
+Use the hybrid **System Events + Computer Use** path after `pnpm start:app`:
+
+```bash
+pnpm acceptance:settings-shortcut
+```
+
+With Settings closed and another app frontmost, this macOS arm64 runner checks the local bundle process, latest log session and current Settings registration, then sends ⌘⌥, through System Events. It refuses to send during capture, collision or registration failure. A successful exit proves only a new Settings callback (30-second limit), not window visibility or focus. Each invocation writes a unique report and log under `docs/verification/measurements/`.
+
+Then use native Computer Use to inspect the actual Settings panel, navigate by keyboard, repeat the command, minimize/restore and close/reopen. Follow the [acceptance skill](../../.agents/skills/astra-acceptance-with-computer-use/SKILL.md); keep UI failures separate from callback success. Permission refusal is reported, not repaired automatically. This is unattended hybrid acceptance, not pure Computer Use input. No IPC or test-only opening route is used. OS conflicts and recording continuity need their own evidence.
+
+`pnpm acceptance:shortcut` also runs a third, isolated Settings phase against the production main/preload/page. Its controlled registration adapter covers stored platform-equivalent collisions, recovery, bilingual refusal, capture suspension and renderer-crash cleanup. A real Electron window is minimized and restored through the registered callback; window count and focus are asserted. This is integration evidence, separate from native Computer Use and real OS conflict testing. All three processes and temporary preferences are cleaned up.

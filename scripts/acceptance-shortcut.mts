@@ -43,7 +43,7 @@ const resultPassed = (result: Result | undefined): boolean => Boolean(result?.ca
 try {
   const fixture = await buildFixture("shortcut-failure", reportDir);
   const executable = require("electron") as string;
-  for (const name of drill ? [drill] : ["normal", "restart"]) {
+  for (const name of drill ? [drill] : ["normal", "restart", "settings"]) {
     controller.signal.throwIfAborted();
     const phaseDir = path.join(reportDir, name);
     fs.mkdirSync(phaseDir);
@@ -70,7 +70,7 @@ try {
   process.removeListener("SIGTERM", interrupt);
 }
 const clean = groupsGone && !fs.existsSync(temporary);
-const passed = !error && !drill && phases.length === 2 && clean && phases.every(phase =>
+const passed = !error && !drill && phases.length === 3 && clean && phases.every(phase =>
   !phase.execution.error && phase.execution.code === 0 && !phase.execution.stopped
   && phase.execution.groupGone && resultPassed(phase.result));
 const summary = { passed, phases, error, temporary, temporaryRemoved: !fs.existsSync(temporary) };
@@ -78,7 +78,7 @@ fs.writeFileSync(path.join(reportDir, "summary.json"), JSON.stringify(summary, n
 fs.writeFileSync(path.join(reportDir, "report.md"), [
   "# Shortcut failure integration", "", `Result: ${passed ? "PASS" : "FAIL"}`, "",
   "Production main, settings IPC/preload/page and persistence; real Electron registration returns false via test-only suspension.",
-  "Notification.show is observed, not delivered. Tray and capture-permission adapters are isolated. No OS banner or recording claim.", "",
+  "Settings phase uses a controlled registration adapter to test legacy conflict, real-window restore and renderer crash. Notification.show is observed, not delivered. Tray and capture-permission adapters are isolated. No OS banner or recording claim.", "",
   ...phases.flatMap(phase => (phase.result?.cases ?? []).map(test => `- ${test.ok ? "PASS" : "FAIL"} [${phase.name}]: ${test.name} — ${test.detail}`)), "",
   `Cleanup: all groups gone=${groupsGone}; temp removed=${!fs.existsSync(temporary)}.`,
   `Error: ${error ?? "none"}. Phase exit/stop details: summary.json; electron.log.`, "",
