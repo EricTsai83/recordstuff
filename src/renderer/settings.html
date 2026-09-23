@@ -9,13 +9,10 @@
 </head>
 <body>
   <main>
-    <header>
-      <p class="brand">RecordStuff</p>
-      <h1 id="title"></h1>
-      <p id="hint"></p>
-    </header>
+    <h1 id="title" class="visually-hidden"></h1>
+    <p id="hint" hidden></p>
     <form id="settings"></form>
-    <p id="feedback" role="status" aria-live="polite"></p>
+    <p id="feedback" class="visually-hidden" role="status" aria-live="polite"></p>
   </main>
   <script type="module" src="./settings.ts"></script>
 </body>
