@@ -298,7 +298,7 @@
 | 原始碼／函式 | 輸入 → 結果與副作用 |
 | --- | --- |
 | [acceptance-settings.mts](../../../scripts/acceptance-settings.mts) 頂層 | 要求已有建置產物與本機 Electron；以 90 秒上限在全新證據目錄執行 fixture；印出每個案例；寫 report.md；缺前置或無結果以 2 退出，任一 fail 以 1 退出 |
-| [fixtures/settings-panel.mjs](../../../scripts/fixtures/settings-panel.mjs) | 在隱藏的 sandbox 視窗載入已建置的 preload 與頁面，自備 view 與 IPC handler；判定 CSP／console、暴露的 bridge、沒有 Node API、URL 語言、畫出的控制項、不可用選項、被拒絕快捷鍵的註解、真實變更往返，以及未提交的選擇；寫出 results.json 與 panel.png |
+| [fixtures/settings-panel.ts](../../../scripts/fixtures/settings-panel.ts) | 在隱藏的 sandbox 視窗載入已建置的 preload 與頁面，自備 view 與 IPC handler；判定 CSP／console、暴露的 bridge、沒有 Node API、URL 語言、畫出的控制項、不可用選項、被拒絕快捷鍵的註解、真實變更往返，以及未提交的選擇；寫出 results.json 與 panel.png |
 | [acceptance-hotkey.mts](../../../scripts/acceptance-hotkey.mts) 頂層 | 要求 RecordStuff 執行中、idle 且有 `hotkey: registered`；開 kiosk 素材；以 System Events 送組合鍵；各 30 秒內等 `pressed`、`state → recording`、第二個 `pressed`、`saved`；以 `testMaterial` 驗完整性層級；寫 report.md／verify.json／app-session.log；任一 fail 以 1 退出 |
 | [lib/acceptance.mts](../../../scripts/lib/acceptance.mts) `acceleratorToKeystroke` / `keystrokeScript` | Electron accelerator → System Events `keystroke … using {…}`；無法輸入的鍵回 undefined |
 | 同檔 `lastStartIndex` / `registeredAccelerator` / `currentState` / `findAfter` / `lineTime` | 只讀目前程序的 log；在偏移之後找事件；解析行時間戳 |

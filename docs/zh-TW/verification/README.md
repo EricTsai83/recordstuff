@@ -4,6 +4,26 @@
 
 本頁保留原已完成計畫中的驗證結論，與正式 system design 分開維護。2026-09-14 文件整併時沒有重跑錄製，也沒有把本機結果推論到其他機器。原始計畫已移除，逐次變更可由 Git 歷史追溯。
 
+## Plan 020 開發驗證 — 2026-09-23
+
+自訂快捷鍵實作通過 `pnpm check`：31 個測試檔、466 個測試、TypeScript 與正式建置。涵蓋驗證與標準化（含 Shift 標點／保留組合別名）、自訂值與 Off 儲存、模型授權、暫停／延後請求／退出、錄入生命週期、提交焦點與 Tab、實體鍵映射、失敗通知去重，以及驗收工具讀取最新註冊狀態。
+
+第一份開發產物由 `pnpm start:app` 建置、自簽及驗章，環境 macOS 26.6.2 arm64／Electron 44.3.0，基底 `09b0493a546c2776e712401c425374512da98000` 加未提交變更。第一輪保留 standard/source/60 fps、繁中、原輸出位置與 ⌘⇧1；`pnpm acceptance` 完成開始／停止／存檔，10.3 秒、1920×1080、48 kHz 雙聲道、RMS −27.2/−27.2 dBFS、9 次閃光／9 次嗶聲，完整解碼無錯誤。QuickTime 播放前進至 9.62 秒，定位 4 秒成功。完整性檢查通過；55.32 fps、掉幀 2.58% 僅回報，不判定時間表現，亦不代表同步、主觀聽感或長錄影驗證。
+
+起初原生選單列存取回 `-10005 timeoutReached`；維護者開啟設定後，computer use 已驗證同鍵重錄不會開始錄影、缺少修飾鍵的錯誤、Escape 取消，以及 `Control+Shift+K` 的保存與註冊；重啟 log 仍註冊同一自訂值。原生 log 發現提交時舊快捷鍵過早恢復，review 修正已保留焦點並避免 blur 取消。首次自訂驗收也重現舊 log reader 錯誤：腳本送出啟動時的舊快捷鍵並逾時；現已改讀最新註冊／暫停狀態。保留這些失敗證據，不把初版當作最終驗收。
+
+修正 log reader 後，[自訂快捷鍵驗收](../../verification/measurements/2026-09-23T0558-hotkey-acceptance/report.md) 已在第一份產物以 `Control+Shift+K` 通過：10.3 秒、1920×1080、左右聲道 RMS −27.2/−27.2 dBFS、10 次閃光／嗶聲；QuickTime 播放前進至 8.77 秒。這證明自訂錄影路徑，不代表後續程式修正已做原生回歸。測試快捷鍵其後已在下述最終產物驗收中還原為原有 ⌘⇧1。
+
+QuickTime 關閉測試影片後曾遺留「打開」視窗；其後透過原生 UI 取消，回傳 `noWindowsAvailable`。驗收 skill 已要求收尾時檢查並取消這個遺留對話框，同時保留使用者原有文件。
+
+本機證據：[computer-use 報告](../../verification/measurements/2026-09-23T0548-computer-use/report.md)、[初次錄影報告](../../verification/measurements/2026-09-23T0548-hotkey-acceptance/report.md)。下述最終產物結果取代先前待重建／還原狀態；見 [Plan 020 結案](#plan-020-結案--2026-09-23)。
+
+### 最終重建產物 — 2026-09-23 06:08 UTC
+
+兩輪 review 後以 `pnpm start:app` 重建、自簽及驗章最終程式。[自訂驗收](../../verification/measurements/2026-09-23T0608-hotkey-acceptance/report.md) 以持久化的 `Control+Shift+K` 通過：10.3 秒、1920×1080、48 kHz 雙聲道、RMS −27.2/−27.2 dBFS、10 次閃光／嗶聲、無解碼錯誤。原生 UI 確認同鍵重錄不開始錄影、提交後保留焦點、Tab 取消，以及實體標點 `Control+;`／`Control+Alt+;`；log 不再出現中途舊鍵註冊。QuickTime 播放至 10.25 秒、定位至 4.02 秒，遺留 Open 視窗取消後確認 `noWindowsAvailable`。
+
+原有 ⌘⇧1 已從設定還原，06:10:39 UTC 確認保存與註冊；RecordStuff 留在 idle、Settings 開啟供檢視，測試 fixture 與素材播放均已結束。刻意跨程序重複註冊 **未觸發 OS 拒絕**：兩個 Electron 程序對 `Control+Shift+J` 都回報成功。因此拒絕說明／通知仍是 blocked，不能當通過，Plan 020 保留此待驗項。非 US 配置及原生慢寫入故障注入未測，Shift 標點的工具送鍵未取得可判定結果。[最終原生報告](../../verification/measurements/2026-09-23T0608-computer-use/report.md)：8 pass、0 fail、1 blocked、2 not run。56.60 fps、2.85% 掉幀只回報，完整性層級不判定幀率。
+
 ## 環境與證據
 
 已測環境：Apple M1 Pro、macOS 26、Electron 44.3／Chromium 152；外接 1920×1080 與內建 Liquid Retina XDR 3456×2234。安裝產物為 macOS arm64，自簽身分 `recordstuff Dev`。Intel、其他 macOS 版本、Windows、Linux 與另一台 Mac／新帳號未驗；使用者已決定不以這些驗收作為目前發布前置。
@@ -309,3 +329,29 @@ Electron 44.3.0 的行為改以檢視實際隨附的 framework 二進位確立 �
 證據包含維護者回報的確認橫幅、螢幕／系統音訊錄製／存檔／播放、通知點擊／Finder、關閉通知後仍正常存檔，以及 `pnpm check`（450 項測試）、獨立設定 fixture（21/21）與重新建置的自簽 App 三輪原生關閉／開啟操作。證據來源及本機報告位置保留於前述部分驗收與閃爍後續紀錄。renderer 在值更新時保留控制項，只有儲存造成的鎖定不再變淡。
 
 結案保留可用的「通知總覽 → RecordStuff」操作路徑；原本直接進入專屬面板的要求未實作，歷史發現仍保留。原始下載版本的問題成因未重現；乾淨帳號首次授權及已安裝 DMG 的行為未獲獨立確認；離散截圖也無法證明所有瞬間畫面都無閃爍。這些限制持續記錄，不改寫為通過。本次結案不包含 release、commit、tag 或發布。
+
+### 快捷鍵註冊失敗自動化 — 2026-09-23
+
+在有桌面工作階段的 macOS（Node 24）執行 `pnpm acceptance:shortcut`。指令建置後，以臨時設定啟動獨立 Electron，載入正式 main bundle、設定視窗、preload、renderer、IPC 及儲存流程。僅在測試 adapter 中暫停快捷鍵註冊，讓真正的 Electron 呼叫穩定回傳 `false`；觀察 `Notification.show()` 呼叫但不發送系統橫幅，並替換選單列與擷取權限邊界，避免操作使用者選單列或要求錄影權限。正式程式沒有新增故障注入開關。
+
+十項整合斷言通過：失敗選項保存、錯誤文字、通知內容、取消不重複通知、明確重存再次通知、Off 清除錯誤、通知偏好、成功恢復、無效輸入保留原值，以及其他偏好仍可儲存。這不等於重現其他 App 造成的 OS 衝突，也未驗證橫幅送達或螢幕／系統音訊錄製；Plan 020 的原生 OS 拒絕驗收限制仍保留。
+
+收尾也是成功條件：正式關閉流程必須關閉視窗、釋放快捷鍵並銷毀選單列；外層確認自己的獨立程序群已消失後，才刪除臨時資料。逾時、SIGINT／SIGTERM 先要求正常退出，超過期限才對該程序群升級 SIGKILL，不會退出使用者的 RecordStuff。外層遭不可攔截的 SIGKILL 或電腦關機時無法執行收尾；無法確認清理狀態時保留臨時目錄並回報失敗。
+
+故意失敗與逾時演練（`pnpm acceptance:shortcut -- --drill-failure`／`--drill-timeout`）應回傳非零並顯示 `cleanup=complete`；本機兩種演練及 SIGINT／SIGTERM 中斷均確認清理完成。六項程序管理測試另外涵蓋成功、非零退出、正常逾時退出、強制終止、子程序清理、中斷與啟動失敗。報告、log、JSON 留在 gitignored 的 `measurements/*-shortcut-failure/`，執行用臨時資料會刪除。
+
+### 快捷鍵重啟自動化 — 2026-09-23
+
+`pnpm acceptance:shortcut` 現在以兩個依序啟動的 Electron 程序通過 14 項斷言。第一個程序經正式設定 IPC 存下註冊失敗的自訂快捷鍵並退出；外層確認其程序群消失後，第二個才使用同一份臨時設定啟動，且不重新寫入初始設定。第二個驗證選項、重新註冊失敗、畫面說明與通知呼叫。兩階段都必須通過正式關閉流程檢查，才刪除臨時目錄。各階段保留獨立結果及 App log，總報告記錄兩次程序狀態。fixture 建置失敗且未啟動子程序時也會刪除臨時資料；子程序清理狀態不明時則保留。
+
+`pnpm check` 通過 32 個檔案共 472 項測試、型別檢查與建置；故意失敗／逾時清理演練通過。獨立 Codex GPT-6 Astra 已完成 runner、fixture、程序管理及其測試的 review，無 findings；Claude Opus 5.5 因每週額度用盡而無法審查。Reviewer 本身未執行測試。本機證據：`../../verification/measurements/2026-09-23T06-45-12-655Z-shortcut-failure/report.md`（gitignored）。
+
+剩餘項目只有真實 OS 衝突與可見錯誤通知：人工重現並觀察，或由維護者明確接受自動化失敗路徑證據，保留原生情境未測限制。這次增量不要求重做錄影／播放或人工重啟測試。Plan 020 仍待該驗收決定，不包含 commit 或發布。
+
+## Plan 020 結案 — 2026-09-23
+
+維護者明確接受自動化驗收，並同意將真實 OS 衝突與通知橫幅列為未測限制，據此結案。此決定取代上文當時的待驗／未結案狀態，不把 blocked 或未測結果改寫為通過。已移除雙語計畫，下一項為 023（用全域快捷鍵開啟設定）。
+
+結案沿用最終重建產物的自訂快捷鍵錄影／存檔／播放與錄入回歸、`pnpm check` 的 472 項測試，以及 `pnpm acceptance:shortcut` 的 14 項失敗處理／跨程序重啟斷言。故意失敗、逾時、SIGINT／SIGTERM 清理均經驗證，原快捷鍵已還原。新增自動化的獨立 Codex GPT-6 Astra review 已完成且無 findings；Claude Opus 5.5 因額度限制未完成此增量的 review。
+
+自動化確認 Electron 回報註冊失敗時的說明與通知呼叫，不證明真實 OS 衝突或 macOS 橫幅送達。使用者另回報按鍵由其他 App 接走且沒有通知；未以當次 log 確認發生於錄入、註冊或按鍵送達階段，成因仍未判定。非 US 配置等歷史未測項目繼續保留於原紀錄。本次只做文件結案，未重新執行 App、錄影或測試，未 commit、push 或發布。
