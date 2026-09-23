@@ -19,6 +19,7 @@
 | pnpm dist:mac | 自簽 App 驗證後，在 dist/ 旁邊產生 DMG |
 | pnpm acceptance | 對執行中的 App：全螢幕開素材、以 System Events 送全域快捷鍵開始／停止錄影、驗完整性層級（test-material 模式）、把報告寫到 docs/verification/measurements（已 gitignore，只留本機） |
 | pnpm acceptance:settings | 對已建置的產物：在真實 Electron 視窗載入 `out/preload/settings.js` 與 `out/renderer/settings.html`，判定出貨 CSP、sandbox preload 邊界與真實 IPC 往返；報告與截圖寫到 docs/verification/measurements。需要先 `pnpm build`，不需要 tray 或已安裝的 App |
+| `pnpm acceptance:regression` | 一個指令執行 check（含建置）、設定 fixture 與快捷鍵整合；包含重複開啟／關閉／Tray 路徑重開。隔離偏好與程序，各 runner 保留報告；任一步失敗立即停止。不會啟動或關閉使用者的 RecordStuff，也不錄影。 |
 | pnpm acceptance:notification | 對 /Applications 裡的 App（可用 `--install` 在本次換成 dist 的建置）：錄影、透過輔助使用按下「已儲存」橫幅、判定 Finder 是否在最前面且顯示該檔，每個 Finder 狀態連點多次，預設英文；報告寫到 docs/verification/measurements |
 
 main、preload、renderer 分別建置，打包只納入 out、package metadata 與指定 resources。測試、量測與文件不屬 runtime；App 不呼叫 FFmpeg。
@@ -57,7 +58,7 @@ pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 pnpm verify -- /absolute/path/any-desktop-recording.mp4 --screen 1920x1080   # 只驗完整性
 pnpm acceptance -- --seconds 10        # 對執行中的 App 做無人值守快捷鍵驗收
-pnpm acceptance:settings                           # 設定頁面與 preload 在真實 Electron 視窗；約 5 秒
+pnpm acceptance:settings                           # 設定頁面與 preload 在真實 Electron 視窗；包含截圖矩陣
 pnpm acceptance:notification -- --install --clicks 2  # 通知日常 smoke：兩次點擊
 pnpm acceptance:notification -- --install          # 點「已儲存」通知 → Finder 置前；約 1 分鐘；本次把建置好的 App 換進 /Applications
 pnpm acceptance:notification -- --install --full   # 三種 Finder 狀態、英文；估計約 3 分鐘
@@ -230,3 +231,14 @@ pnpm acceptance:settings-shortcut
 `pnpm acceptance` 會讓受測 App 保持關閉，並在 `report.md` 記錄包含收尾的最終結果；若程序已更換或無法確認待命，拒絕退出。通知驗收還原安裝產物與設定後保持 App 關閉。設定驗收管理自己的程序群組，包含中斷與逾時清理，結果寫入 `cleanup.json`。隔離 runner 只清理自己的程序；單元檢查不關閉無關 App。設定快捷鍵入口仍保留面板供原生操作，由完整 Computer Use 驗收負責退出。下一輪錄影驗收前需重新啟動；程式改動後用 `pnpm start:app` 重建。
 
 快捷鍵 runner 在送出開始按鍵前及失敗時寫入 `input-diagnostics.json`：包含實際 AppleScript、App PID、送鍵程序、System Events UI 狀態、前景 App，以及 IORegistry 回報的 Secure Input 擁有者。沒有回報擁有者不代表已證明 Secure Input 關閉。診斷查詢唯讀、有時限，不會授予權限。失敗時也保留 `events.log` 與本次 `app-session.log`。osascript 成功不等於按鍵送達，必須收到 App callback 才算；逾時後不要盲目重送切換快捷鍵，以免停止延遲開始的錄影。送鍵失敗時，先對同一個 bundle 與輸入環境比較實體按鍵和產生的腳本，再判斷是否為 App 故障。
+
+
+### 可重複的設定回歸
+
+```bash
+pnpm acceptance:regression
+```
+
+先執行 TypeScript、Vitest 與 build，再依序執行設定 fixture 和快捷鍵整合，避免重複建置。Console 會列出各自的 `docs/verification/measurements/` 報告；非零退出碼代表失敗，`&&` 確保失敗後不繼續下一階段。隔離整合另外連跑兩輪「設定快捷鍵 callback → 真正 Electron 按鍵 ⌘W（其他平台 Ctrl+W）→ Tray 設定 handler 重開」，斷言只有一個視窗、可見且聚焦、App 與註冊仍存在、偏好沒有改寫且未開始錄影或產生影片。
+
+這是正式 main／preload／renderer 的整合回歸；快捷鍵註冊及 Tray 邊界受控，不能聲稱測過 OS 全域送鍵或實際 Tray 點擊。原生入口仍用 `pnpm acceptance:settings-shortcut` 加 computer use／人工觀察；真實錄影仍用 `pnpm start:app` 與 `pnpm acceptance`，後者會正常結束測試 App。實體拔插螢幕、VoiceOver 聽感及使用者理解仍需人工。已通過的案例若程式、環境或測試條件沒有相關變更，不要求使用者反覆重測。

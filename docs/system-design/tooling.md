@@ -19,6 +19,7 @@ Use pnpm and a compatible Node version; the verification TypeScript scripts use 
 | `pnpm dist:mac` | Build/verify a self-signed app, then create a DMG next to it in dist/ |
 | `pnpm acceptance:updates` | Build an isolated signed copy; exercise production update handlers/model/settings, process restarts and two real shortcut recordings; retain reports and recordings, then clean up the owned app |
 | `pnpm acceptance:settings` | Against the built artifacts: load `out/preload/settings.js` and `out/renderer/settings.html` in a real Electron window, judge the shipped CSP, the sandboxed preload boundary and a real IPC round trip; report and screenshot under docs/verification/measurements. Needs `pnpm build`, no tray and no installed app |
+| `pnpm acceptance:regression` | One command runs check (including build), settings fixture and shortcut integration, including repeated open/close/tray-route reopen. Isolated preferences/processes; per-runner reports; stops at the first failure. Does not start/quit the user’s RecordStuff or record. |
 | `pnpm acceptance` | Against the running app: open the material fullscreen, start/stop a recording with the global shortcut through System Events, verify the integrity tier (test-material mode), write a report under docs/verification/measurements (gitignored, local) |
 | `pnpm acceptance:notification` | Against the app in /Applications (optionally `--install` the dist bundle for the run): record, press the "Saved …" banner through Accessibility, judge whether Finder is frontmost and shows the file, several clicks per Finder state, English by default; report under docs/verification/measurements |
 
@@ -60,7 +61,7 @@ pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 pnpm verify -- /absolute/path/any-desktop-recording.mp4 --screen 1920x1080   # integrity only
 pnpm acceptance -- --seconds 10        # unattended shortcut acceptance of the running app
-pnpm acceptance:settings                           # settings page + preload in a real Electron window; ~5 s
+pnpm acceptance:settings                           # settings page + preload in a real Electron window; includes the screenshot matrix
 pnpm acceptance:notification -- --install --clicks 2  # short notification smoke check
 pnpm acceptance:notification -- --install          # saved-notification click → Finder in front; ~1 min; built app swapped into /Applications for the run
 pnpm acceptance:notification -- --install --full   # all three Finder states, English; ~3 min (estimate)
@@ -231,3 +232,14 @@ Complete app acceptance rounds save test recordings, restore settings, close tes
 `pnpm acceptance` leaves the accepted app closed and reports the final cleanup verdict in `report.md`; it refuses to quit a replaced process or an app not confirmed idle. Notification acceptance restores the bundle and settings but keeps the app closed. Settings acceptance supervises its own process group and writes `cleanup.json`, including timeout and interruption outcomes. Isolated runners clean only their own processes. Unit checks do not close unrelated apps. The settings-shortcut entry step leaves its panel open for native inspection; the complete Computer Use round owns final shutdown. Start the app before the next recording round; use `pnpm start:app` to rebuild changed code.
 
 The shortcut runner writes `input-diagnostics.json` before sending start and on failure: exact AppleScript, app PID, sender process, System Events UI status, frontmost app and any Secure Input owner reported by IORegistry. No reported owner is not proof that Secure Input was off. Diagnostic queries are read-only, bounded, and do not grant permissions. `events.log` and the current run’s `app-session.log` survive failed runs as well. An osascript success is not delivery proof: only the registered app callback counts. Do not blindly resend a toggle shortcut after timeout; it could stop a recording whose callback arrived late. When delivery fails, compare a physical press and the generated script against the same bundle and input context before attributing the failure to the app.
+
+
+### Repeatable settings regression
+
+```bash
+pnpm acceptance:regression
+```
+
+Runs TypeScript, Vitest and build first, then settings and shortcut fixtures sequentially without rebuilding twice. Each runner prints its own `docs/verification/measurements/` report path; nonzero exit means failure, and `&&` stops later stages. The integration repeats two cycles of Settings callback → real Electron Cmd+W (Ctrl+W elsewhere) → tray Settings handler reopen. It checks a single visible focused window, live app/registrations, unchanged preferences, and no capture transition or recording file.
+
+This exercises production main/preload/renderer with controlled shortcut-registration and tray boundaries, not real OS global-key delivery or physical tray clicks. Native entry still uses `pnpm acceptance:settings-shortcut` plus computer use/manual observation. Real recording still uses `pnpm start:app` and `pnpm acceptance`; the latter normally quits the tested app. Physical display reconnection, VoiceOver listening and user comprehension remain manual. Do not ask users to repeat passed cases unless related code, environment or test conditions changed.
