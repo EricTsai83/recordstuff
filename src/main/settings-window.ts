@@ -42,7 +42,6 @@ export class SettingsWindow {
   private resizeTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingSize: WindowSize | undefined;
   private rememberedSize: WindowSize | undefined;
-
   /** One save at a time, in request order: a queued request is never a failure. */
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -58,8 +57,8 @@ export class SettingsWindow {
       if (armed === false) this.endCapture();
       else if (armed === true && this.window?.isFocused() && preferencesUnlocked(this.options.state())) {
         if (!this.capturing) {
-          this.options.capture?.(true);
           this.capturing = true;
+          this.options.capture?.(true);
           this.captureTimer = setTimeout(() => { this.endCapture(); this.refresh(); }, 15_000);
         }
       }
@@ -188,7 +187,7 @@ export class SettingsWindow {
     const shortcut = view.groups.find(group => group.kind === "shortcut");
     if (shortcut) {
       shortcut.capturing = this.capturing;
-      if (this.capturing) delete shortcut.note;
+      if (this.capturing) { delete shortcut.note; delete shortcut.diagnostics; }
     }
     return view;
   }
@@ -207,13 +206,14 @@ export class SettingsWindow {
       this.log(`settings window: refused ${JSON.stringify({ group, choice })}`);
       this.endCapture();
       const view = this.view();
+      let failure = view.failure;
       if (group === "hotkey" && choice !== "off") {
         const error = isSettingsShortcut(choice, this.options.context().platform)
           ? SETTINGS_SHORTCUT_RESERVED : validateAccelerator(choice).error;
         const shortcut = view.groups.find(entry => entry.id === "hotkey");
-        if (error && shortcut) shortcut.note = translate(error, view.language);
+        if (error && shortcut) { failure = translate(error, view.language); shortcut.note = failure; }
       }
-      return { view, applied: false };
+      return { view, applied: false, failure };
     }
     this.committingHotkey = this.capturing && typeof action !== "string" && "setHotkey" in action;
     let outcome: boolean | void;
@@ -225,6 +225,7 @@ export class SettingsWindow {
     }
     return {
       view: this.view(),
+      ...(group === "about" ? { failure: translate("Could not open the link. Try again.", this.options.context().language) } : {}),
       applied: typeof outcome === "boolean"
         ? outcome
         : action === "checkUpdates" || action === "openUpdate" || settingsChecked(this.options.state(), this.options.context(), group, choice),

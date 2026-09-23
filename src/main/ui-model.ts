@@ -31,6 +31,8 @@ export type AppAction =
   | "revealLog"
   | "quit"
   | "checkUpdates"
+  | "openWebsite"
+  | "openSource"
   | "openUpdate"
   | { setUpdateChecks: boolean }
   | { setNotifications: boolean }

@@ -37,11 +37,12 @@ describe("settingsView", () => {
       "resolutionCap",
       "frameRate",
       "hotkey",
+      "notifications",
       "updateChecks",
       "updates",
-      "notifications",
       "language",
       "appearance",
+      "about",
     ]);
     for (const entry of view.groups) {
       expect(entry.choices.filter((choice) => choice.checked), entry.id).toHaveLength(entry.kind === "actions" ? 0 : 1);
@@ -64,10 +65,10 @@ describe("settingsView", () => {
   it("translates titles, hints and labels, and reflects a committed language", () => {
     const view = settingsView(idle, { ...context, language: "zh-TW" });
     expect(view.language).toBe("zh-TW");
-    expect(view.title).toBe("設定");
-    expect(view.hint).toBe("變更會自動儲存。");
+    expect(view.title).toBe("RecordStuff - 設置");
+    expect(view.hint).toBe("");
     expect(group(idle, { ...context, language: "zh-TW" }, "videoQuality")?.label).toBe("影像品質");
-    expect(settingsView(idle, context).title).toBe("Settings");
+    expect(settingsView(idle, context).title).toBe("RecordStuff - Settings");
   });
 
   it("keeps an unverified frame rate visible, selectable only where it is verified", () => {
@@ -84,10 +85,10 @@ describe("settingsView", () => {
     const conflicted = { ...context, hotkey: { ...DEFAULT_HOTKEY, registered: false } };
     expect(group(idle, conflicted, "hotkey")).toMatchObject({
       label: "Shortcut",
-      note: "Unavailable: another app is using this shortcut.",
+      diagnostics: [{ kind: "current", heading: "Shortcut unavailable", reason: "Unavailable: another app is using this shortcut.", guidance: "Recording is still available from the menu. Choose another shortcut." }],
     });
     expect(checked(idle, conflicted, "hotkey")).toBe(HOTKEY_PRESETS[0]);
-    expect(group(idle, { ...conflicted, language: "zh-TW" }, "hotkey")?.note).toBe("無法使用：這個快捷鍵被其他 App 佔用。");
+    expect(group(idle, { ...conflicted, language: "zh-TW" }, "hotkey")?.diagnostics?.[0]?.reason).toBe("無法使用：這個快捷鍵被其他 App 佔用。");
     // A registered shortcut needs no warning at all.
     expect(group(idle, context, "hotkey")).not.toHaveProperty("note");
   });
@@ -106,7 +107,7 @@ describe("recording locks every preference except the language", () => {
   it.each(busy)("$type", (state) => {
     const view = settingsView(state, context);
     expect(view.hint).toBe("Recording in progress. Recording settings are locked.");
-    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["language", "appearance"].includes(entry.id));
+    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["language", "appearance", "about"].includes(entry.id));
     expect(settingsAction(state, context, "language", "zh-TW")).toEqual({ setLanguage: "zh-TW" });
     for (const [group, choice] of [["videoQuality", "high"], ["frameRate", "60"], ["hotkey", "off"], ["updateChecks", "off"]]) {
       expect(settingsAction(state, context, group, choice), group).toBeUndefined();
@@ -115,7 +116,7 @@ describe("recording locks every preference except the language", () => {
 
   it("needsPermission is not a recording: everything stays editable", () => {
     const state: RecordingState = { type: "needsPermission", needsRelaunch: false };
-    expect(settingsView(state, context).hint).toBe("Changes are saved automatically.");
+    expect(settingsView(state, context).hint).toBe("");
     expect(settingsAction(state, context, "frameRate", "60")).toEqual({ setQuality: { frameRate: 60 } });
   });
 });
@@ -253,15 +254,50 @@ describe("screen choice", () => {
       expect(screen.choices.filter((c) => c.id === "7")).toHaveLength(1);
       expect(screen.choices.find((c) => c.checked)).toMatchObject({ id: "7", enabled: false });
       expect(settingsAction(idle, ctx, "screen", "7")).toBeUndefined();
-      expect(screen.note).toContain("Selected display is unavailable");
+      expect(screen.diagnostics?.[0]?.heading).toBe("Selected display is unavailable");
+      expect(screen.note).not.toContain("unavailable");
       expect(settingsAction(idle, ctx, "screen", "primary")).toEqual({ setDisplay: { kind: "primary" } });
     }
   });
   it("keeps last source failure visible with notifications off without calling it disconnected", () => {
     const ctx = { ...selected, notifications: false, displayFailure: "source_missing" as const };
-    expect(group(idle, ctx, "screen")?.note).toContain("Last display failure: Display is connected");
+    expect(group(idle, ctx, "screen")?.diagnostics?.[0]).toMatchObject({ kind: "history", heading: "Last recording failure" });
+    expect(group(idle, ctx, "screen")?.diagnostics?.[0]?.reason).toContain("Display is connected");
+    expect(group(idle, ctx, "screen")?.recovery).toBeUndefined();
     expect(group(idle, ctx, "screen")?.choices.find((c) => c.checked)?.enabled).toBe(true);
   });
+});
+
+
+it("declares presentation without changing choice identities, and authorizes only fixed links", () => {
+  const groups = settingsView(idle, context).groups;
+  expect(groups.map(g => [g.id, g.control, g.section])).toEqual([
+    ["screen", "menu", "recording"], ["videoQuality", "segmented", "recording"],
+    ["resolutionCap", "menu", "recording"], ["frameRate", "menu", "recording"],
+    ["hotkey", "menu", "hotkey"], ["notifications", "switch", "notifications"],
+    ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"],
+    ["language", "segmented", "language"], ["appearance", "menu", "appearance"], ["about", "menu", "about"],
+  ]);
+  expect(group(idle, { ...context, notifications: false }, "notifications")?.noteKind).toBe("status");
+  expect(group(idle, context, "videoQuality")?.noteKind).toBe("explanation");
+  expect(group(idle, context, "updates")?.noteKind).toBe("status");
+  expect(settingsAction(busy[0]!, context, "about", "website")).toBe("openWebsite");
+  expect(settingsAction(busy[0]!, context, "about", "source")).toBe("openSource");
+  expect(settingsAction(idle, context, "about", "https://evil.example")).toBeUndefined();
+});
+
+it("offers Primary recovery only for a current blocker with a resolvable alternative, and retains history on reconnect", () => {
+  const display = { id: "1", label: "Internal", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true };
+  const ctx: AppContext = { ...context, displays: [display], display: { kind: "display", id: "2", label: "External" }, displayFailure: "target_removed" };
+  const screen = group(idle, ctx, "screen")!;
+  expect(screen.recovery).toEqual({ choice: "primary", label: "Use Primary display" });
+  expect(screen.diagnostics?.map(d => d.kind)).toEqual(["current", "history"]);
+  expect(screen.choices.find(c => c.checked)?.label).toBe("External — Unavailable");
+  ctx.displays.push({ ...display, id: "2", label: "External", primary: false });
+  expect(group(idle, ctx, "screen")?.recovery).toBeUndefined();
+  expect(group(idle, ctx, "screen")?.diagnostics?.map(d => d.kind)).toEqual(["history"]);
+  ctx.displays = [];
+  expect(group(idle, ctx, "screen")?.recovery).toBeUndefined();
 });
 
 
@@ -281,5 +317,24 @@ it("keeps the previous update result visible while checking again", () => {
     expect(during.note).toBe(before.note);
     expect(during.choices.map(c => c.id)).toEqual(before.choices.map(c => c.id));
     expect(during.choices[0]!.label).toBe("Checking for updates…");
+  }
+});
+
+
+it("offers one recommended shortcut and only the currently saved custom value", () => {
+  const recommended = DEFAULT_HOTKEY.accelerator;
+  const choices = group(idle, context, "hotkey")!.choices;
+  expect(choices.map(c => c.id)).toEqual([recommended, "off"]);
+  expect(choices[0]!.label).toBe("Recommended: ⌘⇧1");
+  expect(group(idle, { ...context, language: "zh-TW" }, "hotkey")!.choices[0]!.label).toBe("建議：⌘⇧1");
+  for (const accelerator of [...HOTKEY_PRESETS.slice(1), "Control+Shift+F20"]) {
+    const custom = { ...context, hotkey: { enabled: true, registered: true, accelerator } };
+    const customChoices = group(idle, custom, "hotkey")!.choices;
+    expect(customChoices.map(c => c.id)).toEqual([recommended, accelerator, "off"]);
+    expect(customChoices[1]).toMatchObject({ checked: true });
+    expect(customChoices[1]!.label).toContain("(custom)");
+    // Returning to the recommendation has no remembered custom/history item.
+    const restored = { ...custom, hotkey: { ...custom.hotkey, accelerator: recommended } };
+    expect(group(idle, restored, "hotkey")!.choices.map(c => c.id)).toEqual([recommended, "off"]);
   }
 });

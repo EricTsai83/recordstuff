@@ -8,8 +8,9 @@ import { displayResolution } from "./display-source";
  * Group and choice ids are stable identifiers — never labels, never encoded
  * actions. The panel echoes an id back and `settingsAction` resolves it
  * against a freshly built model, so a request can only ever perform work the
- * app is offering at that moment. Everything except the language is locked
- * while a capture is running; index.ts re-checks the same rule before saving.
+ * app is offering at that moment. Recording preferences are locked
+ * while a capture is running; language and appearance remain editable.
+ * index.ts re-checks recording locks before saving.
  */
 import { translate as t, type Language, type MessageKey } from "../shared/i18n";
 import {
@@ -20,7 +21,7 @@ import {
   type ResolutionCap,
   type VideoQuality,
 } from "../shared/quality";
-import { HOTKEY_PRESETS, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut } from "../shared/hotkey";
+import { DEFAULT_HOTKEY, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut } from "../shared/hotkey";
 import type { SettingsChoice, SettingsGroup, SettingsView } from "../shared/settings-panel";
 import type { RecordingState } from "../shared/state";
 
@@ -51,7 +52,10 @@ function group(
   note?: string,
 ): Group {
   const tab = ["screen", "videoQuality", "resolutionCap", "frameRate"].includes(id) ? "recording" : "general";
-  return { id, label, enabled, choices, tab, ...(note === undefined ? {} : { note }) };
+  return { id, label, enabled, choices, tab,
+    control: ["notifications", "updateChecks"].includes(id) ? "switch" : ["videoQuality", "language"].includes(id) ? "segmented" : "menu",
+    section: tab === "recording" ? "recording" : id === "updateChecks" ? "updates" : id,
+    noteKind: "explanation", ...(note === undefined ? {} : { note }) };
 }
 
 function screenGroup(ctx: AppContext, enabled: boolean): Group {
@@ -66,11 +70,22 @@ function screenGroup(ctx: AppContext, enabled: boolean): Group {
       action: { setDisplay: { kind: "display", id: display.id, label: display.label } } });
   }
   if (preference.kind === "display" && !resolution.ok) choices.push({ id: preference.id,
-    label: displayLabel(preference, ctx.language), enabled: false, checked: true, action: { setDisplay: preference } });
-  const notes = [t("Captures one whole screen. System audio is unaffected.", ctx.language)];
-  if (!resolution.ok) notes.push(displayFailureText(resolution.detail, ctx.language));
-  if (ctx.displayFailure) notes.push(t("Last display failure: {reason}", ctx.language, { reason: displayFailureText(ctx.displayFailure, ctx.language) }));
-  return group("screen", t("Screen", ctx.language), enabled, choices, notes.join(" "));
+    label: t("{label} — Unavailable", ctx.language, { label: displayLabel(preference, ctx.language) }), enabled: false, checked: true, action: { setDisplay: preference } });
+  const result = group("screen", t("Screen", ctx.language), enabled, choices,
+    t("Captures one whole screen. System audio is unaffected.", ctx.language));
+  result.diagnostics = [];
+  if (!resolution.ok) {
+    result.diagnostics.push({ kind: "current", heading: t("Selected display is unavailable", ctx.language),
+      reason: t("{label} is unavailable, so recording cannot start.", ctx.language, { label: preference.kind === "display" ? displayLabel(preference, ctx.language) : t("Primary display", ctx.language) }),
+      guidance: t("Choose Primary display or another available screen.", ctx.language) });
+    if (preference.kind === "display" && ctx.displays.some(d => d.primary && ctx.displays.filter(other => other.id === d.id).length === 1))
+      result.recovery = { choice: "primary", label: t("Use Primary display", ctx.language) };
+  }
+  if (ctx.displayFailure) result.diagnostics.push({ kind: "history",
+    heading: t(["target_removed", "track_ended"].includes(ctx.displayFailure) ? "Last recording interrupted" : "Last recording failure", ctx.language),
+    reason: displayFailureText(ctx.displayFailure, ctx.language),
+    guidance: t("Try recording again using the shortcut or menu, or choose another screen.", ctx.language) });
+  return result;
 }
 
 function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {
@@ -106,7 +121,7 @@ function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {
 }
 
 /**
- * One preset per choice plus Off (plan 016). A registration the OS refused is
+ * One recommended shortcut, the current custom value, and Off. A registration the OS refused is
  * never silent: the saved choice stays selected and the note says it is inert.
  */
 function hotkeyGroup(ctx: AppContext, enabled: boolean): Group[] {
@@ -115,12 +130,14 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group[] {
   const note = hotkey.enabled && !hotkey.registered
     ? t("Unavailable: another app is using this shortcut.", language)
     : undefined;
-  const accelerators: readonly string[] = HOTKEY_PRESETS.includes(hotkey.accelerator as typeof HOTKEY_PRESETS[number])
-    ? HOTKEY_PRESETS : [...HOTKEY_PRESETS, hotkey.accelerator];
+  const recommended = DEFAULT_HOTKEY.accelerator;
+  const accelerators = hotkey.accelerator === recommended ? [recommended] : [recommended, hotkey.accelerator];
   return [{ ...group("hotkey", t("Shortcut", language), enabled, [
     ...accelerators.map((accelerator) => ({
       id: accelerator,
-      label: describeAccelerator(accelerator, ctx.platform),
+      label: accelerator === recommended
+        ? t("Recommended: {shortcut}", language, { shortcut: describeAccelerator(accelerator, ctx.platform) })
+        : t("{shortcut} (custom)", language, { shortcut: describeAccelerator(accelerator, ctx.platform) }),
       enabled: true,
       checked: hotkey.enabled && accelerator === hotkey.accelerator,
       action: { setHotkey: { enabled: true, accelerator } } satisfies AppAction,
@@ -133,7 +150,9 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group[] {
       // Keep the remembered accelerator so re-enabling restores the choice.
       action: { setHotkey: { enabled: false, accelerator: hotkey.accelerator } },
     },
-  ], note), kind: "shortcut", platform: ctx.platform }];
+  ], undefined), kind: "shortcut", platform: ctx.platform, noteKind: "status",
+    ...(note ? { diagnostics: [{ kind: "current" as const, heading: t("Shortcut unavailable", language), reason: note,
+      guidance: t("Recording is still available from the menu. Choose another shortcut.", language) }] } : {}) }];
 }
 
 function updateChecksGroup(ctx: AppContext, enabled: boolean): Group[] {
@@ -165,7 +184,7 @@ function updateActions(ctx: AppContext, enabled: boolean): Group {
   const note = result?.kind === "current"
     ? t("Up to date (checked {time})", language, { time: new Date(result.checkedAt).toLocaleString(language) })
     : undefined;
-  return { ...group("updates", t("Updates", language), enabled, choices, note), kind: "actions" };
+  return { ...group("updates", t("Updates", language), enabled, choices, note), kind: "actions", noteKind: "status" };
 }
 
 /**
@@ -195,6 +214,7 @@ function notificationsGroup(ctx: AppContext, enabled: boolean): Group[] {
     checked: value === ctx.notifications,
     action: { setNotifications: value },
   })), note);
+  switchGroup.noteKind = ctx.notifications ? "explanation" : "status";
   // Only macOS hides notifications behind a pane worth linking to. It sits in
   // this card so the switch and the permission that can override it read as
   // one decision rather than two unrelated settings.
@@ -225,15 +245,22 @@ function settingsGroups(state: RecordingState, ctx: AppContext): Group[] {
     screenGroup(ctx, unlocked),
     ...qualityGroups(ctx, unlocked),
     ...hotkeyGroup(ctx, unlocked),
+    ...notificationsGroup(ctx, unlocked),
     ...updateChecksGroup(ctx, unlocked),
     updateActions(ctx, unlocked),
-    ...notificationsGroup(ctx, unlocked),
     ...languageGroup(ctx.language),
     group("appearance", t("Appearance", ctx.language), true, (["system", "light", "dark"] as const).map(value => ({
       id: value, label: t(value === "system" ? "System default" : value === "light" ? "Light" : "Dark", ctx.language),
       enabled: true, checked: value === (ctx.appearance ?? "system"), action: { setAppearance: value },
     }))),
-  ];
+    { ...group("about", t("Built by Eric Tsai", ctx.language), true, [
+      { id: "website", label: t("Official website", ctx.language), enabled: true, checked: false, action: "openWebsite" },
+      { id: "source", label: t("GitHub source", ctx.language), enabled: true, checked: false, action: "openSource" },
+    ]), kind: "actions" },
+  ].map((entry): Group => ({ ...entry,
+    ...(entry.id === "updateChecks" ? { sectionHeading: t("Updates", ctx.language) } : {}),
+    ...(!unlocked && entry.id === "frameRate" ? { sectionFootnote: t("Recording in progress. Recording settings are locked.", ctx.language) } : {}),
+  } as Group));
 }
 
 /** Everything the panel renders. Actions stay in main; the panel only sees ids. */
@@ -242,11 +269,8 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
   const unlocked = preferencesUnlocked(state);
   return {
     language,
-    title: t("Settings", language),
-    hint: t(
-      unlocked ? "Changes are saved automatically." : "Recording in progress. Recording settings are locked.",
-      language,
-    ),
+    title: t("RecordStuff - Settings", language),
+    hint: unlocked ? "" : t("Recording in progress. Recording settings are locked.", language),
     failure: t("Could not apply this setting. Your current settings are shown.", language),
     tabs: [{ id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) }],
     groups: settingsGroups(state, ctx).map(({ choices, actions, ...rest }) => ({

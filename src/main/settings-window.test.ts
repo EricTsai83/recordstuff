@@ -138,8 +138,8 @@ describe("settings window lifecycle", () => {
     s.panel.refresh(); // closed: nothing to push, nothing to throw
     s.panel.show();
     s.panel.refresh();
-    expect(s.window().webContents.send).toHaveBeenCalledWith("settings:changed", expect.objectContaining({ title: "Settings" }));
-    expect(s.window().setTitle).toHaveBeenCalledWith("Settings");
+    expect(s.window().webContents.send).toHaveBeenCalledWith("settings:changed", expect.objectContaining({ title: "RecordStuff - Settings" }));
+    expect(s.window().setTitle).toHaveBeenCalledWith("RecordStuff - Settings");
     expect(s.window().destroy).not.toHaveBeenCalled();
     s.window().events.get("closed")!();
     s.panel.refresh();
@@ -195,7 +195,7 @@ describe("settings window IPC", () => {
   it("answers only its own window's main frame", async () => {
     const s = setup();
     s.panel.show();
-    expect(s.read(s.event())).toMatchObject({ title: "Settings" });
+    expect(s.read(s.event())).toMatchObject({ title: "RecordStuff - Settings" });
     expect(() => s.read({ sender: {}, senderFrame: {} })).toThrow("Invalid settings sender");
     expect(() => s.read({ sender: s.window().webContents, senderFrame: {} })).toThrow("Invalid settings sender");
     // `ipcMain.handle` turns a thrown error into a rejected invoke for the panel.
@@ -347,6 +347,39 @@ it("restores capture ownership after renderer failure", () => {
   mock.handlers.get("settings:capture")!(s.event(), true);
   const handler = s.window().webContents.on.mock.calls.find((call: any[]) => call[0] === "render-process-gone")[1];
   handler(); expect(s.capture).toHaveBeenLastCalledWith(false);
+});
+
+
+it("reauthorizes fixed footer ids during recording and returns link opening failures", async () => {
+  const act = vi.fn(async () => false);
+  const s = setup({ act, state: () => ({ type: "starting" }) });
+  s.panel.show();
+  const result = await s.choose(s.event(), "about", "website");
+  expect(result.applied).toBe(false);
+  expect(result).toHaveProperty("failure", "Could not open the link. Try again.");
+  expect(act).toHaveBeenCalledWith("openWebsite");
+  await s.choose(s.event(), "about", "https://evil.example");
+  expect(act).toHaveBeenCalledTimes(1);
+  s.panel.destroy();
+});
+
+
+it("does not report temporary shortcut suspension as an OS conflict while capturing", () => {
+  const s = setup(); s.panel.show();
+  s.live.hotkey = { ...s.live.hotkey, registered: false };
+  const result = mock.handlers.get("settings:capture")!(s.event(), true);
+  expect(result.groups.find((g: any) => g.id === "hotkey")).toMatchObject({ capturing: true });
+  expect(result.groups.find((g: any) => g.id === "hotkey").diagnostics).toBeUndefined();
+  s.panel.destroy();
+});
+
+
+it("reports save refusal rather than static screen help when recording starts", async () => {
+  const s = setup({ state: () => ({ type: "starting" }) }); s.panel.show();
+  const result = await s.choose(s.event(), "screen", "primary");
+  expect(result).toHaveProperty("failure", "Could not apply this setting. Your current settings are shown.");
+  expect(result.applied).toBe(false);
+  expect(s.act).not.toHaveBeenCalled(); s.panel.destroy();
 });
 
 

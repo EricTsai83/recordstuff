@@ -374,6 +374,12 @@ async function main(): Promise<void> {
       case "checkUpdates":
         await updates.check(true);
         return;
+      case "openWebsite":
+      case "openSource":
+        try {
+          await shell.openExternal(action === "openWebsite" ? "https://record.ericts.com" : "https://github.com/EricTsai83/recordstuff");
+          return true;
+        } catch (error) { log(`settings: external link failed: ${String(error)}`); return false; }
       case "openUpdate":
         if (settled()) await shell.openExternal(updates.state.kind === "available" ? DOWNLOAD_URL : RELEASES_URL);
         return;

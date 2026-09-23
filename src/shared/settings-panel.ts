@@ -19,6 +19,17 @@ export interface SettingsGroup {
   label: string;
   tab: "recording" | "general";
   kind?: "actions" | "shortcut";
+  /** Presentation only; omitted controls default to a native menu. */
+  control?: "switch" | "segmented" | "menu";
+  /** Consecutive rows with this id share an inset list. */
+  section?: string;
+  sectionHeading?: string;
+  sectionFootnote?: string;
+  /** Omitted notes are static explanations. */
+  noteKind?: "explanation" | "status";
+  diagnostics?: Array<{ kind: "current" | "history"; heading: string; reason: string; guidance: string }>;
+  /** References a currently offered choice; never a new action payload. */
+  recovery?: { choice: string; label: string };
   capturing?: boolean;
   platform?: string;
   /** Extra line under the control, e.g. a shortcut the OS refused to register. */
@@ -45,6 +56,7 @@ export interface SettingsChoiceResult {
   view: SettingsView;
   /** Whether the requested choice is the committed one now. */
   applied: boolean;
+  failure?: string;
 }
 /** What the preload exposes to the panel. */
 export interface SettingsBridge {
