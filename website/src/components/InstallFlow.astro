@@ -1,0 +1,97 @@
+---
+import InstallGlyph from "./InstallGlyph.astro";
+
+const stages = [
+  { label: "Download", title: "Download RecordStuff", body: "Download the DMG for your Mac.", kind: "download" },
+  { label: "Drag to Applications", title: "Drag to Applications", body: "Open the DMG and drag RecordStuff into the Applications folder.", kind: "drag" },
+  { label: "Open", title: "Allow the app to open", body: "Open RecordStuff from Applications and allow it to launch.", kind: "open" },
+  { label: "Grant access", title: "Enable screen & audio", body: "Grant Screen & System Audio Recording access in System Settings.", kind: "permissions" },
+  { label: "Record", title: "Record from the menu bar", body: "Click the icon to record. Click again to stop and save.", kind: "record" },
+] as const;
+---
+
+<div class="install-flow">
+  <div class="diagram">
+    <!-- Wire coordinates share the five equal-width stage columns. The icon
+         band is always 240px tall, so copy wrapping cannot shift a junction. -->
+    <svg class="desktop-wires" viewBox="0 0 1000 240" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M100 120H590Q600 120 600 110V70Q600 60 610 60H700M600 120V170Q600 180 610 180H700M700 60H790Q800 60 800 70V170Q800 180 790 180H700M800 120H900" />
+      <path class="direction" d="m198 116 4 4-4 4M398 116l4 4-4 4M838 116l4 4-4 4" />
+    </svg>
+    <span class="junction junction--split" aria-hidden="true"></span>
+    <span class="junction junction--merge" aria-hidden="true"></span>
+
+    <ol class="stages">
+      {stages.map((stage) => <li class:list={["stage", stage.kind === "permissions" && "stage--permissions"]} aria-label={`${stage.title}. ${stage.body}`}>
+        <div class="stage-art" aria-hidden="true">
+          {stage.kind === "permissions" ? <>
+            <svg class="mobile-wires" viewBox="0 0 1000 180" preserveAspectRatio="none"><path d="M500 0V30M250 72V38Q250 30 258 30H742Q750 30 750 38V152Q750 160 742 160H258Q250 160 250 152V72M500 160V180" /></svg>
+            <div class="permission-node permission-node--screen"><span class="glyph"><InstallGlyph kind="screen" /></span><span>Screen</span></div>
+            <div class="permission-node permission-node--audio"><span class="glyph"><InstallGlyph kind="audio" /></span><span>System audio</span></div>
+          </> : <span class="glyph"><InstallGlyph kind={stage.kind} /></span>}
+        </div>
+        <div class="stage-label">{stage.label}</div>
+      </li>)}
+    </ol>
+  </div>
+</div>
+
+<style>
+  .install-flow {
+    --wire: color-mix(in srgb, var(--fg) 30%, transparent);
+    --art-height: 240px;
+  }
+  .diagram { position: relative; }
+  .stages { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); list-style: none; }
+  .stage { position: relative; min-width: 0; text-align: center; }
+  .stage-label { position: absolute; top: 176px; left: 0; width: 100%; padding: 0 .5rem; color: var(--fg); font-size: .85rem; line-height: 1.5; text-wrap: balance; }
+  .stage--permissions .stage-label { position: relative; top: auto; margin-top: 1.2rem; }
+  .stage-art { position: relative; height: var(--art-height); display: grid; place-items: center; }
+  .glyph { display: block; position: relative; background: var(--bg); padding: 10px 16px; }
+  .glyph :global(svg) { width: 64px; height: 64px; }
+  .desktop-wires {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: var(--art-height);
+    fill: none;
+    stroke: var(--wire);
+    stroke-width: 1;
+    pointer-events: none;
+  }
+  .desktop-wires path, .mobile-wires path { vector-effect: non-scaling-stroke; }
+  .desktop-wires .direction { stroke: var(--fg-muted); }
+  .junction { position: absolute; top: calc(var(--art-height) / 2); width: 5px; height: 5px; background: var(--fg-muted); border-radius: 50%; transform: translate(-50%, -50%); }
+  .junction--split { left: 60%; }
+  .junction--merge { left: 80%; }
+  .permission-node { position: absolute; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: .4rem; white-space: nowrap; color: var(--fg-muted); font-size: .75rem; }
+  .permission-node--screen { top: 26px; }
+  .permission-node--audio { top: 146px; }
+  .permission-node .glyph { padding: 10px 16px; color: var(--fg); }
+  .permission-node .glyph :global(svg) { width: 48px; height: 48px; }
+  .permission-node>span:last-child { background: var(--bg); padding: 0 .4rem; }
+  .mobile-wires { display: none; }
+
+  @media (max-width: 1000px) {
+    .glyph { padding: 10px; }
+    .glyph :global(svg) { width: 56px; height: 56px; }
+  }
+  @media (max-width: 900px) {
+    .desktop-wires, .junction { display: none; }
+    .stages { grid-template-columns: 1fr; gap: 2rem; max-width: 440px; margin: 0 auto; }
+    .stage:not(:last-child)::after { content: ""; position: absolute; top: 76px; bottom: -2rem; left: 50%; border-left: 1px solid var(--wire); }
+    .stage-label, .stage--permissions .stage-label { position: relative; top: auto; left: auto; width: fit-content; margin: 0 auto; padding: .5rem .75rem; background: var(--bg); z-index: 1; }
+    .stage-art { height: 76px; }
+    .glyph { padding: 0; }
+    .glyph :global(svg) { width: 48px; height: 48px; }
+    .stage--permissions .stage-art { height: 180px; }
+    .stage.stage--permissions::after { top: 180px; }
+    .mobile-wires { display: block; position: absolute; inset: 0; width: 100%; height: 180px; fill: none; stroke: var(--wire); stroke-width: 1; overflow: visible; }
+    .permission-node { top: 42px; gap: .35rem; }
+    .permission-node--screen { left: 25%; }
+    .permission-node--audio { left: 75%; }
+    .permission-node .glyph { padding: 6px 10px; }
+    .permission-node>span:last-child { font-size: .7rem; }
+  }
+</style>

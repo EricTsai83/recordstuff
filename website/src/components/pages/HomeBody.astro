@@ -3,8 +3,7 @@ import FeatureGrid from "../FeatureGrid.astro";
 import HowItWorks from "../HowItWorks.astro";
 import Section from "../Section.astro";
 import SpecsBand from "../SpecsBand.astro";
-import StepList from "../StepList.astro";
-import { installSteps } from "../../content/site";
+import InstallFlow from "../InstallFlow.astro";
 ---
 
 <slot />
@@ -12,46 +11,14 @@ import { installSteps } from "../../content/site";
 <Section id="features" title="Stays out of the way">
   <FeatureGrid />
 </Section>
+
 <SpecsBand />
-<Section id="get" title="Download, drag, allow, record">
-  <div class="get-grid">
-    <StepList steps={installSteps.map((step) => ({ title: step.title, body: "" }))} />
-    <div class="get-actions">
-      <a class="btn btn-primary btn-lg" href="/download">Go to download</a>
-      <a class="btn btn-lg" href="/help">Read the full guide</a>
-    </div>
-  </div>
+<Section id="get" title="Download, drag, open, allow, record">
+  <InstallFlow />
 </Section>
 
 <style>
-  .get-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-    gap: 2.5rem;
-    align-items: start;
-  }
-  .get-grid :global(.steps) {
-    gap: 0.6rem;
-  }
-  .get-grid :global(.step) {
-    padding: 0.9rem 1.1rem;
-  }
-  .get-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    align-items: stretch;
-    position: sticky;
-    top: calc(var(--nav-h) + 24px);
-  }
-  @media (max-width: 900px) {
-    .get-grid {
-      grid-template-columns: 1fr;
-    }
-    .get-actions {
-      position: static;
-      flex-direction: row;
-      flex-wrap: wrap;
-    }
+  :global(#get) {
+    padding-bottom: calc(var(--section-y) * 1.6);
   }
 </style>
