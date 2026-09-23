@@ -10,10 +10,14 @@
  *
  * Compiled automatically by acceptance-settings.mts before Electron loads it.
  */
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, nativeTheme } from "electron";
 import type { Language } from "../../src/shared/i18n";
 import type { SettingsView } from "../../src/shared/settings-panel";
 import fs from "node:fs";
+import { settingsView } from "../../src/main/settings-model";
+import { DEFAULT_QUALITY } from "../../src/shared/quality";
+import { DEFAULT_HOTKEY } from "../../src/shared/hotkey";
+import type { AppContext } from "../../src/main/ui-model";
 import path from "node:path";
 
 const [outDir, root] = (() => {
@@ -31,8 +35,8 @@ const view = (language: Language): SettingsView => {
   const zh = language === "zh-TW";
   return {
     language,
-    title: zh ? "設定" : "Settings",
-    hint: zh ? "變更會自動儲存。" : "Changes are saved automatically.",
+    title: zh ? "RecordStuff - 設置" : "RecordStuff - Settings",
+    hint: "",
     failure: zh
       ? "無法套用這項設定，目前顯示的是實際使用的設定。"
       : "Could not apply this setting. Your current settings are shown.",
@@ -69,6 +73,7 @@ const view = (language: Language): SettingsView => {
       },
       {
         id: "notifications",
+        control: "switch", section: "notifications",
         tab: "general",
         label: zh ? "通知" : "Notifications",
         note: zh ? "錄影儲存完成或發生錯誤時顯示通知。" : "Shows a notification when a recording is saved or an error occurs.",
@@ -83,6 +88,7 @@ const view = (language: Language): SettingsView => {
       },
       {
         id: "language",
+        control: "segmented", section: "language",
         tab: "recording",
         label: zh ? "語言" : "Language",
         enabled: true,
@@ -97,13 +103,21 @@ const view = (language: Language): SettingsView => {
 
 let language: Language = "zh-TW";
 let notifications = true;
+let captureView: SettingsView | undefined;
 const chooseCalls: Array<[string, string]> = [];
 let holdSaves = false;
 const heldSaves: Array<() => void> = [];
 const pendingSaveCount = (): number => heldSaves.length;
 ipcMain.handle("settings:read", () => view(language));
+ipcMain.handle("settings:capture", (_event, armed: boolean) => {
+  if (!captureView) return view(language);
+  captureView = structuredClone(captureView);
+  captureView.groups.find(g => g.id === "hotkey")!.capturing = armed;
+  return captureView;
+});
 ipcMain.handle("settings:choose", (_event, group: string, choice: string) => {
   chooseCalls.push([group, choice]);
+  if (group === "about" && captureView) return { view: captureView, applied: false, failure: "Could not open the link. Try again." };
   const commit = () => {
     if (group === "language" && (choice === "en" || choice === "zh-TW")) language = choice;
     if (group === "notifications" && choice !== "openSettings") notifications = choice === "on";
@@ -166,9 +180,11 @@ async function run() {
 
   record(
     "the shipped page loads under the shipped CSP with no console errors",
-    consoleErrors.length === 0 && rendered.controls.length === 3,
+    consoleErrors.length === 0 && rendered.controls.length === 2,
     JSON.stringify({ consoleErrors, controls: rendered.controls.length }),
   );
+  const compactHeader = await read<boolean>(window, `!document.querySelector(".app-icon") && document.getElementById("title").classList.contains("visually-hidden") && document.getElementById("hint").hidden`);
+  record("content starts with tabs without duplicate branding or autosave hint", compactHeader, String(compactHeader));
   record(
     "the preload exposes capture/read/choose/onChanged and nothing else",
     JSON.stringify(rendered.bridge) === '["capture","choose","onChanged","read"]',
@@ -181,14 +197,14 @@ async function run() {
   );
   record(
     "the URL language localizes the first render",
-    rendered.title === "設定" && rendered.docTitle === "設定" && rendered.lang === "zh-Hant",
+    rendered.title === "RecordStuff - 設置" && rendered.docTitle === "RecordStuff - 設置" && rendered.lang === "zh-Hant",
     JSON.stringify([rendered.title, rendered.docTitle, rendered.lang]),
   );
   record(
     "each group renders one live control showing the committed value",
     rendered.controls.every((c) => !c.disabled) &&
       rendered.controls.map((c) => [c.id, c.value].join("=")).join(",") ===
-        "setting-frameRate=30,setting-hotkey=CommandOrControl+Alt+Shift+R,setting-language=zh-TW",
+        "setting-frameRate=30,setting-hotkey=CommandOrControl+Alt+Shift+R",
     JSON.stringify(rendered.controls.map((c) => [c.id, c.value])),
   );
   record(
@@ -199,15 +215,13 @@ async function run() {
   record(
     "a refused shortcut shows its note and the control points at it",
     rendered.note === "無法使用：這個快捷鍵被其他 App 佔用。" &&
-      rendered.controls[1]?.describedBy === "setting-hotkey-note",
+      rendered.controls[1]?.describedBy?.includes("setting-hotkey-note") === true,
     JSON.stringify([rendered.note, rendered.controls[1]?.describedBy]),
   );
 
   // A real change event, through the real preload, to main and back.
   await read(window, `(() => {
-    const select = document.querySelector("#setting-language");
-    select.value = "en";
-    select.dispatchEvent(new Event("change"));
+    document.querySelector("#setting-language-en").click();
   })()`);
   await settle(700);
   const applied = await read<{ title: string; lang: string; hotkeyLabel: string; feedback: string }>(window, `(() => ({
@@ -223,7 +237,7 @@ async function run() {
   );
   record(
     "the committed answer re-renders the whole panel in the new language",
-    applied.title === "Settings" && applied.lang === "en" && applied.hotkeyLabel === "Shortcut",
+    applied.title === "RecordStuff - Settings" && applied.lang === "en" && applied.hotkeyLabel === "Shortcut",
     JSON.stringify(applied),
   );
   record("a committed change shows no failure text", applied.feedback === "", JSON.stringify(applied.feedback));
@@ -236,7 +250,7 @@ async function run() {
   })()`);
   await settle(700);
   const refused = await read<{ feedback: string; frameRate: string }>(window, `(() => ({
-    feedback: document.querySelector("#feedback").textContent,
+    feedback: document.querySelector("#setting-frameRate-row .save-error p").textContent,
     frameRate: document.querySelector("#setting-frameRate").value,
   }))()`);
   record(
@@ -249,8 +263,8 @@ async function run() {
   // Keep two real IPC requests pending and interleave an older main push.
   holdSaves = true;
   const selectLanguage = (value: Language) => read(window, `(() => {
-    const select = document.querySelector("#setting-language");
-    select.value = ${JSON.stringify(value)};
+    const select = document.querySelector("#setting-language-" + ${JSON.stringify(value)});
+    select.checked = true;
     select.dispatchEvent(new Event("change"));
   })()`);
   await selectLanguage("zh-TW");
@@ -261,21 +275,21 @@ async function run() {
   window.webContents.send("settings:changed", view(language));
   await settle(100);
   const pending = await read<{ value: string; locked: boolean; feedback: string }>(window, `({
-    value: document.querySelector("#setting-language").value,
+    value: document.querySelector("#setting-language input:checked").value,
     locked: document.querySelector("#setting-hotkey").disabled,
     feedback: document.querySelector("#feedback").textContent,
   })`);
-  record("an older completion and push retain the latest pending choice and lock",
-    pending.value === "en" && pending.locked && pending.feedback === "", JSON.stringify(pending));
+  record("an older completion and push show the committed pushed value and retain the pending lock",
+    pending.value === "zh-TW" && pending.locked && pending.feedback === "", JSON.stringify(pending));
   heldSaves.shift()!();
   await settle(100);
   const finished = await read<{ value: string; locked: boolean; title: string }>(window, `({
-    value: document.querySelector("#setting-language").value,
+    value: document.querySelector("#setting-language input:checked").value,
     locked: document.querySelector("#setting-hotkey").disabled,
     title: document.title,
   })`);
   record("the final completion unlocks controls and displays committed settings",
-    finished.value === "en" && !finished.locked && finished.title === "Settings", JSON.stringify(finished));
+    finished.value === "en" && !finished.locked && finished.title === "RecordStuff - Settings", JSON.stringify(finished));
 
   // Stop holding saves: the cases below judge settled state, and a still-pending
   // save keeps `saving` set, which renders every button disabled.
@@ -289,8 +303,8 @@ async function run() {
     const row = document.querySelector("#setting-notifications")?.closest(".row");
     const kids = row ? [...row.children].map(el => el.tagName.toLowerCase() + (el.id ? "#" + el.id : "." + el.className)) : [];
     return {
-      controls: [...document.querySelectorAll("select")].map(s => s.id),
-      buttons: [...document.querySelectorAll(".row button")].map(b => ({ id: b.id, text: b.textContent, disabled: b.disabled })),
+      controls: [...document.querySelectorAll("input[role=switch]")].map(s => s.id),
+      buttons: [...document.querySelectorAll(".row button")].filter(b => !b.closest("[hidden]")).map(b => ({ id: b.id, text: b.textContent, disabled: b.disabled })),
       value: document.querySelector("#setting-notifications")?.value ?? null,
       order: kids,
     };
@@ -301,7 +315,7 @@ async function run() {
       general.buttons.length === 1 &&
       general.buttons[0]?.id === "setting-notifications-openSettings" &&
       general.buttons[0]?.disabled === false &&
-      general.order.at(-1) === "button#setting-notifications-openSettings",
+      general.order.includes("button#setting-notifications-openSettings"),
     JSON.stringify(general),
   );
 
@@ -321,7 +335,7 @@ async function run() {
   chooseCalls.length = 0;
   await read(window, `(() => {
     const select = document.querySelector("#setting-notifications");
-    select.value = "off";
+    select.checked = false;
     select.dispatchEvent(new Event("change"));
   })()`);
   await settle(700);
@@ -330,14 +344,13 @@ async function run() {
     return {
       value: document.querySelector("#setting-notifications").value,
       feedback: document.querySelector("#feedback").textContent,
-      buttons: [...row.querySelectorAll("button")].map(b => ({ id: b.id, disabled: b.disabled })),
+      buttons: [...row.querySelectorAll("button:not([hidden])")].filter(b => !b.closest("[hidden]")).map(b => ({ id: b.id, disabled: b.disabled })),
     };
   })()`);
   record(
     "turning the switch off commits and leaves the pane button usable",
     off.value === "off" && off.feedback === "" &&
-      off.buttons.length === 1 && off.buttons[0]?.id === "setting-notifications-openSettings" &&
-      off.buttons[0]?.disabled === false,
+      off.buttons.some(b => b.id === "setting-notifications-openSettings" && !b.disabled),
     JSON.stringify(off),
   );
 
@@ -352,8 +365,9 @@ async function run() {
         select, panel: document.querySelector("#settings-panel"),
         button: document.querySelector("#setting-notifications-openSettings"),
         scroll: window.scrollY,
+        below: document.querySelector("#setting-updates-row")?.getBoundingClientRect().top,
       };
-      select.value = ${JSON.stringify(value)};
+      select.checked = ${JSON.stringify(value)} === "on";
       select.dispatchEvent(new Event("change"));
     })()`);
     await settle(100);
@@ -363,21 +377,21 @@ async function run() {
       sameSelect: beforeToggle.select === document.querySelector("#setting-notifications"),
       samePanel: beforeToggle.panel === document.querySelector("#settings-panel"),
       focused: document.activeElement === beforeToggle.select,
-      scrollStable: window.scrollY === beforeToggle.scroll,
+      scrollStable: window.scrollY === beforeToggle.scroll && document.querySelector("#setting-updates-row")?.getBoundingClientRect().top === beforeToggle.below,
       value: beforeToggle.select.value,
       buttonLocked: beforeToggle.button.disabled,
       buttonOpacity: getComputedStyle(beforeToggle.button).opacity,
     })`);
     record(`notification ${value}: pending save and push preserve controls, focus, scroll and brightness`,
       during.sameSelect && during.samePanel && during.focused && during.scrollStable &&
-      during.value === value && during.buttonLocked && during.buttonOpacity === "1", JSON.stringify(during));
+      during.value === (value === "on" ? "off" : "on") && during.buttonLocked && during.buttonOpacity === "1", JSON.stringify(during));
     if (pendingSaveCount() !== 1) throw new Error("Expected one pending notification save");
     heldSaves.shift()!();
     await settle(100);
     const after = await read<{ sameSelect: boolean; focused: boolean; scrollStable: boolean; value: string; buttonLocked: boolean }>(window, `({
       sameSelect: beforeToggle.select === document.querySelector("#setting-notifications"),
       focused: document.activeElement === beforeToggle.select,
-      scrollStable: window.scrollY === beforeToggle.scroll,
+      scrollStable: window.scrollY === beforeToggle.scroll && document.querySelector("#setting-updates-row")?.getBoundingClientRect().top === beforeToggle.below,
       value: beforeToggle.select.value,
       buttonLocked: beforeToggle.button.disabled,
     })`);
@@ -399,6 +413,114 @@ async function run() {
   window.webContents.send("settings:changed", view(language));
   await settle(100);
 
+  // Real model snapshots cover visual states without touching user preferences.
+  const ctx: AppContext = { platform: "darwin", language: "en", outputDir: "/tmp", homeDir: "/tmp",
+    quality: DEFAULT_QUALITY, hotkey: { ...DEFAULT_HOTKEY, registered: true }, notifications: true,
+    updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" },
+    displays: [{ id: "1", label: "Built-in Display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true }] };
+  for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
+    nativeTheme.themeSource = scheme;
+    for (const size of ["default", "minimum"] as const) {
+      window.setSize(size === "default" ? 560 : 380, size === "default" ? 680 : 360);
+      for (const state of ["recording", "general", "listening", "error", "locked"] as const) {
+        const snapshot = settingsView(state === "locked" ? { type: "starting" } : { type: "idle" }, {
+          ...ctx, language: lang,
+          ...(state === "error" ? { display: { kind: "display", id: "2", label: "BenQ BL2480T" }, displayFailure: "target_removed" } : {}),
+        });
+        if (state === "listening") snapshot.groups.find(g => g.id === "hotkey")!.capturing = true;
+        await read(window, `document.getElementById("tab-${state === "general" || state === "listening" ? "general" : "recording"}").click()`);
+        await settle(60);
+        window.webContents.send("settings:changed", snapshot);
+        await settle(60);
+        await read(window, `document.getElementById("settings-panel").scrollTop = 0`);
+        if (state === "listening") await read(window, `document.getElementById("shortcut-capture").focus()`);
+        else await read(window, `document.querySelector("#settings-panel select, #settings-panel input")?.focus()`);
+        await settle(60);
+        const fits = await read<boolean>(window, `document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth && document.getElementById("settings-panel").scrollWidth <= document.getElementById("settings-panel").clientWidth`);
+        const geometry = await read(window, `({root: [document.documentElement.scrollWidth, document.documentElement.scrollHeight], viewport: [innerWidth, innerHeight], main: document.querySelector("main").getBoundingClientRect().toJSON(), form: document.querySelector("form").getBoundingClientRect().toJSON(), panel: document.getElementById("settings-panel").getBoundingClientRect().toJSON()})`);
+        record(`${lang}/${scheme}/${size}/${state}: no horizontal or outer-page overflow`, fits, JSON.stringify(geometry));
+        fs.writeFileSync(path.join(outDir, `panel-${lang}-${scheme}-${size}-${state}.png`), (await window.webContents.capturePage()).toPNG());
+      }
+    }
+  }
+  // Repeated checks preserve the row, button, result text and lower-row position.
+  window.setSize(560, 680);
+  const updatePrevious = { kind: "current" as const, checkedAt: 1000 };
+  window.webContents.send("settings:changed", settingsView({ type: "idle" }, { ...ctx, updates: { enabled: true, state: updatePrevious } }));
+  await settle(60);
+  await read(window, `document.getElementById("tab-general").click()`);
+  await read(window, `window.updateBefore = { row: document.getElementById("setting-updates-row"), button: document.getElementById("setting-updates-check"), note: document.querySelector("#setting-updates-row .note"), below: document.getElementById("setting-language-row").getBoundingClientRect().top };`);
+  for (const state of [{ kind: "checking" as const, previous: updatePrevious }, { kind: "current" as const, checkedAt: 2000 }]) {
+    window.webContents.send("settings:changed", settingsView({ type: "idle" }, { ...ctx, updates: { enabled: true, state } }));
+    await settle(60);
+    const stable = await read<boolean>(window, `updateBefore.row === document.getElementById("setting-updates-row") && updateBefore.button === document.getElementById("setting-updates-check") && updateBefore.note === document.querySelector("#setting-updates-row .note") && !updateBefore.note.hidden && updateBefore.below === document.getElementById("setting-language-row").getBoundingClientRect().top`);
+    record(`repeated update ${state.kind} preserves nodes and lower-row geometry`, stable, String(stable));
+  }
+  window.setSize(380, 360);
+  await settle(100);
+  await read(window, `document.getElementById("settings-panel").scrollTop = 0`);
+  await settle(60);
+  const scrollTopHint = await read<boolean>(window, `!document.getElementById("scroll-hint").hidden && getComputedStyle(document.getElementById("scroll-hint")).pointerEvents === "none"`);
+  record("overflow shows non-interactive glass scroll cue", scrollTopHint, String(scrollTopHint));
+  fs.writeFileSync(path.join(outDir, "panel-scroll-cue.png"), (await window.webContents.capturePage()).toPNG());
+  await read(window, `document.getElementById("settings-panel").scrollTop = document.getElementById("settings-panel").scrollHeight`);
+  await settle(60);
+  const bottomHint = await read<boolean>(window, `document.getElementById("scroll-hint").hidden`);
+  record("scroll cue disappears at the bottom", bottomHint, String(bottomHint));
+  window.setSize(560, 680);
+  await read(window, `document.getElementById("tab-recording").click()`);
+  await settle(100);
+  const noOverflow = await read<boolean>(window, `document.getElementById("scroll-hint").hidden && document.getElementById("settings-panel").scrollHeight <= document.getElementById("settings-panel").clientHeight + 2`);
+  record("fitting content needs no scroll cue", noOverflow, String(noOverflow));
+  captureView = settingsView({ type: "idle" }, ctx);
+  window.webContents.send("settings:changed", captureView);
+  await settle(60);
+  await read(window, `document.getElementById("tab-general").click()`);
+  const footer = await read<boolean>(window, `(() => { const row = document.getElementById("setting-about-row"); const buttons = [...row.querySelectorAll(".controls button")]; const credit = row.querySelector(".group-label"); return credit.textContent.includes("Eric Tsai") && buttons.length === 2 && buttons.every(b => b.querySelector("svg") && b.getAttribute("aria-label") && b.title === b.getAttribute("aria-label")) && credit.getBoundingClientRect().right <= buttons[0].getBoundingClientRect().left; })()`);
+  record("footer credits Eric Tsai on the left with two labeled icon links on the right", footer, String(footer));
+  await read(window, `document.getElementById("setting-about-website").click()`);
+  await settle(100);
+  const retryFits = await read<boolean>(window, `(() => { const retry = document.getElementById("setting-about-retry"); return !retry.hidden && retry.getBoundingClientRect().width > 32 && retry.scrollWidth <= retry.clientWidth && document.querySelector("#setting-about-website svg") !== null; })()`);
+  record("failed footer link retains readable text retry and icon", retryFits, String(retryFits));
+  window.show(); window.focus();
+  await read(window, `(() => { const s = document.getElementById("setting-hotkey"); s.value = "custom"; s.dispatchEvent(new Event("change")); })()`);
+  await settle(100);
+  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });
+  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });
+  await settle(100);
+  const tabExit = await read<string>(window, `document.activeElement.id`);
+  record("real Tab exits capture to the next visible preference", tabExit === "setting-notifications", tabExit);
+  await read(window, `(() => { const s = document.getElementById("setting-hotkey"); s.value = "custom"; s.dispatchEvent(new Event("change")); })()`);
+  await settle(100);
+  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab", modifiers: ["shift"] });
+  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab", modifiers: ["shift"] });
+  await settle(100);
+  const backExit = await read<string>(window, `document.activeElement.id`);
+  const keyboardRing = await read<boolean>(window, `getComputedStyle(document.getElementById("setting-hotkey")).outlineStyle === "solid"`);
+  record("keyboard navigation retains a visible focus ring", keyboardRing, String(keyboardRing));
+  await read(window, `document.getElementById("setting-hotkey").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }))`);
+  const pointerRing = await read<boolean>(window, `getComputedStyle(document.getElementById("setting-hotkey")).outlineStyle === "none"`);
+  record("pointer interaction removes the ring without discarding DOM focus", pointerRing && backExit === "setting-hotkey", String(pointerRing));
+  await read(window, `(() => { const s = document.getElementById("setting-hotkey"); s.value = "custom"; s.dispatchEvent(new Event("change")); })()`);
+  await settle(100);
+  const listening = await read<boolean>(window, `document.querySelectorAll("#shortcut-capture .listening-indicator span").length === 3 && !document.querySelector(".capture-area").hidden`);
+  record("acknowledged capture displays a listening indicator", listening, String(listening));
+  await read(window, `document.getElementById("shortcut-cancel").click()`);
+  await settle(100);
+  record("real Shift+Tab exits capture to its preceding edit action", backExit === "setting-hotkey", backExit);
+  window.webContents.debugger.attach("1.3");
+  await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }] });
+  window.setSize(560, 680);
+  await settle(100);
+  const forced = await read<boolean>(window, `matchMedia("(forced-colors: active)").matches && getComputedStyle(document.getElementById("setting-notifications")).appearance === "auto" && getComputedStyle(document.getElementById("setting-language-en")).appearance === "auto"`);
+  record("forced colors restore native checkbox and radio appearance", forced, String(forced));
+  fs.writeFileSync(path.join(outDir, "panel-forced-colors.png"), (await window.webContents.capturePage()).toPNG());
+  await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [] });
+  await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+  const reduced = await read<boolean>(window, `getComputedStyle(document.querySelector(".listening-indicator span")).animationName === "none"`);
+  record("reduced motion disables the listening animation", reduced, String(reduced));
+  await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [] });
+  window.webContents.debugger.detach();
   fs.writeFileSync(path.join(outDir, "panel.png"), (await window.webContents.capturePage()).toPNG());
   fs.writeFileSync(path.join(outDir, "results.json"), `${JSON.stringify(results, null, 2)}\n`);
   return results.every((result) => result.ok);

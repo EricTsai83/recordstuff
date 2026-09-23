@@ -40,7 +40,7 @@ if (drill !== 'restart') fs.writeFileSync(settingsFile, JSON.stringify({
   version: 3, outputDir: path.join(temporary, 'videos'),
   quality: { videoQuality: 'standard', resolutionCap: 'source', frameRate: 30 },
   language: 'en', hotkey: settingsPhase ? { enabled: true, accelerator: 'Alt+CommandOrControl+,' } : { enabled: false, accelerator },
-  notifications: true, updates: { enabled: false },
+  appearance: 'dark', notifications: true, updates: { enabled: false },
 }));
 fs.writeFileSync(path.join(temporary, 'userData/tray-hint-shown'), '');
 class TestTray extends EventEmitter {
@@ -103,7 +103,9 @@ const record = (name: string, ok: unknown, detail: string) => {
 };
 const evaluate = <T = unknown>(code: string): Promise<T> => {
   if (!panel) throw new Error('Settings window is not ready');
-  return panel.webContents.executeJavaScript(code, true) as Promise<T>;
+  return (panel.webContents.executeJavaScript(code, true) as Promise<T>).catch((error: unknown) => {
+    throw new Error(`Renderer evaluation failed: ${code}`, { cause: error });
+  });
 };
 async function waitFor(check: () => unknown | Promise<unknown>, detail: string) {
   const deadline = Date.now() + 5000;
@@ -119,20 +121,38 @@ async function arm() {
   if (!panel) throw new Error('Settings window is not ready');
   panel.show(); panel.focus();
   await waitFor(() => panel?.isFocused(), 'settings focused');
-  await evaluate("document.getElementById('shortcut-capture').click()");
+  await evaluate("(() => { const s = document.getElementById('setting-hotkey'); s.value = 'custom'; s.dispatchEvent(new Event('change')); })()");
   await waitFor(async () => (await group()).capturing, 'capture armed');
 }
 async function key(code: string, key: string, modifiers: Record<string, boolean> = {}) {
   await evaluate(`document.getElementById('shortcut-capture').dispatchEvent(new KeyboardEvent('keydown', ${JSON.stringify({ code, key, bubbles: true, cancelable: true, ...modifiers })}))`);
 }
+async function clickConfirm() {
+  const point = await evaluate<{ x: number; y: number }>(`(() => {
+    const button = document.getElementById('shortcut-confirm');
+    button.scrollIntoView({ block: 'nearest' });
+    const bounds = button.getBoundingClientRect();
+    return { x: Math.round(bounds.x + bounds.width / 2), y: Math.round(bounds.y + bounds.height / 2) };
+  })()`);
+  panel!.webContents.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 });
+  panel!.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 });
+}
+let previewVerified = false;
 async function commit() {
+  const before = fs.readFileSync(settingsFile, "utf8");
   await arm();
   await key('F20', 'F20', { ctrlKey: true, shiftKey: true });
+  if (!previewVerified) {
+    record('shortcut preview leaves saved preferences unchanged until Confirm', fs.readFileSync(settingsFile, 'utf8') === before
+      && (await group()).capturing && await evaluate("!document.getElementById('shortcut-confirm').disabled"), 'candidate stays local');
+    previewVerified = true;
+  }
+  await clickConfirm();
   await waitFor(async () => !(await group()).capturing, 'capture committed');
 }
 async function choose(id: string, value: string) {
-  await evaluate(`(() => { const select = document.getElementById(${JSON.stringify('setting-' + id)}); select.value = ${JSON.stringify(value)}; select.dispatchEvent(new Event('change')); })()`);
-  await waitFor(() => evaluate(`document.getElementById('shortcut-capture').disabled === false`), 'save settled');
+  await evaluate(`(() => { const select = document.getElementById(${JSON.stringify('setting-' + id)}); if (select.type === "checkbox") select.checked = ${JSON.stringify(value)} === "on"; else select.value = ${JSON.stringify(value)}; select.dispatchEvent(new Event('change')); })()`);
+  await waitFor(() => evaluate(`!document.querySelector('.row[aria-busy="true"]')`), 'save settled');
 }
 function finish(error?: unknown) {
   if (finishing) return;
@@ -171,6 +191,8 @@ require(path.join(root, 'out/main/index.js'));
   await waitFor(() => evaluate("Boolean(document.getElementById('tab-general'))"), 'production renderer');
   await evaluate("document.getElementById('tab-general').click()");
   if (settingsPhase) {
+    record('saved dark appearance is applied at startup', electron.nativeTheme.themeSource === 'dark'
+      && await evaluate("matchMedia('(prefers-color-scheme: dark)').matches"), electron.nativeTheme.themeSource);
     record('legacy equivalent key retains recording ownership and value', attempts.length === 1 && owned.has(settingsKey)
       && (await group()).choices.some(c => c.id === settingsKey && c.checked)
       && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === 'Alt+CommandOrControl+,', JSON.stringify(attempts));
@@ -178,6 +200,14 @@ require(path.join(root, 'out/main/index.js'));
     await commit();
     await waitFor(() => owned.has(settingsKey) && owned.has(accelerator), 'independent registrations after legacy recovery');
     record('changing legacy key recovers Settings independently', owned.size === 2, [...owned.keys()].join(', '));
+    for (const appearance of ['light', 'dark', 'system'] as const) {
+      await choose('appearance', appearance);
+      await waitFor(() => electron.nativeTheme.themeSource === appearance, 'appearance applied');
+      await waitFor(() => evaluate(`matchMedia('(prefers-color-scheme: dark)').matches === ${electron.nativeTheme.shouldUseDarkColors}`), 'renderer appearance');
+      record(`${appearance} appearance updates native theme, renderer and saved preference`,
+        JSON.parse(fs.readFileSync(settingsFile, 'utf8')).appearance === appearance
+        && await evaluate(`document.getElementById('setting-appearance').value === '${appearance}'`), electron.nativeTheme.themeSource);
+    }
     const opened = panel!;
     const count = BrowserWindow.getAllWindows().length;
     opened.minimize();
@@ -189,6 +219,7 @@ require(path.join(root, 'out/main/index.js'));
     await arm();
     record('capture suspends both registrations', owned.size === 0, [...owned.keys()].join(', '));
     await key('Comma', ',', { metaKey: true, altKey: true });
+    await clickConfirm();
     await waitFor(async () => !(await group()).capturing, 'reserved candidate completes');
     record('reserved commit rejected and ownership restored', owned.size === 2 && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator
       && await evaluate("document.getElementById('feedback').textContent.includes('reserved for Settings')"), 'saved recording shortcut retained');
@@ -216,13 +247,54 @@ require(path.join(root, 'out/main/index.js'));
     await waitFor(() => { panel = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('settings.html')); return panel && panel !== opened; }, 'new settings window');
     await waitFor(() => evaluate("Boolean(document.getElementById('tab-general'))"), 'reopened renderer');
     record('close and callback reopen a usable replacement panel', panel !== opened && BrowserWindow.getAllWindows().length === count, `windows=${BrowserWindow.getAllWindows().length}`);
+    // Repeat the maintainer's entry smoke test against the production page.
+    // Registered callbacks and the tray boundary are controlled; this does not
+    // claim that macOS delivered the global key or a physical tray click.
+    const savedBeforeEntry = fs.readFileSync(settingsFile, 'utf8');
+    const logPath = path.join(temporary, 'logs/recordstuff.log');
+    const logBeforeEntry = fs.readFileSync(logPath, 'utf8').length;
+    const settingsWindows = () => BrowserWindow.getAllWindows().filter(w => w.webContents.getURL().includes('settings.html'));
+    const closeWithKey = async () => {
+      const closing = panel!;
+      closing.show(); closing.focus(); closing.webContents.focus();
+      await waitFor(() => closing.isFocused(), 'entry panel focused before close');
+      const modifiers: Array<'meta' | 'control'> = process.platform === 'darwin' ? ['meta'] : ['control'];
+      closing.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'w', modifiers });
+      closing.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'w', modifiers });
+      await waitFor(() => closing.isDestroyed() && settingsWindows().length === 0, 'platform close key closes Settings');
+    };
+    const waitForPanel = async () => {
+      await waitFor(() => { panel = settingsWindows()[0]; return panel?.isVisible() && panel.isFocused(); }, 'entry opens visible focused panel');
+      await waitFor(() => evaluate("Boolean(document.getElementById('tab-general'))"), 'entry renderer ready');
+    };
+    panel!.setSize(620, 740);
+    await waitFor(() => panel!.getSize()[0] === 620 && panel!.getSize()[1] === 740, 'resized settings window');
+    for (let round = 1; round <= 2; round++) {
+      await closeWithKey();
+      owned.get(settingsKey)!();
+      await waitForPanel();
+      record(`entry round ${round}: resized dimensions survive close and reopen`, panel!.getSize()[0] === 620 && panel!.getSize()[1] === 740, JSON.stringify(panel!.getSize()));
+      const fromShortcut = panel;
+      owned.get(settingsKey)!();
+      record(`entry round ${round}: shortcut reuses one visible focused Settings window`, settingsWindows().length === 1 && panel === fromShortcut && panel!.isFocused(), 'registered production callback; no duplicate');
+      await closeWithKey();
+      tray.emit('right-click');
+      await waitForPanel();
+      record(`entry round ${round}: close key preserves app and tray reopens Settings`, panel !== fromShortcut && settingsWindows().length === 1 && !tray.destroyed && owned.has(settingsKey) && owned.has(accelerator), 'production tray menu handler; app and registrations retained');
+    }
+    const entryLog = fs.readFileSync(logPath, 'utf8').slice(logBeforeEntry);
+    record('Settings entry cycles never start capture or change preferences', !/state → (starting|recording)/.test(entryLog)
+      && fs.readdirSync(path.join(temporary, 'videos')).length === 0
+      && fs.readFileSync(settingsFile, 'utf8') === savedBeforeEntry,
+      'no start/recording transition, output file or settings write');
     finish(); return;
   }
   if (drill === 'restart') {
+    record('window size survives a fresh app process', panel!.getSize()[0] === 640 && panel!.getSize()[1] === 760, JSON.stringify(panel!.getSize()));
     const saved = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
     const restored = await group();
     record('restart loads failed custom selection without reseeding', saved.hotkey.enabled && saved.hotkey.accelerator === accelerator && restored.choices.some(c => c.id === accelerator && c.checked), JSON.stringify(saved.hotkey));
-    record('restart retries registration and renders failure', recordingAttempts().length === 1 && recordingAttempts()[0]?.registered === false && restored.note === 'Unavailable: another app is using this shortcut.' && await evaluate("document.getElementById('setting-hotkey-note').textContent === 'Unavailable: another app is using this shortcut.'"), JSON.stringify(attempts));
+    record('restart retries registration and renders failure', recordingAttempts().length === 1 && recordingAttempts()[0]?.registered === false && restored.diagnostics?.[0]?.reason === 'Unavailable: another app is using this shortcut.' && await evaluate("document.querySelector('#setting-hotkey-diagnostics .diagnostic p').textContent === 'Unavailable: another app is using this shortcut.'"), JSON.stringify(attempts));
     record('restart requests failure notification', failureNotifications().length === 1 && failureNotifications()[0]?.body?.includes('F20'), JSON.stringify(failureNotifications()));
     finish();
     return;
@@ -231,7 +303,7 @@ require(path.join(root, 'out/main/index.js'));
   const failed = await group();
   const persisted = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
   record('real Electron registration failure and persistence', recordingAttempts().at(-1)?.registered === false && recordingAttempts().at(-1)?.forcedFailure && persisted.hotkey.enabled && persisted.hotkey.accelerator === accelerator, JSON.stringify({ attempt: recordingAttempts().at(-1), hotkey: persisted.hotkey }));
-  record('failure note rendered by production page', failed.note === 'Unavailable: another app is using this shortcut.' && await evaluate("document.getElementById('setting-hotkey-note').textContent === 'Unavailable: another app is using this shortcut.'"), failed.note ?? '');
+  record('failure note rendered by production page', failed.diagnostics?.[0]?.reason === 'Unavailable: another app is using this shortcut.' && await evaluate("document.querySelector('#setting-hotkey-diagnostics .diagnostic p').textContent === 'Unavailable: another app is using this shortcut.'"), failed.diagnostics?.[0]?.reason ?? '');
   record('notification requested with shortcut and recovery direction', failureNotifications().length === 1 && failureNotifications()[0]?.body?.includes('F20') && failureNotifications()[0]?.body?.includes('Settings'), JSON.stringify(failureNotifications()));
   if (drill === '--drill-failure') throw new Error('Intentional assertion-failure cleanup drill');
   if (drill === '--drill-timeout') { console.log('DRILL_READY'); await new Promise(() => {}); }
@@ -242,13 +314,13 @@ require(path.join(root, 'out/main/index.js'));
   await commit();
   record('explicit resave repeats failure notification', failureNotifications().length === 2, `notifications=${failureNotifications().length}`);
   await choose('hotkey', 'off');
-  record('Off retains value and removes failure note', !(await group()).note && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.enabled === false && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator && !globalShortcut.isRegistered(accelerator), 'saved disabled; no note or registration');
+  record('Off retains value and removes failure note', !(await group()).diagnostics?.length && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.enabled === false && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator && !globalShortcut.isRegistered(accelerator), 'saved disabled; no note or registration');
   await choose('notifications', 'off');
   await commit();
-  record('notification preference respected on failure', failureNotifications().length === 2 && Boolean((await group()).note), `notifications=${failureNotifications().length}; note retained`);
+  record('notification preference respected on failure', failureNotifications().length === 2 && Boolean((await group()).diagnostics?.length), `notifications=${failureNotifications().length}; note retained`);
   failRegistration = false;
   await commit();
-  record('registration recovery clears error and retains selection', globalShortcut.isRegistered(accelerator) && !(await group()).note && (await group()).choices.some(c => c.id === accelerator && c.checked), JSON.stringify(recordingAttempts().at(-1)));
+  record('registration recovery clears error and retains selection', globalShortcut.isRegistered(accelerator) && !(await group()).diagnostics?.length && (await group()).choices.some(c => c.id === accelerator && c.checked), JSON.stringify(recordingAttempts().at(-1)));
   await arm();
   await key('KeyR', 'r');
   record('invalid candidate does not change saved shortcut', JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator && await evaluate("document.getElementById('feedback').textContent.includes('Command or Control')"), 'bare R refused');
@@ -260,6 +332,10 @@ require(path.join(root, 'out/main/index.js'));
   await choose('notifications', 'on');
   failRegistration = true;
   await commit();
-  record('leave failed selection for fresh process', Boolean((await group()).note) && recordingAttempts().at(-1)?.registered === false && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.enabled, 'failed custom selection saved through production IPC');
+  record('leave failed selection for fresh process', Boolean((await group()).diagnostics?.length) && recordingAttempts().at(-1)?.registered === false && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.enabled, 'failed custom selection saved through production IPC');
+  panel!.setSize(640, 760);
+  const geometryFile = path.join(temporary, 'userData/settings-window.json');
+  await waitFor(() => fs.existsSync(geometryFile) && JSON.parse(fs.readFileSync(geometryFile, 'utf8')).width === 640, 'window size persisted');
+  record('window resize persists independently of shortcut preferences', JSON.parse(fs.readFileSync(geometryFile, 'utf8')).height === 760 && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator, fs.readFileSync(geometryFile, 'utf8'));
   finish();
 })().catch(finish);

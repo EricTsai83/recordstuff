@@ -2,13 +2,22 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { transformWithEsbuild } from "vite";
+import { build, transformWithEsbuild } from "vite";
 
 export async function buildFixture(
   name: "settings-panel" | "shortcut-failure" | "release-record-network",
   outputDir: string,
 ): Promise<string> {
   const source = fileURLToPath(new URL(`../fixtures/${name}.ts`, import.meta.url));
+  // Settings snapshots use the real model and its pure shared dependencies.
+  if (name === "settings-panel") {
+    await build({ configFile: false, logLevel: "error", build: {
+      outDir: outputDir, emptyOutDir: false, minify: false,
+      lib: { entry: source, formats: ["es"], fileName: () => "settings-panel.mjs" },
+      rollupOptions: { external: ["electron", /^node:/] },
+    } });
+    return path.join(outputDir, "settings-panel.mjs");
+  }
   // The shortcut fixture intercepts CommonJS loading before requiring the app.
   const format = name === "shortcut-failure" ? "cjs" : "esm";
   const result = await transformWithEsbuild(await fs.readFile(source, "utf8"), source, {
