@@ -24,6 +24,7 @@ const mock = vi.hoisted(() => {
     loadURL = vi.fn(() => load());
     destroyed = false;
     isDestroyed = () => this.destroyed;
+    isFocused = () => true;
     destroy = vi.fn(() => {
       this.destroyed = true;
       this.events.get("closed")?.();
@@ -77,7 +78,9 @@ function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>
     if (typeof action !== "string" && "setLanguage" in action) live.language = action.setLanguage;
   });
   const log = vi.fn();
+  const capture = vi.fn();
   const panel = new SettingsWindow({
+    capture,
     state: overrides.state ?? (() => state),
     context: () => live,
     act,
@@ -85,6 +88,7 @@ function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>
   });
   return {
     panel,
+    capture,
     act,
     log,
     live,
@@ -258,4 +262,57 @@ describe("settings window IPC", () => {
     expect(await s.choose(s.event(), "videoQuality", "high")).toMatchObject({ applied: false });
     expect(act).toHaveBeenCalledTimes(2);
   });
+});
+
+
+it("authorizes capture and restores ownership on cancel, blur, close, timeout and recording lock", () => {
+  vi.useFakeTimers();
+  try {
+    const s = setup();
+    s.panel.show();
+    const arm = (value: boolean) => mock.handlers.get("settings:capture")!(s.event(), value);
+    expect(() => mock.handlers.get("settings:capture")!({ sender: {}, senderFrame: {} }, true)).toThrow();
+    for (const end of [() => arm(false), () => s.window().events.get("blur")(), () => vi.advanceTimersByTime(15_000), () => { s.setState({ type: "starting" }); s.panel.refresh(); }]) {
+      s.setState({ type: "idle" });
+      expect(arm(true).groups.find((g: any) => g.id === "hotkey").capturing).toBe(true);
+      end();
+      expect(s.capture).toHaveBeenLastCalledWith(false);
+    }
+    expect(arm(true).groups.find((g: any) => g.id === "hotkey").capturing).toBe(false);
+    s.setState({ type: "idle" });
+    arm(true);
+    s.panel.destroy();
+    expect(s.capture).toHaveBeenLastCalledWith(false);
+  } finally { vi.useRealTimers(); }
+});
+
+it("ends capture even when saving throws and explains rejected candidates", async () => {
+  const s = setup({ act: async () => { throw new Error("disk full"); } });
+  s.panel.show();
+  mock.handlers.get("settings:capture")!(s.event(), true);
+  await expect(s.choose(s.event(), "hotkey", "Control+F12")).rejects.toThrow("disk full");
+  expect(s.capture).toHaveBeenLastCalledWith(false);
+  const result = await s.choose(s.event(), "hotkey", "Shift+R");
+  expect(result.applied).toBe(false);
+  expect(result.view.groups.find((g: any) => g.id === "hotkey").note).toBe("A shortcut needs Command or Control.");
+});
+
+it("keeps registration suspended through main blur/timeout while a hotkey commit is pending", async () => {
+  vi.useFakeTimers();
+  try {
+    let finish!: () => void;
+    const act = vi.fn(async () => new Promise<void>(resolve => { finish = resolve; }));
+    const s = setup({ act });
+    s.panel.show();
+    mock.handlers.get("settings:capture")!(s.event(), true);
+    const save = s.choose(s.event(), "hotkey", "Control+K");
+    await Promise.resolve();
+    expect(act).toHaveBeenCalledTimes(1);
+    s.window().events.get("blur")();
+    vi.advanceTimersByTime(15_000);
+    expect(s.capture).toHaveBeenCalledTimes(1);
+    finish();
+    await save;
+    expect(s.capture.mock.calls).toEqual([[true], [false]]);
+  } finally { vi.useRealTimers(); }
 });

@@ -64,7 +64,7 @@ describe("RecordingHotkey (plan 016)", () => {
     expect(hotkey.apply({ enabled: false, accelerator: DEFAULT_ACCELERATOR })).toEqual({ kind: "disabled" });
     expect(fake.registered.size).toBe(0);
     callback?.(); // a stale OS callback after unregister must not reach the recorder through us
-    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onToggle).not.toHaveBeenCalled();
     hotkey.apply(DEFAULT_HOTKEY);
     expect(fake.registered.size).toBe(1);
   });
@@ -136,7 +136,7 @@ describe("RecordingHotkey (plan 016)", () => {
 });
 
 describe("hotkey definitions", () => {
-  it("validates only presets with a boolean enabled flag", () => {
+  it("validates supported accelerators with a boolean enabled flag", () => {
     expect(isHotkeySettings(DEFAULT_HOTKEY)).toBe(true);
     expect(isHotkeySettings({ enabled: false, accelerator: SECOND })).toBe(true);
     expect(isHotkeySettings({ enabled: "yes", accelerator: SECOND })).toBe(false);
@@ -166,4 +166,40 @@ describe("hotkey definitions", () => {
     expect(describeAccelerator(DEFAULT_ACCELERATOR, "win32")).toBe("Ctrl+Shift+1");
     expect(describeAccelerator("Control+Alt+R", "linux")).toBe("Ctrl+Alt+R");
   });
+});
+
+it("suspends OS ownership, ignores stale callbacks and preserves deferred changes", () => {
+  const { hotkey, fake, onToggle } = setup();
+  hotkey.apply(DEFAULT_HOTKEY);
+  const stale = fake.registered.get(DEFAULT_ACCELERATOR)!;
+  hotkey.request({ enabled: true, accelerator: "Control+F12" }, false);
+  hotkey.suspend();
+  hotkey.suspend();
+  expect(fake.registered.size).toBe(0);
+  stale();
+  expect(onToggle).not.toHaveBeenCalled();
+  hotkey.resume();
+  expect(fake.registered.has(DEFAULT_ACCELERATOR)).toBe(true);
+  hotkey.flush(true);
+  expect([...fake.registered.keys()]).toEqual(["Control+F12"]);
+  hotkey.suspend();
+  hotkey.apply({ enabled: true, accelerator: "Control+Left" });
+  expect(fake.registered.size).toBe(0);
+  hotkey.resume();
+  expect([...fake.registered.keys()]).toEqual(["Control+Left"]);
+  hotkey.suspend();
+  hotkey.dispose();
+  hotkey.resume();
+  expect(fake.registered.size).toBe(0);
+});
+
+it("reports a new refusal, but not the same failed registration after cancelling capture", async () => {
+  const { shouldNotifyHotkeyFailure } = await import("./hotkey");
+  const { hotkey } = setup(fakeShortcut({ refuse: [DEFAULT_ACCELERATOR] }));
+  const first = hotkey.apply(DEFAULT_HOTKEY);
+  expect(shouldNotifyHotkeyFailure(undefined, first)).toBe(true);
+  hotkey.suspend();
+  expect(shouldNotifyHotkeyFailure(first, hotkey.resume())).toBe(false);
+  expect(shouldNotifyHotkeyFailure(first, { kind: "failed", accelerator: "Control+K", reason: "in use" })).toBe(true);
+  expect(shouldNotifyHotkeyFailure({ kind: "registered", accelerator: DEFAULT_ACCELERATOR }, first)).toBe(true);
 });

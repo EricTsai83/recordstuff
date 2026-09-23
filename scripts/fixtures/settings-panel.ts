@@ -8,20 +8,26 @@
  * the shipped bundle loads under the shipped CSP, whether the preload exposes
  * what it should, and whether a real change event survives the round trip.
  *
- * Usage: electron scripts/fixtures/settings-panel.mjs <outDir> <repoRoot>
+ * Compiled automatically by acceptance-settings.mts before Electron loads it.
  */
 import { app, BrowserWindow, ipcMain } from "electron";
+import type { Language } from "../../src/shared/i18n";
+import type { SettingsView } from "../../src/shared/settings-panel";
 import fs from "node:fs";
 import path from "node:path";
 
-const [outDir, root] = process.argv.slice(2).slice(-2);
+const [outDir, root] = (() => {
+  const [output, repository] = process.argv.slice(-2);
+  if (!output || !repository) throw new Error("Expected output and repository directories");
+  return [output, repository] as const;
+})();
 const out = path.join(root, "out");
-const results = [];
-const record = (name, ok, detail) => results.push({ name, ok, detail });
-const settle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const results: Array<{ name: string; ok: boolean; detail: string }> = [];
+const record = (name: string, ok: boolean, detail: string) => results.push({ name, ok, detail });
+const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Shaped like what settings-model produces, including a refused shortcut. */
-const view = (language) => {
+const view = (language: Language): SettingsView => {
   const zh = language === "zh-TW";
   return {
     language,
@@ -89,16 +95,17 @@ const view = (language) => {
   };
 };
 
-let language = "zh-TW";
+let language: Language = "zh-TW";
 let notifications = true;
-const chooseCalls = [];
+const chooseCalls: Array<[string, string]> = [];
 let holdSaves = false;
-const heldSaves = [];
+const heldSaves: Array<() => void> = [];
+const pendingSaveCount = (): number => heldSaves.length;
 ipcMain.handle("settings:read", () => view(language));
-ipcMain.handle("settings:choose", (_event, group, choice) => {
+ipcMain.handle("settings:choose", (_event, group: string, choice: string) => {
   chooseCalls.push([group, choice]);
   const commit = () => {
-    if (group === "language") language = choice;
+    if (group === "language" && (choice === "en" || choice === "zh-TW")) language = choice;
     if (group === "notifications" && choice !== "openSettings") notifications = choice === "on";
     // The pane has no committed value; main uses the handler's own boolean.
     const applied = group === "language"
@@ -110,7 +117,8 @@ ipcMain.handle("settings:choose", (_event, group, choice) => {
   return commit();
 });
 
-const read = (window, script) => window.webContents.executeJavaScript(script);
+const read = <T = unknown>(window: BrowserWindow, script: string): Promise<T> =>
+  window.webContents.executeJavaScript(script) as Promise<T>;
 
 async function run() {
   const window = new BrowserWindow({
@@ -125,7 +133,7 @@ async function run() {
       webSecurity: true,
     },
   });
-  const consoleErrors = [];
+  const consoleErrors: string[] = [];
   window.webContents.on("console-message", (event) => {
     if (event.level === "error") consoleErrors.push(event.message);
   });
@@ -134,7 +142,10 @@ async function run() {
   await window.loadFile(path.join(out, "renderer/settings.html"), { query: { lang: "zh-TW" } });
   await settle(700);
 
-  const rendered = await read(window, `(() => ({
+  const rendered = await read<{ title: string; docTitle: string; lang: string; hint: string; feedback: string;
+    bridge: string[]; exposed: string[]; note: string | null;
+    controls: Array<{ id: string; value: string; disabled: boolean; label: string;
+      describedBy: string | null; options: Array<{ text: string; disabled: boolean }> }> }>(window, `(() => ({
     title: document.querySelector("#title").textContent,
     docTitle: document.title,
     lang: document.documentElement.lang,
@@ -159,8 +170,8 @@ async function run() {
     JSON.stringify({ consoleErrors, controls: rendered.controls.length }),
   );
   record(
-    "the preload exposes read/choose/onChanged and nothing else",
-    JSON.stringify(rendered.bridge) === '["choose","onChanged","read"]',
+    "the preload exposes capture/read/choose/onChanged and nothing else",
+    JSON.stringify(rendered.bridge) === '["capture","choose","onChanged","read"]',
     JSON.stringify(rendered.bridge),
   );
   record(
@@ -199,7 +210,7 @@ async function run() {
     select.dispatchEvent(new Event("change"));
   })()`);
   await settle(700);
-  const applied = await read(window, `(() => ({
+  const applied = await read<{ title: string; lang: string; hotkeyLabel: string; feedback: string }>(window, `(() => ({
     title: document.querySelector("#title").textContent,
     lang: document.documentElement.lang,
     hotkeyLabel: document.querySelector("label[for='setting-hotkey']").textContent,
@@ -224,7 +235,7 @@ async function run() {
     select.dispatchEvent(new Event("change"));
   })()`);
   await settle(700);
-  const refused = await read(window, `(() => ({
+  const refused = await read<{ feedback: string; frameRate: string }>(window, `(() => ({
     feedback: document.querySelector("#feedback").textContent,
     frameRate: document.querySelector("#setting-frameRate").value,
   }))()`);
@@ -237,7 +248,7 @@ async function run() {
 
   // Keep two real IPC requests pending and interleave an older main push.
   holdSaves = true;
-  const selectLanguage = (value) => read(window, `(() => {
+  const selectLanguage = (value: Language) => read(window, `(() => {
     const select = document.querySelector("#setting-language");
     select.value = ${JSON.stringify(value)};
     select.dispatchEvent(new Event("change"));
@@ -245,20 +256,20 @@ async function run() {
   await selectLanguage("zh-TW");
   await selectLanguage("en");
   await settle(100);
-  if (heldSaves.length !== 2) throw new Error("Expected two pending saves");
-  heldSaves.shift()();
+  if (pendingSaveCount() !== 2) throw new Error("Expected two pending saves");
+  heldSaves.shift()!();
   window.webContents.send("settings:changed", view(language));
   await settle(100);
-  const pending = await read(window, `({
+  const pending = await read<{ value: string; locked: boolean; feedback: string }>(window, `({
     value: document.querySelector("#setting-language").value,
     locked: document.querySelector("#setting-hotkey").disabled,
     feedback: document.querySelector("#feedback").textContent,
   })`);
   record("an older completion and push retain the latest pending choice and lock",
     pending.value === "en" && pending.locked && pending.feedback === "", JSON.stringify(pending));
-  heldSaves.shift()();
+  heldSaves.shift()!();
   await settle(100);
-  const finished = await read(window, `({
+  const finished = await read<{ value: string; locked: boolean; title: string }>(window, `({
     value: document.querySelector("#setting-language").value,
     locked: document.querySelector("#setting-hotkey").disabled,
     title: document.title,
@@ -269,12 +280,12 @@ async function run() {
   // Stop holding saves: the cases below judge settled state, and a still-pending
   // save keeps `saving` set, which renders every button disabled.
   holdSaves = false;
-  if (heldSaves.length !== 0) throw new Error("Held saves were left pending");
+  if (pendingSaveCount() !== 0) throw new Error("Held saves were left pending");
 
   // A preference and the system pane that can override it, in one card.
   await read(window, `document.querySelector("#tab-general").click()`);
   await settle(200);
-  const general = await read(window, `(() => {
+  const general = await read<{ controls: string[]; buttons: Array<{ id: string; text: string; disabled: boolean }>; value: string | null; order: string[] }>(window, `(() => {
     const row = document.querySelector("#setting-notifications")?.closest(".row");
     const kids = row ? [...row.children].map(el => el.tagName.toLowerCase() + (el.id ? "#" + el.id : "." + el.className)) : [];
     return {
@@ -288,8 +299,8 @@ async function run() {
     "the general tab renders the notification switch with its pane button in one card",
     general.controls.join(",") === "setting-notifications" &&
       general.buttons.length === 1 &&
-      general.buttons[0].id === "setting-notifications-openSettings" &&
-      general.buttons[0].disabled === false &&
+      general.buttons[0]?.id === "setting-notifications-openSettings" &&
+      general.buttons[0]?.disabled === false &&
       general.order.at(-1) === "button#setting-notifications-openSettings",
     JSON.stringify(general),
   );
@@ -297,7 +308,7 @@ async function run() {
   chooseCalls.length = 0;
   await read(window, `document.querySelector("#setting-notifications-openSettings").click()`);
   await settle(700);
-  const pane = await read(window, `({
+  const pane = await read<{ feedback: string; value: string }>(window, `({
     feedback: document.querySelector("#feedback").textContent,
     value: document.querySelector("#setting-notifications").value,
   })`);
@@ -314,7 +325,7 @@ async function run() {
     select.dispatchEvent(new Event("change"));
   })()`);
   await settle(700);
-  const off = await read(window, `(() => {
+  const off = await read<{ value: string; feedback: string; buttons: Array<{ id: string; disabled: boolean }> }>(window, `(() => {
     const row = document.querySelector("#setting-notifications").closest(".row");
     return {
       value: document.querySelector("#setting-notifications").value,
@@ -325,8 +336,8 @@ async function run() {
   record(
     "turning the switch off commits and leaves the pane button usable",
     off.value === "off" && off.feedback === "" &&
-      off.buttons.length === 1 && off.buttons[0].id === "setting-notifications-openSettings" &&
-      off.buttons[0].disabled === false,
+      off.buttons.length === 1 && off.buttons[0]?.id === "setting-notifications-openSettings" &&
+      off.buttons[0]?.disabled === false,
     JSON.stringify(off),
   );
 
@@ -348,7 +359,7 @@ async function run() {
     await settle(100);
     window.webContents.send("settings:changed", view(language));
     await settle(100);
-    const during = await read(window, `({
+    const during = await read<{ sameSelect: boolean; samePanel: boolean; focused: boolean; scrollStable: boolean; value: string; buttonLocked: boolean; buttonOpacity: string }>(window, `({
       sameSelect: beforeToggle.select === document.querySelector("#setting-notifications"),
       samePanel: beforeToggle.panel === document.querySelector("#settings-panel"),
       focused: document.activeElement === beforeToggle.select,
@@ -360,10 +371,10 @@ async function run() {
     record(`notification ${value}: pending save and push preserve controls, focus, scroll and brightness`,
       during.sameSelect && during.samePanel && during.focused && during.scrollStable &&
       during.value === value && during.buttonLocked && during.buttonOpacity === "1", JSON.stringify(during));
-    if (heldSaves.length !== 1) throw new Error("Expected one pending notification save");
-    heldSaves.shift()();
+    if (pendingSaveCount() !== 1) throw new Error("Expected one pending notification save");
+    heldSaves.shift()!();
     await settle(100);
-    const after = await read(window, `({
+    const after = await read<{ sameSelect: boolean; focused: boolean; scrollStable: boolean; value: string; buttonLocked: boolean }>(window, `({
       sameSelect: beforeToggle.select === document.querySelector("#setting-notifications"),
       focused: document.activeElement === beforeToggle.select,
       scrollStable: window.scrollY === beforeToggle.scroll,
@@ -379,7 +390,7 @@ async function run() {
   lockedView.groups.forEach(group => { group.enabled = false; });
   window.webContents.send("settings:changed", lockedView);
   await settle(100);
-  const restricted = await read(window, `({
+  const restricted = await read<{ disabled: boolean; opacity: string }>(window, `({
     disabled: document.querySelector("#setting-notifications").disabled,
     opacity: getComputedStyle(document.querySelector("#setting-notifications")).opacity,
   })`);

@@ -16,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DEFAULT_QUALITY, isQualitySettings, type QualitySettings } from "../shared/quality";
 import { DEFAULT_LANGUAGE, isLanguage, type Language } from "../shared/i18n";
-import { DEFAULT_HOTKEY, isHotkeySettings, type HotkeySettings } from "../shared/hotkey";
+import { DEFAULT_HOTKEY, canonicalizeAccelerator, isHotkeySettings, type HotkeySettings } from "../shared/hotkey";
 
 export const SETTINGS_VERSION = 3;
 
@@ -85,7 +85,7 @@ export function parseSettings(text: string): ParsedSettings | undefined {
   if (version !== SETTINGS_VERSION) {
     warnings.push(`version ${version} file: shortcut set to default`);
   } else if (isHotkeySettings(record["hotkey"])) {
-    hotkey = { enabled: record["hotkey"].enabled, accelerator: record["hotkey"].accelerator };
+    hotkey = { enabled: record["hotkey"].enabled, accelerator: canonicalizeAccelerator(record["hotkey"].accelerator)! };
   } else {
     warnings.push("hotkey is missing or has unsupported values: using the default shortcut");
   }
@@ -142,7 +142,7 @@ export class SettingsStore {
   /** Rejects (and keeps the previous choice) when the accelerator is not a preset or the write fails. */
   setHotkey(hotkey: HotkeySettings): Promise<void> {
     if (!isHotkeySettings(hotkey)) return Promise.reject(new Error(`unsupported shortcut: ${JSON.stringify(hotkey)}`));
-    return this.save((current) => ({ ...current, hotkey: { enabled: hotkey.enabled, accelerator: hotkey.accelerator } }));
+    return this.save((current) => ({ ...current, hotkey: { enabled: hotkey.enabled, accelerator: canonicalizeAccelerator(hotkey.accelerator)! } }));
   }
 
   setLanguage(language: Language): Promise<void> {

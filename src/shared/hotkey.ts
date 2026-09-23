@@ -1,34 +1,10 @@
-/**
- * Global start/stop shortcut (docs/system-design/desktop.md). The user picks
- * one of a small set of presets or turns the shortcut off; a free-form
- * recorder is out of scope. Values are Electron accelerator strings.
- *
- * Default: `CommandOrControl+Shift+1` (⌘⇧1 on macOS), by maintainer decision
- * on 2026-09-21, replacing `CommandOrControl+Alt+Shift+R`. A global shortcut
- * wins over the frontmost app, so the default has to be a combination no
- * common app expects. ⌘⇧R — the obvious mnemonic — is hard reload in
- * Chrome/Firefox, Reader in Safari and local recording in Zoom, so it starts a
- * screen recording where the user meant to reload; it stays a preset for
- * anyone who wants it. Digits are the quieter range: macOS owns ⌘⇧3/4/5 for
- * screenshots and screen recording, and apps bind plain ⌘1…9 for tabs and
- * view modes rather than the shifted form. This combination has not been
- * re-checked against the app list below; that belongs to native acceptance.
- *
- * Every accelerator ever offered stays in this list. `isHotkeyAccelerator`
- * rejects anything outside it, so dropping one would silently reset the
- * settings of everyone who had chosen it.
- *
- * The default is always `HOTKEY_PRESETS[0]`; reorder the list to change it.
- * `CommandOrControl+Alt+Shift+R` was verified unbound in Chrome, Safari,
- * Firefox, Finder, Xcode, VS Code, Slack and Zoom as of 2026-09.
- */
 export const HOTKEY_PRESETS = [
   "CommandOrControl+Shift+1",
   "CommandOrControl+Alt+Shift+R",
   "CommandOrControl+Shift+R",
   "CommandOrControl+Alt+R",
 ] as const;
-export type HotkeyAccelerator = (typeof HOTKEY_PRESETS)[number];
+export type HotkeyAccelerator = string;
 
 export interface HotkeySettings {
   enabled: boolean;
@@ -38,8 +14,51 @@ export interface HotkeySettings {
 
 export const DEFAULT_HOTKEY: HotkeySettings = { enabled: true, accelerator: HOTKEY_PRESETS[0] };
 
-export function isHotkeyAccelerator(value: unknown): value is HotkeyAccelerator {
-  return typeof value === "string" && (HOTKEY_PRESETS as readonly string[]).includes(value);
+/** Deliberately narrower than Electron: no bare typing keys or arbitrary aliases. */
+export const MODIFIER_ORDER = ["CommandOrControl", "Control", "Alt", "Shift"] as const;
+const KEYS = new Set([
+  ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+  ...Array.from({ length: 24 }, (_, i) => `F${i + 1}`),
+  "Space", "Up", "Down", "Left", "Right", "Plus", "'",
+  ...')!@#$%^&*(:;= <,_->.?/~`{][|\\}"'.replaceAll(" ", ""),
+]);
+// Electron also accepts shifted glyphs. Collapse them before the reserved check.
+const SHIFTED_KEYS: Record<string, string> = {
+  "!": "1", "@": "2", "#": "3", "$": "4", "%": "5", "^": "6", "&": "7", "*": "8", "(": "9", ")": "0",
+  "_": "-", "Plus": "=", "{": "[", "}": "]", "|": "\\", ":": ";", '"': "'", "<": ",", ">": ".", "?": "/", "~": "`",
+};
+const RESERVED = new Set([
+  ...[3, 4, 5, 6].map((key) => `CommandOrControl+Shift+${key}`),
+  "CommandOrControl+Space", "CommandOrControl+Tab", "CommandOrControl+Q",
+]);
+export type AcceleratorError = "A shortcut needs Command or Control." | "This key cannot be used." | "macOS reserves this combination.";
+export type AcceleratorValidation = { accelerator: string; error?: never } | { error: AcceleratorError; accelerator?: never };
+
+export function validateAccelerator(value: unknown): AcceleratorValidation {
+  if (typeof value !== "string" || value.length > 64) return { error: "This key cannot be used." };
+  const parts = value.split("+");
+  let key = parts.pop() ?? "";
+  if (new Set(parts).size !== parts.length || parts.some(part => !(MODIFIER_ORDER as readonly string[]).includes(part))) {
+    return { error: "This key cannot be used." };
+  }
+  if (!parts.includes("CommandOrControl") && !parts.includes("Control")) return { error: "A shortcut needs Command or Control." };
+  if (SHIFTED_KEYS[key]) {
+    key = SHIFTED_KEYS[key]!;
+    if (!parts.includes("Shift")) parts.push("Shift");
+  }
+  const accelerator = [...MODIFIER_ORDER.filter(part => parts.includes(part)), key].join("+");
+  if (RESERVED.has(accelerator)) return { error: "macOS reserves this combination." };
+  if (!KEYS.has(key)) return { error: "This key cannot be used." };
+  return { accelerator };
+}
+
+export function isAccelerator(value: unknown): value is string {
+  return validateAccelerator(value).accelerator !== undefined;
+}
+export const isHotkeyAccelerator = isAccelerator;
+
+export function canonicalizeAccelerator(value: unknown): string | undefined {
+  return validateAccelerator(value).accelerator;
 }
 
 export function isHotkeySettings(value: unknown): value is HotkeySettings {
@@ -55,6 +74,7 @@ const MAC_SYMBOLS: Record<string, string> = {
   Option: "⌥",
   Shift: "⇧",
   Control: "⌃",
+  Space: "␣", Up: "↑", Down: "↓", Left: "←", Right: "→", Plus: "+",
 };
 const OTHER_NAMES: Record<string, string> = {
   CommandOrControl: "Ctrl",
@@ -63,6 +83,7 @@ const OTHER_NAMES: Record<string, string> = {
   Option: "Alt",
   Shift: "Shift",
   Control: "Ctrl",
+  Plus: "+",
 };
 
 /** Human-readable form for menus and logs: `⌘⌥⇧R` on macOS, `Ctrl+Alt+Shift+R` elsewhere. */

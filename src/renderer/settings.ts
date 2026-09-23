@@ -6,6 +6,8 @@
  * Every string comes from main except the one failure that can happen before
  * the first view arrives, which uses the language main put in the URL.
  */
+import { describeAccelerator, validateAccelerator } from "../shared/hotkey";
+import { shortcutCandidate, shortcutModifiers } from "./shortcut-capture";
 import { isLanguage, translate } from "../shared/i18n";
 import type { SettingsBridge, SettingsGroup, SettingsView } from "../shared/settings-panel";
 
@@ -32,6 +34,29 @@ let pending = 0;
 let requestId = 0;
 let renderedStructure = "";
 let saving: { group: string; choice: string; control: string } | undefined;
+
+function shortcutGroup(): SettingsGroup | undefined {
+  return view?.groups.find(group => group.kind === "shortcut");
+}
+
+async function capture(armed: boolean): Promise<void> {
+  if (armed && (!shortcutGroup()?.enabled || saving)) return;
+  try {
+    render(await window.settings.capture(armed));
+    if (armed && shortcutGroup()?.capturing) document.getElementById("shortcut-capture")?.focus();
+  } catch {
+    if (view) feedback.textContent = view.failure;
+  }
+}
+
+function updateCapture(button: HTMLButtonElement, group: SettingsGroup): void {
+  button.disabled = !group.enabled || (saving !== undefined && saving.control !== button.id);
+  button.classList.toggle("capturing", Boolean(group.capturing));
+  setText(button, translate(group.capturing ? "Press a combination" : "Custom…", view?.language));
+  button.setAttribute("aria-label", group.capturing
+    ? `${translate("Press a combination", view?.language)}. ${translate("Escape to cancel", view?.language)}`
+    : translate("Custom…", view?.language));
+}
 
 function controlId(group: SettingsGroup): string {
   return `setting-${group.id}`;
@@ -66,6 +91,7 @@ function updateRows(groups: SettingsGroup[]): void {
         ? saving.choice : group.choices.find((choice) => choice.checked)?.id ?? "";
       if (select.value !== value) select.value = value;
     }
+    if (group.kind === "shortcut") updateCapture(container.querySelector<HTMLButtonElement>("#shortcut-capture")!, group);
     for (const choice of group.kind === "actions" ? group.choices : group.actions ?? []) {
       const button = document.getElementById(`${controlId(group)}-${choice.id}`) as HTMLButtonElement;
       setText(button, choice.label);
@@ -126,11 +152,60 @@ function row(group: SettingsGroup): HTMLElement {
     option.disabled = !choice.enabled;
     select.append(option);
   }
-  select.addEventListener("change", () => void choose(group.id, select.value, select.id));
+  if (group.kind === "shortcut") {
+    const custom = document.createElement("option");
+    custom.value = "custom";
+    custom.textContent = translate("Custom…", view?.language);
+    select.append(custom);
+  }
+  select.addEventListener("change", () => {
+    if (group.kind === "shortcut" && select.value === "custom") void capture(true);
+    else void choose(group.id, select.value, select.id);
+  });
   const control = document.createElement("div");
   control.className = "select-control";
   control.append(select);
   container.append(control);
+  if (group.kind === "shortcut") {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.id = "shortcut-capture";
+    button.setAttribute("aria-live", "polite");
+    updateCapture(button, group);
+    button.addEventListener("click", () => { if (!shortcutGroup()?.capturing) void capture(true); });
+    button.addEventListener("blur", () => {
+      // A model push can replace the row. Allow draw() to restore its focus.
+      queueMicrotask(() => {
+        if (shortcutGroup()?.capturing && saving?.control !== button.id && document.activeElement?.id !== button.id) void capture(false);
+      });
+    });
+    button.addEventListener("keydown", (event) => {
+      if (!shortcutGroup()?.capturing) return;
+      if (saving?.control === button.id) { event.preventDefault(); return; }
+      if (event.key === "Tab" && !event.metaKey && !event.ctrlKey && !event.altKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.repeat) return;
+      if (event.key === "Escape") { void capture(false); return; }
+      const candidate = shortcutCandidate(event, group.platform);
+      if (candidate === undefined) {
+        button.textContent = describeAccelerator(shortcutModifiers(event, group.platform).join("+"), group.platform ?? "darwin") || translate("Press a combination", view?.language);
+        return;
+      }
+      const result = validateAccelerator(candidate);
+      if (result.error) {
+        feedback.textContent = translate(result.error, view?.language);
+        return;
+      }
+      void choose(group.id, result.accelerator, button.id);
+    });
+    button.addEventListener("keyup", (event) => {
+      if (!shortcutGroup()?.capturing) return;
+      event.preventDefault();
+      button.textContent = describeAccelerator(shortcutModifiers(event, group.platform).join("+"), group.platform ?? "darwin") || translate("Press a combination", view?.language);
+    });
+    container.append(button);
+  }
   // Buttons belonging to this preference, e.g. the system pane that can
   // override it. They follow the control so the card reads top to bottom.
   for (const choice of group.actions ?? []) container.append(actionButton(group, choice));
@@ -207,13 +282,14 @@ async function choose(group: string, choice: string, control: string): Promise<v
     const result = await window.settings.choose(group, choice);
     if (id !== requestId) return;
     view = result.view;
-    if (!result.applied) feedback.textContent = result.view.failure;
+    if (!result.applied) feedback.textContent = result.view.groups.find(entry => entry.id === group)?.note ?? result.view.failure;
   } catch {
     if (id === requestId && view) feedback.textContent = view.failure;
   } finally {
     pending -= 1;
     if (pending === 0) saving = undefined;
     draw();
+    if (control === "shortcut-capture" && document.hasFocus()) document.getElementById(control)?.focus({ preventScroll: true });
   }
 }
 
@@ -222,6 +298,7 @@ document.addEventListener("keydown", (event) => {
   // The panel has no application menu of its own on macOS: close it here.
   if (event.key === "Escape" || (event.key === "w" && (event.metaKey || event.ctrlKey))) window.close();
 });
+window.addEventListener("blur", () => { if (shortcutGroup()?.capturing) void capture(false); });
 window.settings.onChanged(render);
 void window.settings.read().then(render).catch(() => {
   feedback.textContent = translate("Could not open settings. Close this window and open it again.", startupLanguage);

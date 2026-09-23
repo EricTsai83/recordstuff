@@ -223,3 +223,12 @@ describe("notifications in General", () => {
     expect(settingsAction(idle, { ...context, platform: "win32" }, "notifications", "openSettings")).toBeUndefined();
   });
 });
+
+it("accepts canonical custom candidates only in the unlocked shortcut group", () => {
+  expect(settingsAction(idle, context, "hotkey", "Shift+Control+F12")).toEqual({ setHotkey: { enabled: true, accelerator: "Control+Shift+F12" } });
+  expect(settingsAction(idle, context, "hotkey", "CommandOrControl+Space")).toBeUndefined();
+  for (const state of busy) expect(settingsAction(state, context, "hotkey", "Control+F12")).toBeUndefined();
+  const ctx = { ...context, hotkey: { enabled: true, registered: true, accelerator: "Control+Shift+F12" } };
+  expect(checked(idle, ctx, "hotkey")).toBe("Control+Shift+F12");
+  expect(settingsChecked(idle, ctx, "hotkey", "Shift+Control+F12")).toBe(true);
+});

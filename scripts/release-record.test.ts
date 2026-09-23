@@ -1,4 +1,5 @@
 /** Exercise the real record CLI in disposable checkouts; all external data is local. */
+import { buildFixture } from './lib/build-fixture.mts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,7 +13,7 @@ const repository = 'EricTsai83/recordstuff';
 const commit = 'b'.repeat(40);
 let root: string;
 
-beforeEach(() => {
+beforeEach(async () => {
   root = mkdtempSync(path.join(tmpdir(), 'recordstuff-record-test-'));
   for (const file of ['scripts/release.mts', 'scripts/lib/release-manifest.mts', 'scripts/lib/release-manifest-client.mts', 'website/release-manifest.json']) {
     const destination = path.join(root, file);
@@ -30,7 +31,7 @@ if (endpoint.includes('/commits/')) console.log(JSON.stringify({ sha: fixture.co
 else if (endpoint.includes('/releases/tags/')) console.log(JSON.stringify(fixture.release));
 else throw new Error('Unexpected gh request: ' + endpoint);
 `, { mode: 0o755 });
-  cpSync(path.join(repositoryRoot, 'scripts/fixtures/release-record-network.mjs'), path.join(root, 'network.mjs'));
+  await buildFixture('release-record-network', root);
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -47,7 +48,7 @@ function record(version = '0.1.4', sourceCommit = commit) {
   };
   const fixture = path.join(root, 'fixture.json');
   writeFileSync(fixture, JSON.stringify({ commit, metadata, release }));
-  return spawnSync(process.execPath, ['--import', path.join(root, 'network.mjs'), 'scripts/release.mts', 'record', tag], {
+  return spawnSync(process.execPath, ['--import', path.join(root, 'release-record-network.mjs'), 'scripts/release.mts', 'record', tag], {
     cwd: root, encoding: 'utf8', timeout: 10_000,
     env: { ...process.env, PATH: `${path.join(root, 'bin')}${path.delimiter}${process.env.PATH}`, GITHUB_REPOSITORY: repository, RELEASE_FIXTURE: fixture, RELEASE_RUN_URL: `https://github.com/${repository}/actions/runs/123` },
   });

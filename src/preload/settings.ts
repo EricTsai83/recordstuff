@@ -7,6 +7,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { SettingsBridge, SettingsView } from "../shared/settings-panel";
 
 const bridge: SettingsBridge = {
+  capture: (armed) => ipcRenderer.invoke("settings:capture", armed),
   read: () => ipcRenderer.invoke("settings:read"),
   choose: (group, choice) => ipcRenderer.invoke("settings:choose", group, choice),
   onChanged: (callback) => {

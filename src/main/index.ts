@@ -21,7 +21,7 @@ import os from "node:os";
 import path from "node:path";
 import { CaptureHost } from "./capture-host";
 import { FileWriter, ensureWritableDir } from "./file-writer";
-import { RecordingHotkey } from "./hotkey";
+import { RecordingHotkey, shouldNotifyHotkeyFailure, type HotkeyRequestResult } from "./hotkey";
 import { createFileLogger } from "./log";
 import { PermissionWatcher, openNotificationSettings, openScreenCaptureSettings } from "./permission";
 import { Recorder } from "./recorder";
@@ -33,7 +33,7 @@ import { AppTray } from "./tray";
 import { SettingsWindow } from "./settings-window";
 import { APP_NAME, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 import { effectiveQuality, frameRateDowngrade, type QualitySettings } from "../shared/quality";
-import type { HotkeyAccelerator, HotkeySettings } from "../shared/hotkey";
+import type { HotkeySettings } from "../shared/hotkey";
 import type { ErrorCode, RecordingState } from "../shared/state";
 
 import { DEFAULT_LANGUAGE, translate, type Language } from "../shared/i18n";
@@ -207,6 +207,7 @@ async function main(): Promise<void> {
   // One action for both entry points (plan 016): the tray's left click and the
   // global shortcut call the same `toggle`, whose state guards decide.
   const toggle = (): void => recorder.toggle();
+  let lastHotkeyReport: HotkeyRequestResult | undefined;
   const hotkey = new RecordingHotkey({ globalShortcut, onToggle: toggle, log });
   /** Settings that touch a session (quality, shortcut) change only here. */
   const settled = (): boolean => preferencesUnlocked(recorder.state);
@@ -236,6 +237,10 @@ async function main(): Promise<void> {
     state: () => recorder.state,
     context: appContext,
     act: handleAction,
+    capture: (armed) => {
+      if (armed) hotkey.suspend();
+      else reportHotkey(hotkey.resume());
+    },
     log,
   });
   const tray = new AppTray({
@@ -267,9 +272,10 @@ async function main(): Promise<void> {
     reportHotkey(hotkey.request(setting, settled()));
   }
 
-  function reportHotkey(result: { kind: string; accelerator?: HotkeyAccelerator } | undefined): void {
+  function reportHotkey(result: HotkeyRequestResult | undefined): void {
     if (!result) return;
-    if (result.kind === "failed" && result.accelerator) tray.notifyHotkeyRegistrationFailed(result.accelerator);
+    if (result.kind === "failed" && shouldNotifyHotkeyFailure(lastHotkeyReport, result)) tray.notifyHotkeyRegistrationFailed(result.accelerator);
+    if (result.kind !== "deferred" && result.kind !== "suspended") lastHotkeyReport = result;
     refreshUi();
   }
 
@@ -287,6 +293,8 @@ async function main(): Promise<void> {
       tray.notifyHotkeyWriteFailed();
       return;
     }
+    // An explicit successful save deserves a fresh refusal notification; a cancel does not.
+    lastHotkeyReport = undefined;
     log(`settings: hotkey ${JSON.stringify(settings.hotkey)}`);
     applyHotkey(settings.hotkey);
   }

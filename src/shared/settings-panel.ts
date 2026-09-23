@@ -18,7 +18,9 @@ export interface SettingsGroup {
   id: string;
   label: string;
   tab: "recording" | "general";
-  kind?: "actions";
+  kind?: "actions" | "shortcut";
+  capturing?: boolean;
+  platform?: string;
   /** Extra line under the control, e.g. a shortcut the OS refused to register. */
   note?: string;
   enabled: boolean;
@@ -47,6 +49,7 @@ export interface SettingsChoiceResult {
 /** What the preload exposes to the panel. */
 export interface SettingsBridge {
   read(): Promise<SettingsView>;
+  capture(armed: boolean): Promise<SettingsView>;
   choose(group: string, choice: string): Promise<SettingsChoiceResult>;
   onChanged(callback: (view: SettingsView) => void): () => void;
 }

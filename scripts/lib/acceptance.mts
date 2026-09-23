@@ -22,6 +22,11 @@ export interface AppleScriptKeystroke {
 const DIGIT_KEY_CODES: Record<string, number> = {
   "1": 18, "2": 19, "3": 20, "4": 21, "5": 23,
   "6": 22, "7": 26, "8": 28, "9": 25, "0": 29,
+  space: 49, left: 123, right: 124, down: 125, up: 126,
+  f1: 122, f2: 120, f3: 99, f4: 118, f5: 96, f6: 97, f7: 98, f8: 100,
+  f9: 101, f10: 109, f11: 103, f12: 111, f13: 105, f14: 107, f15: 113,
+  f16: 106, f17: 64, f18: 79, f19: 80, f20: 90,
+  "=": 24, "-": 27, "'": 39, "\\": 42, "]": 30, "[": 33, ";": 41, ",": 43, "/": 44, ".": 47, "`": 50,
 };
 
 const MODIFIERS: Record<string, string> = {
@@ -41,7 +46,7 @@ const MODIFIERS: Record<string, string> = {
 export function acceleratorToKeystroke(accelerator: string): AppleScriptKeystroke | undefined {
   const parts = accelerator.split("+").filter((p) => p.length > 0);
   const key = parts.pop();
-  if (!key || key.length !== 1 || !/^[a-z0-9]$/i.test(key)) return undefined;
+  if (!key || (!/^[a-z]$/i.test(key) && DIGIT_KEY_CODES[key.toLowerCase()] === undefined)) return undefined;
   const modifiers: string[] = [];
   for (const part of parts) {
     const name = MODIFIERS[part];
@@ -68,10 +73,10 @@ export function lastStartIndex(lines: readonly string[]): number {
 export function registeredAccelerator(lines: readonly string[]): string | undefined {
   const start = lastStartIndex(lines);
   if (start < 0) return undefined;
-  for (let i = start; i < lines.length; i += 1) {
+  for (let i = lines.length - 1; i > start; i -= 1) {
     const m = /hotkey: registered (\S+)/.exec(lines[i] ?? "");
     if (m) return m[1];
-    if (/hotkey: (disabled|registration failed)/.test(lines[i] ?? "")) return undefined;
+    if (/hotkey: (disabled|registration failed|suspended)/.test(lines[i] ?? "")) return undefined;
   }
   return undefined;
 }

@@ -18,7 +18,7 @@ import {
   type ResolutionCap,
   type VideoQuality,
 } from "../shared/quality";
-import { HOTKEY_PRESETS, describeAccelerator } from "../shared/hotkey";
+import { HOTKEY_PRESETS, describeAccelerator, canonicalizeAccelerator } from "../shared/hotkey";
 import type { SettingsChoice, SettingsGroup, SettingsView } from "../shared/settings-panel";
 import type { RecordingState } from "../shared/state";
 
@@ -94,8 +94,10 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group[] {
   const note = hotkey.enabled && !hotkey.registered
     ? t("Unavailable: another app is using this shortcut.", language)
     : undefined;
-  return [group("hotkey", t("Shortcut", language), enabled, [
-    ...HOTKEY_PRESETS.map((accelerator) => ({
+  const accelerators: readonly string[] = HOTKEY_PRESETS.includes(hotkey.accelerator as typeof HOTKEY_PRESETS[number])
+    ? HOTKEY_PRESETS : [...HOTKEY_PRESETS, hotkey.accelerator];
+  return [{ ...group("hotkey", t("Shortcut", language), enabled, [
+    ...accelerators.map((accelerator) => ({
       id: accelerator,
       label: describeAccelerator(accelerator, ctx.platform),
       enabled: true,
@@ -110,7 +112,7 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group[] {
       // Keep the remembered accelerator so re-enabling restores the choice.
       action: { setHotkey: { enabled: false, accelerator: hotkey.accelerator } },
     },
-  ], note)];
+  ], note), kind: "shortcut", platform: ctx.platform }];
 }
 
 function updateChecksGroup(ctx: AppContext, enabled: boolean): Group[] {
@@ -235,6 +237,10 @@ export function settingsAction(
   groupId: unknown,
   choiceId: unknown,
 ): AppAction | undefined {
+  if (groupId === "hotkey" && choiceId !== "off" && preferencesUnlocked(state)) {
+    const accelerator = canonicalizeAccelerator(choiceId);
+    return accelerator ? { setHotkey: { enabled: true, accelerator } } : undefined;
+  }
   const choice = find(state, ctx, groupId, choiceId);
   return choice?.group.enabled && choice.enabled ? choice.action : undefined;
 }
@@ -246,6 +252,7 @@ export function settingsChecked(
   groupId: unknown,
   choiceId: unknown,
 ): boolean {
+  if (groupId === "hotkey" && choiceId !== "off") return ctx.hotkey.enabled && canonicalizeAccelerator(choiceId) === ctx.hotkey.accelerator;
   return find(state, ctx, groupId, choiceId)?.checked ?? false;
 }
 

@@ -14,6 +14,9 @@ import type { SettingsChoiceResult, SettingsView } from "../shared/settings-pane
 import type { RecordingState } from "../shared/state";
 
 import { settingsAction, settingsChecked, settingsView } from "./settings-model";
+import { preferencesUnlocked } from "./ui-model";
+import { validateAccelerator } from "../shared/hotkey";
+import { translate } from "../shared/i18n";
 import type { AppAction, AppContext } from "./ui-model";
 
 export interface SettingsWindowOptions {
@@ -25,10 +28,14 @@ export interface SettingsWindowOptions {
    * anything else is judged by whether the requested choice is committed now.
    */
   act: (action: AppAction) => Promise<boolean | void>;
+  capture?: (armed: boolean) => void;
   log?: (message: string) => void;
 }
 
 export class SettingsWindow {
+  private capturing = false;
+  private committingHotkey = false;
+  private captureTimer: ReturnType<typeof setTimeout> | undefined;
   private window: BrowserWindow | undefined;
   /** One save at a time, in request order: a queued request is never a failure. */
   private queue: Promise<unknown> = Promise.resolve();
@@ -40,6 +47,18 @@ export class SettingsWindow {
         throw new Error("Invalid settings sender");
       }
     };
+    ipcMain.handle("settings:capture", (event, armed: unknown) => {
+      authorize(event);
+      if (armed === false) this.endCapture();
+      else if (armed === true && this.window?.isFocused() && preferencesUnlocked(this.options.state())) {
+        if (!this.capturing) {
+          this.options.capture?.(true);
+          this.capturing = true;
+          this.captureTimer = setTimeout(() => { this.endCapture(); this.refresh(); }, 15_000);
+        }
+      }
+      return this.view();
+    });
     ipcMain.handle("settings:read", (event) => {
       authorize(event);
       return this.view();
@@ -93,7 +112,10 @@ export class SettingsWindow {
       window.show();
       window.focus();
     });
+    window.on("blur", () => { this.endCapture(); this.refresh(); });
+    window.webContents.on("render-process-gone", () => this.endCapture());
     window.on("closed", () => {
+      this.endCapture();
       if (this.window === window) this.window = undefined;
     });
     // The panel needs a language before it can read anything, so that it can
@@ -110,6 +132,7 @@ export class SettingsWindow {
 
   /** Push the current projection; a closed panel needs nothing. */
   refresh(): void {
+    if (!preferencesUnlocked(this.options.state())) this.endCapture();
     const window = this.window;
     if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return;
     const view = this.view();
@@ -118,6 +141,8 @@ export class SettingsWindow {
   }
 
   destroy(): void {
+    this.endCapture();
+    ipcMain.removeHandler("settings:capture");
     ipcMain.removeHandler("settings:read");
     ipcMain.removeHandler("settings:choose");
     this.window?.destroy();
@@ -125,16 +150,44 @@ export class SettingsWindow {
   }
 
   private view(): SettingsView {
-    return settingsView(this.options.state(), this.options.context());
+    const view = settingsView(this.options.state(), this.options.context());
+    const shortcut = view.groups.find(group => group.kind === "shortcut");
+    if (shortcut) {
+      shortcut.capturing = this.capturing;
+      if (this.capturing) delete shortcut.note;
+    }
+    return view;
+  }
+
+  private endCapture(): void {
+    if (!this.capturing || this.committingHotkey) return;
+    this.capturing = false;
+    clearTimeout(this.captureTimer);
+    this.captureTimer = undefined;
+    this.options.capture?.(false);
   }
 
   private async apply(group: unknown, choice: unknown): Promise<SettingsChoiceResult> {
     const action = settingsAction(this.options.state(), this.options.context(), group, choice);
     if (!action) {
       this.log(`settings window: refused ${JSON.stringify({ group, choice })}`);
-      return { view: this.view(), applied: false };
+      this.endCapture();
+      const view = this.view();
+      if (group === "hotkey" && choice !== "off") {
+        const error = validateAccelerator(choice).error;
+        const shortcut = view.groups.find(entry => entry.id === "hotkey");
+        if (error && shortcut) shortcut.note = translate(error, view.language);
+      }
+      return { view, applied: false };
     }
-    const outcome = await this.options.act(action);
+    this.committingHotkey = this.capturing && typeof action !== "string" && "setHotkey" in action;
+    let outcome: boolean | void;
+    try {
+      outcome = await this.options.act(action);
+    } finally {
+      this.committingHotkey = false;
+      this.endCapture();
+    }
     return {
       view: this.view(),
       applied: typeof outcome === "boolean"

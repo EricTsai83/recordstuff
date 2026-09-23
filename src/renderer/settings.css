@@ -76,3 +76,6 @@ button:focus-visible { outline: 3px solid light-dark(#2476db, #82b7ff); outline-
    Recording/platform restrictions still use the normal disabled appearance. */
 select.saving-disabled, button.saving-disabled { opacity: 1; }
 .select-control:has(select.saving-disabled)::after { opacity: 1; }
+
+#shortcut-capture { margin-top: 8px; }
+#shortcut-capture.capturing { outline: 2px solid AccentColor; outline-offset: 2px; }

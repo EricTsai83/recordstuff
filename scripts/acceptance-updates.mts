@@ -155,7 +155,8 @@ async function sendShortcut(): Promise<void> {
   let accelerator: string;
   try { accelerator = safeCaptureShortcut(state.pid, running.stdout.trim().split('\n').map(Number), state.hotkey); }
   catch (error) { throw new Blocked(String(error)); }
-  const key = acceleratorToKeystroke(accelerator); assert(key);
+  const key = acceleratorToKeystroke(accelerator);
+  if (!key) throw new Blocked(`Cannot type accelerator ${accelerator} through System Events.`);
   const r = spawnSync('osascript', ['-e', keystrokeScript(key)], { encoding: 'utf8', timeout: 5000 });
   if (r.status !== 0) throw new Blocked(`System Events shortcut unavailable: ${r.stderr || r.error}`);
 }

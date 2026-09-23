@@ -35,7 +35,7 @@ describe("acceptance helpers", () => {
     expect(keystrokeScript(acceleratorToKeystroke("CommandOrControl+Shift+R")!)).toBe(
       'tell application "System Events" to keystroke "r" using {command down, shift down}',
     );
-    expect(acceleratorToKeystroke("F13")).toBeUndefined();
+    expect(acceleratorToKeystroke("F24")).toBeUndefined();
     expect(acceleratorToKeystroke("Hyper+R")).toBeUndefined();
   });
 
@@ -77,4 +77,19 @@ describe("shared capture setup", () => {
     expect(url.hash).toBe("");
     expect(args).toContain("--user-data-dir=/tmp/profile with spaces");
   });
+});
+
+it("types supported custom named keys and refuses keys without a macOS code", () => {
+  for (const [key, code] of [["Space", 49], ["Left", 123], ["F12", 111], [";", 41]] as const) {
+    expect(keystrokeScript(acceleratorToKeystroke(`Control+${key}`)!)).toBe(`tell application "System Events" to key code ${code} using {control down}`);
+  }
+  expect(acceleratorToKeystroke("Control+F24")).toBeUndefined();
+});
+
+it("uses only the most recent registration state after launch", () => {
+  expect(registeredAccelerator([...LOG, "[t] hotkey: registered Control+Shift+K"])).toBe("Control+Shift+K");
+  for (const state of ["disabled", "registration failed for Control+K", "suspended"]) {
+    expect(registeredAccelerator([...LOG, `[t] hotkey: ${state}`])).toBeUndefined();
+    expect(registeredAccelerator([...LOG, `[t] hotkey: ${state}`, "[t] hotkey: registered Control+K"])).toBe("Control+K");
+  }
 });

@@ -2,7 +2,7 @@
  * `pnpm acceptance:settings [-- --out <dir>]`
  *
  * Acceptance of the settings panel against the *built* artifacts: it runs
- * Electron on `scripts/fixtures/settings-panel.mjs`, which loads
+ * Electron on the compiled `scripts/fixtures/settings-panel.ts`, which loads
  * `out/preload/settings.js` and `out/renderer/settings.html` in a real
  * window, drives it, and reports each case. This is the only check that
  * exercises the shipped CSP, the sandboxed preload boundary and a real IPC
@@ -17,6 +17,7 @@
  * docs/verification/measurements/<timestamp>-settings-acceptance/.
  * Requires `pnpm build` output. Nothing here ships with the app.
  */
+import { buildFixture } from "./lib/build-fixture.mts";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -29,7 +30,6 @@ interface Case {
 }
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const FIXTURE = path.join(REPO_ROOT, "scripts/fixtures/settings-panel.mjs");
 const ELECTRON = path.join(REPO_ROOT, "node_modules/.bin/electron");
 const TIMEOUT_MS = 90_000;
 
@@ -54,6 +54,7 @@ const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 const dir = outDir ? path.resolve(outDir) : path.join(REPO_ROOT, "docs/verification/measurements", `${stamp}-settings-acceptance`);
 // Never overwrite another run's evidence.
 fs.mkdirSync(dir, { recursive: !outDir });
+const fixture = await buildFixture("settings-panel", dir);
 
 /** Electron needs a real app launch: no ELECTRON_RUN_AS_NODE, no inherited signing env. */
 const env = { ...process.env };
@@ -61,7 +62,7 @@ delete env.ELECTRON_RUN_AS_NODE;
 
 const code = await new Promise<number>((resolve, reject) => {
   const log = fs.openSync(path.join(dir, "electron.log"), "a");
-  const child = spawn(ELECTRON, [FIXTURE, dir, REPO_ROOT], { cwd: REPO_ROOT, env, stdio: ["ignore", log, log] });
+  const child = spawn(ELECTRON, [fixture, dir, REPO_ROOT], { cwd: REPO_ROOT, env, stdio: ["ignore", log, log] });
   const timer = setTimeout(() => {
     child.kill("SIGKILL");
     reject(new Error(`the fixture did not finish within ${TIMEOUT_MS / 1000} s; see electron.log`));

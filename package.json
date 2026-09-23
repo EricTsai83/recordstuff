@@ -36,13 +36,15 @@
     "site:check": "pnpm --dir website test && pnpm --dir website check",
     "site:manifest": "pnpm --dir website manifest",
     "site:screenshots": "pnpm --dir website screenshots",
-    "acceptance:updates": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-updates.mts"
+    "acceptance:updates": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-updates.mts",
+    "acceptance:shortcut": "pnpm build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-shortcut.mts"
   },
   "devDependencies": {
     "@types/node": "^24.13.4",
     "electron": "^44.3.0",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
+    "happy-dom": "^20.14.5",
     "typescript": "^7.0.2",
     "vite": "^7.3.6",
     "vitest": "^5.0.0"

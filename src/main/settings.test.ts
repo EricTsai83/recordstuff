@@ -382,3 +382,11 @@ describe("update preferences", () => {
     expect(parseSettings(JSON.stringify({ version: 1, outputDir: "/a", updates: { enabled: "no", lastAttempt: -1 } }))?.settings.updates).toEqual({ enabled: true, lastAttempt: 0 });
   });
 });
+
+it("round-trips a canonical custom shortcut and remembers it while Off", async () => {
+  const s = store();
+  await s.setHotkey({ enabled: true, accelerator: "Shift+Control+F12" });
+  expect(store().hotkey).toEqual({ enabled: true, accelerator: "Control+Shift+F12" });
+  await s.setHotkey({ ...s.hotkey, enabled: false });
+  expect(store().hotkey).toEqual({ enabled: false, accelerator: "Control+Shift+F12" });
+});

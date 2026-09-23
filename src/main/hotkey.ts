@@ -23,6 +23,7 @@ export interface GlobalShortcutApi {
 
 export type HotkeyStatus =
   | { kind: "disabled" }
+  | { kind: "suspended" }
   | { kind: "registered"; accelerator: HotkeyAccelerator }
   | { kind: "failed"; accelerator: HotkeyAccelerator; reason: string };
 /** `deferred`: the settings are saved, the OS registration follows when the recorder settles. */
@@ -37,6 +38,9 @@ export interface RecordingHotkeyOptions {
 
 export class RecordingHotkey {
   private _status: HotkeyStatus = { kind: "disabled" };
+  private suspended = false;
+  private disposed = false;
+  private current: HotkeySettings | undefined;
   private pending: HotkeySettings | undefined;
   private readonly log: (message: string) => void;
 
@@ -55,8 +59,11 @@ export class RecordingHotkey {
    * nothing until the conflict is resolved or another preset is chosen.
    */
   apply(settings: HotkeySettings): HotkeyStatus {
+    if (this.disposed) return this._status;
+    this.current = { ...settings };
     this.pending = undefined;
     this.release();
+    if (this.suspended) return this._status = { kind: "suspended" };
     if (!settings.enabled) {
       this._status = { kind: "disabled" };
       this.log("hotkey: disabled");
@@ -97,14 +104,38 @@ export class RecordingHotkey {
     return this.apply(this.pending);
   }
 
+  /** Release OS ownership while the settings panel records a replacement. */
+  suspend(): void {
+    if (this.disposed || this.suspended) return;
+    this.suspended = true;
+    this.release();
+    this._status = { kind: "suspended" };
+    this.log("hotkey: suspended");
+  }
+
+  resume(): HotkeyStatus {
+    if (this.disposed || !this.suspended) return this._status;
+    this.suspended = false;
+    // A deferred request belongs to flush(), not to capture cancellation.
+    const pending = this.pending;
+    if (this.current) this.apply(this.current);
+    else this._status = { kind: "disabled" };
+    this.pending = pending;
+    return this._status;
+  }
+
   /** Quit path: leave nothing registered. */
   dispose(): void {
+    this.disposed = true;
+    this.suspended = false;
+    this.current = undefined;
     this.pending = undefined;
     this.release();
     this._status = { kind: "disabled" };
   }
 
   private pressed(accelerator: HotkeyAccelerator): void {
+    if (this.disposed || this.suspended || this._status.kind !== "registered" || this._status.accelerator !== accelerator) return;
     this.log(`hotkey: ${accelerator} pressed`);
     this.options.onToggle();
   }
@@ -117,4 +148,10 @@ export class RecordingHotkey {
       this.log(`hotkey: unregister ${this._status.accelerator} failed: ${String(cause)}`);
     }
   }
+}
+
+/** Suspending/cancelling capture must not repeat an already reported refusal. */
+export function shouldNotifyHotkeyFailure(previous: HotkeyRequestResult | undefined, result: HotkeyRequestResult): boolean {
+  return result.kind === "failed" && (previous?.kind !== "failed"
+    || previous.accelerator !== result.accelerator || previous.reason !== result.reason);
 }

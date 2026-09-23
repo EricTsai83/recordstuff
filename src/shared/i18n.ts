@@ -8,6 +8,12 @@ export function isLanguage(value: unknown): value is Language {
 
 export const ZH_TW = {
   Settings: "設定",
+  "Custom…": "自訂…",
+  "Press a combination": "請按下快捷鍵組合",
+  "Escape to cancel": "按 Escape 取消",
+  "A shortcut needs Command or Control.": "快捷鍵需要包含 ⌘ 或 ⌃。",
+  "This key cannot be used.": "無法使用這個按鍵。",
+  "macOS reserves this combination.": "macOS 已保留這個組合。",
   "Recording settings": "錄影",
   General: "一般",
   Updates: "更新",
