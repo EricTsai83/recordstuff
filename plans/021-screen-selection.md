@@ -2,7 +2,7 @@
 
 [English](021-screen-selection.md) | [繁體中文](021-screen-selection.zh-TW.md)
 
-Status: not started; design proposed, nothing implemented. Priority: after 020; independent of 019 and 020 apart from shared edits in [settings-model.ts](../src/main/settings-model.ts) and [i18n.ts](../src/shared/i18n.ts). Created: 2026-09-21.
+Status: not started; design proposed, nothing implemented. Priority: after 023 (Settings shortcut), which follows 020; independent of 019 and 020 apart from shared edits in [settings-model.ts](../src/main/settings-model.ts) and [i18n.ts](../src/shared/i18n.ts). Created: 2026-09-21.
 
 ## Problem and outcome
 

@@ -2,7 +2,7 @@
 
 [English](022-settings-visual-design.md) | [繁體中文](022-settings-visual-design.zh-TW.md)
 
-Status: not started; design proposed, nothing implemented. Priority: after 021. Created: 2026-09-21.
+Status: not started; design proposed, nothing implemented. Priority: 023 → 021 → 022. Created: 2026-09-21. Updated: 2026-09-23 to incorporate focus and custom shortcut UI polish.
 
 ## Problem and outcome
 
@@ -12,9 +12,17 @@ Give the panel the shape a macOS user already knows: grouped inset lists, a swit
 
 ## Design decisions
 
-### Presentation only, and the contract stays an id echo
+### Visual direction: at home on macOS, refined in the details
 
-No preference is added, removed, renamed or re-defaulted; no group or choice id changes; `preferencesUnlocked` and the save path in [settings-window.ts](../src/main/settings-window.ts) are untouched. A plan that redraws the panel and also changes what a control does cannot be reviewed, because every visual difference becomes a candidate explanation for a behavioural one.
+The user's 2026-09-23 preference establishes a refined macOS utility as the visual direction. Use system typography, the native window frame, familiar control proportions, neutral surfaces, fine separators, restrained corner radii and the system accent. Create character through spacing, alignment, typographic hierarchy and consistent interaction details. Keep native popup and keyboard conventions, with lightweight shortcut symbols and keycaps.
+
+Avoid oversized branding, decorative gradients, heavy shadows, oversized pill buttons, broad accent fills and nested cards. Do not introduce glass/transparency effects or custom window chrome just to imitate the system. Keep branding limited to small identification elements and preserve recording red's state meaning. This direction guides settings and future UI without expanding this plan into tray or notification redesign.
+
+For visual acceptance, compare the real app alongside System Settings on the same Mac: control density, type scale, colors and focus should feel compatible, while grouping and hierarchy should improve on the current panel. Preserve comparison screenshots and observations; pixel-for-pixel imitation is not required. Apply this check in both languages and color schemes. Focus and shortcut polish in this plan follow the same direction; the expanded capture area should belong to the same family of settings controls.
+
+### Refine presentation and editing interactions; preserve preference contracts
+
+No preference is added, removed, renamed or re-defaulted; no group or choice id changes; `preferencesUnlocked` and the save path in [settings-window.ts](../src/main/settings-window.ts) are untouched. This plan includes entry-point consolidation, inline capture and focus-flow changes. Shortcut defaults, allowed combinations, preference storage and main’s validation/registration responsibilities remain unchanged.
 
 The panel therefore still receives a rendered view and still sends back a group id and a choice id. A switch echoes `on` or `off` exactly as today's two-option `<select>` does, and a segment echoes the same id its `<option>` did. Nothing in this plan gives the renderer a way to describe work main did not offer, which is the property [settings-panel.ts](../src/shared/settings-panel.ts) exists to protect.
 
@@ -70,6 +78,43 @@ The keyboard handler is rewritten at the same time, because it is currently writ
 
 The recording red from the [website's theme](../website/src/themes/ember.css) is deliberately not imported. Red means "recording" in this app, and the settings window is the one surface where nothing is ever recording; a red accent here would be the first time the app used its state colour decoratively.
 
+### Shared focus treatment
+
+- Use shared color, width, offset and radius tokens for popups, buttons, tabs and the switches/segments introduced by this plan.
+- Start with a 2px solid outline and 1px offset following the control radius, without extra glows or duplicate rings. Tune using real Electron light/dark screenshots; keep at least 3:1 contrast against adjacent backgrounds rather than reducing opacity until focus is indistinct.
+- Use `:focus-visible` for ordinary controls and respect browser modality decisions. Do not globally remove outlines or blur controls to hide focus. Tab, Shift+Tab and restored keyboard focus must remain visible.
+- Provide a system-accent fallback. In forced colors, use system colors and a solid outline rather than relying on box-shadow. Avoid clipping and layout shifts; distinguish selection, hover, focus and disabled states.
+- Express shortcut listening with a field surface, border and text, without another competing focus outline or pulsing animation.
+
+### Shortcut row and one custom entry point
+
+Use a leading label with the committed-value native `<select>` and a trailing Custom… button on the same row. Keep existing presets, Off and the saved custom value in the popup; remove its duplicate Custom… action. Label the button Change… when a custom value exists. Stack at minimum width without truncating either language.
+
+```text
+Shortcut     [ ⌘⇧1  ▾ ]  [ Custom… ]
+
+Shortcut     [ ⌘⇧1  ▾ ]  [ Change… ]
+             [ Press a combination / ⌘ ⇧ K ] [ Cancel ]
+             Applies automatically; Esc cancels
+```
+
+Expand an inline capture area only while editing; no modal. Keep the committed value in the popup. Render candidate keys as compact, consistently spaced keycaps in the capture field, with readable accessible names and no extra tab stops for decoration. Do not insert custom keycaps into native options.
+
+### States and exits
+
+| State | Presentation and behavior |
+| --- | --- |
+| Idle | Committed value and Custom/Change action; no permanent capture field or excess instructions. |
+| Arming | Wait for main to acknowledge capture before displaying listening and focusing the field; report failure locally. |
+| Listening | Prompt, candidate keys and Cancel; retain suspension of global shortcuts that could intercept input. |
+| Applying | Brief status and duplicate-submit protection without flashing or shifting the row. Keep automatic application of a complete valid combination; no new confirmation step. |
+| Success | Update only after main confirms success, collapse editing, return focus to Change and announce success once. |
+| Invalid/conflict/save failure | Show the specific reason and retry action beneath the field. Follow main's returned state: distinguish uncommitted invalid input from a saved shortcut that the OS cannot register; never imply the previous shortcut still works without evidence. |
+| Cancel/blur/timeout | Preserve the existing 15-second timeout and cleanup. Esc cancels editing first without closing Settings. Tab leaves normally and cancels. Explicit cancellation returns focus to the entry action; Tab and window blur must not steal focus back. |
+| Recording lock | Honor existing enabled rules, prevent capture and explain the lock. |
+
+Cancel must work reliably despite capture-field blur. Tab changes, window close, renderer failure and save exceptions must restore shortcut registrations. Preserve ⌘W closing and the existing Escape-to-close behavior outside capture. Associate local feedback through `aria-describedby`; use one status live region without repeatedly announcing every modifier update.
+
 ### The header stays put; the list scrolls
 
 Today `body` scrolls, so the title, the hint and the tab strip leave the window as soon as the content is taller than it. The header and tabs become fixed and the section list gets its own scroll region, which is how a macOS settings window behaves and which keeps the "Recording in progress. Recording settings are locked." hint visible at the moment it matters most.
@@ -80,19 +125,17 @@ The window itself is resized to fit the grouped list without scrolling in the or
 
 A disabled control at 50% opacity does not explain itself. While a capture is running, the Recording section's footnote states that recording settings are locked until the recording stops — the same sentence main already sends as `view.hint`, placed where the dimmed controls are rather than only at the top of a window that may be scrolled. Language stays enabled and needs no explanation; it is the one preference that never touches a capture.
 
-The rebuild-on-every-change model is kept as is. It is what makes the panel a projection rather than a second source of truth, and the existing focus restoration by element id — including `preventScroll` — already covers the cost.
+Keep current in-place value/text updates and focus/scroll preservation. Rebuild only for structural changes and restore focus by element id with `preventScroll`. Apply the state rules above when collapsing capture; do not revert to rebuilding on every update.
 
 ### The renderer's test is the acceptance fixture, not a new DOM runtime
 
-Vitest runs in the `node` environment and the repository has no jsdom or happy-dom dependency; `capture-host.test.ts` is written specifically to need no DOM. Adding a DOM runtime to unit-test a stylesheet would buy a fake browser's opinion of a layout.
+Use the existing [renderer tests](../src/renderer/settings.test.ts) for interaction logic and real Electron/native acceptance for visual results. Do not add tests that mirror CSS constants or another DOM runtime.
 
-The panel's real test already exists: [`pnpm acceptance:settings`](../scripts/acceptance-settings.mts) drives the shipped page and preload in a real Electron window through [scripts/fixtures/settings-panel.mjs](../scripts/fixtures/settings-panel.mjs), and writes `panel.png`. That fixture asserts against today's DOM — `.row`, `select`, `#feedback` — so this plan must move each assertion to the new structure while keeping every behaviour it checks, and add cases for the switch, the segments and the inline failure. Its screenshot is the before/after evidence. Pure model additions (`control`, `section`, `noteKind`) are unit-tested in [settings-model.test.ts](../src/main/settings-model.test.ts) as ordinary data.
+The panel's real test already exists: [`pnpm acceptance:settings`](../scripts/acceptance-settings.mts) drives the shipped page and preload in a real Electron window through [scripts/fixtures/settings-panel.ts](../scripts/fixtures/settings-panel.ts), and writes `panel.png`. That fixture asserts against today's DOM — `.row`, `select`, `#feedback` — so this plan must move each assertion to the new structure while keeping every behaviour it checks, and add cases for the switch, the segments and the inline failure. Its screenshot is the before/after evidence. Pure model additions (`control`, `section`, `noteKind`) are unit-tested in [settings-model.test.ts](../src/main/settings-model.test.ts) as ordinary data.
 
-### Where this sits relative to 020 and 021
+### Relationship to existing plans
 
-020 adds a shortcut capture control and 021 adds a Screen group; both land in the same three files this plan rewrites. Running this last means each new control is authored once, against the finished vocabulary, instead of being styled and then restyled — which is why the priority is after 021.
-
-If the maintainer wants the visual work sooner, the cost is stated rather than hidden: 020 and 021 then declare `section` and `control` for the groups they add, which is one field each, and 020's capture field arrives as a fourth `control` value. Nothing in this plan blocks either of them; it only decides which one pays for the rework.
+020 has completed custom shortcut support. [023](023-settings-shortcut.md) owns the global Settings shortcut and capture suspension; [021](021-screen-selection.md) adds screen selection. Execution order is 023 → 021 → 022. This plan delivers layout, focus and shortcut editing together, avoiding two rounds of styling. Preserve the existing shortcut cleanup and registration lifecycle.
 
 ## Expected experience
 
@@ -102,10 +145,12 @@ If the maintainer wants the visual work sooner, the cost is stated rather than h
 - A change that does not take effect says so in the row that failed, in the panel's language, while the committed value stays displayed; screen-reader users hear it once.
 - A shortcut the OS refused keeps its selection and its note, and the note is now announced when it appears.
 - During a recording, recording preferences are dimmed and the section states why; Language stays usable; nothing about the panel can block starting, stopping or saving.
-- Light and dark both follow the system, the focus ring is the user's macOS accent colour, keyboard-only operation reaches every control in visible order, and Escape and ⌘W still close the window.
+- Light and dark both follow the system, the focus ring is the user's macOS accent colour, keyboard-only operation reaches every control in visible order, and ⌘W still closes the window; Escape cancels capture first and otherwise retains its close behavior.
 - Traditional Chinese and English both fit without truncation or a horizontal scrollbar, at the default window size and at the minimum size.
 
 ## Implementation order
+
+First capture the pre-redesign baseline in both languages and schemes, including idle, focus, listening, error and locked states.
 
 ### 1. Contract and model
 
@@ -119,13 +164,16 @@ If the maintainer wants the visual work sooner, the cost is stated rather than h
 - [ ] Rewrite [settings.css](../src/renderer/settings.css) around one token block: surfaces, borders, two text levels, radii, the platform accent with a fallback, and the macOS type scale.
 - [ ] Build the section list, the row (label leading, control trailing, note beneath, stacked below the narrow threshold), the switch, the segmented control and the restyled popup.
 - [ ] Keep the `forced-colors: active` escape hatch for all three control types, honour `prefers-reduced-motion` for any transition, and keep focus rings visible in both schemes.
+- [ ] Implement shared refined focus tokens and shortcut keycap/capture-area styles following the macOS direction above.
 
 ### 3. Renderer
 
 - [ ] Render sections and the three control types in [renderer/settings.ts](../src/renderer/settings.ts), each echoing the same group and choice ids it does today.
 - [ ] Move the failure into the failing group's row and keep a visually hidden live region; wire `noteKind` to `aria-describedby` or a live note.
 - [ ] Replace the two-tab keyboard arithmetic with index math over `view.tabs`.
-- [ ] Keep the full rebuild and the id-based focus restore.
+- [ ] Preserve in-place updates and focus/scroll position; rebuild only for structural changes and restore focus by id.
+- [ ] Update [settings.ts](../src/renderer/settings.ts), [settings.css](../src/renderer/settings.css) and, if needed, the presentation interface of [shortcut-capture.ts](../src/renderer/shortcut-capture.ts). Keep validation and registration in existing main/shared logic. Update both languages in [i18n.ts](../src/shared/i18n.ts).
+- [ ] Implement one custom entry point, inline capture, cancellation, editing states and local feedback; manage focus and exit cleanup using the state table.
 
 ### 4. Window
 
@@ -137,9 +185,10 @@ If the maintainer wants the visual work sooner, the cost is stated rather than h
 
 ### 6. Acceptance fixture
 
-- [ ] Update [scripts/fixtures/settings-panel.mjs](../scripts/fixtures/settings-panel.mjs) to the new structure, preserving every behaviour it already asserts: CSP and console cleanliness, the preload surface, the sandbox, first-render language, committed values, a disabled platform option, the refused-shortcut note, id-only IPC, pending-save ordering with an interleaved push, and the notifications card with its pane button.
+- [ ] Update [scripts/fixtures/settings-panel.ts](../scripts/fixtures/settings-panel.ts) to the new structure, preserving every behaviour it already asserts: CSP and console cleanliness, the preload surface, the sandbox, first-render language, committed values, a disabled platform option, the refused-shortcut note, id-only IPC, pending-save ordering with an interleaved push, and the notifications card with its pane button.
 - [ ] Add cases for the switch, a segmented choice, the inline failure and the tab segmented control.
 - [ ] Keep `panel.png` and capture it in both languages and both colour schemes as before/after evidence.
+- [ ] Update [renderer tests](../src/renderer/settings.test.ts) and the [settings fixture](../scripts/fixtures/settings-panel.ts) for one entry point, armed acknowledgment, candidate preview, Cancel/Esc/Tab, success focus restoration, error retry, focus-preserving pushes and locks. Retain failure/registration-recovery coverage; do not add unit tests that merely mirror CSS constants.
 
 ### 7. Documentation
 
@@ -148,14 +197,17 @@ If the maintainer wants the visual work sooner, the cost is stated rather than h
 
 ### 8. Verify behavior
 
-- [ ] Open the panel from the tray in a built app and check both tabs in English and Traditional Chinese, in light and dark, at the default and minimum window sizes. Use the [native computer-use acceptance skill](../.agents/skills/astra-acceptance-with-computer-use/SKILL.md) with `pnpm start:app`; check for a user recording in progress before rebuilding or quitting.
-- [ ] Operate every control by keyboard only, then with VoiceOver: labels, switch states, segment selection, announced status notes and the inline failure.
+- [ ] Run `pnpm check`, `pnpm acceptance:settings`, `pnpm acceptance:shortcut`, `pnpm acceptance` and `git diff --check`. Fixture results do not substitute for native acceptance.
+- [ ] Follow the [native computer-use acceptance skill](../.agents/skills/astra-acceptance-with-computer-use/SKILL.md) on the real app launched with `pnpm start:app`. Check for a user's active recording before rebuilding or quitting. Exercise keyboard-only input, pointer input, VoiceOver, a non-default accent, Increase contrast and forced colors where testable; list omissions.
+- [ ] Open the real Settings panel through 023’s global shortcut, also verify tray access, and inspect both tabs.
+- [ ] Check both languages and schemes at default and minimum window sizes in focus, listening, error and locked states. No clipping, overlap, horizontal scrolling or duplicate rings. Preserve before/after screenshots.
 - [ ] Start a recording, open the panel, confirm recording preferences are dimmed with the stated reason and Language still works, then stop and save normally.
-- [ ] Run `pnpm acceptance:settings` and `pnpm acceptance`, and confirm start → stop → save → playback is unaffected.
-- [ ] Check a non-default macOS accent colour and Increase contrast; record anything not checked.
+- [ ] Exercise custom/preset/Off and shortcut recovery after each exit path. With a test-owned recording, verify start → stop → save → playback and recording locks. Retain an explicit limitation if actual OS conflicts were not tested. Restore preferences and stop/save test-owned recordings.
 - [ ] Record what was actually tested and what was not in the [verification record](../docs/verification/README.md), with the before and after screenshots.
 
 ## Completion and boundaries
+
+Completion requires a coherent macOS grouped layout, refined visible focus, one custom shortcut entry point, understandable editing states and predictable focus destinations, without shortcut or recording regressions. No new shortcut-management page is included. This consolidation updates the plan only; UI implementation and native acceptance remain pending.
 
 No commit, push, tag or publication is authorized by this plan. Out of scope: any change to which preferences exist, their defaults, their ids or the lock rule; the tray menu, notifications and the first-run hint; a sidebar or a third tab; window vibrancy, a custom title bar or traffic-light positioning; an app-wide theme or a theme preference; animations beyond state transitions on the controls themselves; importing the website's palette; a DOM test runtime; and any claim of Windows or Linux acceptance. Do not change a user's stored preferences to produce a screenshot.
 

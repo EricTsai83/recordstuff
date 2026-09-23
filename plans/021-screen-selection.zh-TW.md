@@ -2,7 +2,7 @@
 
 [English](021-screen-selection.md) | [繁體中文](021-screen-selection.zh-TW.md)
 
-狀態：尚未開始；設計已提出，程式尚未動工。優先順序：020 之後；除了 [settings-model.ts](../src/main/settings-model.ts) 與 [i18n.ts](../src/shared/i18n.ts) 的共用改動之外，與 019、020 互相獨立。建立：2026-09-21。
+狀態：尚未開始；設計已提出，程式尚未動工。優先順序：023（設定快捷鍵）之後，023 緊接 020；除了 [settings-model.ts](../src/main/settings-model.ts) 與 [i18n.ts](../src/shared/i18n.ts) 的共用改動之外，與 019、020 互相獨立。建立：2026-09-21。
 
 ## 問題與目標
 
