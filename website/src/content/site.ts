@@ -10,7 +10,7 @@ export const SITE_NAME = "RecordStuff";
 export const meta = {
   title: "RecordStuff — one click in the menu bar records your screen and its sound",
   description:
-    "RecordStuff is a free, open-source macOS menu bar app. Click once to record your primary display with system audio to MP4, click again to stop. No window, no account, files stay on your Mac.",
+    "RecordStuff is a free, open-source macOS menu bar app. Click once to record one screen with system audio to MP4, click again to stop. No main window, no account, files stay on your Mac.",
   ogImageAlt: "A low-poly Mac desktop with a campsite at night; in the menu bar the RecordStuff icon is a filled dot with REC beside it, meaning a recording is in progress.",
 } as const;
 
@@ -27,16 +27,16 @@ export interface Feature {
 
 export const features: Feature[] = [
   {
-    title: "One icon, no window",
-    body: "Right-click the ring for quality, shortcut, output folder, language and logs.",
+    title: "One icon, no main window",
+    body: "Right-click for Settings, your output folder and logs. Choose a screen, quality and shortcut in Settings.",
   },
   {
     title: "Your folder, your files",
     body: "Recordings go to Movies → RecordStuff, or any folder you pick.",
   },
   {
-    title: "Interrupted? Still saved",
-    body: "If a recording is cut short, what was written stays on disk.",
+    title: "Recovery when possible",
+    body: "On failure, RecordStuff tries to preserve written media. Recovery after every crash or power loss is not guaranteed.",
   },
   {
     title: "English and Traditional Chinese",
@@ -64,7 +64,7 @@ export const installSteps: Step[] = [
   },
   {
     title: "Find the icon in the menu bar",
-    body: "RecordStuff has no regular window. Look for its icon at the top of the screen. Left-click to record, left-click again to stop. Right-click for quality, shortcut, output folder, language, logs and Quit.",
+    body: "RecordStuff has no regular window. Look for its icon at the top of the screen. Left-click to record, left-click again to stop. Right-click for Settings, output folder, logs and Quit.",
   },
 ];
 
@@ -99,6 +99,7 @@ export const retainedData = [
 ] as const;
 
 export const settings = [
+  { setting: "Screen", options: "Primary display / a connected display", fallback: "Primary display" },
   { setting: "Video quality", options: "Economy / Standard / High", fallback: "Standard" },
   { setting: "Resolution cap", options: "1080p / 1440p / 4K / Source", fallback: "Source" },
   { setting: "Frame rate", options: "30 / 60 fps", fallback: "30; 60 is enabled only on macOS" },
@@ -122,7 +123,7 @@ export const platformBoundary = {
 export const privacy = [
   "Recordings, settings and logs stay on your Mac in the locations listed under Help.",
   "The app has no upload backend, account, telemetry or crash reporting.",
-  "Update checks contact the website version feed, with GitHub Releases as fallback, without installation identifiers. You can turn off the default-on launch check in the app menu; manual checks remain available.",
+  "Update checks contact the website version feed, with GitHub Releases as fallback, without installation identifiers. You can turn off the default-on launch check in Settings → General; manual checks remain available.",
   "This website is static and sets no cookies. Downloads are served by GitHub Releases.",
 ] as const;
 

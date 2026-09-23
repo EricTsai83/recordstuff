@@ -41,7 +41,7 @@ const H = level === 2 ? "h2" : "h3";
   </div>
 
   <H id="use">Record</H>
-  <p>Left-click the menu bar icon, or press <kbd>⌘</kbd><kbd>⌥</kbd><kbd>⇧</kbd><kbd>R</kbd> from any app, to record the primary display and system audio. Click or press again to stop. Recordings are saved to Movies → RecordStuff by default; click the saved notification or choose <em>Show last recording</em> from the menu to find the file. Right-click for these settings:</p>
+  <p>Left-click the menu bar icon, or press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>1</kbd> from any app, to record the selected screen and system audio. Click or press again to stop. Recordings are saved to Movies → RecordStuff by default; click the saved notification or choose <em>Show last recording</em> from the menu to find the file. Right-click and choose <em>Settings</em>, or press <kbd>⌘</kbd><kbd>⌥</kbd><kbd>,</kbd>. Under <em>Recording settings → Screen</em>, choose the primary display or a connected display. A specific display must be available; the app will not silently record another screen. The panel includes these settings:</p>
   <div class="table-scroll" role="region" aria-label="Recording settings" tabindex="0">
     <table>
       <thead><tr><th>Setting</th><th>Options</th><th>Default</th></tr></thead>
@@ -50,13 +50,14 @@ const H = level === 2 ? "h2" : "h3";
       </tbody>
     </table>
   </div>
+  <p>Recording captures one whole screen, with no microphone, window or region selector. General settings also include System / Light / Dark appearance (System by default) and notifications (on by default, subject to macOS permission). Only language and appearance can change during recording.</p>
   <p>Output is H.264/AAC MP4. Audio requests 256 kbps with voice processing disabled. Actual bitrate depends on the encoder and content.</p>
 
   <H id="language">Language</H>
-  <p>RecordStuff starts in English. Right-click the icon and choose <em>Language → 繁體中文</em> for Traditional Chinese. The choice is saved and can change during a recording without affecting capture settings. Diagnostics stay English; macOS permission dialogs follow the system language.</p>
+  <p>RecordStuff starts in English. Right-click the icon and choose <em>Settings → General → Language → 繁體中文</em> for Traditional Chinese. The choice is saved and can change during a recording without affecting capture settings. Diagnostics stay English; macOS permission dialogs follow the system language.</p>
 
   <H id="update">Update manually</H>
-  <p>Use Check for updates… in the app menu to find a newer version and open its download page. Check for updates on launch is optional, on by default, and runs at most once per 24 hours. Checks wait while recording. Installation stays manual; older builds without this menu can use the download page directly.</p>
+  <p>Use Check for updates… in Settings → General to find a newer version and open its download page. Check for updates on launch is optional, on by default, and runs at most once per 24 hours. Checks wait while recording. Installation stays manual; older builds without update checks can use the download page directly.</p>
   <StepList steps={updateSteps} />
 
   <H id="remove">Remove</H>

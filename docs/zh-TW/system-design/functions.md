@@ -15,8 +15,8 @@
 | `isFirstRun(userDataDir)` | 以 wx 建 marker；首次成功為 true，已存在或 I/O 失敗為 false；只用於 Windows 提示 |
 | `renderUi(state)` / `refreshUi()` | 狀態改變或 context 改變時，Tray 與設定面板一起更新 |
 | `resourcesDir()` | packaged → resourcesPath；開發版 → appPath/resources |
-| `chooseDisplayMedia(request, callback)` | 查 sources 與 primary id → callback(video, loopback)；無匹配用第一來源，無來源／拒絕走 deny |
-| `deny(reason, why)` | 記 log 與 lastDenialReason，空 streams callback 拒絕；讓 renderer 泛用錯誤可還原具體原因 |
+| `displays()` | 將 Electron 已連接螢幕轉成共用模型，不列舉擷取來源 |
+| `displayChanged()` | 推進配置世代；使用中的螢幕移除時讓錄影失敗，並刷新 UI |
 | `main()` | 等 ready、組裝依賴、建立 Tray／watcher、註冊動作與退出；錯誤事件寫 log |
 | `quality()` | 開發記憶體 override 或已保存設定 → 平台可用的有效品質 |
 | `handleAction(action)` | 字串 action、setQuality patch、setHotkey 或 setLanguage → 對應 stop／quit／設定／relaunch／Finder 動作 |
@@ -27,6 +27,10 @@
 | `setQuality(patch)` | 僅 idle／needsPermission 保存合法 patch；失敗通知且保留舊值；成功 refresh |
 
 事件：uncaughtException 留 log 並顯示對話框；unhandledRejection 留 log。Recorder state／saved／captureStarted／failed／permissionRequested 分別更新 Tray、發通知、處理降級與失效授權。tray 左鍵與全域快捷鍵共用同一個 `toggle` closure。before-quit 忙碌時等待 shutdown；will-quit 釋放快捷鍵與其他資源。
+
+## 螢幕選擇
+
+[main/display-source.ts](../../../src/main/display-source.ts)：`resolveDisplayPreference` 解析保存的主螢幕或指定目標；`selectScreenSource` 套用主螢幕回退或指定目標精確匹配。`DisplayRequest.run` 在來源列舉前後檢查配置，指定來源競態最多嘗試三次，callback 只結算一次。`cancel` 結算等待中的 callback 並清除重試延遲。`displayResolution` 讓 tray 與設定共用可用性判定。
 
 ## 狀態機 — main/recorder.ts
 
@@ -129,14 +133,14 @@
 | `parseSettings(text)` | v1／v2／v3 JSON → settings＋warnings；整體不合法回 undefined；壞 quality／hotkey 保留 outputDir |
 | `constructor(options)` / `load(defaultDir)` | 同步讀檔、檢查、fallback 與 log；不立刻把 fallback 回寫 |
 | `outputDir` / `quality` / `language` / `hotkey` getters | 讀目前已成功提交的設定 |
-| `setHotkey(hotkey)` | 驗 enabled 布林與 preset 組合鍵 → save 更新 |
+| `setHotkey(hotkey)` | 驗 enabled 布林與自訂組合鍵，正規化後排隊保存 |
 | `setLanguage(language)` | 驗 en／zh-TW，排入保存佇列，保留品質與位置 |
 | `setOutputDir(dir)` | 驗絕對路徑 → save 更新 |
 | `setQuality(patch)` | 驗合併值合法 → save；實際入列後再合併最新 committed 值 |
 | `save(update)` | 序列化寫入；write 成功才換記憶體；失敗不阻斷後續 queue |
 | `write(settings)` | mkdir、JSON.tmp、rename；不負責通知 |
 
-[shared/hotkey.ts](../../../src/shared/hotkey.ts)：`HOTKEY_PRESETS` 列出允許的組合鍵，`DEFAULT_HOTKEY` 啟用第一個；App 曾經提供過的每個組合鍵都必須留在清單裡，移除任何一個都會使驗證失敗，讓選了它的使用者被靜默重設；`isHotkeyAccelerator` / `isHotkeySettings` 驗證保存值；`describeAccelerator(accelerator, platform)` 在 darwin 顯示 `⌘⌥⇧R`、其他平台 `Ctrl+Alt+Shift+R`，供選單、通知與 log 使用。
+[shared/hotkey.ts](../../../src/shared/hotkey.ts)：`HOTKEY_PRESETS` 保留歷史常數，`DEFAULT_HOTKEY` 啟用 ⌘⇧1。`validateAccelerator` 驗證支援的自訂組合，要求 Command 或 Control 並排除保留鍵；`canonicalizeAccelerator` 正規化修飾鍵順序與 Shift 符號。`isHotkeyAccelerator` / `isHotkeySettings` 驗證保存值，不限於 preset；`describeAccelerator(accelerator, platform)` 在 darwin 顯示 `⌘⌥⇧R`、其他平台 `Ctrl+Alt+Shift+R`，供選單、通知與 log 使用。
 
 [main/hotkey.ts](../../../src/main/hotkey.ts)：
 
@@ -207,7 +211,7 @@
 | 函式 | 契約 |
 | --- | --- |
 | `qualityGroups(ctx, enabled)` | 影像品質、解析度上限、幀率；此平台未驗證的幀率仍列出但不可選 |
-| `hotkeyGroup(ctx, enabled)` | 每個 preset 一個選項加「關閉」；註冊被拒時加註解而不是隱藏衝突；「關閉」保留記住的組合鍵；context 沒有 hotkey 時為空 |
+| `hotkeyGroup(ctx, enabled)` | 建議的預設鍵、不同於預設的已存自訂值與「關閉」；renderer 加上「自訂快捷鍵…」；註冊失敗顯示診斷；關閉保留記住的組合鍵 |
 | `updateChecksGroup(ctx, enabled)` | 啟動檢查的開／關；context 沒有更新狀態時為空 |
 | `languageGroup(language)` | 英文與繁體中文；永不鎖定，因為語言不影響擷取 |
 | `settingsView(state, ctx)` | 面板完整 view：標題、說明、失敗文案，以及移除 action 後的群組 |

@@ -32,7 +32,7 @@ This document describes where things live and why. [Architecture](architecture.m
 | `src/main/` | Main process | Lifecycle (`index.ts`), the recording state machine (`recorder.ts`), capture-host supervision, file writing, permission detection, settings, tray, global shortcut, saved notification, update checks, logging, and development-only unattended recording (`autorecord.ts`) |
 | `src/renderer/` | Renderer processes | Two entries: the hidden capture host (`index.html` + `capture-host.ts`) that owns media streams and encoding, and the settings panel (`settings.html`, `settings.ts`, `settings.css`) |
 | `src/preload/` | Preload, sandboxed | One file per renderer: `index.ts` hands the MessagePort to the capture host and exposes no API; `settings.ts` carries the settings panel's IPC contract |
-| `src/shared/` | Both | State (`state.ts`), the MessagePort protocol, recording quality arithmetic, the settings-panel contract, shortcut presets, and translations (`i18n.ts`) |
+| `src/shared/` | Both | State (`state.ts`), the MessagePort protocol, recording quality arithmetic, the settings-panel contract, display preferences, appearance, shortcut validation, and translations (`i18n.ts`) |
 
 Four conventions hold across this tree:
 

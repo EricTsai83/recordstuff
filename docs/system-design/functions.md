@@ -14,8 +14,8 @@ Named application and tool functions are grouped by source file. Follow source l
 | osSupported | Darwin major ≥22 on Mac; other platforms currently return true |
 | isFirstRun | Exclusively create a marker in userData; success means first run, existing file/I/O failure means false |
 | resourcesDir | Packaged resourcesPath or development appPath/resources |
-| chooseDisplayMedia | Enumerate screens, match primary ID or first source, provide loopback; refuse unavailable capture |
-| deny | Record concrete source failure and invoke callback without streams |
+| displays | Project connected Electron displays into the shared display model without enumerating capture sources |
+| displayChanged | Advance topology generation, fail a session whose active display was removed, and refresh UI |
 | main | Wait ready, compose dependencies, register events/actions, start permission polling and optional development recording |
 | renderUi / refreshUi | Move the tray and the settings panel together on a state change or a context change |
 | quality | Development override or persisted settings → platform-effective quality |
@@ -27,6 +27,10 @@ Named application and tool functions are grouped by source file. Follow source l
 | setQuality | Only idle/needsPermission; persist patch, notify on failure, refresh on success |
 
 Process callbacks log uncaught exceptions/rejections. Recorder events render state, notify saved/error/permission, and report clear frame-rate downgrades. The tray left click and the global shortcut share one `toggle` closure. Before-quit coordinates shutdown; will-quit disposes the shortcut and releases resources. CurrentLanguage is updated only after a successful settings save and localizes unexpected-error dialogs.
+
+## Display selection
+
+[main/display-source.ts](../../src/main/display-source.ts): `resolveDisplayPreference` resolves the saved primary or explicit display; `selectScreenSource` applies primary fallback or exact explicit matching. `DisplayRequest.run` checks topology around source enumeration, retries explicit-source races up to three attempts, and settles the callback once. `cancel` settles pending callbacks and clears retry delays. `displayResolution` shares availability with tray and settings.
 
 ## Recording state machine
 
@@ -128,7 +132,7 @@ The page's window-message callback checks source/marker/port before creating the
 | parseSettings | Validate v1/v2/v3 JSON; preserve valid folder when quality/language/hotkey need defaults; return warnings |
 | constructor / load | Read synchronously, validate, fall back and log; do not immediately rewrite defaults |
 | outputDir / quality / language / hotkey | Read successfully committed preferences |
-| setHotkey | Validate enabled flag and preset accelerator, then enqueue update |
+| setHotkey | Validate enabled flag and custom accelerator, canonicalize it, then enqueue update |
 | setOutputDir | Validate absolute path, then enqueue update |
 | setQuality | Validate patch, then merge with latest committed quality inside the save queue |
 | setLanguage | Validate en/zh-TW, then enqueue update without dropping folder/quality |
@@ -150,7 +154,7 @@ The page's window-message callback checks source/marker/port before creating the
 | frameRateDowngrade | Requested 60 and reported ≤30 → rounded actual fps, otherwise undefined |
 | unknown / describeCapture | Format unknown values / English requested, track, target, and warning diagnostics |
 
-[shared/hotkey.ts](../../src/shared/hotkey.ts): `HOTKEY_PRESETS` lists the allowed accelerators, `DEFAULT_HOTKEY` enables the first; every accelerator the app has ever offered stays in the list, because dropping one would fail validation and silently reset the users who chose it; `isHotkeyAccelerator` / `isHotkeySettings` validate persisted values; `describeAccelerator(accelerator, platform)` renders `⌘⌥⇧R` on darwin and `Ctrl+Alt+Shift+R` elsewhere for menus, notifications and logs.
+[shared/hotkey.ts](../../src/shared/hotkey.ts): `HOTKEY_PRESETS` retains historical constants; `DEFAULT_HOTKEY` enables ⌘⇧1. `validateAccelerator` validates supported custom combinations, requires Command or Control and rejects reserved keys; `canonicalizeAccelerator` normalizes modifier order and shifted glyphs. `isHotkeyAccelerator` / `isHotkeySettings` validate persisted values without restricting them to presets; `describeAccelerator(accelerator, platform)` renders `⌘⌥⇧R` on darwin and `Ctrl+Alt+Shift+R` elsewhere for menus, notifications and logs.
 
 [main/hotkey.ts](../../src/main/hotkey.ts):
 
@@ -206,7 +210,7 @@ The page's window-message callback checks source/marker/port before creating the
 | Function | Contract |
 | --- | --- |
 | qualityGroups | Video quality, resolution cap and frame rate; an unverified frame rate stays listed but not selectable |
-| hotkeyGroup | One choice per preset plus Off; a refused registration adds a note instead of hiding the conflict; Off keeps the remembered accelerator; empty when the context has no hotkey |
+| hotkeyGroup | Recommended default, the saved custom value when distinct, and Off; the renderer adds Custom shortcut…; a refused registration adds a diagnostic; Off keeps the remembered accelerator |
 | updateChecksGroup | On/Off for the launch check; empty when the context has no update state |
 | languageGroup | English and Traditional Chinese; never locked, because language cannot touch a capture |
 | settingsView | The panel's whole view: title, hint, failure text and groups with the actions stripped |

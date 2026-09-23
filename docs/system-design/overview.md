@@ -2,14 +2,14 @@
 
 [English](overview.md) | [繁體中文](../zh-TW/system-design/overview.md)
 
-RecordStuff provides one macOS menu bar button: click to record the primary display and system audio, then click again to save an MP4. Users do not need to create a project, select codecs, or manage a main window.
+RecordStuff provides one macOS menu bar button: click to record one screen (the primary display by default) and system audio, then click again to save an MP4. Users do not need to create a project, select codecs, or manage a main window.
 
 ## Features
 
 | Feature | Behavior | Design |
 | --- | --- | --- |
 | Start and stop | Left-click toggles recording; clicks during startup or saving are ignored | [Recording](recording.md) |
-| Display and audio | Select the current primary display at each start, falling back to the first source if no ID matches; reject missing or ended audio tracks | [Architecture](architecture.md) |
+| Display and audio | Follow the primary display by default (first-source fallback if no ID matches), or require an exact match for a chosen display; reject missing or ended audio tracks | [Architecture](architecture.md) |
 | Status | Idle/recording icons, macOS `REC`, and `…` while starting or saving | [Desktop](desktop.md) |
 | Recording quality | Economy/Standard/High; 1080p/1440p/4K/Source; 30/60 fps | [Recording](recording.md) |
 | Output location | Defaults to `~/Movies/RecordStuff`; a chosen folder persists | [Desktop](desktop.md) |
@@ -17,6 +17,8 @@ RecordStuff provides one macOS menu bar button: click to record the primary disp
 | Permission guidance | Open System Settings and offer relaunch when permission is unavailable | [Desktop](desktop.md) |
 | Failure and quit | Report errors, preserve written media when possible, and stop before quitting | [Recording](recording.md) |
 | Language | English by default; persistent Traditional Chinese choice, including while recording | [Desktop](desktop.md) |
+| Settings and shortcuts | Persistent settings panel; ⌘⇧1 starts/stops by default, a custom shortcut or Off is available, and ⌘⌥, opens Settings | [Desktop](desktop.md) |
+| Appearance and notifications | System/Light/Dark appearance; app notifications can be disabled independently of macOS permission | [Desktop](desktop.md) |
 | Diagnostics | Reveal the log from every tray state | [Desktop](desktop.md) |
 
 Defaults are Standard, Source resolution, and 30 fps. Audio always requests AAC at 256 kbps. There is no microphone capture or audio-quality selector. Track validation detects missing or ended audio tracks; it does not prove that sound is currently playing.
@@ -33,7 +35,7 @@ The delivery target is a downloadable, self-signed macOS DMG. Recipients need no
 
 Recordings and settings stay local. There is no account, cloud storage, upload service, telemetry, recording library, editor, or automatic download/installation. Update checks contact the website version feed, with GitHub Releases as fallback, without installation identifiers; the default-on launch check can be disabled. The application exposes no remote recording API. Packaged builds ignore the development-only automatic-recording environment variable.
 
-Region/window selection, global shortcuts, pause/resume, file segmentation, FFmpeg repair, and dedicated sleep/display-removal handlers are not implemented or required for the current delivery. Add a scoped plan only when a concrete requirement arises.
+Region/window selection, pause/resume, file segmentation, FFmpeg repair, and a dedicated sleep handler are not implemented or required for the current delivery. Display removal is handled: removal of the active capture display fails the session and preserves written media where possible. Add a scoped plan only when a concrete requirement arises.
 
 ## Design priorities
 
