@@ -15,7 +15,7 @@ import type { RecordingState } from "../shared/state";
 
 import { settingsAction, settingsChecked, settingsView } from "./settings-model";
 import { preferencesUnlocked } from "./ui-model";
-import { validateAccelerator } from "../shared/hotkey";
+import { validateAccelerator, isSettingsShortcut, SETTINGS_SHORTCUT_RESERVED } from "../shared/hotkey";
 import { translate } from "../shared/i18n";
 import type { AppAction, AppContext } from "./ui-model";
 
@@ -81,6 +81,7 @@ export class SettingsWindow {
     if (process.platform === "darwin") app.focus({ steal: true });
     const existing = this.window;
     if (existing) {
+      if (existing.isMinimized()) existing.restore();
       existing.show();
       existing.focus();
       return;
@@ -174,7 +175,8 @@ export class SettingsWindow {
       this.endCapture();
       const view = this.view();
       if (group === "hotkey" && choice !== "off") {
-        const error = validateAccelerator(choice).error;
+        const error = isSettingsShortcut(choice, this.options.context().platform)
+          ? SETTINGS_SHORTCUT_RESERVED : validateAccelerator(choice).error;
         const shortcut = view.groups.find(entry => entry.id === "hotkey");
         if (error && shortcut) shortcut.note = translate(error, view.language);
       }

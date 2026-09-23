@@ -33,7 +33,8 @@ import { AppTray } from "./tray";
 import { SettingsWindow } from "./settings-window";
 import { APP_NAME, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 import { effectiveQuality, frameRateDowngrade, type QualitySettings } from "../shared/quality";
-import type { HotkeySettings } from "../shared/hotkey";
+import { isSettingsShortcut, type HotkeySettings } from "../shared/hotkey";
+import { SettingsHotkey } from "./settings-hotkey";
 import type { ErrorCode, RecordingState } from "../shared/state";
 
 import { DEFAULT_LANGUAGE, translate, type Language } from "../shared/i18n";
@@ -209,6 +210,8 @@ async function main(): Promise<void> {
   const toggle = (): void => recorder.toggle();
   let lastHotkeyReport: HotkeyRequestResult | undefined;
   const hotkey = new RecordingHotkey({ globalShortcut, onToggle: toggle, log });
+  const settingsHotkey = new SettingsHotkey({ globalShortcut, platform: process.platform,
+    open: () => { void handleAction("openSettings"); }, log });
   /** Settings that touch a session (quality, shortcut) change only here. */
   const settled = (): boolean => preferencesUnlocked(recorder.state);
   const updates = new UpdateChecker({
@@ -226,6 +229,7 @@ async function main(): Promise<void> {
     language: settings.language,
     updates: { state: updates.state, enabled: settings.updates.enabled },
     notifications: settings.notifications,
+    settingsShortcut: settingsHotkey.status,
     hotkey: {
       ...settings.hotkey,
       // "registered" means the saved combination is the live one; a deferred
@@ -238,8 +242,9 @@ async function main(): Promise<void> {
     context: appContext,
     act: handleAction,
     capture: (armed) => {
-      if (armed) hotkey.suspend();
-      else reportHotkey(hotkey.resume());
+      if (armed) { settingsHotkey.suspend(); hotkey.suspend(); }
+      else { reportHotkey(hotkey.resume()); settingsHotkey.resume(); }
+      refreshUi();
     },
     log,
   });
@@ -274,6 +279,9 @@ async function main(): Promise<void> {
 
   function reportHotkey(result: HotkeyRequestResult | undefined): void {
     if (!result) return;
+    // Use live ownership during deferred changes; never steal a session stop key.
+    settingsHotkey.reconcile(hotkey.status.kind === "registered"
+      ? { enabled: true, accelerator: hotkey.status.accelerator } : settings.hotkey);
     if (result.kind === "failed" && shouldNotifyHotkeyFailure(lastHotkeyReport, result)) tray.notifyHotkeyRegistrationFailed(result.accelerator);
     if (result.kind !== "deferred" && result.kind !== "suspended") lastHotkeyReport = result;
     refreshUi();
@@ -285,7 +293,7 @@ async function main(): Promise<void> {
    * the registration change waits for the recorder to settle (review F2).
    */
   async function setHotkey(setting: HotkeySettings): Promise<void> {
-    if (!settled()) return;
+    if (!settled() || (setting.enabled && isSettingsShortcut(setting.accelerator, process.platform))) return;
     try {
       await settings.setHotkey(setting);
     } catch (cause) {
@@ -531,6 +539,7 @@ async function main(): Promise<void> {
   });
 
   app.on("will-quit", () => {
+    settingsHotkey.dispose();
     hotkey.dispose();
     permission?.stop();
     host.destroy();

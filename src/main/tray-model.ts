@@ -12,7 +12,7 @@ import path from "node:path";
 import { translate as t, type Language, type MessageKey } from "../shared/i18n";
 import type { FrameRate } from "../shared/quality";
 import type { ErrorCode, RecordingState } from "../shared/state";
-import { describeAccelerator, type HotkeyAccelerator } from "../shared/hotkey";
+import { describeAccelerator, SETTINGS_SHORTCUT, type HotkeyAccelerator } from "../shared/hotkey";
 
 import { APP_NAME, abbreviateHome, type AppAction, type AppContext } from "./ui-model";
 
@@ -38,10 +38,17 @@ function item(label: string, action: AppAction, toolTip?: string): TrayMenuItem 
 const SEPARATOR: TrayMenuItem = { kind: "separator" };
 
 /** Settings, log and quit close every menu; Settings stays reachable mid-recording. */
-function footer(language: Language): TrayMenuItem[] {
+function footer(ctx: AppContext): TrayMenuItem[] {
+  const { language, settingsShortcut } = ctx;
+  const label = t("Settings", language) + (settingsShortcut?.kind === "registered"
+    ? ` (${describeAccelerator(SETTINGS_SHORTCUT, ctx.platform)})` : "");
+  const explanation = settingsShortcut?.kind === "conflict"
+    ? t("Settings shortcut unavailable: change the recording shortcut through the tray Settings entry.", language)
+    : settingsShortcut?.kind === "failed" ? t("Settings shortcut unavailable: another app may use it. Open Settings from the tray.", language) : undefined;
   return [
     SEPARATOR,
-    item(t("Settings", language), "openSettings"),
+    item(label, "openSettings"),
+    ...(explanation ? [disabled(explanation)] : []),
     item(t("Show log", language), "revealLog"),
     item(t("Quit", language), "quit"),
   ];
@@ -80,7 +87,7 @@ function stopHint(ctx: AppContext): string | undefined {
 export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
   const language = ctx.language;
   const text = (key: MessageKey): string => t(key, language);
-  const end = footer(language);
+  const end = footer(ctx);
   const model = (icon: TrayIcon, title: string, status: string, menu: TrayMenuItem[]): TrayModel => ({
     icon,
     title,

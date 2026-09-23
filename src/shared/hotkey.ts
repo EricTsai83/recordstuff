@@ -92,3 +92,15 @@ export function describeAccelerator(accelerator: string, platform: string): stri
   if (platform === "darwin") return parts.map((part) => MAC_SYMBOLS[part] ?? part).join("");
   return parts.map((part) => OTHER_NAMES[part] ?? part).join("+");
 }
+
+/** Kept separate from persisted recording validation so legacy choices survive. */
+export const SETTINGS_SHORTCUT = "CommandOrControl+Alt+,";
+export const SETTINGS_SHORTCUT_RESERVED = "This combination is reserved for Settings.";
+
+export function isSettingsShortcut(value: unknown, platform: string): boolean {
+  const canonical = canonicalizeAccelerator(value);
+  if (!canonical) return false;
+  const resolve = (input: string): string => [...new Set(input.split("+").map(part =>
+    part === "CommandOrControl" ? (platform === "darwin" ? "Command" : "Control") : part))].sort().join("+");
+  return resolve(canonical) === resolve(SETTINGS_SHORTCUT);
+}

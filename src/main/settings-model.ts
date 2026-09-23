@@ -18,7 +18,7 @@ import {
   type ResolutionCap,
   type VideoQuality,
 } from "../shared/quality";
-import { HOTKEY_PRESETS, describeAccelerator, canonicalizeAccelerator } from "../shared/hotkey";
+import { HOTKEY_PRESETS, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut } from "../shared/hotkey";
 import type { SettingsChoice, SettingsGroup, SettingsView } from "../shared/settings-panel";
 import type { RecordingState } from "../shared/state";
 
@@ -239,7 +239,7 @@ export function settingsAction(
 ): AppAction | undefined {
   if (groupId === "hotkey" && choiceId !== "off" && preferencesUnlocked(state)) {
     const accelerator = canonicalizeAccelerator(choiceId);
-    return accelerator ? { setHotkey: { enabled: true, accelerator } } : undefined;
+    return accelerator && !isSettingsShortcut(accelerator, ctx.platform) ? { setHotkey: { enabled: true, accelerator } } : undefined;
   }
   const choice = find(state, ctx, groupId, choiceId);
   return choice?.group.enabled && choice.enabled ? choice.action : undefined;

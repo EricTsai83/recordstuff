@@ -17,6 +17,8 @@ const mock = vi.hoisted(() => {
       isDestroyed: () => false,
     };
     events = new Map<string, () => void>();
+    isMinimized = vi.fn(() => false);
+    restore = vi.fn();
     show = vi.fn();
     focus = vi.fn();
     setTitle = vi.fn();
@@ -315,4 +317,30 @@ it("keeps registration suspended through main blur/timeout while a hotkey commit
     await save;
     expect(s.capture.mock.calls).toEqual([[true], [false]]);
   } finally { vi.useRealTimers(); }
+});
+
+it("restores a minimized panel, reuses it and creates one replacement after close", () => {
+  const s = setup(); s.panel.show();
+  const first = s.window(); first.isMinimized.mockReturnValue(true);
+  s.panel.show(); s.panel.show();
+  expect(mock.windows).toHaveLength(1);
+  expect(first.restore).toHaveBeenCalledTimes(2);
+  expect(first.focus).toHaveBeenCalledTimes(2);
+  first.destroy(); s.panel.show();
+  expect(mock.windows).toHaveLength(2);
+});
+it("rejects the reserved Settings combination with localized feedback and ends capture", async () => {
+  const s = setup(); s.panel.show(); s.live.language = "zh-TW";
+  mock.handlers.get("settings:capture")!(s.event(), true);
+  const result = await s.choose(s.event(), "hotkey", "Alt+CommandOrControl+,");
+  expect(result.applied).toBe(false);
+  expect(result.view.groups.find((g: any) => g.id === "hotkey").note).toBe("這個組合鍵保留給設定使用。");
+  expect(s.act).not.toHaveBeenCalled();
+  expect(s.capture).toHaveBeenLastCalledWith(false);
+});
+it("restores capture ownership after renderer failure", () => {
+  const s = setup(); s.panel.show();
+  mock.handlers.get("settings:capture")!(s.event(), true);
+  const handler = s.window().webContents.on.mock.calls.find((call: any[]) => call[0] === "render-process-gone")[1];
+  handler(); expect(s.capture).toHaveBeenLastCalledWith(false);
 });

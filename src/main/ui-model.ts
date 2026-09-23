@@ -48,6 +48,7 @@ export interface AppContext {
   quality: QualitySettings;
   language: Language;
   hotkey: AppHotkey;
+  settingsShortcut?: import("./settings-hotkey").SettingsHotkeyStatus;
   updates: { state: UpdateState; enabled: boolean };
   /** The app's own switch. Electron cannot read the OS notification permission. */
   notifications: boolean;

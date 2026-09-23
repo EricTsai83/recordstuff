@@ -283,3 +283,15 @@ describe("first-run hint", () => {
     expect(trayHintNotification("win32", "zh-TW").body).toContain("系統匣");
   });
 });
+
+it("only advertises a working Settings key and explains unavailable access in both languages", () => {
+  for (const language of ["en", "zh-TW"] as const) {
+    const ctx = { ...mac, language, settingsShortcut: { kind: "registered" as const, accelerator: "CommandOrControl+Alt+," } };
+    expect(trayModel({ type: "recording", startedAt: 0 } as any, ctx).menu).toContainEqual(expect.objectContaining({ action: "openSettings", enabled: true, label: expect.stringContaining("⌘⌥,") }));
+    for (const status of [{ kind: "conflict" as const }, { kind: "failed" as const, accelerator: "CommandOrControl+Alt+,", reason: "OS" }]) {
+      const menu = trayModel({ type: "idle" }, { ...ctx, settingsShortcut: status }).menu;
+      expect(menu).toContainEqual(expect.objectContaining({ action: "openSettings", enabled: true, label: language === "en" ? "Settings" : "設定" }));
+      expect(menu.some(item => item.kind === "item" && !item.enabled && item.label.includes(language === "en" ? "Settings shortcut unavailable" : "設定快捷鍵無法使用"))).toBe(true);
+    }
+  }
+});
