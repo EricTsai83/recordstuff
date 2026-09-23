@@ -71,3 +71,8 @@ button:focus-visible { outline: 3px solid light-dark(#2476db, #82b7ff); outline-
 .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
 .tabs button { flex: 1; }
 .tabs button[aria-selected="true"] { background: light-dark(#e1edfc, #284466); border-color: light-dark(#2476db, #82b7ff); }
+
+/* Saving is brief: keep the real interaction lock without dimming the panel.
+   Recording/platform restrictions still use the normal disabled appearance. */
+select.saving-disabled, button.saving-disabled { opacity: 1; }
+.select-control:has(select.saving-disabled)::after { opacity: 1; }

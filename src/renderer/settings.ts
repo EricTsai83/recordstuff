@@ -30,10 +30,48 @@ let selectedTab: "recording" | "general" = "recording";
 /** Pending user intent is kept until every queued save has settled. */
 let pending = 0;
 let requestId = 0;
+let renderedStructure = "";
 let saving: { group: string; choice: string; control: string } | undefined;
 
 function controlId(group: SettingsGroup): string {
   return `setting-${group.id}`;
+}
+
+/** Keep the save lock without flashing every otherwise-enabled control. */
+function setDisabled(control: HTMLButtonElement | HTMLSelectElement, unavailable: boolean, busy: boolean): void {
+  control.disabled = unavailable || busy;
+  control.classList.toggle("saving-disabled", !unavailable && busy);
+}
+
+function setText(element: Element, text: string): void {
+  if (element.textContent !== text) element.textContent = text;
+}
+
+/** Value/text pushes keep the live controls, focus and scroll position intact. */
+function updateRows(groups: SettingsGroup[]): void {
+  for (const group of groups) {
+    const container = document.getElementById(`${controlId(group)}-row`)!;
+    setText(container.querySelector("label, .group-label")!, group.label);
+    const note = container.querySelector(".note");
+    if (note) setText(note, group.note ?? "");
+    if (group.kind !== "actions") {
+      const select = container.querySelector("select")!;
+      setDisabled(select, !group.enabled, saving !== undefined && saving.control !== select.id);
+      for (const [index, choice] of group.choices.entries()) {
+        const option = select.options[index]!;
+        setText(option, choice.label);
+        option.disabled = !choice.enabled;
+      }
+      const value = saving?.group === group.id
+        ? saving.choice : group.choices.find((choice) => choice.checked)?.id ?? "";
+      if (select.value !== value) select.value = value;
+    }
+    for (const choice of group.kind === "actions" ? group.choices : group.actions ?? []) {
+      const button = document.getElementById(`${controlId(group)}-${choice.id}`) as HTMLButtonElement;
+      setText(button, choice.label);
+      setDisabled(button, !group.enabled || !choice.enabled, saving !== undefined);
+    }
+  }
 }
 
 function actionButton(group: SettingsGroup, choice: SettingsGroup["choices"][number]): HTMLButtonElement {
@@ -41,7 +79,7 @@ function actionButton(group: SettingsGroup, choice: SettingsGroup["choices"][num
   button.type = "button";
   button.id = `${controlId(group)}-${choice.id}`;
   button.textContent = choice.label;
-  button.disabled = !group.enabled || !choice.enabled || saving !== undefined;
+  setDisabled(button, !group.enabled || !choice.enabled, saving !== undefined);
   button.addEventListener("click", () => void choose(group.id, choice.id, button.id));
   return button;
 }
@@ -49,6 +87,7 @@ function actionButton(group: SettingsGroup, choice: SettingsGroup["choices"][num
 function row(group: SettingsGroup): HTMLElement {
   const container = document.createElement("div");
   container.className = "row";
+  container.id = `${controlId(group)}-row`;
   if (group.kind === "actions") {
     const label = document.createElement("p");
     label.className = "group-label";
@@ -66,7 +105,7 @@ function row(group: SettingsGroup): HTMLElement {
   }
   const select = document.createElement("select");
   select.id = controlId(group);
-  select.disabled = !group.enabled || (saving !== undefined && saving.control !== select.id);
+  setDisabled(select, !group.enabled, saving !== undefined && saving.control !== select.id);
   const label = document.createElement("label");
   label.htmlFor = select.id;
   label.textContent = group.label;
@@ -103,8 +142,20 @@ function draw(): void {
   if (!current) return;
   document.documentElement.lang = current.language === "zh-TW" ? "zh-Hant" : "en";
   document.title = current.title;
-  heading.textContent = current.title;
-  hint.textContent = current.hint;
+  setText(heading, current.title);
+  setText(hint, current.hint);
+  const groups = current.groups.filter((group) => group.tab === selectedTab);
+  // Rebuild only for a tab/layout change, not pending saves or value pushes.
+  const structure = JSON.stringify([selectedTab, current.tabs.map((tab) => tab.id),
+    groups.map((group) => [group.id, group.kind, Boolean(group.note),
+      group.choices.map((choice) => choice.id), group.actions?.map((choice) => choice.id)])]);
+  if (structure === renderedStructure) {
+    form.querySelector('[role="tablist"]')!.setAttribute("aria-label", current.title);
+    for (const tab of current.tabs) setText(document.getElementById(`tab-${tab.id}`)!, tab.label);
+    updateRows(groups);
+    return;
+  }
+  renderedStructure = structure;
   // Rebuilding replaces the focused control; put focus back on its successor
   // so a push or a save does not drop the user out of the form.
   const active = document.activeElement;
@@ -136,7 +187,7 @@ function draw(): void {
   panel.id = "settings-panel";
   panel.setAttribute("role", "tabpanel");
   panel.setAttribute("aria-labelledby", `tab-${selectedTab}`);
-  panel.append(...current.groups.filter((group) => group.tab === selectedTab).map(row));
+  panel.append(...groups.map(row));
   form.replaceChildren(tabs, panel);
   if (restore) document.getElementById(restore)?.focus({ preventScroll: true });
 }

@@ -330,6 +330,64 @@ async function run() {
     JSON.stringify(off),
   );
 
+  // Keep a save pending across frames and a real main push. A recreated
+  // control can look correct after settling while still flashing or losing focus.
+  for (const value of ["on", "off"]) {
+    holdSaves = true;
+    await read(window, `(() => {
+      const select = document.querySelector("#setting-notifications");
+      select.focus();
+      window.beforeToggle = {
+        select, panel: document.querySelector("#settings-panel"),
+        button: document.querySelector("#setting-notifications-openSettings"),
+        scroll: window.scrollY,
+      };
+      select.value = ${JSON.stringify(value)};
+      select.dispatchEvent(new Event("change"));
+    })()`);
+    await settle(100);
+    window.webContents.send("settings:changed", view(language));
+    await settle(100);
+    const during = await read(window, `({
+      sameSelect: beforeToggle.select === document.querySelector("#setting-notifications"),
+      samePanel: beforeToggle.panel === document.querySelector("#settings-panel"),
+      focused: document.activeElement === beforeToggle.select,
+      scrollStable: window.scrollY === beforeToggle.scroll,
+      value: beforeToggle.select.value,
+      buttonLocked: beforeToggle.button.disabled,
+      buttonOpacity: getComputedStyle(beforeToggle.button).opacity,
+    })`);
+    record(`notification ${value}: pending save and push preserve controls, focus, scroll and brightness`,
+      during.sameSelect && during.samePanel && during.focused && during.scrollStable &&
+      during.value === value && during.buttonLocked && during.buttonOpacity === "1", JSON.stringify(during));
+    if (heldSaves.length !== 1) throw new Error("Expected one pending notification save");
+    heldSaves.shift()();
+    await settle(100);
+    const after = await read(window, `({
+      sameSelect: beforeToggle.select === document.querySelector("#setting-notifications"),
+      focused: document.activeElement === beforeToggle.select,
+      scrollStable: window.scrollY === beforeToggle.scroll,
+      value: beforeToggle.select.value,
+      buttonLocked: beforeToggle.button.disabled,
+    })`);
+    record(`notification ${value}: completion preserves the control and unlocks the pane action`,
+      after.sameSelect && after.focused && after.scrollStable && after.value === value && !after.buttonLocked,
+      JSON.stringify(after));
+  }
+  holdSaves = false;
+  const lockedView = view(language);
+  lockedView.groups.forEach(group => { group.enabled = false; });
+  window.webContents.send("settings:changed", lockedView);
+  await settle(100);
+  const restricted = await read(window, `({
+    disabled: document.querySelector("#setting-notifications").disabled,
+    opacity: getComputedStyle(document.querySelector("#setting-notifications")).opacity,
+  })`);
+  record("recording restrictions still disable and dim the controls",
+    restricted.disabled && restricted.opacity === "0.5", JSON.stringify(restricted));
+  window.webContents.send("settings:changed", view(language));
+  await settle(100);
+
   fs.writeFileSync(path.join(outDir, "panel.png"), (await window.webContents.capturePage()).toPNG());
   fs.writeFileSync(path.join(outDir, "results.json"), `${JSON.stringify(results, null, 2)}\n`);
   return results.every((result) => result.ok);
