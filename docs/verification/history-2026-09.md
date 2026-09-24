@@ -34,6 +34,9 @@ Claude Opus 5.5 xhigh completed two read-only passes (506.7 s + 367.0 s = 873.7 
 Pass 2: **no findings**; confirmed all six fixes. Minor retained limitations are unchanged: a startup-normalized unknown record may show the general persistence warning when writes fail, and unused historical translation keys remain harmless. Only documentation/evidence was finalized after the last regression/review; `git diff --check`, documentation links/anchors and bilingual consistency were checked separately. Native gaps remain in Plan035; no commit, push or publication.
 
 
+The maintainer requested scope-separated local commits and closure of this implementation round. Complete-write work and removal of completed Plan024 are committed as `b4deda3`; failure history/UI is committed as `2546f87`. The implementation round is closed, with no standalone failure-history plan to remove. This is not closure of pending Plan025, async metadata Plan036, overlap Plan037 or final maintainer acceptance Plan035. The final planning commit preserves their queue and native obligations; no push or publication was requested. Before committing, the current source/fixture delta was matched to the reviewed snapshot, so unchanged passing tests were reused rather than rerun.
+
+
 ## Latest failure persistence — 2026-09-25
 
 The latest recording failure and its acknowledgement now survive restart in a separate versioned `userData/recording-result.json`. Unread reminders remain; acknowledged results stay available without an unread badge. Startup sends no repeat error notification. Interrupted cleanup becomes unknown, and checking its candidate path does not claim successful finalization. Prior confirmed partial paths are rechecked with a two-second limit; missing/empty/unavailable files become unknown. UUID failure identities and reference checks prevent old restoration work from replacing a new result or acknowledgement.

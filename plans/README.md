@@ -2,7 +2,7 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-Updated: 2026-09-24. v0.1.3 is published from tag `v0.1.3` with the simplified DMG; see [0.1.3 evidence](../docs/verification/releases/0.1.3.md). 013 and 016 are complete and removed; the recording shortcut and its unattended acceptance (`pnpm acceptance`) are documented in [desktop design](../docs/system-design/desktop.md#recording-shortcut), [tooling](../docs/system-design/tooling.md) and the [verification record](../docs/verification/README.md). Releases follow [release automation](../docs/system-design/releases.md): the tag is the version and CI records each release back on main.
+Updated: 2026-09-25. v0.1.3 is published from tag `v0.1.3` with the simplified DMG; see [0.1.3 evidence](../docs/verification/releases/0.1.3.md). 013 and 016 are complete and removed; the recording shortcut and its unattended acceptance (`pnpm acceptance`) are documented in [desktop design](../docs/system-design/desktop.md#recording-shortcut), [tooling](../docs/system-design/tooling.md) and the [verification record](../docs/verification/README.md). Releases follow [release automation](../docs/system-design/releases.md): the tag is the version and CI records each release back on main.
 
 017 is complete: saved-notification timing, two consecutive 15/15 runs, cancellation, overlap and playback checks are recorded in [verification](../docs/verification/history-2026-09.md#saved-notification-timing--2026-09-20).
 
@@ -14,7 +14,9 @@ Updated: 2026-09-24. v0.1.3 is published from tag `v0.1.3` with the simplified D
 
 Next: [025 — Recording termination and safe exit](025-recording-finalization-and-exit.md). 024 is complete and removed: complete-write accounting, failure propagation/recovery tests and fresh-bundle recording/playback are recorded in [verification](../docs/verification/history-2026-09.md#plan-024-complete-writes--2026-09-24).
 
-Use R1 for the first ten-bug audit and R2 for the second eight-bug audit. Round 2 merges **five bugs into four existing plans and adds three plans**, without duplicate repair work. 025–033 remain planned, not implemented. Suggested order: **025 → 026 → 027 → 028 → 029 → 030 → 031 → 032 → 033**. Completed writes in 024 underpin 025/026; 029 depends on the terminal-event contract in 025. Other ordering is scheduling, not a hard dependency; 031–033 can run independently, and 032 should precede work requiring update acceptance. Before 030, recording acceptance must explicitly retain channel RMS/requested sync measurements rather than trust only the overall green verdict.
+The separate multi-failure history implementation round is complete and committed; see [closure and verification](../docs/verification/history-2026-09.md#multi-failure-history--2026-09-25). It had no standalone plan to remove. Plans025/036/037 remain unimplemented and 035 remains the final native acceptance obligation.
+
+Use R1 for the first ten-bug audit and R2 for the second eight-bug audit. Round 2 merges **five bugs into four existing plans and adds three plans**, without duplicate repair work. 025–033 remain planned, not implemented. Original audit-plan order (insert 036 after 025 as specified below): **025 → 026 → 027 → 028 → 029 → 030 → 031 → 032 → 033**. Completed writes in 024 underpin 025/026; 029 depends on the terminal-event contract in 025. Other ordering is scheduling, not a hard dependency; 031–033 can run independently, and 032 should precede work requiring update acceptance. Before 030, recording acceptance must explicitly retain channel RMS/requested sync measurements rather than trust only the overall green verdict.
 
 | Plan | Audit bugs | Repair scope / grouping reason |
 | --- | --- | --- |
@@ -28,7 +30,13 @@ Use R1 for the first ten-bug audit and R2 for the second eight-bug audit. Round 
 | [032 — Update acceptance contract](032-update-acceptance-contract.md) | R2-06 | New: stale runner expectations, not broken product controls |
 | [033 — Output-folder recovery](033-output-folder-recovery.md) | R2-08 | New: explicit folder action and feedback, not publication |
 
-Existing Cap comparisons remain in each plan, pinned to revision `ce785e705e79652adba4b8bf752669c4093499e0`. They are static comparisons of the inspected scope, not evidence that Cap handles the eight new cases. Round 2 reproduction conditions, repair contracts and evidence limits are embedded in the plans and do not depend on ignored local audit files. Slow-disk backlog remains an explicitly documented limitation and is not counted as a new bug or plan.
+034 is a separate requested visual improvement, planned and not implemented: [Windows system tray icons](034-windows-tray-icons.md). Schedule after 033 by default; visual drafts can proceed independently, with final warning-state integration aligned with 025.
+
+036 is the prioritized [background failure-history persistence](036-async-failure-history.md) task, planned and not implemented: execute immediately after 025, using its shared quit coordinator. It covers metadata background I/O, automatic retry and explicit unsaved-reminder exit handling, not media overlap. 037 is [bounded overlapping finalization](037-overlapping-recording-finalization.md), planned and not implemented: after 034 by default, with hard dependencies on 025/026/029/030/036. It first measures whether a safely separable stop delay warrants overlap; no performance gain has been measured yet.
+
+035 is the final maintainer-guided native acceptance round: [guided native acceptance](035-guided-native-acceptance.md), planned and not executed. Current full order: **025 → 036 → 026 → 027 → 028 → 029 → 030 → 031 → 032 → 033 → 034 → 037 → 035**. Keep 035 last even when later-numbered implementation/fix plans are added: schedule those before it. Codex prepares and guides one step at a time; the maintainer personally performs every remaining required native operation. It includes all untested native failure-UX cases and collects new required gaps from preceding plans; tests or blocked status do not silently satisfy it.
+
+Existing Cap comparisons remain in each plan, pinned to revision `ce785e705e79652adba4b8bf752669c4093499e0`. They are static comparisons of the inspected scope, not evidence that Cap handles the eight new cases. Round 2 reproduction conditions, repair contracts and evidence limits are embedded in the plans and do not depend on ignored local audit files. Slow-disk backlog remains an explicitly documented limitation; 037 evaluates bounded admission under contention, not a promise to eliminate sustained disk-throughput limits.
 
 019 is complete and removed following the maintainer’s manual acceptance and the settings-flicker fix/regression checks. The existing Notifications overview → RecordStuff path is retained; historical findings and untested conditions remain in the [closure record](../docs/verification/history-2026-09.md#plan-019-closure--2026-09-23).
 
@@ -44,7 +52,7 @@ Existing Cap comparisons remain in each plan, pinned to revision `ce785e705e7965
 
 Publishing is automated by tag push; installed-app updates stay manual. 018 adds a check that reports a newer version and links to it; it does not authorize downloading or installing an update from inside the app. Public release notes stay English-only; app UI and reader guides remain bilingual. Published release bytes must not be overwritten.
 
-No dedicated uninstaller is planned: quit and move the app to Trash; user data remains unless separately removed. No native-platform rewrite solely for size reduction, Apple certification, Windows/Linux/Intel verification or expansion is scheduled. DMG size was explained by Electron's runtime cost; discussion alone does not create a rewrite project.
+No dedicated uninstaller is planned: quit and move the app to Trash; user data remains unless separately removed. No native-platform rewrite solely for size reduction, Apple certification, general Windows/Linux/Intel verification or expansion is scheduled. Plan 034 is a narrow exception for Windows tray artwork and its necessary native verification. DMG size was explained by Electron's runtime cost; discussion alone does not create a rewrite project.
 
 All plan language versions live in this directory: English `<name>.md`, Traditional Chinese `<name>.zh-TW.md`.
 
