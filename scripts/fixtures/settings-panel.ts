@@ -570,7 +570,7 @@ async function run() {
   await until(async () => recordingResults.current?.acknowledged === true && await read<boolean>(window, `!document.querySelector(".recording-result").open && document.activeElement === document.querySelector(".recording-result > summary")`));
   record("real mouse Got it acknowledges only the offered result and collapses it",
     recordingResults.current?.acknowledged === true && await read<boolean>(window, `!document.querySelector(".recording-result").open && document.activeElement === document.querySelector(".recording-result > summary")`),
-    JSON.stringify({ call: chooseCalls.at(-1), result: recordingResults.current, ui: await read(window, `({open: document.querySelector(".recording-result").open, active: document.activeElement.id})`) }));
+    JSON.stringify({ call: chooseCalls.at(-1), result: recordingResults.current, ui: await read(window, `({open: document.querySelector(".recording-result").open, active: document.activeElement.id, tag: document.activeElement.tagName, documentFocused: document.hasFocus(), windowFocused: ${window.isFocused()}})`) }));
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Return" });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Return" });
   record("acknowledged result can be reopened with keyboard", await until(() => read<boolean>(window, `document.querySelector(".recording-result").open`)), "Return on summary");

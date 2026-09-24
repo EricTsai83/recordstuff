@@ -5,12 +5,12 @@ import { fileURLToPath } from "node:url";
 import { build, transformWithEsbuild } from "vite";
 
 export async function buildFixture(
-  name: "recording-lifecycle" | "settings-panel" | "shortcut-failure" | "release-record-network",
+  name: "quit-dialog" | "recording-lifecycle" | "settings-panel" | "shortcut-failure" | "release-record-network",
   outputDir: string,
 ): Promise<string> {
   const source = fileURLToPath(new URL(`../fixtures/${name}.ts`, import.meta.url));
   // Settings snapshots use the real model and its pure shared dependencies.
-  if (name === "settings-panel" || name === "recording-lifecycle") {
+  if (name === "settings-panel" || name === "recording-lifecycle" || name === "quit-dialog") {
     await build({ configFile: false, logLevel: "error", build: {
       outDir: outputDir, emptyOutDir: false, minify: false,
       lib: { entry: source, formats: ["es"], fileName: () => `${name}.mjs` },

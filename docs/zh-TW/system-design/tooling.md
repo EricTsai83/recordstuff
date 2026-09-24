@@ -24,7 +24,7 @@
 
 main、preload、renderer 分別建置，打包只納入 out、package metadata 與指定 resources。測試、量測與文件不屬 runtime；App 不呼叫 FFmpeg。
 
-`scripts/fixtures/` 的原始碼統一使用 TypeScript，納入 `pnpm typecheck`。獨立入口由 [build-fixture.mts](../../../scripts/lib/build-fixture.mts) 使用 Vite 的 TypeScript 轉換按需編譯：settings-panel 與 release-record-network 輸出 ESM（`.mjs`）；shortcut-failure 因為要在載入正式 App 前攔截 CommonJS 載入，所以輸出 CommonJS（`.cjs`）。產物保留在各次驗收報告目錄或測試暫存目錄，不是需要維護的原始碼，也不隨 App 發布。update-acceptance fixture 繼續隨臨時 App 原始碼副本一起建置。現有驗收指令不需額外手動建置 fixture；編譯只移除型別，型別檢查由 `pnpm typecheck` 負責。傳給 `executeJavaScript` 的 renderer 字串仍是執行時程式碼，不會得到 TypeScript 的 DOM 型別檢查。
+`scripts/fixtures/` 的原始碼統一使用 TypeScript，納入 `pnpm typecheck`。獨立入口由 [build-fixture.mts](../../../scripts/lib/build-fixture.mts) 使用 Vite 的 TypeScript 轉換按需編譯：settings-panel、recording-lifecycle、quit-dialog 與 release-record-network 輸出 ESM（`.mjs`）；shortcut-failure 因為要在載入正式 App 前攔截 CommonJS 載入，所以輸出 CommonJS（`.cjs`）。產物保留在各次驗收報告目錄或測試暫存目錄，不是需要維護的原始碼，也不隨 App 發布。update-acceptance fixture 繼續隨臨時 App 原始碼副本一起建置。現有驗收指令不需額外手動建置 fixture；編譯只移除型別，型別檢查由 `pnpm typecheck` 負責。傳給 `executeJavaScript` 的 renderer 字串仍是執行時程式碼，不會得到 TypeScript 的 DOM 型別檢查。
 
 ## 資源與產生的輸出
 
@@ -234,3 +234,17 @@ pnpm acceptance:regression
 先執行 TypeScript、Vitest 與 build，再依序執行設定 fixture 和快捷鍵整合，避免重複建置。Console 會列出各自的 `docs/verification/measurements/` 報告；非零退出碼代表失敗，`&&` 確保失敗後不繼續下一階段。隔離整合另外連跑兩輪「設定快捷鍵 callback → 真正 Electron 按鍵 ⌘W（其他平台 Ctrl+W）→ Tray 設定 handler 重開」，斷言只有一個視窗、可見且聚焦、App 與註冊仍存在、偏好沒有改寫且未開始錄影或產生影片。
 
 這是正式 main／preload／renderer 的整合回歸；快捷鍵註冊及 Tray 邊界受控，不能聲稱測過 OS 全域送鍵或實際 Tray 點擊。原生入口仍用 `pnpm acceptance:settings-shortcut` 加 computer use／人工觀察；真實錄影仍用 `pnpm start:app` 與 `pnpm acceptance`，後者會正常結束測試 App。實體拔插螢幕、VoiceOver 聽感及使用者理解仍需人工。已通過的案例若程式、環境或測試條件沒有相關變更，不要求使用者反覆重測。
+
+## 錄製生命週期驗收
+
+`pnpm acceptance:lifecycle` 建置隔離 Electron fixture，使用 production Recorder、FileWriter 與 `installQuitCoordinator`。它延遲真正的最終複製、handle close 或 partial 結果的 stat／發布，重複要求退出，確認程序跨過兩次期限仍存活，再釋放工作並檢查正式／保留檔的精確 bytes 與正常退出。100 ms 期限用來加速相同退出判定流程，不量測原生擷取或 UI 對話框。不修改使用者偏好、不替換已安裝 App，也不載入一般 main 入口。結果與程序清理證據位於 `docs/verification/measurements/<timestamp>-lifecycle/`。依測試政策另行執行新 bundle 擷取／播放與原生退出案例。
+
+### 引導式延期退出提示驗收
+
+執行 `pnpm acceptance:quit-dialog -- --language zh-TW`，再以 `--language en` 重做。它啟動獨立 Electron 測試程序，使用隔離 userData 與合成 bytes；不錄影、不改正式偏好、不塞滿磁碟，也不替換已安裝 App。共用正式 `createQuitFeedback`、Recorder、FileWriter 與退出協調器。先給五秒準備，再透過受控的複製延遲與縮短為 100 ms 的退出期限觸發真正的原生提示。請在五秒內切換到另一個 App，觀察提示是否置前、只有一個且文字完整易讀，30 秒內按提示按鈕關閉。關閉後 fixture 確認複製仍在等待，再解除延遲、驗證精確 bytes 並重新正常退出。產生的 `.mp4` 只有合成 bytes，不是可播放的錄影。
+
+`--help` 不啟動程序；錯誤參數在啟動前失敗。Ctrl+C 只取消隔離程序群組，重複取消訊號不會跳過外層清理。此 runner 取消／逾時時立即 SIGKILL 自己建立的可丟棄合成程序群組；其他 runner 保留預設的 SIGTERM 正常收尾。外層 40 秒期限限制無人操作的執行；中斷、逾時或強制清理都算失敗，不算通過。此 macOS／Electron 上，即使加入 JavaScript 訊號 handler，SIGTERM 取消仍未阻止正式退出提示在強制清理前出現。合成 fixture 專用的 SIGKILL 避免這種誤導，固定記為強制清理與失敗；不作用於正式 RecordStuff。Log 與 `report.json`／`report.md` 保留在 `docs/verification/measurements/<timestamp>-quit-dialog-<language>/`。報告刻意將原生觀察留為 **not recorded**，需另記觀察者、置前／文字結果與截圖。共用提示去重及生命週期測試不代表原生視窗層級已驗證。這是帶 Electron 圖示／系統按鈕語言的開發 fixture 證據，不是正式簽章產物身分或真實錄影證據。
+
+由 agent 自動做視覺驗收時，依[原生驗收技能](../../../.agents/skills/astra-acceptance-with-computer-use/SKILL.md)：agent 擷取真正提示，以截圖搭配 accessibility 狀態自行判讀、關閉提示，再核對生命週期與清理證據。工具支援時保存 PNG，否則明確引用工具圖像。此自動化需要具桌面能力的 agent；單獨指令不會呼叫模型。自動置前需要被動的前後桌面證據，先選取目標或只看 App 裁切圖不能證明；維護者確認仍標為人工證據。
+
+**報告提醒：** 測試期間若有測試步驟以外的人為桌面操作，可能影響焦點、截圖與判讀結果；目前流程不會自動偵測所有干擾。保留既有流程，不增加每輪核准或鍵鼠監控。若已知受干擾，受影響的原生觀察標為 blocked／無法判定，保留原始截圖、log 與 runner 結果，不直接判為產品通過或失敗；需要有效結論時，再於無干擾環境重測該項。報告與最後回覆均附上此提醒。

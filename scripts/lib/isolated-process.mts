@@ -9,6 +9,8 @@ export interface IsolatedProcessOptions {
   logFd: number;
   timeoutMs: number;
   graceMs?: number;
+  /** Disposable synthetic fixtures only; default remains graceful SIGTERM. */
+  stopSignal?: "SIGTERM" | "SIGKILL";
   signal?: AbortSignal;
 }
 
@@ -39,11 +41,20 @@ export async function runIsolatedProcess(options: IsolatedProcessOptions): Promi
     if (stopped) return;
     stopped = reason;
     // Give Electron main a chance to dispose windows, shortcuts and timers first.
-    child.kill("SIGTERM");
+    if (options.stopSignal === "SIGKILL") {
+      forced = true;
+      try { if (child.pid) signalGroup(child.pid, "SIGKILL"); }
+      catch { child.kill("SIGKILL"); } // Child 'error' rejects the supervised promise.
+    } else child.kill("SIGTERM");
     escalation = setTimeout(() => {
-      if (child.pid && groupExists(child.pid)) {
+      try {
+        if (child.pid && groupExists(child.pid)) {
+          forced = true;
+          signalGroup(child.pid, "SIGKILL");
+        }
+      } catch {
         forced = true;
-        signalGroup(child.pid, "SIGKILL");
+        child.kill("SIGKILL");
       }
     }, grace);
   };
