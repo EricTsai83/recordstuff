@@ -8,7 +8,7 @@ Status: planned, not implemented. Created: 2026-09-25. Execution order: see [que
 
 Give RecordStuff a complete, recognizable app symbol in the Windows notification area (system tray), instead of carrying over the simple macOS menu bar ring. “Windows menu bar” in this request means the system tray; Start menu, pinned taskbar and installer icons are outside scope.
 
-The [icon generator](../scripts/make-icons.mjs) already emits separate macOS template PNGs and Windows ICOs, but shares ring/dot geometry: Windows uses a gray idle ring and a red recording dot. The current working tree also includes a warning icon that implementation must preserve and integrate. [Tray](../src/main/tray.ts) selects assets by platform; Windows does not display the macOS `REC` title, so the icon must communicate state on its own. These are source observations, without Windows native appearance evidence.
+The [icon generator](../scripts/make-icons.mjs) already emits separate macOS template PNGs and Windows ICOs, but shares ring/dot geometry: Windows uses a gray idle ring and a red recording dot. The [tray model](../src/main/tray-model.ts) already defines the `warning` state with its own macOS PNG and Windows ICO assets (plan 025, complete); implementation must preserve it. [Tray](../src/main/tray.ts) selects assets by platform; Windows does not display the macOS `REC` title, so the icon must communicate state on its own. These are source observations, without Windows native appearance evidence.
 
 ## Visual direction and scope
 
@@ -45,7 +45,7 @@ Cap reference inspected at fixed revision `26e1a6d882f311d10b5317e9e0d29babe4f67
 
 ## Implementation steps
 
-- [ ] Recheck the working tree before implementation and integrate plan 025's warning/recording-result contract. Use the final `TrayIcon` states and preserve concurrent changes. Visual drafts can proceed independently.
+- [ ] Start from the committed `TrayIcon` states (`idle`, `recording`, `warning`) and their existing precedence; do not change `tray-model.ts` semantics. Visual drafts can proceed independently.
 - [ ] Prepare actual-size and enlarged previews of candidates A/B for all three states at 16/20/24/32/48px on light/dark backgrounds. Compare with the current Windows icons, select the clearer candidate and record why. Confirm idle and recording remain distinguishable without color; an enlarged preview alone is insufficient.
 - [ ] Separate Windows drawing layers in `scripts/make-icons.mjs`, retaining programmatic generation instead of shrinking the 512px app icon directly. Keep 16, 24, 32 and 48px entries, add 20px, and tune details per size in the multi-resolution ICOs.
 - [ ] Regenerate `resources/tray-idle.ico`, `resources/tray-recording.ico` and `resources/tray-warning.ico`. Inspect generation side effects to ensure macOS PNGs, app artwork and DMG backgrounds are not accidentally changed.

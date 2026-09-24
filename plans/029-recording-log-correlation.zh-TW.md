@@ -28,6 +28,7 @@ Cap [以 project identity 管理 finalization attempt，並配置 attempt UUID](
 
 - [ ] 既有 sessionId 貫穿 capture、saved／failed、保留路徑與開始／停止時間。明確區分沒有 attempt 的 preflight refusal，不能借用前一次 session。保留消費端相容性，或同步更新全部型別呼叫者。
 - [ ] 新增帶版本、正確跳脫的結構化診斷紀錄，含 sessionId／完整路徑，以及未保留檔案的失敗。可保留人讀訊息，但新分析器不能將兩種格式計為兩次結果。保留 autorecord 成功／失敗語意。
+- [ ] 每次啟動配一個 run id（初定為啟動時間加 pid），印在既有的 `start:` 行並帶入每筆結構化紀錄，讓消費端能分辨 App 重啟與 log 輪替，跨啟動配對 session 時不必猜行序。不在每一行人讀訊息加前綴；start 行與結構化紀錄已足夠。2026-09-25 自 T3 Code／Cap 架構比較併入：T3 Code 在每行 log 都蓋每次執行的 id。
 - [ ] 依 session 身分配對，不依到達順序。避免只用 basename 而讓不同目錄同名碰撞；統一路徑識別正規化，不能要求失敗／已不存在檔案可 realpath。重複終止紀錄可重複讀取，矛盾結果須標示。
 - [ ] 保守讀取歷史 log：只有唯一可判定的舊格式才配對，否則顯示未知／不明確，不做相依品質結論。兩個尚未配對的舊失敗不能只因某個先印出就猜歸屬；不能為了綠燈製造配對。
 - [ ] 覆蓋 A／B 逆序、不同／無檔案結果、三次交錯、重複紀錄、不同目錄同 basename、含空白特殊字元路徑、混合新舊格式、未知 ID、preflight 失敗。包含真正 Recorder 驅動 log 的整合測試，不只手寫 log。

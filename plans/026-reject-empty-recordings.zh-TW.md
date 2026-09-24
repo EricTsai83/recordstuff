@@ -17,7 +17,7 @@ Cap 的 AVFoundation writer 在[沒有最後影格時以 NoFrames 拒絕 finish]
 ## 實作與測試
 
 - [ ] 成功須有非空媒體且寫入全部完成。使用 024 的 FileWriter 實際位元組計數，不信任要求寫入的 chunk 長度，不為空 chunk 加總。在 FileWriter 發布前再次防守；Recorder 的無媒體失敗走 025 單一終止流程。
-- [ ] 適當時沿用 capture_start_failed，提供清楚雙語提示；若確需新代碼，同步更新共享驗證器、翻譯與全部消費端。零輸出不可發 saved 或設定 lastSavedPath。真正的磁碟寫入錯誤保留原代碼。
+- [ ] 沒有媒體時沿用既有的 `capture_start_failed` 並附獨立 detail，與已使用該代碼的第一個 chunk 期限一致，提供清楚雙語提示。只有使用者可見文案無法誠實表達時才新增代碼，屆時同步更新共享驗證器、翻譯與全部消費端。零輸出不可發 saved 或設定 lastSavedPath。真正的磁碟寫入錯誤保留原代碼。
 - [ ] 關閉 handle 與同步 timer，清除確實為空的暫存檔；其他失敗保留非空 partial。可立即重試成功。不可只因時間很短而拒絕非空且有效的錄影。
 - [ ] 覆蓋 started→stop→stopped 無 chunk、只有空 chunk、stopped 前最後一筆非空 chunk、首筆 append 尚未完成、寫入失敗、重複 stopped 與重試。對真實暫存檔大小／內容與事件斷言，確保零寫入不能繞過 writer 防守。
 - [ ] 更新雙語錄製設計，區分「非空」與「可播放」。

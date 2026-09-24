@@ -8,7 +8,7 @@
 
 讓 Windows 工作列通知區域（系統匣）的 RecordStuff 圖示具有完整、明顯的 App 識別，而非沿用 macOS 選單列的簡單圓圈。此計畫的「Windows 選單列」指系統匣，不包含開始功能表、工作列釘選圖示或安裝程式圖示。
 
-目前 [圖示產生器](../scripts/make-icons.mjs) 已分別輸出 macOS template PNG 與 Windows ICO，但兩者共用圓圈／圓點形狀；Windows 待機為灰圈、錄製中為紅點。目前工作樹另有警告圖示，實作時須保留並整合該狀態。[Tray](../src/main/tray.ts) 已依平台載入圖示，Windows 不顯示 macOS 的 `REC` title，因此狀態須能由圖示本身辨認。此為原始碼觀察，尚無 Windows 原生外觀驗收證據。
+目前 [圖示產生器](../scripts/make-icons.mjs) 已分別輸出 macOS template PNG 與 Windows ICO，但兩者共用圓圈／圓點形狀；Windows 待機為灰圈、錄製中為紅點。[Tray 模型](../src/main/tray-model.ts)已定義 `warning` 狀態及其 macOS PNG 與 Windows ICO 資產（025 已完成），實作時須保留。[Tray](../src/main/tray.ts) 已依平台載入圖示，Windows 不顯示 macOS 的 `REC` title，因此狀態須能由圖示本身辨認。此為原始碼觀察，尚無 Windows 原生外觀驗收證據。
 
 ## 視覺方向與範圍
 
@@ -45,7 +45,7 @@ Cap 參考固定於已檢視 revision `26e1a6d882f311d10b5317e9e0d29babe4f6737e`
 
 ## 實作步驟
 
-- [ ] 開始時重新檢查工作樹，整合 025 的警告／錄製結果契約；以最終 `TrayIcon` 狀態為準，避免覆蓋並行變更。視覺草稿可獨立進行。
+- [ ] 以已提交的 `TrayIcon` 狀態（`idle`、`recording`、`warning`）及其既有優先順序為起點，不改 `tray-model.ts` 語意。視覺草稿可獨立進行。
 - [ ] 先製作 A／B 兩方案、三個狀態在 16／20／24／32／48px 的原尺寸預覽及放大對照，放在淺色／深色底上，與目前 Windows 圖示比較；選出較清楚的方案並記錄理由。確認待機與錄製中即使忽略顏色仍可區分，不能只看放大預覽。
 - [ ] 在 `scripts/make-icons.mjs` 分離 Windows 專用繪圖層，沿用程式產圖方式，不直接縮小 512px App 圖示。保留 16、24、32、48px，補上 20px，逐尺寸調整細節並輸出多尺寸 ICO。
 - [ ] 重新產生 `resources/tray-idle.ico`、`resources/tray-recording.ico`、`resources/tray-warning.ico`。檢查產圖副作用，確認 macOS PNG、App 圖示與 DMG 背景未被意外修改。

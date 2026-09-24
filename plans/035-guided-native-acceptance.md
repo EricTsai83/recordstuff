@@ -2,7 +2,7 @@
 
 [English](035-guided-native-acceptance.md) | [繁體中文](035-guided-native-acceptance.zh-TW.md)
 
-Status: planned, not executed. Created: 2026-09-25. This plan is permanently the **last queue item**, currently after 025–034 and 036–037; see [order](README.md#order-and-status). Any later implementation/fix plans go before it, regardless of numbering. It is the last step before clearing the queue, not a request to begin testing now.
+Status: planned, not executed. Created: 2026-09-25. This plan is permanently the **last queue item**, currently after 026–034 and 036–039; see [order](README.md#order-and-status). Any later implementation/fix plans go before it, regardless of numbering. It is the last step before clearing the queue, not a request to begin testing now.
 
 ## Purpose and ownership
 
@@ -79,9 +79,16 @@ Sources: [036](036-async-failure-history.md) and [037](037-overlapping-recording
 
 - [ ] N24: With isolated delayed history storage, operate Settings and start/stop recording while reminder persistence is pending. Inspect saving/failed/automatic-retry feedback, English/Chinese copy, per-row warnings, and readable identifiers. Recover storage; verify the latest history survives restart without acknowledging unread records.
 - [ ] N25: Quit/relaunch with unsaved history, including while recording or media cleanup is pending. Test repeated requests, bounded waiting, Stay/Retry and safe resumption. Any implemented metadata-only exit option must clearly identify lost reminders and must never bypass pending media or an active publisher.
-- [ ] N26: Launch with delayed history load/migration, create a new failure during load, and check both old/new records. Exercise worker failure/recovery using labeled controlled tooling; no duplicate writers, overwritten history or misleading success. Record normal-bundle responsiveness separately from synthetic delay.
+- [ ] N26: Launch with delayed history load/migration, create a new failure during load, and check both old/new records. Exercise storage failure and recovery (rejected and delayed writes) using labeled controlled tooling; no duplicate writers, overwritten history or misleading success. Record normal-bundle responsiveness separately from synthetic delay.
 - [ ] N27: If 037 passes its measurement gate and is implemented, stop A and begin distinguishable B while A publishes; verify REC priority, separate saving status, completion/failure identity, notification suppression, media integrity and playback of both files. Record actual stop-to-next-start timings.
 - [ ] N28: Keep A publication pending, stop B, try C; observe bounded waiting and preserved A/B media. Test safe slow/full/offline isolated storage scenarios, older-save failure and late events without disrupting B. Do not induce a real system-disk outage.
 - [ ] N29: Quit/relaunch with active B and A pending publication, then with sealed B waiting behind A; repeat requests and verify safe exit/cancel, no premature saved claim and all outcomes. Restore test state, close test UI, quit normally and verify process cleanup.
 
 If 037 is deferred at its measurement gate, retain that explicit decision and mark its overlap cases not applicable only because the feature was not implemented; do not report them passed. New required cases discovered during implementation must also be added here. The maintainer performs each applicable native operation with one-step guidance.
+
+## Additional health-guard acceptance (not performed)
+
+Source: [038](038-recording-health-guards.md). Prepare recipes from its final thresholds.
+
+- [ ] N30: With a bounded test disk image as the output folder, record until the disk guard stops the recording. Observe the early-stop wording in the notification and log, play the saved file, and confirm no failure entry appears. Then, on an isolated output folder, force-quit the labeled bundle during a recording and relaunch: one interruption entry names the temporary file, reveals it while it exists, becomes unknown after the file is moved away, and does not repeat after acknowledgement or another restart.
+- [ ] N31: Put the Mac to sleep during a recording, wake it, and record the actual outcome (saved, failed with a partial, or stuck) together with the suspend/resume log lines and any failure reason. This is evidence for a later stop-on-sleep decision, not a pass/fail gate; do not change behavior inside this round.

@@ -2,58 +2,50 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-Updated: 2026-09-25. v0.1.3 is published from tag `v0.1.3` with the simplified DMG; see [0.1.3 evidence](../docs/verification/releases/0.1.3.md). 013 and 016 are complete and removed; the recording shortcut and its unattended acceptance (`pnpm acceptance`) are documented in [desktop design](../docs/system-design/desktop.md#recording-shortcut), [tooling](../docs/system-design/tooling.md) and the [verification record](../docs/verification/README.md). Releases follow [release automation](../docs/system-design/releases.md): the tag is the version and CI records each release back on main.
-
-017 is complete: saved-notification timing, two consecutive 15/15 runs, cancellation, overlap and playback checks are recorded in [verification](../docs/verification/history-2026-09.md#saved-notification-timing--2026-09-20).
-
-014 is complete and removed: the maintainer accepted the bilingual 30/30 local notification matrix as plan completion. Historical uncertainty and untested cases remain documented in [verification](../docs/verification/history-2026-09.md#notification-lifetime-investigation--2026-09-20). Publication and public-build checks belong to a separately requested release.
-
-012 is complete and removed: the [official website](https://record.ericts.com) is live, and the maintainer confirmed the launch and requested documentation-only closure on 2026-09-20. See the [verification record](../docs/verification/history-2026-09.md#plan-012-closure--2026-09-20) for the closure basis and historical verification scope. 018 is now complete.
+Updated: 2026-09-25. This index lists unfinished plans, their order and their hard dependencies. A completed plan is removed; its closure record stays in [verification](../docs/verification/README.md) and its durable conclusions in [system design](../docs/system-design/README.md). Adopted decisions that bound the queue, such as no updater, no uninstaller, no native rewrite for size alone and macOS-only verification, are recorded in [design decisions](../docs/system-design/decisions.md) rather than repeated here; 034 is the one narrow exception to macOS-only verification, limited to Windows tray artwork and its necessary native acceptance. Releases follow [release automation](../docs/system-design/releases.md): the tag is the version and CI records each release back on main.
 
 ## Order and status
 
-025 is complete and removed: the maintainer confirmed automatic foregrounding, completing the final native observation. See [closure and evidence](../docs/verification/history-2026-09.md#plan-025-closure--2026-09-25).
+Every plan below is planned, not implemented. Current order: **039 → 036 → 026 → 038 → 027 → 028 → 029 → 030 → 031 → 032 → 033 → 034 → 037 → 035**.
 
-Next: [036 — Background failure-history persistence](036-async-failure-history.md). 024 is complete and removed: complete-write accounting, failure propagation/recovery tests and fresh-bundle recording/playback are recorded in [verification](../docs/verification/history-2026-09.md#plan-024-complete-writes--2026-09-24).
+Ordering rule: zero-risk cleanup first, then the prioritized history work, then guards that prevent data loss, then audit fixes in their original order, then optional or measured work, and 035 last. Keep 035 last even when later-numbered implementation or fix plans are added: schedule those before it.
 
-The separate multi-failure history implementation round is complete and committed; see [closure and verification](../docs/verification/history-2026-09.md#multi-failure-history--2026-09-25). It had no standalone plan to remove. Plan 025 is complete; 036/037 remain unimplemented and 035 remains the final native acceptance obligation.
-
-Use R1 for the first ten-bug audit and R2 for the second eight-bug audit. Round 2 merges **five bugs into four existing plans and adds three plans**, without duplicate repair work. 025 is complete; 026–033 remain planned, not implemented. Original audit-plan order (insert 036 after 025 as specified below): **025 → 026 → 027 → 028 → 029 → 030 → 031 → 032 → 033**. Completed writes in 024 underpin 025/026; 029 depends on the terminal-event contract in 025. Other ordering is scheduling, not a hard dependency; 031–033 can run independently, and 032 should precede work requiring update acceptance. Before 030, recording acceptance must explicitly retain channel RMS/requested sync measurements rather than trust only the overall green verdict.
-
-| Plan | Audit bugs | Repair scope / grouping reason |
+| Plan | Source | Scope |
 | --- | --- | --- |
-| [026 — Reject empty recordings](026-reject-empty-recordings.md) | R1-9 | Actual byte guard after complete writes; unchanged scope |
-| [027 — Permission state and query lifetime](027-permission-state-and-query-lifetime.md) | R1-2, R1-6 | Permission reconciliation and underlying requests; unchanged scope |
-| [028 — Settings window and shortcut lifecycle](028-shortcut-editing-lifecycle.md) | R1-1, R1-5; R2-03 | Window crash recovery and capture leases share ownership |
-| [029 — Log identity and rotation-safe acceptance](029-recording-log-correlation.md) | R1-7; R2-07 | Correct event identity plus reliable reading and cleanup |
-| [030 — Audio and synchronization evidence](030-audio-verification-evidence.md) | R1-8; R2-05 | Missing required RMS or sync must block success |
-| [031 — Stable release pointers](031-stable-release-recording.md) | R2-04 | New: release ordering is independent of recording |
-| [032 — Update acceptance contract](032-update-acceptance-contract.md) | R2-06 | New: stale runner expectations, not broken product controls |
-| [033 — Output-folder recovery](033-output-folder-recovery.md) | R2-08 | New: explicit folder action and feedback, not publication |
+| [039 — Repository hygiene](039-repository-hygiene.md) | 2026-09-25 layout review | Layout documentation, the duplicated skill file, test placement and tsconfig references; minutes of work, first because later plans would otherwise re-edit the same files |
+| [036 — Background failure-history persistence](036-async-failure-history.md) | Maintainer priority | Asynchronous metadata I/O, automatic retry, explicit unsaved-reminder exit handling and keyboard focus through pending result actions (merged 2026-09-25); not media overlap |
+| [026 — Reject empty recordings](026-reject-empty-recordings.md) | R1-9 | Actual byte guard after complete writes |
+| [038 — Recording health guards](038-recording-health-guards.md) | 2026-09-25 T3 Code/Cap comparison | Disk-headroom stop, stalled-capture failure, bounded writer backlog, per-session interruption sentinel and sleep/wake logging, all through existing stop/failure paths; no new UI or recovery |
+| [027 — Permission state and query lifetime](027-permission-state-and-query-lifetime.md) | R1-2, R1-6 | Permission reconciliation and one owned enumeration request |
+| [028 — Settings window and shortcut lifecycle](028-shortcut-editing-lifecycle.md) | R1-1, R1-5; R2-03 | Close chord, capture lease separated from the setting transaction, and crashed-window recovery under one ownership |
+| [029 — Log identity and rotation-safe acceptance](029-recording-log-correlation.md) | R1-7; R2-07; run id from the comparison | Session-keyed structured records, a per-launch run id, and a rotation-aware reader shared by waiting and cleanup |
+| [030 — Audio and synchronization evidence](030-audio-verification-evidence.md) | R1-8; R2-05 | Missing required RMS or sync evidence blocks success |
+| [031 — Stable release pointers](031-stable-release-recording.md) | R2-04 | Release ordering is independent of recording |
+| [032 — Update acceptance contract](032-update-acceptance-contract.md) | R2-06 | Stale runner expectations, not broken product controls |
+| [033 — Output-folder recovery](033-output-folder-recovery.md) | R2-08 | Explicit folder action and feedback, not publication |
+| [034 — Windows system tray icons](034-windows-tray-icons.md) | Maintainer request | Windows tray artwork and its necessary native verification; visual drafts can proceed independently |
+| [037 — Bounded overlapping finalization](037-overlapping-recording-finalization.md) | 2026-09-25 comparison; measurement gate | Measures first whether a safely separable stop delay justifies overlap; no gain has been measured yet |
+| [035 — Guided native acceptance](035-guided-native-acceptance.md) | Final round | Codex prepares and guides one step at a time; the maintainer personally performs every remaining required native operation, including the untested failure-UX cases and the gaps collected from preceding plans. Tests or blocked status do not silently satisfy it |
 
-034 is a separate requested visual improvement, planned and not implemented: [Windows system tray icons](034-windows-tray-icons.md). Schedule after 033 by default; visual drafts can proceed independently, with final warning-state integration aligned with 025.
+Hard dependencies; everything else is scheduling:
 
-036 is the prioritized [background failure-history persistence](036-async-failure-history.md) task, planned and not implemented: execute immediately after 025, using its shared quit coordinator. It covers metadata background I/O, automatic retry, explicit unsaved-reminder exit handling and keeping keyboard focus through pending result actions (merged 2026-09-25), not media overlap. 037 is [bounded overlapping finalization](037-overlapping-recording-finalization.md), planned and not implemented: after 034 by default, with hard dependencies on 025/026/029/030/036. It first measures whether a safely separable stop delay warrants overlap; no performance gain has been measured yet.
+- 026 and 038 build on the complete-write accounting from 024 (complete). 038 follows 026 because its early stop relies on the nonempty-file guarantee, and precedes the audit UI plans because it prevents data loss.
+- 029 depends on the terminal-event contract from 025 (complete); 036 registers metadata work with the quit coordinator from 025 instead of adding a competing handler.
+- 037 depends on 025, 026, 029, 030, 036 and 038, and reuses the writer backlog bound defined in 038.
+- 031–033 can run independently; 032 should precede any work that requires update acceptance.
+- Before 030 closes, recording acceptance must explicitly retain channel RMS and requested sync measurements rather than trust only the overall verdict.
 
-035 is the final maintainer-guided native acceptance round: [guided native acceptance](035-guided-native-acceptance.md), planned and not executed. Current remaining order: **036 → 026 → 027 → 028 → 029 → 030 → 031 → 032 → 033 → 034 → 037 → 035**. Keep 035 last even when later-numbered implementation/fix plans are added: schedule those before it. Codex prepares and guides one step at a time; the maintainer personally performs every remaining required native operation. It includes all untested native failure-UX cases and collects new required gaps from preceding plans; tests or blocked status do not silently satisfy it.
+## Sources and evidence boundaries
 
-Existing Cap comparisons remain in each plan, pinned to revision `ce785e705e79652adba4b8bf752669c4093499e0`. They are static comparisons of the inspected scope, not evidence that Cap handles the eight new cases. Round 2 reproduction conditions, repair contracts and evidence limits are embedded in the plans and do not depend on ignored local audit files. Slow-disk backlog remains an explicitly documented limitation; 037 evaluates bounded admission under contention, not a promise to eliminate sustained disk-throughput limits.
+- R1 is the first ten-bug audit and R2 the second eight-bug audit (2026-09-24). Round 2 merged five bugs into four existing plans and added three, without duplicate repair work. Reproduction conditions, repair contracts and evidence limits are embedded in the plans and do not depend on ignored local audit files.
+- Cap comparisons in each plan are pinned to revision `ce785e705e79652adba4b8bf752669c4093499e0`; 037 and 038 pin `26e1a6d882f311d10b5317e9e0d29babe4f6737e`. They are static comparisons of the inspected scope, not evidence that Cap handles these cases.
+- The 2026-09-25 T3 Code/Cap architecture comparison contributed only 038 and the run id in 029. Adopting Effect, a monorepo split, feature subdirectories under `src/main/` and settings-file backups were rejected to keep the app small.
+- Slow-disk backlog remains an explicitly documented limitation; 037 evaluates bounded admission under contention, not a promise to eliminate sustained disk-throughput limits.
+- The multi-failure history round (2026-09-25) was implemented without a standalone plan; its [record](../docs/verification/history-2026-09.md#multi-failure-history--2026-09-25) and 035's N19–N23 carry its remaining native cases.
 
-019 is complete and removed following the maintainer’s manual acceptance and the settings-flicker fix/regression checks. The existing Notifications overview → RecordStuff path is retained; historical findings and untested conditions remain in the [closure record](../docs/verification/history-2026-09.md#plan-019-closure--2026-09-23).
+## Closed plans
 
-020 is complete and removed following the maintainer’s acceptance of automated verification. Actual OS conflict and notification banners remain explicitly untested; existing native recording/playback, 14 failure/restart assertions and cleanup evidence are preserved in the [closure record](../docs/verification/history-2026-09.md#plan-020-closure--2026-09-23).
-
-023 is complete and removed; the maintainer requested final closure after the bitrate retest on 2026-09-23. Acceptance includes hybrid native entry, bilingual/capture/recording regression checks, 25 controlled integration assertions, three passing 30-second integrity retests and verified window cleanup. Historical failures and evidence limits are preserved in the [closure record](../docs/verification/history-2026-09.md#plan-023-closure--2026-09-23). 022 is also complete.
-
-021 is complete and removed following maintainer manual acceptance: unplugged-target refusal, recovery by choosing Primary, direct reconnect recovery, and capture termination/save/playback/feedback after removal during recording. Error visibility improvements belong to 022; evidence limits and untested scenarios remain in the [closure record](../docs/verification/history-2026-09.md#plan-021-closure--2026-09-23).
-
-022 is complete and removed with maintainer acceptance: the maintainer verified the mouse Confirm fix; the final footer credits the author on the left and places website/GitHub icons on the right. The maintainer explicitly waived remaining manual acceptance, retained as accepted untested limitations in the [closure record](../docs/verification/history-2026-09.md#plan-022-closure--2026-09-24). 036 is the next queued development plan.
-
-018 local acceptance, public feed delivery and 0.1.3 publication are complete; see the [closure record](../docs/verification/history-2026-09.md#plan-018-closure--2026-09-20). Untested cases remain documented in verification.
-
-Publishing is automated by tag push; installed-app updates stay manual. 018 adds a check that reports a newer version and links to it; it does not authorize downloading or installing an update from inside the app. Public release notes stay English-only; app UI and reader guides remain bilingual. Published release bytes must not be overwritten.
-
-No dedicated uninstaller is planned: quit and move the app to Trash; user data remains unless separately removed. No native-platform rewrite solely for size reduction, Apple certification, general Windows/Linux/Intel verification or expansion is scheduled. Plan 034 is a narrow exception for Windows tray artwork and its necessary native verification. DMG size was explained by Electron's runtime cost; discussion alone does not create a rewrite project.
+Closure records, newest first: [025](../docs/verification/history-2026-09.md#plan-025-closure--2026-09-25), [024](../docs/verification/history-2026-09.md#plan-024-complete-writes--2026-09-24), [023](../docs/verification/history-2026-09.md#plan-023-closure--2026-09-23), [022](../docs/verification/history-2026-09.md#plan-022-closure--2026-09-24), [021](../docs/verification/history-2026-09.md#plan-021-closure--2026-09-23), [020](../docs/verification/history-2026-09.md#plan-020-closure--2026-09-23), [019](../docs/verification/history-2026-09.md#plan-019-closure--2026-09-23), [018](../docs/verification/history-2026-09.md#plan-018-closure--2026-09-20), [017](../docs/verification/history-2026-09.md#saved-notification-timing--2026-09-20), [014](../docs/verification/history-2026-09.md#notification-lifetime-investigation--2026-09-20) and [012](../docs/verification/history-2026-09.md#plan-012-closure--2026-09-20). 013 and 016 are documented in [desktop design](../docs/system-design/desktop.md#recording-shortcut), [tooling](../docs/system-design/tooling.md) and the [verification record](../docs/verification/README.md). Each record preserves its untested cases and accepted limitations; this index does not reopen a closed plan.
 
 All plan language versions live in this directory: English `<name>.md`, Traditional Chinese `<name>.zh-TW.md`.
 
