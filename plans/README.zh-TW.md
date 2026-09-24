@@ -2,7 +2,7 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-更新：2026-09-23。v0.1.3 已由 tag `v0.1.3` 公開，附精簡 DMG；見 [0.1.3 證據](../docs/zh-TW/verification/releases/0.1.3.md)。013 與 016 已完成並移除；錄影快捷鍵與其無人值守驗收（`pnpm acceptance`）記錄在[桌面設計](../docs/zh-TW/system-design/desktop.md#錄影快捷鍵)、[工具](../docs/zh-TW/system-design/tooling.md)與[驗證紀錄](../docs/zh-TW/verification/README.md)。發布依[發布自動化](../docs/zh-TW/system-design/releases.md)：tag 就是版本，CI 會把每次發布回寫到 main。
+更新：2026-09-24。v0.1.3 已由 tag `v0.1.3` 公開，附精簡 DMG；見 [0.1.3 證據](../docs/zh-TW/verification/releases/0.1.3.md)。013 與 016 已完成並移除；錄影快捷鍵與其無人值守驗收（`pnpm acceptance`）記錄在[桌面設計](../docs/zh-TW/system-design/desktop.md#錄影快捷鍵)、[工具](../docs/zh-TW/system-design/tooling.md)與[驗證紀錄](../docs/zh-TW/verification/README.md)。發布依[發布自動化](../docs/zh-TW/system-design/releases.md)：tag 就是版本，CI 會把每次發布回寫到 main。
 
 017 已完成：儲存通知時序修正、連續兩輪 15/15 驗收，以及取消／重疊／播放檢查皆完成；詳見[驗證紀錄](../docs/zh-TW/verification/history-2026-09.md#儲存通知時序2026-09-20)。
 
@@ -12,6 +12,24 @@
 
 ## 順序與狀態
 
+下一項：[024 — 完整寫入錄影資料後才回報成功](024-complete-recording-writes.zh-TW.md)。已規劃、尚未實作；將 Cap 的完整寫入／錯誤傳遞契約與短寫回歸測試方式運用到 FileWriter。
+
+第一輪十項 bug 以 R1 編號；第二輪八項以 R2 編號，避免同號混淆。第二輪有 **5 項併入 4 份既有計畫、3 項另開計畫**，不重複建立修復工作。全部已規劃、尚未實作。建議執行順序：**024 → 025 → 026 → 027 → 028 → 029 → 030 → 031 → 032 → 033**。024 完整寫入是 025／026 基礎；029 依賴 025 的終止事件契約。其餘先後是工作安排而非硬性相依；031–033 可獨立執行，若其他工作需更新驗收，先處理 032。030 以前的錄製驗收須明列聲道 RMS／要求的同步量測，不能只相信整體綠燈。
+
+| 計畫 | Bug 編號 | 修復範圍／合併理由 |
+| --- | --- | --- |
+| [025 — 錄製終止與安全退出](025-recording-finalization-and-exit.zh-TW.md) | R1-3, R1-4, R1-10; R2-01, R2-02 | Renderer 最後資料／原因與 main 存檔共用終止契約 |
+| [026 — 拒絕空錄製](026-reject-empty-recordings.zh-TW.md) | R1-9 | 完整寫入後的實際位元組防守；範圍未變 |
+| [027 — 權限狀態與查詢生命週期](027-permission-state-and-query-lifetime.zh-TW.md) | R1-2, R1-6 | 權限同步與底層請求；範圍未變 |
+| [028 — 設定視窗與快捷鍵生命週期](028-shortcut-editing-lifecycle.zh-TW.md) | R1-1, R1-5; R2-03 | 視窗崩潰恢復與 capture lease 共用負責關係 |
+| [029 — Log 身分與跨輪替驗收](029-recording-log-correlation.zh-TW.md) | R1-7; R2-07 | 事件正確歸屬、可靠讀取與清理一起處理 |
+| [030 — 音訊與同步證據](030-audio-verification-evidence.zh-TW.md) | R1-8; R2-05 | 必要 RMS 或同步量測缺失都須阻止成功 |
+| [031 — 正式版下載指標](031-stable-release-recording.zh-TW.md) | R2-04 | 新增：發布版本順序與錄製獨立 |
+| [032 — 更新驗收契約](032-update-acceptance-contract.zh-TW.md) | R2-06 | 新增：runner 期望過時，非產品控制錯誤 |
+| [033 — 輸出資料夾恢復](033-output-folder-recovery.zh-TW.md) | R2-08 | 新增：開啟資料夾操作與提示，非錄影發布 |
+
+原有 Cap 比較保留在各計畫，固定 revision `ce785e705e79652adba4b8bf752669c4093499e0`；只代表已檢視範圍的靜態比較，不能外推為 Cap 已處理本輪八項問題。第二輪的重現條件、修正契約與證據限制已直接寫入計畫，不依賴被 gitignore 的本機 audit 檔案。慢速磁碟 backlog 屬既有明載限制，未列入新增 bug 或計畫。
+
 019 已依維護者手動驗收與設定閃爍修正／回歸結果結案並移除。保留目前「通知總覽 → RecordStuff」的操作路徑；歷史發現與未測條件見[結案紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-019-結案--2026-09-23)。
 
 020 已依維護者接受自動化驗收結案並移除。真實 OS 衝突與通知橫幅保留為未測限制；既有原生錄影／播放、14 項失敗與重啟自動化及清理證據見[結案紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-020-結案--2026-09-23)。
@@ -20,7 +38,7 @@
 
 021 已依維護者人工驗收結案並移除：拔除拒絕、改選主螢幕恢復、重接直接恢復，以及錄製中拔除後結束／存檔／播放與提示均已確認。錯誤辨識度改善由 022 承接；證據範圍與未驗情境見[結案紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-021-結案--2026-09-23)。
 
-022 已依維護者確認結案並移除：自訂快捷鍵的滑鼠確定修正已由維護者實測成功；最終底部改為左側作者署名、右側官方網站／GitHub 圖示。其餘人工驗收由維護者明確決定不再補測，作為接受的未測限制保留；詳見[結案紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-022-結案--2026-09-24)。目前沒有待執行的開發計畫。
+022 已依維護者確認結案並移除：自訂快捷鍵的滑鼠確定修正已由維護者實測成功；最終底部改為左側作者署名、右側官方網站／GitHub 圖示。其餘人工驗收由維護者明確決定不再補測，作為接受的未測限制保留；詳見[結案紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-022-結案--2026-09-24)。024 為下一個待執行的開發計畫。
 
 018 的本機驗收、公開 feed 與 0.1.3 發布已完成；見[結案紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-018-結案--2026-09-20)。未測範圍仍保留在驗證文件。
 
