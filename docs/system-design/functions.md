@@ -135,7 +135,9 @@ The page's window-message callback checks source/marker/port before creating the
 | setQuality | Validate patch, then merge with latest committed quality inside the save queue |
 | setLanguage | Validate en/zh-TW, then enqueue update without dropping folder/quality |
 | save | Serialize, write, then update memory; one failed operation does not block later saves |
-| write | mkdir, write JSON.tmp, rename |
+| write | `writeFileAtomic`: mkdir, write and fsync JSON.tmp, then rename |
+
+[main/atomic-file.ts](../../src/main/atomic-file.ts): `writeFileAtomic` / `writeFileAtomicSync` create the parent folder, write `<file>.tmp`, fsync it and rename it over the file; a failure removes the temporary file and keeps the previous content. Settings, settings-window size and failure history use them.
 
 [shared/quality.ts](../../src/shared/quality.ts):
 

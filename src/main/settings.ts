@@ -3,8 +3,9 @@ import { DEFAULT_DISPLAY_PREFERENCE, isDisplayPreference, type DisplayPreference
 /**
  * Persistent output folder, recording quality, and presentation language.
  * See docs/system-design/desktop.md for the schema and migration rules.
- * Writes go to `settings.json.tmp` then rename, so a crash mid-write never
- * leaves a half file. Any read problem falls back to the default and logs.
+ * Writes replace the file atomically (`writeFileAtomic`), so a crash or power
+ * loss mid-write leaves the previous file. Any read problem falls back to the
+ * default and logs.
  *
  * Version 1 files (outputDir only) are read as-is and get the default
  * quality; version 2 files get the default shortcut. Both are rewritten as
@@ -19,6 +20,7 @@ import path from "node:path";
 import { DEFAULT_QUALITY, isQualitySettings, type QualitySettings } from "../shared/quality";
 import { DEFAULT_LANGUAGE, isLanguage, type Language } from "../shared/i18n";
 import { DEFAULT_HOTKEY, canonicalizeAccelerator, isHotkeySettings, type HotkeySettings } from "../shared/hotkey";
+import { writeFileAtomic } from "./atomic-file";
 
 export const SETTINGS_VERSION = 3;
 
@@ -233,10 +235,7 @@ export class SettingsStore {
     return parsed.settings;
   }
 
-  private async write(settings: Settings): Promise<void> {
-    const tmpPath = `${this.filePath}.tmp`;
-    await fs.promises.mkdir(path.dirname(this.filePath), { recursive: true });
-    await fs.promises.writeFile(tmpPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
-    await fs.promises.rename(tmpPath, this.filePath);
+  private write(settings: Settings): Promise<void> {
+    return writeFileAtomic(this.filePath, JSON.stringify(settings, null, 2) + "\n");
   }
 }

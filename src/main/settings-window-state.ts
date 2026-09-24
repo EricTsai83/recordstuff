@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { writeFileAtomicSync } from "./atomic-file";
 
 export interface WindowSize { width: number; height: number }
 export const DEFAULT_SETTINGS_SIZE: WindowSize = { width: 560, height: 680 };
@@ -28,8 +29,7 @@ export class SettingsWindowState {
     this.current = { ...size };
     try {
       // A tiny debounced synchronous write also completes during app shutdown.
-      fs.writeFileSync(`${this.file}.tmp`, JSON.stringify(size));
-      fs.renameSync(`${this.file}.tmp`, this.file);
+      writeFileAtomicSync(this.file, JSON.stringify(size));
     } catch (error) { this.log(`settings window: size save failed: ${String(error)}`); }
   }
 }

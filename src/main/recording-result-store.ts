@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 import { isErrorCode } from "../shared/state";
+import { writeFileAtomicSync } from "./atomic-file";
 import type { RecordingResult } from "../shared/recording-result";
 
 export interface ResultStorage {
@@ -72,18 +72,6 @@ export class RecordingResultStore implements ResultStorage {
     const saved = results.map(result => decode({ version: 1, result: { ...result, detail: result.detail.slice(0, 65536) } }));
     const content = JSON.stringify({ version: 2, results: saved });
     if (Buffer.byteLength(content) > 32 * 1024 * 1024) throw new Error("recording history too large");
-    fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    const temporary = `${this.file}.${randomUUID()}.tmp`;
-    let fd: number | undefined;
-    try {
-      fd = fs.openSync(temporary, "wx", 0o600);
-      fs.writeFileSync(fd, content);
-      fs.fsyncSync(fd);
-      fs.closeSync(fd); fd = undefined;
-      fs.renameSync(temporary, this.file);
-    } finally {
-      if (fd !== undefined) { try { fs.closeSync(fd); } catch { /* Preserve the original error. */ } }
-      try { fs.unlinkSync(temporary); } catch { /* Already renamed or never created. */ }
-    }
+    writeFileAtomicSync(this.file, content, { mode: 0o600 });
   }
 }

@@ -115,7 +115,7 @@ TrayContext 提供目前語言，通知建立時讀當前 context；已發送的
 
 `language` 是相容新增欄位：舊檔未填時預設 en；不支援的值回 en 並記 warning，但保留合法位置與品質。`hotkey.accelerator` 必須通過共用快捷鍵驗證器；v3 檔缺少或不合法的 hotkey 區塊回預設快捷鍵並記 warning，保留其他欄位。`outputDir` 必須是非空絕對路徑。版本 1 可讀，補預設 quality；版本 1／2 補預設快捷鍵（各記 warning），下次保存寫成 v3。整份無效／未知版本／路徑無效回預設並記 log；僅 quality 壞掉則保留合法 outputDir，重設品質。舊 audioQuality 額外欄位不參與目前設定。`notifications` 與 `updates` 同屬相容新增欄位：缺少或非布林值一律讀為 `true` 且不記 warning，因為在這個開關存在之前寫下的檔案並不是壞檔。
 
-保存以 Promise 佇列依「上一份成功提交的設定」合併更新，避免連點遺失前一次修改；先寫 `settings.json.tmp` 再 rename，成功才切換記憶體。單次失敗拒絕自己的 caller，後續儲存仍可執行。這是避免半份 JSON 的策略，不是附帶目錄 fsync 的斷電耐久性保證。
+保存以 Promise 佇列依「上一份成功提交的設定」合併更新，避免連點遺失前一次修改；先寫入並 fsync `settings.json.tmp` 再 rename，成功才切換記憶體。單次失敗會移除暫存檔並拒絕自己的 caller，後續儲存仍可執行。rename 前先 fsync，可避免當機或斷電後留下空白或半份的 settings.json；由於沒有目錄 fsync，剛完成的修改仍可能退回前一份檔案。
 
 更改位置使用原生選資料夾對話框，macOS 先 focus 以免藏在別的視窗後方。保存設定成功會清除 idle 的位置錯誤旗標並刷新選單；真正能不能寫入於開始錄製時用 probe 驗證。沒有背景自動改存預設位置。
 

@@ -136,7 +136,9 @@
 | `setOutputDir(dir)` | 驗絕對路徑 → save 更新 |
 | `setQuality(patch)` | 驗合併值合法 → save；實際入列後再合併最新 committed 值 |
 | `save(update)` | 序列化寫入；write 成功才換記憶體；失敗不阻斷後續 queue |
-| `write(settings)` | mkdir、JSON.tmp、rename；不負責通知 |
+| `write(settings)` | `writeFileAtomic`：mkdir、寫入並 fsync JSON.tmp，再 rename；不負責通知 |
+
+[main/atomic-file.ts](../../../src/main/atomic-file.ts)：`writeFileAtomic`／`writeFileAtomicSync` 建立父目錄、寫入 `<file>.tmp` 並 fsync，再 rename 覆蓋目標；失敗時移除暫存檔並保留原內容。設定、設定視窗尺寸與失敗歷史都使用它。
 
 [shared/hotkey.ts](../../../src/shared/hotkey.ts)：`HOTKEY_PRESETS` 保留歷史常數，`DEFAULT_HOTKEY` 啟用 ⌘⇧1。`validateAccelerator` 驗證支援的自訂組合，要求 Command 或 Control 並排除保留鍵；`canonicalizeAccelerator` 正規化修飾鍵順序與 Shift 符號。`isHotkeyAccelerator` / `isHotkeySettings` 驗證保存值，不限於 preset；`describeAccelerator(accelerator, platform)` 在 darwin 顯示 `⌘⌥⇧R`、其他平台 `Ctrl+Alt+Shift+R`，供選單、通知與 log 使用。
 
