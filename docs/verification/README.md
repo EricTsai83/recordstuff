@@ -8,6 +8,7 @@ For what to run now, use the [testing policy](../testing.md) and [shared accepta
 
 | Area | Recorded result and limits |
 | --- | --- |
+| Plan 025 termination/exit | Nine findings from two Opus passes fixed; independent disk/result ownership and safe quit. Notifications 2/2, Settings rerun 100/100 and recording smoke passed; maintainer recording-time Quit passed; bilingual dialog capture passed and the maintainer confirmed automatic foregrounding. Plan 025 closed; final check 651 tests, plus four follow-up tooling findings fixed. See [history](history-2026-09.md#plan-025-terminal-ownership--2026-09-25) |
 | Multi-failure history | Final627 tests,100/100 Settings and shortcut integration passed; Opus5.5 fixed6Low, final pass no findings; independent unread retry, per-record acknowledgement/removal and v1 migration. Native cases deferred to Plan035. See [history](history-2026-09.md#multi-failure-history--2026-09-25) |
 | Latest failure persistence | One result/read state survives restart;617 tests,94/94 Settings and shortcut integration passed. Native restart/recording checks deferred by maintainer to final Plan035. See [persistence](history-2026-09.md#latest-failure-persistence--2026-09-25) |
 | Recording failure results | Initial result section and integrated badge verification; 589 unit tests, 86/86 Settings cases and shortcut integration passed. Native error/tray/banner coverage remains blocked; see [failure results](history-2026-09.md#recording-failure-results--2026-09-25) |

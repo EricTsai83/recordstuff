@@ -2,7 +2,7 @@
 
 [English](036-async-failure-history.md) | [繁體中文](036-async-failure-history.zh-TW.md)
 
-狀態：已規劃，尚未實作。建立日期：2026-09-25。排在 [025](025-recording-finalization-and-exit.zh-TW.md) 之後立即執行，早於 [037](037-overlapping-recording-finalization.zh-TW.md) 與最後的 [035](035-guided-native-acceptance.zh-TW.md)。這是獨立實作工作，不代表目前歷史儲存已非同步化。
+狀態：已規劃，尚未實作。建立日期：2026-09-25。排在 [025](../docs/zh-TW/verification/history-2026-09.md#plan-025-結案--2026-09-25) 之後立即執行，早於 [037](037-overlapping-recording-finalization.zh-TW.md) 與最後的 [035](035-guided-native-acceptance.zh-TW.md)。這是獨立實作工作，不代表目前歷史儲存已非同步化。
 
 ## 目的與範圍
 

@@ -2,7 +2,7 @@
 
 [English](036-async-failure-history.md) | [繁體中文](036-async-failure-history.zh-TW.md)
 
-Status: planned, not implemented. Created: 2026-09-25. Schedule immediately after [025](025-recording-finalization-and-exit.md), before [037](037-overlapping-recording-finalization.md) and final [035](035-guided-native-acceptance.md). This is a separate implementation task, not a claim that current history storage is asynchronous.
+Status: planned, not implemented. Created: 2026-09-25. Schedule immediately after [025](../docs/verification/history-2026-09.md#plan-025-closure--2026-09-25), before [037](037-overlapping-recording-finalization.md) and final [035](035-guided-native-acceptance.md). This is a separate implementation task, not a claim that current history storage is asynchronous.
 
 ## Purpose and boundary
 

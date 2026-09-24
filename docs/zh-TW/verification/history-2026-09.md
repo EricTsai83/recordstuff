@@ -9,6 +9,45 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 025 終止負責與退出 — 2026-09-25
+
+實作已完成；計畫仍保留，等待最後原生驗收。Renderer 在 Blob 轉換前固定終止原因，encoder error 等待末筆 data／stop，有界 fallback 阻止後續交接。Main 只保留一個終止流程，獨立追蹤開檔、存檔、失敗清理與等待結果查核／發布。退出共用協調器、保留啟動後立即停止的意圖，10 秒停止期限後另留 3 秒清理時間；待處理工作只能延後退出，不能被丟棄。延期會取消重啟意圖；遲到開檔後關閉失敗只保留不確定的候選路徑。
+
+Claude Opus 5.5 xhigh 完成兩輪唯讀 review，約 815.7 秒＋531.8 秒，共 1347.6 秒，未使用 fallback。Pass 1 六項全部接受並修正：(1) Medium，partial 結果 stat／發布可能晚於退出；(2) Low–Medium，缺少明確 false／重試／重新開始斷言與可直接執行的 fixture 指令；(3) Low，Node 型別參照削弱 renderer 隔離；(4) Low，退出延期對話框可能被遮住或堆疊；(5) Low，延期的 relaunch 意圖會影響後續普通退出；(6) Low，退出期限取消等待授權的啟動，與文件不符。Pass 2 確認前六項已修正，另有三項也全部接受修正：(1) Low–Medium，延期後晚到的 start 可能持續擷取，現改為開始後立即停止並更新雙語提示；(2) Low，停止／退出期限相同，可能多要求一次退出，現加安全的 3 秒餘裕；(3) Low，雙語狀態、fixture 與測試目錄文件落差。依技能最多兩輪限制，不再送第三輪；第二輪後修正以針對性及完整檢查驗證，不宣稱 reviewer 最後給出無 findings 核准。
+
+本機證據保留在 `measurements/2026-09-25-plan025/` 與 `measurements/plan025-review/`。第一次 lifecycle fixture 因頂層 await 阻擋 Electron ready 而逾時，改 async main 後修正，原程序已清理。Lifecycle 通過真實 copy、handle close、partial 結果 stat／發布延遲，兩次退出延期、精確 bytes、durable partial 歷史與安全程序退出（`2026-09-24T19-17-21-069Z-lifecycle`）。Fixture 使用 100 ms 退出期限；Recorder 假時鐘測試涵蓋正式期限與延後啟動。
+
+原生工具最初對無視窗 App 回 timeoutReached；後續 RecordStuff 操作（含恢復後）回報 application session 已明確停止。這是工具狀態，不能據此證明維護者主動停止。重開的 App 經維護者協助正常退出，並確認程序消失。首次通知 runner 因既有 Finder 視窗受阻，沒有替換已安裝 App；維護者關閉視窗後，`pnpm acceptance:notification -- --install --clicks 2` 通過 2/2，還原原安裝 App／偏好、關閉測試 UI 並退出（`2026-09-24T192002.836Z-notification-acceptance`）。
+
+新簽章開發 bundle 的錄製 smoke 通過：初次 10.3 秒影片完成解碼與 computer use QuickTime 播放／跳轉，影片與後續「打開」面板皆關閉，播放器退出。第一輪修正後的 10.2 秒影片通過完整解碼與素材標記，48 kHz 雙聲道，兩聲道 RMS 約 −27.2 dBFS（`2026-09-24T19-25-50-795Z-hotkey-acceptance`）。第二輪修正後最新簽章 bundle 另通過 10.3 秒 smoke、10 次 flash／beep、完整解碼及 −27.2／−27.2 dBFS 聲道 RMS（`2026-09-24T19-37-05-881Z-hotkey-acceptance`）。QuickTime 原生操作觀察到測試素材與 2.81 秒播放進度；影片關閉後無殘留視窗，再正常結束播放器，確認 RecordStuff／播放器程序消失。未做主觀聽感。恢復後輸出裝置為外接耳機、48 kHz；未記錄實體音量。
+
+設定 regression 首次 98/100：確認資料與收合成功，但焦點及後續 Enter 展開失敗。相關 Settings production 程式未改。只增加 active tag、文件／視窗焦點診斷後，重跑 100/100，焦點正確停在 summary（`2026-09-24T19-24-08-355Z-settings-acceptance`）。保留初次失敗，未確定根因。其後快捷鍵整合與程序清理通過（`2026-09-24T19-25-20-597Z-shortcut-failure`）。
+
+維護者操作的錄製中結束通過：實際繁中選單是 **結束**。Log 確認正常停止、完成存檔、saved，唯讀程序檢查確認 main／helper 已退出。保留檔案 `2026-09-25 03-31-49.mp4` 為 23.472533 秒、1920×1080 H.264＋AAC、45,473,734 bytes。影像／音訊完整解碼通過；FFmpeg 預設 null 輸出時基曾產生重複 DTS 捨入警告，使用 demux 時基與 `-xerror` 完整解碼沒有警告。結束時依設計不顯示存檔通知。此手動案例使用第一輪修正後產物；第二輪修正影響延後啟動／期限／提示。最後 `pnpm check` 通過 647 tests／41 files；lifecycle 三種模式重跑通過（`2026-09-24T19-35-40-217Z-lifecycle`），Settings 通過 100/100（`2026-09-24T19-35-51-688Z-settings-acceptance`）。延期退出提示的原生可見性、焦點與雙語版面仍因工具工作階段停止受阻，025 保留等待此項證據；受阻／未測不算通過。不包含完整品質／fps 矩陣、長錄影、音訊保真、權限重設、拔螢幕、網站或發布檢查。強制退出／斷電與儲存裝置永久無回應不受正常退出契約保證。Plan 036 仍負責非同步提醒保存及未保存提醒的退出政策。
+
+
+### 延期退出提示測試入口 — 2026-09-25
+
+使用者追加 `pnpm acceptance:quit-dialog -- --language en|zh-TW`。隔離 Electron fixture 共用正式 `createQuitFeedback`、Recorder、FileWriter 與退出協調器，延遲合成 bytes 的真正複製，確認關閉原生提示後仍保留待處理工作，再解除延遲、安全退出。不錄影、不改正式 App 資料。型別、建置及 42 files／649 tests 通過；既有 lifecycle copy／cleanup／result 三種案例通過。原生 computer use 看見中英文提示文字完整、無截斷，AX 焦點位於提示；兩輪皆保留精確合成 bytes 並正常退出（`2026-09-24T19-51-04-283Z-quit-dialog-zh-TW`、`2026-09-24T19-51-29-074Z-quit-dialog-en`）。截圖留在工具對話，維護者另提供英文截圖，文字與焦點按鈕完整。取得工具目標或局部截圖仍不能證明自動跳到另一個 App 前面。
+
+Ctrl+C 留下 interrupted 失敗，強制清理後確認程序群組消失（`2026-09-24T19-52-08-592Z-quit-dialog-en`）。兩輪原定預設逾時測試均在期限前關閉，因此只能算正常路徑。另以測試專用 Node preload 把外層 40 秒期限加速為 1 秒、於原生 UI 前觸發：首次程序群組 probe 回 `EPERM` 而未留下報告；runner 已補上 supervisor 例外報告，失敗且清理狀態未確認。重測走到 timeout 分支，記錄強制清理與 groupGone=true（`2026-09-24T19-57-23-762Z-quit-dialog-en`），最後唯讀確認無 fixture 程序。這是加速期限證據，不宣稱實際觀察提示保持 40 秒。此次只抽取提示與新增驗收工具，未改錄製／編碼路徑，因此不重做既有媒體／通知案例。追加 review 另存本機 `measurements/plan025-dialog-review/`。
+
+
+追加的 Claude Opus 5.5 xhigh review 完成兩輪（437.0＋203.5＝640.5 秒），沒有 fallback。四項全部接受：D1 Medium，單次取消 handler 讓重複 Ctrl+C 跳過清理，改持續接收訊號；D2 Low，SIGTERM 取消未能阻止 fixture 的正常退出提示，實測 JavaScript SIGTERM handler 仍無效，因此 runner 明確選用立即 SIGKILL 自己建立的可丟棄合成程序群組，其他 runner 保留正常 SIGTERM；D3 Low／依平台而定，重複結束不再置前既有提示，已恢復 focus-on-join 且不增加對話框；D4 Low，timer callback 中群組 SIGKILL／probe 例外可能逃出 Promise／報告，改 fallback 至 child SIGKILL，讓錯誤經受監督的 Promise 回報，並以真實 child 的受控 EPERM 回歸測試驗證。第二輪確認 D1–D3 後提出 D4；最後 D4 修正以測試確認，未送第三輪 review。
+
+最後 `pnpm check`：651 tests／42 files、型別與建置通過。預設 lifecycle copy／cleanup／result 仍通過（`2026-09-24T20-03-57-213Z-lifecycle`）。最後取消及加速逾時均記錄強制清理、groupGone=true 與正確失敗報告，且未要求原生提示（`2026-09-24T20-04-07-076Z-quit-dialog-en`、`2026-09-24T20-04-09-141Z-quit-dialog-en`）。英文正常路徑（`2026-09-24T20-04-32-770Z-quit-dialog-en`）及最後繁中（`2026-09-24T20-10-05-132Z-quit-dialog-zh-TW`）的顯示／關閉／bytes／退出通過。最後繁中截圖與 AX 顯示文字完整、按鈕有焦點。跨 App 自動置前仍未確認，因此不因驗收工具完成就默默關閉 Plan 025。未 commit、push 或發布。
+
+
+### Plan 025 結案 — 2026-09-25
+
+維護者明確確認本次測試提示會自動跳到前景。連同既有中英文原生截圖／可讀性、錄製中正常結束、新 bundle 擷取／媒體／播放、通知 2/2、Settings 100/100、生命週期、最後 651 項測試與清理證據，Plan 025 最後必要原生觀察已完成。這是維護者觀察的置前結果，不是 agent 從裁切圖推論；上方受阻／未測狀態仍保留為歷史。025 已結案，移除雙語執行計畫；下一項 036 尚未開始。035 仍保留原排定的其他案例。未 commit、push 或發布。
+
+原生驗收技能現已明定 agent 截圖、搭配 accessibility 自行判讀及具名證據紀錄的步驟。此修改不會讓 CLI 自動呼叫 AI，也不宣稱無人桌面 CI 已涵蓋。未來要在不靠人工證據的情況下通過自動置前，仍需工具提供被動全桌面／前景觀察能力。本次結案與流程更新僅修改文件，檢查連結／錨點、指令、雙語與 diff 空白；未重啟 App 或錄影。
+
+
+維護者其後授權依 scope 直接在 main 建立本機 commits：執行期負責關係／安全退出為 `2e38f68`，隔離原生提示驗收、截圖流程及干擾提醒為 `7d7d939`。本次文件變更完成 025 結案並將下一項更新為 036，未開始實作 036，未 push 或發布。最後合併的程式／設定檔自 651 項測試通過後未變，沿用既有驗收證據；重新檢查文件連結／錨點與 diff 空白，並修正移除 025 列後的佇列表格。
+
+
 ## 多筆失敗歷史 — 2026-09-25
 
 依使用者授權直接延伸錯誤提醒，不另排實作 plan。各筆保留獨立 ID、原因、檔案線索／結果與確認狀態；保留所有未確認及最近 20 筆已確認紀錄。移除已確認紀錄不刪影片或 log。選單列顯示未確認筆數，全部確認才消除標記；獨立重新儲存不改未讀狀態。v2 採新歷史檔，升級既有 v1 單筆資料，避免舊 App 覆寫新歷史。
