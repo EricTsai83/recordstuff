@@ -1,6 +1,6 @@
 ---
 name: codex-implement-with-opus-5-5-review
-description: Implement a plan or scoped change with Codex, verify it, obtain a read-only Claude Opus 5.5 review at high reasoning, immediately surface every reviewer finding before review-driven fixes, validate and fix confirmed findings, then report every finding and final disposition in Traditional Chinese alongside a purpose-led per-file summary. Use for end-to-end implementation requests that require Codex implementation with Claude Opus 5.5 or cross-model review. Fall back to an independent Codex review when Claude is unavailable and disclose the reason.
+description: Implement a plan or scoped change with Codex, verify it, obtain a read-only Claude Opus 5.5 review at x-high reasoning, immediately surface every reviewer finding before review-driven fixes, validate and fix confirmed findings, then report every finding and final disposition in Traditional Chinese alongside a purpose-led per-file summary. Use for end-to-end implementation requests that require Codex implementation with Claude Opus 5.5 or cross-model review. Fall back to an independent Codex review when Claude is unavailable and disclose the reason.
 ---
 
 # Codex Implement with Opus 5.5 Review
@@ -21,14 +21,14 @@ Codex owns implementation, final technical judgment, fixes, verification, and re
 
 ## Claude Opus 5.5 Review
 
-Use Claude Opus 5.5 for every review pass. Run non-interactively at high reasoning in plan/read-only mode:
+Use Claude Opus 5.5 for every review pass. Run non-interactively at x-high reasoning in plan/read-only mode:
 
 A typical invocation is:
 
 ```bash
 claude -p "<focused review prompt>" \
   --model claude-opus-5-5 \
-  --effort high \
+  --effort xhigh \
   --permission-mode plan \
   --tools "Read,Grep,Glob,Bash"
 ```
