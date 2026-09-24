@@ -1,3 +1,5 @@
+import { RecordingResultStore } from "./recording-result-store";
+import { RecordingResults } from "./recording-result";
 import { SettingsWindowState } from "./settings-window-state";
 import { DisplayRequest } from "./display-source";
 import { isDisplayInfo, type DisplayInfo, type DisplayFailure } from "../shared/display";
@@ -227,7 +229,11 @@ async function main(): Promise<void> {
     fetch: (signal) => fetchVersion(process.platform, process.arch, signal, (url, init) => net.fetch(url, init)),
     changed: () => { if (settled()) refreshUi(); }, log,
   });
+  const recordingResults = new RecordingResults(
+    new RecordingResultStore(path.join(app.getPath("userData"), "recording-history.json"), log,
+      path.join(app.getPath("userData"), "recording-result.json")), log);
   const appContext = (): AppContext => ({
+    recordingResults: recordingResults.all,
     displays: displays(), display: settings.display, ...(displayFailure ? { displayFailure } : {}),
     platform: process.platform,
     outputDir: settings.outputDir,
@@ -317,6 +323,16 @@ async function main(): Promise<void> {
   }
 
   async function handleAction(action: AppAction): Promise<boolean | void> {
+    if (typeof action !== "string" && "recordingResult" in action) {
+      const request = action.recordingResult;
+      return recordingResults.act(request.id, request.action, {
+        stat: file => fs.stat(file), refresh: refreshUi, settled, platform: process.platform,
+        reveal: file => shell.showItemInFolder(file), folder: changeOutputDir,
+        permission: async () => { await handleAction("openPermissionSettings"); },
+        relaunch: async () => { await handleAction("relaunch"); },
+        needsRelaunch: () => recorder.state.type === "needsPermission" && recorder.state.needsRelaunch,
+      });
+    }
     if (typeof action !== "string") {
       if ("setDisplay" in action) {
         if (!settled()) return;
@@ -368,6 +384,9 @@ async function main(): Promise<void> {
       return;
     }
     switch (action) {
+      case "openRecordingResult":
+        settingsWindow.showRecordingResult();
+        return;
       case "openSettings":
         settingsWindow.show();
         return;
@@ -538,9 +557,15 @@ async function main(): Promise<void> {
         }
         return;
       }
+      case "failureStatus": {
+        void recordingResults.receive(event.result, {
+          stat: file => fs.stat(file), refresh: refreshUi,
+          notify: code => tray.notifyRecordingFailure(code),
+        });
+        return;
+      }
       case "failed":
         log(`failed: ${event.code} ${event.detail}${event.partialPath ? ` (kept ${event.partialPath})` : ""}`);
-        tray.notifyError(event.code, event.partialPath);
         // The OS says granted, yet capture is refused: TCC needs a relaunch.
         if (event.code === "permission_denied" && permission) permission.markRelaunchRequired();
         return;
@@ -563,8 +588,10 @@ async function main(): Promise<void> {
   screen.on("display-metrics-changed", displayChanged);
 
   permission?.start();
+  void recordingResults.restore(file => fs.stat(file), refreshUi);
   // Every platform: a menu-bar app is hard to find, and on macOS this is the
   // one moment the notification authorization prompt can appear in context.
+
   if (await isFirstRun(app.getPath("userData"))) {
     tray.notifyTrayHint();
   }

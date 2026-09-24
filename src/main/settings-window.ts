@@ -35,6 +35,8 @@ export interface SettingsWindowOptions {
 }
 
 export class SettingsWindow {
+  private resultFocus = 0;
+  private resultEntry = false;
   private capturing = false;
   private committingHotkey = false;
   private captureTimer: ReturnType<typeof setTimeout> | undefined;
@@ -79,7 +81,14 @@ export class SettingsWindow {
     });
   }
 
-  show(): void {
+  showRecordingResult(): void {
+    this.resultFocus++;
+    this.show(true);
+    this.refresh();
+  }
+
+  show(resultEntry = false): void {
+    this.resultEntry = resultEntry;
     // A menu-bar app has no Dock icon, so showing a window does not bring the
     // app forward on its own; without this the panel can open behind the
     // frontmost app, the same reason index.ts focuses before a file dialog.
@@ -184,6 +193,7 @@ export class SettingsWindow {
 
   private view(): SettingsView {
     const view = settingsView(this.options.state(), this.options.context());
+    view.resultFocus = this.resultEntry ? this.resultFocus : 0;
     const shortcut = view.groups.find(group => group.kind === "shortcut");
     if (shortcut) {
       shortcut.capturing = this.capturing;

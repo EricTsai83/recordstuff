@@ -1,3 +1,4 @@
+import type { RecordingResult } from "../shared/recording-result";
 import type { Appearance } from "../shared/appearance";
 import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../shared/display";
 /**
@@ -21,6 +22,8 @@ export const APP_NAME = "RecordStuff";
 
 export type AppAction =
   | "openSettings"
+  | "openRecordingResult"
+  | { recordingResult: { id: string; action: "acknowledge" | "retry" | "remove" | "reveal" | "folder" | "permission" | "relaunch" } }
   | "openPermissionSettings"
   | "openNotificationSettings"
   | "relaunch"
@@ -48,6 +51,7 @@ export interface AppHotkey extends HotkeySettings {
 }
 
 export interface AppContext {
+  recordingResults?: readonly RecordingResult[];
   displays: DisplayInfo[];
   display: DisplayPreference;
   displayFailure?: DisplayFailure;

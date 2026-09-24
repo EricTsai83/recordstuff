@@ -421,3 +421,31 @@ describe("settings window size", () => {
     expect(geometry.save).toHaveBeenCalledExactlyOnceWith({ width: 700, height: 800 });
   });
 });
+
+it("explicit result entry focuses via a stable token without acknowledging the result", () => {
+  const s = setup();
+  s.live.recordingResults = [{ id: "f", code: "disk_full", detail: "", occurredAt: "2026-09-24T12:00:00Z", outcome: "empty", acknowledged: false }];
+  s.panel.showRecordingResult();
+  expect(s.read(s.event())).toMatchObject({ resultFocus: 1, recordingResults: [{ acknowledged: false }] });
+  s.panel.refresh();
+  expect(s.read(s.event()).resultFocus).toBe(1);
+  s.panel.showRecordingResult();
+  expect(s.read(s.event()).resultFocus).toBe(2);
+  expect(s.act).not.toHaveBeenCalled();
+  s.panel.destroy();
+});
+
+it("routes the exact offered recording result through act and returns its applied result", async () => {
+  const act = vi.fn(async (_action: AppAction) => false);
+  const ctx = setup({ act });
+  ctx.live.recordingResults = [{ id: "failure-a", occurredAt: "2026-09-24T12:00:00Z", code: "disk_full", detail: "", outcome: "empty", acknowledged: false }];
+  ctx.panel.show();
+  await Promise.resolve();
+  expect((await ctx.choose(ctx.event(), "recordingResult:old", "acknowledge")).applied).toBe(false);
+  expect(act).not.toHaveBeenCalled();
+  expect((await ctx.choose(ctx.event(), "recordingResult:failure-a", "acknowledge")).applied).toBe(false);
+  expect(act).toHaveBeenCalledExactlyOnceWith({ recordingResult: { id: "failure-a", action: "acknowledge" } });
+  act.mockResolvedValueOnce(true);
+  expect((await ctx.choose(ctx.event(), "recordingResult:failure-a", "acknowledge")).applied).toBe(true);
+  ctx.panel.destroy();
+});

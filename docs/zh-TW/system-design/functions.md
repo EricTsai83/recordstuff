@@ -250,7 +250,15 @@
 | `hotkeyRegistrationFailedNotification(accelerator, platform)` | 本地化的佔用提示，含平台顯示形式的組合鍵，並指向設定視窗 |
 | `frameRateDowngradeNotification(requested, actual)` | 說明系統實際提供的 fps |
 | `trayHintNotification()` | Windows 首次啟動尋找系統匣提示 |
-| `errorNotification(code, partialPath, ctx)` | 各錯誤與部分檔的本地化說明；技術 detail 留在英文 log，不放通知摘要 |
+
+[recording-result.ts](../../../src/main/recording-result.ts)：
+
+| 函式／方法 | 契約與副作用 |
+| --- | --- |
+| `RecordingResults.receive / act` | 確認部分檔案、拒絕過期結果與操作、保留未讀狀態並提供復原操作 |
+| `RecordingResults.restore` | 限時重新檢查保存路徑；恢復已讀狀態，不發通知、不覆蓋新狀態 |
+
+[recording-result-store.ts](../../../src/main/recording-result-store.ts)：驗證並原子替換版本化失敗歷史，升級舊單筆資料但不覆寫舊檔。精確 ID 的重試不改未讀狀態，移除僅刪已確認資訊。
 
 [tray.ts](../../../src/main/tray.ts)：
 
@@ -260,7 +268,7 @@
 | `render(state)` / `refresh()` | 保存呈現用 lastState，更新必要圖示／title／tooltip；refresh 用同狀態重讀 context |
 | `destroy()` | 銷毀原生 Tray |
 | `notifySaved(path)` | show 存檔通知，點擊 reveal |
-| `notifyError(code, partial)` | show 錯誤，點擊優先部分檔，其次位置／權限 action |
+| `notifyRecordingFailure(code)` | 開啟設定失敗歷史並定位最新未確認紀錄，不自動標成已讀 |
 | `revealFromNotification(path)` / `reveal()` | macOS setImmediate 後 showItemInFolder，記 requested／failed |
 | `notifyPermission(needsRelaunch)` | 文案＋開設定／重啟 callback |
 | `notifySettingsWriteFailed(dir)` / `notifyQualityWriteFailed()` / `notifyLanguageWriteFailed()` / `notifyHotkeyWriteFailed()` | 保存失敗通知，無設定 mutation |

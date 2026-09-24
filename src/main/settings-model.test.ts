@@ -198,7 +198,7 @@ describe("notifications in General", () => {
   /** Off is obeyed, not compensated for: the cost is stated where the choice is. */
   it("states what turning it off costs and where to look instead", () => {
     const off = group(idle, { ...context, notifications: false }, "notifications")?.note ?? "";
-    expect(off).toContain(t("Notifications are off. An interrupted or unsaved recording will not tell you; check the output folder to confirm a recording was saved.", "en"));
+    expect(off).toContain(t("Notifications are off. Recording failures remain visible in the menu bar and Recording failures.", "en"));
     // The macOS caveat is about a permission the user did not choose; it would
     // only confuse the reading of a switch the user did choose to turn off.
     expect(off).not.toContain("System Settings");
@@ -337,4 +337,51 @@ it("offers one recommended shortcut and only the currently saved custom value", 
     const restored = { ...custom, hotkey: { ...custom.hotkey, accelerator: recommended } };
     expect(group(idle, restored, "hotkey")!.choices.map(c => c.id)).toEqual([recommended, "off"]);
   }
+});
+
+it("offers result actions by exact failure identity with recording and cleanup locks", () => {
+  const result = { id: "failure-1", occurredAt: "2026-09-24T12:00:00Z", code: "disk_full" as const,
+    detail: "ENOSPC", outcome: "pending" as const, acknowledged: false };
+  const ctx = { ...context, notifications: false, recordingResults: [result] };
+  expect(settingsView(idle, ctx).recordingResults?.[0]?.pending).toBe(true);
+  expect(settingsAction(idle, ctx, "recordingResult:failure-1", "acknowledge")).toBeUndefined();
+  const done = { ...ctx, recordingResults: [{ ...result, outcome: "partial" as const, partialPath: "/tmp/a.recording.mp4" }] };
+  expect(settingsAction(idle, done, "recordingResult:failure-1", "acknowledge")).toEqual({ recordingResult: { id: "failure-1", action: "acknowledge" } });
+  expect(settingsAction(idle, done, "recordingResult:old", "acknowledge")).toBeUndefined();
+  expect(settingsAction({ type: "recording", startedAt: "" }, done, "recordingResult:failure-1", "folder")).toBeUndefined();
+  expect(settingsAction({ type: "recording", startedAt: "" }, done, "recordingResult:failure-1", "reveal")).toBeDefined();
+  expect(settingsView(idle, done).recordingResults?.[0]?.outcome).toContain("may not be playable");
+});
+
+it("offers macOS permission recovery with pending relaunch locked and no macOS action on Windows", () => {
+  const result = { id: "permission-a", occurredAt: "2026-09-24T12:00:00Z", code: "permission_denied" as const, detail: "", outcome: "pending" as const, acknowledged: false };
+  const ctx = { ...context, platform: "darwin" as const, recordingResults: [result] };
+  const group = "recordingResult:permission-a";
+  expect(settingsAction(idle, ctx, group, "permission")).toBeDefined();
+  expect(settingsAction(idle, ctx, group, "relaunch")).toBeUndefined();
+  const done = { ...ctx, recordingResults: [{ ...result, outcome: "empty" as const }] };
+  expect(settingsAction(idle, done, group, "relaunch")).toBeDefined();
+  const windows = { ...done, platform: "win32" as const };
+  expect(settingsAction(idle, windows, group, "permission")).toBeUndefined();
+  expect(settingsAction(idle, windows, group, "relaunch")).toBeUndefined();
+  expect(settingsView(idle, windows).recordingResults?.[0]?.guidance).not.toContain("System Settings");
+});
+
+it("offers persistence retry for an acknowledged result and bases restored relaunch on current state", () => {
+  const result = { id: "old", occurredAt: "2026-09-25T00:00:00Z", code: "permission_needs_relaunch" as const,
+    detail: "", outcome: "empty" as const, acknowledged: true, restored: true, persistenceFailed: true };
+  const ctx = { ...context, platform: "darwin" as const, recordingResults: [result] };
+  const view = settingsView(idle, ctx).recordingResults![0]!;
+  expect(view.actions.find(a => a.id === "retry")).toMatchObject({ label: "Retry saving reminder", enabled: true });
+  expect(view.guidance).toContain("previous recording failure");
+  expect(settingsAction(idle, ctx, "recordingResult:old", "relaunch")).toBeUndefined();
+  expect(settingsAction({ type: "needsPermission", needsRelaunch: true }, ctx, "recordingResult:old", "relaunch")).toBeDefined();
+});
+
+it("retains audio-device guidance for a restored Windows audio failure", () => {
+  const result = { id: "old-audio", occurredAt: "2026-09-25T00:00:00Z", code: "no_audio_track" as const,
+    detail: "", outcome: "empty" as const, acknowledged: false, restored: true };
+  const ctx = { ...context, platform: "win32" as const, recordingResults: [result] };
+  expect(settingsView(idle, ctx).recordingResults?.[0]?.guidance).toContain("audio devices");
+  expect(settingsAction(idle, ctx, "recordingResult:old-audio", "relaunch")).toBeUndefined();
 });

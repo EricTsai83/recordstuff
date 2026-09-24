@@ -258,6 +258,20 @@ describe("complete writes", () => {
   });
 });
 
+it.each([false, true])("marks preservation uncertain when close fails, including finish first: %s", async finishFirst => {
+  const writer = await FileWriter.open(path.join(dir, "uncertain.recording.mp4"), path.join(dir, "uncertain.mp4"), {
+    io: wrapFs({ onOpen: handle => ({
+      write: data => handle.write(data), sync: () => handle.sync(),
+      close: async () => { await handle.close(); throw new Error("close failed"); },
+    }) }),
+  });
+  activeWriters.push(writer);
+  await writer.append(bytes(1, 2));
+  if (finishFirst) await expect(writer.finish()).rejects.toThrow("close failed");
+  await writer.abandon();
+  expect(writer.preservationUncertain).toBe(true);
+});
+
 describe("classifyWriteError", () => {
   it("maps ENOSPC to disk_full and everything else to output_write_failed", () => {
     expect(classifyWriteError(Object.assign(new Error(), { code: "ENOSPC" }))).toBe("disk_full");

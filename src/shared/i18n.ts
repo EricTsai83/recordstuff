@@ -7,6 +7,37 @@ export function isLanguage(value: unknown): value is Language {
 }
 
 export const ZH_TW = {
+  "Could not complete this action. Please try again.": "無法完成此操作，請重試。",
+  "Could not save this reminder. It may change after restarting. Check available disk space.": "無法儲存這項提醒，重啟後可能無法保留目前狀態。請檢查可用磁碟空間。",
+  "Retry saving reminder": "重新儲存提醒",
+  "This is a previous recording failure. Check current recording permissions before trying again.": "這是先前錄影的失敗紀錄。請確認目前的錄影權限後再試。",
+  "The output folder could not be written.": "無法寫入輸出資料夾。",
+  "Free disk space or choose another output folder before recording again.": "請釋放磁碟空間，或選擇其他輸出資料夾後重新錄影。",
+  "Check the output folder, its permissions and the connected drive before recording again.": "請檢查輸出資料夾、存取權限與外接磁碟後重新錄影。",
+  "Check recording permissions in System Settings. Relaunch if access was recently granted.": "請在系統設定檢查錄影權限；若剛授權，請重新啟動 App。",
+  "Check your recording settings before trying again. Starting again does not recover missing content.": "請檢查錄影設定後再試。重新錄影不會恢復先前遺失的內容。",
+  "Processing the recorded data… The file result is not yet confirmed.": "正在處理已錄製的資料……尚未確認檔案結果。",
+  "A partial recording was kept. It may not be playable.": "已保留部分錄影，但可能無法播放。",
+  "No recording content was kept.": "這次沒有留下錄影內容。",
+  "Could not confirm whether recording content was kept. Check the output folder.": "無法確認錄影內容是否保留，請檢查輸出資料夾。",
+  "Recording failure": "錄影失敗",
+  "Recording failures": "失敗紀錄",
+  "Unreviewed recording failures: {value}": "尚未確認的錄影失敗：{value} 筆",
+  "View recording failures…": "查看失敗紀錄…",
+  "Remove from history": "移除這筆紀錄",
+  "Keeps all unreviewed failures and the 20 most recently reviewed failures. Removing a record does not delete the recording file.": "保留所有尚未確認的失敗，以及最近確認的 20 筆紀錄。移除紀錄不會刪除錄影檔案。",
+  "Recent recording result": "最近錄影結果",
+  "Recording failed": "錄影失敗",
+  "View recording result…": "查看錄影結果…",
+  "Show partial recording": "顯示部分檔案",
+  "Got it": "知道了",
+  "Technical details": "技術詳細資料",
+  "Check capture permissions and audio devices before recording again.": "再次錄影前，請檢查擷取權限與音訊裝置。",
+  "Recent failure: {reason}": "最近一次失敗：{reason}",
+  "Click to view the recording result.": "點此查看錄影結果。",
+  "Notifications are off. Recording failures remain visible in the menu bar and Recording failures.": "通知已關閉。錄影失敗仍會顯示於選單列與「失敗紀錄」。",
+  "Could not complete this action. The recording result has not been dismissed.": "無法完成此操作，錄影結果提醒尚未清除。",
+
   "RecordStuff - Settings": "RecordStuff - 設置",
   "{label} — Unavailable": "{label} — 無法使用",
   "Selected display is unavailable": "所選螢幕無法使用",
@@ -161,8 +192,6 @@ export const ZH_TW = {
   "Shows a notification when a recording is saved or an error occurs.": "錄影儲存完成或發生錯誤時顯示通知。",
   "macOS must also allow RecordStuff in System Settings → Notifications.":
     "macOS 另外還要在「系統設定 → 通知」中允許 RecordStuff。",
-  "Notifications are off. An interrupted or unsaved recording will not tell you; check the output folder to confirm a recording was saved.":
-    "通知已關閉。錄影中斷或存檔失敗時不會有提示，請到儲存位置確認檔案是否存在。",
   "Could not open System Settings. Allow RecordStuff in System Settings → Privacy & Security → Screen & System Audio Recording.":
     "無法開啟系統設定。請在「系統設定 → 隱私權與安全性 → 螢幕與系統音訊錄製」中允許 RecordStuff",
   "Open notification settings…": "開啟通知設定…",

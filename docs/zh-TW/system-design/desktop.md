@@ -18,7 +18,7 @@ TrayModel 是純函式產物，包含 icon、title、tooltip 與一份扁平的�
 
 每個狀態都有「設定」、「顯示 log」與「結束」，而且「設定」永遠可點：哪些偏好被鎖定由面板自己說明。macOS 使用 template PNG／@2x，Windows 分支使用 ICO；macOS 才顯示圖示旁 title。錄整個螢幕時 `REC` 可能出現在影片，這是目前接受的呈現。
 
-通知文案由純函式產生，通知使用 silent 模式。存檔通知點擊顯示影片；有 partialPath 的失敗通知顯示部分檔；無部分檔時，位置不可用開資料夾選擇、缺權限開系統設定、需要重啟則 relaunch。品質保存失敗與幀率降級只有說明。
+通知使用本地化文案與 silent 模式。存檔通知點擊顯示完整影片；錄影失敗通知一律開啟設定中的「失敗紀錄」，呈現已確認的檔案狀態與復原操作。品質與語言保存失敗、幀率降級通知只有說明。
 
 macOS 點通知會做兩件事：把回應交給 App，並要求系統啟動發通知的 App；後者約在點擊回呼後 110 ms 才落地。reveal 以 `setImmediate` 立刻請 Finder 選取檔案；若系統隨後把這個無視窗 App 設為前景，Finder 會被壓回使用者原本的視窗後方，看起來什麼都沒發生（v0.1.0 的回報；macOS 26.6 上約三次點擊出現一次，同一程序的第一次點擊很少發生）。計畫 014 因此在 reveal 之後掛一個一次性的 `did-become-active` 監聽，時窗 `ACTIVATION_WINDOW_MS`（1 秒）：啟動若落在時窗內，就從已是前景的 App 再 reveal 一次，讓 Finder 的置前最後落地。log 區分 `reveal requested`、`reveal repeated after activation` 與 `reveal failed`。只有點擊會掛監聽；背景存檔不會碰 Finder。原生通知不支援或 `failed` event 會留下 log。通知是否顯示仍受系統通知設定影響。原生證據由 `pnpm acceptance:notification` 產生（[工具鏈](tooling.md#通知驗收)）。通知縮圖已由使用者於 2026-09-14 重開機後確認正常。
 
@@ -147,7 +147,7 @@ App 注入 Electron `net.fetch`，採用 Chromium 網路層及系統代理／PAC
 
 「設定 → 一般」提供「通知」開／關；macOS 的「開啟通知設定…」按鈕就放在同一張卡片內，讓開關與可能凌駕它的系統權限讀起來是同一個決定，而不是兩個無關的設定。`AppTray.show` 在任何其他判斷之前先檢查這個開關，並寫下 `notification: turned off in settings, dropped: …`，因此單一布林值管轄 App 發出的每一則通知 — 存檔完成、錯誤，以及各種寫入失敗提示。錄製進行中這個開關與其他偏好一樣鎖定。
 
-App 刻意不映射作業系統的通知權限。Electron 沒有任何方式可以讀取：`systemPreferences.getMediaAccessStatus` 只接受 `microphone`、`camera` 與 `screen`，而 `Electron Framework` 二進位中不存在 `getNotificationSettingsWithCompletionHandler`。其中確實存在 `requestAuthorizationWithOptions:completionHandler:`，所以 Electron 是在 `Notification.show()` 內部向 macOS 請求授權 — 全新安裝的第一則通知就是觸發系統提示的那一刻。`UNUserNotificationCenter` 只在狀態為 `notDetermined` 時提供該提示，而狀態按 bundle ID 保存、重新安裝 App 也不會重置，因此顯示提示的機會一輩子只有一次，被拒絕之後就 App 而言即為終局。所以這次機會花在首次啟動，由那則同時告訴使用者選單列 App 位置的首次啟動提示來使用：啟動正是 macOS 已經在為這個 App 索取螢幕錄製權限的時刻，通知的請求因此落在同一個脈絡裡，而不是出現在使用者第一次錄影結束的瞬間。開關維持預設開啟 — 一個從不說自己存好了的錄影工具讀起來像壞掉，而一個使用者永遠找不到、從未動用的提示機會，並不比被拒絕好。把開關關掉再打開同樣會送出確認通知，那也是可重複執行的送達測試。狀態列必然要宣稱一個 App 讀不到的權限狀態，所以群組的說明文字改為標示恢復路徑 —「系統設定 → 通知 → RecordStuff」— macOS 的操作按鈕則直接開啟該面板。關閉開關是照辦而非補償：說明文字此時改為交代代價與替代查看位置。十四個錯誤碼中只有六個僅能透過通知抵達使用者 — `capture_failed`、`capture_host_crashed`、`capture_host_unresponsive`、`output_write_failed`、`disk_full` 與 `stop_timeout`，也就是圖示已經是 REC 後又悄悄回到 Ready 的那些。其餘要嘛帶有 tray 狀態（`permission_denied` 與 `permission_needs_relaunch` 會進入 `needsPermission`；`output_open_failed` 設定 `outputDirUnavailable`），要嘛根本沒有開始擷取，而圖示沒有變成 REC 本身就是訊號。中斷的錄影只要寫入過任何內容，仍會在儲存位置留下 `<stamp>.recording.mp4`，而 tray 一鍵即可開啟該資料夾，所以資料夾始終是持久紀錄，App 自身不保存任何錯誤狀態。
+App 刻意不映射作業系統的通知權限。Electron 沒有任何方式可以讀取：`systemPreferences.getMediaAccessStatus` 只接受 `microphone`、`camera` 與 `screen`，而 `Electron Framework` 二進位中不存在 `getNotificationSettingsWithCompletionHandler`。其中確實存在 `requestAuthorizationWithOptions:completionHandler:`，所以 Electron 是在 `Notification.show()` 內部向 macOS 請求授權 — 全新安裝的第一則通知就是觸發系統提示的那一刻。`UNUserNotificationCenter` 只在狀態為 `notDetermined` 時提供該提示，而狀態按 bundle ID 保存、重新安裝 App 也不會重置，因此顯示提示的機會一輩子只有一次，被拒絕之後就 App 而言即為終局。所以這次機會花在首次啟動，由那則同時告訴使用者選單列 App 位置的首次啟動提示來使用：啟動正是 macOS 已經在為這個 App 索取螢幕錄製權限的時刻，通知的請求因此落在同一個脈絡裡，而不是出現在使用者第一次錄影結束的瞬間。開關維持預設開啟 — 一個從不說自己存好了的錄影工具讀起來像壞掉，而一個使用者永遠找不到、從未動用的提示機會，並不比被拒絕好。把開關關掉再打開同樣會送出確認通知，那也是可重複執行的送達測試。狀態列必然要宣稱一個 App 讀不到的權限狀態，所以群組的說明文字改為標示恢復路徑 —「系統設定 → 通知 → RecordStuff」— macOS 的操作按鈕則直接開啟該面板。關閉開關會停止發送 OS 通知；錄影失敗仍顯示於選單列與下述「失敗紀錄」區塊。
 
 此設計沿用 Cap（`apps/desktop/src-tauri/src/notifications.rs`）：送出路徑只檢查一個 `enable_notifications` 布林值，別無其他。Cap 另外會以 `isPermissionGranted()` 管控開關，該 API 由 `@tauri-apps/plugin-notification` 提供，Electron 沒有對應品；這段落差改由說明文字承擔。Plan 019 最初實作了通往 macOS `UserNotifications` 的 Node-API 橋接來補上它，後來撤回：該橋接使得載入失敗（架構不符或最低系統版本過新的 `.node`）會靜默壓制每一則通知，連 Electron 原本會發出的隱式授權請求也一併消失，比完全沒有狀態資訊嚴格更糟。橋接保存在 `wip/019-native-notification-bridge` 分支。
 
@@ -168,3 +168,19 @@ macOS 設定入口會開啟通知總覽，再選 RecordStuff 即可進入權限�
 新增／移除／尺寸事件一律推進配置世代；閒置時立即刷新，忙碌時於結束後刷新。錄製期間不能變更選擇。缺失或重複的保存目標保留勾選但停用，仍可選主螢幕或有效目標恢復。閒置 tray 顯示健康的指定目標；tray 與設定區分目前不可用與上次失敗。上次失敗只留在記憶體，關閉通知仍顯示，只有成功開始錄製或成功保存不同選擇才清除。保存失敗保留偏好與診斷，並依通知偏好送出錯誤通知。不新增 tray 子選單或系統 picker；系統音訊政策不變。
 
 外觀偏好提供「跟隨系統」（預設）、「淺色」、「深色」，位於一般設定，錄影期間亦可切換。Main 成功儲存後設定 `nativeTheme.themeSource`，即時套用原生視窗與 CSS 深淺色；啟動時讀回。舊檔缺少此欄位或值不合法時回到 system，不影響其他偏好。
+
+## 錄影失敗結果
+
+Recorder 在檔案清理完成前發出獨立 failure-status。Main 將每筆失敗及其確認狀態存入 `userData/recording-history.json`（version 2），獨立於通知偏好與錄影狀態。新錯誤排最前面；延遲清理只更新自己的 ID，不取代或重排其他紀錄。保留所有未確認紀錄與最近確認的 20 筆紀錄。這是失敗歷史，不是媒體資料庫或遺留檔案復原機制。
+
+選單列仍只有一個項目。只要有未確認失敗，待命圓環就整合警示標記；錄影中的實心圖示與 REC 優先。選單顯示未確認筆數及「查看失敗紀錄」。左鍵仍開始／停止錄影。錯誤通知開啟設定中的同一列表，定位最新未確認紀錄（全部確認時則定位最新紀錄），不自動確認。開選單、關通知、成功錄影或等待，都不清除失敗。
+
+「失敗紀錄」位於設定任一分頁的偏好上方。每筆可獨立展開，顯示時間、原因、檔案結果、恢復指引與技術資訊。清理中停用「知道了」，不提供檔案定位。部分檔案顯示前及定位前重新檢查；未知或遺失路徑只是查找線索，不保證可播放或復原。檔案／資料夾／權限操作仍遵守錄製鎖定。普通更新保留各筆展開狀態與 ID，舊按鈕不會操作新紀錄。
+
+「知道了」只在精確 ID 的處理完成後，成功保存確認狀態才收合該筆；所有保留的失敗都確認後，才消除選單列警示。已確認紀錄可移除；手動移除或淘汰最舊已確認紀錄，都不刪影片或 log。確認／移除保存失敗時，維持先前可見狀態。「重新儲存提醒」獨立保存整份歷史，不改變確認狀態，未確認與處理中的失敗亦可重試。任何成功保存都包含其他尚未存入磁碟的失敗。
+
+重啟不重發通知。中斷的 pending 清理改為無法確認；先前確認的部分檔案也先顯示無法確認，再以一次一筆、每筆兩秒期限檢查；逾時停止後續檢查，避免佔滿檔案系統工作執行緒。檢查成功恢復部分檔案狀態，同時保留期間的確認操作。無法存取的路徑保留候選資訊與先前確認資格，供下次啟動檢查；中斷清理不因找到位元組就升級成已確認保留。已移除的 ID 不會被延遲檢查或完成事件重新加入。
+
+首次使用會把有效 `recording-result.json` v1 單筆紀錄移入獨立歷史檔案，保留舊檔。有效的空歷史不會再匯入舊資料。歷史損壞、超大或版本較新時記入 log 並拒絕覆蓋；後續保存呈現持久化警告。歷史驗證唯一 ID，序列化上限為 32 MiB；不會為了符合上限刪除未確認紀錄，超過就回報保存失敗，並非無限的永久儲存。
+
+歷史採私有暫存檔、fsync 與 rename。啟動檢查後未變更的歷史不重寫。保存失敗仍在記憶體顯示新資訊，只有與上次保存內容不同的紀錄才提供本地化警告與獨立重試。原子替換不保證斷電或磁碟已滿／不可寫時恢復。同步序列化與磁碟寫入可能阻塞主程序及選單列重繪；雖然先要求更新擷取狀態與圖示，不代表畫面已重繪。跨重啟權限錯誤採歷史指引，僅目前權限仍需要時提供重新啟動。失敗 ID 使用跨程序 UUID。

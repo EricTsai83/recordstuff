@@ -142,6 +142,19 @@ function recordingShape(size) {
   return circle(c, c, size * 0.36);
 }
 
+// One template image: existing ring with a lower-right exclamation badge.
+// Knock out a halo so both light and dark menu bars retain the badge silhouette.
+function warningShape(size) {
+  const base = idleShape(size);
+  const halo = circle(size * .76, size * .76, size * .27);
+  const badge = circle(size * .76, size * .76, size * .22);
+  return (x, y) => {
+    const nx = x / size, ny = y / size;
+    const mark = Math.abs(nx - .76) < .045 && ((ny > .60 && ny < .78) || (ny > .83 && ny < .91));
+    return (base(x, y) && !halo(x, y)) || (badge(x, y) && !mark);
+  };
+}
+
 mkdirSync("resources", { recursive: true });
 mkdirSync("build", { recursive: true });
 
@@ -149,6 +162,7 @@ mkdirSync("build", { recursive: true });
 for (const [name, shapeOf] of [
   ["trayIdleTemplate", idleShape],
   ["trayRecordingTemplate", recordingShape],
+  ["trayWarningTemplate", warningShape],
 ]) {
   writeFileSync(`resources/${name}.png`, png(16, rasterize(16, [{ shape: shapeOf(16), rgba: BLACK }])));
   writeFileSync(`resources/${name}@2x.png`, png(32, rasterize(32, [{ shape: shapeOf(32), rgba: BLACK }])));
@@ -158,6 +172,7 @@ for (const [name, shapeOf] of [
 for (const [name, shapeOf, color] of [
   ["tray-idle", idleShape, GRAY],
   ["tray-recording", recordingShape, RED],
+  ["tray-warning", warningShape, GRAY],
 ]) {
   const entries = [16, 24, 32, 48].map((size) => ({
     size,

@@ -121,3 +121,19 @@ kbd { font: inherit; display: inline-block; min-width: 20px; padding: 1px 4px; m
   #settings-panel::-webkit-scrollbar { display: block; }
   .scroll-hint { display: none; }
 }
+
+/* Recording failures stay above either settings tab, independent of notifications. */
+.recording-result { margin-bottom: 16px; padding: 12px; border: 1px solid var(--warning); border-radius: 10px; background: var(--warning-surface); overflow-wrap: anywhere; }
+.recording-result > summary { cursor: pointer; font-weight: 600; line-height: 1.5; }
+.recording-result p { margin: 8px 0; line-height: 1.5; }
+.result-reason { font-weight: 600; }
+.result-time { font-size: 11px; opacity: .75; }
+.result-file, .result-technical pre { font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.result-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.result-actions button { white-space: normal; }
+.result-error { color: var(--warning); }
+.result-technical > summary { cursor: pointer; font-size: 11px; }
+@media (forced-colors: active) { .recording-result { border-color: CanvasText; } }
+
+#recording-results h2 { font-size: 14px; margin: 0 0 8px; }
+.result-history-note { font-size: 11px; line-height: 1.5; margin-bottom: 12px; opacity: .8; }

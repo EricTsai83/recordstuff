@@ -78,12 +78,13 @@ import { ACTIVATION_WINDOW_MS, AppTray } from "./tray";
 
 const Fake = Notification as unknown as FakeNotificationCtor;
 
-function setup(supported = true, canNotify?: () => boolean): { tray: AppTray; logs: string[] } {
+function setup(supported = true, canNotify?: () => boolean): { tray: AppTray; logs: string[]; onAction: ReturnType<typeof vi.fn> } {
   vi.mocked(shell.showItemInFolder).mockReset();
   app.removeAllListeners();
   Fake.instances.length = 0;
   Fake.supported = supported;
   const logs: string[] = [];
+  const onAction = vi.fn();
   const tray = new AppTray({
     resourcesDir: "/resources",
     context: () => ({
@@ -98,11 +99,11 @@ function setup(supported = true, canNotify?: () => boolean): { tray: AppTray; lo
   displays: [], display: { kind: "primary" },
     }),
     onToggle: vi.fn(),
-    onAction: vi.fn(),
+    onAction,
     log: (message) => logs.push(message),
     ...(canNotify ? { canNotify } : {}),
   });
-  return { tray, logs };
+  return { tray, logs, onAction };
 }
 
 describe("AppTray notifications (docs/system-design/desktop.md)", () => {
@@ -185,7 +186,7 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
   it("drops every notification while the user's switch is off, before asking the OS", () => {
     const { tray, logs } = setup(true, () => false);
     tray.notifySaved("/tmp/a.mp4");
-    tray.notifyError("no_audio_track", undefined);
+    tray.notifyRecordingFailure("no_audio_track");
     expect(Fake.instances).toHaveLength(0);
     expect(logs.filter((line) => line.includes("turned off in settings"))).toHaveLength(2);
     expect(logs.some((line) => line.includes("not supported"))).toBe(false);
@@ -201,7 +202,7 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
 
   it("logs and gives up when notifications are not supported at all", () => {
     const { tray, logs } = setup(false);
-    tray.notifyError("no_audio_track", undefined);
+    tray.notifyRecordingFailure("no_audio_track");
     expect(Fake.instances).toHaveLength(0);
     expect(logs.at(-1)).toContain("notification: not supported");
   });
@@ -311,10 +312,10 @@ describe("notification language follows current settings", () => {
     tray.refresh();
     tray.notifySaved("/tmp/demo.mp4");
     expect(Fake.instances.at(-1)?.options.body).toBe("已儲存 demo.mp4");
-    tray.notifyError("permission_denied", undefined);
-    expect(Fake.instances.at(-1)?.options.body).toContain("沒有螢幕錄製權限");
+    tray.notifyRecordingFailure("permission_denied");
+    expect(Fake.instances.at(-1)?.options.body).toContain("需要螢幕錄製權限");
     Fake.instances.at(-1)?.listeners.get("click")?.();
-    expect(action).toHaveBeenCalledWith("openPermissionSettings");
+    expect(action).toHaveBeenCalledWith("openRecordingResult");
     tray.notifyLanguageWriteFailed();
     expect(Fake.instances.at(-1)?.options.body).toContain("無法儲存語言設定");
     language = "en";
@@ -324,4 +325,20 @@ describe("notification language follows current settings", () => {
     expect(action).toHaveBeenCalledWith("relaunch");
     tray.destroy();
   });
+});
+
+it("routes recording-failure notification clicks to results without acknowledging or revealing prematurely", () => {
+  const { tray, onAction } = setup();
+  tray.notifyRecordingFailure("disk_full");
+  const notification = Fake.instances[0]!;
+  expect(notification.options.title).toBe("Recording failed");
+  expect(notification.options.body).toContain("disk is full");
+  notification.listeners.get("click")?.();
+  expect(onAction).toHaveBeenCalledWith("openRecordingResult");
+  expect(shell.showItemInFolder).not.toHaveBeenCalled();
+  tray.destroy();
+  const off = setup(true, () => false);
+  off.tray.notifyRecordingFailure("disk_full");
+  expect(Fake.instances).toHaveLength(0);
+  off.tray.destroy();
 });

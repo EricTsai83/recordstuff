@@ -93,6 +93,7 @@ export class FileWriter {
   private fsyncTimer: ReturnType<typeof setInterval> | undefined;
   private closed = false;
   private _bytesWritten = 0;
+  preservationUncertain = false;
 
   private constructor(
     readonly recordingPath: string,
@@ -185,7 +186,8 @@ export class FileWriter {
     try {
       await this.release();
     } catch {
-      // Best effort; the handle is gone either way.
+      this.preservationUncertain = true;
+      // The path may exist, but closing could not be confirmed.
     }
     if (this._bytesWritten > 0) return this.recordingPath;
     try {
@@ -201,7 +203,12 @@ export class FileWriter {
     this.closed = true;
     if (this.fsyncTimer) clearInterval(this.fsyncTimer);
     this.fsyncTimer = undefined;
-    await this.handle.close();
+    try {
+      await this.handle.close();
+    } catch (error) {
+      this.preservationUncertain = true;
+      throw error;
+    }
   }
 
   private enqueue(task: () => Promise<unknown>): Promise<void> {

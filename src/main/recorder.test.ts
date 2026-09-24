@@ -46,6 +46,7 @@ class FakeHost implements RecorderHost {
 }
 
 class FakeWriter implements RecorderWriter {
+  preservationUncertain = false;
   chunks: Uint8Array[] = [];
   finished = false;
   abandoned = false;
@@ -452,7 +453,7 @@ describe("Recorder failures", () => {
     recorder.subscribe((e) => events.push(e));
     recorder.toggle();
     await flush();
-    expect(events).toEqual([{ type: "failed", code: "unsupported_os_version", detail: "" }]);
+    expect(events.filter(event => event.type === "failed")).toEqual([{ type: "failed", code: "unsupported_os_version", detail: "" }]);
     expect(recorder.state).toEqual({ type: "idle" });
   });
 });
@@ -504,7 +505,8 @@ describe("Recorder review fixes", () => {
       });
     ctx.host.crash();
     expect(ctx.recorder.state).toEqual({ type: "idle" });
-    expect(ctx.events.at(-1)).toEqual({ type: "state", state: { type: "idle" } });
+    expect(ctx.events.filter(event => event.type === "state").at(-1)).toEqual({ type: "state", state: { type: "idle" } });
+    expect(ctx.events.at(-1)).toMatchObject({ type: "failureStatus", result: { outcome: "pending" } });
     releaseAbandon!();
     await flush();
     expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "capture_host_crashed", partialPath: writer.recordingPath });
@@ -866,4 +868,71 @@ describe("Recorder with real FileWriter", () => {
       await fs.rm(dir, { recursive: true, force: true });
     }
   });
+});
+
+describe("failure presentation timing", () => {
+  it("reports unknown when a writer cannot confirm preservation without throwing", async () => {
+    const ctx = setup();
+    await startRecording(ctx);
+    ctx.writers[0]!.preservationUncertain = true;
+    ctx.writers[0]!.abandon = async () => "/tmp/partial.recording.mp4";
+    ctx.host.crash();
+    await ctx.recorder.shutdown();
+    const last = ctx.events.filter(event => event.type === "failureStatus").at(-1);
+    expect(last).toMatchObject({ result: { outcome: "unknown" } });
+    expect(last?.result.partialPath).toBeUndefined();
+  });
+  it("announces failure before delayed cleanup, then publishes its file result once", async () => {
+    const ctx = setup();
+    await startRecording(ctx);
+    let resolve!: (path: string) => void;
+    ctx.writers[0]!.abandon = () => new Promise<string>(done => { resolve = done; });
+    ctx.host.crash();
+    const status = ctx.events.filter(event => event.type === "failureStatus");
+    expect(status).toHaveLength(1);
+    expect(status[0]).toMatchObject({ result: { outcome: "pending", code: "capture_host_crashed" } });
+    expect(ctx.events.filter(event => event.type === "failed")).toHaveLength(0);
+    resolve("/tmp/partial.recording.mp4");
+    await flush();
+    expect(ctx.events.filter(event => event.type === "failureStatus")).toHaveLength(2);
+    expect(ctx.events.filter(event => event.type === "failureStatus")[1]).toMatchObject({
+      result: { outcome: "partial", partialPath: "/tmp/partial.recording.mp4" },
+    });
+    expect(ctx.events.filter(event => event.type === "failed")).toHaveLength(1);
+  });
+  it("reports unknown preservation when cleanup throws instead of claiming an empty recording", async () => {
+    const ctx = setup();
+    await startRecording(ctx);
+    ctx.writers[0]!.abandon = async () => { throw new Error("close failed"); };
+    ctx.host.crash();
+    await ctx.recorder.shutdown();
+    expect(ctx.events.filter(event => event.type === "failureStatus").at(-1)).toMatchObject({ result: { outcome: "unknown" } });
+    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "capture_host_crashed" });
+  });
+});
+
+it("uses different failure identities across recorder instances and preserves the pending candidate path", async () => {
+  const ids: string[] = [];
+  for (let i = 0; i < 2; i++) {
+    const ctx = setup();
+    await startRecording(ctx);
+    ctx.host.crash();
+    const pending = ctx.events.find(event => event.type === "failureStatus");
+    expect(pending).toMatchObject({ type: "failureStatus", result: { outcome: "pending", recordingPath: ctx.writers[0]!.recordingPath } });
+    if (pending?.type === "failureStatus") ids.push(pending.result.id);
+    await ctx.recorder.shutdown();
+    const final = ctx.events.filter(event => event.type === "failureStatus").at(-1);
+    expect(final?.result.recordingPath).toBeUndefined();
+  }
+  expect(ids).toHaveLength(2);
+  expect(ids[0]).not.toBe(ids[1]);
+});
+
+it("sets idle before pending failure subscribers can block on persistence", async () => {
+  const ctx = setup();
+  await startRecording(ctx);
+  const states: string[] = [];
+  ctx.recorder.subscribe(event => { if (event.type === "failureStatus" && event.result.outcome === "pending") states.push(ctx.recorder.state.type); });
+  ctx.host.crash(); await ctx.recorder.shutdown();
+  expect(states).toEqual(["idle"]);
 });

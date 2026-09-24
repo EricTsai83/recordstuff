@@ -1,3 +1,4 @@
+import { failureReason } from "./recording-result";
 import { displayLabel, displayFailureText } from "../shared/display";
 import { displayResolution } from "./display-source";
 /**
@@ -13,12 +14,12 @@ import { displayResolution } from "./display-source";
 import path from "node:path";
 import { translate as t, type Language, type MessageKey } from "../shared/i18n";
 import type { FrameRate } from "../shared/quality";
-import type { ErrorCode, RecordingState } from "../shared/state";
+import type { RecordingState } from "../shared/state";
 import { describeAccelerator, SETTINGS_SHORTCUT, type HotkeyAccelerator } from "../shared/hotkey";
 
 import { APP_NAME, abbreviateHome, type AppAction, type AppContext } from "./ui-model";
 
-export type TrayIcon = "idle" | "recording";
+export type TrayIcon = "idle" | "recording" | "warning";
 export type TrayMenuItem =
   | { kind: "separator" }
   | { kind: "item"; label: string; enabled: boolean; action?: AppAction; toolTip?: string };
@@ -89,12 +90,19 @@ function stopHint(ctx: AppContext): string | undefined {
 export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
   const language = ctx.language;
   const text = (key: MessageKey): string => t(key, language);
+  const unread = (ctx.recordingResults ?? []).filter(r => !r.acknowledged);
+  const result = unread[0] ?? ctx.recordingResults?.[0];
+  const resultText = unread.length ? t("Unreviewed recording failures: {value}", language, { value: String(unread.length) })
+    : result ? t("Recent failure: {reason}", language, { reason: failureReason(result.code, language) }) : "";
+  const resultMenu: TrayMenuItem[] = result ? [
+    disabled(resultText), item(text("View recording failures…"), "openRecordingResult"), SEPARATOR,
+  ] : [];
   const end = footer(ctx);
   const model = (icon: TrayIcon, title: string, status: string, menu: TrayMenuItem[]): TrayModel => ({
-    icon,
+    icon: icon === "idle" && unread.length > 0 ? "warning" : icon,
     title,
-    tooltip: `${APP_NAME}: ${status}\n${text("Right-click to open the menu")}`,
-    menu,
+    tooltip: `${APP_NAME}: ${status}${unread.length > 0 ? `\n${resultText}` : ""}\n${text("Right-click to open the menu")}`,
+    menu: [...resultMenu, ...menu],
   });
   switch (state.type) {
     case "needsPermission":
@@ -212,48 +220,4 @@ export function trayHintNotification(platform: NodeJS.Platform, language?: Langu
   return notice(platform === "darwin"
     ? t("RecordStuff is ready in the menu bar. Click to start recording; click again to stop.", language)
     : t("RecordStuff is ready in the system tray. Click to start recording; click again to stop.", language));
-}
-export function errorNotification(
-  code: ErrorCode,
-  partialPath: string | undefined,
-  ctx: Pick<AppContext, "homeDir" | "outputDir" | "language">,
-): NotificationText {
-  // Technical detail remains in English logs; user recovery guidance is fully localized.
-  const language = ctx.language;
-  const kept = partialPath
-    ? t("Partial recording kept: {file}. Click to show the file.", language, { file: path.basename(partialPath) })
-    : t("No content was recorded.", language);
-  const reasons: Record<ErrorCode, MessageKey> = {
-    permission_denied: "Screen recording access is missing. Open System Settings from the tray menu.",
-    permission_needs_relaunch:
-      "Screen recording access was granted, but RecordStuff needs to relaunch. Use the tray menu.",
-    unsupported_os_version:
-      "This system version does not support system audio capture. macOS 13 or newer is required on Mac.",
-    display_unavailable: "Selected display is unavailable. Choose another screen.",
-    no_display: "No display is available for recording.",
-    no_audio_track:
-      "System audio is unavailable. On macOS, allow RecordStuff in System Settings > Privacy & Security > Screen & System Audio Recording.",
-    mp4_unsupported: "MP4 recording is not supported on this computer.",
-    capture_start_failed: "Could not start recording.",
-    capture_failed: "Recording was interrupted.",
-    capture_host_crashed: "The recording process crashed.",
-    capture_host_unresponsive: "The recording process is not responding.",
-    output_open_failed: "Cannot write to {path}. Choose another output folder from the tray menu.",
-    output_write_failed: "Could not write the recording.",
-    disk_full: "The disk is full.",
-    stop_timeout: "Stopping the recording timed out.",
-  };
-  const body = t(reasons[code], language, { path: abbreviateHome(ctx.outputDir, ctx.homeDir) });
-  const preserve =
-    partialPath ||
-    [
-      "capture_start_failed",
-      "capture_failed",
-      "capture_host_crashed",
-      "capture_host_unresponsive",
-      "output_write_failed",
-      "disk_full",
-      "stop_timeout",
-    ].includes(code);
-  return notice(preserve ? `${body} ${kept}` : body);
 }

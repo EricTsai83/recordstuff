@@ -3,7 +3,6 @@ import { DEFAULT_QUALITY } from "../shared/quality";
 import type { RecordingState } from "../shared/state";
 import { DEFAULT_HOTKEY, HOTKEY_PRESETS } from "../shared/hotkey";
 import {
-  errorNotification,
   trayHintNotification,
   frameRateDowngradeNotification,
   hotkeyRegistrationFailedNotification,
@@ -203,18 +202,6 @@ describe("notification text", () => {
     );
   });
 
-  it("errors with a partial file mention it; without one say nothing was recorded", () => {
-    const kept = errorNotification("capture_host_crashed", "/x/2026-09-11 14-30-00.recording.mp4", mac);
-    expect(kept.body).toContain("2026-09-11 14-30-00.recording.mp4");
-    const none = errorNotification("capture_start_failed", undefined, mac);
-    expect(none.body).toContain("沒有錄到任何內容");
-  });
-
-  it("output_open_failed names the folder and the menu action", () => {
-    const text = errorNotification("output_open_failed", undefined, mac);
-    expect(text.body).toBe("儲存位置無法寫入：~/Movies/RecordStuff。右鍵選單可以更改儲存位置");
-  });
-
   it("a refused shortcut registration points at Settings, in the user's language", () => {
     expect(hotkeyRegistrationFailedNotification(HOTKEY_PRESETS[0], "darwin", "zh-TW").body).toBe(
       "無法註冊快捷鍵 ⌘⇧1，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵",
@@ -310,4 +297,26 @@ describe("display tray feedback", () => {
     expect(menu[0]).toMatchObject({ label: "Selected display is unavailable. Choose another screen." });
     expect(menu[1]).toMatchObject({ label: "Last display failure: Display is connected but its capture source is unavailable. Retry or choose another screen." });
   });
+});
+
+it("uses one badged idle icon, prioritizes REC and retains the result entry after acknowledgement", () => {
+  const result = { id: "f", code: "disk_full" as const, detail: "", occurredAt: "2026-09-24T12:00:00Z", outcome: "empty" as const, acknowledged: false };
+  const ctx = { ...mac, notifications: false, recordingResults: [result] };
+  expect(trayModel({ type: "idle" }, ctx).icon).toBe("warning");
+  const recording = trayModel({ type: "recording", startedAt: "" }, ctx);
+  expect(recording.icon).toBe("recording");
+  expect(recording.title).toBe("REC");
+  expect(recording.menu).toContainEqual(expect.objectContaining({ action: "openRecordingResult" }));
+  expect(trayModel({ type: "idle" }, ctx).icon).toBe("warning");
+  const acknowledged = trayModel({ type: "idle" }, { ...ctx, recordingResults: [{ ...result, acknowledged: true }] });
+  expect(acknowledged.icon).toBe("idle");
+  expect(acknowledged.menu).toContainEqual(expect.objectContaining({ action: "openRecordingResult" }));
+});
+
+it("keeps the warning while an older failure is unread and counts unread results", () => {
+  const a = { id: "a", code: "disk_full" as const, detail: "", occurredAt: "2026-09-25T00:00:00Z", outcome: "empty" as const, acknowledged: false };
+  const ctx = { ...mac, recordingResults: [{ ...a, id: "b", acknowledged: true }, a] };
+  expect(trayModel({ type: "idle" }, ctx)).toMatchObject({ icon: "warning", tooltip: expect.stringContaining("1") });
+  expect(trayModel({ type: "idle" }, { ...ctx, recordingResults: [a, { ...a, id: "b" }] }).tooltip).toContain("2");
+  expect(trayModel({ type: "idle" }, { ...ctx, recordingResults: [] }).icon).toBe("idle");
 });

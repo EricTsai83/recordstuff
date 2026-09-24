@@ -252,7 +252,15 @@ The page's window-message callback checks source/marker/port before creating the
 | hotkeyRegistrationFailedNotification(accelerator, platform) | Localized conflict notice with the platform rendering of the accelerator, pointing at Settings |
 | frameRateDowngradeNotification | Include actual and requested fps |
 | trayHintNotification | Windows first-run tray discovery text |
-| errorNotification(code, partialPath, ctx) | Localize error summary/recovery and preserved-file guidance; technical detail stays in logs |
+
+[main/recording-result.ts](../../src/main/recording-result.ts):
+
+| Function/method | Contract |
+| --- | --- |
+| RecordingResults.receive / act | Confirm partial files, reject stale results/actions, retain unread state and expose recovery actions |
+| RecordingResults.restore | Recheck saved paths with a deadline; restore acknowledgement without a notification or overwriting newer state |
+
+[main/recording-result-store.ts](../../src/main/recording-result-store.ts): validates and atomically replaces versioned failure history; migrates the legacy single record without overwriting it. Exact-ID retry preserves unread state; removal deletes only reviewed metadata.
 
 [main/tray.ts](../../src/main/tray.ts):
 
@@ -262,7 +270,7 @@ The page's window-message callback checks source/marker/port before creating the
 | render / refresh | Remember presentation state and update image/title/tooltip; refresh rereads context |
 | destroy | Destroy native Tray |
 | notifySaved | Current-language saved notice with reveal callback |
-| notifyError(code, partial) | Error notice; partial path takes precedence over recovery actions |
+| notifyRecordingFailure(code) | Open failure history at the newest unread record without acknowledging it |
 | revealFromNotification / reveal | Defer macOS Finder call and record requested/failed |
 | notifyPermission | Current-language guidance with settings/relaunch callback |
 | notifySettingsWriteFailed / notifyQualityWriteFailed / notifyLanguageWriteFailed / notifyHotkeyWriteFailed | Current-language failed-save notices |

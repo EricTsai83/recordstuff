@@ -1,3 +1,4 @@
+import { failureReason, failureGuidance, failureOutcome } from "./recording-result";
 import { displayLabel, displayFailureText } from "../shared/display";
 import { displayResolution } from "./display-source";
 /**
@@ -199,11 +200,9 @@ function updateActions(ctx: AppContext, enabled: boolean): Group {
 function notificationsGroup(ctx: AppContext, enabled: boolean): Group[] {
   const language = ctx.language;
   const what = t("Shows a notification when a recording is saved or an error occurs.", language);
-  // Off is obeyed, not compensated for. Six error codes reach the user only as
-  // a notification (the rest leave a tray state or never start the capture), so
-  // the cost and the place to look instead are stated where the choice is made.
+  // The switch controls OS notifications; in-app failure status stays available.
   const note = !ctx.notifications
-    ? t("Notifications are off. An interrupted or unsaved recording will not tell you; check the output folder to confirm a recording was saved.", language)
+    ? t("Notifications are off. Recording failures remain visible in the menu bar and Recording failures.", language)
     : ctx.platform === "darwin"
       ? `${what} ${t("macOS must also allow RecordStuff in System Settings → Notifications.", language)}`
       : what;
@@ -269,6 +268,18 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
   const unlocked = preferencesUnlocked(state);
   return {
     language,
+    recordingResults: (ctx.recordingResults ?? []).map(result => ({
+      id: result.id, heading: t("Recording failure", language),
+      reason: failureReason(result.code, language),
+      time: new Date(result.occurredAt).toLocaleString(language),
+      outcome: failureOutcome(result, language), guidance: ctx.platform === "darwin" && result.restored && ["permission_denied", "permission_needs_relaunch", "no_audio_track"].includes(result.code)
+        ? t("This is a previous recording failure. Check current recording permissions before trying again.", language)
+        : failureGuidance(result.code, language, ctx.platform),
+      persistenceWarning: result.persistenceFailed ? t("Could not save this reminder. It may change after restarting. Check available disk space.", language) : "",
+      detail: result.detail, ...((result.partialPath ?? result.recordingPath) ? { file: result.partialPath ?? result.recordingPath } : {}),
+      acknowledged: result.acknowledged, pending: result.outcome === "pending",
+      actions: resultActions(state, ctx, result).map(({ action: _action, ...choice }) => choice),
+    })),
     title: t("RecordStuff - Settings", language),
     hint: unlocked ? "" : t("Recording in progress. Recording settings are locked.", language),
     failure: t("Could not apply this setting. Your current settings are shown.", language),
@@ -281,6 +292,26 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
   };
 }
 
+function resultActions(state: RecordingState, ctx: AppContext, result: NonNullable<AppContext["recordingResults"]>[number]): Array<SettingsChoice & { action: AppAction }> {
+  const actions: Array<SettingsChoice & { action: AppAction }> = [];
+  const add = (id: "acknowledge" | "retry" | "remove" | "reveal" | "folder" | "permission" | "relaunch", label: MessageKey, enabled: boolean): void => {
+    actions.push({ id, label: t(label, ctx.language), checked: false, enabled,
+      action: { recordingResult: { id: result.id, action: id } } });
+  };
+  if (result.outcome === "partial" && result.partialPath) add("reveal", "Show partial recording", true);
+  if (["disk_full", "output_write_failed", "output_open_failed"].includes(result.code))
+    add("folder", "Change output folder", preferencesUnlocked(state) && result.outcome !== "pending");
+  if (ctx.platform === "darwin" && ["permission_denied", "permission_needs_relaunch", "no_audio_track"].includes(result.code)) {
+    add("permission", "Open System Settings", preferencesUnlocked(state));
+    if (!result.restored || (state.type === "needsPermission" && state.needsRelaunch))
+      add("relaunch", "Relaunch", preferencesUnlocked(state) && result.outcome !== "pending");
+  }
+  if (result.persistenceFailed) add("retry", "Retry saving reminder", true);
+  if (!result.acknowledged) add("acknowledge", "Got it", result.outcome !== "pending");
+  else add("remove", "Remove from history", true);
+  return actions;
+}
+
 /** The action for a choice that is offered and enabled right now, or nothing. */
 export function settingsAction(
   state: RecordingState,
@@ -288,6 +319,11 @@ export function settingsAction(
   groupId: unknown,
   choiceId: unknown,
 ): AppAction | undefined {
+  if (typeof groupId === "string" && groupId.startsWith("recordingResult:")) {
+    const result = ctx.recordingResults?.find(r => groupId === `recordingResult:${r.id}`);
+    if (!result) return undefined;
+    return resultActions(state, ctx, result).find(choice => choice.id === choiceId && choice.enabled)?.action;
+  }
   if (groupId === "hotkey" && choiceId !== "off" && preferencesUnlocked(state)) {
     const accelerator = canonicalizeAccelerator(choiceId);
     return accelerator && !isSettingsShortcut(accelerator, ctx.platform) ? { setHotkey: { enabled: true, accelerator } } : undefined;

@@ -4,6 +4,8 @@
 
 Status: planned, not implemented. Created: 2026-09-24. Execution order: see [queue](README.md#order-and-status).
 
+The recording-failure UI is now implemented separately: early pending status, in-app result/acknowledgement and an integrated tray badge (see [desktop design](../docs/system-design/desktop.md#recording-failure-results)). This plan remains unfinished: integrate that presentation with the terminal-owner/quit coordinator below, including pending-exit feedback; do not rebuild a notification inbox or claim restart recovery.
+
 ## Scope and evidence
 
 Bugs **3, 4 and 10**. Execute after [completed 024](../docs/verification/history-2026-09.md#plan-024-complete-writes--2026-09-24). The actual before-quit callback allows exit while failure cleanup is pending in idle, and calls quit after the 10-second cap even while finish is unresolved. A real FileWriter test also reproduces a host crash during delayed final copy: failure reports a retained partial, then finish deletes that partial and suppresses saved. These are controlled regressions, not measurements of native-exit data loss.

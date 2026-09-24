@@ -13,6 +13,8 @@ const startupLanguage = ((v: string | null) => isLanguage(v) ? v : undefined)(ne
 let view: SettingsView | undefined;
 let selectedTab: "recording" | "general" = "recording";
 let renderedStructure = "";
+const resultStates = new Map<string, { open: boolean; acknowledged: boolean }>();
+let resultFocus = 0;
 let requestId = 0;
 let pending = 0;
 let saving: { group: string; choice: string; control: string } | undefined;
@@ -29,7 +31,7 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", val
   const el = document.createElement(tag); el.className = className; el.textContent = value; return el;
 }
 function announce(value: string): void { setText(feedback, value); }
-function committed(group: SettingsGroup): string { return group.choices.find(c => c.checked)?.id ?? ""; }
+function committed(group: SettingsGroup | undefined): string { return group?.choices.find(c => c.checked)?.id ?? ""; }
 function setDisabled(el: HTMLButtonElement | HTMLSelectElement | HTMLInputElement, unavailable: boolean, busy: boolean): void {
   if (el.disabled !== (unavailable || busy)) el.disabled = unavailable || busy;
   el.classList.toggle("saving-disabled", !unavailable && busy);
@@ -315,6 +317,98 @@ function row(group: SettingsGroup): HTMLElement {
   container.append(node("span", "applying visually-hidden"));
   return container;
 }
+function updateRecordingResult(): void {
+  const results = view?.recordingResults ?? [];
+  let list = document.getElementById("recording-results");
+  const panel = document.getElementById("settings-panel")!;
+  const focusRequested = (view?.resultFocus ?? 0) > resultFocus;
+  resultFocus = view?.resultFocus ?? 0;
+  if (!results.length) {
+    const hadFocus = list?.contains(document.activeElement);
+    list?.remove(); resultStates.clear();
+    if (hadFocus || focusRequested) document.getElementById(`tab-${selectedTab}`)?.focus({ preventScroll: true });
+    return;
+  }
+  const focusId = (results.find(r => !r.acknowledged) ?? results[0])!.id;
+  if (!list) {
+    list = node("section"); list.id = "recording-results";
+    list.append(node("h2"), node("p", "result-history-note"));
+    panel.prepend(list);
+  }
+  setText(list.querySelector("h2")!, text("Recording failures"));
+  setText(list.querySelector(".result-history-note")!, text("Keeps all unreviewed failures and the 20 most recently reviewed failures. Removing a record does not delete the recording file."));
+  let removedFocus = false;
+  for (const area of list.querySelectorAll<HTMLDetailsElement>(".recording-result")) {
+    if (!results.some(r => r.id === area.dataset.resultId)) {
+      removedFocus ||= area.contains(document.activeElement);
+      area.remove(); resultStates.delete(area.dataset.resultId!);
+    }
+  }
+  for (const [index, result] of results.entries()) {
+    const domId = `recording-result-${encodeURIComponent(result.id)}`;
+    let area = document.getElementById(domId) as HTMLDetailsElement | null;
+    let state = resultStates.get(result.id);
+    if (!state) { state = { open: !result.acknowledged, acknowledged: result.acknowledged }; resultStates.set(result.id, state); }
+    if (!state.acknowledged && result.acknowledged) state.open = false;
+    state.acknowledged = result.acknowledged;
+    if (focusRequested && result.id === focusId) state.open = true;
+    if (!area) {
+      area = node("details", "recording-result"); area.id = domId; area.dataset.resultId = result.id;
+      const summary = node("summary"); summary.id = `${domId}-summary`;
+      summary.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault(); area!.open = !area!.open; state!.open = area!.open;
+        }
+      });
+      const persistence = node("p", "result-persistence"); persistence.setAttribute("role", "alert");
+      const error = node("p", "result-error"); error.setAttribute("role", "alert");
+      const technical = node("details", "result-technical"); technical.append(node("summary"), node("pre"));
+      area.append(summary, node("p", "result-reason"), node("p", "result-time"), node("p", "result-outcome"),
+        node("p", "result-file"), node("p", "result-guidance"), persistence, node("div", "result-actions"), error, technical);
+      area.addEventListener("toggle", () => { if (area!.isConnected) state!.open = area!.open; updateScrollHint(); });
+      list.insertBefore(area, list.children[index + 2] ?? null);
+    }
+    const hadActionFocus = area.querySelector(".result-actions")!.contains(document.activeElement);
+    area.open = state.open;
+    setText(area.querySelector("summary")!, `${result.acknowledged ? "" : "⚠ "}${result.time} — ${result.reason}`);
+    setText(area.querySelector(".result-reason")!, result.heading);
+    setText(area.querySelector(".result-time")!, result.time);
+    setText(area.querySelector(".result-outcome")!, result.outcome);
+    const persistence = area.querySelector<HTMLElement>(".result-persistence")!;
+    persistence.hidden = !result.persistenceWarning; setText(persistence, result.persistenceWarning ?? "");
+    const file = area.querySelector<HTMLElement>(".result-file")!;
+    file.hidden = !result.file; setText(file, result.file ?? "");
+    setText(area.querySelector(".result-guidance")!, result.guidance);
+    const actions = area.querySelector<HTMLElement>(".result-actions")!;
+    for (const old of actions.querySelectorAll<HTMLButtonElement>("button")) {
+      if (!result.actions.some(action => old.dataset.action === action.id)) old.remove();
+    }
+    for (const [position, action] of result.actions.entries()) {
+      const actionDomId = `${domId}-${action.id}`;
+      let el = document.getElementById(actionDomId) as HTMLButtonElement | null;
+      if (!el) {
+        const actionId = action.id, offeredId = result.id;
+        el = button(actionDomId, () => void choose(`recordingResult:${offeredId}`, actionId, actionDomId));
+        el.dataset.action = actionId;
+        actions.insertBefore(el, actions.children[position] ?? null);
+      }
+      setText(el, action.label); setDisabled(el, !action.enabled, Boolean(saving));
+    }
+    const error = area.querySelector<HTMLElement>(".result-error")!;
+    error.hidden = failure?.group !== `recordingResult:${result.id}`;
+    setText(error, error.hidden ? "" : text("Could not complete this action. Please try again."));
+    const technical = area.querySelector<HTMLDetailsElement>(".result-technical")!;
+    technical.hidden = !result.detail;
+    setText(technical.querySelector("summary")!, text("Technical details"));
+    setText(technical.querySelector("pre")!, result.detail);
+    if ((focusRequested && result.id === focusId) || (hadActionFocus && (!area.open || !area.contains(document.activeElement)))) {
+      area.querySelector<HTMLElement>("summary")!.focus({ preventScroll: true });
+    }
+  }
+  if (focusRequested) document.getElementById(`recording-result-${encodeURIComponent(focusId)}`)?.scrollIntoView({ block: "nearest" });
+  if (removedFocus) list.querySelector<HTMLElement>(".recording-result > summary")?.focus({ preventScroll: true });
+}
+
 function updateScrollHint(): void {
   const panel = document.getElementById("settings-panel");
   const hint = document.getElementById("scroll-hint");
@@ -385,6 +479,7 @@ function draw(): void {
     const title = document.getElementById(`${controlId(group)}-section-heading`);
     if (title) { setText(title, group.sectionHeading ?? ""); title.hidden = !group.sectionHeading; }
   }
+  updateRecordingResult();
   updateScrollHint();
 }
 function render(next: SettingsView): void {
@@ -400,12 +495,16 @@ function render(next: SettingsView): void {
       if (JSON.stringify(old?.diagnostics) !== JSON.stringify(g.diagnostics)) messages.push(...(g.diagnostics ?? []).map(d => `${d.heading}. ${d.reason} ${d.guidance}`));
       return messages;
     });
+    for (const result of previous.language === next.language ? next.recordingResults ?? [] : []) {
+      const old = previous.recordingResults?.find(r => r.id === result.id);
+      if (!old || old.outcome !== result.outcome) changes.unshift(`${result.reason} ${result.outcome}`);
+    }
     if (changes.length) announce(changes.join(" "));
   }
 }
 async function choose(group: string, choice: string, control: string): Promise<void> {
   // The currently edited value can queue a newer intent; actions never duplicate.
-  if (saving && (saving.group !== group || control.endsWith("-recovery") || control.endsWith("-retry") || (control === "shortcut-capture" || control === "shortcut-confirm"))) return;
+  if (saving && (group.startsWith("recordingResult:") || saving.group !== group || control.endsWith("-recovery") || control.endsWith("-retry") || (control === "shortcut-capture" || control === "shortcut-confirm"))) return;
   const id = ++requestId;
   pending++; saving = { group, choice, control }; failure = undefined; announce(""); draw();
   let success = false;

@@ -1,3 +1,5 @@
+import { RecordingResults } from "../../src/main/recording-result";
+import { settingsAction } from "../../src/main/settings-model";
 /**
  * Electron main for `pnpm acceptance:settings`. Loads the built settings
  * preload and page in a real window, drives it, and writes the outcome.
@@ -29,6 +31,11 @@ const out = path.join(root, "out");
 const results: Array<{ name: string; ok: boolean; detail: string }> = [];
 const record = (name: string, ok: boolean, detail: string) => results.push({ name, ok, detail });
 const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const until = async (check: () => Promise<boolean>, timeout = 3000): Promise<boolean> => {
+  const deadline = Date.now() + timeout;
+  do { if (await check()) return true; await settle(25); } while (Date.now() < deadline);
+  return false;
+};
 
 /** Shaped like what settings-model produces, including a refused shortcut. */
 const view = (language: Language): SettingsView => {
@@ -104,6 +111,9 @@ const view = (language: Language): SettingsView => {
 let language: Language = "zh-TW";
 let notifications = true;
 let captureView: SettingsView | undefined;
+let resultContext: AppContext | undefined;
+let resultSaveFails = false;
+const recordingResults = new RecordingResults({ load: () => [], save: () => { if (resultSaveFails) throw new Error("controlled storage failure"); } });
 const chooseCalls: Array<[string, string]> = [];
 let holdSaves = false;
 const heldSaves: Array<() => void> = [];
@@ -115,8 +125,18 @@ ipcMain.handle("settings:capture", (_event, armed: boolean) => {
   captureView.groups.find(g => g.id === "hotkey")!.capturing = armed;
   return captureView;
 });
-ipcMain.handle("settings:choose", (_event, group: string, choice: string) => {
+ipcMain.handle("settings:choose", async (_event, group: string, choice: string) => {
   chooseCalls.push([group, choice]);
+  if (group.startsWith("recordingResult:") && resultContext) {
+    const ctx = { ...resultContext, recordingResults: recordingResults.all };
+    const action = settingsAction({ type: "idle" }, ctx, group, choice);
+    const applied = typeof action === "object" && "recordingResult" in action
+      && await recordingResults.act(action.recordingResult.id, action.recordingResult.action, {
+        stat: async () => ({ isFile: () => true, size: 1 }), refresh: () => {}, settled: () => true,
+        platform: "darwin", reveal: () => {}, folder: async () => {}, permission: async () => {}, relaunch: async () => {},
+      });
+    return { applied, view: settingsView({ type: "idle" }, { ...ctx, recordingResults: recordingResults.all }) };
+  }
   if (group === "about" && captureView) return { view: captureView, applied: false, failure: "Could not open the link. Try again." };
   const commit = () => {
     if (group === "language" && (choice === "en" || choice === "zh-TW")) language = choice;
@@ -522,6 +542,134 @@ async function run() {
   await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [] });
   window.webContents.debugger.detach();
   fs.writeFileSync(path.join(outDir, "panel.png"), (await window.webContents.capturePage()).toPNG());
+  // Real mouse/keyboard on the built panel; production result model and acknowledgement.
+  window.show(); window.focus(); window.setSize(380, 360);
+  const failure = { id: "fixture-failure", occurredAt: "2026-09-24T12:00:00Z", code: "disk_full" as const,
+    detail: "ENOSPC: controlled fixture", outcome: "pending" as const };
+  recordingResults.update(failure);
+  const pushResult = async (lang: Language, focus = 0) => {
+    resultContext = { ...ctx, language: lang, notifications: false, recordingResults: recordingResults.all };
+    window.webContents.send("settings:changed", { ...settingsView({ type: "idle" }, resultContext), resultFocus: focus });
+    await settle(120);
+  };
+  await pushResult("zh-TW", 1);
+  record("recording failure visible immediately with notifications off; pending result cannot be acknowledged",
+    await read<boolean>(window, `document.querySelector(".recording-result").open && document.querySelector('.recording-result [data-action="acknowledge"]').disabled && document.querySelector(".result-outcome").textContent.includes("尚未確認") && document.activeElement === document.querySelector(".recording-result > summary")`), "pending and focus");
+  recordingResults.update({ ...failure, outcome: "partial", partialPath: "/tmp/錄影資料夾/2026-09-24 20-00-00.recording.mp4" });
+  for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
+    nativeTheme.themeSource = scheme;
+    await pushResult(lang, 2);
+    const fits = await read<boolean>(window, `(() => { const a = document.querySelector(".recording-result"); return a.scrollWidth <= a.clientWidth && [...a.querySelectorAll("button")].every(b => b.scrollWidth <= b.clientWidth); })()`);
+    record(`result ${lang}/${scheme} at minimum size fits`, fits, "partial warning and actions");
+    fs.writeFileSync(path.join(outDir, `result-${lang}-${scheme}.png`), (await window.webContents.capturePage()).toPNG());
+  }
+  await read(window, `document.querySelector('.recording-result [data-action="acknowledge"]').scrollIntoView({block:"center"})`);
+  const click = await read<{ x: number; y: number }>(window, `(() => { const r = document.querySelector('.recording-result [data-action="acknowledge"]').getBoundingClientRect(); return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
+  window.webContents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, ...click });
+  window.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, ...click });
+  await until(async () => recordingResults.current?.acknowledged === true && await read<boolean>(window, `!document.querySelector(".recording-result").open && document.activeElement === document.querySelector(".recording-result > summary")`));
+  record("real mouse Got it acknowledges only the offered result and collapses it",
+    recordingResults.current?.acknowledged === true && await read<boolean>(window, `!document.querySelector(".recording-result").open && document.activeElement === document.querySelector(".recording-result > summary")`),
+    JSON.stringify({ call: chooseCalls.at(-1), result: recordingResults.current, ui: await read(window, `({open: document.querySelector(".recording-result").open, active: document.activeElement.id})`) }));
+  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Return" });
+  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Return" });
+  record("acknowledged result can be reopened with keyboard", await until(() => read<boolean>(window, `document.querySelector(".recording-result").open`)), "Return on summary");
+  // Explicit entry reopens an acknowledged result even after the user collapses it.
+  await pushResult("zh-TW", 3);
+  record("explicit result entry expands and focuses an acknowledged result",
+    await read<boolean>(window, `document.querySelector(".recording-result").open && document.activeElement === document.querySelector(".recording-result > summary")`), "focus token");
+  recordingResults.update({ ...failure, id: "new-failure" });
+  await pushResult("en", 3);
+  record("a new failure becomes unread while notifications are disabled",
+    !recordingResults.current!.acknowledged && await read<boolean>(window, `document.querySelector(".recording-result").open && document.querySelector('.recording-result [data-action="acknowledge"]').disabled`), "new identity");
+  recordingResults.update({ ...failure, id: "new-failure", outcome: "empty" });
+  await pushResult("en", 3);
+  await read(window, `document.querySelector('.recording-result [data-action="acknowledge"]').scrollIntoView({block:"center"})`);
+  const staleClick = await read<{ x: number; y: number }>(window, `(() => { const r = document.querySelector('.recording-result [data-action="acknowledge"]').getBoundingClientRect(); return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
+  window.webContents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, ...staleClick });
+  await settle(50);
+  recordingResults.update({ ...failure, id: "replacement-failure" });
+  recordingResults.update({ ...failure, id: "replacement-failure", outcome: "empty" });
+  await pushResult("en", 3);
+  window.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, ...staleClick });
+  await settle(100);
+  record("mouse press on previous result cannot acknowledge its replacement",
+    recordingResults.current?.id === "replacement-failure" && !recordingResults.current.acknowledged, "new buttons retain exact result identity");
+  resultSaveFails = true;
+  recordingResults.update({ ...failure, id: "persistence-failure" });
+  recordingResults.update({ ...failure, id: "persistence-failure", outcome: "empty" });
+  for (const lang of ["en", "zh-TW"] as const) {
+    await pushResult(lang, 4);
+    const warning = await read<boolean>(window, `(() => { const el = document.querySelector(".result-persistence"); return !el.hidden && el.textContent.length > 0 && el.scrollWidth <= el.clientWidth; })()`);
+    record(`persistence failure ${lang} stays readable at minimum size`, warning, "retention warning");
+    fs.writeFileSync(path.join(outDir, `result-persistence-${lang}.png`), (await window.webContents.capturePage()).toPNG());
+  }
+  const clickAck = async (expected: () => Promise<boolean>, action = "acknowledge") => {
+    const callsBefore = chooseCalls.length;
+    await read(window, `document.querySelector('.recording-result [data-action="${action}"]').scrollIntoView({block:"center"})`);
+    const point = await read<{ x: number; y: number }>(window, `(() => { const r = document.querySelector('.recording-result [data-action="${action}"]').getBoundingClientRect(); return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
+    window.webContents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, ...point });
+    window.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, ...point });
+    if (!await until(async () => chooseCalls.length > callsBefore && await expected()))
+      throw new Error("Timed out waiting for recording-result acknowledgement UI");
+  };
+  await clickAck(() => read<boolean>(window, `!document.querySelector(".result-error").hidden`));
+  record("failed durable acknowledgement stays unread and expanded", !recordingResults.current?.acknowledged &&
+    await read<boolean>(window, `document.querySelector(".recording-result").open && !document.querySelector(".result-persistence").hidden && !document.querySelector(".result-error").hidden`), "failed save");
+  resultSaveFails = false;
+  await clickAck(() => read<boolean>(window, `document.querySelector(".result-persistence").hidden && document.querySelector(".recording-result").open`), "retry");
+  record("retry saving an unread failure does not acknowledge or collapse it", !recordingResults.current?.acknowledged && !recordingResults.current?.persistenceFailed, "independent persistence retry");
+  await clickAck(() => read<boolean>(window, `document.querySelector(".result-persistence").hidden && !document.querySelector(".recording-result").open`));
+  record("retry durably acknowledges and clears the persistence warning", recordingResults.current?.acknowledged === true &&
+    await read<boolean>(window, `!document.querySelector(".recording-result").open && document.querySelector(".result-persistence").hidden`), "save recovered");
+  resultSaveFails = true;
+  recordingResults.update({ ...failure, id: "persistence-failure", outcome: "unknown", detail: "recheck changed an acknowledged result" });
+  for (const lang of ["en", "zh-TW"] as const) {
+    await pushResult(lang, 5);
+    if (!await read<boolean>(window, `document.querySelector(".recording-result").open`)) {
+      await read(window, `document.querySelector(".recording-result > summary").focus()`);
+      window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Return" });
+      window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Return" });
+      if (!await until(() => read<boolean>(window, `document.querySelector(".recording-result").open`))) throw new Error("History summary did not open");
+    }
+    record(`acknowledged ${lang} result offers a readable save retry`, await read<boolean>(window, `(() => { const b = document.querySelector('.recording-result [data-action="retry"]'); return !b.disabled && b.scrollWidth <= b.clientWidth && b.textContent.includes(${JSON.stringify(lang === "en" ? "Retry" : "重新儲存")}); })()`), "acknowledged persistence failure");
+    fs.writeFileSync(path.join(outDir, `result-retry-${lang}.png`), (await window.webContents.capturePage()).toPNG());
+  }
+  await clickAck(() => read<boolean>(window, `!document.querySelector(".result-error").hidden`), "retry");
+  record("failed acknowledged retry does not claim an unread reminder", recordingResults.current?.acknowledged === true &&
+    await read<boolean>(window, `document.querySelector(".result-error").textContent === "無法完成此操作，請重試。" && !document.querySelector(".result-persistence").hidden`), "acknowledged failure copy");
+  resultSaveFails = false;
+  await clickAck(() => read<boolean>(window, `document.querySelector(".result-persistence").hidden && document.querySelector(".result-error").hidden`), "retry");
+  record("acknowledged result save retry removes warning without making it unread", recordingResults.current?.acknowledged === true && !recordingResults.current.persistenceFailed, "retry acknowledged state");
+  record("consecutive failures remain individually visible", await read<boolean>(window, `document.querySelectorAll(".recording-result").length === 4 && new Set([...document.querySelectorAll(".result-actions button")].map(b => b.id)).size === document.querySelectorAll(".result-actions button").length`), "four identities with unique action IDs");
+  for (const lang of ["en", "zh-TW"] as const) {
+    window.setSize(560, 680); await pushResult(lang, 6);
+    await read(window, `document.getElementById("settings-panel").scrollTop = 0`);
+    fs.writeFileSync(path.join(outDir, `history-${lang}.png`), (await window.webContents.capturePage()).toPNG());
+  }
+  await clickAck(() => read<boolean>(window, `document.querySelectorAll(".recording-result").length === 3`), "remove");
+  record("removing reviewed metadata preserves other unread failures", recordingResults.all.length === 3 && recordingResults.all.some(r => !r.acknowledged), "remove one reviewed record");
+  await read(window, `document.getElementById("feedback").textContent = ""`);
+  await pushResult("en", 6);
+  record("language changes do not announce the entire failure history", await read<boolean>(window, `!document.getElementById("feedback").textContent.includes("The disk is full")`), "localized outcomes are not new events");
+  for (const result of [...recordingResults.all]) recordingResults.acknowledge(result.id);
+  await pushResult("en", 7);
+  while (recordingResults.all.length) {
+    if (!await read<boolean>(window, `document.querySelector(".recording-result").open`)) {
+      await read(window, `document.querySelector(".recording-result > summary").focus()`);
+      window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Return" });
+      window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Return" });
+      if (!await until(() => read<boolean>(window, `document.querySelector(".recording-result").open`))) throw new Error("Could not open reviewed row");
+    }
+    const before = recordingResults.all.length;
+    await clickAck(() => read<boolean>(window, `document.querySelectorAll(".recording-result").length === ${before - 1}`), "remove");
+  }
+  record("removing the final reviewed row returns keyboard focus to the active tab", await read<boolean>(window, `document.activeElement.id === "tab-general" && !document.getElementById("recording-results")`), "empty history focus");
+  await pushResult("en", 8);
+  recordingResults.update({ ...failure, id: "after-empty-history" });
+  await pushResult("en", 8);
+  record("an empty-history entry request cannot make a later failure steal focus", await read<boolean>(window, `document.activeElement.id === "tab-general"`), "focus request consumed while empty");
+  resultContext = undefined;
   fs.writeFileSync(path.join(outDir, "results.json"), `${JSON.stringify(results, null, 2)}\n`);
   return results.every((result) => result.ok);
 }

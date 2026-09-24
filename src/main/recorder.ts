@@ -1,3 +1,4 @@
+import type { RecordingFailure } from "../shared/recording-result";
 import type { DisplayFailure } from "../shared/display";
 /**
  * The state machine (docs/system-design/recording.md) and the single owner of `RecordingState`
@@ -8,11 +9,14 @@ import type { DisplayFailure } from "../shared/display";
  * event and, when bytes were written, a kept `.recording.mp4`.
  */
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import type { HostMessage } from "../shared/protocol";
 import { describeCapture, type CaptureReport, type QualitySettings } from "../shared/quality";
 import { isErrorCode, type ErrorCode, type RecordingState } from "../shared/state";
 
 export interface RecorderWriter {
+  readonly recordingPath?: string;
+  readonly preservationUncertain?: boolean;
   append(bytes: Uint8Array): Promise<void>;
   /** Flush, close and rename; resolves with the final path. */
   finish(): Promise<string>;
@@ -56,6 +60,7 @@ export interface RecorderDeps {
 }
 
 export type RecorderEvent =
+  | { type: "failureStatus"; result: RecordingFailure }
   | { type: "state"; state: RecordingState }
   | { type: "saved"; path: string }
   /** The host confirmed capture; `requested` is the session snapshot, `capture` what it got. */
@@ -239,6 +244,10 @@ export class Recorder {
     if (this._state.type !== "idle" || this.session) return;
     const blocker = this.deps.preflight?.();
     if (blocker) {
+      const result: RecordingFailure = { id: randomUUID(), occurredAt: this.deps.now().toISOString(),
+        code: blocker, detail: "", outcome: "pending" };
+      this.emit({ type: "failureStatus", result });
+      this.emit({ type: "failureStatus", result: { ...result, outcome: "empty" } });
       this.emit({ type: "failed", code: blocker, detail: "" });
       return;
     }
@@ -438,11 +447,29 @@ export class Recorder {
     this.clearTimer(session);
     if (session.phase !== "opening") this.deps.host.stop(session.id);
     this.deps.log(`recorder: session ${session.id} failed: ${code} ${detail}`);
-    // The icon must never claim "recording" once the session is dead, even if
-    // closing the file takes long on a stalled disk (docs/system-design/recording.md).
+    // End the recording state before file cleanup. Native painting can still
+    // wait on synchronous subscriber IO (docs/system-design/recording.md).
+    const result: RecordingFailure = { id: randomUUID(), occurredAt: this.deps.now().toISOString(),
+      code, detail, outcome: "pending", ...(session.writer?.recordingPath ? { recordingPath: session.writer.recordingPath } : {}) };
+    // Set idle and request tray updates before synchronous metadata persistence.
     this.setState({ type: "idle", ...idleFlags });
+    this.emit({ type: "failureStatus", result });
     const finish = (async (): Promise<void> => {
-      const partialPath = session.writer ? await session.writer.abandon() : undefined;
+      let partialPath: string | undefined;
+      let outcome: RecordingFailure["outcome"] = "empty";
+      try {
+        partialPath = session.writer ? await session.writer.abandon() : undefined;
+        outcome = session.writer?.preservationUncertain ? "unknown" : partialPath ? "partial" : "empty";
+        if (outcome === "unknown") partialPath = undefined;
+      } catch (cause) {
+        outcome = "unknown";
+        this.deps.log(`recorder: failure cleanup could not be confirmed: ${messageOf(cause)}`);
+      }
+      const { recordingPath: _candidate, ...settledResult } = result;
+      this.emit({ type: "failureStatus", result: { ...settledResult, outcome,
+        ...(partialPath ? { partialPath } : {}),
+        ...(outcome === "unknown" && _candidate ? { recordingPath: _candidate } : {}),
+      } });
       this.emit(
         partialPath === undefined
           ? { type: "failed", code, detail }

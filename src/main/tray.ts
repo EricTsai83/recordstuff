@@ -1,3 +1,4 @@
+import { failureReason } from "./recording-result";
 import { translate } from "../shared/i18n";
 import { APP_NAME } from "./ui-model";
 /**
@@ -14,7 +15,6 @@ import type { ErrorCode, RecordingState } from "../shared/state";
 import type { FrameRate } from "../shared/quality";
 import type { HotkeyAccelerator } from "../shared/hotkey";
 import {
-  errorNotification,
   languageWriteFailedNotification,
   frameRateDowngradeNotification,
   hotkeyRegistrationFailedNotification,
@@ -97,14 +97,11 @@ export class AppTray {
     this.show(savedNotification(savedPath, this.options.context().language), () => this.revealFromNotification(savedPath));
   }
 
-  notifyError(code: ErrorCode, partialPath: string | undefined): void {
-    const ctx = this.options.context();
-    this.show(errorNotification(code, partialPath, ctx), () => {
-      if (partialPath) this.revealFromNotification(partialPath);
-      else if (code === "output_open_failed") this.options.onAction("changeOutputDir");
-      else if (code === "permission_denied") this.options.onAction("openPermissionSettings");
-      else if (code === "permission_needs_relaunch") this.options.onAction("relaunch");
-    });
+  notifyRecordingFailure(code: ErrorCode): void {
+    const language = this.options.context().language;
+    this.show({ title: translate("Recording failed", language),
+      body: `${failureReason(code, language)} ${translate("Click to view the recording result.", language)}` },
+    () => this.options.onAction("openRecordingResult"));
   }
 
   /**
@@ -256,6 +253,7 @@ function loadIcons(resourcesDir: string): Record<TrayIcon, Electron.NativeImage>
   if (process.platform === "win32") {
     return {
       idle: nativeImage.createFromPath(path.join(resourcesDir, "tray-idle.ico")),
+      warning: nativeImage.createFromPath(path.join(resourcesDir, "tray-warning.ico")),
       recording: nativeImage.createFromPath(path.join(resourcesDir, "tray-recording.ico")),
     };
   }
@@ -263,7 +261,9 @@ function loadIcons(resourcesDir: string): Record<TrayIcon, Electron.NativeImage>
   // image, which follows the menu bar's light/dark appearance automatically.
   const idle = nativeImage.createFromPath(path.join(resourcesDir, "trayIdleTemplate.png"));
   const recording = nativeImage.createFromPath(path.join(resourcesDir, "trayRecordingTemplate.png"));
+  const warning = nativeImage.createFromPath(path.join(resourcesDir, "trayWarningTemplate.png"));
+  warning.setTemplateImage(true);
   idle.setTemplateImage(true);
   recording.setTemplateImage(true);
-  return { idle, recording };
+  return { idle, recording, warning };
 }

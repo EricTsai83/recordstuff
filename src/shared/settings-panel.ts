@@ -43,7 +43,24 @@ export interface SettingsGroup {
    */
   actions?: SettingsChoice[];
 }
+export interface RecordingResultView {
+  id: string;
+  heading: string;
+  reason: string;
+  time: string;
+  outcome: string;
+  guidance: string;
+  persistenceWarning?: string;
+  detail: string;
+  file?: string;
+  acknowledged: boolean;
+  pending: boolean;
+  actions: SettingsChoice[];
+}
 export interface SettingsView {
+  recordingResults?: RecordingResultView[];
+  /** Changes only on explicit entry through notification/tray. */
+  resultFocus?: number;
   language: Language;
   title: string;
   hint: string;
