@@ -102,6 +102,6 @@ The single media writer rule does not prohibit settings and logging modules from
 
 ## Startup and shutdown
 
-Main initializes logging/error handlers and obtains a single-instance lock. After ready it hides the Dock icon, loads settings, registers the display-media handler, composes Recorder/host/permissions/Tray, subscribes to events, and starts permission polling. The capture window is created lazily on the first recording, retained after stop, and probed before reuse. A host that does not answer within one second is replaced before capture starts; idle hosts have no heartbeat timer.
+Main initializes logging/error handlers and obtains a single-instance lock. After ready it hides the Dock icon, loads settings, registers the display-media handler, composes Recorder/host/permissions/Tray, subscribes to events, and starts permission polling. Each recording attempt creates a fresh capture window, and main destroys it when the attempt settles: no capture renderer or heartbeat timer remains between recordings.
 
 Closing all windows does not quit the app. During a busy recording state, before-quit waits for Recorder.shutdown before retrying quit. Will-quit stops permission polling and destroys host and Tray. An already-idle quit does not separately wait for failure cleanup. Power loss, forced main-process termination, and blocked storage do not carry a complete-durability guarantee.

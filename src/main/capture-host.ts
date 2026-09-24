@@ -1,14 +1,14 @@
 /**
- * Supervises the hidden capture-host renderer (docs/system-design/recording.md): creates it on the
- * first start and keeps it alive afterwards, exchanges the MessagePort,
+ * Supervises the hidden capture-host renderer (docs/system-design/recording.md): every `start`
+ * creates a fresh window for that attempt, exchanges the MessagePort,
  * validates every inbound message, and detects crashes / hangs
- * (`render-process-gone`, two missed pongs).
+ * (`render-process-gone`, two missed pongs). The owner calls `destroy` when
+ * the attempt settles, so no renderer idles between recordings and a late
+ * display-media request can only name a frame that no longer exists.
  *
- * The heartbeat runs only while a session is in flight. A hang matters when
- * bytes are expected; between sessions it would only cost timers and turn a
- * wedged idle renderer into an error the user cannot act on. Before reuse,
- * `start` probes responsiveness and replaces an unresponsive host. A crash is
- * still reported at any time by `render-process-gone`.
+ * The heartbeat runs only while a session is in flight: a hang matters when
+ * bytes are expected. A crash is still reported at any time by
+ * `render-process-gone`.
  */
 import { BrowserWindow, MessageChannelMain, type WebFrameMain, type MessagePortMain } from "electron";
 import { isHostMessage, type HostMessage, type MainMessage } from "../shared/protocol";
@@ -30,7 +30,6 @@ type FailureCode = "capture_host_crashed" | "capture_host_unresponsive";
 export class CaptureHost implements RecorderHost {
   private window: BrowserWindow | undefined;
   private port: MessagePortMain | undefined;
-  private ready: Promise<void> | undefined;
   private generation = 0;
   private pingTimer: ReturnType<typeof setInterval> | undefined;
   /** The session the heartbeat is watching, if any. */
@@ -57,15 +56,14 @@ export class CaptureHost implements RecorderHost {
   }
 
   async start(sessionId: string, quality: QualitySettings): Promise<void> {
-    if (this.ready && this.window && !this.window.isDestroyed()) {
-      const generation = this.generation;
-      const responsive = await this.probe();
-      if (generation !== this.generation) throw new Error("capture host was destroyed during the readiness probe");
-      if (!responsive) this.teardown();
-    }
-    const ready = this.ensureReady();
+    this.teardown();
     const generation = this.generation;
-    await ready;
+    try {
+      await this.create();
+    } catch (cause) {
+      if (generation === this.generation) this.teardown();
+      throw cause;
+    }
     if (generation !== this.generation) throw new Error("capture host was invalidated during startup");
     this.watching = sessionId;
     this.missedPongs = 0;
@@ -84,34 +82,9 @@ export class CaptureHost implements RecorderHost {
     this.post({ type: "stop", sessionId });
   }
 
+  /** Called when an attempt settles and on quit; the next `start` builds a new window. */
   destroy(): void {
     this.teardown();
-  }
-
-  /** One bounded round trip on reuse; no polling or renderer churn while idle. */
-  private probe(): Promise<boolean> {
-    return new Promise((resolve) => {
-      const finish = (responsive: boolean): void => {
-        clearTimeout(timer);
-        this.messageListeners.delete(listener);
-        resolve(responsive);
-      };
-      const listener = (message: HostMessage): void => {
-        if (message.type === "pong") finish(true);
-      };
-      const timer = setTimeout(() => finish(false), 1000);
-      this.messageListeners.add(listener);
-      this.post({ type: "ping" });
-    });
-  }
-
-  private ensureReady(): Promise<void> {
-    if (this.ready && this.window && !this.window.isDestroyed()) return this.ready;
-    this.teardown();
-    this.ready = this.create();
-    const generation = this.generation;
-    this.ready.catch(() => { if (generation === this.generation) this.teardown(); });
-    return this.ready;
   }
 
   private async create(): Promise<void> {
@@ -216,7 +189,6 @@ export class CaptureHost implements RecorderHost {
     this.stopHeartbeat();
     this.port?.close();
     this.port = undefined;
-    this.ready = undefined;
     const window = this.window;
     this.window = undefined;
     if (window && !window.isDestroyed()) window.destroy();

@@ -83,7 +83,6 @@ function setup() {
     start: async (sessionId = "s1") => {
       const started = host.start(sessionId, DEFAULT_QUALITY);
       await vi.advanceTimersByTimeAsync(0);
-      if (port().sent.some((message: MainMessage) => message.type === "ping")) port().emit({ type: "pong" });
       await started;
     },
   };
@@ -97,7 +96,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("capture host supervision", () => {
-  it("creates one hidden, sandboxed window on the first start and reuses it", async () => {
+  it("creates a fresh hidden, sandboxed window for every start", async () => {
     const s = setup();
     await s.start("s1");
     expect(mock.windows).toHaveLength(1);
@@ -111,8 +110,12 @@ describe("capture host supervision", () => {
     });
     expect(s.port().sent[0]).toEqual({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY });
     s.port().emit({ type: "stopped", sessionId: "s1" });
+    const [firstWindow, firstPort] = [s.window(), s.port()];
     await s.start("s2");
-    expect(mock.windows).toHaveLength(1);
+    expect(mock.windows).toHaveLength(2);
+    expect(firstWindow.destroy).toHaveBeenCalledOnce();
+    expect(firstPort.closed).toBe(true);
+    expect(s.port().sent).toEqual([{ type: "start", sessionId: "s2", quality: DEFAULT_QUALITY }]);
   });
 
   it("drops malformed messages and forwards valid ones", async () => {
@@ -127,6 +130,17 @@ describe("capture host supervision", () => {
     });
     expect(s.messages.map((message) => message.type)).toEqual(["ready", "started"]);
     expect(s.logs.join()).toContain("dropped malformed message");
+  });
+
+  it("tears down an attempt whose page never reports ready", async () => {
+    const s = setup();
+    const start = s.host.start("s1", DEFAULT_QUALITY);
+    s.window().webContents.postMessage = vi.fn();
+    const rejected = expect(start).rejects.toThrow("did not report ready");
+    await vi.advanceTimersByTimeAsync(8000);
+    await rejected;
+    expect(s.window().destroy).toHaveBeenCalledOnce();
+    expect(s.port().closed).toBe(true);
   });
 
   it("reports a crashed renderer at any time", async () => {
@@ -169,7 +183,7 @@ describe("the heartbeat runs only while a session is in flight", () => {
     expect(s.pings()).toBe(0);
     await s.start("s2");
     await vi.advanceTimersByTimeAsync(PING_MS);
-    expect(s.pings()).toBe(2); // reuse probe plus session heartbeat
+    expect(s.pings()).toBe(1);
   });
 
   it("ignores a stale session's terminal message", async () => {
@@ -192,45 +206,6 @@ describe("the heartbeat runs only while a session is in flight", () => {
     const before = s.pings();
     await vi.advanceTimersByTimeAsync(PING_MS * 5);
     expect(s.pings()).toBe(before);
-  });
-
-  it("reuses a responsive idle host after one probe", async () => {
-    const s = setup();
-    await s.start("s1");
-    s.port().emit({ type: "stopped", sessionId: "s1" });
-    const window = s.window();
-    await s.start("s2");
-    expect(s.window()).toBe(window);
-    expect(mock.windows).toHaveLength(1);
-    expect(s.pings()).toBe(1);
-  });
-
-  it("replaces a hung idle host before starting the next recording", async () => {
-    const s = setup();
-    await s.start("s1");
-    s.port().emit({ type: "stopped", sessionId: "s1" });
-    const oldWindow = s.window();
-    const oldPort = s.port();
-    const start = s.host.start("s2", DEFAULT_QUALITY);
-    await vi.advanceTimersByTimeAsync(1000);
-    await start;
-    expect(oldWindow.destroy).toHaveBeenCalledOnce();
-    expect(oldPort.closed).toBe(true);
-    expect(mock.windows).toHaveLength(2);
-    expect(s.port().sent).toContainEqual({ type: "start", sessionId: "s2", quality: DEFAULT_QUALITY });
-    expect(s.failures).toEqual([]);
-  });
-
-  it("does not recreate a host destroyed during its reuse probe", async () => {
-    const s = setup();
-    await s.start("s1");
-    s.port().emit({ type: "stopped", sessionId: "s1" });
-    const start = s.host.start("s2", DEFAULT_QUALITY);
-    const rejected = expect(start).rejects.toThrow("destroyed during the readiness probe");
-    s.host.destroy();
-    await vi.advanceTimersByTimeAsync(1000);
-    await rejected;
-    expect(mock.windows).toHaveLength(1);
   });
 
   it("destroy() stops the heartbeat and the window", async () => {

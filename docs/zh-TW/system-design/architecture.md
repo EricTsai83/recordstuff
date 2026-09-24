@@ -104,6 +104,6 @@ Main 持有影片 handle；設定與 log 模組也會寫自己的檔案，因此
 
 ## 啟動與關閉
 
-Main 先建立 logger、註冊未捕捉錯誤處理並取得 single-instance lock。ready 後隱藏 Dock、載入設定、註冊 display-media handler、組裝 Recorder／host／權限 watcher／Tray、訂閱事件並開始權限輪詢。Capture renderer 延遲到首次錄製才建立，停止後保留，重用前先探測；1 秒內未回應則在開始擷取前重建，閒置期間不啟動心跳 timer。
+Main 先建立 logger、註冊未捕捉錯誤處理並取得 single-instance lock。ready 後隱藏 Dock、載入設定、註冊 display-media handler、組裝 Recorder／host／權限 watcher／Tray、訂閱事件並開始權限輪詢。每次錄製嘗試都建立新的 capture renderer，嘗試結束時由 main 銷毀；錄製之間不保留 capture renderer，也沒有心跳 timer。
 
 `window-all-closed` 不退出 App。忙碌時 `before-quit` 阻止直接結束，等 `Recorder.shutdown()` 後再次 quit；`will-quit` 停止權限輪詢並銷毀 host 與 Tray。已經 idle 的退出不額外等待 failure cleanup；硬斷電、main 強制終止、阻塞磁碟並不具有完整落盤保證。

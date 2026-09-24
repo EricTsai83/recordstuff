@@ -68,16 +68,14 @@ Process callbacks log uncaught exceptions/rejections. Recorder events render sta
 | --- | --- |
 | constructor | Paths/dev URL plus default 5-second ping and 8-second readiness deadline |
 | onMessage / onFailure | Register valid-message and host-failure callbacks |
-| start | Probe an existing host and replace it if unresponsive; ensure readiness, begin the session heartbeat, then post start with session quality |
+| start | Tear down any previous host, create a fresh window for this attempt and wait for ready; begin the session heartbeat, then post start with session quality; a creation/load failure tears the new window down and rejects |
 | stop | Post stop when a port exists |
-| destroy | Tear down during app quit |
-| probe | One ping/pong round trip before reuse, with a 1-second deadline; destruction cancels the start |
-| ensureReady | Reuse a live window's readiness promise, otherwise create; clean up failure |
+| destroy | Tear down when an attempt settles and during app quit |
 | create | Build sandbox window/channel, install guards/crash handlers, load page, hand off port, wait ready |
 | stopHeartbeat | End the heartbeat when the watched session reports stopped or failed, and on teardown |
 | ping | Check for two unanswered pings before sending another; on failure tear down and emit |
 | post / emitFailure | Send MainMessage / notify failure listeners |
-| teardown | Stop the heartbeat, close port, reset readiness, destroy window for future recreation |
+| teardown | Stop the heartbeat, close port, destroy window; invalidates an in-flight start |
 
 ## Renderer capture and encoding
 
