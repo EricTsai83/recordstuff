@@ -3,8 +3,8 @@ import { installQuitCoordinator } from "./quit-coordinator";
 import { RecordingResultStore } from "./recording-result-store";
 import { RecordingResults } from "./recording-result";
 import { SettingsWindowState } from "./settings-window-state";
-import { DisplayRequest } from "./display-source";
-import { isDisplayInfo, type DisplayInfo, type DisplayFailure } from "../shared/display";
+import { DisplayMedia } from "./display-media";
+import { isDisplayInfo, type DisplayInfo } from "../shared/display";
 /**
  * App lifecycle (docs/system-design/recording.md): hide the Dock icon, create the tray, register
  * the display-media handler (primary display + system audio loopback), detect
@@ -42,7 +42,7 @@ import { APP_NAME, preferencesUnlocked, type AppAction, type AppContext } from "
 import { effectiveQuality, frameRateDowngrade, type QualitySettings } from "../shared/quality";
 import { isSettingsShortcut, type HotkeySettings } from "../shared/hotkey";
 import { SettingsHotkey } from "./settings-hotkey";
-import type { ErrorCode, RecordingState } from "../shared/state";
+import type { RecordingState } from "../shared/state";
 
 import { DEFAULT_LANGUAGE, translate, type Language } from "../shared/i18n";
 
@@ -100,12 +100,6 @@ function resourcesDir(): string {
   return app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), "resources");
 }
 
-/**
- * Why main refused the last display-media request. The renderer only sees a
- * generic `AbortError`; this lets the recorder report the real cause.
- */
-let lastDenialReason: ErrorCode | undefined;
-
 if (!app.requestSingleInstanceLock()) {
   log("start: another instance already holds the userData lock; exiting");
   app.quit();
@@ -143,23 +137,29 @@ async function main(): Promise<void> {
   /** A stored 60 fps on a platform where it is not yet verified records at 30. */
   const quality = (): QualitySettings => effectiveQuality(qualityOverride ?? settings.quality, process.platform);
 
-  let topologyGeneration = 0;
-  let displayFailure: DisplayFailure | undefined;
-  let displayRequest: DisplayRequest<DesktopCapturerSource> | undefined;
-  let displaySessionId: string | undefined;
-  let activeDisplayId: string | undefined;
   const displays = (): DisplayInfo[] => {
     const primary = screen.getPrimaryDisplay().id;
     return screen.getAllDisplays().map((d) => ({ id: String(d.id), label: d.label,
       logicalWidth: d.size.width, logicalHeight: d.size.height, scaleFactor: d.scaleFactor,
       internal: d.internal, primary: d.id === primary })).filter(isDisplayInfo);
   };
+  const displayMedia = new DisplayMedia<DesktopCapturerSource>({
+    platform: process.platform,
+    preference: () => settings.display,
+    displays,
+    primaryDisplayId: () => String(screen.getPrimaryDisplay().id),
+    getSources: () => desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 0, height: 0 } }),
+    changed: () => refreshUi(),
+    log,
+  });
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    if (!displayRequest || recorder.state.type !== "starting" || !host.ownsDisplayRequest(request.frame, displaySessionId)) { (callback as () => void)(); return; }
-    void displayRequest.run((source) => {
-      if (source) callback({ video: source, audio: "loopback" });
-      else (callback as () => void)();
-    });
+    displayMedia.answer(
+      (sessionId) => recorder.state.type === "starting" && host.ownsDisplayRequest(request.frame, sessionId),
+      (source) => {
+        if (source) callback({ video: source, audio: "loopback" });
+        else (callback as () => void)();
+      },
+    );
   }, { useSystemPicker: false });
 
   const host = new CaptureHost({
@@ -180,36 +180,8 @@ async function main(): Promise<void> {
       notify: code => tray.notifyRecordingFailure(code),
     }),
     preflight: () => (osSupported() ? undefined : "unsupported_os_version"),
-    onSessionStart: (sessionId) => {
-      displaySessionId = sessionId;
-      lastDenialReason = undefined;
-      displayRequest?.cancel();
-      activeDisplayId = undefined;
-      const preference = { ...settings.display };
-      displayRequest = new DisplayRequest({
-        preference, platform: process.platform,
-        snapshot: () => ({ displays: displays(), primaryDisplayId: String(screen.getPrimaryDisplay().id), generation: topologyGeneration }),
-        getSources: () => desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 0, height: 0 } }),
-        selected: (source, rule, attempt, resolution) => {
-          lastDenialReason = undefined;
-          activeDisplayId = source.display_id || undefined;
-          log(`display media: requested ${JSON.stringify(preference)}; resolved ${source.display_id}; label ${resolution.ok ? resolution.label : ""}; rule ${rule}; retry ${attempt - 1}`);
-        },
-        denied: (code, detail, attempt) => {
-          lastDenialReason = code;
-          if (code === "display_unavailable") displayFailure = detail;
-          log(`display media: denied (${code}); requested ${JSON.stringify(preference)}; resolved none; rule ${preference.kind}; retry ${attempt - 1}; detail ${detail}`);
-          refreshUi();
-        },
-      });
-    },
-    mapHostError: (code) => {
-      const reason = lastDenialReason;
-      lastDenialReason = undefined;
-      // Only errors that a denied display-media request can explain.
-      const explainable = code === "capture_start_failed" || code === "permission_denied" || code === "no_display";
-      return reason && explainable ? reason : code;
-    },
+    onSessionStart: (sessionId) => displayMedia.begin(sessionId),
+    mapHostError: (code) => displayMedia.explain(code),
     log,
   });
 
@@ -239,7 +211,7 @@ async function main(): Promise<void> {
       path.join(app.getPath("userData"), "recording-result.json")), log);
   const appContext = (): AppContext => ({
     recordingResults: recordingResults.all,
-    displays: displays(), display: settings.display, ...(displayFailure ? { displayFailure } : {}),
+    displays: displays(), display: settings.display, ...(displayMedia.failure ? { displayFailure: displayMedia.failure } : {}),
     platform: process.platform,
     outputDir: settings.outputDir,
     homeDir: os.homedir(),
@@ -344,7 +316,7 @@ async function main(): Promise<void> {
         const before = JSON.stringify(settings.display);
         try {
           await settings.setDisplay(action.setDisplay);
-          if (JSON.stringify(settings.display) !== before) displayFailure = undefined;
+          if (JSON.stringify(settings.display) !== before) displayMedia.failure = undefined;
           log(`settings: display ${JSON.stringify(settings.display)}`);
         } catch (cause) {
           log(`settings: display save failed: ${String(cause)}`);
@@ -519,11 +491,8 @@ async function main(): Promise<void> {
     switch (event.type) {
       case "state": {
         if (preferencesUnlocked(event.state)) {
-          displayRequest?.cancel();
-          displayRequest = undefined;
-          displaySessionId = undefined;
+          displayMedia.settle();
           host.destroy();
-          activeDisplayId = undefined;
         }
         savedNotification.stateChanged(event.state);
         log(`state → ${event.state.type}`);
@@ -548,11 +517,11 @@ async function main(): Promise<void> {
         savedNotification.schedule(event.path);
         return;
       case "displayFailed":
-        displayFailure = event.detail;
+        displayMedia.failure = event.detail;
         refreshUi();
         return;
       case "captureStarted": {
-        displayFailure = undefined;
+        displayMedia.failure = undefined;
         refreshUi();
         const actual = frameRateDowngrade(event.requested, event.capture);
         if (actual !== undefined) {
@@ -576,11 +545,7 @@ async function main(): Promise<void> {
   });
 
   const displayChanged = (): void => {
-    topologyGeneration++;
-    if (activeDisplayId && !screen.getAllDisplays().some((d) => String(d.id) === activeDisplayId)) {
-      log(`display media: active display ${activeDisplayId} removed; detail target_removed`);
-      recorder.displayRemoved();
-    }
+    if (displayMedia.topologyChanged(screen.getAllDisplays().map((d) => String(d.id)))) recorder.displayRemoved();
     if (settled()) refreshUi();
   };
   screen.on("display-added", displayChanged);
@@ -629,7 +594,7 @@ async function main(): Promise<void> {
   app.on("will-quit", () => {
     updates.dispose();
     savedNotification.dispose();
-    displayRequest?.cancel();
+    displayMedia.settle();
     screen.removeListener("display-added", displayChanged);
     screen.removeListener("display-removed", displayChanged);
     screen.removeListener("display-metrics-changed", displayChanged);

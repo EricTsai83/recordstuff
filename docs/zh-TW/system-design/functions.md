@@ -16,7 +16,7 @@
 | `renderUi(state)` / `refreshUi()` | 狀態改變或 context 改變時，Tray 與設定面板一起更新 |
 | `resourcesDir()` | packaged → resourcesPath；開發版 → appPath/resources |
 | `displays()` | 將 Electron 已連接螢幕轉成共用模型，不列舉擷取來源 |
-| `displayChanged()` | 推進配置世代；使用中的螢幕移除時讓錄影失敗，並刷新 UI |
+| `displayChanged()` | 把目前連線的螢幕 id 交給 DisplayMedia；使用中的螢幕移除時讓錄影失敗，並刷新 UI |
 | `main()` | 等 ready、組裝依賴、建立 Tray／watcher、註冊動作與退出；錯誤事件寫 log |
 | `quality()` | 開發記憶體 override 或已保存設定 → 平台可用的有效品質 |
 | `handleAction(action)` | 字串 action、setQuality patch、setHotkey 或 setLanguage → 對應 stop／quit／設定／relaunch／Finder 動作 |
@@ -31,6 +31,8 @@
 ## 螢幕選擇
 
 [main/display-source.ts](../../../src/main/display-source.ts)：`resolveDisplayPreference` 解析保存的主螢幕或指定目標；`selectScreenSource` 套用主螢幕回退或指定目標精確匹配。`DisplayRequest.run` 在來源列舉前後檢查配置，指定來源競態最多嘗試三次，callback 只結算一次。`cancel` 結算等待中的 callback 並清除重試延遲。`displayResolution` 讓 tray 與設定共用可用性判定。
+
+[main/display-media.ts](../../../src/main/display-media.ts)：`DisplayMedia` 保存跨錄製嘗試的 display-media 狀態。`begin(sessionId)` 取消前一個請求並快照保存的螢幕偏好；`answer(owns, callback)` 只替本次嘗試擁有的 frame 執行 `DisplayRequest`，否則不給來源；`explain(code)` 以 main 的拒絕原因取代一個可解釋的 host 錯誤；`settle()` 取消未完成的工作並停止監看使用中的螢幕；`topologyChanged(connectedIds)` 推進配置世代，並回報錄製中的螢幕是否已中斷連線。`failure` 是 tray 與設定顯示的螢幕診斷。
 
 ## 狀態機 — main/recorder.ts
 

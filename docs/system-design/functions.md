@@ -15,7 +15,7 @@ Named application and tool functions are grouped by source file. Follow source l
 | isFirstRun | Exclusively create a marker in userData; success means first run, existing file/I/O failure means false |
 | resourcesDir | Packaged resourcesPath or development appPath/resources |
 | displays | Project connected Electron displays into the shared display model without enumerating capture sources |
-| displayChanged | Advance topology generation, fail a session whose active display was removed, and refresh UI |
+| displayChanged | Pass connected display ids to DisplayMedia, fail a session whose active display was removed, and refresh UI |
 | main | Wait ready, compose dependencies, register events/actions, start permission polling and optional development recording |
 | renderUi / refreshUi | Move the tray and the settings panel together on a state change or a context change |
 | quality | Development override or persisted settings → platform-effective quality |
@@ -31,6 +31,8 @@ Process callbacks log uncaught exceptions/rejections. Recorder events render sta
 ## Display selection
 
 [main/display-source.ts](../../src/main/display-source.ts): `resolveDisplayPreference` resolves the saved primary or explicit display; `selectScreenSource` applies primary fallback or exact explicit matching. `DisplayRequest.run` checks topology around source enumeration, retries explicit-source races up to three attempts, and settles the callback once. `cancel` settles pending callbacks and clears retry delays. `displayResolution` shares availability with tray and settings.
+
+[main/display-media.ts](../../src/main/display-media.ts): `DisplayMedia` owns display-media state across attempts. `begin(sessionId)` cancels the previous request and snapshots the saved preference; `answer(owns, callback)` runs the attempt's `DisplayRequest` only for a frame the attempt owns and otherwise returns no source; `explain(code)` replaces one explainable host error with main's refusal reason; `settle()` cancels pending work and stops watching the active display; `topologyChanged(connectedIds)` advances the topology generation and reports whether the recorded display disconnected. `failure` is the display diagnostic shown by tray and settings.
 
 ## Recording state machine
 
