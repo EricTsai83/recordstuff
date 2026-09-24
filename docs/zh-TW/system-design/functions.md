@@ -257,6 +257,7 @@
 | --- | --- |
 | `RecordingResults.receive / act` | 確認部分檔案、拒絕過期結果與操作、保留未讀狀態並提供復原操作 |
 | `RecordingResults.restore` | 限時重新檢查保存路徑；恢復已讀狀態，不發通知、不覆蓋新狀態 |
+| `isOutputFolderFailure` / `isPermissionFailure` | 共用的復原分類：輸出資料夾類失敗提供變更資料夾；權限類失敗（含 no_audio_track）在 macOS 提供系統設定與重新啟動 |
 
 [recording-result-store.ts](../../../src/main/recording-result-store.ts)：驗證並原子替換版本化失敗歷史，升級舊單筆資料但不覆寫舊檔。精確 ID 的重試不改未讀狀態，移除僅刪已確認資訊。
 

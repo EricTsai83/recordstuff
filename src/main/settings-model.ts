@@ -1,4 +1,4 @@
-import { failureReason, failureGuidance, failureOutcome } from "./recording-result";
+import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure } from "./recording-result";
 import { displayLabel, displayFailureText } from "../shared/display";
 import { displayResolution } from "./display-source";
 /**
@@ -26,7 +26,7 @@ import { DEFAULT_HOTKEY, describeAccelerator, canonicalizeAccelerator, isSetting
 import type { SettingsChoice, SettingsGroup, SettingsView } from "../shared/settings-panel";
 import type { RecordingState } from "../shared/state";
 
-import { preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
+import { preferencesUnlocked, type AppAction, type AppContext, type RecordingResultAction } from "./ui-model";
 
 /** A group as main knows it: exactly the wire shape plus the action per choice. */
 interface Group extends SettingsGroup {
@@ -272,7 +272,7 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
       id: result.id, heading: t("Recording failure", language),
       reason: failureReason(result.code, language),
       time: new Date(result.occurredAt).toLocaleString(language),
-      outcome: failureOutcome(result, language), guidance: ctx.platform === "darwin" && result.restored && ["permission_denied", "permission_needs_relaunch", "no_audio_track"].includes(result.code)
+      outcome: failureOutcome(result, language), guidance: ctx.platform === "darwin" && result.restored && isPermissionFailure(result.code)
         ? t("This is a previous recording failure. Check current recording permissions before trying again.", language)
         : failureGuidance(result.code, language, ctx.platform),
       persistenceWarning: result.persistenceFailed ? t("Could not save this reminder. It may change after restarting. Check available disk space.", language) : "",
@@ -294,14 +294,14 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
 
 function resultActions(state: RecordingState, ctx: AppContext, result: NonNullable<AppContext["recordingResults"]>[number]): Array<SettingsChoice & { action: AppAction }> {
   const actions: Array<SettingsChoice & { action: AppAction }> = [];
-  const add = (id: "acknowledge" | "retry" | "remove" | "reveal" | "folder" | "permission" | "relaunch", label: MessageKey, enabled: boolean): void => {
+  const add = (id: RecordingResultAction, label: MessageKey, enabled: boolean): void => {
     actions.push({ id, label: t(label, ctx.language), checked: false, enabled,
       action: { recordingResult: { id: result.id, action: id } } });
   };
   if (result.outcome === "partial" && result.partialPath) add("reveal", "Show partial recording", true);
-  if (["disk_full", "output_write_failed", "output_open_failed"].includes(result.code))
+  if (isOutputFolderFailure(result.code))
     add("folder", "Change output folder", preferencesUnlocked(state) && result.outcome !== "pending");
-  if (ctx.platform === "darwin" && ["permission_denied", "permission_needs_relaunch", "no_audio_track"].includes(result.code)) {
+  if (ctx.platform === "darwin" && isPermissionFailure(result.code)) {
     add("permission", "Open System Settings", preferencesUnlocked(state));
     if (!result.restored || (state.type === "needsPermission" && state.needsRelaunch))
       add("relaunch", "Relaunch", preferencesUnlocked(state) && result.outcome !== "pending");

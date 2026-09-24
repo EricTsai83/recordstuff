@@ -20,10 +20,13 @@ import type { UpdateState } from "./updates";
 
 export const APP_NAME = "RecordStuff";
 
+/** What the user can do with one failure-history record. */
+export type RecordingResultAction = "acknowledge" | "retry" | "remove" | "reveal" | "folder" | "permission" | "relaunch";
+
 export type AppAction =
   | "openSettings"
   | "openRecordingResult"
-  | { recordingResult: { id: string; action: "acknowledge" | "retry" | "remove" | "reveal" | "folder" | "permission" | "relaunch" } }
+  | { recordingResult: { id: string; action: RecordingResultAction } }
   | "openPermissionSettings"
   | "openNotificationSettings"
   | "relaunch"

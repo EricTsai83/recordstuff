@@ -259,6 +259,7 @@ The page's window-message callback checks source/marker/port before creating the
 | --- | --- |
 | RecordingResults.receive / act | Confirm partial files, reject stale results/actions, retain unread state and expose recovery actions |
 | RecordingResults.restore | Recheck saved paths with a deadline; restore acknowledgement without a notification or overwriting newer state |
+| isOutputFolderFailure / isPermissionFailure | The shared recovery categories: output-folder failures offer the folder action; permission failures, including no_audio_track, offer System Settings and Relaunch on macOS |
 
 [main/recording-result-store.ts](../../src/main/recording-result-store.ts): validates and atomically replaces versioned failure history; migrates the legacy single record without overwriting it. Exact-ID retry preserves unread state; removal deletes only reviewed metadata.
 

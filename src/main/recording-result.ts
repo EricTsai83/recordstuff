@@ -2,6 +2,16 @@ import type { RecordingFailure, RecordingResult } from "../shared/recording-resu
 import { translate as t, type Language, type MessageKey } from "../shared/i18n";
 import type { ErrorCode } from "../shared/state";
 import type { ResultStorage } from "./recording-result-store";
+import type { RecordingResultAction } from "./ui-model";
+
+const OUTPUT_FOLDER_FAILURES: readonly ErrorCode[] = ["disk_full", "output_open_failed", "output_write_failed"];
+/** `no_audio_track` belongs here: macOS withholds system audio without the capture grant. */
+const PERMISSION_FAILURES: readonly ErrorCode[] = ["permission_denied", "permission_needs_relaunch", "no_audio_track"];
+
+/** Recovered by freeing space or choosing another output folder. */
+export const isOutputFolderFailure = (code: ErrorCode): boolean => OUTPUT_FOLDER_FAILURES.includes(code);
+/** Recovered through capture permission in System Settings, possibly followed by a relaunch. */
+export const isPermissionFailure = (code: ErrorCode): boolean => PERMISSION_FAILURES.includes(code);
 
 type Stat = (path: string) => Promise<{ isFile(): boolean; size: number }>;
 interface ResultEffects {
@@ -138,7 +148,7 @@ export class RecordingResults {
     effects.refresh();
     if (result.outcome === "pending") effects.notify(result.code);
   }
-  async act(id: string, action: "acknowledge" | "retry" | "remove" | "reveal" | "folder" | "permission" | "relaunch", effects: ResultActions): Promise<boolean> {
+  async act(id: string, action: RecordingResultAction, effects: ResultActions): Promise<boolean> {
     const result = this.results.find(r => r.id === id);
     if (!result || result.id !== id) return false;
     if (action === "acknowledge") {
@@ -171,10 +181,10 @@ export class RecordingResults {
     if (!effects.settled() || (action !== "permission" && result.outcome === "pending")) return false;
     if (action === "relaunch" && result.restored && !effects.needsRelaunch?.()) return false;
     if (action === "folder") {
-      if (!["disk_full", "output_open_failed", "output_write_failed"].includes(result.code)) return false;
+      if (!isOutputFolderFailure(result.code)) return false;
       await effects.folder();
     } else {
-      if (effects.platform !== "darwin" || !["permission_denied", "permission_needs_relaunch", "no_audio_track"].includes(result.code)) return false;
+      if (effects.platform !== "darwin" || !isPermissionFailure(result.code)) return false;
       await effects[action]();
     }
     return true;
@@ -200,11 +210,11 @@ const reasons: Record<ErrorCode, MessageKey> = {
 };
 export const failureReason = (code: ErrorCode, language: Language): string => t(reasons[code], language);
 export function failureGuidance(code: ErrorCode, language: Language, platform: NodeJS.Platform = process.platform): string {
-  if (platform !== "darwin" && ["permission_denied", "permission_needs_relaunch", "no_audio_track"].includes(code))
+  if (platform !== "darwin" && isPermissionFailure(code))
     return t("Check capture permissions and audio devices before recording again.", language);
   return t(code === "disk_full" ? "Free disk space or choose another output folder before recording again."
-    : code === "output_write_failed" || code === "output_open_failed" ? "Check the output folder, its permissions and the connected drive before recording again."
-    : code === "permission_denied" || code === "permission_needs_relaunch" || code === "no_audio_track" ? "Check recording permissions in System Settings. Relaunch if access was recently granted."
+    : isOutputFolderFailure(code) ? "Check the output folder, its permissions and the connected drive before recording again."
+    : isPermissionFailure(code) ? "Check recording permissions in System Settings. Relaunch if access was recently granted."
     : code === "display_unavailable" || code === "no_display" ? "Choose Primary display or another available screen."
     : "Check your recording settings before trying again. Starting again does not recover missing content.", language);
 }
