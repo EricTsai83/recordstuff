@@ -71,7 +71,7 @@ Process callbacks log uncaught exceptions/rejections. Recorder events render sta
 | start | Tear down any previous host, create a fresh window for this attempt and wait for ready; begin the session heartbeat, then post start with session quality; a creation/load failure tears the new window down and rejects |
 | stop | Post stop when a port exists |
 | destroy | Tear down when an attempt settles and during app quit |
-| create | Build sandbox window/channel, install guards/crash handlers, load page, hand off port, wait ready |
+| create | Build sandbox window/channel, install guards/crash handlers, load page, hand off port, wait ready; log a malformed message as field names and value kinds only |
 | stopHeartbeat | End the heartbeat when the watched session reports stopped or failed, and on teardown |
 | ping | Check for two unanswered pings before sending another; on failure tear down and emit |
 | post / emitFailure | Send MainMessage / notify failure listeners |

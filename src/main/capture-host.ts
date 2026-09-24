@@ -127,7 +127,7 @@ export class CaptureHost implements RecorderHost {
       port1.on("message", (event) => {
         const message: unknown = event.data;
         if (!isHostMessage(message)) {
-          this.log(`capture host: dropped malformed message ${JSON.stringify(message)}`);
+          this.log(`capture host: dropped malformed message ${describeMalformed(message)}`);
           return;
         }
         if (message.type === "ready") resolve();
@@ -193,4 +193,23 @@ export class CaptureHost implements RecorderHost {
     this.window = undefined;
     if (window && !window.isDestroyed()) window.destroy();
   }
+}
+
+/**
+ * Field names and value kinds only: a malformed message may carry a media
+ * payload (a typed array serializes to megabytes of JSON) or a value that
+ * JSON cannot serialize at all (BigInt, cycles).
+ */
+function describeMalformed(message: unknown): string {
+  if (typeof message !== "object" || message === null) return String(message).slice(0, 80);
+  const fields = Object.entries(message).slice(0, 12).map(([key, value]) => `${key}: ${kindOf(value)}`);
+  return `{ ${fields.join(", ")} }`;
+}
+
+function kindOf(value: unknown): string {
+  if (typeof value === "string") return JSON.stringify(value.slice(0, 40));
+  if (value === null || typeof value !== "object") return typeof value;
+  if (value instanceof ArrayBuffer) return `ArrayBuffer(${value.byteLength})`;
+  if (ArrayBuffer.isView(value)) return `${value.constructor.name}(${value.byteLength})`;
+  return Array.isArray(value) ? "array" : "object";
 }

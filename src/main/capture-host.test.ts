@@ -132,6 +132,17 @@ describe("capture host supervision", () => {
     expect(s.logs.join()).toContain("dropped malformed message");
   });
 
+  it("logs a bounded summary of a malformed message, never its payload", async () => {
+    const s = setup();
+    await s.start();
+    const malformed = { type: "chunk", sessionId: "s1", seq: 0, bytes: new Uint8Array(1_000_000), extra: 1n };
+    expect(() => s.port().emit(malformed)).not.toThrow();
+    const line = s.logs.find((entry) => entry.includes("dropped malformed message"))!;
+    expect(line).toContain('type: "chunk"');
+    expect(line).toContain("bytes: Uint8Array(1000000)");
+    expect(line.length).toBeLessThan(200);
+  });
+
   it("tears down an attempt whose page never reports ready", async () => {
     const s = setup();
     const start = s.host.start("s1", DEFAULT_QUALITY);

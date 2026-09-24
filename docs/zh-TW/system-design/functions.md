@@ -71,7 +71,7 @@
 | `start(id, quality)` | 先 teardown 既有 host，為本次嘗試建立新視窗並等待 ready；啟動本次 session 的心跳，再送 start；建立／load 失敗時清掉新視窗並 reject |
 | `stop(id)` | 有 port 才送 stop，無 port 時無作用 |
 | `destroy()` | 呼叫 teardown，供嘗試結束與 App 退出 |
-| `create()` | 建 sandbox 視窗／channel、裝 guards／crash handler、載頁／交 port、等 ready |
+| `create()` | 建 sandbox 視窗／channel、裝 guards／crash handler、載頁／交 port、等 ready；格式錯誤的訊息只記錄欄位名稱與值的種類 |
 | `stopHeartbeat()` | 被監看的 session 回報 stopped／error 時，以及 teardown 時停止心跳 |
 | `ping()` | 先查兩次未回覆，逾限 teardown＋failed；否則累計 missedPongs 並送 ping |
 | `post(message)` | 透過目前 port 發 MainMessage |
