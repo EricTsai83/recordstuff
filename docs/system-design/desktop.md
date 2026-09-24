@@ -72,7 +72,7 @@ A registration the OS refuses (another app owns the combination, or `register` t
 
 Source: [i18n.ts](../../src/shared/i18n.ts). English (`en`) is the default, including upgrades from settings files without a language field. The user can choose English or Traditional Chinese (`zh-TW`) from Settings → General → Language. There is no implicit OS-locale selection.
 
-English source messages are typed catalog keys; ZH_TW supplies each translation. Translate selects a template and substitutes named placeholders. The model receives language through TrayContext. Notifications read the current context when created; existing OS notifications are not rewritten retroactively.
+English source messages are typed catalog keys; ZH_TW supplies each translation. Translate selects a template and substitutes named placeholders; the compiler requires a value for every placeholder. The model receives language through TrayContext. Notifications read the current context when created; existing OS notifications are not rewritten retroactively.
 
 A language action serializes a settings save, switches the in-memory language only after success, and refreshes the tray. Failure preserves the old language and reports the failure in that language. Switching during recording changes presentation only; recording state, source, output location, and quality snapshot are unaffected.
 

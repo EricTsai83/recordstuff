@@ -12,7 +12,7 @@ import { displayResolution } from "./display-source";
  * menu shows.
  */
 import path from "node:path";
-import { translate as t, type Language, type MessageKey } from "../shared/i18n";
+import { translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
 import type { FrameRate } from "../shared/quality";
 import type { RecordingState } from "../shared/state";
 import { describeAccelerator, SETTINGS_SHORTCUT, type HotkeyAccelerator } from "../shared/hotkey";
@@ -89,7 +89,7 @@ function stopHint(ctx: AppContext): string | undefined {
 }
 export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
   const language = ctx.language;
-  const text = (key: MessageKey): string => t(key, language);
+  const text = (key: PlainMessageKey): string => t(key, language);
   const unread = (ctx.recordingResults ?? []).filter(r => !r.acknowledged);
   const result = unread[0] ?? ctx.recordingResults?.[0];
   const resultText = unread.length ? t("Unreviewed recording failures: {value}", language, { value: String(unread.length) })

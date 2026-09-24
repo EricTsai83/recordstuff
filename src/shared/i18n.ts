@@ -27,9 +27,7 @@ export const ZH_TW = {
   "View recording failures…": "查看失敗紀錄…",
   "Remove from history": "移除這筆紀錄",
   "Keeps all unreviewed failures and the 20 most recently reviewed failures. Removing a record does not delete the recording file.": "保留所有尚未確認的失敗，以及最近確認的 20 筆紀錄。移除紀錄不會刪除錄影檔案。",
-  "Recent recording result": "最近錄影結果",
   "Recording failed": "錄影失敗",
-  "View recording result…": "查看錄影結果…",
   "Show partial recording": "顯示部分檔案",
   "Got it": "知道了",
   "Technical details": "技術詳細資料",
@@ -37,7 +35,6 @@ export const ZH_TW = {
   "Recent failure: {reason}": "最近一次失敗：{reason}",
   "Click to view the recording result.": "點此查看錄影結果。",
   "Notifications are off. Recording failures remain visible in the menu bar and Recording failures.": "通知已關閉。錄影失敗仍會顯示於選單列與「失敗紀錄」。",
-  "Could not complete this action. The recording result has not been dismissed.": "無法完成此操作，錄影結果提醒尚未清除。",
 
   "RecordStuff - Settings": "RecordStuff - 設置",
   "{label} — Unavailable": "{label} — 無法使用",
@@ -54,7 +51,6 @@ export const ZH_TW = {
   "Official website": "官方網站",
   "GitHub source": "GitHub 原始碼",
   "Could not open the link. Try again.": "無法開啟連結，請重試。",
-  "Change…": "變更…",
   "Confirm": "確定",
   "Confirm to save": "按確定儲存",
   "Press a combination, then Confirm; Esc cancels": "按下組合後，按確定儲存；Esc 取消",
@@ -66,7 +62,6 @@ export const ZH_TW = {
   "Choose the setting again to retry.": "請重新選擇設定後再試一次。",
   "Shortcut saved": "快捷鍵已儲存",
   "Switched to Primary display": "已切換至主螢幕",
-  "Applies automatically; Esc cancels": "自動套用；Esc 取消",
   "Could not edit the shortcut. Try again.": "無法編輯快捷鍵，請重試。",
 
   "The display capture ended unexpectedly. Retry or choose another screen.": "螢幕錄製非預期結束，請重試或選擇其他螢幕。",
@@ -91,7 +86,6 @@ export const ZH_TW = {
   "System default": "跟隨系統",
   "Light": "淺色",
   "Dark": "深色",
-  "Custom…": "自訂…",
   "Press a combination": "請按下快捷鍵組合",
   "Escape to cancel": "按 Escape 取消",
   "A shortcut needs Command or Control.": "快捷鍵需要包含 ⌘ 或 ⌃。",
@@ -103,7 +97,6 @@ export const ZH_TW = {
   "Higher quality preserves more detail and uses more space at the same resolution.": "在相同解析度下，較高品質可保留更多細節，也會使用更多儲存空間。",
   "Limits pixel dimensions while keeping the aspect ratio. Smaller sources are not enlarged.": "限制畫面像素尺寸並維持長寬比，不會放大較小的來源畫面。",
   "Right-click to open the menu": "右鍵開啟選單",
-  "Changes are saved automatically.": "變更會自動儲存。",
   "Recording in progress. Recording settings are locked.": "錄製作業進行中，錄製相關設定暫時鎖定。",
   "Could not apply this setting. Your current settings are shown.": "無法套用這項設定，目前顯示的是實際使用的設定。",
   "Could not open settings. Close this window and open it again.": "無法開啟設定，請關閉這個視窗後再開一次。",
@@ -157,10 +150,6 @@ export const ZH_TW = {
     "RecordStuff 在系統匣待命。左鍵點圖示開始錄製，再點一下停止",
   "RecordStuff is ready in the menu bar. Click to start recording; click again to stop.":
     "RecordStuff 在選單列待命。左鍵點圖示開始錄製，再點一下停止",
-  "Partial recording kept: {file}. Click to show the file.": "已保留部分錄影：{file}。點這則通知顯示檔案",
-  "No content was recorded.": "沒有錄到任何內容",
-  "Screen recording access is missing. Open System Settings from the tray menu.":
-    "沒有螢幕錄製權限，無法開始錄製。右鍵選單可以開啟系統設定",
   "Screen recording access was granted, but RecordStuff needs to relaunch. Use the tray menu.":
     "已取得螢幕錄製權限，但需要重新啟動 RecordStuff。右鍵選單可以重新啟動",
   "This system version does not support system audio capture. macOS 13 or newer is required on Mac.":
@@ -173,8 +162,6 @@ export const ZH_TW = {
   "Recording was interrupted.": "錄製中斷",
   "The recording process crashed.": "錄製程序當機",
   "The recording process is not responding.": "錄製程序沒有回應",
-  "Cannot write to {path}. Choose another output folder from the tray menu.":
-    "儲存位置無法寫入：{path}。右鍵選單可以更改儲存位置",
   "Could not write the recording.": "寫入錄影失敗",
   "The disk is full.": "磁碟已滿",
   "Stopping the recording timed out.": "停止錄製逾時",
@@ -204,7 +191,17 @@ export const ZH_TW = {
 
 export type MessageKey = keyof typeof ZH_TW;
 
+/** The `{name}` placeholders of a message: `"Saved {file}"` → `"file"`. */
+type Placeholders<K extends string> = K extends `${string}{${infer Name}}${infer Rest}` ? Name | Placeholders<Rest> : never;
+/** A message without placeholders; lookup tables of labels use this type. */
+export type PlainMessageKey = { [K in MessageKey]: [Placeholders<K>] extends [never] ? K : never }[MessageKey];
+/** Every placeholder must receive a value, so a missing one fails to compile instead of showing `{name}`. */
+type MessageValues<K extends MessageKey> = [Placeholders<K>] extends [never]
+  ? []
+  : [values: Readonly<Record<Placeholders<K>, string | number>>];
+
 /** Substitute all placeholders in the selected catalog; never translate diagnostic logs. */
+export function translate<K extends MessageKey>(key: K, language?: Language, ...values: MessageValues<K>): string;
 export function translate(
   key: MessageKey,
   language: Language = DEFAULT_LANGUAGE,

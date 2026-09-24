@@ -47,7 +47,7 @@ For testing a packaged macOS app, `pnpm start:app` builds, self-signs, verifies,
 
 Keep a change focused on the problem it addresses and follow the surrounding code's conventions. Tests live alongside the source as `*.test.ts`. Cross-process tests needing both browser DOM and Node APIs live in `tests/`, checked by `tsconfig.tests.json`. `pnpm typecheck` checks main, renderer and these integration tests separately, preserving the renderer’s Node-free type boundary. Add or update tests when behavior changes; for a bug fix, cover the regression where practical.
 
-App messages live in `src/shared/i18n.ts`. When adding or changing a message, update the English and Traditional Chinese entries and keep named placeholders consistent. When changing documented behavior or commands, update the relevant documentation and its existing translation. Keep document links valid relative to each file.
+App messages live in `src/shared/i18n.ts`. When adding or changing a message, update the English and Traditional Chinese entries and keep named placeholders consistent; the compiler checks that every call passes each placeholder's value. When changing documented behavior or commands, update the relevant documentation and its existing translation. Keep document links valid relative to each file.
 
 
 Keep all execution plans in the root `plans/` directory: `<name>.md` for English and `<name>.zh-TW.md` for Traditional Chinese. Their indexes are `plans/README.md` and `plans/README.zh-TW.md`; other translated documentation remains under `docs/zh-TW/`.

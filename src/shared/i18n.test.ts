@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_LANGUAGE, ZH_TW, isLanguage, translate, type MessageKey } from "./i18n";
+import { DEFAULT_LANGUAGE, ZH_TW, isLanguage, translate } from "./i18n";
+
+/** Without values English returns the key verbatim; the placeholder check is bypassed on purpose. */
+const english = translate as unknown as (key: string) => string;
 
 describe("language catalog", () => {
   it("defaults to English and validates only supported persisted choices", () => {
@@ -15,8 +18,17 @@ describe("language catalog", () => {
     for (const [key, value] of Object.entries(ZH_TW)) {
       expect(value.length).toBeGreaterThan(0);
       expect(placeholders(value), key).toEqual(placeholders(key));
-      expect(translate(key as MessageKey)).toBe(key);
+      expect(english(key)).toBe(key);
     }
+  });
+
+  it("requires a value for every placeholder at compile time", () => {
+    // @ts-expect-error `{file}` has no value.
+    expect(translate("Saved {file}", "en")).toBe("Saved {file}");
+    // @ts-expect-error `path` is not this message's placeholder.
+    translate("Saved {file}", "en", { path: "/x.mp4" });
+    // @ts-expect-error a message without placeholders takes no values.
+    translate("Ready", "en", { file: "x" });
   });
 
   it("substitutes repeated values and preserves filenames verbatim", () => {

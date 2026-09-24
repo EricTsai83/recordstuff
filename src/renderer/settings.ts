@@ -1,7 +1,7 @@
 /** Main owns committed preferences, diagnostics and authorized choice ids. */
 import { describeAccelerator, validateAccelerator } from "../shared/hotkey";
 import { shortcutCandidate, shortcutModifiers } from "./shortcut-capture";
-import { isLanguage, translate, type MessageKey } from "../shared/i18n";
+import { isLanguage, translate, type PlainMessageKey } from "../shared/i18n";
 import type { SettingsBridge, SettingsGroup, SettingsView } from "../shared/settings-panel";
 
 declare global { interface Window { settings: SettingsBridge } }
@@ -23,7 +23,7 @@ let captureGeneration = 0;
 let preview = "";
 let candidateToConfirm: string | undefined;
 let failure: { group: string; choice?: string; text: string; baseline?: string } | undefined;
-const text = (key: MessageKey): string => translate(key, view?.language);
+const text = (key: PlainMessageKey): string => translate(key, view?.language);
 const controlId = (group: SettingsGroup): string => `setting-${group.id}`;
 const shortcutGroup = (): SettingsGroup | undefined => view?.groups.find(g => g.kind === "shortcut");
 function setText(element: Element, value: string): void { if (element.textContent !== value) element.textContent = value; }

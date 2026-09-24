@@ -174,7 +174,7 @@
 
 [preload/index.ts](../../../src/preload/index.ts) 沒有具名函式：唯一 ipcRenderer callback 接收 `capture-host-port` 後將 event.ports 轉交 window，沒有 contextBridge API。
 
-[shared/i18n.ts](../../../src/shared/i18n.ts)：`isLanguage(value)` 驗 en／zh-TW；`translate(key, language, values)` 預設英文，依 ZH_TW 取得中文模板並代入所有具名 placeholder。`notice(body)` 包裝通知標題與內文；trayModel 的 `text`／`model` helper 產生翻譯與呈現模型。通知函式接受 optional language，預設英文。
+[shared/i18n.ts](../../../src/shared/i18n.ts)：`isLanguage(value)` 驗 en／zh-TW；`translate(key, language, values)` 預設英文，依 ZH_TW 取得中文模板並代入所有具名 placeholder；編譯器要求 key 的每個 placeholder 都有值，標籤表使用 `PlainMessageKey`（沒有 placeholder 的文案）。`notice(body)` 包裝通知標題與內文；trayModel 的 `text`／`model` helper 產生翻譯與呈現模型。通知函式接受 optional language，預設英文。
 
 ## 權限 — main/permission.ts
 

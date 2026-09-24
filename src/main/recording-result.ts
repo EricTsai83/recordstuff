@@ -1,5 +1,5 @@
 import type { RecordingFailure, RecordingResult } from "../shared/recording-result";
-import { translate as t, type Language, type MessageKey } from "../shared/i18n";
+import { translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
 import type { ErrorCode } from "../shared/state";
 import type { ResultStorage } from "./recording-result-store";
 import type { RecordingResultAction } from "./ui-model";
@@ -191,7 +191,7 @@ export class RecordingResults {
   }
 }
 
-const reasons: Record<ErrorCode, MessageKey> = {
+const reasons: Record<ErrorCode, PlainMessageKey> = {
   permission_denied: "Screen recording permission required",
   permission_needs_relaunch: "Screen recording access was granted, but RecordStuff needs to relaunch. Use the tray menu.",
   unsupported_os_version: "This system version does not support system audio capture. macOS 13 or newer is required on Mac.",

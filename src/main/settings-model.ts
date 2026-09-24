@@ -13,7 +13,7 @@ import { displayResolution } from "./display-source";
  * while a capture is running; language and appearance remain editable.
  * index.ts re-checks recording locks before saving.
  */
-import { translate as t, type Language, type MessageKey } from "../shared/i18n";
+import { translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
 import {
   FRAME_RATES,
   RESOLUTION_CAPS,
@@ -34,7 +34,7 @@ interface Group extends SettingsGroup {
   actions?: Array<SettingsChoice & { action: AppAction }>;
 }
 
-const VIDEO_QUALITY_LABELS: Record<VideoQuality, MessageKey> = {
+const VIDEO_QUALITY_LABELS: Record<VideoQuality, PlainMessageKey> = {
   economy: "Economy",
   standard: "Standard",
   high: "High",
@@ -294,7 +294,7 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
 
 function resultActions(state: RecordingState, ctx: AppContext, result: NonNullable<AppContext["recordingResults"]>[number]): Array<SettingsChoice & { action: AppAction }> {
   const actions: Array<SettingsChoice & { action: AppAction }> = [];
-  const add = (id: RecordingResultAction, label: MessageKey, enabled: boolean): void => {
+  const add = (id: RecordingResultAction, label: PlainMessageKey, enabled: boolean): void => {
     actions.push({ id, label: t(label, ctx.language), checked: false, enabled,
       action: { recordingResult: { id: result.id, action: id } } });
   };

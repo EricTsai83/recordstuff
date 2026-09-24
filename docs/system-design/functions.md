@@ -169,7 +169,7 @@ The page's window-message callback checks source/marker/port before creating the
 | pressed | Log `hotkey: <accelerator> pressed` and call the toggle |
 | release | Unregister only a `registered` accelerator; log an unregister error |
 
-[shared/i18n.ts](../../src/shared/i18n.ts): `isLanguage(value)` validates en/zh-TW; `translate(key, language, values)` selects an English-keyed template or Traditional Chinese translation and substitutes every named placeholder. DEFAULT_LANGUAGE is en; ZH_TW is a typed complete translation catalog. Technical logs do not use it.
+[shared/i18n.ts](../../src/shared/i18n.ts): `isLanguage(value)` validates en/zh-TW; `translate(key, language, values)` selects an English-keyed template or Traditional Chinese translation and substitutes every named placeholder; the compiler requires a value for each placeholder of the key, and label tables use `PlainMessageKey` (messages without placeholders). DEFAULT_LANGUAGE is en; ZH_TW is a typed complete translation catalog. Technical logs do not use it.
 
 [shared/protocol.ts](../../src/shared/protocol.ts): `isRecord` and `isNonEmptyString` support `isMainMessage` and `isHostMessage`; chunk validation requires nonnegative integer seq and ArrayBuffer bytes. [shared/state.ts](../../src/shared/state.ts): `isErrorCode` checks the ERROR_CODES whitelist.
 
