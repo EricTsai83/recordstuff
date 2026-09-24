@@ -7,6 +7,7 @@ export function isLanguage(value: unknown): value is Language {
 }
 
 export const ZH_TW = {
+  "Recording is still starting, saving or cleaning up. RecordStuff will stay open. Any pending capture will stop when it starts. Please try quitting again after it finishes.": "錄影仍在啟動、存檔或清理中，RecordStuff 將保持開啟。尚在啟動的擷取會在開始後立即停止。完成後請再次嘗試退出。",
   "Could not complete this action. Please try again.": "無法完成此操作，請重試。",
   "Could not save this reminder. It may change after restarting. Check available disk space.": "無法儲存這項提醒，重啟後可能無法保留目前狀態。請檢查可用磁碟空間。",
   "Retry saving reminder": "重新儲存提醒",

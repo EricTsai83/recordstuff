@@ -56,7 +56,11 @@ export interface RecorderDeps {
   /** Time for the OS capture request, including interactive permission prompts. */
   captureRequestTimeoutMs?: number;
   stopTimeoutMs?: number;
+  /** Quit may allow stop-response failure cleanup a small additional margin. */
+  shutdownTimeoutMs?: number;
   log?: (message: string) => void;
+  /** Result verification/publication is part of the attempt’s owned work. */
+  publishFailure?: (result: RecordingFailure) => Promise<void>;
 }
 
 export type RecorderEvent =
@@ -81,7 +85,9 @@ interface Session {
   quality: QualitySettings;
   /** `stopped` arrived and the writer is being finished; a hard cap must not call this a failure. */
   finalizing: boolean;
+  stopOnStart: boolean;
   writer?: RecorderWriter;
+  opening?: Promise<void>;
   nextSeq: number;
   timer?: ReturnType<typeof setTimeout> | undefined;
   /** Last append; awaited before finishing so the final chunk is on disk. */
@@ -92,8 +98,6 @@ const DEFAULT_START_TIMEOUT_MS = 8000;
 const DEFAULT_CAPTURE_REQUEST_TIMEOUT_MS = 120_000;
 const MAX_NAME_ATTEMPTS = 10;
 const DEFAULT_STOP_TIMEOUT_MS = 10_000;
-/** After the quit cap fires, how long to still wait for the partial file to close. */
-const SHUTDOWN_GRACE_MS = 3000;
 
 /** `2026-09-11 14-30-00`, local time, safe on every file system. */
 export function formatTimestamp(date: Date): string {
@@ -112,10 +116,6 @@ export function errorCodeOf(cause: unknown, fallback: ErrorCode): ErrorCode {
   return fallback;
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function messageOf(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
@@ -123,11 +123,14 @@ function messageOf(cause: unknown): string {
 export class Recorder {
   private _state: RecordingState = { type: "idle" };
   private session: Session | undefined;
-  /** The `abandon()` of the last failure; `shutdown()` waits for it. */
-  private pendingFailure: Promise<void> = Promise.resolve();
+  /** Registered before any synchronous subscriber can request exit. */
+  private readonly work = new Set<Promise<void>>();
+  private shuttingDown: Promise<boolean> | undefined;
+  private quitAdmission = false;
+  private readonly workChanged = new Set<() => void>();
   private readonly listeners = new Set<(event: RecorderEvent) => void>();
   private readonly deps: Required<
-    Pick<RecorderDeps, "now" | "newSessionId" | "startTimeoutMs" | "captureRequestTimeoutMs" | "stopTimeoutMs" | "log">
+    Pick<RecorderDeps, "now" | "newSessionId" | "startTimeoutMs" | "captureRequestTimeoutMs" | "stopTimeoutMs" | "shutdownTimeoutMs" | "log">
   > &
     RecorderDeps;
 
@@ -138,6 +141,7 @@ export class Recorder {
       startTimeoutMs: DEFAULT_START_TIMEOUT_MS,
       captureRequestTimeoutMs: DEFAULT_CAPTURE_REQUEST_TIMEOUT_MS,
       stopTimeoutMs: DEFAULT_STOP_TIMEOUT_MS,
+      shutdownTimeoutMs: (deps.stopTimeoutMs ?? DEFAULT_STOP_TIMEOUT_MS) + 3000,
       log: () => undefined,
       ...deps,
     };
@@ -184,39 +188,52 @@ export class Recorder {
     this.deps.host.stop(session.id);
   }
 
-  /**
-   * Quit path: let a start finish, then stop and wait for the state to
-   * settle. Bounded by the start and stop timeouts.
-   */
-  async shutdown(): Promise<void> {
-    const session = this.session;
-    if (!session) {
-      await this.pendingFailure;
-      return;
+  /** False means quit was deferred; outstanding work remains owned by this recorder. */
+  shutdown(): Promise<boolean> {
+    if (this.shuttingDown) return this.shuttingDown;
+    this.quitAdmission = true;
+    if (this.session && (this.session.phase === "opening" || this.session.phase === "starting")) {
+      this.session.stopOnStart = true;
     }
-    // Hard cap (docs/system-design/recording.md): past the stop timeout, stop waiting for the host.
-    // If the host never answered, close the file as is and keep
-    // `.recording.mp4`, giving the close a short grace period. If the host did
-    // stop and only the final fsync/rename is slow, let it finish in the
-    // background rather than report a failure for a file that may be saved.
-    let capTimer: ReturnType<typeof setTimeout> | undefined;
-    const capReached = new Promise<"capped">((resolve) => {
-      capTimer = setTimeout(() => resolve("capped"), this.deps.stopTimeoutMs);
-    });
-    const settled = (async (): Promise<"settled"> => {
-      while (this._state.type === "starting") await this.nextStateChange();
-      if (this._state.type === "recording") this.stop();
-      while (this._state.type === "stopping") await this.nextStateChange();
-      await this.pendingFailure;
-      return "settled";
-    })();
-    const outcome = await Promise.race([settled, capReached]);
-    if (capTimer) clearTimeout(capTimer);
-    if (outcome === "settled") return;
-    if (this.session === session && !session.finalizing) {
-      const failing = this.fail(session.id, "stop_timeout", "shutdown stop timed out; preserving partial recording");
-      await Promise.race([failing, delay(SHUTDOWN_GRACE_MS)]);
-    }
+    // Defer execution until the shared promise is installed (stop can emit synchronously).
+    const attempt = Promise.resolve().then(() => new Promise<boolean>((resolve) => {
+      let checking = false;
+      const finish = (safe: boolean): void => {
+        clearTimeout(timer);
+        unsubscribe();
+        this.workChanged.delete(check);
+        resolve(safe);
+      };
+      const check = (): void => {
+        if (checking) return;
+        checking = true;
+        if (this._state.type === "recording") this.stop();
+        checking = false;
+        if (!this.session && this.work.size === 0) finish(true);
+      };
+      const unsubscribe = this.subscribe((event) => { if (event.type === "state") check(); });
+      this.workChanged.add(check);
+      const timer = setTimeout(() => {
+        // Capture's own start/stop timers own failure. A quit deadline cannot
+        // cancel an in-flight permission request or a filesystem operation.
+        finish(false);
+      }, this.deps.shutdownTimeoutMs);
+      check();
+    }));
+    this.shuttingDown = attempt;
+    void attempt.then((safe) => {
+      this.shuttingDown = undefined;
+      if (!safe) this.quitAdmission = false;
+    }, () => { this.shuttingDown = undefined; this.quitAdmission = false; });
+    return attempt;
+  }
+
+  private track(task: () => Promise<void>): Promise<void> {
+    let release!: () => void;
+    const owned = new Promise<void>((resolve) => { release = resolve; });
+    this.work.add(owned);
+    const result = task();
+    return result.finally(() => { this.work.delete(owned); release(); for (const changed of this.workChanged) changed(); });
   }
 
   /** macOS only. A permission change never interrupts a running session. */
@@ -240,14 +257,18 @@ export class Recorder {
     }
   }
 
-  private async start(): Promise<void> {
-    if (this._state.type !== "idle" || this.session) return;
+  private start(): Promise<void> {
+    return this.track(() => this.startOwned());
+  }
+
+  private async startOwned(): Promise<void> {
+    if (this.quitAdmission || this._state.type !== "idle" || this.session) return;
     const blocker = this.deps.preflight?.();
     if (blocker) {
       const result: RecordingFailure = { id: randomUUID(), occurredAt: this.deps.now().toISOString(),
         code: blocker, detail: "", outcome: "pending" };
-      this.emit({ type: "failureStatus", result });
-      this.emit({ type: "failureStatus", result: { ...result, outcome: "empty" } });
+      await this.publishFailure(result);
+      await this.publishFailure({ ...result, outcome: "empty" });
       this.emit({ type: "failed", code: blocker, detail: "" });
       return;
     }
@@ -257,43 +278,32 @@ export class Recorder {
       phase: "opening",
       quality: this.deps.quality(),
       finalizing: false,
+      stopOnStart: false,
       nextSeq: 0,
       writes: Promise.resolve(),
     };
     this.session = session;
+    const dir = this.deps.outputDir();
+    session.opening = Promise.resolve().then(async () => {
+      await this.deps.ensureWritableDir(dir);
+      if (this.session !== session) return;
+      session.writer = await this.openUniqueWriter(dir, formatTimestamp(this.deps.now()));
+    });
     this.deps.onSessionStart?.(session.id);
     this.setState({ type: "starting" });
-    // File-system work stays bounded independently of interactive OS prompts.
     session.timer = setTimeout(() => {
-      if (session.phase === "opening") {
-        void this.fail(session.id, "output_open_failed", this.deps.outputDir(), { outputDirUnavailable: true });
-      } else {
-        void this.fail(session.id, "capture_start_failed", "capture host did not send media before the deadline");
-      }
+      void this.fail(session.id, "output_open_failed", dir, { outputDirUnavailable: true });
     }, this.deps.startTimeoutMs);
-
-    const dir = this.deps.outputDir();
     try {
-      await this.deps.ensureWritableDir(dir);
-    } catch {
-      await this.fail(session.id, "output_open_failed", dir, { outputDirUnavailable: true });
-      return;
-    }
-    if (this.session !== session) return;
-
-    const stamp = formatTimestamp(this.deps.now());
-    try {
-      session.writer = await this.openUniqueWriter(dir, stamp);
+      await session.opening;
     } catch (cause) {
       await this.fail(session.id, errorCodeOf(cause, "output_open_failed"), messageOf(cause), {
         outputDirUnavailable: true,
       });
       return;
     }
-    if (this.session !== session) {
-      await session.writer.abandon();
-      return;
-    }
+    // A timed-out opening belongs to the failure owner, including its late handle.
+    if (this.session !== session) return;
 
     session.phase = "starting";
     this.clearTimer(session);
@@ -333,7 +343,7 @@ export class Recorder {
     if (message.type === "ready" || message.type === "pong") return;
     const session = this.session;
     if (message.type === "error") {
-      if (session && (message.sessionId === undefined || message.sessionId === session.id)) {
+      if (session && !session.finalizing && (message.sessionId === undefined || message.sessionId === session.id)) {
         const code = this.deps.mapHostError ? this.deps.mapHostError(message.code) : message.code;
         if (message.displayFailure && !session.finalizing) this.emit({ type: "displayFailed", detail: message.displayFailure });
         void this.fail(session.id, code, message.detail);
@@ -361,6 +371,7 @@ export class Recorder {
           }
           this.deps.log(`recorder: session ${session.id} capture: ${describeCapture(session.quality, message.capture)}`);
           this.setState({ type: "recording", startedAt: this.deps.now().toISOString() });
+          if (session.stopOnStart) this.stop();
           this.emit({ type: "captureStarted", requested: session.quality, capture: message.capture });
         }
         return;
@@ -368,11 +379,12 @@ export class Recorder {
         this.handleChunk(session, message.seq, message.bytes);
         return;
       case "stopped":
+        if (session.finalizing) return;
         this.deps.log(`recorder: session ${session.id} host stopped; tracksStoppedAt=${message.tracksStoppedAt ?? "unknown"}`);
         if (session.phase === "stopping") {
           this.clearTimer(session);
           session.finalizing = true;
-          void this.finalize(session);
+          void this.track(() => this.finalize(session));
         } else {
           void this.fail(session.id, "capture_failed", "capture host ended capture without a stop request");
         }
@@ -381,6 +393,7 @@ export class Recorder {
   }
 
   private handleChunk(session: Session, seq: number, bytes: ArrayBuffer): void {
+    if (session.finalizing) return;
     if (session.phase !== "starting" && session.phase !== "recording" && session.phase !== "stopping") {
       return;
     }
@@ -432,10 +445,19 @@ export class Recorder {
     code: "capture_host_crashed" | "capture_host_unresponsive",
     detail: string,
   ): void {
-    if (this.session) void this.fail(this.session.id, code, detail);
+    if (this.session && !this.session.finalizing) void this.fail(this.session.id, code, detail);
   }
 
-  private async fail(
+  private fail(
+    sessionId: string,
+    code: ErrorCode,
+    detail: string,
+    idleFlags: { outputDirUnavailable?: boolean } = {},
+  ): Promise<void> {
+    return this.track(() => this.failOwned(sessionId, code, detail, idleFlags));
+  }
+
+  private async failOwned(
     sessionId: string,
     code: ErrorCode,
     detail: string,
@@ -453,11 +475,12 @@ export class Recorder {
       code, detail, outcome: "pending", ...(session.writer?.recordingPath ? { recordingPath: session.writer.recordingPath } : {}) };
     // Set idle and request tray updates before synchronous metadata persistence.
     this.setState({ type: "idle", ...idleFlags });
-    this.emit({ type: "failureStatus", result });
+    await this.publishFailure(result);
     const finish = (async (): Promise<void> => {
       let partialPath: string | undefined;
       let outcome: RecordingFailure["outcome"] = "empty";
       try {
+        await session.opening?.catch(() => undefined);
         partialPath = session.writer ? await session.writer.abandon() : undefined;
         outcome = session.writer?.preservationUncertain ? "unknown" : partialPath ? "partial" : "empty";
         if (outcome === "unknown") partialPath = undefined;
@@ -465,19 +488,25 @@ export class Recorder {
         outcome = "unknown";
         this.deps.log(`recorder: failure cleanup could not be confirmed: ${messageOf(cause)}`);
       }
-      const { recordingPath: _candidate, ...settledResult } = result;
-      this.emit({ type: "failureStatus", result: { ...settledResult, outcome,
+      const { recordingPath: initialPath, ...settledResult } = result;
+      const candidate = initialPath ?? session.writer?.recordingPath;
+      await this.publishFailure({ ...settledResult, outcome,
         ...(partialPath ? { partialPath } : {}),
-        ...(outcome === "unknown" && _candidate ? { recordingPath: _candidate } : {}),
-      } });
+        ...(outcome === "unknown" && candidate ? { recordingPath: candidate } : {}),
+      });
       this.emit(
         partialPath === undefined
           ? { type: "failed", code, detail }
           : { type: "failed", code, detail, partialPath },
       );
     })();
-    this.pendingFailure = finish;
     await finish;
+  }
+
+  private async publishFailure(result: RecordingFailure): Promise<void> {
+    this.emit({ type: "failureStatus", result });
+    try { await this.deps.publishFailure?.(result); }
+    catch (cause) { this.deps.log(`recorder: failure result publication failed: ${messageOf(cause)}`); }
   }
 
   private clearTimer(session: Session): void {
@@ -494,13 +523,4 @@ export class Recorder {
     for (const listener of this.listeners) listener(event);
   }
 
-  private nextStateChange(): Promise<void> {
-    return new Promise((resolve) => {
-      const unsubscribe = this.subscribe((event) => {
-        if (event.type !== "state") return;
-        unsubscribe();
-        resolve();
-      });
-    });
-  }
 }

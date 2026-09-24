@@ -8,6 +8,7 @@ export class SavedNotification {
   private pending: { timer: ReturnType<typeof setTimeout>; path: string } | undefined;
   private idle = true;
   private disposed = false;
+  private quitting = false;
 
   constructor(private readonly options: {
     platform: string;
@@ -22,7 +23,7 @@ export class SavedNotification {
 
   schedule(path: string): void {
     this.cancel("replaced");
-    if (this.disposed || !this.idle) return;
+    if (this.disposed || this.quitting || !this.idle) return;
     if (this.options.platform !== "darwin") {
       this.deliver(path);
       return;
@@ -30,10 +31,15 @@ export class SavedNotification {
     this.options.log(`notification: saved scheduled delayMs=${SAVED_NOTIFICATION_DELAY_MS} ${path}`);
     const timer = setTimeout(() => {
       this.pending = undefined;
-      if (!this.disposed && this.idle) this.deliver(path);
+      if (!this.disposed && !this.quitting && this.idle) this.deliver(path);
     }, SAVED_NOTIFICATION_DELAY_MS);
     timer.unref();
     this.pending = { timer, path };
+  }
+
+  setQuitting(quitting: boolean): void {
+    this.quitting = quitting;
+    if (quitting) this.cancel("shutdown");
   }
 
   dispose(): void {

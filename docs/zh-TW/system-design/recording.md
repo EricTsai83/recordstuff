@@ -41,10 +41,19 @@ stateDiagram-v2
 | 來源／系統授權請求 | 120 秒 | capture_start_failed；停止該 session |
 | started 後首 chunk | 8 秒 | capture_start_failed，保留已寫入資料 |
 | stop 回應 | 10 秒 | stop_timeout |
-| 退出等待 | 10 秒，失敗收尾另給最多 3 秒 | 未完成 capture 時盡力 close／保留；已 finalizing 不誤報失敗 |
+| Renderer 終止交接 | 終止開始後 5 秒 | 缺少 stop／最後 Blob 交接時回報失敗，忽略後續交接 |
+| 退出等待 | 每次嘗試 13 秒（停止期限另加 3 秒） | 尚有工作時延後退出並顯示在地化提示，不截斷存檔 |
 | 心跳 | session 進行中每 5 秒檢查／送 ping | 檢查時已有 2 次未回 pong 就 teardown、回 unresponsive |
 
 這些是專案的等待上限，不是 OS 標準或精準的全流程耗時保證。磁碟 I/O 不能因此被真正取消。
+
+## 終止責任與正常退出
+
+CaptureHost 在等待 Blob 轉換之前固定第一個終止原因。後續使用者停止不能蓋掉軌道中斷或 encoder error；清理軌道事件也不能把較早的正常停止變成失敗。Encoder error 會等待最後 `dataavailable` 與 `stop`，再排空交接鏈後送出唯一終止訊息。5 秒後仍未完成就回報失敗並停止後續交接；無法恢復硬當機或卡住轉換所遺失的 bytes。
+
+Recorder 接受 `stopped` 後由 finalizer 獨占該次收尾。遲到的 host crash／error、重複 stop 或螢幕移除不能 abandon 正在發布的檔案；磁碟錯誤仍進入失敗清理。所有開檔、存檔、清理工作在同步 subscriber 執行前登記。開檔逾時立即讓 UI 回到 idle，但結果保持 pending，直到遲到的開檔與關閉完成。多次失敗各自保留清理工作的責任。
+
+所有 `before-quit`（包含 idle）共用 `installQuitCoordinator`。重複退出加入同一嘗試，退出判定期間拒絕開始新錄影，並自動停止擷取。已在啟動中的 session 保留停止意圖，即使退出延期，擷取一開始也會立即停止並收尾。必須沒有 session 與未完成工作，包含遲到開檔、先前失敗清理與失敗結果查核／發布，才允許退出。退出期限只延後退出；擷取失敗仍由既有啟動請求與停止回應 timer 判定。未完成的磁碟／結果發布工作仍被持有，App 保持開啟，使用者可重試退出。不為滿足退出期限摧毀 host 或宣稱未確認的保留路徑。強制退出、程序終止與斷電不受此保證保護；沒有當機復原或破壞性退出選項。
 
 ## 品質與編碼
 

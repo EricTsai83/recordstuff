@@ -5,18 +5,18 @@ import { fileURLToPath } from "node:url";
 import { build, transformWithEsbuild } from "vite";
 
 export async function buildFixture(
-  name: "settings-panel" | "shortcut-failure" | "release-record-network",
+  name: "recording-lifecycle" | "settings-panel" | "shortcut-failure" | "release-record-network",
   outputDir: string,
 ): Promise<string> {
   const source = fileURLToPath(new URL(`../fixtures/${name}.ts`, import.meta.url));
   // Settings snapshots use the real model and its pure shared dependencies.
-  if (name === "settings-panel") {
+  if (name === "settings-panel" || name === "recording-lifecycle") {
     await build({ configFile: false, logLevel: "error", build: {
       outDir: outputDir, emptyOutDir: false, minify: false,
-      lib: { entry: source, formats: ["es"], fileName: () => "settings-panel.mjs" },
+      lib: { entry: source, formats: ["es"], fileName: () => `${name}.mjs` },
       rollupOptions: { external: ["electron", /^node:/] },
     } });
-    return path.join(outputDir, "settings-panel.mjs");
+    return path.join(outputDir, `${name}.mjs`);
   }
   // The shortcut fixture intercepts CommonJS loading before requiring the app.
   const format = name === "shortcut-failure" ? "cjs" : "esm";

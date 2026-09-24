@@ -1,3 +1,5 @@
+import { createQuitFeedback } from "./quit-feedback";
+import { installQuitCoordinator } from "./quit-coordinator";
 import { RecordingResultStore } from "./recording-result-store";
 import { RecordingResults } from "./recording-result";
 import { SettingsWindowState } from "./settings-window-state";
@@ -173,6 +175,10 @@ async function main(): Promise<void> {
     quality,
     ensureWritableDir,
     openWriter: (recordingPath, finalPath) => FileWriter.open(recordingPath, finalPath),
+    publishFailure: result => recordingResults.receive(result, {
+      stat: file => fs.stat(file), refresh: refreshUi,
+      notify: code => tray.notifyRecordingFailure(code),
+    }),
     preflight: () => (osSupported() ? undefined : "unsupported_os_version"),
     onSessionStart: (sessionId) => {
       displaySessionId = sessionId;
@@ -212,7 +218,6 @@ async function main(): Promise<void> {
       ? new PermissionWatcher((status) => recorder.setPermission(status), { log })
       : undefined;
 
-  let quitting = false;
   // One action for both entry points (plan 016): the tray's left click and the
   // global shortcut call the same `toggle`, whose state guards decide.
   const toggle = (): void => recorder.toggle();
@@ -424,8 +429,7 @@ async function main(): Promise<void> {
         try { await openNotificationSettings(); return true; }
         catch (error) { log(`notifications: open settings failed: ${String(error)}`); return false; }
       case "relaunch":
-        app.relaunch();
-        app.quit();
+        quitCoordinator.relaunch();
         return;
       case "revealLastSaved":
         if (recorder.state.type === "idle" && recorder.state.lastSavedPath) {
@@ -557,13 +561,9 @@ async function main(): Promise<void> {
         }
         return;
       }
-      case "failureStatus": {
-        void recordingResults.receive(event.result, {
-          stat: file => fs.stat(file), refresh: refreshUi,
-          notify: code => tray.notifyRecordingFailure(code),
-        });
+      case "failureStatus":
+        // The Recorder's awaited publication callback owns verification/persistence.
         return;
-      }
       case "failed":
         log(`failed: ${event.code} ${event.detail}${event.partialPath ? ` (kept ${event.partialPath})` : ""}`);
         // The OS says granted, yet capture is refused: TCC needs a relaunch.
@@ -606,24 +606,29 @@ async function main(): Promise<void> {
     });
   }
 
-  app.on("before-quit", (event) => {
-    updates.dispose();
-    savedNotification.dispose();
-    if (quitting) return;
-    const busy = recorder.state.type === "starting" || recorder.state.type === "recording" || recorder.state.type === "stopping";
-    if (!busy) {
-      quitting = true;
-      return;
-    }
-    event.preventDefault();
-    log("quit requested during recording; stopping first");
-    void recorder.shutdown().finally(() => {
-      quitting = true;
-      app.quit();
-    });
+  const showQuitFeedback = createQuitFeedback({
+    language: () => currentLanguage,
+    focus: () => { if (process.platform === "darwin") app.focus({ steal: true }); },
+    show: options => dialog.showMessageBox(options),
+    log,
+  });
+  const quitCoordinator = installQuitCoordinator(app, {
+    relaunch: () => app.relaunch(),
+    shutdown: () => {
+      savedNotification.setQuitting(true);
+      return recorder.shutdown();
+    },
+    pending: () => {
+      savedNotification.setQuitting(false);
+      log("quit deferred: recording save or cleanup is still pending");
+      void showQuitFeedback();
+    },
+    error: (cause) => log(`quit deferred: ${String(cause)}`),
   });
 
   app.on("will-quit", () => {
+    updates.dispose();
+    savedNotification.dispose();
     displayRequest?.cancel();
     screen.removeListener("display-added", displayChanged);
     screen.removeListener("display-removed", displayChanged);

@@ -25,7 +25,10 @@ interface Session {
   seq: number;
   /** Chunk hand-off is async (`blob.arrayBuffer()`); serialize to keep order. */
   chain: Promise<void>;
-  stopRequested: boolean;
+  cause?: { code: ErrorCode; detail: string; displayFailure?: "track_ended" } | "normal";
+  timer?: ReturnType<typeof setTimeout>;
+  draining: boolean;
+  handoffFailed: boolean;
   finished: boolean;
 }
 
@@ -37,6 +40,7 @@ export interface HostPort {
 }
 
 export interface CaptureHostOptions {
+  terminalTimeoutMs?: number;
   /** Size of the frames a stream actually delivers; defaults to `measureFrameSize`. */
   measureFrameSize?: FrameSizeMeasurer;
 }
@@ -108,12 +112,14 @@ export class CaptureHost {
    */
   private readonly cancelled = new Set<string>();
 
+  private readonly terminalTimeoutMs: number;
   private readonly measureFrameSize: FrameSizeMeasurer;
 
   constructor(
     private readonly port: HostPort,
     options: CaptureHostOptions = {},
   ) {
+    this.terminalTimeoutMs = options.terminalTimeoutMs ?? 5000;
     this.measureFrameSize = options.measureFrameSize ?? measureFrameSize;
     port.addEventListener("message", (event) => this.handle(event.data));
     port.start();
@@ -247,26 +253,31 @@ export class CaptureHost {
       recorder,
       seq: 0,
       chain: Promise.resolve(),
-      stopRequested: false,
+      draining: false,
+      handoffFailed: false,
       finished: false,
     };
     this.session = session;
 
     recorder.ondataavailable = (event) => this.enqueueChunk(session, event.data);
     recorder.onerror = (event) => {
-      const detail = describe((event as ErrorEvent).error ?? "MediaRecorder error");
-      this.finish(session, () => this.fail(session.id, session.seq === 0 ? "capture_start_failed" : "capture_failed", detail));
+      this.setFailure(session, {
+        code: session.seq === 0 ? "capture_start_failed" : "capture_failed",
+        detail: describe((event as ErrorEvent).error ?? "MediaRecorder error"),
+      });
+      // The browser emits final dataavailable and stop after error, including
+      // when state is already inactive. Do not finish on the error event.
+      this.armDeadline(session);
     };
     recorder.onstop = () => {
-      const videoEnded = stream.getVideoTracks().some((track) => track.readyState === "ended");
-      this.finish(session, (tracksStoppedAt) => {
-        if (session.stopRequested) this.send({ type: "stopped", sessionId: session.id, tracksStoppedAt });
-        else this.fail(session.id, "capture_failed", "capture source ended (display or audio track stopped)", videoEnded ? "track_ended" : undefined);
-      });
+      this.sourceEnded(session);
+      this.finish(session);
     };
     for (const track of stream.getTracks()) {
       track.addEventListener("ended", () => {
-        if (this.session === session && recorder.state !== "inactive") recorder.stop();
+        if (this.session !== session || session.finished) return;
+        this.sourceEnded(session);
+        this.requestStop(session);
       });
     }
 
@@ -288,43 +299,73 @@ export class CaptureHost {
     }
     const session = this.session;
     if (!session || session.id !== sessionId) return;
-    if (session.stopRequested) return;
-    session.stopRequested = true;
-    if (session.recorder.state === "inactive") {
-      this.finish(session, (tracksStoppedAt) => this.send({ type: "stopped", sessionId: session.id, tracksStoppedAt }));
-      return;
+    if (!session.cause) session.cause = "normal";
+    this.requestStop(session);
+  }
+
+  private sourceEnded(session: Session): void {
+    if (session.cause) return;
+    const videoEnded = session.stream.getVideoTracks().some((track) => track.readyState === "ended");
+    session.cause = { code: "capture_failed", detail: "capture source ended (display or audio track stopped)",
+      ...(videoEnded ? { displayFailure: "track_ended" as const } : {}) };
+  }
+
+  private setFailure(session: Session, cause: Exclude<Session["cause"], "normal" | undefined>): void {
+    if (session.finished) return;
+    // Real encoder/handoff errors still fail a requested stop; cleanup track
+    // events never overwrite the first cause.
+    if (!session.cause || session.cause === "normal") session.cause = cause;
+  }
+
+  private armDeadline(session: Session): void {
+    if (session.timer || session.finished) return;
+    session.timer = setTimeout(() => {
+      this.setFailure(session, { code: "capture_failed", detail: "capture termination timed out; final data handoff incomplete" });
+      this.complete(session);
+    }, this.terminalTimeoutMs);
+  }
+
+  private requestStop(session: Session): void {
+    this.armDeadline(session);
+    if (session.recorder.state !== "inactive") {
+      try { session.recorder.stop(); }
+      catch (cause) { this.setFailure(session, { code: "capture_failed", detail: describe(cause) }); }
     }
-    // `stop()` flushes a final dataavailable before firing `onstop`.
-    session.recorder.stop();
+    // Inactive does not mean the queued final data/stop events have arrived.
   }
 
   private enqueueChunk(session: Session, blob: Blob): void {
-    if (blob.size === 0) return;
-    const seq = session.seq;
-    session.seq += 1;
-    session.chain = session.chain
-      .then(async () => {
-        const bytes = await blob.arrayBuffer();
-        // Copied, not transferred: on Electron 44 a transferred ArrayBuffer
-        // over a MessagePort hangs the main process (verified with a probe).
-        // One second of media (~1 MB) per copy is negligible.
-        this.port.postMessage({ type: "chunk", sessionId: session.id, seq, bytes } satisfies HostMessage);
-      })
-      .catch((cause: unknown) => {
-        this.fail(session.id, "capture_failed", `chunk read failed: ${describe(cause)}`);
-      });
+    if (session.finished || session.draining || blob.size === 0) return;
+    const seq = session.seq++;
+    session.chain = session.chain.then(async () => {
+      if (session.finished || session.handoffFailed) return;
+      const bytes = await blob.arrayBuffer();
+      if (session.finished) return;
+      this.port.postMessage({ type: "chunk", sessionId: session.id, seq, bytes } satisfies HostMessage);
+    }).catch((cause: unknown) => {
+      session.handoffFailed = true;
+      this.setFailure(session, { code: "capture_failed", detail: `chunk read failed: ${describe(cause)}` });
+      this.requestStop(session);
+    });
   }
 
-  /** Runs `then` after every pending chunk has been posted, exactly once. */
-  private finish(session: Session, then: (tracksStoppedAt: number) => void): void {
+  private finish(session: Session): void {
+    if (session.finished || session.draining) return;
+    session.draining = true;
+    this.armDeadline(session);
+    void session.chain.then(() => this.complete(session));
+  }
+
+  private complete(session: Session): void {
     if (session.finished) return;
     session.finished = true;
+    if (session.timer) clearTimeout(session.timer);
     stopTracks(session.stream);
     const tracksStoppedAt = Date.now();
-    void session.chain.then(() => {
-      if (this.session === session) this.session = undefined;
-      then(tracksStoppedAt);
-    });
+    if (this.session === session) this.session = undefined;
+    const cause = session.cause;
+    if (cause === "normal") this.send({ type: "stopped", sessionId: session.id, tracksStoppedAt });
+    else this.fail(session.id, cause?.code ?? "capture_failed", cause?.detail ?? "capture ended", cause?.displayFailure);
   }
 
   private fail(sessionId: string, code: ErrorCode, detail: string, displayFailure?: "track_ended"): void {

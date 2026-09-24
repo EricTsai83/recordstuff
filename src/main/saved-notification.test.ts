@@ -92,3 +92,15 @@ describe("saved notification lifecycle", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+it("suppresses saves during quit and restores future delivery after a deferred quit", () => {
+  const { notification, show } = setup();
+  notification.schedule("/old.mp4");
+  notification.setQuitting(true);
+  notification.schedule("/during-quit.mp4");
+  vi.runAllTimers(); expect(show).not.toHaveBeenCalled();
+  notification.setQuitting(false);
+  vi.runAllTimers(); expect(show).not.toHaveBeenCalled();
+  notification.schedule("/later.mp4");
+  vi.runAllTimers(); expect(show).toHaveBeenCalledExactlyOnceWith("/later.mp4");
+});

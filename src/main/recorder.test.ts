@@ -347,7 +347,7 @@ describe("Recorder failures", () => {
     ctx.recorder.toggle();
     await flush();
     expect(ctx.recorder.state).toEqual({ type: "idle", outputDirUnavailable: true });
-    expect(ctx.events.at(-1)).toEqual({ type: "failed", code: "output_open_failed", detail: "/out" });
+    expect(ctx.events.at(-1)).toEqual({ type: "failed", code: "output_open_failed", detail: "EACCES" });
     expect(ctx.host.started).toEqual([]);
     expect(ctx.host.stopped).toEqual([]);
 
@@ -477,7 +477,7 @@ describe("Recorder review fixes", () => {
     ctx.recorder.toggle();
     await vi.advanceTimersByTimeAsync(8000);
     expect(ctx.recorder.state).toEqual({ type: "idle", outputDirUnavailable: true });
-    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "output_open_failed" });
+    expect(ctx.events.at(-1)).toMatchObject({ type: "failureStatus", result: { code: "output_open_failed", outcome: "pending" } });
     expect(ctx.host.started).toEqual([]);
   });
 
@@ -507,6 +507,7 @@ describe("Recorder review fixes", () => {
     expect(ctx.recorder.state).toEqual({ type: "idle" });
     expect(ctx.events.filter(event => event.type === "state").at(-1)).toEqual({ type: "state", state: { type: "idle" } });
     expect(ctx.events.at(-1)).toMatchObject({ type: "failureStatus", result: { outcome: "pending" } });
+    await flush();
     releaseAbandon!();
     await flush();
     expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "capture_host_crashed", partialPath: writer.recordingPath });
@@ -522,12 +523,13 @@ describe("Recorder review fixes", () => {
         releaseAbandon = () => r(writer.recordingPath);
       });
     const shutdown = ctx.recorder.shutdown();
-    await vi.advanceTimersByTimeAsync(10_000); // host never answers stop → stop_timeout
+    await vi.advanceTimersByTimeAsync(13_000); // host never answers stop → stop_timeout
     let resolved = false;
     void shutdown.then(() => (resolved = true));
     await flush();
     expect(ctx.recorder.state).toEqual({ type: "idle" });
-    expect(resolved).toBe(false);
+    expect(await shutdown).toBe(false);
+    await flush();
     releaseAbandon!();
     await flush();
     expect(resolved).toBe(true);
@@ -544,10 +546,14 @@ describe("Recorder review fixes", () => {
         releaseFinish = () => r(writer.finalPath);
       });
     const shutdown = ctx.recorder.shutdown();
+    await flush();
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
     await flush();
-    await vi.advanceTimersByTimeAsync(10_000);
-    await shutdown; // resolved by the cap, without failing the session
+    await vi.advanceTimersByTimeAsync(13_000);
+    expect(await shutdown).toBe(false); // Deferred, without failing the session
+    const retry = ctx.recorder.shutdown();
+    await vi.advanceTimersByTimeAsync(13_000);
+    expect(await retry).toBe(false);
     expect(ctx.recorder.state.type).toBe("stopping");
     expect(ctx.events.some((e) => e.type === "failed")).toBe(false);
     releaseFinish!();
@@ -574,17 +580,20 @@ describe("Recorder review fixes", () => {
     expect(ctx.host.started).toEqual(["s1"]);
   });
 
-  it("shutdown gives a stalled partial-file close a bounded grace period", async () => {
+  it("shutdown defers quit while partial-file close is stalled and reopens recording admission", async () => {
     const ctx = setup();
     await startRecording(ctx);
-    ctx.writers[0]!.abandon = () => new Promise(() => undefined);
-    let resolved = false;
-    void ctx.recorder.shutdown().then(() => (resolved = true));
-    await vi.advanceTimersByTimeAsync(10_000);
+    let release!: () => void;
+    ctx.writers[0]!.abandon = () => new Promise(resolve => { release = () => resolve(undefined); });
+    const quitting = ctx.recorder.shutdown();
+    await vi.advanceTimersByTimeAsync(13_000);
     expect(ctx.recorder.state).toEqual({ type: "idle" });
-    expect(resolved).toBe(false);
-    await vi.advanceTimersByTimeAsync(3000);
-    expect(resolved).toBe(true);
+    expect(await quitting).toBe(false);
+    await startRecording(ctx);
+    expect(ctx.writers).toHaveLength(2);
+    expect(ctx.recorder.state.type).toBe("recording");
+    ctx.host.crash(); release(); await flush();
+    expect(await ctx.recorder.shutdown()).toBe(true);
   });
 
   it("a non-EEXIST open error is not retried", async () => {
@@ -673,7 +682,7 @@ describe("Recorder permission", () => {
 describe("Recorder shutdown", () => {
   it("resolves immediately when idle", async () => {
     const ctx = setup();
-    await expect(ctx.recorder.shutdown()).resolves.toBeUndefined();
+    await expect(ctx.recorder.shutdown()).resolves.toBe(true);
   });
 
   it("stops a running recording and resolves when idle", async () => {
@@ -708,12 +717,12 @@ describe("Recorder shutdown", () => {
     expect(ctx.recorder.state.type).toBe("idle");
   });
 
-  it("is bounded by the stop timeout", async () => {
+  it("admits quit after a missing stop response is failed and cleaned up within the margin", async () => {
     const ctx = setup();
     await startRecording(ctx);
     const shutdown = ctx.recorder.shutdown();
     await vi.advanceTimersByTimeAsync(10_000);
-    await shutdown;
+    expect(await shutdown).toBe(true);
     expect(ctx.recorder.state.type).toBe("idle");
     expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "stop_timeout" });
   });
@@ -892,6 +901,7 @@ describe("failure presentation timing", () => {
     expect(status).toHaveLength(1);
     expect(status[0]).toMatchObject({ result: { outcome: "pending", code: "capture_host_crashed" } });
     expect(ctx.events.filter(event => event.type === "failed")).toHaveLength(0);
+    await flush();
     resolve("/tmp/partial.recording.mp4");
     await flush();
     expect(ctx.events.filter(event => event.type === "failureStatus")).toHaveLength(2);
@@ -935,4 +945,123 @@ it("sets idle before pending failure subscribers can block on persistence", asyn
   ctx.recorder.subscribe(event => { if (event.type === "failureStatus" && event.result.outcome === "pending") states.push(ctx.recorder.state.type); });
   ctx.host.crash(); await ctx.recorder.shutdown();
   expect(states).toEqual(["idle"]);
+});
+
+describe("terminal ownership and quit admission", () => {
+  it.each([false, true])("retains both failure cleanups (reverse=%s) before admitting quit", async (reverse) => {
+    const ctx = setup();
+    const releases: Array<() => void> = [];
+    for (let i = 0; i < 2; i++) {
+      await startRecording(ctx);
+      const writer = ctx.writers[i]!;
+      writer.abandon = () => new Promise(resolve => { releases.push(() => resolve(writer.recordingPath)); });
+      ctx.host.crash();
+    }
+    let safe = false;
+    const quitting = ctx.recorder.shutdown().then(result => { safe = result; });
+    expect(ctx.recorder.shutdown()).toBe(ctx.recorder.shutdown());
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.writers).toHaveLength(2);
+    releases[reverse ? 1 : 0]!();
+    await flush();
+    expect(safe).toBe(false);
+    releases[reverse ? 0 : 1]!();
+    await quitting;
+    expect(safe).toBe(true);
+    expect(ctx.events.filter(e => e.type === "failed")).toHaveLength(2);
+  });
+
+  it("registers failure cleanup before an idle subscriber requests quit", async () => {
+    const ctx = setup();
+    await startRecording(ctx);
+    let release!: () => void;
+    ctx.writers[0]!.abandon = () => new Promise(resolve => { release = () => resolve("/partial"); });
+    let safe = false;
+    ctx.recorder.subscribe(e => {
+      if (e.type === "state" && e.state.type === "idle") void ctx.recorder.shutdown().then(value => { safe = value; });
+    });
+    ctx.host.crash();
+    await flush();
+    expect(safe).toBe(false);
+    release(); await flush();
+    expect(safe).toBe(true);
+  });
+
+  it("owns a late writer open and its close even after the opening timeout", async () => {
+    let open!: (writer: FakeWriter) => void;
+    const ctx = setup({ openWriter: () => new Promise(resolve => { open = resolve; }) });
+    ctx.recorder.toggle(); await flush();
+    await vi.advanceTimersByTimeAsync(8000);
+    let safe = false;
+    const quitting = ctx.recorder.shutdown().then(value => { safe = value; });
+    await flush(); expect(safe).toBe(false);
+    const writer = new FakeWriter("/partial", "/final");
+    let close!: () => void;
+    writer.abandon = () => new Promise(resolve => { close = () => resolve(undefined); });
+    open(writer); await flush(); expect(safe).toBe(false);
+    close(); await quitting; expect(safe).toBe(true);
+  });
+
+  it.each(["crash", "error", "duplicate-stop"])("ignores %s after stopped while a real final copy is pending", async (late) => {
+    vi.useRealTimers();
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "recordstuff-terminal-"));
+    let copy!: () => void;
+    const gate = new Promise<void>(resolve => { copy = resolve; });
+    const host = new FakeHost();
+    const events: RecorderEvent[] = [];
+    const recorder = new Recorder({ host, outputDir: () => dir, quality: () => DEFAULT_QUALITY,
+      ensureWritableDir: async () => undefined, newSessionId: () => "real",
+      openWriter: (partial, final) => FileWriter.open(partial, final, { io: { ...nodeFs,
+        copyExclusive: async (from, to) => { await gate; await nodeFs.copyExclusive(from, to); },
+      } }),
+    });
+    recorder.subscribe(e => events.push(e));
+    try {
+      recorder.toggle();
+      while (host.started.length === 0) await new Promise(resolve => setTimeout(resolve, 1));
+      host.emit(started("real")); host.emit({ type: "chunk", sessionId: "real", seq: 0, bytes: new Uint8Array([1, 2, 3]).buffer });
+      recorder.stop(); host.emit({ type: "stopped", sessionId: "real" });
+      if (late === "crash") host.crash();
+      else if (late === "error") host.emit({ type: "error", sessionId: "real", code: "capture_failed", detail: "late" });
+      else host.emit({ type: "stopped", sessionId: "real" });
+      copy(); expect(await recorder.shutdown()).toBe(true);
+      expect(events.filter(e => e.type === "failed")).toHaveLength(0);
+      const saved = events.filter(e => e.type === "saved");
+      expect(saved).toHaveLength(1);
+      expect([...await fs.readFile(saved[0]!.path)]).toEqual([1, 2, 3]);
+    } finally { copy(); await recorder.shutdown(); await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+it("retains a late-open candidate as uncertain when its close cannot be confirmed", async () => {
+  let open!: (writer: FakeWriter) => void;
+  const ctx = setup({ openWriter: () => new Promise(resolve => { open = resolve; }) });
+  ctx.recorder.toggle(); await flush();
+  await vi.advanceTimersByTimeAsync(8000);
+  const late = new FakeWriter("/out/late.recording.mp4", "/out/late.mp4");
+  late.abandon = async () => { throw new Error("close failed"); };
+  open(late); await flush();
+  expect(await ctx.recorder.shutdown()).toBe(true);
+  const statuses = ctx.events.filter(event => event.type === "failureStatus");
+  expect(statuses.at(-1)).toMatchObject({ result: { outcome: "unknown", recordingPath: late.recordingPath } });
+  expect(statuses.at(-1)).not.toHaveProperty("result.partialPath");
+  expect(ctx.events.filter(event => event.type === "failed")).toHaveLength(1);
+});
+
+it("defers quit without cancelling an interactive capture request at the quit deadline", async () => {
+  const ctx = setup({ captureRequestTimeoutMs: "default" });
+  ctx.recorder.toggle(); await flush();
+  const quitting = ctx.recorder.shutdown();
+  await vi.advanceTimersByTimeAsync(13_000);
+  expect(await quitting).toBe(false);
+  expect(ctx.recorder.state.type).toBe("starting");
+  expect(ctx.host.stopped).toEqual([]);
+  expect(ctx.events.some(event => event.type === "failed")).toBe(false);
+  ctx.host.emit(started("s1")); ctx.host.emit(chunk("s1", 0)); await flush();
+  expect(ctx.recorder.state.type).toBe("stopping");
+  expect(ctx.host.stopped).toEqual(["s1"]);
+  ctx.host.emit({ type: "stopped", sessionId: "s1" }); await flush();
+  expect(ctx.events.filter(event => event.type === "saved")).toHaveLength(1);
+  expect(ctx.events.some(event => event.type === "failed")).toBe(false);
 });

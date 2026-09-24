@@ -523,3 +523,59 @@ describe("renderer CaptureHost", () => {
     expect(port.sent).toEqual([]);
   });
 });
+
+describe("terminal event ordering", () => {
+  it("drains error → final data → stop and keeps the encoder cause through duplicate events", async () => {
+    const port = boot(); port.receive(start("s1")); pendingStream!.resolve(stream()); await flush();
+    const recorder = FakeMediaRecorder.instances[0]!;
+    recorder.emitChunk([1]); await flush();
+    recorder.state = "inactive";
+    recorder.onerror?.({ error: new Error("encoder failed") });
+    let release!: (bytes: ArrayBuffer) => void;
+    recorder.ondataavailable?.({ data: { size: 2, arrayBuffer: () => new Promise<ArrayBuffer>(resolve => { release = resolve; }) } as Blob });
+    recorder.onstop?.(); recorder.onstop?.();
+    port.receive({ type: "stop", sessionId: "s1" });
+    await flush(); expect(port.types()).toEqual(["started", "chunk"]);
+    release(new Uint8Array([2, 3]).buffer); await flush();
+    recorder.onerror?.({ error: new Error("duplicate") });
+    expect(port.types()).toEqual(["started", "chunk", "chunk", "error"]);
+    expect(port.sent.at(-1)).toMatchObject({ detail: "Error: encoder failed" });
+  });
+
+  it.each([true, false])("freezes track versus user stop order (track first=%s) while Blob is delayed", async (trackFirst) => {
+    const port = boot(); port.receive(start("s1")); const media = stream(); pendingStream!.resolve(media); await flush();
+    let release!: (bytes: ArrayBuffer) => void;
+    FakeMediaRecorder.instances[0]!.ondataavailable?.({ data: { size: 1, arrayBuffer: () => new Promise<ArrayBuffer>(resolve => { release = resolve; }) } as Blob });
+    await flush();
+    if (trackFirst) media.getAudioTracks()[0]!.end();
+    port.receive({ type: "stop", sessionId: "s1" });
+    if (!trackFirst) media.getAudioTracks()[0]!.end();
+    release(new Uint8Array([7]).buffer); await flush();
+    expect(port.sent.at(-1)?.type).toBe(trackFirst ? "error" : "stopped");
+    expect(port.sent.at(-1)).not.toHaveProperty("displayFailure");
+  });
+
+  it("reports a rejected handoff exactly once after stopping", async () => {
+    const port = boot(); port.receive(start("s1")); pendingStream!.resolve(stream()); await flush();
+    FakeMediaRecorder.instances[0]!.ondataavailable?.({ data: { size: 1, arrayBuffer: async () => { throw new Error("read failed"); } } as unknown as Blob });
+    await flush(); await flush();
+    expect(port.types()).toEqual(["started", "error"]);
+    expect(port.sent.at(-1)).toMatchObject({ detail: expect.stringContaining("read failed") });
+  });
+
+  it.each(["missing-stop", "hung-blob"])("bounds %s and never hands off bytes after its terminal error", async (mode) => {
+    const port = boot({ measureFrameSize: measureFromSettings, terminalTimeoutMs: 20 });
+    port.receive(start("s1")); const media = stream(); pendingStream!.resolve(media); await flush();
+    const recorder = FakeMediaRecorder.instances[0]!;
+    let release: ((bytes: ArrayBuffer) => void) | undefined;
+    recorder.state = "inactive";
+    if (mode === "hung-blob") {
+      recorder.ondataavailable?.({ data: { size: 1, arrayBuffer: () => new Promise<ArrayBuffer>(resolve => { release = resolve; }) } as Blob });
+      recorder.onstop?.();
+    } else recorder.onerror?.({ error: new Error("encoder failed") });
+    await new Promise(resolve => setTimeout(resolve, 40));
+    release?.(new ArrayBuffer(1)); recorder.onstop?.(); await flush();
+    expect(port.types()).toEqual(["started", "error"]);
+    expect(media.tracks.every(track => track.stopped)).toBe(true);
+  });
+});

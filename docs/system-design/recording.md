@@ -41,10 +41,19 @@ NeedsPermission carries needsRelaunch. Idle may carry lastSavedPath or outputDir
 | Capture/interactive permission request | 120 s | capture_start_failed and stop session |
 | First chunk after started | 8 s | capture_start_failed; preserve any written data |
 | Stop response | 10 s | stop_timeout |
-| Quit wait | 10 s, plus up to 3 s failure-close grace | Best-effort partial-file cleanup; avoid falsely failing an already-finalizing file |
+| Renderer terminal drain | 5 s after termination begins | Error if stop/final Blob handoff is missing; discard subsequent handoff |
+| Quit wait | 13 s per attempt (stop timeout + 3 s) | Defer quit with localized feedback while any owned work remains; never truncate finalization |
 | Heartbeat | Check/send every 5 s while a session is in flight | Tear down when the check finds two unanswered pings |
 
 These are project waiting limits, not OS standards or exact end-to-end timing guarantees. A timed-out disk operation is not actually canceled.
+
+## Terminal ownership and normal exit
+
+CaptureHost latches the first termination cause before awaiting Blob conversion. A later user stop cannot hide track loss or an encoder error; cleanup track events do not turn an earlier normal stop into failure. Encoder error waits for final `dataavailable` and `stop`, then drains the handoff chain before one terminal message. The 5-second fallback reports failure and stops further handoff; it cannot recover bytes lost in a hard crash or a stuck conversion.
+
+Once Recorder accepts `stopped`, its finalizer owns the attempt. Late host crashes/errors, duplicate stop messages and display removal cannot abandon a publishing file; disk errors still enter failure cleanup. All opening/finalizing/cleanup operations are registered before synchronous subscribers run. An opening timeout returns UI to idle immediately, but its result stays pending until the late open and close settle. Multiple failed attempts retain independent cleanup ownership.
+
+Every `before-quit`, including idle, uses `installQuitCoordinator`. Repeated requests join one attempt and new recordings are blocked during admission. Capture is stopped automatically. A starting session retains stop intent even after quit is deferred, so capture stops and saves as soon as it starts. Success requires no session and no outstanding work, including late opens, earlier failed attempts and failure-result verification/publication. The quit deadline only defers exit; the existing capture-request and stop-response timers retain authority over capture failures. Pending disk/result-publication work stays owned, the app stays open and the user can retry quitting. The app never destroys the host or exposes an unconfirmed retained path merely to meet a quit deadline. Force-quit, process kill and power loss bypass these guarantees; no crash recovery or destructive exit option is provided.
 
 ## Quality and encoding
 

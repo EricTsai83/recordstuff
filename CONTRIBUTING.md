@@ -45,7 +45,7 @@ For testing a packaged macOS app, `pnpm start:app` builds, self-signs, verifies,
 
 [Repository layout](docs/system-design/repository.md) covers the rest of the tree — packaging inputs, documentation, generated paths, and the configuration that enforces the structure.
 
-Keep a change focused on the problem it addresses and follow the surrounding code's conventions. Tests live alongside the source as `*.test.ts`. Add or update tests when behavior changes; for a bug fix, cover the regression where practical.
+Keep a change focused on the problem it addresses and follow the surrounding code's conventions. Tests live alongside the source as `*.test.ts`. Cross-process tests needing both browser DOM and Node APIs live in `tests/`, checked by `tsconfig.tests.json`. `pnpm typecheck` checks main, renderer and these integration tests separately, preserving the renderer’s Node-free type boundary. Add or update tests when behavior changes; for a bug fix, cover the regression where practical.
 
 App messages live in `src/shared/i18n.ts`. When adding or changing a message, update the English and Traditional Chinese entries and keep named placeholders consistent. When changing documented behavior or commands, update the relevant documentation and its existing translation. Keep document links valid relative to each file.
 
