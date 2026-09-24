@@ -1,3 +1,7 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { FileWriter, nodeFs } from "./file-writer";
 import { SavedNotification, SAVED_NOTIFICATION_DELAY_MS } from "./saved-notification";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostMessage } from "../shared/protocol";
@@ -775,4 +779,91 @@ it("normal finalization followed by removal does not emit a display failure", as
   ctx.host.emit({ type: "stopped", sessionId: "s1" }); ctx.recorder.displayRemoved(); await flush();
   expect(ctx.events.filter((e) => e.type === "displayFailed")).toEqual([]);
   expect(ctx.events.filter((e) => e.type === "saved")).toHaveLength(1);
+});
+
+
+describe("Recorder with real FileWriter", () => {
+  it.each(["ENOSPC", "EIO", "zero"])("reports partial first-chunk failure (%s), closes, and records again", async (fault) => {
+    vi.useRealTimers();
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "recordstuff-recorder-"));
+    const host = new FakeHost();
+    const events: RecorderEvent[] = [];
+    const writers: FileWriter[] = [];
+    const closed: string[] = [];
+    let session = 0;
+    const recorder = new Recorder({
+      host, outputDir: () => dir, quality: () => DEFAULT_QUALITY,
+      ensureWritableDir: async () => undefined,
+      now: () => new Date(2026, 8, 24, 12, 0, 0),
+      newSessionId: () => `real-${++session}`,
+      openWriter: async (recordingPath, finalPath) => {
+        const injectFailure = session === 1;
+        const writer = await FileWriter.open(recordingPath, finalPath, {
+          io: {
+            ...nodeFs,
+            open: async (file, flags) => {
+              const handle = await nodeFs.open(file, flags);
+              let calls = 0;
+              return {
+                sync: () => handle.sync(),
+                close: async () => { await handle.close(); closed.push(file); },
+                write: async (data) => {
+                  calls += 1;
+                  if (injectFailure && calls > 1) {
+                    if (fault === "zero") return { bytesWritten: 0 };
+                    throw Object.assign(new Error(fault), { code: fault });
+                  }
+                  return handle.write(data.subarray(0, 2));
+                },
+              };
+            },
+          },
+        });
+        writers.push(writer);
+        return writer;
+      },
+    });
+    recorder.subscribe((event) => events.push(event));
+    try {
+      recorder.toggle();
+      await vi.waitFor(() => expect(host.started).toEqual(["real-1"]));
+      host.emit(started("real-1"));
+      host.emit({ type: "chunk", sessionId: "real-1", seq: 0, bytes: new Uint8Array([1, 2, 3, 4]).buffer });
+      // A stop arriving while the append is pending must not publish success.
+      recorder.stop();
+      host.emit({ type: "stopped", sessionId: "real-1" });
+      await vi.waitFor(() => expect(events.filter((event) => event.type === "failed")).toHaveLength(1));
+      const first = writers[0]!;
+      expect(events.filter((event) => event.type === "failed")).toEqual([expect.objectContaining({
+        code: fault === "ENOSPC" ? "disk_full" : "output_write_failed", partialPath: first.recordingPath,
+      })]);
+      expect(events.filter((event) => event.type === "saved")).toHaveLength(0);
+      expect(first.bytesWritten).toBe(2);
+      expect(closed).toEqual([first.recordingPath]);
+      expect(await fs.readFile(first.recordingPath)).toEqual(Buffer.from([1, 2]));
+      await expect(fs.stat(first.finalPath)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(recorder.state.type).toBe("idle");
+
+      recorder.toggle();
+      await vi.waitFor(() => expect(host.started).toEqual(["real-1", "real-2"]));
+      host.emit(started("real-2"));
+      host.emit({ type: "chunk", sessionId: "real-2", seq: 0, bytes: new Uint8Array([5, 6, 7, 8, 9]).buffer });
+      recorder.stop();
+      host.emit({ type: "stopped", sessionId: "real-2" });
+      await vi.waitFor(() => expect(events.filter((event) => event.type === "saved")).toHaveLength(1));
+      const saved = events.find((event) => event.type === "saved");
+      expect(saved?.type).toBe("saved");
+      if (saved?.type !== "saved") throw new Error("Missing saved event");
+      expect(await fs.readFile(saved.path)).toEqual(Buffer.from([5, 6, 7, 8, 9]));
+      expect(writers[1]!.bytesWritten).toBe(5);
+      expect(closed).toEqual(writers.map((writer) => writer.recordingPath));
+      expect(events.filter((event) => event.type === "failed")).toHaveLength(1);
+      expect(await fs.readFile(first.recordingPath)).toEqual(Buffer.from([1, 2]));
+    } finally {
+      host.crash();
+      await recorder.shutdown();
+      for (const writer of writers) await writer.abandon();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
 });

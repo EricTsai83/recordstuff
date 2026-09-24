@@ -10,7 +10,7 @@ import path from "node:path";
 import type { ErrorCode } from "../shared/state";
 
 export interface WritableHandle {
-  write(data: Uint8Array): Promise<unknown>;
+  write(data: Uint8Array): Promise<{ bytesWritten: number }>;
   sync(): Promise<void>;
   close(): Promise<void>;
 }
@@ -102,7 +102,8 @@ export class FileWriter {
     fsyncIntervalMs: number,
   ) {
     this.fsyncTimer = setInterval(() => {
-      void this.enqueue(() => this.handle.sync());
+      // enqueue retains the first failure; consume this background caller's rejection.
+      void this.enqueue(() => this.handle.sync()).catch(() => undefined);
     }, fsyncIntervalMs);
   }
 
@@ -133,8 +134,16 @@ export class FileWriter {
   append(bytes: Uint8Array): Promise<void> {
     if (this.closed) return Promise.reject(new Error("FileWriter is closed"));
     return this.enqueue(async () => {
-      await this.handle.write(bytes);
-      this._bytesWritten += bytes.byteLength;
+      let offset = 0;
+      while (offset < bytes.byteLength) {
+        const remaining = bytes.subarray(offset);
+        const { bytesWritten } = await this.handle.write(remaining);
+        if (!Number.isInteger(bytesWritten) || bytesWritten <= 0 || bytesWritten > remaining.byteLength) {
+          throw new Error(`Invalid write progress: ${bytesWritten} of ${remaining.byteLength} bytes`);
+        }
+        offset += bytesWritten;
+        this._bytesWritten += bytesWritten;
+      }
     });
   }
 

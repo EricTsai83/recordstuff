@@ -6,7 +6,7 @@ Status: planned, not implemented. Created: 2026-09-24. Execution order: see [que
 
 ## Scope and evidence
 
-Bugs **3, 4 and 10**. Execute after [024](024-complete-recording-writes.md). The actual before-quit callback allows exit while failure cleanup is pending in idle, and calls quit after the 10-second cap even while finish is unresolved. A real FileWriter test also reproduces a host crash during delayed final copy: failure reports a retained partial, then finish deletes that partial and suppresses saved. These are controlled regressions, not measurements of native-exit data loss.
+Bugs **3, 4 and 10**. Execute after [completed 024](../docs/verification/history-2026-09.md#plan-024-complete-writes--2026-09-24). The actual before-quit callback allows exit while failure cleanup is pending in idle, and calls quit after the 10-second cap even while finish is unresolved. A real FileWriter test also reproduces a host crash during delayed final copy: failure reports a retained partial, then finish deletes that partial and suppresses saved. These are controlled regressions, not measurements of native-exit data loss.
 
 Affected owners: [Recorder](../src/main/recorder.ts), [exit integration](../src/main/index.ts), [FileWriter](../src/main/file-writer.ts), lifecycle tests and bilingual user feedback. Preserve exclusive destination naming and 024's complete-write contract. Do not add remuxing, crash recovery, background helper processes, or a native media rewrite.
 

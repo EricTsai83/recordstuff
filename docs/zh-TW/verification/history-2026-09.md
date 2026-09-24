@@ -494,3 +494,17 @@ Plan 023 依維護者授權的 System Events ＋原生 Computer Use 入口完成
 Plan 021 已完成，移除雙語計畫檔，下一個為 022。使用者提出的錯誤辨識度改善保留於 022：將診斷與一般說明分離，以醒目標題、圖示、原因與恢復指引呈現；本次結案不實作 UI 改善。前述自動測試、review 及稀疏音訊碼率原始失敗均保留。
 
 鏡像、動態旋轉／縮放／解析度變更、實體硬體 id 改變後重接、錄製中控制項鎖定的原生觀察、通知 banner 具體外觀及背景音隔離仍未驗。此次重接直接恢復不代表永久硬體身分；此次存檔可播放不保證所有中斷檔都能救回。本次僅文件收尾，不 commit、發布或開始 022。
+
+## Plan 024 完整寫入 — 2026-09-24
+
+開發來源為 `140746a8ab20365fcfddc90d1286b77c651d377f` 加 Plan 024 變更，開始時工作目錄乾淨。FileWriter 現在依實際 `bytesWritten` 補完每個 chunk，拒絕零／無效進度，I/O 失敗後保留確認寫入量且不產生完成檔。原有序列佇列、五秒 sync、錯誤碼與正式檔撞名保護保留；Recorder 正式程式不需修改。
+
+修正前的新 FileWriter 回歸測試為 **10 失敗／14 通過**，重現七位元組短寫截斷、部分成功後錯誤未被處理，以及無效進度被當作成功。最終 `pnpm check` 的型別檢查、**37 個測試檔／572 項測試**及正式建置通過。真實暫存檔案例涵蓋 4096 位元組每次最多寫七位元組、空輸入、多 chunk／立即 finish、sync 不插入 chunk 中間、首 chunk 部分成功後 ENOSPC／EIO／零進度、無效計數、首次錯誤保留、timer／handle 清理及既有撞名案例。Recorder 測試使用真正 FileWriter 搭配注入寫入，證明失敗 partial 路徑、不發 saved、完成清理及後續成功錄影。受控磁碟錯誤不代表原生失敗頻率，也不證明損壞 MP4 可播放。
+
+Astra 對 `pnpm start:app` 新建置的 `dist/mac-arm64/RecordStuff.app` 執行必要 smoke，九個 bundle 身分驗證通過。既有無視窗 App 的 computer use 存取逾時；先由 log 確認 idle，再經活動監視器原生 **「結束」而非「強制結束」**退出精確主程序與 helpers，之後才重建。`pnpm acceptance` 提供真實 OS 快捷鍵開始／停止／存檔及完整性驗證：**10.267 秒、1920×1080、48 kHz 雙聲道、聲道 RMS −27.211249／−27.213143 dBFS、10 次閃光與 10 次嗶聲**。QuickTime computer use 觀察播放從 0 至 3.234 秒，seek 至 7.008 秒並續播至 9.905 秒，確認素材動態內容變化。RecordStuff／helpers、測試 Chrome profile、QuickTime 及本輪新開的活動監視器均退出，偏好前後相同；App 保持關閉。
+
+環境為 macOS arm64、Apple M1 Pro、主螢幕 BenQ GW2785TC 1920×1080、外接耳機輸出。本次短錄影證明此環境的螢幕／系統音訊錄製與可觀察播放，不推論主觀聽感、保真、同步、長時間穩定、首次權限、硬體拔除或發布／安裝。設定回歸與完整畫質／fps 矩陣因相關行為未變而排除。原生 tray 存取仍有工具限制；本次檔案寫入變更不要求 tray 操作。
+
+本機證據均在 measurements 目錄：`docs/verification/measurements/2026-09-24-plan-024/`（修正前輸出、最終 check 與 review）、`2026-09-24T1816-plan024-computer-use/`（建置、環境、播放／清理報告）、`2026-09-24T1816-plan024-hotkey-acceptance/`（runner 報告、verify JSON 與 App log）。這些忽略追蹤的原始產物不隨 fresh clone 提供。
+
+Claude Opus 5.5 已完成唯讀 x-high review（309.5 秒）。兩項 Low finding 均接受：雙語函式索引漏述失敗 append 的確認進度，以及本次修改的 disk-full 回歸測試只在斷言通過後才關閉 writer。索引已描述實際寫入／計數契約（及既有排他複製 finish）；測試將 writer 納入必定執行的 teardown。這些文件／測試修正不改動已原生驗收的 App 產物。review 後型別檢查與 25 項 FileWriter 測試通過；有限修正不需第二輪 review。Plan 024 已完成並移除雙語計畫檔，下一項為 025；未 commit、push 或發布。

@@ -8,6 +8,7 @@ For what to run now, use the [testing policy](../testing.md) and [shared accepta
 
 | Area | Recorded result and limits |
 | --- | --- |
+| Complete recording writes | Plan 024: 572 tests plus fresh-bundle 10.267-second capture, stereo RMS −27.21/−27.21 dBFS, QuickTime playback/seek and cleanup. Controlled partial-write failures and recovery use real FileWriter; not crash durability or damaged-file playback. See [complete writes](history-2026-09.md#plan-024-complete-writes--2026-09-24) |
 | Settings automation | Latest recorded run: 555 unit tests, 76/76 panel cases and 40/40 integration cases, with cleanup. Includes window-size persistence. Controlled registration/tray boundaries do not prove native OS delivery. See [size persistence](history-2026-09.md#settings-window-size-persistence--2026-09-24) |
 | Settings native acceptance | Maintainer reported entry, recording/playback, shortcut and appearance checks; confirmed the mouse Confirm fix. Remaining VoiceOver, native contrast, full native matrix, new display-error UI and final external-link opening cases were waived, not passed. See [Plan 022 closure](history-2026-09.md#plan-022-closure--2026-09-24) |
 | Display removal/recovery | Maintainer-reported target refusal, recovery and recording/save/playback after removal; no extension to untested hardware or later error UI. See [Plan 021 closure](history-2026-09.md#plan-021-closure--2026-09-23) |

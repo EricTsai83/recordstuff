@@ -6,7 +6,7 @@
 
 ## 範圍與證據
 
-處理 bug **3、4、10**，接在 [024](024-complete-recording-writes.zh-TW.md) 後。實際 before-quit callback 在待命但失敗清理未完成時允許退出；正常 finish 超過 10 秒也會呼叫退出。另一個真實 FileWriter 測試在延遲複製期間注入 host 崩潰，重現「先回報保留暫存檔，稍後 finish 刪掉它，且不發 saved」。這些是受控回歸證據，尚非原生退出造成資料損壞的量測。
+處理 bug **3、4、10**，接在 [已完成的 024](../docs/zh-TW/verification/history-2026-09.md#plan-024-完整寫入--2026-09-24) 後。實際 before-quit callback 在待命但失敗清理未完成時允許退出；正常 finish 超過 10 秒也會呼叫退出。另一個真實 FileWriter 測試在延遲複製期間注入 host 崩潰，重現「先回報保留暫存檔，稍後 finish 刪掉它，且不發 saved」。這些是受控回歸證據，尚非原生退出造成資料損壞的量測。
 
 影響：[Recorder](../src/main/recorder.ts)、[退出整合](../src/main/index.ts)、[FileWriter](../src/main/file-writer.ts)、生命週期測試與雙語提示。保留正式檔名不覆寫及 024 完整寫入契約。不加入 remux、崩潰恢復、背景 helper 或原生媒體重寫。
 

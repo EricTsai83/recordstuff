@@ -116,9 +116,9 @@ The page's window-message callback checks source/marker/port before creating the
 | ensureWritableDir | mkdir and write probe; throw output_open_failed on failure; remove probe best effort |
 | FileWriter constructor | Store handle/paths/I/O and schedule queued sync |
 | FileWriter.open | Exclusive temporary-file open → writer; wrap open failure |
-| bytesWritten | Bytes counted after successful append calls |
-| append | Reject if closed; queue write and increment byte count |
-| finish | Queued sync, release, rename → final path; reject failure |
+| bytesWritten | Sum of confirmed bytes from each write, including progress before an append fails |
+| append | Reject if closed; queue complete writes of the remaining buffer, counting confirmed progress; empty input skips write, zero/invalid counts reject |
+| finish | Queued sync, release, exclusive copy with collision suffixes, best-effort temporary removal → actual final path; reject failure |
 | abandon | Drain, best-effort close, preserve nonempty temporary file or remove empty file; never throw |
 | release | Once-only closed flag, timer cleanup, and handle close |
 | enqueue | Serialize operations; retain first failure and reject later operations consistently |

@@ -5,10 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FileWriteError, FileWriter, classifyWriteError, ensureWritableDir, nodeFs, type FileWriterFs, type WritableHandle } from "./file-writer";
 
 let dir: string;
+const activeWriters: FileWriter[] = [];
 beforeEach(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), "recordstuff-fw-"));
 });
 afterEach(async () => {
+  for (const writer of activeWriters.splice(0)) await writer.abandon();
+  vi.useRealTimers();
   await fs.rm(dir, { recursive: true, force: true });
 });
 
@@ -89,7 +92,7 @@ describe("FileWriter", () => {
       const io: FileWriterFs = {
         ...nodeFs,
         open: async () => ({
-          write: async () => undefined,
+          write: async (data) => ({ bytesWritten: data.byteLength }),
           sync: async () => {
             syncs += 1;
           },
@@ -126,6 +129,7 @@ describe("FileWriter", () => {
     });
     const recording = path.join(dir, "d.recording.mp4");
     const writer = await FileWriter.open(recording, path.join(dir, "d.mp4"), { io });
+    activeWriters.push(writer);
     await writer.append(bytes(1));
     const failed = writer.append(bytes(2));
     await expect(failed).rejects.toMatchObject({ code: "disk_full" });
@@ -149,6 +153,108 @@ describe("FileWriter", () => {
     const partial = await writer.abandon();
     expect(await fs.readFile(partial!)).toEqual(Buffer.from([1]));
     await expect(fs.stat(path.join(dir, "r.mp4"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
+
+describe("complete writes", () => {
+  async function open(onOpen: (handle: WritableHandle) => WritableHandle) {
+    const writer = await FileWriter.open(path.join(dir, "short.recording.mp4"), path.join(dir, "short.mp4"), {
+      io: wrapFs({ onOpen }),
+    });
+    activeWriters.push(writer);
+    return writer;
+  }
+
+  it("completes 4096 bytes in seven-byte pieces and drains queued chunks before finish", async () => {
+    const calls: number[] = [];
+    const writer = await open((handle) => ({
+      sync: () => handle.sync(), close: () => handle.close(),
+      write: (data) => { calls.push(data.length); return handle.write(data.subarray(0, 7)); },
+    }));
+    const payload = Uint8Array.from({ length: 4096 }, (_, i) => i % 251);
+    const pending = [writer.append(new Uint8Array()), writer.append(payload), writer.append(bytes(9, 8, 7))];
+    const finished = writer.finish();
+    await Promise.all(pending);
+    const final = await finished;
+    expect(calls).not.toContain(0);
+    expect(calls).toHaveLength(Math.ceil(4096 / 7) + 1);
+    expect(writer.bytesWritten).toBe(4099);
+    expect(await fs.readFile(final)).toEqual(Buffer.concat([payload, bytes(9, 8, 7)]));
+  });
+
+  it("keeps timer sync and later chunks outside an unfinished short-write append", async () => {
+    vi.useFakeTimers();
+    let resume!: () => void;
+    const gate = new Promise<void>((resolve) => { resume = resolve; });
+    const order: string[] = [];
+    const writer = await open((handle) => ({
+      close: () => handle.close(),
+      sync: async () => { order.push("sync"); await handle.sync(); },
+      write: async (data) => {
+        order.push(`write:${data[0]}`);
+        if (order.length === 1) await gate;
+        return handle.write(data.subarray(0, 1));
+      },
+    }));
+    try {
+      const first = writer.append(bytes(1, 2));
+      await vi.advanceTimersByTimeAsync(5000);
+      const second = writer.append(bytes(3));
+      expect(order).toEqual(["write:1"]);
+      resume();
+      await Promise.all([first, second]);
+      const final = await writer.finish();
+      expect(order).toEqual(["write:1", "write:2", "sync", "write:3", "sync"]);
+      expect(await fs.readFile(final)).toEqual(Buffer.from([1, 2, 3]));
+    } finally {
+      resume();
+    }
+  });
+
+  it.each(["ENOSPC", "EIO", "zero"])("retains progress within the first chunk on %s and latches failure", async (fault) => {
+    vi.useFakeTimers();
+    const writes = vi.fn();
+    const sync = vi.fn();
+    const close = vi.fn();
+    const writer = await open((handle) => ({
+      sync: async () => { sync(); await handle.sync(); },
+      close: async () => { close(); await handle.close(); },
+      write: async (data) => {
+        writes();
+        if (writes.mock.calls.length === 1) return handle.write(data.subarray(0, 2));
+        if (fault === "zero") return { bytesWritten: 0 };
+        throw Object.assign(new Error(fault), { code: fault });
+      },
+    }));
+    const failed = writer.append(bytes(1, 2, 3, 4));
+    const error = await failed.catch((cause: unknown) => cause);
+    expect(error).toMatchObject({ code: fault === "ENOSPC" ? "disk_full" : "output_write_failed" });
+    expect(writer.bytesWritten).toBe(2);
+    await expect(writer.append(bytes(5))).rejects.toBe(error);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(writer.finish()).rejects.toBe(error);
+    expect(await writer.abandon()).toBe(writer.recordingPath);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(writes).toHaveBeenCalledTimes(2);
+    expect(sync).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(await fs.readFile(writer.recordingPath)).toEqual(Buffer.from([1, 2]));
+    await expect(fs.stat(writer.finalPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it.each([0, -1, 0.5, NaN, Infinity, 4])("rejects invalid/no progress %s without counting or publishing", async (count) => {
+    const write = vi.fn(async () => ({ bytesWritten: count }));
+    const writer = await open((handle) => ({
+      write, sync: () => handle.sync(), close: () => handle.close(),
+    }));
+    await expect(writer.append(bytes(1, 2, 3))).rejects.toMatchObject({ code: "output_write_failed" });
+    expect(writer.bytesWritten).toBe(0);
+    expect(write).toHaveBeenCalledTimes(1);
+    await expect(writer.finish()).rejects.toBeInstanceOf(FileWriteError);
+    expect(await writer.abandon()).toBeUndefined();
+    await expect(fs.stat(writer.recordingPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fs.stat(writer.finalPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
 

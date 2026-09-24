@@ -12,9 +12,9 @@ Updated: 2026-09-24. v0.1.3 is published from tag `v0.1.3` with the simplified D
 
 ## Order and status
 
-Next: [024 — Complete recording writes before reporting success](024-complete-recording-writes.md). Planned, not implemented; adapt Cap’s complete-write/error-propagation contract and short-write regression approach to FileWriter.
+Next: [025 — Recording termination and safe exit](025-recording-finalization-and-exit.md). 024 is complete and removed: complete-write accounting, failure propagation/recovery tests and fresh-bundle recording/playback are recorded in [verification](../docs/verification/history-2026-09.md#plan-024-complete-writes--2026-09-24).
 
-Use R1 for the first ten-bug audit and R2 for the second eight-bug audit. Round 2 merges **five bugs into four existing plans and adds three plans**, without duplicate repair work. All remain planned, not implemented. Suggested order: **024 → 025 → 026 → 027 → 028 → 029 → 030 → 031 → 032 → 033**. Complete writes in 024 underpin 025/026; 029 depends on the terminal-event contract in 025. Other ordering is scheduling, not a hard dependency; 031–033 can run independently, and 032 should precede work requiring update acceptance. Before 030, recording acceptance must explicitly retain channel RMS/requested sync measurements rather than trust only the overall green verdict.
+Use R1 for the first ten-bug audit and R2 for the second eight-bug audit. Round 2 merges **five bugs into four existing plans and adds three plans**, without duplicate repair work. 025–033 remain planned, not implemented. Suggested order: **025 → 026 → 027 → 028 → 029 → 030 → 031 → 032 → 033**. Completed writes in 024 underpin 025/026; 029 depends on the terminal-event contract in 025. Other ordering is scheduling, not a hard dependency; 031–033 can run independently, and 032 should precede work requiring update acceptance. Before 030, recording acceptance must explicitly retain channel RMS/requested sync measurements rather than trust only the overall green verdict.
 
 | Plan | Audit bugs | Repair scope / grouping reason |
 | --- | --- | --- |
@@ -38,7 +38,7 @@ Existing Cap comparisons remain in each plan, pinned to revision `ce785e705e7965
 
 021 is complete and removed following maintainer manual acceptance: unplugged-target refusal, recovery by choosing Primary, direct reconnect recovery, and capture termination/save/playback/feedback after removal during recording. Error visibility improvements belong to 022; evidence limits and untested scenarios remain in the [closure record](../docs/verification/history-2026-09.md#plan-021-closure--2026-09-23).
 
-022 is complete and removed with maintainer acceptance: the maintainer verified the mouse Confirm fix; the final footer credits the author on the left and places website/GitHub icons on the right. The maintainer explicitly waived remaining manual acceptance, retained as accepted untested limitations in the [closure record](../docs/verification/history-2026-09.md#plan-022-closure--2026-09-24). 024 is the next queued development plan.
+022 is complete and removed with maintainer acceptance: the maintainer verified the mouse Confirm fix; the final footer credits the author on the left and places website/GitHub icons on the right. The maintainer explicitly waived remaining manual acceptance, retained as accepted untested limitations in the [closure record](../docs/verification/history-2026-09.md#plan-022-closure--2026-09-24). 025 is the next queued development plan.
 
 018 local acceptance, public feed delivery and 0.1.3 publication are complete; see the [closure record](../docs/verification/history-2026-09.md#plan-018-closure--2026-09-20). Untested cases remain documented in verification.
 

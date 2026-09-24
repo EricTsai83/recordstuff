@@ -117,9 +117,9 @@
 | `ensureWritableDir(dir, io)` | mkdir＋寫 probe；失敗拋 output_open_failed；probe 刪除 best effort |
 | `FileWriter.constructor(...)` | 保存 handle／路徑／I/O，啟動週期 sync 佇列 |
 | `FileWriter.open(recordingPath, finalPath, options)` | wx 開暫存檔 → writer，失敗包成 FileWriteError |
-| `bytesWritten` getter | 回 append 成功後累計的 bytes 計數 |
-| `append(bytes)` | closed 時 reject；enqueue write，成功累計 bytes |
-| `finish()` | enqueue sync，release，再 rename → 最終路徑；失敗 reject |
+| `bytesWritten` getter | 回傳每次 write 確認寫入量的總和，包含 append 失敗前的部分進度 |
+| `append(bytes)` | closed 時 reject；佇列中補完剩餘 buffer 並累計確認進度；空輸入不 write，零／無效計數 reject |
+| `finish()` | enqueue sync、release、排他複製並以尾碼避撞名、盡力刪除暫存檔 → 實際最終路徑；失敗 reject |
 | `abandon()` | 等佇列、best effort release；有 bytes 留暫存路徑，空檔盡力刪除；不拋出 |
 | `release()` | 一次性 closed／清 fsync timer／close handle |
 | `enqueue(task)` | 依序執行；首個 failure 被記住，後續回同一錯誤，內部 queue 保持可接續 |
