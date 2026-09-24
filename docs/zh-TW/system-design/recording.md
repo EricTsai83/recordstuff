@@ -84,7 +84,7 @@ sequenceDiagram
     R->>H: stop(id)
     H-->>R: 最後 chunk
     H-->>R: stopped(id)
-    R->>W: 等佇列、sync、close、rename
+    R->>W: 等佇列、sync、close、排他複製
     W-->>R: finalPath
     R-->>U: idle + saved 通知
 ```
@@ -97,9 +97,9 @@ Renderer 把 Blob 轉 ArrayBuffer 的 Promise 串成 chain，避免非同步轉�
 
 FileWriter 的 append、週期 sync 與 finish 都排在同一佇列。每 5 秒嘗試 fsync；首次 I/O 錯誤被記住，之後佇列作業回同一錯誤。ENOSPC 映射為 disk_full，其他寫入錯誤為 output_write_failed。
 
-成功 finish 等待佇列、sync、close，才把暫存檔 rename 成 `.mp4`，之後 Recorder 發 saved。失敗時先清除 session、stop host、立刻回 idle，再 abandon writer；已有計數 bytes 就保留 `.recording.mp4`，零 bytes 盡力刪除。部分檔案沒有自動修復或重新封裝；曾實測可播不代表所有中斷都可復原。
+成功 finish 等待佇列、sync、close，再以 `COPYFILE_EXCL` 把暫存檔複製成 `.mp4`；正式檔撞名時依序嘗試 `-2`、`-3` 等尾碼。`COPYFILE_FICLONE` 在支援時使用寫入時複製，其他檔案系統可能需要完整複製的額外時間與空間。完成檔 sync 後才盡力刪除暫存檔，之後 Recorder 以實際存檔路徑發 saved。清理失敗會留下暫存副本，但不影響已成功儲存的影片。失敗時先清除 session、stop host、立刻回 idle，再 abandon writer；已有計數 bytes 就保留 `.recording.mp4`，零 bytes 盡力刪除。部分檔案沒有自動修復或重新封裝；曾實測可播不代表所有中斷都可復原。
 
-目前獨占檢查針對 `.recording.mp4`；final `.mp4` 名稱與 partial write handling 的所有邊界並未在此聲稱完全保證。沒有磁碟空間預留、無限長錄製承諾或有界背壓。更完整的耐久性需求應先建測試，再改實作。
+排他建立同時保護暫存檔與正式檔名，包括錄影途中才出現的同名正式檔；partial write handling 的所有邊界並未在此聲稱完全保證。沒有磁碟空間預留、無限長錄製承諾或有界背壓。更完整的耐久性需求應先建測試，再改實作。
 
 ## 錯誤分類
 

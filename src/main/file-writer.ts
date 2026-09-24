@@ -1,10 +1,11 @@
 /**
  * The only media-file writer in the app (docs/system-design/recording.md). Appends chunks in
- * arrival order, fsyncs every 5 seconds, and renames
+ * arrival order, fsyncs every 5 seconds, and publishes without overwriting
  * `<stamp>.recording.mp4` → `<stamp>.mp4` once the last chunk is on disk.
  * Any failure keeps what was written; nothing is ever silently discarded.
  */
 import fs from "node:fs/promises";
+import { constants } from "node:fs";
 import path from "node:path";
 import type { ErrorCode } from "../shared/state";
 
@@ -17,7 +18,7 @@ export interface WritableHandle {
 /** Subset of `node:fs/promises` used here; injectable so tests can fail writes. */
 export interface FileWriterFs {
   open(filePath: string, flags: string): Promise<WritableHandle>;
-  rename(from: string, to: string): Promise<void>;
+  copyExclusive(from: string, to: string): Promise<void>;
   unlink(filePath: string): Promise<void>;
   mkdir(dir: string, options: { recursive: true }): Promise<unknown>;
   writeFile(filePath: string, data: string): Promise<void>;
@@ -25,7 +26,12 @@ export interface FileWriterFs {
 
 export const nodeFs: FileWriterFs = {
   open: (filePath, flags) => fs.open(filePath, flags),
-  rename: (from, to) => fs.rename(from, to),
+  // Clone where supported; otherwise copy. EXCL protects existing destinations.
+  copyExclusive: async (from, to) => {
+    await fs.copyFile(from, to, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE);
+    const copy = await fs.open(to, "r+");
+    try { await copy.sync(); } finally { await copy.close(); }
+  },
   unlink: (filePath) => fs.unlink(filePath),
   mkdir: (dir, options) => fs.mkdir(dir, options),
   writeFile: (filePath, data) => fs.writeFile(filePath, data),
@@ -132,16 +138,28 @@ export class FileWriter {
     });
   }
 
-  /** Flush, fsync, close, rename. Returns the final path. */
+  /** Flush, close, publish exclusively, then remove the temporary file. */
   async finish(): Promise<string> {
     await this.enqueue(() => this.handle.sync());
     await this.release();
-    try {
-      await this.io.rename(this.recordingPath, this.finalPath);
-    } catch (cause) {
-      throw new FileWriteError("output_write_failed", this.recordingPath, cause);
+    const ext = path.extname(this.finalPath);
+    const stem = this.finalPath.slice(0, this.finalPath.length - ext.length);
+    for (let attempt = 1; ; attempt += 1) {
+      const target = attempt === 1 ? this.finalPath : `${stem}-${attempt}${ext}`;
+      try {
+        await this.io.copyExclusive(this.recordingPath, target);
+      } catch (cause) {
+        if (errnoCode(cause) === "EEXIST") continue;
+        throw new FileWriteError("output_write_failed", this.recordingPath, cause);
+      }
+      try {
+        await this.io.unlink(this.recordingPath);
+      } catch {
+        // The completed file is safe; a leftover temporary copy must not turn
+        // a successful save into a failure or remove the completed recording.
+      }
+      return target;
     }
-    return this.finalPath;
   }
 
   /**

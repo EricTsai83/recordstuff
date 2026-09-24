@@ -84,7 +84,7 @@ sequenceDiagram
     R->>H: stop(id)
     H-->>R: final chunk
     H-->>R: stopped(id)
-    R->>W: Drain, sync, close, rename
+    R->>W: Drain, sync, close, exclusive copy
     W-->>R: finalPath
     R-->>U: idle and saved notification
 ```
@@ -97,9 +97,9 @@ Stopping a pending start moves its ID from pending to cancelled. When the OS req
 
 Append, periodic sync, and finish use one FileWriter queue. Fsync is scheduled every five seconds. The first I/O failure is retained, and later queued operations reject with the same error. ENOSPC maps to disk_full; other write failures map to output_write_failed.
 
-Finish drains prior writes, syncs, closes, and renames the temporary file to `.mp4`; only then does Recorder emit saved. Failure first detaches the session, clears deadlines, stops the host, and returns the UI to idle; it then abandons the writer and reports a partial path when byte accounting is nonzero. Empty files are removed on a best-effort basis. Partial files are not automatically repaired or remuxed; a playable crash sample does not guarantee recovery from every interruption.
+Finish drains prior writes, syncs, closes, and copies the temporary file to `.mp4` with `COPYFILE_EXCL`, trying suffixes `-2`, `-3`, … on a final-name collision. `COPYFILE_FICLONE` requests a copy-on-write clone where supported; other filesystems may require extra time and space for a full copy. The completed copy is synced before best-effort removal of the temporary file; only then does Recorder emit saved with the actual destination. A cleanup failure leaves the temporary copy but does not invalidate the saved file. Failure first detaches the session, clears deadlines, stops the host, and returns the UI to idle; it then abandons the writer and reports a partial path when byte accounting is nonzero. Empty files are removed on a best-effort basis. Partial files are not automatically repaired or remuxed; a playable crash sample does not guarantee recovery from every interruption.
 
-Exclusive naming currently checks the temporary filename. This document does not claim comprehensive guarantees for pre-existing final names or all partial-write cases. There is no disk reservation, bounded backpressure, or unlimited-recording guarantee. Stronger durability requirements need targeted tests before implementation changes.
+Exclusive creation protects both temporary and final filenames, including final names created during recording. This document does not claim comprehensive guarantees for all partial-write cases. There is no disk reservation, bounded backpressure, or unlimited-recording guarantee. Stronger durability requirements need targeted tests before implementation changes.
 
 ## Errors
 

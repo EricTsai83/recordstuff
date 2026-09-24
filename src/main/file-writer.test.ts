@@ -15,7 +15,7 @@ afterEach(async () => {
 const bytes = (...values: number[]) => new Uint8Array(values);
 
 describe("FileWriter", () => {
-  it("appends in order, then finish renames to the final path", async () => {
+  it("appends in order, then finish publishes to the final path", async () => {
     const recording = path.join(dir, "a.recording.mp4");
     const final = path.join(dir, "a.mp4");
     const writer = await FileWriter.open(recording, final);
@@ -34,6 +34,34 @@ describe("FileWriter", () => {
       name: "FileWriteError",
       code: "output_open_failed",
     });
+  });
+
+  it.each([false, true])("preserves final files colliding before/after open (late=%s)", async (late) => {
+    const recording = path.join(dir, "same.recording.mp4");
+    const final = path.join(dir, "same.mp4");
+    if (!late) await fs.writeFile(final, "old");
+    const writer = await FileWriter.open(recording, final);
+    if (late) await fs.writeFile(final, "old");
+    await fs.writeFile(path.join(dir, "same-2.mp4"), "another old");
+    await writer.append(bytes(1, 2, 3));
+    const saved = await writer.finish();
+    expect(saved).toBe(path.join(dir, "same-3.mp4"));
+    expect(await fs.readFile(final, "utf8")).toBe("old");
+    expect(await fs.readFile(path.join(dir, "same-2.mp4"), "utf8")).toBe("another old");
+    expect(await fs.readFile(saved)).toEqual(Buffer.from([1, 2, 3]));
+    await expect(fs.stat(recording)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("still reports the saved file if temporary cleanup fails", async () => {
+    const recording = path.join(dir, "cleanup.recording.mp4");
+    const final = path.join(dir, "cleanup.mp4");
+    const writer = await FileWriter.open(recording, final, {
+      io: { ...nodeFs, unlink: async () => { throw new Error("cleanup failed"); } },
+    });
+    await writer.append(bytes(7));
+    expect(await writer.finish()).toBe(final);
+    expect(await fs.readFile(final)).toEqual(Buffer.from([7]));
+    expect(await fs.readFile(recording)).toEqual(Buffer.from([7]));
   });
 
   it("abandon keeps a non-empty partial file and removes an empty one", async () => {
@@ -67,7 +95,8 @@ describe("FileWriter", () => {
           },
           close: async () => undefined,
         }),
-        rename: async () => undefined,
+        copyExclusive: async () => undefined,
+        unlink: async () => undefined,
       };
       const writer = await FileWriter.open("/mem/s.recording.mp4", "/mem/s.mp4", { io, fsyncIntervalMs: 5000 });
       await writer.append(bytes(1));
@@ -107,16 +136,19 @@ describe("FileWriter", () => {
     expect(await fs.readFile(recording)).toEqual(Buffer.from([1]));
   });
 
-  it("a failing rename on finish reports output_write_failed", async () => {
+  it("a failing exclusive copy on finish reports output_write_failed", async () => {
     const io: FileWriterFs = {
       ...nodeFs,
-      rename: async () => {
+      copyExclusive: async () => {
         throw Object.assign(new Error("EXDEV"), { code: "EXDEV" });
       },
     };
     const writer = await FileWriter.open(path.join(dir, "r.recording.mp4"), path.join(dir, "r.mp4"), { io });
     await writer.append(bytes(1));
     await expect(writer.finish()).rejects.toMatchObject({ code: "output_write_failed" });
+    const partial = await writer.abandon();
+    expect(await fs.readFile(partial!)).toEqual(Buffer.from([1]));
+    await expect(fs.stat(path.join(dir, "r.mp4"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
 
