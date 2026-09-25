@@ -12,6 +12,7 @@
 | --- | --- |
 | `src/` | App 原始碼，依 Electron 程序切分 |
 | `scripts/` | 開發者工具：建置啟動、簽署、發布、錄製驗證與驗收 |
+| `tests/` | 同時需要瀏覽器 DOM 與 Node API 的跨程序測試 |
 | `docs/` | 系統設計、驗證證據，以及繁體中文鏡像 |
 | `plans/` | 只放尚未完成的執行計畫 |
 | `resources/` | App 執行期需要的資源，以及安裝說明 |
@@ -37,7 +38,7 @@
 這棵樹有四條共通慣例：
 
 - **`src/shared/` 必須與執行環境無關。** 它是唯一同時被 `tsconfig.node.json` 與 `tsconfig.web.json` 收錄的目錄，因此不得匯入 Electron 或 DOM API。
-- **測試與原始碼同層**，命名為 `foo.test.ts`。沒有獨立測試目錄；`vitest.config.ts` 只收 `src/**/*.test.ts` 與 `scripts/**/*.test.ts`。
+- **測試與原始碼同層**，命名為 `foo.test.ts`。唯一例外是 `tests/`，放同時需要瀏覽器 DOM 與 Node API 的跨程序測試；由 `tsconfig.tests.json` 檢查，讓 renderer 設定不含 Node 型別。`vitest.config.ts` 收錄 `src/**/*.test.ts`、`scripts/**/*.test.ts` 與 `tests/**/*.test.ts`。
 - **`*-model.ts` 把決策與副作用分開。** `tray.ts`、`settings.ts`、`settings-window.ts` 負責與 Electron 互動；`tray-model.ts`、`settings-model.ts`、`ui-model.ts` 是純投影，不需要視窗即可測試。`recorder.ts` 以注入協作者達成同一件事。
 - **所有使用者看得到的文字集中在 `src/shared/i18n.ts`**，英文與繁體中文成對維護，不散落在各模組。
 
@@ -45,9 +46,9 @@
 
 `scripts/` 收錄支援開發、但不隨 App 出貨的一切：
 
-- **入口檔**放在該目錄頂層，與 `package.json` script 一對一：`start-app.mjs`、`make-icons.mjs`、`probe-recording.mjs`、`verify-recording.mts`、`run-matrix.mts`、`audio-quality.mts`、`acceptance-*.mts`、`create-signing-identity.mts`、`release.mts`、`cleanup-release-keychain.py`。
+- **入口檔**放在該目錄頂層，與 `package.json` script 一對一：`start-app.mjs`、`make-icons.mjs`、`probe-recording.mjs`、`verify-recording.mts`、`run-matrix.mts`、`audio-quality.mts`、`acceptance-*.mts`、`create-signing-identity.mts`、`release.mts`、`cleanup-release-keychain.py`。`test-material.html`——同步與音質量測時播放的素材頁——也放在同一層。
 - **`scripts/lib/`** 放入口檔背後的共用實作：驗收執行環境、驗證與媒體工具、音質分析、release manifest 用戶端。
-- **`scripts/fixtures/`** 放測試替身與注入用的替代實作，另有 `test-material.html`——同步與音質量測時播放的素材。
+- **`scripts/fixtures/`** 放測試替身與注入用的替代實作。
 
 工具使用 `.mts`／`.mjs`，因為它們直接由 Node 執行，不經過 App 的打包流程；測試則是放在旁邊的一般 `*.test.ts`。
 
@@ -89,7 +90,7 @@ App 的更新檢查讀取本網站的 `release.json`，因此 `scripts/lib/relea
 
 ## 自動化與產生物
 
-`.github/workflows/release.yml` 在推送 `v*` tag 時建置、簽署、驗證並發布；`website.yml` 在網站變更、手動觸發，或穩定版發布後被呼叫時部署網站。`.agents/skills/` 與 `.claude/skills/` 是開發用 skill 定義，不屬於任何一項交付物。
+`.github/workflows/release.yml` 在推送 `v*` tag 時建置、簽署、驗證並發布；`website.yml` 在網站變更、手動觸發，或穩定版發布後被呼叫時部署網站。`.agents/skills/` 與 `.claude/skills/` 是開發用 skill 定義，不屬於任何一項交付物。Claude Code 只使用 `.claude/skills/`，其他 agent 使用 `.agents/skills/`，因此兩者都需要的 skill 在兩個目錄各自保留一份。
 
 所有產生物都不納管、且可重建：`pnpm build` 產生 `out/`，`pnpm start:app` 與 `pnpm dist:mac` 產生 `dist/`，網站建置產生 `website/dist/` 與 `website/.astro/`，`pnpm install` 產生 `node_modules/`，本機驗證產生 `docs/verification/measurements/`。
 
@@ -100,7 +101,8 @@ App 的更新檢查讀取本網站的 `release.json`，因此 `scripts/lib/relea
 | 檔案 | 約束了什麼 |
 | --- | --- |
 | `tsconfig.node.json`／`tsconfig.web.json` | 哪些目錄以 Node／Electron 或 DOM 函式庫檢查型別；`src/shared/` 同時出現在兩者 |
-| `vitest.config.ts` | 測試只在 `src/` 與 `scripts/` 下以 `*.test.ts` 尋找 |
+| `tsconfig.tests.json` | `tests/` 同時以 DOM 與 Node 函式庫檢查型別，與 renderer 分開 |
+| `vitest.config.ts` | 測試只在 `src/`、`scripts/` 與 `tests/` 下以 `*.test.ts` 尋找 |
 | `electron.vite.config.ts` | 一個 main 入口、兩個 preload 入口、兩個 renderer HTML 入口 |
 | `electron-builder.yml` | 打包哪些內容（`out/**`、`package.json`）與複製哪些資源 |
 | `.gitignore` | 產生物、原始量測與簽署材料一律不納管 |

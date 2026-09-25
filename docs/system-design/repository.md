@@ -12,6 +12,7 @@ This document describes where things live and why. [Architecture](architecture.m
 | --- | --- |
 | `src/` | Application source, split by Electron process |
 | `scripts/` | Developer tools: build/launch, signing, release, recording verification and acceptance |
+| `tests/` | Cross-process tests that need both browser DOM and Node APIs |
 | `docs/` | System design, verification evidence, and the Traditional Chinese mirror |
 | `plans/` | Execution plans for unfinished work only |
 | `resources/` | Runtime assets copied into the app, plus the installation guide |
@@ -37,7 +38,7 @@ This document describes where things live and why. [Architecture](architecture.m
 Four conventions hold across this tree:
 
 - **`src/shared/` stays environment-neutral.** It is the only directory included by both `tsconfig.node.json` and `tsconfig.web.json`, so it must import neither Electron nor DOM APIs.
-- **Tests sit next to their source** as `foo.test.ts`. There is no separate test tree; `vitest.config.ts` collects `src/**/*.test.ts` and `scripts/**/*.test.ts`.
+- **Tests sit next to their source** as `foo.test.ts`. The one exception is `tests/`, for cross-process tests that need both browser DOM and Node APIs; `tsconfig.tests.json` checks it so the renderer config stays free of Node types. `vitest.config.ts` collects `src/**/*.test.ts`, `scripts/**/*.test.ts` and `tests/**/*.test.ts`.
 - **`*-model.ts` separates decisions from side effects.** `tray.ts`, `settings.ts` and `settings-window.ts` talk to Electron; `tray-model.ts`, `settings-model.ts` and `ui-model.ts` are pure projections that can be tested without a window. `recorder.ts` follows the same rule with injected collaborators.
 - **User-visible text lives in `src/shared/i18n.ts`,** in English and Traditional Chinese together, never inline in a module.
 
@@ -45,9 +46,9 @@ Four conventions hold across this tree:
 
 `scripts/` holds everything that supports development but ships with nothing:
 
-- **Entry points** at the top level, one per `package.json` script: `start-app.mjs`, `make-icons.mjs`, `probe-recording.mjs`, `verify-recording.mts`, `run-matrix.mts`, `audio-quality.mts`, `acceptance-*.mts`, `create-signing-identity.mts`, `release.mts`, and `cleanup-release-keychain.py`.
+- **Entry points** at the top level, one per `package.json` script: `start-app.mjs`, `make-icons.mjs`, `probe-recording.mjs`, `verify-recording.mts`, `run-matrix.mts`, `audio-quality.mts`, `acceptance-*.mts`, `create-signing-identity.mts`, `release.mts`, and `cleanup-release-keychain.py`. `test-material.html`, the page played during sync and audio-quality runs, sits beside them.
 - **`scripts/lib/`** for the shared implementation behind those entry points — acceptance runtime, verification and media tools, audio-quality analysis, release manifest clients.
-- **`scripts/fixtures/`** for test doubles and injected stand-ins, plus `test-material.html`, the fixture played during sync and audio-quality runs.
+- **`scripts/fixtures/`** for test doubles and injected stand-ins.
 
 Tools use `.mts`/`.mjs` because they run under Node directly rather than through the app's bundler. Their tests are ordinary `*.test.ts` files beside them.
 
@@ -89,7 +90,7 @@ The app's update check reads this site's `release.json`, so `scripts/lib/release
 
 ## Automation and generated paths
 
-`.github/workflows/release.yml` builds, signs, verifies and publishes on a `v*` tag push; `website.yml` deploys the site on website changes, on manual dispatch, or when called after a stable release. `.agents/skills/` and `.claude/skills/` hold development skill definitions and are not part of either deliverable.
+`.github/workflows/release.yml` builds, signs, verifies and publishes on a `v*` tag push; `website.yml` deploys the site on website changes, on manual dispatch, or when called after a stable release. `.agents/skills/` and `.claude/skills/` hold development skill definitions and are not part of either deliverable. Claude Code uses only `.claude/skills/` and the other agents use `.agents/skills/`, so a skill both need keeps a separate copy in each directory.
 
 Everything generated is ignored and rebuildable: `out/` from `pnpm build`, `dist/` from `pnpm start:app` and `pnpm dist:mac`, `website/dist/` and `website/.astro/` from the site build, `node_modules/` from `pnpm install`, and `docs/verification/measurements/` from local verification runs.
 
@@ -100,7 +101,8 @@ The structure is enforced by configuration, not convention alone:
 | File | What it constrains |
 | --- | --- |
 | `tsconfig.node.json` / `tsconfig.web.json` | Which directories typecheck against Node/Electron versus DOM libraries; `src/shared/` appears in both |
-| `vitest.config.ts` | Tests are found only under `src/` and `scripts/`, as `*.test.ts` |
+| `tsconfig.tests.json` | `tests/` typechecks against both DOM and Node libraries, separately from the renderer |
+| `vitest.config.ts` | Tests are found only under `src/`, `scripts/` and `tests/`, as `*.test.ts` |
 | `electron.vite.config.ts` | The one main entry, two preload entries and two renderer HTML entries |
 | `electron-builder.yml` | What is packaged (`out/**`, `package.json`) and which resources are copied |
 | `.gitignore` | Generated output, raw measurements, and signing material stay untracked |
