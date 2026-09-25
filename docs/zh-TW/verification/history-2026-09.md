@@ -9,6 +9,26 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 028 結案 — 2026-09-25
+
+設定視窗與快捷鍵生命週期（R1 bug 1、5，R2-03），由 Claude 實作、Codex GPT-6 Astra review（[設定視窗](../system-design/desktop.md#設定視窗)、[錄影快捷鍵](../system-design/desktop.md#錄影快捷鍵)）。
+
+- **關閉組合鍵。** 頁面與快捷鍵編輯器共用同一個判斷：macOS 精確為 ⌘W、其他平台精確為 Ctrl+W，不得帶其他修飾鍵；以輸入的字元判斷，只有該配置在該位置不輸入拉丁字母時才採用實體 W 鍵。macOS 的 ⌃W 與 ⌘⇧W 現在可以錄入，不再關閉視窗。
+- **錄入 lease。** 每次錄入是一份由發起視窗持有的 lease。取消、失焦、逾時、關閉、renderer 失敗、錄影鎖定與退出都立即釋放它，即使已確認的儲存仍在寫入，並恢復當下已提交的註冊；一筆請求只釋放它送出時的 lease。全域的 `committingHotkey` 例外已移除。從 `index.ts` 抽出的 `AppShortcuts` 持有兩個註冊：已確認的儲存先保存再註冊，session 進行中則延後；寫入失敗保留原設定與註冊並通知。
+- **當掉後恢復。** renderer 結束時記 log 並丟棄該視窗；下次開啟設定建立並載入新視窗，不自動重新載入。關閉、失焦與當掉事件只作用於自己的視窗實例。
+
+自動化證據：最終版本 `pnpm acceptance:regression` 通過 — `pnpm check`（typecheck、47 個檔案 778 項測試、build）、設定 113/113（`2026-09-25T12-48-48-007Z-settings-acceptance`），以及快捷鍵整合三個階段全數通過且清理完整（`2026-09-25T12-49-25-151Z-shortcut-failure`）。`git diff --check` 無誤。新的 SettingsWindow 測試對原實作有 46 項中 16 項失敗。單元與 DOM 測試涵蓋：各平台關閉組合鍵對應、大小寫與鍵盤配置；macOS ⌃W 可錄入並確認而 ⌘W 關窗，切換為 Windows 對應後亦然；每一種釋放路徑（取消、失焦、逾時、關閉、當掉、關閉程式）搭配卡住後成功或失敗的儲存，並檢查實際註冊、已存值與重開面板；用恢復的舊鍵開始錄影時保留它作為停止鍵直到 settle；重開視窗錄入期間舊儲存完成；當掉時放棄未確認草稿；重複開啟／當掉不自動重新載入；已丟棄視窗晚到的事件；以及載入失敗後重開可用。
+
+production main 快捷鍵 fixture 以 fixture 專用的 `settings.json` rename gate 保留已確認的儲存；這不是真實磁碟卡住，輸入為 Chromium input event，不是 OS 送鍵。它證實：真實 renderer 當掉會丟棄視窗並恢復兩個快捷鍵；替代視窗可錄入 ⌃W，按確定後儲存並註冊；保留儲存期間按 ⌘W 會在儲存完成前恢復已提交的註冊；持久化後才註冊新鍵，重開面板顯示該值；舊的保留儲存在新錄入期間完成時，兩個鍵維持暫停直到該錄入結束；當掉後保留的儲存失敗時，保留原設定與註冊並送出在地化的寫入失敗通知。
+
+原生：M1 Pro、macOS 26.6.2，HEAD `9d29118` 加未提交變更。`pnpm start:app` 建置並驗證全新簽章 bundle（九個 identity；app.asar SHA-256 `22642c17…c079c`），兩個快捷鍵皆註冊。`pnpm acceptance:settings-shortcut` 送出 ⌘⌥,，設定 callback 開啟面板。Codex GPT-6 Astra computer use 無法取得 RecordStuff：依名稱取得回傳 `-10005 timeoutReached`，依路徑取得則回報工作階段已停止，與 plan 025 相同。依路徑取得時還啟動了第二個 instance，它因單一 instance 鎖結束，其 `start:` 行讓錄影 runner 以此作為最後一次啟動而拒絕執行 — 這是 plan 029 要處理的 log 身分缺口。正常退出並以 `pnpm open:app` 重開同一產物後，`pnpm acceptance -- --seconds 10` 送出 ⌘⌥⇧R（按鍵 → pressed 160 ms），錄得 10.3 秒 1920×1080、48 kHz 立體聲、RMS −27.2/−27.2 dB、10 次閃光與 10 聲嗶聲、音畫長度差 −2 ms，完整解碼通過（`2026-09-25T12-54-31-902Z-hotkey-acceptance`）。Computer use 在 QuickTime 由 0.045 秒播放至 9.701 秒，畫面為變化中的測試素材，取消「打開」選擇器並退出 QuickTime（`2026-09-25T12-57-13Z-computer-use`；截圖只在工具對話中）。RecordStuff 與 QuickTime 均已退出，偏好與基準相同。
+
+受阻並移至 035 N38–N40：原生面板中的實體 macOS ⌃W 錄入與確定、一般 ⌘W 關窗、錄入期間按 ⌘W 後設定與錄影快捷鍵恢復。本輪錄影與設定快捷鍵的原生送達，都發生在任何錄入之前。Windows 對應只有單元測試。完整媒體矩陣、權限變更、螢幕移除與長時間錄影不在範圍內。
+
+Codex GPT-6 Astra（medium reasoning、read-only）完成一個 pass，約用 30 分鐘預算中的 1 分鐘，未使用 fallback，無 findings。之後沒有修改程式碼。
+
+維護者決定結案，受阻的原生設定面板案例移至 035 N38–N40。依維護者要求，後續另將 `CommandOrControl+W` 列為保留組合，手動編輯的設定檔也無法把 ⌘W 設為全域錄影快捷鍵，macOS 的 ⌃W 與 ⌘⇧W 仍可使用；`pnpm check` 再次通過（47 個檔案 778 項測試），第二個 Codex GPT-6 Astra pass 檢查此變更、agent 保持喚醒規則與 skill 語言變更，無 findings。本輪依範圍分別在 main 本機 commit：runtime 與測試 `4fbe271`、Command+W 保留 `cc7546d`、設計文件 `908e6b5`，以及本結案 commit；agent 規則 `f5c3009` 與 skill 語言變更 `8797757` 另成 commit。未 push 或發布。同樣依維護者要求，本紀錄寫完後已刪除測試錄影 `2026-09-25 20-54-37.mp4`、上述本機 measurements 目錄，以及暫存的 review 與驗收 log；原始證據因此不再存在，以本紀錄為準。
+
 ## Plan 027 結案 — 2026-09-25
 
 權限同步與查詢生命週期（R1 bug 2、6），由 Claude 實作、Codex GPT-6 Astra review（[螢幕權限設計](../system-design/desktop.md#螢幕權限)）。

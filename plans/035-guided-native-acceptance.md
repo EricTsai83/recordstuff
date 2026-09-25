@@ -2,7 +2,7 @@
 
 [English](035-guided-native-acceptance.md) | [繁體中文](035-guided-native-acceptance.zh-TW.md)
 
-Status: planned, not executed. Created: 2026-09-25. This plan is permanently the **last queue item**, currently after 027–034, 037 and 040; see [order](README.md#order-and-status). Any later implementation/fix plans go before it, regardless of numbering. It is the last step before clearing the queue, not a request to begin testing now.
+Status: planned, not executed. Created: 2026-09-25. This plan is permanently the **last queue item**, currently after 029–034, 037 and 040; see [order](README.md#order-and-status). Any later implementation/fix plans go before it, regardless of numbering. It is the last step before clearing the queue, not a request to begin testing now.
 
 ## Purpose and ownership
 
@@ -99,6 +99,14 @@ Source: [027 closure](../docs/verification/history-2026-09.md#plan-027-closure--
 
 - [ ] N36: While the development app records, turn RecordStuff off in System Settings → Privacy & Security → Screen & System Audio Recording. Record what macOS offers or forces (Quit & Reopen, Later, capture ending) and the log lines. If the recording continues, stop it: the file saves, the menu reads Screen recording permission required (never Ready) and still offers Show last recording, which reveals the file. If capture ends instead, the failure entry and the permission guidance both appear. Then turn it back on without relaunching and record whether the menu returns to Ready or offers Relaunch.
 - [ ] N37: From the Relaunch guidance, relaunch from the menu, confirm the menu reads Ready and record a short file that plays. A never-returning getSources cannot be produced natively; the single in-flight request, the deadline guidance and the backoff rest on injected tests.
+
+## Settings window and shortcut lifecycle acceptance (not performed)
+
+Source: [028 closure](../docs/verification/history-2026-09.md#plan-028-closure--2026-09-25). Codex computer use could not target RecordStuff, so the Settings-panel key cases were not operated natively; the maintainer chose to carry them here. Use a fresh `pnpm start:app` bundle; record the original recording shortcut and restore it afterwards.
+
+- [ ] N38: Open Settings, choose Custom shortcut… and press Control+W on the physical keyboard. The panel stays open, the preview shows ⌃W and Confirm saves it as ⌃W (custom). Then capture ⌘⇧W: it previews instead of closing. Restore the original shortcut through Custom… and Confirm.
+- [ ] N39: With no capture active, press Command+W: the panel closes and the menu-bar app keeps running; reopen it from the tray and with ⌘⌥,. Close it once with Escape as well.
+- [ ] N40: Choose Custom shortcut…, then press Command+W while listening: the panel closes and nothing is saved. Then press ⌘⌥, (Settings opens), and start and stop a short recording with the restored recording shortcut; play the file. The delayed-save variant rests on the fixture's held write (028 closure), not on a native disk stall.
 
 ## Countdown acceptance (not performed)
 
