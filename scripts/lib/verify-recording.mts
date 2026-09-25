@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readRetainedLog } from "./log-reader.mts";
-import { channelRms, frameTimes, hasTool, probe, syncMarkers } from "./media-tools.mts";
+import { ToolMissingError, channelRms, frameTimes, hasTool, probe, syncMarkers } from "./media-tools.mts";
 import {
   LogPairs,
   formatMarkdown,
@@ -20,9 +20,9 @@ import {
   syncStats,
   type CaptureLogEntry,
   type Check,
+  type Evidence,
   type LogPairing,
   type Measurement,
-  type SyncStats,
   type Verdict,
   type VerifyOptions,
 } from "./verify.mts";
@@ -32,7 +32,7 @@ export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url
 export const MEASUREMENTS_DIR = path.join(REPO_ROOT, "docs", "verification", "measurements");
 
 export interface VerifyRunOptions extends VerifyOptions {
-  /** Detect the flash / beep markers of the test material page (needs ffmpeg, decodes the whole file). */
+  /** Detect the flash / beep markers of the test material page (needs ffmpeg, decodes the whole file). Whether they are required is `required.sync`. */
   sync?: boolean;
   cpu?: { averagePercent: number; peakPercent: number };
 }
@@ -62,6 +62,23 @@ export function readLogPairs(logPath: string | undefined): LogPairs {
   return pairRecordingsWithLog(readLogText(logPath));
 }
 
+/**
+ * One ffmpeg measurement as evidence: a missing tool is `unavailable`, any
+ * other failure (nonzero exit, incomplete output) an `error` with its reason.
+ */
+function attempt<T>(measurement: () => T): Evidence<T> {
+  try {
+    return { status: "measured", value: measurement() };
+  } catch (cause) {
+    const reason = cause instanceof Error ? cause.message : String(cause);
+    return { status: cause instanceof ToolMissingError ? "unavailable" : "error", reason };
+  }
+}
+
+/**
+ * ffprobe facts are needed for any verdict, so its failure throws; ffmpeg
+ * energy and sync become evidence that the caller's `required` judges.
+ */
 export function verifyRecording(
   file: string,
   logPairs: LogPairs,
@@ -74,21 +91,24 @@ export function verifyRecording(
   const parsedDuration = Number(info.format.duration);
   const duration = Number.isFinite(parsedDuration) ? parsedDuration : undefined;
   const intervals = frameTimes(file, duration);
-  const ffmpeg = hasTool("ffmpeg");
-  let sync: SyncStats | undefined;
-  if (options.sync && ffmpeg) {
-    const markers = syncMarkers(file, duration);
-    sync = syncStats(markers.flashes, markers.beeps, duration === undefined ? {} : { durationSeconds: duration });
+  const ffmpegMissing: Evidence<never> | undefined = hasTool("ffmpeg") ? undefined : { status: "unavailable", reason: new ToolMissingError("ffmpeg").message };
+  const extras: Parameters<typeof measure>[4] = { decodeErrors };
+  const audio = info.streams.find((s) => s.codec_type === "audio");
+  // Without an audio stream there is nothing for astats to read; judge reports the missing track.
+  if (audio) extras.channelRms = ffmpegMissing ?? attempt(() => channelRms(file, audio.channels));
+  if (options.sync) {
+    extras.sync = ffmpegMissing ?? attempt(() => {
+      const markers = syncMarkers(file, duration);
+      return syncStats(markers.flashes, markers.beeps, duration === undefined ? {} : { durationSeconds: duration });
+    });
   }
-  const extras: Parameters<typeof measure>[4] = { decodeErrors, syncAttempted: Boolean(options.sync && ffmpeg) };
-  if (ffmpeg) extras.channelRmsDb = channelRms(file);
-  if (sync) extras.sync = sync;
   if (options.cpu) extras.cpu = options.cpu;
   if (entry) extras.nominalFps = entry.requested.frameRate;
   const measurement = measure(file, fileBytes, info, intervals, extras);
   const judgeOptions: VerifyOptions = {};
   if (options.screen) judgeOptions.screen = options.screen;
   if (options.expectedDurationSeconds !== undefined) judgeOptions.expectedDurationSeconds = options.expectedDurationSeconds;
+  if (options.required) judgeOptions.required = options.required;
   // --sync only makes sense on the test material page, which moves continuously and has sparse audio.
   if (options.movingMaterial ?? options.sync) judgeOptions.movingMaterial = true;
   if (options.testMaterial ?? options.sync) judgeOptions.testMaterial = true;

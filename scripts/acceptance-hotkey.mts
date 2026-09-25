@@ -15,9 +15,11 @@
  * ids in its session records (plan 029), so a rotated or restarted log can
  * neither hide the save nor lend an older one.
  *
- * Exit 0 when the shortcut flow completed and every judged integrity check
- * passed. The verifier runs with `testMaterial`, so the audio bitrate of the
- * page's sparse beeps is reported, not judged (see docs/system-design/tooling.md).
+ * Exit 0 when the shortcut flow completed and no integrity check failed, was
+ * blocked or is incomplete; channel energy is required evidence (plan 030), so
+ * missing ffmpeg/ffprobe blocks the run (exit 2) before any key is sent. The
+ * verifier runs with `testMaterial`, so the audio bitrate of the page's sparse
+ * beeps is reported, not judged (see docs/system-design/tooling.md).
  * macOS only (`open`, `osascript`, `pgrep`). Nothing here ships with the app.
  */
 import { setTimeout as delay } from "node:timers/promises";
@@ -41,7 +43,7 @@ import {
 import { LogReader, evidenceSince, type LogCursor } from "./lib/log-reader.mts";
 import { hasTool, syncMarkers } from "./lib/media-tools.mts";
 import { readLogPairs, verifyRecording } from "./lib/verify-recording.mts";
-import { formatText } from "./lib/verify.mts";
+import { BLOCKED_EXIT, blocksSuccess, formatText } from "./lib/verify.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -110,6 +112,11 @@ function waitFor(from: LogCursor, pattern: RegExp, what: string): ReturnType<typ
 
 async function main(): Promise<void> {
   if (process.platform !== "darwin") fail("macOS only");
+  const missingTools = ["ffprobe", "ffmpeg"].filter((tool) => !hasTool(tool));
+  if (missingTools.length > 0) {
+    console.error(`BLOCKED: ${missingTools.join(" and ")} missing (brew install ffmpeg); channel energy is required evidence. No key was sent.`);
+    process.exit(BLOCKED_EXIT);
+  }
   const pid = appRunning() ?? fail("RecordStuff is not running; start it with `pnpm start:app` first");
   const lines = readLines();
   const accelerator = registeredAccelerator(lines) ?? fail("the running app did not log `hotkey: registered …` after its last start (shortcut disabled or refused)");
@@ -197,10 +204,11 @@ async function main(): Promise<void> {
       material = undefined;
     }
 
-    const result = verifyRecording(file, readLogPairs(LOG_PATH), { expectedDurationSeconds: seconds, testMaterial: openMaterial });
+    const result = verifyRecording(file, readLogPairs(LOG_PATH), { expectedDurationSeconds: seconds, testMaterial: openMaterial, required: { energy: true } });
     const text = formatText(file, result.entry, result.checks, result.pairing);
     console.log(text);
-    const failing = result.checks.filter((c) => c.verdict === "fail");
+    // Blocked or incomplete required evidence is no more a pass than a failure is.
+    const failing = result.checks.filter((c) => blocksSuccess(c.verdict));
     // Evidence guards: the marker box must be in the recording (flashes) and the
     // beeps must stand out of silence. No flashes means the material was not on
     // the recorded display; no beeps means other audio was playing (or the
@@ -210,7 +218,7 @@ async function main(): Promise<void> {
     if (result.pairing.status !== "matched" || result.entry?.sessionId !== session || result.entry.runId !== run) {
       guards.push(`log metadata for this file is ${result.pairing.status}${result.pairing.note ? ` (${result.pairing.note})` : ""}, not session ${session}; requested-settings checks were not judged`);
     }
-    if (openMaterial && hasTool("ffmpeg")) {
+    if (openMaterial) {
       const markers = syncMarkers(file, result.measurement.durationSeconds);
       const expected = Math.floor(seconds / 2);
       note(`markers: ${markers.flashes.length} flashes, ${markers.beeps.length} beeps in ${seconds} s`);
@@ -227,7 +235,7 @@ async function main(): Promise<void> {
         "",
         `Run ${now()} on ${os.hostname()}, macOS ${os.release()}, pid ${pid}, app run \`${run}\`, session \`${session}\`, shortcut \`${accelerator}\`, ${seconds} s requested. Keys were sent by System Events from this script; the material was ${openMaterial ? "opened fullscreen in Chrome app mode with autoplay allowed" : "shown by the operator"}. Material SHA-256 \`${createHash("sha256").update(fs.readFileSync(MATERIAL)).digest("hex")}\`.`,
         "",
-        `Result: **${failing.length === 0 && guards.length === 0 ? "pass" : "fail"}** (${failing.length} failing check(s); integrity tier${openMaterial ? ", test material: audio bitrate reported only" : ""}${guards.length ? `; evidence guards: ${guards.join("; ")}` : ""}).`,
+        `Result: **${failing.length === 0 && guards.length === 0 ? "pass" : "fail"}** (${failing.length} check(s) not passed; integrity tier${openMaterial ? ", test material: audio bitrate reported only" : ""}${guards.length ? `; evidence guards: ${guards.join("; ")}` : ""}).`,
         "",
         "## Events",
         "",
@@ -243,7 +251,7 @@ async function main(): Promise<void> {
       ].join("\n"),
     );
     console.log(`Report ${path.relative(REPO_ROOT, dir)}/report.md`);
-    if (failing.length > 0) fail(`${failing.length} verifier check(s) failed: ${failing.map((c) => c.metric).join(", ")}`);
+    if (failing.length > 0) fail(`${failing.length} verifier check(s) not passed: ${failing.map((c) => `${c.metric} (${c.verdict})`).join(", ")}`);
     if (guards.length > 0) fail(guards.join("; "));
   } catch (error) {
     runError = error;

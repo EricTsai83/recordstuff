@@ -12,6 +12,7 @@ import { acceleratorToKeystroke, keystrokeScript, materialOpenArgs } from './lib
 import { hasTool } from './lib/media-tools.mts';
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from './lib/desktop-session.mts';
 import { readLogPairs, verifyRecording } from './lib/verify-recording.mts';
+import { blocksSuccess } from './lib/verify.mts';
 import type { AcceptanceSnapshot, AcceptanceConfig, Scenario } from './fixtures/update-acceptance';
 import type { TrayMenuItem } from '../src/main/tray-model';
 import type { AppAction } from '../src/main/ui-model';
@@ -287,13 +288,15 @@ try {
     assert.equal(recordings.length, 2);
     const results = recordings.map(name => {
       const file = path.join(dir, 'recordings', name);
-      const result = verifyRecording(file, readLogPairs(path.join(dir, 'logs/recordstuff.log')), { expectedDurationSeconds: 10, sync: true });
+      const result = verifyRecording(file, readLogPairs(path.join(dir, 'logs/recordstuff.log')), { expectedDurationSeconds: 10, sync: true, required: { energy: true, sync: true } });
       return { file, result };
     });
     fs.writeFileSync(path.join(dir, 'recording-verify.json'), JSON.stringify(results, null, 2));
     for (const r of results) {
-      assert.equal(r.result.checks.filter(c => c.verdict === 'fail').length, 0, `Media integrity failure: ${r.file}`);
-      assert((r.result.measurement.sync?.pairs ?? 0) >= 5, `Test material not captured cleanly: ${path.basename(r.file)}, ${r.result.measurement.sync ? `${r.result.measurement.sync.pairs} matched flash/beep pairs` : 'fewer than 3 matched flash/beep pairs; no reliable sync statistics'} (at least 5 required; syncAttempted=${r.result.measurement.syncAttempted}).`);
+      const unmet = r.result.checks.filter(c => blocksSuccess(c.verdict));
+      assert.equal(unmet.length, 0, `Media integrity not established: ${r.file}: ${unmet.map(c => `${c.metric} ${c.verdict}${c.note ? ` (${c.note})` : ''}`).join('; ')}`);
+      const sync = r.result.measurement.sync;
+      assert(sync.status === 'measured' && sync.value.pairs >= 5, `Test material not captured cleanly: ${path.basename(r.file)}, ${sync.status === 'measured' ? `${sync.value.pairs} matched flash/beep pairs of ${sync.value.flashes} flashes / ${sync.value.beeps} beeps` : `sync ${sync.status}: ${sync.reason}`} (at least 5 required).`);
     }
   });
   else record('real recording', 'not-run', 'Explicit --logic-only scope; no capture claim.', false);

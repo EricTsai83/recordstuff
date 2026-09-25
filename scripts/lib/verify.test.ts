@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  MIN_SYNC_PAIRS,
   THRESHOLDS,
+  blocksSuccess,
   formatMarkdown,
   formatText,
   frameStats,
@@ -16,7 +18,12 @@ import {
   parseSilencedetect,
   sessionDurationSeconds,
   syncStats,
+  verdictExitCode,
+  type Check,
+  type Evidence,
   type ProbeInfo,
+  type SyncStats,
+  type Verdict,
 } from "./verify.mts";
 import { formatSessionRecord } from "../../src/shared/session-record.ts";
 import type { CaptureReport, QualitySettings } from "../../src/shared/quality.ts";
@@ -388,8 +395,10 @@ describe("sync markers", () => {
     expect(short?.pairs).toBe(3);
     expect(short?.medianOffsetMs).toBeCloseTo(30);
     expect(short?.driftMs).toBeUndefined();
-    expect(syncStats([1, 2], [5, 6])).toBeUndefined();
-    expect(syncStats([2.97], [3.0], { durationSeconds: 3 })).toBeUndefined(); // one stray pair is not a measurement
+    // Counts stay visible so a shortage is not mistaken for an absent measurement (plan 030).
+    expect(syncStats([1, 2], [5, 6])).toMatchObject({ flashes: 2, beeps: 2, pairs: 0, medianOffsetMs: undefined });
+    expect(syncStats([2.97], [3.0], { durationSeconds: 3 })).toMatchObject({ pairs: 1, medianOffsetMs: undefined }); // one stray pair is not a measurement
+    expect(syncStats([], [], { durationSeconds: 30 })).toMatchObject({ flashes: 0, beeps: 0, pairs: 0, headPairs: 0, tailPairs: 0, driftMs: undefined });
   });
 });
 
@@ -429,10 +438,16 @@ const ENTRY = parseCaptureLine(
 )!;
 
 const evenFrames = (count: number, fps: number): number[] => Array.from({ length: count }, (_, i) => i / fps);
+const rms = (...levels: number[]): Evidence<number[]> => ({ status: "measured", value: levels });
+/** A well-covered 30 s material recording unless overridden. */
+const markers = (overrides: Partial<SyncStats> = {}): Evidence<SyncStats> => ({
+  status: "measured",
+  value: { flashes: 30, beeps: 30, pairs: 29, medianOffsetMs: 35, headPairs: 29, tailPairs: 29, headOffsetMs: 35, tailOffsetMs: 35, driftMs: undefined, ...overrides },
+});
 
 describe("measure + judge", () => {
   it("passes a recording that matches the log and every threshold", () => {
-    const m = measure("a.mp4", 31_335_000, info(), [evenFrames(900, 30)], { channelRmsDb: [-20, -21], nominalFps: 30 });
+    const m = measure("a.mp4", 31_335_000, info(), [evenFrames(900, 30)], { channelRms: rms(-20, -21), nominalFps: 30 });
     expect(m.video?.bitsPerSecond).toBe(8_356_000 - 256_000); // total minus audio when the stream has no bit_rate
     const checks = judge(m, ENTRY, { screen: { width: 1920, height: 1080 }, movingMaterial: true });
     const byMetric = Object.fromEntries(checks.map((c) => [c.metric, c]));
@@ -442,8 +457,9 @@ describe("measure + judge", () => {
     expect(byMetric["Audio-video duration difference"]?.verdict).toBe("pass");
     expect(byMetric["Audio-video start offset (container)"]?.verdict).toBe("pass");
     expect(byMetric["Audio-video offset (flash/beep)"]?.verdict).toBe("n/a");
-    expect(byMetric["Audio-video offset (flash/beep)"]?.note).toBe("Requires --sync and the test material page");
+    expect(byMetric["Audio-video offset (flash/beep)"]?.note).toBe("Not measured: requires --sync and the test material page");
     expect(byMetric["Sample rate/channels"]?.verdict).toBe("pass");
+    expect(byMetric["Channel energy (RMS)"]?.verdict).toBe("pass");
     expect(byMetric["Video bitrate"]?.verdict).toBe("pass");
     expect(byMetric["Audio bitrate"]?.verdict).toBe("pass");
     expect(byMetric["CPU (all Electron processes)"]?.verdict).toBe("n/a");
@@ -466,7 +482,7 @@ describe("measure + judge", () => {
       format: { duration: "30.25", bit_rate: "4700000", size: "17770000" },
     });
     const frames = evenFrames(600, 20);
-    const m = measure("b.mp4", 17_770_000, probe, [frames], { channelRmsDb: [-20], nominalFps: 30 });
+    const m = measure("b.mp4", 17_770_000, probe, [frames], { channelRms: rms(-20), nominalFps: 30 });
     const checks = judge(m, entry, { screen: { width: 1920, height: 1080 }, movingMaterial: true });
     const byMetric = Object.fromEntries(checks.map((c) => [c.metric, c]));
     expect(byMetric["Output dimensions"]?.verdict).toBe("fail");
@@ -484,6 +500,7 @@ describe("measure + judge", () => {
     expect(byMetric["Audio-video duration difference"]?.verdict).toBe("fail");
     expect(byMetric["Audio-video start offset (container)"]?.verdict).toBe("fail");
     expect(byMetric["Sample rate/channels"]?.verdict).toBe("fail");
+    expect(byMetric["Channel energy (RMS)"]?.note).toBe("1 of 2 channels measured"); // a mono track cannot show energy in both
     expect(byMetric["Video bitrate"]?.verdict).toBe("fail"); // 55 % of target is below the 70 % floor
     expect(overallVerdict(checks)).toBe("fail");
   });
@@ -494,7 +511,7 @@ describe("measure + judge", () => {
       "recorder: session s capture: requested video=standard cap=source fps=60; track size=1920x1080 fps=60 sampleRate=48000 Hz channels=2; target videoBps=16200000 audioBps=256000",
     )!;
     const probe = info({ video: { r_frame_rate: "60/1", nb_read_frames: "1725", duration: "30.000" } });
-    const m = measure("desk.mp4", 90_000_000, probe, [evenFrames(1725, 57.5)], { channelRmsDb: [-29, -29], nominalFps: 60 });
+    const m = measure("desk.mp4", 90_000_000, probe, [evenFrames(1725, 57.5)], { channelRms: rms(-29, -29), nominalFps: 60 });
     const unknown = Object.fromEntries(judge(m, entry).map((c) => [c.metric, c]));
     expect(unknown["Average frame rate"]?.verdict).toBe("n/a");
     expect(unknown["Average frame rate"]?.note).toContain("--moving");
@@ -507,16 +524,16 @@ describe("measure + judge", () => {
 
   it("treats bitrate as a floor: overshoot passes with a note, undershoot fails, audio has its own floor", () => {
     const over = info({ format: { duration: "30.000", bit_rate: "24_000_000".replace(/_/g, ""), size: "90000000" } });
-    const m = measure("over.mp4", 90_000_000, over, [evenFrames(900, 30)], { channelRmsDb: [-20, -20] });
+    const m = measure("over.mp4", 90_000_000, over, [evenFrames(900, 30)], { channelRms: rms(-20, -20) });
     const byMetric = Object.fromEntries(judge(m, ENTRY).map((c) => [c.metric, c]));
     expect(byMetric["Video bitrate"]?.verdict).toBe("pass"); // 23.7 Mbps against an 8.1 Mbps target
     expect(byMetric["Video bitrate"]?.note).toContain("Above target");
     expect(byMetric["Video bitrate"]?.expected).toContain("≥ 70%");
-    const quiet = measure("quiet.mp4", 1, info({ audio: { bit_rate: "160000" } }), [evenFrames(900, 30)], { channelRmsDb: [-20, -20] });
+    const quiet = measure("quiet.mp4", 1, info({ audio: { bit_rate: "160000" } }), [evenFrames(900, 30)], { channelRms: rms(-20, -20) });
     const quietAudio = judge(quiet, ENTRY).find((c) => c.metric === "Audio bitrate");
     expect(quietAudio?.verdict).toBe("pass"); // 62.5 % of the request, above the 50 % floor
     expect(quietAudio?.note).toContain("below the request is normal");
-    const starved = measure("starved.mp4", 1, info({ audio: { bit_rate: "96000" } }), [evenFrames(900, 30)], { channelRmsDb: [-20, -20] });
+    const starved = measure("starved.mp4", 1, info({ audio: { bit_rate: "96000" } }), [evenFrames(900, 30)], { channelRms: rms(-20, -20) });
     expect(judge(starved, ENTRY).find((c) => c.metric === "Audio bitrate")?.verdict).toBe("fail");
     // The test material's sparse beeps: the same starved bitrate is reported, not judged.
     const material = judge(starved, ENTRY, { testMaterial: true }).find((c) => c.metric === "Audio bitrate");
@@ -542,8 +559,8 @@ describe("measure + judge", () => {
 
   it("marks log-dependent checks not applicable without a log entry and flags a silent channel", () => {
     const m = measure("c.mp4", 31_335_000, info(), [evenFrames(900, 30)], {
-      channelRmsDb: [-20, Number.NEGATIVE_INFINITY],
-      sync: { pairs: 29, medianOffsetMs: 35, headOffsetMs: 35, tailOffsetMs: undefined, driftMs: undefined },
+      channelRms: rms(-20, Number.NEGATIVE_INFINITY),
+      sync: markers({ medianOffsetMs: 35 }),
     });
     const checks = judge(m, undefined, { movingMaterial: true });
     const byMetric = Object.fromEntries(checks.map((c) => [c.metric, c]));
@@ -553,18 +570,21 @@ describe("measure + judge", () => {
     expect(byMetric["Audio-video offset (flash/beep)"]?.verdict).toBe("pass");
     expect(byMetric["End-to-end A/V drift"]?.verdict).toBe("n/a");
     // ITU-R BT.1359 asymmetry: 80 ms late is fine, 60 ms early is not.
-    const late = judge(measure("l.mp4", 1, info(), [], { sync: { pairs: 20, medianOffsetMs: 80, headOffsetMs: 80, tailOffsetMs: undefined, driftMs: undefined } }), undefined);
+    const late = judge(measure("l.mp4", 1, info(), [], { sync: markers({ medianOffsetMs: 80 }) }), undefined);
     expect(late.find((c) => c.metric.startsWith("Audio-video offset (flash"))?.verdict).toBe("pass");
-    const early = judge(measure("e.mp4", 1, info(), [], { sync: { pairs: 20, medianOffsetMs: -60, headOffsetMs: -60, tailOffsetMs: undefined, driftMs: undefined } }), undefined);
+    const early = judge(measure("e.mp4", 1, info(), [], { sync: markers({ medianOffsetMs: -60 }) }), undefined);
     expect(early.find((c) => c.metric.startsWith("Audio-video offset (flash"))?.verdict).toBe("fail");
-    expect(byMetric["Sample rate/channels"]?.verdict).toBe("fail");
-    expect(byMetric["Sample rate/channels"]?.actual).toContain("−∞");
+    // Format and energy are separate: 48 kHz stereo passes while the silent channel fails.
+    expect(byMetric["Sample rate/channels"]?.verdict).toBe("pass");
+    expect(byMetric["Channel energy (RMS)"]?.verdict).toBe("fail");
+    expect(byMetric["Channel energy (RMS)"]?.actual).toBe("-20.0 dB / −∞");
+    expect(byMetric["Channel energy (RMS)"]?.note).toBe("channel 2 is silent");
   });
 
   it("treats decode errors and a missing audio track as failures, and says when --sync found nothing", () => {
-    const m = measure("d.mp4", 100, info({ audio: null }), [evenFrames(10, 30)], { decodeErrors: "moov atom not found", syncAttempted: true });
+    const m = measure("d.mp4", 100, info({ audio: null }), [evenFrames(10, 30)], { decodeErrors: "moov atom not found", sync: { status: "measured", value: syncStats([], [], { durationSeconds: 0.3 }) } });
     const byMetric = Object.fromEntries(judge(m, ENTRY).map((c) => [c.metric, c]));
-    expect(byMetric["Audio-video offset (flash/beep)"]?.note).toContain("found no");
+    expect(byMetric["Audio-video offset (flash/beep)"]?.note).toContain("no flashes or beeps found");
     expect(byMetric["Recording duration"]?.verdict).toBe("n/a");
     const cut = judge(measure("e.mp4", 1, info(), [evenFrames(900, 30)], {}), ENTRY, { expectedDurationSeconds: 600 }).find((c) => c.metric === "Recording duration");
     expect(cut?.verdict).toBe("fail");
@@ -573,11 +593,12 @@ describe("measure + judge", () => {
     expect(m.decodable).toBe(false);
     expect(byMetric["Decodability (ffprobe full frame decode)"]?.verdict).toBe("fail");
     expect(byMetric["Sample rate/channels"]?.verdict).toBe("fail");
+    expect(byMetric["Channel energy (RMS)"]).toMatchObject({ actual: "No audio track", verdict: "fail" });
     expect(byMetric["Audio-video duration difference"]?.verdict).toBe("n/a");
   });
 
   it("formats text and markdown with the verdict marks and a human section", () => {
-    const m = measure("e.mp4", 31_335_000, info(), [evenFrames(900, 30)], { channelRmsDb: [-20, -21], cpu: { averagePercent: 42.4, peakPercent: 61 } });
+    const m = measure("e.mp4", 31_335_000, info(), [evenFrames(900, 30)], { channelRms: rms(-20, -21), cpu: { averagePercent: 42.4, peakPercent: 61 } });
     const checks = judge(m, ENTRY);
     const text = formatText("e.mp4", ENTRY, checks);
     expect(text).toContain("✅ Output dimensions");
@@ -587,5 +608,149 @@ describe("measure + judge", () => {
     expect(md).toContain("| Metric | Threshold/request | Measured | Verdict |");
     expect(md).toContain("Subjective comparison (manual)");
     expect(md).toContain(`< ${THRESHOLDS.maxDropRate * 100}%`);
+  });
+});
+
+describe("required evidence (plan 030)", () => {
+  const byMetric = (checks: Check[]): Record<string, Check> => Object.fromEntries(checks.map((c) => [c.metric, c]));
+  const energy = (channelRms: Evidence<number[]>, required = true): Check | undefined =>
+    judge(measure("a.mp4", 1, info(), [evenFrames(900, 30)], { channelRms }), ENTRY, { required: { energy: required } }).find((c) => c.metric === "Channel energy (RMS)");
+
+  it("no longer passes channel energy it never measured (R1-8)", () => {
+    // Metadata only, as without ffmpeg: 48 kHz stereo and every other check fine.
+    const unmeasured = measure("meta.mp4", 31_335_000, info(), [evenFrames(900, 30)], {
+      channelRms: { status: "unavailable", reason: "ffmpeg is missing; install it with brew install ffmpeg" },
+      nominalFps: 30,
+    });
+    const required = judge(unmeasured, ENTRY, { expectedDurationSeconds: 30, required: { energy: true } });
+    expect(byMetric(required)["Sample rate/channels"]?.verdict).toBe("pass");
+    expect(byMetric(required)["Channel energy (RMS)"]).toMatchObject({ verdict: "blocked", actual: "not measured", note: expect.stringContaining("ffmpeg is missing") });
+    expect(overallVerdict(required)).toBe("blocked");
+    // An informational report keeps n/a with the reason, never a pass.
+    const informational = byMetric(judge(unmeasured, ENTRY))["Channel energy (RMS)"];
+    expect(informational).toMatchObject({ verdict: "n/a", note: expect.stringMatching(/^Not measured: ffmpeg is missing/) });
+    const omitted = byMetric(judge(measure("x.mp4", 1, info(), [], {}), ENTRY))["Channel energy (RMS)"];
+    expect(omitted).toMatchObject({ verdict: "n/a", note: "Not measured: channel RMS was not measured" });
+    expect(energy({ status: "not-requested", reason: "skipped" })).toMatchObject({ verdict: "incomplete", note: "Required evidence not measured: skipped" });
+  });
+
+  it("passes energy only for two valid levels above the silence floor", () => {
+    expect(energy(rms(-21.1, -21.1))).toMatchObject({ verdict: "pass", actual: "-21.1 dB / -21.1 dB" });
+    expect(energy(rms(Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY))).toMatchObject({ verdict: "fail", note: "channel 1 is silent; channel 2 is silent" });
+    expect(energy(rms(-20, Number.NEGATIVE_INFINITY))?.note).toBe("channel 2 is silent");
+    expect(energy(rms(THRESHOLDS.minChannelRmsDb, -20))?.verdict).toBe("fail"); // at the floor is not above it
+    expect(energy(rms(-20))?.note).toBe("1 of 2 channels measured");
+    expect(energy(rms(-20, -20, -20))?.note).toBe("3 of 2 channels measured");
+    expect(energy(rms())).toMatchObject({ verdict: "fail", actual: "no channel levels" });
+    expect(energy(rms(Number.NaN, -20))).toMatchObject({ verdict: "fail", actual: "invalid / -20.0 dB", note: "channel 1 is not a valid measurement" });
+    expect(energy(rms(Number.POSITIVE_INFINITY, -20))?.note).toBe("channel 1 is not a valid measurement");
+    // A tool that ran and failed is a failure whether or not energy was required.
+    const failed: Evidence<number[]> = { status: "error", reason: "ffmpeg astats exited 1: Invalid data found" };
+    expect(energy(failed, false)).toMatchObject({ verdict: "fail", actual: "measurement failed", note: "ffmpeg astats exited 1: Invalid data found" });
+    expect(energy(failed)?.verdict).toBe("fail");
+  });
+
+  const syncChecks = (sync: Evidence<SyncStats> | undefined, options: { seconds?: number; duration?: number; required?: boolean } = {}): Record<string, Check> => {
+    const duration = String(options.duration ?? options.seconds ?? 30);
+    const m = measure("s.mp4", 1, info({ format: { duration, bit_rate: "8356000" } }), [], { channelRms: rms(-25, -25), ...(sync ? { sync } : {}) });
+    const checks = judge(m, ENTRY, { expectedDurationSeconds: options.seconds ?? 30, required: { energy: true, sync: options.required ?? true } });
+    return byMetric(checks);
+  };
+  const offset = (checks: Record<string, Check>): Check | undefined => checks["Audio-video offset (flash/beep)"];
+  const drift = (checks: Record<string, Check>): Check | undefined => checks["End-to-end A/V drift"];
+  const seconds = (count: number, from = 1): number[] => Array.from({ length: count }, (_, i) => from + i);
+  const measured = (flashes: number[], beeps: number[], durationSeconds: number): Evidence<SyncStats> =>
+    ({ status: "measured", value: syncStats(flashes, beeps, { durationSeconds }) });
+
+  it("marks missing, sparse and malformed markers of a short case instead of passing it", () => {
+    const noFlashes = syncChecks(measured([], seconds(29).map((t) => t + 0.05), 30));
+    expect(offset(noFlashes)).toMatchObject({ verdict: "incomplete", actual: "0 pairs of 0 flashes / 29 beeps", note: expect.stringContaining("no flashes found") });
+    expect(offset(syncChecks(measured(seconds(29), [], 30)))?.note).toContain("no beeps found");
+    expect(offset(syncChecks(measured([], [], 30)))?.note).toContain("no flashes or beeps found");
+    const few = syncChecks(measured(seconds(29), [1.05, 2.05], 30));
+    expect(offset(few)).toMatchObject({ verdict: "incomplete", note: `2 matched flash/beep pair(s); at least ${MIN_SYNC_PAIRS} are needed for an offset` });
+    expect(offset(syncChecks(markers({ medianOffsetMs: Number.NaN })))).toMatchObject({ verdict: "fail", note: "the offset measurement is not a number" });
+    // Drift is not judged for a short case, whatever the markers.
+    expect(drift(noFlashes)).toMatchObject({ verdict: "n/a", note: expect.stringContaining("at least 120 s") });
+  });
+
+  it("judges a well-covered short case and fails an excessive offset", () => {
+    const valid = syncChecks(measured(seconds(29), seconds(29).map((t) => t + 0.035), 30));
+    expect(offset(valid)?.verdict).toBe("pass");
+    expect(offset(valid)?.actual).toMatch(/^35 ms \(29 pairs of 29 flashes \/ 29 beeps/);
+    expect(offset(syncChecks(markers({ medianOffsetMs: 150 })))?.verdict).toBe("fail"); // audio too late
+    expect(offset(syncChecks(markers({ medianOffsetMs: -60 })))?.verdict).toBe("fail"); // audio too early
+    expect(overallVerdict(Object.values(valid))).toBe("pass");
+  });
+
+  it("requires head and tail windows for a long case's drift", () => {
+    const valid = syncChecks(measured(seconds(179), seconds(179).map((t) => t + 0.04), 180), { seconds: 180 });
+    expect(drift(valid)).toMatchObject({ verdict: "pass", actual: expect.stringMatching(/^-?0 ms \(head 59 pairs, tail 60 pairs\)$/) });
+    const headOnly = syncChecks(measured(seconds(60), seconds(60).map((t) => t + 0.04), 180), { seconds: 180 });
+    expect(offset(headOnly)?.verdict).toBe("pass"); // enough pairs for an offset
+    expect(drift(headOnly)).toMatchObject({ verdict: "incomplete", actual: "head 59 pairs, tail 0 pairs" });
+    const tailOnly = syncChecks(measured(seconds(60, 120), seconds(60, 120).map((t) => t + 0.04), 180), { seconds: 180 });
+    expect(drift(tailOnly)).toMatchObject({ verdict: "incomplete", actual: "head 0 pairs, tail 60 pairs" });
+    const drifting = syncChecks(measured(seconds(179), seconds(179).map((t) => t + 0.02 + t * 0.001), 180), { seconds: 180 });
+    expect(drift(drifting)?.verdict).toBe("fail"); // about 150 ms from head to tail
+    expect(drift(syncChecks(markers({ driftMs: Number.NaN }), { seconds: 180 }))?.verdict).toBe("fail");
+    // A long case cut short still owes a drift measurement; the duration check fails too.
+    const cut = syncChecks(measured(seconds(29), seconds(29).map((t) => t + 0.04), 30), { seconds: 180, duration: 30 });
+    expect(drift(cut)?.verdict).toBe("incomplete");
+    expect(cut["Recording duration"]?.verdict).toBe("fail");
+    // An informational long report keeps n/a.
+    expect(drift(syncChecks(measured(seconds(60), seconds(60), 180), { seconds: 180, required: false }))?.verdict).toBe("n/a");
+  });
+
+  it("blocks, marks incomplete or fails sync that was not measured, by reason", () => {
+    const blocked = syncChecks({ status: "unavailable", reason: "ffmpeg is missing" }, { seconds: 180 });
+    expect(offset(blocked)?.verdict).toBe("blocked");
+    expect(drift(blocked)?.verdict).toBe("blocked");
+    expect(drift(syncChecks({ status: "unavailable", reason: "ffmpeg is missing" }))?.verdict).toBe("n/a"); // short: no drift owed
+    expect(offset(syncChecks(undefined))).toMatchObject({ verdict: "incomplete", note: "Required evidence not measured: requires --sync and the test material page" });
+    const error = syncChecks({ status: "error", reason: "ffmpeg silencedetect exited 1" }, { seconds: 180 });
+    expect(offset(error)).toMatchObject({ verdict: "fail", note: "ffmpeg silencedetect exited 1" });
+    expect(drift(error)?.verdict).toBe("fail");
+    // A report that did not ask for sync keeps n/a, and sparse markers there are not a pass either.
+    expect(offset(syncChecks(undefined, { required: false }))?.verdict).toBe("n/a");
+    expect(offset(syncChecks(measured([1], [1.05], 30), { required: false }))?.verdict).toBe("n/a");
+  });
+
+  it("does not let a sync request without pairs pass the run (R2-05)", () => {
+    // Valid format, fps, duration and channel RMS; --sync ran but found no pairs.
+    const m = measure("r2.mp4", 31_335_000, info(), [evenFrames(900, 30)], {
+      channelRms: rms(-20, -21), sync: measured([], [], 30.02), nominalFps: 30, cpu: { averagePercent: 15, peakPercent: 20 },
+    });
+    const checks = judge(m, ENTRY, { screen: { width: 1920, height: 1080 }, expectedDurationSeconds: 30, movingMaterial: true, testMaterial: true, required: { energy: true, sync: true } });
+    expect(checks.filter((c) => c.verdict !== "pass" && c.verdict !== "n/a").map((c) => [c.metric, c.verdict])).toEqual([["Audio-video offset (flash/beep)", "incomplete"]]);
+    expect(overallVerdict(checks)).toBe("incomplete");
+    expect(verdictExitCode([overallVerdict(checks)])).toBe(1);
+  });
+
+  it("ranks verdicts and maps them to exit codes", () => {
+    const of = (...verdicts: Verdict[]): Check[] => verdicts.map((verdict, i) => ({ metric: `m${i}`, expected: "", actual: "", verdict }));
+    expect(overallVerdict(of("pass", "blocked", "fail", "incomplete"))).toBe("fail");
+    expect(overallVerdict(of("pass", "incomplete", "blocked"))).toBe("blocked");
+    expect(overallVerdict(of("pass", "incomplete", "n/a"))).toBe("incomplete");
+    expect(overallVerdict(of("pass", "n/a"))).toBe("pass");
+    expect(overallVerdict(of("n/a"))).toBe("n/a");
+    expect((["pass", "n/a", "fail", "blocked", "incomplete"] as const).map(blocksSuccess)).toEqual([false, false, true, true, true]);
+    expect(verdictExitCode(["pass", "n/a"])).toBe(0);
+    expect(verdictExitCode(["pass", "blocked"])).toBe(2);
+    expect(verdictExitCode(["blocked", "incomplete"])).toBe(1);
+    expect(verdictExitCode(["blocked", "fail"])).toBe(1);
+    expect(verdictExitCode([])).toBe(0);
+  });
+
+  it("shows blocked and incomplete in text and Markdown", () => {
+    const m = measure("g.mp4", 31_335_000, info(), [evenFrames(900, 30)], { channelRms: { status: "unavailable", reason: "ffmpeg is missing" }, sync: measured([], [], 30) });
+    const checks = judge(m, ENTRY, { required: { energy: true, sync: true } });
+    const text = formatText("g.mp4", ENTRY, checks);
+    expect(text).toContain("⛔ Channel energy (RMS)");
+    expect(text).toContain("⚠️ Audio-video offset (flash/beep)");
+    expect(text).toContain("Result: ⛔ blocked");
+    const md = formatMarkdown("g", "g.mp4", ENTRY, checks);
+    expect(md).toContain("| Channel energy (RMS) | > -60 dBFS in each of 2 channels | not measured (Required evidence blocked: ffmpeg is missing) | ⛔ |");
+    expect(md).toContain("Result: ⛔ blocked");
   });
 });

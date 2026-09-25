@@ -16,6 +16,12 @@ import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./
  * `docs/verification/measurements/<date>.md`. macOS only (`open`, `ps`, `pgrep`); nothing
  * here ships with the app. Ten seconds of rest separate the runs so thermal
  * throttling does not colour the later ones.
+ *
+ * Channel energy and the sync markers are required evidence (plan 030): a
+ * case passes only when every check passes or does not apply. Exit 1 when a
+ * case failed, is incomplete (too few markers) or could not be recorded or
+ * verified; 2 when ffmpeg/ffprobe is missing (checked before any recording) or
+ * the desktop locked; 0 otherwise.
  */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -23,7 +29,7 @@ import os from "node:os";
 import path from "node:path";
 import type { QualitySettings } from "../src/shared/quality.ts";
 import { LogGapError, LogReader, type LogCursor } from "./lib/log-reader.mts";
-import { ToolMissingError } from "./lib/media-tools.mts";
+import { ToolMissingError, hasTool } from "./lib/media-tools.mts";
 import {
   REPO_ROOT,
   appendMeasurements,
@@ -33,7 +39,7 @@ import {
   verifyRecording,
   type VerifyResult,
 } from "./lib/verify-recording.mts";
-import { formatText, parseAutorecordOutcome } from "./lib/verify.mts";
+import { BLOCKED_EXIT, blocksSuccess, formatText, parseAutorecordOutcome, verdictExitCode, type Verdict } from "./lib/verify.mts";
 
 interface MatrixEntry {
   name: string;
@@ -238,6 +244,11 @@ async function main(): Promise<void> {
     for (const entry of matrix!) console.log(`  ${entry.name}: ${entry.seconds} s ${JSON.stringify(entry.quality)}`);
     return;
   }
+  const missingTools = ["ffprobe", "ffmpeg"].filter((tool) => !hasTool(tool));
+  if (missingTools.length > 0) {
+    console.error(`BLOCKED: ${missingTools.join(" and ")} missing (brew install ffmpeg); every case requires channel energy and sync evidence. No case was recorded.`);
+    process.exit(BLOCKED_EXIT);
+  }
   if (electronPids().length > 0) {
     console.error("This project's Electron.app is running; quit it first (the single-instance lock would ignore automatic recording settings)");
     process.exit(1);
@@ -270,7 +281,8 @@ async function main(): Promise<void> {
     await sleep(5000);
   }
 
-  const results: { entry: MatrixEntry; result: VerifyResult | undefined; outcome: RunOutcome; error?: string }[] = [];
+  /** `blocked` marks an error caused by a missing tool rather than by the case. */
+  const results: { entry: MatrixEntry; result: VerifyResult | undefined; outcome: RunOutcome; error?: string; blocked?: boolean }[] = [];
   try {
     for (const [index, entry] of matrix!.entries()) {
       if (index > 0) {
@@ -291,7 +303,9 @@ async function main(): Promise<void> {
       }
       console.log(`  File ${outcome.file}; CPU average ${outcome.cpu.averagePercent.toFixed(0)}%/peak ${outcome.cpu.peakPercent.toFixed(0)}%`);
       try {
-        const options: Parameters<typeof verifyRecording>[2] = { sync: true, cpu: outcome.cpu, expectedDurationSeconds: entry.seconds };
+        const options: Parameters<typeof verifyRecording>[2] = {
+          sync: true, cpu: outcome.cpu, expectedDurationSeconds: entry.seconds, required: { energy: true, sync: true },
+        };
         if (screen) options.screen = screen;
         const result = verifyRecording(outcome.file, readLogPairs(LOG_PATH), options);
         // Media measurements stand; judging against the requested settings needs this session's own metadata.
@@ -300,8 +314,9 @@ async function main(): Promise<void> {
         results.push({ entry, result, outcome, ...(metadata ? { error: metadata } : {}) });
         console.log(formatText(outcome.file, result.entry, result.checks, result.pairing));
         if (metadata) console.error(`  ✗ ${metadata}`);
+        if (blocksSuccess(result.verdict)) console.error(`  ✗ ${unmetChecks(result)}`);
       } catch (cause) {
-        results.push({ entry, result: undefined, outcome, error: cause instanceof Error ? cause.message : String(cause) });
+        results.push({ entry, result: undefined, outcome, error: cause instanceof Error ? cause.message : String(cause), blocked: cause instanceof ToolMissingError });
         console.error(`  ✗ verification failed: ${results[results.length - 1]?.error}`);
         if (cause instanceof ToolMissingError) break;
       }
@@ -327,11 +342,15 @@ async function main(): Promise<void> {
     );
     console.log(`\nAppended to ${path.relative(process.cwd(), target)} (and matching .json)`);
   }
-  const failures = results.filter((r) => r.error !== undefined);
-  if (failures.length > 0) {
+  // A case succeeds only with no error and a verdict that neither failed nor lacks required evidence.
+  const unsuccessful = results.flatMap((r) => {
+    const reasons = [r.error, r.result && blocksSuccess(r.result.verdict) ? unmetChecks(r.result) : undefined].filter((s): s is string => s !== undefined);
+    return reasons.length > 0 ? [`${r.entry.name}: ${reasons.join("; ")}`] : [];
+  });
+  if (unsuccessful.length > 0) {
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.appendFileSync(target, `\n## ${new Date().toISOString()} — pnpm matrix -- ${matrixName} incomplete cases\n\n${failures.map((f) => `- ${f.entry.name}: ${f.error}`).join("\n")}\n`, "utf8");
-    for (const f of failures) console.error(`✗ ${f.entry.name}: ${f.error}`);
+    fs.appendFileSync(target, `\n## ${new Date().toISOString()} — pnpm matrix -- ${matrixName} cases that did not pass\n\n${unsuccessful.map((line) => `- ${line}`).join("\n")}\n`, "utf8");
+    for (const line of unsuccessful) console.error(`✗ ${line}`);
   }
   if (desktop.lockedAt) {
     fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -339,7 +358,14 @@ async function main(): Promise<void> {
     console.error(desktop.summary);
     process.exit(DESKTOP_BLOCKED_EXIT);
   }
-  process.exit(failures.length > 0 || verified.some((r) => r.result?.verdict === "fail") ? 1 : 0);
+  const verdicts = results.map((r): Verdict => (r.blocked ? "blocked" : r.error !== undefined ? "fail" : r.result?.verdict ?? "fail"));
+  process.exit(verdictExitCode(verdicts));
+}
+
+/** The case verdict and each check that kept it from passing, with its reason. */
+function unmetChecks(result: VerifyResult): string {
+  const checks = result.checks.filter((c) => blocksSuccess(c.verdict)).map((c) => `${c.metric} ${c.verdict}${c.note ? ` (${c.note})` : ""}`);
+  return `verdict ${result.verdict}: ${checks.join("; ")}`;
 }
 
 void main().catch((cause: unknown) => {

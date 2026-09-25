@@ -11,6 +11,11 @@
  * material page) so frame-rate and drop checks are judged; `--test-material` says the
  * audio is the page's sparse beeps so the audio bitrate is reported, not judged;
  * `--sync` implies both.
+ *
+ * Channel energy is required evidence; with `--sync` so are the markers
+ * (plan 030). Exit 1 when a check failed or required evidence is incomplete
+ * (too few markers) or a file could not be read; 2 when a required tool is
+ * missing (blocked) or for usage errors; 0 otherwise.
  * Development only (brew install ffmpeg); nothing here ships with the app.
  */
 import fs from "node:fs";
@@ -26,7 +31,7 @@ import {
   type VerifyResult,
   type VerifyRunOptions,
 } from "./lib/verify-recording.mts";
-import { formatText } from "./lib/verify.mts";
+import { formatText, verdictExitCode, type Verdict } from "./lib/verify.mts";
 
 const DEFAULT_LOG = path.join(os.homedir(), "Library/Logs/recordstuff/recordstuff.log");
 
@@ -66,6 +71,7 @@ for (let i = 0; i < argv.length; i += 1) {
   else files.push(arg);
 }
 if (files.length === 0) usage();
+options.required = { energy: true, sync: options.sync === true };
 
 let pairs;
 try {
@@ -77,18 +83,22 @@ try {
 if (!logPath) console.error("No log file (--log); requested settings and target bitrate fields will be unavailable");
 
 const results: VerifyResult[] = [];
-let failed = false;
+/** One per file; a file that could not be measured fails, a missing tool blocks the rest. */
+const verdicts: Verdict[] = [];
 for (const file of files) {
   try {
     const result = verifyRecording(file, pairs, options);
     results.push(result);
+    verdicts.push(result.verdict);
     console.log(formatText(file, result.entry, result.checks, result.pairing));
     console.log();
-    if (result.verdict === "fail") failed = true;
   } catch (cause) {
-    failed = true;
     console.error(`${file}: ${cause instanceof Error ? cause.message : String(cause)}`);
-    if (cause instanceof ToolMissingError) break;
+    if (cause instanceof ToolMissingError) {
+      verdicts.push("blocked");
+      break;
+    }
+    verdicts.push("fail");
   }
 }
 
@@ -101,4 +111,4 @@ if (out && results.length > 0) {
   appendMeasurements(target, results, { title: (r) => path.basename(r.file), runLabel: "pnpm verify" });
   console.log(`Appended to ${path.relative(process.cwd(), target)} (and matching .json)`);
 }
-process.exit(failed ? 1 : 0);
+process.exit(verdictExitCode(verdicts));

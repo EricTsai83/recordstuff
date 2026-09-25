@@ -535,14 +535,20 @@ export function parseChannelRms(stderr: string): number[] {
 }
 
 export interface SyncStats {
+  /** Flash and beep onsets the detectors found (EOF closures already dropped). */
+  flashes: number;
+  beeps: number;
   /** Flash/beep pairs that matched within the search window. */
   pairs: number;
-  /** Median of (beep − flash) over all pairs, ms; positive = audio late. */
-  medianOffsetMs: number;
-  /** Median over the first / last `windowSeconds` of the file, ms. */
+  /** Median of (beep − flash) over all pairs, ms; positive = audio late. Undefined below `MIN_SYNC_PAIRS`. */
+  medianOffsetMs: number | undefined;
+  /** Pairs in the first / last `edgeSeconds` of the file (the same pairs when the windows overlap). */
+  headPairs: number;
+  tailPairs: number;
+  /** Median over each window, ms; undefined below `MIN_SYNC_PAIRS` in that window. */
   headOffsetMs: number | undefined;
   tailOffsetMs: number | undefined;
-  /** tail − head, ms; undefined when either side has no pairs. */
+  /** tail − head, ms; undefined unless both windows qualify and do not overlap. */
   driftMs: number | undefined;
 }
 
@@ -555,6 +561,8 @@ function median(values: number[]): number {
 
 /** Fewer matched pairs than this is noise (a single EOF closure, a stray frame), not a measurement. */
 export const MIN_SYNC_PAIRS = 3;
+/** Drift compares the first and the last minute; a file shorter than two of them has no drift. */
+export const SYNC_EDGE_SECONDS = 60;
 
 /**
  * Match every flash to the nearest beep within ±`windowMs`. The material page
@@ -563,14 +571,16 @@ export const MIN_SYNC_PAIRS = 3;
  * the first and the actual last `edgeSeconds` of the recording (review F2:
  * anchored to `durationSeconds`, not to the last marker found), and the
  * drift is their difference; a window with too few pairs yields no drift.
+ * The counts are always returned, so a shortage can be told apart from a
+ * measurement that was never taken (plan 030).
  */
 export function syncStats(
   flashTimes: number[],
   beepTimes: number[],
   options: { windowMs?: number; edgeSeconds?: number; durationSeconds?: number } = {},
-): SyncStats | undefined {
+): SyncStats {
   const windowMs = options.windowMs ?? 400;
-  const edge = options.edgeSeconds ?? 60;
+  const edge = options.edgeSeconds ?? SYNC_EDGE_SECONDS;
   const beeps = [...beepTimes].sort((a, b) => a - b);
   const offsets: { at: number; offsetMs: number }[] = [];
   for (const flash of flashTimes) {
@@ -581,16 +591,19 @@ export function syncStats(
     }
     if (best !== undefined) offsets.push({ at: flash, offsetMs: best });
   }
-  if (offsets.length < MIN_SYNC_PAIRS) return undefined;
-  const end = options.durationSeconds ?? Math.max(...flashTimes, ...beeps);
+  const end = options.durationSeconds ?? Math.max(0, ...flashTimes, ...beeps);
   const head = offsets.filter((o) => o.at < edge).map((o) => o.offsetMs);
   const tail = offsets.filter((o) => o.at >= end - edge).map((o) => o.offsetMs);
   const headOffsetMs = head.length >= MIN_SYNC_PAIRS ? median(head) : undefined;
   const tailOffsetMs = tail.length >= MIN_SYNC_PAIRS ? median(tail) : undefined;
   const windowsDistinct = end >= edge * 2;
   return {
+    flashes: flashTimes.length,
+    beeps: beeps.length,
     pairs: offsets.length,
-    medianOffsetMs: median(offsets.map((o) => o.offsetMs)),
+    medianOffsetMs: offsets.length >= MIN_SYNC_PAIRS ? median(offsets.map((o) => o.offsetMs)) : undefined,
+    headPairs: head.length,
+    tailPairs: tail.length,
     headOffsetMs,
     tailOffsetMs,
     driftMs: headOffsetMs !== undefined && tailOffsetMs !== undefined && windowsDistinct ? tailOffsetMs - headOffsetMs : undefined,
@@ -600,6 +613,17 @@ export function syncStats(
 // ---------------------------------------------------------------------------
 // Measurement → judgement
 // ---------------------------------------------------------------------------
+
+/**
+ * A measurement a verdict can depend on (plan 030). Absent evidence says why,
+ * so it is never read as a passing value: `not-requested` is an intentional
+ * omission, `unavailable` a missing tool (blocked when the caller requires the
+ * evidence), `error` a tool that ran and failed or printed incomplete output
+ * (always a failure).
+ */
+export type Evidence<T> =
+  | { status: "measured"; value: T }
+  | { status: "not-requested" | "unavailable" | "error"; reason: string };
 
 /** Everything measured from one file; `undefined` means the tool could not tell. */
 export interface Measurement {
@@ -626,15 +650,13 @@ export interface Measurement {
         durationSeconds: number | undefined;
         startTime: number | undefined;
         bitsPerSecond: number | undefined;
-        /** RMS per channel in dBFS, when ffmpeg was available. */
-        channelRmsDb: number[] | undefined;
+        /** RMS per channel in dBFS, from ffmpeg astats. */
+        channelRms: Evidence<number[]>;
       }
     | undefined;
   frames: FrameStats | undefined;
-  /** Only when `--sync` ran against the test material and found marker pairs. */
-  sync: SyncStats | undefined;
-  /** `--sync` ran; with `sync` undefined it means no flash / beep pairs were found. */
-  syncAttempted: boolean;
+  /** Flash / beep markers of the test material (`--sync`); measured stats may still hold too few pairs. */
+  sync: Evidence<SyncStats>;
   /** ffprobe decoded every frame without complaint. */
   decodable: boolean;
   decodeErrors: string | undefined;
@@ -652,9 +674,8 @@ export function measure(
   info: ProbeInfo,
   frameIntervals: number[][],
   extras: {
-    channelRmsDb?: number[];
-    sync?: SyncStats;
-    syncAttempted?: boolean;
+    channelRms?: Evidence<number[]>;
+    sync?: Evidence<SyncStats>;
     decodeErrors?: string;
     cpu?: { averagePercent: number; peakPercent: number };
     nominalFps?: number;
@@ -696,12 +717,11 @@ export function measure(
           durationSeconds: numberOrUndefined(audio.duration) ?? duration,
           startTime: numberOrUndefined(audio.start_time),
           bitsPerSecond: audioBps,
-          channelRmsDb: extras.channelRmsDb,
+          channelRms: extras.channelRms ?? { status: "not-requested", reason: "channel RMS was not measured" },
         }
       : undefined,
     frames: frameIntervals.length > 0 ? frameStats(frameIntervals, nominal) : undefined,
-    sync: extras.sync,
-    syncAttempted: extras.syncAttempted ?? false,
+    sync: extras.sync ?? { status: "not-requested", reason: "requires --sync and the test material page" },
     decodable: extras.decodeErrors === undefined || extras.decodeErrors.trim() === "",
     decodeErrors: extras.decodeErrors && extras.decodeErrors.trim() !== "" ? extras.decodeErrors.trim() : undefined,
     cpu: extras.cpu,
@@ -738,7 +758,13 @@ export const THRESHOLDS = {
   maxCpuAveragePercent: 40,
 } as const;
 
-export type Verdict = "pass" | "fail" | "n/a";
+/**
+ * `blocked`: required evidence needs a tool that is missing. `incomplete`:
+ * required evidence was measured but is too thin to judge (too few markers,
+ * no head or tail window). `n/a`: not required and not measured, or not
+ * applicable to this file. Neither is ever read as pass (plan 030).
+ */
+export type Verdict = "pass" | "fail" | "blocked" | "incomplete" | "n/a";
 
 export interface Check {
   metric: string;
@@ -770,6 +796,13 @@ export interface VerifyOptions {
    * dense audio are measured by the audio-quality diagnostics instead.
    */
   testMaterial?: boolean;
+  /**
+   * Evidence the caller's verdict depends on (plan 030): the matrix requires
+   * both, a report that did not ask for sync does not. Missing required
+   * evidence is blocked or incomplete; evidence that is not required may stay
+   * n/a. Neither passes without a measurement.
+   */
+  required?: { energy?: boolean; sync?: boolean };
 }
 
 /** A recording this far from the requested length was cut short or ran long. */
@@ -788,6 +821,35 @@ function aspectMatches(a: Dimensions, b: Dimensions): boolean {
   // Even-rounding of a scaled edge moves the ratio by less than 1%.
   return Math.abs(a.width / a.height - b.width / b.height) < 0.01;
 }
+
+/** A check whose evidence was not measured: a failed tool fails, missing required evidence cannot pass. */
+function unmeasured(metric: string, expected: string, evidence: Exclude<Evidence<unknown>, { status: "measured" }>, required: boolean): Check {
+  if (evidence.status === "error") return { metric, expected, actual: "measurement failed", verdict: "fail", note: evidence.reason };
+  if (!required) return { metric, expected, actual: "not measured", verdict: "n/a", note: `Not measured: ${evidence.reason}` };
+  return evidence.status === "unavailable"
+    ? { metric, expected, actual: "not measured", verdict: "blocked", note: `Required evidence blocked: ${evidence.reason}` }
+    : { metric, expected, actual: "not measured", verdict: "incomplete", note: `Required evidence not measured: ${evidence.reason}` };
+}
+
+/** Why a measured marker set holds too few pairs for an offset. */
+function markerShortage(s: SyncStats): string {
+  if (s.flashes === 0 && s.beeps === 0) return "no flashes or beeps found: the test material was not recorded (check the recorded display and system audio)";
+  if (s.flashes === 0) return "no flashes found: the material's marker box was not on the recorded display";
+  if (s.beeps === 0) return "no beeps found: system audio was silent, or other audio masked the beeps";
+  return `${s.pairs} matched flash/beep pair(s); at least ${MIN_SYNC_PAIRS} are needed for an offset`;
+}
+
+/** Both channels, each a real level above the silence floor; anything else is named. */
+function energyProblems(levels: number[]): string[] {
+  const problems = levels.length === THRESHOLDS.channels ? [] : [`${levels.length} of ${THRESHOLDS.channels} channels measured`];
+  levels.forEach((db, i) => {
+    if (Number.isNaN(db) || db === Number.POSITIVE_INFINITY) problems.push(`channel ${i + 1} is not a valid measurement`);
+    else if (!(db > THRESHOLDS.minChannelRmsDb)) problems.push(`channel ${i + 1} is silent`);
+  });
+  return problems;
+}
+
+const dbText = (db: number): string => (Number.isFinite(db) ? `${db.toFixed(1)} dB` : db === Number.NEGATIVE_INFINITY ? "−∞" : "invalid");
 
 /** Judge one measurement against the log entry (if any) and the threshold table. */
 export function judge(m: Measurement, entry: CaptureLogEntry | undefined, options: VerifyOptions = {}): Check[] {
@@ -889,38 +951,76 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
     verdict: startOffsetMs === undefined ? "n/a" : pass(offsetWithinLimits(startOffsetMs)),
   });
 
-  // Sync markers (test material)
-  checks.push({
-    metric: "Audio-video offset (flash/beep)",
-    expected: `${OFFSET_EXPECTED}; a stable excess indicates inherent latency`,
-    actual: m.sync ? `${ms(m.sync.medianOffsetMs)} (${m.sync.pairs} pairs; head ${ms(m.sync.headOffsetMs)}, tail ${ms(m.sync.tailOffsetMs)})` : "—",
-    verdict: m.sync ? pass(offsetWithinLimits(m.sync.medianOffsetMs)) : "n/a",
-    ...(m.sync ? {} : { note: m.syncAttempted ? "--sync found no flash/beep pairs: check the recorded display and system audio" : "Requires --sync and the test material page" }),
-  });
-  checks.push({
-    metric: "End-to-end A/V drift",
-    expected: `< ${THRESHOLDS.maxDriftMs} ms`,
-    actual: ms(m.sync?.driftMs),
-    verdict: m.sync?.driftMs === undefined ? "n/a" : pass(Math.abs(m.sync.driftMs) < THRESHOLDS.maxDriftMs),
-    ...(m.sync?.driftMs === undefined ? { note: "Requires --sync and a file longer than 60 seconds" } : {}),
-  });
+  // Sync markers (test material). Coverage (plan 030): an offset needs MIN_SYNC_PAIRS
+  // matched pairs; a recording spanning two edge windows also needs that many in each
+  // for drift. Short files have no drift to judge.
+  const syncRequired = options.required?.sync === true;
+  const offsetMetric = "Audio-video offset (flash/beep)";
+  const offsetExpected = `${OFFSET_EXPECTED}; ≥ ${MIN_SYNC_PAIRS} matched pairs; a stable excess indicates inherent latency`;
+  const driftMetric = "End-to-end A/V drift";
+  const driftExpected = `< ${THRESHOLDS.maxDriftMs} ms; ≥ ${MIN_SYNC_PAIRS} pairs in each of the first and last ${SYNC_EDGE_SECONDS} s`;
+  const spansTwoWindows = Math.max(expectedSeconds ?? 0, m.durationSeconds ?? 0) >= SYNC_EDGE_SECONDS * 2;
+  const shortNote = `Needs a recording of at least ${SYNC_EDGE_SECONDS * 2} s; not judged for a short file`;
+  if (m.sync.status !== "measured") {
+    checks.push(unmeasured(offsetMetric, offsetExpected, m.sync, syncRequired));
+    checks.push(spansTwoWindows
+      ? unmeasured(driftMetric, driftExpected, m.sync, syncRequired)
+      : { metric: driftMetric, expected: driftExpected, actual: "—", verdict: "n/a", note: shortNote });
+  } else {
+    const s = m.sync.value;
+    const counts = `${s.pairs} pairs of ${s.flashes} flashes / ${s.beeps} beeps`;
+    const offset = s.medianOffsetMs;
+    checks.push({
+      metric: offsetMetric,
+      expected: offsetExpected,
+      actual: offset === undefined ? counts : `${ms(offset)} (${counts}; head ${ms(s.headOffsetMs)}, tail ${ms(s.tailOffsetMs)})`,
+      ...(offset === undefined
+        ? { verdict: syncRequired ? "incomplete" : "n/a", note: markerShortage(s) }
+        : Number.isFinite(offset)
+          ? { verdict: pass(offsetWithinLimits(offset)) }
+          : { verdict: "fail", note: "the offset measurement is not a number" }),
+    });
+    const drift = s.driftMs;
+    const windows = `head ${s.headPairs} pairs, tail ${s.tailPairs} pairs`;
+    checks.push({
+      metric: driftMetric,
+      expected: driftExpected,
+      actual: drift === undefined ? windows : `${ms(drift)} (${windows})`,
+      ...(drift !== undefined
+        ? Number.isFinite(drift) ? { verdict: pass(Math.abs(drift) < THRESHOLDS.maxDriftMs) } : { verdict: "fail", note: "the drift measurement is not a number" }
+        : spansTwoWindows
+          ? { verdict: syncRequired ? "incomplete" : "n/a", note: `drift needs ≥ ${MIN_SYNC_PAIRS} matched pairs in each of the first and last ${SYNC_EDGE_SECONDS} s of the file` }
+          : { verdict: "n/a", note: shortNote }),
+    });
+  }
 
-  // Sample rate/channels
+  // Audio format and, separately, energy in each channel: a format can pass while energy is unmeasured.
   if (m.audio) {
-    const rms = m.audio.channelRmsDb;
-    const energetic = rms?.map((db) => db > THRESHOLDS.minChannelRmsDb);
-    const rmsText = rms ? rms.map((db) => (Number.isFinite(db) ? `${db.toFixed(1)} dB` : "−∞")).join(" / ") : "not measured";
-    const formatOk = m.audio.sampleRate === THRESHOLDS.sampleRateHz && m.audio.channels === THRESHOLDS.channels;
-    const energyOk = energetic === undefined ? undefined : energetic.length === THRESHOLDS.channels && energetic.every(Boolean);
     checks.push({
       metric: "Sample rate/channels",
-      expected: `${THRESHOLDS.sampleRateHz / 1000} kHz, ${THRESHOLDS.channels} channels, energy in both channels`,
-      actual: `${m.audio.sampleRate ?? "—"} Hz, ${m.audio.channels ?? "—"} channels, RMS ${rmsText}` + (entry?.track.channelCount !== undefined ? ` (track reports ${entry.track.channelCount} channels)` : ""),
-      verdict: pass(formatOk && energyOk !== false),
-      ...(energyOk === undefined ? { note: "Channel energy requires ffmpeg" } : {}),
+      expected: `${THRESHOLDS.sampleRateHz / 1000} kHz, ${THRESHOLDS.channels} channels`,
+      actual: `${m.audio.sampleRate ?? "—"} Hz, ${m.audio.channels ?? "—"} channels` + (entry?.track.channelCount !== undefined ? ` (track reports ${entry.track.channelCount} channels)` : ""),
+      verdict: pass(m.audio.sampleRate === THRESHOLDS.sampleRateHz && m.audio.channels === THRESHOLDS.channels),
     });
   } else {
     checks.push({ metric: "Sample rate/channels", expected: `${THRESHOLDS.sampleRateHz / 1000} kHz, ${THRESHOLDS.channels} channels`, actual: "No audio track", verdict: "fail" });
+  }
+  const energyMetric = "Channel energy (RMS)";
+  const energyExpected = `> ${THRESHOLDS.minChannelRmsDb} dBFS in each of ${THRESHOLDS.channels} channels`;
+  const rms = m.audio?.channelRms;
+  if (!rms) {
+    checks.push({ metric: energyMetric, expected: energyExpected, actual: "No audio track", verdict: "fail" });
+  } else if (rms.status !== "measured") {
+    checks.push(unmeasured(energyMetric, energyExpected, rms, options.required?.energy === true));
+  } else {
+    const problems = energyProblems(rms.value);
+    checks.push({
+      metric: energyMetric,
+      expected: energyExpected,
+      actual: rms.value.length === 0 ? "no channel levels" : rms.value.map(dbText).join(" / "),
+      verdict: pass(problems.length === 0),
+      ...(problems.length > 0 ? { note: problems.join("; ") } : {}),
+    });
   }
 
   // Bitrate
@@ -967,16 +1067,37 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
   return checks;
 }
 
+/** A measured failure outranks missing evidence; missing evidence outranks any pass. */
+const VERDICT_PRECEDENCE = ["fail", "blocked", "incomplete", "pass"] as const;
+
 export function overallVerdict(checks: Check[]): Verdict {
-  if (checks.some((c) => c.verdict === "fail")) return "fail";
-  return checks.some((c) => c.verdict === "pass") ? "pass" : "n/a";
+  return VERDICT_PRECEDENCE.find((verdict) => checks.some((c) => c.verdict === verdict)) ?? "n/a";
+}
+
+/** A verdict that must keep a verification, acceptance or matrix run from succeeding. */
+export function blocksSuccess(verdict: Verdict): boolean {
+  return verdict === "fail" || verdict === "blocked" || verdict === "incomplete";
+}
+
+/** Exit status of a run that needed a missing prerequisite, as for a locked desktop. */
+export const BLOCKED_EXIT = 2;
+
+/** Process exit for a set of verdicts: 1 for any fail or incomplete, else 2 for any blocked, else 0. */
+export function verdictExitCode(verdicts: Verdict[]): number {
+  if (verdicts.some((v) => v === "fail" || v === "incomplete")) return 1;
+  return verdicts.includes("blocked") ? BLOCKED_EXIT : 0;
 }
 
 // ---------------------------------------------------------------------------
 // Formatting
 // ---------------------------------------------------------------------------
 
-export const VERDICT_MARK: Record<Verdict, string> = { pass: "✅", fail: "❌", "n/a": "—" };
+export const VERDICT_MARK: Record<Verdict, string> = { pass: "✅", fail: "❌", blocked: "⛔", incomplete: "⚠️", "n/a": "—" };
+
+const resultLine = (checks: Check[]): string => {
+  const verdict = overallVerdict(checks);
+  return `Result: ${VERDICT_MARK[verdict]} ${verdict}`;
+};
 
 /**
  * Without an entry the requested-settings checks are n/a; the pairing says
@@ -1006,7 +1127,7 @@ export function formatText(file: string, entry: CaptureLogEntry | undefined, che
   for (const c of checks) {
     lines.push(`  ${VERDICT_MARK[c.verdict]} ${pad(c.metric, w1)}  ${pad(c.expected, w2)}  ${c.actual}${c.note ? `  (${c.note})` : ""}`);
   }
-  lines.push(`  Result: ${VERDICT_MARK[overallVerdict(checks)]}`);
+  lines.push(`  ${resultLine(checks)}`);
   return lines.join("\n");
 }
 
@@ -1032,6 +1153,6 @@ export function formatMarkdown(
   for (const c of checks) {
     lines.push(`| ${cell(c.metric)} | ${cell(c.expected)} | ${cell(c.actual)}${c.note ? ` (${cell(c.note)})` : ""} | ${VERDICT_MARK[c.verdict]} |`);
   }
-  lines.push("", `Result: ${VERDICT_MARK[overallVerdict(checks)]}`, "", "Subjective comparison (manual):", "", "- Text sharpness:", "- Scrolling and motion:", "- Color edges (thin red/blue lines):", "- Volume/distortion/channel separation:", "");
+  lines.push("", resultLine(checks), "", "Subjective comparison (manual):", "", "- Text sharpness:", "- Scrolling and motion:", "- Color edges (thin red/blue lines):", "- Volume/distortion/channel separation:", "");
   return lines.join("\n");
 }
