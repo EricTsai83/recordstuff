@@ -2,7 +2,7 @@
 
 [English](035-guided-native-acceptance.md) | [繁體中文](035-guided-native-acceptance.zh-TW.md)
 
-Status: planned, not executed. Created: 2026-09-25. This plan is permanently the **last queue item**, currently after 033, 034, 037, 040, 042 and 044; see [order](README.md#order-and-status). Any later implementation/fix plans go before it, regardless of numbering. It is the last step before clearing the queue, not a request to begin testing now.
+Status: planned, not executed. Created: 2026-09-25. This plan is permanently the **last queue item**, currently after 034, 037, 040 and 042; see [order](README.md#order-and-status). Any later implementation/fix plans go before it, regardless of numbering. It is the last step before clearing the queue, not a request to begin testing now.
 
 ## Purpose and ownership
 
@@ -107,6 +107,13 @@ Source: [028 closure](../docs/verification/history-2026-09.md#plan-028-closure--
 - [ ] N38: Open Settings, choose Custom shortcut… and press Control+W on the physical keyboard. The panel stays open, the preview shows ⌃W and Confirm saves it as ⌃W (custom). Then capture ⌘⇧W: it previews instead of closing. Restore the original shortcut through Custom… and Confirm.
 - [ ] N39: With no capture active, press Command+W: the panel closes and the menu-bar app keeps running; reopen it from the tray and with ⌘⌥,. Close it once with Escape as well.
 - [ ] N40: Choose Custom shortcut…, then press Command+W while listening: the panel closes and nothing is saved. Then press ⌘⌥, (Settings opens), and start and stop a short recording with the restored recording shortcut; play the file. The delayed-save variant rests on the fixture's held write (028 closure), not on a native disk stall.
+
+## Output-folder acceptance (not performed)
+
+Source: [033 closure](../docs/verification/history-2026-09.md#plan-033-closure--2026-09-26). Codex computer use could not target RecordStuff (`-10005 timeoutReached`), so the tray action was not operated natively. Use a fresh `pnpm start:app` bundle and an isolated test folder, never the maintainer's recordings folder; record the original output folder and language and restore them afterwards. N11's result-row folder change stays a separate case.
+
+- [ ] N41: Click the tray's Output folder entry with the existing folder: Finder opens it and no warning appears. Choose an isolated test folder through Change output folder, remove it and click again: one warning names the full path, says it was not found and may be on a disconnected drive, and offers Change output folder and Cancel. A second click brings that warning forward instead of adding another. Cancel keeps the setting and creates nothing. Recreate the folder and click: Finder opens it. Repeat the warning in English and Traditional Chinese; from it choose Change output folder, cancel the chooser once (setting kept), then choose the original folder.
+- [ ] N42: On a launch whose default folder does not exist yet and can be isolated, click Output folder before any recording: only the RecordStuff folder is created and Finder opens it. Do not rename the maintainer's real folder to arrange this; if no isolated default is available, record not run, and the unit tests remain the only evidence. With a custom folder on the bounded test disk image, eject the image and click: the missing-folder warning appears and nothing is created under `/Volumes`.
 
 ## Countdown acceptance (not performed)
 

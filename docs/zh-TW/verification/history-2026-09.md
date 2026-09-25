@@ -9,6 +9,56 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 033 結案 — 2026-09-26
+
+Tray 的儲存位置動作遇到不存在或無法使用的資料夾時，現在會以可見的方式復原（R2-08），由 Claude 實作、Codex GPT-6 Astra review（[桌面設計](../system-design/desktop.md#設定與儲存位置)）。原本 `openOutputDir` 呼叫 `shell.openPath` 後只把錯誤寫進 log。全新設定指向 `Movies/RecordStuff`，而錄影要到開始時才建立它，所以首次啟動時點擊沒有任何反應。
+
+- **行為。** [output-folder.ts](../../../src/main/output-folder.ts) 的 `createOutputFolderOpener` 先 stat 設定的資料夾：
+  - 既有資料夾照舊以 Finder 開啟；
+  - 不存在的已知預設資料夾，只在上層資料夾存在時以非遞迴 `mkdir` 建立後開啟；
+  - 不存在的自訂資料夾（例如在未連接的磁碟上）一律不重建。
+  - 其他結果都顯示一則在地化警告，列出完整路徑，有錯誤時附上詳細資訊，並提供「更改儲存位置」與「取消」。這些結果包括：路徑是檔案、預設資料夾的上層不存在、建立被拒、路徑無法讀取，以及 Finder 回傳錯誤字串或 reject。「更改儲存位置」經 settled 檢查後沿用 `changeOutputDir`；「取消」什麼都不改。
+  - RecordStuff 自己的 stat 得到 `EACCES`／`EPERM` 時，仍會請 Finder 開啟，因為 macOS 隱私資料夾可能拒絕 App 而不拒絕 Finder。
+  - 開啟永遠不寫入 settings.json。重複點擊會併入進行中的那次，警告開著時再點只會把它帶到前景。
+  - 錄影的 `ensureWritableDir` 沒有改變。
+- **設定邊界。** `SettingsStore` 現在公開建構時拿到的 `defaultOutputDir`，opener 讀取它。第一次 `pnpm check` 只有 `scripts/lib/update-acceptance.test.ts` 失敗：它的 instrumentation 會替換唯一的 anchor `defaultOutputDir: defaultOutputDir(),`，而第一版接線重複了這段。改讀 store 的值後 anchor 仍只有一處，update fixture 的隔離資料夾也會同時套用到 store 與 opener。
+- **測試。** [output-folder.test.ts](../../../src/main/output-folder.test.ts) 的 17 項測試在真實暫存 home 與真實 `SettingsStore` 上執行正式 opener，並注入錯誤、shell 與對話框。涵蓋：
+  - 全新預設資料夾只建立它本身再開啟，第二次點擊只開啟；
+  - 既有資料夾；
+  - 預設資料夾的上層不存在時不建立；
+  - 既有上層中已刪除的自訂資料夾，以及 `/Volumes/…` 路徑，都不重建；
+  - 預設資料夾建立被拒（`EACCES`）；
+  - stat 得到 `EPERM` 時 Finder 可開啟，以及 Finder 也拒絕；
+  - 自訂路徑與預設路徑上的檔案都不被動到；
+  - Finder 錯誤字串、reject 與 `EIO` stat；
+  - `EEXIST` 競態；
+  - 選擇與取消；
+  - 資料夾復原後重試；
+  - 警告開著時與 Finder 仍在開啟時的重複點擊；
+  - 對話框失敗與 focus 失敗；
+  - 繁中警告。
+  - 每個案例都斷言建立與未建立的內容，以及 settings.json 不變。
+- **檢查**（最終 revision，Node 24.21.0）：`pnpm check` 通過（54 個檔案 899 項測試、型別檢查與 build）；`git diff --check` 乾淨；變更文件中的相對連結與 anchor 皆可解析。
+
+原生驗收於 M1 Pro、macOS 26.6.2，基於 HEAD `69c396c` 加上尚未 commit 的變更：
+
+- **建置。** `pnpm start:app` 建置並驗證全新的簽章 bundle：九個 bundle identity，app.asar SHA-256 `1d993884…`。它以 run `20260925T205957936Z-70445` 進入 ready，使用真實設定（zh-TW、`~/Movies/RecordStuff`）。
+- **Tray 案例 blocked。** Codex GPT-6 Astra computer use 以 30 秒 timeout 呼叫 `getApp("RecordStuff")`，15.85 秒後得到 `-10005 timeoutReached`，與先前各輪相同，並依指示停止。因此既有資料夾、選擇隔離測試資料夾、雙語缺少資料夾警告與取消及重複點擊、復原後重試都是 **blocked**。沒有以 AppleScript、IPC 或座標點擊代替，Finder 與警告對話框仍未經原生觀察。
+- **第二個副本。** 這次嘗試在 21:00:44 啟動了第二個 RecordStuff，它因 single-instance lock 自行結束。
+- **全新預設資料夾未執行。** 全新預設資料夾案例沒有做原生執行：正常 bundle 的預設位置是維護者真正的錄影資料夾，沒有被改名。單元測試只在真實檔案系統上涵蓋它。
+- **移到 035。** 這些案例現在是 plan 035 的 N41–N42。
+
+依範圍未執行：`pnpm acceptance:regression`，因為 Settings UI、IPC 與 preload 沒有變更；錄影 smoke，因為選資料夾流程與錄影驗證沒有改變；以及 matrix、通知與發布。
+
+收尾：
+
+- 以指向 bundle 路徑的正常 quit Apple Event 結束，之後沒有 RecordStuff 程序殘留。
+- settings.json 不變（SHA-256 `0f892e19…`），隔離的 `/private/tmp/recordstuff-033-native` 資料夾已刪除。
+- 本次工作期間執行了 `caffeinate -d -i -t 5400`。
+- 本機報告 `measurements/2026-09-26T050211-computer-use/report.md` 保留。
+
+Codex GPT-6 Astra 以 medium reasoning 執行，log header 確認 read-only sandbox。Pass 1 約 40 秒，沒有 findings；它讀了完整 diff、兩個新檔、plan，以及受影響的 `index.ts` 與 tray-model 程式碼。不需要第二個 pass。30 分鐘 review 預算用了約 1 分鐘；不需要 fallback。本輪已在本機 main 分成數個 commit：opener 修正 `957bf06`、設計文件 `7c8c8c8`，以及本結案 commit。沒有 push 或發布。
+
 ## Plan 044 結案 — 2026-09-26
 
 plan 043 手動執行的鍵盤配置檢查，現在由 `pnpm acceptance:shortcut-layout` 自動化，由 Claude 實作、Codex GPT-6 Astra review（[鍵盤配置快捷鍵檢查](../system-design/tooling.md#鍵盤配置快捷鍵檢查)）。這項檢查防範 Electron 升級時 `LayoutAwareGlobalHotkeys` 被改名或移除。它選取一個已啟用、數字列不輸入數字的輸入法，並透過新的 [fixture](../../../scripts/fixtures/shortcut-layout.ts) 載入建置好的 `out/main/index.js`；這個 fixture 沿用 shortcut-failure 的 boundary 模式。接著以 System Events 對真正註冊的 `CommandOrControl+Control+Alt+Shift+7` 送出 key code，最後還原輸入法。測試指南的全域快捷鍵列與 Electron 列、設計決策的 Electron 升級觸發點，以及桌面設計，現在都指向這個指令。

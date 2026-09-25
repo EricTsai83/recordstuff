@@ -8,6 +8,7 @@
 
 | 項目 | 既有結果與限制 |
 | --- | --- |
+| Plan 033 儲存位置復原 | Tray 的儲存位置動作會開啟既有資料夾；只在上層存在時建立不存在的預設資料夾；不存在的自訂資料夾一律不重建；每種失敗都顯示一則附路徑與「更改儲存位置／取消」的在地化警告，且不寫入設定。17 項測試在真實暫存檔案系統與 `SettingsStore` 上執行；`pnpm check` 通過（899 項測試）。Finder 與警告的原生觀察 blocked（computer use `-10005 timeoutReached`），移到 035 N41–N42。見[歷史](history-2026-09.md#plan-033-結案--2026-09-26) |
 | Plan 044 鍵盤配置快捷鍵檢查 | `pnpm acceptance:shortcut-layout` 選取一個已啟用、數字列不輸入數字的輸入法；若是輸入法，會在自有的文字欄位中啟用它，讓它的配置生效。接著以數字列與數字鍵盤 key code 檢查建置後 App 的 `CommandOrControl+Control+Alt+Shift+7`，以 ⌘⌥, 作為送達對照組，最後還原並確認輸入法。從 ABC 開始、在注音（ZhuyinBopomofo）下約 7 秒通過。依配置查找的 drill 以 exit 1 結束，無法使用的輸入法與執行中的 dev App 都在任何變更前 blocked，兩個階段的 SIGINT 都還原了 ABC。`pnpm check` 通過（882 項測試）；實體按鍵不在範圍內。見[歷史](history-2026-09.md#plan-044-結案--2026-09-26) |
 | Plan 043 快捷鍵依實體鍵位 | macOS 上 main 在 app ready 之前停用 Chromium 依配置查找的 `LayoutAwareGlobalHotkeys`，並與既有清單合併，讓全域快捷鍵依編輯器記錄的實體鍵位註冊。原本在注音下，預設 ⌘⇧1 會被綁到數字鍵盤。修改前後的 probe、`pnpm acceptance:regression`（866 項測試、Settings 113/113、快捷鍵整合）、注音下的 `pnpm acceptance:updates`（數字列 ⌘⇧1 下 11/11，兩段錄影所有受判定檢查皆通過）、⌘⌥, callback 與 QuickTime 播放都通過。維護者回報注音與 ABC 下實體數字列 ⌘⇧1 皆正常，App log 也相符。見[歷史](history-2026-09.md#plan-043-結案--2026-09-26) |
 | Plan 032 更新驗收鎖定契約 | 更新 runner 的 snapshot 由同一份狀態契約判定。Starting、錄製與儲存中鎖定偏好、更新 action 與 tray 的變更資料夾，語言、外觀與 About 維持可用；只有 recording 顯示 REC 與 Stop；settled 狀態全部解鎖；未分類或被移除的設定群組會失敗。另修正過時的 zh-TW 標題期望。15 項針對性測試使用真正的 settingsView／trayModel snapshot。第 3 次原生 `pnpm acceptance:updates` 在 ABC 輸入法下 exit 0（11／11，兩段 10.7／10.9 秒錄影，標記 10／10），因為注音的數字列會讓合成的 ⌘⇧1 收不到。已觀察 QuickTime 播放。見[歷史](history-2026-09.md#plan-032-結案--2026-09-26) |

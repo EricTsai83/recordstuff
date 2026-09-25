@@ -9,6 +9,56 @@ This document preserves conclusions from completed plans separately from the sys
 [Back to the verification index](README.md). These are historical results, including then-outstanding statuses and procedures; use the [testing guide](../testing.md) for current policy. Raw measurements links are local only and absent from a fresh clone.
 
 
+## Plan 033 closure — 2026-09-26
+
+The tray's output-folder action now recovers visibly from a missing or unusable folder (R2-08), implemented by Claude with Codex GPT-6 Astra review ([desktop design](../system-design/desktop.md#settings-and-output-folder)). Before, `openOutputDir` called `shell.openPath` and only logged its error. A fresh store points at `Movies/RecordStuff`, which recording creates only when it starts, so a first-launch click showed nothing.
+
+- **Behavior.** [output-folder.ts](../../src/main/output-folder.ts) `createOutputFolderOpener` stats the configured folder:
+  - an existing folder opens in Finder, as before;
+  - the missing known default is created with a non-recursive `mkdir`, only inside an existing parent folder, and then opened;
+  - a missing custom folder, such as one on a disconnected drive, is never recreated.
+  - Every other outcome shows one localized warning with the full path, technical details where there is an error, and Change output folder or Cancel. These outcomes are a file at the path, a missing default parent, a refused creation, an unreadable path, and a Finder error string or rejection. Change output folder reuses `changeOutputDir` behind the settled check; Cancel changes nothing.
+  - An `EACCES`/`EPERM` from RecordStuff's own stat still asks Finder to open the folder, since macOS privacy folders can refuse the app but not Finder.
+  - Opening never writes settings.json. Repeated clicks join the attempt in flight, and a click while the warning is open only brings it forward.
+  - Recording's `ensureWritableDir` is unchanged.
+- **Settings boundary.** `SettingsStore` now exposes the `defaultOutputDir` it was given, and the opener reads it. The first `pnpm check` failed only in `scripts/lib/update-acceptance.test.ts`: its instrumentation replaces the single anchor `defaultOutputDir: defaultOutputDir(),`, which the first wiring had duplicated. Reading the store's value keeps one anchor, so the update fixture's isolated folder reaches both the store and the opener.
+- **Tests.** 17 tests in [output-folder.test.ts](../../src/main/output-folder.test.ts) run the production opener over a real temporary home and a real `SettingsStore`, with injected faults, shell and dialog. They cover:
+  - a fresh default created alone and then opened, and a second click that only opens it;
+  - an existing folder;
+  - a missing default parent that is not created;
+  - a deleted custom folder inside an existing parent, and a `/Volumes/…` path, neither recreated;
+  - a refused default creation (`EACCES`);
+  - an `EPERM` stat that Finder opens, and one that Finder also refuses;
+  - a file at a custom path and at the default path, left untouched;
+  - a Finder error string, a rejected open and an `EIO` stat;
+  - an `EEXIST` race;
+  - choose versus cancel;
+  - a retry after restoring the folder;
+  - repeated clicks while the warning is open and while Finder is still opening;
+  - a failing dialog and a failing focus;
+  - the Traditional Chinese warning.
+  - Each case asserts what was and was not created and that settings.json is unchanged.
+- **Checks** on the final revision (Node 24.21.0): `pnpm check` passed with 899 tests in 54 files, type checks and build; `git diff --check` was clean. Relative links and anchors in the changed documents resolve.
+
+Native, on an M1 Pro running macOS 26.6.2 from HEAD `69c396c` plus the uncommitted change:
+
+- **Build.** `pnpm start:app` built and verified a fresh signed bundle: nine bundle identities, app.asar SHA-256 `1d993884…`. The bundle reached ready as run `20260925T205957936Z-70445`, with the real settings (zh-TW, `~/Movies/RecordStuff`).
+- **Tray cases blocked.** Codex GPT-6 Astra computer use called `getApp("RecordStuff")` with a 30-second timeout and got `-10005 timeoutReached` after 15.85 seconds, as in earlier rounds. It stopped as instructed. The existing folder, choosing an isolated test folder, the missing-folder warning in both languages with cancel and repeated clicks, and retry after recovery are therefore **blocked**. No AppleScript, IPC or coordinate clicks were substituted, and Finder and the warning dialog remain natively unobserved.
+- **Second launch.** The attempt started a second RecordStuff at 21:00:44, which exited on the single-instance lock.
+- **Fresh default not run.** The fresh default case was not run natively: the normal bundle's default is the maintainer's real recordings folder, which was not renamed. The unit tests cover it on a real filesystem only.
+- **Carried to 035.** These cases are now plan 035's N41–N42.
+
+Not run, by scope: `pnpm acceptance:regression`, because no Settings UI, IPC or preload changed; recording smoke, because the folder chooser and recording validation are unchanged; and matrices, notifications and publication.
+
+Cleanup:
+
+- The bundle was quit with a normal quit Apple Event to its path, and no RecordStuff process remained.
+- settings.json was unchanged (SHA-256 `0f892e19…`), and the isolated `/private/tmp/recordstuff-033-native` folder was removed.
+- `caffeinate -d -i -t 5400` ran for the session.
+- The local report `measurements/2026-09-26T050211-computer-use/report.md` is retained.
+
+Codex GPT-6 Astra ran at medium reasoning, with the read-only sandbox confirmed in the log header. Pass 1 took about 40 seconds and returned no findings; it read the full diff, both new files, the plan and the affected `index.ts` and tray-model code. No second pass was needed. About 1 of the 30-minute review budget was used; no fallback was needed. The round is committed locally on main in scope-separated commits: opener fix `957bf06`, design documentation `7c8c8c8`, and this closure commit. No push or publication.
+
 ## Plan 044 closure — 2026-09-26
 
 `pnpm acceptance:shortcut-layout` now automates the keyboard-layout check that plan 043 ran by hand, implemented by Claude with Codex GPT-6 Astra review ([keyboard-layout shortcut check](../system-design/tooling.md#keyboard-layout-shortcut-check)). The check guards against an Electron upgrade that renames or drops `LayoutAwareGlobalHotkeys`. It selects an enabled input source whose number row types no digits and loads the built `out/main/index.js` behind a new [fixture](../../scripts/fixtures/shortcut-layout.ts) that follows the shortcut-failure boundary pattern. It then sends System Events key codes to the real registration of `CommandOrControl+Control+Alt+Shift+7` and restores the input source. The testing guide's global-shortcut and Electron rows, the design decision's Electron-upgrade trigger and the desktop design now name the command.
