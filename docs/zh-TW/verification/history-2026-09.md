@@ -9,6 +9,54 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 044 結案 — 2026-09-26
+
+plan 043 手動執行的鍵盤配置檢查，現在由 `pnpm acceptance:shortcut-layout` 自動化，由 Claude 實作、Codex GPT-6 Astra review（[鍵盤配置快捷鍵檢查](../system-design/tooling.md#鍵盤配置快捷鍵檢查)）。這項檢查防範 Electron 升級時 `LayoutAwareGlobalHotkeys` 被改名或移除。它選取一個已啟用、數字列不輸入數字的輸入法，並透過新的 [fixture](../../../scripts/fixtures/shortcut-layout.ts) 載入建置好的 `out/main/index.js`；這個 fixture 沿用 shortcut-failure 的 boundary 模式。接著以 System Events 對真正註冊的 `CommandOrControl+Control+Alt+Shift+7` 送出 key code，最後還原輸入法。測試指南的全域快捷鍵列與 Electron 列、設計決策的 Electron 升級觸發點，以及桌面設計，現在都指向這個指令。
+
+- **只選取輸入法還不夠。** 從背景程序以 `TISSelectInputSource` 選取注音後，在觀察的 5 秒內鍵盤配置都停在 ABC。預設功能的 Electron probe 這時仍會觸發數字列 ⌘⌃⌥⇧7，所以只選取輸入法的檢查，會在 043 的 bug 存在時照樣通過。在 probe 自有視窗中聚焦一個文字欄位後，輸入法在 100 ms 內套用了 `com.apple.keylayout.ZhuyinBopomofo`。視窗關閉、probe 結束後配置仍然保留，預設功能的 probe 這時只觸發數字鍵盤。因此對輸入法，runner 會開這樣的視窗，最多等 8 秒讓配置套用後才繼續。
+- **組成。**
+  - [runner](../../../scripts/acceptance-shortcut-layout.mts) 負責前置檢查、桌面回合、輸入法、fixture 程序與報告。
+  - [shortcut-layout.mts](../../../scripts/lib/shortcut-layout.mts) 包含 JavaScript for Automation 輔助程式（以 TIS 讀取與選取輸入法、以 CGEvent 讀取輸入的字元），以及輸入法選擇、還原紀錄、結果判定與其他 RecordStuff 程序的偵測。
+  - 數字列沒有任何鍵輸入數字、且數字鍵盤 7 仍輸入 7 的輸入法才符合條件。已啟用的鍵盤輸入法依序嘗試，目前的輸入法排第一。
+  - [shortcut-layout.test.ts](../../../scripts/lib/shortcut-layout.test.ts) 的 16 項測試涵蓋：配置判定；嘗試順序，包括指定了未啟用或不可選取的輸入法；切換後、部分失敗後與第一次查詢失敗後的還原；無法確認的還原；pass／fail／blocked 的優先順序，包括程序寫出通過結果後又卡住或崩潰；drill；以及程序偵測，包括 `pnpm dev` 的相對 entry。
+  - 沒有新增 npm 依賴，共用的 shortcut-failure fixture 與 `acceptance-shortcut.mts` 都未修改。
+
+執行環境為 M1 Pro、macOS 26.6.2、Node 24.21.0、Electron 44.3.0，從 ABC 開始。已啟用的輸入法為 ABC 與注音。最終版本上的結果：
+
+- **通過。** `pnpm acceptance:shortcut-layout` exit 0，含建置約 7 秒（`2026-09-25T20-37-16-917Z-shortcut-layout`）：
+  - ABC 因數字列輸入數字而略過；
+  - 選取並聚焦啟用注音，其 ZhuyinBopomofo 配置的數字列輸入 ㄢ ㄅ ㄉ ˇ ˋ ㄓ ˊ ˙ ㄚ ㄞ；
+  - 正式程式的 switch 為 `disable-features=LayoutAwareGlobalHotkeys`；
+  - ⌘⌥, 觸發一次、數字列 7 觸發一次、數字鍵盤 7 未觸發；
+  - ABC 已還原並確認。
+- **Drill。** `-- --drill-layout-aware` exit 1（`…20-37-30-039Z-shortcut-layout-drill`）：觀察到的 `disable-features` 為 none，數字列 7 未觸發、數字鍵盤 7 觸發，ABC 已還原。
+- **無法使用的輸入法。** `-- --source com.apple.inputmethod.TCIM.Cangjie`（已安裝、未啟用）在任何變更前以 exit 2 結束，`AppleSelectedInputSources` 不變。
+- **SIGINT。** 分別在啟用視窗期間與 check 的數字鍵盤觀察期間中斷 runner。兩次都 exit 1，中斷當下注音都在使用中；ABC 已還原並確認，每個 Electron process group 都正常結束，沒有殘留的 fixture 程序。第二次的結果把數字鍵盤那一鍵標為 `not completed`。
+- **其他 RecordStuff 程序。** 以 `pnpm dev` 相同的方式（本 checkout 的 Electron、entry 為 `.`）啟動 App 時，runner 在任何變更前以 exit 2 結束，並列出其 pid。
+- **檢查。** `pnpm check` 通過（53 個檔案、882 項測試），`git diff --check` 無問題。修改過的文件中，相對連結與 anchor 都能解析。
+
+較早的兩次執行發現了問題。Chromium 收到 SIGTERM 時會正常 quit，不會呼叫 fixture 的 Node handler，所以被中斷的 check 沒有寫出結果；現在 fixture 在正式程式 ready 後就註冊 quit observer。最初幾次的啟用執行也寫入了 Electron 共用的預設 profile，pass 1 隨後回報了這個問題。
+
+依範圍未執行：`pnpm acceptance:regression`，因為共用 fixture 與 `acceptance-shortcut.mts` 未修改；錄影、matrix、通知與封裝，因為產品未變。這項檢查送出的是合成 key code，實體按鍵不在範圍內；043 由維護者回報的實體按鍵仍是硬體證據。Windows 不在範圍內。
+
+清理：
+
+- 每次執行後輸入法都回到 ABC，沒有殘留的 RecordStuff、fixture 或 probe 程序。
+- 以 dev 方式啟動的 App 已結束。它使用真正的 userData 與 log，`settings.json` 不變（SHA-256 `0f892e19…`）。
+- 注音輸入法現在記住 ZhuyinBopomofo 為它的配置；本 session 開始時回報的是 none。這是輸入法本身的狀態，任何人用它打字都會設定，不做還原。
+- 開發用的 probe，以及修正 3 之前的啟用執行，寫入了 `~/Library/Application Support/Electron`；最終版本的執行沒有動到它。
+- 本 session 執行了 `caffeinate -d -i -t 5400`。
+- 依維護者要求，結案後已刪除 13 個本機報告目錄，從 `2026-09-25T20-27-24-582Z-shortcut-layout` 到 `2026-09-25T20-37-52-134Z-shortcut-layout`。本紀錄中的數據即為保留下來的紀錄。
+
+Codex GPT-6 Astra 以 medium reasoning 執行，log header 確認為 read-only sandbox。pass 1 約 1.5 分鐘，回傳四項 Medium findings，全部接受並修正：
+
+- 程序偵測漏掉以 `.` 啟動本 checkout Electron 的 `pnpm dev` 與 `pnpm preview`；
+- 還原時第一次查詢失敗，就會跳過選回原輸入法；
+- 啟用視窗使用了 Electron 的持久預設 profile；
+- 判定忽略 supervisor 的結果，所以在卡住、崩潰或被強制結束之前寫出的通過結果可能被算為通過。
+
+pass 2 約 1 分鐘，沒有 findings。30 分鐘的 review 預算用了約 2.5 分鐘，沒有使用 fallback。工作尚未 commit，沒有 push 或發布。
+
 ## Plan 043 結案 — 2026-09-26
 
 全域快捷鍵改為依實體鍵位註冊，由 Claude 實作、Codex GPT-6 Astra review（[錄影快捷鍵](../system-design/desktop.md#錄影快捷鍵)、[設計決策](../system-design/decisions.md)）。問題是在 plan 032 的原生回合發現的：啟用注音時，預設的 ⌘⇧1 會被綁到數字鍵盤。Chromium 152 預設啟用 `LayoutAwareGlobalHotkeys`，會依目前配置找出輸入該字元的鍵來註冊，而 ZhuyinBopomofo 配置在數字列輸入注音符號。另一方面，快捷鍵編輯器記錄的是實體鍵位，並且拒絕數字鍵盤。Cap（`40f44a8`、`global-hotkey` 0.7.0）則是註冊固定的實體 key code。

@@ -9,6 +9,54 @@ This document preserves conclusions from completed plans separately from the sys
 [Back to the verification index](README.md). These are historical results, including then-outstanding statuses and procedures; use the [testing guide](../testing.md) for current policy. Raw measurements links are local only and absent from a fresh clone.
 
 
+## Plan 044 closure — 2026-09-26
+
+`pnpm acceptance:shortcut-layout` now automates the keyboard-layout check that plan 043 ran by hand, implemented by Claude with Codex GPT-6 Astra review ([keyboard-layout shortcut check](../system-design/tooling.md#keyboard-layout-shortcut-check)). The check guards against an Electron upgrade that renames or drops `LayoutAwareGlobalHotkeys`. It selects an enabled input source whose number row types no digits and loads the built `out/main/index.js` behind a new [fixture](../../scripts/fixtures/shortcut-layout.ts) that follows the shortcut-failure boundary pattern. It then sends System Events key codes to the real registration of `CommandOrControl+Control+Alt+Shift+7` and restores the input source. The testing guide's global-shortcut and Electron rows, the design decision's Electron-upgrade trigger and the desktop design now name the command.
+
+- **Selection alone is not enough.** Selecting Zhuyin through `TISSelectInputSource` from a background process left the keyboard layout on ABC for the 5 seconds observed. A default-features Electron probe then still fired the number-row ⌘⌃⌥⇧7, so a check that only selected the source would pass with 043's bug present. A focused text field in a window the probe owned made the input method apply `com.apple.keylayout.ZhuyinBopomofo` within 100 ms. The layout stayed after the window closed and the probe exited, and the default-features probe then fired only the keypad key. For input methods the runner therefore opens such a window and waits up to 8 seconds for the layout before it continues.
+- **Pieces.**
+  - The [runner](../../scripts/acceptance-shortcut-layout.mts) owns preflight, the desktop round, the input source, the fixture processes and the report.
+  - [shortcut-layout.mts](../../scripts/lib/shortcut-layout.mts) holds the JavaScript for Automation helper, which reads and selects sources through TIS and reads typed characters through a CGEvent, together with the choice of a source, restore bookkeeping, the verdict and detection of other RecordStuff processes.
+  - A source qualifies when no number-row key types a digit and keypad 7 still types 7. Enabled keyboard sources are tried with the current one first.
+  - The 16 tests in [shortcut-layout.test.ts](../../scripts/lib/shortcut-layout.test.ts) cover the layout verdict; source order, including requested sources that are not enabled or not selectable; restoring after a switch, after a partial failure and after a failed first query; an unconfirmed restore; the pass/fail/blocked order, including passing results from a process that then hung or crashed; the drill; and process detection, including `pnpm dev`'s relative entry.
+  - No npm dependency was added, and the shared shortcut-failure fixture and `acceptance-shortcut.mts` are unchanged.
+
+Runs on an M1 Pro with macOS 26.6.2, Node 24.21.0 and Electron 44.3.0, starting from ABC. The enabled sources were ABC and Zhuyin. Results on the final revision:
+
+- **Pass.** `pnpm acceptance:shortcut-layout` exited 0 in about 7 seconds including the build (`2026-09-25T20-37-16-917Z-shortcut-layout`):
+  - ABC was skipped because it types digits;
+  - Zhuyin was selected and activated with focus, and its ZhuyinBopomofo layout types ㄢ ㄅ ㄉ ˇ ˋ ㄓ ˊ ˙ ㄚ ㄞ on the number row;
+  - production's switch was `disable-features=LayoutAwareGlobalHotkeys`;
+  - ⌘⌥, fired once, number-row 7 fired once and keypad 7 did not fire;
+  - ABC was restored and confirmed.
+- **Drill.** `-- --drill-layout-aware` exited 1 (`…20-37-30-039Z-shortcut-layout-drill`): the observed `disable-features` value was none, number-row 7 did not fire, keypad 7 fired, and ABC was restored.
+- **Unavailable source.** `-- --source com.apple.inputmethod.TCIM.Cangjie`, which is installed but not enabled, exited 2 before any change; `AppleSelectedInputSources` was unchanged.
+- **SIGINT.** The runner was interrupted during the activation and again during the check's keypad window. Both runs exited 1 with Zhuyin active at the interrupt; ABC was restored and confirmed, every Electron process group exited gracefully, and no fixture process remained. The second run's results mark the keypad key `not completed`.
+- **Other RecordStuff process.** An app started as `pnpm dev` starts it, the checkout's Electron with `.` as entry, made the runner exit 2 before any change, naming its pid.
+- **Checks.** `pnpm check` passed with 882 tests in 53 files, and `git diff --check` was clean. Relative links and anchors in the changed documents resolve.
+
+Two earlier runs found problems. Chromium answers SIGTERM with a normal quit that never calls the fixture's Node handler, so an interrupted check wrote no results; the fixture now registers its quit observer once production is ready. The first activation runs also wrote to Electron's shared default profile, which pass 1 then reported.
+
+Not run, by scope: `pnpm acceptance:regression`, because the shared fixture and `acceptance-shortcut.mts` are unchanged; and recording, the matrix, notifications and packaging, because the product did not change. The check sends synthetic key codes, so physical keys stay outside it; 043's maintainer-reported presses remain the hardware evidence. Windows is out of scope.
+
+Cleanup:
+
+- The input source is back on ABC after every run, and no RecordStuff, fixture or probe process remains.
+- The dev-style app was quit. It used the real userData and log, and `settings.json` was unchanged (SHA-256 `0f892e19…`).
+- The Zhuyin input method now remembers ZhuyinBopomofo as its layout; at the start of the session it reported none. That is the method's own state, set whenever someone types with it, and is not restored.
+- The development probes, and the activation runs before fix 3, wrote to `~/Library/Application Support/Electron`; the final runs left it untouched.
+- `caffeinate -d -i -t 5400` ran for the session.
+- At the maintainer's request, the 13 local report directories `2026-09-25T20-27-24-582Z-shortcut-layout` through `2026-09-25T20-37-52-134Z-shortcut-layout` were deleted after closure. The figures in this entry are the retained record.
+
+Codex GPT-6 Astra ran at medium reasoning, with the read-only sandbox confirmed in the log header. Pass 1 took about 1.5 minutes and returned four Medium findings, all accepted and fixed:
+
+- process detection missed `pnpm dev` and `pnpm preview`, which launch the checkout's Electron with `.`;
+- a failing first query during restore skipped selecting the original source;
+- the activation window used Electron's persistent default profile;
+- the verdict ignored supervisor outcomes, so passing results written before a hang, crash or forced kill could pass.
+
+Pass 2 took about a minute and returned no findings. About 2.5 of the 30-minute review budget was used; no fallback was needed. The work is uncommitted; there was no push or publication.
+
 ## Plan 043 closure — 2026-09-26
 
 Global shortcuts now register by physical key, implemented by Claude with Codex GPT-6 Astra review ([recording shortcut](../system-design/desktop.md#recording-shortcut), [design decisions](../system-design/decisions.md)). Plan 032's native round found the problem: with Zhuyin active, the default ⌘⇧1 bound to the keypad. Chromium 152 enables `LayoutAwareGlobalHotkeys` by default, which registers the key that types the accelerator's character in the current layout, and the ZhuyinBopomofo layout types Bopomofo on the number row. The shortcut editor, meanwhile, records physical keys and refuses the keypad. Cap (`40f44a8`, `global-hotkey` 0.7.0) registers fixed physical key codes.
