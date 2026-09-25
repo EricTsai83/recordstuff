@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { describe, it, expect } from 'vitest';
-import { instrumentUpdateAcceptance, acceptanceExitCode, safeCaptureShortcut, createAcceptanceOutput, type CaseResult } from './lib/update-acceptance.mts';
+import { instrumentUpdateAcceptance, acceptanceExitCode, safeCaptureShortcut, createAcceptanceOutput, type CaseResult } from './update-acceptance.mts';
 
 describe('update acceptance boundary', () => {
   const source = fs.readFileSync(path.resolve('src/main/index.ts'), 'utf8');

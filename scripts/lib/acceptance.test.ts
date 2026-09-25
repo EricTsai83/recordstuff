@@ -9,6 +9,7 @@ import {
   nextLogIndex,
   materialOpenArgs,
   registeredAccelerator,
+  registeredSettingsAccelerator,
 } from "./acceptance.mts";
 
 const LOG = [
@@ -92,4 +93,21 @@ it("uses only the most recent registration state after launch", () => {
     expect(registeredAccelerator([...LOG, `[t] hotkey: ${state}`])).toBeUndefined();
     expect(registeredAccelerator([...LOG, `[t] hotkey: ${state}`, "[t] hotkey: registered Control+K"])).toBe("Control+K");
   }
+});
+
+describe("settings shortcut ownership", () => {
+  const start = "[time] start: RecordStuff";
+  const registered = "[time] settings shortcut: registered CommandOrControl+Alt+,";
+  it("does not send a reserved key on stale, suspended, failed or conflicting ownership", () => {
+    expect(registeredSettingsAccelerator([registered])).toBeUndefined();
+    expect(registeredSettingsAccelerator([start, registered, start])).toBeUndefined();
+    for (const status of ["disabled", "suspended", "registration failed for key: OS", "unavailable; recording shortcut owns the combination"]) {
+      expect(registeredSettingsAccelerator([start, registered, `[time] settings shortcut: ${status}`])).toBeUndefined();
+    }
+  });
+  it("accepts resumed ownership and ignores press logs and unrelated recording registrations", () => {
+    expect(registeredSettingsAccelerator([start, "[time] settings shortcut: suspended", registered,
+      "[time] settings shortcut: CommandOrControl+Alt+, pressed", "[time] hotkey: disabled"])).toBe("CommandOrControl+Alt+,");
+    expect(keystrokeScript(acceleratorToKeystroke("CommandOrControl+Alt+,")!)).toBe('tell application "System Events" to key code 43 using {command down, option down}');
+  });
 });
