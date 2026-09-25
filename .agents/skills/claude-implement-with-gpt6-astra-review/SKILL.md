@@ -10,14 +10,32 @@ Claude owns implementation, final technical judgment, fixes, verification, and r
 ## Workflow
 
 1. Read the requirements, repository instructions, and starting `git status`; preserve unrelated changes.
-2. Implement without committing, pushing, deploying, or expanding scope unless requested.
-3. Run proportionate checks.
-4. Request a read-only Codex GPT-6 Astra review against the requirements, diff, and check results.
-5. Immediately present every returned finding to the user before making any review-driven code change. Mark these as unvalidated reviewer findings, not Claude's final judgment.
-6. Validate every finding; accept only concrete correctness, regression, security, requirement, or meaningful test-coverage issues.
-7. Present Claude's acceptance or rejection decisions, then fix accepted findings and rerun affected checks. Reject style-only, speculative, or false-positive findings.
-8. If fixes are material, run one final pass with the same reviewer. Maximum: two review passes. Repeat the immediate disclosure for that pass.
-9. Report the result in Traditional Chinese using the format below. Include every usable finding returned by every review pass, even when it was rejected or already fixed.
+2. Before editing any file, send the pre-implementation briefing below: what this plan or change will do and the problem it solves.
+3. Implement without committing, pushing, deploying, or expanding scope unless requested.
+4. Run proportionate checks.
+5. Request a read-only Codex GPT-6 Astra review against the requirements, diff, and check results.
+6. Immediately present every returned finding to the user before making any review-driven code change. Mark these as unvalidated reviewer findings, not Claude's final judgment.
+7. Validate every finding; accept only concrete correctness, regression, security, requirement, or meaningful test-coverage issues.
+8. Present Claude's acceptance or rejection decisions, then fix accepted findings and rerun affected checks. Reject style-only, speculative, or false-positive findings.
+9. If fixes are material, run one final pass with the same reviewer. Maximum: two review passes. Repeat the immediate disclosure for that pass.
+10. Report the result in Traditional Chinese using the format below. Include every usable finding returned by every review pass, even when it was rejected or already fixed.
+
+## Pre-Implementation Briefing
+
+Before the first edit, send the user a briefing in Traditional Chinese that explains the plan or scoped change in enough detail that the user could stop or redirect the work before anything changes. Build it from the requirements and from reading the code they touch, not from the plan title or file names. It is a briefing, not an approval request: continue immediately after sending it, and ask first only when a decision is genuinely the user's, such as an ambiguity the requirements and code cannot resolve or a conflict with repository rules.
+
+Use the heading `執行前說明：<plan 或變更名稱>` and these parts:
+
+- **要解決的問題**：現在的行為或缺口、在什麼條件下發生、影響誰、使用者會看到什麼後果（例如資料遺失、誤導的訊息或卡住）、嚴重程度，以及問題來源（plan、audit、bug 回報或維護者要求）。說明為什麼現在處理，以及與前後 plan 的相依。
+- **這次要做什麼**：逐項列出要交付的行為，每項說明完成後使用者或系統會有什麼不同，包括會新增或改變的文案、設定、資料格式、錯誤碼或檔案。
+- **不做什麼**：plan 明確排除的範圍、刻意保留的限制，以及留給後續 plan 的部分。
+- **預計做法與修改位置**：預計修改的模組或檔案及各自負責的部分；plan 留給實作者決定的設計選擇，以及目前打算採用的選項與理由。註明這是預期，實作中可能調整。
+- **驗證計畫**：依測試規則需要的檢查與原生驗收、依範圍省略的昂貴檢查及理由，以及預期仍無法驗證或延後到其他 plan 的項目。
+- **需要留意的風險或疑點**：已知的不確定性、可能造成回歸的區域，以及之後需要使用者決定的事項。
+
+Scale the detail to the work: a multi-part plan gets one entry per deliverable, while a one-line fix may compress the parts into a few sentences but still states the problem and the intended change. Do not repeat the plan verbatim; translate it into concrete behavior grounded in the current code.
+
+If the implementation later departs from the briefing in scope, approach, file boundaries or verification, say so in a progress update when it happens, and state the deviation and its reason in the final report's `實作結果`.
 
 ## Progress Updates
 
@@ -109,6 +127,7 @@ Write explanations and headings in Traditional Chinese; preserve commands, ident
 
 - 第一點先說明本次開發要解決的使用者／系統問題、原本缺少的能力，以及完成後具備的能力。
 - 其餘 1–3 點列出使用者可見行為與重要架構結果。
+- 若實作的範圍、做法或驗證與執行前說明不同，列出差異與原因；沒有差異時省略。
 
 ## 檔案摘要
 
