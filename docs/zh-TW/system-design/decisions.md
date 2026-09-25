@@ -13,6 +13,7 @@
 | Main 擁有狀態與影片 writer | UI、擷取程序不能各自宣稱錄製成功 | 程序中止時 main 要協調故障收尾 |
 | MP4 H.264 + AAC | 本機 QuickTime 可直接播放，硬體編碼已有量測證據 | fragmented MP4；非所有損壞檔都可播，無轉檔 fallback |
 | 原生 Tray／Menu／Notification | 一個按鈕的產品不需要一般視窗與 UI framework | 通知呈現與 Finder 排序受系統控制 |
+| 全域快捷鍵依實體鍵位註冊（macOS 停用 `LayoutAwareGlobalHotkeys`；[原因](desktop.md#錄影快捷鍵)） | 編輯器記錄實體鍵位並拒絕數字鍵盤；Chromium 依配置查找，會在注音下把預設 ⌘⇧1 移到數字鍵盤 | 非 QWERTY 拉丁配置的字母快捷鍵是 US 位置，而不是鍵帽字母。每次升級 Electron 都要確認其 Chromium 仍有此功能，否則註冊會在無提示下回到依配置查找 |
 | 手寫 type guard、單一 repo | 協定及狀態規模小，容易完整閱讀與測試 | 沒有協定版本協商；獨立發布另一端時需重設契約 |
 | 媒體 buffer 複製傳送 | 先前 Electron 44 的 transfer ArrayBuffer 實驗會卡住 main | 多一次記憶體拷貝；目前無有界背壓 |
 | 從實際影格量尺寸 | getSettings 多螢幕錯報曾把 1080p 縮成 1080×606 | 啟動增加量測等待；fallback 必須留 warning |

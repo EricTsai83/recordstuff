@@ -204,7 +204,7 @@ CI 從 repository 根目錄執行 Vercel CLI，平台專案的 Root Directory �
 
 ### 更新功能驗收
 
-在 RecordStuff 已結束時執行 `pnpm acceptance:updates`。需要 macOS arm64、Node 24、既有本機簽章身分、Chrome、ffmpeg／ffprobe，以及 System Events 輔助使用權限。請選用數字列會輸入數字的鍵盤輸入法，例如 ABC：隔離 fixture 使用預設 ⌘⇧1，Electron 依註冊當下的鍵盤配置，綁定輸入「1」的那個鍵。注音（Bopomofo）配置下那是數字鍵盤，runner 送出的數字列 key code 收不到，第一段錄影會逾時（2026-09-26 觀察）。新簽章的 fixture 也可能觸發 macOS「要求略過系統私密視窗選擇器」的提示；兩段錄影期間它都停在素材中央，fixture 結束後關閉。Runner 不會回應它，也不會因此授予任何權限。會在主螢幕進行兩段短錄影；擷取期間停止其他音訊並避免操作桌面。腳本不會結束既有 RecordStuff、不取代安裝版、不斷網，也不寫入真正的使用者設定。
+在 RecordStuff 已結束時執行 `pnpm acceptance:updates`。需要 macOS arm64、Node 24、既有本機簽章身分、Chrome、ffmpeg／ffprobe，以及 System Events 輔助使用權限。任何鍵盤輸入法都可以：隔離 fixture 使用預設 ⌘⇧1，自 plan 043 起依實體鍵位註冊。在那之前，注音（Bopomofo）會把它移到數字鍵盤，第一段錄影因此逾時。新簽章的 fixture 也可能觸發 macOS「要求略過系統私密視窗選擇器」的提示；兩段錄影期間它都停在素材中央，fixture 結束後關閉。Runner 不會回應它，也不會因此授予任何權限。會在主螢幕進行兩段短錄影；擷取期間停止其他音訊並避免操作桌面。腳本不會結束既有 RecordStuff、不取代安裝版、不斷網，也不寫入真正的使用者設定。
 
 Runner 將原始碼與建置資源複製至專用報告目錄，只修改該副本，再執行 `pnpm start:app`。沿用正式更新 action handler、AppTray context、SettingsStore、Recorder、隱藏擷取主機與 shutdown 流程。只在測試副本中替換固定 HTTP 回應與時鐘，隔離設定／log／錄影，並攔截 `shell.openExternal` 核對 URL。正常建置沒有測試命令通道；若正式程式接線改變，anchor 檢查會停止，避免測到過期的替代流程。
 

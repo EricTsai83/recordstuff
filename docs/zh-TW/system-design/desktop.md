@@ -64,7 +64,9 @@ RecordingHotkey 包裝 Electron `globalShortcut`。按下快捷鍵呼叫與 tray
 
 「自訂…」以實體 key code 錄入字母、數字、F 鍵與標點，並支援空白及方向鍵；不支援的鍵區（含數字鍵盤）拒絕錄入。Shift 標點別名會先轉成 Shift 加基礎鍵，再檢查保留組合。快捷鍵群組是唯一可傳值的控制項；main 重新驗證並標準化後才儲存。Escape、Tab／Shift+Tab 移出、點擊其他位置、視窗失焦／關閉、renderer 結束與 15 秒逾時都取消錄入。main 先解除 OS 註冊才確認開始錄入，完成或取消後恢復；退出時清除註冊。每次錄入是一份由發起視窗持有的 lease，與它可能啟動的設定交易分開。取消、失焦、逾時、關閉、renderer 失敗、錄影鎖定與退出都立即釋放它，即使已確認的儲存仍在寫入，並恢復當下已提交的註冊。釋放可重複呼叫；舊視窗晚到的事件或較早的儲存完成時，只結束自己的 lease，不會結束新視窗的錄入。已確認的儲存在視窗關閉或當掉後仍會完成；尚未確認的草稿絕不送出。`AppShortcuts` 持有兩個註冊與下述「先保存再註冊」的順序。錄影期間整個群組鎖定。不合法組合顯示在地化原因且不改設定。「關閉」保留自訂值，仍可直接選回。錄入按鈕可用鍵盤操作，並以 `aria-live` 宣告狀態。
 
-`pnpm acceptance` 可輸入字母、數字、空白、方向鍵、F1–F20 與常見未加 Shift 的標點，使用 macOS key code；其他組合會在開始錄影前明確報錯並列出快捷鍵。非美式鍵盤仍需原生驗收；實體 `event.code` 不代表 Electron 在該配置一定正確註冊。
+全域快捷鍵依實體鍵位註冊。在 macOS 上，main 會在 app ready 之前停用 Chromium 的 `LayoutAwareGlobalHotkeys`（[hotkey.ts](../../../src/main/hotkey.ts) 的 `physicalHotkeyFeatures`，並與命令列上既有的 `disable-features` 清單合併）。這個功能開啟時，Chromium 152 會把快捷鍵綁到當下配置中輸入該字元的鍵，每次切換鍵盤都重新註冊。注音的 ZhuyinBopomofo 配置在數字列輸入注音符號，預設的 ⌘⇧1 因而被移到數字鍵盤，而編輯器拒絕數字鍵盤。現在改用編輯器所記錄的 US 固定位置註冊，與 Cap 透過 `global-hotkey` 的做法相同。因此在 Dvorak、AZERTY 等非 QWERTY 拉丁配置下，字母快捷鍵是 US 位置，而不是鍵帽上的字母（[決策](decisions.md)、[plan 043 結案](../verification/history-2026-09.md#plan-043-結案--2026-09-26)）。
+
+`pnpm acceptance` 以 macOS key code 送出數字、空白、方向鍵、F1–F20 與常見未加 Shift 的標點，字母則以輸入的字元送出；其他組合會在開始錄影前明確報錯並列出快捷鍵。由於註冊依實體鍵位，以 key code 送出的鍵在任何輸入法下（包含注音）都能觸發已註冊的快捷鍵。以字元送出的字母，只有在該字母位於 US 位置的配置（例如 ABC 與注音）才會按到同一顆鍵；在 Dvorak 或 AZERTY 下，runner 會按到別的鍵。
 
 OS 拒絕註冊（其他 App 佔用，或 `register` 擲出）不會被吞掉：寫 log `hotkey: registration failed for …`、選單標題顯示「快捷鍵無法使用（被其他 App 佔用）：…」並發通知。設定仍會保存，使用者的選擇在重啟後保留；tray 照常可用。關閉快捷鍵不影響 tray 行為，並記住組合鍵，重新開啟即還原。更改快捷鍵先保存再註冊：寫入失敗保留舊註冊並通知「無法儲存快捷鍵設定」。若寫入期間開始了錄影，註冊變更會延後（`request` → 下一次回到 settled 狀態時 `flush`），讓開始這次錄影的組合鍵仍能停止它；期間選單把已保存的選擇顯示為無法使用。
 
