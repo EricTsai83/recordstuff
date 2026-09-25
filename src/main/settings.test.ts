@@ -346,6 +346,9 @@ describe("hotkey settings (plan 016)", () => {
     expect(s.hotkey).toEqual(DEFAULT_HOTKEY);
     expect(s.outputDir).toBe("/kept");
     expect(logs).toEqual(["settings: hotkey is missing or has unsupported values: using the default shortcut"]);
+    // A hand-edited Command+W would take every app's close key; it is not registered.
+    await fs.writeFile(filePath, JSON.stringify({ version: 3, outputDir: "/kept", quality: DEFAULT_QUALITY, hotkey: { enabled: true, accelerator: "CommandOrControl+W" } }));
+    expect(store().hotkey).toEqual(DEFAULT_HOTKEY);
     await fs.writeFile(filePath, JSON.stringify({ version: 3, outputDir: "/kept", quality: DEFAULT_QUALITY }));
     expect(store().hotkey).toEqual(DEFAULT_HOTKEY);
   });

@@ -30,6 +30,8 @@ const SHIFTED_KEYS: Record<string, string> = {
 const RESERVED = new Set([
   ...[3, 4, 5, 6].map((key) => `CommandOrControl+Shift+${key}`),
   "CommandOrControl+Space", "CommandOrControl+Tab", "CommandOrControl+Q",
+  // Every window's close key; the shortcut editor closes on it instead of capturing it.
+  "CommandOrControl+W",
 ]);
 export type AcceleratorError = "A shortcut needs Command or Control." | "This key cannot be used." | "macOS reserves this combination.";
 export type AcceleratorValidation = { accelerator: string; error?: never } | { error: AcceleratorError; accelerator?: never };
