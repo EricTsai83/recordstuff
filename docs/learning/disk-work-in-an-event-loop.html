@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>事件迴圈裡的磁碟工作：三個可遷移的設計模式</title>
+<style>
+:root {
+  color-scheme: light;
+  --clay: #D97757;
+  --slate: #141413;
+  --ivory: #FAF9F5;
+  --oat: #E3DACC;
+  --white: #FFFFFF;
+  --gray-100: #F0EEE6;
+  --gray-300: #D1CFC5;
+  --gray-500: #87867F;
+  --gray-700: #3D3D3A;
+  --warning: #C78E3F;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --content-width: 68ch;
+}
+body {
+  margin: 0;
+  background: var(--ivory);
+  color: var(--slate);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 16px;
+  font-weight: 430;
+  line-height: 1.7;
+  letter-spacing: 0;
+}
+main { max-width: var(--content-width); margin: 0 auto; padding: var(--space-3xl) var(--space-xl); }
+article { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+h1 { max-width: none; font-size: 1.8rem; line-height: 1.25; text-wrap: balance; overflow-wrap: normal; margin: 0 0 var(--space-lg); }
+h2 { font-size: 1.22rem; line-height: 1.3; margin: var(--space-3xl) 0 var(--space-md); padding-top: var(--space-lg); border-top: 1px solid var(--oat); }
+h3 { font-size: 1rem; line-height: 1.4; margin: var(--space-2xl) 0 var(--space-sm); color: var(--gray-700); }
+p, ul, ol, .deck, .callout, table, pre, figure { max-width: var(--content-width); }
+p { margin: 0 0 var(--space-lg); }
+ul, ol { margin: 0 0 var(--space-lg); padding-left: 1.4em; }
+li { margin-bottom: var(--space-sm); }
+li p { margin-bottom: var(--space-sm); }
+.deck { font-size: 1.05rem; color: var(--gray-700); margin-bottom: var(--space-2xl); }
+a { color: var(--clay); text-decoration: underline; text-underline-offset: 3px; }
+strong { font-weight: 650; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+p code, li code, td code, th code, figcaption code {
+  background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-sm);
+  padding: 0.05em 0.35em; overflow-wrap: anywhere;
+}
+table, pre { width: 100%; }
+.table-scroll { max-width: var(--content-width); overflow-x: auto; margin: var(--space-lg) 0 var(--space-xl); }
+table { border-collapse: collapse; margin: 0; font-size: 0.95rem; }
+th, td { border: 1px solid var(--oat); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--gray-100); font-weight: 650; }
+.compact-first th:first-child, .compact-first td:first-child { white-space: nowrap; }
+.callout {
+  background: var(--gray-100); border: 1px solid var(--oat); border-left: 4px solid var(--clay);
+  border-radius: var(--radius-sm); padding: var(--space-md) var(--space-lg); margin: var(--space-lg) 0 var(--space-xl);
+}
+.callout.warning { border-left-color: var(--warning); }
+.callout p:last-child { margin-bottom: 0; }
+.sources { border-top: 1px solid var(--oat); padding-top: var(--space-lg); font-size: 0.9rem; color: var(--gray-700); }
+.sources ul { padding-left: 1.2em; }
+.sources h2 { border-top: 0; margin-top: 0; padding-top: 0; }
+
+pre { position: relative; width: 100%; margin: var(--space-lg) 0 var(--space-xl); border: 1px solid #26241f; border-radius: var(--radius-md); background: #11110f; color: #d8d4ca; overflow: hidden; box-sizing: border-box; }
+pre code { display: block; border: 0; background: transparent; padding: 18px 64px 18px 22px; color: inherit; overflow-x: auto; white-space: pre; font-size: 0.875rem; font-weight: 400; line-height: 1.62; scrollbar-width: none; }
+pre code::-webkit-scrollbar { width: 0; height: 0; }
+pre .label { display: none; }
+.copy-code {
+  position: absolute; top: 9px; right: 9px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0;
+  border: 1px solid rgba(250, 249, 245, 0.14); border-radius: var(--radius-sm);
+  background: rgba(250, 249, 245, 0.06); color: rgba(250, 249, 245, 0.72); cursor: pointer;
+}
+.copy-code:hover, .copy-code:focus-visible { border-color: rgba(250, 249, 245, 0.28); background: rgba(250, 249, 245, 0.12); color: var(--ivory); outline: none; }
+.copy-code.copied { border-color: rgba(143, 184, 106, 0.42); background: rgba(143, 184, 106, 0.14); color: #b8d99a; }
+.copy-code svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; pointer-events: none; }
+.code-scrollbar { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; border-radius: 999px; background: rgba(250, 249, 245, 0.1); cursor: pointer; }
+.code-scrollbar.hidden { display: none; }
+.code-scrollbar-thumb { height: 100%; border-radius: inherit; background: rgba(255, 148, 110, 0.82); transform: translateX(0); cursor: grab; }
+.code-scrollbar-thumb:active { cursor: grabbing; }
+pre code .k { color: #ff946e; font-weight: 400; }
+pre code .s { color: #8fb86a; }
+pre code .n, pre code .p { color: #d8d4ca; }
+pre code .c { color: #858177; font-style: italic; }
+pre code .f { color: #cfc6a2; }
+pre code .t { color: #cfc6a2; font-weight: 400; }
+pre code .o { color: #ff946e; }
+
+.flow-figure { margin: var(--space-xl) 0 var(--space-2xl); }
+.flow-figure svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.flow-figure figcaption { font-size: 0.9rem; color: var(--gray-700); margin-top: var(--space-sm); }
+
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  h1 { font-size: 1.65rem; }
+  main { padding: var(--space-xl); }
+  pre code { font-size: 0.8125rem; line-height: 1.5; }
+  p code, li code, td code { font-size: 0.9em; }
+  table, .deck, .sources { font-size: 0.875rem; }
+  th, td { padding: 6px 8px; }
+  .table-wide { min-width: 560px; }
+}
+</style>
+</head>
+<body>
+<main>
+<article>
+
+<h1>事件迴圈裡的磁碟工作：三個可遷移的設計模式</h1>
+
+<p class="deck">一個只有一條 JavaScript 執行緒的桌面程序，既要即時回應使用者，又要把資料安全地寫到磁碟、在當機後交代得清楚，還要限制同時進行的工作量。本文以一個選單列錄影 App 從「停止錄影」到「檔案發布」的流程為貫穿範例，說明三個彼此相扣的設計模式：先用非同步 I/O 而不是執行緒、在建立資源之前先寫下意圖、以及用 promise 鏈做有上限的並行。每個模式都寫明它成立的前提，以及不該使用它的情況。</p>
+
+<h2>這篇文章要回答的問題</h2>
+
+<p>把場景抽象化之後，問題其實很一般。一個以事件迴圈為核心的程序，例如 Electron 的 main process、一個 Node.js 服務、或任何單執行緒的執行環境，同時負責兩種工作：回應互動（選單、快捷鍵、行程間通訊），以及把狀態寫到磁碟。磁碟的延遲不受你控制，程序可能在任何時刻被殺掉，而且會有多個長時間操作想同時進行。於是有三個問題會反覆出現：</p>
+
+<ol>
+  <li>寫磁碟時，怎麼不卡住互動，又不引入不必要的執行緒？</li>
+  <li>程序死掉之後，怎麼知道有哪些東西寫了一半？</li>
+  <li>多個長操作重疊時，怎麼讓它們有限度地並行而不失控？</li>
+</ol>
+
+<p>這三個問題各有一個小而穩定的答案。它們不是三個孤立的技巧，而是同一組前提底下互相支撐的決定：第一個模式決定 I/O 在哪裡執行，第二個決定當機後誰來交代，第三個決定並行的邊界，而第三個模式一旦引入，就反過來要求第二個模式的紀錄必須以「每個操作一份」的形式存在。</p>
+
+<h2>貫穿範例：一段錄影的停止與發布</h2>
+
+<p>範例來自 RecordStuff，一個在 macOS 選單列運作的螢幕錄影 App，用 Electron 寫成，沒有主視窗。它的 main process 擁有全部狀態與所有檔案寫入；一個隱藏的 capture renderer 用瀏覽器的 MediaRecorder 產生編碼好的影片分片，透過 MessagePort 送回 main。main process 只有一條 JavaScript 執行緒，這條執行緒同時負責 tray 圖示、右鍵選單、全域快捷鍵，以及底下這三種磁碟工作。</p>
+
+<div class="table-scroll"><table class="compact-first">
+  <thead>
+    <tr><th>磁碟工作</th><th>內容</th><th>特性</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>媒體分片</td><td>大約每秒一段編碼資料，依序 append 到暫存檔 <code>&lt;stamp&gt;.recording.mp4</code>，每 5 秒 fsync 一次</td><td>串流、持續、量大；已經是非同步寫入</td></tr>
+    <tr><td>失敗歷史</td><td>一個小 JSON，記錄失敗過的錄影與使用者是否已確認；寫入採「寫暫存檔、fsync、rename」的原子替換</td><td>小、偶發、必須耐久；目前用同步呼叫</td></tr>
+    <tr><td>發布</td><td>停止後 sync、close，把暫存檔以獨占方式複製成 <code>&lt;stamp&gt;.mp4</code>，再刪除暫存檔</td><td>一次性、可能很慢（大檔、外接碟）；決定使用者何時看得到成品</td></tr>
+  </tbody>
+</table></div>
+
+<p>接下來的討論都用同一個情境：</p>
+
+<ol>
+  <li>使用者停止錄影 A。writer 排空剩餘分片、fsync、close，然後開始發布。</li>
+  <li>發布途中某個寫入失敗，App 必須在 userData 記一筆失敗歷史，提醒使用者這段錄影有問題。</li>
+  <li>使用者立刻按下快捷鍵想開始錄 B。</li>
+  <li>此時電腦被強制關機。</li>
+</ol>
+
+<p>模式一回答步驟 2：記那筆失敗歷史時，UI 能不能不卡住。模式二回答步驟 4 之後：重新啟動時，App 怎麼知道 A 和 B 都沒有正常結束。模式三回答步驟 3：B 能不能在 A 發布完成之前開始，以及如果可以，誰在管 A 的收尾。</p>
+
+<h2>模式一：先用非同步 I/O，量測之後才考慮執行緒</h2>
+
+<h3>成立的前提</h3>
+
+<ul>
+  <li>只有一條執行緒負責互動。任何在這條執行緒上阻塞的呼叫，都直接變成使用者感受得到的停頓。</li>
+  <li>磁碟延遲沒有上限。userData 可能位於慢速外接碟、網路磁碟，或正被備份程式掃描的位置。</li>
+  <li>這項工作是 I/O 重、CPU 輕：資料很小，序列化很快，等待幾乎都花在磁碟上。</li>
+</ul>
+
+<h3>天真做法與它們的症狀</h3>
+
+<p>第一種做法是同步呼叫：<code>openSync</code>、<code>writeFileSync</code>、<code>fsyncSync</code>、<code>renameSync</code> 依序執行。其中 fsync 是真正把資料推到儲存裝置的呼叫，在慢碟上可能花數百毫秒到數秒。這段時間裡 tray 點不動、快捷鍵沒有反應，使用者看到的是 App 凍結。</p>
+
+<p>第二種做法是把同步呼叫包進 Promise，以為這樣就非同步了：</p>
+
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="c">// 看起來非同步，實際上完全一樣阻塞</span>
+<span class="k">function</span> <span class="f">saveHistory</span><span class="o">(</span>content<span class="o">:</span> string<span class="o">)</span><span class="o">:</span> <span class="t">Promise</span><span class="o">&lt;</span>void<span class="o">&gt;</span> <span class="o">{</span>
+  <span class="k">return</span> <span class="k">new</span> <span class="f">Promise</span><span class="o">(</span><span class="o">(</span>resolve<span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="o">{</span>
+    fs<span class="o">.</span><span class="p">writeFileSync</span><span class="o">(</span>file<span class="o">,</span> content<span class="o">)</span><span class="o">;</span> <span class="c">// executor 立即在同一條執行緒同步執行</span>
+    <span class="f">resolve</span><span class="o">(</span><span class="o">)</span><span class="o">;</span>
+  <span class="o">}</span><span class="o">)</span><span class="o">;</span>
+<span class="o">}</span></code></pre>
+
+<p>Promise 的 executor 會立刻在呼叫它的執行緒上同步執行，裡面的 <code>writeFileSync</code> 照樣阻塞到底。這是很常見的誤解，值得單獨點名。</p>
+
+<p>第三種做法是直接上 <code>worker_threads</code>。它確實能解決阻塞，但代價是一整套機制：建置要多一個 entry，打包後要驗證 worker 檔案真的存在且能啟動；主執行緒與 worker 之間要設計訊息協定與快照傳輸；worker 崩潰、逾時、重複啟動都要處理；測試要模擬 worker 失敗。當工作本身只是「寫一個小 JSON」時，這些機制的維護成本會超過它解決的問題。RecordStuff 的計畫草稿一開始就是這樣寫的，結果規格裡多出好幾條專門處理 worker 打包、崩潰與終止的條款，全都與原本要解決的凍結無關。</p>
+
+<h3>模型：分開 CPU 工作與 I/O 工作</h3>
+
+<p>把一次寫入拆成兩半。CPU 工作是序列化與驗證；I/O 工作是 open、write、fsync、rename。I/O 交給 Node 的 <code>fs.promises</code>：這些呼叫會被送進 libuv 的執行緒池，主執行緒只登記回呼，然後繼續跑事件迴圈。CPU 工作留在主執行緒，但要有上限，而且要量測：拿最大允許的輸入去測序列化時間，對照一個畫面更新週期（約 16 毫秒）；低於這個預算，就不需要執行緒。</p>
+
+<p>RecordStuff 的 <code>atomic-file.ts</code> 已經同時提供同步與非同步兩個版本，非同步版本節錄如下：</p>
+
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="k">export</span> <span class="k">async</span> <span class="k">function</span> <span class="f">writeFileAtomic</span><span class="o">(</span>
+  file<span class="o">:</span> string<span class="o">,</span> content<span class="o">:</span> string<span class="o">,</span>
+<span class="o">)</span><span class="o">:</span> <span class="t">Promise</span><span class="o">&lt;</span>void<span class="o">&gt;</span> <span class="o">{</span>
+  <span class="k">const</span> temporary <span class="o">=</span> <span class="s">`${file}.tmp`</span><span class="o">;</span>
+  <span class="k">await</span> fs<span class="o">.</span><span class="p">promises</span><span class="o">.</span><span class="p">mkdir</span><span class="o">(</span>path<span class="o">.</span><span class="p">dirname</span><span class="o">(</span>file<span class="o">)</span><span class="o">,</span> <span class="o">{</span> recursive<span class="o">:</span> <span class="n">true</span> <span class="o">}</span><span class="o">)</span><span class="o">;</span>
+  <span class="k">const</span> handle <span class="o">=</span> <span class="k">await</span> fs<span class="o">.</span><span class="p">promises</span><span class="o">.</span><span class="p">open</span><span class="o">(</span>temporary<span class="o">,</span> <span class="s">"w"</span><span class="o">)</span><span class="o">;</span>
+  <span class="k">try</span> <span class="o">{</span>
+    <span class="k">await</span> handle<span class="o">.</span><span class="p">writeFile</span><span class="o">(</span>content<span class="o">,</span> <span class="s">"utf8"</span><span class="o">)</span><span class="o">;</span>
+    <span class="k">await</span> handle<span class="o">.</span><span class="p">sync</span><span class="o">(</span><span class="o">)</span><span class="o">;</span>      <span class="c">// 真正等磁碟，但等待發生在 libuv 執行緒池</span>
+    <span class="k">await</span> handle<span class="o">.</span><span class="p">close</span><span class="o">(</span><span class="o">)</span><span class="o">;</span>
+    <span class="k">await</span> fs<span class="o">.</span><span class="p">promises</span><span class="o">.</span><span class="p">rename</span><span class="o">(</span>temporary<span class="o">,</span> file<span class="o">)</span><span class="o">;</span>
+  <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span>error<span class="o">)</span> <span class="o">{</span>
+    <span class="k">await</span> handle<span class="o">.</span><span class="p">close</span><span class="o">(</span><span class="o">)</span><span class="o">.</span><span class="k">catch</span><span class="o">(</span><span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="n">undefined</span><span class="o">)</span><span class="o">;</span>
+    <span class="k">await</span> fs<span class="o">.</span><span class="p">promises</span><span class="o">.</span><span class="p">unlink</span><span class="o">(</span>temporary<span class="o">)</span><span class="o">.</span><span class="k">catch</span><span class="o">(</span><span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="n">undefined</span><span class="o">)</span><span class="o">;</span>
+    <span class="k">throw</span> error<span class="o">;</span>
+  <span class="o">}</span>
+<span class="o">}</span></code></pre>
+
+<p>每一個 <code>await</code> 之間，主執行緒都是空閒的，可以處理 tray 點擊或快捷鍵。同時順序仍然被保證：rename 一定在 sync 之後，所以讀者看到的檔案不是舊內容就是完整的新內容，不會是半截。</p>
+
+<h3>每個機制對應的問題</h3>
+
+<ul>
+  <li><strong>fs.promises 對應阻塞。</strong>等待搬到執行緒池，主執行緒不再為磁碟停下來。</li>
+  <li><strong>序列化留在主執行緒對應複雜度。</strong>不必把資料搬到另一個執行緒，不必設計協定，不必處理另一個執行緒的生命週期。</li>
+  <li><strong>量測門檻對應「以後資料變大怎麼辦」。</strong>門檻寫下來，資料成長到觸發門檻時才升級到 worker，而不是預先付費。</li>
+  <li><strong>資料上限對應量測的可信度。</strong>失敗歷史有明確上限：全部未確認的紀錄加最近確認的 20 筆，每筆細節最多 64 KiB，讀取時超過 32 MiB 直接拒絕。沒有上限，「序列化夠快」就是一句無法驗證的話。</li>
+</ul>
+
+<h3>為什麼在這個前提下它是最佳預設</h3>
+
+<div class="table-scroll"><table class="compact-first table-wide">
+  <thead>
+    <tr><th></th><th>同步 fs</th><th>fs.promises</th><th>worker_threads</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>主執行緒阻塞</td><td>整段 I/O 期間</td><td>無</td><td>無</td></tr>
+    <tr><td>額外機制</td><td>無</td><td>無</td><td>建置 entry、訊息協定、生命週期、崩潰處理</td></tr>
+    <tr><td>CPU 重工作</td><td>阻塞</td><td>仍然阻塞</td><td>隔離</td></tr>
+    <tr><td>適合</td><td>程序即將結束、必須在退出前完成的最後一次寫入</td><td>I/O 重、CPU 輕的常態寫入</td><td>量測證明 CPU 工作超過畫面預算，或需要與崩潰隔離</td></tr>
+  </tbody>
+</table></div>
+
+<p>fs.promises 優化的是「用最少的新機制消除阻塞」。它接受的代價是 CPU 工作仍在主執行緒，所以必須靠上限與量測來守住這個代價。相較之下 worker 優化的是隔離，代價是整套生命週期；在工作只有幾百 KB 的 JSON 時，這個代價買不到任何使用者感受得到的東西。</p>
+
+<h3>邊界：什麼時候不該用</h3>
+
+<ul>
+  <li><strong>關機路徑。</strong>程序退出時，事件迴圈可能不再等待尚未完成的 promise。如果某次寫入一定要在退出前完成，同步版本反而正確，這正是 <code>writeFileAtomicSync</code> 被保留並註明「用於 App 關閉期間也必須完成的寫入」的原因。正常退出時更好的做法是「有限時間等待非同步寫入完成，逾時就留在 App 並如實顯示還有什麼沒存」，而不是回頭用同步呼叫硬撐。</li>
+  <li><strong>CPU 重的工作。</strong>解析大檔、影像編碼、壓縮。fs.promises 對這些沒有幫助，量測會直接告訴你該升級。</li>
+  <li><strong>需要崩潰隔離。</strong>如果某個原生模組可能讓整個程序當掉，worker 或子程序才有意義，而且那時隔離才是你真正要買的東西。</li>
+</ul>
+
+<h2>模式二：先寫意圖，再建立資源</h2>
+
+<h3>成立的前提</h3>
+
+<ul>
+  <li>一個長時間操作會在磁碟上留下產物，例如暫存檔。</li>
+  <li>程序可能在沒有任何通知的情況下死亡：強制結束、<code>kill -9</code>、斷電、核心崩潰。</li>
+  <li>重新啟動後沒有人記得這個產物存在，而且不能靠掃描輸出資料夾來找：那是使用者的資料夾，裡面有其他檔案，可能在外接碟上，掃描既慢又會誤判。</li>
+  <li>使用者需要被告知，而不是被自動修復：「上次沒有正常結束、這個檔案可能不完整、它在這裡」。</li>
+</ul>
+
+<h3>天真做法與它們的症狀</h3>
+
+<p>只在正常的終止事件記錄結果。當機時終止事件永遠不會到，暫存檔就靜靜留在資料夾裡，使用者以為那段錄影消失了。</p>
+
+<p>啟動時掃描 <code>*.recording.mp4</code>。這會碰使用者的資料夾；遇到手動複製的檔案或其他 App 的同名檔會誤報；外接碟不在時什麼都判斷不了；而且每次啟動都要付掃描成本。</p>
+
+<h3>模型：意圖先落地，資源才存在</h3>
+
+<p>在建立資源之前，先把「我要做這件事」寫到一個私有位置，內容是操作 id、開始時間、資源路徑。每一種終止結果，成功與失敗都算，都刪除這筆紀錄。下次啟動時，任何還留著的紀錄就代表一個沒有結束的操作；把它轉成一筆使用者看得到的報告，然後刪除。</p>
+
+<figure class="flow-figure">
+  <svg style="max-width: 360px" id="mermaid-mugkkqwt-my-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" viewBox="4 4 360 512" aria-roledescription="flowchart-v2" role="img" aria-labelledby="mermaid-mugkkqwt-title mermaid-mugkkqwt-desc"><title id="mermaid-mugkkqwt-title">意圖紀錄的生命週期</title><desc id="mermaid-mugkkqwt-desc">意圖紀錄在資源建立之前寫入，在任何終止結果時移除；程序死亡後，下次啟動把殘留的紀錄轉成一筆失敗歷史。</desc><style>#mermaid-mugkkqwt-my-svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;fill:#141413;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid-mugkkqwt-my-svg .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid-mugkkqwt-my-svg .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid-mugkkqwt-my-svg .error-icon{fill:#FAF9F5;}#mermaid-mugkkqwt-my-svg .error-text{fill:#05060a;stroke:#05060a;}#mermaid-mugkkqwt-my-svg .edge-thickness-normal{stroke-width:1px;}#mermaid-mugkkqwt-my-svg .edge-thickness-thick{stroke-width:3.5px;}#mermaid-mugkkqwt-my-svg .edge-pattern-solid{stroke-dasharray:0;}#mermaid-mugkkqwt-my-svg .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid-mugkkqwt-my-svg .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-mugkkqwt-my-svg .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-mugkkqwt-my-svg .marker{fill:#D97757;stroke:#D97757;}#mermaid-mugkkqwt-my-svg .marker.cross{stroke:#D97757;}#mermaid-mugkkqwt-my-svg svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;}#mermaid-mugkkqwt-my-svg p{margin:0;}#mermaid-mugkkqwt-my-svg .label{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#141413;}#mermaid-mugkkqwt-my-svg .cluster-label text{fill:#05060a;}#mermaid-mugkkqwt-my-svg .cluster-label span{color:#05060a;}#mermaid-mugkkqwt-my-svg .cluster-label span p{background-color:transparent;}#mermaid-mugkkqwt-my-svg .label text,#mermaid-mugkkqwt-my-svg span{fill:#141413;color:#141413;}#mermaid-mugkkqwt-my-svg .node rect,#mermaid-mugkkqwt-my-svg .node circle,#mermaid-mugkkqwt-my-svg .node ellipse,#mermaid-mugkkqwt-my-svg .node polygon,#mermaid-mugkkqwt-my-svg .node path{fill:#FFFFFF;stroke:#E3DACC;stroke-width:1px;}#mermaid-mugkkqwt-my-svg .rough-node .label text,#mermaid-mugkkqwt-my-svg .node .label text,#mermaid-mugkkqwt-my-svg .image-shape .label,#mermaid-mugkkqwt-my-svg .icon-shape .label{text-anchor:middle;}#mermaid-mugkkqwt-my-svg .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#mermaid-mugkkqwt-my-svg .rough-node .label,#mermaid-mugkkqwt-my-svg .node .label,#mermaid-mugkkqwt-my-svg .image-shape .label,#mermaid-mugkkqwt-my-svg .icon-shape .label{text-align:center;}#mermaid-mugkkqwt-my-svg .node.clickable{cursor:pointer;}#mermaid-mugkkqwt-my-svg .root .anchor path{fill:#D97757!important;stroke-width:0;stroke:#D97757;}#mermaid-mugkkqwt-my-svg .arrowheadPath{fill:rgba(255, 255, 255, 0);}#mermaid-mugkkqwt-my-svg .edgePaths .path{stroke:#D97757;stroke-width:1px;}#mermaid-mugkkqwt-my-svg .flowchart-link{stroke:#D97757;fill:none;}#mermaid-mugkkqwt-my-svg .edgeLabel{background-color:#F0EEE6;text-align:center;}#mermaid-mugkkqwt-my-svg .edgeLabel p{background-color:#F0EEE6;}#mermaid-mugkkqwt-my-svg .edgeLabel rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mugkkqwt-my-svg .labelBkg{background-color:rgba(240, 238, 230, 0.5);}#mermaid-mugkkqwt-my-svg .cluster rect{fill:#FAF9F5;stroke:hsl(48, 0%, 87.0588235294%);stroke-width:1px;}#mermaid-mugkkqwt-my-svg .cluster text{fill:#05060a;}#mermaid-mugkkqwt-my-svg .cluster span{color:#05060a;}#mermaid-mugkkqwt-my-svg .node .collapsed-indicator{fill:hsl(48, 0%, 87.0588235294%);stroke:none;opacity:0.6;}#mermaid-mugkkqwt-my-svg .node .collapsed-separator{stroke:hsl(48, 0%, 87.0588235294%);stroke-width:0.75px;}#mermaid-mugkkqwt-my-svg div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:12px;background:#FAF9F5;border:1px solid hsl(48, 0%, 87.0588235294%);border-radius:2px;pointer-events:none;z-index:100;}#mermaid-mugkkqwt-my-svg .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#141413;}#mermaid-mugkkqwt-my-svg rect.text{fill:none;stroke-width:0;}#mermaid-mugkkqwt-my-svg .icon-shape,#mermaid-mugkkqwt-my-svg .image-shape{background-color:#F0EEE6;text-align:center;}#mermaid-mugkkqwt-my-svg .icon-shape p,#mermaid-mugkkqwt-my-svg .image-shape p{background-color:#F0EEE6;padding:2px;}#mermaid-mugkkqwt-my-svg .icon-shape .label rect,#mermaid-mugkkqwt-my-svg .image-shape .label rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mugkkqwt-my-svg .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#mermaid-mugkkqwt-my-svg .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#mermaid-mugkkqwt-my-svg .node .neo-node{stroke:#E3DACC;}#mermaid-mugkkqwt-my-svg [data-look="neo"].node rect,#mermaid-mugkkqwt-my-svg [data-look="neo"].cluster rect,#mermaid-mugkkqwt-my-svg [data-look="neo"].node polygon{stroke:url(#mermaid-mugkkqwt-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mugkkqwt-my-svg [data-look="neo"].swimlane.cluster rect{filter:none;}#mermaid-mugkkqwt-my-svg [data-look="neo"].node path{stroke:url(#mermaid-mugkkqwt-my-svg-gradient);stroke-width:1px;}#mermaid-mugkkqwt-my-svg [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mugkkqwt-my-svg [data-look="neo"].node .neo-line path{stroke:#E3DACC;filter:none;}#mermaid-mugkkqwt-my-svg [data-look="neo"].node circle{stroke:url(#mermaid-mugkkqwt-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mugkkqwt-my-svg [data-look="neo"].node circle .state-start{fill:#000000;}#mermaid-mugkkqwt-my-svg [data-look="neo"].icon-shape .icon{fill:url(#mermaid-mugkkqwt-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mugkkqwt-my-svg [data-look="neo"].icon-shape .icon-neo path{stroke:url(#mermaid-mugkkqwt-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mugkkqwt-my-svg :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="mermaid-mugkkqwt-my-svg_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkqwt-my-svg_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkqwt-my-svg_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkqwt-my-svg_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkqwt-my-svg_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkqwt-my-svg_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkqwt-my-svg_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkqwt-my-svg_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkqwt-my-svg_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkqwt-my-svg_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkqwt-my-svg_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"/></marker><marker id="mermaid-mugkkqwt-my-svg_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"/></marker><g class="root"><g class="clusters"/><g class="edges edgePaths"><path d="M184,84L184,120" id="mermaid-mugkkqwt-my-svg-L_I_R_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 32 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mugkkqwt-L_I_R_0" data-points="W3sieCI6MTg0LCJ5Ijo4NH0seyJ4IjoxODQsInkiOjEyNH1d" data-look="neo" marker-end="url(#mermaid-mugkkqwt-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M162,172L162,184.92893218813452Q162,192 154.92893218813452,192L95.07106781186548,192Q88,192 88,199.07106781186548L88,208" id="mermaid-mugkkqwt-my-svg-L_R_T_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 100.6716537475586 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mugkkqwt-L_R_T_0" data-points="W3sieCI6MTYyLCJ5IjoxNzJ9LHsieCI6MTYyLCJ5IjoxOTJ9LHsieCI6ODgsInkiOjE5Mn0seyJ4Ijo4OCwieSI6MjEyfV0=" data-look="neo" marker-end="url(#mermaid-mugkkqwt-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M88,284L88,320" id="mermaid-mugkkqwt-my-svg-L_T_X_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 32 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mugkkqwt-L_T_X_0" data-points="W3sieCI6ODgsInkiOjI4NH0seyJ4Ijo4OCwieSI6MzI0fV0=" data-look="neo" marker-end="url(#mermaid-mugkkqwt-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M206,172L206,184.92893218813452Q206,192 213.07106781186548,192L272.9289321881345,192Q280,192 280,199.07106781186548L280,320" id="mermaid-mugkkqwt-my-svg-L_R_L_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mugkkqwt-L_R_L_0" data-points="W3sieCI6MjA2LCJ5IjoxNzJ9LHsieCI6MjA2LCJ5IjoxOTJ9LHsieCI6MjgwLCJ5IjoxOTJ9LHsieCI6MjgwLCJ5IjozMjR9XQ==" data-look="neo" marker-end="url(#mermaid-mugkkqwt-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M280,396L280,432" id="mermaid-mugkkqwt-my-svg-L_L_H_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 32 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mugkkqwt-L_L_H_0" data-points="W3sieCI6MjgwLCJ5IjozOTZ9LHsieCI6MjgwLCJ5Ijo0MzZ9XQ==" data-look="neo" marker-end="url(#mermaid-mugkkqwt-my-svg_flowchart-v2-pointEnd-margin)"/></g><g class="edgeLabels"><g class="edgeLabel" transform="translate(279.7578125, 248)"><g class="label" data-id="mermaid-mugkkqwt-L_R_L_0" transform="translate(0, -10)"><g><rect class="background" x="-33.7578125" y="-1" width="67.515625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">程序死亡</tspan></tspan></text></g></g></g></g><g class="nodes"><g class="node default" id="mermaid-mugkkqwt-my-svg-flowchart-I-0" data-look="neo" transform="translate(184, 48)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>1. 寫入意圖紀錄<br />以 id 為檔名</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mugkkqwt-my-svg-flowchart-R-1" data-look="neo" transform="translate(184, 148)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>2. 建立暫存檔</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mugkkqwt-my-svg-flowchart-T-3" data-look="neo" transform="translate(88, 248)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>3. 終止結果<br />saved 或 failed</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mugkkqwt-my-svg-flowchart-X-5" data-look="neo" transform="translate(88, 348)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>4. 移除意圖紀錄</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mugkkqwt-my-svg-flowchart-L-7" data-look="neo" transform="translate(280, 360)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>下次啟動<br />意圖紀錄仍在</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mugkkqwt-my-svg-flowchart-H-9" data-look="neo" transform="translate(280, 472)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>轉成失敗歷史<br />再移除紀錄</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="mermaid-mugkkqwt-my-svg-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><defs><filter id="mermaid-mugkkqwt-my-svg-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><linearGradient id="mermaid-mugkkqwt-my-svg-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#E3DACC" stop-opacity="1"/><stop offset="100%" stop-color="hsl(48, 0%, 82.1568627451%)" stop-opacity="1"/></linearGradient></svg>
+  <figcaption>正常路徑走 1 到 4；程序死亡時第 3、4 步不會發生，殘留的紀錄在下次啟動被讀出並轉成使用者看得到的報告。</figcaption>
+</figure>
+
+<h3>四個容易做錯的細節</h3>
+
+<ol>
+  <li><strong>順序：意圖在資源之前。</strong>如果先建暫存檔再寫意圖，中間那個瞬間當機就會留下一個沒有任何紀錄指名的檔案。反過來，意圖寫了但資源還沒建就當機，啟動時的報告會發現檔案不存在，標成「不明」。後者是可接受的假警報，前者是靜默的資料遺失。</li>
+  <li><strong>輔助證據不能阻擋主要工作。</strong>意圖寫入失敗只記一次 log，錄影照常開始。這個紀錄存在的目的是多一層交代；如果它失敗反而讓使用者錄不了，就本末倒置了。</li>
+  <li><strong>每個操作一份，用 id 當檔名。</strong>兩個操作同時進行時（模式三會讓這件事發生），A 刪自己的檔、B 寫自己的檔，不需要對同一個檔案做讀改寫，也不需要鎖。在只有一個操作的今天，這個決定看起來多餘；但它讓後來加入並行時不必改格式、不必寫升級程式。</li>
+  <li><strong>確定只有你一個活著。</strong>留下的紀錄有可能屬於另一個還活著的同程式實例。RecordStuff 用 <code>app.requestSingleInstanceLock()</code> 保證第二個實例根本啟動不了，所以殘留紀錄一定屬於已死的程序。沒有這個保證時，紀錄要帶 pid，啟動時要先確認那個程序不在了。</li>
+</ol>
+
+<h3>這個模式的親戚，以及邊界</h3>
+
+<p>資料庫的 write-ahead log、工作佇列的 claimed 或 leased 標記、安裝程式的 pending-operation 檔案，形狀都相同：先寫意圖，再做有副作用的事，完成後清除。你在別的系統看到「先記一筆再動手」，通常就是這個模式。</p>
+
+<p>不需要它的情況：</p>
+
+<ul>
+  <li>產物只在你私有的暫存目錄裡，掃描便宜又不會誤判。直接掃描就好。</li>
+  <li>操作是冪等且可重跑的。下次啟動直接重做，不用報告。</li>
+  <li>你真正需要的是自動復原，例如把半截的 MP4 修好。這個模式只提供「知道發生了」；復原是另一個問題，需要另一套機制與另一套證據，不要把兩件事混在一起承諾。</li>
+</ul>
+
+<h3>在本專案的應用</h3>
+
+<p>RecordStuff 的計畫 038 把這個模式命名為「中斷哨兵」：每次錄影開始前，在 userData 的專用目錄寫一個以 session id 為檔名的小檔案，用的就是模式一提到的 <code>writeFileAtomic</code>。啟動時殘留的哨兵各轉成一筆失敗歷史，文案是「App 在錄影中未正常結束、檔案可能不完整」，並沿用既有的還原檢查：路徑上的檔案還在就標成「部分保留」並可在 Finder 定位，不在就標成「不明」。它明確不做的事是修復檔案與掃描資料夾。</p>
+
+<h2>模式三：用 promise 鏈做有上限的並行</h2>
+
+<h3>成立的前提</h3>
+
+<ul>
+  <li>多個長操作可能重疊：A 在發布，B 想開始。</li>
+  <li>它們共用資源：磁碟頻寬、獨占的目的檔名、記憶體中等待寫入的資料。</li>
+  <li>你想要一定程度的並行，不想讓使用者等 A 發布完才能錄 B；但不要無上限，不想把 C、D、E 都排進去吃記憶體。</li>
+  <li>只有一條執行緒。</li>
+</ul>
+
+<h3>天真做法與它們的症狀</h3>
+
+<p>完全不管：A 發布中直接讓 B 開始，B 停止時也直接發布。兩個大檔同時往慢碟複製，兩邊都變慢，B 的即時分片開始積壓在記憶體裡。</p>
+
+<p>無上限佇列：所有停止的錄影都排隊發布。慢碟上佇列愈排愈長，記憶體跟著長，而使用者以為每一段都存好了。</p>
+
+<p>開執行緒做發布：發布本來就是 fs.promises 的非同步操作，不需要執行緒。RecordStuff 的計畫草稿曾寫「一個 publication worker」，意思是「一次做一件」，但讀者很容易把它讀成「開一個 worker 執行緒」，於是模式一裡拒絕的複雜度就從後門回來了。用字要能區分「一次一件」和「一條執行緒」。</p>
+
+<h3>模型：佇列就是一條 promise 鏈</h3>
+
+<p>在單執行緒環境裡，「一次只做一件、依序執行」最小的實作是一條不斷延長的 promise 鏈。RecordStuff 的 FileWriter 已經用它來排序媒體分片的寫入，節錄如下：</p>
+
+<pre class="language-typescript"><span class="label">TypeScript</span><code>private queue<span class="o">:</span> <span class="t">Promise</span><span class="o">&lt;</span>void<span class="o">&gt;</span> <span class="o">=</span> <span class="t">Promise</span><span class="o">.</span><span class="p">resolve</span><span class="o">(</span><span class="o">)</span><span class="o">;</span>
+private failure<span class="o">:</span> <span class="t">FileWriteError</span> <span class="o">|</span> <span class="n">undefined</span><span class="o">;</span>
+
+private <span class="f">enqueue</span><span class="o">(</span>task<span class="o">:</span> <span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="t">Promise</span><span class="o">&lt;</span>unknown<span class="o">&gt;</span><span class="o">)</span><span class="o">:</span> <span class="t">Promise</span><span class="o">&lt;</span>void<span class="o">&gt;</span> <span class="o">{</span>
+  <span class="k">const</span> run <span class="o">=</span> this<span class="o">.</span><span class="p">queue</span><span class="o">.</span><span class="p">then</span><span class="o">(</span><span class="k">async</span> <span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="o">{</span>
+    <span class="c">// 第一個錯誤之後，後面的工作不再碰磁碟</span>
+    <span class="k">if</span> <span class="o">(</span>this<span class="o">.</span><span class="p">failure</span><span class="o">)</span> <span class="k">throw</span> this<span class="o">.</span><span class="p">failure</span><span class="o">;</span>
+    <span class="k">try</span> <span class="o">{</span>
+      <span class="k">await</span> <span class="f">task</span><span class="o">(</span><span class="o">)</span><span class="o">;</span>
+    <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span>cause<span class="o">)</span> <span class="o">{</span>
+      this<span class="o">.</span><span class="p">failure</span> <span class="o">=</span> <span class="f">toFileWriteError</span><span class="o">(</span>cause<span class="o">)</span><span class="o">;</span>
+      <span class="k">throw</span> this<span class="o">.</span><span class="p">failure</span><span class="o">;</span>
+    <span class="o">}</span>
+  <span class="o">}</span><span class="o">)</span><span class="o">;</span>
+  <span class="c">// 即使呼叫端忽略 rejection，鏈也要活著</span>
+  this<span class="o">.</span><span class="p">queue</span> <span class="o">=</span> run<span class="o">.</span><span class="k">catch</span><span class="o">(</span><span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="n">undefined</span><span class="o">)</span><span class="o">;</span>
+  <span class="k">return</span> run<span class="o">;</span>
+<span class="o">}</span></code></pre>
+
+<p>每個 task 都接在前一個之後，所以順序有保證；第一個錯誤被閂住，後續工作直接以同一個錯誤失敗，不再對壞掉的檔案做任何事；鏈的尾端永遠吞掉 rejection，所以一次失敗不會讓整條鏈變成永遠 rejected。這裡沒有執行緒、沒有鎖、沒有佇列資料結構，只有一個 promise 變數。</p>
+
+<p>計畫 037 把同一個形狀套到發布上：同一時間只有一個發布工作。它和「不管」的差別在於明確的准入規則：</p>
+
+<div class="table-scroll"><table>
+  <thead>
+    <tr><th>狀態</th><th>規則</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>A 已停止、正在發布</td><td>A 的擷取資源在排空、flush、close 之後釋放；此時 B 可以開始擷取</td></tr>
+    <tr><td>B 停止時 A 還沒發布完</td><td>B 安全封存（flush、close），排在 A 之後；不丟棄 B，也不同時複製兩個檔案</td></tr>
+    <tr><td>B 封存中，C 要求開始</td><td>拒絕，並明確顯示「正在等待存檔」；上限是一段擷取中加一段收尾中</td></tr>
+    <tr><td>磁碟餘裕不足或寫入積壓過高</td><td>不准入，理由可見；非同步排程不會增加磁碟吞吐量</td></tr>
+  </tbody>
+</table></div>
+
+<figure class="flow-figure">
+  <svg style="max-width: 360px" id="mermaid-mugkkrhd-my-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" viewBox="4 4 360 400" aria-roledescription="flowchart-v2" role="img" aria-labelledby="mermaid-mugkkrhd-title mermaid-mugkkrhd-desc"><title id="mermaid-mugkkrhd-title">A 的收尾與 B 的開始如何重疊</title><desc id="mermaid-mugkkrhd-desc">A 停止後先排空、flush、close 並釋放擷取資源；之後 B 可以開始擷取，同時 A 排入一次一件的發布佇列，直到 A 自己的終止結果。</desc><style>#mermaid-mugkkrhd-my-svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;fill:#141413;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid-mugkkrhd-my-svg .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid-mugkkrhd-my-svg .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid-mugkkrhd-my-svg .error-icon{fill:#FAF9F5;}#mermaid-mugkkrhd-my-svg .error-text{fill:#05060a;stroke:#05060a;}#mermaid-mugkkrhd-my-svg .edge-thickness-normal{stroke-width:1px;}#mermaid-mugkkrhd-my-svg .edge-thickness-thick{stroke-width:3.5px;}#mermaid-mugkkrhd-my-svg .edge-pattern-solid{stroke-dasharray:0;}#mermaid-mugkkrhd-my-svg .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid-mugkkrhd-my-svg .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-mugkkrhd-my-svg .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-mugkkrhd-my-svg .marker{fill:#D97757;stroke:#D97757;}#mermaid-mugkkrhd-my-svg .marker.cross{stroke:#D97757;}#mermaid-mugkkrhd-my-svg svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;}#mermaid-mugkkrhd-my-svg p{margin:0;}#mermaid-mugkkrhd-my-svg .label{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#141413;}#mermaid-mugkkrhd-my-svg .cluster-label text{fill:#05060a;}#mermaid-mugkkrhd-my-svg .cluster-label span{color:#05060a;}#mermaid-mugkkrhd-my-svg .cluster-label span p{background-color:transparent;}#mermaid-mugkkrhd-my-svg .label text,#mermaid-mugkkrhd-my-svg span{fill:#141413;color:#141413;}#mermaid-mugkkrhd-my-svg .node rect,#mermaid-mugkkrhd-my-svg .node circle,#mermaid-mugkkrhd-my-svg .node ellipse,#mermaid-mugkkrhd-my-svg .node polygon,#mermaid-mugkkrhd-my-svg .node path{fill:#FFFFFF;stroke:#E3DACC;stroke-width:1px;}#mermaid-mugkkrhd-my-svg .rough-node .label text,#mermaid-mugkkrhd-my-svg .node .label text,#mermaid-mugkkrhd-my-svg .image-shape .label,#mermaid-mugkkrhd-my-svg .icon-shape .label{text-anchor:middle;}#mermaid-mugkkrhd-my-svg .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#mermaid-mugkkrhd-my-svg .rough-node .label,#mermaid-mugkkrhd-my-svg .node .label,#mermaid-mugkkrhd-my-svg .image-shape .label,#mermaid-mugkkrhd-my-svg .icon-shape .label{text-align:center;}#mermaid-mugkkrhd-my-svg .node.clickable{cursor:pointer;}#mermaid-mugkkrhd-my-svg .root .anchor path{fill:#D97757!important;stroke-width:0;stroke:#D97757;}#mermaid-mugkkrhd-my-svg .arrowheadPath{fill:rgba(255, 255, 255, 0);}#mermaid-mugkkrhd-my-svg .edgePaths .path{stroke:#D97757;stroke-width:1px;}#mermaid-mugkkrhd-my-svg .flowchart-link{stroke:#D97757;fill:none;}#mermaid-mugkkrhd-my-svg .edgeLabel{background-color:#F0EEE6;text-align:center;}#mermaid-mugkkrhd-my-svg .edgeLabel p{background-color:#F0EEE6;}#mermaid-mugkkrhd-my-svg .edgeLabel rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mugkkrhd-my-svg .labelBkg{background-color:rgba(240, 238, 230, 0.5);}#mermaid-mugkkrhd-my-svg .cluster rect{fill:#FAF9F5;stroke:hsl(48, 0%, 87.0588235294%);stroke-width:1px;}#mermaid-mugkkrhd-my-svg .cluster text{fill:#05060a;}#mermaid-mugkkrhd-my-svg .cluster span{color:#05060a;}#mermaid-mugkkrhd-my-svg .node .collapsed-indicator{fill:hsl(48, 0%, 87.0588235294%);stroke:none;opacity:0.6;}#mermaid-mugkkrhd-my-svg .node .collapsed-separator{stroke:hsl(48, 0%, 87.0588235294%);stroke-width:0.75px;}#mermaid-mugkkrhd-my-svg div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:12px;background:#FAF9F5;border:1px solid hsl(48, 0%, 87.0588235294%);border-radius:2px;pointer-events:none;z-index:100;}#mermaid-mugkkrhd-my-svg .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#141413;}#mermaid-mugkkrhd-my-svg rect.text{fill:none;stroke-width:0;}#mermaid-mugkkrhd-my-svg .icon-shape,#mermaid-mugkkrhd-my-svg .image-shape{background-color:#F0EEE6;text-align:center;}#mermaid-mugkkrhd-my-svg .icon-shape p,#mermaid-mugkkrhd-my-svg .image-shape p{background-color:#F0EEE6;padding:2px;}#mermaid-mugkkrhd-my-svg .icon-shape .label rect,#mermaid-mugkkrhd-my-svg .image-shape .label rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mugkkrhd-my-svg .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#mermaid-mugkkrhd-my-svg .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#mermaid-mugkkrhd-my-svg .node .neo-node{stroke:#E3DACC;}#mermaid-mugkkrhd-my-svg [data-look="neo"].node rect,#mermaid-mugkkrhd-my-svg [data-look="neo"].cluster rect,#mermaid-mugkkrhd-my-svg [data-look="neo"].node polygon{stroke:url(#mermaid-mugkkrhd-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mugkkrhd-my-svg [data-look="neo"].swimlane.cluster rect{filter:none;}#mermaid-mugkkrhd-my-svg [data-look="neo"].node path{stroke:url(#mermaid-mugkkrhd-my-svg-gradient);stroke-width:1px;}#mermaid-mugkkrhd-my-svg [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mugkkrhd-my-svg [data-look="neo"].node .neo-line path{stroke:#E3DACC;filter:none;}#mermaid-mugkkrhd-my-svg [data-look="neo"].node circle{stroke:url(#mermaid-mugkkrhd-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mugkkrhd-my-svg [data-look="neo"].node circle .state-start{fill:#000000;}#mermaid-mugkkrhd-my-svg [data-look="neo"].icon-shape .icon{fill:url(#mermaid-mugkkrhd-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mugkkrhd-my-svg [data-look="neo"].icon-shape .icon-neo path{stroke:url(#mermaid-mugkkrhd-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mugkkrhd-my-svg :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="mermaid-mugkkrhd-my-svg_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkrhd-my-svg_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkrhd-my-svg_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkrhd-my-svg_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkrhd-my-svg_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkrhd-my-svg_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkrhd-my-svg_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkrhd-my-svg_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkrhd-my-svg_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkrhd-my-svg_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mugkkrhd-my-svg_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"/></marker><marker id="mermaid-mugkkrhd-my-svg_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"/></marker><g class="root"><g class="clusters"/><g class="edges edgePaths"><path d="M184,60L184,96" id="mermaid-mugkkrhd-my-svg-L_S_D_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 32 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mugkkrhd-L_S_D_0" data-points="W3sieCI6MTg0LCJ5Ijo2MH0seyJ4IjoxODQsInkiOjEwMH1d" data-look="neo" marker-end="url(#mermaid-mugkkrhd-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M162,172L162,184.92893218813452Q162,192 154.92893218813452,192L95.07106781186548,192Q88,192 88,199.07106781186548L88,208" id="mermaid-mugkkrhd-my-svg-L_D_B_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 100.6716537475586 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mugkkrhd-L_D_B_0" data-points="W3sieCI6MTYyLCJ5IjoxNzJ9LHsieCI6MTYyLCJ5IjoxOTJ9LHsieCI6ODgsInkiOjE5Mn0seyJ4Ijo4OCwieSI6MjEyfV0=" data-look="neo" marker-end="url(#mermaid-mugkkrhd-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M206,172L206,184.92893218813452Q206,192 213.07106781186548,192L272.9289321881345,192Q280,192 280,199.07106781186548L280,208" id="mermaid-mugkkrhd-my-svg-L_D_P_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 100.67169952392578 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mugkkrhd-L_D_P_0" data-points="W3sieCI6MjA2LCJ5IjoxNzJ9LHsieCI6MjA2LCJ5IjoxOTJ9LHsieCI6MjgwLCJ5IjoxOTJ9LHsieCI6MjgwLCJ5IjoyMTJ9XQ==" data-look="neo" marker-end="url(#mermaid-mugkkrhd-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M280,284L280,320" id="mermaid-mugkkrhd-my-svg-L_P_T_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 32 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mugkkrhd-L_P_T_0" data-points="W3sieCI6MjgwLCJ5IjoyODR9LHsieCI6MjgwLCJ5IjozMjR9XQ==" data-look="neo" marker-end="url(#mermaid-mugkkrhd-my-svg_flowchart-v2-pointEnd-margin)"/></g><g class="edgeLabels"/><g class="nodes"><g class="node default" id="mermaid-mugkkrhd-my-svg-flowchart-S-0" data-look="neo" transform="translate(184, 36)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>停止 A</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mugkkrhd-my-svg-flowchart-D-1" data-look="neo" transform="translate(184, 136)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>排空並關閉 A<br />釋放擷取資源</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mugkkrhd-my-svg-flowchart-B-3" data-look="neo" transform="translate(88, 236)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>B 開始擷取</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mugkkrhd-my-svg-flowchart-P-5" data-look="neo" transform="translate(280, 248)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>A 排入發布佇列<br />一次一件</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mugkkrhd-my-svg-flowchart-T-7" data-look="neo" transform="translate(280, 360)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>A 的終止結果<br />移除意圖紀錄</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="mermaid-mugkkrhd-my-svg-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><defs><filter id="mermaid-mugkkrhd-my-svg-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><linearGradient id="mermaid-mugkkrhd-my-svg-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#E3DACC" stop-opacity="1"/><stop offset="100%" stop-color="hsl(48, 0%, 82.1568627451%)" stop-opacity="1"/></linearGradient></svg>
+  <figcaption>分岔點是「釋放 A 的擷取資源」：在它之前 B 不能開始，在它之後 A 的發布與 B 的擷取並行，但發布佇列仍然一次只做一件。</figcaption>
+</figure>
+
+<p>還有一個和佇列同樣重要的原則：<strong>每次操作有自己的擁有權與終止結果</strong>。A 有自己的 id、自己的暫存路徑、自己的成功或失敗；一個晚到的 A 事件，例如延遲抵達的停止訊息，不能因為此時正在錄 B 就被套到 B 身上。實作上就是每個訊息帶 session id，收到時比對，不符就丟掉並記 log。這和模式二的「每個操作一份」是同一個思路：並行一旦出現，任何共用的、單一的東西都會變成錯誤歸屬的來源。</p>
+
+<h3>與模式二的交互</h3>
+
+<p>A 的意圖紀錄要留到 A 自己的終止結果，也就是發布成功或失敗，才能刪除。如果實作者把「A 停止擷取」當成刪除時機，那麼 A 發布途中當機時，下次啟動只看得到 B 的紀錄，A 那個可能不完整的檔案就沒人交代。這是為什麼計畫 037 要明寫「每次錄影保有自己的哨兵直到自己的終止結果」，即使這句話在 038 的設計裡看起來是理所當然的。</p>
+
+<h3>邊界與替代方案</h3>
+
+<ul>
+  <li><strong>工作是 CPU 重的</strong>：promise 鏈仍在主執行緒上執行 task，這時需要執行緒或子程序，回到模式一的量測。</li>
+  <li><strong>佇列要跨程序重啟仍然存在</strong>：promise 鏈只活在記憶體裡，需要持久化佇列。持久化佇列的第一步就是先把工作寫到磁碟，也就是回到模式二。</li>
+  <li><strong>只需要限制併發數，工作彼此獨立</strong>：一個小型 limiter 就夠了，promise 鏈是 limit 等於 1 的特例。它的優點是順序保證與第一錯誤閂鎖，缺點是沒有優先權，插不了隊。</li>
+</ul>
+
+<h2>三個模式共同的判斷準則</h2>
+
+<p>換到另一個程式碼庫時，用這幾個問題判斷前提是否還成立：</p>
+
+<div class="table-scroll"><table>
+  <thead>
+    <tr><th>先問</th><th>如果答案是</th><th>選擇</th></tr>
+  </thead>
+  <tbody>
+    <tr><td rowspan="2">這項工作的等待在磁碟還是 CPU？</td><td>磁碟</td><td><code>fs.promises</code>，不要執行緒</td></tr>
+    <tr><td>CPU，而且量測超過畫面預算</td><td><code>worker_threads</code>，並把量測數字留在文件裡</td></tr>
+    <tr><td>這是程序退出前的最後一次寫入嗎？</td><td>是</td><td>同步版本，或有限時間等待後如實顯示未完成</td></tr>
+    <tr><td>程序死掉後，有人需要知道這個產物嗎？</td><td>需要，而且不能掃描</td><td>先寫意圖再建資源；每個操作一份；每種終止都清除</td></tr>
+    <tr><td>多個長操作會重疊嗎？</td><td>會</td><td>promise 鏈加明確上限與可見的拒絕理由；每次操作有自己的 id 與終止結果</td></tr>
+    <tr><td>重疊的操作各自有磁碟產物嗎？</td><td>有</td><td>意圖紀錄留到各自的終止結果才刪</td></tr>
+  </tbody>
+</table></div>
+
+<p>三個模式背後只有一個原則：<strong>每一層機制都要能指出它解決的具體失敗</strong>。執行緒解決的是 CPU 阻塞，不是磁碟阻塞；意圖紀錄解決的是「當機後沒人知道」，不是「當機後自動修好」；promise 鏈解決的是順序與上限，不是吞吐量。當你說不出一個機制對應哪個失敗，它就是多餘的，而多餘的機制在長期維護裡會變成新的失敗來源。</p>
+
+<div class="callout warning">
+  <p><strong>本專案的現況。</strong>截至 2026-09-25，這三個模式是 RecordStuff 計畫 036、037、038 的設計決定，尚未實作。目前程式碼的失敗歷史仍以 <code>writeFileAtomicSync</code> 同步寫入，Recorder 在 stopping 狀態拒絕新的開始，也還沒有中斷哨兵。037 另有量測門檻：只有實測到可分離的等待時間才會實作重疊。本文說明的是設計理由與前提，不是目前行為；目前行為以 <code>docs/system-design/</code> 為準。</p>
+</div>
+
+<section class="sources">
+<h2>參考</h2>
+<ul>
+  <li>原子寫入的同步與非同步版本：<a href="../../src/main/atomic-file.ts">src/main/atomic-file.ts</a></li>
+  <li>媒體分片的 promise 鏈與發布步驟：<a href="../../src/main/file-writer.ts">src/main/file-writer.ts</a></li>
+  <li>目前的開始與停止准入、session id 比對：<a href="../../src/main/recorder.ts">src/main/recorder.ts</a></li>
+  <li>失敗歷史的儲存與上限：<a href="../../src/main/recording-result-store.ts">src/main/recording-result-store.ts</a></li>
+  <li>計畫：<a href="../../plans/036-async-failure-history.zh-TW.md">036 背景保存失敗歷史</a>、<a href="../../plans/037-overlapping-recording-finalization.zh-TW.md">037 有上限的錄影收尾重疊</a>、<a href="../../plans/038-recording-health-guards.zh-TW.md">038 錄影健康防護</a></li>
+  <li>目前實作的設計說明：<a href="../zh-TW/system-design/recording.md">錄製管線與檔案設計</a>、<a href="../zh-TW/system-design/decisions.md">設計決策</a></li>
+  <li>Node.js 對 <code>fs.promises</code> 與執行緒池的說明：<a href="https://nodejs.org/api/fs.html#promises-api">Node.js fs Promises API</a></li>
+</ul>
+</section>
+
+</article>
+</main>
+<script>
+(function () {
+  var copyIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>';
+  var checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement("textarea");
+      area.value = text; area.setAttribute("readonly", ""); area.style.position = "fixed"; area.style.opacity = "0";
+      document.body.appendChild(area); area.select();
+      try { document.execCommand("copy") ? resolve() : reject(new Error("copy failed")); } catch (error) { reject(error); }
+      document.body.removeChild(area);
+    });
+  }
+  document.querySelectorAll("pre").forEach(function (pre) {
+    var code = pre.querySelector("code");
+    if (!code) return;
+    var button = document.createElement("button");
+    button.type = "button"; button.className = "copy-code"; button.setAttribute("aria-label", "複製程式碼"); button.innerHTML = copyIcon;
+    button.addEventListener("click", function () {
+      copyText(code.textContent || "").then(function () {
+        button.classList.add("copied"); button.innerHTML = checkIcon;
+        setTimeout(function () { button.classList.remove("copied"); button.innerHTML = copyIcon; }, 1400);
+      }).catch(function () {});
+    });
+    pre.appendChild(button);
+    var bar = document.createElement("div"); bar.className = "code-scrollbar";
+    var thumb = document.createElement("div"); thumb.className = "code-scrollbar-thumb";
+    bar.appendChild(thumb); pre.appendChild(bar);
+    function sync() {
+      var max = code.scrollWidth - code.clientWidth;
+      if (max <= 1) { bar.classList.add("hidden"); return; }
+      bar.classList.remove("hidden");
+      var ratio = code.clientWidth / code.scrollWidth;
+      var width = Math.max(24, bar.clientWidth * ratio);
+      thumb.style.width = width + "px";
+      thumb.style.transform = "translateX(" + ((bar.clientWidth - width) * (code.scrollLeft / max)) + "px)";
+    }
+    var dragging = null;
+    thumb.addEventListener("pointerdown", function (event) {
+      dragging = { x: event.clientX, left: code.scrollLeft }; thumb.setPointerCapture(event.pointerId); event.preventDefault();
+    });
+    thumb.addEventListener("pointermove", function (event) {
+      if (!dragging) return;
+      var max = code.scrollWidth - code.clientWidth; var track = bar.clientWidth - thumb.clientWidth;
+      if (track > 0) code.scrollLeft = dragging.left + (event.clientX - dragging.x) * (max / track);
+    });
+    thumb.addEventListener("pointerup", function () { dragging = null; });
+    bar.addEventListener("click", function (event) {
+      if (event.target === thumb) return;
+      var rect = bar.getBoundingClientRect(); var max = code.scrollWidth - code.clientWidth;
+      code.scrollLeft = ((event.clientX - rect.left) / rect.width) * max;
+    });
+    code.addEventListener("scroll", sync); window.addEventListener("resize", sync); sync();
+  });
+})();
+</script>
+</body>
+</html>

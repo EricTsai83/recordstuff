@@ -60,6 +60,7 @@
 | `docs/verification/README.md` | 整理過的證據：量到什麼、數字與限制 |
 | `docs/verification/releases/<version>.md` | 各版本的驗證事實 |
 | `docs/verification/measurements/` | `pnpm verify`、`matrix`、`acceptance*`、`audio:quality` 寫出的原始執行結果。已 gitignore，不可被納管文件連結 |
+| `docs/learning/` | 可獨立閱讀的 HTML 設計模式文章，以本專案為範例說明可遷移的設計判斷；是設計理由，不是目前行為。以撰寫時要求的語言寫成、不做鏡像；由 `docs/learning/README.md` 索引 |
 | `docs/zh-TW/` | `docs/` 與 `CONTRIBUTING.md` 的繁體中文鏡像，路徑相對位置相同 |
 | `plans/` | 只放未完成工作，`<name>.md` 與 `<name>.zh-TW.md` 同層，由 `plans/README.md` 索引 |
 | `resources/INSTALL.md` | 給使用者的安裝／更新／移除指南，由發布頁與 README 連結 |

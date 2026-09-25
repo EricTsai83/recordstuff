@@ -60,6 +60,7 @@ Tools use `.mts`/`.mjs` because they run under Node directly rather than through
 | `docs/verification/README.md` | Curated evidence: what was measured, with numbers and limitations |
 | `docs/verification/releases/<version>.md` | Per-release verification facts |
 | `docs/verification/measurements/` | Raw local runs written by `pnpm verify`, `matrix`, `acceptance*` and `audio:quality`. Gitignored; never a link target from committed documentation |
+| `docs/learning/` | Standalone HTML articles that teach transferable design patterns with this project as the worked example; design rationale, not current behavior. Written in the language they were requested in and not mirrored; indexed by `docs/learning/README.md` |
 | `docs/zh-TW/` | Traditional Chinese mirror of `docs/` and of `CONTRIBUTING.md`, at the same relative paths |
 | `plans/` | Unfinished work only, `<name>.md` with `<name>.zh-TW.md` beside it, indexed by `plans/README.md` |
 | `resources/INSTALL.md` | Reader-facing install/update/removal guide, linked from releases and the README |
