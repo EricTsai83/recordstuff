@@ -66,7 +66,7 @@ Every `before-quit`, including idle, uses `installQuitCoordinator`. Repeated req
 | Video quality | Economy 0.07, Standard 0.13, High 0.24 bits/pixel/frame |
 | Video bitrate | Width × height × requested fps × coefficient, rounded to 100 kbps, clamped to 1.5–60 Mbps |
 | Resolution | Source unchanged; 1080p/1440p/4K caps preserve aspect/orientation, never upscale, and use even dimensions when downscaling |
-| Frame rate | 30/60; only darwin enables 60; other platforms use 30 without rewriting stored settings |
+| Frame rate | 30/60; only darwin enables 60; other platforms use 30 without rewriting stored settings. The capture asks for 30.3/62.5 to record the setting ([frame-rate request](#frame-rate-request)) |
 | Audio | 256,000 bps target; ideal 2 channels, restrictOwnAudio true; echoCancellation/noiseSuppression/autoGainControl false |
 | Format | `video/mp4;codecs=avc1,mp4a.40.2`; reject unsupported encoding rather than switch format |
 | Chunking | Timeslice and videoKeyFrameIntervalDuration are both 1000 ms; actual delivery may be delayed |
@@ -76,6 +76,14 @@ MeasureFrameSize uses a muted video's intrinsic size with a default 3-second lim
 System audio uses explicit unprocessed capture constraints: speech-oriented processing changed high-frequency balance and collapsed stereo in the local baseline. Disabling EC/NS/AGC together restored the v2 probes; own-audio exclusion remains enabled. These are requests, not universal platform guarantees. A track explicitly reporting one of these effects as true adds a warning; absent settings stay unknown. See the [audio design comparison](audio-quality.md#15-system-capture-correction--2026-09-14).
 
 CaptureReport includes known dimensions/fps/sample rate/channel count, requested encoder bitrates, and warnings. Unknown fields are omitted. Output still needs ffprobe measurement. A downgrade notification requires requested 60 fps and a reported track rate ≤30; static-content frame reduction alone does not trigger it.
+
+### Frame-rate request
+
+The capture asks for slightly more than the setting: 30.3 for 30 fps and 62.5 for 60 fps (`CAPTURE_FRAME_RATE` in `src/shared/quality.ts`), as `{ ideal, max }` in `getDisplayMedia` and again in the cap's `applyConstraints`. In Chromium 152 (Electron 44.3) a screen is captured through ScreenCaptureKit, and the request becomes its [minimum frame interval](https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.78/content/browser/media/capture/screen_capture_kit_device_mac.mm#239), a floor rather than a period. Plan 041's diagnostic (`pnpm diagnose:cadence`, see [tooling](tooling.md#frame-cadence-diagnostic)) located the deficit there: frames already reached the video track late, each interval the floor plus delivery latency, the track discarded at most 0.45% of them and the file's timestamps matched the delivered ones. Asking for exactly the setting therefore recorded about 29.4 and 57.5 fps without drops, and CPU load did not enlarge the excess. `ideal` alone changes nothing, because Chromium derives both the device rate and the track's limiter from it. The period rounded down to whole milliseconds, 33 and 16 ms, recorded 29.9 and 59.8 fps with median intervals within 1% of the period, no repeated frames and no additional drops; a 32.7 ms floor (30.6) reached the rate as well but left the 30 fps median at the 1% edge.
+
+- Only the request moves. Bitrate targets, the log's requested fps, verification (nominal period and tolerance) and the downgrade rule use the setting. The track reports the request (`getSettings().frameRate` 30.3 or 62.5), which the log shows as the track fps: a 60 fps recording whose track reports 62.5 or 60 is not a downgrade, one reporting 30 or less still is.
+- The track's own rate limiter follows the same value and drops only frames far faster than it, so it keeps every delivered frame. A 60 fps recording cannot exceed the display's refresh rate: on the 60 Hz display it measured 59.8 fps with no repeated frames. On a faster display the 16 ms floor could deliver slightly above 60; that, other Macs and the cap's `applyConstraints` path (only a source larger than the cap runs it) were not measured.
+- Results for the earlier exact request remain in the [verification history](../verification/history-2026-09.md#plan-041-closure--2026-09-26).
 
 ## Chunk and stop ordering
 

@@ -17,6 +17,7 @@
 | pnpm icons | PNG／ICO、DMG 背景圖（1x／2x）；macOS 額外產 native ICNS |
 | pnpm log | 追蹤 macOS log |
 | pnpm dist:mac | 自簽 App 驗證後，在 dist/ 旁邊產生 DMG |
+| `pnpm diagnose:cadence` | 經由隔離的 capture host fixture 錄製測試素材，比對 track 送達的影格時間戳與計數和檔案 pts，找出幀率不足發生在哪一層（[說明](#影格節奏診斷)）；僅限 macOS，不做通過／失敗判定 |
 | pnpm acceptance | 對執行中的 App：全螢幕開素材、以 System Events 送全域快捷鍵開始／停止錄影、驗完整性層級（test-material 模式）、把報告寫到 docs/verification/measurements（已 gitignore，只留本機） |
 | pnpm acceptance:settings | 對已建置的產物：在真實 Electron 視窗載入 `out/preload/settings.js` 與 `out/renderer/settings.html`，判定出貨 CSP、sandbox preload 邊界與真實 IPC 往返；報告與截圖寫到 docs/verification/measurements。需要先 `pnpm build`，不需要 tray 或已安裝的 App |
 | `pnpm acceptance:regression` | 一個指令執行 check（含建置）、設定 fixture 與快捷鍵整合；包含重複開啟／關閉／Tray 路徑重開。隔離偏好與程序，各 runner 保留報告；任一步失敗立即停止。不會啟動或關閉使用者的 RecordStuff，也不錄影。 |
@@ -24,7 +25,7 @@
 
 main、preload、renderer 分別建置，打包只納入 out、package metadata 與指定 resources。測試、量測與文件不屬 runtime；App 不呼叫 FFmpeg。
 
-`scripts/fixtures/` 的原始碼統一使用 TypeScript，納入 `pnpm typecheck`。獨立入口由 [build-fixture.mts](../../../scripts/lib/build-fixture.mts) 使用 Vite 的 TypeScript 轉換按需編譯：settings-panel、recording-lifecycle、history-quit、quit-dialog 與 release-record-network 輸出 ESM（`.mjs`）；shortcut-failure 因為要在載入正式 App 前攔截 CommonJS 載入，所以輸出 CommonJS（`.cjs`）。產物保留在各次驗收報告目錄或測試暫存目錄，不是需要維護的原始碼，也不隨 App 發布。update-acceptance fixture 繼續隨臨時 App 原始碼副本一起建置。現有驗收指令不需額外手動建置 fixture；編譯只移除型別，型別檢查由 `pnpm typecheck` 負責。傳給 `executeJavaScript` 的 renderer 字串仍是執行時程式碼，不會得到 TypeScript 的 DOM 型別檢查。
+`scripts/fixtures/` 的原始碼統一使用 TypeScript，納入 `pnpm typecheck`。獨立入口由 [build-fixture.mts](../../../scripts/lib/build-fixture.mts) 使用 Vite 的 TypeScript 轉換按需編譯：settings-panel、recording-lifecycle、history-quit、quit-dialog、frame-cadence 與 release-record-network 輸出 ESM（`.mjs`）；shortcut-failure 因為要在載入正式 App 前攔截 CommonJS 載入，所以輸出 CommonJS（`.cjs`）。frame-cadence-renderer 是唯一在 renderer 端執行的 fixture：輸出一般 script（IIFE），讓 `file://` 頁面在 capture host 的 CSP 下載入；它由 `tsconfig.web.json` 以 DOM 型別檢查，`tsconfig.node.json` 則排除它。產物保留在各次驗收報告目錄或測試暫存目錄，不是需要維護的原始碼，也不隨 App 發布。update-acceptance fixture 繼續隨臨時 App 原始碼副本一起建置。現有驗收指令不需額外手動建置 fixture；編譯只移除型別，型別檢查由 `pnpm typecheck` 負責。傳給 `executeJavaScript` 的 renderer 字串仍是執行時程式碼，不會得到 TypeScript 的 DOM 型別檢查。
 
 ## 資源與產生的輸出
 
@@ -65,6 +66,8 @@ pnpm acceptance:notification -- --install --full   # 三種 Finder 狀態、英�
 pnpm matrix -- quick
 pnpm matrix -- all
 pnpm matrix -- long
+pnpm diagnose:cadence                                    # 30 與 60 fps 的影格節奏，各錄兩次
+pnpm diagnose:cadence -- --request 30:30.6,60:62.4       # 比較候選的幀率要求
 ```
 
 verify 支援多檔、log、來源尺寸、同步標記、Markdown／JSON 與指定 JSON 輸出。聲道能量是必要證據，帶 `--sync` 時閃光／短音標記也是；有檢查 fail、必要證據 incomplete 或檔案無法讀取時 exit 1，缺少必要工具（blocked）時 exit 2，其餘 exit 0（見[判定](#驗收門檻)）。結果預設存至 docs/verification/measurements（已 gitignore，原始執行只留本機，解讀後的結論才寫進驗證紀錄）；會讀所有保留的檔案（active log 與 `.1`～`.3`，由舊到新），並依身分配對錄影與 session（plan 029）：使用 [session record](desktop.md#log-與診斷) 的 run 與 session id，以檔案完整路徑查找；只有 log 中恰好一個 session 指名同名檔案時才退回用檔名（複製出去的檔案）。同一筆 record 記兩次仍是一個結果；同一 session 出現不同結果則是 conflict。沒有留下檔案的失敗不宣告任何路徑，因為同一秒的重試可能重用它的暫存檔名。session record 之前版本的啟動使用保守的舊版關聯：只有沒有其他可能擁有者時才接受（`file finalized` 行、唯一仍在錄製的 session，或文字相符且唯一未解決的失敗），因此兩個未解決的失敗絕不依印出順序分配。其餘情況報告會標出 metadata 為 ambiguous、conflict 或 unknown，不判定任何需要要求設定的檢查；媒體量測不依賴 metadata。`pnpm acceptance` 與 `pnpm matrix` 在 metadata 沒有配到自己 session 時判該案例失敗。2026-09-25 以 244 個保留 log 重播，舊的依順序讀法配到的 628 個檔案全部得到相同關聯；保留 log 中沒有舊讀法會出錯的「收尾順序顛倒」交錯。
@@ -86,6 +89,12 @@ matrix 只支援 macOS 開發環境。預設以 Chrome app 模式全螢幕在主
 10 分鐘基準已做過，long 改 3 分鐘是使用者決定，不更改舊結果。
 
 Autorecord 存檔後立即退出，因此 macOS 待送的儲存通知會被退出流程取消；橫幅不屬於 autorecord 完成條件。
+
+### 影格節奏診斷
+
+`pnpm diagnose:cadence`（plan 041）用來找出幀率不足發生在哪一層；它不做判定，也不隨 App 發布。每次執行都會錄製測試素材（和 matrix 一樣用 Chrome kiosk 開啟，除非加 `--no-open-material`），錄製經由隔離的 [frame-cadence fixture](../../../scripts/fixtures/frame-cadence.ts)：正式的 main 端 capture host、建置好的 capture-host preload 與真正的 renderer host，display-media 要求也照 App 的方式回應（主螢幕加 loopback）。它以 `open -a` 開啟開發用 Electron.app，沿用該 App 的螢幕錄製授權；執行前先結束 RecordStuff 與開發用 App。[renderer 包裝](../../../scripts/fixtures/frame-cadence-renderer.ts)只負責觀察：在 MediaRecorder 之前為 video track 送達的每個影格記下時間戳（`MediaStreamTrackProcessor`），每秒取樣 `track.stats` 與 `getSettings().frameRate`，並標記 recorder 的開始與停止。runner 比對錄影期間的這些時間戳、送達／丟棄計數（從 recorder 開始後的第一個取樣起算，排除啟動瞬間）與檔案 pts，取樣 Electron CPU，再依分布指出偏差所在的層：`source-floor`（影格送到 track 時已晚，沒有丟棄）、`track-limiter`（track 丟棄超過 1%）、`recorder-timestamps`（在 track 準時、檔案裡變晚）或 `on-time`；中位數以週期的 1% 為界。若 tap 看到的影格少於檔案影格的 99%，結果為 `undetermined`，因為卡住的觀察端看起來會像變慢的來源。它不計算重複影格；對保留的檔案執行 `ffmpeg -vf mpdecimate` 即可看到。
+
+選項：`--rates 30,60`、`--runs 2`（兩種幀率交替執行）、`--seconds 30`、`--load N`（每次錄影期間維持 N 個忙碌程序）、`--request 30:X,60:Y`（在 `getDisplayMedia` 與 `applyConstraints` 中把這些幀率的 frame-rate constraint 換成 `{ ideal, max }`）、`--ideal-only`（只給 `{ ideal }`）、`--label`。不加 `--request` 時量測產品本身的要求。證據寫到 `docs/verification/measurements/<timestamp>-frame-cadence/`（`summary.md`、`summary.json`，以及每次的 `recording.mp4`、`result.json`、`fixture.log`）。每次都產生證據與分類時 exit 0，有一次沒有或清理後仍有程序殘留時 exit 1，缺 ffprobe 或桌面鎖定時 exit 2。收到 SIGINT 或 SIGTERM 時，會停止本輪自己啟動的 fixture、忙碌程序與素材瀏覽器，確認它們已結束，再以 130 或 143 結束，不寫 summary。同步、聲道能量、位元率與掉格仍由 `pnpm matrix` 判定。
 
 ### 選擇驗收範圍
 
@@ -130,7 +139,7 @@ media-tools 呼叫 ffprobe／ffmpeg；verify.mts 純解析／計算／判定；v
 | 完整性 | 視訊碼率 | 至少為要求目標的 70%；超過只是檔案較大，不算失敗 |
 | 完整性 | 音訊碼率 | 至少為要求目標的 50%；AAC 隨內容變化。帶 `--test-material`（`--sync` 隱含、`pnpm acceptance` 會設定）時只回報不判定：素材頁的稀疏嗶聲遠低於任何要求值，連續音訊的碼率交給[音質診斷](audio-quality.md) |
 | 完整性 | 解碼 | ffprobe 全影格無錯；播放器操作另驗 |
-| 效能 | fps | 要求 ±2 fps |
+| 效能 | fps | 要求 ±2 fps。旁邊同時列出影格間隔中位數與標稱週期（只回報），用來區分每格都慢的節奏偏差與掉格 |
 | 效能 | 掉幀 | <2% |
 | 效能 | 音訊−影像偏移（閃光／短音） | 嚴格介於 −45 與 +125 ms，至少 3 組配對的閃光／短音 |
 | 效能 | 結尾漂移 | 絕對值 <100 ms。至少 120 秒（要求或實測）的錄影，前 60 秒與後 60 秒各需至少 3 組配對；較短的錄影沒有漂移可判定 |

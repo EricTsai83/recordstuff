@@ -43,7 +43,7 @@ Download the arm64 DMG and drag RecordStuff onto the Applications folder shown i
 
 Open Settings from the right-click menu or with **⌘⌥,**. Appearance offers System / Light / Dark (System by default); notifications are on by default and also require macOS permission. Language and appearance can change while recording; other settings are locked. A specific display must be available: the app does not silently switch to another screen. Capture covers one whole screen, without a microphone, window or region selector.
 
-Output is H.264/AAC MP4. Audio requests 256 kbps with voice processing explicitly disabled; local diagnostic recordings preserve high frequencies and left/right separation. Actual bitrate depends on the encoder and content. At 60 fps the tested output was about 57 fps with substantially larger files. These are measured limitations, not hidden quality guarantees.
+Output is H.264/AAC MP4. Audio requests 256 kbps with voice processing explicitly disabled; local diagnostic recordings preserve high frequencies and left/right separation. Actual bitrate depends on the encoder and content. The capture asks for slightly more than 30 or 60 fps so the tested Mac records about 29.9 and 59.8 fps; 60 fps files are substantially larger. These are measured limitations, not hidden quality guarantees.
 
 ## Current status and design
 

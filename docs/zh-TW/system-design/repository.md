@@ -46,7 +46,7 @@
 
 `scripts/` 收錄支援開發、但不隨 App 出貨的一切：
 
-- **入口檔**放在該目錄頂層，與 `package.json` script 一對一：`start-app.mjs`、`make-icons.mjs`、`probe-recording.mjs`、`verify-recording.mts`、`run-matrix.mts`、`audio-quality.mts`、`acceptance-*.mts`、`create-signing-identity.mts`、`release.mts`、`cleanup-release-keychain.py`。`test-material.html`——同步與音質量測時播放的素材頁——也放在同一層。
+- **入口檔**放在該目錄頂層，與 `package.json` script 一對一：`start-app.mjs`、`make-icons.mjs`、`probe-recording.mjs`、`verify-recording.mts`、`run-matrix.mts`、`diagnose-frame-cadence.mts`、`audio-quality.mts`、`acceptance-*.mts`、`create-signing-identity.mts`、`release.mts`、`cleanup-release-keychain.py`。`test-material.html`——同步與音質量測時播放的素材頁——也放在同一層。
 - **`scripts/lib/`** 放入口檔背後的共用實作：驗收執行環境、驗證與媒體工具、音質分析、release manifest 用戶端。
 - **`scripts/fixtures/`** 放測試替身與注入用的替代實作。
 
@@ -101,7 +101,7 @@ App 的更新檢查讀取本網站的 `release.json`，因此 `scripts/lib/relea
 
 | 檔案 | 約束了什麼 |
 | --- | --- |
-| `tsconfig.node.json`／`tsconfig.web.json` | 哪些目錄以 Node／Electron 或 DOM 函式庫檢查型別；`src/shared/` 同時出現在兩者 |
+| `tsconfig.node.json`／`tsconfig.web.json` | 哪些目錄以 Node／Electron 或 DOM 函式庫檢查型別；`src/shared/` 同時出現在兩者。在 renderer 端執行的 fixture `scripts/fixtures/frame-cadence-renderer.ts` 從 Node 設定排除，改以 DOM 設定檢查 |
 | `tsconfig.tests.json` | `tests/` 同時以 DOM 與 Node 函式庫檢查型別，與 renderer 分開 |
 | `vitest.config.ts` | 測試只在 `src/`、`scripts/` 與 `tests/` 下以 `*.test.ts` 尋找 |
 | `electron.vite.config.ts` | 一個 main 入口、兩個 preload 入口、兩個 renderer HTML 入口 |

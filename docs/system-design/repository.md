@@ -46,7 +46,7 @@ Four conventions hold across this tree:
 
 `scripts/` holds everything that supports development but ships with nothing:
 
-- **Entry points** at the top level, one per `package.json` script: `start-app.mjs`, `make-icons.mjs`, `probe-recording.mjs`, `verify-recording.mts`, `run-matrix.mts`, `audio-quality.mts`, `acceptance-*.mts`, `create-signing-identity.mts`, `release.mts`, and `cleanup-release-keychain.py`. `test-material.html`, the page played during sync and audio-quality runs, sits beside them.
+- **Entry points** at the top level, one per `package.json` script: `start-app.mjs`, `make-icons.mjs`, `probe-recording.mjs`, `verify-recording.mts`, `run-matrix.mts`, `diagnose-frame-cadence.mts`, `audio-quality.mts`, `acceptance-*.mts`, `create-signing-identity.mts`, `release.mts`, and `cleanup-release-keychain.py`. `test-material.html`, the page played during sync and audio-quality runs, sits beside them.
 - **`scripts/lib/`** for the shared implementation behind those entry points — acceptance runtime, verification and media tools, audio-quality analysis, release manifest clients.
 - **`scripts/fixtures/`** for test doubles and injected stand-ins.
 
@@ -101,7 +101,7 @@ The structure is enforced by configuration, not convention alone:
 
 | File | What it constrains |
 | --- | --- |
-| `tsconfig.node.json` / `tsconfig.web.json` | Which directories typecheck against Node/Electron versus DOM libraries; `src/shared/` appears in both |
+| `tsconfig.node.json` / `tsconfig.web.json` | Which directories typecheck against Node/Electron versus DOM libraries; `src/shared/` appears in both. The renderer-side fixture `scripts/fixtures/frame-cadence-renderer.ts` is excluded from the Node config and checked with the DOM one |
 | `tsconfig.tests.json` | `tests/` typechecks against both DOM and Node libraries, separately from the renderer |
 | `vitest.config.ts` | Tests are found only under `src/`, `scripts/` and `tests/`, as `*.test.ts` |
 | `electron.vite.config.ts` | The one main entry, two preload entries and two renderer HTML entries |

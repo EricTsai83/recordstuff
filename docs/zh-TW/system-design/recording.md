@@ -66,7 +66,7 @@ Recorder 接受 `stopped` 後由 finalizer 獨占該次收尾。遲到的 host c
 | 影像等級 | economy 0.07、standard 0.13、high 0.24 bits / pixel / frame |
 | 位元率 | width × height × requested fps × 係數，四捨五入至 100 kbps，限制 1.5–60 Mbps |
 | 解析度 | source 不縮放；1080p／1440p／4K 上限按來源方向交換長短邊，不放大，縮小時取偶數 |
-| 幀率 | 30／60；目前只有 darwin 開放 60；其他平台有效值為 30，不覆寫使用者檔案 |
+| 幀率 | 30／60；目前只有 darwin 開放 60；其他平台有效值為 30，不覆寫使用者檔案。擷取要求 30.3／62.5 才能錄到設定值（[幀率要求](#幀率要求)） |
 | 音訊 | 固定要求 256,000 bps；請求 ideal 2 聲道、restrictOwnAudio true；echoCancellation／noiseSuppression／autoGainControl false |
 | 格式 | `video/mp4;codecs=avc1,mp4a.40.2`；不支援時失敗，不偷偷切 WebM |
 | 分片 | timeslice 與 `videoKeyFrameIntervalDuration` 均設 1000 ms；實際出片不保證一秒 |
@@ -76,6 +76,14 @@ Recorder 接受 `stopped` 後由 finalizer 獨占該次收尾。遲到的 host c
 系統音訊明確要求關閉語音處理：本機基準曾量到高頻失衡與聲道混合，同時關閉 EC／NS／AGC 後，v2 探測恢復正常；排除自身聲音仍啟用。這些是要求，不是所有平台的保證。若音軌明確回報任一效果仍為 true，會加入 warning；未回報維持未知。詳見[音質設計的修正對照](audio-quality.md#15-系統擷取修正2026-09-14)。
 
 `CaptureReport` 包含可知的 width／height／frameRate／sampleRate／channelCount、目標位元率與 warnings。未知值不填；這是啟動時的觀察與要求，成品仍需 ffprobe 量測。只有要求 60 且 track 明確回報 ≤30 時發降級通知，靜態畫面少產生影格不當成這種降級。
+
+### 幀率要求
+
+擷取要求的幀率略高於設定：30 fps 要求 30.3，60 fps 要求 62.5（`src/shared/quality.ts` 的 `CAPTURE_FRAME_RATE`），以 `{ ideal, max }` 放進 `getDisplayMedia`，套解析度上限的 `applyConstraints` 也再附上一次。Chromium 152（Electron 44.3）以 ScreenCaptureKit 擷取螢幕，這個要求會變成它的[最小影格間隔](https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.78/content/browser/media/capture/screen_capture_kit_device_mac.mm#239)，是下限而非週期。Plan 041 的診斷（`pnpm diagnose:cadence`，見[工具](tooling.md#影格節奏診斷)）確認偏差出在這一層：影格送到 video track 時就已經晚了，每個間隔都是下限再加上交付延遲；track 丟棄的影格最多 0.45%，檔案時間戳與送達時一致。因此照設定值要求時，實際只錄到約 29.4 與 57.5 fps，且沒有掉格；CPU 負載也沒有讓偏差變大。只給 `ideal` 沒有效果，因為 Chromium 的裝置幀率與 track 的限速器都由它決定。把週期無條件捨去到整數毫秒（33 與 16 ms）後，錄到 29.9 與 59.8 fps，間隔中位數在週期的 1% 內，沒有重複影格，也沒有增加掉格；32.7 ms 下限（30.6）同樣達到幀率，但 30 fps 的中位數剛好落在 1% 邊界。
+
+- 只有要求值改變。位元率目標、log 裡的 requested fps、驗證（標稱週期與容許差）和降級規則都仍以設定值為準。track 回報的是要求值（`getSettings().frameRate` 為 30.3 或 62.5），log 會把它顯示為 track fps：60 fps 錄影的 track 回報 62.5 或 60 不算降級，回報 30 以下仍算。
+- track 自己的限速器採用同一個值，只丟棄遠快於它的影格，所以會保留每個送達的影格。60 fps 錄影不會超過螢幕更新率：在 60 Hz 螢幕上量到 59.8 fps，沒有重複影格。更高更新率的螢幕上，16 ms 下限可能略高於 60；這種情況、其他 Mac，以及解析度上限的 `applyConstraints` 路徑（只有來源大於上限時才會執行）都沒有量測。
+- 先前照設定值要求的結果保留在[驗證歷史](../verification/history-2026-09.md#plan-041-結案--2026-09-26)。
 
 ## 分片與停止順序
 
