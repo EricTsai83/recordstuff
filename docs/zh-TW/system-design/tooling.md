@@ -67,7 +67,7 @@ pnpm matrix -- all
 pnpm matrix -- long
 ```
 
-verify 支援多檔、log、來源尺寸、同步標記、Markdown／JSON 與指定 JSON 輸出。結果預設存至 docs/verification/measurements（已 gitignore，原始執行只留本機，解讀後的結論才寫進驗證紀錄）；讀 active log 與最新 .1 archive，以免 session 因輪替無法配對。
+verify 支援多檔、log、來源尺寸、同步標記、Markdown／JSON 與指定 JSON 輸出。結果預設存至 docs/verification/measurements（已 gitignore，原始執行只留本機，解讀後的結論才寫進驗證紀錄）；會讀所有保留的檔案（active log 與 `.1`～`.3`，由舊到新），並依身分配對錄影與 session（plan 029）：使用 [session record](desktop.md#log-與診斷) 的 run 與 session id，以檔案完整路徑查找；只有 log 中恰好一個 session 指名同名檔案時才退回用檔名（複製出去的檔案）。同一筆 record 記兩次仍是一個結果；同一 session 出現不同結果則是 conflict。沒有留下檔案的失敗不宣告任何路徑，因為同一秒的重試可能重用它的暫存檔名。session record 之前版本的啟動使用保守的舊版關聯：只有沒有其他可能擁有者時才接受（`file finalized` 行、唯一仍在錄製的 session，或文字相符且唯一未解決的失敗），因此兩個未解決的失敗絕不依印出順序分配。其餘情況報告會標出 metadata 為 ambiguous、conflict 或 unknown，不判定任何需要要求設定的檢查；媒體量測不依賴 metadata。`pnpm acceptance` 與 `pnpm matrix` 在 metadata 沒有配到自己 session 時判該案例失敗。2026-09-25 以 244 個保留 log 重播，舊的依順序讀法配到的 628 個檔案全部得到相同關聯；保留 log 中沒有舊讀法會出錯的「收尾順序顛倒」交錯。
 
 ### 測試素材
 
@@ -91,7 +91,7 @@ Autorecord 存檔後立即退出，因此 macOS 待送的儲存通知會被退�
 
 依[共用測試規則](../testing.md)選擇必要及可排除的檢查。原生／錄影使用[共用案例與報告](../acceptance.md)。本頁維護指令操作及門檻，不另定一套測試選擇規則。
 
-Updates 使用插樁副本，matrix 使用 autorecord，兩者都不能代替正常建置 App 的驗收。通知驗收保留安裝路徑與不同 Finder 狀態的覆蓋。同一未變更檔案與相同驗證範圍可共用媒體證據；不同產物或 UI 操作不可互相替代。素材參數、log 游標與有時限的 log 等待共用 `scripts/lib/acceptance.mts` 與 `scripts/lib/acceptance-runtime.mts`；各 runner 保留自己的 App 生命週期與判定。快捷鍵與通知 runner 共用中斷錄影的收尾，等待存檔，成功送出停止命令後不再次切換快捷鍵。
+Updates 使用插樁副本，matrix 使用 autorecord，兩者都不能代替正常建置 App 的驗收。通知驗收保留安裝路徑與不同 Finder 狀態的覆蓋。同一未變更檔案與相同驗證範圍可共用媒體證據；不同產物或 UI 操作不可互相替代。素材參數與有時限的 log 等待共用 `scripts/lib/acceptance.mts` 與 `scripts/lib/acceptance-runtime.mts`；各 runner 保留自己的 App 生命週期與判定。Log 位置是 `scripts/lib/log-reader.mts` 的 rotation-aware cursor（plan 029），等待與收尾共用：cursor 由檔案身分（device、inode、birth time）加 byte offset 組成，從它往後讀時會跟著該檔案到目前所在的 archive，再讀所有較新的檔案，每行只讀一次。它容忍輪替改名後、下一次追加前的空檔，保留尚未換行的最後一行，而且 retention 已刪除或截斷已抹去 cursor 所在歷史時，會明確回報 evidence gap，不會等到逾時。cursor 另外記下 offset 之前的 64 bytes；只會追加的 log 不會改動它們，所以檔案在兩次讀取之間被截斷又長回超過 offset，也會回報 gap，不會靜默跳過。被 single-instance lock 拒絕的第二次啟動所寫的 `start:` 行不算程序啟動，因此不會遮住執行中 App 的狀態，也不會切開它的 log。快捷鍵 runner 要求 App 的 run id，把等待綁定到本次 capture record 指名的 session，並從該 session 的終止 record 取得檔案。快捷鍵與通知 runner 共用中斷錄影的收尾，等待存檔，成功送出停止命令後不再次切換快捷鍵；runner 的證據 log 會在遺失歷史的位置標示 gap。
 
 ### 通知驗收
 

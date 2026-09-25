@@ -48,21 +48,22 @@
 | `sessionId` getter | 進行中的 session id，供睡眠／喚醒 log 等診斷使用 |
 | `subscribe(listener)` | 加入事件集合 → unsubscribe 函式 |
 | `toggle()` | idle 開始、recording 停止、needsPermission 發引導事件，其餘忽略 |
-| `stop()` | 僅 matching recording session → stopping，設 stop timeout，送 stop |
+| `stop()` | 僅 matching recording session → stopping（記下要求停止時間），設 stop timeout，送 stop |
 | `shutdown()` | 等 starting 落定、停止 recording、等 stopping／failure；与退出 hard cap 競速 |
 | `setPermission(status)` | 一律保存最新狀態；idle／needsPermission 時狀態有變才重新落定，不覆蓋忙碌 session 狀態 |
 | `outputDirChanged()` | 清掉記住的 outputDirUnavailable（needsPermission 時也清）；只有 idle 才更新狀態 |
-| `start()` | preflight、建立快照與 session、驗位置、開 writer、start host；每階段處理 late 結果 |
+| `start()` | preflight（拒絕時送出標記 `preflight`、不指名 session 的 failed 事件）、建立快照與 session、驗位置、開 writer、start host；每階段處理 late 結果 |
 | `openUniqueWriter(session, stamp)` | 每個暫存檔名先寫中斷 sentinel，再嘗試暫存／最終檔名 pair；暫存 EEXIST 最多 10 次，其他錯誤直接拋出 |
 | `markInFlight` / `clearInFlight` | 寫入 session sentinel（失敗只記錄一次、不阻擋）／每個終止結果都移除它 |
 | `handleHostMessage(message)` | 過濾 session；處理 started／chunk／stopped／error；過期 started／chunk 回 stop |
 | `handleChunk(session, seq, bytes)` | 驗連續 seq、清首片 timer、started 後的非空媒體重設停滯保護、append；write reject 轉 fail |
-| `finalize(session)` | 等 pending append，確認 session 未失效，finish writer；成功 idle＋saved（附提前停止原因），再移除 sentinel |
+| `finalize(session)` | 等 pending append，確認 session 未失效，finish writer；成功 idle＋saved（附提前停止原因與 session trace），再移除 sentinel |
 | `armStall(session)` | 媒體開始後的 chunk 間隔 timer：警告門檻記錄一次，第二門檻以 capture_failed 失敗 |
 | `watchDisk(session)` | 錄製中以單一不重疊 timer 查詢可用空間；低於警告門檻記錄一次，低於停止門檻只要求一次正常停止；查詢失敗記錄一次 |
 | `retainedWriteError(session)` | 在上限內排空 writer，回傳其保留的寫入／sync 錯誤；只用於改報 capture_start_failed |
 | `handleHostFailure(code, detail)` | 有 session 才進 fail；idle 時不假造錄製錯誤 |
-| `fail(id, code, detail, flags)` | 先 detach session／清 deadline 與健康 timer／stop／idle，writer 已保留磁碟錯誤時取代 capture_start_failed，後 abandon，最後 failed 帶 partialPath，再移除 sentinel |
+| `fail(id, code, detail, flags)` | 先 detach session／清 deadline 與健康 timer／stop／idle，writer 已保留磁碟錯誤時取代 capture_start_failed，後 abandon，最後 failed 帶檔案結果、session trace 與 partialPath，再移除 sentinel |
+| `trace(session)` | captureStarted、saved、failed 帶的 session id、暫存路徑與錄製／要求停止時間（plan 029） |
 | `clearTimer` / `clearDisk` / `clearHealth` | 取消並清除 session deadline／可用空間查詢／查詢與停滯 timer |
 | `setState(state)` / `emit(event)` | 替換狀態並發事件／依序呼叫 listeners |
 | `nextStateChange()` | 一次性訂閱 state，收到後取消訂閱並 resolve |
@@ -300,6 +301,8 @@
 
 [log.ts](../../../src/main/log.ts)：`rotatedPath(path, index)` 組 archive 檔名；`rotateLog(path, keep)` 刪最舊再逆序搬移；`formatLine(message, now)` 加 ISO 前綴；`createFileLogger(options)` 回同步 Log closure。closure 內 `sizeOf()` 查長度（失敗視 0），`appendToFile()` 建目錄、必要時輪替、追加；回傳 logger 先 stdout，磁碟錯誤後停用檔案輸出。
 
+[session-log.ts](../../../src/main/session-log.ts)：`createRunId(launchedAt, pid)` 由啟動時間與 pid 組成每次啟動的 run id；`logSessionEvent(log, run, event)` 對 captureStarted、saved、failed 與 preflight 拒絕先寫人類可讀的 `saved`／`failed:` 行，再寫有版本的 session record，其他事件忽略。[shared/session-record.ts](../../../src/shared/session-record.ts) 定義 record schema、前綴與版本並格式化一筆 record；只有 type import，scripts 可直接載入。
+
 [autorecord.ts](../../../src/main/autorecord.ts)：`parseAutoRecord(value, isPackaged)` 在打包版／空值回 undefined；其餘解析 seconds∈(0,3600] 與合法 quality patch，合併預設而非使用者設定。`runAutoRecord(config, deps)` 等預設 1.5 秒後由公開 toggle 開始，進 recording 才排計時停止，saved／failed，或按下開始前的 needsPermission 後，由內部 `finish(message)` 一次性 log＋quit。用於開發量測，不在正式版提供遠端控制。
 
 ## 簽章與圖示工具
@@ -327,9 +330,12 @@
 | --- | --- |
 | [acceptance-settings.mts](../../../scripts/acceptance-settings.mts) 頂層 | 要求已有建置產物與本機 Electron；以 90 秒上限在全新證據目錄執行 fixture；印出每個案例；寫 report.md；缺前置或無結果以 2 退出，任一 fail 以 1 退出 |
 | [fixtures/settings-panel.ts](../../../scripts/fixtures/settings-panel.ts) | 在隱藏的 sandbox 視窗載入已建置的 preload 與頁面，自備 view 與 IPC handler；判定 CSP／console、暴露的 bridge、沒有 Node API、URL 語言、畫出的控制項、不可用選項、被拒絕快捷鍵的註解、真實變更往返，以及未提交的選擇；寫出 results.json 與 panel.png |
-| [acceptance-hotkey.mts](../../../scripts/acceptance-hotkey.mts) 頂層 | 要求 RecordStuff 執行中、idle 且有 `hotkey: registered`；開 kiosk 素材；以 System Events 送組合鍵；各 30 秒內等 `pressed`、`state → recording`、第二個 `pressed`、`saved`；以 `testMaterial` 驗完整性層級；寫 report.md／verify.json／app-session.log；任一 fail 以 1 退出 |
+| [acceptance-hotkey.mts](../../../scripts/acceptance-hotkey.mts) 頂層 | 要求 RecordStuff 執行中、idle、有 run id 且有 `hotkey: registered`；開 kiosk 素材；以 System Events 送組合鍵；從 rotation-aware cursor 各 30 秒內等 `pressed`、`state → recording`、本次的 capture record、第二個 `pressed` 與該 session 的終止 record；以 `testMaterial` 驗完整性層級，並要求檔案 metadata 配到該 session；寫 report.md／verify.json／app-session.log；任一 fail 以 1 退出 |
 | [lib/acceptance.mts](../../../scripts/lib/acceptance.mts) `acceleratorToKeystroke` / `keystrokeScript` | Electron accelerator → System Events `keystroke … using {…}`；無法輸入的鍵回 undefined |
-| 同檔 `lastStartIndex` / `registeredAccelerator` / `currentState` / `findAfter` / `lineTime` | 只讀目前程序的 log；在偏移之後找事件；解析行時間戳 |
+| 同檔 `lastStartIndex` / `registeredAccelerator` / `currentState` / `currentRunId` / `lineTime` | 只讀目前程序的 log（略過被 lock 拒絕的第二次啟動的 `start:` 行）與其 run id；解析行時間戳 |
+| [lib/log-reader.mts](../../../scripts/lib/log-reader.mts) `LogReader.end` / `since` / `all`、`readRetainedLog`、`evidenceSince` | 最後一個完整行之後的 rotation-aware cursor（檔案身分＋byte offset）；跨保留 archive 讀 cursor 之後的完整行、每行一次，retention 或截斷移除歷史時丟 `LogGapError`（cursor 的 64 bytes 標記也能抓到截斷後又長回的檔案）；由舊到新的所有保留行；以標記取代遺失歷史的證據行 |
+| [lib/session-records.mts](../../../scripts/lib/session-records.mts) `parseSessionRecord` / `startLineRun` / `logMessage` | 驗證已知版本的 session record（格式錯誤或未來版本忽略）；`start:` 行的 run id；去掉時間戳 |
+| [lib/acceptance-runtime.mts](../../../scripts/lib/acceptance-runtime.mts) `waitForLog` / `waitForRecord` / `recordingOutcome` / `finishRecording` / `settleRecording` | 從 cursor 起算的有時限等待，遇 evidence gap 立即 reject；App 有寫 record 時由 record、否則由人類可讀行判斷本次錄影結果，可限定單一 session；不重複切換的中斷錄影收尾；runner 對從未離開 idle 的 App 的退路 |
 | [probe-recording.mjs](../../../scripts/probe-recording.mjs) `probe(file)` | ffprobe JSON → stream／container 數據；CLI 逐檔列出 |
 | 同檔 `ratio(text)`、`kbps(bps)`、`fixed(n, digits)` | 解析比例／格式化量測，未知以文字表示 |
 | [verify-recording.mts](../../../scripts/verify-recording.mts) `usage()` | 列參數格式並 exit 2；頂層解析 CLI，逐檔驗證、輸出、以 fail 決定 exit 1 |
@@ -339,9 +345,9 @@
 | 同檔 `frameTimes(file, duration, edgeSeconds)`、`read(interval?)` | 影格 PTS；長片分別讀頭尾區間，不把中間空隙算掉幀 |
 | 同檔 `channelRms(file)` | ffmpeg astats → 每聲道 dBFS |
 | 同檔 `syncMarkers(file, duration)` | 解碼測試頁閃光／短音，回 flashes／beeps 時間點 |
-| [lib/verify-recording.mts](../../../scripts/lib/verify-recording.mts) `readLogText(path)` | active log＋最新 .1 archive，保留跨輪替 session |
-| 同檔 `readLogPairs(path?)` | 有 log 則配對，無 log 返回空 Map |
-| 同檔 `verifyRecording(file, pairs, options)` | probe／frame／RMS／optional sync→measure→judge→VerifyResult |
+| [lib/verify-recording.mts](../../../scripts/lib/verify-recording.mts) `readLogText(path)` | 所有保留檔案，由舊到新 |
+| 同檔 `readLogPairs(path?)` | 有 log 則依身分配對，無 log 返回空的 LogPairs |
+| 同檔 `verifyRecording(file, pairs, options)` | 查檔案的配對，再 probe／frame／RMS／optional sync→measure→judge→帶配對狀態的 VerifyResult |
 | 同檔 `parseDimensions(text)` | WxH 字串 → dimensions 或 undefined |
 | 同檔 `tryExec(cmd, args)`、`environmentSummary()` | best effort 環境查詢；機器／OS／Electron／display／工具版本描述 |
 | 同檔 `localDate(date)`、`measurementsPath(date)` | 本地日期 → docs/verification/measurements 日期檔名 |
@@ -349,7 +355,7 @@
 | [run-matrix.mts](../../../scripts/run-matrix.mts) `shorten(entries, seconds)`、`usage()` | 調矩陣時長／參數說明後退出 |
 | 同檔 `mainDisplaySize()`、`outputDir()` | macOS 主螢幕／使用者設定或預設位置 |
 | 同檔 `sleep(ms)`、`electronPids()`、`cpuPercent(pids)` | 回歸間隔與本專案 Electron 程序 CPU 取樣 |
-| 同檔 `logPosition()`、`readFrom(path, offset)`、`logSince(start)` | 以檔案位置讀本次新 log，處理輪替 |
+| 同檔 `logSince(start)` | 從本案例的 cursor 跨輪替讀 log；遺失歷史視為案例失敗 |
 | 同檔 `recordOnce(entry)` | 用環境變數啟動開發 App，等待結果並取樣 CPU，回 outcome |
 | 同檔 `main()` | 驗工具／平台、開素材頁、依序 recordOnce＋verify、寫結果、cleanup |
 
@@ -361,7 +367,7 @@
 | --- | --- |
 | `numberOrUndefined(text)`、`parseRatio(text)` | 字串／分數 → 有效數值，無效回 undefined |
 | `parseCaptureLine(line)` | capture log → requested／track／target／warnings |
-| `pairRecordingsWithLog(text)`、`basename(path)` | 以 session、saved 路徑將錄影檔名配對 capture report；basename 處理路徑分隔 |
+| `pairRecordingsWithLog(text)`、`LogPairs.lookup(file)`、`normalizeRecordingPath(path)` | session record 依 run 與 session id 配對，舊版啟動用保守的舊版關聯；以正規化完整路徑查檔，只有單一 session 指名同名檔時才用檔名；回報 matched／legacy／ambiguous／conflict／unknown |
 | `parseAutorecordOutcome(text)` | autorecord log → saved 或 failed |
 | `parseFrameTimes(csv)`、`frameStats(intervals, fps)` | PTS 解析，分區計算間隔／掉幀，不跨區間假算缺片 |
 | `dropEofClosures(times, duration)` | 移除太靠近 EOF 的偵測器收尾假標記 |
@@ -373,7 +379,7 @@
 | `pass(ok)`、`offsetWithinLimits(offsetMs)`、`aspectMatches(a, b)` | 判定 helper：boolean verdict、非對稱偏移範圍、長寬比容差 |
 | `judge(measurement, entry, options)` | 對門檻逐列產出 Check；缺必要量測為 n/a，不臆測 pass |
 | `overallVerdict(checks)` | 有 fail 即 fail；有 pass 且無 fail 為 pass；全不適用則 n/a |
-| `describeRequested(entry)`、`formatText(file, entry, checks)` | 人可讀設定與終端表格 |
+| `describeRequested(entry, pairing)`、`formatText(file, entry, checks, pairing)` | 人可讀設定（或 metadata 缺少的原因）與終端表格 |
 | `cell(text)`、`formatMarkdown(title, file, entry, checks, context)` | escape 表格分隔並產 Markdown；供追加證據 |
 
 `test-material.html` 的頁面事件、動畫迴圈與 Web Audio callback 提供持續動態畫面、閃光和短音；它不是產品視窗或正式版功能。

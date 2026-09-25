@@ -48,21 +48,22 @@ Process callbacks log uncaught exceptions/rejections. Recorder events render sta
 | sessionId getter | In-flight session ID for diagnostics such as sleep/wake logging |
 | subscribe | Register event listener and return unsubscribe |
 | toggle | Start when idle, stop when recording, request permission guidance when blocked, otherwise ignore |
-| stop | Matching recording session → stopping, arm deadline, send stop |
+| stop | Matching recording session → stopping (recording its stop-request time), arm deadline, send stop |
 | shutdown | Wait startup, request stop, wait completion/failure while racing quit cap |
 | setPermission | Always store the latest status; while idle/needsPermission re-settle on a change, never replace a busy state |
 | outputDirChanged | Clear the remembered outputDirUnavailable, also while needsPermission; update the state only when idle |
-| start | Preflight, snapshot, session, folder probe, unique writer, host start; clean late results |
+| start | Preflight (a refusal emits a failed event marked `preflight`, naming no session), snapshot, session, folder probe, unique writer, host start; clean late results |
 | openUniqueWriter | Write the interruption sentinel for each temporary name, then try temporary/final filename pairs; retry temporary EEXIST up to ten attempts |
 | markInFlight / clearInFlight | Write the session sentinel (a failure logs once and never blocks) / remove it on every terminal outcome |
 | handleHostMessage | Filter session, dispatch started/chunk/stopped/error, stop stale capture |
 | handleChunk | Validate consecutive seq, clear first-chunk deadline, reset the stall guard on nonempty media after started, append; map rejection to failure |
-| finalize | Wait writes, ensure session still current, finish file, then idle/saved with any early-stop reason, then remove the sentinel |
+| finalize | Wait writes, ensure session still current, finish file, then idle/saved with any early-stop reason and the session trace, then remove the sentinel |
 | armStall | Inter-chunk timer after media began: log once at the warning bound, fail with capture_failed at the second |
 | watchDisk | While recording, poll free space on one non-overlapping timer; log once below the warning threshold, request one normal stop below the stop threshold; a failed poll logs once |
 | retainedWriteError | Drain the writer within a bound and return its retained write/sync error, used only to reclassify capture_start_failed |
 | handleHostFailure | Fail only when a recording session exists |
-| fail | Detach session, clear deadline and health timers, stop host, idle immediately, report a writer-retained disk error instead of capture_start_failed, abandon writer, emit failure with optional partial path, remove the sentinel |
+| fail | Detach session, clear deadline and health timers, stop host, idle immediately, report a writer-retained disk error instead of capture_start_failed, abandon writer, emit failure with its file outcome, session trace and optional partial path, remove the sentinel |
+| trace | The session's id, temporary path and recording/stop-request times carried on captureStarted, saved and failed (plan 029) |
 | clearTimer / clearDisk / clearHealth | Cancel and clear the session deadline / free-space poll / poll and stall timers |
 | setState / emit | Replace state and emit / notify registered listeners |
 | nextStateChange | One-shot state subscription resolved and removed after a state event |
@@ -302,6 +303,8 @@ The page's window-message callback checks source/marker/port before creating the
 
 [main/log.ts](../../src/main/log.ts): `rotatedPath` constructs archive names; `rotateLog` removes the oldest and shifts archives; `formatLine` adds UTC ISO time; `createFileLogger` returns a synchronous logging closure. Nested `sizeOf` reads length (failure→0); `appendToFile` creates the directory, rotates, and appends. The returned function writes stdout first and disables file logging after an error.
 
+[main/session-log.ts](../../src/main/session-log.ts): `createRunId` forms the per-launch run id from launch time and pid; `logSessionEvent` writes the human `saved`/`failed:` line and then the versioned session record for captureStarted, saved, failed and a preflight refusal, ignoring other events. [shared/session-record.ts](../../src/shared/session-record.ts) defines the record schema, prefix and version and formats one record; it has only type imports so scripts load it directly.
+
 [main/autorecord.ts](../../src/main/autorecord.ts): `parseAutoRecord` ignores packaged/empty input, validates seconds in (0,3600] and quality keys, and merges defaults. `runAutoRecord` waits 1.5 seconds before toggle, starts its stop timer only after recording begins, and quits after saved/failed, or needsPermission before its press, through once-only `finish`. It does not write settings.
 
 ## Packaging and icons
@@ -329,17 +332,20 @@ See [tooling](tooling.md) for pipeline and thresholds. These tools are developme
 | --- | --- |
 | [acceptance-settings.mts](../../scripts/acceptance-settings.mts) top level | Require the build output and a local Electron; run the fixture with a 90-second deadline into a fresh evidence directory; print each case; write report.md; exit 2 on a missing prerequisite or no results, 1 on any failing case |
 | [fixtures/settings-panel.ts](../../scripts/fixtures/settings-panel.ts) | Load the built preload and page in a hidden sandboxed window with its own view and IPC handlers; judge CSP/console, the exposed bridge, absent Node APIs, the URL language, the rendered controls, an unavailable option, a refused shortcut's note, a real change round trip and an uncommitted choice; write results.json and panel.png |
-| [acceptance-hotkey.mts](../../scripts/acceptance-hotkey.mts) top level | Require a running idle RecordStuff and its `hotkey: registered` line; open the kiosk material; send the accelerator through System Events; wait ≤30 s each for `pressed`, `state → recording`, second `pressed`, `saved`; verify the integrity tier with `testMaterial`; write report.md/verify.json/app-session.log; exit 1 on any failing check |
+| [acceptance-hotkey.mts](../../scripts/acceptance-hotkey.mts) top level | Require a running idle RecordStuff with a run id and its `hotkey: registered` line; open the kiosk material; send the accelerator through System Events; wait ≤30 s each, from rotation-aware cursors, for `pressed`, `state → recording`, this run's capture record, second `pressed` and that session's terminal record; verify the integrity tier with `testMaterial` and require the file's metadata to match that session; write report.md/verify.json/app-session.log; exit 1 on any failing check |
 | [lib/acceptance.mts](../../scripts/lib/acceptance.mts) `acceleratorToKeystroke` / `keystrokeScript` | Electron accelerator → System Events `keystroke … using {…}`; undefined for keys it cannot type |
-| Same file `lastStartIndex` / `registeredAccelerator` / `currentState` / `findAfter` / `lineTime` | Scope log reading to the current process; find events after an offset; parse the line timestamp |
+| Same file `lastStartIndex` / `registeredAccelerator` / `currentState` / `currentRunId` / `lineTime` | Scope log reading to the current process (skipping a lock-refused second launch's `start:` line) and its run id; parse the line timestamp |
+| [lib/log-reader.mts](../../scripts/lib/log-reader.mts) `LogReader.end` / `since` / `all`, `readRetainedLog`, `evidenceSince` | Rotation-aware cursor (file identity + byte offset) just past the last complete line; complete lines after a cursor across retained archives, each once, or `LogGapError` when retention or truncation removed that history (the cursor's 64-byte mark also catches a truncated file that regrew past it); every retained line oldest first; evidence lines with a marked gap |
+| [lib/session-records.mts](../../scripts/lib/session-records.mts) `parseSessionRecord` / `startLineRun` / `logMessage` | Validate one session record of a known version (malformed or future records are ignored); the run id of a `start:` line; strip the timestamp |
+| [lib/acceptance-runtime.mts](../../scripts/lib/acceptance-runtime.mts) `waitForLog` / `waitForRecord` / `recordingOutcome` / `finishRecording` / `settleRecording` | Bounded waits from a cursor that reject at once on an evidence gap; this recording's outcome from records when the app writes them, else from human lines, optionally for one session; interrupted-recording settlement that never toggles twice; its runner fallback for an app that never left idle |
 | [probe-recording.mjs](../../scripts/probe-recording.mjs): probe, ratio, kbps, fixed | Run ffprobe, parse ratios, format quick inspection output |
 | [verify-recording.mts](../../scripts/verify-recording.mts): usage, next | CLI help/exit 2 and argument values; top-level loop verifies files and returns failure exit status |
 | [lib/media-tools.mts](../../scripts/lib/media-tools.mts): ToolMissingError, run, hasTool | External-tool error, bounded-buffer subprocess invocation, availability check |
 | Same: probe | Container/stream/frame count and decode errors |
 | Same: frameTimes, read | PTS intervals; long files sample head/tail separately |
 | Same: channelRms, syncMarkers | Per-channel astats energy and flash/beep times |
-| [lib/verify-recording.mts](../../scripts/lib/verify-recording.mts): readLogText, readLogPairs | Active plus newest archive; optional capture/saved pairing |
-| Same: verifyRecording | Probe/frame/RMS/optional sync → measure → judge → result |
+| [lib/verify-recording.mts](../../scripts/lib/verify-recording.mts): readLogText, readLogPairs | Every retained file oldest first; identity pairing, empty without a log |
+| Same: verifyRecording | Look up the file's pairing, then probe/frame/RMS/optional sync → measure → judge → result with the pairing status |
 | Same: parseDimensions | WxH string → dimensions or undefined |
 | Same: tryExec, environmentSummary | Best-effort machine/OS/Electron/display/tool facts |
 | Same: localDate, measurementsPath | Local date → evidence filename |
@@ -347,7 +353,7 @@ See [tooling](tooling.md) for pipeline and thresholds. These tools are developme
 | [run-matrix.mts](../../scripts/run-matrix.mts): shorten, usage | Change case duration / show CLI help |
 | Same: mainDisplaySize, outputDir | Primary-display dimensions and configured/default folder |
 | Same: sleep, electronPids, cpuPercent | Inter-case delay and app-process CPU sampling |
-| Same: logPosition, readFrom, logSince | Read only this run's log, accounting for rotation |
+| Same: logSince | This case's lines from its cursor across rotation; a lost history is a case failure |
 | Same: recordOnce | Launch development app with automatic-recording config, sample CPU, await outcome |
 | Same: main | Validate prerequisites, open material, run cases, verify/save results, clean up |
 
@@ -359,7 +365,7 @@ See [tooling](tooling.md) for pipeline and thresholds. These tools are developme
 | --- | --- |
 | numberOrUndefined, parseRatio | Parse numeric values/fractions or return undefined |
 | parseCaptureLine | Extract requested/track/target/warnings from capture log |
-| pairRecordingsWithLog, basename | Pair sessions and saved filenames across path styles |
+| pairRecordingsWithLog, LogPairs.lookup, normalizeRecordingPath | Pair session records by run and session id, older launches by conservative legacy association; look a file up by normalized full path, by name only when one session names it; report matched/legacy/ambiguous/conflict/unknown |
 | parseAutorecordOutcome | Extract saved/failed outcome |
 | parseFrameTimes, frameStats | Parse PTS and measure per-interval gaps/drops without crossing unsampled regions |
 | dropEofClosures | Remove detector closure artifacts near EOF |
@@ -371,7 +377,7 @@ See [tooling](tooling.md) for pipeline and thresholds. These tools are developme
 | pass, offsetWithinLimits, aspectMatches | Verdict, asymmetric offset bounds, aspect tolerance |
 | judge | Produce threshold checks and unavailable notes |
 | overallVerdict | Any fail→fail; any pass and no fail→pass; otherwise n/a |
-| describeRequested, formatText, width, pad | Human-readable requested settings and aligned terminal table |
+| describeRequested, formatText, width, pad | Human-readable requested settings (or why the metadata is missing) and aligned terminal table |
 | cell, formatMarkdown | Escape table cells and produce evidence section |
 
 [scripts/test-material.html](../../scripts/test-material.html): `scheduleBeep` builds a timed alternating-channel tone; `frame` advances visual motion/flash using the audio clock. The click callback initializes/resumes AudioContext and fullscreen playback. Mixed Latin/CJK sample text intentionally tests glyph sharpness rather than representing application UI localization.

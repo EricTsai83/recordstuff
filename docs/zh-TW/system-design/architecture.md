@@ -55,6 +55,7 @@ Tray、選單與通知全在 main，使用原生 Electron API。設定面板是�
 | `renderer/settings.ts` / `preload/settings.ts` | 畫出 view 並回傳 id／read-choose-subscribe 橋接 | 不持有設定狀態、不產生 action、不碰 Node API |
 | `main/permission.ts` | 螢幕授權驗證快取與輪詢 timer | 不認定系統音訊已授權 |
 | `main/log.ts` | 同步寫入與輪替的文字 log | 不保存媒體 bytes |
+| `main/session-log.ts` | 每次啟動的 run id，以及每個 capture 與結果行旁的有版本 session record | 不負責配對錄影與 session（那是開發用分析器的工作） |
 | `shared/i18n.ts` | 英文文案 key、繁體中文模板、語言驗證 | 不控制 OS 原生提示或翻譯技術日誌 |
 | `shared/*` | 狀態、訊息與品質型別／純函式 | 不依賴 Electron 或 DOM |
 

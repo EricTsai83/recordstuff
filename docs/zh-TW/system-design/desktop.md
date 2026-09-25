@@ -126,9 +126,11 @@ TrayContext 提供目前語言，通知建立時讀當前 context；已發送的
 
 來源：[log.ts](../../../src/main/log.ts)。macOS 目前路徑為 `~/Library/Logs/recordstuff/recordstuff.log`；設定為 `~/Library/Application Support/recordstuff/settings.json`。路徑由 Electron app 名稱與 `getPath` 決定，產品顯示名稱仍是 RecordStuff。
 
-每行為 `[UTC ISO 時間] 訊息`。啟動時記 App／Electron／平台版本、outputDir、品質、packaged 與 executable；每次錄製記 session、狀態、capture report、first chunk、saved（含提前停止原因）／failed、停滯與低空間警告及 writer 積壓、改報為已保留磁碟錯誤的啟動失敗，以及啟動時找到的中斷 sentinel。`power: suspend` 與 `power: resume` 會記下進行中的 session 與狀態。Log 含本機路徑，分享診斷前可移除個人路徑；不寫入媒體內容。
+每行為 `[UTC ISO 時間] 訊息`。啟動時記 App／Electron／平台版本、本次啟動的 run id、outputDir、品質、packaged 與 executable；每次錄製記 session、狀態、capture report、first chunk、saved（含提前停止原因）／failed、停滯與低空間警告及 writer 積壓、改報為已保留磁碟錯誤的啟動失敗，以及啟動時找到的中斷 sentinel。`power: suspend` 與 `power: resume` 會記下進行中的 session 與狀態。Log 含本機路徑，分享診斷前可移除個人路徑；不寫入媒體內容。
 
-所有訊息先送 stdout。檔案在下次追加前若超過 5 MiB，將舊檔依序移到 `.1.log`～`.3.log`；同步寫入方便無視窗 App 即時診斷。檔案寫失敗後本程序停用檔案 log，只報 stderr 一次並繼續 stdout。主程序未捕捉例外另外開錯誤對話框，unhandled rejection 留 log。
+Session record（plan 029）。run id 由啟動時間加 pid 組成（例如 `20260925T101530123Z-4242`），只出現在 `start:` 行，一般行不加前綴。App 在人類可讀的 capture、`saved` 與 `failed:` 行旁，每個事件另寫一筆有版本的 record：`session-record: {"v":1,"run":…,"kind":…}`。種類有 `capture`（session、要求品質、capture report）、`saved`（session、最終路徑、錄製與要求停止時間、提前停止原因）、`failed`（session、code、detail、檔案結果、保留與暫存路徑、時間；沒有留下檔案也會寫）與 `refused`（preflight 拒絕，不指名任何 session）。JSON 讓含空白、引號或換行的路徑維持在一行跳脫後的內容。失敗收尾可能在下一個 session 開始後才結束，完成順序不是身分，所以 Recorder 的終止事件帶著 session。開發用分析器依 run 與 session id 配對錄影；該次啟動有寫 record 時只讀 record，不會把兩種形式算成兩個結果。舊 log 不改寫。
+
+所有訊息先送 stdout。檔案在下次追加前若超過 5 MiB，將舊檔依序移到 `.1.log`～`.3.log`（開發 runner 以檔案身分 cursor 跟過輪替，見 [tooling](tooling.md#選擇驗收範圍)，政策本身不變）；同步寫入方便無視窗 App 即時診斷。檔案寫失敗後本程序停用檔案 log，只報 stderr 一次並繼續 stdout。主程序未捕捉例外另外開錯誤對話框，unhandled rejection 留 log。
 
 「顯示 log」優先選取檔案，不存在則開 logs 資料夾；不影響正在錄製的工作。固定簽章更新後可沿用現有權限，但開發 Electron.app 與安裝 RecordStuff.app 的授權不可混用；排查先核對 executable。
 
