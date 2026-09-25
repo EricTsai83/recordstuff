@@ -6,13 +6,12 @@
 
 ## 順序與狀態
 
-以下計畫皆已規劃、尚未實作。目前順序：**030 → 031 → 032 → 033 → 040 → 034 → 037 → 035**。
+以下計畫皆已規劃、尚未實作。目前順序：**031 → 032 → 033 → 040 → 034 → 037 → 035**。
 
 排序規則：零風險整理、優先的歷史保存工作與防止資料損失的防護已排在最前並完成；目前依原順序處理 audit 修正，最後是可選或需量測的工作，035 永遠最後。即使之後新增更大編號的實作／修復計畫，也排在 035 之前。
 
 | 計畫 | 來源 | 範圍 |
 | --- | --- | --- |
-| [030 — 音訊與同步證據](030-audio-verification-evidence.zh-TW.md) | R1-8; R2-05 | 必要 RMS 或同步量測缺失都須阻止成功 |
 | [031 — 正式版下載指標](031-stable-release-recording.zh-TW.md) | R2-04 | 發布版本順序與錄製獨立 |
 | [032 — 更新驗收契約](032-update-acceptance-contract.zh-TW.md) | R2-06 | runner 期望過時，非產品控制錯誤 |
 | [033 — 輸出資料夾恢復](033-output-folder-recovery.zh-TW.md) | R2-08 | 開啟資料夾操作與提示，非錄影發布 |
@@ -23,10 +22,9 @@
 
 硬性相依如下，其餘皆為工作安排：
 
-- 037 依賴 025、026、029、030、036 與 038（除 030 外皆已完成），須維持 036 在全部媒體工作之後才處理 metadata 的退出階段，並重用 038 定義的寫入積壓上限。
+- 037 依賴 025、026、029、030、036 與 038（皆已完成），須維持 036 在全部媒體工作之後才處理 metadata 的退出階段，並重用 038 定義的寫入積壓上限。
 - 040 修改 038（已完成）擴充過的 Recorder 開始階段，並保留其已保留磁碟錯誤的規則；排在 034 與 037 之前：034 的 Windows 圖示須涵蓋 `busy` 與 `countdown` 狀態，037 的重疊收尾須把倒數中的 session 視為進行中。
 - 031–033 可獨立執行；若其他工作需要更新驗收，先處理 032。
-- 030 結案前，錄製驗收須明列聲道 RMS 與要求的同步量測，不能只相信整體綠燈。
 
 ## 來源與證據邊界
 
@@ -38,7 +36,7 @@
 
 ## 已結案計畫
 
-結案紀錄，由新到舊：[029](../docs/zh-TW/verification/history-2026-09.md#plan-029-結案--2026-09-25)、[028](../docs/zh-TW/verification/history-2026-09.md#plan-028-結案--2026-09-25)、[027](../docs/zh-TW/verification/history-2026-09.md#plan-027-結案--2026-09-25)、[038](../docs/zh-TW/verification/history-2026-09.md#plan-038-結案--2026-09-25)、[026](../docs/zh-TW/verification/history-2026-09.md#plan-026-結案--2026-09-25)、[036](../docs/zh-TW/verification/history-2026-09.md#plan-036-結案--2026-09-25)、[039](../docs/zh-TW/verification/history-2026-09.md#plan-039-結案--2026-09-25)、[025](../docs/zh-TW/verification/history-2026-09.md#plan-025-結案--2026-09-25)、[024](../docs/zh-TW/verification/history-2026-09.md#plan-024-完整寫入--2026-09-24)、[023](../docs/zh-TW/verification/history-2026-09.md#plan-023-結案--2026-09-23)、[022](../docs/zh-TW/verification/history-2026-09.md#plan-022-結案--2026-09-24)、[021](../docs/zh-TW/verification/history-2026-09.md#plan-021-結案--2026-09-23)、[020](../docs/zh-TW/verification/history-2026-09.md#plan-020-結案--2026-09-23)、[019](../docs/zh-TW/verification/history-2026-09.md#plan-019-結案--2026-09-23)、[018](../docs/zh-TW/verification/history-2026-09.md#plan-018-結案--2026-09-20)、[017](../docs/zh-TW/verification/history-2026-09.md#儲存通知時序2026-09-20)、[014](../docs/zh-TW/verification/history-2026-09.md#通知生命週期調查--2026-09-20)、[012](../docs/zh-TW/verification/history-2026-09.md#plan-012-結案--2026-09-20)。013 與 016 記錄在[桌面設計](../docs/zh-TW/system-design/desktop.md#錄影快捷鍵)、[工具](../docs/zh-TW/system-design/tooling.md)與[驗證紀錄](../docs/zh-TW/verification/README.md)。每份紀錄保留其未測項目與接受的限制；本索引不重開已結案計畫。
+結案紀錄，由新到舊：[030](../docs/zh-TW/verification/history-2026-09.md#plan-030-結案--2026-09-25)、[029](../docs/zh-TW/verification/history-2026-09.md#plan-029-結案--2026-09-25)、[028](../docs/zh-TW/verification/history-2026-09.md#plan-028-結案--2026-09-25)、[027](../docs/zh-TW/verification/history-2026-09.md#plan-027-結案--2026-09-25)、[038](../docs/zh-TW/verification/history-2026-09.md#plan-038-結案--2026-09-25)、[026](../docs/zh-TW/verification/history-2026-09.md#plan-026-結案--2026-09-25)、[036](../docs/zh-TW/verification/history-2026-09.md#plan-036-結案--2026-09-25)、[039](../docs/zh-TW/verification/history-2026-09.md#plan-039-結案--2026-09-25)、[025](../docs/zh-TW/verification/history-2026-09.md#plan-025-結案--2026-09-25)、[024](../docs/zh-TW/verification/history-2026-09.md#plan-024-完整寫入--2026-09-24)、[023](../docs/zh-TW/verification/history-2026-09.md#plan-023-結案--2026-09-23)、[022](../docs/zh-TW/verification/history-2026-09.md#plan-022-結案--2026-09-24)、[021](../docs/zh-TW/verification/history-2026-09.md#plan-021-結案--2026-09-23)、[020](../docs/zh-TW/verification/history-2026-09.md#plan-020-結案--2026-09-23)、[019](../docs/zh-TW/verification/history-2026-09.md#plan-019-結案--2026-09-23)、[018](../docs/zh-TW/verification/history-2026-09.md#plan-018-結案--2026-09-20)、[017](../docs/zh-TW/verification/history-2026-09.md#儲存通知時序2026-09-20)、[014](../docs/zh-TW/verification/history-2026-09.md#通知生命週期調查--2026-09-20)、[012](../docs/zh-TW/verification/history-2026-09.md#plan-012-結案--2026-09-20)。013 與 016 記錄在[桌面設計](../docs/zh-TW/system-design/desktop.md#錄影快捷鍵)、[工具](../docs/zh-TW/system-design/tooling.md)與[驗證紀錄](../docs/zh-TW/verification/README.md)。每份紀錄保留其未測項目與接受的限制；本索引不重開已結案計畫。
 
 所有計畫的語言版本都放在本資料夾：英文 `<name>.md`，繁中 `<name>.zh-TW.md`。
 

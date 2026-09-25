@@ -9,6 +9,31 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 030 結案 — 2026-09-25
+
+音訊與同步證據（R1 bug 8、R2-05），由 Claude 實作、Codex GPT-6 Astra review（[量測工具](../system-design/tooling.md#量測工具)、[門檻與判定](../system-design/tooling.md#驗收門檻)）。
+
+- **判定。** 每個檢查為 pass、fail、blocked、incomplete 或 n/a。整體依序為 fail、blocked、incomplete、pass，其餘 n/a；`pnpm verify` 與 `pnpm matrix` 在 fail 或 incomplete 時 exit 1、blocked 時 exit 2，其餘 0。快捷鍵與更新驗收把 blocked 與 incomplete 視同 fail。
+- **由呼叫端宣告必要證據。** matrix 要求聲道能量與同步標記，`pnpm verify` 要求能量、帶 `--sync` 時也要求標記，`pnpm acceptance` 要求能量，更新驗收兩者都要求。缺 ffmpeg／ffprobe 時，matrix 與快捷鍵驗收在錄影或送鍵前就 blocked。資訊性報告維持 n/a 並附原因，絕不算 pass。
+- **格式與能量分開。** 「Sample rate/channels」依串流 metadata 判定 48 kHz 立體聲；「Channel energy (RMS)」需要兩個有效且高於 −60 dBFS 的數值。靜音、缺少或多出的聲道、NaN 或 +∞、工具錯誤與沒有音軌都判 fail。JSON measurement 以 `measured` 加值，或 `not-requested`、`unavailable`、`error` 加原因保存能量與同步；`syncAttempted` 已移除。
+- **標記覆蓋。** 沿用既有常數：偏移需要 `MIN_SYNC_PAIRS`（3）組配對；要求或實測至少 120 秒的錄影，前 60 秒與後 60 秒還須各有 3 組配對才能判定漂移；較短的檔案沒有漂移可判定。不足時會指出原因（沒有閃光、沒有短音、配對太少、缺一端窗口）。沒有更動任何門檻。
+- **media-tools 邊界。** 只有 exit 0 的執行才算量測：非 0 結束或被 signal 終止、ffprobe JSON 格式錯誤，或 astats 回報的聲道數與串流不符，都是附 stderr 最後幾行的 MeasurementError，部分輸出一律捨棄。只有檔案有音軌時才執行 astats。
+
+自動化證據：最終 `pnpm check` 通過 typecheck、51 個檔案共 830 項測試與 build；`git diff --check` 無誤，每個修改過的 runner 都能在 Node type stripping 下載入。分析器測試涵蓋 R1-8 的純 metadata 重現、各種能量狀態、沒有閃光、沒有短音、兩者皆無、配對太少、只有頭或只有尾的長檔、被截短的長案例、無效的偏移與漂移、超標的偏移與漂移、有效的短與長樣本、未要求／blocked／失敗的同步、資訊性報告、R2-05 重現（其餘全部有效、要求同步但沒有配對：現在為 incomplete、exit 1）、判定優先序、退出碼，以及文字與 Markdown 標記。整合測試以 ffmpeg 產生立體聲媒體（兩聲道都有音、全靜音、單聲道靜音、截斷的 fragmented 檔、無法讀取的位元組），執行 `verifyRecording` 與真正的 `pnpm verify` CLI；以自訂 PATH 的子程序模擬缺 ffmpeg（blocked、exit 2）、缺 ffprobe（exit 2）、印出一個聲道 RMS 後 exit 1 的 ffmpeg，以及 exit 0 但只回報兩聲道之一的 ffmpeg（皆 fail、exit 1）。另有子程序在沒有 ffmpeg 時執行真正的 matrix CLI：建置前即 exit 2。對保留錄影 `2026-09-25 16-31-41.mp4` 隱藏 ffmpeg 時，HEAD `fc40cad` 判 pass（exit 0，「RMS not measured」），本次變更回報能量 blocked（exit 2）；工具齊全時量到 −27.2／−27.2 dB 與 10 組配對、83 ms。
+
+原生：M1 Pro（32 GB）、macOS 26.6.2、Node 24.21.0、Electron 44.3.0、ffmpeg 9.0.1，HEAD `fc40cad` 加上未提交的變更，主螢幕 1920×1080，系統音訊輸出到外接耳機、音量 94；每輪 matrix 都自行建置 `out/` 並錄製未打包的 App。
+
+- `pnpm matrix -- quick` 於 147 秒後 exit 0。1440p Standard、1440p High 與 Source Standard 各錄約 30.0 秒、1920×1080，配對為 `matched`，兩聲道 RMS 為 −27.1 至 −27.2 dB，配對數 29、30、30，偏移 68、99、99 ms，30 fps 在容差內、沒有掉幀，CPU 13–14%。短案例的漂移為 n/a。
+- `pnpm matrix -- long` 於 223 秒後 exit 0：180.01 秒、`matched`、RMS −27.1／−27.1 dB，179 組配對，頭窗口 59 組（71.9 ms）、尾窗口 60 組（73.2 ms），漂移 1.3 ms，29.38 fps，沒有掉幀，CPU 13%。
+- 隔離的缺標記案例：把閃光框固定為黑色的素材副本（SHA-256 `56066784…12805b`，只差這條規則），以獨立 Chrome kiosk 開啟，執行 `pnpm matrix -- quick --no-open-material`。整輪 153 秒後 exit 1。每個案例量到 0 次閃光與 29–30 個短音，RMS −27.1／−27.1 dB，影格時序通過，只有偏移為 `incomplete`（「no flashes found」），並列在該輪的「cases that did not pass」段落。該素材 Chrome、其 profile 與 Electron 都已結束。
+- 播放：Codex GPT-6 Astra computer use 在 QuickTime 播放 `2026-09-25 23-06-14.mp4`，由 00:00 前進到 00:17.8；長檔由 00:00 前進到 00:11.4，把時間列移到 02:50.4 後再前進到 02:56.3，畫面中的素材都在移動；兩個檔案關閉後沒有殘留「打開」視窗，並正常退出原本未執行的 QuickTime。它的快照只拍到暗的標記框，所以閃光本身以偵測器的 179／179 為證據；沒有保存本機 PNG（僅工具觀察；`2026-09-25T15-15-35Z-computer-use`）。
+
+每輪結束後都沒有殘留 Electron、RecordStuff 或素材瀏覽器程序，`settings.json` 前後的 SHA-256 相同。依 plan 規定，缺少或失敗的 ffmpeg 沒有在真正未安裝的機器上執行，而是在隔離子程序中模擬。`pnpm acceptance` 與 `pnpm acceptance:updates` 沒有重跑原生輪次：它們只改為讀取新判定，由 typecheck、共用 helper 的測試與載入檢查涵蓋。沒有新案例轉交 035。
+
+Codex GPT-6 Astra（medium reasoning、read-only）在 30 分鐘預算中約用 1 分鐘完成一個 pass，沒有使用 fallback，回傳無 findings；不需要第二個 pass。
+
+測試錄影（~/Movies/RecordStuff 的 `2026-09-25 23-06-14.mp4`、`23-07-03`、`23-07-53`、`23-08-54`、`23-13-00`、`23-13-49` 與 `23-14-39`）、本機量測 `2026-09-25.md`／`.json` 與 播放報告 `2026-09-25T15-15-35Z-computer-use` 都保留在本機。本輪已在 main 依範圍分開提交為本機 commit：工具 `13a6cd6`、設計文件 `c4805dd` 與本結案 commit。沒有 push 或發布。
+
 ## Plan 029 結案 — 2026-09-25
 
 Log 身分與跨輪替驗收（R1 bug 7、R2-07），由 Claude 實作、Codex GPT-6 Astra review（[Log 與診斷](../system-design/desktop.md#log-與診斷)、[驗收工具](../system-design/tooling.md#選擇驗收範圍)）。

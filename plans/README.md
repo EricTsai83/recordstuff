@@ -6,13 +6,12 @@ Updated: 2026-09-25. This index lists unfinished plans, their order and their ha
 
 ## Order and status
 
-Every plan below is planned, not implemented. Current order: **030 → 031 → 032 → 033 → 040 → 034 → 037 → 035**.
+Every plan below is planned, not implemented. Current order: **031 → 032 → 033 → 040 → 034 → 037 → 035**.
 
 Ordering rule: zero-risk cleanup, the prioritized history work and the data-loss guards came first and are complete; now audit fixes in their original order, then optional or measured work, and 035 last. Keep 035 last even when later-numbered implementation or fix plans are added: schedule those before it.
 
 | Plan | Source | Scope |
 | --- | --- | --- |
-| [030 — Audio and synchronization evidence](030-audio-verification-evidence.md) | R1-8; R2-05 | Missing required RMS or sync evidence blocks success |
 | [031 — Stable release pointers](031-stable-release-recording.md) | R2-04 | Release ordering is independent of recording |
 | [032 — Update acceptance contract](032-update-acceptance-contract.md) | R2-06 | Stale runner expectations, not broken product controls |
 | [033 — Output-folder recovery](033-output-folder-recovery.md) | R2-08 | Explicit folder action and feedback, not publication |
@@ -23,10 +22,9 @@ Ordering rule: zero-risk cleanup, the prioritized history work and the data-loss
 
 Hard dependencies; everything else is scheduling:
 
-- 037 depends on 025, 026, 029, 030, 036 and 038 (all but 030 complete), keeps 036's metadata quit phase after all media work, and reuses the writer backlog bound defined in 038.
+- 037 depends on 025, 026, 029, 030, 036 and 038 (all complete), keeps 036's metadata quit phase after all media work, and reuses the writer backlog bound defined in 038.
 - 040 changes the Recorder start phase that 038 (complete) extended and keeps its retained-disk-error rule; it precedes 034 and 037: 034's Windows artwork must cover the `busy` and `countdown` tray states, and 037's overlap must treat a counting-down session as active.
 - 031–033 can run independently; 032 should precede any work that requires update acceptance.
-- Before 030 closes, recording acceptance must explicitly retain channel RMS and requested sync measurements rather than trust only the overall verdict.
 
 ## Sources and evidence boundaries
 
@@ -38,7 +36,7 @@ Hard dependencies; everything else is scheduling:
 
 ## Closed plans
 
-Closure records, newest first: [029](../docs/verification/history-2026-09.md#plan-029-closure--2026-09-25), [028](../docs/verification/history-2026-09.md#plan-028-closure--2026-09-25), [027](../docs/verification/history-2026-09.md#plan-027-closure--2026-09-25), [038](../docs/verification/history-2026-09.md#plan-038-closure--2026-09-25), [026](../docs/verification/history-2026-09.md#plan-026-closure--2026-09-25), [036](../docs/verification/history-2026-09.md#plan-036-closure--2026-09-25), [039](../docs/verification/history-2026-09.md#plan-039-closure--2026-09-25), [025](../docs/verification/history-2026-09.md#plan-025-closure--2026-09-25), [024](../docs/verification/history-2026-09.md#plan-024-complete-writes--2026-09-24), [023](../docs/verification/history-2026-09.md#plan-023-closure--2026-09-23), [022](../docs/verification/history-2026-09.md#plan-022-closure--2026-09-24), [021](../docs/verification/history-2026-09.md#plan-021-closure--2026-09-23), [020](../docs/verification/history-2026-09.md#plan-020-closure--2026-09-23), [019](../docs/verification/history-2026-09.md#plan-019-closure--2026-09-23), [018](../docs/verification/history-2026-09.md#plan-018-closure--2026-09-20), [017](../docs/verification/history-2026-09.md#saved-notification-timing--2026-09-20), [014](../docs/verification/history-2026-09.md#notification-lifetime-investigation--2026-09-20) and [012](../docs/verification/history-2026-09.md#plan-012-closure--2026-09-20). 013 and 016 are documented in [desktop design](../docs/system-design/desktop.md#recording-shortcut), [tooling](../docs/system-design/tooling.md) and the [verification record](../docs/verification/README.md). Each record preserves its untested cases and accepted limitations; this index does not reopen a closed plan.
+Closure records, newest first: [030](../docs/verification/history-2026-09.md#plan-030-closure--2026-09-25), [029](../docs/verification/history-2026-09.md#plan-029-closure--2026-09-25), [028](../docs/verification/history-2026-09.md#plan-028-closure--2026-09-25), [027](../docs/verification/history-2026-09.md#plan-027-closure--2026-09-25), [038](../docs/verification/history-2026-09.md#plan-038-closure--2026-09-25), [026](../docs/verification/history-2026-09.md#plan-026-closure--2026-09-25), [036](../docs/verification/history-2026-09.md#plan-036-closure--2026-09-25), [039](../docs/verification/history-2026-09.md#plan-039-closure--2026-09-25), [025](../docs/verification/history-2026-09.md#plan-025-closure--2026-09-25), [024](../docs/verification/history-2026-09.md#plan-024-complete-writes--2026-09-24), [023](../docs/verification/history-2026-09.md#plan-023-closure--2026-09-23), [022](../docs/verification/history-2026-09.md#plan-022-closure--2026-09-24), [021](../docs/verification/history-2026-09.md#plan-021-closure--2026-09-23), [020](../docs/verification/history-2026-09.md#plan-020-closure--2026-09-23), [019](../docs/verification/history-2026-09.md#plan-019-closure--2026-09-23), [018](../docs/verification/history-2026-09.md#plan-018-closure--2026-09-20), [017](../docs/verification/history-2026-09.md#saved-notification-timing--2026-09-20), [014](../docs/verification/history-2026-09.md#notification-lifetime-investigation--2026-09-20) and [012](../docs/verification/history-2026-09.md#plan-012-closure--2026-09-20). 013 and 016 are documented in [desktop design](../docs/system-design/desktop.md#recording-shortcut), [tooling](../docs/system-design/tooling.md) and the [verification record](../docs/verification/README.md). Each record preserves its untested cases and accepted limitations; this index does not reopen a closed plan.
 
 All plan language versions live in this directory: English `<name>.md`, Traditional Chinese `<name>.zh-TW.md`.
 

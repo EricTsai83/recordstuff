@@ -2,7 +2,7 @@
 
 [English](037-overlapping-recording-finalization.md) | [繁體中文](037-overlapping-recording-finalization.zh-TW.md)
 
-狀態：已規劃，尚未實作。建立日期：2026-09-25。依賴 025、[026](../docs/zh-TW/verification/history-2026-09.md#plan-026-結案--2026-09-25)（已完成）、[029](../docs/zh-TW/verification/history-2026-09.md#plan-029-結案--2026-09-25)（已完成）、030、[036](../docs/zh-TW/verification/history-2026-09.md#plan-036-結案--2026-09-25)（已完成）及 [038](../docs/zh-TW/verification/history-2026-09.md#plan-038-結案--2026-09-25)（已完成）；預設排 034 之後、最後 [035](035-guided-native-acceptance.zh-TW.md) 之前。前述計畫提供終止擁有權、空檔驗證、穩定事件 ID、媒體證據、不阻塞歷史／退出協調及寫入積壓上限。
+狀態：已規劃，尚未實作。建立日期：2026-09-25。依賴 025、[026](../docs/zh-TW/verification/history-2026-09.md#plan-026-結案--2026-09-25)（已完成）、[029](../docs/zh-TW/verification/history-2026-09.md#plan-029-結案--2026-09-25)（已完成）、[030](../docs/zh-TW/verification/history-2026-09.md#plan-030-結案--2026-09-25)（已完成）、[036](../docs/zh-TW/verification/history-2026-09.md#plan-036-結案--2026-09-25)（已完成）及 [038](../docs/zh-TW/verification/history-2026-09.md#plan-038-結案--2026-09-25)（已完成）；預設排 034 之後、最後 [035](035-guided-native-acceptance.zh-TW.md) 之前。前述計畫提供終止擁有權、空檔驗證、穩定事件 ID、媒體證據、不阻塞歷史／退出協調及寫入積壓上限。
 
 ## 價值與量測門檻
 
@@ -28,7 +28,7 @@
 
 - [ ] 可重現生命週期測試：A 發布延遲且 B 錄影、A 在 B 停止前後成功／失敗、A 未完成時停止 B 並拒絕 C、磁碟卡住／滿、目的地碰撞、隔離磁碟改名／卸載、最後資料晚到、舊 host crash、重複退出／relaunch 與發布工作失敗。用真實 FileWriter／臨時檔確認位元組、穩定路徑、各一次終止結果與媒體不混線。
 - [ ] `pnpm acceptance:regression` 及正式 wiring 的隔離 Electron 重疊／退出 fixture；量測回應、佇列上限、資源釋放與真實程序壽命，不只 mock busy 旗標。
-- [ ] 新 `pnpm start:app` bundle 做兩段可辨識錄影、驗檔並播放兩者；正常磁碟太快時，以明確標識的受控 bundle 操作重疊。比較 baseline／重疊的停止至可開始時間與 B 影格／聲音完整性，包含聲道 RMS 及要求的同步量測。若競爭影響時序／品質，執行 030 相關矩陣子集，不盲跑全部；通知行為改變時須依政策做通知驗收。
+- [ ] 新 `pnpm start:app` bundle 做兩段可辨識錄影、驗檔並播放兩者；正常磁碟太快時，以明確標識的受控 bundle 操作重疊。比較 baseline／重疊的停止至可開始時間與 B 影格／聲音完整性，包含聲道 RMS 及要求的同步量測。若競爭影響時序／品質，執行相關矩陣子集（030 起能量與同步為必要證據），不盲跑全部；通知行為改變時須依政策做通知驗收。
 - [ ] 尚未操作的必要原生項目列於最後 035 N27–N29，由維護者親自操作，分清真故障與注入延遲證據。測試不證明原生圖示、通知、Finder 或音訊擷取；遵守[測試政策](../docs/zh-TW/testing.md)及原生驗收 skill，序列化建置、還原、退出並確認清理。
 - [ ] 雙語設計／驗證記錄實際收益、開始／負載限制與剩餘風險，完成 Opus review 及受影響檢查；依[完成規則](README.zh-TW.md#完成計畫)處理，不自行 commit／push／發布。量測門檻未通過是有記錄的延期決定，不是假裝已交付重疊功能。
 
