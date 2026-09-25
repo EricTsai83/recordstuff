@@ -12,7 +12,7 @@ Ordering rule: zero-risk cleanup and the prioritized history work came first and
 
 | Plan | Source | Scope |
 | --- | --- | --- |
-| [038 — Recording health guards](038-recording-health-guards.md) | 2026-09-25 T3 Code/Cap comparison | Disk-headroom stop, stalled-capture failure, bounded writer backlog, per-session interruption sentinel and sleep/wake logging, all through existing stop/failure paths; no new UI or recovery |
+| [038 — Recording health guards](038-recording-health-guards.md) | 2026-09-25 T3 Code/Cap comparison | Disk-headroom stop, stalled-capture failure, bounded writer backlog, per-session interruption sentinel, sleep/wake logging and retained disk errors in start failures, all through existing stop/failure paths; no new UI or recovery |
 | [027 — Permission state and query lifetime](027-permission-state-and-query-lifetime.md) | R1-2, R1-6 | Permission reconciliation and one owned enumeration request |
 | [028 — Settings window and shortcut lifecycle](028-shortcut-editing-lifecycle.md) | R1-1, R1-5; R2-03 | Close chord, capture lease separated from the setting transaction, and crashed-window recovery under one ownership |
 | [029 — Log identity and rotation-safe acceptance](029-recording-log-correlation.md) | R1-7; R2-07; run id from the comparison | Session-keyed structured records, a per-launch run id, and a rotation-aware reader shared by waiting and cleanup |

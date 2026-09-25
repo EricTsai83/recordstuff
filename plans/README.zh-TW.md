@@ -12,7 +12,7 @@
 
 | 計畫 | 來源 | 範圍 |
 | --- | --- | --- |
-| [038 — 錄影健康防護](038-recording-health-guards.zh-TW.md) | 2026-09-25 T3 Code／Cap 比較 | 磁碟餘裕停止、擷取停滯失敗、有上限的寫入積壓、每個 session 一份的中斷哨兵與睡眠／喚醒 log，全部走既有停止／失敗路徑；不加新 UI 或復原 |
+| [038 — 錄影健康防護](038-recording-health-guards.zh-TW.md) | 2026-09-25 T3 Code／Cap 比較 | 磁碟餘裕停止、擷取停滯失敗、有上限的寫入積壓、每個 session 一份的中斷哨兵、睡眠／喚醒 log，以及開始期間失敗回報已保留的磁碟錯誤，全部走既有停止／失敗路徑；不加新 UI 或復原 |
 | [027 — 權限狀態與查詢生命週期](027-permission-state-and-query-lifetime.zh-TW.md) | R1-2, R1-6 | 權限同步與唯一有擁有者的列舉請求 |
 | [028 — 設定視窗與快捷鍵生命週期](028-shortcut-editing-lifecycle.zh-TW.md) | R1-1, R1-5; R2-03 | 關閉組合鍵、capture lease 與設定交易分離、視窗崩潰恢復共用擁有權 |
 | [029 — Log 身分與跨輪替驗收](029-recording-log-correlation.zh-TW.md) | R1-7; R2-07；run id 來自比較 | 以 session 為鍵的結構化紀錄、每次啟動的 run id、等待與清理共用的跨輪替讀取器 |
