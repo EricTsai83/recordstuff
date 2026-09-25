@@ -39,7 +39,7 @@
 
 依範圍未執行：matrix、長時間錄影、通知、`--full`、Windows，以及另外一輪 `pnpm acceptance`。以 QWERTY 為基礎的配置下，字母快捷鍵兩種方式得到相同的 key code，probe 已經涵蓋。
 
-清理：回合開始前，維護者原本開著且處於 idle 的 bundle 已正常結束，回合後維持關閉。沒有殘留 RecordStuff、fixture、素材瀏覽器或 QuickTime 程序。`settings.json` 在回合前後不變（SHA-256；內容包含維護者自己選的 ⌘⇧1），輸入法也已恢復為 ABC。結案後依維護者要求刪除了本輪測試產物：`2026-09-25T19-41-04-951Z-settings-acceptance`、`2026-09-25T19-41-41-911Z-shortcut-failure`、`2026-09-25T19-42-49-815Z-updates-fXb6e9`（含兩段錄影）、`2026-09-25T19-45-31.612Z-settings-entry-CVoYIJ` 與 `2026-09-25T19-46-25Z-plan043-computer-use`。本紀錄中的數據即為保留的紀錄。
+清理：回合開始前，維護者原本開著且處於 idle 的 bundle 已正常結束，回合後維持關閉。沒有殘留 RecordStuff、fixture、素材瀏覽器或 QuickTime 程序。`settings.json` 在回合前後不變（SHA-256；內容包含維護者自己選的 ⌘⇧1），輸入法也已恢復為 ABC。結案後依維護者要求刪除了本輪測試產物：`2026-09-25T19-41-04-951Z-settings-acceptance`、`2026-09-25T19-41-41-911Z-shortcut-failure`、`2026-09-25T19-42-49-815Z-updates-fXb6e9`（含兩段錄影）、`2026-09-25T19-45-31.612Z-settings-entry-CVoYIJ` 與 `2026-09-25T19-46-25Z-plan043-computer-use`，以及維護者在 ~/Movies/RecordStuff 的六段手動測試錄影（`2026-09-26 03-18-39` 到 `03-55-45`）。本紀錄中的數據即為保留的紀錄。
 
 Codex GPT-6 Astra（medium reasoning，log 開頭確認為 read-only sandbox）約 74 秒完成第 1 個 pass，沒有發現實作問題：啟動順序、acceptance 插樁、平台判斷與合併邏輯都符合契約。它回報一項 Low 等級的文件 finding，已接受。桌面設計原本寫著：依實體鍵位註冊後，`pnpm acceptance` 送出的每個鍵在任何輸入法下都能觸發快捷鍵；但 runner 以字元送出字母，在 Dvorak 或 AZERTY 下會按到別的鍵。該段中英文版現在已區分 key code 送鍵與字母；runner 的對照方式仍不在範圍內。這是一句文件修正，不需要第二個 pass。30 分鐘 review 預算約用 1.5 分鐘，未使用 fallback。本輪已在本機 main 分成數個 commit：修正 `96057a9`、設計文件 `29f5268`，以及本結案 commit。沒有 push 或發布。
 
