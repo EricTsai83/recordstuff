@@ -30,6 +30,7 @@ import path from "node:path";
 import { CaptureHost } from "./capture-host";
 import { FileWriter, ensureWritableDir } from "./file-writer";
 import { createFileLogger } from "./log";
+import { createRunId, logSessionEvent } from "./session-log";
 import { PermissionWatcher, openNotificationSettings, openScreenCaptureSettings } from "./permission";
 import { Recorder } from "./recorder";
 import { SessionSentinels, reportInterruptions } from "./session-sentinel";
@@ -57,6 +58,8 @@ const APP_ID = "com.ericts.record";
  */
 const logPath = path.join(app.getPath("logs"), "recordstuff.log");
 const log = createFileLogger({ filePath: logPath });
+/** Printed in the `start:` line and carried in every session record (plan 029). */
+const runId = createRunId(new Date(), process.pid);
 
 // The main process has no window: an uncaught error would otherwise leave no
 // trace at all. Electron's default for the exception case is a modal error
@@ -101,7 +104,7 @@ function resourcesDir(): string {
 }
 
 if (!app.requestSingleInstanceLock()) {
-  log("start: another instance already holds the userData lock; exiting");
+  log(`start: another instance already holds the userData lock; run ${runId}; exiting`);
   app.quit();
 } else {
   void main();
@@ -123,7 +126,7 @@ async function main(): Promise<void> {
   nativeTheme.themeSource = settings.appearance;
   currentLanguage = settings.language;
   log(
-    `start: ${APP_NAME} ${app.getVersion()}; electron ${process.versions.electron}; ` +
+    `start: ${APP_NAME} ${app.getVersion()}; run ${runId}; electron ${process.versions.electron}; ` +
       `${process.platform} ${os.release()}; outputDir ${settings.outputDir}; ` +
       `quality ${JSON.stringify(settings.quality)}; log ${logPath}; ` +
       `packaged ${app.isPackaged}; executable ${process.execPath}`,
@@ -455,6 +458,7 @@ async function main(): Promise<void> {
   });
   let previous = recorder.state;
   recorder.subscribe((event) => {
+    logSessionEvent(log, runId, event);
     switch (event.type) {
       case "state": {
         if (preferencesUnlocked(event.state)) {
@@ -480,7 +484,6 @@ async function main(): Promise<void> {
         return;
       }
       case "saved":
-        log(`saved ${event.path}${event.stoppedEarly === "lowDisk" ? " (stopped early: disk almost full)" : ""}`);
         savedNotification.schedule(event.path, event.stoppedEarly);
         return;
       case "displayFailed":
@@ -501,7 +504,6 @@ async function main(): Promise<void> {
         // The Recorder's awaited publication callback owns verification/persistence.
         return;
       case "failed":
-        log(`failed: ${event.code} ${event.detail}${event.partialPath ? ` (kept ${event.partialPath})` : ""}`);
         // The OS says granted, yet capture is refused: TCC needs a relaunch.
         if (event.code === "permission_denied" && permission) permission.markRelaunchRequired();
         return;

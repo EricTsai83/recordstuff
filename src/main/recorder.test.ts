@@ -73,6 +73,9 @@ class FakeWriter implements RecorderWriter {
   }
 }
 
+/** Terminal events name their session (plan 029); most assertions here are about the outcome itself. */
+const traced = (id = "s1") => expect.objectContaining({ id });
+
 function chunk(sessionId: string, seq: number, size = 4): HostMessage {
   return { type: "chunk", sessionId, seq, bytes: new ArrayBuffer(size) };
 }
@@ -196,7 +199,10 @@ describe("Recorder happy path", () => {
     expect(writer.finished).toBe(true);
     expect(writer.recordingPath).toBe("/out/2026-09-11 14-30-00.recording.mp4");
     expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: "/out/2026-09-11 14-30-00.mp4" });
-    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: "/out/2026-09-11 14-30-00.mp4" });
+    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: "/out/2026-09-11 14-30-00.mp4", session: {
+      id: "s1", recordingPath: "/out/2026-09-11 14-30-00.recording.mp4",
+      recordingAt: new Date(2026, 8, 11, 14, 30, 0).toISOString(), stoppingAt: new Date(2026, 8, 11, 14, 30, 0).toISOString(),
+    } });
     expect(ctx.states.map((s) => s.type)).toEqual(["starting", "recording", "stopping", "idle"]);
   });
 
@@ -324,6 +330,8 @@ describe("Recorder timeouts", () => {
       code: "stop_timeout",
       detail: expect.any(String),
       partialPath: "/out/2026-09-11 14-30-00.recording.mp4",
+      outcome: "partial",
+      session: traced(),
     });
   });
 
@@ -351,7 +359,8 @@ describe("Recorder failures", () => {
     ctx.recorder.toggle();
     await flush();
     expect(ctx.recorder.state).toEqual({ type: "idle", outputDirUnavailable: true });
-    expect(ctx.events.at(-1)).toEqual({ type: "failed", code: "output_open_failed", detail: "EACCES" });
+    // Failed before any file: the session is still named, with no temporary path or timing.
+    expect(ctx.events.at(-1)).toEqual({ type: "failed", code: "output_open_failed", detail: "EACCES", outcome: "empty", session: { id: "s1" } });
     expect(ctx.host.started).toEqual([]);
     expect(ctx.host.stopped).toEqual([]);
 
@@ -365,7 +374,8 @@ describe("Recorder failures", () => {
     ctx.recorder.toggle();
     await flush();
     expect(ctx.recorder.state).toEqual({ type: "idle" });
-    expect(ctx.events.at(-1)).toEqual({ type: "failed", code: "capture_start_failed", detail: "no renderer" });
+    expect(ctx.events.at(-1)).toEqual({ type: "failed", code: "capture_start_failed", detail: "no renderer", outcome: "empty",
+      session: { id: "s1", recordingPath: "/out/2026-09-11 14-30-00.recording.mp4" } });
   });
 
   it("host error message → failed with that code", async () => {
@@ -374,7 +384,7 @@ describe("Recorder failures", () => {
     await flush();
     ctx.host.emit({ type: "error", sessionId: "s1", code: "no_audio_track", detail: "none" });
     await flush();
-    expect(ctx.events.at(-1)).toEqual({ type: "failed", code: "no_audio_track", detail: "none" });
+    expect(ctx.events.at(-1)).toEqual({ type: "failed", code: "no_audio_track", detail: "none", outcome: "empty", session: traced() });
     expect(ctx.recorder.state).toEqual({ type: "idle" });
   });
 
@@ -388,6 +398,8 @@ describe("Recorder failures", () => {
       code: "capture_host_crashed",
       detail: "killed",
       partialPath: "/out/2026-09-11 14-30-00.recording.mp4",
+      outcome: "partial",
+      session: traced(),
     });
     expect(ctx.writers[0]!.finished).toBe(false);
   });
@@ -457,7 +469,8 @@ describe("Recorder failures", () => {
     recorder.subscribe((e) => events.push(e));
     recorder.toggle();
     await flush();
-    expect(events.filter(event => event.type === "failed")).toEqual([{ type: "failed", code: "unsupported_os_version", detail: "" }]);
+    // No attempt, so no session is named or borrowed.
+    expect(events.filter(event => event.type === "failed")).toEqual([{ type: "failed", code: "unsupported_os_version", detail: "", preflight: true }]);
     expect(recorder.state).toEqual({ type: "idle" });
   });
 });
@@ -563,7 +576,7 @@ describe("Recorder review fixes", () => {
     releaseFinish!();
     await flush();
     expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: writer.finalPath });
-    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: writer.finalPath });
+    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: writer.finalPath, session: traced() });
   });
 
   it("a same-second name collision gets a -2 suffix instead of failing (pass-2 finding 6)", async () => {
@@ -697,7 +710,7 @@ describe("Recorder permission", () => {
     ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
     await saveRecording(ctx);
     expect(ctx.recorder.state).toEqual({ type: "needsPermission", needsRelaunch: false, lastSavedPath: SAVED });
-    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: SAVED });
+    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: SAVED, session: traced() });
     ctx.recorder.toggle();
     expect(ctx.events.at(-1)).toEqual({ type: "permissionRequested", needsRelaunch: false });
     expect(ctx.host.started).toEqual(["s1"]);
@@ -736,7 +749,7 @@ describe("Recorder permission", () => {
     rejectDir(new Error("EACCES"));
     await flush();
     expect(ctx.recorder.state).toEqual({ type: "needsPermission", needsRelaunch: false });
-    expect(ctx.events.at(-1)).toEqual({ type: "failed", code: "output_open_failed", detail: "EACCES" });
+    expect(ctx.events.at(-1)).toEqual({ type: "failed", code: "output_open_failed", detail: "EACCES", outcome: "empty", session: traced() });
     ctx.recorder.setPermission({ granted: true, needsRelaunch: false });
     expect(ctx.recorder.state).toEqual({ type: "idle", outputDirUnavailable: true });
   });
@@ -858,7 +871,7 @@ describe("quality snapshot", () => {
     await flush();
     const report: CaptureReport = { ...CAPTURE, frameRate: 30, warnings: ["x"] };
     ctx.host.emit(started("s1", report));
-    expect(ctx.events.at(-1)).toEqual({ type: "captureStarted", requested: quality, capture: report });
+    expect(ctx.events.at(-1)).toEqual({ type: "captureStarted", sessionId: "s1", requested: quality, capture: report });
     const line = logs.find((l) => l.includes("capture:"));
     expect(line).toContain("fps=60");
     expect(line).toContain("track size=1920x1080 fps=30");
@@ -1059,7 +1072,8 @@ describe("Recorder rejects zero-byte output with real FileWriter", () => {
         ctx.host.emit({ type: "stopped", sessionId: "empty-1" });
         ctx.host.emit({ type: "stopped", sessionId: "empty-1" });
         await vi.waitFor(() => expect(ctx.of("failed")).toHaveLength(1));
-        expect(ctx.of("failed")).toEqual([{ type: "failed", code: "capture_start_failed", detail: expect.stringContaining(NO_MEDIA_DETAIL) }]);
+        expect(ctx.of("failed")).toEqual([{ type: "failed", code: "capture_start_failed", detail: expect.stringContaining(NO_MEDIA_DETAIL),
+          outcome: "empty", session: expect.objectContaining({ id: "empty-1" }) }]);
         expect(ctx.of("failureStatus").at(-1)?.result).toMatchObject({ code: "capture_start_failed", outcome: "empty" });
         expect(ctx.of("failureStatus").at(-1)?.result).not.toHaveProperty("partialPath");
         expect(ctx.of("saved")).toHaveLength(0);
@@ -1247,7 +1261,7 @@ describe("Recorder rejects zero-byte output with real FileWriter", () => {
         // The first (notified) status already carries the disk code, not a generic start failure.
         expect(statuses[0]!.result).toMatchObject({ code, outcome: "pending", detail: expect.stringContaining("start ended:") });
         expect(statuses.at(-1)!.result).toMatchObject({ code, outcome: "empty" });
-        expect(ctx.of("failed")).toEqual([{ type: "failed", code, detail: expect.stringContaining("ENOSPC") }]);
+        expect(ctx.of("failed")).toEqual([{ type: "failed", code, detail: expect.stringContaining("ENOSPC"), outcome: "empty", session: expect.any(Object) }]);
       };
 
       // An unanswered capture request settles only later, as a real OS prompt does; quit keeps owning it until then.
@@ -1578,7 +1592,7 @@ describe("disk headroom guard", () => {
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
     await flush();
     expect(ctx.events.filter((event) => event.type === "saved")).toEqual([
-      { type: "saved", path: "/out/2026-09-11 14-30-00.mp4", stoppedEarly: "lowDisk" },
+      { type: "saved", path: "/out/2026-09-11 14-30-00.mp4", stoppedEarly: "lowDisk", session: traced() },
     ]);
     expect(ctx.writers[0]!.chunks).toHaveLength(5);
     expect(ctx.events.some((event) => event.type === "failed" || event.type === "failureStatus")).toBe(false);
@@ -1600,7 +1614,7 @@ describe("disk headroom guard", () => {
     ctx.recorder.stop();
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
     await flush();
-    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: "/out/2026-09-11 14-30-00.mp4" });
+    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: "/out/2026-09-11 14-30-00.mp4", session: traced() });
   });
 });
 
@@ -1623,7 +1637,8 @@ describe("stalled capture guard", () => {
     await vi.advanceTimersByTimeAsync(1);
     const writer = ctx.writers[0]!;
     expect(ctx.events.at(-1)).toEqual({ type: "failed", code: "capture_failed",
-      detail: "capture stalled: no media for 30000 ms while the capture host still responded", partialPath: writer.recordingPath });
+      detail: "capture stalled: no media for 30000 ms while the capture host still responded", partialPath: writer.recordingPath,
+      outcome: "partial", session: traced() });
     expect(warnings(log)).toHaveLength(1);
     expect(ctx.host.stopped).toEqual(["s1"]);
   });
@@ -1643,7 +1658,7 @@ describe("stalled capture guard", () => {
     expect(ctx.events.some((event) => event.type === "failed")).toBe(false);
     publish();
     await flush();
-    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: "/out/2026-09-11 14-30-00.mp4" });
+    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: "/out/2026-09-11 14-30-00.mp4", session: traced() });
   });
 });
 

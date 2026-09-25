@@ -90,7 +90,7 @@ describe("runAutoRecord", () => {
     expect(h.calls).toEqual(["toggle", "stop"]);
     h.emit({ type: "state", state: { type: "stopping" } });
     h.emit({ type: "state", state: { type: "idle", lastSavedPath: "/x/a.mp4" } });
-    h.emit({ type: "saved", path: "/x/a.mp4" });
+    h.emit({ type: "saved", path: "/x/a.mp4", session: { id: "s1" } });
     expect(h.calls).toEqual(["toggle", "stop", "quit"]);
     expect(h.logs.at(-1)).toBe("autorecord: saved /x/a.mp4");
   });
@@ -101,7 +101,7 @@ describe("runAutoRecord", () => {
     failing.timers[0]?.fn();
     failing.emit({ type: "state", state: { type: "starting" } });
     failing.emit({ type: "state", state: { type: "idle" } });
-    failing.emit({ type: "failed", code: "no_audio_track", detail: "ended", partialPath: "/x/a.recording.mp4" });
+    failing.emit({ type: "failed", code: "no_audio_track", detail: "ended", partialPath: "/x/a.recording.mp4", outcome: "partial", session: { id: "s1" } });
     expect(failing.calls).toEqual(["toggle", "quit"]);
     expect(failing.logs.at(-1)).toBe("autorecord: failed: no_audio_track ended (kept /x/a.recording.mp4)");
 
@@ -119,7 +119,7 @@ describe("runAutoRecord", () => {
     h.emit({ type: "state", state: { type: "recording", startedAt: "t" } });
     h.timers[1]?.fn();
     h.emit({ type: "state", state: { type: "needsPermission", needsRelaunch: false, lastSavedPath: "/x/a.mp4" } });
-    h.emit({ type: "saved", path: "/x/a.mp4" });
+    h.emit({ type: "saved", path: "/x/a.mp4", session: { id: "s1" } });
     expect(h.calls).toEqual(["toggle", "stop", "quit"]);
     expect(h.logs.at(-1)).toBe("autorecord: saved /x/a.mp4");
   });
@@ -129,9 +129,9 @@ describe("runAutoRecord", () => {
     runAutoRecord(config, h.deps);
     h.timers[0]?.fn();
     h.emit({ type: "state", state: { type: "recording", startedAt: "t" } });
-    h.emit({ type: "failed", code: "capture_failed", detail: "x" });
+    h.emit({ type: "failed", code: "capture_failed", detail: "x", outcome: "empty", session: { id: "s1" } });
     h.timers[1]?.fn(); // the stop timer fires after the failure
-    h.emit({ type: "saved", path: "/late.mp4" });
+    h.emit({ type: "saved", path: "/late.mp4", session: { id: "s2" } });
     expect(h.calls).toEqual(["toggle", "quit"]);
   });
 });

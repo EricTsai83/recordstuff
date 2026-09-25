@@ -15,6 +15,7 @@ import { describeCapture, type CaptureReport, type QualitySettings } from "../sh
 import { isErrorCode, type ErrorCode, type RecordingState } from "../shared/state";
 import { RECORDING_HEALTH, type RecordingHealth } from "./recording-health";
 import type { SessionSentinel } from "./session-sentinel";
+import type { FailureOutcome, SessionTiming } from "../shared/session-record";
 
 export interface RecorderWriter {
   readonly recordingPath?: string;
@@ -84,14 +85,26 @@ export interface RecorderDeps {
 /** Why a saved recording ended before the user asked; carried on the saved event. */
 export type EarlyStop = "lowDisk";
 
+/**
+ * The session a terminal event belongs to (plan 029). A failure's cleanup can
+ * finish after the next session started, so completion order is no identity.
+ */
+export interface SessionTrace extends SessionTiming {
+  id: string;
+  /** The temporary file the session opened, when it got that far. */
+  recordingPath?: string;
+}
+
 export type RecorderEvent =
   | { type: "failureStatus"; result: RecordingFailure }
   | { type: "state"; state: RecordingState }
-  | { type: "saved"; path: string; stoppedEarly?: EarlyStop }
+  | { type: "saved"; path: string; stoppedEarly?: EarlyStop; session: SessionTrace }
   /** The host confirmed capture; `requested` is the session snapshot, `capture` what it got. */
-  | { type: "captureStarted"; requested: QualitySettings; capture: CaptureReport }
+  | { type: "captureStarted"; sessionId: string; requested: QualitySettings; capture: CaptureReport }
   | { type: "displayFailed"; detail: DisplayFailure }
-  | { type: "failed"; code: ErrorCode; detail: string; partialPath?: string }
+  | { type: "failed"; code: ErrorCode; detail: string; partialPath?: string; outcome: FailureOutcome; session: SessionTrace; preflight?: never }
+  /** Preflight refused before any attempt: no session exists, and none is borrowed. */
+  | { type: "failed"; code: ErrorCode; detail: string; partialPath?: never; preflight: true }
   | { type: "permissionRequested"; needsRelaunch: boolean };
 
 export interface PermissionStatus {
@@ -120,6 +133,9 @@ interface Session {
   /** Output folder, polled for free space while recording. */
   dir: string;
   startedAt: string;
+  /** Set when the host confirmed capture and when stop was requested; carried on the terminal event. */
+  recordingAt?: string;
+  stoppingAt?: string;
   /** Inter-chunk guard after media began; the first-media deadline covers the time before. */
   stall?: ReturnType<typeof setTimeout> | undefined;
   disk?: ReturnType<typeof setTimeout> | undefined;
@@ -228,6 +244,7 @@ export class Recorder {
     const session = this.session;
     if (this._state.type !== "recording" || !session || session.phase !== "recording") return;
     session.phase = "stopping";
+    session.stoppingAt = this.deps.now().toISOString();
     this.setState({ type: "stopping" });
     this.clearTimer(session);
     this.clearDisk(session);
@@ -324,7 +341,7 @@ export class Recorder {
         code: blocker, detail: "", outcome: "pending" };
       await this.publishFailure(result);
       await this.publishFailure({ ...result, outcome: "empty" });
-      this.emit({ type: "failed", code: blocker, detail: "" });
+      this.emit({ type: "failed", code: blocker, detail: "", preflight: true });
       return;
     }
 
@@ -455,9 +472,10 @@ export class Recorder {
           this.deps.log(`recorder: session ${session.id} capture: ${describeCapture(session.quality, message.capture)}`);
           if (session.hasMedia) this.armStall(session);
           this.watchDisk(session);
-          this.setState({ type: "recording", startedAt: this.deps.now().toISOString() });
+          session.recordingAt = this.deps.now().toISOString();
+          this.setState({ type: "recording", startedAt: session.recordingAt });
           if (session.stopOnStart) this.stop();
-          this.emit({ type: "captureStarted", requested: session.quality, capture: message.capture });
+          this.emit({ type: "captureStarted", sessionId: session.id, requested: session.quality, capture: message.capture });
         }
         return;
       case "chunk":
@@ -523,7 +541,7 @@ export class Recorder {
     this.deps.log(`recorder: session ${session.id} file finalized ${finalPath}${early}`);
     this.session = undefined;
     this.settle({ type: "idle", lastSavedPath: finalPath });
-    this.emit(session.stoppedEarly ? { type: "saved", path: finalPath, stoppedEarly: session.stoppedEarly } : { type: "saved", path: finalPath });
+    this.emit({ type: "saved", path: finalPath, ...(session.stoppedEarly ? { stoppedEarly: session.stoppedEarly } : {}), session: this.trace(session) });
     await this.clearInFlight(session);
   }
 
@@ -656,7 +674,7 @@ export class Recorder {
     await this.publishFailure(result);
     const finish = (async (): Promise<void> => {
       let partialPath: string | undefined;
-      let outcome: RecordingFailure["outcome"] = "empty";
+      let outcome: FailureOutcome = "empty";
       try {
         await session.opening?.catch(() => undefined);
         partialPath = session.writer ? await session.writer.abandon() : undefined;
@@ -672,11 +690,7 @@ export class Recorder {
         ...(partialPath ? { partialPath } : {}),
         ...(outcome === "unknown" && candidate ? { recordingPath: candidate } : {}),
       });
-      this.emit(
-        partialPath === undefined
-          ? { type: "failed", code, detail }
-          : { type: "failed", code, detail, partialPath },
-      );
+      this.emit({ type: "failed", code, detail, ...(partialPath === undefined ? {} : { partialPath }), outcome, session: this.trace(session) });
       await this.clearInFlight(session);
     })();
     await finish;
@@ -686,6 +700,16 @@ export class Recorder {
     this.emit({ type: "failureStatus", result });
     try { await this.deps.publishFailure?.(result); }
     catch (cause) { this.deps.log(`recorder: failure result publication failed: ${messageOf(cause)}`); }
+  }
+
+  private trace(session: Session): SessionTrace {
+    const recordingPath = session.writer?.recordingPath;
+    return {
+      id: session.id,
+      ...(recordingPath ? { recordingPath } : {}),
+      ...(session.recordingAt ? { recordingAt: session.recordingAt } : {}),
+      ...(session.stoppingAt ? { stoppingAt: session.stoppingAt } : {}),
+    };
   }
 
   private clearTimer(session: Session): void {
