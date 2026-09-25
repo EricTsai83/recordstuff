@@ -88,7 +88,7 @@ release();
 while (terminal === 0) await pause(1);
 assert.deepEqual([...await fs.readFile(stablePath!)], [11, 22, 33]);
 assert.equal(await recorder.shutdown(), true);
-if (mode !== "copy") assert.equal(resultStore.load()[0]?.outcome, "partial");
+if (mode !== "copy") { assert.equal(await results.persist(), true); assert.equal((await resultStore.load())[0]?.outcome, "partial"); }
 await fs.writeFile(path.join(dir, "result.json"), JSON.stringify({ mode, deferred, terminal, stablePath, bytes: [11, 22, 33] }));
 app.quit();
 

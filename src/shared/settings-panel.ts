@@ -51,6 +51,8 @@ export interface RecordingResultView {
   outcome: string;
   guidance: string;
   persistenceWarning?: string;
+  /** Localized: an acknowledgement or removal waits for a durable save. */
+  saving?: string;
   detail: string;
   file?: string;
   acknowledged: boolean;
@@ -59,6 +61,8 @@ export interface RecordingResultView {
 }
 export interface SettingsView {
   recordingResults?: RecordingResultView[];
+  /** Localized status while saved history loads. */
+  recordingHistoryStatus?: string;
   /** Changes only on explicit entry through notification/tray. */
   resultFocus?: number;
   language: Language;

@@ -14,6 +14,14 @@ let view: SettingsView | undefined;
 let selectedTab: "recording" | "general" = "recording";
 let renderedStructure = "";
 const resultStates = new Map<string, { open: boolean; acknowledged: boolean }>();
+/**
+ * Where each pending result action started. Focus returns from this intent,
+ * not from `document.activeElement` surviving the wait; `moved` records that
+ * the user went elsewhere or the window lost focus meanwhile.
+ */
+const resultIntents = new Map<string, { action: string; control: string; moved: boolean }>();
+const resultErrors = new Set<string>();
+const PERSISTING_ACTIONS = ["acknowledge", "remove", "retry"];
 let resultFocus = 0;
 let requestId = 0;
 let pending = 0;
@@ -323,25 +331,28 @@ function updateRecordingResult(): void {
   const panel = document.getElementById("settings-panel")!;
   const focusRequested = (view?.resultFocus ?? 0) > resultFocus;
   resultFocus = view?.resultFocus ?? 0;
-  if (!results.length) {
+  const status = view?.recordingHistoryStatus ?? "";
+  if (!results.length && !status) {
     const hadFocus = list?.contains(document.activeElement);
     list?.remove(); resultStates.clear();
     if (hadFocus || focusRequested) document.getElementById(`tab-${selectedTab}`)?.focus({ preventScroll: true });
     return;
   }
-  const focusId = (results.find(r => !r.acknowledged) ?? results[0])!.id;
+  const focusId = (results.find(r => !r.acknowledged) ?? results[0])?.id;
   if (!list) {
     list = node("section"); list.id = "recording-results";
-    list.append(node("h2"), node("p", "result-history-note"));
+    list.append(node("h2"), node("p", "result-history-note"), node("p", "result-history-status"));
     panel.prepend(list);
   }
   setText(list.querySelector("h2")!, text("Recording failures"));
   setText(list.querySelector(".result-history-note")!, text("Keeps all unreviewed failures and the 20 most recently reviewed failures. Removing a record does not delete the recording file."));
+  const statusLine = list.querySelector<HTMLElement>(".result-history-status")!;
+  statusLine.hidden = !status; setText(statusLine, status);
   let removedFocus = false;
   for (const area of list.querySelectorAll<HTMLDetailsElement>(".recording-result")) {
     if (!results.some(r => r.id === area.dataset.resultId)) {
       removedFocus ||= area.contains(document.activeElement);
-      area.remove(); resultStates.delete(area.dataset.resultId!);
+      area.remove(); resultStates.delete(area.dataset.resultId!); resultErrors.delete(area.dataset.resultId!);
     }
   }
   for (const [index, result] of results.entries()) {
@@ -364,9 +375,9 @@ function updateRecordingResult(): void {
       const error = node("p", "result-error"); error.setAttribute("role", "alert");
       const technical = node("details", "result-technical"); technical.append(node("summary"), node("pre"));
       area.append(summary, node("p", "result-reason"), node("p", "result-time"), node("p", "result-outcome"),
-        node("p", "result-file"), node("p", "result-guidance"), persistence, node("div", "result-actions"), error, technical);
+        node("p", "result-file"), node("p", "result-guidance"), persistence, node("div", "result-actions"), node("p", "result-saving"), error, technical);
       area.addEventListener("toggle", () => { if (area!.isConnected) state!.open = area!.open; updateScrollHint(); });
-      list.insertBefore(area, list.children[index + 2] ?? null);
+      list.insertBefore(area, list.children[index + 3] ?? null);
     }
     const hadActionFocus = area.querySelector(".result-actions")!.contains(document.activeElement);
     area.open = state.open;
@@ -383,19 +394,29 @@ function updateRecordingResult(): void {
     for (const old of actions.querySelectorAll<HTMLButtonElement>("button")) {
       if (!result.actions.some(action => old.dataset.action === action.id)) old.remove();
     }
+    const intent = resultIntents.get(result.id);
+    const busy = Boolean(intent || result.saving);
+    area.setAttribute("aria-busy", String(busy));
     for (const [position, action] of result.actions.entries()) {
       const actionDomId = `${domId}-${action.id}`;
       let el = document.getElementById(actionDomId) as HTMLButtonElement | null;
       if (!el) {
         const actionId = action.id, offeredId = result.id;
-        el = button(actionDomId, () => void choose(`recordingResult:${offeredId}`, actionId, actionDomId));
+        el = button(actionDomId, () => void chooseResult(offeredId, actionId, actionDomId));
         el.dataset.action = actionId;
         actions.insertBefore(el, actions.children[position] ?? null);
       }
-      setText(el, action.label); setDisabled(el, !action.enabled, Boolean(saving));
+      setText(el, action.label);
+      // Busy stays focusable and ignores activation; native disabled would drop focus to body.
+      setDisabled(el, !action.enabled, false);
+      el.setAttribute("aria-disabled", String(busy || !action.enabled));
+      el.classList.toggle("saving-disabled", busy && action.enabled);
     }
+    const savingLine = area.querySelector<HTMLElement>(".result-saving")!;
+    const savingText = result.saving || (intent && PERSISTING_ACTIONS.includes(intent.action) ? text("Saving this change…") : "");
+    savingLine.hidden = !savingText; setText(savingLine, savingText);
     const error = area.querySelector<HTMLElement>(".result-error")!;
-    error.hidden = failure?.group !== `recordingResult:${result.id}`;
+    error.hidden = !resultErrors.has(result.id);
     setText(error, error.hidden ? "" : text("Could not complete this action. Please try again."));
     const technical = area.querySelector<HTMLDetailsElement>(".result-technical")!;
     technical.hidden = !result.detail;
@@ -405,7 +426,7 @@ function updateRecordingResult(): void {
       area.querySelector<HTMLElement>("summary")!.focus({ preventScroll: true });
     }
   }
-  if (focusRequested) document.getElementById(`recording-result-${encodeURIComponent(focusId)}`)?.scrollIntoView({ block: "nearest" });
+  if (focusRequested && focusId) document.getElementById(`recording-result-${encodeURIComponent(focusId)}`)?.scrollIntoView({ block: "nearest" });
   if (removedFocus) list.querySelector<HTMLElement>(".recording-result > summary")?.focus({ preventScroll: true });
 }
 
@@ -502,9 +523,41 @@ function render(next: SettingsView): void {
     if (changes.length) announce(changes.join(" "));
   }
 }
+/** Result actions run beside preference saves; only the same row refuses a duplicate. */
+async function chooseResult(id: string, action: string, control: string): Promise<void> {
+  const offered = view?.recordingResults?.find(r => r.id === id);
+  if (!offered || resultIntents.has(id) || offered.saving) return;
+  // Record the origin before anything can change focus.
+  const intent = { action, control, moved: false };
+  resultIntents.set(id, intent); resultErrors.delete(id);
+  if (PERSISTING_ACTIONS.includes(action)) announce(text("Saving this change…"));
+  draw();
+  let applied = false;
+  try {
+    const result = await window.settings.choose(`recordingResult:${id}`, action);
+    render(result.view); applied = result.applied;
+  } catch { /* Keep the current projection; main owns the state. */ }
+  resultIntents.delete(id);
+  if (!applied) { resultErrors.add(id); announce(text("Could not complete this action. Please try again.")); }
+  else if (feedback.textContent === text("Saving this change…")) announce("");
+  draw();
+  restoreResultFocus(id, intent);
+}
+/** Summary after acknowledgement, collapse or failure; the active tab after the last row. Never steals. */
+function restoreResultFocus(id: string, intent: { action: string; control: string; moved: boolean }): void {
+  if (intent.moved || !document.hasFocus()) return;
+  const control = document.getElementById(intent.control);
+  const active = document.activeElement;
+  if (active && active !== document.body && active !== control) return;
+  const area = document.getElementById(`recording-result-${encodeURIComponent(id)}`) as HTMLDetailsElement | null;
+  if (control && area?.open && !PERSISTING_ACTIONS.includes(intent.action)) { control.focus({ preventScroll: true }); return; }
+  const target = area?.querySelector<HTMLElement>(":scope > summary") ?? document.querySelector<HTMLElement>(".recording-result > summary")
+    ?? document.getElementById(`tab-${selectedTab}`);
+  target?.focus({ preventScroll: true });
+}
 async function choose(group: string, choice: string, control: string): Promise<void> {
   // The currently edited value can queue a newer intent; actions never duplicate.
-  if (saving && (group.startsWith("recordingResult:") || saving.group !== group || control.endsWith("-recovery") || control.endsWith("-retry") || (control === "shortcut-capture" || control === "shortcut-confirm"))) return;
+  if (saving && (saving.group !== group || control.endsWith("-recovery") || control.endsWith("-retry") || (control === "shortcut-capture" || control === "shortcut-confirm"))) return;
   const id = ++requestId;
   pending++; saving = { group, choice, control }; failure = undefined; announce(""); draw();
   let success = false;
@@ -535,7 +588,13 @@ async function choose(group: string, choice: string, control: string): Promise<v
 }
 // Keep DOM focus for keyboard/assistive navigation; pointer interaction only
 // suppresses its visual ring, including Chromium's sticky native select ring.
-document.addEventListener("pointerdown", () => { document.documentElement.dataset.input = "pointer"; }, true);
+document.addEventListener("pointerdown", event => {
+  document.documentElement.dataset.input = "pointer";
+  for (const intent of resultIntents.values()) if (!document.getElementById(intent.control)?.contains(event.target as Node)) intent.moved = true;
+}, true);
+document.addEventListener("focusin", event => {
+  for (const intent of resultIntents.values()) if (event.target !== document.getElementById(intent.control)) intent.moved = true;
+});
 document.addEventListener("keydown", event => {
   if (["Tab", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key))
     document.documentElement.dataset.input = "keyboard";
@@ -545,7 +604,10 @@ document.addEventListener("keydown", event => {
   if (event.key === "Escape" && (shortcutGroup()?.capturing || arming)) { event.preventDefault(); void capture(false, true); return; }
   if (event.key === "Escape" || (event.key === "w" && (event.metaKey || event.ctrlKey))) window.close();
 });
-window.addEventListener("blur", () => { if (shortcutGroup()?.capturing || arming) void capture(false); });
+window.addEventListener("blur", () => {
+  for (const intent of resultIntents.values()) intent.moved = true;
+  if (shortcutGroup()?.capturing || arming) void capture(false);
+});
 window.settings.onChanged(render);
 void window.settings.read().then(render).catch(() => {
   feedback.classList.remove("visually-hidden");

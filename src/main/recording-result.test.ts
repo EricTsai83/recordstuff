@@ -38,7 +38,7 @@ it.each(["missing", "empty", "directory"])("downgrades unconfirmed %s partial fi
 });
 it("rechecks reveal, downgrades a missing file and preserves acknowledgement", async () => {
   const store = new RecordingResults(), io = effects();
-  store.update(partial); store.acknowledge("a");
+  store.update(partial); await store.acknowledge("a");
   expect(await store.act("a", "reveal", io)).toBe(true);
   expect(io.reveal).toHaveBeenCalledWith("/a.mp4");
   io.stat.mockRejectedValueOnce(new Error("unmounted"));
@@ -62,21 +62,21 @@ it("refuses stale identities, pending destructive actions and recording recovery
   expect(await store.act("a", "permission", { ...io, platform: "win32" })).toBe(false);
   expect(await store.act("a", "relaunch", io)).toBe(true);
 });
-it("keeps unread failure through cleanup and only acknowledges the exact settled result", () => {
+it("keeps unread failure through cleanup and only acknowledges the exact settled result", async () => {
   const store = new RecordingResults();
   store.update(a);
-  expect(store.acknowledge("a")).toBe(false);
+  expect(await store.acknowledge("a")).toBe(false);
   store.update({ ...a, outcome: "partial", partialPath: "/a.recording.mp4" });
-  expect(store.acknowledge("other")).toBe(false);
+  expect(await store.acknowledge("other")).toBe(false);
   expect(store.current?.acknowledged).toBe(false);
-  expect(store.acknowledge("a")).toBe(true);
+  expect(await store.acknowledge("a")).toBe(true);
   expect(store.current?.partialPath).toBe("/a.recording.mp4");
   store.update({ ...a, outcome: "partial", partialPath: "/a.recording.mp4" });
   expect(store.current?.acknowledged).toBe(true);
   store.update({ ...a, id: "b" });
   expect(store.current?.acknowledged).toBe(false);
   expect(store.update({ ...a, outcome: "empty" })).toBe(true);
-  expect(store.acknowledge("a")).toBe(true);
+  expect(await store.acknowledge("a")).toBe(true);
   expect(store.current?.id).toBe("b");
 });
 it("distinguishes unknown from empty and does not promise recoverability", () => {
@@ -87,7 +87,8 @@ it("distinguishes unknown from empty and does not promise recoverability", () =>
 
 it("does not relaunch again for a restored permission error unless current permission needs it", async () => {
   const io = effects();
-  const store = new RecordingResults({ load: () => [{ ...a, code: "permission_needs_relaunch", outcome: "empty", acknowledged: false }], save: () => {} });
+  const store = new RecordingResults({ load: async () => [{ ...a, code: "permission_needs_relaunch", outcome: "empty", acknowledged: false }], save: async () => {} });
+  await store.ready;
   expect(await store.act("a", "relaunch", io)).toBe(false);
   expect(io.relaunch).not.toHaveBeenCalled();
   expect(await store.act("a", "relaunch", { ...io, needsRelaunch: () => true })).toBe(true);
@@ -103,23 +104,23 @@ it("retains two failures independently, including late cleanup and exact-ID reve
   await results.receive({ ...a, id: "b", outcome: "empty" }, io);
   finish({ isFile: () => true, size: 10 }); await cleanup;
   expect(results.all.map(r => [r.id, r.outcome])).toEqual([["b", "empty"], ["a", "partial"]]);
-  expect(results.acknowledge("b")).toBe(true);
+  expect(await results.acknowledge("b")).toBe(true);
   expect(results.all[1]?.acknowledged).toBe(false);
   expect(await results.act("a", "reveal", io)).toBe(true);
   expect(io.reveal).toHaveBeenCalledWith("/a.mp4");
 });
-it("keeps every unread failure but only the latest twenty acknowledged records", () => {
+it("keeps every unread failure but only the latest twenty acknowledged records", async () => {
   const results = new RecordingResults();
   results.update(a); results.update({ ...a, outcome: "empty" });
   for (let i = 0; i < 25; i++) {
     results.update({ ...a, id: String(i) }); results.update({ ...a, id: String(i), outcome: "empty" });
-    expect(results.acknowledge(String(i))).toBe(true);
+    expect(await results.acknowledge(String(i))).toBe(true);
   }
   expect(results.all).toHaveLength(21);
   expect(results.all.at(-1)).toMatchObject({ id: "a", acknowledged: false });
   expect(results.all[0]?.id).toBe("24");
   expect(results.all[19]?.id).toBe("5");
-  expect(results.acknowledge("a")).toBe(true);
+  expect(await results.acknowledge("a")).toBe(true);
   expect(results.all).toHaveLength(20);
   expect(results.all.at(-1)).toMatchObject({ id: "a", acknowledged: true, acknowledgedAt: expect.any(String) });
   expect(results.all.some(r => r.id === "5")).toBe(false);
@@ -128,7 +129,7 @@ it("removes only acknowledged metadata and rejects late cleanup or reveal after 
   const results = new RecordingResults(), io = effects();
   results.update(partial);
   expect(await results.act("a", "remove", io)).toBe(false);
-  results.acknowledge("a");
+  await results.acknowledge("a");
   let finish!: (value: { isFile(): boolean; size: number }) => void;
   io.stat.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
   const reveal = results.act("a", "reveal", io);
@@ -138,4 +139,22 @@ it("removes only acknowledged metadata and rejects late cleanup or reveal after 
   expect(io.reveal).not.toHaveBeenCalled();
   expect(results.update(partial)).toBe(false);
   expect(results.all).toEqual([]);
+});
+
+it("joins a duplicate submission and refuses a conflicting action on the same row while it waits", async () => {
+  let release!: () => void;
+  const save = vi.fn(() => new Promise<void>(resolve => { release = resolve; }));
+  const results = new RecordingResults({ load: async () => [], save }), io = effects();
+  await results.ready;
+  results.update({ ...a, outcome: "empty" });
+  await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1)); release();
+  await results.persist();
+  const first = results.act("a", "acknowledge", io), second = results.act("a", "acknowledge", io);
+  expect(await results.act("a", "remove", io)).toBe(false);
+  expect(results.current).toMatchObject({ acknowledged: false, saving: "acknowledge" });
+  await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2)); release();
+  expect(await first).toBe(true); expect(await second).toBe(true);
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(results.current).toMatchObject({ acknowledged: true });
+  expect(results.current?.saving).toBeUndefined();
 });

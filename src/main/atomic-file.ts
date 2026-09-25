@@ -17,13 +17,20 @@ export interface AtomicWriteOptions {
   mode?: number;
 }
 
-export async function writeFileAtomic(file: string, content: string, options: AtomicWriteOptions = {}): Promise<void> {
+/** Ordered chunks are encoded about 1 MiB per write, so a large file never needs one long main-thread encode. */
+export async function writeFileAtomic(file: string, content: string | readonly string[], options: AtomicWriteOptions = {}): Promise<void> {
   const temporary = `${file}.tmp`;
   await fs.promises.mkdir(path.dirname(file), { recursive: true });
   const handle = await fs.promises.open(temporary, "w", options.mode);
   let open = true;
   try {
-    await handle.writeFile(content, "utf8");
+    // A FileHandle writeFile continues from the current position.
+    let batch = "";
+    for (const chunk of typeof content === "string" ? [content] : content) {
+      batch += chunk;
+      if (batch.length >= 1 << 20) { await handle.writeFile(batch, "utf8"); batch = ""; }
+    }
+    if (batch || typeof content === "string") await handle.writeFile(batch, "utf8");
     await handle.sync();
     open = false;
     await handle.close();

@@ -449,3 +449,28 @@ it("routes the exact offered recording result through act and returns its applie
   expect((await ctx.choose(ctx.event(), "recordingResult:failure-a", "acknowledge")).applied).toBe(true);
   ctx.panel.destroy();
 });
+
+it("runs a result action beside preference saves and shortcut capture instead of queueing behind them", async () => {
+  let releasePreference!: () => void, releaseResult!: (applied: boolean) => void;
+  const act = vi.fn((action: AppAction) => typeof action !== "string" && "recordingResult" in action
+    ? new Promise<boolean>(resolve => { releaseResult = resolve; })
+    : new Promise<void>(resolve => { releasePreference = resolve; }));
+  const s = setup({ act });
+  s.live.recordingResults = [{ id: "f", occurredAt: "2026-09-24T12:00:00Z", code: "disk_full", detail: "", outcome: "empty", acknowledged: false }];
+  s.panel.show();
+  const preference = s.choose(s.event(), "language", "zh-TW");
+  const result = s.choose(s.event(), "recordingResult:f", "acknowledge");
+  await vi.waitFor(() => expect(act).toHaveBeenCalledTimes(2));
+  expect(mock.handlers.get("settings:capture")!(s.event(), true)).toBeTruthy();
+  releaseResult(false);
+  expect(await result).toMatchObject({ applied: false, failure: expect.any(String) });
+  // A slow durable save neither ends capture nor waits for the preference queue.
+  expect(s.capture).toHaveBeenCalledExactlyOnceWith(true);
+  const another = s.choose(s.event(), "recordingResult:f", "acknowledge");
+  await vi.waitFor(() => expect(act).toHaveBeenCalledTimes(3));
+  releaseResult(true);
+  expect(await another).toMatchObject({ applied: true });
+  releasePreference();
+  await preference;
+  s.panel.destroy();
+});

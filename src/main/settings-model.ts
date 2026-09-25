@@ -1,4 +1,4 @@
-import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure } from "./recording-result";
+import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure, persistenceWarning } from "./recording-result";
 import { displayLabel, displayFailureText } from "../shared/display";
 import { displayResolution } from "./display-source";
 /**
@@ -268,6 +268,7 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
   const unlocked = preferencesUnlocked(state);
   return {
     language,
+    ...(ctx.historyLoading ? { recordingHistoryStatus: t("Loading failure history…", language) } : {}),
     recordingResults: (ctx.recordingResults ?? []).map(result => ({
       id: result.id, heading: t("Recording failure", language),
       reason: failureReason(result.code, language),
@@ -275,7 +276,8 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
       outcome: failureOutcome(result, language), guidance: ctx.platform === "darwin" && result.restored && isPermissionFailure(result.code)
         ? t("This is a previous recording failure. Check current recording permissions before trying again.", language)
         : failureGuidance(result.code, language, ctx.platform),
-      persistenceWarning: result.persistenceFailed ? t("Could not save this reminder. It may change after restarting. Check available disk space.", language) : "",
+      persistenceWarning: result.persistenceFailed ? persistenceWarning(result.persistenceFailed, language) : "",
+      ...(result.saving ? { saving: t("Saving this change…", language) } : {}),
       detail: result.detail, ...((result.partialPath ?? result.recordingPath) ? { file: result.partialPath ?? result.recordingPath } : {}),
       acknowledged: result.acknowledged, pending: result.outcome === "pending",
       actions: resultActions(state, ctx, result).map(({ action: _action, ...choice }) => choice),
@@ -306,7 +308,8 @@ function resultActions(state: RecordingState, ctx: AppContext, result: NonNullab
     if (!result.restored || (state.type === "needsPermission" && state.needsRelaunch))
       add("relaunch", "Relaunch", preferencesUnlocked(state) && result.outcome !== "pending");
   }
-  if (result.persistenceFailed) add("retry", "Retry saving reminder", true);
+  // Retrying cannot overwrite unreadable or newer history, so it is not offered there.
+  if (result.persistenceFailed && result.persistenceFailed !== "blocked") add("retry", "Retry saving reminder", true);
   if (!result.acknowledged) add("acknowledge", "Got it", result.outcome !== "pending");
   else add("remove", "Remove from history", true);
   return actions;

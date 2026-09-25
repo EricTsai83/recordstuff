@@ -228,6 +228,11 @@ export class Recorder {
     return attempt;
   }
 
+  /** Quit was declined after capture drained (for example unsaved history): admit recordings again. */
+  resumeAdmission(): void {
+    if (!this.shuttingDown) this.quitAdmission = false;
+  }
+
   private track(task: () => Promise<void>): Promise<void> {
     let release!: () => void;
     const owned = new Promise<void>((resolve) => { release = resolve; });

@@ -369,7 +369,7 @@ it("offers macOS permission recovery with pending relaunch locked and no macOS a
 
 it("offers persistence retry for an acknowledged result and bases restored relaunch on current state", () => {
   const result = { id: "old", occurredAt: "2026-09-25T00:00:00Z", code: "permission_needs_relaunch" as const,
-    detail: "", outcome: "empty" as const, acknowledged: true, restored: true, persistenceFailed: true };
+    detail: "", outcome: "empty" as const, acknowledged: true, restored: true, persistenceFailed: "io" as const };
   const ctx = { ...context, platform: "darwin" as const, recordingResults: [result] };
   const view = settingsView(idle, ctx).recordingResults![0]!;
   expect(view.actions.find(a => a.id === "retry")).toMatchObject({ label: "Retry saving reminder", enabled: true });
@@ -384,4 +384,24 @@ it("retains audio-device guidance for a restored Windows audio failure", () => {
   const ctx = { ...context, platform: "win32" as const, recordingResults: [result] };
   expect(settingsView(idle, ctx).recordingResults?.[0]?.guidance).toContain("audio devices");
   expect(settingsAction(idle, ctx, "recordingResult:old-audio", "relaunch")).toBeUndefined();
+});
+
+it("gives accurate persistence guidance, retries only what retrying can fix and shows saving/loading state", () => {
+  const base = { id: "f", occurredAt: "2026-09-25T00:00:00Z", code: "disk_full" as const, detail: "", outcome: "empty" as const, acknowledged: false };
+  const row = (extra: object, language: "en" | "zh-TW" = "en", historyLoading = false) =>
+    settingsView(idle, { ...context, language, historyLoading, recordingResults: [{ ...base, ...extra }] });
+  const io = row({ persistenceFailed: "io" }).recordingResults![0]!;
+  expect(io.persistenceWarning).toContain("retries automatically");
+  expect(io.actions.map(a => a.id)).toContain("retry");
+  const blocked = row({ persistenceFailed: "blocked" }).recordingResults![0]!;
+  expect(blocked.persistenceWarning).toContain("will not overwrite");
+  expect(blocked.persistenceWarning).not.toContain("disk space");
+  expect(blocked.actions.map(a => a.id)).not.toContain("retry");
+  expect(settingsAction(idle, { ...context, recordingResults: [{ ...base, persistenceFailed: "blocked" }] }, "recordingResult:f", "retry")).toBeUndefined();
+  expect(row({ persistenceFailed: "tooLarge" }).recordingResults![0]!.persistenceWarning).toContain("Remove reviewed failures");
+  expect(row({ persistenceFailed: "tooLarge" }, "zh-TW").recordingResults![0]!.persistenceWarning).toContain("失敗紀錄過大");
+  expect(row({ saving: "acknowledge" }).recordingResults![0]).toMatchObject({ saving: "Saving this change…", acknowledged: false });
+  expect(row({}).recordingResults![0]!.saving).toBeUndefined();
+  expect(row({}, "zh-TW", true).recordingHistoryStatus).toBe("正在載入失敗紀錄…");
+  expect(row({}).recordingHistoryStatus).toBeUndefined();
 });

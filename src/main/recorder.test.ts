@@ -717,6 +717,19 @@ describe("Recorder shutdown", () => {
     expect(ctx.recorder.state.type).toBe("idle");
   });
 
+  it("keeps capture admission closed after a safe shutdown until quit is declined", async () => {
+    const ctx = setup();
+    expect(await ctx.recorder.shutdown()).toBe(true);
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.recorder.state.type).toBe("idle");
+    expect(ctx.host.started).toEqual([]);
+    ctx.recorder.resumeAdmission();
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.recorder.state.type).toBe("starting");
+  });
+
   it("admits quit after a missing stop response is failed and cleaned up within the margin", async () => {
     const ctx = setup();
     await startRecording(ctx);

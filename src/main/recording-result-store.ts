@@ -1,13 +1,38 @@
 import fs from "node:fs";
 import path from "node:path";
+import { setImmediate as nextTurn } from "node:timers/promises";
 import { isErrorCode } from "../shared/state";
-import { writeFileAtomicSync } from "./atomic-file";
-import type { RecordingResult } from "../shared/recording-result";
+import { writeFileAtomic } from "./atomic-file";
+import type { PersistenceIssue, RecordingResult } from "../shared/recording-result";
 
+/** Every file operation is asynchronous (libuv threadpool); only small per-record JSON work runs on main. */
 export interface ResultStorage {
   readonly requiresMigration?: boolean;
-  load(): RecordingResult[];
-  save(results: readonly RecordingResult[]): void;
+  load(): Promise<RecordingResult[]>;
+  save(results: readonly RecordingResult[]): Promise<void>;
+}
+
+/** A save that retrying cannot fix; any other rejection is treated as a recoverable I/O failure. */
+export class HistoryStorageError extends Error {
+  constructor(message: string, readonly issue: Exclude<PersistenceIssue, "io">) { super(message); }
+}
+const LIMIT = 32 * 1024 * 1024;
+let spent = 0, lastWork = 0;
+/**
+ * Runs one record's JSON work, first yielding to the event loop once such work
+ * has held main for about half a frame. Every history loop shares the budget,
+ * so back-to-back loops cannot add up; a small history never yields.
+ */
+export async function sliced<T>(work: () => T): Promise<T> {
+  const now = performance.now();
+  // A gap means main was free meanwhile.
+  if (now - lastWork > 4) spent = 0;
+  else if (spent > 8) { await nextTurn(); spent = 0; }
+  const start = performance.now();
+  const value = work();
+  lastWork = performance.now();
+  spent += lastWork - start;
+  return value;
 }
 
 function decode(value: unknown): RecordingResult {
@@ -38,14 +63,23 @@ function decode(value: unknown): RecordingResult {
 export class RecordingResultStore implements ResultStorage {
   private blocked = false;
   requiresMigration = false;
+  /** Records are replaced, never mutated, so an unchanged record is encoded once. */
+  private readonly encoded = new WeakMap<RecordingResult, { json: string; bytes: number }>();
   constructor(private readonly file: string, private readonly log: (message: string) => void = () => {},
     private readonly legacyFile?: string) {}
-  load(): RecordingResult[] {
+  private static async read(file: string, limit: number, tooLarge: string): Promise<unknown> {
+    const handle = await fs.promises.open(file, "r");
     try {
-      if (fs.statSync(this.file).size > 32 * 1024 * 1024) throw new Error("recording history too large");
-      const value = JSON.parse(fs.readFileSync(this.file, "utf8")) as { version?: unknown; results?: unknown };
+      if ((await handle.stat()).size > limit) throw new Error(tooLarge);
+      return JSON.parse(await handle.readFile("utf8"));
+    } finally { await handle.close(); }
+  }
+  async load(): Promise<RecordingResult[]> {
+    try {
+      const value = await RecordingResultStore.read(this.file, LIMIT, "recording history too large") as { version?: unknown; results?: unknown };
       if (value?.version !== 2 || !Array.isArray(value.results)) throw new Error("invalid recording history");
-      const results = value.results.map(result => decode({ version: 1, result }));
+      const results: RecordingResult[] = [];
+      for (const result of value.results as unknown[]) results.push(await sliced(() => decode({ version: 1, result })));
       if (new Set(results.map(r => r.id)).size !== results.length) throw new Error("duplicate recording identities");
       return results;
     } catch (error) {
@@ -57,8 +91,7 @@ export class RecordingResultStore implements ResultStorage {
     }
     if (this.legacyFile) {
       try {
-        if (fs.statSync(this.legacyFile).size > 1024 * 1024) throw new Error("legacy result too large");
-        const result = decode(JSON.parse(fs.readFileSync(this.legacyFile, "utf8")));
+        const result = decode(await RecordingResultStore.read(this.legacyFile, 1024 * 1024, "legacy result too large"));
         this.requiresMigration = true;
         return [result];
       } catch (error) {
@@ -67,11 +100,24 @@ export class RecordingResultStore implements ResultStorage {
     }
     return [];
   }
-  save(results: readonly RecordingResult[]): void {
-    if (this.blocked) throw new Error("Existing recording history is unreadable; refusing to overwrite it");
-    const saved = results.map(result => decode({ version: 1, result: { ...result, detail: result.detail.slice(0, 65536) } }));
-    const content = JSON.stringify({ version: 2, results: saved });
-    if (Buffer.byteLength(content) > 32 * 1024 * 1024) throw new Error("recording history too large");
-    writeFileAtomicSync(this.file, content, { mode: 0o600 });
+  async save(results: readonly RecordingResult[]): Promise<void> {
+    if (this.blocked) throw new HistoryStorageError("Existing recording history is unreadable; refusing to overwrite it", "blocked");
+    const chunks = ['{"version":2,"results":['];
+    let bytes = chunks[0]!.length + 2;
+    for (const [index, result] of results.entries()) {
+      let entry = this.encoded.get(result);
+      if (!entry) {
+        entry = await sliced(() => {
+          const json = JSON.stringify(decode({ version: 1, result: { ...result, detail: result.detail.slice(0, 65536) } }));
+          return { json, bytes: Buffer.byteLength(json) };
+        });
+        this.encoded.set(result, entry);
+      }
+      chunks.push(index ? `,${entry.json}` : entry.json);
+      bytes += entry.bytes + (index ? 1 : 0);
+    }
+    chunks.push("]}");
+    if (bytes > LIMIT) throw new HistoryStorageError("recording history too large", "tooLarge");
+    await writeFileAtomic(this.file, chunks, { mode: 0o600 });
   }
 }

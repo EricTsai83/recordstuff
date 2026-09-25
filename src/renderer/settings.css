@@ -132,6 +132,7 @@ kbd { font: inherit; display: inline-block; min-width: 20px; padding: 1px 4px; m
 .result-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .result-actions button { white-space: normal; }
 .result-error { color: var(--warning); }
+.result-saving, .result-history-status { font-size: 12px; opacity: .85; }
 .result-technical > summary { cursor: pointer; font-size: 11px; }
 @media (forced-colors: active) { .recording-result { border-color: CanvasText; } }
 

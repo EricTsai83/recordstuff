@@ -55,6 +55,8 @@ export interface AppHotkey extends HotkeySettings {
 
 export interface AppContext {
   recordingResults?: readonly RecordingResult[];
+  /** Saved failure history is still being read; new failures are already listed. */
+  historyLoading?: boolean;
   displays: DisplayInfo[];
   display: DisplayPreference;
   displayFailure?: DisplayFailure;

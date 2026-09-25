@@ -1,4 +1,4 @@
-import { createQuitFeedback } from "./quit-feedback";
+import { createHistoryQuit, createQuitFeedback } from "./quit-feedback";
 import { installQuitCoordinator } from "./quit-coordinator";
 import { RecordingResultStore } from "./recording-result-store";
 import { RecordingResults } from "./recording-result";
@@ -206,11 +206,13 @@ async function main(): Promise<void> {
     fetch: (signal) => fetchVersion(process.platform, process.arch, signal, (url, init) => net.fetch(url, init)),
     changed: () => { if (settled()) refreshUi(); }, log,
   });
+  // Loads asynchronously; background save outcomes refresh both projections.
   const recordingResults = new RecordingResults(
     new RecordingResultStore(path.join(app.getPath("userData"), "recording-history.json"), log,
-      path.join(app.getPath("userData"), "recording-result.json")), log);
+      path.join(app.getPath("userData"), "recording-result.json")), log, () => refreshUi());
   const appContext = (): AppContext => ({
     recordingResults: recordingResults.all,
+    historyLoading: recordingResults.loading,
     displays: displays(), display: settings.display, ...(displayMedia.failure ? { displayFailure: displayMedia.failure } : {}),
     platform: process.platform,
     outputDir: settings.outputDir,
@@ -577,6 +579,8 @@ async function main(): Promise<void> {
     show: options => dialog.showMessageBox(options),
     log,
   });
+  const quitFocus = (): void => { if (process.platform === "darwin") app.focus({ steal: true }); };
+  let historyPrompt = false;
   const quitCoordinator = installQuitCoordinator(app, {
     relaunch: () => app.relaunch(),
     shutdown: () => {
@@ -588,6 +592,20 @@ async function main(): Promise<void> {
       log("quit deferred: recording save or cleanup is still pending");
       void showQuitFeedback();
     },
+    // Media is safe here; unsaved reminders need a durable save or explicit consent.
+    history: createHistoryQuit({ results: recordingResults, language: () => currentLanguage, focus: quitFocus, log,
+      show: async options => {
+        historyPrompt = true;
+        try { return await dialog.showMessageBox(options); } finally { historyPrompt = false; }
+      } }),
+    resume: () => {
+      savedNotification.setQuitting(false);
+      recorder.resumeAdmission();
+      log("quit declined: failure history is not saved");
+      refreshUi();
+    },
+    // A repeated request brings an open reminder prompt forward; otherwise it just joins.
+    joined: () => { if (historyPrompt) quitFocus(); },
     error: (cause) => log(`quit deferred: ${String(cause)}`),
   });
 

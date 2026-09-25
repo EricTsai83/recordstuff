@@ -1,7 +1,7 @@
-import type { RecordingFailure, RecordingResult } from "../shared/recording-result";
+import type { PersistenceIssue, RecordingFailure, RecordingResult } from "../shared/recording-result";
 import { translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
 import type { ErrorCode } from "../shared/state";
-import type { ResultStorage } from "./recording-result-store";
+import { HistoryStorageError, sliced, type ResultStorage } from "./recording-result-store";
 import type { RecordingResultAction } from "./ui-model";
 
 const OUTPUT_FOLDER_FAILURES: readonly ErrorCode[] = ["disk_full", "output_open_failed", "output_write_failed"];
@@ -12,6 +12,11 @@ const PERMISSION_FAILURES: readonly ErrorCode[] = ["permission_denied", "permiss
 export const isOutputFolderFailure = (code: ErrorCode): boolean => OUTPUT_FOLDER_FAILURES.includes(code);
 /** Recovered through capture permission in System Settings, possibly followed by a relaunch. */
 export const isPermissionFailure = (code: ErrorCode): boolean => PERMISSION_FAILURES.includes(code);
+
+/** Delay before each automatic retry of a failed history save; the last value repeats while unsaved. */
+export const RETRY_DELAYS_MS: readonly number[] = [2000, 5000, 15_000, 30_000];
+/** `safe`: nothing the user would lose; `writing`: a save is still in flight, so exit is not offered. */
+export type FlushOutcome = "safe" | "unsaved" | "writing";
 
 type Stat = (path: string) => Promise<{ isFile(): boolean; size: number }>;
 interface ResultEffects {
@@ -30,61 +35,270 @@ interface ResultActions {
   relaunch(): Promise<void>;
   needsRelaunch?(): boolean;
 }
+interface PendingAction {
+  kind: "acknowledge" | "remove";
+  at?: string;
+  revision: number;
+  promise: Promise<boolean>;
+  settle(ok: boolean): void;
+}
 
-/** Newest first; never evict unread failures. Media files are never changed here. */
+/**
+ * Newest first; never evict unread failures. Media files are never changed here.
+ *
+ * One persistence owner with at most one write in flight and one coalesced
+ * follow-up: every snapshot is the whole history, so a later snapshot carries
+ * every failure and action outcome of an earlier one. `revision` counts
+ * changes the file should hold; a completion settles only what its snapshot
+ * contained. Acknowledgement and removal become visible only once durable.
+ */
 export class RecordingResults {
-  private results: RecordingResult[];
-  private restored: RecordingResult[];
+  private results: RecordingResult[] = [];
+  private restored: RecordingResult[] = [];
   private readonly seen = new Set<string>();
-  private persisted: string | undefined;
+  /** Fingerprints of the saved file in order; undefined until known, including a pending migration. */
+  private persisted: string[] | undefined;
   private savedRows = new Map<string, string>();
-  private fingerprint(results: readonly RecordingResult[]): string {
-    return JSON.stringify(results.map(result => [result.id, result.occurredAt, result.code, result.detail, result.outcome,
-      result.acknowledged, result.acknowledgedAt, result.partialPath, result.outcome === "partial" ? null : result.recordingPath,
-      result.outcome === "partial" ? false : Boolean(result.previouslyPartial)]));
+  /** Records are replaced, never mutated, so a fingerprint is computed once per record. */
+  private readonly fingerprints = new WeakMap<RecordingResult, string>();
+  private readonly flagged = new Map<string, PersistenceIssue>();
+  private readonly pending = new Map<string, PendingAction>();
+  private readonly waiters: Array<{ revision: number; settle(ok: boolean): void }> = [];
+  private revision = 0;
+  private inflight = 0;
+  private writing: Promise<void> | undefined;
+  private queued = false;
+  private failures = 0;
+  private issue: PersistenceIssue | undefined;
+  private retryTimer: ReturnType<typeof setTimeout> | undefined;
+  private loaded = false;
+  private loadFailed = false;
+  private quitting = false;
+  private closed = false;
+  /** Settles when the saved history has been read and merged. */
+  readonly ready: Promise<void>;
+  private fingerprint(result: RecordingResult): string {
+    let value = this.fingerprints.get(result);
+    if (value === undefined) {
+      value = JSON.stringify([result.id, result.occurredAt, result.code, result.detail, result.outcome,
+        result.acknowledged, result.acknowledgedAt, result.partialPath, result.outcome === "partial" ? null : result.recordingPath,
+        result.outcome === "partial" ? false : Boolean(result.previouslyPartial)]);
+      this.fingerprints.set(result, value);
+    }
+    return value;
   }
-  constructor(private readonly storage?: ResultStorage, private readonly log: (message: string) => void = () => {}) {
-    const saved = storage?.load() ?? [];
+  constructor(private readonly storage?: ResultStorage, private readonly log: (message: string) => void = () => {},
+    private readonly changed: () => void = () => {}, private readonly retryDelaysMs: readonly number[] = RETRY_DELAYS_MS) {
+    if (storage) this.ready = this.load(storage);
+    else { this.loaded = true; this.persisted = []; this.ready = Promise.resolve(); }
+  }
+  /** Reads without blocking main; failures arriving meanwhile stay visible and are merged by ID. */
+  private async load(storage: ResultStorage): Promise<void> {
+    let saved: RecordingResult[] = [];
+    try { saved = await storage.load(); }
+    catch (error) { this.loadFailed = true; this.log(`recording history: load failed: ${String(error)}`); }
+    if (!storage.requiresMigration && !this.loadFailed) {
+      const persisted: string[] = [];
+      for (const result of saved) persisted.push(await sliced(() => this.fingerprint(result)));
+      this.persisted = persisted;
+      this.savedRows = new Map(saved.map((r, index) => [r.id, persisted[index]!]));
+    }
+    const arrived = new Set(this.results.map(r => r.id));
+    saved = saved.filter(result => !arrived.has(result.id));
     this.restored = saved;
     for (const result of saved) this.seen.add(result.id);
-    if (!storage?.requiresMigration) {
-      this.persisted = this.fingerprint(saved);
-      this.savedRows = new Map(saved.map(r => [r.id, this.fingerprint([r])]));
-    }
-    // A legacy record must also be written to the history file on restore.
-    this.results = saved.map(result => {
+    // Startup normalization alone is rewritten by `restore`, which can undo it.
+    const normalized = saved.map(result => {
       const current = { ...result, restored: true };
       if (result.outcome === "pending" || result.outcome === "partial") return { ...this.unknown(current), restored: true, acknowledged: result.acknowledged };
+      // `restored` is not fingerprinted, so the copy reuses the saved record's value.
+      const known = this.fingerprints.get(result);
+      if (known !== undefined) this.fingerprints.set(current, known);
       return current;
     });
+    const requested = arrived.size > 0 || storage.requiresMigration || this.waiters.length > 0 || this.pending.size > 0;
+    this.results = [...this.results, ...normalized];
+    this.loaded = true;
+    if (requested) { this.revision++; this.schedule(); }
+    this.changed();
   }
-  get current(): RecordingResult | undefined { return this.results[0]; }
-  get all(): readonly RecordingResult[] { return this.results; }
+  get current(): RecordingResult | undefined { return this.all[0]; }
+  get all(): readonly RecordingResult[] {
+    return this.results.map(result => {
+      const saving = this.pending.get(result.id)?.kind;
+      const failed = this.flagged.get(result.id);
+      return saving || failed ? { ...result, ...(saving ? { saving } : {}), ...(failed ? { persistenceFailed: failed } : {}) } : result;
+    });
+  }
+  get loading(): boolean { return !this.loaded; }
+  get busy(): boolean { return this.writing !== undefined; }
   private trim(results: RecordingResult[]): RecordingResult[] {
     const keep = new Set(results.filter(r => r.acknowledged)
       .sort((a, b) => Date.parse(b.acknowledgedAt ?? b.occurredAt) - Date.parse(a.acknowledgedAt ?? a.occurredAt))
       .slice(0, 20).map(r => r.id));
     return results.filter(result => !result.acknowledged || keep.has(result.id));
   }
-  private persist(results = this.results): boolean {
-    const fingerprint = this.fingerprint(results);
+  /** Every change the file should hold goes through here. */
+  private set(results: RecordingResult[]): void {
+    this.results = results;
+    this.revision++;
+    this.schedule();
+  }
+  /** Visible history plus actions that wait for this save. */
+  private snapshot(): RecordingResult[] {
+    return this.trim(this.results.flatMap(result => {
+      const action = this.pending.get(result.id);
+      if (!action) return [result];
+      return action.kind === "remove" ? [] : [{ ...result, acknowledged: true, acknowledgedAt: action.at! }];
+    }));
+  }
+  private schedule(): void {
+    if (!this.loaded || this.closed) return;
+    if (this.writing) { if (this.revision > this.inflight) this.queued = true; return; }
+    this.start();
+  }
+  private start(): void {
+    clearTimeout(this.retryTimer);
+    this.retryTimer = undefined;
+    if (this.closed) return;
+    // Changes made before the snapshot is taken join it.
+    this.inflight = Number.POSITIVE_INFINITY;
+    this.writing = Promise.resolve().then(() => this.write()).then(({ revision, ok, actions, refresh }) => {
+      // Release the writer and pick waiters in one step: a waiter added after `write` returned
+      // has no newer change, so this attempt answers it; later changes set `queued`.
+      this.writing = undefined;
+      const waiters = this.waiters.filter(waiter => waiter.revision <= revision);
+      this.waiters.splice(0, this.waiters.length, ...this.waiters.filter(waiter => waiter.revision > revision));
+      if (this.queued) { this.queued = false; this.start(); }
+      else if (this.failures && this.issue === "io") this.retryLater();
+      // Settle after the release, so an awaiting caller sees the true state.
+      for (const action of actions) action.settle(ok);
+      for (const waiter of waiters) waiter.settle(ok);
+      if (refresh) this.changed();
+    });
+  }
+  private retryLater(): void {
+    if (this.quitting || this.closed || this.retryTimer) return;
+    const delay = this.retryDelaysMs[Math.min(this.failures, this.retryDelaysMs.length) - 1]!;
+    this.retryTimer = setTimeout(() => { this.retryTimer = undefined; if (!this.writing) this.start(); }, delay);
+  }
+  private async write(): Promise<{ revision: number; ok: boolean; actions: PendingAction[]; refresh: boolean }> {
+    const revision = this.inflight = this.revision;
+    const actions = [...this.pending].filter(([, action]) => action.revision <= revision);
+    let snapshot: RecordingResult[] = [];
+    const fingerprints: string[] = [];
+    let failed = false, error: unknown;
+    // Any failure, including an unexpected one, settles this attempt instead of wedging the writer.
     try {
-      if (fingerprint !== this.persisted) this.storage?.save(results);
-      this.persisted = fingerprint;
-      this.savedRows = new Map(results.map(r => [r.id, this.fingerprint([r])]));
-      for (const result of results) delete result.persistenceFailed;
-      return true;
-    } catch (error) {
-      for (const result of this.results) {
-        if (this.savedRows.get(result.id) !== this.fingerprint([result])) result.persistenceFailed = true;
-        else delete result.persistenceFailed;
+      snapshot = this.snapshot();
+      for (const result of snapshot) fingerprints.push(await sliced(() => this.fingerprint(result)));
+      if (this.loadFailed) throw new HistoryStorageError("Existing recording history could not be read; refusing to overwrite it", "blocked");
+      const persisted = this.persisted;
+      if (!persisted || persisted.length !== fingerprints.length || fingerprints.some((value, index) => value !== persisted[index]))
+        await this.storage?.save(snapshot);
+    } catch (cause) { failed = true; error = cause; }
+    let flagsChanged = false;
+    if (!failed) {
+      this.persisted = fingerprints;
+      this.savedRows = new Map(snapshot.map((result, index) => [result.id, fingerprints[index]!]));
+      if (this.failures) this.log(`recording history: saved after ${this.failures} failed attempt(s)`);
+      this.failures = 0;
+      this.issue = undefined;
+      clearTimeout(this.retryTimer);
+      this.retryTimer = undefined;
+      if (actions.length) {
+        const committed = new Map(actions);
+        const saved = new Map(snapshot.map(result => [result.id, result]));
+        this.results = this.trim(this.results.flatMap(r => {
+          const action = committed.get(r.id);
+          if (!action) return [r];
+          if (action.kind === "remove") return [];
+          const next = { ...r, acknowledged: true, acknowledgedAt: action.at! }, stored = saved.get(r.id);
+          // Reuse the saved object unless a late update changed the row meanwhile.
+          return [stored && this.fingerprint(stored) === this.fingerprint(next) ? stored : next];
+        }));
+        for (const [id] of actions) this.pending.delete(id);
       }
-      this.log(`recording history: save failed: ${String(error)}`);
-      return false;
+      // An older snapshot never clears the warning of a newer unsaved change.
+      if (this.flagged.size) {
+        const rows = new Map(this.results.map(r => [r.id, r]));
+        for (const id of [...this.flagged.keys()]) {
+          const row = rows.get(id);
+          if (!row || this.savedRows.get(id) === this.fingerprint(row)) { this.flagged.delete(id); flagsChanged = true; }
+        }
+      }
+    } else {
+      const issue: PersistenceIssue = error instanceof HistoryStorageError ? error.issue : "io";
+      if (!this.failures || issue !== this.issue) this.log(`recording history: save failed: ${String(error)}`);
+      this.failures++;
+      this.issue = issue;
+      for (const [id] of actions) this.pending.delete(id);
+      for (const row of this.results) {
+        if (this.savedRows.get(row.id) !== this.fingerprint(row)) {
+          if (this.flagged.get(row.id) !== issue) { this.flagged.set(row.id, issue); flagsChanged = true; }
+        } else if (this.flagged.delete(row.id)) flagsChanged = true;
+      }
     }
+    return { revision, ok: !failed, actions: actions.map(([, action]) => action), refresh: actions.length > 0 || flagsChanged };
+  }
+  /** Resolves once everything changed so far is durable (true), or when that attempt fails (false). */
+  persist(): Promise<boolean> {
+    if (this.closed) return Promise.resolve(false);
+    return new Promise(settle => {
+      this.waiters.push({ revision: this.revision, settle });
+      this.schedule();
+    });
+  }
+  private request(id: string, kind: PendingAction["kind"], at?: string): Promise<boolean> {
+    const existing = this.pending.get(id);
+    if (existing) return existing.kind === kind ? existing.promise : Promise.resolve(false);
+    let settle!: (ok: boolean) => void;
+    const promise = new Promise<boolean>(resolve => { settle = resolve; });
+    this.revision++;
+    this.pending.set(id, { kind, ...(at ? { at } : {}), revision: this.revision, promise, settle });
+    this.schedule();
+    return promise;
+  }
+  /** Rows whose current state is not in the saved file, as the user sees them. */
+  unsaved(): RecordingResult[] {
+    return this.all.filter((_, index) => {
+      const row = this.results[index]!;
+      return !this.loaded || this.savedRows.get(row.id) !== this.fingerprint(row);
+    });
+  }
+  /**
+   * Quit: suspend automatic retry and attempt the latest save with a bounded wait.
+   * The deadline never cancels OS I/O and never starts a competing writer.
+   */
+  async flush(timeoutMs: number): Promise<FlushOutcome> {
+    this.quitting = true;
+    clearTimeout(this.retryTimer);
+    this.retryTimer = undefined;
+    if (!this.loaded && !this.results.length) return "safe";
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), timeoutMs); });
+    let saved: boolean | undefined;
+    // A follow-up write (a change made meanwhile) is awaited within the same deadline.
+    do saved = await Promise.race([this.ready.then(() => this.persist()), deadline]);
+    while (saved !== undefined && this.writing && !this.closed);
+    clearTimeout(timer);
+    if (this.writing) return "writing";
+    return saved || !this.unsaved().length ? "safe" : "unsaved";
+  }
+  /** The user stayed after quit: resume automatic retries. */
+  resume(): void {
+    this.quitting = false;
+    if (this.failures && this.issue === "io" && !this.writing) this.retryLater();
+  }
+  /** Exit is admitted: no later write may start. */
+  close(): void {
+    this.closed = true;
+    clearTimeout(this.retryTimer);
+    this.retryTimer = undefined;
   }
   /** One OS request at a time; after timeout leave the rest unknown without issuing more I/O. */
   async restore(stat: Stat, refresh: () => void): Promise<void> {
+    await this.ready;
     const saved = this.restored;
     this.restored = [];
     for (const original of saved) {
@@ -107,7 +321,7 @@ export class RecordingResults {
         refresh();
       }
     }
-    if (saved.length) { this.results = this.trim(this.results); this.persist(); refresh(); }
+    if (saved.length) { this.set(this.trim(this.results)); refresh(); await this.persist(); }
   }
   update(result: RecordingFailure): boolean {
     const previous = this.results.find(r => r.id === result.id);
@@ -116,19 +330,23 @@ export class RecordingResults {
     const next = { ...result, acknowledged: previous?.acknowledged ?? false,
       ...(previous?.restored ? { restored: true } : {}),
       ...(previous?.acknowledgedAt ? { acknowledgedAt: previous.acknowledgedAt } : {}) };
-    this.results = previous ? this.results.map(r => r === previous ? next : r) : [next, ...this.results];
-    this.persist();
+    this.set(previous ? this.results.map(r => r === previous ? next : r) : [next, ...this.results]);
     return true;
   }
-  acknowledge(id: string): boolean {
+  /** Resolves true once the acknowledgement is durable; until then the row stays unread. */
+  acknowledge(id: string): Promise<boolean> {
     const result = this.results.find(r => r.id === id);
-    if (!result || result.outcome === "pending") return false;
-    const reviewedAt = result.acknowledgedAt ?? new Date(Math.max(Date.now(),
-      ...this.results.map(r => r.acknowledgedAt ? Date.parse(r.acknowledgedAt) + 1 : 0))).toISOString();
-    const next = this.trim(this.results.map(r => r === result ? { ...r, acknowledged: true, acknowledgedAt: reviewedAt } : r));
-    if (!this.persist(next)) return false;
-    this.results = next;
-    return true;
+    if (!result || result.outcome === "pending") return Promise.resolve(false);
+    if (result.acknowledged) return this.persist();
+    const times = [...this.results.map(r => r.acknowledgedAt), ...[...this.pending.values()].map(a => a.at)];
+    return this.request(id, "acknowledge", new Date(Math.max(Date.now(),
+      ...times.map(time => time ? Date.parse(time) + 1 : 0))).toISOString());
+  }
+  /** Removes reviewed metadata once durable; the recording file is never touched. */
+  remove(id: string): Promise<boolean> {
+    const result = this.results.find(r => r.id === id);
+    if (!result?.acknowledged || result.outcome === "pending") return Promise.resolve(false);
+    return this.request(id, "remove");
   }
   private unknown(result: RecordingFailure): RecordingFailure {
     const { partialPath: _path, ...base } = result;
@@ -151,20 +369,13 @@ export class RecordingResults {
   async act(id: string, action: RecordingResultAction, effects: ResultActions): Promise<boolean> {
     const result = this.results.find(r => r.id === id);
     if (!result || result.id !== id) return false;
-    if (action === "acknowledge") {
-      const applied = this.acknowledge(id);
+    if (action === "acknowledge" || action === "remove" || action === "retry") {
+      // Manual retry joins an active write instead of starting another.
+      const applied = action === "acknowledge" ? this.acknowledge(id) : action === "remove" ? this.remove(id) : this.persist();
       effects.refresh();
-      return applied;
-    }
-    if (action === "retry") {
-      const applied = this.persist(); effects.refresh(); return applied;
-    }
-    if (action === "remove") {
-      if (!result.acknowledged || result.outcome === "pending") return false;
-      const next = this.results.filter(r => r.id !== id);
-      const applied = this.persist(next);
-      if (applied) this.results = next;
-      effects.refresh(); return applied;
+      const done = await applied;
+      effects.refresh();
+      return done;
     }
     if (action === "reveal") {
       if (result.outcome !== "partial" || !result.partialPath) return false;
@@ -218,6 +429,13 @@ export function failureGuidance(code: ErrorCode, language: Language, platform: N
     : code === "display_unavailable" || code === "no_display" ? "Choose Primary display or another available screen."
     : "Check your recording settings before trying again. Starting again does not recover missing content.", language);
 }
+const persistenceWarnings: Record<PersistenceIssue, PlainMessageKey> = {
+  io: "This reminder is not saved yet. RecordStuff keeps it and retries automatically. If this continues, check free disk space and access to the app's data folder. A force-quit loses unsaved reminders.",
+  blocked: "The saved failure history could not be read or comes from a newer version, so RecordStuff will not overwrite it. This reminder is kept only until RecordStuff quits.",
+  tooLarge: "The failure history is too large to save. Remove reviewed failures, then retry. Until then this reminder is kept only until RecordStuff quits.",
+};
+/** Only `io` promises automatic retry; freeing disk space does not fix every storage error. */
+export const persistenceWarning = (issue: PersistenceIssue, language: Language): string => t(persistenceWarnings[issue], language);
 export function failureOutcome(result: RecordingFailure, language: Language): string {
   return t(result.outcome === "pending" ? "Processing the recorded data… The file result is not yet confirmed."
     : result.outcome === "partial" ? "A partial recording was kept. It may not be playable."

@@ -72,6 +72,8 @@ export class SettingsWindow {
     });
     ipcMain.handle("settings:choose", (event, group: unknown, choice: unknown) => {
       authorize(event);
+      // A result action waits for durable history; it must not hold preference saves or shortcut capture.
+      if (typeof group === "string" && group.startsWith("recordingResult:")) return this.applyResult(group, choice);
       const run = this.queue.then(() => this.apply(group, choice));
       this.queue = run.then(
         () => undefined,
@@ -208,6 +210,14 @@ export class SettingsWindow {
     clearTimeout(this.captureTimer);
     this.captureTimer = undefined;
     this.options.capture?.(false);
+  }
+
+  private async applyResult(group: string, choice: unknown): Promise<SettingsChoiceResult> {
+    const action = settingsAction(this.options.state(), this.options.context(), group, choice);
+    if (!action) this.log(`settings window: refused ${JSON.stringify({ group, choice })}`);
+    const applied = action ? await this.options.act(action) === true : false;
+    const view = this.view();
+    return { view, applied, ...(applied ? {} : { failure: view.failure }) };
   }
 
   private async apply(group: unknown, choice: unknown): Promise<SettingsChoiceResult> {

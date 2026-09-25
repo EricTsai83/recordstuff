@@ -113,7 +113,21 @@ let notifications = true;
 let captureView: SettingsView | undefined;
 let resultContext: AppContext | undefined;
 let resultSaveFails = false;
-const recordingResults = new RecordingResults({ load: () => [], save: () => { if (resultSaveFails) throw new Error("controlled storage failure"); } });
+/** Every durable result save waits, so replies arrive after Chromium's focus fixup (plan 036). */
+let saveDelayMs = 120;
+/** Mutated only by the automatic-retry case; otherwise no background retry can race scripted steps. */
+const retryDelays = [3_600_000];
+let panel: BrowserWindow | undefined;
+let lastFocus = 0;
+/** Like SettingsWindow: every projection carries the current entry token. */
+const resultView = (): SettingsView => ({ ...settingsView({ type: "idle" }, { ...resultContext!, recordingResults: recordingResults.all,
+  historyLoading: recordingResults.loading }), resultFocus: lastFocus });
+/** Production refreshes push the committed view before an action's reply arrives. */
+const pushCurrent = (): void => { if (resultContext && panel && !panel.isDestroyed()) panel.webContents.send("settings:changed", resultView()); };
+const recordingResults = new RecordingResults({ load: async () => [], save: async () => {
+  await settle(saveDelayMs);
+  if (resultSaveFails) throw new Error("controlled storage failure");
+} }, () => {}, pushCurrent, retryDelays);
 const chooseCalls: Array<[string, string]> = [];
 let holdSaves = false;
 const heldSaves: Array<() => void> = [];
@@ -132,10 +146,10 @@ ipcMain.handle("settings:choose", async (_event, group: string, choice: string) 
     const action = settingsAction({ type: "idle" }, ctx, group, choice);
     const applied = typeof action === "object" && "recordingResult" in action
       && await recordingResults.act(action.recordingResult.id, action.recordingResult.action, {
-        stat: async () => ({ isFile: () => true, size: 1 }), refresh: () => {}, settled: () => true,
+        stat: async () => ({ isFile: () => true, size: 1 }), refresh: pushCurrent, settled: () => true,
         platform: "darwin", reveal: () => {}, folder: async () => {}, permission: async () => {}, relaunch: async () => {},
       });
-    return { applied, view: settingsView({ type: "idle" }, { ...ctx, recordingResults: recordingResults.all }) };
+    return { applied, view: resultView() };
   }
   if (group === "about" && captureView) return { view: captureView, applied: false, failure: "Could not open the link. Try again." };
   const commit = () => {
@@ -547,9 +561,11 @@ async function run() {
   const failure = { id: "fixture-failure", occurredAt: "2026-09-24T12:00:00Z", code: "disk_full" as const,
     detail: "ENOSPC: controlled fixture", outcome: "pending" as const };
   recordingResults.update(failure);
+  panel = window;
   const pushResult = async (lang: Language, focus = 0) => {
     resultContext = { ...ctx, language: lang, notifications: false, recordingResults: recordingResults.all };
-    window.webContents.send("settings:changed", { ...settingsView({ type: "idle" }, resultContext), resultFocus: focus });
+    lastFocus = focus;
+    window.webContents.send("settings:changed", resultView());
     await settle(120);
   };
   await pushResult("zh-TW", 1);
@@ -598,20 +614,33 @@ async function run() {
   resultSaveFails = true;
   recordingResults.update({ ...failure, id: "persistence-failure" });
   recordingResults.update({ ...failure, id: "persistence-failure", outcome: "empty" });
+  await recordingResults.persist();
   for (const lang of ["en", "zh-TW"] as const) {
     await pushResult(lang, 4);
     const warning = await read<boolean>(window, `(() => { const el = document.querySelector(".result-persistence"); return !el.hidden && el.textContent.length > 0 && el.scrollWidth <= el.clientWidth; })()`);
-    record(`persistence failure ${lang} stays readable at minimum size`, warning, "retention warning");
+    record(`persistence failure ${lang} stays readable at minimum size`, warning, warning ? "retention warning" : JSON.stringify({
+      main: recordingResults.all.map(r => [r.id, r.acknowledged, r.saving, r.persistenceFailed]),
+      dom: await read(window, `[...document.querySelectorAll(".recording-result")].map(a => [a.dataset.resultId, a.open, !a.querySelector(".result-persistence").hidden, a.getAttribute("aria-busy")])`) }));
     fs.writeFileSync(path.join(outDir, `result-persistence-${lang}.png`), (await window.webContents.capturePage()).toPNG());
   }
+  /** Main's rows, in order, as the DOM must show them before a real click is aimed. */
+  const domMatchesMain = () => read<boolean>(window, `JSON.stringify([...document.querySelectorAll(".recording-result")].map(a => [a.dataset.resultId, !a.querySelector(".result-persistence").hidden]))
+    === ${JSON.stringify(JSON.stringify(recordingResults.all.map(r => [r.id, Boolean(r.persistenceFailed)])))}`);
   const clickAck = async (expected: () => Promise<boolean>, action = "acknowledge") => {
+    if (!await until(domMatchesMain)) throw new Error(`Rendered rows differ from main before ${action}: ${JSON.stringify({
+      main: recordingResults.all.map(r => [r.id, Boolean(r.persistenceFailed)]),
+      dom: await read(window, `[...document.querySelectorAll(".recording-result")].map(a => [a.dataset.resultId, !a.querySelector(".result-persistence").hidden])`) })}`);
     const callsBefore = chooseCalls.length;
     await read(window, `document.querySelector('.recording-result [data-action="${action}"]').scrollIntoView({block:"center"})`);
     const point = await read<{ x: number; y: number }>(window, `(() => { const r = document.querySelector('.recording-result [data-action="${action}"]').getBoundingClientRect(); return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
     window.webContents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, ...point });
     window.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, ...point });
     if (!await until(async () => chooseCalls.length > callsBefore && await expected()))
-      throw new Error("Timed out waiting for recording-result acknowledgement UI");
+      throw new Error(`Timed out waiting for recording-result ${action} UI: ${JSON.stringify({ point, calls: chooseCalls.slice(callsBefore),
+        main: recordingResults.all.map(r => [r.id, r.acknowledged, r.saving, r.persistenceFailed]),
+        dom: await read(window, `[...document.querySelectorAll(".recording-result")].map(a => ({ id: a.dataset.resultId, open: a.open, error: !a.querySelector(".result-error").hidden,
+          top: Math.round(a.getBoundingClientRect().top), actions: [...a.querySelectorAll(".result-actions button")].map(b => [b.dataset.action, b.getAttribute("aria-disabled"), Math.round(b.getBoundingClientRect().y)]) }))`),
+        hit: await read(window, `(() => { const el = document.elementFromPoint(${point.x}, ${point.y}); return el ? (el.id || el.tagName) : null; })()`) })}`);
   };
   await clickAck(() => read<boolean>(window, `!document.querySelector(".result-error").hidden`));
   record("failed durable acknowledgement stays unread and expanded", !recordingResults.current?.acknowledged &&
@@ -624,6 +653,7 @@ async function run() {
     await read<boolean>(window, `!document.querySelector(".recording-result").open && document.querySelector(".result-persistence").hidden`), "save recovered");
   resultSaveFails = true;
   recordingResults.update({ ...failure, id: "persistence-failure", outcome: "unknown", detail: "recheck changed an acknowledged result" });
+  await recordingResults.persist();
   for (const lang of ["en", "zh-TW"] as const) {
     await pushResult(lang, 5);
     if (!await read<boolean>(window, `document.querySelector(".recording-result").open`)) {
@@ -652,7 +682,7 @@ async function run() {
   await read(window, `document.getElementById("feedback").textContent = ""`);
   await pushResult("en", 6);
   record("language changes do not announce the entire failure history", await read<boolean>(window, `!document.getElementById("feedback").textContent.includes("The disk is full")`), "localized outcomes are not new events");
-  for (const result of [...recordingResults.all]) recordingResults.acknowledge(result.id);
+  for (const result of [...recordingResults.all]) await recordingResults.acknowledge(result.id);
   await pushResult("en", 7);
   while (recordingResults.all.length) {
     if (!await read<boolean>(window, `document.querySelector(".recording-result").open`)) {
@@ -669,6 +699,87 @@ async function run() {
   recordingResults.update({ ...failure, id: "after-empty-history" });
   await pushResult("en", 8);
   record("an empty-history entry request cannot make a later failure steal focus", await read<boolean>(window, `document.activeElement.id === "tab-general"`), "focus request consumed while empty");
+  const clear = async () => {
+    for (const result of [...recordingResults.all]) {
+      if (result.outcome === "pending") recordingResults.update({ ...result, outcome: "empty" });
+      await recordingResults.acknowledge(result.id); await recordingResults.remove(result.id);
+    }
+    await pushResult("en", lastFocus);
+  };
+  await clear();
+  // Plan 036: loading, automatic retry and durable replies slower than one frame, with real input.
+  const saving = { en: "Saving this change…", "zh-TW": "正在儲存這項變更…" } as const;
+  for (const lang of ["en", "zh-TW"] as const) {
+    window.webContents.send("settings:changed", { ...settingsView({ type: "idle" }, { ...ctx, language: lang, historyLoading: true, recordingResults: [] }), resultFocus: lastFocus });
+    await settle(120);
+    record(`history loading status ${lang} is readable without rows`, await read<boolean>(window, `(() => { const el = document.querySelector(".result-history-status"); return !el.hidden && el.textContent === ${JSON.stringify(lang === "en" ? "Loading failure history…" : "正在載入失敗紀錄…")} && el.scrollWidth <= el.clientWidth && !document.querySelector(".recording-result"); })()`), "loading projection");
+    fs.writeFileSync(path.join(outDir, `history-loading-${lang}.png`), (await window.webContents.capturePage()).toPNG());
+  }
+  await pushResult("en", lastFocus);
+  retryDelays[0] = 300; resultSaveFails = true;
+  recordingResults.update({ ...failure, id: "auto-retry" }); recordingResults.update({ ...failure, id: "auto-retry", outcome: "empty" });
+  await recordingResults.persist();
+  await pushResult("en", ++lastFocus);
+  const autoWarning = await read<boolean>(window, `!document.querySelector(".result-persistence").hidden && document.querySelector(".result-persistence").textContent.includes("retries automatically")`);
+  resultSaveFails = false;
+  record("automatic retry clears the persistence warning without acknowledging", autoWarning && await until(async () => !recordingResults.current?.persistenceFailed
+    && await read<boolean>(window, `document.querySelector(".result-persistence").hidden && document.querySelector(".recording-result").open`)) && !recordingResults.current?.acknowledged, "300 ms controlled backoff");
+  retryDelays[0] = 3_600_000;
+  await clear();
+  const point = async (selector: string) => {
+    await read(window, `document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:"center"})`);
+    return read<{ x: number; y: number }>(window, `(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
+  };
+  const mouse = async (selector: string) => {
+    const at = await point(selector);
+    window.webContents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, ...at });
+    window.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, ...at });
+  };
+  const press = (keyCode: string) => { window.webContents.sendInputEvent({ type: "keyDown", keyCode }); window.webContents.sendInputEvent({ type: "keyUp", keyCode }); };
+  const focusState = () => read(window, `({ active: document.activeElement.id || document.activeElement.tagName, documentFocused: document.hasFocus(), windowFocused: ${window.isFocused()} })`);
+  for (const [delay, lang] of [[150, "en"], [2000, "zh-TW"]] as const) {
+    saveDelayMs = delay;
+    const row = (id: string) => `#recording-result-${id}`;
+    const acked = `delayed-${delay}`, moved = `moved-${delay}`;
+    recordingResults.update({ ...failure, id: acked }); recordingResults.update({ ...failure, id: acked, outcome: "empty" });
+    await recordingResults.persist();
+    await pushResult(lang, ++lastFocus);
+    await mouse(`${row(acked)} [data-action="acknowledge"]`);
+    await settle(60);
+    const waiting = await read<{ busy: boolean; focused: boolean; text: string; unread: boolean }>(window, `(() => { const b = document.querySelector('${row(acked)} [data-action="acknowledge"]'); return { busy: b?.getAttribute("aria-disabled") === "true" && !b.disabled, focused: document.activeElement === b, text: document.querySelector('${row(acked)} .result-saving').textContent, unread: document.querySelector('${row(acked)}').open }; })()`);
+    record(`${delay} ms save keeps the busy Got it focusable, unread and labelled (${lang})`, waiting.busy && waiting.focused && waiting.unread && waiting.text === saving[lang], JSON.stringify(waiting));
+    if (delay === 2000) for (const scheme of ["light", "dark"] as const) {
+      nativeTheme.themeSource = scheme; await settle(150);
+      fs.writeFileSync(path.join(outDir, `result-saving-${lang}-${scheme}.png`), (await window.webContents.capturePage()).toPNG());
+    }
+    const collapsed = () => read<boolean>(window, `!document.querySelector('${row(acked)}').open && document.activeElement === document.querySelector('${row(acked)} > summary')`);
+    record(`${delay} ms delayed real mouse Got it acknowledges only the offered result and collapses it`,
+      await until(async () => recordingResults.all.find(r => r.id === acked)?.acknowledged === true && await collapsed(), delay + 3000),
+      JSON.stringify({ result: recordingResults.all.find(r => r.id === acked), ui: await focusState() }));
+    press("Return");
+    record(`${delay} ms delayed acknowledged result can be reopened with keyboard`, await until(() => read<boolean>(window, `document.querySelector('${row(acked)}').open`)), "Return on summary");
+    recordingResults.update({ ...failure, id: moved }); recordingResults.update({ ...failure, id: moved, outcome: "empty" });
+    await recordingResults.persist();
+    await pushResult(lang, ++lastFocus);
+    const tab = await read<string>(window, `document.querySelector('[role="tab"][aria-selected="true"]').id`);
+    await mouse(`${row(moved)} [data-action="acknowledge"]`);
+    await settle(40);
+    await mouse(`#${tab}`);
+    await until(async () => recordingResults.all.find(r => r.id === moved)?.acknowledged === true, delay + 3000);
+    await settle(200);
+    record(`${delay} ms focus moved during the wait is not stolen back`, await read<boolean>(window, `document.activeElement.id === ${JSON.stringify(tab)} && !document.querySelector('${row(moved)}').open`), JSON.stringify(await focusState()));
+    for (const id of [moved, acked]) {
+      if (!await read<boolean>(window, `document.querySelector('${row(id)}').open`)) {
+        await read(window, `document.querySelector('${row(id)} > summary').focus()`); press("Return");
+        if (!await until(() => read<boolean>(window, `document.querySelector('${row(id)}').open`))) throw new Error(`Could not open ${id}`);
+      }
+      await mouse(`${row(id)} [data-action="remove"]`);
+      if (!await until(() => read<boolean>(window, `!document.querySelector('${row(id)}')`), delay + 3000)) throw new Error(`Could not remove ${id}`);
+    }
+    record(`${delay} ms delayed removal of the final reviewed row returns keyboard focus to the active tab`,
+      await until(() => read<boolean>(window, `document.activeElement.id === ${JSON.stringify(tab)} && !document.getElementById("recording-results")`)), JSON.stringify(await focusState()));
+  }
+  saveDelayMs = 120;
   resultContext = undefined;
   fs.writeFileSync(path.join(outDir, "results.json"), `${JSON.stringify(results, null, 2)}\n`);
   return results.every((result) => result.ok);
