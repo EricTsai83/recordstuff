@@ -18,7 +18,10 @@ export interface RecorderWriter {
   readonly recordingPath?: string;
   readonly preservationUncertain?: boolean;
   append(bytes: Uint8Array): Promise<void>;
-  /** Flush, close and rename; resolves with the final path. */
+  /**
+   * Flush, close and rename; resolves with the final path. Rejects instead of
+   * publishing zero confirmed bytes, after any retained write/sync error.
+   */
   finish(): Promise<string>;
   /** Close and keep the partial file; resolves with its path if it was kept. */
   abandon(): Promise<string | undefined>;
@@ -86,6 +89,8 @@ interface Session {
   /** `stopped` arrived and the writer is being finished; a hard cap must not call this a failure. */
   finalizing: boolean;
   stopOnStart: boolean;
+  /** A nonempty chunk arrived; empty chunks neither satisfy the first-media deadline nor count as media. */
+  hasMedia: boolean;
   writer?: RecorderWriter;
   opening?: Promise<void>;
   nextSeq: number;
@@ -284,6 +289,7 @@ export class Recorder {
       quality: this.deps.quality(),
       finalizing: false,
       stopOnStart: false,
+      hasMedia: false,
       nextSeq: 0,
       writes: Promise.resolve(),
     };
@@ -369,7 +375,7 @@ export class Recorder {
         if (session.phase === "starting") {
           session.phase = "recording";
           this.clearTimer(session);
-          if (session.nextSeq === 0) {
+          if (!session.hasMedia) {
             session.timer = setTimeout(() => {
               void this.fail(session.id, "capture_start_failed", "capture host did not send media before the deadline");
             }, this.deps.startTimeoutMs);
@@ -407,8 +413,11 @@ export class Recorder {
       return;
     }
     session.nextSeq += 1;
-    if (seq === 0) this.deps.log(`recorder: session ${session.id} first chunk ${bytes.byteLength} bytes`);
-    if (seq === 0 && session.phase !== "stopping") this.clearTimer(session);
+    if (!session.hasMedia && bytes.byteLength > 0) {
+      session.hasMedia = true;
+      this.deps.log(`recorder: session ${session.id} first chunk ${bytes.byteLength} bytes`);
+      if (session.phase !== "stopping") this.clearTimer(session);
+    }
     const writer = session.writer;
     if (!writer) return;
     const write = writer.append(new Uint8Array(bytes));
@@ -427,6 +436,7 @@ export class Recorder {
     try {
       finalPath = await session.writer.finish();
     } catch (cause) {
+      // Zero confirmed bytes arrive here as capture_start_failed; disk errors keep their code.
       await this.fail(session.id, errorCodeOf(cause, "output_write_failed"), messageOf(cause));
       return;
     }

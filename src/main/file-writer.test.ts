@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FileWriteError, FileWriter, classifyWriteError, ensureWritableDir, nodeFs, type FileWriterFs, type WritableHandle } from "./file-writer";
+import { FileWriteError, FileWriter, NO_MEDIA_DETAIL, classifyWriteError, ensureWritableDir, nodeFs, type FileWriterFs, type WritableHandle } from "./file-writer";
 
 let dir: string;
 const activeWriters: FileWriter[] = [];
@@ -80,6 +80,7 @@ describe("FileWriter", () => {
 
   it("append after finish rejects", async () => {
     const writer = await FileWriter.open(path.join(dir, "c.recording.mp4"), path.join(dir, "c.mp4"));
+    await writer.append(bytes(1));
     await writer.finish();
     await expect(writer.append(bytes(1))).rejects.toThrow(/closed/);
   });
@@ -153,6 +154,54 @@ describe("FileWriter", () => {
     const partial = await writer.abandon();
     expect(await fs.readFile(partial!)).toEqual(Buffer.from([1]));
     await expect(fs.stat(path.join(dir, "r.mp4"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
+
+describe("zero-byte publication", () => {
+  it.each([0, 1, 2])("rejects finish after %i empty appends, closes, removes the file and allows a retry", async (count) => {
+    vi.useFakeTimers();
+    const close = vi.fn();
+    const io = wrapFs({ onOpen: (handle) => ({
+      write: (data) => handle.write(data), sync: () => handle.sync(),
+      close: async () => { close(); await handle.close(); },
+    }) });
+    const recording = path.join(dir, "empty.recording.mp4");
+    const final = path.join(dir, "empty.mp4");
+    const writer = await FileWriter.open(recording, final, { io });
+    const appends = Array.from({ length: count }, () => writer.append(new Uint8Array()));
+    const error = await writer.finish().catch((cause: unknown) => cause);
+    await Promise.all(appends);
+    expect(error).toBeInstanceOf(FileWriteError);
+    expect(error).toMatchObject({ code: "capture_start_failed", message: expect.stringContaining(NO_MEDIA_DETAIL) });
+    expect(writer.bytesWritten).toBe(0);
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(await fs.readdir(dir)).toEqual([]);
+
+    // A retry may reuse the freed name before the owner's own abandon runs.
+    const retry = await FileWriter.open(recording, final);
+    await retry.append(bytes(4, 2));
+    expect(await writer.abandon()).toBeUndefined();
+    expect(await retry.finish()).toBe(final);
+    expect(await fs.readFile(final)).toEqual(Buffer.from([4, 2]));
+  });
+
+  it.each(["write", "background sync"])("keeps a %s failure's own code when nothing was written", async (failing) => {
+    vi.useFakeTimers();
+    const noSpace = () => Object.assign(new Error("no space"), { code: "ENOSPC" });
+    const writer = await FileWriter.open(path.join(dir, "nospace.recording.mp4"), path.join(dir, "nospace.mp4"), {
+      io: wrapFs({ onOpen: (handle) => ({
+        close: () => handle.close(),
+        sync: async () => { if (failing !== "write") throw noSpace(); await handle.sync(); },
+        write: async (data) => { if (failing === "write") throw noSpace(); return handle.write(data); },
+      }) }),
+    });
+    activeWriters.push(writer);
+    if (failing === "write") await expect(writer.append(bytes(1))).rejects.toMatchObject({ code: "disk_full" });
+    else await vi.advanceTimersByTimeAsync(5000);
+    await expect(writer.finish()).rejects.toMatchObject({ code: "disk_full" });
+    expect(await writer.abandon()).toBeUndefined();
+    expect(await fs.readdir(dir)).toEqual([]);
   });
 });
 

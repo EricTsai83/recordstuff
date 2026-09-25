@@ -1,12 +1,13 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { FileWriter, nodeFs } from "./file-writer";
+import { FileWriter, NO_MEDIA_DETAIL, nodeFs } from "./file-writer";
 import { SavedNotification, SAVED_NOTIFICATION_DELAY_MS } from "./saved-notification";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostMessage } from "../shared/protocol";
 import { DEFAULT_QUALITY, type CaptureReport, type QualitySettings } from "../shared/quality";
 import type { RecordingState } from "../shared/state";
+import type { RecordingFailure } from "../shared/recording-result";
 import { Recorder, formatTimestamp, type RecorderEvent, type RecorderHost, type RecorderWriter } from "./recorder";
 
 class FakeHost implements RecorderHost {
@@ -890,6 +891,198 @@ describe("Recorder with real FileWriter", () => {
       await fs.rm(dir, { recursive: true, force: true });
     }
   });
+});
+
+describe("Recorder rejects zero-byte output with real FileWriter", () => {
+  async function real(options: {
+    beforeWrite?: () => Promise<void>; syncError?: string; publishFailure?: (result: RecordingFailure) => Promise<void>;
+  } = {}) {
+    vi.useRealTimers();
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "recordstuff-empty-"));
+    const host = new FakeHost();
+    const events: RecorderEvent[] = [];
+    const closed: string[] = [];
+    const syncs: string[] = [];
+    let session = 0;
+    const recorder = new Recorder({
+      host, outputDir: () => dir, quality: () => DEFAULT_QUALITY,
+      ensureWritableDir: async () => undefined,
+      now: () => new Date(2026, 8, 25, 12, 0, 0),
+      newSessionId: () => `empty-${++session}`,
+      ...(options.publishFailure ? { publishFailure: options.publishFailure } : {}),
+      openWriter: (recordingPath, finalPath) => FileWriter.open(recordingPath, finalPath, {
+        ...(options.syncError ? { fsyncIntervalMs: 5 } : {}),
+        io: { ...nodeFs,
+          open: async (file, flags) => {
+            const handle = await nodeFs.open(file, flags);
+            return {
+              sync: async () => {
+                syncs.push(file);
+                if (options.syncError) throw Object.assign(new Error(options.syncError), { code: options.syncError });
+                await handle.sync();
+              },
+              close: async () => { await handle.close(); closed.push(file); },
+              write: async (data) => { await options.beforeWrite?.(); return handle.write(data); },
+            };
+          },
+        },
+      }),
+    });
+    recorder.subscribe((event) => events.push(event));
+    const begin = async (id: string): Promise<void> => {
+      recorder.toggle();
+      await vi.waitFor(() => expect(host.started).toContain(id));
+      host.emit(started(id));
+    };
+    const of = <T extends RecorderEvent["type"]>(type: T) =>
+      events.filter((event): event is Extract<RecorderEvent, { type: T }> => event.type === type);
+    const cleanup = async (): Promise<void> => {
+      await recorder.shutdown();
+      await fs.rm(dir, { recursive: true, force: true });
+    };
+    return { dir, host, recorder, closed, syncs, begin, of, cleanup };
+  }
+  const media = (sessionId: string, seq: number, ...values: number[]): HostMessage =>
+    ({ type: "chunk", sessionId, seq, bytes: new Uint8Array(values).buffer });
+
+  it.each([["no chunks", 0], ["only empty chunks", 2]] as const)(
+    "fails a stop with %s as capture_start_failed, removes the empty file and records again",
+    async (_label, empty) => {
+      const ctx = await real();
+      try {
+        await ctx.begin("empty-1");
+        for (let seq = 0; seq < empty; seq++) ctx.host.emit(media("empty-1", seq));
+        ctx.recorder.stop();
+        ctx.host.emit({ type: "stopped", sessionId: "empty-1" });
+        ctx.host.emit({ type: "stopped", sessionId: "empty-1" });
+        await vi.waitFor(() => expect(ctx.of("failed")).toHaveLength(1));
+        expect(ctx.of("failed")).toEqual([{ type: "failed", code: "capture_start_failed", detail: expect.stringContaining(NO_MEDIA_DETAIL) }]);
+        expect(ctx.of("failureStatus").at(-1)?.result).toMatchObject({ code: "capture_start_failed", outcome: "empty" });
+        expect(ctx.of("failureStatus").at(-1)?.result).not.toHaveProperty("partialPath");
+        expect(ctx.of("saved")).toHaveLength(0);
+        expect(ctx.recorder.state).toEqual({ type: "idle" });
+        expect(ctx.closed).toHaveLength(1);
+        expect(await fs.readdir(ctx.dir)).toEqual([]);
+
+        // Immediate retry; its only nonempty chunk arrives right before stopped.
+        await ctx.begin("empty-2");
+        ctx.recorder.stop();
+        ctx.host.emit(media("empty-2", 0, 5, 6, 7));
+        ctx.host.emit({ type: "stopped", sessionId: "empty-2" });
+        await vi.waitFor(() => expect(ctx.of("saved")).toHaveLength(1));
+        const saved = ctx.of("saved")[0]!.path;
+        expect(await fs.readFile(saved)).toEqual(Buffer.from([5, 6, 7]));
+        expect(await fs.readdir(ctx.dir)).toEqual([path.basename(saved)]);
+        expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: saved });
+        expect(ctx.of("failed")).toHaveLength(1);
+      } finally {
+        await ctx.cleanup();
+      }
+    },
+  );
+
+  it("keeps a same-second retry's file when it starts while the empty failure is still publishing", async () => {
+    let release!: () => void;
+    const publishing = new Promise<void>((resolve) => { release = resolve; });
+    const ctx = await real({ publishFailure: async (result) => { if (result.outcome === "pending") await publishing; } });
+    try {
+      await ctx.begin("empty-1");
+      ctx.recorder.stop();
+      ctx.host.emit({ type: "stopped", sessionId: "empty-1" });
+      await vi.waitFor(() => expect(ctx.of("failureStatus")).toHaveLength(1));
+      expect(ctx.recorder.state).toEqual({ type: "idle" });
+      // The empty file is already gone, so the retry reuses its name.
+      await ctx.begin("empty-2");
+      ctx.host.emit(media("empty-2", 0, 5, 6, 7));
+      release();
+      await vi.waitFor(() => expect(ctx.of("failed")).toHaveLength(1));
+      expect(ctx.of("failed")[0]).toMatchObject({ code: "capture_start_failed" });
+      ctx.recorder.stop();
+      ctx.host.emit({ type: "stopped", sessionId: "empty-2" });
+      await vi.waitFor(() => expect(ctx.of("saved")).toHaveLength(1));
+      const saved = ctx.of("saved")[0]!.path;
+      expect(path.basename(saved)).toBe("2026-09-25 12-00-00.mp4");
+      expect(await fs.readFile(saved)).toEqual(Buffer.from([5, 6, 7]));
+      expect(ctx.of("failed")).toHaveLength(1);
+    } finally {
+      release();
+      await ctx.cleanup();
+    }
+  });
+
+  it.each(["completes", "fails with ENOSPC"] as const)("waits for a pending first append that %s before deciding the result", async (result) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const ctx = await real({ beforeWrite: async () => {
+      await gate;
+      if (result !== "completes") throw Object.assign(new Error("no space"), { code: "ENOSPC" });
+    } });
+    try {
+      await ctx.begin("empty-1");
+      ctx.host.emit(media("empty-1", 0, 1, 2, 3));
+      ctx.recorder.stop();
+      ctx.host.emit({ type: "stopped", sessionId: "empty-1" });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(ctx.of("saved")).toHaveLength(0);
+      expect(ctx.of("failed")).toHaveLength(0);
+      release();
+      if (result === "completes") {
+        await vi.waitFor(() => expect(ctx.of("saved")).toHaveLength(1));
+        expect(await fs.readFile(ctx.of("saved")[0]!.path)).toEqual(Buffer.from([1, 2, 3]));
+        expect(ctx.of("failed")).toHaveLength(0);
+      } else {
+        // A real disk error keeps its own code rather than becoming "no media".
+        await vi.waitFor(() => expect(ctx.of("failed")).toHaveLength(1));
+        expect(ctx.of("failed")[0]).toMatchObject({ code: "disk_full" });
+        expect(ctx.of("failed")[0]).not.toHaveProperty("partialPath");
+        expect(ctx.of("saved")).toHaveLength(0);
+        expect(await fs.readdir(ctx.dir)).toEqual([]);
+      }
+    } finally {
+      release();
+      await ctx.cleanup();
+    }
+  });
+
+  it.each([["ENOSPC", "disk_full"], ["EIO", "output_write_failed"]] as const)(
+    "reports a background sync failure (%s) before media as %s, not as no media",
+    async (errno, code) => {
+      const ctx = await real({ syncError: errno });
+      try {
+        await ctx.begin("empty-1");
+        await vi.waitFor(() => expect(ctx.syncs.length).toBeGreaterThan(0));
+        ctx.recorder.stop();
+        ctx.host.emit({ type: "stopped", sessionId: "empty-1" });
+        await vi.waitFor(() => expect(ctx.of("failed")).toHaveLength(1));
+        expect(ctx.of("failed")[0]).toMatchObject({ code, detail: expect.stringContaining(errno) });
+        expect(ctx.of("failed")[0]).not.toHaveProperty("partialPath");
+        expect(ctx.of("saved")).toHaveLength(0);
+        expect(ctx.closed).toHaveLength(1);
+        expect(await fs.readdir(ctx.dir)).toEqual([]);
+      } finally {
+        await ctx.cleanup();
+      }
+    },
+  );
+});
+
+it("an empty chunk does not satisfy the first-media deadline", async () => {
+  const ctx = setup();
+  ctx.recorder.toggle();
+  await flush();
+  ctx.host.emit(started("s1"));
+  ctx.host.emit(chunk("s1", 0, 0));
+  await vi.advanceTimersByTimeAsync(8000);
+  expect(ctx.recorder.state).toEqual({ type: "idle" });
+  expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "capture_start_failed", detail: expect.stringContaining("before the deadline") });
+
+  ctx.recorder.toggle();
+  await flush();
+  ctx.host.emit(started("s1"));
+  ctx.host.emit(chunk("s1", 0, 0));
+  ctx.host.emit(chunk("s1", 1));
+  await vi.advanceTimersByTimeAsync(20_000);
+  expect(ctx.recorder.state.type).toBe("recording");
 });
 
 describe("failure presentation timing", () => {

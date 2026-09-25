@@ -3,6 +3,7 @@
  * arrival order, fsyncs every 5 seconds, and publishes without overwriting
  * `<stamp>.recording.mp4` → `<stamp>.mp4` once the last chunk is on disk.
  * Any failure keeps what was written; nothing is ever silently discarded.
+ * Zero written bytes is never published: nonempty is necessary, not proof of a playable file.
  */
 import fs from "node:fs/promises";
 import { constants } from "node:fs";
@@ -36,6 +37,9 @@ export const nodeFs: FileWriterFs = {
   mkdir: (dir, options) => fs.mkdir(dir, options),
   writeFile: (filePath, data) => fs.writeFile(filePath, data),
 };
+
+/** Why finish refused to publish; the only gate between zero bytes and a saved `.mp4`. */
+export const NO_MEDIA_DETAIL = "capture ended without media; no bytes were written";
 
 export class FileWriteError extends Error {
   constructor(
@@ -93,6 +97,7 @@ export class FileWriter {
   private fsyncTimer: ReturnType<typeof setInterval> | undefined;
   private closed = false;
   private _bytesWritten = 0;
+  private abandoned: Promise<string | undefined> | undefined;
   preservationUncertain = false;
 
   private constructor(
@@ -148,9 +153,18 @@ export class FileWriter {
     });
   }
 
-  /** Flush, close, publish exclusively, then remove the temporary file. */
+  /**
+   * Flush, close, publish exclusively, then remove the temporary file. Draining
+   * first lets a retained write/sync error keep its code; with no confirmed
+   * bytes it then closes, removes the empty file and rejects with
+   * `capture_start_failed` instead of publishing an empty `.mp4`.
+   */
   async finish(): Promise<string> {
     await this.enqueue(() => this.handle.sync());
+    if (this._bytesWritten === 0) {
+      await this.abandon();
+      throw new FileWriteError("capture_start_failed", this.recordingPath, NO_MEDIA_DETAIL);
+    }
     await this.release();
     const ext = path.extname(this.finalPath);
     const stem = this.finalPath.slice(0, this.finalPath.length - ext.length);
@@ -176,8 +190,15 @@ export class FileWriter {
    * Close without renaming, keeping whatever was written under the
    * `.recording.mp4` name. An empty file is removed. Never throws.
    * Returns the kept partial path, or undefined if nothing was kept.
+   * Idempotent: once the empty path is freed, a same-second retry may reuse
+   * it, so a later call must not unlink again.
    */
-  async abandon(): Promise<string | undefined> {
+  abandon(): Promise<string | undefined> {
+    this.abandoned ??= this.abandonOnce();
+    return this.abandoned;
+  }
+
+  private async abandonOnce(): Promise<string | undefined> {
     try {
       await this.queue;
     } catch {
