@@ -2,7 +2,7 @@
 
 [English](035-guided-native-acceptance.md) | [繁體中文](035-guided-native-acceptance.zh-TW.md)
 
-Status: planned, not executed. Created: 2026-09-25. This plan is permanently the **last queue item**, currently after 027–034, 037, 038 and 040; see [order](README.md#order-and-status). Any later implementation/fix plans go before it, regardless of numbering. It is the last step before clearing the queue, not a request to begin testing now.
+Status: planned, not executed. Created: 2026-09-25. This plan is permanently the **last queue item**, currently after 027–034, 037 and 040; see [order](README.md#order-and-status). Any later implementation/fix plans go before it, regardless of numbering. It is the last step before clearing the queue, not a request to begin testing now.
 
 ## Purpose and ownership
 
@@ -88,7 +88,7 @@ If 037 is deferred at its measurement gate, retain that explicit decision and ma
 
 ## Additional health-guard acceptance (not performed)
 
-Source: [038](038-recording-health-guards.md). Prepare recipes from its final thresholds.
+Source: [038 closure](../docs/verification/history-2026-09.md#plan-038-closure--2026-09-25). Prepare recipes from its final thresholds in [recording-health.ts](../src/main/recording-health.ts) and the [recording design](../docs/system-design/recording.md#deadlines-and-supervision).
 
 - [ ] N30: With a bounded test disk image as the output folder, record until the disk guard stops the recording. Observe the early-stop wording in the notification and log, play the saved file, and confirm no failure entry appears. Then, on an isolated output folder, force-quit the labeled bundle during a recording and relaunch: one interruption entry names the temporary file, reveals it while it exists, becomes unknown after the file is moved away, and does not repeat after acknowledgement or another restart.
 - [ ] N31: Put the Mac to sleep during a recording, wake it, and record the actual outcome (saved, failed with a partial, or stuck) together with the suspend/resume log lines and any failure reason. This is evidence for a later stop-on-sleep decision, not a pass/fail gate; do not change behavior inside this round.

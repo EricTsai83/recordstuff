@@ -2,7 +2,7 @@
 
 [English](040-recording-countdown.md) | [繁體中文](040-recording-countdown.zh-TW.md)
 
-Status: planned, not implemented. Created: 2026-09-25. Queue after 033 and before [034](034-windows-tray-icons.md); it follows [038](038-recording-health-guards.md) because both change the Recorder start phase. Execution order: see [queue](README.md#order-and-status).
+Status: planned, not implemented. Created: 2026-09-25. Queue after 033 and before [034](034-windows-tray-icons.md); it follows [038](../docs/verification/history-2026-09.md#plan-038-closure--2026-09-25) (complete) because both change the Recorder start phase. Execution order: see [queue](README.md#order-and-status).
 
 ## Purpose and boundary
 

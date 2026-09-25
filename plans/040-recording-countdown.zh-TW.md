@@ -2,7 +2,7 @@
 
 [English](040-recording-countdown.md) | [繁體中文](040-recording-countdown.zh-TW.md)
 
-狀態：已規劃，尚未實作。建立日期：2026-09-25。排在 033 之後、[034](034-windows-tray-icons.zh-TW.md) 之前；因為與 [038](038-recording-health-guards.zh-TW.md) 都會修改 Recorder 的開始階段，所以排在 038 之後。執行順序見[佇列](README.zh-TW.md#順序與狀態)。
+狀態：已規劃，尚未實作。建立日期：2026-09-25。排在 033 之後、[034](034-windows-tray-icons.zh-TW.md) 之前；因為與 [038](../docs/zh-TW/verification/history-2026-09.md#plan-038-結案--2026-09-25)（已完成）都會修改 Recorder 的開始階段，所以排在 038 之後。執行順序見[佇列](README.zh-TW.md#順序與狀態)。
 
 ## 目的與範圍
 

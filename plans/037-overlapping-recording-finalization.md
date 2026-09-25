@@ -2,7 +2,7 @@
 
 [English](037-overlapping-recording-finalization.md) | [繁體中文](037-overlapping-recording-finalization.zh-TW.md)
 
-Status: planned, not implemented. Created: 2026-09-25. After 025, [026](../docs/verification/history-2026-09.md#plan-026-closure--2026-09-25) (complete), 029, 030, [036](../docs/verification/history-2026-09.md#plan-036-closure--2026-09-25) (complete) and [038](038-recording-health-guards.md); default queue after 034, before final [035](035-guided-native-acceptance.md). Those plans supply terminal ownership, empty-file validation, stable event identity, media evidence, nonblocking history/exit coordination and the writer backlog bound.
+Status: planned, not implemented. Created: 2026-09-25. After 025, [026](../docs/verification/history-2026-09.md#plan-026-closure--2026-09-25) (complete), 029, 030, [036](../docs/verification/history-2026-09.md#plan-036-closure--2026-09-25) (complete) and [038](../docs/verification/history-2026-09.md#plan-038-closure--2026-09-25) (complete); default queue after 034, before final [035](035-guided-native-acceptance.md). Those plans supply terminal ownership, empty-file validation, stable event identity, media evidence, nonblocking history/exit coordination and the writer backlog bound.
 
 ## Value and measurement gate
 

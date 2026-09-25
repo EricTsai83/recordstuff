@@ -9,6 +9,48 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 038 結案 — 2026-09-25
+
+錄影健康防護，由 Claude 實作、Codex GPT-6 Astra review。每項防護只做觀察，並透過既有的停止或失敗流程結束；沒有新增狀態、健康 UI，也不做任何復原、重新封裝或修復。所有門檻都是初始目標，集中在 [recording-health.ts](../../../src/main/recording-health.ts)（見[錄製設計](../system-design/recording.md#期限與故障隔離)）。
+
+- **磁碟餘裕。** 從 `started` 到停止前，以單一不重疊 timer 每 5 秒讀取輸出資料夾的 `fs.statfs`。低於 1 GiB 記錄一次；低於 200 MiB 只要求一次正常停止，讓檔案排空、sync 並發布。saved 事件帶 `stoppedEarly: "lowDisk"`，log 與存檔通知會說明磁碟即將滿（「已儲存 {file}。磁碟空間即將用盡，已提前停止錄製」／"Saved {file}. Recording stopped early because the disk is almost full."）。這類錄影屬於成功，不進入失敗紀錄。查詢失敗只記錄一次，永不因此停止錄影。
+- **擷取停滯。** `started` 之後，每個非空 chunk 重設同一個 timer，空 chunk 不算。10 秒時記錄一次警告，30 秒時以 `capture_failed` 與停滯 detail 失敗，保留部分檔。收到 `stopped` 或任何失敗都會解除，因此正常停止後較慢的收尾不會被當成停滯。心跳與首片期限不變。
+- **寫入積壓。** FileWriter 提供 `backlogBytes`。會超過 64 MiB 的 append 立即被拒絕且不排入佇列，之後的 append 也一律拒絕；拒絕前已接受的 bytes 仍會寫入，因此部分檔是沒有缺口的前段。finish 會拒絕，session 以 `output_write_failed` 與積壓 detail 失敗；若先前已保留磁碟錯誤，則沿用該錯誤。
+- **開始期間已保留的磁碟錯誤。** 泛用的 `capture_start_failed`（首片期限、擷取請求逾時、host start 被拒，或 host 回報 capture_start_failed）在發布 pending 結果前，會先排空 writer 最多 2 秒。若 writer 已保留錯誤，就改報 disk_full 或 output_write_failed，讓通知與紀錄一致。具體的 host 原因與乾淨的 writer 維持原代碼。
+- **中斷證據。** 每個 session 在 `userData/recording-sessions/` 有一個 sentinel，於每次嘗試暫存檔名之前以原子寫入建立，並在每個終止結果發布後移除；正常退出會等待移除完成。啟動時，每個遺留的 sentinel 會成為一筆未確認紀錄，使用新代碼 `app_terminated`：「RecordStuff 在錄製期間未正常結束」／"RecordStuff did not exit normally while recording."，指引說明檔案可能不完整且不會修復。需要新代碼的原因是：`capture_failed` 固定的原因與「請檢查錄影設定」指引，對當機情況並不誠實；host 協定會拒絕 `app_terminated`。紀錄 ID 由 session 推導，時間為 session 開始時間，路徑以還原部分檔的方式重新檢查。只有該紀錄曾出現在已保存的歷史檔中，才移除 sentinel；這包含之後的自動重試，也包含期間已保存的移除操作之前的保存。暫時無法讀取的 sentinel 會保留，中斷的寫入或無效內容則捨棄。舊版 App 會把含 `app_terminated` 的歷史視為無法讀取，並如同處理較新版本的歷史一樣拒絕覆寫。
+- **睡眠與喚醒。** `power: suspend` 與 `power: resume` 的 log 會記下進行中的 session 與狀態。睡眠不會停止錄影。
+
+自動化證據：最終 `pnpm check` 通過 typecheck、45 個檔案 739 項測試與 build；`git diff --check` 無誤。測試使用注入的時鐘與可用空間、真實 Recorder 事件，註明處則使用真實暫存檔，涵蓋：
+
+- 磁碟：跨越門檻時只警告一次、只停止一次，停止中不再查詢，saved 事件與 log 帶有原因；查詢失敗只記錄一次，不停止錄影。
+- 停滯：10 秒警告、30 秒失敗；非空 chunk 重設計時，空 chunk 不會；真實 FileWriter 的停滯保留非空暫存檔及其確切位元組；停止後長達 60 秒的收尾不算停滯。
+- 積壓：FileWriter 立即拒絕，之後的 append 與 finish 也拒絕，同時已寫入的前段完全正確，並保留先前的磁碟錯誤；Recorder 以積壓 detail 失敗，保留已接受的位元組。
+- 開始期間磁碟錯誤：使用 sync 會失敗的真實 FileWriter，首片期限、擷取請求逾時、host start 被拒與 host 回報的 capture_start_failed，都回報 disk_full 且結果為 empty，第一個 pending 狀態就已帶此代碼；no_audio_track 與乾淨 writer 維持原代碼；會等待執行中的 sync，卡住的 sync 有上限。
+- Sentinel：暫存檔存在前 sentinel 已存在並記下路徑；撞名時改寫；在 saved 之後、六種失敗代碼之後，以及開檔期限後才開啟的遲到 writer 之後，都會移除；寫入失敗只記錄一次，錄影照常進行；正常退出後不會留下。
+- 啟動：兩個 sentinel（一個檔案存在、一個不存在）成為 partial 與 unknown 紀錄；重啟時重新檢查且不重複；確認狀態會保存；歷史被封鎖時保留 sentinel；自動重試成功時移除它，已移除的紀錄不會復活；重新檢查期間已保存的移除也一樣；無法讀取的 sentinel 會保留，無效或寫入中斷的會捨棄；協定拒絕新代碼。
+
+反向對照：pass 2 修正前，「重新檢查期間移除」的測試會卡住（5 秒逾時）。
+
+原生驗收於 M1 Pro、macOS 26.6.2，使用 HEAD `e72552c` 加上未提交的變更：`pnpm start:app` 建置並驗證全新簽章 bundle（九個 identity）。`pnpm acceptance -- --seconds 10` 錄得 10.2 秒、1920×1080、48 kHz 雙聲道，RMS −27.2／−27.2 dB，10 次閃光與 10 次嗶聲，完整解碼，通過（`2026-09-25T10-43-08-381Z-hotkey-acceptance`）。App log 依序為 starting → recording → stopping → idle，沒有停滯、低空間、空間查詢失敗或 sentinel 失敗的紀錄。當時可用空間為 366 GiB，因此打包版的 `statfs` 查詢正常執行，但沒有觸及任何門檻。`userData/recording-sessions/` 已建立，存檔後為空，也沒有留下 `.recording.mp4`。之後由 Codex GPT-6 Astra 以 computer use 在 QuickTime 播放該檔，從 0 播到 10.234 秒並顯示動態測試素材；關閉影片時沒有出現「打開」面板，並結束 QuickTime（`2026-09-25T10-45-56-290Z-plan038-computer-use`，截圖當時只存於本機）。RecordStuff 與 QuickTime 都已退出，沒有變更任何偏好。未記錄輸出裝置與音量。
+
+以下沒有做原生驗收：以有上限的磁碟映像觸發磁碟防護停止；強制結束後的中斷紀錄及其定位／unknown 轉換（035 N30）；錄製中睡眠（035 N31）；停滯、積壓與開始期間磁碟錯誤路徑（僅有受控測試）。主觀聽感、音畫同步、長錄製、權限與螢幕拔除不在本次範圍。
+
+Codex GPT-6 Astra（medium reasoning、唯讀）完成兩個 pass，約 113 秒加 92 秒 = 205 秒（預算 30 分鐘），沒有使用 fallback。Pass 1 回報兩項 Medium，均已接受：
+
+1. 首次保存歷史失敗而保留的 sentinel，在之後自動重試成功時從未移除，已確認並移除的紀錄會被重新匯入。現在由 `RecordingResults.saved(ids)` 等待之後的成功保存，本身不觸發保存。
+2. 暫時性的讀取錯誤會刪除有效的 sentinel。現在這類 sentinel 會保留到之後的啟動。
+
+Pass 2 確認第 2 項修正，並回報一項 Medium，已接受：若啟動重新檢查期間已保存了一次移除，`saved` 會永遠等待，sentinel 也不會移除。修正方式是記錄所有曾經保存過的 ID。這項修正經過針對性與完整驗證，但依兩個 pass 的上限，沒有第三次 review。
+
+接受的限制：
+
+- 持續低於位元率的磁碟吞吐量仍會結束錄影。
+- sentinel 寫入包含在 8 秒開檔期限內，因此卡住的 userData 磁碟會被報為 output_open_failed。本次未觀察到。
+- 若在發布與移除 sentinel 之間當機，已存檔的錄影也會被回報為中斷；其路徑已不存在，所以紀錄為 unknown。
+- 使用者移除紀錄後若 sentinel 的 unlink 失敗，下次啟動會再次匯入該紀錄。
+
+依維護者要求，本輪已依範圍分批 commit 到本機 main：程式與測試 `a3fd073`、設計文件 `9e8cfcc`，以及這個結案 commit。沒有 push 或發布。同樣依維護者要求，寫完本紀錄後已刪除測試錄影 `2026-09-25 18-43-14.mp4`、上述兩個本機 measurements 目錄與暫存的 review log；原始證據已不存在，本紀錄就是留下的證據。
+
 ## Plan 026 結案 — 2026-09-25
 
 不再把空錄影發布為成功；由 Claude 實作、Codex GPT-6 Astra review。`FileWriter.finish` 是唯一的發布關卡：先排空佇列，讓已保留的 append 或背景 sync 錯誤以原代碼（disk_full 或 output_write_failed）優先拒絕；之後若確認寫入為零位元組，就關閉 handle、清除 fsync timer、刪除空暫存檔，並以 `capture_start_failed` 與 detail `capture ended without media; no bytes were written` 拒絕。Recorder 把這個拒絕導入單一失敗流程，因此不會出現 saved、lastSavedPath 或 `.mp4`，結果為 empty。`abandon()` 具冪等性，失敗流程稍後的清理不會刪掉在同一秒內重用該檔名的重試錄影。只有非空 chunk 才滿足首片期限。既有的雙語 `capture_start_failed` 文案（「無法開始錄製」加「這次沒有留下錄影內容。」）仍然誠實，因此沒有新增錯誤碼或修改文案。沒有最短錄製秒數；非空不代表可播放（見[錄製設計](../system-design/recording.md#寫檔與失敗)）。

@@ -6,13 +6,12 @@
 
 ## 順序與狀態
 
-以下計畫皆已規劃、尚未實作。目前順序：**038 → 027 → 028 → 029 → 030 → 031 → 032 → 033 → 040 → 034 → 037 → 035**。
+以下計畫皆已規劃、尚未實作。目前順序：**027 → 028 → 029 → 030 → 031 → 032 → 033 → 040 → 034 → 037 → 035**。
 
-排序規則：零風險整理與優先的歷史保存工作已排在最前並完成；目前先處理防止資料損失的防護，然後依原順序處理 audit 修正，最後是可選或需量測的工作，035 永遠最後。即使之後新增更大編號的實作／修復計畫，也排在 035 之前。
+排序規則：零風險整理、優先的歷史保存工作與防止資料損失的防護已排在最前並完成；目前依原順序處理 audit 修正，最後是可選或需量測的工作，035 永遠最後。即使之後新增更大編號的實作／修復計畫，也排在 035 之前。
 
 | 計畫 | 來源 | 範圍 |
 | --- | --- | --- |
-| [038 — 錄影健康防護](038-recording-health-guards.zh-TW.md) | 2026-09-25 T3 Code／Cap 比較 | 磁碟餘裕停止、擷取停滯失敗、有上限的寫入積壓、每個 session 一份的中斷哨兵、睡眠／喚醒 log，以及開始期間失敗回報已保留的磁碟錯誤，全部走既有停止／失敗路徑；不加新 UI 或復原 |
 | [027 — 權限狀態與查詢生命週期](027-permission-state-and-query-lifetime.zh-TW.md) | R1-2, R1-6 | 權限同步與唯一有擁有者的列舉請求 |
 | [028 — 設定視窗與快捷鍵生命週期](028-shortcut-editing-lifecycle.zh-TW.md) | R1-1, R1-5; R2-03 | 關閉組合鍵、capture lease 與設定交易分離、視窗崩潰恢復共用擁有權 |
 | [029 — Log 身分與跨輪替驗收](029-recording-log-correlation.zh-TW.md) | R1-7; R2-07；run id 來自比較 | 以 session 為鍵的結構化紀錄、每次啟動的 run id、等待與清理共用的跨輪替讀取器 |
@@ -27,24 +26,23 @@
 
 硬性相依如下，其餘皆為工作安排：
 
-- 038 建立在已完成的 024 完整寫入計數與 026 非空檔案保證之上，其提前停止依賴該保證；排在 audit UI 計畫之前，因為它防止資料損失。
 - 029 依賴已完成的 025 終止事件契約。
-- 037 依賴 025、026、029、030、036 與 038（025、026、036 已完成），須維持 036 在全部媒體工作之後才處理 metadata 的退出階段，並重用 038 定義的寫入積壓上限。
-- 040 與 038 都修改 Recorder 的開始階段，所以排在 038 之後；並排在 034 與 037 之前：034 的 Windows 圖示須涵蓋 `busy` 與 `countdown` 狀態，037 的重疊收尾須把倒數中的 session 視為進行中。
+- 037 依賴 025、026、029、030、036 與 038（025、026、036、038 已完成），須維持 036 在全部媒體工作之後才處理 metadata 的退出階段，並重用 038 定義的寫入積壓上限。
+- 040 修改 038（已完成）擴充過的 Recorder 開始階段，並保留其已保留磁碟錯誤的規則；排在 034 與 037 之前：034 的 Windows 圖示須涵蓋 `busy` 與 `countdown` 狀態，037 的重疊收尾須把倒數中的 session 視為進行中。
 - 031–033 可獨立執行；若其他工作需要更新驗收，先處理 032。
 - 030 結案前，錄製驗收須明列聲道 RMS 與要求的同步量測，不能只相信整體綠燈。
 
 ## 來源與證據邊界
 
 - R1 為第一輪十項 bug audit，R2 為第二輪八項（2026-09-24）。第二輪有 5 項併入 4 份既有計畫、3 項另開計畫，不重複建立修復工作。重現條件、修正契約與證據限制已直接寫入計畫，不依賴被 gitignore 的本機 audit 檔案。
-- 各計畫的 Cap 比較固定 revision `ce785e705e79652adba4b8bf752669c4093499e0`；037 與 038 固定 `26e1a6d882f311d10b5317e9e0d29babe4f6737e`；040 固定 `119edf04864b59abfc0d52f60bf77d7f33cfd2b8`。只代表已檢視範圍的靜態比較，不能外推為 Cap 已處理這些問題。
+- 各計畫的 Cap 比較固定 revision `ce785e705e79652adba4b8bf752669c4093499e0`；037 與已結案的 038 固定 `26e1a6d882f311d10b5317e9e0d29babe4f6737e`；040 固定 `119edf04864b59abfc0d52f60bf77d7f33cfd2b8`。只代表已檢視範圍的靜態比較，不能外推為 Cap 已處理這些問題。
 - 2026-09-25 的 T3 Code／Cap 架構比較只貢獻 038 與 029 的 run id。為維持 App 精簡，不採用 Effect、monorepo 拆分、`src/main/` 功能子目錄與設定檔備份。
 - 慢速磁碟 backlog 仍屬明列限制；037 評估競爭下有限度的開始條件，不保證消除持續吞吐量不足。
 - 多筆失敗歷史（2026-09-25）沒有獨立計畫檔就已實作；其[紀錄](../docs/zh-TW/verification/history-2026-09.md#多筆失敗歷史--2026-09-25)與 035 的 N19–N23 承接剩餘原生案例。
 
 ## 已結案計畫
 
-結案紀錄，由新到舊：[026](../docs/zh-TW/verification/history-2026-09.md#plan-026-結案--2026-09-25)、[036](../docs/zh-TW/verification/history-2026-09.md#plan-036-結案--2026-09-25)、[039](../docs/zh-TW/verification/history-2026-09.md#plan-039-結案--2026-09-25)、[025](../docs/zh-TW/verification/history-2026-09.md#plan-025-結案--2026-09-25)、[024](../docs/zh-TW/verification/history-2026-09.md#plan-024-完整寫入--2026-09-24)、[023](../docs/zh-TW/verification/history-2026-09.md#plan-023-結案--2026-09-23)、[022](../docs/zh-TW/verification/history-2026-09.md#plan-022-結案--2026-09-24)、[021](../docs/zh-TW/verification/history-2026-09.md#plan-021-結案--2026-09-23)、[020](../docs/zh-TW/verification/history-2026-09.md#plan-020-結案--2026-09-23)、[019](../docs/zh-TW/verification/history-2026-09.md#plan-019-結案--2026-09-23)、[018](../docs/zh-TW/verification/history-2026-09.md#plan-018-結案--2026-09-20)、[017](../docs/zh-TW/verification/history-2026-09.md#儲存通知時序2026-09-20)、[014](../docs/zh-TW/verification/history-2026-09.md#通知生命週期調查--2026-09-20)、[012](../docs/zh-TW/verification/history-2026-09.md#plan-012-結案--2026-09-20)。013 與 016 記錄在[桌面設計](../docs/zh-TW/system-design/desktop.md#錄影快捷鍵)、[工具](../docs/zh-TW/system-design/tooling.md)與[驗證紀錄](../docs/zh-TW/verification/README.md)。每份紀錄保留其未測項目與接受的限制；本索引不重開已結案計畫。
+結案紀錄，由新到舊：[038](../docs/zh-TW/verification/history-2026-09.md#plan-038-結案--2026-09-25)、[026](../docs/zh-TW/verification/history-2026-09.md#plan-026-結案--2026-09-25)、[036](../docs/zh-TW/verification/history-2026-09.md#plan-036-結案--2026-09-25)、[039](../docs/zh-TW/verification/history-2026-09.md#plan-039-結案--2026-09-25)、[025](../docs/zh-TW/verification/history-2026-09.md#plan-025-結案--2026-09-25)、[024](../docs/zh-TW/verification/history-2026-09.md#plan-024-完整寫入--2026-09-24)、[023](../docs/zh-TW/verification/history-2026-09.md#plan-023-結案--2026-09-23)、[022](../docs/zh-TW/verification/history-2026-09.md#plan-022-結案--2026-09-24)、[021](../docs/zh-TW/verification/history-2026-09.md#plan-021-結案--2026-09-23)、[020](../docs/zh-TW/verification/history-2026-09.md#plan-020-結案--2026-09-23)、[019](../docs/zh-TW/verification/history-2026-09.md#plan-019-結案--2026-09-23)、[018](../docs/zh-TW/verification/history-2026-09.md#plan-018-結案--2026-09-20)、[017](../docs/zh-TW/verification/history-2026-09.md#儲存通知時序2026-09-20)、[014](../docs/zh-TW/verification/history-2026-09.md#通知生命週期調查--2026-09-20)、[012](../docs/zh-TW/verification/history-2026-09.md#plan-012-結案--2026-09-20)。013 與 016 記錄在[桌面設計](../docs/zh-TW/system-design/desktop.md#錄影快捷鍵)、[工具](../docs/zh-TW/system-design/tooling.md)與[驗證紀錄](../docs/zh-TW/verification/README.md)。每份紀錄保留其未測項目與接受的限制；本索引不重開已結案計畫。
 
 所有計畫的語言版本都放在本資料夾：英文 `<name>.md`，繁中 `<name>.zh-TW.md`。
 

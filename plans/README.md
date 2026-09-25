@@ -6,13 +6,12 @@ Updated: 2026-09-25. This index lists unfinished plans, their order and their ha
 
 ## Order and status
 
-Every plan below is planned, not implemented. Current order: **038 → 027 → 028 → 029 → 030 → 031 → 032 → 033 → 040 → 034 → 037 → 035**.
+Every plan below is planned, not implemented. Current order: **027 → 028 → 029 → 030 → 031 → 032 → 033 → 040 → 034 → 037 → 035**.
 
-Ordering rule: zero-risk cleanup and the prioritized history work came first and are complete; now guards that prevent data loss, then audit fixes in their original order, then optional or measured work, and 035 last. Keep 035 last even when later-numbered implementation or fix plans are added: schedule those before it.
+Ordering rule: zero-risk cleanup, the prioritized history work and the data-loss guards came first and are complete; now audit fixes in their original order, then optional or measured work, and 035 last. Keep 035 last even when later-numbered implementation or fix plans are added: schedule those before it.
 
 | Plan | Source | Scope |
 | --- | --- | --- |
-| [038 — Recording health guards](038-recording-health-guards.md) | 2026-09-25 T3 Code/Cap comparison | Disk-headroom stop, stalled-capture failure, bounded writer backlog, per-session interruption sentinel, sleep/wake logging and retained disk errors in start failures, all through existing stop/failure paths; no new UI or recovery |
 | [027 — Permission state and query lifetime](027-permission-state-and-query-lifetime.md) | R1-2, R1-6 | Permission reconciliation and one owned enumeration request |
 | [028 — Settings window and shortcut lifecycle](028-shortcut-editing-lifecycle.md) | R1-1, R1-5; R2-03 | Close chord, capture lease separated from the setting transaction, and crashed-window recovery under one ownership |
 | [029 — Log identity and rotation-safe acceptance](029-recording-log-correlation.md) | R1-7; R2-07; run id from the comparison | Session-keyed structured records, a per-launch run id, and a rotation-aware reader shared by waiting and cleanup |
@@ -27,24 +26,23 @@ Ordering rule: zero-risk cleanup and the prioritized history work came first and
 
 Hard dependencies; everything else is scheduling:
 
-- 038 builds on the complete-write accounting from 024 and the nonempty-file guarantee from 026 (both complete), on which its early stop relies; it precedes the audit UI plans because it prevents data loss.
 - 029 depends on the terminal-event contract from 025 (complete).
-- 037 depends on 025, 026, 029, 030, 036 and 038 (025, 026 and 036 complete), keeps 036's metadata quit phase after all media work, and reuses the writer backlog bound defined in 038.
-- 040 follows 038 because both change the Recorder start phase, and precedes 034 and 037: 034's Windows artwork must cover the `busy` and `countdown` tray states, and 037's overlap must treat a counting-down session as active.
+- 037 depends on 025, 026, 029, 030, 036 and 038 (025, 026, 036 and 038 complete), keeps 036's metadata quit phase after all media work, and reuses the writer backlog bound defined in 038.
+- 040 changes the Recorder start phase that 038 (complete) extended and keeps its retained-disk-error rule; it precedes 034 and 037: 034's Windows artwork must cover the `busy` and `countdown` tray states, and 037's overlap must treat a counting-down session as active.
 - 031–033 can run independently; 032 should precede any work that requires update acceptance.
 - Before 030 closes, recording acceptance must explicitly retain channel RMS and requested sync measurements rather than trust only the overall verdict.
 
 ## Sources and evidence boundaries
 
 - R1 is the first ten-bug audit and R2 the second eight-bug audit (2026-09-24). Round 2 merged five bugs into four existing plans and added three, without duplicate repair work. Reproduction conditions, repair contracts and evidence limits are embedded in the plans and do not depend on ignored local audit files.
-- Cap comparisons in each plan are pinned to revision `ce785e705e79652adba4b8bf752669c4093499e0`; 037 and 038 pin `26e1a6d882f311d10b5317e9e0d29babe4f6737e`; 040 pins `119edf04864b59abfc0d52f60bf77d7f33cfd2b8`. They are static comparisons of the inspected scope, not evidence that Cap handles these cases.
+- Cap comparisons in each plan are pinned to revision `ce785e705e79652adba4b8bf752669c4093499e0`; 037 and the closed 038 pin `26e1a6d882f311d10b5317e9e0d29babe4f6737e`; 040 pins `119edf04864b59abfc0d52f60bf77d7f33cfd2b8`. They are static comparisons of the inspected scope, not evidence that Cap handles these cases.
 - The 2026-09-25 T3 Code/Cap architecture comparison contributed only 038 and the run id in 029. Adopting Effect, a monorepo split, feature subdirectories under `src/main/` and settings-file backups were rejected to keep the app small.
 - Slow-disk backlog remains an explicitly documented limitation; 037 evaluates bounded admission under contention, not a promise to eliminate sustained disk-throughput limits.
 - The multi-failure history round (2026-09-25) was implemented without a standalone plan; its [record](../docs/verification/history-2026-09.md#multi-failure-history--2026-09-25) and 035's N19–N23 carry its remaining native cases.
 
 ## Closed plans
 
-Closure records, newest first: [026](../docs/verification/history-2026-09.md#plan-026-closure--2026-09-25), [036](../docs/verification/history-2026-09.md#plan-036-closure--2026-09-25), [039](../docs/verification/history-2026-09.md#plan-039-closure--2026-09-25), [025](../docs/verification/history-2026-09.md#plan-025-closure--2026-09-25), [024](../docs/verification/history-2026-09.md#plan-024-complete-writes--2026-09-24), [023](../docs/verification/history-2026-09.md#plan-023-closure--2026-09-23), [022](../docs/verification/history-2026-09.md#plan-022-closure--2026-09-24), [021](../docs/verification/history-2026-09.md#plan-021-closure--2026-09-23), [020](../docs/verification/history-2026-09.md#plan-020-closure--2026-09-23), [019](../docs/verification/history-2026-09.md#plan-019-closure--2026-09-23), [018](../docs/verification/history-2026-09.md#plan-018-closure--2026-09-20), [017](../docs/verification/history-2026-09.md#saved-notification-timing--2026-09-20), [014](../docs/verification/history-2026-09.md#notification-lifetime-investigation--2026-09-20) and [012](../docs/verification/history-2026-09.md#plan-012-closure--2026-09-20). 013 and 016 are documented in [desktop design](../docs/system-design/desktop.md#recording-shortcut), [tooling](../docs/system-design/tooling.md) and the [verification record](../docs/verification/README.md). Each record preserves its untested cases and accepted limitations; this index does not reopen a closed plan.
+Closure records, newest first: [038](../docs/verification/history-2026-09.md#plan-038-closure--2026-09-25), [026](../docs/verification/history-2026-09.md#plan-026-closure--2026-09-25), [036](../docs/verification/history-2026-09.md#plan-036-closure--2026-09-25), [039](../docs/verification/history-2026-09.md#plan-039-closure--2026-09-25), [025](../docs/verification/history-2026-09.md#plan-025-closure--2026-09-25), [024](../docs/verification/history-2026-09.md#plan-024-complete-writes--2026-09-24), [023](../docs/verification/history-2026-09.md#plan-023-closure--2026-09-23), [022](../docs/verification/history-2026-09.md#plan-022-closure--2026-09-24), [021](../docs/verification/history-2026-09.md#plan-021-closure--2026-09-23), [020](../docs/verification/history-2026-09.md#plan-020-closure--2026-09-23), [019](../docs/verification/history-2026-09.md#plan-019-closure--2026-09-23), [018](../docs/verification/history-2026-09.md#plan-018-closure--2026-09-20), [017](../docs/verification/history-2026-09.md#saved-notification-timing--2026-09-20), [014](../docs/verification/history-2026-09.md#notification-lifetime-investigation--2026-09-20) and [012](../docs/verification/history-2026-09.md#plan-012-closure--2026-09-20). 013 and 016 are documented in [desktop design](../docs/system-design/desktop.md#recording-shortcut), [tooling](../docs/system-design/tooling.md) and the [verification record](../docs/verification/README.md). Each record preserves its untested cases and accepted limitations; this index does not reopen a closed plan.
 
 All plan language versions live in this directory: English `<name>.md`, Traditional Chinese `<name>.zh-TW.md`.
 
