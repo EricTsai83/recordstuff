@@ -118,7 +118,13 @@ Write explanations and headings in Traditional Chinese; preserve commands, ident
 
 ## 剩餘風險
 
-- 只列具體風險或未完成步驟；沒有則明確說明。
+### 1. 風險名稱
+
+- **風險內容**：什麼可能出錯、觸發條件、影響範圍與使用者可見後果、發生可能性；標明是本次變更引入、既有未變，或刻意排除的設計邊界。
+- **目前證據**：哪些已驗證、哪些未驗證，以及本次為何無法或未驗證。
+- **是否需要你現在處理**：`需要`／`不需要`／`需要你決定`，並說明理由。需要時列出具體 action、由誰執行（你或 agent）、時機與不處理的後果；不需要時指出由哪個後續 plan、既排驗收案例或已接受的限制承接。
+
+**現在需要你處理的 action**：逐項列出；沒有則寫「目前不需要你採取任何 action」。
 ```
 
 Build `檔案摘要` from starting status and final diff. Include every task-owned source, test, support, config, documentation, deletion, rename, and review fix; exclude pre-existing user changes. Create one subsection per path and list each path exactly once.
@@ -148,5 +154,13 @@ Use this distinction:
 - **具體變更**：新增 `redactReviewRequestV1`、deterministic replacement tokens，以及 API key、private key、high-entropy token detectors。
 - **設計理由**：對完整 request tree 做一次純 traversal，讓 path、patch、prompt 與 model 共用同一政策，避免各 engine adapter 各自 redaction 而產生漏接或行為分歧。
 ```
+
+Write `剩餘風險` so the user can decide what to do without rereading the work:
+
+- Create one numbered subsection per concrete risk or unfinished step. Include required-but-unverified or blocked checks, accepted review fixes that received no later review pass, pre-existing defects discovered but left out of scope, accepted design limits the change relies on, uncommitted or unpublished work, and retained test artifacts the user may want to remove. Do not add generic risks such as “可能還有未知 bug”, and do not repeat passing checks from `驗證`.
+- In **風險內容**, state the concrete failure, its trigger, what and who it affects, whether the user would see it, how likely it is, and whether this change introduced it, left it unchanged, or deliberately excluded it.
+- In **目前證據**, separate what was verified from what was not, and say why the missing evidence could not be or was not collected in this round.
+- In **是否需要你現在處理**, always give an explicit verdict of `需要`, `不需要`, or `需要你決定`; never leave it implied. For `需要` or `需要你決定`, give the concrete action, who performs it, when it must happen (now, before the next plan, or during a named acceptance round), and the consequence of not doing it. Offer agent-executable actions, but do not perform outward-facing or out-of-scope actions without a request. For `不需要`, name what already covers the risk: a later plan, a scheduled acceptance case, or an accepted limitation.
+- End with the **現在需要你處理的 action** line. When there are no remaining risks, replace the subsections with `沒有剩餘風險` and a one-sentence reason, and still end with that line.
 
 State whether Claude Opus 5.5 completed review. For fallback, repeat the exact provider label and reason, and never imply Claude approved the work.
