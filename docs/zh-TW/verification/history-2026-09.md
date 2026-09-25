@@ -9,6 +9,23 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 036 結案 — 2026-09-25
+
+背景保存失敗歷史與安全退出；依維護者要求由 Claude 實作、Codex GPT-6 Astra review（計畫原先寫的是另一組搭配）。歷史儲存只使用非同步 `fs.promises`，包含 `load()` 與分塊的 `writeFileAtomic` 寫入。`RecordingResults` 是唯一的持久化負責者：最多一個寫入進行中與一個合併後續寫入、帶 revision 的快照、確認／移除只在耐久保存後生效、逐筆警告分為 `io`、`blocked`（無法讀取或較新版本的檔案，永不重試或覆寫）與 `tooLarge`，自動重試間隔 2、5、15 秒後每 30 秒，手動重試加入進行中的寫入，啟動時非同步載入並合併期間到達的失敗。失敗紀錄操作不排在偏好保存佇列後；renderer 以 `aria-disabled` 讓忙碌按鈕保持可聚焦，並依記錄的意圖還原焦點。退出／重新啟動維持 025 的媒體階段在前，之後最多等待 5 秒保存最新歷史：寫入進行中只有「繼續等待／留在 App」，保存失敗後為「重試／留在 App／不儲存這些提醒並結束」。
+
+量測（M1 Pro，本機 `measurements/2026-09-25-plan036/`）：32 MiB 上限（335 筆、每筆 64 KiB 含跳脫字元與中文的細節）整份 `JSON.stringify` 約 40 ms，超過 16 ms 畫面。未加入 worker，因為同一快照的 structured clone 在主程序也約 16 ms；改為快取每筆已編碼 JSON 與 fingerprint，歷史迴圈累積約 8 ms 工作即讓出。最終分段版本五次量測中，冷寫入、熱寫入與載入後首次寫入的最長單一 turn，在上限與 3.8 MiB 歷史皆最多 9.8 ms；啟動讀取在上限有一次 38–39 ms 的 turn（單次 `JSON.parse`），3.8 MiB 約 6 ms，一般 25 筆歷史約 2 ms。寫入總時間一般約 5–8 ms、3.8 MiB 為 17–30 ms、上限為 80–180 ms，因此保留 5 秒的初始退出等待。先前仍會阻塞 16–55 ms 的分段版本已量測並汰換。
+
+自動化證據：最終 `pnpm acceptance:regression` 通過，含 typecheck、build 與 43 個檔案 687 項測試、設定 113/113 及快捷鍵整合且清理完成（`2026-09-25T07-46-02-395Z-settings-acceptance`、`2026-09-25T07-46-38-356Z-shortcut-failure`）。新增的 deterministic 測試以真實暫存檔與全新 store instance 驗證：延遲／拒絕的寫入、單一 writer 下 A→B→C 合併、確認／移除與遲到清理及新到達失敗的交錯、較舊完成結果不清除較新警告、確認失敗同時有新失敗、有上限退避／手動加入／重設／停止、無法讀取或未來版本歷史永不重試、啟動載入競態與升級、退出 flush 有上限且逾時後不產生平行 writer、退出暫停與恢復重試、協調器先媒體後歷史的順序，以及提示按鈕與雙語文字。`pnpm acceptance:lifecycle` 新增隔離 Electron `history` 案例，以 production Recorder、FileWriter、RecordingResults、退出協調器與歷史退出流程搭配先卡住再拒絕的儲存邊界：寫入卡住時主程序事件迴圈延遲 2–6 ms、renderer 往返 ≤ 5 ms，重複退出合併為一次，寫入中不提供退出，「留在 App」後恢復錄影，metadata 提示等到被延遲的最終複製完成才出現，明確的只放棄提醒退出保留媒體精確 bytes 且只有一個 writer（`2026-09-25T07-01-05-678Z-lifecycle`、`2026-09-25T07-42-43-106Z-lifecycle`）。
+
+設定 fixture 改用 120 ms 非同步儲存，並如正式環境在回覆前推送已提交的 view；新增載入、自動重試、150 ms 與 2 秒延遲下的「知道了」／重新展開／移除最後一筆焦點案例，以及等待期間移動焦點。負向對照（改回原生 `disabled` 且不依意圖還原）重現原本三個焦點失敗與新增的延遲案例（102/113，`2026-09-25T07-02-10-580Z-settings-acceptance`）；實作在螢幕開啟時每次皆 113/113。pass-1 F1 修正前有一次在「failed durable acknowledgement stays unread and expanded」失敗：截圖顯示新的保存失敗列沒有警告，但失敗寫入其實已完成，點擊也沒有產生預期的逐筆錯誤（`2026-09-25T07-17-18-506Z-settings-acceptance`）。之後約 25 次（含 CPU 壓力）未再出現；原因未確立，fixture 現在於每次腳本點擊前確認畫面列與 main 一致並在失敗時輸出診斷。另有四次既有的「keyboard navigation retains a visible focus ring」失敗，發生在本地時間 15:34 macOS 關閉螢幕且畫面鎖定之後（pmset／ioreg），記為環境受阻，不算通過。已檢視中英文保存中、載入、保存警告與重試截圖。
+
+原生：`pnpm start:app` 建置並驗證新的簽章 bundle（九個 identity）。`pnpm acceptance -- --seconds 10` 錄製 10.3 秒、1920×1080、48 kHz 雙聲道 RMS −27.2/−27.2 dBFS、10 次閃光與 10 次提示音並完整解碼（`2026-09-25T07-12-49-303Z-hotkey-acceptance`）；QuickTime 播放到 2.15 秒並 seek 到 6.46 秒（共 10.285 秒），截圖顯示解碼畫面。runner 之後經新協調器正常結束 App；RecordStuff、QuickTime 與測試素材程序確認已結束。已安裝的 `/Applications/RecordStuff.app` 原本 idle，重建前已正常結束並保持關閉。此使用者沒有失敗歷史檔，原生退出只走過歷史已保存的路徑。未原生執行重新啟動：它只在權限恢復狀態提供。未保存歷史的退出、延遲載入、儲存失敗／恢復與 VoiceOver 仍列於最後的 Plan 035 N24–N26 未測；fixture 不能取代。強制結束與斷電可能遺失未保存的提醒；背景保存不增加磁碟吞吐量。
+
+Codex GPT-6 Astra（medium reasoning、read-only）完成兩輪，共 153 秒 + 132 秒 = 285 秒，未超過 30 分鐘預算，未使用 fallback。Pass 1 回報兩項 Medium，皆接受並修正。F1：`write()` 在釋放 writer 前就挑選 waiters，落在該 microtask 空檔的 `persist()` 會永遠不結算；現在釋放 writer 與挑選 waiters 在同一步完成，並新增在舊邏輯下會失敗的 microtask 深度回歸測試。F2：保存成功後清除警告時對每個被標記列掃描一次整份歷史；清理與操作提交改用 ID 索引與布林變更追蹤，60,001 列恢復測試在舊邏輯需 6.9 秒，現在低於 3 秒。Pass 2 逐一檢視全部 42 個變更、刪除與未追蹤檔案，確認兩項修正並回報無 findings。兩輪都未確立修正前那一次設定 fixture 失敗的原因。
+
+未 commit、push 或發布。
+
+
 ## Plan 039 結案 — 2026-09-25
 
 儲存庫整理，只涉及文件與測試位置。兩份儲存庫版面文件現在說明 `tests/`（同時需要 DOM 與 Node API 的跨程序測試，由 `tsconfig.tests.json` 檢查、`vitest.config.ts` 收錄），在強制設定表列出 `tsconfig.tests.json`，並把 `test-material.html` 歸到 `scripts/` 進入點同層。`scripts/update-acceptance.test.ts` 移到 `scripts/lib/update-acceptance.test.ts`，`scripts/lib/settings-entry.test.ts` 併入 `scripts/lib/acceptance.test.ts`，根目錄 `tsconfig.json` 的 references 加入 tests 設定。

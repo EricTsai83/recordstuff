@@ -24,7 +24,7 @@
 
 main、preload、renderer 分別建置，打包只納入 out、package metadata 與指定 resources。測試、量測與文件不屬 runtime；App 不呼叫 FFmpeg。
 
-`scripts/fixtures/` 的原始碼統一使用 TypeScript，納入 `pnpm typecheck`。獨立入口由 [build-fixture.mts](../../../scripts/lib/build-fixture.mts) 使用 Vite 的 TypeScript 轉換按需編譯：settings-panel、recording-lifecycle、quit-dialog 與 release-record-network 輸出 ESM（`.mjs`）；shortcut-failure 因為要在載入正式 App 前攔截 CommonJS 載入，所以輸出 CommonJS（`.cjs`）。產物保留在各次驗收報告目錄或測試暫存目錄，不是需要維護的原始碼，也不隨 App 發布。update-acceptance fixture 繼續隨臨時 App 原始碼副本一起建置。現有驗收指令不需額外手動建置 fixture；編譯只移除型別，型別檢查由 `pnpm typecheck` 負責。傳給 `executeJavaScript` 的 renderer 字串仍是執行時程式碼，不會得到 TypeScript 的 DOM 型別檢查。
+`scripts/fixtures/` 的原始碼統一使用 TypeScript，納入 `pnpm typecheck`。獨立入口由 [build-fixture.mts](../../../scripts/lib/build-fixture.mts) 使用 Vite 的 TypeScript 轉換按需編譯：settings-panel、recording-lifecycle、history-quit、quit-dialog 與 release-record-network 輸出 ESM（`.mjs`）；shortcut-failure 因為要在載入正式 App 前攔截 CommonJS 載入，所以輸出 CommonJS（`.cjs`）。產物保留在各次驗收報告目錄或測試暫存目錄，不是需要維護的原始碼，也不隨 App 發布。update-acceptance fixture 繼續隨臨時 App 原始碼副本一起建置。現有驗收指令不需額外手動建置 fixture；編譯只移除型別，型別檢查由 `pnpm typecheck` 負責。傳給 `executeJavaScript` 的 renderer 字串仍是執行時程式碼，不會得到 TypeScript 的 DOM 型別檢查。
 
 ## 資源與產生的輸出
 
@@ -237,7 +237,7 @@ pnpm acceptance:regression
 
 ## 錄製生命週期驗收
 
-`pnpm acceptance:lifecycle` 建置隔離 Electron fixture，使用 production Recorder、FileWriter 與 `installQuitCoordinator`。它延遲真正的最終複製、handle close 或 partial 結果的 stat／發布，重複要求退出，確認程序跨過兩次期限仍存活，再釋放工作並檢查正式／保留檔的精確 bytes 與正常退出。100 ms 期限用來加速相同退出判定流程，不量測原生擷取或 UI 對話框。不修改使用者偏好、不替換已安裝 App，也不載入一般 main 入口。結果與程序清理證據位於 `docs/verification/measurements/<timestamp>-lifecycle/`。依測試政策另行執行新 bundle 擷取／播放與原生退出案例。
+`pnpm acceptance:lifecycle` 建置隔離 Electron fixture，使用 production Recorder、FileWriter 與 `installQuitCoordinator`。它延遲真正的最終複製、handle close 或 partial 結果的 stat／發布，重複要求退出，確認程序跨過兩次期限仍存活，再釋放工作並檢查正式／保留檔的精確 bytes 與正常退出。100 ms 期限用來加速相同退出判定流程，不量測原生擷取或 UI 對話框。第四個 `history` 案例在可控制的儲存邊界上執行 production RecordingResults 與未保存提醒退出流程：歷史寫入卡住時取樣主程序事件迴圈延遲與隱藏 renderer 往返，合併重複退出，寫入進行中保持 App 開啟，選擇「留在 App」後恢復錄影，最終複製被延遲時暫不顯示 metadata 提示，完成後才選擇明確的「只放棄提醒」退出並檢查媒體精確 bytes。提示回答由腳本提供，不顯示原生對話框。不修改使用者偏好、不替換已安裝 App，也不載入一般 main 入口。結果與程序清理證據位於 `docs/verification/measurements/<timestamp>-lifecycle/`。依測試政策另行執行新 bundle 擷取／播放與原生退出案例。
 
 ### 引導式延期退出提示驗收
 

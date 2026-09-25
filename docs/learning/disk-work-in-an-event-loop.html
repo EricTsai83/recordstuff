@@ -395,7 +395,7 @@ private <span class="f">enqueue</span><span class="o">(</span>task<span class="o
 <p>三個模式背後只有一個原則：<strong>每一層機制都要能指出它解決的具體失敗</strong>。執行緒解決的是 CPU 阻塞，不是磁碟阻塞；意圖紀錄解決的是「當機後沒人知道」，不是「當機後自動修好」；promise 鏈解決的是順序與上限，不是吞吐量。當你說不出一個機制對應哪個失敗，它就是多餘的，而多餘的機制在長期維護裡會變成新的失敗來源。</p>
 
 <div class="callout warning">
-  <p><strong>本專案的現況。</strong>截至 2026-09-25，這三個模式是 RecordStuff 計畫 036、037、038 的設計決定，尚未實作。目前程式碼的失敗歷史仍以 <code>writeFileAtomicSync</code> 同步寫入，Recorder 在 stopping 狀態拒絕新的開始，也還沒有中斷哨兵。037 另有量測門檻：只有實測到可分離的等待時間才會實作重疊。本文說明的是設計理由與前提，不是目前行為；目前行為以 <code>docs/system-design/</code> 為準。</p>
+  <p><strong>本專案的現況。</strong>模式一已於 2026-09-25 由計畫 036 實作：失敗歷史改用 <code>fs.promises</code> 與既有的 <code>writeFileAtomic</code>。量測最大允許的 32 MiB 快照時，整份序列化約 40 ms，超過畫面預算；但把快照交給 worker 所需的 structured clone 在主執行緒上也要相近的時間，所以改為逐筆快取序列化結果，並在累積約 8 ms 工作後讓出事件迴圈，寫入時單一 turn 最長約 10 ms；只有啟動時一次 <code>JSON.parse</code> 在上限約 38 ms。模式二與三仍是計畫 037、038 尚未實作的設計決定：Recorder 在 stopping 狀態拒絕新的開始，也還沒有中斷哨兵；037 另有量測門檻。本文說明的是設計理由與前提，不是目前行為；目前行為以 <code>docs/system-design/</code> 為準。</p>
 </div>
 
 <section class="sources">
@@ -405,7 +405,7 @@ private <span class="f">enqueue</span><span class="o">(</span>task<span class="o
   <li>媒體分片的 promise 鏈與發布步驟：<a href="../../src/main/file-writer.ts">src/main/file-writer.ts</a></li>
   <li>目前的開始與停止准入、session id 比對：<a href="../../src/main/recorder.ts">src/main/recorder.ts</a></li>
   <li>失敗歷史的儲存與上限：<a href="../../src/main/recording-result-store.ts">src/main/recording-result-store.ts</a></li>
-  <li>計畫：<a href="../../plans/036-async-failure-history.zh-TW.md">036 背景保存失敗歷史</a>、<a href="../../plans/037-overlapping-recording-finalization.zh-TW.md">037 有上限的錄影收尾重疊</a>、<a href="../../plans/038-recording-health-guards.zh-TW.md">038 錄影健康防護</a></li>
+  <li>計畫：<a href="../zh-TW/verification/history-2026-09.md#plan-036-結案--2026-09-25">036 背景保存失敗歷史（結案紀錄）</a>、<a href="../../plans/037-overlapping-recording-finalization.zh-TW.md">037 有上限的錄影收尾重疊</a>、<a href="../../plans/038-recording-health-guards.zh-TW.md">038 錄影健康防護</a></li>
   <li>目前實作的設計說明：<a href="../zh-TW/system-design/recording.md">錄製管線與檔案設計</a>、<a href="../zh-TW/system-design/decisions.md">設計決策</a></li>
   <li>Node.js 對 <code>fs.promises</code> 與執行緒池的說明：<a href="https://nodejs.org/api/fs.html#promises-api">Node.js fs Promises API</a></li>
 </ul>

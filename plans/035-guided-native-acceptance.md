@@ -2,7 +2,7 @@
 
 [English](035-guided-native-acceptance.md) | [繁體中文](035-guided-native-acceptance.zh-TW.md)
 
-Status: planned, not executed. Created: 2026-09-25. This plan is permanently the **last queue item**, currently after 026–034 and 036–038; see [order](README.md#order-and-status). Any later implementation/fix plans go before it, regardless of numbering. It is the last step before clearing the queue, not a request to begin testing now.
+Status: planned, not executed. Created: 2026-09-25. This plan is permanently the **last queue item**, currently after 026–034, 037 and 038; see [order](README.md#order-and-status). Any later implementation/fix plans go before it, regardless of numbering. It is the last step before clearing the queue, not a request to begin testing now.
 
 ## Purpose and ownership
 
@@ -75,7 +75,7 @@ Codex prepares isolated data and guides one step at a time; the maintainer perfo
 
 ## Additional asynchronous storage and overlap acceptance (not performed)
 
-Sources: [036](036-async-failure-history.md) and [037](037-overlapping-recording-finalization.md). Keep this plan last; prepare final recipes from their actual implementations.
+Sources: [036 closure](../docs/verification/history-2026-09.md#plan-036-closure--2026-09-25) and [037](037-overlapping-recording-finalization.md). Keep this plan last; prepare final recipes from their actual implementations. 036 is implemented: result rows show a saving line while Got it/Remove waits for a durable save, failed saves retry automatically (2, 5, 15, then 30 seconds) and quit/relaunch offers Keep waiting/Stay while a write is in flight, or Retry/Stay/Exit without saving these reminders after a failed save. Its isolated `history` lifecycle fixture and Settings fixture cases do not substitute for N24–N26.
 
 - [ ] N24: With isolated delayed history storage, operate Settings and start/stop recording while reminder persistence is pending. Inspect saving/failed/automatic-retry feedback, English/Chinese copy, per-row warnings, and readable identifiers. Recover storage; verify the latest history survives restart without acknowledging unread records.
 - [ ] N25: Quit/relaunch with unsaved history, including while recording or media cleanup is pending. Test repeated requests, bounded waiting, Stay/Retry and safe resumption. Any implemented metadata-only exit option must clearly identify lost reminders and must never bypass pending media or an active publisher.
