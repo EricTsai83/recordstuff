@@ -10,13 +10,13 @@
 
 ```mermaid
 flowchart TD
-    W["網站或 website.yml 變更 push 到 main"] --> D["website.yml：共用網站部署"]
+    W["網站、共用 manifest 模組或 website.yml 變更 push 到 main"] --> D["website.yml：共用網站部署"]
     M["在 main 手動重試 Website deployment"] --> D
     T["推送新版本 tag"] --> A["release.yml：檢查、建置、簽署 App"]
     A --> P["驗證候選產物並發布 GitHub Release"]
     P --> V["下載公開產物，驗證簽章與雜湊"]
     V --> S{"穩定版本？"}
-    S -->|是| R["record：更新 main 的版本紀錄與網站 manifest"]
+    S -->|是| R["record：更新 main 的版本紀錄；只有較新的正式版才更新網站 manifest"]
     R -->|明確呼叫共用 workflow| D
     S -->|否| Q["記錄預覽版本；不部署網站"]
     D --> L["取得網站部署鎖，checkout 最新 main"]
@@ -26,7 +26,7 @@ flowchart TD
     F --> O["官網與 release.json 上線"]
 ```
 
-網站入口只監聽 `website/**` 與 `.github/workflows/website.yml` 的 main push；一般文件或 App 原始碼變更不會單獨觸發網站部署。release 的 record job 使用 `GITHUB_TOKEN` 推送，這不會觸發另一個 push workflow，因此 release 必須明確呼叫共用網站 workflow。
+網站入口只監聽 `website/**`、共用的 release manifest 模組 `scripts/lib/release-manifest*.mts`（網站建置會引用它們）與 `.github/workflows/website.yml` 的 main push；一般文件或 App 原始碼變更不會單獨觸發網站部署。release 的 record job 使用 `GITHUB_TOKEN` 推送，這不會觸發另一個 push workflow，因此 release 必須明確呼叫共用網站 workflow。
 
 所有網站入口共用部署鎖，不取消正在執行的部署；取得鎖後才讀取 main，避免較舊的排隊觸發部署舊 checkout。圖中的部署需要先通過 secrets 設定檢查；缺少設定會略過並提示。網站檢查失敗時不部署，前一版網站繼續服務；若 App 已發布，它不會因後續網站失敗而被撤回。
 

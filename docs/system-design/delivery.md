@@ -10,13 +10,13 @@ Website changes pushed to main deploy without a version bump. Only a version tag
 
 ```mermaid
 flowchart TD
-    W["Website or website.yml changes pushed to main"] --> D["website.yml: shared website deployment"]
+    W["Website, shared manifest module or website.yml changes pushed to main"] --> D["website.yml: shared website deployment"]
     M["Manual Website deployment retry on main"] --> D
     T["Push a new version tag"] --> A["release.yml: check, build, sign App"]
     A --> P["Verify candidate and publish GitHub Release"]
     P --> V["Download public assets; verify signatures and hashes"]
     V --> S{"Stable version?"}
-    S -->|Yes| R["record: update release facts and website manifest on main"]
+    S -->|Yes| R["record: release facts on main; manifest only for a newer stable version"]
     R -->|Explicit reusable workflow call| D
     S -->|No| Q["Record prerelease; do not deploy website"]
     D --> L["Acquire website deployment lock; check out current main"]
@@ -26,7 +26,7 @@ flowchart TD
     F --> O["Website and release.json go live"]
 ```
 
-The standalone website trigger watches main pushes affecting `website/**` or `.github/workflows/website.yml`. Other documentation or App-only commits do not trigger it. The release record job pushes with `GITHUB_TOKEN`, which does not trigger another push workflow, so the release explicitly calls the reusable website workflow.
+The standalone website trigger watches main pushes affecting `website/**`, the shared release manifest modules `scripts/lib/release-manifest*.mts` (the website build imports them) or `.github/workflows/website.yml`. Other documentation or App-only commits do not trigger it. The release record job pushes with `GITHUB_TOKEN`, which does not trigger another push workflow, so the release explicitly calls the reusable website workflow.
 
 All website entry points share a deployment lock without cancelling active deployments. Each checks out main after acquiring the lock so an older queued trigger cannot deploy an older checkout. Deployment first checks the secrets; missing configuration skips with a notice. Failed website checks prevent deployment and leave the previous site serving. An App already published is not withdrawn if subsequent website delivery fails.
 
