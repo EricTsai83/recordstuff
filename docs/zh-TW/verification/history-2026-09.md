@@ -9,6 +9,35 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 041 結案 — 2026-09-26
+
+以設定的幀率擷取，由 Claude 實作、Codex GPT-6 Astra review（[幀率要求](../system-design/recording.md#幀率要求)、[影格節奏診斷](../system-design/tooling.md#影格節奏診斷)）。在此之前，每段錄影的影格都比設定少約 2%（30 fps）或 4%（60 fps），而且沒有掉格。
+
+各輪環境：M1 Pro（10 核、32 GB）、macOS 26.6.2、Node 24.21.0、Electron 44.3.0／Chromium 152.0.7977.78、ffmpeg 9.0.1；主螢幕為 BenQ 1920×1080、60.00 Hz（Electron `displayFrequency` 60）；系統音訊輸出到外接耳機，音量 94；測試素材 SHA-256 `e631b973…c41459`；版本為 HEAD `86ecbc5` 加上未提交的變更。每次診斷與 matrix 都自行建置 `out/`。
+
+- **分類：(A) 來源下限。** `pnpm diagnose:cadence` 經由正式的 capture host 錄製素材，並在 MediaRecorder 之前為 video track 送達的每個影格記下時間戳。舊要求 `{ ideal: N, max: N }` 的四次 30 秒錄影送達 29.42／29.36 fps（間隔中位數 33.90／34.00 ms）與 57.78／57.22 fps（17.20／17.30 ms）。track 每次丟棄 1–4 格（最多 0.45%）；檔案 pts 的中位數與送達時間戳相差不到 0.05 ms；`getSettings().frameRate` 全程回報 30 或 60。加上八個忙碌程序後偏差仍在（29.46 與 57.62 fps，分布更集中）。Chromium 的 ScreenCaptureKit 裝置把要求當成最小影格間隔，因此每個間隔都是這個下限再加上交付延遲。間隔分布沒有先前保留的檔案看起來那麼緊：30 fps 約 17% 的間隔短於週期的 99%（時間戳是到達時間，會抖動），但沒有任何兩倍間隔，中位數仍長約 0.6 ms。
+- **候選（每種幀率各兩次）。** 只給 `{ ideal }` 與舊要求相同（29.29 與 57.01 fps），因為 Chromium 的裝置幀率與 track 限速器都由它決定。30.6／62.4 達到 29.99 與 59.70／59.86 fps，但 30 fps 中位數為 33.60／33.70 ms，落在 1% 邊界。30.3／62.5 的下限是 33 與 16 ms，即週期無條件捨去到整數毫秒；它達到 29.96／29.92 與 59.80／59.82 fps，中位數為 33.37–33.40 與 16.72–16.77 ms，30 fps 的分布也最集中。`ffmpeg mpdecimate` 在所有 60 fps 錄影中都沒有找到重複影格；對重新取樣到 120 fps 的片段，它會標出約一半的影格。**採用：** 以 30.3／62.5 作為 `CAPTURE_FRAME_RATE`，由 `getDisplayMedia` 與解析度上限的 `applyConstraints` 以 `{ ideal, max }` 送出。位元率目標、log 裡的 requested fps、驗證與降級規則仍以設定值為準。
+- **改動前後**（`pnpm matrix`；改動前使用 HEAD 的要求，改動後使用本次變更；改動前的 long 已經顯示新的中位數欄位）：
+
+| 案例 | 改動前 | 改動後 |
+| --- | --- | --- |
+| fps，30 fps ×2 | 29.39／29.34 fps，無掉格，CPU 13%，offset 63／87 ms | 29.86／29.93 fps，中位數 33.47／33.37 ms，無掉格，CPU 13%，offset 56／97 ms |
+| fps，60 fps ×2 | 57.86／57.01 fps（**fail**），掉格 0.12%／1.10%，CPU 22／20%，offset 86／77 ms，31.4／30.9 Mbps | 59.96／59.95 fps（pass），中位數 16.70／16.74 ms，掉格 0.50%／0.28%，CPU 21／22%，offset 82／92 ms，32.6 Mbps |
+| quick ×3 | 29.29–29.35 fps，無掉格，CPU 13–14%，offset 72–97 ms | 29.92–29.94 fps，中位數 33.42–33.43 ms，無掉格，CPU 13–14%，offset 76–87 ms |
+| long，180 秒 | 29.44 fps，中位數 33.83 ms，無掉格，CPU 14%，offset 70 ms，drift 3 ms | 29.90 fps，中位數 33.47 ms，無掉格，CPU 14%，offset 83 ms，drift 1 ms |
+
+  改動後每個案例都配對為 `matched`，通過聲道能量（−27.1／−27.1 dB）與位元率（30 fps 為 100–101%），並 exit 0。改動後的診斷結果一致：29.96／29.90 與 59.80／59.68 fps；60 fps 兩次的檔案各有 14 與 12 個兩倍間隔，改動前為 1–18。Go criteria 全數成立：平均在 30 的 0.5 fps 與 60 的 1 fps 內，中位數在週期的 1% 內，掉格低於 2% 且落在改動前的範圍內，CPU 差距在 3 個百分點內，offset、drift、能量與位元率都在門檻內。`THRESHOLDS` 沒有更動。
+- **錄影 smoke。** 以新的 `pnpm start:app` bundle、使用者原本的 60 fps 設定執行 `pnpm acceptance`，錄到 10.3 秒 1920×1080：track 62.5 fps，實測 59.78 fps（完整性層級不判定），48 kHz 雙聲道 −27.2／−27.2 dB，10 次閃光與 10 次短音，可完整解碼；報告 `2026-09-25T16-33-55-153Z-hotkey-acceptance`。log 沒有降級通知。Codex GPT-6 Astra 以 computer use 在 QuickTime 播放該檔：從 0.05 秒播到 7.07 秒，素材持續在動；以輔助使用把時間列設到 8.0 秒後續播到 10.32 秒片尾；接著關閉影片、取消 Open 對話框，並退出原本未執行的 QuickTime。結果 5 pass、1 blocked：工具的裁切畫面找不到時間列的位置，無法以滑鼠拖曳（只有工具觀察，沒有本機 PNG；`2026-09-25T16-38-23Z-computer-use`）。
+
+自動化證據：最終版本的 `pnpm check` 通過 typecheck、52 個檔案的 844 個測試與 build。新增測試涵蓋 constraint builder（30.3／62.5；高於設定值，但週期差不到 1 ms，且低於下一個設定值）、降級規則以設定值而非要求值判斷（62.5 與 59.8 不算降級、30 仍算、30 fps 設定永遠不算）、capture host 在 `getDisplayMedia` 與 `applyConstraints` 都送出要求值而編碼目標仍以 60 fps 計算、`frameStats` 的間隔中位數，以及節奏統計、計數窗口與分類（包含 tap 漏格的情況）。
+
+未驗證：解析度上限的 `applyConstraints` 路徑的原生行為（沒有接上大於上限的螢幕）、60 Hz 以外的螢幕、其他 Mac 與其他 Chromium 版本。要求值保留的餘裕是依本機延遲調整的；在更高更新率的螢幕上，60 fps 錄影可能略高於 60。沒有原生案例移交 035。
+
+Codex GPT-6 Astra（medium reasoning、read-only）第一輪花了 131 秒，對診斷工具提出兩項 Medium finding，皆接受並修正；它認為產品端的要求值、位元率、降級與 verify 變更符合計畫。(1) renderer 的影格 tap 在讀取端卡住時可能漏格，runner 會把觀察端的損失誤判為來源變慢，而且仍然 exit 0：現在若 tap 看到的影格少於檔案的 99%，結果為 `undetermined` 並 exit 1。已記錄的 20 次錄影中，tap 看到的影格都不少於檔案，因此這些分類仍然成立。(2) 收到 SIGTERM 時，忙碌程序、經由 `open` 啟動的 fixture 與素材瀏覽器都會留下：現在由一個可重複呼叫的 cleanup 在 SIGINT 或 SIGTERM 時精準停止本輪自己的程序。在帶兩個忙碌程序的實際錄影中，它沒有留下任何程序，分別以 130 與 143 結束。第一次 SIGINT 測試曾發現 handler 完成前，本輪仍可能寫出 summary 並先 exit 1，因此現在收到訊號後本輪就停止前進。驗證修正時還發現，10 秒錄影把啟動時的 4 次丟棄（1.3%）算進去，被分類為 `track-limiter`；現在計數從 recorder 開始後的第一個取樣起算，重跑後兩種幀率都是 0 次丟棄與 `on-time`。修正後的第二輪花了 81 秒，提出一項 Medium finding，已接受並修正：若訊號剛好在本輪正常收尾、等待 Chrome 或 Electron 結束時抵達，本輪仍可能先寫出 summary 並 exit 0；現在等待結束後會再檢查一次是否已中斷。修正後在最後一次錄影結束時送 SIGTERM，以 143 結束，沒有寫 summary，也沒有殘留程序。review 已達兩輪上限，這最後一項修正沒有再經過 review。30 分鐘的 review 預算用掉約 3.5 分鐘，不需要 fallback。
+
+每輪結束後都沒有殘留的 RecordStuff、Electron 或素材瀏覽器程序，`settings.json` 前後相同（SHA-256）。本輪的測試產物已依維護者要求在結案後刪除：~/Movies/RecordStuff 的 17 支錄影（`2026-09-25 23-54-18` 到 `2026-09-26 00-34-00`）、十四個 `*-frame-cadence` 目錄、上文提到的 hotkey acceptance 與 computer-use 報告、`2026-09-26.md`／`.json`，以及 `2026-09-25.md`／`.json` 中本輪的段落（plan 030 的段落保留）。本紀錄中的數字即為保存的結果。本輪已在本機 main 上依範圍分開 commit：擷取 `249323f`、工具 `6f555d2`、設計文件 `d2e584c`，以及這個結案 commit。沒有 push 或發布。
+
+
 ## Plan 030 結案 — 2026-09-25
 
 音訊與同步證據（R1 bug 8、R2-05），由 Claude 實作、Codex GPT-6 Astra review（[量測工具](../system-design/tooling.md#量測工具)、[門檻與判定](../system-design/tooling.md#驗收門檻)）。
