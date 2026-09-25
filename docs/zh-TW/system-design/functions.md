@@ -24,7 +24,10 @@
 | `setHotkey(setting)` | 僅 idle／needsPermission；先保存，寫入失敗通知並保留舊註冊，成功再 applyHotkey |
 | `revealLog()` | 有 log 選檔，沒有則開 logs 目錄；開啟失敗留 log |
 | `changeOutputDir()` | 系統對話框 → 保存使用者選擇，失敗通知；成功清位置錯誤並 refresh |
+| `openOutputDir()` | Tray 的儲存位置動作：以 `shell.openPath`、原生警告、App focus 與經 settled 檢查的 `changeOutputDir` 組成 `createOutputFolderOpener` |
 | `setQuality(patch)` | 僅 idle／needsPermission 保存合法 patch；失敗通知且保留舊值；成功 refresh |
+
+[main/output-folder.ts](../../../src/main/output-folder.ts)：`createOutputFolderOpener` 回傳同時只進行一次的開啟動作。先 stat 資料夾：是資料夾就開啟；不存在的已知預設資料夾，只在上層資料夾存在時以非遞迴 `mkdir` 建立；不存在的自訂資料夾、檔案、建立被拒、無法讀取的路徑或 Finder 失敗，都變成一則附路徑、詳細資訊與「更改儲存位置／取消」的在地化警告。存取被拒時仍先請 Finder 開啟。永遠不寫入設定；重複點擊會併入進行中的那次，警告開著時把它帶到前景。`nodeOutputFolderFs` 是真正的 stat／mkdir 邊界。
 
 事件：uncaughtException 留 log 並顯示對話框；unhandledRejection 留 log。Recorder state／saved／captureStarted／failed／permissionRequested 分別更新 Tray、發通知、處理降級與失效授權。tray 左鍵與全域快捷鍵共用同一個 `toggle` closure。Recorder 取得 `fs.statfs` 可用空間與 `userData/recording-sessions` sentinel；啟動時經由歷史還原回報遺留 sentinel，`powerMonitor` 的 suspend／resume 連同進行中 session 寫入 log。before-quit 忙碌時等待 shutdown；will-quit 釋放快捷鍵與其他資源。
 
@@ -141,6 +144,7 @@
 | `parseSettings(text)` | v1／v2／v3 JSON → settings＋warnings；整體不合法回 undefined；壞 quality／hotkey 保留 outputDir |
 | `constructor(options)` / `load(defaultDir)` | 同步讀檔、檢查、fallback 與 log；不立刻把 fallback 回寫 |
 | `outputDir` / `quality` / `language` / `hotkey` getters | 讀目前已成功提交的設定 |
+| `defaultOutputDir` | 建構時給定的 fallback 資料夾；開啟儲存位置時唯一可能建立的資料夾 |
 | `setHotkey(hotkey)` | 驗 enabled 布林與自訂組合鍵，正規化後排隊保存 |
 | `setLanguage(language)` | 驗 en／zh-TW，排入保存佇列，保留品質與位置 |
 | `setOutputDir(dir)` | 驗絕對路徑 → save 更新 |

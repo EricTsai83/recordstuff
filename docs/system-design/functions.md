@@ -24,7 +24,10 @@ Named application and tool functions are grouped by source file. Follow source l
 | setHotkey | Only idle/needsPermission; persist first, notify on failed write, then applyHotkey |
 | revealLog | Reveal the file, otherwise open its directory; log open failures |
 | changeOutputDir | Native folder dialog → persist choice; failure notification or successful refresh |
+| openOutputDir | The tray's output-folder action: `createOutputFolderOpener` over `shell.openPath`, the native warning, app focus and `changeOutputDir` behind the settled check |
 | setQuality | Only idle/needsPermission; persist patch, notify on failure, refresh on success |
+
+[main/output-folder.ts](../../src/main/output-folder.ts): `createOutputFolderOpener` returns the single-flight open action. It stats the folder. A directory opens; the missing known default is created with a non-recursive `mkdir` only inside an existing parent folder; a missing custom folder, a file, a refused creation, an unreadable path or a Finder failure becomes one localized warning with the path, details and Change output folder/Cancel. An access refusal still asks Finder first. It never writes settings; a repeated click joins, focusing an open warning. `nodeOutputFolderFs` is the real stat/mkdir boundary.
 
 Process callbacks log uncaught exceptions/rejections. Recorder events render state, notify saved/error/permission, and report clear frame-rate downgrades. The tray left click and the global shortcut share one `toggle` closure. Recorder receives `fs.statfs` free space and the `userData/recording-sessions` sentinels; launch reports leftover sentinels through the history restore, and `powerMonitor` suspend/resume are logged with the in-flight session. Before-quit coordinates shutdown; will-quit disposes the shortcut and releases resources. CurrentLanguage is updated only after a successful settings save and localizes unexpected-error dialogs.
 
@@ -140,6 +143,7 @@ The page's window-message callback checks source/marker/port before creating the
 | parseSettings | Validate v1/v2/v3 JSON; preserve valid folder when quality/language/hotkey need defaults; return warnings |
 | constructor / load | Read synchronously, validate, fall back and log; do not immediately rewrite defaults |
 | outputDir / quality / language / hotkey | Read successfully committed preferences |
+| defaultOutputDir | The fallback folder given at construction; the only folder opening may create |
 | setHotkey | Validate enabled flag and custom accelerator, canonicalize it, then enqueue update |
 | setOutputDir | Validate absolute path, then enqueue update |
 | setQuality | Validate patch, then merge with latest committed quality inside the save queue |

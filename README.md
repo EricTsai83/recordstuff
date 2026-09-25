@@ -29,7 +29,7 @@ Download the arm64 DMG and drag RecordStuff onto the Applications folder shown i
 1. Launch recordstuff from Applications and grant screen/system-audio recording permission when requested. Relaunch if access does not take effect.
 2. Left-click its menu bar icon, or press **⌘⇧1** from any app, to record the selected screen and system audio. Choose a screen in **Settings → Recording settings → Screen**; the default follows the primary display.
 3. Click or press the shortcut again to stop. Recordings default to `~/Movies/RecordStuff`; click the saved notification or use the menu to find the file.
-4. Right-click for the output folder, logs, and quit. Open **Settings** to adjust the screen, recording quality, language, appearance, notifications, shortcut, and update checks without closing the settings window.
+4. Right-click for the output folder, logs, and quit. Opening the output folder creates the default folder if it is missing; a missing custom folder, for example on a disconnected drive, is never recreated: RecordStuff explains the problem and offers **Change output folder**. Open **Settings** to adjust the screen, recording quality, language, appearance, notifications, shortcut, and update checks without closing the settings window.
 
 **English is the default.** Choose **Settings → General → Language → 繁體中文** to switch the app to Traditional Chinese. The choice persists and can change during recording without changing capture settings. Application diagnostics remain English; native permission dialogs follow macOS settings.
 
