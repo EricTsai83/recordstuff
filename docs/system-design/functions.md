@@ -332,20 +332,21 @@ See [tooling](tooling.md) for pipeline and thresholds. These tools are developme
 | --- | --- |
 | [acceptance-settings.mts](../../scripts/acceptance-settings.mts) top level | Require the build output and a local Electron; run the fixture with a 90-second deadline into a fresh evidence directory; print each case; write report.md; exit 2 on a missing prerequisite or no results, 1 on any failing case |
 | [fixtures/settings-panel.ts](../../scripts/fixtures/settings-panel.ts) | Load the built preload and page in a hidden sandboxed window with its own view and IPC handlers; judge CSP/console, the exposed bridge, absent Node APIs, the URL language, the rendered controls, an unavailable option, a refused shortcut's note, a real change round trip and an uncommitted choice; write results.json and panel.png |
-| [acceptance-hotkey.mts](../../scripts/acceptance-hotkey.mts) top level | Require a running idle RecordStuff with a run id and its `hotkey: registered` line; open the kiosk material; send the accelerator through System Events; wait ≤30 s each, from rotation-aware cursors, for `pressed`, `state → recording`, this run's capture record, second `pressed` and that session's terminal record; verify the integrity tier with `testMaterial` and require the file's metadata to match that session; write report.md/verify.json/app-session.log; exit 1 on any failing check |
+| [acceptance-hotkey.mts](../../scripts/acceptance-hotkey.mts) top level | Require ffmpeg/ffprobe and a running idle RecordStuff with a run id and its `hotkey: registered` line; open the kiosk material; send the accelerator through System Events; wait ≤30 s each, from rotation-aware cursors, for `pressed`, `state → recording`, this run's capture record, second `pressed` and that session's terminal record; verify the integrity tier with `testMaterial` and channel energy required, and require the file's metadata to match that session; write report.md/verify.json/app-session.log; exit 2 before any key without ffmpeg/ffprobe, exit 1 when a check failed, was blocked or is incomplete |
 | [lib/acceptance.mts](../../scripts/lib/acceptance.mts) `acceleratorToKeystroke` / `keystrokeScript` | Electron accelerator → System Events `keystroke … using {…}`; undefined for keys it cannot type |
 | Same file `lastStartIndex` / `registeredAccelerator` / `currentState` / `currentRunId` / `lineTime` | Scope log reading to the current process (skipping a lock-refused second launch's `start:` line) and its run id; parse the line timestamp |
 | [lib/log-reader.mts](../../scripts/lib/log-reader.mts) `LogReader.end` / `since` / `all`, `readRetainedLog`, `evidenceSince` | Rotation-aware cursor (file identity + byte offset) just past the last complete line; complete lines after a cursor across retained archives, each once, or `LogGapError` when retention or truncation removed that history (the cursor's 64-byte mark also catches a truncated file that regrew past it); every retained line oldest first; evidence lines with a marked gap |
 | [lib/session-records.mts](../../scripts/lib/session-records.mts) `parseSessionRecord` / `startLineRun` / `logMessage` | Validate one session record of a known version (malformed or future records are ignored); the run id of a `start:` line; strip the timestamp |
 | [lib/acceptance-runtime.mts](../../scripts/lib/acceptance-runtime.mts) `waitForLog` / `waitForRecord` / `recordingOutcome` / `finishRecording` / `settleRecording` | Bounded waits from a cursor that reject at once on an evidence gap; this recording's outcome from records when the app writes them, else from human lines, optionally for one session; interrupted-recording settlement that never toggles twice; its runner fallback for an app that never left idle |
 | [probe-recording.mjs](../../scripts/probe-recording.mjs): probe, ratio, kbps, fixed | Run ffprobe, parse ratios, format quick inspection output |
-| [verify-recording.mts](../../scripts/verify-recording.mts): usage, next | CLI help/exit 2 and argument values; top-level loop verifies files and returns failure exit status |
-| [lib/media-tools.mts](../../scripts/lib/media-tools.mts): ToolMissingError, run, hasTool | External-tool error, bounded-buffer subprocess invocation, availability check |
-| Same: probe | Container/stream/frame count and decode errors |
+| [verify-recording.mts](../../scripts/verify-recording.mts): usage, next | CLI help/exit 2 and argument values; top-level loop requires energy (and markers with `--sync`), verifies files and exits by `verdictExitCode`: 1 fail, incomplete or unreadable, 2 blocked |
+| [lib/media-tools.mts](../../scripts/lib/media-tools.mts): ToolMissingError, MeasurementError, run, hasTool | Missing tool; a tool that ran without a valid measurement; bounded-buffer subprocess invocation; availability check |
+| Same: completed, stderrTail | Only a zero exit is a measurement; a nonzero exit or signal throws MeasurementError with the last stderr lines |
+| Same: probe | Container/stream/frame count and decode errors; malformed JSON is a MeasurementError |
 | Same: frameTimes, read | PTS intervals; long files sample head/tail separately |
-| Same: channelRms, syncMarkers | Per-channel astats energy and flash/beep times |
+| Same: channelRms, syncMarkers | Per-channel astats energy, complete only when every channel of the stream is reported; flash/beep times from detector runs that exited 0 |
 | [lib/verify-recording.mts](../../scripts/lib/verify-recording.mts): readLogText, readLogPairs | Every retained file oldest first; identity pairing, empty without a log |
-| Same: verifyRecording | Look up the file's pairing, then probe/frame/RMS/optional sync → measure → judge → result with the pairing status |
+| Same: attempt, verifyRecording | Look up the file's pairing, then probe/frame; energy (only with an audio stream) and optional sync become evidence (missing ffmpeg `unavailable`, any other failure `error`) → measure → judge with the caller's required evidence → result with the pairing status |
 | Same: parseDimensions | WxH string → dimensions or undefined |
 | Same: tryExec, environmentSummary | Best-effort machine/OS/Electron/display/tool facts |
 | Same: localDate, measurementsPath | Local date → evidence filename |
@@ -355,7 +356,8 @@ See [tooling](tooling.md) for pipeline and thresholds. These tools are developme
 | Same: sleep, electronPids, cpuPercent | Inter-case delay and app-process CPU sampling |
 | Same: logSince | This case's lines from its cursor across rotation; a lost history is a case failure |
 | Same: recordOnce | Launch development app with automatic-recording config, sample CPU, await outcome |
-| Same: main | Validate prerequisites, open material, run cases, verify/save results, clean up |
+| Same: main | Validate prerequisites (ffmpeg/ffprobe first; blocked exit 2 before anything runs), open material, run cases with energy and sync required, verify/save results, clean up, exit by `verdictExitCode` |
+| Same: unmetChecks | A case's verdict and each check that kept it from passing, with its reason |
 
 ### Pure measurement logic
 
@@ -371,14 +373,14 @@ See [tooling](tooling.md) for pipeline and thresholds. These tools are developme
 | dropEofClosures | Remove detector closure artifacts near EOF |
 | parseBlackdetect, parseSilencedetect | Parse flash/audio boundaries and discard EOF artifacts |
 | parseChannelRms | Parse per-channel energy |
-| median, syncStats | Match sufficient markers and estimate offsets/head-tail drift |
-| measure | Combine stream/container/frame/decode/audio/CPU/sync facts |
+| median, syncStats | Match markers; always return flash/beep/pair counts overall and per edge window, with offsets and head-tail drift only from at least MIN_SYNC_PAIRS pairs |
+| measure | Combine stream/container/frame/decode/audio/CPU/sync facts; energy and sync are Evidence that names why it is absent |
 | fmt, mbps, kbps, ms | Format values and unknowns |
 | pass, offsetWithinLimits, aspectMatches | Verdict, asymmetric offset bounds, aspect tolerance |
-| judge | Produce threshold checks and unavailable notes |
-| overallVerdict | Any fail→fail; any pass and no fail→pass; otherwise n/a |
+| judge, unmeasured, markerShortage, energyProblems, dbText | Produce threshold checks; turn evidence status, the caller's required evidence, marker coverage and per-channel levels into pass/fail/blocked/incomplete/n/a with a reason |
+| overallVerdict, blocksSuccess, verdictExitCode | fail > blocked > incomplete > pass > n/a; the verdicts that keep a run from succeeding; process exit 1/2/0 |
 | describeRequested, formatText, width, pad | Human-readable requested settings (or why the metadata is missing) and aligned terminal table |
-| cell, formatMarkdown | Escape table cells and produce evidence section |
+| cell, formatMarkdown, resultLine | Escape table cells and produce evidence section; the result line names its verdict |
 
 [scripts/test-material.html](../../scripts/test-material.html): `scheduleBeep` builds a timed alternating-channel tone; `frame` advances visual motion/flash using the audio clock. The click callback initializes/resumes AudioContext and fullscreen playback. Mixed Latin/CJK sample text intentionally tests glyph sharpness rather than representing application UI localization.
 

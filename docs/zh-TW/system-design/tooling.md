@@ -67,13 +67,13 @@ pnpm matrix -- all
 pnpm matrix -- long
 ```
 
-verify 支援多檔、log、來源尺寸、同步標記、Markdown／JSON 與指定 JSON 輸出。結果預設存至 docs/verification/measurements（已 gitignore，原始執行只留本機，解讀後的結論才寫進驗證紀錄）；會讀所有保留的檔案（active log 與 `.1`～`.3`，由舊到新），並依身分配對錄影與 session（plan 029）：使用 [session record](desktop.md#log-與診斷) 的 run 與 session id，以檔案完整路徑查找；只有 log 中恰好一個 session 指名同名檔案時才退回用檔名（複製出去的檔案）。同一筆 record 記兩次仍是一個結果；同一 session 出現不同結果則是 conflict。沒有留下檔案的失敗不宣告任何路徑，因為同一秒的重試可能重用它的暫存檔名。session record 之前版本的啟動使用保守的舊版關聯：只有沒有其他可能擁有者時才接受（`file finalized` 行、唯一仍在錄製的 session，或文字相符且唯一未解決的失敗），因此兩個未解決的失敗絕不依印出順序分配。其餘情況報告會標出 metadata 為 ambiguous、conflict 或 unknown，不判定任何需要要求設定的檢查；媒體量測不依賴 metadata。`pnpm acceptance` 與 `pnpm matrix` 在 metadata 沒有配到自己 session 時判該案例失敗。2026-09-25 以 244 個保留 log 重播，舊的依順序讀法配到的 628 個檔案全部得到相同關聯；保留 log 中沒有舊讀法會出錯的「收尾順序顛倒」交錯。
+verify 支援多檔、log、來源尺寸、同步標記、Markdown／JSON 與指定 JSON 輸出。聲道能量是必要證據，帶 `--sync` 時閃光／短音標記也是；有檢查 fail、必要證據 incomplete 或檔案無法讀取時 exit 1，缺少必要工具（blocked）時 exit 2，其餘 exit 0（見[判定](#驗收門檻)）。結果預設存至 docs/verification/measurements（已 gitignore，原始執行只留本機，解讀後的結論才寫進驗證紀錄）；會讀所有保留的檔案（active log 與 `.1`～`.3`，由舊到新），並依身分配對錄影與 session（plan 029）：使用 [session record](desktop.md#log-與診斷) 的 run 與 session id，以檔案完整路徑查找；只有 log 中恰好一個 session 指名同名檔案時才退回用檔名（複製出去的檔案）。同一筆 record 記兩次仍是一個結果；同一 session 出現不同結果則是 conflict。沒有留下檔案的失敗不宣告任何路徑，因為同一秒的重試可能重用它的暫存檔名。session record 之前版本的啟動使用保守的舊版關聯：只有沒有其他可能擁有者時才接受（`file finalized` 行、唯一仍在錄製的 session，或文字相符且唯一未解決的失敗），因此兩個未解決的失敗絕不依印出順序分配。其餘情況報告會標出 metadata 為 ambiguous、conflict 或 unknown，不判定任何需要要求設定的檢查；媒體量測不依賴 metadata。`pnpm acceptance` 與 `pnpm matrix` 在 metadata 沒有配到自己 session 時判該案例失敗。2026-09-25 以 244 個保留 log 重播，舊的依順序讀法配到的 628 個檔案全部得到相同關聯；保留 log 中沒有舊讀法會出錯的「收尾順序顛倒」交錯。
 
 ### 測試素材
 
 `scripts/test-material.html` 是所有量測共用的唯一固定頁面：捲動小字（銳利度）、紅藍細線與彩色文字（色度邊緣）、每幀移動的方塊（幀率時序）、右上角每秒閃白 100 ms 的方框，以及同一音訊時鐘上的柔和 660 Hz 音（120 ms、約 −10 dBFS、左右交替）。閃光與音是同步標記：`verify --sync` 以 ffmpeg blackdetect 看方框、silencedetect（−35 dB、0.4 秒）看音訊找出它們，所以頁面其餘時間必須靜音，機器上也不能有別的聲音在播。音訊稀疏，這類錄影的 AAC 碼率只回報不判定（`--test-material`）。手動開啟時要點一下才開始（瀏覽器自動播放政策）；`pnpm matrix` 與 `pnpm acceptance` 用全新 profile 的 Chrome app 模式全螢幕在主螢幕開啟、允許自動播放並帶 `?auto=1`，不需點擊。驗收報告會記錄頁面的 SHA-256，結果可對應素材版本。版本沿革：2026-09-19 以前是 1 kHz、60 ms、音量 0.5 的嗶聲；2026-09-20 改為上述較柔和的 660 Hz 音，首次執行在 20 秒內偵測到 20 次閃光與 19 個音、音畫偏移 79 ms，落在歷史 45–80 ms 延遲範圍內，先前的同步結果仍可比較。目前 SHA-256：`e631b973a793cde1d5326a9cc58da0d88a522ca3c3041b1c9a2d0f3561c41459`。
 
-matrix 只支援 macOS 開發環境。預設以 Chrome app 模式全螢幕在主螢幕開素材頁，可用 --no-open-material 自行開；固定音量與來源螢幕。以 RECORDSTUFF_AUTORECORD 驅動未打包 App，打包版忽略。seconds 範圍 (0,3600]，quality override 合併固定預設，不讀使用者品質作為基準。
+matrix 只支援 macOS 開發環境。預設以 Chrome app 模式全螢幕在主螢幕開素材頁，可用 --no-open-material 自行開；固定音量與來源螢幕。以 RECORDSTUFF_AUTORECORD 驅動未打包 App，打包版忽略。seconds 範圍 (0,3600]，quality override 合併固定預設，不讀使用者品質作為基準。每個案例都要求聲道能量與同步標記（plan 030）：matrix 在建置或錄影前先檢查 ffmpeg 與 ffprobe，缺少就 exit 2（blocked）。只有沒有任何檢查 fail、blocked 或 incomplete 的案例才算通過；未通過的案例會在執行結尾與量測檔中列出每個未達成的檢查及原因，整輪 exit 1。
 
 | 矩陣 | 內容 |
 | --- | --- |
@@ -125,17 +125,20 @@ media-tools 呼叫 ffprobe／ffmpeg；verify.mts 純解析／計算／判定；v
 | 完整性 | 時長 | 有指定 matrix 時長則用它，否則用 log 的 session 長度（`state → recording` 到 `state → stopping`），±2 秒 |
 | 完整性 | 音訊／影像時長差 | 絕對值 <100 ms |
 | 完整性 | 音訊−影像起始偏移（容器） | 嚴格介於 −45 與 +125 ms |
-| 完整性 | 音訊 | 48 kHz、2 聲道；有量時各聲道 RMS >−60 dBFS |
+| 完整性 | 音訊格式 | 48 kHz、2 聲道（串流 metadata） |
+| 完整性 | 聲道能量 | 由 ffmpeg astats 量到兩個聲道，各自 RMS >−60 dBFS。靜音、缺少或數值無效的聲道判 fail；astats 以非 0 結束，或回報的聲道少於串流聲道數，也判 fail |
 | 完整性 | 視訊碼率 | 至少為要求目標的 70%；超過只是檔案較大，不算失敗 |
 | 完整性 | 音訊碼率 | 至少為要求目標的 50%；AAC 隨內容變化。帶 `--test-material`（`--sync` 隱含、`pnpm acceptance` 會設定）時只回報不判定：素材頁的稀疏嗶聲遠低於任何要求值，連續音訊的碼率交給[音質診斷](audio-quality.md) |
 | 完整性 | 解碼 | ffprobe 全影格無錯；播放器操作另驗 |
 | 效能 | fps | 要求 ±2 fps |
 | 效能 | 掉幀 | <2% |
-| 效能 | 音訊−影像偏移（閃光／短音） | 嚴格介於 −45 與 +125 ms |
-| 效能 | 結尾漂移 | 絕對值 <100 ms，需足夠同步標記 |
+| 效能 | 音訊−影像偏移（閃光／短音） | 嚴格介於 −45 與 +125 ms，至少 3 組配對的閃光／短音 |
+| 效能 | 結尾漂移 | 絕對值 <100 ms。至少 120 秒（要求或實測）的錄影，前 60 秒與後 60 秒各需至少 3 組配對；較短的錄影沒有漂移可判定 |
 | 效能 | CPU | Electron 合計平均 ≤40%（僅 matrix） |
 
-碼率採下限而非目標，因為 Chromium 編碼器在 60 fps 時會超出要求 1.5–2 倍但仍達到預期品質；只有碼率不足才代表問題。這些是 THRESHOLDS 常數，不是任意素材的品質保證。缺 ffmpeg 時可能只有格式檢查通過而無能量量測；需讀 notes／n/a。beep 素材碼率低，dual-mono 也會通過雙聲道能量檢查。任一 fail 整體 fail，有 pass 且無 fail 為 pass，全部無法判定則 n/a。
+碼率採下限而非目標，因為 Chromium 編碼器在 60 fps 時會超出要求 1.5–2 倍但仍達到預期品質；只有碼率不足才代表問題。這些是 THRESHOLDS 常數，不是任意素材的品質保證。beep 素材碼率低，dual-mono 也會通過雙聲道能量檢查，但不能證明立體聲分離。
+
+每個檢查的判定為 pass、fail、blocked、incomplete 或 n/a（plan 030），由呼叫端說明需要哪些證據：matrix 要求聲道能量與同步標記，`pnpm verify` 要求能量、帶 `--sync` 時也要求標記，`pnpm acceptance` 要求能量，更新驗收兩者都要求。必要證據因工具缺少而無法量測時為 **blocked**。必要標記有量但數量不足，或長錄影缺少任一端的窗口時為 **incomplete**，並附原因：沒有閃光（素材不在被錄的螢幕上）、沒有短音（系統音訊靜音或被其他聲音蓋過）或配對太少。覆蓋規則沿用既有常數 `MIN_SYNC_PAIRS`（3）與 60 秒端點窗口；單一配對或只提出同步要求都不算證據。工具以非 0 結束或輸出不完整時該檢查 **fail**，不使用其部分輸出。報告沒有要求的證據維持 **n/a** 並附原因，絕不算 pass。格式檢查獨立量測，所以能量 blocked 時 48 kHz 立體聲仍可能 pass。整體判定依序為：任一 fail 為 fail，否則有 blocked 為 blocked，否則有 incomplete 為 incomplete，否則有 pass 為 pass，其餘 n/a；程序 exit 1 代表 fail 或 incomplete，2 代表 blocked，其餘 0。JSON measurement 以 `measured` 加值，或 `not-requested`、`unavailable`、`error` 加原因記錄每一項證據。這次變更前寫下的報告仍是舊的合併音訊檢查與三種判定，保留為歷史紀錄。
 
 新 log 與量測輸出以英文為主；歷史 raw 記錄保留當時語言與判定，由雙語摘要解釋，不改數字或舊 fail。
 
@@ -200,7 +203,7 @@ Runner 將原始碼與建置資源複製至專用報告目錄，只修改該副�
 
 報告位於 `docs/verification/measurements/<timestamp>-updates-*/`；`--out <新目錄>` 可指定路徑，既有目錄會被拒絕。`report.json`／`report.md` 列出每個必要案例，包含先前失敗後未執行的項目；保留請求／回應、事件、建置／簽章輸出、來源／產物雜湊與錄影驗證。Exit 0 表示所述範圍全部必要案例通過、1 表示失敗、2 表示受阻／不完整。SIGINT／SIGTERM 會要求收尾：測試 App 透過正式 shutdown 停止並保存錄影，只關閉專用素材瀏覽器 profile；無法安全退出的測試程序保留並回報清理失敗，不使用全域 kill。App 退出後才移除來源工作目錄，錄影與證據保留。
 
-此隔離 fixture 也攔截存檔通知並記錄事件，避免第一段的通知遮擋第二段測試素材；通知顯示不在這項驗收範圍。影音分析會判定影格時序與閃光／提示音偏移，至少須有 5 組配對標記；短片不判定長時間同步漂移。已存在的 `--out` 目錄會保留原內容，以明確訊息及退出碼 2 拒絕，不寫入報告。
+此隔離 fixture 也攔截存檔通知並記錄事件，避免第一段的通知遮擋第二段測試素材；通知顯示不在這項驗收範圍。影音分析會判定影格時序與閃光／提示音偏移，至少須有 5 組配對標記；短片不判定長時間同步漂移。聲道能量與標記是必要證據，所以 blocked 或 incomplete 的檢查與 fail 一樣會讓案例失敗。已存在的 `--out` 目錄會保留原內容，以明確訊息及退出碼 2 拒絕，不寫入報告。
 
 ## 設定快捷鍵驗收
 

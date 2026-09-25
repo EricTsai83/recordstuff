@@ -330,7 +330,7 @@
 | --- | --- |
 | [acceptance-settings.mts](../../../scripts/acceptance-settings.mts) 頂層 | 要求已有建置產物與本機 Electron；以 90 秒上限在全新證據目錄執行 fixture；印出每個案例；寫 report.md；缺前置或無結果以 2 退出，任一 fail 以 1 退出 |
 | [fixtures/settings-panel.ts](../../../scripts/fixtures/settings-panel.ts) | 在隱藏的 sandbox 視窗載入已建置的 preload 與頁面，自備 view 與 IPC handler；判定 CSP／console、暴露的 bridge、沒有 Node API、URL 語言、畫出的控制項、不可用選項、被拒絕快捷鍵的註解、真實變更往返，以及未提交的選擇；寫出 results.json 與 panel.png |
-| [acceptance-hotkey.mts](../../../scripts/acceptance-hotkey.mts) 頂層 | 要求 RecordStuff 執行中、idle、有 run id 且有 `hotkey: registered`；開 kiosk 素材；以 System Events 送組合鍵；從 rotation-aware cursor 各 30 秒內等 `pressed`、`state → recording`、本次的 capture record、第二個 `pressed` 與該 session 的終止 record；以 `testMaterial` 驗完整性層級，並要求檔案 metadata 配到該 session；寫 report.md／verify.json／app-session.log；任一 fail 以 1 退出 |
+| [acceptance-hotkey.mts](../../../scripts/acceptance-hotkey.mts) 頂層 | 要求 ffmpeg／ffprobe 可用，且 RecordStuff 執行中、idle、有 run id 且有 `hotkey: registered`；開 kiosk 素材；以 System Events 送組合鍵；從 rotation-aware cursor 各 30 秒內等 `pressed`、`state → recording`、本次的 capture record、第二個 `pressed` 與該 session 的終止 record；以 `testMaterial` 並要求聲道能量驗完整性層級，並要求檔案 metadata 配到該 session；寫 report.md／verify.json／app-session.log；缺 ffmpeg／ffprobe 時在送鍵前以 2 退出，任一檢查 fail、blocked 或 incomplete 以 1 退出 |
 | [lib/acceptance.mts](../../../scripts/lib/acceptance.mts) `acceleratorToKeystroke` / `keystrokeScript` | Electron accelerator → System Events `keystroke … using {…}`；無法輸入的鍵回 undefined |
 | 同檔 `lastStartIndex` / `registeredAccelerator` / `currentState` / `currentRunId` / `lineTime` | 只讀目前程序的 log（略過被 lock 拒絕的第二次啟動的 `start:` 行）與其 run id；解析行時間戳 |
 | [lib/log-reader.mts](../../../scripts/lib/log-reader.mts) `LogReader.end` / `since` / `all`、`readRetainedLog`、`evidenceSince` | 最後一個完整行之後的 rotation-aware cursor（檔案身分＋byte offset）；跨保留 archive 讀 cursor 之後的完整行、每行一次，retention 或截斷移除歷史時丟 `LogGapError`（cursor 的 64 bytes 標記也能抓到截斷後又長回的檔案）；由舊到新的所有保留行；以標記取代遺失歷史的證據行 |
@@ -338,16 +338,17 @@
 | [lib/acceptance-runtime.mts](../../../scripts/lib/acceptance-runtime.mts) `waitForLog` / `waitForRecord` / `recordingOutcome` / `finishRecording` / `settleRecording` | 從 cursor 起算的有時限等待，遇 evidence gap 立即 reject；App 有寫 record 時由 record、否則由人類可讀行判斷本次錄影結果，可限定單一 session；不重複切換的中斷錄影收尾；runner 對從未離開 idle 的 App 的退路 |
 | [probe-recording.mjs](../../../scripts/probe-recording.mjs) `probe(file)` | ffprobe JSON → stream／container 數據；CLI 逐檔列出 |
 | 同檔 `ratio(text)`、`kbps(bps)`、`fixed(n, digits)` | 解析比例／格式化量測，未知以文字表示 |
-| [verify-recording.mts](../../../scripts/verify-recording.mts) `usage()` | 列參數格式並 exit 2；頂層解析 CLI，逐檔驗證、輸出、以 fail 決定 exit 1 |
-| [lib/media-tools.mts](../../../scripts/lib/media-tools.mts) `ToolMissingError.constructor(tool)` | 缺工具的明確 Error |
+| [verify-recording.mts](../../../scripts/verify-recording.mts) `usage()` | 列參數格式並 exit 2；頂層解析 CLI，要求能量證據（帶 `--sync` 時也要求標記），逐檔驗證、輸出，依 `verdictExitCode` 退出：fail、incomplete 或無法讀取為 1，blocked 為 2 |
+| [lib/media-tools.mts](../../../scripts/lib/media-tools.mts) `ToolMissingError.constructor(tool)`、`MeasurementError.constructor(message)` | 缺工具的明確 Error；工具有執行但沒有產出有效量測 |
+| 同檔 `completed(what, result)`、`stderrTail(stderr)` | 只有 exit 0 才算量測；非 0 或被 signal 結束時丟 MeasurementError，附 stderr 最後幾行 |
 | 同檔 `run(tool, args)`、`hasTool(tool)` | spawnSync 包装／可啟動性檢查；有 maxBuffer，不載入影片到 App |
-| 同檔 `probe(file)` | ffprobe count_frames／streams／format，返回 JSON 與 decodeErrors |
+| 同檔 `probe(file)` | ffprobe count_frames／streams／format，返回 JSON 與 decodeErrors；JSON 格式錯誤為 MeasurementError |
 | 同檔 `frameTimes(file, duration, edgeSeconds)`、`read(interval?)` | 影格 PTS；長片分別讀頭尾區間，不把中間空隙算掉幀 |
-| 同檔 `channelRms(file)` | ffmpeg astats → 每聲道 dBFS |
-| 同檔 `syncMarkers(file, duration)` | 解碼測試頁閃光／短音，回 flashes／beeps 時間點 |
+| 同檔 `channelRms(file, channels)` | ffmpeg astats → 每聲道 dBFS；須回報串流的每個聲道才算完整 |
+| 同檔 `syncMarkers(file, duration)` | 解碼測試頁閃光／短音，回 flashes／beeps 時間點；偵測器須 exit 0 |
 | [lib/verify-recording.mts](../../../scripts/lib/verify-recording.mts) `readLogText(path)` | 所有保留檔案，由舊到新 |
 | 同檔 `readLogPairs(path?)` | 有 log 則依身分配對，無 log 返回空的 LogPairs |
-| 同檔 `verifyRecording(file, pairs, options)` | 查檔案的配對，再 probe／frame／RMS／optional sync→measure→judge→帶配對狀態的 VerifyResult |
+| 同檔 `attempt(measurement)`、`verifyRecording(file, pairs, options)` | 查檔案的配對，再 probe／frame；能量（僅有音軌時）與 optional sync 轉為 Evidence（缺 ffmpeg 為 `unavailable`，其他失敗為 `error`）→measure→依呼叫端的必要證據 judge→帶配對狀態的 VerifyResult |
 | 同檔 `parseDimensions(text)` | WxH 字串 → dimensions 或 undefined |
 | 同檔 `tryExec(cmd, args)`、`environmentSummary()` | best effort 環境查詢；機器／OS／Electron／display／工具版本描述 |
 | 同檔 `localDate(date)`、`measurementsPath(date)` | 本地日期 → docs/verification/measurements 日期檔名 |
@@ -357,7 +358,8 @@
 | 同檔 `sleep(ms)`、`electronPids()`、`cpuPercent(pids)` | 回歸間隔與本專案 Electron 程序 CPU 取樣 |
 | 同檔 `logSince(start)` | 從本案例的 cursor 跨輪替讀 log；遺失歷史視為案例失敗 |
 | 同檔 `recordOnce(entry)` | 用環境變數啟動開發 App，等待結果並取樣 CPU，回 outcome |
-| 同檔 `main()` | 驗工具／平台、開素材頁、依序 recordOnce＋verify、寫結果、cleanup |
+| 同檔 `main()` | 驗工具（ffmpeg／ffprobe 最先檢查，缺少即在任何動作前 blocked exit 2）／平台、開素材頁、以能量與同步為必要證據依序 recordOnce＋verify、寫結果、cleanup，依 `verdictExitCode` 退出 |
+| 同檔 `unmetChecks(result)` | 案例判定與每個讓它未通過的檢查及原因 |
 
 ### 純量測邏輯 — scripts/lib/verify.mts
 
@@ -373,14 +375,14 @@
 | `dropEofClosures(times, duration)` | 移除太靠近 EOF 的偵測器收尾假標記 |
 | `parseBlackdetect(stderr, duration)`、`parseSilencedetect(stderr, duration)` | 解析閃光／音訊邊界並排除 EOF 假標記 |
 | `parseChannelRms(stderr)` | 每聲道 RMS 字串 → dB 值 |
-| `median(values)`、`syncStats(flashes, beeps, options)` | 配對至少 3 個有效標記，估偏移與頭尾漂移；不能只用單點巧合當同步 |
-| `measure(file, bytes, probe, intervals, extras)` | 組合長度／尺寸／fps／碼率／音訊／decode／CPU／sync 成 Measurement |
+| `median(values)`、`syncStats(flashes, beeps, options)` | 配對標記；一律回報整體與各端點窗口的閃光／短音／配對數，至少 MIN_SYNC_PAIRS 組配對才估偏移與頭尾漂移；不能只用單點巧合當同步 |
+| `measure(file, bytes, probe, intervals, extras)` | 組合長度／尺寸／fps／碼率／音訊／decode／CPU／sync 成 Measurement；能量與 sync 為會說明缺席原因的 Evidence |
 | `fmt()`、`mbps()`、`kbps()`、`ms()` | 數值格式化，未知顯示破折號 |
 | `pass(ok)`、`offsetWithinLimits(offsetMs)`、`aspectMatches(a, b)` | 判定 helper：boolean verdict、非對稱偏移範圍、長寬比容差 |
-| `judge(measurement, entry, options)` | 對門檻逐列產出 Check；缺必要量測為 n/a，不臆測 pass |
-| `overallVerdict(checks)` | 有 fail 即 fail；有 pass 且無 fail 為 pass；全不適用則 n/a |
+| `judge(measurement, entry, options)`、`unmeasured()`、`markerShortage()`、`energyProblems()`、`dbText()` | 對門檻逐列產出 Check；依證據狀態、呼叫端的必要證據、標記覆蓋與各聲道數值判 pass／fail／blocked／incomplete／n/a 並附原因，不臆測 pass |
+| `overallVerdict(checks)`、`blocksSuccess(verdict)`、`verdictExitCode(verdicts)` | fail > blocked > incomplete > pass > n/a；會阻止執行成功的判定；程序 exit 1／2／0 |
 | `describeRequested(entry, pairing)`、`formatText(file, entry, checks, pairing)` | 人可讀設定（或 metadata 缺少的原因）與終端表格 |
-| `cell(text)`、`formatMarkdown(title, file, entry, checks, context)` | escape 表格分隔並產 Markdown；供追加證據 |
+| `cell(text)`、`formatMarkdown(title, file, entry, checks, context)`、`resultLine(checks)` | escape 表格分隔並產 Markdown；供追加證據；結果列寫出判定名稱 |
 
 `test-material.html` 的頁面事件、動畫迴圈與 Web Audio callback 提供持續動態畫面、閃光和短音；它不是產品視窗或正式版功能。
 

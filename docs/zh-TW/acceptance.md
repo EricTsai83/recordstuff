@@ -37,7 +37,7 @@ pnpm acceptance
 pnpm verify -- /absolute/path/recording.mp4 --test-material --json /absolute/path/report-dir/verify.json
 ```
 
-保留輸出及退出碼。依目前音訊規格檢查 48 kHz／兩聲道，兩聲道 RMS 均大於 −60 dBFS。這能支持非靜音，不代表音質、聲道分離、主觀聽感或同步。缺失／n/a 不算通過。`--test-material` 只回報稀疏嗶聲碼率而不判定；`--screen` 填實際來源尺寸，需要同步分析且素材支援時才加 `--sync`。詳細門檻見[工具指南](system-design/tooling.md#驗收門檻)。
+保留輸出及退出碼（fail 或 incomplete 為 1，blocked 為 2）。依目前音訊規格，Sample rate/channels 檢查要求 48 kHz／兩聲道，另一項 Channel energy (RMS) 檢查要求兩聲道 RMS 均大於 −60 dBFS。這能支持非靜音，不代表音質、聲道分離、主觀聽感或同步。缺失／n/a 不算通過；必要檢查為 blocked（缺工具）或 incomplete（標記不足）也不算通過。`--test-material` 只回報稀疏嗶聲碼率而不判定；`--screen` 填實際來源尺寸，需要同步分析且素材支援時才加 `--sync`。詳細門檻見[工具指南](system-design/tooling.md#驗收門檻)。
 
 ## 依影響追加案例
 

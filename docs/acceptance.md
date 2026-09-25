@@ -37,7 +37,7 @@ The second command needs an idle app and normally quits it after saving and veri
 pnpm verify -- /absolute/path/recording.mp4 --test-material --json /absolute/path/report-dir/verify.json
 ```
 
-Keep output and exit code. For the current audio contract, inspect 48 kHz / two channels and RMS above −60 dBFS in both channels. This supports non-silence, not fidelity, channel separation, subjective listening or sync. Missing/n/a evidence is not passing evidence. `--test-material` reports sparse-beep bitrate without judging it; add `--screen` with actual source dimensions, or `--sync` only when that analysis is required and the material supports it. Detailed gates are in [tooling](system-design/tooling.md#measurement-pipeline-and-thresholds).
+Keep output and exit code (1 for fail or incomplete, 2 for blocked). For the current audio contract, the Sample rate/channels check requires 48 kHz / two channels and the separate Channel energy (RMS) check requires RMS above −60 dBFS in both channels. This supports non-silence, not fidelity, channel separation, subjective listening or sync. Missing/n/a evidence is not passing evidence, and neither is a required check that is blocked (a missing tool) or incomplete (too few markers). `--test-material` reports sparse-beep bitrate without judging it; add `--screen` with actual source dimensions, or `--sync` only when that analysis is required and the material supports it. Detailed gates are in [tooling](system-design/tooling.md#measurement-pipeline-and-thresholds).
 
 ## Additional cases by impact
 
