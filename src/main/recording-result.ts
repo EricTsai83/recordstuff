@@ -64,6 +64,9 @@ export class RecordingResults {
   private readonly flagged = new Map<string, PersistenceIssue>();
   private readonly pending = new Map<string, PendingAction>();
   private readonly waiters: Array<{ revision: number; settle(ok: boolean): void }> = [];
+  /** IDs that were in a saved file at some point in this process; a later removal does not undo that. */
+  private readonly everSaved = new Set<string>();
+  private readonly savedWatchers: Array<{ ids: readonly string[]; settle(): void }> = [];
   private revision = 0;
   private inflight = 0;
   private writing: Promise<void> | undefined;
@@ -102,6 +105,7 @@ export class RecordingResults {
       for (const result of saved) persisted.push(await sliced(() => this.fingerprint(result)));
       this.persisted = persisted;
       this.savedRows = new Map(saved.map((r, index) => [r.id, persisted[index]!]));
+      for (const result of saved) this.everSaved.add(result.id);
     }
     const arrived = new Set(this.results.map(r => r.id));
     saved = saved.filter(result => !arrived.has(result.id));
@@ -201,6 +205,11 @@ export class RecordingResults {
     if (!failed) {
       this.persisted = fingerprints;
       this.savedRows = new Map(snapshot.map((result, index) => [result.id, fingerprints[index]!]));
+      for (const result of snapshot) this.everSaved.add(result.id);
+      for (const watcher of this.savedWatchers.filter(w => w.ids.every(id => this.everSaved.has(id)))) {
+        this.savedWatchers.splice(this.savedWatchers.indexOf(watcher), 1);
+        watcher.settle();
+      }
       if (this.failures) this.log(`recording history: saved after ${this.failures} failed attempt(s)`);
       this.failures = 0;
       this.issue = undefined;
@@ -240,6 +249,15 @@ export class RecordingResults {
       }
     }
     return { revision, ok: !failed, actions: actions.map(([, action]) => action), refresh: actions.length > 0 || flagsChanged };
+  }
+  /**
+   * Resolves once every ID has been in a saved file, including through a later
+   * automatic retry or before a removal saved since; never starts a save.
+   * Pending while history cannot be saved.
+   */
+  saved(ids: readonly string[]): Promise<void> {
+    if (ids.every(id => this.everSaved.has(id))) return Promise.resolve();
+    return new Promise(settle => this.savedWatchers.push({ ids, settle }));
   }
   /** Resolves once everything changed so far is durable (true), or when that attempt fails (false). */
   persist(): Promise<boolean> {
@@ -296,10 +314,23 @@ export class RecordingResults {
     clearTimeout(this.retryTimer);
     this.retryTimer = undefined;
   }
-  /** One OS request at a time; after timeout leave the rest unknown without issuing more I/O. */
-  async restore(stat: Stat, refresh: () => void): Promise<void> {
+  /**
+   * One OS request at a time; after timeout leave the rest unknown without issuing more I/O.
+   * `interrupted` entries come from an earlier process (launch sentinels) and join the
+   * restored rows, rechecked the same way; an ID already in history is not added again.
+   * Resolves whether this attempt saved the history; `saved` follows later retries.
+   */
+  async restore(stat: Stat, refresh: () => void, interrupted: readonly RecordingFailure[] = []): Promise<boolean> {
     await this.ready;
-    const saved = this.restored;
+    const adopted = interrupted.filter(result => !this.seen.has(result.id))
+      .map(result => ({ ...result, acknowledged: false, restored: true }));
+    for (const result of adopted) this.seen.add(result.id);
+    if (adopted.length) {
+      // Older than anything this process reported, newer than the saved rows.
+      const at = this.results.findIndex(result => result.restored);
+      this.results = at < 0 ? [...this.results, ...adopted] : [...this.results.slice(0, at), ...adopted, ...this.results.slice(at)];
+    }
+    const saved = [...adopted, ...this.restored];
     this.restored = [];
     for (const original of saved) {
       const candidate = original.partialPath ?? original.recordingPath;
@@ -321,7 +352,9 @@ export class RecordingResults {
         refresh();
       }
     }
-    if (saved.length) { this.set(this.trim(this.results)); refresh(); await this.persist(); }
+    if (!saved.length) return true;
+    this.set(this.trim(this.results)); refresh();
+    return this.persist();
   }
   update(result: RecordingFailure): boolean {
     const previous = this.results.find(r => r.id === result.id);
@@ -418,6 +451,7 @@ const reasons: Record<ErrorCode, PlainMessageKey> = {
   output_write_failed: "Could not write the recording.",
   disk_full: "The disk is full.",
   stop_timeout: "Stopping the recording timed out.",
+  app_terminated: "RecordStuff did not exit normally while recording.",
 };
 export const failureReason = (code: ErrorCode, language: Language): string => t(reasons[code], language);
 export function failureGuidance(code: ErrorCode, language: Language, platform: NodeJS.Platform = process.platform): string {
@@ -427,6 +461,7 @@ export function failureGuidance(code: ErrorCode, language: Language, platform: N
     : isOutputFolderFailure(code) ? "Check the output folder, its permissions and the connected drive before recording again."
     : isPermissionFailure(code) ? "Check recording permissions in System Settings. Relaunch if access was recently granted."
     : code === "display_unavailable" || code === "no_display" ? "Choose Primary display or another available screen."
+    : code === "app_terminated" ? "The recording file may be incomplete. RecordStuff does not repair it, and starting again does not recover missing content."
     : "Check your recording settings before trying again. Starting again does not recover missing content.", language);
 }
 const persistenceWarnings: Record<PersistenceIssue, PlainMessageKey> = {

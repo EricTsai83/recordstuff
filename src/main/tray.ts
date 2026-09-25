@@ -30,6 +30,7 @@ import {
   type TrayMenuItem,
 } from "./tray-model";
 import type { AppAction, AppContext } from "./ui-model";
+import type { EarlyStop } from "./recorder";
 
 /**
  * How long after a notification-click reveal the system's activation of this
@@ -93,8 +94,8 @@ export class AppTray {
     this.tray.destroy();
   }
 
-  notifySaved(savedPath: string): void {
-    this.show(savedNotification(savedPath, this.options.context().language), () => this.revealFromNotification(savedPath));
+  notifySaved(savedPath: string, stoppedEarly?: EarlyStop): void {
+    this.show(savedNotification(savedPath, this.options.context().language, stoppedEarly), () => this.revealFromNotification(savedPath));
   }
 
   notifyRecordingFailure(code: ErrorCode): void {

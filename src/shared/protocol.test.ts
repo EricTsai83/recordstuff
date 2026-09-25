@@ -50,6 +50,8 @@ describe("isHostMessage", () => {
     expect(isHostMessage({ type: "chunk", sessionId: "a", seq: 1.5, bytes: new ArrayBuffer(1) })).toBe(false);
     expect(isHostMessage({ type: "chunk", sessionId: "a", seq: 0, bytes: new Uint8Array(1) })).toBe(false);
     expect(isHostMessage({ type: "error", code: "made_up", detail: "" })).toBe(false);
+    // Only launch-time evidence reports a terminated app; a live host never can.
+    expect(isHostMessage({ type: "error", code: "app_terminated", detail: "" })).toBe(false);
     expect(isHostMessage({ type: "error", sessionId: "", code: "no_display", detail: "" })).toBe(false);
     expect(isHostMessage({ type: "started", sessionId: "a" })).toBe(false);
     expect(isHostMessage({ type: "started", sessionId: "a", mimeType: "video/mp4" })).toBe(false);

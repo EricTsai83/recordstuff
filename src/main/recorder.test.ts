@@ -8,7 +8,8 @@ import type { HostMessage } from "../shared/protocol";
 import { DEFAULT_QUALITY, type CaptureReport, type QualitySettings } from "../shared/quality";
 import type { RecordingState } from "../shared/state";
 import type { RecordingFailure } from "../shared/recording-result";
-import { Recorder, formatTimestamp, type RecorderEvent, type RecorderHost, type RecorderWriter } from "./recorder";
+import { Recorder, formatTimestamp, type RecorderDeps, type RecorderEvent, type RecorderHost, type RecorderWriter } from "./recorder";
+import { SessionSentinels, type SessionSentinel } from "./session-sentinel";
 
 class FakeHost implements RecorderHost {
   started: string[] = [];
@@ -98,6 +99,7 @@ function setup(
     quality?: () => QualitySettings;
     log?: (message: string) => void;
     captureRequestTimeoutMs?: number | "default";
+    deps?: Partial<RecorderDeps>;
   } = {},
 ) {
   const host = new FakeHost();
@@ -122,6 +124,7 @@ function setup(
     startTimeoutMs: 8000,
     ...(overrides.captureRequestTimeoutMs === "default" ? {} : { captureRequestTimeoutMs: overrides.captureRequestTimeoutMs ?? 8000 }),
     stopTimeoutMs: 10_000,
+    ...overrides.deps,
   });
   recorder.subscribe((event) => {
     events.push(event);
@@ -896,6 +899,8 @@ describe("Recorder with real FileWriter", () => {
 describe("Recorder rejects zero-byte output with real FileWriter", () => {
   async function real(options: {
     beforeWrite?: () => Promise<void>; syncError?: string; publishFailure?: (result: RecordingFailure) => Promise<void>;
+    /** Replaces the sync; overrides `syncError`. */
+    sync?: () => Promise<void>; backlogLimitBytes?: number; deps?: Partial<RecorderDeps>;
   } = {}) {
     vi.useRealTimers();
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "recordstuff-empty-"));
@@ -911,13 +916,15 @@ describe("Recorder rejects zero-byte output with real FileWriter", () => {
       newSessionId: () => `empty-${++session}`,
       ...(options.publishFailure ? { publishFailure: options.publishFailure } : {}),
       openWriter: (recordingPath, finalPath) => FileWriter.open(recordingPath, finalPath, {
-        ...(options.syncError ? { fsyncIntervalMs: 5 } : {}),
+        ...(options.syncError || options.sync ? { fsyncIntervalMs: 5 } : {}),
+        ...(options.backlogLimitBytes ? { backlogLimitBytes: options.backlogLimitBytes } : {}),
         io: { ...nodeFs,
           open: async (file, flags) => {
             const handle = await nodeFs.open(file, flags);
             return {
               sync: async () => {
                 syncs.push(file);
+                if (options.sync) return options.sync();
                 if (options.syncError) throw Object.assign(new Error(options.syncError), { code: options.syncError });
                 await handle.sync();
               },
@@ -927,6 +934,7 @@ describe("Recorder rejects zero-byte output with real FileWriter", () => {
           },
         },
       }),
+      ...options.deps,
     });
     recorder.subscribe((event) => events.push(event));
     const begin = async (id: string): Promise<void> => {
@@ -1064,6 +1072,182 @@ describe("Recorder rejects zero-byte output with real FileWriter", () => {
       }
     },
   );
+  describe("health guards with a real FileWriter (plan 038)", () => {
+    const errorOf = (code: string) => Object.assign(new Error(code), { code });
+
+    it("fails a stalled capture as capture_failed and keeps the nonempty temporary file", async () => {
+      const log = vi.fn();
+      const ctx = await real({ deps: { log, health: { stallWarnMs: 30, stallFailMs: 90 } } });
+      try {
+        await ctx.begin("empty-1");
+        ctx.host.emit(media("empty-1", 0, 1, 2, 3));
+        await vi.waitFor(() => expect(ctx.of("failed")).toHaveLength(1));
+        const failed = ctx.of("failed")[0]!;
+        expect(failed).toMatchObject({ code: "capture_failed", detail: expect.stringContaining("no media for 90 ms") });
+        expect(path.basename(failed.partialPath!)).toBe("2026-09-25 12-00-00.recording.mp4");
+        expect(await fs.readFile(failed.partialPath!)).toEqual(Buffer.from([1, 2, 3]));
+        expect(ctx.of("failureStatus").at(-1)?.result).toMatchObject({ code: "capture_failed", outcome: "partial" });
+        expect(log.mock.calls.filter(([message]) => String(message).includes("no media for 30 ms"))).toHaveLength(1);
+        expect(ctx.host.stopped).toContain("empty-1");
+      } finally {
+        await ctx.cleanup();
+      }
+    });
+
+    it("refuses an append past the backlog bound, fails with its detail and keeps the accepted bytes", async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const ctx = await real({ backlogLimitBytes: 4, beforeWrite: () => gate });
+      try {
+        await ctx.begin("empty-1");
+        ctx.host.emit(media("empty-1", 0, 1, 2, 3));
+        ctx.host.emit(media("empty-1", 1, 4, 5));
+        await vi.waitFor(() => expect(ctx.of("failureStatus")).toHaveLength(1));
+        expect(ctx.of("failureStatus")[0]!.result).toMatchObject({ code: "output_write_failed", outcome: "pending",
+          detail: expect.stringContaining("writer backlog limit 4 bytes exceeded: 3 bytes pending, 2 arriving") });
+        expect(ctx.recorder.state).toEqual({ type: "idle" });
+        release();
+        await vi.waitFor(() => expect(ctx.of("failed")).toHaveLength(1));
+        const failed = ctx.of("failed")[0]!;
+        expect(failed.code).toBe("output_write_failed");
+        expect(await fs.readFile(failed.partialPath!)).toEqual(Buffer.from([1, 2, 3]));
+        expect(ctx.of("saved")).toHaveLength(0);
+      } finally {
+        release();
+        await ctx.cleanup();
+      }
+    });
+
+    it("names the temporary file in a sentinel before creating it and removes the sentinel once saved", async () => {
+      const sentinelDir = await fs.mkdtemp(path.join(os.tmpdir(), "recordstuff-sessions-"));
+      const sentinels = new SessionSentinels(sentinelDir);
+      const seen: Array<{ sentinel: unknown; tempExists: boolean }> = [];
+      const ctx = await real({ deps: { sentinels, openWriter: async (recordingPath, finalPath) => {
+        seen.push({ sentinel: JSON.parse(await fs.readFile(path.join(sentinelDir, "empty-1.json"), "utf8")),
+          tempExists: await fs.stat(recordingPath).then(() => true, () => false) });
+        return FileWriter.open(recordingPath, finalPath);
+      } } });
+      try {
+        await ctx.begin("empty-1");
+        expect(seen).toEqual([{ tempExists: false, sentinel: { version: 1, sessionId: "empty-1", startedAt: expect.any(String),
+          recordingPath: path.join(ctx.dir, "2026-09-25 12-00-00.recording.mp4") } }]);
+        ctx.host.emit(media("empty-1", 0, 7));
+        // A normal quit stops, saves and clears the sentinel, so the next launch reports nothing.
+        const quitting = ctx.recorder.shutdown();
+        await vi.waitFor(() => expect(ctx.host.stopped).toContain("empty-1"));
+        ctx.host.emit({ type: "stopped", sessionId: "empty-1" });
+        expect(await quitting).toBe(true);
+        expect(ctx.of("saved")).toHaveLength(1);
+        expect(await fs.readdir(sentinelDir)).toEqual([]);
+        expect(await new SessionSentinels(sentinelDir).leftovers()).toEqual([]);
+      } finally {
+        await ctx.cleanup();
+        await fs.rm(sentinelDir, { recursive: true, force: true });
+      }
+    });
+
+    describe("retained disk error during start", () => {
+      const expectRetained = (ctx: Awaited<ReturnType<typeof real>>, code: string) => {
+        const statuses = ctx.of("failureStatus");
+        // The first (notified) status already carries the disk code, not a generic start failure.
+        expect(statuses[0]!.result).toMatchObject({ code, outcome: "pending", detail: expect.stringContaining("start ended:") });
+        expect(statuses.at(-1)!.result).toMatchObject({ code, outcome: "empty" });
+        expect(ctx.of("failed")).toEqual([{ type: "failed", code, detail: expect.stringContaining("ENOSPC") }]);
+      };
+
+      // An unanswered capture request settles only later, as a real OS prompt does; quit keeps owning it until then.
+      let answer = (): void => undefined;
+      it.each([
+        ["the first-media deadline", async (ctx: Awaited<ReturnType<typeof real>>) => {
+          await ctx.begin("empty-1");
+        }],
+        ["the capture-request timeout", async (ctx: Awaited<ReturnType<typeof real>>) => {
+          ctx.host.start = () => new Promise<void>((resolve) => { answer = resolve; });
+          ctx.recorder.toggle();
+        }],
+        ["a host start rejection", async (ctx: Awaited<ReturnType<typeof real>>) => {
+          ctx.host.start = async () => {
+            await vi.waitFor(() => expect(ctx.syncs.length).toBeGreaterThan(0));
+            throw new Error("host refused start");
+          };
+          ctx.recorder.toggle();
+        }],
+        ["a host-reported capture_start_failed", async (ctx: Awaited<ReturnType<typeof real>>) => {
+          await ctx.begin("empty-1");
+          await vi.waitFor(() => expect(ctx.syncs.length).toBeGreaterThan(0));
+          ctx.host.emit({ type: "error", sessionId: "empty-1", code: "capture_start_failed", detail: "encoder refused" });
+        }],
+      ])("reports the retained disk code after %s, with an empty result", async (_label, trigger) => {
+        const ctx = await real({ syncError: "ENOSPC", deps: { startTimeoutMs: 300, captureRequestTimeoutMs: 300 } });
+        try {
+          await trigger(ctx);
+          await vi.waitFor(() => expect(ctx.of("failed")).toHaveLength(1));
+          expectRetained(ctx, "disk_full");
+          expect(ctx.of("saved")).toHaveLength(0);
+          expect(await fs.readdir(ctx.dir)).toEqual([]);
+        } finally {
+          answer();
+          await ctx.cleanup();
+        }
+      });
+
+      it("keeps specific host causes and a clean writer's capture_start_failed", async () => {
+        const sick = await real({ syncError: "EIO" });
+        try {
+          await sick.begin("empty-1");
+          await vi.waitFor(() => expect(sick.syncs.length).toBeGreaterThan(0));
+          sick.host.emit({ type: "error", sessionId: "empty-1", code: "no_audio_track", detail: "no audio" });
+          await vi.waitFor(() => expect(sick.of("failed")).toHaveLength(1));
+          expect(sick.of("failed")[0]).toMatchObject({ code: "no_audio_track", detail: "no audio" });
+        } finally {
+          await sick.cleanup();
+        }
+        const clean = await real({ deps: { startTimeoutMs: 100 } });
+        try {
+          await clean.begin("empty-1");
+          await vi.waitFor(() => expect(clean.of("failed")).toHaveLength(1));
+          expect(clean.of("failed")[0]).toMatchObject({ code: "capture_start_failed", detail: "capture host did not send media before the deadline" });
+          expect(clean.of("failureStatus")[0]!.result.code).toBe("capture_start_failed");
+        } finally {
+          await clean.cleanup();
+        }
+      });
+
+      it("waits for an in-flight sync before classifying, but only within its bound", async () => {
+        let settle!: (error?: Error) => void;
+        let calls = 0;
+        const sync = () => ++calls === 1
+          ? new Promise<void>((resolve, reject) => { settle = (error) => (error ? reject(error) : resolve()); })
+          : Promise.resolve();
+        const failing = await real({ sync, deps: { startTimeoutMs: 100 } });
+        try {
+          await failing.begin("empty-1");
+          await vi.waitFor(() => expect(failing.recorder.state).toEqual({ type: "idle" }));
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          expect(failing.of("failureStatus")).toHaveLength(0);
+          settle(errorOf("ENOSPC"));
+          await vi.waitFor(() => expect(failing.of("failed")).toHaveLength(1));
+          expectRetained(failing, "disk_full");
+        } finally {
+          settle();
+          await failing.cleanup();
+        }
+        calls = 0;
+        const hung = await real({ sync, deps: { startTimeoutMs: 100, health: { startDrainMs: 50 } } });
+        try {
+          await hung.begin("empty-1");
+          await vi.waitFor(() => expect(hung.of("failureStatus")).toHaveLength(1));
+          expect(hung.of("failureStatus")[0]!.result).toMatchObject({ code: "capture_start_failed", outcome: "pending" });
+          settle();
+          await vi.waitFor(() => expect(hung.of("failed")).toHaveLength(1));
+          expect(hung.of("failed")[0]).toMatchObject({ code: "capture_start_failed" });
+        } finally {
+          settle();
+          await hung.cleanup();
+        }
+      });
+    });
+  });
 });
 
 it("an empty chunk does not satisfy the first-media deadline", async () => {
@@ -1270,4 +1454,194 @@ it("defers quit without cancelling an interactive capture request at the quit de
   ctx.host.emit({ type: "stopped", sessionId: "s1" }); await flush();
   expect(ctx.events.filter(event => event.type === "saved")).toHaveLength(1);
   expect(ctx.events.some(event => event.type === "failed")).toBe(false);
+});
+
+describe("disk headroom guard", () => {
+  const MIB = 1024 * 1024;
+  const logged = (log: ReturnType<typeof vi.fn>, text: string) => log.mock.calls.filter(([message]) => String(message).includes(text));
+
+  it("warns once below 1 GiB, requests one normal stop below 200 MiB and saves with the reason", async () => {
+    const free = [2048, 900, 800, 150, 100].map((mib) => mib * MIB);
+    const polled: string[] = [];
+    const log = vi.fn();
+    const ctx = setup({ log, deps: { freeSpace: async (dir) => { polled.push(dir); return free.shift()!; } } });
+    await startRecording(ctx);
+    for (let seq = 1; seq <= 3; seq++) {
+      await vi.advanceTimersByTimeAsync(5000);
+      ctx.host.emit(chunk("s1", seq));
+    }
+    expect(ctx.recorder.state.type).toBe("recording");
+    expect(logged(log, "below 1073741824")).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(ctx.recorder.state).toEqual({ type: "stopping" });
+    expect(ctx.host.stopped).toEqual(["s1"]);
+    expect(logged(log, "stopping early")).toHaveLength(1);
+    // No poll while stopping, so the stop is requested only once.
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(polled).toEqual(["/out", "/out", "/out", "/out"]);
+    ctx.host.emit(chunk("s1", 4));
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(ctx.events.filter((event) => event.type === "saved")).toEqual([
+      { type: "saved", path: "/out/2026-09-11 14-30-00.mp4", stoppedEarly: "lowDisk" },
+    ]);
+    expect(ctx.writers[0]!.chunks).toHaveLength(5);
+    expect(ctx.events.some((event) => event.type === "failed" || event.type === "failureStatus")).toBe(false);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("file finalized /out/2026-09-11 14-30-00.mp4 (stopped early: disk almost full)"));
+  });
+
+  it("logs a failed poll once and never stops the recording because of it", async () => {
+    const log = vi.fn();
+    const freeSpace = vi.fn(async () => { throw new Error("statfs unavailable"); });
+    const ctx = setup({ log, deps: { freeSpace } });
+    await startRecording(ctx);
+    for (let seq = 1; seq <= 3; seq++) {
+      await vi.advanceTimersByTimeAsync(5000);
+      ctx.host.emit(chunk("s1", seq));
+    }
+    expect(freeSpace).toHaveBeenCalledTimes(3);
+    expect(ctx.recorder.state.type).toBe("recording");
+    expect(logged(log, "free-space check failed: statfs unavailable")).toHaveLength(1);
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: "/out/2026-09-11 14-30-00.mp4" });
+  });
+});
+
+describe("stalled capture guard", () => {
+  const warnings = (log: ReturnType<typeof vi.fn>) => log.mock.calls.filter(([message]) => String(message).includes("no media for 10000 ms"));
+
+  it("warns once at 10 s and fails at 30 s without media; nonempty chunks reset it, empty ones do not", async () => {
+    const log = vi.fn();
+    const ctx = setup({ log });
+    await startRecording(ctx);
+    await vi.advanceTimersByTimeAsync(9999);
+    ctx.host.emit(chunk("s1", 1));
+    await vi.advanceTimersByTimeAsync(9999);
+    expect(warnings(log)).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(warnings(log)).toHaveLength(1);
+    ctx.host.emit(chunk("s1", 2, 0));
+    await vi.advanceTimersByTimeAsync(19_999);
+    expect(ctx.recorder.state.type).toBe("recording");
+    await vi.advanceTimersByTimeAsync(1);
+    const writer = ctx.writers[0]!;
+    expect(ctx.events.at(-1)).toEqual({ type: "failed", code: "capture_failed",
+      detail: "capture stalled: no media for 30000 ms while the capture host still responded", partialPath: writer.recordingPath });
+    expect(warnings(log)).toHaveLength(1);
+    expect(ctx.host.stopped).toEqual(["s1"]);
+  });
+
+  it("never reads a slow finish after a normal stop as a stall", async () => {
+    let publish!: () => void;
+    const ctx = setup({ openWriter: async (recordingPath, finalPath) => {
+      const writer = new FakeWriter(recordingPath, finalPath);
+      writer.finish = () => new Promise((resolve) => { publish = () => resolve(finalPath); });
+      ctx.writers.push(writer);
+      return writer;
+    } });
+    await startRecording(ctx);
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(ctx.events.some((event) => event.type === "failed")).toBe(false);
+    publish();
+    await flush();
+    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: "/out/2026-09-11 14-30-00.mp4" });
+  });
+});
+
+describe("interruption sentinel lifecycle", () => {
+  function sentinels(options: { fail?: boolean } = {}) {
+    const files = new Map<string, SessionSentinel>();
+    const calls: string[] = [];
+    return { files, calls,
+      write: async (sentinel: SessionSentinel) => {
+        calls.push(`write ${path.basename(sentinel.recordingPath)}`);
+        if (options.fail) throw new Error("userData is read-only");
+        files.set(sentinel.sessionId, sentinel);
+      },
+      remove: async (sessionId: string) => { calls.push(`remove ${sessionId}`); files.delete(sessionId); } };
+  }
+  type Ctx = ReturnType<typeof setup>;
+
+  it("writes before each temporary-name attempt and removes it after the saved event", async () => {
+    const store = sentinels();
+    let attempt = 0;
+    const ctx: Ctx = setup({ deps: { sentinels: store }, openWriter: async (recordingPath, finalPath) => {
+      store.calls.push(`open ${path.basename(recordingPath)}`);
+      if (++attempt === 1) throw Object.assign(new Error("exists"), { cause: { code: "EEXIST" } });
+      const writer = new FakeWriter(recordingPath, finalPath);
+      ctx.writers.push(writer);
+      return writer;
+    } });
+    ctx.recorder.subscribe((event) => { if (event.type === "saved") store.calls.push("saved"); });
+    await startRecording(ctx);
+    expect(store.files.get("s1")).toEqual({ sessionId: "s1", startedAt: expect.any(String), recordingPath: "/out/2026-09-11 14-30-00-2.recording.mp4" });
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(store.calls).toEqual([
+      "write 2026-09-11 14-30-00.recording.mp4", "open 2026-09-11 14-30-00.recording.mp4",
+      "write 2026-09-11 14-30-00-2.recording.mp4", "open 2026-09-11 14-30-00-2.recording.mp4",
+      "saved", "remove s1",
+    ]);
+    expect(store.files.size).toBe(0);
+  });
+
+  it.each<[string, (ctx: Ctx) => Promise<void>]>([
+    ["capture_start_failed", async (ctx) => { ctx.recorder.toggle(); await flush(); ctx.host.emit(started("s1")); await vi.advanceTimersByTimeAsync(8000); }],
+    ["no_audio_track", async (ctx) => { ctx.recorder.toggle(); await flush(); ctx.host.emit({ type: "error", sessionId: "s1", code: "no_audio_track", detail: "" }); await flush(); }],
+    ["capture_failed", async (ctx) => { await startRecording(ctx); ctx.host.emit({ type: "stopped", sessionId: "s1" }); await flush(); }],
+    ["capture_host_crashed", async (ctx) => { await startRecording(ctx); ctx.host.crash(); await flush(); }],
+    ["disk_full", async (ctx) => {
+      await startRecording(ctx);
+      ctx.writers[0]!.appendError = Object.assign(new Error("ENOSPC"), { code: "disk_full" });
+      ctx.host.emit(chunk("s1", 1)); await flush();
+    }],
+    ["stop_timeout", async (ctx) => { await startRecording(ctx); ctx.recorder.stop(); await vi.advanceTimersByTimeAsync(10_000); }],
+  ])("removes the sentinel after a %s failure settles", async (code, trigger) => {
+    const store = sentinels();
+    const ctx = setup({ deps: { sentinels: store } });
+    await trigger(ctx);
+    expect(ctx.events.filter((event) => event.type === "failed")).toEqual([expect.objectContaining({ code })]);
+    expect(store.calls).toEqual(["write 2026-09-11 14-30-00.recording.mp4", "remove s1"]);
+    expect(store.files.size).toBe(0);
+  });
+
+  it("removes a sentinel whose late writer opened after the opening deadline", async () => {
+    const store = sentinels();
+    let open!: (writer: FakeWriter) => void;
+    const ctx = setup({ deps: { sentinels: store }, openWriter: () => new Promise((resolve) => { open = resolve; }) });
+    ctx.recorder.toggle(); await flush();
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(store.files.has("s1")).toBe(true);
+    open(new FakeWriter("/out/2026-09-11 14-30-00.recording.mp4", "/out/2026-09-11 14-30-00.mp4"));
+    await flush();
+    expect(ctx.events.filter((event) => event.type === "failed")).toEqual([expect.objectContaining({ code: "output_open_failed" })]);
+    expect(store.files.size).toBe(0);
+    expect(await ctx.recorder.shutdown()).toBe(true);
+  });
+
+  it("logs a failed sentinel write once and still records", async () => {
+    const store = sentinels({ fail: true });
+    const log = vi.fn();
+    let attempt = 0;
+    const ctx: Ctx = setup({ log, deps: { sentinels: store }, openWriter: async (recordingPath, finalPath) => {
+      if (++attempt === 1) throw Object.assign(new Error("exists"), { cause: { code: "EEXIST" } });
+      const writer = new FakeWriter(recordingPath, finalPath);
+      ctx.writers.push(writer);
+      return writer;
+    } });
+    await startRecording(ctx);
+    expect(ctx.host.started).toEqual(["s1"]);
+    expect(ctx.recorder.state.type).toBe("recording");
+    expect(store.calls.filter((call) => call.startsWith("write"))).toHaveLength(2);
+    expect(log.mock.calls.filter(([message]) => String(message).includes("interruption sentinel not written: userData is read-only"))).toHaveLength(1);
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(ctx.events.filter((event) => event.type === "saved")).toHaveLength(1);
+  });
 });

@@ -78,6 +78,8 @@ export function isHostMessage(value: unknown): value is HostMessage {
       return (
         (value["sessionId"] === undefined || isNonEmptyString(value["sessionId"])) &&
         isErrorCode(value["code"]) &&
+        // Only launch-time evidence can report a terminated app, never a live host.
+        value["code"] !== "app_terminated" &&
         typeof value["detail"] === "string" &&
         (value["displayFailure"] === undefined || value["displayFailure"] === "track_ended")
       );

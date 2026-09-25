@@ -18,6 +18,8 @@ export type RecordingState =
  * Every failure the app can report (docs/system-design/recording.md). `capture_failed` covers a
  * capture that stopped on its own mid-recording (track ended, MediaRecorder
  * error); unexpected termination must not be reported as a successful stop.
+ * `app_terminated` is found only at launch: a previous process ended while a
+ * session was still recording (plan 038's interruption sentinel).
  */
 export const ERROR_CODES = [
   "permission_denied",
@@ -35,6 +37,7 @@ export const ERROR_CODES = [
   "output_write_failed",
   "disk_full",
   "stop_timeout",
+  "app_terminated",
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

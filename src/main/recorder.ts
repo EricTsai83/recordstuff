@@ -13,11 +13,17 @@ import { randomUUID } from "node:crypto";
 import type { HostMessage } from "../shared/protocol";
 import { describeCapture, type CaptureReport, type QualitySettings } from "../shared/quality";
 import { isErrorCode, type ErrorCode, type RecordingState } from "../shared/state";
+import { RECORDING_HEALTH, type RecordingHealth } from "./recording-health";
+import type { SessionSentinel } from "./session-sentinel";
 
 export interface RecorderWriter {
   readonly recordingPath?: string;
   readonly preservationUncertain?: boolean;
+  /** Accepted bytes not yet confirmed written; diagnostics only. */
+  readonly backlogBytes?: number;
   append(bytes: Uint8Array): Promise<void>;
+  /** Settles after queued work; resolves with a retained write/sync error, if any. */
+  drain?(): Promise<unknown>;
   /**
    * Flush, close and rename; resolves with the final path. Rejects instead of
    * publishing zero confirmed bytes, after any retained write/sync error.
@@ -64,12 +70,24 @@ export interface RecorderDeps {
   log?: (message: string) => void;
   /** Result verification/publication is part of the attempt’s owned work. */
   publishFailure?: (result: RecordingFailure) => Promise<void>;
+  /** Available bytes on the volume holding `dir`; absent disables the disk guard. */
+  freeSpace?: (dir: string) => Promise<number>;
+  /** Interruption evidence: written before the temporary file exists, removed on the terminal outcome. */
+  sentinels?: {
+    write(sentinel: SessionSentinel): Promise<void>;
+    remove(sessionId: string): Promise<void>;
+  };
+  /** Overrides for `RECORDING_HEALTH`, for tests. */
+  health?: Partial<RecordingHealth>;
 }
+
+/** Why a saved recording ended before the user asked; carried on the saved event. */
+export type EarlyStop = "lowDisk";
 
 export type RecorderEvent =
   | { type: "failureStatus"; result: RecordingFailure }
   | { type: "state"; state: RecordingState }
-  | { type: "saved"; path: string }
+  | { type: "saved"; path: string; stoppedEarly?: EarlyStop }
   /** The host confirmed capture; `requested` is the session snapshot, `capture` what it got. */
   | { type: "captureStarted"; requested: QualitySettings; capture: CaptureReport }
   | { type: "displayFailed"; detail: DisplayFailure }
@@ -97,6 +115,18 @@ interface Session {
   timer?: ReturnType<typeof setTimeout> | undefined;
   /** Last append; awaited before finishing so the final chunk is on disk. */
   writes: Promise<void>;
+  /** Output folder, polled for free space while recording. */
+  dir: string;
+  startedAt: string;
+  /** Inter-chunk guard after media began; the first-media deadline covers the time before. */
+  stall?: ReturnType<typeof setTimeout> | undefined;
+  disk?: ReturnType<typeof setTimeout> | undefined;
+  diskWarned: boolean;
+  diskPollFailed: boolean;
+  stoppedEarly?: EarlyStop;
+  /** A sentinel write was attempted, so the terminal outcome removes it. */
+  sentinel: boolean;
+  sentinelFailed: boolean;
 }
 
 const DEFAULT_START_TIMEOUT_MS = 8000;
@@ -138,6 +168,7 @@ export class Recorder {
     Pick<RecorderDeps, "now" | "newSessionId" | "startTimeoutMs" | "captureRequestTimeoutMs" | "stopTimeoutMs" | "shutdownTimeoutMs" | "log">
   > &
     RecorderDeps;
+  private readonly health: RecordingHealth;
 
   constructor(deps: RecorderDeps) {
     this.deps = {
@@ -150,12 +181,18 @@ export class Recorder {
       log: () => undefined,
       ...deps,
     };
+    this.health = { ...RECORDING_HEALTH, ...deps.health };
     deps.host.onMessage((message) => this.handleHostMessage(message));
     deps.host.onFailure((code, detail) => this.handleHostFailure(code, detail));
   }
 
   get state(): RecordingState {
     return this._state;
+  }
+
+  /** The in-flight session, for diagnostics such as sleep/wake logging. */
+  get sessionId(): string | undefined {
+    return this.session?.id;
   }
 
   subscribe(listener: (event: RecorderEvent) => void): () => void {
@@ -187,6 +224,7 @@ export class Recorder {
     session.phase = "stopping";
     this.setState({ type: "stopping" });
     this.clearTimer(session);
+    this.clearDisk(session);
     session.timer = setTimeout(() => {
       void this.fail(session.id, "stop_timeout", "capture host did not stop before the deadline");
     }, this.deps.stopTimeoutMs);
@@ -283,6 +321,7 @@ export class Recorder {
       return;
     }
 
+    const dir = this.deps.outputDir();
     const session: Session = {
       id: this.deps.newSessionId(),
       phase: "opening",
@@ -292,13 +331,18 @@ export class Recorder {
       hasMedia: false,
       nextSeq: 0,
       writes: Promise.resolve(),
+      dir,
+      startedAt: this.deps.now().toISOString(),
+      diskWarned: false,
+      diskPollFailed: false,
+      sentinel: false,
+      sentinelFailed: false,
     };
     this.session = session;
-    const dir = this.deps.outputDir();
     session.opening = Promise.resolve().then(async () => {
       await this.deps.ensureWritableDir(dir);
       if (this.session !== session) return;
-      session.writer = await this.openUniqueWriter(dir, formatTimestamp(this.deps.now()));
+      session.writer = await this.openUniqueWriter(session, formatTimestamp(this.deps.now()));
     });
     this.deps.onSessionStart?.(session.id);
     this.setState({ type: "starting" });
@@ -332,14 +376,14 @@ export class Recorder {
    * One-second timestamps can collide with a partial file kept by a failure
    * moments earlier; that is not an unusable folder, so try `-2`, `-3`, ….
    */
-  private async openUniqueWriter(dir: string, stamp: string): Promise<RecorderWriter> {
+  private async openUniqueWriter(session: Session, stamp: string): Promise<RecorderWriter> {
     for (let attempt = 1; ; attempt += 1) {
       const name = attempt === 1 ? stamp : `${stamp}-${attempt}`;
+      const recordingPath = path.join(session.dir, `${name}.recording.mp4`);
+      // Named before it exists, so a crash never leaves a temporary file no sentinel names.
+      await this.markInFlight(session, recordingPath);
       try {
-        return await this.deps.openWriter(
-          path.join(dir, `${name}.recording.mp4`),
-          path.join(dir, `${name}.mp4`),
-        );
+        return await this.deps.openWriter(recordingPath, path.join(session.dir, `${name}.mp4`));
       } catch (cause) {
         const errno =
           typeof cause === "object" && cause !== null && "cause" in cause
@@ -348,6 +392,27 @@ export class Recorder {
         if (errno !== "EEXIST" || attempt >= MAX_NAME_ATTEMPTS) throw cause;
       }
     }
+  }
+
+  /** A failed sentinel write is logged once and never blocks the recording. */
+  private async markInFlight(session: Session, recordingPath: string): Promise<void> {
+    const sentinels = this.deps.sentinels;
+    if (!sentinels) return;
+    session.sentinel = true;
+    try {
+      await sentinels.write({ sessionId: session.id, startedAt: session.startedAt, recordingPath });
+    } catch (cause) {
+      if (!session.sentinelFailed) this.deps.log(`recorder: session ${session.id} interruption sentinel not written: ${messageOf(cause)}`);
+      session.sentinelFailed = true;
+    }
+  }
+
+  /** Every terminal outcome, including failures, removes the session's own sentinel. */
+  private async clearInFlight(session: Session): Promise<void> {
+    if (!session.sentinel || !this.deps.sentinels) return;
+    session.sentinel = false;
+    try { await this.deps.sentinels.remove(session.id); }
+    catch (cause) { this.deps.log(`recorder: session ${session.id} interruption sentinel not removed: ${messageOf(cause)}`); }
   }
 
   private handleHostMessage(message: HostMessage): void {
@@ -381,6 +446,8 @@ export class Recorder {
             }, this.deps.startTimeoutMs);
           }
           this.deps.log(`recorder: session ${session.id} capture: ${describeCapture(session.quality, message.capture)}`);
+          if (session.hasMedia) this.armStall(session);
+          this.watchDisk(session);
           this.setState({ type: "recording", startedAt: this.deps.now().toISOString() });
           if (session.stopOnStart) this.stop();
           this.emit({ type: "captureStarted", requested: session.quality, capture: message.capture });
@@ -392,6 +459,8 @@ export class Recorder {
       case "stopped":
         if (session.finalizing) return;
         this.deps.log(`recorder: session ${session.id} host stopped; tracksStoppedAt=${message.tracksStoppedAt ?? "unknown"}`);
+        // A normal drain after stop must never read as a stall.
+        this.clearHealth(session);
         if (session.phase === "stopping") {
           this.clearTimer(session);
           session.finalizing = true;
@@ -418,6 +487,8 @@ export class Recorder {
       this.deps.log(`recorder: session ${session.id} first chunk ${bytes.byteLength} bytes`);
       if (session.phase !== "stopping") this.clearTimer(session);
     }
+    // Empty chunks are not media, so they do not reset the stall guard either.
+    if (bytes.byteLength > 0 && session.phase !== "starting") this.armStall(session);
     const writer = session.writer;
     if (!writer) return;
     const write = writer.append(new Uint8Array(bytes));
@@ -441,10 +512,85 @@ export class Recorder {
       return;
     }
     if (this.session !== session) return;
-    this.deps.log(`recorder: session ${session.id} file finalized ${finalPath}`);
+    const early = session.stoppedEarly === "lowDisk" ? " (stopped early: disk almost full)" : "";
+    this.deps.log(`recorder: session ${session.id} file finalized ${finalPath}${early}`);
     this.session = undefined;
     this.setState({ type: "idle", lastSavedPath: finalPath });
-    this.emit({ type: "saved", path: finalPath });
+    this.emit(session.stoppedEarly ? { type: "saved", path: finalPath, stoppedEarly: session.stoppedEarly } : { type: "saved", path: finalPath });
+    await this.clearInFlight(session);
+  }
+
+  /**
+   * One inter-chunk timer after media began: warn once at the first bound,
+   * fail at the second with the partial file preserved. Heartbeats only prove
+   * the renderer answers; this proves media still arrives.
+   */
+  private armStall(session: Session): void {
+    if (session.stall) clearTimeout(session.stall);
+    const { stallWarnMs, stallFailMs } = this.health;
+    session.stall = setTimeout(() => {
+      this.deps.log(`recorder: session ${session.id} no media for ${stallWarnMs} ms; writer backlog ${session.writer?.backlogBytes ?? "unknown"} bytes`);
+      session.stall = setTimeout(() => {
+        session.stall = undefined;
+        void this.fail(session.id, "capture_failed", `capture stalled: no media for ${stallFailMs} ms while the capture host still responded`);
+      }, stallFailMs - stallWarnMs);
+    }, stallWarnMs);
+  }
+
+  /** Polls on one timer, never overlapping; a failed poll is logged once and ignored. */
+  private watchDisk(session: Session): void {
+    const freeSpace = this.deps.freeSpace;
+    if (!freeSpace) return;
+    const { diskPollMs, diskWarnBytes, diskStopBytes } = this.health;
+    session.disk = setTimeout(() => {
+      void freeSpace(session.dir).then((free) => {
+        if (this.session !== session || session.phase !== "recording") return;
+        if (free < diskStopBytes) {
+          session.disk = undefined;
+          session.stoppedEarly = "lowDisk";
+          this.deps.log(`recorder: session ${session.id} ${free} bytes free in ${session.dir}, below ${diskStopBytes}; stopping early to save while space remains`);
+          this.stop();
+          return;
+        }
+        if (free < diskWarnBytes && !session.diskWarned) {
+          session.diskWarned = true;
+          this.deps.log(`recorder: session ${session.id} ${free} bytes free in ${session.dir}, below ${diskWarnBytes}; writer backlog ${session.writer?.backlogBytes ?? "unknown"} bytes`);
+        }
+        this.watchDisk(session);
+      }, (cause: unknown) => {
+        if (!session.diskPollFailed) this.deps.log(`recorder: session ${session.id} free-space check failed: ${messageOf(cause)}`);
+        session.diskPollFailed = true;
+        if (this.session === session && session.phase === "recording") this.watchDisk(session);
+      });
+    }, diskPollMs);
+  }
+
+  private clearDisk(session: Session): void {
+    if (session.disk) clearTimeout(session.disk);
+    session.disk = undefined;
+  }
+
+  private clearHealth(session: Session): void {
+    this.clearDisk(session);
+    if (session.stall) clearTimeout(session.stall);
+    session.stall = undefined;
+  }
+
+  /**
+   * A generic start failure can hide a disk error a background sync already
+   * retained (the writer opens before the capture request). Classify only after
+   * the writer's queued work settles, within a bound, so a sick disk keeps its
+   * own code and guidance. Only `capture_start_failed` asks; specific host causes keep their code.
+   */
+  private async retainedWriteError(session: Session): Promise<{ code: ErrorCode; detail: string } | undefined> {
+    const writer = session.writer;
+    if (!writer?.drain) return undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const retained = await Promise.race([
+      writer.drain().catch(() => undefined),
+      new Promise<undefined>((resolve) => { timer = setTimeout(() => resolve(undefined), this.health.startDrainMs); }),
+    ]).finally(() => clearTimeout(timer));
+    return retained ? { code: errorCodeOf(retained, "output_write_failed"), detail: messageOf(retained) } : undefined;
   }
 
   /** Display loss shares the idempotent failure path with track end and host failure. */
@@ -482,14 +628,24 @@ export class Recorder {
     if (!session || session.id !== sessionId) return;
     this.session = undefined;
     this.clearTimer(session);
+    this.clearHealth(session);
     if (session.phase !== "opening") this.deps.host.stop(session.id);
     this.deps.log(`recorder: session ${session.id} failed: ${code} ${detail}`);
+    const occurredAt = this.deps.now().toISOString();
     // End the recording state before file cleanup. Native painting can still
     // wait on synchronous subscriber IO (docs/system-design/recording.md).
-    const result: RecordingFailure = { id: randomUUID(), occurredAt: this.deps.now().toISOString(),
-      code, detail, outcome: "pending", ...(session.writer?.recordingPath ? { recordingPath: session.writer.recordingPath } : {}) };
     // Set idle and request tray updates before synchronous metadata persistence.
     this.setState({ type: "idle", ...idleFlags });
+    if (code === "capture_start_failed") {
+      const retained = await this.retainedWriteError(session);
+      if (retained) {
+        this.deps.log(`recorder: session ${session.id} start failure reported as ${retained.code}: the writer retained ${retained.detail}`);
+        detail = `${retained.detail} (start ended: ${detail})`;
+        code = retained.code;
+      }
+    }
+    const result: RecordingFailure = { id: randomUUID(), occurredAt,
+      code, detail, outcome: "pending", ...(session.writer?.recordingPath ? { recordingPath: session.writer.recordingPath } : {}) };
     await this.publishFailure(result);
     const finish = (async (): Promise<void> => {
       let partialPath: string | undefined;
@@ -514,6 +670,7 @@ export class Recorder {
           ? { type: "failed", code, detail }
           : { type: "failed", code, detail, partialPath },
       );
+      await this.clearInFlight(session);
     })();
     await finish;
   }

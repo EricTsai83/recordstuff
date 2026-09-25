@@ -18,6 +18,7 @@ import {
   globalShortcut,
   net,
   nativeTheme,
+  powerMonitor,
   screen,
   session,
   shell,
@@ -32,6 +33,7 @@ import { RecordingHotkey, shouldNotifyHotkeyFailure, type HotkeyRequestResult } 
 import { createFileLogger } from "./log";
 import { PermissionWatcher, openNotificationSettings, openScreenCaptureSettings } from "./permission";
 import { Recorder } from "./recorder";
+import { SessionSentinels, reportInterruptions } from "./session-sentinel";
 import { SavedNotification } from "./saved-notification";
 import { SettingsStore } from "./settings";
 import { parseAutoRecord, runAutoRecord } from "./autorecord";
@@ -169,12 +171,16 @@ async function main(): Promise<void> {
     log,
   });
 
+  // One file per in-flight session; any left at launch belongs to a process that ended while recording.
+  const sentinels = new SessionSentinels(path.join(app.getPath("userData"), "recording-sessions"), log);
   const recorder = new Recorder({
     host,
     outputDir: () => settings.outputDir,
     quality,
     ensureWritableDir,
     openWriter: (recordingPath, finalPath) => FileWriter.open(recordingPath, finalPath),
+    freeSpace: async (dir) => { const volume = await fs.statfs(dir); return volume.bavail * volume.bsize; },
+    sentinels,
     publishFailure: result => recordingResults.receive(result, {
       stat: file => fs.stat(file), refresh: refreshUi,
       notify: code => tray.notifyRecordingFailure(code),
@@ -485,7 +491,7 @@ async function main(): Promise<void> {
 
   const savedNotification = new SavedNotification({
     platform: process.platform,
-    show: (savedPath) => tray.notifySaved(savedPath),
+    show: (savedPath, stoppedEarly) => tray.notifySaved(savedPath, stoppedEarly),
     log,
   });
   let previous = recorder.state;
@@ -515,8 +521,8 @@ async function main(): Promise<void> {
         return;
       }
       case "saved":
-        log(`saved ${event.path}`);
-        savedNotification.schedule(event.path);
+        log(`saved ${event.path}${event.stoppedEarly === "lowDisk" ? " (stopped early: disk almost full)" : ""}`);
+        savedNotification.schedule(event.path, event.stoppedEarly);
         return;
       case "displayFailed":
         displayMedia.failure = event.detail;
@@ -553,9 +559,17 @@ async function main(): Promise<void> {
   screen.on("display-added", displayChanged);
   screen.on("display-removed", displayChanged);
   screen.on("display-metrics-changed", displayChanged);
+  // Evidence only: a failure after sleep then reads as sleep, not unexplained track loss.
+  const onSuspend = (): void => log(`power: suspend; session ${recorder.sessionId ?? "none"}; state ${recorder.state.type}`);
+  const onResume = (): void => log(`power: resume; session ${recorder.sessionId ?? "none"}; state ${recorder.state.type}`);
+  powerMonitor.on("suspend", onSuspend);
+  powerMonitor.on("resume", onResume);
 
   permission?.start();
-  void recordingResults.restore(file => fs.stat(file), refreshUi);
+  void reportInterruptions(sentinels, {
+    restore: interrupted => recordingResults.restore(file => fs.stat(file), refreshUi, interrupted),
+    saved: ids => recordingResults.saved(ids),
+  }, log).catch((cause: unknown) => log(`start: interruption check failed: ${String(cause)}`));
   // Every platform: a menu-bar app is hard to find, and on macOS this is the
   // one moment the notification authorization prompt can appear in context.
 
@@ -616,6 +630,8 @@ async function main(): Promise<void> {
     screen.removeListener("display-added", displayChanged);
     screen.removeListener("display-removed", displayChanged);
     screen.removeListener("display-metrics-changed", displayChanged);
+    powerMonitor.removeListener("suspend", onSuspend);
+    powerMonitor.removeListener("resume", onResume);
     settingsHotkey.dispose();
     hotkey.dispose();
     permission?.stop();

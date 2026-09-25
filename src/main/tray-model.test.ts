@@ -202,6 +202,13 @@ describe("notification text", () => {
     );
   });
 
+  it("a recording stopped by the disk guard says so in the saved notification", () => {
+    expect(savedNotification("/Volumes/Small/demo.mp4", "en", "lowDisk").body).toBe(
+      "Saved demo.mp4. Recording stopped early because the disk is almost full.",
+    );
+    expect(savedNotification("/Volumes/Small/demo.mp4", "zh-TW", "lowDisk").body).toBe("已儲存 demo.mp4。磁碟空間即將用盡，已提前停止錄製");
+  });
+
   it("a refused shortcut registration points at Settings, in the user's language", () => {
     expect(hotkeyRegistrationFailedNotification(HOTKEY_PRESETS[0], "darwin", "zh-TW").body).toBe(
       "無法註冊快捷鍵 ⌘⇧1，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵",

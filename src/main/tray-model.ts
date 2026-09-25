@@ -1,6 +1,7 @@
 import { failureReason } from "./recording-result";
 import { displayLabel, displayFailureText } from "../shared/display";
 import { displayResolution } from "./display-source";
+import type { EarlyStop } from "./recorder";
 /**
  * Pure state-to-presentation projection for the native tray. See
  * docs/system-design/desktop.md.
@@ -146,8 +147,11 @@ export interface NotificationText {
   body: string;
 }
 const notice = (body: string): NotificationText => ({ title: APP_NAME, body });
-export function savedNotification(savedPath: string, language?: Language): NotificationText {
-  return notice(t("Saved {file}", language, { file: path.basename(savedPath) }));
+export function savedNotification(savedPath: string, language?: Language, stoppedEarly?: EarlyStop): NotificationText {
+  const file = path.basename(savedPath);
+  return notice(stoppedEarly === "lowDisk"
+    ? t("Saved {file}. Recording stopped early because the disk is almost full.", language, { file })
+    : t("Saved {file}", language, { file }));
 }
 export function permissionNotification(needsRelaunch: boolean, language?: Language): NotificationText {
   return notice(

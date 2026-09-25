@@ -149,6 +149,7 @@ export const ZH_TW = {
   Stop: "停止",
   "Saving…": "儲存中…",
   "Saved {file}": "已儲存 {file}",
+  "Saved {file}. Recording stopped early because the disk is almost full.": "已儲存 {file}。磁碟空間即將用盡，已提前停止錄製",
   "Screen recording access was granted, but RecordStuff needs to relaunch. Click to relaunch.":
     "已取得螢幕錄製權限，但需要重新啟動 RecordStuff。點這則通知重新啟動",
   "RecordStuff needs screen recording access. Click to open System Settings.":
@@ -180,6 +181,9 @@ export const ZH_TW = {
   "Could not write the recording.": "寫入錄影失敗",
   "The disk is full.": "磁碟已滿",
   "Stopping the recording timed out.": "停止錄製逾時",
+  "RecordStuff did not exit normally while recording.": "RecordStuff 在錄製期間未正常結束",
+  "The recording file may be incomplete. RecordStuff does not repair it, and starting again does not recover missing content.":
+    "錄影檔可能不完整。RecordStuff 不會修復它，重新錄影也不會恢復遺失的內容。",
   Shortcut: "快捷鍵",
   "This combination is reserved for Settings.": "這個組合鍵保留給設定使用。",
   "Settings shortcut unavailable: change the recording shortcut through the tray Settings entry.": "設定快捷鍵無法使用：請從選單列開啟設定並變更錄影快捷鍵。",

@@ -19,7 +19,7 @@ export function instrumentUpdateAcceptance(source: string, runDir: string): stri
   source = replaceOnce(source, '  updates.flush();\n  log(`ready;',
     '  attachAcceptance(acceptance, { recorder, updates, settings, tray, handleAction });\n  updates.flush();\n  log(`ready;');
   // The fixture intercepts this exact lazy call; stop if production bypasses it.
-  source = replaceOnce(source, 'show: (savedPath) => tray.notifySaved(savedPath),', 'show: (savedPath) => tray.notifySaved(savedPath),');
+  source = replaceOnce(source, 'show: (savedPath, stoppedEarly) => tray.notifySaved(savedPath, stoppedEarly),', 'show: (savedPath, stoppedEarly) => tray.notifySaved(savedPath, stoppedEarly),');
   return source;
 }
 export function prepareUpdateAcceptance(root: string, workspace: string, runDir: string): void {

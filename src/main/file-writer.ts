@@ -4,11 +4,14 @@
  * `<stamp>.recording.mp4` → `<stamp>.mp4` once the last chunk is on disk.
  * Any failure keeps what was written; nothing is ever silently discarded.
  * Zero written bytes is never published: nonempty is necessary, not proof of a playable file.
+ * Bytes accepted but not yet written are bounded; exceeding the bound fails the
+ * recording instead of buffering slow or offline storage in memory.
  */
 import fs from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
 import type { ErrorCode } from "../shared/state";
+import { RECORDING_HEALTH } from "./recording-health";
 
 export interface WritableHandle {
   write(data: Uint8Array): Promise<{ bytesWritten: number }>;
@@ -88,15 +91,20 @@ export async function ensureWritableDir(dir: string, io: FileWriterFs = nodeFs):
 
 export interface FileWriterOptions {
   fsyncIntervalMs?: number;
+  /** Accepted-but-unwritten bytes allowed before an append is refused. */
+  backlogLimitBytes?: number;
   io?: FileWriterFs;
 }
 
 export class FileWriter {
   private queue: Promise<void> = Promise.resolve();
   private failure: FileWriteError | undefined;
+  /** Set when an append was refused; accepted bytes are still written, nothing after it is. */
+  private refused: FileWriteError | undefined;
   private fsyncTimer: ReturnType<typeof setInterval> | undefined;
   private closed = false;
   private _bytesWritten = 0;
+  private _backlogBytes = 0;
   private abandoned: Promise<string | undefined> | undefined;
   preservationUncertain = false;
 
@@ -106,6 +114,7 @@ export class FileWriter {
     private readonly handle: WritableHandle,
     private readonly io: FileWriterFs,
     fsyncIntervalMs: number,
+    private readonly backlogLimitBytes: number,
   ) {
     this.fsyncTimer = setInterval(() => {
       // enqueue retains the first failure; consume this background caller's rejection.
@@ -126,20 +135,39 @@ export class FileWriter {
     } catch (cause) {
       throw new FileWriteError("output_open_failed", recordingPath, cause);
     }
-    return new FileWriter(recordingPath, finalPath, handle, io, options.fsyncIntervalMs ?? 5000);
+    return new FileWriter(recordingPath, finalPath, handle, io, options.fsyncIntervalMs ?? 5000,
+      options.backlogLimitBytes ?? RECORDING_HEALTH.writerBacklogBytes);
   }
 
   get bytesWritten(): number {
     return this._bytesWritten;
   }
 
+  /** Bytes accepted by `append` and not yet confirmed written or discarded after a failure. */
+  get backlogBytes(): number {
+    return this._backlogBytes;
+  }
+
   /**
    * Appends in call order. Rejects with `FileWriteError` on the first disk
    * error; all later appends reject with the same error without touching disk.
+   * An append that would push the backlog past its bound is refused at once,
+   * without queueing, and so is every later one: MediaRecorder cannot be
+   * throttled, so the recording ends. Bytes accepted before the refusal are
+   * still written, so the kept partial is a gapless prefix.
    */
   append(bytes: Uint8Array): Promise<void> {
     if (this.closed) return Promise.reject(new Error("FileWriter is closed"));
-    return this.enqueue(async () => {
+    if (this.refused) return Promise.reject(this.refused);
+    if (this._backlogBytes + bytes.byteLength > this.backlogLimitBytes) {
+      // An earlier disk error stays the reported one.
+      this.refused = this.failure ?? new FileWriteError("output_write_failed", this.recordingPath,
+        `writer backlog limit ${this.backlogLimitBytes} bytes exceeded: ${this._backlogBytes} bytes pending, ${bytes.byteLength} arriving`);
+      return Promise.reject(this.refused);
+    }
+    let pending = bytes.byteLength;
+    this._backlogBytes += pending;
+    const run = this.enqueue(async () => {
       let offset = 0;
       while (offset < bytes.byteLength) {
         const remaining = bytes.subarray(offset);
@@ -149,8 +177,24 @@ export class FileWriter {
         }
         offset += bytesWritten;
         this._bytesWritten += bytesWritten;
+        this._backlogBytes -= bytesWritten;
+        pending -= bytesWritten;
       }
     });
+    // A failed or skipped append no longer holds its unwritten bytes.
+    const release = (): void => { this._backlogBytes -= pending; pending = 0; };
+    run.then(release, release);
+    return run;
+  }
+
+  /**
+   * Settles once every queued write and sync has run; resolves with the
+   * retained write/sync error, if any. Lets a start failure report a disk error
+   * the writer already holds instead of a generic cause.
+   */
+  async drain(): Promise<FileWriteError | undefined> {
+    await this.queue;
+    return this.failure ?? this.refused;
   }
 
   /**
@@ -161,6 +205,8 @@ export class FileWriter {
    */
   async finish(): Promise<string> {
     await this.enqueue(() => this.handle.sync());
+    // A refused chunk means the recording is incomplete; the failure path keeps the partial.
+    if (this.refused) throw this.refused;
     if (this._bytesWritten === 0) {
       await this.abandon();
       throw new FileWriteError("capture_start_failed", this.recordingPath, NO_MEDIA_DETAIL);
