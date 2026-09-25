@@ -6,12 +6,13 @@ Updated: 2026-09-25. This index lists unfinished plans, their order and their ha
 
 ## Order and status
 
-Every plan below is planned, not implemented. Current order: **031 → 032 → 033 → 040 → 034 → 037 → 035**.
+Every plan below is planned, not implemented. Current order: **041 → 031 → 032 → 033 → 040 → 034 → 037 → 035**.
 
-Ordering rule: zero-risk cleanup, the prioritized history work and the data-loss guards came first and are complete; now audit fixes in their original order, then optional or measured work, and 035 last. Keep 035 last even when later-numbered implementation or fix plans are added: schedule those before it.
+Ordering rule: zero-risk cleanup, the prioritized history work and the data-loss guards came first and are complete; now audit fixes in their original order, then optional or measured work, and 035 last. 041 goes first by maintainer decision (2026-09-25). Keep 035 last even when later-numbered implementation or fix plans are added: schedule those before it.
 
 | Plan | Source | Scope |
 | --- | --- | --- |
+| [041 — Capture cadence at the requested frame rate](041-capture-frame-cadence.md) | 2026-09-25 frame-timestamp analysis after 030; maintainer request | Every recording delivers about 2% (30 fps) or 4% (60 fps) fewer frames than requested, without drops; confirm the layer, then fix the frame-rate request there or document an upstream limit, without changing thresholds |
 | [031 — Stable release pointers](031-stable-release-recording.md) | R2-04 | Release ordering is independent of recording |
 | [032 — Update acceptance contract](032-update-acceptance-contract.md) | R2-06 | Stale runner expectations, not broken product controls |
 | [033 — Output-folder recovery](033-output-folder-recovery.md) | R2-08 | Explicit folder action and feedback, not publication |
@@ -24,13 +25,15 @@ Hard dependencies; everything else is scheduling:
 
 - 037 depends on 025, 026, 029, 030, 036 and 038 (all complete), keeps 036's metadata quit phase after all media work, and reuses the writer backlog bound defined in 038.
 - 040 changes the Recorder start phase that 038 (complete) extended and keeps its retained-disk-error rule; it precedes 034 and 037: 034's Windows artwork must cover the `busy` and `countdown` tray states, and 037's overlap must treat a counting-down session as active.
+- 041 precedes 040 and 037: 040 prepares capture before its countdown with the frame-rate request 041 settles, and 037's timing comparisons need 041's cadence baseline.
 - 031–033 can run independently; 032 should precede any work that requires update acceptance.
 
 ## Sources and evidence boundaries
 
 - R1 is the first ten-bug audit and R2 the second eight-bug audit (2026-09-24). Round 2 merged five bugs into four existing plans and added three, without duplicate repair work. Reproduction conditions, repair contracts and evidence limits are embedded in the plans and do not depend on ignored local audit files.
-- Cap comparisons in each plan are pinned to revision `ce785e705e79652adba4b8bf752669c4093499e0`; 037 and the closed 038 pin `26e1a6d882f311d10b5317e9e0d29babe4f6737e`; 040 pins `119edf04864b59abfc0d52f60bf77d7f33cfd2b8`. They are static comparisons of the inspected scope, not evidence that Cap handles these cases.
+- Cap comparisons in each plan are pinned to revision `ce785e705e79652adba4b8bf752669c4093499e0`; 037 and the closed 038 pin `26e1a6d882f311d10b5317e9e0d29babe4f6737e`; 040 pins `119edf04864b59abfc0d52f60bf77d7f33cfd2b8`; 041 pins `b2b6ae45d4cae303107b10a9df166d91caed7702` and reads Chromium at tag 152.0.7977.78. They are static comparisons of the inspected scope, not evidence that Cap handles these cases.
 - The 2026-09-25 T3 Code/Cap architecture comparison contributed only 038 and the run id in the closed 029. Adopting Effect, a monorepo split, feature subdirectories under `src/main/` and settings-file backups were rejected to keep the app small.
+- 041 comes from the frame timestamps of the 030 round's recordings plus retained ones; its cause is a hypothesis from static reading that its first step must confirm before any product change.
 - Slow-disk backlog remains an explicitly documented limitation; 037 evaluates bounded admission under contention, not a promise to eliminate sustained disk-throughput limits.
 - The multi-failure history round (2026-09-25) was implemented without a standalone plan; its [record](../docs/verification/history-2026-09.md#multi-failure-history--2026-09-25) and 035's N19–N23 carry its remaining native cases.
 
