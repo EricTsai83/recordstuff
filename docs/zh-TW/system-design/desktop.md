@@ -32,7 +32,7 @@ macOS 點通知會做兩件事：把回應交給 App，並要求系統啟動發�
 
 來源：[ui-model.ts](../../../src/main/ui-model.ts)、[settings-model.ts](../../../src/main/settings-model.ts)、[settings-window.ts](../../../src/main/settings-window.ts)、[renderer/settings.ts](../../../src/renderer/settings.ts)。
 
-Tray 只保留必須一鍵可達的指令，所有偏好設定都在同一個獨立的 sandbox 視窗。「設定」會開啟視窗，已開啟則聚焦。macOS 會先讓 App 取得前景，因為沒有 Dock 圖示的 App 單純顯示視窗並不會被帶到最前。變更立即儲存且視窗保持開啟；切換語言會就地更新標籤與標題。關閉視窗（含 Escape 與平台的關閉快捷鍵，這兩個由面板自己處理，因為沒有 Dock 圖示的 App 沒有應用選單）不會結束選單列 App，錄製仍使用獨立的隱藏 renderer。
+Tray 只保留必須一鍵可達的指令，所有偏好設定都在同一個獨立的 sandbox 視窗。「設定」會開啟視窗，已開啟則聚焦。macOS 會先讓 App 取得前景，因為沒有 Dock 圖示的 App 單純顯示視窗並不會被帶到最前。變更立即儲存且視窗保持開啟；切換語言會就地更新標籤與標題。關閉視窗（含 Escape 與平台的關閉快捷鍵，這兩個由面板自己處理，因為沒有 Dock 圖示的 App 沒有應用選單）不會結束選單列 App。關閉快捷鍵在 macOS 精確為 ⌘W、其他平台為 Ctrl+W，不得帶其他修飾鍵；頁面與快捷鍵編輯器共用同一個判斷，因此 macOS 的 ⌃W 與 ⌘⇧W 仍可錄入。⌘W 本身永遠不會成為錄影快捷鍵：編輯器遇到它就關窗，驗證器也保留 `CommandOrControl+W`，手動編輯的設定檔同樣會回到預設值。與原生選單相同，以輸入的字元判斷；只有該鍵盤配置在該位置不輸入拉丁字母時，才採用實體 W 鍵。頁面的 renderer 程序結束時，main 會丟棄該視窗而不保留空白視窗，下次開啟設定再建立並載入新視窗；不會自動重新載入，因此反覆當掉的頁面不會形成迴圈。關閉、失焦與當掉事件只作用於自己的視窗實例，已丟棄視窗晚到的事件不會清掉替代視窗。錄製仍使用獨立的隱藏 renderer。
 
 [settings-model.ts](../../../src/main/settings-model.ts) 只宣告每項偏好一次，配上穩定的群組與選項 id，也是唯一知道某個選項代表什麼的地方；它同時產生面板要畫的 view，以及「這個請求現在允不允許」的答案。Tray 模型是同一份狀態與 context 的兄弟投影，不是面板讀取的來源。
 
@@ -56,13 +56,13 @@ Tray 只保留必須一鍵可達的指令，所有偏好設定都在同一個獨
 
 ## 錄影快捷鍵
 
-來源：[hotkey.ts](../../../src/main/hotkey.ts)、[shared/hotkey.ts](../../../src/shared/hotkey.ts)、[index.ts](../../../src/main/index.ts)。計畫 016 加入全域開始／停止快捷鍵：其他 App 在最前景時也能切換錄製，而且讓沒有視窗的程序有一個系統層級入口，可供無人值守驗收使用。
+來源：[hotkey.ts](../../../src/main/hotkey.ts)、[shortcuts.ts](../../../src/main/shortcuts.ts)、[shared/hotkey.ts](../../../src/shared/hotkey.ts)、[index.ts](../../../src/main/index.ts)。計畫 016 加入全域開始／停止快捷鍵：其他 App 在最前景時也能切換錄製，而且讓沒有視窗的程序有一個系統層級入口，可供無人值守驗收使用。
 
 RecordingHotkey 包裝 Electron `globalShortcut`。按下快捷鍵呼叫與 tray 左鍵相同的 `toggle` 函式，所以 `Recorder.toggle()` 仍是唯一決策點：idle 開始、recording 停止、needsPermission 重發權限通知，starting／stopping 期間忽略。每次按下都先寫 log `hotkey: <accelerator> pressed` 再 toggle。`apply(settings)` 先釋放前一個註冊再註冊新的，更改時不會同時有兩個組合鍵生效；`dispose()` 在 will-quit 執行。
 
 使用者在 「設定」視窗的「快捷鍵」欄位選一組建議快捷鍵、「自訂快捷鍵…」或「關閉」（與品質相同，只在 idle／needsPermission 可改）。預設 `CommandOrControl+Shift+1`（macOS 顯示 ⌘⇧1，其他平台 Ctrl+Shift+1），2026-09-21 由維護者決定。全域快捷鍵優先於最前景 App，因此預設必須是常見 App 都不會預期的組合。最直覺的 ⌘⇧R 因此被否決過兩次：2026-09-19 的衝突檢查發現它是 Chrome／Firefox 的強制重新載入、Safari 的閱讀器、Zoom 的本機錄製，在瀏覽器按下去會變成開始螢幕錄影而不是重新載入。既有使用者若已選用它則保留，顯示為自訂；不再列為建議選項。數字鍵是比較安靜的區段 — macOS 以 ⌘⇧3/4/5 佔用截圖與螢幕錄製，而 App 綁定的是不加 Shift 的 ⌘1…9（分頁與檢視模式）— 但 ⌘⇧1 尚未經過同樣逐一 App 的查核，那屬於原生驗收範圍。前一個預設 `CommandOrControl+Alt+Shift+R` 在 2026-09 已驗證於 Chrome、Safari、Firefox、Finder、Xcode、VS Code、Slack 與 Zoom 均未被佔用，現在僅保留既有使用者已儲存的值，不另列替代選項。`HOTKEY_PRESETS` 保留歷史常數供相容性測試；選單只提供 `DEFAULT_HOTKEY`，不枚舉此清單。自訂值由 `validateAccelerator` 驗證：至少含 CommandOrControl 或 Control，可加 Alt／Shift，只能有一個支援按鍵、不可重複修飾鍵、長度最多 64 字元，並排除少量 macOS 保留組合。標準順序為 CommandOrControl、Control、Alt、Shift、按鍵。不合法的儲存值仍回預設並記 warning。
 
-「自訂…」以實體 key code 錄入字母、數字、F 鍵與標點，並支援空白及方向鍵；不支援的鍵區（含數字鍵盤）拒絕錄入。Shift 標點別名會先轉成 Shift 加基礎鍵，再檢查保留組合。快捷鍵群組是唯一可傳值的控制項；main 重新驗證並標準化後才儲存。Escape、Tab／Shift+Tab 移出、點擊其他位置、視窗失焦／關閉、renderer 結束與 15 秒逾時都取消錄入。main 先解除 OS 註冊才確認開始錄入，完成或取消後恢復；退出時清除註冊。錄影期間整個群組鎖定。不合法組合顯示在地化原因且不改設定。「關閉」保留自訂值，仍可直接選回。錄入按鈕可用鍵盤操作，並以 `aria-live` 宣告狀態。
+「自訂…」以實體 key code 錄入字母、數字、F 鍵與標點，並支援空白及方向鍵；不支援的鍵區（含數字鍵盤）拒絕錄入。Shift 標點別名會先轉成 Shift 加基礎鍵，再檢查保留組合。快捷鍵群組是唯一可傳值的控制項；main 重新驗證並標準化後才儲存。Escape、Tab／Shift+Tab 移出、點擊其他位置、視窗失焦／關閉、renderer 結束與 15 秒逾時都取消錄入。main 先解除 OS 註冊才確認開始錄入，完成或取消後恢復；退出時清除註冊。每次錄入是一份由發起視窗持有的 lease，與它可能啟動的設定交易分開。取消、失焦、逾時、關閉、renderer 失敗、錄影鎖定與退出都立即釋放它，即使已確認的儲存仍在寫入，並恢復當下已提交的註冊。釋放可重複呼叫；舊視窗晚到的事件或較早的儲存完成時，只結束自己的 lease，不會結束新視窗的錄入。已確認的儲存在視窗關閉或當掉後仍會完成；尚未確認的草稿絕不送出。`AppShortcuts` 持有兩個註冊與下述「先保存再註冊」的順序。錄影期間整個群組鎖定。不合法組合顯示在地化原因且不改設定。「關閉」保留自訂值，仍可直接選回。錄入按鈕可用鍵盤操作，並以 `aria-live` 宣告狀態。
 
 `pnpm acceptance` 可輸入字母、數字、空白、方向鍵、F1–F20 與常見未加 Shift 的標點，使用 macOS key code；其他組合會在開始錄影前明確報錯並列出快捷鍵。非美式鍵盤仍需原生驗收；實體 `event.code` 不代表 Electron 在該配置一定正確註冊。
 
@@ -160,7 +160,7 @@ macOS 設定入口會開啟通知總覽，再選 RecordStuff 即可進入權限�
 
 `CommandOrControl+Alt+,`（macOS 為 ⌘⌥,）透過 `openSettings` 開啟、還原並聚焦同一個設定面板，錄製中也可使用。它不會切換錄製狀態，也不佔用一般的 ⌘,。`settings-hotkey.ts` 獨立管理註冊，結束時僅釋放自己的組合鍵；選單只在註冊成功時顯示快捷鍵，失敗則以目前語言說明。
 
-新選取的錄影快捷鍵不得與設定組合鍵在目前平台等價。既存設定若衝突，保留原值並優先維持錄影功能；從選單列開啟設定後變更或停用錄影快捷鍵即可恢復。自訂擷取期間兩個註冊一起暫停，提交、取消、失焦、逾時、關閉或 renderer 失敗後恢復；錄影中的設定鎖定不變。
+新選取的錄影快捷鍵不得與設定組合鍵在目前平台等價。既存設定若衝突，保留原值並優先維持錄影功能；從選單列開啟設定後變更或停用錄影快捷鍵即可恢復。自訂擷取期間兩個註冊一起暫停，lease 釋放（提交、取消、失焦、逾時、關閉或 renderer 失敗）時即恢復，不等待尚未完成的儲存；錄影中的設定鎖定不變。
 
 ### 螢幕偏好與診斷
 
