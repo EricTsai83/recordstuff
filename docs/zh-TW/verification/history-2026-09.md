@@ -9,6 +9,37 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 032 結案 — 2026-09-26
+
+更新驗收的設定鎖定契約（R2-06），由 Claude 實作、Codex GPT-6 Astra review（[更新功能驗收](../system-design/tooling.md#更新功能驗收)）。Runner 的 `assertNoUpdateActions` 假定錄製中只有語言可用；修改前把同一個檢查套用到真正的錄製中 `settingsView`，會在 `settings group appearance` 失敗。
+
+- **契約。** 改由 [update-acceptance.mts](../../../scripts/lib/update-acceptance.mts) 的 `assertLockContract` 判定。預期行為取自 `BUSY_SETTINGS_POLICY`，依桌面設計撰寫，而不是複製模型的旗標。Starting、錄製與儲存中會鎖定螢幕、畫質、解析度上限、影格率、快捷鍵、通知、啟動檢查與更新 action 群組，以及 tray 的變更輸出資料夾；語言、外觀與 About 逐一選項都維持可用。Idle 與兩種權限狀態下所有群組解鎖。只有 recording 要求 REC 與一個可用的 Stop；Stop 依 action 尋找，所以狀態行前面的失敗紀錄不會影響位置。Starting 與儲存中要求 `…`、沒有 Stop，tray 也永遠不含更新項目。設定群組不在政策表中，或表中群組已不再提供，都會失敗。Runner 對兩個錄製中 snapshot 及其前後的 idle snapshot 套用此契約。[桌面設計](../system-design/desktop.md#tray-與通知)的狀態表原本在忙碌狀態寫「只有語言」，已同步修正雙語版本。
+- **第二個過時期望。** 第一次必要執行更早就在重啟案例失敗：它預期 zh-TW 面板標題為 `設定`，但自 `b262188`（2026-09-24）起標題 key 是 "RecordStuff - Settings"（`RecordStuff - 設置`）。Runner 改為比對該 key 的正式翻譯，檢查的是語言而不是文案。
+- **測試。** `scripts/lib/update-acceptance.test.ts` 新增 7 項測試，以正式的 `settingsView` 與 `trayModel` 建立 snapshot：
+  - 英文與繁中各在六種更新狀態下錄製，包含已提供更新；
+  - 八個鎖定群組在 starting、錄製與儲存中分別被錯誤解鎖；已提供的下載 action 本身是可用的，只靠群組鎖定才無法使用；
+  - 語言、外觀與 About 被整組或單一選項鎖定；
+  - 未分類的群組與被移除的群組；
+  - 錄製中缺 REC、缺 Stop 或 Stop 停用、變更資料夾可用、出現更新項目，以及失敗紀錄排在最前面；
+  - Starting 與儲存中出現 REC 或 Stop；
+  - Idle 與兩種權限狀態要求所有群組解鎖，同時容許因自身原因停用的選項（檢查進行中、螢幕不存在、未驗證的影格率）。
+- **檢查**（最終版本，Node 24.21.0）：`pnpm exec vitest run scripts/lib/update-acceptance.test.ts` 通過 1 個檔案的 15 項測試；`pnpm typecheck` 通過；runner 程式庫在 Node type stripping 下可載入；`git diff --check` 無問題。
+
+原生 `pnpm acceptance:updates`（預設 smoke 範圍，未使用 `--logic-only`）的執行環境：M1 Pro、macOS 26.6.2、Node 24.21.0、Electron 44.3.0，版本為 HEAD `7ceb83a` 加上未提交的變更。主螢幕 1920×1080，系統音訊輸出到外接耳機、音量 69，測試素材 SHA-256 `e631b973…`。每次執行都自行建置並簽章 fixture。
+
+- **第 1 次**（18:56 UTC）在重啟案例因上述過時標題失敗。
+- **第 2 次**（18:58 UTC）通過擷取前的六個案例，包含修正後的標題。第一段錄影沒有開始：送出 System Events 快捷鍵 30 秒後，App 沒有記錄任何按鍵。當時的輸入法是注音，其鍵盤配置 `com.apple.keylayout.ZhuyinBopomofo` 的數字列輸入注音符號。在 repository 外以 Electron 探測：合成的 `key code 18`（數字列 1）從未觸發已註冊的 ⌘⇧1、⌘⇧2、⌘⌥⇧1 或 ⌃⇧1；`keystroke "1"` 與 `key code 83`（數字鍵盤 1）會觸發，字母組合以 key code 送出也會觸發。切換到 ABC 後，`key code 18` 可以觸發。另以一份 TextEdit 文件確認 System Events 送鍵有效（收到全形 `ｑ`），該文件未存檔即關閉。
+- **第 3 次**（19:04 UTC）在回合期間選用 ABC，結束後恢復注音。結果 exit 0，全部 11 個必要案例通過，包含檢查此契約的錄製段。兩段錄影分別為 10.7 與 10.9 秒、1920×1080、48 kHz 立體聲 −27.4／−27.4 與 −26.7／−27.5 dB，閃光／提示音配對皆 10／10、偏移 65 與 61 ms，所有受判定的完整性檢查都通過。兩段錄影的素材中央都有 macOS 未回應的提示，要求允許 RecordStuff 略過系統私密視窗選擇器；fixture 結束後提示關閉，沒有授予任何權限。原生 Tray 點擊、可見瀏覽器與主觀聽感不在此 runner 範圍，報告一如往常列為 blocked。
+- **播放。** Codex GPT-6 Astra computer use 在 QuickTime 播放 `2026-09-26 03-06-12.mp4`，從 00:00.000 到 00:10.890，期間素材計時、捲動文字與移動方塊持續變化。隨後關閉影片、取消「打開」對話框並結束原本未執行的 QuickTime：8 項 pass。只有工具觀察，沒有本機 PNG；取樣畫面未捕捉到閃光方塊亮起。
+
+這些斷言透過插樁 fixture 檢查正式的 handler、tray 模型與設定模型，不是原生選單畫面、tray 點擊或瀏覽器傳輸。依範圍未執行：`--full`，因為 feed 篩選與逾時未改；另外的一般錄影回合與 `pnpm check`，因為沒有修改 App 原始碼。
+
+每次執行後都沒有殘留 RecordStuff、Electron fixture 或素材瀏覽器程序，`settings.json` 前後 SHA-256 相同，輸入法也已恢復為注音。結案後依維護者要求刪除了本輪測試產物：三個執行目錄 `2026-09-25T18-56-39-131Z-updates-uHM73o`、`2026-09-25T18-58-43-277Z-updates-n7BlXk` 與 `2026-09-25T19-04-59-492Z-updates-YWKqze`（含兩段錄影），以及播放報告 `2026-09-25T19-07-04Z-plan032-computer-use`。本紀錄中的數據即為保留的紀錄。
+
+發現但未修正：若輸入法的數字列不輸入數字，預設快捷鍵 ⌘⇧1 在*實體*數字列上可能也無法觸發 RecordStuff。本次只測過合成事件。沒有原生案例轉交 035。
+
+Codex GPT-6 Astra（medium reasoning，log 開頭確認為 read-only sandbox）約 50 秒完成第 1 個 pass，沒有 findings。它列出了三個 script、雙語設計／工具／驗證文件、兩份 plan 索引與已刪除的 plan 檔，共 15 個變更檔案。不需要第二個 pass。30 分鐘 review 預算約用 1 分鐘，未使用 fallback。本輪已在本機 main 分成數個 commit：runner 修正 `bcff30f`、設計文件 `350627c`，以及本結案 commit。沒有 push 或發布。
+
 ## Plan 031 結案 — 2026-09-26
 
 正式版下載指標不再倒退，由 Claude 實作、Codex GPT-6 Astra review（[發布自動化](../system-design/releases.md)）。R2-04 audit 曾在暫存 checkout 以真正的 record CLI 先記錄 0.1.4、再記錄 0.1.3，結果 package.json 停在 0.1.4，正式版 manifest 與兩份 README 下載區塊卻回到 0.1.3。
