@@ -12,9 +12,9 @@ TrayModel is a pure projection containing icon, title, tooltip, and a flat list 
 | --- | --- | --- | --- |
 | needsPermission | Idle/empty | Permission guidance, settings/relaunch, reveal last recording when one was saved while permission was lost, output folder | All editable |
 | idle | Idle/empty | Ready or folder unavailable; reveal last recording when its path exists in state; output folder | All editable |
-| starting | Idle/`…` | Permission-prompt guidance | Language only |
-| recording | Recording/`REC` | Stop (tooltip names the shortcut when registered); output folder greyed | Language only |
-| stopping | Idle/`…` | Saving | Language only |
+| starting | Idle/`…` | Permission-prompt guidance | Language and appearance; About links stay available |
+| recording | Recording/`REC` | Stop (tooltip names the shortcut when registered); output folder greyed | Language and appearance; About links stay available |
+| stopping | Idle/`…` | Saving | Language and appearance; About links stay available |
 
 Every state offers Settings, Show log, and Quit, and Settings is never disabled: the panel itself says which preferences are locked. macOS uses template PNG/@2x assets and a title; Windows branches use ICO assets. REC may appear in full-display recordings; this is an accepted visibility tradeoff.
 

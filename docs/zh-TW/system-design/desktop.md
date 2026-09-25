@@ -12,9 +12,9 @@ TrayModel 是純函式產物，包含 icon、title、tooltip 與一份扁平的�
 | --- | --- | --- | --- |
 | needsPermission | idle／空白 | 權限說明、開設定或重啟；權限遺失期間存過檔才能顯示最後錄影；儲存位置 | 全部可調 |
 | idle | idle／空白 | 待命或位置不可用；有 lastSavedPath 才能顯示最後錄影；儲存位置 | 全部可調 |
-| starting | idle／`…` | 提醒完成系統提示 | 只有語言 |
-| recording | recording／`REC` | 可停止（已註冊快捷鍵時 tooltip 顯示組合鍵）；儲存位置變灰 | 只有語言 |
-| stopping | idle／`…` | 儲存中 | 只有語言 |
+| starting | idle／`…` | 提醒完成系統提示 | 語言與外觀；About 連結仍可用 |
+| recording | recording／`REC` | 可停止（已註冊快捷鍵時 tooltip 顯示組合鍵）；儲存位置變灰 | 語言與外觀；About 連結仍可用 |
+| stopping | idle／`…` | 儲存中 | 語言與外觀；About 連結仍可用 |
 
 每個狀態都有「設定」、「顯示 log」與「結束」，而且「設定」永遠可點：哪些偏好被鎖定由面板自己說明。macOS 使用 template PNG／@2x，Windows 分支使用 ICO；macOS 才顯示圖示旁 title。錄整個螢幕時 `REC` 可能出現在影片，這是目前接受的呈現。
 

@@ -204,11 +204,13 @@ CI 從 repository 根目錄執行 Vercel CLI，平台專案的 Root Directory �
 
 ### 更新功能驗收
 
-在 RecordStuff 已結束時執行 `pnpm acceptance:updates`。需要 macOS arm64、Node 24、既有本機簽章身分、Chrome、ffmpeg／ffprobe，以及 System Events 輔助使用權限。會在主螢幕進行兩段短錄影；擷取期間停止其他音訊並避免操作桌面。腳本不會結束既有 RecordStuff、不取代安裝版、不斷網，也不寫入真正的使用者設定。
+在 RecordStuff 已結束時執行 `pnpm acceptance:updates`。需要 macOS arm64、Node 24、既有本機簽章身分、Chrome、ffmpeg／ffprobe，以及 System Events 輔助使用權限。請選用數字列會輸入數字的鍵盤輸入法，例如 ABC：隔離 fixture 使用預設 ⌘⇧1，Electron 依註冊當下的鍵盤配置，綁定輸入「1」的那個鍵。注音（Bopomofo）配置下那是數字鍵盤，runner 送出的數字列 key code 收不到，第一段錄影會逾時（2026-09-26 觀察）。新簽章的 fixture 也可能觸發 macOS「要求略過系統私密視窗選擇器」的提示；兩段錄影期間它都停在素材中央，fixture 結束後關閉。Runner 不會回應它，也不會因此授予任何權限。會在主螢幕進行兩段短錄影；擷取期間停止其他音訊並避免操作桌面。腳本不會結束既有 RecordStuff、不取代安裝版、不斷網，也不寫入真正的使用者設定。
 
 Runner 將原始碼與建置資源複製至專用報告目錄，只修改該副本，再執行 `pnpm start:app`。沿用正式更新 action handler、AppTray context、SettingsStore、Recorder、隱藏擷取主機與 shutdown 流程。只在測試副本中替換固定 HTTP 回應與時鐘，隔離設定／log／錄影，並攔截 `shell.openExternal` 核對 URL。正常建置沒有測試命令通道；若正式程式接線改變，anchor 檢查會停止，避免測到過期的替代流程。
 
 預設案例涵蓋檢查中／重疊、相同／新版、GitHub 備援、失敗後恢復、語言／偏好跨程序重開、已到期但關閉啟動檢查、24 小時間隔（含失敗嘗試）、錄製中延後請求、存檔後才顯示結果，以及請求中結束。`--full` 另測舊版、無效／預覽／不相容 feed 與實際逾時取消；這些邊界已有單元測試，不必每次 smoke 都重跑。報告會記錄模式與所選 feed 情境。真實擷取沿用 System Events 全域快捷鍵、Chrome 固定素材、媒體完整性檢查與閃光／嗶聲門檻。兩種模式都保留兩段各約十秒的錄影，分別測延後請求與延後顯示結果。權限／工具缺失或素材受背景聲音污染，都不算通過。
+
+錄製狀態 snapshot 由同一份契約判定：[update-acceptance.mts](../../../scripts/lib/update-acceptance.mts) 的 `assertLockContract`。只有 recording 顯示 REC 與一個可用的 Stop；starting 與儲存中都顯示 `…`，也都不提供 Stop。Starting、錄製與儲存中會鎖定螢幕、畫質、解析度上限、影格率、快捷鍵、通知、啟動檢查與更新 action 群組，以及 tray 的變更輸出資料夾；語言、外觀與 About 連結維持可用，逐一檢查每個選項。錄製器回到 idle 或 needsPermission 後所有群組解鎖；因自身原因停用的選項（例如檢查已在進行）不屬於此契約。Tray 永遠不含更新 action。預期行為取自 `BUSY_SETTINGS_POLICY`，不是複製模型目前的旗標：設定群組不在表中，或表中群組已不再提供，都會失敗，直到明確分類。真實執行對錄製中 snapshot 及其前後的 idle snapshot 套用此契約；starting、儲存中與權限狀態由單元測試以真正的 `settingsView`／`trayModel` snapshot 涵蓋，因為 runner 無法停在這些短暫狀態。
 
 `--logic-only` 明確略過真實擷取。`--require-native-ui` 把原生 UI 未驗證列為必要缺口（exit 2）；預設將它列在必要範圍之外。Handler／model 斷言**不代表**點過原生 Tray、確認瀏覽器畫面、聆聽播放、首次授權或公開版升級。現有 computer-use 無視窗 Tray 限制仍保留；不把呼叫 action handler 宣稱為滑鼠點擊。
 
