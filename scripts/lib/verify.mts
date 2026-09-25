@@ -459,6 +459,12 @@ export interface FrameStats {
   dropRate: number;
   /** Largest gap between consecutive frames, in milliseconds. */
   maxGapMs: number;
+  /**
+   * Median gap between consecutive frames, in milliseconds; undefined without
+   * one. Reported beside the average rate so a cadence that is slow on every
+   * frame (plan 041) is told apart from drops.
+   */
+  medianIntervalMs: number | undefined;
 }
 
 /**
@@ -472,16 +478,21 @@ export function frameStats(intervals: number[][], fps: number): FrameStats {
   let frames = 0;
   let dropped = 0;
   let maxGap = 0;
+  const gaps: number[] = [];
   for (const times of intervals) {
     frames += times.length;
     for (let i = 1; i < times.length; i += 1) {
       const gap = (times[i] ?? 0) - (times[i - 1] ?? 0);
+      gaps.push(gap);
       maxGap = Math.max(maxGap, gap);
       if (gap > expected * 1.5) dropped += Math.round(gap / expected) - 1;
     }
   }
   const total = frames + dropped;
-  return { frames, dropped, dropRate: total === 0 ? 0 : dropped / total, maxGapMs: maxGap * 1000 };
+  return {
+    frames, dropped, dropRate: total === 0 ? 0 : dropped / total, maxGapMs: maxGap * 1000,
+    medianIntervalMs: gaps.length === 0 ? undefined : median(gaps) * 1000,
+  };
 }
 
 /**
@@ -912,7 +923,8 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
   checks.push({
     metric: "Average frame rate",
     expected: requestedFps === undefined ? "—" : `${requestedFps} ± ${THRESHOLDS.fpsToleranceFps} fps`,
-    actual: avgFps === undefined ? "—" : `${fmt(avgFps, 2)} fps (${m.video?.frames} frames)`,
+    actual: avgFps === undefined ? "—" : `${fmt(avgFps, 2)} fps (${m.video?.frames} frames${
+      m.frames?.medianIntervalMs === undefined || requestedFps === undefined ? "" : `; median interval ${fmt(m.frames.medianIntervalMs, 2)} ms, nominal ${fmt(1000 / requestedFps, 2)} ms`})`,
     verdict:
       avgFps === undefined || requestedFps === undefined || !options.movingMaterial
         ? "n/a"

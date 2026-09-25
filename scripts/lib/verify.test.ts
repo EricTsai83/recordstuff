@@ -332,14 +332,15 @@ describe("frame statistics", () => {
     expect(stats.dropped).toBe(1);
     expect(stats.dropRate).toBeCloseTo(0.2);
     expect(stats.maxGapMs).toBeCloseTo(66.7, 0);
+    expect(stats.medianIntervalMs).toBeCloseTo(33.3, 0);
   });
 
   it("evaluates head and tail samples separately so the jump between them is not a drop", () => {
     const head = [0, 1 / 30, 2 / 30];
     const tail = [500, 500 + 1 / 30, 500 + 2 / 30];
-    expect(frameStats([head, tail], 30)).toEqual({ frames: 6, dropped: 0, dropRate: 0, maxGapMs: expect.closeTo(33.3, 0) });
+    expect(frameStats([head, tail], 30)).toEqual({ frames: 6, dropped: 0, dropRate: 0, maxGapMs: expect.closeTo(33.3, 0), medianIntervalMs: expect.closeTo(33.3, 0) });
     expect(frameStats([[0, 1 / 30 + 0.01]], 30).dropped).toBe(0); // jitter below 1.5× is not a drop
-    expect(frameStats([], 30)).toEqual({ frames: 0, dropped: 0, dropRate: 0, maxGapMs: 0 });
+    expect(frameStats([], 30)).toEqual({ frames: 0, dropped: 0, dropRate: 0, maxGapMs: 0, medianIntervalMs: undefined });
   });
 });
 
