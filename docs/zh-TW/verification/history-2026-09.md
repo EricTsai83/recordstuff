@@ -9,6 +9,34 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 027 結案 — 2026-09-25
+
+權限同步與查詢生命週期（R1 bug 2、6），由 Claude 實作、Codex GPT-6 Astra review（[螢幕權限設計](../system-design/desktop.md#螢幕權限)）。
+
+- **保存權限狀態。** Recorder 把 PermissionWatcher 的最新狀態與錄影狀態分開保存，starting、recording、stopping 期間也一樣，但不因此打斷 session。存檔、擷取失敗與啟動失敗都依該狀態落定為 idle 或 needsPermission，所以 session 中只通知一次的撤銷不再以誤導的「待命中」結束，同一 session 內之後又授權也不需要再次通知。needsPermission 現在帶 `lastSavedPath`，選單仍有「顯示最後一個錄影」；outputDirUnavailable 會被記住並隨授權恢復，期間改過儲存位置則不恢復。存檔通知仍依既有設計讓位給權限指引。session 以 needsPermission 結束時，`autorecord` 回報該 session 自己的 saved 或 failed 結果。
+- **唯一有擁有者的列舉。** PermissionWatcher 同時最多持有一個 getSources（提示或驗證），直到該 promise 自己結束。4 秒期限只顯示重新啟動指引、不釋放名額；呼叫未完成期間只輪詢第一段。提示進行中才授權時，等提示結束後再驗證；提示的結果永遠不算驗證。
+- **退避與世代。** 驗證失敗後，從完成時起算 5、10、20、40 秒重試，之後每 60 秒；撤銷授權會重設退避。撤銷、markRelaunchRequired 與 stop() 都開始新世代，舊世代晚到的結果只記 log 並忽略，接著重新驗證。stop() 移除 interval、activate listener 與兩個 timer。
+
+自動化證據：最終 `pnpm check` 通過 typecheck、45 個檔案 756 項測試與 build；`git diff --check` 無誤。注入測試涵蓋：
+
+- Recorder：starting、recording、stopping 期間撤銷，之後存檔或失敗，都落定為 needsPermission 且仍回報失敗；存檔路徑保留在狀態與選單；同一 session 內之後授權，不需額外事件即回到 idle；needsRelaunch 切換保留路徑；儲存位置不可用的標記隨授權恢復，缺權限期間改儲存位置則清除；autorecord 保留存檔結果。
+- Watcher：呼叫卡住時十二次輪詢與 activate 後仍只有一個底層未完成請求（舊 watcher 30 秒內送出七個）；提示與驗證共用一個名額；期限後晚到的成功不需第二個請求即恢復；晚到的拒絕啟動倍增退避直到上限；撤銷並重新授權後，晚到的成功視為過時並重新驗證；撤銷後晚到的拒絕被忽略並把名額讓給提示；擷取被拒會取代進行中的驗證；stop() 移除 listener 與 timer，晚到的結果既不套用也不釋放其他請求的名額。
+
+原生驗收，在 macOS 26.6.2 的 M1 Pro、HEAD `3f696b6` 加上未提交變更：`pnpm start:app` 建置並驗證新的簽章 bundle（九個 identity），log 顯示 ready 後 50 ms 驗證成功、看得到兩個螢幕。`pnpm acceptance -- --seconds 10` 錄得 10.3 秒 1920×1080、48 kHz 立體聲 RMS −27.2／−27.2 dB、10 次閃光與 10 次嗶聲並可完整解碼，結果通過（`2026-09-25T11-34-34-660Z-hotkey-acceptance`）。log 顯示 starting → recording → stopping → idle 與存檔通知，之後 RecordStuff 已退出。接著由 Codex GPT-6 Astra computer use 在 QuickTime 播放該檔，進度從 0 前進到約 6.7 秒並有動態測試素材；關閉時出現的 Open 面板已取消，並結束 QuickTime；截圖只留本機。RecordStuff 與 QuickTime 均已退出，未變更任何偏好或權限。未記錄輸出裝置與音量。
+
+未做原生驗收：開發版 App 上的撤銷、重新授權與重新啟動恢復，因此也沒有記錄權限變更時 macOS 提供或強制的行為。Agent 無法操作系統設定或驗證身分來變更權限，這些項目屬 blocked，移入 035 N36、N37。永不返回的 getSources 無法以原生方式產生；唯一未完成請求、期限指引與退避以注入測試為證據。長錄影、媒體矩陣與拔除硬體不在範圍內。
+
+Codex GPT-6 Astra（medium reasoning、read-only）完成一個 pass，約用 30 分鐘預算中的 60 秒，未使用 fallback，沒有 findings。之後未修改程式，所以沒有第二個 pass。
+
+接受的限制：
+
+- 撤銷與重新授權若都落在兩次輪詢之間就觀察不到，之前開始的驗證仍可能被套用。
+- 永不返回的 getSources 在程序剩餘期間都佔著名額；指引是重新啟動。
+- Stale TCC 的自動恢復在重試之間最多等 60 秒。
+- 權限遺失期間存下的錄影不顯示存檔通知，因為權限指引優先；選單仍可找到該檔。
+
+依維護者要求，本輪依範圍分開在本機 main 上 commit：runtime 與測試 `f272aef`、設計文件 `1c3a5ba`，以及本結案 commit。未 push 或發布。原生權限案例由維護者決定留給 035 N36、N37。同樣依維護者要求，寫完本紀錄後已刪除測試錄影 `2026-09-25 19-34-40.mp4`、上述本機量測目錄、播放截圖與暫存 review log，原始證據已不存在，只留下本紀錄。
+
 ## Plan 038 結案 — 2026-09-25
 
 錄影健康防護，由 Claude 實作、Codex GPT-6 Astra review。每項防護只做觀察，並透過既有的停止或失敗流程結束；沒有新增狀態、健康 UI，也不做任何復原、重新封裝或修復。所有門檻都是初始目標，集中在 [recording-health.ts](../../../src/main/recording-health.ts)（見[錄製設計](../system-design/recording.md#期限與故障隔離)）。

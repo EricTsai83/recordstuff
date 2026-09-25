@@ -8,6 +8,7 @@
 
 | 項目 | 既有結果與限制 |
 | --- | --- |
+| Plan 027 權限同步 | Recorder 保存最新權限狀態，每次 session 結束都落定為 idle 或 needsPermission，並保留「顯示最後一個錄影」；PermissionWatcher 只持有一個 getSources，搭配期限指引、完成後起算的退避與世代 token。756 項測試、10.3 秒新 bundle smoke 與 QuickTime 播放通過；Codex GPT-6 Astra 無 findings。原生撤銷／重新授權／重新啟動恢復受阻（035 N36、N37）。見[歷史](history-2026-09.md#plan-027-結案--2026-09-25) |
 | Plan 038 錄影健康防護 | 磁碟餘裕提前停止以成功並附原因存檔、擷取停滯失敗、64 MiB 寫入積壓拒絕並保留無缺口前段、開始期間以已保留的磁碟錯誤取代泛用失敗、每個 session 的中斷 sentinel 於啟動時回報為 `app_terminated`，以及睡眠／喚醒 log。739 項測試、10.2 秒新 bundle smoke（之後 sentinel 資料夾為空）與 QuickTime 播放通過；Codex GPT-6 Astra 三項 Medium 已修正。磁碟停止、強制結束紀錄與睡眠結果未做原生驗收（035 N30、N31）。見[歷史](history-2026-09.md#plan-038-結案--2026-09-25) |
 | Plan 026 拒絕空錄影 | `FileWriter.finish` 在已保留的磁碟錯誤之後，把零確認位元組拒絕為 `capture_start_failed`；不發 saved、不產生 `.mp4`，刪除空暫存檔，冪等清理保住同一秒內的重試。706 項測試、10.3 秒新 bundle smoke、0.33 秒立即停止存為非空且可解碼，以及兩者的 QuickTime 播放均通過；Codex GPT-6 Astra 兩項 Medium 已修正。原生擷取從未產生空輸出，無媒體路徑以真實檔案的受控測試為證據。見[歷史](history-2026-09.md#plan-026-結案--2026-09-25) |
 | Plan 036 背景保存歷史 | 非同步單一 writer 歷史、耐久確認／移除、自動重試、依意圖還原焦點，以及先媒體後提醒的未保存退出階段。687 項測試、設定 113/113、快捷鍵整合、lifecycle `history` 案例與新 bundle 錄影／QuickTime／退出 smoke 通過；Codex GPT-6 Astra 兩項 Medium 已修正，末輪無 findings。修正前一次 fixture 失敗原因未明；N24–N26 原生案例留在 Plan 035。見[紀錄](history-2026-09.md#plan-036-結案--2026-09-25) |

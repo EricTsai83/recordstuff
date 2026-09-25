@@ -9,6 +9,34 @@ This document preserves conclusions from completed plans separately from the sys
 [Back to the verification index](README.md). These are historical results, including then-outstanding statuses and procedures; use the [testing guide](../testing.md) for current policy. Raw measurements links are local only and absent from a fresh clone.
 
 
+## Plan 027 closure — 2026-09-25
+
+Permission reconciliation and query lifetime (R1 bugs 2 and 6), implemented by Claude with Codex GPT-6 Astra review ([screen permission design](../system-design/desktop.md#screen-permission)).
+
+- **Stored permission status.** Recorder keeps the latest PermissionWatcher status apart from the recording state, including while starting, recording or stopping, and never interrupts a session for it. A save, a capture failure and a start failure each settle from that status into idle or needsPermission. A revocation reported once during a session therefore no longer ends in a misleading Ready, and a grant later in the same session needs no further event. needsPermission now carries `lastSavedPath`, so Show last recording stays in the menu; outputDirUnavailable is remembered and returns with the grant unless the folder was changed meanwhile. The saved banner still yields to permission guidance, as already documented. `autorecord` reports a session's own saved or failed result when that session ends in needsPermission.
+- **One owned enumeration.** PermissionWatcher holds at most one getSources call, prompt or validation, until that promise itself settles. The 4-second deadline shows relaunch guidance without freeing the slot, and while the call is pending only stage 1 is polled. A grant that arrives during the prompt is validated after the prompt settles; a prompt result never counts as validation.
+- **Backoff and generations.** A failed validation is retried 5, 10, 20 and 40 seconds after its completion, then every 60 seconds; revocation resets the backoff. Revocation, markRelaunchRequired and stop() start a new generation, so a late result from an older one is logged and ignored and a fresh validation follows. stop() removes the interval, the activate listener and both timers.
+
+Automated evidence: the final `pnpm check` passed typecheck, 756 tests in 45 files and build; `git diff --check` was clean. Injected tests cover:
+
+- Recorder: a revocation during starting, recording or stopping, followed by a save or a failure, settles into needsPermission with the failure still reported; the saved path stays in state and in the tray menu; a grant later in the session ends in idle without another event; needsRelaunch transitions keep the path; the unusable-folder flag returns with the grant, or is cleared by a folder change made while permission was missing; autorecord keeps the saved outcome.
+- Watcher: twelve polls and activations over a hung call leave one underlying unresolved request (the old watcher issued seven in 30 seconds); the prompt and the validation share one slot; a late success after the deadline heals without a second request; a late rejection starts the doubling backoff up to its cap; after a revocation and regrant, a late success is stale and a fresh validation follows; a late rejection after a revocation is ignored and frees the slot for the prompt; a refused capture supersedes a validation in flight; stop() removes the listener and timers, and a late result neither applies nor frees another request's slot.
+
+Native, on an M1 Pro running macOS 26.6.2 from HEAD `3f696b6` plus the uncommitted change: `pnpm start:app` built and verified a fresh signed bundle (nine identities), and the log showed validation succeeding 50 ms after ready with two screens. `pnpm acceptance -- --seconds 10` recorded 10.3 seconds at 1920×1080, 48 kHz stereo with RMS −27.2/−27.2 dB, 10 flashes and 10 beeps and a full decode, and passed (`2026-09-25T11-34-34-660Z-hotkey-acceptance`). The log shows starting → recording → stopping → idle, the saved banner, and RecordStuff exited afterwards. Codex GPT-6 Astra computer use then played the file in QuickTime from 0 to about 6.7 seconds with moving test material, cancelled the Open panel that appeared on close and quit QuickTime; the screenshot was local only. RecordStuff and QuickTime had exited, and no preference or permission was changed. Output device and volume were not recorded.
+
+Not exercised natively: revocation, regrant and relaunch recovery on the development app, and therefore what macOS offers or forces when permission changes. The agent could not operate System Settings or authenticate a permission change, so these are blocked and carried as 035 N36 and N37. A getSources call that never returns cannot be produced natively; the single in-flight request, the deadline guidance and the backoff rest on the injected tests. Long recordings, the media matrix and hardware removal were out of scope.
+
+Codex GPT-6 Astra (medium reasoning, read-only) completed one pass in about 60 seconds of the 30-minute budget, without fallback, and returned no findings. No code changed after it, so no second pass ran.
+
+Accepted limits:
+
+- A revocation and regrant that both fall between two polls are not observed; a validation started before them can still apply.
+- A getSources call that never returns keeps its slot for the rest of the process; the guidance is to relaunch.
+- Stale-TCC self-healing can wait up to 60 seconds between retries.
+- A recording saved while permission was lost shows no saved banner, because permission guidance takes priority; the menu keeps it discoverable.
+
+At the maintainer's request the round is committed locally on main in scope-separated commits: runtime and tests `f272aef`, design documentation `1c3a5ba`, and this closure commit. No push or publication. The maintainer chose to leave the native permission cases to 035 N36 and N37. Also at the maintainer's request, the test recording `2026-09-25 19-34-40.mp4`, the local measurement directory named above, the playback screenshot and the temporary review logs were deleted after this record was written. The raw evidence therefore no longer exists, and this record is what remains.
+
 ## Plan 038 closure — 2026-09-25
 
 Recording health guards, implemented by Claude with Codex GPT-6 Astra review. Each guard observes and ends through the existing stop or failure path; there are no new states, no health UI and no recovery, remux or repair. All thresholds are initial targets in [recording-health.ts](../../src/main/recording-health.ts) ([recording design](../system-design/recording.md#deadlines-and-supervision)).

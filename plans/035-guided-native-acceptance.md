@@ -93,6 +93,13 @@ Source: [038 closure](../docs/verification/history-2026-09.md#plan-038-closure--
 - [ ] N30: With a bounded test disk image as the output folder, record until the disk guard stops the recording. Observe the early-stop wording in the notification and log, play the saved file, and confirm no failure entry appears. Then, on an isolated output folder, force-quit the labeled bundle during a recording and relaunch: one interruption entry names the temporary file, reveals it while it exists, becomes unknown after the file is moved away, and does not repeat after acknowledgement or another restart.
 - [ ] N31: Put the Mac to sleep during a recording, wake it, and record the actual outcome (saved, failed with a partial, or stuck) together with the suspend/resume log lines and any failure reason. This is evidence for a later stop-on-sleep decision, not a pass/fail gate; do not change behavior inside this round.
 
+## Permission reconciliation acceptance (not performed)
+
+Source: [027 closure](../docs/verification/history-2026-09.md#plan-027-closure--2026-09-25). The agent could not operate System Settings or authenticate a permission change, so revocation and regrant were not exercised natively. Record and restore the original Screen & System Audio Recording setting; no global TCC reset.
+
+- [ ] N36: While the development app records, turn RecordStuff off in System Settings → Privacy & Security → Screen & System Audio Recording. Record what macOS offers or forces (Quit & Reopen, Later, capture ending) and the log lines. If the recording continues, stop it: the file saves, the menu reads Screen recording permission required (never Ready) and still offers Show last recording, which reveals the file. If capture ends instead, the failure entry and the permission guidance both appear. Then turn it back on without relaunching and record whether the menu returns to Ready or offers Relaunch.
+- [ ] N37: From the Relaunch guidance, relaunch from the menu, confirm the menu reads Ready and record a short file that plays. A never-returning getSources cannot be produced natively; the single in-flight request, the deadline guidance and the backoff rest on injected tests.
+
 ## Countdown acceptance (not performed)
 
 Source: [040](040-recording-countdown.md). Prepare recipes from its final timings and appearance values.
