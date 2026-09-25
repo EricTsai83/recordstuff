@@ -220,6 +220,8 @@ pnpm acceptance:settings-shortcut
 
 完整 App 驗收每輪無論成功、失敗或中斷，都須保存測試錄影、還原設定、清理測試視窗、退出受測 App 並確認程序已消失。清理失敗算驗收失敗；保留證據，不重設權限。開發期間已授權按需停止錄影、退出、重啟或重建 RecordStuff，不需另行確認。退出只重設程序狀態，不會清除偏好。
 
+桌面 runner（`acceptance`、`acceptance:settings`、`acceptance:shortcut` 與執行它們的 regression、`acceptance:settings-shortcut`、`acceptance:quit-dialog`、`acceptance:notification`、含擷取的 `acceptance:updates`、`matrix` 及 `audio:quality -- record`）共用 [desktop-session.mts](../../../scripts/lib/desktop-session.mts)：`caffeinate -u` 喚醒閒置關閉的螢幕；以 `ioreg` 的 `CGSSessionScreenIsLocked` 在啟動任何東西或送出按鍵前拒絕鎖定中的 session；`caffeinate -d -i -w <runner pid>` 讓螢幕保持開啟到 runner 結束；回合中（每 2 秒及結束時）偵測到鎖定，結果改為 BLOCKED、exit code 2，並在報告寫入 `Desktop:` 一行。隔離的 lifecycle fixture 不需要螢幕，不持有 assertion。
+
 `pnpm acceptance` 會讓受測 App 保持關閉，並在 `report.md` 記錄包含收尾的最終結果；若程序已更換或無法確認待命，拒絕退出。通知驗收還原安裝產物與設定後保持 App 關閉。設定驗收管理自己的程序群組，包含中斷與逾時清理，結果寫入 `cleanup.json`。隔離 runner 只清理自己的程序；單元檢查不關閉無關 App。設定快捷鍵入口仍保留面板供原生操作，由完整 Computer Use 驗收負責退出。下一輪錄影驗收前需重新啟動；程式改動後用 `pnpm start:app` 重建。
 
 快捷鍵 runner 在送出開始按鍵前及失敗時寫入 `input-diagnostics.json`：包含實際 AppleScript、App PID、送鍵程序、System Events UI 狀態、前景 App，以及 IORegistry 回報的 Secure Input 擁有者。沒有回報擁有者不代表已證明 Secure Input 關閉。診斷查詢唯讀、有時限，不會授予權限。失敗時也保留 `events.log` 與本次 `app-session.log`。osascript 成功不等於按鍵送達，必須收到 App callback 才算；逾時後不要盲目重送切換快捷鍵，以免停止延遲開始的錄影。送鍵失敗時，先對同一個 bundle 與輸入環境比較實體按鍵和產生的腳本，再判斷是否為 App 故障。

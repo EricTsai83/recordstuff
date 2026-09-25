@@ -9,6 +9,13 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## 桌面閒置防護 — 2026-09-25
+
+Plan 036 回合的後續：當時四次設定 fixture 失敗都發生在本地時間 15:34 macOS 關閉螢幕並鎖定 session 之後；`sendInputEvent`／System Events 的模擬輸入不會重設閒置計時，這台 Mac 閒置 10 分鐘就會關閉螢幕。現在每個桌面 runner 開始前都執行 [desktop-session.mts](../../../scripts/lib/desktop-session.mts)：`caffeinate -u` 喚醒閒置關閉的螢幕；session 已鎖定（`ioreg` 的 `CGSSessionScreenIsLocked`）時，在啟動任何東西或送出按鍵前停止；`caffeinate -d -i -w <runner pid>` 持有防止螢幕與系統閒置睡眠的 assertion 直到 runner 結束。回合中（每 2 秒及結束時）偵測到鎖定，結果改為 BLOCKED、exit code 2，並在報告寫入 `Desktop:` 一行。已接入 `acceptance`、`acceptance:settings`、`acceptance:shortcut`、`acceptance:settings-shortcut`、`acceptance:quit-dialog`、`acceptance:notification`、`acceptance:updates`（含擷取範圍）、`matrix` 與 `audio:quality -- record`。
+
+六項 helper 測試涵蓋鎖定解析、先喚醒再檢查、拒絕時不持有 assertion、只釋放一次、回合中與結束前鎖定、無法讀取鎖定狀態及非 macOS。實際執行 `pnpm acceptance:settings` 通過 113/113，期間 `pmset -g assertions` 顯示 caffeinate 代表 runner PID 持有 PreventUserIdleDisplaySleep 與 PreventUserIdleSystemSleep，結束後釋放，報告記錄 session 未鎖定（`2026-09-25T08-02-14-865Z-settings-acceptance`）。以 PATH shim 模擬鎖定時，上列九個指令都在啟動、安裝、建置或送出按鍵前以 BLOCKED 與 exit 2 結束（對執行中的開發 bundle 執行 `pnpm acceptance` 時 log 沒有任何快捷鍵按下，之後已正常結束該 bundle 並確認程序消失；`/Applications/RecordStuff.app` 未被修改）。讀取五次後才回報鎖定的 shim，使 113/113 的設定回合改為 BLOCKED、exit 2（`2026-09-25T08-04-16-478Z-settings-acceptance`）。未實測從真實閒置睡眠喚醒與真實密碼鎖定：這台 Mac 螢幕睡眠即會鎖定 session，只有預防能避免；也未嘗試鎖定維護者的螢幕。手動鎖定、闔上螢幕或受管理的政策仍可能中斷回合。
+
+
 ## Plan 036 結案 — 2026-09-25
 
 背景保存失敗歷史與安全退出；依維護者要求由 Claude 實作、Codex GPT-6 Astra review（計畫原先寫的是另一組搭配）。歷史儲存只使用非同步 `fs.promises`，包含 `load()` 與分塊的 `writeFileAtomic` 寫入。`RecordingResults` 是唯一的持久化負責者：最多一個寫入進行中與一個合併後續寫入、帶 revision 的快照、確認／移除只在耐久保存後生效、逐筆警告分為 `io`、`blocked`（無法讀取或較新版本的檔案，永不重試或覆寫）與 `tooLarge`，自動重試間隔 2、5、15 秒後每 30 秒，手動重試加入進行中的寫入，啟動時非同步載入並合併期間到達的失敗。失敗紀錄操作不排在偏好保存佇列後；renderer 以 `aria-disabled` 讓忙碌按鈕保持可聚焦，並依記錄的意圖還原焦點。退出／重新啟動維持 025 的媒體階段在前，之後最多等待 5 秒保存最新歷史：寫入進行中只有「繼續等待／留在 App」，保存失敗後為「重試／留在 App／不儲存這些提醒並結束」。
@@ -23,7 +30,7 @@
 
 Codex GPT-6 Astra（medium reasoning、read-only）完成兩輪，共 153 秒 + 132 秒 = 285 秒，未超過 30 分鐘預算，未使用 fallback。Pass 1 回報兩項 Medium，皆接受並修正。F1：`write()` 在釋放 writer 前就挑選 waiters，落在該 microtask 空檔的 `persist()` 會永遠不結算；現在釋放 writer 與挑選 waiters 在同一步完成，並新增在舊邏輯下會失敗的 microtask 深度回歸測試。F2：保存成功後清除警告時對每個被標記列掃描一次整份歷史；清理與操作提交改用 ID 索引與布林變更追蹤，60,001 列恢復測試在舊邏輯需 6.9 秒，現在低於 3 秒。Pass 2 逐一檢視全部 42 個變更、刪除與未追蹤檔案，確認兩項修正並回報無 findings。兩輪都未確立修正前那一次設定 fixture 失敗的原因。
 
-未 commit、push 或發布。
+依維護者要求，本輪已依 scope 分開 commit 在本機 main：執行期實作與驗收覆蓋 `507a2c0`、設計與結案文件 `1e0deea`、桌面閒置防護 `502e452`，以及本次文件 commit。未 push 或發布。
 
 
 ## Plan 039 結案 — 2026-09-25
