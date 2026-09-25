@@ -53,7 +53,7 @@ Add task-specific context when useful: requirements, risky areas, expected behav
 
 ## Reporting Back
 
-Reply in the user's language: the language of their request (for a mixed-language request, its main prose language). The prompt sent to Codex may stay in English.
+Reply in the user's language: the language of their request (for a mixed-language request, its main prose language). Technical terms may stay in English where that reads more naturally, and the prompt sent to Codex may stay in English.
 
 Before relaying a Codex finding, inspect the cited code or diff enough to decide whether the finding is real. In the user-facing response, separate confirmed issues from Codex suggestions you did not verify.
 

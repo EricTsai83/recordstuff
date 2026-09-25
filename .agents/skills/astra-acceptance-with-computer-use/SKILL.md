@@ -5,7 +5,7 @@ description: 由 Codex GPT-6 Astra（預設 medium reasoning）使用 computer u
 
 # Astra Acceptance with Computer Use
 
-以使用者操作路徑驗收目前原始碼建置的 App。以使用者的語言回報：依要求本次驗收的訊息判斷（語言混用時依主要敘述語言），整輪維持同一語言，使用者改用其他語言時跟著改；英文使用者改用 [testing](../../../docs/testing.md) 與 [acceptance](../../../docs/acceptance.md) 的英文版本與其報告範本。只有建立或修改本 skill 的請求，不代表要立即啟動錄影驗收。
+以使用者操作路徑驗收目前原始碼建置的 App。以使用者的語言回報：依要求本次驗收的訊息判斷（語言混用時依主要敘述語言），整輪維持同一語言，使用者改用其他語言時跟著改；技術用語可保留英文；英文使用者改用 [testing](../../../docs/testing.md) 與 [acceptance](../../../docs/acceptance.md) 的英文版本與其報告範本。只有建立或修改本 skill 的請求，不代表要立即啟動錄影驗收。
 
 先依[共用測試規則](../../../docs/zh-TW/testing.md)選定範圍；案例、預期結果及報告格式以[共用驗收指南](../../../docs/zh-TW/acceptance.md)為準。本 skill 補充 Astra 與原生工具的執行方式，不另定測試門檻。純文件修改不啟動 App；純設定 UI 驗收不因使用本 skill 就加入錄影。
 
@@ -129,7 +129,7 @@ Astra 在這條路徑的工作：
 5. 在同一報告目錄新增 agent 視覺紀錄，包含語言、操作時間、截圖／AX 來源、逐項 pass/fail/blocked/not run、判讀理由、是否曾主動改變焦點，以及 runner 結果。工具支援保存原始 PNG 時存入該目錄；只能回傳對話圖像時，明確引用該次工具觀察並標示沒有本機 PNG，不虛構路徑。保留 runner 原本的 `nativeObservation: not recorded`，以附加紀錄提供具名觀察來源，不默默把它改成腳本的斷言。
 6. 缺少工具、權限或可辨識畫面時，記 blocked 並完成仍可做的生命週期檢查。只有無法由目前工具判定的具體項目才請使用者協助。所有必要項目與清理都有證據才可說該輪全自動驗收通過；不能保證無桌面或缺權限的 CI 也能執行。
 
-報告與最後回覆固定以使用者的語言附上提醒：**「測試期間若有測試步驟以外的人為桌面操作，可能影響焦點、截圖與判讀結果；目前流程不會自動偵測所有干擾。」**（English: **“Desktop activity outside the test steps during the run can affect focus, screenshots and their interpretation; the current process does not detect every interference.”**） 保留既有流程，不因此新增每輪確認或鍵鼠監控。若已知受干擾，將受影響的原生觀察標為 blocked（人為干擾／無法判定），保留原始截圖、log 與 runner 結果，不直接判為產品通過或失敗；如需有效結論，再於無干擾時重測該項。沒有觀察到干擾不等於已證明沒有干擾。
+報告與最後回覆固定以使用者的語言附上提醒：**「測試期間若有測試步驟以外的人為桌面操作，可能影響焦點、截圖與判讀結果；目前流程不會自動偵測所有干擾。」** 保留既有流程，不因此新增每輪確認或鍵鼠監控。若已知受干擾，將受影響的原生觀察標為 blocked（人為干擾／無法判定），保留原始截圖、log 與 runner 結果，不直接判為產品通過或失敗；如需有效結論，再於無干擾時重測該項。沒有觀察到干擾不等於已證明沒有干擾。
 
 ## 共用案例與追加範圍
 

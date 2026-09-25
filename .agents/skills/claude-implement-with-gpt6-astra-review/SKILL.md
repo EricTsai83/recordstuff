@@ -22,31 +22,13 @@ Claude owns implementation, final technical judgment, fixes, verification, and r
 
 ## Language
 
-Reply in the user's language: the language of the request that started this work (for a mixed-language request, its main prose language). Use it for the briefing, progress updates, finding disclosures, acceptance decisions and the final report, and keep it for the whole workflow unless the user switches. Prompts sent to the reviewer may stay in English.
-
-The headings and labels below are written in Traditional Chinese. Use them verbatim for Traditional Chinese; for any other language, translate every one faithfully, keeping the structure, order and meaning. For English, use:
-
-| Traditional Chinese | English |
-| --- | --- |
-| `執行前說明：<plan 或變更名稱>` | `Before implementation: <plan or change name>` |
-| 要解決的問題／這次要做什麼／不做什麼 | Problem to solve / What this change does / Out of scope |
-| 預計做法與修改位置／驗證計畫／需要留意的風險或疑點 | Planned approach and locations / Verification plan / Risks and open questions |
-| 初始 findings（尚未經 Claude 驗證）／本 pass 無 findings | initial findings (not yet validated by Claude) / No findings in this pass |
-| 實作結果／檔案摘要／Review 結果／驗證／剩餘風險 | Implementation result / File summary / Review results / Verification / Remaining risks |
-| 新增／修改／刪除／重新命名 | Added / Modified / Deleted / Renamed |
-| 開發目的／具體變更／設計理由／行為與資料流／驗證重點 | Purpose / Concrete changes / Design rationale / Behavior and data flow / Verification focus |
-| 判定（接受／拒絕）／處理與驗證（未修改） | Decision (accepted / rejected) / Handling and verification (not changed) |
-| 風險名稱／風險內容／目前證據／是否需要你現在處理 | Risk name / Risk / Current evidence / Needs your action now |
-| `需要`／`不需要`／`需要你決定` | `Yes` / `No` / `Your decision` |
-| 現在需要你處理的 action／目前不需要你採取任何 action／沒有剩餘風險 | Actions for you now / No action needed from you now / No remaining risks |
-
-Required provider labels stay in English in every language.
+Reply in the user's language: the language of the request that started this work (for a mixed-language request, its main prose language), and keep it for the whole workflow unless the user switches. This covers the briefing, progress updates, finding disclosures, acceptance decisions, provider labels and the final report. Technical terms may stay in English where that reads more naturally, such as commands, identifiers, paths, model names and terms like finding, diff or fallback. The templates below are written in Traditional Chinese; write their headings and labels in the user's language, keeping their structure, order and meaning. Prompts sent to the reviewer may stay in English.
 
 ## Pre-Implementation Briefing
 
 Before the first edit, send the user a briefing in the user's language that explains the plan or scoped change in enough detail that the user could stop or redirect the work before anything changes. Build it from the requirements and from reading the code they touch, not from the plan title or file names. It is a briefing, not an approval request: continue immediately after sending it, and ask first only when a decision is genuinely the user's, such as an ambiguity the requirements and code cannot resolve or a conflict with repository rules.
 
-Use the heading `執行前說明：<plan 或變更名稱>` (translated per Language) and these parts:
+Use the heading `執行前說明：<plan 或變更名稱>` (in the user's language) and these parts:
 
 - **要解決的問題**：現在的行為或缺口、在什麼條件下發生、影響誰、使用者會看到什麼後果（例如資料遺失、誤導的訊息或卡住）、嚴重程度，以及問題來源（plan、audit、bug 回報或維護者要求）。說明為什麼現在處理，以及與前後 plan 的相依。
 - **這次要做什麼**：逐項列出要交付的行為，每項說明完成後使用者或系統會有什麼不同，包括會新增或改變的文案、設定、資料格式、錯誤碼或檔案。
@@ -105,7 +87,7 @@ Retain the review output until the final report is complete. Present every usabl
 
 After each review invocation returns, send a commentary update before editing any code in response to that review. Do not defer this disclosure to the final report.
 
-Use the heading `Codex GPT-6 Astra Review Pass N — 初始 findings（尚未經 Claude 驗證）` (translated per Language) and include the provider plus every usable finding's ID, severity, file/line, failure mode, impact, and proposed fix direction. State clearly that Claude may accept or reject each finding after inspecting the code. When the reviewer reports no findings, immediately say `本 pass 無 findings` or its translation.
+Use the heading `Codex GPT-6 Astra Review Pass N — 初始 findings（尚未經 Claude 驗證）` (in the user's language) and include the provider plus every usable finding's ID, severity, file/line, failure mode, impact, and proposed fix direction. State clearly that Claude may accept or reject each finding after inspecting the code. When the reviewer reports no findings, immediately say `本 pass 無 findings` or its translation.
 
 After validation, send a second concise commentary update with the acceptance or rejection of each finding and the reason before or while applying accepted fixes. The later final report remains the authoritative record of findings, decisions, changes, and verification.
 
@@ -132,7 +114,7 @@ claude -p "<focused review prompt>" \
 
 Launch the fallback detached the same way, with the same completion sentinel.
 
-Pass the same review context to the fallback. Immediately identify the fallback with the specific, sanitized reason:
+Pass the same review context to the fallback. Immediately identify the fallback, in the user's language, with the specific, sanitized reason. The label names the fallback provider, says it is a fallback and names the unavailable reviewer; in English:
 
 ```text
 Review provider: Claude (fallback — Codex unavailable: <specific reason>)
@@ -142,7 +124,7 @@ After fallback, use Claude for remaining passes and count them toward the two-pa
 
 ## Final Report
 
-Write explanations and headings in the user's language, translating the template per Language; preserve commands, identifiers, paths, model names, and required provider labels. Lead with outcomes, not chronology. Use exactly these sections:
+Write explanations, headings and labels in the user's language (see Language); preserve commands, identifiers, paths and model names. Lead with outcomes, not chronology. Use exactly these sections:
 
 ```markdown
 ## 實作結果
@@ -222,4 +204,4 @@ Write `剩餘風險` so the user can decide what to do without rereading the wor
 - In **是否需要你現在處理**, always give an explicit verdict of `需要`, `不需要`, or `需要你決定`; never leave it implied. For `需要` or `需要你決定`, give the concrete action, who performs it, when it must happen (now, before the next plan, or during a named acceptance round), and the consequence of not doing it. Offer agent-executable actions, but do not perform outward-facing or out-of-scope actions without a request. For `不需要`, name what already covers the risk: a later plan, a scheduled acceptance case, or an accepted limitation.
 - End with the **現在需要你處理的 action** line. When there are no remaining risks, replace the subsections with `沒有剩餘風險` and a one-sentence reason, and still end with that line.
 
-State whether Codex GPT-6 Astra completed review. For fallback, repeat the exact provider label and reason, and never imply Codex approved the work.
+State whether Codex GPT-6 Astra completed review. For fallback, repeat the provider label with its reason, and never imply Codex approved the work.
