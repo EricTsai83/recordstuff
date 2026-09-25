@@ -60,6 +60,7 @@ Never run `codex exec` in the foreground or as a directly tracked background com
 cat > /tmp/codex-review.sh <<'WRAPPER'
 #!/bin/sh
 codex exec -C "$PWD" \
+  --sandbox read-only \
   --model gpt-6-astra \
   --config 'model_reasoning_effort="medium"' \
   review - > /tmp/codex-review.log 2>&1 <<'EOF'
@@ -74,8 +75,9 @@ nohup /tmp/codex-review.sh > /tmp/codex-review-launcher.log 2>&1 &
 - Use `nohup`, not `setsid`; macOS has no `setsid`.
 - Never send the launcher's own output to `/dev/null`; a failed launch must stay visible.
 - Confirm the wrapper detached: its PPID becomes 1.
+- Confirm the log header reports `sandbox: read-only`. `codex exec review` otherwise uses the configured default (for example `workspace-write`), and a prompt instruction alone does not stop edits. If the header shows another mode, stop the pass and relaunch it with the flag.
 - Poll the log for the `CODEX_EXIT=` line and treat it as the only completion signal. A log that stopped growing without it means the pass was killed.
-- Resume a killed pass with `codex exec resume --last` instead of restarting it, and count the resumed run as the same pass.
+- Resume a killed pass through the same wrapper, replacing `review -` with `resume --last -` and keeping `--sandbox read-only`, `--model gpt-6-astra` and the reasoning setting: a bare `codex exec resume --last` runs on the configured default model instead (observed: `gpt-5.6-sol`). Count the resumed run as the same pass.
 
 Pass the focused review prompt through stdin (`-`) using a heredoc inside the wrapper, never as a file argument to `codex`. State the review scope in the first line of the prompt (for example "Review the uncommitted changes in this repository"). Instruct Codex not to run test suites or package-manager commands, and state that the checks this workflow already ran are authoritative; its sandbox reports failures that are environment artifacts and the runs consume the wait budget. List the changed files in the prompt so Codex does not spend the budget discovering them. After the review returns, confirm from its output that Codex enumerated the intended changes.
 

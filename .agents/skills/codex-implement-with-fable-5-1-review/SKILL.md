@@ -85,6 +85,7 @@ If Claude returns no usable review—because of access, quota, policy, authentic
 cat > /tmp/codex-review.sh <<'WRAPPER'
 #!/bin/sh
 codex exec -C "$PWD" \
+  --sandbox read-only \
   --model gpt-6-astra \
   --config 'model_reasoning_effort="medium"' \
   review - > /tmp/codex-review.log 2>&1 <<'EOF'
@@ -96,7 +97,7 @@ chmod +x /tmp/codex-review.sh
 nohup /tmp/codex-review.sh > /tmp/codex-review-launcher.log 2>&1 &
 ```
 
-Never run `codex exec` in the foreground or as a directly tracked background command; it is killed at the tool timeout or on session restart, and a killed pass emits no findings. Use `nohup`, not `setsid` (macOS has no `setsid`), keep the launcher's output visible, and poll the log for the `CODEX_EXIT=` line as the only completion signal. Resume a killed pass with `codex exec resume --last`. Pass the same review context through stdin (`-`) using a heredoc inside the wrapper, never as a file argument to `codex`, and state the review scope in the first line of the prompt. Instruct Codex not to run test suites or package-manager commands, and list the changed files in the prompt. Immediately identify the fallback, in the user's language, with the specific, sanitized reason. The label names the fallback provider, says it is a fallback and names the unavailable reviewer; in English:
+Never run `codex exec` in the foreground or as a directly tracked background command; it is killed at the tool timeout or on session restart, and a killed pass emits no findings. Use `nohup`, not `setsid` (macOS has no `setsid`), keep the launcher's output visible, and poll the log for the `CODEX_EXIT=` line as the only completion signal. Confirm the log header reports `sandbox: read-only`; `codex exec review` otherwise uses the configured default (for example `workspace-write`), and a prompt instruction alone does not stop edits, so stop and relaunch a pass that shows another mode. Resume a killed pass through the same wrapper, replacing `review -` with `resume --last -` and keeping `--sandbox read-only`, `--model gpt-6-astra` and the reasoning setting: a bare `codex exec resume --last` runs on the configured default model instead (observed: `gpt-5.6-sol`). Pass the same review context through stdin (`-`) using a heredoc inside the wrapper, never as a file argument to `codex`, and state the review scope in the first line of the prompt. Instruct Codex not to run test suites or package-manager commands, and list the changed files in the prompt. Immediately identify the fallback, in the user's language, with the specific, sanitized reason. The label names the fallback provider, says it is a fallback and names the unavailable reviewer; in English:
 
 ```text
 Review provider: Codex (fallback — Claude unavailable: <specific reason>)
