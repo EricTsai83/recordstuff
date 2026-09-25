@@ -18,6 +18,8 @@ import {
   syncStats,
   type ProbeInfo,
 } from "./verify.mts";
+import { formatSessionRecord } from "../../src/shared/session-record.ts";
+import type { CaptureReport, QualitySettings } from "../../src/shared/quality.ts";
 
 const CAPTURE_LINE =
   "recorder: session mtynus3n-i3lxyd capture: requested video=standard cap=1440p fps=60 audio=high; track size=1440x1440 fps=60 sampleRate=48000 Hz channels=1; target videoBps=16200000 audioBps=256000";
@@ -59,8 +61,8 @@ describe("log parsing", () => {
       "saved /x/b.mp4",
     ].join("\n");
     const pairs = pairRecordingsWithLog(log);
-    expect(pairs.get("a.recording.mp4")?.requested.resolutionCap).toBe("1080p");
-    expect(pairs.get("b.mp4")?.requested.resolutionCap).toBe("4k");
+    expect(pairs.lookup("/x/a.recording.mp4")).toMatchObject({ status: "legacy", entry: { requested: { resolutionCap: "1080p" } } });
+    expect(pairs.lookup("/x/b.mp4")).toMatchObject({ status: "legacy", entry: { requested: { resolutionCap: "4k" } } });
   });
 
   it("retires a failed session that kept no file so a later kept partial is not misassigned (pass 2)", () => {
@@ -76,7 +78,7 @@ describe("log parsing", () => {
     ].join("\n");
     const pairs = pairRecordingsWithLog(log);
     expect(pairs.size).toBe(1);
-    expect(pairs.get("b.recording.mp4")?.requested.resolutionCap).toBe("4k");
+    expect(pairs.lookup("/x/b.recording.mp4").entry?.requested.resolutionCap).toBe("4k");
   });
 
   it("reads the app's autorecord verdict lines", () => {
@@ -98,9 +100,11 @@ describe("log parsing", () => {
       "[2026-09-12T17:32:30.001Z] failed: capture_host_crashed killed (kept /Users/eric/Movies/RecordStuff/2026-09-13 01-32-00.recording.mp4)",
     ].join("\n");
     const pairs = pairRecordingsWithLog(log);
-    expect(pairs.get("2026-09-13 01-30-15.mp4")?.requested.resolutionCap).toBe("1440p");
-    expect(pairs.has("no-capture-line.mp4")).toBe(false);
-    expect(pairs.get("2026-09-13 01-32-00.recording.mp4")?.requested.resolutionCap).toBe("1080p");
+    expect(pairs.lookup("/Users/eric/Movies/RecordStuff/2026-09-13 01-30-15.mp4").entry?.requested.resolutionCap).toBe("1440p");
+    expect(pairs.lookup("/Users/eric/Movies/RecordStuff/no-capture-line.mp4")).toMatchObject({ status: "unknown" });
+    expect(pairs.lookup("/Users/eric/Movies/RecordStuff/2026-09-13 01-32-00.recording.mp4").entry?.requested.resolutionCap).toBe("1080p");
+    // A copied file still pairs by name while exactly one session names it.
+    expect(pairs.lookup("/tmp/copy/2026-09-13 01-30-15.mp4")).toMatchObject({ status: "legacy", note: expect.stringContaining("file name only") });
   });
 
   it("reads the session length from the recording/stopping state lines, falling back to saved", () => {
@@ -119,10 +123,196 @@ describe("log parsing", () => {
       "saved /Users/eric/Movies/RecordStuff/unstamped.mp4",
     ].join("\n");
     const pairs = pairRecordingsWithLog(log);
-    expect(sessionDurationSeconds(pairs.get("2026-09-19 18-02-38.mp4"))).toBeCloseTo(16.723, 3);
-    expect(sessionDurationSeconds(pairs.get("second.mp4"))).toBeCloseTo(20, 3);
-    expect(sessionDurationSeconds(pairs.get("unstamped.mp4"))).toBeUndefined();
+    const entry = (name: string) => pairs.lookup(`/Users/eric/Movies/RecordStuff/${name}`).entry;
+    expect(sessionDurationSeconds(entry("2026-09-19 18-02-38.mp4"))).toBeCloseTo(16.723, 3);
+    expect(sessionDurationSeconds(entry("second.mp4"))).toBeCloseTo(20, 3);
+    expect(sessionDurationSeconds(entry("unstamped.mp4"))).toBeUndefined();
     expect(sessionDurationSeconds(undefined)).toBeUndefined();
+  });
+});
+
+describe("session identity pairing (plan 029)", () => {
+  const RUN = "20260925T100000000Z-4242";
+  const quality = (resolutionCap: QualitySettings["resolutionCap"]): QualitySettings => ({ videoQuality: "standard", resolutionCap, frameRate: 30 });
+  const report = (height: number): CaptureReport => ({ width: Math.round((height * 16) / 9), height, frameRate: 30, sampleRate: 48_000, channelCount: 2,
+    videoBitsPerSecond: 8_100_000, audioBitsPerSecond: 256_000, warnings: [] });
+  const at = (second: number): string => `[2026-09-25T10:00:${String(second).padStart(2, "0")}.000Z] `;
+  const start = (second: number, run = RUN): string => `${at(second)}start: RecordStuff 1.0.0; run ${run}; electron 44; executable /x`;
+  const capture = (second: number, session: string, cap: QualitySettings["resolutionCap"], height: number, run = RUN): string =>
+    at(second) + formatSessionRecord(run, { kind: "capture", session, requested: quality(cap), capture: report(height) });
+  const saved = (second: number, session: string, filePath: string, run = RUN): string =>
+    at(second) + formatSessionRecord(run, { kind: "saved", session, path: filePath,
+      recordingAt: `2026-09-25T10:00:${String(second - 10).padStart(2, "0")}.000Z`, stoppingAt: `2026-09-25T10:00:${String(second).padStart(2, "0")}.000Z` });
+  const failed = (second: number, session: string, fields: { partialPath?: string; recordingPath?: string; outcome?: "partial" | "empty" | "unknown" }, run = RUN): string =>
+    at(second) + formatSessionRecord(run, { kind: "failed", session, code: "capture_host_crashed", detail: "killed", outcome: fields.outcome ?? (fields.partialPath ? "partial" : "empty"),
+      ...(fields.partialPath ? { partialPath: fields.partialPath } : {}), ...(fields.recordingPath ? { recordingPath: fields.recordingPath } : {}) });
+  const cap = (pairs: ReturnType<typeof pairRecordingsWithLog>, file: string) => pairs.lookup(file).entry?.requested.resolutionCap;
+
+  it("pairs by identity when A fails first but B's cleanup finishes first, where the legacy order swapped them", () => {
+    const log = [
+      start(0), capture(1, "A", "1080p", 1080),
+      "[2026-09-25T10:00:05.000Z] recorder: session A failed: capture_host_crashed killed",
+      capture(6, "B", "4k", 2160),
+      "[2026-09-25T10:00:08.000Z] recorder: session B failed: capture_host_crashed killed",
+      "[2026-09-25T10:00:09.000Z] failed: capture_host_crashed killed (kept /m/b.recording.mp4)",
+      failed(9, "B", { partialPath: "/m/b.recording.mp4", recordingPath: "/m/b.recording.mp4" }),
+      "[2026-09-25T10:00:12.000Z] failed: capture_host_crashed killed (kept /m/a.recording.mp4)",
+      failed(12, "A", { partialPath: "/m/a.recording.mp4", recordingPath: "/m/a.recording.mp4" }),
+    ];
+    const pairs = pairRecordingsWithLog(log.join("\n"));
+    expect(pairs.lookup("/m/a.recording.mp4")).toMatchObject({ status: "matched", entry: { sessionId: "A", runId: RUN, requested: { resolutionCap: "1080p" } } });
+    expect(cap(pairs, "/m/b.recording.mp4")).toBe("4k");
+    // The same launch from a build before plan 029 cannot tell them apart: both are ambiguous, never swapped.
+    const legacy = pairRecordingsWithLog([
+      "[2026-09-25T10:00:00.000Z] start: RecordStuff 0.9.0; electron 44; executable /x",
+      `${at(1)}${CAPTURE_LINE.replace("mtynus3n-i3lxyd", "A").replace("cap=1440p", "cap=1080p")}`,
+      log[2], `${at(6)}${CAPTURE_LINE.replace("mtynus3n-i3lxyd", "B").replace("cap=1440p", "cap=4k")}`, log[4], log[5], log[7],
+    ].join("\n"));
+    expect(legacy.lookup("/m/a.recording.mp4")).toMatchObject({ status: "ambiguous" });
+    expect(legacy.lookup("/m/b.recording.mp4")).toMatchObject({ status: "ambiguous" });
+    expect(legacy.lookup("/m/a.recording.mp4").entry).toBeUndefined();
+  });
+
+  it("uses distinct legacy failure text as identity when it is unique", () => {
+    const pairs = pairRecordingsWithLog([
+      CAPTURE_LINE.replace("mtynus3n-i3lxyd", "A").replace("cap=1440p", "cap=1080p"),
+      "recorder: session A failed: capture_host_crashed killed",
+      CAPTURE_LINE.replace("mtynus3n-i3lxyd", "B").replace("cap=1440p", "cap=4k"),
+      "recorder: session B failed: disk_full ENOSPC",
+      "failed: disk_full ENOSPC (kept /m/b.recording.mp4)",
+      "failed: capture_host_crashed killed (kept /m/a.recording.mp4)",
+    ].join("\n"));
+    expect(cap(pairs, "/m/a.recording.mp4")).toBe("1080p");
+    expect(cap(pairs, "/m/b.recording.mp4")).toBe("4k");
+  });
+
+  it("keeps two same-text legacy failures ambiguous even after one of them resolves", () => {
+    const pairs = pairRecordingsWithLog([
+      CAPTURE_LINE.replace("mtynus3n-i3lxyd", "A"),
+      "recorder: session A failed: capture_host_crashed killed",
+      CAPTURE_LINE.replace("mtynus3n-i3lxyd", "B"),
+      "recorder: session B failed: capture_host_crashed killed",
+      "failed: capture_host_crashed killed (kept /m/b.recording.mp4)",
+      "failed: capture_host_crashed killed (kept /m/a.recording.mp4)",
+    ].join("\n"));
+    expect(pairs.lookup("/m/a.recording.mp4").status).toBe("ambiguous");
+    expect(pairs.lookup("/m/b.recording.mp4").status).toBe("ambiguous");
+  });
+
+  it("pairs a save, a failure with no file and a kept partial across three interleaved sessions", () => {
+    const pairs = pairRecordingsWithLog([
+      start(0),
+      capture(1, "A", "1080p", 1080),
+      capture(3, "B", "1440p", 1440),
+      capture(5, "C", "4k", 2160),
+      saved(20, "C", "/m/c.mp4"),
+      failed(21, "A", { outcome: "empty", recordingPath: "/m/a.recording.mp4" }),
+      failed(22, "B", { partialPath: "/m/b.recording.mp4", recordingPath: "/m/b.recording.mp4" }),
+    ].join("\n"));
+    expect(cap(pairs, "/m/c.mp4")).toBe("4k");
+    expect(cap(pairs, "/m/b.recording.mp4")).toBe("1440p");
+    // Nothing remains of A, so its temporary name claims no file and is never lent to a neighbour.
+    expect(pairs.lookup("/m/a.recording.mp4")).toMatchObject({ status: "unknown" });
+    expect(sessionDurationSeconds(pairs.lookup("/m/c.mp4").entry)).toBe(10);
+  });
+
+  it("treats a repeated record as one outcome and flags conflicting outcomes", () => {
+    const outcome = saved(12, "A", "/m/a.mp4");
+    const duplicate = pairRecordingsWithLog([start(0), capture(1, "A", "1080p", 1080), capture(2, "A", "1080p", 1080), outcome, outcome.replace(at(12), at(13))].join("\n"));
+    expect(duplicate.lookup("/m/a.mp4")).toMatchObject({ status: "matched", entry: { sessionId: "A" } });
+    const conflict = pairRecordingsWithLog([start(0), capture(1, "A", "1080p", 1080), saved(12, "A", "/m/a.mp4"),
+      failed(13, "A", { partialPath: "/m/a.recording.mp4" })].join("\n"));
+    expect(conflict.lookup("/m/a.mp4")).toMatchObject({ status: "conflict", note: expect.stringContaining("conflicting outcomes") });
+    expect(conflict.lookup("/m/a.recording.mp4").entry).toBeUndefined();
+    const captures = pairRecordingsWithLog([start(0), capture(1, "A", "1080p", 1080), capture(2, "A", "4k", 2160), saved(12, "A", "/m/a.mp4")].join("\n"));
+    expect(captures.lookup("/m/a.mp4").status).toBe("conflict");
+  });
+
+  it("does not let the same file name in different folders collide", () => {
+    const pairs = pairRecordingsWithLog([start(0), capture(1, "A", "1080p", 1080), saved(11, "A", "/one/clip.mp4"),
+      capture(20, "B", "4k", 2160), saved(30, "B", "/two/clip.mp4")].join("\n"));
+    expect(cap(pairs, "/one/clip.mp4")).toBe("1080p");
+    expect(cap(pairs, "/two/clip.mp4")).toBe("4k");
+    expect(pairs.lookup("/elsewhere/clip.mp4")).toMatchObject({ status: "ambiguous", note: expect.stringContaining("different folders") });
+    expect(pairs.lookup("/one/./sub/../clip.mp4").entry?.sessionId).toBe("A");
+  });
+
+  it("keeps spaces, quotes, parentheses, line breaks and decomposed Unicode in paths intact", () => {
+    const odd = `/Users/e/Movies/My "clips" (kept )/片段\n2026-09-25 10-00-00.recording.mp4`;
+    const decomposed = "/Users/e/Movies/Cafe\u0301/2026-09-25 10-01-00.mp4";
+    const pairs = pairRecordingsWithLog([start(0), capture(1, "A", "1080p", 1080), failed(5, "A", { partialPath: odd, recordingPath: odd }),
+      capture(6, "B", "4k", 2160), saved(16, "B", decomposed)].join("\n"));
+    expect(cap(pairs, odd)).toBe("1080p");
+    expect(cap(pairs, "/Users/e/Movies/Caf\u00e9/2026-09-25 10-01-00.mp4")).toBe("4k");
+  });
+
+  it("reads old and new launches in one log without counting an outcome twice", () => {
+    const pairs = pairRecordingsWithLog([
+      "[2026-09-24T09:00:00.000Z] start: RecordStuff 0.9.0; electron 44; executable /x",
+      `[2026-09-24T09:00:01.000Z] ${CAPTURE_LINE.replace("mtynus3n-i3lxyd", "old").replace("cap=1440p", "cap=source")}`,
+      "[2026-09-24T09:00:11.000Z] saved /m/old.mp4",
+      start(0),
+      `${at(1)}${CAPTURE_LINE.replace("mtynus3n-i3lxyd", "new").replace("cap=1440p", "cap=1080p")}`,
+      capture(1, "new", "4k", 2160),
+      `${at(11)}saved /m/new.mp4`,
+      saved(11, "new", "/m/new.mp4"),
+      // A human line after the new launch's records must not become a second, legacy outcome.
+      `${at(12)}saved /m/stray.mp4`,
+    ].join("\n"));
+    expect(pairs.lookup("/m/old.mp4")).toMatchObject({ status: "legacy", entry: { requested: { resolutionCap: "source" } } });
+    expect(pairs.lookup("/m/new.mp4")).toMatchObject({ status: "matched", entry: { requested: { resolutionCap: "4k" } } });
+    expect(pairs.lookup("/m/stray.mp4").status).toBe("unknown");
+  });
+
+  it("reports unknown sessions, unknown record versions and a failed preflight without borrowing a session", () => {
+    const pairs = pairRecordingsWithLog([
+      start(0),
+      // The capture record of X was rotated away; its outcome alone is not enough to judge the file.
+      saved(12, "X", "/m/x.mp4"),
+      `${at(13)}session-record: {"v":2,"run":"${RUN}","kind":"saved","session":"Y","path":"/m/y.mp4"}`,
+      `${at(14)}session-record: {"v":1,"run":"${RUN}","kind":"saved","session":"Z"`,
+      capture(20, "A", "1080p", 1080),
+      saved(30, "A", "/m/a.mp4"),
+      at(31) + formatSessionRecord(RUN, { kind: "refused", code: "unsupported_os_version", detail: "" }),
+      `${at(31)}failed: unsupported_os_version `,
+    ].join("\n"));
+    expect(pairs.lookup("/m/x.mp4")).toMatchObject({ status: "unknown", note: expect.stringContaining("capture record") });
+    expect(pairs.lookup("/m/y.mp4").status).toBe("unknown");
+    expect(pairs.lookup("/m/a.mp4")).toMatchObject({ status: "matched", entry: { sessionId: "A" } });
+    expect(pairs.size).toBe(2);
+    expect(pairRecordingsWithLog("").lookup("/m/a.mp4")).toMatchObject({ status: "unknown", note: "the log names no recording" });
+  });
+
+  it("lets a same-second retry reuse an empty failure's temporary name, and skips a lock-refused launch", () => {
+    const pairs = pairRecordingsWithLog([
+      start(0), capture(1, "A", "1080p", 1080),
+      failed(3, "A", { outcome: "empty", recordingPath: "/m/x.recording.mp4" }),
+      "[2026-09-25T10:00:04.000Z] start: another instance already holds the userData lock; run 20260925T100004000Z-99; exiting",
+      capture(5, "B", "4k", 2160),
+      failed(9, "B", { partialPath: "/m/x.recording.mp4", recordingPath: "/m/x.recording.mp4" }),
+      capture(20, "C", "1440p", 1440), saved(30, "C", "/m/c.mp4"),
+    ].join("\n"));
+    expect(pairs.lookup("/m/x.recording.mp4")).toMatchObject({ status: "matched", entry: { sessionId: "B" } });
+    expect(cap(pairs, "/m/c.mp4")).toBe("1440p");
+    const legacy = pairRecordingsWithLog([
+      "[2026-09-24T09:00:00.000Z] start: RecordStuff 0.9.0; electron 44; executable /x",
+      `[2026-09-24T09:00:01.000Z] ${CAPTURE_LINE.replace("mtynus3n-i3lxyd", "old").replace("cap=1440p", "cap=source")}`,
+      "[2026-09-24T09:00:02.000Z] start: another instance already holds the userData lock; exiting",
+      "[2026-09-24T09:00:11.000Z] saved /m/old.mp4",
+    ].join("\n"));
+    expect(legacy.lookup("/m/old.mp4").entry?.requested.resolutionCap).toBe("source");
+  });
+
+  it("pairs the same session id in different launches separately", () => {
+    const pairs = pairRecordingsWithLog([start(0, "run-1"), capture(1, "s", "1080p", 1080, "run-1"), saved(11, "s", "/m/1.mp4", "run-1"),
+      start(20, "run-2"), capture(21, "s", "4k", 2160, "run-2"), saved(31, "s", "/m/2.mp4", "run-2")].join("\n"));
+    expect(pairs.lookup("/m/1.mp4").entry).toMatchObject({ runId: "run-1", requested: { resolutionCap: "1080p" } });
+    expect(pairs.lookup("/m/2.mp4").entry).toMatchObject({ runId: "run-2", requested: { resolutionCap: "4k" } });
+  });
+
+  it("explains missing metadata in the report instead of printing a clean request line", () => {
+    const text = formatText("/m/a.mp4", undefined, [], { status: "ambiguous", note: "2 sessions name this file" });
+    expect(text).toContain("Log metadata ambiguous: 2 sessions name this file; checks against requested settings not judged");
   });
 });
 

@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   acceleratorToKeystroke,
+  currentRunId,
   currentState,
-  findAfter,
   keystrokeScript,
   lastStartIndex,
   lineTime,
-  nextLogIndex,
   materialOpenArgs,
   registeredAccelerator,
   registeredSettingsAccelerator,
@@ -49,27 +48,23 @@ describe("acceptance helpers", () => {
     expect(registeredAccelerator([])).toBeUndefined();
   });
 
-  it("finds events after an offset and parses line times", () => {
-    const hit = findAfter(LOG, 4, /state → (\w+)/);
-    expect(hit).toBeUndefined();
-    const earlier = findAfter(LOG, 0, /state → (\w+)/);
-    expect(earlier?.index).toBe(2);
-    expect(earlier?.match[1]).toBe("recording");
+  it("parses line times and the current launch's run id", () => {
     expect(lineTime(LOG[5]!)?.toISOString()).toBe("2026-09-19T15:31:00.916Z");
     expect(lineTime("no timestamp")).toBeUndefined();
+    expect(currentRunId(LOG)).toBeUndefined(); // a build before plan 029
+    const restarted = [...LOG, "[t] start: RecordStuff 1.0.0; run 20260925T100000000Z-7; electron 44; executable /x"];
+    expect(currentRunId(restarted)).toBe("20260925T100000000Z-7");
+    expect(currentRunId([...restarted, "[t] start: RecordStuff 1.0.0; electron 44"])).toBeUndefined();
+    // A second launch refused by the single-instance lock is not the current process.
+    const refused = [...restarted, "[t] hotkey: registered CommandOrControl+Alt+Shift+R", "[t] state → idle",
+      "[t] start: another instance already holds the userData lock; run 20260925T100100000Z-8; exiting"];
+    expect(currentRunId(refused)).toBe("20260925T100000000Z-7");
+    expect(currentState(refused)).toBe("idle");
+    expect(registeredAccelerator(refused)).toBe("CommandOrControl+Alt+Shift+R");
   });
 });
 
 describe("shared capture setup", () => {
-  it("does not skip the next event in a newline-terminated log", () => {
-    for (const text of ["", "saved old.mp4\n", "saved old.mp4"]) {
-      const lines = text.split(/\r?\n/);
-      const from = nextLogIndex(lines);
-      const updated = (text + (text && !text.endsWith("\n") ? "\n" : "") + "saved new.mp4\n").split(/\r?\n/);
-      expect(findAfter(updated, from, /saved new/)?.index).toBe(from);
-    }
-  });
-
   it("opens the intended local material even with URL metacharacters in its path", () => {
     const args = materialOpenArgs("/tmp/test #1?/素材.html", "/tmp/profile with spaces");
     const url = new URL(args.find(a => a.startsWith("--app="))!.slice(6));

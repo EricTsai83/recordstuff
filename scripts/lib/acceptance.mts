@@ -1,10 +1,12 @@
 import { pathToFileURL } from "node:url";
+import { isProcessStart, startLineRun } from "./session-records.mts";
 
 /**
  * Pure helpers for `pnpm acceptance` (scripts/acceptance-hotkey.mts): read the
- * app log to learn which global shortcut the running app registered, turn an
- * Electron accelerator into the System Events keystroke that reaches the
- * system input layer, and find session events after a given log offset.
+ * app log to learn which global shortcut the running app registered and which
+ * launch it is, and turn an Electron accelerator into the System Events
+ * keystroke that reaches the system input layer. Positions in the log are
+ * cursors from `log-reader.mts`, not line counts.
  */
 
 export interface AppleScriptKeystroke {
@@ -63,9 +65,12 @@ export function keystrokeScript(k: AppleScriptKeystroke): string {
   return `tell application "System Events" to ${press}${using}`;
 }
 
-/** Index of the last `start:` line (the current process) or -1. */
+/** Index of the last `start:` line of a process that ran (the current one), or -1. */
 export function lastStartIndex(lines: readonly string[]): number {
-  for (let i = lines.length - 1; i >= 0; i -= 1) if (/\] start: /.test(lines[i] ?? "")) return i;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i] ?? "";
+    if (/\] start: /.test(line) && isProcessStart(line)) return i;
+  }
   return -1;
 }
 
@@ -92,13 +97,10 @@ export function currentState(lines: readonly string[]): string | undefined {
   return state;
 }
 
-/** First line at or after `from` matching `pattern`; the match and its index. */
-export function findAfter(lines: readonly string[], from: number, pattern: RegExp): { index: number; match: RegExpExecArray } | undefined {
-  for (let i = Math.max(from, 0); i < lines.length; i += 1) {
-    const match = pattern.exec(lines[i] ?? "");
-    if (match) return { index: i, match };
-  }
-  return undefined;
+/** The run id of the current process's `start:` line; undefined before plan 029 or without a start. */
+export function currentRunId(lines: readonly string[]): string | undefined {
+  const start = lastStartIndex(lines);
+  return start < 0 ? undefined : startLineRun(lines[start] ?? "");
 }
 
 /** `[2026-09-19T15:35:23.663Z] …` → the timestamp, or undefined. */
@@ -107,11 +109,6 @@ export function lineTime(line: string): Date | undefined {
   if (!m) return undefined;
   const t = new Date(m[1] ?? "");
   return Number.isNaN(t.getTime()) ? undefined : t;
-}
-
-/** The split of a newline-terminated log includes an empty final element. */
-export function nextLogIndex(lines: readonly string[]): number {
-  return lines[lines.length - 1] === "" ? lines.length - 1 : lines.length;
 }
 
 /** Shared fullscreen/autoplay setup; callers own the profile and process lifetime. */

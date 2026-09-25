@@ -17,10 +17,10 @@ import { fileURLToPath } from "node:url";
 import {
   acceleratorToKeystroke,
   currentState,
-  nextLogIndex,
   keystrokeScript,
   registeredAccelerator,
 } from "./lib/acceptance.mts";
+import { LogReader, evidenceSince, type LogCursor } from "./lib/log-reader.mts";
 import {
   FINDER_SELECTED_ROW_SCRIPT,
   FINDER_SELECTION_SCRIPT,
@@ -94,8 +94,10 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   });
 }
 const now = (): string => new Date().toISOString();
-const readLines = (): string[] => (fs.existsSync(LOG_PATH) ? fs.readFileSync(LOG_PATH, "utf8").split(/\r?\n/) : []);
-const nextIndex = (): number => nextLogIndex(readLines());
+/** Rotation-aware: positions are cursors, and the retained archives count as history. */
+const appLog = new LogReader(LOG_PATH);
+const readLines = (): string[] => appLog.all();
+const nextIndex = (): LogCursor => appLog.end();
 
 class AcceptanceFailure extends Error {}
 /** Signal received while the run was in progress; loops stop at their next check. */
@@ -148,8 +150,8 @@ async function launchApp(): Promise<string> {
   );
 }
 
-function waitFor(from: number, pattern: RegExp, what: string): Promise<{ line: string; index: number }> {
-  return waitForLog(readLines, from, pattern, what, operationSignal);
+function waitFor(from: LogCursor, pattern: RegExp, what: string): ReturnType<typeof waitForLog> {
+  return waitForLog(appLog, from, pattern, what, operationSignal);
 }
 
 interface Settings {
@@ -215,7 +217,7 @@ async function main(): Promise<void> {
   /** True once /Applications no longer holds the original app; restoration is owed. */
   let installedReplaced = false;
   /** A recording this script started that has not been saved yet. */
-  let recordingFrom: number | undefined;
+  let recordingFrom: LogCursor | undefined;
   let stopSent = false;
   let currentKey: string | undefined;
   let runError: string | undefined;
@@ -348,8 +350,7 @@ async function main(): Promise<void> {
         const id = await osascript('tell application "Finder" to return id of front Finder window', "revealed window id");
         if (/^\d+$/.test(id)) finderWindows.add(Number(id));
       }
-      const appLogLines = readLines()
-        .slice(saved.index + 1)
+      const appLogLines = appLog.since(saved.next).lines.map((l) => l.text)
         .filter((l) => /notification|reveal/.test(l));
       observation = {
         finalFront: fronts[fronts.length - 1] ?? "",
@@ -371,7 +372,7 @@ async function main(): Promise<void> {
     const diagnosticFile = `${language}-${finderState}-${click}-diagnostics.json`;
     fs.writeFileSync(path.join(dir, diagnosticFile), JSON.stringify({
       language, finderState, click, savedPath, verdict: result.verdict, attempts,
-      accessibilityAfter, appEvents: readLines().slice(saved.index + 1).filter((line) => line.includes("notification:")),
+      accessibilityAfter, appEvents: evidenceSince(appLog, saved.next).filter((line) => line.includes("notification:")),
     }, null, 2) + "\n");
     if (result.verdict !== "pass") note(`diagnostics: ${diagnosticFile}`);
     note(
@@ -417,7 +418,7 @@ end tell`, "close test document");
     if (recordingFrom !== undefined) {
       try {
         const savedPath = await finishRecording({
-          read: readLines, from: recordingFrom, stopSent, signal: operationSignal,
+          log: appLog, from: recordingFrom, stopSent, signal: operationSignal,
           stop: () => run("osascript", ["-e", currentKey ?? fail("shortcut unknown")], "stop the script's recording"),
         });
         if (savedPath && !recordings.includes(savedPath)) recordings.push(savedPath);
@@ -518,7 +519,7 @@ end tell`, "quit empty TextEdit");
       cleanupFailed && "cleanup left something unrestored (see events)",
     ].filter(Boolean) as string[];
     fs.writeFileSync(path.join(dir, "cases.json"), JSON.stringify(results, null, 2) + "\n");
-    fs.writeFileSync(path.join(dir, "app-session.log"), readLines().slice(logFrom).filter(Boolean).join("\n") + "\n");
+    fs.writeFileSync(path.join(dir, "app-session.log"), evidenceSince(appLog, logFrom).filter(Boolean).join("\n") + "\n");
     const rows = results.map(
       (r) =>
         `| ${r.language} | ${r.finderState} | ${r.click} | ${r.observation?.fronts.join(" → ") ?? "—"} | ${

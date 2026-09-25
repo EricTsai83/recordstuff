@@ -3,7 +3,8 @@
  * `pnpm verify -- <mp4...> [--log <path>] [--screen WxH] [--moving] [--test-material] [--sync] [--out] [--json <path>]`
  *
  * measure one or more recordings with ffprobe / ffmpeg, pair
- * each with its `capture:` log line, judge against the threshold table and
+ * each with its session in the log (by the file's full path; by name only when
+ * a single session names it), judge against the threshold table and
  * print a table. `--out` appends the result to `docs/verification/measurements/<date>.md`
  * (+ `.json`); `--json` writes the raw results somewhere of your choosing.
  * `--moving` states that the recorded content moved continuously (the test
@@ -81,7 +82,7 @@ for (const file of files) {
   try {
     const result = verifyRecording(file, pairs, options);
     results.push(result);
-    console.log(formatText(file, result.entry, result.checks));
+    console.log(formatText(file, result.entry, result.checks, result.pairing));
     console.log();
     if (result.verdict === "fail") failed = true;
   } catch (cause) {

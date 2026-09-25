@@ -1,10 +1,14 @@
 /**
  * Pure logic for the recording verification toolkit
- * (docs/system-design/tooling.md): parse the app's `capture:`
- * log lines, turn ffprobe / ffmpeg output into numbers, judge them against
- * the threshold table and format the result. No I/O here; everything that
- * runs a process lives in `media-tools.mts`. Development only, never shipped.
+ * (docs/system-design/tooling.md): pair recordings with the app's session
+ * records (or legacy `capture:` lines), turn ffprobe / ffmpeg output into
+ * numbers, judge them against the threshold table and format the result. No
+ * I/O here; everything that runs a process lives in `media-tools.mts`.
+ * Development only, never shipped.
  */
+import path from "node:path";
+import type { SessionRecord } from "../../src/shared/session-record.ts";
+import { isProcessStart, isSessionRecordLine, logMessage, parseSessionRecord, startLineRun } from "./session-records.mts";
 import {
   fitWithinCap,
   isQualitySettings,
@@ -25,9 +29,11 @@ export interface TrackReport {
   channelCount?: number;
 }
 
-/** One `recorder: session <id> capture: …` line. */
+/** One session's requested settings and capture report: a capture record, or a legacy `capture:` line. */
 export interface CaptureLogEntry {
   sessionId: string;
+  /** The launch that recorded it; absent for logs before session records. */
+  runId?: string;
   requested: QualitySettings;
   track: TrackReport;
   targetVideoBps: number;
@@ -84,67 +90,305 @@ export function parseCaptureLine(line: string): CaptureLogEntry | undefined {
   };
 }
 
+/** How a file's log metadata was found (plan 029); only `matched` and `legacy` carry an entry. */
+export type PairingStatus = "matched" | "legacy" | "ambiguous" | "conflict" | "unknown";
+
+export interface LogPairing {
+  status: PairingStatus;
+  entry?: CaptureLogEntry;
+  /** Why metadata is missing, or a caveat about how it was found. */
+  note?: string;
+}
+
+interface Claim {
+  /** One session, or a unique token for a line no single session can own. */
+  key: string;
+  status: PairingStatus;
+  entry?: CaptureLogEntry;
+  note?: string;
+}
+
 /**
- * Pair every saved (or kept partial) file with the `capture:` line of the
- * session that produced it. Sessions are sequential, but a failure's
- * `failed: … (kept …)` line is written only after the partial file is closed
- * (review F5): if the next session starts meanwhile, its `capture:` line comes
- * first. So each session is tracked: `recorder: session <id> failed:` marks
- * it failed, `saved` goes to the latest non-failed session, and a `kept`
- * path goes to the earliest failed session still without a file. Keys are
- * file basenames because the log holds absolute paths of the machine that
- * recorded, while the verifier may be handed a copied file.
+ * Log paths are absolute on the recording machine and files may not exist
+ * (a failure that kept nothing), so identity is lexical: resolved, with
+ * Unicode normalized the way APFS compares names.
  */
-export function pairRecordingsWithLog(logText: string): Map<string, CaptureLogEntry> {
-  const pairs = new Map<string, CaptureLogEntry>();
-  const sessions: { entry: CaptureLogEntry; failed: boolean; paired: boolean }[] = [];
-  for (const raw of logText.split(/\r?\n/)) {
-    const stamp = /^\[([^\]]*)\]\s*/.exec(raw);
-    const at = stamp?.[1] === undefined ? Number.NaN : Date.parse(stamp[1]);
-    const line = raw.replace(/^\[[^\]]*\]\s*/, "");
-    const capture = parseCaptureLine(line);
+export function normalizeRecordingPath(filePath: string): string {
+  return path.resolve(filePath).normalize("NFC");
+}
+
+function basename(filePath: string): string {
+  const parts = filePath.split(/[\\/]/);
+  return (parts[parts.length - 1] ?? filePath).normalize("NFC");
+}
+
+/** Every path the log associates with a session, looked up by identity rather than line order. */
+export class LogPairs {
+  private readonly byPath = new Map<string, Claim[]>();
+  private readonly byName = new Map<string, Claim[]>();
+
+  claim(filePath: string, claim: Claim): void {
+    for (const [index, key] of [[this.byPath, normalizeRecordingPath(filePath)], [this.byName, basename(filePath)]] as const) {
+      const claims = index.get(key) ?? [];
+      if (!claims.some((c) => c.key === claim.key)) claims.push(claim);
+      index.set(key, claims);
+    }
+  }
+
+  /** Distinct paths the log names. */
+  get size(): number {
+    return this.byPath.size;
+  }
+
+  /**
+   * The full path first; a copied file falls back to its name only when a
+   * single session in the log names a file of that name.
+   */
+  lookup(file: string): LogPairing {
+    const exact = this.byPath.get(normalizeRecordingPath(file));
+    if (exact) return resolveClaims(exact, false);
+    const named = this.byName.get(basename(file));
+    if (named) return resolveClaims(named, true);
+    return { status: "unknown", note: this.size === 0 ? "the log names no recording" : "no session in the available log names this file" };
+  }
+}
+
+function resolveClaims(claims: Claim[], byName: boolean): LogPairing {
+  const first = claims[0];
+  if (!first) return { status: "unknown" };
+  if (claims.length > 1) {
+    return { status: "ambiguous", note: `${claims.length} sessions name ${byName ? "a file with this name in different folders" : "this file"}` };
+  }
+  const notes = [first.note, byName && first.entry ? "matched by file name only; the log names another folder" : undefined].filter(Boolean);
+  return {
+    status: first.status,
+    ...(first.entry ? { entry: first.entry } : {}),
+    ...(notes.length > 0 ? { note: notes.join("; ") } : {}),
+  };
+}
+
+interface LogMessage {
+  message: string;
+  atMs: number;
+}
+
+type CaptureRecord = Extract<SessionRecord, { kind: "capture" }>;
+type TerminalRecord = Extract<SessionRecord, { kind: "saved" | "failed" }>;
+
+function entryFromCapture(record: CaptureRecord): CaptureLogEntry {
+  const report = record.capture;
+  const track: TrackReport = {};
+  if (report.width !== undefined && report.height !== undefined) {
+    track.width = report.width;
+    track.height = report.height;
+  }
+  if (report.frameRate !== undefined) track.frameRate = report.frameRate;
+  if (report.sampleRate !== undefined) track.sampleRate = report.sampleRate;
+  if (report.channelCount !== undefined) track.channelCount = report.channelCount;
+  return {
+    sessionId: record.session,
+    runId: record.run,
+    requested: record.requested,
+    track,
+    targetVideoBps: report.videoBitsPerSecond,
+    targetAudioBps: report.audioBitsPerSecond,
+    warnings: report.warnings.length > 0 ? report.warnings.join("; ") : undefined,
+  };
+}
+
+const epochMs = (iso: string | undefined): number | undefined => {
+  const value = iso === undefined ? Number.NaN : Date.parse(iso);
+  return Number.isFinite(value) ? value : undefined;
+};
+
+/**
+ * Structured records (plan 029): a session is its run and session id. The
+ * same record logged twice is one outcome; different outcomes for one session
+ * are a conflict, and nothing is judged against either.
+ */
+function pairRecords(messages: LogMessage[], pairs: LogPairs): void {
+  const sessions = new Map<string, { captures: Map<string, CaptureRecord>; terminals: Map<string, { record: TerminalRecord; atMs: number }> }>();
+  for (const { message, atMs } of messages) {
+    const record = parseSessionRecord(message);
+    if (!record || record.kind === "refused") continue;
+    const key = `${record.run}/${record.session}`;
+    const session = sessions.get(key) ?? { captures: new Map(), terminals: new Map() };
+    sessions.set(key, session);
+    if (record.kind === "capture") session.captures.set(message, record);
+    else if (!session.terminals.has(message)) session.terminals.set(message, { record, atMs });
+  }
+  for (const [key, session] of sessions) {
+    const terminals = [...session.terminals.values()];
+    const captures = [...session.captures.values()];
+    // An empty failure left no file, and a same-second retry may reuse its temporary name: it claims none.
+    const paths = new Set(terminals.flatMap(({ record }) => record.kind === "saved"
+      ? [record.path]
+      : [record.partialPath, record.outcome === "unknown" ? record.recordingPath : undefined].filter((p): p is string => p !== undefined)));
+    if (paths.size === 0) continue;
+    let claim: Claim;
+    const only = terminals.length === 1 ? terminals[0] : undefined;
+    if (!only) {
+      const outcomes = terminals.map(({ record }) => (record.kind === "saved" ? `saved ${record.path}` : `failed ${record.code}`));
+      claim = { key, status: "conflict", note: `session ${key} has conflicting outcomes (${outcomes.join("; ")})` };
+    } else if (captures.length > 1) {
+      claim = { key, status: "conflict", note: `session ${key} has conflicting capture records` };
+    } else if (captures[0] === undefined) {
+      claim = { key, status: "unknown", note: `the capture record of session ${key} is not in the available log` };
+    } else {
+      const entry = entryFromCapture(captures[0]);
+      const started = epochMs(only.record.recordingAt);
+      const stopped = epochMs(only.record.stoppingAt) ?? (only.record.kind === "saved" && Number.isFinite(only.atMs) ? only.atMs : undefined);
+      if (started !== undefined) entry.recordingStartedAtMs = started;
+      if (stopped !== undefined) entry.stoppedAtMs = stopped;
+      claim = { key, status: "matched", entry };
+    }
+    for (const filePath of paths) pairs.claim(filePath, claim);
+  }
+}
+
+interface LegacySession {
+  entry?: CaptureLogEntry;
+  failed: boolean;
+  resolved: boolean;
+  /** Once an outcome could have belonged to it or another, no later line can prove which. */
+  tainted: boolean;
+  /** What its `failed: …` line will say. */
+  outcome?: string;
+}
+
+const EARLY_STOP = / \(stopped early: [^)]*\)$/;
+
+/**
+ * One launch of a build before session records. Its human lines name the
+ * session only on `recorder: session …` lines, so an outcome is accepted only
+ * when nothing else could own it: a `file finalized` line, the one session
+ * still recording, or the one unresolved failure whose `failed:` text matches.
+ * Otherwise the file is ambiguous: two unresolved failures are never assigned
+ * by which one printed first, because failure cleanup can end after the next
+ * session started.
+ */
+function pairLegacy(messages: LogMessage[], pairs: LogPairs, segment: number): void {
+  const sessions = new Map<string, LegacySession>();
+  const finalized = new Set<string>();
+  let token = 0;
+  const lone = (key: string): string => `legacy/${segment}/${key}/${token++}`;
+  const session = (id: string): LegacySession => {
+    const known = sessions.get(id) ?? { failed: false, resolved: false, tainted: false };
+    sessions.set(id, known);
+    return known;
+  };
+  const recording = (): LegacySession[] => [...sessions.values()].filter((s) => s.entry && !s.failed && !s.resolved);
+  const claim = (filePath: string, id: string, s: LegacySession): void => {
+    pairs.claim(filePath, s.entry
+      ? { key: `legacy/${segment}/${id}`, status: "legacy", entry: s.entry }
+      : { key: `legacy/${segment}/${id}`, status: "unknown", note: `session ${id} has no capture line in the available log` });
+  };
+  for (const { message, atMs } of messages) {
+    const capture = parseCaptureLine(message);
     if (capture) {
-      sessions.push({ entry: capture, failed: false, paired: false });
+      const s = session(capture.sessionId);
+      s.entry ??= capture;
       continue;
     }
-    // The state machine lines bracket the recording; they belong to the newest open session.
-    if (line === "state → recording" || line === "state → stopping") {
-      const session = [...sessions].reverse().find((s) => !s.failed && !s.paired);
-      if (session && Number.isFinite(at)) {
-        if (line === "state → recording") session.entry.recordingStartedAtMs = at;
-        else session.entry.stoppedAtMs = at;
+    if (message === "state → recording" || message === "state → stopping") {
+      const [only, ...others] = recording();
+      if (only?.entry && others.length === 0 && Number.isFinite(atMs)) {
+        if (message === "state → recording") only.entry.recordingStartedAtMs = atMs;
+        else only.entry.stoppedAtMs = atMs;
       }
       continue;
     }
-    const failedSession = /^recorder: session (\S+) failed:/.exec(line);
-    if (failedSession) {
-      const session = sessions.find((s) => s.entry.sessionId === failedSession[1] && !s.paired);
-      if (session) session.failed = true;
+    const failedSession = /^recorder: session (\S+) failed: (.*)$/.exec(message);
+    if (failedSession?.[1] !== undefined) {
+      const s = session(failedSession[1]);
+      s.failed = true;
+      s.outcome = failedSession[2] ?? "";
       continue;
     }
-    const saved = /^saved (.+)$/.exec(line);
+    const reclassified = /^recorder: session (\S+) start failure reported as (\S+): the writer retained (.*)$/.exec(message);
+    if (reclassified?.[1] !== undefined) {
+      const s = session(reclassified[1]);
+      const detail = s.outcome?.replace(/^\S+ ?/, "") ?? "";
+      s.outcome = `${reclassified[2]} ${reclassified[3]} (start ended: ${detail})`;
+      continue;
+    }
+    const final = /^recorder: session (\S+) file finalized (.+)$/.exec(message);
+    if (final?.[1] !== undefined && final[2] !== undefined) {
+      const s = session(final[1]);
+      const filePath = final[2].replace(EARLY_STOP, "");
+      s.resolved = true;
+      if (s.entry && s.entry.stoppedAtMs === undefined && Number.isFinite(atMs)) s.entry.stoppedAtMs = atMs;
+      finalized.add(filePath);
+      claim(filePath, final[1], s);
+      continue;
+    }
+    const saved = /^saved (.+)$/.exec(message);
     if (saved?.[1] !== undefined) {
-      const session = [...sessions].reverse().find((s) => !s.failed && !s.paired);
-      if (session) {
-        session.paired = true;
-        if (session.entry.stoppedAtMs === undefined && Number.isFinite(at)) session.entry.stoppedAtMs = at;
-        pairs.set(basename(saved[1]), session.entry);
+      const filePath = saved[1].replace(EARLY_STOP, "");
+      if (finalized.has(filePath)) continue;
+      const candidates = recording();
+      const only = candidates.length === 1 ? candidates[0] : undefined;
+      if (only?.entry) {
+        only.resolved = true;
+        if (only.entry.stoppedAtMs === undefined && Number.isFinite(atMs)) only.entry.stoppedAtMs = atMs;
+        claim(filePath, only.entry.sessionId, only);
+      } else if (candidates.length > 1) {
+        pairs.claim(filePath, { key: lone("saved"), status: "ambiguous", note: `${candidates.length} legacy sessions could own this save` });
       }
       continue;
     }
-    // `failed: <code> <detail>[ (kept <path>)]` closes the earliest failed
-    // session: with a kept path it is paired, without one (nothing was
-    // written) it is simply retired so a later kept file is not misassigned.
-    const failedLine = /^failed: /.test(line);
-    if (failedLine) {
-      const kept = /\(kept (.+)\)$/.exec(line);
-      const session = sessions.find((s) => s.failed && !s.paired);
-      if (session) {
-        session.paired = true;
-        if (kept?.[1] !== undefined) pairs.set(basename(kept[1]), session.entry);
+    const failedLine = /^failed: (.*)$/.exec(message);
+    if (failedLine?.[1] !== undefined) {
+      const kept = / \(kept (.+)\)$/.exec(failedLine[1]);
+      const text = kept ? failedLine[1].slice(0, kept.index) : failedLine[1];
+      const unresolved = [...sessions.entries()].filter(([, s]) => s.failed && !s.resolved);
+      const matching = unresolved.filter(([, s]) => s.outcome === text);
+      // Text identifies the owner; without a match only a single unresolved failure can.
+      const owners = matching.length > 0 ? matching : unresolved.length === 1 ? unresolved : [];
+      const pool = owners.length > 0 ? owners : unresolved;
+      const [only] = pool;
+      if (only && pool.length === 1 && !only[1].tainted) {
+        only[1].resolved = true;
+        if (kept?.[1] !== undefined) claim(kept[1], only[0], only[1]);
+        continue;
+      }
+      // Several sessions could own this line, so none may later look like its unique owner.
+      for (const [, s] of pool) s.tainted = true;
+      if (owners[0]) owners[0][1].resolved = true;
+      if (kept?.[1] !== undefined) {
+        pairs.claim(kept[1], pool.length > 0
+          ? { key: lone("failed"), status: "ambiguous", note: `${pool.length > 1 ? pool.length : "several"} unresolved legacy failures could own this file` }
+          : { key: lone("failed"), status: "unknown", note: "no identifiable legacy session owns this failure line" });
       }
     }
   }
+}
+
+/**
+ * Pair recordings with their sessions. Launches that write session records
+ * pair by run and session id; older launches (no run id in `start:`, no
+ * records) use the conservative legacy association above. The two forms are
+ * never mixed within one launch, so no outcome is counted twice.
+ */
+export function pairRecordingsWithLog(logText: string): LogPairs {
+  const pairs = new LogPairs();
+  const segments: { structured: boolean; messages: LogMessage[] }[] = [{ structured: false, messages: [] }];
+  const all: LogMessage[] = [];
+  for (const raw of logText.split(/\r?\n/)) {
+    const stamp = /^\[([^\]]*)\]\s*/.exec(raw);
+    const atMs = stamp?.[1] === undefined ? Number.NaN : Date.parse(stamp[1]);
+    const message = logMessage(raw);
+    if (isProcessStart(message)) segments.push({ structured: startLineRun(message) !== undefined, messages: [] });
+    const current = segments[segments.length - 1]!;
+    if (isSessionRecordLine(message)) current.structured = true;
+    const entry = { message, atMs };
+    current.messages.push(entry);
+    all.push(entry);
+  }
+  pairRecords(all, pairs);
+  segments.forEach((segment, index) => {
+    if (!segment.structured) pairLegacy(segment.messages, pairs, index);
+  });
   return pairs;
 }
 
@@ -158,11 +402,6 @@ export function parseAutorecordOutcome(logText: string): { saved?: string; faile
     if (failed?.[1]) outcome.failed = failed[1];
   }
   return outcome;
-}
-
-function basename(filePath: string): string {
-  const parts = filePath.split(/[\\/]/);
-  return parts[parts.length - 1] ?? filePath;
 }
 
 // ---------------------------------------------------------------------------
@@ -739,18 +978,29 @@ export function overallVerdict(checks: Check[]): Verdict {
 
 export const VERDICT_MARK: Record<Verdict, string> = { pass: "✅", fail: "❌", "n/a": "—" };
 
-export function describeRequested(entry: CaptureLogEntry | undefined): string {
-  if (!entry) return "No matching session in log";
+/**
+ * Without an entry the requested-settings checks are n/a; the pairing says
+ * why, so an ambiguous log never reads as a clean pass of those checks.
+ */
+export function describeRequested(entry: CaptureLogEntry | undefined, pairing?: LogPairing): string {
+  if (!entry) {
+    return pairing && pairing.status !== "matched" && pairing.status !== "legacy"
+      ? `Log metadata ${pairing.status}${pairing.note ? `: ${pairing.note}` : ""}; checks against requested settings not judged`
+      : "No matching session in log";
+  }
   const q = entry.requested;
+  const association = pairing?.status === "legacy" ? "legacy log association" : undefined;
+  const caveats = [association, pairing?.note].filter(Boolean);
   return `Video ${q.videoQuality}, cap ${q.resolutionCap}, ${q.frameRate} fps; track ${entry.track.width ?? "?"}x${entry.track.height ?? "?"} @ ${entry.track.frameRate ?? "?"} fps, ${entry.track.sampleRate ?? "?"} Hz × ${entry.track.channelCount ?? "?"} channels; target ${mbps(entry.targetVideoBps)} / ${kbps(entry.targetAudioBps)}` +
-    (entry.warnings ? `; warnings: ${entry.warnings}` : "");
+    (entry.warnings ? `; warnings: ${entry.warnings}` : "") +
+    (caveats.length > 0 ? ` (${caveats.join("; ")})` : "");
 }
 
 /** Plain-text table for the terminal. */
-export function formatText(file: string, entry: CaptureLogEntry | undefined, checks: Check[]): string {
+export function formatText(file: string, entry: CaptureLogEntry | undefined, checks: Check[], pairing?: LogPairing): string {
   const width = (key: keyof Check): number => Math.max(...checks.map((c) => String(c[key] ?? "").length));
   const pad = (text: string, n: number): string => text + " ".repeat(Math.max(0, n - text.length));
-  const lines = [file, `  ${describeRequested(entry)}`];
+  const lines = [file, `  ${describeRequested(entry, pairing)}`];
   const w1 = width("metric");
   const w2 = width("expected");
   for (const c of checks) {
@@ -768,13 +1018,13 @@ export function formatMarkdown(
   file: string,
   entry: CaptureLogEntry | undefined,
   checks: Check[],
-  context: { material?: string; note?: string } = {},
+  context: { material?: string; note?: string; pairing?: LogPairing } = {},
 ): string {
   const lines = [
     `### ${title}`,
     "",
     `- File: \`${file}\``,
-    `- Request and track: ${describeRequested(entry)}`,
+    `- Request and track: ${describeRequested(entry, context.pairing)}`,
   ];
   if (context.material) lines.push(`- Material: ${context.material}`);
   if (context.note) lines.push(`- Note: ${context.note}`);

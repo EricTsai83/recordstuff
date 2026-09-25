@@ -22,6 +22,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { QualitySettings } from "../src/shared/quality.ts";
+import { LogGapError, LogReader, type LogCursor } from "./lib/log-reader.mts";
 import { ToolMissingError } from "./lib/media-tools.mts";
 import {
   REPO_ROOT,
@@ -176,55 +177,21 @@ interface RunOutcome {
   timedOut: boolean;
 }
 
-interface LogPosition {
-  size: number;
-  /** Inode of the active file; a rotation replaces it (src/main/log.ts). */
-  ino: number | undefined;
-}
+/** Rotation-aware: a case's lines are read from its cursor, through any number of retained archives. */
+const appLog = new LogReader(LOG_PATH);
 
-/** Where the log ends now; only text after this belongs to the run. */
-function logPosition(): LogPosition {
+/** Log text written since `start`; a rotated-away history is an explicit failure, not "no outcome". */
+function logSince(start: LogCursor): { text: string; gap?: string } {
   try {
-    const stat = fs.statSync(LOG_PATH);
-    return { size: stat.size, ino: stat.ino };
-  } catch {
-    return { size: 0, ino: undefined };
+    return { text: appLog.since(start).lines.map((line) => line.text).join("\n") };
+  } catch (cause) {
+    if (cause instanceof LogGapError) return { text: "", gap: cause.message };
+    throw cause;
   }
-}
-
-function readFrom(filePath: string, offset: number): string {
-  try {
-    const fd = fs.openSync(filePath, "r");
-    try {
-      const size = fs.fstatSync(fd).size;
-      const buffer = Buffer.alloc(Math.max(0, size - offset));
-      fs.readSync(fd, buffer, 0, buffer.length, offset);
-      return buffer.toString("utf8");
-    } finally {
-      fs.closeSync(fd);
-    }
-  } catch {
-    return "";
-  }
-}
-
-/**
- * Log text written since `start`. If the logger rotated meanwhile (the
- * active file's inode changed), the run's lines are the tail of
- * `recordstuff.1.log` plus the whole new file (review pass 2).
- */
-function logSince(start: LogPosition): string {
-  const now = logPosition();
-  if (start.ino !== undefined && now.ino !== undefined && now.ino !== start.ino) {
-    const ext = path.extname(LOG_PATH);
-    const rotated = `${LOG_PATH.slice(0, LOG_PATH.length - ext.length)}.1${ext}`;
-    return `${readFrom(rotated, start.size)}\n${readFrom(LOG_PATH, 0)}`;
-  }
-  return readFrom(LOG_PATH, start.size);
 }
 
 async function recordOnce(entry: MatrixEntry): Promise<RunOutcome> {
-  const logStart = logPosition();
+  const logStart = appLog.end();
   const env: NodeJS.ProcessEnv = { ...process.env, RECORDSTUFF_AUTORECORD: JSON.stringify({ seconds: entry.seconds, quality: entry.quality }) };
   delete env["ELECTRON_RUN_AS_NODE"];
   const started = Date.now();
@@ -248,12 +215,13 @@ async function recordOnce(entry: MatrixEntry): Promise<RunOutcome> {
       break;
     }
   }
-  const app = parseAutorecordOutcome(logSince(logStart));
+  const since = logSince(logStart);
+  const app = parseAutorecordOutcome(since.text);
   const cpuSamples = samples.slice(3); // the first seconds are start-up, not recording
   const source = cpuSamples.length > 0 ? cpuSamples : samples;
   return {
     file: timedOut ? undefined : app.saved,
-    failure: app.failed,
+    failure: since.gap ? `log evidence gap: ${since.gap}` : app.failed,
     cpu: {
       averagePercent: source.length > 0 ? source.reduce((a, b) => a + b, 0) / source.length : 0,
       peakPercent: source.length > 0 ? Math.max(...source) : 0,
@@ -326,8 +294,12 @@ async function main(): Promise<void> {
         const options: Parameters<typeof verifyRecording>[2] = { sync: true, cpu: outcome.cpu, expectedDurationSeconds: entry.seconds };
         if (screen) options.screen = screen;
         const result = verifyRecording(outcome.file, readLogPairs(LOG_PATH), options);
-        results.push({ entry, result, outcome });
-        console.log(formatText(outcome.file, result.entry, result.checks));
+        // Media measurements stand; judging against the requested settings needs this session's own metadata.
+        const metadata = result.pairing.status === "matched" ? undefined
+          : `log metadata ${result.pairing.status}${result.pairing.note ? `: ${result.pairing.note}` : ""}; requested-settings checks not judged`;
+        results.push({ entry, result, outcome, ...(metadata ? { error: metadata } : {}) });
+        console.log(formatText(outcome.file, result.entry, result.checks, result.pairing));
+        if (metadata) console.error(`  ✗ ${metadata}`);
       } catch (cause) {
         results.push({ entry, result: undefined, outcome, error: cause instanceof Error ? cause.message : String(cause) });
         console.error(`  ✗ verification failed: ${results[results.length - 1]?.error}`);

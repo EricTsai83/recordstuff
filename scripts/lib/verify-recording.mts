@@ -8,8 +8,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readRetainedLog } from "./log-reader.mts";
 import { channelRms, frameTimes, hasTool, probe, syncMarkers } from "./media-tools.mts";
 import {
+  LogPairs,
   formatMarkdown,
   judge,
   measure,
@@ -18,6 +20,7 @@ import {
   syncStats,
   type CaptureLogEntry,
   type Check,
+  type LogPairing,
   type Measurement,
   type SyncStats,
   type Verdict,
@@ -36,6 +39,8 @@ export interface VerifyRunOptions extends VerifyOptions {
 
 export interface VerifyResult {
   file: string;
+  /** How the log metadata was found; without an entry, checks against requested settings are n/a. */
+  pairing: LogPairing;
   entry: CaptureLogEntry | undefined;
   measurement: Measurement;
   checks: Check[];
@@ -43,28 +48,27 @@ export interface VerifyResult {
 }
 
 /**
- * The active log preceded by its newest rotated archive (`recordstuff.1.log`,
- * see src/main/log.ts): a rotation can separate a session's `capture:` line
- * from its `saved` line (review pass 2).
+ * Every retained file, archives first (src/main/log.ts rotates into
+ * `.1`…`.3`): a rotation can separate a session's capture record from its
+ * outcome. Throws when the named log itself does not exist.
  */
 export function readLogText(logPath: string): string {
-  const ext = path.extname(logPath);
-  const rotated = `${logPath.slice(0, logPath.length - ext.length)}.1${ext}`;
-  const previous = fs.existsSync(rotated) ? fs.readFileSync(rotated, "utf8") : "";
-  return `${previous}\n${fs.readFileSync(logPath, "utf8")}`;
+  if (!fs.existsSync(logPath)) throw new Error(`no log at ${logPath}`);
+  return readRetainedLog(logPath);
 }
 
-export function readLogPairs(logPath: string | undefined): Map<string, CaptureLogEntry> {
-  if (!logPath) return new Map();
+export function readLogPairs(logPath: string | undefined): LogPairs {
+  if (!logPath) return new LogPairs();
   return pairRecordingsWithLog(readLogText(logPath));
 }
 
 export function verifyRecording(
   file: string,
-  logPairs: Map<string, CaptureLogEntry>,
+  logPairs: LogPairs,
   options: VerifyRunOptions = {},
 ): VerifyResult {
-  const entry = logPairs.get(path.basename(file));
+  const pairing = logPairs.lookup(file);
+  const entry = pairing.entry;
   const fileBytes = fs.statSync(file).size;
   const { info, decodeErrors } = probe(file);
   const parsedDuration = Number(info.format.duration);
@@ -89,7 +93,7 @@ export function verifyRecording(
   if (options.movingMaterial ?? options.sync) judgeOptions.movingMaterial = true;
   if (options.testMaterial ?? options.sync) judgeOptions.testMaterial = true;
   const checks = judge(measurement, entry, judgeOptions);
-  return { file, entry, measurement, checks, verdict: overallVerdict(checks) };
+  return { file, pairing, entry, measurement, checks, verdict: overallVerdict(checks) };
 }
 
 /** `1920x1080` → dimensions. */
@@ -162,7 +166,7 @@ export function appendMeasurements(
     const sectionContext: { material?: string; note?: string } = {};
     if (context.material) sectionContext.material = context.material;
     if (context.note) sectionContext.note = context.note;
-    parts.push(formatMarkdown(context.title(r, i), r.file, r.entry, r.checks, sectionContext));
+    parts.push(formatMarkdown(context.title(r, i), r.file, r.entry, r.checks, { ...sectionContext, pairing: r.pairing }));
   });
   fs.appendFileSync(filePath, `${parts.join("\n")}\n`, "utf8");
   const jsonPath = filePath.replace(/\.md$/, ".json");
@@ -173,6 +177,7 @@ export function appendMeasurements(
       title: context.title(r, i),
       runLabel: context.runLabel,
       file: r.file,
+      pairing: r.pairing,
       requested: r.entry?.requested,
       track: r.entry?.track,
       target: r.entry ? { videoBps: r.entry.targetVideoBps, audioBps: r.entry.targetAudioBps } : undefined,
