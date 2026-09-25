@@ -7,6 +7,7 @@
 - Run `pnpm check` after application changes (already included in `pnpm acceptance:regression`). Documentation-only work checks affected links/anchors, commands and translations plus `git diff --check`; do not launch the app or record for documentation alone.
 - Report checks/results, scope-based exclusions, and required-but-unverified cases separately. Missing tools or permissions mean blocked, not not-applicable; a user waiver remains untested. Stop after required checks pass unless another edit, failure or unresolved concern warrants more testing.
 - Follow the testing policy’s shared-machine rules: serialize builds consuming the same `out/`/`dist/`, and give one executor exclusive use of the desktop/audio/global shortcuts for each acceptance round.
+- When a task will need a desktop round (Electron fixtures, native acceptance or recording), start `caffeinate -d -i -t 5400` (1.5 hours) in the background before the first edit, and stop it after the final round's cleanup or when the task ends early; report that it ran. It only keeps an unattended session from idling into a lock between rounds: it never unlocks a locked session, and the testing policy's lock rules still apply. Skip it when the maintainer wants the normal auto-lock.
 - Automated checks do not prove screen or system-audio capture works. Report which recording behaviors were actually tested and which remain unverified.
 
 ## Operating the app
