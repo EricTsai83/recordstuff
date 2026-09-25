@@ -114,10 +114,13 @@ export class SettingsStore {
   private queue: Promise<void> = Promise.resolve();
   private readonly filePath: string;
   private readonly log: (message: string) => void;
+  /** The folder a fresh or unreadable file falls back to; the one folder opening may create (plan 033). */
+  readonly defaultOutputDir: string;
 
   constructor(options: SettingsStoreOptions) {
     this.filePath = options.filePath;
     this.log = options.log ?? (() => undefined);
+    this.defaultOutputDir = options.defaultOutputDir;
     this.settings = this.load(options.defaultOutputDir);
   }
 

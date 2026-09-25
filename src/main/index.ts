@@ -29,6 +29,7 @@ import os from "node:os";
 import path from "node:path";
 import { CaptureHost } from "./capture-host";
 import { FileWriter, ensureWritableDir } from "./file-writer";
+import { createOutputFolderOpener } from "./output-folder";
 import { createFileLogger } from "./log";
 import { createRunId, logSessionEvent } from "./session-log";
 import { PermissionWatcher, openNotificationSettings, openScreenCaptureSettings } from "./permission";
@@ -272,6 +273,18 @@ async function main(): Promise<void> {
   renderUi(recorder.state);
   shortcuts.start();
 
+  const openOutputDir = createOutputFolderOpener({
+    outputDir: () => settings.outputDir,
+    defaultOutputDir: settings.defaultOutputDir,
+    language: () => settings.language,
+    openPath: dir => shell.openPath(dir),
+    focus: () => { if (process.platform === "darwin") app.focus({ steal: true }); },
+    show: options => dialog.showMessageBox(options),
+    // The warning may outlive the idle state; the chooser keeps its own lock too.
+    chooseFolder: async () => { if (settled()) await changeOutputDir(); },
+    log,
+  });
+
   async function handleAction(action: AppAction): Promise<boolean | void> {
     if (typeof action !== "string" && "recordingResult" in action) {
       const request = action.recordingResult;
@@ -386,11 +399,9 @@ async function main(): Promise<void> {
       case "revealLog":
         await revealLog();
         return;
-      case "openOutputDir": {
-        const error = await shell.openPath(settings.outputDir);
-        if (error) log(`openPath(${settings.outputDir}) failed: ${error}`);
+      case "openOutputDir":
+        await openOutputDir();
         return;
-      }
       case "changeOutputDir":
         await changeOutputDir();
         return;

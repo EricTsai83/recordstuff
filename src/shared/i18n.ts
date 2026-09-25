@@ -205,6 +205,20 @@ export const ZH_TW = {
   "Notifications are on. This is what a RecordStuff notification looks like.":
     "通知已開啟，RecordStuff 的通知會像這樣顯示。",
   "Choose a recording folder": "選擇錄影儲存位置",
+  "Could not open the output folder": "無法開啟儲存位置",
+  "{path} was not found. It may have been moved or deleted, or its drive may be disconnected. Reconnect the drive and try again, or choose another folder.":
+    "找不到 {path}。它可能已被移動或刪除，或所在的磁碟未連接。請重新連接磁碟後再試一次，或選擇其他位置。",
+  "{path} could not be created because its parent folder {parent} is missing or is not a folder. Restore that folder and try again, or choose another folder.":
+    "無法建立 {path}，因為上層資料夾 {parent} 不存在或不是資料夾。請還原該資料夾後再試一次，或選擇其他位置。",
+  "{path} is a file, not a folder. Choose another folder.": "{path} 是檔案，不是資料夾。請選擇其他位置。",
+  "{path} could not be created. Check the permissions of its parent folder and try again, or choose another folder.":
+    "無法建立 {path}。請檢查上層資料夾的權限後再試一次，或選擇其他位置。",
+  "RecordStuff does not have permission to open {path}. Check the folder's permissions and try again, or choose another folder.":
+    "RecordStuff 沒有開啟 {path} 的權限。請檢查資料夾權限後再試一次，或選擇其他位置。",
+  "{path} is unavailable. Check the folder and its drive, then try again, or choose another folder.":
+    "{path} 目前無法使用。請檢查資料夾與所在磁碟後再試一次，或選擇其他位置。",
+  "{path} could not be opened. Try again, or choose another folder.": "無法開啟 {path}。請再試一次，或選擇其他位置。",
+  "Details: {error}": "詳細資訊：{error}",
   "An unexpected error occurred. See the log for details.": "發生未預期的錯誤，請查看 log 取得詳細資訊。",
 } as const;
 
