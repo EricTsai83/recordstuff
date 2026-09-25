@@ -6,7 +6,7 @@ Updated: 2026-09-26. This index lists unfinished plans, their order and their ha
 
 ## Order and status
 
-Every plan below is planned, not implemented. Current order: **031 → 032 → 033 → 040 → 034 → 037 → 035**.
+Every plan below is planned, not implemented. Current order: **031 → 032 → 033 → 042 → 040 → 034 → 037 → 035**.
 
 Ordering rule: zero-risk cleanup, the prioritized history work and the data-loss guards came first and are complete; now audit fixes in their original order, then optional or measured work, and 035 last. Keep 035 last even when later-numbered implementation or fix plans are added: schedule those before it.
 
@@ -15,6 +15,7 @@ Ordering rule: zero-risk cleanup, the prioritized history work and the data-loss
 | [031 — Stable release pointers](031-stable-release-recording.md) | R2-04 | Release ordering is independent of recording |
 | [032 — Update acceptance contract](032-update-acceptance-contract.md) | R2-06 | Stale runner expectations, not broken product controls |
 | [033 — Output-folder recovery](033-output-folder-recovery.md) | R2-08 | Explicit folder action and feedback, not publication |
+| [042 — Faster recording rounds](042-faster-recording-rounds.md) | 2026-09-26 time analysis of the 041 round; maintainer request | Measure where a matrix round spends its time, then run several matrices and repeats in one invocation, shorten rests and short cases, and decode once for the markers, each only where it measurably saves time without moving results; add interruption cleanup. The policy half is already in the testing guide |
 | [040 — Recording countdown and distinct tray states](040-recording-countdown.md) | 2026-09-25 maintainer request; Cap comparison | Configurable pre-recording countdown (default 3 seconds) with a transparent top-right digit and no box, capture prepared before the count and started at zero, cancel without a failure entry, and distinct busy and countdown tray icons of unchanged width |
 | [034 — Windows system tray icons](034-windows-tray-icons.md) | Maintainer request | Windows tray artwork and its necessary native verification; visual drafts can proceed independently |
 | [037 — Bounded overlapping finalization](037-overlapping-recording-finalization.md) | 2026-09-25 comparison; measurement gate | Measures first whether a safely separable stop delay justifies overlap; no gain has been measured yet |
@@ -25,6 +26,7 @@ Hard dependencies; everything else is scheduling:
 - 037 depends on 025, 026, 029, 030, 036, 038 and 041 (all complete), keeps 036's metadata quit phase after all media work, reuses the writer backlog bound defined in 038 and compares its timing against 041's cadence baseline.
 - 040 changes the Recorder start phase that 038 (complete) extended and keeps its retained-disk-error rule, and prepares capture before its countdown with the frame-rate request 041 (complete) settled; it precedes 034 and 037: 034's Windows artwork must cover the `busy` and `countdown` tray states, and 037's overlap must treat a counting-down session as active.
 - 031–033 can run independently; 032 should precede any work that requires update acceptance.
+- 042 has no hard dependency; it precedes 040 and 037 so that their recording rounds use the faster runner.
 
 ## Sources and evidence boundaries
 
