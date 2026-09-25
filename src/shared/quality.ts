@@ -51,6 +51,27 @@ export function effectiveQuality(settings: QualitySettings, platform: string): Q
   return isFrameRateAvailable(settings.frameRate, platform) ? settings : { ...settings, frameRate: 30 };
 }
 
+/**
+ * The capture rate requested for each setting (plan 041), deliberately above
+ * it. Chromium turns the request into ScreenCaptureKit's minimum frame
+ * interval, a floor: every delivered interval is that floor plus delivery
+ * latency, so asking for exactly 30 or 60 recorded 29.4 and 57.5 fps with no
+ * drops (median intervals 33.9 and 17.2 ms). A floor just under the period in
+ * whole milliseconds, 33 and 16 ms, measured 29.9 and 59.8 fps with medians
+ * within 1% of the period, no repeated frames and no more doubled intervals
+ * on a 60 Hz display (docs/system-design/recording.md#frame-rate-request).
+ * The track's own rate limiter follows the same value and keeps every frame.
+ * Everything else — bitrate targets, the downgrade rule, the log's requested
+ * fps and verification — stays on the setting.
+ */
+export const CAPTURE_FRAME_RATE: Record<FrameRate, number> = { 30: 30.3, 60: 62.5 };
+
+/** The frame-rate constraint `getDisplayMedia` and `applyConstraints` send for a setting. */
+export function frameRateConstraint(frameRate: FrameRate): { ideal: number; max: number } {
+  const rate = CAPTURE_FRAME_RATE[frameRate];
+  return { ideal: rate, max: rate };
+}
+
 export interface Dimensions {
   width: number;
   height: number;

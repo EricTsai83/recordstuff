@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  CAPTURE_FRAME_RATE,
   DEFAULT_QUALITY,
+  FRAME_RATES,
   VIDEO_BITRATE_MAX,
   VIDEO_BITRATE_MIN,
   AUDIO_BITS_PER_SECOND,
   describeCapture,
   effectiveQuality,
   fitWithinCap,
+  frameRateConstraint,
   frameRateDowngrade,
   isCaptureReport,
   isFrameRateAvailable,
@@ -116,6 +119,23 @@ describe("isCaptureReport", () => {
   });
 });
 
+describe("frameRateConstraint", () => {
+  it("asks for the rate whose minimum interval is the period rounded down to whole milliseconds", () => {
+    expect(frameRateConstraint(30)).toEqual({ ideal: 30.3, max: 30.3 });
+    expect(frameRateConstraint(60)).toEqual({ ideal: 62.5, max: 62.5 });
+    expect(1000 / CAPTURE_FRAME_RATE[30]).toBeCloseTo(33, 1);
+    expect(1000 / CAPTURE_FRAME_RATE[60]).toBeCloseTo(16, 6);
+  });
+  it("stays above each setting by less than one millisecond of period and below the next setting", () => {
+    for (const rate of FRAME_RATES) {
+      const requested = CAPTURE_FRAME_RATE[rate];
+      expect(requested).toBeGreaterThan(rate);
+      expect(1000 / rate - 1000 / requested).toBeLessThanOrEqual(1);
+    }
+    expect(CAPTURE_FRAME_RATE[30]).toBeLessThan(60);
+  });
+});
+
 describe("frameRateDowngrade", () => {
   const sixty = { ...DEFAULT_QUALITY, frameRate: 60 as const };
   it("flags 60 requested with a track at or below 30", () => {
@@ -128,6 +148,14 @@ describe("frameRateDowngrade", () => {
     expect(frameRateDowngrade(sixty, report)).toBeUndefined();
     expect(frameRateDowngrade(sixty, { ...report, frameRate: 60 })).toBeUndefined();
     expect(frameRateDowngrade(sixty, { ...report, frameRate: 45 })).toBeUndefined();
+  });
+  it("judges the track against the setting, not the higher capture request", () => {
+    // A 60 fps recording whose track settles on the request, or on the display's 60, is not a downgrade.
+    expect(frameRateDowngrade(sixty, { ...report, frameRate: CAPTURE_FRAME_RATE[60] })).toBeUndefined();
+    expect(frameRateDowngrade(sixty, { ...report, frameRate: 59.8 })).toBeUndefined();
+    // One that falls back to 30 still is, and 30 fps settings never are, even at their own request.
+    expect(frameRateDowngrade(sixty, { ...report, frameRate: 30 })).toBe(30);
+    expect(frameRateDowngrade(DEFAULT_QUALITY, { ...report, frameRate: CAPTURE_FRAME_RATE[30] })).toBeUndefined();
   });
 });
 

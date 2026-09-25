@@ -298,7 +298,7 @@ describe("renderer CaptureHost", () => {
     const port = boot();
     port.receive(start("s1", { ...DEFAULT_QUALITY, frameRate: 60 }));
     expect(getDisplayMedia).toHaveBeenCalledWith({
-      video: { frameRate: { ideal: 60, max: 60 } },
+      video: { frameRate: { ideal: 62.5, max: 62.5 } },
       // without channelCount the macOS loopback track is mono.
       audio: {
         restrictOwnAudio: true,
@@ -333,7 +333,7 @@ describe("renderer CaptureHost", () => {
     pendingStream!.resolve(s);
     await flush();
     expect(s.tracks[0]!.applied).toEqual([
-      { width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 30, max: 30 } },
+      { width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 30.3, max: 30.3 } },
     ]);
     expect(port.sent[0]).toMatchObject({
       type: "started",
@@ -488,10 +488,13 @@ describe("renderer CaptureHost", () => {
     const port = boot();
     port.receive(start("s1", { ...DEFAULT_QUALITY, resolutionCap: "1080p", frameRate: 60 }));
     const s = stream();
-    s.tracks[0]!.settings = { width: 3840, height: 2160, frameRate: 60 };
+    s.tracks[0]!.settings = { width: 3840, height: 2160, frameRate: 62.5 };
     pendingStream!.resolve(s);
     await flush();
-    expect(s.tracks[0]!.applied[0]).toMatchObject({ frameRate: { ideal: 60, max: 60 } });
+    expect(getDisplayMedia).toHaveBeenCalledWith(expect.objectContaining({ video: { frameRate: { ideal: 62.5, max: 62.5 } } }));
+    expect(s.tracks[0]!.applied[0]).toMatchObject({ frameRate: { ideal: 62.5, max: 62.5 } });
+    // The request is above the setting; the encoder target and the report are not.
+    expect(port.sent[0]).toMatchObject({ type: "started", capture: { width: 1920, height: 1080, frameRate: 62.5, videoBitsPerSecond: 16_200_000 } });
   });
 
   it("an audio track that ends while the constraint is applied fails the start instead of recording silence (review F3)", async () => {

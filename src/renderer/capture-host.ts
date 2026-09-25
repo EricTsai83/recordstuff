@@ -8,6 +8,7 @@ import { CHUNK_INTERVAL_MS, OUTPUT_MIME_TYPE, isMainMessage, type HostMessage } 
 import {
   AUDIO_BITS_PER_SECOND,
   fitWithinCap,
+  frameRateConstraint,
   videoBitsPerSecond,
   type CaptureReport,
   type Dimensions,
@@ -157,7 +158,9 @@ export class CaptureHost {
       stream = await navigator.mediaDevices.getDisplayMedia({
         // The size cap is applied after the fact (`applyQuality`): it depends
         // on the source's orientation, which is only known once we have it.
-        video: { frameRate: { ideal: quality.frameRate, max: quality.frameRate } },
+        // The rate asked for is slightly above the setting: the platform
+        // treats it as a minimum frame interval (see `CAPTURE_FRAME_RATE`).
+        video: { frameRate: frameRateConstraint(quality.frameRate) },
         // Preserve system sound rather than applying voice-call processing.
         // Local v2 probes measured high-frequency loss and dual-mono with the
         // defaults; explicitly disabling EC/NS/AGC restored both. See
@@ -419,7 +422,7 @@ async function applyQuality(stream: MediaStream, quality: QualitySettings, measu
         await video.applyConstraints({
           width: { ideal: target.width, max: target.width },
           height: { ideal: target.height, max: target.height },
-          frameRate: { ideal: quality.frameRate, max: quality.frameRate },
+          frameRate: frameRateConstraint(quality.frameRate),
         });
         const settled = await measure(stream, { expect: target, timeoutMs: 1500 });
         if (!settled) {
