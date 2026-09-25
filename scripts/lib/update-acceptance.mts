@@ -1,6 +1,10 @@
 /** Build-only instrumentation. No production module imports this file or the fixture. */
+import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import type { TrayModel } from "../../src/main/tray-model.ts";
+import type { SettingsView } from "../../src/shared/settings-panel.ts";
+import type { RecordingState } from "../../src/shared/state.ts";
 
 function replaceOnce(source: string, from: string, to: string): string {
   if (source.split(from).length !== 2) throw new Error(`Acceptance source anchor changed: ${from}`);
@@ -43,6 +47,50 @@ export function safeCaptureShortcut(pid: number, runningPids: number[], hotkey: 
   if (runningPids.length !== 1 || runningPids[0] !== pid) throw new Error('Another RecordStuff process appeared; refusing global input.');
   if (!hotkey?.enabled || !hotkey.registered) throw new Error('Fixture does not own its recording shortcut.');
   return hotkey.accelerator;
+}
+
+/**
+ * What a starting, recording or saving recorder must do to each settings group, from product intent
+ * (docs/system-design/desktop.md), not from what the model currently returns: preferences and update
+ * actions lock; language, appearance and the About links stay usable. A group missing from this table,
+ * or a listed group the panel no longer offers, fails until someone classifies it here.
+ */
+export const BUSY_SETTINGS_POLICY: Readonly<Record<string, "locked" | "available">> = {
+  screen: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
+  notifications: "locked", updateChecks: "locked", updates: "locked",
+  language: "available", appearance: "available", about: "available",
+};
+export type LockSnapshot = { recording: RecordingState; model: TrayModel; settings: SettingsView };
+
+/**
+ * The tray and settings contract of one recorder state. Only recording shows REC and Stop; every busy
+ * state locks preferences, including the tray's output-folder change; a settled recorder unlocks them.
+ * The tray never offers update actions, and the panel disables a locked group's controls with it.
+ */
+export function assertLockContract(s: LockSnapshot): void {
+  const state = s.recording.type;
+  const busy = state === "starting" || state === "recording" || state === "stopping";
+  assert.equal(s.model.title, state === "recording" ? "REC" : busy ? "…" : "", `tray title while ${state}`);
+  const items = s.model.menu.flatMap(i => i.kind === "item" ? [i] : []);
+  // Located by action: failure-history lines may precede the recording status.
+  const stops = items.filter(i => i.action === "stop");
+  if (state === "recording") assert(stops.length === 1 && stops[0]!.enabled, "one enabled Stop while recording");
+  else assert.equal(stops.length, 0, `no Stop while ${state}`);
+  for (const i of items) {
+    assert(i.action !== "checkUpdates" && i.action !== "openUpdate" && !i.label.includes("Update available:"), `tray update action while ${state}: ${i.label}`);
+    if (busy) assert(!(i.action === "changeOutputDir" && i.enabled), `output folder change enabled while ${state}`);
+  }
+  const ids = s.settings.groups.map(g => g.id);
+  const unknown = ids.filter(id => !Object.hasOwn(BUSY_SETTINGS_POLICY, id));
+  assert.deepEqual(unknown, [], `settings groups without a lock policy: ${unknown.join(", ")}`);
+  const missing = Object.keys(BUSY_SETTINGS_POLICY).filter(id => !ids.includes(id));
+  assert.deepEqual(missing, [], `settings groups no longer offered: ${missing.join(", ")}`);
+  for (const group of s.settings.groups) {
+    const available = BUSY_SETTINGS_POLICY[group.id] === "available";
+    assert.equal(group.enabled, available || !busy, `settings group ${group.id} while ${state}`);
+    // A permitted group must stay usable choice by choice, not only as a group.
+    if (available) for (const choice of [...group.choices, ...group.actions ?? []]) assert.equal(choice.enabled, true, `settings choice ${group.id}/${choice.id} while ${state}`);
+  }
 }
 
 /** Refuse existing evidence without invoking any app/build work. */

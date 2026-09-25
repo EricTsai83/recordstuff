@@ -7,9 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { parseArgs } from 'node:util';
-import { prepareUpdateAcceptance, acceptanceExitCode, safeCaptureShortcut, createAcceptanceOutput, type CaseResult } from './lib/update-acceptance.mts';
+import { prepareUpdateAcceptance, acceptanceExitCode, safeCaptureShortcut, createAcceptanceOutput, assertLockContract, type CaseResult } from './lib/update-acceptance.mts';
 import { acceleratorToKeystroke, keystrokeScript, materialOpenArgs } from './lib/acceptance.mts';
 import { hasTool } from './lib/media-tools.mts';
+import { translate } from '../src/shared/i18n.ts';
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from './lib/desktop-session.mts';
 import { readLogPairs, verifyRecording } from './lib/verify-recording.mts';
 import { blocksSuccess } from './lib/verify.mts';
@@ -103,15 +104,6 @@ function menuAction(s: AcceptanceSnapshot, action: AppAction): Exclude<TrayMenuI
   const item = s.model.menu.find(i => i.kind === 'item' && JSON.stringify(i.action) === JSON.stringify(action));
   assert(item && item.kind === 'item', `Menu action missing: ${JSON.stringify(action)}`);
   return item;
-}
-function assertNoUpdateActions(s: AcceptanceSnapshot): void {
-  assert.equal(menuAction(s, 'checkUpdates').enabled, false);
-  assert.equal(s.model.title, 'REC');
-  const entries = s.model.menu.filter(i => i.kind !== 'separator');
-  assert.equal(entries[1]?.kind === 'item' && entries[1].action, 'stop');
-  assert(!JSON.stringify(s.model.menu).includes('Update available:'));
-  // Recording locks every preference in the panel except the language.
-  for (const group of s.settings.groups) assert.equal(group.enabled, group.id === 'language', `settings group ${group.id}`);
 }
 async function run(program: string, args: string[], cwd: string, label: string, timeout = 300_000): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -246,7 +238,8 @@ try {
     const s = await snapshot(); assert.equal(s.language, 'zh-TW'); assert.equal(s.preference.enabled, false); assert.equal(s.calls.length, 0);
     assert.equal(menuAction(s, 'checkUpdates').label, '檢查更新…');
     // The settings panel projects the same committed values, in the same language.
-    assert.equal(s.settings.title, '設定');
+    // The panel's title key since b262188; judge the language, not the copy.
+    assert.equal(s.settings.title, translate('RecordStuff - Settings', 'zh-TW'));
     assert.equal(settingsChoice(s, 'language').label, '繁體中文');
     assert.equal(settingsChoice(s, 'updateChecks').id, 'off');
     await action('checkUpdates'); await until(s => s.update.kind === 'current', 'manual while preference off');
@@ -267,22 +260,23 @@ try {
   if (!values['logic-only']) await check('real recording: deferred check and deferred result', async () => {
     const before = await snapshot();
     if (before.recording.type !== 'idle') throw new Blocked('Screen/system-audio permission unavailable; not reset or bypassed.');
+    assertLockContract(before);
     materialProfile = fs.mkdtempSync(path.join(os.tmpdir(), 'recordstuff-update-material-'));
     const material = spawnSync('open', materialOpenArgs(path.join(ROOT, 'scripts/test-material.html'), materialProfile), { timeout: 10_000 });
     assert.equal(material.status, 0); await pause(5000);
     await scenario('delayed'); const count = (await snapshot()).calls.length;
     await sendShortcut(); await until(s => s.recording.type === 'recording', 'real recording started');
     await action('checkUpdates'); const deferred = await snapshot();
-    assert.equal(deferred.calls.length, count); assertNoUpdateActions(deferred);
+    assert.equal(deferred.calls.length, count); assertLockContract(deferred);
     await pause(10_000); await sendShortcut();
     await until(s => s.recording.type === 'idle' && s.pending === 1, 'save then deferred request');
     // A second recording starts with a request already in flight. Release the result while recording.
     await sendShortcut(); await until(s => s.recording.type === 'recording', 'second recording started');
     await command({ kind: 'release' }); await pause(250);
-    const hidden = await snapshot(); assert.equal(hidden.update.kind, 'checking'); assertNoUpdateActions(hidden);
+    const hidden = await snapshot(); assert.equal(hidden.update.kind, 'checking'); assertLockContract(hidden);
     await pause(10_000); await sendShortcut();
     const saved = await until(s => s.recording.type === 'idle' && s.update.kind === 'available', 'saved and update published');
-    assert.equal(menuAction(saved, 'openUpdate').enabled, true);
+    assert.equal(menuAction(saved, 'openUpdate').enabled, true); assertLockContract(saved);
     await closeMaterial();
     const recordings = fs.readdirSync(path.join(dir, 'recordings')).filter(f => f.endsWith('.mp4'));
     assert.equal(recordings.length, 2);

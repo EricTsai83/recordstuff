@@ -2,7 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { describe, it, expect } from 'vitest';
-import { instrumentUpdateAcceptance, acceptanceExitCode, safeCaptureShortcut, createAcceptanceOutput, type CaseResult } from './update-acceptance.mts';
+import { instrumentUpdateAcceptance, acceptanceExitCode, safeCaptureShortcut, createAcceptanceOutput, assertLockContract, type CaseResult, type LockSnapshot } from './update-acceptance.mts';
+import { settingsView } from '../../src/main/settings-model';
+import { trayModel } from '../../src/main/tray-model';
+import type { AppContext } from '../../src/main/ui-model';
+import type { UpdateState } from '../../src/main/updates';
+import { DEFAULT_HOTKEY } from '../../src/shared/hotkey';
+import { DEFAULT_QUALITY } from '../../src/shared/quality';
+import type { RecordingState } from '../../src/shared/state';
 
 describe('update acceptance boundary', () => {
   const source = fs.readFileSync(path.resolve('src/main/index.ts'), 'utf8');
@@ -60,5 +67,98 @@ describe('acceptance output usage', () => {
       expect(fs.readFileSync(marker, 'utf8')).toBe('existing evidence');
       expect(fs.readdirSync(dir)).toEqual(['keep.txt']);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+
+describe('recording lock contract', () => {
+  const context: AppContext = {
+    platform: 'darwin', outputDir: '/tmp/recordings', homeDir: '/tmp', quality: DEFAULT_QUALITY, language: 'en',
+    hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: 'idle' }, enabled: true },
+    notifications: true, displays: [], display: { kind: 'primary' },
+  };
+  const recording: RecordingState = { type: 'recording', startedAt: '2026-09-26T00:00:00Z' };
+  const offered: UpdateState = { kind: 'available', version: '2.0.0' };
+  // Snapshots come from the production projections; the expectations come from product intent.
+  const snap = (state: RecordingState, ctx: AppContext = context): LockSnapshot =>
+    structuredClone({ recording: state, model: trayModel(state, ctx), settings: settingsView(state, ctx) });
+  const group = (s: LockSnapshot, id: string) => s.settings.groups.find(g => g.id === id)!;
+  const withUpdate = (state: UpdateState): AppContext => ({ ...context, updates: { state, enabled: true } });
+
+  it('accepts real recording snapshots in both languages for every update state', () => {
+    const states: UpdateState[] = [{ kind: 'idle' }, { kind: 'checking' }, { kind: 'checking', previous: offered }, offered, { kind: 'failed' }, { kind: 'current', checkedAt: 0 }];
+    for (const language of ['en', 'zh-TW'] as const) for (const state of states) {
+      expect(() => assertLockContract(snap(recording, { ...withUpdate(state), language })), `${language} ${state.kind}`).not.toThrow();
+    }
+  });
+
+  it('rejects a busy snapshot that leaves a capture, notification or update control usable', () => {
+    for (const state of [recording, { type: 'starting' }, { type: 'stopping' }] as RecordingState[]) {
+      for (const id of ['screen', 'videoQuality', 'resolutionCap', 'frameRate', 'hotkey', 'notifications', 'updateChecks', 'updates']) {
+        const s = snap(state, withUpdate(offered)); group(s, id).enabled = true;
+        expect(() => assertLockContract(s), `${state.type} ${id}`).toThrow(`settings group ${id} while ${state.type}`);
+      }
+    }
+    // The offered download is enabled by itself; only the group lock keeps it out of reach.
+    expect(group(snap(recording, withUpdate(offered)), 'updates').choices.find(c => c.id === 'open')?.enabled).toBe(true);
+  });
+
+  it('rejects a snapshot that locks language, appearance or an About link', () => {
+    for (const id of ['language', 'appearance', 'about']) {
+      const s = snap(recording); group(s, id).enabled = false;
+      expect(() => assertLockContract(s)).toThrow(`settings group ${id} while recording`);
+    }
+    for (const [id, choice] of [['language', 'zh-TW'], ['appearance', 'dark'], ['about', 'website'], ['about', 'source']]) {
+      const s = snap(recording); group(s, id!).choices.find(c => c.id === choice)!.enabled = false;
+      expect(() => assertLockContract(s)).toThrow(`settings choice ${id}/${choice} while recording`);
+    }
+  });
+
+  it('refuses a group without a lock policy and a policy group the panel no longer offers', () => {
+    const added = snap({ type: 'idle' }); added.settings.groups.push({ ...group(added, 'appearance'), id: 'newPreference' });
+    expect(() => assertLockContract(added)).toThrow('without a lock policy: newPreference');
+    const removed = snap(recording); removed.settings.groups = removed.settings.groups.filter(g => g.id !== 'appearance');
+    expect(() => assertLockContract(removed)).toThrow('no longer offered: appearance');
+  });
+
+  it('requires REC, one enabled Stop, a greyed folder change and no update item while recording', () => {
+    const history = { id: 'f', code: 'disk_full' as const, detail: '', occurredAt: '2026-09-26T00:00:00Z', outcome: 'empty' as const, acknowledged: false };
+    expect(() => assertLockContract(snap(recording, { ...context, recordingResults: [history] }))).not.toThrow();
+    const cases: Array<[string, (s: LockSnapshot) => void]> = [
+      ['tray title while recording', s => { s.model.title = ''; }],
+      ['one enabled Stop', s => { s.model.menu = s.model.menu.filter(i => i.kind === 'separator' || i.action !== 'stop'); }],
+      ['one enabled Stop', s => { for (const i of s.model.menu) if (i.kind === 'item' && i.action === 'stop') i.enabled = false; }],
+      ['output folder change enabled while recording', s => { s.model.menu.push({ kind: 'item', label: 'Change output folder', enabled: true, action: 'changeOutputDir' }); }],
+      ['tray update action while recording', s => { s.model.menu.push({ kind: 'item', label: 'Check for updates…', enabled: false, action: 'checkUpdates' }); }],
+      ['tray update action while recording', s => { s.model.menu.push({ kind: 'item', label: 'Update available: 2.0.0', enabled: false }); }],
+    ];
+    for (const [message, mutate] of cases) {
+      const s = snap(recording); mutate(s);
+      expect(() => assertLockContract(s)).toThrow(message);
+    }
+  });
+
+  it('applies starting and saving their own tray contract', () => {
+    for (const type of ['starting', 'stopping'] as const) {
+      expect(() => assertLockContract(snap({ type }))).not.toThrow();
+      const rec = snap({ type }); rec.model.title = 'REC';
+      expect(() => assertLockContract(rec)).toThrow(`tray title while ${type}`);
+      const stop = snap({ type }); stop.model.menu.unshift({ kind: 'item', label: 'Stop', enabled: true, action: 'stop' });
+      expect(() => assertLockContract(stop)).toThrow(`no Stop while ${type}`);
+    }
+  });
+
+  it('requires a settled recorder to unlock every group without demanding every choice', () => {
+    const settled: RecordingState[] = [{ type: 'idle' }, { type: 'needsPermission', needsRelaunch: false }, { type: 'needsPermission', needsRelaunch: true }];
+    for (const state of settled) {
+      expect(() => assertLockContract(snap(state, withUpdate(offered)))).not.toThrow();
+      const s = snap(state); group(s, 'videoQuality').enabled = false;
+      expect(() => assertLockContract(s)).toThrow(`settings group videoQuality while ${state.type}`);
+    }
+    // Choices a settled model disables for their own reasons stay outside the lock contract.
+    const idle: RecordingState = { type: 'idle' };
+    const partial = snap(idle, { ...withUpdate({ kind: 'checking' }), platform: 'win32', display: { kind: 'display', id: '9', label: 'Gone' } });
+    expect(group(partial, 'updates').choices.find(c => c.id === 'check')?.enabled).toBe(false);
+    expect(() => assertLockContract(partial)).not.toThrow();
   });
 });
