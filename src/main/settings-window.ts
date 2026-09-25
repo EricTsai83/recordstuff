@@ -34,12 +34,21 @@ export interface SettingsWindowOptions {
   log?: (message: string) => void;
 }
 
+/**
+ * One custom-shortcut capture. The object is its ownership token: only the
+ * window that armed it, its own timeout, or the request sent from it can end
+ * it, so a late event from an older window never ends a newer capture.
+ */
+interface CaptureLease {
+  readonly window: BrowserWindow;
+  readonly timer: ReturnType<typeof setTimeout>;
+}
+
 export class SettingsWindow {
   private resultFocus = 0;
   private resultEntry = false;
-  private capturing = false;
-  private committingHotkey = false;
-  private captureTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Holds both global shortcuts suspended; never held by a pending save. */
+  private lease: CaptureLease | undefined;
   private window: BrowserWindow | undefined;
   private resizeTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingSize: WindowSize | undefined;
@@ -48,21 +57,21 @@ export class SettingsWindow {
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly options: SettingsWindowOptions) {
-    const authorize = (event: IpcMainInvokeEvent): void => {
-      const contents = this.window?.webContents;
-      if (!contents || event.sender !== contents || event.senderFrame !== contents.mainFrame) {
+    const authorize = (event: IpcMainInvokeEvent): BrowserWindow => {
+      const window = this.window;
+      const contents = window?.webContents;
+      if (!window || !contents || event.sender !== contents || event.senderFrame !== contents.mainFrame) {
         throw new Error("Invalid settings sender");
       }
+      return window;
     };
     ipcMain.handle("settings:capture", (event, armed: unknown) => {
-      authorize(event);
-      if (armed === false) this.endCapture();
-      else if (armed === true && this.window?.isFocused() && preferencesUnlocked(this.options.state())) {
-        if (!this.capturing) {
-          this.capturing = true;
-          this.options.capture?.(true);
-          this.captureTimer = setTimeout(() => { this.endCapture(); this.refresh(); }, 15_000);
-        }
+      const window = authorize(event);
+      if (armed === false) this.release(this.leaseOf(window));
+      else if (armed === true && !this.lease && window.isFocused() && preferencesUnlocked(this.options.state())) {
+        const lease: CaptureLease = { window, timer: setTimeout(() => { this.release(lease); this.refresh(); }, 15_000) };
+        this.lease = lease;
+        this.options.capture?.(true);
       }
       return this.view();
     });
@@ -71,10 +80,12 @@ export class SettingsWindow {
       return this.view();
     });
     ipcMain.handle("settings:choose", (event, group: unknown, choice: unknown) => {
-      authorize(event);
+      const window = authorize(event);
       // A result action waits for durable history; it must not hold preference saves or shortcut capture.
       if (typeof group === "string" && group.startsWith("recordingResult:")) return this.applyResult(group, choice);
-      const run = this.queue.then(() => this.apply(group, choice));
+      // Completing a request ends the capture it was sent from, never a later one.
+      const lease = this.leaseOf(window);
+      const run = this.queue.then(() => this.apply(group, choice, lease));
       this.queue = run.then(
         () => undefined,
         () => undefined,
@@ -96,7 +107,7 @@ export class SettingsWindow {
     // frontmost app, the same reason index.ts focuses before a file dialog.
     if (process.platform === "darwin") app.focus({ steal: true });
     const existing = this.window;
-    if (existing) {
+    if (existing && !existing.isDestroyed()) {
       if (existing.isMinimized()) existing.restore();
       existing.show();
       existing.focus();
@@ -145,12 +156,18 @@ export class SettingsWindow {
       window.show();
       window.focus();
     });
-    window.on("blur", () => { this.endCapture(); this.refresh(); });
-    window.webContents.on("render-process-gone", () => this.endCapture());
+    window.on("blur", () => { this.release(this.leaseOf(window)); this.refresh(); });
+    // A dead page cannot be revived in place; the next show creates a fresh
+    // window instead. No automatic reload, so a page that keeps crashing
+    // cannot loop.
+    window.webContents.on("render-process-gone", (_event, details) => {
+      this.log(`settings window: renderer gone (${details.reason}); disposing the window`);
+      this.retire(window);
+      if (!window.isDestroyed()) window.destroy();
+    });
     window.on("closed", () => {
       this.flushSize();
-      this.endCapture();
-      if (this.window === window) this.window = undefined;
+      this.retire(window);
     });
     // The panel needs a language before it can read anything, so that it can
     // report a failed read in the user's language.
@@ -166,7 +183,7 @@ export class SettingsWindow {
 
   /** Push the current projection; a closed panel needs nothing. */
   refresh(): void {
-    if (!preferencesUnlocked(this.options.state())) this.endCapture();
+    if (!preferencesUnlocked(this.options.state())) this.release(this.lease);
     const window = this.window;
     if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return;
     const view = this.view();
@@ -176,7 +193,7 @@ export class SettingsWindow {
 
   destroy(): void {
     this.flushSize();
-    this.endCapture();
+    this.release(this.lease);
     ipcMain.removeHandler("settings:capture");
     ipcMain.removeHandler("settings:read");
     ipcMain.removeHandler("settings:choose");
@@ -198,18 +215,32 @@ export class SettingsWindow {
     view.resultFocus = this.resultEntry ? this.resultFocus : 0;
     const shortcut = view.groups.find(group => group.kind === "shortcut");
     if (shortcut) {
-      shortcut.capturing = this.capturing;
-      if (this.capturing) { delete shortcut.note; delete shortcut.diagnostics; }
+      shortcut.capturing = this.lease !== undefined;
+      if (this.lease) { delete shortcut.note; delete shortcut.diagnostics; }
     }
     return view;
   }
 
-  private endCapture(): void {
-    if (!this.capturing || this.committingHotkey) return;
-    this.capturing = false;
-    clearTimeout(this.captureTimer);
-    this.captureTimer = undefined;
+  private leaseOf(window: BrowserWindow): CaptureLease | undefined {
+    return this.lease?.window === window ? this.lease : undefined;
+  }
+
+  /**
+   * Resume the committed registrations, even while a save is pending: the
+   * save registers its own result once persisted. Idempotent, and a lease
+   * that already ended cannot end its successor.
+   */
+  private release(lease: CaptureLease | undefined): void {
+    if (!lease || this.lease !== lease) return;
+    this.lease = undefined;
+    clearTimeout(lease.timer);
     this.options.capture?.(false);
+  }
+
+  /** Close and crash act only on their own window, never on its replacement. */
+  private retire(window: BrowserWindow): void {
+    this.release(this.leaseOf(window));
+    if (this.window === window) this.window = undefined;
   }
 
   private async applyResult(group: string, choice: unknown): Promise<SettingsChoiceResult> {
@@ -220,11 +251,11 @@ export class SettingsWindow {
     return { view, applied, ...(applied ? {} : { failure: view.failure }) };
   }
 
-  private async apply(group: unknown, choice: unknown): Promise<SettingsChoiceResult> {
+  private async apply(group: unknown, choice: unknown, lease: CaptureLease | undefined): Promise<SettingsChoiceResult> {
     const action = settingsAction(this.options.state(), this.options.context(), group, choice);
     if (!action) {
       this.log(`settings window: refused ${JSON.stringify({ group, choice })}`);
-      this.endCapture();
+      this.release(lease);
       const view = this.view();
       let failure = view.failure;
       if (group === "hotkey" && choice !== "off") {
@@ -235,13 +266,12 @@ export class SettingsWindow {
       }
       return { view, applied: false, failure };
     }
-    this.committingHotkey = this.capturing && typeof action !== "string" && "setHotkey" in action;
     let outcome: boolean | void;
     try {
+      // A confirmed save runs to completion even after its window has gone.
       outcome = await this.options.act(action);
     } finally {
-      this.committingHotkey = false;
-      this.endCapture();
+      this.release(lease);
     }
     return {
       view: this.view(),

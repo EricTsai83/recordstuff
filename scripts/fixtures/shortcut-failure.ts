@@ -43,6 +43,29 @@ if (drill !== 'restart') fs.writeFileSync(settingsFile, JSON.stringify({
   appearance: 'dark', notifications: true, updates: { enabled: false },
 }));
 fs.writeFileSync(path.join(temporary, 'userData/tray-hint-shown'), '');
+/**
+ * Test-only I/O stall: the final rename of settings.json waits on a gate, so a
+ * confirmed save is held deterministically. Other files are never delayed and
+ * key delivery is unaffected; this is not a real disk stall.
+ */
+interface WriteGate { started: boolean; settle: (fail: boolean) => void; outcome: Promise<boolean> }
+let writeGate: WriteGate | undefined;
+const rename = fs.promises.rename.bind(fs.promises);
+fs.promises.rename = (async (from: fs.PathLike, to: fs.PathLike) => {
+  const gate = to === settingsFile ? writeGate : undefined;
+  if (gate) {
+    writeGate = undefined;
+    gate.started = true;
+    if (await gate.outcome) throw Object.assign(new Error('controlled settings write failure'), { code: 'EIO' });
+  }
+  return rename(from, to);
+}) as typeof fs.promises.rename;
+function holdSettingsWrite(): WriteGate {
+  let settle!: (fail: boolean) => void;
+  const gate: WriteGate = { started: false, settle: fail => settle(fail), outcome: new Promise<boolean>(resolve => { settle = resolve; }) };
+  writeGate = gate;
+  return gate;
+}
 class TestTray extends EventEmitter {
   destroyed = false;
   constructor() { super(); tray = this; this.destroyed = false; }
@@ -127,9 +150,11 @@ async function arm() {
 async function key(code: string, key: string, modifiers: Record<string, boolean> = {}) {
   await evaluate(`document.getElementById('shortcut-capture').dispatchEvent(new KeyboardEvent('keydown', ${JSON.stringify({ code, key, bubbles: true, cancelable: true, ...modifiers })}))`);
 }
-async function clickConfirm() {
+async function clickConfirm() { await click('shortcut-confirm'); }
+/** Chromium input events on the real page, not DOM-dispatched events. */
+async function click(id: string) {
   const point = await evaluate<{ x: number; y: number }>(`(() => {
-    const button = document.getElementById('shortcut-confirm');
+    const button = document.getElementById(${JSON.stringify(id)});
     button.scrollIntoView({ block: 'nearest' });
     const bounds = button.getBoundingClientRect();
     return { x: Math.round(bounds.x + bounds.width / 2), y: Math.round(bounds.y + bounds.height / 2) };
@@ -238,21 +263,6 @@ require(path.join(root, 'out/main/index.js'));
     failRegistration = false;
     await arm(); await key('Escape', 'Escape');
     await waitFor(() => owned.size === 2, 'cancel recovery');
-    await arm();
-    opened.webContents.forcefullyCrashRenderer();
-    await waitFor(() => owned.size === 2, 'renderer crash restores both registrations');
-    record('renderer crash restores shortcut ownership', owned.has(settingsKey) && owned.has(accelerator), [...owned.keys()].join(', '));
-    opened.destroy();
-    owned.get(settingsKey)!();
-    await waitFor(() => { panel = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('settings.html')); return panel && panel !== opened; }, 'new settings window');
-    await waitFor(() => evaluate("Boolean(document.getElementById('tab-general'))"), 'reopened renderer');
-    record('close and callback reopen a usable replacement panel', panel !== opened && BrowserWindow.getAllWindows().length === count, `windows=${BrowserWindow.getAllWindows().length}`);
-    // Repeat the maintainer's entry smoke test against the production page.
-    // Registered callbacks and the tray boundary are controlled; this does not
-    // claim that macOS delivered the global key or a physical tray click.
-    const savedBeforeEntry = fs.readFileSync(settingsFile, 'utf8');
-    const logPath = path.join(temporary, 'logs/recordstuff.log');
-    const logBeforeEntry = fs.readFileSync(logPath, 'utf8').length;
     const settingsWindows = () => BrowserWindow.getAllWindows().filter(w => w.webContents.getURL().includes('settings.html'));
     const closeWithKey = async () => {
       const closing = panel!;
@@ -267,6 +277,101 @@ require(path.join(root, 'out/main/index.js'));
       await waitFor(() => { panel = settingsWindows()[0]; return panel?.isVisible() && panel.isFocused(); }, 'entry opens visible focused panel');
       await waitFor(() => evaluate("Boolean(document.getElementById('tab-general'))"), 'entry renderer ready');
     };
+    const nativeKey = (keyCode: string, modifiers: Array<'control' | 'meta' | 'shift' | 'alt'>) => {
+      panel!.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers });
+      panel!.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers });
+    };
+    const savedKey = (): string => JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator;
+    const checked = async (id: string) => (await group()).choices.some(c => c.id === id && c.checked);
+    const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    await arm();
+    opened.webContents.forcefullyCrashRenderer();
+    await waitFor(() => opened.isDestroyed() && owned.size === 2, 'production disposes the crashed window and restores both registrations');
+    record('renderer crash disposes the window and restores shortcut ownership', owned.has(settingsKey) && owned.has(accelerator)
+      && settingsWindows().length === 0, `${[...owned.keys()].join(', ')}; settings windows=${settingsWindows().length}`);
+    owned.get(settingsKey)!();
+    await waitForPanel();
+    record('the next open after a crash loads a replacement panel', panel !== opened && BrowserWindow.getAllWindows().length === count, `windows=${BrowserWindow.getAllWindows().length}`);
+    // The replacement is operated with Chromium input events: tab, capture key and Confirm.
+    await click('tab-general');
+    await waitFor(() => evaluate("document.getElementById('tab-general').getAttribute('aria-selected') === 'true'"), 'input event selects General');
+    if (process.platform === 'darwin') {
+      await arm();
+      nativeKey('W', ['control']);
+      await waitFor(() => evaluate("!document.getElementById('shortcut-confirm').disabled"), 'Control+W becomes a candidate');
+      record('replacement panel captures macOS Control+W from input events instead of closing', !panel!.isDestroyed()
+        && await evaluate("document.getElementById('shortcut-capture').textContent.includes('⌃W')"), await evaluate("document.getElementById('shortcut-capture').textContent"));
+      await clickConfirm();
+      await waitFor(() => owned.has('Control+W') && owned.has(settingsKey), 'Control+W saved and registered');
+      record('input-event Confirm saves and registers Control+W', savedKey() === 'Control+W' && !owned.has(accelerator) && await checked('Control+W'), [...owned.keys()].join(', '));
+      // Controlled I/O stall: the confirmed save outlives its window (fixture rename gate, not a disk stall).
+      let gate = holdSettingsWrite();
+      await arm();
+      await key('F20', 'F20', { ctrlKey: true, shiftKey: true });
+      await clickConfirm();
+      await waitFor(() => gate.started, 'confirmed save reaches the held write');
+      record('a held confirmed save keeps capture and both keys suspended', owned.size === 0 && (await group()).capturing, [...owned.keys()].join(', '));
+      await closeWithKey();
+      await waitFor(() => owned.has('Control+W') && owned.has(settingsKey), 'close restores the committed registrations');
+      await pause(1000);
+      record('Command+W during a held save restores the committed keys before the save settles', savedKey() === 'Control+W'
+        && owned.size === 2 && owned.has('Control+W'), `${[...owned.keys()].join(', ')}; saved=${savedKey()}`);
+      gate.settle(false);
+      await waitFor(() => owned.has(accelerator) && !owned.has('Control+W') && owned.has(settingsKey), 'held save registers after persistence');
+      owned.get(settingsKey)!();
+      await waitForPanel();
+      await evaluate("document.getElementById('tab-general').click()");
+      record('after the held save a reopened panel shows the persisted key', savedKey() === accelerator && await checked(accelerator), savedKey());
+      // Reopen during the held save, then capture again while it finishes.
+      gate = holdSettingsWrite();
+      await arm();
+      await key('KeyW', 'w', { ctrlKey: true });
+      await clickConfirm();
+      await waitFor(() => gate.started, 'second confirmed save reaches the held write');
+      await closeWithKey();
+      await waitFor(() => owned.has(accelerator) && owned.has(settingsKey), 'close restores the committed registrations again');
+      owned.get(settingsKey)!();
+      await waitForPanel();
+      await evaluate("document.getElementById('tab-general').click()");
+      record('a panel reopened during a held save shows the committed key', await checked(accelerator), savedKey());
+      await arm();
+      gate.settle(false);
+      await waitFor(async () => savedKey() === 'Control+W' && await checked('Control+W'), 'reopened panel receives the persisted key');
+      await pause(300);
+      record('an old save finishing during a new capture keeps both keys suspended', owned.size === 0 && (await group()).capturing, [...owned.keys()].join(', '));
+      await key('Escape', 'Escape');
+      await waitFor(() => owned.has('Control+W') && owned.has(settingsKey), 'cancel restores the newly persisted key');
+      record('cancelling the new capture registers the key the old save persisted', owned.size === 2 && !owned.has(accelerator), [...owned.keys()].join(', '));
+      // Crash while a failing save is held.
+      gate = holdSettingsWrite();
+      const noticesBefore = notifications.length;
+      await arm();
+      await key('F20', 'F20', { ctrlKey: true, shiftKey: true });
+      await clickConfirm();
+      await waitFor(() => gate.started, 'third confirmed save reaches the held write');
+      const crashing = panel!;
+      crashing.webContents.forcefullyCrashRenderer();
+      await waitFor(() => crashing.isDestroyed() && owned.has('Control+W') && owned.has(settingsKey), 'crash during the held save restores the committed keys');
+      gate.settle(true);
+      await waitFor(() => notifications.length > noticesBefore, 'write failure reported');
+      const failureNotice = notifications.slice(noticesBefore).map(n => n.body ?? '');
+      record('a failing held save after a crash keeps the prior setting and registration and says so', savedKey() === 'Control+W'
+        && owned.size === 2 && owned.has('Control+W') && failureNotice.length === 1
+        && /Could not save the shortcut|無法儲存快捷鍵設定/.test(failureNotice[0] ?? ''), JSON.stringify({ saved: savedKey(), owned: [...owned.keys()], failureNotice }));
+      owned.get(settingsKey)!();
+      await waitForPanel();
+      await evaluate("document.getElementById('tab-general').click()");
+      record('the panel reopened after that crash shows the retained key', await checked('Control+W'), savedKey());
+      // Leave the fixture key for the entry rounds.
+      await commit();
+      await waitFor(() => owned.has(accelerator) && owned.has(settingsKey), 'fixture key restored');
+    }
+    // Repeat the maintainer's entry smoke test against the production page.
+    // Registered callbacks and the tray boundary are controlled; this does not
+    // claim that macOS delivered the global key or a physical tray click.
+    const savedBeforeEntry = fs.readFileSync(settingsFile, 'utf8');
+    const logPath = path.join(temporary, 'logs/recordstuff.log');
+    const logBeforeEntry = fs.readFileSync(logPath, 'utf8').length;
     panel!.setSize(620, 740);
     await waitFor(() => panel!.getSize()[0] === 620 && panel!.getSize()[1] === 740, 'resized settings window');
     for (let round = 1; round <= 2; round++) {

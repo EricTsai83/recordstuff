@@ -1,6 +1,6 @@
 /** Main owns committed preferences, diagnostics and authorized choice ids. */
 import { describeAccelerator, validateAccelerator } from "../shared/hotkey";
-import { shortcutCandidate, shortcutModifiers } from "./shortcut-capture";
+import { isCloseChord, shortcutCandidate, shortcutModifiers } from "./shortcut-capture";
 import { isLanguage, translate, type PlainMessageKey } from "../shared/i18n";
 import type { SettingsBridge, SettingsGroup, SettingsView } from "../shared/settings-panel";
 
@@ -34,6 +34,8 @@ let failure: { group: string; choice?: string; text: string; baseline?: string }
 const text = (key: PlainMessageKey): string => translate(key, view?.language);
 const controlId = (group: SettingsGroup): string => `setting-${group.id}`;
 const shortcutGroup = (): SettingsGroup | undefined => view?.groups.find(g => g.kind === "shortcut");
+/** Main's platform; before the first view (a failed read) the page must still close. */
+const platform = (): string => shortcutGroup()?.platform ?? (navigator.platform.startsWith("Mac") ? "darwin" : navigator.platform);
 function setText(element: Element, value: string): void { if (element.textContent !== value) element.textContent = value; }
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", value = ""): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag); el.className = className; el.textContent = value; return el;
@@ -262,7 +264,7 @@ function row(group: SettingsGroup): HTMLElement {
     const field = button("shortcut-capture", () => {});
     field.addEventListener("keydown", event => {
       if (!shortcutGroup()?.capturing) return;
-      if (event.key === "w" && (event.metaKey || event.ctrlKey)) { window.close(); return; }
+      if (isCloseChord(event, platform())) return; // Not a candidate: the document handler closes.
       if (event.key === "Tab" && !event.metaKey && !event.ctrlKey && !event.altKey) {
         if (candidateToConfirm) return; // Tab reaches Confirm, then Cancel.
         void capture(false);
@@ -602,7 +604,7 @@ document.addEventListener("keydown", event => {
 form.addEventListener("submit", event => event.preventDefault());
 document.addEventListener("keydown", event => {
   if (event.key === "Escape" && (shortcutGroup()?.capturing || arming)) { event.preventDefault(); void capture(false, true); return; }
-  if (event.key === "Escape" || (event.key === "w" && (event.metaKey || event.ctrlKey))) window.close();
+  if (event.key === "Escape" || isCloseChord(event, platform())) window.close();
 });
 window.addEventListener("blur", () => {
   for (const intent of resultIntents.values()) intent.moved = true;

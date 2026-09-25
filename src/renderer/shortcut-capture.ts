@@ -9,6 +9,19 @@ export interface ShortcutKey {
   shiftKey: boolean;
 }
 
+/**
+ * The platform's window-close chord, exactly: Command+W on macOS, Control+W
+ * elsewhere, with no other modifier. macOS Control+W therefore stays a
+ * capturable shortcut. The typed character decides, as native menus do; the
+ * physical W key counts only when the layout types no Latin letter there.
+ */
+export function isCloseChord(event: ShortcutKey, platform: string): boolean {
+  const mac = platform === "darwin";
+  if (event.metaKey !== mac || event.ctrlKey === mac || event.altKey || event.shiftKey) return false;
+  const key = event.key.toLowerCase();
+  return key === "w" || (event.code === "KeyW" && !/^[a-z]$/.test(key));
+}
+
 export function shortcutModifiers(event: ShortcutKey, platform = "darwin"): string[] {
   return MODIFIER_ORDER.filter((_, index) => [event.metaKey && platform === "darwin", event.ctrlKey, event.altKey, event.shiftKey][index]);
 }

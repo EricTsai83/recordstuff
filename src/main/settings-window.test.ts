@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_QUALITY } from "../shared/quality";
-import { DEFAULT_HOTKEY } from "../shared/hotkey";
+import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT, type HotkeySettings } from "../shared/hotkey";
 import type { RecordingState } from "../shared/state";
 
 const mock = vi.hoisted(() => {
@@ -61,7 +61,8 @@ vi.mock("electron", () => ({
   },
 }));
 import { SettingsWindow, type SettingsWindowOptions } from "./settings-window";
-import type { AppAction, AppContext } from "./ui-model";
+import { preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
+import { AppShortcuts } from "./shortcuts";
 
 const context: AppContext = {
   platform: "darwin",
@@ -106,6 +107,12 @@ function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>
     event: () => ({ sender: mock.windows[0].webContents, senderFrame: mock.windows[0].webContents.mainFrame }),
   };
 }
+
+/** Electron's render-process-gone, as the real webContents reports it. */
+function crash(window: any): void {
+  window.webContents.on.mock.calls.find((call: any[]) => call[0] === "render-process-gone")[1]({}, { reason: "crashed" });
+}
+const from = (window: any) => ({ sender: window.webContents, senderFrame: window.webContents.mainFrame });
 
 beforeEach(() => {
   mock.handlers.clear();
@@ -303,24 +310,18 @@ it("ends capture even when saving throws and explains rejected candidates", asyn
   expect(result.view.groups.find((g: any) => g.id === "hotkey").note).toBe("A shortcut needs Command or Control.");
 });
 
-it("keeps registration suspended through main blur/timeout while a hotkey commit is pending", async () => {
-  vi.useFakeTimers();
-  try {
-    let finish!: () => void;
-    const act = vi.fn(async () => new Promise<void>(resolve => { finish = resolve; }));
-    const s = setup({ act });
-    s.panel.show();
-    mock.handlers.get("settings:capture")!(s.event(), true);
-    const save = s.choose(s.event(), "hotkey", "Control+K");
-    await Promise.resolve();
-    expect(act).toHaveBeenCalledTimes(1);
-    s.window().events.get("blur")();
-    vi.advanceTimersByTime(15_000);
-    expect(s.capture).toHaveBeenCalledTimes(1);
-    finish();
-    await save;
-    expect(s.capture.mock.calls).toEqual([[true], [false]]);
-  } finally { vi.useRealTimers(); }
+it("keeps capture through a confirmed commit, then ends only that capture", async () => {
+  let finish!: () => void;
+  const act = vi.fn(async () => new Promise<void>(resolve => { finish = resolve; }));
+  const s = setup({ act });
+  s.panel.show();
+  mock.handlers.get("settings:capture")!(s.event(), true);
+  const save = s.choose(s.event(), "hotkey", "Control+K");
+  await vi.waitFor(() => expect(act).toHaveBeenCalledTimes(1));
+  expect(s.capture.mock.calls).toEqual([[true]]);
+  finish();
+  await save;
+  expect(s.capture.mock.calls).toEqual([[true], [false]]);
 });
 
 it("restores a minimized panel, reuses it and creates one replacement after close", () => {
@@ -345,8 +346,7 @@ it("rejects the reserved Settings combination with localized feedback and ends c
 it("restores capture ownership after renderer failure", () => {
   const s = setup(); s.panel.show();
   mock.handlers.get("settings:capture")!(s.event(), true);
-  const handler = s.window().webContents.on.mock.calls.find((call: any[]) => call[0] === "render-process-gone")[1];
-  handler(); expect(s.capture).toHaveBeenLastCalledWith(false);
+  crash(s.window()); expect(s.capture).toHaveBeenLastCalledWith(false);
 });
 
 
@@ -473,4 +473,210 @@ it("runs a result action beside preference saves and shortcut capture instead of
   releasePreference();
   await preference;
   s.panel.destroy();
+});
+
+/**
+ * The panel wired to the production shortcut owner, a fake OS registry and a
+ * settings store whose writes stay pending until the test settles them.
+ */
+function wired() {
+  const registered = new Map<string, () => void>();
+  const globalShortcut = {
+    register: vi.fn((accelerator: string, callback: () => void) => {
+      if (registered.has(accelerator)) return false;
+      registered.set(accelerator, callback);
+      return true;
+    }),
+    unregister: vi.fn((accelerator: string) => { registered.delete(accelerator); }),
+  };
+  let saved: HotkeySettings = { ...DEFAULT_HOTKEY };
+  let state: RecordingState = { type: "idle" };
+  const writes: Array<{ setting: HotkeySettings; succeed: () => void; fail: () => void }> = [];
+  const store = {
+    get hotkey() { return saved; },
+    setHotkey: (setting: HotkeySettings) => new Promise<void>((resolve, reject) => writes.push({
+      setting, succeed: () => { saved = { ...setting }; resolve(); }, fail: () => reject(new Error("controlled write failure")),
+    })),
+  };
+  const writeFailed = vi.fn();
+  let panel!: SettingsWindow;
+  const refresh = (): void => panel.refresh();
+  const setState = (next: RecordingState): void => { state = next; panel.refresh(); shortcuts.flush(); };
+  const toggle = vi.fn(() => setState(state.type === "idle" ? { type: "recording", startedAt: "2026-09-25T00:00:00Z" } : { type: "idle" }));
+  const shortcuts = new AppShortcuts({
+    globalShortcut, platform: "darwin", toggle, store, settled: () => preferencesUnlocked(state), log: () => undefined,
+    openSettings: () => panel.show(), notifyRegistrationFailed: vi.fn(), notifyWriteFailed: writeFailed, refresh,
+  });
+  panel = new SettingsWindow({
+    state: () => state,
+    context: () => ({ ...context, hotkey: { ...saved, registered: shortcuts.registered } }),
+    capture: armed => shortcuts.capture(armed),
+    // The same routing as main's handleAction for this action.
+    act: async action => { if (typeof action !== "string" && "setHotkey" in action) await shortcuts.set(action.setHotkey); },
+    log: () => undefined,
+  });
+  shortcuts.start();
+  const latest = () => mock.windows.at(-1);
+  return {
+    panel, writes, writeFailed, toggle, setState,
+    saved: () => saved,
+    live: () => [...registered.keys()].sort(),
+    press: (accelerator: string) => registered.get(accelerator)?.(),
+    latest,
+    arm: (armed = true, window = latest()) => mock.handlers.get("settings:capture")!(from(window), armed),
+    choose: (group: string, choice: string, window = latest()) =>
+      mock.handlers.get("settings:choose")!(from(window), group, choice) as Promise<{ view: any; applied: boolean }>,
+    shown: (window = latest()) => {
+      const group = mock.handlers.get("settings:read")!(from(window)).groups.find((g: any) => g.id === "hotkey");
+      return { value: group.choices.find((c: any) => c.checked)?.id, capturing: group.capturing, unavailable: Boolean(group.diagnostics?.length) };
+    },
+  };
+}
+const OLD = [DEFAULT_HOTKEY.accelerator, SETTINGS_SHORTCUT].sort();
+const NEW = ["Control+K", SETTINGS_SHORTCUT].sort();
+
+describe("capture lease and the confirmed save it started", () => {
+  const releases: Array<[string, (w: ReturnType<typeof wired>) => void]> = [
+    ["cancel", w => w.arm(false)],
+    ["blur", w => w.latest().events.get("blur")()],
+    ["timeout", () => vi.advanceTimersByTime(15_000)],
+    ["close", w => w.latest().destroy()],
+    ["renderer failure", w => crash(w.latest())],
+    ["shutdown", w => w.panel.destroy()],
+  ];
+  for (const [name, release] of releases) for (const outcome of ["success", "failure"] as const) {
+    it(`${name} during a stalled ${outcome} restores the committed keys at once; the save decides afterwards`, async () => {
+      vi.useFakeTimers();
+      try {
+        const w = wired();
+        w.panel.show();
+        expect(w.live()).toEqual(OLD);
+        w.arm();
+        expect(w.live()).toEqual([]);
+        const save = w.choose("hotkey", "Control+K");
+        await vi.waitFor(() => expect(w.writes).toHaveLength(1));
+        release(w);
+        // Suspension ends now, not when the stalled write returns.
+        expect(w.live()).toEqual(OLD);
+        vi.advanceTimersByTime(20_000);
+        expect(w.live()).toEqual(OLD);
+        expect(w.saved()).toEqual(DEFAULT_HOTKEY);
+        if (outcome === "success") w.writes[0]!.succeed(); else w.writes[0]!.fail();
+        await save;
+        expect(w.live()).toEqual(outcome === "success" ? NEW : OLD);
+        expect(w.saved()).toEqual(outcome === "success" ? { enabled: true, accelerator: "Control+K" } : DEFAULT_HOTKEY);
+        expect(w.writeFailed).toHaveBeenCalledTimes(outcome === "success" ? 0 : 1);
+        if (name !== "shutdown") {
+          w.panel.show();
+          expect(w.shown()).toEqual({ value: outcome === "success" ? "Control+K" : DEFAULT_HOTKEY.accelerator, capturing: false, unavailable: false });
+        }
+      } finally { vi.useRealTimers(); }
+    });
+  }
+
+  it("a recording started with the restored key keeps it as the stop key until it settles", async () => {
+    const w = wired();
+    w.panel.show(); w.arm();
+    const save = w.choose("hotkey", "Control+K");
+    await vi.waitFor(() => expect(w.writes).toHaveLength(1));
+    w.latest().destroy();
+    w.press(DEFAULT_HOTKEY.accelerator);
+    expect(w.toggle).toHaveBeenCalledTimes(1);
+    w.writes[0]!.succeed();
+    await save;
+    expect(w.saved().accelerator).toBe("Control+K");
+    // Saved, not yet live: the recording can still be stopped with its own key.
+    expect(w.live()).toEqual(OLD);
+    w.panel.show();
+    expect(w.shown()).toMatchObject({ value: "Control+K", unavailable: true });
+    w.press(DEFAULT_HOTKEY.accelerator);
+    expect(w.toggle).toHaveBeenCalledTimes(2);
+    expect(w.live()).toEqual(NEW);
+    expect(w.shown()).toEqual({ value: "Control+K", capturing: false, unavailable: false });
+  });
+
+  it("an old save finishing while a reopened window captures neither ends nor pre-empts that capture", async () => {
+    const w = wired();
+    w.panel.show(); w.arm();
+    const save = w.choose("hotkey", "Control+K");
+    await vi.waitFor(() => expect(w.writes).toHaveLength(1));
+    const first = w.latest();
+    first.destroy();
+    w.panel.show();
+    expect(w.latest()).not.toBe(first);
+    expect(w.shown().value).toBe(DEFAULT_HOTKEY.accelerator);
+    w.arm();
+    expect(w.live()).toEqual([]);
+    w.writes[0]!.succeed();
+    await save;
+    // The new window sees the committed value while its capture still holds both keys.
+    expect(w.shown()).toEqual({ value: "Control+K", capturing: true, unavailable: false });
+    expect(w.live()).toEqual([]);
+    // The old window can no longer reach this capture.
+    expect(() => w.arm(false, first)).toThrow("Invalid settings sender");
+    expect(w.live()).toEqual([]);
+    w.arm(false);
+    expect(w.live()).toEqual(NEW);
+  });
+
+  it("a crash abandons an unconfirmed draft: nothing is saved and the committed keys return", () => {
+    const w = wired();
+    w.panel.show(); w.arm();
+    crash(w.latest());
+    expect(w.writes).toHaveLength(0);
+    expect(w.live()).toEqual(OLD);
+    w.panel.show();
+    expect(w.shown()).toEqual({ value: DEFAULT_HOTKEY.accelerator, capturing: false, unavailable: false });
+  });
+});
+
+describe("crashed and replaced settings windows", () => {
+  it("disposes a crashed window so the next show creates and loads a usable one, without reloading on its own", () => {
+    const s = setup();
+    for (let round = 1; round <= 3; round++) {
+      s.panel.show();
+      const window = mock.windows.at(-1);
+      expect(mock.windows).toHaveLength(round);
+      expect(window.loadFile).toHaveBeenCalledTimes(1);
+      crash(window);
+      expect(window.destroy).toHaveBeenCalledTimes(1);
+      expect(() => s.read(from(window))).toThrow("Invalid settings sender");
+      // Nothing is recreated until the user asks again.
+      expect(mock.windows).toHaveLength(round);
+    }
+    s.panel.show();
+    expect(mock.windows).toHaveLength(4);
+    expect(s.read(from(mock.windows[3]))).toMatchObject({ title: "RecordStuff - Settings" });
+    expect(s.log).toHaveBeenCalledWith(expect.stringContaining("renderer gone (crashed)"));
+  });
+
+  it("late events from an old window cannot clear its replacement or release the replacement's capture", () => {
+    const s = setup();
+    s.panel.show();
+    const old = mock.windows[0];
+    crash(old);
+    s.panel.show();
+    const replacement = mock.windows[1];
+    mock.handlers.get("settings:capture")!(from(replacement), true);
+    old.events.get("blur")();
+    old.events.get("closed")();
+    crash(old);
+    expect(s.capture.mock.calls).toEqual([[true]]);
+    expect(s.read(from(replacement)).groups.find((g: any) => g.id === "hotkey").capturing).toBe(true);
+    s.panel.show();
+    expect(mock.windows).toHaveLength(2);
+    expect(replacement.focus).toHaveBeenCalled();
+  });
+
+  it("a failed load is disposed and the next show loads a working window", async () => {
+    const s = setup();
+    mock.failNextLoad("nope");
+    s.panel.show();
+    await vi.waitFor(() => expect(mock.windows[0].destroy).toHaveBeenCalled());
+    mock.resetLoad();
+    s.panel.show();
+    expect(mock.windows).toHaveLength(2);
+    expect(mock.windows[1].loadFile).toHaveBeenCalledTimes(1);
+    expect(s.read(from(mock.windows[1]))).toMatchObject({ title: "RecordStuff - Settings" });
+  });
 });

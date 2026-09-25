@@ -85,7 +85,7 @@ fs.writeFileSync(path.join(reportDir, "summary.json"), JSON.stringify(summary, n
 fs.writeFileSync(path.join(reportDir, "report.md"), [
   "# Shortcut failure integration", "", `Result: ${desktop.lockedAt ? "BLOCKED" : passed ? "PASS" : "FAIL"}`, "", desktop.summary, "",
   "Production main, settings IPC/preload/page and persistence; real Electron registration returns false via test-only suspension.",
-  "Settings phase uses a controlled registration adapter to test legacy conflict, real-window restore and renderer crash. Notification.show is observed, not delivered. Tray and capture-permission adapters are isolated. No OS banner or recording claim.", "",
+  "Settings phase uses a controlled registration adapter to test legacy conflict, real-window restore and renderer crash, and a fixture-only settings.json rename gate to hold confirmed saves; key and mouse input are Chromium input events, not OS delivery. Notification.show is observed, not delivered. Tray and capture-permission adapters are isolated. No OS banner or recording claim.", "",
   ...phases.flatMap(phase => (phase.result?.cases ?? []).map(test => `- ${test.ok ? "PASS" : "FAIL"} [${phase.name}]: ${test.name} — ${test.detail}`)), "",
   `Cleanup: all groups gone=${groupsGone}; temp removed=${!fs.existsSync(temporary)}.`,
   `Error: ${error ?? "none"}. Phase exit/stop details: summary.json; electron.log.`, "",

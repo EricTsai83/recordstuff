@@ -29,7 +29,6 @@ import os from "node:os";
 import path from "node:path";
 import { CaptureHost } from "./capture-host";
 import { FileWriter, ensureWritableDir } from "./file-writer";
-import { RecordingHotkey, shouldNotifyHotkeyFailure, type HotkeyRequestResult } from "./hotkey";
 import { createFileLogger } from "./log";
 import { PermissionWatcher, openNotificationSettings, openScreenCaptureSettings } from "./permission";
 import { Recorder } from "./recorder";
@@ -42,8 +41,7 @@ import { AppTray } from "./tray";
 import { SettingsWindow } from "./settings-window";
 import { APP_NAME, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 import { effectiveQuality, frameRateDowngrade, type QualitySettings } from "../shared/quality";
-import { isSettingsShortcut, type HotkeySettings } from "../shared/hotkey";
-import { SettingsHotkey } from "./settings-hotkey";
+import { AppShortcuts } from "./shortcuts";
 import type { RecordingState } from "../shared/state";
 
 import { DEFAULT_LANGUAGE, translate, type Language } from "../shared/i18n";
@@ -199,12 +197,15 @@ async function main(): Promise<void> {
   // One action for both entry points (plan 016): the tray's left click and the
   // global shortcut call the same `toggle`, whose state guards decide.
   const toggle = (): void => recorder.toggle();
-  let lastHotkeyReport: HotkeyRequestResult | undefined;
-  const hotkey = new RecordingHotkey({ globalShortcut, onToggle: toggle, log });
-  const settingsHotkey = new SettingsHotkey({ globalShortcut, platform: process.platform,
-    open: () => { void handleAction("openSettings"); }, log });
   /** Settings that touch a session (quality, shortcut) change only here. */
   const settled = (): boolean => preferencesUnlocked(recorder.state);
+  const shortcuts = new AppShortcuts({
+    globalShortcut, platform: process.platform, toggle, settled, store: settings, log,
+    openSettings: () => { void handleAction("openSettings"); },
+    notifyRegistrationFailed: accelerator => tray.notifyHotkeyRegistrationFailed(accelerator),
+    notifyWriteFailed: () => tray.notifyHotkeyWriteFailed(),
+    refresh: () => refreshUi(),
+  });
   const updates = new UpdateChecker({
     localVersion: app.getVersion(), settled,
     preference: () => settings.updates,
@@ -228,24 +229,15 @@ async function main(): Promise<void> {
     appearance: settings.appearance,
     updates: { state: updates.state, enabled: settings.updates.enabled },
     notifications: settings.notifications,
-    settingsShortcut: settingsHotkey.status,
-    hotkey: {
-      ...settings.hotkey,
-      // "registered" means the saved combination is the live one; a deferred
-      // change shows as unavailable until the recorder settles and it applies.
-      registered: hotkey.status.kind === "registered" && hotkey.status.accelerator === settings.hotkey.accelerator,
-    },
+    settingsShortcut: shortcuts.settingsStatus,
+    hotkey: { ...settings.hotkey, registered: shortcuts.registered },
   });
   const settingsWindow = new SettingsWindow({
     geometry: new SettingsWindowState(path.join(app.getPath("userData"), "settings-window.json"), log),
     state: () => recorder.state,
     context: appContext,
     act: handleAction,
-    capture: (armed) => {
-      if (armed) { settingsHotkey.suspend(); hotkey.suspend(); }
-      else { reportHotkey(hotkey.resume()); settingsHotkey.resume(); }
-      refreshUi();
-    },
+    capture: armed => shortcuts.capture(armed),
     log,
   });
   const tray = new AppTray({
@@ -270,42 +262,7 @@ async function main(): Promise<void> {
     settingsWindow.refresh();
   }
   renderUi(recorder.state);
-  applyHotkey(settings.hotkey);
-
-  /** Register with the OS and surface a refusal in the menu and a notification. */
-  function applyHotkey(setting: HotkeySettings): void {
-    reportHotkey(hotkey.request(setting, settled()));
-  }
-
-  function reportHotkey(result: HotkeyRequestResult | undefined): void {
-    if (!result) return;
-    // Use live ownership during deferred changes; never steal a session stop key.
-    settingsHotkey.reconcile(hotkey.status.kind === "registered"
-      ? { enabled: true, accelerator: hotkey.status.accelerator } : settings.hotkey);
-    if (result.kind === "failed" && shouldNotifyHotkeyFailure(lastHotkeyReport, result)) tray.notifyHotkeyRegistrationFailed(result.accelerator);
-    if (result.kind !== "deferred" && result.kind !== "suspended") lastHotkeyReport = result;
-    refreshUi();
-  }
-
-  /**
-   * Persist first, register second: a failed write keeps the old registration.
-   * A recording that starts while the write is pending keeps its shortcut;
-   * the registration change waits for the recorder to settle (review F2).
-   */
-  async function setHotkey(setting: HotkeySettings): Promise<void> {
-    if (!settled() || (setting.enabled && isSettingsShortcut(setting.accelerator, process.platform))) return;
-    try {
-      await settings.setHotkey(setting);
-    } catch (cause) {
-      log(`settings: failed to save hotkey ${JSON.stringify(setting)}: ${String(cause)}`);
-      tray.notifyHotkeyWriteFailed();
-      return;
-    }
-    // An explicit successful save deserves a fresh refusal notification; a cancel does not.
-    lastHotkeyReport = undefined;
-    log(`settings: hotkey ${JSON.stringify(settings.hotkey)}`);
-    applyHotkey(settings.hotkey);
-  }
+  shortcuts.start();
 
   async function handleAction(action: AppAction): Promise<boolean | void> {
     if (typeof action !== "string" && "recordingResult" in action) {
@@ -362,7 +319,7 @@ async function main(): Promise<void> {
           tray.notifyLanguageWriteFailed();
         }
       } else if ("setHotkey" in action) {
-        await setHotkey(action.setHotkey);
+        await shortcuts.set(action.setHotkey);
       } else {
         await setQuality(action.setQuality);
       }
@@ -509,7 +466,7 @@ async function main(): Promise<void> {
         renderUi(event.state);
         updates.flush();
         // A shortcut change saved during a session applies now that it is over.
-        reportHotkey(hotkey.flush(settled()));
+        shortcuts.flush();
         // Tell the user each time the permission ask changes: first "open
         // System Settings", later "relaunch" once the grant is in but stale.
         const next = event.state;
@@ -634,8 +591,7 @@ async function main(): Promise<void> {
     screen.removeListener("display-metrics-changed", displayChanged);
     powerMonitor.removeListener("suspend", onSuspend);
     powerMonitor.removeListener("resume", onResume);
-    settingsHotkey.dispose();
-    hotkey.dispose();
+    shortcuts.dispose();
     permission?.stop();
     host.destroy();
     settingsWindow.destroy();
@@ -643,5 +599,5 @@ async function main(): Promise<void> {
   });
 
   updates.flush();
-  log(`ready; output dir ${settings.outputDir}; hotkey ${JSON.stringify(hotkey.status)}`);
+  log(`ready; output dir ${settings.outputDir}; hotkey ${JSON.stringify(shortcuts.status)}`);
 }
