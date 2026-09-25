@@ -51,7 +51,7 @@ Keep output and exit code (1 for fail or incomplete, 2 for blocked). For the cur
 | Permissions / device recovery / shutdown | Exercise only affected/requested transitions; record refusal, recovery and saved output as applicable. Permission revocation and destructive fault setup need authorization for that specific action |
 | Accessibility / OS presentation | Observe affected keyboard/focus behavior; use actual VoiceOver or OS contrast settings when those behaviors are required. DOM assertions cannot establish these outcomes |
 
-Do not routinely reset TCC or claim first-time permissions, hardware removal, long-run stability, install/upgrade or subjective listening from other cases. Preserve reproduction steps when a case fails. After an authorized fix, rebuild and repeat affected cases, retaining the earlier result.
+Do not routinely reset TCC or claim first-time permissions, hardware removal, long-run stability, install/upgrade or subjective listening from other cases. One narrow exception, authorized by the maintainer on 2026-09-26: when a RecordStuff build under test starts capture, macOS may ask whether RecordStuff may bypass the private window picker and access the screen and audio directly. The round's executor may press Allow on that prompt through native computer use and record whether macOS accepted the input. If macOS ignores synthetic input, leave the prompt open and report it; do not work around it. The exception covers only that prompt for RecordStuff: never answer other permission prompts, change privacy lists in System Settings or edit TCC. Preserve reproduction steps when a case fails. After an authorized fix, rebuild and repeat affected cases, retaining the earlier result.
 
 ## Cleanup and evidence
 

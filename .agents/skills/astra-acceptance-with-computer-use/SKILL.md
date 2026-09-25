@@ -73,6 +73,7 @@ App 已由呼叫者以 pnpm start:app 建置並啟動，輸出在 <start-app.log
 - 開始／停止錄影、開啟選單、變更設定、Finder 定位及播放器操作都透過 computer use 完成。不要用 AppleScript、System Events、IPC、renderer evaluate、Playwright 或測試 hook 代按 UI。
 - Shell 可用於建置啟動、唯讀檢查程序／產物身分、讀取本次 log、檢查錄影檔與保存報告。`pnpm matrix`、`pnpm audio:quality` 或直接呼叫錄製邏輯不能算作 computer use 驗收。
 - 若工具無法存取原生桌面或缺少必要權限，記錄具體阻礙，完成仍可做的獨立檢查；依賴該介面的案例標示 blocked，不用其他自動化冒充完成。
+- 唯一的權限例外（維護者 2026-09-26 授權，見[共用驗收指南](../../../docs/zh-TW/acceptance.md#依影響追加案例)）：受測的 RecordStuff build 開始擷取時，若 macOS 跳出「要求略過系統私密視窗選擇器並直接取用你的畫面和音訊」的提示，可透過 computer use 按「允許」，並記錄 macOS 是否接受。若被忽略，就讓提示保持開啟並回報。其他權限提示、「系統設定」的隱私權清單與 TCC 一律不碰。
 
 - 每個 UI 狀態等待最多 30 秒，包含存檔完成、Finder 置前及播放器開啟；逾時記 fail，附當下截圖與已等待時間。截圖不可取得時明確註記原因。不要透過重啟等待計時無限重試；缺工具／權限則按 blocked 處理。建置與媒體分析另依程序進度監看，不套用此 UI 時限。
 
