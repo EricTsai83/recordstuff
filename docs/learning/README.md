@@ -9,3 +9,4 @@ Standalone HTML articles that teach transferable design patterns, using this pro
 | 文章 | 主題 |
 | --- | --- |
 | [事件迴圈裡的磁碟工作：三個可遷移的設計模式](disk-work-in-an-event-loop.html) | 非同步 I/O 與執行緒的取捨、建立資源前先寫意圖紀錄、用 promise 鏈做有上限的並行；以計畫 036／037／038 的設計為例 |
+| [錄影到底錄得好不好：螢幕錄影工具的品質量測入門](measuring-screen-recording-quality.html) | 錄影管線與基本名詞、固定測試素材、ffprobe／ffmpeg 量測、每個完整性與效能指標、五種判定狀態、音質診斷、為什麼 30／60 fps 與位元率等範圍表現不同、分層觀察與對照實驗、證據層級與精簡測試的原則；以計畫 030／041 與音質修正為例 |

@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>錄影到底錄得好不好：螢幕錄影工具的品質量測入門</title>
+<style>
+:root {
+  color-scheme: light;
+  --clay: #D97757;
+  --slate: #141413;
+  --ivory: #FAF9F5;
+  --oat: #E3DACC;
+  --white: #FFFFFF;
+  --gray-100: #F0EEE6;
+  --gray-300: #D1CFC5;
+  --gray-500: #87867F;
+  --gray-700: #3D3D3A;
+  --warning: #C78E3F;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --content-width: 68ch;
+}
+body {
+  margin: 0;
+  background: var(--ivory);
+  color: var(--slate);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 16px;
+  font-weight: 430;
+  line-height: 1.7;
+  letter-spacing: 0;
+}
+main { max-width: var(--content-width); margin: 0 auto; padding: var(--space-3xl) var(--space-xl); }
+article { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+h1 { max-width: none; font-size: 1.8rem; line-height: 1.25; text-wrap: balance; overflow-wrap: normal; margin: 0 0 var(--space-lg); }
+h2 { font-size: 1.22rem; line-height: 1.3; margin: var(--space-3xl) 0 var(--space-md); padding-top: var(--space-lg); border-top: 1px solid var(--oat); }
+h3 { font-size: 1rem; line-height: 1.4; margin: var(--space-2xl) 0 var(--space-sm); color: var(--gray-700); }
+p, ul, ol, .deck, .callout, table, pre, figure { max-width: var(--content-width); }
+p { margin: 0 0 var(--space-lg); }
+ul, ol { margin: 0 0 var(--space-lg); padding-left: 1.4em; }
+li { margin-bottom: var(--space-sm); }
+li p { margin-bottom: var(--space-sm); }
+.deck { font-size: 1.05rem; color: var(--gray-700); margin-bottom: var(--space-2xl); }
+a { color: var(--clay); text-decoration: underline; text-underline-offset: 3px; }
+strong { font-weight: 650; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+p code, li code, td code, th code, figcaption code {
+  background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-sm);
+  padding: 0.05em 0.35em; overflow-wrap: anywhere;
+}
+table, pre { width: 100%; }
+.table-scroll { max-width: var(--content-width); overflow-x: auto; margin: var(--space-lg) 0 var(--space-xl); }
+table { border-collapse: collapse; margin: 0; font-size: 0.95rem; }
+th, td { border: 1px solid var(--oat); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--gray-100); font-weight: 650; }
+.compact-first th:first-child, .compact-first td:first-child { white-space: nowrap; }
+.callout {
+  background: var(--gray-100); border: 1px solid var(--oat); border-left: 4px solid var(--clay);
+  border-radius: var(--radius-sm); padding: var(--space-md) var(--space-lg); margin: var(--space-lg) 0 var(--space-xl);
+}
+.callout.warning { border-left-color: var(--warning); }
+.callout p:last-child { margin-bottom: 0; }
+.sources { border-top: 1px solid var(--oat); padding-top: var(--space-lg); font-size: 0.9rem; color: var(--gray-700); }
+.sources ul { padding-left: 1.2em; }
+.sources h2 { border-top: 0; margin-top: 0; padding-top: 0; }
+
+pre { position: relative; width: 100%; margin: var(--space-lg) 0 var(--space-xl); border: 1px solid #26241f; border-radius: var(--radius-md); background: #11110f; color: #d8d4ca; overflow: hidden; box-sizing: border-box; }
+pre code { display: block; border: 0; background: transparent; padding: 18px 64px 18px 22px; color: inherit; overflow-x: auto; white-space: pre; font-size: 0.875rem; font-weight: 400; line-height: 1.62; scrollbar-width: none; }
+pre code::-webkit-scrollbar { width: 0; height: 0; }
+pre .label { display: none; }
+.copy-code {
+  position: absolute; top: 9px; right: 9px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0;
+  border: 1px solid rgba(250, 249, 245, 0.14); border-radius: var(--radius-sm);
+  background: rgba(250, 249, 245, 0.06); color: rgba(250, 249, 245, 0.72); cursor: pointer;
+}
+.copy-code:hover, .copy-code:focus-visible { border-color: rgba(250, 249, 245, 0.28); background: rgba(250, 249, 245, 0.12); color: var(--ivory); outline: none; }
+.copy-code.copied { border-color: rgba(143, 184, 106, 0.42); background: rgba(143, 184, 106, 0.14); color: #b8d99a; }
+.copy-code svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; pointer-events: none; }
+.code-scrollbar { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; border-radius: 999px; background: rgba(250, 249, 245, 0.1); cursor: pointer; }
+.code-scrollbar.hidden { display: none; }
+.code-scrollbar-thumb { height: 100%; border-radius: inherit; background: rgba(255, 148, 110, 0.82); transform: translateX(0); cursor: grab; }
+.code-scrollbar-thumb:active { cursor: grabbing; }
+pre code .k { color: #ff946e; font-weight: 400; }
+pre code .s { color: #8fb86a; }
+pre code .n, pre code .p { color: #d8d4ca; }
+pre code .c { color: #858177; font-style: italic; }
+pre code .f { color: #cfc6a2; }
+pre code .t { color: #cfc6a2; font-weight: 400; }
+pre code .o { color: #ff946e; }
+
+.flow-figure { margin: var(--space-xl) 0 var(--space-2xl); }
+.flow-figure svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.flow-figure figcaption { font-size: 0.9rem; color: var(--gray-700); margin-top: var(--space-sm); }
+
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  h1 { font-size: 1.65rem; }
+  main { padding: var(--space-xl); }
+  pre code { font-size: 0.8125rem; line-height: 1.5; }
+  p code, li code, td code { font-size: 0.9em; }
+  table, .deck, .sources { font-size: 0.875rem; }
+  th, td { padding: 6px 8px; }
+  .table-wide { min-width: 560px; }
+}
+.toc { max-width: var(--content-width); background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-md); padding: var(--space-md) var(--space-lg); margin: 0 0 var(--space-2xl); box-sizing: border-box; }
+.toc-title { font-weight: 650; margin: 0 0 var(--space-sm); }
+.toc ol { margin: 0; padding-left: 1.4em; }
+.toc li { margin-bottom: 4px; }
+.flow-figure .flow-mobile { display: none; }
+.fig-node rect { fill: var(--white); stroke: var(--oat); stroke-width: 1.5; }
+.fig-label { fill: var(--slate); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; font-size: 15px; font-weight: 650; }
+.fig-note { fill: var(--gray-700); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; font-size: 13px; font-weight: 500; }
+.fig-arrow { stroke: var(--clay); stroke-width: 2; fill: none; }
+@media (max-width: 640px) {
+  .flow-figure .flow-desktop { display: none; }
+  .flow-figure .flow-mobile { display: block; }
+}
+
+</style>
+
+</head>
+<body>
+<main>
+<article>
+
+<h1>錄影到底錄得好不好：螢幕錄影工具的品質量測入門</h1>
+
+<p class="deck">開發錄影工具，最難的往往不是「讓它能錄」，而是證明它「錄對了」：畫面有沒有少格、聲音有沒有變悶、音畫有沒有對齊，而這些人眼和耳朵幾乎都分辨不出來。本文以一個 macOS 選單列錄影 App 為貫穿範例，從零說明錄影管線、測試素材、量測工具與每一個指標的意義，再用實際量到的數字解釋：為什麼 30 fps 比 60 fps 準、為什麼 60 fps 的位元率會超出目標兩倍、為什麼「有兩個聲道」不代表立體聲。最後說明如何一層一層找出問題所在，以及怎麼用最少的錄影取得足夠的證據。</p>
+
+<nav class="toc" aria-label="目錄">
+  <p class="toc-title">目錄</p>
+  <ol>
+    <li><a href="#question">這篇文章要回答的問題</a></li>
+    <li><a href="#pipeline">先懂資料怎麼流：錄影管線與基本名詞</a></li>
+    <li><a href="#material">已知的輸入：為什麼需要固定的測試素材</a></li>
+    <li><a href="#tools">量測工具：ffprobe 與 ffmpeg 在看什麼</a></li>
+    <li><a href="#metrics">每一個指標在問什麼</a></li>
+    <li><a href="#verdicts">判定：通過與失敗之外的三種狀態</a></li>
+    <li><a href="#audio">聲音要另一套量測：「有聲音」不等於「聲音對」</a></li>
+    <li><a href="#ranges">為什麼有些範圍表現好、有些差</a></li>
+    <li><a href="#layers">找出問題在哪一層：分層觀察與對照實驗</a></li>
+    <li><a href="#evidence">證據的層級：每一種測試能證明什麼</a></li>
+    <li><a href="#checklist">可以帶走的判斷清單</a></li>
+  </ol>
+</nav>
+
+<h2 id="question">這篇文章要回答的問題</h2>
+
+<p>想像你寫了一個錄影工具，按下按鈕、錄十秒、停止，得到一個能播放的 MP4。畫面在動、聲音有出來。這樣算完成了嗎？</p>
+
+<p>還不算。以下這些問題，播放時幾乎都看不出來：</p>
+
+<ul>
+  <li>設定 60 fps，檔案裡其實只有每秒 57.5 格。每秒少 2.5 格，肉眼察覺不到，但長時間下來動作會比原本「稀疏」一點，也代表錄影工具沒有做到它宣稱的事。</li>
+  <li>檔案標示「兩個聲道」，但左右聲道內容一模一樣。播放時一樣有聲音，立體感卻已經消失。</li>
+  <li>聲音比畫面晚 90 毫秒。這在可接受範圍內；但如果它每分鐘多晚 10 毫秒，半小時後嘴型就對不上了。</li>
+  <li>高頻被濾掉，音樂聽起來「悶悶的」。取樣率仍然是 48 kHz，位元率也很高，數字看起來都正常。</li>
+</ul>
+
+<p>所以真正要回答的問題是：<strong>怎麼用可重複、可反駁的方式，判斷一條媒體管線的輸出忠於輸入，並且清楚知道每個結論的邊界？</strong></p>
+
+<p>答案的核心是一個受控實驗：</p>
+
+<ol>
+  <li>準備一個性質已知的輸入。例如一個「每秒閃一次白光、同時響一聲」的網頁。</li>
+  <li>讓它通過真正的錄影管線：真的 App、真的作業系統、真的編碼器。</li>
+  <li>把錄出來的檔案解碼，用程式量出客觀數字。</li>
+  <li>和已知性質比較。閃光應該每秒一次，短音應該和閃光同時；量到的差距就是管線造成的。</li>
+</ol>
+
+<p>因為輸入已知，「結果不對」才有辦法被證明。人工播放仍然重要，它能確認實際觀感，但它不是可重複的量測。</p>
+
+<p>本文的貫穿範例是 RecordStuff：一個 macOS 選單列 App，按一下就錄主螢幕和系統聲音，輸出 MP4。使用者可以選 30 或 60 fps、三種畫質（Economy、Standard、High），以及解析度上限（1080p、1440p、4K 或原尺寸）。文中的數字都來自一台 M1 Pro、60 Hz 的 1920×1080 外接螢幕上的實際量測；它們證明的是這台機器上的結果，不是所有 Mac 的保證。</p>
+
+<h2 id="pipeline">先懂資料怎麼流：錄影管線與基本名詞</h2>
+
+<p>要知道問題可能出在哪裡，得先知道畫面和聲音在變成檔案之前，經過了哪些環節。RecordStuff 建立在 Electron 上，Electron 內建 Chromium 瀏覽器引擎，所以錄影用的是瀏覽器的媒體 API，而不是自己寫的擷取程式。</p>
+
+<figure class="flow-figure">
+  <svg class="flow-desktop" role="img" aria-labelledby="fig-pipe-d-title fig-pipe-d-desc" viewBox="0 0 640 250" style="max-width: 640px"><title id="fig-pipe-d-title">一段錄影經過的管線</title><desc id="fig-pipe-d-desc">畫面與聲音由 macOS 擷取，經 Chromium 的 getDisplayMedia 變成影像軌與音訊軌，由 MediaRecorder 編碼成 fragmented MP4，主程序寫檔，最後由開發用的 ffprobe 與 ffmpeg 量測。</desc><defs><marker id="fig-pipe-d-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97757"></path></marker></defs><g class="fig-node"><rect x="12" y="16" width="136" height="80" rx="8"></rect><text class="fig-label" x="80.0" y="51.5" text-anchor="middle">螢幕畫面</text><text class="fig-note" x="80.0" y="70.5" text-anchor="middle">系統聲音</text></g><g class="fig-node"><rect x="172" y="16" width="136" height="80" rx="8"></rect><text class="fig-label" x="240.0" y="42.0" text-anchor="middle">macOS 擷取</text><text class="fig-note" x="240.0" y="61.0" text-anchor="middle">ScreenCaptureKit</text><text class="fig-note" x="240.0" y="80.0" text-anchor="middle">CoreAudio tap</text></g><g class="fig-node"><rect x="332" y="16" width="136" height="80" rx="8"></rect><text class="fig-label" x="400.0" y="51.5" text-anchor="middle">Chromium</text><text class="fig-note" x="400.0" y="70.5" text-anchor="middle">getDisplayMedia</text></g><g class="fig-node"><rect x="492" y="16" width="136" height="80" rx="8"></rect><text class="fig-label" x="560.0" y="51.5" text-anchor="middle">MediaStream</text><text class="fig-note" x="560.0" y="70.5" text-anchor="middle">影像軌＋音訊軌</text></g><path class="fig-arrow" d="M 150 56 L 169 56" marker-end="url(#fig-pipe-d-head)"></path><path class="fig-arrow" d="M 310 56 L 329 56" marker-end="url(#fig-pipe-d-head)"></path><path class="fig-arrow" d="M 470 56 L 489 56" marker-end="url(#fig-pipe-d-head)"></path><path class="fig-arrow" d="M 560 98 L 560 151" marker-end="url(#fig-pipe-d-head)"></path><g class="fig-node"><rect x="492" y="154" width="136" height="80" rx="8"></rect><text class="fig-label" x="560.0" y="189.5" text-anchor="middle">MediaRecorder</text><text class="fig-note" x="560.0" y="208.5" text-anchor="middle">H.264＋AAC 編碼</text></g><g class="fig-node"><rect x="332" y="154" width="136" height="80" rx="8"></rect><text class="fig-label" x="400.0" y="189.5" text-anchor="middle">主程序寫檔</text><text class="fig-note" x="400.0" y="208.5" text-anchor="middle">fragmented MP4</text></g><g class="fig-node"><rect x="172" y="154" width="136" height="80" rx="8" stroke-dasharray="6 4"></rect><text class="fig-label" x="240.0" y="189.5" text-anchor="middle">ffprobe、ffmpeg</text><text class="fig-note" x="240.0" y="208.5" text-anchor="middle">開發時量測成品</text></g><path class="fig-arrow" d="M 490 194 L 471 194" marker-end="url(#fig-pipe-d-head)"></path><path class="fig-arrow" d="M 330 194 L 311 194" stroke-dasharray="5 4" marker-end="url(#fig-pipe-d-head)"></path></svg>
+  <svg class="flow-mobile" role="img" aria-labelledby="fig-pipe-m-title fig-pipe-m-desc" viewBox="0 0 320 636" style="max-width: 320px"><title id="fig-pipe-m-title">一段錄影經過的管線</title><desc id="fig-pipe-m-desc">畫面與聲音由 macOS 擷取，經 Chromium 的 getDisplayMedia 變成影像軌與音訊軌，由 MediaRecorder 編碼成 fragmented MP4，主程序寫檔，最後由開發用的 ffprobe 與 ffmpeg 量測。</desc><defs><marker id="fig-pipe-m-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97757"></path></marker></defs><g class="fig-node"><rect x="40" y="8" width="240" height="62" rx="8"></rect><text class="fig-label" x="160.0" y="34.5" text-anchor="middle">螢幕畫面</text><text class="fig-note" x="160.0" y="53.5" text-anchor="middle">系統聲音</text></g><path class="fig-arrow" d="M 160 72 L 160 95" marker-end="url(#fig-pipe-m-head)"></path><g class="fig-node"><rect x="40" y="98" width="240" height="80" rx="8"></rect><text class="fig-label" x="160.0" y="124.0" text-anchor="middle">macOS 擷取</text><text class="fig-note" x="160.0" y="143.0" text-anchor="middle">ScreenCaptureKit</text><text class="fig-note" x="160.0" y="162.0" text-anchor="middle">CoreAudio tap</text></g><path class="fig-arrow" d="M 160 180 L 160 203" marker-end="url(#fig-pipe-m-head)"></path><g class="fig-node"><rect x="40" y="206" width="240" height="62" rx="8"></rect><text class="fig-label" x="160.0" y="232.5" text-anchor="middle">Chromium</text><text class="fig-note" x="160.0" y="251.5" text-anchor="middle">getDisplayMedia</text></g><path class="fig-arrow" d="M 160 270 L 160 293" marker-end="url(#fig-pipe-m-head)"></path><g class="fig-node"><rect x="40" y="296" width="240" height="62" rx="8"></rect><text class="fig-label" x="160.0" y="322.5" text-anchor="middle">MediaStream</text><text class="fig-note" x="160.0" y="341.5" text-anchor="middle">影像軌＋音訊軌</text></g><path class="fig-arrow" d="M 160 360 L 160 383" marker-end="url(#fig-pipe-m-head)"></path><g class="fig-node"><rect x="40" y="386" width="240" height="62" rx="8"></rect><text class="fig-label" x="160.0" y="412.5" text-anchor="middle">MediaRecorder</text><text class="fig-note" x="160.0" y="431.5" text-anchor="middle">H.264＋AAC 編碼</text></g><path class="fig-arrow" d="M 160 450 L 160 473" marker-end="url(#fig-pipe-m-head)"></path><g class="fig-node"><rect x="40" y="476" width="240" height="62" rx="8"></rect><text class="fig-label" x="160.0" y="502.5" text-anchor="middle">主程序寫檔</text><text class="fig-note" x="160.0" y="521.5" text-anchor="middle">fragmented MP4</text></g><path class="fig-arrow" d="M 160 540 L 160 563" stroke-dasharray="5 4" marker-end="url(#fig-pipe-m-head)"></path><g class="fig-node"><rect x="40" y="566" width="240" height="62" rx="8" stroke-dasharray="6 4"></rect><text class="fig-label" x="160.0" y="592.5" text-anchor="middle">ffprobe、ffmpeg</text><text class="fig-note" x="160.0" y="611.5" text-anchor="middle">開發時量測成品</text></g></svg>
+  <figcaption>每一層都可能改變結果：擷取層決定影格何時產生，編碼層決定位元率與畫質，寫檔層決定檔案是否完整；量測工具只在最後讀成品。虛線表示只在開發時使用、不隨 App 發佈。</figcaption>
+</figure>
+
+<p>逐層來看：</p>
+
+<ul>
+  <li><strong>macOS 擷取。</strong>ScreenCaptureKit 是 Apple 提供的螢幕擷取框架，負責「在畫面改變時產生一張影格」。系統聲音則由 CoreAudio 的 tap 以 loopback 方式取得，也就是直接拿電腦正在播放的數位聲音，不經過麥克風。</li>
+  <li><strong>Chromium 與 <code>getDisplayMedia</code>。</strong><code>getDisplayMedia</code> 是 W3C 的 Web 標準 API，意思是「給我某個螢幕的畫面與聲音」。呼叫時可以附上 constraints（限制條件），例如 <code>frameRate: { ideal: 30, max: 30 }</code>。Chromium 會把這些條件翻譯成給作業系統的設定。</li>
+  <li><strong>MediaStream 與 track。</strong>拿到的結果是一個 stream，裡面有一條影像軌（video track）和一條音訊軌（audio track）。軌道可以回報自己的設定（<code>getSettings()</code>）和統計數字（<code>track.stats</code>），但回報的內容不一定等於實際情況，後面會看到例子。</li>
+  <li><strong>MediaRecorder 編碼。</strong>MediaRecorder 是瀏覽器內建的錄製 API，把影像壓縮成 H.264、聲音壓縮成 AAC，再包進 MP4。H.264 在 Mac 上由硬體編碼器（VideoToolbox）處理，所以 CPU 負擔不大。</li>
+  <li><strong>寫檔。</strong>MediaRecorder 每秒交出一段 fragmented MP4（分段 MP4），主程序依序寫進磁碟。分段的好處是即使中途當機，已寫入的段落仍然能播放。</li>
+  <li><strong>量測。</strong>ffprobe 和 ffmpeg 是開發時用的命令列工具，只讀成品、算指標，不隨 App 發佈。</li>
+</ul>
+
+<p>接下來的內容會反覆用到下面這些名詞：</p>
+
+<div class="table-scroll">
+<table class="compact-first">
+  <thead><tr><th>名詞</th><th>白話解釋</th><th>例子</th></tr></thead>
+  <tbody>
+    <tr><td>影格（frame）</td><td>一張靜止的畫面。影片就是一連串影格快速播放。</td><td>10 秒的 30 fps 影片約有 300 格</td></tr>
+    <tr><td>幀率（fps）</td><td>每秒有幾張影格。</td><td>30 fps、60 fps</td></tr>
+    <tr><td>週期／影格間隔</td><td>相鄰兩格的時間差。標稱週期是 1 ÷ fps。</td><td>30 fps 是 33.33 ms；60 fps 是 16.67 ms</td></tr>
+    <tr><td>時間戳（pts）</td><td>presentation timestamp，每一格「應該在什麼時間顯示」，記錄在檔案裡。拿相鄰兩格的 pts 相減，就得到實際間隔。</td><td>0.000、0.034、0.068 秒…</td></tr>
+    <tr><td>刷新率</td><td>螢幕每秒更新幾次畫面。螢幕本身每秒只產生這麼多張新畫面。</td><td>60 Hz</td></tr>
+    <tr><td>解析度</td><td>寬 × 高的像素數。</td><td>1920×1080</td></tr>
+    <tr><td>編碼器（codec）</td><td>壓縮演算法。沒壓縮的 1080p 畫面每秒要數百 MB。</td><td>影像 H.264、聲音 AAC</td></tr>
+    <tr><td>容器</td><td>把影像流、聲音流和時間戳包在一起的檔案格式。</td><td>MP4</td></tr>
+    <tr><td>位元率</td><td>每秒用多少位元來存資料，越高通常越清楚、檔案越大。</td><td>8 Mbps = 每秒 800 萬位元，約 1 MB</td></tr>
+    <tr><td>取樣率</td><td>聲音每秒取樣幾次。</td><td>48 kHz = 每秒 48,000 個樣本</td></tr>
+    <tr><td>聲道</td><td>獨立的聲音通道。立體聲是左右兩個。</td><td>2 聲道</td></tr>
+    <tr><td>dB、dBFS</td><td>分貝是比例的對數表示。dBFS 以「數位能表示的最大值」為 0，越負越小聲。</td><td>測試素材錄下來每個聲道約 −27 dBFS；低於 −60 dBFS 幾乎等於無聲</td></tr>
+    <tr><td>RMS</td><td>均方根，一段聲音的平均能量，比最大值更能代表「有多大聲」。</td><td>每個聲道各算一個</td></tr>
+    <tr><td>延遲、偏移、漂移</td><td>延遲是晚了多久；偏移是聲音相對畫面差多少；漂移是偏移隨時間變大或變小。</td><td>偏移 80 ms、漂移 1 ms</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="material">已知的輸入：為什麼需要固定的測試素材</h2>
+
+<p>量測要有意義，輸入必須固定。如果每次錄的是不同網頁、不同影片，數字變了也說不出是 App 變了還是內容變了。RecordStuff 的做法是用一個固定的網頁當測試素材，每次量測都錄同一頁，並記下這一頁的 SHA-256，讓結果能對應到素材的版本。</p>
+
+<div class="table-scroll">
+<table class="compact-first">
+  <thead><tr><th>素材元素</th><th>用來測什麼</th><th>為什麼這樣設計</th></tr></thead>
+  <tbody>
+    <tr><td>持續捲動的小字</td><td>銳利度</td><td>縮放或壓縮過度時，細小文字會先變糊，人眼一看就知道。</td></tr>
+    <tr><td>紅藍細線與彩色文字</td><td>色彩邊緣</td><td>H.264 常用 4:2:0 色度取樣，顏色的解析度只有亮度的一半，細的彩色線條最先出問題。</td></tr>
+    <tr><td>每格都移動的方塊</td><td>影格時序</td><td>畫面每一格都不同，擷取端就必須一直產生新影格。</td></tr>
+    <tr><td>右上角方框：平常全黑，每秒閃白 100 ms</td><td>畫面側的同步標記</td><td>黑白對比最容易被程式偵測，而且只看一小塊區域，不受畫面其他部分影響。</td></tr>
+    <tr><td>660 Hz 短音：120 ms、約 −10 dBFS、左右交替，與閃光同一個時鐘</td><td>聲音側的同步標記</td><td>和閃光同時發生，所以錄進檔案後兩者的時間差就是音畫偏移。左右交替則讓兩個聲道都有能量。</td></tr>
+    <tr><td>其他時間完全無聲</td><td>避免誤判</td><td>偵測器靠「安靜之後出現聲音」找短音，任何背景聲都會干擾，所以量測時電腦不能播放其他聲音。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout">
+<p><strong>一個容易誤會的地方：畫面不動，就不會有新影格。</strong>螢幕擷取只在畫面改變時產生影格。錄一個靜止的桌面，fps 本來就會很低、位元率也很低，這不是故障。所以跟「影格時序」有關的指標（平均 fps、掉格、同步），只有在錄持續移動的素材時才判定；錄一般畫面時，工具會照樣顯示數值，但標為 n/a（不適用），不判定通過或失敗。</p>
+</div>
+
+<p>自動化測試會用 Chrome 的 app 模式、以全新的設定檔在主螢幕全螢幕開啟這一頁，並允許自動播放聲音，所以不需要人去點按鈕。</p>
+
+<h2 id="tools">量測工具：ffprobe 與 ffmpeg 在看什麼</h2>
+
+<p>FFmpeg 是開源的影音處理工具組。<strong>ffprobe</strong> 負責「讀」：列出檔案裡有哪些串流、各自的格式與時間。<strong>ffmpeg</strong> 負責「處理」：它內建上百個濾鏡（filter），可以對解碼後的畫面或聲音做分析。錄影工具本身不呼叫它們；它們只在開發時用來檢查成品。</p>
+
+<p>下面是量測時實際使用的指令（檔名以 <code>rec.mp4</code> 代表）：</p>
+
+<pre class="language-shell"><span class="label">Shell</span><code><span class="sh-comment"># 1. 串流資訊，並完整解碼一次來數影格、抓解碼錯誤</span>
+<span class="sh-command">ffprobe</span> <span class="sh-flag">-v</span> error <span class="sh-flag">-show_format</span> <span class="sh-flag">-show_streams</span> <span class="sh-flag">-count_frames</span> <span class="sh-flag">-of</span> json rec.mp4
+
+<span class="sh-comment"># 2. 每一格的時間戳（pts），用來算間隔、掉格與 median</span>
+<span class="sh-command">ffprobe</span> <span class="sh-flag">-v</span> error <span class="sh-flag">-select_streams</span> v:0 <span class="sh-flag">-show_entries</span> <span class="sh-var">frame=pts_time</span> <span class="sh-flag">-of</span> <span class="sh-var">csv=p=0</span> rec.mp4
+
+<span class="sh-comment"># 3. 每個聲道的平均能量（RMS）</span>
+<span class="sh-command">ffmpeg</span> <span class="sh-flag">-hide_banner</span> <span class="sh-flag">-nostats</span> <span class="sh-flag">-vn</span> <span class="sh-flag">-i</span> rec.mp4 \
+  <span class="sh-flag">-af</span> <span class="sh-var">astats=measure_perchannel=RMS_level:measure_overall=none</span> <span class="sh-flag">-f</span> <span class="sh-command">null</span> -
+
+<span class="sh-comment"># 4. 同步標記：只看右上角方框找閃光，並在聲音裡找短音</span>
+<span class="sh-command">ffmpeg</span> <span class="sh-flag">-hide_banner</span> <span class="sh-flag">-nostats</span> <span class="sh-flag">-an</span> <span class="sh-flag">-i</span> rec.mp4 \
+  <span class="sh-flag">-vf</span> <span class="sh-string">"crop=ih*0.08:ih*0.08:iw-ih*0.115:ih*0.035,blackdetect=d=0.4:pix_th=0.10:pic_th=0.90"</span> <span class="sh-flag">-f</span> <span class="sh-command">null</span> -
+<span class="sh-command">ffmpeg</span> <span class="sh-flag">-hide_banner</span> <span class="sh-flag">-nostats</span> <span class="sh-flag">-vn</span> <span class="sh-flag">-i</span> rec.mp4 <span class="sh-flag">-af</span> <span class="sh-var">silencedetect=n=-35dB:d=0.4</span> <span class="sh-flag">-f</span> null -</code></pre>
+
+<p>每一行在做什麼：</p>
+
+<ul>
+  <li><strong>第 1 行</strong>取得寬高、編碼、時長、起始時間，<code>-count_frames</code> 會把整個檔案解碼一遍，同時得到影格總數；解碼中出現的錯誤會印在 stderr，那就是「解碼錯誤」指標。</li>
+  <li><strong>第 2 行</strong>列出每一格的 pts。相鄰兩格相減就是間隔：正常 30 fps 大約每格 0.033 秒，如果突然出現 0.100 秒，代表中間少了兩格。</li>
+  <li><strong>第 3 行</strong>的 <code>astats</code> 濾鏡計算每個聲道的 RMS 能量，用來發現「有音軌但完全無聲」或「某一邊聲道壞掉」。</li>
+  <li><strong>第 4 行</strong>先用 <code>crop</code> 裁出右上角那個方框，再用 <code>blackdetect</code> 找出「持續至少 0.4 秒的黑色」區間；每個黑色區間結束的時刻，就是閃光開始的時刻。聲音這邊用 <code>silencedetect</code> 找「低於 −35 dB 且持續至少 0.4 秒」的安靜區間，安靜結束的時刻就是短音開始。裁切尺寸用畫面高度的比例表示，所以任何橫向解析度都裁得到方框。</li>
+</ul>
+
+<p>另一個好用的濾鏡是 <code>mpdecimate</code>：它會找出「和上一格幾乎一模一樣」的影格。擷取端如果送出重複的畫面，這個濾鏡就數得出來。用它之前要先確認它真的能抓到：拿一段正常影片硬把幀率升到兩倍（等於每格重複一次），它應該標出大約一半的影格。確認偵測器真的會失敗，是量測工作的基本功，第 9 節會再談。</p>
+
+<div class="callout">
+<p><strong>只有正常結束的工具輸出才算量測。</strong>ffmpeg 如果中途失敗，可能已經印出一部分結果。把「量到一半」當成結果，會得到看似合理、實際錯誤的數字。所以工具只要不是 exit 0，這一項就判定為失敗，印出的部分內容一律丟棄。</p>
+</div>
+
+<h2 id="metrics">每一個指標在問什麼</h2>
+
+<p>指標分成兩層。<strong>完整性（integrity）</strong>指標對任何內容都成立，它問的是：「這個檔案是不是這次錄影完整產生的？」發布前的驗收只需要這一層。<strong>效能（performance）</strong>指標只有在錄持續移動的測試素材時才有意義，它問的是：「影格時序和音畫同步好不好？」</p>
+
+<h3>完整性指標</h3>
+
+<div class="table-scroll">
+<table class="table-wide">
+  <thead><tr><th>指標</th><th>怎麼算</th><th>門檻</th><th>為什麼是這個門檻、失敗代表什麼</th></tr></thead>
+  <tbody>
+    <tr><td>輸出尺寸</td><td>檔案的寬高，對照 App 自己回報的尺寸與解析度上限</td><td>相符；符合上限並維持來源長寬比</td><td>抓出「App 以為錄的尺寸」和「實際檔案」不一致的情況。</td></tr>
+    <tr><td>錄影長度</td><td>檔案時長，對照要求的秒數或 log 裡的錄影期間</td><td>±2 秒</td><td>按下開始與真正開始錄之間本來就有一點時間差；差太多代表開頭或結尾遺失。</td></tr>
+    <tr><td>音訊與影像長度差</td><td>兩條串流各自的時長相減</td><td>小於 100 ms</td><td>兩條串流應該一起開始、一起結束，差很多代表其中一條中途斷掉。</td></tr>
+    <tr><td>容器起始偏移</td><td>音訊起始時間減影像起始時間</td><td>介於 −45 與 +125 ms 之間</td><td>依據 ITU-R BT.1359 的研究：聲音晚到 125 ms、早到 45 ms 以內，觀眾不容易察覺。自然界的光比聲音快，所以人對「聲音晚」比較寬容，門檻因此不對稱。</td></tr>
+    <tr><td>取樣率與聲道</td><td>音訊串流的 metadata</td><td>48 kHz、2 聲道</td><td>格式不對就直接失敗，不讓後續處理掩蓋問題。只看標示，不代表內容真的是立體聲。</td></tr>
+    <tr><td>聲道能量（RMS）</td><td><code>astats</code> 量每個聲道</td><td>每個聲道都高於 −60 dBFS</td><td>抓出「有音軌但全是靜音」。例如 macOS 沒有授予系統錄音權限時，Chromium 仍會給一條已經結束的音軌，錄出來就是無聲檔。</td></tr>
+    <tr><td>影像位元率</td><td>影像串流的位元率，對照 App 要求的目標</td><td>至少目標的 70%</td><td>只設下限。超過目標只是檔案比較大，遠低於目標則可能代表畫面被過度壓縮。</td></tr>
+    <tr><td>音訊位元率</td><td>音訊串流的位元率，對照 256 kbps 目標</td><td>至少 50%；錄測試素材時只回報</td><td>AAC 依內容分配位元，測試素材大多是靜音，位元率自然很低，這不代表音質差。</td></tr>
+    <tr><td>解碼</td><td>ffprobe 完整解碼</td><td>沒有錯誤</td><td>檔案能從頭解到尾。在播放器裡實際開啟、拖曳進度仍需另外人工確認。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>效能指標</h3>
+
+<div class="table-scroll">
+<table class="table-wide">
+  <thead><tr><th>指標</th><th>怎麼算</th><th>門檻</th><th>為什麼是這個門檻、失敗代表什麼</th></tr></thead>
+  <tbody>
+    <tr><td>平均 fps</td><td>影格總數 ÷ 影像時長；旁邊另外列出影格間隔的 median 與標稱週期（只回報，不判定）</td><td>要求值 ±2 fps</td><td>平均 fps 看總數，median 間隔看「每一格」的節奏。兩者一起看，才能分辨「每格都慢一點」和「偶爾掉格」。</td></tr>
+    <tr><td>掉格率</td><td>相鄰 pts 的間隔大於 1.5 個週期就算有掉格，遺失格數 = 四捨五入（間隔 ÷ 週期）− 1</td><td>小於 2%</td><td>例：30 fps 出現一個 100 ms 的間隔，100 ÷ 33.3 = 3，所以遺失 2 格。超過 120 秒的長檔只取頭尾各 60 秒計算，中間跳過的部分不能算成掉格。</td></tr>
+    <tr><td>閃光／短音偏移</td><td>每個閃光開始時間，找 400 ms 內最近的短音開始時間，相減（聲音減畫面）後取 median</td><td>介於 −45 與 +125 ms 之間，且至少 3 組配對</td><td>正值表示聲音晚到。少於 3 組配對時數字不可靠，所以判定為「不完整」而不是通過。</td></tr>
+    <tr><td>端到端漂移</td><td>開頭 60 秒的偏移 median 與結尾 60 秒的偏移 median 相減</td><td>小於 100 ms；頭尾各至少 3 組配對；只判定 120 秒以上的錄影</td><td>固定的偏移可以接受，會越拉越大的偏移不行。只算整段的 median 會把漂移平均掉，所以要分頭尾比較。</td></tr>
+    <tr><td>CPU</td><td>每秒加總所有 Electron 程序的 <code>ps %cpu</code>，略過開頭 3 秒啟動期，取平均</td><td>平均不超過 40%（僅自動化 matrix）</td><td>100% 代表用滿一顆核心。門檻依第一次量測的數字加上寬裕空間訂出（1080p30 約 15%、1080p60 約 23%），讓較慢的機器也有餘裕。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>下一張圖說明同步標記怎麼換算成數字：</p>
+
+<figure class="flow-figure">
+  <svg class="flow-desktop" role="img" aria-labelledby="fig-sync-d-title fig-sync-d-desc" viewBox="0 0 640 214" style="max-width: 640px"><title id="fig-sync-d-title">閃光與短音如何換算成音畫偏移</title><desc id="fig-sync-d-desc">畫面右上角的方框每秒閃白 100 毫秒，同一時鐘播放 120 毫秒的 660 Hz 短音；短音開始時間減去閃光開始時間，就是聲音相對畫面的偏移。</desc><defs><marker id="fig-sync-d-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97757"></path></marker></defs><text class="fig-label" x="12" y="24" text-anchor="start">畫面：方框每秒閃白 100 ms</text><rect x="70" y="36" width="558" height="30" rx="4" fill="#141413"></rect><text class="fig-label" x="12" y="98" text-anchor="start">聲音：同時響 660 Hz 短音</text><line x1="70" y1="126" x2="628" y2="126" stroke="#D1CFC5" stroke-width="2"></line><rect x="120.0" y="36" width="25.0" height="30" fill="#FFFFFF" stroke="#E3DACC"></rect><rect x="140.0" y="112" width="30.0" height="28" rx="3" fill="#D97757"></rect><rect x="370.0" y="36" width="25.0" height="30" fill="#FFFFFF" stroke="#E3DACC"></rect><rect x="390.0" y="112" width="30.0" height="28" rx="3" fill="#D97757"></rect><line x1="120.0" y1="30" x2="120.0" y2="72" stroke="#87867F" stroke-dasharray="3 3"></line><line x1="120.0" y1="106" x2="120.0" y2="162" stroke="#87867F" stroke-dasharray="3 3"></line><line x1="140.0" y1="30" x2="140.0" y2="72" stroke="#87867F" stroke-dasharray="3 3"></line><line x1="140.0" y1="106" x2="140.0" y2="162" stroke="#87867F" stroke-dasharray="3 3"></line><path d="M 120.0 156 L 140.0 156" stroke="#3D3D3A" stroke-width="1.5"></path><text class="fig-label" x="12" y="184" text-anchor="start">偏移 = 短音開始 − 閃光開始</text><text class="fig-note" x="12" y="204" text-anchor="start">例：+80 ms，表示聲音比畫面晚 80 ms</text></svg>
+  <svg class="flow-mobile" role="img" aria-labelledby="fig-sync-m-title fig-sync-m-desc" viewBox="0 0 320 214" style="max-width: 320px"><title id="fig-sync-m-title">閃光與短音如何換算成音畫偏移</title><desc id="fig-sync-m-desc">畫面右上角的方框每秒閃白 100 毫秒，同一時鐘播放 120 毫秒的 660 Hz 短音；短音開始時間減去閃光開始時間，就是聲音相對畫面的偏移。</desc><defs><marker id="fig-sync-m-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97757"></path></marker></defs><text class="fig-label" x="12" y="24" text-anchor="start">畫面：方框每秒閃白 100 ms</text><rect x="40" y="36" width="268" height="30" rx="4" fill="#141413"></rect><text class="fig-label" x="12" y="98" text-anchor="start">聲音：同時響 660 Hz 短音</text><line x1="40" y1="126" x2="308" y2="126" stroke="#D1CFC5" stroke-width="2"></line><rect x="90.0" y="36" width="25.0" height="30" fill="#FFFFFF" stroke="#E3DACC"></rect><rect x="110.0" y="112" width="30.0" height="28" rx="3" fill="#D97757"></rect><line x1="90.0" y1="30" x2="90.0" y2="72" stroke="#87867F" stroke-dasharray="3 3"></line><line x1="90.0" y1="106" x2="90.0" y2="162" stroke="#87867F" stroke-dasharray="3 3"></line><line x1="110.0" y1="30" x2="110.0" y2="72" stroke="#87867F" stroke-dasharray="3 3"></line><line x1="110.0" y1="106" x2="110.0" y2="162" stroke="#87867F" stroke-dasharray="3 3"></line><path d="M 90.0 156 L 110.0 156" stroke="#3D3D3A" stroke-width="1.5"></path><text class="fig-label" x="12" y="184" text-anchor="start">偏移 = 短音開始 − 閃光開始</text><text class="fig-note" x="12" y="204" text-anchor="start">例：+80 ms，表示聲音比畫面晚 80 ms</text></svg>
+  <figcaption>偵測器用 <code>blackdetect</code> 找閃光開始、用 <code>silencedetect</code> 找短音開始，每個閃光配對 400 ms 內最近的短音，取所有配對的 median。每秒都會重複一次，30 秒的錄影約有 29 組配對。</figcaption>
+</figure>
+
+<p>數字的解讀要小心一件事：偵測器本身也有誤差。閃光從「黑色結束」判斷、短音從「安靜結束」判斷，兩者的偵測方式不同，大約會帶進 10 ms 的系統性偏差。所以 80 ms 的偏移不代表剛好 80 ms，而是「落在可接受範圍、且每次量測都差不多」。</p>
+<h2 id="verdicts">判定：通過與失敗之外的三種狀態</h2>
+
+<p>只有「通過／失敗」兩種結果的量測，會在最危險的地方出錯：量不到的時候，程式很容易默默當作通過。例如電腦沒有安裝 ffmpeg，同步標記根本量不出來；如果這時報告顯示「全部通過」，就是一份假的證據。所以每一項檢查都有五種結果：</p>
+
+<div class="table-scroll">
+<table class="compact-first">
+  <thead><tr><th>結果</th><th>意思</th><th>例子</th></tr></thead>
+  <tbody>
+    <tr><td>pass</td><td>量到了，且符合門檻</td><td>平均 29.9 fps，要求 30 ± 2</td></tr>
+    <tr><td>fail</td><td>量到了，不符合門檻；或量測工具本身執行失敗</td><td>60 fps 只量到 57.0</td></tr>
+    <tr><td>blocked</td><td>必要的證據因為缺少工具而量不到</td><td>沒有安裝 ffmpeg</td></tr>
+    <tr><td>incomplete</td><td>有量，但證據太少，不足以判斷</td><td>只找到 2 組閃光／短音配對；長檔缺少頭或尾的配對</td></tr>
+    <tr><td>n/a</td><td>這次不需要，或不適用於這個檔案</td><td>錄一般畫面時的 fps；短檔的漂移</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>整份報告的結論依「最嚴重者優先」的順序決定：只要有一項 fail 就是 fail；沒有 fail 但有 blocked 就是 blocked；再來是 incomplete；都沒有才看是否至少有一項 pass。程序的 exit code 也跟著這個順序：fail 或 incomplete 為 1，blocked 為 2，其餘為 0。自動化腳本因此能分辨「測了但失敗」和「沒辦法測」。</p>
+
+<p>「哪些證據是必要的」由呼叫的一方宣告。例如自動化的 matrix 一定要求聲道能量與同步標記，所以缺 ffmpeg 就是 blocked；單獨檢查一個檔案時，如果沒有要求同步，同步那一項就是 n/a，並附上原因。無論哪一種，<strong>缺少證據都不會被當成通過</strong>。</p>
+
+<h2 id="audio">聲音要另一套量測：「有聲音」不等於「聲音對」</h2>
+
+<p>前面的聲道能量只能證明「不是靜音」。使用者抱怨「錄出來的聲音很悶」時，它回答不了。聲音的品質要回答的是：頻率分布有沒有被改變？左右聲道是不是真的獨立？音量是否被自動調整？有沒有斷斷續續？</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>看得到的數字</th><th>它證明了什麼</th><th>它證明不了什麼</th></tr></thead>
+  <tbody>
+    <tr><td>48 kHz 取樣率</td><td>檔案的時間格線有多細</td><td>12 kHz、16 kHz 的高頻真的有保留下來</td></tr>
+    <tr><td>兩個聲道</td><td>每個時間點存了兩個數值</td><td>左右聲道的內容不一樣</td></tr>
+    <tr><td>很高的 AAC 位元率</td><td>編碼時分配了很多空間</td><td>編碼之前沒有被濾波或處理過</td></tr>
+    <tr><td>RMS 不是零</td><td>有能量</td><td>那些能量是原本的聲音，而不是雜訊或失真</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>先解釋一個常見的誤會。48 kHz 取樣率理論上最高可以表示 24 kHz 的聲音，這叫 Nyquist 頻率（取樣率的一半）。但這只是「能表示的上限」，不是「保證保留」。如果管線前段有一個濾波器把 10 kHz 以上都去掉了，檔案仍然是 48 kHz，位元率再高也救不回已經消失的高頻。同樣的道理，把單聲道複製成兩份，檔案標示是兩聲道，卻沒有任何立體聲資訊。</p>
+
+<h3>用已知的測試音來量</h3>
+
+<p>RecordStuff 的音質診斷產生一段 12.1 秒、48 kHz 雙聲道的 WAV 測試音，由系統播放，App 同時錄下來，再把錄到的檔案和原始測試音比較。測試音的內容：</p>
+
+<ul>
+  <li><strong>開頭與結尾的標記音：</strong>1 kHz 與 2 kHz，兩個聲道同時播放，用來在錄音裡找到測試音的起點與終點，並估計時間比例。</li>
+  <li><strong>六個探測頻率：</strong>250 Hz、1、4、8、12、16 kHz，涵蓋低音、中音到高音。先在左聲道依序播一遍，再在右聲道播一遍。</li>
+  <li><strong>同時播放的 1 kHz 引導音（pilot）：</strong>每個探測音都和一個 1 kHz 的引導音一起播放。如果系統在兩段探測音之間自動把音量調小，拿「12 kHz 和同時的 1 kHz 相比」，音量變化會互相抵消，才不會把「音量被調小」誤判成「高頻流失」。</li>
+</ul>
+
+<p>比較時用的方法叫<strong>最小平方正弦擬合</strong>：用數學找出「最像錄到的波形」的正弦波組合，量出每個頻率的強度，擬合不了的剩餘部分稱為 residual，代表雜訊、失真或斷續。錄音和原始檔的時脈也可能有極小差異（以 ppm，百萬分之一為單位）；例如 10 ppm 會讓 16 kHz 變成 16000.16 Hz。第一版分析器沒有考慮時脈差，結果把乾淨的測試音誤判成失真，所以第二版會先估計時脈，把「時脈誤差」和「波形被改變」分開判定。</p>
+
+<p>分貝的換算在這裡很關鍵：功率比用 10 × log₁₀，振幅比用 20 × log₁₀。功率 −3 dB 約等於剩一半，−20 dB 是剩百分之一。混用兩個公式會得到錯誤的 dB 值。</p>
+
+<div class="table-scroll">
+<table class="compact-first">
+  <thead><tr><th>檢查</th><th>門檻</th><th>抓什麼問題</th></tr></thead>
+  <tbody>
+    <tr><td>頻率響應</td><td>探測音相對同時的引導音在 ±3 dB 內</td><td>高頻流失，也就是「悶悶的」聲音</td></tr>
+    <tr><td>引導音增益</td><td>相對原始 ±6 dB 內</td><td>整體音量被放大或縮小；這是上一項刻意抵消掉的部分</td></tr>
+    <tr><td>聲道分離度</td><td>至少 30 dB</td><td>左聲道播放時，右聲道應該幾乎沒有聲音。複製成兩份的單聲道會是 0 dB 左右</td></tr>
+    <tr><td>殘差</td><td>不超過 −25 dB</td><td>擬合解釋不了的雜訊、諧波或失真</td></tr>
+    <tr><td>時脈偏差</td><td>±200 ppm</td><td>錄音時脈與播放時脈差太多</td></tr>
+    <tr><td>結尾時間</td><td>修正時脈後 ±20 ms</td><td>中途有樣本被插入或刪除</td></tr>
+    <tr><td>連續性</td><td>每 10 ms 一個窗口，不低於中段功率 −15 dB</td><td>短暫的斷音。第一版只看每段中間 300 ms，把頭尾各刪掉 100 ms 也會通過，第二版補上這個盲點</td></tr>
+    <tr><td>削波、間隔</td><td>削波區塊 ≤0.1%；間隔低於前一段 −35 dB</td><td>數位滿刻度削波；安靜處混入其他聲音</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>音質診斷還有第三種結果 <strong>invalid</strong>：找不到標記音或間隔被其他聲音污染時，無法可靠地量頻率，這時頻率相關的數字一律不顯示。invalid 不代表 App 沒問題，只代表這一次量不了，所以它也不能算通過。</p>
+
+<h3>一個真實案例：為語音通話設計的處理，會傷害錄音</h3>
+
+<p>使用者回報錄音很悶。量測結果是 16 kHz 的響應約 −44 到 −47 dB（幾乎完全消失），左右聲道分離度約 0 dB（兩邊一樣）。原因在瀏覽器擷取系統聲音時，預設會套用三種為語音通話設計的處理：</p>
+
+<ul>
+  <li><strong>回音消除（echo cancellation）：</strong>去掉喇叭播出、又被麥克風收回去的聲音，避免對方聽到自己的回音。</li>
+  <li><strong>降噪（noise suppression）：</strong>去掉背景雜音，讓人聲更清楚。</li>
+  <li><strong>自動增益（automatic gain control）：</strong>自動調整音量，讓忽大忽小的講話聲維持一致。</li>
+</ul>
+
+<p>這些功能讓視訊會議好用，但錄音工具要的是忠實保留電腦播放的數位混音，包括音樂的高頻細節、立體聲和原本的強弱變化。在擷取 constraints 裡把三項同時關閉（<code>echoCancellation: false</code>、<code>noiseSuppression: false</code>、<code>autoGainControl: false</code>）之後，兩次有效的量測中 16 kHz 與引導音的差距在 0.004 dB 以內，分離度也超過 30 dB。同一批三次量測裡有一次因為間隔被污染而判定 invalid，所以這批結果整體仍然是 invalid，沒有被說成通過。實驗證明的是「三項一起關閉」的效果，不能拆出是哪一項造成的。</p>
+
+<div class="callout">
+<p><strong>要求、回報與成品是三種不同強度的證據。</strong>程式送出 <code>echoCancellation: false</code> 只證明「我們要求了」；軌道的 <code>getSettings()</code> 回報關閉，只證明「執行環境這樣說」；只有解碼後的成品量測，才證明聲音真的沒被處理。單元測試能確認第一種，不能取代第三種。</p>
+</div>
+
+<h2 id="ranges">為什麼有些範圍表現好、有些差</h2>
+
+<p>有了指標，就能回答開頭的問題：同一個 App、同一台機器，為什麼某些設定的數字漂亮、某些不理想？下面每一個案例都有一個共同點：問題出在「某一層的設計和我們的期待不同」，而不是隨機的故障。</p>
+
+<h3>30 fps 與 60 fps：最小影格間隔是下限，不是節拍器</h3>
+
+<p>很長一段時間裡，RecordStuff 每支錄影的影格都比設定少一點：30 fps 實際約 29.4，60 fps 約 57.5，而且完全沒有掉格。30 fps 用掉 ±2 容許範圍的 0.6，60 fps 則每次判定幀率都失敗。</p>
+
+<p>原因在 Chromium 把 <code>frameRate</code> 交給 ScreenCaptureKit 的方式：它把要求的幀率換成 ScreenCaptureKit 的「最小影格間隔」。要求 30 fps，就設定「兩格之間至少隔 33.33 ms」。這是一個<strong>下限</strong>：ScreenCaptureKit 保證不會比 33.33 ms 更快送出下一格，但真正送出還要再加上系統排程的延遲，實測約 0.6 ms。所以每一格的平均間隔是 33.33 + 0.6 ≈ 33.9 ms。</p>
+
+<p>0.6 ms 看起來很小，但每一格都會累積。30 fps 一秒 30 格，每格晚 0.57 ms，一秒累積約 17 ms，大約是半格，所以每秒只剩 29.5 格左右。60 fps 一秒 60 格，累積約 33 ms，將近兩格，所以只剩 58 格左右。實測分別是 29.4 與 57.5，吻合。</p>
+
+<figure class="flow-figure">
+  <svg class="flow-desktop" role="img" aria-labelledby="fig-floor-d-title fig-floor-d-desc" viewBox="0 0 640 290" style="max-width: 640px"><title id="fig-floor-d-title">最小影格間隔是下限：延遲如何累積</title><desc id="fig-floor-d-desc">上排照設定值要求，下限等於一個週期，每格再加上延遲，所以越來越晚；下排把下限往前挪同樣的量，每格回到週期上。</desc><defs><marker id="fig-floor-d-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97757"></path></marker></defs><line x1="40" y1="52" x2="40" y2="92" stroke="#87867F" stroke-dasharray="4 4" stroke-width="1"></line><line x1="40" y1="178" x2="40" y2="218" stroke="#87867F" stroke-dasharray="4 4" stroke-width="1"></line><text class="fig-note" x="40" y="276" text-anchor="middle">0</text><line x1="210" y1="52" x2="210" y2="92" stroke="#87867F" stroke-dasharray="4 4" stroke-width="1"></line><line x1="210" y1="178" x2="210" y2="218" stroke="#87867F" stroke-dasharray="4 4" stroke-width="1"></line><text class="fig-note" x="210" y="276" text-anchor="middle">1 個週期</text><line x1="380" y1="52" x2="380" y2="92" stroke="#87867F" stroke-dasharray="4 4" stroke-width="1"></line><line x1="380" y1="178" x2="380" y2="218" stroke="#87867F" stroke-dasharray="4 4" stroke-width="1"></line><text class="fig-note" x="380" y="276" text-anchor="middle">2 個週期</text><line x1="550" y1="52" x2="550" y2="92" stroke="#87867F" stroke-dasharray="4 4" stroke-width="1"></line><line x1="550" y1="178" x2="550" y2="218" stroke="#87867F" stroke-dasharray="4 4" stroke-width="1"></line><text class="fig-note" x="550" y="276" text-anchor="middle">3 個週期</text><text class="fig-label" x="12" y="24" text-anchor="start">照設定值要求：下限 = 一個週期</text><text class="fig-note" x="12" y="44" text-anchor="start">每格 = 下限 + 延遲，越來越晚</text><rect x="36" y="56" width="8" height="30" rx="2" fill="#141413"></rect><rect x="224" y="56" width="8" height="30" rx="2" fill="#141413"></rect><rect x="412" y="56" width="8" height="30" rx="2" fill="#141413"></rect><rect x="600" y="56" width="8" height="30" rx="2" fill="#141413"></rect><rect x="44" y="94" width="166" height="6" rx="2" fill="#D1CFC5"></rect><rect x="210" y="94" width="18" height="6" rx="2" fill="#D97757"></rect><text class="fig-note" x="125.0" y="116" text-anchor="middle">下限</text><text class="fig-note" x="233.0" y="116" text-anchor="start">延遲</text><text class="fig-label" x="12" y="150" text-anchor="start">要求略高：下限 = 週期 − 延遲</text><text class="fig-note" x="12" y="170" text-anchor="start">每格 ≈ 一個週期，準時</text><rect x="36" y="182" width="8" height="30" rx="2" fill="#141413"></rect><rect x="206" y="182" width="8" height="30" rx="2" fill="#141413"></rect><rect x="376" y="182" width="8" height="30" rx="2" fill="#141413"></rect><rect x="546" y="182" width="8" height="30" rx="2" fill="#141413"></rect><rect x="44" y="220" width="148" height="6" rx="2" fill="#D1CFC5"></rect><rect x="192" y="220" width="18" height="6" rx="2" fill="#D97757"></rect><text class="fig-note" x="116.0" y="242" text-anchor="middle">下限</text><text class="fig-note" x="215.0" y="242" text-anchor="start">延遲</text></svg>
+  <svg class="flow-mobile" role="img" aria-labelledby="fig-floor-m-title fig-floor-m-desc" viewBox="0 0 320 290" style="max-width: 320px"><title id="fig-floor-m-title">最小影格間隔是下限：延遲如何累積</title><desc id="fig-floor-m-desc">上排照設定值要求，下限等於一個週期，每格再加上延遲，所以越來越晚；下排把下限往前挪同樣的量，每格回到週期上。</desc><defs><marker id="fig-floor-m-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97757"></path></marker></defs><line x1="24" y1="52" x2="24" y2="92" stroke="#87867F" stroke-dasharray="4 4" stroke-width="1"></line><line x1="24" y1="178" x2="24" y2="218" stroke="#87867F" stroke-dasharray="4 4" stroke-width="1"></line><text class="fig-note" x="24" y="276" text-anchor="middle">0</text><line x1="142" y1="52" x2="142" y2="92" stroke="#87867F" stroke-dasharray="4 4" stroke-width="1"></line><line x1="142" y1="178" x2="142" y2="218" stroke="#87867F" stroke-dasharray="4 4" stroke-width="1"></line><text class="fig-note" x="142" y="276" text-anchor="middle">1 個週期</text><line x1="260" y1="52" x2="260" y2="92" stroke="#87867F" stroke-dasharray="4 4" stroke-width="1"></line><line x1="260" y1="178" x2="260" y2="218" stroke="#87867F" stroke-dasharray="4 4" stroke-width="1"></line><text class="fig-note" x="260" y="276" text-anchor="middle">2 個週期</text><text class="fig-label" x="12" y="24" text-anchor="start">照設定值要求：下限 = 一個週期</text><text class="fig-note" x="12" y="44" text-anchor="start">每格 = 下限 + 延遲，越來越晚</text><rect x="20" y="56" width="8" height="30" rx="2" fill="#141413"></rect><rect x="152" y="56" width="8" height="30" rx="2" fill="#141413"></rect><rect x="284" y="56" width="8" height="30" rx="2" fill="#141413"></rect><rect x="28" y="94" width="114" height="6" rx="2" fill="#D1CFC5"></rect><rect x="142" y="94" width="14" height="6" rx="2" fill="#D97757"></rect><text class="fig-note" x="83.0" y="116" text-anchor="middle">下限</text><text class="fig-note" x="163.0" y="116" text-anchor="start">延遲</text><text class="fig-label" x="12" y="150" text-anchor="start">要求略高：下限 = 週期 − 延遲</text><text class="fig-note" x="12" y="170" text-anchor="start">每格 ≈ 一個週期，準時</text><rect x="20" y="182" width="8" height="30" rx="2" fill="#141413"></rect><rect x="138" y="182" width="8" height="30" rx="2" fill="#141413"></rect><rect x="256" y="182" width="8" height="30" rx="2" fill="#141413"></rect><rect x="28" y="220" width="100" height="6" rx="2" fill="#D1CFC5"></rect><rect x="128" y="220" width="14" height="6" rx="2" fill="#D97757"></rect><text class="fig-note" x="76.0" y="242" text-anchor="middle">下限</text><text class="fig-note" x="149.0" y="242" text-anchor="start">延遲</text></svg>
+  <figcaption>示意圖，延遲已放大約 6 倍（實際約 0.6 ms，週期 33.3 ms）。上排每一格都比週期晚一點，誤差一路累積，所以每秒湊不滿設定的格數；下排把下限往前挪同樣的量，每一格就回到週期上。</figcaption>
+</figure>
+
+<p>修正方式是把下限往前挪：要求比設定值略高的幀率，讓「下限 + 延遲」剛好約等於一個週期。RecordStuff 最後選擇 30.3 與 62.5，也就是 33 ms 與 16 ms 的下限（週期無條件捨去到整數毫秒）。改完之後：</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>情況</th><th>30 fps 實測</th><th>30 fps 間隔 median</th><th>60 fps 實測</th><th>60 fps 間隔 median</th></tr></thead>
+  <tbody>
+    <tr><td>要求剛好等於設定值</td><td>29.29–29.44</td><td>33.8–34.0 ms</td><td>57.0–57.9（失敗）</td><td>17.2–17.3 ms</td></tr>
+    <tr><td>要求 30.3／62.5</td><td>29.86–29.94</td><td>33.37–33.47 ms</td><td>59.95–59.96</td><td>16.70–16.74 ms</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>為什麼不乾脆要求 35 或 70？因為要求值同時也是「這條軌道允許的最高幀率」，要得太多可能超過設定值。60 fps 還有另一層保護：60 Hz 螢幕每秒只產生 60 張新畫面，下限再低也不會多出影格。用 <code>mpdecimate</code> 檢查，60 fps 錄影裡沒有任何重複影格。但在 120 Hz 的螢幕上，16 ms 的下限可能讓 60 fps 錄影略高於 60，這件事還沒有量測。</p>
+
+<p>60 fps 還有一個 30 fps 沒有的現象：偶爾會出現一個約 33 ms 的間隔，也就是錯過一次螢幕更新。改動前後都有，掉格率在 0.1% 到 1.1% 之間，低於 2% 的門檻。60 fps 本來就比 30 fps 更貼近螢幕刷新的極限，偶發的錯過自然比較多。</p>
+
+<h3>位元率：30 fps 很準，60 fps 超出目標兩倍</h3>
+
+<p>RecordStuff 的影像位元率目標由公式決定：寬 × 高 × fps × 每像素位元數。三種畫質的每像素位元數是 0.07、0.13、0.24。1080p、30 fps、Standard 是 1920 × 1080 × 30 × 0.13 ≈ 8.1 Mbps。</p>
+
+<p>30 fps 時，編碼器幾乎完全照目標輸出：Economy、Standard、High 分別約 4.4、8.1、14.9 Mbps，和目標相差約 2% 以內。60 fps 時，Standard 的目標是 16.2 Mbps，實際卻是 31 到 33 Mbps，約兩倍。這是 Chromium 編碼器在 60 fps 時的行為，不是錄影壞掉；畫質沒有變差，只是檔案變大。</p>
+
+<p>這也是為什麼位元率只設下限（至少 70%）而不設上限：位元率高只代表檔案大，位元率過低才可能代表畫面被過度壓縮。反過來，錄一個靜止的畫面，位元率會遠低於目標，這也是正常的，因為沒有變化的畫面幾乎不需要空間。</p>
+
+<h3>聲音位元率：稀疏的短音只有 26 kbps</h3>
+
+<p>音訊的目標是 256 kbps，但錄測試素材時實際只有 20 多 kbps。測試素材每秒只響 120 ms，其他時間都是靜音，AAC 編碼器對靜音幾乎不花位元。這說明位元率是「編碼器依內容分配的結果」，不是音質指標。錄測試素材時，音訊位元率只回報、不判定；真正的音質要用上一節的音質診斷量。</p>
+
+<h3>解析度：平台回報的尺寸會說謊</h3>
+
+<p>在多螢幕的環境裡，Chromium 的 <code>getSettings()</code> 曾經把 1920×1080 的螢幕回報成 1920×1920，高度用的是另一台直立螢幕。如果照這個數字套 1080p 上限，畫面會被錯誤地縮成 1080×606。所以 App 改成實際量測影格尺寸：把軌道接到一個隱藏的 <code>&lt;video&gt;</code> 元素，讀它的實際寬高，只有讀不到時才退回使用 <code>getSettings()</code>，並在 log 裡留下警告。</p>
+
+<p>解析度上限有三條規則：維持來源的長寬比、永遠不放大、縮小時取偶數尺寸，因為 H.264 的 4:2:0 色度取樣以 2×2 像素為單位。在 1080p 的螢幕上選 1440p、4K 上限或原尺寸，畫面都不會被縮放，錄出來一樣是 1920×1080；在這種螢幕上比較這幾種設定時，差別只剩畫質等級造成的位元率。</p>
+
+<h3>音畫同步：固定延遲可以接受，漂移不行</h3>
+
+<p>實測的閃光／短音偏移大約在 56 到 97 ms，而且都是聲音比畫面晚。這是固定的處理延遲，落在 −45 到 +125 ms 的可接受範圍內，觀眾不容易察覺。真正危險的是漂移：3 分鐘的錄影頭尾偏移只差 1 到 3 ms，之前量過一次 10 分鐘的基準也只有約 3 ms。漂移接近零，代表聲音與畫面用的是一致的時鐘，錄再久也不會越差越多。</p>
+
+<h3>負載與長時間：硬體編碼讓 CPU 維持低檔</h3>
+
+<p>錄 30 fps 時，所有 Electron 程序合計的 CPU 約 13 到 14%，60 fps 約 21 到 22%，1080p30 的 10 分鐘基準約 17%。負擔低的原因是 H.264 由 macOS 的硬體編碼服務處理。另外做過一個對照實驗：同時跑 8 個佔滿 CPU 的程序，影格節奏並沒有變差，所以前面的 0.6 ms 延遲是固定的下限延遲，不是負載造成的。</p>
+
+<div class="table-scroll">
+<table class="compact-first">
+  <thead><tr><th>範圍</th><th>表現</th><th>原因</th><th>怎麼知道的</th></tr></thead>
+  <tbody>
+    <tr><td>30 fps 幀率</td><td>好（修正後 29.9）</td><td>下限加延遲，修正前每秒少約半格</td><td>pts 間隔 median、軌道送達時間戳</td></tr>
+    <tr><td>60 fps 幀率</td><td>修正前差，修正後好</td><td>同上，而且每秒累積更多；另受螢幕刷新率限制</td><td>同上，加上 <code>mpdecimate</code> 檢查重複影格</td></tr>
+    <tr><td>30 fps 位元率</td><td>準（誤差約 2%）</td><td>編碼器照目標輸出</td><td>ffprobe 位元率對照公式</td></tr>
+    <tr><td>60 fps 位元率</td><td>超出約 2 倍</td><td>Chromium 編碼器在 60 fps 的行為</td><td>同上；所以只判下限</td></tr>
+    <tr><td>音訊位元率</td><td>測試素材上很低</td><td>AAC 依內容分配，靜音幾乎不花位元</td><td>只回報；音質另外量</td></tr>
+    <tr><td>音質</td><td>修正前悶、無立體聲；修正後正常</td><td>語音通話用的處理</td><td>已知測試音、頻率響應與分離度</td></tr>
+    <tr><td>尺寸</td><td>正確</td><td>量實際影格，不相信回報值</td><td>輸出尺寸指標與 log 警告</td></tr>
+    <tr><td>同步</td><td>穩定</td><td>固定延遲約 60–100 ms，幾乎沒有漂移</td><td>閃光／短音配對，頭尾分開比較</td></tr>
+  </tbody>
+</table>
+</div>
+<h2 id="layers">找出問題在哪一層：分層觀察與對照實驗</h2>
+
+<p>知道「60 fps 只有 57.5」還不夠，修正之前得先知道是哪一層造成的。上一節的解釋（最小影格間隔是下限）一開始只是閱讀 Chromium 原始碼得出的假設。同樣的症狀，至少有三種可能的來源，修法完全不同：</p>
+
+<ul>
+  <li><strong>(A) 來源下限：</strong>ScreenCaptureKit 本來就送得慢，影格到達軌道時已經晚了。修法是調整送給它的要求。</li>
+  <li><strong>(B) 軌道限速器：</strong>來源送得夠快，但 Chromium 的軌道為了遵守 <code>max</code> 而丟掉一部分影格。修法是放寬限速。</li>
+  <li><strong>(C) 錄影時間戳：</strong>影格準時到達，但 MediaRecorder 寫進檔案的時間戳被拉長了。修法在編碼端，或者根本不在我們能控制的範圍。</li>
+</ul>
+
+<p>要分辨這三種，就要在管線的不同位置同時觀察同一批影格。RecordStuff 為此做了一個不隨 App 發佈的診斷工具：它用正式的錄影程式碼錄測試素材，但在三個位置各放一個觀察點。</p>
+
+<figure class="flow-figure">
+  <svg class="flow-desktop" role="img" aria-labelledby="fig-layer-d-title fig-layer-d-desc" viewBox="0 0 640 300" style="max-width: 640px"><title id="fig-layer-d-title">在三個位置觀察同一批影格</title><desc id="fig-layer-d-desc">ScreenCaptureKit 依最小間隔送出影格，經過軌道限速器後，在 MediaRecorder 之前記下送達時間戳、從 track.stats 取得送達與丟棄計數，編碼後的檔案則保留 pts。</desc><defs><marker id="fig-layer-d-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97757"></path></marker></defs><g class="fig-node"><rect x="12" y="118" width="150" height="64" rx="8"></rect><text class="fig-label" x="87.0" y="145.5" text-anchor="middle">ScreenCaptureKit</text><text class="fig-note" x="87.0" y="164.5" text-anchor="middle">依最小間隔送影格</text></g><g class="fig-node"><rect x="200" y="118" width="150" height="64" rx="8"></rect><text class="fig-label" x="275.0" y="145.5" text-anchor="middle">Track 限速器</text><text class="fig-note" x="275.0" y="164.5" text-anchor="middle">丟掉太快的影格</text></g><path class="fig-arrow" d="M 164 150 L 197 150" marker-end="url(#fig-layer-d-head)"></path><g class="fig-node"><rect x="410" y="20" width="190" height="64" rx="8"></rect><text class="fig-label" x="505.0" y="47.5" text-anchor="middle">觀察點 1</text><text class="fig-note" x="505.0" y="66.5" text-anchor="middle">送達時間戳</text></g><g class="fig-node"><rect x="410" y="118" width="190" height="64" rx="8"></rect><text class="fig-label" x="505.0" y="145.5" text-anchor="middle">觀察點 2</text><text class="fig-note" x="505.0" y="164.5" text-anchor="middle">送達／丟棄計數</text></g><g class="fig-node"><rect x="410" y="216" width="118" height="64" rx="8"></rect><text class="fig-label" x="469.0" y="243.5" text-anchor="middle">MediaRecorder</text><text class="fig-note" x="469.0" y="262.5" text-anchor="middle">編碼</text></g><g class="fig-node"><rect x="546" y="216" width="88" height="64" rx="8"></rect><text class="fig-label" x="590.0" y="243.5" text-anchor="middle">觀察點 3</text><text class="fig-note" x="590.0" y="262.5" text-anchor="middle">檔案 pts</text></g><path class="fig-arrow" d="M 352 140 L 380 140 L 380 52 L 407 52" marker-end="url(#fig-layer-d-head)"></path><path class="fig-arrow" d="M 352 150 L 407 150" marker-end="url(#fig-layer-d-head)"></path><path class="fig-arrow" d="M 352 160 L 380 160 L 380 248 L 407 248" marker-end="url(#fig-layer-d-head)"></path><path class="fig-arrow" d="M 530 248 L 543 248" marker-end="url(#fig-layer-d-head)"></path></svg>
+  <svg class="flow-mobile" role="img" aria-labelledby="fig-layer-m-title fig-layer-m-desc" viewBox="0 0 320 454" style="max-width: 320px"><title id="fig-layer-m-title">在三個位置觀察同一批影格</title><desc id="fig-layer-m-desc">ScreenCaptureKit 依最小間隔送出影格，經過軌道限速器後，在 MediaRecorder 之前記下送達時間戳、從 track.stats 取得送達與丟棄計數，編碼後的檔案則保留 pts。</desc><defs><marker id="fig-layer-m-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97757"></path></marker></defs><g class="fig-node"><rect x="40" y="8" width="240" height="62" rx="8"></rect><text class="fig-label" x="160.0" y="34.5" text-anchor="middle">ScreenCaptureKit</text><text class="fig-note" x="160.0" y="53.5" text-anchor="middle">依最小間隔送影格</text></g><path class="fig-arrow" d="M 160 72 L 160 96" marker-end="url(#fig-layer-m-head)"></path><g class="fig-node"><rect x="40" y="99" width="240" height="62" rx="8"></rect><text class="fig-label" x="160.0" y="125.5" text-anchor="middle">Track 限速器</text><text class="fig-note" x="160.0" y="144.5" text-anchor="middle">丟掉太快的影格</text></g><g class="fig-node"><rect x="8" y="196" width="146" height="62" rx="8"></rect><text class="fig-label" x="81.0" y="222.5" text-anchor="middle">觀察點 1</text><text class="fig-note" x="81.0" y="241.5" text-anchor="middle">送達時間戳</text></g><g class="fig-node"><rect x="166" y="196" width="146" height="62" rx="8"></rect><text class="fig-label" x="239.0" y="222.5" text-anchor="middle">觀察點 2</text><text class="fig-note" x="239.0" y="241.5" text-anchor="middle">送達／丟棄計數</text></g><path class="fig-arrow" d="M 120 163 L 81 193" marker-end="url(#fig-layer-m-head)"></path><path class="fig-arrow" d="M 200 163 L 239 193" marker-end="url(#fig-layer-m-head)"></path><path class="fig-arrow" d="M 160 163 L 160 290" marker-end="url(#fig-layer-m-head)"></path><g class="fig-node"><rect x="40" y="293" width="240" height="62" rx="8"></rect><text class="fig-label" x="160.0" y="319.5" text-anchor="middle">MediaRecorder</text><text class="fig-note" x="160.0" y="338.5" text-anchor="middle">編碼</text></g><path class="fig-arrow" d="M 160 357 L 160 381" marker-end="url(#fig-layer-m-head)"></path><g class="fig-node"><rect x="40" y="384" width="240" height="62" rx="8"></rect><text class="fig-label" x="160.0" y="410.5" text-anchor="middle">觀察點 3</text><text class="fig-note" x="160.0" y="429.5" text-anchor="middle">檔案 pts</text></g></svg>
+  <figcaption>三個觀察點看到的是同一批影格。第一個出現「變慢」或「變少」的位置，就是問題所在的那一層。</figcaption>
+</figure>
+
+<div class="table-scroll">
+<table class="compact-first">
+  <thead><tr><th>分類</th><th>觀察點 1：送達時間戳</th><th>觀察點 2：丟棄計數</th><th>觀察點 3：檔案 pts</th></tr></thead>
+  <tbody>
+    <tr><td>(A) 來源下限</td><td>已經變慢</td><td>幾乎沒有丟棄</td><td>和送達時間戳一樣慢</td></tr>
+    <tr><td>(B) 軌道限速器</td><td>夠快或剛好</td><td>丟棄超過 1%</td><td>變慢或變少</td></tr>
+    <tr><td>(C) 錄影時間戳</td><td>準時</td><td>幾乎沒有丟棄</td><td>變慢</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>實際結果：四次錄影的送達時間戳 median 已經是 33.9 到 34.0 ms（30 fps）與 17.2 到 17.3 ms（60 fps）；每次只丟棄 1 到 4 格，最多 0.45%；檔案 pts 和送達時間戳的 median 相差不到 0.05 ms。三個觀察點一致指向 (A)。</p>
+
+<p>分類之後還要做對照實驗，一次只改一個變因：</p>
+
+<ul>
+  <li><strong>加負載：</strong>同時跑 8 個佔滿 CPU 的程序。偏差沒有變大，排除「CPU 太忙」這個解釋。</li>
+  <li><strong>只給 <code>ideal</code>、不給 <code>max</code>：</strong>結果和原本完全一樣（29.29 與 57.01 fps）。原因是 Chromium 的裝置幀率與軌道限速器都由 <code>ideal</code> 決定，拿掉 <code>max</code> 不會改變任何東西。這個結果和讀原始碼的推論一致。</li>
+  <li><strong>候選 30.6／62.4：</strong>平均幀率達標，但 30 fps 的間隔 median 剛好卡在標稱週期的 1% 邊界上。</li>
+  <li><strong>候選 30.3／62.5：</strong>平均與 median 都達標，30 fps 的間隔分布也最集中，最後採用這組。</li>
+</ul>
+
+<p>採用之前，還要對照一份事先寫好的標準（go criteria），而不是看到數字變好就接受：平均在 30 的 0.5 fps、60 的 1 fps 以內；間隔 median 在週期的 1% 以內；掉格低於 2% 且不比改動前多；CPU 差距在 3 個百分點以內；偏移、漂移、聲道能量與位元率都在門檻內。這些條件全部成立，改動才算成功；有任何一條做不到，就要記錄成平台限制，而不是放寬門檻。</p>
+
+<h3>測試量測工具本身</h3>
+
+<p>觀察點本身也可能出錯，所以診斷工具也要被檢查：</p>
+
+<ul>
+  <li><strong>觀察端可能漏看：</strong>renderer 用來讀影格的 buffer 有上限，讀取端如果卡住，會漏掉一些影格，讓「觀察到的節奏」看起來比實際慢，像是來源變慢。所以工具會比對觀察到的影格數和檔案裡的影格數，少於 99% 時結果標為「無法判定」，不指派任何一層。</li>
+  <li><strong>計數窗口要選對：</strong>軌道的丟棄計數每秒取樣一次。如果把錄影開始前的啟動瞬間也算進去，一段 10 秒的短錄影會因為啟動時丟掉的 4 格（1.3%）被誤判成限速器問題。改成從錄影開始後的第一個取樣起算，結果就變成 0 次丟棄。</li>
+  <li><strong>中斷時要收乾淨：</strong>工具會啟動測試瀏覽器、隔離的 App 程序，以及製造負載的程序。被中斷時如果留下一個佔滿 CPU 的程序，下一次量測就會被污染。所以任何中斷都要停掉自己啟動的程序，並確認它們真的結束了。</li>
+</ul>
+
+<p>音質診斷用的是同一個原則：乾淨的樣本必須通過，刻意破壞過的樣本（濾掉高頻、改成單聲道、刪掉一段、加入削波）必須因為正確的原因失敗。只測壞樣本，會做出一個什麼都判失敗的偵測器；只測好樣本，則會做出一個什麼都判通過的偵測器。</p>
+
+<h2 id="evidence">證據的層級：每一種測試能證明什麼</h2>
+
+<p>錄影工具的測試不是只有一種。越接近真實使用情境的測試，證明力越強，但也越慢、越需要一台不被打擾的電腦。了解每一層能證明什麼、不能證明什麼，才能決定一次修改需要跑哪些測試。</p>
+
+<div class="table-scroll">
+<table class="table-wide">
+  <thead><tr><th>層級</th><th>做什麼</th><th>能證明</th><th>不能證明</th><th>大約成本</th></tr></thead>
+  <tbody>
+    <tr><td>單元測試</td><td>用假的 MessagePort、假的 <code>getDisplayMedia</code> 驗證純邏輯</td><td>送出的 constraints、判定規則、錯誤處理正確</td><td>作業系統與瀏覽器實際怎麼錄</td><td>全部約 800 多個測試，幾秒鐘</td></tr>
+    <tr><td>隔離的 Electron fixture</td><td>在真正的 Electron 裡跑某一段正式程式碼，但輸入是受控的</td><td>跨程序、真實視窗下的行為</td><td>完整 App 的所有互動</td><td>每個數十秒</td></tr>
+    <tr><td>自動錄影矩陣</td><td>開發版 App 自動錄測試素材、自動停止，逐項量測</td><td>各種畫質／幀率組合的媒體指標、CPU、同步</td><td>簽章後的正式 App、真實快捷鍵、播放體驗</td><td>每個案例 30 秒錄影加約 20 秒前後處理；180 秒的長案例約 3.5 分鐘</td></tr>
+    <tr><td>錄影 smoke</td><td>建置並簽章的 App，用系統送出的真實快捷鍵開始與停止</td><td>使用者實際的啟動、錄影、存檔路徑</td><td>各種設定組合、長時間穩定</td><td>建置約 1 分鐘，錄影 10 秒</td></tr>
+    <tr><td>播放驗收</td><td>在 QuickTime 裡播放、拖曳進度</td><td>檔案在一般播放器裡能正常播放</td><td>主觀音質與所有播放器</td><td>數分鐘，需要操作桌面</td></tr>
+    <tr><td>音質診斷</td><td>播放已知測試音並錄下，量頻率、分離度、殘差</td><td>聲音的保真度</td><td>任意音樂與人聲的主觀感受</td><td>每次約 16 秒錄音</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>一次修改不需要跑完所有層級。選擇時可以參考幾個原則，它們也是讓一輪驗收不要拖太久的關鍵：</p>
+
+<ol>
+  <li><strong>依「行為」選測試，而不是依檔名。</strong>只改設定頁面的間距，不需要錄影；改了送給擷取端的幀率要求，就一定要錄影量測，但不需要重測權限流程。</li>
+  <li><strong>只量受影響的維度。</strong>改幀率要量 fps 和同步，不需要把每一種畫質等級都重錄一遍；位元率公式沒變，畫質矩陣就可以不跑。</li>
+  <li><strong>能重用的證據就重用。</strong>同一台機器、同樣的擷取程式碼、同樣的素材，前一輪量到的「改動前」數字可以直接當基準，不必重錄。只有程式碼、環境或素材改變時，舊證據才失效。</li>
+  <li><strong>一段錄影可以同時提供多項證據。</strong>同一個檔案能同時量尺寸、長度、幀率、同步與聲道能量；同一個檔案也可以拿去做播放驗收，不需要每一項各錄一次。</li>
+  <li><strong>接近門檻時才增加重複次數。</strong>結果遠在門檻內時，一次就足以下結論；結果卡在邊界時，才需要多錄幾次確認是不是偶然。</li>
+  <li><strong>確認工具會失敗，再相信它通過。</strong>每一個新的偵測器都要先用刻意做壞的樣本確認它能抓到問題。</li>
+</ol>
+
+<h2 id="checklist">可以帶走的判斷清單</h2>
+
+<p>這些問題不只適用於螢幕錄影，也適用於任何「輸入經過一條你無法完全控制的管線、變成輸出」的系統，例如音訊處理、影像轉檔、串流服務：</p>
+
+<ul>
+  <li><strong>輸入已知嗎？</strong>如果輸入的性質不確定，輸出不對時就無法證明是管線的錯。</li>
+  <li><strong>這個指標在問什麼問題？它證明不了什麼？</strong>每一個指標旁邊都應該寫得出這兩句話。取樣率不是頻寬，聲道數不是立體聲，位元率不是畫質。</li>
+  <li><strong>回報的數字是要求、回報，還是成品量測？</strong>三者的證據強度不同，只有成品量測能證明最後的結果。</li>
+  <li><strong>平均值會不會藏住問題？</strong>平均幀率要搭配間隔 median，整段同步要搭配頭尾比較，三次量測的 median 不能蓋掉其中一次失敗。</li>
+  <li><strong>量不到的時候，報告說什麼？</strong>缺少工具、證據太少、素材不對，都必須有明確的狀態，而且都不能算通過。</li>
+  <li><strong>問題出在哪一層？</strong>在多個位置同時觀察，第一個出現異常的位置，就是問題的歸屬；再用一次只改一個變因的對照實驗確認。</li>
+  <li><strong>成功的標準是事先定好的嗎？</strong>先寫下 go criteria，再看數字；做不到時記錄限制，而不是事後放寬門檻。</li>
+  <li><strong>這些數字能推廣到哪裡？</strong>一台機器、一種螢幕、一個版本的量測，只證明那個環境。其他更新率的螢幕、其他電腦，都要另外量過才能下結論。</li>
+</ul>
+
+<section class="sources">
+<h2>參考</h2>
+<ul>
+  <li>專案文件：<a href="../system-design/tooling.md">建置、打包與驗證工具</a>（指令、門檻與判定）、<a href="../system-design/recording.md">錄影設計</a>（品質設定與幀率要求）、<a href="../system-design/audio-quality.md">音質量測</a>、<a href="../system-design/webrtc.md">Electron、Chromium 與 WebRTC</a>、<a href="../testing.md">測試選擇規則</a>、<a href="../verification/history-2026-09.md">2026 年 9 月驗證紀錄</a>。</li>
+  <li>W3C：<a href="https://www.w3.org/TR/screen-capture/">Screen Capture（getDisplayMedia）</a>、<a href="https://www.w3.org/TR/mediastream-recording/">MediaStream Recording（MediaRecorder）</a>。</li>
+  <li>Chromium 152.0.7977.78：<a href="https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.78/content/browser/media/capture/screen_capture_kit_device_mac.mm#239">ScreenCaptureKit 裝置設定最小影格間隔的位置</a>。</li>
+  <li>ITU-R：<a href="https://www.itu.int/rec/R-REC-BT.1359">BT.1359，廣播中聲音與畫面的相對時間</a>。</li>
+  <li>FFmpeg：<a href="https://ffmpeg.org/ffmpeg-filters.html">濾鏡文件</a>（blackdetect、silencedetect、astats、mpdecimate）與 <a href="https://ffmpeg.org/ffprobe.html">ffprobe 文件</a>。</li>
+</ul>
+</section>
+
+</article>
+</main>
+<script>
+(function () {
+  var copyIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>';
+  var checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement("textarea");
+      area.value = text; area.setAttribute("readonly", ""); area.style.position = "fixed"; area.style.opacity = "0";
+      document.body.appendChild(area); area.select();
+      try { document.execCommand("copy") ? resolve() : reject(new Error("copy failed")); } catch (error) { reject(error); }
+      document.body.removeChild(area);
+    });
+  }
+  document.querySelectorAll("pre").forEach(function (pre) {
+    var code = pre.querySelector("code");
+    if (!code) return;
+    var button = document.createElement("button");
+    button.type = "button"; button.className = "copy-code"; button.setAttribute("aria-label", "複製程式碼"); button.innerHTML = copyIcon;
+    button.addEventListener("click", function () {
+      copyText(code.textContent || "").then(function () {
+        button.classList.add("copied"); button.innerHTML = checkIcon;
+        setTimeout(function () { button.classList.remove("copied"); button.innerHTML = copyIcon; }, 1400);
+      }).catch(function () {});
+    });
+    pre.appendChild(button);
+    var bar = document.createElement("div"); bar.className = "code-scrollbar";
+    var thumb = document.createElement("div"); thumb.className = "code-scrollbar-thumb";
+    bar.appendChild(thumb); pre.appendChild(bar);
+    function sync() {
+      var max = code.scrollWidth - code.clientWidth;
+      if (max <= 1) { bar.classList.add("hidden"); return; }
+      bar.classList.remove("hidden");
+      var ratio = code.clientWidth / code.scrollWidth;
+      var width = Math.max(24, bar.clientWidth * ratio);
+      thumb.style.width = width + "px";
+      thumb.style.transform = "translateX(" + ((bar.clientWidth - width) * (code.scrollLeft / max)) + "px)";
+    }
+    var dragging = null;
+    thumb.addEventListener("pointerdown", function (event) {
+      dragging = { x: event.clientX, left: code.scrollLeft }; thumb.setPointerCapture(event.pointerId); event.preventDefault();
+    });
+    thumb.addEventListener("pointermove", function (event) {
+      if (!dragging) return;
+      var max = code.scrollWidth - code.clientWidth; var track = bar.clientWidth - thumb.clientWidth;
+      if (track > 0) code.scrollLeft = dragging.left + (event.clientX - dragging.x) * (max / track);
+    });
+    thumb.addEventListener("pointerup", function () { dragging = null; });
+    bar.addEventListener("click", function (event) {
+      if (event.target === thumb) return;
+      var rect = bar.getBoundingClientRect(); var max = code.scrollWidth - code.clientWidth;
+      code.scrollLeft = ((event.clientX - rect.left) / rect.width) * max;
+    });
+    code.addEventListener("scroll", sync); window.addEventListener("resize", sync); sync();
+  });
+})();
+</script>
+</body>
+</html>

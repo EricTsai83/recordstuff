@@ -125,6 +125,8 @@ Not covered: tray menu reveal, other Spaces and Notification Center list clicks 
 
 ## Measurement pipeline and thresholds
 
+For a from-scratch explanation of the pipeline, the test material, each metric and why some settings measure better than others, see the learning article [Measuring screen-recording quality](../learning/measuring-screen-recording-quality.html) (Traditional Chinese). This section remains the reference for the current commands and thresholds.
+
 Media-tools runs ffprobe/ffmpeg; verify.mts parses and judges pure data; verify-recording.mts pairs files with logs and saves results; CLI/matrix orchestrate. For long files, frame timestamps are sampled in separate head/tail intervals so the unobserved middle is not counted as dropped frames. The test page supplies moving content plus flash/beep markers on an audio clock.
 
 Checks are in two tiers. **Integrity** checks hold for any content and are what a release acceptance needs: they ask whether the file is what the session produced. **Performance** checks are only meaningful when the recorded picture moved continuously, because screen capture emits no frames while the picture is still; they are judged only with `--moving` or `--sync` (the test material page, as `pnpm matrix` uses) and otherwise reported as n/a with the measured value still shown.
