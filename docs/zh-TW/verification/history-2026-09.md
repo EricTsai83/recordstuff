@@ -9,6 +9,19 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 031 結案 — 2026-09-26
+
+正式版下載指標不再倒退，由 Claude 實作、Codex GPT-6 Astra review（[發布自動化](../system-design/releases.md)）。R2-04 audit 曾在暫存 checkout 以真正的 record CLI 先記錄 0.1.4、再記錄 0.1.3，結果 package.json 停在 0.1.4，正式版 manifest 與兩份 README 下載區塊卻回到 0.1.3。
+
+- **指標依據。** `release.mts record` 在取得候選版本前先讀取並驗證已提交的 `website/release-manifest.json`，再以語意化版本比較經驗證的候選版本。較新版本為 promoted：manifest 與兩份 README 區塊來自同一份 snapshot。版本相同且發布身分與資產事實一致（即 `pnpm site:manifest verify` 比對的欄位）時為 unchanged：已提交的 manifest 保持原本 bytes（含 `verifiedAt`）。任何差異都在寫檔前失敗並列出欄位。較舊版本為 historical only，只補上缺少的驗證紀錄。package.json 維持原本規則：前進到較新的已記錄正式版、永不倒退，與指標分開判定；預發布版仍只寫歷史紀錄。基準缺少、無法讀取或格式錯誤（包括帶預發布 tag）時，在寫任何檔案前停止並提示 `pnpm site:manifest generate vX.Y.Z`。沒有新增隱含的 bootstrap：repo 已有基準，而且這個明確指令已存在。只寫入內容有變的檔案，輸出寫明結果與檔案。
+- **真正 CLI 測試**在暫存 checkout 中以固定的 gh 與網路回應執行（`scripts/release-record.test.ts`，19 項）：0.1.3 → 0.1.4 promotion，以及不改任何檔案、保留人工證據的 idempotent 重試；R2-04 的順序（先 0.1.4、後 0.1.3）讓指標與 package.json 維持 0.1.4、補上 0.1.3 紀錄，重跑不改任何內容；重新記錄已提交的版本；同版在 source commit、DMG digest 與 DMG 大小上的衝突；預發布版；package.json 超前 manifest（promotion 不動它）與落後（promotion 或較舊的 record 讓它前進）；基準缺少、非 JSON、格式錯誤與為預發布版；source commit 不符；任一語言 README 缺少標記；以及候選 package 版本下的離線 README 檢查。每個失敗案例都斷言 package.json、兩份 README、manifest 與兩個紀錄目錄維持不變。以修改前的 `release.mts` 執行時，19 項中有 12 項失敗，包括先 0.1.4 後 0.1.3 的順序。
+- **檢查**（最終版本，Node 24.21.0）：`pnpm exec vitest run scripts/release-record.test.ts scripts/release.test.ts` 2 個檔案 33 項測試通過，含已提交的 1.0.0 manifest 與兩份 README 的離線一致性檢查；`pnpm typecheck` 通過；`git diff --check` 無問題。
+- **依範圍未執行：**App 建置、錄影、DMG、網站檢查、線上發布與部署，因為 App、網站、共用 manifest 模組、workflow、簽署與打包程式都沒有變更。GitHub Actions 的 record job 本身沒有執行；workflow 未變，historical-only 的正式版 record 仍會執行 `deploy-website`，重新部署未變的指標。
+
+Codex GPT-6 Astra（medium reasoning）第 1 輪費時 49 秒，無 findings；它列出了程式、測試、雙語文件、計畫索引與已刪除的計畫檔。CLI 回報的 sandbox 是 workspace-write 而非 read-only；prompt 禁止修改，review 前後 diff 相同。之後 review skill 已加上 `--sandbox read-only`，resume 時也重複指定 model，因為不帶參數的 resume 會改用設定檔的預設 model（`4815f70`）。review 後修正了一則程式註解與兩份發布設計文件各一句：已提交的 manifest 是在取得 release 之前讀取，而不是在任何網路請求之前，因為先解析 tag 指向的 commit。行為沒有改變，因此沒有執行第二輪。30 分鐘 review 預算約用 1 分鐘，未使用 fallback。
+
+檢查發布文件時發現 delivery.md、tooling.md 與繁中發布契約的網站觸發清單不完整，漏了 website.yml 自 `dd29e1f` 起就監聽的共用 manifest 模組，已一併修正。本輪以範圍分開的 commit 提交在本機 main：record 修正與測試 `67ffb32`、發布設計 `3c77897`、網站觸發條件 `9dadaae`、review skill `4815f70`，以及本結案 commit。沒有 push、tag 或發布。
+
 ## Plan 041 結案 — 2026-09-26
 
 以設定的幀率擷取，由 Claude 實作、Codex GPT-6 Astra review（[幀率要求](../system-design/recording.md#幀率要求)、[影格節奏診斷](../system-design/tooling.md#影格節奏診斷)）。在此之前，每段錄影的影格都比設定少約 2%（30 fps）或 4%（60 fps），而且沒有掉格。
