@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { SETTINGS_SHORTCUT } from "../src/shared/hotkey.ts";
 import { acceleratorToKeystroke, keystrokeScript, lastStartIndex, nextLogIndex, registeredSettingsAccelerator } from "./lib/acceptance.mts";
 import { command, waitForLog } from "./lib/acceptance-runtime.mts";
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const appPath = path.join(root, "dist/mac-arm64/RecordStuff.app/Contents/MacOS/RecordStuff");
@@ -19,8 +20,11 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => co
 const read = (): string[] => fs.readFileSync(logPath, "utf8").split(/\r?\n/);
 let from = fs.existsSync(logPath) ? nextLogIndex(read()) : 0;
 let evidence = "";
+let desktop: DesktopRound | undefined;
 try {
   if (process.platform !== "darwin" || process.arch !== "arm64") throw new Error("This runner requires the local macOS arm64 pnpm start:app bundle.");
+  // The panel this opens is judged by native observation on an awake, unlocked display.
+  desktop = await beginDesktopRound();
   const escaped = appPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pid = (await command("pgrep", ["-f", `^${escaped}$`], controller.signal)).trim();
   if (!/^\d+$/.test(pid)) throw new Error("Expected exactly one local RecordStuff bundle process.");
@@ -34,12 +38,16 @@ try {
   await command("osascript", ["-e", script], controller.signal);
   const hit = await waitForLog(read, from, /\] settings shortcut: CommandOrControl\+Alt\+, pressed$/, "Settings shortcut callback", controller.signal);
   evidence += `Observed: ${hit.line}\n`;
-  fs.writeFileSync(path.join(out, "report.md"), `# Settings shortcut entry — PASS (callback only)\n\n${evidence}\nMode: System Events + Computer Use. No IPC or test-only opening route.\n\nPanel visibility, focus, keyboard navigation and recording continuity are NOT verified by this script. Continue with native Computer Use; do not report full UI acceptance from this exit code.\n`);
+  desktop.end();
+  if (desktop.lockedAt) throw new DesktopBlockedError(desktop.summary);
+  fs.writeFileSync(path.join(out, "report.md"), `# Settings shortcut entry — PASS (callback only)\n\n${evidence}${desktop.summary}\nMode: System Events + Computer Use. No IPC or test-only opening route.\n\nPanel visibility, focus, keyboard navigation and recording continuity are NOT verified by this script. Continue with native Computer Use; do not report full UI acceptance from this exit code.\n`);
   console.log(`PASS: Settings callback received. Continue native Computer Use. Evidence: ${out}`);
 } catch (error) {
-  fs.writeFileSync(path.join(out, "report.md"), `# Settings shortcut entry — FAIL\n\n${evidence}\n${String(error)}\n\nNo permission settings were changed. Check System Events/Accessibility permission if macOS refused the command.\n`);
-  console.error(`${String(error)}\nEvidence: ${out}`);
-  process.exitCode = 1;
+  desktop?.end();
+  const blocked = error instanceof DesktopBlockedError;
+  fs.writeFileSync(path.join(out, "report.md"), `# Settings shortcut entry — ${blocked ? "BLOCKED" : "FAIL"}\n\n${evidence}\n${String(error)}\n\nNo permission settings were changed. Check System Events/Accessibility permission if macOS refused the command.\n`);
+  console.error(`${blocked ? "BLOCKED: " : ""}${String(error)}\nEvidence: ${out}`);
+  process.exitCode = blocked ? DESKTOP_BLOCKED_EXIT : 1;
 } finally {
   if (fs.existsSync(logPath)) fs.writeFileSync(path.join(out, "app.log"), read().slice(from).join("\n"));
 }

@@ -19,6 +19,7 @@
  */
 import { buildFixture } from "./lib/build-fixture.mts";
 import { runIsolatedProcess } from "./lib/isolated-process.mts";
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,6 +61,11 @@ const fixture = await buildFixture("settings-panel", dir);
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 
+// Real input, focus and screenshots need an awake, unlocked display.
+const desktop = await beginDesktopRound().catch((cause: unknown) => {
+  if (cause instanceof DesktopBlockedError) fail(`BLOCKED: ${cause.message}`);
+  throw cause;
+});
 const controller = new AbortController();
 const interrupt = (): void => controller.abort();
 process.on("SIGINT", interrupt);
@@ -72,6 +78,7 @@ try {
     env, logFd: log, timeoutMs: TIMEOUT_MS, signal: controller.signal,
   });
 } finally {
+  desktop.end();
   fs.closeSync(log);
   process.removeListener("SIGINT", interrupt);
   process.removeListener("SIGTERM", interrupt);
@@ -82,7 +89,7 @@ const code = execution.code === 0 && !execution.error && !execution.stopped && e
 const resultsPath = path.join(dir, "results.json");
 if (!fs.existsSync(resultsPath)) {
   const detail = fs.existsSync(path.join(dir, "error.txt")) ? fs.readFileSync(path.join(dir, "error.txt"), "utf8") : "";
-  fail(`The fixture produced no results (exit ${code}). ${detail}\nEvidence: ${dir}`);
+  fail(`${desktop.lockedAt ? `${desktop.summary}\n` : ""}The fixture produced no results (exit ${code}). ${detail}\nEvidence: ${dir}`);
 }
 const cases = JSON.parse(fs.readFileSync(resultsPath, "utf8")) as Case[];
 for (const result of cases) console.log(`${result.ok ? "PASS" : "FAIL"}: ${result.name} — ${result.detail}`);
@@ -93,6 +100,7 @@ const report = [
   "",
   `Runner exit code ${code}; ${passed}/${cases.length} cases passed.`,
   `Cleanup: process group gone=${execution.groupGone}; stopped=${execution.stopped ?? "no"}; error=${execution.error ?? "none"}. See cleanup.json.`,
+  desktop.summary,
   "",
   "Built artifacts under test: `out/preload/settings.js`, `out/renderer/settings.html`.",
   "The fixture supplies its own view and IPC handlers, so this run judges the page,",
@@ -107,4 +115,5 @@ const report = [
 fs.writeFileSync(path.join(dir, "report.md"), report);
 
 console.log(`\n${passed}/${cases.length} cases passed. Evidence: ${dir}`);
-process.exit(code === 0 && passed === cases.length ? 0 : 1);
+if (desktop.lockedAt) console.error(desktop.summary);
+process.exit(desktop.lockedAt ? DESKTOP_BLOCKED_EXIT : code === 0 && passed === cases.length ? 0 : 1);

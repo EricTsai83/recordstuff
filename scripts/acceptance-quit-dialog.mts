@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { buildFixture } from "./lib/build-fixture.mts";
 import { runIsolatedProcess } from "./lib/isolated-process.mts";
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
 import { isLanguage } from "../src/shared/i18n.ts";
 
 const args = process.argv.slice(2).filter(arg => arg !== "--");
@@ -16,6 +17,11 @@ if (args.length === 1 && args[0] === "--help") {
   if (args.length !== 2 || args[0] !== "--language" || !isLanguage(language)) {
     throw new Error("Use --language en or --language zh-TW (or --help). No app launched.");
   }
+  // The observer judges the native dialog on an awake, unlocked display.
+  const desktop = await beginDesktopRound().catch((cause: unknown) => {
+    if (cause instanceof DesktopBlockedError) { console.error(`BLOCKED: ${cause.message} No app launched.`); process.exit(DESKTOP_BLOCKED_EXIT); }
+    throw cause;
+  });
   const root = fileURLToPath(new URL("../", import.meta.url));
   const dir = path.join(root, "docs/verification/measurements", `${new Date().toISOString().replace(/[:.]/g, "-")}-quit-dialog-${language}`);
   fs.mkdirSync(dir, { recursive: true });
@@ -38,11 +44,14 @@ if (args.length === 1 && args[0] === "--help") {
     }
     const resultPath = path.join(dir, "result.json");
     const result = fs.existsSync(resultPath) ? JSON.parse(fs.readFileSync(resultPath, "utf8")) : undefined;
+    desktop.end();
     const passed = execution.code === 0 && !execution.stopped && !execution.forced && execution.groupGone && result?.prompts === 1 && result?.deferred === 1;
-    fs.writeFileSync(path.join(dir, "report.json"), JSON.stringify({ execution, result, automated: passed ? "pass" : "fail", nativeObservation: "not recorded" }, null, 2));
-    fs.writeFileSync(path.join(dir, "report.md"), `# Deferred-quit native dialog (${language})\n\nAutomated lifecycle: ${passed ? "PASS" : "FAIL"}.\nNative foreground/readability/single-dialog observation: **not recorded**. Dismissal is not visual proof.\n\nSource: isolated synthetic fixture using production feedback; not a signed normal-bundle capture test.\nCleanup: groupGone=${execution.groupGone ?? "unknown"}, forced=${execution.forced ?? "unknown"}, stopped=${execution.stopped ?? "none"}.\nDetails: [report.json](report.json), [electron.log](electron.log).\n`);
-    console.log(`${passed ? "PASS" : "FAIL"}: lifecycle/cleanup. 原生畫面結果仍需另行記錄。\nReport: ${path.join(dir, "report.md")}`);
-    if (!passed) process.exitCode = 1;
+    const automated = desktop.lockedAt ? "blocked" : passed ? "pass" : "fail";
+    fs.writeFileSync(path.join(dir, "report.json"), JSON.stringify({ execution, result, automated, desktop: desktop.summary, nativeObservation: "not recorded" }, null, 2));
+    fs.writeFileSync(path.join(dir, "report.md"), `# Deferred-quit native dialog (${language})\n\nAutomated lifecycle: ${automated.toUpperCase()}.\n${desktop.summary}\nNative foreground/readability/single-dialog observation: **not recorded**. Dismissal is not visual proof.\n\nSource: isolated synthetic fixture using production feedback; not a signed normal-bundle capture test.\nCleanup: groupGone=${execution.groupGone ?? "unknown"}, forced=${execution.forced ?? "unknown"}, stopped=${execution.stopped ?? "none"}.\nDetails: [report.json](report.json), [electron.log](electron.log).\n`);
+    console.log(`${automated.toUpperCase()}: lifecycle/cleanup. 原生畫面結果仍需另行記錄。\nReport: ${path.join(dir, "report.md")}`);
+    if (desktop.lockedAt) process.exitCode = DESKTOP_BLOCKED_EXIT;
+    else if (!passed) process.exitCode = 1;
   } finally {
     fs.closeSync(fd); process.removeListener("SIGINT", cancel); process.removeListener("SIGTERM", cancel);
   }

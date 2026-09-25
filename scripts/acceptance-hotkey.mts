@@ -38,6 +38,7 @@ import {
 import { hasTool, syncMarkers } from "./lib/media-tools.mts";
 import { readLogPairs, verifyRecording } from "./lib/verify-recording.mts";
 import { formatText } from "./lib/verify.mts";
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const LOG_PATH = path.join(os.homedir(), "Library/Logs/recordstuff/recordstuff.log");
@@ -111,6 +112,11 @@ async function main(): Promise<void> {
   const keystroke = acceleratorToKeystroke(accelerator) ?? fail(`cannot type accelerator ${accelerator} through System Events`);
   const script = keystrokeScript(keystroke);
   console.log(`RecordStuff pid ${pid}; shortcut ${accelerator}; ${seconds} s recording; log ${LOG_PATH}`);
+  // A slept or locked display would be recorded instead of the material.
+  const desktop = await beginDesktopRound().catch((cause: unknown) => {
+    if (cause instanceof DesktopBlockedError) { console.error(`BLOCKED: ${cause.message} No key was sent.`); process.exit(DESKTOP_BLOCKED_EXIT); }
+    throw cause;
+  });
 
   const stamp = now().replace(/[:.]/g, "-");
   const dir = outDir ?? path.join(REPO_ROOT, "docs/verification/measurements", `${stamp}-hotkey-acceptance`);
@@ -276,12 +282,14 @@ async function main(): Promise<void> {
         }
       }
     }
+    desktop.end();
     fs.writeFileSync(path.join(dir, "app-session.log"), readLines().slice(sessionFrom).join("\n"));
     fs.writeFileSync(path.join(dir, "events.log"), events.join("\n"));
     const report = path.join(dir, "report.md");
     const passed = !runError && cleanupErrors.length === 0;
     if (!fs.existsSync(report)) fs.writeFileSync(report, "# Global shortcut acceptance\n");
-    fs.appendFileSync(report, `\n\n## Final result (including cleanup)\n\nInput context: [input-diagnostics.json](input-diagnostics.json). Run events: [events.log](events.log). App callbacks: [app-session.log](app-session.log).\n\n${passed ? "PASS" : "FAIL"}\n\n${runError ? `Run: ${String(runError)}\n` : ""}Cleanup: ${cleanupErrors.length ? cleanupErrors.join("; ") : "complete; RecordStuff exited"}\n`);
+    fs.appendFileSync(report, `\n\n## Final result (including cleanup)\n\nInput context: [input-diagnostics.json](input-diagnostics.json). Run events: [events.log](events.log). App callbacks: [app-session.log](app-session.log).\n\n${desktop.lockedAt ? "BLOCKED" : passed ? "PASS" : "FAIL"}\n\n${desktop.summary}\n\n${runError ? `Run: ${String(runError)}\n` : ""}Cleanup: ${cleanupErrors.length ? cleanupErrors.join("; ") : "complete; RecordStuff exited"}\n`);
+    if (desktop.lockedAt) { console.error(`✗ ${desktop.summary}`); process.exit(DESKTOP_BLOCKED_EXIT); }
     if (!passed) fail([runError && String(runError), ...cleanupErrors].filter(Boolean).join("; "));
   }
   console.log("✅ shortcut acceptance and cleanup passed");

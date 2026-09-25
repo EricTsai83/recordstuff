@@ -10,6 +10,7 @@ import { parseArgs } from 'node:util';
 import { prepareUpdateAcceptance, acceptanceExitCode, safeCaptureShortcut, createAcceptanceOutput, type CaseResult } from './lib/update-acceptance.mts';
 import { acceleratorToKeystroke, keystrokeScript, materialOpenArgs } from './lib/acceptance.mts';
 import { hasTool } from './lib/media-tools.mts';
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from './lib/desktop-session.mts';
 import { readLogPairs, verifyRecording } from './lib/verify-recording.mts';
 import type { AcceptanceSnapshot, AcceptanceConfig, Scenario } from './fixtures/update-acceptance';
 import type { TrayMenuItem } from '../src/main/tray-model';
@@ -47,6 +48,7 @@ const pause = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
 const hash = (p: string): string => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const beforeHashes = protectedFiles.map(file => fs.existsSync(file) ? hash(file) : null);
 class Blocked extends Error {}
+let desktop: DesktopRound | undefined;
 function record(name: string, status: CaseResult['status'], detail: string, required = true): void {
   cases.push({ name, status, detail, required });
   console.log(`${status}: ${name} — ${detail}`);
@@ -189,6 +191,8 @@ try {
     const running = spawnSync('pgrep', ['-f', '(^|/)RecordStuff\\.app/Contents/MacOS/RecordStuff($| )'], { encoding: 'utf8' });
     if (running.status !== 1) throw new Blocked(`Quit RecordStuff before acceptance; never interrupt a user recording. ${running.stdout || running.stderr}`);
     if (!values['logic-only'] && (!hasTool('ffmpeg') || !hasTool('ffprobe') || !fs.existsSync('/Applications/Google Chrome.app'))) throw new Blocked('Real capture requires Chrome, ffmpeg and ffprobe.');
+    // Real capture records the primary display; keep it awake and refuse a locked session.
+    if (!values['logic-only']) desktop = await beginDesktopRound().catch((cause: unknown) => { throw cause instanceof DesktopBlockedError ? new Blocked(cause.message) : cause; });
     fs.mkdirSync(workspace);
     prepareUpdateAcceptance(ROOT, workspace, dir);
     fs.mkdirSync(path.join(dir, 'requests'), { recursive: true });
@@ -308,10 +312,13 @@ try {
   try { await stop(true); record('fixture shutdown', 'pass', 'Owned app exited; no running recording or user app was killed.'); }
   catch (error) { record('fixture shutdown', 'fail', `Left fixture intact: ${String(error)}`); }
   try { await closeMaterial(); } catch (error) { record('material cleanup', 'fail', String(error)); }
+  if (desktop) { desktop.end(); record('desktop stayed awake and unlocked', desktop.lockedAt ? 'blocked' : 'pass', desktop.summary); }
   if (!appMayBeRunning) fs.rmSync(workspace, { recursive: true, force: true });
   for (const name of requiredCases) if (!cases.some(c => c.name === name)) record(name, 'not-run', 'An earlier failure/blocked prerequisite prevented execution.');
   const afterHashes = protectedFiles.map(file => fs.existsSync(file) ? hash(file) : null);
   record('source and user settings unchanged', JSON.stringify(beforeHashes) === JSON.stringify(afterHashes) ? 'pass' : 'fail', 'Compared source index, package manifest and real user settings before/after.');
   record('native Tray clicks / visible browser / subjective listening', 'blocked', 'Not exercised by the handler/model driver. Computer Use windowless Tray access previously returned -10005; manual/native-driver evidence is separate.', values['require-native-ui']);
   report();
+  // A lock during capture makes the round blocked even when a case also failed.
+  if (desktop?.lockedAt) process.exitCode = DESKTOP_BLOCKED_EXIT;
 }

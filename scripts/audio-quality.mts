@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fixture, wav, type AudioReport } from "./lib/audio-quality.mts";
 import { inspectAudio, recordAudio } from "./lib/audio-quality-tools.mts";
+import { DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
 import { summarize } from "./lib/audio-quality-summary.mts";
 
 const args = process.argv.slice(2).filter((a, i) => !(i === 0 && a === "--"));
@@ -31,6 +32,8 @@ try {
     console.log(JSON.stringify(report, null, 2));
     process.exitCode = exitCode(report.verdict);
   } else {
+    // Capture records the primary display: keep it awake and refuse a locked session (exit 2).
+    const desktop = await beginDesktopRound();
     // Assign only after mkdir succeeds: an existing evidence directory is never changed.
     const directory = path.resolve(target);
     fs.mkdirSync(directory);
@@ -59,18 +62,19 @@ try {
       fs.writeFileSync(path.join(output, "summary.json"), `${JSON.stringify({ ...summarize(reports, repeats), verdict: "incomplete" }, null, 2)}\n`);
       console.log(`Run ${i + 1}/${repeats}: ${report.verdict}; ${path.join(run, "report.json")}`);
     }
-    const after = context();
+    desktop.end();
+    const after = { ...context(), desktop: desktop.summary };
     fs.writeFileSync(path.join(output, "environment-after.json"), JSON.stringify(after, null, 2));
     const environmentConsistency = before.volume === null || after.volume === null || before.audioDevices === null || after.audioDevices === null
       ? "unknown" : before.volume === after.volume && before.audioDevices === after.audioDevices ? "unchanged" : "changed";
-    const summary = { ...summarize(reports, repeats), environmentConsistency };
-    if (environmentConsistency === "changed") summary.verdict = "invalid";
+    const summary = { ...summarize(reports, repeats), environmentConsistency, desktop: desktop.summary };
+    if (environmentConsistency === "changed" || desktop.lockedAt) summary.verdict = "invalid";
     fs.writeFileSync(path.join(output, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
     console.log(`Audio quality: ${summary.verdict}; ${summary.passed} pass, ${summary.failed} fail, ${summary.invalid} invalid`);
     process.exitCode = exitCode(summary.verdict);
   }
 } catch (cause) {
-  const error = cause instanceof Error ? cause.message : String(cause);
+  const error = `${cause instanceof DesktopBlockedError ? "BLOCKED: " : ""}${cause instanceof Error ? cause.message : String(cause)}`;
   if (output) fs.writeFileSync(path.join(output, "error.json"), `${JSON.stringify({ date: new Date().toISOString(), verdict: "error", error }, null, 2)}\n`);
   console.error(error);
   process.exitCode = 2;

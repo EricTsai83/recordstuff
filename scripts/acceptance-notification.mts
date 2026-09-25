@@ -11,6 +11,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { command, finishRecording, waitForLog } from "./lib/acceptance-runtime.mts";
 import fs from "node:fs";
 import os from "node:os";
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -198,6 +199,11 @@ async function main(): Promise<void> {
   if (install && !fs.existsSync(BUILT_APP)) fail(`${BUILT_APP} is missing; run \`pnpm start:app\` first`);
   if (!install && !fs.existsSync(INSTALLED_APP)) fail(`${INSTALLED_APP} is missing; install the app or pass --install`);
   if (install) await verifySignature(BUILT_APP);
+  // Banners, Finder and the frontmost app need an awake, unlocked desktop.
+  const desktop = await beginDesktopRound({ log: note }).catch((cause: unknown) => {
+    if (cause instanceof DesktopBlockedError) { console.error(`BLOCKED: ${cause.message} Nothing was installed or changed.`); process.exit(DESKTOP_BLOCKED_EXIT); }
+    throw cause;
+  });
   const finderCount = await osascript('tell application "Finder" to count Finder windows', "Finder preflight");
   if (finderCount !== "0") fail("close Finder windows before this dedicated desktop test; existing windows are not closed by the script");
   const initialState = currentState(readLines());
@@ -396,6 +402,7 @@ end tell`, "close test document");
   }
 
   async function cleanupAndReport(): Promise<void> {
+    desktop.end();
     // Restore owned resources; unrecognized windows are left for manual cleanup.
     // Anything that could not be restored marks the run as failed.
     const cleanup: string[] = [];
@@ -525,7 +532,9 @@ end tell`, "quit empty TextEdit");
         "",
         `Run ${now()} on ${os.hostname()}, Darwin ${os.release()}. App under test: \`${INSTALLED_APP}\`${install ? ` (installed from \`${path.relative(REPO_ROOT, BUILT_APP)}\` for this run)` : " (as installed)"}. ${clicks} click(s) per Finder state in one app process, ${seconds} s recordings, foreground app ${frontApp}, languages ${languages.join(", ")}. The banner was pressed through Accessibility; the frontmost app was sampled for ${SAMPLE_MS / 1000} s after the press.`,
         "",
-        `Result: **${ok ? "pass" : "fail"}** (${summary.pass} pass, ${summary.fail} fail, ${summary.notRun} not run${problems.length ? `; ${problems.join("; ")}` : ""}). A click passes only when Finder is frontmost at the end of the window and its selection is the saved file; the two are reported separately below.`,
+        desktop.summary,
+        "",
+        `Result: **${desktop.lockedAt ? "blocked" : ok ? "pass" : "fail"}** (${summary.pass} pass, ${summary.fail} fail, ${summary.notRun} not run${problems.length ? `; ${problems.join("; ")}` : ""}). A click passes only when Finder is frontmost at the end of the window and its selection is the saved file; the two are reported separately below.`,
         "",
         "| Language | Finder | Click | Frontmost after click | Selected saved file | Verdict |",
         "| --- | --- | --- | --- | --- | --- |",
@@ -539,7 +548,10 @@ end tell`, "quit empty TextEdit");
       ].join("\n"),
     );
     console.log(`Report ${path.relative(REPO_ROOT, dir)}/report.md`);
-    if (!ok) {
+    if (desktop.lockedAt) {
+      console.error(`✗ ${desktop.summary}`);
+      process.exitCode = DESKTOP_BLOCKED_EXIT;
+    } else if (!ok) {
       const bad = results
         .filter((r) => r.verdict !== "pass")
         .map((r) => `${r.language}/${r.finderState}/click ${r.click}: ${r.verdict}`);

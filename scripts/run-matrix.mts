@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { materialOpenArgs } from "./lib/acceptance.mts";
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
 /**
  * `pnpm matrix -- <all|quick|levels|fps|long> [--no-open-material] [--screen WxH] [--dry-run]`
  *
@@ -274,6 +275,11 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Every case records the primary display; a slept or locked display would be recorded instead.
+  const desktop = await beginDesktopRound().catch((cause: unknown) => {
+    if (cause instanceof DesktopBlockedError) { console.error(`BLOCKED: ${cause.message} No case was recorded.`); process.exit(DESKTOP_BLOCKED_EXIT); }
+    throw cause;
+  });
   console.log("electron-vite build …");
   const build = spawnSync("pnpm", ["exec", "electron-vite", "build"], { cwd: REPO_ROOT, stdio: "inherit" });
   if (build.status !== 0) process.exit(build.status ?? 1);
@@ -329,6 +335,7 @@ async function main(): Promise<void> {
       }
     }
   } finally {
+    desktop.end();
     if (material) {
       spawnSync("pkill", ["-f", MATERIAL_PROFILE]);
     }
@@ -353,6 +360,12 @@ async function main(): Promise<void> {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.appendFileSync(target, `\n## ${new Date().toISOString()} — pnpm matrix -- ${matrixName} incomplete cases\n\n${failures.map((f) => `- ${f.entry.name}: ${f.error}`).join("\n")}\n`, "utf8");
     for (const f of failures) console.error(`✗ ${f.entry.name}: ${f.error}`);
+  }
+  if (desktop.lockedAt) {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.appendFileSync(target, `\n## ${new Date().toISOString()} — pnpm matrix -- ${matrixName} blocked\n\n${desktop.summary}\n`, "utf8");
+    console.error(desktop.summary);
+    process.exit(DESKTOP_BLOCKED_EXIT);
   }
   process.exit(failures.length > 0 || verified.some((r) => r.result?.verdict === "fail") ? 1 : 0);
 }
