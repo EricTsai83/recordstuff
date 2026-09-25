@@ -6,7 +6,7 @@ This is the shared test-selection policy for contributors and AI agents. [Toolin
 
 ## Select tests from behavior
 
-Read the diff and affected callers before selecting tests. Classify by behavior and dependencies, not just filename, change size or the author's description. A refactor can affect runtime behavior; a string can be an IPC key rather than display copy. Combine all applicable rows below. Explicit task requirements add to this baseline; record any user-requested waiver as an untested limitation.
+Read the diff and affected callers before selecting tests. Classify by behavior and dependencies, not just filename, change size or the author's description. A refactor can affect runtime behavior; a string can be an IPC key rather than display copy. Combine all applicable rows below. Explicit task requirements add to this baseline; record any user-requested waiver as an untested limitation. A plan's verification list names the evidence it needs: reused evidence that meets the [reuse rule](#keep-recording-rounds-short) satisfies an item unless the plan explicitly asks for a fresh run.
 
 Before execution, briefly state the affected behavior, selected checks and why expensive checks are omitted. This is a scope statement, not an approval request. After the final edit, run the required checks against that revision; when a composite command includes a check, do not run it twice. Run `git diff --check` for every change.
 
@@ -35,6 +35,19 @@ Examples: a settings CSS spacing fix needs settings regression and screenshot in
 - Reuse media analysis for the same file, analyzer version/options and scope. Reuse prior UI evidence only when the affected implementation, artifact and environment are unchanged; cite its origin. Rebuild changed code before native acceptance. Historical test counts are not current pass thresholds.
 - After required checks pass, stop. Broaden/rerun only for a further edit, failure, unresolved risk, changed environment or explicit requirement. Do not ask the user to repeat unaffected passed manual cases. Do not add tests that only mirror implementation or assert documentation wording.
 - Distinguish **not applicable** (outside the impact scope, with reason), **not run** (required but not attempted), **blocked** (required but a prerequisite is unavailable), **fail**, and **pass**. A missing permission/tool is blocked, not a reason to relabel a required test unnecessary. A waiver remains not run with the user's reason; never label it pass. Do independent checks while reporting the gap.
+
+## Keep recording rounds short
+
+Recording rounds are the slowest checks and hold the whole desktop. Before starting one, list each recording and the question it answers, and drop any recording whose question another item already answers.
+
+- **Reuse a baseline.** "Before" evidence may cite the latest run of the same runner and case when nothing on the capture path changed since then (capture, encoding and quality code, the Electron version, the artifact kind), on the same machine, display, audio route and test-material version. Record that run's date and commit. Re-record only when one of these changed or the earlier run lacks a metric the comparison needs.
+- **Record only cases that differ here.** Choose matrix cases by the changed dimension and skip cases that take the same path in this environment: on a display no larger than a resolution cap, the capped and source cases record the same unscaled capture and differ only in quality level. Keep `long` whenever drift can change.
+- **Screen once, then confirm the choice.** When comparing candidates, run each once per setting; repeat only the chosen candidate and any result whose margin to a threshold or go criterion is smaller than the run-to-run spread seen for that metric.
+- **Measure each quantity once after a change.** Do not confirm one quantity with two runners. `pnpm matrix` reports the average frame rate and the median frame interval, so the cadence diagnostic locates a layer but is not rerun to confirm a fix.
+- **Let one recording serve several cases.** A smoke recording supplies media verification and playback; a matrix recording supplies every metric of its case.
+- **Repeat only on doubt.** A second run is needed when a result is near a threshold, a failure may be environmental, or repeatability is itself the question; otherwise one run answers it.
+
+Report which evidence was reused (runner, case, date and commit) and which planned recordings were skipped and why.
 
 ## Environment and shared-machine use
 
