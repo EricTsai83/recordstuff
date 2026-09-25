@@ -232,11 +232,38 @@ pnpm acceptance:settings-shortcut
 
 `pnpm acceptance:shortcut` 另執行第三個隔離的設定階段，使用正式 main／preload／頁面，透過受控註冊 adapter 驗證既存平台等價衝突、恢復、雙語拒絕、擷取暫停與 renderer 崩潰清理。測試會最小化真正的 Electron 視窗，再經註冊 callback 還原，斷言視窗數量與焦點。這屬於整合證據，與原生 Computer Use、真正 OS 衝突測試分開記錄；三個程序及暫存偏好皆會清理。
 
+## 鍵盤配置快捷鍵檢查
+
+```bash
+pnpm acceptance:shortcut-layout
+```
+
+Plan 043 停用 Chromium 的 `LayoutAwareGlobalHotkeys`，讓全域快捷鍵依實體鍵位註冊（[錄影快捷鍵](desktop.md#錄影快捷鍵)）。若升級 Electron 時這個功能被改名或移除，註冊會在無提示下回到依配置查找，注音下的數字快捷鍵就會移到數字鍵盤。這項檢查不需手動切換輸入法就能抓到這種回歸。執行前關閉 RecordStuff，並在 macOS 上執行。終端機需要 System Events 的輔助使用權限，且至少已啟用一個數字列不輸入數字的鍵盤輸入法，例如注音。與 `acceptance:shortcut` 相同，指令會先建置；直接執行 runner 而 `out/` 不存在時，會以 blocked 停止。它不錄影、不需要擷取權限，含建置約需 10 秒。
+
+- **其他 RecordStuff 程序。** 有程序在執行時，runner 以 blocked 拒絕執行：包括正式 App，以及用這個 checkout 啟動的 Electron 開發或 fixture 程序。它們會佔用相同的快捷鍵。
+- **選擇輸入法。** runner 讀取目前的輸入法與鍵盤配置，接著依序嘗試已啟用、可選取的鍵盤輸入法，目前的輸入法排第一。它停在第一個「數字列不輸入任何數字、數字鍵盤 7 仍輸入 7」的配置：依配置查找的數字快捷鍵，正是在這種配置下被移到數字鍵盤。`-- --source <id>` 只嘗試指定的輸入法；未啟用時，在任何變更之前就回報 blocked。runner 從不新增或啟用輸入法，也不改鍵盤設定。
+- **啟用輸入法。** 輸入法只有在文字欄位啟用它時，才會套用自己的配置。從背景程序選取時，它會沿用先前的配置，檢查也會在 bug 存在時照樣通過。因此對輸入法，runner 會開一個自己的小視窗並聚焦其中的文字欄位，最多等 8 秒讓配置回報變更，再關閉視窗。這會短暫搶走焦點。配置未在時限內改變時回報 blocked。
+- **受測 App。** Electron fixture 依 [shortcut-failure](../../../scripts/fixtures/shortcut-failure.ts) 的 boundary 模式載入建置好的 `out/main/index.js`：userData 與 log 都是隔離的，儲存的錄影快捷鍵為 `CommandOrControl+Control+Alt+Shift+7`。註冊會到達真正的 `globalShortcut`，但按鍵只被記錄，不會呼叫正式的 toggle，所以不會錄影，也不會出現權限提示。
+- **按鍵。** System Events 送出三個 key code。設定快捷鍵 ⌘⌥,（key code 43）是送達對照組，必須觸發。數字列 7（key code 26）必須觸發。數字鍵盤 7（key code 89）在 1.5 秒內不得觸發。沒有被任何程式註冊的組合鍵會送到最前面的 App。
+- **還原。** 不論成功、失敗、逾時、SIGINT 或 SIGTERM，都會還原原本的輸入法並確認；無法確認的還原算清理失敗。選取輸入法等同從輸入法選單選擇，因此 macOS 的最近使用清單可能改變。輸入法會保留它套用的配置直到下次使用；這屬於輸入法本身的狀態，不會還原。
+
+`-- --drill-layout-aware` 是預設流程之外的負向對照。fixture 會在 app ready 之前移除正式程式設定的 `disable-features`，讓 Chromium 依配置查找的功能恢復成 plan 043 之前的狀態。這時數字列的按鍵必須失敗、數字鍵盤會觸發；這次執行以 exit 1 結束，並照樣還原輸入法。報告會註明 drill 是否偵測到依配置查找。
+
+報告寫入 `docs/verification/measurements/<timestamp>-shortcut-layout/`，drill 則加上 `-drill` 後綴。`report.md` 與 `report.json` 列出原本、嘗試過、檢查時使用與還原後的輸入法，以及各自的配置與數字列字元；也列出快捷鍵與註冊結果、每個按鍵的結果與清理情形。`electron.log` 與 `check/app.log` 保留程序輸出。
+
+Exit code：
+
+- 0：通過。
+- 1：失敗，包括被中斷的執行與任何清理失敗。
+- 2：blocked。原因包括：不是 macOS、缺少 `out/`、有其他 RecordStuff 程序、螢幕已鎖定、沒有 System Events 權限、沒有符合條件的已啟用輸入法、註冊被拒，或檢查期間輸入法被改變。
+
+合成的 key code 無法證明實體按鍵；043 由維護者回報的實體按鍵仍是硬體證據。
+
 ## 驗收收尾
 
 完整 App 驗收每輪無論成功、失敗或中斷，都須保存測試錄影、還原設定、清理測試視窗、退出受測 App 並確認程序已消失。清理失敗算驗收失敗；保留證據，不重設權限。開發期間已授權按需停止錄影、退出、重啟或重建 RecordStuff，不需另行確認。退出只重設程序狀態，不會清除偏好。
 
-桌面 runner（`acceptance`、`acceptance:settings`、`acceptance:shortcut` 與執行它們的 regression、`acceptance:settings-shortcut`、`acceptance:quit-dialog`、`acceptance:notification`、含擷取的 `acceptance:updates`、`matrix` 及 `audio:quality -- record`）共用 [desktop-session.mts](../../../scripts/lib/desktop-session.mts)：`caffeinate -u` 喚醒閒置關閉的螢幕；以 `ioreg` 的 `CGSSessionScreenIsLocked` 在啟動任何東西或送出按鍵前拒絕鎖定中的 session；`caffeinate -d -i -w <runner pid>` 讓螢幕保持開啟到 runner 結束；回合中（每 2 秒及結束時）偵測到鎖定，結果改為 BLOCKED、exit code 2，並在報告寫入 `Desktop:` 一行。隔離的 lifecycle fixture 不需要螢幕，不持有 assertion。
+桌面 runner（`acceptance`、`acceptance:settings`、`acceptance:shortcut` 與執行它們的 regression、`acceptance:shortcut-layout`、`acceptance:settings-shortcut`、`acceptance:quit-dialog`、`acceptance:notification`、含擷取的 `acceptance:updates`、`matrix` 及 `audio:quality -- record`）共用 [desktop-session.mts](../../../scripts/lib/desktop-session.mts)：`caffeinate -u` 喚醒閒置關閉的螢幕；以 `ioreg` 的 `CGSSessionScreenIsLocked` 在啟動任何東西或送出按鍵前拒絕鎖定中的 session；`caffeinate -d -i -w <runner pid>` 讓螢幕保持開啟到 runner 結束；回合中（每 2 秒及結束時）偵測到鎖定，結果改為 BLOCKED、exit code 2，並在報告寫入 `Desktop:` 一行。隔離的 lifecycle fixture 不需要螢幕，不持有 assertion。
 
 `pnpm acceptance` 會讓受測 App 保持關閉，並在 `report.md` 記錄包含收尾的最終結果；若程序已更換或無法確認待命，拒絕退出。通知驗收還原安裝產物與設定後保持 App 關閉。設定驗收管理自己的程序群組，包含中斷與逾時清理，結果寫入 `cleanup.json`。隔離 runner 只清理自己的程序；單元檢查不關閉無關 App。設定快捷鍵入口仍保留面板供原生操作，由完整 Computer Use 驗收負責退出。下一輪錄影驗收前需重新啟動；程式改動後用 `pnpm start:app` 重建。
 

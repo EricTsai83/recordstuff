@@ -233,11 +233,38 @@ Then use native Computer Use to inspect the actual Settings panel, navigate by k
 
 `pnpm acceptance:shortcut` also runs a third, isolated Settings phase against the production main/preload/page. Its controlled registration adapter covers stored platform-equivalent collisions, recovery, bilingual refusal, capture suspension and renderer-crash cleanup. A real Electron window is minimized and restored through the registered callback; window count and focus are asserted. This is integration evidence, separate from native Computer Use and real OS conflict testing. All three processes and temporary preferences are cleaned up.
 
+## Keyboard-layout shortcut check
+
+```bash
+pnpm acceptance:shortcut-layout
+```
+
+Plan 043 registers global shortcuts by physical key by disabling Chromium's `LayoutAwareGlobalHotkeys` ([recording shortcut](desktop.md#recording-shortcut)). An Electron upgrade that renames or drops the feature would silently bring back layout lookup, and a digit shortcut would move to the keypad under Zhuyin. This check catches that without any manual input-source switching. Run it with RecordStuff closed, on macOS. The terminal needs System Events Accessibility access, and at least one keyboard input source whose number row types no digits, such as Zhuyin, must already be enabled. Like `acceptance:shortcut`, the script builds first; the runner invoked directly stops as blocked when `out/` is missing. It records nothing, needs no capture permission and takes about 10 seconds, build included.
+
+- **Other RecordStuff processes.** The runner refuses as blocked while one runs: the packaged app, or an Electron development or fixture process started with this checkout. It would own the same shortcuts.
+- **Choosing a source.** It reads the current input source and keyboard layout, then tries enabled, selectable keyboard sources, the current one first. It stops at the first whose layout types no digit on the number row while keypad 7 still types 7: that is the layout under which a layout-aware digit shortcut moves to the keypad. `-- --source <id>` tries only that source; a source that is not enabled is blocked before anything changes. The runner never adds or enables sources and never changes keyboard settings.
+- **Activating an input method.** An input method applies its own layout only when a text field activates it. Selected from a background process, it keeps typing with the previous layout, and the check would pass with the bug present. For an input method, the runner therefore opens a small window of its own with a focused text field, waits up to 8 seconds for the layout to report the change, and closes the window. This briefly takes focus. A layout that does not change in time is blocked.
+- **The app under test.** An Electron fixture loads the built `out/main/index.js` behind the [shortcut-failure](../../scripts/fixtures/shortcut-failure.ts) boundary pattern: isolated userData and logs, and a saved recording shortcut of `CommandOrControl+Control+Alt+Shift+7`. Registration reaches the real `globalShortcut`, but a press is recorded instead of calling the production toggle, so nothing records and no permission prompt appears.
+- **Keys.** System Events sends three key codes. The Settings shortcut ⌘⌥, (key code 43) is a delivery control and must fire. Number-row 7 (key code 26) must fire. Keypad 7 (key code 89) must not fire within 1.5 seconds. A combination that nothing registered goes to the frontmost app.
+- **Restore.** The original input source is restored and confirmed on success, failure, timeout, SIGINT and SIGTERM; an unconfirmed restore is a cleanup failure. Selecting a source is the same as choosing it from the input menu, so macOS's list of recently used sources can change. An input method keeps the layout it applied until its next use; that state belongs to the method and is not restored.
+
+`-- --drill-layout-aware` is a negative control outside the default run. The fixture removes production's `disable-features` value before app ready, so Chromium's layout-aware lookup is on as it was before plan 043. The number-row key must then fail and the keypad fires; the run exits 1 and still restores the input source. The report states whether the drill detected the lookup.
+
+Reports go to `docs/verification/measurements/<timestamp>-shortcut-layout/`, with a `-drill` suffix for the drill. `report.md` and `report.json` list the original, tried, in-use and restored sources with their layouts and number-row characters, the accelerator and registrations, each key result and the cleanup. `electron.log` and `check/app.log` keep the process output.
+
+Exit codes:
+
+- 0: pass.
+- 1: fail, including an interrupted run and any cleanup failure.
+- 2: blocked. Causes: not macOS, missing `out/`, another RecordStuff process, a locked screen, no System Events access, no qualifying enabled source, a refused registration, or an input source that changed during the check.
+
+Synthetic key codes do not prove physical keys; 043's maintainer-reported press remains the hardware evidence.
+
 ## Acceptance cleanup
 
 Complete app acceptance rounds save test recordings, restore settings, close test UI, quit the tested app and confirm exit, on success, failure and cancellation. Cleanup failure fails acceptance. Preserve evidence and do not reset permissions. During development, stopping recordings and quitting/restarting/rebuilding RecordStuff as needed is authorized without additional confirmation. Quitting resets process state, not stored preferences.
 
-Desktop runners (`acceptance`, `acceptance:settings`, `acceptance:shortcut` and the regression that runs them, `acceptance:settings-shortcut`, `acceptance:quit-dialog`, `acceptance:notification`, `acceptance:updates` with capture, `matrix` and `audio:quality -- record`) share [desktop-session.mts](../../scripts/lib/desktop-session.mts): `caffeinate -u` wakes an idle-slept display, `ioreg`'s `CGSSessionScreenIsLocked` refuses a locked session before anything is launched or keyed, `caffeinate -d -i -w <runner pid>` keeps the display awake until the runner exits, and a lock seen during the round (polled every 2 seconds and at the end) turns the result into BLOCKED with exit code 2 and a `Desktop:` line in the report. Isolated lifecycle fixtures do not need the display and do not hold it.
+Desktop runners (`acceptance`, `acceptance:settings`, `acceptance:shortcut` and the regression that runs them, `acceptance:shortcut-layout`, `acceptance:settings-shortcut`, `acceptance:quit-dialog`, `acceptance:notification`, `acceptance:updates` with capture, `matrix` and `audio:quality -- record`) share [desktop-session.mts](../../scripts/lib/desktop-session.mts): `caffeinate -u` wakes an idle-slept display, `ioreg`'s `CGSSessionScreenIsLocked` refuses a locked session before anything is launched or keyed, `caffeinate -d -i -w <runner pid>` keeps the display awake until the runner exits, and a lock seen during the round (polled every 2 seconds and at the end) turns the result into BLOCKED with exit code 2 and a `Desktop:` line in the report. Isolated lifecycle fixtures do not need the display and do not hold it.
 
 `pnpm acceptance` leaves the accepted app closed and reports the final cleanup verdict in `report.md`; it refuses to quit a replaced process or an app not confirmed idle. Notification acceptance restores the bundle and settings but keeps the app closed. Settings acceptance supervises its own process group and writes `cleanup.json`, including timeout and interruption outcomes. Isolated runners clean only their own processes. Unit checks do not close unrelated apps. The settings-shortcut entry step leaves its panel open for native inspection; the complete Computer Use round owns final shutdown. Start the app before the next recording round; use `pnpm start:app` to rebuild changed code.
 
