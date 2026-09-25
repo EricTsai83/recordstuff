@@ -42,6 +42,7 @@
     "acceptance:updates": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-updates.mts",
     "acceptance:regression": "pnpm check && pnpm acceptance:settings && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-shortcut.mts",
     "acceptance:shortcut": "pnpm build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-shortcut.mts",
+    "acceptance:shortcut-layout": "pnpm build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-shortcut-layout.mts",
     "acceptance:quit-dialog": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-quit-dialog.mts"
   },
   "devDependencies": {

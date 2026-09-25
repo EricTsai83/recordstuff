@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { build, transformWithEsbuild } from "vite";
 
 export async function buildFixture(
-  name: "quit-dialog" | "recording-lifecycle" | "history-quit" | "settings-panel" | "shortcut-failure" | "release-record-network"
-    | "frame-cadence" | "frame-cadence-renderer",
+  name: "quit-dialog" | "recording-lifecycle" | "history-quit" | "settings-panel" | "shortcut-failure" | "shortcut-layout"
+    | "release-record-network" | "frame-cadence" | "frame-cadence-renderer",
   outputDir: string,
 ): Promise<string> {
   const source = fileURLToPath(new URL(`../fixtures/${name}.ts`, import.meta.url));
@@ -27,8 +27,8 @@ export async function buildFixture(
     } });
     return path.join(outputDir, `${name}.mjs`);
   }
-  // The shortcut fixture intercepts CommonJS loading before requiring the app.
-  const format = name === "shortcut-failure" ? "cjs" : "esm";
+  // The shortcut fixtures intercept CommonJS loading before requiring the app.
+  const format = name === "shortcut-failure" || name === "shortcut-layout" ? "cjs" : "esm";
   const result = await transformWithEsbuild(await fs.readFile(source, "utf8"), source, {
     loader: "ts", format, target: "es2023", sourcemap: "inline",
   });
