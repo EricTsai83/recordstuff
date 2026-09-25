@@ -9,6 +9,40 @@ This document preserves conclusions from completed plans separately from the sys
 [Back to the verification index](README.md). These are historical results, including then-outstanding statuses and procedures; use the [testing guide](../testing.md) for current policy. Raw measurements links are local only and absent from a fresh clone.
 
 
+## Plan 043 closure — 2026-09-26
+
+Global shortcuts now register by physical key, implemented by Claude with Codex GPT-6 Astra review ([recording shortcut](../system-design/desktop.md#recording-shortcut), [design decisions](../system-design/decisions.md)). Plan 032's native round found the problem: with Zhuyin active, the default ⌘⇧1 bound to the keypad. Chromium 152 enables `LayoutAwareGlobalHotkeys` by default, which registers the key that types the accelerator's character in the current layout, and the ZhuyinBopomofo layout types Bopomofo on the number row. The shortcut editor, meanwhile, records physical keys and refuses the keypad. Cap (`40f44a8`, `global-hotkey` 0.7.0) registers fixed physical key codes.
+
+- **Change.** On macOS, main sets `disable-features` before app ready. `physicalHotkeyFeatures` in [hotkey.ts](../../src/main/hotkey.ts) computes the value:
+  - it appends `LayoutAwareGlobalHotkeys` to any list already on the command line, because Chromium keeps only the last value of a repeated switch;
+  - it leaves a list that already names the feature unchanged, with or without a field-trial suffix;
+  - it does nothing on other platforms.
+
+  Three tests cover the platform decision and the merge cases. The desktop design and a new design-decision row record physical registration, the accepted trade-off (on non-QWERTY Latin layouts a letter shortcut follows the US position) and the check to repeat on every Electron upgrade. The tooling guide no longer asks for the ABC input source.
+- **Before.** On Electron 44.3.0 with Zhuyin (ZhuyinBopomofo) active, a probe outside the repository registered ⌘⇧1, ⌘⌥⇧R and ⌘⌥, and sent System Events keys.
+  - By default, number-row ⌘⇧1 (`key code 18`) did not fire, while keypad `key code 83` did.
+  - ⌘⌥⇧R and ⌘⌥, (`key code 43`) fired: no key types r or a comma in that layout, so both fall back to the fixed position. The settings shortcut was therefore not affected.
+  - With the feature disabled, number-row ⌘⇧1 fired, the keypad did not, and the other two still fired.
+- **Checks** on the final revision (Node 24.21.0):
+  - `pnpm acceptance:regression` passed: `pnpm check` (typecheck, 866 tests in 52 files, build), Settings 113/113, and the shortcut failure integration with complete cleanup.
+  - `pnpm exec vitest run src/main/hotkey.test.ts` passed 16 tests.
+  - `git diff --check` was clean.
+
+Native round on an M1 Pro with macOS 26.6.2, from `867b1c3` plus the uncommitted change, with Zhuyin selected for the round and the maintainer's ABC input source restored afterward:
+
+- **`pnpm acceptance:updates`** exited 0 with 11 of 11 required cases. Its fixture logged four `hotkey: CommandOrControl+Shift+1 pressed` from the number-row key code, the case that timed out in plan 032's second run. The recordings were 10.7 and 10.9 s at 1920×1080, 48 kHz stereo at −27.4/−26.6 and −26.7/−27.5 dB, with 11 of 11 and 10 of 10 flash/beep pairs at 71 and 56 ms, and every judged integrity check passed.
+- **Settings shortcut.** A fresh `pnpm start:app` bundle registered the maintainer's ⌘⇧1 and ⌘⌥,, and `pnpm acceptance:settings-shortcut` received the Settings callback.
+- **Playback.** Codex GPT-6 Astra computer use played `2026-09-26 03-44-04.mp4` in QuickTime from 00:00.000 to 00:06.856 with the material moving. It closed the file, cancelled the Open dialog and quit QuickTime: 7 pass (tool observations only, no local PNG).
+- **Permission prompt.** The recordings again show macOS's request to let RecordStuff bypass the private window picker. The maintainer asked for it to be approved. It was not clicked by automation, because it grants capture permission and macOS expects a person to answer it.
+
+Physical keys, maintainer-reported. After the round, the maintainer opened the fixed bundle with `pnpm open:app` and used the physical number-row ⌘⇧1 to start and stop a recording once under Zhuyin and once under ABC, and reported everything normal. The app log agrees: two start/stop pairs of `hotkey: CommandOrControl+Shift+1 pressed` and two saved files at 19:55 UTC. The log does not record the input source, so the layouts rest on the maintainer's report. Earlier in the session, before the fix, the maintainer had pressed ⌘⇧1 seven times on the unfixed bundle; the input source then is unknown, and plan 032's switching had left the layout override on ABC, so those presses show nothing about the Bopomofo layout. No native case is carried to 035.
+
+Not run, by scope: the matrix, long recordings, notifications, `--full`, Windows and a separate `pnpm acceptance` round. Letter shortcuts on QWERTY-based layouts resolve to the same key code either way, and the probe covers them.
+
+Cleanup: before the round, the maintainer's running bundle, which was idle, was quit normally, and it was left closed afterward. No RecordStuff, fixture, material browser or QuickTime process remained. `settings.json` was unchanged across the round (SHA-256; it holds the maintainer's own ⌘⇧1 choice), and the input source is back on ABC. At the maintainer's request, this round's test artifacts were deleted after closure: `2026-09-25T19-41-04-951Z-settings-acceptance`, `2026-09-25T19-41-41-911Z-shortcut-failure`, `2026-09-25T19-42-49-815Z-updates-fXb6e9` (including both recordings), `2026-09-25T19-45-31.612Z-settings-entry-CVoYIJ` and `2026-09-25T19-46-25Z-plan043-computer-use`. The figures in this entry are the retained record.
+
+Codex GPT-6 Astra (medium reasoning, with the read-only sandbox confirmed in the log header) completed pass 1 in about 74 seconds and found no implementation problem: startup ordering, the acceptance instrumentation, platform gating and the merge satisfy the contract. It returned one Low documentation finding, accepted. The desktop design had said that with physical registration every `pnpm acceptance` key reaches the shortcut under any input source, but the runner sends letters as characters, which press a different key on Dvorak or AZERTY. The paragraph now separates key-code delivery from letters, in both languages; the runner's mapping stays out of scope. A one-sentence documentation fix needed no second pass. About 1.5 of the 30-minute review budget was used; no fallback was needed. The round is committed locally on main in scope-separated commits: fix `96057a9`, design documentation `29f5268`, and this closure commit. No push or publication.
+
 ## Plan 032 closure — 2026-09-26
 
 Update acceptance settings-lock contract (R2-06), implemented by Claude with Codex GPT-6 Astra review ([update acceptance](../system-design/tooling.md#update-acceptance)). The runner's `assertNoUpdateActions` expected only language to stay enabled during recording. Run against a real recording `settingsView` before the change, that same check failed on `settings group appearance`.
@@ -36,7 +70,7 @@ These assertions inspect the production handler, tray model and settings model t
 
 After each run no RecordStuff, Electron fixture or material browser process remained. `settings.json` was unchanged (SHA-256 before and after), and the input source was back on Zhuyin. At the maintainer's request this round's test artifacts were deleted after closure: the three run directories `2026-09-25T18-56-39-131Z-updates-uHM73o`, `2026-09-25T18-58-43-277Z-updates-n7BlXk` and `2026-09-25T19-04-59-492Z-updates-YWKqze`, including both recordings, and the playback report `2026-09-25T19-07-04Z-plan032-computer-use`. The figures in this entry are the retained record.
 
-Found but not fixed: an input source whose number row does not type digits may also keep a *physical* number-row ⌘⇧1, the default shortcut, from reaching RecordStuff. Only synthetic events were tested. No native case is carried to 035.
+Found but not fixed: an input source whose number row does not type digits may also keep a *physical* number-row ⌘⇧1, the default shortcut, from reaching RecordStuff. Only synthetic events were tested. [Plan 043](#plan-043-closure--2026-09-26) later fixed it. No native case is carried to 035.
 
 Codex GPT-6 Astra (medium reasoning, with the read-only sandbox confirmed in the log header) completed pass 1 in about 50 seconds and returned no findings. It enumerated the three scripts, the bilingual design, tooling and verification documents, both plan indexes and the deleted plan files, 15 changed files in all. No second pass was needed. About 1 of the 30-minute review budget was used; no fallback was needed. The round is committed locally on main in scope-separated commits: runner fix `bcff30f`, design documentation `350627c`, and this closure commit. No push or publication.
 

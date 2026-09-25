@@ -9,6 +9,40 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 043 結案 — 2026-09-26
+
+全域快捷鍵改為依實體鍵位註冊，由 Claude 實作、Codex GPT-6 Astra review（[錄影快捷鍵](../system-design/desktop.md#錄影快捷鍵)、[設計決策](../system-design/decisions.md)）。問題是在 plan 032 的原生回合發現的：啟用注音時，預設的 ⌘⇧1 會被綁到數字鍵盤。Chromium 152 預設啟用 `LayoutAwareGlobalHotkeys`，會依目前配置找出輸入該字元的鍵來註冊，而 ZhuyinBopomofo 配置在數字列輸入注音符號。另一方面，快捷鍵編輯器記錄的是實體鍵位，並且拒絕數字鍵盤。Cap（`40f44a8`、`global-hotkey` 0.7.0）則是註冊固定的實體 key code。
+
+- **變更。** macOS 上，main 會在 app ready 之前設定 `disable-features`。這個值由 [hotkey.ts](../../../src/main/hotkey.ts) 的 `physicalHotkeyFeatures` 算出：
+  - 把 `LayoutAwareGlobalHotkeys` 附加到命令列上已有的清單，因為 Chromium 對重複的 switch 只保留最後一個值；
+  - 清單已含此功能時不變，不論有沒有 field-trial 後綴；
+  - 其他平台不做任何事。
+
+  三項測試涵蓋平台判斷與各種合併情況。桌面設計與新增的設計決策列記錄了實體註冊、已接受的取捨（非 QWERTY 拉丁配置下，字母快捷鍵依 US 位置），以及每次升級 Electron 都要重做的確認。工具指南不再要求 ABC 輸入法。
+- **修改前。** 在 Electron 44.3.0、啟用注音（ZhuyinBopomofo）的環境下，repository 外的 probe 註冊 ⌘⇧1、⌘⌥⇧R 與 ⌘⌥,，再以 System Events 送出按鍵：
+  - 預設設定下，數字列 ⌘⇧1（`key code 18`）不觸發，數字鍵盤 `key code 83` 會觸發。
+  - ⌘⌥⇧R 與 ⌘⌥,（`key code 43`）都會觸發：這個配置沒有任何鍵輸入 r 或逗號，所以兩者都退回固定位置，設定快捷鍵因此不受影響。
+  - 停用此功能後，數字列 ⌘⇧1 會觸發、數字鍵盤不再觸發，另外兩個仍會觸發。
+- **檢查**（最終版本，Node 24.21.0）：
+  - `pnpm acceptance:regression` 通過：`pnpm check`（型別檢查、52 個檔案的 866 項測試、建置）、Settings 113/113，以及清理完整的快捷鍵失敗整合測試。
+  - `pnpm exec vitest run src/main/hotkey.test.ts` 通過 16 項測試。
+  - `git diff --check` 無問題。
+
+原生回合在 M1 Pro、macOS 26.6.2 上執行，版本為 `867b1c3` 加上未提交的變更；回合期間選用注音，結束後還原維護者原本的 ABC 輸入法：
+
+- **`pnpm acceptance:updates`** 以 exit 0 結束，11 個必要案例全數通過。Fixture 從數字列 key code 記錄到四次 `hotkey: CommandOrControl+Shift+1 pressed`，這正是 plan 032 第二次執行時逾時的案例。兩段錄影分別為 10.7 秒與 10.9 秒、1920×1080、48 kHz 立體聲 −27.4／−26.6 與 −26.7／−27.5 dB，閃光／提示音配對 11/11 與 10/10、偏移 71 與 56 ms，所有受判定的完整性檢查都通過。
+- **設定快捷鍵。** 全新的 `pnpm start:app` bundle 註冊了維護者的 ⌘⇧1 與 ⌘⌥,，`pnpm acceptance:settings-shortcut` 也收到了設定 callback。
+- **播放。** Codex GPT-6 Astra 以 computer use 在 QuickTime 播放 `2026-09-26 03-44-04.mp4`，從 00:00.000 播到 00:06.856，素材持續變化；之後關閉影片、取消「打開」對話框並結束 QuickTime：7 項 pass（只有工具觀察，沒有本機 PNG）。
+- **權限提示。** 錄影中再次出現 macOS 要求允許 RecordStuff 略過系統私密視窗選擇器的提示。維護者要求按下允許，但沒有用自動化點擊：它會授予擷取權限，macOS 預期由人親自回應。
+
+實體按鍵，由維護者回報。回合結束後，維護者以 `pnpm open:app` 開啟修正後的 bundle，用實體數字列 ⌘⇧1 在注音與 ABC 下各開始並停止一次錄影，回報一切正常。App log 相符：19:55 UTC 有兩組 `hotkey: CommandOrControl+Shift+1 pressed` 的開始／停止，並存下兩個檔案。log 不會記錄輸入法，所以配置部分依據維護者的回報。本 session 修正之前，維護者曾在未修正的 bundle 上按了七次 ⌘⇧1；當時的輸入法不明，而且 plan 032 的切換讓配置 override 停在 ABC，所以那些按鍵無法說明 Bopomofo 配置下的行為。沒有原生案例轉交 035。
+
+依範圍未執行：matrix、長時間錄影、通知、`--full`、Windows，以及另外一輪 `pnpm acceptance`。以 QWERTY 為基礎的配置下，字母快捷鍵兩種方式得到相同的 key code，probe 已經涵蓋。
+
+清理：回合開始前，維護者原本開著且處於 idle 的 bundle 已正常結束，回合後維持關閉。沒有殘留 RecordStuff、fixture、素材瀏覽器或 QuickTime 程序。`settings.json` 在回合前後不變（SHA-256；內容包含維護者自己選的 ⌘⇧1），輸入法也已恢復為 ABC。結案後依維護者要求刪除了本輪測試產物：`2026-09-25T19-41-04-951Z-settings-acceptance`、`2026-09-25T19-41-41-911Z-shortcut-failure`、`2026-09-25T19-42-49-815Z-updates-fXb6e9`（含兩段錄影）、`2026-09-25T19-45-31.612Z-settings-entry-CVoYIJ` 與 `2026-09-25T19-46-25Z-plan043-computer-use`。本紀錄中的數據即為保留的紀錄。
+
+Codex GPT-6 Astra（medium reasoning，log 開頭確認為 read-only sandbox）約 74 秒完成第 1 個 pass，沒有發現實作問題：啟動順序、acceptance 插樁、平台判斷與合併邏輯都符合契約。它回報一項 Low 等級的文件 finding，已接受。桌面設計原本寫著：依實體鍵位註冊後，`pnpm acceptance` 送出的每個鍵在任何輸入法下都能觸發快捷鍵；但 runner 以字元送出字母，在 Dvorak 或 AZERTY 下會按到別的鍵。該段中英文版現在已區分 key code 送鍵與字母；runner 的對照方式仍不在範圍內。這是一句文件修正，不需要第二個 pass。30 分鐘 review 預算約用 1.5 分鐘，未使用 fallback。本輪已在本機 main 分成數個 commit：修正 `96057a9`、設計文件 `29f5268`，以及本結案 commit。沒有 push 或發布。
+
 ## Plan 032 結案 — 2026-09-26
 
 更新驗收的設定鎖定契約（R2-06），由 Claude 實作、Codex GPT-6 Astra review（[更新功能驗收](../system-design/tooling.md#更新功能驗收)）。Runner 的 `assertNoUpdateActions` 假定錄製中只有語言可用；修改前把同一個檢查套用到真正的錄製中 `settingsView`，會在 `settings group appearance` 失敗。
@@ -36,7 +70,7 @@
 
 每次執行後都沒有殘留 RecordStuff、Electron fixture 或素材瀏覽器程序，`settings.json` 前後 SHA-256 相同，輸入法也已恢復為注音。結案後依維護者要求刪除了本輪測試產物：三個執行目錄 `2026-09-25T18-56-39-131Z-updates-uHM73o`、`2026-09-25T18-58-43-277Z-updates-n7BlXk` 與 `2026-09-25T19-04-59-492Z-updates-YWKqze`（含兩段錄影），以及播放報告 `2026-09-25T19-07-04Z-plan032-computer-use`。本紀錄中的數據即為保留的紀錄。
 
-發現但未修正：若輸入法的數字列不輸入數字，預設快捷鍵 ⌘⇧1 在*實體*數字列上可能也無法觸發 RecordStuff。本次只測過合成事件。沒有原生案例轉交 035。
+發現但未修正：若輸入法的數字列不輸入數字，預設快捷鍵 ⌘⇧1 在*實體*數字列上可能也無法觸發 RecordStuff。本次只測過合成事件。之後由 [plan 043](#plan-043-結案--2026-09-26) 修正。沒有原生案例轉交 035。
 
 Codex GPT-6 Astra（medium reasoning，log 開頭確認為 read-only sandbox）約 50 秒完成第 1 個 pass，沒有 findings。它列出了三個 script、雙語設計／工具／驗證文件、兩份 plan 索引與已刪除的 plan 檔，共 15 個變更檔案。不需要第二個 pass。30 分鐘 review 預算約用 1 分鐘，未使用 fallback。本輪已在本機 main 分成數個 commit：runner 修正 `bcff30f`、設計文件 `350627c`，以及本結案 commit。沒有 push 或發布。
 
