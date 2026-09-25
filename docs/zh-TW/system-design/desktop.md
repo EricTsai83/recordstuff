@@ -10,7 +10,7 @@ TrayModel 是純函式產物，包含 icon、title、tooltip 與一份扁平的�
 
 | 狀態 | 圖示／標題 | Tray 指令 | 設定視窗中的偏好 |
 | --- | --- | --- | --- |
-| needsPermission | idle／空白 | 權限說明、開設定或重啟、儲存位置 | 全部可調 |
+| needsPermission | idle／空白 | 權限說明、開設定或重啟；權限遺失期間存過檔才能顯示最後錄影；儲存位置 | 全部可調 |
 | idle | idle／空白 | 待命或位置不可用；有 lastSavedPath 才能顯示最後錄影；儲存位置 | 全部可調 |
 | starting | idle／`…` | 提醒完成系統提示 | 只有語言 |
 | recording | recording／`REC` | 可停止（已註冊快捷鍵時 tooltip 顯示組合鍵）；儲存位置變灰 | 只有語言 |
@@ -83,14 +83,15 @@ TrayContext 提供目前語言，通知建立時讀當前 context；已發送的
 來源：[permission.ts](../../../src/main/permission.ts)。只在 macOS 建立 PermissionWatcher。
 
 1. 每 5 秒及 activate 時檢查 `getMediaAccessStatus('screen')`，不依賴無視窗 App 的 activate 一定出現。這一段不會跳提示、也不會產生任何物件，所以輪詢很便宜。
-2. 未 granted：清除驗證快取，發 needsPermission；每個程序最多主動呼叫一次 getSources，以便系統註冊與提示。
-3. granted 但未驗證：用最多 4 秒的 getSources 查是否有螢幕，避免只相信設定開關。
-4. 查得到來源就快取成功；失敗則 needsRelaunch，下次輪詢再驗。重入驗證由 validating 旗標阻止。
-5. 擷取實際被拒絕時，main 可呼叫 markRelaunchRequired 清快取；授權被撤回也清快取。
+2. 未 granted：清除驗證快取與待執行的重試，發 needsPermission；每個程序最多主動呼叫一次 getSources，以便系統註冊與提示。
+3. granted 但未驗證：用 getSources 查是否有螢幕，避免只相信設定開關。驗證 4 秒仍未回應時顯示重啟指引（needsRelaunch），但該呼叫仍佔著名額：期限無法取消 getSources。
+4. Watcher 發出的 getSources（提示或驗證）同時最多一個未完成；等待期間只輪詢第一段。提示進行中才授權時，等提示結束後再驗證；提示的結果永遠不算驗證。
+5. 查得到來源就快取成功；失敗則 needsRelaunch，並從該次失敗完成時起退避重試：5、10、20、40 秒，之後每 60 秒。撤銷授權會重設退避。
+6. 撤銷授權、擷取實際被拒（markRelaunchRequired）與 stop() 都會開始新世代：舊世代的驗證晚到時只記 log 並忽略，接著重新驗證。stop() 移除 interval、activate listener 與兩個 timer；仍未完成的呼叫保留到它自己結束。
 
-只有第一段會被輪詢，而讓這件事安全的正是「第二段成功一次就快取整個程序」。Cap 曾經長期輪詢對應的 macOS 呼叫 `SCShareableContent`（它會實體化系統上每個視窗、App 與顯示器），整個程序生命週期每次呼叫都洩漏，約 15 MB／分鐘，直到 macOS 耗盡 swap（[CapSoftware/Cap issue #2023](https://github.com/CapSoftware/Cap/issues/2023)，於 0.5.9 以「Memory growth while idle on macOS」修正）。這裡採用的就是他們事故後的設計：便宜的 preflight 可以自由輪詢，昂貴的驗證成功一次即快取、失敗重試不快於輪詢週期，連 5 秒與 4 秒兩個常數都相同。執行期撤銷仍由第一段、由擷取嘗試本身、以及實務上 macOS 要求 App 重啟三者抓到。
+只有第一段會被輪詢，而讓這件事安全的正是「第二段成功一次就快取整個程序」。Cap 曾經長期輪詢對應的 macOS 呼叫 `SCShareableContent`（它會實體化系統上每個視窗、App 與顯示器），整個程序生命週期每次呼叫都洩漏，約 15 MB／分鐘，直到 macOS 耗盡 swap（[CapSoftware/Cap issue #2023](https://github.com/CapSoftware/Cap/issues/2023)，於 0.5.9 以「Memory growth while idle on macOS」修正）。這裡採用的就是他們事故後的設計：便宜的 preflight 可以自由輪詢，昂貴的驗證成功一次即快取、序列化執行，失敗後至少等一個輪詢週期（從完成時起算）才重試，連 5 秒與 4 秒兩個常數都相同。Cap 也會讓 `ShareableContent::current` 逾時，但未證明丟棄該 future 會取消 macOS 請求，所以 RecordStuff 持有真正的 promise，而不是再送替代請求（plan 027）。永遠不返回的呼叫無法在同一程序內恢復：指引是重新啟動，讓它隨程序結束。執行期撤銷仍由第一段、由擷取嘗試本身、以及實務上 macOS 要求 App 重啟三者抓到。撤銷與重新授權若都落在兩次輪詢之間就觀察不到，之前開始的驗證仍可能被套用。
 
-只有狀態改變才通知 Recorder。Recorder 只在 idle／needsPermission 接受權限狀態更新，不以輪詢直接打斷正在錄的 session；實際軌道结束、host 錯誤或 OS 要求退出走錄製管線的收尾。
+只有狀態改變才通知 Recorder。Recorder 一律保存最新權限狀態，starting、recording、stopping 期間也一樣，但不因此打斷正在錄的 session。每次回到非忙碌狀態（存檔、擷取失敗或啟動失敗）都依保存的狀態決定 idle 或 needsPermission，因此 session 中只通知一次的撤銷不會遺失，同一 session 內之後又授權也不需要再次通知。needsPermission 保留 lastSavedPath，選單仍有「顯示最後一個錄影」；權限恢復後 Recorder 還原其餘 idle 資訊（outputDirUnavailable，期間已改儲存位置則不還原）。存檔通知仍讓位給權限指引，見通知一節。實際軌道结束、host 錯誤或 OS 要求退出走錄製管線的收尾。
 
 開系統設定使用固定 ScreenCapture URL，不自動修改 TCC。缺權限選單始終提供重新啟動，因本機曾遇到 OS 回報無法在同程序更新。系統音訊是另一項授權，螢幕 granted 不代表音訊可用；由 renderer 的音軌檢查處理拒絕。首次授權、同程序音訊復原與撤銷測試的證據見 [驗證紀錄](../verification/README.md)。
 

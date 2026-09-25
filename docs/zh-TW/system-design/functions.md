@@ -50,8 +50,8 @@
 | `toggle()` | idle 開始、recording 停止、needsPermission 發引導事件，其餘忽略 |
 | `stop()` | 僅 matching recording session → stopping，設 stop timeout，送 stop |
 | `shutdown()` | 等 starting 落定、停止 recording、等 stopping／failure；与退出 hard cap 競速 |
-| `setPermission(status)` | idle／needsPermission 間更新；不覆蓋忙碌 session 狀態 |
-| `outputDirChanged()` | 清 idle.outputDirUnavailable，其他狀態不改 |
+| `setPermission(status)` | 一律保存最新狀態；idle／needsPermission 時狀態有變才重新落定，不覆蓋忙碌 session 狀態 |
+| `outputDirChanged()` | 清掉記住的 outputDirUnavailable（needsPermission 時也清）；只有 idle 才更新狀態 |
 | `start()` | preflight、建立快照與 session、驗位置、開 writer、start host；每階段處理 late 結果 |
 | `openUniqueWriter(session, stamp)` | 每個暫存檔名先寫中斷 sentinel，再嘗試暫存／最終檔名 pair；暫存 EEXIST 最多 10 次，其他錯誤直接拋出 |
 | `markInFlight` / `clearInFlight` | 寫入 session sentinel（失敗只記錄一次、不阻擋）／每個終止結果都移除它 |
@@ -194,14 +194,15 @@
 | `screenCaptureGranted()` | Electron screen status 是否等於 granted |
 | `openScreenCaptureSettings()` | shell.openExternal 固定設定 URL → Promise |
 | `countCapturableScreens()` | getSources screens、無縮圖 → 數量，OS 拒絕則 reject |
-| `constructor(onChange, options)` | 保存注入 API，預設 interval=5 秒、validateTimeout=4 秒 |
-| `start()` / `stop()` | 立即 check、設 interval／activate callback；stop 清 interval |
-| `markRelaunchRequired()` | OS 尚 granted 才清驗證快取並 check |
-| `check()` | 未授權重設＋promptOnce；已驗證直接 emit；其餘排 validate |
-| `promptOnce()` | 每程序至多一次 getSources 註冊／提示呼叫，結果僅記 log |
-| `validate()` | 去重＋timeout，結束後再查 grant；有來源才 validated，其他 needsRelaunch |
+| `constructor(onChange, options)` | 保存注入 API，預設 interval=5 秒、validateTimeout=4 秒、退避上限 60 秒 |
+| `start()` / `stop()` | 立即 check、設 interval 與 activate listener；stop 開新世代並移除 interval、listener、deadline 與 retry，未完成的呼叫仍保留 |
+| `markRelaunchRequired()` | 執行中且 OS 尚 granted 才開新世代、清驗證快取並 check |
+| `check()` | 未授權時重設（新世代、清 deadline／retry／退避）＋promptOnce；已驗證直接 emit；其餘 validate |
+| `promptOnce()` | 每程序至多一次 getSources 註冊／提示呼叫，且只在列舉名額空出時送出 |
+| `validate()` | retry 等待中則略過；設指引 deadline；沒有未完成呼叫才列舉 |
+| `overdue()` | deadline 到：emit needsRelaunch 指引，不釋放 in-flight 名額 |
+| `enumerate()` / `settle()` | 持有唯一呼叫直到它結束；只釋放自己的名額；忽略舊世代；成功快取或排入倍增退避 |
 | `emit(status)` | 相同 granted／needsRelaunch 不重送 |
-| `withTimeout(promise, ms)` | timer 與 Promise 競速；settle 清 timer；不取消底層 OS 請求 |
 
 ## 共用 UI 語彙 — main/ui-model.ts
 
@@ -299,7 +300,7 @@
 
 [log.ts](../../../src/main/log.ts)：`rotatedPath(path, index)` 組 archive 檔名；`rotateLog(path, keep)` 刪最舊再逆序搬移；`formatLine(message, now)` 加 ISO 前綴；`createFileLogger(options)` 回同步 Log closure。closure 內 `sizeOf()` 查長度（失敗視 0），`appendToFile()` 建目錄、必要時輪替、追加；回傳 logger 先 stdout，磁碟錯誤後停用檔案輸出。
 
-[autorecord.ts](../../../src/main/autorecord.ts)：`parseAutoRecord(value, isPackaged)` 在打包版／空值回 undefined；其餘解析 seconds∈(0,3600] 與合法 quality patch，合併預設而非使用者設定。`runAutoRecord(config, deps)` 等預設 1.5 秒後由公開 toggle 開始，進 recording 才排計時停止，saved／failed／needsPermission 後由內部 `finish(message)` 一次性 log＋quit。用於開發量測，不在正式版提供遠端控制。
+[autorecord.ts](../../../src/main/autorecord.ts)：`parseAutoRecord(value, isPackaged)` 在打包版／空值回 undefined；其餘解析 seconds∈(0,3600] 與合法 quality patch，合併預設而非使用者設定。`runAutoRecord(config, deps)` 等預設 1.5 秒後由公開 toggle 開始，進 recording 才排計時停止，saved／failed，或按下開始前的 needsPermission 後，由內部 `finish(message)` 一次性 log＋quit。用於開發量測，不在正式版提供遠端控制。
 
 ## 簽章與圖示工具
 

@@ -20,7 +20,7 @@ stateDiagram-v2
     stopping --> idle: failed
 ```
 
-`needsPermission` 帶 `needsRelaunch`；`idle` 可帶 `lastSavedPath` 或 `outputDirUnavailable`；`recording` 帶 ISO `startedAt`。錯誤是 `failed` 事件，沒有持久的 `failed` 狀態。缺權限時點圖示只發 `permissionRequested`；starting／stopping 期間點擊無作用。
+`needsPermission` 帶 `needsRelaunch`，權限遺失期間存過檔時也帶 `lastSavedPath`；`idle` 可帶 `lastSavedPath` 或 `outputDirUnavailable`。最新權限狀態不是 granted 時，session 結束（saved 或 failed）會進入 needsPermission 而不是 idle（見[螢幕權限](desktop.md#螢幕權限)）；`recording` 帶 ISO `startedAt`。錯誤是 `failed` 事件，沒有持久的 `failed` 狀態。缺權限時點圖示只發 `permissionRequested`；starting／stopping 期間點擊無作用。
 
 ## 開始流程
 

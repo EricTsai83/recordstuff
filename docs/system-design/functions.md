@@ -50,8 +50,8 @@ Process callbacks log uncaught exceptions/rejections. Recorder events render sta
 | toggle | Start when idle, stop when recording, request permission guidance when blocked, otherwise ignore |
 | stop | Matching recording session → stopping, arm deadline, send stop |
 | shutdown | Wait startup, request stop, wait completion/failure while racing quit cap |
-| setPermission | Update idle/needsPermission without replacing an active recording state |
-| outputDirChanged | Clear idle.outputDirUnavailable |
+| setPermission | Always store the latest status; while idle/needsPermission re-settle on a change, never replace a busy state |
+| outputDirChanged | Clear the remembered outputDirUnavailable, also while needsPermission; update the state only when idle |
 | start | Preflight, snapshot, session, folder probe, unique writer, host start; clean late results |
 | openUniqueWriter | Write the interruption sentinel for each temporary name, then try temporary/final filename pairs; retry temporary EEXIST up to ten attempts |
 | markInFlight / clearInFlight | Write the session sentinel (a failure logs once and never blocks) / remove it on every terminal outcome |
@@ -193,14 +193,15 @@ The page's window-message callback checks source/marker/port before creating the
 | screenCaptureGranted | Compare Electron screen status with granted |
 | openScreenCaptureSettings | Open fixed settings URL |
 | countCapturableScreens | Enumerate screens without thumbnails; count or reject |
-| constructor | Inject APIs/callback; default 5-second polling and 4-second validation deadline |
-| start / stop | Immediate check, interval/activate callback / clear interval |
-| markRelaunchRequired | If OS still grants access, invalidate cache and recheck |
-| check | Reset/prompt when denied; emit cached success; otherwise validate |
-| promptOnce | One registration/prompt getSources call per process; log result |
-| validate | Deduplicate, time out, recheck grant, cache real source access or request relaunch |
+| constructor | Inject APIs/callback; default 5-second polling, 4-second validation deadline and 60-second backoff cap |
+| start / stop | Immediate check, interval and activate listener / new generation, remove interval, listener, deadline and retry; a pending call stays owned |
+| markRelaunchRequired | If running and the OS still grants access, start a new generation, invalidate cache and recheck |
+| check | Reset (new generation, clear deadline/retry/backoff) and prompt when denied; emit cached success; otherwise validate |
+| promptOnce | One registration/prompt getSources call per process, only when the enumeration slot is free |
+| validate | Skip while a retry waits; arm the guidance deadline; enumerate only when no call is in flight |
+| overdue | Deadline reached: emit needsRelaunch guidance without freeing the in-flight slot |
+| enumerate / settle | Own the single call until it settles; free only its own slot; ignore stale generations; cache success or schedule the doubling backoff |
 | emit | Suppress identical permission states |
-| withTimeout | Race promise with timer and clear timer on settlement; does not cancel OS request |
 
 ## Shared UI vocabulary
 
@@ -301,7 +302,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 [main/log.ts](../../src/main/log.ts): `rotatedPath` constructs archive names; `rotateLog` removes the oldest and shifts archives; `formatLine` adds UTC ISO time; `createFileLogger` returns a synchronous logging closure. Nested `sizeOf` reads length (failure→0); `appendToFile` creates the directory, rotates, and appends. The returned function writes stdout first and disables file logging after an error.
 
-[main/autorecord.ts](../../src/main/autorecord.ts): `parseAutoRecord` ignores packaged/empty input, validates seconds in (0,3600] and quality keys, and merges defaults. `runAutoRecord` waits 1.5 seconds before toggle, starts its stop timer only after recording begins, and quits after saved/failed/needsPermission through once-only `finish`. It does not write settings.
+[main/autorecord.ts](../../src/main/autorecord.ts): `parseAutoRecord` ignores packaged/empty input, validates seconds in (0,3600] and quality keys, and merges defaults. `runAutoRecord` waits 1.5 seconds before toggle, starts its stop timer only after recording begins, and quits after saved/failed, or needsPermission before its press, through once-only `finish`. It does not write settings.
 
 ## Packaging and icons
 

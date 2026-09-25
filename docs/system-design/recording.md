@@ -20,7 +20,7 @@ stateDiagram-v2
     stopping --> idle: failed
 ```
 
-NeedsPermission carries needsRelaunch. Idle may carry lastSavedPath or outputDirUnavailable. Recording carries an ISO startedAt. Failure is an event, not a persistent failed state. Clicking without permission emits permissionRequested; clicks during starting/stopping are ignored.
+NeedsPermission carries needsRelaunch, and lastSavedPath when a recording was saved while permission was missing. Idle may carry lastSavedPath or outputDirUnavailable. A session's end (saved or failed) settles into needsPermission instead of idle when the latest permission status is not granted ([screen permission](desktop.md#screen-permission)). Recording carries an ISO startedAt. Failure is an event, not a persistent failed state. Clicking without permission emits permissionRequested; clicks during starting/stopping are ignored.
 
 ## Start
 
