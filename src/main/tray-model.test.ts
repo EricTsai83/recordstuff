@@ -96,6 +96,12 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(enabledActions(m.menu)).not.toContain("openPermissionSettings");
   });
 
+  it("needsPermission after a save keeps the reveal item below the permission actions", () => {
+    const m = trayModel({ type: "needsPermission", needsRelaunch: true, lastSavedPath: "/Users/eric/Movies/RecordStuff/a.mp4" }, mac);
+    expect(labels(m.menu).slice(0, 3)).toEqual(["需要螢幕錄製權限", "重新啟動", "顯示最後一個錄影"]);
+    expect(enabledActions(m.menu).slice(0, 2)).toEqual(["relaunch", "revealLastSaved"]);
+  });
+
   it("idle without a last recording", () => {
     const m = trayModel({ type: "idle" }, mac);
     expect(m.icon).toBe("idle");

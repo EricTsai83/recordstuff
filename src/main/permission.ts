@@ -24,6 +24,12 @@
  * Caching one success for the process is what makes that safe, and a runtime
  * revocation is still caught by stage 1 and by the capture attempt itself.
  *
+ * At most one watcher-owned `getSources` call — prompt or validation — is
+ * ever unresolved (plan 027). The validation deadline only shows relaunch
+ * guidance: a call that never returns keeps its slot, so the watcher then
+ * polls stage 1 alone rather than stacking native requests. A failed
+ * validation retries with a bounded backoff counted from its completion.
+ *
  * There is no window, so `activate` is unreliable; poll every 5 seconds.
  * Windows needs nothing and this module is never used there.
  */
@@ -67,33 +73,57 @@ export interface PermissionStatus {
 }
 
 export interface PermissionWatcherOptions {
-  /** Poll period; also the retry period for a failed validation. */
+  /** Poll period; also the first retry delay after a failed validation. */
   intervalMs?: number;
-  /** A validation that takes longer than this counts as failed. */
+  /** A validation still unanswered after this shows relaunch guidance; its request stays owned. */
   validateTimeoutMs?: number;
+  /** Upper bound of the retry backoff, which doubles from `intervalMs` after each failure. */
+  retryMaxMs?: number;
   /** Injectable for tests; defaults to the Electron APIs above. */
   isGranted?: () => boolean;
   countScreens?: () => Promise<number>;
-  onActivate?: (listener: () => void) => void;
+  /** Registers the activation listener and returns its removal. */
+  onActivate?: (listener: () => void) => () => void;
   log?: (message: string) => void;
+}
+
+interface Enumeration {
+  purpose: "prompt" | "validate";
+  /** The permission generation it started in; a newer generation makes its result stale. */
+  generation: number;
 }
 
 export class PermissionWatcher {
   private timer: ReturnType<typeof setInterval> | undefined;
+  private removeActivate: (() => void) | undefined;
+  private running = false;
   /** Stage 2 passed once; capture works for the rest of this process. */
   private validated = false;
-  /** OS says granted but capture sees nothing (or a capture was refused). */
+  /** OS says granted but capture sees nothing, a capture was refused, or validation is overdue. */
   private relaunchRequired = false;
   /** The registration/prompt call is made at most once per process. */
   private prompted = false;
-  private validating = false;
+  /** Bumped by revocation, a refused capture and stop(): older validations are stale. */
+  private generation = 0;
+  /**
+   * The one watcher-owned getSources call, prompt or validation. It is held
+   * until that promise itself settles: a deadline cannot cancel the native
+   * request, so a replacement would only pile up another one.
+   */
+  private inFlight: Enumeration | undefined;
+  /** UI deadline for an unanswered validation; firing shows guidance, never frees `inFlight`. */
+  private deadline: ReturnType<typeof setTimeout> | undefined;
+  /** Next validation after a failure, measured from that failure's completion. */
+  private retry: ReturnType<typeof setTimeout> | undefined;
+  private retryDelayMs: number;
   private last: PermissionStatus | undefined;
 
   private readonly intervalMs: number;
   private readonly validateTimeoutMs: number;
+  private readonly retryMaxMs: number;
   private readonly isGranted: () => boolean;
   private readonly countScreens: () => Promise<number>;
-  private readonly onActivate: (listener: () => void) => void;
+  private readonly onActivate: (listener: () => void) => () => void;
   private readonly log: (message: string) => void;
 
   constructor(
@@ -102,40 +132,62 @@ export class PermissionWatcher {
   ) {
     this.intervalMs = options.intervalMs ?? 5000;
     this.validateTimeoutMs = options.validateTimeoutMs ?? 4000;
+    this.retryMaxMs = options.retryMaxMs ?? 60_000;
+    this.retryDelayMs = this.intervalMs;
     this.isGranted = options.isGranted ?? screenCaptureGranted;
     this.countScreens = options.countScreens ?? countCapturableScreens;
-    this.onActivate = options.onActivate ?? ((listener) => app.on("activate", listener));
+    this.onActivate = options.onActivate ?? ((listener) => {
+      app.on("activate", listener);
+      return () => app.removeListener("activate", listener);
+    });
     this.log = options.log ?? (() => undefined);
   }
 
   start(): void {
+    if (this.running) return;
+    this.running = true;
     this.check();
     this.timer = setInterval(() => this.check(), this.intervalMs);
-    this.onActivate(() => this.check());
+    this.removeActivate = this.onActivate(() => this.check());
   }
 
+  /** Ends polling and timers; a request still in flight stays owned until it settles, then is ignored. */
   stop(): void {
+    this.running = false;
+    this.generation += 1;
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+    this.removeActivate?.();
+    this.removeActivate = undefined;
+    this.clearDeadline();
+    this.clearRetry();
   }
 
   /**
    * A capture attempt was refused for permission reasons even though we had
    * validated earlier (macOS can revoke at runtime). Drop the cache and treat
-   * it as the stale-TCC case until a fresh validation proves otherwise.
+   * it as the stale-TCC case until a fresh validation proves otherwise; this
+   * evidence is newer than any validation still in flight.
    */
   markRelaunchRequired(): void {
-    if (!this.isGranted()) return;
+    if (!this.running || !this.isGranted()) return;
+    this.generation += 1;
     this.validated = false;
     this.relaunchRequired = true;
+    this.clearDeadline();
     this.check();
   }
 
   check(): void {
+    if (!this.running) return;
     if (!this.isGranted()) {
       // Losing the grant resets everything; a later grant is validated afresh.
+      this.generation += 1;
       this.validated = false;
       this.relaunchRequired = false;
+      this.clearDeadline();
+      this.clearRetry();
+      this.retryDelayMs = this.intervalMs;
       this.emit({ granted: false, needsRelaunch: false });
       this.promptOnce();
       return;
@@ -145,50 +197,113 @@ export class PermissionWatcher {
       return;
     }
     if (this.relaunchRequired) this.emit({ granted: false, needsRelaunch: true });
-    void this.validate();
-  }
-
-  /** Make macOS list the app and show its own prompt (docs/system-design/recording.md). */
-  private promptOnce(): void {
-    if (this.prompted) return;
-    this.prompted = true;
-    this.countScreens().then(
-      (count) => this.log(`permission: prompt call returned ${count} screen(s) without a grant`),
-      (cause) => this.log(`permission: prompt call refused as expected: ${String(cause)}`),
-    );
+    this.validate();
   }
 
   /**
-   * Stage 2, bounded and de-duplicated. Success is cached; failure marks
-   * `needsRelaunch` and is retried on the next poll, so a transient failure
-   * (e.g. a wedged capture service after sleep) heals without user action.
+   * Make macOS list the app and show its own prompt (docs/system-design/recording.md).
+   * It shares the single enumeration slot, so it waits for a pending validation.
    */
-  private async validate(): Promise<void> {
-    if (this.validating) return;
-    this.validating = true;
-    let ok: boolean;
+  private promptOnce(): void {
+    if (this.prompted || this.inFlight) return;
+    this.prompted = true;
+    this.enumerate("prompt");
+  }
+
+  /**
+   * Stage 2: one request at a time, a UI deadline, and a backoff after
+   * failure, so a transient failure (e.g. a wedged capture service after sleep)
+   * still heals without user action. Success is cached.
+   */
+  private validate(): void {
+    if (this.retry) return;
+    if (!this.relaunchRequired && !this.deadline) {
+      this.deadline = setTimeout(() => this.overdue(), this.validateTimeoutMs);
+    }
+    if (this.inFlight) return;
+    this.enumerate("validate");
+  }
+
+  /** The validation is unanswered: guide the user to relaunch, but keep owning the request. */
+  private overdue(): void {
+    this.deadline = undefined;
+    if (!this.running || this.validated) return;
+    if (!this.isGranted()) {
+      this.check();
+      return;
+    }
+    this.log(`permission: validation unanswered after ${this.validateTimeoutMs} ms; no new request until it settles`);
+    this.relaunchRequired = true;
+    this.emit({ granted: false, needsRelaunch: true });
+  }
+
+  private enumerate(purpose: Enumeration["purpose"]): void {
+    const request: Enumeration = { purpose, generation: this.generation };
+    this.inFlight = request;
+    let pending: Promise<number>;
     try {
-      const count = await withTimeout(this.countScreens(), this.validateTimeoutMs);
-      ok = count > 0;
-      this.log(
-        ok
-          ? `permission: granted and capture sees ${count} screen(s)`
-          : "permission: OS reports granted but capture sees no screens",
-      );
+      pending = this.countScreens();
     } catch (cause) {
-      ok = false;
-      this.log(`permission: validation failed: ${String(cause)}`);
-    } finally {
-      this.validating = false;
+      pending = Promise.reject(cause);
+    }
+    pending.then(
+      (count) => this.settle(request, { count }),
+      (cause: unknown) => this.settle(request, { cause }),
+    );
+  }
+
+  private settle(request: Enumeration, outcome: { count: number } | { cause: unknown }): void {
+    // Only a request's own settlement frees the slot.
+    if (this.inFlight === request) this.inFlight = undefined;
+    if (request.purpose === "prompt") {
+      this.log("count" in outcome
+        ? `permission: prompt call returned ${outcome.count} screen(s) without a grant`
+        : `permission: prompt call refused as expected: ${String(outcome.cause)}`);
+      // A grant that arrived meanwhile is validated now that the slot is free.
+      this.check();
+      return;
+    }
+    if (!this.running || request.generation !== this.generation) {
+      this.log(`permission: ignored a superseded validation (${"count" in outcome ? `${outcome.count} screen(s)` : String(outcome.cause)})`);
+      this.check();
+      return;
     }
     // The grant may have been withdrawn while we were waiting.
     if (!this.isGranted()) {
       this.check();
       return;
     }
+    this.clearDeadline();
+    const ok = "count" in outcome && outcome.count > 0;
+    this.log(
+      "cause" in outcome ? `permission: validation failed: ${String(outcome.cause)}`
+        : ok ? `permission: granted and capture sees ${outcome.count} screen(s)`
+        : "permission: OS reports granted but capture sees no screens",
+    );
     this.validated = ok;
     this.relaunchRequired = !ok;
-    this.emit(ok ? { granted: true, needsRelaunch: false } : { granted: false, needsRelaunch: true });
+    if (ok) {
+      this.retryDelayMs = this.intervalMs;
+      this.emit({ granted: true, needsRelaunch: false });
+      return;
+    }
+    this.emit({ granted: false, needsRelaunch: true });
+    const delay = this.retryDelayMs;
+    this.retryDelayMs = Math.min(delay * 2, this.retryMaxMs);
+    this.retry = setTimeout(() => {
+      this.retry = undefined;
+      this.check();
+    }, delay);
+  }
+
+  private clearDeadline(): void {
+    if (this.deadline) clearTimeout(this.deadline);
+    this.deadline = undefined;
+  }
+
+  private clearRetry(): void {
+    if (this.retry) clearTimeout(this.retry);
+    this.retry = undefined;
   }
 
   private emit(status: PermissionStatus): void {
@@ -198,20 +313,4 @@ export class PermissionWatcher {
     this.last = status;
     this.onChange(status);
   }
-}
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (cause: unknown) => {
-        clearTimeout(timer);
-        reject(cause);
-      },
-    );
-  });
 }

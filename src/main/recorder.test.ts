@@ -681,6 +681,101 @@ describe("Recorder permission", () => {
     ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
     expect(ctx.recorder.state.type).toBe("recording");
   });
+
+  // Bug 2: the watcher reports a revocation once, and the old recorder
+  // dropped it while busy, so the session ended in a misleading "Ready".
+  const SAVED = "/out/2026-09-11 14-30-00.mp4";
+  const saveRecording = async (ctx: ReturnType<typeof setup>): Promise<void> => {
+    if (ctx.recorder.state.type === "recording") ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+  };
+
+  it("a revoke during recording settles the save into needsPermission and keeps the file discoverable", async () => {
+    const ctx = setup();
+    await startRecording(ctx);
+    ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
+    await saveRecording(ctx);
+    expect(ctx.recorder.state).toEqual({ type: "needsPermission", needsRelaunch: false, lastSavedPath: SAVED });
+    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: SAVED });
+    ctx.recorder.toggle();
+    expect(ctx.events.at(-1)).toEqual({ type: "permissionRequested", needsRelaunch: false });
+    expect(ctx.host.started).toEqual(["s1"]);
+    ctx.recorder.setPermission({ granted: true, needsRelaunch: false });
+    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: SAVED });
+  });
+
+  it("a revoke during stopping settles into the latest needsRelaunch", async () => {
+    const ctx = setup();
+    await startRecording(ctx);
+    ctx.recorder.stop();
+    ctx.recorder.setPermission({ granted: false, needsRelaunch: true });
+    expect(ctx.recorder.state.type).toBe("stopping");
+    await saveRecording(ctx);
+    expect(ctx.recorder.state).toEqual({ type: "needsPermission", needsRelaunch: true, lastSavedPath: SAVED });
+  });
+
+  it("a capture failure after a revoke settles into needsPermission and still reports the failure", async () => {
+    const ctx = setup();
+    await startRecording(ctx);
+    ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
+    ctx.host.crash();
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "needsPermission", needsRelaunch: false });
+    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "capture_host_crashed", partialPath: "/out/2026-09-11 14-30-00.recording.mp4" });
+    expect(ctx.states.map((s) => s.type)).toEqual(["starting", "recording", "needsPermission"]);
+  });
+
+  it("a revoke during starting settles a start failure into needsPermission; the grant restores the folder flag", async () => {
+    let rejectDir!: (cause: Error) => void;
+    const ctx = setup({ ensureWritableDir: () => new Promise((_resolve, reject) => { rejectDir = reject; }) });
+    ctx.recorder.toggle();
+    ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
+    expect(ctx.recorder.state.type).toBe("starting");
+    await flush();
+    rejectDir(new Error("EACCES"));
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "needsPermission", needsRelaunch: false });
+    expect(ctx.events.at(-1)).toEqual({ type: "failed", code: "output_open_failed", detail: "EACCES" });
+    ctx.recorder.setPermission({ granted: true, needsRelaunch: false });
+    expect(ctx.recorder.state).toEqual({ type: "idle", outputDirUnavailable: true });
+  });
+
+  it("choosing a folder while permission is missing forgets the unusable-folder flag", async () => {
+    const ctx = setup({ ensureWritableDir: async () => { throw new Error("EACCES"); } });
+    ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
+    ctx.recorder.setPermission({ granted: true, needsRelaunch: false });
+    ctx.recorder.toggle();
+    ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
+    await flush();
+    ctx.recorder.outputDirChanged();
+    expect(ctx.recorder.state).toEqual({ type: "needsPermission", needsRelaunch: false });
+    ctx.recorder.setPermission({ granted: true, needsRelaunch: false });
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+  });
+
+  it("a grant later in the same session needs no duplicate event", async () => {
+    const ctx = setup();
+    await startRecording(ctx);
+    ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
+    ctx.recorder.setPermission({ granted: true, needsRelaunch: false });
+    await saveRecording(ctx);
+    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: SAVED });
+    expect(ctx.states.map((s) => s.type)).toEqual(["starting", "recording", "stopping", "idle"]);
+  });
+
+  it("needsRelaunch transitions after a save keep its path until the grant returns", async () => {
+    const ctx = setup();
+    await startRecording(ctx);
+    ctx.recorder.setPermission({ granted: false, needsRelaunch: true });
+    await saveRecording(ctx);
+    ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
+    ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
+    expect(ctx.recorder.state).toEqual({ type: "needsPermission", needsRelaunch: false, lastSavedPath: SAVED });
+    ctx.recorder.setPermission({ granted: true, needsRelaunch: false });
+    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: SAVED });
+    expect(ctx.states.map((s) => s.type)).toEqual(["starting", "recording", "stopping", "needsPermission", "needsPermission", "idle"]);
+  });
 });
 
 describe("Recorder shutdown", () => {

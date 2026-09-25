@@ -88,6 +88,7 @@ export function runAutoRecord(config: AutoRecordConfig, deps: AutoRecordDeps): v
   const schedule = deps.setTimeout ?? ((fn, ms) => setTimeout(fn, ms));
   const startDelay = deps.startDelayMs ?? 1500;
   let stopScheduled = false;
+  let pressed = false;
   let done = false;
   const finish = (message: string): void => {
     if (done) return;
@@ -106,7 +107,8 @@ export function runAutoRecord(config: AutoRecordConfig, deps: AutoRecordDeps): v
           schedule(() => {
             if (!done) deps.stop();
           }, config.seconds * 1000);
-        } else if (event.state.type === "needsPermission") {
+        } else if (event.state.type === "needsPermission" && !pressed) {
+          // After the press, a session that ends without permission still reports its own saved/failed.
           finish("failed: needs screen recording permission");
         }
         return;
@@ -124,6 +126,7 @@ export function runAutoRecord(config: AutoRecordConfig, deps: AutoRecordDeps): v
     if (done) return;
     const state = deps.state();
     if (state.type === "idle") {
+      pressed = true;
       deps.toggle();
     } else {
       finish(`failed: cannot start from state ${state.type}`);

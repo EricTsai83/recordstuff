@@ -112,6 +112,18 @@ describe("runAutoRecord", () => {
     expect(denied.logs.at(-1)).toContain("cannot start from state needsPermission");
   });
 
+  it("a session that ends without permission reports its own saved result", () => {
+    const h = harness();
+    runAutoRecord(config, h.deps);
+    h.timers[0]?.fn();
+    h.emit({ type: "state", state: { type: "recording", startedAt: "t" } });
+    h.timers[1]?.fn();
+    h.emit({ type: "state", state: { type: "needsPermission", needsRelaunch: false, lastSavedPath: "/x/a.mp4" } });
+    h.emit({ type: "saved", path: "/x/a.mp4" });
+    expect(h.calls).toEqual(["toggle", "stop", "quit"]);
+    expect(h.logs.at(-1)).toBe("autorecord: saved /x/a.mp4");
+  });
+
   it("does not press stop or quit twice", () => {
     const h = harness();
     runAutoRecord(config, h.deps);

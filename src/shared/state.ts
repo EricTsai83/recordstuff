@@ -6,9 +6,12 @@
  * because the chosen output directory could not be written (docs/system-design/recording.md:
  * the menu's first line must read"Output folder unavailable"). It is cleared by the
  * next successful start or by changing the output directory.
+ *
+ * `needsPermission.lastSavedPath` keeps a recording saved while permission was
+ * lost discoverable; the recorder restores the rest of idle once it returns.
  */
 export type RecordingState =
-  | { type: "needsPermission"; needsRelaunch: boolean }
+  | { type: "needsPermission"; needsRelaunch: boolean; lastSavedPath?: string }
   | { type: "idle"; lastSavedPath?: string; outputDirUnavailable?: boolean }
   | { type: "starting" }
   | { type: "recording"; startedAt: string }

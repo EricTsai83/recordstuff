@@ -411,11 +411,13 @@ async function main(): Promise<void> {
       case "relaunch":
         quitCoordinator.relaunch();
         return;
-      case "revealLastSaved":
-        if (recorder.state.type === "idle" && recorder.state.lastSavedPath) {
-          shell.showItemInFolder(recorder.state.lastSavedPath);
+      case "revealLastSaved": {
+        const state = recorder.state;
+        if ((state.type === "idle" || state.type === "needsPermission") && state.lastSavedPath) {
+          shell.showItemInFolder(state.lastSavedPath);
         }
         return;
+      }
       case "revealLog":
         await revealLog();
         return;

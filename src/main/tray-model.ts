@@ -110,6 +110,7 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
       return model("idle", "", text("Screen recording permission required"), [
         disabled(text("Screen recording permission required")),
         ...permissionActions(state.needsRelaunch, language),
+        ...(state.lastSavedPath ? [item(text("Show last recording"), "revealLastSaved", state.lastSavedPath)] : []),
         SEPARATOR,
         ...outputDirItems(ctx, true),
         ...end,
