@@ -9,6 +9,15 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 039 結案 — 2026-09-25
+
+儲存庫整理，只涉及文件與測試位置。兩份儲存庫版面文件現在說明 `tests/`（同時需要 DOM 與 Node API 的跨程序測試，由 `tsconfig.tests.json` 檢查、`vitest.config.ts` 收錄），在強制設定表列出 `tsconfig.tests.json`，並把 `test-material.html` 歸到 `scripts/` 進入點同層。`scripts/update-acceptance.test.ts` 移到 `scripts/lib/update-acceptance.test.ts`，`scripts/lib/settings-entry.test.ts` 併入 `scripts/lib/acceptance.test.ts`，根目錄 `tsconfig.json` 的 references 加入 tests 設定。
+
+重複 skill 一項依維護者決定不執行：Claude Code 只使用 `.claude/skills/`，其他 agent 使用 `.agents/skills/`，因此兩份 `claude-implement-with-gpt6-astra-review` 維持各自獨立的檔案，不改為 symlink。儲存庫版面文件已記錄這項分工。
+
+`pnpm check` 通過：typecheck、43 個檔案共 665 個測試（先前為 44 個檔案 665 個；合併使檔案數少一個，測試數不變）與 build。受影響連結／anchor 與 `git diff --check` 通過。不需要、也未執行 App 啟動、打包、錄影或原生驗收。下一個是 Plan 036，尚未開始。依維護者要求，已依 scope 分開 commit 在本機 main；未 push 或發布。
+
+
 ## Plan 025 終止負責與退出 — 2026-09-25
 
 實作已完成；計畫仍保留，等待最後原生驗收。Renderer 在 Blob 轉換前固定終止原因，encoder error 等待末筆 data／stop，有界 fallback 阻止後續交接。Main 只保留一個終止流程，獨立追蹤開檔、存檔、失敗清理與等待結果查核／發布。退出共用協調器、保留啟動後立即停止的意圖，10 秒停止期限後另留 3 秒清理時間；待處理工作只能延後退出，不能被丟棄。延期會取消重啟意圖；遲到開檔後關閉失敗只保留不確定的候選路徑。

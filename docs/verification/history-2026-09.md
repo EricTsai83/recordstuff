@@ -9,6 +9,15 @@ This document preserves conclusions from completed plans separately from the sys
 [Back to the verification index](README.md). These are historical results, including then-outstanding statuses and procedures; use the [testing guide](../testing.md) for current policy. Raw measurements links are local only and absent from a fresh clone.
 
 
+## Plan 039 closure — 2026-09-25
+
+Repository hygiene; documentation and test placement only. Both repository layout documents now describe `tests/` (cross-process tests needing both DOM and Node APIs, checked by `tsconfig.tests.json` and collected by `vitest.config.ts`), list `tsconfig.tests.json` in the enforcement table, and place `test-material.html` with the `scripts/` entry points. `scripts/update-acceptance.test.ts` moved to `scripts/lib/update-acceptance.test.ts`, `scripts/lib/settings-entry.test.ts` was folded into `scripts/lib/acceptance.test.ts`, and the root `tsconfig.json` now references the tests config.
+
+The duplicated-skill item was not executed, by maintainer decision: Claude Code uses only `.claude/skills/` and the other agents use `.agents/skills/`, so the two `claude-implement-with-gpt6-astra-review` copies remain separate files rather than a symlink. The repository layout now records that split.
+
+`pnpm check` passed: typecheck, 665 tests in 43 files (previously 665 in 44; the merged file lowers the file count, the test count is unchanged) and build. Affected links/anchors and `git diff --check` passed. No app launch, packaging, recording or native acceptance was required or run. Plan 036 is next and not started. At the maintainer's request the work is committed locally on main in scope-separated commits; no push or publication.
+
+
 ## Plan 025 terminal ownership — 2026-09-25
 
 Implementation is complete; the plan remains open while final native acceptance is being collected. Renderer terminal cause is latched before Blob conversion, encoder error drains final data/stop, and a bounded fallback prevents late handoff. Main owns one terminal path and independently tracks opening, finalization, failure cleanup and awaited result verification/publication. Quit joins one coordinator, retains stop-on-start intent, permits a 3-second cleanup margin after the 10-second stop deadline, and defers rather than discards pending work. Deferred relaunch intent is cleared. Late-open close failures retain only an uncertain candidate path.
