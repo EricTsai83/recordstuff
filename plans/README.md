@@ -6,7 +6,7 @@ Updated: 2026-09-25. This index lists unfinished plans, their order and their ha
 
 ## Order and status
 
-Every plan below is planned, not implemented. Current order: **038 → 027 → 028 → 029 → 030 → 031 → 032 → 033 → 034 → 037 → 035**.
+Every plan below is planned, not implemented. Current order: **038 → 027 → 028 → 029 → 030 → 031 → 032 → 033 → 040 → 034 → 037 → 035**.
 
 Ordering rule: zero-risk cleanup and the prioritized history work came first and are complete; now guards that prevent data loss, then audit fixes in their original order, then optional or measured work, and 035 last. Keep 035 last even when later-numbered implementation or fix plans are added: schedule those before it.
 
@@ -20,6 +20,7 @@ Ordering rule: zero-risk cleanup and the prioritized history work came first and
 | [031 — Stable release pointers](031-stable-release-recording.md) | R2-04 | Release ordering is independent of recording |
 | [032 — Update acceptance contract](032-update-acceptance-contract.md) | R2-06 | Stale runner expectations, not broken product controls |
 | [033 — Output-folder recovery](033-output-folder-recovery.md) | R2-08 | Explicit folder action and feedback, not publication |
+| [040 — Recording countdown and distinct tray states](040-recording-countdown.md) | 2026-09-25 maintainer request; Cap comparison | Configurable pre-recording countdown (default 3 seconds) with a transparent top-right digit and no box, capture prepared before the count and started at zero, cancel without a failure entry, and distinct busy and countdown tray icons of unchanged width |
 | [034 — Windows system tray icons](034-windows-tray-icons.md) | Maintainer request | Windows tray artwork and its necessary native verification; visual drafts can proceed independently |
 | [037 — Bounded overlapping finalization](037-overlapping-recording-finalization.md) | 2026-09-25 comparison; measurement gate | Measures first whether a safely separable stop delay justifies overlap; no gain has been measured yet |
 | [035 — Guided native acceptance](035-guided-native-acceptance.md) | Final round | Codex prepares and guides one step at a time; the maintainer personally performs every remaining required native operation, including the untested failure-UX cases and the gaps collected from preceding plans. Tests or blocked status do not silently satisfy it |
@@ -29,13 +30,14 @@ Hard dependencies; everything else is scheduling:
 - 038 builds on the complete-write accounting from 024 and the nonempty-file guarantee from 026 (both complete), on which its early stop relies; it precedes the audit UI plans because it prevents data loss.
 - 029 depends on the terminal-event contract from 025 (complete).
 - 037 depends on 025, 026, 029, 030, 036 and 038 (025, 026 and 036 complete), keeps 036's metadata quit phase after all media work, and reuses the writer backlog bound defined in 038.
+- 040 follows 038 because both change the Recorder start phase, and precedes 034 and 037: 034's Windows artwork must cover the `busy` and `countdown` tray states, and 037's overlap must treat a counting-down session as active.
 - 031–033 can run independently; 032 should precede any work that requires update acceptance.
 - Before 030 closes, recording acceptance must explicitly retain channel RMS and requested sync measurements rather than trust only the overall verdict.
 
 ## Sources and evidence boundaries
 
 - R1 is the first ten-bug audit and R2 the second eight-bug audit (2026-09-24). Round 2 merged five bugs into four existing plans and added three, without duplicate repair work. Reproduction conditions, repair contracts and evidence limits are embedded in the plans and do not depend on ignored local audit files.
-- Cap comparisons in each plan are pinned to revision `ce785e705e79652adba4b8bf752669c4093499e0`; 037 and 038 pin `26e1a6d882f311d10b5317e9e0d29babe4f6737e`. They are static comparisons of the inspected scope, not evidence that Cap handles these cases.
+- Cap comparisons in each plan are pinned to revision `ce785e705e79652adba4b8bf752669c4093499e0`; 037 and 038 pin `26e1a6d882f311d10b5317e9e0d29babe4f6737e`; 040 pins `119edf04864b59abfc0d52f60bf77d7f33cfd2b8`. They are static comparisons of the inspected scope, not evidence that Cap handles these cases.
 - The 2026-09-25 T3 Code/Cap architecture comparison contributed only 038 and the run id in 029. Adopting Effect, a monorepo split, feature subdirectories under `src/main/` and settings-file backups were rejected to keep the app small.
 - Slow-disk backlog remains an explicitly documented limitation; 037 evaluates bounded admission under contention, not a promise to eliminate sustained disk-throughput limits.
 - The multi-failure history round (2026-09-25) was implemented without a standalone plan; its [record](../docs/verification/history-2026-09.md#multi-failure-history--2026-09-25) and 035's N19–N23 carry its remaining native cases.

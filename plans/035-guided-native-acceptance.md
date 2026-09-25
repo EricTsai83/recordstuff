@@ -2,7 +2,7 @@
 
 [English](035-guided-native-acceptance.md) | [繁體中文](035-guided-native-acceptance.zh-TW.md)
 
-Status: planned, not executed. Created: 2026-09-25. This plan is permanently the **last queue item**, currently after 027–034, 037 and 038; see [order](README.md#order-and-status). Any later implementation/fix plans go before it, regardless of numbering. It is the last step before clearing the queue, not a request to begin testing now.
+Status: planned, not executed. Created: 2026-09-25. This plan is permanently the **last queue item**, currently after 027–034, 037, 038 and 040; see [order](README.md#order-and-status). Any later implementation/fix plans go before it, regardless of numbering. It is the last step before clearing the queue, not a request to begin testing now.
 
 ## Purpose and ownership
 
@@ -92,3 +92,12 @@ Source: [038](038-recording-health-guards.md). Prepare recipes from its final th
 
 - [ ] N30: With a bounded test disk image as the output folder, record until the disk guard stops the recording. Observe the early-stop wording in the notification and log, play the saved file, and confirm no failure entry appears. Then, on an isolated output folder, force-quit the labeled bundle during a recording and relaunch: one interruption entry names the temporary file, reveals it while it exists, becomes unknown after the file is moved away, and does not repeat after acknowledgement or another restart.
 - [ ] N31: Put the Mac to sleep during a recording, wake it, and record the actual outcome (saved, failed with a partial, or stuck) together with the suspend/resume log lines and any failure reason. This is evidence for a later stop-on-sleep decision, not a pass/fail gate; do not change behavior inside this round.
+
+## Countdown acceptance (not performed)
+
+Source: [040](040-recording-countdown.md). Prepare recipes from its final timings and appearance values.
+
+- [ ] N32: With the default 3 seconds, start once from a tray click and once from ⌘⇧1, on a light and on a dark menu bar. Observe the busy icon (hourglass), then the stopwatch without digits, then the filled dot with REC; the item width stays the same apart from REC. Judge whether the top-right digit, drawn without any box, is transparent enough yet readable over a white document, a dark app and a bright photo, and play each file to confirm the digit never appears in it.
+- [ ] N33: Cancel a countdown by a second click, by the shortcut, by Cancel countdown in the menu, and by Quit. Each returns to idle with Show last recording kept and leaves no file, failure entry or notification; Quit exits normally.
+- [ ] N34: While counting down, keep typing in a text editor (the keystrokes stay there and RecordStuff is not activated) and click through the digit. Repeat over a full-screen app, with a secondary display selected (the digit appears on that display), with Reduce motion and Reduce transparency on, and while an earlier saved banner is still in the corner. Record what VoiceOver announces, if anything; it is not a gate.
+- [ ] N35: Choose Off (recording starts without a digit), then 5 and 10 seconds (two digits fit); confirm the group is locked during the countdown and the recording, and that an existing settings file without the field starts with 3 seconds after updating.

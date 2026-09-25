@@ -45,7 +45,7 @@ Cap 參考固定於已檢視 revision `26e1a6d882f311d10b5317e9e0d29babe4f6737e`
 
 ## 實作步驟
 
-- [ ] 以已提交的 `TrayIcon` 狀態（`idle`、`recording`、`warning`）及其既有優先順序為起點，不改 `tray-model.ts` 語意。視覺草稿可獨立進行。
+- [ ] 以已提交的 `TrayIcon` 狀態（`idle`、`recording`、`warning`，以及排在前面的 [040](040-recording-countdown.zh-TW.md) 新增的 `busy` 與 `countdown`）及其既有優先順序為起點，不改 `tray-model.ts` 語意。預覽、候選比較、重新產生的 ICO 與原生檢查都涵蓋每個已提交的狀態，不只上表的三種；`busy` 與 `countdown` 沿用 040 的輪廓（沙漏、碼錶），除非選定的候選需要針對 Windows 微調。視覺草稿可獨立進行。
 - [ ] 先製作 A／B 兩方案、三個狀態在 16／20／24／32／48px 的原尺寸預覽及放大對照，放在淺色／深色底上，與目前 Windows 圖示比較；選出較清楚的方案並記錄理由。確認待機與錄製中即使忽略顏色仍可區分，不能只看放大預覽。
 - [ ] 在 `scripts/make-icons.mjs` 分離 Windows 專用繪圖層，沿用程式產圖方式，不直接縮小 512px App 圖示。保留 16、24、32、48px，補上 20px，逐尺寸調整細節並輸出多尺寸 ICO。
 - [ ] 重新產生 `resources/tray-idle.ico`、`resources/tray-recording.ico`、`resources/tray-warning.ico`。檢查產圖副作用，確認 macOS PNG、App 圖示與 DMG 背景未被意外修改。
