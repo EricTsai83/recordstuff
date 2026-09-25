@@ -2,7 +2,7 @@
 
 [English](038-recording-health-guards.md) | [繁體中文](038-recording-health-guards.zh-TW.md)
 
-Status: planned, not implemented. Created: 2026-09-25. Queue after [026](026-reject-empty-recordings.md) and before 027; [037](037-overlapping-recording-finalization.md) reuses the backlog bound defined here. Execution order: see [queue](README.md#order-and-status).
+Status: planned, not implemented. Created: 2026-09-25. Queue after [026](../docs/verification/history-2026-09.md#plan-026-closure--2026-09-25) (complete) and before 027; [037](037-overlapping-recording-finalization.md) reuses the backlog bound defined here. Execution order: see [queue](README.md#order-and-status).
 
 ## Purpose and boundary
 

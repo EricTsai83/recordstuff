@@ -30,7 +30,7 @@ NeedsPermission carries needsRelaunch. Idle may carry lastSavedPath or outputDir
 4. Wait for host readiness and send start. Main resolves the saved screen preference: Primary display keeps the primary-id/first-source policy; an explicit display requires one exact id match. Request system loopback audio unchanged.
 5. Renderer checks MP4 support, requests the stream, and rejects absent/ended audio tracks after cleaning up.
 6. Measure actual frames, apply quality, recheck that all tracks are live, create MediaRecorder, register callbacks, and send started.
-7. Main enters recording. A first chunk must still arrive before its deadline.
+7. Main enters recording. A first nonempty chunk must still arrive before its deadline; an empty chunk does not satisfy it.
 
 ## Deadlines and supervision
 
@@ -39,7 +39,7 @@ NeedsPermission carries needsRelaunch. Idle may carry lastSavedPath or outputDir
 | Folder/open phase | 8 s | output_open_failed; a late writer is abandoned |
 | Host ready | 8 s | Start rejects; host can be recreated |
 | Capture/interactive permission request | 120 s | capture_start_failed and stop session |
-| First chunk after started | 8 s | capture_start_failed; preserve any written data |
+| First nonempty chunk after started | 8 s | capture_start_failed; preserve any written data |
 | Stop response | 10 s | stop_timeout |
 | Renderer terminal drain | 5 s after termination begins | Error if stop/final Blob handoff is missing; discard subsequent handoff |
 | Quit wait | 13 s per attempt (stop timeout + 3 s) | Defer quit with localized feedback while any owned work remains; never truncate finalization |
@@ -107,6 +107,10 @@ Stopping a pending start moves its ID from pending to cancelled. When the OS req
 Append, periodic sync, and finish use one FileWriter queue. Each append writes only the remaining buffer until it is complete, counting each confirmed byte immediately; later chunks and sync cannot interleave with its pieces. Empty chunks make no write call. Zero, negative, fractional, non-finite or oversized progress fails with output_write_failed; thrown errors are not retried. Fsync is scheduled every five seconds. The first I/O failure is retained, and later queued operations reject with the same error. ENOSPC maps to disk_full; other write failures map to output_write_failed.
 
 Finish drains prior writes, syncs, closes, and copies the temporary file to `.mp4` with `COPYFILE_EXCL`, trying suffixes `-2`, `-3`, … on a final-name collision. `COPYFILE_FICLONE` requests a copy-on-write clone where supported; other filesystems may require extra time and space for a full copy. The completed copy is synced before best-effort removal of the temporary file; only then does Recorder emit saved with the actual destination. A cleanup failure leaves the temporary copy but does not invalidate the saved file. Failure first detaches the session, clears deadlines, stops the host, and returns the UI to idle; it then abandons the writer and reports a partial path when byte accounting is nonzero. Empty files are removed on a best-effort basis. Partial files are not automatically repaired or remuxed; a playable crash sample does not guarantee recovery from every interruption.
+
+Success requires nonempty media. FileWriter.finish, the only publication step, is the gate: after draining its queue it checks the confirmed byte count, never requested chunk lengths. A retained append or background-sync error is reported first with its own code, such as disk_full, even when no byte was written. Otherwise zero bytes, whether the stop came before any chunk or after only empty chunks, makes finish release the handle and sync timer, remove the empty temporary file and reject with `capture_start_failed` and the detail `capture ended without media; no bytes were written`, the code the first-media deadline already uses. Recorder routes that rejection through its single failure path, so no saved event, lastSavedPath or `.mp4` is produced, the result is empty and an immediate retry starts cleanly. Abandon is idempotent, so the failure path's later cleanup cannot delete a same-second retry that has reused the freed name. Recorder does not pre-check the count itself: before the queue drains it cannot see a queued or in-flight sync failure and would mislabel a disk error as missing media. There is no minimum duration; a very short nonempty recording is saved.
+
+Nonempty is a necessary minimum, not proof of a playable file. Cap's AVFoundation writer [rejects a finish without a last frame](https://github.com/CapSoftware/Cap/blob/ce785e705e79652adba4b8bf752669c4093499e0/crates/enc-avfoundation/src/mp4.rs#L961-L990) (static review at that revision), but RecordStuff receives encoded chunks rather than frame timestamps and does not parse MP4 or confirm a decodable frame. Playability is established only by media verification such as ffprobe and full decoding during acceptance, not at runtime.
 
 Exclusive creation protects both temporary and final filenames, including final names created during recording. A failure after short-write progress preserves the confirmed byte count and nonempty partial file; later appends and finish reject without publishing, and abandon closes the handle and stops syncing. Background sync rejections are consumed while retaining the first failure. Complete writes are distinct from fsync durability and do not guarantee recovery after every crash, power loss or filesystem failure. There is no disk reservation, bounded backpressure, or unlimited-recording guarantee. Stronger durability requirements need targeted tests before implementation changes.
 

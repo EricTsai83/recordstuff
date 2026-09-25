@@ -2,7 +2,7 @@
 
 [English](038-recording-health-guards.md) | [繁體中文](038-recording-health-guards.zh-TW.md)
 
-狀態：已規劃，尚未實作。建立日期：2026-09-25。排在 [026](026-reject-empty-recordings.zh-TW.md) 之後、027 之前；[037](037-overlapping-recording-finalization.zh-TW.md) 重用本計畫定義的寫入積壓上限。執行順序見[佇列](README.zh-TW.md#順序與狀態)。
+狀態：已規劃，尚未實作。建立日期：2026-09-25。排在 [026](../docs/zh-TW/verification/history-2026-09.md#plan-026-結案--2026-09-25)（已完成）之後、027 之前；[037](037-overlapping-recording-finalization.zh-TW.md) 重用本計畫定義的寫入積壓上限。執行順序見[佇列](README.zh-TW.md#順序與狀態)。
 
 ## 目的與範圍
 

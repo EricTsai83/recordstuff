@@ -30,7 +30,7 @@ stateDiagram-v2
 4. 等待 host ready 並送 start。Main 依保存的螢幕偏好選來源；預設仍匹配主螢幕 id，找不到時使用第一個來源。指定螢幕只允許唯一的精確 id 配對，並搭配 `audio: "loopback"`。
 5. Renderer 檢查 MP4 MIME、要求畫面與音訊；沒有音軌或音軌已 ended 就釋放 stream 並回錯誤。
 6. 量測影格、套用品質，再檢查所有軌仍存活；建立 MediaRecorder、掛事件、開始並回 started。
-7. Main 進 recording；第一片 bytes 必須在首片期限內到達，才清除該 timer。
+7. Main 進 recording；第一片非空 bytes 必須在首片期限內到達，才清除該 timer；空 chunk 不算數。
 
 ## 期限與故障隔離
 
@@ -39,7 +39,7 @@ stateDiagram-v2
 | 輸出資料夾／開檔階段 | 8 秒 | output_open_failed；late writer 回來後 abandon |
 | host ready | 8 秒 | start 失敗，下次可重建 |
 | 來源／系統授權請求 | 120 秒 | capture_start_failed；停止該 session |
-| started 後首 chunk | 8 秒 | capture_start_failed，保留已寫入資料 |
+| started 後首個非空 chunk | 8 秒 | capture_start_failed，保留已寫入資料 |
 | stop 回應 | 10 秒 | stop_timeout |
 | Renderer 終止交接 | 終止開始後 5 秒 | 缺少 stop／最後 Blob 交接時回報失敗，忽略後續交接 |
 | 退出等待 | 每次嘗試 13 秒（停止期限另加 3 秒） | 尚有工作時延後退出並顯示在地化提示，不截斷存檔 |
@@ -107,6 +107,10 @@ Renderer 把 Blob 轉 ArrayBuffer 的 Promise 串成 chain，避免非同步轉�
 FileWriter 的 append、週期 sync 與 finish 都排在同一佇列。每次 append 只補寫剩餘緩衝區直到完整，並立即累計每次確認寫入的位元組；各段之間不會插入後續 chunk 或 sync。空 chunk 不呼叫 write。零、負數、非整數、非有限值或超出剩餘長度的進度以 output_write_failed 失敗；拋出的錯誤不重試。每 5 秒嘗試 fsync；首次 I/O 錯誤被記住，之後佇列作業回同一錯誤。ENOSPC 映射為 disk_full，其他寫入錯誤為 output_write_failed。
 
 成功 finish 等待佇列、sync、close，再以 `COPYFILE_EXCL` 把暫存檔複製成 `.mp4`；正式檔撞名時依序嘗試 `-2`、`-3` 等尾碼。`COPYFILE_FICLONE` 在支援時使用寫入時複製，其他檔案系統可能需要完整複製的額外時間與空間。完成檔 sync 後才盡力刪除暫存檔，之後 Recorder 以實際存檔路徑發 saved。清理失敗會留下暫存副本，但不影響已成功儲存的影片。失敗時先清除 session、stop host、立刻回 idle，再 abandon writer；已有計數 bytes 就保留 `.recording.mp4`，零 bytes 盡力刪除。部分檔案沒有自動修復或重新封裝；曾實測可播不代表所有中斷都可復原。
+
+成功必須有非空媒體。唯一的發布步驟 FileWriter.finish 就是關卡：排空佇列後檢查實際確認寫入的位元組數，不採用要求寫入的 chunk 長度。已保留的 append 或背景 sync 錯誤優先以原代碼回報（例如 disk_full），即使一個位元組都沒寫入。否則零位元組（不論是在任何 chunk 之前停止，或只收到空 chunk）會讓 finish 釋放 handle 與 sync timer、刪除空暫存檔，並以 `capture_start_failed` 與 detail `capture ended without media; no bytes were written` 拒絕，與首片期限使用同一代碼。Recorder 把這個拒絕導入單一失敗流程，因此不發 saved、不設定 lastSavedPath，也不產生 `.mp4`；結果為 empty，可立即重試。Abandon 具冪等性，失敗流程稍後的清理不會刪掉在同一秒內重用該檔名的重試錄影。Recorder 不自行預先檢查位元組數：佇列排空前看不到排隊中或執行中的 sync 失敗，會把磁碟錯誤誤報為沒有媒體。沒有最短錄製秒數；非常短但非空的錄影照常儲存。
+
+非空只是必要的最低門檻，不代表檔案可播放。Cap 的 AVFoundation writer [在沒有最後影格時拒絕 finish](https://github.com/CapSoftware/Cap/blob/ce785e705e79652adba4b8bf752669c4093499e0/crates/enc-avfoundation/src/mp4.rs#L961-L990)（該 revision 的靜態檢視），但 RecordStuff 收到的是編碼後 chunk 而非影格時間戳，不解析 MP4，也不確認含可解碼影格。可播放性只由驗收時的媒體檢查（如 ffprobe 與完整解碼）確立，執行期不檢查。
 
 排他建立同時保護暫存檔與正式檔名，包括錄影途中才出現的同名正式檔；短寫取得進展後失敗時，保留確認寫入量與非空部分檔；後續 append 與 finish 拒絕且不產生完成檔，abandon 關閉 handle 並停止 sync。背景 sync 的 rejection 會被接住，首次失敗仍被保留。完整寫入與 fsync 耐久性是不同保證，不承諾所有 crash、斷電或檔案系統故障都可復原。沒有磁碟空間預留、無限長錄製承諾或有界背壓。更完整的耐久性需求應先建測試，再改實作。
 

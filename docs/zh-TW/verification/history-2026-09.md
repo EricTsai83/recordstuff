@@ -9,6 +9,17 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 026 結案 — 2026-09-25
+
+不再把空錄影發布為成功；由 Claude 實作、Codex GPT-6 Astra review。`FileWriter.finish` 是唯一的發布關卡：先排空佇列，讓已保留的 append 或背景 sync 錯誤以原代碼（disk_full 或 output_write_failed）優先拒絕；之後若確認寫入為零位元組，就關閉 handle、清除 fsync timer、刪除空暫存檔，並以 `capture_start_failed` 與 detail `capture ended without media; no bytes were written` 拒絕。Recorder 把這個拒絕導入單一失敗流程，因此不會出現 saved、lastSavedPath 或 `.mp4`，結果為 empty。`abandon()` 具冪等性，失敗流程稍後的清理不會刪掉在同一秒內重用該檔名的重試錄影。只有非空 chunk 才滿足首片期限。既有的雙語 `capture_start_failed` 文案（「無法開始錄製」加「這次沒有留下錄影內容。」）仍然誠實，因此沒有新增錯誤碼或修改文案。沒有最短錄製秒數；非空不代表可播放（見[錄製設計](../system-design/recording.md#寫檔與失敗)）。
+
+自動化證據：最終 `pnpm check` 通過 typecheck、44 個檔案 706 項測試與 build。新測試使用真實暫存檔，涵蓋：沒有 chunk 與只有空 chunk 的停止（含重複 stopped）；唯一 chunk 在 stopped 前一刻到達的立即重試；首筆 append 尚未完成時停止，之後成功，或以 ENOSPC 失敗並保留 disk_full；媒體到達前背景 sync 出現 ENOSPC／EIO，保留 disk_full／output_write_failed；空結果仍在發布時，於同一秒內開始的重試；FileWriter 在 0 到 2 次空 append 後 finish（handle 關閉、無 timer、檔案刪除、檔名可重用）；零位元組時寫入與 sync 錯誤保留原代碼；以及空 chunk 不滿足首片期限。反向對照：停用 finish 關卡使五項零輸出測試失敗；恢復 Recorder 事先檢查位元組數，使兩項 sync 失敗測試失敗；abandon 不具冪等性時四項測試失敗，重試的暫存檔被刪除（copy 時 ENOENT）。
+
+原生驗收於 M1 Pro、macOS 26.6.2，使用 HEAD `6309c8a` 加上未提交的變更：`pnpm start:app` 建置並驗證全新簽章 bundle（九個 identity）。`pnpm acceptance -- --seconds 10` 錄得 10.3 秒、1920×1080、48 kHz 雙聲道，RMS −27.2／−27.2 dB，10 次閃光與 10 次嗶聲，完整解碼，通過（`2026-09-25T08-31-35-815Z-hotkey-acceptance`）。最短可行的立即停止：以 `pnpm open:app` 重開同一 bundle 後執行 `pnpm acceptance -- --seconds 0.05`，在進入錄製狀態約 0.2 秒後送出停止。Host 唯一的最後 chunk 為 1,640,113 bytes，App 存下 0.33 秒、1920×1080 H.264 加 48 kHz 雙聲道 AAC 的檔案，可完整解碼（`ffmpeg -xerror`）：非常短但非空的錄影被儲存，沒有被拒絕。Runner 只在音訊能量一項判定失敗（RMS −∞，volumedetect −91 dB），也沒有偵測到標記，因為 0.3 秒窗口錯過了素材每秒一次的閃光與嗶聲；這既不能證明開頭 300 ms 的音訊有擷取到，也不能證明遺失（`2026-09-25T08-32-13-558Z-hotkey-acceptance`）。原生擷取從未產生空輸出；無媒體路徑的證據來自上述受控測試。之後由 Codex GPT-6 Astra 以 computer use 在 QuickTime 開啟兩支影片：10.3 秒影片播放到 6.75 秒並顯示測試素材影格，0.33 秒影片可開啟並顯示影格，沒有錯誤對話框。截圖只存在工具對話中，沒有本機 PNG。影片與「打開」面板都已關閉，QuickTime 已退出（`2026-09-25-plan026-computer-use`）。每個 runner 都正常結束 RecordStuff；沒有殘留 RecordStuff、QuickTime 或素材程序，也沒有留下 `.recording.mp4`。輸出裝置為外接耳機、48 kHz；未記錄音量。主觀聽感、音畫同步、未變更的設定／通知行為、權限、長錄製與螢幕拔除不在本次範圍。
+
+Codex GPT-6 Astra（medium reasoning、唯讀）完成兩個 pass，共 80 秒加 60 秒 = 140 秒（預算 30 分鐘），沒有使用 fallback。Pass 1 回報一項 Medium，已接受：Recorder 事先檢查位元組數時跳過了 finish，使媒體到達前的背景 sync 失敗被報為 capture_start_failed，而不是 disk_full／output_write_failed。已移除該檢查，改由 finish 作為唯一關卡。Pass 2 確認此修正，並回報一項 Medium，已接受：finish 與失敗流程都會 abandon writer，第二次 unlink 可能在失敗結果發布期間，刪掉在同一秒內重用該檔名的重試。現在 abandon 具冪等性。這項修正經過針對性與完整驗證，但依兩個 pass 的上限，沒有第三次 review。沒有 commit、push 或發布。
+
+
 ## 桌面閒置防護 — 2026-09-25
 
 Plan 036 回合的後續：當時四次設定 fixture 失敗都發生在本地時間 15:34 macOS 關閉螢幕並鎖定 session 之後；`sendInputEvent`／System Events 的模擬輸入不會重設閒置計時，這台 Mac 閒置 10 分鐘就會關閉螢幕。現在每個桌面 runner 開始前都執行 [desktop-session.mts](../../../scripts/lib/desktop-session.mts)：`caffeinate -u` 喚醒閒置關閉的螢幕；session 已鎖定（`ioreg` 的 `CGSSessionScreenIsLocked`）時，在啟動任何東西或送出按鍵前停止；`caffeinate -d -i -w <runner pid>` 持有防止螢幕與系統閒置睡眠的 assertion 直到 runner 結束。回合中（每 2 秒及結束時）偵測到鎖定，結果改為 BLOCKED、exit code 2，並在報告寫入 `Desktop:` 一行。已接入 `acceptance`、`acceptance:settings`、`acceptance:shortcut`、`acceptance:settings-shortcut`、`acceptance:quit-dialog`、`acceptance:notification`、`acceptance:updates`（含擷取範圍）、`matrix` 與 `audio:quality -- record`。
