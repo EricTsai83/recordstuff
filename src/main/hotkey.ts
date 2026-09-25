@@ -15,6 +15,28 @@
  */
 import type { HotkeyAccelerator, HotkeySettings } from "../shared/hotkey";
 
+/**
+ * Chromium's macOS listener binds an accelerator to whichever key types its
+ * character in the current layout. Under Zhuyin only the keypad types 1, so
+ * ⌘⇧1 moved there while the editor records physical keys and refuses the
+ * keypad. Disabling the feature registers the fixed US physical key
+ * (docs/system-design/desktop.md#recording-shortcut).
+ */
+export const LAYOUT_AWARE_HOTKEYS_FEATURE = "LayoutAwareGlobalHotkeys";
+
+/**
+ * The `disable-features` value main must set before app ready, or undefined
+ * when nothing changes. Chromium keeps only the last value of a repeated
+ * switch, so an existing list is extended rather than replaced.
+ */
+export function physicalHotkeyFeatures(current: string, platform: NodeJS.Platform): string | undefined {
+  if (platform !== "darwin") return undefined;
+  const features = current.split(",").map(feature => feature.trim()).filter(Boolean);
+  // An entry may carry a field-trial suffix: `Feature<Trial`.
+  if (features.some(feature => feature.split("<")[0] === LAYOUT_AWARE_HOTKEYS_FEATURE)) return undefined;
+  return [...features, LAYOUT_AWARE_HOTKEYS_FEATURE].join(",");
+}
+
 /** The subset of `Electron.GlobalShortcut` this module uses; tests inject a fake. */
 export interface GlobalShortcutApi {
   register(accelerator: string, callback: () => void): boolean;

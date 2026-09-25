@@ -43,6 +43,7 @@ import { SettingsWindow } from "./settings-window";
 import { APP_NAME, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 import { effectiveQuality, frameRateDowngrade, type QualitySettings } from "../shared/quality";
 import { AppShortcuts } from "./shortcuts";
+import { physicalHotkeyFeatures } from "./hotkey";
 import type { RecordingState } from "../shared/state";
 
 import { DEFAULT_LANGUAGE, translate, type Language } from "../shared/i18n";
@@ -102,6 +103,10 @@ async function isFirstRun(userDataDir: string): Promise<boolean> {
 function resourcesDir(): string {
   return app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), "resources");
 }
+
+// Global shortcuts register by physical key; this must precede app ready and every registration.
+const disabledFeatures = physicalHotkeyFeatures(app.commandLine.getSwitchValue("disable-features"), process.platform);
+if (disabledFeatures) app.commandLine.appendSwitch("disable-features", disabledFeatures);
 
 if (!app.requestSingleInstanceLock()) {
   log(`start: another instance already holds the userData lock; run ${runId}; exiting`);

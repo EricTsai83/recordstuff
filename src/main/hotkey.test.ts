@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_HOTKEY, HOTKEY_PRESETS, describeAccelerator, isHotkeyAccelerator, isHotkeySettings } from "../shared/hotkey";
-import { RecordingHotkey, type GlobalShortcutApi } from "./hotkey";
+import { LAYOUT_AWARE_HOTKEYS_FEATURE, RecordingHotkey, physicalHotkeyFeatures, type GlobalShortcutApi } from "./hotkey";
 
 /**
  * A fake `globalShortcut` that remembers registrations, can refuse a
@@ -202,4 +202,20 @@ it("reports a new refusal, but not the same failed registration after cancelling
   expect(shouldNotifyHotkeyFailure(first, hotkey.resume())).toBe(false);
   expect(shouldNotifyHotkeyFailure(first, { kind: "failed", accelerator: "Control+K", reason: "in use" })).toBe(true);
   expect(shouldNotifyHotkeyFailure({ kind: "registered", accelerator: DEFAULT_ACCELERATOR }, first)).toBe(true);
+});
+
+describe("physicalHotkeyFeatures", () => {
+  it("disables layout-aware registration on macOS only", () => {
+    expect(physicalHotkeyFeatures("", "darwin")).toBe(LAYOUT_AWARE_HOTKEYS_FEATURE);
+    for (const platform of ["win32", "linux"] as const) expect(physicalHotkeyFeatures("", platform)).toBeUndefined();
+  });
+  it("extends a disable-features list already on the command line instead of replacing it", () => {
+    expect(physicalHotkeyFeatures("CalculateNativeWinOcclusion", "darwin")).toBe(`CalculateNativeWinOcclusion,${LAYOUT_AWARE_HOTKEYS_FEATURE}`);
+    expect(physicalHotkeyFeatures(" A , ,B,", "darwin")).toBe(`A,B,${LAYOUT_AWARE_HOTKEYS_FEATURE}`);
+  });
+  it("changes nothing when the feature is already disabled, with or without a field trial", () => {
+    expect(physicalHotkeyFeatures(`A,${LAYOUT_AWARE_HOTKEYS_FEATURE}`, "darwin")).toBeUndefined();
+    expect(physicalHotkeyFeatures(`${LAYOUT_AWARE_HOTKEYS_FEATURE}<Study`, "darwin")).toBeUndefined();
+    expect(physicalHotkeyFeatures(`${LAYOUT_AWARE_HOTKEYS_FEATURE}Extra`, "darwin")).toBe(`${LAYOUT_AWARE_HOTKEYS_FEATURE}Extra,${LAYOUT_AWARE_HOTKEYS_FEATURE}`);
+  });
 });
