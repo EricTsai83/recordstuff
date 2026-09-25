@@ -26,7 +26,7 @@
 | `changeOutputDir()` | 系統對話框 → 保存使用者選擇，失敗通知；成功清位置錯誤並 refresh |
 | `setQuality(patch)` | 僅 idle／needsPermission 保存合法 patch；失敗通知且保留舊值；成功 refresh |
 
-事件：uncaughtException 留 log 並顯示對話框；unhandledRejection 留 log。Recorder state／saved／captureStarted／failed／permissionRequested 分別更新 Tray、發通知、處理降級與失效授權。tray 左鍵與全域快捷鍵共用同一個 `toggle` closure。before-quit 忙碌時等待 shutdown；will-quit 釋放快捷鍵與其他資源。
+事件：uncaughtException 留 log 並顯示對話框；unhandledRejection 留 log。Recorder state／saved／captureStarted／failed／permissionRequested 分別更新 Tray、發通知、處理降級與失效授權。tray 左鍵與全域快捷鍵共用同一個 `toggle` closure。Recorder 取得 `fs.statfs` 可用空間與 `userData/recording-sessions` sentinel；啟動時經由歷史還原回報遺留 sentinel，`powerMonitor` 的 suspend／resume 連同進行中 session 寫入 log。before-quit 忙碌時等待 shutdown；will-quit 釋放快捷鍵與其他資源。
 
 ## 螢幕選擇
 
@@ -45,6 +45,7 @@
 | `delay(ms)` / `messageOf(cause)` | 退出 grace 等待 Promise／錯誤字串化 |
 | `Recorder.constructor(deps)` | 補 clock、id、timeout、log 預設並訂閱 host 訊息／故障 |
 | `state` getter | 回目前權威狀態；不得由 Tray 另外維護一份業務狀態 |
+| `sessionId` getter | 進行中的 session id，供睡眠／喚醒 log 等診斷使用 |
 | `subscribe(listener)` | 加入事件集合 → unsubscribe 函式 |
 | `toggle()` | idle 開始、recording 停止、needsPermission 發引導事件，其餘忽略 |
 | `stop()` | 僅 matching recording session → stopping，設 stop timeout，送 stop |
@@ -52,13 +53,17 @@
 | `setPermission(status)` | idle／needsPermission 間更新；不覆蓋忙碌 session 狀態 |
 | `outputDirChanged()` | 清 idle.outputDirUnavailable，其他狀態不改 |
 | `start()` | preflight、建立快照與 session、驗位置、開 writer、start host；每階段處理 late 結果 |
-| `openUniqueWriter(dir, stamp)` | 嘗試暫存／最終檔名 pair；暫存 EEXIST 最多 10 次，其他錯誤直接拋出 |
+| `openUniqueWriter(session, stamp)` | 每個暫存檔名先寫中斷 sentinel，再嘗試暫存／最終檔名 pair；暫存 EEXIST 最多 10 次，其他錯誤直接拋出 |
+| `markInFlight` / `clearInFlight` | 寫入 session sentinel（失敗只記錄一次、不阻擋）／每個終止結果都移除它 |
 | `handleHostMessage(message)` | 過濾 session；處理 started／chunk／stopped／error；過期 started／chunk 回 stop |
-| `handleChunk(session, seq, bytes)` | 驗連續 seq、清首片 timer、append；write reject 轉 fail |
-| `finalize(session)` | 等 pending append，確認 session 未失效，finish writer；成功 idle＋saved |
+| `handleChunk(session, seq, bytes)` | 驗連續 seq、清首片 timer、started 後的非空媒體重設停滯保護、append；write reject 轉 fail |
+| `finalize(session)` | 等 pending append，確認 session 未失效，finish writer；成功 idle＋saved（附提前停止原因），再移除 sentinel |
+| `armStall(session)` | 媒體開始後的 chunk 間隔 timer：警告門檻記錄一次，第二門檻以 capture_failed 失敗 |
+| `watchDisk(session)` | 錄製中以單一不重疊 timer 查詢可用空間；低於警告門檻記錄一次，低於停止門檻只要求一次正常停止；查詢失敗記錄一次 |
+| `retainedWriteError(session)` | 在上限內排空 writer，回傳其保留的寫入／sync 錯誤；只用於改報 capture_start_failed |
 | `handleHostFailure(code, detail)` | 有 session 才進 fail；idle 時不假造錄製錯誤 |
-| `fail(id, code, detail, flags)` | 先 detach session／清 timer／stop／idle，後 abandon，最後 failed 帶 partialPath |
-| `clearTimer(session)` | 取消 session deadline 並清欄位 |
+| `fail(id, code, detail, flags)` | 先 detach session／清 deadline 與健康 timer／stop／idle，writer 已保留磁碟錯誤時取代 capture_start_failed，後 abandon，最後 failed 帶 partialPath，再移除 sentinel |
+| `clearTimer` / `clearDisk` / `clearHealth` | 取消並清除 session deadline／可用空間查詢／查詢與停滯 timer |
 | `setState(state)` / `emit(event)` | 替換狀態並發事件／依序呼叫 listeners |
 | `nextStateChange()` | 一次性訂閱 state，收到後取消訂閱並 resolve |
 
@@ -118,8 +123,10 @@
 | `FileWriter.constructor(...)` | 保存 handle／路徑／I/O，啟動週期 sync 佇列 |
 | `FileWriter.open(recordingPath, finalPath, options)` | wx 開暫存檔 → writer，失敗包成 FileWriteError |
 | `bytesWritten` getter | 回傳每次 write 確認寫入量的總和，包含 append 失敗前的部分進度 |
-| `append(bytes)` | closed 時 reject；佇列中補完剩餘 buffer 並累計確認進度；空輸入不 write，零／無效計數 reject |
-| `finish()` | enqueue sync、release、排他複製並以尾碼避撞名、盡力刪除暫存檔 → 實際最終路徑；失敗 reject |
+| `backlogBytes` getter | append 已接受、但尚未確認寫入或因失敗釋放的位元組數 |
+| `append(bytes)` | closed 或已拒絕時 reject；會超過積壓上限的 append 立即拒絕且不排入佇列（沿用先前的磁碟錯誤）；否則在佇列中補完剩餘 buffer 並累計確認進度；空輸入不 write，零／無效計數 reject |
+| `drain()` | 等待佇列作業後回傳已保留的失敗或拒絕（若有） |
+| `finish()` | enqueue sync；曾拒絕 append 時 reject；release、排他複製並以尾碼避撞名、盡力刪除暫存檔 → 實際最終路徑；失敗 reject |
 | `abandon()` | 等佇列、best effort release；有 bytes 留暫存路徑，空檔盡力刪除；不拋出 |
 | `release()` | 一次性 closed／清 fsync timer／close handle |
 | `enqueue(task)` | 依序執行；首個 failure 被記住，後續回同一錯誤，內部 queue 保持可接續 |
@@ -258,8 +265,13 @@
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
 | `RecordingResults.receive / act` | 確認部分檔案、拒絕過期結果與操作、保留未讀狀態並提供復原操作 |
-| `RecordingResults.restore` | 限時重新檢查保存路徑；恢復已讀狀態，不發通知、不覆蓋新狀態 |
+| `RecordingResults.restore` | 納入尚未在歷史中的啟動時中斷紀錄，與保存路徑一起限時重新檢查；恢復已讀狀態，不發通知、不覆蓋新狀態；回傳這次嘗試是否保存了歷史 |
+| `RecordingResults.saved` | 所有指定 ID 都曾寫入已保存的檔案後 resolve（包含之後的自動重試）；本身不觸發保存 |
 | `isOutputFolderFailure` / `isPermissionFailure` | 共用的復原分類：輸出資料夾類失敗提供變更資料夾；權限類失敗（含 no_audio_track）在 macOS 提供系統設定與重新啟動 |
+
+[session-sentinel.ts](../../../src/main/session-sentinel.ts)：`SessionSentinels.write` 在暫存檔存在前以原子寫入記下它；`remove` 刪除且不拋出；`leftovers` 列出先前程序留下的 sentinel，略過本程序的 session，捨棄中斷寫入與無效內容，暫時無法讀取的則保留。`interruptionFailure` 將其轉為 ID 由 session 推導的 `app_terminated` 紀錄；`reportInterruptions` 在啟動時交給 `RecordingResults.restore`，待 `RecordingResults.saved` 確認紀錄已保存後才移除 sentinel。
+
+[recording-health.ts](../../../src/main/recording-health.ts)：`RECORDING_HEALTH` 是停滯、可用空間、writer 積壓與啟動排空門檻的唯一位置。
 
 [recording-result-store.ts](../../../src/main/recording-result-store.ts)：驗證並原子替換版本化失敗歷史，升級舊單筆資料但不覆寫舊檔。精確 ID 的重試不改未讀狀態，移除僅刪已確認資訊。
 

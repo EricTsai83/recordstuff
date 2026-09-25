@@ -2,7 +2,7 @@
 
 [English](recording.md) | [繁體中文](../zh-TW/system-design/recording.md)
 
-Sources: [Recorder](../../src/main/recorder.ts), [renderer CaptureHost](../../src/renderer/capture-host.ts), [FileWriter](../../src/main/file-writer.ts), [quality](../../src/shared/quality.ts).
+Sources: [Recorder](../../src/main/recorder.ts), [renderer CaptureHost](../../src/renderer/capture-host.ts), [FileWriter](../../src/main/file-writer.ts), [health thresholds](../../src/main/recording-health.ts), [session sentinels](../../src/main/session-sentinel.ts), [quality](../../src/shared/quality.ts).
 
 ## State and user actions
 
@@ -26,7 +26,7 @@ NeedsPermission carries needsRelaunch. Idle may carry lastSavedPath or outputDir
 
 1. Recorder checks idle/no existing session and OS preflight, captures quality, creates a session ID, and enters starting.
 2. ensureWritableDir creates the folder and writes/removes a probe. Failure never silently selects a different folder.
-3. Open `YYYY-MM-DD HH-mm-ss.recording.mp4` using local time and exclusive `wx`. A temporary-file collision retries suffixes `-2` through `-10`.
+3. Write the session's interruption sentinel naming the temporary path, then open `YYYY-MM-DD HH-mm-ss.recording.mp4` using local time and exclusive `wx`. A temporary-file collision rewrites the sentinel and retries suffixes `-2` through `-10`.
 4. Wait for host readiness and send start. Main resolves the saved screen preference: Primary display keeps the primary-id/first-source policy; an explicit display requires one exact id match. Request system loopback audio unchanged.
 5. Renderer checks MP4 support, requests the stream, and rejects absent/ended audio tracks after cleaning up.
 6. Measure actual frames, apply quality, recheck that all tracks are live, create MediaRecorder, register callbacks, and send started.
@@ -40,12 +40,16 @@ NeedsPermission carries needsRelaunch. Idle may carry lastSavedPath or outputDir
 | Host ready | 8 s | Start rejects; host can be recreated |
 | Capture/interactive permission request | 120 s | capture_start_failed and stop session |
 | First nonempty chunk after started | 8 s | capture_start_failed; preserve any written data |
+| Next nonempty chunk after media began | Warn once at 10 s, fail at 30 s; reset by every nonempty chunk, disarmed by stopped or failure | capture_failed with a stall detail; preserve the partial file |
+| Output-folder free space | Poll every 5 s from started until stop; log once below 1 GiB | Below 200 MiB request the normal stop once; saved with a disk-almost-full reason, not a failure |
+| Writer backlog (accepted, unwritten bytes) | 64 MiB | output_write_failed with a backlog detail; preserve the written prefix |
+| Writer drain before classifying a generic start failure | 2 s | A retained disk error keeps its own code; otherwise capture_start_failed |
 | Stop response | 10 s | stop_timeout |
 | Renderer terminal drain | 5 s after termination begins | Error if stop/final Blob handoff is missing; discard subsequent handoff |
 | Quit wait | 13 s per attempt (stop timeout + 3 s) | Defer quit with localized feedback while any owned work remains; never truncate finalization |
 | Heartbeat | Check/send every 5 s while a session is in flight | Tear down when the check finds two unanswered pings |
 
-These are project waiting limits, not OS standards or exact end-to-end timing guarantees. A timed-out disk operation is not actually canceled.
+These are project waiting limits, not OS standards or exact end-to-end timing guarantees. A timed-out disk operation is not actually canceled. The health rows (stall, free space, backlog, start drain) are initial targets kept in one place, [recording-health.ts](../../src/main/recording-health.ts); tune them only with written evidence. Heartbeats only prove the renderer answers; the stall guard proves media still arrives. A failed free-space poll is logged once and never stops a recording. `powerMonitor` suspend and resume are logged with the in-flight session ID so a later failure can be read against sleep; sleep does not stop a recording.
 
 ## Terminal ownership and normal exit
 
@@ -53,7 +57,7 @@ CaptureHost latches the first termination cause before awaiting Blob conversion.
 
 Once Recorder accepts `stopped`, its finalizer owns the attempt. Late host crashes/errors, duplicate stop messages and display removal cannot abandon a publishing file; disk errors still enter failure cleanup. All opening/finalizing/cleanup operations are registered before synchronous subscribers run. An opening timeout returns UI to idle immediately, but its result stays pending until the late open and close settle. Multiple failed attempts retain independent cleanup ownership.
 
-Every `before-quit`, including idle, uses `installQuitCoordinator`. Repeated requests join one attempt and new recordings are blocked during admission. Capture is stopped automatically. A starting session retains stop intent even after quit is deferred, so capture stops and saves as soon as it starts. Success requires no session and no outstanding work, including late opens, earlier failed attempts and failure-result verification/publication. The quit deadline only defers exit; the existing capture-request and stop-response timers retain authority over capture failures. Pending disk/result-publication work stays owned, the app stays open and the user can retry quitting. The app never destroys the host or exposes an unconfirmed retained path merely to meet a quit deadline. Force-quit, process kill and power loss bypass these guarantees; no crash recovery or destructive media exit option is provided. Only after this media phase does quit attempt the failure-history save; its explicit metadata-only exit can never abandon media work (see [desktop](desktop.md#deferred-quit)).
+Every `before-quit`, including idle, uses `installQuitCoordinator`. Repeated requests join one attempt and new recordings are blocked during admission. Capture is stopped automatically. A starting session retains stop intent even after quit is deferred, so capture stops and saves as soon as it starts. Success requires no session and no outstanding work, including late opens, earlier failed attempts and failure-result verification/publication. The quit deadline only defers exit; the existing capture-request and stop-response timers retain authority over capture failures. Pending disk/result-publication work stays owned, the app stays open and the user can retry quitting. The app never destroys the host or exposes an unconfirmed retained path merely to meet a quit deadline. Force-quit, process kill and power loss bypass these guarantees; no crash recovery or destructive media exit option is provided. The next launch reports such a session through its interruption sentinel (see [file completion](#file-completion-and-failure)). Only after this media phase does quit attempt the failure-history save; its explicit metadata-only exit can never abandon media work (see [desktop](desktop.md#deferred-quit)).
 
 ## Quality and encoding
 
@@ -112,7 +116,15 @@ Success requires nonempty media. FileWriter.finish, the only publication step, i
 
 Nonempty is a necessary minimum, not proof of a playable file. Cap's AVFoundation writer [rejects a finish without a last frame](https://github.com/CapSoftware/Cap/blob/ce785e705e79652adba4b8bf752669c4093499e0/crates/enc-avfoundation/src/mp4.rs#L961-L990) (static review at that revision), but RecordStuff receives encoded chunks rather than frame timestamps and does not parse MP4 or confirm a decodable frame. Playability is established only by media verification such as ffprobe and full decoding during acceptance, not at runtime.
 
-Exclusive creation protects both temporary and final filenames, including final names created during recording. A failure after short-write progress preserves the confirmed byte count and nonempty partial file; later appends and finish reject without publishing, and abandon closes the handle and stops syncing. Background sync rejections are consumed while retaining the first failure. Complete writes are distinct from fsync durability and do not guarantee recovery after every crash, power loss or filesystem failure. There is no disk reservation, bounded backpressure, or unlimited-recording guarantee. Stronger durability requirements need targeted tests before implementation changes.
+Exclusive creation protects both temporary and final filenames, including final names created during recording. A failure after short-write progress preserves the confirmed byte count and nonempty partial file; later appends and finish reject without publishing, and abandon closes the handle and stops syncing. Background sync rejections are consumed while retaining the first failure. Complete writes are distinct from fsync durability and do not guarantee recovery after every crash, power loss or filesystem failure. Stronger durability requirements need targeted tests before implementation changes.
+
+FileWriter bounds the bytes it accepted but has not confirmed written (`backlogBytes`, also logged by the stall and low-disk warnings and reserved for Plan 037's admission measurement). An append that would exceed 64 MiB is rejected at once without being queued, and so is every later append, so the file never has a gap; bytes accepted before the refusal are still written, finish rejects, and Recorder fails the session with output_write_failed and a backlog detail that keeps an earlier disk error if one was retained. There is no pause, drop or retry: MediaRecorder cannot be throttled, and the bound makes slow or offline storage end the recording with a preserved partial instead of unbounded memory. Sustained disk throughput below the bitrate therefore still ends the recording. There is no disk reservation, folder switch, quality downgrade or unlimited-recording guarantee.
+
+The free-space guard reads `fs.statfs` of the output folder. Below the stop threshold it requests the normal stop, so the file is drained, synced and published while space remains; the saved event carries `stoppedEarly: "lowDisk"`, the log says so, and the saved notification reads "Saved {file}. Recording stopped early because the disk is almost full." Such a recording is a success and never enters failure history. If publication still fails, the ordinary failure path and partial preservation apply.
+
+The writer opens before the capture request, which can wait up to 120 seconds for a permission prompt, and syncs every 5 seconds. When an attempt then ends through a generic `capture_start_failed` (first-media deadline, capture-request timeout, host start rejection or a host-reported capture_start_failed), the failure path first drains the writer for at most 2 seconds and, if it retained a write or sync error, reports that code (disk_full or output_write_failed) with the existing folder/disk guidance and a detail naming both causes. The status is classified before the pending result is published, so the notification and history agree. Specific host causes such as permission or missing audio keep their codes; a clean writer keeps `capture_start_failed`. A drain that does not settle within the bound keeps `capture_start_failed`.
+
+Interruption evidence is one sentinel file per session in `userData/recording-sessions/`, named by the session ID and holding the session ID, start time and temporary path. It is written with the atomic writer before the temporary file is created, so a crash cannot leave a temporary file that no sentinel names; a failed write is logged once and does not block the recording. Every terminal outcome removes the session's own sentinel after its result is published, and a normal quit waits for that removal. At launch, before the history restore, each sentinel left by an earlier process becomes one `app_terminated` failure entry ("RecordStuff did not exit normally while recording.") whose path is a lookup hint rechecked like a restored partial: partial only while a nonempty file exists there, otherwise unknown. Its time is the session's start. The sentinel is removed only once the entry has been saved, including by a later automatic history retry, so the history owns the evidence first and a reviewed, removed entry cannot return; its ID is derived from the session, so a history that stays unsaved retries at the next launch without a duplicate. The single-instance lock and the process's own session list guarantee that reported sentinels belong to dead processes. An interrupted sentinel write or invalid content names no media and is discarded; a sentinel that cannot be read at launch is kept for a later launch. No other file in the output folder is scanned, and nothing is recovered, remuxed or repaired.
 
 ## Errors
 
@@ -123,6 +135,7 @@ Exclusive creation protects both temporary and final filenames, including final 
 | Capture | capture_start_failed, capture_failed, capture_host_crashed, capture_host_unresponsive | Return idle and reveal any preserved partial file |
 | Storage | output_open_failed, output_write_failed, disk_full | Explain location/disk failure and preserve bytes where possible |
 | Stop | stop_timeout | Stop waiting for capture and attempt partial-file cleanup |
+| Previous process | app_terminated | Reported only at launch from an interruption sentinel; says the app did not exit normally and the file may be incomplete; never sent by the capture host |
 
 Main may replace a generic renderer failure with the concrete source-denial reason, but only for errors that source denial can explain. Permission_needs_relaunch is a supported protocol code; routine relaunch guidance primarily follows PermissionWatcher state.
 

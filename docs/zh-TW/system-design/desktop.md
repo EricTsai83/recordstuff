@@ -18,7 +18,7 @@ TrayModel 是純函式產物，包含 icon、title、tooltip 與一份扁平的�
 
 每個狀態都有「設定」、「顯示 log」與「結束」，而且「設定」永遠可點：哪些偏好被鎖定由面板自己說明。macOS 使用 template PNG／@2x，Windows 分支使用 ICO；macOS 才顯示圖示旁 title。錄整個螢幕時 `REC` 可能出現在影片，這是目前接受的呈現。
 
-通知使用本地化文案與 silent 模式。存檔通知點擊顯示完整影片；錄影失敗通知一律開啟設定中的「失敗紀錄」，呈現已確認的檔案狀態與復原操作。品質與語言保存失敗、幀率降級通知只有說明。
+通知使用本地化文案與 silent 模式。存檔通知點擊顯示完整影片；若錄影因磁碟保護而結束，通知會說明（「已儲存 {file}。磁碟空間即將用盡，已提前停止錄製」），該次錄影仍屬成功、不進入失敗紀錄（見[錄製設計](recording.md#寫檔與失敗)）。錄影失敗通知一律開啟設定中的「失敗紀錄」，呈現已確認的檔案狀態與復原操作。品質與語言保存失敗、幀率降級通知只有說明。
 
 macOS 點通知會做兩件事：把回應交給 App，並要求系統啟動發通知的 App；後者約在點擊回呼後 110 ms 才落地。reveal 以 `setImmediate` 立刻請 Finder 選取檔案；若系統隨後把這個無視窗 App 設為前景，Finder 會被壓回使用者原本的視窗後方，看起來什麼都沒發生（v0.1.0 的回報；macOS 26.6 上約三次點擊出現一次，同一程序的第一次點擊很少發生）。計畫 014 因此在 reveal 之後掛一個一次性的 `did-become-active` 監聽，時窗 `ACTIVATION_WINDOW_MS`（1 秒）：啟動若落在時窗內，就從已是前景的 App 再 reveal 一次，讓 Finder 的置前最後落地。log 區分 `reveal requested`、`reveal repeated after activation` 與 `reveal failed`。只有點擊會掛監聽；背景存檔不會碰 Finder。原生通知不支援或 `failed` event 會留下 log。通知是否顯示仍受系統通知設定影響。原生證據由 `pnpm acceptance:notification` 產生（[工具鏈](tooling.md#通知驗收)）。通知縮圖已由使用者於 2026-09-14 重開機後確認正常。
 
@@ -125,7 +125,7 @@ TrayContext 提供目前語言，通知建立時讀當前 context；已發送的
 
 來源：[log.ts](../../../src/main/log.ts)。macOS 目前路徑為 `~/Library/Logs/recordstuff/recordstuff.log`；設定為 `~/Library/Application Support/recordstuff/settings.json`。路徑由 Electron app 名稱與 `getPath` 決定，產品顯示名稱仍是 RecordStuff。
 
-每行為 `[UTC ISO 時間] 訊息`。啟動時記 App／Electron／平台版本、outputDir、品質、packaged 與 executable；每次錄製記 session、狀態、capture report、first chunk、saved／failed。Log 含本機路徑，分享診斷前可移除個人路徑；不寫入媒體內容。
+每行為 `[UTC ISO 時間] 訊息`。啟動時記 App／Electron／平台版本、outputDir、品質、packaged 與 executable；每次錄製記 session、狀態、capture report、first chunk、saved（含提前停止原因）／failed、停滯與低空間警告及 writer 積壓、改報為已保留磁碟錯誤的啟動失敗，以及啟動時找到的中斷 sentinel。`power: suspend` 與 `power: resume` 會記下進行中的 session 與狀態。Log 含本機路徑，分享診斷前可移除個人路徑；不寫入媒體內容。
 
 所有訊息先送 stdout。檔案在下次追加前若超過 5 MiB，將舊檔依序移到 `.1.log`～`.3.log`；同步寫入方便無視窗 App 即時診斷。檔案寫失敗後本程序停用檔案 log，只報 stderr 一次並繼續 stdout。主程序未捕捉例外另外開錯誤對話框，unhandled rejection 留 log。
 
@@ -181,7 +181,7 @@ Recorder 在檔案清理完成前發出獨立 failure-status。Main 將每筆失
 
 焦點依操作開始時記錄的意圖還原，不依賴 `document.activeElement` 撐過等待：確認、收合或失敗後回到該筆摘要，移除最後一筆後回到目前分頁。使用者在等待期間移動焦點或視窗失焦時不搶回焦點，也不會移入其他紀錄的操作按鈕。失敗紀錄操作不排在偏好保存佇列後面，也不會結束快捷鍵擷取。
 
-重啟不重發通知。中斷的 pending 清理改為無法確認；先前確認的部分檔案也先顯示無法確認，再以一次一筆、每筆兩秒期限檢查；逾時停止後續檢查，避免佔滿檔案系統工作執行緒。檢查成功恢復部分檔案狀態，同時保留期間的確認操作。無法存取的路徑保留候選資訊與先前確認資格，供下次啟動檢查；中斷清理不因找到位元組就升級成已確認保留。已移除的 ID 不會被延遲檢查或完成事件重新加入。
+重啟不重發通知。中斷的 pending 清理改為無法確認；先前程序結束時（強制結束、當機、程序被終止或斷電）仍在錄製的 session，會在啟動時依其中斷 sentinel 回報一次，成為一筆未確認的 `app_terminated` 紀錄：「RecordStuff 在錄製期間未正常結束」，時間為該 session 的開始時間，指引說明檔案可能不完整且不會修復。其暫存檔路徑以下述「先前確認的部分檔案」方式重新檢查：只有該處存在非空檔案時才提供定位，否則為無法確認並保留路徑作為線索。它不發通知；紀錄保存後即移除 sentinel，因此確認後或再次重啟都不會重複出現。不執行任何復原、重新封裝或修復。先前確認的部分檔案也先顯示無法確認，再以一次一筆、每筆兩秒期限檢查；逾時停止後續檢查，避免佔滿檔案系統工作執行緒。檢查成功恢復部分檔案狀態，同時保留期間的確認操作。無法存取的路徑保留候選資訊與先前確認資格，供下次啟動檢查；中斷清理不因找到位元組就升級成已確認保留。已移除的 ID 不會被延遲檢查或完成事件重新加入。
 
 首次使用會把有效 `recording-result.json` v1 單筆紀錄移入獨立歷史檔案，保留舊檔。有效的空歷史不會再匯入舊資料。歷史損壞、超大或版本較新時記入 log 並拒絕覆蓋；後續保存呈現持久化警告。歷史驗證唯一 ID，序列化上限為 32 MiB；不會為了符合上限刪除未確認紀錄，超過就回報保存失敗，並非無限的永久儲存。
 

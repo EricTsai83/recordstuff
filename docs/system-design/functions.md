@@ -26,7 +26,7 @@ Named application and tool functions are grouped by source file. Follow source l
 | changeOutputDir | Native folder dialog → persist choice; failure notification or successful refresh |
 | setQuality | Only idle/needsPermission; persist patch, notify on failure, refresh on success |
 
-Process callbacks log uncaught exceptions/rejections. Recorder events render state, notify saved/error/permission, and report clear frame-rate downgrades. The tray left click and the global shortcut share one `toggle` closure. Before-quit coordinates shutdown; will-quit disposes the shortcut and releases resources. CurrentLanguage is updated only after a successful settings save and localizes unexpected-error dialogs.
+Process callbacks log uncaught exceptions/rejections. Recorder events render state, notify saved/error/permission, and report clear frame-rate downgrades. The tray left click and the global shortcut share one `toggle` closure. Recorder receives `fs.statfs` free space and the `userData/recording-sessions` sentinels; launch reports leftover sentinels through the history restore, and `powerMonitor` suspend/resume are logged with the in-flight session. Before-quit coordinates shutdown; will-quit disposes the shortcut and releases resources. CurrentLanguage is updated only after a successful settings save and localizes unexpected-error dialogs.
 
 ## Display selection
 
@@ -45,6 +45,7 @@ Process callbacks log uncaught exceptions/rejections. Recorder events render sta
 | delay / messageOf | Grace-period Promise / error string conversion |
 | Recorder constructor | Apply clock/ID/deadline/log defaults and subscribe to host messages/failures |
 | state getter | Current authoritative RecordingState |
+| sessionId getter | In-flight session ID for diagnostics such as sleep/wake logging |
 | subscribe | Register event listener and return unsubscribe |
 | toggle | Start when idle, stop when recording, request permission guidance when blocked, otherwise ignore |
 | stop | Matching recording session → stopping, arm deadline, send stop |
@@ -52,13 +53,17 @@ Process callbacks log uncaught exceptions/rejections. Recorder events render sta
 | setPermission | Update idle/needsPermission without replacing an active recording state |
 | outputDirChanged | Clear idle.outputDirUnavailable |
 | start | Preflight, snapshot, session, folder probe, unique writer, host start; clean late results |
-| openUniqueWriter | Try temporary/final filename pairs; retry temporary EEXIST up to ten attempts |
+| openUniqueWriter | Write the interruption sentinel for each temporary name, then try temporary/final filename pairs; retry temporary EEXIST up to ten attempts |
+| markInFlight / clearInFlight | Write the session sentinel (a failure logs once and never blocks) / remove it on every terminal outcome |
 | handleHostMessage | Filter session, dispatch started/chunk/stopped/error, stop stale capture |
-| handleChunk | Validate consecutive seq, clear first-chunk deadline, append; map rejection to failure |
-| finalize | Wait writes, ensure session still current, finish file, then idle/saved |
+| handleChunk | Validate consecutive seq, clear first-chunk deadline, reset the stall guard on nonempty media after started, append; map rejection to failure |
+| finalize | Wait writes, ensure session still current, finish file, then idle/saved with any early-stop reason, then remove the sentinel |
+| armStall | Inter-chunk timer after media began: log once at the warning bound, fail with capture_failed at the second |
+| watchDisk | While recording, poll free space on one non-overlapping timer; log once below the warning threshold, request one normal stop below the stop threshold; a failed poll logs once |
+| retainedWriteError | Drain the writer within a bound and return its retained write/sync error, used only to reclassify capture_start_failed |
 | handleHostFailure | Fail only when a recording session exists |
-| fail | Detach session, clear deadline, stop host, idle immediately, abandon writer, emit failure with optional partial path |
-| clearTimer | Cancel and clear session deadline |
+| fail | Detach session, clear deadline and health timers, stop host, idle immediately, report a writer-retained disk error instead of capture_start_failed, abandon writer, emit failure with optional partial path, remove the sentinel |
+| clearTimer / clearDisk / clearHealth | Cancel and clear the session deadline / free-space poll / poll and stall timers |
 | setState / emit | Replace state and emit / notify registered listeners |
 | nextStateChange | One-shot state subscription resolved and removed after a state event |
 
@@ -117,8 +122,10 @@ The page's window-message callback checks source/marker/port before creating the
 | FileWriter constructor | Store handle/paths/I/O and schedule queued sync |
 | FileWriter.open | Exclusive temporary-file open → writer; wrap open failure |
 | bytesWritten | Sum of confirmed bytes from each write, including progress before an append fails |
-| append | Reject if closed; queue complete writes of the remaining buffer, counting confirmed progress; empty input skips write, zero/invalid counts reject |
-| finish | Queued sync, release, exclusive copy with collision suffixes, best-effort temporary removal → actual final path; reject failure |
+| backlogBytes | Bytes accepted by append and not yet confirmed written or released after a failure |
+| append | Reject if closed or already refused; refuse at once, without queueing, an append that would exceed the backlog bound (keeping an earlier disk error); otherwise queue complete writes of the remaining buffer, counting confirmed progress; empty input skips write, zero/invalid counts reject |
+| drain | Wait for queued work, then return the retained failure or refusal, if any |
+| finish | Queued sync; reject after a refusal; release, exclusive copy with collision suffixes, best-effort temporary removal → actual final path; reject failure |
 | abandon | Drain, best-effort close, preserve nonempty temporary file or remove empty file; never throw |
 | release | Once-only closed flag, timer cleanup, and handle close |
 | enqueue | Serialize operations; retain first failure and reject later operations consistently |
@@ -260,8 +267,13 @@ The page's window-message callback checks source/marker/port before creating the
 | Function/method | Contract |
 | --- | --- |
 | RecordingResults.receive / act | Confirm partial files, reject stale results/actions, retain unread state and expose recovery actions |
-| RecordingResults.restore | Recheck saved paths with a deadline; restore acknowledgement without a notification or overwriting newer state |
+| RecordingResults.restore | Adopt launch-time interruption entries not yet in history, recheck them and saved paths with a deadline; restore acknowledgement without a notification or overwriting newer state; resolve whether this attempt saved the history |
+| RecordingResults.saved | Resolve once every given ID has been in a saved file, including through a later automatic retry; never starts a save |
 | isOutputFolderFailure / isPermissionFailure | The shared recovery categories: output-folder failures offer the folder action; permission failures, including no_audio_track, offer System Settings and Relaunch on macOS |
+
+[main/session-sentinel.ts](../../src/main/session-sentinel.ts): `SessionSentinels.write` atomically names a session's temporary file before it exists; `remove` deletes it without throwing; `leftovers` lists sentinels of earlier processes, skipping this process's sessions, discarding interrupted writes and invalid content, and keeping ones it cannot read now. `interruptionFailure` turns one into an `app_terminated` entry with a session-derived ID; `reportInterruptions` hands them to `RecordingResults.restore` at launch and removes them only once `RecordingResults.saved` confirms their entries were saved.
+
+[main/recording-health.ts](../../src/main/recording-health.ts): `RECORDING_HEALTH`, the single place for the stall, free-space, writer-backlog and start-drain thresholds.
 
 [main/recording-result-store.ts](../../src/main/recording-result-store.ts): validates and atomically replaces versioned failure history; migrates the legacy single record without overwriting it. Exact-ID retry preserves unread state; removal deletes only reviewed metadata.
 

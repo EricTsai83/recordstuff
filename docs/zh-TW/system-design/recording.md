@@ -2,7 +2,7 @@
 
 [English](../../system-design/recording.md) | [繁體中文](recording.md)
 
-實作來源：[Recorder](../../../src/main/recorder.ts)、[renderer CaptureHost](../../../src/renderer/capture-host.ts)、[FileWriter](../../../src/main/file-writer.ts)、[品質函式](../../../src/shared/quality.ts)。
+實作來源：[Recorder](../../../src/main/recorder.ts)、[renderer CaptureHost](../../../src/renderer/capture-host.ts)、[FileWriter](../../../src/main/file-writer.ts)、[健康門檻](../../../src/main/recording-health.ts)、[session sentinel](../../../src/main/session-sentinel.ts)、[品質函式](../../../src/shared/quality.ts)。
 
 ## 狀態與操作
 
@@ -26,7 +26,7 @@ stateDiagram-v2
 
 1. `Recorder.start()` 確認 idle、沒有 session，執行 OS preflight；建立 session id、品質快照與 starting 狀態。
 2. `ensureWritableDir()` 建立資料夾、實際写入並刪除 probe。不可用就報錯，不換到其他資料夾。
-3. 以本地時間 `YYYY-MM-DD HH-mm-ss` 開啟 `.recording.mp4`。`wx` 防止同名暫存檔覆蓋；遇 EEXIST 改試 `-2` 至 `-10`。
+3. 先寫入該 session 的中斷 sentinel 並記下暫存檔路徑，再以本地時間 `YYYY-MM-DD HH-mm-ss` 開啟 `.recording.mp4`。`wx` 防止同名暫存檔覆蓋；遇 EEXIST 時改寫 sentinel 並改試 `-2` 至 `-10`。
 4. 等待 host ready 並送 start。Main 依保存的螢幕偏好選來源；預設仍匹配主螢幕 id，找不到時使用第一個來源。指定螢幕只允許唯一的精確 id 配對，並搭配 `audio: "loopback"`。
 5. Renderer 檢查 MP4 MIME、要求畫面與音訊；沒有音軌或音軌已 ended 就釋放 stream 並回錯誤。
 6. 量測影格、套用品質，再檢查所有軌仍存活；建立 MediaRecorder、掛事件、開始並回 started。
@@ -40,12 +40,16 @@ stateDiagram-v2
 | host ready | 8 秒 | start 失敗，下次可重建 |
 | 來源／系統授權請求 | 120 秒 | capture_start_failed；停止該 session |
 | started 後首個非空 chunk | 8 秒 | capture_start_failed，保留已寫入資料 |
+| 媒體開始後的下一個非空 chunk | 10 秒記錄一次警告，30 秒判定失敗；每個非空 chunk 重新計時，收到 stopped 或失敗時解除 | capture_failed，detail 註明停滯；保留部分檔 |
+| 輸出資料夾可用空間 | 從 started 到停止前每 5 秒查詢；低於 1 GiB 記錄一次 | 低於 200 MiB 時只要求一次正常停止；以「磁碟即將滿」原因存檔，不算失敗 |
+| Writer 積壓（已接受、未寫入的 bytes） | 64 MiB | output_write_failed，detail 註明積壓；保留已寫入的前段 |
+| 判定泛用啟動失敗前排空 writer | 2 秒 | 已保留的磁碟錯誤沿用原代碼；否則 capture_start_failed |
 | stop 回應 | 10 秒 | stop_timeout |
 | Renderer 終止交接 | 終止開始後 5 秒 | 缺少 stop／最後 Blob 交接時回報失敗，忽略後續交接 |
 | 退出等待 | 每次嘗試 13 秒（停止期限另加 3 秒） | 尚有工作時延後退出並顯示在地化提示，不截斷存檔 |
 | 心跳 | session 進行中每 5 秒檢查／送 ping | 檢查時已有 2 次未回 pong 就 teardown、回 unresponsive |
 
-這些是專案的等待上限，不是 OS 標準或精準的全流程耗時保證。磁碟 I/O 不能因此被真正取消。
+這些是專案的等待上限，不是 OS 標準或精準的全流程耗時保證。磁碟 I/O 不能因此被真正取消。健康檢查各列（停滯、可用空間、積壓、啟動排空）是初始目標，集中在 [recording-health.ts](../../../src/main/recording-health.ts)；只有書面證據支持時才調整。心跳只證明 renderer 仍會回應；停滯保護才證明媒體仍在送達。可用空間查詢失敗只記錄一次，永不因此停止錄影。`powerMonitor` 的 suspend 與 resume 會連同進行中的 session id 寫入 log，讓之後的失敗能對照睡眠判讀；睡眠本身不會停止錄影。
 
 ## 終止責任與正常退出
 
@@ -53,7 +57,7 @@ CaptureHost 在等待 Blob 轉換之前固定第一個終止原因。後續使�
 
 Recorder 接受 `stopped` 後由 finalizer 獨占該次收尾。遲到的 host crash／error、重複 stop 或螢幕移除不能 abandon 正在發布的檔案；磁碟錯誤仍進入失敗清理。所有開檔、存檔、清理工作在同步 subscriber 執行前登記。開檔逾時立即讓 UI 回到 idle，但結果保持 pending，直到遲到的開檔與關閉完成。多次失敗各自保留清理工作的責任。
 
-所有 `before-quit`（包含 idle）共用 `installQuitCoordinator`。重複退出加入同一嘗試，退出判定期間拒絕開始新錄影，並自動停止擷取。已在啟動中的 session 保留停止意圖，即使退出延期，擷取一開始也會立即停止並收尾。必須沒有 session 與未完成工作，包含遲到開檔、先前失敗清理與失敗結果查核／發布，才允許退出。退出期限只延後退出；擷取失敗仍由既有啟動請求與停止回應 timer 判定。未完成的磁碟／結果發布工作仍被持有，App 保持開啟，使用者可重試退出。不為滿足退出期限摧毀 host 或宣稱未確認的保留路徑。強制退出、程序終止與斷電不受此保證保護；沒有當機復原或放棄媒體的破壞性退出選項。只有在此媒體階段完成後，退出才嘗試保存失敗歷史；其明確的「只放棄提醒」退出永遠不會放棄媒體工作（見[桌面設計](desktop.md#延後退出)）。
+所有 `before-quit`（包含 idle）共用 `installQuitCoordinator`。重複退出加入同一嘗試，退出判定期間拒絕開始新錄影，並自動停止擷取。已在啟動中的 session 保留停止意圖，即使退出延期，擷取一開始也會立即停止並收尾。必須沒有 session 與未完成工作，包含遲到開檔、先前失敗清理與失敗結果查核／發布，才允許退出。退出期限只延後退出；擷取失敗仍由既有啟動請求與停止回應 timer 判定。未完成的磁碟／結果發布工作仍被持有，App 保持開啟，使用者可重試退出。不為滿足退出期限摧毀 host 或宣稱未確認的保留路徑。強制退出、程序終止與斷電不受此保證保護；沒有當機復原或放棄媒體的破壞性退出選項。下次啟動會透過中斷 sentinel 回報這類 session（見[寫檔與失敗](#寫檔與失敗)）。只有在此媒體階段完成後，退出才嘗試保存失敗歷史；其明確的「只放棄提醒」退出永遠不會放棄媒體工作（見[桌面設計](desktop.md#延後退出)）。
 
 ## 品質與編碼
 
@@ -112,7 +116,15 @@ FileWriter 的 append、週期 sync 與 finish 都排在同一佇列。每次 ap
 
 非空只是必要的最低門檻，不代表檔案可播放。Cap 的 AVFoundation writer [在沒有最後影格時拒絕 finish](https://github.com/CapSoftware/Cap/blob/ce785e705e79652adba4b8bf752669c4093499e0/crates/enc-avfoundation/src/mp4.rs#L961-L990)（該 revision 的靜態檢視），但 RecordStuff 收到的是編碼後 chunk 而非影格時間戳，不解析 MP4，也不確認含可解碼影格。可播放性只由驗收時的媒體檢查（如 ffprobe 與完整解碼）確立，執行期不檢查。
 
-排他建立同時保護暫存檔與正式檔名，包括錄影途中才出現的同名正式檔；短寫取得進展後失敗時，保留確認寫入量與非空部分檔；後續 append 與 finish 拒絕且不產生完成檔，abandon 關閉 handle 並停止 sync。背景 sync 的 rejection 會被接住，首次失敗仍被保留。完整寫入與 fsync 耐久性是不同保證，不承諾所有 crash、斷電或檔案系統故障都可復原。沒有磁碟空間預留、無限長錄製承諾或有界背壓。更完整的耐久性需求應先建測試，再改實作。
+排他建立同時保護暫存檔與正式檔名，包括錄影途中才出現的同名正式檔；短寫取得進展後失敗時，保留確認寫入量與非空部分檔；後續 append 與 finish 拒絕且不產生完成檔，abandon 關閉 handle 並停止 sync。背景 sync 的 rejection 會被接住，首次失敗仍被保留。完整寫入與 fsync 耐久性是不同保證，不承諾所有 crash、斷電或檔案系統故障都可復原。更完整的耐久性需求應先建測試，再改實作。
+
+FileWriter 限制已接受但尚未確認寫入的位元組數（`backlogBytes`，停滯與低空間警告也會記錄，並保留給 Plan 037 的准入量測）。會超過 64 MiB 的 append 立即被拒絕且不排入佇列，之後的 append 也一律拒絕，因此檔案不會出現缺口；拒絕前已接受的 bytes 仍會寫入，finish 會拒絕，Recorder 以 output_write_failed 與積壓 detail 結束該 session；若先前已保留磁碟錯誤，則沿用該錯誤。不暫停、不丟棄、不重試：MediaRecorder 無法節流，此上限讓緩慢或離線的儲存裝置以保留部分檔結束錄影，而不是無限制占用記憶體。因此持續低於位元率的磁碟吞吐量仍會結束錄影。沒有磁碟空間預留、切換資料夾、降低品質或無限長錄製承諾。
+
+可用空間保護讀取輸出資料夾的 `fs.statfs`。低於停止門檻時要求正常停止，讓檔案在仍有空間時排空、sync 並發布；saved 事件帶有 `stoppedEarly: "lowDisk"`，log 會註明，存檔通知顯示「已儲存 {file}。磁碟空間即將用盡，已提前停止錄製」。這類錄影屬於成功，不進入失敗紀錄。若發布仍失敗，沿用一般失敗流程與部分檔保留。
+
+Writer 在擷取請求前開啟，而擷取請求可能為了權限提示等待最多 120 秒，期間每 5 秒 sync。若該次嘗試隨後以泛用的 `capture_start_failed` 結束（首片期限、擷取請求逾時、host start 被拒，或 host 回報 capture_start_failed），失敗流程會先排空 writer 最多 2 秒；若 writer 已保留寫入或 sync 錯誤，就以該代碼（disk_full 或 output_write_failed）回報，沿用既有的資料夾／磁碟指引，detail 同時列出兩個原因。代碼在發布 pending 結果前決定，因此通知與紀錄一致。權限或缺少音訊等具體 host 原因維持原代碼；乾淨的 writer 維持 `capture_start_failed`。排空未能在上限內完成時也維持 `capture_start_failed`。
+
+中斷證據是每個 session 一個 sentinel 檔，位於 `userData/recording-sessions/`，檔名為 session id，內容為 session id、開始時間與暫存檔路徑。它在建立暫存檔之前以原子寫入完成，因此當機不會留下沒有任何 sentinel 記錄的暫存檔；寫入失敗只記錄一次，不阻擋錄影。每個終止結果在發布結果後移除該 session 自己的 sentinel，正常退出會等待移除完成。啟動時、在紀錄還原前，先前程序留下的每個 sentinel 都會成為一筆 `app_terminated` 失敗紀錄（「RecordStuff 在錄製期間未正常結束」），其路徑是查找線索，以還原部分檔的相同方式重新檢查：只有該處存在非空檔案時才是 partial，否則為 unknown。紀錄時間為該 session 的開始時間。只有該紀錄已寫入磁碟（包含之後歷史自動重試成功）後，才移除 sentinel，讓失敗紀錄先接手證據，已確認並移除的紀錄也不會再出現；紀錄 ID 由 session 推導，因此紀錄始終未能保存時，下次啟動會重試而不重複新增。單一執行個體鎖與本程序自己的 session 清單確保被回報的 sentinel 都屬於已結束的程序。中斷的 sentinel 寫入或無效內容沒有指向任何媒體，會直接捨棄；啟動時暫時無法讀取的 sentinel 則保留到之後的啟動。不掃描輸出資料夾中的其他檔案，也不復原、重新封裝或修復任何內容。
 
 ## 錯誤分類
 
@@ -123,6 +135,7 @@ FileWriter 的 append、週期 sync 與 finish 都排在同一佇列。每次 ap
 | 擷取 | capture_start_failed、capture_failed、capture_host_crashed、capture_host_unresponsive | 回 idle；有部分檔則提供位置 |
 | 檔案 | output_open_failed、output_write_failed、disk_full | 說明位置／磁碟問題，盡力保留 bytes |
 | 停止 | stop_timeout | 停止等待擷取回覆並盡力保留部分檔 |
+| 先前程序 | app_terminated | 只在啟動時依中斷 sentinel 回報；說明 App 未正常結束、檔案可能不完整；擷取 host 永遠不會送出 |
 
 Main 的來源 handler 可記錄具體拒絕原因，取代 renderer 的泛用 AbortError；只覆寫可由來源拒絕解釋的錯誤。`permission_needs_relaunch` 是協定支援碼，常態授權引導主要由 PermissionWatcher 狀態處理。
 
