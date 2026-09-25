@@ -9,6 +9,25 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 029 結案 — 2026-09-25
+
+Log 身分與跨輪替驗收（R1 bug 7、R2-07），由 Claude 實作、Codex GPT-6 Astra review（[Log 與診斷](../system-design/desktop.md#log-與診斷)、[驗收工具](../system-design/tooling.md#選擇驗收範圍)）。
+
+- **事件帶 session 身分。** Recorder 的 captureStarted、saved 與 failed 事件帶著 session（id、暫存路徑、錄製與要求停止時間），失敗另帶落定的檔案結果；preflight 拒絕是獨立的 failed 變體，不指名 session。每次啟動在 `start:` 行記下 run id（啟動時間加 pid）。
+- **Session record。** 人類可讀行不變，main 另外為每次 capture、儲存、失敗（沒有檔案也寫）與拒絕各寫一筆有版本的 JSON record：`session-record: {"v":1,"run":…}`。含空白、引號或換行的路徑維持在一行跳脫後的內容。
+- **依身分配對。** `pnpm verify`、`pnpm acceptance` 與 `pnpm matrix` 以 run 與 session id、透過檔案完整路徑配對 session，只有單一 session 指名同名檔時才用檔名。重複 record 是一個結果，不同結果是 conflict；空的失敗不宣告路徑，因為同一秒的重試可能重用它的名稱。沒有 record 的舊版啟動使用保守的舊版關聯；其他情況顯示為 ambiguous、conflict 或 unknown，不判定需要要求設定的檢查，驗收與 matrix runner 會判該案例失敗。被 single-instance lock 拒絕的啟動寫的 `start:` 行不再算程序啟動，也就是 plan 028 那一輪遇到的缺口。
+- **跨輪替讀取。** Runner 的等待與收尾以 cursor 為起點，cursor 由檔案身分、byte offset 與其前 64 bytes 組成。它跟著檔案進入保留的 archive、每行只讀一次、容忍改名與追加之間的空檔、保留尚未換行的最後一行；歷史被 retention、截斷或截斷後又長回移除時，立即回報 evidence gap。快捷鍵 runner 要求 run id，跟隨 capture record 指名的 session，並從該 session 的終止 record 取得檔案。輪替政策本身不變。
+
+自動化證據：最終版本 `pnpm check` 通過 typecheck、50 個檔案 814 項測試與 build；`git diff --check` 無誤。以 production logger 寫入、`rotateLog` 輪替的真實暫存 log 測試涵蓋：R2-07 重現（31 行的舊檔輪替後，saved 出現在 3 行的新檔）、停止、儲存與失敗收尾期間的輪替、多次輪替、超過保留數的輪替、截斷、截斷後又長回、改名與追加之間 active 檔不存在、尚未換行的最後一行、重啟、重複 record、其他 session 的結果、有上限的逾時，以及停止最多只切換一次。真實 Recorder 經 production logger（含輪替）與 production session logging 產生 A（1080p）先失敗、B（4k）先完成收尾的 log：依身分兩者都配對正確，同一批行不讀 record 時兩者皆為 ambiguous；capture record 被 retention 移除時，檔案維持 unknown，不會借用別人的設定。手寫案例另涵蓋三個交錯 session 含無檔失敗、不同資料夾同名檔、特殊字元與分解形式 Unicode、新舊啟動混合、未知 id 與版本、兩次啟動中相同的 session id，以及失敗的 preflight。以 245 個保留 log（其中 6 個含被 lock 拒絕的 start 行）重播，舊的依順序讀法配到的 630 個檔案全部得到相同關聯，0 筆不一致；保留 log 中沒有它會出錯的交錯。每個變更過的 runner 都能在 Node type stripping 下載入，這一步抓到 Vitest 接受但 Node 不支援的 TypeScript parameter property。
+
+原生：M1 Pro、macOS 26.6.2，HEAD `43461d5` 加上未提交的變更。`pnpm start:app` 建置並驗證全新簽章 bundle（九個 identity；app.asar SHA-256 `7a901e7e…264e17`），啟動時記下 run id。`pnpm acceptance` 送出 ⌘⌥⇧R（press → pressed 176 ms），從 capture record 綁定 session `muh1dly0-r93rzr`，從 saved record 取得檔案，以相同 run 與 session 配對為 `matched`；錄製 10.3 秒、1920×1080、48 kHz 立體聲，RMS −27.2/−27.2 dB，10 次閃光與 10 個音，可完整解碼（`2026-09-25T14-08-34-152Z-hotkey-acceptance`）。Codex GPT-6 Astra computer use 在 QuickTime 播放，進度由 0 前進至約 9.57 秒，測試素材持續移動。reader 依 review 修正後，以 `pnpm open:app` 重開同一產物，`pnpm acceptance` 再次通過（session `muh1x8p3-7e9bu0`、`matched`、10.2 秒；`2026-09-25T14-23-50-091Z-hotkey-acceptance`）。RecordStuff、QuickTime 與素材瀏覽器皆已退出，設定未變更。依維護者要求，另外兩個等待改用 cursor 的 runner 接著以同一產物原生執行：`pnpm acceptance:settings-shortcut` 送出 ⌘⌥,，並從 checkpoint 起接到設定 callback（只驗證 callback，未觀察面板），之後正常退出 App；`pnpm acceptance:notification -- --install --clicks 2` 在英文、Finder 關閉的情境下 2/2 通過，兩次點擊都讓 Finder 置前並選中存好的檔案，之後還原原本安裝的 App（app.asar 不變、簽章有效）、語言設定與 TextEdit，並刪除它產生的錄影。
+
+依 plan 規定，原生錄製進行中的輪替沒有實測：強制輪替與失敗收尾在隔離的暫存 log 中執行。原生沒有觸發失敗路徑；matrix runner 只做了載入與 dry run。沒有新案例需要移到 035。
+
+Codex GPT-6 Astra（medium reasoning、唯讀）完成兩個 pass，共用 30 分鐘 budget 中約四分鐘，沒有 fallback。Pass 1 回報一個 Medium finding：log 在兩次讀取間被截斷又長回超過 cursor 時，會從過時的 offset 讀取並靜默跳過事件。已以 cursor mark 修正，並加入兩個拿掉修正就會失敗的 regression test。Pass 2 無 findings。
+
+同樣依維護者要求，本紀錄寫完後已刪除測試錄影 `2026-09-25 22-08-39.mp4` 與 `2026-09-25 22-23-55.mp4`、上述四個本機 measurements 目錄（兩次快捷鍵執行、`2026-09-25T14-33-17.132Z-settings-entry-HkW39M` 與 `2026-09-25T143333.532Z-notification-acceptance`），以及暫存的 review 與驗收 log；原始證據已不存在，保留下來的只有本紀錄。本輪已依範圍拆成數個 commit，提交在本機 main：App 端 `f2db26b`、工具 `7afdb4c`、設計文件 `93909ed`，以及本結案 commit。未 push，也未發布。
+
 ## Plan 028 結案 — 2026-09-25
 
 設定視窗與快捷鍵生命週期（R1 bug 1、5，R2-03），由 Claude 實作、Codex GPT-6 Astra review（[設定視窗](../system-design/desktop.md#設定視窗)、[錄影快捷鍵](../system-design/desktop.md#錄影快捷鍵)）。

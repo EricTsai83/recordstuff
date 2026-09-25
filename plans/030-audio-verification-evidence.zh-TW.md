@@ -6,7 +6,7 @@
 
 ## 範圍與證據
 
-處理 bug **8**，排在 029 後；parser／報告介面穩定後可獨立實作。[judge](../scripts/lib/verify.mts) 在 channelRmsDb 未提供時，把要求雙聲道都有能量的檢查標為 pass；[verify-recording](../scripts/lib/verify-recording.mts) 缺少 ffmpeg 時正會略過 RMS。受控純 metadata 測試已重現錯誤通過，不宣稱錄製 App 本身發生原生音訊失敗。
+處理 bug **8**，排在 [029](../docs/zh-TW/verification/history-2026-09.md#plan-029-結案--2026-09-25)（已完成）後；parser／報告介面穩定後可獨立實作。[judge](../scripts/lib/verify.mts) 在 channelRmsDb 未提供時，把要求雙聲道都有能量的檢查標為 pass；[verify-recording](../scripts/lib/verify-recording.mts) 缺少 ffmpeg 時正會略過 RMS。受控純 metadata 測試已重現錯誤通過，不宣稱錄製 App 本身發生原生音訊失敗。
 
 範圍為分析器、媒體工具邊界、報告／CLI／acceptance 消費端與受控媒體測試。不修改錄製編碼，也不為了通過測試調整音訊門檻。
 

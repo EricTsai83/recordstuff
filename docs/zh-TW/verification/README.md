@@ -8,6 +8,7 @@
 
 | 項目 | 既有結果與限制 |
 | --- | --- |
+| Plan 029 Log 身分與跨輪替驗收 | Recorder 事件與有版本的 session record 帶 run 與 session id，verify、acceptance 與 matrix 依身分而非行序配對檔案，舊版 log 採保守關聯並明確回報 ambiguous／conflict／unknown；runner 以 rotation-aware cursor 讀 log，遇到遺失歷史回報 evidence gap，不會跳過事件。814 項測試、245 個 log 重播 0 筆不一致、兩次新 bundle smoke 皆配對為 `matched`，QuickTime 播放、設定快捷鍵 callback 與通知 2/2 通過；Codex GPT-6 Astra 修正一個 Medium finding，最後一個 pass 無 findings。原生情境下的輪替與失敗路徑只在隔離的暫存 log 中執行。見[歷史](history-2026-09.md#plan-029-結案--2026-09-25) |
 | Plan 028 設定視窗與快捷鍵生命週期 | 各平台唯一且精確的關閉組合鍵，macOS ⌃W 可錄入；每個視窗的錄入 lease 在所有離開路徑都釋放，即使已確認的儲存仍在寫入；經 `AppShortcuts` 先保存再註冊；當掉的設定 renderer 會被丟棄，下次開啟重建。778 項測試、設定 113/113、含 fixture 保留儲存的快捷鍵整合、10.3 秒新 bundle smoke 與 QuickTime 播放通過；Codex GPT-6 Astra 無 findings。原生面板 ⌃W／⌘W 案例因 computer use 無法取得 RecordStuff 而受阻（035 N38–N40）。見[歷史](history-2026-09.md#plan-028-結案--2026-09-25) |
 | Plan 027 權限同步 | Recorder 保存最新權限狀態，每次 session 結束都落定為 idle 或 needsPermission，並保留「顯示最後一個錄影」；PermissionWatcher 只持有一個 getSources，搭配期限指引、完成後起算的退避與世代 token。756 項測試、10.3 秒新 bundle smoke 與 QuickTime 播放通過；Codex GPT-6 Astra 無 findings。原生撤銷／重新授權／重新啟動恢復受阻（035 N36、N37）。見[歷史](history-2026-09.md#plan-027-結案--2026-09-25) |
 | Plan 038 錄影健康防護 | 磁碟餘裕提前停止以成功並附原因存檔、擷取停滯失敗、64 MiB 寫入積壓拒絕並保留無缺口前段、開始期間以已保留的磁碟錯誤取代泛用失敗、每個 session 的中斷 sentinel 於啟動時回報為 `app_terminated`，以及睡眠／喚醒 log。739 項測試、10.2 秒新 bundle smoke（之後 sentinel 資料夾為空）與 QuickTime 播放通過；Codex GPT-6 Astra 三項 Medium 已修正。磁碟停止、強制結束紀錄與睡眠結果未做原生驗收（035 N30、N31）。見[歷史](history-2026-09.md#plan-038-結案--2026-09-25) |

@@ -6,7 +6,7 @@ Status: planned, not implemented. Created: 2026-09-24. Execution order: see [que
 
 ## Scope and evidence
 
-Bug **8**. Queue after 029; can be implemented independently once parser/report interfaces are stable. [judge](../scripts/lib/verify.mts) labels a check requiring energy in both channels pass when channelRmsDb is undefined; [verify-recording](../scripts/lib/verify-recording.mts) omits RMS when ffmpeg is unavailable. A controlled metadata-only test reproduces the false pass. No native audio failure is asserted.
+Bug **8**. Queue after [029](../docs/verification/history-2026-09.md#plan-029-closure--2026-09-25) (complete); can be implemented independently once parser/report interfaces are stable. [judge](../scripts/lib/verify.mts) labels a check requiring energy in both channels pass when channelRmsDb is undefined; [verify-recording](../scripts/lib/verify-recording.mts) omits RMS when ffmpeg is unavailable. A controlled metadata-only test reproduces the false pass. No native audio failure is asserted.
 
 Scope is analyzer, media-tool boundary, report/CLI/acceptance consumers and controlled media tests. Do not alter recording encoding or raise acoustic thresholds merely to make tests pass.
 
