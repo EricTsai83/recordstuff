@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchManifest } from './lib/release-manifest-client.mts';
-import { assertManifestShape, REPOSITORY, type ReleaseManifest } from './lib/release-manifest.mts';
+import { assertManifestShape, diffManifest, REPOSITORY, type ReleaseManifest } from './lib/release-manifest.mts';
 
 export const signingSHA1 = '01B373511530BBF287CA35E54C10A5F017AAD637';
 /** Stable `1.2.3` or pre-release `1.2.3-rc.1`; the tag is always `v` + version. */
@@ -54,6 +54,33 @@ export function replaceMarked(text: string, name: string, block: string): string
   const from = text.indexOf(start); const to = text.indexOf(end);
   if (from < 0 || to < 0 || to < from) throw new Error(`Markers ${start} … ${end} not found.`);
   return `${text.slice(0, from + start.length)}\n${block}\n${text.slice(to)}`;
+}
+/** The committed stable download pointer: the website manifest, from which both README blocks are rendered. */
+export const stableManifestPath = 'website/release-manifest.json';
+/** Reads the stable pointer a stable record compares against; a missing or invalid one is never replaced by a guess. */
+export function readStableManifest(file: string): ReleaseManifest {
+  const remedy = `Restore ${stableManifestPath} from main, or regenerate it for the current stable release with \`pnpm site:manifest generate vX.Y.Z\`, then rerun record.`;
+  const reason = (error: unknown) => { const message = error instanceof Error ? error.message : String(error); return /[.!?]$/.test(message) ? message : `${message}.`; };
+  let text: string;
+  try { text = readFileSync(file, 'utf8'); }
+  catch (error) { throw new Error(`Cannot read the committed stable manifest ${stableManifestPath}: ${reason(error)} ${remedy}`); }
+  try { return assertManifestShape(JSON.parse(text)); }
+  catch (error) { throw new Error(`The committed stable manifest ${stableManifestPath} is invalid: ${reason(error)} ${remedy}`); }
+}
+/** What recording a verified stable release does to the stable download pointers. */
+export type StablePointerOutcome = 'promoted' | 'unchanged' | 'historical-only';
+/**
+ * The committed stable manifest, not package.json, decides: a newer version
+ * promotes, an older one is historical only, and the same version must carry
+ * the same release identity and asset facts, so a retry cannot swap them.
+ */
+export function stablePointerOutcome(current: ReleaseManifest, candidate: ReleaseManifest): StablePointerOutcome {
+  const order = compareVersions(candidate.version, current.version);
+  if (order > 0) return 'promoted';
+  if (order < 0) return 'historical-only';
+  const differences = diffManifest(current, candidate);
+  if (differences.length) throw new Error(`${candidate.tag} is already the recorded stable release with different facts; refusing to overwrite it:\n  ${differences.join('\n  ')}`);
+  return 'unchanged';
 }
 export interface ReleaseFacts { version: string; tag: string; repository: string; sourceCommit: string; file: string; size: number; sha256: string; runUrl: string; publishedAt: string; date: string }
 /** Stable documentation and the website share the same verified release snapshot. */
@@ -243,8 +270,8 @@ async function main() {
     // After a successful release: write the facts CI knows back into the repository (committed by the workflow).
     const c = contextFromTag(tag);
     const runUrl = process.env.RELEASE_RUN_URL ?? `https://github.com/${c.repository}/actions`;
-    let manifest: ReleaseManifest | undefined;
     let facts: ReleaseFacts;
+    let stable: { current: ReleaseManifest; manifest: ReleaseManifest; outcome: StablePointerOutcome } | undefined;
     if (isPrerelease(c.version)) {
       // Pre-releases get a historical record, never a stable download pointer.
       const release = api(`repos/${c.repository}/releases/tags/${tag}`) as PublishedRelease & { published_at: string; prerelease: boolean };
@@ -253,29 +280,44 @@ async function main() {
       if (release.draft || !release.prerelease || !asset || !asset.digest?.startsWith('sha256:')) throw new Error('Pre-release is not public or its DMG digest is unavailable.');
       facts = { ...c, file, size: asset.size, sha256: asset.digest.slice('sha256:'.length), runUrl, publishedAt: release.published_at, date: release.published_at.slice(0, 10) };
     } else {
+      // The committed pointer is read before the release is fetched, so an invalid one stops early.
+      const current = readStableManifest(path.join(root, stableManifestPath));
       // Validate public release.json, checksums and assets once, then render every output.
-      manifest = await fetchManifest(tag);
+      const manifest = await fetchManifest(tag);
       facts = releaseFactsFromManifest(manifest, runUrl);
       if (facts.sourceCommit !== c.sourceCommit) throw new Error('Published manifest source commit does not match the tag.');
+      stable = { current, manifest, outcome: stablePointerOutcome(current, manifest) };
     }
     // Prepare all outputs before touching disk: invalid README markers or
     // unreadable inputs cannot leave an earlier output partially updated.
+    // Only changed text is kept, so a retry that changes nothing writes nothing.
     const outputs = new Map<string, string>();
-    const prepare = (rel: string, text: string) => { outputs.set(rel, text); };
+    const prepare = (rel: string, text: string) => {
+      const file = path.join(root, rel);
+      if (!existsSync(file) || readFileSync(file, 'utf8') !== text) outputs.set(rel, text);
+    };
     for (const [rel, lang] of [['docs/verification/releases', 'en'], ['docs/zh-TW/verification/releases', 'zh-TW']] as const) {
       const target = `${rel}/${c.version}.md`;
       if (!existsSync(path.join(root, target))) prepare(target, renderVerificationRecord(lang, facts));
     }
-    if (manifest) {
-      prepare('website/release-manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
+    if (stable) {
+      // package.json keeps its own rule: it follows the newest recorded stable version and never moves backward.
       if (compareVersions(packageVersion(), c.version) < 0) prepare('package.json', setPackageVersion(readFileSync(packageJsonPath, 'utf8'), c.version));
-      for (const [rel, lang] of [['README.md', 'en'], ['README.zh-TW.md', 'zh-TW']] as const) {
-        prepare(rel, replaceMarked(readFileSync(path.join(root, rel), 'utf8'), 'release-download', renderDownloadSection(lang, facts)));
+      // An equal retry keeps the committed manifest, including its verifiedAt.
+      if (stable.outcome === 'promoted') prepare(stableManifestPath, `${JSON.stringify(stable.manifest, null, 2)}\n`);
+      if (stable.outcome !== 'historical-only') {
+        for (const [rel, lang] of [['README.md', 'en'], ['README.zh-TW.md', 'zh-TW']] as const) {
+          prepare(rel, replaceMarked(readFileSync(path.join(root, rel), 'utf8'), 'release-download', renderDownloadSection(lang, facts)));
+        }
       }
     }
     for (const [rel, text] of outputs) writeFileSync(path.join(root, rel), text);
     const changed = [...outputs.keys()];
-    console.log(changed.length ? `Recorded ${tag}: ${changed.join(', ')}` : `Nothing to record for ${tag}.`);
+    const outcome = !stable ? 'historical only: pre-releases never move the stable download pointers'
+      : stable.outcome === 'promoted' ? `promoted: stable download pointers moved from ${stable.current.tag} to ${tag}`
+      : stable.outcome === 'unchanged' ? `unchanged: ${tag} is already the stable release with the same facts`
+      : `historical only: stable download pointers stay at the newer ${stable.current.tag}`;
+    console.log(`Recorded ${tag} (${outcome}). ${changed.length ? `Wrote ${changed.join(', ')}.` : 'No file changed.'}`);
     return;
   }
   if (mode === 'published') {
