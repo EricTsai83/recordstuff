@@ -250,21 +250,27 @@ export class AppTray {
   }
 }
 
+/** Every state has its own file: `tray-<state>.ico` on Windows, `tray<State>Template.png` elsewhere. */
+export const TRAY_ICON_FILES: Record<TrayIcon, { win32: string; template: string }> = {
+  idle: { win32: "tray-idle.ico", template: "trayIdleTemplate.png" },
+  busy: { win32: "tray-busy.ico", template: "trayBusyTemplate.png" },
+  countdown: { win32: "tray-countdown.ico", template: "trayCountdownTemplate.png" },
+  recording: { win32: "tray-recording.ico", template: "trayRecordingTemplate.png" },
+  warning: { win32: "tray-warning.ico", template: "trayWarningTemplate.png" },
+};
+
 function loadIcons(resourcesDir: string): Record<TrayIcon, Electron.NativeImage> {
-  if (process.platform === "win32") {
-    return {
-      idle: nativeImage.createFromPath(path.join(resourcesDir, "tray-idle.ico")),
-      warning: nativeImage.createFromPath(path.join(resourcesDir, "tray-warning.ico")),
-      recording: nativeImage.createFromPath(path.join(resourcesDir, "tray-recording.ico")),
-    };
+  const icons = {} as Record<TrayIcon, Electron.NativeImage>;
+  for (const [icon, files] of Object.entries(TRAY_ICON_FILES) as Array<[TrayIcon, (typeof TRAY_ICON_FILES)[TrayIcon]]>) {
+    if (process.platform === "win32") {
+      icons[icon] = nativeImage.createFromPath(path.join(resourcesDir, files.win32));
+      continue;
+    }
+    // `*Template.png` (+ `@2x`) is picked up by Electron as a macOS template
+    // image, which follows the menu bar's light/dark appearance automatically.
+    const image = nativeImage.createFromPath(path.join(resourcesDir, files.template));
+    image.setTemplateImage(true);
+    icons[icon] = image;
   }
-  // `*Template.png` (+ `@2x`) is picked up by Electron as a macOS template
-  // image, which follows the menu bar's light/dark appearance automatically.
-  const idle = nativeImage.createFromPath(path.join(resourcesDir, "trayIdleTemplate.png"));
-  const recording = nativeImage.createFromPath(path.join(resourcesDir, "trayRecordingTemplate.png"));
-  const warning = nativeImage.createFromPath(path.join(resourcesDir, "trayWarningTemplate.png"));
-  warning.setTemplateImage(true);
-  idle.setTemplateImage(true);
-  recording.setTemplateImage(true);
-  return { idle, recording, warning };
+  return icons;
 }

@@ -23,6 +23,7 @@ import {
   type VideoQuality,
 } from "../shared/quality";
 import { DEFAULT_HOTKEY, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut } from "../shared/hotkey";
+import { COUNTDOWN_CHOICES } from "../shared/countdown";
 import type { SettingsChoice, SettingsGroup, SettingsView } from "../shared/settings-panel";
 import type { RecordingState } from "../shared/state";
 
@@ -52,9 +53,9 @@ function group(
   choices: Group["choices"],
   note?: string,
 ): Group {
-  const tab = ["screen", "videoQuality", "resolutionCap", "frameRate"].includes(id) ? "recording" : "general";
+  const tab = ["screen", "countdown", "videoQuality", "resolutionCap", "frameRate"].includes(id) ? "recording" : "general";
   return { id, label, enabled, choices, tab,
-    control: ["notifications", "updateChecks"].includes(id) ? "switch" : ["videoQuality", "language"].includes(id) ? "segmented" : "menu",
+    control: ["notifications", "updateChecks"].includes(id) ? "switch" : ["countdown", "videoQuality", "language"].includes(id) ? "segmented" : "menu",
     section: tab === "recording" ? "recording" : id === "updateChecks" ? "updates" : id,
     noteKind: "explanation", ...(note === undefined ? {} : { note }) };
 }
@@ -87,6 +88,18 @@ function screenGroup(ctx: AppContext, enabled: boolean): Group {
     reason: displayFailureText(ctx.displayFailure, ctx.language),
     guidance: t("Try recording again using the shortcut or menu, or choose another screen.", ctx.language) });
   return result;
+}
+
+/** Seconds before capture begins (plan 040); locked with the other recording settings. */
+function countdownGroup(ctx: AppContext, enabled: boolean): Group {
+  const language = ctx.language;
+  return group("countdown", t("Countdown", language), enabled, COUNTDOWN_CHOICES.map((value) => ({
+    id: String(value),
+    label: value === 0 ? t("Off", language) : t("{value} s", language, { value }),
+    enabled: true,
+    checked: value === ctx.countdown,
+    action: { setCountdown: value },
+  })), t("Before recording starts, the digits appear at the top-right of the recorded screen. Click the menu bar icon or press the shortcut to cancel.", language));
 }
 
 function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {
@@ -242,6 +255,7 @@ function settingsGroups(state: RecordingState, ctx: AppContext): Group[] {
   const unlocked = preferencesUnlocked(state);
   return [
     screenGroup(ctx, unlocked),
+    countdownGroup(ctx, unlocked),
     ...qualityGroups(ctx, unlocked),
     ...hotkeyGroup(ctx, unlocked),
     ...notificationsGroup(ctx, unlocked),

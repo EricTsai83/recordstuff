@@ -56,7 +56,7 @@ export function safeCaptureShortcut(pid: number, runningPids: number[], hotkey: 
  * or a listed group the panel no longer offers, fails until someone classifies it here.
  */
 export const BUSY_SETTINGS_POLICY: Readonly<Record<string, "locked" | "available">> = {
-  screen: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
+  screen: "locked", countdown: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
   notifications: "locked", updateChecks: "locked", updates: "locked",
   language: "available", appearance: "available", about: "available",
 };
@@ -64,13 +64,14 @@ export type LockSnapshot = { recording: RecordingState; model: TrayModel; settin
 
 /**
  * The tray and settings contract of one recorder state. Only recording shows REC and Stop; every busy
- * state locks preferences, including the tray's output-folder change; a settled recorder unlocks them.
- * The tray never offers update actions, and the panel disables a locked group's controls with it.
+ * state, the countdown included, locks preferences, including the tray's output-folder change; a
+ * settled recorder unlocks them. The tray never offers update actions, and the panel disables a
+ * locked group's controls with it.
  */
 export function assertLockContract(s: LockSnapshot): void {
   const state = s.recording.type;
-  const busy = state === "starting" || state === "recording" || state === "stopping";
-  assert.equal(s.model.title, state === "recording" ? "REC" : busy ? "…" : "", `tray title while ${state}`);
+  const busy = state === "starting" || state === "countdown" || state === "recording" || state === "stopping";
+  assert.equal(s.model.title, state === "recording" ? "REC" : "", `tray title while ${state}`);
   const items = s.model.menu.flatMap(i => i.kind === "item" ? [i] : []);
   // Located by action: failure-history lines may precede the recording status.
   const stops = items.filter(i => i.action === "stop");

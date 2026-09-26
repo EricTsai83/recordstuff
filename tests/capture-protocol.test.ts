@@ -55,6 +55,7 @@ it("hands the final encoder-error bytes through the real protocol, Recorder and 
   const events: RecorderEvent[] = [];
   const main = new Recorder({
     host: { start: async (sessionId, quality) => port.receive({ type: "start", sessionId, quality }),
+      record: sessionId => port.receive({ type: "record", sessionId }),
       stop: sessionId => port.receive({ type: "stop", sessionId }),
       onMessage: listener => { deliver = listener; }, onFailure: () => undefined },
     outputDir: () => dir, quality: () => DEFAULT_QUALITY, ensureWritableDir: async () => undefined,

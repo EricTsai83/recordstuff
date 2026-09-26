@@ -69,6 +69,7 @@ const context: AppContext = {
   outputDir: "/tmp/recordings",
   homeDir: "/tmp",
   quality: DEFAULT_QUALITY,
+  countdown: 3,
   language: "en",
   hotkey: { ...DEFAULT_HOTKEY, registered: true },
   updates: { state: { kind: "idle" }, enabled: true },

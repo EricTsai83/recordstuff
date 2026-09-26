@@ -13,15 +13,22 @@ export const OUTPUT_MIME_TYPE = "video/mp4;codecs=avc1,mp4a.40.2";
 export const CHUNK_INTERVAL_MS = 1000;
 
 export type MainMessage =
-  /** `quality` is main's snapshot for this session; the host never reads settings itself. */
+  /**
+   * Prepare capture: stream, checks, quality and an inactive MediaRecorder.
+   * `quality` is main's snapshot for this session; the host never reads settings itself.
+   */
   | { type: "start"; sessionId: string; quality: QualitySettings }
+  /** Begin encoding the prepared session (plan 040); refused for any other session. */
+  | { type: "record"; sessionId: string }
   | { type: "stop"; sessionId: string }
   | { type: "ping" };
 
 export type HostMessage =
   | { type: "ready" }
-  /** `capture` is what the tracks reported and what the encoder was asked for. */
-  | { type: "started"; sessionId: string; mimeType: string; capture: CaptureReport }
+  /** Capture is prepared and not recording; `capture` is what the tracks reported and what the encoder was asked for. */
+  | { type: "prepared"; sessionId: string; mimeType: string; capture: CaptureReport }
+  /** MediaRecorder started; main keeps the report from `prepared`. */
+  | { type: "started"; sessionId: string; mimeType?: string; capture?: CaptureReport }
   /** `bytes` is structured-cloned (see capture-host.ts for why not transferred). */
   | { type: "chunk"; sessionId: string; seq: number; bytes: ArrayBuffer }
   | { type: "stopped"; sessionId: string; tracksStoppedAt?: number }
@@ -41,6 +48,7 @@ export function isMainMessage(value: unknown): value is MainMessage {
   switch (value["type"]) {
     case "start":
       return isNonEmptyString(value["sessionId"]) && isQualitySettings(value["quality"]);
+    case "record":
     case "stop":
       return isNonEmptyString(value["sessionId"]);
     case "ping":
@@ -56,11 +64,17 @@ export function isHostMessage(value: unknown): value is HostMessage {
     case "ready":
     case "pong":
       return true;
-    case "started":
+    case "prepared":
       return (
         isNonEmptyString(value["sessionId"]) &&
         typeof value["mimeType"] === "string" &&
         isCaptureReport(value["capture"])
+      );
+    case "started":
+      return (
+        isNonEmptyString(value["sessionId"]) &&
+        (value["mimeType"] === undefined || typeof value["mimeType"] === "string") &&
+        (value["capture"] === undefined || isCaptureReport(value["capture"]))
       );
     case "chunk":
       return (

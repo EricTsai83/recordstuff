@@ -73,7 +73,7 @@ describe('acceptance output usage', () => {
 
 describe('recording lock contract', () => {
   const context: AppContext = {
-    platform: 'darwin', outputDir: '/tmp/recordings', homeDir: '/tmp', quality: DEFAULT_QUALITY, language: 'en',
+    platform: 'darwin', outputDir: '/tmp/recordings', homeDir: '/tmp', quality: DEFAULT_QUALITY, countdown: 3, language: 'en',
     hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: 'idle' }, enabled: true },
     notifications: true, displays: [], display: { kind: 'primary' },
   };
@@ -93,8 +93,8 @@ describe('recording lock contract', () => {
   });
 
   it('rejects a busy snapshot that leaves a capture, notification or update control usable', () => {
-    for (const state of [recording, { type: 'starting' }, { type: 'stopping' }] as RecordingState[]) {
-      for (const id of ['screen', 'videoQuality', 'resolutionCap', 'frameRate', 'hotkey', 'notifications', 'updateChecks', 'updates']) {
+    for (const state of [recording, { type: 'starting' }, { type: 'countdown', remaining: 2 }, { type: 'stopping' }] as RecordingState[]) {
+      for (const id of ['screen', 'countdown', 'videoQuality', 'resolutionCap', 'frameRate', 'hotkey', 'notifications', 'updateChecks', 'updates']) {
         const s = snap(state, withUpdate(offered)); group(s, id).enabled = true;
         expect(() => assertLockContract(s), `${state.type} ${id}`).toThrow(`settings group ${id} while ${state.type}`);
       }
@@ -138,12 +138,15 @@ describe('recording lock contract', () => {
     }
   });
 
-  it('applies starting and saving their own tray contract', () => {
-    for (const type of ['starting', 'stopping'] as const) {
-      expect(() => assertLockContract(snap({ type }))).not.toThrow();
-      const rec = snap({ type }); rec.model.title = 'REC';
+  it('applies starting, counting down and saving their own tray contract', () => {
+    for (const state of [{ type: 'starting' }, { type: 'countdown', remaining: 3 }, { type: 'stopping' }] as RecordingState[]) {
+      const type = state.type;
+      expect(() => assertLockContract(snap(state))).not.toThrow();
+      const rec = snap(state); rec.model.title = 'REC';
       expect(() => assertLockContract(rec)).toThrow(`tray title while ${type}`);
-      const stop = snap({ type }); stop.model.menu.unshift({ kind: 'item', label: 'Stop', enabled: true, action: 'stop' });
+      const ellipsis = snap(state); ellipsis.model.title = '…';
+      expect(() => assertLockContract(ellipsis)).toThrow(`tray title while ${type}`);
+      const stop = snap(state); stop.model.menu.unshift({ kind: 'item', label: 'Stop', enabled: true, action: 'stop' });
       expect(() => assertLockContract(stop)).toThrow(`no Stop while ${type}`);
     }
   });

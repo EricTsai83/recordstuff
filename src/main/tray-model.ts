@@ -20,7 +20,12 @@ import { describeAccelerator, SETTINGS_SHORTCUT, type HotkeyAccelerator } from "
 
 import { APP_NAME, abbreviateHome, type AppAction, type AppContext } from "./ui-model";
 
-export type TrayIcon = "idle" | "recording" | "warning";
+/**
+ * One same-size template per state (plan 040): only `REC` changes the item
+ * width. `busy` is starting or saving; `countdown` shows no title because the
+ * corner of the recorded screen carries the digits.
+ */
+export type TrayIcon = "idle" | "busy" | "countdown" | "recording" | "warning";
 export type TrayMenuItem =
   | { kind: "separator" }
   | { kind: "item"; label: string; enabled: boolean; action?: AppAction; toolTip?: string };
@@ -88,6 +93,14 @@ function stopHint(ctx: AppContext): string | undefined {
     value: describeAccelerator(hotkey.accelerator, ctx.platform),
   });
 }
+/** Tooltip on Cancel countdown naming the registered shortcut, if any. */
+function cancelHint(ctx: AppContext): string | undefined {
+  const hotkey = ctx.hotkey;
+  if (!hotkey.enabled || !hotkey.registered) return undefined;
+  return t("Cancel the countdown with {value}", ctx.language, {
+    value: describeAccelerator(hotkey.accelerator, ctx.platform),
+  });
+}
 export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
   const language = ctx.language;
   const text = (key: PlainMessageKey): string => t(key, language);
@@ -126,10 +139,18 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
       return model("idle", "", status, [...menu, SEPARATOR, ...outputDirItems(ctx, true), ...end]);
     }
     case "starting":
-      return model("idle", "…", text("Starting… Check for system permission prompts"), [
+      return model("busy", "", text("Starting… Check for system permission prompts"), [
         disabled(text("Starting… Check for system permission prompts")),
         ...end,
       ]);
+    case "countdown": {
+      const seconds = { seconds: state.remaining };
+      return model("countdown", "", t("Recording starts in {seconds} s. Click to cancel.", language, seconds), [
+        disabled(t("Recording starts in {seconds} s", language, seconds)),
+        item(text("Cancel countdown"), "cancelCountdown", cancelHint(ctx)),
+        ...end,
+      ]);
+    }
     case "recording":
       return model("recording", "REC", text("Recording"), [
         disabled(text("Recording")),
@@ -139,7 +160,7 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
         ...end,
       ]);
     case "stopping":
-      return model("idle", "…", text("Saving…"), [disabled(text("Saving…")), ...end]);
+      return model("busy", "", text("Saving…"), [disabled(text("Saving…")), ...end]);
   }
 }
 

@@ -449,7 +449,7 @@ async function run() {
 
   // Real model snapshots cover visual states without touching user preferences.
   const ctx: AppContext = { platform: "darwin", language: "en", outputDir: "/tmp", homeDir: "/tmp",
-    quality: DEFAULT_QUALITY, hotkey: { ...DEFAULT_HOTKEY, registered: true }, notifications: true,
+    quality: DEFAULT_QUALITY, countdown: 3, hotkey: { ...DEFAULT_HOTKEY, registered: true }, notifications: true,
     updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" },
     displays: [{ id: "1", label: "Built-in Display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true }] };
   for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {

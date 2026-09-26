@@ -9,11 +9,16 @@
  *
  * `needsPermission.lastSavedPath` keeps a recording saved while permission was
  * lost discoverable; the recorder restores the rest of idle once it returns.
+ *
+ * `countdown` (plan 040) is an in-flight session whose capture is prepared but
+ * not started: `remaining` whole seconds, at least 1, kept at 1 until the
+ * capture host confirms recording began.
  */
 export type RecordingState =
   | { type: "needsPermission"; needsRelaunch: boolean; lastSavedPath?: string }
   | { type: "idle"; lastSavedPath?: string; outputDirUnavailable?: boolean }
   | { type: "starting" }
+  | { type: "countdown"; remaining: number }
   | { type: "recording"; startedAt: string }
   | { type: "stopping" };
 

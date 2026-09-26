@@ -40,6 +40,10 @@ export function logSessionEvent(log: Log, run: string, event: RecorderEvent): vo
         outcome: event.outcome, ...(event.partialPath ? { partialPath: event.partialPath } : {}), ...trace }));
       return;
     }
+    // Not a failure and no media: a plain line, no session record for analyzers to pair.
+    case "cancelled":
+      log(`cancelled: session ${event.session.id} (${event.reason}); no media was recorded${event.session.recordingPath ? `; temporary file ${event.session.recordingPath}` : ""}`);
+      return;
     default:
       return;
   }

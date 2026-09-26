@@ -8,11 +8,17 @@ import type { HostMessage } from "../shared/protocol";
 import { DEFAULT_QUALITY, type CaptureReport, type QualitySettings } from "../shared/quality";
 import type { RecordingState } from "../shared/state";
 import type { RecordingFailure } from "../shared/recording-result";
-import { Recorder, formatTimestamp, type RecorderDeps, type RecorderEvent, type RecorderHost, type RecorderWriter } from "./recorder";
+import { Recorder, formatTimestamp, type CountdownPresenter, type RecorderDeps, type RecorderEvent, type RecorderHost, type RecorderWriter } from "./recorder";
+import { COUNTDOWN_TIMING } from "../shared/countdown";
 import { SessionSentinels, type SessionSentinel } from "./session-sentinel";
 
 class FakeHost implements RecorderHost {
   started: string[] = [];
+  /** Sessions `record` was sent for. */
+  recorded: string[] = [];
+  /** Answer `record` with `started` at once, as a healthy host does. */
+  autoStart = true;
+  recordError: Error | undefined;
   /** Quality snapshot each `start` was called with. */
   startedWith: QualitySettings[] = [];
   stopped: string[] = [];
@@ -26,6 +32,11 @@ class FakeHost implements RecorderHost {
     if (this.startError) throw this.startError;
     this.started.push(sessionId);
     this.startedWith.push(quality);
+  }
+  record(sessionId: string): void {
+    if (this.recordError) throw this.recordError;
+    this.recorded.push(sessionId);
+    if (this.autoStart) this.emit({ type: "started", sessionId });
   }
   stop(sessionId: string): void {
     this.stopped.push(sessionId);
@@ -91,8 +102,9 @@ const CAPTURE: CaptureReport = {
   warnings: [],
 };
 
-function started(sessionId: string, capture: CaptureReport = CAPTURE): HostMessage {
-  return { type: "started", sessionId, mimeType: "video/mp4", capture };
+/** Capture is ready; with no countdown the recorder sends `record` at once and the fake host starts. */
+function prepared(sessionId: string, capture: CaptureReport = CAPTURE): HostMessage {
+  return { type: "prepared", sessionId, mimeType: "video/mp4", capture };
 }
 
 function setup(
@@ -141,7 +153,7 @@ const flush = () => vi.advanceTimersByTimeAsync(0);
 async function startRecording(ctx: ReturnType<typeof setup>): Promise<void> {
   ctx.recorder.toggle();
   await flush();
-  ctx.host.emit(started("s1"));
+  ctx.host.emit(prepared("s1"));
   ctx.host.emit(chunk("s1", 0));
   await flush();
 }
@@ -234,7 +246,7 @@ describe("Recorder ignores illegal transitions", () => {
     expect(ctx.recorder.state.type).toBe("starting");
     expect(ctx.host.started).toEqual(["s1"]);
 
-    ctx.host.emit(started("s1"));
+    ctx.host.emit(prepared("s1"));
     ctx.host.emit(chunk("s1", 0));
     ctx.recorder.toggle();
     expect(ctx.recorder.state.type).toBe("stopping");
@@ -277,7 +289,7 @@ describe("Recorder timeouts", () => {
     await flush();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(ctx.recorder.state.type).toBe("starting");
-    ctx.host.emit(started("s1"));
+    ctx.host.emit(prepared("s1"));
     await vi.advanceTimersByTimeAsync(7999);
     expect(ctx.recorder.state.type).toBe("recording");
     await vi.advanceTimersByTimeAsync(1);
@@ -302,7 +314,7 @@ describe("Recorder timeouts", () => {
     const ctx = setup();
     ctx.recorder.toggle();
     await flush();
-    ctx.host.emit(started("s1"));
+    ctx.host.emit(prepared("s1"));
     await vi.advanceTimersByTimeAsync(7999);
     expect(ctx.recorder.state.type).toBe("recording");
     await vi.advanceTimersByTimeAsync(1);
@@ -339,7 +351,7 @@ describe("Recorder timeouts", () => {
     const ctx = setup();
     ctx.recorder.toggle();
     await flush();
-    ctx.host.emit(started("s1"));
+    ctx.host.emit(prepared("s1"));
     ctx.recorder.toggle(); // stop before the first chunk
     await vi.advanceTimersByTimeAsync(9000);
     expect(ctx.recorder.state.type).toBe("stopping");
@@ -483,7 +495,7 @@ describe("Recorder review fixes", () => {
     // start timeout fires while the host is still inside getDisplayMedia
     await vi.advanceTimersByTimeAsync(8000);
     expect(ctx.recorder.state).toEqual({ type: "idle" });
-    ctx.host.emit(started("s1"));
+    ctx.host.emit(prepared("s1"));
     ctx.host.emit(chunk("s1", 0));
     expect(ctx.host.stopped).toEqual(["s1", "s1", "s1"]);
     expect(ctx.recorder.state).toEqual({ type: "idle" });
@@ -814,19 +826,101 @@ describe("Recorder shutdown", () => {
     expect(ctx.writers[0]!.finished).toBe(true);
   });
 
-  it("waits for a pending start, then stops", async () => {
+  it("cancels an attempt still preparing when prepared arrives: no media existed, so nothing records or fails", async () => {
+    const ctx = setup({ deps: { countdownSeconds: () => 3 } });
+    ctx.recorder.toggle();
+    await flush();
+    const shutdown = ctx.recorder.shutdown();
+    await flush();
+    expect(ctx.recorder.state.type).toBe("starting");
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(await shutdown).toBe(true);
+    expect(ctx.host.recorded).toEqual([]);
+    expect(ctx.host.stopped).toEqual(["s1"]);
+    expect(ctx.states.map((state) => state.type)).toEqual(["starting", "idle"]);
+    expect(ctx.writers[0]!.abandoned).toBe(true);
+    expect(ctx.events.filter((event) => event.type === "cancelled")).toEqual([
+      { type: "cancelled", reason: "quit", session: traced() },
+    ]);
+    expect(ctx.events.some((event) => event.type === "failed" || event.type === "failureStatus" || event.type === "saved")).toBe(false);
+  });
+
+  it("does not admit quit until the cancelled attempt's file and sentinel are gone (review pass 2)", async () => {
+    let release!: () => void;
+    const removed: string[] = [];
+    const writers: FakeWriter[] = [];
+    const ctx = setup({
+      openWriter: async (recordingPath, finalPath) => {
+        const writer = new FakeWriter(recordingPath, finalPath);
+        writer.abandon = () => new Promise((resolve) => { release = () => { writer.abandoned = true; resolve(undefined); }; });
+        writers.push(writer);
+        return writer;
+      },
+      deps: { countdownSeconds: () => 3, sentinels: { write: async () => undefined, remove: async (id) => { removed.push(id); } } },
+    });
+    ctx.recorder.toggle();
+    await flush();
+    let admitted: boolean | undefined;
+    void ctx.recorder.shutdown().then((safe) => { admitted = safe; });
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.recorder.state.type).toBe("idle");
+    expect(admitted).toBeUndefined();
+    expect(writers[0]!.abandoned).toBe(false);
+    expect(removed).toEqual([]);
+    release();
+    await flush();
+    expect(writers[0]!.abandoned).toBe(true);
+    expect(removed).toEqual(["s1"]);
+    expect(admitted).toBe(true);
+  });
+
+  it("cancels at prepared with the countdown Off too", async () => {
     const ctx = setup();
     ctx.recorder.toggle();
     await flush();
     const shutdown = ctx.recorder.shutdown();
-    ctx.host.emit(started("s1"));
-    ctx.host.emit(chunk("s1", 0));
+    ctx.host.emit(prepared("s1"));
     await flush();
+    expect(await shutdown).toBe(true);
+    expect(ctx.host.recorded).toEqual([]);
+    expect(ctx.events.map((event) => event.type)).not.toContain("captureStarted");
+    expect(ctx.events.filter((event) => event.type === "cancelled")).toHaveLength(1);
+  });
+
+  it("cancels during opening without asking for capture at all", async () => {
+    let open!: () => void;
+    const ctx = setup({ ensureWritableDir: () => new Promise<void>((resolve) => { open = resolve; }) });
+    ctx.recorder.toggle();
+    await flush();
+    const shutdown = ctx.recorder.shutdown();
+    open();
+    await flush();
+    expect(await shutdown).toBe(true);
+    expect(ctx.host.started).toEqual([]);
+    expect(ctx.host.stopped).toEqual([]);
+    expect(ctx.writers[0]!.abandoned).toBe(true);
+    expect(ctx.events.filter((event) => event.type === "cancelled")).toEqual([{ type: "cancelled", reason: "quit", session: traced() }]);
+  });
+
+  it("after record was sent, quit stops the capture once it starts", async () => {
+    const ctx = setup();
+    ctx.host.autoStart = false;
+    ctx.recorder.toggle();
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    expect(ctx.host.recorded).toEqual(["s1"]);
+    const shutdown = ctx.recorder.shutdown();
+    await flush();
+    ctx.host.emit({ type: "started", sessionId: "s1" });
     expect(ctx.recorder.state.type).toBe("stopping");
+    ctx.host.emit(chunk("s1", 0));
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
     await flush();
-    await shutdown;
-    expect(ctx.recorder.state.type).toBe("idle");
+    expect(await shutdown).toBe(true);
+    expect(ctx.events.filter((event) => event.type === "saved")).toHaveLength(1);
   });
 
   it("keeps capture admission closed after a safe shutdown until quit is declined", async () => {
@@ -870,7 +964,7 @@ describe("quality snapshot", () => {
     ctx.recorder.toggle();
     await flush();
     const report: CaptureReport = { ...CAPTURE, frameRate: 30, warnings: ["x"] };
-    ctx.host.emit(started("s1", report));
+    ctx.host.emit(prepared("s1", report));
     expect(ctx.events.at(-1)).toEqual({ type: "captureStarted", sessionId: "s1", requested: quality, capture: report });
     const line = logs.find((l) => l.includes("capture:"));
     expect(line).toContain("fps=60");
@@ -963,7 +1057,7 @@ describe("Recorder with real FileWriter", () => {
     try {
       recorder.toggle();
       await vi.waitFor(() => expect(host.started).toEqual(["real-1"]));
-      host.emit(started("real-1"));
+      host.emit(prepared("real-1"));
       host.emit({ type: "chunk", sessionId: "real-1", seq: 0, bytes: new Uint8Array([1, 2, 3, 4]).buffer });
       // A stop arriving while the append is pending must not publish success.
       recorder.stop();
@@ -982,7 +1076,7 @@ describe("Recorder with real FileWriter", () => {
 
       recorder.toggle();
       await vi.waitFor(() => expect(host.started).toEqual(["real-1", "real-2"]));
-      host.emit(started("real-2"));
+      host.emit(prepared("real-2"));
       host.emit({ type: "chunk", sessionId: "real-2", seq: 0, bytes: new Uint8Array([5, 6, 7, 8, 9]).buffer });
       recorder.stop();
       host.emit({ type: "stopped", sessionId: "real-2" });
@@ -1048,7 +1142,7 @@ describe("Recorder rejects zero-byte output with real FileWriter", () => {
     const begin = async (id: string): Promise<void> => {
       recorder.toggle();
       await vi.waitFor(() => expect(host.started).toContain(id));
-      host.emit(started(id));
+      host.emit(prepared(id));
     };
     const of = <T extends RecorderEvent["type"]>(type: T) =>
       events.filter((event): event is Extract<RecorderEvent, { type: T }> => event.type === type);
@@ -1363,7 +1457,7 @@ it("an empty chunk does not satisfy the first-media deadline", async () => {
   const ctx = setup();
   ctx.recorder.toggle();
   await flush();
-  ctx.host.emit(started("s1"));
+  ctx.host.emit(prepared("s1"));
   ctx.host.emit(chunk("s1", 0, 0));
   await vi.advanceTimersByTimeAsync(8000);
   expect(ctx.recorder.state).toEqual({ type: "idle" });
@@ -1371,7 +1465,7 @@ it("an empty chunk does not satisfy the first-media deadline", async () => {
 
   ctx.recorder.toggle();
   await flush();
-  ctx.host.emit(started("s1"));
+  ctx.host.emit(prepared("s1"));
   ctx.host.emit(chunk("s1", 0, 0));
   ctx.host.emit(chunk("s1", 1));
   await vi.advanceTimersByTimeAsync(20_000);
@@ -1519,7 +1613,7 @@ describe("terminal ownership and quit admission", () => {
     try {
       recorder.toggle();
       while (host.started.length === 0) await new Promise(resolve => setTimeout(resolve, 1));
-      host.emit(started("real")); host.emit({ type: "chunk", sessionId: "real", seq: 0, bytes: new Uint8Array([1, 2, 3]).buffer });
+      host.emit(prepared("real")); host.emit({ type: "chunk", sessionId: "real", seq: 0, bytes: new Uint8Array([1, 2, 3]).buffer });
       recorder.stop(); host.emit({ type: "stopped", sessionId: "real" });
       if (late === "crash") host.crash();
       else if (late === "error") host.emit({ type: "error", sessionId: "real", code: "capture_failed", detail: "late" });
@@ -1557,12 +1651,13 @@ it("defers quit without cancelling an interactive capture request at the quit de
   expect(ctx.recorder.state.type).toBe("starting");
   expect(ctx.host.stopped).toEqual([]);
   expect(ctx.events.some(event => event.type === "failed")).toBe(false);
-  ctx.host.emit(started("s1")); ctx.host.emit(chunk("s1", 0)); await flush();
-  expect(ctx.recorder.state.type).toBe("stopping");
+  // The attempt stays marked: its late answer cancels it instead of recording.
+  ctx.host.emit(prepared("s1")); await flush();
+  expect(ctx.recorder.state.type).toBe("idle");
+  expect(ctx.host.recorded).toEqual([]);
   expect(ctx.host.stopped).toEqual(["s1"]);
-  ctx.host.emit({ type: "stopped", sessionId: "s1" }); await flush();
-  expect(ctx.events.filter(event => event.type === "saved")).toHaveLength(1);
-  expect(ctx.events.some(event => event.type === "failed")).toBe(false);
+  expect(ctx.events.filter(event => event.type === "cancelled")).toHaveLength(1);
+  expect(ctx.events.some(event => event.type === "failed" || event.type === "saved")).toBe(false);
 });
 
 describe("disk headroom guard", () => {
@@ -1701,7 +1796,7 @@ describe("interruption sentinel lifecycle", () => {
   });
 
   it.each<[string, (ctx: Ctx) => Promise<void>]>([
-    ["capture_start_failed", async (ctx) => { ctx.recorder.toggle(); await flush(); ctx.host.emit(started("s1")); await vi.advanceTimersByTimeAsync(8000); }],
+    ["capture_start_failed", async (ctx) => { ctx.recorder.toggle(); await flush(); ctx.host.emit(prepared("s1")); await vi.advanceTimersByTimeAsync(8000); }],
     ["no_audio_track", async (ctx) => { ctx.recorder.toggle(); await flush(); ctx.host.emit({ type: "error", sessionId: "s1", code: "no_audio_track", detail: "" }); await flush(); }],
     ["capture_failed", async (ctx) => { await startRecording(ctx); ctx.host.emit({ type: "stopped", sessionId: "s1" }); await flush(); }],
     ["capture_host_crashed", async (ctx) => { await startRecording(ctx); ctx.host.crash(); await flush(); }],
@@ -1753,5 +1848,338 @@ describe("interruption sentinel lifecycle", () => {
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
     await flush();
     expect(ctx.events.filter((event) => event.type === "saved")).toHaveLength(1);
+  });
+});
+
+/** Records each call with the fake clock's time; the dismissal settles when the test says. */
+class FakePresenter implements CountdownPresenter {
+  calls: Array<[string, number]> = [];
+  dismissal: Promise<void> = Promise.resolve();
+  fail: string | undefined;
+  private note(call: string): void {
+    this.calls.push([call, Date.now()]);
+    if (this.fail === call.split(" ")[0]) throw new Error(`${call} broke`);
+  }
+  prepare(): void { this.note("prepare"); }
+  show(remaining: number): void { this.note(`show ${remaining}`); }
+  update(remaining: number): void { this.note(`update ${remaining}`); }
+  dismiss(): Promise<void> { this.note("dismiss"); return this.dismissal; }
+  close(): void { this.note("close"); }
+  names(): string[] { return this.calls.map(([call]) => call); }
+}
+
+describe("Recorder countdown (plan 040)", () => {
+  const { tickMs, overlayLeadMs, dismissTimeoutMs } = COUNTDOWN_TIMING;
+
+  function counting(seconds: 0 | 3 | 5 | 10 = 3, extra: Partial<RecorderDeps> = {}) {
+    const presenter = new FakePresenter();
+    const logs: string[] = [];
+    const ctx = setup({ log: (m) => logs.push(m), deps: { countdownSeconds: () => seconds, countdown: presenter, monotonic: () => Date.now(), ...extra } });
+    const recordedAt: number[] = [];
+    const record = ctx.host.record.bind(ctx.host);
+    ctx.host.record = (sessionId) => { recordedAt.push(Date.now()); record(sessionId); };
+    const stateTimes: Array<[string, number]> = [];
+    ctx.recorder.subscribe((event) => {
+      if (event.type === "state") stateTimes.push([event.state.type === "countdown" ? `countdown ${event.state.remaining}` : event.state.type, Date.now()]);
+    });
+    /** Toggle and answer `prepared`; returns the anchor time. */
+    const prepare = async (): Promise<number> => {
+      ctx.recorder.toggle();
+      await flush();
+      await vi.advanceTimersByTimeAsync(40);
+      const anchor = Date.now();
+      ctx.host.emit(prepared("s1"));
+      return anchor;
+    };
+    return { ...ctx, presenter, logs, recordedAt, stateTimes, prepare };
+  }
+
+  it("Off sends record at prepared and never shows a countdown or the overlay", async () => {
+    const ctx = counting(0);
+    await ctx.prepare();
+    expect(ctx.host.recorded).toEqual(["s1"]);
+    expect(ctx.states.map((state) => state.type)).toEqual(["starting", "recording"]);
+    expect(ctx.presenter.calls).toEqual([]);
+    expect(ctx.logs).toContainEqual(expect.stringContaining("record sent without a countdown"));
+  });
+
+  it("ticks from one anchor, dismisses the overlay ahead of capture and records at N seconds", async () => {
+    const ctx = counting(3);
+    const anchor = await ctx.prepare();
+    expect(ctx.recorder.state).toEqual({ type: "countdown", remaining: 3 });
+    await vi.advanceTimersByTimeAsync(3 * tickMs);
+    expect(ctx.stateTimes).toEqual([
+      ["starting", anchor - 40],
+      ["countdown 3", anchor],
+      ["countdown 2", anchor + tickMs],
+      ["countdown 1", anchor + 2 * tickMs],
+      ["recording", anchor + 3 * tickMs],
+    ]);
+    expect(ctx.presenter.calls).toEqual([
+      ["prepare", anchor - 40],
+      ["show 3", anchor],
+      ["update 2", anchor + tickMs],
+      ["update 1", anchor + 2 * tickMs],
+      ["dismiss", anchor + 3 * tickMs - overlayLeadMs],
+      ["close", anchor + 3 * tickMs - overlayLeadMs],
+    ]);
+    expect(ctx.recordedAt).toEqual([anchor + 3 * tickMs]);
+    expect(ctx.events.filter((event) => event.type === "captureStarted")).toHaveLength(1);
+    expect(ctx.logs).toContainEqual(expect.stringContaining("prepared after 40 ms; countdown 3 s"));
+    expect(ctx.logs).toContainEqual(expect.stringContaining("record sent 3000 ms after the 3 s countdown began"));
+  });
+
+  it("counts ten seconds as two-digit values and keeps the snapshot taken at start", async () => {
+    let seconds: 3 | 10 = 10;
+    const ctx = counting(3, { countdownSeconds: () => seconds });
+    ctx.recorder.toggle();
+    seconds = 3;
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    expect(ctx.recorder.state).toEqual({ type: "countdown", remaining: 10 });
+    await vi.advanceTimersByTimeAsync(9 * tickMs);
+    expect(ctx.recorder.state).toEqual({ type: "countdown", remaining: 1 });
+    expect(ctx.host.recorded).toEqual([]);
+    await vi.advanceTimersByTimeAsync(tickMs);
+    expect(ctx.host.recorded).toEqual(["s1"]);
+  });
+
+  it("waits for a dismissal that settles after N seconds", async () => {
+    const ctx = counting(3);
+    let settle!: () => void;
+    ctx.presenter.dismissal = new Promise((resolve) => { settle = resolve; });
+    const anchor = await ctx.prepare();
+    await vi.advanceTimersByTimeAsync(3 * tickMs + 100);
+    expect(ctx.host.recorded).toEqual([]);
+    expect(ctx.recorder.state).toEqual({ type: "countdown", remaining: 1 });
+    settle();
+    await flush();
+    expect(ctx.recordedAt).toEqual([anchor + 3 * tickMs + 100]);
+  });
+
+  it("destroys an overlay that never confirms, logs it and records at the bound", async () => {
+    const ctx = counting(3);
+    ctx.presenter.dismissal = new Promise(() => undefined);
+    const anchor = await ctx.prepare();
+    const bound = anchor + 3 * tickMs - overlayLeadMs + dismissTimeoutMs;
+    await vi.advanceTimersByTimeAsync(bound - Date.now() - 1);
+    expect(ctx.host.recorded).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(ctx.recordedAt).toEqual([bound]);
+    expect(ctx.presenter.calls.at(-1)).toEqual(["close", bound]);
+    expect(ctx.logs).toContainEqual(expect.stringContaining(`did not confirm dismissal within ${dismissTimeoutMs} ms`));
+  });
+
+  it("logs presenter errors and still records: the tray carries the countdown", async () => {
+    const ctx = counting(3);
+    ctx.presenter.fail = "show";
+    await ctx.prepare();
+    expect(ctx.recorder.state).toEqual({ type: "countdown", remaining: 3 });
+    await vi.advanceTimersByTimeAsync(3 * tickMs);
+    expect(ctx.recorder.state.type).toBe("recording");
+    expect(ctx.logs).toContainEqual(expect.stringContaining("countdown overlay show failed: show 3 broke"));
+    expect(ctx.events.some((event) => event.type === "failed")).toBe(false);
+  });
+
+  describe("cancel before record", () => {
+    const cases: Array<[string, "toggle" | "menu" | "quit", (recorder: Recorder) => unknown]> = [
+      ["a second click or the shortcut", "toggle", (recorder) => recorder.toggle()],
+      ["Cancel countdown", "menu", (recorder) => recorder.cancelCountdown("menu")],
+      ["Quit", "quit", (recorder) => recorder.shutdown()],
+    ];
+    for (const [name, reason, act] of cases) {
+      it(`${name} returns to idle with lastSavedPath and no failure, file or later record`, async () => {
+        const ctx = counting(3);
+        // One saved recording first, so idle has something to keep.
+        ctx.recorder.toggle();
+        await flush();
+        ctx.host.emit(prepared("s1"));
+        await vi.advanceTimersByTimeAsync(3 * tickMs);
+        ctx.host.emit(chunk("s1", 0));
+        ctx.recorder.stop();
+        ctx.host.emit({ type: "stopped", sessionId: "s1" });
+        await flush();
+        const lastSavedPath = "/out/2026-09-11 14-30-00.mp4";
+        expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath });
+        const before = ctx.events.length;
+        ctx.presenter.calls = [];
+
+        ctx.recorder.toggle();
+        await flush();
+        ctx.host.emit(prepared("s1"));
+        await vi.advanceTimersByTimeAsync(1500);
+        expect(ctx.recorder.state).toEqual({ type: "countdown", remaining: 2 });
+        const quit = act(ctx.recorder);
+        await flush();
+        expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath });
+        if (quit instanceof Promise) expect(await quit).toBe(true);
+        expect(ctx.host.stopped.at(-1)).toBe("s1");
+        expect(ctx.writers[1]!.abandoned).toBe(true);
+        expect(ctx.writers[1]!.finished).toBe(false);
+        expect(ctx.presenter.names()).toEqual(["prepare", "show 3", "update 2", "close"]);
+        const after = ctx.events.slice(before);
+        expect(after.filter((event) => event.type !== "state")).toEqual([{ type: "cancelled", reason, session: traced() }]);
+        expect(ctx.logs).toContainEqual(expect.stringContaining(`cancelled (${reason}) while counting down`));
+        // Its timers are gone: nothing records or ticks later.
+        await vi.advanceTimersByTimeAsync(20_000);
+        expect(ctx.host.recorded).toEqual(["s1"]);
+        expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath });
+      });
+    }
+
+    it("ignores clicks while preparing, as while starting", async () => {
+      const ctx = counting(3);
+      ctx.recorder.toggle();
+      await flush();
+      ctx.recorder.toggle();
+      ctx.recorder.cancelCountdown("menu");
+      expect(ctx.recorder.state.type).toBe("starting");
+      expect(ctx.host.stopped).toEqual([]);
+    });
+  });
+
+  it("a Cancel countdown from a menu opened during the countdown stops a capture that already began", async () => {
+    const ctx = counting(3);
+    await ctx.prepare();
+    await vi.advanceTimersByTimeAsync(3 * tickMs);
+    expect(ctx.recorder.state.type).toBe("recording");
+    ctx.recorder.cancelCountdown("menu");
+    expect(ctx.recorder.state.type).toBe("stopping");
+    expect(ctx.host.stopped).toEqual(["s1"]);
+    expect(ctx.logs).toContainEqual(expect.stringContaining("Cancel countdown arrived after capture started"));
+    ctx.host.emit(chunk("s1", 0));
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    // Nothing is discarded: the short recording is saved, not cancelled.
+    expect(ctx.events.filter((event) => event.type === "saved")).toHaveLength(1);
+    expect(ctx.events.some((event) => event.type === "cancelled" || event.type === "failed")).toBe(false);
+    // Outside a recording a late Cancel countdown does nothing.
+    ctx.recorder.cancelCountdown("menu");
+    expect(ctx.recorder.state.type).toBe("idle");
+    expect(ctx.host.stopped).toEqual(["s1"]);
+  });
+
+  it("after record was sent, a toggle stops the capture once it starts", async () => {
+    const ctx = counting(3);
+    ctx.host.autoStart = false;
+    await ctx.prepare();
+    await vi.advanceTimersByTimeAsync(3 * tickMs);
+    expect(ctx.host.recorded).toEqual(["s1"]);
+    expect(ctx.recorder.state).toEqual({ type: "countdown", remaining: 1 });
+    ctx.recorder.toggle();
+    expect(ctx.recorder.state).toEqual({ type: "countdown", remaining: 1 });
+    expect(ctx.host.stopped).toEqual([]);
+    ctx.host.emit({ type: "started", sessionId: "s1" });
+    expect(ctx.states.slice(-2).map((state) => state.type)).toEqual(["recording", "stopping"]);
+    expect(ctx.host.stopped).toEqual(["s1"]);
+  });
+
+  describe("failures before capture are start failures with an empty outcome", () => {
+    async function failing(act: (ctx: ReturnType<typeof counting>) => void | Promise<void>) {
+      const ctx = counting(3);
+      await ctx.prepare();
+      await vi.advanceTimersByTimeAsync(1200);
+      await act(ctx);
+      await flush();
+      const failed = ctx.events.find((event) => event.type === "failed");
+      expect(ctx.recorder.state).toEqual({ type: "idle" });
+      expect(ctx.presenter.names().at(-1)).toBe("close");
+      expect(ctx.host.recorded).toEqual([]);
+      return { ctx, failed };
+    }
+
+    it("a crashed host", async () => {
+      const { failed } = await failing((ctx) => ctx.host.crash());
+      expect(failed).toMatchObject({ code: "capture_start_failed", detail: "capture host crashed: killed (while counting down)", outcome: "empty" });
+    });
+
+    it("an unresponsive host", async () => {
+      const { failed } = await failing((ctx) => ctx.host.hang());
+      expect(failed).toMatchObject({ code: "capture_start_failed", detail: expect.stringContaining("stopped responding"), outcome: "empty" });
+    });
+
+    it("a track that ended, keeping the display diagnostic", async () => {
+      const { ctx, failed } = await failing((ctx) => ctx.host.emit({ type: "error", sessionId: "s1", code: "capture_failed", detail: "ended", displayFailure: "track_ended" }));
+      expect(ctx.events).toContainEqual({ type: "displayFailed", detail: "track_ended" });
+      expect(failed).toMatchObject({ code: "capture_start_failed", detail: "ended (while counting down)", outcome: "empty" });
+    });
+
+    it("a removed display, keeping the display diagnostic", async () => {
+      const { ctx, failed } = await failing((ctx) => ctx.recorder.displayRemoved());
+      expect(ctx.events).toContainEqual({ type: "displayFailed", detail: "target_removed" });
+      expect(failed).toMatchObject({ code: "capture_start_failed", detail: "recording display removed (while counting down)" });
+    });
+
+    it("a disk error the writer already retained keeps its own code", async () => {
+      const ctx = counting(3);
+      await ctx.prepare();
+      const writer = ctx.writers[0]! as FakeWriter & { drain?: () => Promise<unknown> };
+      writer.drain = async () => Object.assign(new Error("ENOSPC: no space"), { code: "disk_full" });
+      ctx.host.crash();
+      await flush();
+      expect(ctx.events.find((event) => event.type === "failed")).toMatchObject({ code: "disk_full", outcome: "empty" });
+    });
+
+    it("a refused record", async () => {
+      const ctx = counting(3);
+      ctx.host.recordError = new Error("capture host is not running this session");
+      await ctx.prepare();
+      await vi.advanceTimersByTimeAsync(3 * tickMs);
+      expect(ctx.events.find((event) => event.type === "failed")).toMatchObject({
+        code: "capture_start_failed", detail: "record refused: capture host is not running this session (while starting capture)", outcome: "empty" });
+    });
+
+    it("a host that refuses record by message", async () => {
+      const ctx = counting(0);
+      ctx.host.autoStart = false;
+      await ctx.prepare();
+      ctx.host.emit({ type: "error", sessionId: "s1", code: "capture_start_failed", detail: "record refused: this session is not prepared" });
+      await flush();
+      expect(ctx.events.find((event) => event.type === "failed")).toMatchObject({
+        code: "capture_start_failed", detail: "record refused: this session is not prepared (while starting capture)" });
+    });
+
+    it("a record that times out after the start deadline", async () => {
+      const ctx = counting(3);
+      ctx.host.autoStart = false;
+      await ctx.prepare();
+      await vi.advanceTimersByTimeAsync(3 * tickMs + 7999);
+      expect(ctx.recorder.state).toEqual({ type: "countdown", remaining: 1 });
+      await vi.advanceTimersByTimeAsync(1);
+      expect(ctx.events.find((event) => event.type === "failed")).toMatchObject({
+        code: "capture_start_failed", detail: expect.stringContaining("did not confirm recording started"), outcome: "empty" });
+    });
+
+    it("a permission refusal while preparing keeps its code and closes the prepared overlay", async () => {
+      const ctx = counting(3);
+      ctx.recorder.toggle();
+      await flush();
+      ctx.host.emit({ type: "error", sessionId: "s1", code: "permission_denied", detail: "NotAllowedError" });
+      await flush();
+      expect(ctx.events.find((event) => event.type === "failed")).toMatchObject({ code: "permission_denied", detail: "NotAllowedError" });
+      expect(ctx.presenter.names()).toEqual(["prepare", "close"]);
+    });
+  });
+
+  it("stops the host for a stale prepared or started", async () => {
+    const ctx = counting(3);
+    ctx.recorder.toggle();
+    await flush();
+    ctx.host.emit(prepared("old"));
+    ctx.host.emit({ type: "started", sessionId: "older" });
+    expect(ctx.host.stopped).toEqual(["old", "older"]);
+    expect(ctx.recorder.state.type).toBe("starting");
+  });
+
+  it("ignores a duplicate prepared and an early started", async () => {
+    const ctx = counting(3);
+    ctx.host.autoStart = false;
+    ctx.recorder.toggle();
+    await flush();
+    ctx.host.emit({ type: "started", sessionId: "s1" });
+    expect(ctx.recorder.state.type).toBe("starting");
+    ctx.host.emit(prepared("s1"));
+    ctx.host.emit(prepared("s1"));
+    expect(ctx.presenter.names()).toEqual(["prepare", "show 3"]);
   });
 });

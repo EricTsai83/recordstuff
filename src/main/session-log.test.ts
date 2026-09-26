@@ -29,4 +29,13 @@ describe("session log lines", () => {
     expect(JSON.parse(lines[4]!.slice("session-record: ".length))).toMatchObject({ kind: "capture", session: "s2", requested: DEFAULT_QUALITY });
     expect(lines).toHaveLength(5);
   });
+
+  it("writes a cancel as one plain line with no session record for analyzers to pair", () => {
+    const lines: string[] = [];
+    logSessionEvent((message) => lines.push(message), "r1", { type: "cancelled", reason: "toggle",
+      session: { id: "s3", recordingPath: "/m/c.recording.mp4" } });
+    expect(lines).toEqual(["cancelled: session s3 (toggle); no media was recorded; temporary file /m/c.recording.mp4"]);
+    logSessionEvent((message) => lines.push(message), "r1", { type: "cancelled", reason: "quit", session: { id: "s4" } });
+    expect(lines.at(-1)).toBe("cancelled: session s4 (quit); no media was recorded");
+  });
 });

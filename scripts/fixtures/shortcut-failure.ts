@@ -388,7 +388,7 @@ require(path.join(root, 'out/main/index.js'));
       record(`entry round ${round}: close key preserves app and tray reopens Settings`, panel !== fromShortcut && settingsWindows().length === 1 && !tray.destroyed && owned.has(settingsKey) && owned.has(accelerator), 'production tray menu handler; app and registrations retained');
     }
     const entryLog = fs.readFileSync(logPath, 'utf8').slice(logBeforeEntry);
-    record('Settings entry cycles never start capture or change preferences', !/state → (starting|recording)/.test(entryLog)
+    record('Settings entry cycles never start capture or change preferences', !/state → (starting|countdown|recording)/.test(entryLog)
       && fs.readdirSync(path.join(temporary, 'videos')).length === 0
       && fs.readFileSync(settingsFile, 'utf8') === savedBeforeEntry,
       'no start/recording transition, output file or settings write');

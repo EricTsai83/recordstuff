@@ -23,7 +23,7 @@ export function createQuitFeedback(deps: {
       await deps.show({
         type: "info",
         title: APP_NAME,
-        message: translate("Recording is still starting, saving or cleaning up. RecordStuff will stay open. Any pending capture will stop when it starts. Please try quitting again after it finishes.", deps.language()),
+        message: translate("Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. Please try quitting again after it finishes.", deps.language()),
       });
     }).catch(cause => deps.log(`quit feedback failed: ${String(cause)}`)).finally(() => {
       active = undefined;

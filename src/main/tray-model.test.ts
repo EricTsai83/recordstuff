@@ -18,6 +18,7 @@ const mac: AppContext = {
   outputDir: "/Users/eric/Movies/RecordStuff",
   homeDir: "/Users/eric",
   quality: DEFAULT_QUALITY,
+  countdown: 3,
   hotkey: { ...DEFAULT_HOTKEY, registered: true },
   updates: { state: { kind: "idle" }, enabled: true },
   notifications: true,
@@ -29,6 +30,7 @@ const win: AppContext = {
   outputDir: "C:\\Users\\eric\\Videos\\RecordStuff",
   homeDir: "C:\\Users\\eric",
   quality: DEFAULT_QUALITY,
+  countdown: 3,
   hotkey: { ...DEFAULT_HOTKEY, registered: true },
   updates: { state: { kind: "idle" }, enabled: true },
   notifications: true,
@@ -40,6 +42,7 @@ const STATES: RecordingState[] = [
   { type: "idle" },
   { type: "idle", lastSavedPath: "/tmp/a.mp4" },
   { type: "starting" },
+  { type: "countdown", remaining: 3 },
   { type: "recording", startedAt: "2026-09-14T00:00:00Z" },
   { type: "stopping" },
 ];
@@ -137,10 +140,10 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(enabledActions(m.menu)).toContain("changeOutputDir");
   });
 
-  it("starting: idle icon, ellipsis title, Settings, log and quit", () => {
+  it("starting: hourglass, no title, Settings, log and quit", () => {
     const m = trayModel({ type: "starting" }, mac);
-    expect(m.icon).toBe("idle");
-    expect(m.title).toBe("…");
+    expect(m.icon).toBe("busy");
+    expect(m.title).toBe("");
     expect(labels(m.menu)).toEqual(["啟動中，請留意系統權限提示…", "—", "設定", "顯示 log", "結束"]);
     expect(enabledActions(m.menu)).toEqual(["openSettings", "revealLog", "quit"]);
   });
@@ -163,12 +166,45 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(enabledActions(m.menu)).toEqual(["stop", "openSettings", "revealLog", "quit"]);
   });
 
-  it("stopping: idle icon, ellipsis, Settings, log and quit", () => {
+  it("stopping: hourglass, no title, Settings, log and quit", () => {
     const m = trayModel({ type: "stopping" }, mac);
-    expect(m.icon).toBe("idle");
-    expect(m.title).toBe("…");
+    expect(m.icon).toBe("busy");
+    expect(m.title).toBe("");
     expect(labels(m.menu)).toEqual(["儲存中…", "—", "設定", "顯示 log", "結束"]);
     expect(enabledActions(m.menu)).toEqual(["openSettings", "revealLog", "quit"]);
+  });
+
+  it("countdown: stopwatch without a title, a status line and Cancel countdown naming the shortcut", () => {
+    const ctx = { ...mac, hotkey: { ...DEFAULT_HOTKEY, registered: true } };
+    const m = trayModel({ type: "countdown", remaining: 3 }, ctx);
+    expect(m.icon).toBe("countdown");
+    expect(m.title).toBe("");
+    expect(m.tooltip.split("\n")[0]).toBe("RecordStuff: 3 秒後開始錄製，按一下即可取消。");
+    expect(labels(m.menu)).toEqual(["3 秒後開始錄製", "取消倒數", "—", "設定", "顯示 log", "結束"]);
+    expect(enabledActions(m.menu)).toEqual(["cancelCountdown", "openSettings", "revealLog", "quit"]);
+    expect(m.menu.find((i) => i.kind === "item" && i.action === "cancelCountdown")).toMatchObject({ toolTip: "以 ⌘⇧1 取消倒數" });
+    expect(trayModel({ type: "countdown", remaining: 1 }, ctx).menu[0]).toMatchObject({ label: "1 秒後開始錄製", enabled: false });
+    const english = trayModel({ type: "countdown", remaining: 2 }, { ...ctx, language: "en" });
+    expect(english.tooltip.split("\n")[0]).toBe("RecordStuff: Recording starts in 2 s. Click to cancel.");
+    expect(labels(english.menu).slice(0, 2)).toEqual(["Recording starts in 2 s", "Cancel countdown"]);
+  });
+
+  it("Cancel countdown has no shortcut tooltip when none is registered", () => {
+    for (const hotkey of [{ ...DEFAULT_HOTKEY, registered: false }, { ...DEFAULT_HOTKEY, enabled: false, registered: true }]) {
+      const cancel = trayModel({ type: "countdown", remaining: 3 }, { ...mac, hotkey }).menu.find((i) => i.kind === "item" && i.action === "cancelCountdown");
+      expect(cancel).not.toHaveProperty("toolTip");
+    }
+  });
+
+  it("the warning badge replaces only the idle ring, never busy, countdown or recording", () => {
+    const unread = { ...mac, recordingResults: [{ id: "f", code: "disk_full" as const, detail: "", occurredAt: "2026-09-26T00:00:00Z", outcome: "empty" as const, acknowledged: false }] };
+    const icons = STATES.map((state) => [state.type, trayModel(state, unread).icon]);
+    expect(icons).toEqual([
+      ["needsPermission", "warning"], ["needsPermission", "warning"], ["idle", "warning"], ["idle", "warning"],
+      ["starting", "busy"], ["countdown", "countdown"], ["recording", "recording"], ["stopping", "busy"],
+    ]);
+    // Only REC changes the item width: every other state has an empty title.
+    expect(STATES.map((state) => trayModel(state, mac).title)).toEqual(["", "", "", "", "", "", "REC", ""]);
   });
 
   it("Windows shows the abbreviated path and keeps the full path as toolTip", () => {

@@ -33,6 +33,7 @@ async function main(): Promise<void> {
   const recorder = new Recorder({
     host: {
       start: async () => { started = true; },
+      record: sessionId => deliver({ type: "started", sessionId }),
       stop: sessionId => deliver({ type: "stopped", sessionId }),
       onMessage: fn => { deliver = fn; }, onFailure() {},
     },
@@ -80,7 +81,7 @@ async function main(): Promise<void> {
   const pause = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
   recorder.toggle();
   while (!started) await pause(1);
-  deliver({ type: "started", sessionId: "dialog-fixture", mimeType: "video/mp4", capture: {
+  deliver({ type: "prepared", sessionId: "dialog-fixture", mimeType: "video/mp4", capture: {
     videoBitsPerSecond: 1, audioBitsPerSecond: 1, warnings: [],
   } });
   deliver({ type: "chunk", sessionId: "dialog-fixture", seq: 0, bytes: new Uint8Array([11, 22, 33]).buffer });

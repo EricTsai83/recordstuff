@@ -77,6 +77,12 @@ export class CaptureHost implements RecorderHost {
       && !this.window.isDestroyed() && this.window.webContents.mainFrame === frame;
   }
 
+  /** Begin encoding the session `start` prepared; throws when no host is attached to receive it. */
+  record(sessionId: string): void {
+    if (!this.port || this.watching !== sessionId) throw new Error("capture host is not running this session");
+    this.post({ type: "record", sessionId });
+  }
+
   stop(sessionId: string): void {
     if (!this.port) return;
     this.post({ type: "stop", sessionId });

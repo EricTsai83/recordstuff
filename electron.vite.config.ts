@@ -1,8 +1,8 @@
 import { resolve } from "node:path";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 
-// Main, one preload per renderer, and two renderer entries (hidden capture
-// host, settings panel); no framework.
+// Main, one preload per renderer, and three renderer entries (hidden capture
+// host, settings panel, countdown overlay); no framework.
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
@@ -13,6 +13,7 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, "src/preload/index.ts"),
           settings: resolve(__dirname, "src/preload/settings.ts"),
+          countdown: resolve(__dirname, "src/preload/countdown.ts"),
         },
       },
     },
@@ -24,6 +25,7 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, "src/renderer/index.html"),
           settings: resolve(__dirname, "src/renderer/settings.html"),
+          countdown: resolve(__dirname, "src/renderer/countdown.html"),
         },
       },
     },

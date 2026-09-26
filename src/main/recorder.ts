@@ -11,6 +11,7 @@ import type { DisplayFailure } from "../shared/display";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { HostMessage } from "../shared/protocol";
+import { COUNTDOWN_TIMING, type CountdownSeconds } from "../shared/countdown";
 import { describeCapture, type CaptureReport, type QualitySettings } from "../shared/quality";
 import { isErrorCode, type ErrorCode, type RecordingState } from "../shared/state";
 import { RECORDING_HEALTH, type RecordingHealth } from "./recording-health";
@@ -35,8 +36,13 @@ export interface RecorderWriter {
 }
 
 export interface RecorderHost {
-  /** Ensures the capture host is up and posts `start` with the quality snapshot; rejects if it cannot. */
+  /**
+   * Ensures the capture host is up and posts `start` with the quality
+   * snapshot; rejects if it cannot. The host replies `prepared`, not recording.
+   */
   start(sessionId: string, quality: QualitySettings): Promise<void>;
+  /** Begins encoding the prepared session (plan 040); throws when it cannot be sent. */
+  record(sessionId: string): void;
   stop(sessionId: string): void;
   onMessage(listener: (message: HostMessage) => void): void;
   onFailure(
@@ -44,11 +50,32 @@ export interface RecorderHost {
   ): void;
 }
 
+/**
+ * Draws the countdown digit (plan 040). Recorder stays free of Electron: the
+ * app injects the overlay window. Errors are logged and never fail a
+ * recording; the tray still shows the countdown.
+ */
+export interface CountdownPresenter {
+  /** Preparation began and a countdown will follow: build the overlay so the first digit appears on time. */
+  prepare?(): void;
+  show(remaining: number): void;
+  update(remaining: number): void;
+  /** Fades the digit out; resolves once it is gone from the screen. */
+  dismiss(): Promise<void>;
+  /** Removes the overlay at once: cancel, failure, or a dismissal past its bound. Idempotent. */
+  close(): void;
+}
+
 export interface RecorderDeps {
   host: RecorderHost;
   outputDir: () => string;
   /** Read once per session when it starts; later changes affect the next recording only. */
   quality: () => QualitySettings;
+  /** Read once per session like quality; absent means no countdown. */
+  countdownSeconds?: () => CountdownSeconds;
+  countdown?: CountdownPresenter;
+  /** Monotonic milliseconds for countdown anchors and timing logs; defaults to `performance.now()`. */
+  monotonic?: () => number;
   ensureWritableDir: (dir: string) => Promise<void>;
   openWriter: (recordingPath: string, finalPath: string) => Promise<RecorderWriter>;
   now?: () => Date;
@@ -85,6 +112,9 @@ export interface RecorderDeps {
 /** Why a saved recording ended before the user asked; carried on the saved event. */
 export type EarlyStop = "lowDisk";
 
+/** What cancelled an attempt before capture began (plan 040). A cancel is not a failure. */
+export type CancelReason = "toggle" | "menu" | "quit";
+
 /**
  * The session a terminal event belongs to (plan 029). A failure's cleanup can
  * finish after the next session started, so completion order is no identity.
@@ -105,7 +135,9 @@ export type RecorderEvent =
   | { type: "failed"; code: ErrorCode; detail: string; partialPath?: string; outcome: FailureOutcome; session: SessionTrace; preflight?: never }
   /** Preflight refused before any attempt: no session exists, and none is borrowed. */
   | { type: "failed"; code: ErrorCode; detail: string; partialPath?: never; preflight: true }
-  | { type: "permissionRequested"; needsRelaunch: boolean };
+  | { type: "permissionRequested"; needsRelaunch: boolean }
+  /** No media existed: the temporary file is removed and idle returns without a failure. */
+  | { type: "cancelled"; reason: CancelReason; session: SessionTrace };
 
 export interface PermissionStatus {
   granted: boolean;
@@ -114,11 +146,46 @@ export interface PermissionStatus {
 
 type IdleState = Extract<RecordingState, { type: "idle" }>;
 
+/**
+ * `opening` probes the folder and opens the temporary file; `preparing` waits
+ * for the host's `prepared`; `countdown` shows the digits; `arming` sent
+ * `record` and waits for `started` (docs/system-design/recording.md).
+ */
+type Phase = "opening" | "preparing" | "countdown" | "arming" | "recording" | "stopping";
+
+/** Names the phase in a start failure's detail. */
+const BEFORE_CAPTURE: Partial<Record<Phase, string>> = {
+  preparing: "preparing capture",
+  countdown: "counting down",
+  arming: "starting capture",
+};
+
+interface Countdown {
+  /** Monotonic time of `prepared`; every tick is measured from it. */
+  anchor: number;
+  timers: Array<ReturnType<typeof setTimeout>>;
+  /** Capture may begin once both hold: N seconds passed and the overlay is gone. */
+  elapsed: boolean;
+  dismissed: boolean;
+}
+
 interface Session {
   id: string;
-  phase: "opening" | "starting" | "recording" | "stopping";
+  phase: Phase;
   /** Quality snapshot taken when the session was created. */
   quality: QualitySettings;
+  /** Countdown snapshot taken when the session was created. */
+  countdownSeconds: CountdownSeconds;
+  /** Quit arrived before capture was prepared: cancel instead of counting down or recording. */
+  cancelOnPrepared: boolean;
+  /** What `prepared` reported; carried on `captureStarted`. */
+  capture?: CaptureReport;
+  countdown?: Countdown;
+  /** The overlay may be on screen or loading; cleanup closes it. */
+  overlay: boolean;
+  /** Monotonic times for the timing log. */
+  requestedAt: number;
+  recordSentAt?: number;
   /** `stopped` arrived and the writer is being finished; a hard cap must not call this a failure. */
   finalizing: boolean;
   stopOnStart: boolean;
@@ -192,7 +259,10 @@ export class Recorder {
     RecorderDeps;
   private readonly health: RecordingHealth;
 
+  private readonly monotonic: () => number;
+
   constructor(deps: RecorderDeps) {
+    this.monotonic = deps.monotonic ?? (() => performance.now());
     this.deps = {
       now: () => new Date(),
       newSessionId: () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -222,7 +292,10 @@ export class Recorder {
     return () => this.listeners.delete(listener);
   }
 
-  /** Left click (ADR-7): start when idle, stop when recording, else ignore. */
+  /**
+   * Left click and the shortcut (ADR-7): start when idle, stop when
+   * recording, cancel a countdown, else ignore.
+   */
   toggle(): void {
     switch (this._state.type) {
       case "idle":
@@ -231,12 +304,41 @@ export class Recorder {
       case "recording":
         this.stop();
         return;
+      case "countdown":
+        this.cancelCountdown("toggle");
+        return;
       case "needsPermission":
         this.emit({ type: "permissionRequested", needsRelaunch: this._state.needsRelaunch });
         return;
       case "starting":
       case "stopping":
         return;
+    }
+  }
+
+  /**
+   * Before `record` is sent the attempt is cancelled. After it, the request
+   * becomes a stop applied once `started` arrives, so a race of a few
+   * milliseconds cannot leave capture running.
+   *
+   * A tray menu opened during the countdown stays as it was: macOS does not
+   * let the app update or close an open tray menu, so its Cancel countdown can
+   * arrive after capture began. It still means "no recording", so it stops at
+   * once and the file is saved, as a toggle after `record` would.
+   */
+  cancelCountdown(reason: Exclude<CancelReason, "quit"> = "menu"): void {
+    const session = this.session;
+    if (reason === "menu" && this._state.type === "recording" && session?.phase === "recording") {
+      this.deps.log(`recorder: session ${session.id} Cancel countdown arrived after capture started (a menu opened during the countdown); stopping`);
+      this.stop();
+      return;
+    }
+    if (this._state.type !== "countdown" || !session) return;
+    if (session.phase === "countdown") {
+      this.cancel(session, reason);
+    } else if (session.phase === "arming" && !session.stopOnStart) {
+      session.stopOnStart = true;
+      this.deps.log(`recorder: session ${session.id} cancel (${reason}) arrived after record was sent; stopping once capture starts`);
     }
   }
 
@@ -258,9 +360,11 @@ export class Recorder {
   shutdown(): Promise<boolean> {
     if (this.shuttingDown) return this.shuttingDown;
     this.quitAdmission = true;
-    if (this.session && (this.session.phase === "opening" || this.session.phase === "starting")) {
-      this.session.stopOnStart = true;
-    }
+    // No media exists before `record`: quit cancels the attempt instead of
+    // recording and saving it. After `record`, capture stops once it starts.
+    const pending = this.session;
+    if (pending && (pending.phase === "opening" || pending.phase === "preparing")) pending.cancelOnPrepared = true;
+    if (pending && pending.phase === "arming") pending.stopOnStart = true;
     // Defer execution until the shared promise is installed (stop can emit synchronously).
     const attempt = Promise.resolve().then(() => new Promise<boolean>((resolve) => {
       let checking = false;
@@ -274,6 +378,7 @@ export class Recorder {
         if (checking) return;
         checking = true;
         if (this._state.type === "recording") this.stop();
+        if (this.session?.phase === "countdown") this.cancel(this.session, "quit");
         checking = false;
         if (!this.session && this.work.size === 0) finish(true);
       };
@@ -350,6 +455,10 @@ export class Recorder {
       id: this.deps.newSessionId(),
       phase: "opening",
       quality: this.deps.quality(),
+      countdownSeconds: this.deps.countdownSeconds?.() ?? 0,
+      cancelOnPrepared: false,
+      overlay: false,
+      requestedAt: this.monotonic(),
       finalizing: false,
       stopOnStart: false,
       hasMedia: false,
@@ -383,12 +492,23 @@ export class Recorder {
     }
     // A timed-out opening belongs to the failure owner, including its late handle.
     if (this.session !== session) return;
+    // Quit arrived while the folder was probed: no capture request at all.
+    if (session.cancelOnPrepared) {
+      this.cancel(session, "quit");
+      return;
+    }
 
-    session.phase = "starting";
+    session.phase = "preparing";
     this.clearTimer(session);
+    // Bounds `start → prepared`: permission prompts, missing audio, unsupported
+    // MP4 and display errors all surface here, before any countdown.
     session.timer = setTimeout(() => {
       void this.fail(session.id, "capture_start_failed", "screen/audio capture request timed out; complete system permission prompts and retry");
     }, this.deps.captureRequestTimeoutMs);
+    if (session.countdownSeconds > 0 && this.deps.countdown) {
+      session.overlay = true;
+      this.present("prepare", (presenter) => presenter.prepare?.());
+    }
     try {
       await this.deps.host.start(session.id, session.quality);
     } catch (cause) {
@@ -444,40 +564,65 @@ export class Recorder {
     const session = this.session;
     if (message.type === "error") {
       if (session && !session.finalizing && (message.sessionId === undefined || message.sessionId === session.id)) {
-        const code = this.deps.mapHostError ? this.deps.mapHostError(message.code) : message.code;
+        let code = this.deps.mapHostError ? this.deps.mapHostError(message.code) : message.code;
+        let detail = message.detail;
+        // Nothing was recorded yet: a source that ended is a start failure.
+        const phase = BEFORE_CAPTURE[session.phase];
+        if (phase && (code === "capture_failed" || code === "capture_start_failed")) {
+          code = "capture_start_failed";
+          detail = `${detail} (while ${phase})`;
+        }
         if (message.displayFailure && !session.finalizing) this.emit({ type: "displayFailed", detail: message.displayFailure });
-        void this.fail(session.id, code, message.detail);
+        void this.fail(session.id, code, detail);
       }
       return;
     }
     if (!session || message.sessionId !== session.id) {
       // A session we already gave up on (e.g. start timed out while the host
       // was still inside getDisplayMedia) must not keep capturing unseen.
-      if (message.type === "started" || message.type === "chunk") {
+      if (message.type === "prepared" || message.type === "started" || message.type === "chunk") {
         this.deps.log(`recorder: stopping stale session ${message.sessionId} (${message.type})`);
         this.deps.host.stop(message.sessionId);
       }
       return;
     }
     switch (message.type) {
-      case "started":
-        if (session.phase === "starting") {
-          session.phase = "recording";
-          this.clearTimer(session);
-          if (!session.hasMedia) {
-            session.timer = setTimeout(() => {
-              void this.fail(session.id, "capture_start_failed", "capture host did not send media before the deadline");
-            }, this.deps.startTimeoutMs);
-          }
-          this.deps.log(`recorder: session ${session.id} capture: ${describeCapture(session.quality, message.capture)}`);
-          if (session.hasMedia) this.armStall(session);
-          this.watchDisk(session);
-          session.recordingAt = this.deps.now().toISOString();
-          this.setState({ type: "recording", startedAt: session.recordingAt });
-          if (session.stopOnStart) this.stop();
-          this.emit({ type: "captureStarted", sessionId: session.id, requested: session.quality, capture: message.capture });
+      case "prepared":
+        if (session.phase !== "preparing") return;
+        this.clearTimer(session);
+        session.capture = message.capture;
+        this.deps.log(`recorder: session ${session.id} prepared after ${this.elapsed(session.requestedAt)} ms; countdown ${session.countdownSeconds} s`);
+        if (session.cancelOnPrepared) {
+          this.cancel(session, "quit");
+          return;
         }
+        if (session.countdownSeconds > 0) this.beginCountdown(session);
+        else this.record(session);
         return;
+      case "started": {
+        if (session.phase !== "arming") return;
+        const capture = session.capture ?? message.capture;
+        if (!capture) {
+          void this.fail(session.id, "capture_start_failed", "capture host started without a prepared capture report");
+          return;
+        }
+        session.phase = "recording";
+        this.clearTimer(session);
+        if (!session.hasMedia) {
+          session.timer = setTimeout(() => {
+            void this.fail(session.id, "capture_start_failed", "capture host did not send media before the deadline");
+          }, this.deps.startTimeoutMs);
+        }
+        this.deps.log(`recorder: session ${session.id} started ${session.recordSentAt === undefined ? "?" : this.elapsed(session.recordSentAt)} ms after record`);
+        this.deps.log(`recorder: session ${session.id} capture: ${describeCapture(session.quality, capture)}`);
+        if (session.hasMedia) this.armStall(session);
+        this.watchDisk(session);
+        session.recordingAt = this.deps.now().toISOString();
+        this.setState({ type: "recording", startedAt: session.recordingAt });
+        if (session.stopOnStart) this.stop();
+        this.emit({ type: "captureStarted", sessionId: session.id, requested: session.quality, capture });
+        return;
+      }
       case "chunk":
         this.handleChunk(session, message.seq, message.bytes);
         return;
@@ -499,7 +644,8 @@ export class Recorder {
 
   private handleChunk(session: Session, seq: number, bytes: ArrayBuffer): void {
     if (session.finalizing) return;
-    if (session.phase !== "starting" && session.phase !== "recording" && session.phase !== "stopping") {
+    // Media can exist only after `record`.
+    if (session.phase !== "arming" && session.phase !== "recording" && session.phase !== "stopping") {
       return;
     }
     if (seq !== session.nextSeq) {
@@ -513,7 +659,7 @@ export class Recorder {
       if (session.phase !== "stopping") this.clearTimer(session);
     }
     // Empty chunks are not media, so they do not reset the stall guard either.
-    if (bytes.byteLength > 0 && session.phase !== "starting") this.armStall(session);
+    if (bytes.byteLength > 0 && session.phase !== "arming") this.armStall(session);
     const writer = session.writer;
     if (!writer) return;
     const write = writer.append(new Uint8Array(bytes));
@@ -523,6 +669,155 @@ export class Recorder {
         void this.fail(session.id, errorCodeOf(cause, "output_write_failed"), messageOf(cause));
       },
     );
+  }
+
+  /**
+   * Ticks from one monotonic anchor, so timer lateness never accumulates. The
+   * overlay is asked to leave `overlayLeadMs` before N seconds; `record` goes
+   * out at N seconds, or when the dismissal settles if that is later.
+   */
+  private beginCountdown(session: Session): void {
+    const seconds = session.countdownSeconds;
+    const { tickMs, overlayLeadMs } = COUNTDOWN_TIMING;
+    const countdown: Countdown = { anchor: this.monotonic(), timers: [], elapsed: false, dismissed: false };
+    session.countdown = countdown;
+    session.phase = "countdown";
+    this.setState({ type: "countdown", remaining: seconds });
+    if (this.deps.countdown) {
+      session.overlay = true;
+      this.present("show", (presenter) => presenter.show(seconds));
+    }
+    const at = (offsetMs: number, run: () => void): void => {
+      countdown.timers.push(setTimeout(run, Math.max(0, countdown.anchor + offsetMs - this.monotonic())));
+    };
+    for (let k = 1; k < seconds; k += 1) {
+      const remaining = seconds - k;
+      at(k * tickMs, () => {
+        if (this.session !== session || session.phase !== "countdown") return;
+        this.setState({ type: "countdown", remaining });
+        if (session.overlay) this.present("update", (presenter) => presenter.update(remaining));
+      });
+    }
+    at(seconds * tickMs - overlayLeadMs, () => this.dismissOverlay(session));
+    at(seconds * tickMs, () => {
+      countdown.elapsed = true;
+      this.recordAfterCountdown(session);
+    });
+  }
+
+  /** Waits for the overlay's confirmation within a bound; past it, the overlay is destroyed and capture proceeds. */
+  private dismissOverlay(session: Session): void {
+    const countdown = session.countdown;
+    if (this.session !== session || session.phase !== "countdown" || !countdown) return;
+    const presenter = this.deps.countdown;
+    if (!presenter || !session.overlay) {
+      countdown.dismissed = true;
+      this.recordAfterCountdown(session);
+      return;
+    }
+    const began = this.monotonic();
+    let bound: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<"timeout">((resolve) => {
+      bound = setTimeout(() => resolve("timeout"), COUNTDOWN_TIMING.dismissTimeoutMs);
+      countdown.timers.push(bound);
+    });
+    const dismissal = Promise.resolve()
+      .then(() => presenter.dismiss())
+      .then(() => "dismissed" as const, (cause: unknown) => {
+        this.deps.log(`recorder: countdown overlay dismiss failed: ${messageOf(cause)}`);
+        return "error" as const;
+      });
+    void Promise.race([dismissal, timedOut]).then((outcome) => {
+      clearTimeout(bound);
+      if (this.session !== session || session.phase !== "countdown") return;
+      if (outcome === "timeout") {
+        this.deps.log(`recorder: session ${session.id} countdown overlay did not confirm dismissal within ${COUNTDOWN_TIMING.dismissTimeoutMs} ms; destroying it`);
+      } else {
+        this.deps.log(`recorder: session ${session.id} countdown overlay ${outcome} after ${this.elapsed(began)} ms`);
+      }
+      this.closeOverlay(session);
+      countdown.dismissed = true;
+      this.recordAfterCountdown(session);
+    });
+  }
+
+  private recordAfterCountdown(session: Session): void {
+    const countdown = session.countdown;
+    if (this.session !== session || session.phase !== "countdown" || !countdown?.elapsed || !countdown.dismissed) return;
+    this.clearCountdown(session);
+    this.record(session);
+  }
+
+  /** `record → started` uses the start deadline; the state keeps its last countdown value meanwhile. */
+  private record(session: Session): void {
+    session.phase = "arming";
+    this.clearTimer(session);
+    session.recordSentAt = this.monotonic();
+    this.deps.log(`recorder: session ${session.id} record sent ${session.countdown
+      ? `${Math.round(session.recordSentAt - session.countdown.anchor)} ms after the ${session.countdownSeconds} s countdown began`
+      : "without a countdown"}`);
+    session.timer = setTimeout(() => {
+      void this.fail(session.id, "capture_start_failed", "capture host did not confirm recording started before the deadline (while starting capture)");
+    }, this.deps.startTimeoutMs);
+    try {
+      this.deps.host.record(session.id);
+    } catch (cause) {
+      void this.fail(session.id, "capture_start_failed", `record refused: ${messageOf(cause)} (while starting capture)`);
+    }
+  }
+
+  /**
+   * No media exists before `record`, so a cancel is not a failure: no failure
+   * status, history, notification or display diagnostic. The empty temporary
+   * file is removed and the idle state from before the attempt returns.
+   */
+  private cancel(session: Session, reason: CancelReason): void {
+    if (this.session !== session) return;
+    this.session = undefined;
+    this.clearTimer(session);
+    this.clearCountdown(session);
+    this.clearHealth(session);
+    this.closeOverlay(session);
+    if (session.phase !== "opening") this.deps.host.stop(session.id);
+    this.deps.log(`recorder: session ${session.id} cancelled (${reason}) while ${BEFORE_CAPTURE[session.phase] ?? "opening the recording file"}`);
+    // Owned before idle is published: a quit waiting on that state change
+    // must also wait for the temporary file and the sentinel to go.
+    void this.track(async () => {
+      await session.opening?.catch(() => undefined);
+      try {
+        const kept = await session.writer?.abandon();
+        if (kept) this.deps.log(`recorder: cancelled session ${session.id} unexpectedly kept ${kept}`);
+      } catch (cause) {
+        this.deps.log(`recorder: cancelled session ${session.id} cleanup could not be confirmed: ${messageOf(cause)}`);
+      }
+      this.emit({ type: "cancelled", reason, session: this.trace(session) });
+      await this.clearInFlight(session);
+    });
+    // Opening succeeded, so the folder is usable again.
+    const { outputDirUnavailable: _usable, ...idle } = this.idleState;
+    this.settle(idle);
+  }
+
+  private present(what: string, act: (presenter: CountdownPresenter) => void): void {
+    const presenter = this.deps.countdown;
+    if (!presenter) return;
+    try { act(presenter); }
+    catch (cause) { this.deps.log(`recorder: countdown overlay ${what} failed: ${messageOf(cause)}`); }
+  }
+
+  private closeOverlay(session: Session): void {
+    if (!session.overlay) return;
+    session.overlay = false;
+    this.present("close", (presenter) => presenter.close());
+  }
+
+  private clearCountdown(session: Session): void {
+    for (const timer of session.countdown?.timers ?? []) clearTimeout(timer);
+    if (session.countdown) session.countdown.timers = [];
+  }
+
+  private elapsed(since: number): number {
+    return Math.round(this.monotonic() - since);
   }
 
   private async finalize(session: Session): Promise<void> {
@@ -623,7 +918,9 @@ export class Recorder {
     const session = this.session;
     if (session && !session.finalizing) {
       this.emit({ type: "displayFailed", detail: "target_removed" });
-      void this.fail(session.id, "capture_failed", "recording display removed");
+      const phase = BEFORE_CAPTURE[session.phase];
+      if (phase) void this.fail(session.id, "capture_start_failed", `recording display removed (while ${phase})`);
+      else void this.fail(session.id, "capture_failed", "recording display removed");
     }
   }
 
@@ -631,7 +928,12 @@ export class Recorder {
     code: "capture_host_crashed" | "capture_host_unresponsive",
     detail: string,
   ): void {
-    if (this.session && !this.session.finalizing) void this.fail(this.session.id, code, detail);
+    const session = this.session;
+    if (!session || session.finalizing) return;
+    // Before `record` nothing was captured: a lost host is a start failure.
+    const phase = BEFORE_CAPTURE[session.phase];
+    if (phase) void this.fail(session.id, "capture_start_failed", `${code === "capture_host_crashed" ? "capture host crashed" : "capture host stopped responding"}: ${detail} (while ${phase})`);
+    else void this.fail(session.id, code, detail);
   }
 
   private fail(
@@ -653,7 +955,9 @@ export class Recorder {
     if (!session || session.id !== sessionId) return;
     this.session = undefined;
     this.clearTimer(session);
+    this.clearCountdown(session);
     this.clearHealth(session);
+    this.closeOverlay(session);
     if (session.phase !== "opening") this.deps.host.stop(session.id);
     this.deps.log(`recorder: session ${session.id} failed: ${code} ${detail}`);
     const occurredAt = this.deps.now().toISOString();

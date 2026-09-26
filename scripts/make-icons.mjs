@@ -1,7 +1,10 @@
 // Generates every icon from code so the repo has no hand-drawn binaries:
 //   resources/trayIdleTemplate.png(@2x)       macOS template: ring
+//   resources/trayBusyTemplate.png(@2x)       macOS template: hourglass (starting, saving)
+//   resources/trayCountdownTemplate.png(@2x)  macOS template: stopwatch (plan 040)
 //   resources/trayRecordingTemplate.png(@2x)  macOS template: filled dot
-//   resources/tray-idle.ico / tray-recording.ico  Windows: gray ring / red dot
+//   resources/trayWarningTemplate.png(@2x)    macOS template: ring with a badge
+//   resources/tray-<state>.ico                Windows: the same shapes, gray; red dot when recording
 //   build/icon.png                            512px app icon for electron-builder
 //   build/icon.icns                           native macOS icon set (generated on macOS)
 //   build/background.png (@2x)                DMG drag-to-Applications background
@@ -142,6 +145,47 @@ function recordingShape(size) {
   return circle(c, c, size * 0.36);
 }
 
+/** Axis-aligned box in fractions of the icon size. */
+function box(size, x0, x1, y0, y1) {
+  return (x, y) => x >= size * x0 && x <= size * x1 && y >= size * y0 && y <= size * y1;
+}
+
+// Hourglass outline (plan 040): bars across the top and bottom joined by two
+// strokes 0.09 wide that narrow to a waist 0.07 wide at the centre. A ring
+// with three dots inside was tried first and read as too faint at 16 pt.
+function busyShape(size) {
+  const top = box(size, 0.22, 0.78, 0.10, 0.19);
+  const bottom = box(size, 0.22, 0.78, 0.81, 0.90);
+  const stroke = 0.09;
+  const waist = 0.07 / 2;
+  // Outer edge meets each bar just inside its ends.
+  const rim = 0.25;
+  return (x, y) => {
+    if (top(x, y) || bottom(x, y)) return true;
+    const nx = x / size, ny = y / size;
+    if (ny <= 0.19 || ny >= 0.81) return false;
+    const t = Math.abs(ny - 0.5) / 0.31;
+    const outer = waist + stroke + (rim - waist - stroke) * t;
+    const inner = outer - stroke;
+    const d = Math.abs(nx - 0.5);
+    return d >= inner && d <= outer;
+  };
+}
+
+// Stopwatch (plan 040): ring, crown, stem, a hand pointing up and a hub.
+function countdownShape(size) {
+  const c = size / 2;
+  const cy = size * 0.56;
+  const parts = [
+    ring(c, cy, size * 0.31, size * 0.20),
+    box(size, 0.40, 0.60, 0.05, 0.14),
+    box(size, 0.46, 0.54, 0.13, 0.27),
+    box(size, 0.46, 0.54, 0.40, 0.56),
+    circle(c, cy, size * 0.07),
+  ];
+  return (x, y) => parts.some((part) => part(x, y));
+}
+
 // One template image: existing ring with a lower-right exclamation badge.
 // Knock out a halo so both light and dark menu bars retain the badge silhouette.
 function warningShape(size) {
@@ -161,6 +205,8 @@ mkdirSync("build", { recursive: true });
 // macOS template images: black + alpha only.
 for (const [name, shapeOf] of [
   ["trayIdleTemplate", idleShape],
+  ["trayBusyTemplate", busyShape],
+  ["trayCountdownTemplate", countdownShape],
   ["trayRecordingTemplate", recordingShape],
   ["trayWarningTemplate", warningShape],
 ]) {
@@ -168,9 +214,12 @@ for (const [name, shapeOf] of [
   writeFileSync(`resources/${name}@2x.png`, png(32, rasterize(32, [{ shape: shapeOf(32), rgba: BLACK }])));
 }
 
-// Windows tray icons: gray ring when idle, red dot when recording.
+// Windows tray icons: gray ring when idle, red dot when recording. Plan 034
+// redesigns Windows artwork; these only keep the states distinct there.
 for (const [name, shapeOf, color] of [
   ["tray-idle", idleShape, GRAY],
+  ["tray-busy", busyShape, GRAY],
+  ["tray-countdown", countdownShape, GRAY],
   ["tray-recording", recordingShape, RED],
   ["tray-warning", warningShape, GRAY],
 ]) {

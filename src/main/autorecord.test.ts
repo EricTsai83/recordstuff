@@ -15,9 +15,15 @@ describe("parseAutoRecord", () => {
     const result = parseAutoRecord('{"seconds":30,"quality":{"resolutionCap":"1440p","frameRate":60}}', false);
     expect(result).toEqual({
       ok: true,
-      config: { seconds: 30, quality: { ...DEFAULT_QUALITY, resolutionCap: "1440p", frameRate: 60 } },
+      config: { seconds: 30, quality: { ...DEFAULT_QUALITY, resolutionCap: "1440p", frameRate: 60 }, countdown: 0 },
     });
-    expect(parseAutoRecord('{"seconds":5}', false)).toEqual({ ok: true, config: { seconds: 5, quality: DEFAULT_QUALITY } });
+    expect(parseAutoRecord('{"seconds":5}', false)).toEqual({ ok: true, config: { seconds: 5, quality: DEFAULT_QUALITY, countdown: 0 } });
+  });
+
+  it("uses no countdown unless the configuration names a supported one", () => {
+    expect(parseAutoRecord('{"seconds":5,"countdown":10}', false)).toEqual({ ok: true, config: { seconds: 5, quality: DEFAULT_QUALITY, countdown: 10 } });
+    expect(parseAutoRecord('{"seconds":5,"countdown":4}', false)).toEqual({ ok: false, error: "countdown: unsupported value 4" });
+    expect(parseAutoRecord('{"seconds":5,"countdown":"3"}', false)).toMatchObject({ ok: false });
   });
 
   it("rejects bad JSON, bad seconds and unsupported quality values with a reason", () => {
@@ -71,9 +77,35 @@ function harness(initial: RecordingState = { type: "idle" }): Harness {
   return h;
 }
 
-const config = { seconds: 30, quality: DEFAULT_QUALITY };
+const config = { seconds: 30, quality: DEFAULT_QUALITY, countdown: 0 as const };
 
 describe("runAutoRecord", () => {
+  it("ends the run when its countdown is cancelled, so no later recording inherits its stop timer", () => {
+    const h = harness();
+    runAutoRecord({ ...config, countdown: 3 }, h.deps);
+    h.timers.shift()!.fn();
+    h.emit({ type: "state", state: { type: "countdown", remaining: 3 } });
+    h.emit({ type: "state", state: { type: "idle" } });
+    h.emit({ type: "cancelled", reason: "toggle", session: { id: "s1" } });
+    expect(h.calls).toEqual(["toggle", "quit"]);
+    expect(h.logs.at(-1)).toBe("autorecord: cancelled (toggle); nothing was recorded");
+    // A manual recording afterwards is not stopped by the finished run.
+    h.emit({ type: "state", state: { type: "recording", startedAt: "2026-09-26T00:00:00Z" } });
+    expect(h.timers).toHaveLength(0);
+  });
+
+  it("waits through a named countdown and schedules the stop only once recording", () => {
+    const h = harness();
+    runAutoRecord({ ...config, countdown: 3 }, h.deps);
+    h.timers.shift()!.fn();
+    expect(h.calls).toEqual(["toggle"]);
+    for (const remaining of [3, 2, 1]) h.emit({ type: "state", state: { type: "countdown", remaining } });
+    expect(h.timers).toHaveLength(0);
+    h.emit({ type: "state", state: { type: "recording", startedAt: "2026-09-26T00:00:00Z" } });
+    expect(h.timers.map((timer) => timer.ms)).toEqual([30_000]);
+    expect(h.logs[0]).toContain("countdown 3 s");
+  });
+
   it("starts after the delay, stops after `seconds` of recording and quits once saved", () => {
     const h = harness();
     runAutoRecord(config, h.deps);

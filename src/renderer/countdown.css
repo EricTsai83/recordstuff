@@ -1,0 +1,66 @@
+/*
+ * Only the digit: no background, box, border, ring or blur (plan 040). Every
+ * value comes from src/shared/countdown.ts through custom properties set by
+ * countdown.ts, so the appearance has one definition.
+ */
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  cursor: default;
+}
+
+#stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity var(--fade-out) ease-in;
+}
+
+#stage.visible {
+  opacity: 1;
+  transition: opacity var(--fade-in) ease-out;
+}
+
+.face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-family);
+  font-weight: var(--font-weight);
+  font-size: var(--font-size);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--digit);
+  -webkit-text-stroke: var(--outline-width) var(--outline);
+  paint-order: stroke fill;
+  text-shadow: var(--shadow);
+  opacity: 0;
+  transition: opacity var(--crossfade) ease-in-out;
+}
+
+.face.front {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #stage,
+  #stage.visible,
+  .face {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .face {
+    color: var(--digit-opaque);
+    -webkit-text-stroke: var(--outline-width-strong) var(--outline-strong);
+  }
+}

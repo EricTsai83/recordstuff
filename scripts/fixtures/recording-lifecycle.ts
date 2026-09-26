@@ -37,6 +37,8 @@ const recorder = new Recorder({
   }),
   host: {
     start: async () => { started = true; },
+    // Prepare then record, as the real host does; no countdown here.
+    record: sessionId => deliver({ type: "started", sessionId }),
     stop: sessionId => { if (mode === "copy") deliver({ type: "stopped", sessionId }); },
     onMessage: fn => { deliver = fn; },
     onFailure: fn => { crash = () => fn("capture_host_crashed", "controlled fault"); },
@@ -70,7 +72,7 @@ app.on("will-quit", () => {
 });
 recorder.toggle();
 while (!started) await pause(1);
-deliver({ type: "started", sessionId: "fixture", mimeType: "video/mp4", capture: {
+deliver({ type: "prepared", sessionId: "fixture", mimeType: "video/mp4", capture: {
   videoBitsPerSecond: 1, audioBitsPerSecond: 1, warnings: [],
 } });
 deliver({ type: "chunk", sessionId: "fixture", seq: 0, bytes: new Uint8Array([11, 22, 33]).buffer });

@@ -59,12 +59,13 @@ async function main(): Promise<void> {
 
   const output = fs.openSync(path.join(dir, "recording.mp4"), "w");
   const messages: { at: string; type: string; detail?: unknown }[] = [];
-  let started: Extract<HostMessage, { type: "started" }> | undefined;
+  let started: Extract<HostMessage, { type: "prepared" }> | undefined;
   let bytes = 0;
   let settle!: (outcome: string) => void;
   const settled = new Promise<string>((resolve) => { settle = resolve; });
   let begin!: () => void;
   const began = new Promise<void>((resolve) => { begin = resolve; });
+  let prepared: Extract<HostMessage, { type: "prepared" }> | undefined;
   const host = new CaptureHost({ preloadPath: config.preloadPath, htmlPath: path.join(hostDir, "index.html"), log });
   host.onMessage((message) => {
     const at = new Date().toISOString();
@@ -74,9 +75,16 @@ async function main(): Promise<void> {
       bytes += chunk.byteLength;
       return;
     }
-    if (message.type === "started") {
-      started = message;
+    // The host prepares first; this diagnostic starts encoding at once, like the countdown Off.
+    if (message.type === "prepared") {
       messages.push({ at, type: message.type, detail: message.capture });
+      prepared = message;
+      try { host.record(SESSION_ID); } catch (cause) { begin(); settle(`record threw ${String(cause)}`); }
+      return;
+    }
+    if (message.type === "started") {
+      started = prepared;
+      messages.push({ at, type: message.type });
       begin();
       return;
     }

@@ -5,8 +5,9 @@ import { DEFAULT_QUALITY } from "./quality";
 const capture = { videoBitsPerSecond: 8_000_000, audioBitsPerSecond: 256_000, warnings: [] };
 
 describe("isMainMessage", () => {
-  it("accepts the three main → host shapes", () => {
+  it("accepts the four main → host shapes", () => {
     expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY })).toBe(true);
+    expect(isMainMessage({ type: "record", sessionId: "a" })).toBe(true);
     expect(isMainMessage({ type: "stop", sessionId: "a" })).toBe(true);
     expect(isMainMessage({ type: "ping" })).toBe(true);
   });
@@ -16,6 +17,8 @@ describe("isMainMessage", () => {
     expect(isMainMessage({ type: "start", sessionId: "a", quality: { ...DEFAULT_QUALITY, frameRate: 24 } })).toBe(false);
     expect(isMainMessage({ type: "start", sessionId: "", quality: DEFAULT_QUALITY })).toBe(false);
     expect(isMainMessage({ type: "pong" })).toBe(false);
+    expect(isMainMessage({ type: "record" })).toBe(false);
+    expect(isMainMessage({ type: "record", sessionId: "" })).toBe(false);
     expect(isMainMessage(null)).toBe(false);
     expect(isMainMessage("start")).toBe(false);
   });
@@ -25,6 +28,9 @@ describe("isHostMessage", () => {
   it("accepts every host → main shape", () => {
     expect(isHostMessage({ type: "ready" })).toBe(true);
     expect(isHostMessage({ type: "pong" })).toBe(true);
+    expect(isHostMessage({ type: "prepared", sessionId: "a", mimeType: "video/mp4", capture })).toBe(true);
+    // `started` may drop its report: main keeps the one from `prepared`.
+    expect(isHostMessage({ type: "started", sessionId: "a" })).toBe(true);
     expect(isHostMessage({ type: "started", sessionId: "a", mimeType: "video/mp4", capture })).toBe(true);
     expect(
       isHostMessage({
@@ -53,11 +59,15 @@ describe("isHostMessage", () => {
     // Only launch-time evidence reports a terminated app; a live host never can.
     expect(isHostMessage({ type: "error", code: "app_terminated", detail: "" })).toBe(false);
     expect(isHostMessage({ type: "error", sessionId: "", code: "no_display", detail: "" })).toBe(false);
-    expect(isHostMessage({ type: "started", sessionId: "a" })).toBe(false);
-    expect(isHostMessage({ type: "started", sessionId: "a", mimeType: "video/mp4" })).toBe(false);
-    expect(isHostMessage({ type: "started", sessionId: "a", mimeType: "video/mp4", capture: { ...capture, width: "1920" } })).toBe(false);
-    expect(isHostMessage({ type: "started", sessionId: "a", mimeType: "video/mp4", capture: { ...capture, videoBitsPerSecond: NaN } })).toBe(false);
-    expect(isHostMessage({ type: "started", sessionId: "a", mimeType: "video/mp4", capture: { ...capture, warnings: [1] } })).toBe(false);
+    expect(isHostMessage({ type: "prepared", sessionId: "a" })).toBe(false);
+    expect(isHostMessage({ type: "prepared", sessionId: "a", mimeType: "video/mp4" })).toBe(false);
+    expect(isHostMessage({ type: "prepared", sessionId: "", mimeType: "video/mp4", capture })).toBe(false);
+    expect(isHostMessage({ type: "prepared", sessionId: "a", mimeType: "video/mp4", capture: { ...capture, width: "1920" } })).toBe(false);
+    expect(isHostMessage({ type: "prepared", sessionId: "a", mimeType: "video/mp4", capture: { ...capture, videoBitsPerSecond: NaN } })).toBe(false);
+    expect(isHostMessage({ type: "prepared", sessionId: "a", mimeType: "video/mp4", capture: { ...capture, warnings: [1] } })).toBe(false);
+    expect(isHostMessage({ type: "started", sessionId: "" })).toBe(false);
+    expect(isHostMessage({ type: "started", sessionId: "a", mimeType: 1 })).toBe(false);
+    expect(isHostMessage({ type: "started", sessionId: "a", capture: { ...capture, warnings: [1] } })).toBe(false);
     expect(isHostMessage({ type: "nope" })).toBe(false);
   });
 });

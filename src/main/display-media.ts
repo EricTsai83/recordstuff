@@ -36,6 +36,11 @@ export class DisplayMedia<S extends Source> {
 
   constructor(private readonly options: DisplayMediaOptions<S>) {}
 
+  /** The display this attempt was granted, once its request resolved; where the countdown overlay goes. */
+  get activeDisplay(): string | undefined {
+    return this.activeDisplayId;
+  }
+
   /** A recorder attempt began; requests from earlier attempts can no longer grant capture. */
   begin(sessionId: string): void {
     this.request?.cancel();

@@ -124,7 +124,9 @@ afterEach(() => vi.unstubAllGlobals());
 const flush = () => new Promise((r) => setTimeout(r, 0));
 const stream = () => new FakeStream([new FakeTrack("video"), new FakeTrack("audio")]);
 const start = (sessionId: string, quality: QualitySettings = DEFAULT_QUALITY): MainMessage => ({ type: "start", sessionId, quality });
-/** The `started` report for a 1080p30 source at default quality. */
+/** Main's countdown ended: encode the prepared session. */
+const record = (port: FakePort, sessionId = "s1"): void => port.receive({ type: "record", sessionId });
+/** The `prepared` report for a 1080p30 source at default quality. */
 const DEFAULT_CAPTURE = {
   width: 1920,
   height: 1080,
@@ -157,13 +159,17 @@ describe("renderer CaptureHost", () => {
     expect(port.types()).toEqual(["pong"]);
   });
 
-  it("records: started, ordered chunks, stopped after the final chunk", async () => {
+  it("records: prepared with an inactive encoder, started at record, ordered chunks, stopped after the final chunk", async () => {
     const port = boot();
     port.receive(start("s1"));
     const s = stream();
     pendingStream!.resolve(s);
     await flush();
-    expect(port.sent[0]).toEqual({ type: "started", sessionId: "s1", mimeType: OUTPUT_MIME_TYPE, capture: DEFAULT_CAPTURE });
+    expect(port.sent).toEqual([{ type: "prepared", sessionId: "s1", mimeType: OUTPUT_MIME_TYPE, capture: DEFAULT_CAPTURE }]);
+    expect(FakeMediaRecorder.instances[0]!.state).toBe("inactive");
+    record(port);
+    expect(FakeMediaRecorder.instances[0]!.state).toBe("recording");
+    expect(port.sent[1]).toEqual({ type: "started", sessionId: "s1" });
     expect(FakeMediaRecorder.instances[0]!.options).toEqual({
       mimeType: OUTPUT_MIME_TYPE,
       videoBitsPerSecond: 8_100_000,
@@ -176,7 +182,7 @@ describe("renderer CaptureHost", () => {
     port.receive({ type: "stop", sessionId: "s1" });
     await flush();
     await flush();
-    expect(port.types()).toEqual(["started", "chunk", "chunk", "chunk", "stopped"]);
+    expect(port.types()).toEqual(["prepared", "started", "chunk", "chunk", "chunk", "stopped"]);
     expect(port.sent.at(-1)).toMatchObject({ tracksStoppedAt: expect.any(Number) });
     const chunks = port.sent.filter((m) => m.type === "chunk");
     expect(chunks.map((c) => (c.type === "chunk" ? c.seq : -1))).toEqual([0, 1, 2]);
@@ -239,7 +245,7 @@ describe("renderer CaptureHost", () => {
     port.receive(start("s2"));
     pendingStream!.resolve(stream());
     await flush();
-    expect(port.sent[0]).toMatchObject({ type: "started", sessionId: "s2" });
+    expect(port.sent[0]).toMatchObject({ type: "prepared", sessionId: "s2" });
   });
 
   it("a cancelled session still waiting on the OS does not block the next start (pass-2 finding 1)", async () => {
@@ -252,7 +258,7 @@ describe("renderer CaptureHost", () => {
     const s2 = stream();
     pendingStream!.resolve(s2);
     await flush();
-    expect(port.sent[0]).toMatchObject({ type: "started", sessionId: "s2" });
+    expect(port.sent[0]).toMatchObject({ type: "prepared", sessionId: "s2" });
     // s1 finally resolves: released, reported stopped, s2 untouched
     const s1 = stream();
     first.resolve(s1);
@@ -285,10 +291,11 @@ describe("renderer CaptureHost", () => {
     const s = stream();
     pendingStream!.resolve(s);
     await flush();
+    record(port);
     s.tracks.find((track) => track.kind === kind)!.end();
     await flush();
     await flush();
-    expect(port.types()).toEqual(["started", "chunk", "error"]);
+    expect(port.types()).toEqual(["prepared", "started", "chunk", "error"]);
     expect(port.sent.at(-1)).toMatchObject(kind === "video" ? { displayFailure: "track_ended" } : {});
     if (kind === "audio") expect(port.sent.at(-1)).not.toHaveProperty("displayFailure");
     expect(port.sent.at(-1)).toMatchObject({ type: "error", sessionId: "s1", code: "capture_failed" });
@@ -318,7 +325,7 @@ describe("renderer CaptureHost", () => {
     audio.settings = { ...audio.settings, echoCancellation: true, noiseSuppression: true, autoGainControl: false };
     pendingStream!.resolve(s);
     await flush();
-    const message = port.sent.find(message => message.type === "started");
+    const message = port.sent.find(message => message.type === "prepared");
     expect(message).toMatchObject({ capture: { warnings: [
       "system audio reports echoCancellation=true despite requesting false",
       "system audio reports noiseSuppression=true despite requesting false",
@@ -336,7 +343,7 @@ describe("renderer CaptureHost", () => {
       { width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 30.3, max: 30.3 } },
     ]);
     expect(port.sent[0]).toMatchObject({
-      type: "started",
+      type: "prepared",
       capture: { width: 1920, height: 1080, videoBitsPerSecond: 14_900_000, audioBitsPerSecond: 256_000, warnings: [] },
     });
   });
@@ -348,7 +355,7 @@ describe("renderer CaptureHost", () => {
     pendingStream!.resolve(s);
     await flush();
     expect(s.tracks[0]!.applied).toEqual([]);
-    expect(port.sent[0]).toMatchObject({ type: "started", capture: DEFAULT_CAPTURE });
+    expect(port.sent[0]).toMatchObject({ type: "prepared", capture: DEFAULT_CAPTURE });
   });
 
   it("a rejected constraint is a warning, not a failure; the source size is encoded", async () => {
@@ -360,10 +367,10 @@ describe("renderer CaptureHost", () => {
     pendingStream!.resolve(s);
     await flush();
     expect(port.sent[0]).toMatchObject({
-      type: "started",
+      type: "prepared",
       capture: { width: 2560, height: 1440, videoBitsPerSecond: 14_400_000 },
     });
-    const report = port.sent[0]!.type === "started" ? port.sent[0]!.capture : undefined;
+    const report = port.sent[0]!.type === "prepared" ? port.sent[0]!.capture : undefined;
     expect(report?.warnings[0]).toMatch(/1080p.*OverconstrainedError/);
   });
 
@@ -378,7 +385,7 @@ describe("renderer CaptureHost", () => {
     // Already within 1080p: no constraint, so no 1080x1080 → 1080x606 squeeze.
     expect(s.tracks[0]!.applied).toEqual([]);
     expect(port.sent[0]).toMatchObject({
-      type: "started",
+      type: "prepared",
       capture: {
         width: 1920,
         height: 1080,
@@ -405,7 +412,7 @@ describe("renderer CaptureHost", () => {
     await flush();
     expect(expects).toEqual([undefined, { width: 1920, height: 1080 }]);
     expect(port.sent[0]).toMatchObject({
-      type: "started",
+      type: "prepared",
       capture: {
         width: 1280,
         height: 720,
@@ -424,7 +431,7 @@ describe("renderer CaptureHost", () => {
     pendingStream!.resolve(s);
     await flush();
     expect(port.sent[0]).toMatchObject({
-      type: "started",
+      type: "prepared",
       capture: { width: 1920, height: 1080, videoBitsPerSecond: 8_100_000, warnings: ["could not remeasure constrained frames; reporting target 1920x1080"] },
     });
   });
@@ -438,7 +445,7 @@ describe("renderer CaptureHost", () => {
     await flush();
     expect(s.tracks[0]!.applied).toHaveLength(1);
     expect(port.sent[0]).toMatchObject({
-      type: "started",
+      type: "prepared",
       capture: {
         width: 1920,
         height: 1080,
@@ -456,8 +463,8 @@ describe("renderer CaptureHost", () => {
     pendingStream!.resolve(s);
     await flush();
     const message = port.sent[0]!;
-    expect(message.type).toBe("started");
-    if (message.type !== "started") return;
+    expect(message.type).toBe("prepared");
+    if (message.type !== "prepared") return;
     expect(message.capture).toEqual({
       videoBitsPerSecond: 4_400_000,
       audioBitsPerSecond: 256_000,
@@ -494,7 +501,7 @@ describe("renderer CaptureHost", () => {
     expect(getDisplayMedia).toHaveBeenCalledWith(expect.objectContaining({ video: { frameRate: { ideal: 62.5, max: 62.5 } } }));
     expect(s.tracks[0]!.applied[0]).toMatchObject({ frameRate: { ideal: 62.5, max: 62.5 } });
     // The request is above the setting; the encoder target and the report are not.
-    expect(port.sent[0]).toMatchObject({ type: "started", capture: { width: 1920, height: 1080, frameRate: 62.5, videoBitsPerSecond: 16_200_000 } });
+    expect(port.sent[0]).toMatchObject({ type: "prepared", capture: { width: 1920, height: 1080, frameRate: 62.5, videoBitsPerSecond: 16_200_000 } });
   });
 
   it("an audio track that ends while the constraint is applied fails the start instead of recording silence (review F3)", async () => {
@@ -517,7 +524,7 @@ describe("renderer CaptureHost", () => {
     port.receive(start("s2"));
     pendingStream!.resolve(stream());
     await flush();
-    expect(port.sent[0]).toMatchObject({ type: "started", sessionId: "s2" });
+    expect(port.sent[0]).toMatchObject({ type: "prepared", sessionId: "s2" });
   });
 
   it("ignores stop for an unknown session", () => {
@@ -527,9 +534,79 @@ describe("renderer CaptureHost", () => {
   });
 });
 
+describe("prepared sessions (plan 040)", () => {
+  async function preparedPort(): Promise<{ port: FakePort; s: FakeStream }> {
+    const port = boot();
+    port.receive(start("s1"));
+    const s = stream();
+    pendingStream!.resolve(s);
+    await flush();
+    expect(port.types()).toEqual(["prepared"]);
+    port.sent = [];
+    return { port, s };
+  }
+
+  it("stop while prepared releases the tracks and replies stopped without encoding", async () => {
+    const { port, s } = await preparedPort();
+    port.receive({ type: "stop", sessionId: "s1" });
+    expect(port.sent).toEqual([{ type: "stopped", sessionId: "s1", tracksStoppedAt: expect.any(Number) }]);
+    expect(s.tracks.every((t) => t.stopped)).toBe(true);
+    expect(FakeMediaRecorder.instances[0]!.state).toBe("inactive");
+    // Released: a late record is refused and the next session can prepare.
+    record(port);
+    expect(port.sent.at(-1)).toMatchObject({ type: "error", sessionId: "s1", code: "capture_start_failed", detail: expect.stringContaining("not prepared") });
+    port.receive(start("s2"));
+    pendingStream!.resolve(stream());
+    await flush();
+    expect(port.sent.at(-1)).toMatchObject({ type: "prepared", sessionId: "s2" });
+  });
+
+  it.each(["video", "audio"] as const)("a %s track ending while prepared replies a start error and releases the stream", async (kind) => {
+    const { port, s } = await preparedPort();
+    s.tracks.find((t) => t.kind === kind)!.end();
+    expect(port.sent).toEqual([{ type: "error", sessionId: "s1", code: "capture_start_failed",
+      detail: expect.stringContaining("before recording started"), ...(kind === "video" ? { displayFailure: "track_ended" } : {}) }]);
+    expect(s.tracks.every((t) => t.stopped)).toBe(true);
+    record(port);
+    expect(port.sent.at(-1)).toMatchObject({ type: "error", code: "capture_start_failed", detail: expect.stringContaining("not prepared") });
+    expect(FakeMediaRecorder.instances[0]!.state).toBe("inactive");
+  });
+
+  it("refuses record for any other session and keeps the prepared one", async () => {
+    const { port, s } = await preparedPort();
+    record(port, "other");
+    expect(port.sent).toEqual([{ type: "error", sessionId: "other", code: "capture_start_failed", detail: "record refused: this session is not prepared" }]);
+    expect(s.tracks.some((t) => t.stopped)).toBe(false);
+    record(port);
+    expect(port.sent.at(-1)).toEqual({ type: "started", sessionId: "s1" });
+  });
+
+  it("refuses record when nothing was prepared", () => {
+    const port = boot();
+    record(port);
+    expect(port.sent).toEqual([{ type: "error", sessionId: "s1", code: "capture_start_failed", detail: "record refused: this session is not prepared" }]);
+  });
+
+  it("ignores a duplicate record for the session already encoding", async () => {
+    const { port } = await preparedPort();
+    record(port);
+    record(port);
+    expect(port.types()).toEqual(["started"]);
+    expect(FakeMediaRecorder.instances).toHaveLength(1);
+  });
+
+  it("refuses a second start while one session is prepared", async () => {
+    const { port, s } = await preparedPort();
+    port.receive(start("s2"));
+    expect(port.sent).toEqual([expect.objectContaining({ type: "error", sessionId: "s2", code: "capture_start_failed" })]);
+    expect(getDisplayMedia).toHaveBeenCalledTimes(1);
+    expect(s.tracks.some((t) => t.stopped)).toBe(false);
+  });
+});
+
 describe("terminal event ordering", () => {
   it("drains error → final data → stop and keeps the encoder cause through duplicate events", async () => {
-    const port = boot(); port.receive(start("s1")); pendingStream!.resolve(stream()); await flush();
+    const port = boot(); port.receive(start("s1")); pendingStream!.resolve(stream()); await flush(); record(port);
     const recorder = FakeMediaRecorder.instances[0]!;
     recorder.emitChunk([1]); await flush();
     recorder.state = "inactive";
@@ -538,15 +615,15 @@ describe("terminal event ordering", () => {
     recorder.ondataavailable?.({ data: { size: 2, arrayBuffer: () => new Promise<ArrayBuffer>(resolve => { release = resolve; }) } as Blob });
     recorder.onstop?.(); recorder.onstop?.();
     port.receive({ type: "stop", sessionId: "s1" });
-    await flush(); expect(port.types()).toEqual(["started", "chunk"]);
+    await flush(); expect(port.types()).toEqual(["prepared", "started", "chunk"]);
     release(new Uint8Array([2, 3]).buffer); await flush();
     recorder.onerror?.({ error: new Error("duplicate") });
-    expect(port.types()).toEqual(["started", "chunk", "chunk", "error"]);
+    expect(port.types()).toEqual(["prepared", "started", "chunk", "chunk", "error"]);
     expect(port.sent.at(-1)).toMatchObject({ detail: "Error: encoder failed" });
   });
 
   it.each([true, false])("freezes track versus user stop order (track first=%s) while Blob is delayed", async (trackFirst) => {
-    const port = boot(); port.receive(start("s1")); const media = stream(); pendingStream!.resolve(media); await flush();
+    const port = boot(); port.receive(start("s1")); const media = stream(); pendingStream!.resolve(media); await flush(); record(port);
     let release!: (bytes: ArrayBuffer) => void;
     FakeMediaRecorder.instances[0]!.ondataavailable?.({ data: { size: 1, arrayBuffer: () => new Promise<ArrayBuffer>(resolve => { release = resolve; }) } as Blob });
     await flush();
@@ -559,16 +636,16 @@ describe("terminal event ordering", () => {
   });
 
   it("reports a rejected handoff exactly once after stopping", async () => {
-    const port = boot(); port.receive(start("s1")); pendingStream!.resolve(stream()); await flush();
+    const port = boot(); port.receive(start("s1")); pendingStream!.resolve(stream()); await flush(); record(port);
     FakeMediaRecorder.instances[0]!.ondataavailable?.({ data: { size: 1, arrayBuffer: async () => { throw new Error("read failed"); } } as unknown as Blob });
     await flush(); await flush();
-    expect(port.types()).toEqual(["started", "error"]);
+    expect(port.types()).toEqual(["prepared", "started", "error"]);
     expect(port.sent.at(-1)).toMatchObject({ detail: expect.stringContaining("read failed") });
   });
 
   it.each(["missing-stop", "hung-blob"])("bounds %s and never hands off bytes after its terminal error", async (mode) => {
     const port = boot({ measureFrameSize: measureFromSettings, terminalTimeoutMs: 20 });
-    port.receive(start("s1")); const media = stream(); pendingStream!.resolve(media); await flush();
+    port.receive(start("s1")); const media = stream(); pendingStream!.resolve(media); await flush(); record(port);
     const recorder = FakeMediaRecorder.instances[0]!;
     let release: ((bytes: ArrayBuffer) => void) | undefined;
     recorder.state = "inactive";
@@ -578,7 +655,7 @@ describe("terminal event ordering", () => {
     } else recorder.onerror?.({ error: new Error("encoder failed") });
     await new Promise(resolve => setTimeout(resolve, 40));
     release?.(new ArrayBuffer(1)); recorder.onstop?.(); await flush();
-    expect(port.types()).toEqual(["started", "error"]);
+    expect(port.types()).toEqual(["prepared", "started", "error"]);
     expect(media.tracks.every(track => track.stopped)).toBe(true);
   });
 });

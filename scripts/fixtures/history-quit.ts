@@ -54,6 +54,7 @@ async function main(): Promise<void> {
     publishFailure: result => results.receive(result, { stat: file => fs.stat(file), refresh() {}, notify() {} }),
     host: {
       start: async () => { started++; },
+      record: sessionId => deliver({ type: "started", sessionId }),
       stop: sessionId => { if (sessionId === "B") deliver({ type: "stopped", sessionId }); },
       onMessage: fn => { deliver = fn; },
       onFailure: fn => { crash = () => fn("capture_host_crashed", "controlled fault"); },
@@ -69,7 +70,7 @@ async function main(): Promise<void> {
     if (event.type === "failed") { partialPath = event.partialPath; note(`media: A failed ${event.code}`); }
   });
   const begin = (id: string, bytes: number[]): void => {
-    deliver({ type: "started", sessionId: id, mimeType: "video/mp4", capture: { videoBitsPerSecond: 1, audioBitsPerSecond: 1, warnings: [] } });
+    deliver({ type: "prepared", sessionId: id, mimeType: "video/mp4", capture: { videoBitsPerSecond: 1, audioBitsPerSecond: 1, warnings: [] } });
     deliver({ type: "chunk", sessionId: id, seq: 0, bytes: new Uint8Array(bytes).buffer });
   };
 

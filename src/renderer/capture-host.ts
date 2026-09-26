@@ -3,6 +3,10 @@
  * the source and adds `audio: 'loopback'`) → `MediaRecorder` producing
  * fragmented MP4 (H.264 + AAC) → one chunk per second over the MessagePort.
  * It never touches the file system; main writes every byte.
+ *
+ * `start` only prepares (plan 040): the stream is checked and the encoder
+ * built but left inactive, and `prepared` reports it. Encoding begins at
+ * `record`, so main can count down between the two without capturing.
  */
 import { CHUNK_INTERVAL_MS, OUTPUT_MIME_TYPE, isMainMessage, type HostMessage } from "../shared/protocol";
 import {
@@ -31,6 +35,14 @@ interface Session {
   draining: boolean;
   handoffFailed: boolean;
   finished: boolean;
+}
+
+/** Capture that is checked and ready but not encoding: a live stream and an inactive recorder. */
+interface Prepared {
+  id: string;
+  stream: MediaStream;
+  recorder: MediaRecorder;
+  capture: CaptureReport;
 }
 
 /** The subset of `MessagePort` the host uses; lets tests pass a fake. */
@@ -105,6 +117,7 @@ export async function measureFrameSize(stream: MediaStream, options: MeasureOpti
 
 export class CaptureHost {
   private session: Session | undefined;
+  private prepared: Prepared | undefined;
   /** Session ids whose `start` is still inside `getDisplayMedia` and still wanted. */
   private readonly pending = new Set<string>();
   /**
@@ -136,14 +149,22 @@ export class CaptureHost {
       case "start":
         void this.start(data.sessionId, data.quality);
         return;
+      case "record":
+        this.record(data.sessionId);
+        return;
       case "stop":
         this.stop(data.sessionId);
         return;
     }
   }
 
+  /** A session exists at some stage: pending, prepared or recording. */
+  private busy(): boolean {
+    return !!this.session || !!this.prepared;
+  }
+
   private async start(sessionId: string, quality: QualitySettings): Promise<void> {
-    if (this.session || this.pending.size > 0) {
+    if (this.busy() || this.pending.size > 0) {
       this.fail(sessionId, "capture_start_failed", "a recording is already in progress");
       return;
     }
@@ -182,7 +203,7 @@ export class CaptureHost {
     }
     // The session stays in `pending` until the recorder exists: a `stop`
     // that lands during the checks or while the size constraint is applied
-    // must still cancel it (`stop` only knows pending and active sessions).
+    // must still cancel it (`stop` only knows pending, prepared and active sessions).
     const cancelled = (): boolean => {
       if (!this.cancelled.delete(sessionId)) return false;
       // Main gave up (start timeout) while we were waiting for the OS; never
@@ -198,7 +219,7 @@ export class CaptureHost {
       this.fail(sessionId, code, detail);
     };
     if (cancelled()) return;
-    if (this.session) {
+    if (this.busy()) {
       refuse("capture_start_failed", "a recording is already in progress");
       return;
     }
@@ -226,7 +247,7 @@ export class CaptureHost {
       return;
     }
     this.pending.delete(sessionId);
-    if (this.session) {
+    if (this.busy()) {
       stopTracks(stream);
       this.fail(sessionId, "capture_start_failed", "a recording is already in progress");
       return;
@@ -250,6 +271,37 @@ export class CaptureHost {
       return;
     }
 
+    const prepared: Prepared = { id: sessionId, stream, recorder, capture };
+    this.prepared = prepared;
+    // Nobody encodes yet, so a track that dies while main counts down would
+    // otherwise surface only as a frozen or silent file after `record`.
+    for (const track of stream.getTracks()) {
+      track.addEventListener("ended", () => {
+        if (this.prepared !== prepared) return;
+        const videoEnded = stream.getVideoTracks().some((t) => t.readyState === "ended");
+        this.release(prepared);
+        this.fail(sessionId, "capture_start_failed", "capture source ended before recording started (display or audio track stopped)",
+          videoEnded ? "track_ended" : undefined);
+      });
+    }
+    this.send({ type: "prepared", sessionId, mimeType: recorder.mimeType || OUTPUT_MIME_TYPE, capture });
+  }
+
+  /** Main's countdown ended: encode the prepared session, and only that one. */
+  private record(sessionId: string): void {
+    const prepared = this.prepared;
+    if (this.session?.id === sessionId) return;
+    if (!prepared || prepared.id !== sessionId) {
+      this.fail(sessionId, "capture_start_failed", "record refused: this session is not prepared");
+      return;
+    }
+    const { stream, recorder } = prepared;
+    this.prepared = undefined;
+    if (stream.getTracks().some((track) => track.readyState === "ended")) {
+      stopTracks(stream);
+      this.fail(sessionId, "capture_start_failed", "capture track ended before recording started");
+      return;
+    }
     const session: Session = {
       id: sessionId,
       stream,
@@ -292,7 +344,7 @@ export class CaptureHost {
       this.fail(sessionId, "capture_start_failed", describe(cause));
       return;
     }
-    this.send({ type: "started", sessionId, mimeType: recorder.mimeType || OUTPUT_MIME_TYPE, capture });
+    this.send({ type: "started", sessionId });
   }
 
   private stop(sessionId: string): void {
@@ -300,10 +352,22 @@ export class CaptureHost {
       this.cancelled.add(sessionId);
       return;
     }
+    const prepared = this.prepared;
+    if (prepared && prepared.id === sessionId) {
+      // Nothing was encoded: releasing the stream is the whole stop.
+      this.release(prepared);
+      this.send({ type: "stopped", sessionId, tracksStoppedAt: Date.now() });
+      return;
+    }
     const session = this.session;
     if (!session || session.id !== sessionId) return;
     if (!session.cause) session.cause = "normal";
     this.requestStop(session);
+  }
+
+  private release(prepared: Prepared): void {
+    if (this.prepared === prepared) this.prepared = undefined;
+    stopTracks(prepared.stream);
   }
 
   private sourceEnded(session: Session): void {

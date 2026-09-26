@@ -50,7 +50,8 @@ vi.mock("electron", () => {
     }
   }
 
-  const image = { setTemplateImage: vi.fn() };
+  const images = new Map<string, { file: string; setTemplateImage: ReturnType<typeof vi.fn> }>();
+  const image = (file: string) => images.get(file) ?? images.set(file, { file, setTemplateImage: vi.fn() }).get(file)!;
   // `app` only needs the activation events the reveal listens to.
   const app = new EventEmitter();
   return {
@@ -66,7 +67,7 @@ vi.mock("electron", () => {
       destroy = vi.fn();
       on = vi.fn();
     },
-    nativeImage: { createFromPath: vi.fn(() => image) },
+    nativeImage: { createFromPath: vi.fn((file: string) => image(file)) },
     shell: { showItemInFolder: vi.fn() },
   };
 });
@@ -74,7 +75,7 @@ vi.mock("electron", () => {
 import { app, Notification, shell } from "electron";
 import type { Language } from "../shared/i18n";
 import { DEFAULT_QUALITY } from "../shared/quality";
-import { ACTIVATION_WINDOW_MS, AppTray } from "./tray";
+import { ACTIVATION_WINDOW_MS, AppTray, TRAY_ICON_FILES } from "./tray";
 
 const Fake = Notification as unknown as FakeNotificationCtor;
 
@@ -92,6 +93,7 @@ function setup(supported = true, canNotify?: () => boolean): { tray: AppTray; lo
       outputDir: "/Users/eric/Movies/RecordStuff",
       homeDir: "/Users/eric",
       quality: DEFAULT_QUALITY,
+      countdown: 3,
       language: "en",
       hotkey: { ...DEFAULT_HOTKEY, registered: true },
       updates: { state: { kind: "idle" }, enabled: true },
@@ -105,6 +107,32 @@ function setup(supported = true, canNotify?: () => boolean): { tray: AppTray; lo
   });
   return { tray, logs, onAction };
 }
+
+describe("AppTray icons (plan 040)", () => {
+  it("loads one template per state and switches icon and title with the state", async () => {
+    const { nativeImage } = await import("electron");
+    const created = vi.mocked(nativeImage.createFromPath);
+    created.mockClear();
+    const { tray } = setup();
+    expect(created.mock.calls.map(([file]) => file)).toEqual(Object.values(TRAY_ICON_FILES).map((files) => `/resources/${process.platform === "win32" ? files.win32 : files.template}`));
+    const native = (tray as unknown as { tray: { setImage: ReturnType<typeof vi.fn>; setTitle: ReturnType<typeof vi.fn> } }).tray;
+    const icons = (tray as unknown as { icons: Record<string, unknown> }).icons;
+    for (const [state, icon, title] of [
+      [{ type: "starting" }, "busy", ""], [{ type: "countdown", remaining: 3 }, "countdown", ""],
+      [{ type: "recording", startedAt: "x" }, "recording", "REC"], [{ type: "stopping" }, "busy", ""], [{ type: "idle" }, "idle", ""],
+    ] as const) {
+      native.setImage.mockClear();
+      tray.render(state);
+      expect(native.setImage, state.type).toHaveBeenCalledWith(icons[icon]);
+      if (process.platform === "darwin") expect(native.setTitle).toHaveBeenLastCalledWith(title);
+    }
+    // Another countdown tick keeps the icon; only the tooltip changes.
+    tray.render({ type: "countdown", remaining: 3 });
+    native.setImage.mockClear();
+    tray.render({ type: "countdown", remaining: 2 });
+    expect(native.setImage).not.toHaveBeenCalled();
+  });
+});
 
 describe("AppTray notifications (docs/system-design/desktop.md)", () => {
   it("keeps multiple pending notifications owned until shutdown, even after show", () => {
@@ -303,7 +331,7 @@ describe("notification language follows current settings", () => {
     const action = vi.fn();
     const tray = new AppTray({
       resourcesDir: "/resources",
-      context: () => ({ platform: process.platform, outputDir: "/tmp/recordings", homeDir: "/tmp", quality: DEFAULT_QUALITY, language, hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: "idle" }, enabled: true }, notifications: true, displays: [], display: { kind: "primary" } }),
+      context: () => ({ platform: process.platform, outputDir: "/tmp/recordings", homeDir: "/tmp", quality: DEFAULT_QUALITY, countdown: 3, language, hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: "idle" }, enabled: true }, notifications: true, displays: [], display: { kind: "primary" } }),
       onToggle: vi.fn(), onAction: action,
     });
     tray.notifySaved("/tmp/demo.mp4");

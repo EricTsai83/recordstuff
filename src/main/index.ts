@@ -28,6 +28,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { CaptureHost } from "./capture-host";
+import { CountdownOverlay } from "./countdown-overlay";
 import { FileWriter, ensureWritableDir } from "./file-writer";
 import { createOutputFolderOpener } from "./output-folder";
 import { createFileLogger } from "./log";
@@ -46,6 +47,7 @@ import { effectiveQuality, frameRateDowngrade, type QualitySettings } from "../s
 import { AppShortcuts } from "./shortcuts";
 import { physicalHotkeyFeatures } from "./hotkey";
 import type { RecordingState } from "../shared/state";
+import type { CountdownSeconds } from "../shared/countdown";
 
 import { DEFAULT_LANGUAGE, translate, type Language } from "../shared/i18n";
 
@@ -145,6 +147,8 @@ async function main(): Promise<void> {
   const qualityOverride = autoRecord?.ok ? autoRecord.config.quality : undefined;
   /** A stored 60 fps on a platform where it is not yet verified records at 30. */
   const quality = (): QualitySettings => effectiveQuality(qualityOverride ?? settings.quality, process.platform);
+  /** Autorecord counts down only when its configuration names a countdown. */
+  const countdownSeconds = (): CountdownSeconds => autoRecord?.ok ? autoRecord.config.countdown : settings.countdown;
 
   const displays = (): DisplayInfo[] => {
     const primary = screen.getPrimaryDisplay().id;
@@ -163,6 +167,7 @@ async function main(): Promise<void> {
   });
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     displayMedia.answer(
+      // Only preparation asks for a display; a counting-down session already holds its stream.
       (sessionId) => recorder.state.type === "starting" && host.ownsDisplayRequest(request.frame, sessionId),
       (source) => {
         if (source) callback({ video: source, audio: "loopback" });
@@ -178,12 +183,32 @@ async function main(): Promise<void> {
     log,
   });
 
+  const overlay = new CountdownOverlay({
+    preloadPath: path.join(__dirname, "../preload/countdown.js"),
+    devUrl: !app.isPackaged && process.env["ELECTRON_RENDERER_URL"]
+      ? new URL("countdown.html", process.env["ELECTRON_RENDERER_URL"]).href : undefined,
+    htmlPath: path.join(__dirname, "../renderer/countdown.html"),
+    display: () => {
+      const id = displayMedia.activeDisplay;
+      const display = id ? screen.getAllDisplays().find((d) => String(d.id) === id) : undefined;
+      return display ? { id: String(display.id), bounds: display.bounds, workArea: display.workArea } : undefined;
+    },
+    primaryDisplay: () => {
+      const display = screen.getPrimaryDisplay();
+      return { id: String(display.id), bounds: display.bounds, workArea: display.workArea };
+    },
+    platform: process.platform,
+    log,
+  });
+
   // One file per in-flight session; any left at launch belongs to a process that ended while recording.
   const sentinels = new SessionSentinels(path.join(app.getPath("userData"), "recording-sessions"), log);
   const recorder = new Recorder({
     host,
     outputDir: () => settings.outputDir,
     quality,
+    countdownSeconds,
+    countdown: overlay,
     ensureWritableDir,
     openWriter: (recordingPath, finalPath) => FileWriter.open(recordingPath, finalPath),
     freeSpace: async (dir) => { const volume = await fs.statfs(dir); return volume.bavail * volume.bsize; },
@@ -234,6 +259,7 @@ async function main(): Promise<void> {
     outputDir: settings.outputDir,
     homeDir: os.homedir(),
     quality: quality(),
+    countdown: countdownSeconds(),
     language: settings.language,
     appearance: settings.appearance,
     updates: { state: updates.state, enabled: settings.updates.enabled },
@@ -341,6 +367,13 @@ async function main(): Promise<void> {
         }
       } else if ("setHotkey" in action) {
         await shortcuts.set(action.setHotkey);
+      } else if ("setCountdown" in action) {
+        if (!settled()) return;
+        try {
+          await settings.setCountdown(action.setCountdown);
+          log(`settings: countdown ${settings.countdown} s`);
+        } catch (cause) { log(`settings: countdown save failed: ${String(cause)}`); }
+        refreshUi();
       } else {
         await setQuality(action.setQuality);
       }
@@ -367,6 +400,9 @@ async function main(): Promise<void> {
         return;
       case "stop":
         recorder.stop();
+        return;
+      case "cancelCountdown":
+        recorder.cancelCountdown("menu");
         return;
       case "quit":
         app.quit();
@@ -427,7 +463,8 @@ async function main(): Promise<void> {
   }
 
   async function changeOutputDir(): Promise<void> {
-    if (recorder.state.type === "recording" || recorder.state.type === "stopping") return;
+    // Starting and counting-down sessions already opened their file in the current folder.
+    if (!settled()) return;
     // A window-less app's dialog may open behind the frontmost app on macOS.
     if (process.platform === "darwin") app.focus({ steal: true });
     const result = await dialog.showOpenDialog({
@@ -480,9 +517,11 @@ async function main(): Promise<void> {
         if (preferencesUnlocked(event.state)) {
           displayMedia.settle();
           host.destroy();
+          // The recorder closes the overlay on every path; this is the safety net.
+          overlay.destroy();
         }
         savedNotification.stateChanged(event.state);
-        log(`state → ${event.state.type}`);
+        log(`state → ${event.state.type}${event.state.type === "countdown" ? ` (${event.state.remaining})` : ""}`);
         renderUi(event.state);
         updates.flush();
         // A shortcut change saved during a session applies now that it is over.
@@ -518,6 +557,9 @@ async function main(): Promise<void> {
       }
       case "failureStatus":
         // The Recorder's awaited publication callback owns verification/persistence.
+        return;
+      case "cancelled":
+        // Logged by logSessionEvent; a cancel shows no failure, notification or diagnostic.
         return;
       case "failed":
         // The OS says granted, yet capture is refused: TCC needs a relaunch.
@@ -612,6 +654,7 @@ async function main(): Promise<void> {
     shortcuts.dispose();
     permission?.stop();
     host.destroy();
+    overlay.destroy();
     settingsWindow.destroy();
     tray.destroy();
   });

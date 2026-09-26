@@ -7,7 +7,7 @@ export function isLanguage(value: unknown): value is Language {
 }
 
 export const ZH_TW = {
-  "Recording is still starting, saving or cleaning up. RecordStuff will stay open. Any pending capture will stop when it starts. Please try quitting again after it finishes.": "錄影仍在啟動、存檔或清理中，RecordStuff 將保持開啟。尚在啟動的擷取會在開始後立即停止。完成後請再次嘗試退出。",
+  "Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. Please try quitting again after it finishes.": "錄影仍在啟動、存檔或清理中，RecordStuff 將保持開啟。尚未開始的錄影會被取消。完成後請再次嘗試退出。",
   "Could not complete this action. Please try again.": "無法完成此操作，請重試。",
   "This reminder is not saved yet. RecordStuff keeps it and retries automatically. If this continues, check free disk space and access to the app's data folder. A force-quit loses unsaved reminders.": "這項提醒尚未儲存。RecordStuff 會保留它並自動重試；若持續失敗，請檢查可用磁碟空間與 App 資料夾的存取權限。強制結束會遺失尚未儲存的提醒。",
   "The saved failure history could not be read or comes from a newer version, so RecordStuff will not overwrite it. This reminder is kept only until RecordStuff quits.": "已儲存的失敗紀錄無法讀取，或由較新版本建立，因此 RecordStuff 不會覆寫它。這項提醒只會保留到 RecordStuff 結束為止。",
@@ -148,6 +148,10 @@ export const ZH_TW = {
   Recording: "錄製中",
   Stop: "停止",
   "Saving…": "儲存中…",
+  "Recording starts in {seconds} s": "{seconds} 秒後開始錄製",
+  "Recording starts in {seconds} s. Click to cancel.": "{seconds} 秒後開始錄製，按一下即可取消。",
+  "Cancel countdown": "取消倒數",
+  "Cancel the countdown with {value}": "以 {value} 取消倒數",
   "Saved {file}": "已儲存 {file}",
   "Saved {file}. Recording stopped early because the disk is almost full.": "已儲存 {file}。磁碟空間即將用盡，已提前停止錄製",
   "Screen recording access was granted, but RecordStuff needs to relaunch. Click to relaunch.":
@@ -191,6 +195,10 @@ export const ZH_TW = {
   "Unavailable: another app is using this shortcut.": "無法使用：這個快捷鍵被其他 App 佔用。",
   "Start / stop recording with {value}": "以 {value} 開始／停止錄製",
   Off: "關閉",
+  Countdown: "倒數",
+  "{value} s": "{value} 秒",
+  "Before recording starts, the digits appear at the top-right of the recorded screen. Click the menu bar icon or press the shortcut to cancel.":
+    "開始錄製前，數字會顯示在被錄製螢幕的右上角。按一下選單列圖示或按快捷鍵即可取消。",
   "Could not register the shortcut {value}. Another app may be using it. Choose another shortcut in Settings.":
     "無法註冊快捷鍵 {value}，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵",
   "Could not save the shortcut. Your previous shortcut is still in use.":

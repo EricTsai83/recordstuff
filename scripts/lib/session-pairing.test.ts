@@ -19,6 +19,7 @@ class Host implements RecorderHost {
   private message: ((m: HostMessage) => void) | undefined;
   private failure: ((code: "capture_host_crashed" | "capture_host_unresponsive", detail: string) => void) | undefined;
   async start(): Promise<void> {}
+  record(sessionId: string): void { this.emit({ type: "started", sessionId }); }
   stop(): void {}
   onMessage(listener: (m: HostMessage) => void): void { this.message = listener; }
   onFailure(listener: (code: "capture_host_crashed" | "capture_host_unresponsive", detail: string) => void): void { this.failure = listener; }
@@ -84,7 +85,7 @@ function app(options: { maxBytes: number; keep: number; slow: number[] }) {
     await vi.waitFor(() => expect(recorder.state.type).toBe("starting"));
     await vi.waitFor(() => expect(recorder.sessionId).toBe(id));
     await new Promise((resolve) => setTimeout(resolve, 5));
-    host.emit({ type: "started", sessionId: id, mimeType: "video/mp4", capture: REPORT(height) });
+    host.emit({ type: "prepared", sessionId: id, mimeType: "video/mp4", capture: REPORT(height) });
     host.emit({ type: "chunk", sessionId: id, seq: 0, bytes: new Uint8Array([1, 2, 3]).buffer });
     await vi.waitFor(() => expect(recorder.state.type).toBe("recording"));
   };

@@ -12,12 +12,14 @@ import { DEFAULT_DISPLAY_PREFERENCE, isDisplayPreference, type DisplayPreference
  * version 3 on the next successful save. Older files without a language
  * field default to English.
  *
- * `updates` and `notifications` are read leniently rather than versioned: a
- * file written before either existed keeps working and takes the default.
+ * `updates`, `notifications` and `countdown` are read leniently rather than
+ * versioned: a file written before any of them existed keeps working and
+ * takes the default, so existing users also get the 3-second countdown.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { DEFAULT_QUALITY, isQualitySettings, type QualitySettings } from "../shared/quality";
+import { DEFAULT_COUNTDOWN, isCountdownSeconds, type CountdownSeconds } from "../shared/countdown";
 import { DEFAULT_LANGUAGE, isLanguage, type Language } from "../shared/i18n";
 import { DEFAULT_HOTKEY, canonicalizeAccelerator, isHotkeySettings, type HotkeySettings } from "../shared/hotkey";
 import { writeFileAtomic } from "./atomic-file";
@@ -35,6 +37,8 @@ export interface Settings {
   /** Whether the app sends any notification at all; the OS permission is separate. */
   notifications: boolean;
   display: DisplayPreference;
+  /** Seconds before capture begins; 0 is Off (plan 040). */
+  countdown: CountdownSeconds;
 }
 
 export interface SettingsStoreOptions {
@@ -105,7 +109,9 @@ export function parseSettings(text: string): ParsedSettings | undefined {
   const notifications = typeof record["notifications"] === "boolean" ? record["notifications"] : true;
   const display = isDisplayPreference(record["display"]) ? record["display"] : DEFAULT_DISPLAY_PREFERENCE;
   if (record["display"] !== undefined && !isDisplayPreference(record["display"])) warnings.push("display is invalid: using primary display");
-  return { settings: { appearance, display, version: SETTINGS_VERSION, outputDir, quality, language, hotkey, updates, notifications }, warnings };
+  const countdown = isCountdownSeconds(record["countdown"]) ? record["countdown"] : DEFAULT_COUNTDOWN;
+  if (record["countdown"] !== undefined && !isCountdownSeconds(record["countdown"])) warnings.push(`countdown is unsupported: using ${DEFAULT_COUNTDOWN} seconds`);
+  return { settings: { appearance, display, version: SETTINGS_VERSION, outputDir, quality, language, hotkey, updates, notifications, countdown }, warnings };
 }
 
 export class SettingsStore {
@@ -138,6 +144,13 @@ export class SettingsStore {
 
   get quality(): QualitySettings {
     return this.settings.quality;
+  }
+
+  get countdown(): CountdownSeconds { return this.settings.countdown; }
+
+  setCountdown(countdown: CountdownSeconds): Promise<void> {
+    if (!isCountdownSeconds(countdown)) return Promise.reject(new Error(`unsupported countdown: ${JSON.stringify(countdown)}`));
+    return this.save((current) => ({ ...current, countdown }));
   }
 
   get appearance(): Appearance { return this.settings.appearance; }
@@ -219,6 +232,7 @@ export class SettingsStore {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: DEFAULT_DISPLAY_PREFERENCE,
+      countdown: DEFAULT_COUNTDOWN,
     };
     let text: string;
     try {

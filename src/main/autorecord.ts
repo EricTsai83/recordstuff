@@ -1,9 +1,11 @@
 /**
  * Development-only unattended recording (docs/system-design/tooling.md).
- * `RECORDSTUFF_AUTORECORD='{"seconds":30,"quality":{...}}'` makes the app
+ * `RECORDSTUFF_AUTORECORD='{"seconds":30,"quality":{...},"countdown":0}'` makes the app
  * start recording once it is ready, stop after `seconds`, and quit after the
- * file is saved. The quality override is applied in memory only; settings.json
- * is never written. A packaged build ignores the variable entirely.
+ * file is saved. The quality and countdown overrides are applied in memory
+ * only; settings.json is never written. The countdown is 0 unless named, so
+ * matrix and audio runs keep their timing. A packaged build ignores the
+ * variable entirely.
  */
 import {
   DEFAULT_QUALITY,
@@ -13,6 +15,7 @@ import {
   isQualitySettings,
   type QualitySettings,
 } from "../shared/quality";
+import { isCountdownSeconds, type CountdownSeconds } from "../shared/countdown";
 import type { RecordingState } from "../shared/state";
 import type { RecorderEvent } from "./recorder";
 
@@ -20,6 +23,8 @@ export interface AutoRecordConfig {
   seconds: number;
   /** Full settings: the given keys merged over DEFAULT_QUALITY (not over settings.json), so a matrix is reproducible. */
   quality: QualitySettings;
+  /** 0 unless the configuration names one; never the stored preference. */
+  countdown: CountdownSeconds;
 }
 
 export type AutoRecordParse = { ok: true; config: AutoRecordConfig } | { ok: false; error: string };
@@ -63,7 +68,9 @@ export function parseAutoRecord(value: string | undefined, isPackaged: boolean):
     }
   }
   if (!isQualitySettings(merged)) return { ok: false, error: "quality is incomplete" };
-  return { ok: true, config: { seconds, quality: merged } };
+  const countdown = record["countdown"] ?? 0;
+  if (!isCountdownSeconds(countdown)) return { ok: false, error: `countdown: unsupported value ${JSON.stringify(countdown)}` };
+  return { ok: true, config: { seconds, quality: merged, countdown } };
 }
 
 export interface AutoRecordDeps {
@@ -81,7 +88,7 @@ export interface AutoRecordDeps {
 /**
  * Drive one recording through the public recorder surface (the same toggle
  * and stop the tray uses): press start after a short delay, press stop after
- * `seconds` once recording, quit after `saved` or `failed`. Every step is
+ * `seconds` once recording, quit after `saved`, `failed` or a cancelled countdown. Every step is
  * logged with an `autorecord:` prefix so the matrix runner can read the outcome.
  */
 export function runAutoRecord(config: AutoRecordConfig, deps: AutoRecordDeps): void {
@@ -96,7 +103,7 @@ export function runAutoRecord(config: AutoRecordConfig, deps: AutoRecordDeps): v
     deps.log(`autorecord: ${message}`);
     deps.quit();
   };
-  deps.log(`autorecord: ${config.seconds} s with quality ${JSON.stringify(config.quality)}`);
+  deps.log(`autorecord: ${config.seconds} s with quality ${JSON.stringify(config.quality)}; countdown ${config.countdown} s`);
   deps.subscribe((event) => {
     if (done) return;
     switch (event.type) {
@@ -114,6 +121,10 @@ export function runAutoRecord(config: AutoRecordConfig, deps: AutoRecordDeps): v
         return;
       case "saved":
         finish(`saved ${event.path}`);
+        return;
+      // A countdown cancelled by hand ends the run too; otherwise its stop timer would catch the next manual recording.
+      case "cancelled":
+        finish(`cancelled (${event.reason}); nothing was recorded`);
         return;
       case "failed":
         finish(`failed: ${event.code} ${event.detail}${event.partialPath ? ` (kept ${event.partialPath})` : ""}`);

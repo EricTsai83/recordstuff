@@ -11,6 +11,7 @@ const context: AppContext = {
   outputDir: "/tmp/recordings",
   homeDir: "/tmp",
   quality: DEFAULT_QUALITY,
+  countdown: 3,
   language: "en",
   hotkey: { ...DEFAULT_HOTKEY, registered: true },
   updates: { state: { kind: "idle" }, enabled: true },
@@ -20,6 +21,7 @@ const context: AppContext = {
 const idle: RecordingState = { type: "idle" };
 const busy: RecordingState[] = [
   { type: "starting" },
+  { type: "countdown", remaining: 2 },
   { type: "recording", startedAt: "2026-09-20T00:00:00Z" },
   { type: "stopping" },
 ];
@@ -33,6 +35,7 @@ describe("settingsView", () => {
     const view = settingsView(idle, context);
     expect(view.groups.map((entry) => entry.id)).toEqual([
       "screen",
+      "countdown",
       "videoQuality",
       "resolutionCap",
       "frameRate",
@@ -48,6 +51,7 @@ describe("settingsView", () => {
       expect(entry.choices.filter((choice) => choice.checked), entry.id).toHaveLength(entry.kind === "actions" ? 0 : 1);
       expect(entry.enabled, entry.id).toBe(true);
     }
+    expect(checked(idle, context, "countdown")).toBe("3");
     expect(checked(idle, context, "videoQuality")).toBe("standard");
     expect(checked(idle, context, "resolutionCap")).toBe("source");
     expect(checked(idle, context, "frameRate")).toBe("30");
@@ -179,7 +183,31 @@ describe("update actions in General", () => {
     expect(settingsAction(idle, ctx, "updates", "open")).toBeUndefined();
   });
   it("places quality controls in Recording", () => {
-    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "videoQuality", "resolutionCap", "frameRate"]);
+    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "countdown", "videoQuality", "resolutionCap", "frameRate"]);
+  });
+});
+
+describe("countdown group (plan 040)", () => {
+  it("offers Off, 3, 5 and 10 seconds as a segmented control after Screen, with the cancel note", () => {
+    const countdown = group(idle, context, "countdown")!;
+    expect(countdown).toMatchObject({ label: "Countdown", control: "segmented", tab: "recording", section: "recording", noteKind: "explanation" });
+    expect(countdown.choices.map((c) => [c.id, c.label, c.checked])).toEqual([["0", "Off", false], ["3", "3 s", true], ["5", "5 s", false], ["10", "10 s", false]]);
+    expect(countdown.note).toContain("top-right of the recorded screen");
+    const zh = group(idle, { ...context, language: "zh-TW" }, "countdown")!;
+    expect([zh.label, ...zh.choices.map((c) => c.label)]).toEqual(["倒數", "關閉", "3 秒", "5 秒", "10 秒"]);
+    expect(zh.note).toContain("右上角");
+    expect(checked(idle, { ...context, countdown: 0 }, "countdown")).toBe("0");
+  });
+
+  it("resolves each choice to setCountdown and is locked while starting, counting down, recording or saving", () => {
+    for (const value of [0, 3, 5, 10] as const) expect(settingsAction(idle, context, "countdown", String(value))).toEqual({ setCountdown: value });
+    expect(settingsAction(idle, context, "countdown", "4")).toBeUndefined();
+    for (const state of [{ type: "starting" }, { type: "countdown", remaining: 2 }, { type: "recording", startedAt: "x" }, { type: "stopping" }] as RecordingState[]) {
+      expect(group(state, context, "countdown")?.enabled, state.type).toBe(false);
+      expect(settingsAction(state, context, "countdown", "5"), state.type).toBeUndefined();
+    }
+    expect(settingsView({ type: "countdown", remaining: 2 }, context).hint).toBe("Recording in progress. Recording settings are locked.");
+    expect(settingsChecked(idle, { ...context, countdown: 10 }, "countdown", "10")).toBe(true);
   });
 });
 
@@ -272,7 +300,7 @@ describe("screen choice", () => {
 it("declares presentation without changing choice identities, and authorizes only fixed links", () => {
   const groups = settingsView(idle, context).groups;
   expect(groups.map(g => [g.id, g.control, g.section])).toEqual([
-    ["screen", "menu", "recording"], ["videoQuality", "segmented", "recording"],
+    ["screen", "menu", "recording"], ["countdown", "segmented", "recording"], ["videoQuality", "segmented", "recording"],
     ["resolutionCap", "menu", "recording"], ["frameRate", "menu", "recording"],
     ["hotkey", "menu", "hotkey"], ["notifications", "switch", "notifications"],
     ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"],

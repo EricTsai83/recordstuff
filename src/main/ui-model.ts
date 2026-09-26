@@ -13,6 +13,7 @@ import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../shared/d
  */
 import type { Language } from "../shared/i18n";
 import type { QualitySettings } from "../shared/quality";
+import type { CountdownSeconds } from "../shared/countdown";
 import type { HotkeySettings } from "../shared/hotkey";
 import type { RecordingState } from "../shared/state";
 
@@ -31,6 +32,7 @@ export type AppAction =
   | "openNotificationSettings"
   | "relaunch"
   | "stop"
+  | "cancelCountdown"
   | "revealLastSaved"
   | "openOutputDir"
   | "changeOutputDir"
@@ -44,6 +46,7 @@ export type AppAction =
   | { setNotifications: boolean }
   | { setDisplay: DisplayPreference }
   | { setQuality: Partial<QualitySettings> }
+  | { setCountdown: CountdownSeconds }
   | { setAppearance: Appearance }
   | { setLanguage: Language }
   | { setHotkey: HotkeySettings };
@@ -64,6 +67,7 @@ export interface AppContext {
   outputDir: string;
   homeDir: string;
   quality: QualitySettings;
+  countdown: CountdownSeconds;
   language: Language;
   appearance?: Appearance;
   hotkey: AppHotkey;
