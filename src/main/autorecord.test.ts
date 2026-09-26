@@ -26,6 +26,14 @@ describe("parseAutoRecord", () => {
     expect(parseAutoRecord('{"seconds":5,"countdown":"3"}', false)).toMatchObject({ ok: false });
   });
 
+  it("accepts only an absolute output folder override", () => {
+    expect(parseAutoRecord('{"seconds":5,"outputDir":"/Volumes/test"}', false)).toEqual({
+      ok: true, config: { seconds: 5, quality: DEFAULT_QUALITY, countdown: 0, outputDir: "/Volumes/test" },
+    });
+    expect(parseAutoRecord('{"seconds":5,"outputDir":"relative/dir"}', false)).toEqual({ ok: false, error: "outputDir must be an absolute path" });
+    expect(parseAutoRecord('{"seconds":5,"outputDir":3}', false)).toMatchObject({ ok: false });
+  });
+
   it("rejects bad JSON, bad seconds and unsupported quality values with a reason", () => {
     expect(parseAutoRecord("{seconds:30}", false)).toMatchObject({ ok: false, error: expect.stringContaining("not JSON") });
     expect(parseAutoRecord("[30]", false)).toMatchObject({ ok: false });

@@ -1,12 +1,13 @@
 /**
  * Development-only unattended recording (docs/system-design/tooling.md).
- * `RECORDSTUFF_AUTORECORD='{"seconds":30,"quality":{...},"countdown":0}'` makes the app
+ * `RECORDSTUFF_AUTORECORD='{"seconds":30,"quality":{...},"countdown":0,"outputDir":"/abs"}'` makes the app
  * start recording once it is ready, stop after `seconds`, and quit after the
- * file is saved. The quality and countdown overrides are applied in memory
+ * file is saved. The quality, countdown and output-folder overrides are applied in memory
  * only; settings.json is never written. The countdown is 0 unless named, so
  * matrix and audio runs keep their timing. A packaged build ignores the
  * variable entirely.
  */
+import path from "node:path";
 import {
   DEFAULT_QUALITY,
   FRAME_RATES,
@@ -25,6 +26,8 @@ export interface AutoRecordConfig {
   quality: QualitySettings;
   /** 0 unless the configuration names one; never the stored preference. */
   countdown: CountdownSeconds;
+  /** An absolute folder that replaces the stored one for this run, such as an isolated test volume. */
+  outputDir?: string;
 }
 
 export type AutoRecordParse = { ok: true; config: AutoRecordConfig } | { ok: false; error: string };
@@ -70,7 +73,11 @@ export function parseAutoRecord(value: string | undefined, isPackaged: boolean):
   if (!isQualitySettings(merged)) return { ok: false, error: "quality is incomplete" };
   const countdown = record["countdown"] ?? 0;
   if (!isCountdownSeconds(countdown)) return { ok: false, error: `countdown: unsupported value ${JSON.stringify(countdown)}` };
-  return { ok: true, config: { seconds, quality: merged, countdown } };
+  const outputDir = record["outputDir"];
+  if (outputDir !== undefined && (typeof outputDir !== "string" || !path.isAbsolute(outputDir))) {
+    return { ok: false, error: "outputDir must be an absolute path" };
+  }
+  return { ok: true, config: { seconds, quality: merged, countdown, ...(outputDir === undefined ? {} : { outputDir }) } };
 }
 
 export interface AutoRecordDeps {
@@ -103,7 +110,8 @@ export function runAutoRecord(config: AutoRecordConfig, deps: AutoRecordDeps): v
     deps.log(`autorecord: ${message}`);
     deps.quit();
   };
-  deps.log(`autorecord: ${config.seconds} s with quality ${JSON.stringify(config.quality)}; countdown ${config.countdown} s`);
+  deps.log(`autorecord: ${config.seconds} s with quality ${JSON.stringify(config.quality)}; countdown ${config.countdown} s` +
+    (config.outputDir === undefined ? "" : `; outputDir ${config.outputDir}`));
   deps.subscribe((event) => {
     if (done) return;
     switch (event.type) {

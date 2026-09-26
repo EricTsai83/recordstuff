@@ -140,7 +140,7 @@ async function main(): Promise<void> {
       `packaged ${app.isPackaged}; executable ${process.execPath}`,
   );
   // a development-only unattended run driven by an environment
-  // variable; its quality override lives in memory only. Packaged builds
+  // variable; its quality and folder overrides live in memory only. Packaged builds
   // never read it (`parseAutoRecord` returns undefined).
   const autoRecord = parseAutoRecord(process.env["RECORDSTUFF_AUTORECORD"], app.isPackaged);
   if (autoRecord && !autoRecord.ok) log(`autorecord: ignoring RECORDSTUFF_AUTORECORD: ${autoRecord.error}`);
@@ -149,6 +149,8 @@ async function main(): Promise<void> {
   const quality = (): QualitySettings => effectiveQuality(qualityOverride ?? settings.quality, process.platform);
   /** Autorecord counts down only when its configuration names a countdown. */
   const countdownSeconds = (): CountdownSeconds => autoRecord?.ok ? autoRecord.config.countdown : settings.countdown;
+  /** An autorecord folder, like its quality, lives in memory only. */
+  const outputDirOverride = autoRecord?.ok ? autoRecord.config.outputDir : undefined;
 
   const displays = (): DisplayInfo[] => {
     const primary = screen.getPrimaryDisplay().id;
@@ -205,7 +207,7 @@ async function main(): Promise<void> {
   const sentinels = new SessionSentinels(path.join(app.getPath("userData"), "recording-sessions"), log);
   const recorder = new Recorder({
     host,
-    outputDir: () => settings.outputDir,
+    outputDir: () => outputDirOverride ?? settings.outputDir,
     quality,
     countdownSeconds,
     countdown: overlay,
