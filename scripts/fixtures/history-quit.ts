@@ -63,6 +63,8 @@ async function main(): Promise<void> {
     newSessionId: () => (++sessions === 1 ? "A" : "B"), ensureWritableDir: async () => undefined,
     shutdownTimeoutMs: 100, stopTimeoutMs: 100,
     openWriter: (partial, final) => FileWriter.open(partial, final, { io: { ...nodeFs,
+      // Publication is a hard link here (a copy only where links are refused); hold whichever runs.
+      link: async (from, to) => { copyHeld = true; await copyGate; await nodeFs.link(from, to); copyHeld = false; },
       copyExclusive: async (from, to) => { copyHeld = true; await copyGate; await nodeFs.copyExclusive(from, to); copyHeld = false; } } }),
   });
   recorder.subscribe(event => {

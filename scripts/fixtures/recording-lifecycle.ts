@@ -49,6 +49,8 @@ const recorder = new Recorder({
   stopTimeoutMs: 100, // Same production deadline path, shortened for the fixture.
   openWriter: (partial, final) => FileWriter.open(partial, final, { io: {
     ...nodeFs,
+    // Publication is a hard link here (a copy only where links are refused); hold whichever runs.
+    link: async (from, to) => { diskPending = true; await gate; await nodeFs.link(from, to); diskPending = false; },
     copyExclusive: async (from, to) => { diskPending = true; await gate; await nodeFs.copyExclusive(from, to); diskPending = false; },
     open: async (file, flags) => {
       const handle = await nodeFs.open(file, flags);

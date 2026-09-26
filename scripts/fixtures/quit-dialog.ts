@@ -42,6 +42,11 @@ async function main(): Promise<void> {
     shutdownTimeoutMs: 100, stopTimeoutMs: 100,
     openWriter: (partial, final) => FileWriter.open(partial, final, { io: {
       ...nodeFs,
+      // Publication is a hard link here (a copy only where links are refused); hold whichever runs.
+      link: async (from, to) => {
+        diskPending = true; record("publication held"); await gate;
+        await nodeFs.link(from, to); diskPending = false; record("publication complete");
+      },
       copyExclusive: async (from, to) => {
         diskPending = true; record("copy held"); await gate;
         await nodeFs.copyExclusive(from, to); diskPending = false; record("copy complete");
@@ -72,7 +77,7 @@ async function main(): Promise<void> {
       assert.equal(feedback(), first, "overlapping feedback must share the native prompt");
       void first.then(() => {
         assert.equal(diskPending, true, "dismissing feedback must not release disk work");
-        record("dismissed while copy still held; process alive"); completed();
+        record("dismissed while publication still held; process alive"); completed();
       }).catch(cause => { console.error(cause); app.exit(1); });
     },
     error: cause => { console.error(cause); app.exit(1); },

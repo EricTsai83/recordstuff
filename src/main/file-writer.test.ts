@@ -25,9 +25,42 @@ describe("FileWriter", () => {
     const appends = [writer.append(bytes(1, 2)), writer.append(bytes(3)), writer.append(bytes(4, 5, 6))];
     await Promise.all(appends);
     expect(writer.bytesWritten).toBe(6);
+    const written = await fs.stat(recording);
     expect(await writer.finish()).toBe(final);
     expect(await fs.readFile(final)).toEqual(Buffer.from([1, 2, 3, 4, 5, 6]));
     await expect(fs.stat(recording)).rejects.toMatchObject({ code: "ENOENT" });
+    // Linked, not copied: the same file under its final name, with no second name left.
+    const saved = await fs.stat(final);
+    expect(saved.ino).toBe(written.ino);
+    expect(saved.nlink).toBe(1);
+    expect(writer.finishTimings).toMatchObject({ method: "link" });
+    expect(writer.finishTimings).not.toHaveProperty("linkError");
+  });
+
+  it("copies exclusively when the volume refuses hard links, for every candidate name", async () => {
+    const recording = path.join(dir, "fat.recording.mp4");
+    const final = path.join(dir, "fat.mp4");
+    await fs.writeFile(final, "old");
+    const link = vi.fn(async () => { throw Object.assign(new Error("not supported"), { code: "ENOTSUP" }); });
+    const writer = await FileWriter.open(recording, final, { io: { ...nodeFs, link } });
+    await writer.append(bytes(8, 9));
+    const saved = await writer.finish();
+    expect(saved).toBe(path.join(dir, "fat-2.mp4"));
+    expect(link).toHaveBeenCalledTimes(1);
+    expect(await fs.readFile(final, "utf8")).toBe("old");
+    expect(await fs.readFile(saved)).toEqual(Buffer.from([8, 9]));
+    await expect(fs.stat(recording)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(writer.finishTimings).toMatchObject({ method: "copy", linkError: "ENOTSUP" });
+  });
+
+  it("never copies over a name the link found taken", async () => {
+    const copyExclusive = vi.fn(nodeFs.copyExclusive);
+    const writer = await FileWriter.open(path.join(dir, "t.recording.mp4"), path.join(dir, "t.mp4"), { io: { ...nodeFs, copyExclusive } });
+    await fs.writeFile(path.join(dir, "t.mp4"), "old");
+    await writer.append(bytes(1));
+    expect(await writer.finish()).toBe(path.join(dir, "t-2.mp4"));
+    expect(copyExclusive).not.toHaveBeenCalled();
+    expect(await fs.readFile(path.join(dir, "t.mp4"), "utf8")).toBe("old");
   });
 
   it("refuses to overwrite an existing recording file", async () => {
@@ -64,7 +97,9 @@ describe("FileWriter", () => {
     await writer.append(bytes(7));
     expect(await writer.finish()).toBe(final);
     expect(await fs.readFile(final)).toEqual(Buffer.from([7]));
+    // The leftover temporary name is a second link to the saved file.
     expect(await fs.readFile(recording)).toEqual(Buffer.from([7]));
+    expect((await fs.stat(final)).nlink).toBe(2);
   });
 
   it("abandon keeps a non-empty partial file and removes an empty one", async () => {
@@ -99,6 +134,7 @@ describe("FileWriter", () => {
           },
           close: async () => undefined,
         }),
+        link: async () => undefined,
         copyExclusive: async () => undefined,
         unlink: async () => undefined,
       };
@@ -141,9 +177,12 @@ describe("FileWriter", () => {
     expect(await fs.readFile(recording)).toEqual(Buffer.from([1]));
   });
 
-  it("a failing exclusive copy on finish reports output_write_failed", async () => {
+  it("a failing exclusive copy after a refused link reports output_write_failed", async () => {
     const io: FileWriterFs = {
       ...nodeFs,
+      link: async () => {
+        throw Object.assign(new Error("EPERM"), { code: "EPERM" });
+      },
       copyExclusive: async () => {
         throw Object.assign(new Error("EXDEV"), { code: "EXDEV" });
       },
@@ -154,6 +193,18 @@ describe("FileWriter", () => {
     const partial = await writer.abandon();
     expect(await fs.readFile(partial!)).toEqual(Buffer.from([1]));
     await expect(fs.stat(path.join(dir, "r.mp4"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("a copy that runs out of space after a refused link reports disk_full and keeps the partial", async () => {
+    const io: FileWriterFs = {
+      ...nodeFs,
+      link: async () => { throw Object.assign(new Error("not supported"), { code: "ENOTSUP" }); },
+      copyExclusive: async () => { throw Object.assign(new Error("no space left on device"), { code: "ENOSPC" }); },
+    };
+    const writer = await FileWriter.open(path.join(dir, "full.recording.mp4"), path.join(dir, "full.mp4"), { io });
+    await writer.append(bytes(1, 2));
+    await expect(writer.finish()).rejects.toMatchObject({ code: "disk_full" });
+    expect(await fs.readFile((await writer.abandon())!)).toEqual(Buffer.from([1, 2]));
   });
 });
 

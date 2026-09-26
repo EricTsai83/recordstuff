@@ -1,7 +1,8 @@
 /**
  * The only media-file writer in the app (docs/system-design/recording.md). Appends chunks in
  * arrival order, fsyncs every 5 seconds, and publishes without overwriting
- * `<stamp>.recording.mp4` → `<stamp>.mp4` once the last chunk is on disk.
+ * `<stamp>.recording.mp4` → `<stamp>.mp4` once the last chunk is on disk: a hard
+ * link where the volume supports one, otherwise a full copy.
  * Any failure keeps what was written; nothing is ever silently discarded.
  * Zero written bytes is never published: nonempty is necessary, not proof of a playable file.
  * Bytes accepted but not yet written are bounded; exceeding the bound fails the
@@ -22,6 +23,8 @@ export interface WritableHandle {
 /** Subset of `node:fs/promises` used here; injectable so tests can fail writes. */
 export interface FileWriterFs {
   open(filePath: string, flags: string): Promise<WritableHandle>;
+  /** A second name for the same file; rejects with EEXIST instead of replacing `to`. */
+  link(from: string, to: string): Promise<void>;
   copyExclusive(from: string, to: string): Promise<void>;
   unlink(filePath: string): Promise<void>;
   mkdir(dir: string, options: { recursive: true }): Promise<unknown>;
@@ -30,7 +33,9 @@ export interface FileWriterFs {
 
 export const nodeFs: FileWriterFs = {
   open: (filePath, flags) => fs.open(filePath, flags),
-  // Clone where supported; otherwise copy. EXCL protects existing destinations.
+  link: (from, to) => fs.link(from, to),
+  // On macOS libuv never clones (FICLONE_FORCE is ENOSYS), so this is a full
+  // copy and needs the file's size in free space. EXCL protects existing destinations.
   copyExclusive: async (from, to) => {
     await fs.copyFile(from, to, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE);
     const copy = await fs.open(to, "r+");
@@ -40,6 +45,20 @@ export const nodeFs: FileWriterFs = {
   mkdir: (dir, options) => fs.mkdir(dir, options),
   writeFile: (filePath, data) => fs.writeFile(filePath, data),
 };
+
+/** How long each step of a successful `finish` took, in milliseconds; diagnostics only. */
+export interface FinishTimings {
+  /** Queued writes and the final fsync. */
+  flushMs: number;
+  closeMs: number;
+  /** Creating the `.mp4`: a hard link, or a full copy and its fsync. */
+  publishMs: number;
+  /** Removing the temporary name. */
+  cleanupMs: number;
+  method: "link" | "copy";
+  /** Why a copy was needed: the link's error code, such as ENOTSUP on exFAT. */
+  linkError?: string;
+}
 
 /** Why finish refused to publish; the only gate between zero bytes and a saved `.mp4`. */
 export const NO_MEDIA_DETAIL = "capture ended without media; no bytes were written";
@@ -107,6 +126,8 @@ export class FileWriter {
   private _backlogBytes = 0;
   private abandoned: Promise<string | undefined> | undefined;
   preservationUncertain = false;
+  /** Set once `finish` published the file. */
+  finishTimings: FinishTimings | undefined;
 
   private constructor(
     readonly recordingPath: string,
@@ -198,13 +219,20 @@ export class FileWriter {
   }
 
   /**
-   * Flush, close, publish exclusively, then remove the temporary file. Draining
+   * Flush, close, publish exclusively, then remove the temporary name. Draining
    * first lets a retained write/sync error keep its code; with no confirmed
    * bytes it then closes, removes the empty file and rejects with
    * `capture_start_failed` instead of publishing an empty `.mp4`.
+   *
+   * Publication is a hard link: constant time, no extra space, and like the
+   * copy it never replaces an existing name. Any refusal other than EEXIST
+   * (exFAT and some network volumes have no hard links) falls back to the
+   * exclusive copy for this and every later candidate name.
    */
   async finish(): Promise<string> {
+    const began = performance.now();
     await this.enqueue(() => this.handle.sync());
+    const flushed = performance.now();
     // A refused chunk means the recording is incomplete; the failure path keeps the partial.
     if (this.refused) throw this.refused;
     if (this._bytesWritten === 0) {
@@ -212,22 +240,36 @@ export class FileWriter {
       throw new FileWriteError("capture_start_failed", this.recordingPath, NO_MEDIA_DETAIL);
     }
     await this.release();
+    const closed = performance.now();
     const ext = path.extname(this.finalPath);
     const stem = this.finalPath.slice(0, this.finalPath.length - ext.length);
+    let linkError: string | undefined;
     for (let attempt = 1; ; attempt += 1) {
       const target = attempt === 1 ? this.finalPath : `${stem}-${attempt}${ext}`;
       try {
-        await this.io.copyExclusive(this.recordingPath, target);
+        if (linkError === undefined) {
+          try {
+            await this.io.link(this.recordingPath, target);
+          } catch (cause) {
+            if (errnoCode(cause) === "EEXIST") throw cause;
+            linkError = errnoCode(cause) ?? describe(cause);
+          }
+        }
+        if (linkError !== undefined) await this.io.copyExclusive(this.recordingPath, target);
       } catch (cause) {
         if (errnoCode(cause) === "EEXIST") continue;
-        throw new FileWriteError("output_write_failed", this.recordingPath, cause);
+        // A copy without room for the whole file is disk_full, like any other ENOSPC.
+        throw new FileWriteError(classifyWriteError(cause), this.recordingPath, cause);
       }
+      const published = performance.now();
       try {
         await this.io.unlink(this.recordingPath);
       } catch {
-        // The completed file is safe; a leftover temporary copy must not turn
-        // a successful save into a failure or remove the completed recording.
+        // The completed file is safe; a leftover temporary name (a second link
+        // to it, or a full copy) must not turn a successful save into a failure.
       }
+      this.finishTimings = { flushMs: flushed - began, closeMs: closed - flushed, publishMs: published - closed,
+        cleanupMs: performance.now() - published, ...(linkError === undefined ? { method: "link" } : { method: "copy", linkError }) };
       return target;
     }
   }

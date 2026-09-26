@@ -17,17 +17,21 @@ import { isErrorCode, type ErrorCode, type RecordingState } from "../shared/stat
 import { RECORDING_HEALTH, type RecordingHealth } from "./recording-health";
 import type { SessionSentinel } from "./session-sentinel";
 import type { FailureOutcome, SessionTiming } from "../shared/session-record";
+import type { FinishTimings } from "./file-writer";
 
 export interface RecorderWriter {
   readonly recordingPath?: string;
   readonly preservationUncertain?: boolean;
   /** Accepted bytes not yet confirmed written; diagnostics only. */
   readonly backlogBytes?: number;
+  /** Confirmed bytes and the steps of a successful finish; diagnostics only. */
+  readonly bytesWritten?: number;
+  readonly finishTimings?: FinishTimings | undefined;
   append(bytes: Uint8Array): Promise<void>;
   /** Settles after queued work; resolves with a retained write/sync error, if any. */
   drain?(): Promise<unknown>;
   /**
-   * Flush, close and rename; resolves with the final path. Rejects instead of
+   * Flush, close and publish under the final name; resolves with it. Rejects instead of
    * publishing zero confirmed bytes, after any retained write/sync error.
    */
   finish(): Promise<string>;
@@ -186,6 +190,8 @@ interface Session {
   /** Monotonic times for the timing log. */
   requestedAt: number;
   recordSentAt?: number;
+  stopRequestedAt?: number;
+  hostStoppedAt?: number;
   /** `stopped` arrived and the writer is being finished; a hard cap must not call this a failure. */
   finalizing: boolean;
   stopOnStart: boolean;
@@ -347,6 +353,7 @@ export class Recorder {
     if (this._state.type !== "recording" || !session || session.phase !== "recording") return;
     session.phase = "stopping";
     session.stoppingAt = this.deps.now().toISOString();
+    session.stopRequestedAt = this.monotonic();
     this.setState({ type: "stopping" });
     this.clearTimer(session);
     this.clearDisk(session);
@@ -632,6 +639,7 @@ export class Recorder {
         // A normal drain after stop must never read as a stall.
         this.clearHealth(session);
         if (session.phase === "stopping") {
+          session.hostStoppedAt = this.monotonic();
           this.clearTimer(session);
           session.finalizing = true;
           void this.track(() => this.finalize(session));
@@ -822,6 +830,7 @@ export class Recorder {
 
   private async finalize(session: Session): Promise<void> {
     await session.writes;
+    const drainedAt = this.monotonic();
     if (this.session !== session || !session.writer) return;
     let finalPath: string;
     try {
@@ -834,10 +843,24 @@ export class Recorder {
     if (this.session !== session) return;
     const early = session.stoppedEarly === "lowDisk" ? " (stopped early: disk almost full)" : "";
     this.deps.log(`recorder: session ${session.id} file finalized ${finalPath}${early}`);
+    this.logFinalizeTiming(session, drainedAt);
     this.session = undefined;
     this.settle({ type: "idle", lastSavedPath: finalPath });
     this.emit({ type: "saved", path: finalPath, ...(session.stoppedEarly ? { stoppedEarly: session.stoppedEarly } : {}), session: this.trace(session) });
     await this.clearInFlight(session);
+  }
+
+  /** Where the wait between stop and saved went; stop-to-ready itself is the state lines' interval. */
+  private logFinalizeTiming(session: Session, drainedAt: number): void {
+    const timings = session.writer?.finishTimings;
+    const ms = (value: number | undefined): string => value === undefined ? "?" : String(Math.round(value));
+    const span = (from: number | undefined, to: number | undefined): number | undefined =>
+      from === undefined || to === undefined ? undefined : to - from;
+    this.deps.log(`recorder: session ${session.id} finalize timing: host ${ms(span(session.stopRequestedAt, session.hostStoppedAt))} ms, ` +
+      `writes ${ms(span(session.hostStoppedAt, drainedAt))} ms, flush ${ms(timings?.flushMs)} ms, close ${ms(timings?.closeMs)} ms, ` +
+      `publish ${ms(timings?.publishMs)} ms by ${timings?.method ?? "?"}${timings?.linkError ? ` (link ${timings.linkError})` : ""}, ` +
+      `cleanup ${ms(timings?.cleanupMs)} ms; ` +
+      `${session.writer?.bytesWritten ?? "?"} bytes`);
   }
 
   /**

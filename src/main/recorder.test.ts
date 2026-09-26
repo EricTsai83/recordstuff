@@ -192,6 +192,20 @@ describe("Recorder happy path", () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining("saved request failed"));
   });
 
+  it("logs where the wait between stop and saved went", async () => {
+    let clock = 0;
+    const log = vi.fn();
+    const ctx = setup({ log, deps: { monotonic: () => clock } });
+    await startRecording(ctx);
+    Object.assign(ctx.writers[0]!, { bytesWritten: 4, finishTimings: { flushMs: 4.4, closeMs: 0.2, publishMs: 0.6, cleanupMs: 1, method: "link" } });
+    clock = 1000;
+    ctx.recorder.stop();
+    clock = 1012;
+    ctx.host.emit({ type: "stopped", sessionId: "s1", tracksStoppedAt: Date.now() });
+    await flush();
+    expect(log).toHaveBeenCalledWith("recorder: session s1 finalize timing: host 12 ms, writes 0 ms, flush 4 ms, close 0 ms, publish 1 ms by link, cleanup 1 ms; 4 bytes");
+  });
+
   it("idle → starting → recording → stopping → idle with lastSavedPath", async () => {
     const ctx = setup();
     await startRecording(ctx);
@@ -1596,7 +1610,7 @@ describe("terminal ownership and quit admission", () => {
     close(); await quitting; expect(safe).toBe(true);
   });
 
-  it.each(["crash", "error", "duplicate-stop"])("ignores %s after stopped while a real final copy is pending", async (late) => {
+  it.each(["crash", "error", "duplicate-stop"])("ignores %s after stopped while a real publication is pending", async (late) => {
     vi.useRealTimers();
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "recordstuff-terminal-"));
     let copy!: () => void;
@@ -1606,7 +1620,7 @@ describe("terminal ownership and quit admission", () => {
     const recorder = new Recorder({ host, outputDir: () => dir, quality: () => DEFAULT_QUALITY,
       ensureWritableDir: async () => undefined, newSessionId: () => "real",
       openWriter: (partial, final) => FileWriter.open(partial, final, { io: { ...nodeFs,
-        copyExclusive: async (from, to) => { await gate; await nodeFs.copyExclusive(from, to); },
+        link: async (from, to) => { await gate; await nodeFs.link(from, to); },
       } }),
     });
     recorder.subscribe(e => events.push(e));
