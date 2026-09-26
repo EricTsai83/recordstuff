@@ -2,7 +2,7 @@
 
 [English](037-overlapping-recording-finalization.md) | [繁體中文](037-overlapping-recording-finalization.zh-TW.md)
 
-狀態：已規劃，尚未實作。建立日期：2026-09-25。依賴 025、[026](../docs/zh-TW/verification/history-2026-09.md#plan-026-結案--2026-09-25)（已完成）、[029](../docs/zh-TW/verification/history-2026-09.md#plan-029-結案--2026-09-25)（已完成）、[030](../docs/zh-TW/verification/history-2026-09.md#plan-030-結案--2026-09-25)（已完成）、[036](../docs/zh-TW/verification/history-2026-09.md#plan-036-結案--2026-09-25)（已完成）及 [038](../docs/zh-TW/verification/history-2026-09.md#plan-038-結案--2026-09-25)（已完成）；預設排 034 之後、最後 [035](035-guided-native-acceptance.zh-TW.md) 之前。前述計畫提供終止擁有權、空檔驗證、穩定事件 ID、媒體證據、不阻塞歷史／退出協調及寫入積壓上限。
+狀態：已規劃，尚未實作。建立日期：2026-09-25。依賴 025、[026](../docs/zh-TW/verification/history-2026-09.md#plan-026-結案--2026-09-25)（已完成）、[029](../docs/zh-TW/verification/history-2026-09.md#plan-029-結案--2026-09-25)（已完成）、[030](../docs/zh-TW/verification/history-2026-09.md#plan-030-結案--2026-09-25)（已完成）、[036](../docs/zh-TW/verification/history-2026-09.md#plan-036-結案--2026-09-25)（已完成）及 [038](../docs/zh-TW/verification/history-2026-09.md#plan-038-結案--2026-09-25)（已完成）；預設排在最後 [035](035-guided-native-acceptance.zh-TW.md) 之前。前述計畫提供終止擁有權、空檔驗證、穩定事件 ID、媒體證據、不阻塞歷史／退出協調及寫入積壓上限。
 
 ## 價值與量測門檻
 

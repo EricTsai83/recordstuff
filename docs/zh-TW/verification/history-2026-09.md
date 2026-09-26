@@ -9,6 +9,20 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 034 結案 — 2026-09-27
+
+Windows 系統匣圖示，由 Claude 實作並經 Codex GPT-6 Astra review（見[桌面設計](../system-design/desktop.md#tray-與通知)）。在此之前，Windows ICO 沿用 macOS template 的幾何形狀，改成中灰色（128, 128, 128），錄影時是紅色圓點，尺寸為 16、24、32、48 px。圓環細、灰，也認不出是 RecordStuff；在淺色工作列上對比約 3.3:1，警示徽章同樣是灰色，125% 縮放也沒有 20 px 可用。Windows 不顯示 `REC` 標題，所以狀態只能靠圖示本身表達。
+
+- **候選。** 兩個候選都畫出全部五種已提交狀態（idle、busy、倒數、錄影、警示），尺寸 16／20／24／32／48 px。預覽包含實際大小、3× 與 8×（最近鄰）放大及灰階，並與現行 ICO 並排（現行 ICO 缺的 20 px 以 24 px 雙線性縮小近似）。背景模擬六種通知區域表面：淺色工作列（243）、淺色隱藏面板（230）、Windows 11 深色工作列（32）、Windows 10 深色（16）、深色隱藏面板（44）與強調色藍色工作列（0, 84, 166）。A（圓角底座）把白色圓環放在 App 圖示的深色圓角底座上，外加灰色邊緣；B（無底座）用較粗的白色圓環加深色外框。
+- **選擇 A。** ICO 沒有 template 模式，A 的底座自成一體，在每種表面上看起來都一樣。在淺色工作列上，B 的外框讓白色圓環變成細細的雙線，琥珀色記號失去對比，碼錶也像電源符號。灰階下，idle（深色中心）與錄影（紅色中心，亮度約 95，底座為 28）在每個尺寸都能分辨，警示的「!」也是。
+- **逐尺寸調整。** A 的初稿把 040 以比例定義的沙漏與碼錶縮放進底座。在 16 與 20 px，沙漏斜線太淡、碼錶糊掉，「!」的直槓與圓點之間也失去空隙。最終的 `WINDOWS_TRAY` 表為每個尺寸指定像素幾何：邊距與邊緣落在整數像素，「!」的邊緣對齊像素並保留可見空隙，16 px 的警示圓環改為 1.5 px 以留出空間，沙漏斜線加粗。碼錶指針現在停在外框前並以中心軸收尾：原本與錶冠柄相連時看起來像電源符號。
+- **產生與資產。** 兩次執行 `pnpm icons` 的位元組完全相同。只有五個 `resources/tray-*.ico` 改變；macOS template PNG、`build/icon.png`、`build/icon.icns` 與 DMG 背景都與 HEAD 位元組相同。Python PIL 與 macOS ImageIO（`sips`）都能解碼每個 ICO；PIL 回報 16、20、24、32、48 px 的 RGBA 圖像，四角透明（16 px 時 256 個像素中有 64 個透明），並有不透明內容。每個尺寸都在淺色與深色表面上目視檢查過。`tray.ts` 與 `tray-model.ts` 沒有修改：win32 仍載入 `tray-<state>.ico`，狀態對應、警示優先順序、tooltip 與點擊行為都不變。
+- **測試。** `scripts/make-icons.test.ts` 要求每個 ICO 都有這五種尺寸，並新增一項測試：每個尺寸的每張圖四角都透明，任兩種狀態之間至少有「尺寸／2」個像素的灰階差超過 48；最小餘裕是 20 px 的 idle 對警示，共 14 個像素。暫時把紅色改成與底座同亮度時，這項測試以「Idle vs Recording at 16 px: expected 0 to be greater than or equal to 8」失敗。`pnpm check` 通過 typecheck、59 個檔案共 994 項測試與 build。
+
+未驗證：這台 M1 Pro（macOS 26.6.2）沒有 Windows 桌面或虛擬機，因此沒有原生觀察任何 Windows 外觀，包括淺色與深色工作列、100／125／150／200% 縮放、可見系統匣與隱藏圖示面板、裁切與模糊、左右鍵、tooltip，以及在 Windows 上錄一段短影片。模擬表面只近似 Windows 的顏色，無法重現它的合成、在各縮放下選用哪個 ICO 尺寸，或它對 PNG 壓縮 ICO 圖像的解碼；這個格式在本計畫之前就已使用。175% 與 250% 縮放（28 與 40 px）沒有專屬尺寸，也尚未確認 Windows 啟動方式。這些移交給 [035](../../../plans/035-guided-native-acceptance.zh-TW.md) 的 N17。因為沒有任何 macOS 資產或 loader 改變，沒有跑 macOS 原生回合。預覽圖與 scratch 產生器保留在本機的 `docs/verification/measurements/plan-034-windows-tray/`。
+
+Codex GPT-6 Astra（medium reasoning、唯讀）花了 61 秒，解碼 ICO 標頭與各尺寸圖像，並閱讀 diff、已刪除的計畫與兩種語言的變更文件後，回報沒有 finding；不需要 fallback 或第二次 pass。已依範圍分開 commit 到本機 main：圖示與測試 `014f2fb`、設計文件 `92862fe`，以及本結案 commit。未 push 或發布。
+
 ## Plan 040 結案 — 2026-09-26
 
 錄影前倒數與可區分的 tray 狀態，由 Claude 實作並經 Codex GPT-6 Astra review（見[錄製設計](../system-design/recording.md#倒數)、[桌面設計](../system-design/desktop.md#倒數-overlay)、[設計決策](../system-design/decisions.md)）。在此之前，2026-09-25 快捷鍵回合的 `starting → recording` 為 318 ms（plan 引用的數字），所以最初幾格會拍到滑鼠離開選單列。現在擷取在倒數前就準備好（關閉、3、5 或 10 秒；預設 3 秒，沒有此欄位的設定檔也是），歸零時才開始；被錄製螢幕右上角只顯示一個 28% 白色、沒有方框的數字，並在擷取前 300 ms 離開；第二次點擊、快捷鍵、「取消倒數」或「結束」都會取消，不留檔案、失敗紀錄或通知；啟動與存檔時顯示沙漏，倒數時顯示碼錶，兩者都沒有標題。
