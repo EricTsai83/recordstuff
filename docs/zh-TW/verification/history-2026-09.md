@@ -9,6 +9,27 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 042 結案 — 2026-09-26
+
+更快的錄影回合，由 Claude 實作、Codex GPT-6 Astra review（[matrix](../system-design/tooling.md#測試素材)）。041 回合佔用桌面約 50 分鐘；流程規則的部分已寫進[測試指南](../testing.md#縮短錄影回合)，本計畫則在量測有依據的地方移除 runner 的固定成本。
+
+每個回合的環境：M1 Pro（10 核、32 GB）、macOS 26.6.2、Node 24.21.0、Electron 44.3.0、ffmpeg 9.0.1，主螢幕 BenQ GW2785TC 1920×1080、60 Hz，系統音訊輸出到外接耳機、音量 69，測試素材 SHA-256 `e631b973…c41459`，基於 HEAD `4ec879a` 加未提交的變更。每個回合都自行建置 `out/`。
+
+- **Step 1：時間花在哪裡。** 以加上計時的 runner、沿用舊設定（quick 與 fps 案例 30 秒、休息 10 秒、三次 ffmpeg）分別呼叫：fps 103.5 與 102.4 秒、quick 143.8 秒、long 218.1 秒，全部 exit 0（041 紀錄為 103、144 與 218 秒）。每次呼叫：preflight（查詢螢幕、檢查工具、開始桌面回合）約 2.5 秒、建置 0.7 秒、素材 5.0 秒。每個 30 秒案例：啟動到開始錄影 2.2–2.5 秒（含 autorecord 的 1.5 秒延遲）、停止到存檔 0.1–0.2 秒、退出 ≤ 0.1 秒，接著是驗證——30 fps 5.4–5.5 秒（ffprobe 影格計數 2.3–2.4、ffprobe 影格時間戳 2.3、astats 0.1、blackdetect 0.6、silencedetect 0.1），1440p 高品質 7.1 秒，60 fps 13.9 秒（6.2、6.2、0.1、1.4、0.1）——以及 10 秒休息。long：案例 209.5 秒，驗證 27.0 秒（13.7、頭尾窗口 4.6 + 4.6、0.4、3.4、0.2）。成本不在計畫估計的建置，而在休息、30 秒的長度與 ffprobe。
+- **採用：一次呼叫跑多個矩陣與重複。** `pnpm matrix -- fps,quick --repeat 2` 或 `fps,fps,long` 在同一個桌面回合內只建置一次、只開一次素材，每少一次呼叫約省 8 秒；重複交錯執行，重複的案例標題為「run k of n」，Repeats 表保留每一次的判定與最小值、中位數、最大值。每個階段都會印出並以 Timing 表寫入量測檔。
+- **採用：不另外休息，fps 與 quick 案例改為 15 秒。** 候選 `pnpm matrix -- fps,quick --repeat 2`（十個 15 秒案例接連執行）在 221.3 秒內 exit 0；每次都通過，閃光／短音配對 14–15 組。與 step 1 相比，30 fps 案例變快——29.84–29.98 fps、影格間隔中位數 33.37–33.47 ms，對照 29.61–29.73 與 33.57–33.66——CPU 13.0–15.1%，對照 12.9–13.6%。緊接著以舊設定（30 秒案例、休息 10 秒，透過事後已移除的暫時開關）跑的對照量到 29.92–29.96 fps、33.37–33.40 ms、CPU 12.9–14.0%，60 fps 為 59.76 fps、掉格 0.78%：與候選相同，所以偏移來自回合之間的漂移，不是候選設定。與這組對照相比，每個中位數的差距都在 spread 內：30 fps 為 29.96 對 29.95 fps、33.40 對 33.39 ms、CPU 13.9 對 13.5%，沒有掉格；60 fps 為 59.69／59.98 fps、掉格 0.44／0.89%，對照 step 1 與對照回合的 59.76–59.96 fps 與 0.17–0.78%。偏移 54–107 ms（中位數 73），對照 60–90 ms（中位數 68）；聲道能量 −26.8 至 −27.4 dB，影片位元率為目標的 100–102%。兩項變更是合在一起作為單一候選篩選，沒有分開量測。
+- **Go criterion。** fps 兩次加 quick 兩次在一次呼叫中花 221.3 秒，分開呼叫為 493.5 秒（fps 實測兩次；quick 的第二次以其實測的 143.8 秒計）：少 55%。計畫的例子 fps 兩次加 long 一次，分開呼叫實測 424.0 秒；以量到的分段估算一次呼叫約 308 秒（固定 8.2 秒、候選回合的四個 fps 案例 89.7 秒、step 1 的 long 案例 209.5 秒）：少 27%。long 沒有重錄：它的錄影與驗證都沒變，休息的問題已由 fps 與 quick 案例回答。
+- **不採用：聲道能量與同步標記合併為一次 ffmpeg。** astats 與 silencedetect 每個 30 秒案例合計 0.2 秒、long 0.6 秒（其總耗時的 0.3%），blackdetect 的解碼也不會少，所以沒有實作。驗證的大宗是兩次 ffprobe（30 fps 5.4 秒中 4.6 秒、60 fps 13.9 秒中 12.4 秒、long 27.0 秒中 22.9 秒）；這不在本計畫的項目內，留作可能的後續。
+- **中斷。** 第一個案例錄影中對 runner 與它的 `open -W` 送 SIGINT，exit 130；第二個案例錄影中只對 runner 送 SIGTERM，exit 143；兩次都在 1.4 秒內完成。兩次 App 都走正常退出流程（stopping、file finalized、saved），runner 指出已存的檔案，沒有 Electron.app 或素材程序殘留，量測檔也沒有改變。被中斷的 3.5 秒檔案通過 `pnpm verify`（可解碼、兩個聲道都高於 −60 dBFS）。沒有測試已安裝的 RecordStuff 同時執行的情況：它會持有 single-instance lock，而清理只比對本 checkout 的 Electron.app 與素材的私有 profile。
+
+回合之間的漂移對之後的計畫很重要：同一份程式碼，相隔十分鐘的兩個回合中 30 fps 案例相差約 0.25 fps，是同一回合內 spread（約 0.1 fps）的好幾倍。重用其他回合基準的前後比較，可能把這個漂移誤認為效果，因此[測試指南](../testing.md#縮短錄影回合)現在要求這類比較把基準和改動接連錄製（結果仍取決於該差異時用 A、B、A）；runner 每次呼叫只建置一次，所以兩個程式碼版本無法在同一個回合內執行。
+
+自動化證據：最終版本的 `pnpm check` 通過 typecheck、55 個檔案 914 項測試與建置；`scripts/lib/matrix.test.ts` 的 15 項新測試涵蓋矩陣清單與重複名稱、`--repeat` 上下限、未知與空白的名稱及選項、交錯順序、依名稱／時長／品質分組、從帶時間戳的 log 行計算階段、Timing 表、fail／blocked／incomplete／未驗證／metadata 未配對或沒有執行到的一次都會讓案例不算通過的重複摘要，以及真實 CLI 的 dry-run 順序與未知矩陣 exit 2。App 程式碼沒有改變，因此不需要錄影 smoke 或原生驗收；levels、十分鐘錄影與音訊診斷沒有執行。沒有重用先前的證據：runner 改變了，而且 step 1 需要分段數據。
+
+每個回合結束後都沒有 Electron.app、RecordStuff 或素材瀏覽器程序殘留，`settings.json` 不變（前後 SHA-256 相同）。結案後依維護者要求刪除了本回合的測試產物：~/Movies/RecordStuff 中的 33 段錄影（`2026-09-26 05-22-17` 到 `05-57-19`），以及完全由本回合寫入的 `2026-09-26.md`／`.json`（包含重現 review finding 1 的無素材執行）。本節的數字即為保留的紀錄。本回合已依範圍分開 commit 在本機 main：runner `5d4efe1`、設計文件 `34fb0d6`，以及包含測試指南規則的本結案 commit。沒有 push 或發布。
+
+Codex GPT-6 Astra（medium reasoning、read-only）pass 1 花 94 秒，回報四項 Medium finding，全部接受並修正。(1) ffprobe 或 ffmpeg 同步執行時到達的訊號要到下一次 event loop 才處理，因此回合可能先啟動下一個案例，或在 `--no-open-material` 時照常寫入量測並正常結束：已重現，最後一次驗證時送 SIGTERM 會寫入量測並 exit 1。runner 現在在每個案例之前與最後清理前後先讓出給待處理的訊號；同樣的 SIGTERM 之後 exit 143，量測檔不變。(2) 清理把第一次看到的空程序清單當成完成，但 `open` 的啟動可能還在進行，App 或素材之後仍可能出現；沒有重現（0.1 秒時 App 已在執行）。清理現在會等到案例啟動後 5 秒讓 App 出現，並等素材的 `open` 結束；啟動後 0.1 秒送 SIGTERM 之後 exit 143，20 秒後沒有任何程序。(3) 清理只對 pnpm 送訊號，沒有處理建置的子程序。建置現在在自己的 process group 中執行，由清理停止並確認；建置中送 SIGTERM 在建置完成前 exit 143，沒有 electron-vite 殘留。(4) 回合提前停止而沒有執行到的重複不在摘要中，因此該案例可能顯示為通過；現在算作 blocked 的「not run」，exit 的優先順序不變，並有單元測試。修正後完整的 `fps` 回合在 53.4 秒內 exit 0，錄影中送 SIGINT 則 exit 130 並已存檔。Pass 2 約 60 秒，沒有 finding。30 分鐘 review 預算用了約 2.6 分鐘，不需要 fallback。
+
 ## Plan 033 結案 — 2026-09-26
 
 Tray 的儲存位置動作遇到不存在或無法使用的資料夾時，現在會以可見的方式復原（R2-08），由 Claude 實作、Codex GPT-6 Astra review（[桌面設計](../system-design/desktop.md#設定與儲存位置)）。原本 `openOutputDir` 呼叫 `shell.openPath` 後只把錯誤寫進 log。全新設定指向 `Movies/RecordStuff`，而錄影要到開始時才建立它，所以首次啟動時點擊沒有任何反應。
