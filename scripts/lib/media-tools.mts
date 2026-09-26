@@ -40,11 +40,32 @@ interface RunResult {
   status: number | null;
 }
 
-function run(tool: string, args: string[]): RunResult {
-  const result = spawnSync(tool, args, { encoding: "utf8", maxBuffer: MAX_BUFFER });
-  if (result.error && (result.error as NodeJS.ErrnoException).code === "ENOENT") throw new ToolMissingError(tool);
-  if (result.error) throw result.error;
-  return { stdout: result.stdout, stderr: result.stderr, status: result.status };
+export interface ToolTiming { tool: string; seconds: number }
+
+/** Set only inside `timeTools`; every run is synchronous, so two collections never interleave. */
+let timings: ToolTiming[] | undefined;
+
+/** Runs `measure` and appends how long each labelled tool run inside it took, even when it throws (plan 042). */
+export function timeTools<T>(into: ToolTiming[], measure: () => T): T {
+  const outer = timings;
+  timings = into;
+  try {
+    return measure();
+  } finally {
+    timings = outer;
+  }
+}
+
+function run(tool: string, args: string[], label?: string): RunResult {
+  const started = performance.now();
+  try {
+    const result = spawnSync(tool, args, { encoding: "utf8", maxBuffer: MAX_BUFFER });
+    if (result.error && (result.error as NodeJS.ErrnoException).code === "ENOENT") throw new ToolMissingError(tool);
+    if (result.error) throw result.error;
+    return { stdout: result.stdout, stderr: result.stderr, status: result.status };
+  } finally {
+    if (label) timings?.push({ tool: label, seconds: (performance.now() - started) / 1000 });
+  }
 }
 
 /** The last few stderr lines, enough to see why a run failed without the whole log. */
@@ -73,7 +94,7 @@ export function hasTool(tool: string): boolean {
 export function probe(file: string): { info: ProbeInfo; decodeErrors: string } {
   const { stdout, stderr } = completed("ffprobe", run("ffprobe", [
     "-v", "error", "-show_format", "-show_streams", "-count_frames", "-of", "json", file,
-  ]));
+  ], "ffprobe"));
   let info: ProbeInfo;
   try {
     info = JSON.parse(stdout) as ProbeInfo;
@@ -95,7 +116,7 @@ export function frameTimes(file: string, durationSeconds: number | undefined, ed
     const args = ["-v", "error", "-select_streams", "v:0", "-show_entries", "frame=pts_time", "-of", "csv=p=0"];
     if (interval) args.push("-read_intervals", interval);
     args.push(file);
-    return parseFrameTimes(completed("ffprobe frames", run("ffprobe", args)).stdout);
+    return parseFrameTimes(completed("ffprobe frames", run("ffprobe", args, "ffprobe frames")).stdout);
   };
   if (durationSeconds === undefined || durationSeconds <= edgeSeconds * 2) return [read()];
   return [read(`%+${edgeSeconds}`), read(`${(durationSeconds - edgeSeconds).toFixed(3)}%`)];
@@ -111,7 +132,7 @@ export function channelRms(file: string, channels: number | undefined): number[]
     "-hide_banner", "-nostats", "-vn", "-i", file,
     "-af", "astats=measure_perchannel=RMS_level:measure_overall=none",
     "-f", "null", "-",
-  ]));
+  ], "ffmpeg astats"));
   const levels = parseChannelRms(stderr);
   if (levels.length === 0 || (channels !== undefined && levels.length !== channels)) {
     throw new MeasurementError(`ffmpeg astats reported ${levels.length} of ${channels ?? "an unknown number of"} channels${stderrTail(stderr)}`);
@@ -132,11 +153,11 @@ export function syncMarkers(file: string, durationSeconds: number | undefined): 
     "-hide_banner", "-nostats", "-an", "-i", file,
     "-vf", "crop=ih*0.08:ih*0.08:iw-ih*0.115:ih*0.035,blackdetect=d=0.4:pix_th=0.10:pic_th=0.90",
     "-f", "null", "-",
-  ]));
+  ], "ffmpeg blackdetect"));
   const audio = completed("ffmpeg silencedetect", run("ffmpeg", [
     "-hide_banner", "-nostats", "-vn", "-i", file,
     "-af", "silencedetect=n=-35dB:d=0.4",
     "-f", "null", "-",
-  ]));
+  ], "ffmpeg silencedetect"));
   return { flashes: parseBlackdetect(video.stderr, durationSeconds), beeps: parseSilencedetect(audio.stderr, durationSeconds) };
 }
