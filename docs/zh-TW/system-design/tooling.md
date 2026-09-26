@@ -66,6 +66,8 @@ pnpm acceptance:notification -- --install --full   # 三種 Finder 狀態、英�
 pnpm matrix -- quick
 pnpm matrix -- all
 pnpm matrix -- long
+pnpm matrix -- fps,long                                  # 一個回合跑多個矩陣：只建置一次、只開一次素材
+pnpm matrix -- fps,quick --repeat 2                      # 重複的案例交錯執行；摘要依案例分組
 pnpm diagnose:cadence                                    # 30 與 60 fps 的影格節奏，各錄兩次
 pnpm diagnose:cadence -- --request 30:30.6,60:62.4       # 比較候選的幀率要求
 ```
@@ -78,15 +80,19 @@ verify 支援多檔、log、來源尺寸、同步標記、Markdown／JSON 與指
 
 matrix 只支援 macOS 開發環境。預設以 Chrome app 模式全螢幕在主螢幕開素材頁，可用 --no-open-material 自行開；固定音量與來源螢幕。以 RECORDSTUFF_AUTORECORD 驅動未打包 App，打包版忽略。seconds 範圍 (0,3600]，quality override 合併固定預設，不讀使用者品質作為基準。每個案例都要求聲道能量與同步標記（plan 030）：matrix 在建置或錄影前先檢查 ffmpeg 與 ffprobe，缺少就 exit 2（blocked）。只有沒有任何檢查 fail、blocked 或 incomplete 的案例才算通過；未通過的案例會在執行結尾與量測檔中列出每個未達成的檢查及原因，整輪 exit 1。
 
+一次呼叫就是一個桌面回合（plan 042）：只建置一次 `out/`、只開一次素材，依序執行列出的矩陣。名稱以逗號分隔（多個參數會合併），同一名稱列兩次就跑兩次，所以 `fps,fps,long` 會錄 fps 兩次、long 一次。`--repeat N`（1–10）重複整份清單，因此同一案例的重複會和其他案例交錯，不會總是最先跑或在機器最熱時跑；`--dry-run` 印出執行順序。名稱未知或空白、選項未知，或 `--repeat` 不在 1–10，會印出用法並 exit 2。案例接連執行：前一個檔案驗證完就啟動下一個，驗證的時間就是兩次錄影之間的休息。每個案例都會印出並寫入一行計時（啟動到開始錄影、錄影、停止到存檔、退出，以及每個驗證工具），量測檔另有 Timing 表，列出本回合的 preflight、建置、素材與總耗時。跑超過一次的案例標題為「run k of n」，Repeats 表列出每一次的判定，以及平均幀率、影格間隔中位數、掉格、CPU、閃光／短音偏移、漂移與影片位元率的最小值、中位數與最大值；每一次都通過，該案例才算通過。因 ffmpeg 或 ffprobe 消失而提前停止、沒有執行到的案例，算作 blocked 的一次。exit code 規則不變，只有清理後仍有程序殘留時整輪 exit 1。收到 SIGINT 或 SIGTERM 時，會停止建置的整個 process group，對執行中案例的 App 送 SIGTERM（App 的正常退出流程會先停止並儲存進行中的錄影；啟動後 5 秒內會先等 App 出現；30 秒後仍在執行的會被強制結束），等素材啟動完成後關閉素材瀏覽器，結束桌面回合，確認程序都已結束，再以 130 或 143 結束，不寫量測結果；並指出被中斷案例已存的檔案（未經驗證）。只會停止本 checkout 的 Electron.app 與素材私有 profile 的程序，不會動到已安裝的 RecordStuff。ffprobe 或 ffmpeg 執行中收到的 SIGTERM 會在該工具結束後、下一個案例開始或寫入任何量測之前生效（數秒內）；Ctrl-C 則會連同工具本身一起停止。
+
+案例的額外耗時主要來自驗證，其中又以兩次 ffprobe（完整解碼計算影格數與讀取影格時間戳）為大宗：在 M1 Pro 參考機上，30 秒 30 fps 的檔案 5.4 秒中佔 4.6 秒，60 fps 13.9 秒中佔 12.4 秒，long 27.0 秒中佔 22.9 秒。三次 ffmpeg（astats、blackdetect、silencedetect）合計不到 1 秒（long 為 4 秒），因此維持分開執行。
+
 | 矩陣 | 內容 |
 | --- | --- |
-| quick | 三段 30 秒：1440p 標準／高品質、原尺寸標準 |
+| quick | 三段 15 秒：1440p 標準／高品質、原尺寸標準 |
 | levels | 三段 30 秒 1080p：精省／標準／高品質 |
-| fps | 原尺寸標準 30／60 fps，各 30 秒 |
+| fps | 原尺寸標準 30／60 fps，各 15 秒 |
 | long | 180 秒 1080p 標準 30 fps 漂移回歸 |
-| all | 縮短至 15 秒的案例加 long，含間隔約七分鐘 |
+| all | levels、60 fps 與 quick 的案例各 15 秒，加 long |
 
-10 分鐘基準已做過，long 改 3 分鐘是使用者決定，不更改舊結果。
+10 分鐘基準已做過，long 改 3 分鐘是使用者決定，不更改舊結果；quick 與 fps 自 plan 042 起為 15 秒，仍有約 14 組閃光／短音配對，遠高於最少 3 組。在參考機上，每個回合約有 8 秒的 preflight、建置與素材，每個案例再加上錄影本身、約 2.5 秒的啟動與退出，以及驗證（15 秒 30 fps 案例約 3 秒、60 fps 約 7 秒、long 約 27 秒）：單跑 fps 約 1 分鐘、quick 約 1.2 分鐘、long 3.6 分鐘、all 約 6 分鐘（依 plan 042 的分段計時估算）。
 
 Autorecord 存檔後立即退出，因此 macOS 待送的儲存通知會被退出流程取消；橫幅不屬於 autorecord 完成條件。
 

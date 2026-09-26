@@ -69,6 +69,8 @@ pnpm acceptance:notification -- --install --full   # all three Finder states, En
 pnpm matrix -- quick
 pnpm matrix -- all
 pnpm matrix -- long
+pnpm matrix -- fps,long                                  # several matrices in one round: one build, one material launch
+pnpm matrix -- fps,quick --repeat 2                      # repeats interleave; the summary groups them per case
 pnpm diagnose:cadence                                    # frame cadence at 30 and 60 fps, two runs each
 pnpm diagnose:cadence -- --request 30:30.6,60:62.4       # compare a candidate frame-rate request
 ```
@@ -81,15 +83,19 @@ Verify accepts multiple files, an optional log path, source dimensions, `--movin
 
 Matrix is macOS-only developer automation. It launches the test material in a Chrome app-mode fullscreen window on the primary display unless --no-open-material is supplied, samples the app's process CPU, and drives an unpackaged app through RECORDSTUFF_AUTORECORD. Keep source display/audio stable during the run. Packaged builds ignore this variable. Autorecord quits immediately after saving, so on macOS that quit cancels the pending saved notification; a banner is not part of autorecord completion. The internal automatic-recording parser accepts durations in (0,3600] and validated quality overrides merged over defaults, not user settings. Every case requires channel energy and the sync markers (plan 030): the matrix checks for ffmpeg and ffprobe before it builds or records anything and exits 2 (blocked) without them. A case passes only when none of its checks failed, was blocked or is incomplete; such cases are listed with each unmet check and its reason at the end of the run and in the measurements file, and the run exits 1.
 
+One invocation is one desktop round (plan 042): it builds `out/` once, opens the material once and runs the named matrices in order. Names are comma-separated (several arguments are joined), and a name listed twice runs twice, so `fps,fps,long` records fps twice and long once. `--repeat N` (1–10) repeats the whole list, so a case's repeats interleave with the other cases rather than always running first or warmest; `--dry-run` prints the order. An unknown or empty name, an unknown option or a `--repeat` outside 1–10 prints the usage and exits 2. Cases run back to back: the next one launches as soon as the previous file is verified, and that verification is the rest between recordings. Each case prints and appends a timing line (launch to recording, recording, stop to saved, quit, and each verification tool), and the measurements file gets a Timing table with the round's preflight, build, material and wall time. A case that runs more than once is titled "run k of n", and a Repeats table lists every run's verdict with the minimum, median and maximum of the average frame rate, median interval, drops, CPU, flash/beep offset, drift and video bitrate; the case passes only when every run passed. A case the round never reached, because it stopped when ffmpeg or ffprobe went missing, counts as a blocked run. Exit codes are unchanged, except that a round whose cleanup left a process running exits 1. SIGINT or SIGTERM stops the build's whole process group, sends SIGTERM to the running case's app, whose normal quit stops and saves a recording in progress (within 5 seconds of a launch it first waits for the app to appear; anything still running after 30 seconds is killed), waits for the material's launch to finish and closes the material browser, ends the desktop round, confirms the processes exited and exits 130 or 143 without writing measurements; it names the interrupted case's saved file, which was not verified. Only processes of this checkout's Electron.app and the material's private profile are stopped, never an installed RecordStuff. A SIGTERM that arrives while ffprobe or ffmpeg is running takes effect when that tool finishes (seconds), before the next case starts or any measurement is written; Ctrl-C also stops the tool itself.
+
+Verification dominates a case's overhead, and within it the two ffprobe passes (the full-decode frame count and the frame timestamps) take most of the time: on the M1 Pro reference machine 4.6 of 5.4 seconds for a 30-second 30 fps file, 12.4 of 13.9 at 60 fps and 22.9 of 27.0 for long. The three ffmpeg passes (astats, blackdetect, silencedetect) take under a second, or 4 seconds for long, so they remain separate runs.
+
 | Matrix | Cases |
 | --- | --- |
-| quick | Three 30-second recordings: 1440p Standard/High and Source Standard |
+| quick | Three 15-second recordings: 1440p Standard/High and Source Standard |
 | levels | Three 30-second 1080p recordings: Economy/Standard/High |
-| fps | Source Standard at 30 and 60 fps, 30 seconds each |
+| fps | Source Standard at 30 and 60 fps, 15 seconds each |
 | long | 180-second 1080p Standard/30 fps drift regression |
-| all | Shortened 15-second cases plus long; roughly seven minutes including gaps |
+| all | The levels, 60 fps and quick cases at 15 seconds plus long |
 
-The historical ten-minute baseline has already been recorded. Long now uses three minutes by user decision. [Raw evidence](../verification/README.md) retains the older run's duration and verdicts.
+The historical ten-minute baseline has already been recorded. Long now uses three minutes by user decision; quick and fps use 15 seconds since plan 042, which still holds about 14 flash/beep pairs against the minimum of 3. On the reference machine a round costs about 8 seconds of preflight, build and material, plus per case the recording, about 2.5 seconds of launch and quit, and its verification (about 3 seconds for a 15-second 30 fps case, 7 at 60 fps, 27 for long): fps alone takes about a minute, quick about 1.2 minutes, long 3.6 and all about 6 (estimated from the plan 042 phase timings). [Raw evidence](../verification/README.md) retains the older run's duration and verdicts.
 
 ### Frame-cadence diagnostic
 
