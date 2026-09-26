@@ -9,6 +9,25 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 037 結案 — 2026-09-27
+
+量測並設限的錄影收尾重疊，在量測門檻結案、沒有實作重疊；由 Claude 實作並經 Codex GPT-6 Astra review（見[錄製設計](../system-design/recording.md#寫檔與失敗)、[設計決策](../system-design/decisions.md)、[收尾量測](../system-design/tooling.md#收尾量測)）。這份計畫要回答的是：已完成的錄影 A 還在發布時，能不能先開始錄影 B；前提是某個有代表性的情境從停止到可以開始下一段的 p95 超過 1 秒，而且其中至少 0.5 秒可以安全地移到擷取、排空、flush、close 之後。
+
+環境：M1 Pro、macOS 26.6.2、Electron 44.3.0（Node 24.20.0、libuv 1.52.1）、ffmpeg 9.0.1，主螢幕 BenQ GW2785TC 1920×1080 60 Hz，測試素材以 Chrome kiosk 顯示，版本為 HEAD `450d0e9` 加上未提交的變更。每段都由 `pnpm measure:finalization` 透過開發版 App 錄製，使用 autorecord 只存在記憶體中的 `outputDir`；沒有修改任何使用者設定。停止到可再開始的時間是 log 從 `state → stopping` 到 `state → idle`，也就是切換鍵可以開始下一段錄影的時刻。隔離磁碟區都是內建 SSD 上的 sparse 磁碟映像（6 GB 的 HFS+ 與 exFAT，低空間情境另用 700 MB 的 HFS+ 與 exFAT）；沒有可用的實體外接碟。
+
+- **等待花在哪裡。** 保留的 App log 有 223 次已儲存的錄影，最長 180 秒，Standard 30 與 60 fps：停止到可再開始 p50 28 ms、p95 112 ms、最大 223 ms，而 `host stopped` 之後的時間隨長度增加（15 秒約 80 ms，180 秒約 190 ms）。在 Electron 44 中，`COPYFILE_FICLONE` 在 macOS 上從不 clone；`COPYFILE_FICLONE_FORCE` 回傳 ENOSYS。600 MB 的複製花 580 ms，還多用 600 MB；`link` 只花 0.3 ms、不佔空間，目標已存在時回傳 EEXIST。因此每次儲存，包括 APFS，都是完整複製，與設計文件的描述不符，而且需要與檔案同樣大小的剩餘空間。
+- **複製版本的門檻（修改前）。** 本機 APFS 上錄 3 段 300 秒 High 60 fps，1864–2134 MiB（約等於 Standard 60 fps 錄 10 分鐘的大小）：停止到可再開始 1321、1530、2007 ms（n=3，p95 即最大值），其中發布 1262–1883 ms、清理 31–96 ms；host 交付 13–18 ms、佇列寫入 0–2 ms、flush 8–10 ms、close 0 ms、UI 收斂 3 ms。數字上 go 條件成立，但可分離的時間全部是複製。
+- **低空間（修改前）。** 在 700 MB 的 HFS+ 映像上，High 60 fps 錄到第 75 秒觸及 200 MiB 防護並要求正常停止。複製因 ENOSPC 失敗，錄影以 output_write_failed 結束，保留 490 MiB 的 `.recording.mp4` 部分檔，而不是帶著「磁碟空間即將用盡」的說明儲存；沒有留下不完整的 `.mp4`。035 N30 原本會以這種方式失敗。
+- **變更。** FileWriter 以排他硬連結發布；磁碟區因 EEXIST 以外的任何原因拒絕連結時，這個與之後每個尾碼都改用排他複製；發布時的 ENOSPC 現在回報 disk_full。recorder 記錄 `finalize timing` 行，autorecord 接受絕對路徑 `outputDir`，三個會延遲發布的 fixture 也會延遲連結。
+- **修改後。** 本機 APFS，10 段 15 秒 Standard 60 fps（53–58 MiB）：停止到可再開始 p50 26、p95 34、最大 34 ms，發布 1–4 ms by link，清理 0 ms。本機 APFS，3 段 300 秒 High 60 fps（1879–1986 MiB）：28、36、40 ms，發布 1 ms by link，清理 0 ms，host 交付 16–24 ms，flush 8–9 ms。HFS+ 映像，3 段 15 秒：p50 36、最大 41 ms，發布 0–1 ms by link。HFS+ 映像的低空間情境：帶提前停止說明儲存成功，499.6 MiB、75.03 秒，完整解碼無誤，停止到可再開始 51 ms。exFAT 映像上連結回傳 ENOTSUP，2 段 300 秒 High 60 fps（2015–2138 MiB）：停止到可再開始 2156 與 3119 ms，發布 2103 與 3052 ms by copy。exFAT 映像的低空間情境仍失敗，現在是嘗試複製 3.5 秒後回報 disk_full，並保留 532 MiB 的部分檔。
+- **決定：不做重疊，延後。** 改用連結後，APFS 與 Mac OS 擴充格式上 close 之後只剩幾毫秒，而且不隨長度增加；預設資料夾與多數輸出資料夾都在這類磁碟區上，門檻要求的 0.5 秒可分離時間已不存在。沒有硬連結的磁碟區仍會複製，在那裡錄長片仍符合數字門檻（exFAT 映像上約 2 GB 需 2.2–3.1 秒）。重疊只能把這段等待藏起來，無法消除複製需要與檔案同樣大小剩餘空間的問題；在慢速碟上複製還會和下一段錄影的寫入互搶，也會多出第二套生命週期；維護者於 2026-09-27 接受這個情境為已記錄的限制。若 exFAT 或網路輸出資料夾證實很常見，優先的下一步是在那裡去掉複製，而不是做重疊（[設計決策](../system-design/decisions.md)）。依計畫要求，實作契約（拆分作業擁有權、設限的重疊、逐次的 tray 與通知狀態、重疊生命週期測試與原生案例 N27–N29）沒有實作，本紀錄也沒有宣稱重疊已上線。
+
+最終原始碼的檢查：`pnpm check` 通過 typecheck、60 個檔案 1006 項測試與 build。新測試涵蓋：在真實暫存檔上走連結路徑（inode 相同、只剩一個連結）、連結被拒時每個候選名稱都排他複製、已被占用的名稱絕不被複製覆蓋、清理失敗時留下第二個連結、複製的 ENOSPC 回報 disk_full、計時 log 行、計時解析與 autorecord 的 `outputDir`。`pnpm acceptance:lifecycle` 四個案例全部通過，延遲中的發布仍讓退出延期兩次且位元組完全相同。`pnpm acceptance:quit-dialog -- --language en` 的自動生命週期通過；唯一的對話框出現在最前面且文字完整，由 System Events 關閉，不是維護者操作。全新的 `pnpm start:app` bundle（驗證 9 個身分）以已保存的 3 秒倒數通過 `pnpm acceptance -- --seconds 10`：1920×1080、10.3 秒、聲道 RMS −27.2/−27.2 dB、10 次閃光與 10 次嗶聲、完整解碼無誤，取消案例也通過（`2026-09-26T18-52-25-892Z-hotkey-acceptance`）；log 顯示 `publish 44 ms by link`，存檔只有一個連結。QuickTime Player 播放該檔（播放中、10.3 秒中的 3.8 秒、畫面上測試素材在動）後關閉。RecordStuff、開發版 App、QuickTime 與素材瀏覽器都已結束，沒有修改任何偏好設定。
+
+未驗證：實體外接碟（USB 或 Thunderbolt）、網路磁碟區與其他 Mac。維護者於 2026-09-27 決定以磁碟映像作為外接儲存的證據，不再使用實體碟，因此沒有原生案例承接這一項：磁碟映像證明的是檔案系統行為（連結或複製、ENOTSUP、ENOSPC），不是 USB 碟的吞吐量，存到實體 exFAT 碟時的等待可能比映像的數字更久。低空間儲存的通知文案沒有觀察到，因為 autorecord 在橫幅出現前就退出；這項移交 [035](../../../plans/035-guided-native-acceptance.zh-TW.md) N30。證據摘要保留在本機 `docs/verification/measurements/*-finalization-*/`；每段檔案在完整解碼後即刪除。
+
+Codex GPT-6 Astra（medium reasoning、read-only）review 兩輪。第一輪（約 2 分鐘）認為發布方式的變更正確，並對新的 runner 提出兩項 medium finding，都已接受並修正：`open` 剛把啟動交給 Launch Services 時中斷，收尾可能在 App 出現前就結束，讓它之後無人看管地錄影，因此收尾現在會等仍在進行的啟動與素材 launcher 最多 5 秒；超過時限的段落會丟掉 App 是否被強制結束的資訊，因此逾時的段落現在會回報如何被停止，並一律讓整輪失敗。修正後 `pnpm typecheck` 通過，一段 5 秒錄影 exit 0（`publish 1 ms by link`），啟動後立即送兩次 SIGINT 都 exit 130，App 已停止且沒有留下任何東西；在這台 Mac 上送出訊號時 App 已經看得到，所以新的等待分支本身沒有走到，逾時路徑也沒有實際執行。第二輪（18 秒）沒有 findings，並同樣指出這兩條路徑沒有在執行期驗證。沒有使用 fallback。應維護者要求，變更依範圍分批提交到本地 main：發布方式與測試 `e299011`、量測工具 `c4e2f5f`、設計文件 `8d33c63`，以及這次的結案提交。沒有 push 或發布。
+
 ## Plan 034 結案 — 2026-09-27
 
 Windows 系統匣圖示，由 Claude 實作並經 Codex GPT-6 Astra review（見[桌面設計](../system-design/desktop.md#tray-與通知)）。在此之前，Windows ICO 沿用 macOS template 的幾何形狀，改成中灰色（128, 128, 128），錄影時是紅色圓點，尺寸為 16、24、32、48 px。圓環細、灰，也認不出是 RecordStuff；在淺色工作列上對比約 3.3:1，警示徽章同樣是灰色，125% 縮放也沒有 20 px 可用。Windows 不顯示 `REC` 標題，所以狀態只能靠圖示本身表達。
