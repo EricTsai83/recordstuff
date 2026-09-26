@@ -348,7 +348,7 @@
 
 頂層 CLI 驗平台與 --open／--dmg，清除 Apple／CSC 環境、禁止自動尋找憑證與發布，先 build app 再 verify，之後開啟或封 DMG；暫存抽出的公開憑證最後刪除。
 
-[make-icons.mjs](../../../scripts/make-icons.mjs)：`coverage(shape, px, py)` 做超取樣覆蓋；`circle()`／`ring()`／`roundedSquare()` 建幾何遮罩；`rasterize(size, layers)` 合成 RGBA；`chunk(type, data)` 建 PNG chunk（含 CRC）；`png(size, rgba)` 封 PNG；`ico(entries)` 封多尺寸 ICO；`box()` 建比例矩形；`idleShape()`／`busyShape()`（沙漏）／`countdownShape()`（碼錶）／`recordingShape()`／`warningShape()` 建 tray 圖樣；`appIcon(size)` 建 App 圖樣。頂層輸出資產，macOS 使用 iconutil 生成 ICNS，其他平台保留現有 ICNS。
+[make-icons.mjs](../../../scripts/make-icons.mjs)：`coverage(shape, px, py)` 做超取樣覆蓋；`circle()`／`ring()`／`roundedSquare()` 建幾何遮罩；`rasterize(size, layers)` 合成 RGBA；`chunk(type, data)` 建 PNG chunk（含 CRC）；`png(size, rgba)` 封 PNG；`ico(entries)` 封多尺寸 ICO；`box()` 建比例矩形；`idleShape()`／`busyShape()`（沙漏）／`countdownShape()`（碼錶）／`recordingShape()`／`warningShape()` 建 tray 圖樣；`appIcon(size)` 建 App 圖樣。Windows 系統匣圖示（plan 034）依 `WINDOWS_TRAY` 逐一繪製每個 ICO 尺寸，這張表記錄 16、20、24、32、48 px 的像素幾何：`rect()`／`union()`／`offset()` 組合像素遮罩；`exclamation()`／`hourglass()`／`stopwatch()` 繪製警示記號、busy 與倒數符號；`windowsTrayLayers(state, size)` 把帶灰色邊緣的深色底座與該狀態的符號疊在一起。頂層輸出資產，macOS 使用 iconutil 生成 ICNS，其他平台保留現有 ICNS。
 
 ## 錄影驗收工具
 

@@ -350,7 +350,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 Top-level CLI checks platform/options, filters release credentials, builds/verifies an app, then opens it or creates a DMG; temporary extracted public certificates are removed.
 
-[scripts/make-icons.mjs](../../scripts/make-icons.mjs): `coverage` supersamples geometry; `circle`, `ring`, and `roundedSquare` create masks; `rasterize` composites RGBA; `chunk` constructs PNG chunks with CRC; `png` and `ico` encode formats; `box` makes fractional rectangles; `idleShape`, `busyShape` (hourglass), `countdownShape` (stopwatch), `recordingShape`, `warningShape` and `appIcon` define assets. Top-level generation writes resources and invokes iconutil on macOS.
+[scripts/make-icons.mjs](../../scripts/make-icons.mjs): `coverage` supersamples geometry; `circle`, `ring`, and `roundedSquare` create masks; `rasterize` composites RGBA; `chunk` constructs PNG chunks with CRC; `png` and `ico` encode formats; `box` makes fractional rectangles; `idleShape`, `busyShape` (hourglass), `countdownShape` (stopwatch), `recordingShape`, `warningShape` and `appIcon` define assets. The Windows tray artwork (plan 034) is drawn per ICO entry from `WINDOWS_TRAY`, a table of pixel geometry for 16, 20, 24, 32 and 48 px: `rect`, `union` and `offset` compose pixel masks; `exclamation`, `hourglass` and `stopwatch` draw the warning mark, busy and countdown symbols; `windowsTrayLayers(state, size)` stacks the grey-rimmed dark base with that state's symbol. Top-level generation writes resources and invokes iconutil on macOS.
 
 ## Verification tools
 
