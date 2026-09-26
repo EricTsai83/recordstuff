@@ -233,7 +233,7 @@ export class CaptureHost {
     // grant, Chromium still hands back an audio track — already ended, never
     // delivering samples, with no error. Recording it would be a silent file.
     if (audioTracks.some((track) => track.readyState === "ended")) {
-      refuse("no_audio_track", "system audio track already ended (system audio permission or NSAudioCaptureUsageDescription may be missing)");
+      refuse("no_audio_track", "system audio track already ended (system audio permission or NSAudioCaptureUsageDescription may be missing, or a heavily loaded Mac could not start it)");
       return;
     }
 

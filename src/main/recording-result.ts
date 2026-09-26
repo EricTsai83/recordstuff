@@ -441,7 +441,7 @@ const reasons: Record<ErrorCode, PlainMessageKey> = {
   unsupported_os_version: "This system version does not support system audio capture. macOS 13 or newer is required on Mac.",
   display_unavailable: "Selected display is unavailable. Choose another screen.",
   no_display: "No display is available for recording.",
-  no_audio_track: "System audio is unavailable. On macOS, allow RecordStuff in System Settings > Privacy & Security > Screen & System Audio Recording.",
+  no_audio_track: "System audio was unavailable when recording started, so nothing was recorded.",
   mp4_unsupported: "MP4 recording is not supported on this computer.",
   capture_start_failed: "Could not start recording.",
   capture_failed: "Recording was interrupted.",
@@ -459,6 +459,9 @@ export function failureGuidance(code: ErrorCode, language: Language, platform: N
     return t("Check capture permissions and audio devices before recording again.", language);
   return t(code === "disk_full" ? "Free disk space or choose another output folder before recording again."
     : isOutputFolderFailure(code) ? "Check the output folder, its permissions and the connected drive before recording again."
+    // The capture host sees the same ended track for a missing grant and for a Mac too loaded
+    // to start system audio (plan 040's load tests), so both causes are named, the cheap one first.
+    : code === "no_audio_track" ? "Try again after closing demanding apps: a Mac under very heavy load can fail to provide system audio. If it keeps happening, allow RecordStuff in System Settings > Privacy & Security > Screen & System Audio Recording, then relaunch."
     : isPermissionFailure(code) ? "Check recording permissions in System Settings. Relaunch if access was recently granted."
     : code === "display_unavailable" || code === "no_display" ? "Choose Primary display or another available screen."
     : code === "app_terminated" ? "The recording file may be incomplete. RecordStuff does not repair it, and starting again does not recover missing content."

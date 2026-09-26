@@ -175,8 +175,9 @@ export const ZH_TW = {
   "This system version does not support system audio capture. macOS 13 or newer is required on Mac.":
     "這個系統版本不支援錄製系統音訊，Mac 需要 macOS 13 以上",
   "No display is available for recording.": "找不到可以錄製的螢幕",
-  "System audio is unavailable. On macOS, allow RecordStuff in System Settings > Privacy & Security > Screen & System Audio Recording.":
-    "拿不到系統音訊，沒有開始錄製。macOS 請確認「系統設定 → 隱私權與安全性 → 螢幕與系統音訊錄製」已允許 RecordStuff",
+  "System audio was unavailable when recording started, so nothing was recorded.": "開始錄製時拿不到系統音訊，沒有開始錄製",
+  "Try again after closing demanding apps: a Mac under very heavy load can fail to provide system audio. If it keeps happening, allow RecordStuff in System Settings > Privacy & Security > Screen & System Audio Recording, then relaunch.":
+    "請關閉耗資源的 App 後再試一次：Mac 負載非常重時，可能無法提供系統音訊。若持續發生，請在「系統設定 → 隱私權與安全性 → 螢幕與系統音訊錄製」允許 RecordStuff，然後重新啟動 App。",
   "MP4 recording is not supported on this computer.": "這台電腦的錄製元件不支援 MP4，沒有開始錄製",
   "Could not start recording.": "無法開始錄製",
   "Recording was interrupted.": "錄製中斷",

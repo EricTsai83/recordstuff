@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { RecordingResults, failureGuidance, failureOutcome } from "./recording-result";
+import { RecordingResults, failureGuidance, failureOutcome, failureReason, isPermissionFailure } from "./recording-result";
 import type { RecordingFailure } from "../shared/recording-result";
 
 const a: RecordingFailure = { id: "a", code: "disk_full", detail: "ENOSPC", occurredAt: "2026-09-24T12:00:00Z", outcome: "pending" };
@@ -83,6 +83,19 @@ it("distinguishes unknown from empty and does not promise recoverability", () =>
   expect(failureOutcome({ ...a, outcome: "unknown" }, "en")).toContain("Could not confirm");
   expect(failureOutcome({ ...a, outcome: "partial" }, "zh-TW")).toContain("可能無法播放");
   expect(failureGuidance("disk_full", "zh-TW")).toContain("釋放磁碟");
+});
+
+it("names both causes of missing system audio on macOS, a very busy Mac first, and keeps the permission actions", () => {
+  expect(failureReason("no_audio_track", "en")).toBe("System audio was unavailable when recording started, so nothing was recorded.");
+  expect(failureReason("no_audio_track", "zh-TW")).toBe("開始錄製時拿不到系統音訊，沒有開始錄製");
+  const en = failureGuidance("no_audio_track", "en", "darwin");
+  expect(en.indexOf("very heavy load")).toBeLessThan(en.indexOf("System Settings"));
+  expect(en).toContain("then relaunch");
+  expect(failureGuidance("no_audio_track", "zh-TW", "darwin")).toContain("負載非常重");
+  // A missing permission grant keeps its own guidance; other platforms keep the device hint.
+  expect(failureGuidance("permission_denied", "en", "darwin")).toBe("Check recording permissions in System Settings. Relaunch if access was recently granted.");
+  expect(failureGuidance("no_audio_track", "en", "win32")).toContain("audio devices");
+  expect(isPermissionFailure("no_audio_track")).toBe(true);
 });
 
 it("does not relaunch again for a restored permission error unless current permission needs it", async () => {
