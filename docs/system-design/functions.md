@@ -50,22 +50,28 @@ Process callbacks log uncaught exceptions/rejections. Recorder events render sta
 | state getter | Current authoritative RecordingState |
 | sessionId getter | In-flight session ID for diagnostics such as sleep/wake logging |
 | subscribe | Register event listener and return unsubscribe |
-| toggle | Start when idle, stop when recording, request permission guidance when blocked, otherwise ignore |
+| toggle | Start when idle, stop when recording, cancel a countdown, request permission guidance when blocked, otherwise ignore |
+| cancelCountdown | Before `record`: cancel the attempt; after it: request stop once capture starts; a menu's Cancel countdown arriving while recording stops the recording; otherwise ignore |
 | stop | Matching recording session → stopping (recording its stop-request time), arm deadline, send stop |
-| shutdown | Wait startup, request stop, wait completion/failure while racing quit cap |
+| shutdown | Cancel a countdown, mark an opening/preparing attempt to cancel at `prepared`, keep stop intent after `record`, stop a recording, wait completion/failure while racing quit cap |
 | setPermission | Always store the latest status; while idle/needsPermission re-settle on a change, never replace a busy state |
 | outputDirChanged | Clear the remembered outputDirUnavailable, also while needsPermission; update the state only when idle |
-| start | Preflight (a refusal emits a failed event marked `preflight`, naming no session), snapshot, session, folder probe, unique writer, host start; clean late results |
+| start | Preflight (a refusal emits a failed event marked `preflight`, naming no session), quality and countdown snapshots, session, folder probe, unique writer, overlay prepare, host start; clean late results |
 | openUniqueWriter | Write the interruption sentinel for each temporary name, then try temporary/final filename pairs; retry temporary EEXIST up to ten attempts |
 | markInFlight / clearInFlight | Write the session sentinel (a failure logs once and never blocks) / remove it on every terminal outcome |
-| handleHostMessage | Filter session, dispatch started/chunk/stopped/error, stop stale capture |
+| handleHostMessage | Filter session, dispatch prepared/started/chunk/stopped/error, map a pre-capture capture_failed to capture_start_failed with the phase, stop stale capture |
+| beginCountdown | Enter countdown N, show the overlay and schedule every tick, the dismissal and N seconds from one monotonic anchor |
+| dismissOverlay / recordAfterCountdown | Await the overlay's dismissal within its bound (then close it and log) / send `record` once N seconds passed and the overlay is gone |
+| record | Enter arming, arm the `record → started` deadline and send `record`; a refusal fails the start |
+| cancel | Detach session, clear timers, close the overlay, stop the host, return to the pre-attempt idle, abandon the writer, emit `cancelled`, remove the sentinel |
+| present / closeOverlay / clearCountdown | Call the presenter, logging its errors / close the overlay once / clear countdown timers |
 | handleChunk | Validate consecutive seq, clear first-chunk deadline, reset the stall guard on nonempty media after started, append; map rejection to failure |
 | finalize | Wait writes, ensure session still current, finish file, then idle/saved with any early-stop reason and the session trace, then remove the sentinel |
 | armStall | Inter-chunk timer after media began: log once at the warning bound, fail with capture_failed at the second |
 | watchDisk | While recording, poll free space on one non-overlapping timer; log once below the warning threshold, request one normal stop below the stop threshold; a failed poll logs once |
 | retainedWriteError | Drain the writer within a bound and return its retained write/sync error, used only to reclassify capture_start_failed |
-| handleHostFailure | Fail only when a recording session exists |
-| fail | Detach session, clear deadline and health timers, stop host, idle immediately, report a writer-retained disk error instead of capture_start_failed, abandon writer, emit failure with its file outcome, session trace and optional partial path, remove the sentinel |
+| handleHostFailure | Fail only when a session exists; before `record` as capture_start_failed naming the phase |
+| fail | Detach session, clear deadline, countdown and health timers, close the overlay, stop host, idle immediately, report a writer-retained disk error instead of capture_start_failed, abandon writer, emit failure with its file outcome, session trace and optional partial path, remove the sentinel |
 | trace | The session's id, temporary path and recording/stop-request times carried on captureStarted, saved and failed (plan 029) |
 | clearTimer / clearDisk / clearHealth | Cancel and clear the session deadline / free-space poll / poll and stall timers |
 | setState / emit | Replace state and emit / notify registered listeners |
@@ -80,6 +86,7 @@ Process callbacks log uncaught exceptions/rejections. Recorder events render sta
 | constructor | Paths/dev URL plus default 5-second ping and 8-second readiness deadline |
 | onMessage / onFailure | Register valid-message and host-failure callbacks |
 | start | Tear down any previous host, create a fresh window for this attempt and wait for ready; begin the session heartbeat, then post start with session quality; a creation/load failure tears the new window down and rejects |
+| record | Post record for the watched session; throws when no host is attached to it |
 | stop | Post stop when a port exists |
 | destroy | Tear down when an attempt settles and during app quit |
 | create | Build sandbox window/channel, install guards/crash handlers, load page, hand off port, wait ready; log a malformed message as field names and value kinds only |
@@ -97,11 +104,13 @@ Process callbacks log uncaught exceptions/rejections. Recorder events render sta
 | measureFrameSize | Observe muted video intrinsic dimensions until matching size, error, or timeout; detach video in finally |
 | current / matches / check | Read positive dimensions, match optional expected size, resolve measurement and clear timer |
 | CaptureHost constructor | Subscribe/start port, inject frame measurer, send ready |
-| handle | Validate MainMessage; ping→pong, start, or stop |
-| start | Reject overlap/unsupported MIME, request stream, handle cancellation/audio validation, apply quality, start MediaRecorder |
+| handle | Validate MainMessage; ping→pong, start, record, or stop |
+| start | Reject overlap/unsupported MIME, request stream, handle cancellation/audio validation, apply quality, build an inactive MediaRecorder, watch its tracks and send prepared |
+| record | Refuse unless this session is prepared and live; register callbacks, start MediaRecorder, send started; ignore a duplicate |
+| release | Drop a prepared session and stop its tracks |
 | cancelled | During pending start, discard canceled stream, remove pending ID, send stopped |
 | refuse | Remove pending ID, stop tracks, and report start failure |
-| stop | Cancel pending ID or stop matching active recorder once; inactive recorder schedules terminal cleanup |
+| stop | Cancel pending ID, release a matching prepared session and reply stopped, or stop matching active recorder once; inactive recorder schedules terminal cleanup |
 | enqueueChunk | Skip empty Blob; allocate seq, serialize ArrayBuffer conversion and copying; report conversion failure |
 | finish | Once-only terminal path: stop tracks, drain send chain, clear session, invoke terminal callback |
 | fail / send | Construct error / post typed HostMessage |
@@ -148,6 +157,7 @@ The page's window-message callback checks source/marker/port before creating the
 | setOutputDir | Validate absolute path, then enqueue update |
 | setQuality | Validate patch, then merge with latest committed quality inside the save queue |
 | setLanguage | Validate en/zh-TW, then enqueue update without dropping folder/quality |
+| countdown / setCountdown | Read the committed countdown / validate 0, 3, 5 or 10, then enqueue update |
 | save | Serialize, write, then update memory; one failed operation does not block later saves |
 | write | `writeFileAtomic`: mkdir, write and fsync JSON.tmp, then rename |
 
@@ -185,7 +195,21 @@ The page's window-message callback checks source/marker/port before creating the
 
 [shared/i18n.ts](../../src/shared/i18n.ts): `isLanguage(value)` validates en/zh-TW; `translate(key, language, values)` selects an English-keyed template or Traditional Chinese translation and substitutes every named placeholder; the compiler requires a value for each placeholder of the key, and label tables use `PlainMessageKey` (messages without placeholders). DEFAULT_LANGUAGE is en; ZH_TW is a typed complete translation catalog. Technical logs do not use it.
 
-[shared/protocol.ts](../../src/shared/protocol.ts): `isRecord` and `isNonEmptyString` support `isMainMessage` and `isHostMessage`; chunk validation requires nonnegative integer seq and ArrayBuffer bytes. [shared/state.ts](../../src/shared/state.ts): `isErrorCode` checks the ERROR_CODES whitelist.
+[shared/protocol.ts](../../src/shared/protocol.ts): `isRecord` and `isNonEmptyString` support `isMainMessage` and `isHostMessage`; `prepared` requires a mime type and a CaptureReport, `started` may carry neither; chunk validation requires nonnegative integer seq and ArrayBuffer bytes.
+
+[shared/countdown.ts](../../src/shared/countdown.ts): `COUNTDOWN_CHOICES` (0, 3, 5, 10), `DEFAULT_COUNTDOWN` (3) and `isCountdownSeconds`; `COUNTDOWN_TIMING` (tick, overlay lead, dismissal bound, fades, settle) and `COUNTDOWN_OVERLAY` (size, insets, font, digit, outline, shadows, reduced-transparency values), the one place every timing and appearance value lives; `overlayBounds(workArea)` places the 88 × 88 pt window; the value channel and bridge type the overlay preload exposes.
+
+[main/countdown-overlay.ts](../../src/main/countdown-overlay.ts):
+
+| Function/method | Contract |
+| --- | --- |
+| overlayWindowOptions | Transparent, frameless, shadowless, fixed, unfocusable, sandboxed window options; a non-activating panel on macOS |
+| prepare | Build the hidden window once at the primary display, at the `screen-saver` level on every Space, click-through; load the page; a crash or failed load closes it |
+| show / update | Place on the recorded display (primary, logged, when unknown), log the placement with the display bounds, send the digit and show inactive once loaded / send the next digit |
+| dismiss | Send `null` so the digit fades, destroy the window after the fade and settle interval, then resolve; destroy at once when nothing was drawn |
+| close / destroy | Destroy at once, resolving a pending dismissal; `destroy` is the app's safety net on settled states and quit |
+
+[renderer/countdown.ts](../../src/renderer/countdown.ts): `overlayStyle` turns the shared appearance values into CSS custom properties; `createCountdownView` crossfades two stacked faces and fades the stage out on `null`. [preload/countdown.ts](../../src/preload/countdown.ts) exposes only `countdown.onValue` and forwards positive integers or `null`. [shared/state.ts](../../src/shared/state.ts): `isErrorCode` checks the ERROR_CODES whitelist.
 
 [preload/index.ts](../../src/preload/index.ts) has one IPC callback rather than named functions: forward the received capture-host-port to window with transferred ports. No contextBridge API is exposed.
 
@@ -256,9 +280,9 @@ The page's window-message callback checks source/marker/port before creating the
 | disabled / item | Build disabled/enabled model entries |
 | footer | Settings, Show log, and Quit in every state |
 | outputDirItems | Folder label and selection action with state-dependent enablement |
-| stopHint | Stop tooltip naming the registered accelerator; undefined when disabled or unregistered |
+| stopHint / cancelHint | Stop / Cancel countdown tooltip naming the registered accelerator; undefined when disabled or unregistered |
 | permissionActions | Relaunch alone when required; otherwise settings and fallback relaunch |
-| trayModel / text / model | Pure state/context projection with local translation/status helpers; the tooltip carries the status and the right-click hint |
+| trayModel / text / model | Pure state/context projection with local translation/status helpers; one icon per state (ring, hourglass, stopwatch, filled dot, badge on the idle ring only), a title only while recording; the tooltip carries the status and the right-click hint |
 | notice | Wrap body with product title |
 | savedNotification | Basename → localized completion text |
 | permissionNotification | Localized settings/relaunch guidance |
@@ -301,15 +325,15 @@ The page's window-message callback checks source/marker/port before creating the
 | log | Invoke optional injected logger |
 | popUpMenu | Rebuild current model and show native menu |
 | toTemplate | Map a separator or command entry to an Electron menu template |
-| loadIcons | Windows ICO or template PNG assets |
+| TRAY_ICON_FILES / loadIcons | The asset per state / Windows ICO or template PNG assets for every state |
 
 ## Logging and automatic recording
 
 [main/log.ts](../../src/main/log.ts): `rotatedPath` constructs archive names; `rotateLog` removes the oldest and shifts archives; `formatLine` adds UTC ISO time; `createFileLogger` returns a synchronous logging closure. Nested `sizeOf` reads length (failure→0); `appendToFile` creates the directory, rotates, and appends. The returned function writes stdout first and disables file logging after an error.
 
-[main/session-log.ts](../../src/main/session-log.ts): `createRunId` forms the per-launch run id from launch time and pid; `logSessionEvent` writes the human `saved`/`failed:` line and then the versioned session record for captureStarted, saved, failed and a preflight refusal, ignoring other events. [shared/session-record.ts](../../src/shared/session-record.ts) defines the record schema, prefix and version and formats one record; it has only type imports so scripts load it directly.
+[main/session-log.ts](../../src/main/session-log.ts): `createRunId` forms the per-launch run id from launch time and pid; `logSessionEvent` writes the human `saved`/`failed:` line and then the versioned session record for captureStarted, saved, failed and a preflight refusal; a cancelled countdown is one plain `cancelled:` line naming its temporary file and no record; other events are ignored. [shared/session-record.ts](../../src/shared/session-record.ts) defines the record schema, prefix and version and formats one record; it has only type imports so scripts load it directly.
 
-[main/autorecord.ts](../../src/main/autorecord.ts): `parseAutoRecord` ignores packaged/empty input, validates seconds in (0,3600] and quality keys, and merges defaults. `runAutoRecord` waits 1.5 seconds before toggle, starts its stop timer only after recording begins, and quits after saved/failed, or needsPermission before its press, through once-only `finish`. It does not write settings.
+[main/autorecord.ts](../../src/main/autorecord.ts): `parseAutoRecord` ignores packaged/empty input, validates seconds in (0,3600], quality keys and an optional countdown (0 unless named), and merges defaults. `runAutoRecord` waits 1.5 seconds before toggle, starts its stop timer only after recording begins, and quits after saved/failed, or needsPermission before its press, through once-only `finish`. It does not write settings.
 
 ## Packaging and icons
 
@@ -326,7 +350,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 Top-level CLI checks platform/options, filters release credentials, builds/verifies an app, then opens it or creates a DMG; temporary extracted public certificates are removed.
 
-[scripts/make-icons.mjs](../../scripts/make-icons.mjs): `coverage` supersamples geometry; `circle`, `ring`, and `roundedSquare` create masks; `rasterize` composites RGBA; `chunk` constructs PNG chunks with CRC; `png` and `ico` encode formats; `idleShape`, `recordingShape`, and `appIcon` define assets. Top-level generation writes resources and invokes iconutil on macOS.
+[scripts/make-icons.mjs](../../scripts/make-icons.mjs): `coverage` supersamples geometry; `circle`, `ring`, and `roundedSquare` create masks; `rasterize` composites RGBA; `chunk` constructs PNG chunks with CRC; `png` and `ico` encode formats; `box` makes fractional rectangles; `idleShape`, `busyShape` (hourglass), `countdownShape` (stopwatch), `recordingShape`, `warningShape` and `appIcon` define assets. Top-level generation writes resources and invokes iconutil on macOS.
 
 ## Verification tools
 

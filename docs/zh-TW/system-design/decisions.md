@@ -13,6 +13,7 @@
 | Main 擁有狀態與影片 writer | UI、擷取程序不能各自宣稱錄製成功 | 程序中止時 main 要協調故障收尾 |
 | MP4 H.264 + AAC | 本機 QuickTime 可直接播放，硬體編碼已有量測證據 | fragmented MP4；非所有損壞檔都可播，無轉檔 fallback |
 | 原生 Tray／Menu／Notification | 一個按鈕的產品不需要一般視窗與 UI framework | 通知呈現與 Finder 排序受系統控制 |
+| 錄影前倒數，預設 3 秒（plan 040；[設計](recording.md#倒數)） | 以往點擊後約 0.3 秒就開始擷取，最初幾格會拍到滑鼠離開選單列，又沒有剪輯器可剪掉。比照 Cap 先準備管線、以 gate 控制影格，倒數前就準備好擷取，歸零時由 `MediaRecorder.start()` 作為 gate；關閉、3、5、10 秒沿用 Cap 的選項，預設值也套用到既有使用者 | 只在右上角顯示 28% 白色數字，沒有方框、圓環、文字、音效、全螢幕變暗或 content protection：`getDisplayMedia` 無法排除個別視窗，因此 overlay 改在擷取前 300 ms 離開。不加開始音效，因為 RecordStuff 會錄系統音訊，而 `restrictOwnAudio` 是否排除 App 自己的聲音尚未驗證。數字在明亮照片上會變淡；只有取得原生證據（035 的 N32）才重新評估透明度。點擊、快捷鍵、選單或退出都能取消，取消不算失敗 |
 | 全域快捷鍵依實體鍵位註冊（macOS 停用 `LayoutAwareGlobalHotkeys`；[原因](desktop.md#錄影快捷鍵)） | 編輯器記錄實體鍵位並拒絕數字鍵盤；Chromium 依配置查找，會在注音下把預設 ⌘⇧1 移到數字鍵盤 | 非 QWERTY 拉丁配置的字母快捷鍵是 US 位置，而不是鍵帽字母。每次升級 Electron 都要執行 `pnpm acceptance:shortcut-layout`（[檢查](tooling.md#鍵盤配置快捷鍵檢查)）：若其 Chromium 改名或移除此功能，註冊會在無提示下回到依配置查找 |
 | 手寫 type guard、單一 repo | 協定及狀態規模小，容易完整閱讀與測試 | 沒有協定版本協商；獨立發布另一端時需重設契約 |
 | 媒體 buffer 複製傳送 | 先前 Electron 44 的 transfer ArrayBuffer 實驗會卡住 main | 多一次記憶體拷貝；目前無有界背壓 |

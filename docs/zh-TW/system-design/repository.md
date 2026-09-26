@@ -30,9 +30,9 @@
 
 | 目錄 | 執行於 | 內容 |
 | --- | --- | --- |
-| `src/main/` | 主程序 | 生命週期（`index.ts`）、錄製狀態機（`recorder.ts`）、擷取頁面監管、檔案寫入、權限偵測、設定、選單列、全域快捷鍵、儲存通知、更新檢查、log，以及僅供開發的無人值守錄製（`autorecord.ts`） |
-| `src/renderer/` | 繪製程序 | 兩個入口：隱藏的擷取頁面（`index.html` + `capture-host.ts`，負責媒體串流與編碼），以及設定面板（`settings.html`、`settings.ts`、`settings.css`） |
-| `src/preload/` | Preload，sandbox | 每個 renderer 各一個：`index.ts` 只把 MessagePort 交給擷取頁面、不對外開放任何 API；`settings.ts` 承載設定面板的 IPC 契約 |
+| `src/main/` | 主程序 | 生命週期（`index.ts`）、錄製狀態機（`recorder.ts`）、擷取頁面監管、倒數 overlay 視窗（`countdown-overlay.ts`）、檔案寫入、權限偵測、設定、選單列、全域快捷鍵、儲存通知、更新檢查、log，以及僅供開發的無人值守錄製（`autorecord.ts`） |
+| `src/renderer/` | 繪製程序 | 三個入口：隱藏的擷取頁面（`index.html` + `capture-host.ts`，負責媒體串流與編碼）、設定面板（`settings.html`、`settings.ts`、`settings.css`），以及倒數 overlay（`countdown.html`、`countdown.ts`、`countdown.css`） |
+| `src/preload/` | Preload，sandbox | 每個 renderer 各一個：`index.ts` 只把 MessagePort 交給擷取頁面、不對外開放任何 API；`settings.ts` 承載設定面板的 IPC 契約；`countdown.ts` 只提供 overlay 的數值訂閱 |
 | `src/shared/` | 兩邊共用 | 狀態（`state.ts`）、MessagePort 協定、錄製品質運算、設定面板契約、螢幕偏好、外觀、快捷鍵驗證，以及翻譯（`i18n.ts`） |
 
 這棵樹有四條共通慣例：
@@ -70,7 +70,7 @@
 ## 打包輸入
 
 - `build/` 是 electron-builder 的 `buildResources`：`icon.png`、macOS 的 `icon.icns`，以及 DMG 背景 `background.png` 與 `background@2x.png`。全部由 `pnpm icons` 以程式產生。
-- `resources/` 放 App 執行期所需資源：macOS 選單列 template 圖、Windows `.ico` 兩枚（同樣由 `pnpm icons` 產生）、`entitlements.mac.plist`，以及雙語安裝指南。打包過濾只複製 `*.png` 與 `*.ico`，因此 entitlements 與指南不會進入出貨的 App。
+- `resources/` 放 App 執行期所需資源：每個 tray 狀態（idle、busy、countdown、recording、warning）各一張 macOS template 圖（含 `@2x`）與一枚 Windows `.ico`（全部由 `pnpm icons` 產生，`scripts/make-icons.test.ts` 逐 byte 核對）、`entitlements.mac.plist`，以及雙語安裝指南。打包過濾只複製 `*.png` 與 `*.ico`，因此 entitlements 與指南不會進入出貨的 App。
 - `electron-builder.yml` 是共用打包設定，`electron-builder.local.yml` 以 `extends` 延伸出本機免費自簽。`files` 只允許 `out/**` 與 `package.json`，因此 `src/`、`scripts/`、`docs/`、`plans/` 的任何內容都不會抵達使用者。
 
 ## 網站
@@ -104,7 +104,7 @@ App 的更新檢查讀取本網站的 `release.json`，因此 `scripts/lib/relea
 | `tsconfig.node.json`／`tsconfig.web.json` | 哪些目錄以 Node／Electron 或 DOM 函式庫檢查型別；`src/shared/` 同時出現在兩者。在 renderer 端執行的 fixture `scripts/fixtures/frame-cadence-renderer.ts` 從 Node 設定排除，改以 DOM 設定檢查 |
 | `tsconfig.tests.json` | `tests/` 同時以 DOM 與 Node 函式庫檢查型別，與 renderer 分開 |
 | `vitest.config.ts` | 測試只在 `src/`、`scripts/` 與 `tests/` 下以 `*.test.ts` 尋找 |
-| `electron.vite.config.ts` | 一個 main 入口、兩個 preload 入口、兩個 renderer HTML 入口 |
+| `electron.vite.config.ts` | 一個 main 入口、三個 preload 入口、三個 renderer HTML 入口 |
 | `electron-builder.yml` | 打包哪些內容（`out/**`、`package.json`）與複製哪些資源 |
 | `.gitignore` | 產生物、原始量測與簽署材料一律不納管 |
 | `website/scripts/check-links.mts` | 已發布網站的連結完整性 |

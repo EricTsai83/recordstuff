@@ -2,7 +2,7 @@
 
 [English](recording.md) | [繁體中文](../zh-TW/system-design/recording.md)
 
-Sources: [Recorder](../../src/main/recorder.ts), [renderer CaptureHost](../../src/renderer/capture-host.ts), [FileWriter](../../src/main/file-writer.ts), [health thresholds](../../src/main/recording-health.ts), [session sentinels](../../src/main/session-sentinel.ts), [quality](../../src/shared/quality.ts).
+Sources: [Recorder](../../src/main/recorder.ts), [renderer CaptureHost](../../src/renderer/capture-host.ts), [FileWriter](../../src/main/file-writer.ts), [health thresholds](../../src/main/recording-health.ts), [countdown values](../../src/shared/countdown.ts), [session sentinels](../../src/main/session-sentinel.ts), [quality](../../src/shared/quality.ts).
 
 ## State and user actions
 
@@ -12,25 +12,42 @@ stateDiagram-v2
     idle --> needsPermission: Screen capture unavailable
     needsPermission --> idle: Grant and source validated
     idle --> starting: toggle
-    starting --> recording: started
+    starting --> countdown: prepared (countdown on)
+    starting --> recording: prepared, record, started (Off)
+    countdown --> recording: record, started
+    countdown --> idle: cancelled (toggle / menu / quit)
+    starting --> idle: cancelled (quit)
     recording --> stopping: stop / quit
     stopping --> idle: File finalized / saved
     starting --> idle: failed
+    countdown --> idle: failed
     recording --> idle: failed
     stopping --> idle: failed
 ```
 
-NeedsPermission carries needsRelaunch, and lastSavedPath when a recording was saved while permission was missing. Idle may carry lastSavedPath or outputDirUnavailable. A session's end (saved or failed) settles into needsPermission instead of idle when the latest permission status is not granted ([screen permission](desktop.md#screen-permission)). Recording carries an ISO startedAt. Failure is an event, not a persistent failed state. Clicking without permission emits permissionRequested; clicks during starting/stopping are ignored.
+NeedsPermission carries needsRelaunch, and lastSavedPath when a recording was saved while permission was missing. Idle may carry lastSavedPath or outputDirUnavailable. Countdown carries `remaining`, whole seconds, at least 1 and kept at 1 while `record` waits for `started`. A session's end (saved or failed) settles into needsPermission instead of idle when the latest permission status is not granted ([screen permission](desktop.md#screen-permission)). Recording carries an ISO startedAt. Failure is an event, not a persistent failed state; a cancel is neither a failure nor a state. Clicking without permission emits permissionRequested; clicks during starting/stopping are ignored. During the countdown a click or the shortcut cancels (see [countdown](#countdown)).
 
 ## Start
 
-1. Recorder checks idle/no existing session and OS preflight, captures quality, creates a session ID, and enters starting.
+1. Recorder checks idle/no existing session and OS preflight, captures the quality and countdown snapshots, creates a session ID, and enters starting (the tray shows the hourglass).
 2. ensureWritableDir creates the folder and writes/removes a probe. Failure never silently selects a different folder.
-3. Write the session's interruption sentinel naming the temporary path, then open `YYYY-MM-DD HH-mm-ss.recording.mp4` using local time and exclusive `wx`. A temporary-file collision rewrites the sentinel and retries suffixes `-2` through `-10`.
-4. Wait for host readiness and send start. Main resolves the saved screen preference: Primary display keeps the primary-id/first-source policy; an explicit display requires one exact id match. Request system loopback audio unchanged.
+3. Write the session's interruption sentinel naming the temporary path, then open `YYYY-MM-DD HH-mm-ss.recording.mp4` using local time and exclusive `wx`. A temporary-file collision rewrites the sentinel and retries suffixes `-2` through `-10`. The name is the local time of the start request, so with a countdown it precedes the first frame by preparation plus the countdown.
+4. Wait for host readiness and send start. With a countdown, the overlay window is built now so the first digit appears on time. Main resolves the saved screen preference: Primary display keeps the primary-id/first-source policy; an explicit display requires one exact id match. Request system loopback audio unchanged.
 5. Renderer checks MP4 support, requests the stream, and rejects absent/ended audio tracks after cleaning up.
-6. Measure actual frames, apply quality, recheck that all tracks are live, create MediaRecorder, register callbacks, and send started.
-7. Main enters recording. A first nonempty chunk must still arrive before its deadline; an empty chunk does not satisfy it.
+6. Measure actual frames, apply quality, recheck that all tracks are live, construct an inactive MediaRecorder and reply `prepared` with the CaptureReport. Permission prompts, missing audio, unsupported MP4 and display errors therefore all surface before any countdown.
+7. With the countdown Off, main sends `record` at once. Otherwise it counts down ([countdown](#countdown)) and sends `record` at the end.
+8. Renderer registers the callbacks, calls `recorder.start(1000)` and replies `started`. Main enters recording, emits captureStarted with the report from `prepared`, and arms the first-media deadline and stall guard. REC appears only after capture began, so the first frames may show the stopwatch in the menu bar, as they showed `…` before; the digit never appears in them. A first nonempty chunk must still arrive before its deadline; an empty chunk does not satisfy it.
+
+## Countdown
+
+Settings → Recording chooses Off, 3, 5 or 10 seconds; the default is 3, also for a settings file written before the field existed. Recording measured 318 ms from click to capture in the 2026-09-25 hotkey round ([plan 040 closure](../verification/history-2026-09.md#plan-040-closure--2026-09-26)), so the first frames showed the pointer leaving the menu bar and RecordStuff has no editor to trim them. Capture is prepared before the count and started at zero, as Cap does ([decision](decisions.md)).
+
+- Recorder enters `countdown` with N and ticks once per second from one monotonic anchor taken at `prepared`; every tick is scheduled from that anchor, so timer lateness never accumulates. Each tick re-emits the state; the app logs `state → countdown (n)`.
+- 300 ms before N seconds it asks the overlay to leave: the digit fades out over 120 ms and main destroys the window after one more settle interval (34 ms). Recorder waits for that confirmation at most 500 ms; past it the window is destroyed, the timeout is logged and capture proceeds. `record` goes out at N seconds, or when the dismissal settles if that is later.
+- The overlay ([desktop](desktop.md#countdown-overlay)) is injected as a presenter with `show`, `update`, `dismiss` and `close`, so Recorder stays free of Electron. Presenter errors are logged and never fail a recording; the tray still shows the countdown.
+- A toggle, the tray menu's Cancel countdown or the shortcut before `record` cancels the attempt: timers cleared, host stopped, overlay closed, writer abandoned so the empty temporary file is removed, and the idle state from before the attempt returns with its lastSavedPath. A `cancelled` event names the reason (`toggle`, `menu` or `quit`) and the log says `cancelled: session … (reason); no media was recorded`. No failure status, history entry, notification or display diagnostic is produced.
+- After `record` was sent, a toggle becomes the existing stop-on-start request applied once `started` arrives, so a race of a few milliseconds cannot leave capture running. Clicks during starting and stopping stay ignored. A tray menu opened during the countdown is not updated while it stays open ([desktop](desktop.md#tray-and-notifications)), so its Cancel countdown chosen after capture began stops the recording, which is saved.
+- Every timing and appearance value lives in [countdown.ts](../../src/shared/countdown.ts) as an initial target; tune them only with written evidence.
 
 ## Deadlines and supervision
 
@@ -38,7 +55,9 @@ NeedsPermission carries needsRelaunch, and lastSavedPath when a recording was sa
 | --- | --- | --- |
 | Folder/open phase | 8 s | output_open_failed; a late writer is abandoned |
 | Host ready | 8 s | Start rejects; host can be recreated |
-| Capture/interactive permission request | 120 s | capture_start_failed and stop session |
+| Capture/interactive permission request (`start → prepared`) | 120 s | capture_start_failed and stop session |
+| Countdown overlay dismissal | 500 ms from the dismiss request, which comes 300 ms before N | Destroy the overlay, log it, record anyway |
+| `record → started` | 8 s | capture_start_failed (while starting capture) |
 | First nonempty chunk after started | 8 s | capture_start_failed; preserve any written data |
 | Next nonempty chunk after media began | Warn once at 10 s, fail at 30 s; reset by every nonempty chunk, disarmed by stopped or failure | capture_failed with a stall detail; preserve the partial file |
 | Output-folder free space | Poll every 5 s from started until stop; log once below 1 GiB | Below 200 MiB request the normal stop once; saved with a disk-almost-full reason, not a failure |
@@ -47,6 +66,8 @@ NeedsPermission carries needsRelaunch, and lastSavedPath when a recording was sa
 | Stop response | 10 s | stop_timeout |
 | Renderer terminal drain | 5 s after termination begins | Error if stop/final Blob handoff is missing; discard subsequent handoff |
 | Quit wait | 13 s per attempt (stop timeout + 3 s) | Defer quit with localized feedback while any owned work remains; never truncate finalization |
+
+Before `record` nothing was captured, so track end, display removal, a crashed or unresponsive host and a refused or timed-out `record` during preparation or countdown are start failures: `capture_start_failed` with a detail naming the phase (`while preparing capture`, `while counting down`, `while starting capture`), the display diagnostic still emitted and an empty outcome. A disk error the writer already retained keeps its own code. A stale `prepared` or `started` for a detached session triggers a host stop.
 | Heartbeat | Check/send every 5 s while a session is in flight | Tear down when the check finds two unanswered pings |
 
 These are project waiting limits, not OS standards or exact end-to-end timing guarantees. A timed-out disk operation is not actually canceled. The health rows (stall, free space, backlog, start drain) are initial targets kept in one place, [recording-health.ts](../../src/main/recording-health.ts); tune them only with written evidence. Heartbeats only prove the renderer answers; the stall guard proves media still arrives. A failed free-space poll is logged once and never stops a recording. `powerMonitor` suspend and resume are logged with the in-flight session ID so a later failure can be read against sleep; sleep does not stop a recording.
@@ -57,7 +78,7 @@ CaptureHost latches the first termination cause before awaiting Blob conversion.
 
 Once Recorder accepts `stopped`, its finalizer owns the attempt. Late host crashes/errors, duplicate stop messages and display removal cannot abandon a publishing file; disk errors still enter failure cleanup. All opening/finalizing/cleanup operations are registered before synchronous subscribers run. An opening timeout returns UI to idle immediately, but its result stays pending until the late open and close settle. Multiple failed attempts retain independent cleanup ownership.
 
-Every `before-quit`, including idle, uses `installQuitCoordinator`. Repeated requests join one attempt and new recordings are blocked during admission. Capture is stopped automatically. A starting session retains stop intent even after quit is deferred, so capture stops and saves as soon as it starts. Success requires no session and no outstanding work, including late opens, earlier failed attempts and failure-result verification/publication. The quit deadline only defers exit; the existing capture-request and stop-response timers retain authority over capture failures. Pending disk/result-publication work stays owned, the app stays open and the user can retry quitting. The app never destroys the host or exposes an unconfirmed retained path merely to meet a quit deadline. Force-quit, process kill and power loss bypass these guarantees; no crash recovery or destructive media exit option is provided. The next launch reports such a session through its interruption sentinel (see [file completion](#file-completion-and-failure)). Only after this media phase does quit attempt the failure-history save; its explicit metadata-only exit can never abandon media work (see [desktop](desktop.md#deferred-quit)).
+Every `before-quit`, including idle, uses `installQuitCoordinator`. Repeated requests join one attempt and new recordings are blocked during admission. Capture is stopped automatically. No media exists before `record`, so quit never records a session that has not started (plan 040, for every countdown setting): quit during the countdown cancels it at once; quit while the folder opens cancels before any capture request; quit during preparation marks the attempt, and its `prepared` cancels it instead of counting down or recording, even after quit was deferred. Only a session whose `record` was already sent keeps stop intent, so capture stops and saves as soon as it starts. Success requires no session and no outstanding work, including late opens, earlier failed attempts and failure-result verification/publication. The quit deadline only defers exit; the existing capture-request and stop-response timers retain authority over capture failures. Pending disk/result-publication work stays owned, the app stays open and the user can retry quitting. The app never destroys the host or exposes an unconfirmed retained path merely to meet a quit deadline. Force-quit, process kill and power loss bypass these guarantees; no crash recovery or destructive media exit option is provided. The next launch reports such a session through its interruption sentinel (see [file completion](#file-completion-and-failure)). Only after this media phase does quit attempt the failure-history save; its explicit metadata-only exit can never abandon media work (see [desktop](desktop.md#deferred-quit)).
 
 ## Quality and encoding
 
@@ -96,7 +117,10 @@ sequenceDiagram
     U->>R: toggle start
     R->>W: open .recording.mp4
     R->>H: start(id, quality)
-    H-->>R: started(capture)
+    H-->>R: prepared(capture)
+    Note over R: countdown N s (overlay leaves 300 ms before 0)
+    R->>H: record(id)
+    H-->>R: started(id)
     loop Nonempty chunks
       H-->>R: chunk(id, seq, bytes)
       R->>W: append(bytes)
@@ -110,9 +134,9 @@ sequenceDiagram
     R-->>U: idle and saved notification
 ```
 
-Renderer serializes Blob-to-ArrayBuffer conversion through a Promise chain and skips empty Blobs. Main validates session ID and consecutive seq; a gap fails the session. Stale started/chunk messages trigger stop so an abandoned request cannot keep capturing unseen.
+Renderer serializes Blob-to-ArrayBuffer conversion through a Promise chain and skips empty Blobs. Main validates session ID and consecutive seq; a gap fails the session. Stale prepared/started/chunk messages trigger stop so an abandoned request cannot keep capturing unseen.
 
-Stopping a pending start moves its ID from pending to cancelled. When the OS request settles, the returned stream is released. A normal stop flushes the final dataavailable; finish waits for the send chain before posting stopped. Unexpected track termination or recorder errors produce failure, not a successful stop.
+A prepared session holds a live stream and an inactive recorder. `stop` releases its tracks and replies `stopped`; a track `ended` replies a start error (with `displayFailure: "track_ended"` for video); `record` for any other session is refused. Stopping a pending start moves its ID from pending to cancelled. When the OS request settles, the returned stream is released. A normal stop flushes the final dataavailable; finish waits for the send chain before posting stopped. Unexpected track termination or recorder errors produce failure, not a successful stop.
 
 ## File completion and failure
 
@@ -140,7 +164,7 @@ Interruption evidence is one sentinel file per session in `userData/recording-se
 | --- | --- | --- |
 | Permission/environment | permission_denied, permission_needs_relaunch, unsupported_os_version | Settings/relaunch guidance or version explanation |
 | Source/codec | no_display, display_unavailable, no_audio_track, mp4_unsupported | Refuse start and explain missing capability |
-| Capture | capture_start_failed, capture_failed, capture_host_crashed, capture_host_unresponsive | Return idle and reveal any preserved partial file |
+| Capture | capture_start_failed, capture_failed, capture_host_crashed, capture_host_unresponsive | Return idle and reveal any preserved partial file; before `record` every capture loss is capture_start_failed with an empty outcome |
 | Storage | output_open_failed, output_write_failed, disk_full | Explain location/disk failure and preserve bytes where possible |
 | Stop | stop_timeout | Stop waiting for capture and attempt partial-file cleanup |
 | Previous process | app_terminated | Reported only at launch from an interruption sentinel; says the app did not exit normally and the file may be incomplete; never sent by the capture host |

@@ -6,7 +6,7 @@ Electron、Chromium、瀏覽器媒體 API 與內部 WebRTC 音訊處理的角色
 
 ## 程序與責任
 
-應用層分成 main、隱藏 capture renderer，以及只在設定視窗開啟期間存在的設定 renderer。Electron 自身還會建立 GPU／helper 等程序；層數不等於作業系統看到的 PID 數。
+應用層分成 main、隱藏 capture renderer、只在設定視窗開啟期間存在的設定 renderer，以及只在倒數期間存在的倒數 overlay renderer。Electron 自身還會建立 GPU／helper 等程序；層數不等於作業系統看到的 PID 數。
 
 ```mermaid
 flowchart LR
@@ -30,19 +30,26 @@ flowchart LR
       Page[設定面板]
     end
     Panel <-->|設定 IPC| Page
+    Recorder --> Overlay[CountdownOverlay]
+    subgraph OverlayRenderer[倒數 sandbox renderer，僅倒數時存在]
+      Digit[倒數數字]
+    end
+    Overlay -->|countdown:value| Digit
     Select --> Media
     Media -->|編碼後 chunk| Host
     Writer --> Disk[本機 MP4]
 ```
 
-Tray、選單與通知全在 main，使用原生 Electron API。設定面板是使用者唯一看得到的 HTML 頁面：沒有框架、也沒有自己的狀態，只負責畫出 main 給的 view，並回傳使用者選到的選項 id。Capture renderer 取得 stream、套用品質並編碼；main 選取來源、決定錄製狀態、決定所有動作與寫檔。
+Tray、選單與通知全在 main，使用原生 Electron API。設定面板是使用者唯一會操作的 HTML 頁面：沒有框架、也沒有自己的狀態，只負責畫出 main 給的 view，並回傳使用者選到的選項 id。倒數 overlay 是點擊可穿透的頁面，只畫 main 傳來的數字，無法回傳。Capture renderer 取得 stream、套用品質並編碼；main 選取來源、決定錄製狀態、決定所有動作與寫檔。
 
 ## 模組邊界
 
 | 模組 | 擁有的資料／資源 | 不負責的工作 |
 | --- | --- | --- |
 | `main/index.ts` | App 生命週期、依賴組裝、來源 handler、退出協調 | 不編碼、不自行追加影片 bytes |
-| `main/recorder.ts` | 唯一 `RecordingState`、session id、順序與 timeout | 不 import Electron；不接觸 DOM |
+| `main/recorder.ts` | 唯一 `RecordingState`、session id、順序與 timeout、倒數的時間與取消 | 不 import Electron；不接觸 DOM |
+| `main/countdown-overlay.ts` | 倒數視窗的生命週期、放在被錄製螢幕上的位置與傳給它的值 | 不決定何時倒數、錄影或取消 |
+| `renderer/countdown.ts` / `preload/countdown.ts` | 繪製數字與淡化／唯一的數值訂閱 | 不持有時間、狀態，也不回傳 main |
 | `main/capture-host.ts` | 隱藏 BrowserWindow、main port、ready／heartbeat | 不作檔案成功判定 |
 | `renderer/capture-host.ts` | MediaStream、MediaRecorder、序號、Blob 傳送鏈 | 不讀設定檔、不選輸出路徑、不寫檔 |
 | `preload/index.ts` | 轉交 main 提供的 MessagePort | 不暴露 Node API |
@@ -57,11 +64,11 @@ Tray、選單與通知全在 main，使用原生 Electron API。設定面板是�
 | `main/log.ts` | 同步寫入與輪替的文字 log | 不保存媒體 bytes |
 | `main/session-log.ts` | 每次啟動的 run id，以及每個 capture 與結果行旁的有版本 session record | 不負責配對錄影與 session（那是開發用分析器的工作） |
 | `shared/i18n.ts` | 英文文案 key、繁體中文模板、語言驗證 | 不控制 OS 原生提示或翻譯技術日誌 |
-| `shared/*` | 狀態、訊息與品質型別／純函式 | 不依賴 Electron 或 DOM |
+| `shared/*` | 狀態、訊息、品質與倒數型別／純函式 | 不依賴 Electron 或 DOM |
 
 ## 信任邊界與 IPC
 
-兩個 renderer 都使用 `sandbox: true`、`contextIsolation: true`、`nodeIntegration: false`、`webSecurity: true`，並禁止新視窗與導覽；隱藏的擷取視窗另外停用 background throttling。打包版載入本機 HTML；開發版可載入 electron-vite URL。
+所有 renderer 都使用 `sandbox: true`、`contextIsolation: true`、`nodeIntegration: false`、`webSecurity: true`，並禁止新視窗與導覽；隱藏的擷取視窗與倒數 overlay 另外停用 background throttling。Overlay 的 preload 只提供 `countdown.onValue`；main 以 `countdown:value` 傳送數字或 `null`，preload 只接受正整數或 `null`。打包版載入本機 HTML；開發版可載入 electron-vite URL。
 
 設定面板有自己的 preload，只暴露三個呼叫。`settings:read` 與 `settings:choose` 會驗證來源必須是設定視窗的 main frame，否則拒絕。choose 請求帶的是群組 id 與選項 id，不是 action；main 依當下重新產生的模型解析這組 id，因此請求只能做到 App 當下提供、而且錄製狀態允許的事。保存依請求順序序列化，回應會告知實際提交的值。
 
@@ -77,11 +84,13 @@ Main 建立 `MessageChannelMain`，透過 `capture-host-port` 將其中一端交
 
 | 方向 | 訊息 | 意義 |
 | --- | --- | --- |
-| main → host | `start { sessionId, quality }` | 本次不可變的品質快照 |
-| main → host | `stop { sessionId }` | 停止或取消仍在等待的擷取 |
+| main → host | `start { sessionId, quality }` | 以本次不可變的品質快照準備擷取 |
+| main → host | `record { sessionId }` | 開始編碼已準備好的 session（plan 040）；其他 session 一律拒絕 |
+| main → host | `stop { sessionId }` | 停止、釋放已準備的 stream，或取消仍在等待的擷取 |
 | main → host | `ping` | 確認 renderer 事件迴圈仍回應 |
 | host → main | `ready` / `pong` | 通道就緒／心跳回應 |
-| host → main | `started { sessionId, mimeType, capture }` | recorder 已啟動；尚不代表第一片資料已落盤 |
+| host → main | `prepared { sessionId, mimeType, capture }` | stream 已檢查、已套用品質，MediaRecorder 已建立但尚未啟動 |
+| host → main | `started { sessionId }` | recorder 已啟動；main 沿用 `prepared` 的報告；尚不代表第一片資料已落盤 |
 | host → main | `chunk { sessionId, seq, bytes }` | 從 0 起連續序號的編碼資料 |
 | host → main | `stopped { sessionId }` | 最後 chunk 已送出；main 才能開始完成檔案 |
 | host → main | `error { sessionId?, code, detail }` | 失敗；無 session id 時可作用於 main 當前 session |
@@ -93,7 +102,8 @@ Main 建立 `MessageChannelMain`，透過 `capture-host-port` 將其中一端交
 | 資料 | 所在位置 | 生命週期 |
 | --- | --- | --- |
 | `RecordingState` | main 記憶體 | App 重啟重設；`lastSavedPath` 不持久化 |
-| main `Session` | Recorder 記憶體 | 開始到成功／失敗；包含 writer、品質、nextSeq、timer |
+| main `Session` | Recorder 記憶體 | 開始到成功、失敗或取消；包含品質與倒數快照、擷取報告、倒數 timer、writer、nextSeq、timer |
+| renderer 已準備的 session | capture host 記憶體 | 存活的 stream 與未啟動的 recorder，直到 `record`、`stop` 或軌道結束 |
 | renderer `Session` | capture host 記憶體 | stream、recorder、seq、chain、stopRequested、finished |
 | `settings.json` | `app.getPath('userData')` | 跨重啟保存；現有 App 名稱對應小寫 `recordstuff` |
 | `.recording.mp4` | 使用者指定資料夾 | 錄製中的檔案，失敗時可保留 |
@@ -105,6 +115,6 @@ Main 持有影片 handle；設定與 log 模組也會寫自己的檔案，因此
 
 ## 啟動與關閉
 
-Main 先建立 logger、註冊未捕捉錯誤處理並取得 single-instance lock。ready 後隱藏 Dock、載入設定、註冊 display-media handler、組裝 Recorder／host／權限 watcher／Tray、訂閱事件並開始權限輪詢。每次錄製嘗試都建立新的 capture renderer，嘗試結束時由 main 銷毀；錄製之間不保留 capture renderer，也沒有心跳 timer。
+Main 先建立 logger、註冊未捕捉錯誤處理並取得 single-instance lock。ready 後隱藏 Dock、載入設定、註冊 display-media handler、組裝 Recorder／host／權限 watcher／Tray、訂閱事件並開始權限輪詢。每次錄製嘗試都建立新的 capture renderer，有倒數時另建 overlay 視窗，嘗試結束時由 main 一併銷毀；錄製之間不保留 capture 或 overlay renderer，也沒有心跳 timer。
 
-`window-all-closed` 不退出 App。忙碌時 `before-quit` 阻止直接結束，等 `Recorder.shutdown()` 後再次 quit；`will-quit` 停止權限輪詢並銷毀 host 與 Tray。已經 idle 的退出不額外等待 failure cleanup；硬斷電、main 強制終止、阻塞磁碟並不具有完整落盤保證。
+`window-all-closed` 不退出 App。忙碌時 `before-quit` 阻止直接結束，等 `Recorder.shutdown()` 後再次 quit；`will-quit` 停止權限輪詢並銷毀 host、overlay 與 Tray。已經 idle 的退出不額外等待 failure cleanup；硬斷電、main 強制終止、阻塞磁碟並不具有完整落盤保證。
