@@ -125,7 +125,7 @@
 
 ## 影片儲存 — main/file-writer.ts
 
-[原始碼](../../../src/main/file-writer.ts)。nodeFs 將 open／rename／unlink／mkdir／writeFile 適配成可替換 I/O。
+[原始碼](../../../src/main/file-writer.ts)。nodeFs 將 open／link／排他複製／unlink／mkdir／writeFile 適配成可替換 I/O。
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
@@ -139,7 +139,8 @@
 | `backlogBytes` getter | append 已接受、但尚未確認寫入或因失敗釋放的位元組數 |
 | `append(bytes)` | closed 或已拒絕時 reject；會超過積壓上限的 append 立即拒絕且不排入佇列（沿用先前的磁碟錯誤）；否則在佇列中補完剩餘 buffer 並累計確認進度；空輸入不 write，零／無效計數 reject |
 | `drain()` | 等待佇列作業後回傳已保留的失敗或拒絕（若有） |
-| `finish()` | enqueue sync；曾拒絕 append 時 reject；release、排他複製並以尾碼避撞名、盡力刪除暫存檔 → 實際最終路徑；失敗 reject |
+| `finish()` | enqueue sync；曾拒絕 append 時 reject；release、排他硬連結並以尾碼避撞名（連結因 EEXIST 以外的原因被拒後改用排他複製）、盡力刪除暫存名稱 → 實際最終路徑與 `finishTimings`；失敗 reject |
+| `finishTimings` | 成功 finish 後的 flush、close、發布與清理毫秒數，`link` 或 `copy`，以及改用複製時連結的錯誤碼；僅供診斷 |
 | `abandon()` | 等佇列、best effort release；有 bytes 留暫存路徑，空檔盡力刪除；不拋出 |
 | `release()` | 一次性 closed／清 fsync timer／close handle |
 | `enqueue(task)` | 依序執行；首個 failure 被記住，後續回同一錯誤，內部 queue 保持可接續 |

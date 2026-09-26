@@ -129,7 +129,7 @@ sequenceDiagram
     R->>H: stop(id)
     H-->>R: 最後 chunk
     H-->>R: stopped(id)
-    R->>W: 等佇列、sync、close、排他複製
+    R->>W: 等佇列、sync、close、排他連結
     W-->>R: finalPath
     R-->>U: idle + saved 通知
 ```
@@ -142,7 +142,7 @@ Renderer 把 Blob 轉 ArrayBuffer 的 Promise 串成 chain，避免非同步轉�
 
 FileWriter 的 append、週期 sync 與 finish 都排在同一佇列。每次 append 只補寫剩餘緩衝區直到完整，並立即累計每次確認寫入的位元組；各段之間不會插入後續 chunk 或 sync。空 chunk 不呼叫 write。零、負數、非整數、非有限值或超出剩餘長度的進度以 output_write_failed 失敗；拋出的錯誤不重試。每 5 秒嘗試 fsync；首次 I/O 錯誤被記住，之後佇列作業回同一錯誤。ENOSPC 映射為 disk_full，其他寫入錯誤為 output_write_failed。
 
-成功 finish 等待佇列、sync、close，再以 `COPYFILE_EXCL` 把暫存檔複製成 `.mp4`；正式檔撞名時依序嘗試 `-2`、`-3` 等尾碼。`COPYFILE_FICLONE` 在支援時使用寫入時複製，其他檔案系統可能需要完整複製的額外時間與空間。完成檔 sync 後才盡力刪除暫存檔，之後 Recorder 以實際存檔路徑發 saved。清理失敗會留下暫存副本，但不影響已成功儲存的影片。失敗時先清除 session、stop host、立刻回 idle，再 abandon writer；已有計數 bytes 就保留 `.recording.mp4`，零 bytes 盡力刪除。部分檔案沒有自動修復或重新封裝；曾實測可播不代表所有中斷都可復原。
+成功 finish 等待佇列、sync、close，再以硬連結把暫存檔發布成 `.mp4`；正式檔撞名時依序嘗試 `-2`、`-3` 等尾碼。連結不會取代既有名稱（EEXIST 就換下一個尾碼），耗時固定且不需要剩餘空間，因此 15 秒與一小時的錄影儲存所需時間相同，低空間提前停止也仍能儲存。儲存的檔案就是錄影寫入的那個檔案，所以建立時間是錄影開始的時間。若磁碟區因其他原因拒絕連結，例如 exFAT（ENOTSUP）或部分網路磁碟區，這個與之後每個尾碼都改用原本的排他複製（`COPYFILE_EXCL`），複本 sync 後才移除暫存名稱；複製耗時與檔案大小成正比，且需要與檔案同樣大小的剩餘空間。發布失敗時，ENOSPC 與其他寫入一樣回報 disk_full，其餘回報 output_write_failed。程式仍要求 `COPYFILE_FICLONE`，但在 macOS 上從不會 clone：libuv 在 macOS 沒有實作 clone（Electron 44 中 `COPYFILE_FICLONE_FORCE` 回傳 ENOSYS），所以 plan 037 之前每次儲存，包括 APFS，都是完整複製。發布後盡力刪除暫存名稱，之後 Recorder 才以實際存檔路徑發 saved。清理失敗會留下暫存名稱，它是已儲存檔案的第二個連結（改用複製時則是完整副本），但不影響已成功儲存的影片。log 的 `finalize timing` 行記錄最後的 host 交付、佇列寫入、flush、close、發布（`by link` 或 `by copy (link <code>)`）與清理各花多少時間。失敗時先清除 session、stop host、立刻回 idle，再 abandon writer；已有計數 bytes 就保留 `.recording.mp4`，零 bytes 盡力刪除。部分檔案沒有自動修復或重新封裝；曾實測可播不代表所有中斷都可復原。
 
 成功必須有非空媒體。唯一的發布步驟 FileWriter.finish 就是關卡：排空佇列後檢查實際確認寫入的位元組數，不採用要求寫入的 chunk 長度。已保留的 append 或背景 sync 錯誤優先以原代碼回報（例如 disk_full），即使一個位元組都沒寫入。否則零位元組（不論是在任何 chunk 之前停止，或只收到空 chunk）會讓 finish 釋放 handle 與 sync timer、刪除空暫存檔，並以 `capture_start_failed` 與 detail `capture ended without media; no bytes were written` 拒絕，與首片期限使用同一代碼。Recorder 把這個拒絕導入單一失敗流程，因此不發 saved、不設定 lastSavedPath，也不產生 `.mp4`；結果為 empty，可立即重試。Abandon 具冪等性，失敗流程稍後的清理不會刪掉在同一秒內重用該檔名的重試錄影。Recorder 不自行預先檢查位元組數：佇列排空前看不到排隊中或執行中的 sync 失敗，會把磁碟錯誤誤報為沒有媒體。沒有最短錄製秒數；非常短但非空的錄影照常儲存。
 
@@ -150,7 +150,7 @@ FileWriter 的 append、週期 sync 與 finish 都排在同一佇列。每次 ap
 
 排他建立同時保護暫存檔與正式檔名，包括錄影途中才出現的同名正式檔；短寫取得進展後失敗時，保留確認寫入量與非空部分檔；後續 append 與 finish 拒絕且不產生完成檔，abandon 關閉 handle 並停止 sync。背景 sync 的 rejection 會被接住，首次失敗仍被保留。完整寫入與 fsync 耐久性是不同保證，不承諾所有 crash、斷電或檔案系統故障都可復原。更完整的耐久性需求應先建測試，再改實作。
 
-FileWriter 限制已接受但尚未確認寫入的位元組數（`backlogBytes`，停滯與低空間警告也會記錄，並保留給 Plan 037 的准入量測）。會超過 64 MiB 的 append 立即被拒絕且不排入佇列，之後的 append 也一律拒絕，因此檔案不會出現缺口；拒絕前已接受的 bytes 仍會寫入，finish 會拒絕，Recorder 以 output_write_failed 與積壓 detail 結束該 session；若先前已保留磁碟錯誤，則沿用該錯誤。不暫停、不丟棄、不重試：MediaRecorder 無法節流，此上限讓緩慢或離線的儲存裝置以保留部分檔結束錄影，而不是無限制占用記憶體。因此持續低於位元率的磁碟吞吐量仍會結束錄影。沒有磁碟空間預留、切換資料夾、降低品質或無限長錄製承諾。
+FileWriter 限制已接受但尚未確認寫入的位元組數（`backlogBytes`，停滯與低空間警告也會記錄；Plan 037 結案時沒有加入重疊存檔，因此沒有開始條件讀取它）。會超過 64 MiB 的 append 立即被拒絕且不排入佇列，之後的 append 也一律拒絕，因此檔案不會出現缺口；拒絕前已接受的 bytes 仍會寫入，finish 會拒絕，Recorder 以 output_write_failed 與積壓 detail 結束該 session；若先前已保留磁碟錯誤，則沿用該錯誤。不暫停、不丟棄、不重試：MediaRecorder 無法節流，此上限讓緩慢或離線的儲存裝置以保留部分檔結束錄影，而不是無限制占用記憶體。因此持續低於位元率的磁碟吞吐量仍會結束錄影。沒有磁碟空間預留、切換資料夾、降低品質或無限長錄製承諾。
 
 可用空間保護讀取輸出資料夾的 `fs.statfs`。低於停止門檻時要求正常停止，讓檔案在仍有空間時排空、sync 並發布；saved 事件帶有 `stoppedEarly: "lowDisk"`，log 會註明，存檔通知顯示「已儲存 {file}。磁碟空間即將用盡，已提前停止錄製」。這類錄影屬於成功，不進入失敗紀錄。若發布仍失敗，沿用一般失敗流程與部分檔保留。
 

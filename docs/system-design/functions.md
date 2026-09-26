@@ -124,7 +124,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 ## Media storage
 
-[main/file-writer.ts](../../src/main/file-writer.ts). NodeFs adapts open, rename, unlink, mkdir, and writeFile for injected I/O.
+[main/file-writer.ts](../../src/main/file-writer.ts). NodeFs adapts open, link, exclusive copy, unlink, mkdir, and writeFile for injected I/O.
 
 | Function/method | Contract |
 | --- | --- |
@@ -138,7 +138,8 @@ The page's window-message callback checks source/marker/port before creating the
 | backlogBytes | Bytes accepted by append and not yet confirmed written or released after a failure |
 | append | Reject if closed or already refused; refuse at once, without queueing, an append that would exceed the backlog bound (keeping an earlier disk error); otherwise queue complete writes of the remaining buffer, counting confirmed progress; empty input skips write, zero/invalid counts reject |
 | drain | Wait for queued work, then return the retained failure or refusal, if any |
-| finish | Queued sync; reject after a refusal; release, exclusive copy with collision suffixes, best-effort temporary removal → actual final path; reject failure |
+| finish | Queued sync; reject after a refusal; release, exclusive hard link with collision suffixes (exclusive copy once a link is refused other than EEXIST), best-effort temporary removal → actual final path and `finishTimings`; reject failure |
+| finishTimings | After a successful finish: flush, close, publish and cleanup milliseconds, `link` or `copy`, and the link's error code when it copied; diagnostics only |
 | abandon | Drain, best-effort close, preserve nonempty temporary file or remove empty file; never throw |
 | release | Once-only closed flag, timer cleanup, and handle close |
 | enqueue | Serialize operations; retain first failure and reject later operations consistently |
