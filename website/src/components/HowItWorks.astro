@@ -1,8 +1,9 @@
 ---
-/** The three states a user actually sees: the ring, the ring with a red dot, the saved notification. */
+/** The four states a user actually sees: the ring, the stopwatch with the corner digits, the filled dot with REC, the saved notification. */
 const steps = [
   { title: "Click", body: "Left-click the ring, or press ⌘⇧1." },
-  { title: "Recording", body: "The ring fills and REC appears. Screen and system audio are captured." },
+  { title: "Countdown", body: "A stopwatch replaces the ring and a faint 3, 2, 1 counts down at the screen's top-right. Click again to cancel." },
+  { title: "Recording", body: "The dot fills and REC appears as capture begins. Screen and system audio are captured." },
   { title: "Saved", body: "Click again. The notification reveals the file in Finder." },
 ];
 ---
@@ -18,10 +19,17 @@ const steps = [
     </li>
     <li class="how-step">
       <div class="how-glyph-row">
-        <span class="how-glyph how-glyph--rec" aria-hidden="true"><svg viewBox="0 0 32 32" width="28" height="28"><circle cx="16" cy="16" r="11" fill="currentColor" /></svg><span class="how-rec">REC</span></span>
+        <span class="how-glyph" aria-hidden="true"><svg viewBox="0 0 32 32" width="40" height="40"><circle cx="16" cy="17.9" r="8.2" fill="none" stroke="currentColor" stroke-width="3.5" /><rect x="12.8" y="1.6" width="6.4" height="2.9" fill="currentColor" /><rect x="14.7" y="4.2" width="2.6" height="4.5" fill="currentColor" /><rect x="14.7" y="12.8" width="2.6" height="5.1" fill="currentColor" /><circle cx="16" cy="17.9" r="2.2" fill="currentColor" /></svg></span>
         <span class="how-link" aria-hidden="true"></span>
       </div>
       <div><h3>{steps[1].title}</h3><p>{steps[1].body}</p></div>
+    </li>
+    <li class="how-step">
+      <div class="how-glyph-row">
+        <span class="how-glyph how-glyph--rec" aria-hidden="true"><svg viewBox="0 0 32 32" width="28" height="28"><circle cx="16" cy="16" r="11" fill="currentColor" /></svg><span class="how-rec">REC</span></span>
+        <span class="how-link" aria-hidden="true"></span>
+      </div>
+      <div><h3>{steps[2].title}</h3><p>{steps[2].body}</p></div>
     </li>
     <li class="how-step">
       <div class="how-glyph-row">
@@ -32,7 +40,7 @@ const steps = [
           </span>
         </span>
       </div>
-      <div><h3>{steps[2].title}</h3><p>{steps[2].body}</p></div>
+      <div><h3>{steps[3].title}</h3><p>{steps[3].body}</p></div>
     </li>
   </ol>
 </section>
@@ -46,7 +54,7 @@ const steps = [
   .how-list {
     list-style: none;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: var(--how-gap);
     align-items: start;
   }
@@ -56,7 +64,7 @@ const steps = [
     gap: 1rem;
     align-items: flex-start;
   }
-  /* Every glyph sits in the same 56 px tall row so the three titles line up. */
+  /* Every glyph sits in the same 56 px tall row so the four titles line up. */
   .how-glyph-row {
     width: 100%;
     height: 56px;
@@ -66,8 +74,8 @@ const steps = [
   /*
    * The connector, not a loose arrow character: a hairline that starts at the
    * glyph it belongs to and runs to just before the next one, with a small head
-   * at the end. It fills whatever the glyph leaves over, so the three glyphs
-   * (ring, REC pill, notification) can be any width and the spacing still reads
+   * at the end. It fills whatever the glyph leaves over, so the glyphs (ring,
+   * stopwatch, REC pill, notification) can be any width and the spacing still reads
    * as one flow. The negative right margin carries it across the grid gap.
    */
   .how-link {
@@ -121,6 +129,9 @@ const steps = [
   }
   :global(:root[data-motion="on"]) .how.is-revealed .how-step:nth-child(2) .how-link {
     transition-delay: 0.5s;
+  }
+  :global(:root[data-motion="on"]) .how.is-revealed .how-step:nth-child(3) .how-link {
+    transition-delay: 0.75s;
   }
   .how-glyph {
     position: relative;

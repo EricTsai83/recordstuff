@@ -28,7 +28,7 @@ export interface Feature {
 export const features: Feature[] = [
   {
     title: "One icon, no main window",
-    body: "Right-click for Settings, your output folder and logs. Choose a screen, quality and shortcut in Settings.",
+    body: "Right-click for Settings, your output folder and logs. Choose a screen, countdown, quality and shortcut in Settings.",
   },
   {
     title: "Your folder, your files",
@@ -64,7 +64,7 @@ export const installSteps: Step[] = [
   },
   {
     title: "Find the icon in the menu bar",
-    body: "RecordStuff has no regular window. Look for its icon at the top of the screen. Left-click to record, left-click again to stop. Right-click for Settings, output folder, logs and Quit.",
+    body: "RecordStuff has no regular window. Look for its icon at the top of the screen. Left-click to record: a stopwatch replaces the icon and a faint 3, 2, 1 counts down at the top-right of the screen, then REC appears. Left-click again to cancel the countdown or to stop. Right-click for Settings, output folder, logs and Quit.",
   },
 ];
 
@@ -100,6 +100,7 @@ export const retainedData = [
 
 export const settings = [
   { setting: "Screen", options: "Primary display / a connected display", fallback: "Primary display" },
+  { setting: "Countdown", options: "Off / 3 s / 5 s / 10 s", fallback: "3 s" },
   { setting: "Video quality", options: "Economy / Standard / High", fallback: "Standard" },
   { setting: "Resolution cap", options: "1080p / 1440p / 4K / Source", fallback: "Source" },
   { setting: "Frame rate", options: "30 / 60 fps", fallback: "30; 60 is enabled only on macOS" },

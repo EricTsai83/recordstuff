@@ -65,7 +65,8 @@ try {
     const animations = document.getAnimations();
     animations.forEach((animation) => {
       animation.pause();
-      animation.currentTime = 7500;
+      // Recording, camera pulled back, callout not yet drawn (DesktopScene timeline, 22.5 s loop).
+      animation.currentTime = 10700;
     });
     return animations.length;
   });
