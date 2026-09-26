@@ -83,6 +83,8 @@ export function configureAcceptance(dir: string) {
 }
 export function attachAcceptance(a: ReturnType<typeof configureAcceptance>, attached: Attached): void {
   const { recorder, updates, settings, tray, handleAction } = attached;
+  // Its recordings start at once (plan 040); the isolated userData is discarded, so nothing needs restoring.
+  if (settings.countdown !== 0) void settings.setCountdown(0).catch((cause: unknown) => a.errors.push(`countdown seed: ${String(cause)}`));
   // Notification delivery has its own acceptance runner. Do not let a save banner obscure the next capture's marker.
   tray.notifySaved = (savedPath: string) => a.events({ type: 'saved-notification-intercepted', path: savedPath });
   // Read the real AppTray context, not a second reconstruction of the production settings wiring.

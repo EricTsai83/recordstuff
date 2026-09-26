@@ -1,5 +1,5 @@
 /**
- * `pnpm acceptance [-- --seconds 10] [--no-open-material] [--out <dir>]`
+ * `pnpm acceptance [-- --seconds 10] [--no-open-material] [--skip-cancel] [--out <dir>]`
  *
  * Unattended acceptance of the global recording shortcut (plan 016) against
  * the app that is already running (`pnpm start:app`): open the test material
@@ -14,6 +14,15 @@
  * the log through rotation-aware cursors and follow this run's session by the
  * ids in its session records (plan 029), so a rotated or restarted log can
  * neither hide the save nor lend an older one.
+ *
+ * It uses the app's real settings, countdown included (plan 040): the report
+ * gives preparation, each countdown tick, the overlay's dismissal,
+ * `record → started` and `started → first chunk` separately, and no latency
+ * threshold absorbs the countdown. With a countdown it saves crops of the
+ * digit region from the first 15 frames and, over the test material's dark
+ * marker, compares each with the same flash phase two seconds later. A second
+ * case then presses the shortcut twice: the countdown must cancel with no
+ * file, failure or recording (`--skip-cancel` omits it).
  *
  * Exit 0 when the shortcut flow completed and no integrity check failed, was
  * blocked or is incomplete; channel energy is required evidence (plan 030), so
@@ -44,6 +53,7 @@ import { LogReader, evidenceSince, type LogCursor } from "./lib/log-reader.mts";
 import { hasTool, syncMarkers } from "./lib/media-tools.mts";
 import { readLogPairs, verifyRecording } from "./lib/verify-recording.mts";
 import { BLOCKED_EXIT, blocksSuccess, formatText } from "./lib/verify.mts";
+import { DIGIT_DIFF_THRESHOLD, countdownTimeline, digitCrops, digitRegion, type CountdownTimeline } from "./lib/countdown-evidence.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -54,15 +64,17 @@ let MATERIAL_PROFILE: string;
 
 let seconds = 10;
 let openMaterial = true;
+let cancelCase = true;
 let outDir: string | undefined;
 const argv = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--"));
 for (let i = 0; i < argv.length; i += 1) {
   const arg = argv[i];
   if (arg === "--seconds") seconds = Number(argv[++i]);
   else if (arg === "--no-open-material") openMaterial = false;
+  else if (arg === "--skip-cancel") cancelCase = false;
   else if (arg === "--out") outDir = argv[++i];
   else {
-    console.error("usage: pnpm acceptance [-- --seconds N] [--no-open-material] [--out <dir>]");
+    console.error("usage: pnpm acceptance [-- --seconds N] [--no-open-material] [--skip-cancel] [--out <dir>]");
     process.exit(2);
   }
 }
@@ -110,6 +122,19 @@ function waitFor(from: LogCursor, pattern: RegExp, what: string): ReturnType<typ
   return waitForLog(appLog, from, pattern, what, controller.signal);
 }
 
+function describeTimeline(t: CountdownTimeline): string {
+  const ms = (value: number | undefined): string => (value === undefined ? "?" : `${value} ms`);
+  return [
+    `countdown ${t.countdown ?? "?"} s`,
+    `preparation (press → prepared) ${ms(t.preparationMs)}`,
+    `ticks ${t.ticks.length ? t.ticks.map((tick) => `${tick.remaining}@+${tick.atMs}`).join(", ") : "none"}`,
+    `overlay ${t.dismissal ? `${t.dismissal.outcome}${t.dismissal.ms === undefined ? "" : ` after ${t.dismissal.ms} ms`}` : "not shown"}`,
+    `record sent ${t.recordAfterAnchorMs === undefined ? "without a countdown" : `${t.recordAfterAnchorMs} ms after the anchor`}`,
+    `record → started ${ms(t.recordToStartedMs)}`,
+    `started → first chunk ${ms(t.startedToFirstChunkMs)}`,
+  ].join("; ");
+}
+
 async function main(): Promise<void> {
   if (process.platform !== "darwin") fail("macOS only");
   const missingTools = ["ffprobe", "ffmpeg"].filter((tool) => !hasTool(tool));
@@ -142,8 +167,10 @@ async function main(): Promise<void> {
   const cleanupErrors: string[] = [];
   let material: ReturnType<typeof spawn> | undefined;
   let recordingFrom: LogCursor | undefined;
-  /** This run's session, once its capture record names it. */
+  /** This run's session, once its capture record names it; the report identifies it. */
   let session: string | undefined;
+  /** The attempt cleanup must settle: the recording's session, then none for the cancel case. */
+  let cleanupSession: string | undefined;
   let stopSent = false;
   const sessionFrom = nextIndex();
   const diagnostics: Array<Record<string, unknown>> = [];
@@ -180,11 +207,15 @@ async function main(): Promise<void> {
       "this run's capture session record", controller.signal);
     if (capture.record.run !== run) fail(`the capture record belongs to run ${capture.record.run}, not ${run}: the app restarted`);
     session = capture.record.session;
+    cleanupSession = session;
     note(`session ${session} (run ${run})`);
     const startLatency = (lineTime(pressed.line)?.getTime() ?? 0) - new Date(sentStart).getTime();
-    note(`recording (press → pressed ${startLatency} ms; pressed → recording ${(lineTime(recording.line)?.getTime() ?? 0) - (lineTime(pressed.line)?.getTime() ?? 0)} ms)`);
+    note(`recording (press → pressed ${startLatency} ms; pressed → recording ${(lineTime(recording.line)?.getTime() ?? 0) - (lineTime(pressed.line)?.getTime() ?? 0)} ms, preparation and any countdown included)`);
 
     await sleep(seconds * 1000);
+    // By now the first chunk has arrived; each phase is reported on its own.
+    const timeline = countdownTimeline(appLog.since(pressed.at).lines.map((line) => line.text), lineTime(pressed.line) ?? new Date(sentStart));
+    note(`start timeline: ${describeTimeline(timeline)}`);
     const beforeStop = nextIndex();
     await sendKey(script);
     stopSent = true;
@@ -218,12 +249,61 @@ async function main(): Promise<void> {
     if (result.pairing.status !== "matched" || result.entry?.sessionId !== session || result.entry.runId !== run) {
       guards.push(`log metadata for this file is ${result.pairing.status}${result.pairing.note ? ` (${result.pairing.note})` : ""}, not session ${session}; requested-settings checks were not judged`);
     }
+    if (timeline.countdown === undefined) guards.push("the app logged no `prepared` line: it was built before plan 040; rebuild it with `pnpm start:app`");
+    else if (timeline.ticks.map((tick) => tick.remaining).join() !== Array.from({ length: timeline.countdown }, (_, i) => timeline.countdown! - i).join()) {
+      guards.push(`countdown ticks ${timeline.ticks.map((tick) => tick.remaining).join(", ") || "none"} do not count down from ${timeline.countdown}`);
+    }
+    let crops: ReturnType<typeof digitCrops> | undefined;
+    const video = result.measurement.video;
+    if (timeline.countdown && timeline.overlay && video) {
+      const region = digitRegion(timeline.overlay, video);
+      try {
+        crops = digitCrops(file, region, path.join(dir, "digit-crops"));
+        note(`digit region ${region.width}x${region.height}+${region.x}+${region.y}: first 15 frames saved; ${crops.judged} judged against the frames ${crops.laterSeconds} s later; worst mean difference ${crops.worst?.toFixed(2) ?? "n/a"} (threshold ${DIGIT_DIFF_THRESHOLD})`);
+        // Only the material's marker is known to be static there; elsewhere the crops are evidence, not a verdict.
+        if (openMaterial && !crops.pass) guards.push(`the countdown digit may appear in the first frames: worst mean difference ${crops.worst?.toFixed(2) ?? "n/a"} over ${crops.judged} judged frame(s), threshold ${DIGIT_DIFF_THRESHOLD}`);
+      } catch (error) { guards.push(`digit crops failed: ${String(error)}`); }
+    } else if (timeline.countdown) guards.push("no overlay placement was logged: digit crops not taken");
+    else note("countdown Off: no digit to crop");
     if (openMaterial) {
       const markers = syncMarkers(file, result.measurement.durationSeconds);
       const expected = Math.floor(seconds / 2);
       note(`markers: ${markers.flashes.length} flashes, ${markers.beeps.length} beeps in ${seconds} s`);
       if (markers.flashes.length < expected) guards.push(`material not visible in the recording (${markers.flashes.length} flashes; the kiosk did not cover the recorded display)`);
       if (markers.beeps.length < expected) guards.push(`beeps not separable from silence (${markers.beeps.length} found): other audio was playing or output is muted; audio evidence is contaminated`);
+    }
+
+    // A second press during the countdown cancels: no file, failure or recording.
+    const cancel: string[] = [];
+    let cancelSummary = "not run";
+    if (!cancelCase) cancelSummary = "not run (--skip-cancel)";
+    else if (!timeline.countdown) cancelSummary = "not applicable: the countdown is Off";
+    else {
+      const beforeCancel = nextIndex();
+      recordingFrom = beforeCancel;
+      stopSent = false;
+      cleanupSession = undefined;
+      await sendKey(script);
+      note(`cancel case: sent ${accelerator} (start)`);
+      const counting = await waitFor(beforeCancel, /state → countdown \(\d+\)/, "`state → countdown`");
+      await sendKey(script);
+      stopSent = true;
+      note(`cancel case: sent ${accelerator} again during the countdown`);
+      const cancelled = await waitFor(counting.next, /\] cancelled: session \S+ \(\w+\)/, "`cancelled: session …`");
+      recordingFrom = undefined;
+      const [, cancelledSession, reason] = /cancelled: session (\S+) \((\w+)\)/.exec(cancelled.line) ?? [];
+      const temporary = /; temporary file (.+)$/.exec(cancelled.line)?.[1];
+      await sleep(500);
+      const after = appLog.since(beforeCancel).lines.map((line) => line.text);
+      if (reason !== "toggle") cancel.push(`cancelled by ${reason ?? "?"}, not by the second press`);
+      if (!temporary) cancel.push("the cancel line names no temporary file");
+      else if (fs.existsSync(temporary) || fs.existsSync(temporary.replace(/\.recording\.mp4$/, ".mp4"))) cancel.push(`a file remains: ${temporary}`);
+      const forbidden = after.filter((line) => /\] failed: |"kind":"failed"|record sent|state → recording|notification: show requested/.test(line));
+      if (forbidden.length) cancel.push(`unexpected lines: ${forbidden.join(" | ")}`);
+      if (currentState(after) !== "idle") cancel.push(`state ${currentState(after) ?? "?"} after the cancel`);
+      cancelSummary = cancel.length ? `FAIL: ${cancel.join("; ")}` : `pass: session ${cancelledSession} cancelled by the second press; ${temporary} removed; no failure, notification or recording`;
+      note(`cancel case: ${cancelSummary}`);
+      if (cancel.length) guards.push(`cancel case: ${cancel.join("; ")}`);
     }
 
     fs.writeFileSync(path.join(dir, "verify.json"), JSON.stringify(result, null, 2) + "\n");
@@ -241,13 +321,27 @@ async function main(): Promise<void> {
         "",
         ...events.map((e) => `- ${e}`),
         "",
+        "## Start timeline",
+        "",
+        describeTimeline(timeline),
+        "",
+        "## Countdown digit",
+        "",
+        crops
+          ? `Crops of the first 15 frames and of the 15 frames ${crops.laterSeconds} s later: [digit-crops/](digit-crops/). ${crops.judged} frame(s) judged; worst mean luma difference ${crops.worst?.toFixed(2) ?? "n/a"} (threshold ${DIGIT_DIFF_THRESHOLD}; flash frames skipped)${openMaterial ? "" : "; material not opened, so not judged"}.`
+          : timeline.countdown ? "No crops (see guards)." : "Countdown Off: nothing to crop.",
+        "",
+        "## Cancel case",
+        "",
+        cancelSummary,
+        "",
         "## Verifier",
         "",
         "```text",
         text,
         "```",
         "",
-        `File: \`${file}\`. Evidence: [verify.json](verify.json), [app-session.log](app-session.log). Not covered: tray menu cases, playback by ear, first permission grant, long recordings.`,
+        `File: \`${file}\`. Evidence: [verify.json](verify.json), [app-session.log](app-session.log). Not covered: tray menu cases, tray-click cancel, the overlay seen by eye, playback by ear, first permission grant, long recordings.`,
       ].join("\n"),
     );
     console.log(`Report ${path.relative(REPO_ROOT, dir)}/report.md`);
@@ -263,7 +357,7 @@ async function main(): Promise<void> {
         const settled = await settleRecording({
           log: appLog, from: recordingFrom, stopSent, signal: AbortSignal.timeout(30_000),
           stop: () => command("osascript", ["-e", script], AbortSignal.timeout(5000), 5000),
-          ...(session ? { session } : {}),
+          ...(cleanupSession ? { session: cleanupSession } : {}),
         });
         if (settled.neverStarted) note("cleanup: no recording started; app remains idle");
       }

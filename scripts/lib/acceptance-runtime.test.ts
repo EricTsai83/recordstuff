@@ -125,6 +125,16 @@ describe("interrupted recording cleanup", () => {
     expect(recordingOutcome([`[t] ${failed("s1")}`, "[t] saved /m/stray.mp4"])).toEqual({ settled: true, failure: "capture_host_crashed killed" });
   });
 
+  it("cancels a countdown with one key press and settles on the cancel line without a file (plan 040)", async () => {
+    const from = reader.end();
+    write("state → starting", "state → countdown (3)");
+    const stop = vi.fn(async () => { write("state → idle", "cancelled: session s9 (toggle); no media was recorded; temporary file /m/a.recording.mp4"); });
+    await expect(finishRecording({ log: reader, from, stop, stopSent: false, signal: new AbortController().signal })).resolves.toBeUndefined();
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(recordingOutcome(["[t] cancelled: session s9 (quit); no media was recorded"], "s9")).toEqual({ settled: true, cancelled: true });
+    expect(recordingOutcome(["[t] cancelled: session other (quit); no media was recorded"], "s9")).toEqual({ settled: false });
+  });
+
   it("rejects at once when rotation removed the history it must read", async () => {
     write("checkpointed");
     const from = reader.end();

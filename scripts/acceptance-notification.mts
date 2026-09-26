@@ -128,7 +128,7 @@ async function frontmost(): Promise<string> {
 async function quitApp(): Promise<void> {
   if (!await appPid()) return;
   const state = currentState(readLines());
-  if (state === "recording" || state === "starting" || state === "stopping")
+  if (state === "recording" || state === "starting" || state === "countdown" || state === "stopping")
     fail(`RecordStuff is ${state}; not interrupting a recording`);
   await osascript(`tell application "${APP_TITLE}" to quit`, "quit RecordStuff");
   const deadline = Date.now() + 10_000;
@@ -156,6 +156,7 @@ function waitFor(from: LogCursor, pattern: RegExp, what: string): ReturnType<typ
 
 interface Settings {
   language?: string;
+  countdown?: unknown;
   [key: string]: unknown;
 }
 function readSettings(): Settings | undefined {
@@ -165,11 +166,20 @@ function readSettings(): Settings | undefined {
     return undefined;
   }
 }
-function writeLanguage(language: string | undefined): void {
+/**
+ * Sets (or, for `undefined`, removes) the fields this run controls. The
+ * countdown is seeded to 0 so banner timing is measured from a recording that
+ * starts at once; cleanup restores the user's values (plan 040).
+ */
+function writeSettings(patch: { language?: string | undefined; countdown?: unknown }): void {
   const settings = readSettings();
   if (!settings) fail(`cannot read ${SETTINGS_PATH}; launch the app once first`);
-  if (language === undefined) delete settings.language;
-  else settings.language = language;
+  for (const key of ["language", "countdown"] as const) {
+    if (!(key in patch)) continue;
+    const value: unknown = patch[key];
+    if (value === undefined) delete settings[key];
+    else (settings as Record<string, unknown>)[key] = value;
+  }
   const tmp = `${SETTINGS_PATH}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(settings, null, 2) + "\n");
   fs.renameSync(tmp, SETTINGS_PATH);
@@ -253,7 +263,7 @@ async function main(): Promise<void> {
     }
     for (const language of languages) {
       operationSignal.throwIfAborted();
-      writeLanguage(language);
+      writeSettings({ language, countdown: 0 });
       const accelerator = await launchApp();
       const keystroke =
         acceleratorToKeystroke(accelerator) ?? fail(`cannot type accelerator ${accelerator} through System Events`);
@@ -485,7 +495,7 @@ end tell`, "quit empty TextEdit");
     }
     if (originalSettings && !appStillRunning) {
       try {
-        writeLanguage(originalSettings.language);
+        writeSettings({ language: originalSettings.language, countdown: originalSettings.countdown });
       } catch (error) {
         problem(`settings: ${String(error)}`);
       }

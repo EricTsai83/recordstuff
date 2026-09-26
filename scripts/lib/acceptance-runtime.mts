@@ -77,7 +77,13 @@ type TerminalRecord = Extract<SessionRecord, { kind: "saved" | "failed" }>;
  * `failed:` lines are read only from a build that writes no records, so one
  * outcome is never read twice. With `session`, only that session's record counts.
  */
-export function recordingOutcome(lines: readonly string[], session?: string): { settled: false } | { settled: true; saved?: string; failure?: string } {
+export function recordingOutcome(lines: readonly string[], session?: string): { settled: false } | { settled: true; saved?: string; failure?: string; cancelled?: true } {
+  // A countdown cancelled before capture (plan 040) ends with a plain line and no record.
+  const cancelled = lines.some((line) => {
+    const id = /\] cancelled: session (\S+) /.exec(line)?.[1];
+    return id !== undefined && (session === undefined || id === session);
+  });
+  if (cancelled) return { settled: true, cancelled: true };
   if (lines.some(isSessionRecordLine)) {
     const terminal = lines.map(parseSessionRecord).find((record): record is TerminalRecord =>
       (record?.kind === "saved" || record?.kind === "failed") && (session === undefined || record.session === session));
@@ -113,7 +119,8 @@ export async function finishRecording(options: {
     const state = currentState(lines);
     const outcome = recordingOutcome(lines, options.session);
     if (state === "idle" && outcome.settled) return outcome.saved;
-    if (state === "recording" && !stopSent) {
+    // During a countdown the same key cancels; afterwards it stops.
+    if ((state === "recording" || state === "countdown") && !stopSent) {
       stopSent = true;
       await options.stop();
     }
