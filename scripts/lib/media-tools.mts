@@ -90,11 +90,7 @@ export function hasTool(tool: string): boolean {
   }
 }
 
-/** Streams, format and a full decode (`-count_frames`); stderr holds decode errors, if any. */
-export function probe(file: string): { info: ProbeInfo; decodeErrors: string } {
-  const { stdout, stderr } = completed("ffprobe", run("ffprobe", [
-    "-v", "error", "-show_format", "-show_streams", "-count_frames", "-of", "json", file,
-  ], "ffprobe"));
+function parseProbe(stdout: string, stderr: string): ProbeInfo {
   let info: ProbeInfo;
   try {
     info = JSON.parse(stdout) as ProbeInfo;
@@ -104,7 +100,42 @@ export function probe(file: string): { info: ProbeInfo; decodeErrors: string } {
   if (!Array.isArray(info.streams) || typeof info.format !== "object" || info.format === null) {
     throw new MeasurementError("ffprobe output has no format or stream list");
   }
-  return { info, decodeErrors: stderr };
+  return info;
+}
+
+/** Streams, format and a full decode (`-count_frames`); stderr holds decode errors, if any. */
+export function probe(file: string): { info: ProbeInfo; decodeErrors: string } {
+  const { stdout, stderr } = completed("ffprobe", run("ffprobe", [
+    "-v", "error", "-show_format", "-show_streams", "-count_frames", "-of", "json", file,
+  ], "ffprobe"));
+  return { info: parseProbe(stdout, stderr), decodeErrors: stderr };
+}
+
+/**
+ * Streams and format without decoding every frame, then ffprobe decodes only
+ * the first and last `edgeSeconds`: a missing track, a wrong duration or a
+ * damaged tail shows up in well under a second, where a full decode of a 2 GB
+ * file takes over a minute. ffprobe, not `ffmpeg -f null`: the null muxer
+ * reports repeated timestamps of static screen content as errors although
+ * every frame decodes. `nb_read_frames` is absent; a window that decodes no
+ * frame counts as an error; decode errors are joined.
+ */
+export function probeEdges(file: string, edgeSeconds = 1): { info: ProbeInfo; decodeErrors: string } {
+  const { stdout, stderr } = completed("ffprobe", run("ffprobe", [
+    "-v", "error", "-show_format", "-show_streams", "-of", "json", file,
+  ], "ffprobe"));
+  const info = parseProbe(stdout, stderr);
+  const duration = Number(info.format.duration);
+  if (!Number.isFinite(duration)) throw new MeasurementError("ffprobe reported no duration, so the last second cannot be located");
+  const decode = (what: string, interval: string): string => {
+    const window = completed(`ffprobe ${what} decode`, run("ffprobe", [
+      "-v", "error", "-read_intervals", interval, "-show_entries", "frame=pts_time", "-of", "csv=p=0", file,
+    ], "ffprobe edges"));
+    return window.stdout.trim() === "" ? `${window.stderr}\n${what}: no frame decoded` : window.stderr;
+  };
+  const head = decode("first second", `%+${edgeSeconds}`);
+  const tail = decode("last second", `${Math.max(0, duration - edgeSeconds)}%`);
+  return { info, decodeErrors: [stderr, head, tail].map((text) => text.trim()).filter(Boolean).join("\n") };
 }
 
 /**

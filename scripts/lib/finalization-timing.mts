@@ -119,3 +119,13 @@ export function distribution(values: readonly number[]): Distribution | undefine
 
 export const formatDistribution = (d: Distribution | undefined, unit = "ms"): string =>
   d ? `n=${d.n} min ${d.min} / p50 ${d.p50} / p95 ${d.p95} / max ${d.max} ${unit}` : "no samples";
+
+const UNITS: Record<string, number> = { "": 1, k: 1024, m: 1024 ** 2, g: 1024 ** 3 };
+
+/** `64m`, `2g`, `512k` or plain bytes, binary units; undefined unless a positive whole byte count. */
+export function parseByteSize(text: string): number | undefined {
+  const m = /^(\d+(?:\.\d+)?)([kmg]?)$/i.exec(text.trim());
+  if (!m) return undefined;
+  const bytes = Math.round(Number(m[1]) * UNITS[m[2]!.toLowerCase()]!);
+  return Number.isSafeInteger(bytes) && bytes > 0 ? bytes : undefined;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { distribution, finalizationSample, parseFinalizeTiming } from "./finalization-timing.mts";
+import { distribution, finalizationSample, parseByteSize, parseFinalizeTiming } from "./finalization-timing.mts";
 
 const TIMING = "recorder: session s1 finalize timing: host 12 ms, writes 1 ms, flush 40 ms, close 0 ms, publish 580 ms by copy, cleanup 2 ms; 614400000 bytes";
 
@@ -58,5 +58,15 @@ describe("distribution", () => {
     const twenty = Array.from({ length: 20 }, (_, i) => i + 1);
     expect(distribution(twenty)).toMatchObject({ p50: 10, p95: 19, max: 20 });
     expect(distribution([])).toBeUndefined();
+  });
+});
+
+describe("byte sizes", () => {
+  it("reads binary units and plain bytes, and refuses anything else", () => {
+    expect(parseByteSize("64m")).toBe(64 * 1024 ** 2);
+    expect(parseByteSize("2G")).toBe(2 * 1024 ** 3);
+    expect(parseByteSize("1.5g")).toBe(1.5 * 1024 ** 3);
+    expect(parseByteSize("4096")).toBe(4096);
+    for (const bad of ["", "0", "-1m", "2t", "m", "1e9"]) expect(parseByteSize(bad)).toBeUndefined();
   });
 });

@@ -2,15 +2,17 @@
 /**
  * `pnpm measure:finalization -- --dir <absolute folder> [--seconds 15] [--repeat 5]
  *   [--quality economy|standard|high] [--fps 30|60] [--label name] [--keep]
- *   [--no-open-material] [--no-build]`
+ *   [--verify quick|full] [--no-open-material] [--no-build]`
  *
  * Plan 037's measurement gate; macOS developer tooling, never shipped. One
  * invocation is one desktop round: build once, open the test material once,
  * then record `--repeat` takes through the development app with
  * `RECORDSTUFF_AUTORECORD`, whose `outputDir` points at `--dir` (in memory
  * only; settings.json is never written). Each take's stop-to-ready time and
- * its phases come from the app log (`finalize timing`), its media from a full
- * ffprobe decode. Files are deleted after verification unless `--keep`, so a
+ * its phases come from the app log (`finalize timing`), its media from
+ * ffprobe: `--verify quick` (default) fully decodes the first saved take and
+ * checks the rest's streams, duration and first and last second, `full`
+ * decodes every take. Files are deleted after verification unless `--keep`, so a
  * round never accumulates recordings on the volume. Evidence goes to
  * `docs/verification/measurements/<timestamp>-finalization-<label>/`.
  *
@@ -27,7 +29,8 @@ import { materialOpenArgs } from "./lib/acceptance.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
 import { distribution, finalizationSample, formatDistribution, type FinalizationSample } from "./lib/finalization-timing.mts";
 import { LogGapError, LogReader, type LogCursor } from "./lib/log-reader.mts";
-import { hasTool, probe } from "./lib/media-tools.mts";
+import { freeBytes, volumeOf } from "./lib/volume.mts";
+import { hasTool, probe, probeEdges } from "./lib/media-tools.mts";
 import { REPO_ROOT } from "./lib/verify-recording.mts";
 import { parseAutorecordOutcome } from "./lib/verify.mts";
 
@@ -56,16 +59,18 @@ interface Options {
   keep: boolean;
   openMaterial: boolean;
   build: boolean;
+  /** `quick` decodes every frame of the first saved take only; the timings never depend on it. */
+  verify: "quick" | "full";
 }
 
 function usage(message?: string): never {
   if (message) console.error(message);
-  console.error("usage: pnpm measure:finalization -- --dir <absolute folder> [--seconds 15] [--repeat 5] [--quality economy|standard|high] [--fps 30|60] [--label name] [--keep] [--no-open-material] [--no-build]");
+  console.error("usage: pnpm measure:finalization -- --dir <absolute folder> [--seconds 15] [--repeat 5] [--quality economy|standard|high] [--fps 30|60] [--label name] [--keep] [--verify quick|full] [--no-open-material] [--no-build]");
   process.exit(2);
 }
 
 function parseOptions(argv: string[]): Options {
-  const options: Options = { dir: "", seconds: 15, repeat: 5, quality: "standard", fps: 60, label: "", keep: false, openMaterial: true, build: true };
+  const options: Options = { dir: "", seconds: 15, repeat: 5, quality: "standard", fps: 60, label: "", keep: false, openMaterial: true, build: true, verify: "quick" };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
     const value = (): string => { const next = argv[++i]; if (next === undefined) usage(`${arg} needs a value`); return next; };
@@ -78,6 +83,7 @@ function parseOptions(argv: string[]): Options {
     else if (arg === "--keep") options.keep = true;
     else if (arg === "--no-open-material") options.openMaterial = false;
     else if (arg === "--no-build") options.build = false;
+    else if (arg === "--verify") options.verify = value() as Options["verify"];
     else usage(`unknown argument ${arg}`);
   }
   if (!path.isAbsolute(options.dir)) usage("--dir must be an absolute folder");
@@ -85,6 +91,7 @@ function parseOptions(argv: string[]): Options {
   if (!(Number.isInteger(options.repeat) && options.repeat >= 1 && options.repeat <= 50)) usage("--repeat must be 1–50");
   if (!["economy", "standard", "high"].includes(options.quality)) usage("--quality must be economy, standard or high");
   if (options.fps !== 30 && options.fps !== 60) usage("--fps must be 30 or 60");
+  if (options.verify !== "quick" && options.verify !== "full") usage("--verify must be quick or full");
   if (!/^[\w.-]*$/.test(options.label)) usage("--label may use letters, digits, dot, dash and underscore");
   return options;
 }
@@ -96,19 +103,6 @@ function pgrep(pattern: string): number[] {
     .split("\n").map((line) => Number(line.trim())).filter((pid) => Number.isInteger(pid) && pid > 0);
 }
 const electronPids = (): number[] => pgrep(`${ELECTRON_APP_REAL}/Contents/`);
-
-/** File system type and mount point of the volume holding `dir`, from `df` and `mount`. */
-function volumeOf(dir: string): { mount: string; type: string } {
-  const df = spawnSync("df", ["-P", dir], { encoding: "utf8" }).stdout.trim().split("\n").at(-1) ?? "";
-  const mount = df.split(/\s+/).slice(5).join(" ");
-  const line = spawnSync("mount", [], { encoding: "utf8" }).stdout.split("\n").find((entry) => entry.includes(` on ${mount} (`));
-  return { mount, type: /\(([^,)]+)/.exec(line ?? "")?.[1] ?? "unknown" };
-}
-
-function freeBytes(dir: string): number {
-  const stat = fs.statfsSync(dir);
-  return stat.bavail * stat.bsize;
-}
 
 const owned: { desktop?: DesktopRound; launcher?: ChildProcess; launchedAt?: number; material?: ChildProcess } = {};
 let interrupted = false;
@@ -177,13 +171,15 @@ interface Take {
   timedOut?: "quit" | "forced" | "none";
   sample?: FinalizationSample;
   sizeBytes?: number;
-  media?: { durationSeconds?: number; video: boolean; audio: boolean; decodeErrors: string };
+  media?: { durationSeconds?: number; video: boolean; audio: boolean; decodeErrors: string; decoded: "all frames" | "first and last second" };
   verified: boolean;
   deleted: boolean;
   freeBeforeBytes: number;
 }
 
 const appLog = new LogReader(LOG_PATH);
+/** In quick mode, only the first saved take is decoded frame by frame. */
+let fullyDecoded = false;
 
 function linesSince(cursor: LogCursor): string[] {
   try {
@@ -220,13 +216,17 @@ async function recordTake(options: Options, index: number): Promise<Take> {
   take.outcome = "saved";
   try {
     take.sizeBytes = fs.statSync(outcome.saved).size;
-    const { info, decodeErrors } = probe(outcome.saved);
+    const full = options.verify === "full" || !fullyDecoded;
+    const { info, decodeErrors } = full ? probe(outcome.saved) : probeEdges(outcome.saved);
+    fullyDecoded = true;
     const duration = Number(info.format.duration);
     take.media = {
       ...(Number.isFinite(duration) ? { durationSeconds: duration } : {}),
-      video: info.streams.some((s) => s.codec_type === "video" && Number(s.nb_read_frames) > 0),
+      // Edges leave nb_read_frames unset; their decode proved frames exist.
+      video: info.streams.some((s) => s.codec_type === "video" && (full ? Number(s.nb_read_frames) > 0 : Number(s.width) > 0)),
       audio: info.streams.some((s) => s.codec_type === "audio"),
       decodeErrors: decodeErrors.trim(),
+      decoded: full ? "all frames" : "first and last second",
     };
     const expected = sample?.stoppedEarly ? undefined : options.seconds;
     take.verified = take.media.video && take.media.audio && take.media.decodeErrors === ""
@@ -245,7 +245,7 @@ const mb = (bytes: number | undefined): string => bytes === undefined ? "?" : (b
 function describeTake(take: Take): string {
   const s = take.sample;
   const phases = s ? `stop→ready ${s.stopToReadyMs} ms (host ${s.hostMs ?? "?"}, writes ${s.writesMs ?? "?"}, flush ${s.flushMs ?? "?"}, close ${s.closeMs ?? "?"}, publish ${s.publishMs ?? "?"} by ${s.method ?? "?"}, cleanup ${s.cleanupMs ?? "?"}, ui ${s.uiMs ?? "?"})` : "no stop→ready sample";
-  const media = take.media ? `; ${take.media.durationSeconds?.toFixed(2) ?? "?"} s, video ${take.media.video}, audio ${take.media.audio}${take.media.decodeErrors ? `, decode errors: ${take.media.decodeErrors.slice(0, 200)}` : ""}` : "";
+  const media = take.media ? `; ${take.media.durationSeconds?.toFixed(2) ?? "?"} s, video ${take.media.video}, audio ${take.media.audio}, decoded ${take.media.decoded}${take.media.decodeErrors ? `, decode errors: ${take.media.decodeErrors.slice(0, 200)}` : ""}` : "";
   const late = take.timedOut ? `; TIMED OUT, app ${take.timedOut === "forced" ? `killed after ${QUIT_GRACE_MS / 1000} s` : take.timedOut === "quit" ? "quit on SIGTERM" : "already gone"}` : "";
   return `${take.outcome}${take.detail ? ` (${take.detail})` : ""}${late}; ${mb(take.sizeBytes)} MiB${s?.stoppedEarly ? " (stopped early: low disk)" : ""}; ${phases}${media}; verified ${take.verified}`;
 }
@@ -263,6 +263,7 @@ function summary(options: Options, volume: { mount: string; type: string }, take
     "",
     `- Run: ${new Date().toISOString()}; ${takes.length} take(s) of ${options.seconds} s at ${options.quality} ${options.fps} fps, source resolution`,
     `- Folder: \`${options.dir}\` on ${volume.type} (${volume.mount}); publication method ${methods}`,
+    `- Verification: ${options.verify === "full" ? "every take fully decoded" : "first saved take fully decoded; the others' streams, duration and first and last second"}`,
     `- Machine: ${spawnSync("sysctl", ["-n", "machdep.cpu.brand_string"], { encoding: "utf8" }).stdout.trim()}, macOS ${spawnSync("sw_vers", ["-productVersion"], { encoding: "utf8" }).stdout.trim()}; commit ${spawnSync("git", ["rev-parse", "--short", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8" }).stdout.trim()}${spawnSync("git", ["status", "--porcelain"], { cwd: REPO_ROOT, encoding: "utf8" }).stdout.trim() ? " plus uncommitted changes" : ""}`,
     `- ${desktop}`,
     `- File size: ${formatDistribution(distribution(takes.flatMap((t) => t.sizeBytes === undefined ? [] : [Math.round(t.sizeBytes / 1024 / 1024)])), "MiB")}`,

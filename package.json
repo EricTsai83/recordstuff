@@ -31,6 +31,7 @@
     "matrix": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/run-matrix.mts",
     "diagnose:cadence": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/diagnose-frame-cadence.mts",
     "measure:finalization": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/measure-finalization.mts",
+    "bench:publication": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/bench-publication.mts",
     "dist:mac": "node scripts/start-app.mjs --dmg",
     "audio:quality": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/audio-quality.mts",
     "signing:create": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/create-signing-identity.mts",
