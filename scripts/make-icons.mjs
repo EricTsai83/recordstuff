@@ -4,7 +4,9 @@
 //   resources/trayCountdownTemplate.png(@2x)  macOS template: stopwatch (plan 040)
 //   resources/trayRecordingTemplate.png(@2x)  macOS template: filled dot
 //   resources/trayWarningTemplate.png(@2x)    macOS template: ring with a badge
-//   resources/tray-<state>.ico                Windows: the same shapes, gray; red dot when recording
+//   resources/tray-<state>.ico                Windows (plan 034): the app icon's dark rounded base
+//                                             with a white ring, red centre, amber "!", hourglass
+//                                             or stopwatch; 16/20/24/32/48 px entries
 //   build/icon.png                            512px app icon for electron-builder
 //   build/icon.icns                           native macOS icon set (generated on macOS)
 //   build/background.png (@2x)                DMG drag-to-Applications background
@@ -129,11 +131,12 @@ function ico(entries) {
 }
 
 const BLACK = [0, 0, 0, 255];
-// Mid gray reads on both the dark (default) and light Windows taskbars.
-const GRAY = [128, 128, 128, 255];
 const RED = [230, 57, 70, 255];
 const WHITE = [255, 255, 255, 255];
 const DARK = [28, 28, 30, 255];
+const AMBER = [255, 185, 0, 255];
+// Rim of the Windows tray base: separates it from a dark taskbar.
+const EDGE = [120, 120, 126, 255];
 
 function idleShape(size) {
   const c = size / 2;
@@ -214,20 +217,110 @@ for (const [name, shapeOf] of [
   writeFileSync(`resources/${name}@2x.png`, png(32, rasterize(32, [{ shape: shapeOf(32), rgba: BLACK }])));
 }
 
-// Windows tray icons: gray ring when idle, red dot when recording. Plan 034
-// redesigns Windows artwork; these only keep the states distinct there.
-for (const [name, shapeOf, color] of [
-  ["tray-idle", idleShape, GRAY],
-  ["tray-busy", busyShape, GRAY],
-  ["tray-countdown", countdownShape, GRAY],
-  ["tray-recording", recordingShape, RED],
-  ["tray-warning", warningShape, GRAY],
-]) {
-  const entries = [16, 24, 32, 48].map((size) => ({
+// Windows tray icons (plan 034). An ICO has no template mode, so one image
+// must read on light, dark and accent-coloured taskbars alike: each state sits
+// on the app icon's dark rounded base, whose grey rim keeps its edge on a dark
+// taskbar. A white ring with an empty centre is idle; a red centre is
+// recording, so the two differ in shape and in grey level, not only in hue;
+// an amber "!" inside a ring (thinner at 16 px to leave it room) is the
+// warning; busy and countdown keep 040's hourglass and stopwatch. A version
+// without the base needed a dark outline that turned the white ring into a
+// thin double line on a light taskbar. Geometry is in pixels per ICO entry so
+// edges land on the pixel grid at every scale: Windows shows 16 px at 100%,
+// 20 at 125%, 24 at 150% and 32 at 200%; 48 serves larger shell views.
+const WINDOWS_TRAY = {
+  16: { margin: 1, corner: 3, edge: 1, ring: 5.5, stroke: 2, warningStroke: 1.5, dot: 2.5,
+    mark: [1, -3, 0, 1, 3], glass: [4, -5, 2, 5, 1.6, 1.4], watch: [1, 4.5, 1.5, 2, -6, -4.5, 1, 1, 1, 1.5] },
+  20: { margin: 1, corner: 4, edge: 1, ring: 7, stroke: 2, warningStroke: 2, dot: 4,
+    mark: [1, -4, 1, 2, 4], glass: [5, -7, 2, 7, 1.8, 1.6], watch: [1, 6, 2, 2, -8, -6, 1, 1, 1, 1.75] },
+  24: { margin: 1, corner: 5, edge: 1, ring: 8.5, stroke: 2.5, warningStroke: 2.5, dot: 4.75,
+    mark: [1, -5, 1, 3, 5], glass: [6, -8, 2, 8, 2, 1.8], watch: [1, 7, 2.5, 3, -10, -8, 1, 1, 1, 2] },
+  32: { margin: 2, corner: 6, edge: 1, ring: 11, stroke: 3, warningStroke: 3, dot: 6.5,
+    mark: [2, -7, 1, 3, 7], glass: [8, -11, 3, 11, 2.6, 2.4], watch: [1.5, 9.5, 3, 4, -13, -10.5, 1.5, 1.5, 1.5, 2.5] },
+  48: { margin: 3, corner: 9, edge: 1.5, ring: 16.5, stroke: 4.5, warningStroke: 4.5, dot: 10.5,
+    mark: [3, -10, 2, 5, 10], glass: [12, -16, 4, 16, 3.8, 3.4], watch: [2, 14, 4.5, 6, -19.5, -15.5, 2, 2, 2.5, 3.5] },
+};
+
+/** Axis-aligned box in pixels. */
+function rect(x0, x1, y0, y1) {
+  return (x, y) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
+}
+
+function union(...shapes) {
+  return (x, y) => shapes.some((shape) => shape(x, y));
+}
+
+function offset(shape, dx, dy) {
+  return (x, y) => shape(x - dx, y - dy);
+}
+
+/** Offsets are from the icon centre c, in pixels. */
+function exclamation(c, [halfWidth, barTop, barEnd, dotTop, dotEnd]) {
+  return union(
+    rect(c - halfWidth, c + halfWidth, c + barTop, c + barEnd),
+    rect(c - halfWidth, c + halfWidth, c + dotTop, c + dotEnd),
+  );
+}
+
+// busyShape in pixels: bars `bar` thick at `top` and `bottom`, joined by two
+// strokes whose outer edges run from just inside the bar ends to `waist`.
+function hourglass(c, [halfWidth, top, bar, bottom, stroke, waist]) {
+  const y0 = c + top, y1 = c + bottom;
+  const span = c - (y0 + bar);
+  return (x, y) => {
+    if (x < c - halfWidth || x > c + halfWidth || y < y0 || y > y1) return false;
+    if (y <= y0 + bar || y >= y1 - bar) return true;
+    const t = Math.abs(y - c) / span; // 0 at the waist, 1 at a bar
+    const outer = waist + stroke / 2 + (halfWidth - 0.5 - waist - stroke / 2) * t;
+    const d = Math.abs(x - c);
+    return d <= outer && d >= outer - stroke;
+  };
+}
+
+// countdownShape in pixels. The hand stops `gap` short of the ring: joined to
+// the stem it would read as a power symbol at 16 px.
+function stopwatch(c, [dy, radius, stroke, crownHalf, crownTop, crownBottom, stemHalf, handHalf, gap, hub]) {
+  const cy = c + dy;
+  return union(
+    ring(c, cy, radius, radius - stroke),
+    rect(c - crownHalf, c + crownHalf, c + crownTop, c + crownBottom),
+    rect(c - stemHalf, c + stemHalf, c + crownBottom, cy - radius + stroke / 2),
+    rect(c - handHalf, c + handHalf, cy - radius + stroke + gap, cy),
+    circle(c, cy, hub),
+  );
+}
+
+function windowsTrayLayers(state, size) {
+  const g = WINDOWS_TRAY[size];
+  const c = size / 2;
+  const side = size - 2 * g.margin;
+  const inset = g.margin + g.edge;
+  const layers = [
+    { shape: offset(roundedSquare(side, g.corner), g.margin, g.margin), rgba: EDGE },
+    { shape: offset(roundedSquare(side - 2 * g.edge, g.corner - g.edge), inset, inset), rgba: DARK },
+  ];
+  const whiteRing = ring(c, c, g.ring, g.ring - g.stroke);
+  switch (state) {
+    case "idle":
+      return [...layers, { shape: whiteRing, rgba: WHITE }];
+    case "recording":
+      return [...layers, { shape: whiteRing, rgba: WHITE }, { shape: circle(c, c, g.dot), rgba: RED }];
+    case "warning":
+      return [...layers, { shape: ring(c, c, g.ring, g.ring - g.warningStroke), rgba: WHITE }, { shape: exclamation(c, g.mark), rgba: AMBER }];
+    case "busy":
+      return [...layers, { shape: hourglass(c, g.glass), rgba: WHITE }];
+    case "countdown":
+      return [...layers, { shape: stopwatch(c, g.watch), rgba: WHITE }];
+  }
+  throw new Error(`unknown tray state ${state}`);
+}
+
+for (const state of ["idle", "busy", "countdown", "recording", "warning"]) {
+  const entries = Object.keys(WINDOWS_TRAY).map(Number).map((size) => ({
     size,
-    data: png(size, rasterize(size, [{ shape: shapeOf(size), rgba: color }])),
+    data: png(size, rasterize(size, windowsTrayLayers(state, size))),
   }));
-  writeFileSync(`resources/${name}.ico`, ico(entries));
+  writeFileSync(`resources/tray-${state}.ico`, ico(entries));
 }
 
 // App icon: red dot with a white ring on a dark rounded square.
