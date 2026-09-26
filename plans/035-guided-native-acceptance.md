@@ -2,7 +2,7 @@
 
 [English](035-guided-native-acceptance.md) | [繁體中文](035-guided-native-acceptance.zh-TW.md)
 
-Status: planned, not executed. Created: 2026-09-25. This plan is permanently the **last queue item**, currently after 034, 037 and 040; see [order](README.md#order-and-status). Any later implementation/fix plans go before it, regardless of numbering. It is the last step before clearing the queue, not a request to begin testing now.
+Status: planned, not executed. Created: 2026-09-25. This plan is permanently the **last queue item**, currently after 034 and 037; see [order](README.md#order-and-status). Any later implementation/fix plans go before it, regardless of numbering. It is the last step before clearing the queue, not a request to begin testing now.
 
 ## Purpose and ownership
 
@@ -117,7 +117,7 @@ Source: [033 closure](../docs/verification/history-2026-09.md#plan-033-closure--
 
 ## Countdown acceptance (not performed)
 
-Source: [040](040-recording-countdown.md). Prepare recipes from its final timings and appearance values.
+Source: 040 ([closure](../docs/verification/history-2026-09.md#plan-040-closure--2026-09-26), [design](../docs/system-design/recording.md#countdown)). Prepare recipes from its final timings and appearance values in `src/shared/countdown.ts`. Its closure left these native cases open: the tray-click start and the Cancel countdown menu item (computer use was blocked for the tray-only app), a dark menu bar, legibility over white and photo content, reduced motion and transparency, a secondary display and a full-screen app, and playback of the saved files by eye.
 
 - [ ] N32: With the default 3 seconds, start once from a tray click and once from ⌘⇧1, on a light and on a dark menu bar. Observe the busy icon (hourglass), then the stopwatch without digits, then the filled dot with REC; the item width stays the same apart from REC. Judge whether the top-right digit, drawn without any box, is transparent enough yet readable over a white document, a dark app and a bright photo, and play each file to confirm the digit never appears in it.
 - [ ] N33: Cancel a countdown by a second click, by the shortcut, by Cancel countdown in the menu, and by Quit. Each returns to idle with Show last recording kept and leaves no file, failure entry or notification; Quit exits normally.

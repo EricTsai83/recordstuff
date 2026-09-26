@@ -9,6 +9,29 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 040 結案 — 2026-09-26
+
+錄影前倒數與可區分的 tray 狀態，由 Claude 實作並經 Codex GPT-6 Astra review（見[錄製設計](../system-design/recording.md#倒數)、[桌面設計](../system-design/desktop.md#倒數-overlay)、[設計決策](../system-design/decisions.md)）。在此之前，2026-09-25 快捷鍵回合的 `starting → recording` 為 318 ms（plan 引用的數字），所以最初幾格會拍到滑鼠離開選單列。現在擷取在倒數前就準備好（關閉、3、5 或 10 秒；預設 3 秒，沒有此欄位的設定檔也是），歸零時才開始；被錄製螢幕右上角只顯示一個 28% 白色、沒有方框的數字，並在擷取前 300 ms 離開；第二次點擊、快捷鍵、「取消倒數」或「結束」都會取消，不留檔案、失敗紀錄或通知；啟動與存檔時顯示沙漏，倒數時顯示碼錶，兩者都沒有標題。
+
+所有回合的環境：M1 Pro、macOS 26.6.2、Electron 44.3.0、ffmpeg 9.0.1，主螢幕為 BenQ GW2785TC 1920×1080 60 Hz，旁邊另接一台直立的外接螢幕 BenQ BL2480T（1080×1920、60 Hz），未使用內建螢幕；測試素材 SHA-256 `e631b973…c41459`；HEAD `225289e` 加上未提交的變更。已保存的品質為標準、原尺寸、60 fps，語言為繁體中文。
+
+- **預設 3 秒**（在最終版本的全新 bundle 上執行 `pnpm acceptance`）：按鍵 → `prepared` 393 ms；從起點算起的 tick 在 +0、+1003、+2009 ms；overlay 在 163 ms 後離開；`record` 在起點後 3004 ms；`record → started` 3 ms；`started → first chunk` 1082 ms。在 review pass 2 修正前的 bundle 上，同一回合為 387 ms、+1003／+2003、164 ms、3003 ms、3 ms 與 1105 ms。10.3 秒 1920×1080 的檔案通過完整性層級（48 kHz 立體聲、RMS −27.2／−27.2 dB、10 次閃光與 10 次嗶聲、完整解碼）。最初 15 格的數字區域裁圖與 2 秒後相同閃光相位的影格相比，15 格全部判定，最大平均亮度差 0.00（門檻 3）：錄影中沒有數字。取消案例通過：第二次按鍵以 `toggle` 取消，暫存檔已刪除，沒有失敗、通知、`record` 或 recording 行。
+- **10 秒**（這一輪與接下來兩輪在 review pass 2 修正前的 bundle 上執行；該修正只改變取消時登記清理工作的時機）：10 到 1 的 tick 間隔皆為 1000 ms（最晚 +6 ms），dismissal 167 ms，`record` 在 10003 ms，`record → started` 5 ms；檔案與裁圖結果同上。另一次已取消的 10 秒倒數截圖顯示兩位數「10」完整落在視窗內。
+- **關閉**：按鍵 → pressed 167 ms，pressed → recording 322 ms，與 318 ms 基準相同；沒有 overlay；`record → started` 0 ms；檔案通過。
+- **Tray 與焦點**（臨時觀察腳本，以 System Events 送快捷鍵、只讀取螢幕，分別在淺色與深色系統外觀執行）：選單列依序為圓環 → 沙漏 → 碼錶 → 實心圓點加 REC → 圓環。輔助使用回報的項目寬度在 idle、倒數中與存檔後都是 34 pt，錄製中為 66 pt，只有 REC 會改變寬度。倒數期間 macOS 也會顯示紫色的螢幕錄製 pill，因為擷取準備好後 stream 就已存活。「3」在深色內容上方的右上角清楚可見。倒數期間 TextEdit 文件一直在前景，並收到倒數中輸入的文字。目前的淺色桌布讓選單列在深色外觀下仍是淺色，因此沒有觀察到深色選單列。
+- **影格節奏。** 60 fps 時，13:24 與 13:43–13:48 的回合（含關閉）為 55.6–56.6 fps、掉格 6.0–7.1%，形態是散布在整段檔案、約 45 ms（兩次畫面更新）的不規則空隙，既不在開頭，也不在每秒一次的 chunk 邊界；13:56 的最終回合為 59.91 fps，只有三個短空隙。完整性層級只回報不判定。維護者於 2026-09-27 要求查明原因。背對背執行時，`pnpm matrix -- fps` 為 59.79 fps、掉格 0.44%，打包版以 `pnpm acceptance -- --seconds 15 --skip-cancel` 為 59.93 fps、無掉格，因此原因不是打包、快捷鍵路徑、倒數或錄影長度。接著在同一台機器上施加受控負載，找出機制：十個核心全滿時 30 fps 只有 21.0 fps、60 fps 26.5 fps，空隙長達 500 ms；五個核心為 29.94 與 59.41 fps（1.00%、47 ms 空隙）；在副螢幕開一個中度的 canvas 與模糊動畫頁面，完全重現先前 60 fps 的形態：55.42 fps、掉格 7.67%、50 ms 空隙，而 30 fps 維持 29.89 fps、無掉格；關閉後 60 fps 回到 59.92 fps。因此，當其他可見內容讓 GPU 與 window server 持續忙碌時，60 fps 擷取會掉格，30 fps 則能承受同樣的負載；先前的回合很可能就有這類內容在螢幕上。更重的版本甚至讓兩個 case 都在開始時以 `no_audio_track` 失敗（系統音訊軌一開始就已結束），App 正確地拒絕了錄影；關閉後擷取恢復正常。由於缺少授權在擷取端看起來完全相同，這個失敗的指引現在會先建議關閉耗資源的 App 再試，之後才是仍然保留的權限與重新啟動步驟；已以一筆 `no_audio_track` 紀錄檢查兩種語言的設定截圖，`pnpm acceptance:settings` 通過 113/113。
+- **Review 前的 smoke**：在 review 修正前的同一份程式上，啟動時序與取消結果相同。其裁圖步驟因 ffmpeg 9 不再接受 `-vsync` 而失敗；分析器改用 `-fps_mode passthrough`，並依時間戳選取後期影格，因為可變幀率檔案的平均幀率（回報 56.6）無法定位它們。以同一檔案重跑，15 格全部判定為 0.00。
+
+自動化證據：最終版本的 `pnpm check` 通過 typecheck、59 個檔案 993 個測試與 build。測試涵蓋：以注入時鐘、假 host 與假 presenter 測 Recorder（關閉路徑、依起點的 tick 時間、只在 dismissal 或其上限後才送 `record`、`record` 前以 toggle／選單／退出取消且保留 lastSavedPath 與不產生失敗狀態、取消的暫存檔與 sentinel 移除後才允許退出、`record` 後的 toggle 變成開始後停止、開檔／準備中／`record` 後的退出、帶階段與 empty 結果的啟動失敗、保留原代碼的磁碟錯誤、被拒或逾時的 `record`、presenter 錯誤、過期與重複訊息、倒數快照）；renderer 的 prepare／record 拆分（prepared 時 stop、prepared 時軌道結束、被拒與重複的 `record`、第二次 start）；protocol guard；tray 狀態、圖示、標題、選單與警示優先順序；設定解析與保存、倒數群組、鎖定與 action；overlay 的位置、視窗選項，以及透過假視窗驗證的各路徑銷毀；overlay 頁面；icon generator 逐 byte 重現所有已提交素材；autorecord 的預設與取消；session log 以及 runner 的收尾與分析器。`pnpm acceptance:regression` 在 review 修正前通過（Settings 113/113、快捷鍵失敗整合）；那些修正沒有動到設定與快捷鍵路徑。設定截圖顯示兩種語言與鎖定狀態下的群組。`pnpm site:check` 通過，並檢視了首頁、說明頁、手機版截圖與暫停的 hero 畫面。
+
+本次未驗證、交給 [035](../../../plans/035-guided-native-acceptance.zh-TW.md) 的 N32–N35：以 tray 點擊開始與選單「取消倒數」（同日 05:02 原生 computer use 對這個純 tray App 回傳 `-10005 timeoutReached`，本次未重試）、實際倒數中的「結束」、深色選單列、在白色文件與明亮照片上的可讀性、減少動態與透明度、次要螢幕、全螢幕 App、角落已有的通知橫幅、VoiceOver，以及以肉眼與耳朵播放存檔。Windows 外觀屬於 034。
+
+Tray 選單追加修改（2026-09-27，維護者要求選單跟著狀態更新）。在 macOS 26 與 Electron 44.3 上以獨立 probe 用 `popUpContextMenu` 開啟 tray 選單：main 的 timer 照常執行，但修改項目的文字或 `enabled`、呼叫 `closeContextMenu()`、再次 `popUpContextMenu`，都不會改變已開啟的選單，`app.quit()` 也會等到選單關閉才生效。重建選單本身幾乎沒有成本，是平台不允許已開啟的選單改變，而 `setContextMenu` 會讓左鍵也打開選單。因此，倒數期間開啟的選單中的「取消倒數」若在擷取開始後才被點選，現在會停止錄影並存檔，如同 `record` 後的 toggle；其他狀態下則不做任何事。Recorder 測試已涵蓋；Codex GPT-6 Astra 以 55 秒 review 此變更，無 findings。從真實 tray 選單點選的路徑未做原生驗證（tray 的 computer use 仍受阻）。
+
+收尾：每一輪後 RecordStuff 都正常結束；`settings.json` 中臨時設定的倒數值已移除，與回合前的檔案完全相同；深色外觀已切回淺色；腳本開啟的 TextEdit 在沒有文件的情況下結束。沒有殘留暫存檔或中斷 sentinel。依維護者要求，測試產物已於事後刪除：~/Movies/RecordStuff 中從 `2026-09-26 13-24-33` 到 `2026-09-27 00-49-05` 的 18 支錄影、這些回合的本機 measurement 目錄，以及 `2026-09-27.md`／`.json`。本紀錄中的數字即為保存的紀錄。沒有 commit、push 或發布。
+
+Codex GPT-6 Astra（medium reasoning、read-only）pass 1 耗時 117 秒，回傳兩項 finding，皆接受並修正。(1, Medium) autorecord 設定非零倒數時，取消後 autorecord 仍在等 saved 或 failed，App 會一直開著，下一次手動錄影還會沿用它的停止 timer；autorecord 現在在 `cancelled` 時結束，並補回歸測試。(2, Low) 驗收 runner 的取消案例清掉了已驗證錄影的 session id，使 report 標題寫成 `session undefined`；收尾現在追蹤自己的 session，report 保留錄影的 id。Pass 2 耗時 96 秒（30 分鐘額度共用掉 213 秒），確認兩項修正、依時間戳選取裁圖影格，以及本紀錄的說法與證據相符，並回傳一項 Medium finding，接受並修正：取消時先發出 idle 才登記清理工作，所以準備期間等待中的退出可能在 `prepared` 時被放行，而空的暫存檔與 sentinel 仍在移除中，下次啟動會誤報中斷。清理工作現在會先登記；使用延遲 `abandon()` 的回歸測試在舊順序下失敗、修正後通過。此修正之後沒有再經 review；由最終的 `pnpm check` 與上述全新 bundle 回合涵蓋。
+
 ## Plan 042 結案 — 2026-09-26
 
 更快的錄影回合，由 Claude 實作、Codex GPT-6 Astra review（[matrix](../system-design/tooling.md#測試素材)）。041 回合佔用桌面約 50 分鐘；流程規則的部分已寫進[測試指南](../testing.md#縮短錄影回合)，本計畫則在量測有依據的地方移除 runner 的固定成本。
