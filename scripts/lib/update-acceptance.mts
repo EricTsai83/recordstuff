@@ -26,12 +26,16 @@ export function instrumentUpdateAcceptance(source: string, runDir: string): stri
   source = replaceOnce(source, 'show: (savedPath, stoppedEarly) => tray.notifySaved(savedPath, stoppedEarly),', 'show: (savedPath, stoppedEarly) => tray.notifySaved(savedPath, stoppedEarly),');
   return source;
 }
-export function prepareUpdateAcceptance(root: string, workspace: string, runDir: string): void {
+/** A buildable copy of the app for instrumentation; the checkout itself is never modified. */
+export function copySourceWorkspace(root: string, workspace: string): void {
   for (const name of ['src', 'resources', 'build', 'scripts']) fs.cpSync(path.join(root, name), path.join(workspace, name), { recursive: true });
   for (const name of ['package.json', 'pnpm-lock.yaml', 'electron-builder.yml', 'electron-builder.local.yml', 'electron.vite.config.ts', 'tsconfig.node.json', 'tsconfig.web.json', 'tsconfig.base.json']) {
     fs.copyFileSync(path.join(root, name), path.join(workspace, name));
   }
   fs.symlinkSync(path.join(root, 'node_modules'), path.join(workspace, 'node_modules'), 'dir');
+}
+export function prepareUpdateAcceptance(root: string, workspace: string, runDir: string): void {
+  copySourceWorkspace(root, workspace);
   const entry = path.join(workspace, 'src/main/index.ts');
   fs.writeFileSync(entry, instrumentUpdateAcceptance(fs.readFileSync(entry, 'utf8'), runDir));
 }
