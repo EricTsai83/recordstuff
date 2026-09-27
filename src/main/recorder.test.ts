@@ -452,6 +452,21 @@ describe("Recorder failures", () => {
     expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "capture_failed" });
   });
 
+  it("a failure keeps offering the last saved recording (plan 035 O1)", async () => {
+    const ctx = setup();
+    await startRecording(ctx);
+    ctx.recorder.toggle();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    const saved = ctx.writers[0]!.finalPath;
+    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: saved });
+    await startRecording(ctx);
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "capture_failed" });
+    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: saved });
+  });
+
   it("write error → disk_full from the writer's code", async () => {
     const ctx = setup();
     await startRecording(ctx);
@@ -1998,7 +2013,7 @@ describe("Recorder countdown (plan 040)", () => {
   describe("cancel before record", () => {
     const cases: Array<[string, "toggle" | "menu" | "quit", (recorder: Recorder) => unknown]> = [
       ["a second click or the shortcut", "toggle", (recorder) => recorder.toggle()],
-      ["Cancel countdown", "menu", (recorder) => recorder.cancelCountdown("menu")],
+      ["Cancel recording", "menu", (recorder) => recorder.cancelCountdown("menu")],
       ["Quit", "quit", (recorder) => recorder.shutdown()],
     ];
     for (const [name, reason, act] of cases) {
@@ -2052,7 +2067,7 @@ describe("Recorder countdown (plan 040)", () => {
     });
   });
 
-  it("a Cancel countdown from a menu opened during the countdown stops a capture that already began", async () => {
+  it("a Cancel recording from a menu opened during the countdown stops a capture that already began", async () => {
     const ctx = counting(3);
     await ctx.prepare();
     await vi.advanceTimersByTimeAsync(3 * tickMs);
@@ -2060,14 +2075,14 @@ describe("Recorder countdown (plan 040)", () => {
     ctx.recorder.cancelCountdown("menu");
     expect(ctx.recorder.state.type).toBe("stopping");
     expect(ctx.host.stopped).toEqual(["s1"]);
-    expect(ctx.logs).toContainEqual(expect.stringContaining("Cancel countdown arrived after capture started"));
+    expect(ctx.logs).toContainEqual(expect.stringContaining("Cancel recording arrived after capture started"));
     ctx.host.emit(chunk("s1", 0));
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
     await flush();
     // Nothing is discarded: the short recording is saved, not cancelled.
     expect(ctx.events.filter((event) => event.type === "saved")).toHaveLength(1);
     expect(ctx.events.some((event) => event.type === "cancelled" || event.type === "failed")).toBe(false);
-    // Outside a recording a late Cancel countdown does nothing.
+    // Outside a recording a late Cancel recording does nothing.
     ctx.recorder.cancelCountdown("menu");
     expect(ctx.recorder.state.type).toBe("idle");
     expect(ctx.host.stopped).toEqual(["s1"]);

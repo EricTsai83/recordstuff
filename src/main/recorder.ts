@@ -328,14 +328,14 @@ export class Recorder {
    * milliseconds cannot leave capture running.
    *
    * A tray menu opened during the countdown stays as it was: macOS does not
-   * let the app update or close an open tray menu, so its Cancel countdown can
+   * let the app update or close an open tray menu, so its Cancel recording can
    * arrive after capture began. It still means "no recording", so it stops at
    * once and the file is saved, as a toggle after `record` would.
    */
   cancelCountdown(reason: Exclude<CancelReason, "quit"> = "menu"): void {
     const session = this.session;
     if (reason === "menu" && this._state.type === "recording" && session?.phase === "recording") {
-      this.deps.log(`recorder: session ${session.id} Cancel countdown arrived after capture started (a menu opened during the countdown); stopping`);
+      this.deps.log(`recorder: session ${session.id} Cancel recording arrived after capture started (a menu opened during the countdown); stopping`);
       this.stop();
       return;
     }
@@ -987,7 +987,9 @@ export class Recorder {
     // End the recording state before file cleanup. Native painting can still
     // wait on synchronous subscriber IO (docs/system-design/recording.md).
     // Set idle and request tray updates before synchronous metadata persistence.
-    this.settle({ type: "idle", ...idleFlags });
+    // The last saved recording is still on disk, so its reveal stays offered.
+    const { lastSavedPath } = this.idleState;
+    this.settle({ type: "idle", ...(lastSavedPath ? { lastSavedPath } : {}), ...idleFlags });
     if (code === "capture_start_failed") {
       const retained = await this.retainedWriteError(session);
       if (retained) {

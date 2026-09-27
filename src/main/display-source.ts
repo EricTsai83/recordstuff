@@ -82,7 +82,10 @@ export class DisplayRequest<S extends Source> {
       }
       const detail = changed ? "topology_changed" : "source_missing";
       if (preference.kind === "primary" || attempt === 3) {
-        deny(preference.kind === "primary" ? "no_display" : "display_unavailable", detail, attempt);
+        // Displays exist but capture still lists none: on macOS the screen grant was revoked
+        // while getMediaAccessStatus keeps reporting it (System Settings' "Later"), not a missing display.
+        const revoked = sources.length === 0 && this.deps.platform === "darwin" && after.displays.length > 0;
+        deny(revoked ? "permission_denied" : preference.kind === "primary" ? "no_display" : "display_unavailable", detail, attempt);
         return;
       }
       await new Promise<void>((resolve) => {

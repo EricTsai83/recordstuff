@@ -43,12 +43,29 @@ describe("bounded request lifetime", () => {
   });
   it("bounds source and topology retries to three attempts", async () => {
     vi.useFakeTimers();
-    for (const topology of [true, false]) {
-      const x = setup(); x.getSources.mockImplementation(async () => { if (topology) x.change(); return topology ? [source] : []; });
+    for (const [topology, platform, code] of [[true, "darwin", "display_unavailable"], [false, "win32", "display_unavailable"], [false, "darwin", "permission_denied"]] as const) {
+      const x = setup(explicit, platform); x.getSources.mockImplementation(async () => { if (topology) x.change(); return topology ? [source] : []; });
       const run = x.request.run(x.callback); await vi.runAllTimersAsync(); await run;
       expect(x.getSources).toHaveBeenCalledTimes(3); expect(x.callback).toHaveBeenCalledTimes(1);
-      expect(x.denied).toHaveBeenCalledWith("display_unavailable", topology ? "topology_changed" : "source_missing", 3);
+      expect(x.denied).toHaveBeenCalledWith(code, topology ? "topology_changed" : "source_missing", 3);
     }
+  });
+  it("reports a macOS capture that lists no screen at all as a permission problem, not a missing display (plan 035 D2)", async () => {
+    for (const [platform, code] of [["darwin", "permission_denied"], ["win32", "no_display"]] as const) {
+      const x = setup(primary, platform); x.getSources.mockResolvedValue([]);
+      await x.request.run(x.callback);
+      expect(x.getSources).toHaveBeenCalledTimes(1);
+      expect(x.denied).toHaveBeenCalledExactlyOnceWith(code, "source_missing", 1);
+      expect(x.callback).toHaveBeenCalledExactlyOnceWith(undefined);
+    }
+    // No display connected at all is still a missing display, not a permission problem.
+    const none = setup(primary); none.change([]); none.getSources.mockResolvedValue([]);
+    await none.request.run(none.callback);
+    expect(none.denied).toHaveBeenCalledExactlyOnceWith("no_display", "source_missing", 1);
+    // A source list without the primary display still falls back to the first source.
+    const other = setup(primary); other.getSources.mockResolvedValue([{ display_id: "2" }]);
+    await other.request.run(other.callback);
+    expect(other.selected).toHaveBeenCalledTimes(1);
   });
   it("rechecks topology and exact target after enumeration", async () => {
     const x = setup(); x.getSources.mockImplementation(async () => { x.change([]); return [source]; });
