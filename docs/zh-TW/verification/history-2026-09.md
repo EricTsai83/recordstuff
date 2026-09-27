@@ -9,6 +9,35 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 035 引導驗收回合 — 2026-09-28
+
+2026-09-27 22:14 到 2026-09-28 03:24（UTC+8），維護者一步一步親自完成所有原生操作；Claude 負責帶領、佈置故障與判讀 log。除非另有註明，觀察都來自維護者。環境：M1 Pro、macOS 26.6.2，主螢幕 BenQ GW2785TC 1920×1080，旁邊另有一台 BenQ BL2480T，聲音輸出到外接耳機；原始碼為 HEAD `5b59073` 加上尚未提交的受控驗收工具。A 段使用新建置並簽章的 `pnpm start:app` bundle（app.asar `aa52e51d…02e6`）與維護者的真實設定，事後設定檔已還原到原本的 SHA；B 段使用隔離資料的[受控 build](../system-design/tooling.md#受控驗收-build)：先一個不放 seed 的 run，之後分別用 retention 與 v1 seed。逐案表格在本機的 `measurements/2026-09-27T141422Z-plan035-guided/report.md`。本計畫仍未結案。
+
+- **通過。** 設定快捷鍵 N38–N40；倒數 N32–N35，包含 040 的選單後續（開始擷取後才選「取消倒數」會停止並存檔）與缺少欄位的設定檔（3 秒）；儲存位置 N41–N42，包含 macOS 的桌面存取提示（維護者選「不允許」，Finder 仍打開資料夾）；失敗 UX N01–N11 與 N13–N15；歷史 N19–N26；健康防護 N30；權限 N12 與 N37。真實故障涵蓋：唯讀資料夾；500 MB exFAT 映像寫滿後的 disk_full，保留 326 MB、可以播放的 partial；映像卸載時 partial 變成無法確認、接回後恢復；HFS+ 磁碟防護附提前停止說明存檔；錄影中與清理暫停中的強制結束；真實的 `EACCES` 歷史存檔失敗。受控狀態涵蓋：暫停清理、一次性寫入與關檔故障、暫停與失敗的歷史存檔，以及暫停的歷史載入。
+- **失敗。** N36：錄影中撤銷「螢幕與系統錄音」並選 macOS 的「稍後」後，錄影照常存檔，但 macOS 對執行中的程序仍回報已授權，於是 RecordStuff 顯示「待命中」，下一次開始時失敗為 no_display「找不到可以錄製的螢幕」，給的是螢幕相關的指引（D2）。不重開、直接重新開啟權限後，錄影正常。
+- **發現的缺陷。** D1：中文失敗原因結尾不一致，通知因此顯示為「寫入錄影失敗 點此查看錄影結果。」或「無法寫入輸出資料夾。 點此…」，標題也有的有句號、有的沒有。D2 如上。D3：用鍵盤移除一筆紀錄後，焦點移到第一筆但不捲動，因此從畫面上消失。
+- **只記錄結果、不作為門檻。** N31：錄影中讓 Mac 睡眠，`power: suspend` 後 0.15 秒錄影就以 capture_failed 結束，保留一段 8.9 秒、可以播放的 partial；失敗通知在睡眠當下送出，喚醒後沒有看到。
+- **維護者回饋。** 數字看得清楚但偏小（計畫 045）；「取消倒數」容易被理解成跳過倒數；模態警告與退出提示會擋住 tray 選單；確認與移除沒有寫入 log；延後退出提示出現前約 13 秒沒有任何回饋；「重新儲存提醒」與「提醒」不易理解；tray 顯示完整的儲存路徑；失敗後「顯示最後一個錄影」消失。
+- **未執行。** N17，沒有 Windows 機器；N16 的 VoiceOver；N32 的淺色選單列，試過的所有設定下選單列都維持深色。三項都由維護者明確接受為未驗證限制。另外也未執行：N12 的「處理中不能重新啟動」與「還原的權限歷史」兩個小項，以及 N23 的「啟動檢查期間確認」，這些目前只有單元測試證據。macOS 上無法操作：儲存位置警告開著時再點一次 tray，以及退出提示開著時重複按「結束」，因為模態提示顯示時 App 不處理其他任何操作。
+- **環境。** 點擊受控 build 的通知時，也會連帶啟動共用同一個 bundle identifier 的 `/Applications/RecordStuff.app` 1.0.0；它沒有寫入任何真實資料，每次都已結束。RecordStuff 沒有 Dock 圖示，所以 ⌥⌘⎋ 不會列出它；可以用「活動監視器」強制結束。
+
+收尾：受控 run 都已正常結束，workspace 已移除；磁碟映像已卸載並刪除；沒有殘留的 RecordStuff 程序；真實的 `settings.json` 與基準相同。維護者已還原通知與螢幕錄製設定，並保留新的桌布。依維護者在 N41 的選擇，RecordStuff 仍被拒絕存取桌面。真實歷史裡多了一筆來自 N31 的未確認失敗。測試錄影仍留在 `~/Movies/RecordStuff`（22:23 之後的檔案）與 `~/Movies/RecordStuff-035-alt`，等待維護者決定是否刪除。期間新增的計畫 045–049 會改變倒數、失敗紀錄分頁與 tray 選單，所以 035 會在它們之後重做受影響的案例。沒有 commit、push 或發布。
+
+## Plan 035 準備：受控驗收 build — 2026-09-27
+
+最後一輪由維護者逐步操作的驗收之準備工作，由 Claude 實作、Codex GPT-6 Astra review；計畫仍未結案，逐步引導的回合尚未開始。這一輪需要一些真實故障無法隨時產生的失敗狀態：pending 結果平常只持續幾毫秒，關檔失敗無法安全製造，N15、N21–N26 與 N30 需要緩慢或失敗的歷史儲存或隔離資料。計畫允許為此準備清楚標示的開發測試 bundle，須走正式結果處理與 UI，並在維護者操作前完成 review。`pnpm acceptance:controlled`（[工具說明](../system-design/tooling.md#受控驗收-build)）就是這個 bundle。
+
+- **建置。** 與更新 fixture 相同，runner 把原始碼複製到新的 run 目錄，只在該副本通過六個 anchor 檢查後插樁，再執行副本的 `pnpm start:app`；bundle 因此沿用開發版的 identifier、簽章身分、螢幕錄製與通知權限。userData、log 與預設輸出資料夾都在 run 目錄內，每個 tray tooltip 開頭都是 `[Controlled acceptance build]`，命令透過請求檔傳遞；一般建置沒有命令通道。
+- **故障注入點**，啟用前全部關閉：暫停失敗清理（最終結果在寫入歷史前等待，pending 持續顯示、退出被延後）、一次性寫入故障（對已有資料的檔案產生 EIO 或 ENOSPC，因此保留 partial）、檔案描述符真正關閉後的一次性關檔故障（unknown）、暫停或拒絕歷史儲存，以及啟動時暫停歷史載入。`--seed v1` 與 `--seed retention` 寫入隔離的舊版與保留上限歷史，其合成 partial 標明不可播放。
+- **案例清單。** 035 唯一漏列的原生缺口是 040 的 tray 選單後續（倒數期間開啟的選單，在開始擷取後才選「取消倒數」，會停止並保存錄影），現已併入 N33。保留結果的實作與計畫一致：載入時 pending 與 partial 紀錄轉為 unknown，啟動重新檢查只在檔案存在且非空時恢復 partial，sentinel 只記錄自己的暫存檔。
+- **檢查。** `pnpm check` 通過 typecheck、63 個檔案共 1024 個測試與 build。新增的 15 個測試使用真實 FileWriter、Recorder、RecordingResults 與 RecordingResultStore：寫入故障保留精確的 partial 並自動解除、關檔故障不發布任何檔案且保存狀態不確定、真實 Recorder 失敗在暫停清理放行前一直是 pending、暫停的載入仍轉交遷移狀態、暫停與拒絕的儲存使「知道了」維持未保存、插樁後的入口可編譯、anchor 改變或重複時失敗、兩種 seed 都能由正式 store 載入（確認最舊的未讀 seed 紀錄會移除最久以前看過的一筆，另一筆未讀保留）、自測偏好通過正式解析器、程序比對 pattern 能逐字比對含特殊字元的 run 路徑，以及參數、run 與請求編號處理。
+- **自測。** 在 M1 Pro、macOS 26.6.2、HEAD `5b59073` 加上未提交變更上，`pnpm acceptance:controlled -- selftest` 約一分鐘內通過全部 8 個步驟（`2026-09-27T13-22-59-810Z-controlled-selftest`）：已簽章 bundle 帶標示與隔離資料啟動；不可寫的隔離資料夾產生 output_open_failed，暫停時維持 pending，放行後為 empty；被拒絕的儲存標示為未保存（io），重試後保存，暫停的儲存使「知道了」維持儲存中直到放行；App 正常退出；重開時暫停歷史載入，放行後還原一筆已確認紀錄；最後退出後沒有 RecordStuff 程序，workspace 已移除。維護者的設定、歷史與錄影資料夾都未被修改。Review 修正後的第二次自測再次通過全部 8 個步驟（`2026-09-27T13-30-43-486Z-controlled-selftest`）。
+- **中斷路徑。** 在自測暫停清理且歷史儲存持續失敗時送出 SIGTERM：runner 關閉全部四個故障、放行暫停的工作，歷史隨即保存，App 沒有任何提示就退出；報告把該步驟記為失敗、其餘記為未執行，資料夾恢復可寫，也沒有殘留 RecordStuff 程序（`2026-09-27T13-31-51-234Z-controlled-selftest`）。以含有 `(035) [x]+` 的 `--out` 路徑執行 `launch`，在 `open` 返回後、App 回報 ready 前送出 SIGTERM：runner 回報中斷並正常退出 App。同一路徑上，重開的 App 執行中時 `clean` 列出其 pid 並拒絕，`quit` 之後才移除 workspace。
+
+尚未驗證：已簽章 bundle 中的寫入與關檔故障，因為自測不錄影；目前只由單元測試涵蓋，將在引導回合中原生觀察。沒有錄影、原生 tray 點擊或維護者操作，所以 035 的案例沒有任何一項算通過。本次工作期間執行了 `caffeinate -d -i -t 5400`。
+
+Codex GPT-6 Astra（medium reasoning，log header 確認為 read-only sandbox）review 兩次。Pass 1（86 秒）針對 runner 回報三項 Medium findings，全部接受並修正。自測失敗或被中斷時，會在故障與暫停仍啟用的情況下退出，shutdown 可能卡在暫停的清理，或跳出沒人回應的提醒詢問；現在會先關閉所有故障並放行所有暫停的工作。`clean` 把 bundle 路徑未經 escape 就交給 `pgrep -f`，run 路徑含特殊字元時可能找不到執行中的 App 而刪掉其 workspace；pattern 現在會 escape。`open` 已啟動 bundle、但 App 尚未回報 ready 時被中斷，會留下未回報的 App；runner 現在會等它並讓它退出，或列出它。Pass 2（60 秒）無 findings。約使用 30 分鐘 review 預算中的 2.5 分鐘，不需要 fallback。本次工作尚未 commit，也沒有 push 或發布。
+
 ## 更快的收尾量測 — 2026-09-27
 
 應維護者要求，針對 Plan 037 那一輪的後續改善，由 Claude 實作。那一輪 60 分鐘的錄影裡，約有 49 分鐘花在 8 段 5 分鐘長片上，唯一目的是得到約 2 GB 的檔案，而且每段之後還要完整解碼一分多鐘。現在[工具](../system-design/tooling.md#發布量測)與[測試規則](../testing.md#縮短錄影回合)改為不錄影回答檔案大小相關的問題。
