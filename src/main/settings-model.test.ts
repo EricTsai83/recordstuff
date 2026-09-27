@@ -400,7 +400,7 @@ it("offers persistence retry for an acknowledged result and bases restored relau
     detail: "", outcome: "empty" as const, acknowledged: true, restored: true, persistenceFailed: "io" as const };
   const ctx = { ...context, platform: "darwin" as const, recordingResults: [result] };
   const view = settingsView(idle, ctx).recordingResults![0]!;
-  expect(view.actions.find(a => a.id === "retry")).toMatchObject({ label: "Retry saving reminder", enabled: true });
+  expect(view.actions.find(a => a.id === "retry")).toMatchObject({ label: "Retry saving the record", enabled: true });
   expect(view.guidance).toContain("previous recording failure");
   expect(settingsAction(idle, ctx, "recordingResult:old", "relaunch")).toBeUndefined();
   expect(settingsAction({ type: "needsPermission", needsRelaunch: true }, ctx, "recordingResult:old", "relaunch")).toBeDefined();

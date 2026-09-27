@@ -437,7 +437,7 @@ export class RecordingResults {
 
 const reasons: Record<ErrorCode, PlainMessageKey> = {
   permission_denied: "Screen recording permission required",
-  permission_needs_relaunch: "Screen recording access was granted, but RecordStuff needs to relaunch. Use the tray menu.",
+  permission_needs_relaunch: "RecordStuff cannot capture the screen. Check that screen recording is allowed, then relaunch from the tray menu.",
   unsupported_os_version: "This system version does not support system audio capture. macOS 13 or newer is required on Mac.",
   display_unavailable: "Selected display is unavailable. Choose another screen.",
   no_display: "No display is available for recording.",
@@ -468,9 +468,9 @@ export function failureGuidance(code: ErrorCode, language: Language, platform: N
     : "Check your recording settings before trying again. Starting again does not recover missing content.", language);
 }
 const persistenceWarnings: Record<PersistenceIssue, PlainMessageKey> = {
-  io: "This reminder is not saved yet. RecordStuff keeps it and retries automatically. If this continues, check free disk space and access to the app's data folder. A force-quit loses unsaved reminders.",
-  blocked: "The saved failure history could not be read or comes from a newer version, so RecordStuff will not overwrite it. This reminder is kept only until RecordStuff quits.",
-  tooLarge: "The failure history is too large to save. Remove reviewed failures, then retry. Until then this reminder is kept only until RecordStuff quits.",
+  io: "This failure record is not saved yet. RecordStuff keeps it and retries automatically. If this continues, check free disk space and access to the app's data folder. A force-quit loses unsaved records.",
+  blocked: "The saved failure history could not be read or comes from a newer version, so RecordStuff will not overwrite it. This record is kept only until RecordStuff quits.",
+  tooLarge: "The failure history is too large to save. Remove reviewed failures, then retry. Until then this record is kept only until RecordStuff quits.",
 };
 /** Only `io` promises automatic retry; freeing disk space does not fix every storage error. */
 export const persistenceWarning = (issue: PersistenceIssue, language: Language): string => t(persistenceWarnings[issue], language);

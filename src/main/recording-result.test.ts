@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { RecordingResults, failureGuidance, failureOutcome, failureReason, isPermissionFailure } from "./recording-result";
 import type { RecordingFailure } from "../shared/recording-result";
+import { ERROR_CODES } from "../shared/state";
 
 const a: RecordingFailure = { id: "a", code: "disk_full", detail: "ENOSPC", occurredAt: "2026-09-24T12:00:00Z", outcome: "pending" };
 const partial = { ...a, outcome: "partial" as const, partialPath: "/a.mp4" };
@@ -170,4 +171,11 @@ it("joins a duplicate submission and refuses a conflicting action on the same ro
   expect(save).toHaveBeenCalledTimes(2);
   expect(results.current).toMatchObject({ acknowledged: true });
   expect(results.current?.saving).toBeUndefined();
+});
+
+it("Traditional Chinese failure reasons end without 。, since they also head a row (plan 035 D1)", () => {
+  for (const code of ERROR_CODES) {
+    expect(failureReason(code, "zh-TW"), code).not.toMatch(/[。．.]$/);
+    expect(failureReason(code, "en"), code).not.toMatch(/\s$/);
+  }
 });

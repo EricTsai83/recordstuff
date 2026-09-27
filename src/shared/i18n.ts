@@ -9,25 +9,25 @@ export function isLanguage(value: unknown): value is Language {
 export const ZH_TW = {
   "Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. Please try quitting again after it finishes.": "錄影仍在啟動、存檔或清理中，RecordStuff 將保持開啟。尚未開始的錄影會被取消。完成後請再次嘗試退出。",
   "Could not complete this action. Please try again.": "無法完成此操作，請重試。",
-  "This reminder is not saved yet. RecordStuff keeps it and retries automatically. If this continues, check free disk space and access to the app's data folder. A force-quit loses unsaved reminders.": "這項提醒尚未儲存。RecordStuff 會保留它並自動重試；若持續失敗，請檢查可用磁碟空間與 App 資料夾的存取權限。強制結束會遺失尚未儲存的提醒。",
-  "The saved failure history could not be read or comes from a newer version, so RecordStuff will not overwrite it. This reminder is kept only until RecordStuff quits.": "已儲存的失敗紀錄無法讀取，或由較新版本建立，因此 RecordStuff 不會覆寫它。這項提醒只會保留到 RecordStuff 結束為止。",
-  "The failure history is too large to save. Remove reviewed failures, then retry. Until then this reminder is kept only until RecordStuff quits.": "失敗紀錄過大，無法儲存。請移除已確認的紀錄後重試；在此之前，這項提醒只會保留到 RecordStuff 結束為止。",
+  "This failure record is not saved yet. RecordStuff keeps it and retries automatically. If this continues, check free disk space and access to the app's data folder. A force-quit loses unsaved records.": "這筆失敗紀錄尚未存檔。RecordStuff 會先保留它並自動重試；若持續失敗，請檢查可用磁碟空間與 App 資料夾的存取權限。強制結束會遺失尚未存檔的紀錄。",
+  "The saved failure history could not be read or comes from a newer version, so RecordStuff will not overwrite it. This record is kept only until RecordStuff quits.": "已儲存的失敗紀錄無法讀取，或由較新版本建立，因此 RecordStuff 不會覆寫它。這筆紀錄只會保留到 RecordStuff 結束為止。",
+  "The failure history is too large to save. Remove reviewed failures, then retry. Until then this record is kept only until RecordStuff quits.": "失敗紀錄過大，無法儲存。請移除已確認的紀錄後重試；在此之前，這筆紀錄只會保留到 RecordStuff 結束為止。",
   "Saving this change…": "正在儲存這項變更…",
   "Loading failure history…": "正在載入失敗紀錄…",
-  "Could not save failure reminders": "無法儲存失敗提醒",
-  "Still saving failure reminders": "仍在儲存失敗提醒",
-  "Unsaved reminders: {count}": "尚未儲存的提醒：{count} 筆",
+  "Could not save failure records": "無法儲存失敗紀錄",
+  "Still saving failure records": "仍在儲存失敗紀錄",
+  "Unsaved records: {count}": "尚未存檔的紀錄：{count} 筆",
   "…and {count} more": "……另有 {count} 筆",
-  "If you exit without saving, these reminders are lost and will not appear after RecordStuff restarts. Recording files are not affected.": "若不儲存就結束，這些提醒會遺失，重新啟動 RecordStuff 後不會再出現。錄影檔案不受影響。",
+  "If you exit without saving, these records are lost and will not appear after RecordStuff restarts. Recording files are not affected.": "若不儲存就結束，這些紀錄會遺失，重新啟動 RecordStuff 後不會再出現。錄影檔案不受影響。",
   "The save has not finished. RecordStuff stays open instead of exiting while the history file may still be written.": "儲存尚未完成。紀錄檔可能仍在寫入，因此 RecordStuff 會保持開啟，不會直接結束。",
   "Check free disk space and access to the app's data folder, then retry.": "請檢查可用磁碟空間與 App 資料夾的存取權限後重試。",
   "Retry": "重試",
   "Keep waiting": "繼續等待",
   "Stay in app": "留在 App",
-  "Exit without saving these reminders": "不儲存這些提醒並結束",
-  "Retry saving reminder": "重新儲存提醒",
+  "Exit without saving these records": "不儲存這些紀錄並結束",
+  "Retry saving the record": "重新嘗試寫入紀錄",
   "This is a previous recording failure. Check current recording permissions before trying again.": "這是先前錄影的失敗紀錄。請確認目前的錄影權限後再試。",
-  "The output folder could not be written.": "無法寫入輸出資料夾。",
+  "The output folder could not be written.": "無法寫入輸出資料夾",
   "Free disk space or choose another output folder before recording again.": "請釋放磁碟空間，或選擇其他輸出資料夾後重新錄影。",
   "Check the output folder, its permissions and the connected drive before recording again.": "請檢查輸出資料夾、存取權限與外接磁碟後重新錄影。",
   "Check recording permissions in System Settings. Relaunch if access was recently granted.": "請在系統設定檢查錄影權限；若剛授權，請重新啟動 App。",
@@ -85,7 +85,7 @@ export const ZH_TW = {
   "Display {id}": "螢幕 {id}",
   "{label} (Primary)": "{label}（主螢幕）",
   "Captures one whole screen. System audio is unaffected.": "錄製一個完整螢幕，不影響系統音訊。",
-  "Selected display is unavailable. Choose another screen.": "所選螢幕無法使用，請重新選擇。",
+  "Selected display is unavailable. Choose another screen.": "所選螢幕無法使用，請重新選擇",
   "Display is connected but its capture source is unavailable. Retry or choose another screen.": "螢幕已連接，但無法取得錄製來源。請重試或選擇其他螢幕。",
   "Display configuration changed. Retry.": "螢幕配置已變更，請重試。",
   "The recording display was removed. Choose another screen.": "錄製中的螢幕已移除，請選擇其他螢幕。",
@@ -150,12 +150,13 @@ export const ZH_TW = {
   "Saving…": "儲存中…",
   "Recording starts in {seconds} s": "{seconds} 秒後開始錄製",
   "Recording starts in {seconds} s. Click to cancel.": "{seconds} 秒後開始錄製，按一下即可取消。",
-  "Cancel countdown": "取消倒數",
-  "Cancel the countdown with {value}": "以 {value} 取消倒數",
+  "Cancel recording": "取消錄影",
+  "Quitting… RecordStuff quits once the recording is saved or cleaned up.": "正在結束…錄影存檔或清理完成後就會結束",
+  "Cancel recording with {value}": "以 {value} 取消錄影",
   "Saved {file}": "已儲存 {file}",
-  "Saved {file}. Recording stopped early because the disk is almost full.": "已儲存 {file}。磁碟空間即將用盡，已提前停止錄製",
-  "Screen recording access was granted, but RecordStuff needs to relaunch. Click to relaunch.":
-    "已取得螢幕錄製權限，但需要重新啟動 RecordStuff。點這則通知重新啟動",
+  "Saved {file}. Recording stopped early because the disk is almost full.": "已儲存 {file}。磁碟空間即將用盡，已提前停止錄製。",
+  "RecordStuff cannot capture the screen. Check that screen recording is allowed in System Settings, then relaunch RecordStuff. Click to relaunch.":
+    "RecordStuff 目前無法擷取螢幕。請確認系統設定已允許 RecordStuff 錄製螢幕，然後重新啟動 RecordStuff。點這則通知重新啟動。",
   "RecordStuff needs screen recording access. Click to open System Settings.":
     "RecordStuff 需要螢幕錄製權限，點這則通知開啟系統設定",
   "Could not save settings. The output folder is unchanged. Try choosing {path} again.":
@@ -170,8 +171,8 @@ export const ZH_TW = {
     "RecordStuff 在系統匣待命。左鍵點圖示開始錄製，再點一下停止",
   "RecordStuff is ready in the menu bar. Click to start recording; click again to stop.":
     "RecordStuff 在選單列待命。左鍵點圖示開始錄製，再點一下停止",
-  "Screen recording access was granted, but RecordStuff needs to relaunch. Use the tray menu.":
-    "已取得螢幕錄製權限，但需要重新啟動 RecordStuff。右鍵選單可以重新啟動",
+  "RecordStuff cannot capture the screen. Check that screen recording is allowed, then relaunch from the tray menu.":
+    "RecordStuff 目前無法擷取螢幕，請確認已允許螢幕錄製，再從選單列重新啟動",
   "This system version does not support system audio capture. macOS 13 or newer is required on Mac.":
     "這個系統版本不支援錄製系統音訊，Mac 需要 macOS 13 以上",
   "No display is available for recording.": "找不到可以錄製的螢幕",
@@ -232,6 +233,17 @@ export const ZH_TW = {
 } as const;
 
 export type MessageKey = keyof typeof ZH_TW;
+
+/**
+ * Joins independent messages into one line: English messages end in their own
+ * period and are separated by a space; Traditional Chinese ones are closed with
+ * 。 when they do not end in sentence punctuation, and follow each other directly.
+ * Failure reasons omit that 。 because they also appear as headings.
+ */
+export function sentences(parts: readonly string[], language: Language = DEFAULT_LANGUAGE): string {
+  if (language === "zh-TW") return parts.map(part => /[。！？]$/.test(part) ? part : `${part}。`).join("");
+  return parts.map(part => /[.!?…]$/.test(part) ? part : `${part}.`).join(" ");
+}
 
 /** The `{name}` placeholders of a message: `"Saved {file}"` → `"file"`. */
 type Placeholders<K extends string> = K extends `${string}{${infer Name}}${infer Rest}` ? Name | Placeholders<Rest> : never;

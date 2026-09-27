@@ -348,7 +348,7 @@ describe("notification language follows current settings", () => {
     expect(Fake.instances.at(-1)?.options.body).toContain("無法儲存語言設定");
     language = "en";
     tray.notifyPermission(true);
-    expect(Fake.instances.at(-1)?.options.body).toContain("needs to relaunch");
+    expect(Fake.instances.at(-1)?.options.body).toContain("then relaunch RecordStuff");
     Fake.instances.at(-1)?.listeners.get("click")?.();
     expect(action).toHaveBeenCalledWith("relaunch");
     tray.destroy();

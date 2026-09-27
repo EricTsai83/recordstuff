@@ -323,7 +323,7 @@ function resultActions(state: RecordingState, ctx: AppContext, result: NonNullab
       add("relaunch", "Relaunch", preferencesUnlocked(state) && result.outcome !== "pending");
   }
   // Retrying cannot overwrite unreadable or newer history, so it is not offered there.
-  if (result.persistenceFailed && result.persistenceFailed !== "blocked") add("retry", "Retry saving reminder", true);
+  if (result.persistenceFailed && result.persistenceFailed !== "blocked") add("retry", "Retry saving the record", true);
   if (!result.acknowledged) add("acknowledge", "Got it", result.outcome !== "pending");
   else add("remove", "Remove from history", true);
   return actions;

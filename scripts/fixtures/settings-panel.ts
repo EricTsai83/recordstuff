@@ -662,11 +662,11 @@ async function run() {
       window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Return" });
       if (!await until(() => read<boolean>(window, `document.querySelector(".recording-result").open`))) throw new Error("History summary did not open");
     }
-    record(`acknowledged ${lang} result offers a readable save retry`, await read<boolean>(window, `(() => { const b = document.querySelector('.recording-result [data-action="retry"]'); return !b.disabled && b.scrollWidth <= b.clientWidth && b.textContent.includes(${JSON.stringify(lang === "en" ? "Retry" : "重新儲存")}); })()`), "acknowledged persistence failure");
+    record(`acknowledged ${lang} result offers a readable save retry`, await read<boolean>(window, `(() => { const b = document.querySelector('.recording-result [data-action="retry"]'); return !b.disabled && b.scrollWidth <= b.clientWidth && b.textContent.includes(${JSON.stringify(lang === "en" ? "Retry saving the record" : "重新嘗試寫入紀錄")}); })()`), "acknowledged persistence failure");
     fs.writeFileSync(path.join(outDir, `result-retry-${lang}.png`), (await window.webContents.capturePage()).toPNG());
   }
   await clickAck(() => read<boolean>(window, `!document.querySelector(".result-error").hidden`), "retry");
-  record("failed acknowledged retry does not claim an unread reminder", recordingResults.current?.acknowledged === true &&
+  record("failed acknowledged retry does not claim an unread record", recordingResults.current?.acknowledged === true &&
     await read<boolean>(window, `document.querySelector(".result-error").textContent === "無法完成此操作，請重試。" && !document.querySelector(".result-persistence").hidden`), "acknowledged failure copy");
   resultSaveFails = false;
   await clickAck(() => read<boolean>(window, `document.querySelector(".result-persistence").hidden && document.querySelector(".result-error").hidden`), "retry");
@@ -684,6 +684,30 @@ async function run() {
   record("language changes do not announce the entire failure history", await read<boolean>(window, `!document.getElementById("feedback").textContent.includes("The disk is full")`), "localized outcomes are not new events");
   for (const result of [...recordingResults.all]) await recordingResults.acknowledge(result.id);
   await pushResult("en", 7);
+  // Removing the lowest row by keyboard keeps focus on the row above it, in view (plan 035 D3).
+  if (recordingResults.all.length >= 2) {
+    const count = recordingResults.all.length;
+    const key = (keyCode: string): void => {
+      window.webContents.sendInputEvent({ type: "keyDown", keyCode });
+      window.webContents.sendInputEvent({ type: "keyUp", keyCode });
+    };
+    const lowest = `document.querySelectorAll(".recording-result")[${count - 1}]`;
+    await read(window, `${lowest}.querySelector("summary").focus()`);
+    if (!await read<boolean>(window, `${lowest}.open`)) {
+      key("Return");
+      if (!await until(() => read<boolean>(window, `${lowest}.open`))) throw new Error("Could not open the lowest reviewed row");
+    }
+    await read(window, `${lowest}.querySelector('[data-action="remove"]').focus()`);
+    key("Space");
+    const removed = await until(() => read<boolean>(window, `document.querySelectorAll(".recording-result").length === ${count - 1}`));
+    record("removing the lowest row by keyboard moves focus to the row above it and keeps it in view",
+      removed && await until(() => read<boolean>(window, `(() => {
+        const rows = document.querySelectorAll(".recording-result > summary");
+        const target = rows[rows.length - 1];
+        const box = target?.getBoundingClientRect(), panel = document.getElementById("settings-panel").getBoundingClientRect();
+        return document.activeElement === target && box.top >= panel.top && box.bottom <= panel.bottom;
+      })()`)), JSON.stringify(await read(window, `({ active: document.activeElement?.id, rows: document.querySelectorAll(".recording-result").length })`)));
+  }
   while (recordingResults.all.length) {
     if (!await read<boolean>(window, `document.querySelector(".recording-result").open`)) {
       await read(window, `document.querySelector(".recording-result > summary").focus()`);

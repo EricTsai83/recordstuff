@@ -62,18 +62,18 @@ export function createHistoryQuit(deps: {
       const writing = outcome === "writing";
       const issue = unsaved.find(result => result.persistenceFailed)?.persistenceFailed;
       // A pending acknowledgement alone leaves no reminder unsaved, only an unfinished write.
-      const detail = [...unsaved.length ? [translate("Unsaved reminders: {count}", language, { count: unsaved.length }), ...listed, ""] : [],
+      const detail = [...unsaved.length ? [translate("Unsaved records: {count}", language, { count: unsaved.length }), ...listed, ""] : [],
         writing ? translate("The save has not finished. RecordStuff stays open instead of exiting while the history file may still be written.", language)
-          : `${issue && issue !== "io" ? persistenceWarning(issue, language) : translate("Check free disk space and access to the app's data folder, then retry.", language)}\n\n${translate("If you exit without saving, these reminders are lost and will not appear after RecordStuff restarts. Recording files are not affected.", language)}`];
+          : `${issue && issue !== "io" ? persistenceWarning(issue, language) : translate("Check free disk space and access to the app's data folder, then retry.", language)}\n\n${translate("If you exit without saving, these records are lost and will not appear after RecordStuff restarts. Recording files are not affected.", language)}`];
       let response = 1;
       try {
         deps.focus();
         ({ response } = await deps.show({
           type: "warning", title: APP_NAME,
-          message: translate(writing ? "Still saving failure reminders" : "Could not save failure reminders", language),
+          message: translate(writing ? "Still saving failure records" : "Could not save failure records", language),
           detail: detail.join("\n"),
           buttons: [translate(writing ? "Keep waiting" : "Retry", language), translate("Stay in app", language),
-            ...(writing ? [] : [translate("Exit without saving these reminders", language)])],
+            ...(writing ? [] : [translate("Exit without saving these records", language)])],
           defaultId: 0, cancelId: 1, noLink: true,
         }));
       } catch (cause) { deps.log(`quit: unsaved history prompt failed: ${String(cause)}`); }

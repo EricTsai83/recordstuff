@@ -1,4 +1,3 @@
-import { failureReason } from "./recording-result";
 import { translate } from "../shared/i18n";
 import { APP_NAME } from "./ui-model";
 /**
@@ -22,6 +21,7 @@ import {
   notificationsEnabledNotification,
   permissionNotification,
   qualityWriteFailedNotification,
+  recordingFailureNotification,
   savedNotification,
   settingsWriteFailedNotification,
   trayHintNotification,
@@ -99,10 +99,7 @@ export class AppTray {
   }
 
   notifyRecordingFailure(code: ErrorCode): void {
-    const language = this.options.context().language;
-    this.show({ title: translate("Recording failed", language),
-      body: `${failureReason(code, language)} ${translate("Click to view the recording result.", language)}` },
-    () => this.options.onAction("openRecordingResult"));
+    this.show(recordingFailureNotification(code, this.options.context().language), () => this.options.onAction("openRecordingResult"));
   }
 
   /**

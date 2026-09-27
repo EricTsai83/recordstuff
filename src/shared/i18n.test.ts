@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_LANGUAGE, ZH_TW, isLanguage, translate } from "./i18n";
+import { DEFAULT_LANGUAGE, ZH_TW, isLanguage, sentences, translate } from "./i18n";
 
 /** Without values English returns the key verbatim; the placeholder check is bypassed on purpose. */
 const english = translate as unknown as (key: string) => string;
@@ -40,5 +40,15 @@ describe("language catalog", () => {
       ),
     ).toBe("系統只提供 30 fps，本次以 30 fps 錄製（設定為 60 fps）");
     expect(translate("Saved {file}", "zh-TW", { file: "demo {file} $&.mp4" })).toBe("已儲存 demo {file} $&.mp4");
+  });
+});
+
+describe("sentences", () => {
+  it("closes and joins messages per language without doubling punctuation", () => {
+    expect(sentences(["寫入錄影失敗", "點此查看錄影結果。"], "zh-TW")).toBe("寫入錄影失敗。點此查看錄影結果。");
+    expect(sentences(["所選螢幕無法使用，請重新選擇", "點此查看錄影結果。"], "zh-TW")).toBe("所選螢幕無法使用，請重新選擇。點此查看錄影結果。");
+    expect(sentences(["Screen recording permission required", "Click to view the recording result."], "en"))
+      .toBe("Screen recording permission required. Click to view the recording result.");
+    expect(sentences(["The disk is full.", "Click to view the recording result."])).toBe("The disk is full. Click to view the recording result.");
   });
 });

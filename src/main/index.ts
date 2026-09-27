@@ -253,6 +253,14 @@ async function main(): Promise<void> {
   const recordingResults = new RecordingResults(
     new RecordingResultStore(path.join(app.getPath("userData"), "recording-history.json"), log,
       path.join(app.getPath("userData"), "recording-result.json")), log, () => refreshUi());
+  /** A quit waits for recording work or a history save; set shortly after it starts so a quick exit shows nothing. */
+  let quitting = false;
+  let quitFeedback: ReturnType<typeof setTimeout> | undefined;
+  const endQuitting = (): void => {
+    clearTimeout(quitFeedback);
+    quitFeedback = undefined;
+    if (quitting) { quitting = false; refreshUi(); }
+  };
   const appContext = (): AppContext => ({
     recordingResults: recordingResults.all,
     historyLoading: recordingResults.loading,
@@ -268,6 +276,7 @@ async function main(): Promise<void> {
     notifications: settings.notifications,
     settingsShortcut: shortcuts.settingsStatus,
     hotkey: { ...settings.hotkey, registered: shortcuts.registered },
+    ...(quitting ? { quitting } : {}),
   });
   const settingsWindow = new SettingsWindow({
     geometry: new SettingsWindowState(path.join(app.getPath("userData"), "settings-window.json"), log),
@@ -620,9 +629,13 @@ async function main(): Promise<void> {
     relaunch: () => app.relaunch(),
     shutdown: () => {
       savedNotification.setQuitting(true);
+      // Pending cleanup can hold quit for the stop deadline, and a history save for its wait; the tray says so meanwhile.
+      clearTimeout(quitFeedback);
+      quitFeedback = setTimeout(() => { quitting = true; refreshUi(); }, 300);
       return recorder.shutdown();
     },
     pending: () => {
+      endQuitting();
       savedNotification.setQuitting(false);
       log("quit deferred: recording save or cleanup is still pending");
       void showQuitFeedback();
@@ -634,6 +647,7 @@ async function main(): Promise<void> {
         try { return await dialog.showMessageBox(options); } finally { historyPrompt = false; }
       } }),
     resume: () => {
+      endQuitting();
       savedNotification.setQuitting(false);
       recorder.resumeAdmission();
       log("quit declined: failure history is not saved");

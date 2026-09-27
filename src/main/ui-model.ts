@@ -75,6 +75,8 @@ export interface AppContext {
   updates: { state: UpdateState; enabled: boolean };
   /** The app's own switch. Electron cannot read the OS notification permission. */
   notifications: boolean;
+  /** Quit waits for recording work to finish; the tray says so until the app exits or quit is deferred. */
+  quitting?: boolean;
 }
 
 /**
@@ -83,6 +85,27 @@ export interface AppContext {
  */
 export function preferencesUnlocked(state: RecordingState): boolean {
   return state.type === "idle" || state.type === "needsPermission";
+}
+
+/**
+ * A long path for a menu label: the start, an ellipsis and the last folder, so
+ * the menu stays narrow; the full path belongs in the tooltip.
+ */
+export function compactPath(display: string, max = 40): string {
+  if (display.length <= max) return display;
+  const sep = display.includes("/") ? "/" : "\\";
+  // A trailing separator would leave an empty last folder.
+  const parts = display.replace(/[\\/]+$/, "").split(sep);
+  // An absolute path's empty first part keeps its root: "/Volumes".
+  const segments = parts[0] === "" ? [`${sep}${parts[1] ?? ""}`, ...parts.slice(2)] : parts;
+  const last = segments.at(-1) ?? "";
+  for (const keep of [2, 1]) {
+    if (segments.length <= keep + 1) continue;
+    const candidate = [...segments.slice(0, keep), "…", last].join(sep);
+    if (candidate.length <= max) return candidate;
+  }
+  const tail = `…${sep}${last}`;
+  return tail.length <= max ? tail : `…${last.slice(last.length - (max - 1))}`;
 }
 
 export function abbreviateHome(filePath: string, homeDir: string): string {

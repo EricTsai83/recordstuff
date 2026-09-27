@@ -6,6 +6,7 @@ import {
   trayHintNotification,
   frameRateDowngradeNotification,
   hotkeyRegistrationFailedNotification,
+  recordingFailureNotification,
   savedNotification,
   trayModel,
   type TrayMenuItem,
@@ -174,22 +175,22 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(enabledActions(m.menu)).toEqual(["openSettings", "revealLog", "quit"]);
   });
 
-  it("countdown: stopwatch without a title, a status line and Cancel countdown naming the shortcut", () => {
+  it("countdown: stopwatch without a title, a status line and Cancel recording naming the shortcut", () => {
     const ctx = { ...mac, hotkey: { ...DEFAULT_HOTKEY, registered: true } };
     const m = trayModel({ type: "countdown", remaining: 3 }, ctx);
     expect(m.icon).toBe("countdown");
     expect(m.title).toBe("");
     expect(m.tooltip.split("\n")[0]).toBe("RecordStuff: 3 秒後開始錄製，按一下即可取消。");
-    expect(labels(m.menu)).toEqual(["3 秒後開始錄製", "取消倒數", "—", "設定", "顯示 log", "結束"]);
+    expect(labels(m.menu)).toEqual(["3 秒後開始錄製", "取消錄影", "—", "設定", "顯示 log", "結束"]);
     expect(enabledActions(m.menu)).toEqual(["cancelCountdown", "openSettings", "revealLog", "quit"]);
-    expect(m.menu.find((i) => i.kind === "item" && i.action === "cancelCountdown")).toMatchObject({ toolTip: "以 ⌘⇧1 取消倒數" });
+    expect(m.menu.find((i) => i.kind === "item" && i.action === "cancelCountdown")).toMatchObject({ toolTip: "以 ⌘⇧1 取消錄影" });
     expect(trayModel({ type: "countdown", remaining: 1 }, ctx).menu[0]).toMatchObject({ label: "1 秒後開始錄製", enabled: false });
     const english = trayModel({ type: "countdown", remaining: 2 }, { ...ctx, language: "en" });
     expect(english.tooltip.split("\n")[0]).toBe("RecordStuff: Recording starts in 2 s. Click to cancel.");
-    expect(labels(english.menu).slice(0, 2)).toEqual(["Recording starts in 2 s", "Cancel countdown"]);
+    expect(labels(english.menu).slice(0, 2)).toEqual(["Recording starts in 2 s", "Cancel recording"]);
   });
 
-  it("Cancel countdown has no shortcut tooltip when none is registered", () => {
+  it("Cancel recording has no shortcut tooltip when none is registered", () => {
     for (const hotkey of [{ ...DEFAULT_HOTKEY, registered: false }, { ...DEFAULT_HOTKEY, enabled: false, registered: true }]) {
       const cancel = trayModel({ type: "countdown", remaining: 3 }, { ...mac, hotkey }).menu.find((i) => i.kind === "item" && i.action === "cancelCountdown");
       expect(cancel).not.toHaveProperty("toolTip");
@@ -205,6 +206,30 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     ]);
     // Only REC changes the item width: every other state has an empty title.
     expect(STATES.map((state) => trayModel(state, mac).title)).toEqual(["", "", "", "", "", "", "REC", ""]);
+  });
+
+  it("a long output folder is shortened in the label and kept whole in the toolTip (plan 035)", () => {
+    const outputDir = "/Users/eric/personal-project/recordstuff/docs/verification/measurements/2026-09-27T19-04-32-324Z-controlled/recordings";
+    for (const state of [{ type: "idle" } as const, { type: "recording", startedAt: "2026-09-14T00:00:00Z" } as const]) {
+      const item = trayModel(state, { ...mac, outputDir }).menu.find((i) => i.kind === "item" && i.label.startsWith("儲存位置"));
+      expect(item).toMatchObject({ label: "儲存位置：~/personal-project/…/recordings", toolTip: outputDir });
+    }
+    expect(trayModel({ type: "idle" }, { ...mac, outputDir: "/Volumes/RS035H" }).menu.find((i) => i.kind === "item" && i.action === "openOutputDir"))
+      .toMatchObject({ label: "儲存位置：/Volumes/RS035H" });
+  });
+
+  it("a quit waiting on recording work says so with the busy icon instead of looking ready (plan 035)", () => {
+    const unread = [{ id: "f", code: "disk_full" as const, detail: "", occurredAt: "2026-09-26T00:00:00Z", outcome: "empty" as const, acknowledged: false }];
+    for (const state of [{ type: "idle" } as const, { type: "needsPermission", needsRelaunch: false } as const]) {
+      const m = trayModel(state, { ...mac, quitting: true, recordingResults: unread });
+      expect(m.icon).toBe("busy");
+      expect(m.tooltip.split("\n")[0]).toBe("RecordStuff: 正在結束…錄影存檔或清理完成後就會結束");
+      expect(labels(m.menu)).toEqual(["尚未確認的錄影失敗：1 筆", "查看失敗紀錄…", "—", "正在結束…錄影存檔或清理完成後就會結束", "—", "設定", "顯示 log", "結束"]);
+    }
+    const english = trayModel({ type: "idle" }, { ...mac, language: "en", quitting: true });
+    expect(english.menu[0]).toMatchObject({ label: "Quitting… RecordStuff quits once the recording is saved or cleaned up.", enabled: false });
+    // A capture still running keeps its own state, Stop included.
+    expect(trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, { ...mac, quitting: true }).title).toBe("REC");
   });
 
   it("Windows shows the abbreviated path and keeps the full path as toolTip", () => {
@@ -248,9 +273,14 @@ describe("notification text", () => {
     expect(savedNotification("/Volumes/Small/demo.mp4", "en", "lowDisk").body).toBe(
       "Saved demo.mp4. Recording stopped early because the disk is almost full.",
     );
-    expect(savedNotification("/Volumes/Small/demo.mp4", "zh-TW", "lowDisk").body).toBe("已儲存 demo.mp4。磁碟空間即將用盡，已提前停止錄製");
+    expect(savedNotification("/Volumes/Small/demo.mp4", "zh-TW", "lowDisk").body).toBe("已儲存 demo.mp4。磁碟空間即將用盡，已提前停止錄製。");
   });
 
+  it("a failure notification joins its reason and the result hint as sentences in each language (plan 035 D1)", () => {
+    expect(recordingFailureNotification("output_write_failed", "zh-TW")).toEqual({ title: "錄影失敗", body: "寫入錄影失敗。點此查看錄影結果。" });
+    expect(recordingFailureNotification("output_open_failed", "zh-TW").body).toBe("無法寫入輸出資料夾。點此查看錄影結果。");
+    expect(recordingFailureNotification("output_write_failed", "en")).toEqual({ title: "Recording failed", body: "Could not write the recording. Click to view the recording result." });
+  });
   it("a refused shortcut registration points at Settings, in the user's language", () => {
     expect(hotkeyRegistrationFailedNotification(HOTKEY_PRESETS[0], "darwin", "zh-TW").body).toBe(
       "無法註冊快捷鍵 ⌘⇧1，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵",

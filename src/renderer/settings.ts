@@ -350,10 +350,11 @@ function updateRecordingResult(): void {
   setText(list.querySelector(".result-history-note")!, text("Keeps all unreviewed failures and the 20 most recently reviewed failures. Removing a record does not delete the recording file."));
   const statusLine = list.querySelector<HTMLElement>(".result-history-status")!;
   statusLine.hidden = !status; setText(statusLine, status);
-  let removedFocus = false;
-  for (const area of list.querySelectorAll<HTMLDetailsElement>(".recording-result")) {
+  // Where the focused row was, so focus can land on its neighbour instead of the top of the list.
+  let removedFocusAt: number | undefined;
+  for (const [position, area] of [...list.querySelectorAll<HTMLDetailsElement>(".recording-result")].entries()) {
     if (!results.some(r => r.id === area.dataset.resultId)) {
-      removedFocus ||= area.contains(document.activeElement);
+      if (area.contains(document.activeElement)) removedFocusAt = position;
       area.remove(); resultStates.delete(area.dataset.resultId!); resultErrors.delete(area.dataset.resultId!);
     }
   }
@@ -429,7 +430,13 @@ function updateRecordingResult(): void {
     }
   }
   if (focusRequested && focusId) document.getElementById(`recording-result-${encodeURIComponent(focusId)}`)?.scrollIntoView({ block: "nearest" });
-  if (removedFocus) list.querySelector<HTMLElement>(".recording-result > summary")?.focus({ preventScroll: true });
+  if (removedFocusAt !== undefined) {
+    // The row that took the removed one's place, or the new last row; brought into view.
+    const rows = list.querySelectorAll<HTMLElement>(".recording-result > summary");
+    const next = rows[Math.min(removedFocusAt, rows.length - 1)];
+    next?.focus({ preventScroll: true });
+    next?.scrollIntoView({ block: "nearest" });
+  }
 }
 
 function updateScrollHint(): void {

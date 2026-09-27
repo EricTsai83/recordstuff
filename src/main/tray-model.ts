@@ -13,12 +13,12 @@ import type { EarlyStop } from "./recorder";
  * menu shows.
  */
 import path from "node:path";
-import { translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
+import { DEFAULT_LANGUAGE, sentences, translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
 import type { FrameRate } from "../shared/quality";
-import type { RecordingState } from "../shared/state";
+import type { ErrorCode, RecordingState } from "../shared/state";
 import { describeAccelerator, SETTINGS_SHORTCUT, type HotkeyAccelerator } from "../shared/hotkey";
 
-import { APP_NAME, abbreviateHome, type AppAction, type AppContext } from "./ui-model";
+import { APP_NAME, abbreviateHome, compactPath, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 
 /**
  * One same-size template per state (plan 040): only `REC` changes the item
@@ -63,7 +63,7 @@ function footer(ctx: AppContext): TrayMenuItem[] {
   ];
 }
 function outputDirItems(ctx: AppContext, enabled: boolean): TrayMenuItem[] {
-  const label = t("Output folder: {path}", ctx.language, { path: abbreviateHome(ctx.outputDir, ctx.homeDir) });
+  const label = t("Output folder: {path}", ctx.language, { path: compactPath(abbreviateHome(ctx.outputDir, ctx.homeDir)) });
   return [
     enabled
       ? item(label, "openOutputDir", ctx.outputDir)
@@ -93,11 +93,11 @@ function stopHint(ctx: AppContext): string | undefined {
     value: describeAccelerator(hotkey.accelerator, ctx.platform),
   });
 }
-/** Tooltip on Cancel countdown naming the registered shortcut, if any. */
+/** Tooltip on Cancel recording naming the registered shortcut, if any. */
 function cancelHint(ctx: AppContext): string | undefined {
   const hotkey = ctx.hotkey;
   if (!hotkey.enabled || !hotkey.registered) return undefined;
-  return t("Cancel the countdown with {value}", ctx.language, {
+  return t("Cancel recording with {value}", ctx.language, {
     value: describeAccelerator(hotkey.accelerator, ctx.platform),
   });
 }
@@ -118,6 +118,11 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
     tooltip: `${APP_NAME}: ${status}${unread.length > 0 ? `\n${resultText}` : ""}\n${text("Right-click to open the menu")}`,
     menu: [...resultMenu, ...menu],
   });
+  // A settled recorder shows no work of its own, so a quit waiting on cleanup would look like nothing happened.
+  if (ctx.quitting && preferencesUnlocked(state)) {
+    const quitting = text("Quitting… RecordStuff quits once the recording is saved or cleaned up.");
+    return model("busy", "", quitting, [disabled(quitting), ...end]);
+  }
   switch (state.type) {
     case "needsPermission":
       return model("idle", "", text("Screen recording permission required"), [
@@ -147,7 +152,7 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
       const seconds = { seconds: state.remaining };
       return model("countdown", "", t("Recording starts in {seconds} s. Click to cancel.", language, seconds), [
         disabled(t("Recording starts in {seconds} s", language, seconds)),
-        item(text("Cancel countdown"), "cancelCountdown", cancelHint(ctx)),
+        item(text("Cancel recording"), "cancelCountdown", cancelHint(ctx)),
         ...end,
       ]);
     }
@@ -175,11 +180,16 @@ export function savedNotification(savedPath: string, language?: Language, stoppe
     ? t("Saved {file}. Recording stopped early because the disk is almost full.", language, { file })
     : t("Saved {file}", language, { file }));
 }
+/** The reason, then how to reach the result section, joined per language (plan 035 D1). */
+export function recordingFailureNotification(code: ErrorCode, language: Language = DEFAULT_LANGUAGE): NotificationText {
+  return { title: t("Recording failed", language),
+    body: sentences([failureReason(code, language), t("Click to view the recording result.", language)], language) };
+}
 export function permissionNotification(needsRelaunch: boolean, language?: Language): NotificationText {
   return notice(
     t(
       needsRelaunch
-        ? "Screen recording access was granted, but RecordStuff needs to relaunch. Click to relaunch."
+        ? "RecordStuff cannot capture the screen. Check that screen recording is allowed in System Settings, then relaunch RecordStuff. Click to relaunch."
         : "RecordStuff needs screen recording access. Click to open System Settings.",
       language,
     ),

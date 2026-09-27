@@ -49,7 +49,7 @@ it("never offers exit while a save is still in flight; waiting again can then ad
   const show = vi.fn(async (_options: MessageBoxOptions) => ({ response: 0 }));
   expect(await createHistoryQuit({ results, language: () => "en", focus() {}, show, log: vi.fn() })()).toBe(true);
   expect(results.flush).toHaveBeenCalledWith(HISTORY_QUIT_WAIT_MS);
-  expect(show.mock.calls[0]?.[0]).toMatchObject({ message: "Still saving failure reminders", buttons: ["Keep waiting", "Stay in app"], cancelId: 1 });
+  expect(show.mock.calls[0]?.[0]).toMatchObject({ message: "Still saving failure records", buttons: ["Keep waiting", "Stay in app"], cancelId: 1 });
   expect(show.mock.calls[0]?.[0].detail).toContain("may still be written");
 });
 
@@ -66,9 +66,9 @@ it("lists unsaved reminders and exits without saving only on explicit choice and
   expect(await createHistoryQuit({ results, language: () => "en", focus() {}, show, log })()).toBe(true);
   expect(show).toHaveBeenCalledTimes(2);
   const options = show.mock.calls[0]![0];
-  expect(options.buttons).toEqual(["Retry", "Stay in app", "Exit without saving these reminders"]);
+  expect(options.buttons).toEqual(["Retry", "Stay in app", "Exit without saving these records"]);
   expect(options.defaultId).toBe(0);
-  expect(options.detail).toContain("Unsaved reminders: 7");
+  expect(options.detail).toContain("Unsaved records: 7");
   expect(options.detail).toContain("The disk is full.");
   expect(options.detail).toContain("…and 2 more");
   expect(options.detail).toContain("Recording files are not affected.");
@@ -81,7 +81,7 @@ it("staying, a failed prompt and Chinese copy keep the app open and resume retri
   const show = vi.fn(async (_options: MessageBoxOptions) => ({ response: 1 }));
   expect(await createHistoryQuit({ results, language: () => "zh-TW", focus() {}, show, log: vi.fn() })()).toBe(false);
   expect(results.resume).toHaveBeenCalledOnce(); expect(results.close).not.toHaveBeenCalled();
-  expect(show.mock.calls[0]?.[0]).toMatchObject({ message: "無法儲存失敗提醒", buttons: ["重試", "留在 App", "不儲存這些提醒並結束"] });
+  expect(show.mock.calls[0]?.[0]).toMatchObject({ message: "無法儲存失敗紀錄", buttons: ["重試", "留在 App", "不儲存這些紀錄並結束"] });
   expect(show.mock.calls[0]?.[0].detail).toContain("不會覆寫");
   const broken = historyResults(["unsaved"]), log = vi.fn();
   expect(await createHistoryQuit({ results: broken, language: () => "en", focus() {}, show: async () => { throw new Error("no dialog"); }, log })()).toBe(false);
