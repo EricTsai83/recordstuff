@@ -9,6 +9,21 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 035 後續修正 — 2026-09-28
+
+應維護者要求，[引導驗收回合](#plan-035-引導驗收回合--2026-09-28)發現的缺陷與選定的回饋已直接修正，由 Claude 實作、Codex GPT-6 Astra review；在維護者完成原生複驗前，計畫維持未結案。
+
+- **D1。** 中文失敗原因結尾不帶「。」，因為它們也用作紀錄標題；`sentences()` 依語言組合通知的原因與提示：「寫入錄影失敗。點此查看錄影結果。」與「Could not write the recording. Click to view the recording result.」。提前停止的存檔說明也補上結尾的「。」。
+- **D2。** 在 macOS 上，若有接上螢幕、擷取請求卻完全找不到來源，會回報為 `permission_denied`，進入既有的需要重新啟動狀態與重新檢查，而不是 `no_display`。指定螢幕仍先嘗試三次；其他平台，以及快照中沒有任何螢幕時，仍回報 `no_display`。
+- **D3。** 移除一筆紀錄後，焦點移到遞補該位置的紀錄；若沒有，則移到新的最後一筆，並捲動到看得見的位置。
+- **回饋。** tray 的「取消倒數」改名為「取消錄影」（Cancel recording），行為不變。退出等待超過 0.3 秒時，顯示沙漏與「正在結束…錄影存檔或清理完成後就會結束」，直到結束、延後或選擇留在 App；不會提早跳出模態對話框，因為模態會讓 main 的工作停住。「提醒」改稱「紀錄」：「重新嘗試寫入紀錄」（Retry saving the record）、「無法儲存失敗紀錄」、「不儲存這些紀錄並結束」。儲存位置標籤在路徑超過 40 個字元時，只顯示開頭、「…」與最後一層資料夾，完整路徑保留在 tooltip。錄影失敗後仍保留「顯示最後一個錄影」。
+- **檢查。** `pnpm acceptance:regression` 通過：typecheck、63 個檔案共 1032 個測試與 build；Settings 114/114，其中新增一個鍵盤案例：移除最下面一筆後，焦點落在上一筆且看得見；快捷鍵整合也通過。第一次執行只有 fixture 兩個舊的重試按鈕文字預期失敗，已更新。`pnpm acceptance:lifecycle` 以改名後的提示按鈕通過 4/4；網站說明文字的 `pnpm site:check` 通過；新建的 `pnpm start:app` bundle 通過 `pnpm acceptance -- --seconds 10`（1920×1080、59.92 fps、掉格 0.49%、RMS −27.2/−27.2 dB、10 次閃光與 10 聲嗶聲、取消案例與收尾；`2026-09-27T19-52-35-982Z-hotkey-acceptance`）。依 review 修正後，`pnpm check` 再次通過。
+- **Review。** Codex GPT-6 Astra（medium reasoning、read-only）pass 1（81 秒）回報兩項，均接受並修正：沒有接上任何螢幕、也沒有來源的主螢幕請求，原本會被判為權限問題，現在還需要確實有接上螢幕才會這樣判定；結尾帶分隔符號的長路徑縮短時會丟失最後一層資料夾。Pass 2（70 秒）沒有 findings。
+
+同一晚，維護者在受控 build（retention seed，HEAD `d74e860` 加上修正）上親自完成複驗，每一項都通過。縮短後的標籤為 `~/personal-project/…/recordings`；兩次存檔後因唯讀資料夾失敗，仍保留「顯示最後一個錄影」，通知為「無法寫入輸出資料夾。點此查看錄影結果。」；選單顯示「取消錄影」；以 Tab 與空白鍵移除一筆已確認紀錄後，焦點落在下一筆的標題；清理被暫停時按結束，會先顯示沙漏與「正在結束…錄影存檔或清理完成後就會結束」，之後才出現延後退出對話框；撤銷權限並選「稍後」後，下一次開始失敗為 `permission_denied`「需要螢幕錄製權限。點此查看錄影結果。」，並提供「重新啟動」；重新開啟權限後重新啟動，log 記錄 `permission: granted and capture sees 2 screen(s)`。這次重新啟動經由 macOS 的「結束並重新打開」，因為共用同一 bundle id，開到的是 `/Applications/RecordStuff.app` 1.0.0；改為重新開啟受控 build 後完成檢查。這次不重新啟動時的重新檢查一直看不到螢幕，和 N36 不同。
+
+複驗後的決定：3 秒倒數結束 0.3 秒後才點「取消錄影」，會停止並保存一段 0.3 秒的錄影；維護者決定維持此行為，因為倒數本身就是緩衝，RecordStuff 也仍然從不刪除已錄下的內容。維護者覺得「再次儲存這筆紀錄」不自然，改為「重新嘗試寫入紀錄」（Retry saving the record）。需要重新啟動的通知與原因，原本即使在撤銷後也寫「已取得權限」，現在改為「RecordStuff 目前無法擷取螢幕。請確認系統設定已允許 RecordStuff 錄製螢幕，然後重新啟動 RecordStuff。點這則通知重新啟動。」。這些文案修改通過最後一次 `pnpm acceptance:regression`（1032 個測試、Settings 114/114、快捷鍵整合；一個仍預期舊重新啟動文字的 tray 測試已更新），但沒有再經過 review。錄影 smoke 啟動正常 bundle 時，更新了真實設定中的 `updates.lastAttempt`；偏好設定都沒有改變。測試錄影、alt 資料夾與受控 run 已依維護者要求刪除。計畫 047 與 048 已帶入新的焦點規則與項目名稱。
+
 ## Plan 035 引導驗收回合 — 2026-09-28
 
 2026-09-27 22:14 到 2026-09-28 03:24（UTC+8），維護者一步一步親自完成所有原生操作；Claude 負責帶領、佈置故障與判讀 log。除非另有註明，觀察都來自維護者。環境：M1 Pro、macOS 26.6.2，主螢幕 BenQ GW2785TC 1920×1080，旁邊另有一台 BenQ BL2480T，聲音輸出到外接耳機；原始碼為 HEAD `5b59073` 加上尚未提交的受控驗收工具。A 段使用新建置並簽章的 `pnpm start:app` bundle（app.asar `aa52e51d…02e6`）與維護者的真實設定，事後設定檔已還原到原本的 SHA；B 段使用隔離資料的[受控 build](../system-design/tooling.md#受控驗收-build)：先一個不放 seed 的 run，之後分別用 retention 與 v1 seed。逐案表格在本機的 `measurements/2026-09-27T141422Z-plan035-guided/report.md`。本計畫仍未結案。
