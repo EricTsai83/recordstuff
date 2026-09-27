@@ -51,7 +51,7 @@ Process callbacks log uncaught exceptions/rejections. Recorder events render sta
 | sessionId getter | In-flight session ID for diagnostics such as sleep/wake logging |
 | subscribe | Register event listener and return unsubscribe |
 | toggle | Start when idle, stop when recording, cancel a countdown, request permission guidance when blocked, otherwise ignore |
-| cancelCountdown | Before `record`: cancel the attempt; after it: request stop once capture starts; a menu's Cancel countdown arriving while recording stops the recording; otherwise ignore |
+| cancelCountdown | Before `record`: cancel the attempt; after it: request stop once capture starts; a menu's Cancel recording arriving while recording stops the recording; otherwise ignore |
 | stop | Matching recording session → stopping (recording its stop-request time), arm deadline, send stop |
 | shutdown | Cancel a countdown, mark an opening/preparing attempt to cancel at `prepared`, keep stop intent after `record`, stop a recording, wait completion/failure while racing quit cap |
 | setPermission | Always store the latest status; while idle/needsPermission re-settle on a change, never replace a busy state |
@@ -281,7 +281,7 @@ The page's window-message callback checks source/marker/port before creating the
 | disabled / item | Build disabled/enabled model entries |
 | footer | Settings, Show log, and Quit in every state |
 | outputDirItems | Folder label and selection action with state-dependent enablement |
-| stopHint / cancelHint | Stop / Cancel countdown tooltip naming the registered accelerator; undefined when disabled or unregistered |
+| stopHint / cancelHint | Stop / Cancel recording tooltip naming the registered accelerator; undefined when disabled or unregistered |
 | permissionActions | Relaunch alone when required; otherwise settings and fallback relaunch |
 | trayModel / text / model | Pure state/context projection with local translation/status helpers; one icon per state (ring, hourglass, stopwatch, filled dot, badge on the idle ring only), a title only while recording; the tooltip carries the status and the right-click hint |
 | notice | Wrap body with product title |

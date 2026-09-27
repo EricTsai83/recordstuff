@@ -8,7 +8,7 @@ RecordStuff provides one macOS menu bar button: click to record one screen (the 
 
 | Feature | Behavior | Design |
 | --- | --- | --- |
-| Start and stop | Left-click toggles recording after a countdown (3 s by default; Off, 5 or 10 s in Settings) that a second click, the shortcut or Cancel countdown cancels; clicks during startup or saving are ignored | [Recording](recording.md#countdown) |
+| Start and stop | Left-click toggles recording after a countdown (3 s by default; Off, 5 or 10 s in Settings) that a second click, the shortcut or Cancel recording cancels; clicks during startup or saving are ignored | [Recording](recording.md#countdown) |
 | Display and audio | Follow the primary display by default (first-source fallback if no ID matches), or require an exact match for a chosen display; reject missing or ended audio tracks | [Architecture](architecture.md) |
 | Status | Ring when idle, hourglass while starting or saving, stopwatch during the countdown with the digit at the top-right of the recorded screen, filled dot plus macOS `REC` while recording | [Desktop](desktop.md) |
 | Recording quality | Economy/Standard/High; 1080p/1440p/4K/Source; 30/60 fps | [Recording](recording.md) |

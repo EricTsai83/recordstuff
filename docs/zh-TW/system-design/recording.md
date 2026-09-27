@@ -45,7 +45,7 @@ stateDiagram-v2
 - Recorder 以 N 進入 `countdown`，從 `prepared` 當下取得的同一個單調時間起點每秒 tick 一次；每個 tick 都依這個起點排程，timer 延遲不會累積。每個 tick 都重新發出狀態，App log 寫 `state → countdown (n)`。
 - 在 N 秒前 300 ms 要求 overlay 離開：數字以 120 ms 淡出，main 再等一個穩定間隔（34 ms）後銷毀視窗。Recorder 最多等這個確認 500 ms；逾時就銷毀視窗、寫 log 並繼續擷取。`record` 在 N 秒送出；若 dismissal 更晚完成，則在它完成時送出。
 - Overlay（見[桌面設計](desktop.md#倒數-overlay)）以具備 `show`、`update`、`dismiss`、`close` 的 presenter 注入，Recorder 因此不依賴 Electron。Presenter 錯誤只寫 log，永不讓錄影失敗；tray 仍會顯示倒數。
-- 送出 `record` 前，toggle、tray 選單的「取消倒數」或快捷鍵都會取消這次嘗試：清除 timer、停止 host、關閉 overlay、abandon writer 讓空的暫存檔被刪除，並回到嘗試前的 idle（保留 lastSavedPath）。`cancelled` 事件帶取消原因（`toggle`、`menu` 或 `quit`），log 寫 `cancelled: session … (reason); no media was recorded`。不產生失敗狀態、歷史項目、通知或螢幕診斷。
+- 送出 `record` 前，toggle、tray 選單的「取消錄影」或快捷鍵都會取消這次嘗試：清除 timer、停止 host、關閉 overlay、abandon writer 讓空的暫存檔被刪除，並回到嘗試前的 idle（保留 lastSavedPath）。`cancelled` 事件帶取消原因（`toggle`、`menu` 或 `quit`），log 寫 `cancelled: session … (reason); no media was recorded`。不產生失敗狀態、歷史項目、通知或螢幕診斷。
 - 送出 `record` 後，toggle 會變成既有的「開始後停止」要求，等 `started` 到達再套用，因此幾毫秒的競態不會讓擷取持續進行。starting 與 stopping 期間的點擊仍然無作用。倒數期間開啟的 tray 選單在開著時不會更新（見[桌面設計](desktop.md#tray-與通知)），所以擷取開始後才點選其中的「取消倒數」，會停止錄影並存檔。
 - 所有時間與外觀數值都集中在 [countdown.ts](../../../src/shared/countdown.ts)，作為初始目標；只有書面證據支持時才調整。
 

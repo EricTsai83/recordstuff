@@ -51,7 +51,7 @@
 | `sessionId` getter | 進行中的 session id，供睡眠／喚醒 log 等診斷使用 |
 | `subscribe(listener)` | 加入事件集合 → unsubscribe 函式 |
 | `toggle()` | idle 開始、recording 停止、倒數中取消、needsPermission 發引導事件，其餘忽略 |
-| `cancelCountdown(reason)` | `record` 前取消這次嘗試；之後改為擷取開始後停止；錄製中才到達的選單「取消倒數」會停止錄影；其餘忽略 |
+| `cancelCountdown(reason)` | `record` 前取消這次嘗試；之後改為擷取開始後停止；錄製中才到達的選單「取消錄影」會停止錄影；其餘忽略 |
 | `stop()` | 僅 matching recording session → stopping（記下要求停止時間），設 stop timeout，送 stop |
 | `shutdown()` | 取消倒數、標記開檔／準備中的嘗試在 `prepared` 時取消、`record` 後保留停止意圖、停止 recording、等 stopping／failure；与退出 hard cap 競速 |
 | `setPermission(status)` | 一律保存最新狀態；idle／needsPermission 時狀態有變才重新落定，不覆蓋忙碌 session 狀態 |
@@ -280,7 +280,7 @@
 | `disabled(label)` / `item(label, action, tooltip?)` | 建灰色／可點模型項目 |
 | `footer(language)` | 產生「設定」、顯示 log、結束，所有狀態皆可用 |
 | `outputDirItems(ctx, enabled)` | 產生位置與更改位置項目，按狀態鎖定 |
-| `stopHint(ctx)` / `cancelHint(ctx)` | 「停止」／「取消倒數」的 tooltip 提示已註冊組合鍵；關閉或未註冊時為 undefined |
+| `stopHint(ctx)` / `cancelHint(ctx)` | 「停止」／「取消錄影」的 tooltip 提示已註冊組合鍵；關閉或未註冊時為 undefined |
 | `permissionActions(needsRelaunch, language)` | 已判斷需重啟只給重啟；否則給設定與「已經允許了？」重啟 |
 | `trayModel(state, ctx)` | 狀態 → 完整圖示／標題／tooltip／menu；每個狀態一個圖示（圓環、沙漏、碼錶、實心圓點；警示標記只取代 idle 圓環），只有錄製中有標題；tooltip 含狀態與右鍵提示 |
 | `savedNotification(path)` | filename → 存檔文案 |
