@@ -311,3 +311,31 @@ pnpm acceptance:regression
 由 agent 自動做視覺驗收時，依[原生驗收技能](../../../.agents/skills/astra-acceptance-with-computer-use/SKILL.md)：agent 擷取真正提示，以截圖搭配 accessibility 狀態自行判讀、關閉提示，再核對生命週期與清理證據。工具支援時保存 PNG，否則明確引用工具圖像。此自動化需要具桌面能力的 agent；單獨指令不會呼叫模型。自動置前需要被動的前後桌面證據，先選取目標或只看 App 裁切圖不能證明；維護者確認仍標為人工證據。
 
 **報告提醒：** 測試期間若有測試步驟以外的人為桌面操作，可能影響焦點、截圖與判讀結果；目前流程不會自動偵測所有干擾。保留既有流程，不增加每輪核准或鍵鼠監控。若已知受干擾，受影響的原生觀察標為 blocked／無法判定，保留原始截圖、log 與 runner 結果，不直接判為產品通過或失敗；需要有效結論時，再於無干擾環境重測該項。報告與最後回覆均附上此提醒。
+
+## 受控驗收 build
+
+Plan 035 由維護者操作的驗收回合，需要一些真實故障無法隨時產生的失敗狀態：平常只持續幾毫秒的 pending 結果、關檔失敗後的 unknown、緩慢或失敗的歷史儲存，以及預先放好的歷史資料。`pnpm acceptance:controlled` 為此建置一份清楚標示、已簽章的 App 副本。它和更新 fixture 一樣，把原始碼複製到 `docs/verification/measurements/<timestamp>-controlled/` 下的新 run 目錄，只透過 anchor 檢查在該副本插樁（[controlled-acceptance.mts](../../../scripts/lib/controlled-acceptance.mts)），再執行副本裡的 `pnpm start:app`。Bundle identifier 與簽章身分維持開發版的設定，因此沿用同一份螢幕錄製與通知權限。Tray、設定、Recorder、FileWriter、失敗歷史、通知與退出流程都是正式程式碼，一般建置沒有命令通道。副本只有三處不同：
+
+- **隔離資料。** userData、log 與預設輸出資料夾都在 run 目錄內，從不讀寫維護者的設定、失敗歷史或 `~/Movies/RecordStuff`。此 build 以預設偏好啟動（English、通知開啟、倒數 3 秒、⌘⇧1）。
+- **標示。** 每個 tray tooltip 開頭都是 `[Controlled acceptance build]`，log 中有一行 `controlled:` 記錄 run 目錄。這個 build 的證據屬於受控狀態證據：證明原生呈現與互動，不代表真實磁碟或擷取故障。
+- **故障注入點**（[controlled-faults.ts](../../../scripts/fixtures/controlled-faults.ts)），啟用前全部關閉：
+  - `cleanup=hold` 在每個失敗的最終結果寫入歷史前先暫停，使 pending 結果（處理中、「知道了」停用、無法顯示檔案）持續顯示、退出被延後、該 session 若有中斷 sentinel 也會保留，直到 `release cleanup`。背後的檔案處理其實已經完成。
+  - `write=eio|enospc` 讓下一次寫入「已有資料的錄影檔」失敗一次，走正式 FileWriter：output_write_failed 或 disk_full，並保留 partial。
+  - `close=fail` 讓下一次關閉錄影檔在檔案描述符真正關閉後失敗一次。Writer 無法確認檔案已保存，結果為 unknown；若在正常停止前啟用，停止本身就會以這種方式失敗。
+  - `history-save=hold|fail` 會暫停儲存直到 `release history-save`，或以 I/O 錯誤拒絕儲存；故障關閉前，每次自動重試都會再次遇到。
+  - `launch` 或 `reopen` 加上 `--hold-history-load` 時，暫停該次啟動的歷史載入直到 `release history-load`；命令通道從啟動起就能回應。
+
+```bash
+pnpm acceptance:controlled -- launch [--seed none|v1|retention] [--hold-history-load]   # 新 run：建置、簽章、開啟
+pnpm acceptance:controlled -- fault cleanup=hold write=enospc     # 另有 close=fail、history-save=hold|fail、<name>=off
+pnpm acceptance:controlled -- release cleanup                     # 或 history-save、history-load
+pnpm acceptance:controlled -- status                              # 狀態、故障、暫停中的工作與每筆失敗歷史
+pnpm acceptance:controlled -- quit                                # 正式退出：會保存錄影，可能詢問提醒
+pnpm acceptance:controlled -- reopen [--hold-history-load]        # 同一個 bundle 與資料
+pnpm acceptance:controlled -- clean                               # 退出後移除 workspace，保留證據
+pnpm acceptance:controlled -- selftest
+```
+
+`quit` 不會解除已啟用的故障與暫停中的工作，因此可用來驗證被延後或被詢問的退出；要單純退出，先關閉故障並放行暫停的工作。`launch` 或 `reopen` 被中斷或失敗時，會最多等 15 秒看 `open` 是否已啟動 bundle：已回報 ready 的 App 會正常退出，始終沒有回報 ready 的程序會列出來請使用者從選單退出。除了 `launch` 與 `selftest`，其他指令預設作用於最新一次引導 run，可用 `--dir <run>` 指定。`--seed v1` 寫入一筆未讀的舊版 `recording-result.json`，其合成 partial 檔存在，用於遷移驗收。`--seed retention` 在兩筆未讀之間寫入二十筆已看過的紀錄，確認舊的未讀紀錄後即可驗證「保留最近看過的 20 筆」上限。Seed 檔案只含合成 bytes，不是可播放的錄影。`launch` 與 `reopen` 在任何 RecordStuff 執行中時拒絕執行，因為隔離的 userData 不共用單一實例鎖。Exit 0 表示成功、1 表示失敗、2 表示受阻或參數錯誤。啟用與放行事件會寫入 `events.jsonl` 與該 run 的 App log。
+
+所有原生操作都由維護者執行；runner 只負責建置、放入 seed、啟用、放行、回報與退出。唯一例外是 `selftest`，它驗證的是工具而不是產品。它在獨立 run 中關閉通知與錄影快捷鍵，把隔離輸出資料夾設為不可寫，讓因此產生的開始失敗暫停清理，同時拒絕其儲存。接著檢查 pending 與未保存狀態，放行、重試、暫停「知道了」的儲存，退出，以暫停歷史載入的方式重開，再次退出；過程直接呼叫錄製器的 toggle 與正式 action handler。它不錄影，所以寫入與關檔故障只由使用真實 FileWriter 與 Recorder 的單元測試涵蓋。自測失敗或被中斷時，會先關閉所有故障並放行所有暫停的工作再退出。`report.md` 列出每個步驟，App 退出後會移除 workspace。
