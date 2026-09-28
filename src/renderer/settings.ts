@@ -1,7 +1,7 @@
 /** Main owns committed preferences, diagnostics and authorized choice ids. */
 import { describeAccelerator, validateAccelerator } from "../shared/hotkey";
 import { isCloseChord, shortcutCandidate, shortcutModifiers } from "./shortcut-capture";
-import { isLanguage, translate, type PlainMessageKey } from "../shared/i18n";
+import { isLanguage, sentences, translate, type PlainMessageKey } from "../shared/i18n";
 import type { SettingsBridge, SettingsGroup, SettingsTab, SettingsView } from "../shared/settings-panel";
 
 declare global { interface Window { settings: SettingsBridge } }
@@ -92,6 +92,20 @@ function setPreview(accelerator: string, platform: string): void {
   preview = describeAccelerator(accelerator, platform);
   previewParts = accelerator.split("+").filter(Boolean).map(part => describeAccelerator(part, platform));
 }
+/**
+ * What stands for a group when its focused retry or recovery button hides. A
+ * select or switch carries the group's id; a radio group and a row of action
+ * buttons take no focus themselves, so the checked radio or the retried action does.
+ */
+function groupControl(groupId: string, choice?: string): HTMLElement | null {
+  const id = `setting-${groupId}`;
+  const own = document.getElementById(id);
+  if (own?.matches("select, input")) return own;
+  const row = document.getElementById(`${id}-row`);
+  return row?.querySelector<HTMLElement>(".segments input:checked")
+    ?? (choice ? document.getElementById(`${id}-${choice}`) : null)
+    ?? row?.querySelector<HTMLElement>(".controls button, .controls input") ?? null;
+}
 function retryAllowed(group: SettingsGroup): boolean {
   return Boolean(failure?.choice && failure.group === group.id && group.enabled &&
     failure.baseline === committed(group) && group.choices.some(c => c.id === failure?.choice && c.enabled));
@@ -135,7 +149,7 @@ function updateDiagnostic(container: HTMLElement, group: SettingsGroup): void {
   setText(guidance, text("Choose the setting again to retry."));
   area.hidden = !items.length && !activeFailure;
   if (((hadRecoveryFocus && recovery.hidden) || (hadRetryFocus && retry.hidden)) && document.hasFocus())
-    document.getElementById(controlId(group))?.focus({ preventScroll: true });
+    groupControl(group.id, saving?.group === group.id ? saving.choice : failure?.choice)?.focus({ preventScroll: true });
 }
 function updateRows(groups: SettingsGroup[]): void {
   for (const group of groups) {
@@ -143,7 +157,6 @@ function updateRows(groups: SettingsGroup[]): void {
     const label = container.querySelector<HTMLElement>(".group-label")!;
     setText(label, group.label);
     label.hidden = !group.label;
-    container.classList.toggle("locked", !group.enabled);
     const note = container.querySelector<HTMLElement>(".note")!;
     setText(note, group.note ?? ""); note.hidden = !group.note;
     for (const el of container.querySelectorAll<HTMLInputElement | HTMLSelectElement>("select, input")) {
@@ -205,7 +218,7 @@ function updateRows(groups: SettingsGroup[]): void {
         const indicator = node("span", "listening-indicator"); indicator.setAttribute("aria-hidden", "true");
         for (let index = 0; index < 3; index++) indicator.append(node("span"));
         field.replaceChildren(indicator, ...(preview ? previewParts.map(key => node("kbd", "", key)) : [document.createTextNode(display)]));
-        field.setAttribute("aria-label", `${display}. ${text("Escape to cancel")}`);
+        field.setAttribute("aria-label", sentences([display, text("Escape to cancel")], view?.language));
       }
       setText(container.querySelector(".capture-help")!, text("Press a combination, then Confirm; Esc cancels"));
       const confirm = container.querySelector<HTMLButtonElement>("#shortcut-confirm")!;
@@ -314,7 +327,7 @@ function row(group: SettingsGroup): HTMLElement {
       if (result.error) { localFailure(group.id, translate(result.error, view?.language)); return; }
       candidateToConfirm = result.accelerator;
       failure = undefined;
-      announce(`${preview}. ${text("Confirm to save")}`);
+      announce(sentences([preview, text("Confirm to save")], view?.language));
       draw();
     });
     field.addEventListener("keyup", event => {
@@ -657,7 +670,7 @@ function draw(): void {
       const destination = (restore === "shortcut-capture" || restore === "shortcut-confirm") && !shortcutGroup()?.capturing ? "setting-hotkey" : restore;
       const focusTarget = document.getElementById(destination);
       if (focusTarget && !focusTarget.closest("[hidden]")) focusTarget.focus({ preventScroll: true });
-      else if (restore.endsWith("-recovery") || restore.endsWith("-retry")) document.getElementById(restore.replace(/-(recovery|retry)$/, ""))?.focus({ preventScroll: true });
+      else if (restore.endsWith("-recovery") || restore.endsWith("-retry")) groupControl(restore.replace(/^setting-|-(recovery|retry)$/g, ""))?.focus({ preventScroll: true });
     }
     // Rows first; the offset is applied below, once the panel, failure rows included, is complete.
     updateRecordingResult(false);
@@ -685,26 +698,29 @@ function render(next: SettingsView): void {
   view = next;
   draw();
   if (previous) {
-    const changes = next.groups.filter(g => g.tab === selectedTab).flatMap(g => {
+    // Only news is read out: a language switch retranslates every note and row without changing them.
+    const sameLanguage = previous.language === next.language;
+    const say = (parts: string[]): string => sentences(parts.filter(Boolean), next.language);
+    const changes = next.groups.filter(g => sameLanguage && g.tab === selectedTab).flatMap(g => {
       const old = previous.groups.find(o => o.id === g.id);
       const messages: string[] = [];
       if (g.noteKind === "status" && old?.note !== g.note && g.note) messages.push(g.note);
-      if (JSON.stringify(old?.diagnostics) !== JSON.stringify(g.diagnostics)) messages.push(...(g.diagnostics ?? []).map(d => `${d.heading}. ${d.reason} ${d.guidance}`));
+      if (JSON.stringify(old?.diagnostics) !== JSON.stringify(g.diagnostics)) messages.push(...(g.diagnostics ?? []).map(d => say([d.heading, d.reason, d.guidance])));
       return messages;
     });
     // The history arriving from disk is not news: every row would be read out at once.
     const historyLoaded = Boolean(previous.recordingHistoryStatus) && !next.recordingHistoryStatus;
     const olds = new Map((previous.recordingResults ?? []).map(r => [r.id, r]));
-    const results = previous.language === next.language && !historyLoaded ? next.recordingResults ?? [] : [];
+    const results = sameLanguage && !historyLoaded ? next.recordingResults ?? [] : [];
     // Newest first, so a new failure precedes every known row; rows after one are older ones paged into view.
     const firstKnown = results.findIndex(r => olds.has(r.id));
     for (const [index, result] of results.entries()) {
       const old = olds.get(result.id);
-      if (!old) { if (firstKnown === -1 || index < firstKnown) changes.unshift(`${result.reason} ${result.outcome}`); }
-      else if (old.outcome !== result.outcome) changes.unshift(`${result.reason} ${result.outcome}`);
-      else if (result.persistenceWarning && old.persistenceWarning !== result.persistenceWarning) changes.push(`${result.reason}. ${result.persistenceWarning}`);
+      if (!old) { if (firstKnown === -1 || index < firstKnown) changes.unshift(say([result.reason, result.outcome])); }
+      else if (old.outcome !== result.outcome) changes.unshift(say([result.reason, result.outcome]));
+      else if (result.persistenceWarning && old.persistenceWarning !== result.persistenceWarning) changes.push(say([result.reason, result.persistenceWarning]));
     }
-    if (changes.length) announce(changes.join(" "));
+    if (changes.length) announce(say(changes));
   }
 }
 /** Result actions run beside preference saves; only the same row refuses a duplicate. */
@@ -768,7 +784,13 @@ async function choose(group: string, choice: string, control: string): Promise<v
     pending--; if (!pending) saving = undefined;
     // Only move focus if the user's focus is still on the disappearing field.
     const restore = document.activeElement?.id === control && document.hasFocus();
+    // A retried action's buttons were disabled while it ran, so its hidden retry had nowhere to leave focus.
+    const lost = /-(retry|recovery)$/.test(control) && (!document.activeElement || document.activeElement === document.body);
     draw();
+    if (lost && document.hasFocus()) {
+      const again = document.getElementById(control);
+      (again && !again.closest("[hidden]") ? again : groupControl(group, choice))?.focus({ preventScroll: true });
+    }
     if ((restore || returnCaptureFocus) && document.hasFocus() && (control === "shortcut-capture" || control === "shortcut-confirm") && !shortcutGroup()?.capturing)
       document.getElementById("setting-hotkey")?.focus({ preventScroll: true });
   }

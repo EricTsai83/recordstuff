@@ -102,7 +102,6 @@ export const ZH_TW = {
   "Ready — {label}": "待命 — {label}",
   "Could not save the screen setting.": "無法儲存螢幕設定。",
 
-  Settings: "設定",
   "Custom shortcut…": "自訂快捷鍵…",
   "Recommended: {shortcut}": "建議：{shortcut}",
   "{shortcut} (custom)": "{shortcut}（自訂）",
@@ -116,6 +115,7 @@ export const ZH_TW = {
   "This key cannot be used.": "無法使用這個按鍵。",
   "macOS reserves this combination.": "macOS 已保留這個組合。",
   "Recording settings": "錄影",
+  "Recording resolution": "錄影解析度",
   General: "一般",
   Updates: "更新",
   "Higher quality preserves more detail and uses more space at the same resolution.": "在相同解析度下，較高品質可保留更多細節，也會使用更多儲存空間。",
@@ -141,7 +141,6 @@ export const ZH_TW = {
   "{value} fps (unverified on this platform)": "{value} fps（此平台尚未驗證，暫不開放）",
   Language: "語言",
   "Show log": "顯示 log",
-  Quit: "結束",
   "Output folder: {path}": "儲存位置：{path}",
   "Start recording": "開始錄製",
   "Quit RecordStuff": "結束 RecordStuff",

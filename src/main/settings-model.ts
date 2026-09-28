@@ -13,7 +13,7 @@
 import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure, persistenceWarning } from "./recording-result";
 import { displayLabel, displayFailureText } from "../shared/display";
 import { displayResolution } from "./display-source";
-import { translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
+import { sentences, translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
 import {
   FRAME_RATES,
   RESOLUTION_CAPS,
@@ -88,7 +88,7 @@ function screenGroup(ctx: AppContext, enabled: boolean): Group {
     heading: t(["target_removed", "track_ended"].includes(ctx.displayFailure) ? "Last recording interrupted" : "Last recording failure", ctx.language),
     reason: displayFailureText(ctx.displayFailure, ctx.language),
     guidance: t("Try recording again using the shortcut or menu, or choose another screen.", ctx.language) });
-  if (ctx.captureWarning) result.diagnostics.push({ kind: "history", heading: t("Recording settings", ctx.language), reason: ctx.captureWarning, guidance: "" });
+  if (ctx.captureWarning) result.diagnostics.push({ kind: "history", heading: t("Recording resolution", ctx.language), reason: ctx.captureWarning, guidance: "" });
   return result;
 }
 
@@ -248,7 +248,7 @@ function notificationsGroup(ctx: AppContext, enabled: boolean): Group[] {
   const note = !ctx.notifications
     ? t("Notifications are off. Recording failures remain visible in the menu bar and in Settings → Failures.", language)
     : ctx.platform === "darwin"
-      ? `${what} ${t("macOS must also allow RecordStuff in System Settings → Notifications.", language)}`
+      ? sentences([what, t("macOS must also allow RecordStuff in System Settings → Notifications.", language)], language)
       : what;
   const switchGroup = group("notifications", t("Notifications", language), enabled, [true, false].map((value) => ({
     id: value ? "on" : "off",
@@ -367,7 +367,7 @@ function projectResult(result: NonNullable<AppContext["recordingResults"]>[numbe
       ...(result.saving ? { saving: t("Saving this change…", language) } : {}),
       detail: result.detail,
       ...((result.partialPath ?? result.recordingPath) ? { file: result.partialPath ?? result.recordingPath, fileName: path.basename(result.partialPath ?? result.recordingPath!) } : {}),
-      acknowledged: result.acknowledged, pending: result.outcome === "pending",
+      acknowledged: result.acknowledged,
       actions: resultActions(state, ctx, result).map(({ action: _action, ...choice }) => choice),
   };
   resultViews.set(result, { key, view });

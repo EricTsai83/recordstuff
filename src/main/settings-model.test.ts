@@ -31,6 +31,15 @@ const checked = (state: RecordingState, ctx: AppContext, id: string) =>
   group(state, ctx, id)?.choices.find((choice) => choice.checked)?.id;
 
 describe("settingsView", () => {
+  it("titles the capture warning by what it is about and joins the notifications note as sentences in each language", () => {
+    const zh = { ...context, language: "zh-TW" as const, captureWarning: "無法確認解析度上限。" };
+    expect(group(idle, zh, "screen")?.diagnostics?.at(-1)).toMatchObject({ kind: "history", heading: "錄影解析度" });
+    expect(group(idle, { ...context, captureWarning: "x" }, "screen")?.diagnostics?.at(-1)?.heading).toBe("Recording resolution");
+    expect(group(idle, zh, "notifications")?.note).toBe(
+      `${t("Shows a notification when a recording is saved or an error occurs.", "zh-TW")}${t("macOS must also allow RecordStuff in System Settings → Notifications.", "zh-TW")}`);
+    expect(group(idle, context, "notifications")?.note).toBe(
+      "Shows a notification when a recording is saved or an error occurs. macOS must also allow RecordStuff in System Settings → Notifications.");
+  });
   it("offers every preference with a stable id and exactly one committed choice", () => {
     const view = settingsView(idle, context);
     expect(view.groups.map((entry) => entry.id)).toEqual([
@@ -410,7 +419,6 @@ it("offers result actions by exact failure identity with recording and cleanup l
   const result = { id: "failure-1", occurredAt: "2026-09-24T12:00:00Z", code: "disk_full" as const,
     detail: "ENOSPC", outcome: "pending" as const, acknowledged: false };
   const ctx = { ...context, notifications: false, recordingResults: [result] };
-  expect(settingsView(idle, ctx).recordingResults?.[0]?.pending).toBe(true);
   expect(settingsAction(idle, ctx, "recordingResult:failure-1", "acknowledge")).toBeUndefined();
   const done = { ...ctx, recordingResults: [{ ...result, outcome: "partial" as const, partialPath: "/tmp/a.recording.mp4" }] };
   expect(settingsAction(idle, done, "recordingResult:failure-1", "acknowledge")).toEqual({ recordingResult: { id: "failure-1", action: "acknowledge" } });

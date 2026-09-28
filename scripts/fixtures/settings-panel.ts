@@ -560,6 +560,13 @@ async function run() {
   const retryFits = await read<boolean>(window, `(() => { const retry = document.getElementById("setting-about-retry"); return !retry.hidden && retry.getBoundingClientRect().width > 32 && retry.scrollWidth <= retry.clientWidth && document.querySelector("#setting-about-website svg") !== null; })()`);
   record("failed footer link retains readable text retry and icon", retryFits, String(retryFits));
   window.show(); window.focus();
+  // A retried action disables its buttons while it runs, so its hidden Retry cannot keep focus: focus must come back, not fall to the page.
+  await read(window, `document.getElementById("setting-about-retry").focus()`);
+  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Space" });
+  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Space" });
+  await settle(150);
+  const retryFocus = await read<{ active: string; retryShown: boolean }>(window, `({ active: document.activeElement.id, retryShown: !document.getElementById("setting-about-retry").hidden })`);
+  record("real key on a failed link's Retry keeps focus in its row, not on the page", retryFocus.retryShown && retryFocus.active.startsWith("setting-about-"), JSON.stringify(retryFocus));
   await read(window, `(() => { const s = document.getElementById("setting-hotkey"); s.value = "custom"; s.dispatchEvent(new Event("change")); })()`);
   await settle(100);
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });

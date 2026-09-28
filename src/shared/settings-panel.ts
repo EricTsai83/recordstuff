@@ -62,7 +62,6 @@ export interface RecordingResultView {
   /** The file's name, shown in the row. */
   fileName?: string;
   acknowledged: boolean;
-  pending: boolean;
   actions: SettingsChoice[];
 }
 export interface SettingsView {

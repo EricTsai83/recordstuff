@@ -6,7 +6,7 @@ import type { RecordingResultView, SettingsView } from "../shared/settings-panel
 const row = (id: string, over: Partial<RecordingResultView> = {}): RecordingResultView => ({
   id, reason: "The disk is full.", day: "Today", time: "2:05 PM", outcome: "No recording content was kept.",
   guidance: "Free disk space or choose another output folder before recording again.", detail: "ENOSPC: fixture",
-  acknowledged: false, pending: false, actions: [{ id: "acknowledge", label: "Got it", enabled: true, checked: false }], ...over,
+  acknowledged: false, actions: [{ id: "acknowledge", label: "Got it", enabled: true, checked: false }], ...over,
 });
 const reviewed = (id: string, over: Partial<RecordingResultView> = {}): RecordingResultView =>
   row(id, { acknowledged: true, actions: [{ id: "remove", label: "Remove from history", enabled: true, checked: false }], ...over });
