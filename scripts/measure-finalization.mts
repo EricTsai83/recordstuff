@@ -22,6 +22,8 @@
  * app is already running or the desktop locked; 130/143 after SIGINT/SIGTERM.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { MEASUREMENTS_DIR } from "./lib/verify-recording.mts";
+import { APP_LOG_PATH } from "./lib/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -36,10 +38,9 @@ import { parseAutorecordOutcome } from "./lib/verify.mts";
 
 const ELECTRON_APP = path.join(REPO_ROOT, "node_modules/electron/dist/Electron.app");
 const ELECTRON_APP_REAL = fs.existsSync(ELECTRON_APP) ? fs.realpathSync(ELECTRON_APP) : ELECTRON_APP;
-const LOG_PATH = path.join(os.homedir(), "Library/Logs/recordstuff/recordstuff.log");
+const LOG_PATH = APP_LOG_PATH;
 const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
 const MATERIAL_PROFILE = path.join(os.tmpdir(), "recordstuff-material-profile");
-const MEASUREMENTS_DIR = path.join(REPO_ROOT, "docs/verification/measurements");
 const QUIT_GRACE_MS = 30_000;
 /**
  * How long after a launch its app may still appear: `open` hands the request

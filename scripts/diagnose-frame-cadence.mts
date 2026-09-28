@@ -22,6 +22,7 @@
  * runs).
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { scrubbedEnv } from "./lib/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -267,8 +268,7 @@ async function recordOnce(run: RunReport, fixture: string, config: object, secon
   fs.mkdirSync(run.dir, { recursive: true });
   fs.writeFileSync(path.join(run.dir, "config.json"), JSON.stringify(config, null, 2));
   for (let i = 0; i < run.load; i += 1) owned.busy.add(spawn(process.execPath, ["-e", "for(;;){}"], { stdio: "ignore" }));
-  const env = { ...process.env };
-  for (const key of ["ELECTRON_RUN_AS_NODE", "ELECTRON_RENDERER_URL", "RECORDSTUFF_AUTORECORD", "NODE_OPTIONS"]) delete env[key];
+  const env = scrubbedEnv();
   const started = Date.now();
   const child = spawn("open", ["-W", "-n", "-a", ELECTRON_APP, "--args", fixture, run.dir], { env, stdio: "ignore" });
   let exited = false;

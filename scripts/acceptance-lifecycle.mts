@@ -1,5 +1,6 @@
 /** Real process-lifetime checks through the production quit coordinator. */
 import { buildFixture } from "./lib/build-fixture.mts";
+import { scrubbedEnv } from "./lib/runner-env.mts";
 import { runIsolatedProcess } from "./lib/isolated-process.mts";
 import fs from "node:fs";
 import path from "node:path";
@@ -10,8 +11,7 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const dir = path.join(root, "docs/verification/measurements", `${new Date().toISOString().replace(/[:.]/g, "-")}-lifecycle`);
 fs.mkdirSync(dir, { recursive: true });
 const fixture = await buildFixture("recording-lifecycle", dir);
-const env = { ...process.env };
-for (const key of ["ELECTRON_RUN_AS_NODE", "ELECTRON_RENDERER_URL", "RECORDSTUFF_AUTORECORD", "NODE_OPTIONS"]) delete env[key];
+const env = scrubbedEnv();
 const require = createRequire(import.meta.url);
 const results = [];
 for (const mode of ["copy", "cleanup", "result"]) {

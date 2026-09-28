@@ -59,7 +59,12 @@ export async function fetchManifest(tag: string, now = new Date()): Promise<Rele
     fetchText(releaseJsonAsset.browser_download_url),
     fetchText(sumsAsset.browser_download_url),
   ]);
-  const releaseJson = JSON.parse(releaseJsonText) as ReleaseJson;
+  let releaseJson: ReleaseJson;
+  try {
+    releaseJson = JSON.parse(releaseJsonText) as ReleaseJson;
+  } catch (error) {
+    throw new Error(`${tag}: release.json at ${releaseJsonAsset.browser_download_url} is not valid JSON: ${(error as Error).message}`);
+  }
   const manifest = buildManifest({ tag, release, releaseJson, sha256sums, now });
   await assertAssetReachable(manifest.dmg.url);
   return manifest;

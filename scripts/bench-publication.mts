@@ -17,6 +17,7 @@
  * 130/143 after SIGINT/SIGTERM (the benchmark's own files are removed).
  */
 import { spawn } from "node:child_process";
+import { MEASUREMENTS_DIR } from "./lib/verify-recording.mts";
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -25,7 +26,6 @@ import { distribution, formatDistribution, parseByteSize } from "./lib/finalizat
 import { freeBytes, volumeOf } from "./lib/volume.mts";
 import { REPO_ROOT } from "./lib/verify-recording.mts";
 
-const MEASUREMENTS_DIR = path.join(REPO_ROOT, "docs/verification/measurements");
 const HEADROOM_BYTES = 1024 ** 3;
 const CHUNK_BYTES = 4 * 1024 ** 2;
 

@@ -32,6 +32,7 @@
  * 0 otherwise.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { APP_LOG_PATH, APP_SETTINGS_PATH } from "./lib/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -58,13 +59,14 @@ import {
 } from "./lib/matrix.mts";
 import { ToolMissingError, hasTool, timeTools, type ToolTiming } from "./lib/media-tools.mts";
 import { REPO_ROOT, appendMeasurements, measurementsPath, readLogPairs, verifyRecording, type VerifyResult } from "./lib/verify-recording.mts";
+import { pairRecordingsWithLog } from "./lib/verify.mts";
 import { BLOCKED_EXIT, blocksSuccess, formatText, parseAutorecordOutcome, verdictExitCode, type CpuFigures } from "./lib/verify.mts";
 
 const ELECTRON_APP = path.join(REPO_ROOT, "node_modules/electron/dist/Electron.app");
 /** pnpm symlinks `node_modules/electron`; process command lines show the resolved `.pnpm/…` path. */
 const ELECTRON_APP_REAL = fs.existsSync(ELECTRON_APP) ? fs.realpathSync(ELECTRON_APP) : ELECTRON_APP;
-const LOG_PATH = path.join(os.homedir(), "Library/Logs/recordstuff/recordstuff.log");
-const SETTINGS_PATH = path.join(os.homedir(), "Library/Application Support/recordstuff/settings.json");
+const LOG_PATH = APP_LOG_PATH;
+const SETTINGS_PATH = APP_SETTINGS_PATH;
 const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
 const MATERIAL_PROFILE = path.join(os.tmpdir(), "recordstuff-material-profile");
 /** How long an interrupted case's app may take to stop, save and quit before it is forced. */
@@ -250,6 +252,7 @@ function cleanup(): Promise<{ left: string[]; app: "none" | "quit" | "forced" }>
       await sleep(500);
     }
     owned.desktop?.end();
+    cleanupSampler();
     return { left: stillRunning(), app };
   })();
   return cleaning;
@@ -310,6 +313,15 @@ function logSince(start: LogCursor): { lines: string[]; gap?: string } {
 
 /** Where the sampler's helper was compiled, before the round started. */
 let samplerBinary = "";
+/** The temporary folder the sampler was compiled into; removed by cleanup. */
+let samplerDir: string | undefined;
+function cleanupSampler(): void {
+  if (!samplerDir) return;
+  fs.rmSync(samplerDir, { recursive: true, force: true });
+  samplerDir = undefined;
+}
+// Preflight can exit before the asynchronous desktop cleanup is entered.
+process.once("exit", cleanupSampler);
 
 async function recordOnce(entry: MatrixEntry, key: string): Promise<RunOutcome> {
   const logStart = appLog.end();
@@ -400,7 +412,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   try {
-    samplerBinary = compileSampler(fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-matrix-cpu-")));
+    samplerDir = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-matrix-cpu-"));
+    samplerBinary = compileSampler(samplerDir);
   } catch (cause) {
     if (!(cause instanceof SamplerBlockedError)) throw cause;
     console.error(`BLOCKED: ${cause.message}; every case requires its CPU figure. No case was recorded.`);
@@ -477,7 +490,11 @@ async function main(): Promise<void> {
           if (outcome.cpu) options.cpu = outcome.cpu;
           if (screen) options.screen = screen;
           const file = outcome.file;
-          const result = timeTools(tools, () => verifyRecording(file, readLogPairs(LOG_PATH), options));
+          // Only this case's lines: its own `start:`, capture and saved records all follow the cursor taken
+          // before launch, so the retained history is not re-read and re-paired for every case.
+          const caseLog = owned.caseLog;
+          const pairs = caseLog ? pairRecordingsWithLog(logSince(caseLog).lines.join("\n")) : readLogPairs(LOG_PATH);
+          const result = timeTools(tools, () => verifyRecording(file, pairs, options));
           // Media measurements stand; judging against the requested settings needs this session's own metadata.
           const metadata = result.pairing.status === "matched" ? undefined
             : `log metadata ${result.pairing.status}${result.pairing.note ? `: ${result.pairing.note}` : ""}; requested-settings checks not judged`;

@@ -5,6 +5,7 @@
  * Development only; nothing here ships with the app.
  */
 import { lineTime } from "./acceptance.mts";
+import { medianSorted } from "./stats.mts";
 import type { ToolTiming } from "./media-tools.mts";
 import type { VerifyResult } from "./verify-recording.mts";
 import { blocksSuccess, type Verdict } from "./verify.mts";
@@ -304,9 +305,7 @@ export interface Spread { min: number; median: number; max: number; n: number }
 export function spread(values: readonly number[]): Spread | undefined {
   const finite = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
   if (finite.length === 0) return undefined;
-  const mid = Math.floor(finite.length / 2);
-  const median = finite.length % 2 === 1 ? finite[mid]! : (finite[mid - 1]! + finite[mid]!) / 2;
-  return { min: finite[0]!, median, max: finite[finite.length - 1]!, n: finite.length };
+  return { min: finite[0]!, median: medianSorted(finite)!, max: finite[finite.length - 1]!, n: finite.length };
 }
 
 export interface CaseSummary {

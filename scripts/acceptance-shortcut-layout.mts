@@ -5,6 +5,7 @@
  * the keypad, and restores the input source (docs/system-design/tooling.md#keyboard-layout-shortcut-check).
  */
 import { buildFixture } from "./lib/build-fixture.mts";
+import { scrubbedEnv } from "./lib/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -47,8 +48,7 @@ let interruptedBy: string | undefined;
 const interrupt = (signal: NodeJS.Signals): void => { interruptedBy ??= signal; controller.abort(new Error(`interrupted: ${signal}`)); };
 process.on("SIGINT", interrupt);
 process.on("SIGTERM", interrupt);
-const env = { ...process.env };
-for (const key of ["ELECTRON_RUN_AS_NODE", "ELECTRON_RENDERER_URL", "RECORDSTUFF_AUTORECORD", "NODE_OPTIONS"]) delete env[key];
+const env = scrubbedEnv();
 const log = (line: string): void => console.log(line);
 
 interface FixtureResult {

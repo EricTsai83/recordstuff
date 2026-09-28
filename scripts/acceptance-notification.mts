@@ -8,6 +8,7 @@
  * Finder window creation finish their bounded command before cancellation.
  */
 import { setTimeout as delay } from "node:timers/promises";
+import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings } from "./lib/runner-env.mts";
 import { recordStuffPattern } from "./lib/processes.mts";
 import { command, finishRecording, waitForLog } from "./lib/acceptance-runtime.mts";
 import fs from "node:fs";
@@ -43,8 +44,8 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const APP_TITLE = "RecordStuff";
 const INSTALLED_APP = "/Applications/RecordStuff.app";
 const BUILT_APP = path.join(REPO_ROOT, "dist/mac-arm64/RecordStuff.app");
-const LOG_PATH = path.join(os.homedir(), "Library/Logs/recordstuff/recordstuff.log");
-const SETTINGS_PATH = path.join(os.homedir(), "Library/Application Support/recordstuff/settings.json");
+const LOG_PATH = APP_LOG_PATH;
+const SETTINGS_PATH = APP_SETTINGS_PATH;
 /** How long the frontmost app is sampled after the click; the OS activation lands ~110 ms after it. */
 const SAMPLE_MS = 3000;
 
@@ -182,9 +183,7 @@ function writeSettings(patch: { language?: string | undefined; countdown?: unkno
     if (value === undefined) delete settings[key];
     else (settings as Record<string, unknown>)[key] = value;
   }
-  const tmp = `${SETTINGS_PATH}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(settings, null, 2) + "\n");
-  fs.renameSync(tmp, SETTINGS_PATH);
+  writeAppSettings(settings, SETTINGS_PATH);
 }
 
 async function verifySignature(app: string): Promise<void> {

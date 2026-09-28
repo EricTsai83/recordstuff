@@ -19,7 +19,7 @@
  * Development only (brew install ffmpeg); nothing here ships with the app.
  */
 import fs from "node:fs";
-import os from "node:os";
+import { APP_LOG_PATH } from "./lib/runner-env.mts";
 import path from "node:path";
 import { ToolMissingError } from "./lib/media-tools.mts";
 import {
@@ -33,7 +33,7 @@ import {
 } from "./lib/verify-recording.mts";
 import { formatText, verdictExitCode, type Verdict } from "./lib/verify.mts";
 
-const DEFAULT_LOG = path.join(os.homedir(), "Library/Logs/recordstuff/recordstuff.log");
+const DEFAULT_LOG = APP_LOG_PATH;
 
 function usage(): never {
   console.error(

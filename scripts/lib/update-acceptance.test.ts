@@ -92,6 +92,15 @@ describe('recording lock contract', () => {
     }
   });
 
+  it('accepts countdown-off sound locking and rejects the inverse state', () => {
+    for (const state of [{ type: 'idle' }, recording] as RecordingState[]) {
+      const s = snap(state, { ...context, countdown: 0 });
+      expect(() => assertLockContract(s)).not.toThrow();
+      group(s, 'countdownSound').enabled = true;
+      expect(() => assertLockContract(s)).toThrow(`settings group countdownSound while ${state.type}`);
+    }
+  });
+
   it('rejects a busy snapshot that leaves a capture, notification or update control usable', () => {
     for (const state of [recording, { type: 'starting' }, { type: 'countdown', remaining: 2 }, { type: 'stopping' }] as RecordingState[]) {
       for (const id of ['screen', 'countdown', 'videoQuality', 'resolutionCap', 'frameRate', 'hotkey', 'notifications', 'updateChecks', 'updates']) {

@@ -8,6 +8,7 @@
  * only, never shipped.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { percentile as nearestRank } from "./stats.mts";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -133,11 +134,9 @@ function sum(values: readonly number[]): number {
   return values.reduce((a, b) => a + b, 0);
 }
 
-/** Nearest-rank percentile of `values`, 0 for none. */
+/** Nearest-rank percentile of `values` for `p` in percent, 0 for none. */
 export function percentile(values: readonly number[], p: number): number {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1))]!;
+  return nearestRank(values, p / 100) ?? 0;
 }
 
 export interface Stat { average: number; p95: number; max: number }

@@ -1,7 +1,7 @@
 /** System Events entry step only; Computer Use must independently verify the visible panel. */
 import fs from "node:fs";
+import { APP_LOG_PATH } from "./lib/runner-env.mts";
 import { escapeRegExp } from "./lib/processes.mts";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SETTINGS_SHORTCUT } from "../src/shared/hotkey.ts";
@@ -12,7 +12,7 @@ import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type Desk
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const appPath = path.join(root, "dist/mac-arm64/RecordStuff.app/Contents/MacOS/RecordStuff");
-const logPath = path.join(os.homedir(), "Library/Logs/recordstuff/recordstuff.log");
+const logPath = APP_LOG_PATH;
 const args = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--"));
 if (args.length) throw new Error("usage: pnpm acceptance:settings-shortcut (no arguments)");
 fs.mkdirSync(path.join(root, "docs/verification/measurements"), { recursive: true });

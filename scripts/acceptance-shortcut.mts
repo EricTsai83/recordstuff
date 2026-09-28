@@ -1,5 +1,6 @@
 /** Deterministic failure-path integration against the production bundles; no screen recording. */
 import { buildFixture } from "./lib/build-fixture.mts";
+import { scrubbedEnv } from "./lib/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -33,8 +34,7 @@ const controller = new AbortController();
 const interrupt = (): void => controller.abort();
 process.on("SIGINT", interrupt);
 process.on("SIGTERM", interrupt);
-const env = { ...process.env };
-for (const key of ["ELECTRON_RUN_AS_NODE", "ELECTRON_RENDERER_URL", "RECORDSTUFF_AUTORECORD", "NODE_OPTIONS"]) delete env[key];
+const env = scrubbedEnv();
 type Execution = Awaited<ReturnType<typeof runIsolatedProcess>>;
 interface Result {
   cases: Array<{ name: string; ok: boolean; detail: string }>;

@@ -30,6 +30,7 @@
  * Line Tools, a locked screen) and 130/143 when interrupted. macOS only; never shipped.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings } from "./lib/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -49,8 +50,8 @@ import { SETTINGS_SHORTCUT } from "../src/shared/hotkey.ts";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BUNDLE = path.join(REPO_ROOT, "dist/mac-arm64/RecordStuff.app");
 const EXECUTABLE = path.join(BUNDLE, "Contents/MacOS/RecordStuff");
-const LOG_PATH = path.join(os.homedir(), "Library/Logs/recordstuff/recordstuff.log");
-const SETTINGS_PATH = path.join(os.homedir(), "Library/Application Support/recordstuff/settings.json");
+const LOG_PATH = APP_LOG_PATH;
+const SETTINGS_PATH = APP_SETTINGS_PATH;
 const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
 const RECORDING_SECONDS = 60;
 const SETTINGS_MINUTES = 3;
@@ -140,13 +141,8 @@ async function sendKeys(accelerator: string): Promise<void> {
 const SEEDED_KEYS = ["countdown", "display", "quality"] as const;
 let originalSettings: Buffer | undefined;
 let seeded = false;
-const readSettings = (): Record<string, unknown> => fs.existsSync(SETTINGS_PATH) ? JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8")) as Record<string, unknown> : {};
-function writeSettings(next: Record<string, unknown>): void {
-  const temporary = `${SETTINGS_PATH}.cpu-tmp`;
-  fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true });
-  fs.writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`);
-  fs.renameSync(temporary, SETTINGS_PATH);
-}
+const readSettings = (): Record<string, unknown> => readAppSettings(SETTINGS_PATH) ?? {};
+const writeSettings = (next: Record<string, unknown>): void => writeAppSettings(next, SETTINGS_PATH);
 function seed(frameRate: 30 | 60): void {
   if (running() !== undefined) fail("refusing to change settings.json while RecordStuff runs");
   originalSettings ??= fs.existsSync(SETTINGS_PATH) ? fs.readFileSync(SETTINGS_PATH) : Buffer.alloc(0);

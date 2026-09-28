@@ -1,5 +1,6 @@
 /** Guided native dialog check. Never interprets dismissal as visual acceptance. */
 import fs from "node:fs";
+import { scrubbedEnv } from "./lib/runner-env.mts";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -26,8 +27,7 @@ if (args.length === 1 && args[0] === "--help") {
   const dir = path.join(root, "docs/verification/measurements", `${new Date().toISOString().replace(/[:.]/g, "-")}-quit-dialog-${language}`);
   fs.mkdirSync(dir, { recursive: true });
   const fixture = await buildFixture("quit-dialog", dir);
-  const env = { ...process.env };
-  for (const key of ["ELECTRON_RUN_AS_NODE", "ELECTRON_RENDERER_URL", "RECORDSTUFF_AUTORECORD", "NODE_OPTIONS"]) delete env[key];
+  const env = scrubbedEnv();
   const abort = new AbortController();
   const cancel = (): void => abort.abort();
   process.on("SIGINT", cancel); process.on("SIGTERM", cancel);

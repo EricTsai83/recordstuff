@@ -17,6 +17,7 @@
  * docs/verification/measurements/<timestamp>-settings-acceptance/.
  * Requires `pnpm build` output. Nothing here ships with the app.
  */
+import { scrubbedEnv } from "./lib/runner-env.mts";
 import { buildFixture } from "./lib/build-fixture.mts";
 import { runIsolatedProcess } from "./lib/isolated-process.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
@@ -58,8 +59,7 @@ fs.mkdirSync(dir, { recursive: !outDir });
 const fixture = await buildFixture("settings-panel", dir);
 
 /** Electron needs a real app launch: no ELECTRON_RUN_AS_NODE, no inherited signing env. */
-const env = { ...process.env };
-delete env.ELECTRON_RUN_AS_NODE;
+const env = scrubbedEnv();
 
 // Real input, focus and screenshots need an awake, unlocked display.
 const desktop = await beginDesktopRound().catch((cause: unknown) => {

@@ -6,6 +6,7 @@
  * `finalize timing` line. Pure, so the runner's parsing is testable.
  */
 import { lineTime } from "./acceptance.mts";
+import { percentileSorted } from "./stats.mts";
 
 export interface FinalizeTiming {
   session: string;
@@ -113,8 +114,7 @@ export interface Distribution {
 export function distribution(values: readonly number[]): Distribution | undefined {
   if (values.length === 0) return undefined;
   const sorted = [...values].sort((a, b) => a - b);
-  const rank = (p: number): number => sorted[Math.max(0, Math.ceil(p * sorted.length) - 1)]!;
-  return { n: sorted.length, min: sorted[0]!, p50: rank(0.5), p95: rank(0.95), max: sorted.at(-1)! };
+  return { n: sorted.length, min: sorted[0]!, p50: percentileSorted(sorted, 0.5)!, p95: percentileSorted(sorted, 0.95)!, max: sorted.at(-1)! };
 }
 
 export const formatDistribution = (d: Distribution | undefined, unit = "ms"): string =>

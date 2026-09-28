@@ -7,6 +7,7 @@
  * Development only, never shipped.
  */
 import path from "node:path";
+import { median as sharedMedian } from "./stats.mts";
 import type { SessionRecord } from "../../src/shared/session-record.ts";
 import { CPU_BUDGET, ENCODER_SERVICE } from "./cpu-sampler.mts";
 import { isProcessStart, isSessionRecordLine, logMessage, parseSessionRecord, startLineRun } from "./session-records.mts";
@@ -564,12 +565,8 @@ export interface SyncStats {
   driftMs: number | undefined;
 }
 
-function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  if (sorted.length === 0) return Number.NaN;
-  return sorted.length % 2 === 1 ? (sorted[mid] ?? 0) : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
-}
+/** Every caller checks the count first, so an empty input never reaches here. */
+const median = (values: number[]): number => sharedMedian(values) ?? Number.NaN;
 
 /** Fewer matched pairs than this is noise (a single EOF closure, a stray frame), not a measurement. */
 export const MIN_SYNC_PAIRS = 3;

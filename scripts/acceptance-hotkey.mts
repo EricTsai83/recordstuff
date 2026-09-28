@@ -39,6 +39,7 @@
  * macOS only (`open`, `osascript`, `pgrep`). Nothing here ships with the app.
  */
 import { setTimeout as delay } from "node:timers/promises";
+import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings } from "./lib/runner-env.mts";
 import { command, confirmedIdle, quitIdleApp, settleRecording, waitForLog, waitForRecord } from "./lib/acceptance-runtime.mts";
 import { inputDiagnostics } from "./lib/acceptance-diagnostics.mts";
 import { spawn, spawnSync } from "node:child_process";
@@ -65,9 +66,9 @@ import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./
 import { StoredOverride } from "./lib/stored-override.mts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const LOG_PATH = path.join(os.homedir(), "Library/Logs/recordstuff/recordstuff.log");
+const LOG_PATH = APP_LOG_PATH;
 const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
-const SETTINGS_PATH = path.join(os.homedir(), "Library/Application Support/recordstuff/settings.json");
+const SETTINGS_PATH = APP_SETTINGS_PATH;
 /** A fresh profile per run: a reused one that was killed restores its last window and ignores `--kiosk`. */
 let MATERIAL_PROFILE: string;
 
@@ -132,9 +133,7 @@ function storedCountdown(): { countdown: unknown; sound: boolean; stored: unknow
 function writeStoredSound(value: boolean): void {
   const settings = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8")) as Record<string, unknown>;
   settings["countdownSound"] = value;
-  const temporary = `${SETTINGS_PATH}.acceptance-tmp`;
-  fs.writeFileSync(temporary, JSON.stringify(settings, null, 2) + "\n");
-  fs.renameSync(temporary, SETTINGS_PATH);
+  writeAppSettings(settings, SETTINGS_PATH);
 }
 
 /** The running app's bundle, from its executable; anything else is not ours to quit or relaunch. */

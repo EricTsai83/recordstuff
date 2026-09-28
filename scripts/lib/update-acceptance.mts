@@ -89,7 +89,10 @@ export function assertLockContract(s: LockSnapshot): void {
   assert.deepEqual(missing, [], `settings groups no longer offered: ${missing.join(", ")}`);
   for (const group of s.settings.groups) {
     const available = BUSY_SETTINGS_POLICY[group.id] === "available";
-    assert.equal(group.enabled, available || !busy, `settings group ${group.id} while ${state}`);
+    // Turning the countdown off disables its sound control even when idle.
+    const countdownOff = s.settings.groups.find(g => g.id === "countdown")?.choices.some(c => c.checked && c.id === "0");
+    const enabled = (available || !busy) && !(group.id === "countdownSound" && countdownOff);
+    assert.equal(group.enabled, enabled, `settings group ${group.id} while ${state}`);
     // A permitted group must stay usable choice by choice, not only as a group.
     if (available) for (const choice of [...group.choices, ...group.actions ?? []]) assert.equal(choice.enabled, true, `settings choice ${group.id}/${choice.id} while ${state}`);
   }

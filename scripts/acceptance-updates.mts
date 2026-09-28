@@ -1,5 +1,6 @@
 /** Packaged handler/model integration + optional real capture. Native Tray clicks are explicitly not claimed. */
 import fs from 'node:fs';
+import { APP_SETTINGS_PATH } from './lib/runner-env.mts';
 import path from 'node:path';
 import os from 'node:os';
 import assert from 'node:assert/strict';
@@ -39,7 +40,7 @@ const feedScenarios: Scenario[] = values.full
   : ['http-fallback', 'offline', 'current'];
 const feedCase = values.full ? 'version filters, fallback, failure and recovery' : 'fallback, failure and recovery';
 const requiredCases = ['preflight and isolation', 'build, sign, launch and initial check', 'manual checking, overlap and timestamp', feedCase, 'newer version and intercepted download action', 'language and preference survive real process restart', 'launch rate limit and due launch failure', ...(!values['logic-only'] ? ['real recording: deferred check and deferred result'] : []), 'shutdown cancels pending check'];
-const protectedFiles = [path.join(ROOT, 'src/main/index.ts'), path.join(ROOT, 'package.json'), path.join(os.homedir(), 'Library/Application Support/recordstuff/settings.json')];
+const protectedFiles = [path.join(ROOT, 'src/main/index.ts'), path.join(ROOT, 'package.json'), APP_SETTINGS_PATH];
 let config: AcceptanceConfig = { now: Date.now(), scenario: 'current' };
 let sequence = 0, appMayBeRunning = false, cancelled = false;
 let materialProfile: string | undefined;

@@ -1,4 +1,5 @@
 import type { AudioReport } from "./audio-quality.mts";
+import { medianSorted } from "./stats.mts";
 
 /** Preserve failures and count missing measurements; never calibrate thresholds from a bad run. */
 export function summarize(reports: AudioReport[], requestedRuns = reports.length) {
@@ -8,7 +9,7 @@ export function summarize(reports: AudioReport[], requestedRuns = reports.length
     const values = reports.flatMap(r => r.verdict === "invalid" ? [] : r.checks.filter(c => c.metric === metric && c.value !== null && Number.isFinite(c.value)).map(c => c.value!)).sort((a, b) => a - b);
     const count = values.length;
     return { metric, measuredCount: count, missingCount: reports.length - count,
-      min: count ? values[0]! : null, median: count ? (values[Math.floor((count - 1) / 2)]! + values[Math.floor(count / 2)]!) / 2 : null,
+      min: count ? values[0]! : null, median: medianSorted(values) ?? null,
       max: count ? values[count - 1]! : null };
   });
   return { version: 2, requestedRuns, runs: reports.length, passed: reports.filter(r => r.verdict === "pass").length,
