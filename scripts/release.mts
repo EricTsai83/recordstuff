@@ -1,7 +1,7 @@
 import { stableVersion } from "../src/shared/version.ts";
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createReadStream, existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -152,9 +152,13 @@ ${f.date}：由 tag 觸發的 workflow 從 \`${f.tag}\` 公開。本紀錄由 wo
 `;
 }
 const root = fileURLToPath(new URL('..', import.meta.url));
+/** Why a command failed: a spawn error, else its stderr, else how it exited; never an empty reason. */
+export function failureReason(r: { error?: Error; stderr?: string | null; status: number | null; signal: NodeJS.Signals | null }): string {
+  return r.error?.message ?? (r.stderr?.trim() || (r.signal ? `killed by ${r.signal}` : `exit status ${r.status}`));
+}
 function run(command: string, args: string[], input?: string) {
   const r = spawnSync(command, args, { cwd: root, encoding: 'utf8', input, maxBuffer: 16 * 1024 * 1024 });
-  if (r.error || r.status !== 0) throw new Error(`${command} ${args[0]} failed: ${r.stderr?.trim() ?? r.error?.message}`);
+  if (r.error || r.status !== 0) throw new Error(`${command} ${args[0]} failed: ${failureReason(r)}`);
   return r.stdout.trim();
 }
 function api(endpoint: string, method = 'GET', payload?: unknown) {
@@ -247,13 +251,25 @@ async function verifyDmg(directory: string, tag: string, c: ReleaseContext = con
     return { ...c, platform: 'darwin-arm64', file, size: statSync(dmg).size, sha256: await digest(dmg),
       signingCertificateSHA1: signingSHA1, appAsarSHA256: await digest(path.join(app, 'Contents/Resources/app.asar')) };
   } finally {
-    // A detach that fails must not replace the verification error, and the mount point is removed either way.
-    if (attached) {
-      try { run('hdiutil', ['detach', mount]); }
-      catch (cause) { console.error(`hdiutil detach ${mount} failed: ${cause instanceof Error ? cause.message : String(cause)}`); }
-    }
-    rmSync(mount, { recursive: true, force: true });
+    releaseMount(mount, attached, args => run('hdiutil', args));
   }
+}
+/**
+ * Never throws, so a cleanup problem cannot replace the verification result.
+ * A busy volume gets one forced detach; the mount point is removed only once
+ * nothing is mounted on it, and never recursively, which would walk into a
+ * still-mounted read-only image and fail with EROFS.
+ */
+export function releaseMount(mount: string, attached: boolean, hdiutil: (args: string[]) => void, remove: (dir: string) => void = rmdirSync) {
+  const message = (cause: unknown) => cause instanceof Error ? cause.message : String(cause);
+  let detached = !attached;
+  for (const args of attached ? [['detach', mount], ['detach', '-force', mount]] : []) {
+    try { hdiutil(args); detached = true; break; }
+    catch (cause) { console.error(`hdiutil ${args.join(' ')} failed: ${message(cause)}`); }
+  }
+  if (!detached) { console.error(`${mount} is still mounted; leaving the mount point in place`); return; }
+  try { remove(mount); }
+  catch (cause) { console.error(`could not remove mount point ${mount}: ${message(cause)}`); }
 }
 async function verifyCandidate(directory: string, tag: string, c: ReleaseContext = context(tag)) {
   const metadata = JSON.parse(readFileSync(path.join(directory, 'release.json'), 'utf8'));

@@ -1,9 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { assertDmgContents, assertPublishedAssets, assertUnreleased, compareVersions, isPrerelease, notes, renderDownloadSection, releaseFactsFromManifest, renderVerificationRecord, replaceMarked, setPackageVersion, validateDigest, validateTag, type ReleaseFacts } from './release.mts';
+import { assertDmgContents, assertPublishedAssets, assertUnreleased, compareVersions, failureReason, isPrerelease, notes, releaseMount, renderDownloadSection, releaseFactsFromManifest, renderVerificationRecord, replaceMarked, setPackageVersion, validateDigest, validateTag, type ReleaseFacts } from './release.mts';
 
 describe('release gates', () => {
   it('accepts only a tag equal to v + package version, stable or pre-release', () => {
@@ -154,5 +154,41 @@ describe('mounted DMG contents gate', () => {
     writeFileSync(path.join(root, '.background.tiff', 'INSTALL.md'), '');
     expect(() => assertDmgContents(root)).toThrow(/hidden.*\.background\.tiff/);
     expect(() => assertDmgContents(mountRoot(...layout.filter(e => e !== '.DS_Store'), '.DS_Store->RecordStuff.app'))).toThrow(/hidden.*\.DS_Store/);
+  });
+});
+
+describe('release tool failures', () => {
+  it('always names why a command failed', () => {
+    expect(failureReason({ error: new Error('spawnSync gh ENOBUFS'), stderr: '', status: null, signal: 'SIGTERM' })).toBe('spawnSync gh ENOBUFS');
+    expect(failureReason({ stderr: '  HTTP 404  \n', status: 1, signal: null })).toBe('HTTP 404');
+    expect(failureReason({ stderr: '', status: 2, signal: null })).toBe('exit status 2');
+    expect(failureReason({ stderr: null, status: null, signal: 'SIGKILL' })).toBe('killed by SIGKILL');
+  });
+
+  it('forces a busy detach and removes only an unmounted mount point, without throwing', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const calls: string[][] = [];
+      const removed: string[] = [];
+      const busyOnce = (args: string[]) => { calls.push(args); if (calls.length === 1) throw new Error('Resource busy'); };
+      releaseMount('/tmp/m', true, busyOnce, dir => removed.push(dir));
+      expect(calls).toEqual([['detach', '/tmp/m'], ['detach', '-force', '/tmp/m']]);
+      expect(removed).toEqual(['/tmp/m']);
+
+      removed.length = 0;
+      expect(() => releaseMount('/tmp/m', true, () => { throw new Error('Resource busy'); }, dir => removed.push(dir))).not.toThrow();
+      expect(removed).toEqual([]);
+
+      const never = vi.fn();
+      expect(() => releaseMount('/tmp/m', false, never, () => { throw new Error('EROFS'); })).not.toThrow();
+      expect(never).not.toHaveBeenCalled();
+      expect(errors.mock.calls.map(([line]) => String(line))).toEqual([
+        'hdiutil detach /tmp/m failed: Resource busy',
+        'hdiutil detach /tmp/m failed: Resource busy',
+        'hdiutil detach -force /tmp/m failed: Resource busy',
+        '/tmp/m is still mounted; leaving the mount point in place',
+        'could not remove mount point /tmp/m: EROFS',
+      ]);
+    } finally { errors.mockRestore(); }
   });
 });
