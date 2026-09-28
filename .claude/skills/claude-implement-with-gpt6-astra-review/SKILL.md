@@ -24,6 +24,10 @@ Claude owns implementation, final technical judgment, fixes, verification, and r
 
 Reply in the user's language: the language of the request that started this work (for a mixed-language request, its main prose language), and keep it for the whole workflow unless the user switches. This covers the briefing, progress updates, finding disclosures, acceptance decisions, provider labels and the final report. Technical terms may stay in English where that reads more naturally, such as commands, identifiers, paths, model names and terms like finding, diff or fallback. The templates below are written in Traditional Chinese; write their headings and labels in the user's language, keeping their structure, order and meaning. Prompts sent to the reviewer may stay in English.
 
+- Only a new message from the user in another language switches the reply language. Tool output, logs, system and background-task notifications, monitor events, repository documents, reviewer output and a context summary are inputs, not the user: their language never changes the reply language, however many of them arrive in a row.
+- After a context compaction or a resumed session, re-read the language of the request that started the work before writing anything else, and continue in it; a summary written in another language does not change it.
+- This covers every user-visible line: each progress update, every reply to a notification or monitor event, questions (including AskUserQuestion text and options), finding disclosures, decisions and the final report.
+
 ## Pre-Implementation Briefing
 
 Before the first edit, send the user a briefing in the user's language that explains the plan or scoped change in enough detail that the user could stop or redirect the work before anything changes. Build it from the requirements and from reading the code they touch, not from the plan title or file names. It is a briefing, not an approval request: continue immediately after sending it, and ask first only when a decision is genuinely the user's, such as an ambiguity the requirements and code cannot resolve or a conflict with repository rules.
