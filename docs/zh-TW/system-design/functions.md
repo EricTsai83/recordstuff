@@ -53,7 +53,7 @@
 | `cancelCountdown(reason)` | `record` 前取消這次嘗試；之後改為擷取開始後停止；錄製中才到達的選單「取消錄影」會停止錄影；其餘忽略 |
 | `stop()` | 僅 matching recording session → stopping（記下要求停止時間），設 stop timeout，送 stop，再發布 stopping |
 | `systemWillSleep()` | Mac 即將睡眠（plan 050）：錄影中以 `stoppedEarly: "sleep"` 停止，倒數中或準備中的嘗試以 `sleep` 取消，arming 中的嘗試在擷取開始後停止；stopping 或沒有 session 時不動作 |
-| `shutdown()` | 取消倒數、標記開檔／準備中的嘗試在 `prepared` 時取消、`record` 後保留停止意圖、停止 recording、等 stopping／failure；与退出 hard cap 競速 |
+| `shutdown()` | 取消倒數、標記開檔／準備中的嘗試在 `prepared` 時取消、`record` 後保留停止意圖、停止 recording、等 stopping／failure，並與退出期限競速 |
 | `setPermission(status)` | 一律保存最新狀態；idle／needsPermission 時狀態有變才重新落定，不覆蓋忙碌 session 狀態 |
 | `outputDirChanged()` | 清掉記住的 outputDirUnavailable（needsPermission 時也清）；只有 idle 才更新狀態 |
 | `start()` | preflight（拒絕時送出標記 `preflight`、不指名 session 的 failed 事件）、建立品質與倒數快照與 session、驗位置、開 writer、準備 overlay、start host；每階段處理 late 結果 |
@@ -71,10 +71,11 @@
 | `watchDisk(session)` | 錄製中以單一不重疊 timer 查詢可用空間；低於警告門檻記錄一次，低於停止門檻只要求一次正常停止；查詢失敗記錄一次 |
 | `retainedWriteError(session)` | 在上限內排空 writer，回傳其保留的寫入／sync 錯誤；只用於改報 capture_start_failed |
 | `handleHostFailure(code, detail)` | 有 session 才進 fail；`record` 前改為註明階段的 capture_start_failed；idle 時不假造錄製錯誤 |
+| `cancelMarked(session, cause, detail)` | 已在 `prepared` 前被睡眠或退出標記的嘗試，遇到 host 錯誤或遺失、螢幕移除、請求逾時或被拒時，以該原因取消而非失敗 |
 | `fail(id, code, detail, flags)` | 先 detach session／清 deadline、倒數與健康 timer／關 overlay／stop／idle，writer 已保留磁碟錯誤時取代 capture_start_failed，後 abandon，最後 failed 帶檔案結果、session trace 與 partialPath，再移除 sentinel |
 | `trace(session)` | captureStarted、saved、failed 帶的 session id、暫存路徑與錄製／要求停止時間（plan 029） |
 | `clearTimer` / `clearDisk` / `clearHealth` | 取消並清除 session deadline／可用空間查詢／查詢與停滯 timer |
-| `setState(state)` / `emit(event)` | 替換狀態並發事件／依序呼叫 listeners |
+| `setState(state)` / `emit(event)` | 替換狀態並發事件／依序呼叫 listeners；某個 listener 拋出時只記 log，其他 listener 與 recorder 自身的清理照常執行 |
 
 ## Host 監督器 — main/capture-host.ts
 
@@ -251,7 +252,7 @@
 | 函式 | 契約 |
 | --- | --- |
 | `qualityGroups(ctx, enabled)` | 影像品質、解析度上限、幀率；此平台未驗證的幀率仍列出但不可選 |
-| `hotkeyGroup(ctx, enabled)` | 建議的預設鍵、不同於預設的已存自訂值與「關閉」；renderer 加上「自訂快捷鍵…」；註冊失敗顯示診斷；關閉保留記住的組合鍵 |
+| `hotkeyGroup(ctx, enabled)` | 建議的預設鍵、不同於預設的已存自訂值與「關閉」；renderer 加上「自訂快捷鍵…」；註冊失敗顯示診斷，設定快捷鍵（⌘⌥,）註冊失敗或被錄影快捷鍵佔用時也會顯示；關閉保留記住的組合鍵 |
 | `updateChecksGroup(ctx, enabled)` | 啟動檢查的開／關；context 沒有更新狀態時為空 |
 | `languageGroup(language)` | 英文與繁體中文；永不鎖定，因為語言不影響擷取 |
 | `settingsView(state, ctx)` | 面板完整 view：標題、說明、失敗文案、三個分頁（失敗紀錄分頁計算未確認筆數），以及移除 action 後的群組；失敗列帶日期、短時間、檔名與完整路徑 |

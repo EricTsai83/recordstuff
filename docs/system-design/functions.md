@@ -53,7 +53,7 @@ Process callbacks log uncaught exceptions and rejections; the first uncaught exc
 | cancelCountdown | Before `record`: cancel the attempt; after it: request stop once capture starts; a menu's Cancel recording arriving while recording stops the recording; otherwise ignore |
 | stop | Matching recording session → stopping (recording its stop-request time), arm deadline, send stop, then publish stopping |
 | systemWillSleep | The Mac is going to sleep (plan 050): stop a recording with `stoppedEarly: "sleep"`, cancel a countdown or a preparing attempt with reason `sleep`, stop an arming one once capture starts; nothing while stopping or without a session |
-| shutdown | Cancel a countdown, mark an opening/preparing attempt to cancel at `prepared`, keep stop intent after `record`, stop a recording, wait completion/failure while racing quit cap |
+| shutdown | Cancel a countdown, mark an opening/preparing attempt to cancel at `prepared`, keep stop intent after `record`, stop a recording, wait completion/failure while racing the quit deadline |
 | setPermission | Always store the latest status; while idle/needsPermission re-settle on a change, never replace a busy state |
 | outputDirChanged | Clear the remembered outputDirUnavailable, also while needsPermission; update the state only when idle |
 | start | Preflight (a refusal emits a failed event marked `preflight`, naming no session), quality and countdown snapshots, session, folder probe, unique writer, overlay prepare, host start; clean late results |
@@ -71,10 +71,11 @@ Process callbacks log uncaught exceptions and rejections; the first uncaught exc
 | watchDisk | While recording, poll free space on one non-overlapping timer; log once below the warning threshold, request one normal stop below the stop threshold; a failed poll logs once |
 | retainedWriteError | Drain the writer within a bound and return its retained write/sync error, used only to reclassify capture_start_failed |
 | handleHostFailure | Fail only when a session exists; before `record` as capture_start_failed naming the phase |
+| cancelMarked | An attempt sleep or quit marked before `prepared` is cancelled with that reason instead of failing on a host error or loss, display removal, or a timed-out or refused request |
 | fail | Detach session, clear deadline, countdown and health timers, close the overlay, stop host, idle immediately, report a writer-retained disk error instead of capture_start_failed, abandon writer, emit failure with its file outcome, session trace and optional partial path, remove the sentinel |
 | trace | The session's id, temporary path and recording/stop-request times carried on captureStarted, saved and failed (plan 029) |
 | clearTimer / clearDisk / clearHealth | Cancel and clear the session deadline / free-space poll / poll and stall timers |
-| setState / emit | Replace state and emit / notify registered listeners |
+| setState / emit | Replace state and emit / notify registered listeners, logging a throwing one so the others and the recorder's own cleanup still run |
 
 ## Main capture supervisor
 
@@ -250,7 +251,7 @@ The page's window-message callback checks source/marker/port before creating the
 | Function | Contract |
 | --- | --- |
 | qualityGroups | Video quality, resolution cap and frame rate; an unverified frame rate stays listed but not selectable |
-| hotkeyGroup | Recommended default, the saved custom value when distinct, and Off; the renderer adds Custom shortcut…; a refused registration adds a diagnostic; Off keeps the remembered accelerator |
+| hotkeyGroup | Recommended default, the saved custom value when distinct, and Off; the renderer adds Custom shortcut…; a refused registration adds a diagnostic, as does a Settings shortcut (⌘⌥,) that failed to register or is taken by the recording shortcut; Off keeps the remembered accelerator |
 | updateChecksGroup | On/Off for the launch check; empty when the context has no update state |
 | languageGroup | English and Traditional Chinese; never locked, because language cannot touch a capture |
 | settingsView | The panel's whole view: title, hint, failure text, the three tabs (the failures tab counting unread rows) and groups with the actions stripped; failure rows carry their day, short time, file name and full path |

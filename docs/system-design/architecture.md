@@ -59,7 +59,7 @@ The tray, menu and notifications are native Electron APIs in main. The settings 
 | `main/settings-window.ts` | The panel window, sender validation and serialized saves | What a preference means |
 | `renderer/settings.ts` / `preload/settings.ts` | Rendering a view and echoing an id / the read-choose-subscribe bridge | Preference state, actions or Node APIs |
 | `main/permission.ts` | Screen-permission cache and polling | Proof of system-audio permission |
-| `main/log.ts` | Synchronous text logging and rotation | Media content |
+| `main/log.ts` | Text logging through a bounded asynchronous queue, with rotation | Media content |
 | `main/session-log.ts` | The per-launch run id and the versioned session record beside each capture and outcome line | Pairing recordings with sessions (a development analyzer's job) |
 | `shared/i18n.ts` | English message keys, Traditional Chinese templates, language validation | OS dialog language or diagnostic translation |
 | `shared/*` | State, protocol, quality and countdown contracts and pure functions | Electron or DOM dependencies |
