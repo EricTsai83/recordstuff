@@ -82,6 +82,10 @@ async function capture(armed: boolean, restore = false): Promise<void> {
     localFailure("hotkey", text("Could not edit the shortcut. Try again."));
   }
 }
+/** An action (a link, a folder, a system pane) saves nothing: its retry repeats the action and is labelled so. */
+function isAction(group: SettingsGroup, choice: string | undefined): boolean {
+  return group.kind === "actions" || Boolean(group.actions?.some(action => action.id === choice));
+}
 function retryAllowed(group: SettingsGroup): boolean {
   return Boolean(failure?.choice && failure.group === group.id && group.enabled &&
     failure.baseline === committed(group) && group.choices.some(c => c.id === failure?.choice && c.enabled));
@@ -103,7 +107,7 @@ function updateDiagnostic(container: HTMLElement, group: SettingsGroup): void {
   const error = area.querySelector<HTMLElement>(".save-error")!;
   const activeFailure = failure?.group === group.id ? failure : undefined;
   error.hidden = !activeFailure;
-  const actionFailure = activeFailure && (group.kind === "actions" ? group.choices : group.actions ?? []).some(choice => choice.id === activeFailure.choice);
+  const actionFailure = activeFailure !== undefined && isAction(group, activeFailure.choice);
   setText(error.querySelector("strong")!, text(actionFailure ? "Action failed" : "Change was not saved"));
   setText(error.querySelector("p")!, activeFailure?.text ?? "");
   const recovery = area.querySelector<HTMLButtonElement>(".recovery")!;
@@ -115,10 +119,11 @@ function updateDiagnostic(container: HTMLElement, group: SettingsGroup): void {
   const retry = area.querySelector<HTMLButtonElement>(".retry")!;
   const hadRetryFocus = document.activeElement === retry;
   retry.hidden = !retryAllowed(group);
-  setText(retry, text("Retry save"));
+  setText(retry, text(actionFailure ? "Retry" : "Retry save"));
   setDisabled(retry, !group.enabled, Boolean(saving));
   const guidance = area.querySelector<HTMLElement>(".reselect")!;
-  guidance.hidden = !activeFailure || retryAllowed(group);
+  // "Choose the setting again" applies to a value; a failed action already says to try again.
+  guidance.hidden = !activeFailure || actionFailure || retryAllowed(group);
   setText(guidance, text("Choose the setting again to retry."));
   area.hidden = !items.length && !activeFailure;
   if (((hadRecoveryFocus && recovery.hidden) || (hadRetryFocus && retry.hidden)) && document.hasFocus())

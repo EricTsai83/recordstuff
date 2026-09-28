@@ -147,6 +147,23 @@ it("arms only after main acknowledges, captures a combination, cancels and obeys
   finishSave();
   await vi.waitFor(() => expect(document.querySelector("#setting-screen-row .save-error strong")!.textContent).toBe("Action failed"));
   expect(document.querySelector("#setting-screen-row .save-error")!.hasAttribute("hidden")).toBe(false);
+  // An action saved nothing: no "choose the setting again" guidance, and its own button stays usable.
+  expect((document.getElementById("setting-screen-retry") as HTMLButtonElement).hidden).toBe(true);
+  expect(document.querySelector<HTMLElement>("#setting-screen-row .reselect")!.hidden).toBe(true);
+  expect((document.getElementById("setting-screen-openSettings") as HTMLButtonElement).disabled).toBe(false);
+  // A footer link is an actions group: its retry repeats the link and is labelled as such.
+  current = structuredClone(current);
+  current.groups.push({ id: "about", label: "Built by", tab: "recording", kind: "actions", enabled: true,
+    choices: [{ id: "website", label: "Official website", enabled: true, checked: false }] });
+  push(current);
+  choose.mockImplementation(async () => ({ view: structuredClone(current), applied: false, failure: "Could not open the link. Try again." }));
+  document.getElementById("setting-about-website")!.click();
+  await vi.waitFor(() => expect(document.querySelector("#setting-about-row .save-error strong")!.textContent).toBe("Action failed"));
+  const linkRetry = document.getElementById("setting-about-retry") as HTMLButtonElement;
+  expect(linkRetry.hidden).toBe(false);
+  expect(linkRetry.textContent).toBe("Retry");
+  expect(document.querySelector("#setting-about-row .save-error p")!.textContent).toBe("Could not open the link. Try again.");
+  expect(document.querySelector<HTMLElement>("#setting-about-row .reselect")!.hidden).toBe(true);
 
 });
 

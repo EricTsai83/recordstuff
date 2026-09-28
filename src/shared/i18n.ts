@@ -173,19 +173,19 @@ export const ZH_TW = {
   "RecordStuff cannot capture the screen. Check that screen recording is allowed in System Settings, then relaunch RecordStuff. Click to relaunch.":
     "RecordStuff 目前無法擷取螢幕。請確認系統設定已允許 RecordStuff 錄製螢幕，然後重新啟動 RecordStuff。點這則通知重新啟動。",
   "RecordStuff needs screen recording access. Click to open System Settings.":
-    "RecordStuff 需要螢幕錄製權限，點這則通知開啟系統設定",
+    "RecordStuff 需要螢幕錄製權限，點這則通知開啟系統設定。",
   "Could not save settings. The output folder is unchanged. Try choosing {path} again.":
-    "無法儲存設定，儲存位置仍是原本的資料夾。想改成 {path} 請再試一次",
+    "無法儲存設定，儲存位置仍是原本的資料夾。想改成 {path} 請再試一次。",
   "Could not save recording quality. Your previous settings are still in use.":
-    "無法儲存錄製品質設定，仍使用原本的選項。請再試一次",
+    "無法儲存錄製品質設定，仍使用原本的選項。請再試一次。",
   "Could not save the language. Your previous language is still in use.":
-    "無法儲存語言設定，仍使用原本的語言。請再試一次",
+    "無法儲存語言設定，仍使用原本的語言。請再試一次。",
   "The system provides {actual} fps. This recording uses {actual} fps (requested {requested} fps).":
     "系統只提供 {actual} fps，本次以 {actual} fps 錄製（設定為 {requested} fps）",
   "RecordStuff is ready in the system tray. Click to start recording; click again to stop.":
-    "RecordStuff 在系統匣待命。左鍵點圖示開始錄製，再點一下停止",
+    "RecordStuff 在系統匣待命。左鍵點圖示開始錄製，再點一下停止。",
   "RecordStuff is ready in the menu bar. Click to start recording; click again to stop.":
-    "RecordStuff 在選單列待命。左鍵點圖示開始錄製，再點一下停止",
+    "RecordStuff 在選單列待命。左鍵點圖示開始錄製，再點一下停止。",
   "RecordStuff cannot capture the screen. Check that screen recording is allowed, then relaunch from the tray menu.":
     "RecordStuff 目前無法擷取螢幕，請確認已允許螢幕錄製，再從選單列重新啟動",
   "This system version does not support system audio capture. macOS 13 or newer is required on Mac.":
@@ -220,15 +220,15 @@ export const ZH_TW = {
   "A short tick plays with each digit. It stops before recording starts and is not recorded.":
     "每個數字出現時會響一聲短促的提示音；開始錄製前就會停止，不會被錄進去。",
   "Could not register the shortcut {value}. Another app may be using it. Choose another shortcut in Settings.":
-    "無法註冊快捷鍵 {value}，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵",
+    "無法註冊快捷鍵 {value}，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵。",
   "Could not save the shortcut. Your previous shortcut is still in use.":
-    "無法儲存快捷鍵設定，仍使用原本的快捷鍵。請再試一次",
+    "無法儲存快捷鍵設定，仍使用原本的快捷鍵。請再試一次。",
   Notifications: "通知",
   "Shows a notification when a recording is saved or an error occurs.": "錄影儲存完成或發生錯誤時顯示通知。",
   "macOS must also allow RecordStuff in System Settings → Notifications.":
     "macOS 另外還要在「系統設定 → 通知」中允許 RecordStuff。",
   "Could not open System Settings. Allow RecordStuff in System Settings → Privacy & Security → Screen & System Audio Recording.":
-    "無法開啟系統設定。請在「系統設定 → 隱私權與安全性 → 螢幕與系統音訊錄製」中允許 RecordStuff",
+    "無法開啟系統設定。請在「系統設定 → 隱私權與安全性 → 螢幕與系統音訊錄製」中允許 RecordStuff。",
   "Open notification settings…": "開啟通知設定…",
   "Notifications are on. This is what a RecordStuff notification looks like.":
     "通知已開啟，RecordStuff 的通知會像這樣顯示。",
