@@ -35,14 +35,14 @@ async function fetchText(url: string): Promise<string> {
   return response.text();
 }
 
-/** GitHub answers asset URLs with a redirect to its object store; both 200 and 302 prove the asset exists. */
+/** Follow GitHub into its object store; only the final successful response proves reachability. */
 async function assertAssetReachable(url: string): Promise<void> {
   const response = await fetchWithTimeout(url, {
     method: "HEAD",
-    redirect: "manual",
+    redirect: "follow",
     headers: { "user-agent": "recordstuff-website-manifest" },
   });
-  if (response.status !== 200 && response.status !== 302) {
+  if (!response.ok) {
     throw new Error(`HEAD ${url} returned ${response.status}; the download button would be broken.`);
   }
 }

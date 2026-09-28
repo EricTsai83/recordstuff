@@ -1,3 +1,4 @@
+import { stableVersion } from "../../src/shared/version.ts";
 /**
  * Shared release manifest schema, validation and presentation helpers.
  *
@@ -64,13 +65,11 @@ export interface ReleaseJson {
   sha256: string;
 }
 
-const TAG_PATTERN = /^v(\d+)\.(\d+)\.(\d+)$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
 
 export function parseStableTag(tag: string): string {
-  const match = TAG_PATTERN.exec(tag);
-  if (!match) {
+  if (!tag.startsWith("v") || tag.includes("+") || !stableVersion(tag.slice(1))) {
     throw new Error(`Tag ${tag} is not a stable vX.Y.Z tag; pre-releases are never published on the site.`);
   }
   return tag.slice(1);

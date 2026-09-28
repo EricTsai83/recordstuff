@@ -57,11 +57,13 @@ export function timeTools<T>(into: ToolTiming[], measure: () => T): T {
 }
 
 function run(tool: string, args: string[], label?: string): RunResult {
+  const timeout = Number(process.env["RECORDSTUFF_MEDIA_TIMEOUT_MS"] ?? 900_000);
+  if (!Number.isSafeInteger(timeout) || timeout <= 0) throw new MeasurementError("RECORDSTUFF_MEDIA_TIMEOUT_MS must be a positive integer");
   const started = performance.now();
   try {
-    const result = spawnSync(tool, args, { encoding: "utf8", maxBuffer: MAX_BUFFER });
+    const result = spawnSync(tool, args, { encoding: "utf8", maxBuffer: MAX_BUFFER, timeout, killSignal: "SIGKILL" });
     if (result.error && (result.error as NodeJS.ErrnoException).code === "ENOENT") throw new ToolMissingError(tool);
-    if (result.error) throw result.error;
+    if (result.error) throw new MeasurementError(`${tool}: ${result.error.message}`);
     return { stdout: result.stdout, stderr: result.stderr, status: result.status };
   } finally {
     if (label) timings?.push({ tool: label, seconds: (performance.now() - started) / 1000 });
@@ -83,8 +85,7 @@ function completed(what: string, result: RunResult): RunResult {
 
 export function hasTool(tool: string): boolean {
   try {
-    run(tool, ["-version"]);
-    return true;
+    return run(tool, ["-version"]).status === 0;
   } catch {
     return false;
   }

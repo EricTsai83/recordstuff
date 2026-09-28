@@ -1,3 +1,4 @@
+import { stableVersion } from "../src/shared/version.ts";
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -10,7 +11,7 @@ import { assertManifestShape, diffManifest, REPOSITORY, type ReleaseManifest } f
 export const signingSHA1 = '01B373511530BBF287CA35E54C10A5F017AAD637';
 /** Stable `1.2.3` or pre-release `1.2.3-rc.1`; the tag is always `v` + version. */
 export function validateTag(tag: string, version: string) {
-  if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$/.test(version) || tag !== `v${version}`) throw new Error('Tag must match the package version (vX.Y.Z or vX.Y.Z-suffix).');
+  if (!stableVersion(version.split('-')[0]) || !/^\d+\.\d+\.\d+(-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/.test(version) || tag !== `v${version}`) throw new Error('Tag must match the package version (vX.Y.Z or vX.Y.Z-suffix).');
 }
 /** Pre-release versions are published flagged as pre-release and never marked latest. */
 export const isPrerelease = (version: string) => version.includes('-');

@@ -11,10 +11,8 @@ export type UpdateResult = { kind: "current"; checkedAt: number } | { kind: "ava
   { kind: "failed" };
 export type UpdateState = { kind: "idle" } | { kind: "checking"; previous?: UpdateResult } | UpdateResult;
 
-export function stableVersion(value: unknown): bigint[] | undefined {
-  if (typeof value !== "string" || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(value)) return;
-  return value.split("+")[0]!.split(".").map(BigInt);
-}
+import { stableVersion } from "../shared/version";
+export { stableVersion } from "../shared/version";
 export function isNewer(remote: string, local: string): boolean {
   const a = stableVersion(remote), b = stableVersion(local);
   if (!a || !b) return false;
