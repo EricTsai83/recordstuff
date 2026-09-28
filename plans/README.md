@@ -6,7 +6,11 @@ Updated: 2026-09-28. This index lists unfinished plans, their order and their ha
 
 ## Order and status
 
-Current order: none; the queue is empty. 035, the final guided native acceptance, closed on 2026-09-28 after its guided round, follow-up fixes and an agent-operated repeat of the cases 045–049 changed ([closure](../docs/verification/history-2026-09.md#plan-035-closure--2026-09-28)).
+Current order: **050**. 035, the final guided native acceptance, closed on 2026-09-28 ([closure](../docs/verification/history-2026-09.md#plan-035-closure--2026-09-28)); 050 comes from its N31 and the maintainer's decision the same day.
+
+| Plan | Source | Scope |
+| --- | --- | --- |
+| [050 — Keep awake while recording, stop and save on sleep](050-sleep-during-recording.md) | 035's N31; maintainer decision after a Cap comparison | Hold a display-sleep blocker during sessions; on system sleep stop and save instead of failing; show notifications that fall during sleep after waking |
 
 Ordering rule: zero-risk cleanup, the prioritized history work and the data-loss guards came first and are complete, as are the maintainer-requested shortcut follow-up 044, the last audit fix, 033, the faster recording rounds, 042, the recording countdown, 040, the Windows tray artwork, 034, whose native Windows acceptance moved to 035, and the measured finalization work, 037, which closed at its measurement gate: saving now links instead of copying, so no separable wait was left to overlap, and the maintainer-requested countdown digit scaling, 045, optional countdown sound, 046, separate recording-failures tab, 047, tray menu and Settings order, 048, and the CPU budget, 049, whose baseline confirmed every target on the reference Mac ([record](../docs/verification/history-2026-09.md#plan-049-cpu-baseline--2026-09-28)). 035 closed last; a new plan starts a new queue here.
 
