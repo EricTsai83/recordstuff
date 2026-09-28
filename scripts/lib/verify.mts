@@ -433,6 +433,9 @@ export interface ProbeInfo {
   streams: ProbeStream[];
 }
 
+/** Above any rate RecordStuff requests or a display delivers; a larger r_frame_rate is a timebase. */
+const MAX_PLAUSIBLE_FPS = 240;
+
 export function parseRatio(text: string | undefined): number | undefined {
   if (!text) return undefined;
   const [num, den] = text.split("/").map(Number);
@@ -712,7 +715,11 @@ export function measure(
   const videoBps =
     numberOrUndefined(video?.bit_rate) ?? (totalBps !== undefined && audioBps !== undefined ? totalBps - audioBps : undefined);
   const frames = numberOrUndefined(video?.nb_read_frames);
-  const nominal = extras.nominalFps ?? parseRatio(video?.r_frame_rate) ?? 30;
+  // Without the log's requested rate, ffprobe's r_frame_rate is only a guess: for MediaRecorder's
+  // variable-rate MP4 it is often the timebase (62500/1), which would count almost every frame as
+  // dropped. Only a plausible capture rate stands in; otherwise drops are not judged.
+  const guessed = parseRatio(video?.r_frame_rate);
+  const nominal = extras.nominalFps ?? (guessed !== undefined && guessed > 0 && guessed <= MAX_PLAUSIBLE_FPS ? guessed : undefined);
   return {
     file,
     fileBytes,
@@ -741,7 +748,7 @@ export function measure(
           channelRms: extras.channelRms ?? { status: "not-requested", reason: "channel RMS was not measured" },
         }
       : undefined,
-    frames: frameIntervals.length > 0 ? frameStats(frameIntervals, nominal) : undefined,
+    frames: frameIntervals.length > 0 && nominal !== undefined ? frameStats(frameIntervals, nominal) : undefined,
     sync: extras.sync ?? { status: "not-requested", reason: "requires --sync and the test material page" },
     decodable: extras.decodeErrors === undefined || extras.decodeErrors.trim() === "",
     decodeErrors: extras.decodeErrors && extras.decodeErrors.trim() !== "" ? extras.decodeErrors.trim() : undefined,
@@ -980,7 +987,11 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
   const offsetExpected = `${OFFSET_EXPECTED}; ≥ ${MIN_SYNC_PAIRS} matched pairs; a stable excess indicates inherent latency`;
   const driftMetric = "End-to-end A/V drift";
   const driftExpected = `< ${THRESHOLDS.maxDriftMs} ms; ≥ ${MIN_SYNC_PAIRS} pairs in each of the first and last ${SYNC_EDGE_SECONDS} s`;
-  const spansTwoWindows = Math.max(expectedSeconds ?? 0, m.durationSeconds ?? 0) >= SYNC_EDGE_SECONDS * 2;
+  // The file's own length decides, as it does for syncStats; the expected length stands in only for a
+  // file without one or one cut short, which still owes the drift it lost (its duration check fails too).
+  const cutShort = expectedSeconds !== undefined && m.durationSeconds !== undefined && expectedSeconds - m.durationSeconds > DURATION_TOLERANCE_SECONDS;
+  const spanSeconds = m.durationSeconds === undefined || cutShort ? Math.max(expectedSeconds ?? 0, m.durationSeconds ?? 0) : m.durationSeconds;
+  const spansTwoWindows = spanSeconds >= SYNC_EDGE_SECONDS * 2;
   const shortNote = `Needs a recording of at least ${SYNC_EDGE_SECONDS * 2} s; not judged for a short file`;
   if (m.sync.status !== "measured") {
     checks.push(unmeasured(offsetMetric, offsetExpected, m.sync, syncRequired));
@@ -1164,7 +1175,14 @@ export function formatText(file: string, entry: CaptureLogEntry | undefined, che
   return lines.join("\n");
 }
 
-const cell = (text: string): string => text.replace(/\|/g, "\\|");
+/** Longest text one Markdown cell keeps; the console report prints the rest. */
+const MAX_CELL_CHARS = 600;
+/** A table row is one line: a multi-line decoder error would otherwise end the table mid-row. */
+const cell = (text: string): string => {
+  const line = text.split(/\r?\n/).map((part) => part.trim()).filter(Boolean).join(" · ");
+  const kept = line.length > MAX_CELL_CHARS ? `${line.slice(0, MAX_CELL_CHARS)}…` : line;
+  return kept.replace(/\|/g, "\\|");
+};
 
 /** One Markdown section per file for `docs/verification/measurements/<date>.md`. */
 export function formatMarkdown(

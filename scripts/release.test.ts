@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { assertDmgContents, assertPublishedAssets, assertUnreleased, compareVersions, failureReason, isPrerelease, notes, releaseMount, renderDownloadSection, releaseFactsFromManifest, renderVerificationRecord, replaceMarked, setPackageVersion, validateDigest, validateTag, type ReleaseFacts } from './release.mts';
+import { assertDmgContents, assertPublishedAssets, assertUnreleased, compareVersions, failureReason, isPrerelease, latestFlag, notes, releaseMount, renderDownloadSection, releaseFactsFromManifest, renderVerificationRecord, replaceMarked, setPackageVersion, validateDigest, validateTag, type ReleaseFacts } from './release.mts';
 
 describe('release gates', () => {
   it('accepts only a tag equal to v + package version, stable or pre-release', () => {
@@ -45,7 +45,7 @@ describe('release gates', () => {
     expect(body).toContain('not notarized');
     expect(body).toContain('Screen & System Audio Recording');
     expect(body).toContain('Update manually');
-    expect(body).toContain('Check for updates…');
+    expect(body).toContain('Check for updates… in Settings → General');
     expect(body).toContain('Downloads and installation remain manual');
     expect(body).toContain('Remove');
     expect(body).toContain('Trash');
@@ -163,6 +163,13 @@ describe('release tool failures', () => {
     expect(failureReason({ stderr: '  HTTP 404  \n', status: 1, signal: null })).toBe('HTTP 404');
     expect(failureReason({ stderr: '', status: 2, signal: null })).toBe('exit status 2');
     expect(failureReason({ stderr: null, status: null, signal: 'SIGKILL' })).toBe('killed by SIGKILL');
+  });
+  it('marks only a version newer than every published stable release as latest', () => {
+    const published = [{ tag_name: 'v1.2.0' }, { tag_name: 'v1.3.0-rc.1', prerelease: true }, { tag_name: 'v9.0.0', draft: true }];
+    expect(latestFlag('1.3.0', published)).toBe('--latest');
+    expect(latestFlag('1.1.5', published)).toBe('--latest=false');
+    expect(latestFlag('1.4.0-rc.1', published)).toBe('--prerelease');
+    expect(latestFlag('1.0.0', [])).toBe('--latest');
   });
 
   it('forces a busy detach and removes only an unmounted mount point, without throwing', () => {

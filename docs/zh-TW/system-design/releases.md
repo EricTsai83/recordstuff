@@ -22,7 +22,7 @@ Vercel 的 Root Directory 仍為 `website`，必須啟用 **Include source files
 
 會停止發布的閘門，依序為：tag 指向的 commit 不是 `origin/main` 的祖先；tag 格式錯誤或比 package.json 最後記錄的版本舊；工作樹不乾淨；該 tag 已有 release（含 draft）；程式檢查失敗；缺 secrets 或匯入的憑證指紋不是 `01B373511530BBF287CA35E54C10A5F017AAD637`；bundle 簽章、identifier、hardened runtime 或 designated requirement 失敗；DMG 根目錄不是恰為 `Applications` 與 `RecordStuff.app` 加允許的隱藏 Finder 版面檔；App 版本或架構不符；重驗時候選 metadata 或 SHA256SUMS 不同；tag 不再指向已驗證的 commit。沒有未簽署或部分驗證的後備路徑。
 
-版本語意：tag 是版本的唯一來源。build job 在 `pnpm dist:mac` 前把 tag 的版本寫入工作樹的 package.json（`release.mts version`），所以 App、DMG 與 metadata 都帶著它；repo 裡的 package.json 記錄最新的已記錄正式版供 `preflight` 使用：record job 只讓它前進、永不倒退，下載指標則依已提交的 manifest。`vX.Y.Z` 公開為最新版本。`vX.Y.Z-suffix`（例如 `v0.2.0-rc.1`）公開時標為 pre-release，永不標為 latest，也不更新 package.json 與 README。兩者使用相同的建置與閘門。
+版本語意：tag 是版本的唯一來源。build job 在 `pnpm dist:mac` 前把 tag 的版本寫入工作樹的 package.json（`release.mts version`），所以 App、DMG 與 metadata 都帶著它；repo 裡的 package.json 記錄最新的已記錄正式版供 `preflight` 使用：record job 只讓它前進、永不倒退，下載指標則依已提交的 manifest。`vX.Y.Z` 公開為最新版本；若已有更新的正式版公開，則維持為歷史版本（`--latest=false`），讓 app 更新檢查的備援目標「最新版本」永不倒退。`vX.Y.Z-suffix`（例如 `v0.2.0-rc.1`）公開時標為 pre-release，永不標為 latest，也不更新 package.json 與 README。兩者使用相同的建置與閘門。
 
 憑證指紋固定。每次建置把加密 PKCS#12 匯入暫時 keychain，設定 codesign 金鑰存取與該憑證的 Code Signing 信任。trap 與 always cleanup 移除憑證檔、keychain 與信任。此設計支援可拋棄的 GitHub-hosted runner，持久 runner 需另行調整。
 
@@ -61,7 +61,7 @@ gh workflow run release.yml --ref main -f tag=v0.1.2
 
 ## 工具邊界與失敗
 
-`node scripts/release.mts preflight|candidate|verify|publish vX.Y.Z [directory]` 共用本機與 CI 驗證。`preflight` 要求乾淨工作樹、tag 不比 package.json 最後記錄的版本舊，以及未用過的 release。`version` 把 tag 的版本寫入工作樹的 package.json 供建置。`record` 讀取已提交的正式版 manifest 與公開 release，寫入缺少的驗證紀錄；正式版 tag 另外讓 package.json 前進，並只在上述 promoted、unchanged 或 historical-only 結果允許時寫入正式版網站 manifest 與 README 的標記區塊（`<!-- release-download:start/end -->`）；絕不覆寫既有紀錄。`candidate` 在最終 DMG bytes 上產生 `SHA256SUMS`、`release.json`，記錄版本、source commit、repository、平台、檔名、大小、SHA-256、憑證指紋、app.asar 雜湊、Node 與 pnpm。`verify` 以這些檔案重驗候選目錄。`published` 對從公開網址下載的檔案做同樣檢查，版本取自 tag、source commit 取自 tag 指向的 commit（因此在 main checkout 上可用目前工具驗任何舊版本），並額外要求 GitHub release 非 draft、恰有這三個 assets，且名稱、大小與 GitHub 計算的 SHA-256 digest 相符。`publish` 重驗、確認 tag 指向已驗證 commit、寫出英文說明，並以 `gh release create --verify-tag`（`--latest` 或 `--prerelease`）建立公開 release。
+`node scripts/release.mts preflight|candidate|verify|publish vX.Y.Z [directory]` 共用本機與 CI 驗證。`preflight` 要求乾淨工作樹、tag 不比 package.json 最後記錄的版本舊，以及未用過的 release。`version` 把 tag 的版本寫入工作樹的 package.json 供建置。`record` 讀取已提交的正式版 manifest 與公開 release，寫入缺少的驗證紀錄；正式版 tag 另外讓 package.json 前進，並只在上述 promoted、unchanged 或 historical-only 結果允許時寫入正式版網站 manifest 與 README 的標記區塊（`<!-- release-download:start/end -->`）；絕不覆寫既有紀錄。`candidate` 在最終 DMG bytes 上產生 `SHA256SUMS`、`release.json`，記錄版本、source commit、repository、平台、檔名、大小、SHA-256、憑證指紋、app.asar 雜湊、Node 與 pnpm。`verify` 以這些檔案重驗候選目錄。`published` 對從公開網址下載的檔案做同樣檢查，版本取自 tag、source commit 取自 tag 指向的 commit（因此在 main checkout 上可用目前工具驗任何舊版本），並額外要求 GitHub release 非 draft、恰有這三個 assets，且名稱、大小與 GitHub 計算的 SHA-256 digest 相符。`publish` 重驗、確認 tag 指向已驗證 commit、寫出英文說明，並以 `gh release create --verify-tag`（`--latest`、比已公開正式版舊的正式版用 `--latest=false`，或 `--prerelease`）建立公開 release。
 
 `start-app.mjs --verify-app APP_PATH` 只使用 `RECORDSTUFF_SIGN_IDENTITY` 公開 SHA-1，重用原本的深度簽章、憑證、identifier、runtime 與 designated requirement 驗證，不需要私鑰、不建置、不啟動 App。`assertDmgContents` 要求根目錄恰為 `Applications` 與 `RecordStuff.app`，隱藏項目最多只能是一般檔案 `.DS_Store`、`.VolumeIcon.icns` 與 `.background.png`／`.background.tiff`；任何其他項目、任何隱藏資料夾或符號連結，或以 `.` 開頭藏起來的指南，都會讓發布失敗。
 

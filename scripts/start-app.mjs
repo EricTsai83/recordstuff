@@ -19,7 +19,9 @@ function run(command, args, capture = false) {
     cwd: root, env, encoding: "utf8", stdio: capture ? "pipe" : "inherit",
   });
   if (result.error || result.status !== 0) {
-    throw new Error(`${command} failed: ${result.error?.message ?? result.stderr?.trim() ?? result.signal ?? result.status}`);
+    // As release.mts failureReason: an empty captured stderr must not leave the reason blank.
+    const reason = result.error?.message ?? (result.stderr?.trim() || (result.signal ? `killed by ${result.signal}` : `exit status ${result.status}`));
+    throw new Error(`${command} failed: ${reason}`);
   }
   return result;
 }

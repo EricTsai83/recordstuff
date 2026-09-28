@@ -15,6 +15,16 @@ export function validateTag(tag: string, version: string) {
 }
 /** Pre-release versions are published flagged as pre-release and never marked latest. */
 export const isPrerelease = (version: string) => version.includes('-');
+/**
+ * The `gh release create` flag for `version`. GitHub's latest release is the
+ * app's update fallback and the guides' download link, so it only moves
+ * forward: a stable version published after a newer stable one stays historical.
+ */
+export function latestFlag(version: string, published: { tag_name: string; draft?: boolean; prerelease?: boolean }[]): '--prerelease' | '--latest' | '--latest=false' {
+  if (isPrerelease(version)) return '--prerelease';
+  const newer = published.some(r => !r.draft && !r.prerelease && stableVersion(r.tag_name.slice(1)) && compareVersions(r.tag_name.slice(1), version) > 0);
+  return newer ? '--latest=false' : '--latest';
+}
 export function validateDigest(actual: string, expected: string) {
   if (!/^[a-f0-9]{64}$/.test(expected) || actual !== expected) throw new Error('Checksum mismatch.');
 }
@@ -205,7 +215,7 @@ Install: open the DMG and drag RecordStuff onto the Applications folder, then ej
 
 The app is self-signed and not notarized by Apple. If blocked after installing or updating, manually open System Settings → Privacy & Security, scroll down to Security, find RecordStuff and click Open Anyway. Done only dismisses the warning. Recipients do not install certificates. Then allow Screen & System Audio Recording and relaunch when macOS asks.
 
-Update manually: stop recording, quit RecordStuff from its menu, download the new DMG and drag the app into Applications, replacing the existing copy. The signing identity is unchanged, so settings and permissions carry over. Use Check for updates… in the app menu to find new releases; the optional launch check runs at most once per 24 hours. Downloads and installation remain manual.
+Update manually: stop recording, quit RecordStuff from its menu, download the new DMG and drag the app into Applications, replacing the existing copy. The signing identity is unchanged, so settings and permissions carry over. Use Check for updates… in Settings → General to find new releases; the optional launch check runs at most once per 24 hours. Downloads and installation remain manual.
 
 Remove: quit the app and move RecordStuff.app from Applications to the Trash. Recordings, settings and logs stay on disk; the guide explains optional cleanup.
 
@@ -247,7 +257,7 @@ async function verifyDmg(directory: string, tag: string, c: ReleaseContext = con
     const check = spawnSync(process.execPath, [path.join(root, 'scripts/start-app.mjs'), '--verify-app', app], {
       cwd: root, encoding: 'utf8', env: { ...process.env, RECORDSTUFF_SIGN_IDENTITY: signingSHA1 },
     });
-    if (check.status !== 0) throw new Error(`App signature/identity verification failed: ${check.stderr}`);
+    if (check.error || check.status !== 0) throw new Error(`App signature/identity verification failed: ${failureReason(check)}`);
     return { ...c, platform: 'darwin-arm64', file, size: statSync(dmg).size, sha256: await digest(dmg),
       signingCertificateSHA1: signingSHA1, appAsarSHA256: await digest(path.join(app, 'Contents/Resources/app.asar')) };
   } finally {
@@ -388,11 +398,12 @@ async function main() {
   if (api(`repos/${c.repository}/commits/${tag}`).sha !== c.sourceCommit) throw new Error('Tag does not point to the verified source commit.');
   const body = path.join(directory, 'release-notes.md');
   writeFileSync(body, notes(c.version, c.repository, c.sourceCommit));
-  const prerelease = isPrerelease(c.version);
-  run('gh', ['release', 'create', tag, '--repo', c.repository, '--verify-tag', prerelease ? '--prerelease' : '--latest',
+  const flag = latestFlag(c.version, releases(c.repository));
+  run('gh', ['release', 'create', tag, '--repo', c.repository, '--verify-tag', flag,
     '--title', `RecordStuff ${c.version} — macOS arm64`, '--notes-file', body,
     ...[metadata.file, 'SHA256SUMS', 'release.json'].map(f => path.join(directory, f))]);
-  console.log(`Published ${tag}${prerelease ? ' as a pre-release' : ' as latest'} from verified candidate ${metadata.sha256}.`);
+  const as = { '--prerelease': ' as a pre-release', '--latest': ' as latest', '--latest=false': ' without moving latest' }[flag];
+  console.log(`Published ${tag}${as} from verified candidate ${metadata.sha256}.`);
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   void main().catch((error: unknown) => { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; });

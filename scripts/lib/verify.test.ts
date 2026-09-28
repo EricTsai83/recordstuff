@@ -721,6 +721,10 @@ describe("required evidence (plan 030)", () => {
     const cut = syncChecks(measured(seconds(29), seconds(29).map((t) => t + 0.04), 30), { seconds: 180, duration: 30 });
     expect(drift(cut)?.verdict).toBe("incomplete");
     expect(cut["Recording duration"]?.verdict).toBe("fail");
+    // A file a fraction of a second shorter than its session is not cut short: its own length decides, as in syncStats.
+    const edge = syncChecks(measured(seconds(119), seconds(119).map((t) => t + 0.04), 119.8), { seconds: 120.2, duration: 119.8 });
+    expect(edge["Recording duration"]?.verdict).toBe("pass");
+    expect(drift(edge)).toMatchObject({ verdict: "n/a", note: expect.stringContaining("at least 120 s") });
     // An informational long report keeps n/a.
     expect(drift(syncChecks(measured(seconds(60), seconds(60), 180), { seconds: 180, required: false }))?.verdict).toBe("n/a");
   });
@@ -775,5 +779,28 @@ describe("required evidence (plan 030)", () => {
     const md = formatMarkdown("g", "g.mp4", ENTRY, checks);
     expect(md).toContain("| Channel energy (RMS) | > -60 dBFS in each of 2 channels | not measured (Required evidence blocked: ffmpeg is missing) | ⛔ |");
     expect(md).toContain("Result: ⛔ blocked");
+  });
+
+  it("keeps a multi-line decoder error inside its table row", () => {
+    const m = measure("t.mp4", 1, info(), [evenFrames(900, 30)], { decodeErrors: "[mov] moov atom not found\r\n\n[in#0] Error opening input | twice" });
+    const md = formatMarkdown("t", "t.mp4", ENTRY, judge(m, ENTRY));
+    const rows = md.split("\n").filter((line) => line.startsWith("|"));
+    expect(rows.every((line) => line.endsWith("|"))).toBe(true);
+    expect(md).toContain("[mov] moov atom not found · [in#0] Error opening input \\| twice");
+    const long = formatMarkdown("t", "t.mp4", ENTRY, judge(measure("t.mp4", 1, info(), [], { decodeErrors: "x".repeat(5000) }), ENTRY));
+    expect(long).toContain("x…");
+    expect(long).not.toContain("x".repeat(600));
+  });
+});
+
+describe("drops without the requested frame rate", () => {
+  it("does not read ffprobe's timebase as a frame rate", () => {
+    // A real MediaRecorder file without a matching log reported r_frame_rate 62500/1: every frame looked dropped.
+    const probe = info({ video: { r_frame_rate: "62500/1" } });
+    const guessed = measure("x.mp4", 1, probe, [evenFrames(900, 30)], {});
+    expect(guessed.frames).toBeUndefined();
+    expect(judge(guessed, undefined, { movingMaterial: true }).find((c) => c.metric === "Dropped frames")?.verdict).toBe("n/a");
+    const requested = measure("x.mp4", 1, probe, [evenFrames(900, 30)], { nominalFps: 30 });
+    expect(requested.frames).toMatchObject({ dropped: 0, dropRate: 0 });
   });
 });
