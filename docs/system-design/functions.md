@@ -33,7 +33,7 @@ Process callbacks log uncaught exceptions and rejections; the first uncaught exc
 
 ## Display selection
 
-[main/display-source.ts](../../src/main/display-source.ts): `resolveDisplayPreference` resolves the saved primary or explicit display; `selectScreenSource` applies primary fallback or exact explicit matching. `DisplayRequest.run` checks topology around source enumeration, retries explicit-source races up to three attempts, and settles the callback once, also when something throws (reported through the optional `failed` dependency). `cancel` settles pending callbacks and clears retry delays. `displayResolution` shares availability with tray and settings.
+[main/display-source.ts](../../src/main/display-source.ts): `resolveDisplayPreference` resolves the saved primary or explicit display; `selectScreenSource` requires exactly one source whose display id matches the resolved primary or explicit display, with no fallback. `DisplayRequest.run` checks topology around source enumeration, retries a missing source or a topology change up to three attempts for either preference, and settles the callback once, also when something throws (reported through the optional `failed` dependency). `cancel` settles pending callbacks and clears retry delays. `displayResolution` shares availability with tray and settings.
 
 [main/display-media.ts](../../src/main/display-media.ts): `DisplayMedia` owns display-media state across attempts. `begin(sessionId)` cancels the previous request and snapshots the saved preference; `answer(owns, callback)` runs the attempt's `DisplayRequest` only for a frame the attempt owns and otherwise returns no source; `explain(code)` replaces one explainable host error with main's refusal reason; `settle()` cancels pending work and stops watching the active display; `topologyChanged(connectedIds)` advances the topology generation and reports whether the recorded display disconnected. `failure` is the display diagnostic shown by tray and settings.
 
@@ -45,7 +45,6 @@ Process callbacks log uncaught exceptions and rejections; the first uncaught exc
 | --- | --- |
 | formatTimestamp | Date → local-time filename timestamp |
 | errorCodeOf | Known cause.code or caller-provided fallback |
-| delay / messageOf | Grace-period Promise / error string conversion |
 | Recorder constructor | Apply clock/ID/deadline/log defaults and subscribe to host messages/failures |
 | state getter | Current authoritative RecordingState |
 | sessionId getter | In-flight session ID for diagnostics such as sleep/wake logging |
@@ -76,7 +75,6 @@ Process callbacks log uncaught exceptions and rejections; the first uncaught exc
 | trace | The session's id, temporary path and recording/stop-request times carried on captureStarted, saved and failed (plan 029) |
 | clearTimer / clearDisk / clearHealth | Cancel and clear the session deadline / free-space poll / poll and stall timers |
 | setState / emit | Replace state and emit / notify registered listeners |
-| nextStateChange | One-shot state subscription resolved and removed after a state event |
 
 ## Main capture supervisor
 

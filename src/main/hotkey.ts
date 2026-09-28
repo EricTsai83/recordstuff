@@ -78,7 +78,7 @@ export class RecordingHotkey {
    * Make the OS registration match `settings`: the previous accelerator is
    * released first, so a change never leaves two combinations active. Returns
    * the new status; `failed` means the settings were saved but the key does
-   * nothing until the conflict is resolved or another preset is chosen.
+   * nothing until the conflict is resolved or another shortcut is chosen.
    */
   apply(settings: HotkeySettings): HotkeyStatus {
     if (this.disposed) return this._status;

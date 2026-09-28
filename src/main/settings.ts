@@ -1,5 +1,6 @@
 /**
- * Persistent output folder, recording quality, and presentation language.
+ * Persistent preferences: output folder, recording display, quality, countdown,
+ * shortcut, notifications, update checks, language and appearance.
  * See docs/system-design/desktop.md for the schema and migration rules.
  * Writes replace the file atomically (`writeFileAtomic`), so a crash or power
  * loss mid-write leaves the previous file. Any read problem falls back to the
@@ -199,7 +200,7 @@ export class SettingsStore {
     return { ...this.settings.hotkey };
   }
 
-  /** Rejects (and keeps the previous choice) when the accelerator is not a preset or the write fails. */
+  /** Rejects (and keeps the previous choice) when the accelerator is not a valid shortcut or the write fails. */
   setHotkey(hotkey: HotkeySettings): Promise<void> {
     hotkey = { ...hotkey };
     if (!isHotkeySettings(hotkey)) return Promise.reject(new Error(`unsupported shortcut: ${JSON.stringify(hotkey)}`));

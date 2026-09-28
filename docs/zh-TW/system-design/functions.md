@@ -33,7 +33,7 @@
 
 ## 螢幕選擇
 
-[main/display-source.ts](../../../src/main/display-source.ts)：`resolveDisplayPreference` 解析保存的主螢幕或指定目標；`selectScreenSource` 套用主螢幕回退或指定目標精確匹配。`DisplayRequest.run` 在來源列舉前後檢查配置，指定來源競態最多嘗試三次，callback 只結算一次，途中拋出例外時也一樣（經可選的 `failed` 依賴回報）。`cancel` 結算等待中的 callback 並清除重試延遲。`displayResolution` 讓 tray 與設定共用可用性判定。
+[main/display-source.ts](../../../src/main/display-source.ts)：`resolveDisplayPreference` 解析保存的主螢幕或指定目標；`selectScreenSource` 要求恰好一個來源的 display id 與解析出的主螢幕或指定螢幕相符，不做回退。`DisplayRequest.run` 在來源列舉前後檢查配置，兩種偏好在來源缺失或配置變更時都最多嘗試三次，callback 只結算一次，途中拋出例外時也一樣（經可選的 `failed` 依賴回報）。`cancel` 結算等待中的 callback 並清除重試延遲。`displayResolution` 讓 tray 與設定共用可用性判定。
 
 [main/display-media.ts](../../../src/main/display-media.ts)：`DisplayMedia` 保存跨錄製嘗試的 display-media 狀態。`begin(sessionId)` 取消前一個請求並快照保存的螢幕偏好；`answer(owns, callback)` 只替本次嘗試擁有的 frame 執行 `DisplayRequest`，否則不給來源；`explain(code)` 以 main 的拒絕原因取代一個可解釋的 host 錯誤；`settle()` 取消未完成的工作並停止監看使用中的螢幕；`topologyChanged(connectedIds)` 推進配置世代，並回報錄製中的螢幕是否已中斷連線。`failure` 是 tray 與設定顯示的螢幕診斷。
 
@@ -45,7 +45,6 @@
 | --- | --- |
 | `formatTimestamp(date)` | Date → 本地時間安全檔名，不使用 UTC |
 | `errorCodeOf(cause, fallback)` | 已知 cause.code → ErrorCode；其他回 fallback |
-| `delay(ms)` / `messageOf(cause)` | 退出 grace 等待 Promise／錯誤字串化 |
 | `Recorder.constructor(deps)` | 補 clock、id、timeout、log 預設並訂閱 host 訊息／故障 |
 | `state` getter | 回目前權威狀態；不得由 Tray 另外維護一份業務狀態 |
 | `sessionId` getter | 進行中的 session id，供睡眠／喚醒 log 等診斷使用 |
@@ -76,7 +75,6 @@
 | `trace(session)` | captureStarted、saved、failed 帶的 session id、暫存路徑與錄製／要求停止時間（plan 029） |
 | `clearTimer` / `clearDisk` / `clearHealth` | 取消並清除 session deadline／可用空間查詢／查詢與停滯 timer |
 | `setState(state)` / `emit(event)` | 替換狀態並發事件／依序呼叫 listeners |
-| `nextStateChange()` | 一次性訂閱 state，收到後取消訂閱並 resolve |
 
 ## Host 監督器 — main/capture-host.ts
 

@@ -15,8 +15,8 @@ stateDiagram-v2
     starting --> countdown: prepared（開啟倒數）
     starting --> recording: prepared、record、started（關閉倒數）
     countdown --> recording: record、started
-    countdown --> idle: cancelled（toggle／選單／退出）
-    starting --> idle: cancelled（退出）
+    countdown --> idle: cancelled（toggle／選單／退出／睡眠）
+    starting --> idle: cancelled（選單／退出／睡眠）
     recording --> stopping: stop / 退出
     stopping --> idle: 寫完並改名 / saved
     starting --> idle: failed
@@ -46,8 +46,8 @@ stateDiagram-v2
 - 在 N 秒前 300 ms 要求 overlay 離開：數字以 120 ms 淡出，main 再等一個穩定間隔（34 ms）後銷毀視窗。Recorder 最多等這個確認 500 ms；逾時就銷毀視窗、寫 log 並繼續擷取。`record` 在 N 秒送出；若 dismissal 更晚完成，則在它完成時送出。
 - Overlay（見[桌面設計](desktop.md#倒數-overlay)）以具備 `show`、`update`、`dismiss`、`close` 的 presenter 注入，Recorder 因此不依賴 Electron。Presenter 錯誤只寫 log，永不讓錄影失敗；tray 仍會顯示倒數。
 - 倒數音效（plan 046，預設開啟，可在「設定 → 錄影」切換）在每個 session 與倒數一起讀取一次並傳給 presenter；`prepared` log 行以 `sound on` 或 `sound off` 結尾。overlay 頁面在每個新數字時播放一聲 −20 dBFS、523 Hz 的柔和馬林巴般提示音，數字 1 升高五度；歸零、取消或倒數關閉時都不響。每聲從該數字的 tick 時間起持續 140 ms，因此最後一聲（數字 1）在 `record` 前 860 ms 就結束，遠早於 overlay 離開：錄影靠時間上的分離保持乾淨（與數字相同），不依賴仍未驗證的 `restrictOwnAudio`。`pnpm acceptance` 會以兩個音高檢查有音效的 session 錄影前 500 ms 的音訊。autorecord 永遠不發聲，因此矩陣與音訊品質錄影只有素材本身的聲音。
-- 送出 `record` 前，toggle、tray 選單的「取消錄影」或快捷鍵都會取消這次嘗試：清除 timer、停止 host、關閉 overlay、abandon writer 讓空的暫存檔被刪除，並回到嘗試前的 idle（保留 lastSavedPath）。`cancelled` 事件帶取消原因（`toggle`、`menu` 或 `quit`），log 寫 `cancelled: session … (reason); no media was recorded`。不產生失敗狀態、歷史項目、通知或螢幕診斷。
-- 送出 `record` 後，toggle 會變成既有的「開始後停止」要求，等 `started` 到達再套用，因此幾毫秒的競態不會讓擷取持續進行。starting 與 stopping 期間的點擊仍然無作用。倒數期間開啟的 tray 選單在開著時不會更新（見[桌面設計](desktop.md#tray-與通知)），所以擷取開始後才點選其中的「取消倒數」，會停止錄影並存檔。
+- 送出 `record` 前，toggle、tray 選單的「取消錄影」或快捷鍵都會取消這次嘗試：清除 timer、停止 host、關閉 overlay、abandon writer 讓空的暫存檔被刪除，並回到嘗試前的 idle（保留 lastSavedPath）。`cancelled` 事件帶取消原因（`toggle`、`menu`、`quit` 或 `sleep`），log 寫 `cancelled: session … (reason); no media was recorded`。不產生失敗狀態、歷史項目、通知或螢幕診斷。
+- 送出 `record` 後，toggle 會變成既有的「開始後停止」要求，等 `started` 到達再套用，因此幾毫秒的競態不會讓擷取持續進行。starting 與 stopping 期間的點擊仍然無作用。倒數期間開啟的 tray 選單在開著時不會更新（見[桌面設計](desktop.md#tray-與通知)），所以擷取開始後才點選其中的「取消錄影」，會停止錄影並存檔。
 - 所有時間與外觀數值都集中在 [countdown.ts](../../../src/shared/countdown.ts)，作為初始目標；只有書面證據支持時才調整。
 
 ## 期限與故障隔離
@@ -176,7 +176,7 @@ Main 的來源 handler 可記錄具體拒絕原因，取代 renderer 的泛用 A
 
 ## 螢幕選擇
 
-`display-source.ts` 分開處理 Screen API 的目前目標與錄製來源配對。指定螢幕保存 `{ kind: "display", id, label }`，名稱只供顯示。目標缺失或 id 重複立即拒絕；來源缺失／重複或配置變更每隔 150 ms 重試，最多列舉三次。列舉例外保留 macOS 的 permission-denied／其他平台的 no-display 對應。掛住的列舉仍受 recorder 的開始逾時限制；作業結束或被新作業取代會取消 callback 與重試計時器，延遲結果不能授予錄製或覆寫診斷。`display-media.ts` 保存跨作業的狀態：偏好快照、用來解釋下一個 host 錯誤的拒絕原因、監看是否被移除的使用中螢幕，以及螢幕診斷。
+`display-source.ts` 分開處理 Screen API 的目前目標與錄製來源配對。指定螢幕保存 `{ kind: "display", id, label }`，名稱只供顯示。目標缺失或 id 重複立即拒絕；來源缺失／重複或配置變更每隔 150 ms 重試，最多列舉三次。列舉例外經 `failed` 回報，並以 `capture_start_failed`（`source_missing`）拒絕這次嘗試，不當成權限問題。掛住的列舉仍受 recorder 的開始逾時限制；作業結束或被新作業取代會取消 callback 與重試計時器，延遲結果不能授予錄製或覆寫診斷。`display-media.ts` 保存跨作業的狀態：偏好快照、用來解釋下一個 host 錯誤的拒絕原因、監看是否被移除的使用中螢幕，以及螢幕診斷。
 
 `display_unavailable` 表示無法安全解析精確目標，另以 `target_missing`、`source_missing` 或 `topology_changed` 區分原因。不按名稱、尺寸或位置配對，也不自動改寫 id；id 被重用並不能證明同一實體硬體。移除錄製中的螢幕會走 recorder 的冪等 `capture_failed` 路徑，保留可救回的部分內容而不切換來源。螢幕資料是 DIP 邏輯尺寸與縮放比例；輸出像素仍依實際 track 和解析度上限決定。
 
