@@ -200,18 +200,25 @@ describe("the helper resolves the process tree (macOS)", () => {
   const clang = spawnSync("clang", ["--version"]).status === 0;
   it.skipIf(process.platform !== "darwin" || !clang)("samples the root and its descendants and nothing else", async () => {
     const binary = compileSampler(fs.mkdtempSync(path.join(os.tmpdir(), "cpu-sampler-")));
-    const root = spawn("sh", ["-c", "sleep 3 & sleep 3; wait"], { stdio: "ignore" });
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // Its own process group, so the sleeps end with it.
+    const root = spawn("sh", ["-c", "sleep 10 & sleep 10; wait"], { stdio: "ignore", detached: true });
     const sampler = new CpuSampler(binary, root.pid!, [], 200);
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    await sampler.stop();
-    root.kill();
+    const whole = (sample: Sample): boolean =>
+      sample.procs.some((p) => p.pid === root.pid) && sample.procs.filter((p) => p.name === "sleep").length === 2;
+    // Wait for the whole tree, not a fixed time: under the full suite's load the first sample can take over a second.
+    try {
+      const deadline = Date.now() + 5000;
+      while (!sampler.samples.some(whole) && sampler.failure === undefined && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    } finally {
+      await sampler.stop();
+      try { process.kill(-root.pid!, "SIGTERM"); } catch { /* already gone */ }
+    }
     expect(sampler.failure).toBeUndefined();
-    const last = sampler.samples.at(-1)!;
-    const pids = last.procs.map((p) => p.pid);
-    expect(pids).toContain(root.pid);
-    expect(last.procs.filter((p) => p.name === "sleep")).toHaveLength(2);
-    expect(pids).not.toContain(process.pid);
-    expect(last.procs.every((p) => p.pid === root.pid || p.ppid === root.pid)).toBe(true);
-  });
+    expect(sampler.samples.some(whole), `no sample with the root and both sleeps in 5 s (${sampler.samples.length} sample(s))`).toBe(true);
+    const procs = sampler.samples.flatMap((sample) => sample.procs);
+    expect(procs.map((p) => p.pid)).not.toContain(process.pid);
+    expect(procs.every((p) => p.pid === root.pid || p.ppid === root.pid)).toBe(true);
+  }, 15_000);
 });
