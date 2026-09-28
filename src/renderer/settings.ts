@@ -388,6 +388,19 @@ function updateRecordingResult(focusRequested: boolean): void {
     list.append(node("p", "result-history-status"), node("p", "result-empty"), node("div", "result-days"), node("p", "result-history-note section-footnote"));
     panel.append(list);
   }
+  let more = list.querySelector<HTMLButtonElement>(".history-more");
+  if (!more) {
+    more = button("history-more", () => {
+      more!.disabled = true;
+      void window.settings.choose("history", "more").then(result => render(result.view))
+        .catch(() => announce(text("Could not complete this action. Please try again.")))
+        .finally(() => { more!.disabled = false; });
+    });
+    more.className = "history-more";
+    list.append(more);
+  }
+  more.hidden = !view?.recordingResultsRemaining;
+  setText(more, text("Show more failures"));
   const statusLine = list.querySelector<HTMLElement>(".result-history-status")!;
   statusLine.hidden = !status; setText(statusLine, status);
   const empty = list.querySelector<HTMLElement>(".result-empty")!;
@@ -653,6 +666,7 @@ function draw(): void {
   updateScrollHint();
 }
 function render(next: SettingsView): void {
+  if (next.revision !== undefined && view?.revision !== undefined && next.revision < view.revision) return;
   const previous = view;
   if (!next.groups.some(group => group.kind === "shortcut" && group.capturing)) { candidateToConfirm = undefined; preview = ""; previewParts = []; }
   view = next;

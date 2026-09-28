@@ -33,14 +33,14 @@ describe("acceptance subprocess bounds", () => {
  */
 let dir: string;
 let file: string;
-let write: (...messages: string[]) => void;
+let write: (...messages: string[]) => Promise<void>;
 let reader: LogReader;
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-runtime-"));
   file = path.join(dir, "recordstuff.log");
   const log = createFileLogger({ filePath: file, maxBytes: Number.MAX_SAFE_INTEGER, keep: 3, stdout: () => undefined,
     now: () => new Date("2026-09-25T10:00:00.000Z") });
-  write = (...messages) => { for (const message of messages) log(message); };
+  write = async (...messages) => { for (const message of messages) log(message); await log.flush(); };
   reader = new LogReader(file);
 });
 afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
@@ -52,61 +52,61 @@ const failed = (session: string): string =>
 
 describe("interrupted recording cleanup", () => {
   it("waits for the second recording to start, ignoring the first recording's idle and saved lines", async () => {
-    write("state → recording", "saved old.mp4", "state → idle");
+    await write("state → recording", "saved old.mp4", "state → idle");
     const from = reader.end();
-    write("state → starting");
-    const stop = vi.fn(async () => { write("state → stopping"); });
+    await write("state → starting");
+    const stop = vi.fn(async () => { await write("state → stopping"); });
     const pending = finishRecording({ log: reader, from, stop, stopSent: false, signal: new AbortController().signal });
     await delay(200);
     expect(stop).not.toHaveBeenCalled();
-    write("state → recording");
+    await write("state → recording");
     await delay(200);
     expect(stop).toHaveBeenCalledTimes(1);
-    write("saved new.mp4", "state → idle");
+    await write("saved new.mp4", "state → idle");
     await expect(pending).resolves.toBe("new.mp4");
   });
 
   it("follows stop, save and idle into the new file after a rotation without toggling again", async () => {
     const from = reader.end();
-    write("state → recording");
-    const stop = vi.fn(async () => { write("state → stopping"); rotate(); });
+    await write("state → recording");
+    const stop = vi.fn(async () => { await write("state → stopping"); rotate(); });
     const pending = finishRecording({ log: reader, from, stop, stopSent: false, signal: new AbortController().signal });
     await delay(250);
     expect(stop).toHaveBeenCalledTimes(1);
-    write("state → idle", "saved /m/new.mp4", saved("s1", "/m/new.mp4"));
+    await write("state → idle", "saved /m/new.mp4", saved("s1", "/m/new.mp4"));
     await expect(pending).resolves.toBe("/m/new.mp4");
     expect(stop).toHaveBeenCalledTimes(1);
   });
 
   it("does not toggle again when stop was sent but its state transition has not arrived", async () => {
     const from = reader.end();
-    write("state → recording");
+    await write("state → recording");
     const stop = vi.fn();
     const pending = finishRecording({ log: reader, from, stop, stopSent: true, signal: new AbortController().signal });
     await delay(200);
     rotate();
     rotate();
-    write("state → stopping", "saved done.mp4", "state → idle");
+    await write("state → stopping", "saved done.mp4", "state → idle");
     await expect(pending).resolves.toBe("done.mp4");
     expect(stop).not.toHaveBeenCalled();
   });
 
   it("waits for the saved line even when idle was logged first", async () => {
     const from = reader.end();
-    write("state → idle");
+    await write("state → idle");
     const stop = vi.fn();
     const pending = finishRecording({ log: reader, from, stop, stopSent: true, signal: new AbortController().signal });
     await delay(150);
-    write("saved final.mp4");
+    await write("saved final.mp4");
     await expect(pending).resolves.toBe("final.mp4");
     expect(stop).not.toHaveBeenCalled();
   });
 
   it("settles a failure whose cleanup finishes in the new file, reading its record once", async () => {
     const from = reader.end();
-    write("state → recording", "recorder: session s1 failed: capture_host_crashed killed", "state → idle");
+    await write("state → recording", "recorder: session s1 failed: capture_host_crashed killed", "state → idle");
     rotate();
-    write("failed: capture_host_crashed killed (kept /m/s1.recording.mp4)", failed("s1"), failed("s1"));
+    await write("failed: capture_host_crashed killed (kept /m/s1.recording.mp4)", failed("s1"), failed("s1"));
     const stop = vi.fn();
     await expect(finishRecording({ log: reader, from, stop, stopSent: false, signal: new AbortController().signal })).resolves.toBeUndefined();
     expect(stop).not.toHaveBeenCalled();
@@ -114,11 +114,11 @@ describe("interrupted recording cleanup", () => {
 
   it("reads records instead of human lines and ignores another session's outcome", async () => {
     const from = reader.end();
-    write("state → recording", "state → stopping", "state → idle", "saved /m/other.mp4", saved("other", "/m/other.mp4"));
+    await write("state → recording", "state → stopping", "state → idle", "saved /m/other.mp4", saved("other", "/m/other.mp4"));
     const pending = finishRecording({ log: reader, from, stop: vi.fn(), stopSent: true, signal: new AbortController().signal, session: "mine" });
     await delay(200);
     rotate();
-    write("saved /m/mine.mp4", saved("mine", "/m/mine.mp4"));
+    await write("saved /m/mine.mp4", saved("mine", "/m/mine.mp4"));
     await expect(pending).resolves.toBe("/m/mine.mp4");
     expect(recordingOutcome(["[t] saved /m/a.mp4"])).toEqual({ settled: true, saved: "/m/a.mp4" });
     expect(recordingOutcome(["[t] failed: capture_failed x"])).toEqual({ settled: true, failure: "capture_failed x" });
@@ -127,8 +127,8 @@ describe("interrupted recording cleanup", () => {
 
   it("cancels a countdown with one key press and settles on the cancel line without a file (plan 040)", async () => {
     const from = reader.end();
-    write("state → starting", "state → countdown (3)");
-    const stop = vi.fn(async () => { write("state → idle", "cancelled: session s9 (toggle); no media was recorded; temporary file /m/a.recording.mp4"); });
+    await write("state → starting", "state → countdown (3)");
+    const stop = vi.fn(async () => { await write("state → idle", "cancelled: session s9 (toggle); no media was recorded; temporary file /m/a.recording.mp4"); });
     await expect(finishRecording({ log: reader, from, stop, stopSent: false, signal: new AbortController().signal })).resolves.toBeUndefined();
     expect(stop).toHaveBeenCalledTimes(1);
     expect(recordingOutcome(["[t] cancelled: session s9 (quit); no media was recorded"], "s9")).toEqual({ settled: true, cancelled: true });
@@ -136,9 +136,9 @@ describe("interrupted recording cleanup", () => {
   });
 
   it("rejects at once when rotation removed the history it must read", async () => {
-    write("checkpointed");
+    await write("checkpointed");
     const from = reader.end();
-    for (let i = 0; i < 4; i += 1) { rotate(); write(`generation ${i}`); }
+    for (let i = 0; i < 4; i += 1) { rotate(); await write(`generation ${i}`); }
     const started = Date.now();
     await expect(finishRecording({ log: reader, from, stop: vi.fn(), stopSent: true, signal: new AbortController().signal })).rejects.toThrow(LogGapError);
     await expect(settleRecording({ log: reader, from, stop: vi.fn(), stopSent: true, signal: new AbortController().signal })).rejects.toThrow(LogGapError);
@@ -148,7 +148,7 @@ describe("interrupted recording cleanup", () => {
   it("uses an independent cleanup signal and stops waiting when that budget expires", async () => {
     const controller = new AbortController();
     const from = reader.end();
-    write("state → starting");
+    await write("state → starting");
     const pending = finishRecording({ log: reader, from, stop: vi.fn(), stopSent: false, signal: controller.signal });
     const assertion = expect(pending).rejects.toThrow();
     await delay(50);
@@ -157,38 +157,38 @@ describe("interrupted recording cleanup", () => {
   });
 
   it("lets a runner quit an app that never left idle once the settlement budget ends", async () => {
-    write("start: RecordStuff 1.0.0; run r; electron 44", "ready; output dir /tmp", "permission: granted and capture sees 1 screen(s)");
+    await write("start: RecordStuff 1.0.0; run r; electron 44", "ready; output dir /tmp", "permission: granted and capture sees 1 screen(s)");
     const from = reader.end();
     const signal = AbortSignal.timeout(150);
     await expect(settleRecording({ log: reader, from, stop: vi.fn(), stopSent: false, signal })).resolves.toEqual({ neverStarted: true });
-    write("state → starting");
+    await write("state → starting");
     await expect(settleRecording({ log: reader, from, stop: vi.fn(), stopSent: false, signal: AbortSignal.timeout(150) })).rejects.toThrow();
   });
 });
 
 describe("session log waits", () => {
   it("ignores a previous save and observes a newly appended event", async () => {
-    write("saved old.mp4");
+    await write("saved old.mp4");
     const from = reader.end();
-    write("state → recording");
+    await write("state → recording");
     const pending = waitForLog(reader, from, /saved /, "save", new AbortController().signal, 1000);
-    write("saved new.mp4");
+    await write("saved new.mp4");
     await expect(pending).resolves.toMatchObject({ line: "[2026-09-25T10:00:00.000Z] saved new.mp4" });
   });
 
   it("detects saved in the new three-line file after a 31-line file rotated (R2-07)", async () => {
-    for (let i = 0; i < 31; i += 1) write(`old ${i}`);
+    for (let i = 0; i < 31; i += 1) await write(`old ${i}`);
     const from = reader.end();
     const pending = waitForLog(reader, from, /\] saved (.+)$/, "save", new AbortController().signal, 2000);
     await delay(50);
     rotate();
-    write("state → stopping", "state → idle", "saved /m/new.mp4");
+    await write("state → stopping", "state → idle", "saved /m/new.mp4");
     await expect(pending).resolves.toMatchObject({ line: expect.stringContaining("saved /m/new.mp4") });
   });
 
   it("resumes after a hit without replaying it, and finds session records by predicate", async () => {
     const from = reader.end();
-    write("hotkey: X pressed", "state → recording", formatSessionRecord(RUN, { kind: "capture", session: "s1",
+    await write("hotkey: X pressed", "state → recording", formatSessionRecord(RUN, { kind: "capture", session: "s1",
       requested: { videoQuality: "standard", resolutionCap: "1080p", frameRate: 30 },
       capture: { videoBitsPerSecond: 1, audioBitsPerSecond: 1, warnings: [] } }));
     const first = await waitForLog(reader, from, /pressed/, "press", new AbortController().signal, 500);
@@ -198,26 +198,26 @@ describe("session log waits", () => {
   });
 
   it("bounds waiting with this session's diagnostic tail", async () => {
-    write("old error");
+    await write("old error");
     const from = reader.end();
-    write("new event");
+    await write("new event");
     await expect(waitForLog(reader, from, /saved /, "save", new AbortController().signal, 10)).rejects.toThrow("Log:\n  [2026-09-25T10:00:00.000Z] new event");
   });
 
   it("rejects with the evidence gap instead of waiting out the timeout", async () => {
-    write("checkpointed");
+    await write("checkpointed");
     const from = reader.end();
-    for (let i = 0; i < 4; i += 1) { rotate(); write(`generation ${i}`); }
+    for (let i = 0; i < 4; i += 1) { rotate(); await write(`generation ${i}`); }
     const started = Date.now();
     await expect(waitForLog(reader, from, /saved /, "save", new AbortController().signal, 30_000)).rejects.toThrow(/no longer retained/);
     expect(Date.now() - started).toBeLessThan(1000);
   });
 
   it("rejects when the log was truncated and regrew past the checkpoint instead of skipping the new save", async () => {
-    for (let i = 0; i < 3; i += 1) write(`old ${i}`);
+    for (let i = 0; i < 3; i += 1) await write(`old ${i}`);
     const from = reader.end();
     fs.truncateSync(file, 0);
-    write("state → recording", "state → stopping", "state → idle", "saved /m/new.mp4", saved("s1", "/m/new.mp4"));
+    await write("state → recording", "state → stopping", "state → idle", "saved /m/new.mp4", saved("s1", "/m/new.mp4"));
     await expect(waitForLog(reader, from, /\] saved (.+)$/, "save", new AbortController().signal, 30_000)).rejects.toThrow(LogGapError);
     await expect(finishRecording({ log: reader, from, stop: vi.fn(), stopSent: true, signal: new AbortController().signal })).rejects.toThrow(/rewritten/);
   });
@@ -225,7 +225,7 @@ describe("session log waits", () => {
   it("honours cancellation even when a matching event already exists", async () => {
     const controller = new AbortController();
     const from = reader.end();
-    write("saved file.mp4");
+    await write("saved file.mp4");
     controller.abort(new Error("cancelled"));
     await expect(waitForLog(reader, from, /saved /, "save", controller.signal)).rejects.toThrow("cancelled");
   });

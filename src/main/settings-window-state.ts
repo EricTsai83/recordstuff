@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { writeFileAtomicSync } from "./atomic-file";
+import { writeFileAtomic } from "./atomic-file";
 import { errnoCode } from "./errors";
 
 export interface WindowSize { width: number; height: number }
@@ -13,6 +13,7 @@ function validSize(value: unknown): value is WindowSize {
 
 /** UI geometry is independent of recording preferences and their write queue. */
 export class SettingsWindowState {
+  private queue: Promise<void> = Promise.resolve();
   private current: WindowSize = { ...DEFAULT_SETTINGS_SIZE };
   constructor(private readonly file: string, private readonly log: (message: string) => void = () => {}) {
     try {
@@ -28,10 +29,13 @@ export class SettingsWindowState {
     if (!validSize(size)) return;
     // Remember within this process even if disk is temporarily unavailable.
     this.current = { ...size };
-    try {
-      // A tiny debounced synchronous write also completes during app shutdown.
-      writeFileAtomicSync(this.file, JSON.stringify(size));
-    } catch (error) { this.log(`settings window: size save failed: ${String(error)}`); }
+    const snapshot = { ...size };
+    this.queue = this.queue.then(() => writeFileAtomic(this.file, JSON.stringify(snapshot)))
+      .catch(error => this.log(`settings window: size save failed: ${String(error)}`));
+  }
+  async flush(): Promise<void> {
+    let pending: Promise<void>;
+    do { pending = this.queue; await pending; } while (pending !== this.queue);
   }
 }
 

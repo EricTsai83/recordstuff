@@ -46,6 +46,7 @@ describe("createFileLogger", () => {
     const log = logger();
     log("hello");
     log("world");
+    await log.flush();
     expect(out).toEqual(["[2026-09-12T10:00:00.000Z] hello", "[2026-09-12T10:00:00.000Z] world"]);
     expect(await fs.readFile(filePath, "utf8")).toBe(
       "[2026-09-12T10:00:00.000Z] hello\n[2026-09-12T10:00:00.000Z] world\n",
@@ -54,8 +55,8 @@ describe("createFileLogger", () => {
   });
 
   it("appends to an existing file across logger instances", async () => {
-    logger()("first run");
-    logger()("second run");
+    const first = logger(); first("first run"); await first.flush();
+    const second = logger(); second("second run"); await second.flush();
     const lines = (await fs.readFile(filePath, "utf8")).trim().split("\n");
     expect(lines).toHaveLength(2);
     expect(lines[0]).toContain("first run");
@@ -68,6 +69,7 @@ describe("createFileLogger", () => {
     const log = logger({ maxBytes: 40, keep: 2 });
     for (let i = 1; i <= 8; i += 1) log(`line ${i}`);
 
+    await log.flush();
     const read = async (p: string) => (await fs.readFile(p, "utf8")).match(/line \d/g);
     // 8 lines, 2 per file: active has 7-8, .1 has 5-6, .2 has 3-4; 1-2 were dropped.
     expect(await read(filePath)).toEqual(["line 7", "line 8"]);
@@ -80,6 +82,7 @@ describe("createFileLogger", () => {
   it("does not rotate while the file is at or under maxBytes", async () => {
     const log = logger({ maxBytes: 10_000 });
     for (let i = 0; i < 50; i += 1) log("x");
+    await log.flush();
     expect(await exists(rotatedPath(filePath, 1))).toBe(false);
     expect((await fs.readFile(filePath, "utf8")).split("\n")).toHaveLength(51);
   });
@@ -90,6 +93,7 @@ describe("createFileLogger", () => {
     const log = logger();
     expect(() => log("a")).not.toThrow();
     expect(() => log("b")).not.toThrow();
+    await log.flush();
     expect(out).toHaveLength(2);
     expect(err).toHaveLength(1);
     expect(err[0]).toContain("file logging disabled");
@@ -99,11 +103,13 @@ describe("createFileLogger", () => {
   it("stops touching the file after a mid-run write failure", async () => {
     const log = logger();
     log("before");
+    await log.flush();
     // Replace the log file with a directory: append now fails with EISDIR.
     await fs.rm(filePath);
     await fs.mkdir(filePath);
     log("during");
     log("after");
+    await log.flush();
     expect(err).toHaveLength(1);
     expect(out).toHaveLength(3);
     expect((await fs.readdir(filePath)).length).toBe(0);

@@ -43,3 +43,19 @@ it("never writes the Settings combination or a change while a session is active"
   expect(s.store.setHotkey).not.toHaveBeenCalled();
   expect([...s.registered].sort()).toEqual([DEFAULT_HOTKEY.accelerator, SETTINGS_SHORTCUT].sort());
 });
+
+
+it("retries both refused registrations without rewriting preferences", () => {
+  const refuse = [DEFAULT_HOTKEY.accelerator, SETTINGS_SHORTCUT];
+  const s = setup(refuse);
+  s.shortcuts.start();
+  expect(s.registered.size).toBe(0);
+  refuse.splice(0);
+  s.shortcuts.retry();
+  expect([...s.registered].sort()).toEqual([DEFAULT_HOTKEY.accelerator, SETTINGS_SHORTCUT].sort());
+  expect(s.store.setHotkey).not.toHaveBeenCalled();
+  s.shortcuts.dispose();
+  s.unsettle();
+  s.shortcuts.retry();
+  expect(s.registered.size).toBe(0);
+});

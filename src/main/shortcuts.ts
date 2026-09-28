@@ -83,6 +83,13 @@ export class AppShortcuts {
     this.report(this.recording.flush(this.options.settled()));
   }
 
+  retry(): void {
+    if (!this.options.settled()) return;
+    this.request(this.options.store.hotkey);
+    this.settingsKey.retry(this.options.store.hotkey);
+    this.options.refresh();
+  }
+
   /** Quit path: leave nothing registered. */
   dispose(): void {
     this.settingsKey.dispose();

@@ -1,3 +1,4 @@
+import { createPreferenceActions } from "./preferences";
 /**
  * App lifecycle (docs/system-design/recording.md): hide the Dock icon, create the tray, register
  * the display-media handler (primary display + system audio loopback), detect
@@ -235,7 +236,8 @@ async function main(): Promise<void> {
     countdownSeconds,
     countdownSound,
     countdown: overlay,
-    ensureWritableDir,
+    ensureWritableDir: dir => ensureWritableDir(dir, undefined,
+      dir === settings.defaultOutputDir || dir === outputDirOverride),
     openWriter: (recordingPath, finalPath) => FileWriter.open(recordingPath, finalPath),
     freeSpace: async (dir) => { const volume = await fs.statfs(dir); return volume.bavail * volume.bsize; },
     sentinels,
@@ -258,7 +260,8 @@ async function main(): Promise<void> {
   // global shortcut call the same `toggle`, whose state guards decide.
   const toggle = (): void => recorder.toggle();
   /** Settings that touch a session (quality, shortcut) change only here. */
-  const settled = (): boolean => preferencesUnlocked(recorder.state);
+  let quitRequested = false;
+  const settled = (): boolean => !quitRequested && preferencesUnlocked(recorder.state);
   const shortcuts = new AppShortcuts({
     globalShortcut, platform: process.platform, toggle, settled, store: settings, log,
     openSettings: () => { void handleAction("openSettings"); },
@@ -281,13 +284,18 @@ async function main(): Promise<void> {
   let quitting = false;
   let quitFeedback: ReturnType<typeof setTimeout> | undefined;
   const endQuitting = (): void => {
+    quitRequested = false;
     clearTimeout(quitFeedback);
     quitFeedback = undefined;
     if (quitting) { quitting = false; refreshUi(); }
   };
+  let captureDegraded = false;
+  const captureWarning = () => translate("The resolution cap could not be confirmed. The recording may use a larger size.", settings.language);
   const appContext = (): AppContext => ({
+    ...(captureDegraded ? { captureWarning: captureWarning() } : {}),
     recordingResults: recordingResults.all,
     historyLoading: recordingResults.loading,
+    historyFailed: recordingResults.historyFailed,
     displays: displays(), display: settings.display, ...(displayMedia.failure ? { displayFailure: displayMedia.failure } : {}),
     platform: process.platform,
     outputDir: settings.outputDir,
@@ -317,6 +325,11 @@ async function main(): Promise<void> {
     canNotify: () => settings.notifications,
     idleSeconds: () => powerMonitor.getSystemIdleTime(),
     onToggle: toggle,
+    revealSaved,
+    permissionAction: () => {
+      const state = recorder.state;
+      void handleAction(state.type === "needsPermission" ? state.needsRelaunch ? "relaunch" : "openPermissionSettings" : "openSettings");
+    },
     // The tray has no reply channel, so a rejected action would otherwise only
     // reach process-level `unhandledRejection`. Keep it attributable instead.
     onAction: (action) => void handleAction(action).catch((cause: unknown) =>
@@ -349,6 +362,7 @@ async function main(): Promise<void> {
   });
 
   async function handleAction(action: AppAction): Promise<boolean | void> {
+    if (quitRequested && action !== "quit") return false;
     if (typeof action !== "string" && "recordingResult" in action) {
       const request = action.recordingResult;
       return recordingResults.act(request.id, request.action, {
@@ -422,6 +436,9 @@ async function main(): Promise<void> {
       case "openSettings":
         settingsWindow.show();
         return;
+      case "retryShortcuts":
+        shortcuts.retry();
+        return true;
       case "checkUpdates":
         // Not awaited: the check can wait on two network timeouts, and the
         // panel's save queue and its controls must not wait with it. The
@@ -521,56 +538,23 @@ async function main(): Promise<void> {
     if (error) log(`openPath(${path.dirname(logPath)}) failed: ${error}`);
   }
 
-  /** Resolves false only when the folder could not change: locked, or the save failed (which also notifies); a cancel is no failure. */
-  async function changeOutputDir(): Promise<boolean> {
-    // Starting and counting-down sessions already opened their file in the current folder.
-    if (!settled()) return false;
-    focusApp();
-    const result = await dialog.showOpenDialog({
-      title: translate("Choose a recording folder", settings.language),
-      defaultPath: settings.outputDir,
-      properties: ["openDirectory", "createDirectory"],
-    });
-    const chosen = result.filePaths[0];
-    if (result.canceled || !chosen) return true;
-    try {
-      await settings.setOutputDir(chosen);
-    } catch (cause) {
-      log(`settings: failed to save outputDir: ${String(cause)}`);
-      tray.notifySettingsWriteFailed(chosen);
-      return false;
-    }
-    recorder.outputDirChanged();
-    refreshUi();
-    return true;
-  }
-
-  /**
-   * Every preference write: a choice is applied only after settings.json is
-   * written, and a failed write keeps the previous value, is logged and, where
-   * the tray has a notification for it, said. A `locked` preference touches a
-   * session (quality, display, countdown), so it changes only while the
-   * recorder is settled; the panel already shows such controls disabled, and
-   * this guard repeats the rule so a running session's snapshot is never
-   * touched. Both projections refresh afterwards; an unchanged view is not pushed.
-   */
-  async function savePreference(what: string, save: {
-    locked?: boolean;
-    write: () => Promise<void>;
-    /** Runs after a successful write, before the refresh. */
-    applied?: () => void;
-    notifyFailure?: () => void;
-  }): Promise<void> {
-    if (save.locked && !settled()) return;
-    try {
-      await save.write();
-      save.applied?.();
-    } catch (cause) {
-      log(`settings: ${what} save failed: ${String(cause)}`);
-      save.notifyFailure?.();
-    }
-    refreshUi();
-  }
+  const preferenceActions = createPreferenceActions({
+    settled,
+    chooseFolder: async () => {
+      focusApp();
+      const result = await dialog.showOpenDialog({
+        title: translate("Choose a recording folder", settings.language),
+        defaultPath: settings.outputDir, properties: ["openDirectory", "createDirectory"],
+      });
+      return result.canceled ? undefined : result.filePaths[0];
+    },
+    saveFolder: folder => settings.setOutputDir(folder),
+    folderChanged: () => recorder.outputDirChanged(),
+    folderFailed: folder => tray.notifySettingsWriteFailed(folder),
+    refresh: refreshUi, log,
+  });
+  function changeOutputDir(): Promise<boolean> { return preferenceActions.changeOutputDir(); }
+  const savePreference = preferenceActions.save;
 
   const savedNotification = new SavedNotification({
     platform: process.platform,
@@ -617,6 +601,8 @@ async function main(): Promise<void> {
         refreshUi();
         return;
       case "captureStarted": {
+        captureDegraded = event.capture.warnings.some(warning => /resolution cap|constrained frames|remeasure constrained/.test(warning));
+        if (captureDegraded) tray.notifyCaptureWarning(captureWarning());
         displayMedia.failure = undefined;
         refreshUi();
         const actual = frameRateDowngrade(event.requested, event.capture);
@@ -676,9 +662,6 @@ async function main(): Promise<void> {
   // Every platform: a menu-bar app is hard to find, and on macOS this is the
   // one moment the notification authorization prompt can appear in context.
 
-  if (await isFirstRun(app.getPath("userData"))) {
-    tray.notifyTrayHint();
-  }
   if (autoRecord?.ok) {
     runAutoRecord(autoRecord.config, {
       state: () => recorder.state,
@@ -699,14 +682,23 @@ async function main(): Promise<void> {
   let historyPrompt = false;
   const quitCoordinator = installQuitCoordinator(app, {
     relaunch: () => app.relaunch(),
-    shutdown: () => {
+    shutdown: async () => {
+      quitRequested = true;
       savedNotification.setQuitting(true);
       // Pending cleanup can hold quit for the stop deadline, and a history save for its wait; the tray says so meanwhile.
       clearTimeout(quitFeedback);
       quitFeedback = setTimeout(() => { quitting = true; refreshUi(); }, 300);
-      return recorder.shutdown();
+      if (!await recorder.shutdown()) return false;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          Promise.all([settings.flush(), settingsWindow.flush(), log.flush()]).then(() => true),
+          new Promise<boolean>(resolve => { timeout = setTimeout(() => resolve(false), 5000); }),
+        ]);
+      } finally { clearTimeout(timeout); }
     },
     pending: () => {
+      recorder.resumeAdmission();
       endQuitting();
       savedNotification.setQuitting(false);
       log("quit deferred: recording save or cleanup is still pending");
@@ -751,6 +743,9 @@ async function main(): Promise<void> {
     tray.destroy();
   });
 
+  if (await isFirstRun(app.getPath("userData"))) {
+    tray.notifyTrayHint();
+  }
   updates.flush();
   log(`ready; output dir ${settings.outputDir}; hotkey ${JSON.stringify(shortcuts.status)}`);
 }

@@ -7,25 +7,28 @@ let dir: string;
 let file: string;
 beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-window-")); file = path.join(dir, "settings-window.json"); });
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
-it("restores dimensions across instances without modifying recording preferences", () => {
+it("restores dimensions across instances without modifying recording preferences", async () => {
   const prefs = path.join(dir, "settings.json"); fs.writeFileSync(prefs, "untouched");
   const store = new SettingsWindowState(file);
   expect(store.size).toEqual(DEFAULT_SETTINGS_SIZE);
   store.save({ width: 640, height: 780 });
+  await store.flush();
   expect(new SettingsWindowState(file).size).toEqual({ width: 640, height: 780 });
   expect(fs.readFileSync(prefs, "utf8")).toBe("untouched");
   expect(fs.existsSync(`${file}.tmp`)).toBe(false);
 });
-it("falls back on invalid geometry and handles write failures without breaking the window", () => {
+it("falls back on invalid geometry and handles write failures without breaking the window", async () => {
   const log = vi.fn();
   for (const value of ["broken", '{"width":-1,"height":500}', '{"width":500.5,"height":500}', '{"width":500}']) {
     fs.writeFileSync(file, value);
     expect(new SettingsWindowState(file, log).size).toEqual(DEFAULT_SETTINGS_SIZE);
   }
   const store = new SettingsWindowState(file, log); store.save({ width: 600, height: 700 });
+  await store.flush();
   fs.mkdirSync(`${file}.tmp`);
   store.save({ width: 620, height: 720 });
   expect(store.size).toEqual({ width: 620, height: 720 });
+  await store.flush();
   expect(new SettingsWindowState(file).size).toEqual({ width: 600, height: 700 });
   expect(log).toHaveBeenCalledWith(expect.stringContaining("size save failed"));
 });

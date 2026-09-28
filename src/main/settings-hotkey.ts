@@ -28,6 +28,7 @@ export class SettingsHotkey {
     if (conflict) this.options.log("settings shortcut: unavailable; recording shortcut owns the combination");
     this.registration.apply({ enabled: !conflict, accelerator: SETTINGS_SHORTCUT });
   }
+  retry(recording: HotkeySettings): void { this.initialized = false; this.reconcile(recording); }
   suspend(): void {
     if (this.disposed) return;
     this.suspended = true;

@@ -38,13 +38,13 @@ describe("saved notification lifecycle", () => {
     expect(show).toHaveBeenCalledExactlyOnceWith("/new.mp4");
   });
 
-  it("prioritizes permission recovery over an old pending save", () => {
+  it("delivers a completed save while permission recovery is needed", () => {
     const { notification, show } = setup();
     notification.schedule("/saved.mp4");
     notification.stateChanged({ type: "needsPermission", needsRelaunch: false });
     notification.stateChanged({ type: "idle" });
     vi.runAllTimers();
-    expect(show).not.toHaveBeenCalled();
+    expect(show).toHaveBeenCalledExactlyOnceWith("/saved.mp4");
     expect(vi.getTimerCount()).toBe(0);
   });
 

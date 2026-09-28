@@ -290,7 +290,8 @@ it("refuses to overwrite an unreadable or future history format and never retrie
   await vi.advanceTimersByTimeAsync(0);
   expect(results.current?.persistenceFailed).toBe("blocked");
   await vi.advanceTimersByTimeAsync(120_000);
-  expect(save).toHaveBeenCalledTimes(1);
+  expect(save).not.toHaveBeenCalled();
+  expect(results.historyFailed).toBe(true);
   expect(fs.readFileSync(file, "utf8")).toBe(raw);
 });
 
@@ -552,3 +553,11 @@ it("recovers warnings for a very large unsaved history in linear time", async ()
   expect(results.all.some(r => r.persistenceFailed)).toBe(false);
   results.close();
 }, 20_000);
+
+it("loads a history larger than the main-thread parsing threshold without losing rows", async () => {
+  const rows = Array.from({ length: 200 }, (_, index) => ({ ...failure, id: "large-" + index, outcome: "empty" as const, detail: "x".repeat(6000) }));
+  const store = new RecordingResultStore(file);
+  await store.save(rows);
+  expect(fs.statSync(file).size).toBeGreaterThan(1024 * 1024);
+  expect(await new RecordingResultStore(file).load()).toEqual(rows);
+});

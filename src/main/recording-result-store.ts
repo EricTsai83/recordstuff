@@ -1,3 +1,4 @@
+import { Worker } from "node:worker_threads";
 import fs from "node:fs";
 import path from "node:path";
 import { setImmediate as nextTurn } from "node:timers/promises";
@@ -9,6 +10,7 @@ import type { PersistenceIssue, RecordingResult } from "../shared/recording-resu
 /** Every file operation is asynchronous (libuv threadpool); only small per-record JSON work runs on main. */
 export interface ResultStorage {
   readonly requiresMigration?: boolean;
+  readonly loadIssue?: boolean;
   load(): Promise<RecordingResult[]>;
   save(results: readonly RecordingResult[]): Promise<void>;
 }
@@ -64,6 +66,7 @@ function decode(value: unknown): RecordingResult {
 export class RecordingResultStore implements ResultStorage {
   private blocked = false;
   requiresMigration = false;
+  get loadIssue(): boolean { return this.blocked; }
   /** Records are replaced, never mutated, so an unchanged record is encoded once. */
   private readonly encoded = new WeakMap<RecordingResult, { json: string; bytes: number }>();
   constructor(private readonly file: string, private readonly log: (message: string) => void = () => {},
@@ -72,7 +75,14 @@ export class RecordingResultStore implements ResultStorage {
     const handle = await fs.promises.open(file, "r");
     try {
       if ((await handle.stat()).size > limit) throw new Error(tooLarge);
-      return JSON.parse(await handle.readFile("utf8"));
+      const text = await handle.readFile("utf8");
+      if (text.length < 1024 * 1024) return JSON.parse(text);
+      return await new Promise<unknown>((resolve, reject) => {
+        const worker = new Worker(`const { parentPort, workerData } = require("node:worker_threads"); parentPort.postMessage(JSON.parse(workerData));`, { eval: true, workerData: text });
+        worker.once("message", resolve);
+        worker.once("error", reject);
+        worker.once("exit", code => { if (code !== 0) reject(new Error(`History parser exited ${code}`)); });
+      });
     } finally { await handle.close(); }
   }
   async load(): Promise<RecordingResult[]> {

@@ -30,7 +30,7 @@ export interface SettingsWindowOptions {
    */
   act: (action: AppAction) => Promise<boolean | void>;
   capture?: (armed: boolean) => void;
-  geometry?: Pick<SettingsWindowState, "size" | "save">;
+  geometry?: Pick<SettingsWindowState, "size" | "save"> & Partial<Pick<SettingsWindowState, "flush">>;
   log?: (message: string) => void;
 }
 
@@ -46,6 +46,8 @@ interface CaptureLease {
 
 export class SettingsWindow {
   private resultFocus = 0;
+  private revision = 0;
+  private historyLimit = 50;
   private resultEntry = false;
   /** Holds both global shortcuts suspended; never held by a pending save. */
   private lease: CaptureLease | undefined;
@@ -83,11 +85,15 @@ export class SettingsWindow {
     });
     ipcMain.handle("settings:choose", (event, group: unknown, choice: unknown) => {
       const window = authorize(event);
+      if (group === "history" && choice === "more") {
+        this.historyLimit += 50;
+        return this.deliver({ view: this.view(), applied: true });
+      }
       // A result action waits for durable history; it must not hold preference saves or shortcut capture.
-      if (typeof group === "string" && group.startsWith("recordingResult:")) return this.applyResult(group, choice);
+      if (typeof group === "string" && group.startsWith("recordingResult:")) return this.applyResult(group, choice, window);
       // Completing a request ends the capture it was sent from, never a later one.
       const lease = this.leaseOf(window);
-      const run = this.queue.then(() => this.apply(group, choice, lease));
+      const run = this.queue.then(() => this.apply(group, choice, lease, window));
       this.queue = run.then(
         () => undefined,
         () => undefined,
@@ -113,6 +119,7 @@ export class SettingsWindow {
       if (existing.isMinimized()) existing.restore();
       existing.show();
       existing.focus();
+      this.refresh();
       return;
     }
     const view = this.view();
@@ -195,7 +202,7 @@ export class SettingsWindow {
     const window = this.window;
     if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return;
     const view = this.view();
-    const serialized = JSON.stringify(view);
+    const serialized = JSON.stringify({ ...view, revision: undefined });
     if (serialized === this.delivered) return;
     this.delivered = serialized;
     window.setTitle(view.title);
@@ -203,8 +210,8 @@ export class SettingsWindow {
   }
 
   /** A view returned by an invoke: the page renders it, so it is what the page holds now. */
-  private deliver<T extends SettingsView | SettingsChoiceResult>(result: T): T {
-    this.delivered = JSON.stringify("view" in result ? result.view : result);
+  private deliver<T extends SettingsView | SettingsChoiceResult>(result: T, recipient = this.window): T {
+    if (recipient === this.window) this.delivered = JSON.stringify({ ...("view" in result ? result.view : result), revision: undefined });
     return result;
   }
 
@@ -219,6 +226,8 @@ export class SettingsWindow {
     this.window = undefined;
   }
 
+  async flush(): Promise<void> { this.flushSize(); await this.options.geometry?.flush?.(); }
+
   private flushSize(): void {
     clearTimeout(this.resizeTimer);
     this.resizeTimer = undefined;
@@ -229,7 +238,8 @@ export class SettingsWindow {
   }
 
   private view(): SettingsView {
-    const view = settingsView(this.options.state(), this.options.context());
+    const view = settingsView(this.options.state(), { ...this.options.context(), historyLimit: this.historyLimit });
+    view.revision = ++this.revision;
     view.resultFocus = this.resultEntry ? this.resultFocus : 0;
     const shortcut = view.groups.find(group => group.kind === "shortcut");
     if (shortcut) {
@@ -261,28 +271,28 @@ export class SettingsWindow {
     if (this.window === window) this.window = undefined;
   }
 
-  private async applyResult(group: string, choice: unknown): Promise<SettingsChoiceResult> {
+  private async applyResult(group: string, choice: unknown, recipient: BrowserWindow): Promise<SettingsChoiceResult> {
     const action = settingsAction(this.options.state(), this.options.context(), group, choice);
     if (!action) this.log(`settings window: refused ${JSON.stringify({ group, choice })}`);
     const applied = action ? await this.options.act(action) === true : false;
     const view = this.view();
-    return this.deliver({ view, applied, ...(applied ? {} : { failure: view.failure }) });
+    return this.deliver({ view, applied, ...(applied ? {} : { failure: view.failure }) }, recipient);
   }
 
-  private async apply(group: unknown, choice: unknown, lease: CaptureLease | undefined): Promise<SettingsChoiceResult> {
+  private async apply(group: unknown, choice: unknown, lease: CaptureLease | undefined, recipient: BrowserWindow): Promise<SettingsChoiceResult> {
     const action = settingsAction(this.options.state(), this.options.context(), group, choice);
     if (!action) {
       this.log(`settings window: refused ${JSON.stringify({ group, choice })}`);
       this.release(lease);
       const view = this.view();
       let failure = view.failure;
-      if (group === "hotkey" && choice !== "off") {
+      if (group === "hotkey" && choice !== "off" && choice !== "retryRegistration") {
         const error = isSettingsShortcut(choice, this.options.context().platform)
           ? SETTINGS_SHORTCUT_RESERVED : validateAccelerator(choice).error;
         const shortcut = view.groups.find(entry => entry.id === "hotkey");
         if (error && shortcut) { failure = translate(error, view.language); shortcut.note = failure; }
       }
-      return this.deliver({ view, applied: false, failure });
+      return this.deliver({ view, applied: false, failure }, recipient);
     }
     let outcome: boolean | void;
     try {
@@ -298,7 +308,7 @@ export class SettingsWindow {
       view: this.view(),
       applied,
       ...(group === "about" && !applied ? { failure: translate("Could not open the link. Try again.", this.options.context().language) } : {}),
-    });
+    }, recipient);
   }
 
   private log(message: string): void {

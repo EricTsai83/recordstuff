@@ -7,6 +7,10 @@ export function isLanguage(value: unknown): value is Language {
 }
 
 export const ZH_TW = {
+  "Retry shortcut registration": "重試註冊快捷鍵",
+  "The resolution cap could not be confirmed. The recording may use a larger size.": "無法確認解析度上限，錄影可能使用較大的尺寸。",
+  "Failure history could not be read. The existing file has been preserved; check the log for details.": "無法讀取失敗紀錄，原有檔案已保留；請查看日誌了解詳情。",
+  "Show more failures": "顯示更多失敗紀錄",
   "Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. Please try quitting again after it finishes.": "錄影仍在啟動、存檔或清理中，RecordStuff 將保持開啟。尚未開始的錄影會被取消。完成後請再次嘗試退出。",
   "Could not complete this action. Please try again.": "無法完成此操作，請重試。",
   "This failure record is not saved yet. RecordStuff keeps it and retries automatically. If this continues, check free disk space and access to the app's data folder. A force-quit loses unsaved records.": "這筆失敗紀錄尚未存檔。RecordStuff 會先保留它並自動重試；若持續失敗，請檢查可用磁碟空間與 App 資料夾的存取權限。強制結束會遺失尚未存檔的紀錄。",

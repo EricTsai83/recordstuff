@@ -18,7 +18,7 @@ export class SavedNotification {
   }) {}
 
   stateChanged(state: RecordingState): void {
-    this.idle = state.type === "idle";
+    this.idle = state.type === "idle" || state.type === "needsPermission";
     if (!this.idle) this.cancel("recording state changed");
   }
 

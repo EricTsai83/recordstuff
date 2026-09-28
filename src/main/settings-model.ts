@@ -88,6 +88,7 @@ function screenGroup(ctx: AppContext, enabled: boolean): Group {
     heading: t(["target_removed", "track_ended"].includes(ctx.displayFailure) ? "Last recording interrupted" : "Last recording failure", ctx.language),
     reason: displayFailureText(ctx.displayFailure, ctx.language),
     guidance: t("Try recording again using the shortcut or menu, or choose another screen.", ctx.language) });
+  if (ctx.captureWarning) result.diagnostics.push({ kind: "history", heading: t("Recording settings", ctx.language), reason: ctx.captureWarning, guidance: "" });
   return result;
 }
 
@@ -194,6 +195,7 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group[] {
       action: { setHotkey: { enabled: false, accelerator: hotkey.accelerator } },
     },
   ], undefined), kind: "shortcut", platform: ctx.platform, noteKind: "status",
+    ...((note || ctx.settingsShortcut?.kind === "failed") ? { actions: [{ id: "retryRegistration", label: t("Retry shortcut registration", language), enabled: true, checked: false, action: "retryShortcuts" as const }] } : {}),
     ...(note ? { diagnostics: [{ kind: "current" as const, heading: t("Shortcut unavailable", language), reason: note,
       guidance: t("Recording is still available from the menu. Choose another shortcut.", language) }] } : {}) }];
 }
@@ -347,15 +349,13 @@ function failuresTab(ctx: AppContext): SettingsView["tabs"][number] {
   };
 }
 
-/** Everything the panel renders. Actions stay in main; the panel only sees ids. */
-export function settingsView(state: RecordingState, ctx: AppContext): SettingsView {
+const resultViews = new WeakMap<NonNullable<AppContext["recordingResults"]>[number], { key: string; view: NonNullable<SettingsView["recordingResults"]>[number] }>();
+function projectResult(result: NonNullable<AppContext["recordingResults"]>[number], state: RecordingState, ctx: AppContext, now: Date): NonNullable<SettingsView["recordingResults"]>[number] {
   const language = ctx.language;
-  const unlocked = preferencesUnlocked(state);
-  const now = ctx.now ?? new Date();
-  return {
-    language,
-    ...(ctx.historyLoading ? { recordingHistoryStatus: t("Loading failure history…", language) } : {}),
-    recordingResults: (ctx.recordingResults ?? []).map(result => ({
+  const key = `${language}:${ctx.platform}:${localDay(now)}:${state.type}:${state.type === "needsPermission" && state.needsRelaunch}`;
+  const previous = resultViews.get(result);
+  if (previous?.key === key) return previous.view;
+  const view = {
       id: result.id,
       reason: failureReason(result.code, language),
       day: failureDay(new Date(result.occurredAt), now, language),
@@ -369,7 +369,22 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
       ...((result.partialPath ?? result.recordingPath) ? { file: result.partialPath ?? result.recordingPath, fileName: path.basename(result.partialPath ?? result.recordingPath!) } : {}),
       acknowledged: result.acknowledged, pending: result.outcome === "pending",
       actions: resultActions(state, ctx, result).map(({ action: _action, ...choice }) => choice),
-    })),
+  };
+  resultViews.set(result, { key, view });
+  return view;
+}
+
+/** Everything the panel renders. Actions stay in main; the panel only sees ids. */
+export function settingsView(state: RecordingState, ctx: AppContext): SettingsView {
+  const language = ctx.language;
+  const unlocked = preferencesUnlocked(state);
+  const now = ctx.now ?? new Date();
+  return {
+    language,
+    ...(ctx.historyFailed ? { recordingHistoryStatus: t("Failure history could not be read. The existing file has been preserved; check the log for details.", language) } : {}),
+    ...(ctx.historyLoading ? { recordingHistoryStatus: t("Loading failure history…", language) } : {}),
+    recordingResults: (ctx.recordingResults ?? []).slice(0, ctx.historyLimit).map(result => projectResult(result, state, ctx, now)),
+    recordingResultsRemaining: Math.max(0, (ctx.recordingResults?.length ?? 0) - (ctx.historyLimit ?? Infinity)),
     title: t("RecordStuff - Settings", language),
     hint: unlocked ? "" : t("Recording in progress. Recording settings are locked.", language),
     failure: t("Could not apply this setting. Your current settings are shown.", language),
@@ -415,7 +430,7 @@ export function settingsAction(
     if (!result) return undefined;
     return resultActions(state, ctx, result).find(choice => choice.id === choiceId && choice.enabled)?.action;
   }
-  if (groupId === "hotkey" && choiceId !== "off" && preferencesUnlocked(state)) {
+  if (groupId === "hotkey" && choiceId !== "off" && choiceId !== "retryRegistration" && preferencesUnlocked(state)) {
     const accelerator = canonicalizeAccelerator(choiceId);
     return accelerator && !isSettingsShortcut(accelerator, ctx.platform) ? { setHotkey: { enabled: true, accelerator } } : undefined;
   }

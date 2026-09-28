@@ -525,3 +525,32 @@ describe("countdown sound (plan 046)", () => {
     expect(store().countdownSound).toBe(true);
   });
 });
+
+it("snapshots queued inputs and returns detached preferences", async () => {
+  const settings = store();
+  const quality = { ...DEFAULT_QUALITY };
+  const pending = settings.setQuality(quality);
+  quality.frameRate = 60;
+  await pending;
+  const read = settings.quality;
+  read.frameRate = 60;
+  expect(settings.quality).toEqual(DEFAULT_QUALITY);
+  const updates = { enabled: false };
+  const saving = settings.setUpdates(updates);
+  updates.enabled = true;
+  await settings.flush();
+  await saving;
+  expect(store().updates.enabled).toBe(false);
+  settings.updates.enabled = true;
+  expect(settings.updates.enabled).toBe(false);
+});
+
+it("flush includes a save accepted while the earlier write is draining", async () => {
+  const settings = store();
+  const first = settings.setOutputDir("/first");
+  const flushed = settings.flush();
+  const second = settings.setOutputDir("/second");
+  await flushed;
+  expect(store().outputDir).toBe("/second");
+  await Promise.all([first, second]);
+});

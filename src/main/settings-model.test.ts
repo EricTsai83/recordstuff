@@ -542,3 +542,25 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
     expect(general.find((g) => g.id === "updateChecks")?.sectionHeading).toBe("Updates");
   });
 });
+
+it("pages failure projections while preserving the total unread count", () => {
+  const recordingResults = Array.from({ length: 120 }, (_, index) => ({
+    id: "failure-" + index, occurredAt: "2026-09-28T00:00:00Z", code: "capture_failed" as const,
+    detail: "", outcome: "empty" as const, acknowledged: false,
+  }));
+  const first = settingsView(idle, { ...context, recordingResults, historyLimit: 50 });
+  expect(first.recordingResults).toHaveLength(50);
+  expect(first.recordingResultsRemaining).toBe(70);
+  expect(first.tabs.find(tab => tab.id === "failures")?.label).toContain("120");
+  const second = settingsView(idle, { ...context, recordingResults, historyLimit: 100 });
+  expect(second.recordingResults).toHaveLength(100);
+  expect(second.recordingResults?.[0]).toBe(first.recordingResults?.[0]);
+});
+
+
+it("routes shortcut retry only while the failed registration can be changed", () => {
+  const failed = { ...context, hotkey: { ...DEFAULT_HOTKEY, registered: false } };
+  expect(settingsAction(idle, failed, "hotkey", "retryRegistration")).toBe("retryShortcuts");
+  expect(settingsAction(idle, context, "hotkey", "retryRegistration")).toBeUndefined();
+  for (const state of busy) expect(settingsAction(state, failed, "hotkey", "retryRegistration")).toBeUndefined();
+});

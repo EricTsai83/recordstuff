@@ -21,6 +21,7 @@ interface FakeNotificationCtor {
   new (options: { title: string; body: string; silent?: boolean }): FakeNotification;
   instances: FakeNotification[];
   supported: boolean;
+  throwOnConstruct: boolean;
   isSupported(): boolean;
 }
 
@@ -31,8 +32,10 @@ vi.mock("electron", () => {
     close = vi.fn();
     static instances: FakeNotification[] = [];
     static supported = true;
+    static throwOnConstruct = false;
 
     constructor(readonly options: { title: string; body: string; silent?: boolean }) {
+      if (FakeNotification.throwOnConstruct) throw new Error("native notification unavailable");
       FakeNotification.instances.push(this);
     }
 
@@ -524,4 +527,14 @@ describe("notifications around sleep (plan 050)", () => {
       vi.useRealTimers();
     }
   });
+});
+
+
+it("contains native notification constructor failures", () => {
+  const { tray, logs } = setup();
+  Fake.throwOnConstruct = true;
+  try {
+    expect(() => tray.notifySaved("/saved.mp4")).not.toThrow();
+    expect(logs.join("\n")).toContain("native notification unavailable");
+  } finally { Fake.throwOnConstruct = false; tray.destroy(); }
 });

@@ -98,7 +98,7 @@ export class RecordingResults {
   /** Reads without blocking main; failures arriving meanwhile stay visible and are merged by ID. */
   private async load(storage: ResultStorage): Promise<void> {
     let saved: RecordingResult[] = [];
-    try { saved = await storage.load(); }
+    try { saved = await storage.load(); this.loadFailed = storage.loadIssue === true; }
     catch (error) { this.loadFailed = true; this.log(`recording history: load failed: ${String(error)}`); }
     if (!storage.requiresMigration && !this.loadFailed) {
       const persisted: string[] = [];
@@ -136,6 +136,7 @@ export class RecordingResults {
       return saving || failed ? { ...result, ...(saving ? { saving } : {}), ...(failed ? { persistenceFailed: failed } : {}) } : result;
     });
   }
+  get historyFailed(): boolean { return this.loadFailed; }
   get loading(): boolean { return !this.loaded; }
   get busy(): boolean { return this.writing !== undefined; }
   private trim(results: RecordingResult[]): RecordingResult[] {
@@ -344,7 +345,7 @@ export class RecordingResults {
       let timedOut = false;
       try {
         confirmed = await Promise.race([
-          this.exists({ ...original, partialPath: candidate }, stat),
+          this.exists({ ...original, partialPath: candidate }, stat, false),
           new Promise<false>(resolve => { timer = setTimeout(() => { timedOut = true; resolve(false); }, 2000); }),
         ]);
       } finally { if (timer) clearTimeout(timer); }
@@ -402,12 +403,17 @@ export class RecordingResults {
     const { partialPath: _path, ...base } = result;
     return { ...base, ...(_path ? { recordingPath: _path, previouslyPartial: true } : {}), outcome: "unknown" };
   }
-  private async exists(result: RecordingFailure, stat: Stat): Promise<boolean> {
+  private async exists(result: RecordingFailure, stat: Stat, bounded = true): Promise<boolean> {
     if (!result.partialPath) return false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const file = await stat(result.partialPath);
+      const file = await (bounded ? Promise.race([
+        stat(result.partialPath),
+        new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), 2000); }),
+      ]) : stat(result.partialPath));
+      if (!file) return false;
       return file.isFile() && file.size > 0;
-    } catch { return false; }
+    } catch { return false; } finally { clearTimeout(timer); }
   }
   async receive(result: RecordingFailure, effects: ResultEffects): Promise<void> {
     const confirmed = result.outcome === "partial"

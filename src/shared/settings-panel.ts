@@ -66,6 +66,8 @@ export interface RecordingResultView {
   actions: SettingsChoice[];
 }
 export interface SettingsView {
+  revision?: number;
+  recordingResultsRemaining?: number;
   recordingResults?: RecordingResultView[];
   /** Localized status while saved history loads. */
   recordingHistoryStatus?: string;

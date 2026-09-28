@@ -51,47 +51,57 @@ export function formatLine(message: string, now: Date): string {
   return `[${now.toISOString()}] ${message}`;
 }
 
-export function createFileLogger(options: FileLoggerOptions): Log {
+export type FileLog = Log & { flush(): Promise<void> };
+
+/** A bounded queue keeps storage latency outside the recording event loop. */
+export function createFileLogger(options: FileLoggerOptions): FileLog {
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
   const keep = options.keep ?? DEFAULT_KEEP;
-  const stdout = options.stdout ?? ((line) => console.log(line));
-  const stderr = options.stderr ?? ((line) => console.error(line));
+  const stdout = options.stdout ?? ((line: string) => console.log(line));
+  const stderr = options.stderr ?? ((line: string) => console.error(line));
   const now = options.now ?? (() => new Date());
   let fileEnabled = true;
-  /** Bytes in the active file; read once at the first write, then counted, so each line costs one append and no stat. */
   let size: number | undefined;
-
-  const sizeOf = (): number => {
-    try {
-      return fs.statSync(options.filePath).size;
-    } catch {
-      return 0;
+  let queuedBytes = 0;
+  let overflowReported = false;
+  let queue = Promise.resolve();
+  const rotate = async (): Promise<void> => {
+    if (keep === 0) { await fs.promises.rm(options.filePath, { force: true }); return; }
+    await fs.promises.rm(rotatedPath(options.filePath, keep), { force: true });
+    for (let index = keep - 1; index >= 0; index--) {
+      try { await fs.promises.rename(index ? rotatedPath(options.filePath, index) : options.filePath, rotatedPath(options.filePath, index + 1)); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     }
   };
-
-  const appendToFile = (line: string): void => {
-    if (size === undefined) {
-      fs.mkdirSync(path.dirname(options.filePath), { recursive: true });
-      size = sizeOf();
-    }
-    if (size > maxBytes) {
-      rotateLog(options.filePath, keep);
-      size = 0;
-    }
-    const text = `${line}\n`;
-    fs.appendFileSync(options.filePath, text, "utf8");
-    size += Buffer.byteLength(text, "utf8");
-  };
-
-  return (message) => {
+  const log: FileLog = Object.assign((message: string): void => {
     const line = formatLine(message, now());
     stdout(line);
     if (!fileEnabled) return;
-    try {
-      appendToFile(line);
-    } catch (cause) {
+    const text = `${line}\n`;
+    const bytes = Buffer.byteLength(text);
+    if (queuedBytes + bytes > 1024 * 1024) {
+      if (!overflowReported) stderr("log: file queue exceeded 1 MiB; dropping file lines until it drains (stdout retained)");
+      overflowReported = true;
+      return;
+    }
+    queuedBytes += bytes;
+    queue = queue.then(async () => {
+      if (!fileEnabled) return;
+      if (size === undefined) {
+        await fs.promises.mkdir(path.dirname(options.filePath), { recursive: true });
+        try { size = (await fs.promises.stat(options.filePath)).size; }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; size = 0; }
+      }
+      if (size > maxBytes) { await rotate(); size = 0; }
+      await fs.promises.appendFile(options.filePath, text, "utf8");
+      size += bytes;
+    }).catch(cause => {
       fileEnabled = false;
       stderr(`log: cannot write ${options.filePath}: ${String(cause)}; file logging disabled`);
-    }
-  };
+    }).finally(() => { queuedBytes -= bytes; if (!queuedBytes) overflowReported = false; });
+  }, { async flush(): Promise<void> {
+    let pending: Promise<void>;
+    do { pending = queue; await pending; } while (pending !== queue);
+  } });
+  return log;
 }

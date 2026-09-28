@@ -136,7 +136,7 @@ export class SettingsStore {
     this.settings = this.load(options.defaultOutputDir);
   }
 
-  get display(): DisplayPreference { return this.settings.display; }
+  get display(): DisplayPreference { return { ...this.settings.display }; }
 
   setDisplay(display: DisplayPreference): Promise<void> {
     if (!isDisplayPreference(display)) return Promise.reject(new Error("invalid display preference"));
@@ -149,7 +149,7 @@ export class SettingsStore {
   }
 
   get quality(): QualitySettings {
-    return this.settings.quality;
+    return { ...this.settings.quality };
   }
 
   get countdown(): CountdownSeconds { return this.settings.countdown; }
@@ -177,9 +177,10 @@ export class SettingsStore {
     return this.settings.language;
   }
 
-  get updates(): Settings["updates"] { return this.settings.updates; }
+  get updates(): Settings["updates"] { return { ...this.settings.updates }; }
 
   setUpdates(patch: Partial<Settings["updates"]>): Promise<void> {
+    patch = { ...patch };
     if ((patch.enabled !== undefined && typeof patch.enabled !== "boolean") ||
         (patch.lastAttempt !== undefined && !(Number.isFinite(patch.lastAttempt) && patch.lastAttempt >= 0))) {
       return Promise.reject(new Error(`unsupported updates setting: ${JSON.stringify(patch)}`));
@@ -195,11 +196,12 @@ export class SettingsStore {
   }
 
   get hotkey(): HotkeySettings {
-    return this.settings.hotkey;
+    return { ...this.settings.hotkey };
   }
 
   /** Rejects (and keeps the previous choice) when the accelerator is not a preset or the write fails. */
   setHotkey(hotkey: HotkeySettings): Promise<void> {
+    hotkey = { ...hotkey };
     if (!isHotkeySettings(hotkey)) return Promise.reject(new Error(`unsupported shortcut: ${JSON.stringify(hotkey)}`));
     return this.save((current) => ({ ...current, hotkey: { enabled: hotkey.enabled, accelerator: canonicalizeAccelerator(hotkey.accelerator)! } }));
   }
@@ -216,6 +218,7 @@ export class SettingsStore {
 
   /** Rejects (and keeps the previous choice) when the value is unsupported or the write fails. */
   setQuality(patch: Partial<QualitySettings>): Promise<void> {
+    patch = { ...patch };
     const quality = { ...this.settings.quality, ...patch };
     if (!isQualitySettings(quality)) {
       return Promise.reject(new Error(`unsupported quality setting: ${JSON.stringify(patch)}`));
@@ -237,6 +240,12 @@ export class SettingsStore {
     });
     this.queue = run.catch(() => undefined);
     return run;
+  }
+
+  /** Wait for every previously accepted save before quitting. */
+  async flush(): Promise<void> {
+    let pending: Promise<void>;
+    do { pending = this.queue; await pending; } while (pending !== this.queue);
   }
 
   private load(defaultOutputDir: string): Settings {

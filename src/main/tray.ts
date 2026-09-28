@@ -52,6 +52,8 @@ export interface TrayOptions {
   resourcesDir: string;
   context: () => AppContext;
   onToggle: () => void;
+  revealSaved?: (file: string) => Promise<void>;
+  permissionAction?: () => void;
   onAction: (action: AppAction) => void;
   /** Diagnostics for notifications the OS refuses to show. */
   log?: (message: string) => void;
@@ -85,6 +87,7 @@ export class AppTray {
   private destroyed = false;
   // A banner shown while the Mac sleeps is gone before the user is back, so notifications wait for waking.
   private asleep = false;
+  private resumed = false;
   private held: Array<() => void> = [];
   private heldTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -114,13 +117,15 @@ export class AppTray {
   /** The Mac is going to sleep: hold notifications until the user is back. */
   systemWillSleep(): void {
     this.asleep = true;
+    this.resumed = false;
     clearTimeout(this.heldTimer);
     this.heldTimer = undefined;
   }
 
   /** Awake again: show the held notifications, in order, once there is user input. */
   systemDidWake(): void {
-    if (this.asleep) this.checkReturn();
+    this.resumed = true;
+    if (this.asleep && this.held.length) this.checkReturn();
   }
 
   /** Unlocking the screen means the user is back. */
@@ -187,7 +192,9 @@ export class AppTray {
   private revealFromNotification(filePath: string): void {
     const reveal = (repeat: boolean): void => {
       try {
-        shell.showItemInFolder(filePath);
+        if (this.options.revealSaved) {
+          void this.options.revealSaved(filePath).catch(error => this.log(`notification: reveal failed: ${String(error)}`));
+        } else shell.showItemInFolder(filePath);
         this.log(`notification: reveal ${repeat ? "repeated after activation" : "requested"} ${filePath}`);
       } catch (error) {
         this.log(`notification: reveal failed (${String(error)}): ${filePath}`);
@@ -212,7 +219,7 @@ export class AppTray {
 
   notifyPermission(needsRelaunch: boolean): void {
     this.show(permissionNotification(needsRelaunch, this.options.context().language), () =>
-      this.options.onAction(needsRelaunch ? "relaunch" : "openPermissionSettings"),
+      this.options.permissionAction ? this.options.permissionAction() : this.options.onAction(needsRelaunch ? "relaunch" : "openPermissionSettings"),
     );
   }
 
@@ -245,6 +252,10 @@ export class AppTray {
     this.show(frameRateDowngradeNotification(requested, actual, this.options.context().language));
   }
 
+  notifyCaptureWarning(body: string): void {
+    this.show({ title: "RecordStuff", body }, () => this.options.onAction("openSettings"));
+  }
+
   notifyTrayHint(): void {
     const ctx = this.options.context();
     this.show(trayHintNotification(ctx.platform, ctx.language));
@@ -267,40 +278,43 @@ export class AppTray {
     if (this.asleep) {
       // The switch and support checks apply when it is finally shown.
       this.held.push(() => this.show(text, onClick));
+      if (this.resumed && !this.heldTimer) this.checkReturn();
       this.log(`notification: held during sleep: ${text.body}`);
       return;
     }
-    if (this.options.canNotify && !this.options.canNotify()) {
-      this.log(`notification: turned off in settings, dropped: ${text.body}`);
-      return;
-    }
-    if (!Notification.isSupported()) {
-      this.log(`notification: not supported on this system, dropped: ${text.body}`);
-      return;
-    }
-    const notification = new Notification({ title: text.title, body: text.body, silent: true });
-    this.notifications.add(notification);
-    notification.on("show", () => this.log(`notification: shown: ${text.body}`));
-    notification.on("close", () => {
-      this.notifications.delete(notification);
-      this.log(`notification: closed: ${text.body}`);
-    });
-    notification.on("click", () => {
-      this.notifications.delete(notification);
-      this.log(`notification: clicked: ${text.body}`);
-      onClick?.();
-    });
-    // `(event, error)` per Electron's Notification docs; darwin and win32 only.
-    notification.on("failed", (_event, error) => {
-      this.notifications.delete(notification);
-      this.log(`notification: failed (${error}): ${text.body}`);
-    });
-    this.log(`notification: show requested: ${text.body}`);
-    try { notification.show(); }
-    catch (error) {
-      this.notifications.delete(notification);
-      this.log(`notification: failed (${String(error)}): ${text.body}`);
-    }
+    try {
+      if (this.options.canNotify && !this.options.canNotify()) {
+        this.log(`notification: turned off in settings, dropped: ${text.body}`);
+        return;
+      }
+      if (!Notification.isSupported()) {
+        this.log(`notification: not supported on this system, dropped: ${text.body}`);
+        return;
+      }
+      const notification = new Notification({ title: text.title, body: text.body, silent: true });
+      this.notifications.add(notification);
+      notification.on("show", () => this.log(`notification: shown: ${text.body}`));
+      notification.on("close", () => {
+        this.notifications.delete(notification);
+        this.log(`notification: closed: ${text.body}`);
+      });
+      notification.on("click", () => {
+        this.notifications.delete(notification);
+        this.log(`notification: clicked: ${text.body}`);
+        onClick?.();
+      });
+      // `(event, error)` per Electron's Notification docs; darwin and win32 only.
+      notification.on("failed", (_event, error) => {
+        this.notifications.delete(notification);
+        this.log(`notification: failed (${error}): ${text.body}`);
+      });
+      this.log(`notification: show requested: ${text.body}`);
+      try { notification.show(); }
+      catch (error) {
+        this.notifications.delete(notification);
+        this.log(`notification: failed (${String(error)}): ${text.body}`);
+      }
+    } catch (error) { this.log(`notification: construction failed (${String(error)}): ${text.body}`); }
   }
 
   private log(message: string): void {

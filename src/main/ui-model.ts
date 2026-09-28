@@ -39,6 +39,7 @@ export type AppAction =
   | "changeOutputDir"
   | "revealLog"
   | "quit"
+  | "retryShortcuts"
   | "checkUpdates"
   | "openWebsite"
   | "openSource"
@@ -62,6 +63,9 @@ export interface AppContext {
   recordingResults?: readonly RecordingResult[];
   /** Saved failure history is still being read; new failures are already listed. */
   historyLoading?: boolean;
+  historyFailed?: boolean;
+  historyLimit?: number;
+  captureWarning?: string;
   displays: DisplayInfo[];
   display: DisplayPreference;
   displayFailure?: DisplayFailure;
