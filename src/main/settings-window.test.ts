@@ -234,10 +234,18 @@ describe("settings window IPC", () => {
   });
 
   it("reports a completed update command as applied without a checked preference", async () => {
-    const s = setup({ act: vi.fn(async () => undefined) });
+    const s = setup({ act: vi.fn(async () => true) });
     s.panel.show();
     expect(await s.choose(s.event(), "updates", "check")).toMatchObject({ applied: true });
     expect(s.act).toHaveBeenCalledWith("checkUpdates");
+  });
+
+  it("says an update link that could not open is a link failure", async () => {
+    const s = setup({ act: vi.fn(async () => false) });
+    s.live.updates = { state: { kind: "available", version: "9.9.9" }, enabled: true };
+    s.panel.show();
+    expect(await s.choose(s.event(), "updates", "open")).toMatchObject({ applied: false, failure: "Could not open the link. Try again." });
+    expect(s.act).toHaveBeenCalledWith("openUpdate");
   });
   it("answers only its own window's main frame", async () => {
     const s = setup();
@@ -410,6 +418,8 @@ it("does not report temporary shortcut suspension as an OS conflict while captur
   const result = mock.handlers.get("settings:capture")!(s.event(), true);
   expect(result.groups.find((g: any) => g.id === "hotkey")).toMatchObject({ capturing: true });
   expect(result.groups.find((g: any) => g.id === "hotkey").diagnostics).toBeUndefined();
+  // A retry would end the capture it is shown beside.
+  expect(result.groups.find((g: any) => g.id === "hotkey").actions).toBeUndefined();
   s.panel.destroy();
 });
 

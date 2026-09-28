@@ -44,7 +44,7 @@ beforeEach(() => {
   reader = new LogReader(file);
 });
 afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
-const rotate = (): void => rotateLog(file, 3);
+const rotate = (): Promise<void> => rotateLog(file, 3);
 const RUN = "20260925T100000000Z-4242";
 const saved = (session: string, filePath: string): string => formatSessionRecord(RUN, { kind: "saved", session, path: filePath });
 const failed = (session: string): string =>
@@ -69,7 +69,7 @@ describe("interrupted recording cleanup", () => {
   it("follows stop, save and idle into the new file after a rotation without toggling again", async () => {
     const from = reader.end();
     await write("state → recording");
-    const stop = vi.fn(async () => { await write("state → stopping"); rotate(); });
+    const stop = vi.fn(async () => { await write("state → stopping"); await rotate(); });
     const pending = finishRecording({ log: reader, from, stop, stopSent: false, signal: new AbortController().signal });
     await delay(250);
     expect(stop).toHaveBeenCalledTimes(1);
@@ -84,8 +84,8 @@ describe("interrupted recording cleanup", () => {
     const stop = vi.fn();
     const pending = finishRecording({ log: reader, from, stop, stopSent: true, signal: new AbortController().signal });
     await delay(200);
-    rotate();
-    rotate();
+    await rotate();
+    await rotate();
     await write("state → stopping", "saved done.mp4", "state → idle");
     await expect(pending).resolves.toBe("done.mp4");
     expect(stop).not.toHaveBeenCalled();
@@ -105,7 +105,7 @@ describe("interrupted recording cleanup", () => {
   it("settles a failure whose cleanup finishes in the new file, reading its record once", async () => {
     const from = reader.end();
     await write("state → recording", "recorder: session s1 failed: capture_host_crashed killed", "state → idle");
-    rotate();
+    await rotate();
     await write("failed: capture_host_crashed killed (kept /m/s1.recording.mp4)", failed("s1"), failed("s1"));
     const stop = vi.fn();
     await expect(finishRecording({ log: reader, from, stop, stopSent: false, signal: new AbortController().signal })).resolves.toBeUndefined();
@@ -117,7 +117,7 @@ describe("interrupted recording cleanup", () => {
     await write("state → recording", "state → stopping", "state → idle", "saved /m/other.mp4", saved("other", "/m/other.mp4"));
     const pending = finishRecording({ log: reader, from, stop: vi.fn(), stopSent: true, signal: new AbortController().signal, session: "mine" });
     await delay(200);
-    rotate();
+    await rotate();
     await write("saved /m/mine.mp4", saved("mine", "/m/mine.mp4"));
     await expect(pending).resolves.toBe("/m/mine.mp4");
     expect(recordingOutcome(["[t] saved /m/a.mp4"])).toEqual({ settled: true, saved: "/m/a.mp4" });
@@ -138,7 +138,7 @@ describe("interrupted recording cleanup", () => {
   it("rejects at once when rotation removed the history it must read", async () => {
     await write("checkpointed");
     const from = reader.end();
-    for (let i = 0; i < 4; i += 1) { rotate(); await write(`generation ${i}`); }
+    for (let i = 0; i < 4; i += 1) { await rotate(); await write(`generation ${i}`); }
     const started = Date.now();
     await expect(finishRecording({ log: reader, from, stop: vi.fn(), stopSent: true, signal: new AbortController().signal })).rejects.toThrow(LogGapError);
     await expect(settleRecording({ log: reader, from, stop: vi.fn(), stopSent: true, signal: new AbortController().signal })).rejects.toThrow(LogGapError);
@@ -181,7 +181,7 @@ describe("session log waits", () => {
     const from = reader.end();
     const pending = waitForLog(reader, from, /\] saved (.+)$/, "save", new AbortController().signal, 2000);
     await delay(50);
-    rotate();
+    await rotate();
     await write("state → stopping", "state → idle", "saved /m/new.mp4");
     await expect(pending).resolves.toMatchObject({ line: expect.stringContaining("saved /m/new.mp4") });
   });
@@ -207,7 +207,7 @@ describe("session log waits", () => {
   it("rejects with the evidence gap instead of waiting out the timeout", async () => {
     await write("checkpointed");
     const from = reader.end();
-    for (let i = 0; i < 4; i += 1) { rotate(); await write(`generation ${i}`); }
+    for (let i = 0; i < 4; i += 1) { await rotate(); await write(`generation ${i}`); }
     const started = Date.now();
     await expect(waitForLog(reader, from, /saved /, "save", new AbortController().signal, 30_000)).rejects.toThrow(/no longer retained/);
     expect(Date.now() - started).toBeLessThan(1000);

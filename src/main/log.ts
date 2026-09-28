@@ -1,7 +1,7 @@
 /**
  * File log for the window-less app (docs/system-design/desktop.md). Every line goes to stdout
- * (visible under `pnpm dev`) and is appended to `<userData>/logs/recordstuff.log`
- * (the only trace under `pnpm start` or a packaged build). Rotation happens
+ * (visible under `pnpm dev`) and is appended to the file the caller names, `recordstuff.log`
+ * under Electron's logs folder (the only trace under `pnpm start` or a packaged build). Rotation happens
  * before a write once the active file exceeds `maxBytes`: `recordstuff.log`
  * becomes `recordstuff.1.log`, `.1` becomes `.2`, and so on up to `keep`
  * archives. The size is read from disk once per process and counted from
@@ -36,15 +36,16 @@ export function rotatedPath(filePath: string, index: number): string {
 
 /**
  * Shift the archive chain by one: drop `.keep`, move `.N` to `.N+1`, then move
- * the active file to `.1`. Missing links are skipped.
+ * the active file to `.1`. Missing links are skipped; with `keep` 0 the active
+ * file is removed. The logger's own rotation, exported for the log readers' tests.
  */
-export function rotateLog(filePath: string, keep: number): void {
-  fs.rmSync(rotatedPath(filePath, keep), { force: true });
-  for (let i = keep - 1; i >= 1; i -= 1) {
-    const from = rotatedPath(filePath, i);
-    if (fs.existsSync(from)) fs.renameSync(from, rotatedPath(filePath, i + 1));
+export async function rotateLog(filePath: string, keep: number): Promise<void> {
+  if (keep === 0) { await fs.promises.rm(filePath, { force: true }); return; }
+  await fs.promises.rm(rotatedPath(filePath, keep), { force: true });
+  for (let index = keep - 1; index >= 0; index--) {
+    try { await fs.promises.rename(index ? rotatedPath(filePath, index) : filePath, rotatedPath(filePath, index + 1)); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   }
-  if (keep >= 1 && fs.existsSync(filePath)) fs.renameSync(filePath, rotatedPath(filePath, 1));
 }
 
 export function formatLine(message: string, now: Date): string {
@@ -65,14 +66,6 @@ export function createFileLogger(options: FileLoggerOptions): FileLog {
   let queuedBytes = 0;
   let overflowReported = false;
   let queue = Promise.resolve();
-  const rotate = async (): Promise<void> => {
-    if (keep === 0) { await fs.promises.rm(options.filePath, { force: true }); return; }
-    await fs.promises.rm(rotatedPath(options.filePath, keep), { force: true });
-    for (let index = keep - 1; index >= 0; index--) {
-      try { await fs.promises.rename(index ? rotatedPath(options.filePath, index) : options.filePath, rotatedPath(options.filePath, index + 1)); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-    }
-  };
   const log: FileLog = Object.assign((message: string): void => {
     const line = formatLine(message, now());
     stdout(line);
@@ -92,7 +85,7 @@ export function createFileLogger(options: FileLoggerOptions): FileLog {
         try { size = (await fs.promises.stat(options.filePath)).size; }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; size = 0; }
       }
-      if (size > maxBytes) { await rotate(); size = 0; }
+      if (size > maxBytes) { await rotateLog(options.filePath, keep); size = 0; }
       await fs.promises.appendFile(options.filePath, text, "utf8");
       size += bytes;
     }).catch(cause => {

@@ -128,8 +128,11 @@ export class UpdateChecker {
       this.controller = undefined;
     }
     if (this.disposed) return;
-    if (this.options.settled()) { this.state = result; this.options.changed(); }
-    else this.deferred = result;
+    if (this.options.settled()) { this.state = result; this.options.changed(); return; }
+    // Recording began during the fetch: the result waits, and the check is no longer running.
+    this.state = previous;
+    this.deferred = result;
+    this.options.changed();
   }
   dispose(): void { this.disposed = true; this.controller?.abort(); }
 }

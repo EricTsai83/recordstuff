@@ -444,7 +444,7 @@ async function main(): Promise<void> {
         // panel's save queue and its controls must not wait with it. The
         // checker's state changes push the button's own progress.
         void updates.check(true);
-        return;
+        return true;
       case "openWebsite":
       case "openSource":
         try {
@@ -452,8 +452,12 @@ async function main(): Promise<void> {
           return true;
         } catch (error) { log(`settings: external link failed: ${String(error)}`); return false; }
       case "openUpdate":
-        if (settled()) await shell.openExternal(updates.state.kind === "available" ? DOWNLOAD_URL : RELEASES_URL);
-        return;
+        // Recording locks the button; a click that raced the lock opened nothing, which is not a failure.
+        if (!settled()) return true;
+        try {
+          await shell.openExternal(updates.state.kind === "available" ? DOWNLOAD_URL : RELEASES_URL);
+          return true;
+        } catch (error) { log(`settings: update link failed: ${String(error)}`); return false; }
       case "start":
         // An open macOS menu cannot change, so a Start chosen late is resolved now: only idle starts (plan 048).
         if (!recorder.startIfIdle()) log(`tray: Start recording ignored in state ${recorder.state.type}`);
@@ -689,19 +693,25 @@ async function main(): Promise<void> {
       clearTimeout(quitFeedback);
       quitFeedback = setTimeout(() => { quitting = true; refreshUi(); }, 300);
       if (!await recorder.shutdown()) return false;
+      // Media is settled here, so a timeout names the metadata write that is still pending.
+      const pending = new Set(["settings", "window size", "log"]);
+      const flushes = ([["settings", settings.flush()], ["window size", settingsWindow.flush()], ["log", log.flush()]] as const)
+        .map(([name, flush]) => flush.then(() => { pending.delete(name); }));
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
-        return await Promise.race([
-          Promise.all([settings.flush(), settingsWindow.flush(), log.flush()]).then(() => true),
+        const flushed = await Promise.race([
+          Promise.all(flushes).then(() => true),
           new Promise<boolean>(resolve => { timeout = setTimeout(() => resolve(false), 5000); }),
         ]);
+        if (!flushed) log(`quit: ${[...pending].join(", ")} still writing after 5000 ms`);
+        return flushed;
       } finally { clearTimeout(timeout); }
     },
     pending: () => {
       recorder.resumeAdmission();
       endQuitting();
       savedNotification.setQuitting(false);
-      log("quit deferred: recording save or cleanup is still pending");
+      log("quit deferred: a recording or preference write is still pending");
       void showQuitFeedback();
     },
     // Media is safe here; unsaved reminders need a durable save or explicit consent.

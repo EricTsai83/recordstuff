@@ -87,7 +87,9 @@ describe("lifecycle", () => {
     h.options.fetch.mockImplementation(() => new Promise((r) => { resolve = r; }));
     const pending = h.checker.check(true); await vi.waitFor(() => expect(h.options.fetch).toHaveBeenCalledTimes(1));
     h.busy(true); await h.checker.check(true); h.options.changed.mockClear(); resolve("0.2.0"); await pending;
-    expect(h.options.changed).not.toHaveBeenCalled(); h.busy(false); h.checker.flush(); expect(h.checker.state.kind).toBe("available");
+    // The result waits, but the panel stops saying a check is running.
+    expect(h.checker.state.kind).toBe("idle"); expect(h.options.changed).toHaveBeenCalledTimes(1);
+    h.busy(false); h.checker.flush(); expect(h.checker.state.kind).toBe("available");
   });
   it("defers a launch when recording starts during preference persistence", async () => {
     const h = harness(); h.options.saveAttempt.mockImplementationOnce(async (at) => { h.preference.lastAttempt = at; h.busy(true); });

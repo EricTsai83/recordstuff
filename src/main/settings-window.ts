@@ -244,7 +244,8 @@ export class SettingsWindow {
     const shortcut = view.groups.find(group => group.kind === "shortcut");
     if (shortcut) {
       shortcut.capturing = this.lease !== undefined;
-      if (this.lease) { delete shortcut.note; delete shortcut.diagnostics; }
+      // Capture suspends the registration; that is not a failure to report or retry.
+      if (this.lease) { delete shortcut.note; delete shortcut.diagnostics; delete shortcut.actions; }
     }
     return view;
   }
@@ -303,11 +304,12 @@ export class SettingsWindow {
     }
     const applied = typeof outcome === "boolean"
       ? outcome
-      : action === "checkUpdates" || action === "openUpdate" || settingsChecked(this.options.state(), this.options.context(), group, choice);
+      : settingsChecked(this.options.state(), this.options.context(), group, choice);
+    const link = group === "about" || action === "openUpdate";
     return this.deliver({
       view: this.view(),
       applied,
-      ...(group === "about" && !applied ? { failure: translate("Could not open the link. Try again.", this.options.context().language) } : {}),
+      ...(link && !applied ? { failure: translate("Could not open the link. Try again.", this.options.context().language) } : {}),
     }, recipient);
   }
 

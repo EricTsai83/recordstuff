@@ -31,7 +31,7 @@ describe("rotation-aware log cursor", async () => {
     const reader = new LogReader(file);
     const cursor = reader.end();
     await log("after checkpoint, before rotation");
-    rotateLog(file, 3);
+    await rotateLog(file, 3);
     await log("state → stopping");
     await log("state → idle");
     await log("saved /m/new.mp4");
@@ -63,7 +63,7 @@ describe("rotation-aware log cursor", async () => {
     const reader = new LogReader(file);
     const cursor = reader.end();
     for (let i = 0; i < 4; i += 1) {
-      rotateLog(file, 3);
+      await rotateLog(file, 3);
       await log(`generation ${i}`);
     }
     expect(() => reader.since(cursor)).toThrow(LogGapError);
@@ -107,7 +107,7 @@ describe("rotation-aware log cursor", async () => {
     const reader = new LogReader(file);
     const before = reader.end();
     await log("pending");
-    rotateLog(file, 3);
+    await rotateLog(file, 3);
     expect(fs.existsSync(file)).toBe(false);
     expect(texts(reader, before)).toEqual(["pending"]);
     const end = reader.end();
@@ -128,7 +128,7 @@ describe("rotation-aware log cursor", async () => {
     expect(reader.since(cursor).lines.map((line) => line.text)).toEqual(["[t] half written"]);
     fs.appendFileSync(file, "[t] cut off by a crash");
     const crashed = reader.since(cursor).next;
-    rotateLog(file, 3);
+    await rotateLog(file, 3);
     expect(reader.since(crashed).lines.map((line) => line.text)).toEqual(["[t] cut off by a crash"]);
   });
 
@@ -148,7 +148,7 @@ describe("rotation-aware log cursor", async () => {
     expect(reader.all()).toEqual([]);
     const log = logger();
     await log("a");
-    rotateLog(file, 3);
+    await rotateLog(file, 3);
     await log("b");
     expect(texts(reader, cursor)).toEqual(["a", "b"]);
   });
@@ -166,9 +166,9 @@ describe("rotation-aware log cursor", async () => {
   it("reads the whole retained history oldest first", async () => {
     const log = logger();
     await log("oldest");
-    rotateLog(file, 3);
+    await rotateLog(file, 3);
     await log("middle");
-    rotateLog(file, 3);
+    await rotateLog(file, 3);
     await log("newest");
     expect(new LogReader(file).all().map((line) => line.replace(/^\[[^\]]*\] /, ""))).toEqual(["oldest", "middle", "newest"]);
     expect(readRetainedLog(file)).toBe(["oldest", "middle", "newest"].map((m) => `[2026-09-25T10:00:00.000Z] ${m}`).join("\n"));

@@ -137,12 +137,17 @@ export class AppTray {
     clearTimeout(this.heldTimer);
     this.heldTimer = setTimeout(() => {
       this.heldTimer = undefined;
-      let idle: number | undefined;
-      try { idle = this.options.idleSeconds?.(); }
-      catch (error) { this.log(`notification: idle time unavailable (${String(error)})`); }
-      if (idle === undefined || idle <= RETURN_IDLE_SECONDS) this.showHeld();
+      if (this.userReturned()) this.showHeld();
       else this.checkReturn();
     }, WAKE_CHECK_MS);
+  }
+
+  /** Recent input means someone is at the Mac; an unknown idle time does not hold notifications back. */
+  private userReturned(): boolean {
+    let idle: number | undefined;
+    try { idle = this.options.idleSeconds?.(); }
+    catch (error) { this.log(`notification: idle time unavailable (${String(error)})`); }
+    return idle === undefined || idle <= RETURN_IDLE_SECONDS;
   }
 
   private showHeld(): void {
@@ -275,6 +280,9 @@ export class AppTray {
    */
   private show(text: { title: string; body: string }, onClick?: () => void): void {
     if (this.destroyed) return;
+    // A wake with nothing held starts no check, so the first notice after it
+    // asks whether the user already came back instead of waiting for a return.
+    if (this.asleep && this.resumed && this.userReturned()) this.showHeld();
     if (this.asleep) {
       // The switch and support checks apply when it is finally shown.
       this.held.push(() => this.show(text, onClick));

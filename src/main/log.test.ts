@@ -123,7 +123,7 @@ describe("rotateLog", () => {
     await fs.writeFile(rotatedPath(filePath, 1), "one");
     await fs.writeFile(rotatedPath(filePath, 2), "two");
     await fs.writeFile(rotatedPath(filePath, 3), "three");
-    rotateLog(filePath, 3);
+    await rotateLog(filePath, 3);
     expect(await exists(filePath)).toBe(false);
     expect(await fs.readFile(rotatedPath(filePath, 1), "utf8")).toBe("active");
     expect(await fs.readFile(rotatedPath(filePath, 2), "utf8")).toBe("one");
@@ -135,15 +135,22 @@ describe("rotateLog", () => {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, "active");
     await fs.writeFile(rotatedPath(filePath, 2), "two");
-    rotateLog(filePath, 3);
+    await rotateLog(filePath, 3);
     expect(await fs.readFile(rotatedPath(filePath, 1), "utf8")).toBe("active");
     expect(await exists(rotatedPath(filePath, 2))).toBe(false);
     expect(await fs.readFile(rotatedPath(filePath, 3), "utf8")).toBe("two");
   });
 
+  it("removes the active file when no archives are kept", async () => {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, "active");
+    await rotateLog(filePath, 0);
+    expect(await fs.readdir(path.dirname(filePath))).toEqual([]);
+  });
+
   it("is a no-op on an empty directory", async () => {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
-    expect(() => rotateLog(filePath, 3)).not.toThrow();
+    await expect(rotateLog(filePath, 3)).resolves.toBeUndefined();
     expect(await fs.readdir(path.dirname(filePath))).toEqual([]);
   });
 });

@@ -509,6 +509,33 @@ describe("notifications around sleep (plan 050)", () => {
     }
   });
 
+  it("shows at once after a wake with nothing held once the user is back, and holds while still away", async () => {
+    vi.useFakeTimers();
+    try {
+      const idle = { seconds: 0 };
+      const { tray } = sleepy(idle);
+      tray.systemWillSleep();
+      tray.systemDidWake();
+      expect(vi.getTimerCount()).toBe(0);
+      tray.notifySaved("/Users/eric/Movies/RecordStuff/a.mp4");
+      expect(Fake.instances.map((n) => n.shown)).toEqual([1]);
+      expect(vi.getTimerCount()).toBe(0);
+
+      tray.systemWillSleep();
+      tray.systemDidWake();
+      idle.seconds = 30;
+      tray.notifySaved("/Users/eric/Movies/RecordStuff/b.mp4");
+      expect(Fake.instances).toHaveLength(1);
+      idle.seconds = 0;
+      tray.notifySaved("/Users/eric/Movies/RecordStuff/c.mp4");
+      // Held first, in order, then the new one.
+      expect(Fake.instances.map((n) => n.options.body)).toEqual(["Saved a.mp4", "Saved b.mp4", "Saved c.mp4"]);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not hold while awake, ignores a wake or unlock without a sleep, and drops held notifications on destroy", async () => {
     vi.useFakeTimers();
     try {
