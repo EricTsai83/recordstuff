@@ -22,9 +22,10 @@ import {
   type ResolutionCap,
   type VideoQuality,
 } from "../shared/quality";
-import { DEFAULT_HOTKEY, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut } from "../shared/hotkey";
+import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut } from "../shared/hotkey";
 import { COUNTDOWN_CHOICES } from "../shared/countdown";
-import type { SettingsChoice, SettingsGroup, SettingsView } from "../shared/settings-panel";
+import type { RecordingResultView, SettingsChoice, SettingsGroup, SettingsView } from "../shared/settings-panel";
+import type { RecordingResult } from "../shared/recording-result";
 import type { RecordingState } from "../shared/state";
 
 import path from "node:path";
@@ -174,6 +175,7 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group[] {
   const note = hotkey.enabled && !hotkey.registered
     ? t("Unavailable: another app is using this shortcut.", language)
     : undefined;
+  const diagnostics = hotkeyDiagnostics(ctx, note);
   const recommended = DEFAULT_HOTKEY.accelerator;
   const accelerators = hotkey.accelerator === recommended ? [recommended] : [recommended, hotkey.accelerator];
   return [{ ...group("hotkey", t("Shortcut", language), enabled, [
@@ -196,8 +198,24 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group[] {
     },
   ], undefined), kind: "shortcut", platform: ctx.platform, noteKind: "status",
     ...((note || ctx.settingsShortcut?.kind === "failed") ? { actions: [{ id: "retryRegistration", label: t("Retry shortcut registration", language), enabled: true, checked: false, action: "retryShortcuts" as const }] } : {}),
-    ...(note ? { diagnostics: [{ kind: "current" as const, heading: t("Shortcut unavailable", language), reason: note,
-      guidance: t("Recording is still available from the menu. Choose another shortcut.", language) }] } : {}) }];
+    ...(diagnostics.length ? { diagnostics } : {}) }];
+}
+
+/** Why a shortcut this card owns does not work: the recording one, and ⌘⌥, for Settings, which the tray also explains. */
+function hotkeyDiagnostics(ctx: AppContext, note: string | undefined): NonNullable<Group["diagnostics"]> {
+  const language = ctx.language;
+  const settings = describeAccelerator(SETTINGS_SHORTCUT, ctx.platform);
+  const kind = ctx.settingsShortcut?.kind;
+  return [
+    ...(note ? [{ kind: "current" as const, heading: t("Shortcut unavailable", language), reason: note,
+      guidance: t("Recording is still available from the menu. Choose another shortcut.", language) }] : []),
+    ...(kind === "failed" ? [{ kind: "current" as const, heading: t("Settings shortcut unavailable", language),
+      reason: t("{shortcut} could not be registered to open Settings; another app may use it.", language, { shortcut: settings }),
+      guidance: t("Settings stays available from the menu bar icon. Retry after the other app releases it.", language) }] : []),
+    ...(kind === "conflict" ? [{ kind: "current" as const, heading: t("Settings shortcut unavailable", language),
+      reason: t("{shortcut} is the recording shortcut, so it does not open Settings.", language, { shortcut: settings }),
+      guidance: t("Choose another recording shortcut to open Settings with {shortcut} again.", language, { shortcut: settings }) }] : []),
+  ];
 }
 
 function updateChecksGroup(ctx: AppContext, enabled: boolean): Group[] {
@@ -306,7 +324,6 @@ function settingsGroups(state: RecordingState, ctx: AppContext): Group[] {
     ]), kind: "actions" },
   ].map((entry): Group => ({ ...entry,
     ...(entry.id === "updateChecks" ? { sectionHeading: t("Updates", ctx.language) } : {}),
-    ...(!unlocked && entry.id === "frameRate" ? { sectionFootnote: t("Recording in progress. Recording settings are locked.", ctx.language) } : {}),
   } as Group));
 }
 
@@ -349,8 +366,8 @@ function failuresTab(ctx: AppContext): SettingsView["tabs"][number] {
   };
 }
 
-const resultViews = new WeakMap<NonNullable<AppContext["recordingResults"]>[number], { key: string; view: NonNullable<SettingsView["recordingResults"]>[number] }>();
-function projectResult(result: NonNullable<AppContext["recordingResults"]>[number], state: RecordingState, ctx: AppContext, now: Date): NonNullable<SettingsView["recordingResults"]>[number] {
+const resultViews = new WeakMap<RecordingResult, { key: string; view: RecordingResultView }>();
+function projectResult(result: RecordingResult, state: RecordingState, ctx: AppContext, now: Date): RecordingResultView {
   const language = ctx.language;
   const key = `${language}:${ctx.platform}:${localDay(now)}:${state.type}:${state.type === "needsPermission" && state.needsRelaunch}`;
   const previous = resultViews.get(result);
@@ -386,7 +403,8 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
     recordingResults: (ctx.recordingResults ?? []).slice(0, ctx.historyLimit).map(result => projectResult(result, state, ctx, now)),
     recordingResultsRemaining: Math.max(0, (ctx.recordingResults?.length ?? 0) - (ctx.historyLimit ?? Infinity)),
     title: t("RecordStuff - Settings", language),
-    hint: unlocked ? "" : t("Recording in progress. Recording settings are locked.", language),
+    // One line above the tabs: the lock covers General too, so it is not the Recording tab's own note.
+    hint: unlocked ? "" : t("Recording in progress. Only language and appearance can change until it ends.", language),
     failure: t("Could not apply this setting. Your current settings are shown.", language),
     tabs: [{ id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) }, failuresTab(ctx)],
     groups: settingsGroups(state, ctx).map(({ choices, actions, ...rest }) => ({
@@ -397,7 +415,7 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
   };
 }
 
-function resultActions(state: RecordingState, ctx: AppContext, result: NonNullable<AppContext["recordingResults"]>[number]): Array<SettingsChoice & { action: AppAction }> {
+function resultActions(state: RecordingState, ctx: AppContext, result: RecordingResult): Array<SettingsChoice & { action: AppAction }> {
   const actions: Array<SettingsChoice & { action: AppAction }> = [];
   const add = (id: RecordingResultAction, label: PlainMessageKey, enabled: boolean): void => {
     actions.push({ id, label: t(label, ctx.language), checked: false, enabled,

@@ -118,8 +118,11 @@ it("shows the previous result while a check deferred by a session waits", async 
   const previous = h.checker.state;
   // The recorder becomes busy while the attempt timestamp is being saved.
   h.options.saveAttempt.mockImplementationOnce(async () => { h.busy(true); });
+  h.options.changed.mockClear();
   await h.checker.check(true);
   expect(h.checker.state).toEqual(previous);
+  // Once for "checking", once for the return to the previous result: the panel stops saying a check is running.
+  expect(h.options.changed).toHaveBeenCalledTimes(2);
   expect(h.options.fetch).toHaveBeenCalledTimes(1);
   h.busy(false); h.checker.flush();
   await vi.waitFor(() => expect(h.options.fetch).toHaveBeenCalledTimes(2));

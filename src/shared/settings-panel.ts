@@ -25,7 +25,6 @@ export interface SettingsGroup {
   /** Consecutive rows with this id share an inset list. */
   section?: string;
   sectionHeading?: string;
-  sectionFootnote?: string;
   /** Omitted notes are static explanations. */
   noteKind?: "explanation" | "status";
   diagnostics?: Array<{ kind: "current" | "history"; heading: string; reason: string; guidance: string }>;
@@ -81,11 +80,20 @@ export interface SettingsView {
   tabs: Array<{ id: SettingsTab; label: string; accessibleLabel?: string }>;
   groups: SettingsGroup[];
 }
+/** IPC between main and the settings preload, which keeps its own copies: a sandboxed preload imports nothing at runtime (src/preload/channels.test.ts). */
+export const SETTINGS_CHANNELS = {
+  capture: "settings:capture",
+  read: "settings:read",
+  choose: "settings:choose",
+  changed: "settings:changed",
+} as const;
 export interface SettingsChoiceResult {
   view: SettingsView;
   /** Whether the requested choice is the committed one now. */
   applied: boolean;
   failure?: string;
+  /** Main refused the value itself (a reserved or invalid shortcut): nothing was saved and choosing it again fails the same way. */
+  refused?: true;
 }
 /** What the preload exposes to the panel. */
 export interface SettingsBridge {

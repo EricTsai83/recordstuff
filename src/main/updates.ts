@@ -112,6 +112,7 @@ export class UpdateChecker {
         this.deferred = previous;
         if (manual) this.manualPending = true;
         else { this.launchPending = true; this.retryLaunch = true; }
+        this.options.changed();
         return;
       }
       const version = await this.options.fetch(controller.signal);

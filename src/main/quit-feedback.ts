@@ -3,15 +3,23 @@ import { translate, type Language } from "../shared/i18n";
 import { failureReason, persistenceWarning, type RecordingResults } from "./recording-result";
 import { APP_NAME } from "./ui-model";
 
+/** What held a quit: recording work, or a settings, window-size or log write after media had settled. */
+export type QuitDeferral = "media" | "metadata";
+
+const DEFERRAL_MESSAGE = {
+  media: "Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. Please try quitting again after it finishes.",
+  metadata: "Settings or the log are still being written. RecordStuff will stay open. Please try quitting again in a moment.",
+} as const;
+
 /** Shared native presentation; fixtures inject real Electron functions, not copied UI. */
 export function createQuitFeedback(deps: {
   language(): Language;
   focus(): void;
   show(options: MessageBoxOptions): Promise<unknown>;
   log(message: string): void;
-}): () => Promise<void> {
+}): (deferral?: QuitDeferral) => Promise<void> {
   let active: Promise<void> | undefined;
-  return () => {
+  return (deferral = "media") => {
     if (active) {
       try { deps.focus(); }
       catch (cause) { deps.log(`quit feedback failed: ${String(cause)}`); }
@@ -25,7 +33,7 @@ export function createQuitFeedback(deps: {
       await deps.show({
         type: "info",
         title: APP_NAME,
-        message: translate("Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. Please try quitting again after it finishes.", deps.language()),
+        message: translate(DEFERRAL_MESSAGE[deferral], deps.language()),
       });
     }).catch(cause => deps.log(`quit feedback failed: ${String(cause)}`)).finally(() => {
       active = undefined;

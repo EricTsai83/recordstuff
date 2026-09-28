@@ -419,7 +419,13 @@ require(path.join(root, 'out/main/index.js'));
   await commit();
   record('explicit resave repeats failure notification', failureNotifications().length === 2, `notifications=${failureNotifications().length}`);
   await choose('hotkey', 'off');
-  record('Off retains value and removes failure note', !(await group()).diagnostics?.length && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.enabled === false && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator && !globalShortcut.isRegistered(accelerator), 'saved disabled; no note or registration');
+  const off = await group();
+  // Every registration fails here, ⌘⌥, too: Off removes only the recording shortcut's note.
+  record('Off retains value and removes failure note', !off.diagnostics?.some(d => d.reason === 'Unavailable: another app is using this shortcut.') && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.enabled === false && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator && !globalShortcut.isRegistered(accelerator), 'saved disabled; no note or registration');
+  record('a failed Settings shortcut is explained in the card, not only by a retry button',
+    off.diagnostics?.length === 1 && off.diagnostics[0]?.heading === 'Settings shortcut unavailable' && off.actions?.some(a => a.id === 'retryRegistration') === true
+      && await evaluate("document.querySelector('#setting-hotkey-diagnostics .diagnostic strong').textContent === '⚠ Settings shortcut unavailable'"),
+    JSON.stringify(off.diagnostics));
   await choose('notifications', 'off');
   await commit();
   record('notification preference respected on failure', failureNotifications().length === 2 && Boolean((await group()).diagnostics?.length), `notifications=${failureNotifications().length}; note retained`);

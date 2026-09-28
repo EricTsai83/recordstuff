@@ -1,8 +1,8 @@
 /** Main owns committed preferences, diagnostics and authorized choice ids. */
 import { describeAccelerator, validateAccelerator } from "../shared/hotkey";
 import { isCloseChord, shortcutCandidate, shortcutModifiers } from "./shortcut-capture";
-import { isLanguage, sentences, translate, type PlainMessageKey } from "../shared/i18n";
-import type { SettingsBridge, SettingsGroup, SettingsTab, SettingsView } from "../shared/settings-panel";
+import { isLanguage, sentences, translate, type Language, type PlainMessageKey } from "../shared/i18n";
+import type { RecordingResultView, SettingsBridge, SettingsGroup, SettingsTab, SettingsView } from "../shared/settings-panel";
 
 declare global { interface Window { settings: SettingsBridge } }
 const form = document.querySelector<HTMLFormElement>("#settings")!;
@@ -10,6 +10,8 @@ const heading = document.querySelector<HTMLHeadingElement>("#title")!;
 const hint = document.querySelector<HTMLParagraphElement>("#hint")!;
 const feedback = document.querySelector<HTMLParagraphElement>("#feedback")!;
 const startupLanguage = ((v: string | null) => isLanguage(v) ? v : undefined)(new URLSearchParams(location.search).get("lang"));
+/** The BCP 47 tag assistive technology reads the page's text with. */
+const documentLanguage = (language: Language | undefined): string => language === "zh-TW" ? "zh-Hant" : "en";
 let view: SettingsView | undefined;
 let selectedTab: SettingsTab = "recording";
 let renderedStructure = "";
@@ -40,7 +42,7 @@ let preview = "";
 /** The preview's keys, one box each: modifiers and the key, never the characters of a name like F12 or Ctrl. */
 let previewParts: string[] = [];
 let candidateToConfirm: string | undefined;
-let failure: { group: string; choice?: string; text: string; baseline?: string } | undefined;
+let failure: { group: string; choice?: string; text: string; baseline?: string; refused?: true } | undefined;
 const text = (key: PlainMessageKey): string => translate(key, view?.language);
 const controlId = (group: SettingsGroup): string => `setting-${group.id}`;
 const shortcutGroup = (): SettingsGroup | undefined => view?.groups.find(g => g.kind === "shortcut");
@@ -128,8 +130,9 @@ function updateDiagnostic(container: HTMLElement, group: SettingsGroup): void {
   const activeFailure = failure?.group === group.id ? failure : undefined;
   error.hidden = !activeFailure;
   const actionFailure = activeFailure !== undefined && isAction(group, activeFailure.choice);
-  // A combination the editor refused was never sent: nothing was saved, and the recovery is another key.
-  const refusedKey = activeFailure !== undefined && activeFailure.choice === undefined && group.kind === "shortcut" && Boolean(group.capturing);
+  // A combination the editor or main refused saved nothing, and the recovery is another key, not the same choice again.
+  const refusedKey = activeFailure !== undefined && group.kind === "shortcut"
+    && (activeFailure.refused === true || (activeFailure.choice === undefined && Boolean(group.capturing)));
   setText(error.querySelector("strong")!, text(refusedKey ? "Shortcut unavailable" : actionFailure ? "Action failed" : "Change was not saved"));
   setText(error.querySelector("p")!, activeFailure?.text ?? "");
   const recovery = area.querySelector<HTMLButtonElement>(".recovery")!;
@@ -237,8 +240,6 @@ function updateRows(groups: SettingsGroup[]): void {
     for (const el of container.querySelectorAll<HTMLElement>("select, input, button[data-action], #shortcut-capture")) {
       if (description) el.setAttribute("aria-describedby", description); else el.removeAttribute("aria-describedby");
     }
-    const footnote = document.getElementById(`${controlId(group)}-footnote`)!;
-    setText(footnote, group.sectionFootnote ?? ""); footnote.hidden = !group.sectionFootnote;
   }
 }
 function actionButton(group: SettingsGroup, choice: SettingsGroup["choices"][number]): HTMLButtonElement {
@@ -324,7 +325,11 @@ function row(group: SettingsGroup): HTMLElement {
       setPreview(candidate ?? shortcutModifiers(event, group.platform).join("+"), group.platform ?? "darwin");
       if (candidate === undefined) { draw(); return; }
       const result = validateAccelerator(candidate);
-      if (result.error) { localFailure(group.id, translate(result.error, view?.language)); return; }
+      if (result.error) {
+        // A key the editor cannot use has no name to show (only the internal "Unsupported"): keep the held modifiers.
+        setPreview(shortcutModifiers(event, group.platform).join("+"), group.platform ?? "darwin");
+        localFailure(group.id, translate(result.error, view?.language)); return;
+      }
       candidateToConfirm = result.accelerator;
       failure = undefined;
       announce(sentences([preview, text("Confirm to save")], view?.language));
@@ -550,7 +555,7 @@ function resultRow(id: string, domId: string, state: { open: boolean }): HTMLDet
   });
   return area;
 }
-function fillRow(area: HTMLDetailsElement, result: NonNullable<SettingsView["recordingResults"]>[number]): void {
+function fillRow(area: HTMLDetailsElement, result: RecordingResultView): void {
   const domId = area.id;
   area.classList.toggle("unread", !result.acknowledged);
   area.querySelector<HTMLElement>(".result-unread")!.hidden = result.acknowledged;
@@ -613,7 +618,7 @@ function draw(): void {
   const focusRequested = (current.resultFocus ?? 0) > resultFocus;
   resultFocus = current.resultFocus ?? 0;
   if (focusRequested) selectedTab = "failures";
-  document.documentElement.lang = current.language === "zh-TW" ? "zh-Hant" : "en";
+  document.documentElement.lang = documentLanguage(current.language);
   document.title = current.title; setText(heading, current.title); setText(hint, current.hint); hint.hidden = !current.hint;
   const groups = current.groups.filter(g => g.tab === selectedTab);
   /** Set when the panel was rebuilt: the offset it gets once everything above its content has settled. */
@@ -654,7 +659,6 @@ function draw(): void {
         section.append(title, node("div", "inset-list")); panel.append(section); previous = sectionId;
       }
       section.querySelector(".inset-list")!.append(row(group));
-      const foot = node("p", "section-footnote"); foot.id = `${controlId(group)}-footnote`; section.append(foot);
     }
     const viewport = node("div", "settings-viewport");
     const scrollHint = node("div", "scroll-hint"); scrollHint.id = "scroll-hint";
@@ -771,7 +775,8 @@ async function choose(group: string, choice: string, control: string): Promise<v
     returnCaptureFocus = (control === "shortcut-capture" || control === "shortcut-confirm") && document.activeElement?.id === control && document.hasFocus();
     render(result.view); success = result.applied;
     if (!success) {
-      failure = { group, choice, text: result.failure ?? result.view.failure, baseline: committed(result.view.groups.find(g => g.id === group)!) };
+      failure = { group, choice, text: result.failure ?? result.view.failure, baseline: committed(result.view.groups.find(g => g.id === group)!),
+        ...(result.refused ? { refused: true as const } : {}) };
       announce(failure.text);
     } else if ((control === "shortcut-capture" || control === "shortcut-confirm") && !shortcutGroup()?.diagnostics?.length) announce(text("Shortcut saved"));
     else if (control.endsWith("-recovery")) announce(text("Switched to Primary display"));
@@ -822,6 +827,8 @@ window.addEventListener("blur", () => {
 });
 window.settings.onChanged(render);
 void window.settings.read().then(render).catch(() => {
+  // No view ever drew, so the page still carries the HTML's `lang`; the message is in the requested language.
+  document.documentElement.lang = documentLanguage(startupLanguage);
   feedback.classList.remove("visually-hidden");
   announce(translate("Could not open settings. Close this window and open it again.", startupLanguage));
 });

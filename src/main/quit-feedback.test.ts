@@ -25,6 +25,15 @@ it("joins overlapping native prompts and allows a later prompt in the current la
   close(); await second;
 });
 
+it("names a pending preference or log write instead of a recording when media had settled", async () => {
+  const show = vi.fn(async (_options: MessageBoxOptions) => undefined);
+  const prompt = createQuitFeedback({ language: () => "en", show, focus() {}, log: vi.fn() });
+  await prompt("metadata");
+  expect(show.mock.calls[0]?.[0].message).toBe("Settings or the log are still being written. RecordStuff will stay open. Please try quitting again in a moment.");
+  await prompt();
+  expect(show.mock.calls[1]?.[0].message).toContain("Recording is still starting");
+});
+
 it("clears the guard after rejected and synchronous native failures", async () => {
   const show = vi.fn().mockRejectedValueOnce(new Error("rejected")).mockImplementationOnce(() => { throw new Error("sync"); }).mockResolvedValue(undefined);
   const log = vi.fn();

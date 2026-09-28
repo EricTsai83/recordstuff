@@ -5,7 +5,7 @@ import { createPreferenceActions } from "./preferences";
  * permission, and make quitting wait for a running recording to finish.
  * Settings use a separate sandboxed window; capture keeps its hidden host.
  */
-import { createHistoryQuit, createQuitFeedback } from "./quit-feedback";
+import { createHistoryQuit, createQuitFeedback, type QuitDeferral } from "./quit-feedback";
 import { installQuitCoordinator } from "./quit-coordinator";
 import { RecordingResultStore } from "./recording-result-store";
 import { RecordingResults } from "./recording-result";
@@ -276,7 +276,8 @@ async function main(): Promise<void> {
     preference: () => settings.updates,
     saveAttempt: (lastAttempt) => settings.setUpdates({ lastAttempt }),
     fetch: (signal) => fetchVersion(process.platform, process.arch, signal, (url, init) => net.fetch(url, init)),
-    changed: () => { if (settled()) refreshUi(); }, log,
+    // The checker holds results back during a session itself; every change it reports is current.
+    changed: () => refreshUi(), log,
   });
   // Loads asynchronously; background save outcomes refresh both projections.
   const recordingResults = new RecordingResults(
@@ -290,6 +291,9 @@ async function main(): Promise<void> {
     clearTimeout(quitFeedback);
     quitFeedback = undefined;
     if (quitting) { quitting = false; refreshUi(); }
+    // Work held back while the quit made the app unsettled applies now, not at the next recording.
+    updates.flush();
+    shortcuts.flush();
   };
   let captureDegraded = false;
   const captureWarning = () => translate("The resolution cap could not be confirmed. The recording may use a larger size.", settings.language);
@@ -688,16 +692,19 @@ async function main(): Promise<void> {
     log,
   });
   let historyPrompt = false;
+  let quitDeferral: QuitDeferral = "media";
   const quitCoordinator = installQuitCoordinator(app, {
     relaunch: () => app.relaunch(),
     shutdown: async () => {
       quitRequested = true;
+      quitDeferral = "media";
       savedNotification.setQuitting(true);
       // Pending cleanup can hold quit for the stop deadline, and a history save for its wait; the tray says so meanwhile.
       clearTimeout(quitFeedback);
       quitFeedback = setTimeout(() => { quitting = true; refreshUi(); }, 300);
       if (!await recorder.shutdown()) return false;
       // Media is settled here, so a timeout names the metadata write that is still pending.
+      quitDeferral = "metadata";
       const pending = new Set(["settings", "window size", "log"]);
       const flushes = ([["settings", settings.flush()], ["window size", settingsWindow.flush()], ["log", log.flush()]] as const)
         .map(([name, flush]) => flush.then(() => { pending.delete(name); }));
@@ -715,8 +722,8 @@ async function main(): Promise<void> {
       recorder.resumeAdmission();
       endQuitting();
       savedNotification.setQuitting(false);
-      log("quit deferred: a recording or preference write is still pending");
-      void showQuitFeedback();
+      log(`quit deferred: ${quitDeferral === "media" ? "recording work" : "a preference or log write"} is still pending`);
+      void showQuitFeedback(quitDeferral);
     },
     // Media is safe here; unsaved reminders need a durable save or explicit consent.
     history: createHistoryQuit({ results: recordingResults, language: () => currentLanguage, focus: focusApp, log,

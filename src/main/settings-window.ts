@@ -11,7 +11,7 @@
 import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE, fitSettingsSize, type SettingsWindowState, type WindowSize } from "./settings-window-state";
 import { BrowserWindow, app, ipcMain, screen, type IpcMainInvokeEvent } from "electron";
 import path from "node:path";
-import type { SettingsChoiceResult, SettingsView } from "../shared/settings-panel";
+import { SETTINGS_CHANNELS, type SettingsChoiceResult, type SettingsView } from "../shared/settings-panel";
 import type { RecordingState } from "../shared/state";
 
 import { settingsAction, settingsChecked, settingsView } from "./settings-model";
@@ -72,7 +72,7 @@ export class SettingsWindow {
       }
       return window;
     };
-    ipcMain.handle("settings:capture", (event, armed: unknown) => {
+    ipcMain.handle(SETTINGS_CHANNELS.capture, (event, armed: unknown) => {
       const window = authorize(event);
       if (armed === false) this.release(this.leaseOf(window));
       else if (armed === true && !this.lease && window.isFocused() && preferencesUnlocked(this.options.state())) {
@@ -82,11 +82,11 @@ export class SettingsWindow {
       }
       return this.deliver(this.view());
     });
-    ipcMain.handle("settings:read", (event) => {
+    ipcMain.handle(SETTINGS_CHANNELS.read, (event) => {
       authorize(event);
       return this.deliver(this.view());
     });
-    ipcMain.handle("settings:choose", (event, group: unknown, choice: unknown) => {
+    ipcMain.handle(SETTINGS_CHANNELS.choose, (event, group: unknown, choice: unknown) => {
       const window = authorize(event);
       if (group === "history" && choice === "more") {
         this.historyLimit += HISTORY_PAGE_ROWS;
@@ -211,7 +211,7 @@ export class SettingsWindow {
     if (serialized === this.delivered) return;
     this.delivered = serialized;
     window.setTitle(view.title);
-    window.webContents.send("settings:changed", view);
+    window.webContents.send(SETTINGS_CHANNELS.changed, view);
   }
 
   /** A view returned by an invoke: the page renders it, so it is what the page holds now. */
@@ -224,9 +224,9 @@ export class SettingsWindow {
     this.flushSize();
     this.delivered = undefined;
     this.release(this.lease);
-    ipcMain.removeHandler("settings:capture");
-    ipcMain.removeHandler("settings:read");
-    ipcMain.removeHandler("settings:choose");
+    ipcMain.removeHandler(SETTINGS_CHANNELS.capture);
+    ipcMain.removeHandler(SETTINGS_CHANNELS.read);
+    ipcMain.removeHandler(SETTINGS_CHANNELS.choose);
     this.window?.destroy();
     this.window = undefined;
   }
@@ -291,14 +291,11 @@ export class SettingsWindow {
       this.log(`settings window: refused ${JSON.stringify({ group, choice })}`);
       this.release(lease);
       const view = this.view();
-      let failure = view.failure;
-      if (group === "hotkey" && choice !== "off" && choice !== "retryRegistration") {
-        const error = isSettingsShortcut(choice, this.options.context().platform)
-          ? SETTINGS_SHORTCUT_RESERVED : validateAccelerator(choice).error;
-        const shortcut = view.groups.find(entry => entry.id === "hotkey");
-        if (error && shortcut) { failure = translate(error, view.language); shortcut.note = failure; }
-      }
-      return this.deliver({ view, applied: false, failure }, recipient);
+      // A refused shortcut says why once, in the card's own error; its note keeps describing the registration.
+      const error = group === "hotkey" && choice !== "off" && choice !== "retryRegistration"
+        ? isSettingsShortcut(choice, this.options.context().platform) ? SETTINGS_SHORTCUT_RESERVED : validateAccelerator(choice).error
+        : undefined;
+      return this.deliver({ view, applied: false, ...(error ? { failure: translate(error, view.language), refused: true as const } : { failure: view.failure }) }, recipient);
     }
     let outcome: boolean | void;
     try {
@@ -310,11 +307,15 @@ export class SettingsWindow {
     const applied = typeof outcome === "boolean"
       ? outcome
       : settingsChecked(this.options.state(), this.options.context(), group, choice);
-    const link = group === "about" || action === "openUpdate";
+    // An action that opened nothing says what failed, not that a setting could not be applied.
+    const language = this.options.context().language;
+    const actionFailure = group === "about" || action === "openUpdate" ? translate("Could not open the link. Try again.", language)
+      : action === "openNotificationSettings" ? translate("Could not open System Settings. Allow RecordStuff in System Settings → Notifications.", language)
+      : undefined;
     return this.deliver({
       view: this.view(),
       applied,
-      ...(link && !applied ? { failure: translate("Could not open the link. Try again.", this.options.context().language) } : {}),
+      ...(actionFailure && !applied ? { failure: actionFailure } : {}),
     }, recipient);
   }
 

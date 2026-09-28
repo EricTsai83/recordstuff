@@ -123,7 +123,7 @@ describe("settingsView", () => {
 describe("recording locks every preference except the language", () => {
   it.each(busy)("$type", (state) => {
     const view = settingsView(state, context);
-    expect(view.hint).toBe("Recording in progress. Recording settings are locked.");
+    expect(view.hint).toBe("Recording in progress. Only language and appearance can change until it ends.");
     for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["language", "appearance", "about"].includes(entry.id));
     expect(settingsAction(state, context, "language", "zh-TW")).toEqual({ setLanguage: "zh-TW" });
     for (const [group, choice] of [["videoQuality", "high"], ["frameRate", "60"], ["hotkey", "off"], ["updateChecks", "off"]]) {
@@ -219,7 +219,7 @@ describe("countdown group (plan 040)", () => {
       expect(group(state, context, "countdown")?.enabled, state.type).toBe(false);
       expect(settingsAction(state, context, "countdown", "5"), state.type).toBeUndefined();
     }
-    expect(settingsView({ type: "countdown", remaining: 2 }, context).hint).toBe("Recording in progress. Recording settings are locked.");
+    expect(settingsView({ type: "countdown", remaining: 2 }, context).hint).toBe("Recording in progress. Only language and appearance can change until it ends.");
     expect(settingsChecked(idle, { ...context, countdown: 10 }, "countdown", "10")).toBe(true);
   });
 });
@@ -571,4 +571,15 @@ it("routes shortcut retry only while the failed registration can be changed", ()
   expect(settingsAction(idle, failed, "hotkey", "retryRegistration")).toBe("retryShortcuts");
   expect(settingsAction(idle, context, "hotkey", "retryRegistration")).toBeUndefined();
   for (const state of busy) expect(settingsAction(state, failed, "hotkey", "retryRegistration")).toBeUndefined();
+});
+
+it("explains a Settings shortcut that is not registered, not only a retry button", () => {
+  const failed = group(idle, { ...context, settingsShortcut: { kind: "failed", accelerator: "CommandOrControl+Alt+,", reason: "taken" } }, "hotkey");
+  expect(failed?.actions?.map(action => action.id)).toEqual(["retryRegistration"]);
+  expect(failed?.diagnostics).toEqual([expect.objectContaining({ heading: "Settings shortcut unavailable",
+    reason: "⌘⌥, could not be registered to open Settings; another app may use it." })]);
+  const conflict = group(idle, { ...context, settingsShortcut: { kind: "conflict" } }, "hotkey");
+  expect(conflict?.actions).toBeUndefined();
+  expect(conflict?.diagnostics?.[0]?.reason).toBe("⌘⌥, is the recording shortcut, so it does not open Settings.");
+  expect(group(idle, { ...context, settingsShortcut: { kind: "registered", accelerator: "CommandOrControl+Alt+," } }, "hotkey")?.diagnostics).toBeUndefined();
 });

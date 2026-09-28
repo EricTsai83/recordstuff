@@ -12,6 +12,7 @@ export const ZH_TW = {
   "Failure history could not be read. The existing file has been preserved; check the log for details.": "無法讀取失敗紀錄，原有檔案已保留；請查看 log 了解詳情。",
   "Show more failures": "顯示更多失敗紀錄",
   "Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. Please try quitting again after it finishes.": "錄影仍在啟動、存檔或清理中，RecordStuff 將保持開啟。尚未開始的錄影會被取消。完成後請再次嘗試退出。",
+  "Settings or the log are still being written. RecordStuff will stay open. Please try quitting again in a moment.": "設定或 log 仍在寫入，RecordStuff 將保持開啟。請稍後再次嘗試退出。",
   "Could not complete this action. Please try again.": "無法完成此操作，請重試。",
   "This failure record is not saved yet. RecordStuff keeps it and retries automatically. If this continues, check free disk space and access to the app's data folder. A force-quit loses unsaved records.": "這筆失敗紀錄尚未存檔。RecordStuff 會先保留它並自動重試；若持續失敗，請檢查可用磁碟空間與 App 資料夾的存取權限。強制結束會遺失尚未存檔的紀錄。",
   "The saved failure history could not be read or comes from a newer version, so RecordStuff will not overwrite it. This record is kept only until RecordStuff quits.": "已儲存的失敗紀錄無法讀取，或由較新版本建立，因此 RecordStuff 不會覆寫它。這筆紀錄只會保留到 RecordStuff 結束為止。",
@@ -121,7 +122,7 @@ export const ZH_TW = {
   "Higher quality preserves more detail and uses more space at the same resolution.": "在相同解析度下，較高品質可保留更多細節，也會使用更多儲存空間。",
   "Limits pixel dimensions while keeping the aspect ratio. Smaller sources are not enlarged.": "限制畫面像素尺寸並維持長寬比，不會放大較小的來源畫面。",
   "Right-click to open the menu": "右鍵開啟選單",
-  "Recording in progress. Recording settings are locked.": "錄製作業進行中，錄製相關設定暫時鎖定。",
+  "Recording in progress. Only language and appearance can change until it ends.": "錄製作業進行中，結束前只能變更語言與外觀。",
   "Could not apply this setting. Your current settings are shown.": "無法套用這項設定，目前顯示的是實際使用的設定。",
   "Could not open settings. Close this window and open it again.": "無法開啟設定，請關閉這個視窗後再開一次。",
   "Check for updates…": "檢查更新…",
@@ -212,6 +213,11 @@ export const ZH_TW = {
   "Settings shortcut unavailable: change the recording shortcut through the tray Settings entry.": "設定快捷鍵無法使用：請從選單列開啟設定並變更錄影快捷鍵。",
   "Settings shortcut unavailable: another app may use it. Open Settings from the tray.": "設定快捷鍵無法使用：可能被其他 App 佔用。請從選單列開啟設定。",
   "Unavailable: another app is using this shortcut.": "無法使用：這個快捷鍵被其他 App 佔用。",
+  "Settings shortcut unavailable": "設定快捷鍵無法使用",
+  "{shortcut} could not be registered to open Settings; another app may use it.": "無法註冊 {shortcut} 來開啟設定，可能被其他 App 佔用。",
+  "Settings stays available from the menu bar icon. Retry after the other app releases it.": "仍可從選單列圖示開啟設定。其他 App 釋放後請重試。",
+  "{shortcut} is the recording shortcut, so it does not open Settings.": "{shortcut} 目前是錄影快捷鍵，因此不會開啟設定。",
+  "Choose another recording shortcut to open Settings with {shortcut} again.": "選擇其他錄影快捷鍵後，即可再用 {shortcut} 開啟設定。",
   "Start / stop recording with {value}": "以 {value} 開始／停止錄製",
   Off: "關閉",
   Countdown: "倒數",
@@ -231,6 +237,8 @@ export const ZH_TW = {
     "macOS 另外還要在「系統設定 → 通知」中允許 RecordStuff。",
   "Could not open System Settings. Allow RecordStuff in System Settings → Privacy & Security → Screen & System Audio Recording.":
     "無法開啟系統設定。請在「系統設定 → 隱私權與安全性 → 螢幕與系統音訊錄製」中允許 RecordStuff。",
+  "Could not open System Settings. Allow RecordStuff in System Settings → Notifications.":
+    "無法開啟系統設定。請在「系統設定 → 通知」中允許 RecordStuff。",
   "Open notification settings…": "開啟通知設定…",
   "Notifications are on. This is what a RecordStuff notification looks like.":
     "通知已開啟，RecordStuff 的通知會像這樣顯示。",

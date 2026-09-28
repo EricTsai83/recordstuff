@@ -206,7 +206,9 @@ describe("settings window IPC", () => {
     await s.read(s.event());
     expect(await s.choose(s.event(), "notifications", "openSettings")).toMatchObject({ applied: true });
     opened = false;
-    expect(await s.choose(s.event(), "notifications", "openSettings")).toMatchObject({ applied: false });
+    // A pane that did not open names the manual path, not a setting that could not be applied.
+    expect(await s.choose(s.event(), "notifications", "openSettings")).toMatchObject({ applied: false,
+      failure: "Could not open System Settings. Allow RecordStuff in System Settings → Notifications." });
   });
 
   it("reports the Output folder row's actions by their own outcome (plan 048 review)", async () => {
@@ -354,8 +356,7 @@ it("ends capture even when saving throws and explains rejected candidates", asyn
   await expect(s.choose(s.event(), "hotkey", "Control+F12")).rejects.toThrow("disk full");
   expect(s.capture).toHaveBeenLastCalledWith(false);
   const result = await s.choose(s.event(), "hotkey", "Shift+R");
-  expect(result.applied).toBe(false);
-  expect(result.view.groups.find((g: any) => g.id === "hotkey").note).toBe("A shortcut needs Command or Control.");
+  expect(result).toMatchObject({ applied: false, failure: "A shortcut needs Command or Control.", refused: true });
 });
 
 it("keeps capture through a confirmed commit, then ends only that capture", async () => {
@@ -387,7 +388,9 @@ it("rejects the reserved Settings combination with localized feedback and ends c
   mock.handlers.get("settings:capture")!(s.event(), true);
   const result = await s.choose(s.event(), "hotkey", "Alt+CommandOrControl+,");
   expect(result.applied).toBe(false);
-  expect(result.view.groups.find((g: any) => g.id === "hotkey").note).toBe("這個組合鍵保留給設定使用。");
+  expect(result).toMatchObject({ failure: "這個組合鍵保留給設定使用。", refused: true });
+  // Said once, in the card's error; the note still describes the registration.
+  expect(result.view.groups.find((g: any) => g.id === "hotkey").note).toBeUndefined();
   expect(s.act).not.toHaveBeenCalled();
   expect(s.capture).toHaveBeenLastCalledWith(false);
 });
