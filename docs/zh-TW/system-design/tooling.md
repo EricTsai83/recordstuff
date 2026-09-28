@@ -375,3 +375,9 @@ pnpm acceptance:controlled -- selftest
 `quit` 不會解除已啟用的故障與暫停中的工作，因此可用來驗證被延後或被詢問的退出；要單純退出，先關閉故障並放行暫停的工作。`launch` 或 `reopen` 被中斷或失敗時，會最多等 15 秒看 `open` 是否已啟動 bundle：已回報 ready 的 App 會正常退出，始終沒有回報 ready 的程序會列出來請使用者從選單退出。除了 `launch` 與 `selftest`，其他指令預設作用於最新一次引導 run，可用 `--dir <run>` 指定。`--seed v1` 寫入一筆未讀的舊版 `recording-result.json`，其合成 partial 檔存在，用於遷移驗收。`--seed retention` 在兩筆未讀之間寫入二十筆已看過的紀錄，確認舊的未讀紀錄後即可驗證「保留最近看過的 20 筆」上限。Seed 檔案只含合成 bytes，不是可播放的錄影。`launch` 與 `reopen` 在任何 RecordStuff 執行中時拒絕執行，因為隔離的 userData 不共用單一實例鎖。Exit 0 表示成功、1 表示失敗、2 表示受阻或參數錯誤。啟用與放行事件會寫入 `events.jsonl` 與該 run 的 App log。
 
 所有原生操作都由維護者執行；runner 只負責建置、放入 seed、啟用、放行、回報與退出。唯一例外是 `selftest`，它驗證的是工具而不是產品。它在獨立 run 中關閉通知與錄影快捷鍵，把隔離輸出資料夾設為不可寫，讓因此產生的開始失敗暫停清理，同時拒絕其儲存。接著檢查 pending 與未保存狀態，放行、重試、暫停「知道了」的儲存，退出，以暫停歷史載入的方式重開，再次退出；過程直接呼叫錄製器的 toggle 與正式 action handler。它不錄影，所以寫入與關檔故障只由使用真實 FileWriter 與 Recorder 的單元測試涵蓋。自測失敗或被中斷時，會先關閉所有故障並放行所有暫停的工作再退出。`report.md` 列出每個步驟，App 退出後會移除 workspace。
+
+### 稽核工具界限與證據
+
+媒體子程序預設 900,000 ms 逾時並以 SIGKILL 結束；RECORDSTUFF_MEDIA_TIMEOUT_MS 可用正整數覆寫。版本探測必須以零退出。測量 Markdown 與 JSON 使用 .md.pending journal 原子替換；下一次追加前會先重播中斷的配對。這是單一序列寫入者的崩潰恢復，不是多寫入者或同時讀取的交易保證。
+
+穩定版 tag 共用 updater 的數字語法，拒絕前導零。資產 HEAD 跟隨重新導向並要求最終回應成功。網站連結以所在頁面解析相對路徑、query 與編碼 fragment。Reveal 樣式在 observer 安裝後才啟用，因此 JavaScript bundle 缺失仍會顯示內容。

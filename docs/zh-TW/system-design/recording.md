@@ -30,9 +30,9 @@ stateDiagram-v2
 ## 開始流程
 
 1. `Recorder.start()` 確認 idle、沒有 session，執行 OS preflight；建立 session id、品質與倒數快照，進入 starting 狀態（tray 顯示沙漏）。
-2. `ensureWritableDir()` 建立資料夾、實際写入並刪除 probe。不可用就報錯，不換到其他資料夾。
+2. `ensureWritableDir()` 只自動建立預設資料夾，自訂資料夾必須存在；實際寫入並刪除 probe，空間低於 200 MiB 時拒絕開始。不可用就報錯，不換到其他資料夾。
 3. 先寫入該 session 的中斷 sentinel 並記下暫存檔路徑，再以本地時間 `YYYY-MM-DD HH-mm-ss` 開啟 `.recording.mp4`。`wx` 防止同名暫存檔覆蓋；遇 EEXIST 時改寫 sentinel 並改試 `-2` 至 `-10`。檔名是按下開始當下的本地時間，因此有倒數時會比第一個影格早「準備時間加倒數」。
-4. 等待 host ready 並送 start。有倒數時此時就建立 overlay 視窗，讓第一個數字準時出現。Main 依保存的螢幕偏好選來源；預設仍匹配主螢幕 id，找不到時使用第一個來源。指定螢幕只允許唯一的精確 id 配對，並搭配 `audio: "loopback"`。
+4. 等待 host ready 並送 start。有倒數時此時就建立 overlay 視窗，讓第一個數字準時出現。Main 依保存的螢幕偏好選來源；主螢幕與指定螢幕都必須唯一、精確配對 id，列舉後重新確認拓樸，最多嘗試三次，並搭配 `audio: "loopback"`。
 5. Renderer 檢查 MP4 MIME、要求畫面與音訊；沒有音軌或音軌已 ended 就釋放 stream 並回錯誤。
 6. 量測影格、套用品質，再檢查所有軌仍存活；建立尚未啟動的 MediaRecorder，並以 CaptureReport 回 `prepared`。因此權限提示、缺少音訊、不支援 MP4 與螢幕錯誤都會在倒數前出現。
 7. 倒數關閉時 main 立即送 `record`；否則先倒數（見[倒數](#倒數)），結束時才送 `record`。
@@ -185,3 +185,11 @@ Main 的來源 handler 可記錄具體拒絕原因，取代 renderer 的泛用 A
 失敗呈現獨立於終止事件：failureStatus 立即回報 pending，清理後回報 partial／empty／unknown；saved／failed 仍為終止契約。close 失敗會設定 preservationUncertain，不得顯示為已確認保留。見[錄影失敗結果](desktop.md#錄影失敗結果)。
 
 失敗 ID 使用跨 Recorder 實例的 UUID。清理中事件在已知時帶入 writer 候選路徑；完成事件在沒有內容時移除候選資訊，無法確認時保留為查找線索，只有確認保留才提供部分檔案路徑。保存的各筆結果在重啟後將中斷清理呈現為無法確認，不會一直處理中或宣稱儲存成功。
+
+### 稽核加固
+
+「取消錄影」也可取消資料夾開啟與擷取準備；重複的開始切換在倒數前仍會忽略。準備例外會釋放 tracks。Renderer Blob 傳送與 main writer 等待佇列各有 64 MiB 上限。finish 共用同一個 Promise、拒絕後續 append，並與 abandon 協調，避免重複清理刪到較新的錄影。
+
+完整複製發佈前，先確認可用空間至少有整個錄影大小加 8 MiB。複製後的 open／sync／close 失敗會移除目的檔，保留原始錄影。成功發佈後先持久化 finalized-path checkpoint 再刪 sentinel；下次啟動遇到完成 checkpoint 不再誤報中斷。發佈與 checkpoint 之間的小型崩潰空窗無法證明完成，因此未完成 sentinel 明確說明完成狀態未知，可能已有正式檔。
+
+退出保護在第一次可互動的非同步等待之前安裝。媒體安全後，設定、視窗尺寸與 log 佇列最多等待五秒 flush；逾時延後退出並重新開放操作。解析度上限無法確認時會在設定與通知顯示，詳細擷取警告仍保留於 log。

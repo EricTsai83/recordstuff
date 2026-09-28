@@ -8,6 +8,7 @@ For what to run now, use the [testing policy](../testing.md) and [shared accepta
 
 | Area | Recorded result and limits |
 | --- | --- |
+| Forty audit repairs 051, 2026-09-29 | All forty implemented; regression, recording/playback, notifications, updates, lifecycle, website and CPU evidence plus guided display/permission acceptance and retained limits are in the [itemized record](audit-051.md). |
 | Native quit closure, 2026-09-28 | Fixed Cmd+Q leaving an idle process with recording admission closed; native quit, fresh recording/playback and zh-TW dialog checks passed. See [closure and limits](history-2026-09.md#quit-closure-2026-09-28). |
 | Unfinished-change audit, 2026-09-28 | Reconstructed the inherited diff and completed twenty scoped improvements; origin, reasons, results and verification limits are recorded in the [audit](history-2026-09.md#audit-2026-09-28). |
 | Plan 050 keep awake and stop on sleep | A `prevent-display-sleep` blocker covers each session and is released on every settled path and quit (checked with `pmset -g assertions`). Apple menu → Sleep during a recording saved a normal file 13 ms after `suspend` with a sleep note and no failure; a countdown was cancelled. Held notifications appear once the user is back, not on a timer, since timers count through sleep and a 40 s dark wake came without `resume`. A forced display sleep still ends capture as a failure. See [record](history-2026-09.md#plan-050-keep-awake-and-stop-on-sleep--2026-09-28) |
