@@ -291,7 +291,7 @@ describe("notification text", () => {
 
   it("a failure notification joins its reason and the result hint as sentences in each language (plan 035 D1)", () => {
     expect(recordingFailureNotification("output_write_failed", "zh-TW")).toEqual({ title: "錄影失敗", body: "寫入錄影失敗。點此查看錄影結果。" });
-    expect(recordingFailureNotification("output_open_failed", "zh-TW").body).toBe("無法寫入輸出資料夾。點此查看錄影結果。");
+    expect(recordingFailureNotification("output_open_failed", "zh-TW").body).toBe("無法寫入儲存位置。點此查看錄影結果。");
     expect(recordingFailureNotification("output_write_failed", "en")).toEqual({ title: "Recording failed", body: "Could not write the recording. Click to view the recording result." });
   });
   it("a refused shortcut registration points at Settings, in the user's language", () => {
