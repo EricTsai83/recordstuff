@@ -109,6 +109,19 @@ describe("lifecycle", () => {
 });
 
 
+it("shows the previous result while a check deferred by a session waits", async () => {
+  const h = harness();
+  await h.checker.check(true);
+  const previous = h.checker.state;
+  // The recorder becomes busy while the attempt timestamp is being saved.
+  h.options.saveAttempt.mockImplementationOnce(async () => { h.busy(true); });
+  await h.checker.check(true);
+  expect(h.checker.state).toEqual(previous);
+  expect(h.options.fetch).toHaveBeenCalledTimes(1);
+  h.busy(false); h.checker.flush();
+  await vi.waitFor(() => expect(h.options.fetch).toHaveBeenCalledTimes(2));
+});
+
 it("preserves the last result throughout a repeated check", async () => {
   const h = harness();
   await h.checker.check(true);

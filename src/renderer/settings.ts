@@ -37,6 +37,8 @@ let saving: { group: string; choice: string; control: string } | undefined;
 let arming = false;
 let captureGeneration = 0;
 let preview = "";
+/** The preview's keys, one box each: modifiers and the key, never the characters of a name like F12 or Ctrl. */
+let previewParts: string[] = [];
 let candidateToConfirm: string | undefined;
 let failure: { group: string; choice?: string; text: string; baseline?: string } | undefined;
 const text = (key: PlainMessageKey): string => translate(key, view?.language);
@@ -64,7 +66,7 @@ async function capture(armed: boolean, restore = false): Promise<void> {
   if (armed && (!shortcutGroup()?.enabled || saving || arming || shortcutGroup()?.capturing)) return;
   const generation = ++captureGeneration;
   arming = armed;
-  preview = "";
+  preview = ""; previewParts = [];
   candidateToConfirm = undefined;
   if (armed) { failure = undefined; announce(""); }
   draw();
@@ -85,6 +87,10 @@ async function capture(armed: boolean, restore = false): Promise<void> {
 /** An action (a link, a folder, a system pane) saves nothing: its retry repeats the action and is labelled so. */
 function isAction(group: SettingsGroup, choice: string | undefined): boolean {
   return group.kind === "actions" || Boolean(group.actions?.some(action => action.id === choice));
+}
+function setPreview(accelerator: string, platform: string): void {
+  preview = describeAccelerator(accelerator, platform);
+  previewParts = accelerator.split("+").filter(Boolean).map(part => describeAccelerator(part, platform));
 }
 function retryAllowed(group: SettingsGroup): boolean {
   return Boolean(failure?.choice && failure.group === group.id && group.enabled &&
@@ -108,7 +114,9 @@ function updateDiagnostic(container: HTMLElement, group: SettingsGroup): void {
   const activeFailure = failure?.group === group.id ? failure : undefined;
   error.hidden = !activeFailure;
   const actionFailure = activeFailure !== undefined && isAction(group, activeFailure.choice);
-  setText(error.querySelector("strong")!, text(actionFailure ? "Action failed" : "Change was not saved"));
+  // A combination the editor refused was never sent: nothing was saved, and the recovery is another key.
+  const refusedKey = activeFailure !== undefined && activeFailure.choice === undefined && group.kind === "shortcut" && Boolean(group.capturing);
+  setText(error.querySelector("strong")!, text(refusedKey ? "Shortcut unavailable" : actionFailure ? "Action failed" : "Change was not saved"));
   setText(error.querySelector("p")!, activeFailure?.text ?? "");
   const recovery = area.querySelector<HTMLButtonElement>(".recovery")!;
   const canRecover = group.recovery && group.choices.some(c => c.id === group.recovery?.choice && c.enabled);
@@ -123,7 +131,7 @@ function updateDiagnostic(container: HTMLElement, group: SettingsGroup): void {
   setDisabled(retry, !group.enabled, Boolean(saving));
   const guidance = area.querySelector<HTMLElement>(".reselect")!;
   // "Choose the setting again" applies to a value; a failed action already says to try again.
-  guidance.hidden = !activeFailure || actionFailure || retryAllowed(group);
+  guidance.hidden = !activeFailure || actionFailure || refusedKey || retryAllowed(group);
   setText(guidance, text("Choose the setting again to retry."));
   area.hidden = !items.length && !activeFailure;
   if (((hadRecoveryFocus && recovery.hidden) || (hadRetryFocus && retry.hidden)) && document.hasFocus())
@@ -178,6 +186,7 @@ function updateRows(groups: SettingsGroup[]): void {
       if (group.id === "about") {
         el.setAttribute("aria-label", choice.label); el.title = choice.label;
       } else setText(el, choice.label);
+      el.setAttribute("aria-describedby", description);
       setDisabled(el, !group.enabled || !choice.enabled, Boolean(saving));
     }
     container.setAttribute("aria-busy", String(saving?.group === group.id));
@@ -200,7 +209,7 @@ function updateRows(groups: SettingsGroup[]): void {
         field.dataset.preview = display;
         const indicator = node("span", "listening-indicator"); indicator.setAttribute("aria-hidden", "true");
         for (let index = 0; index < 3; index++) indicator.append(node("span"));
-        field.replaceChildren(indicator, ...(preview ? Array.from(preview).map(key => node("kbd", "", key)) : [document.createTextNode(display)]));
+        field.replaceChildren(indicator, ...(preview ? previewParts.map(key => node("kbd", "", key)) : [document.createTextNode(display)]));
         field.setAttribute("aria-label", `${display}. ${text("Escape to cancel")}`);
       }
       setText(container.querySelector(".capture-help")!, text("Press a combination, then Confirm; Esc cancels"));
@@ -240,10 +249,12 @@ function row(group: SettingsGroup): HTMLElement {
   const id = controlId(group);
   const container = node("div", "row"); container.id = `${id}-row`;
   const line = node("div", "row-line");
-  const label = group.id === "about" ? node("span", "group-label") : node("label", "group-label");
+  // A group of buttons has no control the label could point at: the buttons are grouped under it instead.
+  const label = group.kind === "actions" ? node("span", "group-label") : node("label", "group-label");
   if (label instanceof HTMLLabelElement) label.htmlFor = id;
   label.id = `${id}-label`;
   const controls = node("div", "controls");
+  if (group.kind === "actions") { controls.setAttribute("role", "group"); controls.setAttribute("aria-labelledby", label.id); }
   line.append(label, controls); container.append(line);
   if (group.kind === "actions") {
     for (const choice of group.choices) controls.append(actionButton(group, choice));
@@ -295,7 +306,7 @@ function row(group: SettingsGroup): HTMLElement {
       // Releasing or pressing a modifier must not erase a complete preview.
       if (candidate === undefined && candidateToConfirm) return;
       candidateToConfirm = undefined;
-      preview = describeAccelerator(candidate ?? shortcutModifiers(event, group.platform).join("+"), group.platform ?? "darwin");
+      setPreview(candidate ?? shortcutModifiers(event, group.platform).join("+"), group.platform ?? "darwin");
       if (candidate === undefined) { draw(); return; }
       const result = validateAccelerator(candidate);
       if (result.error) { localFailure(group.id, translate(result.error, view?.language)); return; }
@@ -307,7 +318,7 @@ function row(group: SettingsGroup): HTMLElement {
     field.addEventListener("keyup", event => {
       if (!shortcutGroup()?.capturing || saving || candidateToConfirm) return;
       if (["Meta", "Control", "Alt", "Shift"].includes(event.key)) {
-        preview = describeAccelerator(shortcutModifiers(event, group.platform).join("+"), group.platform ?? "darwin"); draw();
+        setPreview(shortcutModifiers(event, group.platform).join("+"), group.platform ?? "darwin"); draw();
       }
     });
     area.addEventListener("focusout", () => queueMicrotask(() => {
@@ -390,8 +401,9 @@ function updateRecordingResult(focusRequested: boolean): void {
   const focused = days.contains(document.activeElement) ? document.activeElement as HTMLElement : undefined;
   // Where the focused row was, so focus can land on its neighbour instead of the top of the list.
   let removedFocusAt: number | undefined;
+  const ids = new Set(results.map(r => r.id));
   for (const [position, area] of [...days.querySelectorAll<HTMLDetailsElement>(".recording-result")].entries()) {
-    if (!results.some(r => r.id === area.dataset.resultId)) {
+    if (!ids.has(area.dataset.resultId!)) {
       if (focused && area.contains(focused)) removedFocusAt = position;
       area.remove(); resultStates.delete(area.dataset.resultId!); resultErrors.delete(area.dataset.resultId!);
     }
@@ -483,8 +495,9 @@ function resultRow(id: string, domId: string, state: { open: boolean }): HTMLDet
     headers[next]?.scrollIntoView({ block: "nearest" });
   });
   const details = node("div", "result-details");
-  const persistence = node("p", "result-persistence"); persistence.setAttribute("role", "alert");
-  const error = node("p", "result-error"); error.setAttribute("role", "alert");
+  // Not live regions: `#feedback` is the one announcer (a row action's failure and a save warning go through it).
+  const persistence = node("p", "result-persistence");
+  const error = node("p", "result-error");
   const technical = node("details", "result-technical"); technical.append(node("summary"), node("pre"));
   details.append(node("p", "result-guidance"), node("p", "result-file"), persistence, node("div", "result-actions"),
     node("p", "result-saving"), error, technical);
@@ -641,7 +654,7 @@ function draw(): void {
 }
 function render(next: SettingsView): void {
   const previous = view;
-  if (!next.groups.some(group => group.kind === "shortcut" && group.capturing)) { candidateToConfirm = undefined; preview = ""; }
+  if (!next.groups.some(group => group.kind === "shortcut" && group.capturing)) { candidateToConfirm = undefined; preview = ""; previewParts = []; }
   view = next;
   draw();
   if (previous) {
@@ -652,9 +665,13 @@ function render(next: SettingsView): void {
       if (JSON.stringify(old?.diagnostics) !== JSON.stringify(g.diagnostics)) messages.push(...(g.diagnostics ?? []).map(d => `${d.heading}. ${d.reason} ${d.guidance}`));
       return messages;
     });
-    for (const result of previous.language === next.language ? next.recordingResults ?? [] : []) {
-      const old = previous.recordingResults?.find(r => r.id === result.id);
+    // The history arriving from disk is not news: every row would be read out at once.
+    const historyLoaded = Boolean(previous.recordingHistoryStatus) && !next.recordingHistoryStatus;
+    const olds = new Map((previous.recordingResults ?? []).map(r => [r.id, r]));
+    for (const result of previous.language === next.language && !historyLoaded ? next.recordingResults ?? [] : []) {
+      const old = olds.get(result.id);
       if (!old || old.outcome !== result.outcome) changes.unshift(`${result.reason} ${result.outcome}`);
+      else if (result.persistenceWarning && old.persistenceWarning !== result.persistenceWarning) changes.push(`${result.reason}. ${result.persistenceWarning}`);
     }
     if (changes.length) announce(changes.join(" "));
   }
@@ -669,12 +686,15 @@ async function chooseResult(id: string, action: string, control: string): Promis
   if (PERSISTING_ACTIONS.includes(action)) announce(text("Saving this change…"));
   draw();
   let applied = false;
+  let offeredAfter = true;
   try {
     const result = await window.settings.choose(`recordingResult:${id}`, action);
     render(result.view); applied = result.applied;
+    // A reveal whose file is gone changes the row instead: the button left with it, so there is nothing to retry.
+    offeredAfter = Boolean(result.view.recordingResults?.find(r => r.id === id)?.actions.some(choice => choice.id === action));
   } catch { /* Keep the current projection; main owns the state. */ }
   resultIntents.delete(id);
-  if (!applied) { resultErrors.add(id); announce(text("Could not complete this action. Please try again.")); }
+  if (!applied && offeredAfter) { resultErrors.add(id); announce(text("Could not complete this action. Please try again.")); }
   else if (feedback.textContent === text("Saving this change…")) announce("");
   draw();
   restoreResultFocus(id, intent);

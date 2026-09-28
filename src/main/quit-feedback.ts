@@ -19,7 +19,9 @@ export function createQuitFeedback(deps: {
     }
     // Register before invoking native code, including synchronous/reentrant callbacks.
     active = Promise.resolve().then(async () => {
-      deps.focus();
+      // Focus is a courtesy; the dialog is the point.
+      try { deps.focus(); }
+      catch (cause) { deps.log(`quit feedback focus failed: ${String(cause)}`); }
       await deps.show({
         type: "info",
         title: APP_NAME,
@@ -66,8 +68,9 @@ export function createHistoryQuit(deps: {
         writing ? translate("The save has not finished. RecordStuff stays open instead of exiting while the history file may still be written.", language)
           : `${issue && issue !== "io" ? persistenceWarning(issue, language) : translate("Check free disk space and access to the app's data folder, then retry.", language)}\n\n${translate("If you exit without saving, these records are lost and will not appear after RecordStuff restarts. Recording files are not affected.", language)}`];
       let response = 1;
+      try { deps.focus(); }
+      catch (cause) { deps.log(`quit: prompt focus failed: ${String(cause)}`); }
       try {
-        deps.focus();
         ({ response } = await deps.show({
           type: "warning", title: APP_NAME,
           message: translate(writing ? "Still saving failure records" : "Could not save failure records", language),

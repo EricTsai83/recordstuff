@@ -76,3 +76,30 @@ it("unsafe media never reaches the history phase and a history error keeps the a
   expect(error).toHaveBeenCalledOnce(); expect(resume).toHaveBeenCalledOnce();
   expect(pending).toHaveBeenCalledOnce(); expect(app.quit).toHaveBeenCalledTimes(2);
 });
+
+it("leaves the native quit stack before admitting exit and joins requests during that handoff", async () => {
+  let listener!: (event: { preventDefault(): void }) => void;
+  let inNativeQuit = true;
+  const preventDefault = vi.fn();
+  const shutdown = vi.fn(async () => true);
+  const history = vi.fn(async () => true);
+  const joined = vi.fn();
+  const quit = vi.fn(() => {
+    expect(inNativeQuit).toBe(false);
+    listener({ preventDefault });
+  });
+  installQuitCoordinator({ on: (_, fn) => { listener = fn; }, quit }, {
+    shutdown, history, joined, pending() {}, error: cause => { throw cause; },
+  });
+  listener({ preventDefault });
+  // Native callbacks can run the Promise microtask queue before returning to C++.
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  expect(quit).not.toHaveBeenCalled();
+  listener({ preventDefault });
+  expect(joined).toHaveBeenCalledOnce();
+  expect(shutdown).toHaveBeenCalledOnce();
+  inNativeQuit = false;
+  await new Promise<void>(resolve => setImmediate(resolve));
+  expect(quit).toHaveBeenCalledOnce();
+  expect(preventDefault).toHaveBeenCalledTimes(2);
+});

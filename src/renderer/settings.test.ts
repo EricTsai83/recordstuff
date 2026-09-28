@@ -44,12 +44,18 @@ it("arms only after main acknowledges, captures a combination, cancels and obeys
   expect((document.getElementById("setting-hotkey") as HTMLSelectElement).value).toBe(DEFAULT_HOTKEY.accelerator);
   button().dispatchEvent(new KeyboardEvent("keydown", { key: "R", code: "KeyR", bubbles: true }));
   expect(choose).not.toHaveBeenCalled();
+  expect(document.querySelector(".save-error strong")?.textContent).toBe("Shortcut unavailable");
   expect(document.getElementById("feedback")!.textContent).toContain("Command or Control");
   button().dispatchEvent(new KeyboardEvent("keydown", { key: "r", code: "KeyR", ctrlKey: true, altKey: true, bubbles: true }));
   expect(choose).not.toHaveBeenCalled();
   expect((document.getElementById("setting-hotkey") as HTMLSelectElement).value).toBe(DEFAULT_HOTKEY.accelerator);
   button().dispatchEvent(new KeyboardEvent("keyup", { key: "Control", code: "ControlLeft", bubbles: true }));
   expect(button().textContent).toContain("R");
+  // One box per part, not per character: a named key such as F12 stays one box.
+  expect([...button().querySelectorAll("kbd")].map(k => k.textContent)).toEqual(["⌃", "⌥", "R"]);
+  button().dispatchEvent(new KeyboardEvent("keydown", { key: "F12", code: "F12", ctrlKey: true, bubbles: true }));
+  expect([...button().querySelectorAll("kbd")].map(k => k.textContent)).toEqual(["⌃", "F12"]);
+  button().dispatchEvent(new KeyboardEvent("keydown", { key: "r", code: "KeyR", ctrlKey: true, altKey: true, bubbles: true }));
   const confirm = document.getElementById("shortcut-confirm") as HTMLButtonElement;
   const press = new MouseEvent("mousedown", { button: 0, bubbles: true, cancelable: true });
   confirm.dispatchEvent(press);

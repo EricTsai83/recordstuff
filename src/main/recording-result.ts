@@ -336,7 +336,9 @@ export class RecordingResults {
     this.restored = [];
     for (const original of saved) {
       const candidate = original.partialPath ?? original.recordingPath;
-      if (!candidate) continue;
+      // Only a row that was partial can become partial again; checking any other path
+      // spends the two-second bound, and one slow volume would stop the real rechecks.
+      if (!candidate || !(original.outcome === "partial" || original.previouslyPartial)) continue;
       let timer: ReturnType<typeof setTimeout> | undefined;
       let confirmed = false;
       let timedOut = false;

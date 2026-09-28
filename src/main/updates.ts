@@ -110,6 +110,8 @@ export class UpdateChecker {
       }
       if (this.disposed) return;
       if (!this.options.settled()) {
+        // Nothing was fetched: show the previous result, not a check that is not running.
+        this.state = previous;
         this.deferred = previous;
         if (manual) this.manualPending = true;
         else { this.launchPending = true; this.retryLaunch = true; }

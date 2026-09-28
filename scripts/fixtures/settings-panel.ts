@@ -582,6 +582,12 @@ async function run() {
   await settle(100);
   const listening = await read<boolean>(window, `document.querySelectorAll("#shortcut-capture .listening-indicator span").length === 3 && !document.querySelector(".capture-area").hidden`);
   record("acknowledged capture displays a listening indicator", listening, String(listening));
+  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "F12", modifiers: ["control"] });
+  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "F12", modifiers: ["control"] });
+  await settle(80);
+  const keycaps = await read<string[]>(window, `[...document.querySelectorAll("#shortcut-capture kbd")].map(k => k.textContent)`);
+  record("real Control+F12 keeps the named key in one keycap", JSON.stringify(keycaps) === '["⌃","F12"]', JSON.stringify(keycaps));
+  fs.writeFileSync(path.join(outDir, "shortcut-f12.png"), (await window.webContents.capturePage()).toPNG());
   await read(window, `document.getElementById("shortcut-cancel").click()`);
   await settle(100);
   record("real Shift+Tab exits capture to its preceding edit action", backExit === "setting-hotkey", backExit);

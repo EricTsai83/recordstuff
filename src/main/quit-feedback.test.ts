@@ -87,3 +87,15 @@ it("staying, a failed prompt and Chinese copy keep the app open and resume retri
   expect(await createHistoryQuit({ results: broken, language: () => "en", focus() {}, show: async () => { throw new Error("no dialog"); }, log })()).toBe(false);
   expect(broken.resume).toHaveBeenCalledOnce(); expect(log).toHaveBeenCalledWith(expect.stringContaining("no dialog"));
 });
+
+it("still shows both quit dialogs when bringing the app forward fails", async () => {
+  const focus = () => { throw new Error("focus unavailable"); };
+  const log = vi.fn(), show = vi.fn().mockResolvedValue({ response: 1 });
+  await createQuitFeedback({ language: () => "en", focus, show, log })();
+  expect(show).toHaveBeenCalledOnce();
+  const results = historyResults(["unsaved"]);
+  expect(await createHistoryQuit({ results, language: () => "en", focus, show, log })()).toBe(false);
+  expect(show).toHaveBeenCalledTimes(2);
+  expect(results.resume).toHaveBeenCalledOnce();
+  expect(log).toHaveBeenCalledWith(expect.stringContaining("focus unavailable"));
+});

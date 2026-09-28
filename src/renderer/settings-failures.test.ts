@@ -168,3 +168,25 @@ it("keeps each tab's scroll position when switching away and back; a first visit
   await show(view([row("s1"), row("s2"), row("s3")]));
   expect(panel().scrollTop).toBe(60);
 });
+
+it("does not announce loaded history, but announces a new persistence warning once", async () => {
+  await show(view([], { recordingHistoryStatus: "Loading failure history…" }));
+  document.getElementById("feedback")!.textContent = "";
+  await show(view([row("restored")]));
+  expect(document.getElementById("feedback")!.textContent).toBe("");
+  await show(view([row("restored", { persistenceWarning: "Could not save history." })]));
+  expect(document.getElementById("feedback")!.textContent).toContain("Could not save history.");
+  tab("failures").click();
+  expect(document.querySelectorAll('.result-persistence[role="alert"], .result-error[role="alert"]')).toHaveLength(0);
+});
+
+it("keeps the missing-file explanation instead of offering an impossible reveal retry", async () => {
+  await show(view([row("gone", { actions: [{ id: "reveal", label: "Show in Finder", enabled: true, checked: false }] })]));
+  tab("failures").click();
+  key(headers()[0]!, "Enter");
+  choose.mockImplementationOnce(async () => ({ applied: false, view: view([row("gone", { outcome: "The file is no longer available." })]) }));
+  (document.querySelector('.result-actions button') as HTMLButtonElement).click();
+  await vi.waitFor(() => expect(document.querySelector('.result-outcome')?.textContent).toBe("The file is no longer available."));
+  expect(document.querySelector<HTMLElement>('.result-error')!.hidden).toBe(true);
+  expect(document.getElementById("feedback")!.textContent).not.toContain("Please try again");
+});

@@ -35,6 +35,8 @@ export class CaptureHost implements RecorderHost {
   /** The session the heartbeat is watching, if any. */
   private watching: string | undefined;
   private missedPongs = 0;
+  /** Rejects the `create` still waiting for `ready`, so a teardown settles it at once. */
+  private abandonReady: ((cause: Error) => void) | undefined;
   private readonly messageListeners = new Set<(message: HostMessage) => void>();
   private readonly failureListeners = new Set<(code: FailureCode, detail: string) => void>();
   private readonly pingIntervalMs: number;
@@ -112,6 +114,7 @@ export class CaptureHost implements RecorderHost {
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
     window.webContents.on("render-process-gone", (_event, details) => {
+      if (this.window !== window) return;
       this.log(`capture host: render process gone (${details.reason}, exit ${details.exitCode})`);
       this.teardown();
       this.emitFailure("capture_host_crashed", details.reason);
@@ -125,12 +128,16 @@ export class CaptureHost implements RecorderHost {
     // Local to this `create()` call: a stale create torn down mid-flight must
     // not clear the deadline of a newer one.
     let readyTimer: ReturnType<typeof setTimeout> | undefined;
+    let abandon: ((cause: Error) => void) | undefined;
     const readyReceived = new Promise<void>((resolve, reject) => {
+      abandon = reject;
+      this.abandonReady = reject;
       readyTimer = setTimeout(
         () => reject(new Error("capture host did not report ready before the deadline")),
         this.readyTimeoutMs,
       );
       port1.on("message", (event) => {
+        if (this.window !== window || this.port !== port1) return;
         const message: unknown = event.data;
         if (!isHostMessage(message)) {
           this.log(`capture host: dropped malformed message ${describeMalformed(message)}`);
@@ -155,12 +162,15 @@ export class CaptureHost implements RecorderHost {
     port1.start();
 
     try {
-      if (this.options.devUrl) await window.loadURL(this.options.devUrl);
-      else await window.loadFile(this.options.htmlPath);
+      const loaded = this.options.devUrl ? window.loadURL(this.options.devUrl) : window.loadFile(this.options.htmlPath);
+      // The deadline and teardown must also interrupt a page load that never settles.
+      await Promise.race([loaded, readyReceived]);
+      if (this.window !== window) throw new Error("capture host was torn down during page load");
       window.webContents.postMessage("capture-host-port", null, [port2]);
       await readyReceived;
     } finally {
       if (readyTimer) clearTimeout(readyTimer);
+      if (this.abandonReady === abandon) this.abandonReady = undefined;
     }
   }
 
@@ -192,6 +202,8 @@ export class CaptureHost implements RecorderHost {
 
   private teardown(): void {
     this.generation += 1;
+    this.abandonReady?.(new Error("capture host was torn down before it reported ready"));
+    this.abandonReady = undefined;
     this.stopHeartbeat();
     this.port?.close();
     this.port = undefined;

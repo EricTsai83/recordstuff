@@ -32,6 +32,10 @@ export function installQuitCoordinator(app: QuitApp, deps: {
       if (!await deps.shutdown()) { relaunchRequested = false; deps.pending(); return; }
       mediaSafe = true;
       if (deps.history && !await deps.history()) { relaunchRequested = false; deps.resume?.(); return; }
+      // A resolved shutdown can continue inside the native before-quit stack.
+      // Let Electron finish cancelling that attempt before starting a new one;
+      // otherwise macOS can close the windows but leave the process alive.
+      await new Promise<void>(resolve => setImmediate(resolve));
       if (relaunchRequested) deps.relaunch?.();
       admitted = true;
       app.quit();

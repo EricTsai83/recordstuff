@@ -3,6 +3,7 @@ import { DEFAULT_QUALITY } from "../shared/quality";
 import type { HostMessage, MainMessage } from "../shared/protocol";
 
 const mock = vi.hoisted(() => {
+  const loading = vi.fn<() => Promise<void>>();
   const windows: any[] = [];
   const ports: any[] = [];
   class Port {
@@ -41,7 +42,7 @@ const mock = vi.hoisted(() => {
         queueMicrotask(() => ports.at(-1)?.emit({ type: "ready" }));
       }),
     };
-    loadFile = vi.fn().mockResolvedValue(undefined);
+    loadFile = loading;
     loadURL = vi.fn().mockResolvedValue(undefined);
     isDestroyed = () => this.destroyed;
     destroy = vi.fn(() => {
@@ -52,7 +53,7 @@ const mock = vi.hoisted(() => {
       windows.push(this);
     }
   }
-  return { windows, ports, Window, MessageChannelMain };
+  return { windows, ports, Window, MessageChannelMain, loading };
 });
 vi.mock("electron", () => ({ BrowserWindow: mock.Window, MessageChannelMain: mock.MessageChannelMain }));
 import { CaptureHost } from "./capture-host";
@@ -89,6 +90,7 @@ function setup() {
 }
 
 beforeEach(() => {
+  mock.loading.mockReset().mockResolvedValue(undefined);
   mock.windows.length = 0;
   mock.ports.length = 0;
   vi.useFakeTimers();
@@ -141,6 +143,16 @@ describe("capture host supervision", () => {
     expect(line).toContain('type: "chunk"');
     expect(line).toContain("bytes: Uint8Array(1000000)");
     expect(line.length).toBeLessThan(200);
+  });
+
+  it("settles a start torn down before ready at once, not at the ready deadline", async () => {
+    const s = setup();
+    const started = s.host.start("s1", DEFAULT_QUALITY);
+    s.host.destroy();
+    // No timer advance: a start still waiting for the 8 s deadline would leave this pending.
+    await expect(started).rejects.toThrow(/torn down/);
+    expect(s.window().destroyed).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("tears down an attempt whose page never reports ready", async () => {
@@ -275,4 +287,40 @@ describe("no timer outlives a capture (plan 049)", () => {
     expect(s.failures.map((f) => f.code)).toContain("capture_host_unresponsive");
     expect(vi.getTimerCount()).toBe(0);
   });
+});
+
+it.each(["destroy", "deadline"])("settles a stalled page load on %s and ignores its late completion", async mode => {
+  let loaded!: () => void;
+  mock.loading.mockImplementationOnce(() => new Promise(resolve => { loaded = resolve; }));
+  const s = setup();
+  const pending = s.host.start("old", DEFAULT_QUALITY);
+  const old = s.window();
+  const rejected = expect(pending).rejects.toThrow(mode === "destroy" ? /torn down/ : /deadline/);
+  if (mode === "destroy") s.host.destroy();
+  else await vi.advanceTimersByTimeAsync(8000);
+  await rejected;
+  expect(old.destroyed).toBe(true);
+  expect(vi.getTimerCount()).toBe(0);
+  await s.start("new");
+  loaded();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(old.webContents.postMessage).not.toHaveBeenCalled();
+  expect(s.host.ownsDisplayRequest(s.window().webContents.mainFrame, "new")).toBe(true);
+  s.host.destroy();
+});
+
+it("ignores queued messages and crash events from a retired host", async () => {
+  const s = setup();
+  await s.start("old");
+  const old = s.window(), port = s.port();
+  await s.start("new");
+  const count = s.messages.length;
+  port.emit({ type: "error", code: "capture_failed", detail: "retired" });
+  old.contentEvents.get("render-process-gone")!({}, { reason: "crashed", exitCode: 9 });
+  expect(s.messages).toHaveLength(count);
+  expect(s.failures).toEqual([]);
+  expect(s.window().destroyed).toBe(false);
+  await vi.advanceTimersByTimeAsync(PING_MS);
+  expect(s.pings()).toBe(1);
+  s.host.destroy();
 });

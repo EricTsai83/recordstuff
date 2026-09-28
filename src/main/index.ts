@@ -423,7 +423,10 @@ async function main(): Promise<void> {
         settingsWindow.show();
         return;
       case "checkUpdates":
-        await updates.check(true);
+        // Not awaited: the check can wait on two network timeouts, and the
+        // panel's save queue and its controls must not wait with it. The
+        // checker's state changes push the button's own progress.
+        void updates.check(true);
         return;
       case "openWebsite":
       case "openSource":

@@ -55,14 +55,14 @@ it("retains unread and acknowledged results across new instances without touchin
   await third.persist();
   expect((await load())[0]).toMatchObject({ id: "failure-b", acknowledged: false });
 });
-it("rechecks interrupted cleanup but never promotes it to confirmed preservation", async () => {
+it("keeps interrupted cleanup unknown without inspecting a file it cannot confirm", async () => {
   const media = path.join(dir, "unfinished.mp4"); fs.writeFileSync(media, "bytes");
   await new RecordingResultStore(file).save([{ ...failure, recordingPath: media }]);
   const results = await open();
   expect(results.current?.outcome).toBe("unknown");
   const check = vi.fn(stat);
   await results.restore(check, vi.fn());
-  expect(check).toHaveBeenCalledWith(media);
+  expect(check).not.toHaveBeenCalled();
   expect(results.current).toMatchObject({ outcome: "unknown", recordingPath: media, acknowledged: false });
   expect((await load())[0]?.outcome).toBe("unknown");
 });
@@ -82,6 +82,25 @@ it.each(["missing", "empty", "directory"])("does not claim a restored %s partial
   expect(check).toHaveBeenCalledWith(media);
   expect(restarted.current).toMatchObject({ outcome: "unknown", recordingPath: media, acknowledged: true });
 });
+it("rechecks only rows that were partial, so a slow volume behind another row cannot stop them", async () => {
+  const slow = path.join(dir, "slow", "x.recording.mp4"), partial = path.join(dir, "kept.mp4");
+  await new RecordingResultStore(file).save([
+    { ...failure, id: "unknown-a", outcome: "unknown", recordingPath: slow },
+    { ...failure, id: "partial-b", occurredAt: "2026-09-24T00:00:00Z", outcome: "partial", partialPath: partial },
+  ]);
+  fs.writeFileSync(partial, "media");
+  const results = await open();
+  const asked: string[] = [];
+  const statSpy = (target: string): Promise<{ isFile(): boolean; size: number }> => {
+    asked.push(target);
+    return target === slow ? new Promise(() => undefined) : stat(target);
+  };
+  await results.restore(statSpy, vi.fn());
+  expect(asked).toEqual([partial]);
+  expect(results.all.find(r => r.id === "partial-b")).toMatchObject({ outcome: "partial", partialPath: partial });
+  expect(results.all.find(r => r.id === "unknown-a")?.outcome).toBe("unknown");
+});
+
 it("bounds startup inspection and ignores its late response", async () => {
   await new RecordingResultStore(file).save([{ ...failure, outcome: "partial", partialPath: path.join(dir, "offline.mp4") }]);
   const results = await open();
