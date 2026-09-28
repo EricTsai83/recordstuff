@@ -20,6 +20,7 @@ import {
   syncStats,
   type CaptureLogEntry,
   type Check,
+  type CpuFigures,
   type Evidence,
   type LogPairing,
   type Measurement,
@@ -34,7 +35,7 @@ export const MEASUREMENTS_DIR = path.join(REPO_ROOT, "docs", "verification", "me
 export interface VerifyRunOptions extends VerifyOptions {
   /** Detect the flash / beep markers of the test material page (needs ffmpeg, decodes the whole file). Whether they are required is `required.sync`. */
   sync?: boolean;
-  cpu?: { averagePercent: number; peakPercent: number };
+  cpu?: CpuFigures;
 }
 
 export interface VerifyResult {

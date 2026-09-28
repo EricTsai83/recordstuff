@@ -11,10 +11,11 @@
  * the material once, then run every case of the named matrices in order,
  * the whole list `--repeat` times so repeats interleave. Each case launches
  * Electron.app with `RECORDSTUFF_AUTORECORD` so it records unattended and
- * quits; the runner samples the CPU of every Electron process meanwhile,
+ * quits; the runner samples the app's process tree meanwhile with the shared
+ * CPU sampler (plan 049), judged over the recording from its third second,
  * verifies the new file (with the flash / beep sync markers), times every
  * phase, and appends everything to `docs/verification/measurements/<date>.md`.
- * macOS only (`open`, `ps`, `pgrep`); nothing here ships with the app. The
+ * macOS only (`open`, `pgrep`, `clang`); nothing here ships with the app. The
  * next case starts as soon as the previous one is verified: that verification
  * is the rest, and dropping the former extra 10 seconds moved no judged metric
  * beyond the run-to-run spread (plan 042).
@@ -23,8 +24,9 @@
  * case passes only when every check passes or does not apply, and a repeated
  * case only when every run of it did. Exit 1 when a case failed, is
  * incomplete (too few markers) or could not be recorded or verified, or when
- * cleanup left a process running; 2 when ffmpeg/ffprobe is missing (checked
- * before any recording) or the desktop locked; 130/143 after SIGINT/SIGTERM,
+ * cleanup left a process running; 2 when ffmpeg/ffprobe or the Command Line
+ * Tools' clang is missing (checked before any recording) or the desktop
+ * locked; 130/143 after SIGINT/SIGTERM,
  * which stop the round's own app (through its normal quit, which saves a
  * recording in progress) and material browser and write no measurements;
  * 0 otherwise.
@@ -34,11 +36,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { materialOpenArgs } from "./lib/acceptance.mts";
+import { CPU_BUDGET, CpuSampler, MIN_COVERAGE, SamplerBlockedError, compileSampler, cpuBaseline, intervals, summarize } from "./lib/cpu-sampler.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
 import { LogGapError, LogReader, type LogCursor } from "./lib/log-reader.mts";
 import {
   MATRICES,
   casePhases,
+  cpuWindow,
   formatCaseTiming,
   formatRepeatSummary,
   formatRoundTiming,
@@ -54,7 +58,7 @@ import {
 } from "./lib/matrix.mts";
 import { ToolMissingError, hasTool, timeTools, type ToolTiming } from "./lib/media-tools.mts";
 import { REPO_ROOT, appendMeasurements, measurementsPath, readLogPairs, verifyRecording, type VerifyResult } from "./lib/verify-recording.mts";
-import { BLOCKED_EXIT, blocksSuccess, formatText, parseAutorecordOutcome, verdictExitCode } from "./lib/verify.mts";
+import { BLOCKED_EXIT, blocksSuccess, formatText, parseAutorecordOutcome, verdictExitCode, type CpuFigures } from "./lib/verify.mts";
 
 const ELECTRON_APP = path.join(REPO_ROOT, "node_modules/electron/dist/Electron.app");
 /** pnpm symlinks `node_modules/electron`; process command lines show the resolved `.pnpm/…` path. */
@@ -136,16 +140,8 @@ function pgrep(pattern: string): number[] {
 
 /** PIDs of every process inside this repo's Electron.app bundle (main + helpers), not the `open` launcher. */
 const electronPids = (): number[] => pgrep(`${ELECTRON_APP_REAL}/Contents/`);
-
-function cpuPercent(pids: number[]): number {
-  if (pids.length === 0) return 0;
-  const result = spawnSync("ps", ["-o", "%cpu=", "-p", pids.join(",")], { encoding: "utf8" });
-  return result.stdout
-    .split("\n")
-    .map((line) => Number(line.trim()))
-    .filter((n) => Number.isFinite(n))
-    .reduce((a, b) => a + b, 0);
-}
+/** The main process, the root of the tree the CPU sampler follows; its helpers are its descendants. */
+const electronMainPid = (): number | undefined => pgrep(`${ELECTRON_APP_REAL}/Contents/MacOS/Electron( |$)`)[0];
 
 const signal = (pids: number[], name: NodeJS.Signals): void => {
   for (const pid of pids) {
@@ -174,6 +170,7 @@ const owned: {
   materialLauncher?: ChildProcess;
   material: boolean;
   caseLog?: LogCursor;
+  sampler?: CpuSampler;
 } = { material: false };
 
 /** Whether any process of the group led by `pid` still runs; signal 0 only tests. */
@@ -242,6 +239,7 @@ function cleanup(): Promise<{ left: string[]; app: "none" | "quit" | "forced" }>
   cleaning ??= (async () => {
     await stopBuild();
     const app = await stopApp();
+    await owned.sampler?.stop();
     if (running(owned.launcher)) owned.launcher.kill("SIGTERM");
     // `open` returns once Launch Services started Chrome; before that, pkill could find nothing (review).
     const materialLauncher = owned.materialLauncher;
@@ -287,7 +285,10 @@ interface RunOutcome {
   file: string | undefined;
   /** The `autorecord: failed: …` reason, when the app reported one. */
   failure: string | undefined;
-  cpu: { averagePercent: number; peakPercent: number };
+  /** Undefined when the CPU evidence is missing, with `cpuProblem` saying why. */
+  cpu: CpuFigures | undefined;
+  /** No sampler, a sampler that exited early, or too little of the judged window sampled: the case cannot pass. */
+  cpuProblem: string | undefined;
   elapsedSeconds: number;
   timedOut: boolean;
   launchedAt: number;
@@ -307,7 +308,10 @@ function logSince(start: LogCursor): { lines: string[]; gap?: string } {
   }
 }
 
-async function recordOnce(entry: MatrixEntry): Promise<RunOutcome> {
+/** Where the sampler's helper was compiled, before the round started. */
+let samplerBinary = "";
+
+async function recordOnce(entry: MatrixEntry, key: string): Promise<RunOutcome> {
   const logStart = appLog.end();
   owned.caseLog = logStart;
   const env: NodeJS.ProcessEnv = { ...process.env, RECORDSTUFF_AUTORECORD: JSON.stringify({ seconds: entry.seconds, quality: entry.quality }) };
@@ -321,15 +325,15 @@ async function recordOnce(entry: MatrixEntry): Promise<RunOutcome> {
     exitedAt = Date.now();
     resolve();
   }));
-  const samples: number[] = [];
+  let sampler: CpuSampler | undefined;
   const deadlineMs = (entry.seconds + 90) * 1000;
   let timedOut = false;
   while (exitedAt === undefined && !interrupted) {
     // Wakes on exit as well, so a finished case does not wait out the sampling second.
     await Promise.race([sleep(1000), exited]);
     if (exitedAt !== undefined || interrupted) break;
-    const pids = electronPids();
-    if (pids.length > 0) samples.push(cpuPercent(pids));
+    const main = sampler ? undefined : electronMainPid();
+    if (main !== undefined) owned.sampler = sampler = new CpuSampler(samplerBinary, main);
     if (Date.now() - launchedAt > deadlineMs) {
       timedOut = true;
       console.error(`  Still running after ${deadlineMs / 1000} s; terminating Electron`);
@@ -338,17 +342,30 @@ async function recordOnce(entry: MatrixEntry): Promise<RunOutcome> {
       break;
     }
   }
+  await sampler?.stop();
+  delete owned.sampler;
   const since = logSince(logStart);
   const app = parseAutorecordOutcome(since.lines.join("\n"));
-  const cpuSamples = samples.slice(3); // the first seconds are start-up, not recording
-  const source = cpuSamples.length > 0 ? cpuSamples : samples;
+  const window = cpuWindow(since.lines, launchedAt, exitedAt);
+  const summary = sampler ? summarize(intervals(sampler.samples), window.fromMs, window.toMs, window.expectChanges) : undefined;
+  const windowSeconds = Number.isFinite(window.toMs) ? (window.toMs - window.fromMs) / 1000 : undefined;
+  const cpuProblem = !sampler ? "the CPU sampler never found the app's main process"
+    : sampler.failure ? sampler.failure
+      : !summary?.judged ? "no one-second interval fell inside the judged window"
+        : windowSeconds !== undefined && summary.seconds < windowSeconds * MIN_COVERAGE
+          ? `only ${summary.seconds.toFixed(1)} of ${windowSeconds.toFixed(1)} s were sampled (at least ${MIN_COVERAGE * 100}% required)` : undefined;
+  const baselinePercent = cpuBaseline(`matrix ${key}`);
   return {
     file: timedOut ? undefined : app.saved,
     failure: since.gap ? `log evidence gap: ${since.gap}` : app.failed,
-    cpu: {
-      averagePercent: source.length > 0 ? source.reduce((a, b) => a + b, 0) / source.length : 0,
-      peakPercent: source.length > 0 ? Math.max(...source) : 0,
-    },
+    cpuProblem: cpuProblem === undefined ? undefined : `CPU evidence incomplete: ${cpuProblem}`,
+    cpu: summary && !cpuProblem ? {
+      averagePercent: summary.cpuPercent.average,
+      p95Percent: summary.cpuPercent.p95,
+      peakPercent: summary.cpuPercent.max,
+      encoder: { present: summary.followed.present, averagePercent: summary.followed.cpuPercent.average },
+      ...(baselinePercent === undefined ? {} : { baselinePercent }),
+    } : undefined,
     elapsedSeconds: (Date.now() - launchedAt) / 1000,
     timedOut,
     launchedAt,
@@ -381,6 +398,13 @@ async function main(): Promise<void> {
   if (electronPids().length > 0) {
     console.error("This project's Electron.app is running; quit it first (the single-instance lock would ignore automatic recording settings)");
     process.exit(1);
+  }
+  try {
+    samplerBinary = compileSampler(fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-matrix-cpu-")));
+  } catch (cause) {
+    if (!(cause instanceof SamplerBlockedError)) throw cause;
+    console.error(`BLOCKED: ${cause.message}; every case requires its CPU figure. No case was recorded.`);
+    process.exit(BLOCKED_EXIT);
   }
   process.on("SIGINT", () => interrupt("SIGINT", 130));
   process.on("SIGTERM", () => interrupt("SIGTERM", 143));
@@ -428,7 +452,7 @@ async function main(): Promise<void> {
       if (interrupted) await halt();
       const { entry } = planned;
       console.log(`▶ [${index + 1}/${cases.length}] ${planned.title}`);
-      const outcome = await recordOnce(entry);
+      const outcome = await recordOnce(entry, planned.key);
       if (interrupted) await halt();
       const tools: ToolTiming[] = [];
       let stop = false;
@@ -441,20 +465,27 @@ async function main(): Promise<void> {
         runs.push({ planned, result: undefined, error });
         console.error(`  ✗ ${error}`);
       } else {
-        console.log(`  File ${outcome.file}; CPU average ${outcome.cpu.averagePercent.toFixed(0)}%/peak ${outcome.cpu.peakPercent.toFixed(0)}%`);
+        const cpu = outcome.cpu;
+        console.log(`  File ${outcome.file}; ${cpu ? `CPU average ${cpu.averagePercent.toFixed(1)}%, 95th ${cpu.p95Percent?.toFixed(1)}%, peak ${cpu.peakPercent.toFixed(1)}%; VTEncoderXPCService ${cpu.encoder?.present ? `${cpu.encoder.averagePercent.toFixed(1)}%` : "absent"}` : "no CPU interval in the judged window"}`);
+        if (cpu?.baselinePercent !== undefined && cpu.averagePercent > cpu.baselinePercent * (1 + CPU_BUDGET.regressionFraction)) {
+          console.error(`  ⚠ CPU ${cpu.averagePercent.toFixed(1)}% is more than ${CPU_BUDGET.regressionFraction * 100}% above this machine's baseline of ${cpu.baselinePercent.toFixed(1)}%: investigate`);
+        }
         try {
           const options: Parameters<typeof verifyRecording>[2] = {
-            sync: true, cpu: outcome.cpu, expectedDurationSeconds: entry.seconds, required: { energy: true, sync: true },
+            sync: true, expectedDurationSeconds: entry.seconds, required: { energy: true, sync: true },
           };
+          if (outcome.cpu) options.cpu = outcome.cpu;
           if (screen) options.screen = screen;
           const file = outcome.file;
           const result = timeTools(tools, () => verifyRecording(file, readLogPairs(LOG_PATH), options));
           // Media measurements stand; judging against the requested settings needs this session's own metadata.
           const metadata = result.pairing.status === "matched" ? undefined
             : `log metadata ${result.pairing.status}${result.pairing.note ? `: ${result.pairing.note}` : ""}; requested-settings checks not judged`;
-          runs.push({ planned, result, ...(metadata ? { error: metadata } : {}) });
+          const error = [metadata, outcome.cpuProblem].filter(Boolean).join("; ");
+          runs.push({ planned, result, ...(error ? { error } : {}) });
           console.log(formatText(outcome.file, result.entry, result.checks, result.pairing));
           if (metadata) console.error(`  ✗ ${metadata}`);
+          if (outcome.cpuProblem) console.error(`  ✗ ${outcome.cpuProblem}`);
           if (blocksSuccess(result.verdict)) console.error(`  ✗ ${unmetChecks(result)}`);
         } catch (cause) {
           runs.push({ planned, result: undefined, error: cause instanceof Error ? cause.message : String(cause), blocked: cause instanceof ToolMissingError });

@@ -8,6 +8,7 @@
  */
 import path from "node:path";
 import type { SessionRecord } from "../../src/shared/session-record.ts";
+import { CPU_BUDGET, ENCODER_SERVICE } from "./cpu-sampler.mts";
 import { isProcessStart, isSessionRecordLine, logMessage, parseSessionRecord, startLineRun } from "./session-records.mts";
 import {
   fitWithinCap,
@@ -671,8 +672,20 @@ export interface Measurement {
   /** ffprobe decoded every frame without complaint. */
   decodable: boolean;
   decodeErrors: string | undefined;
-  /** From the matrix runner; ps %cpu summed over the Electron processes. */
-  cpu: { averagePercent: number; peakPercent: number } | undefined;
+  /** From the matrix runner: the app's process tree, from the shared sampler (plan 049). */
+  cpu: CpuFigures | undefined;
+}
+
+/** Percent of one core over a case's judged window. */
+export interface CpuFigures {
+  averagePercent: number;
+  peakPercent: number;
+  /** The 95th percentile of one-second samples; the shared sampler reports it, older callers may not. */
+  p95Percent?: number;
+  /** VTEncoderXPCService, the system's hardware encoder, reported apart from the app; absent from older callers. */
+  encoder?: { present: boolean; averagePercent: number };
+  /** This machine's recorded baseline for the same case, for the regression warning. */
+  baselinePercent?: number;
 }
 
 /**
@@ -688,7 +701,7 @@ export function measure(
     channelRms?: Evidence<number[]>;
     sync?: Evidence<SyncStats>;
     decodeErrors?: string;
-    cpu?: { averagePercent: number; peakPercent: number };
+    cpu?: CpuFigures;
     nominalFps?: number;
   } = {},
 ): Measurement {
@@ -765,8 +778,7 @@ export const THRESHOLDS = {
   minVideoBitrateRatio: 0.7,
   /** AAC output depends on content; sparse or quiet material legitimately encodes well below the request. */
   minAudioBitrateRatio: 0.5,
-  /** Set from the first measurements (1080p30 all levels ≈ 15%, 1080p60 ≈ 23%); generous headroom for slower machines. */
-  maxCpuAveragePercent: 40,
+  /** Recording CPU by frame rate and the baseline regression warning: `CPU_BUDGET` in cpu-sampler.mts (plan 049). */
 } as const;
 
 /**
@@ -1059,12 +1071,24 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
         : {}),
   });
 
-  // CPU
+  // CPU: the requested frame rate's budget (plan 049); a baseline regression and a missing encoder are notes.
+  const cpu = m.cpu;
+  const cpuFps = requestedFps !== undefined && requestedFps > 30 ? 60 : 30;
+  const cpuLimit = CPU_BUDGET.recording[cpuFps].averagePercent;
+  const cpuNotes: string[] = [];
+  if (cpu?.baselinePercent !== undefined && cpu.averagePercent > cpu.baselinePercent * (1 + CPU_BUDGET.regressionFraction)) {
+    cpuNotes.push(`More than ${CPU_BUDGET.regressionFraction * 100}% above this machine's baseline of ${cpu.baselinePercent.toFixed(1)}%: investigate`);
+  }
+  if (cpu?.encoder && !cpu.encoder.present) cpuNotes.push(`${ENCODER_SERVICE} absent: suspect a software-encoding fallback`);
   checks.push({
-    metric: "CPU (all Electron processes)",
-    expected: `average ≤ ${THRESHOLDS.maxCpuAveragePercent}%`,
-    actual: m.cpu ? `average ${m.cpu.averagePercent.toFixed(0)}%, peak ${m.cpu.peakPercent.toFixed(0)}%` : "—",
-    verdict: m.cpu ? pass(m.cpu.averagePercent <= THRESHOLDS.maxCpuAveragePercent) : "n/a",
+    metric: "CPU (app process tree)",
+    expected: `average ≤ ${cpuLimit}% at ${cpuFps} fps`,
+    actual: cpu
+      ? `average ${cpu.averagePercent.toFixed(0)}%, ${cpu.p95Percent === undefined ? "" : `95th ${cpu.p95Percent.toFixed(0)}%, `}peak ${cpu.peakPercent.toFixed(0)}%` +
+        (cpu.encoder ? `; ${ENCODER_SERVICE} ${cpu.encoder.present ? `${cpu.encoder.averagePercent.toFixed(1)}%` : "absent"}` : "")
+      : "—",
+    verdict: cpu ? pass(cpu.averagePercent <= cpuLimit) : "n/a",
+    ...(cpuNotes.length ? { note: cpuNotes.join("; ") } : {}),
   });
 
   // Decodability

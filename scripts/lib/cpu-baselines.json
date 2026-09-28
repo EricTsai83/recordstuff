@@ -1,0 +1,12 @@
+{
+  "MacBookPro18,1": {
+    "recorded": "2026-09-28",
+    "source": "docs/verification/history-2026-09.md#plan-049-cpu-baseline--2026-09-28 (M1 Pro, macOS 26.6.2, Electron 44.3.0, primary display 1920 × 1080)",
+    "percent": {
+      "measure:cpu recording 30": 15.1,
+      "measure:cpu recording 60": 22.2,
+      "matrix Source Standard 30 fps (15 s) {\"resolutionCap\":\"source\",\"videoQuality\":\"standard\",\"frameRate\":30}": 15.2,
+      "matrix Source Standard 60 fps (15 s) {\"resolutionCap\":\"source\",\"videoQuality\":\"standard\",\"frameRate\":60}": 21.9
+    }
+  }
+}

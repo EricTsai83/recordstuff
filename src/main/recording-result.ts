@@ -123,6 +123,8 @@ export class RecordingResults {
     const requested = arrived.size > 0 || storage.requiresMigration || this.waiters.length > 0 || this.pending.size > 0;
     this.results = [...this.results, ...normalized];
     this.loaded = true;
+    // A measurement waits for this before judging idle (plan 049).
+    this.log(`recording history: loaded ${saved.length} record(s)`);
     if (requested) { this.revision++; this.schedule(); }
     this.changed();
   }

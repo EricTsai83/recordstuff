@@ -20,12 +20,14 @@ import {
   syncStats,
   verdictExitCode,
   type Check,
+  type CpuFigures,
   type Evidence,
   type ProbeInfo,
   type SyncStats,
   type Verdict,
 } from "./verify.mts";
 import { formatSessionRecord } from "../../src/shared/session-record.ts";
+import { CPU_BUDGET } from "./cpu-sampler.mts";
 import type { CaptureReport, QualitySettings } from "../../src/shared/quality.ts";
 
 const CAPTURE_LINE =
@@ -463,13 +465,33 @@ describe("measure + judge", () => {
     expect(byMetric["Channel energy (RMS)"]?.verdict).toBe("pass");
     expect(byMetric["Video bitrate"]?.verdict).toBe("pass");
     expect(byMetric["Audio bitrate"]?.verdict).toBe("pass");
-    expect(byMetric["CPU (all Electron processes)"]?.verdict).toBe("n/a");
+    expect(byMetric["CPU (app process tree)"]?.verdict).toBe("n/a");
     const busy = judge(measure("cpu.mp4", 1, info(), [evenFrames(900, 30)], { cpu: { averagePercent: 55, peakPercent: 80 } }), ENTRY, { movingMaterial: true });
     expect(busy.find((c) => c.metric.startsWith("CPU"))?.verdict).toBe("fail");
     const calm = judge(measure("cpu.mp4", 1, info(), [evenFrames(900, 30)], { cpu: { averagePercent: 15, peakPercent: 20 } }), ENTRY, { movingMaterial: true });
     expect(calm.find((c) => c.metric.startsWith("CPU"))?.verdict).toBe("pass");
     expect(byMetric["Decodability (ffprobe full frame decode)"]?.verdict).toBe("pass");
     expect(overallVerdict(checks)).toBe("pass");
+  });
+
+  it("judges CPU by the requested frame rate and notes a baseline regression and a missing encoder (plan 049)", () => {
+    const at60 = parseCaptureLine(
+      "recorder: session s capture: requested video=standard cap=1080p fps=60 audio=high; track size=1920x1080 fps=60 sampleRate=48000 Hz channels=2; target videoBps=8100000 audioBps=256000",
+    )!;
+    const cpuCheck = (cpu: CpuFigures, entry = ENTRY) =>
+      judge(measure("cpu.mp4", 1, info(), [evenFrames(900, 30)], { cpu }), entry, { movingMaterial: true }).find((c) => c.metric === "CPU (app process tree)")!;
+    const quiet = cpuCheck({ averagePercent: 18, p95Percent: 22, peakPercent: 25, encoder: { present: true, averagePercent: 1.6 } });
+    expect(quiet).toMatchObject({ verdict: "pass", actual: "average 18%, 95th 22%, peak 25%; VTEncoderXPCService 1.6%" });
+    expect(quiet.expected).toBe(`average ≤ ${CPU_BUDGET.recording[30].averagePercent}% at 30 fps`);
+    expect(quiet.note).toBeUndefined();
+    expect(cpuCheck({ averagePercent: 30, peakPercent: 40 }).verdict).toBe("pass");
+    expect(cpuCheck({ averagePercent: 31, peakPercent: 40 }).verdict).toBe("fail");
+    const regressed = cpuCheck({ averagePercent: 20, peakPercent: 24, baselinePercent: 15, encoder: { present: false, averagePercent: 0 } });
+    expect(regressed.verdict).toBe("pass");
+    expect(regressed.note).toBe("More than 25% above this machine's baseline of 15.0%: investigate; VTEncoderXPCService absent: suspect a software-encoding fallback");
+    expect(cpuCheck({ averagePercent: 18.7, peakPercent: 20, baselinePercent: 15 }).note).toBeUndefined();
+    expect(cpuCheck({ averagePercent: 39, peakPercent: 45 }, at60)).toMatchObject({ verdict: "pass", expected: "average ≤ 40% at 60 fps" });
+    expect(cpuCheck({ averagePercent: 41, peakPercent: 45 }, at60).verdict).toBe("fail");
   });
 
   it("fails size, aspect, fps, drops, offsets, mono audio and clamped bitrate", () => {

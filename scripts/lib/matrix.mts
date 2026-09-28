@@ -166,6 +166,20 @@ export interface CasePhases {
  * whose boundary line is missing stays undefined.
  */
 export function casePhases(lines: readonly string[], launchedAtMs: number, exitedAtMs: number | undefined): CasePhases {
+  const { recordingAt, stoppingAt, outcomeAt } = caseMoments(lines);
+  const span = (from: number | undefined, to: number | undefined): number | undefined =>
+    from === undefined || to === undefined ? undefined : (to - from) / 1000;
+  const phases: CasePhases = {};
+  const assign = (key: keyof CasePhases, value: number | undefined): void => { if (value !== undefined) phases[key] = value; };
+  assign("launchToRecording", span(launchedAtMs, recordingAt));
+  assign("recording", span(recordingAt, stoppingAt));
+  assign("stopToSaved", span(stoppingAt, outcomeAt));
+  assign("quit", span(outcomeAt, exitedAtMs));
+  return phases;
+}
+
+/** When a case started recording, asked to stop and reported its outcome, from its log lines (ms). */
+function caseMoments(lines: readonly string[]): { recordingAt?: number; stoppingAt?: number; outcomeAt?: number } {
   let recordingAt: number | undefined;
   let stoppingAt: number | undefined;
   let outcomeAt: number | undefined;
@@ -176,15 +190,25 @@ export function casePhases(lines: readonly string[], launchedAtMs: number, exite
     else if (recordingAt !== undefined && stoppingAt === undefined && /\] state → stopping/.test(line)) stoppingAt = at;
     if (outcomeAt === undefined && /\] autorecord: (saved |failed: )/.test(line)) outcomeAt = at;
   }
-  const span = (from: number | undefined, to: number | undefined): number | undefined =>
-    from === undefined || to === undefined ? undefined : (to - from) / 1000;
-  const phases: CasePhases = {};
-  const assign = (key: keyof CasePhases, value: number | undefined): void => { if (value !== undefined) phases[key] = value; };
-  assign("launchToRecording", span(launchedAtMs, recordingAt));
-  assign("recording", span(recordingAt, stoppingAt));
-  assign("stopToSaved", span(stoppingAt, outcomeAt));
-  assign("quit", span(outcomeAt, exitedAtMs));
-  return phases;
+  return { ...(recordingAt === undefined ? {} : { recordingAt }), ...(stoppingAt === undefined ? {} : { stoppingAt }), ...(outcomeAt === undefined ? {} : { outcomeAt }) };
+}
+
+/** Seconds of a case's recording left out of its CPU figure: capture and encoder start-up. */
+export const CPU_SKIP_SECONDS = 3;
+
+/**
+ * The window a case's CPU is judged over (plan 049): its recording from the third second to the
+ * stop request, in which the app's processes should not change. Without those lines (a failed or
+ * cut-short case), from the third second after launch to the exit, where the start and end of the
+ * capture host are expected changes.
+ */
+export function cpuWindow(lines: readonly string[], launchedAtMs: number, exitedAtMs: number | undefined): { fromMs: number; toMs: number; expectChanges: boolean } {
+  const { recordingAt, stoppingAt } = caseMoments(lines);
+  const skip = CPU_SKIP_SECONDS * 1000;
+  if (recordingAt !== undefined && stoppingAt !== undefined && stoppingAt - recordingAt > skip) {
+    return { fromMs: recordingAt + skip, toMs: stoppingAt, expectChanges: false };
+  }
+  return { fromMs: launchedAtMs + skip, toMs: exitedAtMs ?? Number.POSITIVE_INFINITY, expectChanges: true };
 }
 
 export interface CaseTiming {
@@ -252,7 +276,9 @@ export function runVerdict(run: MatrixRun): Verdict {
 
 export const runPassed = (run: MatrixRun): boolean => run.error === undefined && run.result !== undefined && !blocksSuccess(run.result.verdict);
 
-export const REPEAT_METRICS = ["Average fps", "Median interval (ms)", "Drops (%)", "CPU average (%)", "A/V offset (ms)", "Drift (ms)", "Video bitrate (% of target)"] as const;
+export const REPEAT_METRICS = [
+  "Average fps", "Median interval (ms)", "Drops (%)", "CPU average (%)", "CPU 95th (%)", "Encoder CPU (%)", "A/V offset (ms)", "Drift (ms)", "Video bitrate (% of target)",
+] as const;
 export type RepeatMetric = (typeof REPEAT_METRICS)[number];
 
 /** The judged quantities of one verified run; absent evidence stays undefined. */
@@ -265,6 +291,8 @@ export function runMetrics(result: VerifyResult): Record<RepeatMetric, number | 
     "Median interval (ms)": m.frames?.medianIntervalMs,
     "Drops (%)": m.frames ? m.frames.dropRate * 100 : undefined,
     "CPU average (%)": m.cpu?.averagePercent,
+    "CPU 95th (%)": m.cpu?.p95Percent,
+    "Encoder CPU (%)": m.cpu?.encoder?.present ? m.cpu.encoder.averagePercent : undefined,
     "A/V offset (ms)": sync?.medianOffsetMs,
     "Drift (ms)": sync?.driftMs,
     "Video bitrate (% of target)": target && m.video?.bitsPerSecond !== undefined ? (m.video.bitsPerSecond / target) * 100 : undefined,
@@ -323,7 +351,8 @@ export function summarizeRuns(runs: readonly MatrixRun[]): CaseSummary[] {
 }
 
 const DIGITS: Record<RepeatMetric, number> = {
-  "Average fps": 2, "Median interval (ms)": 2, "Drops (%)": 2, "CPU average (%)": 0, "A/V offset (ms)": 0, "Drift (ms)": 0, "Video bitrate (% of target)": 0,
+  "Average fps": 2, "Median interval (ms)": 2, "Drops (%)": 2, "CPU average (%)": 1, "CPU 95th (%)": 1, "Encoder CPU (%)": 1, "A/V offset (ms)": 0, "Drift (ms)": 0,
+  "Video bitrate (% of target)": 0,
 };
 
 function spreadCell(metric: RepeatMetric, s: Spread | undefined, runs: number): string {

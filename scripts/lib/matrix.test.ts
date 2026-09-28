@@ -5,6 +5,7 @@ import {
   MATRICES,
   MAX_REPEAT,
   casePhases,
+  cpuWindow,
   formatRepeatSummary,
   formatRoundTiming,
   parseMatrixArgs,
@@ -111,6 +112,15 @@ describe("phases from the app log", () => {
     expect(casePhases(["no timestamp: autorecord: recording, will stop in 30 s"], t0, t0)).toEqual({});
   });
 
+  it("judges CPU over the recording from its third second, or the whole case when the recording is not in the log (plan 049)", () => {
+    const lines = [at(2.9, "autorecord: recording, will stop in 15 s"), at(17.9, "state → stopping"), at(18, "autorecord: saved /x/a.mp4")];
+    expect(cpuWindow(lines, t0, t0 + 19_000)).toEqual({ fromMs: t0 + 5900, toMs: t0 + 17_900, expectChanges: false });
+    expect(cpuWindow([at(1, "autorecord: failed: needs screen recording permission")], t0, t0 + 1500)).toEqual({ fromMs: t0 + 3000, toMs: t0 + 1500, expectChanges: true });
+    expect(cpuWindow([at(2.9, "autorecord: recording, will stop in 15 s")], t0, undefined)).toEqual({ fromMs: t0 + 3000, toMs: Number.POSITIVE_INFINITY, expectChanges: true });
+    // A recording stopped within its first three seconds leaves nothing to judge in it.
+    expect(cpuWindow([at(2, "autorecord: recording, will stop in 15 s"), at(4, "state → stopping")], t0, t0 + 6000).expectChanges).toBe(true);
+  });
+
   it("reports round totals and one row per case", () => {
     const text = formatRoundTiming({
       preflightSeconds: 2.5, buildSeconds: 0.7, materialSeconds: 5, totalSeconds: 31,
@@ -130,7 +140,7 @@ describe("repeat summary", () => {
     measurement: {
       video: { frames: fps * 30, durationSeconds: 30, bitsPerSecond: 10_100_000 },
       frames: { frames: fps * 30, dropped: 0, dropRate: 0.001, maxGapMs: 40, medianIntervalMs: 1000 / fps },
-      cpu: { averagePercent: cpu, peakPercent: cpu + 5 },
+      cpu: { averagePercent: cpu, p95Percent: cpu + 2, peakPercent: cpu + 5, encoder: { present: true, averagePercent: 1.5 } },
       sync: offsetMs === undefined ? { status: "error", reason: "ffmpeg exited 1" } : { status: "measured", value: { medianOffsetMs: offsetMs, driftMs: undefined } },
     },
     checks: [],
@@ -150,6 +160,10 @@ describe("repeat summary", () => {
     expect(summaries[0]?.metrics["A/V offset (ms)"]).toEqual({ min: 70, median: 75, max: 80, n: 2 });
     expect(summaries[0]?.metrics["Drift (ms)"]).toBeUndefined();
     expect(summaries[0]?.metrics["Video bitrate (% of target)"]?.median).toBeCloseTo(101, 5);
+    expect(summaries[0]?.metrics["CPU average (%)"]).toEqual({ min: 13, median: 13.5, max: 14, n: 2 });
+    expect(summaries[0]?.metrics["CPU 95th (%)"]?.median).toBe(15.5);
+    expect(summaries[0]?.metrics["Encoder CPU (%)"]?.median).toBe(1.5);
+    expect(formatRepeatSummary(summaries)).toContain("13.0 / 13.5 / 14.0");
   });
 
   it("never lets a failed, blocked, incomplete or unverified repeat pass the case", () => {

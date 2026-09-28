@@ -123,3 +123,18 @@ it("preserves the last result throughout a repeated check", async () => {
   finish("0.1.2"); await checking;
   expect(h.checker.state.kind).toBe("current");
 });
+
+describe("launch check settles visibly (plan 049)", () => {
+  it("logs once when the launch check is skipped, so a measurement knows startup work is done", async () => {
+    const recent = harness();
+    recent.preference.lastAttempt = DAY_MS * 2 - 1000;
+    await recent.checker.check(false);
+    await recent.checker.check(false);
+    expect(recent.options.fetch).not.toHaveBeenCalled();
+    expect(recent.options.log.mock.calls.map(([m]) => m)).toEqual(["updates: launch check skipped (checked within 24 hours)"]);
+    const off = harness();
+    off.preference.enabled = false;
+    await off.checker.check(false);
+    expect(off.options.log).toHaveBeenCalledWith("updates: launch check skipped (off)");
+  });
+});

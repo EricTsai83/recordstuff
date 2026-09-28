@@ -423,7 +423,8 @@ it("retries a recoverable failure on one bounded backoff timer, joins manual ret
   expect(RETRY_DELAYS_MS).toEqual([2000, 5000, 15_000, 30_000]);
   expect(attempts).toEqual([1, 2, 3, 4, 5]);
   expect(save).toHaveBeenCalledTimes(6);
-  expect(log).toHaveBeenCalledTimes(1);
+  // One line for the whole failure streak (the load's own line is apart).
+  expect(log.mock.calls.filter(([message]) => String(message).includes("save failed"))).toHaveLength(1);
   // A manual retry starts now; the timer never adds a second writer.
   let release!: () => void;
   save.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));

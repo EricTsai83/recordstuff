@@ -88,6 +88,8 @@ export class UpdateChecker {
     const now = (this.options.now ?? Date.now)();
     const pref = this.options.preference();
     if (!manual && (!this.launchPending || !pref.enabled || (!this.retryLaunch && pref.lastAttempt <= now && now - pref.lastAttempt < DAY_MS))) {
+      // Said once, so a measurement can tell that startup work has settled (plan 049).
+      if (this.launchPending) this.options.log(`updates: launch check skipped (${pref.enabled ? "checked within 24 hours" : "off"})`);
       this.launchPending = false; return;
     }
     this.launchPending = false;
