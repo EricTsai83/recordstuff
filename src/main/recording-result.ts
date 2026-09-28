@@ -381,6 +381,19 @@ export class RecordingResults {
     if (!result?.acknowledged || result.outcome === "pending") return Promise.resolve(false);
     return this.request(id, "remove");
   }
+  /** Why a durable action cannot start for this row; the same rules `acknowledge` and `remove` apply. */
+  private refusal(result: RecordingResult, action: "acknowledge" | "remove" | "retry"): string | undefined {
+    if (action === "retry") return undefined;
+    if (result.outcome === "pending") return "pending record";
+    if (action === "remove" && !result.acknowledged) return "not reviewed";
+    const inFlight = this.pending.get(result.id);
+    if (inFlight && inFlight.kind !== action) return `${inFlight.kind} in flight`;
+    return undefined;
+  }
+  /** One line per acknowledgement, removal or retry: the action, the record ID and the outcome, never a path or detail. */
+  private logAction(action: string, id: string, outcome: string): void {
+    this.log(`recording result: ${action} ${id} ${outcome}`);
+  }
   private unknown(result: RecordingFailure): RecordingFailure {
     const { partialPath: _path, ...base } = result;
     return { ...base, ...(_path ? { recordingPath: _path, previouslyPartial: true } : {}), outcome: "unknown" };
@@ -401,12 +414,23 @@ export class RecordingResults {
   }
   async act(id: string, action: RecordingResultAction, effects: ResultActions): Promise<boolean> {
     const result = this.results.find(r => r.id === id);
-    if (!result || result.id !== id) return false;
-    if (action === "acknowledge" || action === "remove" || action === "retry") {
+    const durable = action === "acknowledge" || action === "remove" || action === "retry";
+    if (!result || result.id !== id) {
+      if (durable) this.logAction(action, id, "refused (unknown record)");
+      return false;
+    }
+    if (durable) {
+      const refusal = this.refusal(result, action);
+      if (refusal) {
+        this.logAction(action, id, `refused (${refusal})`);
+        return false;
+      }
       // Manual retry joins an active write instead of starting another.
       const applied = action === "acknowledge" ? this.acknowledge(id) : action === "remove" ? this.remove(id) : this.persist();
       effects.refresh();
       const done = await applied;
+      // Logged when it settles, so the log agrees with what the row shows (plan 047).
+      this.logAction(action, id, done ? "saved" : `failed (${this.issue ?? "io"})`);
       effects.refresh();
       return done;
     }

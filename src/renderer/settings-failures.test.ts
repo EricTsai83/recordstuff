@@ -1,0 +1,170 @@
+// @vitest-environment happy-dom
+import { expect, it, vi } from "vitest";
+import type { RecordingResultView, SettingsView } from "../shared/settings-panel";
+
+/** Plan 047: the Recording failures tab, driven through the real page module with a fake bridge. */
+const row = (id: string, over: Partial<RecordingResultView> = {}): RecordingResultView => ({
+  id, reason: "The disk is full.", day: "Today", time: "2:05 PM", outcome: "No recording content was kept.",
+  guidance: "Free disk space or choose another output folder before recording again.", detail: "ENOSPC: fixture",
+  acknowledged: false, pending: false, actions: [{ id: "acknowledge", label: "Got it", enabled: true, checked: false }], ...over,
+});
+const reviewed = (id: string, over: Partial<RecordingResultView> = {}): RecordingResultView =>
+  row(id, { acknowledged: true, actions: [{ id: "remove", label: "Remove from history", enabled: true, checked: false }], ...over });
+
+let current: SettingsView;
+let push!: (view: SettingsView) => void;
+const choose = vi.fn(async (group: string, choice: string) => {
+  const id = group.replace(/^recordingResult:/, "");
+  const results = (current.recordingResults ?? []).flatMap((r) => r.id !== id ? [r]
+    : choice === "remove" ? [] : choice === "acknowledge" ? [{ ...r, acknowledged: true, actions: [{ id: "remove", label: "Remove from history", enabled: true, checked: false }] }] : [r]);
+  current = { ...view(results), ...(current.resultFocus === undefined ? {} : { resultFocus: current.resultFocus }) };
+  return { view: current, applied: true };
+});
+
+function view(results: RecordingResultView[], over: Partial<SettingsView> = {}): SettingsView {
+  const unread = results.filter((r) => !r.acknowledged).length;
+  return {
+    language: "en", title: "RecordStuff - Settings", hint: "", failure: "Could not apply this setting.",
+    tabs: [{ id: "recording", label: "Recording settings" }, { id: "general", label: "General" },
+      unread ? { id: "failures", label: `Failures (${unread})`, accessibleLabel: `Recording failures, ${unread} unread` } : { id: "failures", label: "Failures", accessibleLabel: "Recording failures" }],
+    groups: [
+      { id: "screen", label: "Screen", tab: "recording", enabled: true, choices: [{ id: "primary", label: "Primary display", enabled: true, checked: true }] },
+      { id: "language", label: "Language", tab: "general", control: "segmented", enabled: true, choices: [{ id: "en", label: "English", enabled: true, checked: true }] },
+    ],
+    recordingResults: results,
+    ...over,
+  };
+}
+const tab = (id: string) => document.getElementById(`tab-${id}`) as HTMLButtonElement;
+const rows = () => [...document.querySelectorAll<HTMLDetailsElement>(".recording-result")];
+const headers = () => rows().map((r) => r.querySelector<HTMLElement>(":scope > summary")!);
+const key = (target: Element, name: string) => target.dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true, cancelable: true }));
+const show = async (next: SettingsView) => { current = next; push(next); await Promise.resolve(); };
+
+it("keeps the history in its own tab, as collapsed day-grouped rows with one open at a time", async () => {
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  document.body.innerHTML = '<h1 id="title"></h1><p id="hint"></p><p id="feedback"></p><form id="settings"></form>';
+  current = view([row("new"), reviewed("old", { day: "Yesterday", time: "9:12 AM", fileName: "2026-09-27 09-12-00.mp4",
+    file: "/Users/me/Movies/RecordStuff/2026-09-27 09-12-00.mp4" }), reviewed("older", { day: "September 24" })]);
+  window.settings = { read: async () => current, capture: async () => current, choose, onChanged: (cb) => { push = cb; return () => {}; } };
+  await import("./settings");
+  await vi.waitFor(() => expect(tab("failures")).toBeTruthy());
+
+  // A normal open shows Recording, which carries no history.
+  expect(document.querySelector('[role="tab"][aria-selected="true"]')!.id).toBe("tab-recording");
+  expect(document.getElementById("recording-results")).toBeNull();
+  expect([tab("recording"), tab("general"), tab("failures")].map((t) => t.textContent)).toEqual(["Recording settings", "General", "Failures (1)"]);
+  expect(tab("failures").getAttribute("aria-label")).toBe("Recording failures, 1 unread");
+  tab("general").click();
+  expect(document.getElementById("recording-results")).toBeNull();
+
+  tab("failures").click();
+  expect([...document.querySelectorAll(".result-day-heading")].map((h) => h.textContent)).toEqual(["Today", "Yesterday", "September 24"]);
+  expect(rows().map((r) => [r.dataset.resultId, r.open])).toEqual([["new", false], ["old", false], ["older", false]]);
+  // The header: the unread marker in its accessible name, the reason and time; the outcome beneath.
+  const first = headers()[0]!;
+  expect(first.querySelector(".result-unread-label")!.textContent).toBe("Unread, ");
+  expect(first.querySelector(".result-reason")!.textContent).toBe("The disk is full.");
+  expect(first.querySelector(".result-time")!.textContent).toBe("2:05 PM");
+  expect(first.querySelector(".result-outcome")!.textContent).toBe("No recording content was kept.");
+  expect(headers()[1]!.querySelector<HTMLElement>(".result-unread-label")!.hidden).toBe(true);
+  // Details: no repeated heading or time, the file name, and the full path under Technical details.
+  const old = rows()[1]!;
+  expect(old.querySelector(".result-details")!.textContent).not.toContain("9:12 AM");
+  expect(old.querySelector(".result-file")!.textContent).toBe("2026-09-27 09-12-00.mp4");
+  expect(old.querySelector(".result-technical pre")!.textContent).toBe("/Users/me/Movies/RecordStuff/2026-09-27 09-12-00.mp4\nENOSPC: fixture");
+  expect([...old.querySelectorAll(".result-actions button")].map((b) => b.textContent)).toEqual(["Remove from history"]);
+  expect(document.querySelector(".result-history-note")!.textContent).toContain("Keeps all unreviewed failures");
+
+  // One open row at a time.
+  rows()[0]!.open = true; rows()[0]!.dispatchEvent(new Event("toggle"));
+  rows()[1]!.open = true; rows()[1]!.dispatchEvent(new Event("toggle"));
+  expect(rows().map((r) => r.open)).toEqual([false, true, false]);
+
+  // Up, Down, Home and End move between headers across day groups; Enter and Space open and close.
+  headers()[0]!.focus();
+  key(headers()[0]!, "ArrowDown");
+  expect(document.activeElement).toBe(headers()[1]);
+  key(headers()[1]!, "End");
+  expect(document.activeElement).toBe(headers()[2]);
+  key(headers()[2]!, "ArrowDown");
+  expect(document.activeElement).toBe(headers()[2]);
+  key(headers()[2]!, "Home");
+  expect(document.activeElement).toBe(headers()[0]);
+  key(headers()[0]!, "ArrowUp");
+  expect(document.activeElement).toBe(headers()[0]);
+  key(headers()[0]!, "Enter");
+  expect(rows()[0]!.open).toBe(true);
+  key(headers()[0]!, " ");
+  expect(rows()[0]!.open).toBe(false);
+
+  // Got it returns focus to its row's header and collapses the row.
+  key(headers()[0]!, "Enter");
+  const gotIt = rows()[0]!.querySelector<HTMLButtonElement>('[data-action="acknowledge"]')!;
+  gotIt.focus(); gotIt.click();
+  await vi.waitFor(() => expect(choose).toHaveBeenCalledWith("recordingResult:new", "acknowledge"));
+  await vi.waitFor(() => expect(document.activeElement).toBe(headers()[0]));
+  expect(rows()[0]!.open).toBe(false);
+  expect(tab("failures").textContent).toBe("Failures");
+  expect(tab("failures").getAttribute("aria-label")).toBe("Recording failures");
+});
+
+it("opens only the target of an explicit entry, in its tab, without acknowledging it", async () => {
+  choose.mockClear();
+  await show(view([row("n1"), row("n2"), reviewed("r1")], { resultFocus: 1 }));
+  tab("recording").click();
+  await show(view([row("n1"), row("n2"), reviewed("r1")], { resultFocus: 2 }));
+  expect(document.querySelector('[role="tab"][aria-selected="true"]')!.id).toBe("tab-failures");
+  expect(rows().map((r) => [r.dataset.resultId, r.open])).toEqual([["n1", true], ["n2", false], ["r1", false]]);
+  expect(document.activeElement).toBe(headers()[0]);
+  expect(choose).not.toHaveBeenCalled();
+  // A later push with the same token opens nothing more.
+  headers()[1]!.focus();
+  await show(view([row("n1"), row("n2"), reviewed("r1")], { resultFocus: 2 }));
+  expect(document.activeElement).toBe(headers()[1]);
+});
+
+it("moves focus to the row that took a removed row's place, then to the tab after the last one", async () => {
+  await show(view([reviewed("a"), reviewed("b")]));
+  const removeA = () => rows()[0]!.querySelector<HTMLButtonElement>('[data-action="remove"]')!;
+  key(headers()[0]!, "Enter");
+  removeA().focus(); removeA().click();
+  await vi.waitFor(() => expect(rows().map((r) => r.dataset.resultId)).toEqual(["b"]));
+  await vi.waitFor(() => expect(document.activeElement).toBe(headers()[0]));
+  key(headers()[0]!, "Enter");
+  removeA().focus(); removeA().click();
+  await vi.waitFor(() => expect(rows()).toHaveLength(0));
+  await vi.waitFor(() => expect(document.activeElement).toBe(tab("failures")));
+  const empty = document.querySelector<HTMLElement>(".result-empty")!;
+  expect(empty.hidden).toBe(false);
+  expect(empty.textContent).toBe("No recording failures.");
+  expect(document.querySelector<HTMLElement>(".result-history-note")!.hidden).toBe(true);
+});
+
+it("shows the loading line instead of the empty state", async () => {
+  await show(view([], { recordingHistoryStatus: "Loading failure history…" }));
+  const status = document.querySelector<HTMLElement>(".result-history-status")!;
+  expect([status.hidden, status.textContent]).toEqual([false, "Loading failure history…"]);
+  expect(document.querySelector<HTMLElement>(".result-empty")!.hidden).toBe(true);
+});
+
+it("keeps each tab's scroll position when switching away and back; a first visit starts at the top", async () => {
+  await show(view([row("s1"), row("s2")]));
+  const panel = () => document.getElementById("settings-panel")!;
+  const scrollable = (el: HTMLElement) => {
+    Object.defineProperty(el, "scrollHeight", { configurable: true, value: 2000 });
+    Object.defineProperty(el, "clientHeight", { configurable: true, value: 300 });
+  };
+  tab("recording").click();
+  scrollable(panel()); panel().scrollTop = 140;
+  tab("general").click();
+  expect(panel().scrollTop).toBe(0);
+  scrollable(panel()); panel().scrollTop = 60;
+  tab("recording").click();
+  expect(panel().scrollTop).toBe(140);
+  tab("general").click();
+  expect(panel().scrollTop).toBe(60);
+  // A background update in the same tab keeps its position.
+  await show(view([row("s1"), row("s2"), row("s3")]));
+  expect(panel().scrollTop).toBe(60);
+});

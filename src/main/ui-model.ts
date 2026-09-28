@@ -80,6 +80,8 @@ export interface AppContext {
   notifications: boolean;
   /** Quit waits for recording work to finish; the tray says so until the app exits or quit is deferred. */
   quitting?: boolean;
+  /** When the view is built; failure rows are grouped by day relative to it. Tests pin it. */
+  now?: Date;
 }
 
 /**

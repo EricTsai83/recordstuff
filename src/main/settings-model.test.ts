@@ -3,7 +3,7 @@ import { DEFAULT_QUALITY } from "../shared/quality";
 import { DEFAULT_HOTKEY, HOTKEY_PRESETS } from "../shared/hotkey";
 import type { RecordingState } from "../shared/state";
 import { translate as t } from "../shared/i18n";
-import { settingsAction, settingsChecked, settingsView } from "./settings-model";
+import { failureDay, failureTime, settingsAction, settingsChecked, settingsView } from "./settings-model";
 import type { AppContext } from "./ui-model";
 
 const context: AppContext = {
@@ -71,7 +71,7 @@ describe("settingsView", () => {
   it("translates titles, hints and labels, and reflects a committed language", () => {
     const view = settingsView(idle, { ...context, language: "zh-TW" });
     expect(view.language).toBe("zh-TW");
-    expect(view.title).toBe("RecordStuff - 設置");
+    expect(view.title).toBe("RecordStuff - 設定");
     expect(view.hint).toBe("");
     expect(group(idle, { ...context, language: "zh-TW" }, "videoQuality")?.label).toBe("影像品質");
     expect(settingsView(idle, context).title).toBe("RecordStuff - Settings");
@@ -262,7 +262,7 @@ describe("notifications in General", () => {
   /** Off is obeyed, not compensated for: the cost is stated where the choice is. */
   it("states what turning it off costs and where to look instead", () => {
     const off = group(idle, { ...context, notifications: false }, "notifications")?.note ?? "";
-    expect(off).toContain(t("Notifications are off. Recording failures remain visible in the menu bar and Recording failures.", "en"));
+    expect(off).toContain(t("Notifications are off. Recording failures remain visible in the menu bar and in Settings → Failures.", "en"));
     // The macOS caveat is about a permission the user did not choose; it would
     // only confuse the reading of a switch the user did choose to turn off.
     expect(off).not.toContain("System Settings");
@@ -469,4 +469,46 @@ it("gives accurate persistence guidance, retries only what retrying can fix and 
   expect(row({}).recordingResults![0]!.saving).toBeUndefined();
   expect(row({}, "zh-TW", true).recordingHistoryStatus).toBe("正在載入失敗紀錄…");
   expect(row({}).recordingHistoryStatus).toBeUndefined();
+});
+
+describe("Recording failures tab (plan 047)", () => {
+  const base = { occurredAt: "2026-09-24T12:00:00Z", code: "disk_full" as const, detail: "ENOSPC", outcome: "empty" as const };
+  it("always offers a third tab after General, counting unread failures in its label and accessible name", () => {
+    expect(settingsView(idle, context).tabs).toEqual([
+      { id: "recording", label: "Recording settings" }, { id: "general", label: "General" }, { id: "failures", label: "Failures", accessibleLabel: "Recording failures" },
+    ]);
+    const results = [{ ...base, id: "a", acknowledged: false }, { ...base, id: "b", acknowledged: false }, { ...base, id: "c", acknowledged: true }];
+    expect(settingsView(idle, { ...context, recordingResults: results }).tabs[2]).toEqual({
+      id: "failures", label: "Failures (2)", accessibleLabel: "Recording failures, 2 unread",
+    });
+    expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs.map((tab) => tab.label))
+      .toEqual(["錄影", "一般", "失敗紀錄（2）"]);
+    expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs[2]!.accessibleLabel).toBe("失敗紀錄，2 筆未確認");
+    expect(settingsView(idle, { ...context, recordingResults: [results[2]!] }).tabs[2]).toEqual({ id: "failures", label: "Failures", accessibleLabel: "Recording failures" });
+  });
+
+  it("names the day a row is grouped under: Today, Yesterday, then the date with the year only for an earlier year", () => {
+    const now = new Date(2026, 8, 28, 9, 30);
+    expect(failureDay(new Date(2026, 8, 28, 0, 5), now, "en")).toBe("Today");
+    expect(failureDay(new Date(2026, 8, 27, 23, 55), now, "en")).toBe("Yesterday");
+    expect(failureDay(new Date(2026, 8, 24, 12), now, "en")).toBe("September 24");
+    expect(failureDay(new Date(2025, 11, 31, 12), now, "en")).toBe("December 31, 2025");
+    expect(failureDay(new Date(2026, 8, 28, 0, 5), now, "zh-TW")).toBe("今天");
+    expect(failureDay(new Date(2026, 8, 27, 12), now, "zh-TW")).toBe("昨天");
+    expect(failureDay(new Date(2026, 8, 24, 12), now, "zh-TW")).toBe("9月24日");
+    expect(failureDay(new Date(2025, 11, 31, 12), now, "zh-TW")).toBe("2025年12月31日");
+    // Across a month boundary, Yesterday is the previous calendar day.
+    expect(failureDay(new Date(2026, 8, 30, 22), new Date(2026, 9, 1, 1), "en")).toBe("Yesterday");
+  });
+
+  it("gives each row a short local time, its day, the file name and the full path, without a repeated heading", () => {
+    expect(failureTime(new Date(2026, 8, 28, 14, 5), "en")).toBe("2:05 PM");
+    expect(failureTime(new Date(2026, 8, 28, 14, 5), "zh-TW")).toBe("下午2:05");
+    const occurredAt = new Date(2026, 8, 28, 14, 5).toISOString();
+    const row = settingsView(idle, { ...context, now: new Date(2026, 8, 28, 20), recordingResults: [{ ...base, id: "p", occurredAt, acknowledged: false,
+      outcome: "partial", partialPath: "/Users/me/Movies/RecordStuff/2026-09-28 14-05-00.recording.mp4" }] }).recordingResults![0]!;
+    expect(row).toMatchObject({ day: "Today", time: "2:05 PM", fileName: "2026-09-28 14-05-00.recording.mp4",
+      file: "/Users/me/Movies/RecordStuff/2026-09-28 14-05-00.recording.mp4" });
+    expect(row).not.toHaveProperty("heading");
+  });
 });

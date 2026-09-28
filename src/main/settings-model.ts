@@ -27,6 +27,7 @@ import { COUNTDOWN_CHOICES } from "../shared/countdown";
 import type { SettingsChoice, SettingsGroup, SettingsView } from "../shared/settings-panel";
 import type { RecordingState } from "../shared/state";
 
+import path from "node:path";
 import { preferencesUnlocked, type AppAction, type AppContext, type RecordingResultAction } from "./ui-model";
 
 /** A group as main knows it: exactly the wire shape plus the action per choice. */
@@ -230,7 +231,7 @@ function notificationsGroup(ctx: AppContext, enabled: boolean): Group[] {
   const what = t("Shows a notification when a recording is saved or an error occurs.", language);
   // The switch controls OS notifications; in-app failure status stays available.
   const note = !ctx.notifications
-    ? t("Notifications are off. Recording failures remain visible in the menu bar and Recording failures.", language)
+    ? t("Notifications are off. Recording failures remain visible in the menu bar and in Settings → Failures.", language)
     : ctx.platform === "darwin"
       ? `${what} ${t("macOS must also allow RecordStuff in System Settings → Notifications.", language)}`
       : what;
@@ -292,30 +293,72 @@ function settingsGroups(state: RecordingState, ctx: AppContext): Group[] {
   } as Group));
 }
 
+/** A calendar day in local time, for grouping and naming failure rows. */
+function localDay(date: Date): number {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+/**
+ * The day heading a failure row is grouped under (plan 047): Today, Yesterday,
+ * then the date, with the year only when it is not the current year.
+ */
+export function failureDay(occurredAt: Date, now: Date, language: Language): string {
+  const days = Math.round((localDay(now) - localDay(occurredAt)) / 86_400_000);
+  if (days === 0) return t("Today", language);
+  if (days === 1) return t("Yesterday", language);
+  return occurredAt.toLocaleDateString(language, {
+    month: "long", day: "numeric", ...(occurredAt.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+  });
+}
+
+/** The short local time a failure row shows beside its reason. */
+export function failureTime(occurredAt: Date, language: Language): string {
+  return occurredAt.toLocaleTimeString(language, { hour: "numeric", minute: "2-digit" });
+}
+
+/**
+ * The third tab (plan 047): always present, its label counting unread
+ * failures. "Failures" keeps three labels on one line at the 380 pt minimum;
+ * the accessible name keeps the full name and the count.
+ */
+function failuresTab(ctx: AppContext): SettingsView["tabs"][number] {
+  const language = ctx.language;
+  const unread = (ctx.recordingResults ?? []).filter(result => !result.acknowledged).length;
+  if (!unread) return { id: "failures", label: t("Failures", language), accessibleLabel: t("Recording failures", language) };
+  return {
+    id: "failures",
+    label: t("Failures ({count})", language, { count: String(unread) }),
+    accessibleLabel: t("Recording failures, {count} unread", language, { count: String(unread) }),
+  };
+}
+
 /** Everything the panel renders. Actions stay in main; the panel only sees ids. */
 export function settingsView(state: RecordingState, ctx: AppContext): SettingsView {
   const language = ctx.language;
   const unlocked = preferencesUnlocked(state);
+  const now = ctx.now ?? new Date();
   return {
     language,
     ...(ctx.historyLoading ? { recordingHistoryStatus: t("Loading failure history…", language) } : {}),
     recordingResults: (ctx.recordingResults ?? []).map(result => ({
-      id: result.id, heading: t("Recording failure", language),
+      id: result.id,
       reason: failureReason(result.code, language),
-      time: new Date(result.occurredAt).toLocaleString(language),
+      day: failureDay(new Date(result.occurredAt), now, language),
+      time: failureTime(new Date(result.occurredAt), language),
       outcome: failureOutcome(result, language), guidance: ctx.platform === "darwin" && result.restored && isPermissionFailure(result.code)
         ? t("This is a previous recording failure. Check current recording permissions before trying again.", language)
         : failureGuidance(result.code, language, ctx.platform),
       persistenceWarning: result.persistenceFailed ? persistenceWarning(result.persistenceFailed, language) : "",
       ...(result.saving ? { saving: t("Saving this change…", language) } : {}),
-      detail: result.detail, ...((result.partialPath ?? result.recordingPath) ? { file: result.partialPath ?? result.recordingPath } : {}),
+      detail: result.detail,
+      ...((result.partialPath ?? result.recordingPath) ? { file: result.partialPath ?? result.recordingPath, fileName: path.basename(result.partialPath ?? result.recordingPath!) } : {}),
       acknowledged: result.acknowledged, pending: result.outcome === "pending",
       actions: resultActions(state, ctx, result).map(({ action: _action, ...choice }) => choice),
     })),
     title: t("RecordStuff - Settings", language),
     hint: unlocked ? "" : t("Recording in progress. Recording settings are locked.", language),
     failure: t("Could not apply this setting. Your current settings are shown.", language),
-    tabs: [{ id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) }],
+    tabs: [{ id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) }, failuresTab(ctx)],
     groups: settingsGroups(state, ctx).map(({ choices, actions, ...rest }) => ({
       ...rest,
       choices: choices.map(({ action: _action, ...choice }) => choice),

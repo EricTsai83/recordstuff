@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RecordingResults, failureGuidance, failureOutcome, failureReason, isPermissionFailure } from "./recording-result";
 import type { RecordingFailure } from "../shared/recording-result";
 import { ERROR_CODES } from "../shared/state";
@@ -178,4 +178,89 @@ it("Traditional Chinese failure reasons end without 。, since they also head a 
     expect(failureReason(code, "zh-TW"), code).not.toMatch(/[。．.]$/);
     expect(failureReason(code, "en"), code).not.toMatch(/\s$/);
   }
+});
+
+describe("action log (plan 047)", () => {
+  const empty = { ...a, outcome: "empty" as const };
+  /** Storage whose saves can fail or wait at a gate until it opens. */
+  function logged(options: { fail?: () => Error | undefined } = {}) {
+    const logs: string[] = [];
+    let gate: { promise: Promise<void>; open: () => void } | undefined;
+    const store = new RecordingResults({ load: async () => [], save: async () => {
+      if (gate) await gate.promise;
+      const error = options.fail?.();
+      if (error) throw error;
+    } }, message => logs.push(message));
+    return {
+      store,
+      lines: () => logs.filter(line => line.startsWith("recording result:")),
+      hold: () => { let open!: () => void; gate = { promise: new Promise<void>(resolve => { open = resolve; }), open }; },
+      release: () => { gate?.open(); gate = undefined; },
+    };
+  }
+
+  it("logs a saved acknowledgement, removal and retry with the record ID and no path or detail", async () => {
+    const h = logged(), io = effects();
+    await h.store.ready;
+    h.store.update({ ...partial, detail: "ENOSPC: secret detail" });
+    await h.store.persist();
+    expect(await h.store.act("a", "acknowledge", io)).toBe(true);
+    expect(await h.store.act("a", "retry", io)).toBe(true);
+    expect(await h.store.act("a", "remove", io)).toBe(true);
+    expect(h.lines()).toEqual(["recording result: acknowledge a saved", "recording result: retry a saved", "recording result: remove a saved"]);
+    expect(h.lines().join("\n")).not.toMatch(/\/a\.mp4|secret|ENOSPC/);
+  });
+
+  it("logs a failed save with its storage error class", async () => {
+    let failing: Error | undefined = new Error("EIO");
+    const h = logged({ fail: () => failing }), io = effects();
+    await h.store.ready;
+    h.store.update(empty);
+    expect(await h.store.act("a", "acknowledge", io)).toBe(false);
+    expect(h.lines()).toEqual(["recording result: acknowledge a failed (io)"]);
+    failing = undefined;
+    expect(await h.store.act("a", "retry", io)).toBe(true);
+    expect(h.lines().at(-1)).toBe("recording result: retry a saved");
+  });
+
+  it("logs refusals: a pending row, a row not reviewed, another action in flight and an unknown ID", async () => {
+    const h = logged(), io = effects();
+    await h.store.ready;
+    h.store.update(a);
+    expect(await h.store.act("a", "acknowledge", io)).toBe(false);
+    expect(await h.store.act("a", "remove", io)).toBe(false);
+    h.store.update(empty);
+    expect(await h.store.act("a", "remove", io)).toBe(false);
+    expect(await h.store.act("missing", "acknowledge", io)).toBe(false);
+    expect(await h.store.act("a", "acknowledge", io)).toBe(true);
+    h.hold();
+    const removing = h.store.act("a", "remove", io);
+    expect(await h.store.act("a", "acknowledge", io)).toBe(false);
+    h.release();
+    expect(await removing).toBe(true);
+    expect(h.lines()).toEqual([
+      "recording result: acknowledge a refused (pending record)",
+      "recording result: remove a refused (pending record)",
+      "recording result: remove a refused (not reviewed)",
+      "recording result: acknowledge missing refused (unknown record)",
+      "recording result: acknowledge a saved",
+      "recording result: acknowledge a refused (remove in flight)",
+      "recording result: remove a saved",
+    ]);
+  });
+
+  it("logs an action that waits for a durable save when it settles, not when it is chosen", async () => {
+    const h = logged(), io = effects();
+    await h.store.ready;
+    h.store.update(empty);
+    await h.store.persist();
+    h.hold();
+    const acknowledging = h.store.act("a", "acknowledge", io);
+    await vi.waitFor(() => expect(io.refresh).toHaveBeenCalled());
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(h.lines()).toEqual([]);
+    h.release();
+    expect(await acknowledging).toBe(true);
+    expect(h.lines()).toEqual(["recording result: acknowledge a saved"]);
+  });
 });

@@ -14,6 +14,7 @@ export interface SettingsChoice {
   enabled: boolean;
   checked: boolean;
 }
+export type SettingsTab = "recording" | "general" | "failures";
 export interface SettingsGroup {
   id: string;
   label: string;
@@ -45,8 +46,10 @@ export interface SettingsGroup {
 }
 export interface RecordingResultView {
   id: string;
-  heading: string;
   reason: string;
+  /** Localized day heading the row is grouped under: Today, Yesterday or the date (plan 047). */
+  day: string;
+  /** Short local time of day. */
   time: string;
   outcome: string;
   guidance: string;
@@ -54,7 +57,10 @@ export interface RecordingResultView {
   /** Localized: an acknowledgement or removal waits for a durable save. */
   saving?: string;
   detail: string;
+  /** The full path, shown with the technical details. */
   file?: string;
+  /** The file's name, shown in the row. */
+  fileName?: string;
   acknowledged: boolean;
   pending: boolean;
   actions: SettingsChoice[];
@@ -70,7 +76,8 @@ export interface SettingsView {
   hint: string;
   /** Shown when a choice did not take effect; already localized. */
   failure: string;
-  tabs: Array<{ id: "recording" | "general"; label: string }>;
+  /** The failures tab is always offered; its label carries the unread count (plan 047). */
+  tabs: Array<{ id: SettingsTab; label: string; accessibleLabel?: string }>;
   groups: SettingsGroup[];
 }
 export interface SettingsChoiceResult {

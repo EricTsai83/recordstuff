@@ -434,7 +434,9 @@ it("retries a recoverable failure on one bounded backoff timer, joins manual ret
   fail = false; release();
   expect(await manual).toBe(true); expect(await again).toBe(true);
   expect(results.current?.persistenceFailed).toBeUndefined();
-  expect(log).toHaveBeenLastCalledWith(expect.stringContaining("saved after 6 failed attempt"));
+  expect(log.mock.calls.map(([message]) => message).slice(-2)).toEqual([
+    expect.stringContaining("saved after 6 failed attempt"), `recording result: retry ${failure.id} saved`,
+  ]);
   await vi.advanceTimersByTimeAsync(120_000);
   expect(save).toHaveBeenCalledTimes(7);
   // Backoff restarts at the first delay after success.

@@ -2,7 +2,7 @@
 import { describeAccelerator, validateAccelerator } from "../shared/hotkey";
 import { isCloseChord, shortcutCandidate, shortcutModifiers } from "./shortcut-capture";
 import { isLanguage, translate, type PlainMessageKey } from "../shared/i18n";
-import type { SettingsBridge, SettingsGroup, SettingsView } from "../shared/settings-panel";
+import type { SettingsBridge, SettingsGroup, SettingsTab, SettingsView } from "../shared/settings-panel";
 
 declare global { interface Window { settings: SettingsBridge } }
 const form = document.querySelector<HTMLFormElement>("#settings")!;
@@ -11,8 +11,16 @@ const hint = document.querySelector<HTMLParagraphElement>("#hint")!;
 const feedback = document.querySelector<HTMLParagraphElement>("#feedback")!;
 const startupLanguage = ((v: string | null) => isLanguage(v) ? v : undefined)(new URLSearchParams(location.search).get("lang"));
 let view: SettingsView | undefined;
-let selectedTab: "recording" | "general" = "recording";
+let selectedTab: SettingsTab = "recording";
 let renderedStructure = "";
+/** The tab the current panel was built for, so switching can store where it was left. */
+let renderedTab: SettingsTab | undefined;
+/**
+ * Each tab's scroll offset for the life of the window (plan 047): stored when
+ * the user switches away, restored once the tab's panel is complete; a tab
+ * opened for the first time starts at the top.
+ */
+const tabScroll = new Map<SettingsTab, number>();
 const resultStates = new Map<string, { open: boolean; acknowledged: boolean }>();
 /**
  * Where each pending result action started. Focus returns from this intent,
@@ -327,116 +335,212 @@ function row(group: SettingsGroup): HTMLElement {
   container.append(node("span", "applying visually-hidden"));
   return container;
 }
-function updateRecordingResult(): void {
+/** Moves `node` to `index` inside `parent` only when it is elsewhere, so a focused row keeps focus. */
+function place(parent: Element, node: Element, index: number): void {
+  if (parent.children[index] !== node) parent.insertBefore(node, parent.children[index] ?? null);
+}
+/** Row headers in reading order, across day groups. */
+function resultHeaders(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>("#recording-results .recording-result > summary")];
+}
+/** Opens one row and closes every other; a pending save or action keeps its own state by id. */
+function openOnly(id: string | undefined): void {
+  for (const [key, state] of resultStates) state.open = key === id;
+  for (const area of document.querySelectorAll<HTMLDetailsElement>("#recording-results .recording-result")) {
+    const open = area.dataset.resultId === id;
+    if (area.open !== open) area.open = open;
+  }
+}
+/**
+ * The Recording failures tab (plan 047): a status line, then rows grouped by
+ * day on the window background, newest first, then the retention footnote.
+ * Every row starts collapsed and only one is open at a time; an explicit entry
+ * opens its target without acknowledging it.
+ */
+function updateRecordingResult(focusRequested: boolean): void {
   const results = view?.recordingResults ?? [];
-  let list = document.getElementById("recording-results");
   const panel = document.getElementById("settings-panel")!;
-  const focusRequested = (view?.resultFocus ?? 0) > resultFocus;
-  resultFocus = view?.resultFocus ?? 0;
-  const status = view?.recordingHistoryStatus ?? "";
-  if (!results.length && !status) {
-    const hadFocus = list?.contains(document.activeElement);
-    list?.remove(); resultStates.clear();
-    if (hadFocus || focusRequested) document.getElementById(`tab-${selectedTab}`)?.focus({ preventScroll: true });
+  let list = document.getElementById("recording-results");
+  if (selectedTab !== "failures") {
+    list?.remove();
     return;
   }
-  const focusId = (results.find(r => !r.acknowledged) ?? results[0])?.id;
+  const status = view?.recordingHistoryStatus ?? "";
   if (!list) {
     list = node("section"); list.id = "recording-results";
-    list.append(node("h2"), node("p", "result-history-note"), node("p", "result-history-status"));
-    panel.prepend(list);
+    list.setAttribute("aria-labelledby", "tab-failures");
+    list.append(node("p", "result-history-status"), node("p", "result-empty"), node("div", "result-days"), node("p", "result-history-note section-footnote"));
+    panel.append(list);
   }
-  setText(list.querySelector("h2")!, text("Recording failures"));
-  setText(list.querySelector(".result-history-note")!, text("Keeps all unreviewed failures and the 20 most recently reviewed failures. Removing a record does not delete the recording file."));
   const statusLine = list.querySelector<HTMLElement>(".result-history-status")!;
   statusLine.hidden = !status; setText(statusLine, status);
+  const empty = list.querySelector<HTMLElement>(".result-empty")!;
+  empty.hidden = Boolean(results.length || status); setText(empty, text("No recording failures."));
+  const note = list.querySelector<HTMLElement>(".result-history-note")!;
+  note.hidden = !results.length;
+  setText(note, text("Keeps all unreviewed failures and the 20 most recently reviewed failures. Removing a record does not delete the recording file."));
+  const days = list.querySelector<HTMLElement>(".result-days")!;
+  const focusId = (results.find(r => !r.acknowledged) ?? results[0])?.id;
+  // Taken before any row moves: moving a focused node drops its focus (review of plan 047), so it is given back below.
+  const focused = days.contains(document.activeElement) ? document.activeElement as HTMLElement : undefined;
   // Where the focused row was, so focus can land on its neighbour instead of the top of the list.
   let removedFocusAt: number | undefined;
-  for (const [position, area] of [...list.querySelectorAll<HTMLDetailsElement>(".recording-result")].entries()) {
+  for (const [position, area] of [...days.querySelectorAll<HTMLDetailsElement>(".recording-result")].entries()) {
     if (!results.some(r => r.id === area.dataset.resultId)) {
-      if (area.contains(document.activeElement)) removedFocusAt = position;
+      if (focused && area.contains(focused)) removedFocusAt = position;
       area.remove(); resultStates.delete(area.dataset.resultId!); resultErrors.delete(area.dataset.resultId!);
     }
   }
-  for (const [index, result] of results.entries()) {
-    const domId = `recording-result-${encodeURIComponent(result.id)}`;
-    let area = document.getElementById(domId) as HTMLDetailsElement | null;
-    let state = resultStates.get(result.id);
-    if (!state) { state = { open: !result.acknowledged, acknowledged: result.acknowledged }; resultStates.set(result.id, state); }
-    if (!state.acknowledged && result.acknowledged) state.open = false;
-    state.acknowledged = result.acknowledged;
-    if (focusRequested && result.id === focusId) state.open = true;
-    if (!area) {
-      area = node("details", "recording-result"); area.id = domId; area.dataset.resultId = result.id;
-      const summary = node("summary"); summary.id = `${domId}-summary`;
-      summary.addEventListener("keydown", event => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault(); area!.open = !area!.open; state!.open = area!.open;
-        }
-      });
-      const persistence = node("p", "result-persistence"); persistence.setAttribute("role", "alert");
-      const error = node("p", "result-error"); error.setAttribute("role", "alert");
-      const technical = node("details", "result-technical"); technical.append(node("summary"), node("pre"));
-      area.append(summary, node("p", "result-reason"), node("p", "result-time"), node("p", "result-outcome"),
-        node("p", "result-file"), node("p", "result-guidance"), persistence, node("div", "result-actions"), node("p", "result-saving"), error, technical);
-      area.addEventListener("toggle", () => { if (area!.isConnected) state!.open = area!.open; updateScrollHint(); });
-      list.insertBefore(area, list.children[index + 3] ?? null);
+  if (!results.length) {
+    const hadFocus = removedFocusAt !== undefined || list.contains(document.activeElement);
+    days.replaceChildren(); resultStates.clear();
+    if (hadFocus || focusRequested) document.getElementById(`tab-${selectedTab}`)?.focus({ preventScroll: true });
+    return;
+  }
+  // One group per consecutive day heading; groups are kept by heading so rows move only when their day changes.
+  const groups: Array<{ day: string; rows: typeof results }> = [];
+  for (const result of results) {
+    if (groups.at(-1)?.day !== result.day) groups.push({ day: result.day, rows: [] });
+    groups.at(-1)!.rows.push(result);
+  }
+  const sections = new Map([...days.querySelectorAll<HTMLElement>(".result-day")].map(section => [section.dataset.day!, section]));
+  /** Rows whose action had focus before this update; a button replaced or a collapse returns it to the header. */
+  const actionFocus = new Set<HTMLDetailsElement>();
+  for (const [groupIndex, group] of groups.entries()) {
+    let section = sections.get(group.day);
+    sections.delete(group.day);
+    if (!section) {
+      section = node("section", "result-day"); section.dataset.day = group.day;
+      const heading = node("h2", "result-day-heading", group.day);
+      section.append(heading, node("div", "result-rows"));
     }
-    const hadActionFocus = area.querySelector(".result-actions")!.contains(document.activeElement);
-    area.open = state.open;
-    setText(area.querySelector("summary")!, `${result.acknowledged ? "" : "⚠ "}${result.time} — ${result.reason}`);
-    setText(area.querySelector(".result-reason")!, result.heading);
-    setText(area.querySelector(".result-time")!, result.time);
-    setText(area.querySelector(".result-outcome")!, result.outcome);
-    const persistence = area.querySelector<HTMLElement>(".result-persistence")!;
-    persistence.hidden = !result.persistenceWarning; setText(persistence, result.persistenceWarning ?? "");
-    const file = area.querySelector<HTMLElement>(".result-file")!;
-    file.hidden = !result.file; setText(file, result.file ?? "");
-    setText(area.querySelector(".result-guidance")!, result.guidance);
-    const actions = area.querySelector<HTMLElement>(".result-actions")!;
-    for (const old of actions.querySelectorAll<HTMLButtonElement>("button")) {
-      if (!result.actions.some(action => old.dataset.action === action.id)) old.remove();
-    }
-    const intent = resultIntents.get(result.id);
-    const busy = Boolean(intent || result.saving);
-    area.setAttribute("aria-busy", String(busy));
-    for (const [position, action] of result.actions.entries()) {
-      const actionDomId = `${domId}-${action.id}`;
-      let el = document.getElementById(actionDomId) as HTMLButtonElement | null;
-      if (!el) {
-        const actionId = action.id, offeredId = result.id;
-        el = button(actionDomId, () => void chooseResult(offeredId, actionId, actionDomId));
-        el.dataset.action = actionId;
-        actions.insertBefore(el, actions.children[position] ?? null);
-      }
-      setText(el, action.label);
-      // Busy stays focusable and ignores activation; native disabled would drop focus to body.
-      setDisabled(el, !action.enabled, false);
-      el.setAttribute("aria-disabled", String(busy || !action.enabled));
-      el.classList.toggle("saving-disabled", busy && action.enabled);
-    }
-    const savingLine = area.querySelector<HTMLElement>(".result-saving")!;
-    const savingText = result.saving || (intent && PERSISTING_ACTIONS.includes(intent.action) ? text("Saving this change…") : "");
-    savingLine.hidden = !savingText; setText(savingLine, savingText);
-    const error = area.querySelector<HTMLElement>(".result-error")!;
-    error.hidden = !resultErrors.has(result.id);
-    setText(error, error.hidden ? "" : text("Could not complete this action. Please try again."));
-    const technical = area.querySelector<HTMLDetailsElement>(".result-technical")!;
-    technical.hidden = !result.detail;
-    setText(technical.querySelector("summary")!, text("Technical details"));
-    setText(technical.querySelector("pre")!, result.detail);
-    if ((focusRequested && result.id === focusId) || (hadActionFocus && (!area.open || !area.contains(document.activeElement)))) {
-      area.querySelector<HTMLElement>("summary")!.focus({ preventScroll: true });
+    place(days, section, groupIndex);
+    const rows = section.querySelector<HTMLElement>(".result-rows")!;
+    for (const [index, result] of group.rows.entries()) {
+      const domId = `recording-result-${encodeURIComponent(result.id)}`;
+      let area = document.getElementById(domId) as HTMLDetailsElement | null;
+      let state = resultStates.get(result.id);
+      if (!state) { state = { open: false, acknowledged: result.acknowledged }; resultStates.set(result.id, state); }
+      if (!state.acknowledged && result.acknowledged) state.open = false;
+      state.acknowledged = result.acknowledged;
+      if (!area) area = resultRow(result.id, domId, state);
+      else if (focused && area.querySelector(".result-actions")!.contains(focused)) actionFocus.add(area);
+      place(rows, area, index);
+      fillRow(area, result);
     }
   }
-  if (focusRequested && focusId) document.getElementById(`recording-result-${encodeURIComponent(focusId)}`)?.scrollIntoView({ block: "nearest" });
+  // A group whose rows all moved elsewhere or were removed.
+  for (const section of sections.values()) section.remove();
+  // A row that moved to another day group, such as across midnight, keeps the focus it had. This only gives
+  // DOM focus back to the element that held it, so it also runs in an inactive window, where it activates nothing.
+  if (focused?.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
+  if (focusRequested && focusId) openOnly(focusId);
+  for (const area of days.querySelectorAll<HTMLDetailsElement>(".recording-result")) {
+    const state = resultStates.get(area.dataset.resultId!);
+    if (state && area.open !== state.open) area.open = state.open;
+    if (actionFocus.has(area) && (!area.open || !area.contains(document.activeElement)))
+      area.querySelector<HTMLElement>(":scope > summary")!.focus({ preventScroll: true });
+  }
+  if (focusRequested && focusId) {
+    const target = document.getElementById(`recording-result-${encodeURIComponent(focusId)}`);
+    target?.querySelector<HTMLElement>(":scope > summary")?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: "nearest" });
+  }
   if (removedFocusAt !== undefined) {
     // The row that took the removed one's place, or the new last row; brought into view.
-    const rows = list.querySelectorAll<HTMLElement>(".recording-result > summary");
-    const next = rows[Math.min(removedFocusAt, rows.length - 1)];
+    const headers = resultHeaders();
+    const next = headers[Math.min(removedFocusAt, headers.length - 1)];
     next?.focus({ preventScroll: true });
     next?.scrollIntoView({ block: "nearest" });
   }
+}
+/** A collapsed row: its header is the focus target, its details sit indented under the title. */
+function resultRow(id: string, domId: string, state: { open: boolean }): HTMLDetailsElement {
+  const area = node("details", "recording-result"); area.id = domId; area.dataset.resultId = id;
+  const summary = node("summary"); summary.id = `${domId}-summary`;
+  const line = node("span", "result-line");
+  const unread = node("span", "result-unread"); unread.setAttribute("aria-hidden", "true");
+  line.append(unread, node("span", "visually-hidden result-unread-label"), node("span", "result-reason"), node("span", "result-time"), node("span", "result-chevron"));
+  line.querySelector(".result-chevron")!.setAttribute("aria-hidden", "true");
+  summary.append(line, node("span", "result-outcome"));
+  summary.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault(); area.open = !area.open;
+      return;
+    }
+    if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const headers = resultHeaders();
+    const index = headers.indexOf(summary);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? headers.length - 1
+      : Math.min(headers.length - 1, Math.max(0, index + (event.key === "ArrowDown" ? 1 : -1)));
+    headers[next]?.focus();
+    headers[next]?.scrollIntoView({ block: "nearest" });
+  });
+  const details = node("div", "result-details");
+  const persistence = node("p", "result-persistence"); persistence.setAttribute("role", "alert");
+  const error = node("p", "result-error"); error.setAttribute("role", "alert");
+  const technical = node("details", "result-technical"); technical.append(node("summary"), node("pre"));
+  details.append(node("p", "result-guidance"), node("p", "result-file"), persistence, node("div", "result-actions"),
+    node("p", "result-saving"), error, technical);
+  area.append(summary, details);
+  area.addEventListener("toggle", () => {
+    if (!area.isConnected) return;
+    state.open = area.open;
+    // One open row at a time.
+    if (area.open) openOnly(id);
+    updateScrollHint();
+  });
+  return area;
+}
+function fillRow(area: HTMLDetailsElement, result: NonNullable<SettingsView["recordingResults"]>[number]): void {
+  const domId = area.id;
+  area.classList.toggle("unread", !result.acknowledged);
+  area.querySelector<HTMLElement>(".result-unread")!.hidden = result.acknowledged;
+  const unreadLabel = area.querySelector<HTMLElement>(".result-unread-label")!;
+  unreadLabel.hidden = result.acknowledged; setText(unreadLabel, `${text("Unread")}, `);
+  setText(area.querySelector(".result-reason")!, result.reason);
+  setText(area.querySelector(".result-time")!, result.time);
+  setText(area.querySelector(".result-outcome")!, result.outcome);
+  const persistence = area.querySelector<HTMLElement>(".result-persistence")!;
+  persistence.hidden = !result.persistenceWarning; setText(persistence, result.persistenceWarning ?? "");
+  const file = area.querySelector<HTMLElement>(".result-file")!;
+  file.hidden = !result.fileName; setText(file, result.fileName ?? "");
+  setText(area.querySelector(".result-guidance")!, result.guidance);
+  const actions = area.querySelector<HTMLElement>(".result-actions")!;
+  for (const old of actions.querySelectorAll<HTMLButtonElement>("button")) {
+    if (!result.actions.some(action => old.dataset.action === action.id)) old.remove();
+  }
+  const intent = resultIntents.get(result.id);
+  const busy = Boolean(intent || result.saving);
+  area.setAttribute("aria-busy", String(busy));
+  for (const [position, action] of result.actions.entries()) {
+    const actionDomId = `${domId}-${action.id}`;
+    let el = document.getElementById(actionDomId) as HTMLButtonElement | null;
+    if (!el) {
+      const actionId = action.id, offeredId = result.id;
+      el = button(actionDomId, () => void chooseResult(offeredId, actionId, actionDomId));
+      el.dataset.action = actionId;
+    }
+    place(actions, el, position);
+    setText(el, action.label);
+    // Busy stays focusable and ignores activation; native disabled would drop focus to body.
+    setDisabled(el, !action.enabled, false);
+    el.setAttribute("aria-disabled", String(busy || !action.enabled));
+    el.classList.toggle("saving-disabled", busy && action.enabled);
+  }
+  const savingLine = area.querySelector<HTMLElement>(".result-saving")!;
+  const savingText = result.saving || (intent && PERSISTING_ACTIONS.includes(intent.action) ? text("Saving this change…") : "");
+  savingLine.hidden = !savingText; setText(savingLine, savingText);
+  const error = area.querySelector<HTMLElement>(".result-error")!;
+  error.hidden = !resultErrors.has(result.id);
+  setText(error, error.hidden ? "" : text("Could not complete this action. Please try again."));
+  const technical = area.querySelector<HTMLDetailsElement>(".result-technical")!;
+  // The full path moved here from the row (plan 047); the file name stays above.
+  const technicalText = [result.file, result.detail].filter(Boolean).join("\n");
+  technical.hidden = !technicalText;
+  setText(technical.querySelector("summary")!, text("Technical details"));
+  setText(technical.querySelector("pre")!, technicalText);
 }
 
 function updateScrollHint(): void {
@@ -448,15 +552,25 @@ let scrollObserver: ResizeObserver | undefined;
 function draw(): void {
   if (!view) return;
   const current = view;
+  // An explicit entry (tray or error notification) selects the failures tab once per token (plan 047).
+  const focusRequested = (current.resultFocus ?? 0) > resultFocus;
+  resultFocus = current.resultFocus ?? 0;
+  if (focusRequested) selectedTab = "failures";
   document.documentElement.lang = current.language === "zh-TW" ? "zh-Hant" : "en";
   document.title = current.title; setText(heading, current.title); setText(hint, current.hint); hint.hidden = !current.hint;
   const groups = current.groups.filter(g => g.tab === selectedTab);
+  /** Set when the panel was rebuilt: the offset it gets once everything above its content has settled. */
+  let restoreScroll: number | undefined;
   const structure = JSON.stringify([selectedTab, current.tabs.map(t => t.id), groups.map(g => [g.id, g.kind, g.control, g.section, g.control === "segmented" ? g.choices.map(c => c.id) : null])]);
   if (structure !== renderedStructure) {
     renderedStructure = structure;
     const active = document.activeElement;
     const restore = active instanceof HTMLElement && form.contains(active) ? active.id : "";
     const scroll = document.getElementById("settings-panel")?.scrollTop ?? 0;
+    // Switching away stores the old tab's position; returning brings it back, a first visit starts at the top.
+    if (renderedTab && renderedTab !== selectedTab) tabScroll.set(renderedTab, scroll);
+    const target = renderedTab === selectedTab ? scroll : tabScroll.get(selectedTab) ?? 0;
+    renderedTab = selectedTab;
     const tabs = node("div", "tabs"); tabs.setAttribute("role", "tablist");
     for (const tab of current.tabs) {
       const activate = (): void => {
@@ -497,19 +611,27 @@ function draw(): void {
     updateRows(groups);
     if (restore && document.hasFocus()) {
       const destination = (restore === "shortcut-capture" || restore === "shortcut-confirm") && !shortcutGroup()?.capturing ? "setting-hotkey" : restore;
-      const target = document.getElementById(destination);
-      if (target && !target.closest("[hidden]")) target.focus({ preventScroll: true });
+      const focusTarget = document.getElementById(destination);
+      if (focusTarget && !focusTarget.closest("[hidden]")) focusTarget.focus({ preventScroll: true });
       else if (restore.endsWith("-recovery") || restore.endsWith("-retry")) document.getElementById(restore.replace(/-(recovery|retry)$/, ""))?.focus({ preventScroll: true });
     }
-    panel.scrollTop = scroll;
+    // Rows first; the offset is applied below, once the panel, failure rows included, is complete.
+    updateRecordingResult(false);
+    restoreScroll = target;
   } else updateRows(groups);
   form.querySelector('[role="tablist"]')!.setAttribute("aria-label", current.title);
-  for (const tab of current.tabs) setText(document.getElementById(`tab-${tab.id}`)!, tab.label);
+  for (const tab of current.tabs) {
+    const el = document.getElementById(`tab-${tab.id}`)!;
+    setText(el, tab.label);
+    if (tab.accessibleLabel) el.setAttribute("aria-label", tab.accessibleLabel); else el.removeAttribute("aria-label");
+  }
   for (const group of groups) {
     const title = document.getElementById(`${controlId(group)}-section-heading`);
     if (title) { setText(title, group.sectionHeading ?? ""); title.hidden = !group.sectionHeading; }
   }
-  updateRecordingResult();
+  // After the headings above settle, so scroll anchoring cannot shift the restored offset; an entry's own scroll wins.
+  if (restoreScroll !== undefined) document.getElementById("settings-panel")!.scrollTop = restoreScroll;
+  updateRecordingResult(focusRequested);
   updateScrollHint();
 }
 function render(next: SettingsView): void {
@@ -613,7 +735,10 @@ document.addEventListener("keydown", event => {
   if (event.key === "Escape" && (shortcutGroup()?.capturing || arming)) { event.preventDefault(); void capture(false, true); return; }
   if (event.key === "Escape" || isCloseChord(event, platform())) window.close();
 });
+// An inactive window shows no focus ring (plan 047), even where Chromium keeps :focus-visible.
+window.addEventListener("focus", () => { delete document.documentElement.dataset.window; });
 window.addEventListener("blur", () => {
+  document.documentElement.dataset.window = "inactive";
   for (const intent of resultIntents.values()) intent.moved = true;
   if (shortcutGroup()?.capturing || arming) void capture(false);
 });
