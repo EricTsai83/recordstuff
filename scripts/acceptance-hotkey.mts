@@ -1,5 +1,5 @@
 /**
- * `pnpm acceptance [-- --seconds 10] [--no-open-material] [--skip-cancel] [--out <dir>]`
+ * `pnpm acceptance [-- --seconds 10] [--no-open-material] [--skip-cancel] [--countdown-sound] [--out <dir>]`
  *
  * Unattended acceptance of the global recording shortcut (plan 016) against
  * the app that is already running (`pnpm start:app`): open the test material
@@ -23,6 +23,13 @@
  * marker, compares each with the same flash phase two seconds later. A second
  * case then presses the shortcut twice: the countdown must cancel with no
  * file, failure or recording (`--skip-cancel` omits it).
+ *
+ * It reports whether the countdown ticked (plan 046). When it did, the first
+ * 500 ms of the recording's audio must hold no more energy at the tick's
+ * pitches than the same phase 2 s later, and no beep onset there may lack its
+ * flash. `--countdown-sound` turns the stored switch on for the round: if it
+ * is off, the app is quit, the switch set and the same bundle relaunched, and
+ * after the final quit only that key is set back.
  *
  * Exit 0 when the shortcut flow completed and no integrity check failed, was
  * blocked or is incomplete; channel energy is required evidence (plan 030), so
@@ -53,18 +60,21 @@ import { LogReader, evidenceSince, type LogCursor } from "./lib/log-reader.mts";
 import { hasTool, syncMarkers } from "./lib/media-tools.mts";
 import { readLogPairs, verifyRecording } from "./lib/verify-recording.mts";
 import { BLOCKED_EXIT, blocksSuccess, formatText } from "./lib/verify.mts";
-import { DIGIT_DIFF_THRESHOLD, countdownTimeline, digitCrops, digitRegion, type CountdownTimeline } from "./lib/countdown-evidence.mts";
+import { DIGIT_DIFF_THRESHOLD, TICK_EXCESS_DB, TICK_FLOOR_DBFS, countdownTimeline, digitCrops, digitRegion, tickCheck, type CountdownTimeline, type TickCheck } from "./lib/countdown-evidence.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
+import { StoredOverride } from "./lib/stored-override.mts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const LOG_PATH = path.join(os.homedir(), "Library/Logs/recordstuff/recordstuff.log");
 const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
+const SETTINGS_PATH = path.join(os.homedir(), "Library/Application Support/recordstuff/settings.json");
 /** A fresh profile per run: a reused one that was killed restores its last window and ignores `--kiosk`. */
 let MATERIAL_PROFILE: string;
 
 let seconds = 10;
 let openMaterial = true;
 let cancelCase = true;
+let countdownSound = false;
 let outDir: string | undefined;
 const argv = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--"));
 for (let i = 0; i < argv.length; i += 1) {
@@ -72,9 +82,10 @@ for (let i = 0; i < argv.length; i += 1) {
   if (arg === "--seconds") seconds = Number(argv[++i]);
   else if (arg === "--no-open-material") openMaterial = false;
   else if (arg === "--skip-cancel") cancelCase = false;
+  else if (arg === "--countdown-sound") countdownSound = true;
   else if (arg === "--out") outDir = argv[++i];
   else {
-    console.error("usage: pnpm acceptance [-- --seconds N] [--no-open-material] [--skip-cancel] [--out <dir>]");
+    console.error("usage: pnpm acceptance [-- --seconds N] [--no-open-material] [--skip-cancel] [--countdown-sound] [--out <dir>]");
     process.exit(2);
   }
 }
@@ -110,6 +121,49 @@ function appRunning(): string | undefined {
   return pid ? pid : undefined;
 }
 
+/** The stored settings as the app reads the countdown: a missing or non-boolean sound is on (plan 046). */
+function storedCountdown(): { countdown: unknown; sound: boolean; stored: unknown } {
+  const settings = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8")) as Record<string, unknown>;
+  const stored = settings["countdownSound"];
+  return { countdown: settings["countdown"] ?? 3, sound: typeof stored === "boolean" ? stored : true, stored };
+}
+
+/** Sets only the countdown sound, leaving every other key as the app last wrote it. */
+function writeStoredSound(value: boolean): void {
+  const settings = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8")) as Record<string, unknown>;
+  settings["countdownSound"] = value;
+  const temporary = `${SETTINGS_PATH}.acceptance-tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(settings, null, 2) + "\n");
+  fs.renameSync(temporary, SETTINGS_PATH);
+}
+
+/** The running app's bundle, from its executable; anything else is not ours to quit or relaunch. */
+async function bundleOf(pid: string, signal: AbortSignal): Promise<string> {
+  const executable = (await command("ps", ["-p", pid, "-o", "comm="], signal)).trim();
+  const suffix = "/Contents/MacOS/RecordStuff";
+  if (!executable.endsWith(`RecordStuff.app${suffix}`)) fail("unexpected executable; refusing to quit");
+  return executable.slice(0, -suffix.length);
+}
+
+/** Quits the confirmed-idle app through its bundle and waits until every process of the bundle is gone. */
+async function quitBundle(pid: string, signal: AbortSignal): Promise<string | undefined> {
+  let bundle: string | undefined;
+  await quitIdleApp({
+    pid, running: appRunning, read: readLines, signal,
+    quit: async () => {
+      bundle = await bundleOf(pid, signal);
+      await command("osascript", ["-e", `tell application ${JSON.stringify(bundle)} to quit`], signal);
+    },
+  });
+  if (bundle) {
+    const pattern = `${bundle}/Contents/`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    while ((await command("pgrep", ["-f", `^${pattern}`], signal, 5000, [0, 1])).trim()) {
+      await delay(100, undefined, { signal });
+    }
+  }
+  return bundle;
+}
+
 async function sendKey(script: string): Promise<string> {
   controller.signal.throwIfAborted();
   const at = now();
@@ -120,6 +174,11 @@ async function sendKey(script: string): Promise<string> {
 
 function waitFor(from: LogCursor, pattern: RegExp, what: string): ReturnType<typeof waitForLog> {
   return waitForLog(appLog, from, pattern, what, controller.signal);
+}
+
+function describeTicks(check: TickCheck): string {
+  const db = (value: number): string => (Number.isFinite(value) ? `${value.toFixed(1)} dBFS` : "silent");
+  return check.levels.map((l) => `${l.hz} Hz ${db(l.earlyDb)} vs ${db(l.laterDb)}`).join(", ");
 }
 
 function describeTimeline(t: CountdownTimeline): string {
@@ -142,27 +201,82 @@ async function main(): Promise<void> {
     console.error(`BLOCKED: ${missingTools.join(" and ")} missing (brew install ffmpeg); channel energy is required evidence. No key was sent.`);
     process.exit(BLOCKED_EXIT);
   }
-  const pid = appRunning() ?? fail("RecordStuff is not running; start it with `pnpm start:app` first");
-  const lines = readLines();
-  const accelerator = registeredAccelerator(lines) ?? fail("the running app did not log `hotkey: registered …` after its last start (shortcut disabled or refused)");
-  const state = currentState(lines);
-  if (!confirmedIdle(lines)) fail(`the app is in state ${state}; it must be idle (screen recording permission granted, no session running)`);
-  const run = currentRunId(lines) ?? fail("the running app's start line has no run id (built before session records); rebuild it with `pnpm start:app`");
-  const keystroke = acceleratorToKeystroke(accelerator) ?? fail(`cannot type accelerator ${accelerator} through System Events`);
-  const script = keystrokeScript(keystroke);
-  console.log(`RecordStuff pid ${pid}; run ${run}; shortcut ${accelerator}; ${seconds} s recording; log ${LOG_PATH}`);
+  let pid = appRunning() ?? fail("RecordStuff is not running; start it with `pnpm start:app` first");
+  // Everything that can refuse the round runs before a stored value changes (review of plan 046).
+  let soundOverride: StoredOverride<boolean> | undefined;
+  if (countdownSound) {
+    const stored = storedCountdown();
+    if (stored.countdown === 0) fail("--countdown-sound needs a countdown: the stored countdown is Off; choose 3, 5 or 10 s in Settings");
+    if (stored.sound) console.log(`countdown sound already on in the stored settings (${stored.stored === undefined ? "no field: the default" : "true"}); nothing to change`);
+    else {
+      if (!confirmedIdle(readLines())) fail("the app must be idle before its countdown sound can be turned on");
+      const bundle = await bundleOf(pid, AbortSignal.timeout(5000));
+      soundOverride = new StoredOverride<boolean>({
+        quit: async () => { await quitBundle(appRunning() ?? pid, AbortSignal.timeout(30_000)); },
+        running: () => appRunning() !== undefined,
+        write: writeStoredSound,
+        // Its own bounded signal, not the interrupt: a launch already issued settles to idle, so cleanup can quit it.
+        relaunch: async () => {
+          const signal = AbortSignal.timeout(60_000);
+          const from = nextIndex();
+          await command("open", ["-a", bundle], signal);
+          await waitForLog(appLog, from, /\] start: /, "the relaunched app's `start:` line", signal);
+          await waitForLog(appLog, from, /hotkey: registered/, "the relaunched app's `hotkey: registered`", signal);
+          while (!confirmedIdle(readLines())) await delay(200, undefined, { signal });
+        },
+      }, false, true);
+    }
+  }
+  const stamp = now().replace(/[:.]/g, "-");
+  const dir = outDir ?? path.join(REPO_ROOT, "docs/verification/measurements", `${stamp}-hotkey-acceptance`);
+  if (fs.existsSync(dir) && fs.readdirSync(dir).length) fail("output directory is not empty; preserving existing evidence");
   // A slept or locked display would be recorded instead of the material.
   const desktop = await beginDesktopRound().catch((cause: unknown) => {
     if (cause instanceof DesktopBlockedError) { console.error(`BLOCKED: ${cause.message} No key was sent.`); process.exit(DESKTOP_BLOCKED_EXIT); }
     throw cause;
   });
 
-  const stamp = now().replace(/[:.]/g, "-");
-  const dir = outDir ?? path.join(REPO_ROOT, "docs/verification/measurements", `${stamp}-hotkey-acceptance`);
-  if (fs.existsSync(dir) && fs.readdirSync(dir).length) fail("output directory is not empty; preserving existing evidence");
-  fs.mkdirSync(dir, { recursive: true });
+  let lines: string[];
+  let accelerator: string;
+  let run: string;
+  let script: string;
+  try {
+    if (soundOverride) {
+      controller.signal.throwIfAborted();
+      await soundOverride.apply();
+      pid = appRunning() ?? fail("the relaunched RecordStuff is not running");
+      console.log(`countdown sound turned on for this round; relaunched the same bundle (pid ${pid})`);
+    }
+    lines = readLines();
+    accelerator = registeredAccelerator(lines) ?? fail("the running app did not log `hotkey: registered …` after its last start (shortcut disabled or refused)");
+    const state = currentState(lines);
+    if (!confirmedIdle(lines)) fail(`the app is in state ${state}; it must be idle (screen recording permission granted, no session running)`);
+    run = currentRunId(lines) ?? fail("the running app's start line has no run id (built before session records); rebuild it with `pnpm start:app`");
+    const keystroke = acceleratorToKeystroke(accelerator) ?? fail(`cannot type accelerator ${accelerator} through System Events`);
+    script = keystrokeScript(keystroke);
+    fs.mkdirSync(dir, { recursive: true });
+    MATERIAL_PROFILE = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-acceptance-profile-"));
+  } catch (error) {
+    // Nothing was recorded; the round's value goes back once the app it launched is gone.
+    const changed = soundOverride?.pending ?? false;
+    try {
+      const problem = await soundOverride?.restore(true);
+      if (problem) console.error(`✗ countdown sound NOT restored: ${problem}. Quit RecordStuff, then set "countdownSound": false in ${SETTINGS_PATH}.`);
+      else if (changed) console.error("countdown sound set back to off in the stored settings");
+    } catch (restoreError) {
+      console.error(`✗ countdown sound NOT restored: ${String(restoreError)}. Quit RecordStuff, then set "countdownSound": false in ${SETTINGS_PATH}.`);
+    } finally {
+      desktop.end();
+    }
+    // A lock during setup makes the round blocked, like a lock during the recording.
+    if (desktop.lockedAt) {
+      console.error(`✗ ${desktop.summary} (setup also failed: ${String(error)})`);
+      process.exit(DESKTOP_BLOCKED_EXIT);
+    }
+    throw error;
+  }
+  console.log(`RecordStuff pid ${pid}; run ${run}; shortcut ${accelerator}; ${seconds} s recording; log ${LOG_PATH}`);
 
-  MATERIAL_PROFILE = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-acceptance-profile-"));
   let runError: unknown;
   const cleanupErrors: string[] = [];
   let material: ReturnType<typeof spawn> | undefined;
@@ -265,12 +379,27 @@ async function main(): Promise<void> {
       } catch (error) { guards.push(`digit crops failed: ${String(error)}`); }
     } else if (timeline.countdown) guards.push("no overlay placement was logged: digit crops not taken");
     else note("countdown Off: no digit to crop");
+    note(`countdown sound: ${timeline.sound === undefined ? "not logged (a build before plan 046)" : timeline.sound ? "on" : "off"}`);
+    if (countdownSound && timeline.sound !== true) guards.push("--countdown-sound was given but the session did not tick");
+    let ticks: TickCheck | undefined;
     if (openMaterial) {
       const markers = syncMarkers(file, result.measurement.durationSeconds);
       const expected = Math.floor(seconds / 2);
       note(`markers: ${markers.flashes.length} flashes, ${markers.beeps.length} beeps in ${seconds} s`);
       if (markers.flashes.length < expected) guards.push(`material not visible in the recording (${markers.flashes.length} flashes; the kiosk did not cover the recorded display)`);
       if (markers.beeps.length < expected) guards.push(`beeps not separable from silence (${markers.beeps.length} found): other audio was playing or output is muted; audio evidence is contaminated`);
+      if (timeline.sound) {
+        // A tick would add an onset in the first 500 ms that no flash accompanies.
+        const unpaired = markers.beeps.filter((beep) => beep < 0.5 && !markers.flashes.some((flash) => Math.abs(beep - flash) < 0.25));
+        if (unpaired.length) guards.push(`a beep onset at ${unpaired.map((t) => `${(t * 1000).toFixed(0)} ms`).join(", ")} has no flash: the tick may be in the recording`);
+      }
+    }
+    if (timeline.sound) {
+      try {
+        ticks = tickCheck(file);
+        note(`tick check: first ${ticks.windowSeconds * 1000} ms against ${ticks.laterSeconds} s later: ${describeTicks(ticks)} (fails above +${TICK_EXCESS_DB} dB and ${TICK_FLOOR_DBFS} dBFS)`);
+        if (!ticks.pass) guards.push(`the countdown tick may be in the first audio: ${describeTicks(ticks)}`);
+      } catch (error) { guards.push(`tick check failed: ${String(error)}`); }
     }
 
     // A second press during the countdown cancels: no file, failure or recording.
@@ -331,6 +460,13 @@ async function main(): Promise<void> {
           ? `Crops of the first 15 frames and of the 15 frames ${crops.laterSeconds} s later: [digit-crops/](digit-crops/). ${crops.judged} frame(s) judged; worst mean luma difference ${crops.worst?.toFixed(2) ?? "n/a"} (threshold ${DIGIT_DIFF_THRESHOLD}; flash frames skipped)${openMaterial ? "" : "; material not opened, so not judged"}.`
           : timeline.countdown ? "No crops (see guards)." : "Countdown Off: nothing to crop.",
         "",
+        "## Countdown sound",
+        "",
+        timeline.sound === undefined ? "Not logged: the app was built before plan 046."
+          : !timeline.sound ? "Off for this session: nothing to check."
+          : ticks ? `On. The first ${ticks.windowSeconds * 1000} ms against the same phase ${ticks.laterSeconds} s later: ${describeTicks(ticks)}; ${ticks.pass ? "no tick" : "**possible tick**"} (fails above +${TICK_EXCESS_DB} dB over the later window and ${TICK_FLOOR_DBFS} dBFS).${soundOverride ? " Turned on for this round by `--countdown-sound`." : ""}`
+          : "On, but the tick check did not run (see guards).",
+        "",
         "## Cancel case",
         "",
         cancelSummary,
@@ -361,28 +497,19 @@ async function main(): Promise<void> {
         });
         if (settled.neverStarted) note("cleanup: no recording started; app remains idle");
       }
-      const signal = AbortSignal.timeout(15_000);
-      let bundle: string | undefined;
-      await quitIdleApp({
-        pid, running: appRunning, read: readLines, signal,
-        quit: async () => {
-          const executable = (await command("ps", ["-p", pid, "-o", "comm="], signal)).trim();
-          const suffix = "/Contents/MacOS/RecordStuff";
-          if (!executable.endsWith(`RecordStuff.app${suffix}`)) fail("unexpected executable; refusing to quit");
-          bundle = executable.slice(0, -suffix.length);
-          await command("osascript", ["-e", `tell application ${JSON.stringify(bundle)} to quit`], signal);
-        },
-      });
-      if (bundle) {
-        const pattern = `${bundle}/Contents/`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        while ((await command("pgrep", ["-f", `^${pattern}`], signal, 5000, [0, 1])).trim()) {
-          await delay(100, undefined, { signal });
-        }
-      }
+      await quitBundle(pid, AbortSignal.timeout(15_000));
       note("cleanup: RecordStuff exited; recordings and reports preserved");
     } catch (error) {
       cleanupErrors.push(String(error));
     } finally {
+      if (soundOverride?.pending) {
+        // Only once the app is gone: a running app would write the round's value back on its next save.
+        try {
+          const problem = await soundOverride.restore(false);
+          if (problem) cleanupErrors.push(`countdown sound NOT restored: ${problem}; quit RecordStuff, then set "countdownSound": false in ${SETTINGS_PATH}`);
+          else note("cleanup: countdown sound set back to off in the stored settings");
+        } catch (error) { cleanupErrors.push(`countdown sound not restored: ${String(error)}`); }
+      }
       if (material) spawnSync("pkill", ["-f", MATERIAL_PROFILE]);
       try {
         const signal = AbortSignal.timeout(5000);

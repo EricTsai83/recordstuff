@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DIGIT_DIFF_THRESHOLD, compareCrops, countdownTimeline, digitRegion } from "./countdown-evidence.mts";
+import { DIGIT_DIFF_THRESHOLD, TICK_EXCESS_DB, compareCrops, compareTickLevels, countdownTimeline, digitRegion, peakToneLevelDb } from "./countdown-evidence.mts";
 
 const at = (ms: number, text: string): string => `[${new Date(Date.UTC(2026, 8, 26, 5, 0, 0) + ms).toISOString()}] ${text}`;
 
@@ -27,6 +27,13 @@ describe("countdown timeline", () => {
     });
   });
 
+  it("reads whether the countdown ticked, and nothing from a build before plan 046", () => {
+    const base = new Date(Date.UTC(2026, 8, 26, 5));
+    expect(countdownTimeline([at(0, "recorder: session s4 prepared after 1 ms; countdown 3 s; sound on")], base)).toMatchObject({ countdown: 3, sound: true });
+    expect(countdownTimeline([at(0, "recorder: session s5 prepared after 1 ms; countdown 0 s; sound off")], base)).toMatchObject({ countdown: 0, sound: false });
+    expect(countdownTimeline([at(0, "recorder: session s6 prepared after 1 ms; countdown 3 s")], base)).not.toHaveProperty("sound");
+  });
+
   it("reads Off and a dismissal that timed out", () => {
     expect(countdownTimeline([at(100, "recorder: session s2 prepared after 90 ms; countdown 0 s"), at(101, "recorder: session s2 record sent without a countdown")], new Date(Date.UTC(2026, 8, 26, 5))))
       .toMatchObject({ countdown: 0, ticks: [] });
@@ -41,6 +48,14 @@ describe("digit region", () => {
   it("scales points to the recorded frame size", () => {
     expect(digitRegion(overlay, { width: 3024, height: 1964 })).toEqual({ x: 2816, y: 74, width: 176, height: 176 });
     expect(digitRegion(overlay, { width: 1512, height: 982 })).toEqual({ x: 1408, y: 36, width: 88, height: 88 });
+  });
+  it("scales a window sized for the display (plan 045)", () => {
+    // 14% of a 1920 × 1080 display's 1080 pt short side: a 238 pt window.
+    const scaled = { window: { x: 1666, y: 37, width: 238, height: 238 }, display: { x: 0, y: 0, width: 1920, height: 1080 } };
+    expect(digitRegion(scaled, { width: 1920, height: 1080 })).toEqual({ x: 1666, y: 36, width: 238, height: 238 });
+    expect(digitRegion(scaled, { width: 3840, height: 2160 })).toEqual({ x: 3332, y: 74, width: 476, height: 476 });
+    // A capped recording scales the region down with the frame.
+    expect(digitRegion(scaled, { width: 1280, height: 720 })).toEqual({ x: 1110, y: 24, width: 158, height: 158 });
   });
   it("uses the display's own origin on a secondary display", () => {
     expect(digitRegion({ window: { x: -104, y: 12, width: 88, height: 88 }, display: { x: -1920, y: 0, width: 1920, height: 1080 } }, { width: 1920, height: 1080 }))
@@ -64,5 +79,55 @@ describe("crop comparison", () => {
   });
   it("is not a pass when nothing could be judged", () => {
     expect(compareCrops([flat(250)], [flat(250)])).toMatchObject({ judged: 0, pass: false });
+  });
+});
+
+describe("tick check (plan 046)", () => {
+  const rate = 48000;
+  /** Half a second of the material as a mono mix: its 660 Hz tone (10 ms attack, 40 ms release) starting at `beepAt`. */
+  function material(beepAt: number): Float32Array {
+    const out = new Float32Array(rate / 2);
+    for (let i = 0; i < out.length; i += 1) {
+      const t = i / rate - beepAt;
+      if (t < 0 || t > 0.12) continue;
+      const envelope = t < 0.01 ? t / 0.01 : t < 0.08 ? 1 : (0.12 - t) / 0.04;
+      out[i] = 0.15 * envelope * Math.sin(2 * Math.PI * 660 * t);
+    }
+    return out;
+  }
+  /** Adds the shared tick: −20 dBFS peak, 4 ms attack, exponential release over 140 ms. */
+  function withTick(samples: Float32Array, at: number, hz: number): Float32Array {
+    const out = samples.slice();
+    for (let i = 0; i < out.length; i += 1) {
+      const t = i / rate - at;
+      if (t < 0 || t > 0.14) continue;
+      const envelope = t < 0.004 ? t / 0.004 : Math.exp(Math.log(0.001) * (t - 0.004) / 0.136);
+      out[i] = out[i]! + 0.1 * envelope * Math.sin(2 * Math.PI * hz * t);
+    }
+    return out;
+  }
+
+  it("measures a steady sine at its level", () => {
+    const sine = new Float32Array(rate / 2).map((_, i) => 0.1 * Math.sin((2 * Math.PI * 523 * i) / rate));
+    expect(peakToneLevelDb(sine, rate, 523)).toBeCloseTo(-20, 0);
+    expect(peakToneLevelDb(new Float32Array(rate / 2), rate, 523)).toBe(-Infinity);
+  });
+
+  it("passes the material's tone alone, which leaks equally into both windows", () => {
+    const result = compareTickLevels(material(0.2), material(0.2), rate);
+    expect(result.pass).toBe(true);
+    for (const level of result.levels) expect(level.earlyDb - level.laterDb).toBeLessThan(TICK_EXCESS_DB);
+  });
+
+  it.each([523, 784.5])("fails when a %s Hz tick reaches the first audio, even at the start of the file", (hz) => {
+    const result = compareTickLevels(withTick(material(0.2), 0, hz), material(0.2), rate);
+    expect(result.pass).toBe(false);
+    const level = result.levels.find((l) => l.hz === hz)!;
+    expect(level.earlyDb).toBeGreaterThan(-40);
+  });
+
+  it("passes silence and is not a pass without audio", () => {
+    expect(compareTickLevels(new Float32Array(rate / 2), new Float32Array(rate / 2), rate).pass).toBe(true);
+    expect(compareTickLevels(new Float32Array(0), new Float32Array(rate / 2), rate).pass).toBe(false);
   });
 });

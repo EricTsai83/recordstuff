@@ -2,11 +2,13 @@
  * Countdown evidence for `pnpm acceptance` (plan 040): the start timeline the
  * app logs between the key press and the first chunk, where the digit sat in
  * the recorded frames, and whether any of the first frames still show it.
- * Development only, never shipped.
+ * With the countdown sound (plan 046) it also checks that the recording's
+ * first audio carries no tick. Development only, never shipped.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { COUNTDOWN_TICK, tickFrequencyHz } from "../../src/shared/countdown.ts";
 import { lineTime } from "./acceptance.mts";
 
 export interface Rect { x: number; y: number; width: number; height: number }
@@ -14,6 +16,8 @@ export interface Rect { x: number; y: number; width: number; height: number }
 export interface CountdownTimeline {
   /** Seconds the session counted down; 0 is Off. */
   countdown?: number;
+  /** Whether the session's countdown ticked (plan 046); absent from builds before it. */
+  sound?: boolean;
   /** Press → `prepared`: folder probe, temporary file, capture request and checks. */
   preparationMs?: number;
   /** Each `state → countdown (n)` relative to the first. */
@@ -38,9 +42,10 @@ export function countdownTimeline(lines: readonly string[], pressedAt: Date): Co
   for (const line of lines) {
     const at = lineTime(line)?.getTime();
     let m: RegExpExecArray | null;
-    if ((m = /recorder: session (\S+) prepared after \d+ ms; countdown (\d+) s/.exec(line)) && !session) {
+    if ((m = /recorder: session (\S+) prepared after \d+ ms; countdown (\d+) s(?:; sound (on|off))?/.exec(line)) && !session) {
       session = m[1];
       timeline.countdown = Number(m[2]);
+      if (m[3]) timeline.sound = m[3] === "on";
       if (at !== undefined) timeline.preparationMs = at - pressedAt.getTime();
     } else if ((m = /state → countdown \((\d+)\)/.exec(line)) && at !== undefined) {
       firstTick ??= at;
@@ -144,4 +149,70 @@ export function digitCrops(file: string, region: Rect, dir: string, count = 15, 
   ffmpeg(["-i", file, "-vf", `${selectFrom(laterSeconds)},${crop}`, "-fps_mode", "passthrough", "-frames:v", String(count), path.join(dir, `later-${laterSeconds}s-%02d.png`)]);
   const result = compareCrops(grayFrames(file, region, 0, count), grayFrames(file, region, laterSeconds, count));
   return { ...result, laterSeconds, files: fs.readdirSync(dir).filter((name) => name.endsWith(".png")).sort() };
+}
+
+/** The tick's pitches: every digit's, and the last digit's a fifth higher. */
+export const TICK_PITCHES_HZ = [COUNTDOWN_TICK.frequencyHz, tickFrequencyHz(1)] as const;
+/** The first audio fails when it rises this far above the same phase later (the material's tone leaks equally into both). */
+export const TICK_EXCESS_DB = 6;
+/** Below this a difference is noise, not a tick (a leaked tick measures around −30 dBFS at full volume). */
+export const TICK_FLOOR_DBFS = -70;
+/** Hann-windowed frames short enough for one tick to dominate a frame, overlapping so one is centred on it. */
+const FRAME_SECONDS = 0.05;
+const HOP_SECONDS = 0.025;
+
+/**
+ * The loudest short-frame level at `hz`, in dBFS of an equivalent sine:
+ * Goertzel over Hann-windowed frames. The window keeps the material's
+ * 660 Hz tone, 137 Hz away, from leaking into the tick's bins.
+ */
+export function peakToneLevelDb(samples: Float32Array, sampleRate: number, hz: number): number {
+  const size = Math.round(FRAME_SECONDS * sampleRate);
+  const hop = Math.round(HOP_SECONDS * sampleRate);
+  const k = 2 * Math.cos((2 * Math.PI * hz) / sampleRate);
+  let peak = 0;
+  for (let start = 0; start + size <= samples.length; start += hop) {
+    let s1 = 0;
+    let s2 = 0;
+    for (let i = 0; i < size; i += 1) {
+      const w = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (size - 1));
+      const next = samples[start + i]! * w + k * s1 - s2;
+      s2 = s1;
+      s1 = next;
+    }
+    // A sine of amplitude A gives |X| = A · size / 4 under a Hann window.
+    const amplitude = (4 * Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - k * s1 * s2))) / size;
+    peak = Math.max(peak, amplitude);
+  }
+  return peak > 0 ? 20 * Math.log10(peak) : -Infinity;
+}
+
+export interface TickCheck {
+  /** Loudest level per pitch in the first window and in the same phase later, dBFS. */
+  levels: Array<{ hz: number; earlyDb: number; laterDb: number }>;
+  windowSeconds: number;
+  laterSeconds: number;
+  pass: boolean;
+}
+
+/** Compares the first window with the same phase `laterSeconds` on; the material's tone repeats every second. */
+export function compareTickLevels(early: Float32Array, later: Float32Array, sampleRate: number, windowSeconds = 0.5, laterSeconds = 2): TickCheck {
+  const levels = TICK_PITCHES_HZ.map((hz) => ({ hz, earlyDb: peakToneLevelDb(early, sampleRate, hz), laterDb: peakToneLevelDb(later, sampleRate, hz) }));
+  const tick = levels.some(({ earlyDb, laterDb }) => earlyDb > TICK_FLOOR_DBFS && earlyDb > laterDb + TICK_EXCESS_DB);
+  return { levels, windowSeconds, laterSeconds, pass: early.length > 0 && later.length > 0 && !tick };
+}
+
+const SAMPLE_RATE = 48000;
+
+function monoSamples(file: string, fromSeconds: number, seconds: number): Float32Array {
+  const raw = ffmpeg(["-i", file, "-map", "0:a:0", "-ss", String(fromSeconds), "-t", String(seconds), "-ac", "1", "-ar", String(SAMPLE_RATE),
+    "-f", "f32le", "-"], "buffer") as Buffer;
+  const copy = new Uint8Array(raw.byteLength - (raw.byteLength % 4));
+  copy.set(raw.subarray(0, copy.byteLength));
+  return new Float32Array(copy.buffer);
+}
+
+/** The recording's first 500 ms against the same phase 2 s later, mixed to mono, at the tick's pitches. */
+export function tickCheck(file: string, windowSeconds = 0.5, laterSeconds = 2): TickCheck {
+  return compareTickLevels(monoSamples(file, 0, windowSeconds), monoSamples(file, laterSeconds, windowSeconds), SAMPLE_RATE, windowSeconds, laterSeconds);
 }
