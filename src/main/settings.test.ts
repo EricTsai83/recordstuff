@@ -100,6 +100,15 @@ describe("SettingsStore", () => {
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("rejects unsupported notification and update values without touching the file", async () => {
+    const s = store();
+    await expect(s.setNotifications("yes" as unknown as boolean)).rejects.toThrow(/notifications/);
+    await expect(s.setUpdates({ enabled: 1 as unknown as boolean })).rejects.toThrow(/updates/);
+    await expect(s.setUpdates({ lastAttempt: -5 })).rejects.toThrow(/updates/);
+    await expect(fs.stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(s.notifications).toBe(true);
+  });
+
   it("rejects a relative outputDir without touching the file", async () => {
     const s = store();
     await expect(s.setOutputDir("relative")).rejects.toThrow(/absolute/);

@@ -1,5 +1,3 @@
-import { isAppearance, type Appearance } from "../shared/appearance";
-import { DEFAULT_DISPLAY_PREFERENCE, isDisplayPreference, type DisplayPreference } from "../shared/display";
 /**
  * Persistent output folder, recording quality, and presentation language.
  * See docs/system-design/desktop.md for the schema and migration rules.
@@ -17,6 +15,8 @@ import { DEFAULT_DISPLAY_PREFERENCE, isDisplayPreference, type DisplayPreference
  * keeps working and takes the default, so existing users also get the
  * 3-second countdown and its tick.
  */
+import { isAppearance, type Appearance } from "../shared/appearance";
+import { DEFAULT_DISPLAY_PREFERENCE, isDisplayPreference, type DisplayPreference } from "../shared/display";
 import fs from "node:fs";
 import path from "node:path";
 import { DEFAULT_QUALITY, isQualitySettings, type QualitySettings } from "../shared/quality";
@@ -24,6 +24,7 @@ import { DEFAULT_COUNTDOWN, DEFAULT_COUNTDOWN_SOUND, isCountdownSeconds, type Co
 import { DEFAULT_LANGUAGE, isLanguage, type Language } from "../shared/i18n";
 import { DEFAULT_HOTKEY, canonicalizeAccelerator, isHotkeySettings, type HotkeySettings } from "../shared/hotkey";
 import { writeFileAtomic } from "./atomic-file";
+import { errnoCode } from "./errors";
 
 export const SETTINGS_VERSION = 3;
 
@@ -179,12 +180,17 @@ export class SettingsStore {
   get updates(): Settings["updates"] { return this.settings.updates; }
 
   setUpdates(patch: Partial<Settings["updates"]>): Promise<void> {
+    if ((patch.enabled !== undefined && typeof patch.enabled !== "boolean") ||
+        (patch.lastAttempt !== undefined && !(Number.isFinite(patch.lastAttempt) && patch.lastAttempt >= 0))) {
+      return Promise.reject(new Error(`unsupported updates setting: ${JSON.stringify(patch)}`));
+    }
     return this.save((current) => ({ ...current, updates: { ...current.updates, ...patch } }));
   }
 
   get notifications(): boolean { return this.settings.notifications; }
 
   setNotifications(enabled: boolean): Promise<void> {
+    if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported notifications setting: ${JSON.stringify(enabled)}`));
     return this.save((current) => ({ ...current, notifications: enabled }));
   }
 
@@ -251,7 +257,7 @@ export class SettingsStore {
     try {
       text = fs.readFileSync(this.filePath, "utf8");
     } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== "ENOENT") {
+      if (errnoCode(cause) !== "ENOENT") {
         this.log(`settings: cannot read ${this.filePath}: ${String(cause)}; using defaults`);
       }
       return fallback;

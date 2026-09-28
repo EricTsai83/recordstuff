@@ -57,7 +57,6 @@ export function validateAccelerator(value: unknown): AcceleratorValidation {
 export function isAccelerator(value: unknown): value is string {
   return validateAccelerator(value).accelerator !== undefined;
 }
-export const isHotkeyAccelerator = isAccelerator;
 
 export function canonicalizeAccelerator(value: unknown): string | undefined {
   return validateAccelerator(value).accelerator;
@@ -66,7 +65,7 @@ export function canonicalizeAccelerator(value: unknown): string | undefined {
 export function isHotkeySettings(value: unknown): value is HotkeySettings {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
-  return typeof record["enabled"] === "boolean" && isHotkeyAccelerator(record["accelerator"]);
+  return typeof record["enabled"] === "boolean" && isAccelerator(record["accelerator"]);
 }
 
 const MAC_SYMBOLS: Record<string, string> = {

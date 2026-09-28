@@ -3,6 +3,7 @@ import path from "node:path";
 import type { MessageBoxOptions } from "electron";
 import { translate, type Language } from "../shared/i18n";
 import { APP_NAME } from "./ui-model";
+import { errnoCode, messageOf } from "./errors";
 
 /** The two filesystem calls opening may make; injectable so tests can refuse them. */
 export interface OutputFolderFs {
@@ -20,15 +21,6 @@ type Problem =
   | { kind: "missing" | "notFolder" }
   | { kind: "parentMissing"; parent: string }
   | { kind: "createFailed" | "denied" | "unavailable" | "openFailed"; error: string };
-
-function errnoCode(cause: unknown): string | undefined {
-  return typeof cause === "object" && cause !== null && "code" in cause
-    ? String((cause as { code: unknown }).code) : undefined;
-}
-
-function describe(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
-}
 
 /** ENOTDIR means a path component is a file: the folder does not exist either. */
 const isMissing = (cause: unknown): boolean => ["ENOENT", "ENOTDIR"].includes(errnoCode(cause) ?? "");
@@ -85,10 +77,10 @@ export function createOutputFolderOpener(deps: {
   const open = async (dir: string, deniedBy?: unknown): Promise<Problem | undefined> => {
     let error: string;
     try { error = await deps.openPath(dir); }
-    catch (cause) { error = describe(cause); }
+    catch (cause) { error = messageOf(cause); }
     if (!error) return undefined;
     deps.log(`output folder: openPath(${dir}) failed: ${error}`);
-    return deniedBy === undefined ? { kind: "openFailed", error } : { kind: "denied", error: describe(deniedBy) };
+    return deniedBy === undefined ? { kind: "openFailed", error } : { kind: "denied", error: messageOf(deniedBy) };
   };
 
   const create = async (dir: string): Promise<Problem | undefined> => {
@@ -97,17 +89,17 @@ export function createOutputFolderOpener(deps: {
       if (!(await io.stat(parent)).isDirectory()) return { kind: "parentMissing", parent };
     } catch (cause) {
       if (isMissing(cause)) return { kind: "parentMissing", parent };
-      return { kind: "createFailed", error: describe(cause) };
+      return { kind: "createFailed", error: messageOf(cause) };
     }
     try {
       await io.mkdir(dir);
       deps.log(`output folder: created default ${dir}`);
     } catch (cause) {
       // A recording start may have created it in the meantime.
-      if (errnoCode(cause) !== "EEXIST") return { kind: "createFailed", error: describe(cause) };
+      if (errnoCode(cause) !== "EEXIST") return { kind: "createFailed", error: messageOf(cause) };
       try {
         if (!(await io.stat(dir)).isDirectory()) return { kind: "notFolder" };
-      } catch (again) { return { kind: "createFailed", error: describe(again) }; }
+      } catch (again) { return { kind: "createFailed", error: messageOf(again) }; }
     }
     return open(dir);
   };
@@ -121,7 +113,7 @@ export function createOutputFolderOpener(deps: {
       }
       // RecordStuff may be refused where Finder is not (macOS privacy folders).
       if (isDenied(cause)) return open(dir, cause);
-      return { kind: "unavailable", error: describe(cause) };
+      return { kind: "unavailable", error: messageOf(cause) };
     }
     return stats.isDirectory() ? open(dir) : { kind: "notFolder" };
   };

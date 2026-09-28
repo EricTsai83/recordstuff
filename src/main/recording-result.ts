@@ -417,7 +417,7 @@ export class RecordingResults {
   async act(id: string, action: RecordingResultAction, effects: ResultActions): Promise<boolean> {
     const result = this.results.find(r => r.id === id);
     const durable = action === "acknowledge" || action === "remove" || action === "retry";
-    if (!result || result.id !== id) {
+    if (!result) {
       if (durable) this.logAction(action, id, "refused (unknown record)");
       return false;
     }

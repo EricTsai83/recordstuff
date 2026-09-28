@@ -4,7 +4,7 @@
  *
  * `idle.outputDirUnavailable` is set when the last start attempt failed
  * because the chosen output directory could not be written (docs/system-design/recording.md:
- * the menu's first line must read"Output folder unavailable"). It is cleared by the
+ * the menu's first line must read "Output folder unavailable"). It is cleared by the
  * next successful start or by changing the output directory.
  *
  * `needsPermission.lastSavedPath` keeps a recording saved while permission was

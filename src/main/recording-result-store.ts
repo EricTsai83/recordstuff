@@ -3,6 +3,7 @@ import path from "node:path";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { isErrorCode } from "../shared/state";
 import { writeFileAtomic } from "./atomic-file";
+import { errnoCode } from "./errors";
 import type { PersistenceIssue, RecordingResult } from "../shared/recording-result";
 
 /** Every file operation is asynchronous (libuv threadpool); only small per-record JSON work runs on main. */
@@ -83,7 +84,7 @@ export class RecordingResultStore implements ResultStorage {
       if (new Set(results.map(r => r.id)).size !== results.length) throw new Error("duplicate recording identities");
       return results;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      if (errnoCode(error) !== "ENOENT") {
         this.blocked = true;
         this.log(`recording history: load failed: ${String(error)}`);
         return [];
@@ -95,7 +96,7 @@ export class RecordingResultStore implements ResultStorage {
         this.requiresMigration = true;
         return [result];
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") this.log(`recording history: legacy load failed: ${String(error)}`);
+        if (errnoCode(error) !== "ENOENT") this.log(`recording history: legacy load failed: ${String(error)}`);
       }
     }
     return [];

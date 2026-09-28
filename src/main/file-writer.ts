@@ -13,6 +13,7 @@ import { constants } from "node:fs";
 import path from "node:path";
 import type { ErrorCode } from "../shared/state";
 import { RECORDING_HEALTH } from "./recording-health";
+import { errnoCode, messageOf } from "./errors";
 
 export interface WritableHandle {
   write(data: Uint8Array): Promise<{ bytesWritten: number }>;
@@ -69,19 +70,9 @@ export class FileWriteError extends Error {
     readonly filePath: string,
     cause: unknown,
   ) {
-    super(`${code}: ${filePath}: ${describe(cause)}`, { cause });
+    super(`${code}: ${filePath}: ${messageOf(cause)}`, { cause });
     this.name = "FileWriteError";
   }
-}
-
-function describe(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
-}
-
-function errnoCode(cause: unknown): string | undefined {
-  return typeof cause === "object" && cause !== null && "code" in cause
-    ? String((cause as { code: unknown }).code)
-    : undefined;
 }
 
 export function classifyWriteError(cause: unknown): ErrorCode {
@@ -252,7 +243,7 @@ export class FileWriter {
             await this.io.link(this.recordingPath, target);
           } catch (cause) {
             if (errnoCode(cause) === "EEXIST") throw cause;
-            linkError = errnoCode(cause) ?? describe(cause);
+            linkError = errnoCode(cause) ?? messageOf(cause);
           }
         }
         if (linkError !== undefined) await this.io.copyExclusive(this.recordingPath, target);

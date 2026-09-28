@@ -1,6 +1,3 @@
-import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure, persistenceWarning } from "./recording-result";
-import { displayLabel, displayFailureText } from "../shared/display";
-import { displayResolution } from "./display-source";
 /**
  * The settings panel's model (docs/system-design/desktop.md): one declaration
  * of every preference the user can change, projected for the panel and used
@@ -13,6 +10,9 @@ import { displayResolution } from "./display-source";
  * while a capture is running; language and appearance remain editable.
  * index.ts re-checks recording locks before saving.
  */
+import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure, persistenceWarning } from "./recording-result";
+import { displayLabel, displayFailureText } from "../shared/display";
+import { displayResolution } from "./display-source";
 import { translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
 import {
   FRAME_RATES,

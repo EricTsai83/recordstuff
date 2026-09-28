@@ -408,6 +408,9 @@ export class CaptureHost {
       if (session.finished || session.handoffFailed) return;
       const bytes = await blob.arrayBuffer();
       if (session.finished) return;
+      // Copied, not transferred: on Electron 44 a transferred ArrayBuffer over
+      // this MessagePort hangs the main process (verified with a probe when the
+      // host was written). One second of media, about 1 MB, per copy is negligible.
       this.port.postMessage({ type: "chunk", sessionId: session.id, seq, bytes } satisfies HostMessage);
     }).catch((cause: unknown) => {
       session.handoffFailed = true;

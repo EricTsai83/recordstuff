@@ -1,13 +1,13 @@
-import type { RecordingFailure } from "../shared/recording-result";
-import type { DisplayFailure } from "../shared/display";
 /**
- * The state machine (docs/system-design/recording.md) and the single owner of `RecordingState`
- *. Everything with side effects — capture host, file writer, clock —
- * is injected, so this file has no Electron import and is unit-testable.
+ * The state machine (docs/system-design/recording.md) and the single owner of
+ * `RecordingState`. Everything with side effects — capture host, file writer,
+ * clock — is injected, so this file has no Electron import and is unit-testable.
  *
  * Failure never fakes success: any error goes back to `idle` with a `failed`
  * event and, when bytes were written, a kept `.recording.mp4`.
  */
+import type { RecordingFailure } from "../shared/recording-result";
+import type { DisplayFailure } from "../shared/display";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { HostMessage } from "../shared/protocol";
@@ -18,6 +18,7 @@ import { RECORDING_HEALTH, type RecordingHealth } from "./recording-health";
 import type { SessionSentinel } from "./session-sentinel";
 import type { FailureOutcome, SessionTiming } from "../shared/session-record";
 import type { FinishTimings } from "./file-writer";
+import { errnoCode, messageOf } from "./errors";
 
 export interface RecorderWriter {
   readonly recordingPath?: string;
@@ -54,17 +55,17 @@ export interface RecorderHost {
   ): void;
 }
 
-/**
- * Draws the countdown digit (plan 040). Recorder stays free of Electron: the
- * app injects the overlay window. Errors are logged and never fail a
- * recording; the tray still shows the countdown.
- */
 /** How the overlay presents this session's countdown; a snapshot taken when the session begins. */
 export interface CountdownPresentation {
   /** A tick plays with each digit (plan 046). */
   sound: boolean;
 }
 
+/**
+ * Draws the countdown digit (plan 040). Recorder stays free of Electron: the
+ * app injects the overlay window. Errors are logged and never fail a
+ * recording; the tray still shows the countdown.
+ */
 export interface CountdownPresenter {
   /** Preparation began and a countdown will follow: build the overlay so the first digit appears on time. */
   prepare?(presentation: CountdownPresentation): void;
@@ -252,10 +253,6 @@ export function errorCodeOf(cause: unknown, fallback: ErrorCode): ErrorCode {
     if (isErrorCode(code)) return code;
   }
   return fallback;
-}
-
-function messageOf(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
 }
 
 export class Recorder {
@@ -596,10 +593,8 @@ export class Recorder {
       try {
         return await this.deps.openWriter(recordingPath, path.join(session.dir, `${name}.mp4`));
       } catch (cause) {
-        const errno =
-          typeof cause === "object" && cause !== null && "cause" in cause
-            ? (cause as { cause?: { code?: unknown } }).cause?.code
-            : undefined;
+        // `FileWriteError` wraps the open error as its cause.
+        const errno = errnoCode(cause instanceof Error ? cause.cause : undefined);
         if (errno !== "EEXIST" || attempt >= MAX_NAME_ATTEMPTS) throw cause;
       }
     }
@@ -639,7 +634,7 @@ export class Recorder {
           code = "capture_start_failed";
           detail = `${detail} (while ${phase})`;
         }
-        if (message.displayFailure && !session.finalizing) this.emit({ type: "displayFailed", detail: message.displayFailure });
+        if (message.displayFailure) this.emit({ type: "displayFailed", detail: message.displayFailure });
         void this.fail(session.id, code, detail);
       }
       return;

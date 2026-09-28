@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { writeFileAtomic } from "./atomic-file";
+import { errnoCode } from "./errors";
 import type { RecordingFailure } from "../shared/recording-result";
 
 export interface SessionSentinel {
@@ -54,7 +55,7 @@ export class SessionSentinels {
     try {
       await fs.promises.unlink(this.file(sessionId));
     } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== "ENOENT") {
+      if (errnoCode(cause) !== "ENOENT") {
         this.log(`sentinel: could not remove ${sessionId}: ${String(cause)}`);
       }
     }
@@ -72,7 +73,7 @@ export class SessionSentinels {
     try {
       names = await fs.promises.readdir(this.dir);
     } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== "ENOENT") this.log(`sentinel: could not read ${this.dir}: ${String(cause)}`);
+      if (errnoCode(cause) !== "ENOENT") this.log(`sentinel: could not read ${this.dir}: ${String(cause)}`);
       return [];
     }
     const found: SessionSentinel[] = [];

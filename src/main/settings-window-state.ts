@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { writeFileAtomicSync } from "./atomic-file";
+import { errnoCode } from "./errors";
 
 export interface WindowSize { width: number; height: number }
 export const DEFAULT_SETTINGS_SIZE: WindowSize = { width: 560, height: 680 };
@@ -19,7 +20,7 @@ export class SettingsWindowState {
       if (!validSize(size)) throw new Error("invalid window size");
       this.current = { width: size.width, height: size.height };
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") this.log(`settings window: size read failed, using default: ${String(error)}`);
+      if (errnoCode(error) !== "ENOENT") this.log(`settings window: size read failed, using default: ${String(error)}`);
     }
   }
   get size(): WindowSize { return { ...this.current }; }

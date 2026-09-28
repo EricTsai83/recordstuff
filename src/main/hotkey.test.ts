@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_HOTKEY, HOTKEY_PRESETS, describeAccelerator, isHotkeyAccelerator, isHotkeySettings } from "../shared/hotkey";
+import { DEFAULT_HOTKEY, HOTKEY_PRESETS, describeAccelerator, isAccelerator, isHotkeySettings } from "../shared/hotkey";
 import { LAYOUT_AWARE_HOTKEYS_FEATURE, RecordingHotkey, physicalHotkeyFeatures, type GlobalShortcutApi } from "./hotkey";
 
 /**
@@ -145,7 +145,7 @@ describe("hotkey definitions", () => {
   });
 
   /**
-   * `isHotkeyAccelerator` rejects anything outside the preset list, and
+   * `isAccelerator` rejects anything outside the preset list, and
    * `parseSettings` then falls back to the default. Dropping an accelerator
    * therefore silently resets everyone who had chosen it, so every value the
    * app has ever offered has to stay valid.
@@ -156,7 +156,7 @@ describe("hotkey definitions", () => {
       "CommandOrControl+Shift+R",
       "CommandOrControl+Alt+R",
       "CommandOrControl+Shift+1",
-    ]) expect(isHotkeyAccelerator(shipped)).toBe(true);
+    ]) expect(isAccelerator(shipped)).toBe(true);
     expect(DEFAULT_HOTKEY).toEqual({ enabled: true, accelerator: "CommandOrControl+Shift+1" });
   });
 

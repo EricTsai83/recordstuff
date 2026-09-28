@@ -29,7 +29,7 @@ export type HostMessage =
   | { type: "prepared"; sessionId: string; mimeType: string; capture: CaptureReport }
   /** MediaRecorder started; main keeps the report from `prepared`. */
   | { type: "started"; sessionId: string; mimeType?: string; capture?: CaptureReport }
-  /** `bytes` is structured-cloned (see capture-host.ts for why not transferred). */
+  /** `bytes` is structured-cloned, never transferred: see `enqueueChunk` in src/renderer/capture-host.ts. */
   | { type: "chunk"; sessionId: string; seq: number; bytes: ArrayBuffer }
   | { type: "stopped"; sessionId: string; tracksStoppedAt?: number }
   | { type: "error"; sessionId?: string; code: ErrorCode; detail: string; displayFailure?: "track_ended" }
