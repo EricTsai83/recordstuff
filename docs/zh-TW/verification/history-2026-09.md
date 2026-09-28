@@ -9,6 +9,34 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 035 結案 — 2026-09-28
+
+最後的維護者逐步原生驗收 Plan 035，經維護者確認後於 2026-09-28 結案。它涵蓋錄影失敗 UX 留下的未測原生操作，以及從前序計畫收集的必要原生缺口，分四個階段完成：為真實故障無法隨時產生的狀態準備的[受控驗收 build](#plan-035-準備受控驗收-build--2026-09-27)、由維護者操作的[引導驗收回合](#plan-035-引導驗收回合--2026-09-28)、經維護者複驗的[後續修正](#plan-035-後續修正--2026-09-28)，以及在 045–049 改變倒數、失敗紀錄與 tray 選單之後，[由 agent 操作重做](#plan-035-045049-之後的重做回合--2026-09-28)受影響的 32 個案例。
+
+- **結果。** 所有適用案例都已通過，或在下方有明確決定。共發現並修正四個缺陷：D1，中文失敗原因結尾不一致；D2，撤銷權限並選「稍後」後，下一次開始回報 no_display 而不是權限指引；D3，用鍵盤移除一筆紀錄後焦點離開畫面；D4，選「不儲存這些紀錄並結束」後跳出未捕捉的 `Tray is destroyed` 錯誤對話框。
+- **維護者的決定。** 開始擷取後才選的「取消錄影」會停止並存檔。模態警告與退出提示開著時會擋住 tray 選單，這是已知限制。O-N14（「失敗紀錄」清單稍微捲動時，新失敗會插在可視範圍上方）與 O-N34（「已儲存」通知蓋住緊接著出現的數字上緣）維持現況並接受。
+- **豁免或不適用。** N17，因為沒有 Windows 機器，Windows 系統匣圖示仍未在原生環境觀察；N16 與 N34 的 VoiceOver；N32 的淺色選單列；N32 的藍牙耳機。N27–N29 不適用，因為 037 沒有加入重疊的收尾。
+- **只有單元測試證據。** N12 的「處理中不能重新啟動」與「還原的權限歷史」兩個小項，以及 N23 的「啟動檢查期間確認」。
+- **macOS 上無法操作。** 儲存位置警告開著時再點一次 tray（N41），以及退出提示開著時重複按「結束」（N25），因為模態提示顯示時 App 不處理其他任何操作。
+- **留待之後決定。** N31 記錄到：錄影中睡眠會以 capture_failed 結束並保留可播放的 partial，失敗通知在睡眠當下送出。本計畫只把它收集為「睡眠時是否自動停止」的決策證據，沒有改變行為；目前也沒有為此開計畫。
+
+耐久結論分別寫在[工具](../system-design/tooling.md#受控驗收-build)（受控 build）與[桌面功能](../system-design/desktop.md#tray-與通知)（正在結束狀態與 tray 拆除）。結案後，CPU sampler 的程序樹測試（本輪曾在整套測試負載下失敗一次）改為最多等 5 秒、直到出現含有整棵程序樹的樣本，不再固定等 700 ms；單獨執行 10 次與三次完整 `pnpm check`（1123 個測試）都通過，Codex GPT-6 Astra review 沒有 findings。計畫檔與其翻譯已移除。
+
+## Plan 035 045–049 之後的重做回合 — 2026-09-28
+
+2026-09-28 16:01 到 18:40（UTC+8），在最終 build 上重做計畫 045–049 改動到的 32 個案例（N01–N16、N19–N26 含 N21a、N32–N35 含 N33a、N41 與 N42）。依維護者的決定，這一輪由 Claude 自行操作原生 UI：使用 CoreGraphics 滑鼠與鍵盤事件、AppleScript 與輔助使用樹，並以自己拍的截圖對照 App log 與受控 build 的 `status`；維護者負責用眼睛與耳朵判斷 N32，並切換 N12 的權限。環境：M1 Pro、macOS 26.6.2、Electron 44.3.0，主螢幕 BenQ GW2785TC 1920 × 1080，旁邊另有一台直立的 BenQ BL2480T 1080 × 1920；原始碼為 HEAD `1bf27e8` 加上計畫檔的修改。N32 使用新建置並簽章的 `pnpm start:app` bundle（app.asar `58f36895…`）與維護者的真實設定；其餘案例都使用隔離資料的[受控 build](../system-design/tooling.md#受控驗收-build)：先一個不放 seed 的 run，之後分別用 retention 與 v1 seed，最後一個 run 含 D4 修正。逐案表格在本機的 `measurements/2026-09-28T080105Z-plan035-repeat/report.md`。維護者確認本輪並接受兩項觀察後，035 已結案（[結案紀錄](#plan-035-結案--2026-09-28)）。
+
+- **倒數（N32–N35、N33a）。** 維護者認為 151 pt 的數字（位於 1666,42 的 238 pt 視窗）大小合適，在白色文件、深色編輯器與明亮照片上都夠清楚也夠透明；最後一聲提示音較高，開始錄影時沒有聲音；三個檔案裡都看不到數字，也沒有提示音。再點一次、⌘⇧1、「取消錄影」與「結束」都能取消，不留下檔案、失敗紀錄或通知；倒數時打開、開到開始擷取後才選的「取消錄影」會停止並存檔；狀態改變後才從閒置選單選的「開始錄製」記錄為 `tray: Start recording ignored in state countdown`。「關閉」時直接開始、沒有數字，5 秒顯示 5，「10」完整顯示；倒數與錄影期間，倒數群組、倒數音效開關與「更改…」都保持鎖定；「關閉」時音效開關停用並保留原值。閒置、倒數、錄影三種狀態的 tray 選單都用兩種語言、在淺色與深色選單列上截圖（暫時切換系統外觀），未確認與只有已確認紀錄的選單則在深色下截圖：群組順序一致，沒有多餘的分隔線，快捷鍵靠右對齊。倒數期間，在 TextEdit 輸入的按鍵都留在 TextEdit，點擊數字會落到 TextEdit，數字也會顯示在全螢幕 App 上方；在直立螢幕上，視窗同樣是 238 pt、位於該螢幕右上角；開啟「減少動態效果」與「減少透明度」時，數字變成不透明並加上深色外框，橫跨兩次數字切換的 14 張擷取裡沒有任何淡入淡出的混合畫面。
+- **失敗 UX 與歷史（N01–N16、N19–N26、N21a）。** 真實故障：唯讀資料夾；500 MB exFAT 映像寫滿後的 disk_full，保留 337 MB、可以播放的 partial；映像卸載後再接回（先變成無法確認，之後恢復為 partial）；真實的 `EACCES` 歷史存檔失敗；在 App 與 macOS 中分別關閉通知。受控狀態：暫停清理、寫入與關檔故障、暫停與失敗的歷史存檔、暫停的歷史載入，以及 v1 與 retention seed。從通知、通知中心與「查看失敗紀錄…」都會以同一個視窗打開「失敗紀錄」分頁，並展開、聚焦最新的未確認紀錄；只有按「知道了」才會確認。第一輪的修正都維持有效：中文通知顯示為「無法寫入輸出資料夾。點此查看錄影結果。」（D1），用鍵盤移除一筆紀錄後，焦點落在下一筆且保持在畫面內（D3）。
+- **儲存位置（N41、N42）。** 既有資料夾會在 Finder 中打開、沒有警告；刪除的隔離資料夾會以中英文顯示一次附完整路徑的警告，「取消」保留設定且不建立任何東西，從警告選「更改儲存位置」會開啟選擇器，重建資料夾後可以再次打開。不存在的預設資料夾會被建立；已退出的自訂磁碟區不會。
+- **權限（N12）。** 沒有權限時，選單提供「打開系統設定」與「已經允許？重新啟動 RecordStuff」；維護者允許之後，「重新啟動」記錄 `permission: granted and capture sees 2 screen(s)`，錄影也順利存檔。
+- **缺陷 D4，已修正。** 在 N25 的退出提示選「不儲存這些紀錄並結束」後，App 從退出回饋計時器記錄 `uncaught exception: Error: Tray is destroyed`，跳出「發生未預期的錯誤」對話框，要按「好」才結束。原因是 `shutdown()` 會為「正在結束」狀態設定 300 ms 計時器，模態提示把它延後到 `will-quit` 已經銷毀 tray 之後才執行。現在 `will-quit` 會先清除這個計時器，tray 銷毀後也會略過 render、refresh 與右鍵選單。新的單元測試讓假的 tray 在銷毀後像 Electron 一樣丟出錯誤；拿掉防護時，測試會以 `Tray is destroyed` 失敗。`pnpm check` 通過 typecheck、66 個檔案共 1123 個測試與 build；第一次執行只有 CPU sampler 的真實程序測試失敗：在整套測試的負載下，700 ms 內沒有拿到樣本；之後單獨執行五次與完整重跑都通過。Codex GPT-6 Astra（medium reasoning、唯讀）約 30 秒完成 review，沒有 findings。在新的受控 build 上，錄影中與閒置時選「不儲存這些紀錄並結束」都直接結束，沒有對話框，也沒有 `uncaught`；「留在 App」會讓選單回到「待命中」；存檔恢復後，一般結束會先存好紀錄再退出。
+- **觀察，維護者已接受。** O-N14：「失敗紀錄」清單稍微捲動時，瀏覽器的捲動錨定會讓可見的列保持不動，所以按住「知道了」期間新增的失敗會插在可視範圍上方，放開時確認的正是實際按下的那一列；第一輪看到的則是清單位移。O-N34：角落的「已儲存」通知會蓋住緊接著出現的數字上緣約 15 px；數字仍然清楚可讀，而系統會把通知畫在所有視窗上方。維護者接受兩項現況。
+- **未執行。** N16 與 N34 的 VoiceOver、N32 的淺色選單列與藍牙耳機，依維護者先前的豁免或選擇未執行；N12 的「處理中不能重新啟動」與「還原的權限歷史」兩個小項，以及 N23 的「啟動檢查期間確認」，目前只有單元測試證據。macOS 上無法操作：N41 的第二次點擊，以及模態提示開著時重複按 N25 的「結束」。未截圖的選單：淺色選單列上的英文未確認選單、深色中文與淺色英文的只有已確認選單，以及中文或深色的需要權限選單；它們與已截圖的選單使用相同的分組邏輯。
+- **測試工具與環境備註。** tray 選單開著時按下的 ⌘⇧1，會等選單關閉後才送達。點擊受控 build 的通知時，同樣會連帶啟動共用 bundle identifier 的 `/Applications/RecordStuff.app` 1.0.0；每次都已結束，也沒有寫入任何真實資料。
+
+收尾：所有 RecordStuff 程序都已正常結束；受控 workspace 已移除並保留證據，磁碟映像已刪除，測試用的瀏覽器視窗已關閉；系統外觀、「減少動態效果」、「減少透明度」與 macOS 通知設定都已還原；真實的 `settings.json` 與 `recording-history.json` 與基準相同。這一輪的 TextEdit 測試文件已移到垃圾桶；一份 2026-09-26 的 TextEdit 文件不是這一輪建立的，所以沒有替它存檔，而是留給維護者處理；它之後已被移除。貼上選擇器路徑時覆寫的剪貼簿已清空。依維護者要求，N32 的三個測試錄影已移到垃圾桶，TextEdit 也已結束。期間 `caffeinate` 讓螢幕保持喚醒。沒有 commit、push 或發布。
+
 ## Plan 049 CPU baseline 結案 — 2026-09-28
 
 RecordStuff 現在有待命與錄影的 CPU 預算，由 Claude 實作、Codex GPT-6 Astra review（[工具](../system-design/tooling.md#cpu-預算)、[待命行為](../system-design/design-overview.md#在選單列待命)、[決策](../system-design/decisions.md)）。在此之前沒有任何待機量測；矩陣則是在開發用 App 上以 `ps` 會衰減的 `%cpu` 判定錄影 CPU，上限 40%，大約是實測值的兩倍。
@@ -54,7 +82,7 @@ Codex GPT-6 Astra（medium reasoning、唯讀）pass 1 約 3 分鐘，回傳八�
 
 自動化證據：測試涵蓋雙語下沒有歷史、有未讀失敗與只有已確認失敗時每個狀態的完整順序與分隔線；在所有狀態、歷史、語言、設定快捷鍵狀態與結束中之下，都沒有開頭、結尾或連續的分隔線；只有已確認失敗時的入口在「設定…」旁，沒有「最近一次失敗」行；「開始錄製」只在待命時出現；accelerator 只給已註冊的快捷鍵，tooltip 保留；template 的 `registerAccelerator: false` 與「開始」的動作；`startIfIdle` 永遠不會停止錄影或取消倒數；設定群組順序、儲存位置列、其動作與鎖定；以及該列動作依其自身結果回報。`git diff --check` 無誤。
 
-未在此驗證、移交 [035](../../../plans/035-guided-native-acceptance.zh-TW.md) 的 N33a：需要權限的選單與有未讀失敗時的待命選單（原生）、從已開啟選單選取的過時「開始」、淺色選單列上的選單（目前桌布下選單列在兩種外觀都是深色；選單本身依淺色與深色外觀變化），以及選單的鍵盤操作。不宣稱 Windows。
+未在此驗證、移交 [035](#plan-035-結案--2026-09-28) 的 N33a：需要權限的選單與有未讀失敗時的待命選單（原生）、從已開啟選單選取的過時「開始」、淺色選單列上的選單（目前桌布下選單列在兩種外觀都是深色；選單本身依淺色與深色外觀變化），以及選單的鍵盤操作。不宣稱 Windows。
 
 清理：語言與外觀已還原，`settings.json` 與回合前保存的檔案相同；素材視窗已關閉；RecordStuff 正常結束。保留錄影 `~/Movies/RecordStuff/2026-09-28 06-46-17.mp4` 至 `06-49-00.mp4`，以及 `docs/verification/measurements/2026-09-28-048-tray-menus/` 下的選單與設定截圖。沒有 commit、push 或發布。
 
@@ -74,7 +102,7 @@ Codex GPT-6 Astra（medium reasoning、唯讀）pass 1 約 71 秒，回報一個
 
 自動化證據：最終版本的 `pnpm acceptance:regression` 通過（`pnpm check` 65 個檔案 1085 個測試、設定 170/170、快捷鍵失敗整合）。測試涵蓋雙語三個分頁的 id、標籤與無障礙名稱；雙語的日期標題（今天、昨天、今年、往年、跨月）與短時間；列帶有日期、時間、檔名與完整路徑且沒有標題；繁中標題；每次確認、移除與重試一行含 ID 與結果的 log，包含帶類別的儲存失敗、拒絕（處理中、尚未確認、另一項操作進行中、未知 ID）、之後才完成的儲存，以及不含路徑或細節；以及在真實頁面模組上：歷史只在其分頁、依日期分組的收合列、同時只展開一列、未確認標籤、檔名與完整路徑、上下鍵／Home／End、「知道了」後焦點回到標題並清除筆數、入口只展開目標且不確認、移除後的焦點與移除最後一列後回到分頁、空白與載入狀態，以及每個分頁的捲動位置。`git diff --check` 無誤。
 
-未在此驗證、移交 [035](../../../plans/035-guided-native-acceptance.zh-TW.md)：從 tray 的「查看失敗紀錄」與錯誤通知開啟（N02、N03；040 時工具無法操作 tray）、Retina 螢幕上的焦點邊框（未連接；N22）、VoiceOver 朗讀列的方式，以及維護者對版面的判斷。不宣稱 Windows 外觀。
+未在此驗證、移交 [035](#plan-035-結案--2026-09-28)：從 tray 的「查看失敗紀錄」與錯誤通知開啟（N02、N03；040 時工具無法操作 tray）、Retina 螢幕上的焦點邊框（未連接；N22）、VoiceOver 朗讀列的方式，以及維護者對版面的判斷。不宣稱 Windows 外觀。
 
 清理：受控 build 正常結束，工作區已移除；證據（含原生截圖）保留在 `docs/verification/measurements/2026-09-27T22-19-04-421Z-controlled/`。未動到維護者的設定與歷史。沒有 commit、push 或發布。
 
@@ -94,7 +122,7 @@ Codex GPT-6 Astra（medium reasoning、唯讀）pass 1 約 75 秒，回報兩個
 
 自動化證據：測試涵蓋設定解析（缺少、非布林、true、false）與保存；開關的順序、說明、動作、倒數關閉時停用與鎖定；翻譯；Recorder 傳遞 session 快照並忽略之後的變更、沒有倒數時實際音效為關閉，以及延伸的 `prepared` 行；overlay 的 autoplay 選項、檔案與開發 URL 的頁面 query，以及旗標不同時重建頁面；頁面以假的 `AudioContext` 每個新數字播放一聲、重複的值與 `null` 不播放、合成的數值與最後一個數字的音高；長度與音高限制；autorecord 設定保持無聲；證據 parser；以合成音訊測試提示音分析（只有素材的音時通過，因為它在兩個視窗都以約 −58 dBFS 洩漏到提示音頻段；523 或 784.5 Hz 的提示音即使在檔案開頭也約為 −28 dBFS 而判為失敗）；以及 stored-override 的生命週期（只在 App 結束時寫入、確認沒有程序後才還原、結束或重新開啟失敗）。`git diff --check` 無誤。
 
-未在此驗證、移交 [035](../../../plans/035-guided-native-acceptance.zh-TW.md) 的 N32 與 N35：提示音是否聽得清楚、是否悅耳、音量是否合適；以耳朵確認每個數字一聲、開始時沒有聲音；以耳朵播放有提示音的錄影；藍牙耳機（裝置喚醒時第一聲可能被切掉）；以及實際倒數與錄影期間開關的鎖定。未執行畫質與音訊矩陣：擷取與編碼沒有改變，autorecord 也永遠不發聲。不宣稱 Windows。
+未在此驗證、移交 [035](#plan-035-結案--2026-09-28) 的 N32 與 N35：提示音是否聽得清楚、是否悅耳、音量是否合適；以耳朵確認每個數字一聲、開始時沒有聲音；以耳朵播放有提示音的錄影；藍牙耳機（裝置喚醒時第一聲可能被切掉）；以及實際倒數與錄影期間開關的鎖定。未執行畫質與音訊矩陣：擷取與編碼沒有改變，autorecord 也永遠不發聲。不宣稱 Windows。
 
 清理：每個回合後 RecordStuff 都正常結束，沒有殘留暫存檔或 sentinel；`settings.json` 已以回合前保存的檔案取代，現在與其完全相同。保留驗收錄影 `~/Movies/RecordStuff/2026-09-28 05-36-56.mp4` 與 `2026-09-28 05-45-26.mp4`，以及 `docs/verification/measurements/` 下的本機報告。草稿放在 `/tmp`。沒有 commit、push 或發布。
 
@@ -186,7 +214,7 @@ Codex GPT-6 Astra（medium reasoning，log header 確認為 read-only sandbox）
 
 最終原始碼的檢查：`pnpm check` 通過 typecheck、60 個檔案 1006 項測試與 build。新測試涵蓋：在真實暫存檔上走連結路徑（inode 相同、只剩一個連結）、連結被拒時每個候選名稱都排他複製、已被占用的名稱絕不被複製覆蓋、清理失敗時留下第二個連結、複製的 ENOSPC 回報 disk_full、計時 log 行、計時解析與 autorecord 的 `outputDir`。`pnpm acceptance:lifecycle` 四個案例全部通過，延遲中的發布仍讓退出延期兩次且位元組完全相同。`pnpm acceptance:quit-dialog -- --language en` 的自動生命週期通過；唯一的對話框出現在最前面且文字完整，由 System Events 關閉，不是維護者操作。全新的 `pnpm start:app` bundle（驗證 9 個身分）以已保存的 3 秒倒數通過 `pnpm acceptance -- --seconds 10`：1920×1080、10.3 秒、聲道 RMS −27.2/−27.2 dB、10 次閃光與 10 次嗶聲、完整解碼無誤，取消案例也通過（`2026-09-26T18-52-25-892Z-hotkey-acceptance`）；log 顯示 `publish 44 ms by link`，存檔只有一個連結。QuickTime Player 播放該檔（播放中、10.3 秒中的 3.8 秒、畫面上測試素材在動）後關閉。RecordStuff、開發版 App、QuickTime 與素材瀏覽器都已結束，沒有修改任何偏好設定。
 
-未驗證：實體外接碟（USB 或 Thunderbolt）、網路磁碟區與其他 Mac。維護者於 2026-09-27 決定以磁碟映像作為外接儲存的證據，不再使用實體碟，因此沒有原生案例承接這一項：磁碟映像證明的是檔案系統行為（連結或複製、ENOTSUP、ENOSPC），不是 USB 碟的吞吐量，存到實體 exFAT 碟時的等待可能比映像的數字更久。低空間儲存的通知文案沒有觀察到，因為 autorecord 在橫幅出現前就退出；這項移交 [035](../../../plans/035-guided-native-acceptance.zh-TW.md) N30。證據摘要保留在本機 `docs/verification/measurements/*-finalization-*/`；每段檔案在完整解碼後即刪除。
+未驗證：實體外接碟（USB 或 Thunderbolt）、網路磁碟區與其他 Mac。維護者於 2026-09-27 決定以磁碟映像作為外接儲存的證據，不再使用實體碟，因此沒有原生案例承接這一項：磁碟映像證明的是檔案系統行為（連結或複製、ENOTSUP、ENOSPC），不是 USB 碟的吞吐量，存到實體 exFAT 碟時的等待可能比映像的數字更久。低空間儲存的通知文案沒有觀察到，因為 autorecord 在橫幅出現前就退出；這項移交 [035](#plan-035-結案--2026-09-28) N30。證據摘要保留在本機 `docs/verification/measurements/*-finalization-*/`；每段檔案在完整解碼後即刪除。
 
 Codex GPT-6 Astra（medium reasoning、read-only）review 兩輪。第一輪（約 2 分鐘）認為發布方式的變更正確，並對新的 runner 提出兩項 medium finding，都已接受並修正：`open` 剛把啟動交給 Launch Services 時中斷，收尾可能在 App 出現前就結束，讓它之後無人看管地錄影，因此收尾現在會等仍在進行的啟動與素材 launcher 最多 5 秒；超過時限的段落會丟掉 App 是否被強制結束的資訊，因此逾時的段落現在會回報如何被停止，並一律讓整輪失敗。修正後 `pnpm typecheck` 通過，一段 5 秒錄影 exit 0（`publish 1 ms by link`），啟動後立即送兩次 SIGINT 都 exit 130，App 已停止且沒有留下任何東西；在這台 Mac 上送出訊號時 App 已經看得到，所以新的等待分支本身沒有走到，逾時路徑也沒有實際執行。第二輪（18 秒）沒有 findings，並同樣指出這兩條路徑沒有在執行期驗證。沒有使用 fallback。應維護者要求，變更依範圍分批提交到本地 main：發布方式與測試 `e299011`、量測工具 `c4e2f5f`、設計文件 `8d33c63`，以及這次的結案提交。沒有 push 或發布。
 
@@ -200,7 +228,7 @@ Windows 系統匣圖示，由 Claude 實作並經 Codex GPT-6 Astra review（見
 - **產生與資產。** 兩次執行 `pnpm icons` 的位元組完全相同。只有五個 `resources/tray-*.ico` 改變；macOS template PNG、`build/icon.png`、`build/icon.icns` 與 DMG 背景都與 HEAD 位元組相同。Python PIL 與 macOS ImageIO（`sips`）都能解碼每個 ICO；PIL 回報 16、20、24、32、48 px 的 RGBA 圖像，四角透明（16 px 時 256 個像素中有 64 個透明），並有不透明內容。每個尺寸都在淺色與深色表面上目視檢查過。`tray.ts` 與 `tray-model.ts` 沒有修改：win32 仍載入 `tray-<state>.ico`，狀態對應、警示優先順序、tooltip 與點擊行為都不變。
 - **測試。** `scripts/make-icons.test.ts` 要求每個 ICO 都有這五種尺寸，並新增一項測試：每個尺寸的每張圖四角都透明，任兩種狀態之間至少有「尺寸／2」個像素的灰階差超過 48；最小餘裕是 20 px 的 idle 對警示，共 14 個像素。暫時把紅色改成與底座同亮度時，這項測試以「Idle vs Recording at 16 px: expected 0 to be greater than or equal to 8」失敗。`pnpm check` 通過 typecheck、59 個檔案共 994 項測試與 build。
 
-未驗證：這台 M1 Pro（macOS 26.6.2）沒有 Windows 桌面或虛擬機，因此沒有原生觀察任何 Windows 外觀，包括淺色與深色工作列、100／125／150／200% 縮放、可見系統匣與隱藏圖示面板、裁切與模糊、左右鍵、tooltip，以及在 Windows 上錄一段短影片。模擬表面只近似 Windows 的顏色，無法重現它的合成、在各縮放下選用哪個 ICO 尺寸，或它對 PNG 壓縮 ICO 圖像的解碼；這個格式在本計畫之前就已使用。175% 與 250% 縮放（28 與 40 px）沒有專屬尺寸，也尚未確認 Windows 啟動方式。這些移交給 [035](../../../plans/035-guided-native-acceptance.zh-TW.md) 的 N17。因為沒有任何 macOS 資產或 loader 改變，沒有跑 macOS 原生回合。預覽圖與 scratch 產生器保留在本機的 `docs/verification/measurements/plan-034-windows-tray/`。
+未驗證：這台 M1 Pro（macOS 26.6.2）沒有 Windows 桌面或虛擬機，因此沒有原生觀察任何 Windows 外觀，包括淺色與深色工作列、100／125／150／200% 縮放、可見系統匣與隱藏圖示面板、裁切與模糊、左右鍵、tooltip，以及在 Windows 上錄一段短影片。模擬表面只近似 Windows 的顏色，無法重現它的合成、在各縮放下選用哪個 ICO 尺寸，或它對 PNG 壓縮 ICO 圖像的解碼；這個格式在本計畫之前就已使用。175% 與 250% 縮放（28 與 40 px）沒有專屬尺寸，也尚未確認 Windows 啟動方式。這些移交給 [035](#plan-035-結案--2026-09-28) 的 N17。因為沒有任何 macOS 資產或 loader 改變，沒有跑 macOS 原生回合。預覽圖與 scratch 產生器保留在本機的 `docs/verification/measurements/plan-034-windows-tray/`。
 
 Codex GPT-6 Astra（medium reasoning、唯讀）花了 61 秒，解碼 ICO 標頭與各尺寸圖像，並閱讀 diff、已刪除的計畫與兩種語言的變更文件後，回報沒有 finding；不需要 fallback 或第二次 pass。已依範圍分開 commit 到本機 main：圖示與測試 `014f2fb`、設計文件 `92862fe`，以及本結案 commit。未 push 或發布。
 
@@ -219,7 +247,7 @@ Codex GPT-6 Astra（medium reasoning、唯讀）花了 61 秒，解碼 ICO 標�
 
 自動化證據：最終版本的 `pnpm check` 通過 typecheck、59 個檔案 993 個測試與 build。測試涵蓋：以注入時鐘、假 host 與假 presenter 測 Recorder（關閉路徑、依起點的 tick 時間、只在 dismissal 或其上限後才送 `record`、`record` 前以 toggle／選單／退出取消且保留 lastSavedPath 與不產生失敗狀態、取消的暫存檔與 sentinel 移除後才允許退出、`record` 後的 toggle 變成開始後停止、開檔／準備中／`record` 後的退出、帶階段與 empty 結果的啟動失敗、保留原代碼的磁碟錯誤、被拒或逾時的 `record`、presenter 錯誤、過期與重複訊息、倒數快照）；renderer 的 prepare／record 拆分（prepared 時 stop、prepared 時軌道結束、被拒與重複的 `record`、第二次 start）；protocol guard；tray 狀態、圖示、標題、選單與警示優先順序；設定解析與保存、倒數群組、鎖定與 action；overlay 的位置、視窗選項，以及透過假視窗驗證的各路徑銷毀；overlay 頁面；icon generator 逐 byte 重現所有已提交素材；autorecord 的預設與取消；session log 以及 runner 的收尾與分析器。`pnpm acceptance:regression` 在 review 修正前通過（Settings 113/113、快捷鍵失敗整合）；那些修正沒有動到設定與快捷鍵路徑。設定截圖顯示兩種語言與鎖定狀態下的群組。`pnpm site:check` 通過，並檢視了首頁、說明頁、手機版截圖與暫停的 hero 畫面。
 
-本次未驗證、交給 [035](../../../plans/035-guided-native-acceptance.zh-TW.md) 的 N32–N35：以 tray 點擊開始與選單「取消倒數」（同日 05:02 原生 computer use 對這個純 tray App 回傳 `-10005 timeoutReached`，本次未重試）、實際倒數中的「結束」、深色選單列、在白色文件與明亮照片上的可讀性、減少動態與透明度、次要螢幕、全螢幕 App、角落已有的通知橫幅、VoiceOver，以及以肉眼與耳朵播放存檔。Windows 外觀屬於 034。
+本次未驗證、交給 [035](#plan-035-結案--2026-09-28) 的 N32–N35：以 tray 點擊開始與選單「取消倒數」（同日 05:02 原生 computer use 對這個純 tray App 回傳 `-10005 timeoutReached`，本次未重試）、實際倒數中的「結束」、深色選單列、在白色文件與明亮照片上的可讀性、減少動態與透明度、次要螢幕、全螢幕 App、角落已有的通知橫幅、VoiceOver，以及以肉眼與耳朵播放存檔。Windows 外觀屬於 034。
 
 Tray 選單追加修改（2026-09-27，維護者要求選單跟著狀態更新）。在 macOS 26 與 Electron 44.3 上以獨立 probe 用 `popUpContextMenu` 開啟 tray 選單：main 的 timer 照常執行，但修改項目的文字或 `enabled`、呼叫 `closeContextMenu()`、再次 `popUpContextMenu`，都不會改變已開啟的選單，`app.quit()` 也會等到選單關閉才生效。重建選單本身幾乎沒有成本，是平台不允許已開啟的選單改變，而 `setContextMenu` 會讓左鍵也打開選單。因此，倒數期間開啟的選單中的「取消倒數」若在擷取開始後才被點選，現在會停止錄影並存檔，如同 `record` 後的 toggle；其他狀態下則不做任何事。Recorder 測試已涵蓋；Codex GPT-6 Astra 以 55 秒 review 此變更，無 findings。從真實 tray 選單點選的路徑未做原生驗證（tray 的 computer use 仍受阻）。
 
