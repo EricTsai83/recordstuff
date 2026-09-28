@@ -19,6 +19,7 @@
 | 全域快捷鍵註冊／送達、Tray 操作、焦點、原生入口或 OS 無障礙 | 設定／快捷鍵整合跑 `pnpm acceptance:regression`，其他跑 `pnpm check`。在新建置的 App 操作受影響原生行為；設定入口可用 `pnpm acceptance:settings-shortcut` 加可見觀察。註冊方式改動另需 `pnpm acceptance:shortcut-layout` | 完整原生狀態矩陣；不會開始／停止或干擾擷取的操作不需錄影 |
 | 錄影開始／停止、capture host／協定、編碼、檔案寫入、來源／品質選擇、錄製鎖定、權限或錄製中退出 | `pnpm check`，加新 `pnpm start:app` 產物的一輪錄影 smoke：開始、停止、存檔、媒體驗證與播放。追加改動案例，例如輸出資料夾或螢幕選擇；設定路徑也改動時加設定回歸 | 所有解析度／品質、長錄影、權限重設及實體拔插，除非影響該行為或需求指定 |
 | 幀時序、同步、解析度／fps 或音質 | 錄影列，加相關矩陣子集：`pnpm matrix -- quick`、`levels`、`fps` 或 `long`（依影響選案例）；音質使用工具指南中的相關 `pnpm audio:quality` 診斷 | 預設跑完整矩陣；沒有長錄需求時跑十分鐘錄影 |
+| 待機或錄影 CPU：新增或改動計時器、輪詢、監看、會持續存在的視窗或 renderer、Tray 工作，或升級 Electron | `pnpm check`（其中的計時器測試會抓出工作階段遺留的計時器），加新 `pnpm start:app` 產物上的 `pnpm measure:cpu`，依 [CPU 預算](system-design/tooling.md#cpu-預算)判定。升級 Electron 時以 `pnpm measure:cpu -- --fps 60 --repeat 3` 重新取 baseline，並更新記錄的 baseline。本來就需要跑矩陣的改動，也要看矩陣的 CPU 數字 | 未影響錄影 CPU 時不需 `--fps 60` 與重複；除非結果接近門檻，不需超過 5 分鐘的待機量測 |
 | 儲存通知送達、時序或 Finder 定位 | `pnpm check`；新簽章產物，再跑 `pnpm acceptance:notification -- --install --clicks 2`。偶發／時序修正依失敗情境選五次或 `--full`，記錄缺少橫幅的案例 | 此輪已提供所需錄影證據時，不另錄相同 smoke；未改文案時不預設雙語原生矩陣 |
 | 更新邏輯、feed 篩選或更新生命週期 | `pnpm check` 與 `pnpm acceptance:updates`；feed 篩選／逾時改動加 `--full`。只有 diff 限於邏輯，且不影響擷取、生命週期或 OS 整合時可用 `--logic-only`，並揭露省略錄影範圍 | 未影響正常 bundle 行為時不重複一般錄影驗收；插樁結果不能證明原生 Tray／瀏覽器操作 |
 | 僅測試、fixture、分析器或開發腳本 | 相關測試；TypeScript 執行 `pnpm typecheck`。runner 編排改動需跑該 runner，包含改動的失敗／清理路徑；純分析器使用受控媒體及既有樣本 | 純斷言／解析／報表格式不需 App 錄影。改動送鍵或真實錄製編排時須執行該真實路徑；fixture 讀取 `out/` 時先建置 |
