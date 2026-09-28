@@ -190,3 +190,50 @@ it("keeps the missing-file explanation instead of offering an impossible reveal 
   expect(document.querySelector<HTMLElement>('.result-error')!.hidden).toBe(true);
   expect(document.getElementById("feedback")!.textContent).not.toContain("Please try again");
 });
+
+it("pages older failures in without announcing them or dropping focus, and still announces a new one", async () => {
+  await show(view([row("n1"), row("n2")], { recordingResultsRemaining: 2 }));
+  tab("failures").click();
+  const more = document.querySelector<HTMLButtonElement>(".history-more")!;
+  expect(more.hidden).toBe(false);
+  more.focus();
+  document.getElementById("feedback")!.textContent = "";
+  choose.mockImplementationOnce(async () => ({ applied: true, view: current = view([row("n1"), row("n2"), reviewed("o1"), reviewed("o2")]) }));
+  more.click();
+  // Busy without native disabled, which would drop the focus it has.
+  expect([more.disabled, more.getAttribute("aria-disabled")]).toEqual([false, "true"]);
+  await vi.waitFor(() => expect(rows()).toHaveLength(4));
+  expect(document.getElementById("feedback")!.textContent).toBe("");
+  // The last page hides the button; focus moves to the first row it loaded.
+  expect(more.hidden).toBe(true);
+  expect(document.activeElement).toBe(document.getElementById("recording-result-o1-summary"));
+  await vi.waitFor(() => expect(more.hasAttribute("aria-disabled")).toBe(false));
+  await show(view([row("n0", { reason: "Capture stopped." }), row("n1"), row("n2"), reviewed("o1"), reviewed("o2")]));
+  expect(document.getElementById("feedback")!.textContent).toBe("Capture stopped. No recording content was kept.");
+});
+
+it("updates the scroll hint when technical details grow the content", async () => {
+  await show(view([row("tech")]));
+  tab("failures").click();
+  const panel = document.getElementById("settings-panel")!;
+  const hint = document.getElementById("scroll-hint")!;
+  expect(hint.hidden).toBe(true);
+  Object.defineProperty(panel, "scrollHeight", { configurable: true, value: 2000 });
+  Object.defineProperty(panel, "clientHeight", { configurable: true, value: 300 });
+  const technical = document.querySelector<HTMLDetailsElement>(".result-technical")!;
+  technical.open = true; technical.dispatchEvent(new Event("toggle"));
+  expect(hint.hidden).toBe(false);
+});
+
+it("describes a control only by the note and diagnostics that are shown", async () => {
+  await show(view([]));
+  tab("recording").click();
+  const select = () => document.getElementById("setting-screen")!;
+  expect(select().hasAttribute("aria-describedby")).toBe(false);
+  const noted = view([]);
+  noted.groups[0] = { ...noted.groups[0]!, note: "Primary display is unavailable." };
+  await show(noted);
+  expect(select().getAttribute("aria-describedby")).toBe("setting-screen-note");
+  await show(view([]));
+  expect(select().hasAttribute("aria-describedby")).toBe(false);
+});

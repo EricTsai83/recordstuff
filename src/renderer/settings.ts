@@ -146,10 +146,7 @@ function updateRows(groups: SettingsGroup[]): void {
     container.classList.toggle("locked", !group.enabled);
     const note = container.querySelector<HTMLElement>(".note")!;
     setText(note, group.note ?? ""); note.hidden = !group.note;
-    // Status changes use the single announcer below, not duplicate live regions.
-    const description = `${controlId(group)}-note ${controlId(group)}-diagnostics`;
     for (const el of container.querySelectorAll<HTMLInputElement | HTMLSelectElement>("select, input")) {
-      el.setAttribute("aria-describedby", description);
       setDisabled(el, !group.enabled, Boolean(saving && saving.group !== group.id));
       if (el instanceof HTMLSelectElement) {
         // Reconcile menu options locally: a new custom key or display must not
@@ -186,7 +183,6 @@ function updateRows(groups: SettingsGroup[]): void {
       if (group.id === "about") {
         el.setAttribute("aria-label", choice.label); el.title = choice.label;
       } else setText(el, choice.label);
-      el.setAttribute("aria-describedby", description);
       setDisabled(el, !group.enabled || !choice.enabled, Boolean(saving));
     }
     container.setAttribute("aria-busy", String(saving?.group === group.id));
@@ -203,7 +199,6 @@ function updateRows(groups: SettingsGroup[]): void {
       const wasFocused = area.contains(document.activeElement);
       area.hidden = !group.capturing;
       field.disabled = !group.enabled;
-      field.setAttribute("aria-describedby", description);
       const display = preview || text("Press a combination");
       if (field.dataset.preview !== display) {
         field.dataset.preview = display;
@@ -221,6 +216,13 @@ function updateRows(groups: SettingsGroup[]): void {
       const cancel = container.querySelector<HTMLButtonElement>("#shortcut-cancel")!;
       setText(cancel, text("Cancel")); cancel.disabled = Boolean(saving); cancel.tabIndex = 0;
       if (wasFocused && area.hidden && document.hasFocus()) edit.focus({ preventScroll: true });
+    }
+    // Only what is shown: a hidden region still lends its text, stale failure copy included, to a description.
+    // Status changes use the single announcer below, not duplicate live regions.
+    const description = [`${controlId(group)}-note`, `${controlId(group)}-diagnostics`]
+      .filter(id => document.getElementById(id)?.hidden === false).join(" ");
+    for (const el of container.querySelectorAll<HTMLElement>("select, input, button[data-action], #shortcut-capture")) {
+      if (description) el.setAttribute("aria-describedby", description); else el.removeAttribute("aria-describedby");
     }
     const footnote = document.getElementById(`${controlId(group)}-footnote`)!;
     setText(footnote, group.sectionFootnote ?? ""); footnote.hidden = !group.sectionFootnote;
@@ -391,10 +393,19 @@ function updateRecordingResult(focusRequested: boolean): void {
   let more = list.querySelector<HTMLButtonElement>(".history-more");
   if (!more) {
     more = button("history-more", () => {
-      more!.disabled = true;
-      void window.settings.choose("history", "more").then(result => render(result.view))
+      // Not native disabled: that would drop the focus it has to body, as would the hide after the last page.
+      if (more!.getAttribute("aria-disabled") === "true") return;
+      more!.setAttribute("aria-disabled", "true");
+      const known = new Set(view?.recordingResults?.map(r => r.id));
+      void window.settings.choose("history", "more").then(result => {
+        const hadFocus = document.activeElement === more;
+        render(result.view);
+        if (!hadFocus || !more!.hidden || !document.hasFocus()) return;
+        const loaded = view?.recordingResults?.find(r => !known.has(r.id)) ?? view?.recordingResults?.at(-1);
+        if (loaded) document.getElementById(`recording-result-${encodeURIComponent(loaded.id)}-summary`)?.focus({ preventScroll: true });
+      })
         .catch(() => announce(text("Could not complete this action. Please try again.")))
-        .finally(() => { more!.disabled = false; });
+        .finally(() => { more!.removeAttribute("aria-disabled"); });
     });
     more.className = "history-more";
     list.append(more);
@@ -512,6 +523,8 @@ function resultRow(id: string, domId: string, state: { open: boolean }): HTMLDet
   const persistence = node("p", "result-persistence");
   const error = node("p", "result-error");
   const technical = node("details", "result-technical"); technical.append(node("summary"), node("pre"));
+  // `toggle` does not bubble to the row, and the panel's own size does not change when its content grows.
+  technical.addEventListener("toggle", updateScrollHint);
   details.append(node("p", "result-guidance"), node("p", "result-file"), persistence, node("div", "result-actions"),
     node("p", "result-saving"), error, technical);
   area.append(summary, details);
@@ -682,9 +695,13 @@ function render(next: SettingsView): void {
     // The history arriving from disk is not news: every row would be read out at once.
     const historyLoaded = Boolean(previous.recordingHistoryStatus) && !next.recordingHistoryStatus;
     const olds = new Map((previous.recordingResults ?? []).map(r => [r.id, r]));
-    for (const result of previous.language === next.language && !historyLoaded ? next.recordingResults ?? [] : []) {
+    const results = previous.language === next.language && !historyLoaded ? next.recordingResults ?? [] : [];
+    // Newest first, so a new failure precedes every known row; rows after one are older ones paged into view.
+    const firstKnown = results.findIndex(r => olds.has(r.id));
+    for (const [index, result] of results.entries()) {
       const old = olds.get(result.id);
-      if (!old || old.outcome !== result.outcome) changes.unshift(`${result.reason} ${result.outcome}`);
+      if (!old) { if (firstKnown === -1 || index < firstKnown) changes.unshift(`${result.reason} ${result.outcome}`); }
+      else if (old.outcome !== result.outcome) changes.unshift(`${result.reason} ${result.outcome}`);
       else if (result.persistenceWarning && old.persistenceWarning !== result.persistenceWarning) changes.push(`${result.reason}. ${result.persistenceWarning}`);
     }
     if (changes.length) announce(changes.join(" "));
