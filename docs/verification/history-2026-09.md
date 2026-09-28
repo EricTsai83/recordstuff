@@ -24,7 +24,7 @@ Automated evidence: `pnpm check` passed typecheck, 1140 tests in 68 files and bu
 
 Review: Codex GPT-6 Astra (medium reasoning, read-only). Pass 1 (97 s) returned two medium findings, both accepted and fixed: the stop reached the host only after synchronous logging and state subscribers, so `stop()` now sends it first; and a countdown cancelled by sleep could settle into needsPermission and notify before the hold was set, so the hold is set first. Pass 2 (76 s) returned no findings. The later change from the timed fallback to the user-return check, made after the first native sleep, received no review pass.
 
-Cleanup: the controlled apps quit normally and their workspaces were removed with the evidence kept; no RecordStuff process or assertion remained; the real `settings.json` and `recording-history.json` equal their baselines. `caffeinate -d -i` ran during the round. No commit, push or publication.
+Cleanup: the controlled apps quit normally and their workspaces were removed with the evidence kept; no RecordStuff process or assertion remained; the real `settings.json` and `recording-history.json` equal their baselines. `caffeinate -d -i` ran during the round. The work was committed in six scoped commits at the maintainer's request and not pushed; the maintainer then confirmed closure, and the plan and its translation were removed.
 
 ## Plan 035 closure — 2026-09-28
 

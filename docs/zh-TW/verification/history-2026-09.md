@@ -24,7 +24,7 @@ RecordStuff 現在會在錄影期間讓螢幕保持喚醒，並把無法拒絕�
 
 Review：Codex GPT-6 Astra（medium reasoning、唯讀）。Pass 1（97 秒）回報兩項 medium findings，都已接受並修正：停止要等同步 log 與狀態訂閱者跑完才送到 host，現在 `stop()` 先送出；睡眠取消的倒數可能先落到 needsPermission 並在保留生效前發出通知，現在先設定保留。Pass 2（76 秒）沒有 findings。第一次原生睡眠測試後把計時保險改成確認使用者回來的修改，沒有再經過 review。
 
-收尾：受控 App 都已正常結束，workspace 已移除並保留證據；沒有殘留的 RecordStuff 程序或 assertion；真實的 `settings.json` 與 `recording-history.json` 與基準相同。本輪期間執行了 `caffeinate -d -i`。沒有 commit、push 或發布。
+收尾：受控 App 都已正常結束，workspace 已移除並保留證據；沒有殘留的 RecordStuff 程序或 assertion；真實的 `settings.json` 與 `recording-history.json` 與基準相同。本輪期間執行了 `caffeinate -d -i`。依維護者要求分成六個 scope 的 commit，沒有 push；之後維護者確認結案，計畫與其翻譯已移除。
 
 ## Plan 035 結案 — 2026-09-28
 
