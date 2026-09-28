@@ -262,3 +262,24 @@ describe("CountdownOverlay", () => {
     expect(window().loadFile).toHaveBeenCalledWith("/out/renderer/countdown.html", {});
   });
 });
+
+describe("no timer outlives the overlay (plan 049)", () => {
+  it("leaves no timer after a dismissal, a close or a destroy", async () => {
+    const { presenter, window } = overlay();
+    presenter.show(3, SILENT);
+    window().load();
+    const dismissal = presenter.dismiss();
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(COUNTDOWN_TIMING.fadeOutMs + COUNTDOWN_TIMING.settleMs);
+    await dismissal;
+    expect(vi.getTimerCount()).toBe(0);
+    presenter.show(3, SILENT);
+    window().load();
+    void presenter.dismiss();
+    presenter.close();
+    expect(vi.getTimerCount()).toBe(0);
+    presenter.show(2, SILENT);
+    presenter.destroy();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});

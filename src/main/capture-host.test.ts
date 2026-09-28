@@ -251,3 +251,28 @@ it("cannot post a start after its host was invalidated during readiness", async 
   await rejected;
   expect(mock.ports.flatMap((p) => p.sent).filter((m: MainMessage) => m.type === "start")).toEqual([]);
 });
+
+describe("no timer outlives a capture (plan 049)", () => {
+  it("stops the ping when the session ends and when the host is destroyed", async () => {
+    const s = setup();
+    await s.start("s1");
+    expect(vi.getTimerCount()).toBe(1);
+    // The host reported the session over: the heartbeat ends with it, although the window stays until destroy.
+    s.port().emit({ type: "stopped", sessionId: "s1" });
+    expect(vi.getTimerCount()).toBe(0);
+    await s.start("s2");
+    expect(vi.getTimerCount()).toBe(1);
+    s.host.destroy();
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(s.pings()).toBe(0);
+  });
+
+  it("stops the ping after an unresponsive host is torn down", async () => {
+    const s = setup();
+    await s.start("s1");
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(s.failures.map((f) => f.code)).toContain("capture_host_unresponsive");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});

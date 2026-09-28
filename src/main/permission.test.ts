@@ -334,3 +334,20 @@ describe("PermissionWatcher", () => {
     expect(ctx.changes).toEqual([{ granted: false, needsRelaunch: false }]);
   });
 });
+
+describe("the one expected idle timer (plan 049)", () => {
+  it("keeps exactly one 5-second interval once permission is validated, and none after stop", async () => {
+    const ctx = setup({ granted: true, screens: 1 });
+    ctx.watcher.start();
+    await flush();
+    expect(vi.getTimerCount()).toBe(1);
+    const before = ctx.granted.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(ctx.granted.mock.calls.length).toBe(before + 1);
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(ctx.granted.mock.calls.length).toBe(before + 1);
+    expect(vi.getTimerCount()).toBe(1);
+    ctx.watcher.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});

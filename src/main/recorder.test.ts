@@ -2257,3 +2257,49 @@ describe("Recorder countdown (plan 040)", () => {
     expect(ctx.presenter.names()).toEqual(["prepare", "show 3"]);
   });
 });
+
+describe("no timer outlives a settled session (plan 049)", () => {
+  // Idle must not wake the app: every deadline, tick and bound belongs to one session and ends with it.
+  it("after a saved recording", async () => {
+    const ctx = setup();
+    await startRecording(ctx);
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1", tracksStoppedAt: Date.now() });
+    await flush();
+    expect(ctx.events.at(-1)?.type).toBe("saved");
+    expect(ctx.recorder.state.type).toBe("idle");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("after a failed recording", async () => {
+    const ctx = setup();
+    await startRecording(ctx);
+    ctx.host.emit({ type: "error", sessionId: "s1", code: "capture_failed", detail: "video ended" });
+    await flush();
+    expect(ctx.events.some((event) => event.type === "failed")).toBe(true);
+    expect(ctx.recorder.state.type).toBe("idle");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("after a start that failed before capture, and after a countdown was cancelled", async () => {
+    const failing = setup();
+    failing.recorder.toggle();
+    await flush();
+    failing.host.emit({ type: "error", sessionId: "s1", code: "capture_start_failed", detail: "refused" });
+    await flush();
+    expect(failing.recorder.state.type).toBe("idle");
+    expect(vi.getTimerCount()).toBe(0);
+
+    const presenter = { show: vi.fn(), update: vi.fn(), dismiss: vi.fn(async () => undefined), close: vi.fn() };
+    const counting = setup({ deps: { countdownSeconds: () => 3, countdown: presenter } });
+    counting.recorder.toggle();
+    await flush();
+    counting.host.emit(prepared("s1"));
+    expect(counting.recorder.state).toEqual({ type: "countdown", remaining: 3 });
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    counting.recorder.toggle();
+    await flush();
+    expect(counting.recorder.state.type).toBe("idle");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});

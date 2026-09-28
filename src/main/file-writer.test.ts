@@ -502,3 +502,30 @@ function wrapFs(hooks: { onOpen: (handle: WritableHandle) => WritableHandle }): 
     open: async (filePath, flags) => hooks.onOpen(await nodeFs.open(filePath, flags)),
   };
 }
+
+describe("no timer outlives a writer (plan 049)", () => {
+  const memory = (): FileWriterFs => ({
+    ...nodeFs,
+    open: async () => ({ write: async (data) => ({ bytesWritten: data.byteLength }), sync: async () => undefined, close: async () => undefined }),
+    link: async () => undefined,
+    copyExclusive: async () => undefined,
+    unlink: async () => undefined,
+  });
+
+  it("clears the fsync interval when the file is finished and when it is abandoned", async () => {
+    vi.useFakeTimers();
+    try {
+      const finished = await FileWriter.open("/mem/a.recording.mp4", "/mem/a.mp4", { io: memory(), fsyncIntervalMs: 5000 });
+      expect(vi.getTimerCount()).toBe(1);
+      await finished.append(bytes(1));
+      await finished.finish();
+      expect(vi.getTimerCount()).toBe(0);
+      const abandoned = await FileWriter.open("/mem/b.recording.mp4", "/mem/b.mp4", { io: memory(), fsyncIntervalMs: 5000 });
+      expect(vi.getTimerCount()).toBe(1);
+      await abandoned.abandon();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
