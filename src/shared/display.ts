@@ -30,13 +30,13 @@ export function displayLabel(display: { id: string; label: string; primary?: boo
   const label = display.label.trim() || t("Display {id}", language, { id: display.id });
   return display.primary ? t("{label} (Primary)", language, { label }) : label;
 }
+const DISPLAY_FAILURE_KEYS = {
+  target_missing: "Selected display is unavailable. Choose another screen.",
+  source_missing: "Display is connected but its capture source is unavailable. Retry or choose another screen.",
+  topology_changed: "Display configuration changed. Retry.",
+  track_ended: "The display capture ended unexpectedly. Retry or choose another screen.",
+  target_removed: "The recording display was removed. Choose another screen.",
+} as const satisfies Record<DisplayFailure, string>;
 export function displayFailureText(detail: DisplayFailure, language: Language): string {
-  const keys = {
-    target_missing: "Selected display is unavailable. Choose another screen.",
-    source_missing: "Display is connected but its capture source is unavailable. Retry or choose another screen.",
-    topology_changed: "Display configuration changed. Retry.",
-    track_ended: "The display capture ended unexpectedly. Retry or choose another screen.",
-    target_removed: "The recording display was removed. Choose another screen.",
-  } as const;
-  return t(keys[detail], language);
+  return t(DISPLAY_FAILURE_KEYS[detail], language);
 }

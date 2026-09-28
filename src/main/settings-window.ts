@@ -1,4 +1,3 @@
-import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE, fitSettingsSize, type SettingsWindowState, type WindowSize } from "./settings-window-state";
 /**
  * The settings window (docs/system-design/desktop.md): one sandboxed panel
  * that opens from the tray, stays open while the user changes preferences,
@@ -9,6 +8,7 @@ import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE, fitSettingsSize, type Setting
  * freshly built model and hands the resulting action to the same handler the
  * tray uses. Closing the window does not quit the menu-bar app.
  */
+import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE, fitSettingsSize, type SettingsWindowState, type WindowSize } from "./settings-window-state";
 import { BrowserWindow, app, ipcMain, screen, type IpcMainInvokeEvent } from "electron";
 import path from "node:path";
 import type { SettingsChoiceResult, SettingsView } from "../shared/settings-panel";
@@ -55,6 +55,8 @@ export class SettingsWindow {
   private rememberedSize: WindowSize | undefined;
   /** One save at a time, in request order: a queued request is never a failure. */
   private queue: Promise<unknown> = Promise.resolve();
+  /** The last view the page received by any route; an identical refresh is not pushed again. */
+  private delivered: string | undefined;
 
   constructor(private readonly options: SettingsWindowOptions) {
     const authorize = (event: IpcMainInvokeEvent): BrowserWindow => {
@@ -73,11 +75,11 @@ export class SettingsWindow {
         this.lease = lease;
         this.options.capture?.(true);
       }
-      return this.view();
+      return this.deliver(this.view());
     });
     ipcMain.handle("settings:read", (event) => {
       authorize(event);
-      return this.view();
+      return this.deliver(this.view());
     });
     ipcMain.handle("settings:choose", (event, group: unknown, choice: unknown) => {
       const window = authorize(event);
@@ -138,6 +140,7 @@ export class SettingsWindow {
       },
     });
     this.window = window;
+    this.delivered = undefined;
     let lastSize = size;
     window.on("resize", () => {
       if (window.isMinimized()) return;
@@ -181,18 +184,33 @@ export class SettingsWindow {
     });
   }
 
-  /** Push the current projection; a closed panel needs nothing. */
+  /**
+   * Push the current projection; a closed panel needs nothing. Many events
+   * refresh without changing what the panel shows (display metrics, a state
+   * the panel does not project), so a view identical to the last one the page
+   * received is not sent: the page would only redo its reconciliation.
+   */
   refresh(): void {
     if (!preferencesUnlocked(this.options.state())) this.release(this.lease);
     const window = this.window;
     if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return;
     const view = this.view();
+    const serialized = JSON.stringify(view);
+    if (serialized === this.delivered) return;
+    this.delivered = serialized;
     window.setTitle(view.title);
     window.webContents.send("settings:changed", view);
   }
 
+  /** A view returned by an invoke: the page renders it, so it is what the page holds now. */
+  private deliver<T extends SettingsView | SettingsChoiceResult>(result: T): T {
+    this.delivered = JSON.stringify("view" in result ? result.view : result);
+    return result;
+  }
+
   destroy(): void {
     this.flushSize();
+    this.delivered = undefined;
     this.release(this.lease);
     ipcMain.removeHandler("settings:capture");
     ipcMain.removeHandler("settings:read");
@@ -248,7 +266,7 @@ export class SettingsWindow {
     if (!action) this.log(`settings window: refused ${JSON.stringify({ group, choice })}`);
     const applied = action ? await this.options.act(action) === true : false;
     const view = this.view();
-    return { view, applied, ...(applied ? {} : { failure: view.failure }) };
+    return this.deliver({ view, applied, ...(applied ? {} : { failure: view.failure }) });
   }
 
   private async apply(group: unknown, choice: unknown, lease: CaptureLease | undefined): Promise<SettingsChoiceResult> {
@@ -264,7 +282,7 @@ export class SettingsWindow {
         const shortcut = view.groups.find(entry => entry.id === "hotkey");
         if (error && shortcut) { failure = translate(error, view.language); shortcut.note = failure; }
       }
-      return { view, applied: false, failure };
+      return this.deliver({ view, applied: false, failure });
     }
     let outcome: boolean | void;
     try {
@@ -273,13 +291,14 @@ export class SettingsWindow {
     } finally {
       this.release(lease);
     }
-    return {
+    const applied = typeof outcome === "boolean"
+      ? outcome
+      : action === "checkUpdates" || action === "openUpdate" || settingsChecked(this.options.state(), this.options.context(), group, choice);
+    return this.deliver({
       view: this.view(),
-      ...(group === "about" ? { failure: translate("Could not open the link. Try again.", this.options.context().language) } : {}),
-      applied: typeof outcome === "boolean"
-        ? outcome
-        : action === "checkUpdates" || action === "openUpdate" || settingsChecked(this.options.state(), this.options.context(), group, choice),
-    };
+      applied,
+      ...(group === "about" && !applied ? { failure: translate("Could not open the link. Try again.", this.options.context().language) } : {}),
+    });
   }
 
   private log(message: string): void {

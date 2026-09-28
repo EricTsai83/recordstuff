@@ -26,18 +26,20 @@ export function shortcutModifiers(event: ShortcutKey, platform = "darwin"): stri
   return MODIFIER_ORDER.filter((_, index) => [event.metaKey && platform === "darwin", event.ctrlKey, event.altKey, event.shiftKey][index]);
 }
 
+/** Electron accelerator names for the physical punctuation, space and arrow keys. */
+const NAMED_KEYS: Record<string, string> = {
+  Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]", Backslash: "\\",
+  Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/", Backquote: "`",
+  Space: "Space", ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right",
+};
+
 /** Physical letter/digit/function keys stay stable when Shift/Option changes event.key. */
 export function shortcutCandidate(event: ShortcutKey, platform = "darwin"): string | undefined {
   if (event.metaKey && platform !== "darwin") return "Unsupported";
   if (/^(Meta|Control|Alt|Shift)(Left|Right)$/.test(event.code)) return undefined;
-  const named: Record<string, string> = {
-    Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]", Backslash: "\\",
-    Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/", Backquote: "`",
-    Space: "Space", ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right",
-  };
   const key = /^Key[A-Z]$/.test(event.code) ? event.code.slice(3)
     : /^Digit[0-9]$/.test(event.code) ? event.code.slice(5)
       : /^F([1-9]|1[0-9]|2[0-4])$/.test(event.code) ? event.code
-        : named[event.code] ?? "Unsupported";
+        : NAMED_KEYS[event.code] ?? "Unsupported";
   return [...shortcutModifiers(event, platform), key].join("+");
 }

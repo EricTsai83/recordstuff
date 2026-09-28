@@ -155,6 +155,29 @@ describe("settings window lifecycle", () => {
     expect(mock.windows).toHaveLength(2);
   });
 
+  it("pushes a view only when it differs from what the page already holds", () => {
+    const s = setup();
+    s.panel.show();
+    const send = s.window().webContents.send;
+    s.panel.refresh();
+    s.panel.refresh();
+    expect(send).toHaveBeenCalledTimes(1);
+    // A view the page received through an invoke counts too.
+    s.live.language = "zh-TW";
+    s.read(s.event());
+    s.panel.refresh();
+    expect(send).toHaveBeenCalledTimes(1);
+    s.setState({ type: "recording", startedAt: "x" });
+    s.panel.refresh();
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenLastCalledWith("settings:changed", expect.objectContaining({ language: "zh-TW", hint: expect.not.stringMatching(/^$/) }));
+    // A new window starts over: its page has nothing yet.
+    s.window().events.get("closed")!();
+    s.panel.show();
+    s.panel.refresh();
+    expect(mock.windows[1].webContents.send).toHaveBeenCalledTimes(1);
+  });
+
   it("destroys the window and logs when the page cannot load", async () => {
     const s = setup();
     mock.failNextLoad("nope");

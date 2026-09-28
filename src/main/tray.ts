@@ -1,5 +1,3 @@
-import { translate } from "../shared/i18n";
-import { APP_NAME } from "./ui-model";
 /**
  * Tray icon, right-click menu and notifications (docs/system-design/recording.md). This is a
  * projection of `RecordingState`; every decision lives in `recorder.ts`.
@@ -14,6 +12,7 @@ import type { ErrorCode, RecordingState } from "../shared/state";
 import type { FrameRate } from "../shared/quality";
 import type { HotkeyAccelerator } from "../shared/hotkey";
 import {
+  displayWriteFailedNotification,
   languageWriteFailedNotification,
   frameRateDowngradeNotification,
   hotkeyRegistrationFailedNotification,
@@ -66,12 +65,15 @@ export class AppTray {
   private readonly tray: Tray;
   private readonly icons: Record<TrayIcon, Electron.NativeImage>;
   private currentIcon: TrayIcon | undefined;
+  /** What the native item shows; a refresh that changes nothing makes no native call. */
+  private currentTitle: string | undefined;
+  private currentTooltip: string | undefined;
   // Electron notifications are GC-owned. Keep callbacks alive until the user
   // handles/dismisses the notification, delivery fails, or the tray shuts down.
   private readonly notifications = new Set<Notification>();
 
   constructor(private readonly options: TrayOptions) {
-    this.icons = loadIcons(options.resourcesDir);
+    this.icons = loadIcons(options.resourcesDir, (message) => this.log(message));
     this.tray = new Tray(this.icons.idle);
     this.tray.setIgnoreDoubleClickEvents(true);
     this.tray.on("click", () => options.onToggle());
@@ -94,8 +96,14 @@ export class AppTray {
       this.tray.setImage(this.icons[model.icon]);
       this.currentIcon = model.icon;
     }
-    if (process.platform === "darwin") this.tray.setTitle(model.title);
-    this.tray.setToolTip(model.tooltip);
+    if (process.platform === "darwin" && model.title !== this.currentTitle) {
+      this.tray.setTitle(model.title);
+      this.currentTitle = model.title;
+    }
+    if (model.tooltip !== this.currentTooltip) {
+      this.tray.setToolTip(model.tooltip);
+      this.currentTooltip = model.tooltip;
+    }
   }
 
   /** The output dir changed while the state did not; refresh labels. */
@@ -217,7 +225,7 @@ export class AppTray {
   }
 
   notifyDisplayWriteFailed(): void {
-    this.show({ title: APP_NAME, body: translate("Could not save the screen setting.", this.options.context().language) });
+    this.show(displayWriteFailedNotification(this.options.context().language));
   }
 
   notifyQualityWriteFailed(): void {
@@ -326,17 +334,20 @@ export const TRAY_ICON_FILES: Record<TrayIcon, { win32: string; template: string
   warning: { win32: "tray-warning.ico", template: "trayWarningTemplate.png" },
 };
 
-function loadIcons(resourcesDir: string): Record<TrayIcon, Electron.NativeImage> {
+/**
+ * `createFromPath` never throws: a missing or unreadable file yields an empty
+ * image, and an empty tray icon is invisible. Log it, so a broken bundle or
+ * resources path is found in the log rather than by a menu bar with no item.
+ */
+function loadIcons(resourcesDir: string, log: (message: string) => void): Record<TrayIcon, Electron.NativeImage> {
   const icons = {} as Record<TrayIcon, Electron.NativeImage>;
   for (const [icon, files] of Object.entries(TRAY_ICON_FILES) as Array<[TrayIcon, (typeof TRAY_ICON_FILES)[TrayIcon]]>) {
-    if (process.platform === "win32") {
-      icons[icon] = nativeImage.createFromPath(path.join(resourcesDir, files.win32));
-      continue;
-    }
+    const file = path.join(resourcesDir, process.platform === "win32" ? files.win32 : files.template);
+    const image = nativeImage.createFromPath(file);
+    if (image.isEmpty()) log(`tray: icon ${icon} could not be loaded from ${file}; the tray item may be invisible`);
     // `*Template.png` (+ `@2x`) is picked up by Electron as a macOS template
     // image, which follows the menu bar's light/dark appearance automatically.
-    const image = nativeImage.createFromPath(path.join(resourcesDir, files.template));
-    image.setTemplateImage(true);
+    if (process.platform !== "win32") image.setTemplateImage(true);
     icons[icon] = image;
   }
   return icons;

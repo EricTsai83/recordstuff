@@ -50,8 +50,9 @@ vi.mock("electron", () => {
     }
   }
 
-  const images = new Map<string, { file: string; setTemplateImage: ReturnType<typeof vi.fn> }>();
-  const image = (file: string) => images.get(file) ?? images.set(file, { file, setTemplateImage: vi.fn() }).get(file)!;
+  const images = new Map<string, { file: string; setTemplateImage: ReturnType<typeof vi.fn>; isEmpty: () => boolean }>();
+  // Like Electron, a missing file yields an empty image rather than an error.
+  const image = (file: string) => images.get(file) ?? images.set(file, { file, setTemplateImage: vi.fn(), isEmpty: () => file.includes("missing") }).get(file)!;
   // `app` only needs the activation events the reveal listens to.
   const app = new EventEmitter();
   return {
@@ -135,6 +136,29 @@ describe("AppTray icons (plan 040)", () => {
     native.setImage.mockClear();
     tray.render({ type: "countdown", remaining: 2 });
     expect(native.setImage).not.toHaveBeenCalled();
+  });
+
+  it("makes no native call for a refresh that changes nothing the item shows", () => {
+    const { tray } = setup();
+    const native = (tray as unknown as { tray: { setTitle: ReturnType<typeof vi.fn>; setToolTip: ReturnType<typeof vi.fn> } }).tray;
+    tray.render({ type: "recording", startedAt: "x" });
+    native.setTitle.mockClear(); native.setToolTip.mockClear();
+    tray.refresh();
+    tray.render({ type: "recording", startedAt: "x" });
+    expect(native.setTitle).not.toHaveBeenCalled();
+    expect(native.setToolTip).not.toHaveBeenCalled();
+    tray.render({ type: "stopping" });
+    expect(native.setToolTip).toHaveBeenCalledTimes(1);
+    if (process.platform === "darwin") expect(native.setTitle).toHaveBeenCalledWith("");
+  });
+
+  it("logs an icon file that yields an empty image instead of showing an invisible item", () => {
+    const logs: string[] = [];
+    new AppTray({ resourcesDir: "/missing", context: () => { throw new Error("unused"); }, onToggle: vi.fn(), onAction: vi.fn(), log: (m) => logs.push(m) });
+    expect(logs.filter((m) => m.startsWith("tray: icon "))).toHaveLength(Object.keys(TRAY_ICON_FILES).length);
+    expect(logs[0]).toContain("/missing/");
+    const { logs: healthy } = setup();
+    expect(healthy.filter((m) => m.startsWith("tray: icon "))).toEqual([]);
   });
 });
 

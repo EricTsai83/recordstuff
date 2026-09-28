@@ -1,7 +1,3 @@
-import { failureReason } from "./recording-result";
-import { displayLabel, displayFailureText } from "../shared/display";
-import { displayResolution } from "./display-source";
-import type { EarlyStop } from "./recorder";
 /**
  * Pure state-to-presentation projection for the native tray. See
  * docs/system-design/desktop.md.
@@ -12,6 +8,10 @@ import type { EarlyStop } from "./recorder";
  * this model never builds a submenu, so what it returns is exactly what the
  * menu shows.
  */
+import { failureReason } from "./recording-result";
+import { displayLabel, displayFailureText } from "../shared/display";
+import { displayResolution } from "./display-source";
+import type { EarlyStop } from "./recorder";
 import path from "node:path";
 import { DEFAULT_LANGUAGE, sentences, translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
 import type { FrameRate } from "../shared/quality";
@@ -215,6 +215,9 @@ export function settingsWriteFailedNotification(
       path: abbreviateHome(chosenDir, homeDir),
     }),
   );
+}
+export function displayWriteFailedNotification(language?: Language): NotificationText {
+  return notice(t("Could not save the screen setting.", language));
 }
 export function qualityWriteFailedNotification(language?: Language): NotificationText {
   return notice(t("Could not save recording quality. Your previous settings are still in use.", language));

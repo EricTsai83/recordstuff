@@ -4,7 +4,8 @@
  * (the only trace under `pnpm start` or a packaged build). Rotation happens
  * before a write once the active file exceeds `maxBytes`: `recordstuff.log`
  * becomes `recordstuff.1.log`, `.1` becomes `.2`, and so on up to `keep`
- * archives. A failed file write is reported to stderr once; after that the
+ * archives. The size is read from disk once per process and counted from
+ * then on; this process is the file's only writer. A failed file write is reported to stderr once; after that the
  * logger keeps writing to stdout only so logging can never take the app down.
  */
 import fs from "node:fs";
@@ -57,7 +58,8 @@ export function createFileLogger(options: FileLoggerOptions): Log {
   const stderr = options.stderr ?? ((line) => console.error(line));
   const now = options.now ?? (() => new Date());
   let fileEnabled = true;
-  let dirReady = false;
+  /** Bytes in the active file; read once at the first write, then counted, so each line costs one append and no stat. */
+  let size: number | undefined;
 
   const sizeOf = (): number => {
     try {
@@ -68,12 +70,17 @@ export function createFileLogger(options: FileLoggerOptions): Log {
   };
 
   const appendToFile = (line: string): void => {
-    if (!dirReady) {
+    if (size === undefined) {
       fs.mkdirSync(path.dirname(options.filePath), { recursive: true });
-      dirReady = true;
+      size = sizeOf();
     }
-    if (sizeOf() > maxBytes) rotateLog(options.filePath, keep);
-    fs.appendFileSync(options.filePath, `${line}\n`, "utf8");
+    if (size > maxBytes) {
+      rotateLog(options.filePath, keep);
+      size = 0;
+    }
+    const text = `${line}\n`;
+    fs.appendFileSync(options.filePath, text, "utf8");
+    size += Buffer.byteLength(text, "utf8");
   };
 
   return (message) => {
