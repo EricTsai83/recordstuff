@@ -9,6 +9,23 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 050 保持喚醒與睡眠時停止 — 2026-09-28
+
+RecordStuff 現在會在錄影期間讓螢幕保持喚醒，並把無法拒絕的睡眠變成一般的存檔，由 Claude 實作、Codex GPT-6 Astra review（[錄製設計](../system-design/recording.md#寫檔與失敗)、[通知](../system-design/desktop.md#tray-與通知)、[決策](../system-design/decisions.md)）。在這之前，沒有任何機制讓 Mac 保持喚醒；035 的 N31 觀察到睡眠會在 `suspend` 後 146 ms 以 capture_failed 結束錄影，失敗橫幅也看不到。維護者在與 Cap（`20c224073bece3fbebed8acb631bd2df97cd6f40` 的靜態比較；它不持有 blocker，系統停止擷取後會重建擷取）比較後選擇了這個做法。
+
+環境：M1 Pro、macOS 26.6.2、Electron 44.3.0，接電源，主螢幕 BenQ GW2785TC 1920 × 1080，旁邊一台直立的 BenQ BL2480T；原始碼為 HEAD `896af7c` 加上尚未提交的修改；使用隔離資料的[受控 build](../system-design/tooling.md#受控驗收-build)（`2026-09-28T11-53-13-441Z-controlled`，最後一次修正後改用 `2026-09-28T12-04-00-723Z-controlled`）。
+
+- **保持喚醒（agent 操作）。** 倒數與錄影期間，`pmset -g assertions` 列出 RecordStuff pid 的 `NoDisplaySleepAssertion named: "Electron"`；存檔、倒數取消、唯讀資料夾造成的啟動失敗、錄影中的寫入失敗，以及錄影中結束之後都會消失，前後分別記錄 `power: keeping the display awake (blocker n)` 與 `power: display may sleep again (blocker n)`。倒數提示音另外會出現 Chromium 自己的 `Playing audio` assertion。沒有做「不操作到螢幕關閉」的測試：Chrome 的 `Video Wake Lock` 與另一個 Electron App 都持有螢幕 assertion，螢幕保持開啟也無法證明是 RecordStuff 的效果。
+- **錄影中睡眠（維護者喚醒）。** 錄影 4 秒後從 Apple 選單選「睡眠」：`stopped to save the recording` 與 `suspend` 在同一毫秒，13 ms 後存成一般的 `.mp4`，註明 `(stopped early: the Mac went to sleep)`，沒有失敗；macOS 在 `suspend` 5 秒後才進入睡眠。存檔通知在睡眠期間被保留。第一次測試時，計畫中的 10 秒保險在清醒時間不到 7 秒時、剛醒來就放出通知，顯示計時器在睡眠期間照常計時；因此放出方式改為確認使用者回來（`resume` 之後 2 秒內有輸入，或 `unlock-screen`）。複驗時 macOS 在睡著 3 秒後進入 DarkWake，在沒有 `resume` 的情況下維持 40 秒不亮螢幕；通知一直保留，直到完整喚醒後 0.2 秒才出現。若是舊的保險機制，通知會在 DarkWake 期間送出。
+- **倒數中睡眠。** 以 `sleep` 為原因取消：沒有檔案、失敗或通知，blocker 也已釋放。
+- **只記錄、不作為門檻。** 錄影中執行 `pmset displaysleepnow`（系統沒有睡眠）：螢幕一關擷取就結束，錄影以 capture_failed 失敗，保留 1.3 MB 的 partial，失敗橫幅在螢幕關閉時送出。閒置造成的螢幕睡眠現在已被阻止；強制螢幕睡眠或鎖定螢幕仍會像以前一樣結束擷取，維護者已接受為已知限制。
+
+自動化證據：`pnpm check` 通過 typecheck、68 個檔案共 1140 個測試與 build。測試涵蓋 blocker 的持有期間與丟出錯誤的 blocker；各階段的 `systemWillSleep`；停止在訂閱者看到 `stopping` 之前送到 host（經 mutation 檢查）；軌道在要求停止後才結束時擷取程序仍維持一般停止；兩種語言的睡眠文案；session log 與紀錄接受 `sleep`；以及 tray 保留通知、沒有輸入的 resume 之後或只靠計時器經過一小時都不顯示、輸入夠近或解鎖時才顯示。
+
+Review：Codex GPT-6 Astra（medium reasoning、唯讀）。Pass 1（97 秒）回報兩項 medium findings，都已接受並修正：停止要等同步 log 與狀態訂閱者跑完才送到 host，現在 `stop()` 先送出；睡眠取消的倒數可能先落到 needsPermission 並在保留生效前發出通知，現在先設定保留。Pass 2（76 秒）沒有 findings。第一次原生睡眠測試後把計時保險改成確認使用者回來的修改，沒有再經過 review。
+
+收尾：受控 App 都已正常結束，workspace 已移除並保留證據；沒有殘留的 RecordStuff 程序或 assertion；真實的 `settings.json` 與 `recording-history.json` 與基準相同。本輪期間執行了 `caffeinate -d -i`。沒有 commit、push 或發布。
+
 ## Plan 035 結案 — 2026-09-28
 
 最後的維護者逐步原生驗收 Plan 035，經維護者確認後於 2026-09-28 結案。它涵蓋錄影失敗 UX 留下的未測原生操作，以及從前序計畫收集的必要原生缺口，分四個階段完成：為真實故障無法隨時產生的狀態準備的[受控驗收 build](#plan-035-準備受控驗收-build--2026-09-27)、由維護者操作的[引導驗收回合](#plan-035-引導驗收回合--2026-09-28)、經維護者複驗的[後續修正](#plan-035-後續修正--2026-09-28)，以及在 045–049 改變倒數、失敗紀錄與 tray 選單之後，[由 agent 操作重做](#plan-035-045049-之後的重做回合--2026-09-28)受影響的 32 個案例。
