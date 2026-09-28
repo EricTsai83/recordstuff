@@ -9,6 +9,114 @@
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
 
+## Plan 049 CPU baseline 結案 — 2026-09-28
+
+RecordStuff 現在有待命與錄影的 CPU 預算，由 Claude 實作、Codex GPT-6 Astra review（[工具](../system-design/tooling.md#cpu-預算)、[待命行為](../system-design/design-overview.md#在選單列待命)、[決策](../system-design/decisions.md)）。在此之前沒有任何待機量測；矩陣則是在開發用 App 上以 `ps` 會衰減的 `%cpu` 判定錄影 CPU，上限 40%，大約是實測值的兩倍。
+
+現在單元測試確認：儲存、失敗、啟動失敗或取消的工作階段、capture host、寫檔器與倒數覆蓋層都不會留下計時器，PermissionWatcher 也只保留一個 5 秒的 interval。共用取樣程式是一個以 clang 編譯的小型 C 程式，每秒讀取 App 程序樹與 VTEncoderXPCService 的 `proc_pid_rusage`。`pnpm measure:cpu` 在打包後的 App 上用它量四種情境：啟動後待機、以快捷鍵開始與停止的錄影、錄影後待機，以及設定視窗開在 Finder 後面。`pnpm matrix` 則用同一個取樣程式，量每個案例錄影第 3 秒之後的 CPU。App 會記錄 `recording history: loaded` 與 `updates: launch check skipped (…)`，讓 runner 知道啟動工作已經結束。
+
+環境：M1 Pro（MacBookPro18,1，10 核心）、macOS 26.6.2、Electron 44.3.0（Chromium 152），接上電源；主螢幕為 BenQ GW2785TC 1920 × 1080，旁邊另有一台直立的 1080 × 1920；版本為 HEAD `bb55f70` 加上尚未 commit 的 045–049 變更，使用新的 `pnpm start:app` 產物。
+
+| 情境 | baseline 回合（`pnpm measure:cpu -- --fps 60 --repeat 3`） | 加入角色檢查後的第二輪 | 預算 |
+| --- | --- | --- | --- |
+| A. 啟動後待機 5 分鐘 | 平均 0.042%、第 95 百分位 0.123%、每秒喚醒 2.30 次 | 0.041%、0.119%、2.24 次 | ≤0.2%、≤1%、≤5 次 |
+| R. 30 fps 錄影 60 秒 ×3 | 14.7／15.1／15.4%，中位數 15.1%；編碼器 2.1% | 15.7／16.1／15.6%，中位數 15.7% | ≤30% |
+| B. 錄影後待機 5 分鐘 | 0.053%、0.139%、2.36 次 | 0.046%、0.126%、2.39 次；角色與穩態都通過 | ≤0.2%、≤1%、≤5 次 |
+| C. 設定視窗開在 Finder 後面 3 分鐘 | 0.085% | 0.134% | ≤0.5% |
+| R. 60 fps 錄影 60 秒 ×3 | 22.2／22.7／22.2%，中位數 22.2%；編碼器 3.4% | 21.7／22.5／21.9%，中位數 21.9% | ≤40% |
+
+矩陣回合 `pnpm matrix -- fps --repeat 3` 六次全部通過：Source Standard 30 fps 為 15.0／15.2／15.2%（第 95 百分位 16.2%、編碼器 2.1%），60 fps 為 21.6／21.9／22.1%（第 95 百分位 23.8%、編碼器 3.5%）。幀率、掉格、同步與位元率都和先前的回合一致。待機的喚醒大多是 Electron 本身的底線（主程序每秒約 1.2 次、GPU 0.7 次、網路服務 0.3 次）；RecordStuff 自己的週期工作只有權限輪詢，每秒 0.2 次。錄影 CPU 主要在 GPU 程序，30 fps 時約 8%，其次是 capture renderer 約 4%、主程序約 2%。
+
+每項目標都有充足餘裕通過，因此錄影門檻定為 30 fps ≤30%、60 fps ≤40%，中位數寫入 [cpu-baselines.json](../../../scripts/lib/cpu-baselines.json) 作為本機 baseline：`measure:cpu` 為 15.1% 與 22.2%，矩陣案例為 15.2% 與 21.9%。先前的 17%、21% 與 23% 是 `ps` 對整個案例的量測，無法比較。
+
+baseline 回合只有一項檢查失敗：B 的程序和啟動後不同。啟動時那個沒有載入頁面的 renderer，是 Electron 44 隨預設 session 預先啟動、讓第一個視窗更快開始的（[electron/electron#53144](https://github.com/electron/electron/pull/53144)），第一個 capture host 直接用了它（同一個 PID）。第一次擷取系統聲音時，Chromium 啟動了音訊服務，Chromium 152 會讓它一直存在到 App 結束：0.007%、每秒 0.30 次喚醒、49 MB。一個只碰了 `session.defaultSession` 的空白 Electron App 也會出現同樣的 renderer，停用 `SpareRendererForSitePerProcess` 也無法移除它。Chromium 152 的音訊服務沒有閒置結束機制。若停用 `AudioServiceOutOfProcess`、讓音訊在主程序中執行，只為了 49 MB 就要改變擷取架構，所以沒有嘗試。維護者決定接受這兩者並替換那項檢查：現在依 Chromium 角色對照待機契約判定程序，設定視窗關閉時錄影後不允許任何 renderer，而且每次儲存後 5 秒的角色必須和第一次錄影後相同。也就是說，每錄一次就多一份才算洩漏，而不是和冷啟動的差異。權限輪詢依維護者的選擇維持不變。第二輪每項檢查都通過。
+
+runner 路徑：RecordStuff 執行中時，它在啟動任何東西前就拒絕執行（exit 1，不產生報告）；在 B 與錄影途中中斷時，它以快捷鍵停止錄影（已儲存）、關閉素材、結束 App 並還原設定，寫出標記為 INTERRUPTED 的報告（exit 130）。依 review pass 1 修正後，在桌面回合開始後 0.3 秒中斷時，它會等待已要求啟動的 App（App 在收到訊號後 0.2 秒才出現）再將它結束；在素材開啟後 0.5 秒中斷時，它會等 launcher 結束、關閉瀏覽器並確認它已退出。兩次都以 exit 130 結束，沒有任何殘留程序，設定也已還原。以修正後的程式碼跑一次短的 `pnpm measure:cpu -- --minutes 1` 通過，每個範圍的取樣覆蓋率都在 98–99%，C 也確認有設定頁的 renderer；一次 `pnpm matrix -- fps` 為 14.4% 與 21.8%。
+
+本次未驗證：其他機器、Retina 與 4K 螢幕、電池供電、超過 5 分鐘的待機量測（沒有結果接近門檻），以及 plan 049 排除的記憶體預算。記憶體數字只回報：待機時 App 合計 300–340 MB。
+
+收尾：每一輪結束後 RecordStuff 都正常結束，沒有殘留的取樣程式、素材瀏覽器或 App 程序，`settings.json` 與回合前保存的檔案相同。保留：~/Movies/RecordStuff 中 07-15-01（smoke run）與 14-01-10 到 15-27-12（兩輪量測、中斷測試、短回合與兩次矩陣）的錄影，以及本機報告：[第一輪](../../verification/measurements/2026-09-28T05-55-03-443Z-cpu/report.md)、[第二輪](../../verification/measurements/2026-09-28T06-40-03-225Z-cpu/report.md)與[矩陣](../../verification/measurements/2026-09-28.md)。
+
+Codex GPT-6 Astra（medium reasoning、唯讀）pass 1 約 3 分鐘，回傳八項 Medium finding，全部接受並修正：錄影螢幕可能和素材所在的螢幕不同（現在把錄影螢幕設為主螢幕，事後還原）；取樣程式提前結束或取樣不足時，在 `measure:cpu` 會被當成 0% CPU 而通過、在矩陣會變成 n/a（現在兩者都判定失敗，覆蓋率低於 80% 也一樣）；送出停止鍵後的收尾可能再次切換而開始新的錄影（現在改用依工作階段收尾的 helper）；中斷後沒有確認素材瀏覽器與已要求啟動的 App 已經結束（現在兩者都會等待並確認）；`--repeat` 為偶數時中位數取到較低的那一次（現在只允許奇數）；跨過範圍起點的區間會算進範圍開始前的 CPU（現在只計入完全落在範圍內的區間）；C 從未確認設定視窗真的開啟（現在需要 App 的快捷鍵 log 行與設定頁的 renderer）。為這些修正新增的測試又找到一個缺陷，已在 pass 2 前修正：停止一個啟動失敗的取樣程式時，會對 pid 0、也就是整個程序群組送出 SIGTERM。Pass 2 約 1.5 分鐘，沒有 findings。
+
+## Plan 048 結案 — 2026-09-28
+
+選單列選單與設定群組改為依同一套順序排列，由 Claude 實作、Codex GPT-6 Astra review（[桌面](../system-design/desktop.md#tray-與通知)）。在此之前，只要保留任何失敗，其行就排在狀態與主要動作之上，錄製中「停止」是第四行，一筆已確認的失敗可以佔據選單頂端好幾週；待命時沒有「開始」；「顯示最後一個錄影」與儲存位置分開；「設定」、「顯示 log」與「結束」同組；省略號用法不一致，設定快捷鍵直接寫進標籤；「一般」把更新排在語言與外觀之前；儲存位置只能從選單列查看與更改。維護者於 2026-09-28 依文字示意核可全部提案：開始錄製、失敗群組、「結束 RecordStuff」、快捷鍵靠右、「一般」的順序與儲存位置列。
+
+現在每個狀態的選單都依序由五組組成，空的組別省略：狀態與主要動作（待命時「開始錄製」、「停止」、「取消錄影」或權限步驟）；未讀失敗；檔案；視窗（只剩已確認失敗時的「查看失敗紀錄…」，接著是「設定…」）；以及「顯示 log」與「結束 RecordStuff」。「最近一次失敗」一行已移除。「開始錄製」、「停止」與「取消錄影」以原生 accelerator 顯示已註冊的錄影快捷鍵，「設定…」顯示設定快捷鍵，並設定 `registerAccelerator: false`；狀態改變後才選取的「開始」不做任何事（`Recorder.startIfIdle`）。「設定 → 錄影」在「螢幕」之後新增儲存位置列，透過 tray 自己的處理與鎖定提供「更改…」與「在 Finder 中顯示」；「一般」依序為快捷鍵、通知、語言、外觀、更新與 About。
+
+環境：M1 Pro、macOS 26.6.2、Electron 44.3.0，主螢幕 BenQ GW2785TC 1920 × 1080，版本為 HEAD `bb55f70` 加上未 commit 的 045–048 變更；儲存的語言為繁體中文，外觀為淺色。
+
+- **選單列選單**：在全新 `pnpm start:app` bundle 上，以 CoreGraphics 事件送出真實右鍵開啟（狀態列項目只提供 `AXPress`，那是左鍵點擊，會開始錄影）：待命（維護者的歷史中只有已確認的失敗）、倒數與錄製中，繁中與英文，淺色與深色系統外觀（目前桌布下選單列本身在兩種外觀都是深色，選單則依外觀變化）。每個選單都顯示預期的群組與分隔線、待命時的「開始錄製」、「設定…」旁的已確認失敗入口、錄製中變灰的儲存位置項目，以及靠右的 ⇧⌘1 與 ⌥⌘,：`popUpContextMenu` 會畫出它們，因此不需退回原本的標籤文字。以點擊「開始錄製」開始、點擊「停止」結束錄了五段，測試素材在直立螢幕的視窗中播放；驗證其中一段：1920 × 1080、3.7 秒、兩聲道約 −28 dBFS、完整解碼。其影像位元率檢查失敗（2.23 Mbps／16.2），因為錄下的主螢幕是靜態桌面而非移動的素材；擷取沒有改變，因為「開始」呼叫的是左鍵的 toggle。以腳本輸入在彈出的選單中用鍵盤操作（下鍵、Return）並不可靠，因此改用點擊；選單的鍵盤操作未判定。
+- **設定**：最終版本的 `pnpm acceptance:regression`：`pnpm check` 65 個檔案 1095 個測試、設定 fixture 170/170 與快捷鍵失敗整合都通過。截圖顯示雙語的「螢幕」之後的儲存位置列與新的「一般」順序。「錄影」分頁現在在 560 × 680 預設視窗中溢出約 50 pt，因此顯示捲動提示；fixture 中「內容放得下時不顯示提示」的案例改在 560 × 760 執行。
+- **儲存位置列的原生操作**（review pass 1 修正後）：Tab 到「在 Finder 中顯示」，Space 以 Finder 開啟 ~/Movies/RecordStuff，列上沒有失敗訊息；「更改…」開啟選擇器，Escape 取消，列上沒有失敗訊息，儲存的設定不變。
+- **網站**：更新兩句右鍵說明與說明頁設定表（新增儲存位置列）；`pnpm site:check` 通過。
+
+自動化證據：測試涵蓋雙語下沒有歷史、有未讀失敗與只有已確認失敗時每個狀態的完整順序與分隔線；在所有狀態、歷史、語言、設定快捷鍵狀態與結束中之下，都沒有開頭、結尾或連續的分隔線；只有已確認失敗時的入口在「設定…」旁，沒有「最近一次失敗」行；「開始錄製」只在待命時出現；accelerator 只給已註冊的快捷鍵，tooltip 保留；template 的 `registerAccelerator: false` 與「開始」的動作；`startIfIdle` 永遠不會停止錄影或取消倒數；設定群組順序、儲存位置列、其動作與鎖定；以及該列動作依其自身結果回報。`git diff --check` 無誤。
+
+未在此驗證、移交 [035](../../../plans/035-guided-native-acceptance.zh-TW.md) 的 N33a：需要權限的選單與有未讀失敗時的待命選單（原生）、從已開啟選單選取的過時「開始」、淺色選單列上的選單（目前桌布下選單列在兩種外觀都是深色；選單本身依淺色與深色外觀變化），以及選單的鍵盤操作。不宣稱 Windows。
+
+清理：語言與外觀已還原，`settings.json` 與回合前保存的檔案相同；素材視窗已關閉；RecordStuff 正常結束。保留錄影 `~/Movies/RecordStuff/2026-09-28 06-46-17.mp4` 至 `06-49-00.mp4`，以及 `docs/verification/measurements/2026-09-28-048-tray-menus/` 下的選單與設定截圖。沒有 commit、push 或發布。
+
+Codex GPT-6 Astra（medium reasoning、唯讀）pass 1 約 71 秒，回報一個 Medium finding，接受並修正：儲存位置列在每次成功或取消後都顯示「操作失敗」，因為這兩個動作沒有回傳結果，面板便改以永遠不會被勾選的選項判斷。`changeOutputDir` 現在只有在被鎖定或儲存失敗（同時會發通知）時回傳 false，儲存成功或取消選擇器時回傳 true；「在 Finder 中顯示」回傳 true，因為開啟器會以自己的原生警告回報每種失敗。設定視窗測試涵蓋回報的結果，上方的原生檢查在修正之後進行。pass 2 約 66 秒（總計約 137 秒），沒有 findings。
+
+
+## Plan 047 結案 — 2026-09-28
+
+錄影失敗歷史移到設定的獨立分頁，由 Claude 實作、Codex GPT-6 Astra review（[桌面](../system-design/desktop.md#錄影失敗結果)、[決策](../system-design/decisions.md)）。在此之前，失敗紀錄放在兩個分頁偏好設定的上方，未確認的紀錄都展開，每筆都重複「錄影失敗」標題與時間，因此每次開啟設定都先看到一長串原因；繁體中文標題為「RecordStuff - 設置」，tray 卻寫「設定」；切換分頁會沿用同一個捲動位置；確認、移除與重試都不留 log（035 回合中無法得知某列是怎麼被確認的）。維護者於 2026-09-28 選定 layout A（依日期分組的單純列表）與第三版焦點設計（Retina 1.5 px、1× 螢幕 1 px）。
+
+現在「錄影」與「一般」不顯示歷史；第三個分頁「失敗紀錄」（英文「Failures」）永遠存在，標籤帶未確認筆數（「失敗紀錄（2）」、「Failures (2)」），無障礙名稱包含完整名稱與筆數。英文標籤依本計畫允許的做法，從「Recording failures」縮短為「Failures」，因為三個等寬分頁在 380 pt 最小寬度下會換行；分頁現在依標籤寬度排列且不換行。紀錄放在視窗背景上，依「今天」、「昨天」或日期分組，預設收合、同時只展開一列；標題兩行（未確認圓點與粗體原因、無障礙名稱含「未確認」、時間、箭頭；接著是結果），細節縮排且不重複標題與時間，完整路徑移到「技術資訊」。標題是焦點目標：以細強調色邊框框住整筆紀錄並隱藏相鄰分隔線，焦點在列內控制項時邊框改為中性色，上下鍵、Home、End 在標題間移動，Enter 與 Space 切換。整個設定面板改用同一焦點粗細，取代 2 px 外框。tray 與通知入口會切到該分頁，只展開最新一筆未確認紀錄。每個分頁各自保留捲動位置。繁中標題為「RecordStuff - 設定」。每次「知道了」、移除與重試在完成時寫 `recording result: <action> <id> saved|failed (<類別>)|refused (<原因>)`。
+
+環境：M1 Pro、macOS 26.6.2、Electron 44.3.0，主螢幕 BenQ GW2785TC 1920 × 1080（1×，devicePixelRatio 1），版本為 HEAD `bb55f70` 加上未 commit 的 045–047 變更。
+
+- **設定 fixture**（`pnpm acceptance:settings`，170 個案例），最終版本。既有的結果案例保留，改為透過「失敗紀錄」分頁操作，點擊列內按鈕前先以真實 Return 展開收合的列。新增的真實輸入案例：雙語的「錄影」與「一般」不顯示歷史；雙語三個標籤在 380 pt 下都只佔一行（以實際文字行數計算，因為拉伸的按鈕高度相同）；方向鍵、Home、End 涵蓋三個分頁；四個日期群組且全部收合；上下鍵、Home、End 跨日期群組在標題間移動；Enter 與 Space，以及展開另一列會收合第一列；標題的鍵盤焦點畫出 1 px 強調色邊框（devicePixelRatio 1）並隱藏兩側分隔線；展開列內有焦點時列框改為 1 px 中性色、焦點按鈕的線為強調色；滑鼠點擊後沒有邊框；另一個視窗在前景時沒有邊框，面板重新成為作用中後恢復；模擬跨過午夜，列移到另一個日期群組時，焦點標題與之後的焦點操作按鈕都保留焦點，另一個視窗在前景時也一樣；「技術資訊」揭露元件的焦點線；重新載入後以真實滾輪捲動，每個分頁保留自己的捲動位置，第一次開啟在頂端；入口切到該分頁、只展開最新一筆未確認紀錄（在底部，並捲入視野）、聚焦且不自動確認；「知道了」後分頁筆數清除；以及雙語、淺色與深色、最小尺寸下，分頁、選單、按鈕（線落在控制項邊框上）與開啟的開關、選中的分段（離填色 2 px）的共用焦點線。已檢查分頁列、失敗列表、兩種列焦點狀態與各控制項焦點的截圖。第一次改寫後的執行找到一個單元測試無法發現的 renderer 錯誤：還原的捲動位置在空白區段標題隱藏之前就套用，Chromium 的 scroll anchoring 因而把它移動 6 px；現在位置最後才套用。
+- **原生觀察**：在全新的 `pnpm acceptance:controlled -- launch --seed retention` build（22 筆、隔離資料）上，以 System Events 按鍵與截圖操作，其他 App 在前景時以 window id 擷取視窗本身的畫面：以 ⌥⌘, 開啟設定時停在「錄影」，沒有歷史，分頁列「Recording settings | General | Failures (2)」只佔一行；以鍵盤到「失敗紀錄」分頁，顯示「今天」與「昨天」下的單純列表，未確認列有圓點與粗體原因；Tab 與下鍵讓某列以 1 px 強調色邊框框住整筆紀錄，兩側分隔線隱藏；Finder 在前景時視窗沒有邊框，以快捷鍵叫回設定後恢復；切到繁體中文後視窗標題為「RecordStuff - 設定」（由視窗清單讀取），分頁為「錄影 | 一般 | 失敗紀錄（2）」。Tab 會經過每一列標題，符合約定。本次觀察使用腳本按鍵而非 computer-use skill（其非互動執行曾被 App 核准擋下）；觀察在 review pass 1 的兩項修正之前進行，兩項修正都不影響觀察到的內容。
+
+自動化證據：最終版本的 `pnpm acceptance:regression` 通過（`pnpm check` 65 個檔案 1085 個測試、設定 170/170、快捷鍵失敗整合）。測試涵蓋雙語三個分頁的 id、標籤與無障礙名稱；雙語的日期標題（今天、昨天、今年、往年、跨月）與短時間；列帶有日期、時間、檔名與完整路徑且沒有標題；繁中標題；每次確認、移除與重試一行含 ID 與結果的 log，包含帶類別的儲存失敗、拒絕（處理中、尚未確認、另一項操作進行中、未知 ID）、之後才完成的儲存，以及不含路徑或細節；以及在真實頁面模組上：歷史只在其分頁、依日期分組的收合列、同時只展開一列、未確認標籤、檔名與完整路徑、上下鍵／Home／End、「知道了」後焦點回到標題並清除筆數、入口只展開目標且不確認、移除後的焦點與移除最後一列後回到分頁、空白與載入狀態，以及每個分頁的捲動位置。`git diff --check` 無誤。
+
+未在此驗證、移交 [035](../../../plans/035-guided-native-acceptance.zh-TW.md)：從 tray 的「查看失敗紀錄」與錯誤通知開啟（N02、N03；040 時工具無法操作 tray）、Retina 螢幕上的焦點邊框（未連接；N22）、VoiceOver 朗讀列的方式，以及維護者對版面的判斷。不宣稱 Windows 外觀。
+
+清理：受控 build 正常結束，工作區已移除；證據（含原生截圖）保留在 `docs/verification/measurements/2026-09-27T22-19-04-421Z-controlled/`。未動到維護者的設定與歷史。沒有 commit、push 或發布。
+
+Codex GPT-6 Astra（medium reasoning、唯讀）pass 1 約 75 秒，回報兩個 Medium findings，都接受並修正：（1）把有焦點的列或日期區段移到另一個日期群組時（例如跨過午夜）會失去焦點，因為 `insertBefore` 會先把節點移出，而且操作按鈕的焦點是在區段移動之後才量測；renderer 現在在任何變更前記下焦點元素，移動後再還給它；模擬跨日的 fixture 案例在停用還原時失敗（焦點落到 `BODY`），啟用後通過。（2）焦點重設涵蓋所有 `summary`，使「技術資訊」揭露元件失去焦點環；現在它在文字外 2 px 顯示共用焦點線，並有 fixture 案例。pass 2 約 103 秒（總計約 178 秒），確認兩項修正，並回報一個 Medium finding，接受並修正：視窗不在前景時還原會被略過，較舊的後援邏輯會把焦點從操作按鈕移到該列標題；現在不論視窗是否在前景都會還原，因為它只是把 DOM 焦點還給原本持有的元素，不會啟用任何東西；fixture 案例在另一個視窗位於前景時模擬跨日。最後這項修正沒有再經 review，由最終的 `pnpm acceptance:regression` 涵蓋。
+
+## Plan 046 結案 — 2026-09-28
+
+可選的倒數提示音，由 Claude 實作、Codex GPT-6 Astra review（[錄影](../system-design/recording.md#倒數)、[桌面](../system-design/desktop.md#倒數-overlay)、[決策](../system-design/decisions.md)）。040 起倒數一直沒有聲音。維護者於 2026-09-28 以實際一秒一次的節奏試聽靜態草稿（1000 Hz 正弦 tick、1600 Hz 木魚般 click 與 523 Hz 馬林巴般音色，各有 −12 與 −20 dBFS），選定 −20 dBFS 的馬林巴般音色、數字 1 升高五度，並且**預設開啟**，既有使用者也一樣，推翻了本計畫預設關閉的假設。「設定 → 錄影」在「倒數」之後新增「倒數音效」開關，倒數為關閉時停用（保留其值），session 期間鎖定；`countdownSound` 為相容新增欄位，缺少或不是布林值時讀為開啟。Recorder 在每個 session 保存其快照並傳給 overlay；overlay 以 `?sound=1` 載入頁面、設定 `autoplayPolicy: "no-user-gesture-required"`、載入時建立一個 `AudioContext`，並以 Web Audio 為每個新數字合成一聲 140 ms 的提示音。最後一聲在擷取前 860 ms 結束；autorecord 永遠不發聲。
+
+環境：與 [045 結案](#plan-045-結案--2026-09-28)相同（M1 Pro、macOS 26.6.2、Electron 44.3.0、BenQ GW2785TC 主螢幕與 BL2480T 直立螢幕、測試素材 `e631b973…c41459`），版本為 HEAD `bb55f70` 加上未 commit 的 045 與 046 變更；儲存的設定為倒數 3 秒、Standard、Source、60 fps、繁體中文，沒有 `countdownSound` 欄位（即開啟）。
+
+- **建置後 App 的 audio context。**以全新 `pnpm start:app` bundle 暫時加上 `--remote-debugging-port` 重新開啟（shell 繼承的 `ELECTRON_RUN_AS_NODE=1` 起初讓打包後的 App 以 Node 啟動，因此移除該變數），在以快捷鍵開始的倒數期間，對倒數頁面使用 Chrome DevTools Protocol 的 `Runtime.queryObjects`：頁面為 `countdown.html?sound=1`，恰有一個 `AudioContext`，狀態 `running`、48 kHz，數字 3 出現後 `currentTime` 已到 0.48 秒，全程沒有任何使用者手勢。每次倒數都以第二次按鍵取消。提示音是否被聽見無法由工具觀察，本次未驗證。
+- **`pnpm acceptance -- --skip-cancel --countdown-sound`**，儲存的開關先設為關閉，使 runner 必須將其開啟：runner 結束 idle 的 App、只設定 `countdownSound`、重新開啟同一個 bundle，以 `prepared … countdown 3 s; sound on` 錄製 10 秒，並在最後結束 App 後把欄位改回 `false`。tick 在 +0、+1001 與 +2000 ms，dismissal 165 ms，`record` 在 anchor 後 3001 ms，`record → started` 1 ms。檔案通過完整性層級，10 次閃光與 10 次嗶聲，最初 500 ms 沒有未配對的 beep 起點；數字裁圖差異在 1.06 以內（門檻 3）。提示音檢查在最初 500 ms 與 2 秒後的兩個音高上都是無聲：錄下的系統音訊在素材的嗶聲之間是精確的數位零（第一聲嗶聲在 0.80 秒開始），因此沒有提示音進入檔案。review pass 1 修正前的程式碼跑同一回合，結果相同（裁圖 1.25）。
+- **review 後的 runner 失敗路徑：**開關關閉且 `--out` 非空時，在任何變更前就拒絕執行（App pid 相同、儲存值不變、既有檔案保留）。開關關閉且快捷鍵停用時，重新開啟後等不到 `hotkey: registered` 而逾時；runner 結束它開啟的 App 後才把欄位改回，沒有殘留程序。執行兩秒後送出的 SIGINT 發生在重新開啟期間：啟動照樣完成，執行在第一個等待處停止，清理時結束 App 並改回欄位，素材也已關閉。pass 2 修正了準備期間螢幕鎖定的結束代碼，但這個情況未實際執行，因為不能鎖定維護者的工作階段。
+- **設定。**最終版本的 `pnpm acceptance:regression`：`pnpm check` 64 個檔案 1073 個測試、設定 fixture 132/132 與快捷鍵失敗整合都通過。fixture 新增開關關閉，以及倒數關閉時開關停用的截圖（雙語、淺色與深色、兩種尺寸），並新增兩個真實滑鼠案例：點擊已開啟的開關會向 main 要求關閉並顯示已提交的關閉；倒數關閉時開關停用、保留其值，點擊不會送出任何要求。截圖已檢查，包括鎖定狀態下開關與其他錄影控制一起變暗。「錄影」分頁在預設視窗仍放得下（575 / 575 pt）。第一次 regression 有一個案例失敗：新的點擊從 fixture 的假 main 得到 `applied: false`，留下的失敗訊息讓分頁溢出；現在假 main 以真實 model 回應這個開關。
+- **網站。**`pnpm site:check` 通過（4 頁，無斷連結）；已檢查說明頁新增的句子與設定表中的「Countdown sound」列。
+
+自動化證據：測試涵蓋設定解析（缺少、非布林、true、false）與保存；開關的順序、說明、動作、倒數關閉時停用與鎖定；翻譯；Recorder 傳遞 session 快照並忽略之後的變更、沒有倒數時實際音效為關閉，以及延伸的 `prepared` 行；overlay 的 autoplay 選項、檔案與開發 URL 的頁面 query，以及旗標不同時重建頁面；頁面以假的 `AudioContext` 每個新數字播放一聲、重複的值與 `null` 不播放、合成的數值與最後一個數字的音高；長度與音高限制；autorecord 設定保持無聲；證據 parser；以合成音訊測試提示音分析（只有素材的音時通過，因為它在兩個視窗都以約 −58 dBFS 洩漏到提示音頻段；523 或 784.5 Hz 的提示音即使在檔案開頭也約為 −28 dBFS 而判為失敗）；以及 stored-override 的生命週期（只在 App 結束時寫入、確認沒有程序後才還原、結束或重新開啟失敗）。`git diff --check` 無誤。
+
+未在此驗證、移交 [035](../../../plans/035-guided-native-acceptance.zh-TW.md) 的 N32 與 N35：提示音是否聽得清楚、是否悅耳、音量是否合適；以耳朵確認每個數字一聲、開始時沒有聲音；以耳朵播放有提示音的錄影；藍牙耳機（裝置喚醒時第一聲可能被切掉）；以及實際倒數與錄影期間開關的鎖定。未執行畫質與音訊矩陣：擷取與編碼沒有改變，autorecord 也永遠不發聲。不宣稱 Windows。
+
+清理：每個回合後 RecordStuff 都正常結束，沒有殘留暫存檔或 sentinel；`settings.json` 已以回合前保存的檔案取代，現在與其完全相同。保留驗收錄影 `~/Movies/RecordStuff/2026-09-28 05-36-56.mp4` 與 `2026-09-28 05-45-26.mp4`，以及 `docs/verification/measurements/` 下的本機報告。草稿放在 `/tmp`。沒有 commit、push 或發布。
+
+Codex GPT-6 Astra（medium reasoning、唯讀）pass 1 花了 95 秒，對 `pnpm acceptance --countdown-sound` 回報兩個 Medium findings，都接受並修正：（1）開關在清理範圍之前就被改變，之後的準備失敗（`--out` 非空、桌面鎖定、缺少註冊或 run id）會讓它維持改變；現在所有可能拒絕本回合的檢查都先執行，覆寫與其餘準備都在會還原它的範圍內。（2）欄位在 App 可能仍在執行、會把本回合的值寫回時就被改回；新的 `StoredOverride` 只在確認沒有 RecordStuff 程序後才還原，否則以「NOT restored」判定失敗。pass 1 的 prompt 誤稱 regression 的快捷鍵步驟已通過；它其實沒有執行，pass 2 已被告知。pass 2 約 100 秒（總計約 195 秒，預算 30 分鐘），確認兩項修正、App 程式碼沒有其他問題，並再回報兩個 Medium findings，都接受並修正：重新開啟期間的中斷會截斷啟動等待，使啟動中的 App 無法結束（現在重新開啟使用自己的有界 signal，套用覆寫前也會檢查取消）；準備期間的鎖定以 1 結束而非 blocked（準備失敗路徑現在在 `finally` 中結束桌面回合，桌面鎖定時以 2 結束）。pass 2 的修正沒有再經 review；由最終的 `pnpm check` 與 SIGINT 執行涵蓋。
+
+## Plan 045 結案 — 2026-09-28
+
+倒數數字改為隨被錄螢幕縮放，由 Claude 實作、Codex GPT-6 Astra review（[桌面](../system-design/desktop.md#倒數-overlay)、[決策](../system-design/decisions.md)）。在此之前，數字固定為 88 × 88 pt 視窗內的 56 pt，約為維護者 1080 pt 主螢幕的 5%，維護者認為太小（2026-09-27，以及 035 回合中的「看得清楚但偏小」）。維護者於 2026-09-28 以全螢幕靜態草稿比較 8、10、12 與 14%（86、108、130 與 151 pt），草稿畫在實際位置、使用實際的顏色、外框與陰影，疊在深色程式編輯器、白色文件與亮色照片上，選定螢幕短邊的 14%，並保留 56–216 pt 的上下限與邊距。視窗為字級 × 88 / 56 並四捨五入到整數 pt，是唯一承載大小的來源：頁面以 `vmin` 決定數字大小，外框與陰影以 `em` 表示，在 88 pt 視窗時等於 040 的數值。位置、透明度、字型、時間、取消方式、preload、IPC 與視窗選項都不變。
+
+環境：M1 Pro、macOS 26.6.2、Electron 44.3.0，主螢幕 BenQ GW2785TC 1920 × 1080（1×），第二螢幕 BenQ BL2480T 直立（1080 × 1920），未使用內建螢幕，測試素材 SHA-256 `e631b973…c41459`，版本為 HEAD `bb55f70` 加上未 commit 的變更。儲存的設定：倒數 3 秒、主螢幕、Standard、Source、60 fps、繁體中文。
+
+- **`pnpm acceptance -- --skip-cancel`**，全新 `pnpm start:app` bundle、預設 3 秒：log 記錄 `display 3 at 1666,42 238x238 in display bounds 0,0 1920x1080`，正是短邊 1080 pt 應有的視窗；按下 → `prepared` 398 ms，tick 在 +0、+1002 與 +2001 ms，dismissal 164 ms，`record` 在 anchor 後 3003 ms，`record → started` 7 ms。10.3 秒 1920 × 1080 的檔案通過完整性層級（10 次閃光與 10 次嗶聲、RMS −27.2/−27.2 dB、完整解碼）。前 15 格的 238 × 238 裁圖與 2 秒後同一閃光相位的畫格相比，15 格都有判定，最大平均亮度差 1.12，門檻為 3：放大後的數字沒有出現在錄影中，較大的區域也不需要修改區域或閃光邏輯。取消案例因取消與退出流程都沒有改變而略過。
+- **原生觀察**以截圖進行，每次倒數都由 System Events 送出快捷鍵開始、再按一次取消：放大的「3」位於主螢幕右上角；選擇直立螢幕時為 `display 2 at -254,-105 238x238 in display bounds -1080,-147 1080x1920`，大小相同、位於該螢幕右上角；10 秒倒數時，兩位數的「10」完整放在 238 pt 視窗內。每次取消都沒有留下檔案、失敗紀錄或通知。
+
+自動化證據：`pnpm check` 通過 typecheck、63 個檔案 1039 個測試與 build；`git diff --check` 無誤。測試涵蓋 `overlayBounds` 與 `overlayFontPt` 的橫式螢幕、短邊相同並位於自己右上角的直立螢幕、56 pt 下限（88 pt 視窗）與 216 pt 上限（339 pt 視窗）、四捨五入（1366 × 768 → 169 pt）與原點為負值的副螢幕；overlay 以主螢幕縮放後的 bounds 建立、在送出第一個數字前依被錄螢幕調整大小，並在 log 記錄縮放後的大小；`overlayStyle` 以 `vmin` 與 `em` 表示，在 88 pt 時等於 56 px、1 px 與 1.5 px 外框及 040 的陰影；以及 `digitRegion` 在 1×、2× 與限制解析度畫格中的 238 pt 視窗。
+
+未執行：在短邊不同的螢幕之間切換時字級跳動的觀察，因為兩個已連接的螢幕短邊都是 1080 pt，且未使用內建螢幕；單元測試涵蓋先設定 bounds 再送出第一個數值的順序。14% 在日常的白色文件、深色 App 與亮色照片上是否合適，仍由維護者在 035 的 N32 判斷，直立螢幕案例則在 N34。網站首頁場景已比較、維持不變：1600 × 900 場景中的 120 px 數字為短邊的 13.3%，接近選定的 14%，因此不需要 `pnpm site:check`。不宣稱 Windows 外觀。
+
+清理：驗收回合與每次觀察後 RecordStuff 都正常結束；`settings.json` 中暫時的螢幕與倒數值已以回合前保存的檔案取代，現在與其完全相同。沒有殘留暫存檔或 sentinel。保留驗收錄影 `~/Movies/RecordStuff/2026-09-28 05-07-24.mp4` 與本機報告 `docs/verification/measurements/2026-09-27T21-07-18-414Z-hotkey-acceptance/`。草稿放在 `/tmp`，不是 repo 內的檔案。沒有 commit、push 或發布。
+
+Codex GPT-6 Astra（medium reasoning、唯讀）以 74 秒 review 本變更，沒有 findings；它指出不同大小螢幕之間的調整尚未測試，已如上記為未執行。
+
 ## Plan 035 後續修正 — 2026-09-28
 
 應維護者要求，[引導驗收回合](#plan-035-引導驗收回合--2026-09-28)發現的缺陷與選定的回饋已直接修正，由 Claude 實作、Codex GPT-6 Astra review；在維護者完成原生複驗前，計畫維持未結案。
