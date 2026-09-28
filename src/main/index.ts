@@ -677,6 +677,8 @@ async function main(): Promise<void> {
   });
 
   app.on("will-quit", () => {
+    // A modal quit prompt can hold the feedback timer past its 300 ms; it must not render a destroyed tray.
+    clearTimeout(quitFeedback);
     updates.dispose();
     savedNotification.dispose();
     displayMedia.settle();

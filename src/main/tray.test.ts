@@ -58,13 +58,16 @@ vi.mock("electron", () => {
     app,
     Menu: { buildFromTemplate: vi.fn(() => ({})) },
     Notification: FakeNotification,
+    // Like Electron, a destroyed tray throws on every native call.
     Tray: class {
+      destroyed = false;
+      live = (): void => { if (this.destroyed) throw new Error("Tray is destroyed"); };
       setIgnoreDoubleClickEvents = vi.fn();
-      setImage = vi.fn();
-      setTitle = vi.fn();
-      setToolTip = vi.fn();
-      popUpContextMenu = vi.fn();
-      destroy = vi.fn();
+      setImage = vi.fn(this.live);
+      setTitle = vi.fn(this.live);
+      setToolTip = vi.fn(this.live);
+      popUpContextMenu = vi.fn(this.live);
+      destroy = vi.fn(() => { this.destroyed = true; });
       on = vi.fn();
     },
     nativeImage: { createFromPath: vi.fn((file: string) => image(file)) },
@@ -387,5 +390,25 @@ describe("tray menu template (plan 048)", () => {
     // Items without a registered shortcut carry no accelerator at all.
     expect(template.find((entry) => entry.label === "Show log")).not.toHaveProperty("accelerator");
     expect(template.at(-1)).toMatchObject({ label: "Quit RecordStuff" });
+  });
+});
+
+describe("AppTray after destroy (plan 035 D4)", () => {
+  it("ignores a late render, refresh or right-click, as the quit-feedback timer after a quit prompt did", async () => {
+    const { Tray } = await import("electron");
+    const { tray } = setup();
+    const instance = (tray as unknown as { tray: InstanceType<typeof Tray> }).tray;
+    const rightClick = vi.mocked(instance.on).mock.calls.find(([name]) => name === "right-click")?.[1] as () => void;
+    tray.destroy();
+    vi.mocked(instance.setToolTip).mockClear();
+    expect(() => tray.render({ type: "idle" })).not.toThrow();
+    expect(() => tray.refresh()).not.toThrow();
+    expect(() => rightClick()).not.toThrow();
+    expect(() => tray.destroy()).not.toThrow();
+    expect(instance.setToolTip).not.toHaveBeenCalled();
+    expect(instance.popUpContextMenu).not.toHaveBeenCalled();
+    expect(instance.destroy).toHaveBeenCalledTimes(1);
+    // The fake behaves like Electron, so without the guard the render above would have thrown.
+    expect(() => instance.setToolTip("x")).toThrow("Tray is destroyed");
   });
 });

@@ -68,8 +68,11 @@ export class AppTray {
   }
 
   private lastState: RecordingState = { type: "idle" };
+  // Electron throws on a destroyed tray; a late refresh during quit must not surface as an error dialog.
+  private destroyed = false;
 
   render(state: RecordingState): void {
+    if (this.destroyed) return;
     this.lastState = state;
     const model = trayModel(state, this.options.context());
     if (model.icon !== this.currentIcon) {
@@ -86,6 +89,8 @@ export class AppTray {
   }
 
   destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
     for (const notification of this.notifications) {
       try { notification.close(); }
       catch (error) { this.log(`notification: close failed (${String(error)})`); }
@@ -233,6 +238,7 @@ export class AppTray {
   }
 
   private popUpMenu(): void {
+    if (this.destroyed) return;
     const model = trayModel(this.lastState, this.options.context());
     this.tray.popUpContextMenu(Menu.buildFromTemplate(model.menu.map((entry) => this.toTemplate(entry))));
   }
