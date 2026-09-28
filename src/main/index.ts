@@ -1,3 +1,9 @@
+/**
+ * App lifecycle (docs/system-design/recording.md): hide the Dock icon, create the tray, register
+ * the display-media handler (primary display + system audio loopback), detect
+ * permission, and make quitting wait for a running recording to finish.
+ * Settings use a separate sandboxed window; capture keeps its hidden host.
+ */
 import { createHistoryQuit, createQuitFeedback } from "./quit-feedback";
 import { installQuitCoordinator } from "./quit-coordinator";
 import { RecordingResultStore } from "./recording-result-store";
@@ -5,12 +11,6 @@ import { RecordingResults } from "./recording-result";
 import { SettingsWindowState } from "./settings-window-state";
 import { DisplayMedia } from "./display-media";
 import { isDisplayInfo, type DisplayInfo } from "../shared/display";
-/**
- * App lifecycle (docs/system-design/recording.md): hide the Dock icon, create the tray, register
- * the display-media handler (primary display + system audio loopback), detect
- * permission, and make quitting wait for a running recording to finish.
- * Settings use a separate sandboxed window; capture keeps its hidden host.
- */
 import {
   app,
   desktopCapturer,
@@ -41,7 +41,7 @@ import { SessionSentinels, reportInterruptions } from "./session-sentinel";
 import { SavedNotification } from "./saved-notification";
 import { SettingsStore } from "./settings";
 import { parseAutoRecord, runAutoRecord } from "./autorecord";
-import { UpdateChecker, fetchVersion, DOWNLOAD_URL, RELEASES_URL } from "./updates";
+import { UpdateChecker, fetchVersion, DOWNLOAD_URL, RELEASES_URL, SOURCE_URL, WEBSITE_URL } from "./updates";
 import { AppTray } from "./tray";
 import { SettingsWindow } from "./settings-window";
 import { APP_NAME, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
@@ -70,13 +70,26 @@ const runId = createRunId(new Date(), process.pid);
 // The main process has no window: an uncaught error would otherwise leave no
 // trace at all. Electron's default for the exception case is a modal error
 // dialog and the process keeps running; keep that, but write the log line first.
+// The dialog is modal, so a fault that repeats (a timer, a listener) would
+// otherwise stack one dialog per repetition; later ones only reach the log.
+let errorDialogShown = false;
 process.on("uncaughtException", (error) => {
   log(`uncaught exception: ${error.stack ?? String(error)}`);
+  if (errorDialogShown) return;
+  errorDialogShown = true;
   dialog.showErrorBox(APP_NAME, translate("An unexpected error occurred. See the log for details.", currentLanguage));
 });
 process.on("unhandledRejection", (reason) => {
   log(`unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`);
 });
+
+/**
+ * Bring the app forward before a dialog or window: a menu-bar app has no Dock
+ * icon, so on macOS its dialogs would otherwise open behind the frontmost app.
+ */
+function focusApp(): void {
+  if (process.platform === "darwin") app.focus({ steal: true });
+}
 
 /** `~/Movies/RecordStuff` on macOS, `~/Videos/RecordStuff` on Windows. */
 function defaultOutputDir(): string {
@@ -117,7 +130,13 @@ if (!app.requestSingleInstanceLock()) {
   log(`start: another instance already holds the userData lock; run ${runId}; exiting`);
   app.quit();
 } else {
-  void main();
+  // A menu-bar app that fails to wire up has no window and no tray to quit
+  // from: it would sit invisible until Activity Monitor found it.
+  main().catch((cause: unknown) => {
+    log(`start: failed: ${cause instanceof Error ? (cause.stack ?? cause.message) : String(cause)}; exiting`);
+    dialog.showErrorBox(APP_NAME, translate("An unexpected error occurred. See the log for details.", currentLanguage));
+    app.exit(1);
+  });
 }
 
 async function main(): Promise<void> {
@@ -322,7 +341,7 @@ async function main(): Promise<void> {
     defaultOutputDir: settings.defaultOutputDir,
     language: () => settings.language,
     openPath: dir => shell.openPath(dir),
-    focus: () => { if (process.platform === "darwin") app.focus({ steal: true }); },
+    focus: focusApp,
     show: options => dialog.showMessageBox(options),
     // The warning may outlive the idle state; the chooser keeps its own lock too.
     chooseFolder: async () => { if (settled()) await changeOutputDir(); },
@@ -342,65 +361,57 @@ async function main(): Promise<void> {
     }
     if (typeof action !== "string") {
       if ("setDisplay" in action) {
-        if (!settled()) return;
         const before = JSON.stringify(settings.display);
-        try {
-          await settings.setDisplay(action.setDisplay);
-          if (JSON.stringify(settings.display) !== before) displayMedia.failure = undefined;
-          log(`settings: display ${JSON.stringify(settings.display)}`);
-        } catch (cause) {
-          log(`settings: display save failed: ${String(cause)}`);
-          tray.notifyDisplayWriteFailed();
-        }
-        refreshUi();
+        await savePreference("display", {
+          locked: true,
+          write: () => settings.setDisplay(action.setDisplay),
+          applied: () => {
+            if (JSON.stringify(settings.display) !== before) displayMedia.failure = undefined;
+            log(`settings: display ${JSON.stringify(settings.display)}`);
+          },
+          notifyFailure: () => tray.notifyDisplayWriteFailed(),
+        });
       } else if ("setUpdateChecks" in action) {
-        if (!settled()) return;
-        try { await settings.setUpdates({ enabled: action.setUpdateChecks }); }
-        catch (error) { log(`updates: preference save failed: ${String(error)}`); }
-        if (settled()) refreshUi();
+        await savePreference("update checks", { locked: true, write: () => settings.setUpdates({ enabled: action.setUpdateChecks }) });
       } else if ("setNotifications" in action) {
-        if (!settled()) return;
         const turningOn = action.setNotifications && !settings.notifications;
-        try { await settings.setNotifications(action.setNotifications); }
-        catch (error) { log(`notifications: preference save failed: ${String(error)}`); }
-        if (settled()) refreshUi();
+        await savePreference("notifications", { locked: true, write: () => settings.setNotifications(action.setNotifications) });
         // Electron asks macOS for authorization inside `show()`, so turning the
         // switch on is the one moment the system prompt can appear at the
         // user's own request. The confirmation doubles as the delivery test.
         if (turningOn && settings.notifications) tray.notifyNotificationsEnabled();
       } else if ("setAppearance" in action) {
-        try {
-          await settings.setAppearance(action.setAppearance);
-          nativeTheme.themeSource = settings.appearance;
-        } catch (cause) { log(`settings: failed to save appearance: ${String(cause)}`); }
-        refreshUi();
+        await savePreference("appearance", {
+          write: () => settings.setAppearance(action.setAppearance),
+          applied: () => { nativeTheme.themeSource = settings.appearance; },
+        });
       } else if ("setLanguage" in action) {
-        try {
-          await settings.setLanguage(action.setLanguage);
-          currentLanguage = settings.language;
-          refreshUi();
-        } catch (cause) {
-          log(`settings: failed to save language: ${String(cause)}`);
-          tray.notifyLanguageWriteFailed();
-        }
+        await savePreference("language", {
+          write: () => settings.setLanguage(action.setLanguage),
+          applied: () => { currentLanguage = settings.language; },
+          notifyFailure: () => tray.notifyLanguageWriteFailed(),
+        });
       } else if ("setHotkey" in action) {
         await shortcuts.set(action.setHotkey);
       } else if ("setCountdown" in action) {
-        if (!settled()) return;
-        try {
-          await settings.setCountdown(action.setCountdown);
-          log(`settings: countdown ${settings.countdown} s`);
-        } catch (cause) { log(`settings: countdown save failed: ${String(cause)}`); }
-        refreshUi();
+        await savePreference("countdown", {
+          locked: true,
+          write: () => settings.setCountdown(action.setCountdown),
+          applied: () => log(`settings: countdown ${settings.countdown} s`),
+        });
       } else if ("setCountdownSound" in action) {
-        if (!settled()) return;
-        try {
-          await settings.setCountdownSound(action.setCountdownSound);
-          log(`settings: countdown sound ${settings.countdownSound ? "on" : "off"}`);
-        } catch (cause) { log(`settings: countdown sound save failed: ${String(cause)}`); }
-        refreshUi();
+        await savePreference("countdown sound", {
+          locked: true,
+          write: () => settings.setCountdownSound(action.setCountdownSound),
+          applied: () => log(`settings: countdown sound ${settings.countdownSound ? "on" : "off"}`),
+        });
       } else {
-        await setQuality(action.setQuality);
+        await savePreference("quality", {
+          locked: true,
+          write: () => settings.setQuality(action.setQuality),
+          applied: () => log(`settings: quality ${JSON.stringify(settings.quality)}`),
+          notifyFailure: () => tray.notifyQualityWriteFailed(),
+        });
       }
       return;
     }
@@ -417,7 +428,7 @@ async function main(): Promise<void> {
       case "openWebsite":
       case "openSource":
         try {
-          await shell.openExternal(action === "openWebsite" ? "https://record.ericts.com" : "https://github.com/EricTsai83/recordstuff");
+          await shell.openExternal(action === "openWebsite" ? WEBSITE_URL : SOURCE_URL);
           return true;
         } catch (error) { log(`settings: external link failed: ${String(error)}`); return false; }
       case "openUpdate":
@@ -457,7 +468,7 @@ async function main(): Promise<void> {
       case "revealLastSaved": {
         const state = recorder.state;
         if ((state.type === "idle" || state.type === "needsPermission") && state.lastSavedPath) {
-          shell.showItemInFolder(state.lastSavedPath);
+          await revealSaved(state.lastSavedPath);
         }
         return;
       }
@@ -472,6 +483,21 @@ async function main(): Promise<void> {
       case "changeOutputDir":
         return changeOutputDir();
     }
+  }
+
+  /**
+   * Show last recording: select the file, or, when the user moved or deleted it
+   * since it was saved, open the output folder instead of doing nothing visible.
+   */
+  async function revealSaved(savedPath: string): Promise<void> {
+    try {
+      await fs.access(savedPath);
+    } catch {
+      log(`reveal last recording: ${savedPath} is gone; opening the output folder instead`);
+      await openOutputDir();
+      return;
+    }
+    shell.showItemInFolder(savedPath);
   }
 
   /**
@@ -496,8 +522,7 @@ async function main(): Promise<void> {
   async function changeOutputDir(): Promise<boolean> {
     // Starting and counting-down sessions already opened their file in the current folder.
     if (!settled()) return false;
-    // A window-less app's dialog may open behind the frontmost app on macOS.
-    if (process.platform === "darwin") app.focus({ steal: true });
+    focusApp();
     const result = await dialog.showOpenDialog({
       title: translate("Choose a recording folder", settings.language),
       defaultPath: settings.outputDir,
@@ -518,21 +543,29 @@ async function main(): Promise<void> {
   }
 
   /**
-   * the choice is applied only after settings.json is written;
-   * a failed write keeps the previous value and says so. The settings panel
-   * locks these controls outside idle / needsPermission and this guard repeats
-   * the rule, so a running session's snapshot is never touched.
+   * Every preference write: a choice is applied only after settings.json is
+   * written, and a failed write keeps the previous value, is logged and, where
+   * the tray has a notification for it, said. A `locked` preference touches a
+   * session (quality, display, countdown), so it changes only while the
+   * recorder is settled; the panel already shows such controls disabled, and
+   * this guard repeats the rule so a running session's snapshot is never
+   * touched. Both projections refresh afterwards; an unchanged view is not pushed.
    */
-  async function setQuality(patch: Partial<QualitySettings>): Promise<void> {
-    if (!settled()) return;
+  async function savePreference(what: string, save: {
+    locked?: boolean;
+    write: () => Promise<void>;
+    /** Runs after a successful write, before the refresh. */
+    applied?: () => void;
+    notifyFailure?: () => void;
+  }): Promise<void> {
+    if (save.locked && !settled()) return;
     try {
-      await settings.setQuality(patch);
+      await save.write();
+      save.applied?.();
     } catch (cause) {
-      log(`settings: failed to save quality ${JSON.stringify(patch)}: ${String(cause)}`);
-      tray.notifyQualityWriteFailed();
-      return;
+      log(`settings: ${what} save failed: ${String(cause)}`);
+      save.notifyFailure?.();
     }
-    log(`settings: quality ${JSON.stringify(settings.quality)}`);
     refreshUi();
   }
 
@@ -656,11 +689,10 @@ async function main(): Promise<void> {
 
   const showQuitFeedback = createQuitFeedback({
     language: () => currentLanguage,
-    focus: () => { if (process.platform === "darwin") app.focus({ steal: true }); },
+    focus: focusApp,
     show: options => dialog.showMessageBox(options),
     log,
   });
-  const quitFocus = (): void => { if (process.platform === "darwin") app.focus({ steal: true }); };
   let historyPrompt = false;
   const quitCoordinator = installQuitCoordinator(app, {
     relaunch: () => app.relaunch(),
@@ -678,7 +710,7 @@ async function main(): Promise<void> {
       void showQuitFeedback();
     },
     // Media is safe here; unsaved reminders need a durable save or explicit consent.
-    history: createHistoryQuit({ results: recordingResults, language: () => currentLanguage, focus: quitFocus, log,
+    history: createHistoryQuit({ results: recordingResults, language: () => currentLanguage, focus: focusApp, log,
       show: async options => {
         historyPrompt = true;
         try { return await dialog.showMessageBox(options); } finally { historyPrompt = false; }
@@ -691,7 +723,7 @@ async function main(): Promise<void> {
       refreshUi();
     },
     // A repeated request brings an open reminder prompt forward; otherwise it just joins.
-    joined: () => { if (historyPrompt) quitFocus(); },
+    joined: () => { if (historyPrompt) focusApp(); },
     error: (cause) => log(`quit deferred: ${String(cause)}`),
   });
 

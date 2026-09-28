@@ -1,7 +1,10 @@
 /** User-triggered/once-per-launch checks; no polling or installation. */
-export const RELEASES_URL = "https://github.com/EricTsai83/recordstuff/releases";
-export const DOWNLOAD_URL = "https://record.ericts.com/download";
-export const FEED_URL = "https://record.ericts.com/release.json";
+/** The project's public addresses; the About footer and the update check share them. */
+export const WEBSITE_URL = "https://record.ericts.com";
+export const SOURCE_URL = "https://github.com/EricTsai83/recordstuff";
+export const RELEASES_URL = `${SOURCE_URL}/releases`;
+export const DOWNLOAD_URL = `${WEBSITE_URL}/download`;
+export const FEED_URL = `${WEBSITE_URL}/release.json`;
 export const API_URL = "https://api.github.com/repos/EricTsai83/recordstuff/releases/latest";
 export const DAY_MS = 86_400_000;
 export type UpdateResult = { kind: "current"; checkedAt: number } | { kind: "available"; version: string } |

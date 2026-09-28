@@ -36,6 +36,8 @@ export class DisplayRequest<S extends Source> {
     platform: NodeJS.Platform;
     selected: (source: S, rule: string, attempt: number, resolution: DisplayResolution) => void;
     denied: (code: ErrorCode, detail: DisplayFailure, attempt: number) => void;
+    /** Something threw outside the expected refusals; the request is still answered without a source. */
+    failed?: (cause: unknown) => void;
   }) {}
   cancel(): void {
     this.cancelled = true;
@@ -57,6 +59,18 @@ export class DisplayRequest<S extends Source> {
       if (!this.cancelled) this.deps.denied(code, detail, attempt);
       finish();
     };
+    // An unanswered request would only surface as the capture-request timeout
+    // two minutes later, so whatever happens the callback is called once.
+    try {
+      await this.attempts(finish, deny);
+    } catch (cause) {
+      try { this.deps.failed?.(cause); }
+      catch { /* The answer below still goes out. */ }
+    } finally {
+      finish();
+    }
+  }
+  private async attempts(finish: (source?: S) => void, deny: (code: ErrorCode, detail: DisplayFailure, attempt: number) => void): Promise<void> {
     const preference = this.deps.preference;
     for (let attempt = 1; attempt <= 3; attempt++) {
       if (this.cancelled) { finish(); return; }

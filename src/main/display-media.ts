@@ -67,6 +67,10 @@ export class DisplayMedia<S extends Source> {
         log(`display media: denied (${code}); requested ${JSON.stringify(preference)}; resolved none; rule ${preference.kind}; retry ${attempt - 1}; detail ${detail}`);
         this.options.changed();
       },
+      failed: (cause) => {
+        this.denial = "capture_start_failed";
+        log(`display media: request failed unexpectedly; requested ${JSON.stringify(preference)}; ${cause instanceof Error ? (cause.stack ?? cause.message) : String(cause)}`);
+      },
     });
   }
 

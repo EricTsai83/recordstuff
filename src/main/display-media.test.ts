@@ -76,6 +76,20 @@ describe("refusals", () => {
     expect(x.media.failure).toBeUndefined();
   });
 
+  it("answers the request without a source when the refusal path itself throws", async () => {
+    const logs: string[] = [];
+    const changed = vi.fn(() => { throw new Error("tray gone"); });
+    const media = new DisplayMedia({
+      platform: "darwin", preference: () => ({ kind: "display", id: "9", label: "Gone" }), displays: () => [main, side], primaryDisplayId: () => "1",
+      getSources: async () => [{ display_id: "1" }], changed, log: (m) => logs.push(m),
+    });
+    media.begin("s1");
+    const answered = await new Promise<unknown>((resolve) => media.answer(() => true, resolve));
+    expect(answered).toBeUndefined();
+    expect(logs.some((m) => m.includes("request failed unexpectedly") && m.includes("tray gone"))).toBe(true);
+    expect(media.explain("permission_denied")).toBe("capture_start_failed");
+  });
+
   it("a later grant clears an earlier refusal of the same attempt", async () => {
     const x = setup();
     x.getSources.mockRejectedValueOnce(new Error("TCC"));
