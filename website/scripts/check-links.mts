@@ -13,7 +13,7 @@ import { configuredSite } from "../src/lib/site-origin.ts";
 const { values } = parseArgs({ options: { dir: { type: "string" }, offline: { type: "boolean" } } });
 const dist = values.dir ? path.resolve(values.dir) : fileURLToPath(new URL("../dist", import.meta.url));
 const offline = values.offline || process.env.SITE_MANIFEST_OFFLINE === "1";
-/** Absolute URLs on the configured site origin (canonical, og:image) are checked as internal paths. */
+/** Absolute href/src/srcset URLs on the configured site origin (the canonical link) are checked as internal paths; meta content such as og:image is not scanned. */
 const siteOrigin = new URL(configuredSite()).origin;
 
 async function htmlFiles(dir: string): Promise<string[]> {

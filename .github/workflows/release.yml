@@ -2,7 +2,8 @@ name: macOS release
 # Tag = release, and the tag is the version. Pushing vX.Y.Z (or vX.Y.Z-rc.1
 # for a pre-release) stamps that version into the build, signs, verifies and
 # publishes, re-downloads the public assets as an anonymous user and verifies
-# them again, then records the release facts back on main (stable tags only).
+# them again, then records the release facts back on main (a pre-release
+# records only its verification record).
 # App publication only follows tag pushes; local acceptance happens before
 # tagging (docs/system-design/releases.md). Dispatch only verifies a published
 # release. Website changes deploy independently through website.yml, also

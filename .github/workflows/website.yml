@@ -6,6 +6,8 @@ on:
     paths:
       - 'website/**'
       - 'scripts/lib/release-manifest*.mts'
+      # release-manifest.mts imports the shared version grammar.
+      - 'src/shared/version.ts'
       - '.github/workflows/website.yml'
   workflow_dispatch:
   workflow_call:
