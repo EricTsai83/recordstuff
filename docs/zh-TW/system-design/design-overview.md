@@ -79,6 +79,16 @@ flowchart TB
 
 任何一步失敗都走同一條路徑：卸離 session、清除期限、停止 host、回到 idle、保留已寫入的位元組（[recording.md](recording.md#寫檔與失敗)）。權限變化只在 idle 或 `needsPermission` 時套用，所以輪詢不會打斷進行中的錄影。
 
+## 在選單列待命
+
+RecordStuff 大部分時間都在待命，所以待命有預算（plan 049）：大約單一核心的 0%、每秒幾次喚醒，由 `pnpm measure:cpu` 量測（[CPU 預算](tooling.md#cpu-預算)）。設定視窗關閉時，只允許下列項目執行：
+
+- **程序。**主程序，以及 Electron 的 GPU 與網路服務程序。第一個視窗開啟之前，另外還有一個沒有載入任何頁面的 renderer：Electron 44 在第一次使用預設 session 時會先啟動它（[electron/electron#53144](https://github.com/electron/electron/pull/53144)），而 display-media handler 在啟動時就需要預設 session，所以第一個 capture host 會在這個 renderer 裡啟動；之後沒有任何東西會再建立它，它約佔 65 MB，量不到 CPU。第一次擷取系統聲音時會啟動 Chromium 的獨立音訊服務，Chromium 152 會讓它一直存在到 App 結束（約 49 MB，每秒 0.3 次喚醒）。capture host 視窗與倒數覆蓋層只在開始到儲存之間存在，狀態穩定後就銷毀；設定視窗關閉時也會銷毀。所以設定視窗關閉時，錄影後不會留下任何 renderer。
+- **一個計時器。**[PermissionWatcher](../../../src/main/permission.ts) 每 5 秒輪詢一次 `getMediaAccessStatus('screen')`，每秒 0.2 次喚醒；沒有任何視窗開著時，要靠它發現權限被撤銷，所以在量測顯示它有影響之前都保留。capture host 每 5 秒的 ping 與寫檔器的 fsync interval 只在工作階段中存在，單元測試確認它們與所有期限計時器都不會在儲存、失敗或取消的工作階段之後殘留。其他計時器都是有上限的單次計時（工作階段期限、覆蓋層淡出、儲存通知延遲、設定視窗開著時擷取快捷鍵的租約、歷史紀錄重試退避、結束時的回饋）。
+- **只有監聽。**螢幕變化、電源睡眠與喚醒、全域快捷鍵與 Tray 點按，都只在發生時喚醒 App。更新檢查只在啟動時執行，而且一天最多一次。
+
+新增計時器、輪詢、監看、會持續存在的視窗或 renderer，或 Tray 工作的改動，要維持這份清單成立並實際量測，見[測試規則](../testing.md#依行為選擇測試)。
+
 ## 跨切面不變式
 
 以下每一條都橫跨多個模組，而且都已經有落實的位置與詳述的文件。

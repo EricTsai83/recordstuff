@@ -59,6 +59,7 @@ pnpm probe -- /absolute/path/recording.mp4
 pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 pnpm verify -- /absolute/path/any-desktop-recording.mp4 --screen 1920x1080   # 只驗完整性
 pnpm acceptance -- --seconds 10        # 對執行中的 App 做無人值守快捷鍵驗收
+pnpm acceptance -- --skip-cancel --countdown-sound   # 同上，本回合開啟倒數音效（plan 046）
 pnpm acceptance:settings                           # 設定頁面與 preload 在真實 Electron 視窗；包含截圖矩陣
 pnpm acceptance:notification -- --install --clicks 2  # 通知日常 smoke：兩次點擊
 pnpm acceptance:notification -- --install          # 點「已儲存」通知 → Finder 置前；約 1 分鐘；本次把建置好的 App 換進 /Applications
@@ -72,6 +73,8 @@ pnpm diagnose:cadence                                    # 30 與 60 fps 的影�
 pnpm diagnose:cadence -- --request 30:30.6,60:62.4       # 比較候選的幀率要求
 pnpm measure:finalization -- --dir /Volumes/test/rs --seconds 15 --repeat 10   # 錄到隔離資料夾，量停止到可再開始的時間與各階段
 pnpm bench:publication -- --dir /Volumes/test/rs --sizes 64m,2g                 # 依檔案大小量發布成本，不錄影
+pnpm measure:cpu                                         # 在已結束的打包 App 上量 CPU 預算：待機、一段 30 fps 錄影、錄影後待機、設定開著；約 15 分鐘
+pnpm measure:cpu -- --fps 60 --repeat 3                  # baseline 回合：兩種幀率各錄三次；約 25 分鐘
 ```
 
 verify 支援多檔、log、來源尺寸、同步標記、Markdown／JSON 與指定 JSON 輸出。聲道能量是必要證據，帶 `--sync` 時閃光／短音標記也是；有檢查 fail、必要證據 incomplete 或檔案無法讀取時 exit 1，缺少必要工具（blocked）時 exit 2，其餘 exit 0（見[判定](#驗收門檻)）。結果預設存至 docs/verification/measurements（已 gitignore，原始執行只留本機，解讀後的結論才寫進驗證紀錄）；會讀所有保留的檔案（active log 與 `.1`～`.3`，由舊到新），並依身分配對錄影與 session（plan 029）：使用 [session record](desktop.md#log-與診斷) 的 run 與 session id，以檔案完整路徑查找；只有 log 中恰好一個 session 指名同名檔案時才退回用檔名（複製出去的檔案）。同一筆 record 記兩次仍是一個結果；同一 session 出現不同結果則是 conflict。沒有留下檔案的失敗不宣告任何路徑，因為同一秒的重試可能重用它的暫存檔名。session record 之前版本的啟動使用保守的舊版關聯：只有沒有其他可能擁有者時才接受（`file finalized` 行、唯一仍在錄製的 session，或文字相符且唯一未解決的失敗），因此兩個未解決的失敗絕不依印出順序分配。其餘情況報告會標出 metadata 為 ambiguous、conflict 或 unknown，不判定任何需要要求設定的檢查；媒體量測不依賴 metadata。`pnpm acceptance` 與 `pnpm matrix` 在 metadata 沒有配到自己 session 時判該案例失敗。2026-09-25 以 244 個保留 log 重播，舊的依順序讀法配到的 628 個檔案全部得到相同關聯；保留 log 中沒有舊讀法會出錯的「收尾順序顛倒」交錯。
@@ -80,9 +83,9 @@ verify 支援多檔、log、來源尺寸、同步標記、Markdown／JSON 與指
 
 `scripts/test-material.html` 是所有量測共用的唯一固定頁面：捲動小字（銳利度）、紅藍細線與彩色文字（色度邊緣）、每幀移動的方塊（幀率時序）、右上角每秒閃白 100 ms 的方框，以及同一音訊時鐘上的柔和 660 Hz 音（120 ms、約 −10 dBFS、左右交替）。閃光與音是同步標記：`verify --sync` 以 ffmpeg blackdetect 看方框、silencedetect（−35 dB、0.4 秒）看音訊找出它們，所以頁面其餘時間必須靜音，機器上也不能有別的聲音在播。音訊稀疏，這類錄影的 AAC 碼率只回報不判定（`--test-material`）。手動開啟時要點一下才開始（瀏覽器自動播放政策）；`pnpm matrix` 與 `pnpm acceptance` 用全新 profile 的 Chrome app 模式全螢幕在主螢幕開啟、允許自動播放並帶 `?auto=1`，不需點擊。驗收報告會記錄頁面的 SHA-256，結果可對應素材版本。版本沿革：2026-09-19 以前是 1 kHz、60 ms、音量 0.5 的嗶聲；2026-09-20 改為上述較柔和的 660 Hz 音，首次執行在 20 秒內偵測到 20 次閃光與 19 個音、音畫偏移 79 ms，落在歷史 45–80 ms 延遲範圍內，先前的同步結果仍可比較。目前 SHA-256：`e631b973a793cde1d5326a9cc58da0d88a522ca3c3041b1c9a2d0f3561c41459`。
 
-matrix 只支援 macOS 開發環境。預設以 Chrome app 模式全螢幕在主螢幕開素材頁，可用 --no-open-material 自行開；固定音量與來源螢幕。以 RECORDSTUFF_AUTORECORD 驅動未打包 App，打包版忽略。seconds 範圍 (0,3600]，quality override 合併固定預設，不讀使用者品質作為基準；另可選填 `countdown`（0、3、5 或 10），以及只在該次執行於記憶體中取代已保存資料夾的絕對路徑 `outputDir`。未指定倒數時 autorecord 一律倒數 0 秒，matrix 與音質量測因此維持原本的時序，從不使用已保存的倒數設定。每個案例都要求聲道能量與同步標記（plan 030）：matrix 在建置或錄影前先檢查 ffmpeg 與 ffprobe，缺少就 exit 2（blocked）。只有沒有任何檢查 fail、blocked 或 incomplete 的案例才算通過；未通過的案例會在執行結尾與量測檔中列出每個未達成的檢查及原因，整輪 exit 1。
+matrix 只支援 macOS 開發環境。預設以 Chrome app 模式全螢幕在主螢幕開素材頁，可用 --no-open-material 自行開；固定音量與來源螢幕。以 RECORDSTUFF_AUTORECORD 驅動未打包 App，打包版忽略；錄影期間以[共用 CPU 取樣程式](#cpu-預算)取樣 App 的程序樹。seconds 範圍 (0,3600]，quality override 合併固定預設，不讀使用者品質作為基準；另可選填 `countdown`（0、3、5 或 10），以及只在該次執行於記憶體中取代已保存資料夾的絕對路徑 `outputDir`。未指定倒數時 autorecord 一律倒數 0 秒，matrix 與音質量測因此維持原本的時序，從不使用已保存的倒數設定。每個案例都要求聲道能量與同步標記（plan 030）：matrix 在建置或錄影前先檢查 ffmpeg、ffprobe 與 Command Line Tools 的 clang，缺少就 exit 2（blocked）。只有沒有任何檢查 fail、blocked 或 incomplete 的案例才算通過；未通過的案例會在執行結尾與量測檔中列出每個未達成的檢查及原因，整輪 exit 1。
 
-一次呼叫就是一個桌面回合（plan 042）：只建置一次 `out/`、只開一次素材，依序執行列出的矩陣。名稱以逗號分隔（多個參數會合併），同一名稱列兩次就跑兩次，所以 `fps,fps,long` 會錄 fps 兩次、long 一次。`--repeat N`（1–10）重複整份清單，因此同一案例的重複會和其他案例交錯，不會總是最先跑或在機器最熱時跑；`--dry-run` 印出執行順序。名稱未知或空白、選項未知，或 `--repeat` 不在 1–10，會印出用法並 exit 2。案例接連執行：前一個檔案驗證完就啟動下一個，驗證的時間就是兩次錄影之間的休息。每個案例都會印出並寫入一行計時（啟動到開始錄影、錄影、停止到存檔、退出，以及每個驗證工具），量測檔另有 Timing 表，列出本回合的 preflight、建置、素材與總耗時。跑超過一次的案例標題為「run k of n」，Repeats 表列出每一次的判定，以及平均幀率、影格間隔中位數、掉格、CPU、閃光／短音偏移、漂移與影片位元率的最小值、中位數與最大值；每一次都通過，該案例才算通過。因 ffmpeg 或 ffprobe 消失而提前停止、沒有執行到的案例，算作 blocked 的一次。exit code 規則不變，只有清理後仍有程序殘留時整輪 exit 1。收到 SIGINT 或 SIGTERM 時，會停止建置的整個 process group，對執行中案例的 App 送 SIGTERM（App 的正常退出流程會先停止並儲存進行中的錄影；啟動後 5 秒內會先等 App 出現；30 秒後仍在執行的會被強制結束），等素材啟動完成後關閉素材瀏覽器，結束桌面回合，確認程序都已結束，再以 130 或 143 結束，不寫量測結果；並指出被中斷案例已存的檔案（未經驗證）。只會停止本 checkout 的 Electron.app 與素材私有 profile 的程序，不會動到已安裝的 RecordStuff。ffprobe 或 ffmpeg 執行中收到的 SIGTERM 會在該工具結束後、下一個案例開始或寫入任何量測之前生效（數秒內）；Ctrl-C 則會連同工具本身一起停止。
+一次呼叫就是一個桌面回合（plan 042）：只建置一次 `out/`、只開一次素材，依序執行列出的矩陣。名稱以逗號分隔（多個參數會合併），同一名稱列兩次就跑兩次，所以 `fps,fps,long` 會錄 fps 兩次、long 一次。`--repeat N`（1–10）重複整份清單，因此同一案例的重複會和其他案例交錯，不會總是最先跑或在機器最熱時跑；`--dry-run` 印出執行順序。名稱未知或空白、選項未知，或 `--repeat` 不在 1–10，會印出用法並 exit 2。案例接連執行：前一個檔案驗證完就啟動下一個，驗證的時間就是兩次錄影之間的休息。每個案例都會印出並寫入一行計時（啟動到開始錄影、錄影、停止到存檔、退出，以及每個驗證工具），量測檔另有 Timing 表，列出本回合的 preflight、建置、素材與總耗時。跑超過一次的案例標題為「run k of n」，Repeats 表列出每一次的判定，以及平均幀率、影格間隔中位數、掉格、CPU 平均與第 95 百分位、編碼器 CPU、閃光／短音偏移、漂移與影片位元率的最小值、中位數與最大值；每一次都通過，該案例才算通過。因 ffmpeg 或 ffprobe 消失而提前停止、沒有執行到的案例，算作 blocked 的一次。exit code 規則不變，只有清理後仍有程序殘留時整輪 exit 1。收到 SIGINT 或 SIGTERM 時，會停止建置的整個 process group，對執行中案例的 App 送 SIGTERM（App 的正常退出流程會先停止並儲存進行中的錄影；啟動後 5 秒內會先等 App 出現；30 秒後仍在執行的會被強制結束），等素材啟動完成後關閉素材瀏覽器，結束桌面回合，確認程序都已結束，再以 130 或 143 結束，不寫量測結果；並指出被中斷案例已存的檔案（未經驗證）。只會停止本 checkout 的 Electron.app 與素材私有 profile 的程序，不會動到已安裝的 RecordStuff。ffprobe 或 ffmpeg 執行中收到的 SIGTERM 會在該工具結束後、下一個案例開始或寫入任何量測之前生效（數秒內）；Ctrl-C 則會連同工具本身一起停止。
 
 案例的額外耗時主要來自驗證，其中又以兩次 ffprobe（完整解碼計算影格數與讀取影格時間戳）為大宗：在 M1 Pro 參考機上，30 秒 30 fps 的檔案 5.4 秒中佔 4.6 秒，60 fps 13.9 秒中佔 12.4 秒，long 27.0 秒中佔 22.9 秒。三次 ffmpeg（astats、blackdetect、silencedetect）合計不到 1 秒（long 為 4 秒），因此維持分開執行。
 
@@ -112,13 +115,46 @@ Autorecord 存檔後立即退出，因此 macOS 待送的儲存通知會被退�
 
 `pnpm bench:publication`（plan 037 之後）回答同一個磁碟區上，儲存時的發布成本如何隨檔案大小變化；不需要錄影、桌面、螢幕權限或 `out/`。它把[量測程式](../../../scripts/fixtures/publication-bench.ts)與正式的 FileWriter 打包，在 Electron 自己的 Node（`ELECTRON_RUN_AS_NODE`）下執行，所以發布用的是 App 的 libuv。對每個 `--sizes`（預設 `64m,2g`）與每一輪 `--repeat`（預設 3），它以 4 MiB 的區塊把檔案寫入 `--dir`，呼叫 `finish`（磁碟區允許時連結，否則複製），並回報發布、flush、close 與清理時間、發布方式與連結的錯誤碼，以及寫入速度；除非加 `--keep`，檔案隨即刪除。寫入速度遠快於錄影，`finish` 時大部分資料還沒 flush，所以 flush 階段比真實錄影後更大：判讀時看發布，flush 以 `pnpm measure:finalization` 為準。磁碟區剩餘空間少於最大尺寸的兩倍加 1 GiB 時拒絕執行，因為複製期間會同時存在兩份。證據寫到 `docs/verification/measurements/<timestamp>-publication-<label>/`（`summary.md`、`summary.json`）。每個檔案都發布成功時 exit 0；任一失敗 exit 1；參數錯誤或空間不足 exit 2；SIGINT 或 SIGTERM 會停止量測並移除它自己的檔案，exit 130 或 143。
 
+### CPU 預算
+
+`pnpm measure:cpu`（plan 049）在打包後的 App 上確認 RecordStuff 在選單列待命時 CPU 很少、錄影時在正常範圍；`pnpm matrix` 以同一個取樣程式判定錄影 CPU。CPU 以單一核心的百分比表示，與「活動監視器」相同（M1 Pro 參考機有十個核心，整台機器是 1000%）。喚醒次數是每秒的 idle 加 interrupt 喚醒，即「活動監視器」的「閒置喚醒次數」。待機時允許執行哪些東西，見[設計總覽](design-overview.md#在選單列待命)。
+
+**取樣程式。**[cpu-sampler.c](../../../scripts/lib/cpu-sampler.c) 參考 Cap 的逐程序取樣程式，以 Command Line Tools 的 `clang` 編譯到該次執行的資料夾；沒有 Command Line Tools 時量測是 blocked（exit 2），不會略過。它依固定時程每秒列出所有程序，保留 App 的主程序與其所有子孫程序（每次取樣都重新解析），以及所有名為 VTEncoderXPCService 的程序，並印出各程序 `proc_pid_rusage` 的計數：以奈秒計的 CPU 時間、idle 與 interrupt 喚醒、能耗與常駐記憶體。不使用 `ps`：它的 CPU 時間以百分之一秒為單位，對待機的一秒太粗（0.2% 只有 2 ms），而它的 `%cpu` 是會衰減的平均，會壓平尖峰，也會把啟動時的負載帶到之後的取樣。[cpu-sampler.mts](../../../scripts/lib/cpu-sampler.mts) 把計數轉成每秒數字，回報每個程序與合計的平均、第 95 百分位（nearest rank）與最大值。一段範圍只計入完全落在範圍內的每秒區間，所以範圍開始前用掉的 CPU 不會混進來；App 的程序組合有變化的那一秒會被捨棄並列出，預期會有程序開始或結束的地方除外。判定的區間不到範圍的 80%，或取樣程式在被停止前就結束時，該範圍判定失敗：缺少的取樣絕不會被當成 0% CPU 而通過。系統的硬體編碼器 VTEncoderXPCService 另外回報，不算進 App；它是系統共用的服務（參考機待機時就有四個），所以判讀它的 CPU，而不是它是否存在。能耗是 macOS 自己對每個程序的估計，只回報不判定。
+
+**情境。**先用 `pnpm start:app` 建置並結束 App，再執行 `pnpm measure:cpu`。有任何 RecordStuff 在執行時它會拒絕開始。它在 App 結束的狀態下，把倒數設為關閉、錄影螢幕設為主螢幕（素材會開在那裡）、品質設為標準、原始解析度、30 fps 寫入 settings.json，啟動 `dist/mac-arm64/RecordStuff.app`，並等到 `ready;`、權限已授予、`recording history: loaded`，以及啟動時更新檢查的結果或 `updates: launch check skipped` 那一行出現，確保啟動工作都結束後才開始判定：
+
+- **A. 啟動後待機**，設定視窗關閉：暖機 60 秒後量 `--minutes`（預設 5）分鐘。
+- **R. 錄影**：以錄影快捷鍵開始並停止一段 60 秒的錄影，畫面上是持續移動的測試素材（主螢幕上的 Chrome kiosk），只判定第 5 到 55 秒，並追蹤 VTEncoderXPCService。`--repeat N`（奇數，1–9，讓中位數就是其中一次的實際結果）錄 N 次、判定中位數那一次。`--fps 60` 之後會結束 App、寫入 60 fps 再重新啟動，錄第二組。
+- **B. 錄影後待機**：從最後一次儲存後 30 秒起量 `--minutes` 分鐘，套用待機門檻。
+- **C. 設定視窗開著、在其他 App 後面**：用設定快捷鍵開啟，並以 App 的 `settings shortcut: … pressed` 那一行與執行中的設定 renderer 確認已開啟，再把 Finder 帶到最前面，穩定 10 秒後量 3 分鐘，之後關閉。
+
+**程序角色。**每個待機情境也會依 Chromium 角色檢查 App 的程序；角色取自程序命令列的 `--type` 與 `--utility-sub-type`，因為三個 helper 的名稱都一樣。待機契約是 cpu-sampler.mts 的 `IDLE_ROLES`：主程序、GPU 與網路服務各一個，除此之外只能有[設計總覽](design-overview.md#在選單列待命)說明過的程序。也就是啟動後（A）最多一個預熱 renderer，第一個視窗會拿走它；錄影後（B）最多一個 Chromium 音訊服務，由第一次擷取系統聲音啟動，一直存在到 App 結束；設定視窗開著時（C）剛好一個 renderer，也就是設定頁，所以沒有真的開啟的設定視窗會判定失敗，而不是量到關閉時的待機。設定視窗關閉時，錄影後不能留下任何 renderer，所以即使預熱 renderer 已經不在，殘留的 capture host 或倒數覆蓋層仍會判定失敗；其他任何角色也一樣會失敗。每次儲存後 5 秒會記下一次角色，同一次啟動中的每一次記錄，以及 B 結束時的角色，都必須和第一次相同：錄影只啟動一次的東西是預期的，每錄一次就多一份的才是洩漏。這和 [fuite](https://github.com/nolanlawson/fuite) 這類洩漏偵測工具的做法一樣，看每次重複的成長，而不是和冷啟動比較。報告也會列出每次記錄時 App 的記憶體，只回報不判定。
+
+`--skip-recording` 省略 R 與 B，`--skip-settings` 省略 C，`--out` 指定報告資料夾。報告是 `docs/verification/measurements/<time>-cpu/`（git 忽略）下的 `report.md` 與 `report.json`，包含每個情境對照預算的檢查、判定與捨棄的區間、合計與逐程序的 CPU、喚醒、能耗與記憶體、儲存的檔案，以及機器、macOS、Electron、螢幕、電源與產物時間。結束時 runner 會正常結束 App（中斷時，若已要求啟動 App，會先等最多 10 秒讓它出現），確認它已退出，關閉素材瀏覽器並確認它也已結束，在沒有任何 RecordStuff 程序後，把 `countdown`、`display` 與 `quality` 設回執行前的值，並保留 App 在這段時間存下的其他設定；原始檔案另存在報告旁的 `settings-before.json`。錄影檔留在輸出資料夾。和其他桌面 runner 一樣，它會宣告使用者活動，並在整個執行期間持有螢幕與閒置睡眠的 assertion。每項判定都通過時 exit 0；任一失敗、執行出錯或收尾不完整時 exit 1；blocked（沒有 Command Line Tools、螢幕鎖定）時 exit 2；收到 SIGINT 或 SIGTERM 時，會先收尾進行中的錄影（只有在這段錄影正在倒數或錄影、且尚未送出停止時才送出快捷鍵，因此絕不會開始新的錄影），再關閉素材、結束 App 並還原設定，再寫出標記為 INTERRUPTED 的部分報告，exit 130 或 143。
+
+**預算。**plan 049 的初始目標，已由參考機 M1 Pro 的 [2026-09-28 baseline](../verification/history-2026-09.md#plan-049-cpu-baseline-結案--2026-09-28) 確認；數值放在 cpu-sampler.mts 的 `CPU_BUDGET`。
+
+| 狀態 | 門檻 | 理由 |
+| --- | --- | --- |
+| 待機、設定視窗關閉（A，以及錄影後的 B） | 平均 ≤0.2%、每秒取樣的第 95 百分位 ≤1%、合計每秒喚醒 ≤5 次 | 沒有事要做：唯一的週期性工作是每 5 秒一次的權限輪詢。Apple 的[能耗指南](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/Timers.html)要求 App 回應事件而不是輪詢 |
+| 錄影後（B） | 儲存後 30 秒起符合待機門檻、符合待機契約的角色且沒有 renderer，而且每次錄影後的角色都相同；VTEncoderXPCService 低於 0.1% 只是警告，因為它是共用服務 | 殘留的計時器、renderer 或編碼器會在這裡出現；和剛啟動時比較則抓不到，因為第一次錄影會拿走預熱 renderer，並只啟動一次音訊服務 |
+| 設定視窗開著、在其他 App 後面（C） | 平均 ≤0.5% | 一個沒有動畫在跑的閒置 renderer |
+| 錄影 30 fps（R 與矩陣） | 平均 ≤30%；baseline 確認之前，沿用原本 40% 的上限 | 擷取與 H.264 編碼在硬體上執行；App 自己負擔的是 Chromium 媒體管線、AAC、IPC 與檔案寫入 |
+| 錄影 60 fps | 平均 ≤40% | 影格加倍，但固定成本不會加倍 |
+| 錄影時的硬體編碼器 | 只回報不判定 | 若它不存在而 App 自己的 CPU 很高，可能退回軟體編碼；在 Cap 的量測中，軟體編碼每個影格的成本是硬體路徑的數十倍 |
+| 對照 baseline | 錄影比本機同一案例的 baseline 高出 25% 以上時發出警告，即使仍在門檻內 | 寬鬆的上限可能藏住退步；CPU 在不同回合間會漂移，所以只警告不判失敗 |
+
+baseline 存在 [cpu-baselines.json](../../../scripts/lib/cpu-baselines.json)，以 `sysctl hw.model` 為鍵：每個錄影數字是三次重複平均值的中位數，由 baseline 回合的報告手動填入，並同時寫入驗證紀錄。沒有記錄的機器只對照門檻。換機器或升級 Electron 時，要先取新的 baseline 才能比較結果。baseline 沒通過目標時是要調查的發現；沒有書面證據與維護者同意，不能因此放寬目標。
+
+**矩陣。**`pnpm matrix` 的每個案例以同一個取樣程式追蹤開發用 Electron.app 的主程序與其子孫程序（啟動後一秒內開始），判定範圍是該案例錄影的第 3 秒到要求停止為止；沒有這些 log 行的案例，改用啟動後第 3 秒到退出，這段期間預期 capture host 會啟動與結束。取樣程式沒找到 App、提前結束，或取樣不到判定範圍 80% 的案例，會以 CPU 證據不完整判定失敗。CPU 檢查會列出平均、第 95 百分位、峰值與 VTEncoderXPCService，超過該幀率的門檻時判定失敗，並註記比 baseline 退步（也會印在主控台）以及編碼器不存在的情況。plan 049 之前記錄的 17%、21% 與 23% 來自 `ps` 在整個案例上會衰減的平均，無法與現在的數字比較。
+
 ### 選擇驗收範圍
 
 依[共用測試規則](../testing.md)選擇必要及可排除的檢查。原生／錄影使用[共用案例與報告](../acceptance.md)。本頁維護指令操作及門檻，不另定一套測試選擇規則。
 
 Updates 使用插樁副本，matrix 使用 autorecord，兩者都不能代替正常建置 App 的驗收。通知驗收保留安裝路徑與不同 Finder 狀態的覆蓋。同一未變更檔案與相同驗證範圍可共用媒體證據；不同產物或 UI 操作不可互相替代。素材參數與有時限的 log 等待共用 `scripts/lib/acceptance.mts` 與 `scripts/lib/acceptance-runtime.mts`；各 runner 保留自己的 App 生命週期與判定。Log 位置是 `scripts/lib/log-reader.mts` 的 rotation-aware cursor（plan 029），等待與收尾共用：cursor 由檔案身分（device、inode、birth time）加 byte offset 組成，從它往後讀時會跟著該檔案到目前所在的 archive，再讀所有較新的檔案，每行只讀一次。它容忍輪替改名後、下一次追加前的空檔，保留尚未換行的最後一行，而且 retention 已刪除或截斷已抹去 cursor 所在歷史時，會明確回報 evidence gap，不會等到逾時。cursor 另外記下 offset 之前的 64 bytes；只會追加的 log 不會改動它們，所以檔案在兩次讀取之間被截斷又長回超過 offset，也會回報 gap，不會靜默跳過。被 single-instance lock 拒絕的第二次啟動所寫的 `start:` 行不算程序啟動，因此不會遮住執行中 App 的狀態，也不會切開它的 log。快捷鍵 runner 要求 App 的 run id，把等待綁定到本次 capture record 指名的 session，並從該 session 的終止 record 取得檔案。會實際錄影的 runner 都不把倒數算進延遲門檻（plan 040）：`pnpm acceptance` 使用實際設定，並從 App log 分別回報各階段（按鍵 → `prepared`、從第一格起每個 `state → countdown (n)`、overlay 的 dismissal、`record` 相對起點的時間、`record → started`、`started → first chunk`）；通知 runner 連同語言把 `countdown: 0` 寫入設定，結束後還原使用者原值；更新 fixture 在隔離的 userData 設為 0；autorecord 使用 0。被取消的倒數以其 `cancelled:` 行作為中斷錄影的收尾依據；收尾時若仍在倒數，只按一次鍵取消。
 
-有倒數時，`pnpm acceptance` 把 log 記錄的 overlay 位置（視窗與螢幕範圍，單位 pt）換算為影格像素，將該區域在最初 15 格，以及依時間戳選出的 2 秒後 15 格的裁圖存到 `digit-crops/`。在測試素材上，這個區域位於每秒閃白一次的黑色標記框內，所以每張早期裁圖都與相同閃光相位的後期裁圖比較：任一張偏亮（閃光期間白色數字看不出來）就略過；只要有一格的平均亮度差超過 3 個等級，或沒有任何一格可判定，該回合即失敗。沒開素材時只保存裁圖、不判定。取消案例接著按下快捷鍵、等待 `state → countdown`、再按一次，要求取消原因為 `toggle`、暫存檔與最終檔都不存在、沒有失敗、通知、`record` 或 recording 行，並回到 idle；`--skip-cancel` 可略過，倒數關閉時則不適用。快捷鍵與通知 runner 共用中斷錄影的收尾，等待存檔，成功送出停止命令後不再次切換快捷鍵；runner 的證據 log 會在遺失歷史的位置標示 gap。
+有倒數時，`pnpm acceptance` 把 log 記錄的 overlay 位置（視窗與螢幕範圍，單位 pt）換算為影格像素，將該區域在最初 15 格，以及依時間戳選出的 2 秒後 15 格的裁圖存到 `digit-crops/`。在測試素材上，這個區域位於每秒閃白一次的黑色標記框內，所以每張早期裁圖都與相同閃光相位的後期裁圖比較：任一張偏亮（閃光期間白色數字看不出來）就略過；只要有一格的平均亮度差超過 3 個等級，或沒有任何一格可判定，該回合即失敗。沒開素材時只保存裁圖、不判定。取消案例接著按下快捷鍵、等待 `state → countdown`、再按一次，要求取消原因為 `toggle`、暫存檔與最終檔都不存在、沒有失敗、通知、`record` 或 recording 行，並回到 idle；`--skip-cancel` 可略過，倒數關閉時則不適用。報告依 `prepared` 行的 `sound on`／`sound off` 說明本次倒數是否有音效（plan 046）。有音效時，runner 把錄影最初 500 ms 與 2 秒起的 500 ms 音訊混為單聲道，以 Goertzel 量測 50 ms Hann 視窗（每 25 ms 一格）在提示音的兩個音高 523 與 784.5 Hz 上最大的一格。素材的 660 Hz 音在兩個視窗都會以約 −58 dBFS 洩漏到這些頻段，而提示音在滿音量時約為 −28 dBFS；因此最初視窗比後段高出 6 dB 以上且高於 −70 dBFS，或最初 500 ms 出現沒有對應閃光的 beep 起點時，該回合即失敗。`--countdown-sound` 在本回合開啟儲存的開關：已經開啟（缺少欄位視為開啟）時不做任何變更；關閉時，runner 會先檢查所有可能拒絕本回合的條件（輸出資料夾、已鎖定的桌面），再結束 idle 的 App、只設定這個欄位、重新開啟同一個 bundle。只有在確認沒有任何 RecordStuff 程序後才把欄位改回：在最後結束 App 之後；若重新開啟後的準備失敗，則在結束它開啟的 App 之後。因為仍在執行的 App 下次存檔時會把本回合的值寫回去；無法確認 App 已結束時，該次執行判為失敗並說明欄位未還原（[stored-override.mts](../../../scripts/lib/stored-override.mts)）。儲存的倒數為關閉時會拒絕執行。通知 runner 與更新 fixture 把倒數設為 0，autorecord 永遠不發聲，受控 build 以預設值啟動，因此沒有其他 runner 會錄到它。快捷鍵與通知 runner 共用中斷錄影的收尾，等待存檔，成功送出停止命令後不再次切換快捷鍵；runner 的證據 log 會在遺失歷史的位置標示 gap。
 
 ### 通知驗收
 
@@ -163,7 +199,7 @@ media-tools 呼叫 ffprobe／ffmpeg；verify.mts 純解析／計算／判定；v
 | 效能 | 掉幀 | <2% |
 | 效能 | 音訊−影像偏移（閃光／短音） | 嚴格介於 −45 與 +125 ms，至少 3 組配對的閃光／短音 |
 | 效能 | 結尾漂移 | 絕對值 <100 ms。至少 120 秒（要求或實測）的錄影，前 60 秒與後 60 秒各需至少 3 組配對；較短的錄影沒有漂移可判定 |
-| 效能 | CPU | Electron 合計平均 ≤40%（僅 matrix） |
+| 效能 | CPU | App 程序樹在錄影第 3 秒之後的平均：30 fps ≤30%、60 fps ≤40%；並回報第 95 百分位、峰值與 VTEncoderXPCService；比本機 baseline 高出 25% 以上時發出警告（僅 matrix；見 [CPU 預算](#cpu-預算)） |
 
 碼率採下限而非目標，因為 Chromium 編碼器在 60 fps 時會超出要求 1.5–2 倍但仍達到預期品質；只有碼率不足才代表問題。這些是 THRESHOLDS 常數，不是任意素材的品質保證。beep 素材碼率低，dual-mono 也會通過雙聲道能量檢查，但不能證明立體聲分離。
 
@@ -281,7 +317,7 @@ Exit code：
 
 完整 App 驗收每輪無論成功、失敗或中斷，都須保存測試錄影、還原設定、清理測試視窗、退出受測 App 並確認程序已消失。清理失敗算驗收失敗；保留證據，不重設權限。開發期間已授權按需停止錄影、退出、重啟或重建 RecordStuff，不需另行確認。退出只重設程序狀態，不會清除偏好。
 
-桌面 runner（`acceptance`、`acceptance:settings`、`acceptance:shortcut` 與執行它們的 regression、`acceptance:shortcut-layout`、`acceptance:settings-shortcut`、`acceptance:quit-dialog`、`acceptance:notification`、含擷取的 `acceptance:updates`、`matrix` 及 `audio:quality -- record`）共用 [desktop-session.mts](../../../scripts/lib/desktop-session.mts)：`caffeinate -u` 喚醒閒置關閉的螢幕；以 `ioreg` 的 `CGSSessionScreenIsLocked` 在啟動任何東西或送出按鍵前拒絕鎖定中的 session；`caffeinate -d -i -w <runner pid>` 讓螢幕保持開啟到 runner 結束；回合中（每 2 秒及結束時）偵測到鎖定，結果改為 BLOCKED、exit code 2，並在報告寫入 `Desktop:` 一行。隔離的 lifecycle fixture 不需要螢幕，不持有 assertion。
+桌面 runner（`acceptance`、`acceptance:settings`、`acceptance:shortcut` 與執行它們的 regression、`acceptance:shortcut-layout`、`acceptance:settings-shortcut`、`acceptance:quit-dialog`、`acceptance:notification`、含擷取的 `acceptance:updates`、`matrix`、`measure:cpu` 及 `audio:quality -- record`）共用 [desktop-session.mts](../../../scripts/lib/desktop-session.mts)：`caffeinate -u` 喚醒閒置關閉的螢幕；以 `ioreg` 的 `CGSSessionScreenIsLocked` 在啟動任何東西或送出按鍵前拒絕鎖定中的 session；`caffeinate -d -i -w <runner pid>` 讓螢幕保持開啟到 runner 結束；回合中（每 2 秒及結束時）偵測到鎖定，結果改為 BLOCKED、exit code 2，並在報告寫入 `Desktop:` 一行。隔離的 lifecycle fixture 不需要螢幕，不持有 assertion。
 
 `pnpm acceptance` 會讓受測 App 保持關閉，並在 `report.md` 記錄包含收尾的最終結果；若程序已更換或無法確認待命，拒絕退出。通知驗收還原安裝產物與設定後保持 App 關閉。設定驗收管理自己的程序群組，包含中斷與逾時清理，結果寫入 `cleanup.json`。隔離 runner 只清理自己的程序；單元檢查不關閉無關 App。設定快捷鍵入口仍保留面板供原生操作，由完整 Computer Use 驗收負責退出。下一輪錄影驗收前需重新啟動；程式改動後用 `pnpm start:app` 重建。
 
@@ -316,7 +352,7 @@ pnpm acceptance:regression
 
 Plan 035 由維護者操作的驗收回合，需要一些真實故障無法隨時產生的失敗狀態：平常只持續幾毫秒的 pending 結果、關檔失敗後的 unknown、緩慢或失敗的歷史儲存，以及預先放好的歷史資料。`pnpm acceptance:controlled` 為此建置一份清楚標示、已簽章的 App 副本。它和更新 fixture 一樣，把原始碼複製到 `docs/verification/measurements/<timestamp>-controlled/` 下的新 run 目錄，只透過 anchor 檢查在該副本插樁（[controlled-acceptance.mts](../../../scripts/lib/controlled-acceptance.mts)），再執行副本裡的 `pnpm start:app`。Bundle identifier 與簽章身分維持開發版的設定，因此沿用同一份螢幕錄製與通知權限。Tray、設定、Recorder、FileWriter、失敗歷史、通知與退出流程都是正式程式碼，一般建置沒有命令通道。副本只有三處不同：
 
-- **隔離資料。** userData、log 與預設輸出資料夾都在 run 目錄內，從不讀寫維護者的設定、失敗歷史或 `~/Movies/RecordStuff`。此 build 以預設偏好啟動（English、通知開啟、倒數 3 秒、⌘⇧1）。
+- **隔離資料。** userData、log 與預設輸出資料夾都在 run 目錄內，從不讀寫維護者的設定、失敗歷史或 `~/Movies/RecordStuff`。此 build 以預設偏好啟動（English、通知開啟、倒數 3 秒且有提示音、⌘⇧1）。
 - **標示。** 每個 tray tooltip 開頭都是 `[Controlled acceptance build]`，log 中有一行 `controlled:` 記錄 run 目錄。這個 build 的證據屬於受控狀態證據：證明原生呈現與互動，不代表真實磁碟或擷取故障。
 - **故障注入點**（[controlled-faults.ts](../../../scripts/fixtures/controlled-faults.ts)），啟用前全部關閉：
   - `cleanup=hold` 在每個失敗的最終結果寫入歷史前先暫停，使 pending 結果（處理中、「知道了」停用、無法顯示檔案）持續顯示、退出被延後、該 session 若有中斷 sentinel 也會保留，直到 `release cleanup`。背後的檔案處理其實已經完成。

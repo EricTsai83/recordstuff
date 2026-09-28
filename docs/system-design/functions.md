@@ -159,6 +159,7 @@ The page's window-message callback checks source/marker/port before creating the
 | setQuality | Validate patch, then merge with latest committed quality inside the save queue |
 | setLanguage | Validate en/zh-TW, then enqueue update without dropping folder/quality |
 | countdown / setCountdown | Read the committed countdown / validate 0, 3, 5 or 10, then enqueue update |
+| countdownSound / setCountdownSound | Read the committed switch (a missing field reads as on) / validate a boolean, then enqueue update (plan 046) |
 | save | Serialize, write, then update memory; one failed operation does not block later saves |
 | write | `writeFileAtomic`: mkdir, write and fsync JSON.tmp, then rename |
 
@@ -198,19 +199,19 @@ The page's window-message callback checks source/marker/port before creating the
 
 [shared/protocol.ts](../../src/shared/protocol.ts): `isRecord` and `isNonEmptyString` support `isMainMessage` and `isHostMessage`; `prepared` requires a mime type and a CaptureReport, `started` may carry neither; chunk validation requires nonnegative integer seq and ArrayBuffer bytes.
 
-[shared/countdown.ts](../../src/shared/countdown.ts): `COUNTDOWN_CHOICES` (0, 3, 5, 10), `DEFAULT_COUNTDOWN` (3) and `isCountdownSeconds`; `COUNTDOWN_TIMING` (tick, overlay lead, dismissal bound, fades, settle) and `COUNTDOWN_OVERLAY` (size, insets, font, digit, outline, shadows, reduced-transparency values), the one place every timing and appearance value lives; `overlayBounds(workArea)` places the 88 × 88 pt window; the value channel and bridge type the overlay preload exposes.
+[shared/countdown.ts](../../src/shared/countdown.ts): `COUNTDOWN_CHOICES` (0, 3, 5, 10), `DEFAULT_COUNTDOWN` (3) and `isCountdownSeconds`; `COUNTDOWN_TIMING` (tick, overlay lead, dismissal bound, fades, settle) and `COUNTDOWN_OVERLAY` (the font fraction of the display's shorter side and its 56–216 pt clamp, the window-to-font ratio, insets, font, digit, outline and shadows at the 56 pt reference size, reduced-transparency values), the tick's values `COUNTDOWN_TICK` (sine at 523 Hz, the last digit ×1.5, a quiet fourth partial, 4 ms attack, 140 ms, −20 dBFS), `DEFAULT_COUNTDOWN_SOUND` (on), `tickFrequencyHz(digit)` and the page's `COUNTDOWN_SOUND_QUERY` (plan 046), the one place every timing, appearance and sound value lives; `overlayFontPt(displayBounds)` gives the digit's size for a display and `overlayBounds(displayBounds, workArea)` the square window, in whole points, at the top-right of its work area; the value channel and bridge type the overlay preload exposes.
 
 [main/countdown-overlay.ts](../../src/main/countdown-overlay.ts):
 
 | Function/method | Contract |
 | --- | --- |
-| overlayWindowOptions | Transparent, frameless, shadowless, fixed, unfocusable, sandboxed window options; a non-activating panel on macOS |
-| prepare | Build the hidden window once at the primary display, at the `screen-saver` level on every Space, click-through; load the page; a crash or failed load closes it |
+| overlayWindowOptions | Transparent, frameless, shadowless, fixed, unfocusable, sandboxed window options with `autoplayPolicy: "no-user-gesture-required"`; a non-activating panel on macOS |
+| prepare | Build the hidden window once at the primary display, at the `screen-saver` level on every Space, click-through; load the page, with `?sound=1` when the session's presentation ticks (a different flag rebuilds the page); a crash or failed load closes it |
 | show / update | Place on the recorded display (primary, logged, when unknown), log the placement with the display bounds, send the digit and show inactive once loaded / send the next digit |
 | dismiss | Send `null` so the digit fades, destroy the window after the fade and settle interval, then resolve; destroy at once when nothing was drawn |
 | close / destroy | Destroy at once, resolving a pending dismissal; `destroy` is the app's safety net on settled states and quit |
 
-[renderer/countdown.ts](../../src/renderer/countdown.ts): `overlayStyle` turns the shared appearance values into CSS custom properties; `createCountdownView` crossfades two stacked faces and fades the stage out on `null`. [preload/countdown.ts](../../src/preload/countdown.ts) exposes only `countdown.onValue` and forwards positive integers or `null`. [shared/state.ts](../../src/shared/state.ts): `isErrorCode` checks the ERROR_CODES whitelist.
+[renderer/countdown.ts](../../src/renderer/countdown.ts): `overlayStyle` turns the shared appearance values into CSS custom properties; `createCountdownView` crossfades two stacked faces, fades the stage out on `null` and calls its optional `onDigit` once per new digit; `playTick` synthesizes one tick from `COUNTDOWN_TICK` with Web Audio; `soundRequested` reads the page's query (plan 046). [preload/countdown.ts](../../src/preload/countdown.ts) exposes only `countdown.onValue` and forwards positive integers or `null`. [shared/state.ts](../../src/shared/state.ts): `isErrorCode` checks the ERROR_CODES whitelist.
 
 [preload/index.ts](../../src/preload/index.ts) has one IPC callback rather than named functions: forward the received capture-host-port to window with transferred ports. No contextBridge API is exposed.
 
@@ -253,7 +254,8 @@ The page's window-message callback checks source/marker/port before creating the
 | hotkeyGroup | Recommended default, the saved custom value when distinct, and Off; the renderer adds Custom shortcut…; a refused registration adds a diagnostic; Off keeps the remembered accelerator |
 | updateChecksGroup | On/Off for the launch check; empty when the context has no update state |
 | languageGroup | English and Traditional Chinese; never locked, because language cannot touch a capture |
-| settingsView | The panel's whole view: title, hint, failure text and groups with the actions stripped |
+| settingsView | The panel's whole view: title, hint, failure text, the three tabs (the failures tab counting unread rows) and groups with the actions stripped; failure rows carry their day, short time, file name and full path |
+| failureDay / failureTime | A failure row's day heading (Today, Yesterday, the date, the year only for an earlier year) and short local time, relative to `ctx.now` (plan 047) |
 | settingsAction | The action for a group/choice pair that is offered and enabled right now, or nothing |
 | settingsChecked | Whether a choice is the committed one; how main reports that a save took effect |
 
@@ -269,7 +271,8 @@ The page's window-message callback checks source/marker/port before creating the
 | destroy | Remove the handlers and the window on quit |
 | apply | Resolve the group/choice pair, run the shared action handler, answer with the new view and whether it committed |
 | queue (settings:choose) | Serialize saves in request order so a second request waits instead of being reported as a failure |
-| panel: draw / row | Render a view, restoring focus to the control the rebuild replaced |
+| panel: draw / row | Render a view, restoring focus to the control the rebuild replaced; an explicit failure entry selects the failures tab; each tab's scroll offset is stored on leaving and restored once the rebuilt panel has settled |
+| panel: updateRecordingResult / resultRow / fillRow | The failures tab (plan 047): day groups of collapsed rows kept by ID, one open at a time, Up/Down/Home/End between headers, the entry target opened and focused, focus to the neighbour after a removal or to the tab after the last |
 | panel: choose | Send the ids, keep the control in use live while its neighbours go inert, and show the failure text if the value did not commit |
 
 ## Tray presentation
@@ -297,7 +300,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 | Function/method | Contract |
 | --- | --- |
-| RecordingResults.receive / act | Confirm partial files, reject stale results/actions, retain unread state and expose recovery actions |
+| RecordingResults.receive / act | Confirm partial files, reject stale results/actions, retain unread state and expose recovery actions; each acknowledgement, removal and retry logs one line with its ID and outcome (saved, failed with the storage error class, or refused with the reason) when it settles |
 | RecordingResults.restore | Adopt launch-time interruption entries not yet in history, recheck them and saved paths with a deadline; restore acknowledgement without a notification or overwriting newer state; resolve whether this attempt saved the history |
 | RecordingResults.saved | Resolve once every given ID has been in a saved file, including through a later automatic retry; never starts a save |
 | isOutputFolderFailure / isPermissionFailure | The shared recovery categories: output-folder failures offer the folder action; permission failures, including no_audio_track, offer System Settings and Relaunch on macOS |
@@ -334,7 +337,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 [main/session-log.ts](../../src/main/session-log.ts): `createRunId` forms the per-launch run id from launch time and pid; `logSessionEvent` writes the human `saved`/`failed:` line and then the versioned session record for captureStarted, saved, failed and a preflight refusal; a cancelled countdown is one plain `cancelled:` line naming its temporary file and no record; other events are ignored. [shared/session-record.ts](../../src/shared/session-record.ts) defines the record schema, prefix and version and formats one record; it has only type imports so scripts load it directly.
 
-[main/autorecord.ts](../../src/main/autorecord.ts): `parseAutoRecord` ignores packaged/empty input, validates seconds in (0,3600], quality keys and an optional countdown (0 unless named), and merges defaults. `runAutoRecord` waits 1.5 seconds before toggle, starts its stop timer only after recording begins, and quits after saved/failed, or needsPermission before its press, through once-only `finish`. It does not write settings.
+[main/autorecord.ts](../../src/main/autorecord.ts): `parseAutoRecord` ignores packaged/empty input, validates seconds in (0,3600], quality keys and an optional countdown (0 unless named), sets `countdownSound: false` whatever is given (plan 046), and merges defaults. `runAutoRecord` waits 1.5 seconds before toggle, starts its stop timer only after recording begins, and quits after saved/failed, or needsPermission before its press, through once-only `finish`. It does not write settings.
 
 ## Packaging and icons
 
@@ -382,11 +385,16 @@ See [tooling](tooling.md) for pipeline and thresholds. These tools are developme
 | Same: appendMeasurements | Initialize environment header, append Markdown, write structured JSON |
 | [run-matrix.mts](../../scripts/run-matrix.mts): shorten, usage | Change case duration / show CLI help |
 | Same: mainDisplaySize, outputDir | Primary-display dimensions and configured/default folder |
-| Same: sleep, electronPids, cpuPercent | Inter-case delay and app-process CPU sampling |
+| Same: sleep, electronPids, electronMainPid | Inter-case delay; every process of this checkout's Electron.app, and its main process, the root the CPU sampler follows |
 | Same: logSince | This case's lines from its cursor across rotation; a lost history is a case failure |
-| Same: recordOnce | Launch development app with automatic-recording config, sample CPU, await outcome |
-| Same: main | Validate prerequisites (ffmpeg/ffprobe first; blocked exit 2 before anything runs), open material, run cases with energy and sync required, verify/save results, clean up, exit by `verdictExitCode` |
+| Same: recordOnce | Launch development app with automatic-recording config, follow its process tree with the shared CPU sampler, await outcome; CPU judged over the recording from its third second (`cpuWindow` in lib/matrix.mts), with the 95th percentile, VTEncoderXPCService and this machine's baseline |
+| Same: main | Validate prerequisites (ffmpeg/ffprobe, then clang for the CPU sampler; blocked exit 2 before anything runs), open material, run cases with energy and sync required, verify/save results, clean up, exit by `verdictExitCode` |
 | Same: unmetChecks | A case's verdict and each check that kept it from passing, with its reason |
+| [lib/cpu-sampler.mts](../../scripts/lib/cpu-sampler.mts) `compileSampler`, `CpuSampler` | Compile [cpu-sampler.c](../../scripts/lib/cpu-sampler.c) with clang (missing Command Line Tools: `SamplerBlockedError`); stream its once-a-second `proc_pid_rusage` counters for a root process, its descendants and followed helpers such as VTEncoderXPCService, until stopped |
+| Same: `parseSample`, `intervals`, `summarize`, `percentile` | Parse one helper line; per-second CPU, wake-ups and energy per process with the app's process-set changes marked; average, nearest-rank 95th percentile and maximum over a window, discarding changed intervals unless changes are expected |
+| Same: `CPU_BUDGET`, `judgeIdle`, `judgeSettingsOpen`, `judgeRecording`, `judgeCoverage`, `cpuBaseline`, `machineModel` | The plan 049 budget and its verdicts (the recording threshold, encoder report, 25% baseline warning and the 80% sampled coverage); this machine's recorded baseline from cpu-baselines.json |
+| Same: `processRole`, `rolesFromPs`, `readRoles`, `IDLE_ROLES`, `judgeRoles`, `judgeSteadyState` | A Chromium process's role from its command line; the roles of an app's tree; the idle contract by scenario; the same roles after every recording |
+| [measure-cpu.mts](../../scripts/measure-cpu.mts) `launch`, `seed` / `restoreSettings`, `main` | Launch the quit bundle and wait for settled startup; write the countdown, display and quality only while the app is quit and set just those keys back once no process remains; run scenarios A, R, B and C, write report.md/report.json, quit the app and confirm it exited, exit 0/1/2/130/143 |
 
 ### Pure measurement logic
 
@@ -403,7 +411,7 @@ See [tooling](tooling.md) for pipeline and thresholds. These tools are developme
 | parseBlackdetect, parseSilencedetect | Parse flash/audio boundaries and discard EOF artifacts |
 | parseChannelRms | Parse per-channel energy |
 | median, syncStats | Match markers; always return flash/beep/pair counts overall and per edge window, with offsets and head-tail drift only from at least MIN_SYNC_PAIRS pairs |
-| measure | Combine stream/container/frame/decode/audio/CPU/sync facts; energy and sync are Evidence that names why it is absent |
+| measure | Combine stream/container/frame/decode/audio/CPU/sync facts; energy and sync are Evidence that names why it is absent; CPU (`CpuFigures`) comes from the matrix runner |
 | fmt, mbps, kbps, ms | Format values and unknowns |
 | pass, offsetWithinLimits, aspectMatches | Verdict, asymmetric offset bounds, aspect tolerance |
 | judge, unmeasured, markerShortage, energyProblems, dbText | Produce threshold checks; turn evidence status, the caller's required evidence, marker coverage and per-channel levels into pass/fail/blocked/incomplete/n/a with a reason |

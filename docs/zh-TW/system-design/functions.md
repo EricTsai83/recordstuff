@@ -158,6 +158,7 @@
 | `setHotkey(hotkey)` | 驗 enabled 布林與自訂組合鍵，正規化後排隊保存 |
 | `setLanguage(language)` | 驗 en／zh-TW，排入保存佇列，保留品質與位置 |
 | `countdown` / `setCountdown(value)` | 讀已提交的倒數／驗 0、3、5、10 後排入保存佇列 |
+| `countdownSound` / `setCountdownSound(enabled)` | 讀已提交的開關（缺少欄位時為開啟）／驗布林值後排入保存佇列（plan 046） |
 | `setOutputDir(dir)` | 驗絕對路徑 → save 更新 |
 | `setQuality(patch)` | 驗合併值合法 → save；實際入列後再合併最新 committed 值 |
 | `save(update)` | 序列化寫入；write 成功才換記憶體；失敗不阻斷後續 queue |
@@ -197,19 +198,19 @@
 
 [shared/protocol.ts](../../../src/shared/protocol.ts)：`isRecord()`、`isNonEmptyString()` 是 guards 的 helper；`isMainMessage()` 驗 start／record／stop／ping，`isHostMessage()` 驗七種 host 訊息：`prepared` 必須帶 mime type 與 CaptureReport，`started` 可兩者皆無；chunk 要求非負整數 seq 與 ArrayBuffer。
 
-[shared/countdown.ts](../../../src/shared/countdown.ts)：`COUNTDOWN_CHOICES`（0、3、5、10）、`DEFAULT_COUNTDOWN`（3）與 `isCountdownSeconds`；`COUNTDOWN_TIMING`（tick、overlay 提前量、dismissal 上限、淡化、穩定間隔）與 `COUNTDOWN_OVERLAY`（尺寸、邊距、字型、數字、外框、陰影、減少透明度的數值），是所有時間與外觀數值唯一的定義處；`overlayBounds(workArea)` 決定 88 × 88 pt 視窗位置；另定義 overlay preload 的數值 channel 與 bridge 型別。
+[shared/countdown.ts](../../../src/shared/countdown.ts)：`COUNTDOWN_CHOICES`（0、3、5、10）、`DEFAULT_COUNTDOWN`（3）與 `isCountdownSeconds`；`COUNTDOWN_TIMING`（tick、overlay 提前量、dismissal 上限、淡化、穩定間隔）與 `COUNTDOWN_OVERLAY`（字級占螢幕短邊的比例與 56–216 pt 上下限、視窗與字級的比例、邊距、字型、數字、以 56 pt 為基準的外框與陰影、減少透明度的數值），提示音數值 `COUNTDOWN_TICK`（523 Hz 正弦波、最後一個數字 ×1.5、小聲的四倍泛音、attack 4 ms、140 ms、−20 dBFS）、`DEFAULT_COUNTDOWN_SOUND`（開啟）、`tickFrequencyHz(digit)` 與頁面的 `COUNTDOWN_SOUND_QUERY`（plan 046），是所有時間、外觀與聲音數值唯一的定義處；`overlayFontPt(displayBounds)` 算出某個螢幕上的字級，`overlayBounds(displayBounds, workArea)` 以整數 pt 算出位於工作區右上角的正方形視窗；另定義 overlay preload 的數值 channel 與 bridge 型別。
 
 [main/countdown-overlay.ts](../../../src/main/countdown-overlay.ts)：
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
-| `overlayWindowOptions(bounds, preload, platform)` | 透明、無邊框、無陰影、固定、不可聚焦、sandbox 的視窗選項；macOS 為 non-activating panel |
-| `prepare()` | 在主螢幕只建立一次隱藏視窗，位於 `screen-saver` 層級、出現在每個 Space、點擊穿透；載入頁面；當機或載入失敗即關閉 |
-| `show(n)` / `update(n)` | 放到被錄製的螢幕（不知道時用主螢幕並寫 log）、連同螢幕範圍記錄位置、傳送數字，頁面載入後不啟動 App 地顯示／傳送下一個數字 |
+| `overlayWindowOptions(bounds, preload, platform)` | 透明、無邊框、無陰影、固定、不可聚焦、sandbox 並設定 `autoplayPolicy: "no-user-gesture-required"` 的視窗選項；macOS 為 non-activating panel |
+| `prepare(presentation)` | 在主螢幕只建立一次隱藏視窗，位於 `screen-saver` 層級、出現在每個 Space、點擊穿透；載入頁面，session 有提示音時帶 `?sound=1`（旗標不同就重建頁面）；當機或載入失敗即關閉 |
+| `show(n, presentation)` / `update(n)` | 放到被錄製的螢幕（不知道時用主螢幕並寫 log）、連同螢幕範圍記錄位置、傳送數字，頁面載入後不啟動 App 地顯示／傳送下一個數字 |
 | `dismiss()` | 傳 `null` 讓數字淡出，淡出與穩定間隔後銷毀視窗再 resolve；尚未畫出任何內容時立即銷毀 |
 | `close()` / `destroy()` | 立即銷毀並讓等待中的 dismissal resolve；`destroy` 是 App 在穩定狀態與退出時的保險 |
 
-[renderer/countdown.ts](../../../src/renderer/countdown.ts)：`overlayStyle()` 把共用外觀數值轉成 CSS custom properties；`createCountdownView(stage)` 在兩個疊放的面之間交叉淡化，收到 `null` 時整體淡出。[preload/countdown.ts](../../../src/preload/countdown.ts) 只提供 `countdown.onValue`，只轉交正整數或 `null`。[shared/state.ts](../../../src/shared/state.ts) 的 `isErrorCode()` 以 ERROR_CODES 白名單檢查字串。
+[renderer/countdown.ts](../../../src/renderer/countdown.ts)：`overlayStyle()` 把共用外觀數值轉成 CSS custom properties；`createCountdownView(stage, onDigit?)` 在兩個疊放的面之間交叉淡化，收到 `null` 時整體淡出，每個新數字呼叫一次選填的 `onDigit`；`playTick` 依 `COUNTDOWN_TICK` 以 Web Audio 合成一聲提示音；`soundRequested` 讀取頁面的 query（plan 046）。[preload/countdown.ts](../../../src/preload/countdown.ts) 只提供 `countdown.onValue`，只轉交正整數或 `null`。[shared/state.ts](../../../src/shared/state.ts) 的 `isErrorCode()` 以 ERROR_CODES 白名單檢查字串。
 
 [preload/index.ts](../../../src/preload/index.ts) 沒有具名函式：唯一 ipcRenderer callback 接收 `capture-host-port` 後將 event.ports 轉交 window，沒有 contextBridge API。
 
@@ -254,7 +255,8 @@
 | `hotkeyGroup(ctx, enabled)` | 建議的預設鍵、不同於預設的已存自訂值與「關閉」；renderer 加上「自訂快捷鍵…」；註冊失敗顯示診斷；關閉保留記住的組合鍵 |
 | `updateChecksGroup(ctx, enabled)` | 啟動檢查的開／關；context 沒有更新狀態時為空 |
 | `languageGroup(language)` | 英文與繁體中文；永不鎖定，因為語言不影響擷取 |
-| `settingsView(state, ctx)` | 面板完整 view：標題、說明、失敗文案，以及移除 action 後的群組 |
+| `settingsView(state, ctx)` | 面板完整 view：標題、說明、失敗文案、三個分頁（失敗紀錄分頁計算未確認筆數），以及移除 action 後的群組；失敗列帶日期、短時間、檔名與完整路徑 |
+| `failureDay` / `failureTime` | 失敗列的日期標題（今天、昨天、日期，不是今年才加年份）與短時間，以 `ctx.now` 為基準（plan 047） |
 | `settingsAction(state, ctx, group, choice)` | 當下有提供且可用的 group/choice 才回傳對應 action，否則 undefined |
 | `settingsChecked(state, ctx, group, choice)` | 該選項是否為實際提交值；main 用它回報保存是否生效 |
 
@@ -268,7 +270,8 @@
 | `destroy()` | 退出時移除 handler 與視窗 |
 | `apply(group, choice)` | 解析 id、呼叫共用 action handler，回傳新 view 與是否真的提交 |
 | `settings:choose` 佇列 | 依請求順序序列化保存，第二個請求是等待而不是失敗 |
-| 面板 `draw()` / `row()` | 畫出 view，並把焦點還給重建後取代的同一個控制項 |
+| 面板 `draw()` / `row()` | 畫出 view，並把焦點還給重建後取代的同一個控制項；明確的失敗入口會切到失敗紀錄分頁；每個分頁離開時保存捲動位置，重建的面板穩定後還原 |
+| 面板 `updateRecordingResult()` / `resultRow()` / `fillRow()` | 失敗紀錄分頁（plan 047）：依 ID 保留、依日期分組的收合列，同時只展開一列，上下鍵、Home、End 在標題間移動，入口目標展開並聚焦，移除後焦點移到相鄰列，移除最後一列後移到分頁 |
 | 面板 `choose()` | 送出 id；保存期間正在操作的控制項保持可用、其餘暫時停用；未提交時顯示失敗文案 |
 
 ## Tray 模型與原生呈現
@@ -295,7 +298,7 @@
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
-| `RecordingResults.receive / act` | 確認部分檔案、拒絕過期結果與操作、保留未讀狀態並提供復原操作 |
+| `RecordingResults.receive / act` | 確認部分檔案、拒絕過期結果與操作、保留未讀狀態並提供復原操作；每次確認、移除與重試在完成時寫一行含 ID 與結果（saved、附儲存錯誤類別的 failed，或附原因的 refused）的 log |
 | `RecordingResults.restore` | 納入尚未在歷史中的啟動時中斷紀錄，與保存路徑一起限時重新檢查；恢復已讀狀態，不發通知、不覆蓋新狀態；回傳這次嘗試是否保存了歷史 |
 | `RecordingResults.saved` | 所有指定 ID 都曾寫入已保存的檔案後 resolve（包含之後的自動重試）；本身不觸發保存 |
 | `isOutputFolderFailure` / `isPermissionFailure` | 共用的復原分類：輸出資料夾類失敗提供變更資料夾；權限類失敗（含 no_audio_track）在 macOS 提供系統設定與重新啟動 |
@@ -332,7 +335,7 @@
 
 [session-log.ts](../../../src/main/session-log.ts)：`createRunId(launchedAt, pid)` 由啟動時間與 pid 組成每次啟動的 run id；`logSessionEvent(log, run, event)` 對 captureStarted、saved、failed 與 preflight 拒絕先寫人類可讀的 `saved`／`failed:` 行，再寫有版本的 session record；取消的倒數只寫一行記下暫存檔的 `cancelled:`，不寫 record；其他事件忽略。[shared/session-record.ts](../../../src/shared/session-record.ts) 定義 record schema、前綴與版本並格式化一筆 record；只有 type import，scripts 可直接載入。
 
-[autorecord.ts](../../../src/main/autorecord.ts)：`parseAutoRecord(value, isPackaged)` 在打包版／空值回 undefined；其餘解析 seconds∈(0,3600]、合法 quality patch 與選填的 countdown（未指定為 0），合併預設而非使用者設定。`runAutoRecord(config, deps)` 等預設 1.5 秒後由公開 toggle 開始，進 recording 才排計時停止，saved／failed，或按下開始前的 needsPermission 後，由內部 `finish(message)` 一次性 log＋quit。用於開發量測，不在正式版提供遠端控制。
+[autorecord.ts](../../../src/main/autorecord.ts)：`parseAutoRecord(value, isPackaged)` 在打包版／空值回 undefined；其餘解析 seconds∈(0,3600]、合法 quality patch 與選填的 countdown（未指定為 0），不論輸入為何都設 `countdownSound: false`（plan 046），合併預設而非使用者設定。`runAutoRecord(config, deps)` 等預設 1.5 秒後由公開 toggle 開始，進 recording 才排計時停止，saved／failed，或按下開始前的 needsPermission 後，由內部 `finish(message)` 一次性 log＋quit。用於開發量測，不在正式版提供遠端控制。
 
 ## 簽章與圖示工具
 
@@ -384,11 +387,16 @@
 | 同檔 `appendMeasurements(path, results, context)` | 新檔寫環境、附加 Markdown；同名 JSON 保存結構化數據 |
 | [run-matrix.mts](../../../scripts/run-matrix.mts) `shorten(entries, seconds)`、`usage()` | 調矩陣時長／參數說明後退出 |
 | 同檔 `mainDisplaySize()`、`outputDir()` | macOS 主螢幕／使用者設定或預設位置 |
-| 同檔 `sleep(ms)`、`electronPids()`、`cpuPercent(pids)` | 回歸間隔與本專案 Electron 程序 CPU 取樣 |
+| 同檔 `sleep(ms)`、`electronPids()`、`electronMainPid()` | 回歸間隔；本 checkout 的 Electron.app 所有程序，以及它的主程序（CPU 取樣程式追蹤的根） |
 | 同檔 `logSince(start)` | 從本案例的 cursor 跨輪替讀 log；遺失歷史視為案例失敗 |
-| 同檔 `recordOnce(entry)` | 用環境變數啟動開發 App，等待結果並取樣 CPU，回 outcome |
-| 同檔 `main()` | 驗工具（ffmpeg／ffprobe 最先檢查，缺少即在任何動作前 blocked exit 2）／平台、開素材頁、以能量與同步為必要證據依序 recordOnce＋verify、寫結果、cleanup，依 `verdictExitCode` 退出 |
+| 同檔 `recordOnce(entry, key)` | 用環境變數啟動開發 App，以共用 CPU 取樣程式追蹤它的程序樹，等待結果，回 outcome；CPU 以錄影第 3 秒之後判定（lib/matrix.mts 的 `cpuWindow`），並附第 95 百分位、VTEncoderXPCService 與本機 baseline |
+| 同檔 `main()` | 驗工具（先 ffmpeg／ffprobe，再檢查 CPU 取樣程式需要的 clang，缺少即在任何動作前 blocked exit 2）／平台、開素材頁、以能量與同步為必要證據依序 recordOnce＋verify、寫結果、cleanup，依 `verdictExitCode` 退出 |
 | 同檔 `unmetChecks(result)` | 案例判定與每個讓它未通過的檢查及原因 |
+| [lib/cpu-sampler.mts](../../../scripts/lib/cpu-sampler.mts) `compileSampler(dir)`、`CpuSampler` | 以 clang 編譯 [cpu-sampler.c](../../../scripts/lib/cpu-sampler.c)（沒有 Command Line Tools 時丟出 `SamplerBlockedError`）；持續讀取它每秒輸出的 `proc_pid_rusage` 計數，範圍是根程序、其子孫程序與追蹤的系統 helper（例如 VTEncoderXPCService），直到停止 |
+| 同檔 `parseSample`、`intervals`、`summarize`、`percentile` | 解析 helper 的一行；逐程序的每秒 CPU、喚醒與能耗，並標出 App 程序組合的變化；計算一段範圍的平均、nearest-rank 第 95 百分位與最大值，除非預期有變化，否則捨棄有變化的區間 |
+| 同檔 `CPU_BUDGET`、`judgeIdle`、`judgeSettingsOpen`、`judgeRecording`、`judgeCoverage`、`cpuBaseline`、`machineModel` | plan 049 的預算與判定（錄影門檻、編碼器回報、25% baseline 警告與 80% 取樣覆蓋）；從 cpu-baselines.json 讀本機記錄的 baseline |
+| 同檔 `processRole`、`rolesFromPs`、`readRoles`、`IDLE_ROLES`、`judgeRoles`、`judgeSteadyState` | 從命令列判斷 Chromium 程序的角色；App 程序樹的角色；各情境的待機契約；每次錄影後角色相同 |
+| [measure-cpu.mts](../../../scripts/measure-cpu.mts) `launch()`、`seed()`／`restoreSettings()`、`main()` | 啟動已結束的打包 App，等啟動工作結束；只在 App 結束時寫入倒數、錄影螢幕與品質，並在沒有程序後只把這三個鍵設回原值；執行 A、R、B、C 情境，寫出 report.md／report.json，結束 App 並確認退出，以 0／1／2／130／143 結束 |
 
 ### 純量測邏輯 — scripts/lib/verify.mts
 
@@ -405,7 +413,7 @@
 | `parseBlackdetect(stderr, duration)`、`parseSilencedetect(stderr, duration)` | 解析閃光／音訊邊界並排除 EOF 假標記 |
 | `parseChannelRms(stderr)` | 每聲道 RMS 字串 → dB 值 |
 | `median(values)`、`syncStats(flashes, beeps, options)` | 配對標記；一律回報整體與各端點窗口的閃光／短音／配對數，至少 MIN_SYNC_PAIRS 組配對才估偏移與頭尾漂移；不能只用單點巧合當同步 |
-| `measure(file, bytes, probe, intervals, extras)` | 組合長度／尺寸／fps／碼率／音訊／decode／CPU／sync 成 Measurement；能量與 sync 為會說明缺席原因的 Evidence |
+| `measure(file, bytes, probe, intervals, extras)` | 組合長度／尺寸／fps／碼率／音訊／decode／CPU／sync 成 Measurement；能量與 sync 為會說明缺席原因的 Evidence；CPU（`CpuFigures`）來自 matrix runner |
 | `fmt()`、`mbps()`、`kbps()`、`ms()` | 數值格式化，未知顯示破折號 |
 | `pass(ok)`、`offsetWithinLimits(offsetMs)`、`aspectMatches(a, b)` | 判定 helper：boolean verdict、非對稱偏移範圍、長寬比容差 |
 | `judge(measurement, entry, options)`、`unmeasured()`、`markerShortage()`、`energyProblems()`、`dbText()` | 對門檻逐列產出 Check；依證據狀態、呼叫端的必要證據、標記覆蓋與各聲道數值判 pass／fail／blocked／incomplete／n/a 並附原因，不臆測 pass |

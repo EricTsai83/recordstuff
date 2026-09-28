@@ -79,6 +79,16 @@ Each stage of a recording belongs to a different document. These are the layer c
 
 Failure at any point takes one path: detach the session, clear deadlines, stop the host, return to idle, preserve whatever bytes exist ([recording.md](recording.md#file-completion-and-failure)). Permission changes apply only while idle or `needsPermission`, so polling never interrupts a running session.
 
+## Waiting in the menu bar
+
+Most of RecordStuff's life is spent idle, so idle has a budget (plan 049): about 0% of one core and a few wake-ups per second, measured by `pnpm measure:cpu` ([CPU budget](tooling.md#cpu-budget)). With Settings closed, only this may run:
+
+- **Processes.** The main process and Electron's GPU and network-service processes. Until the first window opens there is also one renderer that hosts no page: Electron 44 launches it ahead of time when the default session is first used ([electron/electron#53144](https://github.com/electron/electron/pull/53144)), which the display-media handler needs at launch, so the first capture host starts in it; nothing re-creates it, and it costs about 65 MB and no measurable CPU. The first system-audio capture starts Chromium's out-of-process audio service, which Chromium 152 keeps until the app quits (about 49 MB, 0.3 wake-ups per second). The capture host window and the countdown overlay exist only from starting to saving and are destroyed when the state settles; the Settings window is destroyed when it closes. So with Settings closed no renderer remains after a recording.
+- **One timer.** [PermissionWatcher](../../src/main/permission.ts) polls `getMediaAccessStatus('screen')` every 5 seconds, 0.2 wake-ups per second; it is how a revoked permission is noticed while no window is open, so it stays until measurements show it matters. The capture host's 5-second ping and the writer's fsync interval exist only during a session, and unit tests assert that neither they nor any deadline outlives a saved, failed or cancelled session. Every other timer is a bounded one-shot (session deadlines, the overlay fade, the saved-notification delay, the shortcut-capture lease while Settings is open, history retry backoff, the quit feedback).
+- **Listeners only.** Display changes, power suspend and resume, global shortcuts and tray clicks wake the app only when they happen. The update check runs at launch at most once a day.
+
+A change that adds a timer, polling, a watcher, a window or renderer that stays alive, or tray work keeps this list true and is measured, per the [testing policy](../testing.md#select-tests-from-behavior).
+
 ## Cross-cutting invariants
 
 Each of these holds across modules, and each already has a place where it is enforced and a document that details it.
