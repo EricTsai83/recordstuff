@@ -1,22 +1,24 @@
 /**
  * The countdown digit (plan 040, docs/system-design/desktop.md#countdown-overlay):
  * a transparent, click-through, non-activating window at the top-right of
- * the recorded display that draws only the digit. It is created during
- * preparation and destroyed when the countdown ends, is cancelled or fails,
- * so none remains between recordings. It never activates RecordStuff or takes
- * keyboard focus from the frontmost app, and no content protection is
- * applied: the overlay is gone before capture begins.
+ * the recorded display that draws only the digit, sized for that display
+ * (plan 045). It is created during preparation and destroyed when the
+ * countdown ends, is cancelled or fails, so none remains between recordings.
+ * It never activates RecordStuff or takes keyboard focus from the frontmost
+ * app, and no content protection is applied: the overlay is gone before
+ * capture begins.
  *
  * Main owns every value and every timing decision; the page only renders
- * what it is sent and cannot reply.
+ * what it is sent and cannot reply. Whether it also plays a tick with each
+ * digit (plan 046) is fixed when the page loads, by a query parameter.
  */
 import { BrowserWindow, type BrowserWindowConstructorOptions } from "electron";
-import { COUNTDOWN_TIMING, COUNTDOWN_VALUE_CHANNEL, overlayBounds, type CountdownValue, type Rectangle } from "../shared/countdown";
-import type { CountdownPresenter } from "./recorder";
+import { COUNTDOWN_SOUND_QUERY, COUNTDOWN_TIMING, COUNTDOWN_VALUE_CHANNEL, overlayBounds, type CountdownValue, type Rectangle } from "../shared/countdown";
+import type { CountdownPresentation, CountdownPresenter } from "./recorder";
 
 export interface OverlayDisplay {
   id: string;
-  /** The whole display, in points; logged so acceptance can find the digit in the recorded frames. */
+  /** The whole display, in points: it sizes the digit and is logged so acceptance can find it in the recorded frames. */
   bounds: Rectangle;
   workArea: Rectangle;
 }
@@ -61,12 +63,24 @@ export function overlayWindowOptions(bounds: Rectangle, preloadPath: string, pla
       webSecurity: true,
       backgroundThrottling: false,
       spellcheck: false,
+      // The tick plays without a user gesture; set explicitly rather than relying on Electron's default.
+      autoplayPolicy: "no-user-gesture-required",
     },
   };
 }
 
+/** The development page URL with the same flag `loadFile` passes as a query. */
+function withSound(devUrl: string, sound: boolean): string {
+  if (!sound) return devUrl;
+  const url = new URL(devUrl);
+  url.searchParams.set(COUNTDOWN_SOUND_QUERY, "1");
+  return url.href;
+}
+
 export class CountdownOverlay implements CountdownPresenter {
   private window: BrowserWindow | undefined;
+  /** Whether the current window's page was loaded with the tick on. */
+  private sound = false;
   private loaded = false;
   /** The latest value, sent once the page has loaded. */
   private value: CountdownValue | undefined;
@@ -75,11 +89,16 @@ export class CountdownOverlay implements CountdownPresenter {
 
   constructor(private readonly options: CountdownOverlayOptions) {}
 
-  prepare(): void {
-    if (this.window && !this.window.isDestroyed()) return;
-    const { workArea } = this.options.primaryDisplay();
-    const window = new BrowserWindow(overlayWindowOptions(overlayBounds(workArea), this.options.preloadPath, this.options.platform));
+  prepare(presentation: CountdownPresentation): void {
+    if (this.window && !this.window.isDestroyed()) {
+      if (this.sound === presentation.sound) return;
+      // The page learns the flag only when it loads, so a different one needs a new page.
+      this.close();
+    }
+    const primary = this.options.primaryDisplay();
+    const window = new BrowserWindow(overlayWindowOptions(overlayBounds(primary.bounds, primary.workArea), this.options.preloadPath, this.options.platform));
     this.window = window;
+    this.sound = presentation.sound;
     this.loaded = false;
     this.value = undefined;
     this.visible = false;
@@ -102,21 +121,24 @@ export class CountdownOverlay implements CountdownPresenter {
     window.on("closed", () => {
       if (this.window === window) this.forget();
     });
-    const load = this.options.devUrl ? window.loadURL(this.options.devUrl) : window.loadFile(this.options.htmlPath);
+    const load = this.options.devUrl
+      ? window.loadURL(withSound(this.options.devUrl, presentation.sound))
+      : window.loadFile(this.options.htmlPath, presentation.sound ? { query: { [COUNTDOWN_SOUND_QUERY]: "1" } } : {});
     void load.catch((cause: unknown) => {
       this.options.log(`countdown overlay: page failed to load: ${String(cause)}`);
       if (this.window === window) this.close();
     });
   }
 
-  show(remaining: number): void {
-    this.prepare();
+  show(remaining: number, presentation: CountdownPresentation): void {
+    this.prepare(presentation);
     const window = this.window;
     if (!window) return;
     const resolved = this.options.display();
     const display = resolved ?? this.options.primaryDisplay();
     if (!resolved) this.options.log(`countdown overlay: the recorded display is unknown; using the primary display ${display.id}`);
-    const bounds = overlayBounds(display.workArea);
+    // Sized for this display before the first value, so the digit never draws at the primary display's size.
+    const bounds = overlayBounds(display.bounds, display.workArea);
     window.setBounds(bounds);
     const whole = display.bounds;
     this.options.log(`countdown overlay: display ${display.id} at ${bounds.x},${bounds.y} ${bounds.width}x${bounds.height} in display bounds ${whole.x},${whole.y} ${whole.width}x${whole.height}`);
@@ -171,6 +193,7 @@ export class CountdownOverlay implements CountdownPresenter {
 
   private forget(): void {
     this.window = undefined;
+    this.sound = false;
     this.loaded = false;
     this.value = undefined;
     this.visible = false;

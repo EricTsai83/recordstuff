@@ -4,8 +4,9 @@
  * start recording once it is ready, stop after `seconds`, and quit after the
  * file is saved. The quality, countdown and output-folder overrides are applied in memory
  * only; settings.json is never written. The countdown is 0 unless named, so
- * matrix and audio runs keep their timing. A packaged build ignores the
- * variable entirely.
+ * matrix and audio runs keep their timing, and it never ticks (plan 046), so
+ * their audio cannot contain the tick. A packaged build ignores the variable
+ * entirely.
  */
 import path from "node:path";
 import {
@@ -26,6 +27,8 @@ export interface AutoRecordConfig {
   quality: QualitySettings;
   /** 0 unless the configuration names one; never the stored preference. */
   countdown: CountdownSeconds;
+  /** Always silent, whatever is stored or given, so recorded audio stays the material's own. */
+  countdownSound: false;
   /** An absolute folder that replaces the stored one for this run, such as an isolated test volume. */
   outputDir?: string;
 }
@@ -77,7 +80,7 @@ export function parseAutoRecord(value: string | undefined, isPackaged: boolean):
   if (outputDir !== undefined && (typeof outputDir !== "string" || !path.isAbsolute(outputDir))) {
     return { ok: false, error: "outputDir must be an absolute path" };
   }
-  return { ok: true, config: { seconds, quality: merged, countdown, ...(outputDir === undefined ? {} : { outputDir }) } };
+  return { ok: true, config: { seconds, quality: merged, countdown, countdownSound: false, ...(outputDir === undefined ? {} : { outputDir }) } };
 }
 
 export interface AutoRecordDeps {

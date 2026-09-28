@@ -73,7 +73,7 @@ describe('acceptance output usage', () => {
 
 describe('recording lock contract', () => {
   const context: AppContext = {
-    platform: 'darwin', outputDir: '/tmp/recordings', homeDir: '/tmp', quality: DEFAULT_QUALITY, countdown: 3, language: 'en',
+    platform: 'darwin', outputDir: '/tmp/recordings', homeDir: '/tmp', quality: DEFAULT_QUALITY, countdown: 3, countdownSound: true, language: 'en',
     hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: 'idle' }, enabled: true },
     notifications: true, displays: [], display: { kind: 'primary' },
   };

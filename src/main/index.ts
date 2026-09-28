@@ -149,6 +149,8 @@ async function main(): Promise<void> {
   const quality = (): QualitySettings => effectiveQuality(qualityOverride ?? settings.quality, process.platform);
   /** Autorecord counts down only when its configuration names a countdown. */
   const countdownSeconds = (): CountdownSeconds => autoRecord?.ok ? autoRecord.config.countdown : settings.countdown;
+  /** Autorecord never ticks, so the matrix and audio-quality recordings cannot hear it (plan 046). */
+  const countdownSound = (): boolean => autoRecord?.ok ? autoRecord.config.countdownSound : settings.countdownSound;
   /** An autorecord folder, like its quality, lives in memory only. */
   const outputDirOverride = autoRecord?.ok ? autoRecord.config.outputDir : undefined;
 
@@ -210,6 +212,7 @@ async function main(): Promise<void> {
     outputDir: () => outputDirOverride ?? settings.outputDir,
     quality,
     countdownSeconds,
+    countdownSound,
     countdown: overlay,
     ensureWritableDir,
     openWriter: (recordingPath, finalPath) => FileWriter.open(recordingPath, finalPath),
@@ -270,6 +273,7 @@ async function main(): Promise<void> {
     homeDir: os.homedir(),
     quality: quality(),
     countdown: countdownSeconds(),
+    countdownSound: countdownSound(),
     language: settings.language,
     appearance: settings.appearance,
     updates: { state: updates.state, enabled: settings.updates.enabled },
@@ -384,6 +388,13 @@ async function main(): Promise<void> {
           await settings.setCountdown(action.setCountdown);
           log(`settings: countdown ${settings.countdown} s`);
         } catch (cause) { log(`settings: countdown save failed: ${String(cause)}`); }
+        refreshUi();
+      } else if ("setCountdownSound" in action) {
+        if (!settled()) return;
+        try {
+          await settings.setCountdownSound(action.setCountdownSound);
+          log(`settings: countdown sound ${settings.countdownSound ? "on" : "off"}`);
+        } catch (cause) { log(`settings: countdown sound save failed: ${String(cause)}`); }
         refreshUi();
       } else {
         await setQuality(action.setQuality);

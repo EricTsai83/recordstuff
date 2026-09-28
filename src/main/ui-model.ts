@@ -47,6 +47,7 @@ export type AppAction =
   | { setDisplay: DisplayPreference }
   | { setQuality: Partial<QualitySettings> }
   | { setCountdown: CountdownSeconds }
+  | { setCountdownSound: boolean }
   | { setAppearance: Appearance }
   | { setLanguage: Language }
   | { setHotkey: HotkeySettings };
@@ -68,6 +69,8 @@ export interface AppContext {
   homeDir: string;
   quality: QualitySettings;
   countdown: CountdownSeconds;
+  /** The stored switch (plan 046); it only sounds while the countdown is on. */
+  countdownSound: boolean;
   language: Language;
   appearance?: Appearance;
   hotkey: AppHotkey;

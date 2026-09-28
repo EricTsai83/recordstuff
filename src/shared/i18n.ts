@@ -201,6 +201,9 @@ export const ZH_TW = {
   "{value} s": "{value} 秒",
   "Before recording starts, the digits appear at the top-right of the recorded screen. Click the menu bar icon or press the shortcut to cancel.":
     "開始錄製前，數字會顯示在被錄製螢幕的右上角。按一下選單列圖示或按快捷鍵即可取消。",
+  "Countdown sound": "倒數音效",
+  "A short tick plays with each digit. It stops before recording starts and is not recorded.":
+    "每個數字出現時會響一聲短促的提示音；開始錄製前就會停止，不會被錄進去。",
   "Could not register the shortcut {value}. Another app may be using it. Choose another shortcut in Settings.":
     "無法註冊快捷鍵 {value}，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵",
   "Could not save the shortcut. Your previous shortcut is still in use.":

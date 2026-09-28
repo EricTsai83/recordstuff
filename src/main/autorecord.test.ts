@@ -15,20 +15,22 @@ describe("parseAutoRecord", () => {
     const result = parseAutoRecord('{"seconds":30,"quality":{"resolutionCap":"1440p","frameRate":60}}', false);
     expect(result).toEqual({
       ok: true,
-      config: { seconds: 30, quality: { ...DEFAULT_QUALITY, resolutionCap: "1440p", frameRate: 60 }, countdown: 0 },
+      config: { seconds: 30, quality: { ...DEFAULT_QUALITY, resolutionCap: "1440p", frameRate: 60 }, countdown: 0, countdownSound: false },
     });
-    expect(parseAutoRecord('{"seconds":5}', false)).toEqual({ ok: true, config: { seconds: 5, quality: DEFAULT_QUALITY, countdown: 0 } });
+    expect(parseAutoRecord('{"seconds":5}', false)).toEqual({ ok: true, config: { seconds: 5, quality: DEFAULT_QUALITY, countdown: 0, countdownSound: false } });
   });
 
   it("uses no countdown unless the configuration names a supported one", () => {
-    expect(parseAutoRecord('{"seconds":5,"countdown":10}', false)).toEqual({ ok: true, config: { seconds: 5, quality: DEFAULT_QUALITY, countdown: 10 } });
+    expect(parseAutoRecord('{"seconds":5,"countdown":10}', false)).toEqual({ ok: true, config: { seconds: 5, quality: DEFAULT_QUALITY, countdown: 10, countdownSound: false } });
     expect(parseAutoRecord('{"seconds":5,"countdown":4}', false)).toEqual({ ok: false, error: "countdown: unsupported value 4" });
     expect(parseAutoRecord('{"seconds":5,"countdown":"3"}', false)).toMatchObject({ ok: false });
+    // It never ticks, even when asked to (plan 046), so matrix and audio-quality audio stays the material's own.
+    expect(parseAutoRecord('{"seconds":5,"countdown":3,"countdownSound":true}', false)).toMatchObject({ ok: true, config: { countdown: 3, countdownSound: false } });
   });
 
   it("accepts only an absolute output folder override", () => {
     expect(parseAutoRecord('{"seconds":5,"outputDir":"/Volumes/test"}', false)).toEqual({
-      ok: true, config: { seconds: 5, quality: DEFAULT_QUALITY, countdown: 0, outputDir: "/Volumes/test" },
+      ok: true, config: { seconds: 5, quality: DEFAULT_QUALITY, countdown: 0, countdownSound: false, outputDir: "/Volumes/test" },
     });
     expect(parseAutoRecord('{"seconds":5,"outputDir":"relative/dir"}', false)).toEqual({ ok: false, error: "outputDir must be an absolute path" });
     expect(parseAutoRecord('{"seconds":5,"outputDir":3}', false)).toMatchObject({ ok: false });
@@ -85,7 +87,7 @@ function harness(initial: RecordingState = { type: "idle" }): Harness {
   return h;
 }
 
-const config = { seconds: 30, quality: DEFAULT_QUALITY, countdown: 0 as const };
+const config = { seconds: 30, quality: DEFAULT_QUALITY, countdown: 0 as const, countdownSound: false as const };
 
 describe("runAutoRecord", () => {
   it("ends the run when its countdown is cancelled, so no later recording inherits its stop timer", () => {

@@ -11,7 +11,7 @@ const context: AppContext = {
   outputDir: "/tmp/recordings",
   homeDir: "/tmp",
   quality: DEFAULT_QUALITY,
-  countdown: 3,
+  countdown: 3, countdownSound: true,
   language: "en",
   hotkey: { ...DEFAULT_HOTKEY, registered: true },
   updates: { state: { kind: "idle" }, enabled: true },
@@ -36,6 +36,7 @@ describe("settingsView", () => {
     expect(view.groups.map((entry) => entry.id)).toEqual([
       "screen",
       "countdown",
+      "countdownSound",
       "videoQuality",
       "resolutionCap",
       "frameRate",
@@ -52,6 +53,7 @@ describe("settingsView", () => {
       expect(entry.enabled, entry.id).toBe(true);
     }
     expect(checked(idle, context, "countdown")).toBe("3");
+    expect(checked(idle, context, "countdownSound")).toBe("on");
     expect(checked(idle, context, "videoQuality")).toBe("standard");
     expect(checked(idle, context, "resolutionCap")).toBe("source");
     expect(checked(idle, context, "frameRate")).toBe("30");
@@ -183,7 +185,7 @@ describe("update actions in General", () => {
     expect(settingsAction(idle, ctx, "updates", "open")).toBeUndefined();
   });
   it("places quality controls in Recording", () => {
-    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "countdown", "videoQuality", "resolutionCap", "frameRate"]);
+    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "countdown", "countdownSound", "videoQuality", "resolutionCap", "frameRate"]);
   });
 });
 
@@ -208,6 +210,40 @@ describe("countdown group (plan 040)", () => {
     }
     expect(settingsView({ type: "countdown", remaining: 2 }, context).hint).toBe("Recording in progress. Recording settings are locked.");
     expect(settingsChecked(idle, { ...context, countdown: 10 }, "countdown", "10")).toBe(true);
+  });
+});
+
+describe("countdown sound (plan 046)", () => {
+  it("is a switch directly after Countdown with the note that it is not recorded, in both languages", () => {
+    const sound = group(idle, context, "countdownSound")!;
+    expect(sound).toMatchObject({ label: "Countdown sound", control: "switch", tab: "recording", section: "recording", noteKind: "explanation", enabled: true });
+    expect(sound.choices.map((c) => [c.id, c.label, c.checked])).toEqual([["on", "On", true], ["off", "Off", false]]);
+    expect(sound.note).toBe("A short tick plays with each digit. It stops before recording starts and is not recorded.");
+    const zh = group(idle, { ...context, language: "zh-TW" }, "countdownSound")!;
+    expect([zh.label, ...zh.choices.map((c) => c.label)]).toEqual(["倒數音效", "開啟", "關閉"]);
+    expect(zh.note).toContain("不會被錄進去");
+    expect(checked(idle, { ...context, countdownSound: false }, "countdownSound")).toBe("off");
+  });
+
+  it("resolves both ids to setCountdownSound", () => {
+    expect(settingsAction(idle, context, "countdownSound", "off")).toEqual({ setCountdownSound: false });
+    expect(settingsAction(idle, context, "countdownSound", "on")).toEqual({ setCountdownSound: true });
+    expect(settingsAction(idle, context, "countdownSound", "loud")).toBeUndefined();
+  });
+
+  it("is disabled while the countdown is Off, keeping its value", () => {
+    const off = { ...context, countdown: 0 as const };
+    expect(group(idle, off, "countdownSound")?.enabled).toBe(false);
+    expect(checked(idle, off, "countdownSound")).toBe("on");
+    expect(checked(idle, { ...off, countdownSound: false }, "countdownSound")).toBe("off");
+    expect(settingsAction(idle, off, "countdownSound", "off")).toBeUndefined();
+  });
+
+  it("is locked while starting, counting down, recording or saving", () => {
+    for (const state of [{ type: "starting" }, { type: "countdown", remaining: 2 }, { type: "recording", startedAt: "x" }, { type: "stopping" }] as RecordingState[]) {
+      expect(group(state, context, "countdownSound")?.enabled, state.type).toBe(false);
+      expect(settingsAction(state, context, "countdownSound", "off"), state.type).toBeUndefined();
+    }
   });
 });
 
@@ -300,7 +336,8 @@ describe("screen choice", () => {
 it("declares presentation without changing choice identities, and authorizes only fixed links", () => {
   const groups = settingsView(idle, context).groups;
   expect(groups.map(g => [g.id, g.control, g.section])).toEqual([
-    ["screen", "menu", "recording"], ["countdown", "segmented", "recording"], ["videoQuality", "segmented", "recording"],
+    ["screen", "menu", "recording"], ["countdown", "segmented", "recording"], ["countdownSound", "switch", "recording"],
+    ["videoQuality", "segmented", "recording"],
     ["resolutionCap", "menu", "recording"], ["frameRate", "menu", "recording"],
     ["hotkey", "menu", "hotkey"], ["notifications", "switch", "notifications"],
     ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"],

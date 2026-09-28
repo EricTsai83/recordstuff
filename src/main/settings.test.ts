@@ -60,7 +60,7 @@ describe("SettingsStore", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3,
+      countdown: 3, countdownSound: true,
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -135,7 +135,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3,
+      countdown: 3, countdownSound: true,
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -155,7 +155,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3,
+      countdown: 3, countdownSound: true,
     });
   });
 
@@ -209,7 +209,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3,
+      countdown: 3, countdownSound: true,
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -243,14 +243,14 @@ describe("parseSettings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3,
+      countdown: 3, countdownSound: true,
     });
     expect(parseSettings('{"version":2,"outputDir":"/a","quality":' + JSON.stringify(DEFAULT_QUALITY) + "}")).toEqual({
-      settings: { language: "en", appearance: "system", version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" }, countdown: 3 },
+      settings: { language: "en", appearance: "system", version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" }, countdown: 3, countdownSound: true },
       warnings: ["version 2 file: shortcut set to default"],
     });
     const v3 = { version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
-    expect(parseSettings(JSON.stringify(v3))).toEqual({ settings: { ...v3, language: "en", appearance: "system", updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" }, countdown: 3 }, warnings: [] });
+    expect(parseSettings(JSON.stringify(v3))).toEqual({ settings: { ...v3, language: "en", appearance: "system", updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" }, countdown: 3, countdownSound: true }, warnings: [] });
     expect(parseSettings('{"version":1,"outputDir":""}')).toBeUndefined();
     expect(parseSettings("null")).toBeUndefined();
     expect(parseSettings("[]")).toBeUndefined();
@@ -335,7 +335,7 @@ describe("hotkey settings (plan 016)", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3,
+      countdown: 3, countdownSound: true,
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.
@@ -479,5 +479,40 @@ describe("countdown (plan 040)", () => {
     expect(store().countdown).toBe(0);
     await expect(first.setCountdown(4 as never)).rejects.toThrow("unsupported countdown");
     expect(store().countdown).toBe(0);
+  });
+});
+
+describe("countdown sound (plan 046)", () => {
+  const v3 = { version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
+
+  it("reads a file written before the field existed as on, the maintainer's default, silently and without a version bump", async () => {
+    expect(parseSettings(JSON.stringify(v3))).toMatchObject({ settings: { countdownSound: true, version: 3 }, warnings: [] });
+    await fs.writeFile(filePath, JSON.stringify(v3));
+    expect(store().countdownSound).toBe(true);
+    expect(logs).toEqual([]);
+    expect(new SettingsStore({ filePath: path.join(dir, "missing.json"), defaultOutputDir: DEFAULT }).countdownSound).toBe(true);
+  });
+
+  it.each([true, false])("keeps a stored %s, also with the countdown Off", (countdownSound) => {
+    expect(parseSettings(JSON.stringify({ ...v3, countdown: 0, countdownSound }))).toMatchObject({ settings: { countdown: 0, countdownSound }, warnings: [] });
+  });
+
+  it.each(["off", 0, null, 1])("reads a non-boolean %j as on with a warning and keeps the other fields", (countdownSound) => {
+    expect(parseSettings(JSON.stringify({ ...v3, countdown: 5, countdownSound }))).toMatchObject({
+      settings: { countdownSound: true, countdown: 5, outputDir: "/a" }, warnings: ["countdownSound is not a boolean: using on"],
+    });
+  });
+
+  it("saves the switch atomically with the other fields, and refuses a non-boolean", async () => {
+    const first = store();
+    await first.setCountdown(5);
+    await first.setCountdownSound(false);
+    expect(first.countdownSound).toBe(false);
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: 3, outputDir: DEFAULT, countdown: 5, countdownSound: false });
+    expect(store().countdownSound).toBe(false);
+    await first.setCountdownSound(true);
+    expect(store().countdownSound).toBe(true);
+    await expect(first.setCountdownSound("off" as never)).rejects.toThrow("unsupported countdown sound");
+    expect(store().countdownSound).toBe(true);
   });
 });

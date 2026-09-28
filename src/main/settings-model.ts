@@ -53,9 +53,9 @@ function group(
   choices: Group["choices"],
   note?: string,
 ): Group {
-  const tab = ["screen", "countdown", "videoQuality", "resolutionCap", "frameRate"].includes(id) ? "recording" : "general";
+  const tab = ["screen", "countdown", "countdownSound", "videoQuality", "resolutionCap", "frameRate"].includes(id) ? "recording" : "general";
   return { id, label, enabled, choices, tab,
-    control: ["notifications", "updateChecks"].includes(id) ? "switch" : ["countdown", "videoQuality", "language"].includes(id) ? "segmented" : "menu",
+    control: ["notifications", "updateChecks", "countdownSound"].includes(id) ? "switch" : ["countdown", "videoQuality", "language"].includes(id) ? "segmented" : "menu",
     section: tab === "recording" ? "recording" : id === "updateChecks" ? "updates" : id,
     noteKind: "explanation", ...(note === undefined ? {} : { note }) };
 }
@@ -100,6 +100,21 @@ function countdownGroup(ctx: AppContext, enabled: boolean): Group {
     checked: value === ctx.countdown,
     action: { setCountdown: value },
   })), t("Before recording starts, the digits appear at the top-right of the recorded screen. Click the menu bar icon or press the shortcut to cancel.", language));
+}
+
+/**
+ * The countdown's tick (plan 046): disabled while the countdown is Off, which
+ * keeps the stored value, and locked with the other recording settings.
+ */
+function countdownSoundGroup(ctx: AppContext, enabled: boolean): Group {
+  const language = ctx.language;
+  return group("countdownSound", t("Countdown sound", language), enabled && ctx.countdown !== 0, [true, false].map((value) => ({
+    id: value ? "on" : "off",
+    label: t(value ? "On" : "Off", language),
+    enabled: true,
+    checked: value === ctx.countdownSound,
+    action: { setCountdownSound: value },
+  })), t("A short tick plays with each digit. It stops before recording starts and is not recorded.", language));
 }
 
 function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {
@@ -256,6 +271,7 @@ function settingsGroups(state: RecordingState, ctx: AppContext): Group[] {
   return [
     screenGroup(ctx, unlocked),
     countdownGroup(ctx, unlocked),
+    countdownSoundGroup(ctx, unlocked),
     ...qualityGroups(ctx, unlocked),
     ...hotkeyGroup(ctx, unlocked),
     ...notificationsGroup(ctx, unlocked),

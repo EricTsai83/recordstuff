@@ -8,7 +8,7 @@ import type { HostMessage } from "../shared/protocol";
 import { DEFAULT_QUALITY, type CaptureReport, type QualitySettings } from "../shared/quality";
 import type { RecordingState } from "../shared/state";
 import type { RecordingFailure } from "../shared/recording-result";
-import { Recorder, formatTimestamp, type CountdownPresenter, type RecorderDeps, type RecorderEvent, type RecorderHost, type RecorderWriter } from "./recorder";
+import { Recorder, formatTimestamp, type CountdownPresentation, type CountdownPresenter, type RecorderDeps, type RecorderEvent, type RecorderHost, type RecorderWriter } from "./recorder";
 import { COUNTDOWN_TIMING } from "../shared/countdown";
 import { SessionSentinels, type SessionSentinel } from "./session-sentinel";
 
@@ -1889,8 +1889,10 @@ class FakePresenter implements CountdownPresenter {
     this.calls.push([call, Date.now()]);
     if (this.fail === call.split(" ")[0]) throw new Error(`${call} broke`);
   }
-  prepare(): void { this.note("prepare"); }
-  show(remaining: number): void { this.note(`show ${remaining}`); }
+  /** The presentation each `prepare` and `show` received (plan 046). */
+  presentations: Array<[string, CountdownPresentation]> = [];
+  prepare(presentation: CountdownPresentation): void { this.presentations.push(["prepare", presentation]); this.note("prepare"); }
+  show(remaining: number, presentation: CountdownPresentation): void { this.presentations.push([`show ${remaining}`, presentation]); this.note(`show ${remaining}`); }
   update(remaining: number): void { this.note(`update ${remaining}`); }
   dismiss(): Promise<void> { this.note("dismiss"); return this.dismissal; }
   close(): void { this.note("close"); }
@@ -1956,6 +1958,32 @@ describe("Recorder countdown (plan 040)", () => {
     expect(ctx.events.filter((event) => event.type === "captureStarted")).toHaveLength(1);
     expect(ctx.logs).toContainEqual(expect.stringContaining("prepared after 40 ms; countdown 3 s"));
     expect(ctx.logs).toContainEqual(expect.stringContaining("record sent 3000 ms after the 3 s countdown began"));
+  });
+
+  it("passes the session's sound snapshot to the overlay and logs it with the countdown (plan 046)", async () => {
+    let sound = true;
+    const ctx = counting(3, { countdownSound: () => sound });
+    ctx.recorder.toggle();
+    await flush();
+    // A change after the session began affects the next recording only.
+    sound = false;
+    ctx.host.emit(prepared("s1"));
+    expect(ctx.presenter.presentations).toEqual([["prepare", { sound: true }], ["show 3", { sound: true }]]);
+    expect(ctx.logs).toContainEqual(expect.stringContaining("prepared after 0 ms; countdown 3 s; sound on"));
+  });
+
+  it("is silent without the dependency, when the switch is off and when the countdown is Off", async () => {
+    const plain = counting(3);
+    await plain.prepare();
+    expect(plain.presenter.presentations).toEqual([["prepare", { sound: false }], ["show 3", { sound: false }]]);
+    expect(plain.logs).toContainEqual(expect.stringContaining("countdown 3 s; sound off"));
+    const off = counting(3, { countdownSound: () => false });
+    await off.prepare();
+    expect(off.presenter.presentations.map(([, p]) => p.sound)).toEqual([false, false]);
+    const none = counting(0, { countdownSound: () => true });
+    await none.prepare();
+    expect(none.presenter.presentations).toEqual([]);
+    expect(none.logs).toContainEqual(expect.stringContaining("countdown 0 s; sound off"));
   });
 
   it("counts ten seconds as two-digit values and keeps the snapshot taken at start", async () => {

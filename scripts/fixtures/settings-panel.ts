@@ -112,6 +112,8 @@ let language: Language = "zh-TW";
 let notifications = true;
 let captureView: SettingsView | undefined;
 let resultContext: AppContext | undefined;
+/** Set by the countdown sound case (plan 046): main answers its switch from the real model. */
+let soundContext: AppContext | undefined;
 let resultSaveFails = false;
 /** Every durable result save waits, so replies arrive after Chromium's focus fixup (plan 036). */
 let saveDelayMs = 120;
@@ -150,6 +152,11 @@ ipcMain.handle("settings:choose", async (_event, group: string, choice: string) 
         platform: "darwin", reveal: () => {}, folder: async () => {}, permission: async () => {}, relaunch: async () => {},
       });
     return { applied, view: resultView() };
+  }
+  if (group === "countdownSound" && soundContext) {
+    const action = settingsAction({ type: "idle" }, soundContext, group, choice);
+    if (typeof action === "object" && "setCountdownSound" in action) soundContext = { ...soundContext, countdownSound: action.setCountdownSound };
+    return { view: settingsView({ type: "idle" }, soundContext), applied: action !== undefined };
   }
   if (group === "about" && captureView) return { view: captureView, applied: false, failure: "Could not open the link. Try again." };
   const commit = () => {
@@ -449,17 +456,20 @@ async function run() {
 
   // Real model snapshots cover visual states without touching user preferences.
   const ctx: AppContext = { platform: "darwin", language: "en", outputDir: "/tmp", homeDir: "/tmp",
-    quality: DEFAULT_QUALITY, countdown: 3, hotkey: { ...DEFAULT_HOTKEY, registered: true }, notifications: true,
+    quality: DEFAULT_QUALITY, countdown: 3, countdownSound: true, hotkey: { ...DEFAULT_HOTKEY, registered: true }, notifications: true,
     updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" },
     displays: [{ id: "1", label: "Built-in Display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true }] };
   for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
     nativeTheme.themeSource = scheme;
     for (const size of ["default", "minimum"] as const) {
       window.setSize(size === "default" ? 560 : 380, size === "default" ? 680 : 360);
-      for (const state of ["recording", "general", "listening", "error", "locked"] as const) {
+      for (const state of ["recording", "general", "listening", "error", "locked", "sound-off", "countdown-off"] as const) {
         const snapshot = settingsView(state === "locked" ? { type: "starting" } : { type: "idle" }, {
           ...ctx, language: lang,
           ...(state === "error" ? { display: { kind: "display", id: "2", label: "BenQ BL2480T" }, displayFailure: "target_removed" } : {}),
+          // Plan 046: the switch off, and disabled with its value kept while the countdown is Off.
+          ...(state === "sound-off" ? { countdownSound: false } : {}),
+          ...(state === "countdown-off" ? { countdown: 0 as const } : {}),
         });
         if (state === "listening") snapshot.groups.find(g => g.id === "hotkey")!.capturing = true;
         await read(window, `document.getElementById("tab-${state === "general" || state === "listening" ? "general" : "recording"}").click()`);
@@ -468,7 +478,9 @@ async function run() {
         await settle(60);
         await read(window, `document.getElementById("settings-panel").scrollTop = 0`);
         if (state === "listening") await read(window, `document.getElementById("shortcut-capture").focus()`);
+        else if (state === "sound-off") await read(window, `document.getElementById("setting-countdownSound").focus()`);
         else await read(window, `document.querySelector("#settings-panel select, #settings-panel input")?.focus()`);
+        if (state === "sound-off" || state === "countdown-off") await read(window, `document.getElementById("setting-countdownSound-row").scrollIntoView({ block: "nearest" })`);
         await settle(60);
         const fits = await read<boolean>(window, `document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth && document.getElementById("settings-panel").scrollWidth <= document.getElementById("settings-panel").clientWidth`);
         const geometry = await read(window, `({root: [document.documentElement.scrollWidth, document.documentElement.scrollHeight], viewport: [innerWidth, innerHeight], main: document.querySelector("main").getBoundingClientRect().toJSON(), form: document.querySelector("form").getBoundingClientRect().toJSON(), panel: document.getElementById("settings-panel").getBoundingClientRect().toJSON()})`);
@@ -477,6 +489,31 @@ async function run() {
       }
     }
   }
+  // Countdown sound (plan 046): a real click reaches main with the switch's id; under Off it is disabled and sends nothing.
+  nativeTheme.themeSource = "light";
+  window.setSize(560, 680);
+  await read(window, `document.getElementById("tab-recording").click()`);
+  const soundSwitch = async (countdown: 0 | 3): Promise<{ x: number; y: number; checked: boolean; disabled: boolean; calls: string; after: boolean }> => {
+    soundContext = { ...ctx, countdown };
+    window.webContents.send("settings:changed", settingsView({ type: "idle" }, soundContext));
+    await settle(80);
+    chooseCalls.length = 0;
+    const target = await read<{ x: number; y: number; checked: boolean; disabled: boolean }>(window, `(() => {
+      const el = document.getElementById("setting-countdownSound"); el.scrollIntoView({ block: "center" });
+      const r = el.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2), checked: el.checked, disabled: el.disabled };
+    })()`);
+    window.webContents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, x: target.x, y: target.y });
+    window.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, x: target.x, y: target.y });
+    await settle(150);
+    return { ...target, calls: JSON.stringify(chooseCalls), after: await read<boolean>(window, `document.getElementById("setting-countdownSound").checked`) };
+  };
+  const enabledSound = await soundSwitch(3);
+  record("countdown sound: a real click on the checked switch asks main for off and shows the committed off",
+    enabledSound.checked && !enabledSound.disabled && enabledSound.calls === '[["countdownSound","off"]]' && !enabledSound.after, JSON.stringify(enabledSound));
+  const disabledSound = await soundSwitch(0);
+  record("countdown sound: disabled while the countdown is Off, keeping its value, and a click sends nothing",
+    disabledSound.checked && disabledSound.disabled && disabledSound.calls === "[]" && disabledSound.after, JSON.stringify(disabledSound));
+  soundContext = undefined;
   // Repeated checks preserve the row, button, result text and lower-row position.
   window.setSize(560, 680);
   const updatePrevious = { kind: "current" as const, checkedAt: 1000 };

@@ -1,7 +1,9 @@
 /*
  * Only the digit: no background, box, border, ring or blur (plan 040). Every
  * value comes from src/shared/countdown.ts through custom properties set by
- * countdown.ts, so the appearance has one definition.
+ * countdown.ts, so the appearance has one definition. Sizes are relative:
+ * the font to the window (`vmin`), the outline and shadows to the font (`em`),
+ * so the window main sizes for the display is the only carrier of size (plan 045).
  */
 html,
 body {

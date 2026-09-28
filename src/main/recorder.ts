@@ -59,10 +59,16 @@ export interface RecorderHost {
  * app injects the overlay window. Errors are logged and never fail a
  * recording; the tray still shows the countdown.
  */
+/** How the overlay presents this session's countdown; a snapshot taken when the session begins. */
+export interface CountdownPresentation {
+  /** A tick plays with each digit (plan 046). */
+  sound: boolean;
+}
+
 export interface CountdownPresenter {
   /** Preparation began and a countdown will follow: build the overlay so the first digit appears on time. */
-  prepare?(): void;
-  show(remaining: number): void;
+  prepare?(presentation: CountdownPresentation): void;
+  show(remaining: number, presentation: CountdownPresentation): void;
   update(remaining: number): void;
   /** Fades the digit out; resolves once it is gone from the screen. */
   dismiss(): Promise<void>;
@@ -77,6 +83,8 @@ export interface RecorderDeps {
   quality: () => QualitySettings;
   /** Read once per session like quality; absent means no countdown. */
   countdownSeconds?: () => CountdownSeconds;
+  /** Read once per session with the countdown; absent means silent. */
+  countdownSound?: () => boolean;
   countdown?: CountdownPresenter;
   /** Monotonic milliseconds for countdown anchors and timing logs; defaults to `performance.now()`. */
   monotonic?: () => number;
@@ -180,6 +188,8 @@ interface Session {
   quality: QualitySettings;
   /** Countdown snapshot taken when the session was created. */
   countdownSeconds: CountdownSeconds;
+  /** Whether the countdown ticks; taken with `countdownSeconds`, and false without a countdown. */
+  countdownSound: boolean;
   /** Quit arrived before capture was prepared: cancel instead of counting down or recording. */
   cancelOnPrepared: boolean;
   /** What `prepared` reported; carried on `captureStarted`. */
@@ -458,11 +468,13 @@ export class Recorder {
     }
 
     const dir = this.deps.outputDir();
+    const countdownSeconds = this.deps.countdownSeconds?.() ?? 0;
     const session: Session = {
       id: this.deps.newSessionId(),
       phase: "opening",
       quality: this.deps.quality(),
-      countdownSeconds: this.deps.countdownSeconds?.() ?? 0,
+      countdownSeconds,
+      countdownSound: countdownSeconds > 0 && (this.deps.countdownSound?.() ?? false),
       cancelOnPrepared: false,
       overlay: false,
       requestedAt: this.monotonic(),
@@ -514,7 +526,7 @@ export class Recorder {
     }, this.deps.captureRequestTimeoutMs);
     if (session.countdownSeconds > 0 && this.deps.countdown) {
       session.overlay = true;
-      this.present("prepare", (presenter) => presenter.prepare?.());
+      this.present("prepare", (presenter) => presenter.prepare?.({ sound: session.countdownSound }));
     }
     try {
       await this.deps.host.start(session.id, session.quality);
@@ -598,7 +610,7 @@ export class Recorder {
         if (session.phase !== "preparing") return;
         this.clearTimer(session);
         session.capture = message.capture;
-        this.deps.log(`recorder: session ${session.id} prepared after ${this.elapsed(session.requestedAt)} ms; countdown ${session.countdownSeconds} s`);
+        this.deps.log(`recorder: session ${session.id} prepared after ${this.elapsed(session.requestedAt)} ms; countdown ${session.countdownSeconds} s; sound ${session.countdownSound ? "on" : "off"}`);
         if (session.cancelOnPrepared) {
           this.cancel(session, "quit");
           return;
@@ -693,7 +705,7 @@ export class Recorder {
     this.setState({ type: "countdown", remaining: seconds });
     if (this.deps.countdown) {
       session.overlay = true;
-      this.present("show", (presenter) => presenter.show(seconds));
+      this.present("show", (presenter) => presenter.show(seconds, { sound: session.countdownSound }));
     }
     const at = (offsetMs: number, run: () => void): void => {
       countdown.timers.push(setTimeout(run, Math.max(0, countdown.anchor + offsetMs - this.monotonic())));
