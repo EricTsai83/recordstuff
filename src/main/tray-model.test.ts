@@ -63,11 +63,12 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
       "已經允許了？重新啟動 RecordStuff",
       "—",
       "儲存位置：~/Movies/RecordStuff",
-      "更改儲存位置",
+      "更改儲存位置…",
       "—",
-      "設定",
+      "設定…",
+      "—",
       "顯示 log",
-      "結束",
+      "結束 RecordStuff",
     ]);
     expect(m.menu[0]).toMatchObject({ enabled: false });
     expect(enabledActions(m.menu)).toEqual([
@@ -102,7 +103,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
 
   it("needsPermission after a save keeps the reveal item below the permission actions", () => {
     const m = trayModel({ type: "needsPermission", needsRelaunch: true, lastSavedPath: "/Users/eric/Movies/RecordStuff/a.mp4" }, mac);
-    expect(labels(m.menu).slice(0, 3)).toEqual(["需要螢幕錄製權限", "重新啟動", "顯示最後一個錄影"]);
+    expect(labels(m.menu).slice(0, 4)).toEqual(["需要螢幕錄製權限", "重新啟動", "—", "顯示最後一個錄影"]);
     expect(enabledActions(m.menu).slice(0, 2)).toEqual(["relaunch", "revealLastSaved"]);
   });
 
@@ -112,15 +113,18 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(m.title).toBe("");
     expect(labels(m.menu)).toEqual([
       "待命中",
+      "開始錄製",
       "—",
       "儲存位置：~/Movies/RecordStuff",
-      "更改儲存位置",
+      "更改儲存位置…",
       "—",
-      "設定",
+      "設定…",
+      "—",
       "顯示 log",
-      "結束",
+      "結束 RecordStuff",
     ]);
     expect(enabledActions(m.menu)).toEqual([
+      "start",
       "openOutputDir",
       "changeOutputDir",
       "openSettings",
@@ -131,8 +135,8 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
 
   it("idle with a last recording adds the reveal item", () => {
     const m = trayModel({ type: "idle", lastSavedPath: "/Users/eric/Movies/RecordStuff/a.mp4" }, mac);
-    expect(labels(m.menu)[1]).toBe("顯示最後一個錄影");
-    expect(enabledActions(m.menu)[0]).toBe("revealLastSaved");
+    expect(labels(m.menu)[3]).toBe("顯示最後一個錄影");
+    expect(enabledActions(m.menu).slice(0, 2)).toEqual(["start", "revealLastSaved"]);
   });
 
   it("idle with an unusable output dir says so on the first line", () => {
@@ -145,7 +149,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     const m = trayModel({ type: "starting" }, mac);
     expect(m.icon).toBe("busy");
     expect(m.title).toBe("");
-    expect(labels(m.menu)).toEqual(["啟動中，請留意系統權限提示…", "—", "設定", "顯示 log", "結束"]);
+    expect(labels(m.menu)).toEqual(["啟動中，請留意系統權限提示…", "—", "設定…", "—", "顯示 log", "結束 RecordStuff"]);
     expect(enabledActions(m.menu)).toEqual(["openSettings", "revealLog", "quit"]);
   });
 
@@ -158,11 +162,12 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
       "停止",
       "—",
       "儲存位置：~/Movies/RecordStuff",
-      "更改儲存位置",
+      "更改儲存位置…",
       "—",
-      "設定",
+      "設定…",
+      "—",
       "顯示 log",
-      "結束",
+      "結束 RecordStuff",
     ]);
     expect(enabledActions(m.menu)).toEqual(["stop", "openSettings", "revealLog", "quit"]);
   });
@@ -171,7 +176,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     const m = trayModel({ type: "stopping" }, mac);
     expect(m.icon).toBe("busy");
     expect(m.title).toBe("");
-    expect(labels(m.menu)).toEqual(["儲存中…", "—", "設定", "顯示 log", "結束"]);
+    expect(labels(m.menu)).toEqual(["儲存中…", "—", "設定…", "—", "顯示 log", "結束 RecordStuff"]);
     expect(enabledActions(m.menu)).toEqual(["openSettings", "revealLog", "quit"]);
   });
 
@@ -181,9 +186,9 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(m.icon).toBe("countdown");
     expect(m.title).toBe("");
     expect(m.tooltip.split("\n")[0]).toBe("RecordStuff: 3 秒後開始錄製，按一下即可取消。");
-    expect(labels(m.menu)).toEqual(["3 秒後開始錄製", "取消錄影", "—", "設定", "顯示 log", "結束"]);
+    expect(labels(m.menu)).toEqual(["3 秒後開始錄製", "取消錄影", "—", "設定…", "—", "顯示 log", "結束 RecordStuff"]);
     expect(enabledActions(m.menu)).toEqual(["cancelCountdown", "openSettings", "revealLog", "quit"]);
-    expect(m.menu.find((i) => i.kind === "item" && i.action === "cancelCountdown")).toMatchObject({ toolTip: "以 ⌘⇧1 取消錄影" });
+    expect(m.menu.find((i) => i.kind === "item" && i.action === "cancelCountdown")).toMatchObject({ toolTip: "以 ⌘⇧1 取消錄影", accelerator: "CommandOrControl+Shift+1" });
     expect(trayModel({ type: "countdown", remaining: 1 }, ctx).menu[0]).toMatchObject({ label: "1 秒後開始錄製", enabled: false });
     const english = trayModel({ type: "countdown", remaining: 2 }, { ...ctx, language: "en" });
     expect(english.tooltip.split("\n")[0]).toBe("RecordStuff: Recording starts in 2 s. Click to cancel.");
@@ -224,7 +229,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
       const m = trayModel(state, { ...mac, quitting: true, recordingResults: unread });
       expect(m.icon).toBe("busy");
       expect(m.tooltip.split("\n")[0]).toBe("RecordStuff: 正在結束…錄影存檔或清理完成後就會結束");
-      expect(labels(m.menu)).toEqual(["尚未確認的錄影失敗：1 筆", "查看失敗紀錄…", "—", "正在結束…錄影存檔或清理完成後就會結束", "—", "設定", "顯示 log", "結束"]);
+      expect(labels(m.menu)).toEqual(["正在結束…錄影存檔或清理完成後就會結束", "—", "尚未確認的錄影失敗：1 筆", "查看失敗紀錄…", "—", "設定…", "—", "顯示 log", "結束 RecordStuff"]);
     }
     const english = trayModel({ type: "idle" }, { ...mac, language: "en", quitting: true });
     expect(english.menu[0]).toMatchObject({ label: "Quitting… RecordStuff quits once the recording is saved or cleaned up.", enabled: false });
@@ -247,13 +252,14 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     }
   });
 
-  it("every state ends with enabled Settings, Show log and Quit", () => {
+  it("every state ends with enabled Settings…, then Show log and Quit RecordStuff in their own group", () => {
     for (const state of STATES) {
       const menu = trayModel(state, mac).menu;
-      expect(menu.at(-4), state.type).toEqual({ kind: "separator" });
-      expect(menu.at(-3)).toMatchObject({ label: "設定", action: "openSettings", enabled: true });
+      expect(menu.at(-5), state.type).toEqual({ kind: "separator" });
+      expect(menu.at(-4)).toMatchObject({ label: "設定…", action: "openSettings", enabled: true });
+      expect(menu.at(-3)).toEqual({ kind: "separator" });
       expect(menu.at(-2)).toMatchObject({ label: "顯示 log", action: "revealLog", enabled: true });
-      expect(menu.at(-1)).toMatchObject({ label: "結束", action: "quit", enabled: true });
+      expect(menu.at(-1)).toMatchObject({ label: "結束 RecordStuff", action: "quit", enabled: true });
     }
   });
 });
@@ -294,7 +300,9 @@ describe("English default and language switching", () => {
     const ctx = { ...mac, language: "en" as const };
     const m = trayModel({ type: "idle" }, ctx);
     expect(labels(m.menu)[0]).toBe("Ready");
-    expect(labels(m.menu)).toContain("Settings");
+    expect(labels(m.menu)).toContain("Settings…");
+    expect(labels(m.menu).slice(0, 2)).toEqual(["Ready", "Start recording"]);
+    expect(labels(m.menu).at(-1)).toBe("Quit RecordStuff");
     expect(savedNotification("/tmp/demo.mp4").body).toBe("Saved demo.mp4");
   });
 
@@ -355,10 +363,14 @@ describe("first-run hint", () => {
 it("only advertises a working Settings key and explains unavailable access in both languages", () => {
   for (const language of ["en", "zh-TW"] as const) {
     const ctx = { ...mac, language, settingsShortcut: { kind: "registered" as const, accelerator: "CommandOrControl+Alt+," } };
-    expect(trayModel({ type: "recording", startedAt: 0 } as any, ctx).menu).toContainEqual(expect.objectContaining({ action: "openSettings", enabled: true, label: expect.stringContaining("⌘⌥,") }));
+    // Shown as the native right-aligned accelerator, not typed into the label (plan 048).
+    expect(trayModel({ type: "recording", startedAt: 0 } as any, ctx).menu).toContainEqual(expect.objectContaining({ action: "openSettings", enabled: true,
+      label: language === "en" ? "Settings…" : "設定…", accelerator: "CommandOrControl+Alt+," }));
     for (const status of [{ kind: "conflict" as const }, { kind: "failed" as const, accelerator: "CommandOrControl+Alt+,", reason: "OS" }]) {
       const menu = trayModel({ type: "idle" }, { ...ctx, settingsShortcut: status }).menu;
-      expect(menu).toContainEqual(expect.objectContaining({ action: "openSettings", enabled: true, label: language === "en" ? "Settings" : "設定" }));
+      const settings = menu.find(item => item.kind === "item" && item.action === "openSettings");
+      expect(settings).toMatchObject({ enabled: true, label: language === "en" ? "Settings…" : "設定…" });
+      expect(settings).not.toHaveProperty("accelerator");
       expect(menu.some(item => item.kind === "item" && !item.enabled && item.label.includes(language === "en" ? "Settings shortcut unavailable" : "設定快捷鍵無法使用"))).toBe(true);
     }
   }
@@ -398,4 +410,80 @@ it("keeps the warning while an older failure is unread and counts unread results
   expect(trayModel({ type: "idle" }, ctx)).toMatchObject({ icon: "warning", tooltip: expect.stringContaining("1") });
   expect(trayModel({ type: "idle" }, { ...ctx, recordingResults: [a, { ...a, id: "b" }] }).tooltip).toContain("2");
   expect(trayModel({ type: "idle" }, { ...ctx, recordingResults: [] }).icon).toBe("idle");
+});
+
+describe("one group order in every state (plan 048)", () => {
+  const failure = { id: "f", code: "disk_full" as const, detail: "", occurredAt: "2026-09-27T12:00:00Z", outcome: "empty" as const };
+  const histories = { none: [], unread: [{ ...failure, acknowledged: false }], reviewed: [{ ...failure, acknowledged: true }] };
+
+  it("puts the state first, unread failures next, then files, windows and the app, in both languages", () => {
+    const idle = (history: keyof typeof histories, language: "en" | "zh-TW") =>
+      labels(trayModel({ type: "idle", lastSavedPath: "/Users/eric/Movies/RecordStuff/a.mp4" }, { ...mac, language, recordingResults: histories[history] }).menu);
+    expect(idle("unread", "en")).toEqual([
+      "Ready", "Start recording", "—",
+      "Unreviewed recording failures: 1", "View recording failures…", "—",
+      "Show last recording", "Output folder: ~/Movies/RecordStuff", "Change output folder…", "—",
+      "Settings…", "—",
+      "Show log", "Quit RecordStuff",
+    ]);
+    // Reviewed failures leave the top: only a way back beside Settings, and no "Recent failure" line.
+    expect(idle("reviewed", "zh-TW")).toEqual([
+      "待命中", "開始錄製", "—",
+      "顯示最後一個錄影", "儲存位置：~/Movies/RecordStuff", "更改儲存位置…", "—",
+      "查看失敗紀錄…", "設定…", "—",
+      "顯示 log", "結束 RecordStuff",
+    ]);
+    expect(idle("none", "en")).toEqual(["Ready", "Start recording", "—", "Show last recording", "Output folder: ~/Movies/RecordStuff", "Change output folder…", "—",
+      "Settings…", "—", "Show log", "Quit RecordStuff"]);
+    const recording = labels(trayModel({ type: "recording", startedAt: "" }, { ...mac, language: "en", recordingResults: histories.unread }).menu);
+    expect(recording).toEqual(["Recording", "Stop", "—", "Unreviewed recording failures: 1", "View recording failures…", "—",
+      "Output folder: ~/Movies/RecordStuff", "Change output folder…", "—", "Settings…", "—", "Show log", "Quit RecordStuff"]);
+    const countdown = labels(trayModel({ type: "countdown", remaining: 3 }, { ...mac, recordingResults: histories.reviewed }).menu);
+    expect(countdown).toEqual(["3 秒後開始錄製", "取消錄影", "—", "查看失敗紀錄…", "設定…", "—", "顯示 log", "結束 RecordStuff"]);
+    for (const history of Object.keys(histories) as Array<keyof typeof histories>) {
+      for (const state of STATES) {
+        const menu = labels(trayModel(state, { ...mac, recordingResults: histories[history] }).menu);
+        expect(menu.some((label) => label.startsWith("最近一次失敗")), `${state.type}/${history}`).toBe(false);
+      }
+    }
+  });
+
+  it("never leads, trails or doubles a separator, whatever the state, history, language or shortcut", () => {
+    const shortcuts = [undefined, { kind: "registered" as const, accelerator: "CommandOrControl+Alt+," }, { kind: "conflict" as const }];
+    for (const state of STATES) for (const history of Object.values(histories)) for (const language of ["en", "zh-TW"] as const) for (const settingsShortcut of shortcuts) {
+      for (const quitting of [false, true]) {
+        const menu = trayModel(state, { ...mac, language, recordingResults: history, ...(settingsShortcut ? { settingsShortcut } : {}), quitting }).menu;
+        const kinds = menu.map((entry) => entry.kind).join(",");
+        expect(menu[0]?.kind, kinds).toBe("item");
+        expect(menu.at(-1)?.kind, kinds).toBe("item");
+        expect(kinds.includes("separator,separator"), kinds).toBe(false);
+      }
+    }
+  });
+
+  it("offers Start recording exactly where a left click would start: idle", () => {
+    for (const state of STATES) {
+      const offered = enabledActions(trayModel(state, mac).menu).includes("start");
+      expect(offered, state.type).toBe(state.type === "idle");
+    }
+    expect(enabledActions(trayModel({ type: "idle", outputDirUnavailable: true }, mac).menu)).toContain("start");
+  });
+
+  it("shows right-aligned accelerators only for registered shortcuts, keeping the tooltips", () => {
+    const primary = (state: RecordingState, ctx: AppContext) => trayModel(state, ctx).menu.find((i) => i.kind === "item" && ["start", "stop", "cancelCountdown"].includes(String(i.action)));
+    const states: RecordingState[] = [{ type: "idle" }, { type: "recording", startedAt: "" }, { type: "countdown", remaining: 3 }];
+    for (const state of states) {
+      expect(primary(state, mac), state.type).toMatchObject({ accelerator: "CommandOrControl+Shift+1", toolTip: expect.stringContaining("⌘⇧1") });
+      for (const hotkey of [{ ...DEFAULT_HOTKEY, registered: false }, { ...DEFAULT_HOTKEY, enabled: false, registered: true }]) {
+        const entry = primary(state, { ...mac, hotkey });
+        expect(entry, state.type).not.toHaveProperty("accelerator");
+        expect(entry, state.type).not.toHaveProperty("toolTip");
+      }
+    }
+    // Settings… carries its own shortcut only while it is registered; nothing else has one.
+    const registered = trayModel({ type: "idle" }, { ...mac, settingsShortcut: { kind: "registered", accelerator: "CommandOrControl+Alt+," } }).menu;
+    expect(registered.filter((i) => i.kind === "item" && i.accelerator).map((i) => i.kind === "item" ? [i.action, i.accelerator] : [])).toEqual([
+      ["start", "CommandOrControl+Shift+1"], ["openSettings", "CommandOrControl+Alt+,"],
+    ]);
+  });
 });

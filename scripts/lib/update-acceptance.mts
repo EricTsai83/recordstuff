@@ -60,7 +60,7 @@ export function safeCaptureShortcut(pid: number, runningPids: number[], hotkey: 
  * or a listed group the panel no longer offers, fails until someone classifies it here.
  */
 export const BUSY_SETTINGS_POLICY: Readonly<Record<string, "locked" | "available">> = {
-  screen: "locked", countdown: "locked", countdownSound: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
+  screen: "locked", outputFolder: "locked", countdown: "locked", countdownSound: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
   notifications: "locked", updateChecks: "locked", updates: "locked",
   language: "available", appearance: "available", about: "available",
 };

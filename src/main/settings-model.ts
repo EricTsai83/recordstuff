@@ -28,7 +28,7 @@ import type { SettingsChoice, SettingsGroup, SettingsView } from "../shared/sett
 import type { RecordingState } from "../shared/state";
 
 import path from "node:path";
-import { preferencesUnlocked, type AppAction, type AppContext, type RecordingResultAction } from "./ui-model";
+import { abbreviateHome, preferencesUnlocked, type AppAction, type AppContext, type RecordingResultAction } from "./ui-model";
 
 /** A group as main knows it: exactly the wire shape plus the action per choice. */
 interface Group extends SettingsGroup {
@@ -54,7 +54,7 @@ function group(
   choices: Group["choices"],
   note?: string,
 ): Group {
-  const tab = ["screen", "countdown", "countdownSound", "videoQuality", "resolutionCap", "frameRate"].includes(id) ? "recording" : "general";
+  const tab = ["screen", "outputFolder", "countdown", "countdownSound", "videoQuality", "resolutionCap", "frameRate"].includes(id) ? "recording" : "general";
   return { id, label, enabled, choices, tab,
     control: ["notifications", "updateChecks", "countdownSound"].includes(id) ? "switch" : ["countdown", "videoQuality", "language"].includes(id) ? "segmented" : "menu",
     section: tab === "recording" ? "recording" : id === "updateChecks" ? "updates" : id,
@@ -89,6 +89,19 @@ function screenGroup(ctx: AppContext, enabled: boolean): Group {
     reason: displayFailureText(ctx.displayFailure, ctx.language),
     guidance: t("Try recording again using the shortcut or menu, or choose another screen.", ctx.language) });
   return result;
+}
+
+/**
+ * Where recordings go (plan 048): the path, with Change… and Show in Finder
+ * through the tray's own handlers. Locked like the other recording settings,
+ * since a session's temporary file is already open in the current folder.
+ */
+function outputFolderGroup(ctx: AppContext, enabled: boolean): Group {
+  const language = ctx.language;
+  return { ...group("outputFolder", t("Output folder", language), enabled, [
+    { id: "change", label: t("Change…", language), enabled: true, checked: false, action: "changeOutputDir" },
+    { id: "reveal", label: t(ctx.platform === "darwin" ? "Show in Finder" : "Open folder", language), enabled: true, checked: false, action: "openOutputDir" },
+  ], abbreviateHome(ctx.outputDir, ctx.homeDir)), kind: "actions" };
 }
 
 /** Seconds before capture begins (plan 040); locked with the other recording settings. */
@@ -271,18 +284,20 @@ function settingsGroups(state: RecordingState, ctx: AppContext): Group[] {
   const unlocked = preferencesUnlocked(state);
   return [
     screenGroup(ctx, unlocked),
+    outputFolderGroup(ctx, unlocked),
     countdownGroup(ctx, unlocked),
     countdownSoundGroup(ctx, unlocked),
     ...qualityGroups(ctx, unlocked),
+    // General: everyday preferences first, then maintenance beside the About footer (plan 048).
     ...hotkeyGroup(ctx, unlocked),
     ...notificationsGroup(ctx, unlocked),
-    ...updateChecksGroup(ctx, unlocked),
-    updateActions(ctx, unlocked),
     ...languageGroup(ctx.language),
     group("appearance", t("Appearance", ctx.language), true, (["system", "light", "dark"] as const).map(value => ({
       id: value, label: t(value === "system" ? "System default" : value === "light" ? "Light" : "Dark", ctx.language),
       enabled: true, checked: value === (ctx.appearance ?? "system"), action: { setAppearance: value },
     }))),
+    ...updateChecksGroup(ctx, unlocked),
+    updateActions(ctx, unlocked),
     { ...group("about", t("Built by Eric Tsai", ctx.language), true, [
       { id: "website", label: t("Official website", ctx.language), enabled: true, checked: false, action: "openWebsite" },
       { id: "source", label: t("GitHub source", ctx.language), enabled: true, checked: false, action: "openSource" },

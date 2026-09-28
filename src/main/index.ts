@@ -331,7 +331,7 @@ async function main(): Promise<void> {
       const request = action.recordingResult;
       return recordingResults.act(request.id, request.action, {
         stat: file => fs.stat(file), refresh: refreshUi, settled, platform: process.platform,
-        reveal: file => shell.showItemInFolder(file), folder: changeOutputDir,
+        reveal: file => shell.showItemInFolder(file), folder: async () => { await changeOutputDir(); },
         permission: async () => { await handleAction("openPermissionSettings"); },
         relaunch: async () => { await handleAction("relaunch"); },
         needsRelaunch: () => recorder.state.type === "needsPermission" && recorder.state.needsRelaunch,
@@ -420,6 +420,10 @@ async function main(): Promise<void> {
       case "openUpdate":
         if (settled()) await shell.openExternal(updates.state.kind === "available" ? DOWNLOAD_URL : RELEASES_URL);
         return;
+      case "start":
+        // An open macOS menu cannot change, so a Start chosen late is resolved now: only idle starts (plan 048).
+        if (!recorder.startIfIdle()) log(`tray: Start recording ignored in state ${recorder.state.type}`);
+        return;
       case "stop":
         recorder.stop();
         return;
@@ -457,12 +461,13 @@ async function main(): Promise<void> {
       case "revealLog":
         await revealLog();
         return;
+      // Explicit outcomes: the Settings row reads them (plan 048 review); the tray ignores them.
       case "openOutputDir":
+        // The opener reports each failure itself in a native warning, so the row adds no second one.
         await openOutputDir();
-        return;
+        return true;
       case "changeOutputDir":
-        await changeOutputDir();
-        return;
+        return changeOutputDir();
     }
   }
 
@@ -484,9 +489,10 @@ async function main(): Promise<void> {
     if (error) log(`openPath(${path.dirname(logPath)}) failed: ${error}`);
   }
 
-  async function changeOutputDir(): Promise<void> {
+  /** Resolves false only when the folder could not change: locked, or the save failed (which also notifies); a cancel is no failure. */
+  async function changeOutputDir(): Promise<boolean> {
     // Starting and counting-down sessions already opened their file in the current folder.
-    if (!settled()) return;
+    if (!settled()) return false;
     // A window-less app's dialog may open behind the frontmost app on macOS.
     if (process.platform === "darwin") app.focus({ steal: true });
     const result = await dialog.showOpenDialog({
@@ -495,16 +501,17 @@ async function main(): Promise<void> {
       properties: ["openDirectory", "createDirectory"],
     });
     const chosen = result.filePaths[0];
-    if (result.canceled || !chosen) return;
+    if (result.canceled || !chosen) return true;
     try {
       await settings.setOutputDir(chosen);
     } catch (cause) {
       log(`settings: failed to save outputDir: ${String(cause)}`);
       tray.notifySettingsWriteFailed(chosen);
-      return;
+      return false;
     }
     recorder.outputDirChanged();
     refreshUi();
+    return true;
   }
 
   /**

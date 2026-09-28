@@ -186,6 +186,22 @@ describe("settings window IPC", () => {
     expect(await s.choose(s.event(), "notifications", "openSettings")).toMatchObject({ applied: false });
   });
 
+  it("reports the Output folder row's actions by their own outcome (plan 048 review)", async () => {
+    // Change… and Show in Finder have no committed value: without an explicit outcome every success read as a failure.
+    let outcome: boolean | undefined = true;
+    const act = vi.fn(async (_action: unknown) => outcome);
+    const s = setup({ act });
+    s.panel.show();
+    await s.read(s.event());
+    expect(await s.choose(s.event(), "outputFolder", "change")).toMatchObject({ applied: true });
+    expect(await s.choose(s.event(), "outputFolder", "reveal")).toMatchObject({ applied: true });
+    expect(act.mock.calls.map(([action]) => action)).toEqual(["changeOutputDir", "openOutputDir"]);
+    outcome = false;
+    expect(await s.choose(s.event(), "outputFolder", "change")).toMatchObject({ applied: false });
+    outcome = undefined;
+    expect(await s.choose(s.event(), "outputFolder", "reveal")).toMatchObject({ applied: false });
+  });
+
   it("still judges a real preference by what is committed, not by the handler", async () => {
     // A handler that claims nothing must not turn an unsaved choice into success.
     const s = setup({ act: vi.fn(async () => undefined) });

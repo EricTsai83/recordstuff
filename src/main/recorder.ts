@@ -309,6 +309,17 @@ export class Recorder {
   }
 
   /**
+   * The tray's Start recording (plan 048): the left click's start, countdown
+   * included, but only from idle. An open macOS menu cannot change, so a
+   * Start chosen after the state moved on must never stop or cancel anything.
+   */
+  startIfIdle(): boolean {
+    if (this._state.type !== "idle") return false;
+    this.toggle();
+    return true;
+  }
+
+  /**
    * Left click and the shortcut (ADR-7): start when idle, stop when
    * recording, cancel a countdown, else ignore.
    */

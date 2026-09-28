@@ -241,6 +241,8 @@ export class AppTray {
     if (entry.kind === "separator") return { type: "separator" };
     const template: MenuItemConstructorOptions = { label: entry.label, enabled: entry.enabled };
     if (entry.toolTip !== undefined) template.toolTip = entry.toolTip;
+    // Shown right-aligned only: the shortcut is already global, so the menu must not register it again.
+    if (entry.accelerator !== undefined) { template.accelerator = entry.accelerator; template.registerAccelerator = false; }
     const action = entry.action;
     if (action) template.click = () => this.options.onAction(action);
     return template;

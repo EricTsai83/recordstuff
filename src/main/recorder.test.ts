@@ -1986,6 +1986,23 @@ describe("Recorder countdown (plan 040)", () => {
     expect(none.logs).toContainEqual(expect.stringContaining("countdown 0 s; sound off"));
   });
 
+  it("starts from the tray's Start recording only when idle; a stale Start never stops or cancels (plan 048)", async () => {
+    const ctx = counting(3);
+    expect(ctx.recorder.startIfIdle()).toBe(true);
+    await flush();
+    await vi.advanceTimersByTimeAsync(40);
+    ctx.host.emit(prepared("s1"));
+    expect(ctx.recorder.state).toEqual({ type: "countdown", remaining: 3 });
+    // A Start chosen from a menu opened before the countdown does nothing now.
+    expect(ctx.recorder.startIfIdle()).toBe(false);
+    expect(ctx.recorder.state).toEqual({ type: "countdown", remaining: 3 });
+    await vi.advanceTimersByTimeAsync(3 * tickMs);
+    expect(ctx.recorder.state.type).toBe("recording");
+    expect(ctx.recorder.startIfIdle()).toBe(false);
+    expect(ctx.recorder.state.type).toBe("recording");
+    expect(ctx.host.stopped).toEqual([]);
+  });
+
   it("counts ten seconds as two-digit values and keeps the snapshot taken at start", async () => {
     let seconds: 3 | 10 = 10;
     const ctx = counting(3, { countdownSeconds: () => seconds });

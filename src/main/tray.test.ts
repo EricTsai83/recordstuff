@@ -370,3 +370,22 @@ it("routes recording-failure notification clicks to results without acknowledgin
   expect(Fake.instances).toHaveLength(0);
   off.tray.destroy();
 });
+
+describe("tray menu template (plan 048)", () => {
+  it("shows a registered shortcut right-aligned without registering it again, and Start calls the start action", async () => {
+    const { Menu, Tray } = await import("electron");
+    const { tray, onAction } = setup();
+    vi.mocked(Menu.buildFromTemplate).mockClear();
+    const instance = (tray as unknown as { tray: InstanceType<typeof Tray> }).tray;
+    const rightClick = vi.mocked(instance.on).mock.calls.find(([name]) => name === "right-click")?.[1] as () => void;
+    rightClick();
+    const template = vi.mocked(Menu.buildFromTemplate).mock.calls[0]![0] as Electron.MenuItemConstructorOptions[];
+    const start = template.find((entry) => entry.label === "Start recording")!;
+    expect(start).toMatchObject({ accelerator: "CommandOrControl+Shift+1", registerAccelerator: false, enabled: true });
+    start.click?.({} as never, undefined, {} as never);
+    expect(onAction).toHaveBeenCalledWith("start");
+    // Items without a registered shortcut carry no accelerator at all.
+    expect(template.find((entry) => entry.label === "Show log")).not.toHaveProperty("accelerator");
+    expect(template.at(-1)).toMatchObject({ label: "Quit RecordStuff" });
+  });
+});

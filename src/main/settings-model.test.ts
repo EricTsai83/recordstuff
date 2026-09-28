@@ -35,17 +35,19 @@ describe("settingsView", () => {
     const view = settingsView(idle, context);
     expect(view.groups.map((entry) => entry.id)).toEqual([
       "screen",
+      "outputFolder",
       "countdown",
       "countdownSound",
       "videoQuality",
       "resolutionCap",
       "frameRate",
+      // General (plan 048): everyday preferences first, maintenance beside the About footer.
       "hotkey",
       "notifications",
-      "updateChecks",
-      "updates",
       "language",
       "appearance",
+      "updateChecks",
+      "updates",
       "about",
     ]);
     for (const entry of view.groups) {
@@ -185,7 +187,7 @@ describe("update actions in General", () => {
     expect(settingsAction(idle, ctx, "updates", "open")).toBeUndefined();
   });
   it("places quality controls in Recording", () => {
-    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "countdown", "countdownSound", "videoQuality", "resolutionCap", "frameRate"]);
+    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "outputFolder", "countdown", "countdownSound", "videoQuality", "resolutionCap", "frameRate"]);
   });
 });
 
@@ -336,12 +338,12 @@ describe("screen choice", () => {
 it("declares presentation without changing choice identities, and authorizes only fixed links", () => {
   const groups = settingsView(idle, context).groups;
   expect(groups.map(g => [g.id, g.control, g.section])).toEqual([
-    ["screen", "menu", "recording"], ["countdown", "segmented", "recording"], ["countdownSound", "switch", "recording"],
+    ["screen", "menu", "recording"], ["outputFolder", "menu", "recording"], ["countdown", "segmented", "recording"], ["countdownSound", "switch", "recording"],
     ["videoQuality", "segmented", "recording"],
     ["resolutionCap", "menu", "recording"], ["frameRate", "menu", "recording"],
     ["hotkey", "menu", "hotkey"], ["notifications", "switch", "notifications"],
-    ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"],
-    ["language", "segmented", "language"], ["appearance", "menu", "appearance"], ["about", "menu", "about"],
+    ["language", "segmented", "language"], ["appearance", "menu", "appearance"],
+    ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"], ["about", "menu", "about"],
   ]);
   expect(group(idle, { ...context, notifications: false }, "notifications")?.noteKind).toBe("status");
   expect(group(idle, context, "videoQuality")?.noteKind).toBe("explanation");
@@ -510,5 +512,33 @@ describe("Recording failures tab (plan 047)", () => {
     expect(row).toMatchObject({ day: "Today", time: "2:05 PM", fileName: "2026-09-28 14-05-00.recording.mp4",
       file: "/Users/me/Movies/RecordStuff/2026-09-28 14-05-00.recording.mp4" });
     expect(row).not.toHaveProperty("heading");
+  });
+});
+
+describe("Output folder in Settings → Recording (plan 048)", () => {
+  it("shows the path after Screen with Change… and Show in Finder through the tray's handlers", () => {
+    const folder = group(idle, context, "outputFolder")!;
+    expect(folder).toMatchObject({ label: "Output folder", kind: "actions", tab: "recording", section: "recording", enabled: true, note: "~/recordings" });
+    expect(folder.choices.map((c) => [c.id, c.label, c.enabled])).toEqual([["change", "Change…", true], ["reveal", "Show in Finder", true]]);
+    expect(settingsAction(idle, context, "outputFolder", "change")).toBe("changeOutputDir");
+    expect(settingsAction(idle, context, "outputFolder", "reveal")).toBe("openOutputDir");
+    expect(settingsAction(idle, context, "outputFolder", "/tmp")).toBeUndefined();
+    const zh = group(idle, { ...context, language: "zh-TW" }, "outputFolder")!;
+    expect([zh.label, ...zh.choices.map((c) => c.label)]).toEqual(["儲存位置", "更改…", "在 Finder 中顯示"]);
+    expect(group(idle, { ...context, platform: "win32" }, "outputFolder")!.choices[1]!.label).toBe("Open folder");
+  });
+
+  it("is locked while starting, counting down, recording or saving, as the tray's folder items are", () => {
+    for (const state of [{ type: "starting" }, { type: "countdown", remaining: 2 }, { type: "recording", startedAt: "x" }, { type: "stopping" }] as RecordingState[]) {
+      expect(group(state, context, "outputFolder")?.enabled, state.type).toBe(false);
+      expect(settingsAction(state, context, "outputFolder", "change"), state.type).toBeUndefined();
+      expect(settingsAction(state, context, "outputFolder", "reveal"), state.type).toBeUndefined();
+    }
+  });
+
+  it("orders General as Shortcut, Notifications, Language, Appearance, Updates and About, headings moving with their groups", () => {
+    const general = settingsView(idle, context).groups.filter((g) => g.tab === "general");
+    expect(general.map((g) => g.id)).toEqual(["hotkey", "notifications", "language", "appearance", "updateChecks", "updates", "about"]);
+    expect(general.find((g) => g.id === "updateChecks")?.sectionHeading).toBe("Updates");
   });
 });

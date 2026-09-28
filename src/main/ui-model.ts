@@ -31,6 +31,7 @@ export type AppAction =
   | "openPermissionSettings"
   | "openNotificationSettings"
   | "relaunch"
+  | "start"
   | "stop"
   | "cancelCountdown"
   | "revealLastSaved"

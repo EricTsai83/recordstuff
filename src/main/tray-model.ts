@@ -28,7 +28,11 @@ import { APP_NAME, abbreviateHome, compactPath, preferencesUnlocked, type AppAct
 export type TrayIcon = "idle" | "busy" | "countdown" | "recording" | "warning";
 export type TrayMenuItem =
   | { kind: "separator" }
-  | { kind: "item"; label: string; enabled: boolean; action?: AppAction; toolTip?: string };
+  | {
+      kind: "item"; label: string; enabled: boolean; action?: AppAction; toolTip?: string;
+      /** A registered shortcut shown right-aligned in the native menu (plan 048); the menu never registers it. */
+      accelerator?: string;
+    };
 export interface TrayModel {
   icon: TrayIcon;
   title: string;
@@ -39,28 +43,41 @@ export interface TrayModel {
 function disabled(label: string): TrayMenuItem {
   return { kind: "item", label, enabled: false };
 }
-function item(label: string, action: AppAction, toolTip?: string): TrayMenuItem {
-  return toolTip === undefined
-    ? { kind: "item", label, enabled: true, action }
-    : { kind: "item", label, enabled: true, action, toolTip };
+function item(label: string, action: AppAction, toolTip?: string, accelerator?: string): TrayMenuItem {
+  return {
+    kind: "item", label, enabled: true, action,
+    ...(toolTip === undefined ? {} : { toolTip }),
+    ...(accelerator === undefined ? {} : { accelerator }),
+  };
 }
 const SEPARATOR: TrayMenuItem = { kind: "separator" };
 
-/** Settings, log and quit close every menu; Settings stays reachable mid-recording. */
-function footer(ctx: AppContext): TrayMenuItem[] {
+/**
+ * One group order for every state (plan 048): state and its primary action,
+ * unread failures, files, windows, then the app. An empty group is omitted,
+ * so no separator leads, trails or doubles and an item never changes places.
+ */
+function grouped(...groups: TrayMenuItem[][]): TrayMenuItem[] {
+  return groups.filter((group) => group.length > 0).flatMap((group, index) => (index ? [SEPARATOR, ...group] : group));
+}
+/** The registered recording shortcut, for the native menu's right-aligned column. */
+function recordingAccelerator(ctx: AppContext): string | undefined {
+  return ctx.hotkey.enabled && ctx.hotkey.registered ? ctx.hotkey.accelerator : undefined;
+}
+/** Settings stays reachable mid-recording; reviewed failures sit beside it, not at the top. */
+function windowsGroup(ctx: AppContext, reviewedOnly: boolean): TrayMenuItem[] {
   const { language, settingsShortcut } = ctx;
-  const label = t("Settings", language) + (settingsShortcut?.kind === "registered"
-    ? ` (${describeAccelerator(SETTINGS_SHORTCUT, ctx.platform)})` : "");
   const explanation = settingsShortcut?.kind === "conflict"
     ? t("Settings shortcut unavailable: change the recording shortcut through the tray Settings entry.", language)
     : settingsShortcut?.kind === "failed" ? t("Settings shortcut unavailable: another app may use it. Open Settings from the tray.", language) : undefined;
   return [
-    SEPARATOR,
-    item(label, "openSettings"),
+    ...(reviewedOnly ? [item(t("View recording failures…", language), "openRecordingResult")] : []),
+    item(t("Settings…", language), "openSettings", undefined, settingsShortcut?.kind === "registered" ? SETTINGS_SHORTCUT : undefined),
     ...(explanation ? [disabled(explanation)] : []),
-    item(t("Show log", language), "revealLog"),
-    item(t("Quit", language), "quit"),
   ];
+}
+function appGroup(language: Language): TrayMenuItem[] {
+  return [item(t("Show log", language), "revealLog"), item(t("Quit RecordStuff", language), "quit")];
 }
 function outputDirItems(ctx: AppContext, enabled: boolean): TrayMenuItem[] {
   const label = t("Output folder: {path}", ctx.language, { path: compactPath(abbreviateHome(ctx.outputDir, ctx.homeDir)) });
@@ -69,8 +86,8 @@ function outputDirItems(ctx: AppContext, enabled: boolean): TrayMenuItem[] {
       ? item(label, "openOutputDir", ctx.outputDir)
       : { kind: "item", label, enabled: false, toolTip: ctx.outputDir },
     enabled
-      ? item(t("Change output folder", ctx.language), "changeOutputDir")
-      : disabled(t("Change output folder", ctx.language)),
+      ? item(t("Change output folder…", ctx.language), "changeOutputDir")
+      : disabled(t("Change output folder…", ctx.language)),
   ];
 }
 function permissionActions(needsRelaunch: boolean, language: Language): TrayMenuItem[] {
@@ -104,68 +121,61 @@ function cancelHint(ctx: AppContext): string | undefined {
 export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
   const language = ctx.language;
   const text = (key: PlainMessageKey): string => t(key, language);
-  const unread = (ctx.recordingResults ?? []).filter(r => !r.acknowledged);
-  const result = unread[0] ?? ctx.recordingResults?.[0];
-  const resultText = unread.length ? t("Unreviewed recording failures: {value}", language, { value: String(unread.length) })
-    : result ? t("Recent failure: {reason}", language, { reason: failureReason(result.code, language) }) : "";
-  const resultMenu: TrayMenuItem[] = result ? [
-    disabled(resultText), item(text("View recording failures…"), "openRecordingResult"), SEPARATOR,
-  ] : [];
-  const end = footer(ctx);
-  const model = (icon: TrayIcon, title: string, status: string, menu: TrayMenuItem[]): TrayModel => ({
+  const results = ctx.recordingResults ?? [];
+  const unread = results.filter(r => !r.acknowledged);
+  const unreadText = t("Unreviewed recording failures: {value}", language, { value: String(unread.length) });
+  // Unread failures get their own group after the state; reviewed ones only a way back, beside Settings.
+  const unreadGroup: TrayMenuItem[] = unread.length ? [disabled(unreadText), item(text("View recording failures…"), "openRecordingResult")] : [];
+  const windows = windowsGroup(ctx, unread.length === 0 && results.length > 0);
+  const app = appGroup(language);
+  const shortcut = recordingAccelerator(ctx);
+  const model = (icon: TrayIcon, title: string, status: string, stateGroup: TrayMenuItem[], files: TrayMenuItem[] = []): TrayModel => ({
     icon: icon === "idle" && unread.length > 0 ? "warning" : icon,
     title,
-    tooltip: `${APP_NAME}: ${status}${unread.length > 0 ? `\n${resultText}` : ""}\n${text("Right-click to open the menu")}`,
-    menu: [...resultMenu, ...menu],
+    tooltip: `${APP_NAME}: ${status}${unread.length > 0 ? `\n${unreadText}` : ""}\n${text("Right-click to open the menu")}`,
+    menu: grouped(stateGroup, unreadGroup, files, windows, app),
   });
   // A settled recorder shows no work of its own, so a quit waiting on cleanup would look like nothing happened.
   if (ctx.quitting && preferencesUnlocked(state)) {
     const quitting = text("Quitting… RecordStuff quits once the recording is saved or cleaned up.");
-    return model("busy", "", quitting, [disabled(quitting), ...end]);
+    return model("busy", "", quitting, [disabled(quitting)]);
   }
+  const lastSaved = (path: string | undefined): TrayMenuItem[] => (path ? [item(text("Show last recording"), "revealLastSaved", path)] : []);
   switch (state.type) {
     case "needsPermission":
       return model("idle", "", text("Screen recording permission required"), [
         disabled(text("Screen recording permission required")),
         ...permissionActions(state.needsRelaunch, language),
-        ...(state.lastSavedPath ? [item(text("Show last recording"), "revealLastSaved", state.lastSavedPath)] : []),
-        SEPARATOR,
-        ...outputDirItems(ctx, true),
-        ...end,
-      ]);
+      ], [...lastSaved(state.lastSavedPath), ...outputDirItems(ctx, true)]);
     case "idle": {
       const resolution = displayResolution(ctx.displays, ctx.display);
       const status = state.outputDirUnavailable ? text("Output folder unavailable")
         : !resolution.ok ? displayFailureText(resolution.detail, language)
         : ctx.display.kind === "display" ? t("Ready — {label}", language, { label: displayLabel(resolution, language) }) : text("Ready");
-      const menu = [disabled(status)];
-      if (ctx.displayFailure) menu.push(disabled(t("Last display failure: {reason}", language, { reason: displayFailureText(ctx.displayFailure, language) })));
-      if (state.lastSavedPath) menu.push(item(text("Show last recording"), "revealLastSaved", state.lastSavedPath));
-      return model("idle", "", status, [...menu, SEPARATOR, ...outputDirItems(ctx, true), ...end]);
+      const stateGroup = [disabled(status)];
+      if (ctx.displayFailure) stateGroup.push(disabled(t("Last display failure: {reason}", language, { reason: displayFailureText(ctx.displayFailure, language) })));
+      // Whenever a left click would start: the same toggle, countdown included (plan 048).
+      stateGroup.push(item(text("Start recording"), "start", stopHint(ctx), shortcut));
+      return model("idle", "", status, stateGroup, [...lastSaved(state.lastSavedPath), ...outputDirItems(ctx, true)]);
     }
     case "starting":
       return model("busy", "", text("Starting… Check for system permission prompts"), [
         disabled(text("Starting… Check for system permission prompts")),
-        ...end,
       ]);
     case "countdown": {
       const seconds = { seconds: state.remaining };
       return model("countdown", "", t("Recording starts in {seconds} s. Click to cancel.", language, seconds), [
         disabled(t("Recording starts in {seconds} s", language, seconds)),
-        item(text("Cancel recording"), "cancelCountdown", cancelHint(ctx)),
-        ...end,
+        item(text("Cancel recording"), "cancelCountdown", cancelHint(ctx), shortcut),
       ]);
     }
     case "recording":
       return model("recording", "REC", text("Recording"), [
         disabled(text("Recording")),
-        item(text("Stop"), "stop", stopHint(ctx)),
-        SEPARATOR,
-        ...outputDirItems(ctx, false),
-        ...end,
-      ]);
+        item(text("Stop"), "stop", stopHint(ctx), shortcut),
+      ], outputDirItems(ctx, false));
     case "stopping":
-      return model("busy", "", text("Saving…"), [disabled(text("Saving…")), ...end]);
+      return model("busy", "", text("Saving…"), [disabled(text("Saving…"))]);
   }
 }
 

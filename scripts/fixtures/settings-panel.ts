@@ -541,11 +541,14 @@ async function run() {
   await settle(60);
   const bottomHint = await read<boolean>(window, `document.getElementById("scroll-hint").hidden`);
   record("scroll cue disappears at the bottom", bottomHint, String(bottomHint));
-  window.setSize(560, 680);
+  // Tall enough for the Recording tab, which since plan 048's Output folder row scrolls slightly at the 560 × 680 default.
+  window.setSize(560, 760);
   await read(window, `document.getElementById("tab-recording").click()`);
   await settle(100);
-  const noOverflow = await read<boolean>(window, `document.getElementById("scroll-hint").hidden && document.getElementById("settings-panel").scrollHeight <= document.getElementById("settings-panel").clientHeight + 2`);
-  record("fitting content needs no scroll cue", noOverflow, String(noOverflow));
+  const fitting = await read<{ hidden: boolean; scrollHeight: number; clientHeight: number; tab: string }>(window, `({ hidden: document.getElementById("scroll-hint").hidden,
+    scrollHeight: document.getElementById("settings-panel").scrollHeight, clientHeight: document.getElementById("settings-panel").clientHeight,
+    tab: document.querySelector('[role="tab"][aria-selected="true"]').id })`);
+  record("fitting content needs no scroll cue", fitting.hidden && fitting.scrollHeight <= fitting.clientHeight + 2, JSON.stringify(fitting));
   captureView = settingsView({ type: "idle" }, ctx);
   window.webContents.send("settings:changed", captureView);
   await settle(60);
