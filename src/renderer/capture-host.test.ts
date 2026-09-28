@@ -190,6 +190,29 @@ describe("renderer CaptureHost", () => {
     expect(s.tracks.every((t) => t.stopped)).toBe(true);
   });
 
+  it("keeps a requested stop normal when the tracks end before the encoder stops, as when the Mac sleeps (plan 050)", async () => {
+    const port = boot();
+    port.receive(start("s1"));
+    const s = stream();
+    pendingStream!.resolve(s);
+    await flush();
+    record(port);
+    const rec = FakeMediaRecorder.instances[0]!;
+    rec.emitChunk([1]);
+    // Chromium's stop is asynchronous: the system ends the tracks before the final data arrives.
+    let finishStop!: () => void;
+    rec.stop = () => {
+      rec.state = "inactive";
+      finishStop = () => { rec.ondataavailable?.({ data: new Blob([new Uint8Array([9])]) }); rec.onstop?.(); };
+    };
+    port.receive({ type: "stop", sessionId: "s1" });
+    for (const track of s.tracks) track.end();
+    finishStop();
+    await flush();
+    await flush();
+    expect(port.types()).toEqual(["prepared", "started", "chunk", "chunk", "stopped"]);
+  });
+
   it("refuses when MP4 is unsupported and never asks for a stream", () => {
     FakeMediaRecorder.supported = false;
     const port = boot();

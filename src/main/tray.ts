@@ -40,6 +40,15 @@ import type { EarlyStop } from "./recorder";
  */
 export const ACTIVATION_WINDOW_MS = 1000;
 
+/** After waking, how often to check whether the user is back before showing held notifications (plan 050). */
+export const WAKE_CHECK_MS = 1000;
+/**
+ * Input this recent means the user is back. A maintenance (dark) wake has
+ * none and may also report `resume`, and timers keep counting while the Mac
+ * sleeps, so neither a resume nor a timeout alone proves anyone can see a banner.
+ */
+export const RETURN_IDLE_SECONDS = 2;
+
 export interface TrayOptions {
   resourcesDir: string;
   context: () => AppContext;
@@ -49,6 +58,8 @@ export interface TrayOptions {
   log?: (message: string) => void;
   /** The user's switch. Absent means always allowed, which is the test default. */
   canNotify?: () => boolean;
+  /** Seconds since the last user input. Absent means the user counts as back at once, which is the test default. */
+  idleSeconds?: () => number;
 }
 
 export class AppTray {
@@ -70,6 +81,10 @@ export class AppTray {
   private lastState: RecordingState = { type: "idle" };
   // Electron throws on a destroyed tray; a late refresh during quit must not surface as an error dialog.
   private destroyed = false;
+  // A banner shown while the Mac sleeps is gone before the user is back, so notifications wait for waking.
+  private asleep = false;
+  private held: Array<() => void> = [];
+  private heldTimer: ReturnType<typeof setTimeout> | undefined;
 
   render(state: RecordingState): void {
     if (this.destroyed) return;
@@ -88,9 +103,49 @@ export class AppTray {
     this.render(this.lastState);
   }
 
+  /** The Mac is going to sleep: hold notifications until the user is back. */
+  systemWillSleep(): void {
+    this.asleep = true;
+    clearTimeout(this.heldTimer);
+    this.heldTimer = undefined;
+  }
+
+  /** Awake again: show the held notifications, in order, once there is user input. */
+  systemDidWake(): void {
+    if (this.asleep) this.checkReturn();
+  }
+
+  /** Unlocking the screen means the user is back. */
+  userDidUnlock(): void {
+    if (this.asleep) this.showHeld();
+  }
+
+  private checkReturn(): void {
+    clearTimeout(this.heldTimer);
+    this.heldTimer = setTimeout(() => {
+      this.heldTimer = undefined;
+      let idle: number | undefined;
+      try { idle = this.options.idleSeconds?.(); }
+      catch (error) { this.log(`notification: idle time unavailable (${String(error)})`); }
+      if (idle === undefined || idle <= RETURN_IDLE_SECONDS) this.showHeld();
+      else this.checkReturn();
+    }, WAKE_CHECK_MS);
+  }
+
+  private showHeld(): void {
+    clearTimeout(this.heldTimer);
+    this.heldTimer = undefined;
+    this.asleep = false;
+    const held = this.held;
+    this.held = [];
+    for (const show of held) show();
+  }
+
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    clearTimeout(this.heldTimer);
+    this.held = [];
     for (const notification of this.notifications) {
       try { notification.close(); }
       catch (error) { this.log(`notification: close failed (${String(error)})`); }
@@ -200,6 +255,13 @@ export class AppTray {
    * trace, so it goes to the log; signed-build evidence is in docs/verification/README.md.
    */
   private show(text: { title: string; body: string }, onClick?: () => void): void {
+    if (this.destroyed) return;
+    if (this.asleep) {
+      // The switch and support checks apply when it is finally shown.
+      this.held.push(() => this.show(text, onClick));
+      this.log(`notification: held during sleep: ${text.body}`);
+      return;
+    }
     if (this.options.canNotify && !this.options.canNotify()) {
       this.log(`notification: turned off in settings, dropped: ${text.body}`);
       return;

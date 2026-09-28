@@ -5,7 +5,7 @@
  */
 import { formatSessionRecord } from "../shared/session-record";
 import type { Log } from "./log";
-import type { RecorderEvent } from "./recorder";
+import { EARLY_STOP_TEXT, type RecorderEvent } from "./recorder";
 
 /**
  * One id per launch, printed in the `start:` line and carried in every
@@ -23,7 +23,7 @@ export function logSessionEvent(log: Log, run: string, event: RecorderEvent): vo
       log(formatSessionRecord(run, { kind: "capture", session: event.sessionId, requested: event.requested, capture: event.capture }));
       return;
     case "saved": {
-      log(`saved ${event.path}${event.stoppedEarly === "lowDisk" ? " (stopped early: disk almost full)" : ""}`);
+      log(`saved ${event.path}${event.stoppedEarly ? ` (stopped early: ${EARLY_STOP_TEXT[event.stoppedEarly]})` : ""}`);
       const { id, recordingPath: _temporary, ...timing } = event.session;
       log(formatSessionRecord(run, { kind: "saved", session: id, path: event.path,
         ...(event.stoppedEarly ? { stoppedEarly: event.stoppedEarly } : {}), ...timing }));

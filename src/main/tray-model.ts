@@ -186,9 +186,9 @@ export interface NotificationText {
 const notice = (body: string): NotificationText => ({ title: APP_NAME, body });
 export function savedNotification(savedPath: string, language?: Language, stoppedEarly?: EarlyStop): NotificationText {
   const file = path.basename(savedPath);
-  return notice(stoppedEarly === "lowDisk"
-    ? t("Saved {file}. Recording stopped early because the disk is almost full.", language, { file })
-    : t("Saved {file}", language, { file }));
+  if (stoppedEarly === "lowDisk") return notice(t("Saved {file}. Recording stopped early because the disk is almost full.", language, { file }));
+  if (stoppedEarly === "sleep") return notice(t("Saved {file}. Recording stopped because the Mac went to sleep.", language, { file }));
+  return notice(t("Saved {file}", language, { file }));
 }
 /** The reason, then how to reach the result section, joined per language (plan 035 D1). */
 export function recordingFailureNotification(code: ErrorCode, language: Language = DEFAULT_LANGUAGE): NotificationText {

@@ -2056,10 +2056,11 @@ describe("Recorder countdown (plan 040)", () => {
   });
 
   describe("cancel before record", () => {
-    const cases: Array<[string, "toggle" | "menu" | "quit", (recorder: Recorder) => unknown]> = [
+    const cases: Array<[string, "toggle" | "menu" | "quit" | "sleep", (recorder: Recorder) => unknown]> = [
       ["a second click or the shortcut", "toggle", (recorder) => recorder.toggle()],
       ["Cancel recording", "menu", (recorder) => recorder.cancelCountdown("menu")],
       ["Quit", "quit", (recorder) => recorder.shutdown()],
+      ["the Mac going to sleep (plan 050)", "sleep", (recorder) => recorder.systemWillSleep()],
     ];
     for (const [name, reason, act] of cases) {
       it(`${name} returns to idle with lastSavedPath and no failure, file or later record`, async () => {
@@ -2146,6 +2147,80 @@ describe("Recorder countdown (plan 040)", () => {
     ctx.host.emit({ type: "started", sessionId: "s1" });
     expect(ctx.states.slice(-2).map((state) => state.type)).toEqual(["recording", "stopping"]);
     expect(ctx.host.stopped).toEqual(["s1"]);
+  });
+
+  describe("the Mac going to sleep (plan 050)", () => {
+    it("stops and saves a recording with the sleep reason instead of failing it", async () => {
+      const ctx = counting(0);
+      await ctx.prepare();
+      ctx.host.emit(chunk("s1", 0));
+      ctx.recorder.systemWillSleep();
+      expect(ctx.recorder.state).toEqual({ type: "stopping" });
+      expect(ctx.host.stopped).toEqual(["s1"]);
+      expect(ctx.logs).toContainEqual(expect.stringContaining("the Mac is going to sleep; stopped to save the recording"));
+      ctx.host.emit(chunk("s1", 1));
+      ctx.host.emit({ type: "stopped", sessionId: "s1" });
+      await flush();
+      expect(ctx.events.filter((event) => event.type === "saved")).toEqual([
+        { type: "saved", path: "/out/2026-09-11 14-30-00.mp4", stoppedEarly: "sleep", session: traced() },
+      ]);
+      expect(ctx.events.some((event) => event.type === "failed" || event.type === "failureStatus")).toBe(false);
+      expect(ctx.logs).toContainEqual(expect.stringContaining("file finalized /out/2026-09-11 14-30-00.mp4 (stopped early: the Mac went to sleep)"));
+    });
+
+    it("sends the stop to the host before the stopping state reaches subscribers (review pass 1)", async () => {
+      const ctx = counting(0);
+      await ctx.prepare();
+      ctx.host.emit(chunk("s1", 0));
+      const stoppedAtPublish: string[][] = [];
+      ctx.recorder.subscribe((event) => { if (event.type === "state" && event.state.type === "stopping") stoppedAtPublish.push([...ctx.host.stopped]); });
+      ctx.recorder.systemWillSleep();
+      expect(stoppedAtPublish).toEqual([["s1"]]);
+    });
+
+    it("after record was sent, stops the capture once it starts and saves it with the sleep reason", async () => {
+      const ctx = counting(3);
+      ctx.host.autoStart = false;
+      await ctx.prepare();
+      await vi.advanceTimersByTimeAsync(3 * tickMs);
+      expect(ctx.host.recorded).toEqual(["s1"]);
+      ctx.recorder.systemWillSleep();
+      expect(ctx.host.stopped).toEqual([]);
+      ctx.host.emit({ type: "started", sessionId: "s1" });
+      expect(ctx.states.slice(-2).map((state) => state.type)).toEqual(["recording", "stopping"]);
+      ctx.host.emit(chunk("s1", 0));
+      ctx.host.emit({ type: "stopped", sessionId: "s1" });
+      await flush();
+      expect(ctx.events.filter((event) => event.type === "saved").map((event) => event.type === "saved" && event.stoppedEarly)).toEqual(["sleep"]);
+    });
+
+    it("cancels an attempt still preparing once prepared arrives, with the sleep reason", async () => {
+      const ctx = counting(3);
+      ctx.recorder.toggle();
+      await flush();
+      ctx.recorder.systemWillSleep();
+      expect(ctx.recorder.state.type).toBe("starting");
+      ctx.host.emit(prepared("s1"));
+      await flush();
+      expect(ctx.recorder.state.type).toBe("idle");
+      expect(ctx.host.recorded).toEqual([]);
+      expect(ctx.events.filter((event) => event.type === "cancelled")).toEqual([{ type: "cancelled", reason: "sleep", session: traced() }]);
+      expect(ctx.events.some((event) => event.type === "failed" || event.type === "saved")).toBe(false);
+    });
+
+    it("does nothing while saving or without a session", async () => {
+      const ctx = counting(0);
+      ctx.recorder.systemWillSleep();
+      expect(ctx.recorder.state.type).toBe("idle");
+      await ctx.prepare();
+      ctx.host.emit(chunk("s1", 0));
+      ctx.recorder.stop();
+      ctx.recorder.systemWillSleep();
+      expect(ctx.host.stopped).toEqual(["s1"]);
+      ctx.host.emit({ type: "stopped", sessionId: "s1" });
+      await flush();
+      expect(ctx.events.filter((event) => event.type === "saved").map((event) => event.type === "saved" && event.stoppedEarly)).toEqual([undefined]);
+    });
   });
 
   describe("failures before capture are start failures with an empty outcome", () => {

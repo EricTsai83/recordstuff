@@ -30,6 +30,14 @@ describe("session log lines", () => {
     expect(lines).toHaveLength(5);
   });
 
+  it("names a stop caused by sleep in the human line and the record (plan 050)", () => {
+    const lines: string[] = [];
+    logSessionEvent((message) => lines.push(message), "r1", { type: "saved", path: "/m/c.mp4", stoppedEarly: "sleep",
+      session: { id: "s3", recordingAt: "2026-09-28T10:00:05.000Z", stoppingAt: "2026-09-28T10:00:09.000Z" } });
+    expect(lines[0]).toBe("saved /m/c.mp4 (stopped early: the Mac went to sleep)");
+    expect(JSON.parse(lines[1]!.slice("session-record: ".length))).toMatchObject({ kind: "saved", session: "s3", stoppedEarly: "sleep" });
+  });
+
   it("writes a cancel as one plain line with no session record for analyzers to pair", () => {
     const lines: string[] = [];
     logSessionEvent((message) => lines.push(message), "r1", { type: "cancelled", reason: "toggle",

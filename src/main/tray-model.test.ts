@@ -282,6 +282,13 @@ describe("notification text", () => {
     expect(savedNotification("/Volumes/Small/demo.mp4", "zh-TW", "lowDisk").body).toBe("已儲存 demo.mp4。磁碟空間即將用盡，已提前停止錄製。");
   });
 
+  it("a recording stopped because the Mac went to sleep says so in the saved notification (plan 050)", () => {
+    expect(savedNotification("/Users/eric/Movies/RecordStuff/demo.mp4", "en", "sleep").body).toBe(
+      "Saved demo.mp4. Recording stopped because the Mac went to sleep.",
+    );
+    expect(savedNotification("/Users/eric/Movies/RecordStuff/demo.mp4", "zh-TW", "sleep").body).toBe("已儲存 demo.mp4。Mac 進入睡眠，已停止錄製。");
+  });
+
   it("a failure notification joins its reason and the result hint as sentences in each language (plan 035 D1)", () => {
     expect(recordingFailureNotification("output_write_failed", "zh-TW")).toEqual({ title: "錄影失敗", body: "寫入錄影失敗。點此查看錄影結果。" });
     expect(recordingFailureNotification("output_open_failed", "zh-TW").body).toBe("無法寫入輸出資料夾。點此查看錄影結果。");

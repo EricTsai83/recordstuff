@@ -169,6 +169,7 @@ export const ZH_TW = {
   "Cancel recording with {value}": "以 {value} 取消錄影",
   "Saved {file}": "已儲存 {file}",
   "Saved {file}. Recording stopped early because the disk is almost full.": "已儲存 {file}。磁碟空間即將用盡，已提前停止錄製。",
+  "Saved {file}. Recording stopped because the Mac went to sleep.": "已儲存 {file}。Mac 進入睡眠，已停止錄製。",
   "RecordStuff cannot capture the screen. Check that screen recording is allowed in System Settings, then relaunch RecordStuff. Click to relaunch.":
     "RecordStuff 目前無法擷取螢幕。請確認系統設定已允許 RecordStuff 錄製螢幕，然後重新啟動 RecordStuff。點這則通知重新啟動。",
   "RecordStuff needs screen recording access. Click to open System Settings.":

@@ -34,7 +34,7 @@ interface RecordBase {
 
 export type SessionRecord =
   | (RecordBase & { kind: "capture"; session: string; requested: QualitySettings; capture: CaptureReport })
-  | (RecordBase & SessionTiming & { kind: "saved"; session: string; path: string; stoppedEarly?: "lowDisk" })
+  | (RecordBase & SessionTiming & { kind: "saved"; session: string; path: string; stoppedEarly?: "lowDisk" | "sleep" })
   | (RecordBase & SessionTiming & {
       kind: "failed";
       session: string;

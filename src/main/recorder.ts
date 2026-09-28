@@ -122,10 +122,12 @@ export interface RecorderDeps {
 }
 
 /** Why a saved recording ended before the user asked; carried on the saved event. */
-export type EarlyStop = "lowDisk";
+export type EarlyStop = "lowDisk" | "sleep";
+/** How the log names an early stop; the analysis scripts parse these words. */
+export const EARLY_STOP_TEXT: Record<EarlyStop, string> = { lowDisk: "disk almost full", sleep: "the Mac went to sleep" };
 
 /** What cancelled an attempt before capture began (plan 040). A cancel is not a failure. */
-export type CancelReason = "toggle" | "menu" | "quit";
+export type CancelReason = "toggle" | "menu" | "quit" | "sleep";
 
 /**
  * The session a terminal event belongs to (plan 029). A failure's cleanup can
@@ -190,8 +192,8 @@ interface Session {
   countdownSeconds: CountdownSeconds;
   /** Whether the countdown ticks; taken with `countdownSeconds`, and false without a countdown. */
   countdownSound: boolean;
-  /** Quit arrived before capture was prepared: cancel instead of counting down or recording. */
-  cancelOnPrepared: boolean;
+  /** Quit or sleep arrived before capture was prepared: cancel instead of counting down or recording. */
+  cancelOnPrepared?: CancelReason;
   /** What `prepared` reported; carried on `captureStarted`. */
   capture?: CaptureReport;
   countdown?: Countdown;
@@ -375,13 +377,49 @@ export class Recorder {
     session.phase = "stopping";
     session.stoppingAt = this.deps.now().toISOString();
     session.stopRequestedAt = this.monotonic();
-    this.setState({ type: "stopping" });
     this.clearTimer(session);
     this.clearDisk(session);
     session.timer = setTimeout(() => {
       void this.fail(session.id, "stop_timeout", "capture host did not stop before the deadline");
     }, this.deps.stopTimeoutMs);
+    // The host's reply is always asynchronous, so the stop goes out before the
+    // subscribers' logging and UI work: on sleep the tracks end ~150 ms later.
     this.deps.host.stop(session.id);
+    this.setState({ type: "stopping" });
+  }
+
+  /**
+   * The Mac is going to sleep (plan 050). An app cannot refuse a sleep the user
+   * asked for, and capture ends about 150 ms later, so a recording is stopped
+   * and saved now: once the host has the stop, a track ending afterwards no
+   * longer turns it into a failure. Before capture there is nothing to keep, so
+   * the attempt is cancelled, exactly as quit does. The save may finish after
+   * waking, because the system suspends the processes.
+   */
+  systemWillSleep(): void {
+    const session = this.session;
+    if (!session) return;
+    switch (session.phase) {
+      case "recording":
+        session.stoppedEarly = "sleep";
+        this.stop();
+        this.deps.log(`recorder: session ${session.id} the Mac is going to sleep; stopped to save the recording`);
+        return;
+      case "countdown":
+        this.cancel(session, "sleep");
+        return;
+      case "arming":
+        session.stoppedEarly = "sleep";
+        session.stopOnStart = true;
+        this.deps.log(`recorder: session ${session.id} the Mac is going to sleep after record was sent; stopping once capture starts`);
+        return;
+      case "opening":
+      case "preparing":
+        session.cancelOnPrepared ??= "sleep";
+        return;
+      case "stopping":
+        return;
+    }
   }
 
   /** False means quit was deferred; outstanding work remains owned by this recorder. */
@@ -391,7 +429,7 @@ export class Recorder {
     // No media exists before `record`: quit cancels the attempt instead of
     // recording and saving it. After `record`, capture stops once it starts.
     const pending = this.session;
-    if (pending && (pending.phase === "opening" || pending.phase === "preparing")) pending.cancelOnPrepared = true;
+    if (pending && (pending.phase === "opening" || pending.phase === "preparing")) pending.cancelOnPrepared ??= "quit";
     if (pending && pending.phase === "arming") pending.stopOnStart = true;
     // Defer execution until the shared promise is installed (stop can emit synchronously).
     const attempt = Promise.resolve().then(() => new Promise<boolean>((resolve) => {
@@ -486,7 +524,6 @@ export class Recorder {
       quality: this.deps.quality(),
       countdownSeconds,
       countdownSound: countdownSeconds > 0 && (this.deps.countdownSound?.() ?? false),
-      cancelOnPrepared: false,
       overlay: false,
       requestedAt: this.monotonic(),
       finalizing: false,
@@ -522,9 +559,9 @@ export class Recorder {
     }
     // A timed-out opening belongs to the failure owner, including its late handle.
     if (this.session !== session) return;
-    // Quit arrived while the folder was probed: no capture request at all.
+    // Quit or sleep arrived while the folder was probed: no capture request at all.
     if (session.cancelOnPrepared) {
-      this.cancel(session, "quit");
+      this.cancel(session, session.cancelOnPrepared);
       return;
     }
 
@@ -623,7 +660,7 @@ export class Recorder {
         session.capture = message.capture;
         this.deps.log(`recorder: session ${session.id} prepared after ${this.elapsed(session.requestedAt)} ms; countdown ${session.countdownSeconds} s; sound ${session.countdownSound ? "on" : "off"}`);
         if (session.cancelOnPrepared) {
-          this.cancel(session, "quit");
+          this.cancel(session, session.cancelOnPrepared);
           return;
         }
         if (session.countdownSeconds > 0) this.beginCountdown(session);
@@ -864,7 +901,7 @@ export class Recorder {
       return;
     }
     if (this.session !== session) return;
-    const early = session.stoppedEarly === "lowDisk" ? " (stopped early: disk almost full)" : "";
+    const early = session.stoppedEarly ? ` (stopped early: ${EARLY_STOP_TEXT[session.stoppedEarly]})` : "";
     this.deps.log(`recorder: session ${session.id} file finalized ${finalPath}${early}`);
     this.logFinalizeTiming(session, drainedAt);
     this.session = undefined;

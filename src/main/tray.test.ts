@@ -78,11 +78,11 @@ vi.mock("electron", () => {
 import { app, Notification, shell } from "electron";
 import type { Language } from "../shared/i18n";
 import { DEFAULT_QUALITY } from "../shared/quality";
-import { ACTIVATION_WINDOW_MS, AppTray, TRAY_ICON_FILES } from "./tray";
+import { ACTIVATION_WINDOW_MS, AppTray, RETURN_IDLE_SECONDS, TRAY_ICON_FILES, WAKE_CHECK_MS } from "./tray";
 
 const Fake = Notification as unknown as FakeNotificationCtor;
 
-function setup(supported = true, canNotify?: () => boolean): { tray: AppTray; logs: string[]; onAction: ReturnType<typeof vi.fn> } {
+function setup(supported = true, canNotify?: () => boolean, idleSeconds?: () => number): { tray: AppTray; logs: string[]; onAction: ReturnType<typeof vi.fn> } {
   vi.mocked(shell.showItemInFolder).mockReset();
   app.removeAllListeners();
   Fake.instances.length = 0;
@@ -107,6 +107,7 @@ function setup(supported = true, canNotify?: () => boolean): { tray: AppTray; lo
     onAction,
     log: (message) => logs.push(message),
     ...(canNotify ? { canNotify } : {}),
+    ...(idleSeconds ? { idleSeconds } : {}),
   });
   return { tray, logs, onAction };
 }
@@ -410,5 +411,93 @@ describe("AppTray after destroy (plan 035 D4)", () => {
     expect(instance.destroy).toHaveBeenCalledTimes(1);
     // The fake behaves like Electron, so without the guard the render above would have thrown.
     expect(() => instance.setToolTip("x")).toThrow("Tray is destroyed");
+  });
+});
+
+describe("notifications around sleep (plan 050)", () => {
+  // The injected idle time decides whether the user is back after waking.
+  const sleepy = (idle: { seconds: number }, canNotify?: () => boolean) => setup(true, canNotify, () => idle.seconds);
+
+  it("holds notifications while the Mac sleeps and shows them in order once the user is back", async () => {
+    vi.useFakeTimers();
+    try {
+      const idle = { seconds: 30 };
+      const { tray, logs } = sleepy(idle);
+      tray.systemWillSleep();
+      tray.notifySaved("/Users/eric/Movies/RecordStuff/a.mp4", "sleep");
+      tray.notifyRecordingFailure("capture_failed");
+      expect(Fake.instances).toHaveLength(0);
+      expect(logs.filter((line) => line.startsWith("notification: held during sleep"))).toHaveLength(2);
+      // A maintenance wake reports resume without any input: nothing is shown.
+      tray.systemDidWake();
+      await vi.advanceTimersByTimeAsync(5 * WAKE_CHECK_MS);
+      expect(Fake.instances).toHaveLength(0);
+      idle.seconds = RETURN_IDLE_SECONDS;
+      await vi.advanceTimersByTimeAsync(WAKE_CHECK_MS);
+      expect(Fake.instances.map((n) => [n.options.body, n.shown])).toEqual([
+        ["Saved a.mp4. Recording stopped because the Mac went to sleep.", 1],
+        [expect.stringContaining("Click to view the recording result."), 1],
+      ]);
+      // Awake again: the next one is shown at once, and checking has stopped.
+      tray.notifySaved("/Users/eric/Movies/RecordStuff/b.mp4");
+      expect(Fake.instances).toHaveLength(3);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never shows held notifications on a timer alone, and shows them at once on unlock", async () => {
+    vi.useFakeTimers();
+    try {
+      const idle = { seconds: 0 };
+      const { tray } = sleepy(idle);
+      tray.systemWillSleep();
+      tray.notifySaved("/Users/eric/Movies/RecordStuff/a.mp4");
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+      expect(Fake.instances).toHaveLength(0);
+      tray.userDidUnlock();
+      expect(Fake.instances).toHaveLength(1);
+      tray.userDidUnlock();
+      expect(Fake.instances).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("applies the notification switch when held ones are shown", async () => {
+    vi.useFakeTimers();
+    try {
+      let allowed = true;
+      const { tray, logs } = sleepy({ seconds: 0 }, () => allowed);
+      tray.systemWillSleep();
+      tray.notifySaved("/Users/eric/Movies/RecordStuff/b.mp4");
+      allowed = false;
+      tray.systemDidWake();
+      await vi.advanceTimersByTimeAsync(WAKE_CHECK_MS);
+      expect(Fake.instances).toHaveLength(0);
+      expect(logs.at(-1)).toBe("notification: turned off in settings, dropped: Saved b.mp4");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not hold while awake, ignores a wake or unlock without a sleep, and drops held notifications on destroy", async () => {
+    vi.useFakeTimers();
+    try {
+      const { tray } = sleepy({ seconds: 0 });
+      tray.systemDidWake();
+      tray.userDidUnlock();
+      tray.notifySaved("/Users/eric/Movies/RecordStuff/a.mp4");
+      expect(Fake.instances).toHaveLength(1);
+      tray.systemWillSleep();
+      tray.notifySaved("/Users/eric/Movies/RecordStuff/b.mp4");
+      tray.destroy();
+      tray.systemDidWake();
+      await vi.advanceTimersByTimeAsync(10 * WAKE_CHECK_MS);
+      expect(Fake.instances).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

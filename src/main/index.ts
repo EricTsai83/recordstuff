@@ -19,6 +19,7 @@ import {
   net,
   nativeTheme,
   powerMonitor,
+  powerSaveBlocker,
   screen,
   session,
   shell,
@@ -30,6 +31,7 @@ import path from "node:path";
 import { CaptureHost } from "./capture-host";
 import { CountdownOverlay } from "./countdown-overlay";
 import { FileWriter, ensureWritableDir } from "./file-writer";
+import { KeepAwake } from "./keep-awake";
 import { createOutputFolderOpener } from "./output-folder";
 import { createFileLogger } from "./log";
 import { createRunId, logSessionEvent } from "./session-log";
@@ -294,6 +296,7 @@ async function main(): Promise<void> {
     resourcesDir: resourcesDir(),
     context: appContext,
     canNotify: () => settings.notifications,
+    idleSeconds: () => powerMonitor.getSystemIdleTime(),
     onToggle: toggle,
     // The tray has no reply channel, so a rejected action would otherwise only
     // reach process-level `unhandledRejection`. Keep it attributable instead.
@@ -539,6 +542,8 @@ async function main(): Promise<void> {
     log,
   });
   let previous = recorder.state;
+  // A session keeps the display awake, so idle sleep cannot end its capture (plan 050).
+  const keepAwake = new KeepAwake(powerSaveBlocker, log);
   recorder.subscribe((event) => {
     logSessionEvent(log, runId, event);
     switch (event.type) {
@@ -550,6 +555,7 @@ async function main(): Promise<void> {
           overlay.destroy();
         }
         savedNotification.stateChanged(event.state);
+        keepAwake.update(event.state);
         log(`state → ${event.state.type}${event.state.type === "countdown" ? ` (${event.state.remaining})` : ""}`);
         renderUi(event.state);
         updates.flush();
@@ -608,10 +614,23 @@ async function main(): Promise<void> {
   screen.on("display-removed", displayChanged);
   screen.on("display-metrics-changed", displayChanged);
   // Evidence only: a failure after sleep then reads as sleep, not unexplained track loss.
-  const onSuspend = (): void => log(`power: suspend; session ${recorder.sessionId ?? "none"}; state ${recorder.state.type}`);
-  const onResume = (): void => log(`power: resume; session ${recorder.sessionId ?? "none"}; state ${recorder.state.type}`);
+  // A sleep cannot be refused, and capture ends about 150 ms after it begins: stop first, log after (plan 050).
+  // Holding notifications is only a flag, and it must be set before a cancel can notify.
+  const onSuspend = (): void => {
+    const session = recorder.sessionId ?? "none";
+    const state = recorder.state.type;
+    tray.systemWillSleep();
+    recorder.systemWillSleep();
+    log(`power: suspend; session ${session}; state ${state}`);
+  };
+  const onResume = (): void => {
+    log(`power: resume; session ${recorder.sessionId ?? "none"}; state ${recorder.state.type}`);
+    tray.systemDidWake();
+  };
+  const onUnlock = (): void => tray.userDidUnlock();
   powerMonitor.on("suspend", onSuspend);
   powerMonitor.on("resume", onResume);
+  powerMonitor.on("unlock-screen", onUnlock);
 
   permission?.start();
   void reportInterruptions(sentinels, {
@@ -687,6 +706,8 @@ async function main(): Promise<void> {
     screen.removeListener("display-metrics-changed", displayChanged);
     powerMonitor.removeListener("suspend", onSuspend);
     powerMonitor.removeListener("resume", onResume);
+    powerMonitor.removeListener("unlock-screen", onUnlock);
+    keepAwake.dispose();
     shortcuts.dispose();
     permission?.stop();
     host.destroy();
