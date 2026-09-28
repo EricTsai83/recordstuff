@@ -30,7 +30,13 @@ export async function readStoredManifest(path = MANIFEST_PATH): Promise<ReleaseM
   } catch (error) {
     throw new Error(`Cannot read ${path}: ${(error as Error).message}. Run \`pnpm manifest generate vX.Y.Z\` first.`);
   }
-  return assertManifestShape(JSON.parse(text));
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`${path} is not valid JSON: ${(error as Error).message}. Regenerate it with \`pnpm manifest generate vX.Y.Z\`.`);
+  }
+  return assertManifestShape(parsed);
 }
 
 async function generate(tag: string | undefined): Promise<void> {

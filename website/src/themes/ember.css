@@ -12,7 +12,6 @@
   --accent-dim: rgba(245, 245, 244, 0.1);
   --accent-ring: #ffffff;
   --rec: #ff3b30;
-  --font-sans: "Geist Variable", "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --radius: 14px;
   --radius-lg: 22px;
 }
@@ -23,15 +22,6 @@
 }
 [data-theme="ember"] .display .accent {
   color: var(--fg-muted);
-}
-[data-theme="ember"] .btn-primary {
-  background: var(--fg);
-  border-color: var(--fg);
-  color: #0a0a0b;
-}
-[data-theme="ember"] .btn-primary:hover {
-  background: #ffffff;
-  border-color: #ffffff;
 }
 [data-theme="ember"] .section-title,
 [data-theme="ember"] .prose h2 {

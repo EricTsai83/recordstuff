@@ -57,7 +57,7 @@
     "happy-dom": "^20.14.5",
     "typescript": "^7.0.2",
     "vite": "^7.3.6",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.2"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
