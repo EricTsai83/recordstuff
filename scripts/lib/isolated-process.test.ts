@@ -44,6 +44,30 @@ describe.skipIf(process.platform === "win32")("isolated process cleanup", () => 
       expect(rejectedGroupKills).toBe(1);
     } finally { spy.mockRestore(); }
   });
+  it.skipIf(process.platform !== "darwin")("waits for a transient EPERM probe to settle without treating it as absence", async () => {
+    const kill = process.kill.bind(process);
+    let denied = 0;
+    const spy = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      if (pid < 0 && signal === 0 && denied++ < 2)
+        throw Object.assign(new Error("controlled reaping EPERM"), { code: "EPERM" });
+      return kill(pid, signal);
+    });
+    try {
+      expect(await run("process.exit(0)")).toMatchObject({ code: 0, groupGone: true, forced: false });
+      expect(denied).toBeGreaterThanOrEqual(3);
+    } finally { spy.mockRestore(); }
+  });
+  it.skipIf(process.platform !== "darwin")("still rejects persistent permission denial when checking cleanup", async () => {
+    const kill = process.kill.bind(process);
+    const spy = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      if (pid < 0 && signal === 0)
+        throw Object.assign(new Error("controlled persistent EPERM"), { code: "EPERM" });
+      return kill(pid, signal);
+    });
+    try {
+      await expect(run("process.exit(0)")).rejects.toThrow("controlled persistent EPERM");
+    } finally { spy.mockRestore(); }
+  });
   it("cleans descendants left by an exited parent", async () => {
     const source = "require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 50)'], {stdio:'ignore'}).unref()";
     expect(await run(source)).toMatchObject({ code: 0, groupGone: true });

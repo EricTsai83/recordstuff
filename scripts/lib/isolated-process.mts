@@ -14,9 +14,18 @@ export interface IsolatedProcessOptions {
   signal?: AbortSignal;
 }
 
-function groupExists(pid: number): boolean {
-  try { process.kill(-pid, 0); return true; }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return false; throw error; }
+async function groupExists(pid: number): Promise<boolean> {
+  // Darwin can return EPERM while an exiting group's only members are zombies.
+  // Give the OS a bounded chance to reap them; persistent denial still fails.
+  for (let attempt = 0; ; attempt++) {
+    try { process.kill(-pid, 0); return true; }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ESRCH") return false;
+      if (process.platform !== "darwin" || code !== "EPERM" || attempt >= 10) throw error;
+      await delay(25);
+    }
+  }
 }
 function signalGroup(pid: number, signal: NodeJS.Signals): void {
   try { process.kill(-pid, signal); }
@@ -48,11 +57,13 @@ export async function runIsolatedProcess(options: IsolatedProcessOptions): Promi
     } else child.kill("SIGTERM");
     escalation = setTimeout(() => {
       try {
-        if (child.pid && groupExists(child.pid)) {
+        if (child.pid) {
+          process.kill(-child.pid, 0);
           forced = true;
           signalGroup(child.pid, "SIGKILL");
         }
-      } catch {
+      } catch (cause) {
+        if ((cause as NodeJS.ErrnoException).code === "ESRCH") return;
         forced = true;
         child.kill("SIGKILL");
       }
@@ -76,17 +87,17 @@ export async function runIsolatedProcess(options: IsolatedProcessOptions): Promi
     clearTimeout(escalation);
     options.signal?.removeEventListener("abort", abort);
     // Main can exit before Chromium helpers. Reap the entire group we created.
-    if (child.pid && groupExists(child.pid)) {
+    if (child.pid && await groupExists(child.pid)) {
       signalGroup(child.pid, "SIGTERM");
       const until = Date.now() + grace;
-      while (groupExists(child.pid) && Date.now() < until) await delay(25);
-      if (groupExists(child.pid)) {
+      while (await groupExists(child.pid) && Date.now() < until) await delay(25);
+      if (await groupExists(child.pid)) {
         forced = true;
         signalGroup(child.pid, "SIGKILL");
         const killedUntil = Date.now() + grace;
-        while (groupExists(child.pid) && Date.now() < killedUntil) await delay(25);
+        while (await groupExists(child.pid) && Date.now() < killedUntil) await delay(25);
       }
     }
   }
-  return { code, error, pid: child.pid, stopped, forced, groupGone: !child.pid || !groupExists(child.pid) };
+  return { code, error, pid: child.pid, stopped, forced, groupGone: !child.pid || !await groupExists(child.pid) };
 }

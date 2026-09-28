@@ -1338,3 +1338,8 @@ Claude Opus 5.5 已完成唯讀 x-high review（309.5 秒）。兩項 Low findin
 本機[收尾報告](../../verification/measurements/2026-09-28-quit-closure/report.md)記錄七組案例通過，沒有剩餘已觀察到的功能失敗。修改前至最後桌面清理期間執行 caffeinate，結束後已停止；受測 App／helper／fixture 全部退出。沒有變更偏好，也沒有 commit 或發布。
 
 依範圍省略網站、完整矩陣、長錄與權限重設：本次只改退出時的一次事件交接。同日 14:34 CPU 基準仍適用未變的常態行為，沒有宣稱新的 CPU 數值。英文提示版面未變，沿用先前截圖。自動置前與全桌面提示唯一性因工具僅能觀察目標視窗而仍受阻；主觀聽感與 VoiceOver 未執行。這些是驗證限制，不是已觀察到的產品異常。
+
+
+## 發布前程序清理競態 — 2026-09-28
+
+建立 1.1.1 標籤前，[main CI](https://github.com/EricTsai83/recordstuff/actions/runs/36440879208) 的隔離程序後代清理檢查發生 `kill EPERM`。Darwin 的[程序群組訊號實作](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_sig.c)排除 zombie 成員，因此在群組消失前可能回傳 EPERM。清理檢查現在只針對 macOS 的此狀態最多重試 250 毫秒，仍要求有效的存在檢查或 ESRCH；持續拒絕權限仍會失敗。升級終止訊號保持同步，避免監督結束後仍有待處理的重試發送訊號。新增暫時與持續拒絕的測試；1169 個測試與建置通過，另完成 30 次真實父程序退出後的清理。App 原始碼與包裝未變，同日乾淨 a019285 的錄影證據仍適用未變的擷取路徑。保留第一次 CI 失敗紀錄，沒有以重跑掩蓋。
