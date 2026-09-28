@@ -17,6 +17,7 @@ export interface SessionSentinel {
   startedAt: string;
   /** The temporary `.recording.mp4` this session is about to create or has created. */
   recordingPath: string;
+  finalizedPath?: string;
 }
 
 const SUFFIX = ".json";
@@ -29,7 +30,9 @@ function parse(sessionId: string, text: string): SessionSentinel | undefined {
   if (value?.version !== 1 || value.sessionId !== sessionId || typeof value.startedAt !== "string" ||
       !Number.isFinite(Date.parse(value.startedAt)) || typeof value.recordingPath !== "string" ||
       !path.isAbsolute(value.recordingPath) || value.recordingPath.includes("\0")) return undefined;
-  return { sessionId, startedAt: value.startedAt, recordingPath: value.recordingPath };
+  const finalizedPath = value.finalizedPath;
+  if (finalizedPath !== undefined && (typeof finalizedPath !== "string" || !path.isAbsolute(finalizedPath) || finalizedPath.includes("\0"))) return undefined;
+  return { sessionId, startedAt: value.startedAt, recordingPath: value.recordingPath, ...(finalizedPath ? { finalizedPath } : {}) };
 }
 
 export class SessionSentinels {
@@ -49,7 +52,15 @@ export class SessionSentinels {
     await writeFileAtomic(this.file(sentinel.sessionId), JSON.stringify({ version: 1, ...sentinel }), { mode: 0o600 });
   }
 
-  /** Never throws: a sentinel that cannot be removed only produces a spurious entry at the next launch. */
+  /** A durable success checkpoint makes a failed unlink harmless on the next launch. */
+  async complete(sessionId: string, finalizedPath: string): Promise<void> {
+    if (!VALID_ID.test(sessionId)) throw new Error("invalid session id");
+    const sentinel = parse(sessionId, await fs.promises.readFile(this.file(sessionId), "utf8"));
+    if (!sentinel) throw new Error("invalid sentinel");
+    await this.write({ ...sentinel, finalizedPath });
+  }
+
+  /** Never throws: completed checkpoints are safe to leave for the next launch. */
   async remove(sessionId: string): Promise<void> {
     if (!VALID_ID.test(sessionId)) return;
     try {
@@ -99,6 +110,10 @@ export class SessionSentinels {
         try { sentinel = text === undefined ? undefined : parse(sessionId, text); }
         catch { sentinel = undefined; }
       }
+      if (sentinel?.finalizedPath) {
+        await this.remove(sessionId);
+        continue;
+      }
       if (sentinel) { found.push(sentinel); continue; }
       this.log(`sentinel: discarding ${temporary ? "interrupted write" : "invalid sentinel"} ${name}`);
       await fs.promises.unlink(file).catch(() => undefined);
@@ -113,8 +128,8 @@ export function interruptionFailure(sentinel: SessionSentinel): RecordingFailure
     id: `interrupted-${sentinel.sessionId}`,
     occurredAt: sentinel.startedAt,
     code: "app_terminated",
-    detail: `session ${sentinel.sessionId} started ${sentinel.startedAt} was still recording when RecordStuff last ended; ` +
-      "the temporary file was not finalized and may be incomplete; no recovery or repair was attempted",
+    detail: `session ${sentinel.sessionId} started ${sentinel.startedAt} had no confirmed terminal checkpoint when RecordStuff last ended; ` +
+      "completion is unknown (a final file may already exist); the temporary file may be incomplete; no recovery or repair was attempted",
     // A lookup hint rechecked like a restored partial: partial only while the file exists.
     outcome: "unknown", recordingPath: sentinel.recordingPath, previouslyPartial: true,
   };

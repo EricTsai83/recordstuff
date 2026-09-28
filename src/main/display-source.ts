@@ -10,14 +10,13 @@ export function resolveDisplayPreference({ displays, primaryDisplayId, preferenc
   return matches.length === 1 ? { ok: true, id: preference.id, label: matches[0]!.label } : { ok: false, detail: "target_missing" };
 }
 type Source = { display_id: string };
-export type Selection<S> = { ok: true; source: S; rule: "primary" | "first" | "exact" } | { ok: false; code: ErrorCode; detail: DisplayFailure };
+export type Selection<S> = { ok: true; source: S; rule: "primary" | "exact" } | { ok: false; code: ErrorCode; detail: DisplayFailure };
 export function selectScreenSource<S extends Source>({ sources, resolution, preference }: {
   sources: readonly S[]; resolution: DisplayResolution; preference: DisplayPreference;
 }): Selection<S> {
   if (preference.kind === "primary") {
-    const exact = resolution.ok ? sources.find((s) => s.display_id === resolution.id) : undefined;
-    const source = exact ?? sources[0];
-    return source ? { ok: true, source, rule: exact ? "primary" : "first" } : { ok: false, code: "no_display", detail: "source_missing" };
+    const matches = resolution.ok ? sources.filter(s => s.display_id === resolution.id) : [];
+    return matches.length === 1 ? { ok: true, source: matches[0]!, rule: "primary" } : { ok: false, code: "no_display", detail: "source_missing" };
   }
   if (!resolution.ok) return { ok: false, code: "display_unavailable", detail: resolution.detail };
   const matches = sources.filter((s) => s.display_id === resolution.id);
@@ -79,8 +78,10 @@ export class DisplayRequest<S extends Source> {
       if (!resolution.ok) { deny("display_unavailable", resolution.detail, attempt); return; }
       let sources: S[];
       try { sources = await this.deps.getSources(); }
-      catch {
-        deny(this.deps.platform === "darwin" ? "permission_denied" : "no_display", "source_missing", attempt);
+      catch (cause) {
+        if (this.cancelled) return;
+        this.deps.failed?.(cause);
+        deny("capture_start_failed", "source_missing", attempt);
         return;
       }
       if (this.cancelled) { finish(); return; }
@@ -88,14 +89,14 @@ export class DisplayRequest<S extends Source> {
       const current = resolveDisplayPreference({ ...after, preference });
       if (!current.ok) { deny("display_unavailable", current.detail, attempt); return; }
       const result = selectScreenSource({ sources, resolution, preference });
-      const changed = preference.kind === "display" && before.generation !== after.generation;
+      const changed = before.generation !== after.generation || current.id !== resolution.id;
       if (!changed && result.ok) {
         this.deps.selected(result.source, result.rule, attempt, resolution);
         finish(result.source);
         return;
       }
       const detail = changed ? "topology_changed" : "source_missing";
-      if (preference.kind === "primary" || attempt === 3) {
+      if (attempt === 3) {
         // Displays exist but capture still lists none: on macOS the screen grant was revoked
         // while getMediaAccessStatus keeps reporting it (System Settings' "Later"), not a missing display.
         const revoked = sources.length === 0 && this.deps.platform === "darwin" && after.displays.length > 0;

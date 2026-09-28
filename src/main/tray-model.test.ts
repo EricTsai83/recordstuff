@@ -149,8 +149,8 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     const m = trayModel({ type: "starting" }, mac);
     expect(m.icon).toBe("busy");
     expect(m.title).toBe("");
-    expect(labels(m.menu)).toEqual(["啟動中，請留意系統權限提示…", "—", "設定…", "—", "顯示 log", "結束 RecordStuff"]);
-    expect(enabledActions(m.menu)).toEqual(["openSettings", "revealLog", "quit"]);
+    expect(labels(m.menu)).toEqual(["啟動中，請留意系統權限提示…", "取消錄影", "—", "設定…", "—", "顯示 log", "結束 RecordStuff"]);
+    expect(enabledActions(m.menu)).toEqual(["cancelCountdown", "openSettings", "revealLog", "quit"]);
   });
 
   it("recording: red icon, REC title, stop; output dir items greyed", () => {

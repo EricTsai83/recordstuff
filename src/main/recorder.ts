@@ -117,6 +117,7 @@ export interface RecorderDeps {
   sentinels?: {
     write(sentinel: SessionSentinel): Promise<void>;
     remove(sessionId: string): Promise<void>;
+    complete?(sessionId: string, finalPath: string): Promise<void>;
   };
   /** Overrides for `RECORDING_HEALTH`, for tests. */
   health?: Partial<RecordingHealth>;
@@ -359,6 +360,7 @@ export class Recorder {
       this.stop();
       return;
     }
+    if (this._state.type === "starting") { this.cancelPreparation(); return; }
     if (this._state.type !== "countdown" || !session) return;
     if (session.phase === "countdown") {
       this.cancel(session, reason);
@@ -366,6 +368,11 @@ export class Recorder {
       session.stopOnStart = true;
       this.deps.log(`recorder: session ${session.id} cancel (${reason}) arrived after record was sent; stopping once capture starts`);
     }
+  }
+
+  cancelPreparation(): void {
+    const session = this.session;
+    if (session && (session.phase === "opening" || session.phase === "preparing")) this.cancel(session, "menu");
   }
 
   stop(): void {
@@ -538,6 +545,11 @@ export class Recorder {
     this.session = session;
     session.opening = Promise.resolve().then(async () => {
       await this.deps.ensureWritableDir(dir);
+      if (this.session !== session) return;
+      if (this.deps.freeSpace) {
+        const free = await this.deps.freeSpace(dir);
+        if (free < this.health.diskStopBytes) throw Object.assign(new Error("Insufficient free space to begin recording"), { code: "disk_full" });
+      }
       if (this.session !== session) return;
       session.writer = await this.openUniqueWriter(session, formatTimestamp(this.deps.now()));
     });
@@ -896,6 +908,8 @@ export class Recorder {
       return;
     }
     if (this.session !== session) return;
+    try { await this.deps.sentinels?.complete?.(session.id, finalPath); }
+    catch (cause) { this.deps.log(`recorder: completion checkpoint failed: ${messageOf(cause)}`); }
     const early = session.stoppedEarly ? ` (stopped early: ${EARLY_STOP_TEXT[session.stoppedEarly]})` : "";
     this.deps.log(`recorder: session ${session.id} file finalized ${finalPath}${early}`);
     this.logFinalizeTiming(session, drainedAt);

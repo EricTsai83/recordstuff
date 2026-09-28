@@ -166,3 +166,12 @@ it("explains the interruption without pointing at settings, the folder or permis
   expect(failureGuidance("app_terminated", "zh-TW")).toContain("不會修復");
   expect(isOutputFolderFailure("app_terminated") || isPermissionFailure("app_terminated")).toBe(false);
 });
+
+it("does not report an interruption after the durable completion checkpoint", async () => {
+  const store = new SessionSentinels(sentinelDir);
+  await store.write(sentinel("completed", "done"));
+  await store.complete("completed", path.join(dir, "done.mp4"));
+  const { results } = await launch();
+  expect(results.all).toEqual([]);
+  expect(remaining()).toEqual([]);
+});

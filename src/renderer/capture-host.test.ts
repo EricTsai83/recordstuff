@@ -682,3 +682,29 @@ describe("terminal event ordering", () => {
     expect(media.tracks.every(track => track.stopped)).toBe(true);
   });
 });
+
+it("contains preparation exceptions and releases tracks so another attempt can start", async () => {
+  const port = boot({ measureFrameSize: async () => { throw new Error("measurement failed"); } });
+  const first = stream();
+  port.receive(start("s1")); pendingStream!.resolve(first); await flush();
+  expect(first.getTracks().every(track => track.stopped)).toBe(true);
+  expect(port.sent).toContainEqual(expect.objectContaining({ type: "error", code: "capture_start_failed" }));
+  port.receive(start("s2"));
+  expect(getDisplayMedia).toHaveBeenCalledTimes(2);
+  port.receive({ type: "stop", sessionId: "s2" });
+  pendingStream!.resolve(stream()); await flush();
+});
+
+it("bounds queued blobs while a previous blob read is stalled", async () => {
+  const port = boot();
+  port.receive(start("s1")); const source = stream(); pendingStream!.resolve(source); await flush(); record(port);
+  let release!: (value: ArrayBuffer) => void;
+  const encoder = FakeMediaRecorder.instances[0]!;
+  encoder.ondataavailable?.({ data: { size: 40 * 1024 * 1024, arrayBuffer: () => new Promise<ArrayBuffer>(resolve => { release = resolve; }) } as Blob });
+  await Promise.resolve();
+  encoder.ondataavailable?.({ data: { size: 40 * 1024 * 1024 } as Blob });
+  expect(encoder.state).toBe("inactive");
+  release(new ArrayBuffer(1)); await flush();
+  expect(port.sent).toContainEqual(expect.objectContaining({ type: "error", detail: expect.stringContaining("backlog") }));
+  expect(source.getTracks().every(track => track.stopped)).toBe(true);
+});

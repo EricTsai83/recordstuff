@@ -28,6 +28,7 @@ interface Session {
   stream: MediaStream;
   recorder: MediaRecorder;
   seq: number;
+  backlogBytes: number;
   /** Chunk hand-off is async (`blob.arrayBuffer()`); serialize to keep order. */
   chain: Promise<void>;
   cause?: { code: ErrorCode; detail: string; displayFailure?: "track_ended" } | "normal";
@@ -237,7 +238,12 @@ export class CaptureHost {
       return;
     }
 
-    const capture = await applyQuality(stream, quality, this.measureFrameSize);
+    let capture: CaptureReport;
+    try { capture = await applyQuality(stream, quality, this.measureFrameSize); }
+    catch (cause) {
+      if (!cancelled()) refuse("capture_start_failed", `capture preparation failed: ${describe(cause)}`);
+      return;
+    }
     if (cancelled()) return;
     // Nobody listened for `ended` while the constraint was applied (review
     // pass 1, F3): a track that died meanwhile would otherwise be recorded as
@@ -307,6 +313,7 @@ export class CaptureHost {
       stream,
       recorder,
       seq: 0,
+      backlogBytes: 0,
       chain: Promise.resolve(),
       draining: false,
       handoffFailed: false,
@@ -403,6 +410,14 @@ export class CaptureHost {
 
   private enqueueChunk(session: Session, blob: Blob): void {
     if (session.finished || session.draining || blob.size === 0) return;
+    if (session.handoffFailed) return;
+    if (session.backlogBytes + blob.size > 64 * 1024 * 1024) {
+      session.handoffFailed = true;
+      this.setFailure(session, { code: "capture_failed", detail: "media handoff backlog exceeded 64 MiB" });
+      this.requestStop(session);
+      return;
+    }
+    session.backlogBytes += blob.size;
     const seq = session.seq++;
     session.chain = session.chain.then(async () => {
       if (session.finished || session.handoffFailed) return;
@@ -416,7 +431,7 @@ export class CaptureHost {
       session.handoffFailed = true;
       this.setFailure(session, { code: "capture_failed", detail: `chunk read failed: ${describe(cause)}` });
       this.requestStop(session);
-    });
+    }).finally(() => { session.backlogBytes -= blob.size; });
   }
 
   private finish(session: Session): void {

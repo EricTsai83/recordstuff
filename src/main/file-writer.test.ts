@@ -529,3 +529,58 @@ describe("no timer outlives a writer (plan 049)", () => {
     }
   });
 });
+
+it("does not recreate a missing custom folder", async () => {
+  const missing = path.join(dir, "offline");
+  await expect(ensureWritableDir(missing, nodeFs, false)).rejects.toMatchObject({ code: "output_open_failed" });
+  await expect(fs.stat(missing)).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+it("publishes once when finish is repeated and rejects late appends", async () => {
+  const final = path.join(dir, "once.mp4");
+  const writer = await FileWriter.open(path.join(dir, "once.recording.mp4"), final);
+  await writer.append(bytes(1, 2));
+  const first = writer.finish();
+  expect(writer.finish()).toBe(first);
+  await expect(writer.append(bytes(3))).rejects.toThrow();
+  expect(await first).toBe(final);
+  await writer.abandon();
+  expect(await fs.readFile(final)).toEqual(Buffer.from([1, 2]));
+});
+
+it("removes a copied destination if syncing it fails, retaining the recording", async () => {
+  const source = path.join(dir, "sync.recording.mp4"), target = path.join(dir, "sync.mp4");
+  await fs.writeFile(source, "retained");
+  const original = fs.open;
+  const spy = vi.spyOn(fs, "open").mockImplementation(async (...args: Parameters<typeof fs.open>) => {
+    const handle = await original(...args);
+    if (args[0] === target) vi.spyOn(handle, "sync").mockRejectedValue(new Error("sync failed"));
+    return handle;
+  });
+  try { await expect(nodeFs.copyExclusive(source, target)).rejects.toThrow("sync failed"); }
+  finally { spy.mockRestore(); }
+  await expect(fs.stat(target)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(await fs.readFile(source, "utf8")).toBe("retained");
+});
+
+it("refuses a full-copy publication without enough space for the recording", async () => {
+  const source = path.join(dir, "large.recording.mp4"), target = path.join(dir, "large.mp4");
+  await fs.writeFile(source, "retained");
+  const statfs = vi.spyOn(fs, "statfs").mockResolvedValue({ bavail: 1, bsize: 1 } as Awaited<ReturnType<typeof fs.statfs>>);
+  try { await expect(nodeFs.copyExclusive(source, target)).rejects.toMatchObject({ code: "ENOSPC" }); }
+  finally { statfs.mockRestore(); }
+  expect(await fs.readFile(source, "utf8")).toBe("retained");
+  await expect(fs.stat(target)).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+it("settles concurrent finish and abandon for empty media without circular waiting", async () => {
+  const recording = path.join(dir, "empty.recording.mp4");
+  const writer = await FileWriter.open(recording, path.join(dir, "empty.mp4"));
+  const finished = writer.finish();
+  const abandoned = writer.abandon();
+  await expect(finished).rejects.toMatchObject({ code: "capture_start_failed" });
+  await expect(abandoned).resolves.toBeUndefined();
+  await fs.writeFile(recording, "new recording");
+  await writer.abandon();
+  expect(await fs.readFile(recording, "utf8")).toBe("new recording");
+});

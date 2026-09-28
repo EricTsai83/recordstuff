@@ -161,6 +161,7 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
     case "starting":
       return model("busy", "", text("Starting… Check for system permission prompts"), [
         disabled(text("Starting… Check for system permission prompts")),
+        item(text("Cancel recording"), "cancelCountdown"),
       ]);
     case "countdown": {
       const seconds = { seconds: state.remaining };

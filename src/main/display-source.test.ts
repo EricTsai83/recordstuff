@@ -14,12 +14,12 @@ describe("display resolution", () => {
     expect(resolve(explicit, [display, display])).toMatchObject({ ok: false });
     expect(resolve(explicit, [{ ...display, id: "2" }, { ...display, id: "3" }])).toMatchObject({ ok: false });
   });
-  it("preserves primary fallback and applies explicit empty-source precedence", () => {
+  it("rejects an ambiguous primary source and applies explicit empty-source precedence", () => {
     for (const sources of [[], [{ display_id: "" }], [source, source]]) {
       expect(selectScreenSource({ preference: explicit, resolution: resolve(), sources })).toMatchObject({ ok: false, code: "display_unavailable" });
     }
     expect(selectScreenSource({ preference: primary, resolution: resolve(primary), sources: [] })).toMatchObject({ ok: false, code: "no_display" });
-    expect(selectScreenSource({ preference: primary, resolution: resolve(primary), sources: [{ display_id: "" }] })).toMatchObject({ ok: true, rule: "first" });
+    expect(selectScreenSource({ preference: primary, resolution: resolve(primary), sources: [{ display_id: "" }] })).toMatchObject({ ok: false, code: "no_display" });
     expect(selectScreenSource({ preference: primary, resolution: resolve(primary), sources: [{ display_id: "2" }, source] })).toMatchObject({ ok: true, source, rule: "primary" });
   });
 });
@@ -51,21 +51,22 @@ describe("bounded request lifetime", () => {
     }
   });
   it("reports a macOS capture that lists no screen at all as a permission problem, not a missing display (plan 035 D2)", async () => {
+    vi.useFakeTimers();
     for (const [platform, code] of [["darwin", "permission_denied"], ["win32", "no_display"]] as const) {
       const x = setup(primary, platform); x.getSources.mockResolvedValue([]);
-      await x.request.run(x.callback);
-      expect(x.getSources).toHaveBeenCalledTimes(1);
-      expect(x.denied).toHaveBeenCalledExactlyOnceWith(code, "source_missing", 1);
+      const run = x.request.run(x.callback); await vi.runAllTimersAsync(); await run;
+      expect(x.getSources).toHaveBeenCalledTimes(3);
+      expect(x.denied).toHaveBeenCalledExactlyOnceWith(code, "source_missing", 3);
       expect(x.callback).toHaveBeenCalledExactlyOnceWith(undefined);
     }
     // No display connected at all is still a missing display, not a permission problem.
     const none = setup(primary); none.change([]); none.getSources.mockResolvedValue([]);
-    await none.request.run(none.callback);
-    expect(none.denied).toHaveBeenCalledExactlyOnceWith("no_display", "source_missing", 1);
-    // A source list without the primary display still falls back to the first source.
+    const absent = none.request.run(none.callback); await vi.runAllTimersAsync(); await absent;
+    expect(none.denied).toHaveBeenCalledExactlyOnceWith("no_display", "source_missing", 3);
+    // A missing primary must never capture another display.
     const other = setup(primary); other.getSources.mockResolvedValue([{ display_id: "2" }]);
-    await other.request.run(other.callback);
-    expect(other.selected).toHaveBeenCalledTimes(1);
+    const missing = other.request.run(other.callback); await vi.runAllTimersAsync(); await missing;
+    expect(other.selected).not.toHaveBeenCalled();
   });
   it("rechecks topology and exact target after enumeration", async () => {
     const x = setup(); x.getSources.mockImplementation(async () => { x.change([]); return [source]; });
@@ -93,6 +94,16 @@ describe("bounded request lifetime", () => {
   it.each(["darwin", "linux"] as const)("does not retry exceptions, preserving %s mapping", async (platform) => {
     const x = setup(explicit, platform); x.getSources.mockRejectedValue(new Error("permission"));
     await x.request.run(x.callback); expect(x.getSources).toHaveBeenCalledTimes(1);
-    expect(x.denied).toHaveBeenCalledWith(platform === "darwin" ? "permission_denied" : "no_display", "source_missing", 1);
+    expect(x.denied).toHaveBeenCalledWith("capture_start_failed", "source_missing", 1);
   });
+});
+
+it("re-enumerates after primary topology changes instead of granting the stale source", async () => {
+  vi.useFakeTimers();
+  const x = setup(primary);
+  x.getSources.mockImplementationOnce(async () => { x.change(); return [source]; });
+  const run = x.request.run(x.callback);
+  await vi.runAllTimersAsync(); await run;
+  expect(x.getSources).toHaveBeenCalledTimes(2);
+  expect(x.selected).toHaveBeenCalledExactlyOnceWith(source, "primary", 2, expect.anything());
 });

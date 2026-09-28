@@ -1694,7 +1694,7 @@ describe("disk headroom guard", () => {
   const logged = (log: ReturnType<typeof vi.fn>, text: string) => log.mock.calls.filter(([message]) => String(message).includes(text));
 
   it("warns once below 1 GiB, requests one normal stop below 200 MiB and saves with the reason", async () => {
-    const free = [2048, 900, 800, 150, 100].map((mib) => mib * MIB);
+    const free = [2048, 2048, 900, 800, 150, 100].map((mib) => mib * MIB);
     const polled: string[] = [];
     const log = vi.fn();
     const ctx = setup({ log, deps: { freeSpace: async (dir) => { polled.push(dir); return free.shift()!; } } });
@@ -1711,7 +1711,7 @@ describe("disk headroom guard", () => {
     expect(logged(log, "stopping early")).toHaveLength(1);
     // No poll while stopping, so the stop is requested only once.
     await vi.advanceTimersByTimeAsync(5000);
-    expect(polled).toEqual(["/out", "/out", "/out", "/out"]);
+    expect(polled).toEqual(["/out", "/out", "/out", "/out", "/out"]);
     ctx.host.emit(chunk("s1", 4));
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
     await flush();
@@ -1725,14 +1725,14 @@ describe("disk headroom guard", () => {
 
   it("logs a failed poll once and never stops the recording because of it", async () => {
     const log = vi.fn();
-    const freeSpace = vi.fn(async () => { throw new Error("statfs unavailable"); });
+    const freeSpace = vi.fn(async (): Promise<number> => { throw new Error("statfs unavailable"); }).mockResolvedValueOnce(2048 * MIB);
     const ctx = setup({ log, deps: { freeSpace } });
     await startRecording(ctx);
     for (let seq = 1; seq <= 3; seq++) {
       await vi.advanceTimersByTimeAsync(5000);
       ctx.host.emit(chunk("s1", seq));
     }
-    expect(freeSpace).toHaveBeenCalledTimes(3);
+    expect(freeSpace).toHaveBeenCalledTimes(4);
     expect(ctx.recorder.state.type).toBe("recording");
     expect(logged(log, "free-space check failed: statfs unavailable")).toHaveLength(1);
     ctx.recorder.stop();
@@ -2102,14 +2102,15 @@ describe("Recorder countdown (plan 040)", () => {
       });
     }
 
-    it("ignores clicks while preparing, as while starting", async () => {
+    it("ignores repeated toggles but permits explicit preparation cancellation", async () => {
       const ctx = counting(3);
       ctx.recorder.toggle();
       await flush();
       ctx.recorder.toggle();
       ctx.recorder.cancelCountdown("menu");
-      expect(ctx.recorder.state.type).toBe("starting");
-      expect(ctx.host.stopped).toEqual([]);
+      await flush();
+      expect(ctx.recorder.state.type).toBe("idle");
+      expect(ctx.host.stopped).toEqual(["s1"]);
     });
   });
 

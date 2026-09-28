@@ -38,9 +38,17 @@ export const nodeFs: FileWriterFs = {
   // On macOS libuv never clones (FICLONE_FORCE is ENOSYS), so this is a full
   // copy and needs the file's size in free space. EXCL protects existing destinations.
   copyExclusive: async (from, to) => {
+    const [source, volume] = await Promise.all([fs.stat(from), fs.statfs(path.dirname(to))]);
+    if (volume.bavail * volume.bsize < source.size + 8 * 1024 * 1024)
+      throw Object.assign(new Error("Not enough space to publish a full copy; the original recording is retained"), { code: "ENOSPC" });
     await fs.copyFile(from, to, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE);
-    const copy = await fs.open(to, "r+");
-    try { await copy.sync(); } finally { await copy.close(); }
+    try {
+      const copy = await fs.open(to, "r+");
+      try { await copy.sync(); } finally { await copy.close(); }
+    } catch (cause) {
+      await fs.unlink(to).catch(() => undefined);
+      throw cause;
+    }
   },
   unlink: (filePath) => fs.unlink(filePath),
   mkdir: (dir, options) => fs.mkdir(dir, options),
@@ -80,13 +88,13 @@ export function classifyWriteError(cause: unknown): ErrorCode {
 }
 
 /**
- * docs/system-design/recording.md: before starting, `mkdir -p` the directory, then write and
- * delete a probe file. Fails loudly instead of falling back to another folder.
+ * Create default folders when requested, then write and remove a probe.
+ * Custom folders must exist; never recreate an offline mount path.
  */
-export async function ensureWritableDir(dir: string, io: FileWriterFs = nodeFs): Promise<void> {
+export async function ensureWritableDir(dir: string, io: FileWriterFs = nodeFs, create = true): Promise<void> {
   const probe = path.join(dir, `.recordstuff-write-test-${process.pid}-${Date.now()}`);
   try {
-    await io.mkdir(dir, { recursive: true });
+    if (create) await io.mkdir(dir, { recursive: true });
     await io.writeFile(probe, "");
   } catch (cause) {
     throw new FileWriteError("output_open_failed", dir, cause);
@@ -113,9 +121,12 @@ export class FileWriter {
   private refused: FileWriteError | undefined;
   private fsyncTimer: ReturnType<typeof setInterval> | undefined;
   private closed = false;
+  private terminal = false;
+  private finished: Promise<string> | undefined;
   private _bytesWritten = 0;
   private _backlogBytes = 0;
   private abandoned: Promise<string | undefined> | undefined;
+  private cleanup: Promise<string | undefined> | undefined;
   preservationUncertain = false;
   /** Set once `finish` published the file. */
   finishTimings: FinishTimings | undefined;
@@ -169,7 +180,7 @@ export class FileWriter {
    * still written, so the kept partial is a gapless prefix.
    */
   append(bytes: Uint8Array): Promise<void> {
-    if (this.closed) return Promise.reject(new Error("FileWriter is closed"));
+    if (this.terminal || this.closed) return Promise.reject(new Error("FileWriter is closed"));
     if (this.refused) return Promise.reject(this.refused);
     if (this._backlogBytes + bytes.byteLength > this.backlogLimitBytes) {
       // An earlier disk error stays the reported one.
@@ -220,14 +231,28 @@ export class FileWriter {
    * (exFAT and some network volumes have no hard links) falls back to the
    * exclusive copy for this and every later candidate name.
    */
-  async finish(): Promise<string> {
+  finish(): Promise<string> {
+    if (this.finished) return this.finished;
+    if (this.abandoned) return Promise.reject(new Error("FileWriter was abandoned"));
+    this.beginTerminal();
+    this.finished = this.finishOnce();
+    return this.finished;
+  }
+
+  private beginTerminal(): void {
+    this.terminal = true;
+    clearInterval(this.fsyncTimer);
+    this.fsyncTimer = undefined;
+  }
+
+  private async finishOnce(): Promise<string> {
     const began = performance.now();
     await this.enqueue(() => this.handle.sync());
     const flushed = performance.now();
     // A refused chunk means the recording is incomplete; the failure path keeps the partial.
     if (this.refused) throw this.refused;
     if (this._bytesWritten === 0) {
-      await this.abandon();
+      await this.abandonOnce();
       throw new FileWriteError("capture_start_failed", this.recordingPath, NO_MEDIA_DETAIL);
     }
     await this.release();
@@ -273,11 +298,18 @@ export class FileWriter {
    * it, so a later call must not unlink again.
    */
   abandon(): Promise<string | undefined> {
-    this.abandoned ??= this.abandonOnce();
+    this.beginTerminal();
+    this.abandoned ??= this.finished
+      ? this.finished.then(() => undefined, () => this.abandonOnce())
+      : this.abandonOnce();
     return this.abandoned;
   }
 
-  private async abandonOnce(): Promise<string | undefined> {
+  private abandonOnce(): Promise<string | undefined> {
+    return this.cleanup ??= this.cleanupOnce();
+  }
+
+  private async cleanupOnce(): Promise<string | undefined> {
     try {
       await this.queue;
     } catch {
