@@ -29,12 +29,11 @@ describe("isHostMessage", () => {
     expect(isHostMessage({ type: "ready" })).toBe(true);
     expect(isHostMessage({ type: "pong" })).toBe(true);
     expect(isHostMessage({ type: "prepared", sessionId: "a", mimeType: "video/mp4", capture })).toBe(true);
-    // `started` may drop its report: main keeps the one from `prepared`.
+    // The report travels in `prepared`; main keeps it for `started`.
     expect(isHostMessage({ type: "started", sessionId: "a" })).toBe(true);
-    expect(isHostMessage({ type: "started", sessionId: "a", mimeType: "video/mp4", capture })).toBe(true);
     expect(
       isHostMessage({
-        type: "started",
+        type: "prepared",
         sessionId: "a",
         mimeType: "video/mp4",
         capture: { ...capture, width: 1920, height: 1080, frameRate: 30, sampleRate: 48_000, channelCount: 2, warnings: ["w"] },
@@ -66,8 +65,6 @@ describe("isHostMessage", () => {
     expect(isHostMessage({ type: "prepared", sessionId: "a", mimeType: "video/mp4", capture: { ...capture, videoBitsPerSecond: NaN } })).toBe(false);
     expect(isHostMessage({ type: "prepared", sessionId: "a", mimeType: "video/mp4", capture: { ...capture, warnings: [1] } })).toBe(false);
     expect(isHostMessage({ type: "started", sessionId: "" })).toBe(false);
-    expect(isHostMessage({ type: "started", sessionId: "a", mimeType: 1 })).toBe(false);
-    expect(isHostMessage({ type: "started", sessionId: "a", capture: { ...capture, warnings: [1] } })).toBe(false);
     expect(isHostMessage({ type: "nope" })).toBe(false);
   });
 });

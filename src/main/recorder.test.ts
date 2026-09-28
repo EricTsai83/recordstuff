@@ -206,6 +206,18 @@ describe("Recorder happy path", () => {
     expect(log).toHaveBeenCalledWith("recorder: session s1 finalize timing: host 12 ms, writes 0 ms, flush 4 ms, close 0 ms, publish 1 ms by link, cleanup 1 ms; 4 bytes");
   });
 
+  it("says when the temporary name was kept beside the saved file", async () => {
+    const log = vi.fn();
+    const ctx = setup({ log });
+    await startRecording(ctx);
+    Object.assign(ctx.writers[0]!, { bytesWritten: 4, finishTimings: { flushMs: 1, closeMs: 0, publishMs: 9, cleanupMs: 0, method: "copy", linkError: "ENOTSUP", cleanupError: "EPERM" } });
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    const line = log.mock.calls.map(([message]) => String(message)).find(message => message.includes("finalize timing"));
+    expect(line).toContain("by copy (link ENOTSUP), cleanup 0 ms (temporary name kept: EPERM); 4 bytes");
+  });
+
   it("idle → starting → recording → stopping → idle with lastSavedPath", async () => {
     const ctx = setup();
     await startRecording(ctx);
@@ -394,6 +406,36 @@ describe("Recorder failures", () => {
     expect(ctx.recorder.state).toEqual({ type: "idle" });
   });
 
+  it("a cancel while the folder is still being checked keeps it marked unavailable", async () => {
+    let attempt = 0;
+    const ctx = setup({
+      ensureWritableDir: () => ++attempt === 1 ? Promise.reject(new Error("EACCES")) : new Promise(() => undefined),
+    });
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "idle", outputDirUnavailable: true });
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "starting" });
+    ctx.recorder.cancelPreparation();
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "idle", outputDirUnavailable: true });
+  });
+
+  it("a cancel after the writer opened clears the unavailable folder", async () => {
+    let attempt = 0;
+    const ctx = setup({
+      ensureWritableDir: async () => { if (++attempt === 1) throw new Error("EACCES"); },
+    });
+    ctx.recorder.toggle();
+    await flush();
+    ctx.recorder.toggle();
+    await flush();
+    ctx.recorder.cancelPreparation();
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+  });
+
   it("host.start rejection → capture_start_failed", async () => {
     const ctx = setup();
     ctx.host.startError = new Error("no renderer");
@@ -535,7 +577,8 @@ describe("Recorder review fixes", () => {
     ctx.recorder.toggle();
     await vi.advanceTimersByTimeAsync(8000);
     expect(ctx.recorder.state).toEqual({ type: "idle", outputDirUnavailable: true });
-    expect(ctx.events.at(-1)).toMatchObject({ type: "failureStatus", result: { code: "output_open_failed", outcome: "pending" } });
+    expect(ctx.events.at(-1)).toMatchObject({ type: "failureStatus", result: { code: "output_open_failed", outcome: "pending",
+      detail: "opening /out did not finish within 8000 ms" } });
     expect(ctx.host.started).toEqual([]);
   });
 

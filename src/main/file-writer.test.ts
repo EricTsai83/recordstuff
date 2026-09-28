@@ -100,6 +100,7 @@ describe("FileWriter", () => {
     // The leftover temporary name is a second link to the saved file.
     expect(await fs.readFile(recording)).toEqual(Buffer.from([7]));
     expect((await fs.stat(final)).nlink).toBe(2);
+    expect(writer.finishTimings).toMatchObject({ method: "link", cleanupError: "cleanup failed" });
   });
 
   it("abandon keeps a non-empty partial file and removes an empty one", async () => {
@@ -370,6 +371,19 @@ it.each([false, true])("marks preservation uncertain when close fails, including
   if (finishFirst) await expect(writer.finish()).rejects.toThrow("close failed");
   await writer.abandon();
   expect(writer.preservationUncertain).toBe(true);
+});
+
+it("classifies a close error during finish like any other write error", async () => {
+  const writer = await FileWriter.open(path.join(dir, "full.recording.mp4"), path.join(dir, "full.mp4"), {
+    io: wrapFs({ onOpen: handle => ({
+      write: data => handle.write(data), sync: () => handle.sync(),
+      close: async () => { await handle.close(); throw Object.assign(new Error("no space"), { code: "ENOSPC" }); },
+    }) }),
+  });
+  activeWriters.push(writer);
+  await writer.append(bytes(1));
+  await expect(writer.finish()).rejects.toMatchObject({ name: "FileWriteError", code: "disk_full", filePath: writer.recordingPath });
+  await expect(fs.stat(writer.finalPath)).rejects.toMatchObject({ code: "ENOENT" });
 });
 
 describe("bounded write backlog", () => {

@@ -48,7 +48,8 @@ describe("controlled acceptance faults", () => {
     const partial = path.join(dir, "c.recording.mp4"), final = path.join(dir, "c.mp4");
     const writer = await faults.openWriter(partial, final);
     await writer.append(new Uint8Array([8, 9]));
-    await expect(writer.finish()).rejects.toMatchObject({ code: "EIO" });
+    // Classified like any other write error, with the close error as its cause.
+    await expect(writer.finish()).rejects.toMatchObject({ code: "output_write_failed", cause: { code: "EIO", syscall: "close" } });
     expect(await writer.abandon()).toBe(partial);
     expect(writer.preservationUncertain).toBe(true);
     expect(faults.faults.close).toBe("off");

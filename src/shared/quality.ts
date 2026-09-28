@@ -143,7 +143,7 @@ export const AUDIO_BITS_PER_SECOND = 256_000;
 
 /**
  * What the capture host observed and asked the encoder for, reported in
- * `started`. Track settings the platform did not expose are left undefined
+ * `prepared`. Track settings the platform did not expose are left undefined
  * and logged as unknown; the bitrates are targets, not measured output.
  */
 export interface CaptureReport {

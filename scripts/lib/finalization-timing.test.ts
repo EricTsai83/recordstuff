@@ -15,6 +15,11 @@ describe("finalize timing line", () => {
       .toMatchObject({ method: "copy", linkError: "ENOTSUP", publishMs: 1400, cleanupMs: 3, bytes: 10 });
   });
 
+  it("keeps why the temporary name was left behind", () => {
+    expect(parseFinalizeTiming("recorder: session s1 finalize timing: host 9 ms, writes 0 ms, flush 30 ms, close 0 ms, publish 1400 ms by copy (link ENOTSUP), cleanup 3 ms (temporary name kept: EPERM); 10 bytes"))
+      .toMatchObject({ method: "copy", linkError: "ENOTSUP", cleanupMs: 3, cleanupError: "EPERM", bytes: 10 });
+  });
+
   it("leaves unknown phases out and ignores other lines", () => {
     expect(parseFinalizeTiming("recorder: session s1 finalize timing: host ? ms, writes 0 ms, flush ? ms, close ? ms, publish ? ms by ?, cleanup ? ms; ? bytes"))
       .toEqual({ session: "s1", writesMs: 0 });

@@ -124,12 +124,7 @@ describe("capture host supervision", () => {
     const s = setup();
     await s.start();
     s.port().emit({ type: "nonsense" });
-    s.port().emit({
-      type: "started",
-      sessionId: "s1",
-      mimeType: "video/mp4",
-      capture: { videoBitsPerSecond: 8_000_000, audioBitsPerSecond: 256_000, warnings: [] },
-    });
+    s.port().emit({ type: "started", sessionId: "s1" });
     expect(s.messages.map((message) => message.type)).toEqual(["ready", "started"]);
     expect(s.logs.join()).toContain("dropped malformed message");
   });

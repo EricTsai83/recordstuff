@@ -21,6 +21,8 @@ export interface FinalizeTiming {
   /** Why the file was copied instead of linked. */
   linkError?: string;
   cleanupMs?: number;
+  /** Why the temporary name was kept beside the saved file. */
+  cleanupError?: string;
   bytes?: number;
 }
 
@@ -32,7 +34,7 @@ export interface FinalizationSample extends FinalizeTiming {
   stoppedEarly: boolean;
 }
 
-const TIMING = /^recorder: session (\S+) finalize timing: host (\S+) ms, writes (\S+) ms, flush (\S+) ms, close (\S+) ms, publish (\S+) ms by (\S+)(?: \(link (\S+)\))?, cleanup (\S+) ms; (\S+) bytes$/;
+const TIMING = /^recorder: session (\S+) finalize timing: host (\S+) ms, writes (\S+) ms, flush (\S+) ms, close (\S+) ms, publish (\S+) ms by (\S+)(?: \(link (\S+)\))?, cleanup (\S+) ms(?: \(temporary name kept: ([^)]+)\))?; (\S+) bytes$/;
 
 const number = (text: string | undefined): number | undefined => {
   if (text === undefined || text === "?") return undefined;
@@ -46,7 +48,7 @@ export function parseFinalizeTiming(message: string): FinalizeTiming | undefined
   if (!m) return undefined;
   const timing: FinalizeTiming = { session: m[1]! };
   const fields: Array<[keyof FinalizeTiming, string | undefined]> = [
-    ["hostMs", m[2]], ["writesMs", m[3]], ["flushMs", m[4]], ["closeMs", m[5]], ["publishMs", m[6]], ["cleanupMs", m[9]], ["bytes", m[10]],
+    ["hostMs", m[2]], ["writesMs", m[3]], ["flushMs", m[4]], ["closeMs", m[5]], ["publishMs", m[6]], ["cleanupMs", m[9]], ["bytes", m[11]],
   ];
   for (const [key, text] of fields) {
     const value = number(text);
@@ -54,6 +56,7 @@ export function parseFinalizeTiming(message: string): FinalizeTiming | undefined
   }
   if (m[7] === "link" || m[7] === "copy") timing.method = m[7];
   if (m[8]) timing.linkError = m[8];
+  if (m[10]) timing.cleanupError = m[10];
   return timing;
 }
 

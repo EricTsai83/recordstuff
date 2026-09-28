@@ -67,6 +67,8 @@ export interface FinishTimings {
   method: "link" | "copy";
   /** Why a copy was needed: the link's error code, such as ENOTSUP on exFAT. */
   linkError?: string;
+  /** Why the temporary name was kept beside the saved file; after a copy it is a full duplicate. */
+  cleanupError?: string;
 }
 
 /** Why finish refused to publish; the only gate between zero bytes and a saved `.mp4`. */
@@ -255,7 +257,12 @@ export class FileWriter {
       await this.abandonOnce();
       throw new FileWriteError("capture_start_failed", this.recordingPath, NO_MEDIA_DETAIL);
     }
-    await this.release();
+    try {
+      await this.release();
+    } catch (cause) {
+      // A deferred write-back error can surface at close; ENOSPC is still disk_full.
+      throw new FileWriteError(classifyWriteError(cause), this.recordingPath, cause);
+    }
     const closed = performance.now();
     const ext = path.extname(this.finalPath);
     const stem = this.finalPath.slice(0, this.finalPath.length - ext.length);
@@ -278,14 +285,17 @@ export class FileWriter {
         throw new FileWriteError(classifyWriteError(cause), this.recordingPath, cause);
       }
       const published = performance.now();
+      let cleanupError: string | undefined;
       try {
         await this.io.unlink(this.recordingPath);
-      } catch {
+      } catch (cause) {
         // The completed file is safe; a leftover temporary name (a second link
         // to it, or a full copy) must not turn a successful save into a failure.
+        cleanupError = errnoCode(cause) ?? messageOf(cause);
       }
       this.finishTimings = { flushMs: flushed - began, closeMs: closed - flushed, publishMs: published - closed,
-        cleanupMs: performance.now() - published, ...(linkError === undefined ? { method: "link" } : { method: "copy", linkError }) };
+        cleanupMs: performance.now() - published, ...(linkError === undefined ? { method: "link" } : { method: "copy", linkError }),
+        ...(cleanupError === undefined ? {} : { cleanupError }) };
       return target;
     }
   }
@@ -310,11 +320,8 @@ export class FileWriter {
   }
 
   private async cleanupOnce(): Promise<string | undefined> {
-    try {
-      await this.queue;
-    } catch {
-      // The failure is already recorded; we still close and keep the file.
-    }
+    // Never rejects: a failed write is already recorded, and the file is still closed and kept.
+    await this.queue;
     try {
       await this.release();
     } catch {

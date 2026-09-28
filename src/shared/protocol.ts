@@ -27,8 +27,8 @@ export type HostMessage =
   | { type: "ready" }
   /** Capture is prepared and not recording; `capture` is what the tracks reported and what the encoder was asked for. */
   | { type: "prepared"; sessionId: string; mimeType: string; capture: CaptureReport }
-  /** MediaRecorder started; main keeps the report from `prepared`. */
-  | { type: "started"; sessionId: string; mimeType?: string; capture?: CaptureReport }
+  /** MediaRecorder started; the capture report was already sent in `prepared`. */
+  | { type: "started"; sessionId: string }
   /** `bytes` is structured-cloned, never transferred: see `enqueueChunk` in src/renderer/capture-host.ts. */
   | { type: "chunk"; sessionId: string; seq: number; bytes: ArrayBuffer }
   | { type: "stopped"; sessionId: string; tracksStoppedAt?: number }
@@ -71,11 +71,7 @@ export function isHostMessage(value: unknown): value is HostMessage {
         isCaptureReport(value["capture"])
       );
     case "started":
-      return (
-        isNonEmptyString(value["sessionId"]) &&
-        (value["mimeType"] === undefined || typeof value["mimeType"] === "string") &&
-        (value["capture"] === undefined || isCaptureReport(value["capture"]))
-      );
+      return isNonEmptyString(value["sessionId"]);
     case "chunk":
       return (
         isNonEmptyString(value["sessionId"]) &&

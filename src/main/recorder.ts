@@ -556,7 +556,8 @@ export class Recorder {
     this.deps.onSessionStart?.(session.id);
     this.setState({ type: "starting" });
     session.timer = setTimeout(() => {
-      void this.fail(session.id, "output_open_failed", dir, { outputDirUnavailable: true });
+      void this.fail(session.id, "output_open_failed", `opening ${dir} did not finish within ${this.deps.startTimeoutMs} ms`,
+        { outputDirUnavailable: true });
     }, this.deps.startTimeoutMs);
     try {
       await session.opening;
@@ -665,7 +666,7 @@ export class Recorder {
         if (session.phase !== "preparing") return;
         this.clearTimer(session);
         session.capture = message.capture;
-        this.deps.log(`recorder: session ${session.id} prepared after ${this.elapsed(session.requestedAt)} ms; countdown ${session.countdownSeconds} s; sound ${session.countdownSound ? "on" : "off"}`);
+        this.deps.log(`recorder: session ${session.id} prepared after ${this.elapsed(session.requestedAt)} ms; countdown ${session.countdownSeconds} s; sound ${session.countdownSound ? "on" : "off"}; mime ${message.mimeType}`);
         if (session.cancelOnPrepared) {
           this.cancel(session, session.cancelOnPrepared);
           return;
@@ -674,12 +675,9 @@ export class Recorder {
         else this.record(session);
         return;
       case "started": {
-        if (session.phase !== "arming") return;
-        const capture = session.capture ?? message.capture;
-        if (!capture) {
-          void this.fail(session.id, "capture_start_failed", "capture host started without a prepared capture report");
-          return;
-        }
+        // `arming` follows `prepared`, which set the report.
+        const capture = session.capture;
+        if (session.phase !== "arming" || !capture) return;
         session.phase = "recording";
         this.clearTimer(session);
         if (!session.hasMedia) {
@@ -868,9 +866,11 @@ export class Recorder {
       this.emit({ type: "cancelled", reason, session: this.trace(session) });
       await this.clearInFlight(session);
     });
-    // Opening succeeded, so the folder is usable again.
-    const { outputDirUnavailable: _usable, ...idle } = this.idleState;
-    this.settle(idle);
+    // Only an opened writer proves the folder usable again; a cancel while it is still being checked keeps the flag.
+    if (session.writer) {
+      const { outputDirUnavailable: _usable, ...idle } = this.idleState;
+      this.settle(idle);
+    } else this.settle(this.idleState);
   }
 
   private present(what: string, act: (presenter: CountdownPresenter) => void): void {
@@ -928,7 +928,7 @@ export class Recorder {
     this.deps.log(`recorder: session ${session.id} finalize timing: host ${ms(span(session.stopRequestedAt, session.hostStoppedAt))} ms, ` +
       `writes ${ms(span(session.hostStoppedAt, drainedAt))} ms, flush ${ms(timings?.flushMs)} ms, close ${ms(timings?.closeMs)} ms, ` +
       `publish ${ms(timings?.publishMs)} ms by ${timings?.method ?? "?"}${timings?.linkError ? ` (link ${timings.linkError})` : ""}, ` +
-      `cleanup ${ms(timings?.cleanupMs)} ms; ` +
+      `cleanup ${ms(timings?.cleanupMs)} ms${timings?.cleanupError ? ` (temporary name kept: ${timings.cleanupError})` : ""}; ` +
       `${session.writer?.bytesWritten ?? "?"} bytes`);
   }
 
