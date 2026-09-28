@@ -19,21 +19,21 @@
 | `displayChanged()` | 把目前連線的螢幕 id 交給 DisplayMedia；使用中的螢幕移除時讓錄影失敗，並刷新 UI |
 | `main()` | 等 ready、組裝依賴、建立 Tray／watcher、註冊動作與退出；錯誤事件寫 log |
 | `quality()` | 開發記憶體 override 或已保存設定 → 平台可用的有效品質 |
-| `handleAction(action)` | 字串 action、setQuality patch、setHotkey 或 setLanguage → 對應 stop／quit／設定／relaunch／Finder 動作 |
-| `applyHotkey(setting)` / `reportHotkey(result)` | 依已保存設定請求註冊（session 進行中延後）；被拒絕時通知；無論結果都 refresh 選單標題 |
-| `setHotkey(setting)` | 僅 idle／needsPermission；先保存，寫入失敗通知並保留舊註冊，成功再 applyHotkey |
+| `handleAction(action)` | 字串 action、失敗紀錄動作，以及每一種偏好變更 → 對應 stop／quit／設定／relaunch／Finder 動作；偏好一律經 `savePreference` 或 `AppShortcuts.set` |
+| `savePreference(what, save)` | 單一偏好寫入：`locked` 的偏好需要 recorder 已 settle；等待寫入，失敗留 log 並在 tray 有對應通知時通知；之後兩個投影一起 refresh |
+| `focusApp()` | 對話框或視窗出現前先讓選單列 App 取得前景（macOS），避免開在最前面的 App 後方 |
+| `revealSaved(path)` | 顯示最後一個錄影：選取檔案；若之後被移動或刪除，留 log 並改開儲存位置 |
 | `revealLog()` | 有 log 選檔，沒有則開 logs 目錄；開啟失敗留 log |
 | `changeOutputDir()` | 系統對話框 → 保存使用者選擇，失敗通知；成功清位置錯誤並 refresh |
 | `openOutputDir()` | Tray 的儲存位置動作：以 `shell.openPath`、原生警告、App focus 與經 settled 檢查的 `changeOutputDir` 組成 `createOutputFolderOpener` |
-| `setQuality(patch)` | 僅 idle／needsPermission 保存合法 patch；失敗通知且保留舊值；成功 refresh |
 
 [main/output-folder.ts](../../../src/main/output-folder.ts)：`createOutputFolderOpener` 回傳同時只進行一次的開啟動作。先 stat 資料夾：是資料夾就開啟；不存在的已知預設資料夾，只在上層資料夾存在時以非遞迴 `mkdir` 建立；不存在的自訂資料夾、檔案、建立被拒、無法讀取的路徑或 Finder 失敗，都變成一則附路徑、詳細資訊與「更改儲存位置／取消」的在地化警告。存取被拒時仍先請 Finder 開啟。永遠不寫入設定；重複點擊會併入進行中的那次，警告開著時把它帶到前景。`nodeOutputFolderFs` 是真正的 stat／mkdir 邊界。
 
-事件：uncaughtException 留 log 並顯示對話框；unhandledRejection 留 log。Recorder state／saved／captureStarted／failed／permissionRequested 分別更新 Tray、發通知、處理降級與失效授權。tray 左鍵與全域快捷鍵共用同一個 `toggle` closure。Recorder 取得 `fs.statfs` 可用空間與 `userData/recording-sessions` sentinel；啟動時經由歷史還原回報遺留 sentinel，`powerMonitor` 的 suspend／resume 連同進行中 session 寫入 log。before-quit 忙碌時等待 shutdown；will-quit 釋放快捷鍵與其他資源。
+事件：uncaughtException 留 log，第一次另顯示對話框；unhandledRejection 留 log；`main()` 失敗時留 log、顯示對話框並結束程序。Recorder state／saved／captureStarted／failed／permissionRequested 分別更新 Tray、發通知、處理降級與失效授權。tray 左鍵與全域快捷鍵共用同一個 `toggle` closure。Recorder 取得 `fs.statfs` 可用空間與 `userData/recording-sessions` sentinel；啟動時經由歷史還原回報遺留 sentinel，`powerMonitor` 的 suspend／resume 連同進行中 session 寫入 log。before-quit 忙碌時等待 shutdown；will-quit 釋放快捷鍵與其他資源。
 
 ## 螢幕選擇
 
-[main/display-source.ts](../../../src/main/display-source.ts)：`resolveDisplayPreference` 解析保存的主螢幕或指定目標；`selectScreenSource` 套用主螢幕回退或指定目標精確匹配。`DisplayRequest.run` 在來源列舉前後檢查配置，指定來源競態最多嘗試三次，callback 只結算一次。`cancel` 結算等待中的 callback 並清除重試延遲。`displayResolution` 讓 tray 與設定共用可用性判定。
+[main/display-source.ts](../../../src/main/display-source.ts)：`resolveDisplayPreference` 解析保存的主螢幕或指定目標；`selectScreenSource` 套用主螢幕回退或指定目標精確匹配。`DisplayRequest.run` 在來源列舉前後檢查配置，指定來源競態最多嘗試三次，callback 只結算一次，途中拋出例外時也一樣（經可選的 `failed` 依賴回報）。`cancel` 結算等待中的 callback 並清除重試延遲。`displayResolution` 讓 tray 與設定共用可用性判定。
 
 [main/display-media.ts](../../../src/main/display-media.ts)：`DisplayMedia` 保存跨錄製嘗試的 display-media 狀態。`begin(sessionId)` 取消前一個請求並快照保存的螢幕偏好；`answer(owns, callback)` 只替本次嘗試擁有的 frame 執行 `DisplayRequest`，否則不給來源；`explain(code)` 以 main 的拒絕原因取代一個可解釋的 host 錯誤；`settle()` 取消未完成的工作並停止監看使用中的螢幕；`topologyChanged(connectedIds)` 推進配置世代，並回報錄製中的螢幕是否已中斷連線。`failure` 是 tray 與設定顯示的螢幕診斷。
 
@@ -131,7 +131,7 @@
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
 | `FileWriteError.constructor(code, filePath, cause)` | 附 code／路徑／原始 cause 的 Error |
-| `describe(cause)` / `errnoCode(cause)` | 取得文字／errno，未知 errno 為 undefined |
+| `errnoCode(cause)` / `messageOf(cause)`（[main/errors.ts](../../../src/main/errors.ts)） | 取得 errno／文字，未知 errno 為 undefined；main 所有讀 Node 錯誤的模組共用 |
 | `classifyWriteError(cause)` | ENOSPC → disk_full，其他 → output_write_failed |
 | `ensureWritableDir(dir, io)` | mkdir＋寫 probe；失敗拋 output_open_failed；probe 刪除 best effort |
 | `FileWriter.constructor(...)` | 保存 handle／路徑／I/O，啟動週期 sync 佇列 |
@@ -167,7 +167,7 @@
 
 [main/atomic-file.ts](../../../src/main/atomic-file.ts)：`writeFileAtomic`／`writeFileAtomicSync` 建立父目錄、寫入 `<file>.tmp` 並 fsync，再 rename 覆蓋目標；失敗時移除暫存檔並保留原內容。設定、設定視窗尺寸與失敗歷史都使用它。
 
-[shared/hotkey.ts](../../../src/shared/hotkey.ts)：`HOTKEY_PRESETS` 保留歷史常數，`DEFAULT_HOTKEY` 啟用 ⌘⇧1。`validateAccelerator` 驗證支援的自訂組合，要求 Command 或 Control 並排除保留鍵；`canonicalizeAccelerator` 正規化修飾鍵順序與 Shift 符號。`isHotkeyAccelerator` / `isHotkeySettings` 驗證保存值，不限於 preset；`describeAccelerator(accelerator, platform)` 在 darwin 顯示 `⌘⌥⇧R`、其他平台 `Ctrl+Alt+Shift+R`，供選單、通知與 log 使用。
+[shared/hotkey.ts](../../../src/shared/hotkey.ts)：`HOTKEY_PRESETS` 保留歷史常數，`DEFAULT_HOTKEY` 啟用 ⌘⇧1。`validateAccelerator` 驗證支援的自訂組合，要求 Command 或 Control 並排除保留鍵；`canonicalizeAccelerator` 正規化修飾鍵順序與 Shift 符號。`isAccelerator` / `isHotkeySettings` 驗證保存值，不限於 preset；`describeAccelerator(accelerator, platform)` 在 darwin 顯示 `⌘⌥⇧R`、其他平台 `Ctrl+Alt+Shift+R`，供選單、通知與 log 使用。
 
 [main/hotkey.ts](../../../src/main/hotkey.ts)：
 
@@ -267,7 +267,7 @@
 | --- | --- |
 | `SettingsWindow.constructor(options)` | 註冊兩個 IPC handler，非設定視窗 main frame 的來源一律拒絕 |
 | `show()` | 先讓選單列 App 取得前景，已有視窗就聚焦，否則建 sandbox 視窗並帶當前語言載入頁面 |
-| `refresh()` | 推送目前 view 並更新標題；視窗關閉時不做事 |
+| `refresh()` | 推送目前 view 並更新標題；視窗關閉時不做事；與頁面已持有的 view（經推送或 invoke 回覆，由 `deliver` 記錄）相同時不再推送 |
 | `destroy()` | 退出時移除 handler 與視窗 |
 | `apply(group, choice)` | 解析 id、呼叫共用 action handler，回傳新 view 與是否真的提交 |
 | `settings:choose` 佇列 | 依請求順序序列化保存，第二個請求是等待而不是失敗 |
@@ -317,7 +317,7 @@
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
 | `AppTray.constructor(options)` | loadIcons、建 Tray、忽略 double-click event、註冊左右鍵 |
-| `render(state)` / `refresh()` | 保存呈現用 lastState，更新必要圖示／title／tooltip；refresh 用同狀態重讀 context |
+| `render(state)` / `refresh()` | 保存呈現用 lastState，圖示／title／tooltip 各自只在改變時更新；refresh 用同狀態重讀 context |
 | `destroy()` | 只銷毀一次原生 Tray，並丟棄保留中的通知；之後的 render、refresh、右鍵與通知都不動作 |
 | `systemWillSleep()` / `systemDidWake()` / `userDidUnlock()` | 從 `suspend` 起保留通知；`resume` 後每秒檢查，閒置時間在 2 秒內時依序顯示；解鎖時立刻顯示（plan 050） |
 | `notifySaved(path)` | show 存檔通知，點擊 reveal |
@@ -331,11 +331,11 @@
 | `log(message)` | 呼叫注入 logger（若有） |
 | `popUpMenu()` | 依現在 state/context 重建 menu 後彈出 |
 | `toTemplate(entry)` | 分隔線或指令項目 → Electron MenuItemConstructorOptions，click 分派 action |
-| `TRAY_ICON_FILES` / `loadIcons(dir)` | 每個狀態的素材／每個狀態載入 Windows ICO；其他走 template PNG，macOS 配合 @2x 素材 |
+| `TRAY_ICON_FILES` / `loadIcons(dir, log)` | 每個狀態的素材／每個狀態載入 Windows ICO；其他走 template PNG，macOS 配合 @2x 素材；載入成空圖時留 log，因為圖示會看不見 |
 
 ## Log 與自動錄製
 
-[log.ts](../../../src/main/log.ts)：`rotatedPath(path, index)` 組 archive 檔名；`rotateLog(path, keep)` 刪最舊再逆序搬移；`formatLine(message, now)` 加 ISO 前綴；`createFileLogger(options)` 回同步 Log closure。closure 內 `sizeOf()` 查長度（失敗視 0），`appendToFile()` 建目錄、必要時輪替、追加；回傳 logger 先 stdout，磁碟錯誤後停用檔案輸出。
+[log.ts](../../../src/main/log.ts)：`rotatedPath(path, index)` 組 archive 檔名；`rotateLog(path, keep)` 刪最舊再逆序搬移；`formatLine(message, now)` 加 ISO 前綴；`createFileLogger(options)` 回同步 Log closure。closure 內 `sizeOf()` 每個程序只查一次長度（失敗視 0），`appendToFile()` 建目錄、必要時輪替、追加並累計寫入位元組，之後的行不再 stat；回傳 logger 先 stdout，磁碟錯誤後停用檔案輸出。
 
 [session-log.ts](../../../src/main/session-log.ts)：`createRunId(launchedAt, pid)` 由啟動時間與 pid 組成每次啟動的 run id；`logSessionEvent(log, run, event)` 對 captureStarted、saved、failed 與 preflight 拒絕先寫人類可讀的 `saved`／`failed:` 行，再寫有版本的 session record；取消的倒數只寫一行記下暫存檔的 `cancelled:`，不寫 record；其他事件忽略。[shared/session-record.ts](../../../src/shared/session-record.ts) 定義 record schema、前綴與版本並格式化一筆 record；只有 type import，scripts 可直接載入。
 

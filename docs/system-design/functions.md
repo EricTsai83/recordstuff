@@ -19,21 +19,21 @@ Named application and tool functions are grouped by source file. Follow source l
 | main | Wait ready, compose dependencies, register events/actions, start permission polling and optional development recording |
 | renderUi / refreshUi | Move the tray and the settings panel together on a state change or a context change |
 | quality | Development override or persisted settings → platform-effective quality |
-| handleAction | Dispatch stop/quit/settings/relaunch/Finder, quality patches, shortcut changes, and serialized language changes |
-| applyHotkey / reportHotkey | Request registration of the persisted shortcut (deferred while a session runs); notify on refusal; refresh the menu label either way |
-| setHotkey | Only idle/needsPermission; persist first, notify on failed write, then applyHotkey |
+| handleAction | Dispatch stop/quit/settings/relaunch/Finder, result actions, and every preference change through `savePreference` or `AppShortcuts.set` |
+| savePreference | One preference write: a `locked` one needs a settled recorder; the write is awaited, a failure logged and, where the tray has one, notified; both projections refresh afterwards |
+| focusApp | Bring the menu-bar app forward on macOS before a dialog or window, so it does not open behind the frontmost app |
+| revealSaved | Show last recording: select the file, or, when it was moved or deleted since, log that and open the output folder |
 | revealLog | Reveal the file, otherwise open its directory; log open failures |
 | changeOutputDir | Native folder dialog → persist choice; failure notification or successful refresh |
 | openOutputDir | The tray's output-folder action: `createOutputFolderOpener` over `shell.openPath`, the native warning, app focus and `changeOutputDir` behind the settled check |
-| setQuality | Only idle/needsPermission; persist patch, notify on failure, refresh on success |
 
 [main/output-folder.ts](../../src/main/output-folder.ts): `createOutputFolderOpener` returns the single-flight open action. It stats the folder. A directory opens; the missing known default is created with a non-recursive `mkdir` only inside an existing parent folder; a missing custom folder, a file, a refused creation, an unreadable path or a Finder failure becomes one localized warning with the path, details and Change output folder/Cancel. An access refusal still asks Finder first. It never writes settings; a repeated click joins, focusing an open warning. `nodeOutputFolderFs` is the real stat/mkdir boundary.
 
-Process callbacks log uncaught exceptions/rejections. Recorder events render state, notify saved/error/permission, and report clear frame-rate downgrades. The tray left click and the global shortcut share one `toggle` closure. Recorder receives `fs.statfs` free space and the `userData/recording-sessions` sentinels; launch reports leftover sentinels through the history restore, and `powerMonitor` suspend/resume are logged with the in-flight session. Before-quit coordinates shutdown; will-quit disposes the shortcut and releases resources. CurrentLanguage is updated only after a successful settings save and localizes unexpected-error dialogs.
+Process callbacks log uncaught exceptions and rejections; the first uncaught exception also shows the error dialog, and a `main()` that rejects logs, shows it and exits. `savePreference` is the one place a preference write is awaited, logged and refreshed. Recorder events render state, notify saved/error/permission, and report clear frame-rate downgrades. The tray left click and the global shortcut share one `toggle` closure. Recorder receives `fs.statfs` free space and the `userData/recording-sessions` sentinels; launch reports leftover sentinels through the history restore, and `powerMonitor` suspend/resume are logged with the in-flight session. Before-quit coordinates shutdown; will-quit disposes the shortcut and releases resources. CurrentLanguage is updated only after a successful settings save and localizes unexpected-error dialogs.
 
 ## Display selection
 
-[main/display-source.ts](../../src/main/display-source.ts): `resolveDisplayPreference` resolves the saved primary or explicit display; `selectScreenSource` applies primary fallback or exact explicit matching. `DisplayRequest.run` checks topology around source enumeration, retries explicit-source races up to three attempts, and settles the callback once. `cancel` settles pending callbacks and clears retry delays. `displayResolution` shares availability with tray and settings.
+[main/display-source.ts](../../src/main/display-source.ts): `resolveDisplayPreference` resolves the saved primary or explicit display; `selectScreenSource` applies primary fallback or exact explicit matching. `DisplayRequest.run` checks topology around source enumeration, retries explicit-source races up to three attempts, and settles the callback once, also when something throws (reported through the optional `failed` dependency). `cancel` settles pending callbacks and clears retry delays. `displayResolution` shares availability with tray and settings.
 
 [main/display-media.ts](../../src/main/display-media.ts): `DisplayMedia` owns display-media state across attempts. `begin(sessionId)` cancels the previous request and snapshots the saved preference; `answer(owns, callback)` runs the attempt's `DisplayRequest` only for a frame the attempt owns and otherwise returns no source; `explain(code)` replaces one explainable host error with main's refusal reason; `settle()` cancels pending work and stops watching the active display; `topologyChanged(connectedIds)` advances the topology generation and reports whether the recorded display disconnected. `failure` is the display diagnostic shown by tray and settings.
 
@@ -130,7 +130,7 @@ The page's window-message callback checks source/marker/port before creating the
 | Function/method | Contract |
 | --- | --- |
 | FileWriteError constructor | Error carrying code, path, and original cause |
-| describe / errnoCode | Error text / optional filesystem errno |
+| errnoCode / messageOf ([main/errors.ts](../../src/main/errors.ts)) | Optional filesystem errno / error text, shared by every main module that reads a Node error |
 | classifyWriteError | ENOSPC→disk_full; otherwise output_write_failed |
 | ensureWritableDir | mkdir and write probe; throw output_open_failed on failure; remove probe best effort |
 | FileWriter constructor | Store handle/paths/I/O and schedule queued sync |
@@ -181,7 +181,7 @@ The page's window-message callback checks source/marker/port before creating the
 | frameRateDowngrade | Requested 60 and reported ≤30 → rounded actual fps, otherwise undefined |
 | unknown / describeCapture | Format unknown values / English requested, track, target, and warning diagnostics |
 
-[shared/hotkey.ts](../../src/shared/hotkey.ts): `HOTKEY_PRESETS` retains historical constants; `DEFAULT_HOTKEY` enables ⌘⇧1. `validateAccelerator` validates supported custom combinations, requires Command or Control and rejects reserved keys; `canonicalizeAccelerator` normalizes modifier order and shifted glyphs. `isHotkeyAccelerator` / `isHotkeySettings` validate persisted values without restricting them to presets; `describeAccelerator(accelerator, platform)` renders `⌘⌥⇧R` on darwin and `Ctrl+Alt+Shift+R` elsewhere for menus, notifications and logs.
+[shared/hotkey.ts](../../src/shared/hotkey.ts): `HOTKEY_PRESETS` retains historical constants; `DEFAULT_HOTKEY` enables ⌘⇧1. `validateAccelerator` validates supported custom combinations, requires Command or Control and rejects reserved keys; `canonicalizeAccelerator` normalizes modifier order and shifted glyphs. `isAccelerator` / `isHotkeySettings` validate persisted values without restricting them to presets; `describeAccelerator(accelerator, platform)` renders `⌘⌥⇧R` on darwin and `Ctrl+Alt+Shift+R` elsewhere for menus, notifications and logs.
 
 [main/hotkey.ts](../../src/main/hotkey.ts):
 
@@ -268,7 +268,7 @@ The page's window-message callback checks source/marker/port before creating the
 | --- | --- |
 | SettingsWindow constructor | Register the two IPC handlers, each refusing any sender but the panel's main frame |
 | show | Focus the menu-bar app first, reuse a live window, otherwise create a sandboxed one and load the page with the current language |
-| refresh | Push the current view and retitle; a closed panel needs nothing |
+| refresh | Push the current view and retitle; a closed panel needs nothing, and a view identical to the one the page already holds (by push or by an invoke reply, tracked through `deliver`) is not sent again |
 | destroy | Remove the handlers and the window on quit |
 | apply | Resolve the group/choice pair, run the shared action handler, answer with the new view and whether it committed |
 | queue (settings:choose) | Serialize saves in request order so a second request waits instead of being reported as a failure |
@@ -319,7 +319,7 @@ The page's window-message callback checks source/marker/port before creating the
 | Function/method | Contract |
 | --- | --- |
 | AppTray constructor | Load icons, create Tray, ignore double-click events, bind left/right clicks |
-| render / refresh | Remember presentation state and update image/title/tooltip; refresh rereads context |
+| render / refresh | Remember presentation state and update image/title/tooltip, each only when it changed; refresh rereads context |
 | destroy | Destroy native Tray once, drop held notifications; later render, refresh, right-click and notifications do nothing |
 | systemWillSleep / systemDidWake / userDidUnlock | Hold notifications from `suspend`; after `resume`, check each second and show them in order once the idle time is at most 2 s; unlocking shows them at once (plan 050) |
 | notifySaved | Current-language saved notice with reveal callback |
@@ -333,11 +333,11 @@ The page's window-message callback checks source/marker/port before creating the
 | log | Invoke optional injected logger |
 | popUpMenu | Rebuild current model and show native menu |
 | toTemplate | Map a separator or command entry to an Electron menu template |
-| TRAY_ICON_FILES / loadIcons | The asset per state / Windows ICO or template PNG assets for every state |
+| TRAY_ICON_FILES / loadIcons | The asset per state / Windows ICO or template PNG assets for every state; a file that loads as an empty image is logged, since the item would be invisible |
 
 ## Logging and automatic recording
 
-[main/log.ts](../../src/main/log.ts): `rotatedPath` constructs archive names; `rotateLog` removes the oldest and shifts archives; `formatLine` adds UTC ISO time; `createFileLogger` returns a synchronous logging closure. Nested `sizeOf` reads length (failure→0); `appendToFile` creates the directory, rotates, and appends. The returned function writes stdout first and disables file logging after an error.
+[main/log.ts](../../src/main/log.ts): `rotatedPath` constructs archive names; `rotateLog` removes the oldest and shifts archives; `formatLine` adds UTC ISO time; `createFileLogger` returns a synchronous logging closure. Nested `sizeOf` reads the length once per process (failure→0); `appendToFile` creates the directory, rotates, appends and counts the bytes written, so no later line needs a stat. The returned function writes stdout first and disables file logging after an error.
 
 [main/session-log.ts](../../src/main/session-log.ts): `createRunId` forms the per-launch run id from launch time and pid; `logSessionEvent` writes the human `saved`/`failed:` line and then the versioned session record for captureStarted, saved, failed and a preflight refusal; a cancelled countdown is one plain `cancelled:` line naming its temporary file and no record; other events are ignored. [shared/session-record.ts](../../src/shared/session-record.ts) defines the record schema, prefix and version and formats one record; it has only type imports so scripts load it directly.
 

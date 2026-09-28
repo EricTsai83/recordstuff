@@ -145,10 +145,10 @@ describe("hotkey definitions", () => {
   });
 
   /**
-   * `isAccelerator` rejects anything outside the preset list, and
-   * `parseSettings` then falls back to the default. Dropping an accelerator
-   * therefore silently resets everyone who had chosen it, so every value the
-   * app has ever offered has to stay valid.
+   * `parseSettings` falls back to the default shortcut when the saved
+   * accelerator no longer validates. Dropping a combination from the
+   * validator would therefore silently reset everyone who had chosen it, so
+   * every value the app has ever offered has to stay valid.
    */
   it("keeps every accelerator the app has ever offered valid", () => {
     for (const shipped of [
