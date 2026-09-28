@@ -350,7 +350,7 @@ pnpm acceptance:regression
 
 ## 受控驗收 build
 
-Plan 035 由維護者操作的驗收回合，需要一些真實故障無法隨時產生的失敗狀態：平常只持續幾毫秒的 pending 結果、關檔失敗後的 unknown、緩慢或失敗的歷史儲存，以及預先放好的歷史資料。`pnpm acceptance:controlled` 為此建置一份清楚標示、已簽章的 App 副本。它和更新 fixture 一樣，把原始碼複製到 `docs/verification/measurements/<timestamp>-controlled/` 下的新 run 目錄，只透過 anchor 檢查在該副本插樁（[controlled-acceptance.mts](../../../scripts/lib/controlled-acceptance.mts)），再執行副本裡的 `pnpm start:app`。Bundle identifier 與簽章身分維持開發版的設定，因此沿用同一份螢幕錄製與通知權限。Tray、設定、Recorder、FileWriter、失敗歷史、通知與退出流程都是正式程式碼，一般建置沒有命令通道。副本只有三處不同：
+Plan 035 的原生驗收需要一些真實故障無法隨時產生的失敗狀態：平常只持續幾毫秒的 pending 結果、關檔失敗後的 unknown、緩慢或失敗的歷史儲存，以及預先放好的歷史資料。`pnpm acceptance:controlled` 為此建置一份清楚標示、已簽章的 App 副本。它和更新 fixture 一樣，把原始碼複製到 `docs/verification/measurements/<timestamp>-controlled/` 下的新 run 目錄，只透過 anchor 檢查在該副本插樁（[controlled-acceptance.mts](../../../scripts/lib/controlled-acceptance.mts)），再執行副本裡的 `pnpm start:app`。Bundle identifier 與簽章身分維持開發版的設定，因此沿用同一份螢幕錄製與通知權限。Tray、設定、Recorder、FileWriter、失敗歷史、通知與退出流程都是正式程式碼，一般建置沒有命令通道。副本只有三處不同：
 
 - **隔離資料。** userData、log 與預設輸出資料夾都在 run 目錄內，從不讀寫維護者的設定、失敗歷史或 `~/Movies/RecordStuff`。此 build 以預設偏好啟動（English、通知開啟、倒數 3 秒且有提示音、⌘⇧1）。
 - **標示。** 每個 tray tooltip 開頭都是 `[Controlled acceptance build]`，log 中有一行 `controlled:` 記錄 run 目錄。這個 build 的證據屬於受控狀態證據：證明原生呈現與互動，不代表真實磁碟或擷取故障。
