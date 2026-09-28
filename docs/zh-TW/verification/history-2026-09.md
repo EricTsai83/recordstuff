@@ -1278,3 +1278,63 @@ Astra 對 `pnpm start:app` 新建置的 `dist/mac-arm64/RecordStuff.app` 執行�
 本機證據均在 measurements 目錄：`docs/verification/measurements/2026-09-24-plan-024/`（修正前輸出、最終 check 與 review）、`2026-09-24T1816-plan024-computer-use/`（建置、環境、播放／清理報告）、`2026-09-24T1816-plan024-hotkey-acceptance/`（runner 報告、verify JSON 與 App log）。這些忽略追蹤的原始產物不隨 fresh clone 提供。
 
 Claude Opus 5.5 已完成唯讀 x-high review（309.5 秒）。兩項 Low finding 均接受：雙語函式索引漏述失敗 append 的確認進度，以及本次修改的 disk-full 回歸測試只在斷言通過後才關閉 writer。索引已描述實際寫入／計數契約（及既有排他複製 finish）；測試將 writer 納入必定執行的 teardown。這些文件／測試修正不改動已原生驗收的 App 產物。review 後型別檢查與 25 項 FileWriter 測試通過；有限修正不需第二輪 review。Plan 024 已完成並移除雙語計畫檔，下一項為 025；未 commit、push 或發布。
+
+
+<a id="audit-2026-09-28"></a>
+
+## 未完成修改盤點與二十項改善 — 2026-09-28
+
+範圍：以 `2731423164da9741c5135539336abe1438dfd5a2` 上的未提交修改為起點。接手時有 37 個已追蹤檔案修改、4 個新增 helper／測試檔；並非單一 bug，而是錄影生命週期、設定 UX／無障礙、測試工具整併及網站清理。原作者的意圖由 diff、呼叫端與測試推斷，沒有可證明全部修改都屬於同一計畫的紀錄。
+
+下表的「既有」指接手前已寫入的改善；「補完」指本輪檢查後補足實作或回歸測試；「新增」指本輪找到的問題。二十項包含既有修改的收尾，不代表本輪新增二十個獨立 bug。Vitest、Astro、Sharp、Puppeteer 的既有升級保留，不列入二十項，也沒有據此聲稱修復安全漏洞。
+
+| # | 來源／位置 | 修復原因 | 結果 |
+| --- | --- | --- | --- |
+| 1 | 補完：`capture-host.ts` | 取消啟動後，ready promise 仍等到 8 秒期限 | teardown 立即拒絕等待並釋放 deadline；測試確認不留 timer |
+| 2 | 新增：`capture-host.ts` | `loadFile`／`loadURL` 卡住時，ready timeout 無法結束外層 await | 載入與 ready／取消競速；載入遲到不再交付 port |
+| 3 | 新增：`capture-host.ts` | 已退役視窗的 message／crash 事件可能停止新錄影 | 以 window／port 身分隔離事件；測試確認新 host 保持運作 |
+| 4 | 既有：`main/index.ts` | 手動檢查更新會佔住設定操作序列，等待兩次網路期限 | 啟動檢查後立即回應，由更新狀態推送進度 |
+| 5 | 既有：`updates.ts` | 儲存檢查時間戳期間若開始錄影，沒有網路請求卻留下 checking 狀態 | 延後檢查時還原前次結果，錄影結束再執行 |
+| 6 | 補完：`recording-result.ts` | 不可能恢復成 partial 的 unknown 路徑消耗檔案檢查時限 | 只檢查原本／曾經 partial 的檔案；更新與新行為衝突的舊測試 |
+| 7 | 補完：`quit-feedback.ts` | focus 失敗會連帶阻止退出說明或未存歷史提示 | 分開處理 focus 與 dialog 失敗；兩條提示路徑皆有回歸測試 |
+| 8 | 既有：`renderer/settings.ts` | F12、Ctrl 等鍵名被逐字拆成多個鍵帽 | 依 accelerator 組件顯示，每個鍵名一個鍵帽 |
+| 9 | 補完：同上 | 編輯器拒絕組合鍵卻顯示「變更未儲存」，給錯誤恢復指引 | 顯示「快捷鍵無法使用」，不要求重選設定；補斷言 |
+| 10 | 既有：同上 | 動作群組的 label 沒有對應控制項，按鈕缺乏診斷描述關聯 | 使用具名稱的 group，為動作按鈕連接 aria-describedby |
+| 11 | 既有：同上 | 每個歷史 DOM 列重複線性尋找資料，增加大量歷史更新成本 | 用 Set／Map 處理成員與舊列查找；不宣稱整個渲染流程已線性化 |
+| 12 | 補完：同上 | 每列 alert 與共用 announcer 重複播報，載入舊歷史也全部播報 | 統一共用 announcer、抑制初載歷史、播報新持久化警告；補測試 |
+| 13 | 補完：同上 | Finder 顯示時發現檔案不存在，仍要求重試已消失的動作 | 保留新的檔案狀態說明，只對仍存在的動作顯示重試錯誤 |
+| 14 | 補完：`runner-env.mts`／acceptance runners | Electron 啟動環境與資料路徑分散，設定 fixture 漏清除部分環境 | 共用路徑與 scrubbedEnv；設定 fixture 也套用相同隔離 |
+| 15 | 補完：`runner-env.mts` | runner 寫設定可能留半檔、固定暫存名衝突，壞 JSON 形狀被當設定 | 唯一暫存名、原子 rename、失敗清理、拒絕非物件；保留原檔 |
+| 16 | 補完：`stats.mts` 與量測摘要 | percentile／median 重複實作；初步整併讓已排序樣本再排序 | 共用 nearest-rank／midpoint 定義，已排序樣本用專用入口避免重排 |
+| 17 | 補完：`run-matrix.mts` | CPU sampler 編譯暫存目錄未回收，前置失敗也跳過一般 cleanup | 正常／中斷清理加 exit 保底；控制 clang 失敗驗證無目錄殘留 |
+| 18 | 既有：同上 | 每個 matrix case 重讀並配對整份歷史 log | 使用該 case 的 log cursor 與片段做媒體配對 |
+| 19 | 既有：release manifest scripts | JSON 損壞／未建置 feed 只回模糊錯誤，難定位來源 | 錯誤帶檔案、URL／tag 與重新建置／產生指引 |
+| 20 | 新增：`update-acceptance.mts` | 更新驗收把倒數關閉，卻要求倒數音效仍啟用，阻止真錄影案例執行 | 驗證音效群組同時符合錄影鎖定與倒數開關；新增正反向測試 |
+
+網站 Ember CSS 的等價字型／按鈕覆寫去重也保留，已檢查實際按鈕色彩，列為附帶清理而非額外 bug。
+
+達到二十項後停止擴大搜尋；沒有宣稱整個 codebase 已無其他問題。未 commit、push、開 PR 或發布。
+
+
+驗證：`pnpm acceptance:regression` 通過（71 檔／1165 tests、正式建置、170 個設定案例、快捷鍵失敗整合）。最後 scripts-only 補強後，typecheck 與 16 個更新 helper tests 通過，設定驗收 171/171，含真實 Control+F12 與截圖判讀。更新 full 通過，含兩段錄影、延後檢查／結果與退出取消。matrix quick 三段皆通過，log 配對、媒體檢查及約 15% 錄影 CPU 正常；控制編譯失敗未留 sampler 暫存目錄。網站 15 tests、diagnostics、線上 manifest／建置／連結檢查通過，已檢視 Ember 樣式。
+
+新建置並驗證 9 個簽章身分的正常 bundle 完成 CPU／開始／停止／存檔／媒體驗證及 QuickTime 播放與 seek。`pnpm measure:cpu -- --minutes 1 --skip-settings` 量得啟動後 idle 0.055%、錄影 13.9%（p95 15.4%）、停止後 idle 0.053%，無 capture renderer 殘留。60.3 秒影片完整解碼、雙聲道非靜音；CPU 引用同一 runner，不重複量測。未做 Settings-open CPU、60 fps 新基準、完整畫質／長時間／音質／權限重設：未改相應持續 timer、編碼、音訊或授權行為，設定互動另有驗收。
+
+**尚未解決的驗收發現：** CUA 從正常設定送 Cmd+Q 後，面板關閉但程序留存；下一次快捷鍵送達卻未開始錄影，smoke 逾時。runner 隨後正常退出 App。新程序錄影與清理通過，但不能據此宣稱退出狀態異常已修復。中英文原生退出提示生命週期皆通過；英文視覺通過，繁中截圖不可取得。被動自動置前、主觀聽感與 VoiceOver 聽讀未建立證據。初輪程序 probe 的一次 EPERM 在獨立與完整重跑均未再現，未放寬清理斷言。
+
+最終清理：App／helper／素材已退出，測試偏好還原（含原本 60 fps、倒數 3 秒），測試影片關閉，保留 QuickTime 自動恢復的舊文件。caffeinate 已執行並停止；最初 shell 背景 assertion 結束後改用持續 session，runner 也各自持有 assertion。沒有重用歷史錄影基準，亦不聲稱細微的前後效能提升。驗證分類為 **14 pass／1 fail／1 blocked／2 not run**，不是全面原生驗收通過。[本機詳細報告](../../verification/measurements/2026-09-28-audit-final/report.md)；原始證據僅存本機。
+
+測試期間若有測試步驟以外的人為桌面操作，可能影響焦點、截圖與判讀結果；目前流程不會自動偵測所有干擾。
+
+
+<a id="quit-closure-2026-09-28"></a>
+
+## 原生退出異常收尾 — 2026-09-28
+
+接續未完成修改盤點。以既有簽章 bundle 重現「設定 → 一般 → Cmd+Q」：視窗消失，但主程序與 helper 留存，第二次退出才正常結束。退出協調器現在在媒體與歷史安全清理後等待下一輪事件迴圈，再允許下一次退出，避免立即完成的 Promise 在原生取消退出事件尚未返回時重入。交接期間的重複要求仍合併處理；新增回歸測試驗證時序。
+
+`pnpm acceptance:regression` 通過（71 files、1167 tests、設定 171/171 與快捷鍵整合）；`pnpm acceptance:lifecycle` 四組通過。全新 `pnpm start:app` 驗證九個簽章身分，原生「設定 → 一般 → 一次 Cmd+Q」後沒有殘留程序。同一產物重開後，`pnpm acceptance` 通過開始／停止／存檔、倒數取消、畫面與雙聲道音訊完整解碼（10.3 秒、39.1 MB）。QuickTime 播放前進到 6.003 秒，跳轉到 7.989 秒；只關閉新增影片。繁中提示截圖確認可讀、按鈕可操作；隔離 fixture 保留精確 bytes 並正常退出。原本失敗保留為歷史證據。
+
+本機[收尾報告](../../verification/measurements/2026-09-28-quit-closure/report.md)記錄七組案例通過，沒有剩餘已觀察到的功能失敗。修改前至最後桌面清理期間執行 caffeinate，結束後已停止；受測 App／helper／fixture 全部退出。沒有變更偏好，也沒有 commit 或發布。
+
+依範圍省略網站、完整矩陣、長錄與權限重設：本次只改退出時的一次事件交接。同日 14:34 CPU 基準仍適用未變的常態行為，沒有宣稱新的 CPU 數值。英文提示版面未變，沿用先前截圖。自動置前與全桌面提示唯一性因工具僅能觀察目標視窗而仍受阻；主觀聽感與 VoiceOver 未執行。這些是驗證限制，不是已觀察到的產品異常。

@@ -1280,3 +1280,63 @@ Environment: macOS arm64, Apple M1 Pro, primary BenQ GW2785TC 1920×1080, extern
 Local-only evidence: `docs/verification/measurements/2026-09-24-plan-024/` (pre-fix output, final check and review); `2026-09-24T1816-plan024-computer-use/` (build, environment, playback/cleanup report); `2026-09-24T1816-plan024-hotkey-acceptance/` (runner report, verify JSON and app log), all under the measurements directory. These ignored artifacts are unavailable in a fresh clone.
 
 Claude Opus 5.5 completed the read-only x-high review (309.5 seconds). Both Low findings were accepted: the bilingual function reference omitted confirmed progress from failed appends, and the touched disk-full regression only closed its writer after successful assertions. The references now describe the actual write/count contract (and the existing exclusive-copy finish); the test registers its writer for unconditional teardown. These documentation/test-only fixes do not change the native-tested app artifact. Post-review checks: TypeScript and all 25 FileWriter tests passed. No second pass was required for these limited fixes. Plan 024 is complete, its bilingual plan files are removed, and 025 is next. No commit, push or publication was performed.
+
+
+<a id="audit-2026-09-28"></a>
+
+## Unfinished-change audit and twenty improvements — 2026-09-28
+
+Scope: the uncommitted work on `2731423164da9741c5135539336abe1438dfd5a2`. At handoff, 37 tracked files were modified and four helper/test files were untracked. The diff covers capture lifecycle, settings UX/accessibility, runner consolidation and website cleanup, rather than one bug. Intent was reconstructed from code, callers and tests; no evidence establishes one original plan for all changes.
+
+“Existing” means present at handoff, “completed” means implementation or regression coverage was finished in this round, and “new” identifies a newly found issue. The twenty include completing inherited work; they are not twenty newly discovered independent bugs. Existing Vitest, Astro, Sharp and Puppeteer upgrades were preserved but not counted, with no security-fix claim.
+
+| # | Origin / location | Reason | Result |
+| --- | --- | --- | --- |
+| 1 | Completed: `capture-host.ts` | Cancelled startup waited for the ready deadline | Teardown rejects readiness immediately; timer cleanup is tested |
+| 2 | New: `capture-host.ts` | A stalled page load prevented readiness timeout from settling startup | Race loading with readiness/cancellation; late loads cannot transfer ports |
+| 3 | New: `capture-host.ts` | Retired window messages/crashes could affect a new capture | Guard window/port identity; regressions preserve the new host |
+| 4 | Existing: `main/index.ts` | Manual update checks held the settings action queue through network timeouts | Return after starting the check; state pushes report progress |
+| 5 | Existing: `updates.ts` | Recording starting during timestamp persistence left a deferred check looking active | Restore the previous result and retry after recording |
+| 6 | Completed: `recording-result.ts` | Unknown files that cannot become partial consumed the inspection deadline | Inspect only formerly partial files; align the stale regression assertion |
+| 7 | Completed: `quit-feedback.ts` | Focus failure suppressed the actual quit/history dialog | Handle focus separately; cover both prompt paths |
+| 8 | Existing: `renderer/settings.ts` | Named keys such as F12 became separate character boxes | Render accelerator components as individual keycaps |
+| 9 | Completed: same | Rejected shortcuts were described as failed settings saves | Show shortcut-unavailable guidance; add a regression assertion |
+| 10 | Existing: same | Action-group labels targeted no control; buttons lacked diagnostic descriptions | Use named groups and aria-describedby associations |
+| 11 | Existing: same | History rendering repeatedly searched arrays for each row | Use Set/Map membership and previous-row lookups; no claim that all rendering is linear |
+| 12 | Completed: same | Per-row alerts duplicated announcements and loaded history sounded like new failures | One announcer, silent history loading, new persistence warnings; regressions added |
+| 13 | Completed: same | Missing-file reveal asked users to retry an action no longer offered | Preserve updated file guidance; show retry errors only for remaining actions |
+| 14 | Completed: runner environment | Paths/environment filtering were duplicated and the settings fixture missed variables | Shared paths and scrubbedEnv, also used by settings acceptance |
+| 15 | Completed: runner settings writes | Partial files, fixed temporary names and malformed settings shapes harmed robustness | Unique temporary names, atomic rename, cleanup on failure, object validation |
+| 16 | Completed: measurement statistics | Duplicated definitions and redundant sorting after consolidation | Shared nearest-rank/midpoint helpers, with sorted-input entry points |
+| 17 | Completed: matrix runner | Sampler compiler directories leaked, including on preflight exits | Cleanup plus synchronous exit fallback; controlled compiler failure leaves no directory |
+| 18 | Existing: matrix runner | Every case reread and paired the entire retained log | Pair only the current case's cursor-delimited log |
+| 19 | Existing: release manifest scripts | Invalid JSON/missing built feed errors lacked useful context | Include file/URL/tag and regeneration/build guidance |
+| 20 | New: update acceptance lock contract | The fixture turned countdown off but expected its sound control enabled, blocking capture cases | Check both recording lock and countdown dependency; add positive/negative tests |
+
+The inherited Ember font/button CSS deduplication was also preserved and its computed colors checked, as ancillary cleanup rather than another bug.
+
+Stopped expanding the audit at twenty items; this does not establish that the codebase has no other issues. No commit, push, PR or publication.
+
+
+Verification: `pnpm acceptance:regression` passed (71 files / 1165 tests, production build, 170 settings cases and shortcut failure integration). After the final script-only additions, typecheck and 16 update-helper tests passed, and settings acceptance passed 171/171 including real Control+F12 and screenshot inspection. Full update acceptance passed including two recordings, deferred checks/results and shutdown cancellation. Matrix quick passed all three recordings with matched logs, media checks and approximately 15% recording CPU; controlled compiler failure left no sampler directory. Website checks passed 15 tests, diagnostics, online manifest/build and generated links; Ember styles were inspected.
+
+The fresh signed normal bundle (9 identities verified) passed CPU/start/stop/save/media verification and QuickTime playback/seek. `pnpm measure:cpu -- --minutes 1 --skip-settings` measured idle 0.055%, recording 13.9% (p95 15.4%) and post-recording idle 0.053%, with no capture renderer remaining. The 60.3-second file decoded completely and had non-silent stereo. CPU data came from the CPU runner, not duplicate measurement. Settings-open CPU, 60 fps baselines, full quality/long-duration/fidelity/permission-reset tests were excluded because no corresponding ongoing timer, encoder, audio or permission behavior changed. Settings interaction was covered separately.
+
+**Unresolved acceptance finding:** after CUA sent Cmd+Q from normal Settings, the panel closed but the process remained; the next hotkey was delivered without starting capture, and smoke timed out. The runner then exited the app normally. A fresh process passed capture and cleanup, but that does not resolve the quit-state anomaly. Both native quit-dialog lifecycle rounds passed; English visual inspection passed, while the Chinese screenshot was unavailable. Passive foreground observation, subjective listening and VoiceOver were not established. The first test round also had one process-probe EPERM that did not recur in focused or full reruns; no cleanup assertion was weakened.
+
+Final cleanup: app/helpers/material exited, seeded preferences restored (including original 60 fps and 3-second countdown), the test movie closed and old restored QuickTime documents preserved. Caffeinate ran (initial background assertion restarted into a persistent session; runners also held their own assertions) and was stopped. No historical recording baseline was reused and no small before/after performance improvement is claimed. Grouped verification: **14 pass / 1 fail / 1 blocked / 2 not run**, not an unconditional native acceptance pass. [Local detailed report](measurements/2026-09-28-audit-final/report.md); raw evidence is local only.
+
+Test-external human desktop activity may affect focus, screenshots and interpretation; the workflow does not detect all interference automatically.
+
+
+<a id="quit-closure-2026-09-28"></a>
+
+## Native quit anomaly closure — 2026-09-28
+
+Follow-up to the unfinished-change audit. Reproduced Settings → General → Cmd+Q on the existing signed bundle: the window closed but the main process and helpers remained; a second quit exited normally. The coordinator now yields one event-loop turn after safe media/history cleanup before admitting another quit, avoiding re-entry from immediately resolved Promises into the cancelled native quit stack. Requests during the handoff still join the same attempt. A regression test covers this ordering.
+
+`pnpm acceptance:regression` passed (71 files, 1167 tests, Settings 171/171 and shortcut integration); `pnpm acceptance:lifecycle` passed all four cases. A fresh `pnpm start:app` verified nine signing identities. Native Settings → General → one Cmd+Q then left no processes. Reopening the same bundle and running `pnpm acceptance` passed start/stop/save, countdown cancellation and full decode with screen and stereo audio (10.3 s, 39.1 MB). QuickTime playback advanced to 6.003 s and seeking reached 7.989 s; only the new movie was closed. The zh-TW dialog screenshot was readable and its button worked; the isolated fixture retained exact bytes and exited normally. The original failures remain historical evidence.
+
+Local [closure report](measurements/2026-09-28-quit-closure/report.md) records seven passing case groups and no remaining observed functional failure. Caffeinate ran from before edits through final desktop cleanup and was stopped; all tested app/helper/fixture processes exited. No preferences changed. No commit or publication.
+
+Scope exclusions: no website, full matrix, long recording or permission reset; this changes only a one-shot quit handoff. The same-day 14:34 CPU baseline remains applicable to unchanged steady-state behavior, with no fresh CPU claim. The unchanged English dialog layout reuses the earlier screenshot. Automatic foreground activation and whole-desktop dialog uniqueness remain blocked by the target-window-only observation; subjective listening and VoiceOver remain not run. These are verification limits, not observed product failures.
