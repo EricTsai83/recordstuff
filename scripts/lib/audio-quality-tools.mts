@@ -57,7 +57,9 @@ export async function recordAudio(output: string): Promise<string> {
       clearTimeout(timer);
       if (player && player.exitCode === null) player.kill("SIGKILL");
       if (app.exitCode === null) app.kill("SIGKILL");
-      fs.writeFileSync(path.join(output, "capture.log"), log);
+      // The log is evidence, not the result: a failed write must not leave this promise unsettled.
+      try { fs.writeFileSync(path.join(output, "capture.log"), log); }
+      catch (cause) { console.error(`capture.log could not be written: ${cause instanceof Error ? cause.message : String(cause)}`); }
       if (error) reject(error); else resolve(file!);
     };
     const timer = setTimeout(() => finish(new Error("Audio capture timed out after 60 seconds")), 60_000);

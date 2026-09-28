@@ -134,7 +134,9 @@ async function main(): Promise<void> {
       const line = buffered.slice(0, end).trim();
       buffered = buffered.slice(end + 1);
       if (!line) continue;
-      const result = JSON.parse(line) as Result;
+      let result: Result;
+      try { result = JSON.parse(line) as Result; }
+      catch { console.error(`  (ignored non-JSON output: ${line.slice(0, 200)})`); continue; }
       results.push(result);
       console.log(`  ${describe(result)}`);
     }
@@ -154,7 +156,11 @@ async function main(): Promise<void> {
   };
   process.on("SIGINT", () => interrupt(130));
   process.on("SIGTERM", () => interrupt(143));
-  const code = await new Promise<number | null>((resolve) => child.on("exit", (exit) => resolve(exit)));
+  const code = await new Promise<number | null>((resolve) => {
+    child.on("exit", (exit) => resolve(exit));
+    // A spawn that fails emits no exit; treat it as a failed run so the files are still removed.
+    child.on("error", (cause) => { console.error(`fixture could not run: ${cause.message}`); resolve(1); });
+  });
   if (interrupted !== undefined) {
     removeOwnFiles();
     process.exit(interrupted);

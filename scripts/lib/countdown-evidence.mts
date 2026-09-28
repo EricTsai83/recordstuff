@@ -37,6 +37,7 @@ export interface CountdownTimeline {
 export function countdownTimeline(lines: readonly string[], pressedAt: Date): CountdownTimeline {
   const timeline: CountdownTimeline = { ticks: [] };
   let session: string | undefined;
+  let patterns: Record<"dismissal" | "dismissalTimedOut" | "recordSent" | "started" | "firstChunk", RegExp> | undefined;
   let firstTick: number | undefined;
   let recordingAt: number | undefined;
   for (const line of lines) {
@@ -44,6 +45,15 @@ export function countdownTimeline(lines: readonly string[], pressedAt: Date): Co
     let m: RegExpExecArray | null;
     if ((m = /recorder: session (\S+) prepared after \d+ ms; countdown (\d+) s(?:; sound (on|off))?/.exec(line)) && !session) {
       session = m[1];
+      // One compile per session, not five per line; the id is escaped since it is data.
+      const own = `recorder: session ${session!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} `;
+      patterns = {
+        dismissal: new RegExp(`${own}countdown overlay (dismissed|error) after (\\d+) ms`),
+        dismissalTimedOut: new RegExp(`${own}countdown overlay did not confirm dismissal`),
+        recordSent: new RegExp(`${own}record sent (\\d+) ms after`),
+        started: new RegExp(`${own}started (\\d+) ms after record`),
+        firstChunk: new RegExp(`${own}first chunk`),
+      };
       timeline.countdown = Number(m[2]);
       if (m[3]) timeline.sound = m[3] === "on";
       if (at !== undefined) timeline.preparationMs = at - pressedAt.getTime();
@@ -53,17 +63,17 @@ export function countdownTimeline(lines: readonly string[], pressedAt: Date): Co
     } else if ((m = /countdown overlay: display \S+ at (-?\d+),(-?\d+) (\d+)x(\d+) in display bounds (-?\d+),(-?\d+) (\d+)x(\d+)/.exec(line))) {
       const [x, y, width, height, dx, dy, dw, dh] = m.slice(1).map(Number) as [number, number, number, number, number, number, number, number];
       timeline.overlay = { window: { x, y, width, height }, display: { x: dx, y: dy, width: dw, height: dh } };
-    } else if (session && (m = new RegExp(`recorder: session ${session} countdown overlay (dismissed|error) after (\\d+) ms`).exec(line))) {
+    } else if (patterns && (m = patterns.dismissal.exec(line))) {
       timeline.dismissal = { outcome: m[1]!, ms: Number(m[2]) };
-    } else if (session && new RegExp(`recorder: session ${session} countdown overlay did not confirm dismissal`).test(line)) {
+    } else if (patterns && patterns.dismissalTimedOut.test(line)) {
       timeline.dismissal = { outcome: "timed out" };
-    } else if (session && (m = new RegExp(`recorder: session ${session} record sent (\\d+) ms after`).exec(line))) {
+    } else if (patterns && (m = patterns.recordSent.exec(line))) {
       timeline.recordAfterAnchorMs = Number(m[1]);
-    } else if (session && (m = new RegExp(`recorder: session ${session} started (\\d+) ms after record`).exec(line))) {
+    } else if (patterns && (m = patterns.started.exec(line))) {
       timeline.recordToStartedMs = Number(m[1]);
     } else if (/\] state → recording/.test(line) && at !== undefined) {
       recordingAt ??= at;
-    } else if (session && new RegExp(`recorder: session ${session} first chunk`).test(line) && at !== undefined && recordingAt !== undefined) {
+    } else if (patterns && patterns.firstChunk.test(line) && at !== undefined && recordingAt !== undefined) {
       timeline.startedToFirstChunkMs ??= at - recordingAt;
     }
   }

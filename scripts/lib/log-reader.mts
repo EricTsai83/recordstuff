@@ -34,6 +34,8 @@ export interface LogCursor {
 }
 
 const MARK_BYTES = 64;
+/** How much of the newest file `end()` reads first: longer than any line the app writes plus the mark. */
+const TAIL_BYTES = 64 * 1024;
 
 export interface LogLine {
   text: string;
@@ -132,20 +134,33 @@ export class LogReader {
     }
   }
 
-  /** Just past the last complete line written so far; a newly created log starts at its beginning. */
+  /**
+   * Just past the last complete line written so far; a newly created log
+   * starts at its beginning. Runners call this before every round on a log
+   * that can hold 5 MiB, so only the tail is read: enough for the last line
+   * and the cursor's mark, and the whole file only when that tail holds no
+   * newline at all.
+   */
   end(): LogCursor {
     for (let attempt = 0; ; attempt += 1) {
       const segments = this.segments();
       // Between a rotation's rename and the next append no active file exists; the newest archive is the end.
       const newest = segments[segments.length - 1];
       if (!newest) return { offset: 0 };
-      const bytes = this.read(newest, 0);
-      if (bytes) {
-        const offset = newest.active ? bytes.lastIndexOf(0x0a) + 1 : bytes.length;
-        return cursorAt(newest.id, offset, bytes, offset);
-      }
+      const cursor = this.endOf(newest, Math.max(0, newest.size - TAIL_BYTES)) ?? this.endOf(newest, 0);
+      if (cursor) return cursor;
       if (attempt >= 5) throw new Error(`log ${this.filePath} kept changing while it was read`);
     }
+  }
+
+  /** The end cursor from the bytes at `from` on; undefined when the file changed identity or the tail holds no line end. */
+  private endOf(segment: Segment, from: number): LogCursor | undefined {
+    const bytes = this.read(segment, from);
+    if (!bytes) return undefined;
+    if (!segment.active) return cursorAt(segment.id, from + bytes.length, bytes, bytes.length);
+    const lastNewline = bytes.lastIndexOf(0x0a);
+    if (lastNewline < 0) return from === 0 ? cursorAt(segment.id, 0, bytes, 0) : undefined;
+    return cursorAt(segment.id, from + lastNewline + 1, bytes, lastNewline + 1);
   }
 
   /**

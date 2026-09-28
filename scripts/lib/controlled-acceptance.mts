@@ -1,5 +1,6 @@
 /** Build-only instrumentation, seeds and arguments of acceptance:controlled. No production module imports this file. */
 import fs from "node:fs";
+import { replaceOnce as replaceOnceShared } from "./replace-once.mts";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import type { RecordingResult } from "../../src/shared/recording-result.ts";
@@ -11,10 +12,7 @@ export type Seed = (typeof SEEDS)[number];
 /** Written beside the evidence so later commands find the run; self-tests are never the default target. */
 export interface RunMarker { tool: typeof CONTROLLED_TOOL; createdAt: string; seed: Seed; selftest: boolean }
 
-function replaceOnce(source: string, from: string, to: string): string {
-  if (source.split(from).length !== 2) throw new Error(`Controlled acceptance source anchor changed: ${from}`);
-  return source.replace(from, () => to);
-}
+const replaceOnce = (source: string, from: string, to: string): string => replaceOnceShared(source, from, to, "Controlled acceptance");
 
 const PUBLISH = `    publishFailure: result => recordingResults.receive(result, {
       stat: file => fs.stat(file), refresh: refreshUi,

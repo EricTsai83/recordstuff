@@ -1,15 +1,12 @@
 /** Build-only instrumentation. No production module imports this file or the fixture. */
 import assert from "node:assert/strict";
+import { replaceOnce } from "./replace-once.mts";
 import fs from "node:fs";
 import path from "node:path";
 import type { TrayModel } from "../../src/main/tray-model.ts";
 import type { SettingsView } from "../../src/shared/settings-panel.ts";
 import type { RecordingState } from "../../src/shared/state.ts";
 
-function replaceOnce(source: string, from: string, to: string): string {
-  if (source.split(from).length !== 2) throw new Error(`Acceptance source anchor changed: ${from}`);
-  return source.replace(from, to);
-}
 export function instrumentUpdateAcceptance(source: string, runDir: string): string {
   source = replaceOnce(source, 'let currentLanguage: Language = DEFAULT_LANGUAGE;',
     `import { configureAcceptance, attachAcceptance } from "../../scripts/fixtures/update-acceptance";\nconst acceptance = configureAcceptance(${JSON.stringify(runDir)});\nlet currentLanguage: Language = DEFAULT_LANGUAGE;`);

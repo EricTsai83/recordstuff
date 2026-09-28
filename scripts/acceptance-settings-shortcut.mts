@@ -1,5 +1,6 @@
 /** System Events entry step only; Computer Use must independently verify the visible panel. */
 import fs from "node:fs";
+import { escapeRegExp } from "./lib/processes.mts";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,8 +27,7 @@ try {
   if (process.platform !== "darwin" || process.arch !== "arm64") throw new Error("This runner requires the local macOS arm64 pnpm start:app bundle.");
   // The panel this opens is judged by native observation on an awake, unlocked display.
   desktop = await beginDesktopRound();
-  const escaped = appPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pid = (await command("pgrep", ["-f", `^${escaped}$`], controller.signal)).trim();
+  const pid = (await command("pgrep", ["-f", `^${escapeRegExp(appPath)}$`], controller.signal)).trim();
   if (!/^\d+$/.test(pid)) throw new Error("Expected exactly one local RecordStuff bundle process.");
   from = appLog.end();
   const lines = appLog.all();
@@ -37,7 +37,7 @@ try {
   const script = keystrokeScript(acceleratorToKeystroke(SETTINGS_SHORTCUT)!);
   evidence = `PID: ${pid}\nExecutable: ${appPath}\nSent: ${SETTINGS_SHORTCUT}\nAppleScript: ${script}\n`;
   await command("osascript", ["-e", script], controller.signal);
-  const hit = await waitForLog(appLog, from, /\] settings shortcut: CommandOrControl\+Alt\+, pressed$/, "Settings shortcut callback", controller.signal);
+  const hit = await waitForLog(appLog, from, new RegExp(`\\] settings shortcut: ${escapeRegExp(SETTINGS_SHORTCUT)} pressed$`), "Settings shortcut callback", controller.signal);
   evidence += `Observed: ${hit.line}\n`;
   desktop.end();
   if (desktop.lockedAt) throw new DesktopBlockedError(desktop.summary);

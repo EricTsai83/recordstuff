@@ -436,7 +436,6 @@ async function main(): Promise<void> {
     }
 
     fs.writeFileSync(path.join(dir, "verify.json"), JSON.stringify(result, null, 2) + "\n");
-    fs.writeFileSync(path.join(dir, "app-session.log"), evidenceSince(appLog, sessionFrom).filter(Boolean).join("\n") + "\n");
     fs.writeFileSync(
       path.join(dir, "report.md"),
       [
@@ -528,7 +527,7 @@ async function main(): Promise<void> {
       }
     }
     desktop.end();
-    fs.writeFileSync(path.join(dir, "app-session.log"), evidenceSince(appLog, sessionFrom).join("\n"));
+    fs.writeFileSync(path.join(dir, "app-session.log"), evidenceSince(appLog, sessionFrom).filter(Boolean).join("\n") + "\n");
     fs.writeFileSync(path.join(dir, "events.log"), events.join("\n"));
     const report = path.join(dir, "report.md");
     const passed = !runError && cleanupErrors.length === 0;

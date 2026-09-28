@@ -8,6 +8,7 @@
  * Finder window creation finish their bounded command before cancellation.
  */
 import { setTimeout as delay } from "node:timers/promises";
+import { recordStuffPattern } from "./lib/processes.mts";
 import { command, finishRecording, waitForLog } from "./lib/acceptance-runtime.mts";
 import fs from "node:fs";
 import os from "node:os";
@@ -116,7 +117,8 @@ async function osascript(script: string, what: string, timeout = 10_000): Promis
 }
 
 async function appPid(): Promise<string | undefined> {
-  return (await command("pgrep", ["-f", "RecordStuff.app/Contents/MacOS/RecordStuff$"], operationSignal, 5000, [0, 1])).split("\n")[0] || undefined;
+  // Dots escaped and arguments allowed: a missed process would let cleanup replace the app while it runs.
+  return (await command("pgrep", ["-f", recordStuffPattern()], operationSignal, 5000, [0, 1])).split("\n")[0] || undefined;
 }
 
 async function frontmost(): Promise<string> {

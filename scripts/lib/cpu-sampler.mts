@@ -404,7 +404,15 @@ export class CpuSampler {
   async stop(): Promise<void> {
     this.stopping = true;
     // Only a child that has a pid: a failed spawn has none, and signalling it must never reach pid 0, the whole process group.
-    if (this.child.pid !== undefined && this.child.pid > 0 && this.child.exitCode === null && this.child.signalCode === null) this.child.kill("SIGTERM");
+    const alive = (): boolean => this.child.pid !== undefined && this.child.pid > 0 && this.child.exitCode === null && this.child.signalCode === null;
+    if (alive()) this.child.kill("SIGTERM");
+    // A sampler that ignores SIGTERM must not hold the runner's cleanup forever.
+    let escalate: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      this.exited,
+      new Promise<void>((resolve) => { escalate = setTimeout(() => { if (alive()) this.child.kill("SIGKILL"); resolve(); }, 5000); }),
+    ]);
+    clearTimeout(escalate);
     await this.exited;
   }
 }

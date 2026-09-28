@@ -17,6 +17,8 @@ import { DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib
 import {
   INPUT_SOURCE_SCRIPT, InputSourceGuard, LAYOUT_ACCELERATOR, classify, layoutVerdict, needsActivation, orderCandidates,
   otherRecordStuffProcesses, parseSources, parseState, type Execution, type FixtureCleanup, type KeyResult, type LayoutState, type RestoreRecord,
+  KEYPAD_SEVEN,
+  NUMBER_ROW_KEY_CODES,
 } from "./lib/shortcut-layout.mts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -208,7 +210,7 @@ fs.writeFileSync(path.join(reportDir, "report.md"), [
   "## Input source", "",
   `- Original: ${describeState(original)}${requested ? `; requested ${requested}` : ""}`,
   ...attempts.map(attempt => `- Tried ${attempt.source}${attempt.activated ? ` (activated in an owned text field; focused=${attempt.activationFocused ?? "unknown"})` : ""}: ${attempt.reason}`),
-  `- During the check: ${describeState(during)}${during ? `; number row types ${[29, 18, 19, 20, 21, 23, 22, 26, 28, 25].map(code => during!.keys[code]).join(" ")}, keypad 7 types ${during.keys[89]}` : ""}`,
+  `- During the check: ${describeState(during)}${during ? `; number row types ${NUMBER_ROW_KEY_CODES.map(code => during!.keys[code]).join(" ")}, keypad 7 types ${during.keys[KEYPAD_SEVEN]}` : ""}`,
   `- After the check: ${describeState(after)}`,
   `- Restored: ${describeState(restored)}; ${restore ? (restore.confirmed ? `confirmed ${restore.original}${restore.selected ? "" : " (no switch was needed)"}` : `NOT confirmed: ${restore.error}`) : "nothing was changed"}`, "",
   "## Keys", "",

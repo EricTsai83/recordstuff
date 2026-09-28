@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -159,7 +159,12 @@ function run(command: string, args: string[], input?: string) {
 function api(endpoint: string, method = 'GET', payload?: unknown) {
   return JSON.parse(run('gh', ['api', endpoint, '--method', method, ...(payload ? ['--input', '-'] : [])], payload ? JSON.stringify(payload) : undefined));
 }
-const digest = (file: string) => createHash('sha256').update(readFileSync(file)).digest('hex');
+/** Streams the file: a DMG is hashed without holding it in memory. */
+async function digest(file: string): Promise<string> {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(file)) hash.update(chunk as Buffer);
+  return hash.digest('hex');
+}
 /** The tag is the version: the repository's package.json only records the last published version. */
 function context(tag: string) {
   const version = tag.replace(/^v/, '');
@@ -218,7 +223,7 @@ export function assertDmgContents(root: string) {
   const hidden = entries.filter(n => n.startsWith('.') && !(permittedHiddenDmgEntries.includes(n) && lstatSync(path.join(root, n)).isFile()));
   if (hidden.length) throw new Error(`Unexpected hidden DMG entries: ${hidden.join(', ')}. Only Finder layout files may be hidden; documents and folders must not be bundled.`);
 }
-function verifyDmg(directory: string, tag: string, c: ReleaseContext = context(tag)) {
+async function verifyDmg(directory: string, tag: string, c: ReleaseContext = context(tag)) {
   if (process.platform !== 'darwin' || process.arch !== 'arm64') throw new Error('Release verification requires macOS arm64.');
   const file = `RecordStuff-${c.version}-arm64-selfsigned.dmg`;
   const dmg = path.join(directory, file);
@@ -238,16 +243,20 @@ function verifyDmg(directory: string, tag: string, c: ReleaseContext = context(t
       cwd: root, encoding: 'utf8', env: { ...process.env, RECORDSTUFF_SIGN_IDENTITY: signingSHA1 },
     });
     if (check.status !== 0) throw new Error(`App signature/identity verification failed: ${check.stderr}`);
-    return { ...c, platform: 'darwin-arm64', file, size: statSync(dmg).size, sha256: digest(dmg),
-      signingCertificateSHA1: signingSHA1, appAsarSHA256: digest(path.join(app, 'Contents/Resources/app.asar')) };
+    return { ...c, platform: 'darwin-arm64', file, size: statSync(dmg).size, sha256: await digest(dmg),
+      signingCertificateSHA1: signingSHA1, appAsarSHA256: await digest(path.join(app, 'Contents/Resources/app.asar')) };
   } finally {
-    if (attached) run('hdiutil', ['detach', mount]);
+    // A detach that fails must not replace the verification error, and the mount point is removed either way.
+    if (attached) {
+      try { run('hdiutil', ['detach', mount]); }
+      catch (cause) { console.error(`hdiutil detach ${mount} failed: ${cause instanceof Error ? cause.message : String(cause)}`); }
+    }
     rmSync(mount, { recursive: true, force: true });
   }
 }
-function verifyCandidate(directory: string, tag: string, c: ReleaseContext = context(tag)) {
+async function verifyCandidate(directory: string, tag: string, c: ReleaseContext = context(tag)) {
   const metadata = JSON.parse(readFileSync(path.join(directory, 'release.json'), 'utf8'));
-  const actual = verifyDmg(directory, tag, c);
+  const actual = await verifyDmg(directory, tag, c);
   for (const [key, value] of Object.entries(actual)) {
     if (metadata[key] !== value) throw new Error(`Candidate metadata mismatch: ${key}`);
   }
@@ -325,12 +334,16 @@ async function main() {
     if (!directoryArg) throw new Error('Downloaded-assets directory is required.');
     const published = contextFromTag(tag);
     const directory = path.resolve(directoryArg);
-    const metadata = verifyCandidate(directory, tag, published);
+    const metadata = await verifyCandidate(directory, tag, published);
     const release = api(`repos/${published.repository}/releases/tags/${tag}`) as PublishedRelease;
-    assertPublishedAssets(release, [metadata.file, 'SHA256SUMS', 'release.json'].map(name => {
-      const local = path.join(directory, name);
-      return { name, size: statSync(local).size, sha256: digest(local) };
-    }));
+    // The DMG was just hashed by verifyCandidate; only the two small files are hashed here.
+    assertPublishedAssets(release, [
+      { name: metadata.file, size: metadata.size, sha256: metadata.sha256 },
+      ...await Promise.all(['SHA256SUMS', 'release.json'].map(async name => {
+        const local = path.join(directory, name);
+        return { name, size: statSync(local).size, sha256: await digest(local) };
+      })),
+    ]);
     console.log(`Published ${tag} (${published.sourceCommit}) matches the verified bytes: ${metadata.sha256}`);
     return;
   }
@@ -345,13 +358,13 @@ async function main() {
   if (!directoryArg) throw new Error('Candidate directory is required.');
   const directory = path.resolve(directoryArg);
   if (mode === 'candidate') {
-    const metadata = verifyDmg(directory, tag);
+    const metadata = await verifyDmg(directory, tag);
     writeFileSync(path.join(directory, 'release.json'), `${JSON.stringify({ ...metadata, node: process.versions.node, pnpm: run('pnpm', ['--version']) }, null, 2)}\n`);
     writeFileSync(path.join(directory, 'SHA256SUMS'), `${metadata.sha256}  ${metadata.file}\n`);
     console.log(JSON.stringify(metadata));
     return;
   }
-  const metadata = verifyCandidate(directory, tag);
+  const metadata = await verifyCandidate(directory, tag);
   if (mode === 'verify') { console.log(`Verified ${metadata.file}: ${metadata.sha256}`); return; }
   // publish: the tag already exists (pushed by the maintainer); the release must not.
   assertUnreleased(releases(c.repository), tag);
