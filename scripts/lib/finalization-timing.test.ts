@@ -41,6 +41,7 @@ describe("one run's sample", () => {
 
   it("marks a low-disk early stop without taking its note into the path", () => {
     expect(finalizationSample(run("/v/a.mp4 (stopped early: disk almost full)"))).toMatchObject({ path: "/v/a.mp4", stoppedEarly: true });
+    expect(finalizationSample(run("/v/a.mp4 (stopped early: the Mac went to sleep)"))).toMatchObject({ path: "/v/a.mp4", stoppedEarly: true });
   });
 
   it("has no sample when the stop ended in a failure", () => {

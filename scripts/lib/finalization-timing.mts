@@ -77,7 +77,7 @@ export function finalizationSample(lines: readonly string[]): FinalizationSample
       continue;
     }
     if (!stopping) continue;
-    const done = /^recorder: session \S+ file finalized (.+?)( \(stopped early: disk almost full\))?$/.exec(text);
+    const done = /^recorder: session \S+ file finalized (.+?)( \(stopped early: (?:disk almost full|the Mac went to sleep)\))?$/.exec(text);
     if (done && at) {
       finalized = { at, path: done[1]!, stoppedEarly: done[2] !== undefined };
       continue;

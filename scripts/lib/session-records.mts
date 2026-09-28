@@ -40,7 +40,7 @@ export function parseSessionRecord(line: string): SessionRecord | undefined {
       return session && isQualitySettings(r["requested"]) && isCaptureReport(r["capture"]) ? value as SessionRecord : undefined;
     case "saved":
       return session && timing && typeof r["path"] === "string" && r["path"] !== ""
-        && (r["stoppedEarly"] === undefined || r["stoppedEarly"] === "lowDisk") ? value as SessionRecord : undefined;
+        && (r["stoppedEarly"] === undefined || r["stoppedEarly"] === "lowDisk" || r["stoppedEarly"] === "sleep") ? value as SessionRecord : undefined;
     case "failed":
       return session && timing && isErrorCode(r["code"]) && typeof r["detail"] === "string"
         && (r["outcome"] === "partial" || r["outcome"] === "empty" || r["outcome"] === "unknown")
