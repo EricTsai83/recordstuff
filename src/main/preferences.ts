@@ -13,6 +13,8 @@ export function createPreferenceActions(deps: {
   folderFailed(folder: string): void;
   refresh(): void;
   log(message: string): void;
+  /** Brings the open dialog forward when a second request joins it. */
+  focus?(): void;
 }) {
   let choosing: Promise<boolean> | undefined;
   return {
@@ -23,7 +25,7 @@ export function createPreferenceActions(deps: {
       deps.refresh();
     },
     changeOutputDir(): Promise<boolean> {
-      if (choosing) return choosing;
+      if (choosing) { deps.focus?.(); return choosing; }
       if (!deps.settled()) return Promise.resolve(false);
       choosing = Promise.resolve().then(async () => {
         const folder = await deps.chooseFolder();

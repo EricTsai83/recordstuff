@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { API_URL, DAY_MS, DOWNLOAD_URL, FEED_URL, RELEASES_URL, UpdateChecker, feedVersion, fetchVersion, githubVersion, isNewer, stableVersion } from "./updates";
+import { API_URL, DAY_MS, DOWNLOAD_URL, FEED_URL, RELEASES_URL, UpdateChecker, feedVersion, fetchVersion, githubVersion, isNewer } from "./updates";
+import { stableVersion } from "../shared/version";
 const feed = { version: "0.2.0", tag: "v0.2.0", platform: "darwin-arm64", architecture: "arm64", publishedAt: "2026-09-20T00:00:00Z", downloadUrl: DOWNLOAD_URL, releaseUrl: `${RELEASES_URL}/tag/v0.2.0`, dmg: { name: "RecordStuff-0.2.0-arm64-selfsigned.dmg", size: 123, sha256: "a".repeat(64) } };
 const gh = { tag_name: "v0.2.0", draft: false, prerelease: false, assets: [{ name: feed.dmg.name }] };
 function harness() {

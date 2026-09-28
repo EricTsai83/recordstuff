@@ -34,7 +34,7 @@ import { CountdownOverlay } from "./countdown-overlay";
 import { FileWriter, ensureWritableDir } from "./file-writer";
 import { KeepAwake } from "./keep-awake";
 import { createOutputFolderOpener } from "./output-folder";
-import { createFileLogger } from "./log";
+import { createFileLogger, flushBeforeExit } from "./log";
 import { createRunId, logSessionEvent } from "./session-log";
 import { PermissionWatcher, openNotificationSettings, openScreenCaptureSettings } from "./permission";
 import { Recorder } from "./recorder";
@@ -127,14 +127,16 @@ function resourcesDir(): string {
 const disabledFeatures = physicalHotkeyFeatures(app.commandLine.getSwitchValue("disable-features"), process.platform);
 if (disabledFeatures) app.commandLine.appendSwitch("disable-features", disabledFeatures);
 
+// File logging is asynchronous: both exits below first let the line they explain reach the log.
 if (!app.requestSingleInstanceLock()) {
   log(`start: another instance already holds the userData lock; run ${runId}; exiting`);
-  app.quit();
+  void flushBeforeExit(log).then(() => app.quit());
 } else {
   // A menu-bar app that fails to wire up has no window and no tray to quit
   // from: it would sit invisible until Activity Monitor found it.
-  main().catch((cause: unknown) => {
+  main().catch(async (cause: unknown) => {
     log(`start: failed: ${cause instanceof Error ? (cause.stack ?? cause.message) : String(cause)}; exiting`);
+    await flushBeforeExit(log);
     dialog.showErrorBox(APP_NAME, translate("An unexpected error occurred. See the log for details.", currentLanguage));
     app.exit(1);
   });
@@ -477,6 +479,7 @@ async function main(): Promise<void> {
         try { await openScreenCaptureSettings(); }
         catch (cause) {
           log(`permission: open settings failed: ${String(cause)}`);
+          focusApp();
           await dialog.showMessageBox({ type: "info", title: APP_NAME, message: APP_NAME,
             detail: translate("Could not open System Settings. Allow RecordStuff in System Settings → Privacy & Security → Screen & System Audio Recording.", settings.language) });
         }
@@ -553,6 +556,7 @@ async function main(): Promise<void> {
       return result.canceled ? undefined : result.filePaths[0];
     },
     saveFolder: folder => settings.setOutputDir(folder),
+    focus: focusApp,
     folderChanged: () => recorder.outputDirChanged(),
     folderFailed: folder => tray.notifySettingsWriteFailed(folder),
     refresh: refreshUi, log,

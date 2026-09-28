@@ -472,6 +472,21 @@ describe("settings window size", () => {
   });
 });
 
+it("a new window shows the first page of failures again, however far the last one paged", async () => {
+  const s = setup();
+  s.live.recordingResults = Array.from({ length: 120 }, (_, index) => ({
+    id: `f${index}`, code: "disk_full" as const, detail: "", occurredAt: "2026-09-24T12:00:00Z", outcome: "empty" as const, acknowledged: false,
+  }));
+  s.panel.show();
+  expect(s.read(s.event()).recordingResults).toHaveLength(50);
+  expect((await s.choose(s.event(), "history", "more")).view.recordingResults).toHaveLength(100);
+  s.window().events.get("closed")!();
+  s.panel.show();
+  expect(s.read(from(mock.windows[1]))).toMatchObject({ recordingResultsRemaining: 70 });
+  expect(s.read(from(mock.windows[1])).recordingResults).toHaveLength(50);
+  s.panel.destroy();
+});
+
 it("explicit result entry focuses via a stable token without acknowledging the result", () => {
   const s = setup();
   s.live.recordingResults = [{ id: "f", code: "disk_full", detail: "", occurredAt: "2026-09-24T12:00:00Z", outcome: "empty", acknowledged: false }];

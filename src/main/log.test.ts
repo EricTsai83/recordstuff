@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createFileLogger, rotateLog, rotatedPath } from "./log";
+import { createFileLogger, flushBeforeExit, rotateLog, rotatedPath } from "./log";
 
 let dir: string;
 let filePath: string;
@@ -113,6 +113,16 @@ describe("createFileLogger", () => {
     expect(err).toHaveLength(1);
     expect(out).toHaveLength(3);
     expect((await fs.readdir(filePath)).length).toBe(0);
+  });
+});
+
+describe("flushBeforeExit", () => {
+  it("resolves true once queued lines are written, false when the write outlasts the bound", async () => {
+    const log = createFileLogger({ filePath, stdout: () => {} });
+    log("start: failed; exiting");
+    expect(await flushBeforeExit(log)).toBe(true);
+    expect(await fs.readFile(filePath, "utf8")).toContain("start: failed; exiting");
+    expect(await flushBeforeExit({ flush: () => new Promise<void>(() => {}) }, 10)).toBe(false);
   });
 });
 

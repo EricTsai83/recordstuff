@@ -20,6 +20,8 @@ import { validateAccelerator, isSettingsShortcut, SETTINGS_SHORTCUT_RESERVED } f
 import { translate } from "../shared/i18n";
 import type { AppAction, AppContext } from "./ui-model";
 
+const HISTORY_PAGE_ROWS = 50;
+
 export interface SettingsWindowOptions {
   state: () => RecordingState;
   context: () => AppContext;
@@ -47,7 +49,8 @@ interface CaptureLease {
 export class SettingsWindow {
   private resultFocus = 0;
   private revision = 0;
-  private historyLimit = 50;
+  /** Failure rows sent to the page; "Show more failures" pages through the rest until the window closes. */
+  private historyLimit = HISTORY_PAGE_ROWS;
   private resultEntry = false;
   /** Holds both global shortcuts suspended; never held by a pending save. */
   private lease: CaptureLease | undefined;
@@ -86,7 +89,7 @@ export class SettingsWindow {
     ipcMain.handle("settings:choose", (event, group: unknown, choice: unknown) => {
       const window = authorize(event);
       if (group === "history" && choice === "more") {
-        this.historyLimit += 50;
+        this.historyLimit += HISTORY_PAGE_ROWS;
         return this.deliver({ view: this.view(), applied: true });
       }
       // A result action waits for durable history; it must not hold preference saves or shortcut capture.
@@ -122,6 +125,8 @@ export class SettingsWindow {
       this.refresh();
       return;
     }
+    // A new window starts from the first page, however far the previous one paged.
+    this.historyLimit = HISTORY_PAGE_ROWS;
     const view = this.view();
     const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
     const workArea = display.workAreaSize;

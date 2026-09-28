@@ -54,6 +54,20 @@ export function formatLine(message: string, now: Date): string {
 
 export type FileLog = Log & { flush(): Promise<void> };
 
+/**
+ * Wait up to `timeoutMs` for queued lines to reach the file, for exits that
+ * would otherwise drop them (a failed start, a second instance). False on timeout.
+ */
+export async function flushBeforeExit(log: Pick<FileLog, "flush">, timeoutMs = 2000): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      log.flush().then(() => true),
+      new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(false), timeoutMs); }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
+
 /** A bounded queue keeps storage latency outside the recording event loop. */
 export function createFileLogger(options: FileLoggerOptions): FileLog {
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;

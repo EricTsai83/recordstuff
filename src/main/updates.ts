@@ -12,7 +12,6 @@ export type UpdateResult = { kind: "current"; checkedAt: number } | { kind: "ava
 export type UpdateState = { kind: "idle" } | { kind: "checking"; previous?: UpdateResult } | UpdateResult;
 
 import { stableVersion } from "../shared/version";
-export { stableVersion } from "../shared/version";
 export function isNewer(remote: string, local: string): boolean {
   const a = stableVersion(remote), b = stableVersion(local);
   if (!a || !b) return false;
