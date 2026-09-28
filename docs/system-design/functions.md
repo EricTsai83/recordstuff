@@ -52,7 +52,8 @@ Process callbacks log uncaught exceptions/rejections. Recorder events render sta
 | subscribe | Register event listener and return unsubscribe |
 | toggle | Start when idle, stop when recording, cancel a countdown, request permission guidance when blocked, otherwise ignore |
 | cancelCountdown | Before `record`: cancel the attempt; after it: request stop once capture starts; a menu's Cancel recording arriving while recording stops the recording; otherwise ignore |
-| stop | Matching recording session → stopping (recording its stop-request time), arm deadline, send stop |
+| stop | Matching recording session → stopping (recording its stop-request time), arm deadline, send stop, then publish stopping |
+| systemWillSleep | The Mac is going to sleep (plan 050): stop a recording with `stoppedEarly: "sleep"`, cancel a countdown or a preparing attempt with reason `sleep`, stop an arming one once capture starts; nothing while stopping or without a session |
 | shutdown | Cancel a countdown, mark an opening/preparing attempt to cancel at `prepared`, keep stop intent after `record`, stop a recording, wait completion/failure while racing quit cap |
 | setPermission | Always store the latest status; while idle/needsPermission re-settle on a change, never replace a busy state |
 | outputDirChanged | Clear the remembered outputDirUnavailable, also while needsPermission; update the state only when idle |
@@ -309,6 +310,8 @@ The page's window-message callback checks source/marker/port before creating the
 
 [main/recording-health.ts](../../src/main/recording-health.ts): `RECORDING_HEALTH`, the single place for the stall, free-space, writer-backlog and start-drain thresholds.
 
+[main/keep-awake.ts](../../src/main/keep-awake.ts): `KeepAwake.update` holds one `prevent-display-sleep` power blocker from `starting` until the state settles and logs each start and stop; a blocker that throws is logged only; `dispose` releases it on quit (plan 050).
+
 [main/recording-result-store.ts](../../src/main/recording-result-store.ts): validates and atomically replaces versioned failure history; migrates the legacy single record without overwriting it. Exact-ID retry preserves unread state; removal deletes only reviewed metadata.
 
 [main/tray.ts](../../src/main/tray.ts):
@@ -317,7 +320,8 @@ The page's window-message callback checks source/marker/port before creating the
 | --- | --- |
 | AppTray constructor | Load icons, create Tray, ignore double-click events, bind left/right clicks |
 | render / refresh | Remember presentation state and update image/title/tooltip; refresh rereads context |
-| destroy | Destroy native Tray |
+| destroy | Destroy native Tray once, drop held notifications; later render, refresh, right-click and notifications do nothing |
+| systemWillSleep / systemDidWake / userDidUnlock | Hold notifications from `suspend`; after `resume`, check each second and show them in order once the idle time is at most 2 s; unlocking shows them at once (plan 050) |
 | notifySaved | Current-language saved notice with reveal callback |
 | notifyRecordingFailure(code) | Open failure history at the newest unread record without acknowledging it |
 | revealFromNotification / reveal | Defer macOS Finder call and record requested/failed |
@@ -325,7 +329,7 @@ The page's window-message callback checks source/marker/port before creating the
 | notifySettingsWriteFailed / notifyQualityWriteFailed / notifyLanguageWriteFailed / notifyHotkeyWriteFailed | Current-language failed-save notices |
 | notifyHotkeyRegistrationFailed(accelerator) | Current-language conflict notice |
 | notifyFrameRateDowngrade / notifyTrayHint | Informational localized notifications |
-| show | Support check, silent Notification, click/failed handlers, show |
+| show | Hold while asleep, then switch and support checks, silent Notification, click/failed handlers, show |
 | log | Invoke optional injected logger |
 | popUpMenu | Rebuild current model and show native menu |
 | toTemplate | Map a separator or command entry to an Electron menu template |

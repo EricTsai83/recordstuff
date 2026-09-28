@@ -27,7 +27,7 @@ TrayModel 是純函式產物，包含 icon、title、tooltip 與一份扁平的�
 
 數字為 SF Pro Rounded semibold、等寬數字、置中，以 `vmin` 由視窗決定大小，白色 28% 不透明度，帶 10% 黑色外框與三層柔和陰影；外框與陰影以 `em` 表示，隨數字縮放，在 56 pt 時等於 040 的 1 px 外框與陰影；在沒有背景的情況下，靠自身外框與陰影在白色與深色內容上都保持可讀。維護者比較過 80、55、40 與 28% 的草稿，選了最透明的一版，接受它在明亮照片上會變淡。淡入 120 ms、數字間交叉淡化 150 ms、淡出 120 ms 後才銷毀視窗；`prefers-reduced-motion` 取消淡化，`prefers-reduced-transparency` 讓數字不透明並加強外框，仍然沒有背景。不套用 content protection：`getDisplayMedia` 無法排除個別視窗，所以靠時間上的分離保護。無法取得焦點的視窗 VoiceOver 不一定會朗讀；實際表現只記錄，不宣稱支援。
 
-通知使用本地化文案與 silent 模式。存檔通知點擊顯示完整影片；若錄影因磁碟保護而結束，通知會說明（「已儲存 {file}。磁碟空間即將用盡，已提前停止錄製」），該次錄影仍屬成功、不進入失敗紀錄（見[錄製設計](recording.md#寫檔與失敗)）。錄影失敗通知一律開啟設定中的「失敗紀錄」，呈現已確認的檔案狀態與復原操作。品質與語言保存失敗、幀率降級通知只有說明。
+通知使用本地化文案與 silent 模式。存檔通知點擊顯示完整影片；若錄影因磁碟保護而結束，通知會說明（「已儲存 {file}。磁碟空間即將用盡，已提前停止錄製」），Mac 進入睡眠時也一樣（「已儲存 {file}。Mac 進入睡眠，已停止錄製。」），該次錄影仍屬成功、不進入失敗紀錄（見[錄製設計](recording.md#寫檔與失敗)）。在 `powerMonitor` 的 `suspend` 與 `resume` 之間，所有通知都會先保留，因為睡眠當下顯示的橫幅在使用者回來前就已消失；`resume` 之後每秒檢查一次，只要發現 2 秒內有使用者輸入（`powerMonitor.getSystemIdleTime()`）就依序顯示；收到 `unlock-screen` 則立刻顯示，而且顯示時才套用通知開關。維護用的喚醒沒有使用者輸入，計時器在睡眠期間也照常計時，所以單靠 resume 或逾時都不會放出通知（plan 050）。錄影失敗通知一律開啟設定中的「失敗紀錄」，呈現已確認的檔案狀態與復原操作。品質與語言保存失敗、幀率降級通知只有說明。
 
 macOS 點通知會做兩件事：把回應交給 App，並要求系統啟動發通知的 App；後者約在點擊回呼後 110 ms 才落地。reveal 以 `setImmediate` 立刻請 Finder 選取檔案；若系統隨後把這個無視窗 App 設為前景，Finder 會被壓回使用者原本的視窗後方，看起來什麼都沒發生（v0.1.0 的回報；macOS 26.6 上約三次點擊出現一次，同一程序的第一次點擊很少發生）。計畫 014 因此在 reveal 之後掛一個一次性的 `did-become-active` 監聽，時窗 `ACTIVATION_WINDOW_MS`（1 秒）：啟動若落在時窗內，就從已是前景的 App 再 reveal 一次，讓 Finder 的置前最後落地。log 區分 `reveal requested`、`reveal repeated after activation` 與 `reveal failed`。只有點擊會掛監聽；背景存檔不會碰 Finder。原生通知不支援或 `failed` event 會留下 log。通知是否顯示仍受系統通知設定影響。原生證據由 `pnpm acceptance:notification` 產生（[工具鏈](tooling.md#通知驗收)）。通知縮圖已由使用者於 2026-09-14 重開機後確認正常。
 
@@ -141,7 +141,7 @@ Tray 的儲存位置項目（[output-folder.ts](../../../src/main/output-folder.
 
 來源：[log.ts](../../../src/main/log.ts)。macOS 目前路徑為 `~/Library/Logs/recordstuff/recordstuff.log`；設定為 `~/Library/Application Support/recordstuff/settings.json`。路徑由 Electron app 名稱與 `getPath` 決定，產品顯示名稱仍是 RecordStuff。
 
-每行為 `[UTC ISO 時間] 訊息`。啟動時記 App／Electron／平台版本、本次啟動的 run id、outputDir、品質、packaged 與 executable；每次錄製記 session、狀態、capture report、first chunk、saved（含提前停止原因）／failed、停滯與低空間警告及 writer 積壓、改報為已保留磁碟錯誤的啟動失敗，以及啟動時找到的中斷 sentinel。`power: suspend` 與 `power: resume` 會記下進行中的 session 與狀態。Log 含本機路徑，分享診斷前可移除個人路徑；不寫入媒體內容。
+每行為 `[UTC ISO 時間] 訊息`。啟動時記 App／Electron／平台版本、本次啟動的 run id、outputDir、品質、packaged 與 executable；每次錄製記 session、狀態、capture report、first chunk、saved（含提前停止原因）／failed、停滯與低空間警告及 writer 積壓、改報為已保留磁碟錯誤的啟動失敗，以及啟動時找到的中斷 sentinel。`power: suspend` 與 `power: resume` 會記下進行中的 session 與狀態；每次錄影前後分別有 `power: keeping the display awake (blocker n)` 與 `power: display may sleep again (blocker n)`，`notification: held during sleep: …` 表示某則通知正在等待醒來。Log 含本機路徑，分享診斷前可移除個人路徑；不寫入媒體內容。
 
 Session record（plan 029）。run id 由啟動時間加 pid 組成（例如 `20260925T101530123Z-4242`），只出現在 `start:` 行，一般行不加前綴。App 在人類可讀的 capture、`saved` 與 `failed:` 行旁，每個事件另寫一筆有版本的 record：`session-record: {"v":1,"run":…,"kind":…}`。種類有 `capture`（session、要求品質、capture report）、`saved`（session、最終路徑、錄製與要求停止時間、提前停止原因）、`failed`（session、code、detail、檔案結果、保留與暫存路徑、時間；沒有留下檔案也會寫）與 `refused`（preflight 拒絕，不指名任何 session）。JSON 讓含空白、引號或換行的路徑維持在一行跳脫後的內容。失敗收尾可能在下一個 session 開始後才結束，完成順序不是身分，所以 Recorder 的終止事件帶著 session。開發用分析器依 run 與 session id 配對錄影；該次啟動有寫 record 時只讀 record，不會把兩種形式算成兩個結果。舊 log 不改寫。
 

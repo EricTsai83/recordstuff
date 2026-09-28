@@ -52,7 +52,8 @@
 | `subscribe(listener)` | 加入事件集合 → unsubscribe 函式 |
 | `toggle()` | idle 開始、recording 停止、倒數中取消、needsPermission 發引導事件，其餘忽略 |
 | `cancelCountdown(reason)` | `record` 前取消這次嘗試；之後改為擷取開始後停止；錄製中才到達的選單「取消錄影」會停止錄影；其餘忽略 |
-| `stop()` | 僅 matching recording session → stopping（記下要求停止時間），設 stop timeout，送 stop |
+| `stop()` | 僅 matching recording session → stopping（記下要求停止時間），設 stop timeout，送 stop，再發布 stopping |
+| `systemWillSleep()` | Mac 即將睡眠（plan 050）：錄影中以 `stoppedEarly: "sleep"` 停止，倒數中或準備中的嘗試以 `sleep` 取消，arming 中的嘗試在擷取開始後停止；stopping 或沒有 session 時不動作 |
 | `shutdown()` | 取消倒數、標記開檔／準備中的嘗試在 `prepared` 時取消、`record` 後保留停止意圖、停止 recording、等 stopping／failure；与退出 hard cap 競速 |
 | `setPermission(status)` | 一律保存最新狀態；idle／needsPermission 時狀態有變才重新落定，不覆蓋忙碌 session 狀態 |
 | `outputDirChanged()` | 清掉記住的 outputDirUnavailable（needsPermission 時也清）；只有 idle 才更新狀態 |
@@ -307,6 +308,8 @@
 
 [recording-health.ts](../../../src/main/recording-health.ts)：`RECORDING_HEALTH` 是停滯、可用空間、writer 積壓與啟動排空門檻的唯一位置。
 
+[keep-awake.ts](../../../src/main/keep-awake.ts)：`KeepAwake.update` 從 `starting` 到狀態回到穩定前持有一個 `prevent-display-sleep` 電源 blocker，並記錄每次開始與停止；blocker 丟出錯誤時只記錄；`dispose` 在結束時釋放（plan 050）。
+
 [recording-result-store.ts](../../../src/main/recording-result-store.ts)：驗證並原子替換版本化失敗歷史，升級舊單筆資料但不覆寫舊檔。精確 ID 的重試不改未讀狀態，移除僅刪已確認資訊。
 
 [tray.ts](../../../src/main/tray.ts)：
@@ -315,7 +318,8 @@
 | --- | --- |
 | `AppTray.constructor(options)` | loadIcons、建 Tray、忽略 double-click event、註冊左右鍵 |
 | `render(state)` / `refresh()` | 保存呈現用 lastState，更新必要圖示／title／tooltip；refresh 用同狀態重讀 context |
-| `destroy()` | 銷毀原生 Tray |
+| `destroy()` | 只銷毀一次原生 Tray，並丟棄保留中的通知；之後的 render、refresh、右鍵與通知都不動作 |
+| `systemWillSleep()` / `systemDidWake()` / `userDidUnlock()` | 從 `suspend` 起保留通知；`resume` 後每秒檢查，閒置時間在 2 秒內時依序顯示；解鎖時立刻顯示（plan 050） |
 | `notifySaved(path)` | show 存檔通知，點擊 reveal |
 | `notifyRecordingFailure(code)` | 開啟設定失敗歷史並定位最新未確認紀錄，不自動標成已讀 |
 | `revealFromNotification(path)` / `reveal()` | macOS setImmediate 後 showItemInFolder，記 requested／failed |
@@ -323,7 +327,7 @@
 | `notifySettingsWriteFailed(dir)` / `notifyQualityWriteFailed()` / `notifyLanguageWriteFailed()` / `notifyHotkeyWriteFailed()` | 保存失敗通知，無設定 mutation |
 | `notifyHotkeyRegistrationFailed(accelerator)` | 目前語言的快捷鍵佔用通知 |
 | `notifyFrameRateDowngrade(requested, actual)` / `notifyTrayHint()` | 對應純文案的原生通知 |
-| `show(text, onClick?)` | 檢查支援、建立 silent Notification、掛 click／failed、show |
+| `show(text, onClick?)` | 睡眠中先保留；之後檢查開關與支援、建立 silent Notification、掛 click／failed、show |
 | `log(message)` | 呼叫注入 logger（若有） |
 | `popUpMenu()` | 依現在 state/context 重建 menu 後彈出 |
 | `toTemplate(entry)` | 分隔線或指令項目 → Electron MenuItemConstructorOptions，click 分派 action |
