@@ -274,7 +274,9 @@ try {
     // A second recording starts with a request already in flight. Release the result while recording.
     await sendShortcut(); await until(s => s.recording.type === 'recording', 'second recording started');
     await command({ kind: 'release' }); await pause(250);
-    const hidden = await snapshot(); assert.equal(hidden.update.kind, 'checking'); assertLockContract(hidden);
+    // The result waits for the save, and the row no longer says a check is running (f9e891e).
+    const hidden = await snapshot(); assert.notEqual(hidden.update.kind, 'checking'); assert.notEqual(hidden.update.kind, 'available');
+    assert.equal(menuAction(hidden, 'checkUpdates').label, 'Check for updates…'); assertLockContract(hidden);
     await pause(10_000); await sendShortcut();
     const saved = await until(s => s.recording.type === 'idle' && s.update.kind === 'available', 'saved and update published');
     assert.equal(menuAction(saved, 'openUpdate').enabled, true); assertLockContract(saved);

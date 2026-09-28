@@ -53,13 +53,14 @@ export function parseSessionRecord(line: string): SessionRecord | undefined {
 }
 
 /**
- * A `start:` line of a process that went on to run. A second launch refused
- * by the single-instance lock logs one too, in the middle of the running
- * process's lines, and exits at once; it starts nothing and is skipped.
+ * The launch line of a process that went on to run: `start: RecordStuff <version>; run …`.
+ * Other `start:` lines are not launches. A second launch refused by the
+ * single-instance lock logs one in the middle of the running process's lines
+ * and exits at once, and the running app logs its interruption check and a
+ * failed startup under the same prefix after its own launch line.
  */
 export function isProcessStart(line: string): boolean {
-  const message = logMessage(line);
-  return message.startsWith("start: ") && !message.startsWith("start: another instance already holds the userData lock");
+  return /^start: RecordStuff(?: |$)/.test(logMessage(line));
 }
 
 /** The run id in a `start:` line (`…; run <id>; …`); undefined for builds before plan 029. */

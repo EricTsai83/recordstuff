@@ -49,9 +49,9 @@ jobs:
           test "$(uname -m)" = arm64
           # Release only commits that are on main; a tag on a side branch stops here.
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
-          node scripts/release.mts preflight "$RELEASE_TAG"
+          node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts preflight "$RELEASE_TAG"
       - name: Stamp the tag's version into package.json for this build
-        run: node scripts/release.mts version "$RELEASE_TAG"
+        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts version "$RELEASE_TAG"
       - run: pnpm install --frozen-lockfile
       - name: Install Electron runtime explicitly (Electron 44 has no postinstall)
         run: node node_modules/electron/install.js
@@ -84,7 +84,7 @@ jobs:
           security find-identity -v -p codesigning "$keychain" | grep -F "$RECORDSTUFF_SIGN_IDENTITY"
           unset BUILD_CERTIFICATE_BASE64 P12_PASSWORD
           pnpm dist:mac
-          node scripts/release.mts candidate "$RELEASE_TAG" dist
+          node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts candidate "$RELEASE_TAG" dist
       - name: Cleanup even after cancellation or setup failure
         if: always()
         run: python3 scripts/cleanup-release-keychain.py
@@ -119,7 +119,7 @@ jobs:
           name: verified-candidate
           path: candidate
       - name: Reverify the candidate without private keys and publish it
-        run: node scripts/release.mts publish "$RELEASE_TAG" candidate
+        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts publish "$RELEASE_TAG" candidate
   verify-published:
     # Runs after a successful publish, or alone on dispatch. Downloads what an
     # anonymous user gets from the public URL and reruns every artifact gate.
@@ -150,7 +150,7 @@ jobs:
           done
           (cd published && shasum -a 256 -c SHA256SUMS)
       - name: Verify mounted contents, signatures, metadata and GitHub asset digests
-        run: node scripts/release.mts published "$RELEASE_TAG" published
+        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts published "$RELEASE_TAG" published
   record:
     # After the public download verified, write the
     # release facts (package.json version, README download block, bilingual
@@ -175,7 +175,7 @@ jobs:
         with:
           node-version: 24.21.0
       - name: Write release facts into the repository
-        run: node scripts/release.mts record "$RELEASE_TAG"
+        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts record "$RELEASE_TAG"
       - name: Commit and push to main
         run: |
           set -euo pipefail

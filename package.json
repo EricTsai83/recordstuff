@@ -36,7 +36,7 @@
     "dist:mac": "node scripts/start-app.mjs --dmg",
     "audio:quality": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/audio-quality.mts",
     "signing:create": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/create-signing-identity.mts",
-    "release": "node scripts/release.mts",
+    "release": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts",
     "site:dev": "pnpm --dir website dev",
     "site:build": "pnpm --dir website build",
     "site:check": "pnpm --dir website test && pnpm --dir website check",

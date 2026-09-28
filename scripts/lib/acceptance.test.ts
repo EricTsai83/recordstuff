@@ -44,7 +44,7 @@ describe("acceptance helpers", () => {
     expect(registeredAccelerator(LOG)).toBe("CommandOrControl+Alt+Shift+R");
     expect(currentState(LOG)).toBeUndefined(); // idle since the last start
     expect(currentState(LOG.slice(0, 4))).toBe("idle");
-    expect(registeredAccelerator([...LOG, "[t] start: x", "[t] hotkey: disabled"])).toBeUndefined();
+    expect(registeredAccelerator([...LOG, "[t] start: RecordStuff 1.0.1; run r2", "[t] hotkey: disabled"])).toBeUndefined();
     expect(registeredAccelerator([])).toBeUndefined();
   });
 
@@ -60,6 +60,14 @@ describe("acceptance helpers", () => {
       "[t] start: another instance already holds the userData lock; run 20260925T100100000Z-8; exiting"];
     expect(currentRunId(refused)).toBe("20260925T100000000Z-7");
     expect(currentState(refused)).toBe("idle");
+    // The running app's own `start:` lines after its launch (an interrupted earlier run) are not launches either.
+    const interrupted = [...restarted, "[t] hotkey: registered CommandOrControl+Alt+Shift+R", "[t] state → idle",
+      "[t] start: 1 recording session(s) did not finish before the previous exit",
+      "[t] start: interruption sentinels kept until the failure history is saved",
+      "[t] start: interruption check failed: EACCES"];
+    expect(lastStartIndex(interrupted)).toBe(restarted.length - 1);
+    expect(currentRunId(interrupted)).toBe("20260925T100000000Z-7");
+    expect(registeredAccelerator(interrupted)).toBe("CommandOrControl+Alt+Shift+R");
     expect(registeredAccelerator(refused)).toBe("CommandOrControl+Alt+Shift+R");
   });
 });

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchManifest } from './lib/release-manifest-client.mts';
-import { assertManifestShape, diffManifest, REPOSITORY, type ReleaseManifest } from './lib/release-manifest.mts';
+import { assertManifestShape, diffManifest, expectedDmgName, REPOSITORY, type ReleaseManifest } from './lib/release-manifest.mts';
 
 export const signingSHA1 = '01B373511530BBF287CA35E54C10A5F017AAD637';
 /** Stable `1.2.3` or pre-release `1.2.3-rc.1`; the tag is always `v` + version. */
@@ -240,7 +240,7 @@ export function assertDmgContents(root: string) {
 }
 async function verifyDmg(directory: string, tag: string, c: ReleaseContext = context(tag)) {
   if (process.platform !== 'darwin' || process.arch !== 'arm64') throw new Error('Release verification requires macOS arm64.');
-  const file = `RecordStuff-${c.version}-arm64-selfsigned.dmg`;
+  const file = expectedDmgName(c.version);
   const dmg = path.join(directory, file);
   if (!statSync(dmg).isFile()) throw new Error('Missing DMG.');
   run('hdiutil', ['verify', dmg]);
@@ -311,7 +311,7 @@ async function main() {
     if (isPrerelease(c.version)) {
       // Pre-releases get a historical record, never a stable download pointer.
       const release = api(`repos/${c.repository}/releases/tags/${tag}`) as PublishedRelease & { published_at: string; prerelease: boolean };
-      const file = `RecordStuff-${c.version}-arm64-selfsigned.dmg`;
+      const file = expectedDmgName(c.version);
       const asset = release.assets.find(a => a.name === file);
       if (release.draft || !release.prerelease || !asset || !asset.digest?.startsWith('sha256:')) throw new Error('Pre-release is not public or its DMG digest is unavailable.');
       facts = { ...c, file, size: asset.size, sha256: asset.digest.slice('sha256:'.length), runUrl, publishedAt: release.published_at, date: release.published_at.slice(0, 10) };
@@ -385,20 +385,22 @@ async function main() {
   if (!directoryArg) throw new Error('Candidate directory is required.');
   const directory = path.resolve(directoryArg);
   if (mode === 'candidate') {
-    const metadata = await verifyDmg(directory, tag);
+    const metadata = await verifyDmg(directory, tag, c);
     writeFileSync(path.join(directory, 'release.json'), `${JSON.stringify({ ...metadata, node: process.versions.node, pnpm: run('pnpm', ['--version']) }, null, 2)}\n`);
     writeFileSync(path.join(directory, 'SHA256SUMS'), `${metadata.sha256}  ${metadata.file}\n`);
     console.log(JSON.stringify(metadata));
     return;
   }
-  const metadata = await verifyCandidate(directory, tag);
+  const metadata = await verifyCandidate(directory, tag, c);
   if (mode === 'verify') { console.log(`Verified ${metadata.file}: ${metadata.sha256}`); return; }
   // publish: the tag already exists (pushed by the maintainer); the release must not.
-  assertUnreleased(releases(c.repository), tag);
+  // One listing answers both "not yet released" and where latest must point.
+  const existing = releases(c.repository);
+  assertUnreleased(existing, tag);
   if (api(`repos/${c.repository}/commits/${tag}`).sha !== c.sourceCommit) throw new Error('Tag does not point to the verified source commit.');
   const body = path.join(directory, 'release-notes.md');
   writeFileSync(body, notes(c.version, c.repository, c.sourceCommit));
-  const flag = latestFlag(c.version, releases(c.repository));
+  const flag = latestFlag(c.version, existing);
   run('gh', ['release', 'create', tag, '--repo', c.repository, '--verify-tag', flag,
     '--title', `RecordStuff ${c.version} — macOS arm64`, '--notes-file', body,
     ...[metadata.file, 'SHA256SUMS', 'release.json'].map(f => path.join(directory, f))]);
