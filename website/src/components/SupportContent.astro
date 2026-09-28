@@ -3,11 +3,7 @@
 import { platformBoundary, privacy } from "../content/site";
 import { links, release } from "../lib/release";
 
-interface Props {
-  level?: 2 | 3;
-}
-const { level = 2 } = Astro.props;
-const H = level === 2 ? "h2" : "h3";
+const H = "h2";
 ---
 
 <div class="prose">

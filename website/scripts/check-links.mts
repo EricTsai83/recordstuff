@@ -8,12 +8,13 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { configuredSite } from "../src/lib/site-origin.ts";
 
 const { values } = parseArgs({ options: { dir: { type: "string" }, offline: { type: "boolean" } } });
 const dist = values.dir ? path.resolve(values.dir) : fileURLToPath(new URL("../dist", import.meta.url));
 const offline = values.offline || process.env.SITE_MANIFEST_OFFLINE === "1";
 /** Absolute URLs on the configured site origin (canonical, og:image) are checked as internal paths. */
-const siteOrigin = new URL(process.env.SITE_URL ?? "https://record.ericts.com").origin;
+const siteOrigin = new URL(configuredSite()).origin;
 
 async function htmlFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true });

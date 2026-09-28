@@ -1,8 +1,8 @@
 ---
 /**
  * The full help text (allowing the app to open, install, permissions, use,
- * update, remove, retained data) shared by every variant. Headings carry ids
- * so single-page variants can deep-link to them.
+ * update, remove, retained data). Headings carry ids so other pages can
+ * deep-link to a section, such as Download's Open Anyway link.
  */
 import StepList from "./StepList.astro";
 import {
@@ -15,12 +15,7 @@ import {
 } from "../content/site";
 import { links } from "../lib/release";
 
-interface Props {
-  /** Heading level for the top-level sections: 2 on a dedicated page, 3 inside a page section. */
-  level?: 2 | 3;
-}
-const { level = 2 } = Astro.props;
-const H = level === 2 ? "h2" : "h3";
+const H = "h2";
 ---
 
 <div class="prose help">

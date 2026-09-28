@@ -117,15 +117,6 @@ kbd {
   background: var(--accent-dim);
 }
 
-.eyebrow {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--fg-dim);
-  font-weight: 500;
-}
-
 .display {
   font-weight: 500;
   letter-spacing: -0.035em;
@@ -137,10 +128,6 @@ kbd {
   max-width: 1240px;
   margin: 0 auto;
   padding: 0 32px;
-}
-
-.container--narrow {
-  max-width: 760px;
 }
 
 .muted {

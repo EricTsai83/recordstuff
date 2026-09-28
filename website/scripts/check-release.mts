@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { readFile } from "node:fs/promises";
+import { DOWNLOAD_URL } from "../src/lib/site-origin.ts";
 const read = async (name: string) => JSON.parse(await readFile(new URL(name, import.meta.url), "utf8"));
 const manifest = await read("../release-manifest.json");
 const { values } = parseArgs({ options: { dir: { type: "string" } } });
@@ -11,6 +12,6 @@ const feed = JSON.parse(await readFile(feedPath, "utf8"));
 assert.deepEqual(feed, {
   version: manifest.version, tag: manifest.tag, platform: manifest.platform,
   architecture: manifest.architecture, dmg: manifest.dmg, publishedAt: manifest.publishedAt,
-  releaseUrl: manifest.releaseUrl, downloadUrl: "https://record.ericts.com/download",
+  releaseUrl: manifest.releaseUrl, downloadUrl: DOWNLOAD_URL,
 });
 console.log(`Built release.json matches verified manifest ${manifest.version}.`);

@@ -54,7 +54,7 @@ export function generateStars(options: { seed?: number; count?: number; width: n
 export function starsToSvg(stars: Star[], className = "st"): string {
   return stars
     .map((s) => {
-      const core = `<circle cx="${s.x}" cy="${s.y}" r="${s.r}" class="${className}" style="--o:${s.o};--tw:${((s.x * 7 + s.y * 13) % 30) / 10}s"/>`;
+      const core = `<circle cx="${s.x}" cy="${s.y}" r="${s.r}" class="${className}" style="--o:${s.o}"/>`;
       if (!s.bright) return core;
       const len = s.r * 3.2;
       return `${core}<path d="M${s.x - len} ${s.y}H${s.x + len}M${s.x} ${s.y - len}V${s.y + len}" class="${className}-spark" style="--o:${s.o}"/>`;

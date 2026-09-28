@@ -34,8 +34,7 @@
   border-color: #ffffff;
 }
 [data-theme="ember"] .section-title,
-[data-theme="ember"] .prose h2,
-[data-theme="ember"] .heading {
+[data-theme="ember"] .prose h2 {
   font-weight: 600;
   letter-spacing: -0.03em;
 }

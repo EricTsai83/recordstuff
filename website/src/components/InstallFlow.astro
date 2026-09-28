@@ -1,12 +1,13 @@
 ---
 import InstallGlyph from "./InstallGlyph.astro";
 
+/** `label` is the visible caption; `body` is read after it by assistive technology, since the art carries no text. */
 const stages = [
-  { label: "Download", title: "Download RecordStuff", body: "Download the DMG for your Mac.", kind: "download" },
-  { label: "Drag to Applications", title: "Drag to Applications", body: "Open the DMG and drag RecordStuff into the Applications folder.", kind: "drag" },
-  { label: "Open", title: "Allow the app to open", body: "Open RecordStuff from Applications and allow it to launch.", kind: "open" },
-  { label: "Grant access", title: "Enable screen & audio", body: "Grant Screen & System Audio Recording access in System Settings.", kind: "permissions" },
-  { label: "Record", title: "Record from the menu bar", body: "Click the icon to record. Click again to stop and save.", kind: "record" },
+  { label: "Download", body: "Download the DMG for your Mac.", kind: "download" },
+  { label: "Drag to Applications", body: "Open the DMG and drag RecordStuff into the Applications folder.", kind: "drag" },
+  { label: "Open", body: "Open RecordStuff from Applications and allow it to launch.", kind: "open" },
+  { label: "Grant access", body: "Grant Screen & System Audio Recording access in System Settings.", kind: "permissions" },
+  { label: "Record", body: "Click the icon to record. Click again to stop and save.", kind: "record" },
 ] as const;
 ---
 
@@ -22,7 +23,7 @@ const stages = [
     <span class="junction junction--merge" aria-hidden="true"></span>
 
     <ol class="stages">
-      {stages.map((stage) => <li class:list={["stage", stage.kind === "permissions" && "stage--permissions"]} aria-label={`${stage.title}. ${stage.body}`}>
+      {stages.map((stage) => <li class:list={["stage", stage.kind === "permissions" && "stage--permissions"]}>
         <div class="stage-art" aria-hidden="true">
           {stage.kind === "permissions" ? <>
             <svg class="mobile-wires" viewBox="0 0 1000 180" preserveAspectRatio="none"><path d="M500 0V30M250 72V38Q250 30 258 30H742Q750 30 750 38V152Q750 160 742 160H258Q250 160 250 152V72M500 160V180" /></svg>
@@ -31,6 +32,7 @@ const stages = [
           </> : <span class="glyph"><InstallGlyph kind={stage.kind} /></span>}
         </div>
         <div class="stage-label">{stage.label}</div>
+        <span class="visually-hidden">{stage.body}</span>
       </li>)}
     </ol>
   </div>

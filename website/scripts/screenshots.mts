@@ -2,9 +2,12 @@
  * Screenshot matrix: every page at desktop (1440 px) and mobile (390 px) and narrow (320 px)
  * widths, full page, rendered by the locally installed Chrome through
  * puppeteer-core from an `astro preview` of dist/. Output: website/compare/*.png
- * (gitignored). Also refreshes src/assets/og.png, the 1200×630 social preview,
- * from the hero scene paused on its "recording" frame, so the OpenGraph image
- * is the same drawing the page shows. Commit og.png when the scene changes.
+ * (gitignored). Also refreshes src/assets/og.png, the social preview, from the
+ * hero scene paused on its "recording" frame, so the OpenGraph image is the
+ * same drawing the page shows. It is captured at 2× (about 1640 px wide) so
+ * Layout.astro can derive a true 1200×630 image; an asset narrower than 1200 px
+ * would be served as is, since images are never upscaled. Commit og.png when
+ * the scene changes.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { mkdir } from "node:fs/promises";
@@ -54,11 +57,10 @@ try {
   await waitFor(`${ORIGIN}/`);
   browser = await puppeteer.launch({ executablePath: CHROME, headless: true });
   const page = await browser.newPage();
-  await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
-  // Social preview: the scene at its recording frame, cropped to 1200×630.
+  // Social preview: the scene at its recording frame, cropped to 1200:630.
   // Animations must exist to be seeked, so motion is allowed for this shot only.
   await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "no-preference" }]);
-  await page.setViewport({ width: 1200, height: 800, deviceScaleFactor: 1 });
+  await page.setViewport({ width: 1200, height: 800, deviceScaleFactor: 2 });
   await page.goto(`${ORIGIN}/`, { waitUntil: "networkidle0" });
   await page.evaluate(() => document.fonts.ready);
   const seeked = await page.evaluate(() => {

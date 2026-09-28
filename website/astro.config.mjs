@@ -1,8 +1,9 @@
 import { defineConfig } from "astro/config";
+import { configuredSite } from "./src/lib/site-origin.ts";
 
 // Public origin chosen by the maintainer (custom domain on Vercel). SITE_URL
 // overrides it for previews so canonical/OpenGraph URLs stay well-formed.
-const site = process.env.SITE_URL ?? "https://record.ericts.com";
+const site = configuredSite();
 
 export default defineConfig({
   site,

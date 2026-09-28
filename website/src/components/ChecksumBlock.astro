@@ -35,7 +35,9 @@ const rows = [
       <dt>SHA-256</dt>
       <dd>
         <code class="hash" id="dmg-sha256">{release.sha256}</code>
-        <button type="button" class="copy" data-copy-target="dmg-sha256" aria-label="Copy SHA-256 to clipboard">Copy</button>
+        <button type="button" class="copy" data-copy-target="dmg-sha256" aria-describedby="dmg-sha256-label">Copy</button>
+        <span id="dmg-sha256-label" class="visually-hidden">SHA-256 to the clipboard</span>
+        <span class="visually-hidden" role="status" aria-live="polite" data-copy-status></span>
       </dd>
     </div>
   </dl>
@@ -47,18 +49,30 @@ const rows = [
 </div>
 
 <script>
+  // The button's visible text is its accessible name, so the change is read;
+  // the status region repeats the outcome for readers that miss a relabel.
   document.querySelectorAll<HTMLButtonElement>("button[data-copy-target]").forEach((button) => {
+    const status = button.parentElement?.querySelector<HTMLElement>("[data-copy-status]");
+    let reset: number | undefined;
     button.addEventListener("click", async () => {
       const target = document.getElementById(button.dataset.copyTarget ?? "");
       if (!target) return;
+      let announcement: string;
       try {
         await navigator.clipboard.writeText(target.textContent ?? "");
         button.textContent = "Copied";
+        announcement = "SHA-256 copied to the clipboard.";
       } catch {
+        // No clipboard access: leave the hash selected so one keystroke copies it.
+        window.getSelection()?.selectAllChildren(target);
         button.textContent = "Select to copy";
+        announcement = "Clipboard unavailable; the SHA-256 is selected, copy it with the keyboard.";
       }
-      window.setTimeout(() => {
+      if (status) status.textContent = announcement;
+      window.clearTimeout(reset);
+      reset = window.setTimeout(() => {
         button.textContent = "Copy";
+        if (status) status.textContent = "";
       }, 1600);
     });
   });

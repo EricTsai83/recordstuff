@@ -22,10 +22,11 @@ import BrandMark from "../components/BrandMark.astro";
 interface Props {
   title?: string;
   description?: string;
-  pageClass?: string;
+  /** The home page's hero scene draws its hand-written callout in Kalam; no other page uses that face. */
+  handFont?: boolean;
 }
 
-const { title = meta.title, description = meta.description, pageClass } = Astro.props;
+const { title = meta.title, description = meta.description, handFont = false } = Astro.props;
 
 const nav = [
   { href: "/download", label: "Download" },
@@ -33,9 +34,12 @@ const nav = [
   { href: "/support", label: "Support" },
 ];
 const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
+// Asked for 1200×630; the meta tags below report what was actually produced,
+// since an asset smaller than that is never upscaled.
 const social = await getImage({ src: ogSource, width: 1200, height: 630, fit: "cover", format: "png" });
 const socialImageUrl = new URL(social.src, Astro.site);
-const year = 2026;
+const currentPath = Astro.url.pathname.replace(/\/$/, "") || "/";
+const year = new Date().getFullYear();
 // Matches --bg in themes/ember.css, so the browser chrome is the same colour
 // as the page rather than a slightly bluer one.
 const themeColor = "#0a0a0b";
@@ -53,7 +57,7 @@ const favicon =
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
-    {[geistLatin, monoLatin, monoLatinMedium, handLatin].map((href) => (
+    {[geistLatin, monoLatin, monoLatinMedium, ...(handFont ? [handLatin] : [])].map((href) => (
       <link rel="preload" href={href} as="font" type="font/woff2" crossorigin />
     ))}
     <link rel="canonical" href={canonicalUrl} />
@@ -63,8 +67,8 @@ const favicon =
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={socialImageUrl} />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:image:width" content={String(social.attributes.width)} />
+    <meta property="og:image:height" content={String(social.attributes.height)} />
     <meta property="og:image:alt" content={meta.ogImageAlt} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
@@ -80,7 +84,7 @@ const favicon =
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
-    <div class:list={["page", pageClass]}>
+    <div class="page">
       <nav class="nav" aria-label="Primary">
         <div class="nav-inner container">
           <a href="/" class="nav-brand" aria-label={`${SITE_NAME} home`}>
@@ -88,7 +92,7 @@ const favicon =
             <span class="nav-brand-name">{SITE_NAME}</span>
           </a>
           <div class="nav-right">
-            {nav.map((item) => <a class="nav-link" href={item.href}>{item.label}</a>)}
+            {nav.map((item) => <a class="nav-link" href={item.href} aria-current={currentPath === item.href ? "page" : undefined}>{item.label}</a>)}
             <a class="nav-link" href={links.repository} target="_blank" rel="noopener noreferrer" aria-label={`${SITE_NAME} on GitHub`}>GitHub</a>
           </div>
         </div>
@@ -192,7 +196,8 @@ const favicon =
     align-items: center;
     gap: 0.4rem;
   }
-  .nav-link:hover {
+  .nav-link:hover,
+  .nav-link[aria-current="page"] {
     color: var(--fg);
   }
   .footer {

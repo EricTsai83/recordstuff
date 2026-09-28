@@ -1,16 +1,14 @@
 ---
-/** A titled page section with the eyebrow/heading pair used across the site. */
+/** A titled page section: the heading style shared across the site around a slot. */
 interface Props {
   id?: string;
   title: string;
-  narrow?: boolean;
-  class?: string;
 }
-const { id, title, narrow = false, class: className } = Astro.props;
+const { id, title } = Astro.props;
 ---
 
-<section id={id} class:list={["section", className]} aria-labelledby={id ? `${id}-title` : undefined} data-reveal>
-  <div class:list={["container", narrow && "container--narrow"]}>
+<section id={id} class="section" aria-labelledby={id ? `${id}-title` : undefined} data-reveal>
+  <div class="container">
     <header class="section-head">
       <h2 id={id ? `${id}-title` : undefined} class="section-title">{title}</h2>
     </header>

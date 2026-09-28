@@ -20,16 +20,12 @@
 import Landscape from "./scenes/FacetLandscape.astro";
 import { generateStars, starsToSvg } from "../lib/stars";
 
-interface Props {
-  class?: string;
-}
-const { class: className } = Astro.props;
 const stars = starsToSvg(generateStars({ width: 1600, skyBottom: 520, seed: 11 }));
 const savedFile = "2026-09-20 21-14-33.mp4";
 ---
 
 <svg
-  class:list={["ds", className]}
+  class="ds"
   viewBox="0 0 1600 900"
   role="img"
   aria-label="Animation: the pointer clicks the RecordStuff ring in the macOS menu bar, a stopwatch replaces it while a faint 3, 2, 1 counts down in the top-right corner of the screen, then a filled dot with REC beside it shows the recording, a callout says to click again to stop, the second click stops it and a notification says the recording was saved."
@@ -129,7 +125,7 @@ const savedFile = "2026-09-20 21-14-33.mp4";
     --story: 22.5s; /* 3 s idle, slow camera moves, a 3 s countdown, a 3 s beat to read the callout, a ~0.5 s beat before the notification, rest on the saved frame */
   }
   .ds :global(.st) {
-    fill: #fff;
+    fill: #e6ebf2;
     opacity: var(--o, 0.6);
   }
   .ds :global(.st-spark) {
@@ -144,16 +140,10 @@ const savedFile = "2026-09-20 21-14-33.mp4";
     transform-origin: 1600px 0px;
     animation: ds-camera var(--story) cubic-bezier(0.45, 0, 0.15, 1) infinite;
   }
-  .ds :global(.st) {
-    fill: #e6ebf2;
-  }
-  /* Ambient flicker runs a few cycles after load, then rests. */
+  /* Ambient flicker while the scene is on screen; [data-offscreen] pauses it with everything else. */
   .ds :global(.ds-flame) {
     transform-origin: 0 0;
     animation: ds-flicker 0.9s ease-in-out infinite alternate;
-  }
-  .ds :global(.ds-embers) {
-    animation: ds-embers 2.4s ease-out infinite both;
   }
   .ds-bar {
     fill: var(--ds-bar-bg);
@@ -361,17 +351,12 @@ const savedFile = "2026-09-20 21-14-33.mp4";
     from { transform: scale(1, 1); }
     to { transform: scale(0.94, 1.08); }
   }
-  @keyframes ds-embers {
-    from { transform: translateY(0); opacity: 1; }
-    to { transform: translateY(-40px); opacity: 0; }
-  }
   :global([data-offscreen] .ds *) {
     animation-play-state: paused !important;
   }
   @media (prefers-reduced-motion: reduce) {
     .ds-camera,
     .ds :global(.ds-flame),
-    .ds :global(.ds-embers),
     .ds-rs,
     .ds-rs-ring,
     .ds-rs-title,

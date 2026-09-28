@@ -1,4 +1,5 @@
 import { manifest, reverified } from "../lib/release.ts";
+import { DOWNLOAD_URL } from "../lib/site-origin.ts";
 
 /** Unverified previews never advertise a downloadable release to installed apps. */
 export function GET(): Response {
@@ -7,6 +8,6 @@ export function GET(): Response {
     platform: manifest.platform, architecture: manifest.architecture,
     dmg: manifest.dmg, publishedAt: manifest.publishedAt,
     releaseUrl: manifest.releaseUrl,
-    downloadUrl: "https://record.ericts.com/download",
+    downloadUrl: DOWNLOAD_URL,
   } : { error: "Release not re-verified; preview only" });
 }

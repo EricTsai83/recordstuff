@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { DOWNLOAD_URL, SITE_ORIGIN } from "../src/lib/site-origin.ts";
 const endpoint = new URL("../src/pages/release.json.ts", import.meta.url).href;
 const manifest = JSON.parse(await readFile(new URL("../release-manifest.json", import.meta.url), "utf8"));
 function response(verified: string | undefined) {
@@ -19,7 +20,9 @@ test("verified endpoint exposes the complete manifest feed", () => {
   const feed = response("1");
   assert.equal(feed.version, manifest.version);
   assert.deepEqual(feed.dmg, manifest.dmg);
-  assert.equal(feed.downloadUrl, "https://record.ericts.com/download");
+  assert.equal(feed.downloadUrl, DOWNLOAD_URL);
+  // The App checks this exact string (src/main/updates.ts), so it never follows SITE_URL.
+  assert.equal(DOWNLOAD_URL, `${SITE_ORIGIN}/download`);
 });
 test("unverified and false-flag previews never advertise a release", () => {
   for (const value of [undefined, "0", "true"]) {
