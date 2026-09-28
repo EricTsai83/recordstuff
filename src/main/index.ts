@@ -605,7 +605,7 @@ async function main(): Promise<void> {
         refreshUi();
         return;
       case "captureStarted": {
-        captureDegraded = event.capture.warnings.some(warning => /resolution cap|constrained frames|remeasure constrained/.test(warning));
+        captureDegraded = event.capture.capUnconfirmed === true;
         if (captureDegraded) tray.notifyCaptureWarning(captureWarning());
         displayMedia.failure = undefined;
         refreshUi();

@@ -547,8 +547,12 @@ export class Recorder {
       await this.deps.ensureWritableDir(dir);
       if (this.session !== session) return;
       if (this.deps.freeSpace) {
-        const free = await this.deps.freeSpace(dir);
-        if (free < this.health.diskStopBytes) throw Object.assign(new Error("Insufficient free space to begin recording"), { code: "disk_full" });
+        // Advisory, as during recording: a lookup that fails must not refuse a folder the probe just wrote to.
+        const free = await this.deps.freeSpace(dir).catch((cause: unknown) => {
+          this.deps.log(`recorder: session ${session.id} free-space check before start failed: ${messageOf(cause)}; starting without it`);
+          return undefined;
+        });
+        if (free !== undefined && free < this.health.diskStopBytes) throw Object.assign(new Error("Insufficient free space to begin recording"), { code: "disk_full" });
       }
       if (this.session !== session) return;
       session.writer = await this.openUniqueWriter(session, formatTimestamp(this.deps.now()));
@@ -639,6 +643,13 @@ export class Recorder {
     const session = this.session;
     if (message.type === "error") {
       if (session && !session.finalizing && (message.sessionId === undefined || message.sessionId === session.id)) {
+        // Sleep or quit already asked to cancel this attempt, and nothing was
+        // captured: the tracks ending on the way to sleep are not a failure.
+        if (session.cancelOnPrepared) {
+          this.deps.log(`recorder: session ${session.id} host reported ${message.code} after cancel (${session.cancelOnPrepared}) was requested: ${message.detail}`);
+          this.cancel(session, session.cancelOnPrepared);
+          return;
+        }
         let code = this.deps.mapHostError ? this.deps.mapHostError(message.code) : message.code;
         let detail = message.detail;
         // Nothing was recorded yet: a source that ended is a start failure.

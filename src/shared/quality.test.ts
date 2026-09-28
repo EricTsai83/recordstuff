@@ -114,6 +114,8 @@ describe("isCaptureReport", () => {
     expect(isCaptureReport({ ...report, width: 1920, height: 1080, frameRate: 59.94, sampleRate: 48_000, channelCount: 2 })).toBe(true);
     expect(isCaptureReport({ ...report, frameRate: null })).toBe(false);
     expect(isCaptureReport({ ...report, audioBitsPerSecond: Infinity })).toBe(false);
+    expect(isCaptureReport({ ...report, capUnconfirmed: true })).toBe(true);
+    expect(isCaptureReport({ ...report, capUnconfirmed: false })).toBe(false);
     expect(isCaptureReport({ videoBitsPerSecond: 1, audioBitsPerSecond: 1 })).toBe(false);
     expect(isCaptureReport(undefined)).toBe(false);
   });

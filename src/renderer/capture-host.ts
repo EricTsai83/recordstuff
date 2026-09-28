@@ -477,6 +477,7 @@ function finiteOrUndefined(value: unknown): number | undefined {
  */
 async function applyQuality(stream: MediaStream, quality: QualitySettings, measure: FrameSizeMeasurer): Promise<CaptureReport> {
   const warnings: string[] = [];
+  let capUnconfirmed = false;
   const video = stream.getVideoTracks()[0];
   const audio = stream.getAudioTracks()[0];
   const settings: MediaTrackSettings = video?.getSettings() ?? {};
@@ -509,19 +510,24 @@ async function applyQuality(stream: MediaStream, quality: QualitySettings, measu
         const settled = await measure(stream, { expect: target, timeoutMs: 1500 });
         if (!settled) {
           warnings.push(`could not remeasure constrained frames; reporting target ${target.width}x${target.height}`);
+          capUnconfirmed = true;
           actual = target;
         } else {
           if (settled.width !== target.width || settled.height !== target.height) {
             warnings.push(`constrained frames ${settled.width}x${settled.height} differ from target ${target.width}x${target.height}`);
           }
+          // Smaller frames still honour the cap; only larger ones break it.
+          if (settled.width > target.width || settled.height > target.height) capUnconfirmed = true;
           actual = settled;
         }
       } catch (cause) {
         warnings.push(`could not apply resolution cap ${quality.resolutionCap}; using source size: ${describe(cause)}`);
+        capUnconfirmed = true;
       }
     }
   } else if (!source) {
     warnings.push("video track has no dimensions; cannot apply resolution cap");
+    if (quality.resolutionCap !== "source") capUnconfirmed = true;
   }
   const encodeSize = actual ?? ASSUMED_SIZE;
   const audioSettings = audio?.getSettings() ?? {};
@@ -532,6 +538,7 @@ async function applyQuality(stream: MediaStream, quality: QualitySettings, measu
     videoBitsPerSecond: videoBitsPerSecond(encodeSize, quality.frameRate, quality.videoQuality),
     audioBitsPerSecond: AUDIO_BITS_PER_SECOND,
     warnings,
+    ...(capUnconfirmed ? { capUnconfirmed: true } : {}),
   };
   // Only fields we know; `undefined` must not travel as a key with exactOptionalPropertyTypes.
   if (actual) {

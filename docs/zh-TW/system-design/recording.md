@@ -30,7 +30,7 @@ stateDiagram-v2
 ## 開始流程
 
 1. `Recorder.start()` 確認 idle、沒有 session，執行 OS preflight；建立 session id、品質與倒數快照，進入 starting 狀態（tray 顯示沙漏）。
-2. `ensureWritableDir()` 只自動建立預設資料夾，自訂資料夾必須存在；實際寫入並刪除 probe，空間低於 200 MiB 時拒絕開始。不可用就報錯，不換到其他資料夾。
+2. `ensureWritableDir()` 只自動建立預設資料夾，自訂資料夾必須存在；實際寫入並刪除 probe，空間低於 200 MiB 時拒絕開始；查詢剩餘空間本身失敗時只記 log 並繼續開始，與錄影中的防護一致。不可用就報錯，不換到其他資料夾。
 3. 先寫入該 session 的中斷 sentinel 並記下暫存檔路徑，再以本地時間 `YYYY-MM-DD HH-mm-ss` 開啟 `.recording.mp4`。`wx` 防止同名暫存檔覆蓋；遇 EEXIST 時改寫 sentinel 並改試 `-2` 至 `-10`。檔名是按下開始當下的本地時間，因此有倒數時會比第一個影格早「準備時間加倒數」。
 4. 等待 host ready 並送 start。有倒數時此時就建立 overlay 視窗，讓第一個數字準時出現。Main 依保存的螢幕偏好選來源；主螢幕與指定螢幕都必須唯一、精確配對 id，列舉後重新確認拓樸，最多嘗試三次，並搭配 `audio: "loopback"`。
 5. Renderer 檢查 MP4 MIME、要求畫面與音訊；沒有音軌或音軌已 ended 就釋放 stream 並回錯誤。
@@ -155,7 +155,7 @@ FileWriter 限制已接受但尚未確認寫入的位元組數（`backlogBytes`�
 
 可用空間保護讀取輸出資料夾的 `fs.statfs`。低於停止門檻時要求正常停止，讓檔案在仍有空間時排空、sync 並發布；saved 事件帶有 `stoppedEarly: "lowDisk"`，log 會註明，存檔通知顯示「已儲存 {file}。磁碟空間即將用盡，已提前停止錄製」。這類錄影屬於成功，不進入失敗紀錄。若發布仍失敗，沿用一般失敗流程與部分檔保留。
 
-睡眠也用同樣的方式處理（plan 050）。從 `starting` 到狀態回到穩定之前，main 會持有一個類型為 `prevent-display-sleep` 的 `powerSaveBlocker`（[keep-awake.ts](../../../src/main/keep-awake.ts)），因此閒置造成的螢幕睡眠與系統睡眠不會結束擷取；每一條回到 idle 或 needsPermission 的路徑與 `will-quit` 都會釋放它，log 會記下每個 blocker。使用者要求的睡眠（Apple 選單 →「睡眠」、沒有外接螢幕時闔上筆電、電源鍵），以及低電量或過熱造成的睡眠都無法拒絕，擷取會在睡眠開始後約 150 ms 結束（035 的 N31）。所以 `powerMonitor` 的 `suspend` handler 只先設定 tray 的通知保留，接著在任何 log 之前呼叫 `Recorder.systemWillSleep()`，而 `stop()` 會在 `stopping` 狀態傳給訂閱者之前就把停止送到 host：錄影中時以 `stoppedEarly: "sleep"` 要求正常停止，擷取程序已經收到停止，之後軌道結束也會被忽略，因此檔案會像一般停止一樣發布，存檔通知顯示「已儲存 {file}。Mac 進入睡眠，已停止錄製。」；倒數中或仍在準備的嘗試以 `sleep` 為原因取消，已送出 `record` 的嘗試會在擷取開始後立刻停止。在 plan 050 的驗收中，macOS 在 `suspend` 約 5 秒後才進入睡眠，而存檔只花 13 ms，所以通常會在睡眠前完成；若 Mac 睡著時存檔仍在進行，會在醒來後完成，但計時器在睡眠期間照常計時，停止期限可能已經到期。若軌道先結束，就走一般的失敗流程。醒來後不會接續同一個檔案：`MediaRecorder` 無法替換軌道。Cap 則是把自己的擷取重建回同一段錄影，RecordStuff 的管線做不到。
+睡眠也用同樣的方式處理（plan 050）。從 `starting` 到狀態回到穩定之前，main 會持有一個類型為 `prevent-display-sleep` 的 `powerSaveBlocker`（[keep-awake.ts](../../../src/main/keep-awake.ts)），因此閒置造成的螢幕睡眠與系統睡眠不會結束擷取；每一條回到 idle 或 needsPermission 的路徑與 `will-quit` 都會釋放它，log 會記下每個 blocker。使用者要求的睡眠（Apple 選單 →「睡眠」、沒有外接螢幕時闔上筆電、電源鍵），以及低電量或過熱造成的睡眠都無法拒絕，擷取會在睡眠開始後約 150 ms 結束（035 的 N31）。所以 `powerMonitor` 的 `suspend` handler 只先設定 tray 的通知保留，接著在任何 log 之前呼叫 `Recorder.systemWillSleep()`，而 `stop()` 會在 `stopping` 狀態傳給訂閱者之前就把停止送到 host：錄影中時以 `stoppedEarly: "sleep"` 要求正常停止，擷取程序已經收到停止，之後軌道結束也會被忽略，因此檔案會像一般停止一樣發布，存檔通知顯示「已儲存 {file}。Mac 進入睡眠，已停止錄製。」；倒數中或仍在準備的嘗試以 `sleep` 為原因取消（已被睡眠或退出標記的嘗試在 `prepared` 前收到 host 錯誤時也會取消，因為尚未擷取任何內容），已送出 `record` 的嘗試會在擷取開始後立刻停止。在 plan 050 的驗收中，macOS 在 `suspend` 約 5 秒後才進入睡眠，而存檔只花 13 ms，所以通常會在睡眠前完成；若 Mac 睡著時存檔仍在進行，會在醒來後完成，但計時器在睡眠期間照常計時，停止期限可能已經到期。若軌道先結束，就走一般的失敗流程。醒來後不會接續同一個檔案：`MediaRecorder` 無法替換軌道。Cap 則是把自己的擷取重建回同一段錄影，RecordStuff 的管線做不到。
 
 Writer 在擷取請求前開啟，而擷取請求可能為了權限提示等待最多 120 秒，期間每 5 秒 sync。若該次嘗試隨後以泛用的 `capture_start_failed` 結束（首片期限、擷取請求逾時、host start 被拒，或 host 回報 capture_start_failed），失敗流程會先排空 writer 最多 2 秒；若 writer 已保留寫入或 sync 錯誤，就以該代碼（disk_full 或 output_write_failed）回報，沿用既有的資料夾／磁碟指引，detail 同時列出兩個原因。代碼在發布 pending 結果前決定，因此通知與紀錄一致。權限或缺少音訊等具體 host 原因維持原代碼；乾淨的 writer 維持 `capture_start_failed`。排空未能在上限內完成時也維持 `capture_start_failed`。
 
@@ -192,4 +192,4 @@ Main 的來源 handler 可記錄具體拒絕原因，取代 renderer 的泛用 A
 
 完整複製發佈前，先確認可用空間至少有整個錄影大小加 8 MiB。複製後的 open／sync／close 失敗會移除目的檔，保留原始錄影。成功發佈後先持久化 finalized-path checkpoint 再刪 sentinel；下次啟動遇到完成 checkpoint 不再誤報中斷。發佈與 checkpoint 之間的小型崩潰空窗無法證明完成，因此未完成 sentinel 明確說明完成狀態未知，可能已有正式檔。
 
-退出保護在第一次可互動的非同步等待之前安裝。媒體安全後，設定、視窗尺寸與 log 佇列最多等待五秒 flush；逾時延後退出並重新開放操作。解析度上限無法確認時會在設定與通知顯示，詳細擷取警告仍保留於 log。
+退出保護在第一次可互動的非同步等待之前安裝。媒體安全後，設定、視窗尺寸與 log 佇列最多等待五秒 flush；逾時延後退出並重新開放操作。解析度上限無法確認時會在設定與通知顯示，詳細擷取警告仍保留於 log。擷取程序只在錄影可能超過上限時於回報中標記（`capUnconfirmed`）：上限無法套用或無法重新量測，或限制後的畫面反而更大；比目標小的畫面只記警告。

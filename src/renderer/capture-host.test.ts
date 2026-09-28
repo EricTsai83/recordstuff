@@ -395,6 +395,7 @@ describe("renderer CaptureHost", () => {
     });
     const report = port.sent[0]!.type === "prepared" ? port.sent[0]!.capture : undefined;
     expect(report?.warnings[0]).toMatch(/1080p.*OverconstrainedError/);
+    expect(report?.capUnconfirmed).toBe(true);
   });
 
   it("sizes the cap from the frames, not from a track that reports the wrong height (the system design finding)", async () => {
@@ -443,6 +444,23 @@ describe("renderer CaptureHost", () => {
         warnings: ["constrained frames 1280x720 differ from target 1920x1080"],
       },
     });
+    // Smaller than the target still honours the cap: no "may use a larger size" warning.
+    const report = port.sent[0]!.type === "prepared" ? port.sent[0]!.capture : undefined;
+    expect(report).not.toHaveProperty("capUnconfirmed");
+  });
+
+  it("flags the cap as unconfirmed when the constrained frames come out larger than the target", async () => {
+    const sizes = [{ width: 3840, height: 2160 }, { width: 1920, height: 1200 }];
+    const port = boot({ measureFrameSize: async () => sizes.shift() });
+    port.receive(start("s1", { ...DEFAULT_QUALITY, resolutionCap: "1080p" }));
+    const s = stream();
+    s.tracks[0]!.settings = { width: 3840, height: 2160, frameRate: 30 };
+    pendingStream!.resolve(s);
+    await flush();
+    expect(port.sent[0]).toMatchObject({
+      type: "prepared",
+      capture: { width: 1920, height: 1200, capUnconfirmed: true, warnings: ["constrained frames 1920x1200 differ from target 1920x1080"] },
+    });
   });
 
   it("reports the target with a warning when the frames cannot be re-measured after the constraint", async () => {
@@ -455,7 +473,7 @@ describe("renderer CaptureHost", () => {
     await flush();
     expect(port.sent[0]).toMatchObject({
       type: "prepared",
-      capture: { width: 1920, height: 1080, videoBitsPerSecond: 8_100_000, warnings: ["could not remeasure constrained frames; reporting target 1920x1080"] },
+      capture: { width: 1920, height: 1080, videoBitsPerSecond: 8_100_000, capUnconfirmed: true, warnings: ["could not remeasure constrained frames; reporting target 1920x1080"] },
     });
   });
 

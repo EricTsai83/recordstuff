@@ -156,6 +156,12 @@ export interface CaptureReport {
   audioBitsPerSecond: number;
   /** Non-fatal problems while applying the settings (e.g. a rejected constraint). */
   warnings: string[];
+  /**
+   * The recording may exceed the requested resolution cap: the cap could not be
+   * applied or its result could not be measured, or the frames came out larger.
+   * Frames smaller than the target stay within the cap and only log a warning.
+   */
+  capUnconfirmed?: true;
 }
 
 function isOptionalFiniteNumber(value: unknown): value is number | undefined {
@@ -176,7 +182,8 @@ export function isCaptureReport(value: unknown): value is CaptureReport {
     typeof record["audioBitsPerSecond"] === "number" &&
     Number.isFinite(record["audioBitsPerSecond"]) &&
     Array.isArray(record["warnings"]) &&
-    record["warnings"].every((w) => typeof w === "string")
+    record["warnings"].every((w) => typeof w === "string") &&
+    (record["capUnconfirmed"] === undefined || record["capUnconfirmed"] === true)
   );
 }
 

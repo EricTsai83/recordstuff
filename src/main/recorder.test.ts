@@ -1783,6 +1783,21 @@ describe("disk headroom guard", () => {
     await flush();
     expect(ctx.events.at(-1)).toEqual({ type: "saved", path: "/out/2026-09-11 14-30-00.mp4", session: traced() });
   });
+
+  it("starts without the guard when the free-space lookup before start fails, instead of refusing the folder", async () => {
+    const log = vi.fn();
+    const freeSpace = vi.fn(async (): Promise<number> => { throw new Error("statfs unavailable"); });
+    const ctx = setup({ log, deps: { freeSpace } });
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "starting" });
+    expect(ctx.events.some((event) => event.type === "failed" || event.type === "failureStatus")).toBe(false);
+    expect(logged(log, "free-space check before start failed: statfs unavailable; starting without it")).toHaveLength(1);
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.recorder.state.type).toBe("recording");
+    expect(ctx.recorder.state).not.toHaveProperty("outputDirUnavailable");
+  });
 });
 
 describe("stalled capture guard", () => {
@@ -2250,6 +2265,22 @@ describe("Recorder countdown (plan 040)", () => {
       expect(ctx.host.recorded).toEqual([]);
       expect(ctx.events.filter((event) => event.type === "cancelled")).toEqual([{ type: "cancelled", reason: "sleep", session: traced() }]);
       expect(ctx.events.some((event) => event.type === "failed" || event.type === "saved")).toBe(false);
+    });
+
+    it("cancels, not fails, an attempt still preparing whose tracks end on the way to sleep", async () => {
+      for (const code of ["capture_start_failed", "no_audio_track"] as const) {
+        const ctx = counting(3);
+        ctx.recorder.toggle();
+        await flush();
+        ctx.recorder.systemWillSleep();
+        ctx.host.emit({ type: "error", sessionId: "s1", code, detail: "capture track ended while applying quality settings", displayFailure: "track_ended" });
+        await flush();
+        expect(ctx.recorder.state.type).toBe("idle");
+        expect(ctx.host.recorded).toEqual([]);
+        expect(ctx.events.filter((event) => event.type === "cancelled")).toEqual([{ type: "cancelled", reason: "sleep", session: traced() }]);
+        expect(ctx.events.some((event) => event.type === "failed" || event.type === "failureStatus" || event.type === "displayFailed")).toBe(false);
+        expect(ctx.logs).toContainEqual(expect.stringContaining(`host reported ${code} after cancel (sleep) was requested`));
+      }
     });
 
     it("does nothing while saving or without a session", async () => {
