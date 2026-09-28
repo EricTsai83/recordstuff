@@ -27,3 +27,15 @@ test("checks the selected deployment output, including nested page fragments", a
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("resolves sibling, parent, query and escaped-fragment links from their page", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "recordstuff-relative-links-"));
+  try {
+    await mkdir(path.join(dir, "guide"));
+    await writeFile(path.join(dir, "index.html"), '<h1 id="home">Home</h1>');
+    await writeFile(path.join(dir, "guide/index.html"), '<a href="../#home">Home</a><a href="next.html?x=1&amp;y=2#%E8%AA%AA%E6%98%8E">Next</a>');
+    await writeFile(path.join(dir, "guide/next.html"), '<h1 id="說明">Next</h1>');
+    const result = spawnSync(process.execPath, [checker, "--dir", dir, "--offline"], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

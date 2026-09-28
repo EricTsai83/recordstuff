@@ -74,16 +74,17 @@ for (const file of files) {
   );
   for (const ref of refs) {
     if (!ref || ref.startsWith("data:") || ref.startsWith("mailto:") || ref.startsWith("javascript:")) continue;
-    const onSite = ref.startsWith(`${siteOrigin}/`) ? ref.slice(siteOrigin.length) : ref;
-    if (/^https?:\/\//.test(onSite)) {
-      const pages = external.get(ref) ?? [];
+    const url = new URL(ref.replaceAll("&amp;", "&"), new URL(page, siteOrigin));
+    if (url.protocol !== "http:" && url.protocol !== "https:") continue;
+    if (url.origin !== siteOrigin) {
+      const pages = external.get(url.href) ?? [];
       pages.push(page);
-      external.set(ref, pages);
+      external.set(url.href, pages);
       continue;
     }
     internalCount += 1;
-    const [pathname, fragment] = onSite.split("#");
-    const targetPath = pathname === "" ? page : pathname;
+    const targetPath = url.pathname;
+    const fragment = decodeURIComponent(url.hash.slice(1));
     const resolved = await resolveInternal(targetPath);
     if (!resolved) {
       problems.push(`${page}: internal link ${ref} does not resolve in dist/`);
@@ -103,7 +104,9 @@ if (!offline) {
         if (response.status === 405 || response.status === 403) {
           response = await fetch(url, { method: "GET", redirect: "follow", signal: AbortSignal.timeout(15_000) });
         }
-        return { url, status: response.status };
+        const status = response.status;
+        await response.body?.cancel();
+        return { url, status };
       } catch (error) {
         return { url, status: 0, error: (error as Error).message };
       }

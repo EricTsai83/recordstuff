@@ -77,10 +77,7 @@ const favicon =
     <meta name="theme-color" content={themeColor} />
     <link rel="icon" type="image/svg+xml" href={favicon} />
     <title>{title}</title>
-    <script is:inline>
-      // Arms the block reveal before first paint; without scripting nothing hides.
-      document.documentElement.dataset.motion = "on";
-    </script>
+
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -134,7 +131,9 @@ const favicon =
             }),
           { rootMargin: "0px 0px -12% 0px" },
         );
+        // Hide only once the observer exists. A missing bundle leaves content visible.
         blocks.forEach((block) => observer.observe(block));
+        document.documentElement.dataset.motion = "on";
       } else {
         blocks.forEach(show);
       }

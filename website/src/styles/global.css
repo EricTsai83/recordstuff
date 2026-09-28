@@ -298,7 +298,7 @@ kbd {
 /*
  * Block reveal: a section arrives as one unit the moment it scrolls into view,
  * so attention moves block by block instead of trickling down the page at load.
- * Only hidden once the inline script in Layout.astro has set data-motion="on";
+ * Only hidden after Layout.astro installs its reveal observer and sets data-motion="on";
  * without scripting every block stays visible.
  */
 
