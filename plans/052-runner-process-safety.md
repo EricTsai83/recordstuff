@@ -2,7 +2,7 @@
 
 [English](052-runner-process-safety.md) | [繁體中文](052-runner-process-safety.zh-TW.md)
 
-Status: planned. Created: 2026-09-29. The only queue item. Execution order: see [queue](README.md#order-and-status).
+Status: planned. Created: 2026-09-29. First in the queue, before 053. Execution order: see [queue](README.md#order-and-status).
 
 ## Purpose and boundary
 

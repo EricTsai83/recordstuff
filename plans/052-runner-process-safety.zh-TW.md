@@ -2,7 +2,7 @@
 
 [English](052-runner-process-safety.md) | [繁體中文](052-runner-process-safety.zh-TW.md)
 
-狀態：已規劃。建立日期：2026-09-29。目前佇列唯一的一項。執行順序：見[佇列](README.zh-TW.md#順序與狀態)。
+狀態：已規劃。建立日期：2026-09-29。佇列第一項，排在 053 之前。執行順序：見[佇列](README.zh-TW.md#順序與狀態)。
 
 ## 目的與範圍
 
