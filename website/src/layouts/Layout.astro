@@ -33,12 +33,14 @@ const nav = [
   { href: "/help", label: "Help" },
   { href: "/support", label: "Support" },
 ];
-const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
+// The directory build serves `/download/`, but every link, the app's download
+// URL included, uses `/download`; canonical and og:url name that same form.
+const currentPath = Astro.url.pathname.replace(/\/$/, "") || "/";
+const canonicalUrl = new URL(currentPath, Astro.site);
 // Asked for 1200×630; the meta tags below report what was actually produced,
 // since an asset smaller than that is never upscaled.
 const social = await getImage({ src: ogSource, width: 1200, height: 630, fit: "cover", format: "png" });
 const socialImageUrl = new URL(social.src, Astro.site);
-const currentPath = Astro.url.pathname.replace(/\/$/, "") || "/";
 const year = new Date().getFullYear();
 // Matches --bg in themes/ember.css, so the browser chrome is the same colour
 // as the page rather than a slightly bluer one.
