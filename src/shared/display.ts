@@ -12,7 +12,7 @@ export interface DisplayInfo {
   primary: boolean;
 }
 export type DisplayFailure = "target_missing" | "source_missing" | "topology_changed" | "target_removed" | "track_ended";
-export function isDisplayId(value: unknown): value is string {
+function isDisplayId(value: unknown): value is string {
   return typeof value === "string" && /^(0|[1-9]\d*)$/.test(value) && Number.isSafeInteger(Number(value));
 }
 export function isDisplayPreference(value: unknown): value is DisplayPreference {

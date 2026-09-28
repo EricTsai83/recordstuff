@@ -8,7 +8,7 @@
  * built but left inactive, and `prepared` reports it. Encoding begins at
  * `record`, so main can count down between the two without capturing.
  */
-import { CHUNK_INTERVAL_MS, OUTPUT_MIME_TYPE, isMainMessage, type HostMessage } from "../shared/protocol";
+import { CAPTURE_HOST_PORT_CHANNEL, CHUNK_INTERVAL_MS, OUTPUT_MIME_TYPE, isMainMessage, type HostMessage } from "../shared/protocol";
 import {
   AUDIO_BITS_PER_SECOND,
   fitWithinCap,
@@ -573,7 +573,7 @@ function classifyGetDisplayMediaError(cause: unknown): ErrorCode {
 
 if (typeof window !== "undefined") {
   window.addEventListener("message", (event) => {
-    if (event.source !== window || event.data !== "capture-host-port") return;
+    if (event.source !== window || event.data !== CAPTURE_HOST_PORT_CHANNEL) return;
     const [port] = event.ports;
     if (!port) return;
     new CaptureHost(port);

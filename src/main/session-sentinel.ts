@@ -123,7 +123,7 @@ export class SessionSentinels {
 }
 
 /** Launch-time evidence as one failure-history entry. The ID is derived from the session, so a retried launch cannot add it twice. */
-export function interruptionFailure(sentinel: SessionSentinel): RecordingFailure {
+function interruptionFailure(sentinel: SessionSentinel): RecordingFailure {
   return {
     id: `interrupted-${sentinel.sessionId}`,
     occurredAt: sentinel.startedAt,

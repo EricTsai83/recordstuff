@@ -11,7 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
+const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 export const DEFAULT_KEEP = 3;
 
 export interface FileLoggerOptions {
@@ -48,7 +48,7 @@ export async function rotateLog(filePath: string, keep: number): Promise<void> {
   }
 }
 
-export function formatLine(message: string, now: Date): string {
+function formatLine(message: string, now: Date): string {
   return `[${now.toISOString()}] ${message}`;
 }
 

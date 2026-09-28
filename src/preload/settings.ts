@@ -6,6 +6,8 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { SettingsBridge, SettingsView } from "../shared/settings-panel";
 
+// Literal copies of `SETTINGS_CHANNELS` (channels.test.ts): a sandboxed preload imports nothing at runtime.
+
 const bridge: SettingsBridge = {
   capture: (armed) => ipcRenderer.invoke("settings:capture", armed),
   read: () => ipcRenderer.invoke("settings:read"),

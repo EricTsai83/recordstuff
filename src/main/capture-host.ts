@@ -11,7 +11,7 @@
  * `render-process-gone`.
  */
 import { BrowserWindow, MessageChannelMain, type WebFrameMain, type MessagePortMain } from "electron";
-import { isHostMessage, type HostMessage, type MainMessage } from "../shared/protocol";
+import { CAPTURE_HOST_PORT_CHANNEL, isHostMessage, type HostMessage, type MainMessage } from "../shared/protocol";
 import type { QualitySettings } from "../shared/quality";
 import type { RecorderHost } from "./recorder";
 
@@ -166,7 +166,7 @@ export class CaptureHost implements RecorderHost {
       // The deadline and teardown must also interrupt a page load that never settles.
       await Promise.race([loaded, readyReceived]);
       if (this.window !== window) throw new Error("capture host was torn down during page load");
-      window.webContents.postMessage("capture-host-port", null, [port2]);
+      window.webContents.postMessage(CAPTURE_HOST_PORT_CHANNEL, null, [port2]);
       await readyReceived;
     } finally {
       if (readyTimer) clearTimeout(readyTimer);

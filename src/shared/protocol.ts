@@ -12,6 +12,13 @@ export const OUTPUT_MIME_TYPE = "video/mp4;codecs=avc1,mp4a.40.2";
 /** Nominal MediaRecorder slice/keyframe interval; actual delivery can be delayed. */
 export const CHUNK_INTERVAL_MS = 1000;
 
+/**
+ * Main hands the capture page its MessagePort on this channel, and the preload
+ * forwards it to the page as this message; the preload keeps its own copy
+ * because a sandboxed preload imports nothing at runtime (src/preload/channels.test.ts).
+ */
+export const CAPTURE_HOST_PORT_CHANNEL = "capture-host-port";
+
 export type MainMessage =
   /**
    * Prepare capture: stream, checks, quality and an inactive MediaRecorder.

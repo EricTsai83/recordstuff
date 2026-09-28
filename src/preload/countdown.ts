@@ -6,7 +6,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { CountdownBridge, CountdownValue } from "../shared/countdown";
 
-/** Kept in step with `COUNTDOWN_VALUE_CHANNEL`; a sandboxed preload imports nothing at runtime. */
+/** Kept in step with `COUNTDOWN_VALUE_CHANNEL` (channels.test.ts); a sandboxed preload imports nothing at runtime. */
 const CHANNEL = "countdown:value";
 
 const bridge: CountdownBridge = {

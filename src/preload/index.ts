@@ -9,6 +9,7 @@ declare const window: {
   postMessage(message: unknown, targetOrigin: string, transfer?: readonly unknown[]): void;
 };
 
+// Literal copies of `CAPTURE_HOST_PORT_CHANNEL` (channels.test.ts): a sandboxed preload imports nothing at runtime.
 ipcRenderer.on("capture-host-port", (event) => {
   // `window.postMessage` from the isolated world is delivered to the page's
   // `message` event; the port is transferred, not copied.

@@ -35,10 +35,10 @@
  */
 import { app, desktopCapturer, shell, systemPreferences } from "electron";
 
-export const SCREEN_CAPTURE_SETTINGS_URL =
+const SCREEN_CAPTURE_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
 
-export function screenCaptureGranted(): boolean {
+function screenCaptureGranted(): boolean {
   return systemPreferences.getMediaAccessStatus("screen") === "granted";
 }
 
@@ -51,7 +51,7 @@ export function openScreenCaptureSettings(): Promise<void> {
  * covers microphone, camera and screen only — so the app never mirrors it.
  * This is the recovery path the settings panel offers instead.
  */
-export const NOTIFICATION_SETTINGS_URL =
+const NOTIFICATION_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.Notifications-Settings.extension";
 
 export function openNotificationSettings(): Promise<void> {
@@ -59,7 +59,7 @@ export function openNotificationSettings(): Promise<void> {
 }
 
 /** Number of screens capture can currently see; throws when macOS refuses. */
-export async function countCapturableScreens(): Promise<number> {
+async function countCapturableScreens(): Promise<number> {
   const sources = await desktopCapturer.getSources({
     types: ["screen"],
     thumbnailSize: { width: 0, height: 0 },

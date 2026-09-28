@@ -115,7 +115,7 @@ export function fitWithinCap(source: Dimensions, cap: ResolutionCap): Dimensions
  * target (31 Mbps for 16.2). The values are kept; whether they *look* right
  * is the subjective comparison tracked in docs/verification/measurements/.
  */
-export const BITS_PER_PIXEL: Record<VideoQuality, number> = {
+const BITS_PER_PIXEL: Record<VideoQuality, number> = {
   economy: 0.07,
   standard: 0.13,
   high: 0.24,
