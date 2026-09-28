@@ -1902,6 +1902,22 @@ describe("interruption sentinel lifecycle", () => {
     expect(store.files.size).toBe(0);
   });
 
+  it("isolates a throwing subscriber: the others still hear the failure and the sentinel is still removed", async () => {
+    const store = sentinels();
+    const logs: string[] = [];
+    const ctx = setup({ log: (m) => logs.push(m), deps: { sentinels: store } });
+    ctx.recorder.subscribe((event) => { if (event.type === "failed" || event.type === "state") throw new Error("tray broke"); });
+    const later: string[] = [];
+    ctx.recorder.subscribe((event) => { later.push(event.type); });
+    await startRecording(ctx);
+    ctx.host.crash();
+    await flush();
+    expect(later).toContain("failed");
+    expect(ctx.recorder.state.type).toBe("idle");
+    expect(store.calls).toEqual(["write 2026-09-11 14-30-00.recording.mp4", "remove s1"]);
+    expect(logs).toContainEqual("recorder: failed subscriber failed: tray broke");
+  });
+
   it("removes a sentinel whose late writer opened after the opening deadline", async () => {
     const store = sentinels();
     let open!: (writer: FakeWriter) => void;
@@ -2281,6 +2297,38 @@ describe("Recorder countdown (plan 040)", () => {
         expect(ctx.events.some((event) => event.type === "failed" || event.type === "failureStatus" || event.type === "displayFailed")).toBe(false);
         expect(ctx.logs).toContainEqual(expect.stringContaining(`host reported ${code} after cancel (sleep) was requested`));
       }
+    });
+
+    it("cancels, not fails, a marked attempt that times out, loses its host or its display before prepared", async () => {
+      const triggers: Array<[string, "sleep" | "quit", (ctx: ReturnType<typeof counting>) => Promise<unknown> | void, string]> = [
+        ["capture request timeout", "sleep", () => vi.advanceTimersByTimeAsync(8000), "capture request timed out"],
+        ["host crash", "sleep", (ctx) => ctx.host.crash(), "capture_host_crashed after cancel (sleep) was requested: killed"],
+        ["unresponsive host", "sleep", (ctx) => ctx.host.hang(), "capture_host_unresponsive"],
+        ["display removal", "sleep", (ctx) => ctx.recorder.displayRemoved(), "recording display removed"],
+        ["capture request timeout after a deferred quit", "quit", () => vi.advanceTimersByTimeAsync(8000), "capture request timed out after cancel (quit)"],
+      ];
+      for (const [name, reason, trigger, logged] of triggers) {
+        const ctx = counting(3);
+        ctx.recorder.toggle();
+        await flush();
+        if (reason === "sleep") ctx.recorder.systemWillSleep();
+        else void ctx.recorder.shutdown();
+        await trigger(ctx);
+        await flush();
+        expect(ctx.recorder.state.type, name).toBe("idle");
+        expect(ctx.host.recorded, name).toEqual([]);
+        expect(ctx.events.filter((event) => event.type === "cancelled"), name).toEqual([{ type: "cancelled", reason, session: traced() }]);
+        expect(ctx.events.some((event) => event.type === "failed" || event.type === "failureStatus" || event.type === "displayFailed"), name).toBe(false);
+        expect(ctx.logs, name).toContainEqual(expect.stringContaining(logged));
+      }
+    });
+
+    it("still fails an unmarked attempt whose capture request times out", async () => {
+      const ctx = counting(3);
+      ctx.recorder.toggle();
+      await flush();
+      await vi.advanceTimersByTimeAsync(8000);
+      expect(ctx.events.filter((event) => event.type === "failed").map((event) => event.type === "failed" && event.code)).toEqual(["capture_start_failed"]);
     });
 
     it("does nothing while saving or without a session", async () => {

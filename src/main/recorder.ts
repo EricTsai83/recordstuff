@@ -206,7 +206,11 @@ interface Session {
   recordSentAt?: number;
   stopRequestedAt?: number;
   hostStoppedAt?: number;
-  /** `stopped` arrived and the writer is being finished; a hard cap must not call this a failure. */
+  /**
+   * `stopped` arrived and the finalizer owns the attempt: late host errors and
+   * loss, a duplicate `stopped`, chunks and display removal are ignored; only
+   * a disk error from the writer can still fail it.
+   */
   finalizing: boolean;
   stopOnStart: boolean;
   /** A nonempty chunk arrived; empty chunks neither satisfy the first-media deadline nor count as media. */
@@ -248,7 +252,7 @@ export function formatTimestamp(date: Date): string {
   );
 }
 
-export function errorCodeOf(cause: unknown, fallback: ErrorCode): ErrorCode {
+function errorCodeOf(cause: unknown, fallback: ErrorCode): ErrorCode {
   if (typeof cause === "object" && cause !== null && "code" in cause) {
     const code = (cause as { code: unknown }).code;
     if (isErrorCode(code)) return code;
@@ -560,6 +564,7 @@ export class Recorder {
     this.deps.onSessionStart?.(session.id);
     this.setState({ type: "starting" });
     session.timer = setTimeout(() => {
+      if (this.cancelMarked(session, "opening the folder timed out")) return;
       void this.fail(session.id, "output_open_failed", `opening ${dir} did not finish within ${this.deps.startTimeoutMs} ms`,
         { outputDirUnavailable: true });
     }, this.deps.startTimeoutMs);
@@ -584,6 +589,7 @@ export class Recorder {
     // Bounds `start → prepared`: permission prompts, missing audio, unsupported
     // MP4 and display errors all surface here, before any countdown.
     session.timer = setTimeout(() => {
+      if (this.cancelMarked(session, "capture request timed out")) return;
       void this.fail(session.id, "capture_start_failed", "screen/audio capture request timed out; complete system permission prompts and retry");
     }, this.deps.captureRequestTimeoutMs);
     if (session.countdownSeconds > 0 && this.deps.countdown) {
@@ -593,8 +599,24 @@ export class Recorder {
     try {
       await this.deps.host.start(session.id, session.quality);
     } catch (cause) {
+      if (this.cancelMarked(session, "capture request failed", messageOf(cause))) return;
       await this.fail(session.id, "capture_start_failed", messageOf(cause));
     }
+  }
+
+  /**
+   * Sleep or quit already asked to cancel this attempt before `prepared`, and
+   * nothing was captured, so whatever ends it now (a host error or loss, a
+   * removed display, a timed-out or refused request) is that cancel, not a
+   * failure: the tracks and timers of a Mac going to sleep are not a fault.
+   * The mark exists only while opening or preparing; `prepared` consumes it.
+   */
+  private cancelMarked(session: Session, cause: string, detail?: string): boolean {
+    const reason = session.cancelOnPrepared;
+    if (!reason || this.session !== session) return false;
+    this.deps.log(`recorder: session ${session.id} ${cause} after cancel (${reason}) was requested${detail === undefined ? "" : `: ${detail}`}`);
+    this.cancel(session, reason);
+    return true;
   }
 
   /**
@@ -643,13 +665,7 @@ export class Recorder {
     const session = this.session;
     if (message.type === "error") {
       if (session && !session.finalizing && (message.sessionId === undefined || message.sessionId === session.id)) {
-        // Sleep or quit already asked to cancel this attempt, and nothing was
-        // captured: the tracks ending on the way to sleep are not a failure.
-        if (session.cancelOnPrepared) {
-          this.deps.log(`recorder: session ${session.id} host reported ${message.code} after cancel (${session.cancelOnPrepared}) was requested: ${message.detail}`);
-          this.cancel(session, session.cancelOnPrepared);
-          return;
-        }
+        if (this.cancelMarked(session, `host reported ${message.code}`, message.detail)) return;
         let code = this.deps.mapHostError ? this.deps.mapHostError(message.code) : message.code;
         let detail = message.detail;
         // Nothing was recorded yet: a source that ended is a start failure.
@@ -1020,6 +1036,7 @@ export class Recorder {
   displayRemoved(): void {
     const session = this.session;
     if (session && !session.finalizing) {
+      if (this.cancelMarked(session, "recording display removed")) return;
       this.emit({ type: "displayFailed", detail: "target_removed" });
       const phase = BEFORE_CAPTURE[session.phase];
       if (phase) void this.fail(session.id, "capture_start_failed", `recording display removed (while ${phase})`);
@@ -1033,6 +1050,7 @@ export class Recorder {
   ): void {
     const session = this.session;
     if (!session || session.finalizing) return;
+    if (this.cancelMarked(session, code, detail)) return;
     // Before `record` nothing was captured: a lost host is a start failure.
     const phase = BEFORE_CAPTURE[session.phase];
     if (phase) void this.fail(session.id, "capture_start_failed", `${code === "capture_host_crashed" ? "capture host crashed" : "capture host stopped responding"}: ${detail} (while ${phase})`);
@@ -1140,8 +1158,16 @@ export class Recorder {
     this.emit({ type: "state", state });
   }
 
+  /**
+   * A throwing subscriber is logged and skipped: it must not keep the others
+   * from the event, nor abort the recorder's own work after the emit, such as
+   * removing the session's sentinel or arming the next deadline.
+   */
   private emit(event: RecorderEvent): void {
-    for (const listener of this.listeners) listener(event);
+    for (const listener of this.listeners) {
+      try { listener(event); }
+      catch (cause) { this.deps.log(`recorder: ${event.type} subscriber failed: ${messageOf(cause)}`); }
+    }
   }
 
 }
