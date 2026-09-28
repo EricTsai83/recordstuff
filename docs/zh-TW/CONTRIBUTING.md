@@ -61,7 +61,7 @@ App 文案位於 `src/shared/i18n.ts`。新增或修改文案時，同步更新�
 | 錄製行為 | `pnpm check`，再用新 `pnpm start:app` 產物執行[錄影 smoke 案例](acceptance.md)。`pnpm acceptance` 自動開始／停止／存檔／verify，播放另行觀察 |
 | 網站 | `pnpm site:check`；視覺修改檢視受影響頁面 |
 
-每次修改都執行 `git diff --check`。開發中可按需單獨執行 `pnpm typecheck`、`pnpm test` 或 `pnpm build`；最終版本已被成功組合指令涵蓋的檢查不重跑。
+每次修改都執行 `git diff --check`。開發中可按需單獨執行 `pnpm typecheck`、`pnpm test` 或 `pnpm build`；最終版本已被成功組合指令涵蓋的檢查不重跑。每次推送到 main 與每個 pull request，GitHub Actions 都會執行 `pnpm check`（[check.yml](../../.github/workflows/check.yml)）：在打 release tag 之前先攔下型別、測試或建置的錯誤，但不證明擷取可用。
 
 [驗收指南](acceptance.md)定義共用案例、收尾及報告；[工具指南](system-design/tooling.md)說明簽章、FFmpeg／ffprobe、媒體分析與專用 runner。完整 App 驗收保存錄影、還原設定並確認退出後，讓受測 App 保持關閉。開發期間已授權按需停止錄影、退出、重啟或重建 RecordStuff，不需另行確認。
 

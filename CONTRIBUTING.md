@@ -64,7 +64,7 @@ Use the [shared testing policy](docs/testing.md) to select checks by behavior, i
 | Recording behavior | `pnpm check`, then a fresh `pnpm start:app` bundle and the [recording smoke cases](docs/acceptance.md). `pnpm acceptance` automates start/stop/save/verify; observe playback separately |
 | Website | `pnpm site:check`; inspect affected pages for visual edits |
 
-Run `git diff --check` for every change. During development, use `pnpm typecheck`, `pnpm test` or `pnpm build` separately as useful; do not repeat checks already covered by a successful composite command on the final revision.
+Run `git diff --check` for every change. During development, use `pnpm typecheck`, `pnpm test` or `pnpm build` separately as useful; do not repeat checks already covered by a successful composite command on the final revision. GitHub Actions runs `pnpm check` on every push to main and every pull request ([check.yml](.github/workflows/check.yml)); it catches a broken type, test or build before a release tag does, and proves nothing about capture.
 
 The [acceptance guide](docs/acceptance.md) defines shared cases, cleanup and reporting. The [tooling guide](docs/system-design/tooling.md) covers signing, FFmpeg/ffprobe, media analysis and specialized runners. Complete app rounds leave the tested app closed after saving, restoring settings and confirming exit. During development, stopping recordings and quitting/restarting/rebuilding RecordStuff as needed is authorized without additional confirmation.
 
