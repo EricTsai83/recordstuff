@@ -63,6 +63,12 @@ Before a desktop round, identify its owner, checkout/artifact and intended cases
 
 On macOS, every runner that records the display or depends on real windows, focus, banners or native dialogs first declares user activity (waking a display that idled off) and then holds a display/idle-sleep assertion for its own lifetime, because synthetic input does not reset the idle timer. A password-locked session is never bypassed: a round that starts locked stops before launching or sending keys, and a lock seen during the round makes its result **blocked** (exit code 2) even if its cases passed. Unlock and rerun; do not count such a round as pass or fail. A manual lock, closed lid or managed policy can still interrupt a round.
 
+### Confirm desktop handoff before testing
+
+Before taking over the shared desktop for a test, tell the user which cases will run and that the test may move the pointer, send keys, change focus or record the screen/audio. Ask for an explicit readiness reply, for example: “Please pause your keyboard and mouse use. Reply ‘好了’ when you are ready for me to start.” Then stop output and yield the turn; do not launch desktop test runners, activate apps or send input until that reply arrives. A fixed delay, silence, a progress message or general authorization to test is not a readiness reply. This handoff coordinates desktop use; it does not require renewed approval for already-authorized app changes.
+
+One reply covers the stated uninterrupted test round, including its cleanup. If control has been returned to the user or they ask to pause, stop desktop interaction and obtain a new readiness reply before taking over again. State when cleanup is complete and the user can resume. Record the readiness reply and tested scope in the acceptance evidence. File reads, code edits and checks that do not use the desktop do not require this handoff.
+
 ## Report the selected scope
 
 For ordinary edits, include a compact final summary: affected behavior; checks and results; omitted checks with scope reasons; required-but-unverified cases and blockers. Do not create a permanent test report for every documentation edit. For native/recording runs, use the [acceptance report template](acceptance.md#report-template) and preserve the runner's evidence. These same rules apply to humans and LLMs; agent-specific tool operation belongs in skills.

@@ -15,6 +15,7 @@
 - RecordStuff runs in the menu bar without a normal main window; do not treat the absence of a window as a launch failure.
 - During development, you may stop recordings and quit, restart or rebuild RecordStuff as needed without asking for confirmation. The development app is available for testing; do not treat possible active use as a blocker.
 - After each complete app acceptance round, including failures or interruption, restore changed settings, close test UI, quit the tested app normally, and confirm its processes have exited. Leave it closed for the next run or rebuild. Report incomplete cleanup as a failure or blocker; unit checks and intermediate UI-entry commands do not close unrelated apps.
+- Before a desktop test takes control, follow the [readiness handoff](docs/testing.md#confirm-desktop-handoff-before-testing): explain the scope, ask the user to reply “好了”, then stop output and wait for that reply before desktop interaction. A fixed delay is not confirmation; this handoff is separate from authorization to change or restart the app.
 - For native UI acceptance, use the project [computer-use acceptance skill](.agents/skills/astra-acceptance-with-computer-use/SKILL.md). Build and signing details belong in the [tooling guide](docs/system-design/tooling.md).
 
 ## Task-specific references
