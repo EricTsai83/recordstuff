@@ -157,6 +157,8 @@ export function configureControlled(dir: string) {
       const native = (next.tray as unknown as { tray: Electron.Tray }).tray;
       const setToolTip = native.setToolTip.bind(native);
       native.setToolTip = (text: string): void => { tooltip = `${CONTROLLED_LABEL}\n${text}`; setToolTip(tooltip); };
+      // The tray skips a tooltip it already set, so forget it: this refresh must pass it through the wrapper.
+      (next.tray as unknown as { currentTooltip: string | undefined }).currentTooltip = undefined;
       next.tray.refresh();
       next.recorder.subscribe(event => {
         if (event.type === "state") note("state", { state: event.state.type });
