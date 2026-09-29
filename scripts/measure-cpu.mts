@@ -31,14 +31,14 @@
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings } from "./lib/runner-env.mts";
-import { recordStuffPids } from "./lib/processes.mts";
+import { escapeRegExp, pgrepPids, recordStuffPids, signalPids } from "./lib/processes.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { command, confirmedIdle, settleRecording, waitForLog } from "./lib/acceptance-runtime.mts";
-import { acceleratorToKeystroke, currentRunId, keystrokeScript, materialOpenArgs, registeredAccelerator } from "./lib/acceptance.mts";
+import { acceleratorToKeystroke, createMaterialProfile, currentRunId, keystrokeScript, materialOpenArgs, registeredAccelerator, removeMaterialProfile } from "./lib/acceptance.mts";
 import {
   CpuSampler, ENCODER_SERVICE, IDLE_ROLES, SamplerBlockedError, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgeRecording, judgeRoles, judgeSettingsOpen,
   judgeSteadyState, machineModel, percentile, readRoles, roleText, summarize, type RoleCounts, type Summary, type Verdict,
@@ -208,7 +208,9 @@ async function main(): Promise<number> {
   let runError: unknown;
   let sampler: CpuSampler | undefined;
   let material: ChildProcess | undefined;
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-cpu-material-"));
+  const profile = createMaterialProfile("cpu");
+  /** The material browser's processes; the profile path is escaped, so a `TMPDIR` with regex characters matches itself. */
+  const materialPids = (): number[] => pgrepPids(escapeRegExp(profile));
   /** The recording in flight: its log cursor from before the start key and whether the stop key went out. */
   let active: { from: LogCursor; stopSent: boolean } | undefined;
   let recordingKey = "";
@@ -229,9 +231,9 @@ async function main(): Promise<number> {
     // `open` returns once Launch Services started Chrome; before that pkill could find nothing.
     if (launcher.exitCode === null && launcher.signalCode === null) await Promise.race([new Promise((resolve) => launcher.once("exit", resolve)), delay(10_000)]);
     for (let attempt = 0; attempt < 40; attempt += 1) {
-      spawnSync("pkill", ["-f", profile]);
+      signalPids(materialPids(), "SIGTERM");
       await delay(250);
-      if (spawnSync("pgrep", ["-f", profile]).status === 1) { material = undefined; return undefined; }
+      if (materialPids().length === 0) { material = undefined; return undefined; }
     }
     return `the material browser (private profile ${profile}) is still running`;
   };
@@ -365,9 +367,14 @@ async function main(): Promise<number> {
         cleanup.push(outcome.neverStarted ? "the interrupted recording never started" : outcome.saved ? `stopped the interrupted recording: saved ${outcome.saved}` : "stopped the interrupted recording: it failed");
       }
     } catch (error) { cleanup.push(`could not stop the recording: ${String(error)}`); }
-    const materialProblem = await closeMaterial();
+    // Nothing here may throw past the settings restore below.
+    const materialProblem = await closeMaterial().catch((error: unknown) => `the material browser: ${String(error)}`);
     if (materialProblem) cleanup.push(`could not close ${materialProblem}`);
-    else fs.rmSync(profile, { recursive: true, force: true });
+    else {
+      const problem = await removeMaterialProfile(profile);
+      // Worded for the exit code's cleanup check below: a profile left behind is incomplete cleanup.
+      if (problem) cleanup.push(`could not remove the material profile: ${problem}`);
+    }
     await sampler?.stop();
     try { await quitApp(); } catch (error) { cleanup.push(String(error)); }
     const problem = restoreSettings();

@@ -155,13 +155,19 @@ function stillRunning(): string[] {
   return left;
 }
 
+let cleaning: Promise<string[]> | undefined;
 /**
  * Idempotent; waits up to 10 s for the material launch to settle and up to
  * 5 s for the owned processes to exit, removes the material profile once its
  * browser is gone and returns anything still running. Rejects when `pgrep` fails, because nothing then proves the
  * round's processes exited.
  */
-async function cleanup(): Promise<string[]> {
+function cleanup(): Promise<string[]> {
+  // A signal during the round's own cleanup joins it instead of starting a second one.
+  cleaning ??= cleanupOnce();
+  return cleaning;
+}
+async function cleanupOnce(): Promise<string[]> {
   await stopGroup(owned.build?.pid);
   stopBusy();
   stopFixture();

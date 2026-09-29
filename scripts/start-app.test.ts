@@ -190,6 +190,12 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () =
     expectNoDelivery(invoke({ FAIL_COMMAND: command }));
   });
 
+  it("is not blocked by a process that only names this checkout's Electron in its arguments", () => {
+    const result = invoke({ RUNNING: "/usr/bin/tail -f {root}/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron" });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.commands.at(-1)?.name).toBe("open");
+  });
+
   it("opens verified outer and helper bundles, supports spaces, and excludes release credentials", () => {
     const result = invoke({ RUNNING: "/Applications/Other.app/Contents/MacOS/Electron" });
     expect(result.status, result.stderr).toBe(0);

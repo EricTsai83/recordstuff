@@ -257,7 +257,7 @@ async function verifyDmg(directory: string, tag: string, c: ReleaseContext = con
   if (process.platform !== 'darwin' || process.arch !== 'arm64') throw new Error('Release verification requires macOS arm64.');
   const file = expectedDmgName(c.version);
   const dmg = path.join(directory, file);
-  if (!statSync(dmg).isFile()) throw new Error('Missing DMG.');
+  if (!existsSync(dmg) || !statSync(dmg).isFile()) throw new Error(`Missing DMG: ${file}.`);
   run('hdiutil', ['verify', dmg]);
   const mount = mkdtempSync(path.join(tmpdir(), 'recordstuff-release-mount-'));
   let attached = false;
@@ -265,7 +265,8 @@ async function verifyDmg(directory: string, tag: string, c: ReleaseContext = con
     run('hdiutil', ['attach', '-readonly', '-nobrowse', '-noautoopen', '-mountpoint', mount, dmg]);
     attached = true;
     assertDmgContents(mount);
-    if (readlinkSync(path.join(mount, 'Applications')) !== '/Applications') throw new Error('Invalid Applications link.');
+    const applications = path.join(mount, 'Applications');
+    if (!lstatSync(applications).isSymbolicLink() || readlinkSync(applications) !== '/Applications') throw new Error('Invalid Applications link.');
     const app = path.join(mount, 'RecordStuff.app');
     if (run('plutil', ['-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', path.join(app, 'Contents/Info.plist')]) !== c.version) throw new Error('Packaged App version mismatch.');
     if (run('lipo', ['-archs', path.join(app, 'Contents/MacOS/RecordStuff')]) !== 'arm64') throw new Error('Packaged App architecture mismatch.');

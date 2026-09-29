@@ -72,7 +72,8 @@ function assertNotRunning() {
   // pnpm's symlink is resolved in the actual process command line.
   const electronPaths = [...new Set([electronPath, realpathSync(electronPath)])];
   const result = spawnSync("pgrep", ["-f",
-    `(^|/)RecordStuff\\.app/Contents/MacOS/RecordStuff($| )|(${electronPaths.map(escapeRegex).join("|")})($| )`,
+    // Anchored like `electronPattern` (lib/processes.mts): only a process running this executable, not one naming it.
+    `(^|/)RecordStuff\\.app/Contents/MacOS/RecordStuff($| )|^(${electronPaths.map(escapeRegex).join("|")})($| )`,
   ], { env, encoding: "utf8" });
   if (result.error || ![0, 1].includes(result.status)) throw new Error("Could not check for a running RecordStuff.app.");
   if (result.status === 0) {
