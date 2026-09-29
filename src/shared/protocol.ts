@@ -6,7 +6,7 @@
 import { isCaptureReport, isQualitySettings, type CaptureReport, type QualitySettings } from "./quality";
 import { isErrorCode, type ErrorCode } from "./state";
 
-/** MP4 (H.264 + AAC) is the only output the first version produces (ADR-3). */
+/** MP4 (H.264 + AAC) is the only output (docs/system-design/decisions.md, "H.264/AAC MP4"). */
 export const OUTPUT_MIME_TYPE = "video/mp4;codecs=avc1,mp4a.40.2";
 
 /** Nominal MediaRecorder slice/keyframe interval; actual delivery can be delayed. */

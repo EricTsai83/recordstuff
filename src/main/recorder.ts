@@ -326,7 +326,7 @@ export class Recorder {
   }
 
   /**
-   * Left click and the shortcut (ADR-7): start when idle, stop when
+   * Left click and the shortcut (plan 016, one action for both): start when idle, stop when
    * recording, cancel a countdown, else ignore.
    */
   toggle(): void {

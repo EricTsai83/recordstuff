@@ -1,10 +1,10 @@
-import { createPreferenceActions } from "./preferences";
 /**
  * App lifecycle (docs/system-design/recording.md): hide the Dock icon, create the tray, register
  * the display-media handler (primary display + system audio loopback), detect
  * permission, and make quitting wait for a running recording to finish.
  * Settings use a separate sandboxed window; capture keeps its hidden host.
  */
+import { createPreferenceActions } from "./preferences";
 import { createHistoryQuit, createQuitFeedback, type QuitDeferral } from "./quit-feedback";
 import { installQuitCoordinator } from "./quit-coordinator";
 import { RecordingResultStore } from "./recording-result-store";
@@ -107,9 +107,9 @@ function osSupported(): boolean {
 }
 
 /**
- * Windows may tuck the icon into the tray overflow, so the first launch shows
- * a hint notification (docs/system-design/recording.md). A marker file in userData records that it
- * was shown; settings.json stores user preferences independently.
+ * The first launch shows where the icon lives (docs/system-design/recording.md): a menu-bar
+ * icon is easy to miss, and Windows may tuck it into the tray overflow. A marker file in
+ * userData records that it was shown; settings.json stores user preferences independently.
  */
 async function isFirstRun(userDataDir: string): Promise<boolean> {
   try {
@@ -165,7 +165,7 @@ async function main(): Promise<void> {
       `quality ${JSON.stringify(settings.quality)}; log ${logPath}; ` +
       `packaged ${app.isPackaged}; executable ${process.execPath}`,
   );
-  // a development-only unattended run driven by an environment
+  // Autorecord: a development-only unattended run driven by an environment
   // variable; its quality and folder overrides live in memory only. Packaged builds
   // never read it (`parseAutoRecord` returns undefined).
   const autoRecord = parseAutoRecord(process.env["RECORDSTUFF_AUTORECORD"], app.isPackaged);
@@ -268,7 +268,7 @@ async function main(): Promise<void> {
   const settled = (): boolean => !quitRequested && preferencesUnlocked(recorder.state);
   const shortcuts = new AppShortcuts({
     globalShortcut, platform: process.platform, toggle, settled, store: settings, log,
-    openSettings: () => { void handleAction("openSettings"); },
+    openSettings: () => runAction("openSettings", "settings shortcut"),
     notifyRegistrationFailed: accelerator => tray.notifyHotkeyRegistrationFailed(accelerator),
     notifyWriteFailed: () => tray.notifyHotkeyWriteFailed(),
     refresh: () => refreshUi(),
@@ -340,12 +340,9 @@ async function main(): Promise<void> {
     revealSaved,
     permissionAction: () => {
       const state = recorder.state;
-      void handleAction(state.type === "needsPermission" ? state.needsRelaunch ? "relaunch" : "openPermissionSettings" : "openSettings");
+      runAction(state.type === "needsPermission" ? state.needsRelaunch ? "relaunch" : "openPermissionSettings" : "openSettings", "permission notification");
     },
-    // The tray has no reply channel, so a rejected action would otherwise only
-    // reach process-level `unhandledRejection`. Keep it attributable instead.
-    onAction: (action) => void handleAction(action).catch((cause: unknown) =>
-      log(`action ${JSON.stringify(action)} failed: ${String(cause)}`)),
+    onAction: (action) => runAction(action, "tray"),
     log,
   });
   /** The tray and the settings panel project the same state; they move together. */
@@ -372,6 +369,15 @@ async function main(): Promise<void> {
     chooseFolder: async () => { if (settled()) await changeOutputDir(); },
     log,
   });
+
+  /**
+   * For entry points with no reply channel (the tray, notifications, the Settings shortcut):
+   * a rejected action would otherwise only reach process-level `unhandledRejection`. Keep it attributable.
+   */
+  function runAction(action: AppAction, source: string): void {
+    void handleAction(action).catch((cause: unknown) =>
+      log(`${source}: action ${JSON.stringify(action)} failed: ${String(cause)}`));
+  }
 
   async function handleAction(action: AppAction): Promise<boolean | void> {
     if (quitRequested && action !== "quit") return false;
@@ -680,8 +686,6 @@ async function main(): Promise<void> {
     restore: interrupted => recordingResults.restore(file => fs.stat(file), refreshUi, interrupted),
     saved: ids => recordingResults.saved(ids),
   }, log).catch((cause: unknown) => log(`start: interruption check failed: ${String(cause)}`));
-  // Every platform: a menu-bar app is hard to find, and on macOS this is the
-  // one moment the notification authorization prompt can appear in context.
 
   if (autoRecord?.ok) {
     runAutoRecord(autoRecord.config, {
@@ -781,6 +785,8 @@ async function main(): Promise<void> {
     tray.destroy();
   });
 
+  // Every platform: a menu-bar app is hard to find, and on macOS this is the
+  // one moment the notification authorization prompt can appear in context.
   if (await isFirstRun(app.getPath("userData"))) {
     tray.notifyTrayHint();
   }

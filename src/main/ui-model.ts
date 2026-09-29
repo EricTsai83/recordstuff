@@ -1,6 +1,3 @@
-import type { RecordingResult } from "../shared/recording-result";
-import type { Appearance } from "../shared/appearance";
-import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../shared/display";
 /**
  * The vocabulary both user interfaces share (docs/system-design/desktop.md):
  * one action union and one read-only context snapshot.
@@ -11,12 +8,15 @@ import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../shared/d
  * other's menu. Every action either interface can raise ends at the single
  * handler in index.ts, which re-checks the recording state before acting.
  */
+import type { RecordingResult } from "../shared/recording-result";
+import type { Appearance } from "../shared/appearance";
+import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../shared/display";
 import type { Language } from "../shared/i18n";
 import type { QualitySettings } from "../shared/quality";
 import type { CountdownSeconds } from "../shared/countdown";
 import type { HotkeySettings } from "../shared/hotkey";
 import type { RecordingState } from "../shared/state";
-
+import type { SettingsHotkeyStatus } from "./settings-hotkey";
 import type { UpdateState } from "./updates";
 
 export const APP_NAME = "RecordStuff";
@@ -79,7 +79,7 @@ export interface AppContext {
   language: Language;
   appearance?: Appearance;
   hotkey: AppHotkey;
-  settingsShortcut?: import("./settings-hotkey").SettingsHotkeyStatus;
+  settingsShortcut?: SettingsHotkeyStatus;
   updates: { state: UpdateState; enabled: boolean };
   /** The app's own switch. Electron cannot read the OS notification permission. */
   notifications: boolean;
