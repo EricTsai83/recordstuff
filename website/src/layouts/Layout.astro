@@ -24,9 +24,15 @@ interface Props {
   description?: string;
   /** The home page's hero scene draws its hand-written callout in Kalam; no other page uses that face. */
   handFont?: boolean;
+  /**
+   * Medium JetBrains Mono: only the home page sets mono text at weight 500 or
+   * above (the specs band values and the How it works REC badge); the other
+   * pages' code, keys and checksums are regular.
+   */
+  monoMedium?: boolean;
 }
 
-const { title = meta.title, description = meta.description, handFont = false } = Astro.props;
+const { title = meta.title, description = meta.description, handFont = false, monoMedium = false } = Astro.props;
 
 const nav = [
   { href: "/download", label: "Download" },
@@ -59,7 +65,7 @@ const favicon =
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
-    {[geistLatin, monoLatin, monoLatinMedium, ...(handFont ? [handLatin] : [])].map((href) => (
+    {[geistLatin, monoLatin, ...(monoMedium ? [monoLatinMedium] : []), ...(handFont ? [handLatin] : [])].map((href) => (
       <link rel="preload" href={href} as="font" type="font/woff2" crossorigin />
     ))}
     <link rel="canonical" href={canonicalUrl} />

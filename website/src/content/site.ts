@@ -107,7 +107,7 @@ export const settings = [
   { setting: "Resolution cap", options: "1080p / 1440p / 4K / Source", fallback: "Source" },
   { setting: "Frame rate", options: "30 / 60 fps", fallback: "30; 60 is enabled only on macOS" },
   {
-    setting: "Shortcut",
+    setting: "Shortcut (General)",
     options: "⌘⇧1 (recommended) / Custom shortcut / Off",
     fallback: "⌘⇧1; Settings shows a warning if another app already owns the combination",
   },
