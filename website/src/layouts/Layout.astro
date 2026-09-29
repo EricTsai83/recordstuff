@@ -47,7 +47,9 @@ const currentPath = Astro.url.pathname.replace(/\/$/, "") || "/";
 const canonicalUrl = new URL(currentPath, Astro.site);
 // Asked for 1200×630; the meta tags below report what was actually produced,
 // since an asset smaller than that is never upscaled.
-const social = await getImage({ src: ogSource, width: 1200, height: 630, fit: "cover", format: "png" });
+// JPEG: the flat low-poly art compressed as PNG came out larger than its source (553 KB), past
+// the ~300 KB some link-preview crawlers accept.
+const social = await getImage({ src: ogSource, width: 1200, height: 630, fit: "cover", format: "jpeg", quality: 80 });
 const socialImageUrl = new URL(social.src, Astro.site);
 const year = new Date().getFullYear();
 // Matches --bg in themes/ember.css, so the browser chrome is the same colour
