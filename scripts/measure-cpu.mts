@@ -119,7 +119,11 @@ async function launch(): Promise<{ pid: number; run: string; recordingKey: strin
   await waitForLog(log, start.at, /\] ready;/, "`ready;`", signal);
   await waitForLog(log, start.at, /recording history: (loaded|load failed)/, "the history load", signal);
   await waitForLog(log, start.at, /\] updates: (?!cannot persist)/, "the launch update check or its skip", signal);
-  while (!confirmedIdle(log.since(start.at).lines.map((line) => line.text))) await sleep(200);
+  // Bounded like the waits above: without screen permission the app never reports idle.
+  while (!confirmedIdle(log.since(start.at).lines.map((line) => line.text))) {
+    if (signal.aborted && !controller.signal.aborted) fail("RecordStuff did not confirm idle with screen-recording permission within 60 s of launch");
+    await sleep(200);
+  }
   const lines = log.since(start.at).lines.map((line) => line.text);
   const pid = running() ?? fail("RecordStuff did not stay running after launch");
   launchIssued = false;

@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { recordStuffPids } from "./processes.mts";
 import { scrubbedEnv } from "./runner-env.mts";
 import fs from "node:fs";
 import path from "node:path";
@@ -38,6 +39,8 @@ export async function recordAudio(output: string): Promise<string> {
   if (processes.stdout.split("\n").some(line => line.startsWith(electron))) {
     throw new Error("Quit this project's development Electron app before running audio capture");
   }
+  // An installed copy holds the same userData lock, so the development app would exit before recording.
+  if (recordStuffPids().length > 0) throw new Error("Quit RecordStuff before running audio capture");
   const build = spawnSync("pnpm", ["build"], { cwd: ROOT, stdio: "inherit", timeout: 60_000 });
   if (build.error) throw build.error;
   if (build.status !== 0) throw new Error("Application build failed");

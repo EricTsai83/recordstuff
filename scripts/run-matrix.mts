@@ -57,7 +57,7 @@ import {
   type MatrixEntry,
   type MatrixRun,
 } from "./lib/matrix.mts";
-import { electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, signalPids, startBuild, stopGroup } from "./lib/processes.mts";
+import { electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, recordStuffPids, signalPids, startBuild, stopGroup } from "./lib/processes.mts";
 import { ToolMissingError, hasTool, timeTools, type ToolTiming } from "./lib/media-tools.mts";
 import { REPO_ROOT, appendMeasurements, measurementsPath, readLogPairs, verifyRecording, type VerifyResult } from "./lib/verify-recording.mts";
 import { pairRecordingsWithLog } from "./lib/verify.mts";
@@ -370,8 +370,9 @@ async function main(): Promise<void> {
     console.error(`BLOCKED: ${missingTools.join(" and ")} missing (brew install ffmpeg); every case requires channel energy and sync evidence. No case was recorded.`);
     process.exit(BLOCKED_EXIT);
   }
-  if (electronPids().length > 0) {
-    console.error("This project's Electron.app is running; quit it first (the single-instance lock would ignore automatic recording settings)");
+  // An installed RecordStuff shares the development app's userData lock, so each case's launch would exit at once.
+  if (electronPids().length > 0 || recordStuffPids().length > 0) {
+    console.error("RecordStuff or this project's Electron.app is running; quit it first (the single-instance lock would ignore automatic recording settings)");
     process.exit(1);
   }
   try {

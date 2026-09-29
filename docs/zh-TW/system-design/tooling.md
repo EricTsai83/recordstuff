@@ -113,7 +113,7 @@ Autorecord 存檔後立即退出，因此 macOS 待送的儲存通知會被退�
 
 ### 發布量測
 
-`pnpm bench:publication`（plan 037 之後）回答同一個磁碟區上，儲存時的發布成本如何隨檔案大小變化；不需要錄影、桌面、螢幕權限或 `out/`。它把[量測程式](../../../scripts/fixtures/publication-bench.ts)與正式的 FileWriter 打包，在 Electron 自己的 Node（`ELECTRON_RUN_AS_NODE`）下執行，所以發布用的是 App 的 libuv。對每個 `--sizes`（預設 `64m,2g`）與每一輪 `--repeat`（預設 3），它以 4 MiB 的區塊把檔案寫入 `--dir`，呼叫 `finish`（磁碟區允許時連結，否則複製），並回報發布、flush、close 與清理時間、發布方式與連結的錯誤碼，以及寫入速度；除非加 `--keep`，檔案隨即刪除。寫入速度遠快於錄影，`finish` 時大部分資料還沒 flush，所以 flush 階段比真實錄影後更大：判讀時看發布，flush 以 `pnpm measure:finalization` 為準。磁碟區剩餘空間少於最大尺寸的兩倍加 1 GiB 時拒絕執行，因為複製期間會同時存在兩份。證據寫到 `docs/verification/measurements/<timestamp>-publication-<label>/`（`summary.md`、`summary.json`）。每個檔案都發布成功時 exit 0；任一失敗 exit 1；參數錯誤或空間不足 exit 2；SIGINT 或 SIGTERM 會停止量測並移除它自己的檔案，exit 130 或 143。
+`pnpm bench:publication`（plan 037 之後）回答同一個磁碟區上，儲存時的發布成本如何隨檔案大小變化；不需要錄影、桌面、螢幕權限或 `out/`。它把[量測程式](../../../scripts/fixtures/publication-bench.ts)與正式的 FileWriter 打包，在 Electron 自己的 Node（`ELECTRON_RUN_AS_NODE`）下執行，所以發布用的是 App 的 libuv。對每個 `--sizes`（預設 `64m,2g`）與每一輪 `--repeat`（預設 3），它以 4 MiB 的區塊把檔案寫入 `--dir`，呼叫 `finish`（磁碟區允許時連結，否則複製），並回報發布、flush、close 與清理時間、發布方式與連結的錯誤碼，以及寫入速度；除非加 `--keep`，檔案隨即刪除。寫入速度遠快於錄影，`finish` 時大部分資料還沒 flush，所以 flush 階段比真實錄影後更大：判讀時看發布，flush 以 `pnpm measure:finalization` 為準。磁碟區剩餘空間少於最大尺寸的兩倍加 1 GiB 時拒絕執行，因為複製期間會同時存在兩份；加 `--keep` 時，所有保留的檔案也計入。證據寫到 `docs/verification/measurements/<timestamp>-publication-<label>/`（`summary.md`、`summary.json`）。每個檔案都發布成功時 exit 0；任一失敗 exit 1；參數錯誤或空間不足 exit 2；SIGINT 或 SIGTERM 會停止量測並移除它自己的檔案，exit 130 或 143。
 
 ### CPU 預算
 

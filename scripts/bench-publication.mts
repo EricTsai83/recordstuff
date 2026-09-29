@@ -107,13 +107,23 @@ function summary(options: Options, volume: { mount: string; type: string }, resu
   ].join("\n");
 }
 
+/**
+ * Space for the worst moment: a file and its publication copy (volumes without hard links copy),
+ * plus headroom. `--keep` leaves every earlier file in place, so they all count too.
+ */
+function requiredBytes(options: Pick<Options, "sizes" | "repeat" | "keep">): number {
+  const largest = Math.max(...options.sizes);
+  const kept = options.keep ? options.sizes.reduce((sum, size) => sum + size, 0) * options.repeat : largest;
+  return kept + largest + HEADROOM_BYTES;
+}
+
 async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--")));
   fs.mkdirSync(options.dir, { recursive: true });
-  const needed = 2 * Math.max(...options.sizes) + HEADROOM_BYTES;
+  const needed = requiredBytes(options);
   const free = freeBytes(options.dir);
   if (free < needed) {
-    console.error(`BLOCKED: ${options.dir} has ${mib(free)} free; the largest size needs ${mib(needed)} (two copies plus 1 GiB), and this benchmark never fills a disk`);
+    console.error(`BLOCKED: ${options.dir} has ${mib(free)} free; this run needs ${mib(needed)} (${options.keep ? "every kept file, a copy of the largest" : "two copies of the largest size"} plus 1 GiB), and this benchmark never fills a disk`);
     process.exit(2);
   }
   const volume = volumeOf(options.dir);
