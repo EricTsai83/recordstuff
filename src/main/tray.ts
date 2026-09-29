@@ -28,7 +28,7 @@ import {
   type TrayIcon,
   type TrayMenuItem,
 } from "./tray-model";
-import type { AppAction, AppContext } from "./ui-model";
+import { APP_NAME, type AppAction, type AppContext } from "./ui-model";
 import type { EarlyStop } from "./recorder";
 
 /**
@@ -61,6 +61,8 @@ export interface TrayOptions {
   canNotify?: () => boolean;
   /** Seconds since the last user input. Absent means the user counts as back at once, which is the test default. */
   idleSeconds?: () => number;
+  /** Every notification click, before its own action: the activation that follows is not a reopen (plan 053). */
+  onNotificationClick?: () => void;
 }
 
 export class AppTray {
@@ -258,7 +260,7 @@ export class AppTray {
   }
 
   notifyCaptureWarning(body: string): void {
-    this.show({ title: "RecordStuff", body }, () => this.options.onAction("openSettings"));
+    this.show({ title: APP_NAME, body }, () => this.options.onAction("openSettings"));
   }
 
   notifyTrayHint(): void {
@@ -309,6 +311,7 @@ export class AppTray {
       notification.on("click", () => {
         this.notifications.delete(notification);
         this.log(`notification: clicked: ${text.body}`);
+        this.options.onNotificationClick?.();
         onClick?.();
       });
       // `(event, error)` per Electron's Notification docs; darwin and win32 only.
