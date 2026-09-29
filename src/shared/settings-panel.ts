@@ -13,6 +13,8 @@ export interface SettingsChoice {
   label: string;
   enabled: boolean;
   checked: boolean;
+  /** Offered, but its own work is running: the button keeps focus and ignores activation until it ends (plan 053). */
+  busy?: boolean;
 }
 export type SettingsTab = "recording" | "general" | "failures";
 export interface SettingsGroup {

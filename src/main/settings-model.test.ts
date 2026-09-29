@@ -393,6 +393,9 @@ it("keeps the previous update result visible while checking again", () => {
     expect(during.note).toBe(before.note);
     expect(during.choices.map(c => c.id)).toEqual(before.choices.map(c => c.id));
     expect(during.choices[0]!.label).toBe("Checking for updates…");
+    // Busy, not unavailable: the pressed button keeps keyboard focus (plan 053), and main still refuses it.
+    expect(during.choices.every(c => c.enabled && c.busy === true)).toBe(true);
+    expect(before.choices.some(c => "busy" in c)).toBe(false);
   }
 });
 

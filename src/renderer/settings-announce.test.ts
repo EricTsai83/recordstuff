@@ -58,8 +58,13 @@ it("reads out only news, as sentences of the panel's language, and keeps focus w
   await vi.waitFor(() => expect(retry.hidden).toBe(false));
   retry.focus(); retry.click();
   expect(retry.hidden).toBe(true);
-  // Every action button is disabled while it runs, so Chromium drops the hidden retry's focus to the page.
-  expect(website.disabled).toBe(true);
+  // A running action stays focusable (plan 053): the hidden retry hands focus to it, and it ignores a second activation.
+  expect(website.disabled).toBe(false);
+  expect(website.getAttribute("aria-disabled")).toBe("true");
+  expect(document.activeElement).toBe(website);
+  website.click();
+  expect(choose).toHaveBeenCalledTimes(2);
+  // Should focus still fall to the page, it comes back when the retry settles.
   const away = document.body.appendChild(document.createElement("input")); away.focus(); away.remove();
   expect(document.activeElement).toBe(document.body);
   finish!();

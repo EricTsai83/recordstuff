@@ -170,7 +170,9 @@ describe('recording lock contract', () => {
     // Choices a settled model disables for their own reasons stay outside the lock contract.
     const idle: RecordingState = { type: 'idle' };
     const partial = snap(idle, { ...withUpdate({ kind: 'checking' }), platform: 'win32', display: { kind: 'display', id: '9', label: 'Gone' } });
-    expect(group(partial, 'updates').choices.find(c => c.id === 'check')?.enabled).toBe(false);
+    // A check in progress is busy rather than disabled (plan 053), so it keeps focus; the missing display is still disabled.
+    expect(group(partial, 'updates').choices.find(c => c.id === 'check')).toMatchObject({ enabled: true, busy: true });
+    expect(group(partial, 'screen').choices.some(c => !c.enabled)).toBe(true);
     expect(() => assertLockContract(partial)).not.toThrow();
   });
 });

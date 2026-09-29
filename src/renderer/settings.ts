@@ -58,6 +58,17 @@ function setDisabled(el: HTMLButtonElement | HTMLSelectElement | HTMLInputElemen
   if (el.disabled !== (unavailable || busy)) el.disabled = unavailable || busy;
   el.classList.toggle("saving-disabled", !unavailable && busy);
 }
+/**
+ * An action button that is busy stays focusable and ignores activation: native
+ * disabled would drop the focus of the button just pressed to the page (plan 053).
+ * Only an unavailable action is natively disabled.
+ */
+function setActionDisabled(el: HTMLButtonElement, unavailable: boolean, busy: boolean): void {
+  setDisabled(el, unavailable, false);
+  el.setAttribute("aria-disabled", String(unavailable || busy));
+  el.classList.toggle("saving-disabled", !unavailable && busy);
+}
+const inactive = (el: HTMLElement): boolean => el.getAttribute("aria-disabled") === "true";
 function button(id: string, handler: () => void): HTMLButtonElement {
   const el = node("button"); el.type = "button"; el.id = id; el.addEventListener("click", handler); return el;
 }
@@ -140,12 +151,12 @@ function updateDiagnostic(container: HTMLElement, group: SettingsGroup): void {
   const hadRecoveryFocus = document.activeElement === recovery;
   recovery.hidden = !canRecover;
   setText(recovery, group.recovery?.label ?? "");
-  setDisabled(recovery, !group.enabled, Boolean(saving));
+  setActionDisabled(recovery, !group.enabled, Boolean(saving));
   const retry = area.querySelector<HTMLButtonElement>(".retry")!;
   const hadRetryFocus = document.activeElement === retry;
   retry.hidden = !retryAllowed(group);
   setText(retry, text(actionFailure ? "Retry" : "Retry save"));
-  setDisabled(retry, !group.enabled, Boolean(saving));
+  setActionDisabled(retry, !group.enabled, Boolean(saving));
   const guidance = area.querySelector<HTMLElement>(".reselect")!;
   // "Choose the setting again" applies to a value; a failed action already says to try again.
   guidance.hidden = !activeFailure || actionFailure || refusedKey || retryAllowed(group);
@@ -199,7 +210,7 @@ function updateRows(groups: SettingsGroup[]): void {
       if (group.id === "about") {
         el.setAttribute("aria-label", choice.label); el.title = choice.label;
       } else setText(el, choice.label);
-      setDisabled(el, !group.enabled || !choice.enabled, Boolean(saving));
+      setActionDisabled(el, !group.enabled || !choice.enabled, Boolean(saving) || choice.busy === true);
     }
     container.setAttribute("aria-busy", String(saving?.group === group.id));
     const applying = container.querySelector<HTMLElement>(".applying")!;
@@ -244,7 +255,7 @@ function updateRows(groups: SettingsGroup[]): void {
 }
 function actionButton(group: SettingsGroup, choice: SettingsGroup["choices"][number]): HTMLButtonElement {
   const id = `${controlId(group)}-${choice.id}`;
-  const el = button(id, () => void choose(group.id, choice.id, id));
+  const el = button(id, () => { if (!inactive(el)) void choose(group.id, choice.id, id); });
   el.dataset.action = choice.id;
   if (group.id === "about") {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -358,11 +369,11 @@ function row(group: SettingsGroup): HTMLElement {
   const error = node("div", "save-error diagnostic"); error.append(node("strong"), node("p"));
   const recovery = button(`${id}-recovery`, () => {
     const current = view?.groups.find(g => g.id === group.id);
-    if (current?.recovery && !saving) void choose(group.id, current.recovery.choice, recovery.id);
+    if (current?.recovery && !saving && !inactive(recovery)) void choose(group.id, current.recovery.choice, recovery.id);
   }); recovery.className = "recovery";
   const retry = button(`${id}-retry`, () => {
     const current = view?.groups.find(g => g.id === group.id);
-    if (current && retryAllowed(current) && failure?.choice && !saving) void choose(group.id, failure.choice, retry.id);
+    if (current && retryAllowed(current) && failure?.choice && !saving && !inactive(retry)) void choose(group.id, failure.choice, retry.id);
   }); retry.className = "retry";
   diagnostics.append(node("div", "diagnostic-content"), error, recovery, retry, node("p", "reselect"));
   const note = node("p", "note"); note.id = `${id}-note`;
@@ -586,10 +597,7 @@ function fillRow(area: HTMLDetailsElement, result: RecordingResultView): void {
     }
     place(actions, el, position);
     setText(el, action.label);
-    // Busy stays focusable and ignores activation; native disabled would drop focus to body.
-    setDisabled(el, !action.enabled, false);
-    el.setAttribute("aria-disabled", String(busy || !action.enabled));
-    el.classList.toggle("saving-disabled", busy && action.enabled);
+    setActionDisabled(el, !action.enabled, busy);
   }
   const savingLine = area.querySelector<HTMLElement>(".result-saving")!;
   const savingText = result.saving || (intent && PERSISTING_ACTIONS.includes(intent.action) ? text("Saving this change…") : "");
@@ -789,7 +797,7 @@ async function choose(group: string, choice: string, control: string): Promise<v
     pending--; if (!pending) saving = undefined;
     // Only move focus if the user's focus is still on the disappearing field.
     const restore = document.activeElement?.id === control && document.hasFocus();
-    // A retried action's buttons were disabled while it ran, so its hidden retry had nowhere to leave focus.
+    // A retry that succeeded is hidden; if focus already fell to the page, it goes back to the group.
     const lost = /-(retry|recovery)$/.test(control) && (!document.activeElement || document.activeElement === document.body);
     draw();
     if (lost && document.hasFocus()) {

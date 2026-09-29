@@ -234,15 +234,17 @@ function updateActions(ctx: AppContext, enabled: boolean): Group {
   const { state } = ctx.updates;
   const result = state.kind === "checking" ? state.previous : state;
   const language = ctx.language;
+  // A check in progress is busy, not unavailable: the button just pressed keeps keyboard focus.
+  const busy = state.kind === "checking" ? { busy: true } : {};
   const choices: Group["choices"] = [{
     id: "check", label: t(state.kind === "checking" ? "Checking for updates…" : "Check for updates…", language),
-    enabled: state.kind !== "checking", checked: false, action: "checkUpdates",
+    enabled: true, ...busy, checked: false, action: "checkUpdates",
   }];
   if (result?.kind === "available" || result?.kind === "failed") choices.push({
     id: "open", label: result.kind === "available"
       ? t("Update available: {version}", language, { version: result.version })
       : t("Update check failed — open releases", language),
-    enabled: state.kind !== "checking", checked: false, action: "openUpdate",
+    enabled: true, ...busy, checked: false, action: "openUpdate",
   });
   const note = result?.kind === "current"
     ? t("Up to date (checked {time})", language, { time: new Date(result.checkedAt).toLocaleString(language) })
@@ -453,7 +455,7 @@ export function settingsAction(
     return accelerator && !isSettingsShortcut(accelerator, ctx.platform) ? { setHotkey: { enabled: true, accelerator } } : undefined;
   }
   const choice = find(state, ctx, groupId, choiceId);
-  return choice?.group.enabled && choice.enabled ? choice.action : undefined;
+  return choice?.group.enabled && choice.enabled && !choice.busy ? choice.action : undefined;
 }
 
 /** Whether a choice is the committed one; how main reports that a save took effect. */
