@@ -114,6 +114,8 @@ let captureView: SettingsView | undefined;
 let resultContext: AppContext | undefined;
 /** Set by the countdown sound case (plan 046): main answers its switch from the real model. */
 let soundContext: AppContext | undefined;
+/** Set by the update focus case (plan 053): a check answers at once and pushes its progress, as main does. */
+let updateContext: AppContext | undefined;
 let resultSaveFails = false;
 /** Every durable result save waits, so replies arrive after Chromium's focus fixup (plan 036). */
 let saveDelayMs = 120;
@@ -157,6 +159,14 @@ ipcMain.handle("settings:choose", async (_event, group: string, choice: string) 
     const action = settingsAction({ type: "idle" }, soundContext, group, choice);
     if (typeof action === "object" && "setCountdownSound" in action) soundContext = { ...soundContext, countdownSound: action.setCountdownSound };
     return { view: settingsView({ type: "idle" }, soundContext), applied: action !== undefined };
+  }
+  if (group === "updates" && updateContext) {
+    const action = settingsAction({ type: "idle" }, updateContext, group, choice);
+    if (action === "checkUpdates") {
+      updateContext = { ...updateContext, updates: { ...updateContext.updates, state: { kind: "checking", previous: { kind: "current", checkedAt: 1000 } } } };
+      panel?.webContents.send("settings:changed", settingsView({ type: "idle" }, updateContext));
+    }
+    return { view: settingsView({ type: "idle" }, updateContext), applied: action !== undefined };
   }
   if (group === "about" && captureView) return { view: captureView, applied: false, failure: "Could not open the link. Try again." };
   const commit = () => {
@@ -423,7 +433,8 @@ async function run() {
       focused: document.activeElement === beforeToggle.select,
       scrollStable: window.scrollY === beforeToggle.scroll && document.querySelector("#setting-updates-row")?.getBoundingClientRect().top === beforeToggle.below,
       value: beforeToggle.select.value,
-      buttonLocked: beforeToggle.button.disabled,
+      // Busy, not disabled (plan 053): the pane button stays focusable and ignores activation.
+      buttonLocked: beforeToggle.button.getAttribute("aria-disabled") === "true" && !beforeToggle.button.disabled,
       buttonOpacity: getComputedStyle(beforeToggle.button).opacity,
     })`);
     record(`notification ${value}: pending save and push preserve controls, focus, scroll and brightness`,
@@ -437,7 +448,7 @@ async function run() {
       focused: document.activeElement === beforeToggle.select,
       scrollStable: window.scrollY === beforeToggle.scroll && document.querySelector("#setting-updates-row")?.getBoundingClientRect().top === beforeToggle.below,
       value: beforeToggle.select.value,
-      buttonLocked: beforeToggle.button.disabled,
+      buttonLocked: beforeToggle.button.disabled || beforeToggle.button.getAttribute("aria-disabled") === "true",
     })`);
     record(`notification ${value}: completion preserves the control and unlocks the pane action`,
       after.sameSelect && after.focused && after.scrollStable && after.value === value && !after.buttonLocked,
@@ -530,6 +541,47 @@ async function run() {
     const stable = await read<boolean>(window, `updateBefore.row === document.getElementById("setting-updates-row") && updateBefore.button === document.getElementById("setting-updates-check") && updateBefore.note === document.querySelector("#setting-updates-row .note") && !updateBefore.note.hidden && updateBefore.below === document.getElementById("setting-language-row").getBoundingClientRect().top`);
     record(`repeated update ${state.kind} preserves nodes and lower-row geometry`, stable, String(stable));
   }
+  // Plan 053: a real Tab and Enter on Check for updates… keep focus on the button through the check.
+  updateContext = { ...ctx, updates: { enabled: true, state: updatePrevious } };
+  panel = window;
+  window.webContents.send("settings:changed", settingsView({ type: "idle" }, updateContext));
+  await settle(60);
+  chooseCalls.length = 0;
+  window.show(); window.focus();
+  await read(window, `document.getElementById("setting-updates-check").scrollIntoView({ block: "center" }); document.getElementById("setting-updateChecks").focus()`);
+  // Chromium activates a button on Enter's character event, so Return sends one.
+  const key = (keyCode: string) => {
+    window.webContents.sendInputEvent({ type: "keyDown", keyCode });
+    if (keyCode === "Return") window.webContents.sendInputEvent({ type: "char", keyCode: "\r" });
+    window.webContents.sendInputEvent({ type: "keyUp", keyCode });
+  };
+  key("Tab");
+  await settle(60);
+  const tabbed = await read<string>(window, `document.activeElement.id`);
+  key("Return");
+  await settle(150);
+  const busyCheck = await read<{ active: string; disabled: boolean; ariaDisabled: string | null; label: string; ring: string; windowFocused: boolean }>(window, `(() => {
+    const el = document.getElementById("setting-updates-check");
+    return { active: document.activeElement.id, disabled: el.disabled, ariaDisabled: el.getAttribute("aria-disabled"), label: el.textContent, ring: getComputedStyle(el).outlineStyle, windowFocused: document.hasFocus() };
+  })()`);
+  fs.writeFileSync(path.join(outDir, "update-check-busy.png"), (await window.webContents.capturePage()).toPNG());
+  key("Return");
+  await settle(100);
+  const busyCalls = JSON.stringify(chooseCalls);
+  record("real Tab reaches Check for updates… and Enter starts one check", tabbed === "setting-updates-check" && busyCalls === '[["updates","check"]]', JSON.stringify({ tabbed, busyCalls }));
+  record("a running check keeps keyboard focus and its ring on the busy, focusable button",
+    busyCheck.active === "setting-updates-check" && !busyCheck.disabled && busyCheck.ariaDisabled === "true" && busyCheck.label === "Checking for updates…" && busyCheck.ring === "solid",
+    JSON.stringify(busyCheck));
+  updateContext = { ...updateContext, updates: { enabled: true, state: { kind: "current", checkedAt: 2000 } } };
+  window.webContents.send("settings:changed", settingsView({ type: "idle" }, updateContext));
+  await settle(80);
+  key("Tab");
+  await settle(60);
+  const afterCheck = await read<{ ariaDisabled: string | null; next: string }>(window, `({ ariaDisabled: document.getElementById("setting-updates-check").getAttribute("aria-disabled"), next: document.activeElement.id })`);
+  fs.writeFileSync(path.join(outDir, "update-check-done.png"), (await window.webContents.capturePage()).toPNG());
+  record("after the check, the next Tab continues past the button instead of restarting at the tabs",
+    afterCheck.ariaDisabled === "false" && afterCheck.next !== "" && !afterCheck.next.startsWith("tab-") && afterCheck.next !== "setting-updates-check", JSON.stringify(afterCheck));
+  updateContext = undefined;
   window.setSize(380, 360);
   await settle(100);
   await read(window, `document.getElementById("settings-panel").scrollTop = 0`);
