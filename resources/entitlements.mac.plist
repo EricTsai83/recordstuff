@@ -7,8 +7,10 @@
     <true/>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
     <true/>
-    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
-    <true/>
+    <!-- A self-signed identity has no Team ID, so the app's own frameworks need
+         this to load. DYLD_* variables stay ignored: allowing them would let any
+         program launch the app with injected code that inherits its screen
+         recording permission. -->
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
   </dict>
