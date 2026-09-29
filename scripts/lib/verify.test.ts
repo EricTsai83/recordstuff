@@ -445,7 +445,7 @@ const rms = (...levels: number[]): Evidence<number[]> => ({ status: "measured", 
 /** A well-covered 30 s material recording unless overridden. */
 const markers = (overrides: Partial<SyncStats> = {}): Evidence<SyncStats> => ({
   status: "measured",
-  value: { flashes: 30, beeps: 30, pairs: 29, medianOffsetMs: 35, headPairs: 29, tailPairs: 29, headOffsetMs: 35, tailOffsetMs: 35, driftMs: undefined, ...overrides },
+  value: { flashes: 30, beeps: 30, pairs: 29, strays: { flashes: 0, beeps: 0 }, medianOffsetMs: 35, headPairs: 29, tailPairs: 29, headOffsetMs: 35, tailOffsetMs: 35, driftMs: undefined, ...overrides },
 });
 
 describe("measure + judge", () => {
@@ -695,6 +695,26 @@ describe("required evidence (plan 030)", () => {
     expect(offset(syncChecks(markers({ medianOffsetMs: Number.NaN })))).toMatchObject({ verdict: "fail", note: "the offset measurement is not a number" });
     // Drift is not judged for a short case, whatever the markers.
     expect(drift(noFlashes)).toMatchObject({ verdict: "n/a", note: expect.stringContaining("at least 120 s") });
+  });
+
+  it("fails an offset whose markers lost a partner away from the file's ends, not one cut at an end", () => {
+    const flashes = seconds(9);
+    // Two beeps lost in the middle (as at 9 dB below the material's level): the other pairs read a biased median.
+    const lost = syncChecks(measured(flashes, flashes.filter((t) => t !== 4 && t !== 7).map((t) => t + 0.1), 10));
+    expect(offset(lost)).toMatchObject({ verdict: "fail", actual: expect.stringContaining("7 pairs of 9 flashes / 7 beeps"),
+      note: expect.stringContaining("2 flash(es) and 0 beep(s) more than 1 s from either end have no partner") });
+    // Foreign audio: one extra beep between two markers.
+    expect(offset(syncChecks(measured(flashes, [...flashes.map((t) => t + 0.06), 5.5], 10)))?.note).toContain("0 flash(es) and 1 beep(s)");
+    // A flash whose beep fell outside the file, and a beep whose flash came before its first frame, are cut, not lost.
+    const cut = syncChecks(measured([0.2, ...flashes], [...flashes.map((t) => t + 0.06), 9.7], 10));
+    expect(offset(cut)).toMatchObject({ verdict: "pass", actual: expect.stringContaining("9 pairs of 10 flashes / 10 beeps") });
+    expect(syncStats([0.2, ...flashes], [...flashes.map((t) => t + 0.06), 9.7], { durationSeconds: 10 }).strays).toEqual({ flashes: 0, beeps: 0 });
+    // The page flashes from its first second but beeps only from the next whole one: flashes before the first beep are its start.
+    const starting = syncChecks(measured([1.28, 2.42, ...seconds(7, 3.42)], seconds(8, 2.49), 10));
+    expect(offset(starting)).toMatchObject({ verdict: "pass", actual: expect.stringContaining("8 pairs of 9 flashes / 8 beeps") });
+    // More lone flashes before the first beep than the page's start makes are lost beeps.
+    const lostFirst = syncChecks(measured(seconds(9), seconds(4, 6.06), 10));
+    expect(offset(lostFirst)).toMatchObject({ verdict: "fail", note: expect.stringContaining("3 flash(es) and 0 beep(s)") });
   });
 
   it("judges a well-covered short case and fails an excessive offset", () => {

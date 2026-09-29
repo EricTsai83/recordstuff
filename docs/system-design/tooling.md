@@ -198,7 +198,7 @@ Checks are in two tiers. **Integrity** checks hold for any content and are what 
 | Integrity | Decode | No ffprobe full-frame decode errors; interactive playback remains a separate check |
 | Performance | Average fps | Requested ±2 fps. The median frame interval and the nominal period are printed beside it (reporting only), so a cadence that is slow on every frame is told apart from drops |
 | Performance | Dropped frames | <2% |
-| Performance | Audio minus video offset (flash/beep) | Strictly between −45 and +125 ms, from at least 3 matched flash/beep pairs |
+| Performance | Audio minus video offset (flash/beep) | Strictly between −45 and +125 ms, from at least 3 matched flash/beep pairs. It fails when a flash or beep more than 1 s from either end of the file has no partner (the page's own start, up to two flashes before its first beep, excepted): the remaining pairs would still give a median, but a beep lost near the detector threshold read 101 ms against 65 ms |
 | Performance | End-to-end drift | Absolute drift <100 ms. A recording of at least 120 s (requested or measured) needs at least 3 matched pairs in each of its first and last 60 s; a shorter one has no drift to judge |
 | Performance | CPU | Average of the app's process tree over the recording from its third second: ≤30% at 30 fps, ≤40% at 60 fps; 95th percentile, peak and VTEncoderXPCService reported; more than 25% above this machine's baseline is a warning (matrix only; [CPU budget](#cpu-budget)) |
 

@@ -556,6 +556,13 @@ export interface SyncStats {
   beeps: number;
   /** Flash/beep pairs that matched within the search window. */
   pairs: number;
+  /**
+   * Flashes and beeps with no partner more than `SYNC_END_TOLERANCE_SECONDS` from either
+   * end of the file: a marker lost (audio too quiet or masked, frames dropped) or foreign.
+   * Up to two flashes before the first beep are the page starting, not strays: it flashes
+   * from its first second but schedules beeps only from the next whole one after that.
+   */
+  strays: { flashes: number; beeps: number };
   /** Median of (beep − flash) over all pairs, ms; positive = audio late. Undefined below `MIN_SYNC_PAIRS`. */
   medianOffsetMs: number | undefined;
   /** Pairs in the first / last `edgeSeconds` of the file (the same pairs when the windows overlap). */
@@ -575,6 +582,10 @@ const median = (values: number[]): number => sharedMedian(values) ?? Number.NaN;
 export const MIN_SYNC_PAIRS = 3;
 /** Drift compares the first and the last minute; a file shorter than two of them has no drift. */
 export const SYNC_EDGE_SECONDS = 60;
+/** The markers come once a second, so one this close to either end may have lost its partner to the cut. */
+export const SYNC_END_TOLERANCE_SECONDS = 1;
+/** The page flashes from its first second but beeps from the next whole second plus one: up to two lone flashes. */
+export const SYNC_PAGE_START_FLASHES = 2;
 
 /**
  * Match every flash to the nearest beep within ±`windowMs`. The material page
@@ -584,7 +595,10 @@ export const SYNC_EDGE_SECONDS = 60;
  * anchored to `durationSeconds`, not to the last marker found), and the
  * drift is their difference; a window with too few pairs yields no drift.
  * The counts are always returned, so a shortage can be told apart from a
- * measurement that was never taken (plan 030).
+ * measurement that was never taken (plan 030). A marker without a partner
+ * away from the file's ends is counted as a stray: the remaining pairs still
+ * yield a median, but it no longer describes the file (a beep lost near the
+ * detector's threshold read 101 ms against 65 ms).
  */
 export function syncStats(
   flashTimes: number[],
@@ -604,6 +618,15 @@ export function syncStats(
     if (best !== undefined) offsets.push({ at: flash, offsetMs: best });
   }
   const end = options.durationSeconds ?? Math.max(0, ...flashTimes, ...beeps);
+  const inside = (t: number): boolean => t >= SYNC_END_TOLERANCE_SECONDS && t <= end - SYNC_END_TOLERANCE_SECONDS;
+  const near = (a: number, b: number): boolean => Math.abs(a - b) * 1000 <= windowMs;
+  // At most the two flashes before the page's first beep; more before it means beeps were lost.
+  const starting = (flash: number): boolean => beeps[0] !== undefined
+    && (beeps[0] - flash) * 1000 > windowMs && (beeps[0] - flash) * 1000 <= SYNC_PAGE_START_FLASHES * 1000 + windowMs;
+  const strays = {
+    flashes: flashTimes.filter((flash) => inside(flash) && !starting(flash) && !beeps.some((beep) => near(beep, flash))).length,
+    beeps: beeps.filter((beep) => inside(beep) && !flashTimes.some((flash) => near(beep, flash))).length,
+  };
   const head = offsets.filter((o) => o.at < edge).map((o) => o.offsetMs);
   const tail = offsets.filter((o) => o.at >= end - edge).map((o) => o.offsetMs);
   const headOffsetMs = head.length >= MIN_SYNC_PAIRS ? median(head) : undefined;
@@ -613,6 +636,7 @@ export function syncStats(
     flashes: flashTimes.length,
     beeps: beeps.length,
     pairs: offsets.length,
+    strays,
     medianOffsetMs: offsets.length >= MIN_SYNC_PAIRS ? median(offsets.map((o) => o.offsetMs)) : undefined,
     headPairs: head.length,
     tailPairs: tail.length,
@@ -984,7 +1008,7 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
   // for drift. Short files have no drift to judge.
   const syncRequired = options.required?.sync === true;
   const offsetMetric = "Audio-video offset (flash/beep)";
-  const offsetExpected = `${OFFSET_EXPECTED}; ≥ ${MIN_SYNC_PAIRS} matched pairs; a stable excess indicates inherent latency`;
+  const offsetExpected = `${OFFSET_EXPECTED}; ≥ ${MIN_SYNC_PAIRS} matched pairs, none unmatched more than ${SYNC_END_TOLERANCE_SECONDS} s from either end; a stable excess indicates inherent latency`;
   const driftMetric = "End-to-end A/V drift";
   const driftExpected = `< ${THRESHOLDS.maxDriftMs} ms; ≥ ${MIN_SYNC_PAIRS} pairs in each of the first and last ${SYNC_EDGE_SECONDS} s`;
   // The file's own length decides, as it does for syncStats; the expected length stands in only for a
@@ -1002,15 +1026,18 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
     const s = m.sync.value;
     const counts = `${s.pairs} pairs of ${s.flashes} flashes / ${s.beeps} beeps`;
     const offset = s.medianOffsetMs;
+    const strays = s.strays.flashes + s.strays.beeps;
     checks.push({
       metric: offsetMetric,
       expected: offsetExpected,
       actual: offset === undefined ? counts : `${ms(offset)} (${counts}; head ${ms(s.headOffsetMs)}, tail ${ms(s.tailOffsetMs)})`,
       ...(offset === undefined
         ? { verdict: syncRequired ? "incomplete" : "n/a", note: markerShortage(s) }
-        : Number.isFinite(offset)
-          ? { verdict: pass(offsetWithinLimits(offset)) }
-          : { verdict: "fail", note: "the offset measurement is not a number" }),
+        : !Number.isFinite(offset)
+          ? { verdict: "fail", note: "the offset measurement is not a number" }
+          : strays
+            ? { verdict: "fail", note: `${s.strays.flashes} flash(es) and ${s.strays.beeps} beep(s) more than ${SYNC_END_TOLERANCE_SECONDS} s from either end have no partner: markers were lost (audio too quiet or masked, dropped frames) or other audio or video interfered, so the offset does not describe the file` }
+            : { verdict: pass(offsetWithinLimits(offset)) }),
     });
     const drift = s.driftMs;
     const windows = `head ${s.headPairs} pairs, tail ${s.tailPairs} pairs`;
