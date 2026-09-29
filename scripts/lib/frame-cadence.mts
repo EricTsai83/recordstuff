@@ -5,6 +5,7 @@
  * timestamps, the track's frame counters and the file's pts. Development
  * only; nothing here ships with the app.
  */
+import { medianSorted, percentileSorted } from "./stats.mts";
 
 export interface CadenceStats {
   frames: number;
@@ -29,14 +30,6 @@ export interface CadenceStats {
 /** Share of the nominal period an interval may differ by and still be on period; also the go criterion for the median. */
 export const PERIOD_TOLERANCE = 0.01;
 
-function quantile(sorted: number[], q: number): number | undefined {
-  if (sorted.length === 0) return undefined;
-  const position = (sorted.length - 1) * q;
-  const low = Math.floor(position);
-  const high = Math.ceil(position);
-  return (sorted[low]! + (sorted[high]! - sorted[low]!) * (position - low));
-}
-
 /** Timestamps in seconds, in any order; undefined when there are fewer than two. */
 export function cadenceStats(times: number[], nominalFps: number): CadenceStats | undefined {
   const sorted = [...times].sort((a, b) => a - b);
@@ -52,9 +45,9 @@ export function cadenceStats(times: number[], nominalFps: number): CadenceStats 
     spanSeconds: span,
     averageFps: span > 0 ? intervals.length / span : undefined,
     meanIntervalMs: ms(span / intervals.length),
-    medianIntervalMs: ms(quantile(byLength, 0.5)),
-    p05IntervalMs: ms(quantile(byLength, 0.05)),
-    p95IntervalMs: ms(quantile(byLength, 0.95)),
+    medianIntervalMs: ms(medianSorted(byLength)),
+    p05IntervalMs: ms(percentileSorted(byLength, 0.05)),
+    p95IntervalMs: ms(percentileSorted(byLength, 0.95)),
     minIntervalMs: ms(byLength[0]),
     maxIntervalMs: ms(byLength[byLength.length - 1]),
     short: intervals.filter((gap) => gap < period * (1 - PERIOD_TOLERANCE)).length,
