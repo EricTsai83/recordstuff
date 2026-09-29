@@ -8,7 +8,7 @@
  * built but left inactive, and `prepared` reports it. Encoding begins at
  * `record`, so main can count down between the two without capturing.
  */
-import { CAPTURE_HOST_PORT_CHANNEL, CHUNK_INTERVAL_MS, OUTPUT_MIME_TYPE, isMainMessage, type HostMessage } from "../shared/protocol";
+import { CAPTURE_HOST_PORT_CHANNEL, CHUNK_INTERVAL_MS, OUTPUT_MIME_TYPE, isMainMessage, type HostErrorCode, type HostMessage } from "../shared/protocol";
 import {
   AUDIO_BITS_PER_SECOND,
   fitWithinCap,
@@ -18,7 +18,6 @@ import {
   type Dimensions,
   type QualitySettings,
 } from "../shared/quality";
-import type { ErrorCode } from "../shared/state";
 
 /** Used for the encoder target when the platform does not report the captured size. */
 const ASSUMED_SIZE = { width: 1920, height: 1080 };
@@ -31,7 +30,7 @@ interface Session {
   backlogBytes: number;
   /** Chunk hand-off is async (`blob.arrayBuffer()`); serialize to keep order. */
   chain: Promise<void>;
-  cause?: { code: ErrorCode; detail: string; displayFailure?: "track_ended" } | "normal";
+  cause?: { code: HostErrorCode; detail: string; displayFailure?: "track_ended" } | "normal";
   timer?: ReturnType<typeof setTimeout>;
   draining: boolean;
   handoffFailed: boolean;
@@ -120,7 +119,7 @@ export class CaptureHost {
   private prepared: Prepared | undefined;
   /**
    * Session ids whose `start` is still wanted and has no recorder yet: inside
-   * `getDisplayMedia`, its checks or `applyQuality`. `start` checks it beside `busy()`.
+   * `getDisplayMedia`, its checks or `applyQuality`. `start` refuses while it is not empty.
    */
   private readonly pending = new Set<string>();
   /**
@@ -162,15 +161,13 @@ export class CaptureHost {
   }
 
   /**
-   * A session is prepared or recording. Pending ones are left out on purpose:
-   * `start` asks this while its own session is still pending.
+   * One session at a time. While this one stays pending every other `start` is
+   * refused here, so no other session can be prepared or recording by the time
+   * it leaves `pending`; a `stop` that removes it meanwhile makes it return at
+   * its next `cancelled()` check instead.
    */
-  private busy(): boolean {
-    return !!this.session || !!this.prepared;
-  }
-
   private async start(sessionId: string, quality: QualitySettings): Promise<void> {
-    if (this.busy() || this.pending.size > 0) {
+    if (this.session || this.prepared || this.pending.size > 0) {
       this.fail(sessionId, "capture_start_failed", "a recording is already in progress");
       return;
     }
@@ -207,9 +204,9 @@ export class CaptureHost {
       this.fail(sessionId, classifyGetDisplayMediaError(cause), describe(cause));
       return;
     }
-    // The session stays in `pending` until the recorder exists: a `stop`
-    // that lands during the checks or while the size constraint is applied
-    // must still cancel it (`stop` only knows pending, prepared and active sessions).
+    // The session stays in `pending` through the checks and while the size
+    // constraint is applied: a `stop` that lands meanwhile must still cancel
+    // it (`stop` only knows pending, prepared and active sessions).
     const cancelled = (): boolean => {
       if (!this.cancelled.delete(sessionId)) return false;
       // Main gave up (start timeout) while we were waiting for the OS; never
@@ -219,16 +216,12 @@ export class CaptureHost {
       this.send({ type: "stopped", sessionId, tracksStoppedAt: Date.now() });
       return true;
     };
-    const refuse = (code: ErrorCode, detail: string, displayFailure?: "track_ended"): void => {
+    const refuse = (code: HostErrorCode, detail: string, displayFailure?: "track_ended"): void => {
       this.pending.delete(sessionId);
       stopTracks(stream);
       this.fail(sessionId, code, detail, displayFailure);
     };
     if (cancelled()) return;
-    if (this.busy()) {
-      refuse("capture_start_failed", "a recording is already in progress");
-      return;
-    }
     const audioTracks = stream.getAudioTracks();
     if (audioTracks.length === 0) {
       refuse("no_audio_track", "getDisplayMedia returned no audio track");
@@ -257,12 +250,8 @@ export class CaptureHost {
       refuse("capture_start_failed", "capture track ended while applying quality settings", endedDisplay(stream));
       return;
     }
+    // Nothing below awaits before the session becomes `prepared`.
     this.pending.delete(sessionId);
-    if (this.busy()) {
-      stopTracks(stream);
-      this.fail(sessionId, "capture_start_failed", "a recording is already in progress");
-      return;
-    }
 
     let recorder: MediaRecorder;
     try {
@@ -460,7 +449,7 @@ export class CaptureHost {
     else this.fail(session.id, cause?.code ?? "capture_failed", cause?.detail ?? "capture ended", cause?.displayFailure);
   }
 
-  private fail(sessionId: string, code: ErrorCode, detail: string, displayFailure?: "track_ended"): void {
+  private fail(sessionId: string, code: HostErrorCode, detail: string, displayFailure?: "track_ended"): void {
     this.send({ type: "error", sessionId, code, detail, ...(displayFailure ? { displayFailure } : {}) });
   }
 
@@ -579,7 +568,7 @@ function describe(cause: unknown): string {
   return String(cause);
 }
 
-function classifyGetDisplayMediaError(cause: unknown): ErrorCode {
+function classifyGetDisplayMediaError(cause: unknown): HostErrorCode {
   const name = cause instanceof Error ? cause.name : "";
   if (name === "NotAllowedError") return "permission_denied";
   if (name === "NotFoundError") return "no_display";

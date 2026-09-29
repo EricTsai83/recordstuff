@@ -41,7 +41,7 @@ describe("isHostMessage", () => {
     ).toBe(true);
     expect(isHostMessage({ type: "chunk", sessionId: "a", seq: 0, bytes: new ArrayBuffer(1) })).toBe(true);
     expect(isHostMessage({ type: "stopped", sessionId: "a" })).toBe(true);
-    expect(isHostMessage({ type: "error", code: "no_audio_track", detail: "" })).toBe(true);
+    expect(isHostMessage({ type: "error", sessionId: "a", code: "no_audio_track", detail: "" })).toBe(true);
     expect(isHostMessage({ type: "error", sessionId: "a", code: "mp4_unsupported", detail: "x" })).toBe(true);
   });
   it("accepts optional stop diagnostics but rejects invalid timestamps", () => {
@@ -54,9 +54,14 @@ describe("isHostMessage", () => {
     expect(isHostMessage({ type: "chunk", sessionId: "a", seq: -1, bytes: new ArrayBuffer(1) })).toBe(false);
     expect(isHostMessage({ type: "chunk", sessionId: "a", seq: 1.5, bytes: new ArrayBuffer(1) })).toBe(false);
     expect(isHostMessage({ type: "chunk", sessionId: "a", seq: 0, bytes: new Uint8Array(1) })).toBe(false);
-    expect(isHostMessage({ type: "error", code: "made_up", detail: "" })).toBe(false);
-    // Only launch-time evidence reports a terminated app; a live host never can.
-    expect(isHostMessage({ type: "error", code: "app_terminated", detail: "" })).toBe(false);
+    expect(isHostMessage({ type: "error", sessionId: "a", code: "made_up", detail: "" })).toBe(false);
+    // Only main can find a folder, disk, deadline, supervision or launch-time failure; a live host never can.
+    for (const code of ["app_terminated", "disk_full", "output_open_failed", "output_write_failed", "stop_timeout",
+      "capture_host_crashed", "capture_host_unresponsive", "unsupported_os_version", "display_unavailable"]) {
+      expect(isHostMessage({ type: "error", sessionId: "a", code, detail: "" }), code).toBe(false);
+    }
+    // Every host failure names its session: none may fail whichever session main happens to hold.
+    expect(isHostMessage({ type: "error", code: "capture_failed", detail: "" })).toBe(false);
     expect(isHostMessage({ type: "error", sessionId: "", code: "no_display", detail: "" })).toBe(false);
     expect(isHostMessage({ type: "prepared", sessionId: "a" })).toBe(false);
     expect(isHostMessage({ type: "prepared", sessionId: "a", mimeType: "video/mp4" })).toBe(false);

@@ -149,7 +149,7 @@ export class CaptureHost implements RecorderHost {
         // nothing is expected from the renderer until the next start.
         if (
           (message.type === "stopped" && message.sessionId === this.watching) ||
-          (message.type === "error" && (message.sessionId === undefined || message.sessionId === this.watching))
+          (message.type === "error" && message.sessionId === this.watching)
         ) {
           this.stopHeartbeat();
         }

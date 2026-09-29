@@ -310,7 +310,7 @@ it("ignores queued messages and crash events from a retired host", async () => {
   const old = s.window(), port = s.port();
   await s.start("new");
   const count = s.messages.length;
-  port.emit({ type: "error", code: "capture_failed", detail: "retired" });
+  port.emit({ type: "error", sessionId: "old", code: "capture_failed", detail: "retired" });
   old.contentEvents.get("render-process-gone")!({}, { reason: "crashed", exitCode: 9 });
   expect(s.messages).toHaveLength(count);
   expect(s.failures).toEqual([]);

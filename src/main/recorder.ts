@@ -10,7 +10,7 @@ import type { RecordingFailure } from "../shared/recording-result";
 import type { DisplayFailure } from "../shared/display";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import type { HostMessage } from "../shared/protocol";
+import type { HostErrorCode, HostMessage } from "../shared/protocol";
 import { COUNTDOWN_TIMING, type CountdownSeconds } from "../shared/countdown";
 import { describeCapture, type CaptureReport, type QualitySettings } from "../shared/quality";
 import { isErrorCode, type ErrorCode, type RecordingState } from "../shared/state";
@@ -99,7 +99,7 @@ export interface RecorderDeps {
    * Lets the owner replace a host-reported error code with the real cause it
    * knows about (e.g. main denied the display-media request for `no_display`).
    */
-  mapHostError?: (code: ErrorCode) => ErrorCode;
+  mapHostError?: (code: HostErrorCode) => ErrorCode;
   /** Called when a new session begins; lets the owner reset per-session state. */
   onSessionStart?: (sessionId: string) => void;
   startTimeoutMs?: number;
@@ -693,7 +693,7 @@ export class Recorder {
     if (message.type === "ready" || message.type === "pong") return;
     const session = this.session;
     if (message.type === "error") {
-      if (session && !session.finalizing && (message.sessionId === undefined || message.sessionId === session.id)) {
+      if (session && !session.finalizing && message.sessionId === session.id) {
         if (this.cancelMarked(session, `host reported ${message.code}`, message.detail)) return;
         let code = this.deps.mapHostError ? this.deps.mapHostError(message.code) : message.code;
         let detail = message.detail;

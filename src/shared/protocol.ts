@@ -4,7 +4,7 @@
  * This module must not import Electron.
  */
 import { isCaptureReport, isQualitySettings, type CaptureReport, type QualitySettings } from "./quality";
-import { isErrorCode, type ErrorCode } from "./state";
+import type { ErrorCode } from "./state";
 
 /** MP4 (H.264 + AAC) is the only output (docs/system-design/decisions.md, "H.264/AAC MP4"). */
 export const OUTPUT_MIME_TYPE = "video/mp4;codecs=avc1,mp4a.40.2";
@@ -18,6 +18,25 @@ export const CHUNK_INTERVAL_MS = 1000;
  * because a sandboxed preload imports nothing at runtime (src/preload/channels.test.ts).
  */
 export const CAPTURE_HOST_PORT_CHANNEL = "capture-host-port";
+
+/**
+ * The failures a live capture host can observe. Folder, disk, deadline, host
+ * supervision and launch-time codes are main's own findings, so a host that
+ * sends one is malformed rather than believed.
+ */
+export const HOST_ERROR_CODES = [
+  "permission_denied",
+  "no_display",
+  "no_audio_track",
+  "mp4_unsupported",
+  "capture_start_failed",
+  "capture_failed",
+] as const satisfies readonly ErrorCode[];
+export type HostErrorCode = (typeof HOST_ERROR_CODES)[number];
+
+function isHostErrorCode(value: unknown): value is HostErrorCode {
+  return typeof value === "string" && (HOST_ERROR_CODES as readonly string[]).includes(value);
+}
 
 export type MainMessage =
   /**
@@ -39,7 +58,7 @@ export type HostMessage =
   /** `bytes` is structured-cloned, never transferred: see `enqueueChunk` in src/renderer/capture-host.ts. */
   | { type: "chunk"; sessionId: string; seq: number; bytes: ArrayBuffer }
   | { type: "stopped"; sessionId: string; tracksStoppedAt?: number }
-  | { type: "error"; sessionId?: string; code: ErrorCode; detail: string; displayFailure?: "track_ended" }
+  | { type: "error"; sessionId: string; code: HostErrorCode; detail: string; displayFailure?: "track_ended" }
   | { type: "pong" };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -93,10 +112,8 @@ export function isHostMessage(value: unknown): value is HostMessage {
           (typeof value["tracksStoppedAt"] === "number" && Number.isFinite(value["tracksStoppedAt"])));
     case "error":
       return (
-        (value["sessionId"] === undefined || isNonEmptyString(value["sessionId"])) &&
-        isErrorCode(value["code"]) &&
-        // Only launch-time evidence can report a terminated app, never a live host.
-        value["code"] !== "app_terminated" &&
+        isNonEmptyString(value["sessionId"]) &&
+        isHostErrorCode(value["code"]) &&
         typeof value["detail"] === "string" &&
         (value["displayFailure"] === undefined || value["displayFailure"] === "track_ended")
       );
