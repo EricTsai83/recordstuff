@@ -39,13 +39,16 @@ describe("network", () => {
   it("falls back on HTTP failure and malformed feed", async () => {
     for (const response of [new Response("", { status: 503 }), Response.json({})]) {
       const request = vi.fn<typeof fetch>().mockResolvedValueOnce(response).mockResolvedValueOnce(Response.json(gh));
-      expect(await fetchVersion("darwin", "arm64", new AbortController().signal, request)).toBe("0.2.0");
+      const log = vi.fn();
+      expect(await fetchVersion("darwin", "arm64", new AbortController().signal, request, log)).toBe("0.2.0");
       expect(request.mock.calls[1]![0]).toBe(API_URL);
+      // A working fallback must not hide a broken feed.
+      expect(log).toHaveBeenCalledWith(expect.stringMatching(/^updates: feed failed \(Error: (HTTP 503|invalid release object)\); trying GitHub$/));
     }
   });
-  it("rejects when both sources fail", async () => {
-    const request = vi.fn<typeof fetch>().mockRejectedValue(new Error("offline"));
-    await expect(fetchVersion("darwin", "arm64", new AbortController().signal, request)).rejects.toThrow("offline");
+  it("rejects with both causes when both sources fail", async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response("", { status: 404 })).mockRejectedValueOnce(new Error("offline"));
+    await expect(fetchVersion("darwin", "arm64", new AbortController().signal, request)).rejects.toThrow("feed: Error: HTTP 404; GitHub: Error: offline");
   });
   it("bounds each request and cancels without falling back on shutdown", async () => {
     const signals: AbortSignal[] = [];

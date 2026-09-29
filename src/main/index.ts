@@ -277,7 +277,7 @@ async function main(): Promise<void> {
     localVersion: app.getVersion(), settled,
     preference: () => settings.updates,
     saveAttempt: (lastAttempt) => settings.setUpdates({ lastAttempt }),
-    fetch: (signal) => fetchVersion(process.platform, process.arch, signal, (url, init) => net.fetch(url, init)),
+    fetch: (signal) => fetchVersion(process.platform, process.arch, signal, (url, init) => net.fetch(url, init), log),
     // The checker holds results back during a session itself; every change it reports is current.
     changed: () => refreshUi(), log,
   });

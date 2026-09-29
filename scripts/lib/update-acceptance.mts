@@ -12,7 +12,7 @@ export function instrumentUpdateAcceptance(source: string, runDir: string): stri
     `import { configureAcceptance, attachAcceptance } from "../../scripts/fixtures/update-acceptance";\nconst acceptance = configureAcceptance(${JSON.stringify(runDir)});\nlet currentLanguage: Language = DEFAULT_LANGUAGE;`);
   source = replaceOnce(source, 'defaultOutputDir: defaultOutputDir(),', 'defaultOutputDir: acceptance.outputDir || defaultOutputDir(),');
   source = replaceOnce(source, 'localVersion: app.getVersion(), settled,', 'localVersion: app.getVersion(), settled, now: acceptance.now,');
-  source = replaceOnce(source, 'fetch: (signal) => fetchVersion(process.platform, process.arch, signal, (url, init) => net.fetch(url, init)),',
+  source = replaceOnce(source, 'fetch: (signal) => fetchVersion(process.platform, process.arch, signal, (url, init) => net.fetch(url, init), log),',
     'fetch: (signal) => acceptance.fetch(signal),');
   // Remove only the now-unused production imports from this throwaway copy.
   source = replaceOnce(source, '  net,\n', '');

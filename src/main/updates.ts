@@ -1,4 +1,6 @@
 /** User-triggered/once-per-launch checks; no polling or installation. */
+import { stableVersion } from "../shared/version";
+
 /** The project's public addresses; the About footer and the update check share them. */
 export const WEBSITE_URL = "https://record.ericts.com";
 export const SOURCE_URL = "https://github.com/EricTsai83/recordstuff";
@@ -11,7 +13,6 @@ export type UpdateResult = { kind: "current"; checkedAt: number } | { kind: "ava
   { kind: "failed" };
 export type UpdateState = { kind: "idle" } | { kind: "checking"; previous?: UpdateResult } | UpdateResult;
 
-import { stableVersion } from "../shared/version";
 export function isNewer(remote: string, local: string): boolean {
   const a = stableVersion(remote), b = stableVersion(local);
   if (!a || !b) return false;
@@ -43,19 +44,34 @@ export function githubVersion(value: unknown, platform: string, arch: string): s
   }
   return version;
 }
-export async function fetchVersion(platform: string, arch: string, signal: AbortSignal, request: (url: string, init: RequestInit) => Promise<Response> = fetch): Promise<string> {
-  for (const [url, parse] of [[FEED_URL, feedVersion], [API_URL, githubVersion]] as const) {
+/**
+ * The website feed first, GitHub's API if it fails. A working fallback would
+ * otherwise hide a broken feed, so its failure goes to `log`, and a check
+ * that fails at both names both causes.
+ */
+export async function fetchVersion(platform: string, arch: string, signal: AbortSignal,
+  request: (url: string, init: RequestInit) => Promise<Response> = fetch, log?: (message: string) => void): Promise<string> {
+  const read = async (url: string, parse: typeof feedVersion): Promise<string> => {
     signal.throwIfAborted();
     const timeout = AbortSignal.timeout(8_000);
-    try {
-      const response = await request(url, { signal: AbortSignal.any([signal, timeout]), cache: "no-store", redirect: "error" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return parse(await response.json(), platform, arch);
-    } catch (error) {
-      if (signal.aborted || url === API_URL) throw error;
-    }
+    const response = await request(url, { signal: AbortSignal.any([signal, timeout]), cache: "no-store", redirect: "error" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return parse(await response.json(), platform, arch);
+  };
+  let feedError: unknown;
+  try {
+    return await read(FEED_URL, feedVersion);
+  } catch (error) {
+    if (signal.aborted) throw error;
+    feedError = error;
   }
-  throw new Error("no release");
+  log?.(`updates: feed failed (${String(feedError)}); trying GitHub`);
+  try {
+    return await read(API_URL, githubVersion);
+  } catch (error) {
+    if (signal.aborted) throw error;
+    throw new Error(`feed: ${String(feedError)}; GitHub: ${String(error)}`, { cause: error });
+  }
 }
 interface Options {
   localVersion: string;
