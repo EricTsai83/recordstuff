@@ -1784,6 +1784,16 @@ describe("disk headroom guard", () => {
     expect(ctx.events.at(-1)).toEqual({ type: "saved", path: "/out/2026-09-11 14-30-00.mp4", session: traced() });
   });
 
+  it("refuses to start below the stop threshold as disk_full, without calling the folder unavailable", async () => {
+    const ctx = setup({ deps: { freeSpace: async () => 100 * MIB } });
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "disk_full", detail: "Insufficient free space to begin recording", outcome: "empty" });
+    expect(ctx.writers).toEqual([]);
+    expect(ctx.host.started).toEqual([]);
+  });
+
   it("starts without the guard when the free-space lookup before start fails, instead of refusing the folder", async () => {
     const log = vi.fn();
     const freeSpace = vi.fn(async (): Promise<number> => { throw new Error("statfs unavailable"); });

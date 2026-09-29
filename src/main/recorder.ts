@@ -574,9 +574,9 @@ export class Recorder {
     try {
       await session.opening;
     } catch (cause) {
-      await this.fail(session.id, errorCodeOf(cause, "output_open_failed"), messageOf(cause), {
-        outputDirUnavailable: true,
-      });
+      const code = errorCodeOf(cause, "output_open_failed");
+      // A full disk is not an unusable folder: the tray says "Output folder unavailable" only for the latter.
+      await this.fail(session.id, code, messageOf(cause), code === "disk_full" ? {} : { outputDirUnavailable: true });
       return;
     }
     // A timed-out opening belongs to the failure owner, including its late handle.
