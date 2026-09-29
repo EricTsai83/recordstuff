@@ -23,6 +23,8 @@ export interface FinalizeTiming {
   cleanupMs?: number;
   /** Why the temporary name was kept beside the saved file. */
   cleanupError?: string;
+  /** Rewriting the interruption sentinel with the saved path; absent from lines logged before plan 053. */
+  checkpointMs?: number;
   bytes?: number;
 }
 
@@ -34,7 +36,7 @@ export interface FinalizationSample extends FinalizeTiming {
   stoppedEarly: boolean;
 }
 
-const TIMING = /^recorder: session (\S+) finalize timing: host (\S+) ms, writes (\S+) ms, flush (\S+) ms, close (\S+) ms, publish (\S+) ms by (\S+)(?: \(link (\S+)\))?, cleanup (\S+) ms(?: \(temporary name kept: ([^)]+)\))?; (\S+) bytes$/;
+const TIMING = /^recorder: session (\S+) finalize timing: host (\S+) ms, writes (\S+) ms, flush (\S+) ms, close (\S+) ms, publish (\S+) ms by (\S+)(?: \(link (\S+)\))?, cleanup (\S+) ms(?: \(temporary name kept: ([^)]+)\))?(?:, checkpoint (\S+) ms)?; (\S+) bytes$/;
 
 const number = (text: string | undefined): number | undefined => {
   if (text === undefined || text === "?") return undefined;
@@ -48,7 +50,7 @@ export function parseFinalizeTiming(message: string): FinalizeTiming | undefined
   if (!m) return undefined;
   const timing: FinalizeTiming = { session: m[1]! };
   const fields: Array<[keyof FinalizeTiming, string | undefined]> = [
-    ["hostMs", m[2]], ["writesMs", m[3]], ["flushMs", m[4]], ["closeMs", m[5]], ["publishMs", m[6]], ["cleanupMs", m[9]], ["bytes", m[11]],
+    ["hostMs", m[2]], ["writesMs", m[3]], ["flushMs", m[4]], ["closeMs", m[5]], ["publishMs", m[6]], ["cleanupMs", m[9]], ["checkpointMs", m[11]], ["bytes", m[12]],
   ];
   for (const [key, text] of fields) {
     const value = number(text);
