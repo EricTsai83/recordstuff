@@ -12,7 +12,7 @@ TrayModel 是純函式產物，包含 icon、title、tooltip 與一份扁平的�
 | --- | --- | --- | --- |
 | needsPermission | 圓環／空白 | 權限說明、開設定或重啟；權限遺失期間存過檔才能顯示最後錄影；儲存位置 | 全部可調 |
 | idle | 圓環／空白 | 待命或位置不可用；「開始錄製」（與左鍵相同的開始，包括倒數）；有 lastSavedPath 才能顯示最後錄影，錄影失敗後也保留；儲存位置 | 全部可調 |
-| starting | 沙漏／空白 | 提醒完成系統提示 | 語言與外觀；About 連結仍可用 |
+| starting | 沙漏／空白 | 提醒完成系統提示；取消錄影 | 語言與外觀；About 連結仍可用 |
 | countdown | 碼錶／空白 | 「n 秒後開始錄製」（不可點）；「取消錄影」（已註冊快捷鍵時 tooltip 顯示組合鍵）；tooltip 說明按一下即可取消 | 語言與外觀；About 連結仍可用 |
 | recording | 實心圓點／`REC` | 可停止（已註冊快捷鍵時 tooltip 顯示組合鍵）；儲存位置變灰 | 語言與外觀；About 連結仍可用 |
 | stopping | 沙漏／空白 | 儲存中 | 語言與外觀；About 連結仍可用 |
@@ -33,7 +33,7 @@ macOS 點通知會做兩件事：把回應交給 App，並要求系統啟動發�
 
 `AppTray` 持有每個原生 `Notification`，直到 `click`、`close` 或 `failed`；單純 `show` 不會釋放。退出時關閉尚未處理的通知並清除參照；同步 `show()` 例外也會釋放並記錄。這讓 `show()` 返回後 callback 仍可到達：Electron 44.3.0 的[通知 wrapper](https://github.com/electron/electron/blob/v44.3.0/shell/browser/api/electron_api_notification.cc) 由 GC 管理，解構時會清除原生 delegate。此生命週期修正不代表已證實歷史未送達點擊的原因。不使用 timer 淘汰通知；沒有終止事件的通知會持有到退出。 Windows Action Center 的生命週期未在本次修正或驗證：Windows `close` 可能只是橫幅逾時，歷史通知仍可點擊。
 
-儲存通知由 `SavedNotification` 在檔案完成且回到 idle 後排程：macOS 使用單次 500 ms timer，其他平台立即請求。這讓 macOS 有時間清除擷取造成的通知抑制狀態，但只是依實測選定的啟發式延遲，不是就緒訊號或送達保證；專注模式、其他擷取與通知偏好仍有效。離開 idle（新錄影或進入權限恢復狀態）會永久取消前次待送通知，權限提示優先於舊存檔通知；退出判定取消 timer，也抑制該次退出過程中完成的儲存通知；延後退出後恢復未來通知，不重播已抑制的通知。不保留佇列、不重試；請求通知時的例外只記錄日誌，不影響已存檔案。寫檔與 idle 不等待通知。參見[時序證據](../verification/history-2026-09.md#儲存通知時序2026-09-20)。
+儲存通知由 `SavedNotification` 在檔案完成且回到 idle 後排程：macOS 使用單次 500 ms timer，其他平台立即請求。這讓 macOS 有時間清除擷取造成的通知抑制狀態，但只是依實測選定的啟發式延遲，不是就緒訊號或送達保證；專注模式、其他擷取與通知偏好仍有效。開始新錄影會永久取消前次待送通知；權限恢復狀態（needsPermission）視為已 settled，已完成的存檔仍會通知（權限提示不會取代它）；退出判定取消 timer，也抑制該次退出過程中完成的儲存通知；延後退出後恢復未來通知，不重播已抑制的通知。不保留佇列、不重試；請求通知時的例外只記錄日誌，不影響已存檔案。寫檔與 idle 不等待通知。參見[時序證據](../verification/history-2026-09.md#儲存通知時序2026-09-20)。
 
 圖示的原生 hover 提示保留目前狀態，並加上「右鍵開啟選單」；提示依 App 語言顯示英文或繁體中文。
 
@@ -77,7 +77,7 @@ RecordingHotkey 包裝 Electron `globalShortcut`。按下快捷鍵呼叫與 tray
 
 `pnpm acceptance` 以 macOS key code 送出數字、空白、方向鍵、F1–F20 與常見未加 Shift 的標點，字母則以輸入的字元送出；其他組合會在開始錄影前明確報錯並列出快捷鍵。由於註冊依實體鍵位，以 key code 送出的鍵在任何輸入法下（包含注音）都能觸發已註冊的快捷鍵。以字元送出的字母，只有在該字母位於 US 位置的配置（例如 ABC 與注音）才會按到同一顆鍵；在 Dvorak 或 AZERTY 下，runner 會按到別的鍵。
 
-OS 拒絕註冊（其他 App 佔用，或 `register` 擲出）不會被吞掉：寫 log `hotkey: registration failed for …`、選單標題顯示「快捷鍵無法使用（被其他 App 佔用）：…」並發通知。設定仍會保存，使用者的選擇在重啟後保留；tray 照常可用。關閉快捷鍵不影響 tray 行為，並記住組合鍵，重新開啟即還原。更改快捷鍵先保存再註冊：寫入失敗保留舊註冊並通知「無法儲存快捷鍵設定」。若寫入期間開始了錄影，註冊變更會延後（`request` → 下一次回到 settled 狀態時 `flush`），讓開始這次錄影的組合鍵仍能停止它；期間選單把已保存的選擇顯示為無法使用。
+OS 拒絕註冊（其他 App 佔用，或 `register` 擲出）不會被吞掉：寫 log `hotkey: registration failed for …`、在 Settings → 快捷鍵顯示「無法使用：這個快捷鍵被其他 App 佔用。」並提供重試，同時發出通知，點擊通知會開啟 Settings；tray 選單的「開始錄製」旁不再顯示快捷鍵。設定仍會保存，使用者的選擇在重啟後保留；tray 照常可用。關閉快捷鍵不影響 tray 行為，並記住組合鍵，重新開啟即還原。更改快捷鍵先保存再註冊：寫入失敗保留舊註冊並通知「無法儲存快捷鍵設定」。若寫入期間開始了錄影，註冊變更會延後（`request` → 下一次回到 settled 狀態時 `flush`），讓開始這次錄影的組合鍵仍能停止它；期間選單把已保存的選擇顯示為無法使用。
 
 `pnpm acceptance:shortcut` 以隔離 Electron 驗證註冊失敗回報與跨程序重啟保留選擇，並檢查程序、視窗、快捷鍵與臨時資料清理。通知斷言觀察呼叫，不驗證 macOS 橫幅送達；也不保證偵測所有其他 App 攔截按鍵的情況。Plan 020 依維護者接受此證據結案，真實 OS 衝突與通知橫幅保留為未測限制，詳見[結案紀錄](../verification/history-2026-09.md#plan-020-結案--2026-09-23)。
 
@@ -102,7 +102,7 @@ TrayContext 提供目前語言，通知建立時讀當前 context；已發送的
 
 只有第一段會被輪詢，而讓這件事安全的正是「第二段成功一次就快取整個程序」。Cap 曾經長期輪詢對應的 macOS 呼叫 `SCShareableContent`（它會實體化系統上每個視窗、App 與顯示器），整個程序生命週期每次呼叫都洩漏，約 15 MB／分鐘，直到 macOS 耗盡 swap（[CapSoftware/Cap issue #2023](https://github.com/CapSoftware/Cap/issues/2023)，於 0.5.9 以「Memory growth while idle on macOS」修正）。這裡採用的就是他們事故後的設計：便宜的 preflight 可以自由輪詢，昂貴的驗證成功一次即快取、序列化執行，失敗後至少等一個輪詢週期（從完成時起算）才重試，連 5 秒與 4 秒兩個常數都相同。Cap 也會讓 `ShareableContent::current` 逾時，但未證明丟棄該 future 會取消 macOS 請求，所以 RecordStuff 持有真正的 promise，而不是再送替代請求（plan 027）。永遠不返回的呼叫無法在同一程序內恢復：指引是重新啟動，讓它隨程序結束。執行期撤銷仍由第一段、由擷取嘗試本身、以及實務上 macOS 要求 App 重啟三者抓到。撤銷與重新授權若都落在兩次輪詢之間就觀察不到，之前開始的驗證仍可能被套用。
 
-只有狀態改變才通知 Recorder。Recorder 一律保存最新權限狀態，starting、recording、stopping 期間也一樣，但不因此打斷正在錄的 session。每次回到非忙碌狀態（存檔、擷取失敗或啟動失敗）都依保存的狀態決定 idle 或 needsPermission，因此 session 中只通知一次的撤銷不會遺失，同一 session 內之後又授權也不需要再次通知。needsPermission 保留 lastSavedPath，選單仍有「顯示最後一個錄影」；權限恢復後 Recorder 還原其餘 idle 資訊（outputDirUnavailable，期間已改儲存位置則不還原）。存檔通知仍讓位給權限指引，見通知一節。實際軌道结束、host 錯誤或 OS 要求退出走錄製管線的收尾。在系統設定撤銷權限並選 macOS 的「稍後」後，`getMediaAccessStatus` 對執行中的程序仍回報已授權，但擷取完全列不出任何螢幕；因此 macOS 上若有接上螢幕、擷取請求卻找不到任何來源，會回報為 `permission_denied` 而不是 `no_display`，進入需要重新啟動的狀態與其重新檢查（plan 035 D2）。
+只有狀態改變才通知 Recorder。Recorder 一律保存最新權限狀態，starting、recording、stopping 期間也一樣，但不因此打斷正在錄的 session。每次回到非忙碌狀態（存檔、擷取失敗或啟動失敗）都依保存的狀態決定 idle 或 needsPermission，因此 session 中只通知一次的撤銷不會遺失，同一 session 內之後又授權也不需要再次通知。needsPermission 保留 lastSavedPath，選單仍有「顯示最後一個錄影」；權限恢復後 Recorder 還原其餘 idle 資訊（outputDirUnavailable，期間已改儲存位置則不還原）。期間完成的存檔仍會通知，見通知一節。實際軌道结束、host 錯誤或 OS 要求退出走錄製管線的收尾。在系統設定撤銷權限並選 macOS 的「稍後」後，`getMediaAccessStatus` 對執行中的程序仍回報已授權，但擷取完全列不出任何螢幕；因此 macOS 上若有接上螢幕、擷取請求卻找不到任何來源，會回報為 `permission_denied` 而不是 `no_display`，進入需要重新啟動的狀態與其重新檢查（plan 035 D2）。
 
 開系統設定使用固定 ScreenCapture URL，不自動修改 TCC。缺權限選單始終提供重新啟動，因本機曾遇到 OS 回報無法在同程序更新。系統音訊是另一項授權，螢幕 granted 不代表音訊可用；由 renderer 的音軌檢查處理拒絕。首次授權、同程序音訊復原與撤銷測試的證據見 [驗證紀錄](../verification/README.md)。
 
