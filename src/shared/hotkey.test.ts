@@ -18,7 +18,7 @@ it("canonicalizes without changing key identity and describes named keys", () =>
   expect(describeAccelerator(value, "darwin")).toBe("⌘⌃⌥⇧←");
   expect(describeAccelerator("Control+F24", "win32")).toBe("Ctrl+F24");
   expect(describeAccelerator("Control+Space", "darwin")).toBe("⌃␣");
-  expect(describeAccelerator("Control+Plus", "darwin")).toBe("⌃+");
+  expect(describeAccelerator(canonicalizeAccelerator("Control+Plus")!, "darwin")).toBe("⌃⇧=");
 });
 
 it("normalizes shifted glyph aliases before checking reserved combinations", () => {

@@ -15,14 +15,17 @@
  * app in the Screen Recording list and shows its own prompt; the user then
  * only has to flip the switch instead of adding the app by hand.
  *
- * Only stage 1 is polled, and polling it is cheap on purpose: it never
- * prompts and materialises nothing, so it costs a syscall every 5 seconds.
- * Stage 2 is the expensive one and is never polled — Cap's screen-recording
- * poller re-ran the equivalent macOS call (`SCShareableContent`, which
- * materialises every window/app/display) for the whole process lifetime and
- * leaked ~15 MB/min until macOS exhausted swap (CapSoftware/Cap issue #2023).
- * Caching one success for the process is what makes that safe, and a runtime
- * revocation is still caught by stage 1 and by the capture attempt itself.
+ * Only stage 1 is polled on the 5-second interval, and polling it is cheap on
+ * purpose: it never prompts and materialises nothing, so it costs a syscall.
+ * Stage 2 is the expensive one and never rides that interval — Cap's
+ * screen-recording poller re-ran the equivalent macOS call
+ * (`SCShareableContent`, which materialises every window/app/display) for the
+ * whole process lifetime and leaked ~15 MB/min until macOS exhausted swap
+ * (CapSoftware/Cap issue #2023). Caching one success for the process is what
+ * makes that safe, and a runtime revocation is still caught by stage 1 and by
+ * the capture attempt itself. The one repeat is a failed validation (the
+ * `needsRelaunch` state), retried on the backoff below, at most once per
+ * `retryMaxMs` until the app relaunches or the grant is withdrawn.
  *
  * At most one watcher-owned `getSources` call — prompt or validation — is
  * ever unresolved (plan 027). The validation deadline only shows relaunch

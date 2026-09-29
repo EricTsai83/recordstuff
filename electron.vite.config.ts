@@ -1,12 +1,11 @@
 import { resolve } from "node:path";
-import { defineConfig, externalizeDepsPlugin } from "electron-vite";
+import { defineConfig } from "electron-vite";
 
 // Main, one preload per renderer, and three renderer entries (hidden capture
 // host, settings panel, countdown overlay); no framework.
 export default defineConfig({
-  main: {
-    plugins: [externalizeDepsPlugin()],
-  },
+  // electron-vite externalizes dependencies by default (`build.externalizeDeps`).
+  main: {},
   preload: {
     build: {
       rollupOptions: {
@@ -17,7 +16,6 @@ export default defineConfig({
         },
       },
     },
-    plugins: [externalizeDepsPlugin()],
   },
   renderer: {
     build: {

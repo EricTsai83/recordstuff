@@ -69,26 +69,25 @@ export function isHotkeySettings(value: unknown): value is HotkeySettings {
   return typeof record["enabled"] === "boolean" && isAccelerator(record["accelerator"]);
 }
 
+/** Names for `MODIFIER_ORDER` and the named `KEYS`: validation leaves no other spelling (`Plus` becomes `Shift+=`). */
 const MAC_SYMBOLS: Record<string, string> = {
   CommandOrControl: "⌘",
-  Command: "⌘",
   Alt: "⌥",
-  Option: "⌥",
   Shift: "⇧",
   Control: "⌃",
-  Space: "␣", Up: "↑", Down: "↓", Left: "←", Right: "→", Plus: "+",
+  Space: "␣", Up: "↑", Down: "↓", Left: "←", Right: "→",
 };
 const OTHER_NAMES: Record<string, string> = {
   CommandOrControl: "Ctrl",
-  Command: "Win",
   Alt: "Alt",
-  Option: "Alt",
   Shift: "Shift",
   Control: "Ctrl",
-  Plus: "+",
 };
 
-/** Human-readable form for menus and logs: `⌘⌥⇧R` on macOS, `Ctrl+Alt+Shift+R` elsewhere. */
+/**
+ * Human-readable form of a canonical accelerator or an editor candidate, for
+ * menus and logs: `⌘⌥⇧R` on macOS, `Ctrl+Alt+Shift+R` elsewhere.
+ */
 export function describeAccelerator(accelerator: string, platform: string): string {
   const parts = accelerator.split("+");
   if (platform === "darwin") return parts.map((part) => MAC_SYMBOLS[part] ?? part).join("");
