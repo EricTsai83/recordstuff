@@ -276,6 +276,14 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
     expect(logs.some((line) => line.includes("not supported"))).toBe(false);
   });
 
+  it("still answers a deferred quit with the switch off, since the user asked to quit (plan 055)", () => {
+    const { tray } = setup(true, () => false);
+    tray.notifySaved("/tmp/a.mp4");
+    tray.notifyQuitDeferred("RecordStuff will stay open.");
+    expect(Fake.instances.map((notification) => notification.options)).toEqual([{ title: "RecordStuff", body: "RecordStuff will stay open.", silent: true }]);
+    expect(Fake.instances[0]!.shown).toBe(1);
+  });
+
   it("sends the enable confirmation through the same path as any other notification", () => {
     const { tray } = setup();
     tray.notifyNotificationsEnabled();

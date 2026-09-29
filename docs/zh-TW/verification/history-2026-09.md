@@ -8,6 +8,27 @@
 
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 055 結案 — 2026-09-29
+
+Plan 055 釐清 main 的原生對話框是否會停住 main 自己的工作，並讓延後退出回饋不再卡住它所描述的錄影工作。由 Claude 實作，並由 Codex GPT-6 Astra review（[延後退出](../system-design/desktop.md#延後退出)、[對話框與 main 的 event loop](../system-design/desktop.md#對話框與-main-的-event-loop)、[tooling](../system-design/tooling.md#引導式延期退出通知驗收)）。
+
+- **Probe。** 在 macOS 26.6.2 與 Electron 44.3.0 上以拋棄式 Electron 腳本（不是 App 程式碼）量測。腳本每秒寫一筆 tick，並在打開每種對話框前先安排一個 3 秒 timeout 與一次讀檔；每個對話框約 8 秒後由外部 `osascript` 關閉。無視窗 `dialog.showMessageBox`：呼叫到關閉時才返回（8.6 秒），期間沒有任何 tick，timeout 與讀檔都晚了 5.6 秒完成。`showErrorBox`：同樣晚 5.6 秒。隱藏 parent 的 `showMessageBox`：290 ms 返回，timer 準時；之後 Accessibility 把 parent 列為帶有一個 sheet 的一般視窗，表示隱藏視窗被放上螢幕承載它。可見 parent（sheet）：289 ms，準時。無視窗 `showOpenDialog`：538 ms，準時。第一次 probe 提早結束，因為銷毀兩個測試視窗觸發了 Electron 預設的 `window-all-closed` 退出；加上 listener 後重跑。
+- **呈現方式。** sheet 需要可見視窗，而選單列 App 只有在設定開啟時才有，因此延後退出提示改為通知（`AppTray.notifyQuitDeferred`，plan 的第二順位），文案不變。通知開關關閉時也會顯示，因為它回應的是使用者自己的退出。`createQuitFeedback` 現在同步返回、不等待任何東西；未存歷史提示仍是媒體 settle 後才出現的對話框。儲存位置警告、權限面板 fallback 與 `showErrorBox` 仍會阻塞，設計文件寫明時機與理由。
+- **測試。** feedback 回傳 `undefined`，以目前語言通知一次；會說明 metadata 寫入仍在進行；通知失敗時記 log 而不擲出。通知開關關閉時，tray 仍顯示延後通知，但丟棄存檔通知。隔離 fixture 現在在通知前就 arm 1 秒 timer，任一 tick 晚 500 ms 以上即失敗。
+
+環境：M1 Pro、macOS 26.6.2、Electron 44.3.0，主螢幕 1920 × 1080 並接第二台螢幕，基於 `a7c3a5c` 加上未提交變更。維護者在 probe 回合與驗收回合前都回覆「好了」；為了不讓錄影 smoke 錄到瀏覽器的影音，暫停後又回覆一次。
+
+- **隔離 fixture。** `pnpm acceptance:quit-dialog -- --language zh-TW` 與 `-- --language en` 的 lifecycle、timer 與清理都通過，最大延遲分別為 2 與 3 ms（`2026-09-29T13-13-43-599Z-quit-dialog-zh-TW`、`2026-09-29T13-14-13-763Z-quit-dialog-en`）。macOS 拒絕了兩次通知（`UNErrorDomain` error 1）：開發用 Electron.app 沒有通知權限，而且沒有更改這項權限，所以兩種語言都沒有看到 fixture 的橫幅，改在 controlled build 上判讀。
+- **原生案例。** 在 controlled build（`2026-09-29T13-14-32-010Z-controlled`）上把隔離輸出資料夾設為唯讀並設定 `cleanup=hold`，再由 System Events 送出 ⌘⇧1，產生結果保持 pending 的 `output_open_failed`。runner 的 `quit` 在 13:15:41.320 送出，13:15:54.326 依 13 秒期限準時延後，5 ms 後 `notification: shown`。接下來 85 秒內每 10 秒一次、共九次 `status`（App 以 polling timer 回應），每次都在 558–582 ms 內回覆，與退出前相同；以 log 檔出現 `quit deferred` 一行觸發的截圖，在一秒內就拍到。橫幅以四行顯示完整英文。把隔離語言改成 zh-TW 並重開後，同樣流程在退出後 13.013 秒延後，60 秒內六次回覆為 552–577 ms，橫幅以三行顯示完整繁中文字。每一輪都關閉 fault、解除 cleanup 並恢復資料夾後，App 正常退出；runner 自己的 `quit` 等待回報 60 秒逾時，這在退出被延後時是預期結果。
+- **錄影 smoke。** 在新的 `pnpm start:app` bundle 上，`pnpm acceptance -- --seconds 10` 通過（`2026-09-29T13-24-55-153Z-hotkey-acceptance`）：1920 × 1080、10.4 秒、10 次閃光與 10 次嗶聲、完整解碼、取消案例，以及經由正常退出的清理。QuickTime Player 播放了存好的檔案（`playing` 為 true、位置前進）；它以 `open -a` 開啟，並用 scripting 的 `play` 指令播放，沒有使用 computer use。由於測試前它沒有在執行，之後已關閉並退出。
+- **未執行。** 依計畫不做 capture matrix 與音訊保真度：擷取與編碼沒有變更。保留下來的阻塞對話框沒有做原生操作。
+
+自動化證據：`pnpm check` 通過 typecheck、83 個檔案 1274 項測試與 build；`git diff --check` 通過。
+
+Review：Codex GPT-6 Astra（medium reasoning、read-only），一個 pass，約 68 秒。第一項指出 fixture 在通知之後才 arm 延遲 timer，會漏掉會阻塞 main 的呈現方式；已接受，第一個 tick 改在通知前 arm。第二項指出設計文件寫「媒體工作未完成時不顯示任何對話框」，與它自己列的例外矛盾；已接受，中英文都改為限定在退出流程。修正後沒有第二個 pass。
+
+收尾：probe、兩個 fixture、controlled App 與 RecordStuff 都已退出，沒有殘留 RecordStuff、Electron 或 QuickTime 程序；controlled workspace 已移除、證據保留；`settings.json` 從未變更。smoke 錄影 `2026-09-29 21-25-01.mp4` 之後依維護者要求從 `~/Movies/RecordStuff` 刪除。全桌面截圖也拍到維護者自己的視窗，因此裁切成橫幅與播放器區域後就刪除。本任務期間執行了 `caffeinate -d -i`。
+
 ## Plan 054 結案 — 2026-09-29
 
 Plan 054 補齊 plan 053 未能取得的原生證據，並加入 2026-09-29 20 項稽核的兩項快捷鍵 runner 修正與兩項原生觀察。所有原生檢查都通過，App 程式碼沒有變更。由 Claude 實作、Codex GPT-6 Astra review（[tooling](../system-design/tooling.md#收尾量測)、[第二次啟動](../system-design/desktop.md#設定快捷鍵)）。

@@ -340,11 +340,11 @@ pnpm acceptance:regression
 
 `pnpm acceptance:lifecycle` 建置隔離 Electron fixture，使用 production Recorder、FileWriter 與 `installQuitCoordinator`。它延遲真正的最終發布（硬連結；檔案系統拒絕連結時為複製）、handle close 或 partial 結果的 stat／發布，重複要求退出，確認程序跨過兩次期限仍存活，再釋放工作並檢查正式／保留檔的精確 bytes 與正常退出。100 ms 期限用來加速相同退出判定流程，不量測原生擷取或 UI 對話框。第四個 `history` 案例在可控制的儲存邊界上執行 production RecordingResults 與未保存提醒退出流程：歷史寫入卡住時取樣主程序事件迴圈延遲與隱藏 renderer 往返，合併重複退出，寫入進行中保持 App 開啟，選擇「留在 App」後恢復錄影，最終發布被延遲時暫不顯示 metadata 提示，完成後才選擇明確的「只放棄提醒」退出並檢查媒體精確 bytes。提示回答由腳本提供，不顯示原生對話框。不修改使用者偏好、不替換已安裝 App，也不載入一般 main 入口。結果與程序清理證據位於 `docs/verification/measurements/<timestamp>-lifecycle/`。依測試政策另行執行新 bundle 擷取／播放與原生退出案例。
 
-### 引導式延期退出提示驗收
+### 引導式延期退出通知驗收
 
-執行 `pnpm acceptance:quit-dialog -- --language zh-TW`，再以 `--language en` 重做。它啟動獨立 Electron 測試程序，使用隔離 userData 與合成 bytes；不錄影、不改正式偏好、不塞滿磁碟，也不替換已安裝 App。共用正式 `createQuitFeedback`、Recorder、FileWriter 與退出協調器。先給五秒準備，再透過受控的複製延遲與縮短為 100 ms 的退出期限觸發真正的原生提示。請在五秒內切換到另一個 App，觀察提示是否置前、只有一個且文字完整易讀，30 秒內按提示按鈕關閉。關閉後 fixture 確認複製仍在等待，再解除延遲、驗證精確 bytes 並重新正常退出。產生的 `.mp4` 只有合成 bytes，不是可播放的錄影。
+執行 `pnpm acceptance:quit-dialog -- --language zh-TW`，再以 `--language en` 重做。它啟動獨立 Electron 測試程序，使用隔離 userData 與合成 bytes；不錄影、不改正式偏好、不塞滿磁碟，也不替換已安裝 App。共用正式 `createQuitFeedback`、Recorder、FileWriter 與退出協調器；fixture 不建立 tray，改以一般 Electron `Notification` 代替 tray 的通知。受控的發佈延遲與縮短為 100 ms 的退出期限，會在啟動約三秒後讓退出延後，並出現延後退出通知（plan 055；指令沿用它取代的對話框名稱）。觀察橫幅與完整文字；不需要回應。接下來 8 秒以 1 秒 timer 量測 main 延遲多少，任一 tick 晚 500 ms 以上即失敗；之後 fixture 確認發佈仍在等待，再解除延遲、驗證精確 bytes 並重新正常退出。產生的 `.mp4` 只有合成 bytes，不是可播放的錄影。
 
-`--help` 不啟動程序；錯誤參數在啟動前失敗。Ctrl+C 只取消隔離程序群組，重複取消訊號不會跳過外層清理。此 runner 取消／逾時時立即 SIGKILL 自己建立的可丟棄合成程序群組；其他 runner 保留預設的 SIGTERM 正常收尾。外層 40 秒期限限制無人操作的執行；中斷、逾時或強制清理都算失敗，不算通過。此 macOS／Electron 上，即使加入 JavaScript 訊號 handler，SIGTERM 取消仍未阻止正式退出提示在強制清理前出現。合成 fixture 專用的 SIGKILL 避免這種誤導，固定記為強制清理與失敗；不作用於正式 RecordStuff。Log 與 `report.json`／`report.md` 保留在 `docs/verification/measurements/<timestamp>-quit-dialog-<language>/`。報告刻意將原生觀察留為 **not recorded**，需另記觀察者、置前／文字結果與截圖。共用提示去重及生命週期測試不代表原生視窗層級已驗證。這是帶 Electron 圖示／系統按鈕語言的開發 fixture 證據，不是正式簽章產物身分或真實錄影證據。
+`--help` 不啟動程序；錯誤參數在啟動前失敗。Ctrl+C 只取消隔離程序群組，重複取消訊號不會跳過外層清理。此 runner 取消／逾時時立即 SIGKILL 自己建立的可丟棄合成程序群組；其他 runner 保留預設的 SIGTERM 正常收尾。外層 40 秒期限限制無人操作的執行；中斷、逾時或強制清理都算失敗，不算通過。此 macOS／Electron 上，即使加入 JavaScript 訊號 handler，SIGTERM 取消仍未阻止正式退出提示在強制清理前出現。合成 fixture 專用的 SIGKILL 避免這種誤導，固定記為強制清理與失敗；不作用於正式 RecordStuff。Log 與 `report.json`／`report.md` 保留在 `docs/verification/measurements/<timestamp>-quit-dialog-<language>/`。報告刻意將原生觀察留為 **not recorded**，需另記觀察者、橫幅／文字結果與截圖。`shown` 事件不代表橫幅確實可見。這是帶 Electron 圖示／系統按鈕語言的開發 fixture 證據，不是正式簽章產物身分或真實錄影證據。
 
 由 agent 自動做視覺驗收時，依[原生驗收技能](../../../.agents/skills/astra-acceptance-with-computer-use/SKILL.md)：agent 擷取真正提示，以截圖搭配 accessibility 狀態自行判讀、關閉提示，再核對生命週期與清理證據。工具支援時保存 PNG，否則明確引用工具圖像。此自動化需要具桌面能力的 agent；單獨指令不會呼叫模型。自動置前需要被動的前後桌面證據，先選取目標或只看 App 裁切圖不能證明；維護者確認仍標為人工證據。
 

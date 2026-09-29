@@ -11,34 +11,21 @@ const DEFERRAL_MESSAGE = {
   metadata: "Settings or the log are still being written. RecordStuff will stay open. Please try quitting again in a moment.",
 } as const;
 
-/** Shared native presentation; fixtures inject real Electron functions, not copied UI. */
+/**
+ * Deferred-quit feedback, shown exactly while recording work is pending. It
+ * only informs, so it is a notification: a windowless message box runs a
+ * modal loop in which main runs no timers, I/O or log writes until it is
+ * closed (plan 055's probe), which would hold the very work it describes.
+ * Returns without waiting for anything, so no deadline depends on it.
+ */
 export function createQuitFeedback(deps: {
   language(): Language;
-  focus(): void;
-  show(options: MessageBoxOptions): Promise<unknown>;
+  notify(body: string): void;
   log(message: string): void;
-}): (deferral?: QuitDeferral) => Promise<void> {
-  let active: Promise<void> | undefined;
+}): (deferral?: QuitDeferral) => void {
   return (deferral = "media") => {
-    if (active) {
-      try { deps.focus(); }
-      catch (cause) { deps.log(`quit feedback failed: ${String(cause)}`); }
-      return active;
-    }
-    // Register before invoking native code, including synchronous/reentrant callbacks.
-    active = Promise.resolve().then(async () => {
-      // Focus is a courtesy; the dialog is the point.
-      try { deps.focus(); }
-      catch (cause) { deps.log(`quit feedback focus failed: ${String(cause)}`); }
-      await deps.show({
-        type: "info",
-        title: APP_NAME,
-        message: translate(DEFERRAL_MESSAGE[deferral], deps.language()),
-      });
-    }).catch(cause => deps.log(`quit feedback failed: ${String(cause)}`)).finally(() => {
-      active = undefined;
-    });
-    return active;
+    try { deps.notify(translate(DEFERRAL_MESSAGE[deferral], deps.language())); }
+    catch (cause) { deps.log(`quit feedback failed: ${String(cause)}`); }
   };
 }
 

@@ -4,42 +4,29 @@ import type { MessageBoxOptions } from "electron";
 import type { Language } from "../shared/i18n";
 import type { RecordingResult } from "../shared/recording-result";
 
-it("joins overlapping native prompts and allows a later prompt in the current language", async () => {
-  let close!: () => void;
+it("tells a deferred quit in a notification in the current language and returns without waiting (plan 055)", () => {
   let language: Language = "en";
-  const show = vi.fn((_options: MessageBoxOptions) => new Promise<void>(resolve => { close = resolve; }));
-  const focus = vi.fn();
-  const prompt = createQuitFeedback({ language: () => language, show, focus, log: vi.fn() });
-  const first = prompt(); expect(prompt()).toBe(first);
-  await Promise.resolve();
-  expect(show).toHaveBeenCalledOnce(); expect(focus).toHaveBeenCalledTimes(2);
-  expect(show.mock.calls[0]?.[0]).toMatchObject({ type: "info", title: "RecordStuff", message: expect.stringContaining("RecordStuff will stay open") });
-  // A later quit while the existing dialog is open must bring it forward again.
-  expect(prompt()).toBe(first);
-  expect(focus).toHaveBeenCalledTimes(3); expect(show).toHaveBeenCalledOnce();
-  close(); await first;
+  const notify = vi.fn((_body: string) => undefined);
+  const feedback = createQuitFeedback({ language: () => language, notify, log: vi.fn() });
+  // Nothing to await: the deadlines the notice describes keep running while it is shown.
+  expect(feedback()).toBeUndefined();
+  expect(notify).toHaveBeenCalledExactlyOnceWith("Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. Please try quitting again after it finishes.");
   language = "zh-TW";
-  const second = prompt(); await Promise.resolve();
-  expect(show).toHaveBeenCalledTimes(2);
-  expect(show.mock.calls[1]?.[0]).toMatchObject({ message: expect.stringContaining("RecordStuff 將保持開啟") });
-  close(); await second;
+  feedback("media");
+  expect(notify.mock.calls[1]?.[0]).toContain("RecordStuff 將保持開啟");
 });
 
-it("names a pending preference or log write instead of a recording when media had settled", async () => {
-  const show = vi.fn(async (_options: MessageBoxOptions) => undefined);
-  const prompt = createQuitFeedback({ language: () => "en", show, focus() {}, log: vi.fn() });
-  await prompt("metadata");
-  expect(show.mock.calls[0]?.[0].message).toBe("Settings or the log are still being written. RecordStuff will stay open. Please try quitting again in a moment.");
-  await prompt();
-  expect(show.mock.calls[1]?.[0].message).toContain("Recording is still starting");
+it("names a pending preference or log write instead of a recording when media had settled", () => {
+  const notify = vi.fn((_body: string) => undefined);
+  createQuitFeedback({ language: () => "en", notify, log: vi.fn() })("metadata");
+  expect(notify).toHaveBeenCalledExactlyOnceWith("Settings or the log are still being written. RecordStuff will stay open. Please try quitting again in a moment.");
 });
 
-it("clears the guard after rejected and synchronous native failures", async () => {
-  const show = vi.fn().mockRejectedValueOnce(new Error("rejected")).mockImplementationOnce(() => { throw new Error("sync"); }).mockResolvedValue(undefined);
+it("logs a failed notification instead of throwing into the deferred quit", () => {
   const log = vi.fn();
-  const prompt = createQuitFeedback({ language: () => "en", show, focus() {}, log });
-  await prompt(); await prompt(); await prompt();
-  expect(show).toHaveBeenCalledTimes(3); expect(log).toHaveBeenCalledTimes(2);
+  const feedback = createQuitFeedback({ language: () => "en", notify: () => { throw new Error("no notification"); }, log });
+  expect(() => feedback()).not.toThrow();
+  expect(log).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("no notification"));
 });
 
 function historyResults(outcomes: Array<"safe" | "unsaved" | "writing">, unsaved: RecordingResult[] = [{ id: "a", occurredAt: "2026-09-25T04:05:06Z", code: "disk_full", detail: "", outcome: "empty", acknowledged: false, persistenceFailed: "io" }]) {
@@ -97,14 +84,12 @@ it("staying, a failed prompt and Chinese copy keep the app open and resume retri
   expect(broken.resume).toHaveBeenCalledOnce(); expect(log).toHaveBeenCalledWith(expect.stringContaining("no dialog"));
 });
 
-it("still shows both quit dialogs when bringing the app forward fails", async () => {
+it("still shows the history prompt when bringing the app forward fails", async () => {
   const focus = () => { throw new Error("focus unavailable"); };
   const log = vi.fn(), show = vi.fn().mockResolvedValue({ response: 1 });
-  await createQuitFeedback({ language: () => "en", focus, show, log })();
-  expect(show).toHaveBeenCalledOnce();
   const results = historyResults(["unsaved"]);
   expect(await createHistoryQuit({ results, language: () => "en", focus, show, log })()).toBe(false);
-  expect(show).toHaveBeenCalledTimes(2);
+  expect(show).toHaveBeenCalledOnce();
   expect(results.resume).toHaveBeenCalledOnce();
   expect(log).toHaveBeenCalledWith(expect.stringContaining("focus unavailable"));
 });

@@ -700,8 +700,7 @@ async function main(): Promise<void> {
 
   const showQuitFeedback = createQuitFeedback({
     language: () => currentLanguage,
-    focus: focusApp,
-    show: options => dialog.showMessageBox(options),
+    notify: body => tray.notifyQuitDeferred(body),
     log,
   });
   let historyPrompt = false;
@@ -738,7 +737,7 @@ async function main(): Promise<void> {
       savedNotification.setQuitting(false);
       captureNotices.setQuitting(false);
       log(`quit deferred: ${quitDeferral === "media" ? "recording work" : "a preference or log write"} is still pending`);
-      void showQuitFeedback(quitDeferral);
+      showQuitFeedback(quitDeferral);
     },
     // Media is safe here; unsaved reminders need a durable save or explicit consent.
     history: createHistoryQuit({ results: recordingResults, language: () => currentLanguage, focus: focusApp, log,

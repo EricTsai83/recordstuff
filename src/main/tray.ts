@@ -295,6 +295,11 @@ export class AppTray {
     this.show(notificationsEnabledNotification(this.language));
   }
 
+  /** The answer to the user's own quit, like the dialog it replaced (plan 055), so the switch for saved and failure notices does not apply. */
+  notifyQuitDeferred(body: string): void {
+    this.show({ title: APP_NAME, body }, undefined, true);
+  }
+
   /**
    * A notification is a best-effort hint, never part of recording: nothing
    * here may throw into the caller. Local verification found a save whose notification
@@ -303,20 +308,20 @@ export class AppTray {
    * or ad-hoc-signed build outright. Electron's `failed` event is the only
    * trace, so it goes to the log; signed-build evidence is in docs/verification/README.md.
    */
-  private show(text: { title: string; body: string }, onClick?: () => void): void {
+  private show(text: { title: string; body: string }, onClick?: () => void, always = false): void {
     if (this.destroyed) return;
     // A wake with nothing held starts no check, so the first notice after it
     // asks whether the user already came back instead of waiting for a return.
     if (this.asleep && this.resumed && this.userReturned()) this.showHeld();
     if (this.asleep) {
       // The switch and support checks apply when it is finally shown.
-      this.held.push(() => this.show(text, onClick));
+      this.held.push(() => this.show(text, onClick, always));
       if (this.resumed && !this.heldTimer) this.checkReturn();
       this.log(`notification: held during sleep: ${text.body}`);
       return;
     }
     try {
-      if (this.options.canNotify && !this.options.canNotify()) {
+      if (!always && this.options.canNotify && !this.options.canNotify()) {
         this.log(`notification: turned off in settings, dropped: ${text.body}`);
         return;
       }

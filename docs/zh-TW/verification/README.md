@@ -8,6 +8,7 @@
 
 | 項目 | 既有結果與限制 |
 | --- | --- |
+| Plan 055 不阻塞的對話框，2026-09-29 | 無視窗的 `showMessageBox` 與 `showErrorBox` 會卡住 main 的 timer 與 I/O 直到關閉，sheet 與資料夾選擇器則不會；延後退出提示改為通知，在 controlled build 上通知顯示的 85 秒內，13 秒期限、指令通道與 log 都準時，中英文皆然。隔離 fixture 的橫幅受開發用 Electron 的通知權限阻擋。見[紀錄](history-2026-09.md#plan-055-結案--2026-09-29)。 |
 | Plan 054 原生驗收後續，2026-09-29 | 已安裝 App 的通知點擊於 113 與 121 ms 後以 reopen 抵達並被忽略，沒有開啟設定；真實的收尾量測報告顯示 `checkpoint 6 ms`；`pnpm acceptance` 不再對已結束的 session 送出停止鍵，並在相同淡入後判定檔案從 beep 中開始的情況；睡眠期間 held 的通知經過 dark wake 後在完整喚醒時出現。衝突橫幅無法製造，1080p 通知需要更大的螢幕，兩個 runner 分支只由單元測試涵蓋。見[紀錄](history-2026-09.md#plan-054-結案--2026-09-29)。 |
 | Plan 053 第三次稽核遺留項目，2026-09-29 | 忙碌中的操作按鈕保留焦點、cadence 百分位改為 nearest-rank、網站 pull request job、第二次啟動開啟設定、擷取開始通知延到錄影結束後，以及 sentinel checkpoint 計時。Regression 175/175（含真實 Tab/Enter 的更新案例）與原生第二次啟動通過；收尾量測因權限提示而 blocked，擷取通知錄影未執行，已安裝 App 的通知點擊延到解鎖的 session，網站 job 已在 GitHub 上通過。見[紀錄](history-2026-09.md#plan-053-結案--2026-09-29)。 |
 | Plan 052 runner 的 process 與環境安全，2026-09-29 | runner 共用跳脫且檢查結束碼的程序比對，只從 `scrubbedEnv()` 啟動 Electron，`measure:finalization` 與 `diagnose:cadence` 在自己的程序群組中建置（中斷時 130/143），並擁有 `mkdtemp` 素材 profile。matrix quick、finalization（`NODE_OPTIONS` 未被繼承、兩種中斷）、cadence、acceptance、CPU、updates logic-only 與 controlled self-test 均通過，位於 `(052) [x]` 之下的 checkout 也通過；1238 項測試。self-test 需修正 fixture 才能通過既有的 tooltip 失敗。見[紀錄](history-2026-09.md#plan-052-runner-的-process-與環境安全--2026-09-29)。 |
