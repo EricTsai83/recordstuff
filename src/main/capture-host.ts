@@ -163,6 +163,9 @@ export class CaptureHost implements RecorderHost {
 
     try {
       const loaded = this.options.devUrl ? window.loadURL(this.options.devUrl) : window.loadFile(this.options.htmlPath);
+      // A deadline or teardown can win the race below; destroying the window then
+      // rejects this load with nobody awaiting it, which is not a new failure.
+      loaded.catch(() => undefined);
       // The deadline and teardown must also interrupt a page load that never settles.
       await Promise.race([loaded, readyReceived]);
       if (this.window !== window) throw new Error("capture host was torn down during page load");

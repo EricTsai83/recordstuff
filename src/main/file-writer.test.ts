@@ -152,6 +152,41 @@ describe("FileWriter", () => {
     }
   });
 
+  it("queues at most one background sync while an earlier one is still pending", async () => {
+    vi.useFakeTimers();
+    try {
+      let syncs = 0;
+      let finishSync: (() => void) | undefined;
+      const io: FileWriterFs = {
+        ...nodeFs,
+        open: async () => ({
+          write: async (data) => ({ bytesWritten: data.byteLength }),
+          // A volume whose sync outlasts several intervals.
+          sync: () => { syncs += 1; return new Promise<void>((resolve) => { finishSync = resolve; }); },
+          close: async () => undefined,
+        }),
+        link: async () => undefined,
+        copyExclusive: async () => undefined,
+        unlink: async () => undefined,
+      };
+      const writer = await FileWriter.open("/mem/q.recording.mp4", "/mem/q.mp4", { io, fsyncIntervalMs: 5000 });
+      await writer.append(bytes(1));
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(syncs).toBe(1);
+      // A write accepted meanwhile waits behind that one sync only.
+      const write = writer.append(bytes(1));
+      finishSync!();
+      await write;
+      expect(syncs).toBe(1);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(syncs).toBe(2);
+      finishSync!();
+      await writer.abandon();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a disk-full write rejects with disk_full and keeps the partial file", async () => {
     let writes = 0;
     const io = wrapFs({

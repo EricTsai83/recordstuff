@@ -122,6 +122,8 @@ export class FileWriter {
   /** Set when an append was refused; accepted bytes are still written, nothing after it is. */
   private refused: FileWriteError | undefined;
   private fsyncTimer: ReturnType<typeof setInterval> | undefined;
+  /** A background sync is queued or running; a slow volume must not stack one per tick ahead of the writes. */
+  private syncQueued = false;
   private closed = false;
   private terminal = false;
   private finished: Promise<string> | undefined;
@@ -142,8 +144,10 @@ export class FileWriter {
     private readonly backlogLimitBytes: number,
   ) {
     this.fsyncTimer = setInterval(() => {
+      if (this.syncQueued) return;
+      this.syncQueued = true;
       // enqueue retains the first failure; consume this background caller's rejection.
-      void this.enqueue(() => this.handle.sync()).catch(() => undefined);
+      void this.enqueue(() => this.handle.sync()).catch(() => undefined).finally(() => { this.syncQueued = false; });
     }, fsyncIntervalMs);
   }
 
