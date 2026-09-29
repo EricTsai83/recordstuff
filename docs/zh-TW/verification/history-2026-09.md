@@ -8,6 +8,31 @@
 
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 053 結案 — 2026-09-29
+
+Plan 053 處理 2026-09-29 第三次稽核修正時留下的六個項目，由 Claude 實作、Codex GPT-6 Astra review；在 052 於主 checkout 執行期間，改在獨立的 worktree 進行（[desktop](../system-design/desktop.md#設定視窗)、[第二次啟動](../system-design/desktop.md#設定快捷鍵)、[通知](../system-design/desktop.md#tray-與通知)、[tooling](../system-design/tooling.md#影格節奏診斷)）。
+
+- **忙碌中的操作保留焦點。** 操作按鈕、診斷的 Retry/Recovery 與失敗紀錄列採用同一規則：忙碌的按鈕保有 `aria-disabled="true"` 與保存中的外觀，維持可聚焦並忽略觸發；只有 main 未提供的選項才原生停用。main 把進行中的更新檢查標為 `busy`，並仍拒絕重複請求。
+- **Cadence 百分位。** 維護者選擇 nearest-rank：`cadenceStats` 改用共用的 `stats.mts`，因此 2026-09-29 之前寫出的 cadence p05/p95 是內插值、無法直接比較；中位數不變。
+- **網站 pull request。** `website.yml` 新增依路徑篩選、不使用 secrets 的 `pull_request` job（frozen 安裝、測試、`astro check`、離線 manifest 檢查、離線建置、離線連結檢查）；deploy job 在 pull request 上略過。
+- **第二次啟動。** `second-instance` 與 macOS reopen（`activate`）透過 `handleAction("openSettings")` 開啟設定；通知點擊後 2 秒內的這兩種事件視為點擊造成的啟用而忽略。
+- **擷取開始時的通知。** 解析度上限與幀率通知保留到錄影結束後才顯示一次，macOS 上延後 500 ms；`notifyCaptureWarning` 改用 `APP_NAME`。
+- **Checkpoint 計時。** finalize timing 行新增 `checkpoint N ms`；最後一次 sentinel 寫入失敗的錄影略過 checkpoint 並記為 `?`；parser 同時接受有無此欄位的行。
+
+環境：M1 Pro、macOS 26.6.2、Electron 44.3.0，主螢幕 1920 × 1080 加一台直立 1080 × 1920，版本為 `44f5333` 加上未提交的變更。桌面回合開始前維護者回覆「好了」。
+
+- **設定 regression。** 最終 fixture 上 `pnpm acceptance:regression` 通過：check、設定 fixture 175/175（`2026-09-29T00-06-17-121Z-settings-acceptance`）與快捷鍵失敗整合（`2026-09-29T00-07-10-727Z-shortcut-failure`）。真實的 Tab 到達「檢查更新…」，真實的 Enter 只開始一次檢查，第二次 Enter 沒有送出請求，焦點與焦點框留在忙碌的按鈕上（`update-check-busy.png`），檢查結束後下一次 Tab 移到官方網站按鈕（`update-check-done.png`）。第一次執行有四個案例失敗：兩個舊斷言仍預期通知設定按鈕被原生停用，新案例送出 Return 時沒有 Chromium 觸發按鈕所需的字元事件；兩個 fixture 錯誤都在通過的那次執行前修正。
+- **第二次啟動，全新簽署的 bundle。** 第一次啟動沒有開啟視窗。對執行中的 bundle 執行 `open`，log 記錄 `reopen: reopened from Finder or the Dock; Settings opened`，設定在最前面；第二個程序記錄 `reopen: second launch; Settings opened`，並因 lock 結束。agent 的 shell 帶有 `ELECTRON_RUN_AS_NODE=1`，所以最初的 `open -n` 與直接執行沒有真正啟動 Electron；之後移除該變數重跑。
+- **通知點擊。** 點擊執行中開發版 bundle 的「通知已開啟」橫幅時，macOS 啟動了登記在 /Applications 的 1.0.0，它約 0.5 秒後以 `second-instance` 通知開發版並開啟了設定。2 秒的點擊時間窗因此加入，之後未在原生環境重測。登記的那一份自己在執行時，點擊是否會收到 reopen 尚未觀察到：維護者未選擇會取代已安裝 App 的 `pnpm acceptance:notification -- --install` 回合。
+- **Blocked。** 收尾量測以 `capture_start_failed` 失敗，因為 worktree 的開發版 Electron.app 沒有螢幕錄製授權，macOS 顯示了權限提示；維護者選擇不授權，因此沒有顯示 checkpoint 的報告（`2026-09-29T00-12-42-599Z-finalization-plan053`）。擷取開始通知的錄影沒有執行：這裡沒有大於最小上限的螢幕，而上限確認成功時不會顯示通知。
+- **本機無法驗證。** 網站 job 尚未在 GitHub 上執行；只改 `website/**` 的 pull request 會顯示它。其步驟在本機以 `SITE_MANIFEST_OFFLINE=1` 通過（16 個測試、`astro check` 0 errors、4 頁、無壞連結）。
+
+自動化證據：最終版本的 `pnpm check` 通過型別檢查、80 個檔案 1246 個測試與建置。測試涵蓋：忙碌的按鈕未被原生停用且忽略第二次觸發、model 的忙碌檢查、reopen 與第二次啟動各開啟設定一次、quit 閘門、點擊時間窗與 listener 移除、tray 的點擊順序、擷取通知在結束後只顯示一次且會被新錄影或結束 App 丟棄、checkpoint 計時與最後一次寫入失敗時的略過、有無 `checkpoint` 的 parser，以及 nearest-rank 的 cadence 百分位。
+
+Review：Codex GPT-6 Astra（medium reasoning、read-only）。Pass 1（約 64 秒）審查整份變更，pass 2（約 67 秒）審查點擊時間窗與 fixture 修正，兩次都沒有 findings。
+
+清理：開發版 bundle 已結束，沒有殘留 RecordStuff 或 Electron 程序；通知開關關閉再開啟後，`settings.json` 與基準相同。回合期間執行了 `caffeinate -d -i`。依維護者要求分成六個 commit，rebase 到已結案的 052 之後，並開成 pull request。
+
 ## Plan 052 runner 的 process 與環境安全 — 2026-09-29
 
 桌面 runner 現在共用程序比對與啟動環境，由 Claude 實作，經 Codex GPT-6 Astra review（[工具](../system-design/tooling.md#驗收收尾)）。2026-09-29 第二輪稽核讀 `2088633` 時發現：`run-matrix`、`measure-finalization` 與 `diagnose-frame-cadence` 把真實 `Electron.app` 路徑未跳脫地放進 `pgrep`／`pkill` pattern，並忽略 `pgrep` 的結束碼；幾個 runner 只刪除 `ELECTRON_RUN_AS_NODE`，或自己維護 key 清單；四個 runner 重寫 RecordStuff pattern；`measure:finalization` 在阻塞式 build 期間被中斷會 exit 1；兩個素材 profile 是固定路徑且從不刪除。

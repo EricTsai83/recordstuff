@@ -8,6 +8,7 @@
 
 | 項目 | 既有結果與限制 |
 | --- | --- |
+| Plan 053 第三次稽核遺留項目，2026-09-29 | 忙碌中的操作按鈕保留焦點、cadence 百分位改為 nearest-rank、網站 pull request job、第二次啟動開啟設定、擷取開始通知延到錄影結束後，以及 sentinel checkpoint 計時。Regression 175/175（含真實 Tab/Enter 的更新案例）與原生第二次啟動通過；收尾量測因權限提示而 blocked，擷取通知錄影與已安裝 App 的通知點擊未執行，網站 job 尚未在 GitHub 上執行。見[紀錄](history-2026-09.md#plan-053-結案--2026-09-29)。 |
 | Plan 052 runner 的 process 與環境安全，2026-09-29 | runner 共用跳脫且檢查結束碼的程序比對，只從 `scrubbedEnv()` 啟動 Electron，`measure:finalization` 與 `diagnose:cadence` 在自己的程序群組中建置（中斷時 130/143），並擁有 `mkdtemp` 素材 profile。matrix quick、finalization（`NODE_OPTIONS` 未被繼承、兩種中斷）、cadence、acceptance、CPU、updates logic-only 與 controlled self-test 均通過，位於 `(052) [x]` 之下的 checkout 也通過；1238 項測試。self-test 需修正 fixture 才能通過既有的 tooltip 失敗。見[紀錄](history-2026-09.md#plan-052-runner-的-process-與環境安全--2026-09-29)。 |
 | 四十項稽核修復 051，2026-09-29 | 四十項均已實作；回歸、錄影／播放、通知、更新、生命週期、網站、CPU 證據、螢幕／權限補驗與保留限制見[逐項紀錄](audit-051.md)。 |
 | 原生退出異常收尾，2026-09-28 | 修正 Cmd+Q 留下程序且無法錄影；原生退出、重新錄製／播放與繁中提示通過。見[收尾與限制](history-2026-09.md#quit-closure-2026-09-28)。 |
