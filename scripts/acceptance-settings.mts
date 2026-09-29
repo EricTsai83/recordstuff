@@ -42,9 +42,10 @@ for (let i = 0; i < argv.length; i += 1) {
   else fail(`Unknown argument ${argv[i]}`);
 }
 
-function fail(message: string): never {
+/** Exit 2 means blocked (a missing prerequisite or a locked desktop); 1 means the round ran and failed. */
+function fail(message: string, code = 2): never {
   console.error(message);
-  process.exit(2);
+  process.exit(code);
 }
 
 for (const required of ["out/preload/settings.js", "out/renderer/settings.html"]) {
@@ -89,7 +90,8 @@ const code = execution.code === 0 && !execution.error && !execution.stopped && e
 const resultsPath = path.join(dir, "results.json");
 if (!fs.existsSync(resultsPath)) {
   const detail = fs.existsSync(path.join(dir, "error.txt")) ? fs.readFileSync(path.join(dir, "error.txt"), "utf8") : "";
-  fail(`${desktop.lockedAt ? `${desktop.summary}\n` : ""}The fixture produced no results (exit ${code}). ${detail}\nEvidence: ${dir}`);
+  fail(`${desktop.lockedAt ? `${desktop.summary}\n` : ""}The fixture produced no results (exit ${code}). ${detail}\nEvidence: ${dir}`,
+    desktop.lockedAt ? DESKTOP_BLOCKED_EXIT : 1);
 }
 const cases = JSON.parse(fs.readFileSync(resultsPath, "utf8")) as Case[];
 for (const result of cases) console.log(`${result.ok ? "PASS" : "FAIL"}: ${result.name} — ${result.detail}`);

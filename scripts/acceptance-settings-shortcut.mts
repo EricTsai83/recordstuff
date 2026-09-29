@@ -27,7 +27,8 @@ try {
   if (process.platform !== "darwin" || process.arch !== "arm64") throw new Error("This runner requires the local macOS arm64 pnpm start:app bundle.");
   // The panel this opens is judged by native observation on an awake, unlocked display.
   desktop = await beginDesktopRound();
-  const pid = (await command("pgrep", ["-f", `^${escapeRegExp(appPath)}$`], controller.signal)).trim();
+  // pgrep exits 1 when nothing matches; that is the not-running case the check below explains.
+  const pid = (await command("pgrep", ["-f", `^${escapeRegExp(appPath)}$`], controller.signal, 5000, [0, 1])).trim();
   if (!/^\d+$/.test(pid)) throw new Error("Expected exactly one local RecordStuff bundle process.");
   from = appLog.end();
   const lines = appLog.all();

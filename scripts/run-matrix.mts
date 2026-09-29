@@ -314,9 +314,12 @@ async function recordOnce(entry: MatrixEntry, key: string): Promise<RunOutcome> 
     if (main !== undefined) owned.sampler = sampler = new CpuSampler(samplerBinary, main);
     if (Date.now() - launchedAt > deadlineMs) {
       timedOut = true;
-      console.error(`  Still running after ${deadlineMs / 1000} s; terminating Electron`);
-      signalPids(electronPids(), "SIGTERM");
-      await sleep(2000);
+      console.error(`  Still running after ${deadlineMs / 1000} s; quitting the app`);
+      // The next case's `open` must launch a new app, not bring this one forward: quit through
+      // before-quit, kill what outlives the grace period, and wait for `open -W` to return.
+      const stopped = await stopApp();
+      console.error(`  App ${stopped === "forced" ? "killed after the quit grace period" : stopped === "quit" ? "quit" : "had already exited"}`);
+      await Promise.race([exited, sleep(5000)]);
       break;
     }
   }

@@ -12,6 +12,17 @@ const dir = path.join(root, "docs/verification/measurements", `${new Date().toIS
 fs.mkdirSync(dir, { recursive: true });
 const fixture = await buildFixture("recording-lifecycle", dir);
 const env = scrubbedEnv();
+// The fixtures run in their own process group, which a terminal's Ctrl+C never reaches: stop them through the supervisor.
+const controller = new AbortController();
+const interrupt = (): void => controller.abort();
+process.on("SIGINT", interrupt);
+process.on("SIGTERM", interrupt);
+/** After an interrupt the round is neither pass nor fail: report the cleanup and stop. */
+function exitIfInterrupted(execution: { groupGone: boolean }): void {
+  if (!controller.signal.aborted) return;
+  console.error(`Interrupted: fixture stopped; process group gone=${execution.groupGone}. Evidence: ${dir}`);
+  process.exit(130);
+}
 const require = createRequire(import.meta.url);
 const results = [];
 for (const mode of ["copy", "cleanup", "result"]) {
@@ -19,9 +30,10 @@ for (const mode of ["copy", "cleanup", "result"]) {
   const logFd = fs.openSync(path.join(output, "electron.log"), "w");
   try {
     const execution = await runIsolatedProcess({ executable: require("electron") as string,
-      args: [fixture, output, mode], cwd: root, env, logFd, timeoutMs: 15_000 });
+      args: [fixture, output, mode], cwd: root, env, logFd, timeoutMs: 15_000, signal: controller.signal });
     results.push({ mode, execution });
     fs.writeFileSync(path.join(dir, "report.json"), JSON.stringify(results, null, 2));
+    exitIfInterrupted(execution);
     assert.equal(execution.code, 0); assert.equal(execution.stopped, undefined);
     assert.equal(execution.forced, false); assert.equal(execution.groupGone, true);
     const result = JSON.parse(fs.readFileSync(path.join(output, "result.json"), "utf8"));
@@ -36,9 +48,10 @@ for (const mode of ["copy", "cleanup", "result"]) {
   const logFd = fs.openSync(path.join(output, "electron.log"), "w");
   try {
     const execution = await runIsolatedProcess({ executable: require("electron") as string,
-      args: [historyFixture, output], cwd: root, env, logFd, timeoutMs: 20_000 });
+      args: [historyFixture, output], cwd: root, env, logFd, timeoutMs: 20_000, signal: controller.signal });
     results.push({ mode: "history", execution });
     fs.writeFileSync(path.join(dir, "report.json"), JSON.stringify(results, null, 2));
+    exitIfInterrupted(execution);
     assert.equal(execution.code, 0); assert.equal(execution.stopped, undefined);
     assert.equal(execution.forced, false); assert.equal(execution.groupGone, true);
     const result = JSON.parse(fs.readFileSync(path.join(output, "result.json"), "utf8"));
