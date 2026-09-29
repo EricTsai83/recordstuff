@@ -54,7 +54,7 @@ export class AppShortcuts {
 
   capture(armed: boolean): void {
     if (armed) { this.settingsKey.suspend(); this.recording.suspend(); }
-    else { this.report(this.recording.resume()); this.settingsKey.resume(); }
+    else { this.report(this.recording.resume(), false); this.settingsKey.resume(); }
     this.options.refresh();
   }
 
@@ -86,7 +86,7 @@ export class AppShortcuts {
   /** Registers both shortcuts again; false while either is still refused, so the caller can say the retry did not help. */
   retry(): boolean {
     if (this.options.settled()) {
-      this.request(this.options.store.hotkey);
+      this.request(this.options.store.hotkey, false);
       this.settingsKey.retry(this.options.store.hotkey);
       this.options.refresh();
     }
@@ -100,17 +100,18 @@ export class AppShortcuts {
   }
 
   /** Register with the OS and surface a refusal in the menu and a notification. */
-  private request(setting: HotkeySettings): void {
-    this.report(this.recording.request(setting, this.options.settled()));
+  private request(setting: HotkeySettings, refresh = true): void {
+    this.report(this.recording.request(setting, this.options.settled()), refresh);
   }
 
-  private report(result: HotkeyRequestResult | undefined): void {
+  /** `refresh` false: the caller changes the Settings key next and refreshes once after it. */
+  private report(result: HotkeyRequestResult | undefined, refresh = true): void {
     if (!result) return;
     // Use live ownership during deferred changes; never steal a session stop key.
     const status = this.recording.status;
     this.settingsKey.reconcile(status.kind === "registered" ? { enabled: true, accelerator: status.accelerator } : this.options.store.hotkey);
     if (result.kind === "failed" && shouldNotifyHotkeyFailure(this.lastReport, result)) this.options.notifyRegistrationFailed(result.accelerator);
     if (result.kind !== "deferred" && result.kind !== "suspended") this.lastReport = result;
-    this.options.refresh();
+    if (refresh) this.options.refresh();
   }
 }

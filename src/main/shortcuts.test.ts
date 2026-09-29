@@ -12,9 +12,10 @@ function setup(refuse: string[] = []) {
   let settled = true;
   const store = { get hotkey() { return saved; }, setHotkey: vi.fn(async (setting: HotkeySettings) => { saved = setting; }) };
   const notifyRegistrationFailed = vi.fn();
+  const refresh = vi.fn();
   const shortcuts = new AppShortcuts({ globalShortcut, platform: "darwin", toggle: vi.fn(), openSettings: vi.fn(), store,
-    settled: () => settled, notifyRegistrationFailed, notifyWriteFailed: vi.fn(), refresh: vi.fn(), log: vi.fn() });
-  return { shortcuts, store, registered, notifyRegistrationFailed, unsettle: () => { settled = false; } };
+    settled: () => settled, notifyRegistrationFailed, notifyWriteFailed: vi.fn(), refresh, log: vi.fn() });
+  return { shortcuts, store, registered, notifyRegistrationFailed, refresh, unsettle: () => { settled = false; } };
 }
 
 it("reports a refused key once, not again on cancel, and again after an explicit save", async () => {
@@ -62,4 +63,18 @@ it("retries both refused registrations without rewriting preferences", () => {
   s.unsettle();
   s.shortcuts.retry();
   expect(s.registered.size).toBe(0);
+});
+
+it("refreshes once per capture end or retry, after both shortcuts changed", () => {
+  const s = setup();
+  s.shortcuts.start();
+  s.shortcuts.capture(true);
+  s.refresh.mockClear();
+  // Each push reads both shortcuts' final status: none may show the Settings key still suspended.
+  s.refresh.mockImplementation(() => expect(s.shortcuts.settingsStatus.kind).not.toBe("suspended"));
+  s.shortcuts.capture(false);
+  expect(s.refresh).toHaveBeenCalledTimes(1);
+  s.refresh.mockClear();
+  s.shortcuts.retry();
+  expect(s.refresh).toHaveBeenCalledTimes(1);
 });
