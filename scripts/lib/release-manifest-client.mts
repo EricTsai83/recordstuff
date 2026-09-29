@@ -1,4 +1,5 @@
 /** Fetch and verify a published stable release for every release-data consumer. */
+import { fetchWithRetry } from "./fetch-retry.mts";
 import { REPOSITORY, buildManifest, parseStableTag, type GitHubRelease, type ReleaseJson, type ReleaseManifest } from "./release-manifest.mts";
 
 const API_BASE = `https://api.github.com/repos/${REPOSITORY}`;
@@ -15,13 +16,13 @@ function apiHeaders(): Record<string, string> {
   return headers;
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
-  const response = await fetch(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-  return response;
+/** A rate limit, a 5xx or a dropped connection is retried a few times before it counts (see fetch-retry.mts). */
+async function fetchPublished(url: string, init: RequestInit = {}): Promise<Response> {
+  return fetchWithRetry(url, init, { timeoutMs: FETCH_TIMEOUT_MS });
 }
 
 async function fetchRelease(tag: string): Promise<GitHubRelease> {
-  const response = await fetchWithTimeout(`${API_BASE}/releases/tags/${encodeURIComponent(tag)}`, {
+  const response = await fetchPublished(`${API_BASE}/releases/tags/${encodeURIComponent(tag)}`, {
     headers: apiHeaders(),
   });
   if (response.status === 404) throw new Error(`No GitHub release exists for ${tag}.`);
@@ -30,14 +31,14 @@ async function fetchRelease(tag: string): Promise<GitHubRelease> {
 }
 
 async function fetchText(url: string): Promise<string> {
-  const response = await fetchWithTimeout(url, { headers: { "user-agent": "recordstuff-website-manifest" } });
+  const response = await fetchPublished(url, { headers: { "user-agent": "recordstuff-website-manifest" } });
   if (!response.ok) throw new Error(`Download of ${url} returned ${response.status}.`);
   return response.text();
 }
 
 /** Follow GitHub into its object store; only the final successful response proves reachability. */
 async function assertAssetReachable(url: string): Promise<void> {
-  const response = await fetchWithTimeout(url, {
+  const response = await fetchPublished(url, {
     method: "HEAD",
     redirect: "follow",
     headers: { "user-agent": "recordstuff-website-manifest" },

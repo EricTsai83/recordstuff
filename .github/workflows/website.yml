@@ -8,6 +8,8 @@ on:
     paths:
       - 'website/**'
       - 'scripts/lib/release-manifest*.mts'
+      # The manifest client and the link check retry through it.
+      - 'scripts/lib/fetch-retry.mts'
       # release-manifest.mts imports the shared version grammar.
       - 'src/shared/version.ts'
       - '.github/workflows/website.yml'
@@ -15,6 +17,7 @@ on:
     paths:
       - 'website/**'
       - 'scripts/lib/release-manifest*.mts'
+      - 'scripts/lib/fetch-retry.mts'
       - 'src/shared/version.ts'
       - '.github/workflows/website.yml'
   workflow_dispatch:

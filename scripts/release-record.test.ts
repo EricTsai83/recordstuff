@@ -41,7 +41,7 @@ function commitStable(version: string) {
 
 beforeEach(async () => {
   root = mkdtempSync(path.join(tmpdir(), 'recordstuff-record-test-'));
-  for (const file of ['scripts/release.mts', 'scripts/lib/release-manifest.mts', 'scripts/lib/release-manifest-client.mts', 'src/shared/version.ts']) {
+  for (const file of ['scripts/release.mts', 'scripts/lib/release-manifest.mts', 'scripts/lib/release-manifest-client.mts', 'scripts/lib/fetch-retry.mts', 'src/shared/version.ts']) {
     const destination = path.join(root, file);
     mkdirSync(path.dirname(destination), { recursive: true });
     cpSync(path.join(repositoryRoot, file), destination);

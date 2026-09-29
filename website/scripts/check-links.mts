@@ -9,6 +9,21 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { configuredSite } from "../src/lib/site-origin.ts";
+import { fetchWithRetry } from "../../scripts/lib/fetch-retry.mts";
+
+/** GitHub serves most external links; a few at a time stays clear of its per-address limits. */
+const EXTERNAL_CONCURRENCY = 4;
+
+/** Runs `task` over `items`, at most `limit` at once, keeping the input order. */
+async function mapLimited<T, R>(items: readonly T[], limit: number, task: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < items.length) { const index = next++; results[index] = await task(items[index]!); }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
 
 const { values } = parseArgs({ options: { dir: { type: "string" }, offline: { type: "boolean" } } });
 const dist = values.dir ? path.resolve(values.dir) : fileURLToPath(new URL("../dist", import.meta.url));
@@ -97,21 +112,21 @@ for (const file of files) {
 }
 
 if (!offline) {
-  const results = await Promise.all(
-    [...external.keys()].map(async (url) => {
-      try {
-        let response = await fetch(url, { method: "HEAD", redirect: "follow", signal: AbortSignal.timeout(15_000) });
-        if (response.status === 405 || response.status === 403) {
-          response = await fetch(url, { method: "GET", redirect: "follow", signal: AbortSignal.timeout(15_000) });
-        }
-        const status = response.status;
+  const results = await mapLimited([...external.keys()], EXTERNAL_CONCURRENCY, async (url) => {
+    try {
+      // A transient failure (rate limit, 5xx, dropped connection) is retried before it counts as broken.
+      let response = await fetchWithRetry(url, { method: "HEAD", redirect: "follow" }, { timeoutMs: 15_000 });
+      if (response.status === 405 || response.status === 403) {
         await response.body?.cancel();
-        return { url, status };
-      } catch (error) {
-        return { url, status: 0, error: (error as Error).message };
+        response = await fetchWithRetry(url, { method: "GET", redirect: "follow" }, { timeoutMs: 15_000 });
       }
-    }),
-  );
+      const status = response.status;
+      await response.body?.cancel();
+      return { url, status };
+    } catch (error) {
+      return { url, status: 0, error: (error as Error).message };
+    }
+  });
   for (const result of results) {
     if (result.status < 200 || result.status >= 400) {
       problems.push(`external ${result.url} → ${result.status || result.error} (used on ${external.get(result.url)?.join(", ")})`);
