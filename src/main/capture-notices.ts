@@ -22,7 +22,10 @@ export class CaptureNotices {
 
   /** `label` names the notice in the log; `show` runs once, when it is delivered. */
   hold(label: string, show: () => void): void {
-    if (this.disposed || this.quitting) return;
+    if (this.disposed || this.quitting) {
+      this.options.log(`notification: ${label} dropped (shutdown)`);
+      return;
+    }
     this.held.push({ label, show });
     this.options.log(`notification: held until capture ends: ${label}`);
     if (this.idle) this.schedule();

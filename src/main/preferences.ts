@@ -11,6 +11,8 @@ export function createPreferenceActions(deps: {
   saveFolder(folder: string): Promise<void>;
   folderChanged(): void;
   folderFailed(folder: string): void;
+  /** A recording began while the dialog was open, so the chosen folder was not applied. */
+  folderRefused(folder: string): void;
   refresh(): void;
   log(message: string): void;
   /** Brings the open dialog forward when a second request joins it. */
@@ -30,7 +32,10 @@ export function createPreferenceActions(deps: {
       choosing = Promise.resolve().then(async () => {
         const folder = await deps.chooseFolder();
         if (!folder) return true;
-        if (!deps.settled()) return false;
+        if (!deps.settled()) {
+          deps.log(`settings: output folder ${folder} not applied: a recording started while the dialog was open`);
+          deps.folderRefused(folder); return false;
+        }
         try { await deps.saveFolder(folder); }
         catch (cause) { deps.log(`settings: failed to save outputDir: ${String(cause)}`); deps.folderFailed(folder); return false; }
         deps.folderChanged(); deps.refresh(); return true;

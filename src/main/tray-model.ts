@@ -226,6 +226,11 @@ export function settingsWriteFailedNotification(
     }),
   );
 }
+export function folderRefusedNotification(chosenDir: string, homeDir: string, language?: Language): NotificationText {
+  return notice(t("A recording started, so the output folder is unchanged. Choose {path} again after it ends.", language, {
+    path: abbreviateHome(chosenDir, homeDir),
+  }));
+}
 export function displayWriteFailedNotification(language?: Language): NotificationText {
   return notice(t("Could not save the screen setting.", language));
 }

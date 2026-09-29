@@ -255,10 +255,10 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
     const notification = Fake.instances.at(-1)!;
     expect(notification.options.title).toBe("RecordStuff");
     notification.listeners.get("click")?.();
-    expect(order).toEqual(["clicked", "openSettings"]);
+    expect(order).toEqual(["clicked", "openRecordingSettings"]);
     tray.notifyTrayHint();
     Fake.instances.at(-1)!.listeners.get("click")?.();
-    expect(order).toEqual(["clicked", "openSettings", "clicked"]);
+    expect(order).toEqual(["clicked", "openRecordingSettings", "clicked"]);
   });
 
   it("opens Settings at the shortcut card from the shortcut-refused banner that tells the user to go there", () => {
@@ -291,6 +291,16 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
     const { tray } = setup(true, () => false);
     tray.notifyOutputFolderProblem("/Volumes/X was not found.");
     expect(Fake.instances.map((notification) => notification.options)).toEqual([{ title: "Could not open the output folder", body: "/Volumes/X was not found.", silent: true }]);
+    expect(Fake.instances[0]!.shown).toBe(1);
+  });
+
+  it("answers a click that needs permission with the switch off, but drops the automatic permission notice", () => {
+    const { tray, logs } = setup(true, () => false);
+    tray.notifyPermission(false);
+    expect(Fake.instances).toHaveLength(0);
+    expect(logs.filter((line) => line.includes("turned off in settings"))).toHaveLength(1);
+    tray.notifyPermission(false, true);
+    expect(Fake.instances).toHaveLength(1);
     expect(Fake.instances[0]!.shown).toBe(1);
   });
 

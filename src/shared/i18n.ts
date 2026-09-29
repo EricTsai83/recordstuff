@@ -183,6 +183,8 @@ export const ZH_TW = {
     "RecordStuff 需要螢幕錄製權限，點這則通知開啟系統設定。",
   "Could not save settings. The output folder is unchanged. Try choosing {path} again.":
     "無法儲存設定，儲存位置仍是原本的資料夾。想改成 {path} 請再試一次。",
+  "A recording started, so the output folder is unchanged. Choose {path} again after it ends.":
+    "錄影已開始，儲存位置仍是原本的資料夾。錄影結束後請再選擇一次 {path}。",
   "Could not save recording quality. Your previous settings are still in use.":
     "無法儲存錄製品質設定，仍使用原本的選項。",
   "Could not save the language. Your previous language is still in use.":

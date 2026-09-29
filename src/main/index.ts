@@ -110,9 +110,10 @@ function osSupported(): boolean {
 }
 
 /**
- * The first launch shows where the icon lives (docs/system-design/recording.md): a menu-bar
+ * The first launch shows where the icon lives (docs/system-design/desktop.md): a menu-bar
  * icon is easy to miss, and Windows may tuck it into the tray overflow. A marker file in
  * userData records that it was shown; settings.json stores user preferences independently.
+ * Call it only when the hint can be shown: it spends the marker.
  */
 async function isFirstRun(userDataDir: string): Promise<boolean> {
   try {
@@ -489,6 +490,9 @@ async function main(): Promise<void> {
       case "openShortcutSettings":
         settingsWindow.showShortcut();
         return;
+      case "openRecordingSettings":
+        settingsWindow.showRecording();
+        return;
       case "openSettings":
         settingsWindow.show();
         return;
@@ -612,6 +616,8 @@ async function main(): Promise<void> {
     focus: focusApp,
     folderChanged: () => recorder.outputDirChanged(),
     folderFailed: folder => tray.notifySettingsWriteFailed(folder),
+    // Told once the recording ends: a banner now could be muted while the display is shared.
+    folderRefused: folder => captureNotices.hold("output folder not changed", () => tray.notifyFolderRefused(folder)),
     refresh: refreshUi, log,
   });
   function changeOutputDir(): Promise<boolean> { return preferenceActions.changeOutputDir(); }
@@ -690,7 +696,8 @@ async function main(): Promise<void> {
         if (event.code === "permission_denied" && permission) permission.markRelaunchRequired();
         return;
       case "permissionRequested":
-        tray.notifyPermission(event.needsRelaunch);
+        // The answer to the user's own click or shortcut, which otherwise does nothing visible.
+        tray.notifyPermission(event.needsRelaunch, true);
         return;
     }
   });
@@ -829,7 +836,9 @@ async function main(): Promise<void> {
 
   // Every platform: a menu-bar app is hard to find, and on macOS this is the
   // one moment the notification authorization prompt can appear in context.
-  if (await isFirstRun(app.getPath("userData"))) {
+  // Without screen permission a click cannot record, and the permission
+  // notice already asked: the hint waits for a launch where it is true.
+  if (recorder.state.type !== "needsPermission" && await isFirstRun(app.getPath("userData"))) {
     tray.notifyTrayHint();
   }
   updates.flush();

@@ -75,6 +75,8 @@ describe("CaptureNotices", () => {
     vi.advanceTimersByTime(SAVED_NOTIFICATION_DELAY_MS);
     expect(second).not.toHaveBeenCalled();
     expect(logs).toContain("notification: frame rate downgrade dropped (shutdown)");
+    // One held after quit began is named too, as the design promises for every dropped notice.
+    expect(logs).toContain("notification: late dropped (shutdown)");
   });
 
   it("keeps a throwing notice from stopping the next", () => {

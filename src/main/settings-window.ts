@@ -117,6 +117,11 @@ export class SettingsWindow {
     this.showEntry("general");
   }
 
+  /** The capture-warning banner's entry: Recording, where the resolution warning is shown. */
+  showRecording(): void {
+    this.showEntry("recording");
+  }
+
   /** An explicit entry: a new token makes the page select `tab` once, however it was left. */
   private showEntry(tab: SettingsTab): void {
     this.entryTab = tab;

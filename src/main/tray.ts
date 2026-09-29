@@ -14,6 +14,7 @@ import type { HotkeyAccelerator } from "../shared/hotkey";
 import { translate, type Language } from "../shared/i18n";
 import {
   displayWriteFailedNotification,
+  folderRefusedNotification,
   languageWriteFailedNotification,
   frameRateDowngradeNotification,
   hotkeyRegistrationFailedNotification,
@@ -249,12 +250,17 @@ export class AppTray {
     });
   }
 
-  notifyPermission(needsRelaunch: boolean): void {
-    this.show(permissionNotification(needsRelaunch, this.language), () => this.options.permissionAction());
+  /** `answer`: a reply to the user's own click or shortcut, shown even with notifications off, like a deferred quit. */
+  notifyPermission(needsRelaunch: boolean, answer = false): void {
+    this.show(permissionNotification(needsRelaunch, this.language), () => this.options.permissionAction(), answer);
   }
 
   notifySettingsWriteFailed(chosenDir: string): void {
     this.show(settingsWriteFailedNotification(chosenDir, this.options.context().homeDir, this.language));
+  }
+
+  notifyFolderRefused(chosenDir: string): void {
+    this.show(folderRefusedNotification(chosenDir, this.options.context().homeDir, this.language));
   }
 
   notifyLanguageWriteFailed(): void {
@@ -282,8 +288,9 @@ export class AppTray {
     this.show(frameRateDowngradeNotification(requested, actual, this.language));
   }
 
+  /** The click selects the Recording tab even in an open window, where the warning is shown. */
   notifyCaptureWarning(body: string): void {
-    this.show({ title: APP_NAME, body }, () => this.options.onAction("openSettings"));
+    this.show({ title: APP_NAME, body }, () => this.options.onAction("openRecordingSettings"));
   }
 
   notifyTrayHint(): void {

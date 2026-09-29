@@ -30,6 +30,8 @@ export type AppAction =
   | "openRecordingResult"
   /** Settings on the General tab, where the shortcut card, its retry and the editor are. */
   | "openShortcutSettings"
+  /** Settings on the Recording tab, where the resolution warning a capture notice names is shown. */
+  | "openRecordingSettings"
   | { recordingResult: { id: string; action: RecordingResultAction } }
   | "openPermissionSettings"
   | "openNotificationSettings"

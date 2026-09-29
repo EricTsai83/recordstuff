@@ -527,6 +527,8 @@ it("the shortcut entry names the General tab with a new token, and an ordinary o
   s.panel.showRecordingResult();
   expect(s.read(s.event()).resultFocus).toBe(2);
   expect(s.read(s.event()).entryTab).toBeUndefined();
+  s.panel.showRecording();
+  expect(s.read(s.event())).toMatchObject({ resultFocus: 3, entryTab: "recording" });
   s.panel.show();
   expect(s.read(s.event())).toMatchObject({ resultFocus: 0 });
   expect(s.read(s.event()).entryTab).toBeUndefined();
