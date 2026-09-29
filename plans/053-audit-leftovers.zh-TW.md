@@ -15,7 +15,7 @@
 - **錄影開始時的通知可能被靜音。** 解析度上限警告與降幀通知在 `captureStarted` 時顯示（[index.ts](../src/main/index.ts) 第 617、623 行），這時螢幕正在被分享。[儲存通知時序紀錄](../docs/zh-TW/verification/history-2026-09.md#儲存通知時序2026-09-20)顯示 macOS 在擷取期間判定 `resolutionReason: display shared`、`muted by DND suppression`，這也是儲存通知要等擷取結束的原因。解析度上限警告另外會保留在設定中；降幀除了 log 之外沒有其他呈現。[tray.ts](../src/main/tray.ts) 的 `notifyCaptureWarning`（第 260 行）也把標題寫死為 `"RecordStuff"`，沒有使用 `APP_NAME`。
 - **收尾計時 log 少了 sentinel checkpoint。** [recorder.ts](../src/main/recorder.ts) 的 `finalize` 在 `writer.finish()` 之後、`saved` 之前呼叫 `sentinels.complete`（第 938 行），它會讀取 sentinel 並以含 fsync 的原子寫入重寫，但 `logFinalizeTiming` 沒有這一段的欄位。因此 `userData` 所在磁碟慢時，「儲存中…」會變長卻沒有紀錄，而 [finalization-timing.mts](../scripts/lib/finalization-timing.mts)（`TIMING`，第 37 行）解析的分段加總也無法等於 stop-to-ready。這行 log 是腳本契約，所以 recorder 與 parser 必須一起修改。
 
-不在範圍內：[052](052-runner-process-safety.zh-TW.md) 的 runner 項目；第二輪稽核後維護者沒有排入的遺留項目（`compareVersions` 的 pre-release 排序、重複的 `PermissionStatus` 型別、`isCaptureControl` helper、網站字型 preload 與顏色 token）；新功能。
+不在範圍內：052 的 runner 項目（[已結案](../docs/zh-TW/verification/history-2026-09.md#plan-052-runner-的-process-與環境安全--2026-09-29)）；第二輪稽核後維護者沒有排入的遺留項目（`compareVersions` 的 pre-release 排序、重複的 `PermissionStatus` 型別、`isCaptureControl` helper、網站字型 preload 與顏色 token）；新功能。
 
 ## 實作契約
 

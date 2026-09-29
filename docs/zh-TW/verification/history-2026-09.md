@@ -8,6 +8,23 @@
 
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 052 runner 的 process 與環境安全 — 2026-09-29
+
+桌面 runner 現在共用程序比對與啟動環境，由 Claude 實作，經 Codex GPT-6 Astra review（[工具](../system-design/tooling.md#驗收收尾)）。2026-09-29 第二輪稽核讀 `2088633` 時發現：`run-matrix`、`measure-finalization` 與 `diagnose-frame-cadence` 把真實 `Electron.app` 路徑未跳脫地放進 `pgrep`／`pkill` pattern，並忽略 `pgrep` 的結束碼；幾個 runner 只刪除 `ELECTRON_RUN_AS_NODE`，或自己維護 key 清單；四個 runner 重寫 RecordStuff pattern；`measure:finalization` 在阻塞式 build 期間被中斷會 exit 1；兩個素材 profile 是固定路徑且從不刪除。
+
+- **修改。** [processes.mts](../../../scripts/lib/processes.mts) 負責 `electronPattern` 與 `recordStuffPattern`（跳脫並加錨點）、`pgrepPids`／`pgrepProcesses`（無法啟動或結束碼不是 0 與 1 時丟出錯誤）、程序群組 build 與中斷結束碼；所有列名的 runner 都改用它們，`bundleProcessPattern` 與各自的 helper 已移除。所有會啟動 Electron 或 App 的 runner 都從 `scrubbedEnv()` 開始；`bench-publication` 在其上加 `ELECTRON_RUN_AS_NODE=1`。`measure:finalization`，以及回合後的 `diagnose:cadence`，都和 `matrix` 一樣在自己的程序群組中建置。`matrix`、`measure:finalization` 與 `diagnose:cadence` 用 `mkdtemp` 建立 Chrome profile，並在瀏覽器與其 `open` launcher 結束後刪除。
+- **環境。** M1 Pro、macOS 26.6.2、Electron 44.3.0，主螢幕 BenQ GW2785TC 1920 × 1080，另有一台直立副螢幕；基於 HEAD `44f5333` 加上未提交的修改；維護者在回合前回覆「好了」。agent 自己的 shell 帶有外層工具設定的 `ELECTRON_RUN_AS_NODE`，因此下列每次啟動也證明 runner 會清除它。
+- **實際執行的 runner。** `pnpm matrix -- quick` exit 0，3/3 段已儲存並通過驗證。帶 `NODE_OPTIONS=--require <標記>` 的 `pnpm measure:finalization -- --dir <tmp> --repeat 1` exit 0，停止到可再開始 40 ms：標記只被 pnpm、runner 與 electron-vite build 載入，沒有任何 Electron 程序載入（positive control 顯示 Electron 的 Node 會載入它）。`pnpm diagnose:cadence -- --runs 1` exit 0，兩段都是 `on-time`。`pnpm start:app` 後 `pnpm acceptance` exit 0，含倒數取消案例。`pnpm measure:cpu` PASS：閒置 0.043%、每秒喚醒 2.19 次，30 fps 錄影 15.9%，錄影後閒置 0.050% 且角色穩定，Settings 0.060%。`pnpm acceptance:updates -- --logic-only` exit 0，所有必要案例通過。每次結束後都沒有殘留 Electron、RecordStuff 或素材程序，也沒有 `recordstuff-*` profile。
+- **中斷。** `measure:finalization` 在 build 期間收到 SIGINT 時 exit 130（electron-vite 程序確實在執行，並隨群組停止）；在 take 期間收到 SIGTERM 時 exit 143，App 正常退出並儲存該段；`mkdtemp` 建立的 profile 在 take 期間存在，之後已刪除。回合後 `diagnose:cadence` 也改為相同的非同步 build；在第二次交接（「好了」）中，正常的 `--rates 30 --runs 1 --seconds 10` 一輪 exit 0（`on-time`），在真實 electron-vite build 期間收到 SIGINT 則 exit 130，build 群組已停止且沒有殘留。
+- **含括號的 checkout。** 在 `/tmp/rs (052) [x]/recordstuff` 的 APFS clone 中執行其開發用 App 時，舊的未跳脫 pattern 找不到任何程序（status 1），`electronPattern` 則找到 main 與三個 helper；clone 的 `measure:finalization` preflight 以 exit 2 拒絕執行。clone 的一輪在 take 期間收到 SIGINT，exit 130，沒有殘留 clone 程序。該 clone App 停在 `state → starting`（display media 已解析但擷取從未開始），因此正常退出未在 30 秒內完成，runner 強制結束並如實回報；recorder 會在 capture request 進行中（可能正在等待權限提示）刻意延後退出，因此複製後 bundle 在新路徑上的 capture request 擋住了退出；與程序比對無關。
+- **Controlled self-test。** `pnpm acceptance:controlled -- selftest` 最初在 `tray tooltip carries the label` 失敗，在未修改的 HEAD `44f5333` 副本上也以相同方式失敗：自 `7495624` 起，tray 會略過已設定過的 tooltip，因此 fixture 重新套用的 tooltip 從未經過它的包裝。fixture 現在會在 refresh 前清除快取的 tooltip；之後 self-test 8 個步驟全部通過，沒有殘留 RecordStuff 程序。
+
+自動化證據：`pnpm check` 通過 typecheck、79 個檔案 1238 項測試與 build。新測試涵蓋：含 `( ) [ ] + . $` 的路徑可字面比對，並拒絕相鄰路徑與在參數中提到它的程序；真實 `pgrep` 找得到這種程序，且未跳脫的 pattern 會 exit 2；`pgrepPids` 在 status 0、1、2、3 與無法啟動時的行為；以真實程序群組與孫程序驗證中斷結束碼；原始碼掃描，在 runner 自行刪除繼承的 key、自己維護 key 清單或複製 `process.env` 時失敗；真實的 `measure:finalization` 與 `diagnose:cadence` 在替身 build 期間收到 SIGINT 與 SIGTERM（exit 130/143，build 群組已結束）；兩者對 HEAD 版 runner 都會失敗。
+
+Review：Codex GPT-6 Astra（medium reasoning、read-only）。Pass 1（66 秒）回報兩項 medium，均接受並修正：`diagnose:cadence` 刪除 profile 前沒有等待素材 launcher（三個 runner 現在也會在 launcher 仍在執行時保留 profile 並回報收尾未完成）；中斷測試沒有執行 finalization runner（即上述 runner 層級測試）。Pass 2（86 秒）確認兩項修正，並回報一項 medium，已接受並修正，未再 review：runner 層級測試在 assertion 失敗時，teardown 不會收回 runner 與其 build 群組。self-test 的 fixture 修改，以及 `diagnose:cadence` 的非同步 build 與其測試，都在兩次 pass 之後，未經 review。
+
+未執行：完整擷取矩陣、長時間錄影與音訊保真度，因擷取與編碼沒有改變而不在範圍內。`start-app.mjs` 保留自己的環境處理，不在 runner 清單內。收尾：clone、測試資料夾與標記均已刪除；輸出資料夾中的測試錄影與量測證據保留。
+
 
 ## Plan 050 保持喚醒與睡眠時停止 — 2026-09-28
 
