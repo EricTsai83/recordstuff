@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DIGIT_DIFF_THRESHOLD, TICK_EXCESS_DB, compareCrops, compareTickLevels, countdownTimeline, digitRegion, peakToneLevelDb } from "./countdown-evidence.mts";
+import { DIGIT_DIFF_THRESHOLD, TICK_EXCESS_DB, TICK_FLOOR_DBFS, TICK_PITCHES_HZ, compareCrops, compareTickLevels, countdownTimeline, digitRegion, peakToneLevelDb } from "./countdown-evidence.mts";
 
 const at = (ms: number, text: string): string => `[${new Date(Date.UTC(2026, 8, 26, 5, 0, 0) + ms).toISOString()}] ${text}`;
 
@@ -85,24 +85,36 @@ describe("crop comparison", () => {
 describe("tick check (plan 046)", () => {
   const rate = 48000;
   /** Half a second of the material as a mono mix: its 660 Hz tone (10 ms attack, 40 ms release) starting at `beepAt`. */
-  function material(beepAt: number): Float32Array {
+  function material(beepAt: number, amplitude = 0.15): Float32Array {
     const out = new Float32Array(rate / 2);
     for (let i = 0; i < out.length; i += 1) {
       const t = i / rate - beepAt;
       if (t < 0 || t > 0.12) continue;
       const envelope = t < 0.01 ? t / 0.01 : t < 0.08 ? 1 : (0.12 - t) / 0.04;
-      out[i] = 0.15 * envelope * Math.sin(2 * Math.PI * 660 * t);
+      out[i] = amplitude * envelope * Math.sin(2 * Math.PI * 660 * t);
     }
     return out;
   }
-  /** Adds the shared tick: −20 dBFS peak, 4 ms attack, exponential release over 140 ms. */
-  function withTick(samples: Float32Array, at: number, hz: number): Float32Array {
+  /** Deterministic noise of peak `amplitude` from `from` to `to` seconds. */
+  function noise(samples: Float32Array, amplitude: number, from = 0, to = samples.length / rate): Float32Array {
+    const out = samples.slice();
+    let seed = 1;
+    for (let i = Math.round(from * rate); i < Math.round(to * rate); i += 1) {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      out[i] = out[i]! + amplitude * (2 * seed / 2147483648 - 1);
+    }
+    return out;
+  }
+  /** The file as capture wrote it: digital silence until capture began, `seconds` in. */
+  const capturedFrom = (samples: Float32Array, seconds: number): Float32Array => samples.slice().fill(0, 0, Math.round(seconds * rate));
+  /** Adds the shared tick: −20 dBFS peak by default, 4 ms attack, exponential release over 140 ms. */
+  function withTick(samples: Float32Array, at: number, hz: number, amplitude = 0.1): Float32Array {
     const out = samples.slice();
     for (let i = 0; i < out.length; i += 1) {
       const t = i / rate - at;
       if (t < 0 || t > 0.14) continue;
       const envelope = t < 0.004 ? t / 0.004 : Math.exp(Math.log(0.001) * (t - 0.004) / 0.136);
-      out[i] = out[i]! + 0.1 * envelope * Math.sin(2 * Math.PI * hz * t);
+      out[i] = out[i]! + amplitude * envelope * Math.sin(2 * Math.PI * hz * t);
     }
     return out;
   }
@@ -124,6 +136,52 @@ describe("tick check (plan 046)", () => {
     expect(result.pass).toBe(false);
     const level = result.levels.find((l) => l.hz === hz)!;
     expect(level.earlyDb).toBeGreaterThan(-40);
+  });
+
+  // The 2026-09-29 round: 40 ms of silence, then a −10 dBFS beep already past its attack (plan 054).
+  it("passes a material beep the file starts inside, whose abrupt onset reaches both tick pitches", () => {
+    const later = material(0.01, 0.3);
+    const early = capturedFrom(later, 0.04);
+    // Against the later window as recorded, the onset alone would read as a tick.
+    for (const hz of TICK_PITCHES_HZ) expect(peakToneLevelDb(early, rate, hz)).toBeGreaterThan(Math.max(TICK_FLOOR_DBFS, peakToneLevelDb(later, rate, hz) + TICK_EXCESS_DB));
+    const result = compareTickLevels(early, later, rate);
+    expect(result.onsetSeconds).toBeCloseTo(0.04, 3);
+    expect(result.pass).toBe(true);
+    // The fade keeps the reference near the untruncated beep's leakage, far below a tick.
+    for (const level of result.levels) expect(level.laterDb).toBeLessThan(-60);
+    // Pre-echo up to 22 ms ahead of the onset, and a noise floor in both windows, do not hide it (review of plan 054).
+    const preEcho = compareTickLevels(noise(early, 0.003, 0.018, 0.04), later, rate);
+    expect(preEcho).toMatchObject({ pass: true });
+    expect(preEcho.onsetSeconds).toBeCloseTo(0.04, 3);
+    expect(compareTickLevels(noise(early, 0.0003), noise(later, 0.0003), rate).pass).toBe(true);
+  });
+
+  it("compares a beep that rises through its own attack, or a file that starts with sound, as recorded", () => {
+    expect(compareTickLevels(material(0.2), material(0.2), rate)).not.toHaveProperty("onsetSeconds");
+    expect(compareTickLevels(capturedFrom(material(0.2, 0.3), 0.1), material(0.2, 0.3), rate)).toMatchObject({ pass: true });
+    expect(compareTickLevels(capturedFrom(material(0.2, 0.3), 0.1), material(0.2, 0.3), rate)).not.toHaveProperty("onsetSeconds");
+    expect(compareTickLevels(material(-0.03, 0.3), material(-0.03, 0.3), rate)).not.toHaveProperty("onsetSeconds");
+  });
+
+  it.each([523, 784.5])("still fails a %s Hz tick the file starts inside, or one beside a truncated beep", (hz) => {
+    // Capture began 20 ms into a tick: silence, then the tick's tail.
+    expect(compareTickLevels(capturedFrom(withTick(material(0.2), 0, hz), 0.02), material(0.2), rate).pass).toBe(false);
+    const later = material(0.01, 0.3);
+    expect(compareTickLevels(withTick(capturedFrom(later, 0.04), 0.04, hz), later, rate).pass).toBe(false);
+    // The tail of a tick that began before the file, 20 and 60 ms before capture, under the truncated beep's onset (review of plan 054).
+    for (const tickAt of [0.02, -0.02]) expect(compareTickLevels(capturedFrom(withTick(later, tickAt, hz), 0.04), later, rate).pass).toBe(false);
+  });
+
+  it.each([523, 784.5])("never discards a quiet %s Hz tick that reaches the floor (review of plan 054)", (hz) => {
+    // Below −60 dBFS at every sample, yet above −70 dBFS at its pitch, with no material in the window.
+    const quiet = withTick(new Float32Array(rate / 2), 0.1, hz, 0.0015);
+    expect(Math.max(...quiet.map(Math.abs))).toBeLessThan(0.002);
+    expect(compareTickLevels(quiet, new Float32Array(rate / 2), rate)).toMatchObject({ pass: false });
+    // Recorded sound before a truncated onset keeps the window as recorded rather than silencing it.
+    const later = material(0.17, 0.3);
+    const before = compareTickLevels(withTick(capturedFrom(later, 0.2), 0.05, hz, 0.001), later, rate);
+    expect(before).not.toHaveProperty("onsetSeconds");
+    expect(before.pass).toBe(false);
   });
 
   it("passes silence and is not a pass without audio", () => {

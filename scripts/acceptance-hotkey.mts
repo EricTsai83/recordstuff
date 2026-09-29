@@ -177,7 +177,9 @@ function waitFor(from: LogCursor, pattern: RegExp, what: string): ReturnType<typ
 
 function describeTicks(check: TickCheck): string {
   const db = (value: number): string => (Number.isFinite(value) ? `${value.toFixed(1)} dBFS` : "silent");
-  return check.levels.map((l) => `${l.hz} Hz ${db(l.earlyDb)} vs ${db(l.laterDb)}`).join(", ");
+  const levels = check.levels.map((l) => `${l.hz} Hz ${db(l.earlyDb)} vs ${db(l.laterDb)}`).join(", ");
+  return check.onsetSeconds === undefined ? levels
+    : `${levels}; capture began inside a sound at ${Math.round(check.onsetSeconds * 1000)} ms: both windows fade in from there`;
 }
 
 function describeTimeline(t: CountdownTimeline): string {

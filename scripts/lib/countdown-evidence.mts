@@ -202,14 +202,59 @@ export interface TickCheck {
   levels: Array<{ hz: number; earlyDb: number; laterDb: number }>;
   windowSeconds: number;
   laterSeconds: number;
+  /** Where capture began inside a sound, when it did; both windows fade in from there before they are measured. */
+  onsetSeconds?: number;
   pass: boolean;
 }
 
-/** Compares the first window with the same phase `laterSeconds` on; the material's tone repeats every second. */
+/** −70 dBFS: before a truncated onset nothing may be this loud, or a tick there could still reach the floor. */
+const QUIET_AMPLITUDE = 10 ** (TICK_FLOOR_DBFS / 20);
+/** A codec can smear an abrupt onset this far ahead of it (one AAC frame at 48 kHz, 21 ms), at most a tenth of its peak. */
+const PRE_ECHO_SECONDS = 0.025;
+/** A raised-cosine fade this long keeps an onset's energy at the tick's pitches near the material's own 10 ms attack. */
+const ONSET_FADE_SECONDS = 0.02;
+
+/**
+ * Where capture began inside a sound: the window's first sample at half its
+ * peak, preceded from 25 ms to 1 ms before it by no more than pre-echo and
+ * before that by nothing that could reach the floor. A sound that rises
+ * through its own attack, a file that starts with sound and a quiet window
+ * have none, and are compared as recorded.
+ */
+function truncatedOnset(samples: Float32Array, sampleRate: number): number | undefined {
+  const peak = samples.reduce((max, sample) => Math.max(max, Math.abs(sample)), 0);
+  if (peak <= QUIET_AMPLITUDE) return undefined;
+  const onset = samples.findIndex((sample) => Math.abs(sample) >= peak / 2);
+  const millisecond = Math.round(sampleRate / 1000);
+  if (onset < millisecond) return undefined;
+  const zone = Math.max(0, onset - Math.round(PRE_ECHO_SECONDS * sampleRate));
+  const loudest = (from: number, to: number): number => samples.subarray(from, to).reduce((max, sample) => Math.max(max, Math.abs(sample)), 0);
+  return loudest(zone, onset - millisecond) <= peak / 10 && loudest(0, zone) <= QUIET_AMPLITUDE ? onset : undefined;
+}
+
+/** Silent before `from`, then a raised-cosine fade-in over `length` samples. */
+function fadeIn(samples: Float32Array, from: number, length: number): Float32Array {
+  const out = samples.slice().fill(0, 0, from);
+  for (let i = 0; i < length && from + i < out.length; i += 1) out[from + i]! *= 0.5 - 0.5 * Math.cos((Math.PI * i) / length);
+  return out;
+}
+
+/**
+ * Compares the first window with the same phase `laterSeconds` on; the
+ * material's tone repeats every second. Capture can begin inside a material
+ * beep: the file then starts with silence and the beep at full level, and that
+ * abrupt onset spreads energy to the tick's pitches (plan 054). Both windows
+ * are then silenced up to that onset and faded in from it alike, so the
+ * repeated beep has the same gentle onset in both, and a tick the file starts
+ * inside still stands out instead of hiding under the onset's energy.
+ */
 export function compareTickLevels(early: Float32Array, later: Float32Array, sampleRate: number, windowSeconds = 0.5, laterSeconds = 2): TickCheck {
-  const levels = TICK_PITCHES_HZ.map((hz) => ({ hz, earlyDb: peakToneLevelDb(early, sampleRate, hz), laterDb: peakToneLevelDb(later, sampleRate, hz) }));
+  const onset = truncatedOnset(early, sampleRate);
+  const judged = (samples: Float32Array): Float32Array => (onset === undefined ? samples : fadeIn(samples, onset, Math.round(ONSET_FADE_SECONDS * sampleRate)));
+  const [first, reference] = [judged(early), judged(later)];
+  const levels = TICK_PITCHES_HZ.map((hz) => ({ hz, earlyDb: peakToneLevelDb(first, sampleRate, hz), laterDb: peakToneLevelDb(reference, sampleRate, hz) }));
   const tick = levels.some(({ earlyDb, laterDb }) => earlyDb > TICK_FLOOR_DBFS && earlyDb > laterDb + TICK_EXCESS_DB);
-  return { levels, windowSeconds, laterSeconds, pass: early.length > 0 && later.length > 0 && !tick };
+  return { levels, windowSeconds, laterSeconds, ...(onset === undefined ? {} : { onsetSeconds: onset / sampleRate }), pass: early.length > 0 && later.length > 0 && !tick };
 }
 
 const SAMPLE_RATE = 48000;
