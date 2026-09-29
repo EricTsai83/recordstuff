@@ -676,7 +676,10 @@ describe("Recorder review fixes", () => {
     let releaseAbandon!: () => void;
     writer.abandon = () => new Promise((r) => { releaseAbandon = () => r(writer.recordingPath); });
     let settled = false;
-    void ctx.recorder.whenMediaSettled().then(() => { settled = true; });
+    const waiting = ctx.recorder.whenMediaSettled();
+    void waiting.then(() => { settled = true; });
+    // A repeated quit joins the same wait instead of adding listeners.
+    expect(ctx.recorder.whenMediaSettled()).toBe(waiting);
     ctx.host.crash();
     await flush();
     // Idle already, yet the partial file is still being closed.
@@ -2051,6 +2054,28 @@ describe("interruption sentinel lifecycle", () => {
     expect(ctx.events.filter((event) => event.type === "saved")).toHaveLength(1);
   });
 
+  it("removes an earlier attempt's sentinel when the rewrite for the next name fails", async () => {
+    const store = sentinels();
+    let attempt = 0;
+    const write = store.write;
+    store.write = async (sentinel) => { if (attempt === 1) throw new Error("userData is read-only"); await write(sentinel); };
+    const ctx: Ctx = setup({ deps: { sentinels: store }, openWriter: async (recordingPath, finalPath) => {
+      if (++attempt === 1) throw Object.assign(new Error("exists"), { cause: { code: "EEXIST" } });
+      const writer = new FakeWriter(recordingPath, finalPath);
+      ctx.writers.push(writer);
+      return writer;
+    } });
+    await startRecording(ctx);
+    expect(ctx.recorder.state.type).toBe("recording");
+    // The collided name belongs to another session's partial; no sentinel may name it for this one.
+    expect(store.files.has("s1")).toBe(false);
+    expect(store.calls).toEqual(["write 2026-09-11 14-30-00.recording.mp4", "remove s1"]);
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(ctx.events.filter((event) => event.type === "saved")).toHaveLength(1);
+  });
+
   it("times the completion checkpoint in the finalize timing line", async () => {
     let clock = 0;
     const log = vi.fn();
@@ -2182,6 +2207,21 @@ describe("Recorder countdown (plan 040)", () => {
     expect(ctx.states.map((state) => state.type)).toEqual(["starting", "recording"]);
     expect(ctx.presenter.calls).toEqual([]);
     expect(ctx.logs).toContainEqual(expect.stringContaining("record sent without a countdown"));
+  });
+
+  it("Off: Cancel recording after record was sent stops the capture once it starts", async () => {
+    const ctx = counting(0);
+    ctx.host.autoStart = false;
+    await ctx.prepare();
+    expect(ctx.host.recorded).toEqual(["s1"]);
+    expect(ctx.recorder.state.type).toBe("starting");
+    ctx.recorder.cancelCountdown("menu");
+    ctx.recorder.cancelCountdown("menu");
+    expect(ctx.host.stopped).toEqual([]);
+    expect(ctx.logs.filter((line) => line.includes("cancel (menu) arrived after record was sent"))).toHaveLength(1);
+    ctx.host.emit({ type: "started", sessionId: "s1" });
+    expect(ctx.states.slice(-2).map((state) => state.type)).toEqual(["recording", "stopping"]);
+    expect(ctx.host.stopped).toEqual(["s1"]);
   });
 
   it("ticks from one anchor, dismisses the overlay ahead of capture and records at N seconds", async () => {

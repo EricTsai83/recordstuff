@@ -272,6 +272,8 @@ export class Recorder {
   private shuttingDown: Promise<boolean> | undefined;
   private quitAdmission = false;
   private readonly workChanged = new Set<() => void>();
+  /** Shared by every caller while media stays pending, so repeated quits add no listeners. */
+  private mediaSettled: Promise<void> | undefined;
   private readonly listeners = new Set<(event: RecorderEvent) => void>();
   private readonly deps: Required<
     Pick<RecorderDeps, "now" | "newSessionId" | "startTimeoutMs" | "captureRequestTimeoutMs" | "stopTimeoutMs" | "shutdownTimeoutMs" | "log">
@@ -323,17 +325,19 @@ export class Recorder {
 
   /** Resolves once `mediaPending` is false, at once when it already is; the same test quit waits on. */
   whenMediaSettled(): Promise<void> {
-    return new Promise((resolve) => {
+    if (!this.mediaPending) return Promise.resolve();
+    this.mediaSettled ??= new Promise((resolve) => {
       const check = (): void => {
         if (this.mediaPending) return;
         unsubscribe();
         this.workChanged.delete(check);
+        this.mediaSettled = undefined;
         resolve();
       };
       const unsubscribe = this.subscribe((event) => { if (event.type === "state") check(); });
       this.workChanged.add(check);
-      check();
     });
+    return this.mediaSettled;
   }
 
   /**
@@ -398,9 +402,20 @@ export class Recorder {
     }
   }
 
+  /**
+   * The Cancel recording offered while starting. With the countdown Off,
+   * `record` goes out at `prepared` and the state stays starting, so a Cancel
+   * after it becomes the stop-on-start request, as it does during a countdown.
+   */
   cancelPreparation(): void {
     const session = this.session;
-    if (session && (session.phase === "opening" || session.phase === "preparing")) this.cancel(session, "menu");
+    if (!session) return;
+    if (session.phase === "opening" || session.phase === "preparing") {
+      this.cancel(session, "menu");
+    } else if (session.phase === "arming" && !session.stopOnStart) {
+      session.stopOnStart = true;
+      this.deps.log(`recorder: session ${session.id} cancel (menu) arrived after record was sent; stopping once capture starts`);
+    }
   }
 
   stop(): void {
@@ -670,6 +685,7 @@ export class Recorder {
   private async markInFlight(session: Session, recordingPath: string): Promise<void> {
     const sentinels = this.deps.sentinels;
     if (!sentinels) return;
+    const earlier = session.sentinelWritten;
     session.sentinel = true;
     session.sentinelWritten = false;
     try {
@@ -678,6 +694,13 @@ export class Recorder {
     } catch (cause) {
       if (!session.sentinelFailed) this.deps.log(`recorder: session ${session.id} interruption sentinel not written: ${messageOf(cause)}`);
       session.sentinelFailed = true;
+      // The earlier attempt's sentinel names the colliding file, another session's
+      // partial: after a crash it would be reported as this one. No sentinel is the
+      // accepted degraded state; a wrong one is not.
+      if (earlier) {
+        try { await sentinels.remove(session.id); }
+        catch (removal) { this.deps.log(`recorder: session ${session.id} earlier interruption sentinel not removed: ${messageOf(removal)}`); }
+      }
     }
   }
 
@@ -1146,28 +1169,25 @@ export class Recorder {
     const result: RecordingFailure = { id: randomUUID(), occurredAt,
       code, detail, outcome: "pending", ...(session.writer?.recordingPath ? { recordingPath: session.writer.recordingPath } : {}) };
     await this.publishFailure(result);
-    const finish = (async (): Promise<void> => {
-      let partialPath: string | undefined;
-      let outcome: FailureOutcome = "empty";
-      try {
-        await session.opening?.catch(() => undefined);
-        partialPath = session.writer ? await session.writer.abandon() : undefined;
-        outcome = session.writer?.preservationUncertain ? "unknown" : partialPath ? "partial" : "empty";
-        if (outcome === "unknown") partialPath = undefined;
-      } catch (cause) {
-        outcome = "unknown";
-        this.deps.log(`recorder: failure cleanup could not be confirmed: ${messageOf(cause)}`);
-      }
-      const { recordingPath: initialPath, ...settledResult } = result;
-      const candidate = initialPath ?? session.writer?.recordingPath;
-      await this.publishFailure({ ...settledResult, outcome,
-        ...(partialPath ? { partialPath } : {}),
-        ...(outcome === "unknown" && candidate ? { recordingPath: candidate } : {}),
-      });
-      this.emit({ type: "failed", code, detail, ...(partialPath === undefined ? {} : { partialPath }), outcome, session: this.trace(session) });
-      await this.clearInFlight(session);
-    })();
-    await finish;
+    let partialPath: string | undefined;
+    let outcome: FailureOutcome = "empty";
+    try {
+      await session.opening?.catch(() => undefined);
+      partialPath = session.writer ? await session.writer.abandon() : undefined;
+      outcome = session.writer?.preservationUncertain ? "unknown" : partialPath ? "partial" : "empty";
+      if (outcome === "unknown") partialPath = undefined;
+    } catch (cause) {
+      outcome = "unknown";
+      this.deps.log(`recorder: failure cleanup could not be confirmed: ${messageOf(cause)}`);
+    }
+    const { recordingPath: initialPath, ...settledResult } = result;
+    const candidate = initialPath ?? session.writer?.recordingPath;
+    await this.publishFailure({ ...settledResult, outcome,
+      ...(partialPath ? { partialPath } : {}),
+      ...(outcome === "unknown" && candidate ? { recordingPath: candidate } : {}),
+    });
+    this.emit({ type: "failed", code, detail, ...(partialPath === undefined ? {} : { partialPath }), outcome, session: this.trace(session) });
+    await this.clearInFlight(session);
   }
 
   private async publishFailure(result: RecordingFailure): Promise<void> {
