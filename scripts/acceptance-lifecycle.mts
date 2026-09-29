@@ -2,6 +2,7 @@
 import { buildFixture } from "./lib/build-fixture.mts";
 import { scrubbedEnv } from "./lib/runner-env.mts";
 import { runIsolatedProcess } from "./lib/isolated-process.mts";
+import { INTERRUPT_EXIT, interruptExitCode } from "./lib/processes.mts";
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -14,14 +15,16 @@ const fixture = await buildFixture("recording-lifecycle", dir);
 const env = scrubbedEnv();
 // The fixtures run in their own process group, which a terminal's Ctrl+C never reaches: stop them through the supervisor.
 const controller = new AbortController();
-const interrupt = (): void => controller.abort();
-process.on("SIGINT", interrupt);
-process.on("SIGTERM", interrupt);
-/** After an interrupt the round is neither pass nor fail: report the cleanup and stop. */
-function exitIfInterrupted(execution: { groupGone: boolean }): void {
+/** The first signal names the exit code, as in every other runner. */
+let signalName: keyof typeof INTERRUPT_EXIT | undefined;
+const interrupt = (name: keyof typeof INTERRUPT_EXIT) => (): void => { signalName ??= name; controller.abort(); };
+process.on("SIGINT", interrupt("SIGINT"));
+process.on("SIGTERM", interrupt("SIGTERM"));
+/** After an interrupt the round is neither pass nor fail: 130/143 once the fixture's group is gone, 1 when it survived. */
+async function exitIfInterrupted(execution: { groupGone: boolean }): Promise<void> {
   if (!controller.signal.aborted) return;
-  console.error(`Interrupted: fixture stopped; process group gone=${execution.groupGone}. Evidence: ${dir}`);
-  process.exit(130);
+  console.error(`Interrupted: fixture stopped. Evidence: ${dir}`);
+  process.exit(await interruptExitCode(signalName ?? "SIGINT", async () => execution.groupGone ? [] : ["the fixture's process group"]));
 }
 const require = createRequire(import.meta.url);
 const results = [];
@@ -33,7 +36,7 @@ for (const mode of ["copy", "cleanup", "result"]) {
       args: [fixture, output, mode], cwd: root, env, logFd, timeoutMs: 15_000, signal: controller.signal });
     results.push({ mode, execution });
     fs.writeFileSync(path.join(dir, "report.json"), JSON.stringify(results, null, 2));
-    exitIfInterrupted(execution);
+    await exitIfInterrupted(execution);
     assert.equal(execution.code, 0); assert.equal(execution.stopped, undefined);
     assert.equal(execution.forced, false); assert.equal(execution.groupGone, true);
     const result = JSON.parse(fs.readFileSync(path.join(output, "result.json"), "utf8"));
@@ -51,7 +54,7 @@ for (const mode of ["copy", "cleanup", "result"]) {
       args: [historyFixture, output], cwd: root, env, logFd, timeoutMs: 20_000, signal: controller.signal });
     results.push({ mode: "history", execution });
     fs.writeFileSync(path.join(dir, "report.json"), JSON.stringify(results, null, 2));
-    exitIfInterrupted(execution);
+    await exitIfInterrupted(execution);
     assert.equal(execution.code, 0); assert.equal(execution.stopped, undefined);
     assert.equal(execution.forced, false); assert.equal(execution.groupGone, true);
     const result = JSON.parse(fs.readFileSync(path.join(output, "result.json"), "utf8"));
