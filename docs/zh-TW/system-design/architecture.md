@@ -93,7 +93,7 @@ Main 建立 `MessageChannelMain`，透過 `capture-host-port` 將其中一端交
 | host → main | `started { sessionId }` | recorder 已啟動；main 沿用 `prepared` 的報告；尚不代表第一片資料已落盤 |
 | host → main | `chunk { sessionId, seq, bytes }` | 從 0 起連續序號的編碼資料 |
 | host → main | `stopped { sessionId }` | 最後 chunk 已送出；main 才能開始完成檔案 |
-| host → main | `error { sessionId?, code, detail }` | 失敗；無 session id 時可作用於 main 當前 session |
+| host → main | `error { sessionId, code, detail }` | host 觀察到的失敗；只接受 `HOST_ERROR_CODES` 中的代碼（資料夾、磁碟、期限與監督失敗由 main 自行判定） |
 
 沒有逐 chunk ACK 或背壓協定：renderer 序列化 Blob 轉換，FileWriter 序列化磁碟作業，但磁碟持續變慢時佇列可能增長。心跳偵測程序回應，不等於媒體持續到達；目前有首 chunk 期限，沒有錄製期間的每片 watchdog。
 
@@ -104,7 +104,7 @@ Main 建立 `MessageChannelMain`，透過 `capture-host-port` 將其中一端交
 | `RecordingState` | main 記憶體 | App 重啟重設；`lastSavedPath` 不持久化 |
 | main `Session` | Recorder 記憶體 | 開始到成功、失敗或取消；包含品質與倒數快照、擷取報告、倒數 timer、writer、nextSeq、timer |
 | renderer 已準備的 session | capture host 記憶體 | 存活的 stream 與未啟動的 recorder，直到 `record`、`stop` 或軌道結束 |
-| renderer `Session` | capture host 記憶體 | stream、recorder、seq、chain、stopRequested、finished |
+| renderer `Session` | capture host 記憶體 | stream、recorder、seq、chain、backlogBytes、cause、timer、draining、handoffFailed、finished |
 | `settings.json` | `app.getPath('userData')` | 跨重啟保存；現有 App 名稱對應小寫 `recordstuff` |
 | `.recording.mp4` | 使用者指定資料夾 | 錄製中的檔案，失敗時可保留 |
 | `.mp4` | 同一資料夾 | 正常完成並改名後的檔案 |
@@ -117,4 +117,4 @@ Main 持有影片 handle；設定與 log 模組也會寫自己的檔案，因此
 
 Main 先建立 logger、註冊未捕捉錯誤處理並取得 single-instance lock。ready 後隱藏 Dock、載入設定、註冊 display-media handler、組裝 Recorder／host／權限 watcher／Tray、訂閱事件並開始權限輪詢。每次錄製嘗試都建立新的 capture renderer，有倒數時另建 overlay 視窗，嘗試結束時由 main 一併銷毀；錄製之間不保留 capture 或 overlay renderer，也沒有心跳 timer。
 
-`window-all-closed` 不退出 App。忙碌時 `before-quit` 阻止直接結束，等 `Recorder.shutdown()` 後再次 quit；`will-quit` 停止權限輪詢並銷毀 host、overlay 與 Tray。已經 idle 的退出不額外等待 failure cleanup；硬斷電、main 強制終止、阻塞磁碟並不具有完整落盤保證。
+`window-all-closed` 不退出 App。`before-quit` 一律先等 `Recorder.shutdown()`（即使 tray 已 idle，也包含 failure cleanup），再等設定、視窗尺寸與 log 寫入以及失敗歷史保存，之後才再次 quit（[延後退出](desktop.md#延後退出)）；`will-quit` 停止權限輪詢並銷毀 host、overlay 與 Tray。硬斷電、main 強制終止、阻塞磁碟並不具有完整落盤保證。

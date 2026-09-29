@@ -164,7 +164,7 @@ The page's window-message callback checks source/marker/port before creating the
 | save | Serialize, write, then update memory; one failed operation does not block later saves |
 | write | `writeFileAtomic`: mkdir, write and fsync JSON.tmp, then rename |
 
-[main/atomic-file.ts](../../src/main/atomic-file.ts): `writeFileAtomic` / `writeFileAtomicSync` create the parent folder, write `<file>.tmp`, fsync it and rename it over the file; a failure removes the temporary file and keeps the previous content. Settings, settings-window size and failure history use them.
+[main/atomic-file.ts](../../src/main/atomic-file.ts): `writeFileAtomic` / `writeFileAtomicSync` create the parent folder, write `<file>.tmp`, fsync it and rename it over the file; a failure removes the temporary file and keeps the previous content. Settings, settings-window size and failure history use `writeFileAtomic`; `writeFileAtomicSync` serves only the verification scripts.
 
 [shared/quality.ts](../../src/shared/quality.ts):
 

@@ -42,7 +42,7 @@ export async function writeFileAtomic(file: string, content: string | readonly s
   }
 }
 
-/** For writes that must also complete during app shutdown. */
+/** For synchronous callers; today only the verification scripts, since the app's own writes all use `writeFileAtomic`. */
 export function writeFileAtomicSync(file: string, content: string, options: AtomicWriteOptions = {}): void {
   const temporary = `${file}.tmp`;
   fs.mkdirSync(path.dirname(file), { recursive: true });

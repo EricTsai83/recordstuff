@@ -3,7 +3,7 @@
  * only a projection of it (docs/system-design/recording.md).
  *
  * `idle.outputDirUnavailable` is set when the last start attempt failed
- * because the chosen output directory could not be written (docs/system-design/recording.md:
+ * because the chosen output directory could not be written (docs/system-design/desktop.md:
  * the menu's first line must read "Output folder unavailable"). It is cleared by the
  * next successful start or by changing the output directory.
  *

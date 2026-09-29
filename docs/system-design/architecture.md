@@ -91,7 +91,7 @@ Both receivers run handwritten type guards. These validate required shapes, not 
 | Host → main | `started { sessionId }` | MediaRecorder started; main keeps the report from `prepared`; does not mean a chunk is on disk |
 | Host → main | `chunk { sessionId, seq, bytes }` | Encoded bytes with consecutive sequence numbers starting at zero |
 | Host → main | `stopped { sessionId }` | Final chunk has been posted; main may finalize the file |
-| Host → main | `error { sessionId?, code, detail }` | Failure; an absent ID may apply to main's current session |
+| Host → main | `error { sessionId, code, detail }` | Failure the host observed; only the codes in `HOST_ERROR_CODES` (folder, disk, deadline and supervision failures are main's own) |
 
 There is no per-chunk ACK or bounded backpressure. Blob conversion and disk writes are serialized separately, but slow storage can grow the queue. Heartbeats detect renderer responsiveness, not continuing media delivery. There is a first-chunk deadline, but no ongoing inter-chunk watchdog.
 
@@ -102,7 +102,7 @@ There is no per-chunk ACK or bounded backpressure. Blob conversion and disk writ
 | RecordingState | Main memory | Reset on restart; lastSavedPath is not persisted |
 | Main Session | Recorder memory | Quality and countdown snapshots, capture report, countdown timers, writer, nextSeq, timer, and pending writes until success, failure or cancel |
 | Renderer prepared session | Capture-host memory | Live stream and inactive recorder until `record`, `stop` or a track end |
-| Renderer Session | Capture-host memory | Stream, recorder, seq, chain, stopRequested, finished |
+| Renderer Session | Capture-host memory | Stream, recorder, seq, chain, backlogBytes, cause, timer, draining, handoffFailed, finished |
 | settings.json | Electron userData | Across restarts; current internal app name is lowercase recordstuff |
 | `.recording.mp4` | User-selected folder | Active recording or preserved partial file |
 | `.mp4` | Same folder | Successfully finalized recording |
@@ -115,4 +115,4 @@ The single media writer rule does not prohibit settings and logging modules from
 
 Main initializes logging/error handlers and obtains a single-instance lock. After ready it hides the Dock icon, loads settings, registers the display-media handler, composes Recorder/host/permissions/Tray, subscribes to events, and starts permission polling. Each recording attempt creates a fresh capture window, and with a countdown an overlay window, and main destroys both when the attempt settles: no capture or overlay renderer or heartbeat timer remains between recordings.
 
-Closing all windows does not quit the app. During a busy recording state, before-quit waits for Recorder.shutdown before retrying quit. Will-quit stops permission polling and destroys host, overlay and Tray. An already-idle quit does not separately wait for failure cleanup. Power loss, forced main-process termination, and blocked storage do not carry a complete-durability guarantee.
+Closing all windows does not quit the app. Before-quit always waits for Recorder.shutdown, which includes failure cleanup even when the tray is idle, then for the settings, window-size and log writes and the failure-history save, before retrying quit ([deferred quit](desktop.md#deferred-quit)). Will-quit stops permission polling and destroys host, overlay and Tray. Power loss, forced main-process termination, and blocked storage do not carry a complete-durability guarantee.
