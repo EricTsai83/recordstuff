@@ -30,9 +30,11 @@ interface Props {
    * pages' code, keys and checksums are regular.
    */
   monoMedium?: boolean;
+  /** A page search engines should not list, such as the 404 page; it names no canonical URL of its own. */
+  noindex?: boolean;
 }
 
-const { title = meta.title, description = meta.description, handFont = false, monoMedium = false } = Astro.props;
+const { title = meta.title, description = meta.description, handFont = false, monoMedium = false, noindex = false } = Astro.props;
 
 const nav = [
   { href: "/download", label: "Download" },
@@ -68,10 +70,10 @@ const favicon =
     {[geistLatin, monoLatin, ...(monoMedium ? [monoLatinMedium] : []), ...(handFont ? [handLatin] : [])].map((href) => (
       <link rel="preload" href={href} as="font" type="font/woff2" crossorigin />
     ))}
-    <link rel="canonical" href={canonicalUrl} />
+    {noindex ? <meta name="robots" content="noindex" /> : <link rel="canonical" href={canonicalUrl} />}
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={SITE_NAME} />
-    <meta property="og:url" content={canonicalUrl} />
+    {!noindex && <meta property="og:url" content={canonicalUrl} />}
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={socialImageUrl} />

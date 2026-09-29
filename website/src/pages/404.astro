@@ -1,0 +1,13 @@
+---
+import Layout from "../layouts/Layout.astro";
+import TextPage from "../components/pages/TextPage.astro";
+import { notFound } from "../content/site";
+---
+
+<Layout title={`${notFound.title} — RecordStuff`} description={notFound.description} noindex>
+  <TextPage title={notFound.title} description={notFound.description}>
+    <ul class="prose not-found-links">
+      {notFound.links.map((link) => <li><a href={link.href}>{link.label}</a></li>)}
+    </ul>
+  </TextPage>
+</Layout>

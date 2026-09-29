@@ -23,6 +23,16 @@ export const hero = {
   playScene: "Play animation",
 } as const;
 
+export const notFound = {
+  title: "Page not found",
+  description: "This address does not lead to a RecordStuff page. It may have moved, or the link may be mistyped.",
+  links: [
+    { href: "/", label: "Home" },
+    { href: "/download", label: "Download RecordStuff" },
+    { href: "/help", label: "Help" },
+  ],
+} as const;
+
 export interface Feature {
   title: string;
   body: string;
