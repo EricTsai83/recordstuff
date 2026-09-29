@@ -131,7 +131,8 @@ The page's window-message callback checks source/marker/port before creating the
 | FileWriteError constructor | Error carrying code, path, and original cause |
 | errnoCode / messageOf ([main/errors.ts](../../src/main/errors.ts)) | Optional filesystem errno / error text, shared by every main module that reads a Node error |
 | classifyWriteError | ENOSPC→disk_full; otherwise output_write_failed |
-| ensureWritableDir | mkdir and write probe; throw output_open_failed on failure; remove probe best effort |
+| classifyOpenError | ENOSPC→disk_full; otherwise output_open_failed (the folder probe and the exclusive open) |
+| ensureWritableDir | mkdir and write probe; throw classifyOpenError's code on failure; remove probe best effort |
 | FileWriter constructor | Store handle/paths/I/O and schedule queued sync |
 | FileWriter.open | Exclusive temporary-file open → writer; wrap open failure |
 | bytesWritten | Sum of confirmed bytes from each write, including progress before an append fails |

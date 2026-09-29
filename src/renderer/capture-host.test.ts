@@ -18,7 +18,9 @@ class FakeTrack {
     this.settings = kind === "video" ? { width: 1920, height: 1080, frameRate: 30 } : { sampleRate: 48_000, channelCount: 2 };
   }
   stop(): void {
+    // Like MediaStreamTrack.stop(): the track ends at once, without an `ended` event.
     this.stopped = true;
+    this.readyState = "ended";
   }
   getSettings(): MediaTrackSettings {
     return this.settings;
@@ -568,6 +570,22 @@ describe("renderer CaptureHost", () => {
     expect(port.sent[0]).toMatchObject({ type: "prepared", sessionId: "s2" });
   });
 
+  it.each(["video", "audio"] as const)("a %s track that ends while the constraint is applied names display loss only for video", async (kind) => {
+    const port = boot();
+    port.receive(start("s1", { ...DEFAULT_QUALITY, resolutionCap: "1080p" }));
+    const s = stream();
+    s.tracks[0]!.settings = { width: 3840, height: 2160, frameRate: 30 };
+    let releaseApply: (() => void) | undefined;
+    s.tracks[0]!.applyConstraints = () => new Promise<void>((r) => (releaseApply = r));
+    pendingStream!.resolve(s);
+    await flush();
+    s.tracks.find((t) => t.kind === kind)!.readyState = "ended";
+    releaseApply!();
+    await flush();
+    expect(port.sent).toEqual([{ type: "error", sessionId: "s1", code: "capture_start_failed",
+      detail: expect.stringContaining("while applying quality"), ...(kind === "video" ? { displayFailure: "track_ended" } : {}) }]);
+  });
+
   it("ignores stop for an unknown session", () => {
     const port = boot();
     port.receive({ type: "stop", sessionId: "nope" });
@@ -600,6 +618,16 @@ describe("prepared sessions (plan 040)", () => {
     pendingStream!.resolve(stream());
     await flush();
     expect(port.sent.at(-1)).toMatchObject({ type: "prepared", sessionId: "s2" });
+  });
+
+  it.each(["video", "audio"] as const)("a %s track found ended at record names display loss only for video", async (kind) => {
+    const { port, s } = await preparedPort();
+    // Ended without its event reaching the host yet.
+    s.tracks.find((t) => t.kind === kind)!.readyState = "ended";
+    record(port);
+    expect(port.sent).toEqual([{ type: "error", sessionId: "s1", code: "capture_start_failed",
+      detail: expect.stringContaining("before recording started"), ...(kind === "video" ? { displayFailure: "track_ended" } : {}) }]);
+    expect(s.tracks.every((t) => t.stopped)).toBe(true);
   });
 
   it.each(["video", "audio"] as const)("a %s track ending while prepared replies a start error and releases the stream", async (kind) => {

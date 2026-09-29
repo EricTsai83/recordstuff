@@ -89,6 +89,11 @@ export function classifyWriteError(cause: unknown): ErrorCode {
   return errnoCode(cause) === "ENOSPC" ? "disk_full" : "output_write_failed";
 }
 
+/** Before any media: a full disk is still `disk_full`, not an unusable folder. */
+export function classifyOpenError(cause: unknown): ErrorCode {
+  return errnoCode(cause) === "ENOSPC" ? "disk_full" : "output_open_failed";
+}
+
 /**
  * Create default folders when requested, then write and remove a probe.
  * Custom folders must exist; never recreate an offline mount path.
@@ -99,7 +104,7 @@ export async function ensureWritableDir(dir: string, io: FileWriterFs = nodeFs, 
     if (create) await io.mkdir(dir, { recursive: true });
     await io.writeFile(probe, "");
   } catch (cause) {
-    throw new FileWriteError("output_open_failed", dir, cause);
+    throw new FileWriteError(classifyOpenError(cause), dir, cause);
   }
   try {
     await io.unlink(probe);
@@ -162,7 +167,7 @@ export class FileWriter {
     try {
       handle = await io.open(recordingPath, "wx");
     } catch (cause) {
-      throw new FileWriteError("output_open_failed", recordingPath, cause);
+      throw new FileWriteError(classifyOpenError(cause), recordingPath, cause);
     }
     return new FileWriter(recordingPath, finalPath, handle, io, options.fsyncIntervalMs ?? 5000,
       options.backlogLimitBytes ?? RECORDING_HEALTH.writerBacklogBytes);

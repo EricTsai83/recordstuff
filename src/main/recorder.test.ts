@@ -1105,6 +1105,16 @@ describe("display loss races", () => {
     expect(ctx.writers[0]?.abandoned).toBe(true);
     expect(ctx.recorder.state.type).toBe("idle");
   });
+  it("saves a stopped recording whose display is removed before the host replies", async () => {
+    const logs: string[] = [];
+    const ctx = setup({ log: (message) => logs.push(message) }); await startRecording(ctx); ctx.recorder.stop();
+    ctx.recorder.displayRemoved();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" }); await flush();
+    expect(ctx.events.filter((e) => e.type === "saved")).toHaveLength(1);
+    expect(ctx.events.filter((e) => e.type === "failed" || e.type === "displayFailed")).toEqual([]);
+    expect(ctx.writers[0]?.abandoned).toBe(false);
+    expect(logs).toContainEqual(expect.stringContaining("display removed after the stop was sent"));
+  });
   it("does not abandon a file already finalizing after a normal stop", async () => {
     const ctx = setup(); await startRecording(ctx); ctx.recorder.stop();
     ctx.host.emit({ type: "stopped", sessionId: "s1" }); ctx.recorder.displayRemoved(); await flush();

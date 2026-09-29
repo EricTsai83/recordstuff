@@ -132,7 +132,8 @@
 | `FileWriteError.constructor(code, filePath, cause)` | 附 code／路徑／原始 cause 的 Error |
 | `errnoCode(cause)` / `messageOf(cause)`（[main/errors.ts](../../../src/main/errors.ts)） | 取得 errno／文字，未知 errno 為 undefined；main 所有讀 Node 錯誤的模組共用 |
 | `classifyWriteError(cause)` | ENOSPC → disk_full，其他 → output_write_failed |
-| `ensureWritableDir(dir, io)` | mkdir＋寫 probe；失敗拋 output_open_failed；probe 刪除 best effort |
+| `classifyOpenError(cause)` | ENOSPC → disk_full，其他 → output_open_failed（資料夾 probe 與獨占開檔） |
+| `ensureWritableDir(dir, io)` | mkdir＋寫 probe；失敗依 `classifyOpenError` 拋出錯誤碼；probe 刪除 best effort |
 | `FileWriter.constructor(...)` | 保存 handle／路徑／I/O，啟動週期 sync 佇列 |
 | `FileWriter.open(recordingPath, finalPath, options)` | wx 開暫存檔 → writer，失敗包成 FileWriteError |
 | `bytesWritten` getter | 回傳每次 write 確認寫入量的總和，包含 append 失敗前的部分進度 |

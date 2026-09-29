@@ -1069,10 +1069,19 @@ export class Recorder {
     return retained ? { code: errorCodeOf(retained, "output_write_failed"), detail: messageOf(retained) } : undefined;
   }
 
-  /** Display loss shares the idempotent failure path with track end and host failure. */
+  /**
+   * Display loss shares the idempotent failure path with track end and host
+   * failure. Once the host has the stop, the file is complete up to it and a
+   * track ending afterwards does not fail it (as on sleep, plan 050): the stop's
+   * reply or its deadline decides.
+   */
   displayRemoved(): void {
     const session = this.session;
     if (session && !session.finalizing) {
+      if (session.phase === "stopping") {
+        this.deps.log(`recorder: session ${session.id} display removed after the stop was sent; saving what was recorded`);
+        return;
+      }
       if (this.cancelMarked(session, "recording display removed")) return;
       this.emit({ type: "displayFailed", detail: "target_removed" });
       const phase = BEFORE_CAPTURE[session.phase];

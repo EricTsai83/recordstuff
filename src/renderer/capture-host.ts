@@ -43,7 +43,6 @@ interface Prepared {
   id: string;
   stream: MediaStream;
   recorder: MediaRecorder;
-  capture: CaptureReport;
 }
 
 /** The subset of `MessagePort` the host uses; lets tests pass a fake. */
@@ -220,10 +219,10 @@ export class CaptureHost {
       this.send({ type: "stopped", sessionId, tracksStoppedAt: Date.now() });
       return true;
     };
-    const refuse = (code: ErrorCode, detail: string): void => {
+    const refuse = (code: ErrorCode, detail: string, displayFailure?: "track_ended"): void => {
       this.pending.delete(sessionId);
       stopTracks(stream);
-      this.fail(sessionId, code, detail);
+      this.fail(sessionId, code, detail, displayFailure);
     };
     if (cancelled()) return;
     if (this.busy()) {
@@ -255,7 +254,7 @@ export class CaptureHost {
     // pass 1, F3): a track that died meanwhile would otherwise be recorded as
     // a silent or frozen file that reports success.
     if (stream.getTracks().some((track) => track.readyState === "ended")) {
-      refuse("capture_start_failed", "capture track ended while applying quality settings");
+      refuse("capture_start_failed", "capture track ended while applying quality settings", endedDisplay(stream));
       return;
     }
     this.pending.delete(sessionId);
@@ -283,17 +282,18 @@ export class CaptureHost {
       return;
     }
 
-    const prepared: Prepared = { id: sessionId, stream, recorder, capture };
+    const prepared: Prepared = { id: sessionId, stream, recorder };
     this.prepared = prepared;
     // Nobody encodes yet, so a track that dies while main counts down would
     // otherwise surface only as a frozen or silent file after `record`.
     for (const track of stream.getTracks()) {
       track.addEventListener("ended", () => {
         if (this.prepared !== prepared) return;
-        const videoEnded = stream.getVideoTracks().some((t) => t.readyState === "ended");
+        // Before release: stopping the tracks ends the healthy ones too.
+        const displayFailure = endedDisplay(stream);
         this.release(prepared);
         this.fail(sessionId, "capture_start_failed", "capture source ended before recording started (display or audio track stopped)",
-          videoEnded ? "track_ended" : undefined);
+          displayFailure);
       });
     }
     this.send({ type: "prepared", sessionId, mimeType: recorder.mimeType || OUTPUT_MIME_TYPE, capture });
@@ -310,8 +310,9 @@ export class CaptureHost {
     const { stream, recorder } = prepared;
     this.prepared = undefined;
     if (stream.getTracks().some((track) => track.readyState === "ended")) {
+      const displayFailure = endedDisplay(stream);
       stopTracks(stream);
-      this.fail(sessionId, "capture_start_failed", "capture track ended before recording started");
+      this.fail(sessionId, "capture_start_failed", "capture track ended before recording started", displayFailure);
       return;
     }
     const session: Session = {
@@ -385,9 +386,9 @@ export class CaptureHost {
 
   private sourceEnded(session: Session): void {
     if (session.cause) return;
-    const videoEnded = session.stream.getVideoTracks().some((track) => track.readyState === "ended");
+    const displayFailure = endedDisplay(session.stream);
     session.cause = { code: "capture_failed", detail: "capture source ended (display or audio track stopped)",
-      ...(videoEnded ? { displayFailure: "track_ended" as const } : {}) };
+      ...(displayFailure ? { displayFailure } : {}) };
   }
 
   private setFailure(session: Session, cause: Exclude<Session["cause"], "normal" | undefined>): void {
@@ -559,6 +560,14 @@ async function applyQuality(stream: MediaStream, quality: QualitySettings, measu
   const channelCount = finiteOrUndefined(audioSettings.channelCount);
   if (channelCount !== undefined) report.channelCount = channelCount;
   return report;
+}
+
+/**
+ * A video track that ended is the display's loss, which Settings diagnoses; an
+ * audio track's end is not. Read it before stopping the tracks, which ends them all.
+ */
+function endedDisplay(stream: MediaStream): "track_ended" | undefined {
+  return stream.getVideoTracks().some((track) => track.readyState === "ended") ? "track_ended" : undefined;
 }
 
 function stopTracks(stream: MediaStream): void {

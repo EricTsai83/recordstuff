@@ -72,6 +72,12 @@ describe("FileWriter", () => {
     });
   });
 
+  it("reports an open refused for lack of space as disk_full", async () => {
+    const open = async () => { throw Object.assign(new Error("no space"), { code: "ENOSPC" }); };
+    await expect(FileWriter.open(path.join(dir, "full.recording.mp4"), path.join(dir, "full.mp4"), { io: { ...nodeFs, open } }))
+      .rejects.toMatchObject({ name: "FileWriteError", code: "disk_full" });
+  });
+
   it.each([false, true])("preserves final files colliding before/after open (late=%s)", async (late) => {
     const recording = path.join(dir, "same.recording.mp4");
     const final = path.join(dir, "same.mp4");
@@ -542,6 +548,16 @@ describe("ensureWritableDir", () => {
       },
     };
     await expect(ensureWritableDir(dir, io)).rejects.toMatchObject({ code: "output_open_failed" });
+  });
+
+  it("reports a probe refused for lack of space as disk_full", async () => {
+    const io: FileWriterFs = {
+      ...nodeFs,
+      writeFile: async () => {
+        throw Object.assign(new Error("no space"), { code: "ENOSPC" });
+      },
+    };
+    await expect(ensureWritableDir(dir, io)).rejects.toMatchObject({ code: "disk_full" });
   });
 });
 
