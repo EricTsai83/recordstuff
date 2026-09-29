@@ -11,6 +11,7 @@ import path from "node:path";
 import type { ErrorCode, RecordingState } from "../shared/state";
 import type { FrameRate } from "../shared/quality";
 import type { HotkeyAccelerator } from "../shared/hotkey";
+import type { Language } from "../shared/i18n";
 import {
   displayWriteFailedNotification,
   languageWriteFailedNotification,
@@ -63,6 +64,10 @@ export interface TrayOptions {
   idleSeconds?: () => number;
   /** Every notification click, before its own action: the activation that follows is not a reopen (plan 053). */
   onNotificationClick?: () => void;
+  /** The notification language; absent reads it from `context`, which also projects displays and the whole failure history. */
+  language?: () => Language;
+  /** Monotonic milliseconds, to tell input since waking from input before the sleep. Tests pin it. */
+  now?: () => number;
 }
 
 export class AppTray {
@@ -90,6 +95,8 @@ export class AppTray {
   // A banner shown while the Mac sleeps is gone before the user is back, so notifications wait for waking.
   private asleep = false;
   private resumed = false;
+  /** When the last wake arrived, by `now()`. */
+  private resumedAt = 0;
   private held: Array<() => void> = [];
   private heldTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -127,6 +134,7 @@ export class AppTray {
   /** Awake again: show the held notifications, in order, once there is user input. */
   systemDidWake(): void {
     this.resumed = true;
+    this.resumedAt = this.now();
     if (this.asleep && this.held.length) this.checkReturn();
   }
 
@@ -144,12 +152,23 @@ export class AppTray {
     }, WAKE_CHECK_MS);
   }
 
-  /** Recent input means someone is at the Mac; an unknown idle time does not hold notifications back. */
+  /**
+   * Recent input, or any input since waking, means someone is at the Mac: a user who
+   * came back and then stopped typing must not wait for their next keystroke. Without
+   * input the idle time is at least the time since the wake, so a shorter one proves
+   * input after it; one second absorbs the idle time's whole-second rounding. An
+   * unknown idle time does not hold notifications back.
+   */
   private userReturned(): boolean {
     let idle: number | undefined;
     try { idle = this.options.idleSeconds?.(); }
     catch (error) { this.log(`notification: idle time unavailable (${String(error)})`); }
-    return idle === undefined || idle <= RETURN_IDLE_SECONDS;
+    if (idle === undefined || idle <= RETURN_IDLE_SECONDS) return true;
+    return this.resumed && idle + 1 < (this.now() - this.resumedAt) / 1000;
+  }
+
+  private now(): number {
+    return this.options.now?.() ?? performance.now();
   }
 
   private showHeld(): void {
@@ -174,12 +193,17 @@ export class AppTray {
     this.tray.destroy();
   }
 
+  /** The language notifications are written in. */
+  private get language(): Language {
+    return this.options.language?.() ?? this.options.context().language;
+  }
+
   notifySaved(savedPath: string, stoppedEarly?: EarlyStop): void {
-    this.show(savedNotification(savedPath, this.options.context().language, stoppedEarly), () => this.revealFromNotification(savedPath));
+    this.show(savedNotification(savedPath, this.language, stoppedEarly), () => this.revealFromNotification(savedPath));
   }
 
   notifyRecordingFailure(code: ErrorCode): void {
-    this.show(recordingFailureNotification(code, this.options.context().language), () => this.options.onAction("openRecordingResult"));
+    this.show(recordingFailureNotification(code, this.language), () => this.options.onAction("openRecordingResult"));
   }
 
   /**
@@ -225,38 +249,38 @@ export class AppTray {
   }
 
   notifyPermission(needsRelaunch: boolean): void {
-    this.show(permissionNotification(needsRelaunch, this.options.context().language), () =>
+    this.show(permissionNotification(needsRelaunch, this.language), () =>
       this.options.permissionAction ? this.options.permissionAction() : this.options.onAction(needsRelaunch ? "relaunch" : "openPermissionSettings"),
     );
   }
 
   notifySettingsWriteFailed(chosenDir: string): void {
-    this.show(settingsWriteFailedNotification(chosenDir, this.options.context().homeDir, this.options.context().language));
+    this.show(settingsWriteFailedNotification(chosenDir, this.options.context().homeDir, this.language));
   }
 
   notifyLanguageWriteFailed(): void {
-    this.show(languageWriteFailedNotification(this.options.context().language));
+    this.show(languageWriteFailedNotification(this.language));
   }
 
   notifyDisplayWriteFailed(): void {
-    this.show(displayWriteFailedNotification(this.options.context().language));
+    this.show(displayWriteFailedNotification(this.language));
   }
 
   notifyQualityWriteFailed(): void {
-    this.show(qualityWriteFailedNotification(this.options.context().language));
+    this.show(qualityWriteFailedNotification(this.language));
   }
 
+  /** The banner points to Settings, so clicking it opens Settings, where the retry and the editor are. */
   notifyHotkeyRegistrationFailed(accelerator: HotkeyAccelerator): void {
-    const ctx = this.options.context();
-    this.show(hotkeyRegistrationFailedNotification(accelerator, ctx.platform, ctx.language));
+    this.show(hotkeyRegistrationFailedNotification(accelerator, this.options.context().platform, this.language), () => this.options.onAction("openSettings"));
   }
 
   notifyHotkeyWriteFailed(): void {
-    this.show(hotkeyWriteFailedNotification(this.options.context().language));
+    this.show(hotkeyWriteFailedNotification(this.language));
   }
 
   notifyFrameRateDowngrade(requested: FrameRate, actual: number): void {
-    this.show(frameRateDowngradeNotification(requested, actual, this.options.context().language));
+    this.show(frameRateDowngradeNotification(requested, actual, this.language));
   }
 
   notifyCaptureWarning(body: string): void {
@@ -264,12 +288,11 @@ export class AppTray {
   }
 
   notifyTrayHint(): void {
-    const ctx = this.options.context();
-    this.show(trayHintNotification(ctx.platform, ctx.language));
+    this.show(trayHintNotification(this.options.context().platform, this.language));
   }
 
   notifyNotificationsEnabled(): void {
-    this.show(notificationsEnabledNotification(this.options.context().language));
+    this.show(notificationsEnabledNotification(this.language));
   }
 
   /**

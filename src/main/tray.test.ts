@@ -86,7 +86,7 @@ import { ACTIVATION_WINDOW_MS, AppTray, RETURN_IDLE_SECONDS, TRAY_ICON_FILES, WA
 
 const Fake = Notification as unknown as FakeNotificationCtor;
 
-function setup(supported = true, canNotify?: () => boolean, idleSeconds?: () => number, onNotificationClick?: () => void): { tray: AppTray; logs: string[]; onAction: ReturnType<typeof vi.fn> } {
+function setup(supported = true, canNotify?: () => boolean, idleSeconds?: () => number, onNotificationClick?: () => void, now?: () => number): { tray: AppTray; logs: string[]; onAction: ReturnType<typeof vi.fn> } {
   vi.mocked(shell.showItemInFolder).mockReset();
   app.removeAllListeners();
   Fake.instances.length = 0;
@@ -113,6 +113,7 @@ function setup(supported = true, canNotify?: () => boolean, idleSeconds?: () => 
     log: (message) => logs.push(message),
     ...(canNotify ? { canNotify } : {}),
     ...(idleSeconds ? { idleSeconds } : {}),
+    ...(now ? { now } : {}),
   });
   return { tray, logs, onAction };
 }
@@ -255,6 +256,15 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
     tray.notifyTrayHint();
     Fake.instances.at(-1)!.listeners.get("click")?.();
     expect(order).toEqual(["clicked", "openSettings", "clicked"]);
+  });
+
+  it("opens Settings from the shortcut-refused banner that tells the user to go there", () => {
+    const { tray, onAction } = setup();
+    tray.notifyHotkeyRegistrationFailed(DEFAULT_HOTKEY.accelerator);
+    const notification = Fake.instances.at(-1)!;
+    expect(notification.options.body).toContain("Choose another shortcut in Settings.");
+    notification.listeners.get("click")?.();
+    expect(onAction).toHaveBeenCalledWith("openSettings");
   });
 
   it("drops every notification while the user's switch is off, before asking the OS", () => {
@@ -545,6 +555,35 @@ describe("notifications around sleep (plan 050)", () => {
       tray.notifySaved("/Users/eric/Movies/RecordStuff/c.mp4");
       // Held first, in order, then the new one.
       expect(Fake.instances.map((n) => n.options.body)).toEqual(["Saved a.mp4", "Saved b.mp4", "Saved c.mp4"]);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("counts input since the wake as a return, so a user who came back and paused is not held until their next keystroke", async () => {
+    vi.useFakeTimers();
+    try {
+      const clock = { ms: 0 };
+      // Without input the idle time grows with the time since the wake: 30 s before the sleep, plus every second awake.
+      let lastInputAt: number | undefined;
+      const idle = (): number => Math.floor(lastInputAt === undefined ? 30 + clock.ms / 1000 : (clock.ms - lastInputAt) / 1000);
+      const { tray } = setup(true, undefined, idle, undefined, () => clock.ms);
+      tray.systemWillSleep();
+      tray.systemDidWake();
+      // A maintenance wake: no input, however long it lasts.
+      clock.ms = 10 * 60_000;
+      tray.notifySaved("/Users/eric/Movies/RecordStuff/a.mp4");
+      expect(Fake.instances).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(WAKE_CHECK_MS);
+      expect(Fake.instances).toHaveLength(0);
+      // The user touched the Mac a minute ago and then paused: that input came after the wake.
+      lastInputAt = clock.ms;
+      clock.ms += 60_000;
+      await vi.advanceTimersByTimeAsync(WAKE_CHECK_MS);
+      expect(Fake.instances.map((n) => n.options.body)).toEqual(["Saved a.mp4"]);
+      tray.notifySaved("/Users/eric/Movies/RecordStuff/b.mp4");
+      expect(Fake.instances).toHaveLength(2);
       expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.useRealTimers();

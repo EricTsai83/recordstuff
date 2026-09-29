@@ -333,6 +333,7 @@ async function main(): Promise<void> {
     resourcesDir: resourcesDir(),
     context: appContext,
     canNotify: () => settings.notifications,
+    language: () => settings.language,
     idleSeconds: () => powerMonitor.getSystemIdleTime(),
     onNotificationClick: () => reopen?.notificationClicked(),
     onToggle: toggle,
