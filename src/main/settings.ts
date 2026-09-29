@@ -25,6 +25,7 @@ import { DEFAULT_COUNTDOWN, DEFAULT_COUNTDOWN_SOUND, isCountdownSeconds, type Co
 import { DEFAULT_LANGUAGE, isLanguage, type Language } from "../shared/i18n";
 import { DEFAULT_HOTKEY, canonicalizeAccelerator, isHotkeySettings, type HotkeySettings } from "../shared/hotkey";
 import { writeFileAtomic } from "./atomic-file";
+import { drainQueue } from "./drain-queue";
 import { errnoCode } from "./errors";
 
 export const SETTINGS_VERSION = 3;
@@ -271,8 +272,7 @@ export class SettingsStore {
 
   /** Wait for every previously accepted save before quitting. */
   async flush(): Promise<void> {
-    let pending: Promise<void>;
-    do { pending = this.queue; await pending; } while (pending !== this.queue);
+    await drainQueue(() => this.queue);
   }
 
   private load(defaultOutputDir: string): Settings {

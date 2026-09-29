@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { writeFileAtomic } from "./atomic-file";
+import { drainQueue } from "./drain-queue";
 import { errnoCode } from "./errors";
 
 export interface WindowSize { width: number; height: number }
@@ -34,8 +35,7 @@ export class SettingsWindowState {
       .catch(error => this.log(`settings window: size save failed: ${String(error)}`));
   }
   async flush(): Promise<void> {
-    let pending: Promise<void>;
-    do { pending = this.queue; await pending; } while (pending !== this.queue);
+    await drainQueue(() => this.queue);
   }
 }
 

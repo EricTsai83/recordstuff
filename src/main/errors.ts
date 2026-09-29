@@ -15,3 +15,8 @@ export function errnoCode(cause: unknown): string | undefined {
 export function messageOf(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
+
+/** For unexpected faults, where the log needs to say where it came from: the stack when there is one. */
+export function stackOf(cause: unknown): string {
+  return cause instanceof Error ? (cause.stack ?? cause.message) : String(cause);
+}

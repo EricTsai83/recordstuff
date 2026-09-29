@@ -20,6 +20,7 @@ import {
 import { isCountdownSeconds, type CountdownSeconds } from "../shared/countdown";
 import type { RecordingState } from "../shared/state";
 import type { RecorderEvent } from "./recorder";
+import { messageOf } from "./errors";
 
 export interface AutoRecordConfig {
   seconds: number;
@@ -54,7 +55,7 @@ export function parseAutoRecord(value: string | undefined, isPackaged: boolean):
   try {
     parsed = JSON.parse(value);
   } catch (cause) {
-    return { ok: false, error: `not JSON: ${cause instanceof Error ? cause.message : String(cause)}` };
+    return { ok: false, error: `not JSON: ${messageOf(cause)}` };
   }
   if (typeof parsed !== "object" || parsed === null) return { ok: false, error: "must be an object" };
   const record = parsed as Record<string, unknown>;

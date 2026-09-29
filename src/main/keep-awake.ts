@@ -1,4 +1,5 @@
 import type { RecordingState } from "../shared/state";
+import { preferencesUnlocked } from "./ui-model";
 
 /**
  * Keeps the display and the system awake while a session runs (plan 050). An
@@ -12,17 +13,17 @@ export interface PowerBlocker {
   stop(id: number): void;
 }
 
-/** The states in which a session exists: its countdown, capture or save. */
-const BUSY: ReadonlySet<RecordingState["type"]> = new Set(["starting", "countdown", "recording", "stopping"]);
-
 export class KeepAwake {
   private id: number | undefined;
 
   constructor(private readonly blocker: PowerBlocker, private readonly log: (message: string) => void) {}
 
-  /** Follows every Recorder state; a blocker that cannot start never affects the recording. */
+  /**
+   * Follows every Recorder state; a blocker that cannot start never affects the recording.
+   * A session (its countdown, capture or save) exists exactly while preferences are locked.
+   */
   update(state: RecordingState): void {
-    if (!BUSY.has(state.type)) {
+    if (preferencesUnlocked(state)) {
       this.release();
       return;
     }

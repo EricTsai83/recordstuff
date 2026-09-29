@@ -15,6 +15,8 @@ export const isPermissionFailure = (code: ErrorCode): boolean => PERMISSION_FAIL
 
 /** Delay before each automatic retry of a failed history save; the last value repeats while unsaved. */
 export const RETRY_DELAYS_MS: readonly number[] = [2000, 5000, 15_000, 30_000];
+/** How long one partial-file check waits for a slow or disconnected volume. */
+const STAT_BOUND_MS = 2000;
 /** `safe`: nothing the user would lose; `writing`: a save is still in flight, so exit is not offered. */
 export type FlushOutcome = "safe" | "unsaved" | "writing";
 
@@ -340,19 +342,11 @@ export class RecordingResults {
       // Only a row that was partial can become partial again; checking any other path
       // spends the two-second bound, and one slow volume would stop the real rechecks.
       if (!candidate || !(original.outcome === "partial" || original.previouslyPartial)) continue;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      let confirmed = false;
-      let timedOut = false;
-      try {
-        confirmed = await Promise.race([
-          this.exists({ ...original, partialPath: candidate }, stat, false),
-          new Promise<false>(resolve => { timer = setTimeout(() => { timedOut = true; resolve(false); }, 2000); }),
-        ]);
-      } finally { if (timer) clearTimeout(timer); }
+      const found = await this.check({ ...original, partialPath: candidate }, stat);
+      if (found === "timeout") break;
       const current = this.results.find(r => r.id === original.id);
-      if (timedOut) break;
       if (!current?.restored || current.outcome !== "unknown") continue;
-      if ((original.outcome === "partial" || original.previouslyPartial) && confirmed) {
+      if (found) {
         this.results = this.results.map(r => r === current ? { ...r, outcome: "partial", partialPath: candidate } : r);
         refresh();
       }
@@ -403,16 +397,19 @@ export class RecordingResults {
     const { partialPath: _path, ...base } = result;
     return { ...base, ...(_path ? { recordingPath: _path, previouslyPartial: true } : {}), outcome: "unknown" };
   }
-  private async exists(result: RecordingFailure, stat: Stat, bounded = true): Promise<boolean> {
+  private async exists(result: RecordingFailure, stat: Stat): Promise<boolean> {
+    return await this.check(result, stat) === true;
+  }
+  /** Whether the partial file is there and nonempty, or "timeout" when its volume did not answer in time. */
+  private async check(result: RecordingFailure, stat: Stat): Promise<boolean | "timeout"> {
     if (!result.partialPath) return false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const file = await (bounded ? Promise.race([
+      const file = await Promise.race([
         stat(result.partialPath),
-        new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), 2000); }),
-      ]) : stat(result.partialPath));
-      if (!file) return false;
-      return file.isFile() && file.size > 0;
+        new Promise<"timeout">(resolve => { timer = setTimeout(() => resolve("timeout"), STAT_BOUND_MS); }),
+      ]);
+      return file === "timeout" ? file : file.isFile() && file.size > 0;
     } catch { return false; } finally { clearTimeout(timer); }
   }
   async receive(result: RecordingFailure, effects: ResultEffects): Promise<void> {

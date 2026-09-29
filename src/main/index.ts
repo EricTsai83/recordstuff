@@ -36,6 +36,7 @@ import { KeepAwake } from "./keep-awake";
 import { createOutputFolderOpener } from "./output-folder";
 import { createUncaughtExceptionHandler } from "./fault-dialog";
 import { createFileLogger, flushBeforeExit } from "./log";
+import { stackOf } from "./errors";
 import { createRunId, logSessionEvent } from "./session-log";
 import { PermissionWatcher, openNotificationSettings, openScreenCaptureSettings } from "./permission";
 import { Recorder } from "./recorder";
@@ -83,7 +84,7 @@ process.on("uncaughtException", createUncaughtExceptionHandler({
   held: (waiting) => { errorBoxHeld = waiting; faultWiring.refresh?.(); },
 }));
 process.on("unhandledRejection", (reason) => {
-  log(`unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`);
+  log(`unhandled rejection: ${stackOf(reason)}`);
 });
 
 /**
@@ -137,7 +138,7 @@ if (!app.requestSingleInstanceLock()) {
   // A menu-bar app that fails to wire up has no window and no tray to quit
   // from: it would sit invisible until Activity Monitor found it.
   main().catch(async (cause: unknown) => {
-    log(`start: failed: ${cause instanceof Error ? (cause.stack ?? cause.message) : String(cause)}; exiting`);
+    log(`start: failed: ${stackOf(cause)}; exiting`);
     await flushBeforeExit(log);
     dialog.showErrorBox(APP_NAME, translate("An unexpected error occurred. See the log for details.", currentLanguage));
     app.exit(1);

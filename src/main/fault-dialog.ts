@@ -1,3 +1,5 @@
+import { stackOf } from "./errors";
+
 /**
  * What main does with an uncaught exception. It has no window, so an error would otherwise leave
  * no trace at all. Electron's default for the exception case is a modal error box and the process
@@ -44,7 +46,7 @@ export function createUncaughtExceptionHandler(deps: {
     void settled().then(present, (cause: unknown) => deps.log(`uncaught exception: waiting for recording work failed: ${String(cause)}`));
   };
   return (error) => {
-    deps.log(`uncaught exception: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`);
+    deps.log(`uncaught exception: ${stackOf(error)}`);
     if (claimed) return;
     claimed = true;
     if (!pending()) { present(); return; }

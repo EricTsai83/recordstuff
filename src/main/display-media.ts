@@ -8,6 +8,7 @@
 import type { DisplayFailure, DisplayInfo, DisplayPreference } from "../shared/display";
 import type { ErrorCode } from "../shared/state";
 import { DisplayRequest } from "./display-source";
+import { stackOf } from "./errors";
 
 type Source = { display_id: string };
 
@@ -69,7 +70,7 @@ export class DisplayMedia<S extends Source> {
       },
       failed: (cause) => {
         this.denial = "capture_start_failed";
-        log(`display media: request failed unexpectedly; requested ${JSON.stringify(preference)}; ${cause instanceof Error ? (cause.stack ?? cause.message) : String(cause)}`);
+        log(`display media: request failed unexpectedly; requested ${JSON.stringify(preference)}; ${stackOf(cause)}`);
       },
     });
   }

@@ -14,6 +14,7 @@
  * able to stop it, and the menu is locked in those states anyway (review F2).
  */
 import type { HotkeyAccelerator, HotkeySettings } from "../shared/hotkey";
+import { messageOf } from "./errors";
 
 /**
  * Chromium's macOS listener binds an accelerator to whichever key types its
@@ -97,7 +98,7 @@ export class RecordingHotkey {
     try {
       registered = this.options.globalShortcut.register(accelerator, () => this.pressed(accelerator));
     } catch (cause) {
-      reason = cause instanceof Error ? cause.message : String(cause);
+      reason = messageOf(cause);
     }
     if (registered) {
       this._status = { kind: "registered", accelerator };

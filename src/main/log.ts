@@ -10,6 +10,8 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+// Development scripts load this file directly under Node, which resolves no extensionless
+// local import: it imports only built-ins, so it keeps its own queue drain and errno checks.
 
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 /** Lines waiting for the file beyond this are dropped from it; stdout still gets every line. */
