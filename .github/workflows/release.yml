@@ -19,8 +19,11 @@ on:
         type: string
 permissions:
   contents: read
+# GitHub keeps one pending run per group and cancels it when another queues,
+# so a manual re-verify gets its own group rather than displacing a queued tag.
+# At most one tag should wait behind a running release (releases.md).
 concurrency:
-  group: recordstuff-macos-delivery
+  group: ${{ github.event_name == 'workflow_dispatch' && 'recordstuff-release-verify' || 'recordstuff-macos-delivery' }}
   cancel-in-progress: false
 jobs:
   build:
