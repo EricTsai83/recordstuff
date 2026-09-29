@@ -204,7 +204,9 @@ try {
   await check('manual checking, overlap and timestamp', async () => {
     await scenario('delayed', 1000); const before = (await snapshot()).calls.length;
     await action('checkUpdates'); const busy = await until(s => s.pending === 1, 'pending check');
-    assert.equal(busy.update.kind, 'checking'); assert.equal(menuAction(busy, 'checkUpdates').enabled, false);
+    // A running check keeps its button focusable and marks it busy (358d3cb); the call count below proves no overlap.
+    assert.equal(busy.update.kind, 'checking');
+    assert.equal(busy.settings.groups.find(g => g.id === 'updates')?.choices.find(c => c.id === 'check')?.busy, true);
     await action('checkUpdates'); assert.equal((await snapshot()).calls.length, before + 1);
     await command({ kind: 'release' }); await until(s => s.update.kind === 'available', 'newer result');
     await scenario('current', 1000); await action('checkUpdates');
