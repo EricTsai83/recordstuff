@@ -8,6 +8,7 @@ export function isLanguage(value: unknown): value is Language {
 
 export const ZH_TW = {
   "Retry shortcut registration": "重試註冊快捷鍵",
+  "The shortcut is still unavailable. Another app may still be using it.": "快捷鍵仍無法使用，可能仍有其他 App 占用。",
   "The resolution cap could not be confirmed. The recording may use a larger size.": "無法確認解析度上限，錄影可能使用較大的尺寸。",
   "Failure history could not be read. The existing file has been preserved; check the log for details.": "無法讀取失敗紀錄，原有檔案已保留；請查看 log 了解詳情。",
   "Show more failures": "顯示更多失敗紀錄",

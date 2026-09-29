@@ -197,7 +197,7 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group[] {
       action: { setHotkey: { enabled: false, accelerator: hotkey.accelerator } },
     },
   ], undefined), kind: "shortcut", platform: ctx.platform, noteKind: "status",
-    ...((note || ctx.settingsShortcut?.kind === "failed") ? { actions: [{ id: "retryRegistration", label: t("Retry shortcut registration", language), enabled: true, checked: false, action: "retryShortcuts" as const }] } : {}),
+    ...((note || ctx.settingsShortcut?.kind === "failed") ? { actions: [{ id: HOTKEY_RETRY_ID, label: t("Retry shortcut registration", language), enabled: true, checked: false, action: "retryShortcuts" as const }] } : {}),
     ...(diagnostics.length ? { diagnostics } : {}) }];
 }
 
@@ -438,6 +438,17 @@ function resultActions(state: RecordingState, ctx: AppContext, result: Recording
   return actions;
 }
 
+/** The shortcut card's retry action; the card's only choice id besides Off that is not a combination. */
+const HOTKEY_RETRY_ID = "retryRegistration";
+
+/**
+ * Whether a shortcut-card choice proposes a combination: the editor sends any
+ * accelerator as the choice id, so every id but Off and the card's own action is one.
+ */
+export function proposesHotkey(groupId: unknown, choiceId: unknown): boolean {
+  return groupId === "hotkey" && choiceId !== "off" && choiceId !== HOTKEY_RETRY_ID;
+}
+
 /** The action for a choice that is offered and enabled right now, or nothing. */
 export function settingsAction(
   state: RecordingState,
@@ -450,7 +461,7 @@ export function settingsAction(
     if (!result) return undefined;
     return resultActions(state, ctx, result).find(choice => choice.id === choiceId && choice.enabled)?.action;
   }
-  if (groupId === "hotkey" && choiceId !== "off" && choiceId !== "retryRegistration" && preferencesUnlocked(state)) {
+  if (proposesHotkey(groupId, choiceId) && preferencesUnlocked(state)) {
     const accelerator = canonicalizeAccelerator(choiceId);
     return accelerator && !isSettingsShortcut(accelerator, ctx.platform) ? { setHotkey: { enabled: true, accelerator } } : undefined;
   }
@@ -465,7 +476,7 @@ export function settingsChecked(
   groupId: unknown,
   choiceId: unknown,
 ): boolean {
-  if (groupId === "hotkey" && choiceId !== "off") return ctx.hotkey.enabled && canonicalizeAccelerator(choiceId) === ctx.hotkey.accelerator;
+  if (proposesHotkey(groupId, choiceId)) return ctx.hotkey.enabled && canonicalizeAccelerator(choiceId) === ctx.hotkey.accelerator;
   return find(state, ctx, groupId, choiceId)?.checked ?? false;
 }
 

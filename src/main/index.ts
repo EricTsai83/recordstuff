@@ -448,8 +448,7 @@ async function main(): Promise<void> {
         settingsWindow.show();
         return;
       case "retryShortcuts":
-        shortcuts.retry();
-        return true;
+        return shortcuts.retry();
       case "checkUpdates":
         // Not awaited: the check can wait on two network timeouts, and the
         // panel's save queue and its controls must not wait with it. The

@@ -14,7 +14,7 @@ import path from "node:path";
 import { SETTINGS_CHANNELS, type SettingsChoiceResult, type SettingsView } from "../shared/settings-panel";
 import type { RecordingState } from "../shared/state";
 
-import { settingsAction, settingsChecked, settingsView } from "./settings-model";
+import { proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
 import { preferencesUnlocked } from "./ui-model";
 import { validateAccelerator, isSettingsShortcut, SETTINGS_SHORTCUT_RESERVED } from "../shared/hotkey";
 import { translate } from "../shared/i18n";
@@ -292,7 +292,7 @@ export class SettingsWindow {
       this.release(lease);
       const view = this.view();
       // A refused shortcut says why once, in the card's own error; its note keeps describing the registration.
-      const error = group === "hotkey" && choice !== "off" && choice !== "retryRegistration"
+      const error = proposesHotkey(group, choice)
         ? isSettingsShortcut(choice, this.options.context().platform) ? SETTINGS_SHORTCUT_RESERVED : validateAccelerator(choice).error
         : undefined;
       return this.deliver({ view, applied: false, ...(error ? { failure: translate(error, view.language), refused: true as const } : { failure: view.failure }) }, recipient);
@@ -311,6 +311,7 @@ export class SettingsWindow {
     const language = this.options.context().language;
     const actionFailure = group === "about" || action === "openUpdate" ? translate("Could not open the link. Try again.", language)
       : action === "openNotificationSettings" ? translate("Could not open System Settings. Allow RecordStuff in System Settings → Notifications.", language)
+      : action === "retryShortcuts" ? translate("The shortcut is still unavailable. Another app may still be using it.", language)
       : undefined;
     return this.deliver({
       view: this.view(),

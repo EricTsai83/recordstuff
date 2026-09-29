@@ -249,6 +249,14 @@ describe("settings window IPC", () => {
     expect(await s.choose(s.event(), "updates", "open")).toMatchObject({ applied: false, failure: "Could not open the link. Try again." });
     expect(s.act).toHaveBeenCalledWith("openUpdate");
   });
+  it("says a registration retry that is still refused did not help", async () => {
+    const s = setup({ act: vi.fn(async () => false) });
+    s.live.settingsShortcut = { kind: "failed", accelerator: "Alt+CommandOrControl+,", reason: "in use" };
+    s.panel.show();
+    expect(await s.choose(s.event(), "hotkey", "retryRegistration")).toMatchObject({
+      applied: false, failure: "The shortcut is still unavailable. Another app may still be using it." });
+    expect(s.act).toHaveBeenCalledWith("retryShortcuts");
+  });
   it("answers only its own window's main frame", async () => {
     const s = setup();
     s.panel.show();

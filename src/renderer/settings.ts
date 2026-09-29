@@ -797,8 +797,11 @@ async function choose(group: string, choice: string, control: string): Promise<v
     pending--; if (!pending) saving = undefined;
     // Only move focus if the user's focus is still on the disappearing field.
     const restore = document.activeElement?.id === control && document.hasFocus();
-    // A retry that succeeded is hidden; if focus already fell to the page, it goes back to the group.
-    const lost = /-(retry|recovery)$/.test(control) && (!document.activeElement || document.activeElement === document.body);
+    // A retry that succeeded is hidden, and an action main stops offering is removed
+    // (the shortcut card's retry); if focus already fell to the page, it goes back to the group.
+    const vanished = (): boolean => { const el = document.getElementById(control); return !el || Boolean(el.closest("[hidden]")); };
+    const lost = (!document.activeElement || document.activeElement === document.body)
+      && (/-(retry|recovery)$/.test(control) || vanished());
     draw();
     if (lost && document.hasFocus()) {
       const again = document.getElementById(control);

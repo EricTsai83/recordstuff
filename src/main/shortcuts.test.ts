@@ -50,8 +50,12 @@ it("retries both refused registrations without rewriting preferences", () => {
   const s = setup(refuse);
   s.shortcuts.start();
   expect(s.registered.size).toBe(0);
+  // Still refused: the caller must be able to say the retry did not help.
+  expect(s.shortcuts.retry()).toBe(false);
+  refuse.splice(1);
+  expect(s.shortcuts.retry()).toBe(false);
   refuse.splice(0);
-  s.shortcuts.retry();
+  expect(s.shortcuts.retry()).toBe(true);
   expect([...s.registered].sort()).toEqual([DEFAULT_HOTKEY.accelerator, SETTINGS_SHORTCUT].sort());
   expect(s.store.setHotkey).not.toHaveBeenCalled();
   s.shortcuts.dispose();

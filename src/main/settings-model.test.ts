@@ -3,7 +3,7 @@ import { DEFAULT_QUALITY } from "../shared/quality";
 import { DEFAULT_HOTKEY, HOTKEY_PRESETS } from "../shared/hotkey";
 import type { RecordingState } from "../shared/state";
 import { translate as t } from "../shared/i18n";
-import { failureDay, failureTime, settingsAction, settingsChecked, settingsView } from "./settings-model";
+import { failureDay, failureTime, proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
 import type { AppContext } from "./ui-model";
 
 const context: AppContext = {
@@ -574,6 +574,12 @@ it("routes shortcut retry only while the failed registration can be changed", ()
   expect(settingsAction(idle, failed, "hotkey", "retryRegistration")).toBe("retryShortcuts");
   expect(settingsAction(idle, context, "hotkey", "retryRegistration")).toBeUndefined();
   for (const state of busy) expect(settingsAction(state, failed, "hotkey", "retryRegistration")).toBeUndefined();
+  // The retry is the card's action, not a combination: its checked state is the action's, never a hotkey comparison.
+  expect(settingsChecked(idle, failed, "hotkey", "retryRegistration")).toBe(false);
+  expect(proposesHotkey("hotkey", "retryRegistration")).toBe(false);
+  expect(proposesHotkey("hotkey", "off")).toBe(false);
+  expect(proposesHotkey("hotkey", "CommandOrControl+Shift+K")).toBe(true);
+  expect(proposesHotkey("language", "CommandOrControl+Shift+K")).toBe(false);
 });
 
 it("explains a Settings shortcut that is not registered, not only a retry button", () => {
