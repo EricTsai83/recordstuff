@@ -25,6 +25,14 @@ describe("cadenceStats", () => {
     expect(stats.maxIntervalMs).toBeCloseTo(66.7, 6);
   });
 
+  it("reports nearest-rank percentiles and the midpoint median, as every measurement tool does", () => {
+    // Intervals 10, 20, 30 and 40 ms: interpolation would report p05 11.5 and p95 38.5.
+    const stats = cadenceStats([0, 0.01, 0.03, 0.06, 0.1], 30)!;
+    expect(stats.p05IntervalMs).toBeCloseTo(10, 6);
+    expect(stats.p95IntervalMs).toBeCloseTo(40, 6);
+    expect(stats.medianIntervalMs).toBeCloseTo(25, 6);
+  });
+
   it("needs two timestamps", () => {
     expect(cadenceStats([], 30)).toBeUndefined();
     expect(cadenceStats([1], 30)).toBeUndefined();
