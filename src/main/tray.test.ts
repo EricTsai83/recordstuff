@@ -86,7 +86,7 @@ import { ACTIVATION_WINDOW_MS, AppTray, RETURN_IDLE_SECONDS, TRAY_ICON_FILES, WA
 
 const Fake = Notification as unknown as FakeNotificationCtor;
 
-function setup(supported = true, canNotify?: () => boolean, idleSeconds?: () => number): { tray: AppTray; logs: string[]; onAction: ReturnType<typeof vi.fn> } {
+function setup(supported = true, canNotify?: () => boolean, idleSeconds?: () => number, onNotificationClick?: () => void): { tray: AppTray; logs: string[]; onAction: ReturnType<typeof vi.fn> } {
   vi.mocked(shell.showItemInFolder).mockReset();
   app.removeAllListeners();
   Fake.instances.length = 0;
@@ -94,6 +94,7 @@ function setup(supported = true, canNotify?: () => boolean, idleSeconds?: () => 
   const logs: string[] = [];
   const onAction = vi.fn();
   const tray = new AppTray({
+    ...(onNotificationClick ? { onNotificationClick } : {}),
     resourcesDir: "/resources",
     context: () => ({
       platform: process.platform,
@@ -240,6 +241,20 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
     notification.listeners.get("click")?.();
     expect(logs).toContain("notification: clicked: Saved diagnostic.mp4");
     await new Promise<void>((resolve) => setImmediate(resolve));
+  });
+
+  it("reports every click before the notification's own action, and titles the capture warning with the app name", () => {
+    const order: string[] = [];
+    const { tray, onAction } = setup(true, undefined, undefined, () => order.push("clicked"));
+    onAction.mockImplementation((action: unknown) => { order.push(String(action)); });
+    tray.notifyCaptureWarning("The resolution cap could not be confirmed.");
+    const notification = Fake.instances.at(-1)!;
+    expect(notification.options.title).toBe("RecordStuff");
+    notification.listeners.get("click")?.();
+    expect(order).toEqual(["clicked", "openSettings"]);
+    tray.notifyTrayHint();
+    Fake.instances.at(-1)!.listeners.get("click")?.();
+    expect(order).toEqual(["clicked", "openSettings", "clicked"]);
   });
 
   it("drops every notification while the user's switch is off, before asking the OS", () => {

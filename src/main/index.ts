@@ -40,6 +40,8 @@ import { PermissionWatcher, openNotificationSettings, openScreenCaptureSettings 
 import { Recorder } from "./recorder";
 import { SessionSentinels, reportInterruptions } from "./session-sentinel";
 import { SavedNotification } from "./saved-notification";
+import { CaptureNotices } from "./capture-notices";
+import { watchReopen, type ReopenWatcher } from "./reopen";
 import { SettingsStore } from "./settings";
 import { parseAutoRecord, runAutoRecord } from "./autorecord";
 import { UpdateChecker, fetchVersion, DOWNLOAD_URL, RELEASES_URL, SOURCE_URL, WEBSITE_URL } from "./updates";
@@ -325,11 +327,14 @@ async function main(): Promise<void> {
     capture: armed => shortcuts.capture(armed),
     log,
   });
+  /** Set once every listener is wired, near the end of startup; a click before then has no reopen to explain. */
+  let reopen: ReopenWatcher | undefined;
   const tray = new AppTray({
     resourcesDir: resourcesDir(),
     context: appContext,
     canNotify: () => settings.notifications,
     idleSeconds: () => powerMonitor.getSystemIdleTime(),
+    onNotificationClick: () => reopen?.notificationClicked(),
     onToggle: toggle,
     revealSaved,
     permissionAction: () => {
@@ -573,6 +578,7 @@ async function main(): Promise<void> {
     show: (savedPath, stoppedEarly) => tray.notifySaved(savedPath, stoppedEarly),
     log,
   });
+  const captureNotices = new CaptureNotices({ platform: process.platform, log });
   let previous = recorder.state;
   // A session keeps the display awake, so idle sleep cannot end its capture (plan 050).
   const keepAwake = new KeepAwake(powerSaveBlocker, log);
@@ -587,6 +593,7 @@ async function main(): Promise<void> {
           overlay.destroy();
         }
         savedNotification.stateChanged(event.state);
+        captureNotices.stateChanged(event.state);
         keepAwake.update(event.state);
         log(`state → ${event.state.type}${event.state.type === "countdown" ? ` (${event.state.remaining})` : ""}`);
         renderUi(event.state);
@@ -613,14 +620,16 @@ async function main(): Promise<void> {
         refreshUi();
         return;
       case "captureStarted": {
+        // Settings shows the cap warning at once; the notifications wait for the display to stop being shared.
         captureDegraded = event.capture.capUnconfirmed === true;
-        if (captureDegraded) tray.notifyCaptureWarning(captureWarning());
+        if (captureDegraded) captureNotices.hold("resolution cap unconfirmed", () => tray.notifyCaptureWarning(captureWarning()));
         displayMedia.failure = undefined;
         refreshUi();
         const actual = frameRateDowngrade(event.requested, event.capture);
         if (actual !== undefined) {
           log(`frame rate downgraded: requested ${event.requested.frameRate}, track reports ${actual}`);
-          tray.notifyFrameRateDowngrade(event.requested.frameRate, actual);
+          const requested = event.requested.frameRate;
+          captureNotices.hold("frame rate downgrade", () => tray.notifyFrameRateDowngrade(requested, actual));
         }
         return;
       }
@@ -699,6 +708,7 @@ async function main(): Promise<void> {
       quitRequested = true;
       quitDeferral = "media";
       savedNotification.setQuitting(true);
+      captureNotices.setQuitting(true);
       // Pending cleanup can hold quit for the stop deadline, and a history save for its wait; the tray says so meanwhile.
       clearTimeout(quitFeedback);
       quitFeedback = setTimeout(() => { quitting = true; refreshUi(); }, 300);
@@ -722,6 +732,7 @@ async function main(): Promise<void> {
       recorder.resumeAdmission();
       endQuitting();
       savedNotification.setQuitting(false);
+      captureNotices.setQuitting(false);
       log(`quit deferred: ${quitDeferral === "media" ? "recording work" : "a preference or log write"} is still pending`);
       void showQuitFeedback(quitDeferral);
     },
@@ -734,6 +745,7 @@ async function main(): Promise<void> {
     resume: () => {
       endQuitting();
       savedNotification.setQuitting(false);
+      captureNotices.setQuitting(false);
       recorder.resumeAdmission();
       log("quit declined: failure history is not saved");
       refreshUi();
@@ -743,11 +755,16 @@ async function main(): Promise<void> {
     error: (cause) => log(`quit deferred: ${String(cause)}`),
   });
 
+  // Opening the app again is the way in when its menu bar icon is hidden (plan 053).
+  reopen = watchReopen({ events: app, platform: process.platform, open: () => handleAction("openSettings"), log, now: () => performance.now() });
+
   app.on("will-quit", () => {
     // A modal quit prompt can hold the feedback timer past its 300 ms; it must not render a destroyed tray.
     clearTimeout(quitFeedback);
+    reopen?.stop();
     updates.dispose();
     savedNotification.dispose();
+    captureNotices.dispose();
     displayMedia.settle();
     screen.removeListener("display-added", displayChanged);
     screen.removeListener("display-removed", displayChanged);
