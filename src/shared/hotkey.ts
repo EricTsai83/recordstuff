@@ -16,11 +16,12 @@ export const DEFAULT_HOTKEY: HotkeySettings = { enabled: true, accelerator: HOTK
 
 /** Deliberately narrower than Electron: no bare typing keys or arbitrary aliases. */
 export const MODIFIER_ORDER = ["CommandOrControl", "Control", "Alt", "Shift"] as const;
+/** Base keys only: a shifted glyph reaches this set as its base key (`SHIFTED_KEYS`). */
 const KEYS = new Set([
   ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
   ...Array.from({ length: 24 }, (_, i) => `F${i + 1}`),
-  "Space", "Up", "Down", "Left", "Right", "Plus", "'",
-  ...')!@#$%^&*(:;= <,_->.?/~`{][|\\}"'.replaceAll(" ", ""),
+  "Space", "Up", "Down", "Left", "Right",
+  ..."-=[]\\;',./`",
 ]);
 // Electron also accepts shifted glyphs. Collapse them before the reserved check.
 const SHIFTED_KEYS: Record<string, string> = {

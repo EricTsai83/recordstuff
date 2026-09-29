@@ -119,11 +119,14 @@ export async function measureFrameSize(stream: MediaStream, options: MeasureOpti
 export class CaptureHost {
   private session: Session | undefined;
   private prepared: Prepared | undefined;
-  /** Session ids whose `start` is still inside `getDisplayMedia` and still wanted. */
+  /**
+   * Session ids whose `start` is still wanted and has no recorder yet: inside
+   * `getDisplayMedia`, its checks or `applyQuality`. `start` checks it beside `busy()`.
+   */
   private readonly pending = new Set<string>();
   /**
    * `stop` arrived while the session was pending: it no longer blocks new
-   * starts, and its stream is discarded when `getDisplayMedia` settles.
+   * starts, and `start` discards its stream at the next check it reaches.
    */
   private readonly cancelled = new Set<string>();
 
@@ -159,7 +162,10 @@ export class CaptureHost {
     }
   }
 
-  /** A session exists at some stage: pending, prepared or recording. */
+  /**
+   * A session is prepared or recording. Pending ones are left out on purpose:
+   * `start` asks this while its own session is still pending.
+   */
   private busy(): boolean {
     return !!this.session || !!this.prepared;
   }
