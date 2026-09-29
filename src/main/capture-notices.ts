@@ -1,5 +1,6 @@
 import type { RecordingState } from "../shared/state";
 import { SAVED_NOTIFICATION_DELAY_MS } from "./saved-notification";
+import { preferencesUnlocked } from "./ui-model";
 
 /**
  * What a session learns when capture starts — a resolution cap it could not
@@ -28,7 +29,7 @@ export class CaptureNotices {
   }
 
   stateChanged(state: RecordingState): void {
-    this.idle = state.type === "idle" || state.type === "needsPermission";
+    this.idle = preferencesUnlocked(state);
     if (this.idle) this.schedule();
     // A pending delivery belongs to the session that just ended; the next one starts clean.
     else if (this.timer) this.drop("recording state changed");

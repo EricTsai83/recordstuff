@@ -60,8 +60,8 @@ const SEPARATOR: TrayMenuItem = { kind: "separator" };
 function grouped(...groups: TrayMenuItem[][]): TrayMenuItem[] {
   return groups.filter((group) => group.length > 0).flatMap((group, index) => (index ? [SEPARATOR, ...group] : group));
 }
-/** The registered recording shortcut, for the native menu's right-aligned column. */
-function recordingAccelerator(ctx: AppContext): string | undefined {
+/** The registered recording shortcut: the native menu's right-aligned column and the tooltips name only this one. */
+function registeredShortcut(ctx: AppContext): HotkeyAccelerator | undefined {
   return ctx.hotkey.enabled && ctx.hotkey.registered ? ctx.hotkey.accelerator : undefined;
 }
 /** Settings stays reachable mid-recording; reviewed failures sit beside it, not at the top. */
@@ -102,21 +102,10 @@ function permissionActions(needsRelaunch: boolean, language: Language): TrayMenu
         item(t("Already allowed? Relaunch RecordStuff", language), "relaunch", hint),
       ];
 }
-/** Tooltip on Stop reminding the user of the registered shortcut, if any. */
-function stopHint(ctx: AppContext): string | undefined {
-  const hotkey = ctx.hotkey;
-  if (!hotkey.enabled || !hotkey.registered) return undefined;
-  return t("Start / stop recording with {value}", ctx.language, {
-    value: describeAccelerator(hotkey.accelerator, ctx.platform),
-  });
-}
-/** Tooltip on Cancel recording naming the registered shortcut, if any. */
-function cancelHint(ctx: AppContext): string | undefined {
-  const hotkey = ctx.hotkey;
-  if (!hotkey.enabled || !hotkey.registered) return undefined;
-  return t("Cancel recording with {value}", ctx.language, {
-    value: describeAccelerator(hotkey.accelerator, ctx.platform),
-  });
+/** Tooltip naming the registered shortcut, if any: Start recording and Stop share one text, Cancel recording has its own. */
+function shortcutHint(ctx: AppContext, key: "Start / stop recording with {value}" | "Cancel recording with {value}"): string | undefined {
+  const accelerator = registeredShortcut(ctx);
+  return accelerator ? t(key, ctx.language, { value: describeAccelerator(accelerator, ctx.platform) }) : undefined;
 }
 export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
   const language = ctx.language;
@@ -128,7 +117,7 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
   const unreadGroup: TrayMenuItem[] = unread.length ? [disabled(unreadText), item(text("View recording failures…"), "openRecordingResult")] : [];
   const windows = windowsGroup(ctx, unread.length === 0 && results.length > 0);
   const app = appGroup(language);
-  const shortcut = recordingAccelerator(ctx);
+  const shortcut = registeredShortcut(ctx);
   const model = (icon: TrayIcon, title: string, status: string, stateGroup: TrayMenuItem[], files: TrayMenuItem[] = []): TrayModel => ({
     icon: icon === "idle" && unread.length > 0 ? "warning" : icon,
     title,
@@ -155,7 +144,7 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
       const stateGroup = [disabled(status)];
       if (ctx.displayFailure) stateGroup.push(disabled(t("Last display failure: {reason}", language, { reason: displayFailureText(ctx.displayFailure, language) })));
       // Whenever a left click would start: the same toggle, countdown included (plan 048).
-      stateGroup.push(item(text("Start recording"), "start", stopHint(ctx), shortcut));
+      stateGroup.push(item(text("Start recording"), "start", shortcutHint(ctx, "Start / stop recording with {value}"), shortcut));
       return model("idle", "", status, stateGroup, [...lastSaved(state.lastSavedPath), ...outputDirItems(ctx, true)]);
     }
     case "starting":
@@ -167,13 +156,13 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
       const seconds = { seconds: state.remaining };
       return model("countdown", "", t("Recording starts in {seconds} s. Click to cancel.", language, seconds), [
         disabled(t("Recording starts in {seconds} s", language, seconds)),
-        item(text("Cancel recording"), "cancelCountdown", cancelHint(ctx), shortcut),
+        item(text("Cancel recording"), "cancelCountdown", shortcutHint(ctx, "Cancel recording with {value}"), shortcut),
       ]);
     }
     case "recording":
       return model("recording", "REC", text("Recording"), [
         disabled(text("Recording")),
-        item(text("Stop"), "stop", stopHint(ctx), shortcut),
+        item(text("Stop"), "stop", shortcutHint(ctx, "Start / stop recording with {value}"), shortcut),
       ], outputDirItems(ctx, false));
     case "stopping":
       return model("busy", "", text("Saving…"), [disabled(text("Saving…"))]);

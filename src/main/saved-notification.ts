@@ -1,5 +1,6 @@
 import type { RecordingState } from "../shared/state";
 import type { EarlyStop } from "./recorder";
+import { preferencesUnlocked } from "./ui-model";
 
 /** A heuristic, not an OS readiness signal. See verification's Plan 017 timeline. */
 export const SAVED_NOTIFICATION_DELAY_MS = 500;
@@ -18,7 +19,8 @@ export class SavedNotification {
   }) {}
 
   stateChanged(state: RecordingState): void {
-    this.idle = state.type === "idle" || state.type === "needsPermission";
+    // Settled is the one rule both interfaces use, so a permission-recovery state delivers like idle.
+    this.idle = preferencesUnlocked(state);
     if (!this.idle) this.cancel("recording state changed");
   }
 
