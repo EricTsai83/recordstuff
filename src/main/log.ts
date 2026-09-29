@@ -12,6 +12,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
+/** Lines waiting for the file beyond this are dropped from it; stdout still gets every line. */
+const MAX_QUEUED_BYTES = 1024 * 1024;
 export const DEFAULT_KEEP = 3;
 
 export interface FileLoggerOptions {
@@ -79,18 +81,24 @@ export function createFileLogger(options: FileLoggerOptions): FileLog {
   let size: number | undefined;
   let queuedBytes = 0;
   let overflowReported = false;
+  /** Lines the full queue refused; the next accepted line says how many, so the file shows the gap. */
+  let dropped = 0;
   let queue = Promise.resolve();
   const log: FileLog = Object.assign((message: string): void => {
-    const line = formatLine(message, now());
+    const time = now();
+    const line = formatLine(message, time);
     stdout(line);
     if (!fileEnabled) return;
-    const text = `${line}\n`;
+    const gap = dropped ? `${formatLine(`log: dropped ${dropped} line(s) from this file while its write queue was full (stdout has them)`, time)}\n` : "";
+    const text = `${gap}${line}\n`;
     const bytes = Buffer.byteLength(text);
-    if (queuedBytes + bytes > 1024 * 1024) {
+    if (queuedBytes + bytes > MAX_QUEUED_BYTES) {
       if (!overflowReported) stderr("log: file queue exceeded 1 MiB; dropping file lines until it drains (stdout retained)");
       overflowReported = true;
+      dropped += 1;
       return;
     }
+    dropped = 0;
     queuedBytes += bytes;
     queue = queue.then(async () => {
       if (!fileEnabled) return;

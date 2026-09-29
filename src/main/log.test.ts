@@ -116,6 +116,23 @@ describe("createFileLogger", () => {
   });
 });
 
+describe("createFileLogger overflow", () => {
+  it("marks the lines a full queue dropped from the file, once it accepts lines again", async () => {
+    const log = logger();
+    const big = "x".repeat(300 * 1024);
+    for (let i = 0; i < 5; i++) log(`${i} ${big}`);
+    await log.flush();
+    log("after");
+    log("later");
+    await log.flush();
+    const lines = (await fs.readFile(filePath, "utf8")).trim().split("\n").map(l => l.slice(0, 80));
+    expect(lines.map(l => l.split(" ")[1])).toEqual(["0", "1", "2", "log:", "after", "later"]);
+    expect(lines[3]).toContain("log: dropped 2 line(s) from this file");
+    expect(out).toHaveLength(7);
+    expect(err).toHaveLength(1);
+  });
+});
+
 describe("flushBeforeExit", () => {
   it("resolves true once queued lines are written, false when the write outlasts the bound", async () => {
     const log = createFileLogger({ filePath, stdout: () => {} });
