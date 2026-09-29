@@ -71,8 +71,10 @@ export interface SettingsView {
   recordingResults?: RecordingResultView[];
   /** Localized status while saved history loads. */
   recordingHistoryStatus?: string;
-  /** Changes only on explicit entry through notification/tray. */
+  /** Changes only on explicit entry through notification/tray; the page then selects `entryTab`. */
   resultFocus?: number;
+  /** The tab that entry opens: the failures tab when absent, General for the shortcut card. */
+  entryTab?: SettingsTab;
   language: Language;
   title: string;
   hint: string;

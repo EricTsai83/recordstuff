@@ -79,7 +79,7 @@ export function assertLockContract(s: LockSnapshot): void {
   if (state === "recording") assert(stops.length === 1 && stops[0]!.enabled, "one enabled Stop while recording");
   else assert.equal(stops.length, 0, `no Stop while ${state}`);
   for (const i of items) {
-    assert(i.action !== "checkUpdates" && i.action !== "openUpdate" && !i.label.includes("Update available:"), `tray update action while ${state}: ${i.label}`);
+    assert(i.action !== "checkUpdates" && i.action !== "openUpdate" && !i.label.startsWith("Download "), `tray update action while ${state}: ${i.label}`);
     if (busy) assert(!(i.action === "changeOutputDir" && i.enabled), `output folder change enabled while ${state}`);
   }
   const ids = s.settings.groups.map(g => g.id);

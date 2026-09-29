@@ -261,13 +261,13 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
     expect(order).toEqual(["clicked", "openSettings", "clicked"]);
   });
 
-  it("opens Settings from the shortcut-refused banner that tells the user to go there", () => {
+  it("opens Settings at the shortcut card from the shortcut-refused banner that tells the user to go there", () => {
     const { tray, onAction } = setup();
     tray.notifyHotkeyRegistrationFailed(DEFAULT_HOTKEY.accelerator);
     const notification = Fake.instances.at(-1)!;
     expect(notification.options.body).toContain("Choose another shortcut in Settings.");
     notification.listeners.get("click")?.();
-    expect(onAction).toHaveBeenCalledWith("openSettings");
+    expect(onAction).toHaveBeenCalledWith("openShortcutSettings");
   });
 
   it("drops every notification while the user's switch is off, before asking the OS", () => {

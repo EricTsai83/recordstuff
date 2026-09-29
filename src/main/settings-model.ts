@@ -242,12 +242,15 @@ function updateActions(ctx: AppContext, enabled: boolean): Group {
   }];
   if (result?.kind === "available" || result?.kind === "failed") choices.push({
     id: "open", label: result.kind === "available"
-      ? t("Update available: {version}", language, { version: result.version })
-      : t("Update check failed — open releases", language),
+      ? t("Download {version}…", language, { version: result.version })
+      : t("Open releases page…", language),
     enabled: true, ...busy, checked: false, action: "openUpdate",
   });
+  // Every result is a status note, which the page reads out; the button only offers what to do about it.
   const note = result?.kind === "current"
     ? t("Up to date (checked {time})", language, { time: new Date(result.checkedAt).toLocaleString(language) })
+    : result?.kind === "available" ? t("Version {version} is available.", language, { version: result.version })
+    : result?.kind === "failed" ? t("Could not check for updates.", language)
     : undefined;
   return { ...group("updates", t("Updates", language), enabled, choices, note), kind: "actions", noteKind: "status" };
 }
@@ -398,19 +401,24 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
   const language = ctx.language;
   const unlocked = preferencesUnlocked(state);
   const now = ctx.now ?? new Date();
+  // A quit in progress refuses every action but quit, as the tray shows; the panel must not offer one either.
+  const quitting = ctx.quitting === true;
+  const results = (ctx.recordingResults ?? []).slice(0, ctx.historyLimit).map(result => projectResult(result, state, ctx, now));
   return {
     language,
     ...(ctx.historyFailed ? { recordingHistoryStatus: t("Failure history could not be read. The existing file has been preserved; check the log for details.", language) } : {}),
     ...(ctx.historyLoading ? { recordingHistoryStatus: t("Loading failure history…", language) } : {}),
-    recordingResults: (ctx.recordingResults ?? []).slice(0, ctx.historyLimit).map(result => projectResult(result, state, ctx, now)),
+    recordingResults: quitting ? results.map(result => ({ ...result, actions: result.actions.map(action => ({ ...action, enabled: false })) })) : results,
     recordingResultsRemaining: Math.max(0, (ctx.recordingResults?.length ?? 0) - (ctx.historyLimit ?? Infinity)),
     title: t("RecordStuff - Settings", language),
     // One line above the tabs: the lock covers General too, so it is not the Recording tab's own note.
-    hint: unlocked ? "" : t("Recording in progress. Only language and appearance can change until it ends.", language),
+    hint: quitting ? t("Quitting… RecordStuff quits once the recording is saved or cleaned up.", language)
+      : unlocked ? "" : t("Recording in progress. Only language and appearance can change until it ends.", language),
     failure: t("Could not apply this setting. Your current settings are shown.", language),
     tabs: [{ id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) }, failuresTab(ctx)],
     groups: settingsGroups(state, ctx).map(({ choices, actions, ...rest }) => ({
       ...rest,
+      ...(quitting ? { enabled: false } : {}),
       choices: choices.map(({ action: _action, ...choice }) => choice),
       ...(actions === undefined ? {} : { actions: actions.map(({ action: _action, ...choice }) => choice) }),
     })),
@@ -456,6 +464,8 @@ export function settingsAction(
   groupId: unknown,
   choiceId: unknown,
 ): AppAction | undefined {
+  // Nothing is offered while a quit runs (see `settingsView`).
+  if (ctx.quitting) return undefined;
   if (typeof groupId === "string" && groupId.startsWith("recordingResult:")) {
     const result = ctx.recordingResults?.find(r => groupId === `recordingResult:${r.id}`);
     if (!result) return undefined;

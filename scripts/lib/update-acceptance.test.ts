@@ -139,7 +139,7 @@ describe('recording lock contract', () => {
       ['one enabled Stop', s => { for (const i of s.model.menu) if (i.kind === 'item' && i.action === 'stop') i.enabled = false; }],
       ['output folder change enabled while recording', s => { s.model.menu.push({ kind: 'item', label: 'Change output folder', enabled: true, action: 'changeOutputDir' }); }],
       ['tray update action while recording', s => { s.model.menu.push({ kind: 'item', label: 'Check for updates…', enabled: false, action: 'checkUpdates' }); }],
-      ['tray update action while recording', s => { s.model.menu.push({ kind: 'item', label: 'Update available: 2.0.0', enabled: false }); }],
+      ['tray update action while recording', s => { s.model.menu.push({ kind: 'item', label: 'Download 2.0.0…', enabled: false }); }],
     ];
     for (const [message, mutate] of cases) {
       const s = snap(recording); mutate(s);

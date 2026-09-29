@@ -176,6 +176,22 @@ describe("settingsChecked reports whether a save took effect", () => {
   });
 });
 
+describe("a quit in progress", () => {
+  it("offers nothing but says why, as the tray does", () => {
+    const ctx: AppContext = { ...context, quitting: true, recordingResults: [
+      { id: "f", code: "disk_full", detail: "", occurredAt: "2026-09-24T12:00:00Z", outcome: "empty", acknowledged: false }] };
+    const view = settingsView(idle, ctx);
+    expect(view.hint).toBe("Quitting… RecordStuff quits once the recording is saved or cleaned up.");
+    expect(view.groups.filter(g => g.enabled).map(g => g.id)).toEqual([]);
+    expect(view.recordingResults?.flatMap(r => r.actions).filter(a => a.enabled)).toEqual([]);
+    expect(settingsAction(idle, ctx, "language", "zh-TW")).toBeUndefined();
+    expect(settingsAction(idle, ctx, "recordingResult:f", "acknowledge")).toBeUndefined();
+    // The same context without the quit still offers them.
+    expect(settingsAction(idle, { ...ctx, quitting: false }, "language", "zh-TW")).toEqual({ setLanguage: "zh-TW" });
+    expect(settingsView(idle, { ...ctx, quitting: false }).recordingResults?.[0]?.actions.some(a => a.enabled)).toBe(true);
+  });
+});
+
 describe("update actions in General", () => {
   it("offers manual checks even when startup checks are off", () => {
     const ctx = { ...context, updates: { state: { kind: "idle" } as const, enabled: false } };
@@ -191,6 +207,13 @@ describe("update actions in General", () => {
       expect(settingsAction(idle, ctx, "updates", "open")).toBe("openUpdate");
       expect(settingsAction(idle, ctx, "updates", "check")).toBe("checkUpdates");
     }
+    // Each result is a status note, which the page reads out; the button only offers what to do about it.
+    ctx.updates.state = { kind: "available", version: "9.0.0" };
+    expect(group(idle, ctx, "updates")).toMatchObject({ noteKind: "status", note: "Version 9.0.0 is available." });
+    expect(group(idle, ctx, "updates")?.choices.find(c => c.id === "open")?.label).toBe("Download 9.0.0…");
+    ctx.updates.state = { kind: "failed" };
+    expect(group(idle, ctx, "updates")).toMatchObject({ noteKind: "status", note: "Could not check for updates." });
+    expect(group(idle, { ...ctx, language: "zh-TW" }, "updates")).toMatchObject({ note: "無法檢查更新。" });
     ctx.updates.state = { kind: "current", checkedAt: 1234567890000 };
     expect(group(idle, ctx, "updates")?.note).toContain(new Date(1234567890000).toLocaleString("en"));
     expect(settingsAction(idle, ctx, "updates", "open")).toBeUndefined();

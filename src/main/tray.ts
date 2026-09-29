@@ -269,9 +269,9 @@ export class AppTray {
     this.show(qualityWriteFailedNotification(this.language));
   }
 
-  /** The banner points to Settings, so clicking it opens Settings, where the retry and the editor are. */
+  /** The banner points to Settings, so clicking it opens the tab with the shortcut card, its retry and the editor. */
   notifyHotkeyRegistrationFailed(accelerator: HotkeyAccelerator): void {
-    this.show(hotkeyRegistrationFailedNotification(accelerator, this.options.context().platform, this.language), () => this.options.onAction("openSettings"));
+    this.show(hotkeyRegistrationFailedNotification(accelerator, this.options.context().platform, this.language), () => this.options.onAction("openShortcutSettings"));
   }
 
   notifyHotkeyWriteFailed(): void {

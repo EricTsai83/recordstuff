@@ -647,13 +647,14 @@ let scrollObserver: ResizeObserver | undefined;
 function draw(): void {
   if (!view) return;
   const current = view;
-  // An explicit entry (tray or error notification) selects the failures tab once per token (plan 047).
+  // An explicit entry (tray or notification) selects its tab once per token: failures (plan 047) unless it names another.
   const focusRequested = (current.resultFocus ?? 0) > resultFocus;
   resultFocus = current.resultFocus ?? 0;
+  const entryTab = current.entryTab ?? "failures";
   if (focusRequested) {
     // Like a tab click: the editor leaves with its tab, and main must not keep both shortcuts suspended.
-    if (selectedTab !== "failures" && (shortcutGroup()?.capturing || arming)) void capture(false);
-    selectedTab = "failures";
+    if (selectedTab !== entryTab && (shortcutGroup()?.capturing || arming)) void capture(false);
+    selectedTab = entryTab;
   }
   document.documentElement.lang = documentLanguage(current.language);
   document.title = current.title; setText(heading, current.title); setText(hint, current.hint); hint.hidden = !current.hint;
@@ -730,6 +731,9 @@ function draw(): void {
   // After the headings above settle, so scroll anchoring cannot shift the restored offset; an entry's own scroll wins.
   if (restoreScroll !== undefined) document.getElementById("settings-panel")!.scrollTop = restoreScroll;
   updateRecordingResult(focusRequested);
+  // The shortcut entry lands on the card's control, as the failures entry lands on its row.
+  // An editor already open there keeps its own focus.
+  if (focusRequested && entryTab === "general" && !shortcutGroup()?.capturing && !arming) document.getElementById("setting-hotkey")?.focus();
   updateScrollHint();
 }
 /**
@@ -768,7 +772,9 @@ function render(next: SettingsView): void {
       const messages: string[] = [];
       // A status note a diagnostic also states as its reason is read once, with the diagnostic.
       const reasons = new Set((g.diagnostics ?? []).map(d => d.reason));
-      if (g.noteKind === "status" && old?.note !== g.note && g.note && !reasons.has(g.note)) messages.push(g.note);
+      // A finished action (the update check) is news even when its result repeats the last one.
+      const finished = Boolean(old?.choices.some(c => c.busy)) && !g.choices.some(c => c.busy);
+      if (g.noteKind === "status" && g.note && (old?.note !== g.note || finished) && !reasons.has(g.note)) messages.push(g.note);
       if (JSON.stringify(old?.diagnostics) !== JSON.stringify(g.diagnostics)) messages.push(...(g.diagnostics ?? []).map(d => say([d.heading, d.reason, d.guidance])));
       return messages;
     });

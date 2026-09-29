@@ -11,7 +11,7 @@
 import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE, fitSettingsSize, type SettingsWindowState, type WindowSize } from "./settings-window-state";
 import { BrowserWindow, app, ipcMain, screen, type IpcMainInvokeEvent } from "electron";
 import path from "node:path";
-import { SETTINGS_CHANNELS, type SettingsChoiceResult, type SettingsView } from "../shared/settings-panel";
+import { SETTINGS_CHANNELS, type SettingsChoiceResult, type SettingsTab, type SettingsView } from "../shared/settings-panel";
 import type { RecordingState } from "../shared/state";
 
 import { proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
@@ -52,6 +52,7 @@ export class SettingsWindow {
   /** Failure rows sent to the page; "Show more failures" pages through the rest until the window closes. */
   private historyLimit = HISTORY_PAGE_ROWS;
   private resultEntry = false;
+  private entryTab: SettingsTab = "failures";
   /** Holds both global shortcuts suspended; never held by a pending save. */
   private lease: CaptureLease | undefined;
   private window: BrowserWindow | undefined;
@@ -108,6 +109,17 @@ export class SettingsWindow {
   }
 
   showRecordingResult(): void {
+    this.showEntry("failures");
+  }
+
+  /** The shortcut-failure banner's entry: General, where the shortcut card is. */
+  showShortcut(): void {
+    this.showEntry("general");
+  }
+
+  /** An explicit entry: a new token makes the page select `tab` once, however it was left. */
+  private showEntry(tab: SettingsTab): void {
+    this.entryTab = tab;
     this.resultFocus++;
     this.show(true);
     this.refresh();
@@ -253,6 +265,7 @@ export class SettingsWindow {
     const view = settingsView(this.options.state(), { ...this.options.context(), historyLimit: this.historyLimit });
     view.revision = ++this.revision;
     view.resultFocus = this.resultEntry ? this.resultFocus : 0;
+    if (this.resultEntry && this.entryTab !== "failures") view.entryTab = this.entryTab;
     const shortcut = view.groups.find(group => group.kind === "shortcut");
     if (shortcut) {
       shortcut.capturing = this.lease !== undefined;

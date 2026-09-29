@@ -484,6 +484,9 @@ async function main(): Promise<void> {
       case "openRecordingResult":
         settingsWindow.showRecordingResult();
         return;
+      case "openShortcutSettings":
+        settingsWindow.showShortcut();
+        return;
       case "openSettings":
         settingsWindow.show();
         return;

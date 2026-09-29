@@ -81,3 +81,28 @@ it("reads out only news, as sentences of the panel's language, and keeps focus w
   expect(document.activeElement?.id).toBe("setting-language-en");
   await vi.waitFor(() => expect(choose).toHaveBeenCalledTimes(4));
 });
+
+it("reads out a finished update check, even one whose result repeats the last", async () => {
+  vi.resetModules();
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  document.body.innerHTML = '<h1 id="title"></h1><p id="hint"></p><p id="feedback"></p><form id="settings"></form>';
+  const updates = (busy: boolean, note?: string): SettingsGroup => ({ id: "updates", label: "Updates", tab: "general", kind: "actions",
+    noteKind: "status", enabled: true, ...(note ? { note } : {}), choices: [
+      { id: "check", label: busy ? "Checking for updates…" : "Check for updates…", enabled: true, checked: false, ...(busy ? { busy } : {}) },
+      ...(note ? [{ id: "open", label: "Open releases page…", enabled: true, checked: false, ...(busy ? { busy } : {}) }] : [])] });
+  let current = view("en", { groups: [updates(false)] });
+  let push!: (next: SettingsView) => void;
+  window.settings = { read: async () => current, capture: async () => current, choose: vi.fn(), onChanged: (cb) => { push = cb; return () => {}; } };
+  await import("./settings");
+  await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
+  document.getElementById("tab-general")!.click();
+  const feedback = document.getElementById("feedback")!;
+  push(current = view("en", { groups: [updates(true)] }));
+  push(current = view("en", { groups: [updates(false, "Could not check for updates.")] }));
+  expect(feedback.textContent).toBe("Could not check for updates.");
+  // The same failure after a second check is still the answer to that press.
+  push(current = view("en", { groups: [updates(true, "Could not check for updates.")] }));
+  feedback.textContent = "";
+  push(current = view("en", { groups: [updates(false, "Could not check for updates.")] }));
+  expect(feedback.textContent).toBe("Could not check for updates.");
+});

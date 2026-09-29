@@ -28,6 +28,8 @@ export type RecordingResultAction = "acknowledge" | "retry" | "remove" | "reveal
 export type AppAction =
   | "openSettings"
   | "openRecordingResult"
+  /** Settings on the General tab, where the shortcut card, its retry and the editor are. */
+  | "openShortcutSettings"
   | { recordingResult: { id: string; action: RecordingResultAction } }
   | "openPermissionSettings"
   | "openNotificationSettings"

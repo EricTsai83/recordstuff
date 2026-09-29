@@ -30,4 +30,14 @@ it("ends shortcut capture when a failures entry selects the failures tab", async
   push({ ...structuredClone(current), resultFocus: 1 });
   expect(document.querySelector('[role="tab"][aria-selected="true"]')!.id).toBe("tab-failures");
   expect(capture).toHaveBeenLastCalledWith(false);
+  await vi.waitFor(() => expect(current.groups[0]!.capturing).toBe(false));
+
+  // The shortcut-failure banner's entry names General and lands on the shortcut control.
+  push({ ...structuredClone(current), resultFocus: 2, entryTab: "general" });
+  expect(document.querySelector('[role="tab"][aria-selected="true"]')!.id).toBe("tab-general");
+  expect(document.activeElement?.id).toBe("setting-hotkey");
+  // The same token again is not a new entry: a later tab choice stands.
+  document.getElementById("tab-recording")!.click();
+  push({ ...structuredClone(current), resultFocus: 2, entryTab: "general" });
+  expect(document.querySelector('[role="tab"][aria-selected="true"]')!.id).toBe("tab-recording");
 });

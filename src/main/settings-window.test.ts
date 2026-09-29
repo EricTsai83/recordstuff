@@ -515,7 +515,21 @@ it("explicit result entry focuses via a stable token without acknowledging the r
   expect(s.read(s.event()).resultFocus).toBe(1);
   s.panel.showRecordingResult();
   expect(s.read(s.event()).resultFocus).toBe(2);
+  expect(s.read(s.event()).entryTab).toBeUndefined();
   expect(s.act).not.toHaveBeenCalled();
+  s.panel.destroy();
+});
+
+it("the shortcut entry names the General tab with a new token, and an ordinary open names none", () => {
+  const s = setup();
+  s.panel.showShortcut();
+  expect(s.read(s.event())).toMatchObject({ resultFocus: 1, entryTab: "general" });
+  s.panel.showRecordingResult();
+  expect(s.read(s.event()).resultFocus).toBe(2);
+  expect(s.read(s.event()).entryTab).toBeUndefined();
+  s.panel.show();
+  expect(s.read(s.event())).toMatchObject({ resultFocus: 0 });
+  expect(s.read(s.event()).entryTab).toBeUndefined();
   s.panel.destroy();
 });
 
