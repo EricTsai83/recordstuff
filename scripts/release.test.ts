@@ -70,6 +70,14 @@ describe('record helpers', () => {
     expect(compareVersions('0.2.0', '0.2.0-rc.1')).toBe(1);
     expect(compareVersions('0.2.0-rc.1', '0.2.0-rc.2')).toBe(-1);
     expect(compareVersions('0.2.0-rc.1', '0.1.9')).toBe(1);
+    // Pre-release identifiers compare one by one, numeric ones by value.
+    expect(compareVersions('0.2.0-rc.9', '0.2.0-rc.10')).toBe(-1);
+    expect(compareVersions('0.2.0-rc.10', '0.2.0-rc.9')).toBe(1);
+    expect(compareVersions('0.2.0-rc-1', '0.2.0-rc-2')).toBe(-1);
+    expect(compareVersions('0.2.0-rc', '0.2.0-rc.1')).toBe(-1);
+    expect(compareVersions('0.2.0-1', '0.2.0-alpha')).toBe(-1);
+    expect(compareVersions('0.2.0-alpha.1', '0.2.0-beta')).toBe(-1);
+    expect(compareVersions('0.2.0-rc.1', '0.2.0-rc.1')).toBe(0);
   });
   it('rewrites only the top-level package version and keeps formatting', () => {
     const text = '{\n  "name": "recordstuff",\n  "version": "0.1.2",\n  "engines": { "node": ">=22.12.0" }\n}\n';

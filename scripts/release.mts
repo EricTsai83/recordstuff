@@ -43,15 +43,30 @@ export function assertPublishedAssets(release: PublishedRelease, expected: { nam
     if (asset.digest !== `sha256:${file.sha256}`) throw new Error(`Published ${file.name} digest ${asset.digest ?? 'missing'} differs from verified sha256:${file.sha256}.`);
   }
 }
-/** Semver-style order: numeric core, then a pre-release sorts below its release; returns −1, 0 or 1. */
+/** Semver order: numeric core, then a pre-release sorts below its release; returns −1, 0 or 1. */
 export function compareVersions(a: string, b: string): number {
-  const split = (v: string) => { const [core = '', pre] = v.split('-', 2); return { core: core.split('.').map(Number), pre }; };
+  // The pre-release is everything after the first hyphen; it may contain more hyphens (`rc-1`).
+  const split = (v: string) => { const at = v.indexOf('-'); return { core: (at < 0 ? v : v.slice(0, at)).split('.').map(Number), pre: at < 0 ? undefined : v.slice(at + 1) }; };
   const x = split(a); const y = split(b);
   for (let i = 0; i < 3; i += 1) { const d = (x.core[i] ?? 0) - (y.core[i] ?? 0); if (d !== 0) return d < 0 ? -1 : 1; }
   if (x.pre === y.pre) return 0;
   if (x.pre === undefined) return 1;
   if (y.pre === undefined) return -1;
-  return x.pre < y.pre ? -1 : 1;
+  return comparePrerelease(x.pre, y.pre);
+}
+/** Semver pre-release precedence: dot-separated identifiers, numeric ones by value and below alphanumeric ones; a shorter prefix sorts first. */
+function comparePrerelease(a: string, b: string): number {
+  const xs = a.split('.'); const ys = b.split('.');
+  for (let i = 0; i < Math.max(xs.length, ys.length); i += 1) {
+    const p = xs[i]; const q = ys[i];
+    if (p === undefined) return -1;
+    if (q === undefined) return 1;
+    const pNumeric = /^\d+$/.test(p); const qNumeric = /^\d+$/.test(q);
+    if (pNumeric && qNumeric) { const d = Number(p) - Number(q); if (d !== 0) return d < 0 ? -1 : 1; continue; }
+    if (pNumeric !== qNumeric) return pNumeric ? -1 : 1;
+    if (p !== q) return p < q ? -1 : 1;
+  }
+  return 0;
 }
 /** Rewrites only the top-level "version" value of a package.json text, keeping formatting. */
 export function setPackageVersion(text: string, version: string): string {
