@@ -40,7 +40,7 @@
  */
 import { setTimeout as delay } from "node:timers/promises";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings } from "./lib/runner-env.mts";
-import { recordStuffPids } from "./lib/processes.mts";
+import { escapeRegExp, recordStuffPids } from "./lib/processes.mts";
 import { command, confirmedIdle, quitIdleApp, sessionEnded, settleRecording, waitForLog, waitForRecord, type TerminalRecord } from "./lib/acceptance-runtime.mts";
 import { inputDiagnostics } from "./lib/acceptance-diagnostics.mts";
 import { spawn, spawnSync } from "node:child_process";
@@ -353,10 +353,8 @@ async function main(): Promise<void> {
     const file = terminal.record.path;
     note(`saved ${file}`);
 
-    if (material) {
-      spawnSync("pkill", ["-f", MATERIAL_PROFILE]);
-      material = undefined;
-    }
+    // Frees the display before analysis; cleanup signals again and confirms the exit.
+    if (material) spawnSync("pkill", ["-f", escapeRegExp(MATERIAL_PROFILE)]);
 
     const result = verifyRecording(file, readLogPairs(LOG_PATH), { expectedDurationSeconds: seconds, testMaterial: openMaterial, required: { energy: true } });
     const text = formatText(file, result.entry, result.checks, result.pairing);
@@ -518,10 +516,12 @@ async function main(): Promise<void> {
           else note("cleanup: countdown sound set back to off in the stored settings");
         } catch (error) { cleanupErrors.push(`countdown sound not restored: ${String(error)}`); }
       }
-      if (material) spawnSync("pkill", ["-f", MATERIAL_PROFILE]);
+      // The profile path is a pattern: escaped, a `TMPDIR` with regex characters still matches only itself.
+      const materialPattern = MATERIAL_PROFILE ? escapeRegExp(MATERIAL_PROFILE) : undefined;
+      if (material && materialPattern) spawnSync("pkill", ["-f", materialPattern]);
       try {
         const signal = AbortSignal.timeout(5000);
-        while ((await command("pgrep", ["-f", MATERIAL_PROFILE], signal, 1000, [0, 1])).trim()) {
+        while (materialPattern && (await command("pgrep", ["-f", materialPattern], signal, 1000, [0, 1])).trim()) {
           await delay(100, undefined, { signal });
         }
       } catch (error) { cleanupErrors.push(`material process: ${String(error)}`); }
