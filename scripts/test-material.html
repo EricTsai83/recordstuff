@@ -17,9 +17,10 @@
                                      → audio−video offset and 10-minute drift
                                        (ffmpeg blackdetect / silencedetect)
   Audio must be otherwise silent for silencedetect (−35 dB, 0.4 s) to see the
-  beeps; the tone peaks at about −16.5 dBFS (gain 0.15) with 10 ms attack and
+  beeps; the tone peaks at about −26 dBFS (gain 0.05) with 10 ms attack and
   40 ms release so it stays quiet beside whoever runs a round while still
-  crossing the detector threshold about 2 ms into the attack. Because the audio is sparse,
+  crossing the detector threshold about 3.6 ms into the attack. Capture takes
+  the page's digital level, before the system output volume. Because the audio is sparse,
   `pnpm verify` reports the AAC bitrate for this page instead of judging it.
 -->
 <style>
@@ -74,8 +75,8 @@
   let nextBeep = 0;
   let beepIndex = 0;
 
-  /** Peak gain: about −16.5 dBFS, 18 dB above silencedetect's −35 dB. */
-  const BEEP_GAIN = 0.15;
+  /** Peak gain: about −26 dBFS, 9 dB above silencedetect's −35 dB. */
+  const BEEP_GAIN = 0.05;
 
   function scheduleBeep(at, pan) {
     const osc = ctx.createOscillator();
