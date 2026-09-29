@@ -4,7 +4,9 @@
  * See docs/system-design/desktop.md for the schema and migration rules.
  * Writes replace the file atomically (`writeFileAtomic`), so a crash or power
  * loss mid-write leaves the previous file. Any read problem falls back to the
- * default and logs.
+ * default and logs; a file that exists but cannot be used (unreadable, broken,
+ * or from a newer version) is moved aside to `settings.json.unreadable` before
+ * the first write, so a later save never replaces the user's choices with defaults.
  *
  * Version 1 files (outputDir only) are read as-is and get the default
  * quality; version 2 files get the default shortcut. Both are rewritten as
@@ -156,6 +158,8 @@ export class SettingsStore {
   private readonly log: (message: string) => void;
   /** The folder a fresh or unreadable file falls back to; the one folder opening may create (plan 033). */
   readonly defaultOutputDir: string;
+  /** The file on disk exists but could not be used; the first write moves it aside instead of replacing it. */
+  private unusableOnDisk = false;
 
   constructor(options: SettingsStoreOptions) {
     this.filePath = options.filePath;
@@ -283,19 +287,36 @@ export class SettingsStore {
     } catch (cause) {
       if (errnoCode(cause) !== "ENOENT") {
         this.log(`settings: cannot read ${this.filePath}: ${String(cause)}; using defaults`);
+        this.unusableOnDisk = true;
       }
       return fallback;
     }
     const parsed = parseSettings(text);
     if (!parsed) {
       this.log(`settings: ${this.filePath} is invalid or has an unknown version; using defaults`);
+      this.unusableOnDisk = true;
       return fallback;
     }
     for (const warning of parsed.warnings) this.log(`settings: ${warning}`);
     return parsed.settings;
   }
 
-  private write(settings: Settings): Promise<void> {
-    return writeFileAtomic(this.filePath, JSON.stringify(settings, null, 2) + "\n");
+  /**
+   * The first write after an unusable load happens without the user asking
+   * (the launch update check stamps its attempt), so it moves the old file
+   * aside first. A failed move rejects the save and keeps the file in place.
+   */
+  private async write(settings: Settings): Promise<void> {
+    if (this.unusableOnDisk) {
+      const kept = `${this.filePath}.unreadable`;
+      try {
+        await fs.promises.rename(this.filePath, kept);
+        this.log(`settings: kept the unusable file as ${kept}`);
+      } catch (cause) {
+        if (errnoCode(cause) !== "ENOENT") throw cause;
+      }
+      this.unusableOnDisk = false;
+    }
+    await writeFileAtomic(this.filePath, JSON.stringify(settings, null, 2) + "\n");
   }
 }

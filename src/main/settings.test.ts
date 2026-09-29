@@ -40,6 +40,36 @@ describe("SettingsStore", () => {
     expect(logs).toHaveLength(1);
   });
 
+  it("keeps an unusable file aside instead of replacing it with defaults", async () => {
+    const newer = JSON.stringify({ version: 4, outputDir: "/somewhere", future: true });
+    await fs.writeFile(filePath, newer);
+    const first = store();
+    // An automatic write, like the launch update check's attempt stamp.
+    await first.setUpdates({ lastAttempt: 1 });
+    expect(await fs.readFile(`${filePath}.unreadable`, "utf8")).toBe(newer);
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: 3, outputDir: DEFAULT });
+    expect(logs).toContainEqual(expect.stringContaining("kept the unusable file"));
+    // Only the first write moves it; a later one keeps the file it wrote.
+    await first.setNotifications(false);
+    expect(await fs.readFile(`${filePath}.unreadable`, "utf8")).toBe(newer);
+  });
+
+  it("does not move a missing or valid file aside", async () => {
+    await store().setNotifications(false);
+    await store().setNotifications(true);
+    await expect(fs.access(`${filePath}.unreadable`)).rejects.toThrow();
+  });
+
+  it("rejects the save and keeps the unusable file when it cannot be moved", async () => {
+    await fs.writeFile(filePath, "{ not json");
+    const first = store();
+    await fs.mkdir(`${filePath}.unreadable`);
+    await fs.writeFile(path.join(`${filePath}.unreadable`, "occupied"), "");
+    await expect(first.setNotifications(false)).rejects.toThrow();
+    expect(await fs.readFile(filePath, "utf8")).toBe("{ not json");
+    expect(first.notifications).toBe(true);
+  });
+
   it("falls back on a wrong field type or relative path", async () => {
     await fs.writeFile(filePath, JSON.stringify({ version: 1, outputDir: 42 }));
     expect(store().outputDir).toBe(DEFAULT);
