@@ -31,6 +31,7 @@
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings } from "./lib/runner-env.mts";
+import { recordStuffPids } from "./lib/processes.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -91,9 +92,7 @@ class Failure extends Error {}
 const fail = (message: string): never => { throw new Failure(message); };
 
 function running(): number | undefined {
-  const result = spawnSync("pgrep", ["-f", "RecordStuff\\.app/Contents/MacOS/RecordStuff($| )"], { encoding: "utf8" });
-  const pids = result.stdout.trim().split("\n").filter(Boolean).map(Number);
-  return pids[0];
+  return recordStuffPids()[0];
 }
 
 async function waitUntilGone(timeoutMs: number): Promise<boolean> {

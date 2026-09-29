@@ -1,6 +1,7 @@
 /** Packaged handler/model integration + optional real capture. Native Tray clicks are explicitly not claimed. */
 import fs from 'node:fs';
-import { APP_SETTINGS_PATH } from './lib/runner-env.mts';
+import { APP_SETTINGS_PATH, scrubbedEnv } from './lib/runner-env.mts';
+import { recordStuffPids } from './lib/processes.mts';
 import path from 'node:path';
 import os from 'node:os';
 import assert from 'node:assert/strict';
@@ -45,8 +46,7 @@ let config: AcceptanceConfig = { now: Date.now(), scenario: 'current' };
 let sequence = 0, appMayBeRunning = false, cancelled = false;
 let materialProfile: string | undefined;
 let child: ReturnType<typeof spawn> | undefined;
-const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH ?? ''}` };
-delete env.ELECTRON_RUN_AS_NODE;
+const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH ?? ''}` };
 const pause = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 const hash = (p: string): string => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const beforeHashes = protectedFiles.map(file => fs.existsSync(file) ? hash(file) : null);
@@ -138,18 +138,18 @@ async function stop(cleanup = false): Promise<void> {
     }, 'owned fixture process exit', 30_000, cleanup);
   } else {
     // A failed build can be cleaned only after confirming no fixture executable exists.
-    const r = spawnSync('pgrep', ['-f', path.join(workspace, 'dist/mac-arm64/RecordStuff.app/Contents/MacOS/RecordStuff')], { encoding: 'utf8' });
-    if (r.status !== 1) throw new Error('Fixture has no control endpoint; left intact for manual cleanup.');
+    if (recordStuffPids(path.join(workspace, 'dist/mac-arm64/RecordStuff.app')).length) throw new Error('Fixture has no control endpoint; left intact for manual cleanup.');
   }
   appMayBeRunning = false;
 }
 async function restart(): Promise<void> { await stop(); await start(false); }
 async function sendShortcut(): Promise<void> {
   const state = await snapshot();
-  const running = spawnSync('pgrep', ['-f', '(^|/)RecordStuff\\.app/Contents/MacOS/RecordStuff($| )'], { encoding: 'utf8' });
-  if (running.status !== 0) throw new Blocked('Cannot confirm ownership of the running recording shortcut.');
+  let running: number[];
+  try { running = recordStuffPids(); } catch (error) { throw new Blocked(`Cannot confirm ownership of the running recording shortcut: ${String(error)}`); }
+  if (!running.length) throw new Blocked('Cannot confirm ownership of the running recording shortcut.');
   let accelerator: string;
-  try { accelerator = safeCaptureShortcut(state.pid, running.stdout.trim().split('\n').map(Number), state.hotkey); }
+  try { accelerator = safeCaptureShortcut(state.pid, running, state.hotkey); }
   catch (error) { throw new Blocked(String(error)); }
   const key = acceleratorToKeystroke(accelerator);
   if (!key) throw new Blocked(`Cannot type accelerator ${accelerator} through System Events.`);
@@ -182,8 +182,9 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => {
 try {
   await check('preflight and isolation', async () => {
     if (process.platform !== 'darwin' || process.arch !== 'arm64') throw new Blocked('Packaged acceptance currently requires macOS arm64.');
-    const running = spawnSync('pgrep', ['-f', '(^|/)RecordStuff\\.app/Contents/MacOS/RecordStuff($| )'], { encoding: 'utf8' });
-    if (running.status !== 1) throw new Blocked(`Quit RecordStuff before acceptance; never interrupt a user recording. ${running.stdout || running.stderr}`);
+    let running: number[];
+    try { running = recordStuffPids(); } catch (error) { throw new Blocked(`Cannot check for a running RecordStuff: ${String(error)}`); }
+    if (running.length) throw new Blocked(`Quit RecordStuff before acceptance; never interrupt a user recording. Running: ${running.join(', ')}`);
     if (!values['logic-only'] && (!hasTool('ffmpeg') || !hasTool('ffprobe') || !fs.existsSync('/Applications/Google Chrome.app'))) throw new Blocked('Real capture requires Chrome, ffmpeg and ffprobe.');
     // Real capture records the primary display; keep it awake and refuse a locked session.
     if (!values['logic-only']) desktop = await beginDesktopRound().catch((cause: unknown) => { throw cause instanceof DesktopBlockedError ? new Blocked(cause.message) : cause; });

@@ -183,12 +183,6 @@ export function latestRun(parent: string): string | undefined {
   return best?.dir;
 }
 
-/** A `pgrep -f` pattern that matches this bundle's executable literally, whatever characters its run path holds. */
-export function bundleProcessPattern(appPath: string): string {
-  const executable = `${appPath}/Contents/MacOS/RecordStuff`;
-  return `${executable.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($| )`;
-}
-
 /** The next request number, continuing across relaunches so a new process never answers an old file. */
 export function nextRequestNumber(names: readonly string[]): number {
   return Math.max(0, ...names.map(name => /^(\d+)\.json$/.exec(name)?.[1]).filter(n => n !== undefined).map(Number)) + 1;

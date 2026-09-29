@@ -32,11 +32,11 @@
  * 0 otherwise.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { APP_LOG_PATH, APP_SETTINGS_PATH } from "./lib/runner-env.mts";
+import { APP_LOG_PATH, APP_SETTINGS_PATH, scrubbedEnv } from "./lib/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { materialOpenArgs } from "./lib/acceptance.mts";
+import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance.mts";
 import { CPU_BUDGET, CpuSampler, MIN_COVERAGE, SamplerBlockedError, compileSampler, cpuBaseline, intervals, summarize } from "./lib/cpu-sampler.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
 import { LogGapError, LogReader, type LogCursor } from "./lib/log-reader.mts";
@@ -57,6 +57,7 @@ import {
   type MatrixEntry,
   type MatrixRun,
 } from "./lib/matrix.mts";
+import { electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, signalPids, startBuild, stopGroup } from "./lib/processes.mts";
 import { ToolMissingError, hasTool, timeTools, type ToolTiming } from "./lib/media-tools.mts";
 import { REPO_ROOT, appendMeasurements, measurementsPath, readLogPairs, verifyRecording, type VerifyResult } from "./lib/verify-recording.mts";
 import { pairRecordingsWithLog } from "./lib/verify.mts";
@@ -68,7 +69,6 @@ const ELECTRON_APP_REAL = fs.existsSync(ELECTRON_APP) ? fs.realpathSync(ELECTRON
 const LOG_PATH = APP_LOG_PATH;
 const SETTINGS_PATH = APP_SETTINGS_PATH;
 const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
-const MATERIAL_PROFILE = path.join(os.tmpdir(), "recordstuff-material-profile");
 /** How long an interrupted case's app may take to stop, save and quit before it is forced. */
 const QUIT_GRACE_MS = 30_000;
 /**
@@ -132,34 +132,16 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  */
 const signalsDelivered = (): Promise<void> => new Promise((resolve) => setImmediate(() => setImmediate(resolve)));
 
-function pgrep(pattern: string): number[] {
-  const result = spawnSync("pgrep", ["-f", pattern], { encoding: "utf8" });
-  return result.stdout
-    .split("\n")
-    .map((line) => Number(line.trim()))
-    .filter((pid) => Number.isInteger(pid) && pid > 0);
-}
-
 /** PIDs of every process inside this repo's Electron.app bundle (main + helpers), not the `open` launcher. */
-const electronPids = (): number[] => pgrep(`${ELECTRON_APP_REAL}/Contents/`);
+const electronPids = (): number[] => pgrepPids(electronPattern(ELECTRON_APP_REAL, "bundle"));
 /** The main process, the root of the tree the CPU sampler follows; its helpers are its descendants. */
-const electronMainPid = (): number | undefined => pgrep(`${ELECTRON_APP_REAL}/Contents/MacOS/Electron( |$)`)[0];
-
-const signal = (pids: number[], name: NodeJS.Signals): void => {
-  for (const pid of pids) {
-    try {
-      process.kill(pid, name);
-    } catch {
-      // already gone
-    }
-  }
-};
+const electronMainPid = (): number | undefined => pgrepPids(electronPattern(ELECTRON_APP_REAL, "main"))[0];
 
 /**
  * What this round started, so an interruption stops exactly its own work
  * (plan 042): the build (its own process group), the current case's `open -W`
  * launcher, the app it launched and the material browser (matched by its
- * private profile). The round refuses to start while any process of this
+ * private profile, created for this round and removed by cleanup). The round refuses to start while any process of this
  * checkout's Electron.app runs and launches one app at a time, so every such
  * process seen during the round is its own; another RecordStuff (the
  * installed app, another checkout) never matches that path.
@@ -170,36 +152,20 @@ const owned: {
   launcher?: ChildProcess;
   caseLaunchedAt?: number;
   materialLauncher?: ChildProcess;
-  material: boolean;
+  /** The round's private Chrome profile while the material may run. */
+  materialProfile?: string;
   caseLog?: LogCursor;
   sampler?: CpuSampler;
-} = { material: false };
+} = {};
 
-/** Whether any process of the group led by `pid` still runs; signal 0 only tests. */
-function groupAlive(pid: number | undefined): boolean {
-  if (pid === undefined) return false;
-  try {
-    process.kill(-pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function signalGroup(pid: number, name: NodeJS.Signals): void {
-  try {
-    process.kill(-pid, name);
-  } catch {
-    // already gone
-  }
-}
+const materialPids = (): number[] => owned.materialProfile ? pgrepPids(escapeRegExp(owned.materialProfile)) : [];
 
 function stillRunning(): string[] {
   const left: string[] = [];
   if (groupAlive(owned.build?.pid)) left.push("the build");
   const electron = electronPids();
   if (electron.length > 0) left.push(`Electron.app processes ${electron.join(", ")}`);
-  if (owned.material && pgrep(MATERIAL_PROFILE).length > 0) left.push("the material browser");
+  if (materialPids().length > 0) left.push("the material browser");
   return left;
 }
 
@@ -214,32 +180,26 @@ async function stopApp(): Promise<"none" | "quit" | "forced"> {
     if (Date.now() >= settled) return "none";
     await sleep(250);
   }
-  signal(pgrep(`${ELECTRON_APP_REAL}/Contents/MacOS/`), "SIGTERM");
+  signalPids(pgrepPids(electronPattern(ELECTRON_APP_REAL, "main")), "SIGTERM");
   for (const deadline = Date.now() + QUIT_GRACE_MS; Date.now() < deadline;) {
     if (electronPids().length === 0) return "quit";
     await sleep(250);
   }
-  signal(electronPids(), "SIGKILL");
+  signalPids(electronPids(), "SIGKILL");
   return "forced";
-}
-
-/** Stops the whole build process group, so no electron-vite or esbuild child keeps writing `out/` (review). */
-async function stopBuild(): Promise<void> {
-  const pid = owned.build?.pid;
-  if (pid === undefined || !groupAlive(pid)) return;
-  signalGroup(pid, "SIGTERM");
-  for (let i = 0; i < 20 && groupAlive(pid); i += 1) await sleep(250);
-  if (groupAlive(pid)) signalGroup(pid, "SIGKILL");
-  for (let i = 0; i < 8 && groupAlive(pid); i += 1) await sleep(250);
 }
 
 const running = (child: ChildProcess | undefined): child is ChildProcess => child !== undefined && child.exitCode === null && child.signalCode === null;
 
 let cleaning: Promise<{ left: string[]; app: "none" | "quit" | "forced" }> | undefined;
-/** Idempotent; returns what is still running after waiting up to 5 s for the material browser. */
+/**
+ * Idempotent; returns what is still running after waiting up to 5 s for the
+ * material browser, whose profile is then removed. Rejects when `pgrep`
+ * fails, because nothing then proves the round's processes exited.
+ */
 function cleanup(): Promise<{ left: string[]; app: "none" | "quit" | "forced" }> {
   cleaning ??= (async () => {
-    await stopBuild();
+    await stopGroup(owned.build?.pid);
     const app = await stopApp();
     await owned.sampler?.stop();
     if (running(owned.launcher)) owned.launcher.kill("SIGTERM");
@@ -247,13 +207,21 @@ function cleanup(): Promise<{ left: string[]; app: "none" | "quit" | "forced" }>
     const materialLauncher = owned.materialLauncher;
     if (running(materialLauncher)) await Promise.race([new Promise((resolve) => materialLauncher.once("exit", resolve)), sleep(10_000)]);
     for (let i = 0; i < 10; i += 1) {
-      if (owned.material) spawnSync("pkill", ["-f", MATERIAL_PROFILE]);
+      signalPids(materialPids(), "SIGTERM");
       if (stillRunning().length === 0) break;
       await sleep(500);
     }
     owned.desktop?.end();
     cleanupSampler();
-    return { left: stillRunning(), app };
+    const left = stillRunning();
+    // A launch that never settled may still start Chrome and recreate the profile.
+    if (running(materialLauncher)) left.push("the material launch (`open`), which may still start Chrome");
+    else if (owned.materialProfile && materialPids().length === 0) {
+      const problem = await removeMaterialProfile(owned.materialProfile);
+      if (problem) left.push(problem);
+      else delete owned.materialProfile;
+    }
+    return { left, app };
   })();
   return cleaning;
 }
@@ -265,11 +233,12 @@ let interrupted = false;
  * measurements or exit first.
  */
 const halt = (): Promise<never> => new Promise<never>(() => undefined);
-function interrupt(name: NodeJS.Signals, code: number): void {
+function interrupt(name: "SIGINT" | "SIGTERM"): void {
   if (interrupted) return;
   interrupted = true;
   console.error(`${name}: stopping this round's app and material; no measurements or summary are written`);
-  void cleanup().then(({ left, app }) => {
+  void interruptExitCode(name, async () => {
+    const { left, app } = await cleanup();
     if (app === "quit") console.error("cleanup: the case's app quit normally (a recording in progress is stopped and saved first)");
     if (app === "forced") console.error(`cleanup: the case's app did not quit within ${QUIT_GRACE_MS / 1000} s and was killed; a recording may remain as .recording.mp4`);
     if (owned.caseLog) {
@@ -277,10 +246,8 @@ function interrupt(name: NodeJS.Signals, code: number): void {
       if (outcome.saved) console.error(`cleanup: the interrupted case saved ${outcome.saved} (not verified)`);
       if (outcome.failed) console.error(`cleanup: the interrupted case reported autorecord: failed: ${outcome.failed}`);
     }
-    if (left.length > 0) console.error(`CLEANUP INCOMPLETE: ${left.join("; ")} still running`);
-    else console.error("cleanup: every owned process exited");
-    process.exit(left.length > 0 ? 1 : code);
-  });
+    return left;
+  }).then((exit) => process.exit(exit));
 }
 
 interface RunOutcome {
@@ -326,8 +293,7 @@ process.once("exit", cleanupSampler);
 async function recordOnce(entry: MatrixEntry, key: string): Promise<RunOutcome> {
   const logStart = appLog.end();
   owned.caseLog = logStart;
-  const env: NodeJS.ProcessEnv = { ...process.env, RECORDSTUFF_AUTORECORD: JSON.stringify({ seconds: entry.seconds, quality: entry.quality }) };
-  delete env["ELECTRON_RUN_AS_NODE"];
+  const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), RECORDSTUFF_AUTORECORD: JSON.stringify({ seconds: entry.seconds, quality: entry.quality }) };
   const launchedAt = Date.now();
   owned.caseLaunchedAt = launchedAt;
   const child = spawn("open", ["-W", "-a", ELECTRON_APP, "--args", REPO_ROOT], { env, stdio: "inherit" });
@@ -349,7 +315,7 @@ async function recordOnce(entry: MatrixEntry, key: string): Promise<RunOutcome> 
     if (Date.now() - launchedAt > deadlineMs) {
       timedOut = true;
       console.error(`  Still running after ${deadlineMs / 1000} s; terminating Electron`);
-      spawnSync("pkill", ["-f", `${ELECTRON_APP_REAL}/Contents/`]);
+      signalPids(electronPids(), "SIGTERM");
       await sleep(2000);
       break;
     }
@@ -386,13 +352,10 @@ async function recordOnce(entry: MatrixEntry, key: string): Promise<RunOutcome> 
 }
 
 function build(): Promise<number> {
-  return new Promise((resolve) => {
-    // Its own process group, so cleanup can stop pnpm and every child it started.
-    const child = spawn("pnpm", ["exec", "electron-vite", "build"], { cwd: REPO_ROOT, stdio: "inherit", detached: true });
-    owned.build = child;
-    child.on("error", () => resolve(1));
-    child.on("exit", (code) => resolve(code ?? 1));
-  });
+  // Its own process group, so cleanup can stop pnpm and every child it started.
+  const { child, done } = startBuild(REPO_ROOT);
+  owned.build = child;
+  return done;
 }
 
 async function main(): Promise<void> {
@@ -419,8 +382,8 @@ async function main(): Promise<void> {
     console.error(`BLOCKED: ${cause.message}; every case requires its CPU figure. No case was recorded.`);
     process.exit(BLOCKED_EXIT);
   }
-  process.on("SIGINT", () => interrupt("SIGINT", 130));
-  process.on("SIGTERM", () => interrupt("SIGTERM", 143));
+  process.on("SIGINT", () => interrupt("SIGINT"));
+  process.on("SIGTERM", () => interrupt("SIGTERM"));
 
   // Every case records the primary display; a slept or locked display would be recorded instead.
   const desktop = await beginDesktopRound().catch((cause: unknown) => {
@@ -446,8 +409,8 @@ async function main(): Promise<void> {
     // flags even when the user's Chrome is already running. The window is
     // placed at the global origin, which is always on the main display — the
     // one the app records; without this, Chrome may pick another screen.
-    owned.material = true;
-    owned.materialLauncher = spawn("open", materialOpenArgs(MATERIAL, MATERIAL_PROFILE), { stdio: "ignore" });
+    owned.materialProfile = createMaterialProfile("matrix");
+    owned.materialLauncher = spawn("open", materialOpenArgs(MATERIAL, owned.materialProfile), { stdio: "ignore" });
     console.log("Opened test material in Chrome kiosk on the primary display; waiting 5 seconds for fullscreen");
   } else {
     console.log(`Open ${path.relative(REPO_ROOT, MATERIAL)} fullscreen and click Start; keep volume fixed. Starting in 5 seconds.`);

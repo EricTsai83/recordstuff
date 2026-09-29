@@ -14,9 +14,11 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as pause } from "node:timers/promises";
 import { copySourceWorkspace } from "./lib/update-acceptance.mts";
 import {
-  CONTROLLED_TOOL, USAGE, bundleProcessPattern, instrumentControlledAcceptance, latestRun, nextRequestNumber, parseControlledArgs,
+  CONTROLLED_TOOL, USAGE, instrumentControlledAcceptance, latestRun, nextRequestNumber, parseControlledArgs,
   seedFiles, selfTestFiles, writeSeedFiles, type ControlledArgs, type RunMarker, type Seed,
 } from "./lib/controlled-acceptance.mts";
+import { pgrepProcesses, recordStuffPattern } from "./lib/processes.mts";
+import { scrubbedEnv } from "./lib/runner-env.mts";
 import { FAULT_MODES, HOLD_TARGETS, type FaultName } from "./fixtures/controlled-modes.ts";
 import type { ControlledCommand, ControlledConfig, ControlledResponse, ControlledSnapshot } from "./fixtures/controlled-acceptance";
 import type { RecordingResult } from "../src/shared/recording-result.ts";
@@ -26,8 +28,7 @@ const PARENT = path.join(ROOT, "docs/verification/measurements");
 const BLOCKED = 2;
 class Blocked extends Error {}
 
-const env: NodeJS.ProcessEnv = { ...process.env };
-for (const key of ["ELECTRON_RUN_AS_NODE", "ELECTRON_RENDERER_URL", "RECORDSTUFF_AUTORECORD"]) delete env[key];
+const env = scrubbedEnv();
 let child: ReturnType<typeof spawn> | undefined;
 let cancelled = false;
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => {
@@ -41,9 +42,8 @@ const alive = (pid: number): boolean => { try { process.kill(pid, 0); return tru
 
 /** Any RecordStuff bundle, normal or controlled: two would fight over the shortcut and the tray. */
 function runningRecordStuff(): string[] {
-  const result = spawnSync("pgrep", ["-fl", "(^|/)RecordStuff\\.app/Contents/MacOS/RecordStuff($| )"], { encoding: "utf8" });
-  if (result.error || ![0, 1].includes(result.status ?? -1)) throw new Blocked("Could not check for a running RecordStuff.");
-  return result.stdout.trim().split("\n").filter(Boolean);
+  try { return pgrepProcesses(recordStuffPattern()); }
+  catch (error) { throw new Blocked(`Could not check for a running RecordStuff: ${error instanceof Error ? error.message : String(error)}`); }
 }
 function requireNoRecordStuff(): void {
   const running = runningRecordStuff();
@@ -96,9 +96,8 @@ const status = async (dir: string): Promise<ControlledSnapshot> => (await send(d
 
 /** Processes of this run's bundle only, matched literally by executable path. */
 function bundleProcesses(dir: string): string[] {
-  const result = spawnSync("pgrep", ["-fl", bundleProcessPattern(appPath(dir))], { encoding: "utf8" });
-  if (result.error || ![0, 1].includes(result.status ?? -1)) throw new Error(`Could not check for the controlled app of ${dir}.`);
-  return result.stdout.trim().split("\n").filter(Boolean);
+  try { return pgrepProcesses(recordStuffPattern(appPath(dir))); }
+  catch (error) { throw new Error(`Could not check for the controlled app of ${dir}: ${error instanceof Error ? error.message : String(error)}`); }
 }
 
 /** Opens the run's bundle (building it first when `build`) and waits for the instrumented app to report ready. */

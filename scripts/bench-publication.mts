@@ -17,6 +17,7 @@
  * 130/143 after SIGINT/SIGTERM (the benchmark's own files are removed).
  */
 import { spawn } from "node:child_process";
+import { scrubbedEnv } from "./lib/runner-env.mts";
 import { MEASUREMENTS_DIR } from "./lib/verify-recording.mts";
 import fs from "node:fs";
 import path from "node:path";
@@ -124,7 +125,7 @@ async function main(): Promise<void> {
   console.log(`Publication benchmark: ${options.sizes.map(mib).join(", ")} × ${options.repeat} into ${options.dir} (${volume.type}); evidence ${report}`);
 
   const electron = createRequire(import.meta.url)("electron") as string;
-  const child = spawn(electron, [fixture, configPath], { cwd: REPO_ROOT, env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, stdio: ["ignore", "pipe", "inherit"] });
+  const child = spawn(electron, [fixture, configPath], { cwd: REPO_ROOT, env: { ...scrubbedEnv(), ELECTRON_RUN_AS_NODE: "1" }, stdio: ["ignore", "pipe", "inherit"] });
   const results: Result[] = [];
   let buffered = "";
   child.stdout.setEncoding("utf8");

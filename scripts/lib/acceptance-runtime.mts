@@ -1,5 +1,6 @@
 /** Bounded subprocesses and recording cleanup for acceptance runners. */
 import { execFile } from "node:child_process";
+import { scrubbedEnv } from "./runner-env.mts";
 import { setTimeout as delay } from "node:timers/promises";
 import type { SessionRecord } from "../../src/shared/session-record.ts";
 import { currentState, lastStartIndex } from "./acceptance.mts";
@@ -45,8 +46,7 @@ export function command(
   allowedCodes = [0],
 ): Promise<string> {
   signal.throwIfAborted();
-  const env = { ...process.env };
-  delete env.ELECTRON_RUN_AS_NODE;
+  const env = scrubbedEnv();
   return new Promise((resolve, reject) => {
     let outcome: (() => void) | undefined;
     const child = execFile(file, args, { encoding: "utf8", env, timeout, killSignal: "SIGKILL" }, (error, stdout, stderr) => {

@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { scrubbedEnv } from "./runner-env.mts";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,8 +43,7 @@ export async function recordAudio(output: string): Promise<string> {
   if (build.status !== 0) throw new Error("Application build failed");
   const material = path.join(output, "reference.wav");
   fs.writeFileSync(material, wav(fixture()));
-  const env: NodeJS.ProcessEnv = { ...process.env, RECORDSTUFF_AUTORECORD: JSON.stringify({ seconds: 16, quality: { resolutionCap: "1080p" } }) };
-  delete env.ELECTRON_RUN_AS_NODE;
+  const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), RECORDSTUFF_AUTORECORD: JSON.stringify({ seconds: 16, quality: { resolutionCap: "1080p" } }) };
   console.log("Recording 16 seconds; playing diagnostic tones after capture starts. Keep other audio quiet and output volume fixed.");
   return await new Promise<string>((resolve, reject) => {
     const app = spawn(electron, [ROOT], { cwd: ROOT, env, stdio: ["ignore", "pipe", "pipe"] });

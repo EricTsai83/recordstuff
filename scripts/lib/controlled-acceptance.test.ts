@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { transformWithEsbuild } from "vite";
 import {
-  SETTINGS_FILE_VERSION, bundleProcessPattern, instrumentControlledAcceptance, latestRun, nextRequestNumber, parseControlledArgs,
+  SETTINGS_FILE_VERSION, instrumentControlledAcceptance, latestRun, nextRequestNumber, parseControlledArgs,
   seedFiles, selfTestFiles, writeSeedFiles,
 } from "./controlled-acceptance.mts";
 import { RecordingResults } from "../../src/main/recording-result";
@@ -105,14 +105,6 @@ describe("controlled acceptance arguments and runs", () => {
     fs.mkdirSync(path.join(dir, "junk"));
     expect(latestRun(dir)).toBe(path.join(dir, "a"));
     expect(latestRun(path.join(dir, "missing"))).toBeUndefined();
-  });
-  it("matches its own bundle literally, even with pattern characters in the run path", () => {
-    const app = "/tmp/acceptance (035) [x]+$1/workspace/dist/mac-arm64/RecordStuff.app";
-    const pattern = new RegExp(bundleProcessPattern(app));
-    expect(pattern.test(`${app}/Contents/MacOS/RecordStuff`)).toBe(true);
-    expect(pattern.test(`${app}/Contents/MacOS/RecordStuff --flag`)).toBe(true);
-    expect(pattern.test("/tmp/acceptance 035 x+1/workspace/dist/mac-arm64/RecordStuff.app/Contents/MacOS/RecordStuff")).toBe(false);
-    expect(pattern.test(`${app}/Contents/MacOS/RecordStuffX`)).toBe(false);
   });
   it("numbers requests after every earlier one", () => {
     expect(nextRequestNumber([])).toBe(1);

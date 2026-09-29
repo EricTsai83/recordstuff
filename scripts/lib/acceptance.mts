@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { isProcessStart, startLineRun } from "./session-records.mts";
 
@@ -122,6 +125,28 @@ export function materialOpenArgs(file: string, profile: string): string[] {
     "--autoplay-policy=no-user-gesture-required", "--no-first-run",
     "--no-default-browser-check", "--disable-features=Translate",
   ];
+}
+
+/** A fresh private Chrome profile for one round's material; the caller removes it with `removeMaterialProfile`. */
+export function createMaterialProfile(name: string): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), `recordstuff-${name}-material-`));
+}
+
+/**
+ * Removes a round's material profile once its browser exited. Chrome keeps
+ * writing for a moment after pkill returns, so a single rm races it; returns
+ * the last error after bounded retries, undefined when the profile is gone.
+ */
+export async function removeMaterialProfile(profile: string, attempts = 5, pauseMs = 400): Promise<string | undefined> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      fs.rmSync(profile, { recursive: true, force: true });
+      return undefined;
+    } catch (error) {
+      if (attempt >= attempts) return `material profile ${profile} not removed: ${String(error)}`;
+      await new Promise((resolve) => setTimeout(resolve, pauseMs));
+    }
+  }
 }
 
 /** Read only the latest process and ownership transition, not a historical registration. */

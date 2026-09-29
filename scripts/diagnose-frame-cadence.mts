@@ -19,25 +19,26 @@
  * Exit 0 when every run produced its evidence and a classification, 1 when a
  * run did not or cleanup left a process behind, 2 when ffprobe is missing or
  * the desktop was locked, 130/143 after SIGINT/SIGTERM (its cleanup still
- * runs).
+ * runs), also during the build, which runs in its own process group so the
+ * handler can stop it.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { scrubbedEnv } from "./lib/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { materialOpenArgs } from "./lib/acceptance.mts";
+import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance.mts";
 import { buildFixture } from "./lib/build-fixture.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
 import { cadenceStats, classifyCadence, counterDelta, type CadenceLayer, type CadenceStats, type CounterDelta } from "./lib/frame-cadence.mts";
 import { frameTimes, hasTool, probe } from "./lib/media-tools.mts";
+import { electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, recordStuffPids, signalPids, startBuild, stopGroup } from "./lib/processes.mts";
 import { MEASUREMENTS_DIR, REPO_ROOT } from "./lib/verify-recording.mts";
 import { FRAME_RATES, type FrameRate, type QualitySettings } from "../src/shared/quality.ts";
 
 const ELECTRON_APP = path.join(REPO_ROOT, "node_modules/electron/dist/Electron.app");
 const ELECTRON_APP_REAL = fs.existsSync(ELECTRON_APP) ? fs.realpathSync(ELECTRON_APP) : ELECTRON_APP;
 const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
-const MATERIAL_PROFILE = path.join(os.tmpdir(), "recordstuff-cadence-material-profile");
 const REST_SECONDS = 5;
 
 type Request = { ideal: number; max?: number };
@@ -100,14 +101,8 @@ function requestFor(options: Options, setting: FrameRate): Request | null {
   return options.idealOnly ? { ideal: rate } : { ideal: rate, max: rate };
 }
 
-function electronPids(): number[] {
-  const result = spawnSync("pgrep", ["-f", `${ELECTRON_APP_REAL}/Contents/`], { encoding: "utf8" });
-  return result.stdout.split("\n").map((line) => Number(line.trim())).filter((pid) => Number.isInteger(pid) && pid > 0);
-}
-
-function recordStuffRunning(): boolean {
-  return spawnSync("pgrep", ["-f", "RecordStuff.app/Contents/MacOS/"], { encoding: "utf8" }).stdout.trim() !== "";
-}
+/** Every process inside this checkout's Electron.app bundle (main + helpers), not the `open` launcher. */
+const electronPids = (): number[] => pgrepPids(electronPattern(ELECTRON_APP_REAL, "bundle"));
 
 function cpuPercent(pids: number[]): number {
   if (pids.length === 0) return 0;
@@ -133,11 +128,14 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 
 /**
  * Everything this round started, so an interruption or a timeout stops
- * exactly its own processes (review F2): the busy workers, the fixture
+ * exactly its own processes (review F2): the build (its own process group),
+ * the busy workers, the fixture
  * (matched by its path inside this round's directory, because `open` does not
- * make it a child), the material browser and the display assertion.
+ * make it a child), the material browser with the private profile created for
+ * it, which cleanup removes, and the display assertion.
  */
-const owned: { busy: Set<ChildProcess>; fixture?: string; material?: ChildProcess; desktop?: DesktopRound } = { busy: new Set() };
+const owned: { busy: Set<ChildProcess>; build?: ChildProcess; fixture?: string; material?: ChildProcess; materialProfile?: string; desktop?: DesktopRound } = { busy: new Set() };
+const materialPids = (): number[] => owned.materialProfile ? pgrepPids(escapeRegExp(owned.materialProfile)) : [];
 
 function stopBusy(): void {
   for (const busy of owned.busy) busy.kill("SIGKILL");
@@ -145,25 +143,47 @@ function stopBusy(): void {
 }
 
 function stopFixture(): void {
-  if (owned.fixture) spawnSync("pkill", ["-f", owned.fixture]);
+  if (owned.fixture) signalPids(pgrepPids(escapeRegExp(owned.fixture)), "SIGTERM");
 }
 
 function stillRunning(): string[] {
   const left: string[] = [];
+  if (groupAlive(owned.build?.pid)) left.push("the build");
   const electron = electronPids();
   if (electron.length > 0) left.push(`Electron.app processes ${electron.join(", ")}`);
-  if (owned.material && spawnSync("pgrep", ["-f", MATERIAL_PROFILE], { encoding: "utf8" }).stdout.trim() !== "") left.push("the material browser");
+  if (materialPids().length > 0) left.push("the material browser");
   return left;
 }
 
-/** Idempotent; waits up to 5 s for the owned processes to exit and returns any still running. */
+/**
+ * Idempotent; waits up to 10 s for the material launch to settle and up to
+ * 5 s for the owned processes to exit, removes the material profile once its
+ * browser is gone and returns anything still running. Rejects when `pgrep` fails, because nothing then proves the
+ * round's processes exited.
+ */
 async function cleanup(): Promise<string[]> {
+  await stopGroup(owned.build?.pid);
   stopBusy();
   stopFixture();
-  if (owned.material) spawnSync("pkill", ["-f", MATERIAL_PROFILE]);
+  // `open` returns once Launch Services started Chrome; before that, nothing matches the profile yet.
+  const material = owned.material;
+  if (material && material.exitCode === null && material.signalCode === null) {
+    await Promise.race([new Promise((resolve) => material.once("exit", resolve)), sleep(10_000)]);
+  }
   owned.desktop?.end();
-  for (let i = 0; i < 10 && stillRunning().length > 0; i += 1) await sleep(500);
-  return stillRunning();
+  for (let i = 0; i < 10; i += 1) {
+    signalPids(materialPids(), "SIGTERM");
+    if (stillRunning().length === 0) break;
+    await sleep(500);
+  }
+  const left = stillRunning();
+  if (material && material.exitCode === null && material.signalCode === null) left.push("the material launch (`open`), which may still start Chrome");
+  else if (owned.materialProfile && materialPids().length === 0) {
+    const problem = await removeMaterialProfile(owned.materialProfile);
+    if (problem) left.push(problem);
+    else delete owned.materialProfile;
+  }
+  return left;
 }
 
 let interrupted = false;
@@ -173,18 +193,14 @@ let interrupted = false;
  * summary or exit first.
  */
 const halt = (): Promise<never> => new Promise<never>(() => undefined);
-function interrupt(signal: NodeJS.Signals, code: number): void {
+function interrupt(signal: "SIGINT" | "SIGTERM"): void {
   if (interrupted) return;
   interrupted = true;
-  console.error(`${signal}: stopping this round's fixture, load and material; no summary is written`);
-  void cleanup().then((left) => {
-    if (left.length > 0) console.error(`CLEANUP INCOMPLETE: ${left.join("; ")} still running`);
-    else console.error("cleanup: every owned process exited");
-    process.exit(left.length > 0 ? 1 : code);
-  });
+  console.error(`${signal}: stopping this round's build, fixture, load and material; no summary is written`);
+  void interruptExitCode(signal, cleanup).then((exit) => process.exit(exit));
 }
-process.on("SIGINT", () => interrupt("SIGINT", 130));
-process.on("SIGTERM", () => interrupt("SIGTERM", 143));
+process.on("SIGINT", () => interrupt("SIGINT"));
+process.on("SIGTERM", () => interrupt("SIGTERM"));
 
 interface FixtureResult {
   outcome: string;
@@ -335,7 +351,7 @@ async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--")));
   if (process.platform !== "darwin") usage("the cadence diagnostic requires macOS");
   if (!hasTool("ffprobe")) { console.error("BLOCKED: ffprobe missing (brew install ffmpeg). Nothing was recorded."); process.exit(2); }
-  if (electronPids().length > 0 || recordStuffRunning()) {
+  if (electronPids().length > 0 || recordStuffPids().length > 0) {
     console.error("RecordStuff or this project's Electron.app is running; quit it first so only the diagnostic captures");
     process.exit(1);
   }
@@ -347,9 +363,14 @@ async function main(): Promise<void> {
   const dir = path.join(MEASUREMENTS_DIR, `${new Date().toISOString().replace(/[:.]/g, "-")}-frame-cadence`);
   fs.mkdirSync(dir, { recursive: true });
   console.log(`Frame-cadence diagnostic: rates ${options.rates.join(", ")}; ${options.runs} run(s) each; ${options.seconds} s; load ${options.load}; evidence ${dir}`);
+  if (interrupted) await halt();
   console.log("electron-vite build …");
-  const built = spawnSync("pnpm", ["exec", "electron-vite", "build"], { cwd: REPO_ROOT, stdio: "inherit" });
-  if (built.status !== 0) { desktop.end(); process.exit(built.status ?? 1); }
+  // Asynchronous and in its own process group: a signal meanwhile reaches the handler, which stops the build.
+  const build = startBuild(REPO_ROOT);
+  owned.build = build.child;
+  const built = await build.done;
+  if (interrupted) await halt();
+  if (built !== 0) { desktop.end(); process.exit(built); }
   const fixture = await buildFixture("frame-cadence", dir);
   owned.fixture = fixture;
   const rendererScript = await buildFixture("frame-cadence-renderer", dir);
@@ -360,7 +381,8 @@ async function main(): Promise<void> {
   const env = environment();
   try {
     if (options.openMaterial) {
-      owned.material = spawn("open", materialOpenArgs(MATERIAL, MATERIAL_PROFILE), { stdio: "ignore" });
+      owned.materialProfile = createMaterialProfile("cadence");
+      owned.material = spawn("open", materialOpenArgs(MATERIAL, owned.materialProfile), { stdio: "ignore" });
       console.log("Opened the test material in Chrome kiosk on the primary display; waiting 5 seconds");
     } else console.log(`Open ${path.relative(REPO_ROOT, MATERIAL)} full screen on the primary display; starting in 5 seconds`);
     await sleep(5000);

@@ -8,6 +8,7 @@
  * only, never shipped.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { scrubbedEnv } from "./runner-env.mts";
 import { percentile as nearestRank } from "./stats.mts";
 import fs from "node:fs";
 import path from "node:path";
@@ -24,8 +25,7 @@ export class SamplerBlockedError extends Error {}
 export function compileSampler(dir: string): string {
   fs.mkdirSync(dir, { recursive: true });
   const binary = path.join(dir, "cpu-sampler");
-  const env = { ...process.env };
-  delete env.ELECTRON_RUN_AS_NODE;
+  const env = scrubbedEnv();
   const result = spawnSync("clang", ["-O2", "-Wall", "-Wextra", "-o", binary, SOURCE], { encoding: "utf8", env });
   if (result.error || result.status !== 0) {
     throw new SamplerBlockedError(`could not compile the CPU sampler with clang (install the Command Line Tools: xcode-select --install): ${result.error?.message ?? result.stderr.trim()}`);

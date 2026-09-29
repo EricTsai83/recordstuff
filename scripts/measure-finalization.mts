@@ -19,18 +19,20 @@
  * Use an isolated folder or disk image for slow, small or foreign file
  * systems; never fill the system disk. Exit 1 when a take failed, could not be
  * verified or outlived its bound (reported, killed or not), or cleanup left a process running; 2 when ffprobe is missing, the
- * app is already running or the desktop locked; 130/143 after SIGINT/SIGTERM.
+ * app is already running or the desktop locked; 130/143 after SIGINT/SIGTERM,
+ * also during the build, which runs in its own process group so the handler
+ * can stop it.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { MEASUREMENTS_DIR } from "./lib/verify-recording.mts";
-import { APP_LOG_PATH } from "./lib/runner-env.mts";
+import { APP_LOG_PATH, scrubbedEnv } from "./lib/runner-env.mts";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { materialOpenArgs } from "./lib/acceptance.mts";
+import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
 import { distribution, finalizationSample, formatDistribution, type FinalizationSample } from "./lib/finalization-timing.mts";
 import { LogGapError, LogReader, type LogCursor } from "./lib/log-reader.mts";
+import { electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, recordStuffPids, signalPids, startBuild, stopGroup } from "./lib/processes.mts";
 import { freeBytes, volumeOf } from "./lib/volume.mts";
 import { hasTool, probe, probeEdges } from "./lib/media-tools.mts";
 import { REPO_ROOT } from "./lib/verify-recording.mts";
@@ -40,7 +42,6 @@ const ELECTRON_APP = path.join(REPO_ROOT, "node_modules/electron/dist/Electron.a
 const ELECTRON_APP_REAL = fs.existsSync(ELECTRON_APP) ? fs.realpathSync(ELECTRON_APP) : ELECTRON_APP;
 const LOG_PATH = APP_LOG_PATH;
 const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
-const MATERIAL_PROFILE = path.join(os.tmpdir(), "recordstuff-material-profile");
 const QUIT_GRACE_MS = 30_000;
 /**
  * How long after a launch its app may still appear: `open` hands the request
@@ -99,13 +100,16 @@ function parseOptions(argv: string[]): Options {
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-function pgrep(pattern: string): number[] {
-  return spawnSync("pgrep", ["-f", pattern], { encoding: "utf8" }).stdout
-    .split("\n").map((line) => Number(line.trim())).filter((pid) => Number.isInteger(pid) && pid > 0);
-}
-const electronPids = (): number[] => pgrep(`${ELECTRON_APP_REAL}/Contents/`);
+/** Every process inside this checkout's Electron.app bundle (main + helpers), not the `open` launcher. */
+const electronPids = (): number[] => pgrepPids(electronPattern(ELECTRON_APP_REAL, "bundle"));
 
-const owned: { desktop?: DesktopRound; launcher?: ChildProcess; launchedAt?: number; material?: ChildProcess } = {};
+/**
+ * What this round started: the build (its own process group), the take's
+ * `open -W` launcher and the material browser with the private profile
+ * created for it, which cleanup removes.
+ */
+const owned: { desktop?: DesktopRound; build?: ChildProcess; launcher?: ChildProcess; launchedAt?: number; material?: ChildProcess; materialProfile?: string } = {};
+const materialPids = (): number[] => owned.materialProfile ? pgrepPids(escapeRegExp(owned.materialProfile)) : [];
 let interrupted = false;
 const halt = (): Promise<never> => new Promise<never>(() => undefined);
 
@@ -120,18 +124,20 @@ async function stopApp(): Promise<"none" | "quit" | "forced"> {
     if (Date.now() >= settled) return "none";
     await sleep(250);
   }
-  for (const pid of pgrep(`${ELECTRON_APP_REAL}/Contents/MacOS/`)) { try { process.kill(pid, "SIGTERM"); } catch { /* gone */ } }
+  signalPids(pgrepPids(electronPattern(ELECTRON_APP_REAL, "main")), "SIGTERM");
   for (const deadline = Date.now() + QUIT_GRACE_MS; Date.now() < deadline;) {
     if (electronPids().length === 0) return "quit";
     await sleep(250);
   }
-  for (const pid of electronPids()) { try { process.kill(pid, "SIGKILL"); } catch { /* gone */ } }
+  signalPids(electronPids(), "SIGKILL");
   return "forced";
 }
 
 let cleaning: Promise<string[]> | undefined;
+/** Idempotent; rejects when `pgrep` fails, because nothing then proves the round's processes exited. */
 function cleanup(): Promise<string[]> {
   cleaning ??= (async () => {
+    await stopGroup(owned.build?.pid);
     const app = await stopApp();
     if (app === "forced") console.error(`cleanup: the app did not quit within ${QUIT_GRACE_MS / 1000} s and was killed`);
     if (owned.launcher && owned.launcher.exitCode === null) owned.launcher.kill("SIGTERM");
@@ -141,27 +147,33 @@ function cleanup(): Promise<string[]> {
       await Promise.race([new Promise((resolve) => material.once("exit", resolve)), sleep(10_000)]);
     }
     for (let i = 0; i < 10; i += 1) {
-      if (owned.material) spawnSync("pkill", ["-f", MATERIAL_PROFILE]);
-      if (electronPids().length === 0 && (!owned.material || pgrep(MATERIAL_PROFILE).length === 0)) break;
+      signalPids(materialPids(), "SIGTERM");
+      if (electronPids().length === 0 && materialPids().length === 0) break;
       await sleep(500);
     }
     owned.desktop?.end();
     const left: string[] = [];
-    if (electronPids().length > 0) left.push(`Electron.app processes ${electronPids().join(", ")}`);
-    if (owned.material && pgrep(MATERIAL_PROFILE).length > 0) left.push("the material browser");
+    if (groupAlive(owned.build?.pid)) left.push("the build");
+    const electron = electronPids();
+    if (electron.length > 0) left.push(`Electron.app processes ${electron.join(", ")}`);
+    if (materialPids().length > 0) left.push("the material browser");
+    // A launch that never settled may still start Chrome and recreate the profile.
+    else if (material && material.exitCode === null && material.signalCode === null) left.push("the material launch (`open`), which may still start Chrome");
+    else if (owned.materialProfile) {
+      const problem = await removeMaterialProfile(owned.materialProfile);
+      if (problem) left.push(problem);
+      else delete owned.materialProfile;
+    }
     return left;
   })();
   return cleaning;
 }
 
-function interrupt(name: NodeJS.Signals, code: number): void {
+function interrupt(name: "SIGINT" | "SIGTERM"): void {
   if (interrupted) return;
   interrupted = true;
-  console.error(`${name}: stopping this round's app and material; no report is written`);
-  void cleanup().then((left) => {
-    if (left.length > 0) console.error(`CLEANUP INCOMPLETE: ${left.join("; ")} still running`);
-    process.exit(left.length > 0 ? 1 : code);
-  });
+  console.error(`${name}: stopping this round's build, app and material; no report is written`);
+  void interruptExitCode(name, cleanup).then((exit) => process.exit(exit));
 }
 
 interface Take {
@@ -194,10 +206,9 @@ function linesSince(cursor: LogCursor): string[] {
 async function recordTake(options: Options, index: number): Promise<Take> {
   const take: Take = { index, outcome: "no outcome", verified: false, deleted: false, freeBeforeBytes: freeBytes(options.dir) };
   const cursor = appLog.end();
-  const env: NodeJS.ProcessEnv = { ...process.env, RECORDSTUFF_AUTORECORD: JSON.stringify({
+  const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), RECORDSTUFF_AUTORECORD: JSON.stringify({
     seconds: options.seconds, quality: { videoQuality: options.quality, resolutionCap: "source", frameRate: options.fps }, outputDir: options.dir,
   }) };
-  delete env["ELECTRON_RUN_AS_NODE"];
   owned.launchedAt = Date.now();
   const child = spawn("open", ["-W", "-a", ELECTRON_APP, "--args", REPO_ROOT], { env, stdio: "inherit" });
   owned.launcher = child;
@@ -284,13 +295,13 @@ async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--")));
   if (process.platform !== "darwin") { console.error("measure:finalization requires macOS"); process.exit(2); }
   if (!hasTool("ffprobe")) { console.error("BLOCKED: ffprobe is required to verify each take"); process.exit(2); }
-  if (electronPids().length > 0 || pgrep("RecordStuff.app/Contents/MacOS/").length > 0) {
+  if (electronPids().length > 0 || recordStuffPids().length > 0) {
     console.error("RecordStuff or this project's Electron.app is running; quit it first so only this round records");
     process.exit(2);
   }
   fs.mkdirSync(options.dir, { recursive: true });
-  process.on("SIGINT", () => interrupt("SIGINT", 130));
-  process.on("SIGTERM", () => interrupt("SIGTERM", 143));
+  process.on("SIGINT", () => interrupt("SIGINT"));
+  process.on("SIGTERM", () => interrupt("SIGTERM"));
   const desktop = await beginDesktopRound().catch((cause: unknown) => {
     if (cause instanceof DesktopBlockedError) { console.error(`BLOCKED: ${cause.message} Nothing was recorded.`); process.exit(DESKTOP_BLOCKED_EXIT); }
     throw cause;
@@ -300,15 +311,21 @@ async function main(): Promise<void> {
   const report = path.join(MEASUREMENTS_DIR, `${new Date().toISOString().replace(/[:.]/g, "-")}-finalization${options.label ? `-${options.label}` : ""}`);
   fs.mkdirSync(report, { recursive: true });
   console.log(`Finalization measurement: ${options.repeat} × ${options.seconds} s at ${options.quality} ${options.fps} fps into ${options.dir} (${volume.type}); evidence ${report}`);
+  if (interrupted) await halt();
   if (options.build) {
-    const built = spawnSync("pnpm", ["exec", "electron-vite", "build"], { cwd: REPO_ROOT, stdio: "inherit" });
-    if (built.status !== 0) { desktop.end(); process.exit(built.status ?? 1); }
+    // Asynchronous and in its own process group: a signal meanwhile reaches the handler, which stops the build.
+    const build = startBuild(REPO_ROOT);
+    owned.build = build.child;
+    const built = await build.done;
+    if (interrupted) await halt();
+    if (built !== 0) { desktop.end(); process.exit(built); }
   }
   const takes: Take[] = [];
   let left: string[] = [];
   try {
     if (options.openMaterial) {
-      owned.material = spawn("open", materialOpenArgs(MATERIAL, MATERIAL_PROFILE), { stdio: "ignore" });
+      owned.materialProfile = createMaterialProfile("finalization");
+      owned.material = spawn("open", materialOpenArgs(MATERIAL, owned.materialProfile), { stdio: "ignore" });
       console.log("Opened the test material in Chrome kiosk on the primary display; waiting 5 seconds");
     } else console.log("Show representative moving content on the primary display; starting in 5 seconds");
     await sleep(5000);

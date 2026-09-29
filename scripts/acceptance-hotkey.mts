@@ -40,6 +40,7 @@
  */
 import { setTimeout as delay } from "node:timers/promises";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings } from "./lib/runner-env.mts";
+import { recordStuffPids } from "./lib/processes.mts";
 import { command, confirmedIdle, quitIdleApp, settleRecording, waitForLog, waitForRecord } from "./lib/acceptance-runtime.mts";
 import { inputDiagnostics } from "./lib/acceptance-diagnostics.mts";
 import { spawn, spawnSync } from "node:child_process";
@@ -114,12 +115,11 @@ function fail(message: string): never {
 }
 
 function appRunning(): string | undefined {
-  const r = spawnSync("pgrep", ["-f", "RecordStuff\\.app/Contents/MacOS/RecordStuff($| )"], { encoding: "utf8" });
-  if (r.error || ![0, 1].includes(r.status ?? -1)) fail("could not check for a running RecordStuff.app (pgrep)");
-  const pids = r.stdout.trim().split("\n").filter(Boolean);
+  let pids: number[];
+  try { pids = recordStuffPids(); } catch (error) { fail(`could not check for a running RecordStuff.app: ${String(error)}`); }
   if (pids.length > 1) fail("multiple RecordStuff processes; refusing to choose one");
   const pid = pids[0];
-  return pid ? pid : undefined;
+  return pid === undefined ? undefined : String(pid);
 }
 
 /** The stored settings as the app reads the countdown: a missing or non-boolean sound is on (plan 046). */
