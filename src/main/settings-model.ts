@@ -173,7 +173,7 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group[] {
   const hotkey = ctx.hotkey;
   const language = ctx.language;
   const note = hotkey.enabled && !hotkey.registered
-    ? t("Unavailable: another app is using this shortcut.", language)
+    ? t("Unavailable: another app may be using this shortcut.", language)
     : undefined;
   const diagnostics = hotkeyDiagnostics(ctx, note);
   const recommended = DEFAULT_HOTKEY.accelerator;

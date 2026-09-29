@@ -102,10 +102,10 @@ describe("settingsView", () => {
     const conflicted = { ...context, hotkey: { ...DEFAULT_HOTKEY, registered: false } };
     expect(group(idle, conflicted, "hotkey")).toMatchObject({
       label: "Shortcut",
-      diagnostics: [{ kind: "current", heading: "Shortcut unavailable", reason: "Unavailable: another app is using this shortcut.", guidance: "Recording is still available from the menu. Choose another shortcut." }],
+      diagnostics: [{ kind: "current", heading: "Shortcut unavailable", reason: "Unavailable: another app may be using this shortcut.", guidance: "Recording is still available from the menu. Choose another shortcut." }],
     });
     expect(checked(idle, conflicted, "hotkey")).toBe(HOTKEY_PRESETS[0]);
-    expect(group(idle, { ...conflicted, language: "zh-TW" }, "hotkey")?.diagnostics?.[0]?.reason).toBe("無法使用：這個快捷鍵被其他 App 佔用。");
+    expect(group(idle, { ...conflicted, language: "zh-TW" }, "hotkey")?.diagnostics?.[0]?.reason).toBe("無法使用：這個快捷鍵可能被其他 App 佔用。");
     // A registered shortcut needs no warning at all.
     expect(group(idle, context, "hotkey")).not.toHaveProperty("note");
   });

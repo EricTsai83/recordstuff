@@ -469,7 +469,7 @@ export class RecordingResults {
 const reasons: Record<ErrorCode, PlainMessageKey> = {
   permission_denied: "Screen recording permission required",
   unsupported_os_version: "This system version does not support system audio capture. macOS 13 or newer is required on Mac.",
-  display_unavailable: "Selected display is unavailable. Choose another screen.",
+  display_unavailable: "Selected display is unavailable",
   no_display: "No display is available for recording.",
   no_audio_track: "System audio was unavailable when recording started, so nothing was recorded.",
   mp4_unsupported: "MP4 recording is not supported on this computer.",

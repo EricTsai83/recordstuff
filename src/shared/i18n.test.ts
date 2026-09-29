@@ -46,7 +46,7 @@ describe("language catalog", () => {
 describe("sentences", () => {
   it("closes and joins messages per language without doubling punctuation", () => {
     expect(sentences(["寫入錄影失敗", "點此查看錄影結果。"], "zh-TW")).toBe("寫入錄影失敗。點此查看錄影結果。");
-    expect(sentences(["所選螢幕無法使用，請重新選擇", "點此查看錄影結果。"], "zh-TW")).toBe("所選螢幕無法使用，請重新選擇。點此查看錄影結果。");
+    expect(sentences(["所選螢幕無法使用，請選擇其他螢幕", "點此查看錄影結果。"], "zh-TW")).toBe("所選螢幕無法使用，請選擇其他螢幕。點此查看錄影結果。");
     expect(sentences(["Screen recording permission required", "Click to view the recording result."], "en"))
       .toBe("Screen recording permission required. Click to view the recording result.");
     expect(sentences(["The disk is full.", "Click to view the recording result."])).toBe("The disk is full. Click to view the recording result.");

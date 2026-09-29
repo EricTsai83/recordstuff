@@ -69,8 +69,8 @@ function registeredShortcut(ctx: AppContext): HotkeyAccelerator | undefined {
 function windowsGroup(ctx: AppContext, reviewedOnly: boolean): TrayMenuItem[] {
   const { language, settingsShortcut } = ctx;
   const explanation = settingsShortcut?.kind === "conflict"
-    ? t("Settings shortcut unavailable: change the recording shortcut through the tray Settings entry.", language)
-    : settingsShortcut?.kind === "failed" ? t("Settings shortcut unavailable: another app may use it. Open Settings from the tray.", language) : undefined;
+    ? t("Settings shortcut unavailable: open Settings above to change the recording shortcut.", language)
+    : settingsShortcut?.kind === "failed" ? t("Settings shortcut unavailable: another app may use it. Open Settings above.", language) : undefined;
   return [
     ...(reviewedOnly ? [item(t("View recording failures…", language), "openRecordingResult")] : []),
     item(t("Settings…", language), "openSettings", undefined, settingsShortcut?.kind === "registered" ? SETTINGS_SHORTCUT : undefined),

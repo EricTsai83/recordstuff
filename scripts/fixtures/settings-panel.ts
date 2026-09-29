@@ -71,7 +71,7 @@ const view = (language: Language): SettingsView => {
         id: "hotkey",
         tab: "recording",
         label: zh ? "快捷鍵" : "Shortcut",
-        note: zh ? "無法使用：這個快捷鍵被其他 App 佔用。" : "Unavailable: another app is using this shortcut.",
+        note: zh ? "無法使用：這個快捷鍵可能被其他 App 佔用。" : "Unavailable: another app may be using this shortcut.",
         enabled: true,
         choices: [
           { id: "CommandOrControl+Alt+Shift+R", label: "⌘⌥⇧R", enabled: true, checked: true },
@@ -268,7 +268,7 @@ async function run() {
   );
   record(
     "a refused shortcut shows its note and the control points at it",
-    rendered.note === "無法使用：這個快捷鍵被其他 App 佔用。" &&
+    rendered.note === "無法使用：這個快捷鍵可能被其他 App 佔用。" &&
       rendered.controls[1]?.describedBy?.includes("setting-hotkey-note") === true,
     JSON.stringify([rendered.note, rendered.controls[1]?.describedBy]),
   );

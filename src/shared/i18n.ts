@@ -8,7 +8,7 @@ export function isLanguage(value: unknown): value is Language {
 
 export const ZH_TW = {
   "Retry shortcut registration": "重試註冊快捷鍵",
-  "The shortcut is still unavailable. Another app may still be using it.": "快捷鍵仍無法使用，可能仍有其他 App 占用。",
+  "The shortcut is still unavailable. Another app may still be using it.": "快捷鍵仍無法使用，可能仍有其他 App 佔用。",
   "The resolution cap could not be confirmed. The recording may use a larger size.": "無法確認解析度上限，錄影可能使用較大的尺寸。",
   "Failure history could not be read. The existing file has been preserved; check the log for details.": "無法讀取失敗紀錄，原有檔案已保留；請查看 log 了解詳情。",
   "Show more failures": "顯示更多失敗紀錄",
@@ -96,7 +96,7 @@ export const ZH_TW = {
   "Display {id}": "螢幕 {id}",
   "{label} (Primary)": "{label}（主螢幕）",
   "Captures one whole screen. System audio is unaffected.": "錄製一個完整螢幕，不影響系統音訊。",
-  "Selected display is unavailable. Choose another screen.": "所選螢幕無法使用，請重新選擇",
+  "Selected display is unavailable. Choose another screen.": "所選螢幕無法使用，請選擇其他螢幕。",
   "Display is connected but its capture source is unavailable. Retry or choose another screen.": "螢幕已連接，但無法取得錄製來源。請重試或選擇其他螢幕。",
   "Display configuration changed. Retry.": "螢幕配置已變更，請重試。",
   "The recording display was removed. Choose another screen.": "錄製中的螢幕已移除，請選擇其他螢幕。",
@@ -181,9 +181,9 @@ export const ZH_TW = {
   "Could not save settings. The output folder is unchanged. Try choosing {path} again.":
     "無法儲存設定，儲存位置仍是原本的資料夾。想改成 {path} 請再試一次。",
   "Could not save recording quality. Your previous settings are still in use.":
-    "無法儲存錄製品質設定，仍使用原本的選項。請再試一次。",
+    "無法儲存錄製品質設定，仍使用原本的選項。",
   "Could not save the language. Your previous language is still in use.":
-    "無法儲存語言設定，仍使用原本的語言。請再試一次。",
+    "無法儲存語言設定，仍使用原本的語言。",
   "The system provides {actual} fps. This recording uses {actual} fps (requested {requested} fps).":
     "系統只提供 {actual} fps，本次以 {actual} fps 錄製（設定為 {requested} fps）",
   "RecordStuff is ready in the system tray. Click to start recording; click again to stop.":
@@ -209,9 +209,9 @@ export const ZH_TW = {
     "錄影檔可能不完整。RecordStuff 不會修復它，重新錄影也不會恢復遺失的內容。",
   Shortcut: "快捷鍵",
   "This combination is reserved for Settings.": "這個組合鍵保留給設定使用。",
-  "Settings shortcut unavailable: change the recording shortcut through the tray Settings entry.": "設定快捷鍵無法使用：請從選單列開啟設定並變更錄影快捷鍵。",
-  "Settings shortcut unavailable: another app may use it. Open Settings from the tray.": "設定快捷鍵無法使用：可能被其他 App 佔用。請從選單列開啟設定。",
-  "Unavailable: another app is using this shortcut.": "無法使用：這個快捷鍵被其他 App 佔用。",
+  "Settings shortcut unavailable: open Settings above to change the recording shortcut.": "設定快捷鍵無法使用：請從上方開啟設定並變更錄影快捷鍵。",
+  "Settings shortcut unavailable: another app may use it. Open Settings above.": "設定快捷鍵無法使用：可能被其他 App 佔用。請從上方開啟設定。",
+  "Unavailable: another app may be using this shortcut.": "無法使用：這個快捷鍵可能被其他 App 佔用。",
   "Settings shortcut unavailable": "設定快捷鍵無法使用",
   "{shortcut} could not be registered to open Settings; another app may use it.": "無法註冊 {shortcut} 來開啟設定，可能被其他 App 佔用。",
   "Settings stays available from the menu bar icon. Retry after the other app releases it.": "仍可從選單列圖示開啟設定。其他 App 釋放後請重試。",
@@ -229,7 +229,7 @@ export const ZH_TW = {
   "Could not register the shortcut {value}. Another app may be using it. Choose another shortcut in Settings.":
     "無法註冊快捷鍵 {value}，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵。",
   "Could not save the shortcut. Your previous shortcut is still in use.":
-    "無法儲存快捷鍵設定，仍使用原本的快捷鍵。請再試一次。",
+    "無法儲存快捷鍵設定，仍使用原本的快捷鍵。",
   Notifications: "通知",
   "Shows a notification when a recording is saved or an error occurs.": "錄影儲存完成或發生錯誤時顯示通知。",
   "macOS must also allow RecordStuff in System Settings → Notifications.":
