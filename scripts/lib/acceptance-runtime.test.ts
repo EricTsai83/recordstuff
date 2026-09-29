@@ -5,7 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFileLogger, rotateLog } from "../../src/main/log.ts";
 import { formatSessionRecord } from "../../src/shared/session-record.ts";
-import { command, confirmedIdle, finishRecording, quitIdleApp, recordingOutcome, settleRecording, waitForLog, waitForRecord } from "./acceptance-runtime.mts";
+import { command, confirmedIdle, finishRecording, quitIdleApp, recordingOutcome, sessionEnded, settleRecording, waitForLog, waitForRecord } from "./acceptance-runtime.mts";
 import { LogGapError, LogReader } from "./log-reader.mts";
 
 
@@ -123,6 +123,20 @@ describe("interrupted recording cleanup", () => {
     expect(recordingOutcome(["[t] saved /m/a.mp4"])).toEqual({ settled: true, saved: "/m/a.mp4" });
     expect(recordingOutcome(["[t] failed: capture_failed x"])).toEqual({ settled: true, failure: "capture_failed x" });
     expect(recordingOutcome([`[t] ${failed("s1")}`, "[t] saved /m/stray.mp4"])).toEqual({ settled: true, failure: "capture_host_crashed killed" });
+  });
+
+  it("finds a session that ended before the runner's stop key, and only that session (plan 054)", () => {
+    const line = (record: string): string => `[2026-09-29T10:00:08.000Z] ${record}`;
+    const earlyFailure = formatSessionRecord(RUN, { kind: "failed", session: "s1", code: "capture_start_failed", detail: "no media before the first-chunk deadline", outcome: "empty" });
+    // The 2026-09-29 round: the session failed about 8 s in, before the 10 s stop.
+    expect(sessionEnded([line("state → recording"), line("state → idle"), line(earlyFailure)], RUN, "s1"))
+      .toMatchObject({ kind: "failed", code: "capture_start_failed", session: "s1" });
+    expect(sessionEnded([line(saved("s1", "/m/s1.mp4"))], RUN, "s1")).toMatchObject({ kind: "saved", path: "/m/s1.mp4" });
+    // Still recording: stop is due. Another session or run, a capture record or a malformed record ends nothing.
+    expect(sessionEnded([line("state → recording"), line("recorder: session s1 first chunk 1 bytes")], RUN, "s1")).toBeUndefined();
+    expect(sessionEnded([line(saved("s2", "/m/s2.mp4")), line(failed("s2"))], RUN, "s1")).toBeUndefined();
+    expect(sessionEnded([line(formatSessionRecord("20260929T090000000Z-1", { kind: "saved", session: "s1", path: "/m/old.mp4" }))], RUN, "s1")).toBeUndefined();
+    expect(sessionEnded([line(`${saved("s1", "/m/s1.mp4").slice(0, -2)}`)], RUN, "s1")).toBeUndefined();
   });
 
   it("cancels a countdown with one key press and settles on the cancel line without a file (plan 040)", async () => {

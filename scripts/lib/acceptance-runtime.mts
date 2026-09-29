@@ -69,7 +69,17 @@ export function command(
   });
 }
 
-type TerminalRecord = Extract<SessionRecord, { kind: "saved" | "failed" }>;
+export type TerminalRecord = Extract<SessionRecord, { kind: "saved" | "failed" }>;
+
+/**
+ * The terminal record of `session` in `run` among lines read from its capture
+ * record on, if it already ended. A runner checks before sending stop: after
+ * an early failure the same key would start a new session (plan 054).
+ */
+export function sessionEnded(lines: readonly string[], run: string, session: string): TerminalRecord | undefined {
+  return lines.map(parseSessionRecord).find((record): record is TerminalRecord =>
+    (record?.kind === "saved" || record?.kind === "failed") && record.run === run && record.session === session);
+}
 
 /**
  * This recording's outcome in lines written after its cursor. Records are

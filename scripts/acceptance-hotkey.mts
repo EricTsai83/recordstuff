@@ -41,7 +41,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings } from "./lib/runner-env.mts";
 import { recordStuffPids } from "./lib/processes.mts";
-import { command, confirmedIdle, quitIdleApp, settleRecording, waitForLog, waitForRecord } from "./lib/acceptance-runtime.mts";
+import { command, confirmedIdle, quitIdleApp, sessionEnded, settleRecording, waitForLog, waitForRecord, type TerminalRecord } from "./lib/acceptance-runtime.mts";
 import { inputDiagnostics } from "./lib/acceptance-diagnostics.mts";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -329,14 +329,22 @@ async function main(): Promise<void> {
     // By now the first chunk has arrived; each phase is reported on its own.
     const timeline = countdownTimeline(appLog.since(pressed.at).lines.map((line) => line.text), lineTime(pressed.line) ?? new Date(sentStart));
     note(`start timeline: ${describeTimeline(timeline)}`);
+    // A session that already ended would take the stop key as a new start (plan 054).
+    const ended = sessionEnded(appLog.since(capture.next).lines.map((line) => line.text), run, session);
+    if (ended) {
+      recordingFrom = undefined;
+      note(`session ${session} ended before the stop key (${ended.kind}); stop not sent`);
+      if (ended.kind === "failed") fail(`session ${session} failed before the stop key: ${ended.code} ${ended.detail}`);
+      fail(`session ${session} saved ${ended.path} before the stop key${ended.stoppedEarly ? ` (stopped early: ${ended.stoppedEarly})` : ""}`);
+    }
     const beforeStop = nextIndex();
     await sendKey(script);
     stopSent = true;
     note(`sent ${accelerator} via System Events (stop)`);
     await waitFor(beforeStop, /hotkey: \S+ pressed/, "second `pressed`");
-    // From the capture record: a failure before the stop key is this session's outcome too.
+    // From the capture record: a failure between the check and the stop key is this session's outcome too.
     const terminal = await waitForRecord(appLog, capture.next,
-      (r): r is Extract<typeof r, { kind: "saved" | "failed" }> => (r.kind === "saved" || r.kind === "failed") && r.run === run && r.session === session,
+      (r): r is TerminalRecord => (r.kind === "saved" || r.kind === "failed") && r.run === run && r.session === session,
       `the terminal session record of ${session}`, controller.signal);
     recordingFrom = undefined;
     if (terminal.record.kind === "failed") fail(`session ${session} failed: ${terminal.record.code} ${terminal.record.detail}`);
