@@ -58,6 +58,23 @@ export interface ParsedSettings {
   warnings: string[];
 }
 
+/** Every default in one place: a fresh or unreadable file, and each field a file lacks or spoils. */
+export function defaultSettings(outputDir: string): Settings {
+  return {
+    version: SETTINGS_VERSION,
+    outputDir,
+    quality: DEFAULT_QUALITY,
+    language: DEFAULT_LANGUAGE,
+    appearance: "system",
+    hotkey: DEFAULT_HOTKEY,
+    updates: { enabled: true, lastAttempt: 0 },
+    notifications: true,
+    display: DEFAULT_DISPLAY_PREFERENCE,
+    countdown: DEFAULT_COUNTDOWN,
+    countdownSound: DEFAULT_COUNTDOWN_SOUND,
+  };
+}
+
 /**
  * `undefined` when the file as a whole is unusable (not an object, unknown
  * version, bad outputDir). A bad `quality` block alone keeps the outputDir
@@ -92,8 +109,9 @@ export function parseSettings(text: string): ParsedSettings | undefined {
   } else {
     warnings.push("quality is missing or has unsupported values: using defaults");
   }
-  const appearance = isAppearance(record["appearance"]) ? record["appearance"] : "system";
-  if (record["appearance"] !== undefined && !isAppearance(record["appearance"])) warnings.push("appearance is unsupported: using system");
+  const defaults = defaultSettings(outputDir);
+  const appearance = isAppearance(record["appearance"]) ? record["appearance"] : defaults.appearance;
+  if (record["appearance"] !== undefined && !isAppearance(record["appearance"])) warnings.push(`appearance is unsupported: using ${defaults.appearance}`);
   const language = isLanguage(record["language"]) ? record["language"] : DEFAULT_LANGUAGE;
   if (record["language"] !== undefined && !isLanguage(record["language"])) {
     warnings.push("language is unsupported: using English");
@@ -106,12 +124,20 @@ export function parseSettings(text: string): ParsedSettings | undefined {
   } else {
     warnings.push("hotkey is missing or has unsupported values: using the default shortcut");
   }
-  const u = record["updates"] as Record<string, unknown> | undefined;
+  const rawUpdates = record["updates"];
+  const u = typeof rawUpdates === "object" && rawUpdates !== null && !Array.isArray(rawUpdates) ? rawUpdates as Record<string, unknown> : undefined;
+  if (rawUpdates !== undefined && !u) warnings.push("updates is not an object: using defaults");
+  const enabledValid = typeof u?.["enabled"] === "boolean";
+  if (u?.["enabled"] !== undefined && !enabledValid) warnings.push(`updates.enabled is not a boolean: using ${defaults.updates.enabled ? "on" : "off"}`);
+  const lastAttempt = u?.["lastAttempt"];
+  const lastAttemptValid = typeof lastAttempt === "number" && Number.isFinite(lastAttempt) && lastAttempt >= 0;
+  if (lastAttempt !== undefined && !lastAttemptValid) warnings.push(`updates.lastAttempt is invalid: using ${defaults.updates.lastAttempt}`);
   const updates = {
-    enabled: typeof u?.["enabled"] === "boolean" ? u["enabled"] : true,
-    lastAttempt: typeof u?.["lastAttempt"] === "number" && Number.isFinite(u["lastAttempt"]) && u["lastAttempt"] >= 0 ? u["lastAttempt"] : 0,
+    enabled: enabledValid ? u!["enabled"] as boolean : defaults.updates.enabled,
+    lastAttempt: lastAttemptValid ? lastAttempt : defaults.updates.lastAttempt,
   };
-  const notifications = typeof record["notifications"] === "boolean" ? record["notifications"] : true;
+  const notifications = typeof record["notifications"] === "boolean" ? record["notifications"] : defaults.notifications;
+  if (record["notifications"] !== undefined && typeof record["notifications"] !== "boolean") warnings.push(`notifications is not a boolean: using ${defaults.notifications ? "on" : "off"}`);
   const display = isDisplayPreference(record["display"]) ? record["display"] : DEFAULT_DISPLAY_PREFERENCE;
   if (record["display"] !== undefined && !isDisplayPreference(record["display"])) warnings.push("display is invalid: using primary display");
   const countdown = isCountdownSeconds(record["countdown"]) ? record["countdown"] : DEFAULT_COUNTDOWN;
@@ -250,19 +276,7 @@ export class SettingsStore {
   }
 
   private load(defaultOutputDir: string): Settings {
-    const fallback: Settings = {
-      version: SETTINGS_VERSION,
-      outputDir: defaultOutputDir,
-      quality: DEFAULT_QUALITY,
-      language: DEFAULT_LANGUAGE,
-      appearance: "system",
-      hotkey: DEFAULT_HOTKEY,
-      updates: { enabled: true, lastAttempt: 0 },
-      notifications: true,
-      display: DEFAULT_DISPLAY_PREFERENCE,
-      countdown: DEFAULT_COUNTDOWN,
-      countdownSound: DEFAULT_COUNTDOWN_SOUND,
-    };
+    const fallback = defaultSettings(defaultOutputDir);
     let text: string;
     try {
       text = fs.readFileSync(this.filePath, "utf8");

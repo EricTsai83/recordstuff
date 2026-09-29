@@ -405,6 +405,15 @@ describe("update preferences", () => {
   it("defaults malformed timestamps and flags", () => {
     expect(parseSettings(JSON.stringify({ version: 1, outputDir: "/a", updates: { enabled: "no", lastAttempt: -1 } }))?.settings.updates).toEqual({ enabled: true, lastAttempt: 0 });
   });
+  it("says in the log when a spoiled switch or update record falls back, like every other field", () => {
+    const parsed = parseSettings(JSON.stringify({ version: 1, outputDir: "/a", notifications: "no", updates: { enabled: "no", lastAttempt: -1 } }));
+    expect(parsed?.settings).toMatchObject({ notifications: true, updates: { enabled: true, lastAttempt: 0 } });
+    expect(parsed?.warnings).toEqual(expect.arrayContaining([
+      "notifications is not a boolean: using on", "updates.enabled is not a boolean: using on", "updates.lastAttempt is invalid: using 0"]));
+    expect(parseSettings(JSON.stringify({ version: 1, outputDir: "/a", updates: "off" }))?.warnings).toContain("updates is not an object: using defaults");
+    // A file from before these fields existed is not spoiled: it takes the defaults silently.
+    expect(parseSettings(JSON.stringify({ version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY }))?.warnings).toEqual([]);
+  });
 });
 
 it("round-trips a canonical custom shortcut and remembers it while Off", async () => {
