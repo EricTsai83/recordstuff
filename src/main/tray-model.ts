@@ -134,12 +134,16 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
     const at = lines < 0 ? group.length : lines;
     return [...group.slice(0, at), ...notes.map(disabled), ...group.slice(at)];
   };
-  const model = (icon: TrayIcon, title: string, status: string, stateGroup: TrayMenuItem[], files: TrayMenuItem[] = []): TrayModel => ({
-    icon: icon === "idle" && unread.length > 0 ? "warning" : icon,
-    title,
-    tooltip: `${APP_NAME}: ${status}${notes.map(note => `\n${note}`).join("")}${unread.length > 0 ? `\n${unreadText}` : ""}\n${text("Right-click to open the menu")}`,
-    menu: grouped(withNotes(stateGroup), unreadGroup, files, windows, app),
-  });
+  const model = (icon: TrayIcon, title: string, status: string, stateGroup: TrayMenuItem[], files: TrayMenuItem[] = []): TrayModel => {
+    const menu = grouped(withNotes(stateGroup), unreadGroup, files, windows, app);
+    return {
+      icon: icon === "idle" && unread.length > 0 ? "warning" : icon,
+      title,
+      tooltip: `${APP_NAME}: ${status}${notes.map(note => `\n${note}`).join("")}${unread.length > 0 ? `\n${unreadText}` : ""}\n${text("Right-click to open the menu")}`,
+      // A quit in progress ignores every other action (the quit stops capture itself), so none looks available.
+      menu: ctx.quitting ? menu.map(entry => entry.kind === "item" && entry.action !== "quit" ? { ...entry, enabled: false } : entry) : menu,
+    };
+  };
   // A settled recorder shows no work of its own, so a quit waiting on cleanup would look like nothing happened.
   if (ctx.quitting && preferencesUnlocked(state)) {
     const quitting = text("Quitting… RecordStuff quits once the recording is saved or cleaned up.");

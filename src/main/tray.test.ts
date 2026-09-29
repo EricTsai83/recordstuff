@@ -109,6 +109,9 @@ function setup(supported = true, canNotify?: () => boolean, idleSeconds?: () => 
   displays: [], display: { kind: "primary" },
     }),
     onToggle: vi.fn(),
+    // Production selects the file the same way once it has checked that the file still exists.
+    revealSaved: async (file) => shell.showItemInFolder(file),
+    permissionAction: vi.fn(),
     onAction,
     log: (message) => logs.push(message),
     ...(canNotify ? { canNotify } : {}),
@@ -159,7 +162,7 @@ describe("AppTray icons (plan 040)", () => {
 
   it("logs an icon file that yields an empty image instead of showing an invisible item", () => {
     const logs: string[] = [];
-    new AppTray({ resourcesDir: "/missing", context: () => { throw new Error("unused"); }, onToggle: vi.fn(), onAction: vi.fn(), log: (m) => logs.push(m) });
+    new AppTray({ resourcesDir: "/missing", context: () => { throw new Error("unused"); }, onToggle: vi.fn(), onAction: vi.fn(), revealSaved: vi.fn(), permissionAction: vi.fn(), log: (m) => logs.push(m) });
     expect(logs.filter((m) => m.startsWith("tray: icon "))).toHaveLength(Object.keys(TRAY_ICON_FILES).length);
     expect(logs[0]).toContain("/missing/");
     const { logs: healthy } = setup();
@@ -380,6 +383,7 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
       expect(() => Fake.instances.at(-1)?.listeners.get("click")?.()).not.toThrow();
       await flush();
       expect(() => app.emit("did-become-active")).not.toThrow();
+      await flush();
       expect(logs.filter((l) => l.startsWith("notification: reveal failed (Error: Finder is gone)"))).toHaveLength(2);
     });
   });
@@ -400,10 +404,11 @@ describe("notification language follows current settings", () => {
     Fake.supported = true;
     let language: Language = "en";
     const action = vi.fn();
+    const permissionAction = vi.fn();
     const tray = new AppTray({
       resourcesDir: "/resources",
       context: () => ({ platform: process.platform, outputDir: "/tmp/recordings", homeDir: "/tmp", quality: DEFAULT_QUALITY, countdown: 3, countdownSound: true, language, hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: "idle" }, enabled: true }, notifications: true, displays: [], display: { kind: "primary" } }),
-      onToggle: vi.fn(), onAction: action,
+      onToggle: vi.fn(), onAction: action, revealSaved: vi.fn(async () => undefined), permissionAction,
     });
     tray.notifySaved("/tmp/demo.mp4");
     expect(Fake.instances.at(-1)?.options.body).toBe("Saved demo.mp4");
@@ -421,7 +426,8 @@ describe("notification language follows current settings", () => {
     tray.notifyPermission(true);
     expect(Fake.instances.at(-1)?.options.body).toContain("then relaunch RecordStuff");
     Fake.instances.at(-1)?.listeners.get("click")?.();
-    expect(action).toHaveBeenCalledWith("relaunch");
+    // Main resolves the click against the permission state it has then, not the one the banner was sent for.
+    expect(permissionAction).toHaveBeenCalledOnce();
     tray.destroy();
   });
 });

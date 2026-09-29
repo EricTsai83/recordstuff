@@ -6,7 +6,7 @@
  * macOS pop the menu on left click too. The menu is a flat list of commands:
  * preferences live in the settings window (docs/system-design/desktop.md).
  */
-import { Menu, Notification, Tray, app, nativeImage, shell, type MenuItemConstructorOptions } from "electron";
+import { Menu, Notification, Tray, app, nativeImage, type MenuItemConstructorOptions } from "electron";
 import path from "node:path";
 import type { ErrorCode, RecordingState } from "../shared/state";
 import type { FrameRate } from "../shared/quality";
@@ -53,8 +53,10 @@ export interface TrayOptions {
   resourcesDir: string;
   context: () => AppContext;
   onToggle: () => void;
-  revealSaved?: (file: string) => Promise<void>;
-  permissionAction?: () => void;
+  /** Show a saved file from its notification; main opens the output folder instead when the file is gone. */
+  revealSaved: (file: string) => Promise<void>;
+  /** The permission notification's click, resolved against the permission state at click time. */
+  permissionAction: () => void;
   onAction: (action: AppAction) => void;
   /** Diagnostics for notifications the OS refuses to show. */
   log?: (message: string) => void;
@@ -221,14 +223,13 @@ export class AppTray {
    * bounded window; saving in the background never touches Finder.
    */
   private revealFromNotification(filePath: string): void {
+    const failed = (error: unknown): void => this.log(`notification: reveal failed (${String(error)}): ${filePath}`);
     const reveal = (repeat: boolean): void => {
       try {
-        if (this.options.revealSaved) {
-          void this.options.revealSaved(filePath).catch(error => this.log(`notification: reveal failed: ${String(error)}`));
-        } else shell.showItemInFolder(filePath);
+        void this.options.revealSaved(filePath).catch(failed);
         this.log(`notification: reveal ${repeat ? "repeated after activation" : "requested"} ${filePath}`);
       } catch (error) {
-        this.log(`notification: reveal failed (${String(error)}): ${filePath}`);
+        failed(error);
       }
     };
     if (process.platform !== "darwin") {
@@ -249,9 +250,7 @@ export class AppTray {
   }
 
   notifyPermission(needsRelaunch: boolean): void {
-    this.show(permissionNotification(needsRelaunch, this.language), () =>
-      this.options.permissionAction ? this.options.permissionAction() : this.options.onAction(needsRelaunch ? "relaunch" : "openPermissionSettings"),
-    );
+    this.show(permissionNotification(needsRelaunch, this.language), () => this.options.permissionAction());
   }
 
   notifySettingsWriteFailed(chosenDir: string): void {

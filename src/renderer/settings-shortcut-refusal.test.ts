@@ -18,7 +18,7 @@ it("names no internal key for an unusable one, and states a refused combination 
     current.groups[0]!.capturing = armed;
     return current;
   });
-  // Main releases capture and refuses the reserved Settings combination.
+  // Main releases capture and refuses the combination (its backstop for the reserved Settings one).
   const choose = vi.fn(async () => {
     current = structuredClone(current);
     current.groups[0]!.capturing = false;
@@ -39,10 +39,17 @@ it("names no internal key for an unusable one, and states a refused combination 
   expect(field().getAttribute("aria-label") ?? "").not.toContain("Unsupported");
   expect(document.querySelector(".save-error strong")?.textContent).toBe("Shortcut unavailable");
 
+  // The Settings shortcut is refused in the editor, like the other reserved combinations: it stays open to try another.
   field().dispatchEvent(new KeyboardEvent("keydown", { key: ",", code: "Comma", metaKey: true, altKey: true, bubbles: true }));
+  expect(document.querySelector(".save-error p")?.textContent).toBe("This combination is reserved for Settings.");
+  expect((document.getElementById("shortcut-confirm") as HTMLButtonElement).disabled).toBe(true);
+  expect(current.groups[0]!.capturing).toBe(true);
+  expect(choose).not.toHaveBeenCalled();
+
+  field().dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", metaKey: true, shiftKey: true, bubbles: true }));
   const confirm = document.getElementById("shortcut-confirm") as HTMLButtonElement;
   confirm.click();
-  await vi.waitFor(() => expect(choose).toHaveBeenCalledWith("hotkey", "CommandOrControl+Alt+,"));
+  await vi.waitFor(() => expect(choose).toHaveBeenCalledWith("hotkey", "CommandOrControl+Shift+K"));
   const error = document.querySelector<HTMLElement>(".save-error")!;
   await vi.waitFor(() => expect(error.querySelector("p")?.textContent).toBe("This combination is reserved for Settings."));
   expect(error.hidden).toBe(false);

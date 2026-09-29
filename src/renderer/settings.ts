@@ -1,5 +1,5 @@
 /** Main owns committed preferences, diagnostics and authorized choice ids. */
-import { describeAccelerator, validateAccelerator } from "../shared/hotkey";
+import { SETTINGS_SHORTCUT_RESERVED, describeAccelerator, isSettingsShortcut, validateAccelerator } from "../shared/hotkey";
 import { isCloseChord, shortcutCandidate, shortcutModifiers } from "./shortcut-capture";
 import { isLanguage, sentences, translate, type Language, type PlainMessageKey } from "../shared/i18n";
 import type { RecordingResultView, SettingsBridge, SettingsGroup, SettingsTab, SettingsView } from "../shared/settings-panel";
@@ -354,10 +354,12 @@ function row(group: SettingsGroup): HTMLElement {
       setPreview(candidate ?? shortcutModifiers(event, group.platform).join("+"), group.platform ?? "darwin");
       if (candidate === undefined) { draw(); return; }
       const result = validateAccelerator(candidate);
-      if (result.error) {
+      // The Settings shortcut is refused here like the other reserved combinations, so the editor stays open; main refuses it too.
+      const error = result.error ?? (isSettingsShortcut(result.accelerator, group.platform ?? "darwin") ? SETTINGS_SHORTCUT_RESERVED : undefined);
+      if (error) {
         // A key the editor cannot use has no name to show (only the internal "Unsupported"): keep the held modifiers.
         setPreview(shortcutModifiers(event, group.platform).join("+"), group.platform ?? "darwin");
-        localFailure(group.id, translate(result.error, view?.language)); return;
+        localFailure(group.id, translate(error, view?.language)); return;
       }
       candidateToConfirm = result.accelerator;
       failure = undefined;
@@ -730,9 +732,24 @@ function draw(): void {
   updateRecordingResult(focusRequested);
   updateScrollHint();
 }
+/**
+ * A shortcut card's note and diagnostics as its editor opened: main hides them
+ * while the editor is open, and the same ones returning when it closes are not news.
+ */
+const beforeCapture = new Map<string, string>();
+const captureNews = (group: SettingsGroup): string => JSON.stringify([group.note, group.diagnostics]);
 function render(next: SettingsView): void {
   if (next.revision !== undefined && view?.revision !== undefined && next.revision < view.revision) return;
   const previous = view;
+  const returned = new Set<string>();
+  for (const group of next.groups) {
+    const old = previous?.groups.find(o => o.id === group.id);
+    if (group.capturing && !old?.capturing) beforeCapture.set(group.id, old ? captureNews(old) : "");
+    else if (!group.capturing && old?.capturing) {
+      if (beforeCapture.get(group.id) === captureNews(group)) returned.add(group.id);
+      beforeCapture.delete(group.id);
+    }
+  }
   if (!next.groups.some(group => group.kind === "shortcut" && group.capturing)) { candidateToConfirm = undefined; preview = ""; previewParts = []; }
   view = next;
   if (startupFailed) {
@@ -746,10 +763,12 @@ function render(next: SettingsView): void {
     // Only news is read out: a language switch retranslates every note and row without changing them.
     const sameLanguage = previous.language === next.language;
     const say = (parts: string[]): string => sentences(parts.filter(Boolean), next.language);
-    const changes = next.groups.filter(g => sameLanguage && g.tab === selectedTab).flatMap(g => {
+    const changes = next.groups.filter(g => sameLanguage && g.tab === selectedTab && !returned.has(g.id)).flatMap(g => {
       const old = previous.groups.find(o => o.id === g.id);
       const messages: string[] = [];
-      if (g.noteKind === "status" && old?.note !== g.note && g.note) messages.push(g.note);
+      // A status note a diagnostic also states as its reason is read once, with the diagnostic.
+      const reasons = new Set((g.diagnostics ?? []).map(d => d.reason));
+      if (g.noteKind === "status" && old?.note !== g.note && g.note && !reasons.has(g.note)) messages.push(g.note);
       if (JSON.stringify(old?.diagnostics) !== JSON.stringify(g.diagnostics)) messages.push(...(g.diagnostics ?? []).map(d => say([d.heading, d.reason, d.guidance])));
       return messages;
     });

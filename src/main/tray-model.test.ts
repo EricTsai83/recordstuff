@@ -233,8 +233,18 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     }
     const english = trayModel({ type: "idle" }, { ...mac, language: "en", quitting: true });
     expect(english.menu[0]).toMatchObject({ label: "Quitting… RecordStuff quits once the recording is saved or cleaned up.", enabled: false });
-    // A capture still running keeps its own state, Stop included.
-    expect(trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, { ...mac, quitting: true }).title).toBe("REC");
+    // A capture still running keeps its own state; the quit stops it, so its Stop is shown but not offered.
+    const recording = trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, { ...mac, quitting: true });
+    expect(recording.title).toBe("REC");
+    expect(labels(recording.menu)).toContain("停止");
+  });
+
+  it("offers only Quit while a quit is in progress, since every other action is ignored until it ends", () => {
+    for (const state of STATES) {
+      const quitting = trayModel(state, { ...mac, quitting: true, recordingResults: [{ id: "f", code: "disk_full", detail: "", occurredAt: "2026-09-26T00:00:00Z", outcome: "empty", acknowledged: false }] });
+      expect(enabledActions(quitting.menu), state.type).toEqual(["quit"]);
+    }
+    expect(enabledActions(trayModel({ type: "idle" }, mac).menu)).toContain("openSettings");
   });
 
   it("says in every state that a quit was postponed, beside the state, since its banner may not be seen (plan 056)", () => {
