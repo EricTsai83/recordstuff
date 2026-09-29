@@ -256,7 +256,7 @@ const mb = (bytes: number | undefined): string => bytes === undefined ? "?" : (b
 
 function describeTake(take: Take): string {
   const s = take.sample;
-  const phases = s ? `stop→ready ${s.stopToReadyMs} ms (host ${s.hostMs ?? "?"}, writes ${s.writesMs ?? "?"}, flush ${s.flushMs ?? "?"}, close ${s.closeMs ?? "?"}, publish ${s.publishMs ?? "?"} by ${s.method ?? "?"}, cleanup ${s.cleanupMs ?? "?"}, ui ${s.uiMs ?? "?"})` : "no stop→ready sample";
+  const phases = s ? `stop→ready ${s.stopToReadyMs} ms (host ${s.hostMs ?? "?"}, writes ${s.writesMs ?? "?"}, flush ${s.flushMs ?? "?"}, close ${s.closeMs ?? "?"}, publish ${s.publishMs ?? "?"} by ${s.method ?? "?"}, cleanup ${s.cleanupMs ?? "?"}, checkpoint ${s.checkpointMs ?? "?"}, ui ${s.uiMs ?? "?"})` : "no stop→ready sample";
   const media = take.media ? `; ${take.media.durationSeconds?.toFixed(2) ?? "?"} s, video ${take.media.video}, audio ${take.media.audio}, decoded ${take.media.decoded}${take.media.decodeErrors ? `, decode errors: ${take.media.decodeErrors.slice(0, 200)}` : ""}` : "";
   const late = take.timedOut ? `; TIMED OUT, app ${take.timedOut === "forced" ? `killed after ${QUIT_GRACE_MS / 1000} s` : take.timedOut === "quit" ? "quit on SIGTERM" : "already gone"}` : "";
   return `${take.outcome}${take.detail ? ` (${take.detail})` : ""}${late}; ${mb(take.sizeBytes)} MiB${s?.stoppedEarly ? " (stopped early: low disk)" : ""}; ${phases}${media}; verified ${take.verified}`;
@@ -267,7 +267,7 @@ function summary(options: Options, volume: { mount: string; type: string }, take
   const pick = (key: keyof FinalizationSample): number[] => samples.flatMap((s) => typeof s[key] === "number" ? [s[key] as number] : []);
   const rows: Array<[string, number[]]> = [
     ["stop→ready", pick("stopToReadyMs")], ["host handoff", pick("hostMs")], ["queued writes", pick("writesMs")], ["flush", pick("flushMs")],
-    ["close", pick("closeMs")], ["publish", pick("publishMs")], ["cleanup", pick("cleanupMs")], ["UI settle", pick("uiMs")],
+    ["close", pick("closeMs")], ["publish", pick("publishMs")], ["cleanup", pick("cleanupMs")], ["checkpoint", pick("checkpointMs")], ["UI settle", pick("uiMs")],
   ];
   const methods = [...new Set(samples.map((s) => s.method ?? "?"))].join(", ") || "—";
   return [

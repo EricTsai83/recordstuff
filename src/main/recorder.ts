@@ -236,6 +236,8 @@ interface Session {
   /** A sentinel write was attempted, so the terminal outcome removes it. */
   sentinel: boolean;
   sentinelFailed: boolean;
+  /** The latest write succeeded, so the file exists to be checkpointed; an earlier attempt's failure does not count. */
+  sentinelWritten: boolean;
 }
 
 const DEFAULT_START_TIMEOUT_MS = 8000;
@@ -545,6 +547,7 @@ export class Recorder {
       diskPollFailed: false,
       sentinel: false,
       sentinelFailed: false,
+      sentinelWritten: false,
     };
     this.session = session;
     session.opening = Promise.resolve().then(async () => {
@@ -644,8 +647,10 @@ export class Recorder {
     const sentinels = this.deps.sentinels;
     if (!sentinels) return;
     session.sentinel = true;
+    session.sentinelWritten = false;
     try {
       await sentinels.write({ sessionId: session.id, startedAt: session.startedAt, recordingPath });
+      session.sentinelWritten = true;
     } catch (cause) {
       if (!session.sentinelFailed) this.deps.log(`recorder: session ${session.id} interruption sentinel not written: ${messageOf(cause)}`);
       session.sentinelFailed = true;
@@ -935,11 +940,18 @@ export class Recorder {
       return;
     }
     if (this.session !== session) return;
-    try { await this.deps.sentinels?.complete?.(session.id, finalPath); }
-    catch (cause) { this.deps.log(`recorder: completion checkpoint failed: ${messageOf(cause)}`); }
+    // Without a written sentinel there is nothing to checkpoint: the read would fail with ENOENT on every save.
+    let checkpointMs: number | undefined;
+    const sentinels = this.deps.sentinels;
+    if (sentinels?.complete && session.sentinelWritten) {
+      const checkpointAt = this.monotonic();
+      try { await sentinels.complete(session.id, finalPath); }
+      catch (cause) { this.deps.log(`recorder: completion checkpoint failed: ${messageOf(cause)}`); }
+      checkpointMs = this.monotonic() - checkpointAt;
+    }
     const early = session.stoppedEarly ? ` (stopped early: ${EARLY_STOP_TEXT[session.stoppedEarly]})` : "";
     this.deps.log(`recorder: session ${session.id} file finalized ${finalPath}${early}`);
-    this.logFinalizeTiming(session, drainedAt);
+    this.logFinalizeTiming(session, drainedAt, checkpointMs);
     this.session = undefined;
     this.settle({ type: "idle", lastSavedPath: finalPath });
     this.emit({ type: "saved", path: finalPath, ...(session.stoppedEarly ? { stoppedEarly: session.stoppedEarly } : {}), session: this.trace(session) });
@@ -947,7 +959,7 @@ export class Recorder {
   }
 
   /** Where the wait between stop and saved went; stop-to-ready itself is the state lines' interval. */
-  private logFinalizeTiming(session: Session, drainedAt: number): void {
+  private logFinalizeTiming(session: Session, drainedAt: number, checkpointMs: number | undefined): void {
     const timings = session.writer?.finishTimings;
     const ms = (value: number | undefined): string => value === undefined ? "?" : String(Math.round(value));
     const span = (from: number | undefined, to: number | undefined): number | undefined =>
@@ -955,7 +967,8 @@ export class Recorder {
     this.deps.log(`recorder: session ${session.id} finalize timing: host ${ms(span(session.stopRequestedAt, session.hostStoppedAt))} ms, ` +
       `writes ${ms(span(session.hostStoppedAt, drainedAt))} ms, flush ${ms(timings?.flushMs)} ms, close ${ms(timings?.closeMs)} ms, ` +
       `publish ${ms(timings?.publishMs)} ms by ${timings?.method ?? "?"}${timings?.linkError ? ` (link ${timings.linkError})` : ""}, ` +
-      `cleanup ${ms(timings?.cleanupMs)} ms${timings?.cleanupError ? ` (temporary name kept: ${timings.cleanupError})` : ""}; ` +
+      `cleanup ${ms(timings?.cleanupMs)} ms${timings?.cleanupError ? ` (temporary name kept: ${timings.cleanupError})` : ""}, ` +
+      `checkpoint ${ms(checkpointMs)} ms; ` +
       `${session.writer?.bytesWritten ?? "?"} bytes`);
   }
 

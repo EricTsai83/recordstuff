@@ -10,6 +10,17 @@ describe("finalize timing line", () => {
     });
   });
 
+  it("reads the checkpoint, and leaves it out of lines logged before it existed", () => {
+    expect(parseFinalizeTiming(TIMING.replace("cleanup 2 ms;", "cleanup 2 ms, checkpoint 9 ms;"))).toEqual({
+      session: "s1", hostMs: 12, writesMs: 1, flushMs: 40, closeMs: 0, publishMs: 580, method: "copy", cleanupMs: 2, checkpointMs: 9, bytes: 614400000,
+    });
+    expect(parseFinalizeTiming(TIMING)).not.toHaveProperty("checkpointMs");
+    expect(parseFinalizeTiming("recorder: session s1 finalize timing: host 9 ms, writes 0 ms, flush 30 ms, close 0 ms, publish 1 ms by link, cleanup 3 ms (temporary name kept: EPERM), checkpoint 4 ms; 10 bytes"))
+      .toMatchObject({ cleanupError: "EPERM", checkpointMs: 4, bytes: 10 });
+    // A session whose sentinel was never written logs no checkpoint time.
+    expect(parseFinalizeTiming(TIMING.replace("cleanup 2 ms;", "cleanup 2 ms, checkpoint ? ms;"))).not.toHaveProperty("checkpointMs");
+  });
+
   it("keeps why a file was copied instead of linked", () => {
     expect(parseFinalizeTiming("recorder: session s1 finalize timing: host 9 ms, writes 0 ms, flush 30 ms, close 0 ms, publish 1400 ms by copy (link ENOTSUP), cleanup 3 ms; 10 bytes"))
       .toMatchObject({ method: "copy", linkError: "ENOTSUP", publishMs: 1400, cleanupMs: 3, bytes: 10 });

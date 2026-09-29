@@ -203,7 +203,7 @@ describe("Recorder happy path", () => {
     clock = 1012;
     ctx.host.emit({ type: "stopped", sessionId: "s1", tracksStoppedAt: Date.now() });
     await flush();
-    expect(log).toHaveBeenCalledWith("recorder: session s1 finalize timing: host 12 ms, writes 0 ms, flush 4 ms, close 0 ms, publish 1 ms by link, cleanup 1 ms; 4 bytes");
+    expect(log).toHaveBeenCalledWith("recorder: session s1 finalize timing: host 12 ms, writes 0 ms, flush 4 ms, close 0 ms, publish 1 ms by link, cleanup 1 ms, checkpoint ? ms; 4 bytes");
   });
 
   it("says when the temporary name was kept beside the saved file", async () => {
@@ -215,7 +215,7 @@ describe("Recorder happy path", () => {
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
     await flush();
     const line = log.mock.calls.map(([message]) => String(message)).find(message => message.includes("finalize timing"));
-    expect(line).toContain("by copy (link ENOTSUP), cleanup 0 ms (temporary name kept: EPERM); 4 bytes");
+    expect(line).toContain("by copy (link ENOTSUP), cleanup 0 ms (temporary name kept: EPERM), checkpoint ? ms; 4 bytes");
   });
 
   it("idle → starting → recording → stopping → idle with lastSavedPath", async () => {
@@ -1845,17 +1845,22 @@ describe("stalled capture guard", () => {
 });
 
 describe("interruption sentinel lifecycle", () => {
-  function sentinels(options: { fail?: boolean } = {}) {
+  /** `failWrites` fails that many writes first; `fail` fails every one. */
+  function sentinels(options: { fail?: boolean; failWrites?: number; complete?: (sessionId: string) => Promise<void> } = {}) {
     const files = new Map<string, SessionSentinel>();
     const calls: string[] = [];
+    let failures = options.failWrites ?? 0;
     return { files, calls,
       write: async (sentinel: SessionSentinel) => {
         calls.push(`write ${path.basename(sentinel.recordingPath)}`);
-        if (options.fail) throw new Error("userData is read-only");
+        if (options.fail || failures-- > 0) throw new Error("userData is read-only");
         files.set(sentinel.sessionId, sentinel);
       },
+      ...(options.complete ? { complete: async (sessionId: string) => { calls.push(`complete ${sessionId}`); await options.complete!(sessionId); } } : {}),
       remove: async (sessionId: string) => { calls.push(`remove ${sessionId}`); files.delete(sessionId); } };
   }
+  const timingLine = (log: ReturnType<typeof vi.fn>): string | undefined =>
+    log.mock.calls.map(([message]) => String(message)).find(message => message.includes("finalize timing"));
   type Ctx = ReturnType<typeof setup>;
 
   it("writes before each temporary-name attempt and removes it after the saved event", async () => {
@@ -1951,6 +1956,84 @@ describe("interruption sentinel lifecycle", () => {
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
     await flush();
     expect(ctx.events.filter((event) => event.type === "saved")).toHaveLength(1);
+  });
+
+  it("times the completion checkpoint in the finalize timing line", async () => {
+    let clock = 0;
+    const log = vi.fn();
+    const store = sentinels({ complete: async () => { clock += 7; } });
+    const ctx = setup({ log, deps: { sentinels: store, monotonic: () => clock } });
+    await startRecording(ctx);
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(store.calls).toEqual(["write 2026-09-11 14-30-00.recording.mp4", "complete s1", "remove s1"]);
+    expect(timingLine(log)).toContain(", checkpoint 7 ms; ");
+  });
+
+  it("times a failed checkpoint too, and still saves", async () => {
+    let clock = 0;
+    const log = vi.fn();
+    const store = sentinels({ complete: async () => { clock += 3; throw new Error("EIO"); } });
+    const ctx = setup({ log, deps: { sentinels: store, monotonic: () => clock } });
+    await startRecording(ctx);
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(log).toHaveBeenCalledWith("recorder: completion checkpoint failed: EIO");
+    expect(timingLine(log)).toContain(", checkpoint 3 ms; ");
+    expect(ctx.events.filter((event) => event.type === "saved")).toHaveLength(1);
+  });
+
+  it("skips the checkpoint when the sentinel was never written", async () => {
+    const log = vi.fn();
+    const store = sentinels({ fail: true, complete: async () => undefined });
+    const ctx = setup({ log, deps: { sentinels: store } });
+    await startRecording(ctx);
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(store.calls).not.toContain("complete s1");
+    expect(log.mock.calls.some(([message]) => String(message).includes("completion checkpoint failed"))).toBe(false);
+    expect(timingLine(log)).toContain(", checkpoint ? ms; ");
+    expect(ctx.events.filter((event) => event.type === "saved")).toHaveLength(1);
+  });
+
+  it("checkpoints when only an earlier attempt's write failed", async () => {
+    const store = sentinels({ failWrites: 1, complete: async () => undefined });
+    let attempt = 0;
+    const ctx: Ctx = setup({ deps: { sentinels: store }, openWriter: async (recordingPath, finalPath) => {
+      if (++attempt === 1) throw Object.assign(new Error("exists"), { cause: { code: "EEXIST" } });
+      const writer = new FakeWriter(recordingPath, finalPath);
+      ctx.writers.push(writer);
+      return writer;
+    } });
+    await startRecording(ctx);
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(store.calls).toEqual([
+      "write 2026-09-11 14-30-00.recording.mp4", "write 2026-09-11 14-30-00-2.recording.mp4", "complete s1", "remove s1",
+    ]);
+  });
+
+  it("skips the checkpoint when a later attempt's write failed after an earlier one succeeded", async () => {
+    let writes = 0;
+    const store = { ...sentinels({ complete: async () => undefined }) };
+    const write = store.write;
+    store.write = async (sentinel) => { if (++writes === 2) { store.calls.push("write failed"); throw new Error("EIO"); } await write(sentinel); };
+    let attempt = 0;
+    const ctx: Ctx = setup({ deps: { sentinels: store }, openWriter: async (recordingPath, finalPath) => {
+      if (++attempt === 1) throw Object.assign(new Error("exists"), { cause: { code: "EEXIST" } });
+      const writer = new FakeWriter(recordingPath, finalPath);
+      ctx.writers.push(writer);
+      return writer;
+    } });
+    await startRecording(ctx);
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(store.calls).not.toContain("complete s1");
   });
 });
 
