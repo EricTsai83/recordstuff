@@ -8,6 +8,39 @@
 
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 057 結案 — 2026-09-30
+
+Plan 057 讓 `pnpm acceptance:settings` 把視窗被其他 App 取消啟用的一輪回報為 blocked 而不是失敗，並在截圖失敗時保留已記錄的案例。由 Claude 實作，並由 Codex GPT-6 Astra review（[驗收收尾](../system-design/tooling.md#驗收收尾)）；只改動開發用 runner。
+
+- **案例前後的啟用狀態。** 在每個需要啟用視窗的案例前（focus line 與 focus border 矩陣、快捷鍵錄製、失敗紀錄操作或失敗連結 Retry 後歸還的焦點，以及它們一起拍的截圖），fixture 讀取 `BrowserWindow.isFocused()`、`isVisible()` 與頁面的 `data-window`。視窗未啟用時，先 `app.focus({ steal: true })` 再 `window.focus()` 要求啟用，判定時再讀一次，每段互動各自檢查。任一時點未啟用或中間發生 blur 的案例標為 `NOT RUN`，附上原因與 `lsappinfo` 讀到的最前面 App；該輪以 exit 2 結束，有已判定的失敗時仍為 exit 1。
+- **截圖失敗。** 所有 `capturePage()` 都經過同一個 helper。丟出錯誤時，fixture 寫出目前的案例，以及記錄截圖、錯誤與視窗狀態的 `failure.json`。只有在 fixture 已顯示視窗後，視窗於當下未啟用或被隱藏，才判為 blocked。這條路徑只由單元測試涵蓋：沒有辦法在實際回合中按需讓 `capturePage()` 失敗。
+- **測試。** [settings-activation.test.ts](../../../scripts/lib/settings-activation.test.ts) 涵蓋：
+  - 啟用、未啟用、隱藏與發生 blur 的視窗；
+  - 啟用視窗上的通過與失敗；
+  - 有無已判定失敗時的 not-run 案例；
+  - 視窗啟用、未啟用、隱藏或從未顯示時的截圖錯誤；
+  - fixture exit code 或程序收尾與結果不一致；
+  - 鎖定的 session，以及 `lsappinfo` 的名稱。
+
+環境：M1 Pro、macOS 26.6.2、Electron 44.3.0，從 `7b545d4` 加上未提交的變更。維護者在桌面回合前回覆「好了」；該回合範圍為下列兩次設定驗收。
+
+- **不受干擾的一輪**（`2026-09-30-plan-057/undisturbed`）：176/176 通過，exit 0，沒有 not-run 案例。
+- **受干擾的一輪**（`2026-09-30-plan-057/disturbed`）：fixture 在 log 記下跨日案例後，shell 迴圈每 0.25 秒執行 `open -a "T3 Code (Nightly)"`，直到 runner 結束（9 秒內 26 次）。該輪以 blocked、exit 2 結束：164 通過、12 未執行、0 失敗。
+  - 12 個未執行的案例是：視窗未啟用時的跨日案例、Technical details，以及 20 個 focus 矩陣案例中的 10 個。
+  - 每一項都記下 `T3 Code (Nightly)` 在最前面，視窗是在案例開始時未啟用，或在案例中發生一次 blur。
+  - 其餘 10 個矩陣案例在兩次啟用其他 App 之間取得啟用狀態，照常判定並通過。
+- **未執行。** 實際回合中的截圖失敗沒有製造出來。錄影、原生快捷鍵送達與 App bundle 依計畫排除，因為只改動開發用 runner。
+
+自動化證據：review 修正後 `pnpm check` 通過 typecheck、91 個檔案 1343 個測試與建置；`git diff --check` 通過。
+
+Review：Codex GPT-6 Astra（medium reasoning、read-only），兩個 pass，分別約 71 秒與 38 秒。Pass 1 回報兩項 finding，皆接受：
+1. 頁面只在文件有焦點時才歸還焦點的失敗紀錄操作案例，當時沒有保護。
+2. 獨立案例共用同一個 span，可能讓後面的案例被判為未執行。
+
+Pass 2 無 findings。
+
+收尾：兩輪的 fixture 程序群組都已結束（`cleanup.json`），沒有殘留 fixture 或 runner 程序。沒有動到任何偏好或 RecordStuff 程序，T3 Code 留在最前面。任務期間執行了 `caffeinate -d -i`。
+
 ## Plan 056 結案 — 2026-09-29
 
 Plan 056 讓仍可能遇到進行中錄影的兩種對話框不再卡住錄影，並在延後退出通知看不到時提供可見的 fallback。由 Claude 實作，並由 Codex GPT-6 Astra review（[延後退出](../system-design/desktop.md#延後退出)、[對話框與 main 的 event loop](../system-design/desktop.md#對話框與-main-的-event-loop)、[受控 build](../system-design/tooling.md#受控驗收-build)）。

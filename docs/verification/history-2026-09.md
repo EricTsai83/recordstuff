@@ -8,6 +8,26 @@ This document preserves conclusions from completed plans separately from the sys
 
 [Back to the verification index](README.md). These are historical results, including then-outstanding statuses and procedures; use the [testing guide](../testing.md) for current policy. Raw measurements links are local only and absent from a fresh clone.
 
+## Plan 057 closure — 2026-09-30
+
+Plan 057 made `pnpm acceptance:settings` report a round whose window another app deactivated as blocked instead of failed, and keep the recorded cases when a screenshot fails. Implemented by Claude with Codex GPT-6 Astra review ([acceptance cleanup](../system-design/tooling.md#acceptance-cleanup)); only the developer runner changed.
+
+- **Activation around a case.** Before each case that needs an active window (the focus-line and focus-border matrix, shortcut capture, focus returned after a result action or a failed link's Retry, and the screenshots taken with them), the fixture reads `BrowserWindow.isFocused()`, `isVisible()` and the page's `data-window`, asks for activation with `app.focus({ steal: true })` then `window.focus()` when the window is not active, and reads them again when the case is judged. Each interaction has its own check. A case whose window was not active at either point, or blurred in between, is `NOT RUN` with the reason and the frontmost app from `lsappinfo`; the round then exits 2, and any judged failure still exits 1.
+- **Capture failures.** Every `capturePage()` goes through one helper. When it throws, the fixture writes the cases so far and `failure.json` with the screenshot, the error and the window's state, and the round is blocked only when the window was inactive or hidden after the fixture had shown it. This path rests on unit tests: no round could make `capturePage()` throw on demand.
+- **Tests.** [settings-activation.test.ts](../../scripts/lib/settings-activation.test.ts) covers active, inactive, hidden and blurred windows, pass and fail on an active window, not-run cases with and without a judged failure, capture errors with an active, inactive, hidden or never-shown window, fixture exits or process cleanup that disagree with the results, a locked session, and the `lsappinfo` name.
+
+Environment: M1 Pro, macOS 26.6.2, Electron 44.3.0, from `7b545d4` plus the uncommitted change. The maintainer replied “好了” before the desktop round; the round's scope was the two settings runs below.
+
+- **Undisturbed round** (`2026-09-30-plan-057/undisturbed`): 176/176 passed, exit 0, with no case recorded as not run.
+- **Disturbed round** (`2026-09-30-plan-057/disturbed`): once the fixture logged the day-rollover case, a shell loop ran `open -a "T3 Code (Nightly)"` every 0.25 s until the runner exited (26 activations over 9 s). The round ended blocked, exit 2: 164 passed, 12 not run and none failed. The 12 were the inactive-window rollover case, Technical details and ten of the twenty focus-matrix cases. Each named `T3 Code (Nightly)` as frontmost, with the window either inactive when the case started or blurred once during it. The other ten matrix cases were judged and passed while the fixture held activation between two activations of the other app.
+- **Not run.** A capture failure in a real round, which was not staged. Recording, native shortcut delivery and the app bundle were excluded as planned, since only a developer runner changed.
+
+Automated evidence: `pnpm check` passed typecheck, 1343 tests in 91 files and build after the review fixes; `git diff --check` passed.
+
+Review: Codex GPT-6 Astra (medium reasoning, read-only), two passes of about 71 s and 38 s. Pass 1 returned two findings, both accepted. First, the result-action focus cases, which the page restores only in a focused document, were unguarded. Second, one span shared across independent cases could hide later cases. Pass 2 returned no findings.
+
+Cleanup: both fixture process groups were gone (`cleanup.json`), no fixture or runner process remained, no preference or RecordStuff process was touched, and T3 Code was left in front. `caffeinate -d -i` ran during the task.
+
 ## Plan 056 closure — 2026-09-29
 
 Plan 056 kept the two dialogs that could still meet a running recording from holding it, and gave a deferred quit a visible fallback when its notification is not seen. Implemented by Claude with Codex GPT-6 Astra review ([deferred quit](../system-design/desktop.md#deferred-quit), [dialogs and main's event loop](../system-design/desktop.md#dialogs-and-mains-event-loop), [controlled build](../system-design/tooling.md#controlled-acceptance-build)).
