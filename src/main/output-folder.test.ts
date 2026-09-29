@@ -24,6 +24,7 @@ async function harness(options: {
   custom?: string; language?: Language; movies?: boolean; fs?: Partial<OutputFolderFs>;
   openPath?: (dir: string) => Promise<string>;
   show?: (options: MessageBoxOptions) => Promise<{ response: number }>;
+  mediaPending?: () => boolean;
 } = {}) {
   const home = path.join(root, "home");
   await fs.mkdir(home, { recursive: true });
@@ -43,10 +44,12 @@ async function harness(options: {
   const chooseFolder = vi.fn(async () => undefined);
   const focus = vi.fn();
   const log = vi.fn();
+  const mediaPending = vi.fn(options.mediaPending ?? (() => false));
+  const notify = vi.fn();
   const open = createOutputFolderOpener({ outputDir: () => store.outputDir, defaultOutputDir: store.defaultOutputDir, language: () => store.language,
-    openPath, focus, show, chooseFolder, log, fs: io });
+    openPath, focus, show, chooseFolder, mediaPending, notify, log, fs: io });
   const dialog = (call = 0): MessageBoxOptions => show.mock.calls[call]![0];
-  return { home, defaultOutputDir, open, io, openPath, show, chooseFolder, focus, log, dialog,
+  return { home, defaultOutputDir, open, io, openPath, show, chooseFolder, focus, log, dialog, notify, mediaPending,
     settingsUnchanged: async () => expect(await read(settingsFile)).toBe(settingsBefore) };
 }
 
@@ -254,4 +257,46 @@ it("speaks the current language", async () => {
   await h.open();
   expect(h.dialog()).toMatchObject({ message: "無法開啟儲存位置", buttons: ["更改儲存位置", "取消"],
     detail: `${custom} 目前無法使用。請檢查資料夾與所在磁碟後再試一次，或選擇其他位置。\n\n詳細資訊：EIO: i/o error` });
+});
+
+it("tells a problem found while recording work is pending in a notification, never the modal warning", async () => {
+  // Show last recording's fallback during a later recording (plan 056): a warning now would hold its writes.
+  const custom = path.join(root, "外接", "錄影");
+  const h = await harness({ custom, language: "zh-TW", mediaPending: () => true });
+  await h.open();
+  expect(h.show).not.toHaveBeenCalled();
+  expect(h.focus).not.toHaveBeenCalled();
+  expect(h.chooseFolder).not.toHaveBeenCalled();
+  expect(h.notify).toHaveBeenCalledExactlyOnceWith(`找不到 ${custom}。它可能已被移動或刪除，或所在的磁碟未連接。請重新連接磁碟後再試一次，或選擇其他位置。`);
+  expect(h.log).toHaveBeenCalledWith(`output folder: cannot open ${custom}: missing`);
+  expect(h.log).toHaveBeenCalledWith("output folder: recording work is pending; telling the problem in a notification instead of a warning");
+  await h.settingsUnchanged();
+});
+
+it("reads pending work when the problem is found, and keeps the settled warning and its chooser", async () => {
+  let pending = true;
+  let opened!: (error: string) => void;
+  const custom = path.join(root, "Recordings");
+  await fs.mkdir(custom);
+  const h = await harness({ custom, mediaPending: () => pending, show: async () => ({ response: 0 }),
+    openPath: () => new Promise(resolve => { opened = resolve; }) });
+  const first = h.open();
+  await vi.waitFor(() => expect(h.openPath).toHaveBeenCalledOnce());
+  // The work settled while Finder was answering: the warning is safe again.
+  pending = false;
+  opened("Finder refused");
+  await first;
+  expect(h.notify).not.toHaveBeenCalled();
+  expect(h.dialog()).toMatchObject({ message: "Could not open the output folder", buttons: ["Change output folder", "Cancel"] });
+  expect(h.chooseFolder).toHaveBeenCalledOnce();
+});
+
+it("opens a working folder while recording work is pending without telling anything", async () => {
+  const custom = path.join(root, "Recordings");
+  await fs.mkdir(custom);
+  const h = await harness({ custom, mediaPending: () => true });
+  await h.open();
+  expect(h.openPath).toHaveBeenCalledExactlyOnceWith(custom);
+  expect(h.notify).not.toHaveBeenCalled();
+  expect(h.show).not.toHaveBeenCalled();
 });

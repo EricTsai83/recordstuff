@@ -355,6 +355,11 @@ async function main(args: ControlledArgs): Promise<number> {
     case "status":
       console.log(describe(await status(target(args))));
       return 0;
+    case "throw": {
+      const response = await send(target(args), { kind: "throw" });
+      console.log(`uncaught exception scheduled in state ${response.snapshot.state?.type ?? "unknown"}\n${describe(response.snapshot)}`);
+      return 0;
+    }
     case "quit":
       await quitApp(target(args));
       console.log("The controlled app exited normally.");

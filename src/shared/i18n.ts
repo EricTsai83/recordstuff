@@ -257,6 +257,8 @@ export const ZH_TW = {
   "{path} could not be opened. Try again, or choose another folder.": "無法開啟 {path}。請再試一次，或選擇其他位置。",
   "Details: {error}": "詳細資訊：{error}",
   "An unexpected error occurred. See the log for details.": "發生未預期的錯誤，請查看 log 取得詳細資訊。",
+  "Quit postponed: recording work is still pending. Quit again once it finishes.": "尚未退出：錄影工作仍在進行，完成後請再退出一次",
+  "Quit postponed: settings or the log are still being written. Quit again in a moment.": "尚未退出：設定或 log 仍在寫入，請稍後再退出一次",
 } as const;
 
 export type MessageKey = keyof typeof ZH_TW;

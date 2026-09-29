@@ -111,14 +111,14 @@ export type ControlledArgs =
   | { command: "reopen"; holdHistoryLoad: boolean; dir?: string }
   | { command: "fault"; faults: Array<{ name: FaultName; mode: string }>; dir?: string }
   | { command: "release"; target: HoldTarget; dir?: string }
-  | { command: "status" | "quit" | "clean"; dir?: string };
+  | { command: "status" | "quit" | "clean" | "throw"; dir?: string };
 
 export const USAGE = `Usage: pnpm acceptance:controlled -- <command>
   launch [--seed none|v1|retention] [--hold-history-load] [--out <new dir>]
   reopen [--hold-history-load] [--dir <run>]
   fault <cleanup|write|close|history-save>=<mode> ... [--dir <run>]
   release <cleanup|history-save|history-load> [--dir <run>]
-  status | quit | clean [--dir <run>]
+  status | quit | clean | throw [--dir <run>]
   selftest [--out <new dir>]`;
 
 export function parseControlledArgs(argv: readonly string[]): ControlledArgs {
@@ -160,7 +160,7 @@ export function parseControlledArgs(argv: readonly string[]): ControlledArgs {
       allow("dir");
       if (rest.length !== 1 || !isHoldTarget(rest[0])) throw new Error(`release needs one of cleanup, history-save, history-load`);
       return { command, target: rest[0], ...dir };
-    case "status": case "quit": case "clean":
+    case "status": case "quit": case "clean": case "throw":
       allow("dir"); none();
       return { command, ...dir };
     default:

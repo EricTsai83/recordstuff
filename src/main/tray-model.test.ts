@@ -237,6 +237,25 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, { ...mac, quitting: true }).title).toBe("REC");
   });
 
+  it("says in every state that a quit was postponed, beside the state, since its banner may not be seen (plan 056)", () => {
+    const zh = trayModel({ type: "idle" }, { ...mac, quitDeferred: "media" });
+    expect(labels(zh.menu).slice(0, 3)).toEqual(["待命中", "尚未退出：錄影工作仍在進行，完成後請再退出一次", "開始錄製"]);
+    expect(zh.menu[1]).toMatchObject({ enabled: false });
+    expect(zh.tooltip.split("\n").slice(0, 2)).toEqual(["RecordStuff: 待命中", "尚未退出：錄影工作仍在進行，完成後請再退出一次"]);
+    const saving = trayModel({ type: "stopping" }, { ...mac, language: "en", quitDeferred: "metadata" });
+    expect(labels(saving.menu).slice(0, 2)).toEqual(["Saving…", "Quit postponed: settings or the log are still being written. Quit again in a moment."]);
+    expect(labels(trayModel({ type: "idle" }, mac).menu)).not.toContain("尚未退出：錄影工作仍在進行，完成後請再退出一次");
+  });
+
+  it("says an error box is waiting for the recording, even while it records (plan 056)", () => {
+    const m = trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, { ...mac, language: "en", errorBoxHeld: true, quitDeferred: "media" });
+    expect(m.title).toBe("REC");
+    expect(labels(m.menu).slice(0, 4)).toEqual(["Recording", "An unexpected error occurred. See the log for details.",
+      "Quit postponed: recording work is still pending. Quit again once it finishes.", "Stop"]);
+    expect(m.tooltip.split("\n")[1]).toBe("An unexpected error occurred. See the log for details.");
+    expect(enabledActions(m.menu)).toContain("revealLog");
+  });
+
   it("Windows shows the abbreviated path and keeps the full path as toolTip", () => {
     const m = trayModel({ type: "idle" }, win);
     const dirItem = m.menu.find((i) => i.kind === "item" && i.action === "openOutputDir");
@@ -459,7 +478,8 @@ describe("one group order in every state (plan 048)", () => {
     const shortcuts = [undefined, { kind: "registered" as const, accelerator: "CommandOrControl+Alt+," }, { kind: "conflict" as const }];
     for (const state of STATES) for (const history of Object.values(histories)) for (const language of ["en", "zh-TW"] as const) for (const settingsShortcut of shortcuts) {
       for (const quitting of [false, true]) {
-        const menu = trayModel(state, { ...mac, language, recordingResults: history, ...(settingsShortcut ? { settingsShortcut } : {}), quitting }).menu;
+        const menu = trayModel(state, { ...mac, language, recordingResults: history, ...(settingsShortcut ? { settingsShortcut } : {}), quitting,
+          ...(quitting ? {} : { quitDeferred: "media" as const, errorBoxHeld: true }) }).menu;
         const kinds = menu.map((entry) => entry.kind).join(",");
         expect(menu[0]?.kind, kinds).toBe("item");
         expect(menu.at(-1)?.kind, kinds).toBe("item");

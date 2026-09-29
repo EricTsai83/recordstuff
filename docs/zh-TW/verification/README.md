@@ -8,6 +8,7 @@
 
 | 項目 | 既有結果與限制 |
 | --- | --- |
+| Plan 056 媒體工作期間的對話框，2026-09-29 | 在 controlled build 上，錄影中的未捕捉例外讓對話框等了 81 秒，期間檔案持續增長，對話框在存檔後 2 ms 才開啟；等待期間 tray 顯示發生錯誤，延後退出的「尚未退出」tray 狀態行在兩種語言都出現，並在清理完成後消失。通知被拒時 `isSupported()` 仍為 true、只有 `failed` 事件；錄影中的儲存位置通知只由單元測試涵蓋。見[紀錄](history-2026-09.md#plan-056-結案--2026-09-29)。 |
 | Plan 055 不阻塞的對話框，2026-09-29 | 無視窗的 `showMessageBox` 與 `showErrorBox` 會卡住 main 的 timer 與 I/O 直到關閉，sheet 與資料夾選擇器則不會；延後退出提示改為通知，在 controlled build 上通知顯示的 85 秒內，13 秒期限、指令通道與 log 都準時，中英文皆然。隔離 fixture 的橫幅受開發用 Electron 的通知權限阻擋。見[紀錄](history-2026-09.md#plan-055-結案--2026-09-29)。 |
 | Plan 054 原生驗收後續，2026-09-29 | 已安裝 App 的通知點擊於 113 與 121 ms 後以 reopen 抵達並被忽略，沒有開啟設定；真實的收尾量測報告顯示 `checkpoint 6 ms`；`pnpm acceptance` 不再對已結束的 session 送出停止鍵，並在相同淡入後判定檔案從 beep 中開始的情況；睡眠期間 held 的通知經過 dark wake 後在完整喚醒時出現。衝突橫幅無法製造，1080p 通知需要更大的螢幕，兩個 runner 分支只由單元測試涵蓋。見[紀錄](history-2026-09.md#plan-054-結案--2026-09-29)。 |
 | Plan 053 第三次稽核遺留項目，2026-09-29 | 忙碌中的操作按鈕保留焦點、cadence 百分位改為 nearest-rank、網站 pull request job、第二次啟動開啟設定、擷取開始通知延到錄影結束後，以及 sentinel checkpoint 計時。Regression 175/175（含真實 Tab/Enter 的更新案例）與原生第二次啟動通過；收尾量測因權限提示而 blocked，擷取通知錄影未執行，已安裝 App 的通知點擊延到解鎖的 session，網站 job 已在 GitHub 上通過。見[紀錄](history-2026-09.md#plan-053-結案--2026-09-29)。 |

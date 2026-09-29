@@ -315,6 +315,30 @@ export class Recorder {
   }
 
   /**
+   * A session, or the cleanup and saving one left behind, is still in flight,
+   * even when the state already reads idle. A windowless modal dialog now would
+   * hold its writes and deadlines until answered (plan 056).
+   */
+  get mediaPending(): boolean {
+    return this.session !== undefined || this.work.size > 0;
+  }
+
+  /** Resolves once `mediaPending` is false, at once when it already is; the same test quit waits on. */
+  whenMediaSettled(): Promise<void> {
+    return new Promise((resolve) => {
+      const check = (): void => {
+        if (this.mediaPending) return;
+        unsubscribe();
+        this.workChanged.delete(check);
+        resolve();
+      };
+      const unsubscribe = this.subscribe((event) => { if (event.type === "state") check(); });
+      this.workChanged.add(check);
+      check();
+    });
+  }
+
+  /**
    * The tray's Start recording (plan 048): the left click's start, countdown
    * included, but only from idle. An open macOS menu cannot change, so a
    * Start chosen after the state moved on must never stop or cancel anything.

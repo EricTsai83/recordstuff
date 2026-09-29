@@ -8,6 +8,31 @@
 
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 056 結案 — 2026-09-29
+
+Plan 056 讓仍可能遇到進行中錄影的兩種對話框不再卡住錄影，並在延後退出通知看不到時提供可見的 fallback。由 Claude 實作，並由 Codex GPT-6 Astra review（[延後退出](../system-design/desktop.md#延後退出)、[對話框與 main 的 event loop](../system-design/desktop.md#對話框與-main-的-event-loop)、[受控 build](../system-design/tooling.md#受控驗收-build)）。
+
+- **未完成的媒體工作。** `Recorder.mediaPending` 在 session、或它留下的清理與存檔仍在進行時為 true，即使狀態已是 idle；`whenMediaSettled()` 在其結束時 resolve，判定與退出等待的相同。
+- **未捕捉例外。** `createUncaughtExceptionHandler`（[fault-dialog.ts](../../../src/main/fault-dialog.ts)）先寫 log，settled 的 App 立即顯示對話框。媒體工作未完成時，它等到工作 settle 才顯示、開啟前再確認一次，期間 tray 選單與 tooltip 顯示「發生未預期的錯誤，請查看 log 取得詳細資訊。」每個程序仍最多一次，handler 本身不會擲出例外。若錯誤同時讓工作無法 settle，只能透過這行 tray 文字、log 與 recorder 自身的期限呈現。
+- **儲存位置警告。** opener 在媒體工作未完成時發現問題，會記 log，並以標題「無法開啟儲存位置」的通知送出同一段文字；它與擷取開始的提示一樣等畫面不再分享才送出，通知開關關閉時也會顯示。資料夾選擇器留給 settled 的 tray 與設定，那裡的警告不變。
+- **看不到的延後退出。** 以 `pnpm acceptance:quit-dialog -- --language en` 量測（`2026-09-29T14-03-29-867Z-quit-dialog-en`）：macOS 不允許開發用 Electron 通知，此時 `Notification.isSupported()` 回報 `true`，通知的 `failed` 事件在請求後 10 ms 帶著 `UNErrorDomain error 1` 到達。專注模式與畫面分享時被靜音的橫幅完全沒有訊號，所以 fallback 不依賴送達：延後退出會在任何狀態於 tray 選單與 tooltip 加上「尚未退出：…」（錄影工作，或設定／log 寫入），直到下一次狀態改變或退出要求，或擋住退出的工作完成為止。退出流程上沒有任何東西等待使用者。
+- **受控 build。** `pnpm acceptance:controlled -- throw` 在下一個 tick 從 timer 丟出一個合成的未捕捉例外。
+- **測試。** handler 在 settled 時的對話框、等待後只顯示一次的對話框、顯示前又開始新 session、永遠不 settle 的錯誤，以及 tray、settle 等待、媒體檢查或對話框擲出例外時 handler 保持安靜；`mediaPending` 涵蓋比 idle 更晚結束的失敗清理與正常存檔的 finish；opener 在未完成時送通知、工作 settle 後才發現的問題保留警告與選擇器、資料夾正常時不通知；兩種語言與狀態下 tray 狀態行的位置；不受開關影響的儲存位置通知；`throw` 的參數解析。
+
+環境：M1 Pro、macOS 26.6.2、Electron 44.3.0，主螢幕 1920 × 1080 並接一台直式 1080 × 1920 螢幕，基於 `7d38292` 加上未提交變更。維護者在桌面回合前回覆「好了」。按鍵與 tray 選單由 System Events 與合成右鍵操作，截圖使用 `screencapture`；本次沒有 computer use 工具。
+
+- **錄影中的未捕捉例外。** 在 controlled build（`2026-09-29T13-56-51-955Z-controlled`）上，⌘⇧1 於 13:57:46.849 開始錄影，`throw` 在 13:57:54.469 丟出例外，當時 `mediaPending` 為 true；log 在同一毫秒寫下 `error box held until recording work settles`。接下來 81 秒內命令通道持續回應，暫存檔持續增長（1.90 MB，三秒後 2.17 MB），沒有 stall 紀錄，tray tooltip 與選單在「Recording」與「Stop」之間顯示錯誤行（`screens/rec-menu-crop.png`）。⌘⇧1 在 13:59:15.703 停止錄影；檔案完成、`state → idle` 在 .727、`saved` 在 .728，`showing the error box` 在 .730 才出現。Accessibility 列出一個 RecordStuff 視窗，內容為「An unexpected error occurred. See the log for details.」並有「好」按鈕，由 System Events 按下；存檔後 500 ms 排定的存檔通知直到此時、73 秒後才出現，因為媒體 settle 後對話框仍會卡住 main。88.8 秒的檔案可完整解碼，video bitrate 為目標的 97%，長度與 log 相符；因為沒有播放測試素材，`pnpm verify` 另外標出無聲的音訊、未判定的 frame timing 與 353 ms 的音訊／影像長度差。
+- **延後退出狀態行（兩種語言）。** 把隔離輸出資料夾設為唯讀並設定 `cleanup=hold` 後，⌘⇧1 產生一筆 pending 的 `output_open_failed`，runner 的 `quit` 在 13 秒期限時延後，通知在 11 ms 後顯示。tray 選單依序為「Output folder unavailable」、「Quit postponed: recording work is still pending. Quit again once it finishes.」、Start recording（`screens/defer-en-crop.png`），tooltip 也有同一行。解除清理暫停後，這一行不必重開就消失。把 `settings.json` 改為 zh-TW 並重開後，同樣流程在選單與 tooltip 顯示「尚未退出：錄影工作仍在進行，完成後請再退出一次」（`screens/defer-zh-crop.png`）；第二次退出約一秒內改為「正在結束…」，解除清理暫停後該次退出正常結束。
+- **錄影 smoke。** 在新的 `pnpm start:app` bundle 上，`pnpm acceptance -- --seconds 10` 通過（`2026-09-29T14-04-35-815Z-hotkey-acceptance`）：1920 × 1080、10.4 秒、10 次閃光與 10 次嗶聲、音訊／影像長度差 22 ms、完整解碼、倒數數字裁圖（最差 1.33）、取消案例，以及經正常退出的清理。以 `open -a` 開啟 QuickTime Player 並用 scripting `play` 播放，回報 `playing` 為 true、位置 1.67 秒；因為原本沒有執行，之後關閉並結束。
+- **未執行。** 錄影中的儲存位置通知只由單元測試涵蓋：無法佈置「錄影正在寫入、資料夾卻無法開啟」的情境。依計畫不做 capture matrix 與音訊保真度：擷取與編碼沒有變更。專注模式與畫面分享靜音沒有量測，僅依推論。
+- **觀察。** controlled build 第一次錄影時，macOS 出現允許它略過系統私密視窗選擇器的提示，並蓋住錯誤對話框；因為沒有 computer use，依驗收 skill 保持未回應，該程序結束後提示隨之關閉。
+
+自動化證據：`pnpm check` 通過 typecheck、84 個檔案 1287 項測試與 build；`git diff --check` 通過。
+
+Review：Codex GPT-6 Astra（medium reasoning、read-only），一個 pass，約 2 分鐘，沒有 findings。
+
+收尾：controlled build、fixture 與 RecordStuff 都已退出，沒有殘留 RecordStuff、Electron fixture 或 QuickTime 程序；controlled 輸出資料夾已恢復可寫、workspace 已移除、證據保留；維護者的 `settings.json` 從未變更。smoke 錄影 `2026-09-29 22-04-42.mp4` 之後依維護者要求從 `~/Movies/RecordStuff` 刪除。任務期間執行了 `caffeinate -d -i`。
+
 ## Plan 055 結案 — 2026-09-29
 
 Plan 055 釐清 main 的原生對話框是否會停住 main 自己的工作，並讓延後退出回饋不再卡住它所描述的錄影工作。由 Claude 實作，並由 Codex GPT-6 Astra review（[延後退出](../system-design/desktop.md#延後退出)、[對話框與 main 的 event loop](../system-design/desktop.md#對話框與-main-的-event-loop)、[tooling](../system-design/tooling.md#引導式延期退出通知驗收)）。

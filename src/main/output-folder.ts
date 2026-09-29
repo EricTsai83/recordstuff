@@ -57,6 +57,12 @@ function problemText(problem: Problem, dir: string, language: Language): string 
  *
  * One attempt runs at a time. A repeated click joins it and, while the warning
  * is up, brings that warning forward instead of stacking a second one.
+ *
+ * The warning is a windowless message box, which holds main's timers, I/O and
+ * log until it is answered (plan 055). While recording work is pending, which a
+ * saved file's fallback can meet during a later recording, the same text goes
+ * to `notify` instead and the chooser stays with the settled tray and Settings
+ * (plan 056).
  */
 export function createOutputFolderOpener(deps: {
   outputDir(): string;
@@ -67,6 +73,10 @@ export function createOutputFolderOpener(deps: {
   show(options: MessageBoxOptions): Promise<{ response: number }>;
   /** The existing choose-folder flow, including its recording locks. */
   chooseFolder(): Promise<void>;
+  /** A session or its cleanup is in flight; read when a problem is found. */
+  mediaPending(): boolean;
+  /** Tells the problem without blocking; must not throw. */
+  notify(body: string): void;
   log(message: string): void;
   fs?: OutputFolderFs;
 }): () => Promise<void> {
@@ -129,7 +139,13 @@ export function createOutputFolderOpener(deps: {
     if (!problem) return;
     deps.log(`output folder: cannot open ${dir}: ${problem.kind}${"error" in problem ? `: ${problem.error}` : ""}`);
     const language = deps.language();
-    const detail = problemText(problem, dir, language)
+    const text = problemText(problem, dir, language);
+    if (deps.mediaPending()) {
+      deps.log("output folder: recording work is pending; telling the problem in a notification instead of a warning");
+      deps.notify(text);
+      return;
+    }
+    const detail = text
       + ("error" in problem ? `\n\n${translate("Details: {error}", language, { error: problem.error })}` : "");
     prompting = true;
     let response: number;

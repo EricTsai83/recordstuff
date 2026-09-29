@@ -34,6 +34,7 @@ import { CountdownOverlay } from "./countdown-overlay";
 import { FileWriter, ensureWritableDir } from "./file-writer";
 import { KeepAwake } from "./keep-awake";
 import { createOutputFolderOpener } from "./output-folder";
+import { createUncaughtExceptionHandler } from "./fault-dialog";
 import { createFileLogger, flushBeforeExit } from "./log";
 import { createRunId, logSessionEvent } from "./session-log";
 import { PermissionWatcher, openNotificationSettings, openScreenCaptureSettings } from "./permission";
@@ -70,18 +71,17 @@ const log = createFileLogger({ filePath: logPath });
 /** Printed in the `start:` line and carried in every session record (plan 029). */
 const runId = createRunId(new Date(), process.pid);
 
-// The main process has no window: an uncaught error would otherwise leave no
-// trace at all. Electron's default for the exception case is a modal error
-// dialog and the process keeps running; keep that, but write the log line first.
-// The dialog is modal, so a fault that repeats (a timer, a listener) would
-// otherwise stack one dialog per repetition; later ones only reach the log.
-let errorDialogShown = false;
-process.on("uncaughtException", (error) => {
-  log(`uncaught exception: ${error.stack ?? String(error)}`);
-  if (errorDialogShown) return;
-  errorDialogShown = true;
-  dialog.showErrorBox(APP_NAME, translate("An unexpected error occurred. See the log for details.", currentLanguage));
-});
+/** Filled in once main has a recorder and a tray; before that no media exists and the box shows at once. */
+const faultWiring: { recorder?: Recorder; refresh?: () => void } = {};
+/** The uncaught-exception box is waiting for recording work to settle; the tray says so meanwhile (plan 056). */
+let errorBoxHeld = false;
+process.on("uncaughtException", createUncaughtExceptionHandler({
+  log,
+  showErrorBox: () => dialog.showErrorBox(APP_NAME, translate("An unexpected error occurred. See the log for details.", currentLanguage)),
+  mediaPending: () => faultWiring.recorder?.mediaPending ?? false,
+  whenMediaSettled: () => faultWiring.recorder?.whenMediaSettled() ?? Promise.resolve(),
+  held: (waiting) => { errorBoxHeld = waiting; faultWiring.refresh?.(); },
+}));
 process.on("unhandledRejection", (reason) => {
   log(`unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`);
 });
@@ -288,6 +288,16 @@ async function main(): Promise<void> {
   /** A quit waits for recording work or a history save; set shortly after it starts so a quick exit shows nothing. */
   let quitting = false;
   let quitFeedback: ReturnType<typeof setTimeout> | undefined;
+  /** What held the last deferred quit, while the tray still says so (plan 056). */
+  let quitDeferred: QuitDeferral | undefined;
+  /** Each deferral clears only its own line: a later quit may have replaced it. */
+  let deferralToken = 0;
+  const clearQuitDeferred = (refresh = true): void => {
+    deferralToken += 1;
+    if (quitDeferred === undefined) return;
+    quitDeferred = undefined;
+    if (refresh) refreshUi();
+  };
   const endQuitting = (): void => {
     quitRequested = false;
     clearTimeout(quitFeedback);
@@ -318,6 +328,8 @@ async function main(): Promise<void> {
     settingsShortcut: shortcuts.settingsStatus,
     hotkey: { ...settings.hotkey, registered: shortcuts.registered },
     ...(quitting ? { quitting } : {}),
+    ...(quitDeferred ? { quitDeferred } : {}),
+    ...(errorBoxHeld ? { errorBoxHeld } : {}),
   });
   const settingsWindow = new SettingsWindow({
     geometry: new SettingsWindowState(path.join(app.getPath("userData"), "settings-window.json"), log),
@@ -356,6 +368,8 @@ async function main(): Promise<void> {
     settingsWindow.refresh();
   }
   renderUi(recorder.state);
+  faultWiring.recorder = recorder;
+  faultWiring.refresh = refreshUi;
   shortcuts.start();
 
   const openOutputDir = createOutputFolderOpener({
@@ -365,6 +379,9 @@ async function main(): Promise<void> {
     openPath: dir => shell.openPath(dir),
     focus: focusApp,
     show: options => dialog.showMessageBox(options),
+    // A modal warning now would hold that work's writes and deadlines (plan 056); after capture a banner is not muted.
+    mediaPending: () => recorder.mediaPending,
+    notify: body => captureNotices.hold("output folder warning", () => tray.notifyOutputFolderProblem(body)),
     // The warning may outlive the idle state; the chooser keeps its own lock too.
     chooseFolder: async () => { if (settled()) await changeOutputDir(); },
     log,
@@ -592,6 +609,8 @@ async function main(): Promise<void> {
     logSessionEvent(log, runId, event);
     switch (event.type) {
       case "state": {
+        // renderUi below draws the cleared line.
+        clearQuitDeferred(false);
         if (preferencesUnlocked(event.state)) {
           displayMedia.settle();
           host.destroy();
@@ -705,11 +724,14 @@ async function main(): Promise<void> {
   });
   let historyPrompt = false;
   let quitDeferral: QuitDeferral = "media";
+  /** The metadata writes the last quit waited on; a line about them clears once they finish. */
+  let metadataWritten: Promise<void> = Promise.resolve();
   const quitCoordinator = installQuitCoordinator(app, {
     relaunch: () => app.relaunch(),
     shutdown: async () => {
       quitRequested = true;
       quitDeferral = "media";
+      clearQuitDeferred();
       savedNotification.setQuitting(true);
       captureNotices.setQuitting(true);
       // Pending cleanup can hold quit for the stop deadline, and a history save for its wait; the tray says so meanwhile.
@@ -721,6 +743,7 @@ async function main(): Promise<void> {
       const pending = new Set(["settings", "window size", "log"]);
       const flushes = ([["settings", settings.flush()], ["window size", settingsWindow.flush()], ["log", log.flush()]] as const)
         .map(([name, flush]) => flush.then(() => { pending.delete(name); }));
+      metadataWritten = Promise.all(flushes.map(flush => flush.catch(() => undefined))).then(() => undefined);
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
         const flushed = await Promise.race([
@@ -738,6 +761,12 @@ async function main(): Promise<void> {
       captureNotices.setQuitting(false);
       log(`quit deferred: ${quitDeferral === "media" ? "recording work" : "a preference or log write"} is still pending`);
       showQuitFeedback(quitDeferral);
+      // Refused, hidden by Focus or muted while the display is shared, the banner may never be seen (plan 056).
+      quitDeferred = quitDeferral;
+      const token = deferralToken;
+      refreshUi();
+      void (quitDeferral === "media" ? recorder.whenMediaSettled() : metadataWritten)
+        .then(() => { if (token === deferralToken) clearQuitDeferred(); }, () => undefined);
     },
     // Media is safe here; unsaved reminders need a durable save or explicit consent.
     history: createHistoryQuit({ results: recordingResults, language: () => currentLanguage, focus: focusApp, log,

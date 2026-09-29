@@ -663,6 +663,52 @@ describe("Recorder review fixes", () => {
     expect(ctx.events.at(-1)).toEqual({ type: "saved", path: writer.finalPath, session: traced() });
   });
 
+  it("reports media work pending through a failure's cleanup that outlives the idle state (plan 056)", async () => {
+    const ctx = setup();
+    expect(ctx.recorder.mediaPending).toBe(false);
+    let settledNow = false;
+    void ctx.recorder.whenMediaSettled().then(() => { settledNow = true; });
+    await flush();
+    expect(settledNow).toBe(true);
+    await startRecording(ctx);
+    expect(ctx.recorder.mediaPending).toBe(true);
+    const writer = ctx.writers[0]!;
+    let releaseAbandon!: () => void;
+    writer.abandon = () => new Promise((r) => { releaseAbandon = () => r(writer.recordingPath); });
+    let settled = false;
+    void ctx.recorder.whenMediaSettled().then(() => { settled = true; });
+    ctx.host.crash();
+    await flush();
+    // Idle already, yet the partial file is still being closed.
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+    expect(ctx.recorder.mediaPending).toBe(true);
+    expect(settled).toBe(false);
+    releaseAbandon();
+    await flush();
+    expect(ctx.recorder.mediaPending).toBe(false);
+    expect(settled).toBe(true);
+  });
+
+  it("settles media work after a normal save, not at the idle state that precedes the finish's return", async () => {
+    const ctx = setup();
+    await startRecording(ctx);
+    const writer = ctx.writers[0]!;
+    let releaseFinish!: () => void;
+    writer.finish = () => new Promise((r) => { releaseFinish = () => r(writer.finalPath); });
+    let settled = false;
+    void ctx.recorder.whenMediaSettled().then(() => { settled = true; });
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(ctx.recorder.state.type).toBe("stopping");
+    expect(settled).toBe(false);
+    releaseFinish();
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: writer.finalPath });
+    expect(settled).toBe(true);
+    expect(ctx.recorder.mediaPending).toBe(false);
+  });
+
   it("a same-second name collision gets a -2 suffix instead of failing (pass-2 finding 6)", async () => {
     const opened: string[] = [];
     const ctx = setup({

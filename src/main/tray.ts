@@ -11,7 +11,7 @@ import path from "node:path";
 import type { ErrorCode, RecordingState } from "../shared/state";
 import type { FrameRate } from "../shared/quality";
 import type { HotkeyAccelerator } from "../shared/hotkey";
-import type { Language } from "../shared/i18n";
+import { translate, type Language } from "../shared/i18n";
 import {
   displayWriteFailedNotification,
   languageWriteFailedNotification,
@@ -298,6 +298,11 @@ export class AppTray {
   /** The answer to the user's own quit, like the dialog it replaced (plan 055), so the switch for saved and failure notices does not apply. */
   notifyQuitDeferred(body: string): void {
     this.show({ title: APP_NAME, body }, undefined, true);
+  }
+
+  /** The output-folder warning while recording work is pending (plan 056); like the quit notice it answers the user's own click. */
+  notifyOutputFolderProblem(body: string): void {
+    this.show({ title: translate("Could not open the output folder", this.language), body }, undefined, true);
   }
 
   /**

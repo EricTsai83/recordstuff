@@ -63,7 +63,7 @@ async function main(): Promise<void> {
   const feedback = createQuitFeedback({
     language: () => language,
     notify: body => {
-      prompts++; record("notification requested");
+      prompts++; record(`notification requested; Notification.isSupported() ${Notification.isSupported()}`);
       const notice = new Notification({ title: "RecordStuff", body, silent: true });
       notices.push(notice);
       notice.on("show", () => record("notification shown"));

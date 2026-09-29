@@ -342,7 +342,7 @@ pnpm acceptance:regression
 
 ### 引導式延期退出通知驗收
 
-執行 `pnpm acceptance:quit-dialog -- --language zh-TW`，再以 `--language en` 重做。它啟動獨立 Electron 測試程序，使用隔離 userData 與合成 bytes；不錄影、不改正式偏好、不塞滿磁碟，也不替換已安裝 App。共用正式 `createQuitFeedback`、Recorder、FileWriter 與退出協調器；fixture 不建立 tray，改以一般 Electron `Notification` 代替 tray 的通知。受控的發佈延遲與縮短為 100 ms 的退出期限，會在啟動約三秒後讓退出延後，並出現延後退出通知（plan 055；指令沿用它取代的對話框名稱）。觀察橫幅與完整文字；不需要回應。接下來 8 秒以 1 秒 timer 量測 main 延遲多少，任一 tick 晚 500 ms 以上即失敗；之後 fixture 確認發佈仍在等待，再解除延遲、驗證精確 bytes 並重新正常退出。產生的 `.mp4` 只有合成 bytes，不是可播放的錄影。
+執行 `pnpm acceptance:quit-dialog -- --language zh-TW`，再以 `--language en` 重做。它啟動獨立 Electron 測試程序，使用隔離 userData 與合成 bytes；不錄影、不改正式偏好、不塞滿磁碟，也不替換已安裝 App。共用正式 `createQuitFeedback`、Recorder、FileWriter 與退出協調器；fixture 不建立 tray，改以一般 Electron `Notification` 代替 tray 的通知。受控的發佈延遲與縮短為 100 ms 的退出期限，會在啟動約三秒後讓退出延後，並出現延後退出通知（plan 055；指令沿用它取代的對話框名稱）。觀察橫幅與完整文字；不需要回應。fixture 會在請求時記下 `Notification.isSupported()`，以區分被拒的橫幅與不支援通知的系統。接下來 8 秒以 1 秒 timer 量測 main 延遲多少，任一 tick 晚 500 ms 以上即失敗；之後 fixture 確認發佈仍在等待，再解除延遲、驗證精確 bytes 並重新正常退出。產生的 `.mp4` 只有合成 bytes，不是可播放的錄影。
 
 `--help` 不啟動程序；錯誤參數在啟動前失敗。Ctrl+C 只取消隔離程序群組，重複取消訊號不會跳過外層清理。此 runner 取消／逾時時立即 SIGKILL 自己建立的可丟棄合成程序群組；其他 runner 保留預設的 SIGTERM 正常收尾。外層 40 秒期限限制無人操作的執行；中斷、逾時或強制清理都算失敗，不算通過。此 macOS／Electron 上，即使加入 JavaScript 訊號 handler，SIGTERM 取消仍未阻止正式退出提示在強制清理前出現。合成 fixture 專用的 SIGKILL 避免這種誤導，固定記為強制清理與失敗；不作用於正式 RecordStuff。Log 與 `report.json`／`report.md` 保留在 `docs/verification/measurements/<timestamp>-quit-dialog-<language>/`。報告刻意將原生觀察留為 **not recorded**，需另記觀察者、橫幅／文字結果與截圖。`shown` 事件不代表橫幅確實可見。這是帶 Electron 圖示／系統按鈕語言的開發 fixture 證據，不是正式簽章產物身分或真實錄影證據。
 
@@ -362,12 +362,14 @@ Plan 035 的原生驗收需要一些真實故障無法隨時產生的失敗狀�
   - `close=fail` 讓下一次關閉錄影檔在檔案描述符真正關閉後失敗一次。Writer 無法確認檔案已保存，結果為 unknown；若在正常停止前啟用，停止本身就會以這種方式失敗。
   - `history-save=hold|fail` 會暫停儲存直到 `release history-save`，或以 I/O 錯誤拒絕儲存；故障關閉前，每次自動重試都會再次遇到。
   - `launch` 或 `reopen` 加上 `--hold-history-load` 時，暫停該次啟動的歷史載入直到 `release history-load`；命令通道從啟動起就能回應。
+  - `throw` 在下一個 tick 從 timer 丟出一個合成的未捕捉例外，不在任何 promise 內，因此會像真正的程式錯誤一樣到達正式的未捕捉例外 handler（plan 056）。在錄影期間送出，可看出寫入、stall guard 與停止是否持續，以及錯誤對話框何時出現；`events.jsonl` 那一行會記下排程時的狀態與 `mediaPending`。它不是故障模式，不會留在啟用狀態。
 
 ```bash
 pnpm acceptance:controlled -- launch [--seed none|v1|retention] [--hold-history-load]   # 新 run：建置、簽章、開啟
 pnpm acceptance:controlled -- fault cleanup=hold write=enospc     # 另有 close=fail、history-save=hold|fail、<name>=off
 pnpm acceptance:controlled -- release cleanup                     # 或 history-save、history-load
 pnpm acceptance:controlled -- status                              # 狀態、故障、暫停中的工作與每筆失敗歷史
+pnpm acceptance:controlled -- throw                               # 下一個 tick 丟出一個合成的未捕捉例外
 pnpm acceptance:controlled -- quit                                # 正式退出：會保存錄影，可能詢問提醒
 pnpm acceptance:controlled -- reopen [--hold-history-load]        # 同一個 bundle 與資料
 pnpm acceptance:controlled -- clean                               # 退出後移除 workspace，保留證據

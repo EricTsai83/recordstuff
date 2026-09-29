@@ -27,6 +27,8 @@ export type ControlledCommand =
   | { kind: "status" }
   | { kind: "fault"; name: string; mode: string }
   | { kind: "release"; target: string }
+  /** Throws from a timer on the next tick: a synthetic programming fault for the uncaught-exception box (plan 056). */
+  | { kind: "throw" }
   /** Self-test only: calls the recorder's toggle directly; it is not a tray click. */
   | { kind: "toggle" }
   /** Self-test only: the production action handler; it is not a native click. */
@@ -105,6 +107,12 @@ export function configureControlled(dir: string) {
         const released = faults.release(command.target);
         return { ok: true, snapshot: snapshot(), released };
       }
+      case "throw":
+        if (!attached) throw new Error("the app is not ready");
+        note("uncaught exception scheduled", { state: attached.recorder.state.type, mediaPending: attached.recorder.mediaPending });
+        // Outside any promise, so it reaches process-level uncaughtException like a real fault in a timer or listener.
+        setTimeout(() => { throw new Error("controlled acceptance: synthetic uncaught exception, not a real fault"); }, 0);
+        return { ok: true, snapshot: snapshot() };
       case "toggle":
         if (!attached) throw new Error("the app is not ready");
         note("self-test toggle");

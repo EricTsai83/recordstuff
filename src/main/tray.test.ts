@@ -284,6 +284,13 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
     expect(Fake.instances[0]!.shown).toBe(1);
   });
 
+  it("tells an output-folder problem found during recording work with the switch off, since the user clicked (plan 056)", () => {
+    const { tray } = setup(true, () => false);
+    tray.notifyOutputFolderProblem("/Volumes/X was not found.");
+    expect(Fake.instances.map((notification) => notification.options)).toEqual([{ title: "Could not open the output folder", body: "/Volumes/X was not found.", silent: true }]);
+    expect(Fake.instances[0]!.shown).toBe(1);
+  });
+
   it("sends the enable confirmation through the same path as any other notification", () => {
     const { tray } = setup();
     tray.notifyNotificationsEnabled();

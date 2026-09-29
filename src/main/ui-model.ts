@@ -18,6 +18,7 @@ import type { HotkeySettings } from "../shared/hotkey";
 import type { RecordingState } from "../shared/state";
 import type { SettingsHotkeyStatus } from "./settings-hotkey";
 import type { UpdateState } from "./updates";
+import type { QuitDeferral } from "./quit-feedback";
 
 export const APP_NAME = "RecordStuff";
 
@@ -85,6 +86,14 @@ export interface AppContext {
   notifications: boolean;
   /** Quit waits for recording work to finish; the tray says so until the app exits or quit is deferred. */
   quitting?: boolean;
+  /**
+   * The last quit was deferred and what held it (plan 056). Its notification may be refused,
+   * hidden by Focus or muted while the display is shared, so the tray says so too, until the
+   * next state change or quit, or until what held it has finished.
+   */
+  quitDeferred?: QuitDeferral;
+  /** An uncaught exception's error box waits for recording work to settle (plan 056). */
+  errorBoxHeld?: boolean;
   /** When the view is built; failure rows are grouped by day relative to it. Tests pin it. */
   now?: Date;
 }

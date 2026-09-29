@@ -87,8 +87,9 @@ describe("controlled acceptance arguments and runs", () => {
     expect(parseControlledArgs(["release", "history-load"])).toEqual({ command: "release", target: "history-load" });
     expect(parseControlledArgs(["reopen", "--hold-history-load"])).toEqual({ command: "reopen", holdHistoryLoad: true });
     expect(parseControlledArgs(["status"])).toEqual({ command: "status" });
+    expect(parseControlledArgs(["throw", "--dir", "/tmp/r"])).toEqual({ command: "throw", dir: "/tmp/r" });
     for (const bad of [[], ["record"], ["fault"], ["fault", "close=hold"], ["fault", "cleanup"], ["fault", "cleanup=hold=x"],
-      ["release", "write"], ["status", "extra"], ["status", "--seed", "v1"], ["launch", "--seed", "v2"], ["launch", "--dir", "/tmp"],
+      ["release", "write"], ["status", "extra"], ["throw", "now"], ["status", "--seed", "v1"], ["launch", "--seed", "v2"], ["launch", "--dir", "/tmp"],
       ["selftest", "--hold-history-load"]]) {
       expect(() => parseControlledArgs(bad), bad.join(" ")).toThrow();
     }

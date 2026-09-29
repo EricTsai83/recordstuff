@@ -12,6 +12,7 @@ import { failureReason } from "./recording-result";
 import { displayLabel, displayFailureText } from "../shared/display";
 import { displayResolution } from "./display-source";
 import type { EarlyStop } from "./recorder";
+import type { QuitDeferral } from "./quit-feedback";
 import path from "node:path";
 import { DEFAULT_LANGUAGE, sentences, translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
 import type { FrameRate } from "../shared/quality";
@@ -76,6 +77,10 @@ function windowsGroup(ctx: AppContext, reviewedOnly: boolean): TrayMenuItem[] {
     ...(explanation ? [disabled(explanation)] : []),
   ];
 }
+const QUIT_DEFERRED = {
+  media: "Quit postponed: recording work is still pending. Quit again once it finishes.",
+  metadata: "Quit postponed: settings or the log are still being written. Quit again in a moment.",
+} as const satisfies Record<QuitDeferral, PlainMessageKey>;
 function appGroup(language: Language): TrayMenuItem[] {
   return [item(t("Show log", language), "revealLog"), item(t("Quit RecordStuff", language), "quit")];
 }
@@ -118,11 +123,22 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
   const windows = windowsGroup(ctx, unread.length === 0 && results.length > 0);
   const app = appGroup(language);
   const shortcut = registeredShortcut(ctx);
+  // What a notification alone may not have told (plan 056): they sit with the state, in every state.
+  const notes = [
+    ...(ctx.errorBoxHeld ? [text("An unexpected error occurred. See the log for details.")] : []),
+    ...(ctx.quitDeferred ? [text(QUIT_DEFERRED[ctx.quitDeferred])] : []),
+  ];
+  /** After the state's own lines and before its actions, so Stop and Start keep their places. */
+  const withNotes = (group: TrayMenuItem[]): TrayMenuItem[] => {
+    const lines = group.findIndex(entry => entry.kind === "item" && entry.enabled);
+    const at = lines < 0 ? group.length : lines;
+    return [...group.slice(0, at), ...notes.map(disabled), ...group.slice(at)];
+  };
   const model = (icon: TrayIcon, title: string, status: string, stateGroup: TrayMenuItem[], files: TrayMenuItem[] = []): TrayModel => ({
     icon: icon === "idle" && unread.length > 0 ? "warning" : icon,
     title,
-    tooltip: `${APP_NAME}: ${status}${unread.length > 0 ? `\n${unreadText}` : ""}\n${text("Right-click to open the menu")}`,
-    menu: grouped(stateGroup, unreadGroup, files, windows, app),
+    tooltip: `${APP_NAME}: ${status}${notes.map(note => `\n${note}`).join("")}${unread.length > 0 ? `\n${unreadText}` : ""}\n${text("Right-click to open the menu")}`,
+    menu: grouped(withNotes(stateGroup), unreadGroup, files, windows, app),
   });
   // A settled recorder shows no work of its own, so a quit waiting on cleanup would look like nothing happened.
   if (ctx.quitting && preferencesUnlocked(state)) {
