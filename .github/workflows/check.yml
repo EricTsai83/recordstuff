@@ -7,17 +7,27 @@ name: Check
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'plans/**'
-      - 'website/**'
+    paths:
+      - '**'
+      - '!**.md'
+      - '!docs/**'
+      - '!plans/**'
+      - '!website/**'
+      # scripts/release.test.ts renders both READMEs' download block from the
+      # website manifest, so a change to any of the three must run the check.
+      - 'README.md'
+      - 'README.zh-TW.md'
+      - 'website/release-manifest.json'
   pull_request:
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'plans/**'
-      - 'website/**'
+    paths:
+      - '**'
+      - '!**.md'
+      - '!docs/**'
+      - '!plans/**'
+      - '!website/**'
+      - 'README.md'
+      - 'README.zh-TW.md'
+      - 'website/release-manifest.json'
 permissions:
   contents: read
 concurrency:
