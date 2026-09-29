@@ -23,15 +23,15 @@ Plan 053 處理 2026-09-29 第三次稽核修正時留下的六個項目，由 C
 
 - **設定 regression。** 最終 fixture 上 `pnpm acceptance:regression` 通過：check、設定 fixture 175/175（`2026-09-29T00-06-17-121Z-settings-acceptance`）與快捷鍵失敗整合（`2026-09-29T00-07-10-727Z-shortcut-failure`）。真實的 Tab 到達「檢查更新…」，真實的 Enter 只開始一次檢查，第二次 Enter 沒有送出請求，焦點與焦點框留在忙碌的按鈕上（`update-check-busy.png`），檢查結束後下一次 Tab 移到官方網站按鈕（`update-check-done.png`）。第一次執行有四個案例失敗：兩個舊斷言仍預期通知設定按鈕被原生停用，新案例送出 Return 時沒有 Chromium 觸發按鈕所需的字元事件；兩個 fixture 錯誤都在通過的那次執行前修正。
 - **第二次啟動，全新簽署的 bundle。** 第一次啟動沒有開啟視窗。對執行中的 bundle 執行 `open`，log 記錄 `reopen: reopened from Finder or the Dock; Settings opened`，設定在最前面；第二個程序記錄 `reopen: second launch; Settings opened`，並因 lock 結束。agent 的 shell 帶有 `ELECTRON_RUN_AS_NODE=1`，所以最初的 `open -n` 與直接執行沒有真正啟動 Electron；之後移除該變數重跑。
-- **通知點擊。** 點擊執行中開發版 bundle 的「通知已開啟」橫幅時，macOS 啟動了登記在 /Applications 的 1.0.0，它約 0.5 秒後以 `second-instance` 通知開發版並開啟了設定。2 秒的點擊時間窗因此加入，之後未在原生環境重測。登記的那一份自己在執行時，點擊是否會收到 reopen 尚未觀察到：維護者未選擇會取代已安裝 App 的 `pnpm acceptance:notification -- --install` 回合。
+- **通知點擊。** 點擊執行中開發版 bundle 的「通知已開啟」橫幅時，macOS 啟動了登記在 /Applications 的 1.0.0，它約 0.5 秒後以 `second-instance` 通知開發版並開啟了設定。2 秒的點擊時間窗因此加入，之後未在原生環境重測。登記的那一份自己在執行時，點擊是否會收到 reopen 尚未觀察到。維護者起初未選擇會取代已安裝 App 的 `pnpm acceptance:notification -- --install` 回合，之後要求執行，但 session 處於鎖定，回合在啟動任何東西前停止，延到下一次解鎖的 session。Plan 014 的紀錄支持這個時間窗但不構成證明：macOS 在 click 回呼後約 110 ms 啟用登記的那一份，落在從該回呼起算的 2 秒內。
 - **Blocked。** 收尾量測以 `capture_start_failed` 失敗，因為 worktree 的開發版 Electron.app 沒有螢幕錄製授權，macOS 顯示了權限提示；維護者選擇不授權，因此沒有顯示 checkpoint 的報告（`2026-09-29T00-12-42-599Z-finalization-plan053`）。擷取開始通知的錄影沒有執行：這裡沒有大於最小上限的螢幕，而上限確認成功時不會顯示通知。
-- **本機無法驗證。** 網站 job 尚未在 GitHub 上執行；只改 `website/**` 的 pull request 會顯示它。其步驟在本機以 `SITE_MANIFEST_OFFLINE=1` 通過（16 個測試、`astro check` 0 errors、4 頁、無壞連結）。
+- **GitHub 上的網站 pull request。** 其步驟在本機以 `SITE_MANIFEST_OFFLINE=1` 通過（16 個測試、`astro check` 0 errors、4 頁、無壞連結）。在本次變更的 pull request 上（改動了該 workflow），網站 `check` job 於 21 秒通過、`deploy` 被略過，Check workflow 的 `pnpm check` 也通過（57 秒）。
 
 自動化證據：最終版本的 `pnpm check` 通過型別檢查、80 個檔案 1246 個測試與建置。測試涵蓋：忙碌的按鈕未被原生停用且忽略第二次觸發、model 的忙碌檢查、reopen 與第二次啟動各開啟設定一次、quit 閘門、點擊時間窗與 listener 移除、tray 的點擊順序、擷取通知在結束後只顯示一次且會被新錄影或結束 App 丟棄、checkpoint 計時與最後一次寫入失敗時的略過、有無 `checkpoint` 的 parser，以及 nearest-rank 的 cadence 百分位。
 
 Review：Codex GPT-6 Astra（medium reasoning、read-only）。Pass 1（約 64 秒）審查整份變更，pass 2（約 67 秒）審查點擊時間窗與 fixture 修正，兩次都沒有 findings。
 
-清理：開發版 bundle 已結束，沒有殘留 RecordStuff 或 Electron 程序；通知開關關閉再開啟後，`settings.json` 與基準相同。回合期間執行了 `caffeinate -d -i`。依維護者要求分成六個 commit，rebase 到已結案的 052 之後，並開成 pull request。
+清理：開發版 bundle 已結束，沒有殘留 RecordStuff 或 Electron 程序；worktree 開發版 Electron 的權限提示留在畫面上，待延後的回合處理；通知開關關閉再開啟後，`settings.json` 與基準相同。回合期間執行了 `caffeinate -d -i`。依維護者要求分成六個 commit，rebase 到已結案的 052 之後，並開成 pull request。
 
 ## Plan 052 runner 的 process 與環境安全 — 2026-09-29
 
