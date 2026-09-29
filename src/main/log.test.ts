@@ -63,6 +63,16 @@ describe("createFileLogger", () => {
     expect(lines[1]).toContain("second run");
   });
 
+  it("never rotates without a size bound, as the losing second instance appends to the running one's file", async () => {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, "x".repeat(200));
+    const log = logger({ maxBytes: Number.POSITIVE_INFINITY });
+    log("second instance");
+    await log.flush();
+    expect(await exists(rotatedPath(filePath, 1))).toBe(false);
+    expect(await fs.readFile(filePath, "utf8")).toMatch(/^x{200}\[.*second instance\n$/);
+  });
+
   it("rotates before a write once the file exceeds maxBytes and keeps the newest N archives", async () => {
     // Each line is ~35 bytes; maxBytes 40 means: line 1 fits, line 2 sees 36 B (no rotate),
     // line 3 sees 72 B > 40 → rotate, and so on. Every rotation moves exactly two lines.

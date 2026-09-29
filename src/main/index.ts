@@ -134,8 +134,10 @@ if (disabledFeatures) app.commandLine.appendSwitch("disable-features", disabledF
 
 // File logging is asynchronous: both exits below first let the line they explain reach the log.
 if (!app.requestSingleInstanceLock()) {
-  log(`start: another instance already holds the userData lock; run ${runId}; exiting`);
-  void flushBeforeExit(log).then(() => app.quit());
+  // The running instance owns the file and its rotation (log.ts counts its own size): this one only appends its line.
+  const loser = createFileLogger({ filePath: logPath, maxBytes: Number.POSITIVE_INFINITY });
+  loser(`start: another instance already holds the userData lock; run ${runId}; exiting`);
+  void flushBeforeExit(loser).then(() => app.quit());
 } else {
   // A menu-bar app that fails to wire up has no window and no tray to quit
   // from: it would sit invisible until Activity Monitor found it.

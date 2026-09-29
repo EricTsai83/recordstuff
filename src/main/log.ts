@@ -5,7 +5,8 @@
  * before a write once the active file exceeds `maxBytes`: `recordstuff.log`
  * becomes `recordstuff.1.log`, `.1` becomes `.2`, and so on up to `keep`
  * archives. The size is read from disk once per process and counted from
- * then on; this process is the file's only writer. A full disk or a removed logs folder only
+ * then on; the running app is the file's only rotating writer (a second
+ * instance that loses the single-instance lock appends its one line unbounded). A full disk or a removed logs folder only
  * skips lines: the next line looks again and, once written, says how many the file missed. Any
  * other failed write is reported to stderr once; after that the logger keeps writing to stdout
  * only so logging can never take the app down.
