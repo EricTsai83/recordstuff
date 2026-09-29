@@ -165,14 +165,14 @@ Writer 在擷取請求前開啟，而擷取請求可能為了權限提示等待�
 
 | 類型 | code | 對使用者的結果 |
 | --- | --- | --- |
-| 權限／環境 | permission_denied、permission_needs_relaunch、unsupported_os_version | 引導系統設定／重啟或說明版本 |
+| 權限／環境 | permission_denied、unsupported_os_version | 引導系統設定／重啟或說明版本 |
 | 來源／編碼 | no_display、display_unavailable、no_audio_track、mp4_unsupported | 不開始錄製，說明缺少能力 |
 | 擷取 | capture_start_failed、capture_failed、capture_host_crashed、capture_host_unresponsive | 回 idle；有部分檔則提供位置；`record` 前任何擷取中斷都是 capture_start_failed，結果為 empty |
 | 檔案 | output_open_failed、output_write_failed、disk_full | 說明位置／磁碟問題，盡力保留 bytes |
 | 停止 | stop_timeout | 停止等待擷取回覆並盡力保留部分檔 |
 | 先前程序 | app_terminated | 只在啟動時依中斷 sentinel 回報；說明 App 未正常結束、檔案可能不完整；擷取 host 永遠不會送出 |
 
-Main 的來源 handler 可記錄具體拒絕原因，取代 renderer 的泛用 AbortError；只覆寫可由來源拒絕解釋的錯誤。`permission_needs_relaunch` 是協定支援碼，常態授權引導主要由 PermissionWatcher 狀態處理。
+Main 的來源 handler 可記錄具體拒絕原因，取代 renderer 的泛用 AbortError；只覆寫可由來源拒絕解釋的錯誤。重新啟動引導依 PermissionWatcher 狀態處理：macOS 回報已授權卻仍收到 `permission_denied` 時，將目前的程序標記為需要重新啟動。
 
 ## 螢幕選擇
 

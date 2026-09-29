@@ -165,14 +165,14 @@ Interruption evidence is one sentinel file per session in `userData/recording-se
 
 | Category | Codes | User outcome |
 | --- | --- | --- |
-| Permission/environment | permission_denied, permission_needs_relaunch, unsupported_os_version | Settings/relaunch guidance or version explanation |
+| Permission/environment | permission_denied, unsupported_os_version | Settings/relaunch guidance or version explanation |
 | Source/codec | no_display, display_unavailable, no_audio_track, mp4_unsupported | Refuse start and explain missing capability |
 | Capture | capture_start_failed, capture_failed, capture_host_crashed, capture_host_unresponsive | Return idle and reveal any preserved partial file; before `record` every capture loss is capture_start_failed with an empty outcome |
 | Storage | output_open_failed, output_write_failed, disk_full | Explain location/disk failure and preserve bytes where possible |
 | Stop | stop_timeout | Stop waiting for capture and attempt partial-file cleanup |
 | Previous process | app_terminated | Reported only at launch from an interruption sentinel; says the app did not exit normally and the file may be incomplete; never sent by the capture host |
 
-Main may replace a generic renderer failure with the concrete source-denial reason, but only for errors that source denial can explain. Permission_needs_relaunch is a supported protocol code; routine relaunch guidance primarily follows PermissionWatcher state.
+Main may replace a generic renderer failure with the concrete source-denial reason, but only for errors that source denial can explain. Relaunch guidance follows PermissionWatcher state: a `permission_denied` while macOS reports access granted marks the running process as needing a relaunch.
 
 ## Screen selection
 

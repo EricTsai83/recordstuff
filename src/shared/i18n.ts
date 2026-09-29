@@ -190,8 +190,6 @@ export const ZH_TW = {
     "RecordStuff 在系統匣待命。左鍵點圖示開始錄製，再點一下停止。",
   "RecordStuff is ready in the menu bar. Click to start recording; click again to stop.":
     "RecordStuff 在選單列待命。左鍵點圖示開始錄製，再點一下停止。",
-  "RecordStuff cannot capture the screen. Check that screen recording is allowed, then relaunch from the tray menu.":
-    "RecordStuff 目前無法擷取螢幕，請確認已允許螢幕錄製，再從選單列重新啟動",
   "This system version does not support system audio capture. macOS 13 or newer is required on Mac.":
     "這個系統版本不支援錄製系統音訊，Mac 需要 macOS 13 以上",
   "No display is available for recording.": "找不到可以錄製的螢幕",

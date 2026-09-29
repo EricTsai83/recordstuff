@@ -31,7 +31,6 @@ export type RecordingState =
  */
 export const ERROR_CODES = [
   "permission_denied",
-  "permission_needs_relaunch",
   "unsupported_os_version",
   "no_display",
   "display_unavailable",

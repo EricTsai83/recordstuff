@@ -101,7 +101,7 @@ it("names both causes of missing system audio on macOS, a very busy Mac first, a
 
 it("does not relaunch again for a restored permission error unless current permission needs it", async () => {
   const io = effects();
-  const store = new RecordingResults({ load: async () => [{ ...a, code: "permission_needs_relaunch", outcome: "empty", acknowledged: false }], save: async () => {} });
+  const store = new RecordingResults({ load: async () => [{ ...a, code: "permission_denied", outcome: "empty", acknowledged: false }], save: async () => {} });
   await store.ready;
   expect(await store.act("a", "relaunch", io)).toBe(false);
   expect(io.relaunch).not.toHaveBeenCalled();

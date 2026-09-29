@@ -6,7 +6,7 @@ import type { RecordingResultAction } from "./ui-model";
 
 const OUTPUT_FOLDER_FAILURES: readonly ErrorCode[] = ["disk_full", "output_open_failed", "output_write_failed"];
 /** `no_audio_track` belongs here: macOS withholds system audio without the capture grant. */
-const PERMISSION_FAILURES: readonly ErrorCode[] = ["permission_denied", "permission_needs_relaunch", "no_audio_track"];
+const PERMISSION_FAILURES: readonly ErrorCode[] = ["permission_denied", "no_audio_track"];
 
 /** Recovered by freeing space or choosing another output folder. */
 export const isOutputFolderFailure = (code: ErrorCode): boolean => OUTPUT_FOLDER_FAILURES.includes(code);
@@ -471,7 +471,6 @@ export class RecordingResults {
 
 const reasons: Record<ErrorCode, PlainMessageKey> = {
   permission_denied: "Screen recording permission required",
-  permission_needs_relaunch: "RecordStuff cannot capture the screen. Check that screen recording is allowed, then relaunch from the tray menu.",
   unsupported_os_version: "This system version does not support system audio capture. macOS 13 or newer is required on Mac.",
   display_unavailable: "Selected display is unavailable. Choose another screen.",
   no_display: "No display is available for recording.",

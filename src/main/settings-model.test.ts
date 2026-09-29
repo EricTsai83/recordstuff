@@ -446,7 +446,7 @@ it("offers macOS permission recovery with pending relaunch locked and no macOS a
 });
 
 it("offers persistence retry for an acknowledged result and bases restored relaunch on current state", () => {
-  const result = { id: "old", occurredAt: "2026-09-25T00:00:00Z", code: "permission_needs_relaunch" as const,
+  const result = { id: "old", occurredAt: "2026-09-25T00:00:00Z", code: "permission_denied" as const,
     detail: "", outcome: "empty" as const, acknowledged: true, restored: true, persistenceFailed: "io" as const };
   const ctx = { ...context, platform: "darwin" as const, recordingResults: [result] };
   const view = settingsView(idle, ctx).recordingResults![0]!;
