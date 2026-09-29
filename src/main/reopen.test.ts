@@ -68,7 +68,8 @@ describe("watchReopen", () => {
     const broken = setup("darwin", async () => { throw new Error("window gone"); });
     broken.events.emit("activate");
     await flush();
-    expect(broken.logs).toEqual(["reopen: reopened from Finder or the Dock; Settings could not open: Error: window gone"]);
+    // An unexpected fault keeps its stack, so the line says where it came from.
+    expect(broken.logs).toEqual([expect.stringMatching(/^reopen: reopened from Finder or the Dock; Settings could not open: Error: window gone\n\s+at /)]);
   });
 
   it("removes both listeners", () => {

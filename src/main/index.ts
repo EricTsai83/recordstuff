@@ -1,7 +1,7 @@
 /**
  * App lifecycle (docs/system-design/recording.md): hide the Dock icon, create the tray, register
- * the display-media handler (primary display + system audio loopback), detect
- * permission, and make quitting wait for a running recording to finish.
+ * the display-media handler (the chosen display + system audio loopback), detect
+ * permission, and make quitting wait for recording work, metadata writes and failure history.
  * Settings use a separate sandboxed window; capture keeps its hidden host.
  */
 import { createPreferenceActions } from "./preferences";
@@ -302,8 +302,20 @@ async function main(): Promise<void> {
     quitDeferred = undefined;
     if (refresh) refreshUi();
   };
+  /** Everything a quit holds back; `endQuitting` releases exactly these when the app stays open. */
+  const beginQuitting = (): void => {
+    quitRequested = true;
+    savedNotification.setQuitting(true);
+    captureNotices.setQuitting(true);
+    // Pending cleanup can hold quit for the stop deadline, and a history save for its wait; the tray says so meanwhile.
+    clearTimeout(quitFeedback);
+    quitFeedback = setTimeout(() => { quitting = true; refreshUi(); }, 300);
+  };
   const endQuitting = (): void => {
     quitRequested = false;
+    recorder.resumeAdmission();
+    savedNotification.setQuitting(false);
+    captureNotices.setQuitting(false);
     clearTimeout(quitFeedback);
     quitFeedback = undefined;
     if (quitting) { quitting = false; refreshUi(); }
@@ -397,7 +409,7 @@ async function main(): Promise<void> {
    */
   function runAction(action: AppAction, source: string): void {
     void handleAction(action).catch((cause: unknown) =>
-      log(`${source}: action ${JSON.stringify(action)} failed: ${String(cause)}`));
+      log(`${source}: action ${JSON.stringify(action)} failed: ${stackOf(cause)}`));
   }
 
   async function handleAction(action: AppAction): Promise<boolean | void> {
@@ -708,7 +720,7 @@ async function main(): Promise<void> {
   void reportInterruptions(sentinels, {
     restore: interrupted => recordingResults.restore(file => fs.stat(file), refreshUi, interrupted),
     saved: ids => recordingResults.saved(ids),
-  }, log).catch((cause: unknown) => log(`start: interruption check failed: ${String(cause)}`));
+  }, log).catch((cause: unknown) => log(`start: interruption check failed: ${stackOf(cause)}`));
 
   if (autoRecord?.ok) {
     runAutoRecord(autoRecord.config, {
@@ -733,14 +745,9 @@ async function main(): Promise<void> {
   const quitCoordinator = installQuitCoordinator(app, {
     relaunch: () => app.relaunch(),
     shutdown: async () => {
-      quitRequested = true;
       quitDeferral = "media";
       clearQuitDeferred();
-      savedNotification.setQuitting(true);
-      captureNotices.setQuitting(true);
-      // Pending cleanup can hold quit for the stop deadline, and a history save for its wait; the tray says so meanwhile.
-      clearTimeout(quitFeedback);
-      quitFeedback = setTimeout(() => { quitting = true; refreshUi(); }, 300);
+      beginQuitting();
       if (!await recorder.shutdown()) return false;
       // Media is settled here, so a timeout names the metadata write that is still pending.
       quitDeferral = "metadata";
@@ -759,10 +766,7 @@ async function main(): Promise<void> {
       } finally { clearTimeout(timeout); }
     },
     pending: () => {
-      recorder.resumeAdmission();
       endQuitting();
-      savedNotification.setQuitting(false);
-      captureNotices.setQuitting(false);
       log(`quit deferred: ${quitDeferral === "media" ? "recording work" : "a preference or log write"} is still pending`);
       showQuitFeedback(quitDeferral);
       // Refused, hidden by Focus or muted while the display is shared, the banner may never be seen (plan 056).
@@ -780,17 +784,16 @@ async function main(): Promise<void> {
       } }),
     resume: () => {
       endQuitting();
-      savedNotification.setQuitting(false);
-      captureNotices.setQuitting(false);
       // The history prompt resumes retries when the user stays; a history step that threw did not.
       recordingResults.resume();
-      recorder.resumeAdmission();
       log("quit declined: failure history is not saved");
       refreshUi();
     },
     // A repeated request brings an open reminder prompt forward; otherwise it just joins.
     joined: () => { if (historyPrompt) focusApp(); },
-    error: (cause) => log(`quit deferred: ${String(cause)}`),
+    // The history step logs its outcome (for example exiting without saving) through the asynchronous queue.
+    exit: async () => { await flushBeforeExit(log); },
+    error: (cause) => log(`quit deferred: ${stackOf(cause)}`),
   });
 
   // Opening the app again is the way in when its menu bar icon is hidden (plan 053).

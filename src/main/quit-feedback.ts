@@ -35,9 +35,10 @@ export const HISTORY_QUIT_WAIT_MS = 5000;
 type HistoryQuitResults = Pick<RecordingResults, "flush" | "unsaved" | "resume" | "close" | "busy">;
 
 /**
- * The metadata phase of quit/relaunch. Retry repeats the bounded save attempt,
- * Stay in app declines exit, and exiting without saving is offered only when
- * the last attempt failed with no write in flight. A timed-out save is never
+ * The metadata phase of quit/relaunch. Retry repeats the bounded save attempt
+ * and is offered only when another attempt could succeed, Stay in app declines
+ * exit, and exiting without saving is offered only when the last attempt
+ * failed with no write in flight. A timed-out save is never
  * treated as stopped I/O, so it keeps the app open.
  */
 export function createHistoryQuit(deps: {
@@ -63,7 +64,11 @@ export function createHistoryQuit(deps: {
       const detail = [...unsaved.length ? [translate("Unsaved records: {count}", language, { count: unsaved.length }), ...listed, ""] : [],
         writing ? translate("The save has not finished. RecordStuff stays open instead of exiting while the history file may still be written.", language)
           : `${issue && issue !== "io" ? persistenceWarning(issue, language) : translate("Check free disk space and access to the app's data folder, then retry.", language)}\n\n${translate("If you exit without saving, these records are lost and will not appear after RecordStuff restarts. Recording files are not affected.", language)}`];
-      let response = 1;
+      // An unreadable, newer or oversized history fails the same way on every attempt while the prompt holds the app.
+      const retryable = writing || !issue || issue === "io";
+      const choices = [...(retryable ? ["retry" as const] : []), "stay" as const, ...(writing ? [] : ["exit" as const])];
+      const labels = { retry: writing ? "Keep waiting" : "Retry", stay: "Stay in app", exit: "Exit without saving these records" } as const;
+      let response = choices.indexOf("stay");
       try { deps.focus(); }
       catch (cause) { deps.log(`quit: prompt focus failed: ${String(cause)}`); }
       try {
@@ -71,13 +76,13 @@ export function createHistoryQuit(deps: {
           type: "warning", title: APP_NAME,
           message: translate(writing ? "Still saving failure records" : "Could not save failure records", language),
           detail: detail.join("\n"),
-          buttons: [translate(writing ? "Keep waiting" : "Retry", language), translate("Stay in app", language),
-            ...(writing ? [] : [translate("Exit without saving these records", language)])],
-          defaultId: 0, cancelId: 1, noLink: true,
+          buttons: choices.map(choice => translate(labels[choice], language)),
+          defaultId: 0, cancelId: choices.indexOf("stay"), noLink: true,
         }));
       } catch (cause) { deps.log(`quit: unsaved history prompt failed: ${String(cause)}`); }
-      if (response === 0) continue;
-      if (response === 2 && !writing) {
+      const chosen = choices[response] ?? "stay";
+      if (chosen === "retry") continue;
+      if (chosen === "exit") {
         // A write started while the prompt was open (for example Got it) could still publish.
         if (deps.results.busy) continue;
         deps.log(`quit: exiting without saving ${unsaved.length} failure reminder(s) at the user's request`);

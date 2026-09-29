@@ -103,3 +103,17 @@ it("leaves the native quit stack before admitting exit and joins requests during
   expect(quit).toHaveBeenCalledOnce();
   expect(preventDefault).toHaveBeenCalledTimes(2);
 });
+
+it("runs the exit step only once exit is admitted, and a failing one still exits", async () => {
+  let listener!: (event: { preventDefault(): void }) => void;
+  const order: string[] = [];
+  const app = { on: (_: "before-quit", fn: typeof listener) => { listener = fn; }, quit: vi.fn(() => { order.push("quit"); listener({ preventDefault() {} }); }) };
+  let exitAllowed = false;
+  const exit = vi.fn(async () => { order.push("exit"); throw new Error("log gone"); });
+  installQuitCoordinator(app, { shutdown: async () => true, history: async () => exitAllowed, resume() {}, pending() {}, error: vi.fn(), exit });
+  listener({ preventDefault() {} }); await new Promise(resolve => setTimeout(resolve, 0));
+  expect(exit).not.toHaveBeenCalled();
+  exitAllowed = true;
+  listener({ preventDefault() {} }); await new Promise(resolve => setTimeout(resolve, 0));
+  expect(order).toEqual(["exit", "quit"]);
+});

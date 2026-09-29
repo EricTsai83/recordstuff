@@ -16,6 +16,8 @@ export function installQuitCoordinator(app: QuitApp, deps: {
   relaunch?(): void;
   history?(): Promise<boolean>;
   resume?(): void;
+  /** Runs once exit is admitted, before `app.quit`: the last chance to flush what the quit itself logged. */
+  exit?(): Promise<void>;
   /** A repeated request joined the running attempt. */
   joined?(): void;
 }): { relaunch(): void } {
@@ -32,6 +34,8 @@ export function installQuitCoordinator(app: QuitApp, deps: {
       if (!await deps.shutdown()) { relaunchRequested = false; deps.pending(); return; }
       mediaSafe = true;
       if (deps.history && !await deps.history()) { relaunchRequested = false; deps.resume?.(); return; }
+      // Exit is decided: a flush that fails or stalls must not keep the app open.
+      await deps.exit?.().catch(() => undefined);
       // A resolved shutdown can continue inside the native before-quit stack.
       // Let Electron finish cancelling that attempt before starting a new one;
       // otherwise macOS can close the windows but leave the process alive.

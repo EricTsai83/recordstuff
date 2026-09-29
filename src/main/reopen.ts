@@ -15,6 +15,8 @@
  * `NOTIFICATION_ACTIVATION_MS` of a notification click is taken as the click's
  * activation and ignored.
  */
+import { stackOf } from "./errors";
+
 export const NOTIFICATION_ACTIVATION_MS = 2000;
 
 export interface ReopenEvents {
@@ -45,7 +47,7 @@ export function watchReopen(options: {
     }
     void options.open().then(
       (result) => options.log(result === false ? `reopen: ${source} ignored while quitting` : `reopen: ${source}; Settings opened`),
-      (cause: unknown) => options.log(`reopen: ${source}; Settings could not open: ${String(cause)}`),
+      (cause: unknown) => options.log(`reopen: ${source}; Settings could not open: ${stackOf(cause)}`),
     );
   };
   const subscriptions: Array<["second-instance" | "activate", () => void]> = [["second-instance", listen("second launch")]];
