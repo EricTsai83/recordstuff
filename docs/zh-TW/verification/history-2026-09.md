@@ -8,6 +8,30 @@
 
 [返回驗證索引](README.md)。以下是歷史證據，包含當時的未完成狀態與操作方式；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 054 結案 — 2026-09-29
+
+Plan 054 補齊 plan 053 未能取得的原生證據，並加入 2026-09-29 20 項稽核的兩項快捷鍵 runner 修正與兩項原生觀察。所有原生檢查都通過，App 程式碼沒有變更。由 Claude 實作、Codex GPT-6 Astra review（[tooling](../system-design/tooling.md#收尾量測)、[第二次啟動](../system-design/desktop.md#設定快捷鍵)）。
+
+- **提早失敗後的停止。** `pnpm acceptance` 送出停止鍵前，會讀取本 session 自 capture 紀錄起的結束紀錄（[acceptance-runtime.mts](../../../scripts/lib/acceptance-runtime.mts) 的 `sessionEnded`）；已存檔或失敗的 session 會被回報並使該次執行失敗，不送出按鍵，因為 idle 的 App 會把它當成新的開始。App 在寫出結束紀錄前已回到 idle，因此收尾可以立即結束它。
+- **被截斷的素材 beep。** 擷取在素材 beep 播放中開始時，檔案會先是一段靜音，接著 beep 直接以全音量出現；這個陡峭的起點讓兩個提示音音高出現約 −41 dBFS，而 2 秒後為 −69。`compareTickLevels` 現在會找出這種被截斷的起點（第一個達到窗內峰值一半的 sample，其前 25 ms 到 1 ms 之間不超過峰值十分之一，更早則沒有高於 −70 dBFS 的內容），只有找到時才把兩個視窗都靜音到該點並以 20 ms 淡入，使後段視窗維持約 −67 dBFS。第一版只把後段視窗靜音；review pass 1 指出這會把 reference 抬高到起點本身的能量，遮住 beep 下的提示音尾巴；pass 2 指出 −60 dBFS 的靜音門檻可能丟棄安靜的提示音，且一個 pre-echo sample 就能讓它失效，因此兩者都已替換。仍無法偵測：擷取同時也在 beep 中開始時，一個在擷取前約 60 ms 以上就開始、−28 dBFS 的提示音殘留的微弱尾巴。
+
+環境：M1 Pro、macOS 26.6.2、Electron 44.3.0，主螢幕 1920 × 1080（BenQ GW2785TC）另有第二個螢幕，版本為 `7470b28` 加上未提交的變更。維護者在桌面回合前回覆「好了」；暫停一個會被錄進去的瀏覽器影片後又回覆一次。
+
+- **殘留的權限提示。** 畫面上沒有，未拒絕也未允許任何提示。
+- **已安裝 App 的通知點擊。** 以 `pnpm start:app` 建置全新簽署的 bundle 並結束後，`pnpm acceptance:notification -- --install --clicks 2` 的兩次點擊都通過（`2026-09-29T123831.355Z-notification-acceptance`）：每次都在 Finder 選取了檔案，log 記錄 `reopen: reopened from Finder or the Dock ignored 113 ms after a notification click` 與 `… 121 ms …`，沒有 `Settings opened`。因此登記的那一份自己在執行時，點擊會以 reopen 抵達，由 2 秒時間窗攔下。已安裝的 App 已從備份還原，本次的兩段錄影已刪除。runner 起初因有開啟的 Finder 視窗而拒絕執行；agent 關閉它，之後重新開啟同一個資料夾。
+- **真實報告中的 checkpoint。** `pnpm measure:finalization -- --dir /tmp/t054/finalization --repeat 1` 存檔並驗證了一段 15 秒的錄影；stop→ready 41 ms，含 `checkpoint 6 ms`（`2026-09-29T12-39-43-672Z-finalization`）。
+- **快捷鍵 runner。** 在全新 bundle 上 `pnpm acceptance -- --seconds 10` 通過（`2026-09-29T12-41-42-120Z-hotkey-acceptance`）：完整性檢查、10 次閃光與 10 次 beep、數字裁圖（最差 1.23）、取消案例與收尾。倒數有音效；兩個 tick 視窗都是 digital silence（beep 相位落在視窗外），因此截斷起點的分支未在原生環境觸發。提早失敗分支與截斷的 beep 依計畫只由單元測試涵蓋。
+- **睡眠與喚醒（觀察 a）。** 錄影 4 秒時睡眠（`pmset sleepnow`），錄影以 `stopped early: the Mac went to sleep` 存檔，log 記錄 `notification: held during sleep`。19 秒後沒有點亮螢幕的 dark wake（`ATC2.USBWakeup`）期間仍維持 held；睡眠 42 秒後完整喚醒時，App 記錄 `power: resume`，225 ms 後 `notification: shown`。通知在完整喚醒當下就出現，因此 resume 時最後一次輸入已超過 2 秒的情況沒有另外測到。
+- **快捷鍵衝突橫幅（觀察 b）。** 未執行：暫時的 Electron 程序註冊了同一組 `CommandOrControl+Shift+1`，RecordStuff 仍記錄 `hotkey: registered`，因為 macOS 允許兩個程序註冊同一個全域快捷鍵；無法製造衝突。
+- **未執行。** 可選的 1080p 上限擷取開始通知：這裡沒有大於最小上限的螢幕。依計畫排除：capture matrix、長錄影與音訊保真度。
+- **Agent 操作。** agent 的 shell 帶有 `ELECTRON_RUN_AS_NODE=1`，因此它為觀察 (a) 自行 `open -a` bundle 時，App 立即結束且沒有寫 log，直到移除該變數；它的一次按鍵（`keystroke "1"`，而非 runner 的 key code）送到了前景 App，而非 RecordStuff。
+
+自動化證據：`pnpm check` 通過型別檢查、83 個檔案 1273 個測試與建置；`git diff --check` 通過。測試涵蓋：停止前已失敗或已存檔的 session、其他 session 或 run 的紀錄、格式錯誤的紀錄、檔案從 beep 中開始（含 pre-echo 與雜訊底）、自己有 attack 的 beep、一開始就有聲音的檔案、檔案從提示音中開始或提示音與截斷 beep 並存、擷取前 20 與 60 ms 開始的提示音尾巴，以及每個 sample 都低於 −60 dBFS 但仍達到下限的安靜提示音。
+
+Review：Codex GPT-6 Astra（medium reasoning、read-only）。Pass 1（約 83 秒）指出靜音的 reference 會遮住提示音尾巴（接受）；pass 2（約 88 秒）指出靜音門檻易受 pre-echo 影響且可能丟棄安靜的提示音（兩項都接受）。pass 2 之後的修正沒有再經過 review。
+
+清理：RecordStuff 與暫時佔用快捷鍵的程序都已結束，沒有殘留 RecordStuff 或 Electron 程序；`settings.json` 從未變更；Finder 視窗已重新開啟。快捷鍵 runner 保留的錄影與 4 秒的睡眠錄影，之後依維護者要求從 `~/Movies/RecordStuff` 刪除。回合期間執行了 `caffeinate -d -i`。
+
 ## Plan 053 結案 — 2026-09-29
 
 Plan 053 處理 2026-09-29 第三次稽核修正時留下的六個項目，由 Claude 實作、Codex GPT-6 Astra review；在 052 於主 checkout 執行期間，改在獨立的 worktree 進行（[desktop](../system-design/desktop.md#設定視窗)、[第二次啟動](../system-design/desktop.md#設定快捷鍵)、[通知](../system-design/desktop.md#tray-與通知)、[tooling](../system-design/tooling.md#影格節奏診斷)）。
