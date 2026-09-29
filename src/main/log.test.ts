@@ -100,6 +100,25 @@ describe("createFileLogger", () => {
     expect(err[0]).toContain(filePath);
   });
 
+  it("writes again after its folder is removed and says how many lines the file missed", async () => {
+    const log = logger();
+    log("before");
+    await log.flush();
+    await fs.rm(path.dirname(filePath), { recursive: true });
+    log("lost");
+    await log.flush();
+    log("after");
+    await log.flush();
+    const lines = (await fs.readFile(filePath, "utf8")).trimEnd().split("\n");
+    expect(lines).toEqual([
+      "[2026-09-12T10:00:00.000Z] log: 1 line(s) could not be written to this file (stdout has them)",
+      "[2026-09-12T10:00:00.000Z] after",
+    ]);
+    expect(out).toHaveLength(3);
+    expect(err).toHaveLength(1);
+    expect(err[0]).toContain("skipping file lines until a write succeeds");
+  });
+
   it("stops touching the file after a mid-run write failure", async () => {
     const log = logger();
     log("before");

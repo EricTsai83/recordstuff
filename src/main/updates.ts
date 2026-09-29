@@ -13,11 +13,24 @@ export type UpdateResult = { kind: "current"; checkedAt: number } | { kind: "ava
   { kind: "failed" };
 export type UpdateState = { kind: "idle" } | { kind: "checking"; previous?: UpdateResult } | UpdateResult;
 
+/**
+ * The installed version: a stable one, or a pre-release build (`1.2.0-rc.1`,
+ * the release tool's `vX.Y.Z-suffix`), which semver orders before its own
+ * stable release. Undefined for anything else.
+ */
+function installedVersion(value: string): { core: bigint[]; prerelease: boolean } | undefined {
+  const stable = stableVersion(value);
+  if (stable) return { core: stable, prerelease: false };
+  const match = /^(\d+\.\d+\.\d+)-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*$/.exec(value);
+  const core = match ? stableVersion(match[1]) : undefined;
+  return core ? { core, prerelease: true } : undefined;
+}
+/** Whether the published stable `remote` is newer than the installed `local`. */
 export function isNewer(remote: string, local: string): boolean {
-  const a = stableVersion(remote), b = stableVersion(local);
+  const a = stableVersion(remote), b = installedVersion(local);
   if (!a || !b) return false;
-  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i]! > b[i]!;
-  return false;
+  for (let i = 0; i < 3; i++) if (a[i] !== b.core[i]) return a[i]! > b.core[i]!;
+  return b.prerelease;
 }
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid release object");
@@ -132,7 +145,7 @@ export class UpdateChecker {
         return;
       }
       const version = await this.options.fetch(controller.signal);
-      if (!stableVersion(this.options.localVersion)) throw new Error("local version is not a stable release");
+      if (!installedVersion(this.options.localVersion)) throw new Error(`local version ${this.options.localVersion} cannot be compared`);
       result = isNewer(version, this.options.localVersion)
         ? { kind: "available", version } : { kind: "current", checkedAt: (this.options.now ?? Date.now)() };
       this.options.log(`updates: ${result.kind}; remote ${version}`);

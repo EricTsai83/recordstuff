@@ -61,6 +61,8 @@ import { DEFAULT_LANGUAGE, translate, type Language } from "../shared/i18n";
 let currentLanguage: Language = DEFAULT_LANGUAGE;
 /** Reverse-DNS of the maintainer's domain (docs/system-design/signing.md#bundle-identifier). */
 const APP_ID = "com.ericts.record";
+/** How long quit waits for the settings, window-size and log writes once media has settled. */
+const QUIT_METADATA_WAIT_MS = 5000;
 
 /**
  * stdout plus a rotated file (docs/system-design/desktop.md). `app.getPath("logs")` is
@@ -264,8 +266,9 @@ async function main(): Promise<void> {
   // One action for both entry points (plan 016): the tray's left click and the
   // global shortcut call the same `toggle`, whose state guards decide.
   const toggle = (): void => recorder.toggle();
-  /** Settings that touch a session (quality, shortcut) change only here. */
+  /** A quit is running: every action but quit is ignored until it exits or is declined. */
   let quitRequested = false;
+  /** Settings that touch a session (quality, shortcut) change only here. */
   const settled = (): boolean => !quitRequested && preferencesUnlocked(recorder.state);
   const shortcuts = new AppShortcuts({
     globalShortcut, platform: process.platform, toggle, settled, store: settings, log,
@@ -749,9 +752,9 @@ async function main(): Promise<void> {
       try {
         const flushed = await Promise.race([
           Promise.all(flushes).then(() => true),
-          new Promise<boolean>(resolve => { timeout = setTimeout(() => resolve(false), 5000); }),
+          new Promise<boolean>(resolve => { timeout = setTimeout(() => resolve(false), QUIT_METADATA_WAIT_MS); }),
         ]);
-        if (!flushed) log(`quit: ${[...pending].join(", ")} still writing after 5000 ms`);
+        if (!flushed) log(`quit: ${[...pending].join(", ")} still writing after ${QUIT_METADATA_WAIT_MS} ms`);
         return flushed;
       } finally { clearTimeout(timeout); }
     },
@@ -779,6 +782,8 @@ async function main(): Promise<void> {
       endQuitting();
       savedNotification.setQuitting(false);
       captureNotices.setQuitting(false);
+      // The history prompt resumes retries when the user stays; a history step that threw did not.
+      recordingResults.resume();
       recorder.resumeAdmission();
       log("quit declined: failure history is not saved");
       refreshUi();

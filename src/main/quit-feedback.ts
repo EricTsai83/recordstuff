@@ -12,8 +12,9 @@ const DEFERRAL_MESSAGE = {
 } as const;
 
 /**
- * Deferred-quit feedback, shown exactly while recording work is pending. It
- * only informs, so it is a notification: a windowless message box runs a
+ * Deferred-quit feedback, shown once when a quit is postponed by pending
+ * recording work or, after media settled, by a settings, window-size or log
+ * write (`QuitDeferral`). It only informs, so it is a notification: a windowless message box runs a
  * modal loop in which main runs no timers, I/O or log writes until it is
  * closed (plan 055's probe), which would hold the very work it describes.
  * Returns without waiting for anything, so no deadline depends on it.

@@ -5,8 +5,10 @@
  * before a write once the active file exceeds `maxBytes`: `recordstuff.log`
  * becomes `recordstuff.1.log`, `.1` becomes `.2`, and so on up to `keep`
  * archives. The size is read from disk once per process and counted from
- * then on; this process is the file's only writer. A failed file write is reported to stderr once; after that the
- * logger keeps writing to stdout only so logging can never take the app down.
+ * then on; this process is the file's only writer. A full disk or a removed logs folder only
+ * skips lines: the next line looks again and, once written, says how many the file missed. Any
+ * other failed write is reported to stderr once; after that the logger keeps writing to stdout
+ * only so logging can never take the app down.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -14,6 +16,8 @@ import path from "node:path";
 // local import: it imports only built-ins, so it keeps its own queue drain and errno checks.
 
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
+/** Write failures the file can recover from: space freed later, a folder created again. */
+const TRANSIENT_WRITE_ERRORS = new Set(["ENOSPC", "ENOENT"]);
 /** Lines waiting for the file beyond this are dropped from it; stdout still gets every line. */
 const MAX_QUEUED_BYTES = 1024 * 1024;
 export const DEFAULT_KEEP = 3;
@@ -85,6 +89,8 @@ export function createFileLogger(options: FileLoggerOptions): FileLog {
   let overflowReported = false;
   /** Lines the full queue refused; the next accepted line says how many, so the file shows the gap. */
   let dropped = 0;
+  /** Lines a transient write failure kept from the file; the next written line says how many. */
+  let unwritten = 0;
   let queue = Promise.resolve();
   const log: FileLog = Object.assign((message: string): void => {
     const time = now();
@@ -110,9 +116,18 @@ export function createFileLogger(options: FileLoggerOptions): FileLog {
         catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; size = 0; }
       }
       if (size > maxBytes) { await rotateLog(options.filePath, keep); size = 0; }
-      await fs.promises.appendFile(options.filePath, text, "utf8");
-      size += bytes;
+      const missed = unwritten ? `${formatLine(`log: ${unwritten} line(s) could not be written to this file (stdout has them)`, time)}\n` : "";
+      await fs.promises.appendFile(options.filePath, `${missed}${text}`, "utf8");
+      size += bytes + Buffer.byteLength(missed);
+      unwritten = 0;
     }).catch(cause => {
+      if (TRANSIENT_WRITE_ERRORS.has((cause as NodeJS.ErrnoException).code ?? "")) {
+        // Measure the file and create its folder again before the next line.
+        size = undefined;
+        if (!unwritten) stderr(`log: cannot write ${options.filePath}: ${String(cause)}; skipping file lines until a write succeeds`);
+        unwritten += 1;
+        return;
+      }
       fileEnabled = false;
       stderr(`log: cannot write ${options.filePath}: ${String(cause)}; file logging disabled`);
     }).finally(() => { queuedBytes -= bytes; if (!queuedBytes) overflowReported = false; });

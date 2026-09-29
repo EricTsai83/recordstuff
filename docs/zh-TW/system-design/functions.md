@@ -335,7 +335,7 @@
 
 ## Log 與自動錄製
 
-[log.ts](../../../src/main/log.ts)：`rotatedPath(path, index)` 組 archive 檔名；`rotateLog(path, keep)` 刪最舊再逆序搬移；`formatLine(message, now)` 加 ISO 前綴；`createFileLogger(options)` 回傳帶 `flush()` 的 logger：每行立即寫 stdout，並加入一條序列化、上限 1 MiB 的非同步檔案佇列（超過上限的行只從檔案捨棄，並回報一次）。第一次寫入建立目錄並在每個程序只查一次長度；之後累計寫入位元組、超過 `maxBytes` 時先輪替，檔案錯誤後停用檔案輸出。`flushBeforeExit(log, timeoutMs)` 有上限地等待佇列寫完，讓啟動失敗或第二個實例結束前，原因已寫進檔案。
+[log.ts](../../../src/main/log.ts)：`rotatedPath(path, index)` 組 archive 檔名；`rotateLog(path, keep)` 刪最舊再逆序搬移；`formatLine(message, now)` 加 ISO 前綴；`createFileLogger(options)` 回傳帶 `flush()` 的 logger：每行立即寫 stdout，並加入一條序列化、上限 1 MiB 的非同步檔案佇列（超過上限的行只從檔案捨棄，並回報一次）。第一次寫入建立目錄並在每個程序只查一次長度；之後累計寫入位元組、超過 `maxBytes` 時先輪替；磁碟已滿或 logs 資料夾被刪除時只略過這些行，之後寫入成功時記下檔案漏掉幾行，其他檔案錯誤則停用檔案輸出。`flushBeforeExit(log, timeoutMs)` 有上限地等待佇列寫完，讓啟動失敗或第二個實例結束前，原因已寫進檔案。
 
 [session-log.ts](../../../src/main/session-log.ts)：`createRunId(launchedAt, pid)` 由啟動時間與 pid 組成每次啟動的 run id；`logSessionEvent(log, run, event)` 對 captureStarted、saved、failed 與 preflight 拒絕先寫人類可讀的 `saved`／`failed:` 行，再寫有版本的 session record；取消的倒數只寫一行記下暫存檔的 `cancelled:`，不寫 record；其他事件忽略。[shared/session-record.ts](../../../src/shared/session-record.ts) 定義 record schema、前綴與版本並格式化一筆 record；只有 type import，scripts 可直接載入。
 

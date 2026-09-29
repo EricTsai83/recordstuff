@@ -14,6 +14,8 @@ function harness() {
 afterEach(() => vi.restoreAllMocks());
 describe("release validation", () => {
   it.each([["0.2.0", true], ["0.1.2", false], ["0.1.1", false], ["0.2.0-beta.1", false], ["junk", false], ["01.2.3", false], ["0.1.2+build", false], ["1.0.0", true]])("compares %s", (v, expected) => expect(isNewer(v, "0.1.2")).toBe(expected));
+  it.each([["1.2.0", "1.2.0-rc.1", true], ["1.2.1", "1.2.0-rc.1", true], ["1.1.9", "1.2.0-rc.1", false], ["1.2.0", "1.2.0", false], ["1.2.0", "1.2.0-", false], ["1.2.0", "01.2.0-rc.1", false]])(
+    "compares published %s with installed %s", (remote, local, expected) => expect(isNewer(remote, local)).toBe(expected));
   it("compares large components without precision loss", () => expect(isNewer("999999999999999999999.0.0", "999999999999999999998.0.0")).toBe(true));
   it("rejects malformed build metadata", () => expect(stableVersion("1.0.0+a..b")).toBeUndefined());
   it("accepts the complete matching feed", () => expect(feedVersion(feed, "darwin", "arm64")).toBe("0.2.0"));
@@ -81,6 +83,13 @@ describe("lifecycle", () => {
   it("preference off suppresses launch but permits manual checks", async () => {
     const h = harness(); h.preference.enabled = false; await h.checker.check(false); expect(h.options.fetch).not.toHaveBeenCalled();
     await h.checker.check(true); expect(h.checker.state.kind).toBe("available");
+  });
+  it("offers the stable release to a pre-release install and says a pre-release of the published version is current", async () => {
+    const h = harness();
+    const rc = new UpdateChecker({ ...h.options, localVersion: "0.2.0-rc.1" });
+    await rc.check(true); expect(rc.state).toEqual({ kind: "available", version: "0.2.0" });
+    const next = new UpdateChecker({ ...h.options, localVersion: "0.3.0-rc.1" });
+    await next.check(true); expect(next.state.kind).toBe("current");
   });
   it("defers checks during recording", async () => {
     const h = harness(); h.busy(true); await h.checker.check(true); expect(h.options.fetch).not.toHaveBeenCalled();
