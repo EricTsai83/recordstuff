@@ -785,7 +785,8 @@ export class Recorder {
     if (!session.hasMedia && bytes.byteLength > 0) {
       session.hasMedia = true;
       this.deps.log(`recorder: session ${session.id} first chunk ${bytes.byteLength} bytes`);
-      if (session.phase !== "stopping") this.clearTimer(session);
+      // Only the first-chunk deadline ends here: before `started` the timer is the record → started deadline.
+      if (session.phase === "recording") this.clearTimer(session);
     }
     // Empty chunks are not media, so they do not reset the stall guard either.
     if (bytes.byteLength > 0 && session.phase !== "arming") this.armStall(session);

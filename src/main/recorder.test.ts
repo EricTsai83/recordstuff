@@ -1041,6 +1041,20 @@ describe("Recorder shutdown", () => {
     expect(ctx.events.filter((event) => event.type === "saved")).toHaveLength(1);
   });
 
+  it("a chunk before started keeps the record → started deadline", async () => {
+    const ctx = setup();
+    ctx.host.autoStart = false;
+    ctx.recorder.toggle();
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    expect(ctx.host.recorded).toEqual(["s1"]);
+    // A host that deviates from the protocol: media arrives, `started` never does.
+    ctx.host.emit(chunk("s1", 0));
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(ctx.events).toContainEqual(expect.objectContaining({ type: "failed", code: "capture_start_failed" }));
+    expect(ctx.recorder.state.type).toBe("idle");
+  });
+
   it("keeps capture admission closed after a safe shutdown until quit is declined", async () => {
     const ctx = setup();
     expect(await ctx.recorder.shutdown()).toBe(true);
