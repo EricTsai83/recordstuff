@@ -130,7 +130,14 @@ describe("settings window lifecycle", () => {
     expect(mock.windows).toHaveLength(1);
     expect(mock.focus).toHaveBeenCalledWith({ steal: true });
     expect(mock.focus).toHaveBeenCalledTimes(2);
-    expect(s.window().focus).toHaveBeenCalled();
+    // A second request while the page still loads must not show a blank window.
+    expect(s.window().show).not.toHaveBeenCalled();
+    s.window().events.get("ready-to-show")!();
+    expect(s.window().show).toHaveBeenCalledTimes(1);
+    expect(s.window().focus).toHaveBeenCalledTimes(1);
+    s.panel.show();
+    expect(s.window().show).toHaveBeenCalledTimes(2);
+    expect(s.window().focus).toHaveBeenCalledTimes(2);
     expect(s.window().options.webPreferences).toMatchObject({
       sandbox: true,
       contextIsolation: true,
@@ -383,7 +390,8 @@ it("keeps capture through a confirmed commit, then ends only that capture", asyn
 
 it("restores a minimized panel, reuses it and creates one replacement after close", () => {
   const s = setup(); s.panel.show();
-  const first = s.window(); first.isMinimized.mockReturnValue(true);
+  const first = s.window(); first.events.get("ready-to-show")!(); first.focus.mockClear();
+  first.isMinimized.mockReturnValue(true);
   s.panel.show(); s.panel.show();
   expect(mock.windows).toHaveLength(1);
   expect(first.restore).toHaveBeenCalledTimes(2);
@@ -739,6 +747,11 @@ describe("crashed and replaced settings windows", () => {
     crash(old);
     expect(s.capture.mock.calls).toEqual([[true]]);
     expect(s.read(from(replacement)).groups.find((g: any) => g.id === "hotkey").capturing).toBe(true);
+    // The old window's late first paint marks nothing: the replacement still waits for its own.
+    old.events.get("ready-to-show")();
+    s.panel.show();
+    expect(replacement.focus).not.toHaveBeenCalled();
+    replacement.events.get("ready-to-show")();
     s.panel.show();
     expect(mock.windows).toHaveLength(2);
     expect(replacement.focus).toHaveBeenCalled();

@@ -55,6 +55,8 @@ export class SettingsWindow {
   /** Holds both global shortcuts suspended; never held by a pending save. */
   private lease: CaptureLease | undefined;
   private window: BrowserWindow | undefined;
+  /** The current window painted its first frame; before that, `ready-to-show` shows it. */
+  private painted = false;
   private resizeTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingSize: WindowSize | undefined;
   private rememberedSize: WindowSize | undefined;
@@ -119,9 +121,12 @@ export class SettingsWindow {
     if (process.platform === "darwin") app.focus({ steal: true });
     const existing = this.window;
     if (existing && !existing.isDestroyed()) {
-      if (existing.isMinimized()) existing.restore();
-      existing.show();
-      existing.focus();
+      // A window still loading would show blank; its own `ready-to-show` shows and focuses it.
+      if (this.painted) {
+        if (existing.isMinimized()) existing.restore();
+        existing.show();
+        existing.focus();
+      }
       this.refresh();
       return;
     }
@@ -152,6 +157,7 @@ export class SettingsWindow {
       },
     });
     this.window = window;
+    this.painted = false;
     this.delivered = undefined;
     let lastSize = size;
     window.on("resize", () => {
@@ -168,6 +174,7 @@ export class SettingsWindow {
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
     window.once("ready-to-show", () => {
+      if (this.window === window) this.painted = true;
       window.show();
       window.focus();
     });

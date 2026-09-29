@@ -141,6 +141,25 @@ it("moves focus to the row that took a removed row's place, then to the tab afte
   expect(document.querySelector<HTMLElement>(".result-history-note")!.hidden).toBe(true);
 });
 
+it("gives a removed row's focus to the next remaining row when other rows change in the same update", async () => {
+  await show(view([reviewed("a"), reviewed("b"), reviewed("c"), reviewed("d"), reviewed("e")]));
+  tab("failures").click();
+  headers()[2]!.focus();
+  // "c" goes together with "a" above it: its old position now holds "e", not its neighbour "d".
+  await show(view([reviewed("b"), reviewed("d"), reviewed("e")]));
+  expect(document.activeElement).toBe(document.getElementById("recording-result-d-summary"));
+  // A new failure arriving at the top in the same update does not move it either.
+  headers()[1]!.focus();
+  await show(view([row("new"), reviewed("b"), reviewed("e")]));
+  expect(rows().map((r) => r.dataset.resultId)).toEqual(["new", "b", "e"]);
+  expect(document.activeElement).toBe(document.getElementById("recording-result-e-summary"));
+  // The last row, removed with nothing after it: the new last row takes focus.
+  await show(view([row("new"), reviewed("b")]));
+  headers()[1]!.focus();
+  await show(view([row("new")]));
+  expect(document.activeElement).toBe(document.getElementById("recording-result-new-summary"));
+});
+
 it("shows the loading line instead of the empty state", async () => {
   await show(view([], { recordingHistoryStatus: "Loading failure history…" }));
   const status = document.querySelector<HTMLElement>(".result-history-status")!;
@@ -189,6 +208,25 @@ it("keeps the missing-file explanation instead of offering an impossible reveal 
   await vi.waitFor(() => expect(document.querySelector('.result-outcome')?.textContent).toBe("The file is no longer available."));
   expect(document.querySelector<HTMLElement>('.result-error')!.hidden).toBe(true);
   expect(document.getElementById("feedback")!.textContent).not.toContain("Please try again");
+});
+
+it("announces an action that fails again, although its message is the same", async () => {
+  const offered = () => view([row("again", { actions: [{ id: "folder", label: "Open folder", enabled: true, checked: false }] })]);
+  await show(offered());
+  tab("failures").click();
+  key(headers()[0]!, "Enter");
+  const feedback = document.getElementById("feedback")!;
+  const spoken: string[] = [];
+  new MutationObserver(() => spoken.push(feedback.textContent ?? "")).observe(feedback, { childList: true, characterData: true, subtree: true });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    choose.mockImplementationOnce(async () => ({ applied: false, view: offered() }));
+    (document.querySelector('.result-actions button') as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(spoken.filter(t => t.startsWith("Could not complete this action."))).toHaveLength(attempt + 1));
+  }
+  // The live region's text changed both times, so a screen reader speaks the second failure too.
+  const failures = spoken.filter(t => t.startsWith("Could not complete this action."));
+  expect(failures[0]).not.toBe(failures[1]);
+  expect(failures.map(t => t.trim())).toEqual(Array(2).fill("Could not complete this action. Please try again."));
 });
 
 it("pages older failures in without announcing them or dropping focus, and still announces a new one", async () => {

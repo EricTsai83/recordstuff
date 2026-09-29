@@ -42,9 +42,15 @@ let preview = "";
 /** The preview's keys, one box each: modifiers and the key, never the characters of a name like F12 or Ctrl. */
 let previewParts: string[] = [];
 let candidateToConfirm: string | undefined;
+/** The first read failed and its error is shown in `#feedback`, made visible. */
+let startupFailed = false;
 let failure: { group: string; choice?: string; text: string; baseline?: string; refused?: true } | undefined;
 const text = (key: PlainMessageKey): string => translate(key, view?.language);
 const controlId = (group: SettingsGroup): string => `setting-${group.id}`;
+/** The shortcut editor's own buttons: their outcome returns focus to the shortcut select. */
+const isCaptureControl = (control: string): boolean => control === "shortcut-capture" || control === "shortcut-confirm";
+/** A group's retry or recovery button; it hides once it worked, so focus falls back to the group. */
+const isRecoveryControl = (control: string): boolean => /-(retry|recovery)$/.test(control);
 const shortcutGroup = (): SettingsGroup | undefined => view?.groups.find(g => g.kind === "shortcut");
 /** Main's platform; before the first view (a failed read) the page must still close. */
 const platform = (): string => shortcutGroup()?.platform ?? (navigator.platform.startsWith("Mac") ? "darwin" : navigator.platform);
@@ -52,7 +58,19 @@ function setText(element: Element, value: string): void { if (element.textConten
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", value = ""): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag); el.className = className; el.textContent = value; return el;
 }
-function announce(value: string): void { setText(feedback, value); }
+/** Marks a repeated announcement; screen readers do not speak a trailing no-break space. */
+const REPEAT_MARK = "\u00A0";
+/** The message `#feedback` announces, without the repeat mark. */
+const announced = (): string => (feedback.textContent ?? "").replace(/\u00A0$/, "");
+/**
+ * A live region speaks only when its text changes, so the same message again (a retry that
+ * failed again, a second refused key) toggles the repeat mark to be heard again.
+ */
+function announce(value: string): void {
+  const current = feedback.textContent ?? "";
+  if (value && announced() === value) feedback.textContent = current === value ? `${value}${REPEAT_MARK}` : value;
+  else setText(feedback, value);
+}
 function committed(group: SettingsGroup | undefined): string { return group?.choices.find(c => c.checked)?.id ?? ""; }
 function setDisabled(el: HTMLButtonElement | HTMLSelectElement | HTMLInputElement, unavailable: boolean, busy: boolean): void {
   if (el.disabled !== (unavailable || busy)) el.disabled = unavailable || busy;
@@ -452,17 +470,21 @@ function updateRecordingResult(focusRequested: boolean): void {
   const focusId = (results.find(r => !r.acknowledged) ?? results[0])?.id;
   // Taken before any row moves: moving a focused node drops its focus (review of plan 047), so it is given back below.
   const focused = days.contains(document.activeElement) ? document.activeElement as HTMLElement : undefined;
-  // Where the focused row was, so focus can land on its neighbour instead of the top of the list.
-  let removedFocusAt: number | undefined;
+  // A removed focused row hands focus to the next row that stays (null: none after it, so the last row),
+  // not to its old position, which other rows removed or added in the same update would shift.
+  let focusAfterRemoval: string | null | undefined;
   const ids = new Set(results.map(r => r.id));
-  for (const [position, area] of [...days.querySelectorAll<HTMLDetailsElement>(".recording-result")].entries()) {
+  const previousRows = [...days.querySelectorAll<HTMLDetailsElement>(".recording-result")];
+  for (const [position, area] of previousRows.entries()) {
     if (!ids.has(area.dataset.resultId!)) {
-      if (focused && area.contains(focused)) removedFocusAt = position;
+      if (focused && area.contains(focused)) {
+        focusAfterRemoval = previousRows.slice(position + 1).find(next => ids.has(next.dataset.resultId!))?.dataset.resultId ?? null;
+      }
       area.remove(); resultStates.delete(area.dataset.resultId!); resultErrors.delete(area.dataset.resultId!);
     }
   }
   if (!results.length) {
-    const hadFocus = removedFocusAt !== undefined || list.contains(document.activeElement);
+    const hadFocus = focusAfterRemoval !== undefined || list.contains(document.activeElement);
     days.replaceChildren(); resultStates.clear();
     if (hadFocus || focusRequested) document.getElementById(`tab-${selectedTab}`)?.focus({ preventScroll: true });
     return;
@@ -516,10 +538,11 @@ function updateRecordingResult(focusRequested: boolean): void {
     target?.querySelector<HTMLElement>(":scope > summary")?.focus({ preventScroll: true });
     target?.scrollIntoView({ block: "nearest" });
   }
-  if (removedFocusAt !== undefined) {
+  if (focusAfterRemoval !== undefined) {
     // The row that took the removed one's place, or the new last row; brought into view.
-    const headers = resultHeaders();
-    const next = headers[Math.min(removedFocusAt, headers.length - 1)];
+    const next = (focusAfterRemoval === null ? undefined
+      : document.getElementById(`recording-result-${encodeURIComponent(focusAfterRemoval)}`)?.querySelector<HTMLElement>(":scope > summary"))
+      ?? resultHeaders().at(-1);
     next?.focus({ preventScroll: true });
     next?.scrollIntoView({ block: "nearest" });
   }
@@ -625,7 +648,11 @@ function draw(): void {
   // An explicit entry (tray or error notification) selects the failures tab once per token (plan 047).
   const focusRequested = (current.resultFocus ?? 0) > resultFocus;
   resultFocus = current.resultFocus ?? 0;
-  if (focusRequested) selectedTab = "failures";
+  if (focusRequested) {
+    // Like a tab click: the editor leaves with its tab, and main must not keep both shortcuts suspended.
+    if (selectedTab !== "failures" && (shortcutGroup()?.capturing || arming)) void capture(false);
+    selectedTab = "failures";
+  }
   document.documentElement.lang = documentLanguage(current.language);
   document.title = current.title; setText(heading, current.title); setText(hint, current.hint); hint.hidden = !current.hint;
   const groups = current.groups.filter(g => g.tab === selectedTab);
@@ -679,10 +706,10 @@ function draw(): void {
     form.replaceChildren(tabs, viewport);
     updateRows(groups);
     if (restore && document.hasFocus()) {
-      const destination = (restore === "shortcut-capture" || restore === "shortcut-confirm") && !shortcutGroup()?.capturing ? "setting-hotkey" : restore;
+      const destination = isCaptureControl(restore) && !shortcutGroup()?.capturing ? "setting-hotkey" : restore;
       const focusTarget = document.getElementById(destination);
       if (focusTarget && !focusTarget.closest("[hidden]")) focusTarget.focus({ preventScroll: true });
-      else if (restore.endsWith("-recovery") || restore.endsWith("-retry")) groupControl(restore.replace(/^setting-|-(recovery|retry)$/g, ""))?.focus({ preventScroll: true });
+      else if (isRecoveryControl(restore)) groupControl(restore.replace(/^setting-|-(recovery|retry)$/g, ""))?.focus({ preventScroll: true });
     }
     // Rows first; the offset is applied below, once the panel, failure rows included, is complete.
     updateRecordingResult(false);
@@ -708,6 +735,12 @@ function render(next: SettingsView): void {
   const previous = view;
   if (!next.groups.some(group => group.kind === "shortcut" && group.capturing)) { candidateToConfirm = undefined; preview = ""; previewParts = []; }
   view = next;
+  if (startupFailed) {
+    // A later push drew the panel after all: the read's error is no longer true, and the region is an announcer again.
+    startupFailed = false;
+    feedback.classList.add("visually-hidden");
+    announce("");
+  }
   draw();
   if (previous) {
     // Only news is read out: a language switch retranslates every note and row without changing them.
@@ -754,7 +787,7 @@ async function chooseResult(id: string, action: string, control: string): Promis
   } catch { /* Keep the current projection; main owns the state. */ }
   resultIntents.delete(id);
   if (!applied && offeredAfter) { resultErrors.add(id); announce(text("Could not complete this action. Please try again.")); }
-  else if (feedback.textContent === text("Saving this change…")) announce("");
+  else if (announced() === text("Saving this change…")) announce("");
   draw();
   restoreResultFocus(id, intent);
 }
@@ -772,7 +805,7 @@ function restoreResultFocus(id: string, intent: { action: string; control: strin
 }
 async function choose(group: string, choice: string, control: string): Promise<void> {
   // The currently edited value can queue a newer intent; actions never duplicate.
-  if (saving && (saving.group !== group || control.endsWith("-recovery") || control.endsWith("-retry") || (control === "shortcut-capture" || control === "shortcut-confirm"))) return;
+  if (saving && (saving.group !== group || isRecoveryControl(control) || isCaptureControl(control))) return;
   const id = ++requestId;
   pending++; saving = { group, choice, control }; failure = undefined; announce(""); draw();
   let success = false;
@@ -780,18 +813,18 @@ async function choose(group: string, choice: string, control: string): Promise<v
   try {
     const result = await window.settings.choose(group, choice);
     if (id !== requestId) return;
-    returnCaptureFocus = (control === "shortcut-capture" || control === "shortcut-confirm") && document.activeElement?.id === control && document.hasFocus();
+    returnCaptureFocus = isCaptureControl(control) && document.activeElement?.id === control && document.hasFocus();
     render(result.view); success = result.applied;
     if (!success) {
       failure = { group, choice, text: result.failure ?? result.view.failure, baseline: committed(result.view.groups.find(g => g.id === group)!),
         ...(result.refused ? { refused: true as const } : {}) };
       announce(failure.text);
-    } else if ((control === "shortcut-capture" || control === "shortcut-confirm") && !shortcutGroup()?.diagnostics?.length) announce(text("Shortcut saved"));
+    } else if (isCaptureControl(control) && !shortcutGroup()?.diagnostics?.length) announce(text("Shortcut saved"));
     else if (control.endsWith("-recovery")) announce(text("Switched to Primary display"));
   } catch {
     if (id === requestId && view) {
       failure = { group, choice, text: view.failure, baseline: committed(view.groups.find(g => g.id === group)!) }; announce(failure.text);
-      if ((control === "shortcut-capture" || control === "shortcut-confirm")) void capture(false);
+      if (isCaptureControl(control)) void capture(false);
     }
   } finally {
     pending--; if (!pending) saving = undefined;
@@ -801,13 +834,13 @@ async function choose(group: string, choice: string, control: string): Promise<v
     // (the shortcut card's retry); if focus already fell to the page, it goes back to the group.
     const vanished = (): boolean => { const el = document.getElementById(control); return !el || Boolean(el.closest("[hidden]")); };
     const lost = (!document.activeElement || document.activeElement === document.body)
-      && (/-(retry|recovery)$/.test(control) || vanished());
+      && (isRecoveryControl(control) || vanished());
     draw();
     if (lost && document.hasFocus()) {
       const again = document.getElementById(control);
       (again && !again.closest("[hidden]") ? again : groupControl(group, choice))?.focus({ preventScroll: true });
     }
-    if ((restore || returnCaptureFocus) && document.hasFocus() && (control === "shortcut-capture" || control === "shortcut-confirm") && !shortcutGroup()?.capturing)
+    if ((restore || returnCaptureFocus) && document.hasFocus() && isCaptureControl(control) && !shortcutGroup()?.capturing)
       document.getElementById("setting-hotkey")?.focus({ preventScroll: true });
   }
 }
@@ -838,6 +871,9 @@ window.addEventListener("blur", () => {
 });
 window.settings.onChanged(render);
 void window.settings.read().then(render).catch(() => {
+  // A push that already drew the panel answers what the read could not.
+  if (view) return;
+  startupFailed = true;
   // No view ever drew, so the page still carries the HTML's `lang`; the message is in the requested language.
   document.documentElement.lang = documentLanguage(startupLanguage);
   feedback.classList.remove("visually-hidden");
