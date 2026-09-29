@@ -184,7 +184,8 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group[] {
       label: accelerator === recommended
         ? t("Recommended: {shortcut}", language, { shortcut: describeAccelerator(accelerator, ctx.platform) })
         : t("{shortcut} (custom)", language, { shortcut: describeAccelerator(accelerator, ctx.platform) }),
-      enabled: true,
+      // A remembered combination that is now the Settings shortcut is refused if chosen again; only the current one stays selectable.
+      enabled: !isSettingsShortcut(accelerator, ctx.platform) || (hotkey.enabled && accelerator === hotkey.accelerator),
       checked: hotkey.enabled && accelerator === hotkey.accelerator,
       action: { setHotkey: { enabled: true, accelerator } } satisfies AppAction,
     })),

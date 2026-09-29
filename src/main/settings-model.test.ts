@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_QUALITY } from "../shared/quality";
-import { DEFAULT_HOTKEY, HOTKEY_PRESETS } from "../shared/hotkey";
+import { DEFAULT_HOTKEY, HOTKEY_PRESETS, SETTINGS_SHORTCUT } from "../shared/hotkey";
 import type { RecordingState } from "../shared/state";
 import { translate as t } from "../shared/i18n";
 import { failureDay, failureTime, proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
@@ -173,6 +173,19 @@ describe("settingsChecked reports whether a save took effect", () => {
     expect(settingsChecked(idle, context, "nope", "30")).toBe(false);
     // A locked group still reports the truth; only `settingsAction` gates writes.
     expect(settingsChecked(busy[0]!, context, "frameRate", "30")).toBe(true);
+  });
+});
+
+describe("a remembered shortcut that is now the Settings shortcut", () => {
+  it("is not offered once Off, because choosing it again is refused, but stays selectable while it is the current one", () => {
+    const off: AppContext = { ...context, hotkey: { enabled: false, accelerator: SETTINGS_SHORTCUT, registered: false } };
+    const choice = (ctx: AppContext) => group(idle, ctx, "hotkey")?.choices.find(c => c.id === SETTINGS_SHORTCUT);
+    expect(choice(off)).toMatchObject({ enabled: false, checked: false });
+    expect(settingsAction(idle, off, "hotkey", SETTINGS_SHORTCUT)).toBeUndefined();
+    const current: AppContext = { ...off, hotkey: { enabled: true, accelerator: SETTINGS_SHORTCUT, registered: true } };
+    expect(choice(current)).toMatchObject({ enabled: true, checked: true });
+    // The recommended combination is never the Settings one.
+    expect(group(idle, off, "hotkey")?.choices.find(c => c.id === DEFAULT_HOTKEY.accelerator)?.enabled).toBe(true);
   });
 });
 
