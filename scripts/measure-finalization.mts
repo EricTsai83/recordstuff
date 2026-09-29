@@ -30,6 +30,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
+import { LAUNCHER_EXIT_MS, QUIT_GRACE_MS, stopDevApp, type AppStop } from "./lib/dev-app.mts";
 import { distribution, finalizationSample, formatDistribution, type FinalizationSample } from "./lib/finalization-timing.mts";
 import { LogGapError, LogReader, type LogCursor } from "./lib/log-reader.mts";
 import { electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, recordStuffPids, signalPids, startBuild, stopGroup } from "./lib/processes.mts";
@@ -42,12 +43,6 @@ const ELECTRON_APP = path.join(REPO_ROOT, "node_modules/electron/dist/Electron.a
 const ELECTRON_APP_REAL = fs.existsSync(ELECTRON_APP) ? fs.realpathSync(ELECTRON_APP) : ELECTRON_APP;
 const LOG_PATH = APP_LOG_PATH;
 const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
-const QUIT_GRACE_MS = 30_000;
-/**
- * How long after a launch its app may still appear: `open` hands the request
- * to Launch Services, and stopping the launcher does not withdraw it.
- */
-const LAUNCH_SETTLE_MS = 5_000;
 /** A take's app may take this long beyond its recording to launch, stop, publish and quit. */
 const TAKE_MARGIN_MS = 120_000;
 
@@ -113,25 +108,8 @@ const materialPids = (): number[] => owned.materialProfile ? pgrepPids(escapeReg
 let interrupted = false;
 const halt = (): Promise<never> => new Promise<never>(() => undefined);
 
-/**
- * SIGTERM reaches Electron's before-quit, which stops and saves a recording in
- * progress first. A launch still in flight is waited for, so it cannot start
- * recording after cleanup.
- */
-async function stopApp(): Promise<"none" | "quit" | "forced"> {
-  const settled = (owned.launchedAt ?? 0) + LAUNCH_SETTLE_MS;
-  while (electronPids().length === 0) {
-    if (Date.now() >= settled) return "none";
-    await sleep(250);
-  }
-  signalPids(pgrepPids(electronPattern(ELECTRON_APP_REAL, "main")), "SIGTERM");
-  for (const deadline = Date.now() + QUIT_GRACE_MS; Date.now() < deadline;) {
-    if (electronPids().length === 0) return "quit";
-    await sleep(250);
-  }
-  signalPids(electronPids(), "SIGKILL");
-  return "forced";
-}
+/** Stops a take's app through its normal quit (see `stopDevApp`). */
+const stopApp = (): Promise<AppStop> => stopDevApp(ELECTRON_APP_REAL, owned.launchedAt === undefined ? {} : { launchedAt: owned.launchedAt });
 
 let cleaning: Promise<string[]> | undefined;
 /** Idempotent; rejects when `pgrep` fails, because nothing then proves the round's processes exited. */
@@ -181,7 +159,7 @@ interface Take {
   outcome: "saved" | "failed" | "no outcome";
   detail?: string;
   /** The app outlived the take's bound; how it was then stopped. Always a failed take. */
-  timedOut?: "quit" | "forced" | "none";
+  timedOut?: AppStop;
   sample?: FinalizationSample;
   sizeBytes?: number;
   media?: { durationSeconds?: number; video: boolean; audio: boolean; decodeErrors: string; decoded: "all frames" | "first and last second" };
@@ -194,11 +172,12 @@ const appLog = new LogReader(LOG_PATH);
 /** In quick mode, only the first saved take is decoded frame by frame. */
 let fullyDecoded = false;
 
-function linesSince(cursor: LogCursor): string[] {
+/** Log lines written since `cursor`; a rotated-away history is an explicit gap, not "no outcome". */
+function linesSince(cursor: LogCursor): { lines: string[]; gap?: string } {
   try {
-    return appLog.since(cursor).lines.map((line) => line.text);
+    return { lines: appLog.since(cursor).lines.map((line) => line.text) };
   } catch (cause) {
-    if (cause instanceof LogGapError) return [];
+    if (cause instanceof LogGapError) return { lines: [], gap: cause.message };
     throw cause;
   }
 }
@@ -217,9 +196,12 @@ async function recordTake(options: Options, index: number): Promise<Take> {
   if (interrupted) await halt();
   if (timedOut) {
     take.timedOut = await stopApp();
+    // The next take's `open` must launch a new app, not bring this one forward.
+    await Promise.race([exited, sleep(LAUNCHER_EXIT_MS)]);
     if (interrupted) await halt();
   }
-  const lines = linesSince(cursor);
+  const { lines, gap } = linesSince(cursor);
+  if (gap) take.detail = `log evidence gap: ${gap}`;
   const outcome = parseAutorecordOutcome(lines.join("\n"));
   if (outcome.failed) { take.outcome = "failed"; take.detail = outcome.failed; }
   const sample = finalizationSample(lines);

@@ -39,6 +39,7 @@ import path from "node:path";
 import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance.mts";
 import { CPU_BUDGET, CpuSampler, MIN_COVERAGE, SamplerBlockedError, compileSampler, cpuBaseline, intervals, summarize } from "./lib/cpu-sampler.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
+import { LAUNCHER_EXIT_MS, QUIT_GRACE_MS, stopDevApp, type AppStop } from "./lib/dev-app.mts";
 import { LogGapError, LogReader, type LogCursor } from "./lib/log-reader.mts";
 import {
   MATRICES,
@@ -69,14 +70,6 @@ const ELECTRON_APP_REAL = fs.existsSync(ELECTRON_APP) ? fs.realpathSync(ELECTRON
 const LOG_PATH = APP_LOG_PATH;
 const SETTINGS_PATH = APP_SETTINGS_PATH;
 const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
-/** How long an interrupted case's app may take to stop, save and quit before it is forced. */
-const QUIT_GRACE_MS = 30_000;
-/**
- * How long after a case's launch its app may still appear: `open` hands the
- * request to Launch Services, and stopping the launcher does not withdraw it,
- * so a first empty look is not yet "no app" (review).
- */
-const LAUNCH_SETTLE_MS = 5_000;
 
 function usage(message?: string): never {
   if (message) console.error(message);
@@ -169,25 +162,8 @@ function stillRunning(): string[] {
   return left;
 }
 
-/**
- * Stops a case's app through its normal quit: SIGTERM reaches Electron's
- * before-quit, where the app stops and saves a recording in progress first.
- * Whatever still runs after the grace period is killed.
- */
-async function stopApp(): Promise<"none" | "quit" | "forced"> {
-  const settled = (owned.caseLaunchedAt ?? 0) + LAUNCH_SETTLE_MS;
-  while (electronPids().length === 0) {
-    if (Date.now() >= settled) return "none";
-    await sleep(250);
-  }
-  signalPids(pgrepPids(electronPattern(ELECTRON_APP_REAL, "main")), "SIGTERM");
-  for (const deadline = Date.now() + QUIT_GRACE_MS; Date.now() < deadline;) {
-    if (electronPids().length === 0) return "quit";
-    await sleep(250);
-  }
-  signalPids(electronPids(), "SIGKILL");
-  return "forced";
-}
+/** Stops a case's app through its normal quit (see `stopDevApp`). */
+const stopApp = (): Promise<AppStop> => stopDevApp(ELECTRON_APP_REAL, owned.caseLaunchedAt === undefined ? {} : { launchedAt: owned.caseLaunchedAt });
 
 const running = (child: ChildProcess | undefined): child is ChildProcess => child !== undefined && child.exitCode === null && child.signalCode === null;
 
@@ -319,7 +295,7 @@ async function recordOnce(entry: MatrixEntry, key: string): Promise<RunOutcome> 
       // before-quit, kill what outlives the grace period, and wait for `open -W` to return.
       const stopped = await stopApp();
       console.error(`  App ${stopped === "forced" ? "killed after the quit grace period" : stopped === "quit" ? "quit" : "had already exited"}`);
-      await Promise.race([exited, sleep(5000)]);
+      await Promise.race([exited, sleep(LAUNCHER_EXIT_MS)]);
       break;
     }
   }
