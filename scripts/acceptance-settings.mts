@@ -13,7 +13,10 @@
  * anything about macOS window focus — a windowless app's tray is not
  * automatable (see .agents/skills/astra-acceptance-with-computer-use).
  *
- * Exit 0 when every case passed. A report and a screenshot are written to
+ * Exit 0 when every case passed, 1 when one failed, and 2 (blocked) when the
+ * desktop was not available: a locked session, or a window another app kept
+ * inactive for a case that needs an active window (plan 057), which is
+ * reported as not run. A report and screenshots are written to
  * docs/verification/measurements/<timestamp>-settings-acceptance/.
  * Requires `pnpm build` output. Nothing here ships with the app.
  */
@@ -21,15 +24,10 @@ import { scrubbedEnv } from "./lib/runner-env.mts";
 import { buildFixture } from "./lib/build-fixture.mts";
 import { runIsolatedProcess } from "./lib/isolated-process.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
+import { failureBlocked, settingsOutcome, type FixtureFailure, type SettingsCase } from "./lib/settings-activation.mts";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-interface Case {
-  name: string;
-  ok: boolean;
-  detail: string;
-}
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ELECTRON = path.join(REPO_ROOT, "node_modules/.bin/electron");
@@ -85,22 +83,33 @@ try {
   process.removeListener("SIGTERM", interrupt);
 }
 fs.writeFileSync(path.join(dir, "cleanup.json"), JSON.stringify(execution, null, 2));
-const code = execution.code === 0 && !execution.error && !execution.stopped && execution.groupGone ? 0 : 1;
+const processClean = !execution.error && !execution.stopped && execution.groupGone;
 
 const resultsPath = path.join(dir, "results.json");
 if (!fs.existsSync(resultsPath)) {
   const detail = fs.existsSync(path.join(dir, "error.txt")) ? fs.readFileSync(path.join(dir, "error.txt"), "utf8") : "";
-  fail(`${desktop.lockedAt ? `${desktop.summary}\n` : ""}The fixture produced no results (exit ${code}). ${detail}\nEvidence: ${dir}`,
+  fail(`${desktop.lockedAt ? `${desktop.summary}\n` : ""}The fixture produced no results (exit ${execution.code ?? "by signal"}). ${detail}\nEvidence: ${dir}`,
     desktop.lockedAt ? DESKTOP_BLOCKED_EXIT : 1);
 }
-const cases = JSON.parse(fs.readFileSync(resultsPath, "utf8")) as Case[];
-for (const result of cases) console.log(`${result.ok ? "PASS" : "FAIL"}: ${result.name} — ${result.detail}`);
+const cases = JSON.parse(fs.readFileSync(resultsPath, "utf8")) as SettingsCase[];
+const failurePath = path.join(dir, "failure.json");
+const failure = fs.existsSync(failurePath) ? JSON.parse(fs.readFileSync(failurePath, "utf8")) as FixtureFailure : undefined;
+const status = (result: SettingsCase): string => result.notRun ? "NOT RUN" : result.ok ? "PASS" : "FAIL";
+for (const result of cases) console.log(`${status(result)}: ${result.name} — ${result.notRun ? `${result.notRun}. ` : ""}${result.detail}`);
+const stopped = failure && `The fixture stopped after ${cases.length} cases${failure.screenshot ? ` while capturing ${failure.screenshot}` : ""}: ${failure.error}`
+  + (failure.window ? ` (window: focused ${failure.window.focused}, visible ${failure.window.visible}, data-window ${failure.window.page || "unset"}; frontmost app: ${failure.frontmost ?? "unknown"}; `
+    + `${failureBlocked(failure) ? "blocked" : "failed"}).` : ".");
+if (stopped) console.error(stopped);
 
+const verdict = settingsOutcome({ cases, failure, exit: execution.code, processClean, locked: Boolean(desktop.lockedAt) });
 const passed = cases.filter((result) => result.ok).length;
+const notRun = cases.filter((result) => result.notRun).length;
 const report = [
   `# Settings panel acceptance — ${stamp}`,
   "",
-  `Runner exit code ${code}; ${passed}/${cases.length} cases passed.`,
+  `Result: **${verdict.outcome}**${verdict.reasons.length ? ` — ${verdict.reasons.join("; ")}` : ""}.`,
+  `Fixture exit code ${execution.code ?? "none (signal)"}; ${passed}/${cases.length} cases passed, ${notRun} not run.`,
+  ...(stopped ? [stopped] : []),
   `Cleanup: process group gone=${execution.groupGone}; stopped=${execution.stopped ?? "no"}; error=${execution.error ?? "none"}. See cleanup.json.`,
   desktop.summary,
   "",
@@ -109,13 +118,17 @@ const report = [
   "the preload boundary and the IPC round trip — not `settings-model` or `SettingsWindow`.",
   "No tray click, no Settings item and no macOS window focus behaviour was exercised.",
   "",
-  ...cases.map((result) => `- ${result.ok ? "PASS" : "FAIL"} — ${result.name}\n  - ${result.detail}`),
+  "A case marked NOT RUN needs an active window and its window was not active around it; its detail is what was read anyway.",
   "",
-  "Screenshot: `panel.png`. Raw cases: `results.json`. Electron output: `electron.log`.",
+  ...cases.map((result) => `- ${status(result)} — ${result.name}\n  - ${result.notRun ? `${result.notRun}. ` : ""}${result.detail}`),
+  "",
+  "Screenshot: `panel.png`. Raw cases: `results.json`. Electron output: `electron.log`."
+    + (failure ? " Where the fixture stopped: `failure.json`, `error.txt`." : ""),
   "",
 ].join("\n");
 fs.writeFileSync(path.join(dir, "report.md"), report);
 
-console.log(`\n${passed}/${cases.length} cases passed. Evidence: ${dir}`);
+console.log(`\n${passed}/${cases.length} cases passed, ${notRun} not run. Evidence: ${dir}`);
 if (desktop.lockedAt) console.error(desktop.summary);
-process.exit(desktop.lockedAt ? DESKTOP_BLOCKED_EXIT : code === 0 && passed === cases.length ? 0 : 1);
+else if (verdict.outcome !== "pass") console.error(`${verdict.outcome === "blocked" ? "BLOCKED" : "FAILED"}: ${verdict.reasons.join("; ")}.`);
+process.exit(verdict.outcome === "blocked" ? DESKTOP_BLOCKED_EXIT : verdict.outcome === "pass" ? 0 : 1);

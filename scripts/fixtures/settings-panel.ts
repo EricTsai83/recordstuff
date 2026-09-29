@@ -21,6 +21,8 @@ import { DEFAULT_QUALITY } from "../../src/shared/quality";
 import { DEFAULT_HOTKEY } from "../../src/shared/hotkey";
 import type { AppContext } from "../../src/main/ui-model";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { activation, judgeActive, lsappinfoName, windowActive, type Activation, type FixtureFailure, type SettingsCase, type WindowState } from "../lib/settings-activation.mts";
 
 const [outDir, root] = (() => {
   const [output, repository] = process.argv.slice(-2);
@@ -28,8 +30,25 @@ const [outDir, root] = (() => {
   return [output, repository] as const;
 })();
 const out = path.join(root, "out");
-const results: Array<{ name: string; ok: boolean; detail: string }> = [];
-const record = (name: string, ok: boolean, detail: string) => results.push({ name, ok, detail });
+const results: SettingsCase[] = [];
+/** Each case is also logged, so electron.log shows how far a round got. */
+const push = (result: SettingsCase): void => {
+  results.push(result);
+  console.log(`case ${results.length}: ${result.notRun ? "NOT RUN" : result.ok ? "PASS" : "FAIL"} — ${result.name}`);
+};
+const record = (name: string, ok: boolean, detail: string) => push({ name, ok, detail });
+const writeResults = (): void => fs.writeFileSync(path.join(outDir, "results.json"), `${JSON.stringify(results, null, 2)}\n`);
+/** A `capturePage()` that threw, with the file it was for and the window at that moment (plan 057). */
+class CaptureFailed extends Error {
+  constructor(readonly failure: FixtureFailure) { super(`capturePage() failed for ${failure.screenshot}: ${failure.error}`); }
+}
+/** The frontmost app's name, for a case that lost its window's activation; `undefined` when it cannot be read. */
+const frontmost = (): string | undefined => {
+  if (process.platform !== "darwin") return undefined;
+  const asn = spawnSync("lsappinfo", ["front"], { encoding: "utf8", timeout: 2000 }).stdout?.trim();
+  if (!asn) return undefined;
+  return lsappinfoName(spawnSync("lsappinfo", ["info", "-only", "name", asn], { encoding: "utf8", timeout: 2000 }).stdout ?? "");
+};
 const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const until = async (check: () => Promise<boolean>, timeout = 3000): Promise<boolean> => {
   const deadline = Date.now() + timeout;
@@ -201,6 +220,41 @@ async function run() {
       webSecurity: true,
     },
   });
+  // Plan 057: a case that needs an active window is judged only if its window stayed active.
+  let blurs = 0;
+  let shown = false;
+  window.on("blur", () => { blurs += 1; });
+  const windowState = async (): Promise<WindowState> => ({ focused: window.isFocused(), visible: window.isVisible(),
+    page: await read<string>(window, `document.documentElement.dataset.window ?? ""`).catch(() => "unreadable") });
+  /** Asks for activation the way SettingsWindow does when the window is not active, then waits for it to hold. */
+  const activate = async (): Promise<WindowState> => {
+    shown = true;
+    let state = await windowState();
+    if (windowActive(state)) return state;
+    if (process.platform === "darwin") app.focus({ steal: true });
+    window.show(); window.focus();
+    await until(async () => windowActive(state = await windowState()), 2000);
+    return state;
+  };
+  type Span = { before: WindowState; blurs: number };
+  /** Starts one interaction whose activation-dependent cases `recordActive` judges against it. */
+  const activeSpan = async (): Promise<Span> => {
+    const before = await activate();
+    return { before, blurs };
+  };
+  /** Activation from the span's start until now; taken when the measurement ends for a case recorded later. */
+  const spanActivation = async (span: Span): Promise<Activation> => activation(span.before, await windowState(), blurs - span.blurs, frontmost);
+  const recordActive = async (span: Span | Activation, name: string, ok: boolean, detail: string): Promise<void> => {
+    push(judgeActive(name, "held" in span ? span : await spanActivation(span), ok, detail));
+  };
+  const shot = async (file: string): Promise<void> => {
+    let image: Electron.NativeImage;
+    try { image = await window.webContents.capturePage(); }
+    catch (error) {
+      throw new CaptureFailed({ error: String(error), screenshot: file, window: await windowState().catch(() => undefined), shown, frontmost: frontmost() });
+    }
+    fs.writeFileSync(path.join(outDir, file), image.toPNG());
+  };
   const consoleErrors: string[] = [];
   window.webContents.on("console-message", (event) => {
     if (event.level === "error") consoleErrors.push(event.message);
@@ -499,7 +553,7 @@ async function run() {
         const fits = await read<boolean>(window, `document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth && document.getElementById("settings-panel").scrollWidth <= document.getElementById("settings-panel").clientWidth`);
         const geometry = await read(window, `({root: [document.documentElement.scrollWidth, document.documentElement.scrollHeight], viewport: [innerWidth, innerHeight], main: document.querySelector("main").getBoundingClientRect().toJSON(), form: document.querySelector("form").getBoundingClientRect().toJSON(), panel: document.getElementById("settings-panel").getBoundingClientRect().toJSON()})`);
         record(`${lang}/${scheme}/${size}/${state}: no horizontal or outer-page overflow`, fits, JSON.stringify(geometry));
-        fs.writeFileSync(path.join(outDir, `panel-${lang}-${scheme}-${size}-${state}.png`), (await window.webContents.capturePage()).toPNG());
+        await shot(`panel-${lang}-${scheme}-${size}-${state}.png`);
       }
     }
   }
@@ -547,7 +601,7 @@ async function run() {
   window.webContents.send("settings:changed", settingsView({ type: "idle" }, updateContext));
   await settle(60);
   chooseCalls.length = 0;
-  window.show(); window.focus();
+  const updateSpan = await activeSpan();
   await read(window, `document.getElementById("setting-updates-check").scrollIntoView({ block: "center" }); document.getElementById("setting-updateChecks").focus()`);
   // Chromium activates a button on Enter's character event, so Return sends one.
   const key = (keyCode: string) => {
@@ -564,12 +618,12 @@ async function run() {
     const el = document.getElementById("setting-updates-check");
     return { active: document.activeElement.id, disabled: el.disabled, ariaDisabled: el.getAttribute("aria-disabled"), label: el.textContent, ring: getComputedStyle(el).outlineStyle, windowFocused: document.hasFocus() };
   })()`);
-  fs.writeFileSync(path.join(outDir, "update-check-busy.png"), (await window.webContents.capturePage()).toPNG());
+  await shot("update-check-busy.png");
   key("Return");
   await settle(100);
   const busyCalls = JSON.stringify(chooseCalls);
   record("real Tab reaches Check for updates… and Enter starts one check", tabbed === "setting-updates-check" && busyCalls === '[["updates","check"]]', JSON.stringify({ tabbed, busyCalls }));
-  record("a running check keeps keyboard focus and its ring on the busy, focusable button",
+  await recordActive(updateSpan, "a running check keeps keyboard focus and its ring on the busy, focusable button",
     busyCheck.active === "setting-updates-check" && !busyCheck.disabled && busyCheck.ariaDisabled === "true" && busyCheck.label === "Checking for updates…" && busyCheck.ring === "solid",
     JSON.stringify(busyCheck));
   updateContext = { ...updateContext, updates: { enabled: true, state: { kind: "current", checkedAt: 2000 } } };
@@ -578,7 +632,7 @@ async function run() {
   key("Tab");
   await settle(60);
   const afterCheck = await read<{ ariaDisabled: string | null; next: string }>(window, `({ ariaDisabled: document.getElementById("setting-updates-check").getAttribute("aria-disabled"), next: document.activeElement.id })`);
-  fs.writeFileSync(path.join(outDir, "update-check-done.png"), (await window.webContents.capturePage()).toPNG());
+  await shot("update-check-done.png");
   record("after the check, the next Tab continues past the button instead of restarting at the tabs",
     afterCheck.ariaDisabled === "false" && afterCheck.next !== "" && !afterCheck.next.startsWith("tab-") && afterCheck.next !== "setting-updates-check", JSON.stringify(afterCheck));
   updateContext = undefined;
@@ -588,7 +642,7 @@ async function run() {
   await settle(60);
   const scrollTopHint = await read<boolean>(window, `!document.getElementById("scroll-hint").hidden && getComputedStyle(document.getElementById("scroll-hint")).pointerEvents === "none"`);
   record("overflow shows non-interactive glass scroll cue", scrollTopHint, String(scrollTopHint));
-  fs.writeFileSync(path.join(outDir, "panel-scroll-cue.png"), (await window.webContents.capturePage()).toPNG());
+  await shot("panel-scroll-cue.png");
   await read(window, `document.getElementById("settings-panel").scrollTop = document.getElementById("settings-panel").scrollHeight`);
   await settle(60);
   const bottomHint = await read<boolean>(window, `document.getElementById("scroll-hint").hidden`);
@@ -611,67 +665,75 @@ async function run() {
   await settle(100);
   const retryFits = await read<boolean>(window, `(() => { const retry = document.getElementById("setting-about-retry"); return !retry.hidden && retry.getBoundingClientRect().width > 32 && retry.scrollWidth <= retry.clientWidth && document.querySelector("#setting-about-website svg") !== null; })()`);
   record("failed footer link retains readable text retry and icon", retryFits, String(retryFits));
-  window.show(); window.focus();
+  // Each interaction below starts its own span, so a blur in one does not decide the next (review of 057).
+  const retrySpan = await activeSpan();
   // A retried action disables its buttons while it runs, so its hidden Retry cannot keep focus: focus must come back, not fall to the page.
   await read(window, `document.getElementById("setting-about-retry").focus()`);
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Space" });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Space" });
   await settle(150);
   const retryFocus = await read<{ active: string; retryShown: boolean }>(window, `({ active: document.activeElement.id, retryShown: !document.getElementById("setting-about-retry").hidden })`);
-  record("real key on a failed link's Retry keeps focus in its row, not on the page", retryFocus.retryShown && retryFocus.active.startsWith("setting-about-"), JSON.stringify(retryFocus));
+  // Focus comes back only to a focused document (settings.ts), so this needs an active window.
+  await recordActive(retrySpan, "real key on a failed link's Retry keeps focus in its row, not on the page", retryFocus.retryShown && retryFocus.active.startsWith("setting-about-"), JSON.stringify(retryFocus));
+  const tabSpan = await activeSpan();
   await read(window, `(() => { const s = document.getElementById("setting-hotkey"); s.value = "custom"; s.dispatchEvent(new Event("change")); })()`);
   await settle(100);
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });
   await settle(100);
   const tabExit = await read<string>(window, `document.activeElement.id`);
-  record("real Tab exits capture to the next visible preference", tabExit === "setting-notifications", tabExit);
+  await recordActive(tabSpan, "real Tab exits capture to the next visible preference", tabExit === "setting-notifications", tabExit);
+  const backSpan = await activeSpan();
   await read(window, `(() => { const s = document.getElementById("setting-hotkey"); s.value = "custom"; s.dispatchEvent(new Event("change")); })()`);
   await settle(100);
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab", modifiers: ["shift"] });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab", modifiers: ["shift"] });
   await settle(100);
   const backExit = await read<string>(window, `document.activeElement.id`);
+  // Recorded after the capture cases below, but judged on this interaction.
+  const backActivation = await spanActivation(backSpan);
   const keyboardRing = await read<boolean>(window, `getComputedStyle(document.getElementById("setting-hotkey")).outlineStyle === "solid"`);
-  record("keyboard navigation retains a visible focus ring", keyboardRing, String(keyboardRing));
+  await recordActive(backSpan, "keyboard navigation retains a visible focus ring", keyboardRing, String(keyboardRing));
   await read(window, `document.getElementById("setting-hotkey").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }))`);
   const pointerRing = await read<boolean>(window, `getComputedStyle(document.getElementById("setting-hotkey")).outlineStyle === "none"`);
-  record("pointer interaction removes the ring without discarding DOM focus", pointerRing && backExit === "setting-hotkey", String(pointerRing));
+  await recordActive(backSpan, "pointer interaction removes the ring without discarding DOM focus", pointerRing && backExit === "setting-hotkey", String(pointerRing));
+  // One capture session: a blur cancels it, so its three cases share a span.
+  const listenSpan = await activeSpan();
   await read(window, `(() => { const s = document.getElementById("setting-hotkey"); s.value = "custom"; s.dispatchEvent(new Event("change")); })()`);
   await settle(100);
   const listening = await read<boolean>(window, `document.querySelectorAll("#shortcut-capture .listening-indicator span").length === 3 && !document.querySelector(".capture-area").hidden`);
-  record("acknowledged capture displays a listening indicator", listening, String(listening));
+  await recordActive(listenSpan, "acknowledged capture displays a listening indicator", listening, String(listening));
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "F12", modifiers: ["control"] });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "F12", modifiers: ["control"] });
   await settle(80);
   const keycaps = await read<string[]>(window, `[...document.querySelectorAll("#shortcut-capture kbd")].map(k => k.textContent)`);
-  record("real Control+F12 keeps the named key in one keycap", JSON.stringify(keycaps) === '["⌃","F12"]', JSON.stringify(keycaps));
-  fs.writeFileSync(path.join(outDir, "shortcut-f12.png"), (await window.webContents.capturePage()).toPNG());
+  await recordActive(listenSpan, "real Control+F12 keeps the named key in one keycap", JSON.stringify(keycaps) === '["⌃","F12"]', JSON.stringify(keycaps));
+  await shot("shortcut-f12.png");
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });
   await settle(100);
   const tabToConfirm = await read<{ active: string; open: boolean; enabled: boolean }>(window, `({ active: document.activeElement.id,
     open: !document.querySelector(".capture-area").hidden, enabled: !document.getElementById("shortcut-confirm").disabled })`);
-  record("real Tab with a candidate reaches Confirm and keeps the editor open", tabToConfirm.active === "shortcut-confirm" && tabToConfirm.open && tabToConfirm.enabled, JSON.stringify(tabToConfirm));
+  await recordActive(listenSpan, "real Tab with a candidate reaches Confirm and keeps the editor open", tabToConfirm.active === "shortcut-confirm" && tabToConfirm.open && tabToConfirm.enabled, JSON.stringify(tabToConfirm));
   await read(window, `document.getElementById("shortcut-cancel").click()`);
   await settle(100);
-  record("real Shift+Tab exits capture to its preceding edit action", backExit === "setting-hotkey", backExit);
+  await recordActive(backActivation, "real Shift+Tab exits capture to its preceding edit action", backExit === "setting-hotkey", backExit);
   window.webContents.debugger.attach("1.3");
   await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }] });
   window.setSize(560, 680);
   await settle(100);
   const forced = await read<boolean>(window, `matchMedia("(forced-colors: active)").matches && getComputedStyle(document.getElementById("setting-notifications")).appearance === "auto" && getComputedStyle(document.getElementById("setting-language-en")).appearance === "auto"`);
   record("forced colors restore native checkbox and radio appearance", forced, String(forced));
-  fs.writeFileSync(path.join(outDir, "panel-forced-colors.png"), (await window.webContents.capturePage()).toPNG());
+  await shot("panel-forced-colors.png");
   await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [] });
   await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
   const reduced = await read<boolean>(window, `getComputedStyle(document.querySelector(".listening-indicator span")).animationName === "none"`);
   record("reduced motion disables the listening animation", reduced, String(reduced));
   await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [] });
   window.webContents.debugger.detach();
-  fs.writeFileSync(path.join(outDir, "panel.png"), (await window.webContents.capturePage()).toPNG());
+  await shot("panel.png");
   // Real mouse/keyboard on the built panel; production result model and acknowledgement.
-  window.show(); window.focus(); window.setSize(380, 360);
+  await activate(); window.setSize(380, 360);
   const failure = { id: "fixture-failure", occurredAt: "2026-09-24T12:00:00Z", code: "disk_full" as const,
     detail: "ENOSPC: controlled fixture", outcome: "pending" as const };
   recordingResults.update(failure);
@@ -700,19 +762,21 @@ async function run() {
     await pushResult(lang, 2);
     const fits = await read<boolean>(window, `(() => { const a = document.querySelector(".recording-result"); return a.scrollWidth <= a.clientWidth && [...a.querySelectorAll("button")].every(b => b.scrollWidth <= b.clientWidth); })()`);
     record(`result ${lang}/${scheme} at minimum size fits`, fits, "partial warning and actions");
-    fs.writeFileSync(path.join(outDir, `result-${lang}-${scheme}.png`), (await window.webContents.capturePage()).toPNG());
+    await shot(`result-${lang}-${scheme}.png`);
   }
+  // Focus after a result action returns only to a focused document (restoreResultFocus), so these need an active window.
+  const ackSpan = await activeSpan();
   await read(window, `document.querySelector('.recording-result [data-action="acknowledge"]').scrollIntoView({block:"center"})`);
   const click = await read<{ x: number; y: number }>(window, `(() => { const r = document.querySelector('.recording-result [data-action="acknowledge"]').getBoundingClientRect(); return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
   window.webContents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, ...click });
   window.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, ...click });
   await until(async () => recordingResults.current?.acknowledged === true && await read<boolean>(window, `!document.querySelector(".recording-result").open && document.activeElement === document.querySelector(".recording-result > summary")`));
-  record("real mouse Got it acknowledges only the offered result and collapses it",
+  await recordActive(ackSpan, "real mouse Got it acknowledges only the offered result and collapses it",
     recordingResults.current?.acknowledged === true && await read<boolean>(window, `!document.querySelector(".recording-result").open && document.activeElement === document.querySelector(".recording-result > summary")`),
     JSON.stringify({ call: chooseCalls.at(-1), result: recordingResults.current, ui: await read(window, `({open: document.querySelector(".recording-result").open, active: document.activeElement.id, tag: document.activeElement.tagName, documentFocused: document.hasFocus(), windowFocused: ${window.isFocused()}})`) }));
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Return" });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Return" });
-  record("acknowledged result can be reopened with keyboard", await until(() => read<boolean>(window, `document.querySelector(".recording-result").open`)), "Return on summary");
+  await recordActive(ackSpan, "acknowledged result can be reopened with keyboard", await until(() => read<boolean>(window, `document.querySelector(".recording-result").open`)), "Return on summary");
   // Explicit entry reopens an acknowledged result even after the user collapses it.
   await pushResult("zh-TW", 3);
   record("explicit result entry expands and focuses an acknowledged result",
@@ -746,7 +810,7 @@ async function run() {
     record(`persistence failure ${lang} stays readable at minimum size`, warning, warning ? "retention warning" : JSON.stringify({
       main: recordingResults.all.map(r => [r.id, r.acknowledged, r.saving, r.persistenceFailed]),
       dom: await read(window, `[...document.querySelectorAll(".recording-result")].map(a => [a.dataset.resultId, a.open, !a.querySelector(".result-persistence").hidden, a.getAttribute("aria-busy")])`) }));
-    fs.writeFileSync(path.join(outDir, `result-persistence-${lang}.png`), (await window.webContents.capturePage()).toPNG());
+    await shot(`result-persistence-${lang}.png`);
   }
   /** Main's rows, in order, as the DOM must show them before a real click is aimed. */
   const domMatchesMain = () => read<boolean>(window, `JSON.stringify([...document.querySelectorAll(".recording-result")].map(a => [a.dataset.resultId, !a.querySelector(".result-persistence").hidden]))
@@ -789,7 +853,7 @@ async function run() {
       if (!await until(() => read<boolean>(window, `document.querySelector(".recording-result").open`))) throw new Error("History summary did not open");
     }
     record(`acknowledged ${lang} result offers a readable save retry`, await read<boolean>(window, `(() => { const b = document.querySelector('.recording-result [data-action="retry"]'); return !b.disabled && b.scrollWidth <= b.clientWidth && b.textContent.includes(${JSON.stringify(lang === "en" ? "Retry saving the record" : "重新嘗試寫入紀錄")}); })()`), "acknowledged persistence failure");
-    fs.writeFileSync(path.join(outDir, `result-retry-${lang}.png`), (await window.webContents.capturePage()).toPNG());
+    await shot(`result-retry-${lang}.png`);
   }
   await clickAck(() => read<boolean>(window, `!document.querySelector(".result-error").hidden`), "retry");
   record("failed acknowledged retry does not claim an unread record", recordingResults.current?.acknowledged === true &&
@@ -801,7 +865,7 @@ async function run() {
   for (const lang of ["en", "zh-TW"] as const) {
     window.setSize(560, 680); await pushResult(lang, 6);
     await read(window, `document.getElementById("settings-panel").scrollTop = 0`);
-    fs.writeFileSync(path.join(outDir, `history-${lang}.png`), (await window.webContents.capturePage()).toPNG());
+    await shot(`history-${lang}.png`);
   }
   await clickAck(() => read<boolean>(window, `document.querySelectorAll(".recording-result").length === 3`), "remove");
   record("removing reviewed metadata preserves other unread failures", recordingResults.all.length === 3 && recordingResults.all.some(r => !r.acknowledged), "remove one reviewed record");
@@ -818,6 +882,7 @@ async function run() {
       window.webContents.sendInputEvent({ type: "keyUp", keyCode });
     };
     const lowest = `document.querySelectorAll(".recording-result")[${count - 1}]`;
+    const lowestSpan = await activeSpan();
     await read(window, `${lowest}.querySelector("summary").focus()`);
     if (!await read<boolean>(window, `${lowest}.open`)) {
       key("Return");
@@ -826,7 +891,7 @@ async function run() {
     await read(window, `${lowest}.querySelector('[data-action="remove"]').focus()`);
     key("Space");
     const removed = await until(() => read<boolean>(window, `document.querySelectorAll(".recording-result").length === ${count - 1}`));
-    record("removing the lowest row by keyboard moves focus to the row above it and keeps it in view",
+    await recordActive(lowestSpan, "removing the lowest row by keyboard moves focus to the row above it and keeps it in view",
       removed && await until(() => read<boolean>(window, `(() => {
         const rows = document.querySelectorAll(".recording-result > summary");
         const target = rows[rows.length - 1];
@@ -834,6 +899,7 @@ async function run() {
         return document.activeElement === target && box.top >= panel.top && box.bottom <= panel.bottom;
       })()`)), JSON.stringify(await read(window, `({ active: document.activeElement?.id, rows: document.querySelectorAll(".recording-result").length })`)));
   }
+  const emptySpan = await activeSpan();
   while (recordingResults.all.length) {
     if (!await read<boolean>(window, `document.querySelector(".recording-result").open`)) {
       await read(window, `document.querySelector(".recording-result > summary").focus()`);
@@ -844,7 +910,7 @@ async function run() {
     const before = recordingResults.all.length;
     await clickAck(() => read<boolean>(window, `document.querySelectorAll(".recording-result").length === ${before - 1}`), "remove");
   }
-  record("removing the final reviewed row returns keyboard focus to the failures tab and shows the empty state", await read<boolean>(window, `document.activeElement.id === "tab-failures" && !document.querySelector(".recording-result") && !document.querySelector(".result-empty").hidden`), "empty history focus");
+  await recordActive(emptySpan, "removing the final reviewed row returns keyboard focus to the failures tab and shows the empty state", await read<boolean>(window, `document.activeElement.id === "tab-failures" && !document.querySelector(".recording-result") && !document.querySelector(".result-empty").hidden`), "empty history focus");
   await pushResult("en", 8);
   recordingResults.update({ ...failure, id: "after-empty-history" });
   await pushResult("en", 8);
@@ -863,7 +929,7 @@ async function run() {
     window.webContents.send("settings:changed", { ...settingsView({ type: "idle" }, { ...ctx, language: lang, historyLoading: true, recordingResults: [] }), resultFocus: lastFocus });
     await settle(120);
     record(`history loading status ${lang} is readable without rows`, await read<boolean>(window, `(() => { const el = document.querySelector(".result-history-status"); return !el.hidden && el.textContent === ${JSON.stringify(lang === "en" ? "Loading failure history…" : "正在載入失敗紀錄…")} && el.scrollWidth <= el.clientWidth && !document.querySelector(".recording-result"); })()`), "loading projection");
-    fs.writeFileSync(path.join(outDir, `history-loading-${lang}.png`), (await window.webContents.capturePage()).toPNG());
+    await shot(`history-loading-${lang}.png`);
   }
   await pushResult("en", lastFocus);
   retryDelays[0] = 300; resultSaveFails = true;
@@ -894,30 +960,33 @@ async function run() {
     recordingResults.update({ ...failure, id: acked }); recordingResults.update({ ...failure, id: acked, outcome: "empty" });
     await recordingResults.persist();
     await pushResult(lang, ++lastFocus);
+    const delayedSpan = await activeSpan();
     await mouse(`${row(acked)} [data-action="acknowledge"]`);
     await settle(60);
     const waiting = await read<{ busy: boolean; focused: boolean; text: string; unread: boolean }>(window, `(() => { const b = document.querySelector('${row(acked)} [data-action="acknowledge"]'); return { busy: b?.getAttribute("aria-disabled") === "true" && !b.disabled, focused: document.activeElement === b, text: document.querySelector('${row(acked)} .result-saving').textContent, unread: document.querySelector('${row(acked)}').open }; })()`);
     record(`${delay} ms save keeps the busy Got it focusable, unread and labelled (${lang})`, waiting.busy && waiting.focused && waiting.unread && waiting.text === saving[lang], JSON.stringify(waiting));
     if (delay === 2000) for (const scheme of ["light", "dark"] as const) {
       nativeTheme.themeSource = scheme; await settle(150);
-      fs.writeFileSync(path.join(outDir, `result-saving-${lang}-${scheme}.png`), (await window.webContents.capturePage()).toPNG());
+      await shot(`result-saving-${lang}-${scheme}.png`);
     }
     const collapsed = () => read<boolean>(window, `!document.querySelector('${row(acked)}').open && document.activeElement === document.querySelector('${row(acked)} > summary')`);
-    record(`${delay} ms delayed real mouse Got it acknowledges only the offered result and collapses it`,
+    await recordActive(delayedSpan, `${delay} ms delayed real mouse Got it acknowledges only the offered result and collapses it`,
       await until(async () => recordingResults.all.find(r => r.id === acked)?.acknowledged === true && await collapsed(), delay + 3000),
       JSON.stringify({ result: recordingResults.all.find(r => r.id === acked), ui: await focusState() }));
     press("Return");
-    record(`${delay} ms delayed acknowledged result can be reopened with keyboard`, await until(() => read<boolean>(window, `document.querySelector('${row(acked)}').open`)), "Return on summary");
+    await recordActive(delayedSpan, `${delay} ms delayed acknowledged result can be reopened with keyboard`, await until(() => read<boolean>(window, `document.querySelector('${row(acked)}').open`)), "Return on summary");
     recordingResults.update({ ...failure, id: moved }); recordingResults.update({ ...failure, id: moved, outcome: "empty" });
     await recordingResults.persist();
     await pushResult(lang, ++lastFocus);
     const tab = await read<string>(window, `document.querySelector('[role="tab"][aria-selected="true"]').id`);
+    const movedSpan = await activeSpan();
     await mouse(`${row(moved)} [data-action="acknowledge"]`);
     await settle(40);
     await mouse(`#${tab}`);
     await until(async () => recordingResults.all.find(r => r.id === moved)?.acknowledged === true, delay + 3000);
     await settle(200);
-    record(`${delay} ms focus moved during the wait is not stolen back`, await read<boolean>(window, `document.activeElement.id === ${JSON.stringify(tab)} && !document.querySelector('${row(moved)}').open`), JSON.stringify(await focusState()));
+    await recordActive(movedSpan, `${delay} ms focus moved during the wait is not stolen back`, await read<boolean>(window, `document.activeElement.id === ${JSON.stringify(tab)} && !document.querySelector('${row(moved)}').open`), JSON.stringify(await focusState()));
+    const removalSpan = await activeSpan();
     for (const id of [moved, acked]) {
       if (!await read<boolean>(window, `document.querySelector('${row(id)}').open`)) {
         await read(window, `document.querySelector('${row(id)} > summary').focus()`); press("Return");
@@ -926,7 +995,7 @@ async function run() {
       await mouse(`${row(id)} [data-action="remove"]`);
       if (!await until(() => read<boolean>(window, `!document.querySelector('${row(id)}')`), delay + 3000)) throw new Error(`Could not remove ${id}`);
     }
-    record(`${delay} ms delayed removal of the final reviewed row returns keyboard focus to the active tab`,
+    await recordActive(removalSpan, `${delay} ms delayed removal of the final reviewed row returns keyboard focus to the active tab`,
       await until(() => read<boolean>(window, `document.activeElement.id === ${JSON.stringify(tab)} && !document.querySelector(".recording-result")`)), JSON.stringify(await focusState()));
   }
   saveDelayMs = 120;
@@ -964,7 +1033,7 @@ async function run() {
     for (const scheme of ["light", "dark"] as const) {
       nativeTheme.themeSource = scheme; await settle(120);
       await mouse("#tab-recording"); await settle(60);
-      fs.writeFileSync(path.join(outDir, `tabs-${lang}-${scheme}-minimum.png`), (await window.webContents.capturePage()).toPNG());
+      await shot(`tabs-${lang}-${scheme}-minimum.png`);
     }
     nativeTheme.themeSource = "light";
   }
@@ -998,34 +1067,40 @@ async function run() {
   const rowFocus = (index: number) => read<{ colour: string; width: string; own: string; next: string; input: string | undefined }>(window, `(() => { const rows = document.querySelectorAll(".recording-result"); const r = rows[${index}];
     const style = getComputedStyle(r); return { colour: style.borderTopColor, width: style.borderTopWidth, own: getComputedStyle(r, "::before").opacity, next: rows[${index + 1}] ? getComputedStyle(rows[${index + 1}], "::before").opacity : "none", input: document.documentElement.dataset.input }; })()`);
   // A middle row of a day, so both hairlines beside it exist.
+  const headerSpan = await activeSpan();
   await read(window, `document.querySelectorAll(".recording-result > summary")[1].focus()`); press("Down"); press("Up"); await settle(60);
   const headerFocus = await rowFocus(1);
   const dpr = await read<number>(window, "devicePixelRatio");
   const expectedWidth = dpr >= 2 ? "1.5px" : "1px";
-  record(`keyboard focus on a header draws a ${expectedWidth} accent border around the record and hides the hairlines beside it (devicePixelRatio ${dpr})`,
-    headerFocus.colour === colours.accent && headerFocus.width === expectedWidth && headerFocus.own === "0" && headerFocus.next === "0", JSON.stringify({ headerFocus, colours }));
   for (const scheme of ["light", "dark"] as const) {
     nativeTheme.themeSource = scheme; await settle(150);
-    fs.writeFileSync(path.join(outDir, `result-focus-header-en-${scheme}.png`), (await window.webContents.capturePage()).toPNG());
+    await shot(`result-focus-header-en-${scheme}.png`);
   }
+  // Judged after its screenshots, so an activation lost while they were taken also counts.
+  await recordActive(headerSpan, `keyboard focus on a header draws a ${expectedWidth} accent border around the record and hides the hairlines beside it (devicePixelRatio ${dpr})`,
+    headerFocus.colour === colours.accent && headerFocus.width === expectedWidth && headerFocus.own === "0" && headerFocus.next === "0", JSON.stringify({ headerFocus, colours }));
   nativeTheme.themeSource = "light"; await settle(100);
+  const insideSpan = await activeSpan();
   press("Return"); await settle(80); press("Tab"); await settle(80);
   const inside = await read<{ row: string; width: string; control: string; outline: string; style: string; tag: string }>(window, `(() => { const r = document.querySelectorAll(".recording-result")[1];
     const active = document.activeElement; const style = getComputedStyle(active); return { row: getComputedStyle(r).borderTopColor, width: getComputedStyle(r).borderTopWidth, control: active.dataset.action ?? active.tagName,
       outline: style.outlineColor, style: style.outlineStyle, tag: active.closest(".recording-result")?.id ?? "" }; })()`);
-  record("with focus on a control inside an open row, the row's border turns neutral at 1 px and the control's own border turns accent",
+  await shot("result-focus-inside-en-light.png");
+  await recordActive(insideSpan, "with focus on a control inside an open row, the row's border turns neutral at 1 px and the control's own border turns accent",
     inside.tag.endsWith("t-d2") && inside.row === colours.border && inside.width === "1px" && inside.outline === colours.accent && inside.style === "solid", JSON.stringify(inside));
-  fs.writeFileSync(path.join(outDir, "result-focus-inside-en-light.png"), (await window.webContents.capturePage()).toPNG());
+  const pointerSpan = await activeSpan();
   await mouse(".recording-result:nth-child(1) > summary"); await settle(80);
   const clicked = await rowFocus(0);
-  record("a pointer click shows no focus border", clicked.colour === "rgba(0, 0, 0, 0)" && clicked.input === "pointer", JSON.stringify(clicked));
+  await recordActive(pointerSpan, "a pointer click shows no focus border", clicked.colour === "rgba(0, 0, 0, 0)" && clicked.input === "pointer", JSON.stringify(clicked));
   await read(window, `document.querySelector(".recording-result > summary").focus()`); press("Down"); press("Up"); await settle(60);
   const other = new BrowserWindow({ width: 240, height: 160, show: true });
   other.focus(); await settle(300);
   const inactive = await read<{ colour: string; window: string | undefined }>(window, `({ colour: getComputedStyle(document.querySelector(".recording-result")).borderTopColor, window: document.documentElement.dataset.window })`);
-  other.destroy(); window.focus(); await settle(300);
+  // Destroying the front window can hand activation to another app, which `window.focus()` alone does not take back.
+  other.destroy();
+  const back = await activeSpan(); await settle(300);
   const reactivated = await read<string>(window, `getComputedStyle(document.querySelector(".recording-result")).borderTopColor`);
-  record("an inactive window shows no focus border, and it returns with the window", inactive.colour === "rgba(0, 0, 0, 0)" && inactive.window === "inactive" && reactivated === colours.accent,
+  await recordActive(back, "an inactive window shows no focus border, and it returns with the window", inactive.colour === "rgba(0, 0, 0, 0)" && inactive.window === "inactive" && reactivated === colours.accent,
     JSON.stringify({ inactive, reactivated }));
   // Review of 047: a day rollover moves rows between groups without dropping focus, and Technical details shows the focus line.
   const rollover = async (days: number) => {
@@ -1051,15 +1126,16 @@ async function run() {
   const inFront = new BrowserWindow({ width: 240, height: 160, show: true });
   inFront.focus(); await settle(300);
   await rollover(3);
-  inFront.destroy(); window.focus(); await settle(300);
+  inFront.destroy();
+  const returned = await activeSpan(); await settle(300);
   const inactiveRollover = await where();
-  record("a day rollover while the window is inactive keeps the focused action for when it returns",
+  await recordActive(returned, "a day rollover while the window is inactive keeps the focused action for when it returns",
     inactiveRollover.active === actionBefore.active, JSON.stringify({ actionBefore, inactiveRollover }));
   await rollover(0);
   let technical = await read<boolean>(window, `document.activeElement.matches(".result-technical > summary")`);
   for (let i = 0; i < 4 && !technical; i += 1) { press("Tab"); await settle(60); technical = await read<boolean>(window, `document.activeElement.matches(".result-technical > summary")`); }
   const disclosure = await read<{ style: string; colour: string; width: string }>(window, `(() => { const s = getComputedStyle(document.activeElement); return { style: s.outlineStyle, colour: s.outlineColor, width: s.outlineWidth }; })()`);
-  record("keyboard focus on Technical details shows the shared focus line", technical && disclosure.style === "solid" && disclosure.colour === colours.accent && disclosure.width === expectedWidth,
+  await recordActive(returned, "keyboard focus on Technical details shows the shared focus line", technical && disclosure.style === "solid" && disclosure.colour === colours.accent && disclosure.width === expectedWidth,
     JSON.stringify({ technical, ...disclosure }));
   // Each tab keeps its own scroll position through real wheel scrolling; an entry scrolls to its row.
   const scrollTop = () => read<number>(window, `document.getElementById("settings-panel").scrollTop`);
@@ -1120,24 +1196,26 @@ async function run() {
     await mouse("#tab-recording"); await settle(80);
     for (const [name, selector, offset] of [["tab", "#tab-recording", "-"], ["menu", "#setting-screen", "-"], ["segment", "#setting-countdown input:checked", "gap"],
       ["switch", "#setting-countdownSound", "gap"]] as const) {
+      const span = await activeSpan();
       const reached = await keyboardFocus(selector);
       const ring = await read<{ style: string; width: string; offset: string }>(window, `(() => { const s = getComputedStyle(document.activeElement); return { style: s.outlineStyle, width: s.outlineWidth, offset: s.outlineOffset }; })()`);
       const want = offset === "gap" ? "2px" : `-${expectedWidth}`;
-      record(`${lang}/${scheme}: the ${name} shows the ${expectedWidth} focus line ${offset === "gap" ? "2 px off its accent fill" : "on its own border"}`,
+      await shot(`focus-${name}-${lang}-${scheme}-minimum.png`);
+      await recordActive(span, `${lang}/${scheme}: the ${name} shows the ${expectedWidth} focus line ${offset === "gap" ? "2 px off its accent fill" : "on its own border"}`,
         reached && ring.style === "solid" && ring.width === expectedWidth && ring.offset === want, JSON.stringify({ reached, ...ring }));
-      fs.writeFileSync(path.join(outDir, `focus-${name}-${lang}-${scheme}-minimum.png`), (await window.webContents.capturePage()).toPNG());
     }
     await mouse("#tab-general"); await settle(80);
+    const buttonSpan = await activeSpan();
     const buttonReached = await keyboardFocus("#setting-notifications-openSettings");
     const buttonRing = await read<{ style: string; width: string; offset: string }>(window, `(() => { const s = getComputedStyle(document.activeElement); return { style: s.outlineStyle, width: s.outlineWidth, offset: s.outlineOffset }; })()`);
-    record(`${lang}/${scheme}: a button shows the focus line on its own border`, buttonReached && buttonRing.style === "solid" && buttonRing.width === expectedWidth && buttonRing.offset === `-${expectedWidth}`, JSON.stringify({ buttonReached, ...buttonRing }));
-    fs.writeFileSync(path.join(outDir, `focus-button-${lang}-${scheme}-minimum.png`), (await window.webContents.capturePage()).toPNG());
+    await shot(`focus-button-${lang}-${scheme}-minimum.png`);
+    await recordActive(buttonSpan, `${lang}/${scheme}: a button shows the focus line on its own border`, buttonReached && buttonRing.style === "solid" && buttonRing.width === expectedWidth && buttonRing.offset === `-${expectedWidth}`, JSON.stringify({ buttonReached, ...buttonRing }));
     await mouse("#tab-failures"); await settle(80);
-    fs.writeFileSync(path.join(outDir, `failures-${lang}-${scheme}-minimum.png`), (await window.webContents.capturePage()).toPNG());
+    await shot(`failures-${lang}-${scheme}-minimum.png`);
   }
   nativeTheme.themeSource = "light";
   resultContext = undefined;
-  fs.writeFileSync(path.join(outDir, "results.json"), `${JSON.stringify(results, null, 2)}\n`);
+  writeResults();
   return results.every((result) => result.ok);
 }
 
@@ -1146,5 +1224,9 @@ app.whenReady()
   .then((ok) => app.exit(ok ? 0 : 1))
   .catch((error) => {
     fs.writeFileSync(path.join(outDir, "error.txt"), String(error?.stack ?? error));
+    // The cases recorded before the stop still count (plan 057).
+    const failure: FixtureFailure = error instanceof CaptureFailed ? error.failure : { error: String(error?.message ?? error) };
+    fs.writeFileSync(path.join(outDir, "failure.json"), `${JSON.stringify(failure, null, 2)}\n`);
+    writeResults();
     app.exit(2);
   });
