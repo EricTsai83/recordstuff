@@ -13,7 +13,7 @@
  * read; the pointer clicks, the hourglass shows while saving, and half a second later the "Saved <timestamp>.mp4"
  * notification pops in, the same beat the app waits before posting it
  * (SAVED_NOTIFICATION_DELAY_MS). The hero pauses the loop while the scene is
- * off-screen; prefers-reduced-motion shows the final frame. Cost:
+ * off-screen and offers a button that pauses it; prefers-reduced-motion shows the final frame. Cost:
  * transform/opacity on a handful of nodes, composited by the browser. Zero
  * image requests.
  */
@@ -351,7 +351,9 @@ const savedFile = "2026-09-20 21-14-33.mp4";
     from { transform: scale(1, 1); }
     to { transform: scale(0.94, 1.08); }
   }
-  :global([data-offscreen] .ds *) {
+  /* Off-screen (EmberHero's observer) or paused by the visitor (its button). */
+  :global([data-offscreen] .ds *),
+  :global([data-paused] .ds *) {
     animation-play-state: paused !important;
   }
   @media (prefers-reduced-motion: reduce) {

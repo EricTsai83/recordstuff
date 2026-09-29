@@ -20,6 +20,8 @@ import { links, release } from "../../lib/release";
     </div>
     <div class="hero-scene">
       <div class="scene-frame" data-scene-frame><DesktopScene /></div>
+      <!-- Shown by the script below: without scripting it could not act, and reduced motion already stills the scene. -->
+      <button class="scene-toggle" type="button" data-scene-toggle data-pause={hero.pauseScene} data-play={hero.playScene} hidden>{hero.pauseScene}</button>
     </div>
   </div>
 </section>
@@ -32,6 +34,24 @@ import { links, release } from "../../lib/release";
       (entries) => entries.forEach((entry) => frame.toggleAttribute("data-offscreen", !entry.isIntersecting)),
       { threshold: 0.05 },
     ).observe(frame);
+  }
+  // The loop never ends on its own; a visitor can stop it, which pauses everything inside the scene.
+  // Reduced motion already stills it, so the control follows that preference, also when it changes while the page is open.
+  const toggle = document.querySelector<HTMLButtonElement>("[data-scene-toggle]");
+  if (frame && toggle) {
+    const setPaused = (paused: boolean): void => {
+      frame.toggleAttribute("data-paused", paused);
+      toggle.textContent = (paused ? toggle.dataset.play : toggle.dataset.pause) ?? "";
+    };
+    toggle.addEventListener("click", () => setPaused(!frame.hasAttribute("data-paused")));
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+    const follow = (): void => {
+      toggle.hidden = reduced.matches;
+      // Coming back from reduced motion starts the loop again, so the control must read Pause.
+      if (reduced.matches) setPaused(false);
+    };
+    follow();
+    reduced.addEventListener("change", follow);
   }
 </script>
 
@@ -81,6 +101,25 @@ import { links, release } from "../../lib/release";
     width: 100%;
     max-width: 820px;
     margin-top: 0.5rem;
+  }
+  .scene-toggle {
+    display: block;
+    margin: 0.75rem 0 0 auto;
+    padding: 0.35rem 0.8rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--fg-muted);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .scene-toggle[hidden] {
+    display: none;
+  }
+  .scene-toggle:hover {
+    color: var(--fg);
+    border-color: var(--fg-dim);
   }
   .scene-frame {
     border-radius: var(--radius-lg);
