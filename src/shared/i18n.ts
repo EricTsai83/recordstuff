@@ -49,7 +49,8 @@ export const ZH_TW = {
   "No recording failures.": "沒有失敗紀錄。",
   Today: "今天",
   Yesterday: "昨天",
-  Unread: "未確認",
+  // The visually hidden prefix of an unread row's name, with each language's own separator.
+  "Unread, ": "未確認，",
   "Unreviewed recording failures: {value}": "尚未確認的錄影失敗：{value} 筆",
   "View recording failures…": "查看失敗紀錄…",
   "Remove from history": "移除這筆紀錄",

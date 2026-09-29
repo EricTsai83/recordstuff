@@ -647,6 +647,12 @@ async function run() {
   const keycaps = await read<string[]>(window, `[...document.querySelectorAll("#shortcut-capture kbd")].map(k => k.textContent)`);
   record("real Control+F12 keeps the named key in one keycap", JSON.stringify(keycaps) === '["⌃","F12"]', JSON.stringify(keycaps));
   fs.writeFileSync(path.join(outDir, "shortcut-f12.png"), (await window.webContents.capturePage()).toPNG());
+  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });
+  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });
+  await settle(100);
+  const tabToConfirm = await read<{ active: string; open: boolean; enabled: boolean }>(window, `({ active: document.activeElement.id,
+    open: !document.querySelector(".capture-area").hidden, enabled: !document.getElementById("shortcut-confirm").disabled })`);
+  record("real Tab with a candidate reaches Confirm and keeps the editor open", tabToConfirm.active === "shortcut-confirm" && tabToConfirm.open && tabToConfirm.enabled, JSON.stringify(tabToConfirm));
   await read(window, `document.getElementById("shortcut-cancel").click()`);
   await settle(100);
   record("real Shift+Tab exits capture to its preceding edit action", backExit === "setting-hotkey", backExit);

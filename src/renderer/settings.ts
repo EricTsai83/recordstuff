@@ -372,16 +372,23 @@ function row(group: SettingsGroup): HTMLElement {
         setPreview(shortcutModifiers(event, group.platform).join("+"), group.platform ?? "darwin"); draw();
       }
     });
-    area.addEventListener("focusout", () => queueMicrotask(() => {
-      if (shortcutGroup()?.capturing && !saving && !area.contains(document.activeElement)) void capture(false);
-    }));
+    // A user-driven focus move runs this microtask before the new element is
+    // focused, while `activeElement` is still the body, so the destination is
+    // read from `relatedTarget`: Tab or VoiceOver moving to Confirm stays in
+    // the editor. Without one (a click on the page, another window) the
+    // element that holds focus afterwards decides, as before.
+    area.addEventListener("focusout", (event) => {
+      const next = event.relatedTarget instanceof Node ? event.relatedTarget : undefined;
+      queueMicrotask(() => {
+        if (shortcutGroup()?.capturing && !saving && !area.contains(next ?? document.activeElement)) void capture(false);
+      });
+    });
     const confirm = button("shortcut-confirm", () => {
       if (candidateToConfirm && shortcutGroup()?.capturing && !saving)
         void choose(group.id, candidateToConfirm, "shortcut-confirm");
     });
-    // macOS can move focus out of the capture area on mouse-down before the
-    // button's click fires. Keep its current focus so blur cancellation cannot
-    // discard the candidate before this explicit confirmation is delivered.
+    // A mouse-down would move focus before the click fires. Keep the current
+    // focus so the explicit confirmation arrives while the editor holds it.
     confirm.addEventListener("mousedown", event => { if (event.button === 0) event.preventDefault(); });
     area.append(field, confirm, button("shortcut-cancel", () => void capture(false, true)), node("p", "capture-help")); container.append(area);
   }
@@ -596,7 +603,7 @@ function fillRow(area: HTMLDetailsElement, result: RecordingResultView): void {
   area.classList.toggle("unread", !result.acknowledged);
   area.querySelector<HTMLElement>(".result-unread")!.hidden = result.acknowledged;
   const unreadLabel = area.querySelector<HTMLElement>(".result-unread-label")!;
-  unreadLabel.hidden = result.acknowledged; setText(unreadLabel, `${text("Unread")}, `);
+  unreadLabel.hidden = result.acknowledged; setText(unreadLabel, text("Unread, "));
   setText(area.querySelector(".result-reason")!, result.reason);
   setText(area.querySelector(".result-time")!, result.time);
   setText(area.querySelector(".result-outcome")!, result.outcome);
