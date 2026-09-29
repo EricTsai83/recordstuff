@@ -16,7 +16,7 @@ import { describeCapture, type CaptureReport, type QualitySettings } from "../sh
 import { isErrorCode, type ErrorCode, type RecordingState } from "../shared/state";
 import { RECORDING_HEALTH, type RecordingHealth } from "./recording-health";
 import type { SessionSentinel } from "./session-sentinel";
-import type { FailureOutcome, SessionTiming } from "../shared/session-record";
+import { EARLY_STOP_TEXT, type EarlyStop, type FailureOutcome, type SessionTiming } from "../shared/session-record";
 import type { FinishTimings } from "./file-writer";
 import { errnoCode, messageOf } from "./errors";
 
@@ -123,10 +123,6 @@ export interface RecorderDeps {
   health?: Partial<RecordingHealth>;
 }
 
-/** Why a saved recording ended before the user asked; carried on the saved event. */
-export type EarlyStop = "lowDisk" | "sleep";
-/** How the log names an early stop; the analysis scripts parse these words. */
-export const EARLY_STOP_TEXT: Record<EarlyStop, string> = { lowDisk: "disk almost full", sleep: "the Mac went to sleep" };
 
 /** What cancelled an attempt before capture began (plan 040). A cancel is not a failure. */
 export type CancelReason = "toggle" | "menu" | "quit" | "sleep";

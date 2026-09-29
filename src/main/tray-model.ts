@@ -11,7 +11,7 @@
 import { failureReason } from "./recording-result";
 import { displayLabel, displayFailureText } from "../shared/display";
 import { displayResolution } from "./display-source";
-import type { EarlyStop } from "./recorder";
+import type { EarlyStop } from "../shared/session-record";
 import type { QuitDeferral } from "./quit-feedback";
 import path from "node:path";
 import { DEFAULT_LANGUAGE, sentences, translate as t, type Language, type PlainMessageKey } from "../shared/i18n";

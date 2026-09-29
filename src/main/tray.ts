@@ -30,7 +30,7 @@ import {
   type TrayMenuItem,
 } from "./tray-model";
 import { APP_NAME, type AppAction, type AppContext } from "./ui-model";
-import type { EarlyStop } from "./recorder";
+import type { EarlyStop } from "../shared/session-record";
 
 /**
  * How long after a notification-click reveal the system's activation of this

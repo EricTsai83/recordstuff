@@ -5,8 +5,13 @@
  * starts a new recording again; the phases come from the recorder's
  * `finalize timing` line. Pure, so the runner's parsing is testable.
  */
+import { EARLY_STOP_TEXT } from "../../src/shared/session-record.ts";
 import { lineTime } from "./acceptance.mts";
+import { escapeRegExp } from "./processes.mts";
 import { percentileSorted } from "./stats.mts";
+
+/** The recorder's saved line, with any early-stop reason the app can name. */
+const FINALIZED = new RegExp(`^recorder: session \\S+ file finalized (.+?)( \\(stopped early: (?:${Object.values(EARLY_STOP_TEXT).map(escapeRegExp).join("|")})\\))?$`);
 
 export interface FinalizeTiming {
   session: string;
@@ -83,7 +88,7 @@ export function finalizationSample(lines: readonly string[]): FinalizationSample
       continue;
     }
     if (!stopping) continue;
-    const done = /^recorder: session \S+ file finalized (.+?)( \(stopped early: (?:disk almost full|the Mac went to sleep)\))?$/.exec(text);
+    const done = FINALIZED.exec(text);
     if (done && at) {
       finalized = { at, path: done[1]!, stoppedEarly: done[2] !== undefined };
       continue;

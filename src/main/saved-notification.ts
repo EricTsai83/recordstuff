@@ -1,5 +1,5 @@
 import type { RecordingState } from "../shared/state";
-import type { EarlyStop } from "./recorder";
+import type { EarlyStop } from "../shared/session-record";
 import { preferencesUnlocked } from "./ui-model";
 
 /** A heuristic, not an OS readiness signal. See verification's Plan 017 timeline. */

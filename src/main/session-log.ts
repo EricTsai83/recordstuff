@@ -5,7 +5,8 @@
  */
 import { formatSessionRecord } from "../shared/session-record";
 import type { Log } from "./log";
-import { EARLY_STOP_TEXT, type RecorderEvent } from "./recorder";
+import type { RecorderEvent } from "./recorder";
+import { EARLY_STOP_TEXT } from "../shared/session-record";
 
 /**
  * One id per launch, printed in the `start:` line and carried in every

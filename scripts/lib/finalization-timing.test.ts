@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EARLY_STOP_TEXT } from "../../src/shared/session-record.ts";
 import { distribution, finalizationSample, parseByteSize, parseFinalizeTiming } from "./finalization-timing.mts";
 
 const TIMING = "recorder: session s1 finalize timing: host 12 ms, writes 1 ms, flush 40 ms, close 0 ms, publish 580 ms by copy, cleanup 2 ms; 614400000 bytes";
@@ -55,9 +56,11 @@ describe("one run's sample", () => {
     });
   });
 
-  it("marks a low-disk early stop without taking its note into the path", () => {
+  it("marks every early stop the app can name without taking its note into the path", () => {
     expect(finalizationSample(run("/v/a.mp4 (stopped early: disk almost full)"))).toMatchObject({ path: "/v/a.mp4", stoppedEarly: true });
-    expect(finalizationSample(run("/v/a.mp4 (stopped early: the Mac went to sleep)"))).toMatchObject({ path: "/v/a.mp4", stoppedEarly: true });
+    for (const text of Object.values(EARLY_STOP_TEXT)) {
+      expect(finalizationSample(run(`/v/a.mp4 (stopped early: ${text})`)), text).toMatchObject({ path: "/v/a.mp4", stoppedEarly: true });
+    }
   });
 
   it("has no sample when the stop ended in a failure", () => {

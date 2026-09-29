@@ -7,7 +7,7 @@
  * is JSON, which keeps paths and details with spaces, quotes or line breaks on
  * one escaped line.
  *
- * Type-only imports: `scripts/` loads this file directly under Node.
+ * Type-only imports: `scripts/` loads this file directly under Node, which also reads `EARLY_STOP_TEXT`.
  */
 import type { CaptureReport, QualitySettings } from "./quality";
 import type { RecordingFailure } from "./recording-result";
@@ -16,6 +16,18 @@ import type { ErrorCode } from "./state";
 /** Follows the timestamp: `[<ISO>] session-record: {"v":1,…}`. */
 export const SESSION_RECORD_PREFIX = "session-record: ";
 export const SESSION_RECORD_VERSION = 1;
+
+/**
+ * Why a saved recording ended before the user asked, and the words the app log
+ * uses for it. The saved record carries the key and the log line the text; the
+ * analysis scripts read both from here, so a new reason cannot go unrecognized.
+ */
+export const EARLY_STOP_TEXT = { lowDisk: "disk almost full", sleep: "the Mac went to sleep" } as const;
+export type EarlyStop = keyof typeof EARLY_STOP_TEXT;
+
+export function isEarlyStop(value: unknown): value is EarlyStop {
+  return typeof value === "string" && Object.hasOwn(EARLY_STOP_TEXT, value);
+}
 
 /** A failure's settled file outcome; `pending` never reaches a terminal record. */
 export type FailureOutcome = Exclude<RecordingFailure["outcome"], "pending">;
@@ -34,7 +46,7 @@ interface RecordBase {
 
 export type SessionRecord =
   | (RecordBase & { kind: "capture"; session: string; requested: QualitySettings; capture: CaptureReport })
-  | (RecordBase & SessionTiming & { kind: "saved"; session: string; path: string; stoppedEarly?: "lowDisk" | "sleep" })
+  | (RecordBase & SessionTiming & { kind: "saved"; session: string; path: string; stoppedEarly?: EarlyStop })
   | (RecordBase & SessionTiming & {
       kind: "failed";
       session: string;

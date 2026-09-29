@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatSessionRecord } from "../../src/shared/session-record.ts";
+import { EARLY_STOP_TEXT, formatSessionRecord } from "../../src/shared/session-record.ts";
 import { parseSessionRecord } from "./session-records.mts";
 
 describe("saved session records", () => {
@@ -12,6 +12,7 @@ describe("saved session records", () => {
     expect(parseSessionRecord(saved())).toMatchObject({ kind: "saved", path: "/m/a.mp4" });
     expect(parseSessionRecord(saved("lowDisk"))).toMatchObject({ stoppedEarly: "lowDisk" });
     expect(parseSessionRecord(saved("sleep"))).toMatchObject({ stoppedEarly: "sleep" });
+    for (const reason of Object.keys(EARLY_STOP_TEXT)) expect(parseSessionRecord(saved(reason)), reason).toMatchObject({ stoppedEarly: reason });
     expect(parseSessionRecord(saved("user"))).toBeUndefined();
   });
 });
