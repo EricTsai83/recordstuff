@@ -1929,6 +1929,19 @@ describe("interruption sentinel lifecycle", () => {
     log.mock.calls.map(([message]) => String(message)).find(message => message.includes("finalize timing"));
   type Ctx = ReturnType<typeof setup>;
 
+  it("names the file from the start request, the instant its sentinel records, however long the folder takes", async () => {
+    const store = sentinels();
+    let clock = new Date(2026, 8, 11, 14, 30, 0).getTime();
+    // Each reading is later than the last, as when a slow folder delays the writer past a second boundary.
+    const ctx: Ctx = setup({ deps: { sentinels: store, now: () => new Date((clock += 1500)) } });
+    await startRecording(ctx);
+    const sentinel = store.files.get("s1")!;
+    expect(sentinel.recordingPath).toBe(`/out/${formatTimestamp(new Date(sentinel.startedAt))}.recording.mp4`);
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+  });
+
   it("writes before each temporary-name attempt and removes it after the saved event", async () => {
     const store = sentinels();
     let attempt = 0;

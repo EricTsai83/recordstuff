@@ -119,10 +119,12 @@ export interface RecorderDeps {
     remove(sessionId: string): Promise<void>;
     complete?(sessionId: string, finalPath: string): Promise<void>;
   };
-  /** Overrides for `RECORDING_HEALTH`, for tests. */
-  health?: Partial<RecordingHealth>;
+  /** Overrides for the `RECORDING_HEALTH` guards Recorder applies, for tests; FileWriter reads its own backlog limit. */
+  health?: Partial<RecorderHealth>;
 }
 
+/** The guards Recorder applies itself; the writer backlog limit is FileWriter's (see `openWriter`). */
+type RecorderHealth = Omit<RecordingHealth, "writerBacklogBytes">;
 
 /** What cancelled an attempt before capture began (plan 040). A cancel is not a failure. */
 export type CancelReason = "toggle" | "menu" | "quit" | "sleep";
@@ -275,7 +277,7 @@ export class Recorder {
     Pick<RecorderDeps, "now" | "newSessionId" | "startTimeoutMs" | "captureRequestTimeoutMs" | "stopTimeoutMs" | "shutdownTimeoutMs" | "log">
   > &
     RecorderDeps;
-  private readonly health: RecordingHealth;
+  private readonly health: RecorderHealth;
 
   private readonly monotonic: () => number;
 
@@ -548,6 +550,8 @@ export class Recorder {
 
     const dir = this.deps.outputDir();
     const countdownSeconds = this.deps.countdownSeconds?.() ?? 0;
+    // One instant names the file and dates the session's sentinel, even when the folder is slow to open.
+    const requested = this.deps.now();
     const session: Session = {
       id: this.deps.newSessionId(),
       phase: "opening",
@@ -562,7 +566,7 @@ export class Recorder {
       nextSeq: 0,
       writes: Promise.resolve(),
       dir,
-      startedAt: this.deps.now().toISOString(),
+      startedAt: requested.toISOString(),
       diskWarned: false,
       diskPollFailed: false,
       sentinel: false,
@@ -582,7 +586,7 @@ export class Recorder {
         if (free !== undefined && free < this.health.diskStopBytes) throw Object.assign(new Error("Insufficient free space to begin recording"), { code: "disk_full" });
       }
       if (this.session !== session) return;
-      session.writer = await this.openUniqueWriter(session, formatTimestamp(this.deps.now()));
+      session.writer = await this.openUniqueWriter(session, formatTimestamp(requested));
     });
     this.deps.onSessionStart?.(session.id);
     this.setState({ type: "starting" });
