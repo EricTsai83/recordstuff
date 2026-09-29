@@ -5,8 +5,9 @@
  * decision point: presses while starting or stopping are ignored there.
  *
  * Registration can fail when another app owns the combination. That is
- * reported to the caller (logged, shown in the tray menu and notified by
- * index.ts), never swallowed.
+ * logged here and reported to the caller, never swallowed: `AppShortcuts`
+ * (shortcuts.ts) sends the notification, and the Settings shortcut card shows
+ * the failure with its retry; the tray menu then names no shortcut.
  *
  * A change requested while a session is starting, recording or stopping is
  * held back (`request` → `deferred`) and applied by `flush` once the recorder

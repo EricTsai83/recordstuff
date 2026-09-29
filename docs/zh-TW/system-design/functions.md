@@ -27,7 +27,7 @@
 | `changeOutputDir()` | 系統對話框 → 保存使用者選擇，失敗通知；成功清位置錯誤並 refresh |
 | `openOutputDir()` | Tray 的儲存位置動作：以 `shell.openPath`、原生警告、App focus 與經 settled 檢查的 `changeOutputDir` 組成 `createOutputFolderOpener` |
 
-[main/output-folder.ts](../../../src/main/output-folder.ts)：`createOutputFolderOpener` 回傳同時只進行一次的開啟動作。先 stat 資料夾：是資料夾就開啟；不存在的已知預設資料夾，只在上層資料夾存在時以非遞迴 `mkdir` 建立；不存在的自訂資料夾、檔案、建立被拒、無法讀取的路徑或 Finder 失敗，都變成一則附路徑、詳細資訊與「更改儲存位置／取消」的在地化警告。存取被拒時仍先請 Finder 開啟。永遠不寫入設定；重複點擊會併入進行中的那次，警告開著時把它帶到前景。`nodeOutputFolderFs` 是真正的 stat／mkdir 邊界。
+[main/output-folder.ts](../../../src/main/output-folder.ts)：`createOutputFolderOpener` 回傳同時只進行一次的開啟動作。先 stat 資料夾：是資料夾就開啟；不存在的已知預設資料夾，只在上層資料夾存在時以非遞迴 `mkdir` 建立；不存在的自訂資料夾、檔案、建立被拒、無法讀取的路徑或 Finder 失敗，都變成一則附路徑、詳細資訊與「更改儲存位置／取消」的在地化警告；錄影工作仍在進行時，改為記入 log 並由 `CaptureNotices` 保留成通知告知，因為模態警告會卡住那些工作。存取被拒時仍先請 Finder 開啟。永遠不寫入設定；重複點擊會併入進行中的那次，警告開著時把它帶到前景。`nodeOutputFolderFs` 是真正的 stat／mkdir 邊界。
 
 事件：uncaughtException 留 log，第一次另顯示對話框；unhandledRejection 留 log；`main()` 失敗時留 log、顯示對話框並結束程序。Recorder state／saved／captureStarted／failed／permissionRequested 分別更新 Tray、發通知、處理降級與失效授權。tray 左鍵與全域快捷鍵共用同一個 `toggle` closure。Recorder 取得 `fs.statfs` 可用空間與 `userData/recording-sessions` sentinel；啟動時經由歷史還原回報遺留 sentinel，`powerMonitor` 的 suspend／resume 連同進行中 session 寫入 log。before-quit 忙碌時等待 shutdown；will-quit 釋放快捷鍵與其他資源。
 
@@ -254,7 +254,7 @@
 | --- | --- |
 | `qualityGroups(ctx, enabled)` | 影像品質、解析度上限、幀率；此平台未驗證的幀率仍列出但不可選 |
 | `hotkeyGroup(ctx, enabled)` | 建議的預設鍵、不同於預設的已存自訂值與「關閉」；renderer 加上「自訂快捷鍵…」；註冊失敗顯示診斷，設定快捷鍵（⌘⌥,）註冊失敗或被錄影快捷鍵佔用時也會顯示；關閉保留記住的組合鍵 |
-| `updateChecksGroup(ctx, enabled)` | 啟動檢查的開／關；context 沒有更新狀態時為空 |
+| `updateChecksGroup(ctx, enabled)` | 啟動檢查的開／關 |
 | `languageGroup(language)` | 英文與繁體中文；永不鎖定，因為語言不影響擷取 |
 | `settingsView(state, ctx)` | 面板完整 view：標題、說明、失敗文案、三個分頁（失敗紀錄分頁計算未確認筆數），以及移除 action 後的群組；失敗列帶日期、短時間、檔名與完整路徑 |
 | `failureDay` / `failureTime` | 失敗列的日期標題（今天、昨天、日期，不是今年才加年份）與短時間，以 `ctx.now` 為基準（plan 047） |

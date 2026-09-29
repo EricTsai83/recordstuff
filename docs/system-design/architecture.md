@@ -93,7 +93,7 @@ Both receivers run handwritten type guards. These validate required shapes, not 
 | Host → main | `stopped { sessionId }` | Final chunk has been posted; main may finalize the file |
 | Host → main | `error { sessionId, code, detail }` | Failure the host observed; only the codes in `HOST_ERROR_CODES` (folder, disk, deadline and supervision failures are main's own) |
 
-There is no per-chunk ACK or bounded backpressure. Blob conversion and disk writes are serialized separately, but slow storage can grow the queue. Heartbeats detect renderer responsiveness, not continuing media delivery. There is a first-chunk deadline, but no ongoing inter-chunk watchdog.
+There is no per-chunk ACK or backpressure. Blob conversion and disk writes are serialized separately, and each queue is bounded instead: the renderer's handoff and the writer's accepted-but-unwritten bytes each stop at 64 MiB, which ends the recording with its written prefix kept rather than growing memory. Heartbeats detect renderer responsiveness, not continuing media delivery; media delivery has its own deadlines, the first nonempty chunk and then a stall guard that warns after 10 s without one and fails at 30 s ([recording](recording.md#deadlines-and-supervision)).
 
 ## Data and persistence
 

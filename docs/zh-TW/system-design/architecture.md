@@ -95,7 +95,7 @@ Main 建立 `MessageChannelMain`，透過 `capture-host-port` 將其中一端交
 | host → main | `stopped { sessionId }` | 最後 chunk 已送出；main 才能開始完成檔案 |
 | host → main | `error { sessionId, code, detail }` | host 觀察到的失敗；只接受 `HOST_ERROR_CODES` 中的代碼（資料夾、磁碟、期限與監督失敗由 main 自行判定） |
 
-沒有逐 chunk ACK 或背壓協定：renderer 序列化 Blob 轉換，FileWriter 序列化磁碟作業，但磁碟持續變慢時佇列可能增長。心跳偵測程序回應，不等於媒體持續到達；目前有首 chunk 期限，沒有錄製期間的每片 watchdog。
+沒有逐 chunk ACK 或背壓協定：renderer 序列化 Blob 轉換，FileWriter 序列化磁碟作業，改以上限約束兩個佇列：renderer 的交付與 writer 已接受未寫入的位元組各以 64 MiB 為上限，超過時結束錄影並保留已寫入的前段，而不是讓記憶體持續增長。心跳偵測程序回應，不等於媒體持續到達；媒體到達另有期限：先是首個非空 chunk，之後由停滯守衛在 10 秒沒有新資料時警告、30 秒時判定失敗（見[錄影設計](recording.md#期限與故障隔離)）。
 
 ## 資料模型與持久化
 
