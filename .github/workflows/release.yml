@@ -65,7 +65,9 @@ jobs:
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
         run: |
           set -euo pipefail
-          test -n "$BUILD_CERTIFICATE_BASE64" && test -n "$P12_PASSWORD"
+          # Separate commands: `set -e` ignores a failure on the left of `&&`.
+          test -n "$BUILD_CERTIFICATE_BASE64" || { echo "::error::BUILD_CERTIFICATE_BASE64 is empty"; exit 1; }
+          test -n "$P12_PASSWORD" || { echo "::error::P12_PASSWORD is empty"; exit 1; }
           keychain="$RUNNER_TEMP/recordstuff-signing.keychain-db"
           cert="$RUNNER_TEMP/recordstuff-signing.pem"
           archive="$RUNNER_TEMP/recordstuff-signing.p12"

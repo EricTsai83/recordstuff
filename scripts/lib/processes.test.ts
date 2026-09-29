@@ -47,6 +47,10 @@ describe("process patterns", () => {
     expect(any.test(`${app}/Contents/MacOS/RecordStuff`)).toBe(true);
     expect(any.test("/Applications/NotRecordStuff.app/Contents/MacOS/RecordStuff")).toBe(false);
     expect(any.test("/Applications/RecordStuffXapp/Contents/MacOS/RecordStuff")).toBe(false);
+    // A program that only names an installed bundle is not RecordStuff running.
+    expect(any.test("/bin/cat /Applications/RecordStuff.app/Contents/MacOS/RecordStuff")).toBe(false);
+    expect(any.test("/usr/bin/codesign -dv /Applications/RecordStuff.app/Contents/MacOS/RecordStuff")).toBe(false);
+    expect(any.test("lldb /Applications/RecordStuff.app/Contents/MacOS/RecordStuff")).toBe(false);
   });
 });
 

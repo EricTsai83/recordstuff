@@ -20,7 +20,7 @@
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "icons": "node scripts/make-icons.mjs",
-    "log": "tail -f \"$HOME/Library/Logs/recordstuff/recordstuff.log\"",
+    "log": "tail -F \"$HOME/Library/Logs/recordstuff/recordstuff.log\"",
     "probe": "node scripts/probe-recording.mjs",
     "verify": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/verify-recording.mts",
     "acceptance": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-hotkey.mts",

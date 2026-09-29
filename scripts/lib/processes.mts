@@ -13,15 +13,20 @@ export function escapeRegExp(literal: string): string {
 }
 
 /**
+ * Any absolute path ending in `/RecordStuff.app` at the start of the command
+ * line. A folder name may hold spaces, but a space followed by `/` starts the
+ * next argument, so a path given to another program never matches.
+ */
+const ANY_BUNDLE = "/([^ ]| [^/])*/RecordStuff\\.app";
+
+/**
  * The `pgrep -f` pattern for a RecordStuff bundle's main process: the
- * executable path, with or without arguments, and never a helper process.
+ * executable path, with or without arguments, and never a helper process or
+ * a program that only names it (`/bin/cat …/MacOS/RecordStuff`).
  * With `bundleDir` only that bundle matches; without it, any RecordStuff.app.
  */
 export function recordStuffPattern(bundleDir?: string): string {
-  const executable = bundleDir
-    ? `${escapeRegExp(bundleDir.replace(/\/$/, ""))}/Contents/MacOS/RecordStuff`
-    : "(^|/)RecordStuff\\.app/Contents/MacOS/RecordStuff";
-  return `${bundleDir ? "^" : ""}${executable}($| )`;
+  return `^${bundleDir ? escapeRegExp(bundleDir.replace(/\/$/, "")) : ANY_BUNDLE}/Contents/MacOS/RecordStuff($| )`;
 }
 
 /**
