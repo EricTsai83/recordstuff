@@ -79,8 +79,11 @@ export function groupAlive(pid: number | undefined): boolean {
   try {
     process.kill(-pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (cause) {
+    const code = (cause as NodeJS.ErrnoException).code;
+    if (code === "ESRCH") return false;
+    if (code === "EPERM") return true;
+    throw cause;
   }
 }
 
@@ -106,7 +109,10 @@ export function startBuild(cwd: string, command: readonly string[] = ["pnpm", "e
 /** Stops a whole process group, so no electron-vite or esbuild child keeps writing `out/`; SIGKILL after 5 s. */
 export async function stopGroup(pid: number | undefined): Promise<void> {
   if (pid === undefined || !groupAlive(pid)) return;
-  const signalGroup = (name: NodeJS.Signals): void => { try { process.kill(-pid, name); } catch { /* already gone */ } };
+  const signalGroup = (name: NodeJS.Signals): void => {
+    try { process.kill(-pid, name); }
+    catch (cause) { if ((cause as NodeJS.ErrnoException).code !== "ESRCH") throw cause; }
+  };
   signalGroup("SIGTERM");
   for (let i = 0; i < 20 && groupAlive(pid); i += 1) await sleep(250);
   if (groupAlive(pid)) signalGroup("SIGKILL");

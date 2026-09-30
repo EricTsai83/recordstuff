@@ -2,7 +2,7 @@ import { spawn, type SpawnSyncReturns } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { INHERITED_ELECTRON_KEYS } from "./runner-env.mts";
 import {
   electronPattern, groupAlive, interruptExitCode, pgrepPids, pgrepProcesses, recordStuffPattern, startBuild, stopGroup,
@@ -118,6 +118,34 @@ describe("interrupted build", () => {
   it("reports a build that exits on its own with its code", async () => {
     expect(await startBuild(process.cwd(), ["/bin/sh", "-c", "exit 3"]).done).toBe(3);
     expect(await startBuild(process.cwd(), ["/nonexistent/build-tool"]).done).toBe(1);
+  });
+});
+
+describe("process group probe errors", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("treats only ESRCH as gone and EPERM as an existing group", () => {
+    const kill = vi.spyOn(process, "kill");
+    expect(groupAlive(undefined)).toBe(false);
+    expect(kill).not.toHaveBeenCalled();
+    kill.mockImplementation(() => { throw Object.assign(new Error("gone"), { code: "ESRCH" }); });
+    expect(groupAlive(123)).toBe(false);
+    kill.mockImplementation(() => { throw Object.assign(new Error("denied"), { code: "EPERM" }); });
+    expect(groupAlive(123)).toBe(true);
+    expect(kill).toHaveBeenLastCalledWith(-123, 0);
+    kill.mockImplementation(() => { throw Object.assign(new Error("unexpected"), { code: "EINVAL" }); });
+    expect(() => groupAlive(123)).toThrow("unexpected");
+  });
+
+  it("fails interrupted cleanup instead of claiming an inaccessible group exited", async () => {
+    vi.spyOn(process, "kill").mockImplementation(() => { throw Object.assign(new Error("permission denied"), { code: "EPERM" }); });
+    const report = vi.fn();
+    const code = await interruptExitCode("SIGTERM", async () => {
+      await stopGroup(123);
+      return groupAlive(123) ? ["the build"] : [];
+    }, report);
+    expect(code).toBe(1);
+    expect(report).toHaveBeenCalledWith("CLEANUP FAILED: permission denied");
   });
 });
 
