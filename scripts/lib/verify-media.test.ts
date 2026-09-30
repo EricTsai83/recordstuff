@@ -76,6 +76,9 @@ describe.skipIf(!ffmpegPath || !ffprobePath)("controlled media through ffmpeg (r
     expect(check(silent, "Channel energy (RMS)")).toMatchObject({ verdict: "fail", actual: "−∞ / −∞", note: "channel 1 is silent; channel 2 is silent" });
     expect(check(silent, "Sample rate/channels")?.verdict).toBe("pass"); // format alone cannot vouch for energy
     expect(silent.verdict).toBe("fail");
+    const exported = cli([file("silent.mp4")]);
+    expect(exported.status).toBe(1);
+    expect(exported.json?.[0]?.measurement.audio?.channelRms).toEqual({ status: "measured", value: ["-Infinity", "-Infinity"] });
     const oneSilent = verifyRecording(file("one-silent.mp4"), new LogPairs(), required);
     expect(check(oneSilent, "Channel energy (RMS)")?.note).toBe("channel 2 is silent");
     expect(oneSilent.verdict).toBe("fail");

@@ -661,6 +661,11 @@ export type Evidence<T> =
   | { status: "measured"; value: T }
   | { status: "not-requested" | "unavailable" | "error"; reason: string };
 
+/** JSON preserves these explicit values; numeric infinities would silently become null. */
+export type RmsLevel = number | "-Infinity" | "Infinity" | "NaN";
+const rmsLevel = (value: number): RmsLevel => Number.isFinite(value) ? value
+  : value === -Infinity ? "-Infinity" : value === Infinity ? "Infinity" : "NaN";
+
 /** Everything measured from one file; `undefined` means the tool could not tell. */
 export interface Measurement {
   file: string;
@@ -687,7 +692,7 @@ export interface Measurement {
         startTime: number | undefined;
         bitsPerSecond: number | undefined;
         /** RMS per channel in dBFS, from ffmpeg astats. */
-        channelRms: Evidence<number[]>;
+        channelRms: Evidence<RmsLevel[]>;
       }
     | undefined;
   frames: FrameStats | undefined;
@@ -769,7 +774,9 @@ export function measure(
           durationSeconds: numberOrUndefined(audio.duration) ?? duration,
           startTime: numberOrUndefined(audio.start_time),
           bitsPerSecond: audioBps,
-          channelRms: extras.channelRms ?? { status: "not-requested", reason: "channel RMS was not measured" },
+          channelRms: extras.channelRms?.status === "measured"
+            ? { status: "measured", value: extras.channelRms.value.map(rmsLevel) }
+            : extras.channelRms ?? { status: "not-requested", reason: "channel RMS was not measured" },
         }
       : undefined,
     frames: frameIntervals.length > 0 && nominal !== undefined ? frameStats(frameIntervals, nominal) : undefined,
@@ -891,16 +898,18 @@ function markerShortage(s: SyncStats): string {
 }
 
 /** Both channels, each a real level above the silence floor; anything else is named. */
-function energyProblems(levels: number[]): string[] {
+function energyProblems(levels: RmsLevel[]): string[] {
   const problems = levels.length === THRESHOLDS.channels ? [] : [`${levels.length} of ${THRESHOLDS.channels} channels measured`];
   levels.forEach((db, i) => {
-    if (Number.isNaN(db) || db === Number.POSITIVE_INFINITY) problems.push(`channel ${i + 1} is not a valid measurement`);
+    if (db === "-Infinity") problems.push(`channel ${i + 1} is silent`);
+    else if (typeof db !== "number" || Number.isNaN(db) || db === Number.POSITIVE_INFINITY) problems.push(`channel ${i + 1} is not a valid measurement`);
     else if (!(db > THRESHOLDS.minChannelRmsDb)) problems.push(`channel ${i + 1} is silent`);
   });
   return problems;
 }
 
-const dbText = (db: number): string => (Number.isFinite(db) ? `${db.toFixed(1)} dB` : db === Number.NEGATIVE_INFINITY ? "−∞" : "invalid");
+const dbText = (db: RmsLevel): string => (typeof db === "number" && Number.isFinite(db) ? `${db.toFixed(1)} dB`
+  : db === "-Infinity" || db === Number.NEGATIVE_INFINITY ? "−∞" : "invalid");
 
 /** Judge one measurement against the log entry (if any) and the threshold table. */
 export function judge(m: Measurement, entry: CaptureLogEntry | undefined, options: VerifyOptions = {}): Check[] {

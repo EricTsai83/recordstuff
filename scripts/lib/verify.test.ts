@@ -586,6 +586,9 @@ describe("measure + judge", () => {
       sync: markers({ medianOffsetMs: 35 }),
     });
     const checks = judge(m, undefined, { movingMaterial: true });
+    const restored = JSON.parse(JSON.stringify(m));
+    expect(restored.audio.channelRms.value).toEqual([-20, "-Infinity"]);
+    expect(judge(restored, undefined, { movingMaterial: true })).toEqual(checks);
     const byMetric = Object.fromEntries(checks.map((c) => [c.metric, c]));
     expect(byMetric["Output dimensions"]?.verdict).toBe("n/a");
     expect(byMetric["Average frame rate"]?.verdict).toBe("n/a");
@@ -602,6 +605,16 @@ describe("measure + judge", () => {
     expect(byMetric["Channel energy (RMS)"]?.verdict).toBe("fail");
     expect(byMetric["Channel energy (RMS)"]?.actual).toBe("-20.0 dB / −∞");
     expect(byMetric["Channel energy (RMS)"]?.note).toBe("channel 2 is silent");
+  });
+
+  it("preserves invalid RMS values in JSON and refuses legacy null levels", () => {
+    const m = measure("invalid.mp4", 1, info(), [], { channelRms: rms(Infinity, NaN) });
+    const restored = JSON.parse(JSON.stringify(m));
+    expect(restored.audio.channelRms.value).toEqual(["Infinity", "NaN"]);
+    const energy = () => judge(restored, undefined).find(c => c.metric === "Channel energy (RMS)");
+    expect(energy()).toMatchObject({ verdict: "fail", actual: "invalid / invalid" });
+    restored.audio.channelRms.value = [null, null];
+    expect(energy()).toMatchObject({ verdict: "fail", actual: "invalid / invalid" });
   });
 
   it("treats decode errors and a missing audio track as failures, and says when --sync found nothing", () => {
