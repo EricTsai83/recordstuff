@@ -374,6 +374,47 @@ it("ends capture even when saving throws and explains rejected candidates", asyn
   expect(result).toMatchObject({ applied: false, failure: "A shortcut needs Command or Control.", refused: true });
 });
 
+it("distinguishes an expired editor from cancellation and a submitted save", async () => {
+  vi.useFakeTimers();
+  try {
+    const s = setup();
+    s.panel.show();
+    const arm = (armed: boolean) => mock.handlers.get("settings:capture")!(s.event(), armed);
+    const group = () => {
+      const contents = mock.windows.at(-1)!.webContents;
+      return mock.handlers.get("settings:read")!({ sender: contents, senderFrame: contents.mainFrame }).groups.find((g: any) => g.kind === "shortcut");
+    };
+    arm(true);
+    vi.advanceTimersByTime(15_000);
+    expect(group()).toMatchObject({ capturing: false, captureTimedOut: true });
+    arm(true);
+    expect(group().captureTimedOut).toBeUndefined();
+    arm(false);
+    expect(group().captureTimedOut).toBeUndefined();
+    arm(true);
+    vi.advanceTimersByTime(15_000);
+    s.window().destroy();
+    s.panel.show();
+    expect(group().captureTimedOut).toBeUndefined();
+    s.panel.destroy();
+    mock.windows.length = 0;
+
+    let finish!: () => void;
+    const pending = setup({ act: () => new Promise<void>(resolve => { finish = resolve; }) });
+    pending.panel.show();
+    mock.handlers.get("settings:capture")!(pending.event(), true);
+    const save = pending.choose(pending.event(), "hotkey", "Control+K");
+    await Promise.resolve();
+    vi.advanceTimersByTime(15_000);
+    const savingGroup = mock.handlers.get("settings:read")!(pending.event()).groups.find((g: any) => g.kind === "shortcut");
+    expect(savingGroup.capturing).toBe(false);
+    expect(savingGroup.captureTimedOut).toBeUndefined();
+    finish();
+    await save;
+    pending.panel.destroy();
+  } finally { vi.useRealTimers(); }
+});
+
 it("keeps capture through a confirmed commit, then ends only that capture", async () => {
   let finish!: () => void;
   const act = vi.fn(async () => new Promise<void>(resolve => { finish = resolve; }));

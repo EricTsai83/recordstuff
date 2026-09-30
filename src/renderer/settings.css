@@ -23,7 +23,7 @@
 * { box-sizing: border-box; }
 body { margin: 0; overflow: hidden; }
 main { height: 100dvh; max-width: 720px; margin: auto; padding: 22px 24px 0; display: flex; flex-direction: column; }
-#hint, .note, .section-footnote, .capture-help { color: var(--secondary); font-size: 12px; }
+#hint, .note, .section-footnote, .capture-help, .capture-timeout { color: var(--secondary); font-size: 12px; }
 #hint { flex: none; margin: 0 0 12px; }
 #settings { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .tabs { flex: none; display: flex; padding: 3px; gap: 3px; border-radius: 8px; background: var(--separator); margin-bottom: 16px; }
@@ -73,6 +73,7 @@ select { min-width: 0; text-overflow: ellipsis; }
 #shortcut-capture { flex: 1; min-height: 34px; background: var(--background); border-style: dashed; }
 kbd { font: inherit; display: inline-block; min-width: 20px; padding: 1px 4px; margin: 0 2px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
 .capture-help { flex-basis: 100%; margin: 0; }
+.capture-timeout { margin: 9px 0 0; }
 .diagnostics { margin-top: 10px; border-left: 3px solid var(--warning); background: var(--warning-surface); padding: 9px 10px; border-radius: 3px; }
 .diagnostic + .diagnostic, .save-error:not([hidden]) { margin-top: 7px; }
 .diagnostic-heading, .save-error strong { color: var(--warning); display: block; font-size: 12px; }

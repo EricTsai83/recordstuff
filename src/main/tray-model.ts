@@ -78,8 +78,8 @@ function windowsGroup(ctx: AppContext, reviewedOnly: boolean): TrayMenuItem[] {
   ];
 }
 const QUIT_DEFERRED = {
-  media: "Quit postponed: recording work is still pending. Quit again once it finishes.",
-  metadata: "Quit postponed: settings or the log are still being written. Quit again in a moment.",
+  media: "Quit or relaunch postponed: recording work is still pending. Retry the same action once it finishes.",
+  metadata: "Quit or relaunch postponed: settings or the log are still being written. Retry the same action in a moment.",
 } as const satisfies Record<QuitDeferral, PlainMessageKey>;
 function appGroup(language: Language): TrayMenuItem[] {
   return [item(t("Show log", language), "revealLog"), item(t("Quit RecordStuff", language), "quit")];

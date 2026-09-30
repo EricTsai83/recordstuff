@@ -10,7 +10,7 @@ it("tells a deferred quit in a notification in the current language and returns 
   const feedback = createQuitFeedback({ language: () => language, notify, log: vi.fn() });
   // Nothing to await: the deadlines the notice describes keep running while it is shown.
   expect(feedback()).toBeUndefined();
-  expect(notify).toHaveBeenCalledExactlyOnceWith("Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. Please try quitting again after it finishes.");
+  expect(notify).toHaveBeenCalledExactlyOnceWith("Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. After it finishes, retry the same action: Quit or Relaunch.");
   language = "zh-TW";
   feedback("media");
   expect(notify.mock.calls[1]?.[0]).toContain("RecordStuff 將保持開啟");
@@ -19,7 +19,7 @@ it("tells a deferred quit in a notification in the current language and returns 
 it("names a pending preference or log write instead of a recording when media had settled", () => {
   const notify = vi.fn((_body: string) => undefined);
   createQuitFeedback({ language: () => "en", notify, log: vi.fn() })("metadata");
-  expect(notify).toHaveBeenCalledExactlyOnceWith("Settings or the log are still being written. RecordStuff will stay open. Please try quitting again in a moment.");
+  expect(notify).toHaveBeenCalledExactlyOnceWith("Settings or the log are still being written. RecordStuff will stay open. In a moment, retry the same action: Quit or Relaunch.");
 });
 
 it("logs a failed notification instead of throwing into the deferred quit", () => {

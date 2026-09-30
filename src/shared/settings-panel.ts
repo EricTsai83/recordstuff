@@ -33,6 +33,8 @@ export interface SettingsGroup {
   /** References a currently offered choice; never a new action payload. */
   recovery?: { choice: string; label: string };
   capturing?: boolean;
+  /** The last unsubmitted editor expired; cleared by another edit or shortcut choice. */
+  captureTimedOut?: boolean;
   platform?: string;
   /** Extra line under the control, e.g. a shortcut the OS refused to register. */
   note?: string;

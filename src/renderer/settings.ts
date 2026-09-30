@@ -257,7 +257,10 @@ function updateRows(groups: SettingsGroup[]): void {
         field.replaceChildren(indicator, ...(preview ? previewParts.map(key => node("kbd", "", key)) : [document.createTextNode(display)]));
         field.setAttribute("aria-label", sentences([display, text("Escape to cancel")], view?.language));
       }
-      setText(container.querySelector(".capture-help")!, text("Press a combination, then Confirm; Esc cancels"));
+      setText(container.querySelector(".capture-help")!, text("Press a combination and Confirm within 15 seconds; Esc cancels"));
+      const timeout = container.querySelector<HTMLElement>(".capture-timeout")!;
+      timeout.hidden = !group.captureTimedOut;
+      setText(timeout, group.captureTimedOut ? text("Shortcut editing timed out after 15 seconds. The shortcut was not changed. Choose Custom shortcut… to try again.") : "");
       const confirm = container.querySelector<HTMLButtonElement>("#shortcut-confirm")!;
       setText(confirm, text("Confirm"));
       confirm.disabled = !group.enabled || !candidateToConfirm;
@@ -269,7 +272,7 @@ function updateRows(groups: SettingsGroup[]): void {
     }
     // Only what is shown: a hidden region still lends its text, stale failure copy included, to a description.
     // Status changes use the single announcer below, not duplicate live regions.
-    const description = [`${controlId(group)}-note`, `${controlId(group)}-diagnostics`]
+    const description = [`${controlId(group)}-note`, `${controlId(group)}-diagnostics`, `${controlId(group)}-timeout`]
       .filter(id => document.getElementById(id)?.hidden === false).join(" ");
     for (const el of container.querySelectorAll<HTMLElement>("select, input, button[data-action], #shortcut-capture")) {
       if (description) el.setAttribute("aria-describedby", description); else el.removeAttribute("aria-describedby");
@@ -397,6 +400,8 @@ function row(group: SettingsGroup): HTMLElement {
     // focus so the explicit confirmation arrives while the editor holds it.
     confirm.addEventListener("mousedown", event => { if (event.button === 0) event.preventDefault(); });
     area.append(field, confirm, button("shortcut-cancel", () => void capture(false, true)), node("p", "capture-help")); container.append(area);
+    const timeout = node("p", "capture-timeout"); timeout.id = `${controlId(group)}-timeout`; timeout.hidden = true;
+    container.append(timeout);
   }
   const diagnostics = node("div", "diagnostics"); diagnostics.id = `${id}-diagnostics`;
   const error = node("div", "save-error diagnostic"); error.append(node("strong"), node("p"));
@@ -797,7 +802,9 @@ function render(next: SettingsView): void {
       if (JSON.stringify(old?.diagnostics) !== JSON.stringify(g.diagnostics)) messages.push(...(g.diagnostics ?? []).map(d => say([d.heading, d.reason, d.guidance])));
       return messages;
     });
-    if (endedByMain && document.hasFocus()) changes.unshift(text("Shortcut editing ended; the shortcut was not changed."));
+    if (endedByMain && document.hasFocus()) changes.unshift(next.groups.some(g => g.captureTimedOut)
+      ? text("Shortcut editing timed out after 15 seconds. The shortcut was not changed. Choose Custom shortcut… to try again.")
+      : text("Shortcut editing ended; the shortcut was not changed."));
     // The history arriving from disk is not news: every row would be read out at once.
     const historyLoaded = Boolean(previous.recordingHistoryStatus) && !next.recordingHistoryStatus;
     const olds = new Map((previous.recordingResults ?? []).map(r => [r.id, r]));

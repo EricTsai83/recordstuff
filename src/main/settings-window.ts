@@ -44,6 +44,7 @@ export interface SettingsWindowOptions {
 interface CaptureLease {
   readonly window: BrowserWindow;
   readonly timer: ReturnType<typeof setTimeout>;
+  submitted?: boolean;
 }
 
 export class SettingsWindow {
@@ -55,6 +56,7 @@ export class SettingsWindow {
   private entryTab: SettingsTab = "failures";
   /** Holds both global shortcuts suspended; never held by a pending save. */
   private lease: CaptureLease | undefined;
+  private captureTimedOut = false;
   private window: BrowserWindow | undefined;
   /** The current window painted its first frame; before that, `ready-to-show` shows it. */
   private painted = false;
@@ -79,7 +81,13 @@ export class SettingsWindow {
       const window = authorize(event);
       if (armed === false) this.release(this.leaseOf(window));
       else if (armed === true && !this.lease && window.isFocused() && preferencesUnlocked(this.options.state())) {
-        const lease: CaptureLease = { window, timer: setTimeout(() => { this.release(lease); this.refresh(); }, 15_000) };
+        this.captureTimedOut = false;
+        const lease: CaptureLease = { window, timer: setTimeout(() => {
+          if (this.lease !== lease) return;
+          this.captureTimedOut = !lease.submitted;
+          this.release(lease);
+          this.refresh();
+        }, 15_000) };
         this.lease = lease;
         this.options.capture?.(true);
       }
@@ -99,6 +107,10 @@ export class SettingsWindow {
       if (typeof group === "string" && group.startsWith("recordingResult:")) return this.applyResult(group, choice, window);
       // Completing a request ends the capture it was sent from, never a later one.
       const lease = this.leaseOf(window);
+      if (group === "hotkey") {
+        this.captureTimedOut = false;
+        if (lease) lease.submitted = true;
+      }
       const run = this.queue.then(() => this.apply(group, choice, lease, window));
       this.queue = run.then(
         () => undefined,
@@ -274,6 +286,7 @@ export class SettingsWindow {
     const shortcut = view.groups.find(group => group.kind === "shortcut");
     if (shortcut) {
       shortcut.capturing = this.lease !== undefined;
+      if (this.captureTimedOut) shortcut.captureTimedOut = true;
       // Capture suspends the registration; that is not a failure to report or retry.
       if (this.lease) { delete shortcut.diagnostics; delete shortcut.actions; }
     }
@@ -299,7 +312,7 @@ export class SettingsWindow {
   /** Close and crash act only on their own window, never on its replacement. */
   private retire(window: BrowserWindow): void {
     this.release(this.leaseOf(window));
-    if (this.window === window) this.window = undefined;
+    if (this.window === window) { this.window = undefined; this.captureTimedOut = false; }
   }
 
   private async applyResult(group: string, choice: unknown, recipient: BrowserWindow): Promise<SettingsChoiceResult> {

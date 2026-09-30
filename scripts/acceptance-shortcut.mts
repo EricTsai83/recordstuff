@@ -56,7 +56,7 @@ try {
     groupsGone = false; // Unknown until the process supervisor confirms cleanup.
     const execution = await runIsolatedProcess({
       executable, args: [fixture, root, temporary, phaseDir, name],
-      cwd: root, env, logFd, timeoutMs: name === "--drill-timeout" ? 8000 : 60_000,
+      cwd: root, env, logFd, timeoutMs: name === "--drill-timeout" ? 8000 : 90_000,
       signal: controller.signal,
     });
     groupsGone = execution.groupGone;

@@ -23,7 +23,8 @@ describe("controlled acceptance instrumentation", () => {
     expect(instrumented).toContain("defaultOutputDir: controlled.outputDir || defaultOutputDir(),");
     expect(instrumented).toContain("openWriter: (recordingPath, finalPath) => controlled.openWriter(recordingPath, finalPath),");
     expect(instrumented).toContain("publishFailure: async result => { await controlled.beforePublish(result); return recordingResults.receive(result, {");
-    expect(instrumented).toContain('notify: code => captureNotices.hold(`recording failure ${code}`, () => tray.notifyRecordingFailure(code)),');
+    expect(instrumented).toContain('notify: code => permissionNotices.failed(code),');
+    expect(instrumented).toContain('failure: code => captureNotices.hold(`recording failure ${code}`, () => tray.notifyRecordingFailure(code)),');
     expect(instrumented).toContain("controlled.storage(new RecordingResultStore(");
     expect(instrumented).toContain("controlled.attach({ recorder, recordingResults, settings, tray, handleAction, log });\n  updates.flush();");
     await expect(transformWithEsbuild(instrumented, "index.ts", { loader: "ts" })).resolves.toBeDefined();
@@ -31,7 +32,7 @@ describe("controlled acceptance instrumentation", () => {
   });
   it("fails closed when production wiring drifts or an anchor repeats", () => {
     expect(() => instrumentControlledAcceptance(source.replace("FileWriter.open(recordingPath, finalPath),", "FileWriter.open(recordingPath, finalPath, {}),"), "/tmp/x")).toThrow("anchor changed");
-    const changedNotice = source.replace('notify: code => captureNotices.hold(`recording failure ${code}`, () => tray.notifyRecordingFailure(code)),', "notify: () => undefined,");
+    const changedNotice = source.replace('notify: code => permissionNotices.failed(code),', "notify: () => undefined,");
     expect(changedNotice).not.toBe(source);
     expect(() => instrumentControlledAcceptance(changedNotice, "/tmp/x")).toThrow("anchor changed");
     expect(() => instrumentControlledAcceptance(source + "\nlet currentLanguage: Language = DEFAULT_LANGUAGE;", "/tmp/x")).toThrow("anchor changed");

@@ -12,8 +12,8 @@ export const ZH_TW = {
   "The resolution cap could not be confirmed. The recording may use a larger size.": "無法確認解析度上限，錄影可能使用較大的尺寸。",
   "Failure history could not be read. The existing file has been preserved; check the log for details.": "無法讀取失敗紀錄，原有檔案已保留；請查看 log 了解詳情。",
   "Show more failures": "顯示更多失敗紀錄",
-  "Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. Please try quitting again after it finishes.": "錄影仍在啟動、存檔或清理中，RecordStuff 將保持開啟。尚未開始的錄影會被取消。完成後請再次嘗試退出。",
-  "Settings or the log are still being written. RecordStuff will stay open. Please try quitting again in a moment.": "設定或 log 仍在寫入，RecordStuff 將保持開啟。請稍後再次嘗試退出。",
+  "Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. After it finishes, retry the same action: Quit or Relaunch.": "錄影仍在啟動、存檔或清理中，RecordStuff 將保持開啟。尚未開始的錄影會被取消。完成後請重試原本的操作：退出或重新啟動。",
+  "Settings or the log are still being written. RecordStuff will stay open. In a moment, retry the same action: Quit or Relaunch.": "設定或 log 仍在寫入，RecordStuff 將保持開啟。請稍後重試原本的操作：退出或重新啟動。",
   "Could not complete this action. Please try again.": "無法完成此操作，請重試。",
   "This failure record is not saved yet. RecordStuff keeps it and retries automatically. If this continues, check free disk space and access to the app's data folder. A force-quit loses unsaved records.": "這筆失敗紀錄尚未存檔。RecordStuff 會先保留它並自動重試；若持續失敗，請檢查可用磁碟空間與 App 資料夾的存取權限。強制結束會遺失尚未存檔的紀錄。",
   "The saved failure history could not be read or comes from a newer version, so RecordStuff will not overwrite it. This record is kept only until RecordStuff quits.": "已儲存的失敗紀錄無法讀取，或由較新版本建立，因此 RecordStuff 不會覆寫它。這筆紀錄只會保留到 RecordStuff 結束為止。",
@@ -80,7 +80,8 @@ export const ZH_TW = {
   "Could not open the link. Try again.": "無法開啟連結，請重試。",
   "Confirm": "確定",
   "Confirm to save": "按確定儲存",
-  "Press a combination, then Confirm; Esc cancels": "按下組合後，按確定儲存；Esc 取消",
+  "Press a combination and Confirm within 15 seconds; Esc cancels": "請在 15 秒內按下組合並確定；Esc 取消",
+  "Shortcut editing timed out after 15 seconds. The shortcut was not changed. Choose Custom shortcut… to try again.": "快捷鍵編輯已超過 15 秒，快捷鍵沒有變更。請選擇「自訂快捷鍵…」再試一次。",
   "Cancel": "取消",
   "Applying…": "正在套用…",
   "Action failed": "操作失敗",
@@ -265,8 +266,8 @@ export const ZH_TW = {
   "{path} could not be opened. Try again, or choose another folder.": "無法開啟 {path}。請再試一次，或選擇其他位置。",
   "Details: {error}": "詳細資訊：{error}",
   "An unexpected error occurred. See the log for details.": "發生未預期的錯誤，請查看 log 取得詳細資訊。",
-  "Quit postponed: recording work is still pending. Quit again once it finishes.": "尚未退出：錄影工作仍在進行，完成後請再退出一次",
-  "Quit postponed: settings or the log are still being written. Quit again in a moment.": "尚未退出：設定或 log 仍在寫入，請稍後再退出一次",
+  "Quit or relaunch postponed: recording work is still pending. Retry the same action once it finishes.": "退出或重新啟動已延後：錄影工作仍在進行，完成後請重試原本的操作",
+  "Quit or relaunch postponed: settings or the log are still being written. Retry the same action in a moment.": "退出或重新啟動已延後：設定或 log 仍在寫入，請稍後重試原本的操作",
 } as const;
 
 export type MessageKey = keyof typeof ZH_TW;

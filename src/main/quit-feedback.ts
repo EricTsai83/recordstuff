@@ -7,8 +7,8 @@ import { APP_NAME } from "./ui-model";
 export type QuitDeferral = "media" | "metadata";
 
 const DEFERRAL_MESSAGE = {
-  media: "Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. Please try quitting again after it finishes.",
-  metadata: "Settings or the log are still being written. RecordStuff will stay open. Please try quitting again in a moment.",
+  media: "Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. After it finishes, retry the same action: Quit or Relaunch.",
+  metadata: "Settings or the log are still being written. RecordStuff will stay open. In a moment, retry the same action: Quit or Relaunch.",
 } as const;
 
 /**

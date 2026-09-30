@@ -43,6 +43,7 @@ import { Recorder } from "./recorder";
 import { SessionSentinels, reportInterruptions } from "./session-sentinel";
 import { SavedNotification } from "./saved-notification";
 import { CaptureNotices } from "./capture-notices";
+import { PermissionNotices } from "./permission-notices";
 import { watchReopen, type ReopenWatcher } from "./reopen";
 import { SettingsStore } from "./settings";
 import { parseAutoRecord, runAutoRecord } from "./autorecord";
@@ -254,7 +255,7 @@ async function main(): Promise<void> {
     publishFailure: result => recordingResults.receive(result, {
       stat: file => fs.stat(file), refresh: refreshUi,
       // Requested as the display stops being shared, which macOS may mute: held like the other capture notices.
-      notify: code => captureNotices.hold(`recording failure ${code}`, () => tray.notifyRecordingFailure(code)),
+      notify: code => permissionNotices.failed(code),
     }),
     preflight: () => (osSupported() ? undefined : "unsupported_os_version"),
     onSessionStart: (sessionId) => displayMedia.begin(sessionId),
@@ -630,7 +631,10 @@ async function main(): Promise<void> {
     log,
   });
   const captureNotices = new CaptureNotices({ platform: process.platform, log });
-  let previous = recorder.state;
+  const permissionNotices = new PermissionNotices({
+    permission: needsRelaunch => tray.notifyPermission(needsRelaunch),
+    failure: code => captureNotices.hold(`recording failure ${code}`, () => tray.notifyRecordingFailure(code)),
+  });
   // A session keeps the display awake, so idle sleep cannot end its capture (plan 050).
   const keepAwake = new KeepAwake(powerSaveBlocker, log);
   recorder.subscribe((event) => {
@@ -653,16 +657,7 @@ async function main(): Promise<void> {
         updates.flush();
         // A shortcut change saved during a session applies now that it is over.
         shortcuts.flush();
-        // Tell the user each time the permission ask changes: first "open
-        // System Settings", later "relaunch" once the grant is in but stale.
-        const next = event.state;
-        if (
-          next.type === "needsPermission" &&
-          (previous.type !== "needsPermission" || previous.needsRelaunch !== next.needsRelaunch)
-        ) {
-          tray.notifyPermission(next.needsRelaunch);
-        }
-        previous = next;
+        permissionNotices.stateChanged(event.state);
         return;
       }
       case "saved":

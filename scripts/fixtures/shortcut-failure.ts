@@ -295,6 +295,27 @@ require(path.join(root, 'out/main/index.js'));
     // The replacement is operated with Chromium input events: tab, capture key and Confirm.
     await click('tab-general');
     await waitFor(() => evaluate("document.getElementById('tab-general').getAttribute('aria-selected') === 'true'"), 'input event selects General');
+    for (const language of ['en', 'zh-TW']) {
+      await click(`setting-language-${language}`);
+      await waitFor(() => evaluate(`document.documentElement.lang === '${language === 'en' ? 'en' : 'zh-Hant'}' && !document.querySelector('.row[aria-busy="true"]')`), 'language committed');
+      await arm();
+      nativeKey('K', ['control']);
+      await waitFor(() => evaluate("!document.getElementById('shortcut-confirm').disabled"), 'input event creates an unconfirmed candidate');
+      await pause(15_100);
+      const expired = await group();
+      const message = await evaluate<string>("document.querySelector('.capture-timeout').textContent");
+      record(`shortcut timeout explains the unchanged value (${language})`, expired.captureTimedOut === true && !expired.capturing
+        && await evaluate("!document.querySelector('.capture-timeout').hidden && document.activeElement.id === 'setting-hotkey'")
+        && message.includes(language === 'en' ? '15 seconds' : '15 秒') && savedKey() === accelerator && owned.size === 2, message);
+      fs.writeFileSync(path.join(reportDir, `shortcut-timeout-${language}.png`), (await panel!.webContents.capturePage()).toPNG());
+      await arm();
+      record(`new edit clears shortcut timeout (${language})`, !(await group()).captureTimedOut
+        && await evaluate("document.querySelector('.capture-timeout').hidden"), 'timeout cleared');
+      nativeKey('Escape', []);
+      await waitFor(async () => !(await group()).capturing, 'cancel new edit');
+    }
+    await click('setting-language-en');
+    await waitFor(() => evaluate("document.documentElement.lang === 'en' && !document.querySelector('.row[aria-busy=\"true\"]')"), 'English restored');
     if (process.platform === 'darwin') {
       await arm();
       nativeKey('W', ['control']);

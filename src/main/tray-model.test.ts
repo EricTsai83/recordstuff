@@ -249,19 +249,19 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
 
   it("says in every state that a quit was postponed, beside the state, since its banner may not be seen (plan 056)", () => {
     const zh = trayModel({ type: "idle" }, { ...mac, quitDeferred: "media" });
-    expect(labels(zh.menu).slice(0, 3)).toEqual(["待命中", "尚未退出：錄影工作仍在進行，完成後請再退出一次", "開始錄製"]);
+    expect(labels(zh.menu).slice(0, 3)).toEqual(["待命中", "退出或重新啟動已延後：錄影工作仍在進行，完成後請重試原本的操作", "開始錄製"]);
     expect(zh.menu[1]).toMatchObject({ enabled: false });
-    expect(zh.tooltip.split("\n").slice(0, 2)).toEqual(["RecordStuff: 待命中", "尚未退出：錄影工作仍在進行，完成後請再退出一次"]);
+    expect(zh.tooltip.split("\n").slice(0, 2)).toEqual(["RecordStuff: 待命中", "退出或重新啟動已延後：錄影工作仍在進行，完成後請重試原本的操作"]);
     const saving = trayModel({ type: "stopping" }, { ...mac, language: "en", quitDeferred: "metadata" });
-    expect(labels(saving.menu).slice(0, 2)).toEqual(["Saving…", "Quit postponed: settings or the log are still being written. Quit again in a moment."]);
-    expect(labels(trayModel({ type: "idle" }, mac).menu)).not.toContain("尚未退出：錄影工作仍在進行，完成後請再退出一次");
+    expect(labels(saving.menu).slice(0, 2)).toEqual(["Saving…", "Quit or relaunch postponed: settings or the log are still being written. Retry the same action in a moment."]);
+    expect(labels(trayModel({ type: "idle" }, mac).menu)).not.toContain("退出或重新啟動已延後：錄影工作仍在進行，完成後請重試原本的操作");
   });
 
   it("says an error box is waiting for the recording, even while it records (plan 056)", () => {
     const m = trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, { ...mac, language: "en", errorBoxHeld: true, quitDeferred: "media" });
     expect(m.title).toBe("REC");
     expect(labels(m.menu).slice(0, 4)).toEqual(["Recording", "An unexpected error occurred. See the log for details.",
-      "Quit postponed: recording work is still pending. Quit again once it finishes.", "Stop"]);
+      "Quit or relaunch postponed: recording work is still pending. Retry the same action once it finishes.", "Stop"]);
     expect(m.tooltip.split("\n")[1]).toBe("An unexpected error occurred. See the log for details.");
     expect(enabledActions(m.menu)).toContain("revealLog");
   });
