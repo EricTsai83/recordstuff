@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   CPU_BUDGET, CpuSampler, IDLE_ROLES, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgeRecording, judgeRoles, judgeSettingsOpen, judgeSteadyState, parseSample,
-  percentile, processRole, rolesFromPs, summarize, type Sample, type Summary,
+  processRole, rolesFromPs, summarize, type Sample, type Summary,
 } from "./cpu-sampler.mts";
 
 /**
@@ -78,13 +78,6 @@ describe("CPU sampler on recorded samples (plan 049)", () => {
     expect(judgeCoverage(covered, 2.6).verdict).toBe("fail");
     expect(judgeCoverage(summarize([], 0, 300_000), 300)).toMatchObject({ verdict: "fail", actual: "0 s judged (0%)" });
     expect(judgeCoverage(covered, 2, "the CPU sampler exited early (code 1) after 5 sample(s)")).toMatchObject({ verdict: "fail" });
-  });
-
-  it("takes nearest-rank percentiles", () => {
-    const values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    expect(percentile(values, 95)).toBe(10);
-    expect(percentile(values, 50)).toBe(5);
-    expect(percentile([], 95)).toBe(0);
   });
 });
 

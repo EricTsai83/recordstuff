@@ -1,5 +1,17 @@
 import type { ErrorCode } from "./state";
 
+/** Reviewed records the history keeps, newest review first; unreviewed ones are all kept. */
+export const REVIEWED_FAILURES_KEPT = 20;
+
+/** What the user can do with one failure-history record. */
+export type RecordingResultAction = "acknowledge" | "retry" | "remove" | "reveal" | "folder" | "permission" | "relaunch";
+
+/** The actions that change the saved history, so each waits for a durable save; the others only open something. */
+export type PersistingResultAction = Extract<RecordingResultAction, "acknowledge" | "remove" | "retry">;
+export function persistsHistory(action: string): action is PersistingResultAction {
+  return action === "acknowledge" || action === "remove" || action === "retry";
+}
+
 /** `io` may recover by retrying; the others need a different user action. */
 export type PersistenceIssue = "io" | "blocked" | "tooLarge";
 

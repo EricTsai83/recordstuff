@@ -1,6 +1,7 @@
 /**
  * Recording health guards (docs/system-design/recording.md#deadlines-and-supervision):
- * every threshold lives here. Values are the initial targets of plan 038; tune
+ * every main-side threshold lives here; the capture page's handoff bound is
+ * `HANDOFF_BACKLOG_LIMIT_BYTES` in shared/protocol.ts. Values are the initial targets of plan 038; tune
  * them only with written evidence. The guards observe and stop through the
  * existing paths; nothing here reserves space, throttles capture or repairs files.
  */

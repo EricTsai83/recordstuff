@@ -39,6 +39,10 @@ it("reads out only news, as sentences of the panel's language, and keeps focus w
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
   const feedback = document.getElementById("feedback")!;
+  // A radio group is named through aria-labelledby; a <label for> may only point at a labelable control.
+  expect(document.getElementById("setting-language-label")!.tagName).toBe("SPAN");
+  expect(document.getElementById("setting-language")!.getAttribute("aria-labelledby")).toBe("setting-language-label");
+  expect(document.getElementById("setting-updateChecks-label")!.tagName).toBe("LABEL");
 
   // A language switch retranslates the status note; it is not news.
   current = view("zh-TW"); push(current);

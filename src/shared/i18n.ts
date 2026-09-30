@@ -54,7 +54,7 @@ export const ZH_TW = {
   "Unreviewed recording failures: {value}": "尚未確認的錄影失敗：{value} 筆",
   "View recording failures…": "查看失敗紀錄…",
   "Remove from history": "移除這筆紀錄",
-  "Keeps all unreviewed failures and the 20 most recently reviewed failures. Removing a record does not delete the recording file.": "保留所有尚未確認的失敗，以及最近確認的 20 筆紀錄。移除紀錄不會刪除錄影檔案。",
+  "Keeps all unreviewed failures and the {count} most recently reviewed failures. Removing a record does not delete the recording file.": "保留所有尚未確認的失敗，以及最近確認的 {count} 筆紀錄。移除紀錄不會刪除錄影檔案。",
   "Recording failed": "錄影失敗",
   "Show partial recording": "顯示部分檔案",
   "Got it": "知道了",
@@ -106,6 +106,7 @@ export const ZH_TW = {
   "Could not save the screen setting.": "無法儲存螢幕設定。",
 
   "Custom shortcut…": "自訂快捷鍵…",
+  "Shortcut editing ended; the shortcut was not changed.": "快捷鍵編輯已結束，快捷鍵沒有變更。",
   "Recommended: {shortcut}": "建議：{shortcut}",
   "{shortcut} (custom)": "{shortcut}（自訂）",
   "Appearance": "外觀",
@@ -228,6 +229,8 @@ export const ZH_TW = {
   "{value} s": "{value} 秒",
   "Before recording starts, the digits appear at the top-right of the recorded screen. Click the menu bar icon or press the shortcut to cancel.":
     "開始錄製前，數字會顯示在被錄製螢幕的右上角。按一下選單列圖示或按快捷鍵即可取消。",
+  "Before recording starts, the digits appear at the top-right of the recorded screen. Click the menu bar icon to cancel.":
+    "開始錄製前，數字會顯示在被錄製螢幕的右上角。按一下選單列圖示即可取消。",
   "Countdown sound": "倒數音效",
   "A short tick plays with each digit. It stops before recording starts and is not recorded.":
     "每個數字出現時會響一聲短促的提示音；開始錄製前就會停止，不會被錄進去。",

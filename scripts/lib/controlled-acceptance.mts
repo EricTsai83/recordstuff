@@ -16,7 +16,8 @@ const replaceOnce = (source: string, from: string, to: string): string => replac
 
 const PUBLISH = `    publishFailure: result => recordingResults.receive(result, {
       stat: file => fs.stat(file), refresh: refreshUi,
-      notify: code => tray.notifyRecordingFailure(code),
+      // Requested as the display stops being shared, which macOS may mute: held like the other capture notices.
+      notify: code => captureNotices.hold(\`recording failure ${"${code}"}\`, () => tray.notifyRecordingFailure(code)),
     }),`;
 const RESULTS = `  const recordingResults = new RecordingResults(
     new RecordingResultStore(path.join(app.getPath("userData"), "recording-history.json"), log,

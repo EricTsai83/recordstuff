@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_QUALITY } from "../shared/quality";
 import type { RecordingState } from "../shared/state";
-import { DEFAULT_HOTKEY, HOTKEY_PRESETS } from "../shared/hotkey";
+import { DEFAULT_HOTKEY } from "../shared/hotkey";
 import {
   trayHintNotification,
   frameRateDowngradeNotification,
@@ -324,10 +324,10 @@ describe("notification text", () => {
     expect(recordingFailureNotification("output_write_failed", "en")).toEqual({ title: "Recording failed", body: "Could not write the recording. Click to view the recording result." });
   });
   it("a refused shortcut registration points at Settings, in the user's language", () => {
-    expect(hotkeyRegistrationFailedNotification(HOTKEY_PRESETS[0], "darwin", "zh-TW").body).toBe(
+    expect(hotkeyRegistrationFailedNotification(DEFAULT_HOTKEY.accelerator, "darwin", "zh-TW").body).toBe(
       "無法註冊快捷鍵 ⌘⇧1，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵。",
     );
-    expect(hotkeyRegistrationFailedNotification(HOTKEY_PRESETS[0], "win32").body).toContain("Ctrl+Shift+1");
+    expect(hotkeyRegistrationFailedNotification(DEFAULT_HOTKEY.accelerator, "win32").body).toContain("Ctrl+Shift+1");
   });
 });
 

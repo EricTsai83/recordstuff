@@ -107,6 +107,8 @@ export function createFileLogger(options: FileLoggerOptions): FileLog {
       dropped += 1;
       return;
     }
+    // The gap line travels with this one: if its write fails, both are counted as unwritten.
+    const carried = dropped;
     dropped = 0;
     queuedBytes += bytes;
     queue = queue.then(async () => {
@@ -126,7 +128,7 @@ export function createFileLogger(options: FileLoggerOptions): FileLog {
         // Measure the file and create its folder again before the next line.
         size = undefined;
         if (!unwritten) stderr(`log: cannot write ${options.filePath}: ${String(cause)}; skipping file lines until a write succeeds`);
-        unwritten += 1;
+        unwritten += 1 + carried;
         return;
       }
       fileEnabled = false;

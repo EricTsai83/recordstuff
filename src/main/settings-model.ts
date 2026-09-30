@@ -25,11 +25,11 @@ import {
 import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut } from "../shared/hotkey";
 import { COUNTDOWN_CHOICES } from "../shared/countdown";
 import type { RecordingResultView, SettingsChoice, SettingsGroup, SettingsView } from "../shared/settings-panel";
-import type { RecordingResult } from "../shared/recording-result";
+import type { RecordingResult, RecordingResultAction } from "../shared/recording-result";
 import type { RecordingState } from "../shared/state";
 
 import path from "node:path";
-import { abbreviateHome, preferencesUnlocked, type AppAction, type AppContext, type RecordingResultAction } from "./ui-model";
+import { abbreviateHome, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 
 /** A group as main knows it: exactly the wire shape plus the action per choice. */
 interface Group extends SettingsGroup {
@@ -106,16 +106,22 @@ function outputFolderGroup(ctx: AppContext, enabled: boolean): Group {
   ], abbreviateHome(ctx.outputDir, ctx.homeDir)), kind: "actions" };
 }
 
-/** Seconds before capture begins (plan 040); locked with the other recording settings. */
+/**
+ * Seconds before capture begins (plan 040); locked with the other recording settings.
+ * The note names the shortcut as a way to cancel only while it is on and registered.
+ */
 function countdownGroup(ctx: AppContext, enabled: boolean): Group {
   const language = ctx.language;
+  const shortcutWorks = ctx.hotkey.enabled && ctx.hotkey.registered;
   return group("countdown", t("Countdown", language), enabled, COUNTDOWN_CHOICES.map((value) => ({
     id: String(value),
     label: value === 0 ? t("Off", language) : t("{value} s", language, { value }),
     enabled: true,
     checked: value === ctx.countdown,
     action: { setCountdown: value },
-  })), t("Before recording starts, the digits appear at the top-right of the recorded screen. Click the menu bar icon or press the shortcut to cancel.", language));
+  })), shortcutWorks
+    ? t("Before recording starts, the digits appear at the top-right of the recorded screen. Click the menu bar icon or press the shortcut to cancel.", language)
+    : t("Before recording starts, the digits appear at the top-right of the recorded screen. Click the menu bar icon to cancel.", language));
 }
 
 /**
@@ -167,15 +173,15 @@ function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {
 
 /**
  * One recommended shortcut, the current custom value, and Off. A registration the OS refused is
- * never silent: the saved choice stays selected and the note says it is inert.
+ * never silent: the saved choice stays selected and a diagnostic says it is inert.
  */
 function hotkeyGroup(ctx: AppContext, enabled: boolean): Group[] {
   const hotkey = ctx.hotkey;
   const language = ctx.language;
-  const note = hotkey.enabled && !hotkey.registered
+  const unavailable = hotkey.enabled && !hotkey.registered
     ? t("Unavailable: another app may be using this shortcut.", language)
     : undefined;
-  const diagnostics = hotkeyDiagnostics(ctx, note);
+  const diagnostics = hotkeyDiagnostics(ctx, unavailable);
   const recommended = DEFAULT_HOTKEY.accelerator;
   const accelerators = hotkey.accelerator === recommended ? [recommended] : [recommended, hotkey.accelerator];
   return [{ ...group("hotkey", t("Shortcut", language), enabled, [
@@ -197,18 +203,18 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group[] {
       // Keep the remembered accelerator so re-enabling restores the choice.
       action: { setHotkey: { enabled: false, accelerator: hotkey.accelerator } },
     },
-  ], undefined), kind: "shortcut", platform: ctx.platform, noteKind: "status",
-    ...((note || ctx.settingsShortcut?.kind === "failed") ? { actions: [{ id: HOTKEY_RETRY_ID, label: t("Retry shortcut registration", language), enabled: true, checked: false, action: "retryShortcuts" as const }] } : {}),
+  ], undefined), kind: "shortcut", platform: ctx.platform,
+    ...((unavailable || ctx.settingsShortcut?.kind === "failed") ? { actions: [{ id: HOTKEY_RETRY_ID, label: t("Retry shortcut registration", language), enabled: true, checked: false, action: "retryShortcuts" as const }] } : {}),
     ...(diagnostics.length ? { diagnostics } : {}) }];
 }
 
 /** Why a shortcut this card owns does not work: the recording one, and ⌘⌥, for Settings, which the tray also explains. */
-function hotkeyDiagnostics(ctx: AppContext, note: string | undefined): NonNullable<Group["diagnostics"]> {
+function hotkeyDiagnostics(ctx: AppContext, unavailable: string | undefined): NonNullable<Group["diagnostics"]> {
   const language = ctx.language;
   const settings = describeAccelerator(SETTINGS_SHORTCUT, ctx.platform);
   const kind = ctx.settingsShortcut?.kind;
   return [
-    ...(note ? [{ kind: "current" as const, heading: t("Shortcut unavailable", language), reason: note,
+    ...(unavailable ? [{ kind: "current" as const, heading: t("Shortcut unavailable", language), reason: unavailable,
       guidance: t("Recording is still available from the menu. Choose another shortcut.", language) }] : []),
     ...(kind === "failed" ? [{ kind: "current" as const, heading: t("Settings shortcut unavailable", language),
       reason: t("{shortcut} could not be registered to open Settings; another app may use it.", language, { shortcut: settings }),

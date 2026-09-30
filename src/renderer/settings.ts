@@ -2,6 +2,7 @@
 import { SETTINGS_SHORTCUT_RESERVED, describeAccelerator, isSettingsShortcut, validateAccelerator } from "../shared/hotkey";
 import { isCloseChord, shortcutCandidate, shortcutModifiers } from "./shortcut-capture";
 import { isLanguage, sentences, translate, type Language, type PlainMessageKey } from "../shared/i18n";
+import { REVIEWED_FAILURES_KEPT, persistsHistory } from "../shared/recording-result";
 import type { RecordingResultView, SettingsBridge, SettingsGroup, SettingsTab, SettingsView } from "../shared/settings-panel";
 
 declare global { interface Window { settings: SettingsBridge } }
@@ -31,12 +32,13 @@ const resultStates = new Map<string, { open: boolean; acknowledged: boolean }>()
  */
 const resultIntents = new Map<string, { action: string; control: string; moved: boolean }>();
 const resultErrors = new Set<string>();
-const PERSISTING_ACTIONS = ["acknowledge", "remove", "retry"];
 let resultFocus = 0;
 let requestId = 0;
 let pending = 0;
 let saving: { group: string; choice: string; control: string } | undefined;
 let arming = false;
+/** The page asked main to end the shortcut editor; any other end (timeout, recording start) is announced. */
+let closingCapture = false;
 let captureGeneration = 0;
 let preview = "";
 /** The preview's keys, one box each: modifiers and the key, never the characters of a name like F12 or Ctrl. */
@@ -44,7 +46,8 @@ let previewParts: string[] = [];
 let candidateToConfirm: string | undefined;
 /** The first read failed and its error is shown in `#feedback`, made visible. */
 let startupFailed = false;
-let failure: { group: string; choice?: string; text: string; baseline?: string; refused?: true } | undefined;
+/** `editor`: the shortcut editor refused the key just pressed; the error belongs to that editor and closes with it. */
+let failure: { group: string; choice?: string; text: string; baseline?: string; refused?: true; editor?: true } | undefined;
 const text = (key: PlainMessageKey): string => translate(key, view?.language);
 const controlId = (group: SettingsGroup): string => `setting-${group.id}`;
 /** The shortcut editor's own buttons: their outcome returns focus to the shortcut select. */
@@ -100,6 +103,7 @@ async function capture(armed: boolean, restore = false): Promise<void> {
   preview = ""; previewParts = [];
   candidateToConfirm = undefined;
   if (armed) { failure = undefined; announce(""); }
+  else closingCapture = true;
   draw();
   try {
     const next = await window.settings.capture(armed);
@@ -113,6 +117,8 @@ async function capture(armed: boolean, restore = false): Promise<void> {
     if (generation !== captureGeneration) return;
     arming = false;
     localFailure("hotkey", text("Could not edit the shortcut. Try again."));
+  } finally {
+    if (!armed && generation === captureGeneration) closingCapture = false;
   }
 }
 /** An action (a link, a folder, a system pane) saves nothing: its retry repeats the action and is labelled so. */
@@ -160,8 +166,7 @@ function updateDiagnostic(container: HTMLElement, group: SettingsGroup): void {
   error.hidden = !activeFailure;
   const actionFailure = activeFailure !== undefined && isAction(group, activeFailure.choice);
   // A combination the editor or main refused saved nothing, and the recovery is another key, not the same choice again.
-  const refusedKey = activeFailure !== undefined && group.kind === "shortcut"
-    && (activeFailure.refused === true || (activeFailure.choice === undefined && Boolean(group.capturing)));
+  const refusedKey = activeFailure?.refused === true && group.kind === "shortcut";
   setText(error.querySelector("strong")!, text(refusedKey ? "Shortcut unavailable" : actionFailure ? "Action failed" : "Change was not saved"));
   setText(error.querySelector("p")!, activeFailure?.text ?? "");
   const recovery = area.querySelector<HTMLButtonElement>(".recovery")!;
@@ -294,8 +299,8 @@ function row(group: SettingsGroup): HTMLElement {
   const id = controlId(group);
   const container = node("div", "row"); container.id = `${id}-row`;
   const line = node("div", "row-line");
-  // A group of buttons has no control the label could point at: the buttons are grouped under it instead.
-  const label = group.kind === "actions" ? node("span", "group-label") : node("label", "group-label");
+  // Buttons and a radio group have no single control a label could point at: the group is named by it instead.
+  const label = group.kind === "actions" || group.control === "segmented" ? node("span", "group-label") : node("label", "group-label");
   if (label instanceof HTMLLabelElement) label.htmlFor = id;
   label.id = `${id}-label`;
   const controls = node("div", "controls");
@@ -359,7 +364,8 @@ function row(group: SettingsGroup): HTMLElement {
       if (error) {
         // A key the editor cannot use has no name to show (only the internal "Unsupported"): keep the held modifiers.
         setPreview(shortcutModifiers(event, group.platform).join("+"), group.platform ?? "darwin");
-        localFailure(group.id, translate(error, view?.language)); return;
+        failure = { group: group.id, text: translate(error, view?.language), refused: true, editor: true };
+        announce(failure.text); draw(); return;
       }
       candidateToConfirm = result.accelerator;
       failure = undefined;
@@ -474,7 +480,8 @@ function updateRecordingResult(focusRequested: boolean): void {
   empty.hidden = Boolean(results.length || status); setText(empty, text("No recording failures."));
   const note = list.querySelector<HTMLElement>(".result-history-note")!;
   note.hidden = !results.length;
-  setText(note, text("Keeps all unreviewed failures and the 20 most recently reviewed failures. Removing a record does not delete the recording file."));
+  setText(note, translate("Keeps all unreviewed failures and the {count} most recently reviewed failures. Removing a record does not delete the recording file.",
+    view?.language, { count: REVIEWED_FAILURES_KEPT }));
   const days = list.querySelector<HTMLElement>(".result-days")!;
   const focusId = (results.find(r => !r.acknowledged) ?? results[0])?.id;
   // Taken before any row moves: moving a focused node drops its focus (review of plan 047), so it is given back below.
@@ -632,7 +639,7 @@ function fillRow(area: HTMLDetailsElement, result: RecordingResultView): void {
     setActionDisabled(el, !action.enabled, busy);
   }
   const savingLine = area.querySelector<HTMLElement>(".result-saving")!;
-  const savingText = result.saving || (intent && PERSISTING_ACTIONS.includes(intent.action) ? text("Saving this change…") : "");
+  const savingText = result.saving || (intent && persistsHistory(intent.action) ? text("Saving this change…") : "");
   savingLine.hidden = !savingText; setText(savingLine, savingText);
   const error = area.querySelector<HTMLElement>(".result-error")!;
   error.hidden = !resultErrors.has(result.id);
@@ -753,12 +760,17 @@ function render(next: SettingsView): void {
   if (next.revision !== undefined && view?.revision !== undefined && next.revision < view.revision) return;
   const previous = view;
   const returned = new Set<string>();
+  let endedByMain = false;
   for (const group of next.groups) {
     const old = previous?.groups.find(o => o.id === group.id);
     if (group.capturing && !old?.capturing) beforeCapture.set(group.id, old ? captureNews(old) : "");
     else if (!group.capturing && old?.capturing) {
       if (beforeCapture.get(group.id) === captureNews(group)) returned.add(group.id);
       beforeCapture.delete(group.id);
+      // Cancelled, timed out or saved: a key the closed editor refused is no longer what the card is about.
+      if (failure?.group === group.id && failure.editor) failure = undefined;
+      // Main ended it (its time limit, a recording starting) while the user may still be typing a combination.
+      if (!closingCapture && !(saving && isCaptureControl(saving.control))) endedByMain = true;
     }
   }
   if (!next.groups.some(group => group.kind === "shortcut" && group.capturing)) { candidateToConfirm = undefined; preview = ""; previewParts = []; }
@@ -785,6 +797,7 @@ function render(next: SettingsView): void {
       if (JSON.stringify(old?.diagnostics) !== JSON.stringify(g.diagnostics)) messages.push(...(g.diagnostics ?? []).map(d => say([d.heading, d.reason, d.guidance])));
       return messages;
     });
+    if (endedByMain && document.hasFocus()) changes.unshift(text("Shortcut editing ended; the shortcut was not changed."));
     // The history arriving from disk is not news: every row would be read out at once.
     const historyLoaded = Boolean(previous.recordingHistoryStatus) && !next.recordingHistoryStatus;
     const olds = new Map((previous.recordingResults ?? []).map(r => [r.id, r]));
@@ -807,7 +820,7 @@ async function chooseResult(id: string, action: string, control: string): Promis
   // Record the origin before anything can change focus.
   const intent = { action, control, moved: false };
   resultIntents.set(id, intent); resultErrors.delete(id);
-  if (PERSISTING_ACTIONS.includes(action)) announce(text("Saving this change…"));
+  if (persistsHistory(action)) announce(text("Saving this change…"));
   draw();
   let applied = false;
   let offeredAfter = true;
@@ -830,7 +843,7 @@ function restoreResultFocus(id: string, intent: { action: string; control: strin
   const active = document.activeElement;
   if (active && active !== document.body && active !== control) return;
   const area = document.getElementById(`recording-result-${encodeURIComponent(id)}`) as HTMLDetailsElement | null;
-  if (control && area?.open && !PERSISTING_ACTIONS.includes(intent.action)) { control.focus({ preventScroll: true }); return; }
+  if (control && area?.open && !persistsHistory(intent.action)) { control.focus({ preventScroll: true }); return; }
   const target = area?.querySelector<HTMLElement>(":scope > summary") ?? document.querySelector<HTMLElement>(".recording-result > summary")
     ?? document.getElementById(`tab-${selectedTab}`);
   target?.focus({ preventScroll: true });

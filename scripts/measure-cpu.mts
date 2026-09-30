@@ -41,11 +41,12 @@ import { command, confirmedIdle, settleRecording, waitForLog } from "./lib/accep
 import { acceleratorToKeystroke, createMaterialProfile, currentRunId, keystrokeScript, materialOpenArgs, registeredAccelerator, removeMaterialProfile } from "./lib/acceptance.mts";
 import {
   CpuSampler, ENCODER_SERVICE, IDLE_ROLES, SamplerBlockedError, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgeRecording, judgeRoles, judgeSettingsOpen,
-  judgeSteadyState, machineModel, percentile, readRoles, roleText, summarize, type RoleCounts, type Summary, type Verdict,
+  judgeSteadyState, machineModel, readRoles, roleText, summarize, type RoleCounts, type Summary, type Verdict,
 } from "./lib/cpu-sampler.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
 import { LogReader, type LogCursor } from "./lib/log-reader.mts";
 import { parseSessionRecord } from "./lib/session-records.mts";
+import { percentile } from "./lib/stats.mts";
 import { SETTINGS_SHORTCUT } from "../src/shared/hotkey.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -270,7 +271,8 @@ async function main(): Promise<number> {
     const set = recordings.filter((r) => r.fps === fps);
     if (!set.length) return;
     const averages = set.map((r) => r.summary.cpuPercent.average);
-    const median = percentile(averages, 50);
+    // Nearest rank, not the midpoint median: with an odd count it is one run's own figure.
+    const median = percentile(averages, 0.5);
     const chosen = set.find((r) => r.summary.cpuPercent.average === median) ?? set[0]!;
     scenarios.push({ name: `R. Recording at ${fps} fps (median of ${set.length})`, key: `recording${fps}`, summary: chosen.summary,
       verdicts: [...judgeRecording(chosen.summary, fps, cpuBaseline(`measure:cpu recording ${fps}`, model)),

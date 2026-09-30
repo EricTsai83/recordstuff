@@ -74,7 +74,7 @@ it("keeps the history in its own tab, as collapsed day-grouped rows with one ope
   expect(old.querySelector(".result-file")!.textContent).toBe("2026-09-27 09-12-00.mp4");
   expect(old.querySelector(".result-technical pre")!.textContent).toBe("/Users/me/Movies/RecordStuff/2026-09-27 09-12-00.mp4\nENOSPC: fixture");
   expect([...old.querySelectorAll(".result-actions button")].map((b) => b.textContent)).toEqual(["Remove from history"]);
-  expect(document.querySelector(".result-history-note")!.textContent).toContain("Keeps all unreviewed failures");
+  expect(document.querySelector(".result-history-note")!.textContent).toContain("Keeps all unreviewed failures and the 20 most recently reviewed failures.");
 
   // One open row at a time.
   rows()[0]!.open = true; rows()[0]!.dispatchEvent(new Event("toggle"));

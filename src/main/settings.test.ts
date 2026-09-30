@@ -60,13 +60,27 @@ describe("SettingsStore", () => {
     await expect(fs.access(`${filePath}.unreadable`)).rejects.toThrow();
   });
 
-  it("rejects the save and keeps the unusable file when it cannot be moved", async () => {
+  it("never replaces a copy an earlier unusable load kept", async () => {
+    await fs.writeFile(`${filePath}.unreadable`, "first");
+    await fs.mkdir(`${filePath}.unreadable.1`);
+    await fs.writeFile(filePath, "second");
+    await store().setNotifications(false);
+    expect(await fs.readFile(`${filePath}.unreadable`, "utf8")).toBe("first");
+    expect(await fs.readFile(`${filePath}.unreadable.2`, "utf8")).toBe("second");
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: 3, notifications: false });
+  });
+
+  it("rejects the save and keeps the unusable file when it cannot be kept", async () => {
     await fs.writeFile(filePath, "{ not json");
     const first = store();
-    await fs.mkdir(`${filePath}.unreadable`);
-    await fs.writeFile(path.join(`${filePath}.unreadable`, "occupied"), "");
-    await expect(first.setNotifications(false)).rejects.toThrow();
+    await fs.chmod(dir, 0o500);
+    try {
+      await expect(first.setNotifications(false)).rejects.toThrow();
+    } finally {
+      await fs.chmod(dir, 0o700);
+    }
     expect(await fs.readFile(filePath, "utf8")).toBe("{ not json");
+    await expect(fs.access(`${filePath}.unreadable`)).rejects.toThrow();
     expect(first.notifications).toBe(true);
   });
 

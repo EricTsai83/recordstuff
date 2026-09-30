@@ -51,9 +51,17 @@ async function isFile(file: string): Promise<boolean> {
   }
 }
 
-/** Resolves a site path to the built file: /a/ → dist/a/index.html, /x.png → dist/x.png. */
-async function resolveInternal(pathname: string): Promise<string | null> {
-  const clean = decodeURIComponent(pathname.split("?")[0]);
+/** `decodeURIComponent`, or undefined for a malformed escape such as a lone `%`. */
+function decoded(text: string): string | undefined {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Resolves a decoded site path to the built file: /a/ → dist/a/index.html, /x.png → dist/x.png. */
+async function resolveInternal(clean: string): Promise<string | null> {
   const candidates = clean.endsWith("/")
     ? [path.join(dist, clean, "index.html")]
     : [path.join(dist, clean), path.join(dist, clean, "index.html"), path.join(dist, `${clean}.html`)];
@@ -89,7 +97,12 @@ for (const file of files) {
   );
   for (const ref of refs) {
     if (!ref || ref.startsWith("data:") || ref.startsWith("mailto:") || ref.startsWith("javascript:")) continue;
-    const url = new URL(ref.replaceAll("&amp;", "&"), new URL(page, siteOrigin));
+    // A malformed reference is one problem on its page, not a crash that hides the others.
+    const url = URL.parse(ref.replaceAll("&amp;", "&"), new URL(page, siteOrigin));
+    if (!url) {
+      problems.push(`${page}: malformed reference ${ref}`);
+      continue;
+    }
     if (url.protocol !== "http:" && url.protocol !== "https:") continue;
     if (url.origin !== siteOrigin) {
       const pages = external.get(url.href) ?? [];
@@ -98,8 +111,12 @@ for (const file of files) {
       continue;
     }
     internalCount += 1;
-    const targetPath = url.pathname;
-    const fragment = decodeURIComponent(url.hash.slice(1));
+    const targetPath = decoded(url.pathname);
+    const fragment = decoded(url.hash.slice(1));
+    if (targetPath === undefined || fragment === undefined) {
+      problems.push(`${page}: malformed reference ${ref}`);
+      continue;
+    }
     const resolved = await resolveInternal(targetPath);
     if (!resolved) {
       problems.push(`${page}: internal link ${ref} does not resolve in dist/`);

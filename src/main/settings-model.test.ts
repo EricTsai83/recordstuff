@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_QUALITY } from "../shared/quality";
-import { DEFAULT_HOTKEY, HOTKEY_PRESETS, SETTINGS_SHORTCUT } from "../shared/hotkey";
+import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT } from "../shared/hotkey";
+
+/** Former defaults and suggestions: valid custom values, no longer offered. */
+const LEGACY_HOTKEYS = ["CommandOrControl+Alt+Shift+R", "CommandOrControl+Shift+R", "CommandOrControl+Alt+R"];
 import type { RecordingState } from "../shared/state";
 import { translate as t } from "../shared/i18n";
 import { failureDay, failureTime, proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
@@ -68,7 +71,7 @@ describe("settingsView", () => {
     expect(checked(idle, context, "videoQuality")).toBe("standard");
     expect(checked(idle, context, "resolutionCap")).toBe("source");
     expect(checked(idle, context, "frameRate")).toBe("30");
-    expect(checked(idle, context, "hotkey")).toBe(HOTKEY_PRESETS[0]);
+    expect(checked(idle, context, "hotkey")).toBe(DEFAULT_HOTKEY.accelerator);
     expect(checked(idle, context, "updateChecks")).toBe("on");
     expect(checked(idle, context, "language")).toBe("en");
   });
@@ -104,18 +107,18 @@ describe("settingsView", () => {
       label: "Shortcut",
       diagnostics: [{ kind: "current", heading: "Shortcut unavailable", reason: "Unavailable: another app may be using this shortcut.", guidance: "Recording is still available from the menu. Choose another shortcut." }],
     });
-    expect(checked(idle, conflicted, "hotkey")).toBe(HOTKEY_PRESETS[0]);
+    expect(checked(idle, conflicted, "hotkey")).toBe(DEFAULT_HOTKEY.accelerator);
     expect(group(idle, { ...conflicted, language: "zh-TW" }, "hotkey")?.diagnostics?.[0]?.reason).toBe("無法使用：這個快捷鍵可能被其他 App 佔用。");
     // A registered shortcut needs no warning at all.
     expect(group(idle, context, "hotkey")).not.toHaveProperty("note");
   });
 
   it("checks Off while disabled and keeps the remembered accelerator", () => {
-    const off = { ...context, hotkey: { enabled: false, accelerator: HOTKEY_PRESETS[1], registered: false } };
+    const off = { ...context, hotkey: { enabled: false, accelerator: LEGACY_HOTKEYS[0]!, registered: false } };
     expect(checked(idle, off, "hotkey")).toBe("off");
     expect(group(idle, off, "hotkey")).not.toHaveProperty("note");
     expect(settingsAction(idle, off, "hotkey", "off")).toEqual({
-      setHotkey: { enabled: false, accelerator: HOTKEY_PRESETS[1] },
+      setHotkey: { enabled: false, accelerator: LEGACY_HOTKEYS[0]! },
     });
   });
 });
@@ -144,8 +147,8 @@ describe("settingsAction only resolves what is offered right now", () => {
     expect(settingsAction(idle, context, "resolutionCap", "1080p")).toEqual({ setQuality: { resolutionCap: "1080p" } });
     expect(settingsAction(idle, context, "frameRate", "60")).toEqual({ setQuality: { frameRate: 60 } });
     expect(settingsAction(idle, context, "updateChecks", "off")).toEqual({ setUpdateChecks: false });
-    expect(settingsAction(idle, context, "hotkey", HOTKEY_PRESETS[1])).toEqual({
-      setHotkey: { enabled: true, accelerator: HOTKEY_PRESETS[1] },
+    expect(settingsAction(idle, context, "hotkey", LEGACY_HOTKEYS[0]!)).toEqual({
+      setHotkey: { enabled: true, accelerator: LEGACY_HOTKEYS[0]! },
     });
   });
 
@@ -246,6 +249,15 @@ describe("countdown group (plan 040)", () => {
     expect([zh.label, ...zh.choices.map((c) => c.label)]).toEqual(["倒數", "關閉", "3 秒", "5 秒", "10 秒"]);
     expect(zh.note).toContain("右上角");
     expect(checked(idle, { ...context, countdown: 0 }, "countdown")).toBe("0");
+  });
+
+  it("names the shortcut as a way to cancel only while it works", () => {
+    expect(group(idle, context, "countdown")!.note).toContain("press the shortcut");
+    for (const hotkey of [{ ...context.hotkey, enabled: false }, { ...context.hotkey, registered: false }]) {
+      expect(group(idle, { ...context, hotkey }, "countdown")!.note).toBe(
+        "Before recording starts, the digits appear at the top-right of the recorded screen. Click the menu bar icon to cancel.");
+      expect(group(idle, { ...context, hotkey, language: "zh-TW" }, "countdown")!.note).toBe("開始錄製前，數字會顯示在被錄製螢幕的右上角。按一下選單列圖示即可取消。");
+    }
   });
 
   it("resolves each choice to setCountdown and is locked while starting, counting down, recording or saving", () => {
@@ -442,7 +454,7 @@ it("offers one recommended shortcut and only the currently saved custom value", 
   expect(choices.map(c => c.id)).toEqual([recommended, "off"]);
   expect(choices[0]!.label).toBe("Recommended: ⌘⇧1");
   expect(group(idle, { ...context, language: "zh-TW" }, "hotkey")!.choices[0]!.label).toBe("建議：⌘⇧1");
-  for (const accelerator of [...HOTKEY_PRESETS.slice(1), "Control+Shift+F20"]) {
+  for (const accelerator of [...LEGACY_HOTKEYS, "Control+Shift+F20"]) {
     const custom = { ...context, hotkey: { enabled: true, registered: true, accelerator } };
     const customChoices = group(idle, custom, "hotkey")!.choices;
     expect(customChoices.map(c => c.id)).toEqual([recommended, accelerator, "off"]);

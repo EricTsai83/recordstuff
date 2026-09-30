@@ -25,8 +25,10 @@ const TEMPORARY = `${SUFFIX}.tmp`;
 const MAX_BYTES = 64 * 1024;
 const VALID_ID = /^[A-Za-z0-9_-]{1,100}$/;
 
-function parse(sessionId: string, text: string): SessionSentinel | undefined {
+/** The sentinel, `"newer"` for a later format this build cannot read, or undefined for invalid content. */
+function parse(sessionId: string, text: string): SessionSentinel | "newer" | undefined {
   const value = JSON.parse(text) as Partial<SessionSentinel> & { version?: unknown };
+  if (Number.isInteger(value?.version) && (value.version as number) > 1) return "newer";
   if (value?.version !== 1 || value.sessionId !== sessionId || typeof value.startedAt !== "string" ||
       !Number.isFinite(Date.parse(value.startedAt)) || typeof value.recordingPath !== "string" ||
       !path.isAbsolute(value.recordingPath) || value.recordingPath.includes("\0")) return undefined;
@@ -56,7 +58,7 @@ export class SessionSentinels {
   async complete(sessionId: string, finalizedPath: string): Promise<void> {
     if (!VALID_ID.test(sessionId)) throw new Error("invalid session id");
     const sentinel = parse(sessionId, await fs.promises.readFile(this.file(sessionId), "utf8"));
-    if (!sentinel) throw new Error("invalid sentinel");
+    if (!sentinel || sentinel === "newer") throw new Error("invalid sentinel");
     await this.write({ ...sentinel, finalizedPath });
   }
 
@@ -77,7 +79,8 @@ export class SessionSentinels {
    * Sentinels left by earlier processes. Never throws. An interrupted atomic
    * write names no media file yet (the sentinel precedes the temporary file),
    * so it and invalid content are logged and removed instead of reported. A
-   * sentinel that cannot be read right now is kept for a later launch.
+   * sentinel that cannot be read right now, or that a newer version wrote, is
+   * kept for a later launch.
    */
   async leftovers(): Promise<SessionSentinel[]> {
     let names: string[];
@@ -94,7 +97,7 @@ export class SessionSentinels {
       const sessionId = name.slice(0, name.length - (temporary ? TEMPORARY : SUFFIX).length);
       if (!VALID_ID.test(sessionId) || this.own.has(sessionId)) continue;
       const file = path.join(this.dir, name);
-      let sentinel: SessionSentinel | undefined;
+      let sentinel: SessionSentinel | "newer" | undefined;
       if (!temporary) {
         let text: string | undefined;
         try {
@@ -109,6 +112,11 @@ export class SessionSentinels {
         }
         try { sentinel = text === undefined ? undefined : parse(sessionId, text); }
         catch { sentinel = undefined; }
+      }
+      if (sentinel === "newer") {
+        // Like newer settings and history, evidence a later version wrote is left for that version to report.
+        this.log(`sentinel: kept ${name} from a newer version`);
+        continue;
       }
       if (sentinel?.finalizedPath) {
         await this.remove(sessionId);

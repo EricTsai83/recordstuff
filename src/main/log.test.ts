@@ -160,6 +160,23 @@ describe("createFileLogger overflow", () => {
     expect(out).toHaveLength(7);
     expect(err).toHaveLength(1);
   });
+
+  it("counts the dropped lines as unwritten when the line reporting them cannot be written", async () => {
+    const log = logger();
+    const big = "x".repeat(300 * 1024);
+    for (let i = 0; i < 5; i++) log(`${i} ${big}`);
+    await log.flush();
+    await fs.rm(path.dirname(filePath), { recursive: true });
+    log("lost");
+    await log.flush();
+    log("after");
+    await log.flush();
+    const lines = (await fs.readFile(filePath, "utf8")).trimEnd().split("\n");
+    expect(lines).toEqual([
+      "[2026-09-12T10:00:00.000Z] log: 3 line(s) could not be written to this file (stdout has them)",
+      "[2026-09-12T10:00:00.000Z] after",
+    ]);
+  });
 });
 
 describe("flushBeforeExit", () => {

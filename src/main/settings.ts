@@ -5,8 +5,9 @@
  * Writes replace the file atomically (`writeFileAtomic`), so a crash or power
  * loss mid-write leaves the previous file. Any read problem falls back to the
  * default and logs; a file that exists but cannot be used (unreadable, broken,
- * or from a newer version) is moved aside to `settings.json.unreadable` before
- * the first write, so a later save never replaces the user's choices with defaults.
+ * or from a newer version) is kept as `settings.json.unreadable` (then `.1`,
+ * `.2`… when that name is taken) before the first write, so a later save never
+ * replaces the user's choices with defaults.
  *
  * Version 1 files (outputDir only) are read as-is and get the default
  * quality; version 2 files get the default shortcut. Both are rewritten as
@@ -303,20 +304,35 @@ export class SettingsStore {
 
   /**
    * The first write after an unusable load happens without the user asking
-   * (the launch update check stamps its attempt), so it moves the old file
-   * aside first. A failed move rejects the save and keeps the file in place.
+   * (the launch update check stamps its attempt), so it keeps the old file
+   * first. A failed keep rejects the save and leaves the file in place.
    */
   private async write(settings: Settings): Promise<void> {
     if (this.unusableOnDisk) {
-      const kept = `${this.filePath}.unreadable`;
-      try {
-        await fs.promises.rename(this.filePath, kept);
-        this.log(`settings: kept the unusable file as ${kept}`);
-      } catch (cause) {
-        if (errnoCode(cause) !== "ENOENT") throw cause;
-      }
+      await this.keepUnusable();
       this.unusableOnDisk = false;
     }
     await writeFileAtomic(this.filePath, JSON.stringify(settings, null, 2) + "\n");
+  }
+
+  /**
+   * Links the unusable file under the first free `.unreadable` name. Unlike
+   * `rename`, `link` never replaces an existing name, so a copy kept by an
+   * earlier launch survives a second unusable load; the atomic write then
+   * replaces only the original name.
+   */
+  private async keepUnusable(): Promise<void> {
+    for (let index = 0; ; index++) {
+      const kept = `${this.filePath}.unreadable${index ? `.${index}` : ""}`;
+      try {
+        await fs.promises.link(this.filePath, kept);
+        this.log(`settings: kept the unusable file as ${kept}`);
+        return;
+      } catch (cause) {
+        const code = errnoCode(cause);
+        if (code === "ENOENT") return;
+        if (code !== "EEXIST") throw cause;
+      }
+    }
   }
 }

@@ -275,7 +275,7 @@ export class SettingsWindow {
     if (shortcut) {
       shortcut.capturing = this.lease !== undefined;
       // Capture suspends the registration; that is not a failure to report or retry.
-      if (this.lease) { delete shortcut.note; delete shortcut.diagnostics; delete shortcut.actions; }
+      if (this.lease) { delete shortcut.diagnostics; delete shortcut.actions; }
     }
     return view;
   }
@@ -316,7 +316,7 @@ export class SettingsWindow {
       this.log(`settings window: refused ${JSON.stringify({ group, choice })}`);
       this.release(lease);
       const view = this.view();
-      // A refused shortcut says why once, in the card's own error; its note keeps describing the registration.
+      // A refused shortcut says why once, in the card's own error; its diagnostics keep describing the registration.
       const error = proposesHotkey(group, choice)
         ? isSettingsShortcut(choice, this.options.context().platform) ? SETTINGS_SHORTCUT_RESERVED : validateAccelerator(choice).error
         : undefined;

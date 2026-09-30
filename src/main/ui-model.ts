@@ -8,7 +8,7 @@
  * other's menu. Every action either interface can raise ends at the single
  * handler in index.ts, which re-checks the recording state before acting.
  */
-import type { RecordingResult } from "../shared/recording-result";
+import type { RecordingResult, RecordingResultAction } from "../shared/recording-result";
 import type { Appearance } from "../shared/appearance";
 import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../shared/display";
 import type { Language } from "../shared/i18n";
@@ -22,8 +22,6 @@ import type { QuitDeferral } from "./quit-feedback";
 
 export const APP_NAME = "RecordStuff";
 
-/** What the user can do with one failure-history record. */
-export type RecordingResultAction = "acknowledge" | "retry" | "remove" | "reveal" | "folder" | "permission" | "relaunch";
 
 export type AppAction =
   | "openSettings"

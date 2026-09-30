@@ -3,7 +3,7 @@
  * `getDisplayMedia` and a fake `MediaRecorder`; no DOM needed.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CHUNK_INTERVAL_MS, OUTPUT_MIME_TYPE, type HostMessage, type MainMessage } from "../shared/protocol";
+import { CHUNK_INTERVAL_MS, HANDOFF_BACKLOG_LIMIT_BYTES, OUTPUT_MIME_TYPE, type HostMessage, type MainMessage } from "../shared/protocol";
 import { DEFAULT_QUALITY, type QualitySettings } from "../shared/quality";
 import { CaptureHost, type CaptureHostOptions, type FrameSizeMeasurer, type HostPort } from "./capture-host";
 
@@ -746,11 +746,12 @@ it("bounds queued blobs while a previous blob read is stalled", async () => {
   port.receive(start("s1")); const source = stream(); pendingStream!.resolve(source); await flush(); record(port);
   let release!: (value: ArrayBuffer) => void;
   const encoder = FakeMediaRecorder.instances[0]!;
-  encoder.ondataavailable?.({ data: { size: 40 * 1024 * 1024, arrayBuffer: () => new Promise<ArrayBuffer>(resolve => { release = resolve; }) } as Blob });
+  const over = HANDOFF_BACKLOG_LIMIT_BYTES * 0.6;
+  encoder.ondataavailable?.({ data: { size: over, arrayBuffer: () => new Promise<ArrayBuffer>(resolve => { release = resolve; }) } as Blob });
   await Promise.resolve();
-  encoder.ondataavailable?.({ data: { size: 40 * 1024 * 1024 } as Blob });
+  encoder.ondataavailable?.({ data: { size: over } as Blob });
   expect(encoder.state).toBe("inactive");
   release(new ArrayBuffer(1)); await flush();
-  expect(port.sent).toContainEqual(expect.objectContaining({ type: "error", detail: expect.stringContaining("backlog") }));
+  expect(port.sent).toContainEqual(expect.objectContaining({ type: "error", detail: "media handoff backlog exceeded 64 MiB" }));
   expect(source.getTracks().every(track => track.stopped)).toBe(true);
 });

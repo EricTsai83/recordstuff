@@ -8,7 +8,7 @@
  * built but left inactive, and `prepared` reports it. Encoding begins at
  * `record`, so main can count down between the two without capturing.
  */
-import { CAPTURE_HOST_PORT_CHANNEL, CHUNK_INTERVAL_MS, OUTPUT_MIME_TYPE, isMainMessage, type HostErrorCode, type HostMessage } from "../shared/protocol";
+import { CAPTURE_HOST_PORT_CHANNEL, CHUNK_INTERVAL_MS, HANDOFF_BACKLOG_LIMIT_BYTES, OUTPUT_MIME_TYPE, isMainMessage, type HostErrorCode, type HostMessage } from "../shared/protocol";
 import {
   AUDIO_BITS_PER_SECOND,
   fitWithinCap,
@@ -407,9 +407,9 @@ export class CaptureHost {
   private enqueueChunk(session: Session, blob: Blob): void {
     if (session.finished || session.draining || blob.size === 0) return;
     if (session.handoffFailed) return;
-    if (session.backlogBytes + blob.size > 64 * 1024 * 1024) {
+    if (session.backlogBytes + blob.size > HANDOFF_BACKLOG_LIMIT_BYTES) {
       session.handoffFailed = true;
-      this.setFailure(session, { code: "capture_failed", detail: "media handoff backlog exceeded 64 MiB" });
+      this.setFailure(session, { code: "capture_failed", detail: `media handoff backlog exceeded ${HANDOFF_BACKLOG_LIMIT_BYTES / (1024 * 1024)} MiB` });
       this.requestStop(session);
       return;
     }

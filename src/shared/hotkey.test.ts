@@ -1,8 +1,8 @@
 import { expect, it } from "vitest";
-import { HOTKEY_PRESETS, canonicalizeAccelerator, describeAccelerator, isAccelerator, validateAccelerator } from "./hotkey";
+import { canonicalizeAccelerator, describeAccelerator, isAccelerator, validateAccelerator } from "./hotkey";
 
 it("keeps every preset and validates the bounded custom vocabulary", () => {
-  for (const value of [...HOTKEY_PRESETS, "Control+F24", "CommandOrControl+Alt+Space", "Control+Left", "Control+Plus", "Control+;"]) expect(isAccelerator(value), value).toBe(true);
+  for (const value of ["CommandOrControl+Shift+1", "CommandOrControl+Alt+Shift+R", "CommandOrControl+Shift+R", "CommandOrControl+Alt+R", "Control+F24", "CommandOrControl+Alt+Space", "Control+Left", "Control+Plus", "Control+;"]) expect(isAccelerator(value), value).toBe(true);
   for (const value of [null, "R", "Shift+R", "Control", "Control+Shift", "Control+R+S", "Control+Nope", "Control+Control+R", "Control+" + "A".repeat(65), "CommandOrControl+Space", "CommandOrControl+Tab", "CommandOrControl+Q", "CommandOrControl+W", ...[3, 4, 5, 6].map(n => `Shift+CommandOrControl+${n}`)]) expect(isAccelerator(value), String(value)).toBe(false);
   expect(validateAccelerator("Shift+R").error).toBe("A shortcut needs Command or Control.");
   expect(validateAccelerator("CommandOrControl+Tab").error).toBe("macOS reserves this combination.");

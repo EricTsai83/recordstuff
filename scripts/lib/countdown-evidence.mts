@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { COUNTDOWN_TICK, tickFrequencyHz } from "../../src/shared/countdown.ts";
 import { lineTime } from "./acceptance.mts";
+import { escapeRegExp } from "./processes.mts";
 
 export interface Rect { x: number; y: number; width: number; height: number }
 
@@ -46,7 +47,7 @@ export function countdownTimeline(lines: readonly string[], pressedAt: Date): Co
     if ((m = /recorder: session (\S+) prepared after \d+ ms; countdown (\d+) s(?:; sound (on|off))?/.exec(line)) && !session) {
       session = m[1];
       // One compile per session, not five per line; the id is escaped since it is data.
-      const own = `recorder: session ${session!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} `;
+      const own = `recorder: session ${escapeRegExp(session!)} `;
       patterns = {
         dismissal: new RegExp(`${own}countdown overlay (dismissed|error) after (\\d+) ms`),
         dismissalTimedOut: new RegExp(`${own}countdown overlay did not confirm dismissal`),

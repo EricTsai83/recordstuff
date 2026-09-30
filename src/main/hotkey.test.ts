@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_HOTKEY, HOTKEY_PRESETS, describeAccelerator, isAccelerator, isHotkeySettings } from "../shared/hotkey";
+import { DEFAULT_HOTKEY, describeAccelerator, isAccelerator, isHotkeySettings } from "../shared/hotkey";
 import { LAYOUT_AWARE_HOTKEYS_FEATURE, RecordingHotkey, physicalHotkeyFeatures, type GlobalShortcutApi } from "./hotkey";
 
 /**
@@ -29,7 +29,8 @@ function setup(fake = fakeShortcut()) {
   return { hotkey, fake, logs, onToggle };
 }
 
-const [DEFAULT_ACCELERATOR, SECOND] = HOTKEY_PRESETS;
+const DEFAULT_ACCELERATOR = DEFAULT_HOTKEY.accelerator;
+const SECOND = "CommandOrControl+Alt+Shift+R";
 
 describe("RecordingHotkey (plan 016)", () => {
   it("registers the default on apply and a press runs the tray's toggle action", () => {

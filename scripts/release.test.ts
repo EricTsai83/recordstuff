@@ -78,6 +78,10 @@ describe('record helpers', () => {
     expect(compareVersions('0.2.0-1', '0.2.0-alpha')).toBe(-1);
     expect(compareVersions('0.2.0-alpha.1', '0.2.0-beta')).toBe(-1);
     expect(compareVersions('0.2.0-rc.1', '0.2.0-rc.1')).toBe(0);
+    // Build metadata has no precedence (a tag `stableVersion` accepts).
+    expect(compareVersions('1.3.0+rebuild', '1.3.1')).toBe(-1);
+    expect(compareVersions('1.3.1', '1.3.0+rebuild')).toBe(1);
+    expect(compareVersions('1.3.0+rebuild', '1.3.0')).toBe(0);
   });
   it('rewrites only the top-level package version and keeps formatting', () => {
     const text = '{\n  "name": "recordstuff",\n  "version": "0.1.2",\n  "engines": { "node": ">=22.12.0" }\n}\n';
@@ -178,6 +182,7 @@ describe('release tool failures', () => {
     expect(latestFlag('1.1.5', published)).toBe('--latest=false');
     expect(latestFlag('1.4.0-rc.1', published)).toBe('--prerelease');
     expect(latestFlag('1.0.0', [])).toBe('--latest');
+    expect(latestFlag('1.3.1', [{ tag_name: 'v1.3.0+rebuild' }])).toBe('--latest');
   });
 
   it('forces a busy detach and removes only an unmounted mount point, without throwing', () => {

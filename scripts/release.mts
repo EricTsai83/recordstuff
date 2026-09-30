@@ -43,10 +43,10 @@ export function assertPublishedAssets(release: PublishedRelease, expected: { nam
     if (asset.digest !== `sha256:${file.sha256}`) throw new Error(`Published ${file.name} digest ${asset.digest ?? 'missing'} differs from verified sha256:${file.sha256}.`);
   }
 }
-/** Semver order: numeric core, then a pre-release sorts below its release; returns −1, 0 or 1. */
+/** Semver order: numeric core, then a pre-release sorts below its release; build metadata (`+…`) is ignored. Returns −1, 0 or 1. */
 export function compareVersions(a: string, b: string): number {
   // The pre-release is everything after the first hyphen; it may contain more hyphens (`rc-1`).
-  const split = (v: string) => { const at = v.indexOf('-'); return { core: (at < 0 ? v : v.slice(0, at)).split('.').map(Number), pre: at < 0 ? undefined : v.slice(at + 1) }; };
+  const split = (version: string) => { const v = version.split('+')[0]!; const at = v.indexOf('-'); return { core: (at < 0 ? v : v.slice(0, at)).split('.').map(Number), pre: at < 0 ? undefined : v.slice(at + 1) }; };
   const x = split(a); const y = split(b);
   for (let i = 0; i < 3; i += 1) { const d = (x.core[i] ?? 0) - (y.core[i] ?? 0); if (d !== 0) return d < 0 ? -1 : 1; }
   if (x.pre === y.pre) return 0;

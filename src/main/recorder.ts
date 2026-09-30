@@ -493,7 +493,7 @@ export class Recorder {
         if (this._state.type === "recording") this.stop();
         if (this.session?.phase === "countdown") this.cancel(this.session, "quit");
         checking = false;
-        if (!this.session && this.work.size === 0) finish(true);
+        if (!this.mediaPending) finish(true);
       };
       const unsubscribe = this.subscribe((event) => { if (event.type === "state") check(); });
       this.workChanged.add(check);

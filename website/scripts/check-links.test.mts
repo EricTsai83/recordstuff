@@ -23,6 +23,13 @@ test("checks the selected deployment output, including nested page fragments", a
     assert.match(broken.stderr, /fragment #install not found/);
     await rm(path.join(dir, "help"), { recursive: true });
     assert.match(check().stderr, /internal link .* does not resolve/);
+    // A malformed escape is reported with its page, and the other problems are still listed.
+    await writeFile(path.join(dir, "index.html"), '<a href="#100%">Share</a><a href="https://example.com/#100%">Out</a><a href="/missing">Gone</a>');
+    const malformed = check();
+    assert.equal(malformed.status, 1);
+    assert.match(malformed.stderr, /\/index\.html: malformed reference #100%/);
+    assert.doesNotMatch(malformed.stderr, /example\.com/);
+    assert.match(malformed.stderr, /internal link \/missing does not resolve/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

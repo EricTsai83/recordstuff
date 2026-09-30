@@ -1,8 +1,7 @@
-import type { PersistenceIssue, RecordingFailure, RecordingResult } from "../shared/recording-result";
+import { REVIEWED_FAILURES_KEPT, persistsHistory, type PersistenceIssue, type RecordingFailure, type RecordingResult, type RecordingResultAction } from "../shared/recording-result";
 import { translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
 import type { ErrorCode } from "../shared/state";
 import { HistoryStorageError, sliced, type ResultStorage } from "./recording-result-store";
-import type { RecordingResultAction } from "./ui-model";
 
 const OUTPUT_FOLDER_FAILURES: readonly ErrorCode[] = ["disk_full", "output_open_failed", "output_write_failed"];
 /** `no_audio_track` belongs here: macOS withholds system audio without the capture grant. */
@@ -144,7 +143,7 @@ export class RecordingResults {
   private trim(results: RecordingResult[]): RecordingResult[] {
     const keep = new Set(results.filter(r => r.acknowledged)
       .sort((a, b) => Date.parse(b.acknowledgedAt ?? b.occurredAt) - Date.parse(a.acknowledgedAt ?? a.occurredAt))
-      .slice(0, 20).map(r => r.id));
+      .slice(0, REVIEWED_FAILURES_KEPT).map(r => r.id));
     return results.filter(result => !result.acknowledged || keep.has(result.id));
   }
   /** Every change the file should hold goes through here. */
@@ -421,7 +420,7 @@ export class RecordingResults {
   }
   async act(id: string, action: RecordingResultAction, effects: ResultActions): Promise<boolean> {
     const result = this.results.find(r => r.id === id);
-    const durable = action === "acknowledge" || action === "remove" || action === "retry";
+    const durable = persistsHistory(action);
     if (!result) {
       if (durable) this.logAction(action, id, "refused (unknown record)");
       return false;

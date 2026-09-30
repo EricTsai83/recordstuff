@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { recordStuffPids } from "./processes.mts";
+import { electronPattern, pgrepPids, recordStuffPids } from "./processes.mts";
 import { scrubbedEnv } from "./runner-env.mts";
 import fs from "node:fs";
 import path from "node:path";
@@ -34,9 +34,8 @@ export async function recordAudio(output: string): Promise<string> {
     if (available.error || available.status !== 0) throw new Error(`${tool} is required; install it with brew install ffmpeg`);
   }
   const electron = fs.realpathSync(path.join(ROOT, "node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"));
-  const processes = spawnSync("ps", ["-axo", "command="], { encoding: "utf8" });
-  if (processes.error || processes.status !== 0) throw new Error("Cannot check for an existing development app");
-  if (processes.stdout.split("\n").some(line => line.startsWith(electron))) {
+  // The shared anchored pattern: a sibling executable such as `ElectronX` is not this app, and a failed pgrep throws.
+  if (pgrepPids(electronPattern(path.resolve(electron, "../../.."), "main")).length > 0) {
     throw new Error("Quit this project's development Electron app before running audio capture");
   }
   // An installed copy holds the same userData lock, so the development app would exit before recording.

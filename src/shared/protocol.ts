@@ -13,6 +13,13 @@ export const OUTPUT_MIME_TYPE = "video/mp4;codecs=avc1,mp4a.40.2";
 export const CHUNK_INTERVAL_MS = 1000;
 
 /**
+ * Encoded bytes the capture page holds before main has taken them; past this the
+ * page fails the session with `capture_failed`. Main's own writer bound is
+ * `RECORDING_HEALTH.writerBacklogBytes`, which the page cannot import.
+ */
+export const HANDOFF_BACKLOG_LIMIT_BYTES = 64 * 1024 * 1024;
+
+/**
  * Main hands the capture page its MessagePort on this channel, and the preload
  * forwards it to the page as this message; the preload keeps its own copy
  * because a sandboxed preload imports nothing at runtime (src/preload/channels.test.ts).

@@ -26,6 +26,7 @@ it("recognizes only the platform's exact close chord", () => {
   expect(isCloseChord(press("w", "KeyZ", { metaKey: true }), "darwin")).toBe(true); // AZERTY W
   expect(isCloseChord(press("z", "KeyW", { metaKey: true }), "darwin")).toBe(false); // AZERTY Z
   expect(isCloseChord(press("ц", "KeyW", { metaKey: true }), "darwin")).toBe(true); // Russian
+  expect(isCloseChord(press(",", "KeyW", { metaKey: true }), "darwin")).toBe(false); // Dvorak Command+,
   expect(isCloseChord(press("Escape", "Escape", { metaKey: true }), "darwin")).toBe(false);
 });
 

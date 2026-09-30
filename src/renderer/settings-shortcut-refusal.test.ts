@@ -24,7 +24,8 @@ it("names no internal key for an unusable one, and states a refused combination 
     current.groups[0]!.capturing = false;
     return { view: current, applied: false, failure: "This combination is reserved for Settings.", refused: true as const };
   });
-  window.settings = { read: async () => current, capture, choose, onChanged: () => () => {} };
+  let push!: (next: SettingsView) => void;
+  window.settings = { read: async () => current, capture, choose, onChanged: cb => { push = cb; return () => {}; } };
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
@@ -57,4 +58,30 @@ it("names no internal key for an unusable one, and states a refused combination 
   // Choosing the same combination again would fail the same way.
   expect(document.querySelector<HTMLElement>(".reselect")?.hidden).toBe(true);
   expect(document.querySelector<HTMLElement>(".retry")?.hidden).toBe(true);
+
+  // A key the editor refused belongs to that editor: cancelling leaves no "Change was not saved" behind.
+  select.value = "custom"; select.dispatchEvent(new Event("change"));
+  await vi.waitFor(() => expect(field().textContent).toBe("Press a combination"));
+  field().dispatchEvent(new KeyboardEvent("keydown", { key: "1", code: "Numpad1", metaKey: true, bubbles: true }));
+  expect(error.hidden).toBe(false);
+  expect(error.querySelector("strong")?.textContent).toBe("Shortcut unavailable");
+  field().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
+  await vi.waitFor(() => expect(current.groups[0]!.capturing).toBe(false));
+  await vi.waitFor(() => expect(error.hidden).toBe(true));
+
+  // A main-side expiry closes the editor without saving, clears its error and tells the focused user.
+  for (const [language, message] of [
+    ["en", "Shortcut editing ended; the shortcut was not changed."],
+    ["zh-TW", "快捷鍵編輯已結束，快捷鍵沒有變更。"],
+  ] as const) {
+    current = { ...structuredClone(current), language }; push(current);
+    select.value = "custom"; select.dispatchEvent(new Event("change"));
+    await vi.waitFor(() => expect(current.groups[0]!.capturing).toBe(true));
+    field().dispatchEvent(new KeyboardEvent("keydown", { key: "1", code: "Numpad1", metaKey: true, bubbles: true }));
+    current = structuredClone(current); current.groups[0]!.capturing = false; push(current);
+    expect(error.hidden).toBe(true);
+    expect(document.getElementById("feedback")!.textContent).toBe(message);
+    expect(document.activeElement).toBe(select);
+    expect(choose).toHaveBeenCalledTimes(1);
+  }
 });

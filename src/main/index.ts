@@ -253,7 +253,8 @@ async function main(): Promise<void> {
     sentinels,
     publishFailure: result => recordingResults.receive(result, {
       stat: file => fs.stat(file), refresh: refreshUi,
-      notify: code => tray.notifyRecordingFailure(code),
+      // Requested as the display stops being shared, which macOS may mute: held like the other capture notices.
+      notify: code => captureNotices.hold(`recording failure ${code}`, () => tray.notifyRecordingFailure(code)),
     }),
     preflight: () => (osSupported() ? undefined : "unsupported_os_version"),
     onSessionStart: (sessionId) => displayMedia.begin(sessionId),

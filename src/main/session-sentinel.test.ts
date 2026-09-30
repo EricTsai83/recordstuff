@@ -149,12 +149,15 @@ it("never reports this process's own sessions and discards unusable leftovers", 
   fs.writeFileSync(path.join(sentinelDir, "bad.json"), "not json");
   fs.writeFileSync(path.join(sentinelDir, "other.json"), JSON.stringify({ version: 1, ...sentinel("mismatch", "x") }));
   fs.writeFileSync(path.join(sentinelDir, "notes.txt"), "unrelated");
+  // A later format is not invalid: that version reports it after an upgrade.
+  fs.writeFileSync(path.join(sentinelDir, "future.json"), JSON.stringify({ version: 2, sessionId: "future" }));
   expect(await sentinels.leftovers()).toEqual([]);
-  expect(remaining().sort()).toEqual(["live.json", "notes.txt"]);
+  expect(remaining().sort()).toEqual(["future.json", "live.json", "notes.txt"]);
+  expect(log).toHaveBeenCalledWith(expect.stringContaining("kept future.json from a newer version"));
   expect(log).toHaveBeenCalledWith(expect.stringContaining("discarding interrupted write torn.json.tmp"));
   expect(log).toHaveBeenCalledWith(expect.stringContaining("discarding invalid sentinel bad.json"));
   await sentinels.remove("live");
-  expect(remaining()).toEqual(["notes.txt"]);
+  expect(remaining()).toEqual(["future.json", "notes.txt"]);
   await expect(sentinels.write(sentinel("../escape", "x"))).rejects.toThrow("invalid session id");
   expect(await new SessionSentinels(path.join(dir, "absent")).leftovers()).toEqual([]);
 });

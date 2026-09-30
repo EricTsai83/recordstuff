@@ -1,9 +1,3 @@
-export const HOTKEY_PRESETS = [
-  "CommandOrControl+Shift+1",
-  "CommandOrControl+Alt+Shift+R",
-  "CommandOrControl+Shift+R",
-  "CommandOrControl+Alt+R",
-] as const;
 export type HotkeyAccelerator = string;
 
 export interface HotkeySettings {
@@ -12,7 +6,8 @@ export interface HotkeySettings {
   accelerator: HotkeyAccelerator;
 }
 
-export const DEFAULT_HOTKEY: HotkeySettings = { enabled: true, accelerator: HOTKEY_PRESETS[0] };
+/** Every accelerator the app ever shipped stays valid for the users who saved it (`hotkey.test.ts`). */
+export const DEFAULT_HOTKEY: HotkeySettings = { enabled: true, accelerator: "CommandOrControl+Shift+1" };
 
 /** Deliberately narrower than Electron: no bare typing keys or arbitrary aliases. */
 export const MODIFIER_ORDER = ["CommandOrControl", "Control", "Alt", "Shift"] as const;
