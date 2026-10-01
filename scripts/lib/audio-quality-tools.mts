@@ -26,6 +26,9 @@ export function inspectAudio(file: string): AudioReport {
   return analyze(samples);
 }
 
+/** Built once per process: every `--repeat` run records the same code. */
+let built = false;
+
 /** Uses the actual application capture host and encoder; only terminates children it owns. */
 export async function recordAudio(output: string): Promise<string> {
   if (process.platform !== "darwin") throw new Error("Automatic audio capture requires macOS; use fixture/verify elsewhere");
@@ -40,9 +43,12 @@ export async function recordAudio(output: string): Promise<string> {
   }
   // An installed copy holds the same userData lock, so the development app would exit before recording.
   if (recordStuffPids().length > 0) throw new Error("Quit RecordStuff before running audio capture");
-  const build = spawnSync("pnpm", ["build"], { cwd: ROOT, stdio: "inherit", timeout: 60_000 });
-  if (build.error) throw build.error;
-  if (build.status !== 0) throw new Error("Application build failed");
+  if (!built) {
+    const build = spawnSync("pnpm", ["build"], { cwd: ROOT, stdio: "inherit", timeout: 60_000 });
+    if (build.error) throw build.error;
+    if (build.status !== 0) throw new Error("Application build failed");
+    built = true;
+  }
   const material = path.join(output, "reference.wav");
   fs.writeFileSync(material, wav(fixture()));
   const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), RECORDSTUFF_AUTORECORD: JSON.stringify({ seconds: 16, quality: { resolutionCap: "1080p" } }) };
