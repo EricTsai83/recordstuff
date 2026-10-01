@@ -311,6 +311,11 @@ export class AppTray {
     this.show({ title: translate("Could not open the output folder", this.language), body }, undefined, true);
   }
 
+  /** System Settings could not open while recording work is pending (plan 056); it answers the user's own click, like the warning it replaces. */
+  notifyPermissionSettingsFailed(body: string): void {
+    this.show({ title: APP_NAME, body }, undefined, true);
+  }
+
   /**
    * A notification is a best-effort hint, never part of recording: nothing
    * here may throw into the caller. Local verification found a save whose notification

@@ -270,9 +270,9 @@ async function main(): Promise<void> {
 
   // One action for both entry points (plan 016): the tray's left click and the
   // global shortcut call the same `toggle`, whose state guards decide.
-  const toggle = (): void => recorder.toggle();
   /** A quit is running: every action but quit is ignored until it exits or is declined. */
   let quitRequested = false;
+  const toggle = (): void => { if (!quitRequested) recorder.toggle(); };
   /** Settings that touch a session (quality, shortcut) change only here. */
   const settled = (): boolean => !quitRequested && preferencesUnlocked(recorder.state);
   const shortcuts = new AppShortcuts({
@@ -538,9 +538,15 @@ async function main(): Promise<void> {
         try { await openScreenCaptureSettings(); }
         catch (cause) {
           log(`permission: open settings failed: ${String(cause)}`);
+          const detail = translate("Could not open System Settings. Allow RecordStuff in System Settings → Privacy & Security → Screen & System Audio Recording.", settings.language);
+          // A windowless warning would hold the failed session's cleanup until answered (plan 056).
+          if (recorder.mediaPending) {
+            log("permission: recording work is pending; telling the problem in a notification instead of a warning");
+            captureNotices.hold("permission settings warning", () => tray.notifyPermissionSettingsFailed(detail));
+            return;
+          }
           focusApp();
-          await dialog.showMessageBox({ type: "info", title: APP_NAME, message: APP_NAME,
-            detail: translate("Could not open System Settings. Allow RecordStuff in System Settings → Privacy & Security → Screen & System Audio Recording.", settings.language) });
+          await dialog.showMessageBox({ type: "info", title: APP_NAME, message: APP_NAME, detail });
         }
         return;
       // An actions choice has no committed value to compare, so it reports its

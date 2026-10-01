@@ -294,6 +294,13 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
     expect(Fake.instances[0]!.shown).toBe(1);
   });
 
+  it("tells System Settings could not open during recording work with the switch off, since the user clicked (plan 056)", () => {
+    const { tray } = setup(true, () => false);
+    tray.notifyPermissionSettingsFailed("Could not open System Settings.");
+    expect(Fake.instances.map((notification) => notification.options)).toEqual([{ title: "RecordStuff", body: "Could not open System Settings.", silent: true }]);
+    expect(Fake.instances[0]!.shown).toBe(1);
+  });
+
   it("answers a click that needs permission with the switch off, but drops the automatic permission notice", () => {
     const { tray, logs } = setup(true, () => false);
     tray.notifyPermission(false);
