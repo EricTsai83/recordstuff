@@ -253,11 +253,8 @@ export function formatTimestamp(date: Date): string {
 }
 
 function errorCodeOf(cause: unknown, fallback: ErrorCode): ErrorCode {
-  if (typeof cause === "object" && cause !== null && "code" in cause) {
-    const code = (cause as { code: unknown }).code;
-    if (isErrorCode(code)) return code;
-  }
-  return fallback;
+  const code = errnoCode(cause);
+  return isErrorCode(code) ? code : fallback;
 }
 
 export class Recorder {
@@ -268,7 +265,7 @@ export class Recorder {
   private idleState: IdleState = { type: "idle" };
   private session: Session | undefined;
   /** Registered before any synchronous subscriber can request exit. */
-  private readonly work = new Set<Promise<void>>();
+  private pendingWork = 0;
   private shuttingDown: Promise<boolean> | undefined;
   private quitAdmission = false;
   private readonly workChanged = new Set<() => void>();
@@ -320,7 +317,7 @@ export class Recorder {
    * hold its writes and deadlines until answered (plan 056).
    */
   get mediaPending(): boolean {
-    return this.session !== undefined || this.work.size > 0;
+    return this.session !== undefined || this.pendingWork > 0;
   }
 
   /** Resolves once `mediaPending` is false, at once when it already is; the same test quit waits on. */
@@ -384,37 +381,25 @@ export class Recorder {
    * let the app update or close an open tray menu, so its Cancel recording can
    * arrive after capture began. It still means "no recording", so it stops at
    * once and the file is saved, as a toggle after `record` would.
+   *
+   * The same Cancel is offered while starting. With the countdown Off,
+   * `record` goes out at `prepared` and the state stays starting, so a Cancel
+   * after it becomes the stop-on-start request, as it does during a countdown.
    */
-  cancelCountdown(reason: Exclude<CancelReason, "quit"> = "menu"): void {
+  cancelCountdown(reason: "toggle" | "menu" = "menu"): void {
     const session = this.session;
-    if (reason === "menu" && this._state.type === "recording" && session?.phase === "recording") {
+    const state = this._state.type;
+    if (reason === "menu" && state === "recording" && session?.phase === "recording") {
       this.deps.log(`recorder: session ${session.id} Cancel recording arrived after capture started (a menu opened during the countdown); stopping`);
       this.stop();
       return;
     }
-    if (this._state.type === "starting") { this.cancelPreparation(); return; }
-    if (this._state.type !== "countdown" || !session) return;
-    if (session.phase === "countdown") {
+    if ((state !== "starting" && state !== "countdown") || !session) return;
+    if (session.phase === "opening" || session.phase === "preparing" || session.phase === "countdown") {
       this.cancel(session, reason);
     } else if (session.phase === "arming" && !session.stopOnStart) {
       session.stopOnStart = true;
       this.deps.log(`recorder: session ${session.id} cancel (${reason}) arrived after record was sent; stopping once capture starts`);
-    }
-  }
-
-  /**
-   * The Cancel recording offered while starting. With the countdown Off,
-   * `record` goes out at `prepared` and the state stays starting, so a Cancel
-   * after it becomes the stop-on-start request, as it does during a countdown.
-   */
-  cancelPreparation(): void {
-    const session = this.session;
-    if (!session) return;
-    if (session.phase === "opening" || session.phase === "preparing") {
-      this.cancel(session, "menu");
-    } else if (session.phase === "arming" && !session.stopOnStart) {
-      session.stopOnStart = true;
-      this.deps.log(`recorder: session ${session.id} cancel (menu) arrived after record was sent; stopping once capture starts`);
     }
   }
 
@@ -518,11 +503,8 @@ export class Recorder {
   }
 
   private track(task: () => Promise<void>): Promise<void> {
-    let release!: () => void;
-    const owned = new Promise<void>((resolve) => { release = resolve; });
-    this.work.add(owned);
-    const result = task();
-    return result.finally(() => { this.work.delete(owned); release(); for (const changed of this.workChanged) changed(); });
+    this.pendingWork += 1;
+    return task().finally(() => { this.pendingWork -= 1; for (const changed of this.workChanged) changed(); });
   }
 
   /**
@@ -919,6 +901,16 @@ export class Recorder {
     }
   }
 
+  /** Where a cancel and a failure begin: the session leaves, its timers and overlay go, and capture is told to stop. */
+  private detach(session: Session): void {
+    this.session = undefined;
+    this.clearTimer(session);
+    this.clearCountdown(session);
+    this.clearHealth(session);
+    this.closeOverlay(session);
+    if (session.phase !== "opening") this.deps.host.stop(session.id);
+  }
+
   /**
    * No media exists before `record`, so a cancel is not a failure: no failure
    * status, history, notification or display diagnostic. The empty temporary
@@ -926,12 +918,7 @@ export class Recorder {
    */
   private cancel(session: Session, reason: CancelReason): void {
     if (this.session !== session) return;
-    this.session = undefined;
-    this.clearTimer(session);
-    this.clearCountdown(session);
-    this.clearHealth(session);
-    this.closeOverlay(session);
-    if (session.phase !== "opening") this.deps.host.stop(session.id);
+    this.detach(session);
     this.deps.log(`recorder: session ${session.id} cancelled (${reason}) while ${BEFORE_CAPTURE[session.phase] ?? "opening the recording file"}`);
     // Owned before idle is published: a quit waiting on that state change
     // must also wait for the temporary file and the sentinel to go.
@@ -1144,12 +1131,7 @@ export class Recorder {
   ): Promise<void> {
     const session = this.session;
     if (!session || session.id !== sessionId) return;
-    this.session = undefined;
-    this.clearTimer(session);
-    this.clearCountdown(session);
-    this.clearHealth(session);
-    this.closeOverlay(session);
-    if (session.phase !== "opening") this.deps.host.stop(session.id);
+    this.detach(session);
     this.deps.log(`recorder: session ${session.id} failed: ${code} ${detail}`);
     const occurredAt = this.deps.now().toISOString();
     // End the recording state before file cleanup. Native painting can still

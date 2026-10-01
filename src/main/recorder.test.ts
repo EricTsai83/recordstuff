@@ -417,7 +417,7 @@ describe("Recorder failures", () => {
     ctx.recorder.toggle();
     await flush();
     expect(ctx.recorder.state).toEqual({ type: "starting" });
-    ctx.recorder.cancelPreparation();
+    ctx.recorder.cancelCountdown("menu");
     await flush();
     expect(ctx.recorder.state).toEqual({ type: "idle", outputDirUnavailable: true });
   });
@@ -431,7 +431,7 @@ describe("Recorder failures", () => {
     await flush();
     ctx.recorder.toggle();
     await flush();
-    ctx.recorder.cancelPreparation();
+    ctx.recorder.cancelCountdown("menu");
     await flush();
     expect(ctx.recorder.state).toEqual({ type: "idle" });
   });
