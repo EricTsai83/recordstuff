@@ -1,11 +1,11 @@
 ---
-name: claude-implement-with-gpt6-astra-review
-description: Implement a plan or scoped change with Claude, verify it, obtain a read-only Codex GPT-6 Astra review at medium reasoning, immediately surface every reviewer finding before review-driven fixes, validate and fix confirmed findings, then report every finding and final disposition in the user's language alongside a purpose-led per-file summary. Use for end-to-end implementation requests that require Claude implementation with GPT-6 Astra or cross-model review. Fall back to an independent Claude review when Codex is unavailable and disclose the reason.
+name: claude-implement-with-gpt6-1-sol-review
+description: Implement a plan or scoped change with Claude, verify it, obtain a read-only Codex GPT-6.1 Sol review at medium reasoning, immediately surface every reviewer finding before review-driven fixes, validate and fix confirmed findings, then report every finding and final disposition in the user's language alongside a purpose-led per-file summary. Use for end-to-end implementation requests that require Claude implementation with GPT-6.1 Sol or cross-model review. Fall back to an independent Claude review when Codex is unavailable and disclose the reason.
 ---
 
-# Claude Implement with GPT-6 Astra Review
+# Claude Implement with GPT-6.1 Sol Review
 
-Claude owns implementation, final technical judgment, fixes, verification, and reporting. Codex GPT-6 Astra is a read-only reviewer.
+Claude owns implementation, final technical judgment, fixes, verification, and reporting. Codex GPT-6.1 Sol is a read-only reviewer.
 
 ## Workflow
 
@@ -13,7 +13,7 @@ Claude owns implementation, final technical judgment, fixes, verification, and r
 2. Before editing any file, send the pre-implementation briefing below: what this plan or change will do and the problem it solves.
 3. Implement without committing, pushing, deploying, or expanding scope unless requested.
 4. Run proportionate checks.
-5. Request a read-only Codex GPT-6 Astra review against the requirements, diff, and check results.
+5. Request a read-only Codex GPT-6.1 Sol review against the requirements, diff, and check results.
 6. Immediately present every returned finding to the user before making any review-driven code change. Mark these as unvalidated reviewer findings, not Claude's final judgment.
 7. Validate every finding; accept only concrete correctness, regression, security, requirement, or meaningful test-coverage issues.
 8. Present Claude's acceptance or rejection decisions, then fix accepted findings and rerun affected checks. Reject style-only, speculative, or false-positive findings.
@@ -54,9 +54,9 @@ These rules apply to the whole workflow — long-running implementation or verif
 - If the coordinating session is interrupted or restarted while an invocation is running, state that immediately at the start of the next turn: what was lost, what evidence remains, and the recovery plan.
 - Report phase transitions (implementation done, checks passing or failing, review started, findings returned) as they happen; do not batch them into the final report.
 
-## Codex GPT-6 Astra Review
+## Codex GPT-6.1 Sol Review
 
-Use Codex GPT-6 Astra for every review pass. Run non-interactively at medium reasoning in read-only review mode.
+Use Codex GPT-6.1 Sol for every review pass. Run non-interactively at medium reasoning in read-only review mode.
 
 Never run `codex exec` in the foreground or as a directly tracked background command: a review routinely runs past 10 minutes, a foreground call is killed at the tool timeout, a tracked background call is killed when the session restarts, and a killed pass emits no findings at all. Launch it through a wrapper script that returns immediately:
 
@@ -65,7 +65,7 @@ cat > /tmp/codex-review.sh <<'WRAPPER'
 #!/bin/sh
 codex exec -C "$PWD" \
   --sandbox read-only \
-  --model gpt-6-astra \
+  --model gpt-6.1-sol \
   --config 'model_reasoning_effort="medium"' \
   review - > /tmp/codex-review.log 2>&1 <<'EOF'
 <focused review prompt>
@@ -81,7 +81,7 @@ nohup /tmp/codex-review.sh > /tmp/codex-review-launcher.log 2>&1 &
 - Confirm the wrapper detached: its PPID becomes 1.
 - Confirm the log header reports `sandbox: read-only`. `codex exec review` otherwise uses the configured default (for example `workspace-write`), and a prompt instruction alone does not stop edits. If the header shows another mode, stop the pass and relaunch it with the flag.
 - Poll the log for the `CODEX_EXIT=` line and treat it as the only completion signal. A log that stopped growing without it means the pass was killed.
-- Resume a killed pass through the same wrapper, replacing `review -` with `resume --last -` and keeping `--sandbox read-only`, `--model gpt-6-astra` and the reasoning setting: a bare `codex exec resume --last` runs on the configured default model instead (observed: `gpt-5.6-sol`). Count the resumed run as the same pass.
+- Resume a killed pass through the same wrapper, replacing `review -` with `resume --last -` and keeping `--sandbox read-only`, `--model gpt-6.1-sol` and the reasoning setting: a bare `codex exec resume --last` runs on the configured default model instead (observed: `gpt-5.6-sol`). Count the resumed run as the same pass.
 
 Pass the focused review prompt through stdin (`-`) using a heredoc inside the wrapper, never as a file argument to `codex`. State the review scope in the first line of the prompt (for example "Review the uncommitted changes in this repository"). Instruct Codex not to run test suites or package-manager commands, and state that the checks this workflow already ran are authoritative; its sandbox reports failures that are environment artifacts and the runs consume the wait budget. List the changed files in the prompt so Codex does not spend the budget discovering them. After the review returns, confirm from its output that Codex enumerated the intended changes.
 
@@ -93,7 +93,7 @@ Retain the review output until the final report is complete. Present every usabl
 
 After each review invocation returns, send a commentary update before editing any code in response to that review. Do not defer this disclosure to the final report.
 
-Use the heading `Codex GPT-6 Astra Review Pass N — 初始 findings（尚未經 Claude 驗證）` (in the user's language) and include the provider plus every usable finding's ID, severity, file/line, failure mode, impact, and proposed fix direction. State clearly that Claude may accept or reject each finding after inspecting the code. When the reviewer reports no findings, immediately say `本 pass 無 findings` or its translation.
+Use the heading `Codex GPT-6.1 Sol Review Pass N — 初始 findings（尚未經 Claude 驗證）` (in the user's language) and include the provider plus every usable finding's ID, severity, file/line, failure mode, impact, and proposed fix direction. State clearly that Claude may accept or reject each finding after inspecting the code. When the reviewer reports no findings, immediately say `本 pass 無 findings` or its translation.
 
 After validation, send a second concise commentary update with the acceptance or rejection of each finding and the reason before or while applying accepted fixes. The later final report remains the authoritative record of findings, decisions, changes, and verification.
 
@@ -151,7 +151,7 @@ Write explanations, headings and labels in the user's language (see Language); p
 
 ## Review 結果
 
-- 先明確說明 Codex GPT-6 Astra 是否完成 review；若使用 fallback，列出規定的完整 provider label。
+- 先明確說明 Codex GPT-6.1 Sol 是否完成 review；若使用 fallback，列出規定的完整 provider label。
 - 依 pass 逐項呈現 reviewer 回傳的每一個可用 finding，不論接受、拒絕或已在後續 pass 解決：
   - `[finding ID] severity — path:line`（reviewer 未提供位置時明確註明）。
   - **Reviewer finding**：忠實呈現 failure mode、觸發條件、影響與 reviewer 建議的修正方向；不可只寫 finding 標題或最終結論。
@@ -210,4 +210,4 @@ Write `剩餘風險` so the user can decide what to do without rereading the wor
 - In **是否需要你現在處理**, always give an explicit verdict of `需要`, `不需要`, or `需要你決定`; never leave it implied. For `需要` or `需要你決定`, give the concrete action, who performs it, when it must happen (now, before the next plan, or during a named acceptance round), and the consequence of not doing it. Offer agent-executable actions, but do not perform outward-facing or out-of-scope actions without a request. For `不需要`, name what already covers the risk: a later plan, a scheduled acceptance case, or an accepted limitation.
 - End with the **現在需要你處理的 action** line. When there are no remaining risks, replace the subsections with `沒有剩餘風險` and a one-sentence reason, and still end with that line.
 
-State whether Codex GPT-6 Astra completed review. For fallback, repeat the provider label with its reason, and never imply Codex approved the work.
+State whether Codex GPT-6.1 Sol completed review. For fallback, repeat the provider label with its reason, and never imply Codex approved the work.
