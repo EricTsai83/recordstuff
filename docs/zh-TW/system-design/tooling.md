@@ -19,6 +19,7 @@
 | pnpm dist:mac | 自簽 App 驗證後，在 dist/ 旁邊產生 DMG |
 | `pnpm diagnose:cadence` | 經由隔離的 capture host fixture 錄製測試素材，比對 track 送達的影格時間戳與計數和檔案 pts，找出幀率不足發生在哪一層（[說明](#影格節奏診斷)）；僅限 macOS，不做通過／失敗判定 |
 | pnpm acceptance | 對執行中的 App，使用其實際設定（含倒數）：全螢幕開素材、以 System Events 送全域快捷鍵開始／停止錄影、分別回報準備時間、每格倒數、`record → started` 與第一片、裁出最初影格的數字區域、驗完整性層級（test-material 模式），再以第二次按鍵取消另一次嘗試；把報告寫到 docs/verification/measurements（已 gitignore，只留本機） |
+| `pnpm acceptance:playback` | 以 QuickTime Player 的 AppleScript 字典播放一個已存檔的錄影，判定長度、尺寸、即時播放、跳轉、畫面隨跳轉改變及播放到結尾；報告寫在 docs/verification/measurements，截圖只在未通過時保留（[說明](#播放檢查)） |
 | pnpm acceptance:settings | 對已建置的產物：在真實 Electron 視窗載入 `out/preload/settings.js` 與 `out/renderer/settings.html`，判定出貨 CSP、sandbox preload 邊界與真實 IPC 往返；報告與截圖寫到 docs/verification/measurements。需要先 `pnpm build`，不需要 tray 或已安裝的 App |
 | `pnpm acceptance:regression` | 一個指令執行 check（含建置）、設定 fixture 與快捷鍵整合；包含重複開啟／關閉／Tray 路徑重開。隔離偏好與程序，各 runner 保留報告；任一步失敗立即停止。不會啟動或關閉使用者的 RecordStuff，也不錄影。 |
 | pnpm acceptance:notification | 對 /Applications 裡的 App（可用 `--install` 在本次換成 dist 的建置）：錄影、透過輔助使用按下「已儲存」橫幅、判定 Finder 是否在最前面且顯示該檔，每個 Finder 狀態連點多次，預設英文；報告寫到 docs/verification/measurements |
@@ -60,6 +61,7 @@ pnpm verify -- /absolute/path/recording.mp4 --screen 1920x1080 --sync --out
 pnpm verify -- /absolute/path/any-desktop-recording.mp4 --screen 1920x1080   # 只驗完整性
 pnpm acceptance -- --seconds 10        # 對執行中的 App 做無人值守快捷鍵驗收
 pnpm acceptance -- --skip-cancel --countdown-sound   # 同上，本回合開啟倒數音效（plan 046）
+pnpm acceptance:playback -- /absolute/path/recording.mp4   # 以 QuickTime Player 做播放案例；約 20 秒
 pnpm acceptance:settings                           # 設定頁面與 preload 在真實 Electron 視窗；包含截圖矩陣
 pnpm acceptance:notification -- --install --clicks 2  # 通知日常 smoke：兩次點擊
 pnpm acceptance:notification -- --install          # 點「已儲存」通知 → Finder 置前；約 1 分鐘；本次把建置好的 App 換進 /Applications
@@ -175,6 +177,12 @@ Updates 使用插樁副本，matrix 使用 autorecord，兩者都不能代替正
 Ctrl-C 或 SIGTERM 會取消命令與等待。命令上限為 10 秒（程序查詢 5 秒，App 複製 60 秒）；快捷鍵送出與 Finder 建立視窗會先完成其最多 5 秒的命令，再處理取消。清理有獨立的 120 秒期限，給本段錄影最多 30 秒完成停止／存檔，停止只送一次，不會用前段紀錄判定本段已停止。若無法確認錄影停止，保留執行中的 App 與備份，不結束或替換它。App 停止後才還原語言設定；即使原先在執行，收尾後也保持關閉。未完成、取消或清理失敗都讓報告失敗。期限涵蓋非同步操作，不保證能處理無回應的檔案系統或 OS。
 
 未涵蓋 Tray 選單定位、其他 Spaces、橫幅消失後從通知中心清單點擊。歷史耗時、失敗及後續完成證據保留於[通知歷史](../verification/history-2026-09.md#通知點擊後-finder-置前--2026-09-20)，不要把舊失敗狀態當成本次結果。
+
+### 播放檢查
+
+`pnpm acceptance:playback -- <檔案>` 不需要人或 Computer Use 操作播放器，就能涵蓋已存檔案的[播放案例](../acceptance.md#錄影-smoke-與原生案例)。它以 `open -a "QuickTime Player"` 開啟檔案，再透過 AppleScript 操作播放器：QuickTime 的長度與 ffprobe 相差不超過 0.5 秒、尺寸相同；從頭播放時，2 秒實際時間至少播放 75%；跳到 25%、再跳一次 25%、再跳到 75%，落點誤差在 0.25 秒內；前景視窗在兩個位置之間的畫面平均變化至少 1 個灰階，且超過同一位置兩次畫面差異的四倍；從結尾前 1.5 秒播放會在結尾停止。音軌、QuickTime 靜音與系統輸出音量只回報、不判定。`report.md` 與 `result.json` 寫到 docs/verification/measurements 下的新目錄；每一步的截圖用於畫面檢查，只在未通過時保留在該目錄。Exit code 為 0 通過、1 失敗（含收尾不完整）、2 blocked：不是 macOS、沒有 ffmpeg／ffprobe、session 鎖定，或 QuickTime Player 已在執行；最後一種會被拒絕，確保它只關閉自己開啟的東西。它關閉自己的文件、退出播放器並確認程序結束。第一次執行用的是 2026-10-01 的 10.27 秒 smoke 錄影，兩個位置之間的平均變化為 29.42，同一位置兩次為 1.18（期間控制列淡出）。
+
+截圖需要終端機有「螢幕錄製」權限；沒有時截圖裡不會有 QuickTime 視窗，畫面檢查會失敗並附上提示。不涵蓋：點擊播放器本身的控制項、其他播放器，以及聲音聽起來是否正確，這需要人來聽。
 
 ## 驗收門檻
 
@@ -317,7 +325,7 @@ Exit code：
 
 完整 App 驗收每輪無論成功、失敗或中斷，都須保存測試錄影、還原設定、清理測試視窗、退出受測 App 並確認程序已消失。清理失敗算驗收失敗；保留證據，不重設權限。開發期間已授權按需停止錄影、退出、重啟或重建 RecordStuff，不需另行確認。退出只重設程序狀態，不會清除偏好。
 
-桌面 runner（`acceptance`、`acceptance:settings`、`acceptance:shortcut` 與執行它們的 regression、`acceptance:shortcut-layout`、`acceptance:settings-shortcut`、`acceptance:quit-dialog`、`acceptance:notification`、含擷取的 `acceptance:updates`、`matrix`、`measure:cpu` 及 `audio:quality -- record`）共用 [desktop-session.mts](../../../scripts/lib/desktop-session.mts)：`caffeinate -u` 喚醒閒置關閉的螢幕；以 `ioreg` 的 `CGSSessionScreenIsLocked` 在啟動任何東西或送出按鍵前拒絕鎖定中的 session；`caffeinate -d -i -w <runner pid>` 讓螢幕保持開啟到 runner 結束；回合中（每 2 秒及結束時）偵測到鎖定，結果改為 BLOCKED、exit code 2，並在報告寫入 `Desktop:` 一行。隔離的 lifecycle fixture 不需要螢幕，不持有 assertion。
+桌面 runner（`acceptance`、`acceptance:settings`、`acceptance:shortcut` 與執行它們的 regression、`acceptance:shortcut-layout`、`acceptance:settings-shortcut`、`acceptance:quit-dialog`、`acceptance:notification`、含擷取的 `acceptance:updates`、`acceptance:playback`、`matrix`、`measure:cpu` 及 `audio:quality -- record`）共用 [desktop-session.mts](../../../scripts/lib/desktop-session.mts)：`caffeinate -u` 喚醒閒置關閉的螢幕；以 `ioreg` 的 `CGSSessionScreenIsLocked` 在啟動任何東西或送出按鍵前拒絕鎖定中的 session；`caffeinate -d -i -w <runner pid>` 讓螢幕保持開啟到 runner 結束；回合中（每 2 秒及結束時）偵測到鎖定，結果改為 BLOCKED、exit code 2，並在報告寫入 `Desktop:` 一行。隔離的 lifecycle fixture 不需要螢幕，不持有 assertion。
 
 設定驗收另外把被其他 App 取消啟用的視窗視為 blocked（plan 057）。視窗未啟用時頁面不畫 focus line，而在 macOS 上 `BrowserWindow.focus()` 無法從其他 App 取回啟用狀態；因此在每個需要啟用視窗的案例前（focus line 與 focus border 矩陣、會因 blur 取消的快捷鍵錄製、頁面只在文件有焦點時才於失敗紀錄操作或失敗連結的 Retry 後歸還的焦點，以及它們一起拍的截圖），fixture 會讀取 `BrowserWindow.isFocused()`、`isVisible()` 與頁面的 `data-window`，視窗未啟用時照 `SettingsWindow` 的方式要求啟用（先 `app.focus({ steal: true })`，再 `window.focus()`），並在判定案例時再讀一次。每段互動各自檢查，一段互動中的 blur 不會決定下一段；任一時點視窗未啟用或中間發生 blur 的案例，會在 console、`report.md` 與 `results.json` 標為 `NOT RUN`，附上原因與 `lsappinfo` 讀到的最前面 App；在啟用視窗上執行的案例保留原本的通過或失敗。`capturePage()` 丟出錯誤時，fixture 仍會寫出目前已記錄的案例，並另寫 `failure.json`，記下失敗的截圖與當下視窗狀態。若 fixture 已顯示過視窗，而讓這一輪停下的只有 not-run 案例或在未啟用／隱藏視窗上的截圖失敗，則以 exit 2（blocked）結束；只要有已判定的失敗、其他原因的中止，或 fixture exit code、程序收尾與結果不一致，就以 exit 1 結束。分類邏輯位於 [settings-activation.mts](../../../scripts/lib/settings-activation.mts) 及其單元測試。
 

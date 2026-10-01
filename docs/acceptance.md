@@ -23,7 +23,7 @@ One short recording can supply several cases. Required recording smoke covers st
 | Recording UI (native) | Check affected recording state, available stop action and locked settings against current requirements |
 | Stop / save | Stop once and wait for saved/idle; record the new MP4 path. Preserve Saving if observed; missing the brief transition alone is not failure |
 | File reveal (native) | Use the affected notification or Show last recording action. Judge correct Finder selection and foreground separately; retain a failure before trying an alternate route |
-| Playback | Open that saved file; play and seek, observe content and advancing progress. Record whether subjective audio listening was actually possible |
+| Playback | Open that saved file; play and seek, observe content and advancing progress. Record whether subjective audio listening was actually possible. `pnpm acceptance:playback -- <file>` covers this in QuickTime Player except clicking its controls and listening ([playback check](system-design/tooling.md#playback-check)) |
 | Media verification | Reuse the runner's report for the same file/scope, or run `pnpm verify` as below. Check every judged failure; an audio track alone is not proof of non-silent capture |
 
 Unattended start/stop/save and integrity checks:
