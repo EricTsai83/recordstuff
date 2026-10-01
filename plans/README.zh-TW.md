@@ -4,7 +4,7 @@
 
 更新：2026-10-01。本索引只列未完成的計畫、順序與硬性相依。計畫完成即移除；結案紀錄保留在[驗證紀錄](../docs/zh-TW/verification/README.md)，耐久結論寫入[系統設計](../docs/zh-TW/system-design/README.md)。限制佇列範圍的既定決策，例如不做更新器、不做解除安裝器、不為體積而原生重寫、只驗證 macOS，記錄於[設計決策](../docs/zh-TW/system-design/decisions.md)，此處不重複；已結案的 034 移交給 035 N17 的 Windows 系統匣驗收，是 macOS-only 驗證的唯一窄例外，僅限系統匣圖示及其必要原生驗收。發布依[發布自動化](../docs/zh-TW/system-design/releases.md)：tag 就是版本，CI 會把每次發布回寫到 main。
 
-目前進行中：無。提案：先做 061 check 後驗收最佳化，再依結果進入 058–060 Playwright 鏈，尚未開始實作。057 於 2026-09-30 結案（[紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-057-結案--2026-09-30)），在 056 之後（[紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-056-結案--2026-09-29)）；056 在 055 之後（[紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-055-結案--2026-09-29)）；055 在 054 之後（[紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-054-結案--2026-09-29)）；054 在 053 之後（[紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-053-結案--2026-09-29)）；053 在 052 之後（[紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-052-runner-的-process-與環境安全--2026-09-29)），052 在 051 之後（[修復與驗收紀錄](../docs/zh-TW/verification/audit-051.md)保留暫緩的 tray 點選與精確原生證據限制）。
+目前進行中：無。提案：先做 061 check 後驗收最佳化，再依結果進入 058–060 Playwright 鏈；062 與 063 獨立於該鏈；尚未開始實作。057 於 2026-09-30 結案（[紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-057-結案--2026-09-30)），在 056 之後（[紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-056-結案--2026-09-29)）；056 在 055 之後（[紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-055-結案--2026-09-29)）；055 在 054 之後（[紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-054-結案--2026-09-29)）；054 在 053 之後（[紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-053-結案--2026-09-29)）；053 在 052 之後（[紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-052-runner-的-process-與環境安全--2026-09-29)），052 在 051 之後（[修復與驗收紀錄](../docs/zh-TW/verification/audit-051.md)保留暫緩的 tray 點選與精確原生證據限制）。
 
 ## 順序與狀態
 
@@ -12,6 +12,7 @@
 
 | 計畫 | 來源 | 範圍 |
 | --- | --- | --- |
+| [063 — 原生驗收腳本化](063-scripted-native-acceptance.zh-TW.md) | 維護者檢視 Computer Use skill 後提出 | 提案；先寫明選擇規則並對齊 skill，經維護者決定後才做 tray／設定／通知 runner；Computer Use 保留給觀察 |
 | [062 — 完整簽章的通知驗收 fixture](062-signed-notification-acceptance.zh-TW.md) | 已確認的簽章 A/B/A 對照及維護者要求 | 提案；簽章 preflight、投遞判定與證據分層 |
 | [061 — 最佳化 check 後驗收](061-verification-iteration.zh-TW.md) | 維護者要求；check 實測 20.36 秒 | 最先；UI／原生／重建簽署／錄影播放成本與 AI 重複執行修正 |
 | [058 — Playwright Electron 基礎與試點](058-playwright-testing.zh-TW.md) | 維護者要求 | 依 061 結果；確認 harness、程序 ownership 與實測採用效益 |
@@ -20,7 +21,7 @@
 
 排序規則：061 先改善實測驗證 orchestration，才評估新 driver 收益；pnpm check 保留為 App 最終基準。先完成可獨立驗證的 058 試點再擴充到 059；059 行為等價完成後才進入 060 視覺等價與切換。CI 擴充及其他 runner 遷移不在此佇列。歷史排序：零風險整理、優先的歷史保存工作與防止資料損失的防護已排在最前並完成，維護者要求的快捷鍵後續 044、最後一項 audit 修正 033、更快的錄影回合 042、錄影前倒數 040、Windows 系統匣圖示 034（其原生 Windows 驗收移至 035），以及需量測的收尾工作 037 也已完成；037 在量測門檻結案：儲存改成連結而非複製後，已沒有可分離出來重疊的等待；維護者要求的倒數數字依螢幕縮放 045、可選的倒數音效 046、獨立的失敗紀錄分頁 047、選單列選單與設定的順序 048，以及 CPU 預算 049 也已完成；049 的 baseline 在參考機上確認了每一項目標（[紀錄](../docs/zh-TW/verification/history-2026-09.md#plan-049-cpu-baseline-結案--2026-09-28)）。035 永遠最後。035 與之後來自其 N31 的 050 最後結案；052 開始新的佇列並已結案，053、054、055 與 056 接著結案，057 最後結案；055 排在 054 之後，因為 054 的回合以目前的退出路徑重建與錄影。
 
-硬性相依：058 使用 061 成本拆解／recipe 與瓶頸決策；059 需要 058 已採用且驗證的 harness；060 需要該 harness 與 059 行為覆蓋。前置計畫完成移除前，將設計契約及證據保存至耐久文件。
+硬性相依：058 使用 061 成本拆解／recipe 與瓶頸決策；063 的 runner 步驟需要其維護者決定，通知步驟排在 062 之後；059 需要 058 已採用且驗證的 harness；060 需要該 harness 與 059 行為覆蓋。前置計畫完成移除前，將設計契約及證據保存至耐久文件。
 
 ## 來源與證據邊界
 

@@ -29,7 +29,7 @@
 | 路徑 | 具體檢查與修改邊界 |
 | --- | --- |
 | Electron UI | 分別量測 Settings 與快捷鍵整合的 fixture 啟動、互動／等待、截圖矩陣。保留必要最終 regression，安全時提供既有範圍選取。替換 driver 或重整案例由 058–060 處理。 |
-| 原生桌面 | 每個 OS 操作對應修改需求；controlled 互動用 fixture，實際 OS 邊界用原生觀察。不重跑無影響的完整原生矩陣；必要案例集中於同輪，但完整回合之間仍清理。 |
+| 原生桌面 | 每個 OS 操作對應修改需求；controlled 互動用 fixture，實際 OS 邊界用原生觀察。不重跑無影響的完整原生矩陣；必要案例集中於同輪，但完整回合之間仍清理。把 Computer Use 操作轉為腳本 runner 屬於 [063](063-scripted-native-acceptance.zh-TW.md)；本盤點用來排定其 runner 步驟順序。 |
 | Build／打包／簽署 | 檢查 `scripts/start-app.mjs` 與 bundle consumer。runtime 輸入不變只 build／sign 一次，後續回合可用 `pnpm open:app` 重開已驗證同一 artifact。不重用 stale bundle 或跳過簽署驗證。 |
 | 錄影／播放 | 每份錄影先指定問題，一份適合的 take 同時提供 smoke、變更行為、媒體分析與播放，檢查同一存檔。保留特定時長案例及真實播放觀察，不能以自動媒體分析取代。 |
 | AI 重複執行 | 檢查 `AGENTS.md`、共同政策與相關實作／驗收 skill，是否對未變更證據、僅測試／文件後續修改要求整套重跑。記錄已通過項目及變更，僅重跑受影響要求，證據完整即停止。 |
