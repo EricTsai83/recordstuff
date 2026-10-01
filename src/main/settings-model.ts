@@ -62,6 +62,13 @@ function group(
     noteKind: "explanation", ...(note === undefined ? {} : { note }) };
 }
 
+/** On, then Off, for a switch whose action carries the chosen value. */
+function switchChoices(language: Language, current: boolean, action: (value: boolean) => AppAction): Group["choices"] {
+  return [true, false].map((value) => ({
+    id: value ? "on" : "off", label: t(value ? "On" : "Off", language), enabled: true, checked: value === current, action: action(value),
+  }));
+}
+
 function screenGroup(ctx: AppContext, enabled: boolean): Group {
   const preference = ctx.display;
   const resolution = displayResolution(ctx.displays, preference);
@@ -130,13 +137,8 @@ function countdownGroup(ctx: AppContext, enabled: boolean): Group {
  */
 function countdownSoundGroup(ctx: AppContext, enabled: boolean): Group {
   const language = ctx.language;
-  return group("countdownSound", t("Countdown sound", language), enabled && ctx.countdown !== 0, [true, false].map((value) => ({
-    id: value ? "on" : "off",
-    label: t(value ? "On" : "Off", language),
-    enabled: true,
-    checked: value === ctx.countdownSound,
-    action: { setCountdownSound: value },
-  })), t("A short tick plays with each digit. It stops before recording starts and is not recorded.", language));
+  return group("countdownSound", t("Countdown sound", language), enabled && ctx.countdown !== 0,
+    switchChoices(language, ctx.countdownSound, (value) => ({ setCountdownSound: value })), t("A short tick plays with each digit. It stops before recording starts and is not recorded.", language));
 }
 
 function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {
@@ -175,7 +177,7 @@ function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {
  * One recommended shortcut, the current custom value, and Off. A registration the OS refused is
  * never silent: the saved choice stays selected and a diagnostic says it is inert.
  */
-function hotkeyGroup(ctx: AppContext, enabled: boolean): Group[] {
+function hotkeyGroup(ctx: AppContext, enabled: boolean): Group {
   const hotkey = ctx.hotkey;
   const language = ctx.language;
   const unavailable = hotkey.enabled && !hotkey.registered
@@ -184,7 +186,7 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group[] {
   const diagnostics = hotkeyDiagnostics(ctx, unavailable);
   const recommended = DEFAULT_HOTKEY.accelerator;
   const accelerators = hotkey.accelerator === recommended ? [recommended] : [recommended, hotkey.accelerator];
-  return [{ ...group("hotkey", t("Shortcut", language), enabled, [
+  return { ...group("hotkey", t("Shortcut", language), enabled, [
     ...accelerators.map((accelerator) => ({
       id: accelerator,
       label: accelerator === recommended
@@ -205,7 +207,7 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group[] {
     },
   ], undefined), kind: "shortcut", platform: ctx.platform,
     ...((unavailable || ctx.settingsShortcut?.kind === "failed") ? { actions: [{ id: HOTKEY_RETRY_ID, label: t("Retry shortcut registration", language), enabled: true, checked: false, action: "retryShortcuts" as const }] } : {}),
-    ...(diagnostics.length ? { diagnostics } : {}) }];
+    ...(diagnostics.length ? { diagnostics } : {}) };
 }
 
 /** Why a shortcut this card owns does not work: the recording one, and ⌘⌥, for Settings, which the tray also explains. */
@@ -225,16 +227,10 @@ function hotkeyDiagnostics(ctx: AppContext, unavailable: string | undefined): No
   ];
 }
 
-function updateChecksGroup(ctx: AppContext, enabled: boolean): Group[] {
-  const updates = ctx.updates;
+function updateChecksGroup(ctx: AppContext, enabled: boolean): Group {
   const language = ctx.language;
-  return [group("updateChecks", t("Check for updates on launch", language), enabled, [true, false].map((value) => ({
-    id: value ? "on" : "off",
-    label: t(value ? "On" : "Off", language),
-    enabled: true,
-    checked: value === updates.enabled,
-    action: { setUpdateChecks: value },
-  })))];
+  return { ...group("updateChecks", t("Check for updates on launch", language), enabled,
+    switchChoices(language, ctx.updates.enabled, (value) => ({ setUpdateChecks: value }))), sectionHeading: t("Updates", language) };
 }
 
 function updateActions(ctx: AppContext, enabled: boolean): Group {
@@ -271,7 +267,7 @@ function updateActions(ctx: AppContext, enabled: boolean): Group {
  * screen only — so the app never claims to know the OS state. The note
  * carries the recovery path instead of a status line that could be wrong.
  */
-function notificationsGroup(ctx: AppContext, enabled: boolean): Group[] {
+function notificationsGroup(ctx: AppContext, enabled: boolean): Group {
   const language = ctx.language;
   const what = t("Shows a notification when a recording is saved or an error occurs.", language);
   // The switch controls OS notifications; in-app failure status stays available.
@@ -280,36 +276,31 @@ function notificationsGroup(ctx: AppContext, enabled: boolean): Group[] {
     : ctx.platform === "darwin"
       ? sentences([what, t("macOS must also allow RecordStuff in System Settings → Notifications.", language)], language)
       : what;
-  const switchGroup = group("notifications", t("Notifications", language), enabled, [true, false].map((value) => ({
-    id: value ? "on" : "off",
-    label: t(value ? "On" : "Off", language),
-    enabled: true,
-    checked: value === ctx.notifications,
-    action: { setNotifications: value },
-  })), note);
+  const switchGroup = group("notifications", t("Notifications", language), enabled,
+    switchChoices(language, ctx.notifications, (value) => ({ setNotifications: value })), note);
   switchGroup.noteKind = ctx.notifications ? "explanation" : "status";
   // Only macOS hides notifications behind a pane worth linking to. It sits in
   // this card so the switch and the permission that can override it read as
   // one decision rather than two unrelated settings.
-  if (ctx.platform !== "darwin") return [switchGroup];
-  return [{ ...switchGroup, actions: [{
+  if (ctx.platform !== "darwin") return switchGroup;
+  return { ...switchGroup, actions: [{
     id: "openSettings",
     label: t("Open notification settings…", language),
     enabled: true,
     checked: false,
     action: "openNotificationSettings" satisfies AppAction,
-  }] }];
+  }] };
 }
 
 /** Language is presentation only: it never touches a running capture, so it is never locked. */
-function languageGroup(language: Language): Group[] {
-  return [group("language", t("Language", language), true, (["en", "zh-TW"] as const).map((value) => ({
+function languageGroup(language: Language): Group {
+  return group("language", t("Language", language), true, (["en", "zh-TW"] as const).map((value) => ({
     id: value,
     label: value === "en" ? "English" : "繁體中文",
     enabled: true,
     checked: value === language,
     action: { setLanguage: value },
-  })))];
+  })));
 }
 
 function settingsGroups(state: RecordingState, ctx: AppContext): Group[] {
@@ -321,22 +312,20 @@ function settingsGroups(state: RecordingState, ctx: AppContext): Group[] {
     countdownSoundGroup(ctx, unlocked),
     ...qualityGroups(ctx, unlocked),
     // General: everyday preferences first, then maintenance beside the About footer (plan 048).
-    ...hotkeyGroup(ctx, unlocked),
-    ...notificationsGroup(ctx, unlocked),
-    ...languageGroup(ctx.language),
+    hotkeyGroup(ctx, unlocked),
+    notificationsGroup(ctx, unlocked),
+    languageGroup(ctx.language),
     group("appearance", t("Appearance", ctx.language), true, (["system", "light", "dark"] as const).map(value => ({
       id: value, label: t(value === "system" ? "System default" : value === "light" ? "Light" : "Dark", ctx.language),
       enabled: true, checked: value === (ctx.appearance ?? "system"), action: { setAppearance: value },
     }))),
-    ...updateChecksGroup(ctx, unlocked),
+    updateChecksGroup(ctx, unlocked),
     updateActions(ctx, unlocked),
     { ...group("about", t("Built by Eric Tsai", ctx.language), true, [
       { id: "website", label: t("Official website", ctx.language), enabled: true, checked: false, action: "openWebsite" },
       { id: "source", label: t("GitHub source", ctx.language), enabled: true, checked: false, action: "openSource" },
     ]), kind: "actions" },
-  ].map((entry): Group => ({ ...entry,
-    ...(entry.id === "updateChecks" ? { sectionHeading: t("Updates", ctx.language) } : {}),
-  } as Group));
+  ];
 }
 
 /** A calendar day in local time, for grouping and naming failure rows. */
