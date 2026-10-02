@@ -81,15 +81,30 @@ function run(argv) {
   const pid = Number(a);
   const app = $.AXUIElementCreateApplication(pid);
   if (cmd === 'menubar') {
-    const bar = raw(app, 'AXMenuBar');
-    if (!ok(bar)) return out({ error: bar });
+    // A failed read must not pass as an item without a shortcut: only kAXErrorNoValue and
+    // kAXErrorAttributeUnsupported mean the attribute is absent; any other error is returned.
+    const failure = code => ({ ax: code });
+    const read = (el, name, absent) => {
+      const value = raw(el, name);
+      if (!ok(value)) { if (absent !== undefined && (value === -25212 || value === -25205)) return absent; throw failure(value); }
+      const unwrapped = plain(value);
+      return unwrapped === undefined ? absent : unwrapped;
+    };
+    const kids = el => { const list = raw(el, 'AXChildren'); if (!ok(list)) throw failure(list); const items = []; for (let i = 0; i < list.count; i++) items.push(list.objectAtIndex(i)); return items; };
     const items = top => {
-      const menu = children(top).find(child => plain(raw(child, 'AXRole')) === 'AXMenu');
-      return menu ? children(menu).filter(child => plain(raw(child, 'AXRole')) === 'AXMenuItem').map(entry => ({
-        title: plain(raw(entry, 'AXTitle')) || '', cmdChar: plain(raw(entry, 'AXMenuItemCmdChar')) || '', cmdModifiers: plain(raw(entry, 'AXMenuItemCmdModifiers')) || 0,
+      const menu = kids(top).find(child => read(child, 'AXRole') === 'AXMenu');
+      return menu ? kids(menu).filter(child => read(child, 'AXRole') === 'AXMenuItem').map(entry => ({
+        title: read(entry, 'AXTitle', ''), cmdChar: read(entry, 'AXMenuItemCmdChar', ''), cmdModifiers: read(entry, 'AXMenuItemCmdModifiers', 0),
       })) : [];
     };
-    return out({ menus: children(bar).map(top => ({ title: plain(raw(top, 'AXTitle')) || '', items: items(top) })) });
+    try {
+      const bar = raw(app, 'AXMenuBar');
+      if (!ok(bar)) return out({ error: bar });
+      return out({ menus: kids(bar).map(top => ({ title: read(top, 'AXTitle', ''), items: items(top) })) });
+    } catch (error) {
+      if (error && error.ax !== undefined) return out({ error: error.ax });
+      throw error;
+    }
   }
   if (cmd === 'manual') return out({ error: $.AXUIElementSetAttributeValue(app, $('AXManualAccessibility'), $.NSNumber.numberWithBool(true)) || undefined });
   if (cmd === 'status' || cmd === 'press') {

@@ -24,6 +24,8 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const appPath = path.join(root, "dist/mac-arm64/RecordStuff.app/Contents/MacOS/RecordStuff");
+/** The main process and every helper run from inside the bundle. */
+const bundleProcesses = `^${escapeRegExp(path.resolve(appPath, "../../.."))}/`;
 const logPath = APP_LOG_PATH;
 const args = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--"));
 const observe = args[0] === "--observe";
@@ -39,6 +41,8 @@ let evidence = "";
 /** Accessibility checks of `--observe`, each `pass`/`fail` with what was seen; empty without it. */
 const observations: Array<{ check: string; ok: boolean; seen: string }> = [];
 let desktop: DesktopRound | undefined;
+/** `--quit` sent ⌘Q; until then a failed round leaves the app running and says so. */
+let quitSent = false;
 const sleep = (ms: number): Promise<void> => delay(ms, undefined, { signal: controller.signal });
 try {
   if (process.platform !== "darwin" || process.arch !== "arm64") throw new Error("This runner requires the local macOS arm64 pnpm start:app bundle.");
@@ -132,11 +136,10 @@ try {
     inFront(await until("the shortcut to reopen Settings", snapshot => settingsWindow(snapshot)?.main === true && snapshot.frontmostPid === Number(pid)), "reopened by a third send");
     if (quit) {
       await chord(KEY.q, "⌘Q");
-      // The main process and every helper run from inside the bundle.
-      const bundle = `^${escapeRegExp(path.resolve(appPath, "../../.."))}/`;
+      quitSent = true;
       let left = "";
       for (const deadline = Date.now() + 30_000; Date.now() < deadline; await sleep(250)) {
-        left = (await command("pgrep", ["-f", bundle], controller.signal, 5000, [0, 1])).trim();
+        left = (await command("pgrep", ["-f", bundleProcesses], controller.signal, 5000, [0, 1])).trim();
         if (!left) break;
       }
       check("⌘Q quits RecordStuff: every process of the bundle exits", !left, left ? `still running after 30 s: pids ${left.split("\n").join(", ")}` : "no process left");
@@ -158,8 +161,14 @@ try {
   desktop?.end();
   const blocked = error instanceof DesktopBlockedError || error instanceof AccessibilityBlockedError;
   const seen = observations.map(o => `${o.ok ? "PASS" : "FAIL"} ${o.check}: ${o.seen}`).join("\n");
-  fs.writeFileSync(path.join(out, "report.md"), `# Settings shortcut entry — ${blocked ? "BLOCKED" : "FAIL"}\n\n${evidence}\n${seen ? `${seen}\n\n` : ""}${String(error)}\n\nNo permission settings were changed. Check System Events/Accessibility permission if macOS refused the command.\n`);
-  console.error(`${blocked ? "BLOCKED: " : ""}${String(error)}\nEvidence: ${out}`);
+  // ⌘Q is never sent blind after a failure: another app may be in front, and the round's signal may be aborted.
+  const cleanup = quit && !quitSent
+    ? await command("pgrep", ["-f", bundleProcesses], new AbortController().signal, 5000, [0, 1]).then(
+      left => left.trim() ? `Cleanup incomplete: --quit did not reach ⌘Q and RecordStuff is still running (pids ${left.trim().split("\n").join(", ")}). Quit it from its menu.` : "",
+      (cause: unknown) => `Cleanup unknown: --quit did not reach ⌘Q and the process check failed (${String(cause)}).`)
+    : "";
+  fs.writeFileSync(path.join(out, "report.md"), `# Settings shortcut entry — ${blocked ? "BLOCKED" : "FAIL"}\n\n${evidence}\n${seen ? `${seen}\n\n` : ""}${String(error)}\n\n${cleanup ? `${cleanup}\n\n` : ""}No permission settings were changed. Check System Events/Accessibility permission if macOS refused the command.\n`);
+  console.error(`${blocked ? "BLOCKED: " : ""}${String(error)}${cleanup ? `\n${cleanup}` : ""}\nEvidence: ${out}`);
   process.exitCode = blocked ? DESKTOP_BLOCKED_EXIT : 1;
 } finally {
   if (fs.existsSync(logPath)) fs.writeFileSync(path.join(out, "app.log"), evidenceSince(appLog, roundFrom).join("\n"));
