@@ -1,6 +1,7 @@
 /** Synthetic bytes and isolated userData: no capture, installed app or user settings. */
 import { Notification, app } from "electron";
 import fs from "node:fs/promises";
+import { appendFileSync } from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { Recorder } from "../../src/main/recorder";
@@ -60,14 +61,19 @@ async function main(): Promise<void> {
   });
   // Production feedback; the fixture's notification stands in for AppTray's, without a tray icon.
   const notices: Notification[] = [];
+  // Appended as each event happens, so the runner judges delivery even if the lifecycle later fails (plan 062).
+  const notification = (event: "requested" | "shown" | "failed", detail: { supported?: boolean; error?: string } = {}): void => {
+    appendFileSync(path.join(dir, "notification.jsonl"), `${JSON.stringify({ time: new Date().toISOString(), event, ...detail })}\n`);
+  };
   const feedback = createQuitFeedback({
     language: () => language,
     notify: body => {
-      prompts++; record(`notification requested; Notification.isSupported() ${Notification.isSupported()}`);
+      const supported = Notification.isSupported();
+      prompts++; record(`notification requested; Notification.isSupported() ${supported}`); notification("requested", { supported });
       const notice = new Notification({ title: "RecordStuff", body, silent: true });
       notices.push(notice);
-      notice.on("show", () => record("notification shown"));
-      notice.on("failed", (_event, error) => record(`notification failed: ${error}`));
+      notice.on("show", () => { record("notification shown"); notification("shown"); });
+      notice.on("failed", (_event, error) => { record(`notification failed: ${error}`); notification("failed", { error: String(error) }); });
       notice.show();
     },
     log: message => { throw new Error(message); },
@@ -117,7 +123,7 @@ async function main(): Promise<void> {
   const maxLateMs = Math.max(...lateMs);
   await fs.writeFile(path.join(dir, "result.json"), JSON.stringify({
     language, prompts, deferred, maxLateMs, lateMs, bytes: [11, 22, 33], events,
-    nativeObservation: "not recorded: an observer must confirm the banner and its complete text",
+    nativeObservation: "not recorded: an observer must confirm the banner and its complete text; delivery events are in notification.jsonl",
     scope: "isolated synthetic capture; production Recorder, FileWriter, quit coordinator and native feedback",
   }, null, 2));
   app.quit();

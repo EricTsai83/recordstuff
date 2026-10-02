@@ -1,19 +1,28 @@
-/** Guided deferred-quit notice check (plan 055). Never interprets a shown event as visual acceptance. */
+/**
+ * Guided deferred-quit notice check (plans 055 and 062). Launches the fixture only from a
+ * per-round, fully signed Electron.app copy, and never interprets a shown event as visual acceptance.
+ */
 import fs from "node:fs";
+import os from "node:os";
+import { createHash } from "node:crypto";
 import { scrubbedEnv } from "./lib/runner-env.mts";
 import path from "node:path";
-import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { buildFixture } from "./lib/build-fixture.mts";
 import { runIsolatedProcess } from "./lib/isolated-process.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
+import { workingTreeIdentity } from "./lib/verification-timing.mts";
+import {
+  DELIVERY_WINDOW_MS, MAX_LATE_MS, VISUAL_PENDING, classifyCleanup, classifyDelivery, classifyLifecycle, classifySetup,
+  combineVerdict, parseNotificationEvents, renderReport, type DeliveryLayer, type Layer,
+} from "./lib/quit-dialog-acceptance.mts";
 import { isLanguage } from "../src/shared/i18n.ts";
 
-/** A 1 s timer late by this much means something held main while the notice was up; unheld it is a few ms. */
-const MAX_LATE_MS = 500;
+/** Copy, sign and verify take about two seconds; a keychain prompt waiting for a person must not hold the round. */
+const SETUP_TIMEOUT_MS = 60_000;
 const args = process.argv.slice(2).filter(arg => arg !== "--");
 if (args.length === 1 && args[0] === "--help") {
-  console.log("pnpm acceptance:quit-dialog -- --language en|zh-TW\nIsolated synthetic data; no recording. About 3 seconds after launch the deferred-quit notification appears; observe the banner and its text. Nothing needs an answer: the fixture checks that its timers stay on time while the notice is up, then saves and exits. Visual acceptance must be recorded separately. Ctrl+C cancels this fixture only.");
+  console.log("pnpm acceptance:quit-dialog -- --language en|zh-TW\nIsolated synthetic data; no recording. Copies this checkout's Electron.app to a temporary directory, signs it with the RecordStuff Dev identity (or RECORDSTUFF_SIGN_IDENTITY) and verifies it before launch; a missing identity is blocked (exit 2) and a failed signature fails (exit 1), both without launching. About 3 seconds after launch the deferred-quit notification appears; observe the banner and its text. Nothing needs an answer. Exit 0 covers the signed app, lifecycle, the notification's shown event and cleanup; visual acceptance must be recorded separately. Ctrl+C cancels this fixture only.");
 } else {
   if (process.platform !== "darwin") throw new Error("This guided native check requires macOS.");
   const language = args[1];
@@ -29,33 +38,105 @@ if (args.length === 1 && args[0] === "--help") {
   const dir = path.join(root, "docs/verification/measurements", `${new Date().toISOString().replace(/[:.]/g, "-")}-quit-dialog-${language}`);
   fs.mkdirSync(dir, { recursive: true });
   const fixture = await buildFixture("quit-dialog", dir);
-  const env = scrubbedEnv();
+  const sha256 = (file: string): string => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+  const tree = workingTreeIdentity(root);
+  const provenance = [
+    tree ? `Commit ${tree.head}; working tree ${tree.dirty ? `dirty, content ${tree.content}` : "clean"}` : "Commit: unknown (git unavailable)",
+    `Electron ${JSON.parse(fs.readFileSync(path.join(root, "node_modules/electron/package.json"), "utf8")).version}; pnpm-lock.yaml sha256 ${sha256(path.join(root, "pnpm-lock.yaml"))}`,
+    `Fixture ${path.basename(fixture)} sha256 ${sha256(fixture)}`,
+  ];
   const abort = new AbortController();
   const cancel = (): void => abort.abort();
   process.on("SIGINT", cancel); process.on("SIGTERM", cancel);
+  // Unique per round and owned by it: removed after its processes exit, never node_modules or dist/.
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-quit-dialog-"));
+  const appPath = path.join(temporary, "Electron.app");
+  const signaturePath = path.join(dir, "signature.json");
+  const timingPath = path.join(dir, "setup-timing.jsonl");
+  const setupFd = fs.openSync(path.join(dir, "setup.log"), "w");
   const fd = fs.openSync(path.join(dir, "electron.log"), "w");
-  console.log(`隔離提示驗收 / Deferred-quit notice check (${language})\n不錄影、不修改正式 App／偏好。約 3 秒後出現延後退出通知。\n觀察通知橫幅與文字；不需要回應。fixture 會確認通知期間 timer 準時，之後解除延遲、檢查檔案並結束。Ctrl+C 可取消本測試。\nEvidence: ${dir}`);
+  // start-app's verification scratch lands here too, so a killed setup leaves nothing outside the round's directory.
+  const setupTmp = path.join(temporary, "tmp");
+  fs.mkdirSync(setupTmp);
+  /** Evidence a killed process may have left torn reads as missing, never as an exception that skips cleanup. */
+  const readJson = (file: string): Record<string, unknown> | undefined => {
+    try { return JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>; } catch { return undefined; }
+  };
+  type Run = Partial<Awaited<ReturnType<typeof runIsolatedProcess>>> & { code: number | null };
+  let setupRun: Run | undefined;
+  let execution: Run | undefined;
+  let reported = false;
+  console.log(`隔離提示驗收 / Deferred-quit notice check (${language})\n不錄影、不修改正式 App／偏好。先簽署暫存的 Electron.app 副本，約 3 秒後出現延後退出通知。\n觀察通知橫幅與文字；不需要回應。fixture 會確認通知期間 timer 準時，之後解除延遲、檢查檔案並結束。Ctrl+C 可取消本測試。\nEvidence: ${dir}`);
   try {
-    let execution: Partial<Awaited<ReturnType<typeof runIsolatedProcess>>>;
-    try {
-      execution = await runIsolatedProcess({ executable: createRequire(import.meta.url)("electron") as string,
-        args: [fixture, dir, language], cwd: root, env, logFd: fd, timeoutMs: 40_000, stopSignal: "SIGKILL", signal: abort.signal });
-    } catch (cause) {
+    const supervise = async (options: Omit<Parameters<typeof runIsolatedProcess>[0], "cwd" | "signal">): Promise<Run> => {
+      if (abort.signal.aborted) return { code: null, stopped: "interrupted", groupGone: true };
+      try { return await runIsolatedProcess({ ...options, cwd: root, signal: abort.signal }); }
       // A failed supervisor probe is not proof that its owned process group is gone.
-      execution = { code: null, stopped: "supervisor-error", error: String(cause) };
+      catch (cause) { return { code: null, stopped: "supervisor-error", error: String(cause) }; }
+    };
+    setupRun = await supervise({ executable: process.execPath, args: [path.join(root, "scripts/start-app.mjs"), "--fixture-app", appPath, signaturePath],
+      env: { ...scrubbedEnv(), RECORDSTUFF_TIMING_FILE: timingPath, TMPDIR: setupTmp }, logFd: setupFd, timeoutMs: SETUP_TIMEOUT_MS });
+    const phases = (fs.existsSync(timingPath) ? fs.readFileSync(timingPath, "utf8") : "").split("\n").flatMap(line => {
+      try { return [JSON.parse(line) as { phase: string; ms: number; ok: boolean }]; } catch { return []; }
+    });
+    const setupReason = fs.readFileSync(path.join(dir, "setup.log"), "utf8").split("\n").map(line => line.trim())
+      .filter(line => line && !line.startsWith("Timing:")).at(-1) ?? "";
+    let setup: Layer = classifySetup(setupRun, phases.filter(phase => phase.ok).map(phase => phase.phase), setupReason);
+    const signature = readJson(signaturePath);
+    const executable = path.join(appPath, "Contents/MacOS/Electron");
+    if (setup.status === "pass" && (signature?.appPath !== appPath || !fs.existsSync(executable))) {
+      setup = { status: "fail", reason: "Setup reported success without a signature record for this round's copy. No fixture launched." };
     }
-    const resultPath = path.join(dir, "result.json");
-    const result = fs.existsSync(resultPath) ? JSON.parse(fs.readFileSync(resultPath, "utf8")) : undefined;
+    if (signature) {
+      const certificate = (signature.certificate ?? {}) as { sha1?: string; name?: string; expires?: string };
+      provenance.push(`Bundle ${String(signature.appPath)} (${String(signature.bundleIdentifier)}), copied from ${String(signature.source)}; removed after the round`,
+        `Certificate ${certificate.name}, SHA-1 ${certificate.sha1}, expires ${certificate.expires}; ${String(signature.bundles)} bundles verified; ${String(signature.designatedRequirement)}`);
+    }
+    if (phases.length) provenance.push(`Setup phases: ${phases.map(phase => `${phase.phase} ${(phase.ms / 1000).toFixed(2)} s${phase.ok ? "" : " (failed)"}`).join(", ")}`);
+
+    const notRun = (reason: string): Layer => ({ status: "not run", reason });
+    let lifecycle = notRun("No fixture launched: the signed app was not ready.");
+    let delivery: DeliveryLayer = notRun("No fixture launched.");
+    let result: Record<string, unknown> | undefined;
+    if (setup.status === "pass") {
+      execution = await supervise({ executable, args: [fixture, dir, language], env: scrubbedEnv(), logFd: fd, timeoutMs: 40_000, stopSignal: "SIGKILL" });
+      const resultPath = path.join(dir, "result.json");
+      result = readJson(resultPath);
+      lifecycle = classifyLifecycle(execution, result as Parameters<typeof classifyLifecycle>[1]);
+      const eventsPath = path.join(dir, "notification.jsonl");
+      delivery = classifyDelivery(parseNotificationEvents(fs.existsSync(eventsPath) ? fs.readFileSync(eventsPath, "utf8") : ""));
+    }
     desktop.end();
-    const passed = execution.code === 0 && !execution.stopped && !execution.forced && execution.groupGone && result?.prompts === 1 && result?.deferred === 1
-      && typeof result?.maxLateMs === "number" && result.maxLateMs < MAX_LATE_MS;
-    const automated = desktop.lockedAt ? "blocked" : passed ? "pass" : "fail";
-    fs.writeFileSync(path.join(dir, "report.json"), JSON.stringify({ execution, result, automated, desktop: desktop.summary, nativeObservation: "not recorded" }, null, 2));
-    fs.writeFileSync(path.join(dir, "report.md"), `# Deferred-quit notice (${language})\n\nAutomated lifecycle: ${automated.toUpperCase()}.\nTimers while the notice was up: late by at most ${result?.maxLateMs ?? "unknown"} ms (limit ${MAX_LATE_MS} ms).\n${desktop.summary}\nNative banner/readability observation: **not recorded**. A shown event is not visual proof.\n\nSource: isolated synthetic fixture using production feedback; not a signed normal-bundle capture test.\nCleanup: groupGone=${execution.groupGone ?? "unknown"}, forced=${execution.forced ?? "unknown"}, stopped=${execution.stopped ?? "none"}.\nDetails: [report.json](report.json), [electron.log](electron.log).\n`);
-    console.log(`${automated.toUpperCase()}: lifecycle/timers/cleanup. 原生畫面結果仍需另行記錄。\nReport: ${path.join(dir, "report.md")}`);
-    if (desktop.lockedAt) process.exitCode = DESKTOP_BLOCKED_EXIT;
-    else if (!passed) process.exitCode = 1;
+    // Remove the signed copy only once nothing that may still run from it is left.
+    const setupGroupGone = setupRun.groupGone;
+    const fixtureGroupGone = execution?.groupGone;
+    if (setupGroupGone && (execution === undefined || fixtureGroupGone)) fs.rmSync(temporary, { recursive: true, force: true });
+    const cleanup = classifyCleanup({ setupGroupGone, fixtureGroupGone, forced: Boolean(setupRun.forced || execution?.forced), temporaryRemoved: !fs.existsSync(temporary) });
+    const layers = { setup, lifecycle, delivery, cleanup };
+    const verdict = combineVerdict(layers, desktop.lockedAt);
+    fs.writeFileSync(path.join(dir, "report.json"), JSON.stringify({
+      automated: verdict.automated, exitCode: verdict.exitCode, layers: { ...layers, visual: VISUAL_PENDING },
+      limits: { maxLateMs: MAX_LATE_MS, deliveryWindowMs: DELIVERY_WINDOW_MS, setupTimeoutMs: SETUP_TIMEOUT_MS },
+      provenance, signature, setup: setupRun, execution, result, temporary, desktop: desktop.summary, nativeObservation: "not recorded",
+    }, null, 2));
+    const files = ["report.json", "signature.json", "setup.log", "electron.log", "notification.jsonl", "result.json"].filter(file => fs.existsSync(path.join(dir, file)));
+    fs.writeFileSync(path.join(dir, "report.md"), renderReport({ language, layers, verdict, desktop: desktop.summary, provenance, files }));
+    reported = true;
+    console.log(`${verdict.automated.toUpperCase()}: setup ${setup.status}, lifecycle ${lifecycle.status}, delivery ${delivery.status}, cleanup ${cleanup.status}. 原生畫面結果仍需另行記錄。\nReport: ${path.join(dir, "report.md")}`);
+    process.exitCode = verdict.exitCode;
+  } catch (cause) {
+    console.error(cause);
   } finally {
-    fs.closeSync(fd); process.removeListener("SIGINT", cancel); process.removeListener("SIGTERM", cancel);
+    desktop.end();
+    fs.closeSync(fd); fs.closeSync(setupFd); process.removeListener("SIGINT", cancel); process.removeListener("SIGTERM", cancel);
+    if (!reported) {
+      // The verdict could not be completed: still remove what this round owns once its processes are gone, and say so.
+      if ((setupRun?.groupGone ?? !setupRun) && (execution?.groupGone ?? !execution)) fs.rmSync(temporary, { recursive: true, force: true });
+      const retained = fs.existsSync(temporary);
+      fs.writeFileSync(path.join(dir, "report.json"), JSON.stringify({ automated: "fail", exitCode: 1, error: "The runner could not complete its verdict; see the console.",
+        setup: setupRun, execution, temporary, temporaryRetained: retained, provenance }, null, 2));
+      console.log(`FAIL: the runner could not complete its verdict.${retained ? ` Retained ${temporary}.` : ""}\nReport: ${path.join(dir, "report.json")}`);
+      process.exitCode = 1;
+    }
   }
 }

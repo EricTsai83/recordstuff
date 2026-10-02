@@ -61,6 +61,8 @@ const args = process.argv.slice(3);
 const env = process.env;
 fs.appendFileSync(env.CALLS, JSON.stringify({ name, args, nodeMode: env.ELECTRON_RUN_AS_NODE, releaseSecret: env.CSC_LINK || env.APPLE_API_KEY, discovery: env.CSC_IDENTITY_AUTO_DISCOVERY }) + '\\n');
 if (env.FAIL_COMMAND === name || (env.FAIL_VERIFY && name === 'codesign' && args[0] === '--verify')) process.exit(2);
+if (env.FAIL_SIGN && name === 'codesign' && args[0] === '--force') { process.stderr.write(env.FAIL_SIGN + '\\n'); process.exit(1); }
+if (name === 'ditto') fs.mkdirSync(path.join(args[1], 'Contents/Frameworks/Electron Helper.app/Contents'), { recursive: true });
 if (name === 'pgrep') {
   const running = (env.RUNNING || '').replaceAll('{root}', env.ROOT);
   process.exit(running && new RegExp(args[1]).test(running) ? 0 : 1);
@@ -77,17 +79,22 @@ if (name === 'codesign' && args.some(arg => arg.startsWith('--extract-certificat
   const bundle = args.at(-1);
   const isHelper = bundle.endsWith('Helper.app');
   const cert = env.WRONG_CERT === 'outer' && !isHelper || env.WRONG_CERT === 'helper' && isHelper ? env.OTHER_CERT : env.PUBLIC_CERT;
-  if (!env.ADHOC) fs.copyFileSync(cert, args.find(arg => arg.startsWith('--extract-certificates=')).slice('--extract-certificates='.length) + '0');
-  process.stderr.write('Identifier=' + (env.WRONG_ID || (isHelper ? 'com.ericts.record.helper' : 'com.ericts.record')) + '\\n');
+  if (env.ADHOC) process.stderr.write('Signature=adhoc\\n');
+  else fs.copyFileSync(cert, args.find(arg => arg.startsWith('--extract-certificates=')).slice('--extract-certificates='.length) + '0');
+  const outer = bundle.endsWith('Electron.app') ? 'com.github.Electron' : 'com.ericts.record';
+  process.stderr.write('Identifier=' + (env.WRONG_ID || (isHelper ? outer + '.helper' : outer)) + '\\n');
   process.stderr.write('CodeDirectory v=20500 flags=0x10000(' + (env.NO_RUNTIME ? '' : 'runtime') + ')\\n');
 }
-if (name === 'codesign' && args.includes('-r-')) process.stderr.write(env.WRONG_REQUIREMENT ? 'designated => cdhash H"abcd"\\n' : 'designated => identifier "com.ericts.record" and certificate leaf = H"' + env.HASH.toLowerCase() + '"\\n');
+if (name === 'codesign' && args.includes('-r-')) {
+  const id = args.at(-1).endsWith('Electron.app') ? 'com.github.Electron' : 'com.ericts.record';
+  process.stderr.write(env.WRONG_REQUIREMENT ? 'designated => cdhash H"abcd"\\n' : 'designated => identifier "' + id + '" and certificate leaf = H"' + env.HASH.toLowerCase() + '"\\n');
+}
 `);
     const wrapper = path.join(bin, "wrapper");
     writeFileSync(wrapper, '#!/bin/sh\nexec "$TEST_NODE" "$TEST_STUB" "$0" "$@"\n', { mode: 0o755 });
     const testNode = path.join(dir, "node with spaces");
     symlinkSync(process.execPath, testNode);
-    for (const name of ["pgrep", "security", "pnpm", "codesign", "open"]) symlinkSync(wrapper, path.join(bin, name));
+    for (const name of ["pgrep", "security", "pnpm", "codesign", "open", "ditto"]) symlinkSync(wrapper, path.join(bin, name));
     const clock = path.join(dir, "clock.mjs");
     writeFileSync(clock, 'if (process.env.TEST_NOW) Date.now = () => Number(process.env.TEST_NOW);');
     const result = spawnSync(process.execPath, ["--import", clock, path.join(root, "scripts/start-app.mjs"), ...args], {
@@ -107,7 +114,9 @@ if (name === 'codesign' && args.includes('-r-')) process.stderr.write(env.WRONG_
     const commands: Call[] = readFileSync(calls, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
     let stamp: { inputs: string; files: Record<string, string> } | undefined;
     try { stamp = JSON.parse(readFileSync(buildStampPath(appDir(root)), "utf8")); } catch { stamp = undefined; }
-    return { ...result, commands, stamp, timing };
+    const fixtureReport = existsSync(path.join(root, "round/signature.json"))
+      ? JSON.parse(readFileSync(path.join(root, "round/signature.json"), "utf8")) as Record<string, unknown> : undefined;
+    return { ...result, commands, stamp, timing, fixtureReport };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -296,6 +305,83 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () =
     expectNoDelivery(invoke({ RECORDSTUFF_SIGN_IDENTITY: hash, WRONG_CERT: "helper" }, ["--verify-app", app]));
     expectNoDelivery(invoke({ RECORDSTUFF_SIGN_IDENTITY: hash, FAIL_VERIFY: "1" }, ["--verify-app", app]));
     expectNoDelivery(invoke({}, ["--verify-app", app]));
+  });
+
+  describe("signed Electron copy for the quit-dialog fixture (plan 062)", () => {
+    const fixtureArgs = ["--fixture-app", "round/Electron.app", "round/signature.json"];
+    const round = (root: string): void => { mkdirSync(path.join(root, "round")); };
+    const fixture = (overrides: Record<string, string> = {}) => invoke(overrides, fixtureArgs, round);
+    const signed = (result: ReturnType<typeof invoke>): boolean => result.commands.some(call => call.name === "codesign" && call.args[0] === "--force");
+
+    it("copies, fully signs and verifies the copy, then reports its provenance", () => {
+      const result = fixture();
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.commands.map(call => call.name)).toEqual(["security", "security", "ditto", "codesign", "codesign", "codesign", "codesign", "codesign"]);
+      const ditto = result.commands.find(call => call.name === "ditto")!;
+      expect(ditto.args[0]).toMatch(/node_modules\/\.pnpm\/electron@fixture\/node_modules\/electron\/dist\/Electron\.app$/);
+      expect(ditto.args[1]).toMatch(/round\/Electron\.app$/);
+      expect(result.commands.find(call => call.args[0] === "--force")?.args).toEqual(
+        ["--force", "--deep", "--timestamp=none", "--sign", hash.toUpperCase(), ditto.args[1]]);
+      expect(result.commands.some(call => call.args.join(" ") === `--verify --deep --strict ${ditto.args[1]}`)).toBe(true);
+      expect(result.fixtureReport).toMatchObject({ bundleIdentifier: "com.github.Electron", bundles: 2,
+        certificate: { sha1: hash.toUpperCase(), name: "RecordStuff Dev" },
+        designatedRequirement: `designated => identifier "com.github.Electron" and certificate leaf = H"${hash.toLowerCase()}"` });
+      expect(result.timing.map(({ phase, ok }) => `${phase}:${ok}`)).toEqual(["preflight:true", "copy:true", "sign:true", "verify:true"]);
+      // Never the normal bundle, its build record, the running-app guard or a launch.
+      expect(result.commands.some(call => ["pgrep", "pnpm", "open"].includes(call.name))).toBe(false);
+      expect(result.stamp).toBeUndefined();
+    });
+
+    it.each([
+      ["missing", { IDENTITIES: "" }, "found 0"],
+      ["ambiguous", { IDENTITIES: ` 1) ${"A".repeat(40)} "RecordStuff Dev"\n 2) ${"B".repeat(40)} "RecordStuff Dev"\n` }, "found 2"],
+      ["expired", { TEST_NOW: String(Date.now() + 365 * 86_400_000) }, "expired or not yet valid"],
+      ["inaccessible", { FAIL_COMMAND: "security" }, "security failed"],
+    ])("is blocked (exit 2) by a %s identity before copying or signing", (_label, overrides, reason) => {
+      const result = fixture(overrides);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain(reason);
+      expect(result.commands.some(call => call.name === "ditto" || call.name === "codesign")).toBe(false);
+      expect(result.fixtureReport).toBeUndefined();
+    });
+
+    it("is blocked when codesign cannot use the key without user permission", () => {
+      const result = fixture({ FAIL_SIGN: "errSecInternalComponent" });
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("not usable without user permission");
+      expect(result.fixtureReport).toBeUndefined();
+    });
+
+    it.each([
+      ["a signing failure", { FAIL_SIGN: "resource fork, Finder information, or similar detritus not allowed" }, "codesign failed"],
+      ["an ad-hoc signature", { ADHOC: "1" }, "Ad-hoc signature"],
+      ["a damaged bundle", { FAIL_VERIFY: "1" }, "codesign failed"],
+      ["the wrong outer certificate", { WRONG_CERT: "outer" }, "Unexpected signing certificate"],
+      ["the wrong helper certificate", { WRONG_CERT: "helper" }, "Unexpected signing certificate"],
+      ["a changed identifier", { WRONG_ID: "com.ericts.record" }, "incorrect bundle identifier"],
+      ["the wrong designated requirement", { WRONG_REQUIREMENT: "1" }, "designated requirement"],
+    ])("fails (exit 1) after a valid identity on %s and writes no report", (_label, overrides, reason) => {
+      const result = fixture(overrides);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(reason);
+      expect(signed(result)).toBe(true);
+      expect(result.fixtureReport).toBeUndefined();
+      expect(result.timing.at(-1)?.ok).toBe(false);
+    });
+
+    it("does not require the hardened runtime the RecordStuff bundle needs", () => {
+      expect(fixture({ NO_RUNTIME: "1" }).status).toBe(0);
+    });
+
+    it.each([
+      [["--fixture-app", "round/Electron.app"]],
+      [["--fixture-app", "round/Electron", "round/signature.json"]],
+      [["--fixture-app", "missing/Electron.app", "round/signature.json"]],
+    ])("rejects bad arguments before the keychain: %j", args => {
+      const result = invoke({}, args, round);
+      expect(result.status).toBe(1);
+      expect(result.commands).toEqual([]);
+    });
   });
 
   it("rejects unsupported arguments without side effects", () => {

@@ -1,7 +1,7 @@
-// Self-signed app/DMG for development and macOS releases.
+// Self-signed app/DMG for development and macOS releases, and the signed Electron copy of the quit-dialog fixture.
 import { spawnSync } from "node:child_process";
 import { X509Certificate } from "node:crypto";
-import { appendFileSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,9 @@ for (const key of Object.keys(env)) {
   if (/^(?:CSC_|WIN_CSC_|APPLE_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
 }
 env.CSC_IDENTITY_AUTO_DISCOVERY = "false";
+
+/** A missing, ambiguous, expired or inaccessible signing identity: the caller's round is blocked, not failed (exit 2). */
+class BlockedError extends Error {}
 
 function run(command, args, capture = false) {
   const result = spawnSync(command, args, {
@@ -101,7 +104,12 @@ function assertNotRunning() {
   }
 }
 
-function verifyBundle(appPath, identity) {
+/**
+ * Rejects a bundle unless every app/framework is signed by the selected certificate. The
+ * defaults are the RecordStuff bundle's; the quit-dialog fixture's Electron copy keeps
+ * Electron's identifier and runs without the hardened runtime.
+ */
+function verifyBundle(appPath, identity, { identifier = "com.ericts.record", runtime = true } = {}) {
   run("codesign", ["--verify", "--deep", "--strict", appPath]);
   // Check the outer app and all nested app/framework bundles, without following symlinks.
   const bundles = [appPath];
@@ -119,12 +127,13 @@ function verifyBundle(appPath, identity) {
     for (const [index, bundle] of bundles.entries()) {
       const prefix = path.join(scratch, `${index}-cert`);
       const details = run("codesign", ["-d", "--verbose=4", `--extract-certificates=${prefix}`, bundle], true).stderr;
+      if (/^Signature=adhoc$/m.test(details)) throw new Error(`Ad-hoc signature, not the selected identity: ${bundle}`);
       const cert = new X509Certificate(readFileSync(`${prefix}0`));
       if (fingerprint(cert) !== identity.hash) throw new Error(`Unexpected signing certificate: ${bundle}`);
       checkCertificate(cert);
-      const expectedId = index === 0 ? /^Identifier=com\.ericts\.record$/m : /^Identifier=.+$/m;
-      if (!expectedId.test(details)) throw new Error(`Missing or incorrect bundle identifier: ${bundle}`);
-      if (bundle.endsWith(".app") && !/^CodeDirectory .*flags=.*\bruntime\b/m.test(details)) {
+      const found = /^Identifier=(.+)$/m.exec(details)?.[1];
+      if (!found || (index === 0 && found !== identifier)) throw new Error(`Missing or incorrect bundle identifier: ${bundle}`);
+      if (runtime && bundle.endsWith(".app") && !/^CodeDirectory .*flags=.*\bruntime\b/m.test(details)) {
         throw new Error(`Hardened runtime is missing: ${bundle}`);
       }
     }
@@ -132,11 +141,47 @@ function verifyBundle(appPath, identity) {
     rmSync(scratch, { recursive: true, force: true });
   }
   const requirement = run("codesign", ["-d", "-r-", appPath], true);
-  const expected = `designated => identifier "com.ericts.record" and certificate leaf = H"${identity.hash.toLowerCase()}"`;
+  const expected = `designated => identifier "${identifier}" and certificate leaf = H"${identity.hash.toLowerCase()}"`;
   if (!`${requirement.stdout}${requirement.stderr}`.split(/\r?\n/).includes(expected)) {
     throw new Error("Unexpected designated requirement; refusing to open or package this app.");
   }
   console.log(`Verified ${bundles.length} bundle identities; SHA-1 ${identity.hash}\n${requirement.stdout}${requirement.stderr}`);
+  return { bundles: bundles.length, designatedRequirement: expected };
+}
+
+/** codesign's errors when the private key cannot be used without a person: locked keychain, denied or pending access. */
+const keychainUnavailable = /errSecInternalComponent|User interaction is not allowed|user canceled|errSecAuthFailed|errSecInteractionNotAllowed/i;
+
+/**
+ * Plan 062: a private, fully signed copy of this checkout's Electron.app for the synthetic
+ * quit-dialog fixture, whose linker/ad-hoc signature macOS refuses to notify for. Only the
+ * copy is touched; the caller owns `destination`'s directory and removes it after the round.
+ */
+function prepareFixtureApp(destination, reportPath) {
+  if (!destination.endsWith(".app") || existsSync(destination) || !existsSync(path.dirname(destination))) {
+    throw new Error("--fixture-app needs a new .app path inside an existing directory.");
+  }
+  let identity;
+  try {
+    identity = timed("preflight", resolveIdentity);
+  } catch (error) {
+    throw new BlockedError(error instanceof Error ? error.message : String(error));
+  }
+  const source = realpathSync(path.join(root, "node_modules/electron/dist/Electron.app"));
+  timed("copy", () => run("ditto", [source, destination]));
+  timed("sign", () => {
+    try {
+      run("codesign", ["--force", "--deep", "--timestamp=none", "--sign", identity.hash, destination], true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (keychainUnavailable.test(message)) throw new BlockedError(`The signing key is not usable without user permission: ${message}`);
+      throw error;
+    }
+  });
+  const identifier = "com.github.Electron";
+  const verified = timed("verify", () => verifyBundle(destination, identity, { identifier, runtime: false }));
+  writeFileSync(reportPath, `${JSON.stringify({ source, appPath: destination, bundleIdentifier: identifier,
+    certificate: { sha1: identity.hash, name: identity.name, expires: identity.expires }, ...verified }, null, 2)}\n`);
 }
 
 function main() {
@@ -150,6 +195,11 @@ function main() {
       throw new Error("--verify-app requires an app path and RECORDSTUFF_SIGN_IDENTITY SHA-1.");
     }
     verifyBundle(path.resolve(args[1]), { hash: hash.toUpperCase() });
+    return;
+  }
+  if (args[0] === "--fixture-app") {
+    if (args.length !== 3) throw new Error("Usage: node scripts/start-app.mjs --fixture-app <new.app> <report.json>");
+    prepareFixtureApp(path.resolve(args[1]), path.resolve(args[2]));
     return;
   }
   if (args.length > 1 || (args.length === 1 && !["--dmg", "--open"].includes(args[0]))) {
@@ -199,7 +249,7 @@ function main() {
 
 try { main(); } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
+  process.exitCode = error instanceof BlockedError ? 2 : 1;
 } finally {
   if (timings.length) {
     console.log(`Timing: ${timings.map(({ phase, ms, ok }) => `${phase} ${(ms / 1000).toFixed(2)} s${ok ? "" : " (failed)"}`).join(", ")}`);
