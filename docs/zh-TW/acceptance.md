@@ -10,6 +10,8 @@
 
 記錄時間、OS／架構、來源 SHA 與工作樹變更、產物路徑、設定及原有 App／錄影狀態。開發期間可按需停止錄影、退出、重啟或重建 RecordStuff，不需另行確認。正常 bundle 驗收以 `pnpm start:app` 建置啟動，再核對執行程序路徑；`pnpm open:app` 只用於同一輪重開同一產物。簽章前置與專用 runner 見[工具指南](system-design/tooling.md)。
 
+開發分支與未提交的修正可以用相同 revision 的 `pnpm start:app` 產物驗收；記錄 commit、dirty 狀態與內容 identity、相依套件、產物路徑與 bundle identifier，以及簽章憑證 fingerprint。合併後與發布驗收依[發布規則](system-design/releases.md)使用指定的 main commit 或 release candidate。只看分支名稱不能證明產物是最新的，也不能證明簽章有效。
+
 錄影 smoke 保持螢幕／音訊環境穩定，使用 [test-material.html](../../scripts/test-material.html)。記錄來源尺寸、品質／fps、瀏覽器、音訊輸出／音量及素材版本。人工／原生操作點擊素材的音訊／全螢幕開始控制項；`pnpm acceptance` 自行提供自動播放設定。螢幕選擇測試須把素材放在選取來源；快捷鍵 runner 的主螢幕素材不一定涵蓋其他已選來源。
 
 ## 錄影 smoke 與原生案例

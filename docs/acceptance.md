@@ -10,6 +10,8 @@ Before any desktop takeover, follow the [readiness handoff](testing.md#confirm-d
 
 Record time, OS/architecture, source SHA and working-tree changes, artifact path, settings and existing app/recording state. During development, you may stop recordings and quit/restart/rebuild RecordStuff as needed without additional confirmation. For normal-bundle acceptance, build and launch with `pnpm start:app`, then verify the running process path. `pnpm open:app` is only for restarting the same artifact within the round. Signing prerequisites and specialized runners are in [tooling](system-design/tooling.md).
 
+Development branches and uncommitted fixes may be tested with the matching revision's `pnpm start:app` artifact; record the commit, dirty state and content identity, dependencies, artifact path and bundle identifier, and the signing certificate's fingerprint. Post-merge and release acceptance uses the designated main commit or release candidate under the [release policy](system-design/releases.md). A branch name alone establishes neither artifact freshness nor signature validity.
+
 For recording smoke, keep the display/audio environment stable and use [test-material.html](../scripts/test-material.html). Record source dimensions, quality/fps, browser, audio output/volume and material version. With manual/native operation, click the page's audio/fullscreen start control; the `pnpm acceptance` runner provides its own autoplay setup. A source-selection test must put the material on the selected source. The shortcut runner's primary-display setup may not cover a different selected source.
 
 ## Recording smoke and native cases

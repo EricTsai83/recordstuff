@@ -131,10 +131,10 @@ Astra 在這條路徑的工作：
 
 使用者要求自動化原生提示驗收時，由 Astra 完成可觀察的操作與判讀，不把截圖後的可讀性檢查例行交還使用者。這是 **agent + 原生 computer use + 隔離 runner** 的流程；單獨 `pnpm acceptance:quit-dialog` 不會呼叫模型，也不會自行產生視覺通過結論。先讀取目前原生工具文件；不假設具備全桌面截圖、被動前景查詢或 PNG 存檔 API。
 
-1. 確認沒有前一輪測試程序，指定單一桌面執行者。依序執行 `pnpm acceptance:quit-dialog -- --language zh-TW` 與 `pnpm acceptance:quit-dialog -- --language en`，一次只執行一輪。這是使用合成資料、正式提示／Recorder／FileWriter／退出協調器的隔離 fixture，不載入正常 App，不錄影、不修改正式偏好。
+1. 確認沒有前一輪測試程序，指定單一桌面執行者。依序執行 `pnpm acceptance:quit-dialog -- --language zh-TW` 與 `pnpm acceptance:quit-dialog -- --language en`，一次只執行一輪。這是使用合成資料、正式提示／Recorder／FileWriter／退出協調器的隔離 fixture，不載入正常 App，不錄影、不修改正式偏好。runner 每輪先把 Electron.app 複製到暫存目錄，以 RecordStuff Dev（或 `RECORDSTUFF_SIGN_IDENTITY`）完整簽章並驗證後才啟動（plan 062）；exit 2 且簽章層 blocked 表示簽章前置不足（identity、keychain 權限），exit 1 表示簽章或驗證失敗，兩者都沒有通知可看，不進行視覺判讀，記錄原因即可。
 2. 延後退出自 plan 055 起改為通知，不需要回應也不搶焦點。啟動約三秒後通知出現；在橫幅消失前被動擷取桌面截圖，不要點擊橫幅或把測試 App 置前。
 3. Astra 親自判讀截圖：語言符合本輪、只有一則本輪通知、橫幅可讀；橫幅截斷時，另從通知中心展開確認完整文字。`notification shown` log 不能單獨證明橫幅可見。
-4. 讀取本輪 `report.json`、`result.json` 與 log，確認通知期間 timer 延遲低於門檻、磁碟工作仍被保留、解除延遲後精確 bytes 正確、程序正常退出。超時／取消／強制清理仍是失敗。
+4. 讀取本輪 `report.md`／`report.json`、`result.json`、`notification.jsonl` 與 log。報告分開列出簽章 fixture App、生命週期、通知送達事件、視覺觀察與清理五層：確認通知期間 timer 延遲低於門檻、磁碟工作仍被保留、解除延遲後精確 bytes 正確、程序正常退出，送達層為 `shown`（授權拒絕是 blocked，其他錯誤或沒有事件是失敗），且暫存副本已移除。超時／取消／強制清理仍是失敗。runner exit 0 只是自動化證據，視覺層固定 pending；綜合原生判定加上本 skill 的視覺結果，視覺被阻擋時仍是 blocked。
 5. 在同一報告目錄新增 agent 視覺紀錄，包含語言、操作時間、截圖／AX 來源、逐項 pass/fail/blocked/not run、判讀理由、是否曾主動改變焦點，以及 runner 結果。工具支援保存原始 PNG 時存入該目錄；只能回傳對話圖像時，明確引用該次工具觀察並標示沒有本機 PNG，不虛構路徑。保留 runner 原本的 `nativeObservation: not recorded`，以附加紀錄提供具名觀察來源，不默默把它改成腳本的斷言。
 6. 缺少工具、權限或可辨識畫面時，記 blocked 並完成仍可做的生命週期檢查。只有無法由目前工具判定的具體項目才請使用者協助。所有必要項目與清理都有證據才可說該輪全自動驗收通過；不能保證無桌面或缺權限的 CI 也能執行。
 
