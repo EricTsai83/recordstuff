@@ -33,6 +33,8 @@ const { kind } = Astro.props;
       <path d="M58 14.5v2M51 15.5h3" />
     </g>
     <circle cx="39" cy="16" r="4.5" stroke-width="1.75" />
+    <!-- The red dot inside the ring, as in the RecordStuff mark. -->
+    <circle cx="39" cy="16" r="2.1" fill="var(--rec)" stroke="none" />
     <path d="M39 44V30m-5 5 5-5 5 5" />
   </>}
   {kind === "screen" && <><rect x="8" y="12" width="48" height="33" rx="2"/><path d="M24 53h16m-8-8v8M14 19h10m-10 0v9"/></>}

@@ -9,6 +9,9 @@ const stages = [
   { label: "Grant access", body: "Grant Screen & System Audio Recording access in System Settings.", kind: "permissions" },
   { label: "Record", body: "Click the icon to record. Click again to stop and save.", kind: "record" },
 ] as const;
+// The wire: the trunk forks squarely round the two permissions, with small rounded corners, and rejoins
+// into the tail, in the 1000 x 240 viewBox the band is stretched to.
+const wire = "M100 120H590Q600 120 600 110V70Q600 60 610 60H790Q800 60 800 70V110Q800 120 810 120H900M590 120Q600 120 600 130V170Q600 180 610 180H790Q800 180 800 170V130Q800 120 810 120";
 ---
 
 <div class="install-flow">
@@ -16,11 +19,8 @@ const stages = [
     <!-- Wire coordinates share the five equal-width stage columns. The icon
          band is always 240px tall, so copy wrapping cannot shift a junction. -->
     <svg class="desktop-wires" viewBox="0 0 1000 240" preserveAspectRatio="none" aria-hidden="true">
-      <path d="M100 120H590Q600 120 600 110V70Q600 60 610 60H700M600 120V170Q600 180 610 180H700M700 60H790Q800 60 800 70V170Q800 180 790 180H700M800 120H900" />
-      <path class="direction" d="m198 116 4 4-4 4M398 116l4 4-4 4M838 116l4 4-4 4" />
+      <path d={wire} />
     </svg>
-    <span class="junction junction--split" aria-hidden="true"></span>
-    <span class="junction junction--merge" aria-hidden="true"></span>
 
     <ol class="stages">
       {stages.map((stage) => <li class:list={["stage", stage.kind === "permissions" && "stage--permissions"]}>
@@ -40,8 +40,15 @@ const stages = [
 
 <style>
   .install-flow {
+    /* The narrow layout's connectors; the desktop wire is the brighter grey below. */
     --wire: color-mix(in srgb, var(--fg) 30%, transparent);
+    --line: color-mix(in srgb, var(--fg) 62%, var(--bg));
     --art-height: 240px;
+    /* Half the width of an icon's opaque box (64px glyph + 16px padding a side) and of a permission glyph's
+       (48 + 16): the wire fades out at these edges. */
+    --box: 48px;
+    --pbox: 40px;
+    --fade: 32px;
   }
   .diagram { position: relative; }
   .stages { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); list-style: none; }
@@ -58,15 +65,24 @@ const stages = [
     width: 100%;
     height: var(--art-height);
     fill: none;
-    stroke: var(--wire);
+    stroke: var(--line);
     stroke-width: 1;
     pointer-events: none;
+    /* The wire dissolves over --fade as it nears each icon's box, so it needs no arrows or end marks;
+       the fork and its corners stay solid. */
+    --wire-mask: linear-gradient(to right,
+      transparent calc(10% + var(--box)), #000 calc(10% + var(--box) + var(--fade)),
+      #000 calc(30% - var(--box) - var(--fade)), transparent calc(30% - var(--box)),
+      transparent calc(30% + var(--box)), #000 calc(30% + var(--box) + var(--fade)),
+      #000 calc(50% - var(--box) - var(--fade)), transparent calc(50% - var(--box)),
+      transparent calc(50% + var(--box)), #000 calc(50% + var(--box) + var(--fade)),
+      #000 calc(70% - var(--pbox) - var(--fade)), transparent calc(70% - var(--pbox)),
+      transparent calc(70% + var(--pbox)), #000 calc(70% + var(--pbox) + var(--fade)),
+      #000 calc(90% - var(--box) - var(--fade)), transparent calc(90% - var(--box)));
+    -webkit-mask-image: var(--wire-mask);
+    mask-image: var(--wire-mask);
   }
   .desktop-wires path, .mobile-wires path { vector-effect: non-scaling-stroke; }
-  .desktop-wires .direction { stroke: var(--fg-muted); }
-  .junction { position: absolute; top: calc(var(--art-height) / 2); width: 5px; height: 5px; background: var(--fg-muted); border-radius: 50%; transform: translate(-50%, -50%); }
-  .junction--split { left: 60%; }
-  .junction--merge { left: 80%; }
   .permission-node { position: absolute; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: .4rem; white-space: nowrap; color: var(--fg-muted); font-size: .75rem; }
   .permission-node--screen { top: 26px; }
   .permission-node--audio { top: 146px; }
@@ -76,11 +92,12 @@ const stages = [
   .mobile-wires { display: none; }
 
   @media (max-width: 1000px) {
+    .install-flow { --box: 38px; --fade: 24px; }
     .glyph { padding: 10px; }
     .glyph :global(svg) { width: 56px; height: 56px; }
   }
   @media (max-width: 900px) {
-    .desktop-wires, .junction { display: none; }
+    .desktop-wires { display: none; }
     .stages { grid-template-columns: 1fr; gap: 2rem; max-width: 440px; margin: 0 auto; }
     .stage:not(:last-child)::after { content: ""; position: absolute; top: 76px; bottom: -2rem; left: 50%; border-left: 1px solid var(--wire); }
     .stage-label, .stage--permissions .stage-label { position: relative; top: auto; left: auto; width: fit-content; margin: 0 auto; padding: .5rem .75rem; background: var(--bg); z-index: 1; }
