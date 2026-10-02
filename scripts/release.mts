@@ -406,16 +406,17 @@ export async function verifyWindowsInstaller(directory: string, version: string)
   const shortcut = path.join(process.env.APPDATA ?? '', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'RecordStuff.lnk');
   const installed = spawnSync(installer, ['/S'], { encoding: 'utf8', timeout: 180_000 });
   if (installed.error || installed.status !== 0) throw new Error(`Silent install failed: ${failureReason(installed)}`);
-  // Per user means HKCU only: an HKLM entry would have needed an administrator.
-  if (uninstallEntries('HKLM').length) throw new Error('The installer registered a machine-wide uninstaller.');
   const [entry, ...extra] = uninstallEntries('HKCU');
   if (!entry || extra.length) throw new Error(`Expected one per-user uninstall entry, found ${extra.length + (entry ? 1 : 0)}.`);
   console.log(`Installed: ${JSON.stringify(entry)}`);
-  if (entry.DisplayVersion !== version) throw new Error(`Registered version ${entry.DisplayVersion} differs from ${version}.`);
   const [uninstaller, uninstallArgs] = splitCommandLine(entry.QuietUninstallString);
   const location = entry.InstallLocation || path.dirname(uninstaller);
+  // From here every failure still uninstalls, so a reused machine is not left with the app.
   let removed = false;
   try {
+    // Per user means HKCU only: an HKLM entry would have needed an administrator.
+    if (uninstallEntries('HKLM').length) throw new Error('The installer registered a machine-wide uninstaller.');
+    if (entry.DisplayVersion !== version) throw new Error(`Registered version ${entry.DisplayVersion} differs from ${version}.`);
     const exe = path.join(location, 'RecordStuff.exe');
     if (!existsSync(exe)) throw new Error(`The install has no RecordStuff.exe in ${location}.`);
     if (peMachine(readHead(exe)) !== PE_MACHINE_X64) throw new Error('RecordStuff.exe is not an x64 executable.');

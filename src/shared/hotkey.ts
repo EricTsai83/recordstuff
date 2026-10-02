@@ -93,10 +93,21 @@ export function describeAccelerator(accelerator: string, platform: string): stri
 export const SETTINGS_SHORTCUT = "CommandOrControl+Alt+,";
 export const SETTINGS_SHORTCUT_RESERVED = "This combination is reserved for Settings.";
 
+/**
+ * Whether two accelerators press the same keys on `platform`. Off macOS
+ * `CommandOrControl` is Control, so the editor's `Control+Shift+1` there is the
+ * recommended `CommandOrControl+Shift+1`.
+ */
+export function sameShortcut(a: unknown, b: unknown, platform: string): boolean {
+  const keys = (value: unknown): string | undefined => {
+    const canonical = canonicalizeAccelerator(value);
+    return canonical && [...new Set(canonical.split("+").map(part =>
+      part === "CommandOrControl" ? (platform === "darwin" ? "Command" : "Control") : part))].sort().join("+");
+  };
+  const first = keys(a);
+  return first !== undefined && first === keys(b);
+}
+
 export function isSettingsShortcut(value: unknown, platform: string): boolean {
-  const canonical = canonicalizeAccelerator(value);
-  if (!canonical) return false;
-  const resolve = (input: string): string => [...new Set(input.split("+").map(part =>
-    part === "CommandOrControl" ? (platform === "darwin" ? "Command" : "Control") : part))].sort().join("+");
-  return resolve(canonical) === resolve(SETTINGS_SHORTCUT);
+  return sameShortcut(value, SETTINGS_SHORTCUT, platform);
 }

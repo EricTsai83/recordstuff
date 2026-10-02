@@ -466,6 +466,20 @@ it("offers one recommended shortcut and only the currently saved custom value", 
   }
 });
 
+it("lists a Windows Ctrl capture of the recommended keys as the recommendation, not a second custom entry", () => {
+  const recommended = DEFAULT_HOTKEY.accelerator;
+  // Off macOS the editor captures Ctrl as Control, which presses the same keys as CommandOrControl.
+  const windows = { ...context, platform: "win32" as const, hotkey: { enabled: true, registered: true, accelerator: "Control+Shift+1" } };
+  const choices = group(idle, windows, "hotkey")!.choices;
+  expect(choices.map(c => c.id)).toEqual([recommended, "off"]);
+  expect(choices[0]).toMatchObject({ checked: true, label: "Recommended: Ctrl+Shift+1" });
+  expect(settingsChecked(idle, windows, "hotkey", recommended)).toBe(true);
+  // On macOS Control is not Command, so the same value stays a custom shortcut.
+  const mac = group(idle, { ...windows, platform: "darwin" }, "hotkey")!.choices;
+  expect(mac.map(c => c.id)).toEqual([recommended, "Control+Shift+1", "off"]);
+  expect(settingsChecked(idle, { ...windows, platform: "darwin" }, "hotkey", recommended)).toBe(false);
+});
+
 it("offers result actions by exact failure identity with recording and cleanup locks", () => {
   const result = { id: "failure-1", occurredAt: "2026-09-24T12:00:00Z", code: "disk_full" as const,
     detail: "ENOSPC", outcome: "pending" as const, acknowledged: false };

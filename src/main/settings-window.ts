@@ -175,8 +175,6 @@ export class SettingsWindow {
       title: view.title,
       maximizable: false,
       fullscreenable: false,
-      // Windows and Linux would otherwise draw an empty application menu.
-      autoHideMenuBar: true,
       webPreferences: {
         preload: path.join(__dirname, "../preload/settings.js"),
         sandbox: true,

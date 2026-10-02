@@ -64,8 +64,9 @@ function formatLine(message: string, now: Date): string {
 export type FileLog = Log & { flush(): Promise<void> };
 
 /**
- * Wait up to `timeoutMs` for queued lines to reach the file, for exits that
- * would otherwise drop them (a failed start, a second instance). False on timeout.
+ * Wait up to `timeoutMs` for queued writes to reach disk, for exits that would
+ * otherwise drop them: a failed start, a second instance, and a quit's log,
+ * settings and window-size writes. False on timeout; a failed flush rejects.
  */
 export async function flushBeforeExit(log: Pick<FileLog, "flush">, timeoutMs = 2000): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;

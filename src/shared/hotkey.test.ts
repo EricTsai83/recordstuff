@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { canonicalizeAccelerator, describeAccelerator, isAccelerator, validateAccelerator } from "./hotkey";
+import { canonicalizeAccelerator, describeAccelerator, isAccelerator, sameShortcut, validateAccelerator } from "./hotkey";
 
 it("keeps every preset and validates the bounded custom vocabulary", () => {
   for (const value of ["CommandOrControl+Shift+1", "CommandOrControl+Alt+Shift+R", "CommandOrControl+Shift+R", "CommandOrControl+Alt+R", "Control+F24", "CommandOrControl+Alt+Space", "Control+Left", "Control+Plus", "Control+;"]) expect(isAccelerator(value), value).toBe(true);
@@ -27,4 +27,12 @@ it("normalizes shifted glyph aliases before checking reserved combinations", () 
   expect(canonicalizeAccelerator("Control+?")).toBe("Control+Shift+/");
   expect(isAccelerator("CommandOrControl+Shift+#")).toBe(false);
   expect(isAccelerator("CommandOrControl+$")).toBe(false);
+});
+
+it("compares shortcuts by the keys they press on each platform", () => {
+  expect(sameShortcut("Control+Shift+1", "CommandOrControl+Shift+1", "win32")).toBe(true);
+  expect(sameShortcut("CommandOrControl+Control+Shift+1", "Control+Shift+1", "linux")).toBe(true);
+  expect(sameShortcut("Control+Shift+1", "CommandOrControl+Shift+1", "darwin")).toBe(false);
+  expect(sameShortcut("Shift+CommandOrControl+!", "CommandOrControl+Shift+1", "darwin")).toBe(true);
+  expect(sameShortcut("Control+Nope", "Control+Nope", "win32")).toBe(false);
 });

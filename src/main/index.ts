@@ -13,6 +13,7 @@ import { SettingsWindowState } from "./settings-window-state";
 import { DisplayMedia } from "./display-media";
 import { isDisplayInfo, type DisplayInfo } from "../shared/display";
 import {
+  Menu,
   app,
   desktopCapturer,
   dialog,
@@ -158,6 +159,13 @@ async function main(): Promise<void> {
 
   await app.whenReady();
   if (process.platform === "darwin") app.dock?.hide();
+  // Without a menu Electron installs its default one, whose Reload and Developer
+  // Tools shortcuts work in Settings even in a release build. macOS draws no menu
+  // bar here but still routes key equivalents through the menu, so it keeps Quit,
+  // Hide, copy and paste, and Minimize; elsewhere no menu removes the menu bar.
+  Menu.setApplicationMenu(process.platform === "darwin"
+    ? Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }, { role: "windowMenu" }])
+    : null);
 
   const settings = new SettingsStore({
     filePath: path.join(app.getPath("userData"), "settings.json"),
@@ -769,15 +777,9 @@ async function main(): Promise<void> {
       const flushes = ([["settings", settings.flush()], ["window size", settingsWindow.flush()], ["log", log.flush()]] as const)
         .map(([name, flush]) => flush.then(() => { pending.delete(name); }));
       metadataWritten = Promise.all(flushes.map(flush => flush.catch(() => undefined))).then(() => undefined);
-      let timeout: ReturnType<typeof setTimeout> | undefined;
-      try {
-        const flushed = await Promise.race([
-          Promise.all(flushes).then(() => true),
-          new Promise<boolean>(resolve => { timeout = setTimeout(() => resolve(false), QUIT_METADATA_WAIT_MS); }),
-        ]);
-        if (!flushed) log(`quit: ${[...pending].join(", ")} still writing after ${QUIT_METADATA_WAIT_MS} ms`);
-        return flushed;
-      } finally { clearTimeout(timeout); }
+      const flushed = await flushBeforeExit({ flush: () => Promise.all(flushes).then(() => undefined) }, QUIT_METADATA_WAIT_MS);
+      if (!flushed) log(`quit: ${[...pending].join(", ")} still writing after ${QUIT_METADATA_WAIT_MS} ms`);
+      return flushed;
     },
     pending: () => {
       endQuitting();

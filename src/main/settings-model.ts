@@ -22,7 +22,7 @@ import {
   type ResolutionCap,
   type VideoQuality,
 } from "../shared/quality";
-import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut } from "../shared/hotkey";
+import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut, sameShortcut } from "../shared/hotkey";
 import { COUNTDOWN_CHOICES } from "../shared/countdown";
 import type { RecordingResultView, SettingsChoice, SettingsGroup, SettingsView } from "../shared/settings-panel";
 import type { RecordingResult, RecordingResultAction } from "../shared/recording-result";
@@ -185,7 +185,8 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group {
     : undefined;
   const diagnostics = hotkeyDiagnostics(ctx, unavailable);
   const recommended = DEFAULT_HOTKEY.accelerator;
-  const accelerators = hotkey.accelerator === recommended ? [recommended] : [recommended, hotkey.accelerator];
+  const current = (accelerator: string): boolean => sameShortcut(accelerator, hotkey.accelerator, ctx.platform);
+  const accelerators = current(recommended) ? [recommended] : [recommended, hotkey.accelerator];
   return { ...group("hotkey", t("Shortcut", language), enabled, [
     ...accelerators.map((accelerator) => ({
       id: accelerator,
@@ -193,8 +194,8 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group {
         ? t("Recommended: {shortcut}", language, { shortcut: describeAccelerator(accelerator, ctx.platform) })
         : t("{shortcut} (custom)", language, { shortcut: describeAccelerator(accelerator, ctx.platform) }),
       // A remembered combination that is now the Settings shortcut is refused if chosen again; only the current one stays selectable.
-      enabled: !isSettingsShortcut(accelerator, ctx.platform) || (hotkey.enabled && accelerator === hotkey.accelerator),
-      checked: hotkey.enabled && accelerator === hotkey.accelerator,
+      enabled: !isSettingsShortcut(accelerator, ctx.platform) || (hotkey.enabled && current(accelerator)),
+      checked: hotkey.enabled && current(accelerator),
       action: { setHotkey: { enabled: true, accelerator } } satisfies AppAction,
     })),
     {
@@ -482,7 +483,7 @@ export function settingsChecked(
   groupId: unknown,
   choiceId: unknown,
 ): boolean {
-  if (proposesHotkey(groupId, choiceId)) return ctx.hotkey.enabled && canonicalizeAccelerator(choiceId) === ctx.hotkey.accelerator;
+  if (proposesHotkey(groupId, choiceId)) return ctx.hotkey.enabled && sameShortcut(choiceId, ctx.hotkey.accelerator, ctx.platform);
   return find(state, ctx, groupId, choiceId)?.checked ?? false;
 }
 
