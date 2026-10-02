@@ -1298,7 +1298,7 @@ Tray 選單改為扁平指令清單，所有偏好設定移入單一 sandbox 設
 
 待機成本量測對象為 `pnpm start:app` 啟動的打包 App，程序生命週期內未錄製、也未開啟設定視窗。機器無其他負載時的 240 秒視窗內，四個程序合計使用 0.10 秒 CPU，約單核 0.042%（main 0.033%、GPU 0.008%、network 與 renderer 0.000%）；`top` 回報 %CPU 0.0、power 分數 0.0。另外三個較短視窗（含與本機建置重疊者）介於 0.033% 與 0.063% 之間。曾把已驗證後的權限輪詢改為 60 秒，實測與原本 5 秒同為 0.033%，因此已還原：便宜的第一段回到單一 5 秒間隔，與 Cap 事故後的設計一致（見[桌面設計](../system-design/desktop.md#螢幕權限)）。擷取宿主心跳的改動則保留——現在只在 session 進行中運作，而不是第一次錄製後永久執行，同時也避免待機時的卡死變成使用者無從處理的錯誤。
 
-**未驗證。** 未點擊原生 tray、未經由「設定…」項目開啟視窗、未驗證 macOS 上實際的視窗置前行為，也未做任何螢幕或系統音訊擷取。`SettingsWindow.show()` 的 macOS 置前修正與 tray 選單本身仍未由機器驗證；專案的 [computer-use 驗收 skill](../../../.agents/skills/astra-acceptance-with-computer-use/SKILL.md) 已記錄無視窗 App 的 tray 無法自動化，需要互動式執行。
+**未驗證。** 未點擊原生 tray、未經由「設定…」項目開啟視窗、未驗證 macOS 上實際的視窗置前行為，也未做任何螢幕或系統音訊擷取。`SettingsWindow.show()` 的 macOS 置前修正與 tray 選單本身仍未由機器驗證；專案的 [computer-use 驗收 skill](../../../.agents/skills/native-acceptance/SKILL.md) 已記錄無視窗 App 的 tray 無法自動化，需要互動式執行。
 
 ## 通知開關取代原生橋接 — 2026-09-21
 

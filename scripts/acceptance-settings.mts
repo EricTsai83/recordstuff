@@ -11,7 +11,7 @@
  *
  * It does not click the tray, open the window through Settings, or claim
  * anything about macOS window focus — a windowless app's tray is not
- * automatable (see .agents/skills/astra-acceptance-with-computer-use).
+ * automatable (see .agents/skills/native-acceptance).
  *
  * Exit 0 when every case passed, 1 when one failed, and 2 (blocked) when the
  * desktop was not available: a locked session, or a window another app kept

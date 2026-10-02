@@ -23,6 +23,7 @@
 | pnpm acceptance:settings | 對已建置的產物：在真實 Electron 視窗載入 `out/preload/settings.js` 與 `out/renderer/settings.html`，判定出貨 CSP、sandbox preload 邊界與真實 IPC 往返；報告與截圖寫到 docs/verification/measurements。需要先 `pnpm build`，不需要 tray 或已安裝的 App |
 | `pnpm acceptance:regression` | 一個指令執行 check（含建置）、設定 fixture 與快捷鍵整合；包含重複開啟／關閉／Tray 路徑重開。隔離偏好與程序，各 runner 保留報告；任一步失敗立即停止。不會啟動或關閉使用者的 RecordStuff，也不錄影。 |
 | `pnpm acceptance:recipe` | 逐階段執行驗證配方，相同輸入只建置一次，並寫出計時報告（[詳見](#驗證配方與計時)） |
+| `pnpm acceptance:tray` | 對執行中的 bundle：以 CoreGraphics 點擊與按鍵、輔助使用的 press 操作真正的狀態列項目與選單；雙語比對 idle、倒數與錄影選單和正式 model，並涵蓋開始與停止、顯示上一段錄影、三種取消、鍵盤導覽與結束；保存選單截圖供視覺檢視（[說明](#tray-驗收)） |
 | pnpm acceptance:notification | 對 /Applications 裡的 App（可用 `--install` 在本次換成 dist 的建置）：錄影、透過輔助使用按下「已儲存」橫幅、判定 Finder 是否在最前面且顯示該檔，每個 Finder 狀態連點多次，預設英文；報告寫到 docs/verification/measurements |
 
 main、preload、renderer 分別建置，打包只納入 out、package metadata 與指定 resources。測試、量測與文件不屬 runtime；App 不呼叫 FFmpeg。
@@ -281,17 +282,41 @@ Runner 將原始碼與建置資源複製至專用報告目錄，只修改該副�
 
 此隔離 fixture 也攔截存檔通知並記錄事件，避免第一段的通知遮擋第二段測試素材；通知顯示不在這項驗收範圍。影音分析會判定影格時序與閃光／提示音偏移，至少須有 5 組配對標記；短片不判定長時間同步漂移。聲道能量與標記是必要證據，所以 blocked 或 incomplete 的檢查與 fail 一樣會讓案例失敗。已存在的 `--out` 目錄會保留原內容，以明確訊息及退出碼 2 拒絕，不寫入報告。
 
-## 設定快捷鍵驗收
+## 腳本化原生驗收
 
-在 `pnpm start:app` 之後採用 **System Events ＋ Computer Use** 混合流程：
+依維護者 2026-10-02 的決定（[驗收案例](../acceptance.md#依影響追加案例)），已提交的 runner 可以操作 RecordStuff 自己的 Tray 選單、設定視窗與選單項目，因此這些原生案例不必再等人或 Computer Use；後者無法存取純 tray 的程序。何時用 runner、何時用觀察，依[選擇規則](../testing.md#腳本-runner-或-computer-use)；這些證據一律是腳本輸入，永遠不算視覺判斷。
+
+[native-ax.mts](../../../scripts/lib/native-ax.mts) 是一個 JavaScript for Automation helper，透過 ObjC bridge 呼叫輔助使用 C API 並送出 CoreGraphics 事件。它讀一次選單約 0.1 秒；同樣的讀取透過 System Events 要 29 秒。每次讀取都以 pid 指定目標。AXError -25211（終端機沒有輔助使用權限）記為 **blocked**；runner 從不修改隱私權清單。
+
+[tray-driver.mts](../../../scripts/lib/tray-driver.mts) 從 App 的 `AXExtrasMenuBar` 找到狀態列項目，以 CoreGraphics 右鍵開啟選單；項目唯一的動作 `AXPress` 等於左鍵，會開始錄影。macOS 26 的狀態列項目畫在「控制中心」的視窗裡，每個螢幕一份。即使前景 App 的選單把那一份擠出較窄的選單列，AX 仍只回報那一份的 frame：2026-10-02 在 1080 pt 寬的直式螢幕上，`REC` 項目從選單列消失，AX 仍回報它在那裡，點擊沒有落在任何東西上。因此 driver 只在該位置有在畫面上的控制中心視窗時才點 AX 回報的 frame，否則改點主選單列上以 bundle identifier（`com.ericts.record`）命名、且在畫面上的視窗；兩者都沒有就判為失敗。右鍵若 3 秒內沒有打開任何東西，會在確認沒有選單開著之後重點，最多三次；因為錄影中曾有一次點擊落空，而之後的點擊都能打開選單。報告列出每次點擊與點擊位置的找法。選單項目以對項目的 `AXPress` 或方向鍵加 Return 選取，以 Escape 關閉。分隔線是沒有標題的停用項目；快捷鍵是 `AXMenuItemCmdChar` 加修飾鍵位元（1 Shift、2 Option、4 Control、8 不含 Command）。每個 UI 狀態上限 30 秒，每次等待都會回應取消。
+
+點擊會移動真正的游標。改把事件直接送給程序（以 `CGEventPostToPid` 送給 RecordStuff 或控制中心，帶不帶視窗編號、先不先送移動事件）時游標不動，但在 macOS 26.6.2 上選單一次都沒有打開（2026-10-02）：控制中心依游標位置判定點擊。因此每一輪都需要桌面交接；期間若有人操作，仍可能關掉選單或改變選取，目前沒有偵測。
+
+### Tray 驗收
 
 ```bash
-pnpm acceptance:settings-shortcut
+pnpm acceptance:tray                      # 先儲存的語言，再另一種
+pnpm acceptance:tray -- --languages zh-TW # 單一語言；另有 --seconds、--bundle、--log、--settings
+```
+
+在 `pnpm start:app` 或 `pnpm open:app` 之後、App 待命時執行；它只判讀執行中 pid 自己的 log session，最多等 30 秒。Tray 每次彈出選單都會記錄 `tray: menu opened in <state>: <json>`，也就是交給 Electron 的選單。runner 在 idle、倒數與錄影三種狀態，把原生選單逐項和這一行比對，涵蓋 Electron 到 NSMenu 的邊界，並檢查案例規則：開頭、結尾沒有分隔線，也沒有相鄰的分隔線；「開始錄製」只在 idle，「停止」只在錄影中，「取消錄影」只在倒數；錄影中儲存位置項目為灰色；最後是「顯示 log」與「結束 RecordStuff」。它也從選單開始、停止，用通知 runner 的 Finder 置前與選取判定檢查「顯示上一段錄影」，以第二次點擊與「取消錄影」取消倒數（回到 idle、保留「顯示上一段錄影」、沒有新檔案、失敗紀錄或通知），在倒數中結束，並以方向鍵加 Return 開啟「設定…」。第二種語言是在 App 結束時寫進 settings.json 再重新啟動；App 結束後再寫回原值。它保存每個選單的截圖，保留自己錄下的目前畫面短片（沒有測試素材，所以不做媒體檢查），最後選「結束 RecordStuff」。
+
+結束碼為 0 通過、1 失敗（任一案例失敗或收尾不完整）、2 受阻（鎖定或沒有輔助使用權限），中斷且收尾沒有留下任何東西時為 130／143；無法到達該狀態的案例是 **not run**，絕不算通過。收尾只作用於 preflight 已接受的 App：在那之前就被拒絕的回合（鎖定、另一個 bundle、沒有輔助使用權限）不碰任何東西。它會關閉選單，用狀態列項目結束倒數或錄影（無法點擊時改用已註冊的錄影快捷鍵），只在設定視窗有焦點時關閉本輪的設定，關閉「顯示上一段錄影」開啟的 Finder 視窗（即使該操作被中斷，也會依資料夾找到），結束 App，之後再還原語言，不依賴已中止的 signal。只有 RecordStuff 在前景且設定有焦點時才送 ⌘W。2026-10-02 分別在 zh-TW 與 en 的錄影中中斷，runner 都存好錄影、結束 App、語言維持繁體中文，結束碼 130。
+
+留在 runner 外的項目與理由：needsPermission 選單需要撤銷螢幕錄影權限，那是 runner 不得做的 TCC 修改（由單元測試與 035 的維護者回合涵蓋）；在狀態改變後才選的「開始錄製」，runner 會在 idle 選單開啟時把錄影快捷鍵排進佇列，但每次 macOS 都先處理選單的「開始錄製」，所以回報 not run（`Recorder.startIfIdle` 有單元測試，035 也觀察過 `ignored` 那一行）。只有 App 的歷史中有未讀失敗時才觀察得到未讀失敗群組；或使用以 `v1` 植入資料的[受控 build](#受控驗收-build)，並把 `--bundle`、`--log` 與 `--settings` 指向它的執行目錄。淺色與深色選單列、對齊與可讀性，由 Computer Use 觀察或維護者根據截圖判斷。
+
+## 設定快捷鍵驗收
+
+在 `pnpm start:app` 之後使用 System Events 流程：
+
+```bash
+pnpm acceptance:settings-shortcut                # 只檢查 callback
+pnpm acceptance:settings-shortcut -- --observe   # 另外以輔助使用檢查視窗
 ```
 
 設定關閉、另一個 App 在前景時，這個 macOS arm64 腳本會核對本機 bundle 程序、最新 log session 與目前設定鍵註冊，再透過 System Events 送出 ⌘⌥,。擷取暫停、衝突或註冊失敗時拒絕送鍵。成功退出只代表收到本次設定 callback（最多等 30 秒），不代表視窗可見或聚焦。每次報告與 log 都寫入 `docs/verification/measurements/` 下的獨立目錄。
 
-接著以原生 Computer Use 觀察真正面板、鍵盤導覽、重複執行指令、最小化還原、關閉重開，依[驗收 skill](../../../.agents/skills/astra-acceptance-with-computer-use/SKILL.md)記錄 UI 結果。權限拒絕只回報，不自動修改。這是無人值守混合驗收，不是純 Computer Use 送鍵；沒有使用 IPC 或測試專用開窗入口。OS 衝突與錄製持續需各自驗證。
+`--observe`（plan 063）在設定已開啟時拒絕執行；它先讓 Finder 置前、送出按鍵，再透過輔助使用斷言：設定視窗是 main 且有焦點、RecordStuff 在前景；Tab 會移動焦點所在的控制項（先設定 `AXManualAccessibility`，這是輔助軟體使用的開關，讓 Chromium 公開網頁焦點）；⌘M 會最小化；第二次送鍵會把它還原到前景；⌘W 會關閉；第三次送鍵會重新開啟。callback 與輔助使用檢查分開列為腳本證據，面板保持開啟。排版與外觀仍由 `pnpm acceptance:settings` 的截圖或觀察判斷。權限拒絕只回報，不自動修改；沒有使用 IPC 或測試專用開窗入口。OS 衝突與錄製持續需各自驗證。
 
 `pnpm acceptance:shortcut` 另執行第三個隔離的設定階段，使用正式 main／preload／頁面，透過受控註冊 adapter 驗證既存平台等價衝突、恢復、雙語拒絕、擷取暫停與 renderer 崩潰清理。測試會最小化真正的 Electron 視窗，再經註冊 callback 還原，斷言視窗數量與焦點。這屬於整合證據，與原生 Computer Use、真正 OS 衝突測試分開記錄；三個程序及暫存偏好皆會清理。
 
@@ -326,13 +351,13 @@ Exit code：
 
 完整 App 驗收每輪無論成功、失敗或中斷，都須保存測試錄影、還原設定、清理測試視窗、退出受測 App 並確認程序已消失。清理失敗算驗收失敗；保留證據，不重設權限。開發期間已授權按需停止錄影、退出、重啟或重建 RecordStuff，不需另行確認。退出只重設程序狀態，不會清除偏好。
 
-桌面 runner（`acceptance`、`acceptance:settings`、`acceptance:shortcut` 與執行它們的 regression、`acceptance:shortcut-layout`、`acceptance:settings-shortcut`、`acceptance:quit-dialog`、`acceptance:notification`、含擷取的 `acceptance:updates`、`acceptance:playback`、`matrix`、`measure:cpu` 及 `audio:quality -- record`）共用 [desktop-session.mts](../../../scripts/lib/desktop-session.mts)：`caffeinate -u` 喚醒閒置關閉的螢幕；以 `ioreg` 的 `CGSSessionScreenIsLocked` 在啟動任何東西或送出按鍵前拒絕鎖定中的 session；`caffeinate -d -i -w <runner pid>` 讓螢幕保持開啟到 runner 結束；回合中（每 2 秒及結束時）偵測到鎖定，結果改為 BLOCKED、exit code 2，並在報告寫入 `Desktop:` 一行。隔離的 lifecycle fixture 不需要螢幕，不持有 assertion。
+桌面 runner（`acceptance`、`acceptance:settings`、`acceptance:shortcut` 與執行它們的 regression、`acceptance:shortcut-layout`、`acceptance:settings-shortcut`、`acceptance:tray`、`acceptance:quit-dialog`、`acceptance:notification`、含擷取的 `acceptance:updates`、`acceptance:playback`、`matrix`、`measure:cpu` 及 `audio:quality -- record`）共用 [desktop-session.mts](../../../scripts/lib/desktop-session.mts)：`caffeinate -u` 喚醒閒置關閉的螢幕；以 `ioreg` 的 `CGSSessionScreenIsLocked` 在啟動任何東西或送出按鍵前拒絕鎖定中的 session；`caffeinate -d -i -w <runner pid>` 讓螢幕保持開啟到 runner 結束；回合中（每 2 秒及結束時）偵測到鎖定，結果改為 BLOCKED、exit code 2，並在報告寫入 `Desktop:` 一行。隔離的 lifecycle fixture 不需要螢幕，不持有 assertion。
 
 設定驗收另外把被其他 App 取消啟用的視窗視為 blocked（plan 057）。視窗未啟用時頁面不畫 focus line，而在 macOS 上 `BrowserWindow.focus()` 無法從其他 App 取回啟用狀態；因此在每個需要啟用視窗的案例前（focus line 與 focus border 矩陣、會因 blur 取消的快捷鍵錄製、頁面只在文件有焦點時才於失敗紀錄操作或失敗連結的 Retry 後歸還的焦點，以及它們一起拍的截圖），fixture 會讀取 `BrowserWindow.isFocused()`、`isVisible()` 與頁面的 `data-window`，視窗未啟用時照 `SettingsWindow` 的方式要求啟用（先 `app.focus({ steal: true })`，再 `window.focus()`），並在判定案例時再讀一次。每段互動各自檢查，一段互動中的 blur 不會決定下一段；任一時點視窗未啟用或中間發生 blur 的案例，會在 console、`report.md` 與 `results.json` 標為 `NOT RUN`，附上原因與 `lsappinfo` 讀到的最前面 App；在啟用視窗上執行的案例保留原本的通過或失敗。`capturePage()` 丟出錯誤時，fixture 仍會寫出目前已記錄的案例，並另寫 `failure.json`，記下失敗的截圖與當下視窗狀態。若 fixture 已顯示過視窗，而讓這一輪停下的只有 not-run 案例或在未啟用／隱藏視窗上的截圖失敗，則以 exit 2（blocked）結束；只要有已判定的失敗、其他原因的中止，或 fixture exit code、程序收尾與結果不一致，就以 exit 1 結束。分類邏輯位於 [settings-activation.mts](../../../scripts/lib/settings-activation.mts) 及其單元測試。
 
 各 runner 共用程序比對與啟動環境（plan 052）。[processes.mts](../../../scripts/lib/processes.mts) 產生所有 `pgrep`/`pkill` pattern：RecordStuff bundle 用 `recordStuffPattern`，checkout 的開發用 Electron.app 用 `electronPattern`，兩者都會跳脫路徑並加上錨點，因此位於 `~/Code (2026)/` 之下的 checkout 只會比對到自己，不會比對到相鄰路徑或在參數中提到它的程序；`pgrepPids` 在無法啟動 `pgrep`，或 status 不是 0 與 1（1 表示沒有）時丟出錯誤。程序群組探測只把 `ESRCH` 視為已不存在；`EPERM` 表示群組仍存在，送出訊號失敗會回報收尾錯誤。因此 `pgrep` 失敗會擋下這一輪，而不是被當成「沒有東西在執行」：preflight 階段會在啟動任何東西前停止；收尾階段則以 exit 1 結束（中斷後會印出 `CLEANUP FAILED`），因為此時無法證明本回合的程序已經結束。所有會啟動 Electron 或 App 的 runner 都從 [runner-env.mts](../../../scripts/lib/runner-env.mts) 的 `scrubbedEnv()` 開始，它會移除 `ELECTRON_RUN_AS_NODE`、`ELECTRON_RENDERER_URL`、`RECORDSTUFF_AUTORECORD` 與 `NODE_OPTIONS`（VS Code 的 JavaScript Debug Terminal 會設定最後這個），runner 只再加上自己負責的值，例如 autorecord 要求、fault point 或 `PATH`；若有 runner 自行刪除這些 key 或複製 `process.env`，單元測試會失敗。`matrix`、`measure:finalization` 與 `diagnose:cadence` 以非同步方式在建置自己的程序群組中建置，因此建置期間的 Ctrl-C 或 SIGTERM 只會送到 runner，由它的處理程序停止整個群組，收尾後 exit 130 或 143。`matrix`、`measure:finalization` 與 `diagnose:cadence` 和 `acceptance`、`measure:cpu`、`acceptance:updates` 一樣，以本回合用 `mkdtemp` 建立的私有 Chrome profile 開啟素材；收尾會等該瀏覽器結束後刪除 profile，無法刪除時列為收尾未完成。
 
-`pnpm acceptance` 會讓受測 App 保持關閉，並在 `report.md` 記錄包含收尾的最終結果；若程序已更換或無法確認待命，拒絕退出。通知驗收還原安裝產物與設定後保持 App 關閉。設定驗收管理自己的程序群組，包含中斷與逾時清理，結果寫入 `cleanup.json`。隔離 runner 只清理自己的程序；單元檢查不關閉無關 App。設定快捷鍵入口仍保留面板供原生操作，由完整 Computer Use 驗收負責退出。下一輪錄影驗收前需重新啟動；程式改動後用 `pnpm start:app` 重建。
+`pnpm acceptance` 會讓受測 App 保持關閉，並在 `report.md` 記錄包含收尾的最終結果；若程序已更換或無法確認待命，拒絕退出。通知驗收還原安裝產物與設定後保持 App 關閉。設定驗收管理自己的程序群組，包含中斷與逾時清理，結果寫入 `cleanup.json`。隔離 runner 只清理自己的程序；單元檢查不關閉無關 App。設定快捷鍵入口仍保留面板供原生檢查，由完整回合負責退出。Tray 驗收和 `pnpm acceptance` 一樣讓 App 保持關閉。下一輪錄影驗收前需重新啟動；程式改動後用 `pnpm start:app` 重建。
 
 快捷鍵 runner 在送出開始按鍵前及失敗時寫入 `input-diagnostics.json`：包含實際 AppleScript、App PID、送鍵程序、System Events UI 狀態、前景 App，以及 IORegistry 回報的 Secure Input 擁有者。沒有回報擁有者不代表已證明 Secure Input 關閉。診斷查詢唯讀、有時限，不會授予權限。失敗時也保留 `events.log` 與本次 `app-session.log`。osascript 成功不等於按鍵送達，必須收到 App callback 才算；逾時後不要盲目重送切換快捷鍵，以免停止延遲開始的錄影。送鍵失敗時，先對同一個 bundle 與輸入環境比較實體按鍵和產生的腳本，再判斷是否為 App 故障。
 
@@ -345,7 +370,7 @@ pnpm acceptance:regression
 
 先執行 TypeScript、Vitest 與 build，再依序執行設定 fixture 和快捷鍵整合，避免重複建置。Console 會列出各自的 `docs/verification/measurements/` 報告；非零退出碼代表失敗，`&&` 確保失敗後不繼續下一階段。隔離整合另外連跑兩輪「設定快捷鍵 callback → 真正 Electron 按鍵 ⌘W（其他平台 Ctrl+W）→ Tray 設定 handler 重開」，斷言只有一個視窗、可見且聚焦、App 與註冊仍存在、偏好沒有改寫且未開始錄影或產生影片。
 
-這是正式 main／preload／renderer 的整合回歸；快捷鍵註冊及 Tray 邊界受控，不能聲稱測過 OS 全域送鍵或實際 Tray 點擊。原生入口仍用 `pnpm acceptance:settings-shortcut` 加 computer use／人工觀察；真實錄影仍用 `pnpm start:app` 與 `pnpm acceptance`，後者會正常結束測試 App。實體拔插螢幕、VoiceOver 聽感及使用者理解仍需人工。已通過的案例若程式、環境或測試條件沒有相關變更，不要求使用者反覆重測。
+這是正式 main／preload／renderer 的整合回歸；快捷鍵註冊及 Tray 邊界受控，不能聲稱測過 OS 全域送鍵或實際 Tray 點擊。原生入口改用 `pnpm acceptance:settings-shortcut -- --observe`，實際 Tray 點擊用 `pnpm acceptance:tray`；真實錄影仍用 `pnpm start:app` 與 `pnpm acceptance`，後者會正常結束測試 App。實體拔插螢幕、VoiceOver 聽感及使用者理解仍需人工。已通過的案例若程式、環境或測試條件沒有相關變更，不要求使用者反覆重測。
 
 ### 驗證配方與計時
 
@@ -372,11 +397,11 @@ pnpm acceptance:recipe -- shortcut-registration
 
 fixture 只從完整簽章的 Electron.app 啟動（plan 062）：macOS 拒絕 `node_modules` 中只有 linker／ad-hoc 簽章的 Electron 發出通知（`UNErrorDomain` error 1）；2026-10-01 的 A/B/A 比對中，同一份副本加上完整的 RecordStuff Dev 簽章後，兩種語言的通知都送達。每一輪都在獨立受監督的程序群組中，以 60 秒上限執行 `node scripts/start-app.mjs --fixture-app <temporary>/Electron.app <report>/signature.json`：以 `ditto` 把本 checkout 的 Electron.app 複製到唯一的暫存目錄，用 `pnpm start:app` 選取的 identity（RecordStuff Dev 或 `RECORDSTUFF_SIGN_IDENTITY`，同樣檢查有效期、自簽與重複）以 `codesign --force --deep --timestamp=none` 簽署副本，再以同一個 `verifyBundle` 驗證：`codesign --verify --deep --strict`、外層 App 與每個巢狀 app／framework 都是選定憑證、沒有 ad-hoc 簽章、identifier 為 `com.github.Electron`，以及 designated requirement `identifier "com.github.Electron" and certificate leaf = H"<sha1>"`。副本保留比對時使用其通知權限的 Electron identifier，沒有 hardened runtime 或 entitlement。identity 缺少、重複、過期或無法存取、keychain 需要有人操作（`errSecInternalComponent` 等），或查詢 keychain 時逾時，都是 **blocked**（exit 2）；其他簽章或驗證失敗，以及中斷，都是 **fail**（exit 1）。兩者都不啟動 fixture。不會修改 `node_modules`、`dist/`、已安裝 App、偏好、憑證或信任設定。setup 的 `TMPDIR` 也在同一個暫存目錄內，所以驗證被中止時不會在別處留下憑證 scratch。副本在其程序群組都結束後移除；無法確認時保留副本，清理記為失敗。被中止程序寫壞的證據視同缺少；runner 本身出錯時，仍在相同條件下移除副本，並寫出失敗的 `report.json`。
 
-報告分開記錄五層：簽章 fixture App（含來源資訊：commit、dirty 狀態與 `workingTreeIdentity` 內容、Electron 版本、lockfile 與 fixture hash、bundle 路徑與 identifier、憑證名稱、SHA-1 與到期日、designated requirement 及 setup 各階段時間）、生命週期（一次延後與一則通知、timer、精確 bytes、正常結束）、通知送達事件、視覺橫幅與清理。fixture 在事件發生時就把 `requested`、`shown` 與 `failed` 附加到 `notification.jsonl`，所以生命週期之後失敗也能判讀送達。只有在請求後 8 秒內收到 `shown` 事件才算送達通過；明確的授權拒絕（`UNErrorDomain` error 1、“not allowed”）是 blocked，其他錯誤或時窗內沒有事件都是失敗，失敗優先於 shown。runner 從不判讀視覺層：它固定為 **not run**，理由是須由觀察者另行記錄。任一層失敗，整輪即失敗（exit 1），並優先於 blocked 結果（包括鎖定）；否則任一層 blocked、無法執行或期間鎖定，整輪為 blocked（exit 2）。exit 0 是簽章 App、生命週期、送達事件與清理的自動化證據；完整原生驗收仍需要視覺觀察。
+報告分開記錄六層：簽章 fixture App（含來源資訊：commit、dirty 狀態與 `workingTreeIdentity` 內容、Electron 版本、lockfile 與 fixture hash、bundle 路徑與 identifier、憑證名稱、SHA-1 與到期日、designated requirement 及 setup 各階段時間）、生命週期（一次延後與一則通知、timer、精確 bytes、正常結束）、通知送達事件、透過輔助使用讀到的橫幅文字、視覺橫幅與清理。fixture 在事件發生時就把 `requested`、`shown` 與 `failed` 附加到 `notification.jsonl`，所以生命週期之後失敗也能判讀送達。只有在請求後 8 秒內收到 `shown` 事件才算送達通過；明確的授權拒絕（`UNErrorDomain` error 1、“not allowed”）是 blocked，其他錯誤或時窗內沒有事件都是失敗，失敗優先於 shown。fixture 執行期間，runner 每 300 ms 讀一次通知中心的輔助使用樹（plan 063）：橫幅群組（`AXNotificationCenterBanner`）帶有 `title` 與 `body` 文字，即使橫幅畫面上截斷，body 仍是完整文字。只計算啟動前沒有列出的 RecordStuff 橫幅；必須恰好出現一則，且 body 要等於本輪語言的正式延後訊息（`DEFERRAL_MESSAGE.media`，單元測試把它的文字綁定到 runner），另一種語言的文字判為語言錯誤。沒有 shown 通知時此層 not run，沒有輔助使用權限時為 blocked。2026-10-02 兩種語言都通過，其中一輪期間的截圖也顯示同一則完整、未截斷的橫幅。runner 從不判讀視覺層：它固定為 **not run**，理由是須由觀察者另行記錄橫幅是否可見、可讀、未截斷。任一層失敗，整輪即失敗（exit 1），並優先於 blocked 結果（包括鎖定）；否則任一層 blocked、無法執行或期間鎖定，整輪為 blocked（exit 2）。exit 0 是簽章 App、生命週期、送達事件、橫幅文字與清理的自動化證據；完整原生驗收仍需要視覺觀察。
 
 `--help` 不啟動程序；錯誤參數在啟動前失敗。Ctrl+C 只取消隔離程序群組，簽章期間與啟動後都一樣；重複取消訊號不會跳過外層清理。此 runner 取消／逾時時立即 SIGKILL 自己建立的可丟棄合成程序群組；其他 runner 保留預設的 SIGTERM 正常收尾。外層 40 秒期限限制無人操作的執行；中斷、逾時或強制清理都算失敗，不算通過。此 macOS／Electron 上，即使加入 JavaScript 訊號 handler，SIGTERM 取消仍未阻止正式退出提示在強制清理前出現。合成 fixture 專用的 SIGKILL 避免這種誤導，固定記為強制清理與失敗；不作用於正式 RecordStuff。Log（`setup.log`、`electron.log`）、`signature.json`、`notification.jsonl` 與 `report.json`／`report.md` 保留在 `docs/verification/measurements/<timestamp>-quit-dialog-<language>/`。報告刻意將原生觀察留為 **not recorded**，需另記觀察者、橫幅／文字結果與截圖。`shown` 事件不代表橫幅確實可見。這是來自簽章 Electron 副本、帶 Electron 圖示的開發 fixture 證據，不是 RecordStuff bundle 身分或真實錄影證據。
 
-由 agent 自動做視覺驗收時，依[原生驗收技能](../../../.agents/skills/astra-acceptance-with-computer-use/SKILL.md)：agent 擷取真正提示，以截圖搭配 accessibility 狀態自行判讀、關閉提示，再核對生命週期與清理證據。工具支援時保存 PNG，否則明確引用工具圖像。此自動化需要具桌面能力的 agent；單獨指令不會呼叫模型。自動置前需要被動的前後桌面證據，先選取目標或只看 App 裁切圖不能證明；維護者確認仍標為人工證據。
+由 agent 自動做視覺驗收時，依[原生驗收技能](../../../.agents/skills/native-acceptance/SKILL.md)：agent 擷取真正提示，以截圖搭配 accessibility 狀態自行判讀、關閉提示，再核對生命週期與清理證據。工具支援時保存 PNG，否則明確引用工具圖像。此自動化需要具桌面能力的 agent；單獨指令不會呼叫模型。自動置前需要被動的前後桌面證據，先選取目標或只看 App 裁切圖不能證明；維護者確認仍標為人工證據。
 
 **報告提醒：** 測試期間若有測試步驟以外的人為桌面操作，可能影響焦點、截圖與判讀結果；目前流程不會自動偵測所有干擾。保留既有流程，不增加每輪核准或鍵鼠監控。若已知受干擾，受影響的原生觀察標為 blocked／無法判定，保留原始截圖、log 與 runner 結果，不直接判為產品通過或失敗；需要有效結論時，再於無干擾環境重測該項。報告與最後回覆均附上此提醒。
 

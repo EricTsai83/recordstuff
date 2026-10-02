@@ -16,7 +16,7 @@
 | App 原始碼、執行期資源或重構 | `pnpm check`；有意義時補行為測試，尤其可重現 bug 的回歸測試；更具體分類未涵蓋時，仍須檢視受影響的可見行為 | 未影響 OS 或需觀察的介面行為時，不需封裝／原生驗收 |
 | 僅顯示文案或翻譯 | `pnpm check`；檢視受影響語言／介面的語意與溢位。設定文案在 check 建置後跑 `pnpm acceptance:settings` 並檢視相關截圖 | 錄影、原生快捷鍵送達、音訊／矩陣測試 |
 | 設定排版、外觀、控制項、持久化、視窗生命週期或設定 IPC／preload | `pnpm acceptance:regression`（已包含 check／build）；視覺修改檢視相關截圖；互動改動在 fixture 使用真正滑鼠／鍵盤事件覆蓋 | 純排版／外觀不需錄影。只有受影響的 OS 邊界或 fixture 無法呈現的行為需要原生檢查 |
-| 全域快捷鍵註冊／送達、Tray 操作、焦點、原生入口或 OS 無障礙 | 設定／快捷鍵整合跑 `pnpm acceptance:regression`，其他跑 `pnpm check`。在新建置的 App 操作受影響原生行為；設定入口可用 `pnpm acceptance:settings-shortcut` 加可見觀察。註冊方式改動另需 `pnpm acceptance:shortcut-layout`；`pnpm acceptance:recipe -- shortcut-registration` 以一次建置跑完兩者 | 完整原生狀態矩陣；不會開始／停止或干擾擷取的操作不需錄影 |
+| 全域快捷鍵註冊／送達、Tray 操作、焦點、原生入口或 OS 無障礙 | 設定／快捷鍵整合跑 `pnpm acceptance:regression`，其他跑 `pnpm check`。在新建置的 App 操作受影響原生行為：Tray 操作與選單用 `pnpm acceptance:tray`，設定入口用 `pnpm acceptance:settings-shortcut -- --observe`，外觀則觀察保存的截圖。註冊方式改動另需 `pnpm acceptance:shortcut-layout`；`pnpm acceptance:recipe -- shortcut-registration` 以一次建置跑完兩者 | 完整原生狀態矩陣；不會開始／停止或干擾擷取的操作不需錄影 |
 | 錄影開始／停止、capture host／協定、編碼、檔案寫入、來源／品質選擇、錄製鎖定、權限或錄製中退出 | `pnpm check`，加新 `pnpm start:app` 產物的一輪錄影 smoke：開始、停止、存檔、媒體驗證與播放。追加改動案例，例如輸出資料夾或螢幕選擇；設定路徑也改動時加設定回歸 | 所有解析度／品質、長錄影、權限重設及實體拔插，除非影響該行為或需求指定 |
 | 幀時序、同步、解析度／fps 或音質 | 錄影列，加相關矩陣子集：`pnpm matrix -- quick`、`levels`、`fps` 或 `long`（依影響選案例）；音質使用工具指南中的相關 `pnpm audio:quality` 診斷 | 預設跑完整矩陣；沒有長錄需求時跑十分鐘錄影 |
 | 待機或錄影 CPU：新增或改動計時器、輪詢、監看、會持續存在的視窗或 renderer、Tray 工作，或升級 Electron | `pnpm check`（其中的計時器測試會抓出工作階段遺留的計時器），加新 `pnpm start:app` 產物上的 `pnpm measure:cpu`，依 [CPU 預算](system-design/tooling.md#cpu-預算)判定。升級 Electron 時以 `pnpm measure:cpu -- --fps 60 --repeat 3` 重新取 baseline，並更新記錄的 baseline。本來就需要跑矩陣的改動，也要看矩陣的 CPU 數字 | 未影響錄影 CPU 時不需 `--fps 60` 與重複；除非結果接近門檻，不需超過 5 分鐘的待機量測 |
@@ -56,6 +56,18 @@
 - 相同檔案、分析器版本／參數與範圍可復用媒體分析。舊 UI 證據只有在相關實作、產物與環境未變時可復用，須引用來源。程式改動後原生驗收須重建。歷史測試數量不是現行通過門檻。
 - 必要檢查通過後停止；只有後續修改、失敗、未解風險、環境改變或明確要求才擴大／重跑。不請使用者反覆重測未受影響且已通過的人工案例。不新增只照抄實作或斷言文件措辭的測試。
 - 區分 **not applicable／不適用**（影響範圍外，附理由）、**not run／未執行**（必要但未嘗試）、**blocked／受阻**（必要但缺前置）、**fail／失敗**及 **pass／通過**。缺權限／工具是受阻，不能改稱不必測。豁免保留未執行及使用者理由，不標通過。回報缺口並繼續可獨立完成的檢查。
+
+### 腳本 runner 或 Computer Use
+
+每個原生案例的操作方式在回合開始前決定。有專案 runner 涵蓋的操作就用 runner；觀察畫面呈現，以及沒有 runner 涵蓋的操作，才用 Computer Use；主觀判斷與需要維護者在場的步驟留給維護者。runner 與觀察回答的是不同問題，彼此不能代替；哪個 runner 涵蓋哪項操作、哪些仍由 Computer Use 或維護者負責，列在[原生案例](acceptance.md#腳本-runner-或-computer-use)。
+
+| 證據 | 意義 | 能證明 | 不能證明 |
+| --- | --- | --- | --- |
+| 腳本原生輸入 | 已提交的專案 runner 對其目標送出真正的 OS 事件（System Events 按鍵與 press、CGEvent、對它自己開啟的播放器下 AppleScript），並斷言輔助使用狀態、log 與檔案 | OS 已送達輸入；原生選單、視窗、通知橫幅、Finder 或播放器達到預期狀態，App 也有反應 | 像素、可讀性、對齊、外觀、聲音 |
+| Computer Use 觀察 | agent 檢視截圖或即時桌面並判讀 | 擷取到的畫面中，一般人會看到什麼 | 畫面沒有呈現的內容；輸入不是它送出時，也不能證明輸入已送達 |
+| 人工 | 維護者操作或判斷 | 主觀聽感、可讀性、需要密碼或 Touch ID 的步驟 | 維護者沒有執行的案例 |
+
+每個案例的證據都要標明種類，並在報告中分開呈現；一個案例有多種證據時逐一列出。腳本通過永遠不當作視覺或主觀證據；腳本通過但與畫面所見不符時，是 runner 失敗，不是產品通過。只有已提交的 runner 可以送出腳本輸入：執行者不臨時撰寫 AppleScript、System Events、IPC 或測試 hook 來代替操作。agent 如何操作 Computer Use 屬於[驗收 skill](../../.agents/skills/native-acceptance/SKILL.md)。
 
 ## 縮短錄影回合
 
