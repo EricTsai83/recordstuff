@@ -2,7 +2,7 @@
 
 [English](064-windows-release.md) | [繁體中文](064-windows-release.zh-TW.md)
 
-狀態：提案；佇列第三個，[062](062-signed-notification-acceptance.zh-TW.md) 與 [063](063-scripted-native-acceptance.zh-TW.md) 都結案後才開始。相依：步驟 1 是維護者決定門檻，之後每一步都需要它；步驟 3 需要步驟 2 的安裝檔；步驟 4–7 需要步驟 3 的可行性結論；步驟 8 需要步驟 4–7。步驟 2 以 062 修改後的樣子修改 `scripts/start-app.mjs`；步驟 3 以 063 的證據類型標示證據；步驟 4 的 macOS 複驗在 063 已建好時使用其 `pnpm acceptance:tray`，否則依 063 的選擇規則改用 Computer Use 或人工觀察；步驟 9 重用 063 的證據標籤。與已延後的 058–060 互相獨立。
+狀態：提案；佇列第二個，062（[已結案](../docs/zh-TW/verification/history-2026-10.md#plan-062-結案--2026-10-02)）與 [063](063-scripted-native-acceptance.zh-TW.md) 都結案後才開始。相依：步驟 1 是維護者決定門檻，之後每一步都需要它；步驟 3 需要步驟 2 的安裝檔；步驟 4–7 需要步驟 3 的可行性結論；步驟 8 需要步驟 4–7。步驟 2 以 062 修改後的樣子修改 `scripts/start-app.mjs`；步驟 3 以 063 的證據類型標示證據；步驟 4 的 macOS 複驗在 063 已建好時使用其 `pnpm acceptance:tray`，否則依 063 的選擇規則改用 Computer Use 或人工觀察；步驟 9 重用 063 的證據標籤。與已延後的 058–060 互相獨立。
 
 ## 問題與證據
 

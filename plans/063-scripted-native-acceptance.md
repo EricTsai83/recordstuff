@@ -2,7 +2,7 @@
 
 [English](063-scripted-native-acceptance.md) | [繁體中文](063-scripted-native-acceptance.zh-TW.md)
 
-Status: proposed; second in the queue, started only after 062 has closed, and 064 starts only after this plan closes. Dependencies: step 1 has none; steps 3–6 require the maintainer decision in step 2; step 6 follows [062](062-signed-notification-acceptance.md), which owns the deferred-quit notification runner. Independent of the deferred 058–060 Playwright chain, which covers the Settings fixture rather than the native menu bar. [061's closure record](../docs/verification/history-2026-10.md#plan-061-closure--2026-10-02) left native entry unmeasured, so order steps 3–5 by the cases they unblock rather than by measured cost.
+Status: proposed; first in the queue now that 062 has closed, and 064 starts only after this plan closes. Dependencies: step 1 has none; steps 3–6 require the maintainer decision in step 2; step 6 builds on the deferred-quit notification runner that the closed 062 repaired ([record](../docs/verification/history-2026-10.md#plan-062-closure--2026-10-02)). Independent of the deferred 058–060 Playwright chain, which covers the Settings fixture rather than the native menu bar. [061's closure record](../docs/verification/history-2026-10.md#plan-061-closure--2026-10-02) left native entry unmeasured, so order steps 3–5 by the cases they unblock rather than by measured cost.
 
 ## Problem and evidence
 

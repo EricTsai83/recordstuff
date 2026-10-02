@@ -2,7 +2,7 @@
 
 [English](063-scripted-native-acceptance.md) | [繁體中文](063-scripted-native-acceptance.zh-TW.md)
 
-狀態：提案；佇列第二個，062 結案後才開始；本計畫結案後才開始 064。相依：步驟 1 無；步驟 3–6 需要步驟 2 的維護者決定；步驟 6 排在負責延後退出通知 runner 的 [062](062-signed-notification-acceptance.zh-TW.md) 之後。與已延後的 058–060 Playwright 鏈互相獨立，後者處理的是 Settings fixture，不是原生選單列。[061 的結案紀錄](../docs/zh-TW/verification/history-2026-10.md#plan-061-結案--2026-10-02)沒有量測原生入口，因此步驟 3–5 依它們解除阻擋的案例排序，而不是依量測成本。
+狀態：提案；062 已結案，現為佇列第一個；本計畫結案後才開始 064。相依：步驟 1 無；步驟 3–6 需要步驟 2 的維護者決定；步驟 6 建立在已結案的 062 修好的延後退出通知 runner 上（[紀錄](../docs/zh-TW/verification/history-2026-10.md#plan-062-結案--2026-10-02)）。與已延後的 058–060 Playwright 鏈互相獨立，後者處理的是 Settings fixture，不是原生選單列。[061 的結案紀錄](../docs/zh-TW/verification/history-2026-10.md#plan-061-結案--2026-10-02)沒有量測原生入口，因此步驟 3–5 依它們解除阻擋的案例排序，而不是依量測成本。
 
 ## 問題與證據
 

@@ -4,6 +4,30 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 062 結案 — 2026-10-02
+
+Plan 062 修好了隔離的延後退出通知檢查：過去即使 macOS 拒絕通知，它仍可能通過。由 Claude 實作，Codex GPT-6.1 Sol review。只改了開發工具與文件，App 沒有變更。長期規則見[引導式延期退出通知驗收](../system-design/tooling.md#引導式延期退出通知驗收)、[證據界線](../testing.md#證據界線與停止條件)的通知條目與[準備一輪驗收](../acceptance.md#準備一輪驗收)。
+
+- **根本原因。** `pnpm acceptance:quit-dialog` 直接啟動 `node_modules` 裡的 Electron，它只有 linker／ad-hoc 簽章（`Identifier=Electron`、`Sealed Resources=none`）。macOS 以 `UNErrorDomain` error 1 拒絕通知，而 runner 只判斷生命週期、timer 與清理，所以九月的回合在沒有橫幅的情況下通過（[plan 055](history-2026-09.md#plan-055-結案--2026-09-29)）。2026-10-01 的 A/B/A 比對沿用同一個複製路徑、bundle identifier `com.github.Electron` 與 fixture，只改簽章：原簽章被拒、完整 RecordStuff Dev 簽章兩種語言都送達、還原後又被拒。這證明完整簽章是條件，但沒有分別拆開憑證、Info.plist 與資源封存。沒有變更任何通知設定、信任、TCC 或 entitlement。九月那些 blocked 結果維持原紀錄。
+- **修復。** `node scripts/start-app.mjs --fixture-app` 把本 checkout 的 Electron.app 複製到每輪的暫存目錄，用 `pnpm start:app` 選取的 identity 簽署，再以同一個 `verifyBundle` 驗證。`verifyBundle` 改為可指定 identifier 與 hardened runtime，並明確拒絕 ad-hoc 簽章。一般模式保留原本的預設值、測試、階段計時與建置紀錄。runner 以 60 秒上限監督這段 setup，只啟動驗證過的副本。fixture 把通知事件附加到 `notification.jsonl`。[quit-dialog-acceptance.mts](../../../scripts/lib/quit-dialog-acceptance.mts) 分開判斷五層：簽章 App、生命週期、送達事件、視覺與清理。exit 0 是自動化證據，視覺層維持待補。
+
+### 驗證
+
+- **自動化。** review 修正前 `pnpm check` 通過（97 個檔案、1448 項測試）；修正後 `pnpm typecheck` 與相關測試通過（`start-app.test.ts` 49 項、`quit-dialog-acceptance.test.ts` 34 項）。測試涵蓋：identity 缺少、重複、過期、無法存取，以及金鑰需要有人操作（blocked，不複製也不簽章）；簽章失敗、ad-hoc、bundle 損壞、外層或 helper 憑證錯誤、identifier 與 designated requirement 錯誤（fail，不寫報告）；送達的 shown、太晚、缺少、拒絕與其他錯誤；依階段區分的 setup 逾時、生命週期與清理失敗、鎖定，以及失敗優先。`git diff --check` 通過。
+- **不啟動的演練。** 不存在的 `RECORDSTUFF_SIGN_IDENTITY` 以 blocked（exit 2）結束，沒有啟動。在複製時、以及再一次在簽章時送出 SIGINT，都以失敗（exit 1）結束，沒有啟動。每次都沒有留下暫存副本、簽章 scratch 或程序。
+- **桌面回合。** 維護者在開始前回覆「好了」；環境為 commit `41ae66d` 加上本次未提交的變更。`pnpm start:app` 建置、簽署並驗證 9 個 bundle identity（`identifier "com.ericts.record"`，RecordStuff Dev `01B37351…D637`），從 `dist/mac-arm64` 開啟後正常退出，所有 bundle 程序都已結束。`pnpm acceptance:quit-dialog -- --language zh-TW`（`2026-10-02T14-13-29-958Z-quit-dialog-zh-TW`）與之後的 `-- --language en`（`2026-10-02T14-14-00-328Z-quit-dialog-en`）都以 exit 0 結束。setup 約 1 秒（9 個 bundle；designated requirement `identifier "com.github.Electron" and certificate leaf = H"01b37351…d637"`）。`shown` 事件在請求後 9 ms 到達，timer 最多延遲 2 ms，精確 bytes 已儲存，副本與程序都已清除。
+- **視覺。** Claude 在每次請求後 0.8 秒與 2.3 秒以 `screencapture` 被動截圖，沒有點擊，也沒有改變焦點。繁中：一則 RecordStuff 橫幅，可讀且文字完整。英文：一則可讀的英文橫幅，但 macOS 把正文截在第四行（“…retry the same action: Quit…”）。完整文字沒有看到，因為要在通知中心展開需要原生 UI 操作，本次 session 沒有這項能力；此項維持 **blocked**。橫幅使用 Electron 圖示，這是 fixture 的預期。
+- **review 修正之後。** 上述回合都在修正之前執行。修正只改了 setup 的 `TMPDIR` 與讀取殘缺證據的方式：以私有 `TMPDIR` 直接執行 `--fixture-app`，簽署並驗證了副本，私有暫存目錄最後是空的；兩個演練也重跑了。沒有再次啟動 fixture。
+
+Review：Codex GPT-6.1 Sol（medium reasoning、read-only）。Pass 1（234 秒）提出兩項，都接受並修正：
+
+- 殘缺的 `signature.json`、timing 或 result 會在清理與寫報告之前拋出例外。
+- `verifyBundle` 的憑證 scratch 不在本輪目錄內，setup 被中止時可能留下，而清理仍判定通過。
+
+Pass 2（約 105 秒）審查修正後的 diff，沒有 findings。
+
+清理：沒有殘留 RecordStuff、Electron fixture 或簽章程序，也沒有留下暫存副本或 scratch。報告與 agent 視覺紀錄保留在 `docs/verification/measurements/`；截圖含有無關的桌面內容，已依維護者要求刪除。本次工作期間執行了 `caffeinate -d -i -t 5400`。
+
 ## Plan 061 結案 — 2026-10-02
 
 Plan 061 量測 `pnpm check` 之後的驗收工作，並移除其中發現的重複執行。由 Claude 實作，Codex GPT-6.1 Sol review。只改了開發工具與文件，App 本身沒有改動。長期規則見[選定一次並對每個版本驗證一次](../testing.md#選定一次並對每個版本驗證一次)與[驗證配方與計時](../system-design/tooling.md#驗證配方與計時)。
