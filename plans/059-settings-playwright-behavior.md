@@ -2,7 +2,7 @@
 
 [English](059-settings-playwright-behavior.md) | [繁體中文](059-settings-playwright-behavior.zh-TW.md)
 
-Status: proposed, conditional on 058 adoption. Dependency: the verified harness and adoption result of [058](058-playwright-testing.md). If 058 rejects adoption, this plan is not executable. Default command cutover belongs to [060](060-settings-playwright-cutover.md).
+Status: deferred with 058 on 2026-10-02; executable only after 058 passes its measurement gate and adopts Playwright. Dependency: the verified harness and adoption result of [058](058-playwright-testing.md). If 058 rejects adoption, this plan is not executable. Default command cutover belongs to [060](060-settings-playwright-cutover.md).
 
 ## Problem and scope
 

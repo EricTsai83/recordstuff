@@ -2,7 +2,7 @@
 
 [English](058-playwright-testing.md) | [繁體中文](058-playwright-testing.zh-TW.md)
 
-狀態：提案，依 [061](061-verification-iteration.zh-TW.md) 瓶頸決策判斷是否執行。相依：061 驗證成本拆解與 recipe，重用量測邊界而不重複 instrumentation。本計畫取代原 058 的基礎與試點部分；後續為 [059 — 行為測試遷移](059-settings-playwright-behavior.zh-TW.md)、[060 — 視覺覆蓋與流程切換](060-settings-playwright-cutover.zh-TW.md)。
+狀態：維護者於 2026-10-02 依 [061 量測結果](../docs/zh-TW/verification/history-2026-10.md#plan-061-結案--2026-10-02)決定延後：設定 fixture 是 check 後最大的成本（設定 55.29 秒、快捷鍵整合 37.89 秒；本鏈只遷移前者），所有案例都通過，也沒有觀察到診斷問題，沒有任何採用條件成立。只能在佇列的兩個計畫之間或佇列完成後恢復，不能在某個計畫進行中插入，且只有在下列任一條件成立時才恢復：下方步驟 0 顯示有現有 driver 無法消除、可歸因於 driver 的時間，或設定驗收出現難以重現或難以診斷的失敗。相依：061 的配方與計時工具（[驗證配方與計時](../docs/zh-TW/system-design/tooling.md#驗證配方與計時)）；把這些邊界延伸到 fixture 內，而不是重複 instrumentation。本計畫取代原 058 的基礎與試點部分；後續為 [059 — 行為測試遷移](059-settings-playwright-behavior.zh-TW.md)、[060 — 視覺覆蓋與流程切換](060-settings-playwright-cutover.zh-TW.md)。
 
 ## 問題與範圍
 
@@ -34,7 +34,10 @@ Settings fixture 把建立狀態、輸入、斷言與截圖放在一個長回合
 
 ## 實作
 
-- [ ] 盤點試點案例，將等待分類為同步、故障注入或觀察；分配穩定覆蓋 ID，對照斷言、輸入、IPC／安全邊界及語言／主題／尺寸格。
+步驟 0 決定其餘步驟是否執行；它不更換 driver。
+
+- [ ] **0. 量測門檻。** 讓現有設定 fixture 透過 `RECORDSTUFF_TIMING_FILE` 回報各階段：編譯、Electron 啟動、各案例群組、固定的 `settle()` 等待、主題／尺寸切換與 `capturePage()` 截圖。跑一次 `pnpm acceptance:recipe -- settings`，把每個等待分類為同步、故障注入或觀察。若同步等待占大部分，就在現有 driver 裡改成等待可觀察的狀態，再跑一次配方並記錄前後對照，然後以「拒絕」結案本計畫並取消 059–060。只有在修改後可歸因於 driver 的時間仍占 fixture 至少 20%，或有已記錄的失敗需要現有 driver 無法提供的 trace 時，才繼續。決定記錄在驗證歷史中。
+- [ ] 盤點試點案例，沿用步驟 0 的等待分類；分配穩定覆蓋 ID，對照斷言、輸入、IPC／安全邊界及語言／主題／尺寸格。
 - [ ] 新增測試相依、typecheck/config、最小 bootstrap、外層 runner 與自訂 Electron fixture。新增提案命令 `pnpm acceptance:settings:playwright`，可選試點，需要既有 build；實作前命令不可用。現有預設命令繼續執行 legacy suite。
 - [ ] 驗證 locked runtime 啟動、參數解析、page 選取、產品安全設定、IPC 與 native theme。官方 Electron 支援仍是 experimental，不為啟動 driver 弱化產品安全或變更 fuse（[Electron API](https://playwright.dev/docs/api/class-electron)）。
 - [ ] 依案例使用實際 runner drill 或 controlled test，涵蓋正常退出、assertion failure、timeout、中斷、啟動失敗、renderer crash、截圖／trace 失敗、鎖屏／activation 分類；確認 owned-process 退出、資料隔離與部分結果保存。
@@ -45,7 +48,7 @@ Settings fixture 把建立狀態、輸入、斷言與截圖放在一個長回合
 
 分別量測啟動、fixture 編譯、互動、截圖／報告、清理。另記 `pnpm check` 與完整 regression 耗時，不能把 UI 節省當成相同比例的整體節省。整體收益取決於遷移層占總時間的比例與實測節省，須包含新增成本。
 
-以 061 已改善的驗證 recipe 為 baseline，避免把 orchestration 節省算成 Playwright 成果。每個 driver 暖身一次，再做五組交替成對量測，關閉 retries。失敗／blocked 嘗試與原因分開記錄，blocked 不算 pass。報告有效耗時的中位數／最大值、首次結果與 cleanup。每個 driver 五次樣本無法建立精確 p95 或罕見 flake 比率；未解釋失敗或接近門檻時，做有界追加比較與診斷。
+以 `settings` 配方（`pnpm acceptance:recipe -- settings`）為 baseline，避免把 orchestration 節省算成 Playwright 成果。每個 driver 暖身一次，再做五組交替成對量測，關閉 retries。失敗／blocked 嘗試與原因分開記錄，blocked 不算 pass。報告有效耗時的中位數／最大值、首次結果與 cleanup。每個 driver 五次樣本無法建立精確 p95 或罕見 flake 比率；未解釋失敗或接近門檻時，做有界追加比較與診斷。
 
 目標：等價證據下試點中位數降低至少 20%。必要採用條件：覆蓋／安全／IPC 保留、沒有新增未解釋失敗、零 cleanup 缺陷。未達速度目標時，可因可重現的診斷改善或移除自製互動／報告機制採用，但中位數退步不得超過 5%，並明確標為維護效益。兩種門檻都未過，保留 legacy driver，改做針對性等待改善。拒絕試點後不進入 059／060。
 
@@ -53,4 +56,4 @@ Settings fixture 把建立狀態、輸入、斷言與截圖放在一個長回合
 
 依[測試政策](../docs/testing.md)執行相關工具測試、`pnpm typecheck`、載入 `out/` 前 build、試點成功／失敗／清理路徑；共享 fixture 變更後執行 legacy Settings 驗收，檢查試點截圖。若引入產品／runtime 變更，另加其影響檢查。
 
-完成條件：相容性、證據與程序 ownership 已驗證，試點有採用或拒絕結論。已完成計畫移除前，將共用設計契約與結果保存至耐久文件，供 059 使用。交付為可執行試點、覆蓋對照、量測結果與已驗證 harness；完整 Settings 遷移及預設命令切換交給後續計畫。
+完成條件：步驟 0 以現有 driver 的等待修正結案（記錄前後對照並取消 059–060），或相容性、證據與程序 ownership 已驗證，且試點有採用或拒絕結論。已完成計畫移除前，將共用設計契約與結果保存至耐久文件，供 059 使用。交付為可執行試點、覆蓋對照、量測結果與已驗證 harness；完整 Settings 遷移及預設命令切換交給後續計畫。

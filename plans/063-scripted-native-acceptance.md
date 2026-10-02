@@ -2,7 +2,7 @@
 
 [English](063-scripted-native-acceptance.md) | [繁體中文](063-scripted-native-acceptance.zh-TW.md)
 
-Status: proposed. Dependencies: step 1 has none; steps 3–6 require the maintainer decision in step 2; step 6 follows [062](062-signed-notification-acceptance.md), which owns the deferred-quit notification runner. Independent of the conditional 058–060 Playwright chain, which covers the Settings fixture rather than the native menu bar. When [061](061-verification-iteration.md) has produced its native-desktop inventory, use it to order steps 3–5.
+Status: proposed; second in the queue, started only after 062 has closed, and 064 starts only after this plan closes. Dependencies: step 1 has none; steps 3–6 require the maintainer decision in step 2; step 6 follows [062](062-signed-notification-acceptance.md), which owns the deferred-quit notification runner. Independent of the deferred 058–060 Playwright chain, which covers the Settings fixture rather than the native menu bar. [061's closure record](../docs/verification/history-2026-10.md#plan-061-closure--2026-10-02) left native entry unmeasured, so order steps 3–5 by the cases they unblock rather than by measured cost.
 
 ## Problem and evidence
 
@@ -63,7 +63,7 @@ Proposed location: `scripts/lib/tray-driver.mts`, with a JXA helper following `s
 
 ### 4. Tray acceptance runner
 
-Proposed command: `pnpm acceptance:tray`, against a fresh `pnpm start:app` bundle.
+Proposed command: `pnpm acceptance:tray`, against a fresh `pnpm start:app` bundle or that bundle reopened with `pnpm open:app` while its runtime inputs are unchanged. Like `pnpm acceptance` since 061, judge only the running pid's own log session (`sessionBelongsTo`), waiting a bounded time for it after launch.
 
 - Menu structure in idle, countdown and recording, in both languages: the group order, separators, Start in idle only, failures beside Settings…, greyed folder items while recording and right-aligned registered accelerators from [acceptance.md](../docs/acceptance.md). Compare the native menu with the production `tray-model` output for the same state, so the check covers the Electron-to-NSMenu boundary rather than restating the model.
 - Start recording from the tray (log `state → recording`), Stop and wait for `saved`, Show last recording with the Finder foreground and selection checks reused from `notification-acceptance`, and Quit RecordStuff followed by a process-exit check.

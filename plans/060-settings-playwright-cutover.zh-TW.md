@@ -2,7 +2,7 @@
 
 [English](060-settings-playwright-cutover.md) | [繁體中文](060-settings-playwright-cutover.zh-TW.md)
 
-狀態：提案，須前置計畫成功。相依：058 採用的 harness 與量測契約，以及 [059 行為覆蓋](059-settings-playwright-behavior.zh-TW.md)。本計畫完成 Settings 遷移並切換預設 runner。
+狀態：2026-10-02 隨 058 延後；須 058 採用 Playwright 且 059 完成後才可執行。相依：058 採用的 harness 與量測契約，以及 [059 行為覆蓋](059-settings-playwright-behavior.zh-TW.md)。本計畫完成 Settings 遷移並切換預設 runner。
 
 ## 問題與範圍
 

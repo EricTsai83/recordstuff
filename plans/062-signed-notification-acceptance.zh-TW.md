@@ -2,7 +2,7 @@
 
 [English](062-signed-notification-acceptance.md) | [繁體中文](062-signed-notification-acceptance.zh-TW.md)
 
-狀態：提案。相依：無。此計畫修復已確認的驗收前置條件與結果判定缺陷，獨立於 061 及 058–060 Playwright 遷移，優先處理。
+狀態：提案；佇列第一個，結案後才開始 063。相依：無。此計畫修復已確認的驗收前置條件與結果判定缺陷，[063](063-scripted-native-acceptance.zh-TW.md) 的通知步驟排在它之後。
 
 ## 問題與證據
 
@@ -16,11 +16,11 @@
 
 修復隔離的延後退出通知 runner 及其操作說明。保留合成 bytes、隔離 userData、正式 feedback／Recorder／FileWriter／退出協調器及程序 ownership 管理。一般 Settings fixture 不因使用 Electron 就必須簽章。產品擷取、存檔通知投遞、Electron 升級、CI workflow 與 Playwright 遷移不在範圍。
 
-一般原生 App 驗收使用待驗收版本的 `pnpm start:app` 產物與既有簽章身分。可以驗收開發分支與尚未提交的修復；報告須記錄 commit、dirty 狀態／內容身分、依賴、fixture hash、bundle 路徑／identifier 及所選公開憑證 fingerprint。合併後／發布驗收依既有發布規則使用指定 main commit 或 release candidate。分支名稱不能單獨證明產物新鮮度或簽章有效。
+一般原生 App 驗收使用待驗收版本的 `pnpm start:app` 產物與既有簽章身分。可以驗收開發分支與尚未提交的修復；報告須記錄 commit、dirty 狀態／內容身分（重用 [verification-timing.mts](../scripts/lib/verification-timing.mts) 的 `workingTreeIdentity`）、依賴、fixture hash、bundle 路徑／identifier 及所選公開憑證 fingerprint。合併後／發布驗收依既有發布規則使用指定 main commit 或 release candidate。分支名稱不能單獨證明產物新鮮度或簽章有效。
 
 此合成 fixture 在每輪獨立目錄準備私有 Electron.app 副本，啟動前簽章並驗證。不得修改 node_modules、一般 dist 產物、已安裝 App 或使用者偏好。沿用對照已證實有效的 bundle identifier 與啟動契約；變更 identifier 須另驗權限與通知歸屬。使用既有 RecordStuff Dev 身分或 `RECORDSTUFF_SIGN_IDENTITY` 選擇，沿用憑證有效期／歧義檢查。測試準備不得建立／匯入憑證、修改信任或加入 private entitlement。
 
-從 `scripts/start-app.mjs` 重用最小合適的簽章／驗證支援；若需抽取共用邏輯，保留一般打包的行為與測試。驗證必須拒絕僅 ad-hoc 的簽章，以 `codesign --verify --deep --strict` 檢查 bundle 完整性，並確認外層 bundle 與相關巢狀程式使用所選身分。簽章指令 exit 0 不足以證明可用。避免另外建立未簽章 fallback 或新打包 workflow。
+從 `scripts/start-app.mjs` 重用最小合適的簽章／驗證支援；若需抽取共用邏輯，保留一般打包的行為與測試，包括分段計時與 `pnpm open:app` 檢查的 runtime 輸入建置紀錄（plan 061）。驗證必須拒絕僅 ad-hoc 的簽章，以 `codesign --verify --deep --strict` 檢查 bundle 完整性，並確認外層 bundle 與相關巢狀程式使用所選身分。簽章指令 exit 0 不足以證明可用。避免另外建立未簽章 fallback 或新打包 workflow。
 
 ## 結果與收尾
 

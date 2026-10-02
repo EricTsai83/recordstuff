@@ -2,7 +2,7 @@
 
 [English](060-settings-playwright-cutover.md) | [繁體中文](060-settings-playwright-cutover.zh-TW.md)
 
-Status: proposed, conditional on successful predecessors. Dependencies: 058's adopted harness and measurement contract, and [059's behavioral coverage](059-settings-playwright-behavior.md). This plan completes Settings migration and switches the default runner.
+Status: deferred with 058 on 2026-10-02; executable only after 058 adopts Playwright and 059 completes. Dependencies: 058's adopted harness and measurement contract, and [059's behavioral coverage](059-settings-playwright-behavior.md). This plan completes Settings migration and switches the default runner.
 
 ## Problem and scope
 

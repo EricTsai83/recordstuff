@@ -8,6 +8,7 @@ For what to run now, use the [testing policy](../testing.md) and [shared accepta
 
 | Area | Recorded result and limits |
 | --- | --- |
+| Plan 061 post-check acceptance cost, 2026-10-02 | On an M1 Pro the Settings fixtures cost 93.18 s per Settings change (settings 55.29 s, shortcut integration 37.89 s), the signed bundle build 37.7–40.6 s (packaging 36–39 s), a smoke recording 29.70 s, playback 14.33 s and the keyboard-layout check 6.17 s. `pnpm open:app` reuses a verified bundle in 0.66 s; recipes drop a duplicate build of under 1 s. Native entry and agent intervals were not measured. See the [record](history-2026-10.md#plan-061-closure--2026-10-02). |
 | Working-tree follow-up, 2026-09-30 | Fixed the controlled builder's stale notification anchor; check, website, settings/shortcut integration, controlled self-test, recording smoke and QuickTime playback passed. The follow-up also passed native editing expiry and failure-notification visibility/click delivery. See the [record](history-2026-09.md#working-tree-follow-up--2026-09-30). |
 | Plan 057 settings fixture activation, 2026-09-30 | `pnpm acceptance:settings` passed 176/176 undisturbed; with T3 Code brought forward repeatedly during the focus-line section it ended blocked (exit 2) with 12 cases not run and none failed, each naming the frontmost app. A capture failure in a real round rests on unit tests. See the [record](history-2026-09.md#plan-057-closure--2026-09-30). |
 | Plan 056 dialogs during media work, 2026-09-29 | On a controlled build an uncaught exception during a recording held its box for 81 s while the file kept growing, and the box opened 2 ms after the save; the tray said an error occurred meanwhile, and a deferred quit's “Quit postponed” tray line showed in both languages and cleared when the cleanup finished. A refused notification reports `isSupported()` true and a `failed` event; the output-folder notification during a recording rests on unit tests. See the [record](history-2026-09.md#plan-056-closure--2026-09-29). |
@@ -59,6 +60,7 @@ These are revision- and environment-specific results, not a declaration that the
 
 ## Evidence locations
 
+- [October 2026 history](history-2026-10.md): plan closures from October 2026 onward.
 - [September 2026 history](history-2026-09.md): development rounds, measurements, failures, fixes, accepted limitations and plan closure decisions, preserved with their original headings.
 - Release records: [0.1.0](releases/0.1.0.md), [0.1.1](releases/0.1.1.md), [0.1.2](releases/0.1.2.md), [0.1.3](releases/0.1.3.md), [0.1.4](releases/0.1.4.md), [0.1.5](releases/0.1.5.md), [1.0.0](releases/1.0.0.md).
 - `docs/verification/measurements/`: gitignored raw runs, logs, media analyses and screenshots. Links to this directory are **local evidence references**, not downloadable repository artifacts; a fresh clone will not contain them. On 2026-09-26 the maintainer had every raw run recorded until then deleted from the maintainer machine, together with the test recordings in ~/Movies/RecordStuff; links to earlier runs no longer resolve anywhere, and the curated records in this directory are what remains.

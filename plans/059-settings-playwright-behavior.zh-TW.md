@@ -2,7 +2,7 @@
 
 [English](059-settings-playwright-behavior.md) | [繁體中文](059-settings-playwright-behavior.zh-TW.md)
 
-狀態：提案，須 058 採用後才執行。相依：[058](058-playwright-testing.zh-TW.md) 已驗證 harness 與採用結果；058 拒絕採用則不執行。預設驗收命令切換由 [060](060-settings-playwright-cutover.zh-TW.md) 處理。
+狀態：2026-10-02 隨 058 延後；須 058 通過量測門檻並採用 Playwright 後才可執行。相依：[058](058-playwright-testing.zh-TW.md) 已驗證 harness 與採用結果；058 拒絕採用則不執行。預設驗收命令切換由 [060](060-settings-playwright-cutover.zh-TW.md) 處理。
 
 ## 問題與範圍
 

@@ -2,7 +2,7 @@
 
 [English](062-signed-notification-acceptance.md) | [繁體中文](062-signed-notification-acceptance.zh-TW.md)
 
-Status: proposed. Dependencies: none. Prioritize this independently of 061 and the 058–060 Playwright migration; it fixes a confirmed acceptance prerequisite and verdict defect.
+Status: proposed; first in the queue, and 063 starts only after it closes. Dependencies: none. It fixes a confirmed acceptance prerequisite and verdict defect, and [063](063-scripted-native-acceptance.md)'s notification step follows it.
 
 ## Problem and evidence
 
@@ -16,11 +16,11 @@ The local evidence is under ignored `docs/verification/measurements/2026-10-01-n
 
 Fix the isolated deferred-quit notification runner and its guidance. Keep its synthetic bytes, isolated userData, production feedback/Recorder/FileWriter/quit coordinator and owned-process supervision. Ordinary Settings fixtures do not need signing solely because they use Electron. Changes to product capture, saved-notification delivery, Electron versions, CI workflows and Playwright migration are outside scope.
 
-Normal native App acceptance uses the matching revision's `pnpm start:app` artifact and existing signing identity. Development branches and uncommitted fixes may be tested; report commit, dirty-state/content identity, dependencies, fixture hash, bundle path/identifier and selected public certificate fingerprint. Post-merge/release acceptance uses the designated main commit or release candidate under the existing release policy. Branch name alone does not establish artifact freshness or signature validity.
+Normal native App acceptance uses the matching revision's `pnpm start:app` artifact and existing signing identity. Development branches and uncommitted fixes may be tested; report commit, dirty-state/content identity (reuse `workingTreeIdentity` from [verification-timing.mts](../scripts/lib/verification-timing.mts)), dependencies, fixture hash, bundle path/identifier and selected public certificate fingerprint. Post-merge/release acceptance uses the designated main commit or release candidate under the existing release policy. Branch name alone does not establish artifact freshness or signature validity.
 
 For this synthetic fixture, prepare a private Electron.app copy in a unique per-round directory and sign/verify that copy before launching it. Do not modify node_modules, normal dist output, installed Apps or user preferences. Preserve the working bundle identifier and launch contract demonstrated by the comparison; any identifier change requires its own permission/attribution check. Reuse the configured RecordStuff Dev identity or `RECORDSTUFF_SIGN_IDENTITY` selection and existing certificate validity/ambiguity checks. Never create/import certificates, change trust or add private entitlements as a test setup step.
 
-Reuse the smallest suitable signing/verification support from `scripts/start-app.mjs`; if extraction is necessary, preserve its existing behavior and tests. Verification must reject ad-hoc-only signatures, validate bundle integrity with `codesign --verify --deep --strict`, and establish the selected identity on the outer bundle and relevant nested code. A zero exit from signing alone is insufficient. Avoid a separate unsigned fallback or a new packaging workflow.
+Reuse the smallest suitable signing/verification support from `scripts/start-app.mjs`; if extraction is necessary, preserve its existing behavior and tests, including the phase timing and the runtime-input build record that `pnpm open:app` checks (plan 061). Verification must reject ad-hoc-only signatures, validate bundle integrity with `codesign --verify --deep --strict`, and establish the selected identity on the outer bundle and relevant nested code. A zero exit from signing alone is insufficient. Avoid a separate unsigned fallback or a new packaging workflow.
 
 ## Outcomes and cleanup
 

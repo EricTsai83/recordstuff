@@ -2,7 +2,7 @@
 
 [English](063-scripted-native-acceptance.md) | [繁體中文](063-scripted-native-acceptance.zh-TW.md)
 
-狀態：提案。相依：步驟 1 無；步驟 3–6 需要步驟 2 的維護者決定；步驟 6 排在負責延後退出通知 runner 的 [062](062-signed-notification-acceptance.zh-TW.md) 之後。與有條件的 058–060 Playwright 鏈互相獨立，後者處理的是 Settings fixture，不是原生選單列。[061](061-verification-iteration.zh-TW.md) 產出原生桌面盤點後，用它排定步驟 3–5 的先後。
+狀態：提案；佇列第二個，062 結案後才開始；本計畫結案後才開始 064。相依：步驟 1 無；步驟 3–6 需要步驟 2 的維護者決定；步驟 6 排在負責延後退出通知 runner 的 [062](062-signed-notification-acceptance.zh-TW.md) 之後。與已延後的 058–060 Playwright 鏈互相獨立，後者處理的是 Settings fixture，不是原生選單列。[061 的結案紀錄](../docs/zh-TW/verification/history-2026-10.md#plan-061-結案--2026-10-02)沒有量測原生入口，因此步驟 3–5 依它們解除阻擋的案例排序，而不是依量測成本。
 
 ## 問題與證據
 
@@ -63,7 +63,7 @@ Computer Use 保留腳本做不到或不應做的事：維護者 2026-09-26 授�
 
 ### 4. Tray 驗收 runner
 
-提案指令：`pnpm acceptance:tray`，對新的 `pnpm start:app` bundle 執行。
+提案指令：`pnpm acceptance:tray`，對新的 `pnpm start:app` bundle 執行，或在 runtime 輸入未變時對以 `pnpm open:app` 重開的同一個 bundle 執行。與 061 之後的 `pnpm acceptance` 相同，只判斷執行中 pid 自己的 log session（`sessionBelongsTo`），啟動後在有限時間內等待它出現。
 
 - idle、倒數與錄影三種狀態、兩種語言的選單結構：依 [acceptance.md](../docs/zh-TW/acceptance.md) 檢查群組順序、分隔線、只有 idle 有 Start、失敗紀錄在「設定…」旁、錄影中資料夾項目為灰色、已註冊快捷鍵靠右。把原生選單和同一狀態下正式 `tray-model` 的輸出比對，驗證的是 Electron 到 NSMenu 的邊界，而不是重述 model。
 - 從 tray 開始錄影（log `state → recording`）、停止並等 `saved`、顯示最後一個錄影（沿用 `notification-acceptance` 的 Finder 置前與選取檢查），以及「結束 RecordStuff」後確認程序已退出。
