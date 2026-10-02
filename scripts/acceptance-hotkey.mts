@@ -53,6 +53,7 @@ import {
   acceleratorToKeystroke,
   currentRunId,
   currentState,
+  sessionBelongsTo,
   keystrokeScript,
   lineTime,
   materialOpenArgs,
@@ -248,7 +249,15 @@ async function main(): Promise<void> {
       pid = appRunning() ?? fail("the relaunched RecordStuff is not running");
       console.log(`countdown sound turned on for this round; relaunched the same bundle (pid ${pid})`);
     }
+    // Run right after `pnpm start:app` (as the recording recipe does), the app may not have logged
+    // its start or ready lines yet; judge only this pid's session, waiting up to 30 s for it to settle.
+    const settleBy = Date.now() + 30_000;
     lines = readLines();
+    while (!(sessionBelongsTo(lines, pid) && confirmedIdle(lines)) && Date.now() < settleBy) {
+      await delay(250, undefined, { signal: controller.signal });
+      lines = readLines();
+    }
+    if (!sessionBelongsTo(lines, pid)) fail(`RecordStuff pid ${pid} logged no start line within 30 s; the log's latest session belongs to another process`);
     accelerator = registeredAccelerator(lines) ?? fail("the running app did not log `hotkey: registered …` after its last start (shortcut disabled or refused)");
     const state = currentState(lines);
     if (!confirmedIdle(lines)) fail(`the app is in state ${state}; it must be idle (screen recording permission granted, no session running)`);

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   acceleratorToKeystroke,
   currentRunId,
+  sessionBelongsTo,
   currentState,
   keystrokeScript,
   lastStartIndex,
@@ -54,6 +55,10 @@ describe("acceptance helpers", () => {
     expect(currentRunId(LOG)).toBeUndefined(); // a build before plan 029
     const restarted = [...LOG, "[t] start: RecordStuff 1.0.0; run 20260925T100000000Z-7; electron 44; executable /x"];
     expect(currentRunId(restarted)).toBe("20260925T100000000Z-7");
+    expect(sessionBelongsTo(restarted, "7")).toBe(true);
+    // The previous session must not stand in for a just-opened app (pid 71 is not 7), nor a log without run ids.
+    expect(sessionBelongsTo(restarted, "71")).toBe(false);
+    expect(sessionBelongsTo(LOG, "7")).toBe(false);
     expect(currentRunId([...restarted, "[t] start: RecordStuff 1.0.0; electron 44"])).toBeUndefined();
     // A second launch refused by the single-instance lock is not the current process.
     const refused = [...restarted, "[t] hotkey: registered CommandOrControl+Alt+Shift+R", "[t] state → idle",

@@ -106,6 +106,15 @@ export function currentRunId(lines: readonly string[]): string | undefined {
   return start < 0 ? undefined : startLineRun(lines[start] ?? "");
 }
 
+/**
+ * Whether the log's latest session is the running process's: a run id ends with the pid that
+ * started it (`createRunId`). A just-opened app has not logged its start yet, and until it does
+ * the previous session's lines would describe another process.
+ */
+export function sessionBelongsTo(lines: readonly string[], pid: string): boolean {
+  return currentRunId(lines)?.endsWith(`-${pid}`) ?? false;
+}
+
 /** `[2026-09-19T15:35:23.663Z] …` → the timestamp, or undefined. */
 export function lineTime(line: string): Date | undefined {
   const m = /^\[([^\]]+)\]/.exec(line);
