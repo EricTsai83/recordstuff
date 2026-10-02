@@ -124,6 +124,43 @@ describe("controlled acceptance faults", () => {
     await expect(faults.storage(new RecordingResultStore(history)).load()).resolves.toHaveLength(1);
   });
 
+  it("holds prepared so a real Recorder stays starting, a toggle after the grace cancels it, and the released reply is stopped as stale (plan 065)", async () => {
+    const faults = new ControlledFaults();
+    let deliver!: (message: HostMessage) => void;
+    const started: string[] = [], stopped: string[] = [], recorded: string[] = [];
+    let clock = 0;
+    const host = faults.host({
+      start: async sessionId => { started.push(sessionId); }, record: sessionId => { recorded.push(sessionId); }, stop: sessionId => { stopped.push(sessionId); },
+      onMessage: fn => { deliver = fn; }, onFailure: () => undefined,
+    });
+    let id = 0;
+    const recorder = new Recorder({ host, outputDir: () => dir, quality: () => DEFAULT_QUALITY, ensureWritableDir: async () => undefined,
+      openWriter: faults.openWriter, newSessionId: () => `S${++id}`, monotonic: () => clock });
+    const prepared = (sessionId: string): HostMessage => ({ type: "prepared", sessionId, mimeType: "video/mp4", capture: { videoBitsPerSecond: 1, audioBitsPerSecond: 1, warnings: [] } });
+    faults.set("prepare", "hold");
+    recorder.toggle();
+    await until(() => started.length === 1);
+    deliver(prepared("S1"));
+    expect(faults.heldCounts.prepare).toBe(1);
+    clock = 5000;
+    expect(recorder.state.type).toBe("starting");
+    recorder.toggle();
+    await until(() => recorder.state.type === "idle");
+    expect(stopped).toEqual(["S1"]);
+    expect(faults.release("prepare")).toBe(1);
+    await until(() => stopped.length === 2);
+    expect(stopped).toEqual(["S1", "S1"]);
+    expect(recorded).toEqual([]);
+
+    // Off again: the next reply passes straight through and the attempt records.
+    faults.set("prepare", "off");
+    recorder.toggle();
+    await until(() => started.length === 2);
+    deliver(prepared("S2"));
+    expect(faults.heldCounts.prepare).toBe(0);
+    expect(recorded).toEqual(["S2"]);
+  });
+
   it("refuses unknown modes", () => {
     const faults = new ControlledFaults();
     expect(() => faults.set("close", "hold")).toThrow("close has no mode");

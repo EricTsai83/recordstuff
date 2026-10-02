@@ -92,13 +92,13 @@ export function compareMenu(native: readonly NativeMenuItem[], logged: readonly 
   return { problems, notes };
 }
 
-export type TrayState = "idle" | "countdown" | "recording";
+export type TrayState = "idle" | "starting" | "countdown" | "recording";
 
 /**
  * The acceptance case's rules for one state's menu (docs/acceptance.md, plan
  * 048), judged on the native entries: no separator leads, trails or doubles;
  * Start recording only in idle; Stop only while recording and Cancel recording
- * only in the countdown; the folder items greyed while recording; the menu
+ * only while starting (plan 065's long start) or in the countdown; the folder items greyed while recording; the menu
  * ends with Show log and Quit RecordStuff.
  */
 export function structureProblems(native: readonly NativeMenuItem[], state: TrayState, language: Language): string[] {
@@ -115,7 +115,8 @@ export function structureProblems(native: readonly NativeMenuItem[], state: Tray
   const stop = find(t("Stop"));
   if ((state === "recording") !== Boolean(stop?.enabled)) problems.push(state === "recording" ? "recording has no enabled Stop" : `${state} offers Stop`);
   const cancel = find(t("Cancel recording"));
-  if ((state === "countdown") !== Boolean(cancel?.enabled)) problems.push(state === "countdown" ? "the countdown has no enabled Cancel recording" : `${state} offers Cancel recording`);
+  const cancellable = state === "starting" || state === "countdown";
+  if (cancellable !== Boolean(cancel?.enabled)) problems.push(cancellable ? `${state} has no enabled Cancel recording` : `${state} offers Cancel recording`);
   if (state === "recording") {
     const folder = native.filter(item => item.title.startsWith(translate("Output folder: {path}", language, { path: "" })) || item.title === t("Change output folder…"));
     if (folder.length !== 2 || folder.some(item => item.enabled)) problems.push("the output-folder items are not both shown and greyed while recording");

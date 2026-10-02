@@ -4,7 +4,7 @@ import { replaceOnce as replaceOnceShared } from "./replace-once.mts";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import type { RecordingResult } from "../../src/shared/recording-result.ts";
-import { isFaultMode, isFaultName, isHoldTarget, type FaultName, type HoldTarget } from "../fixtures/controlled-modes.ts";
+import { HOLD_TARGETS, isFaultMode, isFaultName, isHoldTarget, type FaultName, type HoldTarget } from "../fixtures/controlled-modes.ts";
 
 export const CONTROLLED_TOOL = "acceptance:controlled";
 export const SEEDS = ["none", "v1", "retention"] as const;
@@ -34,6 +34,7 @@ export function instrumentControlledAcceptance(source: string, runDir: string): 
     `import { configureControlled } from "../../scripts/fixtures/controlled-acceptance";\n` +
     `const controlled = configureControlled(${JSON.stringify(runDir)});\nlet currentLanguage: Language = DEFAULT_LANGUAGE;`);
   source = replaceOnce(source, "defaultOutputDir: defaultOutputDir(),", "defaultOutputDir: controlled.outputDir || defaultOutputDir(),");
+  source = replaceOnce(source, "  const recorder = new Recorder({\n    host,\n", "  const recorder = new Recorder({\n    host: controlled.host(host),\n");
   source = replaceOnce(source, "openWriter: (recordingPath, finalPath) => FileWriter.open(recordingPath, finalPath),",
     "openWriter: (recordingPath, finalPath) => controlled.openWriter(recordingPath, finalPath),");
   source = replaceOnce(source, PUBLISH, PUBLISH
@@ -117,8 +118,8 @@ export type ControlledArgs =
 export const USAGE = `Usage: pnpm acceptance:controlled -- <command>
   launch [--seed none|v1|retention] [--hold-history-load] [--out <new dir>]
   reopen [--hold-history-load] [--dir <run>]
-  fault <cleanup|write|close|history-save>=<mode> ... [--dir <run>]
-  release <cleanup|history-save|history-load> [--dir <run>]
+  fault <cleanup|write|close|history-save|prepare>=<mode> ... [--dir <run>]
+  release <cleanup|history-save|history-load|prepare> [--dir <run>]
   status | quit | clean | throw [--dir <run>]
   selftest [--out <new dir>]`;
 
@@ -159,7 +160,7 @@ export function parseControlledArgs(argv: readonly string[]): ControlledArgs {
     }
     case "release":
       allow("dir");
-      if (rest.length !== 1 || !isHoldTarget(rest[0])) throw new Error(`release needs one of cleanup, history-save, history-load`);
+      if (rest.length !== 1 || !isHoldTarget(rest[0])) throw new Error(`release needs one of ${HOLD_TARGETS.join(", ")}`);
       return { command, target: rest[0], ...dir };
     case "status": case "quit": case "clean": case "throw":
       allow("dir"); none();

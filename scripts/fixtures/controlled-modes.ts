@@ -11,10 +11,12 @@ export const FAULT_MODES = {
   close: ["off", "fail"],
   /** Holds or rejects failure-history saves until changed. */
   "history-save": ["off", "hold", "fail"],
+  /** Holds the capture host's `prepared` reply in main, so a start stays starting until released (plan 065). */
+  prepare: ["off", "hold"],
 } as const;
 export type FaultName = keyof typeof FAULT_MODES;
 export type Faults = { -readonly [K in FaultName]: (typeof FAULT_MODES)[K][number] };
-export const HOLD_TARGETS = ["cleanup", "history-save", "history-load"] as const;
+export const HOLD_TARGETS = ["cleanup", "history-save", "history-load", "prepare"] as const;
 export type HoldTarget = (typeof HOLD_TARGETS)[number];
 
 export const isFaultName = (value: unknown): value is FaultName =>

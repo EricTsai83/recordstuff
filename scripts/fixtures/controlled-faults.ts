@@ -5,6 +5,7 @@
  * module does. Every fault is off until the runner arms it.
  */
 import { FileWriter, nodeFs, type FileWriterFs, type WritableHandle } from "../../src/main/file-writer";
+import type { RecorderHost } from "../../src/main/recorder";
 import type { ResultStorage } from "../../src/main/recording-result-store";
 import type { RecordingFailure, RecordingResult } from "../../src/shared/recording-result";
 import { FAULT_MODES, isFaultMode, type FaultName, type Faults, type HoldTarget } from "./controlled-modes";
@@ -14,8 +15,8 @@ function fault(code: "EIO" | "ENOSPC", syscall: string, file: string): NodeJS.Er
 }
 
 export class ControlledFaults {
-  private readonly current: Faults = { cleanup: "off", write: "off", close: "off", "history-save": "off" };
-  private readonly held: Record<HoldTarget, Array<() => void>> = { cleanup: [], "history-save": [], "history-load": [] };
+  private readonly current: Faults = { cleanup: "off", write: "off", close: "off", "history-save": "off", prepare: "off" };
+  private readonly held: Record<HoldTarget, Array<() => void>> = { cleanup: [], "history-save": [], "history-load": [], prepare: [] };
 
   constructor(
     private readonly note: (event: string, detail?: object) => void = () => undefined,
@@ -27,7 +28,7 @@ export class ControlledFaults {
 
   get heldCounts(): Record<HoldTarget, number> {
     return { cleanup: this.held.cleanup.length, "history-save": this.held["history-save"].length,
-      "history-load": this.held["history-load"].length };
+      "history-load": this.held["history-load"].length, prepare: this.held.prepare.length };
   }
 
   set(name: FaultName, mode: string): void {
@@ -80,6 +81,25 @@ export class ControlledFaults {
           throw fault("EIO", "close", file);
         }
       },
+    };
+  }
+
+  /**
+   * The production capture host with its `prepared` reply held in main while `prepare` is
+   * armed (plan 065): the host has its stream and waits for `record`, the Recorder still reads
+   * starting, so a long start lasts until `release prepare`. A reply released after the
+   * attempt was cancelled reaches the Recorder as a stale session's, which stops it again.
+   */
+  host(inner: RecorderHost): RecorderHost {
+    return {
+      start: (sessionId, quality) => inner.start(sessionId, quality),
+      record: sessionId => inner.record(sessionId),
+      stop: sessionId => inner.stop(sessionId),
+      onFailure: listener => inner.onFailure(listener),
+      onMessage: listener => inner.onMessage(message => {
+        if (message.type !== "prepared" || this.current.prepare !== "hold") { listener(message); return; }
+        void this.hold("prepare", { sessionId: message.sessionId }).then(() => listener(message));
+      }),
     };
   }
 

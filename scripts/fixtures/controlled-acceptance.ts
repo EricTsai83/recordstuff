@@ -8,7 +8,7 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { Recorder } from "../../src/main/recorder";
+import type { Recorder, RecorderHost } from "../../src/main/recorder";
 import type { RecordingResults } from "../../src/main/recording-result";
 import type { ResultStorage } from "../../src/main/recording-result-store";
 import type { SettingsStore } from "../../src/main/settings";
@@ -157,6 +157,7 @@ export function configureControlled(dir: string) {
   return {
     outputDir,
     openWriter: faults.openWriter,
+    host: (inner: RecorderHost): RecorderHost => faults.host(inner),
     beforePublish: (result: RecordingFailure): Promise<void> => faults.beforePublish(result),
     storage: (inner: ResultStorage): ResultStorage => faults.storage(inner),
     attach(next: Attached): void {

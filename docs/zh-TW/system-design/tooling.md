@@ -297,9 +297,12 @@ Runner 將原始碼與建置資源複製至專用報告目錄，只修改該副�
 ```bash
 pnpm acceptance:tray                      # 先儲存的語言，再另一種
 pnpm acceptance:tray -- --languages zh-TW # 單一語言；另有 --seconds、--bundle、--log、--settings
+pnpm acceptance:tray -- --long-start <run> # 對執行中的受控 build 跑 plan 065 的長時間 start 案例
 ```
 
-在 `pnpm start:app` 或 `pnpm open:app` 之後、App 待命時執行；它只判讀執行中 pid 自己的 log session，最多等 30 秒。Tray 每次彈出選單都會記錄 `tray: menu opened in <state>: <json>`，也就是交給 Electron 的選單。runner 在 idle、倒數與錄影三種狀態，把原生選單逐項和這一行比對，涵蓋 Electron 到 NSMenu 的邊界，並檢查案例規則：開頭、結尾沒有分隔線，也沒有相鄰的分隔線；「開始錄製」只在 idle，「停止」只在錄影中，「取消錄影」只在倒數；錄影中儲存位置項目為灰色；最後是「顯示 log」與「結束 RecordStuff」。它也從選單開始、停止，用通知 runner 的 Finder 置前與選取判定檢查「顯示上一段錄影」，以第二次點擊與「取消錄影」取消倒數（回到 idle、保留「顯示上一段錄影」、沒有新檔案、失敗紀錄或通知），在倒數中結束，並以方向鍵加 Return 開啟「設定…」。第二種語言是在 App 結束時寫進 settings.json 再重新啟動；App 結束後再寫回原值。它保存每個選單的截圖，保留自己錄下的目前畫面短片（沒有測試素材，所以不做媒體檢查），最後選「結束 RecordStuff」。
+在 `pnpm start:app` 或 `pnpm open:app` 之後、App 待命時執行；它只判讀執行中 pid 自己的 log session，最多等 30 秒。Tray 每次彈出選單都會記錄 `tray: menu opened in <state>: <json>`，也就是交給 Electron 的選單。runner 在 idle、倒數與錄影三種狀態，把原生選單逐項和這一行比對，涵蓋 Electron 到 NSMenu 的邊界，並檢查案例規則：開頭、結尾沒有分隔線，也沒有相鄰的分隔線；「開始錄製」只在 idle，「停止」只在錄影中，「取消錄影」只在倒數（或在下方的長時間 start 模式中，於 starting 期間）；錄影中儲存位置項目為灰色；最後是「顯示 log」與「結束 RecordStuff」。它也從選單開始、停止，用通知 runner 的 Finder 置前與選取判定檢查「顯示上一段錄影」，以第二次點擊與「取消錄影」取消倒數（回到 idle、保留「顯示上一段錄影」、沒有新檔案、失敗紀錄或通知），在倒數中結束，並以方向鍵加 Return 開啟「設定…」。第二種語言是在 App 結束時寫進 settings.json 再重新啟動；App 結束後再寫回原值。它保存每個選單的截圖，保留自己錄下的目前畫面短片（沒有測試素材，所以不做媒體檢查），最後選「結束 RecordStuff」。
+
+`--long-start <run>`（plan 065）改以 `pnpm acceptance:controlled -- launch` 為 `<run>` 啟動的 App 為對象，該 run 的 bundle、log、設定與輸出資料夾成為預設值；遇到其他 bundle，或 pid 與該 run 的 `ready.json` 回報不同時會拒絕執行。它透過 run 的命令通道啟用 `prepare=hold`，讓每次 start 都停在 starting、capture host 的 `prepared` 回覆被暫停，然後：在同一個 System Events 腳本中相隔 0.2 秒按兩次錄影快捷鍵，預期第二次在寬限時間內被記為忽略，1.3 秒後的第三次則記錄 `cancelled (toggle) while preparing capture`；左鍵點擊狀態列項目，把 starting 選單和它的 `tray: menu opened in starting` 那一行比對（「取消錄影」必須標出快捷鍵），1.3 秒後再左鍵點擊以取消；最後在 start 被暫停時選「結束 RecordStuff」，必須記錄 `cancelled (quit) while preparing capture` 並在 10 秒內結束。每次取消後放行暫停的回覆，Recorder 必須把它當作過期 session 停止，並檢查輸出資料夾沒有新項目、沒有要求通知，失敗歷史也沒有增加。它不錄影，只使用該 run 儲存的語言；它是 runner 的一個模式而不是另一支 runner，因為它需要的正是這支 runner 的狀態列 driver、選單比對、收尾與報告。收尾會先用「取消錄影」取消仍被暫停的 start，避免放行的回覆送出 `record`（倒數設為「關」時會因此開始錄影），再關閉 `prepare`、放行暫停的回覆，最後才結束其他狀態。它的證據屬於受控狀態證據：暫停發生在 main，而不是真實的擷取請求。
 
 結束碼為 0 通過、1 失敗（任一案例失敗或收尾不完整）、2 受阻（鎖定或沒有輔助使用權限），中斷且收尾沒有留下任何東西時為 130／143；無法到達該狀態的案例是 **not run**，絕不算通過。收尾只作用於 preflight 已接受的 App：在那之前就被拒絕的回合（鎖定、另一個 bundle、沒有輔助使用權限）不碰任何東西。它會關閉選單，用狀態列項目結束倒數或錄影（無法點擊時改用已註冊的錄影快捷鍵），只在設定視窗有焦點時關閉本輪的設定，關閉「顯示上一段錄影」開啟的 Finder 視窗（即使該操作被中斷，也會依資料夾找到），結束 App，之後再還原語言，不依賴已中止的 signal。只有 RecordStuff 在前景且設定有焦點時才送 ⌘W。2026-10-02 分別在 zh-TW 與 en 的錄影中中斷，runner 都存好錄影、結束 App、語言維持繁體中文，結束碼 130。
 
@@ -416,13 +419,14 @@ Plan 035 的原生驗收需要一些真實故障無法隨時產生的失敗狀�
   - `write=eio|enospc` 讓下一次寫入「已有資料的錄影檔」失敗一次，走正式 FileWriter：output_write_failed 或 disk_full，並保留 partial。
   - `close=fail` 讓下一次關閉錄影檔在檔案描述符真正關閉後失敗一次。Writer 無法確認檔案已保存，結果為 unknown；若在正常停止前啟用，停止本身就會以這種方式失敗。
   - `history-save=hold|fail` 會暫停儲存直到 `release history-save`，或以 I/O 錯誤拒絕儲存；故障關閉前，每次自動重試都會再次遇到。
+  - `prepare=hold`（plan 065）在 main 暫停 capture host 的每個 `prepared` 回覆，直到 `release prepare`：host 持有串流並等待 `record`，Recorder 停在 starting，所以 start 可以持續到檢查需要的時間。嘗試取消後才放行的回覆會以過期 session 的身分到達 Recorder，並再被停止一次。
   - `launch` 或 `reopen` 加上 `--hold-history-load` 時，暫停該次啟動的歷史載入直到 `release history-load`；命令通道從啟動起就能回應。
   - `throw` 在下一個 tick 從 timer 丟出一個合成的未捕捉例外，不在任何 promise 內，因此會像真正的程式錯誤一樣到達正式的未捕捉例外 handler（plan 056）。在錄影期間送出，可看出寫入、stall guard 與停止是否持續，以及錯誤對話框何時出現；`events.jsonl` 那一行會記下排程時的狀態與 `mediaPending`。它不是故障模式，不會留在啟用狀態。
 
 ```bash
 pnpm acceptance:controlled -- launch [--seed none|v1|retention] [--hold-history-load]   # 新 run：建置、簽章、開啟
-pnpm acceptance:controlled -- fault cleanup=hold write=enospc     # 另有 close=fail、history-save=hold|fail、<name>=off
-pnpm acceptance:controlled -- release cleanup                     # 或 history-save、history-load
+pnpm acceptance:controlled -- fault cleanup=hold write=enospc     # 另有 close=fail、history-save=hold|fail、prepare=hold、<name>=off
+pnpm acceptance:controlled -- release cleanup                     # 或 history-save、history-load、prepare
 pnpm acceptance:controlled -- status                              # 狀態、故障、暫停中的工作與每筆失敗歷史
 pnpm acceptance:controlled -- throw                               # 下一個 tick 丟出一個合成的未捕捉例外
 pnpm acceptance:controlled -- quit                                # 正式退出：會保存錄影，可能詢問提醒
@@ -433,7 +437,7 @@ pnpm acceptance:controlled -- selftest
 
 `quit` 不會解除已啟用的故障與暫停中的工作，因此可用來驗證被延後或被詢問的退出；要單純退出，先關閉故障並放行暫停的工作。`launch` 或 `reopen` 被中斷或失敗時，會最多等 15 秒看 `open` 是否已啟動 bundle：已回報 ready 的 App 會正常退出，始終沒有回報 ready 的程序會列出來請使用者從選單退出。除了 `launch` 與 `selftest`，其他指令預設作用於最新一次引導 run，可用 `--dir <run>` 指定。`--seed v1` 寫入一筆未讀的舊版 `recording-result.json`，其合成 partial 檔存在，用於遷移驗收。`--seed retention` 在兩筆未讀之間寫入二十筆已看過的紀錄，確認舊的未讀紀錄後即可驗證「保留最近看過的 20 筆」上限。Seed 檔案只含合成 bytes，不是可播放的錄影。`launch` 與 `reopen` 在任何 RecordStuff 執行中時拒絕執行，因為隔離的 userData 不共用單一實例鎖。Exit 0 表示成功、1 表示失敗、2 表示受阻或參數錯誤。啟用與放行事件會寫入 `events.jsonl` 與該 run 的 App log。
 
-所有原生操作都由維護者執行；runner 只負責建置、放入 seed、啟用、放行、回報與退出。唯一例外是 `selftest`，它驗證的是工具而不是產品。它在獨立 run 中關閉通知與錄影快捷鍵，把隔離輸出資料夾設為不可寫，讓因此產生的開始失敗暫停清理，同時拒絕其儲存。接著檢查 pending 與未保存狀態，放行、重試、暫停「知道了」的儲存，退出，以暫停歷史載入的方式重開，再次退出；過程直接呼叫錄製器的 toggle 與正式 action handler。它不錄影，所以寫入與關檔故障只由使用真實 FileWriter 與 Recorder 的單元測試涵蓋。自測失敗或被中斷時，會先關閉所有故障並放行所有暫停的工作再退出。`report.md` 列出每個步驟，App 退出後會移除 workspace。
+所有原生操作都由維護者執行；runner 只負責建置、放入 seed、啟用、放行、回報與退出。這支 runner 內唯一的例外是 `selftest`，它驗證的是工具而不是產品；[`pnpm acceptance:tray -- --long-start`](#tray-驗收) 則依 2026-10-02 對已提交 runner 的授權，操作已啟動受控 build 的真正狀態列項目與快捷鍵。它在獨立 run 中關閉通知與錄影快捷鍵，把隔離輸出資料夾設為不可寫，讓因此產生的開始失敗暫停清理，同時拒絕其儲存。接著檢查 pending 與未保存狀態，放行、重試、暫停「知道了」的儲存，退出，以暫停歷史載入的方式重開，再次退出；過程直接呼叫錄製器的 toggle 與正式 action handler。它不錄影，所以寫入與關檔故障只由使用真實 FileWriter 與 Recorder 的單元測試涵蓋。自測失敗或被中斷時，會先關閉所有故障並放行所有暫停的工作再退出。`report.md` 列出每個步驟，App 退出後會移除 workspace。
 
 ### 稽核工具界限與證據
 

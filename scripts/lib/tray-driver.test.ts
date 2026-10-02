@@ -57,7 +57,13 @@ describe("tray menu comparison (plan 063)", () => {
     expect(structureProblems(recording, "recording", "zh-TW")).toEqual([]);
     recording[3]!.enabled = true;
     expect(structureProblems(recording, "recording", "zh-TW")).toEqual(["the output-folder items are not both shown and greyed while recording"]);
-    expect(structureProblems(native(RECORDED_IDLE), "countdown", "zh-TW")).toEqual(expect.arrayContaining(["countdown offers Start recording", "the countdown has no enabled Cancel recording"]));
+    expect(structureProblems(native(RECORDED_IDLE), "countdown", "zh-TW")).toEqual(expect.arrayContaining(["countdown offers Start recording", "countdown has no enabled Cancel recording"]));
+    // A long start offers the same Cancel recording as the countdown (plan 065).
+    const starting = native([["啟動中，請留意系統權限提示…", false, "", 0], ["取消錄影", true, "1", 1], ["", false, "", 0],
+      ["設定…", true, ",", 2], ["", false, "", 0], ["顯示 log", true, "", 0], ["結束 RecordStuff", true, "", 0]]);
+    expect(structureProblems(starting, "starting", "zh-TW")).toEqual([]);
+    expect(structureProblems(starting, "idle", "zh-TW")).toContain("idle offers Cancel recording");
+    expect(structureProblems(starting.filter((_, i) => i !== 1), "starting", "zh-TW")).toEqual(["starting has no enabled Cancel recording"]);
     const doubled = native([["", false, "", 0], ["Ready", false, "", 0], ["", false, "", 0], ["", false, "", 0], ["Show log", true, "", 0], ["Quit RecordStuff", true, "", 0]]);
     expect(structureProblems(doubled, "idle", "en")).toEqual(expect.arrayContaining(["the menu starts with a separator", "two separators are adjacent", "idle has no enabled Start recording"]));
     expect(isSeparator({ title: "", enabled: false })).toBe(true);

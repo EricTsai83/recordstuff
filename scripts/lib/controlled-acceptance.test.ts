@@ -21,6 +21,7 @@ describe("controlled acceptance instrumentation", () => {
     const instrumented = instrumentControlledAcceptance(source, '/tmp/run with "quotes" $&');
     expect(instrumented).toContain('configureControlled("/tmp/run with \\"quotes\\" $&")');
     expect(instrumented).toContain("defaultOutputDir: controlled.outputDir || defaultOutputDir(),");
+    expect(instrumented).toContain("  const recorder = new Recorder({\n    host: controlled.host(host),\n");
     expect(instrumented).toContain("openWriter: (recordingPath, finalPath) => controlled.openWriter(recordingPath, finalPath),");
     expect(instrumented).toContain("publishFailure: async result => { await controlled.beforePublish(result); return recordingResults.receive(result, {");
     expect(instrumented).toContain('notify: code => permissionNotices.failed(code),');
@@ -89,6 +90,8 @@ describe("controlled acceptance arguments and runs", () => {
     expect(parseControlledArgs(["fault", "cleanup=hold", "write=enospc", "--dir", "/tmp/r"])).toEqual({ command: "fault",
       faults: [{ name: "cleanup", mode: "hold" }, { name: "write", mode: "enospc" }], dir: "/tmp/r" });
     expect(parseControlledArgs(["release", "history-load"])).toEqual({ command: "release", target: "history-load" });
+    expect(parseControlledArgs(["release", "prepare"])).toEqual({ command: "release", target: "prepare" });
+    expect(parseControlledArgs(["fault", "prepare=hold"])).toEqual({ command: "fault", faults: [{ name: "prepare", mode: "hold" }] });
     expect(parseControlledArgs(["reopen", "--hold-history-load"])).toEqual({ command: "reopen", holdHistoryLoad: true });
     expect(parseControlledArgs(["status"])).toEqual({ command: "status" });
     expect(parseControlledArgs(["throw", "--dir", "/tmp/r"])).toEqual({ command: "throw", dir: "/tmp/r" });

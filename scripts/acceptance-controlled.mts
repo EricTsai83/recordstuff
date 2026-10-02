@@ -14,9 +14,10 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as pause } from "node:timers/promises";
 import { copySourceWorkspace } from "./lib/update-acceptance.mts";
 import {
-  CONTROLLED_TOOL, USAGE, instrumentControlledAcceptance, latestRun, nextRequestNumber, parseControlledArgs,
+  CONTROLLED_TOOL, USAGE, instrumentControlledAcceptance, latestRun, parseControlledArgs,
   seedFiles, selfTestFiles, writeSeedFiles, type ControlledArgs, type RunMarker, type Seed,
 } from "./lib/controlled-acceptance.mts";
+import { readJson, sendControlled } from "./lib/controlled-client.mts";
 import { pgrepProcesses, recordStuffPattern } from "./lib/processes.mts";
 import { scrubbedEnv } from "./lib/runner-env.mts";
 import { FAULT_MODES, HOLD_TARGETS, type FaultName } from "./fixtures/controlled-modes.ts";
@@ -61,9 +62,6 @@ async function until<T>(read: () => T | undefined, label: string, timeoutMs: num
     await pause(100);
   }
 }
-const readJson = <T,>(file: string): T | undefined => {
-  try { return JSON.parse(fs.readFileSync(file, "utf8")) as T; } catch { return undefined; }
-};
 
 async function run(program: string, args: string[], cwd: string, logFile: string, timeoutMs: number): Promise<void> {
   const fd = fs.openSync(logFile, "a");
@@ -81,17 +79,8 @@ async function run(program: string, args: string[], cwd: string, logFile: string
   } finally { fs.closeSync(fd); }
 }
 
-async function send(dir: string, command: ControlledCommand, stoppable = true): Promise<Extract<ControlledResponse, { ok: true }>> {
-  const ready = readJson<ControlledSnapshot>(path.join(dir, "ready.json"));
-  if (!ready || !alive(ready.pid)) throw new Error(`The controlled app of ${dir} is not running; use reopen.`);
-  const requests = path.join(dir, "requests");
-  const name = `${nextRequestNumber(fs.readdirSync(requests))}.json`;
-  fs.writeFileSync(path.join(requests, `${name}.tmp`), JSON.stringify(command));
-  fs.renameSync(path.join(requests, `${name}.tmp`), path.join(requests, name));
-  const response = await until(() => readJson<ControlledResponse>(path.join(dir, "responses", name)), `a reply to ${command.kind}`, 15_000, stoppable);
-  if (!response.ok) throw new Error(response.error);
-  return response;
-}
+const send = (dir: string, command: ControlledCommand, stoppable = true): Promise<Extract<ControlledResponse, { ok: true }>> =>
+  sendControlled(dir, command, (read, label, timeoutMs) => until(read, label, timeoutMs, stoppable));
 const status = async (dir: string): Promise<ControlledSnapshot> => (await send(dir, { kind: "status" })).snapshot;
 
 /** Processes of this run's bundle only, matched literally by executable path. */

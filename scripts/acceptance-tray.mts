@@ -10,6 +10,12 @@
  * navigation and Quit RecordStuff are exercised. Screenshots of each menu are
  * saved for visual review, which this runner never claims. The round leaves
  * the app closed. macOS only; nothing here ships with the app.
+ *
+ * `--long-start <run>` (plan 065) instead drives a controlled acceptance build
+ * whose `prepare=hold` fault keeps a start in starting: the shortcut within the
+ * one-second grace (ignored and logged) and after it (cancelled), a left click
+ * after it (cancelled, with the starting menu compared), and Quit while the
+ * start is held (cancelled at once).
  */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -29,6 +35,9 @@ import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings } fr
 import { StoredOverride } from "./lib/stored-override.mts";
 import { TrayDriver, compareMenu, parseMenuLogLine, structureProblems, type TrayState } from "./lib/tray-driver.mts";
 import { classifyTrayRound, renderTrayReport, type TrayCase } from "./lib/tray-acceptance.mts";
+import { CONTROLLED_TOOL } from "./lib/controlled-acceptance.mts";
+import { controlledPid, readJson, sendControlled, type Until } from "./lib/controlled-client.mts";
+import type { ControlledCommand } from "./fixtures/controlled-acceptance";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const USAGE = `pnpm acceptance:tray [-- options]
@@ -37,8 +46,11 @@ const USAGE = `pnpm acceptance:tray [-- options]
   --bundle <app>         the RecordStuff.app under test (default dist/mac-arm64/RecordStuff.app)
   --log <file>           its log (default ~/Library/Logs/recordstuff/recordstuff.log)
   --settings <file>      its settings.json (default the app's), read for the language, countdown and folder
+  --long-start <run>     plan 065's long-start cases against the running controlled build of <run>
+                         (pnpm acceptance:controlled -- launch); its bundle, log and settings are the defaults
 Run after \`pnpm start:app\` (or \`pnpm open:app\`) with the app idle. Records two or more short takes of the
-current display into the app's output folder and keeps them; quits the app at the end.`;
+current display into the app's output folder and keeps them; quits the app at the end. --long-start records
+nothing: each start is held before capture and cancelled.`;
 
 const argv = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--"));
 const option = (name: string): string | undefined => {
@@ -49,11 +61,17 @@ const option = (name: string): string | undefined => {
   return value;
 };
 if (argv.includes("--help")) { console.log(USAGE); process.exit(0); }
-const known = new Set(["--languages", "--seconds", "--bundle", "--log", "--settings"]);
+const known = new Set(["--languages", "--seconds", "--bundle", "--log", "--settings", "--long-start"]);
 for (let i = 0; i < argv.length; i += 2) if (!known.has(argv[i]!)) { console.error(`unknown argument ${argv[i]}\n${USAGE}`); process.exit(2); }
-const bundle = path.resolve(option("--bundle") ?? path.join(root, "dist/mac-arm64/RecordStuff.app")).replace(/\/$/, "");
-const logPath = path.resolve(option("--log") ?? APP_LOG_PATH);
-const settingsPath = path.resolve(option("--settings") ?? APP_SETTINGS_PATH);
+/** The controlled run whose held starts plan 065's cases cancel; its data lives under the run directory. */
+const longStartRun = option("--long-start") === undefined ? undefined : path.resolve(option("--long-start")!);
+if (longStartRun && (argv.includes("--languages") || argv.includes("--seconds"))) { console.error(`--long-start runs in the stored language and records nothing\n${USAGE}`); process.exit(2); }
+const runFile = (relative: string): string | undefined => longStartRun && path.join(longStartRun, relative);
+const bundle = path.resolve(option("--bundle")
+  ?? runFile(path.join("workspace/dist", process.arch === "arm64" ? "mac-arm64" : "mac", "RecordStuff.app"))
+  ?? path.join(root, "dist/mac-arm64/RecordStuff.app")).replace(/\/$/, "");
+const logPath = path.resolve(option("--log") ?? runFile("logs/recordstuff.log") ?? APP_LOG_PATH);
+const settingsPath = path.resolve(option("--settings") ?? runFile("user-data/settings.json") ?? APP_SETTINGS_PATH);
 /** The bundle identifier names its status-item window on the primary menu bar (clickTarget in tray-driver.mts). */
 const bundleId = (() => {
   try { return execFileSync("plutil", ["-extract", "CFBundleIdentifier", "raw", path.join(bundle, "Contents/Info.plist")], { encoding: "utf8" }).trim(); }
@@ -77,7 +95,7 @@ const lines = (from?: LogCursor): string[] => (from ? appLog.since(from).lines.m
 
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 fs.mkdirSync(path.join(root, "docs/verification/measurements"), { recursive: true });
-const out = fs.mkdtempSync(path.join(root, "docs/verification/measurements", `${stamp}-tray-acceptance-`));
+const out = fs.mkdtempSync(path.join(root, "docs/verification/measurements", `${stamp}-${longStartRun ? "tray-long-start" : "tray-acceptance"}-`));
 const cases: TrayCase[] = [];
 const recordings: string[] = [];
 const notes: string[] = [];
@@ -488,10 +506,143 @@ async function main(): Promise<void> {
   }
 }
 
+/** The controlled build's command channel, bounded by `bound`. */
+let prepareArmed = false;
+/** The long-start round's language, for cleanup's Cancel recording. */
+let longStartLanguage: Language = "en";
+function control(dir: string, request: ControlledCommand, bound: AbortSignal = signal): ReturnType<typeof sendControlled> {
+  const until: Until = async (read, label, timeoutMs) => {
+    for (const deadline = Date.now() + timeoutMs; ; await delay(100, undefined, { signal: bound })) {
+      const value = read();
+      if (value !== undefined) return value;
+      if (Date.now() > deadline) throw new Error(`timed out after ${timeoutMs} ms waiting for ${label}`);
+    }
+  };
+  return sendControlled(dir, request, until);
+}
+
+/** The host answered and the build holds that answer: the start is held, not merely slow. */
+async function waitHeld(dir: string): Promise<void> {
+  for (const deadline = Date.now() + 30_000; ; await sleep(150)) {
+    if ((await control(dir, { kind: "status" })).snapshot.held.prepare > 0) return;
+    if (Date.now() > deadline) throw new Error("the capture host's prepared reply was not held within 30 s");
+  }
+}
+
+/**
+ * Releases the held reply of a cancelled start; the Recorder stops it as a stale session's.
+ * Also judges what plan 065 requires of a cancel: no failure entry in the history.
+ */
+async function releaseCancelled(c: TrayCase, dir: string, from: LogCursor, historyBefore: number): Promise<void> {
+  const { released, snapshot } = await control(dir, { kind: "release", target: "prepare" });
+  if (released !== 1) c.problems.push(`released ${released} held prepared replies, expected 1`);
+  const stale = await waitForLog(appLog, from, /\] recorder: stopping stale session \S+ \(prepared\)$/, "the released reply stopped as stale", signal, 10_000).catch(() => undefined);
+  if (stale) c.details.push(stale.line.split("] ")[1]!);
+  else c.problems.push("the released prepared reply was not stopped as a stale session's");
+  if ((snapshot.history?.length ?? 0) !== historyBefore) c.problems.push(`the failure history changed from ${historyBefore} to ${snapshot.history?.length ?? 0} entries`);
+}
+
+/** Plan 065, step 4: long starts held by a controlled build, cancelled by the real shortcut, click and Quit. */
+async function longStart(dir: string): Promise<void> {
+  if (process.platform !== "darwin") refuse("macOS only");
+  if (readJson<{ tool?: string }>(path.join(dir, "run.json"))?.tool !== CONTROLLED_TOOL) refuse(`${dir} is not an acceptance:controlled run`);
+  const any = recordStuffPids();
+  pid = bundlePid() ?? refuse(`${bundle} is not running; start it with \`pnpm acceptance:controlled -- launch\` first`);
+  if (any.some(other => other !== pid)) refuse("another RecordStuff bundle is running; quit it first, since both would own the same shortcuts");
+  if (controlledPid(dir) !== pid) refuse(`pid ${pid} is not the app ${path.join(dir, "ready.json")} reported`);
+  try { desktop = await beginDesktopRound(); }
+  catch (error) { if (error instanceof DesktopBlockedError) { blocked = error.message; return; } throw error; }
+  await waitSession(pid);
+  driver = new TrayDriver(ax, pid, signal, undefined, bundleId);
+  const status = await driver.status();
+  owned = true;
+  if (status.menu) await driver.close();
+  const settings = storedSettings();
+  const language: Language = isLanguage(settings["language"]) ? settings["language"] : "en";
+  longStartLanguage = language;
+  const folder = typeof settings["outputDir"] === "string" ? settings["outputDir"] : path.join(dir, "recordings");
+  const accelerator = registeredAccelerator(lines());
+  const historyBefore = (await control(dir, { kind: "status" })).snapshot.history?.length ?? 0;
+  await control(dir, { kind: "fault", name: "prepare", mode: "hold" });
+  prepareArmed = true;
+  notes.push(`long-start mode: controlled run ${dir}; bundle ${bundle}, pid ${pid}; language ${language}; output folder ${folder}; recording shortcut ${accelerator ?? "not registered"}; prepare=hold armed; ${historyBefore} history entries`);
+  // The grace is measured from the start; each cancelling press waits past it with a margin.
+  const pastGrace = 1300;
+
+  await runCase("long-start-shortcut", "The shortcut within the grace is ignored and logged; after it, it cancels the held start", language, async c => {
+    const keystroke = accelerator ? acceleratorToKeystroke(accelerator) : undefined;
+    if (!keystroke) { c.status = "not run"; c.details.push("no registered recording shortcut"); return; }
+    const before = listing(folder);
+    const from = appLog.end();
+    // One script, so the second press follows the first by the delay rather than by another osascript launch.
+    await command("osascript", ["-e", `${keystrokeScript(keystroke)}\ndelay 0.2\n${keystrokeScript(keystroke)}`], signal, 10_000);
+    await waitState(from, "starting", 10_000);
+    const ignored = await waitForLog(appLog, from, /\] recorder: session \S+ toggle ignored while starting \((\d+) ms after the start\)$/, "the ignored second press", signal, 5000);
+    const ms = Number(/\((\d+) ms after/.exec(ignored.line)?.[1]);
+    c.details.push(`second press: ${ignored.line.split("] ")[1]}`);
+    if (!(ms < 1000)) c.problems.push(`the ignored press came ${ms} ms after the start, not within the grace`);
+    await waitHeld(dir);
+    await sleep(pastGrace);
+    if (currentState(lines(from)) !== "starting") { c.problems.push(`the held start left starting before the third press: ${currentState(lines(from))}`); return; }
+    await command("osascript", ["-e", keystrokeScript(keystroke)], signal, 10_000);
+    const cancelled = await waitForLog(appLog, from, /\] recorder: session \S+ cancelled \(toggle\) while preparing capture$/, "the shortcut's cancel", signal, 10_000);
+    c.details.push(`third press: ${cancelled.line.split("] ")[1]}`);
+    await waitSettled(from);
+    await releaseCancelled(c, dir, from, historyBefore);
+    await judgeCancelled(c, from, folder, before, language, false, false);
+  });
+
+  await runCase("long-start-click", "The starting menu names the shortcut; a left click after the grace cancels the held start", language, async c => {
+    const before = listing(folder);
+    const from = appLog.end();
+    await driver!.click();
+    await waitState(from, "starting", 10_000);
+    // Seen after the state was logged, so never earlier than the Recorder's own start (review pass 1).
+    const startedBy = Date.now();
+    await waitHeld(dir);
+    await readMenu(c, "starting", language);
+    if (c.status === "not run") return;
+    const cancel = (await waitForLog(appLog, from, /\] tray: menu opened in starting: /, "the starting menu line", signal, 1000)).line;
+    if (accelerator && !cancel.includes(`"accelerator":"${accelerator}"`)) c.problems.push(`the starting menu does not name ${accelerator}`);
+    await sleep(Math.max(0, pastGrace - (Date.now() - startedBy)));
+    if (currentState(lines(from)) !== "starting") { c.problems.push(`the held start left starting before the click: ${currentState(lines(from))}`); return; }
+    await driver!.click();
+    const cancelled = await waitForLog(appLog, from, /\] recorder: session \S+ cancelled \(toggle\) while preparing capture$/, "the click's cancel", signal, 10_000);
+    c.details.push(cancelled.line.split("] ")[1]!);
+    await waitSettled(from);
+    await releaseCancelled(c, dir, from, historyBefore);
+    await judgeCancelled(c, from, folder, before, language, false, false);
+  });
+
+  await runCase("long-start-quit", "Quit RecordStuff while the start is held cancels it at once and exits", language, async c => {
+    const before = listing(folder);
+    const from = appLog.end();
+    await driver!.click();
+    await waitState(from, "starting", 10_000);
+    await waitHeld(dir);
+    await driver!.open();
+    // Timed from before the press: select() itself waits until the menu, or the app, is gone (review pass 1).
+    const chosen = Date.now();
+    await driver!.select(t("Quit RecordStuff", language));
+    await waitGone("Quit while the start is held", 20_000);
+    const seconds = (Date.now() - chosen) / 1000;
+    pid = undefined;
+    prepareArmed = false;
+    c.details.push(`exited ${seconds.toFixed(1)} s after Quit RecordStuff`);
+    if (seconds > 10) c.problems.push(`the exit took ${seconds.toFixed(1)} s, as if it waited for the capture request`);
+    const since = lines(from);
+    const line = since.find(text => /\] recorder: session \S+ cancelled \(quit\) while preparing capture$/.test(text));
+    if (line) c.details.push(line.split("] ")[1]!);
+    else c.problems.push("no `cancelled (quit) while preparing capture` line");
+    if (since.some(text => /capture request timed out after cancel \(quit\)/.test(text))) c.problems.push("the quit waited for the capture request to time out");
+    await judgeCancelled(c, from, folder, before, language, true);
+  });
+}
+
 let exitCode: number = 1;
 const roundFrom = appLog.end();
 try {
-  await main();
+  await (longStartRun ? longStart(longStartRun) : main());
 } catch (error) {
   if (error instanceof Refused) roundError = error.message;
   else if (error instanceof AccessibilityBlockedError) blocked ??= error.message;
@@ -506,6 +657,19 @@ try {
   if (running !== undefined) {
     const tray = new TrayDriver(cleanupAx, running, bounded, 10_000, bundleId);
     await step("close the menu", () => tray.close());
+    // A held start is cancelled before its reply is released: released first, with the countdown Off it
+    // would send `record` and save a recording this mode never makes (review pass 1). Nothing stays armed.
+    if (longStartRun && prepareArmed) await step("cancel a held start, then turn prepare=hold off and release held replies", async () => {
+      if (currentState(lines()) === "starting") {
+        const from = appLog.end();
+        await tray.open();
+        await tray.select(t("Cancel recording", longStartLanguage));
+        await waitForLog(appLog, from, /\] cancelled: session \S+ /, "the held start's cancel", bounded, 10_000);
+      }
+      await control(longStartRun, { kind: "fault", name: "prepare", mode: "off" }, bounded);
+      await control(longStartRun, { kind: "release", target: "prepare" }, bounded);
+      prepareArmed = false;
+    });
     await step("settle the round's recording", async () => {
       const saved = await settleIfBusy(tray, bounded);
       if (saved) recordings.push(saved);
