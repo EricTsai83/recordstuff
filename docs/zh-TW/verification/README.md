@@ -8,6 +8,7 @@
 
 | 項目 | 既有結果與限制 |
 | --- | --- |
+| Plan 065 取消長時間 start，2026-10-03 | 保留的 log 顯示每次超過 1 秒的 start 都卡在準備階段（四次各 120 秒；中位數 289 ms、第 95 百分位 396 ms），最快的人工連按為 290 ms，因此寬限定為 1 秒。對暫停 `prepared` 的受控 build：start 後 213 ms 的快捷鍵被忽略並寫入 log，寬限後的快捷鍵與左鍵點擊都取消了 start，沒有檔案、通知或歷史項目；starting 選單標出 ⇧⌘1；start 被暫停時選「結束」，0.9 秒內結束。在新 bundle 上錄影 smoke、播放與雙語 tray 回合都通過。限制：暫停屬於受控狀態證據，不是真實未回應的擷取請求；長時間 start 案例只以英文執行（[紀錄](history-2026-10.md#plan-065-結案--2026-10-03)） |
 | Plan 063 腳本化原生驗收，2026-10-02 | `pnpm acceptance:tray` 以 CoreGraphics 點擊與按鍵、輔助使用 press 操作真正的狀態列項目與選單：zh-TW 與 en 的 idle、倒數與錄影選單都與正式 model 的 `tray: menu opened` 一致，開始／停止、顯示上一段錄影（Finder 置前並選取檔案）、第二次點擊、取消錄影、倒數中結束、鍵盤導覽與結束都通過（15 通過、1 not run）。`acceptance:settings-shortcut -- --observe` 通過六項輔助使用檢查，`acceptance:quit-dialog` 的新橫幅文字層兩種語言都通過。限制：點擊會移動真正的游標（macOS 26 上 `CGEventPostToPid` 打不開選單），needsPermission 選單與過時的開始錄製留在 runner 外，外觀仍靠觀察截圖，回合中有人操作也不會被偵測（[紀錄](history-2026-10.md#plan-063-結案--2026-10-02)） |
 | Plan 062 簽章通知 fixture，2026-10-02 | `pnpm acceptance:quit-dialog` 改為啟動每輪完整簽署並驗證的 Electron.app 副本。延後退出通知在兩種語言都送達（請求後 9 ms 收到 `shown`，timer 最多延遲 2 ms）。identity 缺少為 blocked，簽章失敗為 fail，兩者都不啟動。繁中橫幅文字完整可見；英文橫幅在第四行被截斷，完整文字未看到（blocked）。見[紀錄](history-2026-10.md#plan-062-結案--2026-10-02)。 |
 | Plan 061 check 後驗收成本，2026-10-02 | 在 M1 Pro 上，每次設定修改的設定 fixture 成本為 93.18 秒（設定 55.29 秒、快捷鍵整合 37.89 秒），簽章 bundle 建置 37.7–40.6 秒（打包 36–39 秒），smoke 錄影 29.70 秒，播放 14.33 秒，鍵盤配置檢查 6.17 秒。`pnpm open:app` 以 0.66 秒沿用已驗證的 bundle；配方省掉不到 1 秒的重複建置。原生入口與 agent 區間未量測。見[紀錄](history-2026-10.md#plan-061-結案--2026-10-02)。 |

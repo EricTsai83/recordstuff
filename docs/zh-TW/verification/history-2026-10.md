@@ -4,6 +4,30 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 065 結案 — 2026-10-03
+
+Plan 065 讓錄影快捷鍵與狀態列項目的左鍵點擊，可以在 start 持續一秒後取消它，和選單的「取消錄影」一樣。由 Claude 實作，Codex GPT-6.1 Sol review。在此之前，`Recorder.toggle()` 在 starting 期間忽略所有按鍵：因擷取請求未回應而等待 120 秒的 start 只能從選單取消，按鍵也不留 log；這段期間退出則要等擷取請求結束（曾經長達 286 秒）。耐久規則見[錄影設計](../system-design/recording.md#倒數)、[桌面設計](../system-design/desktop.md#錄影快捷鍵)、[驗收](../acceptance.md#依影響追加案例)與[工具](../system-design/tooling.md#tray-驗收)。
+
+- **量測與決定。** 2026-09-12 至 2026-10-02 保留的 log 有 739 次 start：中位數 289 ms，第 95 百分位 396 ms。超過 1 秒的九次全部卡在準備階段（權限被拒、缺少音訊軌與舊的 8 秒時限造成 1.1–9.4 秒；擷取請求未回應時四次各 120 秒，其中一次讓退出等了 286 秒），沒有卡在開啟資料夾的，另有一次（2026-09-13）卡在 `record` 之後。917 次快捷鍵按壓中，一秒內的人工連按間隔為 290、365 與 393 ms；約 600 ms 的配對是 runner 在取消倒數；落在 starting 期間的按鍵只有 plan 063 的 runner，在 start 後 4–8 ms。維護者於 2026-10-03 決定：(a) 寬限一秒；(b) starting 的「取消錄影」標出快捷鍵；(c) 開啟資料夾或準備期間退出立即取消，納入本計畫。計畫中的長時間 start 受控重現改由下方的原生回合承擔，因為 log 已能把每次長時間 start 歸到所在階段。
+- **Recorder。** starting 期間，從 session 請求起以 monotonic clock 計算，toggle 若晚於 `START_CANCEL_GRACE_MS`（1000 ms），就走「取消錄影」的路徑：開啟或準備中的嘗試會被取消，不留檔案、失敗項目或通知；已送出 `record` 時則變成「開始後停止」。寬限內的按鍵與 stopping 期間的按鍵都會被忽略並寫入 log。`shutdown()` 在延後的檢查中取消仍在開啟或準備的嘗試，因此同步的狀態變化不會再開啟第二次退出嘗試，標記仍保留作為後援；睡眠仍只標記。
+- **Tray。** starting 選單的「取消錄影」帶已註冊的快捷鍵作為 accelerator，提示文字也標出它，中英文皆同，與倒數時一致。
+- **工具。** 受控 build 新增 `prepare=hold` 故障與 `release prepare`，在 main 暫停 capture host 的 `prepared` 回覆。`pnpm acceptance:tray -- --long-start <run>` 操作該 build 真正的快捷鍵、狀態列項目與「結束」；命令通道 client 移到 `scripts/lib/controlled-client.mts`。
+
+### 驗證
+
+環境：M1 Pro、macOS 26.6.2、Electron 44.3.0，主螢幕 BenQ GW2785TC 1920 × 1080，另有直立的 1080 × 1920 螢幕；HEAD `1657fdc` 加上未提交變更；桌面交接由維護者回覆「好了」確認。
+
+- `pnpm check`：typecheck、99 個檔案的 1479 個測試與 build 通過。新增測試：start 後 8 與 999 ms 的按鍵被忽略並寫入 log；寬限後的按鍵在準備期間取消（保留「顯示上一段錄影」、沒有失敗、存檔或通知事件，遲到的 `prepared` 以過期 session 停止）與開啟期間取消（沒有擷取請求、沒有檔案）；倒數設為「關」時，`record` 後的按鍵變成「開始後停止」並存檔；stopping 期間被忽略的按鍵寫入 log；準備期間退出立即完成，而不是等 120 秒期限；開啟期間退出會等它持有的資料夾檢查；延後檢查前到達的 `prepared` 仍會取消；starting 選單的 accelerator 與提示文字（雙語，以及沒有註冊快捷鍵時）；以真正的 Recorder 測 `prepare=hold`；starting 選單規則；instrumentation anchor 與參數。
+- 在新的 `pnpm start:app` bundle 上做錄影 smoke：`pnpm acceptance` 以 ⌘⇧1 開始與停止，存下 10.3 秒、1920 × 1080 的檔案並通過媒體驗證，數字未出現在錄影中，倒數取消案例通過；`pnpm acceptance:playback` 在 QuickTime 通過（未判定聽感）。
+- 以 `pnpm open:app` 重新開啟同一 bundle，`pnpm acceptance:tray` 先 zh-TW 後 en：15 通過、1 not run（狀態改變後才選的「開始錄製」，與 063 相同）。該案例中快捷鍵在選單「開始錄製」後 4 ms 到達，現在會記錄 `toggle ignored while starting (4 ms after the start)`：也就是 plan 063 的案例，在原生環境中於寬限內被忽略。
+- 對受控 build（`pnpm acceptance:controlled -- launch`）執行 `pnpm acceptance:tray -- --long-start`：14 秒內 3 個案例通過。相隔 0.2 秒的兩次按鍵中，第二次在 start 後 213 ms 被忽略；start 後約 2 秒的按鍵記錄 `cancelled (toggle) while preparing capture`；starting 選單與 model 那一行一致，「取消錄影」帶 ⇧⌘1，寬限後的左鍵點擊取消了 start；在 start 被暫停時選「結束 RecordStuff」記錄 `cancelled (quit) while preparing capture`，App 在 0.9 秒後結束。每個放行的回覆都以過期 session 停止；沒有出現檔案、通知或歷史項目。agent 自行檢視 starting 選單截圖，看到「Cancel recording」右側對齊 ⇧⌘1（Computer Use 式的觀察，不是腳本結果）。
+
+未驗證：真實擷取請求未回應造成的長時間 start，任何 build 都無法隨時產生（暫停發生在 main，因此屬於受控狀態證據）；繁體中文的長時間 start 案例（文字由單元測試涵蓋）；淺色與深色選單列；寬限內以左鍵點擊而非快捷鍵按下（兩者呼叫同一個 `toggle`，由單元測試涵蓋）。
+
+Review：Codex GPT-6.1 Sol pass 1（約 261 秒）沒有發現 Recorder regression，回報三項 runner finding，全部接受並修正：收尾在取消 start 之前就放行被暫停的 `prepared`，倒數設為「關」時會因此錄影（收尾現在先用「取消錄影」取消）；退出計時在 `select()` 之後才開始，而 `select()` 可能等到 App 結束才返回；點擊案例的寬限邊際從點擊尋找目標之前起算，而不是從 log 記錄的 start 起算。Pass 2（約 135 秒）沒有 findings，並確認三項修正正確。修正後的收尾路徑沒有在原生環境執行，因為沒有案例失敗。
+
+收尾：每一輪後 RecordStuff 的所有程序都已結束，儲存的語言已改回繁體中文，受控 workspace 已移除並保留證據，`caffeinate` 讓螢幕保持喚醒。測試錄影（smoke 回合的 2026-10-03 00-31-16，tray 回合的 00-32-14 與 00-32-49）已依維護者要求刪除。依維護者要求 commit 到 main；沒有 push 或發布。
+
 ## Plan 063 結案 — 2026-10-02
 
 Plan 063 讓原生 Tray、設定入口與通知文字案例可以用腳本完成，並寫明何時用 runner、何時用 Computer Use。由 Claude 實作，Codex GPT-6.1 Sol review。在此之前，驗收 skill 要求所有原生操作都透過 Computer Use，但它無法存取純 tray 的程序（`-10005 timeoutReached`），因此 Tray 案例只能等維護者或記為受阻，也沒有文件說明何時該改用腳本。耐久規則見[選擇規則](../testing.md#腳本-runner-或-computer-use)、[runner 對照](../acceptance.md#腳本-runner-或-computer-use)、[腳本化原生驗收](../system-design/tooling.md#腳本化原生驗收)與[設計決策](../system-design/decisions.md)。

@@ -2,7 +2,7 @@
 
 [English](064-windows-release.md) | [繁體中文](064-windows-release.zh-TW.md)
 
-Status: proposed; second in the queue, after [065](065-cancel-long-start.md), started only after 062 ([closed](../docs/verification/history-2026-10.md#plan-062-closure--2026-10-02)) and 063 ([closed](../docs/verification/history-2026-10.md#plan-063-closure--2026-10-02)) have closed. Dependencies: step 1 is a maintainer decision gate and every later step requires it; step 3 requires step 2's installer; steps 4–7 require step 3's feasibility verdict; step 8 requires steps 4–7. Step 2 changes `scripts/start-app.mjs` in the shape 062 leaves it; step 3 labels evidence with 063's kinds; step 4's macOS recheck uses 063's `pnpm acceptance:tray` when 063 built it, otherwise Computer Use or manual observation under 063's selection rule; step 9 reuses 063's evidence labels. Independent of the deferred 058–060.
+Status: proposed; next in the queue, after 065 ([closed](../docs/verification/history-2026-10.md#plan-065-closure--2026-10-03)), started only after 062 ([closed](../docs/verification/history-2026-10.md#plan-062-closure--2026-10-02)) and 063 ([closed](../docs/verification/history-2026-10.md#plan-063-closure--2026-10-02)) have closed. Dependencies: step 1 is a maintainer decision gate and every later step requires it; step 3 requires step 2's installer; steps 4–7 require step 3's feasibility verdict; step 8 requires steps 4–7. Step 2 changes `scripts/start-app.mjs` in the shape 062 leaves it; step 3 labels evidence with 063's kinds; step 4's macOS recheck uses 063's `pnpm acceptance:tray` when 063 built it, otherwise Computer Use or manual observation under 063's selection rule; step 9 reuses 063's evidence labels. Independent of the deferred 058–060.
 
 ## Problem and evidence
 
