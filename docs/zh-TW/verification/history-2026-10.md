@@ -17,7 +17,7 @@ Plan 062 修好了隔離的延後退出通知檢查：過去即使 macOS 拒絕�
 - **不啟動的演練。** 不存在的 `RECORDSTUFF_SIGN_IDENTITY` 以 blocked（exit 2）結束，沒有啟動。在複製時、以及再一次在簽章時送出 SIGINT，都以失敗（exit 1）結束，沒有啟動。每次都沒有留下暫存副本、簽章 scratch 或程序。
 - **桌面回合。** 維護者在開始前回覆「好了」；環境為 commit `41ae66d` 加上本次未提交的變更。`pnpm start:app` 建置、簽署並驗證 9 個 bundle identity（`identifier "com.ericts.record"`，RecordStuff Dev `01B37351…D637`），從 `dist/mac-arm64` 開啟後正常退出，所有 bundle 程序都已結束。`pnpm acceptance:quit-dialog -- --language zh-TW`（`2026-10-02T14-13-29-958Z-quit-dialog-zh-TW`）與之後的 `-- --language en`（`2026-10-02T14-14-00-328Z-quit-dialog-en`）都以 exit 0 結束。setup 約 1 秒（9 個 bundle；designated requirement `identifier "com.github.Electron" and certificate leaf = H"01b37351…d637"`）。`shown` 事件在請求後 9 ms 到達，timer 最多延遲 2 ms，精確 bytes 已儲存，副本與程序都已清除。
 - **視覺。** Claude 在每次請求後 0.8 秒與 2.3 秒以 `screencapture` 被動截圖，沒有點擊，也沒有改變焦點。繁中：一則 RecordStuff 橫幅，可讀且文字完整。英文：一則可讀的英文橫幅，但 macOS 把正文截在第四行（“…retry the same action: Quit…”）。完整文字沒有看到，因為要在通知中心展開需要原生 UI 操作，本次 session 沒有這項能力；此項維持 **blocked**。橫幅使用 Electron 圖示，這是 fixture 的預期。
-- **review 修正之後。** 上述回合都在修正之前執行。修正只改了 setup 的 `TMPDIR` 與讀取殘缺證據的方式：以私有 `TMPDIR` 直接執行 `--fixture-app`，簽署並驗證了副本，私有暫存目錄最後是空的；兩個演練也重跑了。沒有再次啟動 fixture。
+- **review 修正之後。** 上述回合都在修正之前執行。修正只改了 setup 的 `TMPDIR` 與讀取殘缺證據的方式：以私有 `TMPDIR` 直接執行 `--fixture-app`，簽署並驗證了副本，私有暫存目錄最後是空的；兩個演練也重跑了。維護者再次回覆準備就緒後，以已提交的修正 `6b075ca` 重跑兩種語言，不截圖（`2026-10-02T14-23-56-283Z-quit-dialog-zh-TW`、`2026-10-02T14-24-13-584Z-quit-dialog-en`）：都以 exit 0 結束，`shown` 分別在請求後 11 與 9 ms 到達，timer 最多延遲 2 ms，副本與程序都已清除。
 
 Review：Codex GPT-6.1 Sol（medium reasoning、read-only）。Pass 1（234 秒）提出兩項，都接受並修正：
 
