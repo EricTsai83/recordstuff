@@ -4,6 +4,32 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 063 結案 — 2026-10-02
+
+Plan 063 讓原生 Tray、設定入口與通知文字案例可以用腳本完成，並寫明何時用 runner、何時用 Computer Use。由 Claude 實作，Codex GPT-6.1 Sol review。在此之前，驗收 skill 要求所有原生操作都透過 Computer Use，但它無法存取純 tray 的程序（`-10005 timeoutReached`），因此 Tray 案例只能等維護者或記為受阻，也沒有文件說明何時該改用腳本。耐久規則見[選擇規則](../testing.md#腳本-runner-或-computer-use)、[runner 對照](../acceptance.md#腳本-runner-或-computer-use)、[腳本化原生驗收](../system-design/tooling.md#腳本化原生驗收)與[設計決策](../system-design/decisions.md)。
+
+- **選擇規則與決定。** 測試指南與驗收案例現在寫明：有已提交的 runner 涵蓋就用 runner，觀察與沒有 runner 的操作用 Computer Use，主觀判斷與需要密碼的步驟交給維護者，並把腳本輸入、Computer Use 觀察與人工證據分開標示。維護者於 2026-10-02 允許已提交的 runner 在記錄的限制內操作 RecordStuff 自己的 Tray 選單、設定視窗與選單項目（以路徑與 pid 比對受測 bundle；狀態列項目用右鍵而非 `AXPress`；不碰權限提示、TCC 或隱私權清單；不用全域 kill 或測試 hook）。
+- **App 變更。** Tray 每次彈出選單時，都會記錄 `tray: menu opened in <state>: <json>`，內容就是交給 Electron 的選單，讓 runner 能把讀到的 NSMenu 和正式 model 比對。App 其他部分沒有改；`DEFERRAL_MESSAGE` 改為 export，讓測試把通知 runner 預期的文字綁定到它。
+- **Runner。** 一個 JavaScript for Automation helper 透過 C API 讀取輔助使用，約 0.1 秒（同一個選單用 System Events 要 29 秒），並送出 CoreGraphics 事件。`pnpm acceptance:tray` 操作真正的狀態列項目；`pnpm acceptance:settings-shortcut -- --observe` 斷言設定視窗的啟用、焦點、Tab、最小化、還原、關閉與重開；`pnpm acceptance:quit-dialog` 新增從通知中心讀取的橫幅文字層。驗收 skill 現在先選定並執行這些 runner，Computer Use 留給截圖的視覺判讀與沒有 runner 的操作。結案時，維護者決定讓它不限定執行者，並把名稱從 `astra-acceptance-with-computer-use` 改為 [`native-acceptance`](../../../.agents/skills/native-acceptance/SKILL.md)：任何能執行指令並看得到截圖的 agent（例如這次的 Claude）都能執行 runner，並自己判讀 `screencapture` 截圖；只有需要即時 Computer Use 操作時才委派 Codex GPT-6 Astra。
+- **在真實桌面上發現的問題。** macOS 26 的狀態列項目位於控制中心的視窗中。`REC` 讓項目變寬後，1080 pt 直式螢幕上的那一份被前景 App 的選單擠掉（視窗不在畫面上），AX 卻仍回報它的 frame，因此第一輪的錄影選單始終沒有打開，錄影進行了約三分鐘，才以快捷鍵停止並存檔。現在 driver 在回報的那一份被隱藏時，改點主選單列上以 bundle identifier 命名、正在顯示的視窗。改把點擊直接送給程序（以 `CGEventPostToPid` 送給 RecordStuff 或控制中心，四種變化）時游標不動，但選單一次都沒有打開，所以點擊會移動真正的游標，每輪都需要桌面交接。第二輪找出三個 runner bug，在通過的那一輪之前已修正：巢狀的選單案例把它正在讀的倒數收尾掉了；結束後還在等一個已經讀不到的選單；繁體中文的未讀失敗只比對前綴。彈出選單的鍵盤導覽在 CoreGraphics 輸入下可用，和 048 當時的嘗試不同。
+
+### 驗證
+
+環境：M1 Pro、macOS 26.6.2、Electron 44.3.0，主螢幕 BenQ GW2785TC 1920 × 1080，旁邊一台 1080 × 1920 直式螢幕；來源為 HEAD `4ff3eb1` 加未提交的變更，使用全新簽章的 `pnpm start:app` bundle，以 `pnpm open:app` 重開；儲存的語言為繁體中文，倒數 3 秒，維護者的歷史中有四筆未讀失敗。
+
+- `pnpm check`：typecheck、99 個檔案共 1471 項測試與 build 通過。新的單元測試涵蓋：以 2026-10-02 錄下的選單做比對、快捷鍵對應、各狀態規則、項目被擠掉時的點擊目標、driver 有上限且可取消的等待、Tray 判定與橫幅文字判定。
+- `pnpm acceptance:tray`，先 zh-TW 再 en：15 項通過、1 項 not run，共 68 秒。兩種語言的 idle、倒數與錄影選單都與 model 一致；從選單開始與停止都已存檔；「顯示上一段錄影」讓 Finder 置前並選取該檔；第二次點擊與「取消錄影」取消後沒有檔案、失敗紀錄或通知；倒數中選「結束」會退出且沒有檔案；以 Down 加 Return 開啟「設定…」、⌘W 關閉；最後的「結束 RecordStuff」讓所有程序都退出。未讀失敗群組有顯示，涵蓋 N33a 的「有未讀失敗的 idle」狀態。第二種語言期間把儲存的語言設為英文，結束後已還原。App 沒有執行時會拒絕（exit 1）；錄影中送 SIGINT 時，錄影已存檔、App 已結束，結束碼 130。
+- 套用 review pass 2 的修正後（見下方），使用同一個 bundle：App 沒有執行時拒絕且不碰任何東西；雙語回合第一次在錄影中漏掉一次右鍵，所以 driver 現在會重點沒有打開任何東西的點擊（最多三次，選單開著時絕不重點），重跑後 14 項通過、2 項 not run（stale-start；以及 keyboard，因為開始時有一個無法辨識名稱的 RecordStuff 視窗，現在改為只在設定視窗開啟時跳過）；在 en 錄影中中斷時，runner 存好錄影、結束 App、還原繁體中文，結束碼 130，該輪的 keyboard 案例也通過；`--observe` 與 `quit-dialog -- --language en` 再次通過。
+- `pnpm acceptance:settings-shortcut -- --observe`：六項輔助使用檢查通過；設定已開啟時在送鍵前拒絕（exit 1）。
+- `pnpm acceptance:quit-dialog` zh-TW 與 en：每一層都通過，包括橫幅文字。
+- agent 以自己的截圖獨立觀察：zh-TW 錄影選單與 en 倒數選單呈現的群組、靠右的 ⇧⌘1 與 ⌥⌘,、灰色的儲存位置項目，與 runner 的判定一致；設定視窗在前景且為作用中；一則未截斷的 zh-TW 延後退出橫幅與輔助使用讀到的 body 相同。
+
+未驗證：needsPermission 選單，需要撤銷權限（屬 TCC 修改）；狀態改變後才選的「開始錄製」回報 not run，因為 macOS 比排隊的快捷鍵早 8 ms 處理了選單的 Start，沒有東西被忽略（由單元測試與 035 的維護者回合涵蓋）；淺色與深色選單列只判讀了目前外觀的截圖；Retina 螢幕、其他機器與 CI；以及回合中有人操作的干擾，目前沒有偵測。在選單 Start 之後 8 ms、狀態為 `starting` 時送出的快捷鍵沒有作用；本輪沒有判斷這是否為預期行為。
+
+Review：Codex GPT-6.1 Sol pass 1（步驟 1，約 76 秒）沒有 findings。Pass 2（步驟 2–7，約 9 分鐘）回傳六項 findings，全部接受並修正：語言還原使用了已中止的 signal；收尾會操作被拒絕的回合從未接管的 App；可能在另一個 App 位於前景時送出 ⌘W 與 ⌘M；中斷的「顯示上一段錄影」開啟的 Finder 視窗沒有被關閉；沒有 identifier 的橫幅被計數；缺少輔助使用權限時記為失敗而非受阻。這些修正與之後加入的重點點擊都沒有再經過 review pass。
+
+收尾：所有 RecordStuff 與 fixture 程序都已退出，儲存的語言已回到繁體中文，沒有留下本輪的 Finder 視窗，`caffeinate` 讓螢幕保持喚醒。保留在 ~/Movies/RecordStuff 的錄影：23:08:36（約三分鐘，來自失敗的那一輪）、23:11:44（診斷）、23:14:50、23:17:42、23:18:18、23:19:10、23:34:22、23:35:27、23:36:39、23:37:14、23:38:19 與 23:38:54。沒有 commit、push 或發布。
+
 ## Plan 062 結案 — 2026-10-02
 
 Plan 062 修好了隔離的延後退出通知檢查：過去即使 macOS 拒絕通知，它仍可能通過。由 Claude 實作，Codex GPT-6.1 Sol review。只改了開發工具與文件，App 沒有變更。長期規則見[引導式延期退出通知驗收](../system-design/tooling.md#引導式延期退出通知驗收)、[證據界線](../testing.md#證據界線與停止條件)的通知條目與[準備一輪驗收](../acceptance.md#準備一輪驗收)。
