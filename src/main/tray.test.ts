@@ -1,5 +1,6 @@
 import { DEFAULT_HOTKEY } from "../shared/hotkey";
 import { EventEmitter } from "node:events";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 /**
@@ -127,7 +128,7 @@ describe("AppTray icons (plan 040)", () => {
     const created = vi.mocked(nativeImage.createFromPath);
     created.mockClear();
     const { tray } = setup();
-    expect(created.mock.calls.map(([file]) => file)).toEqual(Object.values(TRAY_ICON_FILES).map((files) => `/resources/${process.platform === "win32" ? files.win32 : files.template}`));
+    expect(created.mock.calls.map(([file]) => file)).toEqual(Object.values(TRAY_ICON_FILES).map((files) => path.join("/resources", process.platform === "win32" ? files.win32 : files.template)));
     const native = (tray as unknown as { tray: { setImage: ReturnType<typeof vi.fn>; setTitle: ReturnType<typeof vi.fn> } }).tray;
     const icons = (tray as unknown as { icons: Record<string, unknown> }).icons;
     for (const [state, icon, title] of [
@@ -164,7 +165,7 @@ describe("AppTray icons (plan 040)", () => {
     const logs: string[] = [];
     new AppTray({ resourcesDir: "/missing", context: () => { throw new Error("unused"); }, onToggle: vi.fn(), onAction: vi.fn(), revealSaved: vi.fn(), permissionAction: vi.fn(), log: (m) => logs.push(m) });
     expect(logs.filter((m) => m.startsWith("tray: icon "))).toHaveLength(Object.keys(TRAY_ICON_FILES).length);
-    expect(logs[0]).toContain("/missing/");
+    expect(logs[0]).toContain(`${path.join("/missing")}${path.sep}`);
     const { logs: healthy } = setup();
     expect(healthy.filter((m) => m.startsWith("tray: icon "))).toEqual([]);
   });

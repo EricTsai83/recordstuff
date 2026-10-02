@@ -87,7 +87,8 @@ describe("pgrep", () => {
   });
 });
 
-describe("interrupted build", () => {
+// Process groups and POSIX signals; the build supervisor runs on macOS and Linux only (plan 061).
+describe.skipIf(process.platform === "win32")("interrupted build", () => {
   let pid: number | undefined;
   afterEach(async () => { if (groupAlive(pid)) await stopGroup(pid); pid = undefined; });
 

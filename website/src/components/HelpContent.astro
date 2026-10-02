@@ -1,8 +1,9 @@
 ---
 /**
  * The full help text (allowing the app to open, install, permissions, use,
- * update, remove, retained data). Headings carry ids so other pages can
- * deep-link to a section, such as Download's Open Anyway link.
+ * update, remove, retained data, then the Windows installer). Headings carry
+ * ids so other pages can deep-link to a section, such as Download's Open
+ * Anyway and Windows links.
  */
 import StepList from "./StepList.astro";
 import {
@@ -12,8 +13,15 @@ import {
   retainedData,
   settings,
   updateSteps,
+  windowsBoundary,
+  windowsInstallSteps,
+  windowsRemoveSteps,
+  windowsRetainedData,
+  windowsSmartScreen,
+  windowsUpcoming,
+  windowsUpdateSteps,
 } from "../content/site";
-import { links } from "../lib/release";
+import { links, release } from "../lib/release";
 
 const H = "h2";
 ---
@@ -67,6 +75,31 @@ const H = "h2";
     </table>
   </div>
   <p>In Finder choose Go → Go to Folder and paste a path to open it. Any remaining entry under Privacy &amp; Security → Screen &amp; System Audio Recording can be removed there; this is optional.</p>
+
+  <H id="windows">Install on Windows</H>
+  <p>{release.windows ? <>RecordStuff {release.version} includes an x64 installer for Windows on the <a href="/download">Download</a> page.</> : windowsUpcoming} Windows on Arm is not supported.</p>
+  <div class="callout">
+    <p><strong>Not verified on Windows hardware.</strong> {windowsBoundary} The sections above were written for, and verified on, macOS.</p>
+  </div>
+  <p>{windowsSmartScreen}</p>
+  <StepList steps={windowsInstallSteps} />
+
+  <H id="windows-update">Update on Windows</H>
+  <p>Check for updates… in Settings → General also works on Windows: it reads the latest release on GitHub. Installation stays manual.</p>
+  <StepList steps={windowsUpdateSteps} />
+
+  <H id="windows-remove">Uninstall on Windows</H>
+  <StepList steps={windowsRemoveSteps} />
+  <p>The app never deletes recordings. It keeps your data in these locations:</p>
+  <div class="table-scroll" role="region" aria-label="Retained data locations on Windows" tabindex="0">
+    <table>
+      <thead><tr><th>Data</th><th>Location</th></tr></thead>
+      <tbody>
+        {windowsRetainedData.map((row) => (<tr><td>{row.data}</td><td><code>{row.location}</code></td></tr>))}
+      </tbody>
+    </table>
+  </div>
+  <p>Paste a path into the File Explorer address bar to open it.</p>
   <p class="dim">The same guide is on GitHub in <a href={links.installGuide} target="_blank" rel="noopener noreferrer">English</a> and <a href={links.installGuideZh} hreflang="zh-Hant" target="_blank" rel="noopener noreferrer">Traditional Chinese</a>, pinned to the released commit.</p>
 </div>
 

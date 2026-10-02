@@ -101,7 +101,7 @@ function fakeAx(): NativeAx & { calls: string[]; open: boolean } {
 describe("TrayDriver", () => {
   it("opens with a right-click at the item's centre, never a press, and closes with Escape", async () => {
     const ax = fakeAx();
-    const driver = new TrayDriver(ax, 1, new AbortController().signal, 1000);
+    const driver = new TrayDriver(ax, process.pid, new AbortController().signal, 1000);
     const menu = await driver.open();
     expect(menu.items).toHaveLength(13);
     await expect(driver.open()).rejects.toThrow("already open");
@@ -111,7 +111,7 @@ describe("TrayDriver", () => {
 
   it("presses an item by exact label, refuses a disabled or missing one, and waits for the menu to close", async () => {
     const ax = fakeAx();
-    const driver = new TrayDriver(ax, 1, new AbortController().signal, 1000);
+    const driver = new TrayDriver(ax, process.pid, new AbortController().signal, 1000);
     await driver.open();
     await expect(driver.select("待命中")).rejects.toThrow("disabled");
     await expect(driver.select("Start recording")).rejects.toThrow('has no "Start recording"');
@@ -124,13 +124,13 @@ describe("TrayDriver", () => {
     const ax = fakeAx();
     let clicks = 0;
     ax.mouse = async (button) => { clicks += 1; if (button === "right" && clicks === 2) ax.open = true; };
-    const driver = new TrayDriver(ax, 1, new AbortController().signal, 5000);
+    const driver = new TrayDriver(ax, process.pid, new AbortController().signal, 5000);
     await driver.open(3, 200);
     expect(clicks).toBe(2);
     expect(driver.clicks).toEqual(["-553,-132 via the Accessibility frame", "-553,-132 via the Accessibility frame"]);
     ax.open = false;
     ax.mouse = async () => undefined;
-    const stuck = new TrayDriver(ax, 1, new AbortController().signal, 900);
+    const stuck = new TrayDriver(ax, process.pid, new AbortController().signal, 900);
     await expect(stuck.open(3, 200)).rejects.toThrow("the tray menu to open (click 3 of 3) did not happen");
     expect(stuck.clicks).toHaveLength(3);
   });
@@ -139,7 +139,7 @@ describe("TrayDriver", () => {
     const ax = fakeAx();
     ax.mouse = async () => undefined;
     const controller = new AbortController();
-    const driver = new TrayDriver(ax, 1, controller.signal, 10_000);
+    const driver = new TrayDriver(ax, process.pid, controller.signal, 10_000);
     const opening = driver.open();
     controller.abort(new Error("interrupted"));
     await expect(opening).rejects.toThrow("interrupted");

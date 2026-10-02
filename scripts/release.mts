@@ -1,12 +1,12 @@
 import { stableVersion } from "../src/shared/version.ts";
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createReadStream, existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmdirSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, createReadStream, existsSync, lstatSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, readlinkSync, rmdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchManifest } from './lib/release-manifest-client.mts';
-import { assertManifestShape, diffManifest, expectedDmgName, REPOSITORY, type ReleaseManifest } from './lib/release-manifest.mts';
+import { assertManifestShape, assertWindowsRecord, carriesWindows, diffManifest, expectedAssetNames, expectedDmgName, expectedWindowsInstallerName, REPOSITORY, WINDOWS_PLATFORM, WINDOWS_RECORD, type ReleaseManifest, type WindowsReleaseJson } from './lib/release-manifest.mts';
 
 export const signingSHA1 = '01B373511530BBF287CA35E54C10A5F017AAD637';
 /** Stable `1.2.3` or pre-release `1.2.3-rc.1`; the tag is always `v` + version. */
@@ -108,7 +108,8 @@ export function stablePointerOutcome(current: ReleaseManifest, candidate: Releas
   if (differences.length) throw new Error(`${candidate.tag} is already the recorded stable release with different facts; refusing to overwrite it:\n  ${differences.join('\n  ')}`);
   return 'unchanged';
 }
-export interface ReleaseFacts { version: string; tag: string; repository: string; sourceCommit: string; file: string; size: number; sha256: string; runUrl: string; publishedAt: string; date: string }
+export interface InstallerFacts { file: string; size: number; sha256: string }
+export interface ReleaseFacts { version: string; tag: string; repository: string; sourceCommit: string; file: string; size: number; sha256: string; runUrl: string; publishedAt: string; date: string; windows?: InstallerFacts | undefined }
 /** Stable documentation and the website share the same verified release snapshot. */
 export function releaseFactsFromManifest(value: unknown, runUrl: string): ReleaseFacts {
   const manifest = assertManifestShape(value);
@@ -117,6 +118,7 @@ export function releaseFactsFromManifest(value: unknown, runUrl: string): Releas
     sourceCommit: manifest.sourceCommit, file: manifest.dmg.name,
     size: manifest.dmg.size, sha256: manifest.dmg.sha256,
     publishedAt: manifest.publishedAt, date: manifest.publishedAt.slice(0, 10), runUrl,
+    ...(manifest.windows ? { windows: { file: manifest.windows.name, size: manifest.windows.size, sha256: manifest.windows.sha256 } } : {}),
   };
 }
 const bytes = (n: number) => n.toLocaleString('en-US');
@@ -124,14 +126,20 @@ const bytes = (n: number) => n.toLocaleString('en-US');
 export function renderDownloadSection(lang: 'en' | 'zh-TW', f: ReleaseFacts): string {
   const base = `https://github.com/${f.repository}/releases`;
   const dmg = `${base}/download/${f.tag}/${f.file}`; const sums = `${base}/download/${f.tag}/SHA256SUMS`;
-  return lang === 'en'
+  const mac = lang === 'en'
     ? `Download **[RecordStuff ${f.version} for macOS Apple silicon (arm64)](${dmg})** (${bytes(f.size)} bytes). [Release notes](${base}/tag/${f.tag}) · [SHA256SUMS](${sums}) · [Latest release](${base}/latest).\n\nSHA-256: \`${f.sha256}\`.`
     : `下載 **[RecordStuff ${f.version}：macOS Apple silicon（arm64）](${dmg})**（${bytes(f.size)} bytes）。[英文發行說明](${base}/tag/${f.tag}) · [SHA256SUMS](${sums}) · [最新版本](${base}/latest)。\n\nSHA-256：\`${f.sha256}\`。`;
+  if (!f.windows) return mac;
+  const exe = `${base}/download/${f.tag}/${f.windows.file}`;
+  return `${mac}\n\n${lang === 'en'
+    ? `Windows: **[RecordStuff ${f.version} for Windows x64](${exe})** (${bytes(f.windows.size)} bytes), unsigned and built by CI; capture has not been verified on Windows hardware.\n\nSHA-256: \`${f.windows.sha256}\`.`
+    : `Windows：**[RecordStuff ${f.version}：Windows x64](${exe})**（${bytes(f.windows.size)} bytes），未簽章、由 CI 建置；錄影尚未在 Windows 實機上驗證。\n\nSHA-256：\`${f.windows.sha256}\`。`}`;
 }
 /** Verification record skeleton: the facts CI knows, plus the sections a human must fill or leave marked as not recorded. */
 export function renderVerificationRecord(lang: 'en' | 'zh-TW', f: ReleaseFacts): string {
   const release = `https://github.com/${f.repository}/releases/tag/${f.tag}`;
-  if (lang === 'en') return `# macOS ${f.version} release verification
+  const w = f.windows;
+  if (lang === 'en') return `# ${w ? 'macOS and Windows' : 'macOS'} ${f.version} release verification
 
 [English](${f.version}.md) | [繁體中文](../../zh-TW/verification/releases/${f.version}.md)
 
@@ -144,7 +152,13 @@ ${f.date}: published from tag \`${f.tag}\` by the tag-triggered workflow. This r
 - File: \`${f.file}\`
 - Size: ${bytes(f.size)} bytes
 - SHA-256: \`${f.sha256}\`
+${w ? `
+Windows x64, unsigned; CI installed, checked and uninstalled it on a Windows runner, which proves no capture behaviour:
 
+- File: \`${w.file}\`
+- Size: ${bytes(w.size)} bytes
+- SHA-256: \`${w.sha256}\`
+` : ''}
 ## Local acceptance before tagging — fill in
 
 State what was run on the tagged source before pushing the tag (\`pnpm start:app\`, recording length, playback, permission behavior, \`pnpm verify\` result). If nothing was run, say so.
@@ -153,7 +167,7 @@ State what was run on the tagged source before pushing the tag (\`pnpm start:app
 
 List checks that were not performed for this version.
 `;
-  return `# macOS ${f.version} 發布驗證
+  return `# ${w ? 'macOS 與 Windows' : 'macOS'} ${f.version} 發布驗證
 
 [English](../../../verification/releases/${f.version}.md) | [繁體中文](${f.version}.md)
 
@@ -166,7 +180,13 @@ ${f.date}：由 tag 觸發的 workflow 從 \`${f.tag}\` 公開。本紀錄由 wo
 - 檔案：\`${f.file}\`
 - 大小：${bytes(f.size)} bytes
 - SHA-256：\`${f.sha256}\`
+${w ? `
+Windows x64，未簽章；CI 在 Windows runner 上安裝、檢查並解除安裝，這不證明任何錄影行為：
 
+- 檔案：\`${w.file}\`
+- 大小：${bytes(w.size)} bytes
+- SHA-256：\`${w.sha256}\`
+` : ''}
 ## 打 tag 前的本機驗收 — 待填
 
 寫明推送 tag 前在該原始碼上做了什麼（\`pnpm start:app\`、錄影長度、播放、權限行為、\`pnpm verify\` 結果）。若沒有做，照實寫。
@@ -184,6 +204,12 @@ export function failureReason(r: { error?: Error; stderr?: string | null; status
 function run(command: string, args: string[], input?: string) {
   const r = spawnSync(command, args, { cwd: root, encoding: 'utf8', input, maxBuffer: 16 * 1024 * 1024 });
   if (r.error || r.status !== 0) throw new Error(`${command} ${args[0]} failed: ${failureReason(r)}`);
+  return r.stdout.trim();
+}
+/** pnpm is a `.cmd` shim on Windows, which Node starts only through a shell; the arguments are fixed. */
+function pnpmVersion(): string {
+  const r = spawnSync('pnpm', ['--version'], { cwd: root, encoding: 'utf8', shell: process.platform === 'win32' });
+  if (r.error || r.status !== 0) throw new Error(`pnpm --version failed: ${failureReason(r)}`);
   return r.stdout.trim();
 }
 function api(endpoint: string, method = 'GET', payload?: unknown) {
@@ -224,7 +250,9 @@ function releases(repository: string) {
 }
 export function notes(version: string, repository: string, commit: string) {
   const base = `https://github.com/${repository}/blob/${commit}/resources`;
-  return `RecordStuff ${version} for Apple silicon Macs (arm64).
+  return `RecordStuff ${version} for Apple silicon Macs (arm64)${carriesWindows(version) ? ' and Windows x64' : ''}.
+
+## macOS
 
 Install: open the DMG and drag RecordStuff onto the Applications folder, then eject the disk image. The DMG contains only the app and an Applications shortcut; the guides below are the installation documentation.
 
@@ -236,7 +264,20 @@ Remove: quit the app and move RecordStuff.app from Applications to the Trash. Re
 
 Guides: [Website Help](https://record.ericts.com/help) · [English](${base}/INSTALL.md) · [Traditional Chinese](${base}/INSTALL.zh-TW.md).
 
-Verify the download using SHA256SUMS. release.json records the source commit, version, platform, size, and signing certificate fingerprint.
+${carriesWindows(version) ? `
+## Windows
+
+Not verified on Windows hardware: CI builds this installer, installs it silently on a Windows runner, checks its version, architecture and files, and removes it again, but screen capture, system audio, notifications and the tray have not been tried on a Windows PC. Some wording still assumes macOS.
+
+Install: run ${expectedWindowsInstallerName(version)}. It installs for the current user without an administrator prompt and adds a Start-menu shortcut. The installer is not code-signed, as its name says: if SmartScreen shows "Windows protected your PC", click More info → Run anyway.
+
+Update manually: quit RecordStuff from its tray menu, then run the new installer; settings and recordings carry over. Check for updates… in Settings → General finds new releases.
+
+Remove: Settings → Apps → Installed apps → RecordStuff → Uninstall. Recordings in Videos\\RecordStuff, settings and logs stay on disk.
+
+## Verify
+` : '\n'}
+Verify the download using SHA256SUMS${carriesWindows(version) ? ' (on Windows, compare `Get-FileHash` output with its line)' : ''}. release.json records the source commit, version, platform, size, and signing certificate fingerprint${carriesWindows(version) ? `; ${WINDOWS_RECORD} records the same facts for the installer, which also carries a GitHub build-provenance attestation (\`gh attestation verify <file> --repo ${repository}\`)` : ''}.
 `;
 }
 /** Visible root entries of a mounted release DMG: the App and the Applications link only (013). */
@@ -297,20 +338,156 @@ export function releaseMount(mount: string, attached: boolean, hdiutil: (args: s
   try { remove(mount); }
   catch (cause) { console.error(`could not remove mount point ${mount}: ${message(cause)}`); }
 }
+/** IMAGE_FILE_MACHINE_AMD64: the only Windows architecture published (design decisions). */
+export const PE_MACHINE_X64 = 0x8664;
+/** The COFF machine type of a PE image from its first bytes; throws for anything that is not a PE file. */
+export function peMachine(head: Buffer): number {
+  if (head.length < 0x40 || head.toString('latin1', 0, 2) !== 'MZ') throw new Error('Not a PE image (no MZ header).');
+  const at = head.readUInt32LE(0x3c);
+  if (at + 6 > head.length || head.toString('latin1', at, at + 4) !== 'PE\0\0') throw new Error('Not a PE image (no PE signature).');
+  return head.readUInt16LE(at + 4);
+}
+function readHead(file: string, length = 4096): Buffer {
+  const fd = openSync(file, 'r');
+  try { const head = Buffer.alloc(length); return head.subarray(0, readSync(fd, head, 0, length, 0)); }
+  finally { closeSync(fd); }
+}
+/** A Windows version resource holds four numbers, so `1.2.0` is stamped `1.2.0.0`; a pre-release may keep its own text. */
+export function windowsVersionMatches(resource: string, version: string): boolean {
+  return resource === version || resource === `${version.split(/[-+]/)[0]}.0`;
+}
+/** The uninstall registration NSIS writes for a per-user install. */
+export interface UninstallEntry { DisplayName: string; DisplayVersion: string; QuietUninstallString: string; InstallLocation?: string }
+/** `"C:\…\Uninstall RecordStuff.exe" /currentuser /S` → the executable and its arguments. */
+export function splitCommandLine(line: string): [string, string[]] {
+  const match = /^\s*"([^"]+)"\s*(.*)$/.exec(line) ?? /^\s*(\S+)\s*(.*)$/.exec(line);
+  if (!match) throw new Error(`Cannot parse uninstall command ${JSON.stringify(line)}.`);
+  return [match[1]!, match[2]!.split(/\s+/).filter(Boolean)];
+}
+/** The RecordStuff entries under HKCU (per-user) or HKLM (machine-wide) Uninstall keys. */
+function uninstallEntries(hive: 'HKCU' | 'HKLM'): UninstallEntry[] {
+  const out = powershell(`$e = @(Get-ItemProperty -Path '${hive}:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'RecordStuff*' } | Select-Object DisplayName, DisplayVersion, QuietUninstallString, InstallLocation); ConvertTo-Json -InputObject $e -Compress`);
+  return out ? JSON.parse(out) as UninstallEntry[] : [];
+}
+function powershell(script: string): string {
+  // Windows PowerShell 5.1 cannot load its own modules with the PSModulePath a
+  // PowerShell 7 parent (the runner's default shell) leaves behind.
+  const { PSModulePath: _inherited, ...env } = process.env;
+  const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], { cwd: root, encoding: 'utf8', env, maxBuffer: 16 * 1024 * 1024 });
+  if (r.error || r.status !== 0) throw new Error(`powershell.exe failed: ${failureReason(r)}`);
+  return r.stdout.trim();
+}
+const quotePs = (value: string) => `'${value.replaceAll("'", "''")}'`;
+function authenticodeStatus(file: string): string {
+  return powershell(`(Get-AuthenticodeSignature -LiteralPath ${quotePs(file)}).Status.ToString()`);
+}
+async function waitFor(what: string, done: () => boolean, ms = 60_000) {
+  const deadline = Date.now() + ms;
+  while (!done()) {
+    if (Date.now() > deadline) throw new Error(`Timed out after ${ms / 1000} s waiting until ${what}.`);
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+}
+const TRAY_ICONS = ['idle', 'busy', 'countdown', 'recording', 'warning'].map(state => `tray-${state}.ico`);
+/**
+ * Installs the unsigned per-user installer silently on this Windows machine,
+ * checks what it installed and registered, and uninstalls it again. CI's
+ * runner is disposable; a machine with RecordStuff already installed is refused
+ * rather than overwritten. Nothing here starts the app, so it proves no capture.
+ */
+export async function verifyWindowsInstaller(directory: string, version: string) {
+  if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('Windows installer verification requires Windows x64.');
+  const file = expectedWindowsInstallerName(version);
+  const installer = path.join(directory, file);
+  if (!existsSync(installer) || !statSync(installer).isFile()) throw new Error(`Missing Windows installer: ${file}.`);
+  peMachine(readHead(installer)); // NSIS installers are 32-bit stubs; only the installed app must be x64.
+  if (authenticodeStatus(installer) !== 'NotSigned') throw new Error(`The installer is expected to be unsigned, but its Authenticode status is ${authenticodeStatus(installer)}.`);
+  if (uninstallEntries('HKCU').length || uninstallEntries('HKLM').length) throw new Error('RecordStuff is already installed on this machine; verify on a clean runner.');
+  const shortcut = path.join(process.env.APPDATA ?? '', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'RecordStuff.lnk');
+  const installed = spawnSync(installer, ['/S'], { encoding: 'utf8', timeout: 180_000 });
+  if (installed.error || installed.status !== 0) throw new Error(`Silent install failed: ${failureReason(installed)}`);
+  // Per user means HKCU only: an HKLM entry would have needed an administrator.
+  if (uninstallEntries('HKLM').length) throw new Error('The installer registered a machine-wide uninstaller.');
+  const [entry, ...extra] = uninstallEntries('HKCU');
+  if (!entry || extra.length) throw new Error(`Expected one per-user uninstall entry, found ${extra.length + (entry ? 1 : 0)}.`);
+  console.log(`Installed: ${JSON.stringify(entry)}`);
+  if (entry.DisplayVersion !== version) throw new Error(`Registered version ${entry.DisplayVersion} differs from ${version}.`);
+  const [uninstaller, uninstallArgs] = splitCommandLine(entry.QuietUninstallString);
+  const location = entry.InstallLocation || path.dirname(uninstaller);
+  let removed = false;
+  try {
+    const exe = path.join(location, 'RecordStuff.exe');
+    if (!existsSync(exe)) throw new Error(`The install has no RecordStuff.exe in ${location}.`);
+    if (peMachine(readHead(exe)) !== PE_MACHINE_X64) throw new Error('RecordStuff.exe is not an x64 executable.');
+    const productVersion = powershell(`(Get-Item -LiteralPath ${quotePs(exe)}).VersionInfo.ProductVersion`);
+    if (!windowsVersionMatches(productVersion, version)) throw new Error(`RecordStuff.exe product version ${productVersion} differs from ${version}.`);
+    const signature = authenticodeStatus(exe);
+    if (signature !== 'NotSigned') throw new Error(`RecordStuff.exe is expected to be unsigned, but its Authenticode status is ${signature}.`);
+    const resources = path.join(location, 'resources');
+    const missing = TRAY_ICONS.filter(name => !existsSync(path.join(resources, name)));
+    if (missing.length) throw new Error(`The install lacks the tray icons ${missing.join(', ')}.`);
+    if (!existsSync(shortcut)) throw new Error(`The install created no Start-menu shortcut at ${shortcut}; Windows notifications need it.`);
+    const appAsarSHA256 = await digest(path.join(resources, 'app.asar'));
+    const uninstalled = spawnSync(uninstaller, uninstallArgs, { encoding: 'utf8', timeout: 180_000 });
+    if (uninstalled.error || uninstalled.status !== 0) throw new Error(`Silent uninstall failed: ${failureReason(uninstalled)}`);
+    removed = true;
+    // The NSIS uninstaller copies itself away and may return before it has finished.
+    await waitFor('the uninstaller removed the app, its shortcut and its registration',
+      () => !existsSync(exe) && !existsSync(shortcut) && uninstallEntries('HKCU').length === 0);
+    return { platform: WINDOWS_PLATFORM, file, size: statSync(installer).size, sha256: await digest(installer), appAsarSHA256, signature: 'unsigned' as const };
+  } finally {
+    if (!removed) {
+      const cleanup = spawnSync(uninstaller, uninstallArgs, { encoding: 'utf8', timeout: 180_000 });
+      if (cleanup.error || cleanup.status !== 0) console.error(`Cleanup uninstall failed: ${failureReason(cleanup)}`);
+    }
+  }
+}
+/** The Windows record beside the installer, checked against the release and the installer's bytes. */
+async function verifyWindowsCandidate(directory: string, c: { tag: string; version: string; repository: string; sourceCommit: string }) {
+  const record = JSON.parse(readFileSync(path.join(directory, WINDOWS_RECORD), 'utf8')) as WindowsReleaseJson;
+  assertWindowsRecord(record, c);
+  const installer = path.join(directory, record.file);
+  if (!existsSync(installer)) throw new Error(`Missing Windows installer: ${record.file}.`);
+  if (statSync(installer).size !== record.size) throw new Error(`${record.file} has ${statSync(installer).size} bytes; ${WINDOWS_RECORD} records ${record.size}.`);
+  if (await digest(installer) !== record.sha256) throw new Error(`${record.file} differs from the SHA-256 in ${WINDOWS_RECORD}.`);
+  return record;
+}
+/** One `<sha256>  <file>` line per binary asset, so `shasum -a 256 -c` checks them all. */
+export function sha256sums(entries: { file: string; sha256: string }[]): string {
+  return entries.map(e => `${e.sha256}  ${e.file}\n`).join('');
+}
+function assertSums(directory: string, entries: { file: string; sha256: string }[]) {
+  if (readFileSync(path.join(directory, 'SHA256SUMS'), 'utf8') !== sha256sums(entries)) throw new Error('SHA256SUMS mismatch.');
+}
+/** The macOS candidate: the DMG's gates and its release.json. SHA256SUMS is checked by the caller, which knows the asset set. */
 async function verifyCandidate(directory: string, tag: string, c: ReleaseContext = context(tag)) {
   const metadata = JSON.parse(readFileSync(path.join(directory, 'release.json'), 'utf8'));
   const actual = await verifyDmg(directory, tag, c);
   for (const [key, value] of Object.entries(actual)) {
     if (metadata[key] !== value) throw new Error(`Candidate metadata mismatch: ${key}`);
   }
-  if (readFileSync(path.join(directory, 'SHA256SUMS'), 'utf8') !== `${actual.sha256}  ${actual.file}\n`) throw new Error('SHA256SUMS mismatch.');
   return actual;
 }
 async function main() {
   const [mode, tag, directoryArg] = process.argv.slice(2);
-  if (!tag || !['preflight', 'version', 'candidate', 'verify', 'publish', 'published', 'record'].includes(mode ?? '')) throw new Error('Usage: release.mts preflight|version|candidate|verify|publish|published|record vX.Y.Z [directory]');
   const packageJsonPath = path.join(root, 'package.json');
   const packageVersion = () => JSON.parse(readFileSync(packageJsonPath, 'utf8')).version as string;
+  if (mode === 'windows-smoke') {
+    // CI on any branch: the installer `pnpm dist:win` just built for package.json's version; the argument is its directory.
+    const facts = await verifyWindowsInstaller(path.resolve(tag ?? 'dist'), packageVersion());
+    // The same record fields candidate-windows writes, so a branch run exercises them too.
+    console.log(`Windows installer passed install, inspection and uninstall: ${JSON.stringify({ ...facts, node: process.versions.node, pnpm: pnpmVersion() })}`);
+    return;
+  }
+  const modes = ['preflight', 'version', 'candidate', 'candidate-windows', 'verify', 'publish', 'published', 'published-windows', 'record', 'assets'];
+  if (!tag || !modes.includes(mode ?? '')) throw new Error(`Usage: release.mts ${modes.join('|')} vX.Y.Z [directory], or windows-smoke [directory]`);
+  if (mode === 'assets') {
+    // The public assets of `tag`, one per line, for the workflow's anonymous download.
+    const version = tag.replace(/^v/, '');
+    validateTag(tag, version);
+    console.log(expectedAssetNames(version).join('\n'));
+    return;
+  }
   if (mode === 'version') {
     // Write the tag's version into the working tree so electron-builder stamps the App and DMG with it. Not committed here.
     const c = context(tag);
@@ -330,7 +507,14 @@ async function main() {
       const file = expectedDmgName(c.version);
       const asset = release.assets.find(a => a.name === file);
       if (release.draft || !release.prerelease || !asset || !asset.digest?.startsWith('sha256:')) throw new Error('Pre-release is not public or its DMG digest is unavailable.');
-      facts = { ...c, file, size: asset.size, sha256: asset.digest.slice('sha256:'.length), runUrl, publishedAt: release.published_at, date: release.published_at.slice(0, 10) };
+      let windows: InstallerFacts | undefined;
+      if (carriesWindows(c.version)) {
+        const name = expectedWindowsInstallerName(c.version);
+        const installer = release.assets.find(a => a.name === name);
+        if (!installer || !installer.digest?.startsWith('sha256:')) throw new Error('Pre-release has no Windows installer with a digest.');
+        windows = { file: name, size: installer.size, sha256: installer.digest.slice('sha256:'.length) };
+      }
+      facts = { ...c, file, size: asset.size, sha256: asset.digest.slice('sha256:'.length), runUrl, publishedAt: release.published_at, date: release.published_at.slice(0, 10), windows };
     } else {
       // The committed pointer is read before the release is fetched, so an invalid one stops early.
       const current = readStableManifest(path.join(root, stableManifestPath));
@@ -378,16 +562,36 @@ async function main() {
     const published = contextFromTag(tag);
     const directory = path.resolve(directoryArg);
     const metadata = await verifyCandidate(directory, tag, published);
+    // The Windows installer cannot be run here; its bytes, record and checksum line are checked, and published-windows runs it.
+    const windows = carriesWindows(published.version) ? await verifyWindowsCandidate(directory, published) : undefined;
+    assertSums(directory, windows ? [metadata, windows] : [metadata]);
     const release = api(`repos/${published.repository}/releases/tags/${tag}`) as PublishedRelease;
-    // The DMG was just hashed by verifyCandidate; only the two small files are hashed here.
+    // The binaries were just hashed; only the small files are hashed here.
     assertPublishedAssets(release, [
       { name: metadata.file, size: metadata.size, sha256: metadata.sha256 },
-      ...await Promise.all(['SHA256SUMS', 'release.json'].map(async name => {
+      ...(windows ? [{ name: windows.file, size: windows.size, sha256: windows.sha256 }] : []),
+      ...await Promise.all(['SHA256SUMS', 'release.json', ...(windows ? [WINDOWS_RECORD] : [])].map(async name => {
         const local = path.join(directory, name);
         return { name, size: statSync(local).size, sha256: await digest(local) };
       })),
     ]);
-    console.log(`Published ${tag} (${published.sourceCommit}) matches the verified bytes: ${metadata.sha256}`);
+    console.log(`Published ${tag} (${published.sourceCommit}) matches the verified bytes: ${metadata.sha256}${windows ? `, ${windows.sha256}` : ''}`);
+    return;
+  }
+  if (mode === 'published-windows') {
+    // On Windows: the anonymously downloaded installer is installed, inspected and removed again.
+    if (!directoryArg) throw new Error('Downloaded-assets directory is required.');
+    const published = contextFromTag(tag);
+    if (!carriesWindows(published.version)) { console.log(`${tag} was published for macOS only; nothing to verify on Windows.`); return; }
+    const directory = path.resolve(directoryArg);
+    const record = await verifyWindowsCandidate(directory, published);
+    if (!readFileSync(path.join(directory, 'SHA256SUMS'), 'utf8').split(/\r?\n/).includes(`${record.sha256}  ${record.file}`)) throw new Error(`SHA256SUMS does not list ${record.file} with its recorded SHA-256.`);
+    const release = api(`repos/${published.repository}/releases/tags/${tag}`) as PublishedRelease;
+    const asset = release.assets.find(a => a.name === record.file);
+    if (release.draft || !asset || asset.size !== record.size || asset.digest !== `sha256:${record.sha256}`) throw new Error(`Published ${record.file} does not match its record.`);
+    const facts = await verifyWindowsInstaller(directory, published.version);
+    if (facts.appAsarSHA256 !== record.appAsarSHA256) throw new Error('The installed app.asar differs from the one recorded at build time.');
+    console.log(`Published Windows installer for ${tag} installs, matches its record and uninstalls: ${record.sha256}`);
     return;
   }
   const c = context(tag);
@@ -402,13 +606,27 @@ async function main() {
   const directory = path.resolve(directoryArg);
   if (mode === 'candidate') {
     const metadata = await verifyDmg(directory, tag, c);
-    writeFileSync(path.join(directory, 'release.json'), `${JSON.stringify({ ...metadata, node: process.versions.node, pnpm: run('pnpm', ['--version']) }, null, 2)}\n`);
-    writeFileSync(path.join(directory, 'SHA256SUMS'), `${metadata.sha256}  ${metadata.file}\n`);
+    writeFileSync(path.join(directory, 'release.json'), `${JSON.stringify({ ...metadata, node: process.versions.node, pnpm: pnpmVersion() }, null, 2)}\n`);
+    // The macOS build's own list; publish rewrites it with every binary asset.
+    writeFileSync(path.join(directory, 'SHA256SUMS'), sha256sums([metadata]));
     console.log(JSON.stringify(metadata));
     return;
   }
+  if (mode === 'candidate-windows') {
+    const facts = await verifyWindowsInstaller(directory, c.version);
+    const record = { tag: c.tag, version: c.version, sourceCommit: c.sourceCommit, repository: c.repository, ...facts,
+      node: process.versions.node, pnpm: pnpmVersion() };
+    assertWindowsRecord(record, c);
+    writeFileSync(path.join(directory, WINDOWS_RECORD), `${JSON.stringify(record, null, 2)}\n`);
+    console.log(JSON.stringify(record));
+    return;
+  }
   const metadata = await verifyCandidate(directory, tag, c);
+  assertSums(directory, [metadata]);
   if (mode === 'verify') { console.log(`Verified ${metadata.file}: ${metadata.sha256}`); return; }
+  // Every version after the last macOS-only one ships both platforms or nothing.
+  const windows = carriesWindows(c.version) ? await verifyWindowsCandidate(directory, c) : undefined;
+  if (windows) writeFileSync(path.join(directory, 'SHA256SUMS'), sha256sums([metadata, windows]));
   // publish: the tag already exists (pushed by the maintainer); the release must not.
   // One listing answers both "not yet released" and where latest must point.
   const existing = releases(c.repository);
@@ -418,10 +636,10 @@ async function main() {
   writeFileSync(body, notes(c.version, c.repository, c.sourceCommit));
   const flag = latestFlag(c.version, existing);
   run('gh', ['release', 'create', tag, '--repo', c.repository, '--verify-tag', flag,
-    '--title', `RecordStuff ${c.version} — macOS arm64`, '--notes-file', body,
-    ...[metadata.file, 'SHA256SUMS', 'release.json'].map(f => path.join(directory, f))]);
+    '--title', `RecordStuff ${c.version} — macOS arm64${windows ? ' and Windows x64' : ''}`, '--notes-file', body,
+    ...[metadata.file, 'SHA256SUMS', 'release.json', ...(windows ? [windows.file, WINDOWS_RECORD] : [])].map(f => path.join(directory, f))]);
   const as = { '--prerelease': ' as a pre-release', '--latest': ' as latest', '--latest=false': ' without moving latest' }[flag];
-  console.log(`Published ${tag}${as} from verified candidate ${metadata.sha256}.`);
+  console.log(`Published ${tag}${as} from verified candidates ${metadata.sha256}${windows ? ` and ${windows.sha256}` : ''}.`);
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   void main().catch((error: unknown) => { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; });

@@ -3,13 +3,17 @@ import { test } from "node:test";
 import {
   assertManifestShape,
   buildManifest,
+  carriesWindows,
   diffManifest,
+  expectedAssetNames,
   expectedDmgName,
+  expectedWindowsInstallerName,
   formatBytes,
   parseSha256Sums,
   parseStableTag,
   type GitHubRelease,
   type ReleaseJson,
+  type WindowsReleaseJson,
 } from "../../scripts/lib/release-manifest.mts";
 
 const TAG = "v0.1.2";
@@ -148,4 +152,79 @@ test("diffManifest catches a release-notes link pointed at another release", () 
 test("formatBytes renders megabytes for a DMG", () => {
   assert.equal(formatBytes(127314171), "127.3 MB");
   assert.equal(formatBytes(532), "532 bytes");
+});
+
+// The first two-platform version: every version after 1.1.1 carries Windows.
+const W_TAG = "v1.2.0";
+const W_VERSION = "1.2.0";
+const W_BASE = `https://github.com/EricTsai83/recordstuff/releases/download/${W_TAG}`;
+const EXE_SHA = "e".repeat(64);
+const EXE = expectedWindowsInstallerName(W_VERSION);
+
+function windowsInput(overrides: { record?: Partial<WindowsReleaseJson>; assets?: (assets: GitHubRelease["assets"]) => GitHubRelease["assets"]; sums?: string } = {}) {
+  const dmg = expectedDmgName(W_VERSION);
+  const assets: GitHubRelease["assets"] = [
+    { name: dmg, size: 127314171, browser_download_url: `${W_BASE}/${dmg}`, digest: `sha256:${SHA}` },
+    { name: "release.json", size: 532, browser_download_url: `${W_BASE}/release.json` },
+    { name: "SHA256SUMS", size: 200, browser_download_url: `${W_BASE}/SHA256SUMS` },
+    { name: EXE, size: 98765432, browser_download_url: `${W_BASE}/${EXE}`, digest: `sha256:${EXE_SHA}` },
+    { name: "release-win32-x64.json", size: 400, browser_download_url: `${W_BASE}/release-win32-x64.json` },
+  ];
+  return {
+    tag: W_TAG,
+    release: release({ tag_name: W_TAG, html_url: `https://github.com/EricTsai83/recordstuff/releases/tag/${W_TAG}`, assets: overrides.assets ? overrides.assets(assets) : assets }),
+    releaseJson: releaseJson({ tag: W_TAG, version: W_VERSION, file: dmg }),
+    windowsJson: {
+      tag: W_TAG, version: W_VERSION, sourceCommit: COMMIT, repository: "EricTsai83/recordstuff", platform: "win32-x64",
+      file: EXE, size: 98765432, sha256: EXE_SHA, appAsarSHA256: "f".repeat(64), signature: "unsigned", ...overrides.record,
+    },
+    sha256sums: overrides.sums ?? `${SHA}  ${dmg}\n${EXE_SHA}  ${EXE}\n`,
+    now: NOW,
+  };
+}
+
+test("versions after the last macOS-only one carry the Windows installer and its record", () => {
+  assert.equal(carriesWindows("1.1.1"), false);
+  assert.equal(carriesWindows("0.9.9"), false);
+  assert.equal(carriesWindows("1.1.2"), true);
+  assert.equal(carriesWindows("1.2.0-rc.1"), true);
+  assert.deepEqual(expectedAssetNames("1.1.1"), [expectedDmgName("1.1.1"), "release.json", "SHA256SUMS"]);
+  assert.deepEqual(expectedAssetNames(W_VERSION).slice(3), [EXE, "release-win32-x64.json"]);
+});
+
+test("buildManifest adds the verified Windows facts for a two-platform release", () => {
+  const manifest = buildManifest(windowsInput());
+  assert.deepEqual(manifest.windows, { platform: "win32-x64", name: EXE, size: 98765432, sha256: EXE_SHA, url: `${W_BASE}/${EXE}`, recordUrl: `${W_BASE}/release-win32-x64.json` });
+  assert.deepEqual(assertManifestShape(JSON.parse(JSON.stringify(manifest))), manifest);
+  // The macOS facts, which the website feed serves to installed apps, are unchanged.
+  assert.equal(manifest.platform, "darwin-arm64");
+  assert.equal(manifest.dmg.name, expectedDmgName(W_VERSION));
+});
+
+test("buildManifest refuses a two-platform release with a missing, mismatched or unlisted Windows asset", () => {
+  assert.throws(() => buildManifest({ ...windowsInput(), windowsJson: undefined }), /release-win32-x64.json was not supplied/);
+  assert.throws(() => buildManifest(windowsInput({ assets: (a) => a.filter((x) => x.name !== EXE) })), /assets/);
+  assert.throws(() => buildManifest(windowsInput({ record: { sha256: "d".repeat(64) } })), /SHA256SUMS hash/);
+  assert.throws(() => buildManifest(windowsInput({ record: { size: 1 } })), /size 1 differs/);
+  assert.throws(() => buildManifest(windowsInput({ record: { signature: "signed" } })), /signature/);
+  assert.throws(() => buildManifest(windowsInput({ record: { sourceCommit: "c".repeat(40) } })), /sourceCommit/);
+  assert.throws(() => buildManifest(windowsInput({ assets: (a) => a.map((x) => x.name === EXE ? { ...x, digest: `sha256:${"d".repeat(64)}` } : x) })), /GitHub asset digest/);
+  assert.throws(() => buildManifest(windowsInput({ sums: `${SHA}  ${expectedDmgName(W_VERSION)}\n` })), /SHA256SUMS hash missing/);
+  assert.throws(() => buildManifest(windowsInput({ sums: `${SHA}  ${expectedDmgName(W_VERSION)}\n${EXE_SHA}  ${EXE}\n${SHA}  extra.zip\n` })), /lists 3 files/);
+});
+
+test("assertManifestShape requires the Windows block exactly for two-platform versions", () => {
+  const two = buildManifest(windowsInput());
+  const { windows, ...withoutWindows } = two;
+  assert.throws(() => assertManifestShape(withoutWindows), /windows block is missing/);
+  assert.throws(() => assertManifestShape({ ...build(), windows }), /macOS only/);
+  assert.throws(() => assertManifestShape({ ...two, windows: { ...windows!, url: `${BASE}/${EXE}` } }), /windows.url does not point/);
+  assert.throws(() => assertManifestShape({ ...two, windows: { ...windows!, sha256: "x" } }), /windows.sha256/);
+});
+
+test("diffManifest reports a changed Windows installer", () => {
+  const two = buildManifest(windowsInput());
+  assert.deepEqual(diffManifest(two, two), []);
+  const changed = { ...two, windows: { ...two.windows!, sha256: "d".repeat(64) } };
+  assert.match(diffManifest(two, changed).join("\n"), /windows.sha256/);
 });

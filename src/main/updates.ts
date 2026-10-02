@@ -47,12 +47,18 @@ export function feedVersion(value: unknown, platform: string, arch: string): str
       typeof dmg["sha256"] !== "string" || !/^[a-f0-9]{64}$/.test(dmg["sha256"])) throw new Error("invalid or incompatible feed");
   return r["version"] as string;
 }
+/** The release asset this platform installs, or undefined where none is published. */
+function installerName(version: string, platform: string, arch: string): string | undefined {
+  if (platform === "darwin") return `RecordStuff-${version}-${arch}-selfsigned.dmg`;
+  if (platform === "win32" && arch === "x64") return `RecordStuff-${version}-x64-unsigned-setup.exe`;
+  return undefined;
+}
 export function githubVersion(value: unknown, platform: string, arch: string): string {
   const r = object(value);
   const version = typeof r["tag_name"] === "string" ? r["tag_name"].replace(/^v/, "") : "";
+  const name = installerName(version, platform, arch);
   if (!stableVersion(version) || r["draft"] !== false || r["prerelease"] !== false ||
-      platform !== "darwin" || !Array.isArray(r["assets"]) ||
-      !r["assets"].some((a: unknown) => object(a)["name"] === `RecordStuff-${version}-${arch}-selfsigned.dmg`)) {
+      !name || !Array.isArray(r["assets"]) || !r["assets"].some((a: unknown) => object(a)["name"] === name)) {
     throw new Error("invalid or incompatible GitHub release");
   }
   return version;
@@ -60,7 +66,8 @@ export function githubVersion(value: unknown, platform: string, arch: string): s
 /**
  * The website feed first, GitHub's API if it fails. A working fallback would
  * otherwise hide a broken feed, so its failure goes to `log`, and a check
- * that fails at both names both causes.
+ * that fails at both names both causes. The feed describes the macOS DMG
+ * only (installed apps read its exact shape), so Windows reads GitHub alone.
  */
 export async function fetchVersion(platform: string, arch: string, signal: AbortSignal,
   request: (url: string, init: RequestInit) => Promise<Response> = fetch, log?: (message: string) => void): Promise<string> {
@@ -71,6 +78,7 @@ export async function fetchVersion(platform: string, arch: string, signal: Abort
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return parse(await response.json(), platform, arch);
   };
+  if (platform === "win32") return read(API_URL, githubVersion);
   let feedError: unknown;
   try {
     return await read(FEED_URL, feedVersion);

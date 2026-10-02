@@ -8,6 +8,7 @@
 //                                             with a white ring, red centre, amber "!", hourglass
 //                                             or stopwatch; 16/20/24/32/48 px entries
 //   build/icon.png                            512px app icon for electron-builder
+//   build/icon.ico                            Windows app icon: 16/24/32/48/64/128/256 px entries
 //   build/icon.icns                           native macOS icon set (generated on macOS)
 //   build/background.png (@2x)                DMG drag-to-Applications background
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -337,6 +338,9 @@ function appIcon(size) {
 }
 
 writeFileSync("build/icon.png", appIcon(512));
+// Windows executable, installer and shortcut icon; the entries cover Explorer's
+// small/large views and the 256 px tile.
+writeFileSync("build/icon.ico", ico([16, 24, 32, 48, 64, 128, 256].map((size) => ({ size, data: appIcon(size) }))));
 
 // DMG background: the installer UI is the familiar "drag the app onto the
 // Applications folder" layout used by most macOS apps, so the image is only

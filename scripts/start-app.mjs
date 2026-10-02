@@ -186,7 +186,7 @@ function prepareFixtureApp(destination, reportPath) {
 
 function main() {
   if (process.platform !== "darwin" || !["arm64", "x64"].includes(process.arch)) {
-    throw new Error("Local app builds require macOS arm64 or x64.");
+    throw new Error("Local app builds require macOS arm64 or x64. On Windows, `pnpm dist:win` builds the unsigned x64 installer.");
   }
   const args = process.argv.slice(2);
   if (args[0] === "--verify-app") {

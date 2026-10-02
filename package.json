@@ -34,6 +34,7 @@
     "measure:cpu": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/measure-cpu.mts",
     "bench:publication": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/bench-publication.mts",
     "dist:mac": "node scripts/start-app.mjs --dmg",
+    "dist:win": "electron-vite build && electron-builder --win nsis --x64 --publish never",
     "audio:quality": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/audio-quality.mts",
     "signing:create": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/create-signing-identity.mts",
     "release": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts",

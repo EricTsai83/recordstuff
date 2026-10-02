@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { assertDmgContents, assertPublishedAssets, assertUnreleased, compareVersions, failureReason, isPrerelease, latestFlag, notes, releaseMount, renderDownloadSection, releaseFactsFromManifest, renderVerificationRecord, replaceMarked, setPackageVersion, validateDigest, validateTag, type ReleaseFacts } from './release.mts';
+import { assertDmgContents, assertPublishedAssets, assertUnreleased, compareVersions, failureReason, isPrerelease, latestFlag, notes, PE_MACHINE_X64, peMachine, releaseMount, windowsVersionMatches, renderDownloadSection, releaseFactsFromManifest, renderVerificationRecord, replaceMarked, setPackageVersion, sha256sums, splitCommandLine, validateDigest, validateTag, type ReleaseFacts } from './release.mts';
 
 describe('release gates', () => {
   it('accepts only a tag equal to v + package version, stable or pre-release', () => {
@@ -53,6 +53,59 @@ describe('release gates', () => {
     expect(body).toContain(`/blob/${'a'.repeat(40)}/resources/INSTALL.zh-TW.md`);
     expect(body).toContain('https://record.ericts.com/help');
     expect(body).not.toContain('Known limitation: clicking a recording notification');
+    expect(body).not.toContain('Windows');
+  });
+  it('adds honest Windows install, SmartScreen, update, removal and verification notes from the first two-platform version', () => {
+    const body = notes('1.2.0', 'owner/repo', 'a'.repeat(40));
+    expect(body).toContain('for Apple silicon Macs (arm64) and Windows x64.');
+    expect(body).toContain('Not verified on Windows hardware');
+    expect(body).toContain('RecordStuff-1.2.0-x64-unsigned-setup.exe');
+    expect(body).toContain('More info → Run anyway');
+    expect(body).toContain('without an administrator prompt');
+    expect(body).toContain('Settings → Apps → Installed apps → RecordStuff → Uninstall');
+    expect(body).toContain('Videos\\RecordStuff');
+    expect(body).toContain('Get-FileHash');
+    expect(body).toContain('release-win32-x64.json');
+    expect(body).toContain('gh attestation verify <file> --repo owner/repo');
+    // The macOS instructions stay.
+    expect(body).toContain('Open Anyway');
+  });
+  it('lists every binary asset on its own line of SHA256SUMS', () => {
+    expect(sha256sums([{ file: 'a.dmg', sha256: 'a'.repeat(64) }, { file: 'b.exe', sha256: 'b'.repeat(64) }]))
+      .toBe(`${'a'.repeat(64)}  a.dmg\n${'b'.repeat(64)}  b.exe\n`);
+  });
+});
+
+describe('Windows installer gates', () => {
+  /** A minimal MZ/PE header with the given COFF machine type. */
+  function pe(machine: number, at = 0x80) {
+    const head = Buffer.alloc(at + 6);
+    head.write('MZ', 0, 'latin1');
+    head.writeUInt32LE(at, 0x3c);
+    head.write('PE\0\0', at, 'latin1');
+    head.writeUInt16LE(machine, at + 4);
+    return head;
+  }
+  it('reads the machine type of a PE image and refuses anything else', () => {
+    expect(peMachine(pe(PE_MACHINE_X64))).toBe(0x8664);
+    expect(peMachine(pe(0x14c))).toBe(0x14c);
+    expect(peMachine(pe(0xaa64))).not.toBe(PE_MACHINE_X64);
+    expect(() => peMachine(Buffer.from('#!/bin/sh\n'.padEnd(80)))).toThrow(/MZ/);
+    const truncated = pe(PE_MACHINE_X64); truncated.writeUInt32LE(4000, 0x3c);
+    expect(() => peMachine(truncated)).toThrow(/PE signature/);
+  });
+  it('reads the four-part Windows version resource as the release version', () => {
+    expect(windowsVersionMatches('1.2.0.0', '1.2.0')).toBe(true);
+    expect(windowsVersionMatches('1.2.0', '1.2.0')).toBe(true);
+    expect(windowsVersionMatches('1.2.0.0', '1.2.0-rc.1')).toBe(true);
+    expect(windowsVersionMatches('1.2.0-rc.1', '1.2.0-rc.1')).toBe(true);
+    for (const wrong of ['1.2.1.0', '1.2.0.1', '1.1.1.0', '']) expect(windowsVersionMatches(wrong, '1.2.0')).toBe(false);
+  });
+  it('splits the registered quiet uninstall command, quoted or not', () => {
+    expect(splitCommandLine('"C:\\Users\\a b\\AppData\\Local\\Programs\\recordstuff\\Uninstall RecordStuff.exe" /currentuser /S'))
+      .toEqual(['C:\\Users\\a b\\AppData\\Local\\Programs\\recordstuff\\Uninstall RecordStuff.exe', ['/currentuser', '/S']]);
+    expect(splitCommandLine('C:\\u.exe /S')).toEqual(['C:\\u.exe', ['/S']]);
+    expect(() => splitCommandLine('   ')).toThrow(/Cannot parse/);
   });
 });
 
@@ -114,6 +167,24 @@ describe('record helpers', () => {
     });
     expect(() => releaseFactsFromManifest({ ...manifest, tag: 'v99.0.0' }, runUrl)).toThrow();
     expect(() => releaseFactsFromManifest({ ...manifest, dmg: { ...manifest.dmg, sha256: 'invalid' } }, runUrl)).toThrow();
+  });
+  it('adds the Windows installer to the download blocks and records of a two-platform release', () => {
+    const windows = { file: 'RecordStuff-1.2.0-x64-unsigned-setup.exe', size: 98765432, sha256: 'e'.repeat(64) };
+    const two: ReleaseFacts = { ...facts, version: '1.2.0', tag: 'v1.2.0', file: 'RecordStuff-1.2.0-arm64-selfsigned.dmg', windows };
+    for (const lang of ['en', 'zh-TW'] as const) {
+      const block = renderDownloadSection(lang, two);
+      expect(block).toContain(renderDownloadSection(lang, { ...two, windows: undefined }));
+      expect(block).toContain(`https://github.com/EricTsai83/recordstuff/releases/download/v1.2.0/${windows.file}`);
+      expect(block).toContain('98,765,432 bytes');
+      expect(block).toContain(windows.sha256);
+      const record = renderVerificationRecord(lang, two);
+      expect(record).toContain(windows.file);
+      expect(record).toContain(windows.sha256);
+    }
+    expect(renderDownloadSection('en', two)).toContain('capture has not been verified on Windows hardware');
+    expect(renderVerificationRecord('en', two)).toMatch(/^# macOS and Windows 1\.2\.0 release verification/);
+    expect(renderVerificationRecord('zh-TW', two)).toMatch(/^# macOS 與 Windows 1\.2\.0 發布驗證/);
+    expect(renderVerificationRecord('en', facts)).toMatch(/^# macOS 0\.1\.2 release verification/);
   });
   it('renders bilingual verification skeletons with the facts and explicit fill-in sections', () => {
     const en = renderVerificationRecord('en', facts);

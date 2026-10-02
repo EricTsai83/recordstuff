@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   acceleratorToKeystroke,
   currentRunId,
@@ -81,7 +83,7 @@ describe("shared capture setup", () => {
   it("opens the intended local material even with URL metacharacters in its path", () => {
     const args = materialOpenArgs("/tmp/test #1?/素材.html", "/tmp/profile with spaces");
     const url = new URL(args.find(a => a.startsWith("--app="))!.slice(6));
-    expect(decodeURIComponent(url.pathname)).toBe("/tmp/test #1?/素材.html");
+    expect(fileURLToPath(url)).toBe(path.resolve("/tmp/test #1?/素材.html"));
     expect(url.searchParams.get("auto")).toBe("1");
     expect(url.hash).toBe("");
     expect(args).toContain("--user-data-dir=/tmp/profile with spaces");

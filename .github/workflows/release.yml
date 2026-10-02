@@ -1,9 +1,12 @@
-name: macOS release
+name: Release
 # Tag = release, and the tag is the version. Pushing vX.Y.Z (or vX.Y.Z-rc.1
-# for a pre-release) stamps that version into the build, signs, verifies and
-# publishes, re-downloads the public assets as an anonymous user and verifies
-# them again, then records the release facts back on main (a pre-release
-# records only its verification record).
+# for a pre-release) stamps that version into both builds: the signed macOS
+# DMG and, for every version after 1.1.1, the unsigned Windows x64 installer.
+# Both are verified, published together as one release or not at all,
+# re-downloaded as an anonymous user and verified again on their own
+# platforms, then the release facts are recorded back on main (a pre-release
+# records only its verification record). The Windows build is checked on a
+# runner, never on Windows hardware (docs/system-design/decisions.md).
 # App publication only follows tag pushes; local acceptance happens before
 # tagging (docs/system-design/releases.md). Dispatch only verifies a published
 # release. Website changes deploy independently through website.yml, also
@@ -23,7 +26,7 @@ permissions:
 # so a manual re-verify gets its own group rather than displacing a queued tag.
 # At most one tag should wait behind a running release (releases.md).
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && 'recordstuff-release-verify' || 'recordstuff-macos-delivery' }}
+  group: ${{ github.event_name == 'workflow_dispatch' && 'recordstuff-release-verify' || 'recordstuff-delivery' }}
   cancel-in-progress: false
 jobs:
   build:
@@ -102,9 +105,67 @@ jobs:
             dist/RecordStuff-*-arm64-selfsigned.dmg
             dist/SHA256SUMS
             dist/release.json
+  build-windows:
+    # The same gates as the macOS build, with no signing secrets: the installer
+    # is unsigned by decision. Its provenance attestation binds the bytes to
+    # this workflow run.
+    if: github.event_name == 'push'
+    runs-on: windows-2025
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+      - name: Validate source and version
+        run: |
+          test "$(node -p process.arch)" = x64
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts preflight "$RELEASE_TAG"
+          # A version that carries no Windows build has nothing to do here; publish checks the asset set.
+          if ! node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts assets "$RELEASE_TAG" | grep -q '\.exe$'; then
+            echo "::error::$RELEASE_TAG is not newer than the last macOS-only version"; exit 1
+          fi
+      - name: Stamp the tag's version into package.json for this build
+        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts version "$RELEASE_TAG"
+      - run: pnpm install --frozen-lockfile
+      - name: Install Electron runtime explicitly (Electron 44 has no postinstall)
+        run: node node_modules/electron/install.js
+      - run: pnpm check
+      - run: pnpm dist:win
+      - name: Install, inspect and uninstall the candidate, then record it
+        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts candidate-windows "$RELEASE_TAG" dist
+      - uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: dist/RecordStuff-*-x64-unsigned-setup.exe
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verified-windows-candidate
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/RecordStuff-*-x64-unsigned-setup.exe
+            dist/release-win32-x64.json
   publish:
     if: github.event_name == 'push'
-    needs: build
+    needs: [build, build-windows]
     runs-on: macos-15
     timeout-minutes: 15
     permissions:
@@ -123,7 +184,11 @@ jobs:
         with:
           name: verified-candidate
           path: candidate
-      - name: Reverify the candidate without private keys and publish it
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: verified-windows-candidate
+          path: candidate
+      - name: Reverify both candidates without private keys and publish them
         run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts publish "$RELEASE_TAG" candidate
   verify-published:
     # Runs after a successful publish, or alone on dispatch. Downloads what an
@@ -148,14 +213,61 @@ jobs:
       - name: Download the public assets anonymously
         run: |
           set -euo pipefail
-          version="${RELEASE_TAG#v}"
           mkdir published
-          for name in "RecordStuff-$version-arm64-selfsigned.dmg" SHA256SUMS release.json; do
+          # The asset set depends on the version, so an older tag is still verified by its own contract.
+          for name in $(node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts assets "$RELEASE_TAG"); do
             curl -fsSL --retry 3 -o "published/$name" "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$name"
           done
           (cd published && shasum -a 256 -c SHA256SUMS)
       - name: Verify mounted contents, signatures, metadata and GitHub asset digests
         run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts published "$RELEASE_TAG" published
+  verify-published-windows:
+    # The Windows half of verify-published: the anonymous download, the
+    # PowerShell checksum a Windows user would compare, the attestation and the
+    # install/uninstall gates. A macOS-only tag has nothing to check here.
+    if: always() && (github.event_name == 'workflow_dispatch' || needs.publish.result == 'success')
+    needs: publish
+    runs-on: windows-2025
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+      - name: Download the public assets anonymously
+        id: download
+        run: |
+          set -euo pipefail
+          mkdir published
+          names="$(node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts assets "$RELEASE_TAG")"
+          if ! grep -q '\.exe$' <<<"$names"; then echo "$RELEASE_TAG was published for macOS only."; echo "windows=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          for name in $names; do
+            curl -fsSL --retry 3 -o "published/$name" "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$name"
+          done
+          echo "windows=true" >> "$GITHUB_OUTPUT"
+      - name: Compare Get-FileHash with SHA256SUMS
+        if: steps.download.outputs.windows == 'true'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem published -Filter 'RecordStuff-*-x64-unsigned-setup.exe' | Select-Object -First 1
+          $line = (Get-Content published/SHA256SUMS) | Where-Object { $_ -like "*  $($installer.Name)" }
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer.FullName).Hash.ToLowerInvariant()
+          if (-not $line -or -not $line.StartsWith("$hash  ")) { throw "Get-FileHash $hash does not match SHA256SUMS line '$line'" }
+          Write-Host "$($installer.Name): $hash"
+      - name: Verify the build-provenance attestation
+        if: steps.download.outputs.windows == 'true'
+        run: gh attestation verify published/RecordStuff-*-x64-unsigned-setup.exe --repo "$GITHUB_REPOSITORY"
+      - name: Install, inspect and uninstall the published installer
+        if: steps.download.outputs.windows == 'true'
+        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts published-windows "$RELEASE_TAG" published
   record:
     # After the public download verified, write the
     # release facts (package.json version, README download block, bilingual
@@ -163,7 +275,7 @@ jobs:
     # Pre-releases write only verification records. Only these files change;
     # the maintainer completes the record's fill-in sections afterwards.
     if: github.event_name == 'push'
-    needs: verify-published
+    needs: [verify-published, verify-published-windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

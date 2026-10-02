@@ -6,9 +6,9 @@
 
 ## 平台狀態
 
-Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前只有 macOS 版本經過驗證。** 已測環境為 Apple M1 Pro、macOS 26、Electron 44.3，安裝產物為 arm64。Windows、Linux、Intel Mac 與其他 macOS 版本未驗證；現有跨平台程式不代表錄製或安裝已通過。參見 [Electron 平台資訊](https://github.com/electron/electron#platform-support)。
+Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前只有 macOS 版本經過驗證。** 已測環境為 Apple M1 Pro、macOS 26、Electron 44.3，安裝產物為 arm64。自 1.1.1 之後的第一個版本起，每個版本另附未簽章的 Windows x64 安裝程式，由 CI 建置並檢查，但未在 Windows 實機上驗證：CI 會在 GitHub 的 Windows runner 上靜默安裝與解除安裝，並檢查版本、架構與檔案；螢幕擷取、系統音訊、通知與系統匣在 Windows 上仍未測試，部分 App 文字也仍以 macOS 為前提（例如「選單列」與「Mac 進入睡眠」）。Windows on Arm、Linux、Intel Mac 與其他 macOS 版本未驗證，也沒有發布版本；現有跨平台程式不代表錄製或安裝已通過。參見 [Electron 平台資訊](https://github.com/electron/electron#platform-support)。
 
-交付目標是可下載的 macOS 自簽 App；不規劃 Apple 認證／公證，也不以 Windows／Linux 驗收作為發布條件。
+交付目標是可下載的 macOS 自簽 App，以及尚未驗證的 Windows x64 安裝程式；不規劃 Apple 認證／公證與 Windows 程式碼簽章，也不以 Windows／Linux 驗收作為發布條件。
 
 ## 下載與安裝
 
@@ -22,7 +22,9 @@ SHA-256：`64aca9703ac46aaa2fd45932c42160505bdc2e6f4c5ec27358af37a73dbce5f2`。
 
 1.0.0 已由 CI 建置、簽署、發布並重新驗證公開下載。本機錄影與 QuickTime 播放使用該 tag 原始碼檢查；詳見 [1.0.0 證據與未測項目](docs/zh-TW/verification/releases/1.0.0.md)。
 
-下載 arm64 DMG，把 RecordStuff 拖到磁碟映像檔中顯示的 Applications 資料夾；DMG 只有 App 與該 Applications 捷徑。[安裝指南](resources/INSTALL.zh-TW.md)涵蓋首次開啟、手動更新（結束、下載、在相同路徑取代；設定保留）與移除（結束、把 App 移到垃圾桶；錄影、設定與 log 除非自行刪除否則保留）。「設定 → 一般」提供「檢查更新…」與可關閉的啟動檢查（預設開啟，每 24 小時最多一次）。安裝仍需手動完成，沒有自動安裝器或解除安裝器。收件者不需要 Node、pnpm、FFmpeg 或憑證。初次安裝或更新若被 macOS 阻擋，請手動開啟「系統設定 → 隱私權與安全性」，往下捲到「安全性」，找到 RecordStuff 並點「強制打開」；提示中的「完成」不會解除封鎖；不保證免提示，參見 [Apple 說明](https://support.apple.com/102445)。
+下載 arm64 DMG，把 RecordStuff 拖到磁碟映像檔中顯示的 Applications 資料夾；DMG 只有 App 與該 Applications 捷徑。[安裝指南](resources/INSTALL.zh-TW.md)涵蓋首次開啟、手動更新（結束、下載、在相同路徑取代；設定保留）與移除（結束、把 App 移到垃圾桶；錄影、設定與 log 除非自行刪除否則保留）。「設定 → 一般」提供「檢查更新…」與可關閉的啟動檢查（預設開啟，每 24 小時最多一次）。安裝仍需手動完成，macOS 版沒有自動安裝器或解除安裝器。收件者不需要 Node、pnpm、FFmpeg 或憑證。初次安裝或更新若被 macOS 阻擋，請手動開啟「系統設定 → 隱私權與安全性」，往下捲到「安全性」，找到 RecordStuff 並點「強制打開」；提示中的「完成」不會解除封鎖；不保證免提示，參見 [Apple 說明](https://support.apple.com/102445)。
+
+Windows x64 請執行 `RecordStuff-<version>-x64-unsigned-setup.exe`：這是只為目前使用者安裝的一鍵安裝程式，不要求系統管理員權限，會建立「開始」功能表捷徑（Windows 通知需要），並在「設定 → 應用程式 → 已安裝的應用程式」登錄解除安裝程式。它沒有程式碼簽章，SmartScreen 可能顯示「Windows 已保護您的電腦」，請點「其他資訊」再點「仍要執行」。SHA256SUMS 同時列出兩個安裝檔（可在 PowerShell 以 `Get-FileHash` 的輸出與對應那一行比對），`release-win32-x64.json` 記錄安裝程式的資訊，安裝程式另附 GitHub build provenance attestation。更新時從系統匣選單結束 RecordStuff，再下載並執行新的安裝程式；設定與錄影會保留。解除安裝不會刪除錄影、設定或 log。細節與資料位置見[安裝指南](resources/INSTALL.zh-TW.md#windows)。
 
 ## 使用方式
 
@@ -66,9 +68,10 @@ pnpm check             # typecheck、測試、build
 pnpm icons             # 產生圖示；macOS 額外產生 ICNS
 pnpm log               # 追蹤 macOS log
 pnpm dist:mac    # 自簽 DMG → dist/（發布用的由 CI 建）
+pnpm dist:win    # 未簽章 Windows x64 安裝程式 → dist/（發布用的由 CI 建）
 ```
 
-開發者需有唯一名稱的有效自簽憑證，預設 `RecordStuff Dev`；可用 RECORDSTUFF_SIGN_IDENTITY 精確指定名稱或 SHA-1。重建前先確認 App 是否正在錄影；自己的錄影須先停止存檔，再結束 App。這條流程不公證、不發布；收件者不安裝憑證。只提供 macOS 打包；跨平台程式碼保留，但沒有 Windows／Linux 的打包目標。
+開發者需有唯一名稱的有效自簽憑證，預設 `RecordStuff Dev`；可用 RECORDSTUFF_SIGN_IDENTITY 精確指定名稱或 SHA-1。重建前先確認 App 是否正在錄影；自己的錄影須先停止存檔，再結束 App。這條流程不公證、不發布；收件者不安裝憑證。`pnpm dist:win` 在 `dist/` 產生未簽章的 Windows x64 NSIS 安裝程式，不走 macOS 簽署流程；發布用的由 CI 在 GitHub 的 Windows runner 上建置並檢查。沒有 Linux 的打包目標。
 
 專案 Node 要求為 ≥22.12，TypeScript 量測工具使用 Node 24。FFmpeg 只供開發驗收：
 

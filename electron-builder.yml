@@ -43,3 +43,21 @@ dmg:
       y: 190
       type: link
       path: /Applications
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # Unsigned (docs/system-design/decisions.md): the asset name says so, as
+  # -selfsigned does for the DMG. rcedit still stamps the icon and version.
+  artifactName: RecordStuff-${version}-${arch}-unsigned-setup.${ext}
+nsis:
+  # Per-user one-click install without an admin prompt. Its Start-menu shortcut
+  # carries the appId as AppUserModelID, which Windows toasts require.
+  oneClick: true
+  perMachine: false
+  # Uninstalling never deletes settings, history or recordings.
+  deleteAppDataOnUninstall: false
+  # No auto-updater, so no blockmap for differential downloads.
+  differentialPackage: false

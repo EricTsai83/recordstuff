@@ -59,7 +59,7 @@ describe("make-icons", () => {
     const generated = ["resources", "build"].flatMap((dir) =>
       fs.readdirSync(path.join(out, dir)).map((name) => path.join(dir, name)));
     // The ICNS is only generated on macOS.
-    expect(generated.length).toBeGreaterThanOrEqual(STATES.length * 3 + 3);
+    expect(generated.length).toBeGreaterThanOrEqual(STATES.length * 3 + 4);
     for (const file of generated) {
       expect(fs.readFileSync(path.join(out, file)).equals(fs.readFileSync(path.join(ROOT, file))), file).toBe(true);
     }
@@ -72,6 +72,11 @@ describe("make-icons", () => {
       const entries = icoEntries(fs.readFileSync(path.join(out, `resources/tray-${state.toLowerCase()}.ico`)));
       expect(entries.map((entry) => pngSize(entry)), state).toEqual(WINDOWS_SIZES.map((size) => [size, size]));
     }
+  });
+
+  it("ships a Windows app icon with the Explorer sizes up to 256 px", () => {
+    const entries = icoEntries(fs.readFileSync(path.join(out, "build/icon.ico")));
+    expect(entries.map((entry) => pngSize(entry))).toEqual([16, 24, 32, 48, 64, 128, 256].map((size) => [size, size]));
   });
 
   it("draws distinct shapes for busy and countdown", () => {

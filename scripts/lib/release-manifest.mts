@@ -14,6 +14,16 @@ export const RELEASES_URL = `${REPOSITORY_URL}/releases`;
 export const LATEST_RELEASE_URL = `${RELEASES_URL}/latest`;
 export const ARCHITECTURE = "arm64";
 export const PLATFORM = "darwin-arm64";
+export const WINDOWS_ARCHITECTURE = "x64";
+export const WINDOWS_PLATFORM = "win32-x64";
+/** The Windows installer's own record, beside the macOS `release.json` whose shape installed apps rely on. */
+export const WINDOWS_RECORD = "release-win32-x64.json";
+/**
+ * The last version published for macOS alone. Every later version, its
+ * pre-releases included, carries the Windows installer and its record, while
+ * the tooling on main can still verify every earlier tag by its own asset set.
+ */
+export const LAST_MACOS_ONLY_VERSION = "1.1.1";
 
 export interface ReleaseManifest {
   version: string;
@@ -27,6 +37,15 @@ export interface ReleaseManifest {
     size: number;
     sha256: string;
     url: string;
+  };
+  /** Present exactly for versions after LAST_MACOS_ONLY_VERSION. */
+  windows?: {
+    platform: typeof WINDOWS_PLATFORM;
+    name: string;
+    size: number;
+    sha256: string;
+    url: string;
+    recordUrl: string;
   };
   sha256sumsUrl: string;
   releaseJsonUrl: string;
@@ -65,6 +84,20 @@ export interface ReleaseJson {
   sha256: string;
 }
 
+/** release-win32-x64.json as written by scripts/release.mts candidate-windows. */
+export interface WindowsReleaseJson {
+  tag: string;
+  version: string;
+  sourceCommit: string;
+  repository: string;
+  platform: string;
+  file: string;
+  size: number;
+  sha256: string;
+  appAsarSHA256: string;
+  signature: string;
+}
+
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
 
@@ -79,8 +112,37 @@ export function expectedDmgName(version: string): string {
   return `RecordStuff-${version}-${ARCHITECTURE}-selfsigned.dmg`;
 }
 
+export function expectedWindowsInstallerName(version: string): string {
+  return `RecordStuff-${version}-${WINDOWS_ARCHITECTURE}-unsigned-setup.exe`;
+}
+
+/** Whether `version` (stable or pre-release) is published for Windows too; its numeric core decides. */
+export function carriesWindows(version: string): boolean {
+  const core = (v: string) => v.split(/[-+]/)[0]!.split(".").map(Number);
+  const a = core(version), b = core(LAST_MACOS_ONLY_VERSION);
+  for (let i = 0; i < 3; i += 1) if (a[i] !== b[i]) return a[i]! > b[i]!;
+  return false;
+}
+
 export function expectedAssetNames(version: string): string[] {
-  return [expectedDmgName(version), "release.json", "SHA256SUMS"];
+  return [expectedDmgName(version), "release.json", "SHA256SUMS",
+    ...(carriesWindows(version) ? [expectedWindowsInstallerName(version), WINDOWS_RECORD] : [])];
+}
+
+/** Checks a Windows record against the release context; size and digest are compared by the caller with the bytes it holds. */
+export function assertWindowsRecord(record: WindowsReleaseJson, expected: { tag: string; version: string; repository: string; sourceCommit?: string }): void {
+  const file = expectedWindowsInstallerName(expected.version);
+  if (record.tag !== expected.tag) throw new Error(`${WINDOWS_RECORD} tag ${record.tag} differs from ${expected.tag}.`);
+  if (record.version !== expected.version) throw new Error(`${WINDOWS_RECORD} version ${record.version} differs from ${expected.version}.`);
+  if (record.repository !== expected.repository) throw new Error(`${WINDOWS_RECORD} repository ${record.repository} is not ${expected.repository}.`);
+  if (record.platform !== WINDOWS_PLATFORM) throw new Error(`${WINDOWS_RECORD} platform ${record.platform} is not ${WINDOWS_PLATFORM}.`);
+  if (record.file !== file) throw new Error(`${WINDOWS_RECORD} file ${record.file} differs from ${file}.`);
+  if (!COMMIT_PATTERN.test(record.sourceCommit)) throw new Error(`${WINDOWS_RECORD} sourceCommit is not a full SHA.`);
+  if (expected.sourceCommit && record.sourceCommit !== expected.sourceCommit) throw new Error(`${WINDOWS_RECORD} sourceCommit ${record.sourceCommit} differs from ${expected.sourceCommit}.`);
+  if (!SHA256_PATTERN.test(record.sha256)) throw new Error(`${WINDOWS_RECORD} sha256 is malformed.`);
+  if (!SHA256_PATTERN.test(record.appAsarSHA256)) throw new Error(`${WINDOWS_RECORD} appAsarSHA256 is malformed.`);
+  if (!Number.isInteger(record.size) || record.size <= 0) throw new Error(`${WINDOWS_RECORD} size is not a positive integer.`);
+  if (record.signature !== "unsigned") throw new Error(`${WINDOWS_RECORD} signature ${record.signature} is not the expected "unsigned".`);
 }
 
 /** Parses `<sha256>  <filename>` lines into a name → hash map. */
@@ -112,10 +174,12 @@ export function buildManifest(input: {
   tag: string;
   release: GitHubRelease;
   releaseJson: ReleaseJson;
+  /** Required for versions that carry Windows. */
+  windowsJson?: WindowsReleaseJson | undefined;
   sha256sums: string;
   now: Date;
 }): ReleaseManifest {
-  const { tag, release, releaseJson, sha256sums, now } = input;
+  const { tag, release, releaseJson, windowsJson, sha256sums, now } = input;
   const version = parseStableTag(tag);
 
   if (release.tag_name !== tag) throw new Error(`GitHub returned ${release.tag_name} for ${tag}.`);
@@ -159,6 +223,25 @@ export function buildManifest(input: {
     }
   }
 
+  let windows: ReleaseManifest["windows"];
+  if (carriesWindows(version)) {
+    if (!windowsJson) throw new Error(`${tag} carries Windows but its ${WINDOWS_RECORD} was not supplied.`);
+    assertWindowsRecord(windowsJson, { tag, version, repository: REPOSITORY, sourceCommit: releaseJson.sourceCommit });
+    const installerAsset = findAsset(release, windowsJson.file);
+    const recordAsset = findAsset(release, WINDOWS_RECORD);
+    if (windowsJson.size !== installerAsset.size) {
+      throw new Error(`${WINDOWS_RECORD} size ${windowsJson.size} differs from GitHub asset size ${installerAsset.size}.`);
+    }
+    const listed = sums.get(windowsJson.file);
+    if (listed !== windowsJson.sha256) throw new Error(`SHA256SUMS hash ${listed ?? "missing"} for ${windowsJson.file} differs from ${WINDOWS_RECORD} sha256 ${windowsJson.sha256}.`);
+    if (installerAsset.digest && installerAsset.digest.replace(/^sha256:/, "") !== windowsJson.sha256) {
+      throw new Error(`GitHub asset digest for ${windowsJson.file} differs from ${WINDOWS_RECORD} sha256 ${windowsJson.sha256}.`);
+    }
+    windows = { platform: WINDOWS_PLATFORM, name: windowsJson.file, size: installerAsset.size, sha256: windowsJson.sha256,
+      url: installerAsset.browser_download_url, recordUrl: recordAsset.browser_download_url };
+  }
+  if (sums.size !== (windows ? 2 : 1)) throw new Error(`SHA256SUMS lists ${sums.size} files; expected ${windows ? 2 : 1}.`);
+
   return {
     version,
     tag,
@@ -173,6 +256,7 @@ export function buildManifest(input: {
       url: dmgAsset.browser_download_url,
     },
     sha256sumsUrl: sumsAsset.browser_download_url,
+    ...(windows ? { windows } : {}),
     releaseJsonUrl: jsonAsset.browser_download_url,
     releaseUrl: release.html_url,
     notesUrl: release.html_url,
@@ -208,6 +292,22 @@ export function assertManifestShape(value: unknown): ReleaseManifest {
   if (typeof dmg.url !== "string") throw new Error("Manifest dmg.url is missing.");
   assertGitHubUrl(dmg.url, "dmg.url");
   if (!dmg.url.endsWith(`/${tag}/${dmg.name}`)) throw new Error("Manifest dmg.url does not point at the tagged asset.");
+  const windows = manifest.windows as Record<string, unknown> | undefined;
+  if (!carriesWindows(version)) {
+    if (windows !== undefined) throw new Error(`Manifest has a windows block, but ${tag} was published for macOS only.`);
+  } else {
+    if (!windows || typeof windows !== "object") throw new Error("Manifest windows block is missing.");
+    if (windows.platform !== WINDOWS_PLATFORM) throw new Error("Manifest windows.platform is not win32-x64.");
+    if (windows.name !== expectedWindowsInstallerName(version)) throw new Error("Manifest windows.name does not match the version.");
+    if (!Number.isInteger(windows.size) || (windows.size as number) <= 0) throw new Error("Manifest windows.size is invalid.");
+    if (typeof windows.sha256 !== "string" || !SHA256_PATTERN.test(windows.sha256)) throw new Error("Manifest windows.sha256 is malformed.");
+    for (const [key, name] of [["url", windows.name], ["recordUrl", WINDOWS_RECORD]] as const) {
+      const url = windows[key];
+      if (typeof url !== "string") throw new Error(`Manifest windows.${key} is missing.`);
+      assertGitHubUrl(url, `windows.${key}`);
+      if (!url.endsWith(`/${tag}/${name}`)) throw new Error(`Manifest windows.${key} does not point at the tagged asset.`);
+    }
+  }
   return manifest as unknown as ReleaseManifest;
 }
 
@@ -237,6 +337,9 @@ export function diffManifest(stored: ReleaseManifest, fresh: ReleaseManifest): s
   compare("dmg.size", stored.dmg.size, fresh.dmg.size);
   compare("dmg.sha256", stored.dmg.sha256, fresh.dmg.sha256);
   compare("dmg.url", stored.dmg.url, fresh.dmg.url);
+  for (const key of ["platform", "name", "size", "sha256", "url", "recordUrl"] as const) {
+    compare(`windows.${key}`, stored.windows?.[key], fresh.windows?.[key]);
+  }
   compare("sha256sumsUrl", stored.sha256sumsUrl, fresh.sha256sumsUrl);
   compare("releaseJsonUrl", stored.releaseJsonUrl, fresh.releaseJsonUrl);
   compare("releaseUrl", stored.releaseUrl, fresh.releaseUrl);

@@ -70,7 +70,8 @@ describe("SettingsStore", () => {
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: 3, notifications: false });
   });
 
-  it("rejects the save and keeps the unusable file when it cannot be kept", async () => {
+  // chmod cannot make a directory unwritable to its owner on Windows.
+  it.skipIf(process.platform === "win32")("rejects the save and keeps the unusable file when it cannot be kept", async () => {
     await fs.writeFile(filePath, "{ not json");
     const first = store();
     await fs.chmod(dir, 0o500);

@@ -13,14 +13,36 @@ import manifestJson from "../../release-manifest.json" with { type: "json" };
 import {
   LATEST_RELEASE_URL,
   RELEASES_URL,
+  REPOSITORY,
   REPOSITORY_URL,
   assertManifestShape,
   formatBytes,
   formatReleaseDate,
+  LAST_MACOS_ONLY_VERSION,
   type ReleaseManifest,
 } from "../../../scripts/lib/release-manifest.mts";
 
 export const manifest: ReleaseManifest = assertManifestShape(manifestJson);
+
+/**
+ * The Windows x64 installer's facts, or undefined for a release published for
+ * macOS alone (1.1.1 and earlier), whose manifest has no windows block.
+ */
+export function windowsRelease(source: ReleaseManifest) {
+  const windows = source.windows;
+  if (!windows) return undefined;
+  return {
+    architectureLabel: "x64",
+    name: windows.name,
+    size: windows.size,
+    sizeLabel: formatBytes(windows.size),
+    sha256: windows.sha256,
+    /** Direct installer download from the tagged GitHub release. */
+    url: windows.url,
+    /** release-win32-x64.json: the installer's source commit, version, size and SHA-256. */
+    recordUrl: windows.recordUrl,
+  } as const;
+}
 
 export const reverified = process.env.SITE_MANIFEST_VERIFIED === "1";
 
@@ -44,10 +66,15 @@ export const release = {
   releaseUrl: manifest.releaseUrl,
   notesUrl: manifest.notesUrl,
   sourceCommitUrl: `${REPOSITORY_URL}/commit/${manifest.sourceCommit}`,
+  /** Absent for macOS-only releases; pages then say which release first carries Windows. */
+  windows: windowsRelease(manifest),
+  lastMacOSOnlyVersion: LAST_MACOS_ONLY_VERSION,
 } as const;
 
 export const links = {
   repository: REPOSITORY_URL,
+  /** owner/name, as `gh attestation verify --repo` takes it. */
+  repositorySlug: REPOSITORY,
   releases: RELEASES_URL,
   latestRelease: LATEST_RELEASE_URL,
   issues: `${REPOSITORY_URL}/issues`,

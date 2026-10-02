@@ -4,9 +4,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { releaseFactsFromManifest, renderDownloadSection } from './release.mts';
+import { carriesWindows } from './lib/release-manifest.mts';
 
 const repositoryRoot = fileURLToPath(new URL('../', import.meta.url));
 const repository = 'EricTsai83/recordstuff';
@@ -46,17 +47,9 @@ beforeEach(async () => {
     mkdirSync(path.dirname(destination), { recursive: true });
     cpSync(path.join(repositoryRoot, file), destination);
   }
-  for (const dir of ['bin', 'website', 'docs/verification/releases', 'docs/zh-TW/verification/releases']) mkdirSync(path.join(root, dir), { recursive: true });
+  for (const dir of ['website', 'docs/verification/releases', 'docs/zh-TW/verification/releases']) mkdirSync(path.join(root, dir), { recursive: true });
   writeFileSync(path.join(root, 'package.json'), '{\n  "version": "0.1.3"\n}\n');
   commitStable('0.1.3');
-  writeFileSync(path.join(root, 'bin/gh'), `#!/usr/bin/env node
-const fs = require('node:fs');
-const fixture = JSON.parse(fs.readFileSync(process.env.RELEASE_FIXTURE));
-const endpoint = process.argv[3];
-if (endpoint.includes('/commits/')) console.log(JSON.stringify({ sha: fixture.commit }));
-else if (endpoint.includes('/releases/tags/')) console.log(JSON.stringify(fixture.release));
-else throw new Error('Unexpected gh request: ' + endpoint);
-`, { mode: 0o755 });
   await buildFixture('release-record-network', root);
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
@@ -67,16 +60,25 @@ function record(version = '0.1.4', { tagCommit = commit, sourceCommit = tagCommi
   const file = `RecordStuff-${version}-arm64-selfsigned.dmg`;
   const base = `https://github.com/${repository}/releases/download/${tag}/`;
   const metadata = { version, tag, sourceCommit, repository, platform: 'darwin-arm64', file, size, sha256 };
+  // Every version after 1.1.1 carries the Windows installer and its record.
+  const exe = `RecordStuff-${version}-x64-unsigned-setup.exe`;
+  const windows = carriesWindows(version)
+    ? { version, tag, sourceCommit, repository, platform: 'win32-x64', file: exe, size: 98765, sha256: 'e'.repeat(64), appAsarSHA256: 'f'.repeat(64), signature: 'unsigned' }
+    : undefined;
   const release = {
     tag_name: tag, draft: false, prerelease: version.includes('-'), published_at: '2026-09-21T00:00:00Z',
     html_url: `https://github.com/${repository}/releases/tag/${tag}`,
-    assets: [file, 'release.json', 'SHA256SUMS'].map(name => ({ name, size: name === file ? size : 100, digest: `sha256:${sha256}`, browser_download_url: base + name })),
+    assets: [
+      ...[file, 'release.json', 'SHA256SUMS'].map(name => ({ name, size: name === file ? size : 100, digest: `sha256:${sha256}`, browser_download_url: base + name })),
+      ...(windows ? [{ name: exe, size: windows.size, digest: `sha256:${windows.sha256}`, browser_download_url: base + exe },
+        { name: 'release-win32-x64.json', size: 100, digest: `sha256:${sha256}`, browser_download_url: `${base}release-win32-x64.json` }] : []),
+    ],
   };
   const fixture = path.join(root, 'fixture.json');
-  writeFileSync(fixture, JSON.stringify({ commit: tagCommit, metadata, release }));
-  return spawnSync(process.execPath, ['--import', path.join(root, 'release-record-network.mjs'), 'scripts/release.mts', 'record', tag], {
+  writeFileSync(fixture, JSON.stringify({ commit: tagCommit, metadata, release, windows }));
+  return spawnSync(process.execPath, ['--import', pathToFileURL(path.join(root, 'release-record-network.mjs')).href, 'scripts/release.mts', 'record', tag], {
     cwd: root, encoding: 'utf8', timeout: 10_000,
-    env: { ...process.env, PATH: `${path.join(root, 'bin')}${path.delimiter}${process.env.PATH}`, GITHUB_REPOSITORY: repository, RELEASE_FIXTURE: fixture, RELEASE_RUN_URL: runUrl },
+    env: { ...process.env, GITHUB_REPOSITORY: repository, RELEASE_FIXTURE: fixture, RELEASE_RUN_URL: runUrl },
   });
 }
 function text(file: string) { return readFileSync(path.join(root, file), 'utf8'); }
@@ -130,6 +132,27 @@ describe('record CLI', () => {
     const again = record('0.1.3');
     expect(again.stdout).toContain('No file changed.');
     expect(text('docs/verification/releases/0.1.3.md')).toBe('Manual evidence.\n');
+  });
+
+  it('promotes the first two-platform version with its Windows installer in every output', () => {
+    const result = record('1.2.0');
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('promoted: stable download pointers moved from v0.1.3 to v1.2.0');
+    const manifest = JSON.parse(text('website/release-manifest.json'));
+    expect(manifest.windows).toMatchObject({ platform: 'win32-x64', name: 'RecordStuff-1.2.0-x64-unsigned-setup.exe', size: 98765, sha256: 'e'.repeat(64) });
+    for (const file of ['README.md', 'README.zh-TW.md', 'docs/verification/releases/1.2.0.md', 'docs/zh-TW/verification/releases/1.2.0.md']) {
+      expect(text(file), file).toContain('RecordStuff-1.2.0-x64-unsigned-setup.exe');
+    }
+    const retry = record('1.2.0');
+    expect(retry.stdout).toContain('No file changed.');
+  });
+
+  it('records a two-platform pre-release with both installers and no stable pointer', () => {
+    const before = snapshot();
+    const result = record('1.2.0-rc.1');
+    expect(result.status, result.stderr).toBe(0);
+    expect(snapshot()).toEqual(before);
+    expect(text('docs/verification/releases/1.2.0-rc.1.md')).toContain('RecordStuff-1.2.0-rc.1-x64-unsigned-setup.exe');
   });
 
   it('records the committed stable version again without rewriting its pointer', () => {
@@ -196,13 +219,14 @@ describe('record CLI', () => {
     for (const file of ['scripts/release.test.ts', 'README.md', 'README.zh-TW.md', 'website/release-manifest.json']) {
       cpSync(path.join(repositoryRoot, file), path.join(root, file));
     }
-    symlinkSync(path.join(repositoryRoot, 'node_modules'), path.join(root, 'node_modules'), 'dir');
+    // A junction needs no symlink privilege on Windows.
+    symlinkSync(path.join(repositoryRoot, 'node_modules'), path.join(root, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
     writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version }));
     const result = spawnSync(process.execPath, [path.join(repositoryRoot, 'node_modules/vitest/vitest.mjs'), 'run', 'scripts/release.test.ts'], {
-      cwd: root, encoding: 'utf8', timeout: 10_000,
+      cwd: root, encoding: 'utf8', timeout: 60_000,
     });
     expect(result.status, result.stdout + result.stderr).toBe(0);
-  });
+  }, 90_000);
 
   it('rejects a mismatched source commit before writing any output', () => {
     const before = snapshot();

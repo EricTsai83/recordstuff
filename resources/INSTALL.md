@@ -1,4 +1,4 @@
-# RecordStuff — Install, Update, and Remove on macOS
+# RecordStuff — Install, Update, and Remove on macOS and Windows
 
 [English](INSTALL.md) | [繁體中文](INSTALL.zh-TW.md)
 
@@ -7,7 +7,9 @@ notarized by Apple. You do not need a paid Apple membership or any additional
 certificates. Files with arm64 in the name are for Apple silicon Macs.
 
 The DMG contains only the app and an Applications shortcut. This page is the
-installation guide; it is linked from every GitHub release.
+installation guide; it is linked from every GitHub release. The sections up to
+"Language" cover macOS; the unverified Windows x64 installer is covered in
+[Windows](#windows) at the end.
 
 ## Installation and first launch (no Terminal required)
 
@@ -94,3 +96,75 @@ Apple's instructions: https://support.apple.com/102445
 RecordStuff starts in English. Right-click its menu bar icon and choose
 Settings → General → Language → 繁體中文 for Traditional Chinese. The choice is saved for future launches.
 App diagnostics remain English; macOS permission dialogs follow the system language.
+
+## Windows
+
+Windows x64 installers are published on GitHub Releases starting with the first
+release after 1.1.1, as `RecordStuff-<version>-x64-unsigned-setup.exe`.
+Windows on Arm is not supported.
+
+**Not verified on Windows hardware.** CI builds the installer, silently installs
+and uninstalls it on a GitHub Windows runner and checks its version,
+architecture and files. Screen capture, system audio, notifications and the tray
+have not been verified on Windows hardware. Some app wording still assumes
+macOS, such as "menu bar" and "the Mac went to sleep". The sections above were
+written for, and verified on, macOS.
+
+### Install
+
+1. Download the installer from the [latest release](https://github.com/EricTsai83/recordstuff/releases/latest)
+   and run it. It installs RecordStuff for your Windows account only, without an
+   administrator prompt, and creates a Start-menu shortcut, which Windows
+   notifications need.
+2. The installer is not code-signed, which its file name states. If Windows
+   SmartScreen shows "Windows protected your PC", verify you trust the download,
+   click More info, then Run anyway. Organization-managed PCs may not allow this;
+   contact your administrator.
+3. RecordStuff has no regular main window. Its icon is in the system tray; click
+   it to start recording and click it again to stop. Right-click it for Settings,
+   the output folder, logs and Quit. Recordings are saved to Videos → RecordStuff
+   by default.
+
+### Verify the download
+
+SHA256SUMS lists both the DMG and the installer, one line each. In PowerShell, run:
+
+```powershell
+Get-FileHash $HOME\Downloads\RecordStuff-<version>-x64-unsigned-setup.exe
+```
+
+`Get-FileHash` prints the hash in capitals; compare it, ignoring case, with the
+installer's line in SHA256SUMS. The release's `release-win32-x64.json` records
+the installer's source commit, version, size and SHA-256. The installer also
+carries a GitHub build-provenance attestation, which the GitHub CLI can check:
+
+```bash
+gh attestation verify RecordStuff-<version>-x64-unsigned-setup.exe --repo EricTsai83/recordstuff
+```
+
+### Update
+
+**Check for updates…** in **Settings → General** also works on Windows: it reads
+the latest release on GitHub. Installation stays manual:
+
+1. Stop any recording, then choose Quit from the RecordStuff tray menu.
+2. Download the new installer from the [latest release](https://github.com/EricTsai83/recordstuff/releases/latest),
+   optionally verify it as described above, and run it.
+
+Your settings and recordings are kept.
+
+### Uninstall
+
+1. Stop any recording, then choose Quit from the RecordStuff tray menu.
+2. Open Settings → Apps → Installed apps, find RecordStuff and choose Uninstall.
+
+Uninstalling never deletes your data. The app never deletes recordings. It keeps
+your data in these locations; delete them yourself only if you no longer need them:
+
+| Data | Location |
+| --- | --- |
+| Recordings | `Videos\RecordStuff` in your user folder, or the output folder you chose |
+| Settings and history | `%APPDATA%\recordstuff` |
+| Logs | `%APPDATA%\recordstuff\logs` |
+
+Paste a path into the File Explorer address bar to open it.

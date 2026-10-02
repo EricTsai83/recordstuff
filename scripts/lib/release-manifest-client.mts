@@ -1,6 +1,6 @@
 /** Fetch and verify a published stable release for every release-data consumer. */
 import { fetchWithRetry } from "./fetch-retry.mts";
-import { REPOSITORY, buildManifest, parseStableTag, type GitHubRelease, type ReleaseJson, type ReleaseManifest } from "./release-manifest.mts";
+import { REPOSITORY, WINDOWS_RECORD, buildManifest, carriesWindows, parseStableTag, type GitHubRelease, type ReleaseJson, type ReleaseManifest, type WindowsReleaseJson } from "./release-manifest.mts";
 
 const API_BASE = `https://api.github.com/repos/${REPOSITORY}`;
 const FETCH_TIMEOUT_MS = 20_000;
@@ -60,13 +60,22 @@ export async function fetchManifest(tag: string, now = new Date()): Promise<Rele
     fetchText(releaseJsonAsset.browser_download_url),
     fetchText(sumsAsset.browser_download_url),
   ]);
-  let releaseJson: ReleaseJson;
-  try {
-    releaseJson = JSON.parse(releaseJsonText) as ReleaseJson;
-  } catch (error) {
-    throw new Error(`${tag}: release.json at ${releaseJsonAsset.browser_download_url} is not valid JSON: ${(error as Error).message}`);
+  const parse = <T,>(text: string, name: string, url: string): T => {
+    try {
+      return JSON.parse(text) as T;
+    } catch (error) {
+      throw new Error(`${tag}: ${name} at ${url} is not valid JSON: ${(error as Error).message}`);
+    }
+  };
+  const releaseJson = parse<ReleaseJson>(releaseJsonText, "release.json", releaseJsonAsset.browser_download_url);
+  let windowsJson: WindowsReleaseJson | undefined;
+  if (carriesWindows(parseStableTag(tag))) {
+    const windowsAsset = release.assets.find((asset) => asset.name === WINDOWS_RECORD);
+    if (!windowsAsset) throw new Error(`${tag} lacks ${WINDOWS_RECORD}; it was not published by the two-platform release workflow.`);
+    windowsJson = parse<WindowsReleaseJson>(await fetchText(windowsAsset.browser_download_url), WINDOWS_RECORD, windowsAsset.browser_download_url);
   }
-  const manifest = buildManifest({ tag, release, releaseJson, sha256sums, now });
+  const manifest = buildManifest({ tag, release, releaseJson, windowsJson, sha256sums, now });
   await assertAssetReachable(manifest.dmg.url);
+  if (manifest.windows) await assertAssetReachable(manifest.windows.url);
   return manifest;
 }

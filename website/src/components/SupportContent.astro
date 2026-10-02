@@ -9,6 +9,7 @@ const H = "h2";
 <div class="prose">
   <H id="platforms">Verified platforms</H>
   <p>{platformBoundary.verified}</p>
+  <p>{platformBoundary.windows} See <a href="/help#windows">Install on Windows</a>.</p>
   <p>{platformBoundary.unverified}</p>
 
   <H id="privacy">Privacy and data</H>
@@ -21,6 +22,6 @@ const H = "h2";
     RecordStuff is MIT licensed. The code, design documents and the <a href={links.verificationRecord} target="_blank" rel="noopener noreferrer">verification record</a> behind every claim on this site are on <a href={links.repository} target="_blank" rel="noopener noreferrer">GitHub</a>. Version {release.version} was built by CI from commit <a href={release.sourceCommitUrl} target="_blank" rel="noopener noreferrer"><code>{release.sourceCommitShort}</code></a>.
   </p>
   <p>
-    To report a problem, <a href={links.issues} target="_blank" rel="noopener noreferrer">open an issue</a> and include the relevant lines from the log; right-click the menu bar icon and choose <em>Show log</em> to find it.
+    To report a problem, <a href={links.issues} target="_blank" rel="noopener noreferrer">open an issue</a> and include the relevant lines from the log; right-click the menu bar icon (the tray icon on Windows) and choose <em>Show log</em> to find it.
   </p>
 </div>

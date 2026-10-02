@@ -128,8 +128,11 @@ describe("settings window lifecycle", () => {
     s.panel.show();
     s.panel.show();
     expect(mock.windows).toHaveLength(1);
-    expect(mock.focus).toHaveBeenCalledWith({ steal: true });
-    expect(mock.focus).toHaveBeenCalledTimes(2);
+    // Only a macOS accessory app has to take focus from the frontmost app.
+    if (process.platform === "darwin") {
+      expect(mock.focus).toHaveBeenCalledWith({ steal: true });
+      expect(mock.focus).toHaveBeenCalledTimes(2);
+    } else expect(mock.focus).not.toHaveBeenCalled();
     // A second request while the page still loads must not show a blank window.
     expect(s.window().show).not.toHaveBeenCalled();
     s.window().events.get("ready-to-show")!();

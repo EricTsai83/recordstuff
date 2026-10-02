@@ -235,10 +235,10 @@ describe("Recorder happy path", () => {
     const writer = ctx.writers[0]!;
     expect(writer.chunks).toHaveLength(3);
     expect(writer.finished).toBe(true);
-    expect(writer.recordingPath).toBe("/out/2026-09-11 14-30-00.recording.mp4");
-    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: "/out/2026-09-11 14-30-00.mp4" });
-    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: "/out/2026-09-11 14-30-00.mp4", session: {
-      id: "s1", recordingPath: "/out/2026-09-11 14-30-00.recording.mp4",
+    expect(writer.recordingPath).toBe(path.join("/out", "2026-09-11 14-30-00.recording.mp4"));
+    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: path.join("/out", "2026-09-11 14-30-00.mp4") });
+    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: path.join("/out", "2026-09-11 14-30-00.mp4"), session: {
+      id: "s1", recordingPath: path.join("/out", "2026-09-11 14-30-00.recording.mp4"),
       recordingAt: new Date(2026, 8, 11, 14, 30, 0).toISOString(), stoppingAt: new Date(2026, 8, 11, 14, 30, 0).toISOString(),
     } });
     expect(ctx.states.map((s) => s.type)).toEqual(["starting", "recording", "stopping", "idle"]);
@@ -252,7 +252,7 @@ describe("Recorder happy path", () => {
       },
       openWriter: async () => {
         order.push("open");
-        return new FakeWriter("/out/a.recording.mp4", "/out/a.mp4");
+        return new FakeWriter(path.join("/out", "a.recording.mp4"), path.join("/out", "a.mp4"));
       },
     });
     ctx.recorder.toggle();
@@ -475,7 +475,7 @@ describe("Recorder timeouts", () => {
       type: "failed",
       code: "stop_timeout",
       detail: expect.any(String),
-      partialPath: "/out/2026-09-11 14-30-00.recording.mp4",
+      partialPath: path.join("/out", "2026-09-11 14-30-00.recording.mp4"),
       outcome: "partial",
       session: traced(),
     });
@@ -551,7 +551,7 @@ describe("Recorder failures", () => {
     await flush();
     expect(ctx.recorder.state).toEqual({ type: "idle" });
     expect(ctx.events.at(-1)).toEqual({ type: "failed", code: "capture_start_failed", detail: "no renderer", outcome: "empty",
-      session: { id: "s1", recordingPath: "/out/2026-09-11 14-30-00.recording.mp4" } });
+      session: { id: "s1", recordingPath: path.join("/out", "2026-09-11 14-30-00.recording.mp4") } });
   });
 
   it("host error message → failed with that code", async () => {
@@ -573,7 +573,7 @@ describe("Recorder failures", () => {
       type: "failed",
       code: "capture_host_crashed",
       detail: "killed",
-      partialPath: "/out/2026-09-11 14-30-00.recording.mp4",
+      partialPath: path.join("/out", "2026-09-11 14-30-00.recording.mp4"),
       outcome: "partial",
       session: traced(),
     });
@@ -692,7 +692,7 @@ describe("Recorder review fixes", () => {
 
   it("a writer opened after the deadline is abandoned, not used", async () => {
     let resolveOpen: ((w: FakeWriter) => void) | undefined;
-    const late = new FakeWriter("/out/late.recording.mp4", "/out/late.mp4");
+    const late = new FakeWriter(path.join("/out", "late.recording.mp4"), path.join("/out", "late.mp4"));
     const ctx = setup({ openWriter: () => new Promise((r) => (resolveOpen = r)) });
     ctx.recorder.toggle();
     await vi.advanceTimersByTimeAsync(8000);
@@ -833,7 +833,7 @@ describe("Recorder review fixes", () => {
     });
     ctx.recorder.toggle();
     await flush();
-    expect(opened).toEqual(["/out/2026-09-11 14-30-00.recording.mp4", "/out/2026-09-11 14-30-00-2.recording.mp4"]);
+    expect(opened).toEqual([path.join("/out", "2026-09-11 14-30-00.recording.mp4"), path.join("/out", "2026-09-11 14-30-00-2.recording.mp4")]);
     expect(ctx.recorder.state.type).toBe("starting");
     expect(ctx.host.started).toEqual(["s1"]);
   });
@@ -938,7 +938,7 @@ describe("Recorder permission", () => {
 
   // Bug 2: the watcher reports a revocation once, and the old recorder
   // dropped it while busy, so the session ended in a misleading "Ready".
-  const SAVED = "/out/2026-09-11 14-30-00.mp4";
+  const SAVED = path.join("/out", "2026-09-11 14-30-00.mp4");
   const saveRecording = async (ctx: ReturnType<typeof setup>): Promise<void> => {
     if (ctx.recorder.state.type === "recording") ctx.recorder.stop();
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
@@ -976,7 +976,7 @@ describe("Recorder permission", () => {
     ctx.host.crash();
     await flush();
     expect(ctx.recorder.state).toEqual({ type: "needsPermission", needsRelaunch: false });
-    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "capture_host_crashed", partialPath: "/out/2026-09-11 14-30-00.recording.mp4" });
+    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "capture_host_crashed", partialPath: path.join("/out", "2026-09-11 14-30-00.recording.mp4") });
     expect(ctx.states.map((s) => s.type)).toEqual(["starting", "recording", "needsPermission"]);
   });
 
@@ -1891,7 +1891,7 @@ it("retains a late-open candidate as uncertain when its close cannot be confirme
   const ctx = setup({ openWriter: () => new Promise(resolve => { open = resolve; }) });
   ctx.recorder.toggle(); await flush();
   await vi.advanceTimersByTimeAsync(8000);
-  const late = new FakeWriter("/out/late.recording.mp4", "/out/late.mp4");
+  const late = new FakeWriter(path.join("/out", "late.recording.mp4"), path.join("/out", "late.mp4"));
   late.abandon = async () => { throw new Error("close failed"); };
   open(late); await flush();
   expect(await ctx.recorder.shutdown()).toBe(true);
@@ -1946,11 +1946,11 @@ describe("disk headroom guard", () => {
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
     await flush();
     expect(ctx.events.filter((event) => event.type === "saved")).toEqual([
-      { type: "saved", path: "/out/2026-09-11 14-30-00.mp4", stoppedEarly: "lowDisk", session: traced() },
+      { type: "saved", path: path.join("/out", "2026-09-11 14-30-00.mp4"), stoppedEarly: "lowDisk", session: traced() },
     ]);
     expect(ctx.writers[0]!.chunks).toHaveLength(5);
     expect(ctx.events.some((event) => event.type === "failed" || event.type === "failureStatus")).toBe(false);
-    expect(log).toHaveBeenCalledWith(expect.stringContaining("file finalized /out/2026-09-11 14-30-00.mp4 (stopped early: disk almost full)"));
+    expect(log).toHaveBeenCalledWith(expect.stringContaining(`file finalized ${path.join("/out", "2026-09-11 14-30-00.mp4")} (stopped early: disk almost full)`));
   });
 
   it("logs a failed poll once and never stops the recording because of it", async () => {
@@ -1968,7 +1968,7 @@ describe("disk headroom guard", () => {
     ctx.recorder.stop();
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
     await flush();
-    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: "/out/2026-09-11 14-30-00.mp4", session: traced() });
+    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: path.join("/out", "2026-09-11 14-30-00.mp4"), session: traced() });
   });
 
   it("refuses to start below the stop threshold as disk_full, without calling the folder unavailable", async () => {
@@ -2037,7 +2037,7 @@ describe("stalled capture guard", () => {
     expect(ctx.events.some((event) => event.type === "failed")).toBe(false);
     publish();
     await flush();
-    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: "/out/2026-09-11 14-30-00.mp4", session: traced() });
+    expect(ctx.events.at(-1)).toEqual({ type: "saved", path: path.join("/out", "2026-09-11 14-30-00.mp4"), session: traced() });
   });
 });
 
@@ -2067,7 +2067,7 @@ describe("interruption sentinel lifecycle", () => {
     const ctx: Ctx = setup({ deps: { sentinels: store, now: () => new Date((clock += 1500)) } });
     await startRecording(ctx);
     const sentinel = store.files.get("s1")!;
-    expect(sentinel.recordingPath).toBe(`/out/${formatTimestamp(new Date(sentinel.startedAt))}.recording.mp4`);
+    expect(sentinel.recordingPath).toBe(path.join("/out", `${formatTimestamp(new Date(sentinel.startedAt))}.recording.mp4`));
     ctx.recorder.stop();
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
     await flush();
@@ -2085,7 +2085,7 @@ describe("interruption sentinel lifecycle", () => {
     } });
     ctx.recorder.subscribe((event) => { if (event.type === "saved") store.calls.push("saved"); });
     await startRecording(ctx);
-    expect(store.files.get("s1")).toEqual({ sessionId: "s1", startedAt: expect.any(String), recordingPath: "/out/2026-09-11 14-30-00-2.recording.mp4" });
+    expect(store.files.get("s1")).toEqual({ sessionId: "s1", startedAt: expect.any(String), recordingPath: path.join("/out", "2026-09-11 14-30-00-2.recording.mp4") });
     ctx.recorder.stop();
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
     await flush();
@@ -2140,7 +2140,7 @@ describe("interruption sentinel lifecycle", () => {
     ctx.recorder.toggle(); await flush();
     await vi.advanceTimersByTimeAsync(8000);
     expect(store.files.has("s1")).toBe(true);
-    open(new FakeWriter("/out/2026-09-11 14-30-00.recording.mp4", "/out/2026-09-11 14-30-00.mp4"));
+    open(new FakeWriter(path.join("/out", "2026-09-11 14-30-00.recording.mp4"), path.join("/out", "2026-09-11 14-30-00.mp4")));
     await flush();
     expect(ctx.events.filter((event) => event.type === "failed")).toEqual([expect.objectContaining({ code: "output_open_failed" })]);
     expect(store.files.size).toBe(0);
@@ -2478,7 +2478,7 @@ describe("Recorder countdown (plan 040)", () => {
         ctx.recorder.stop();
         ctx.host.emit({ type: "stopped", sessionId: "s1" });
         await flush();
-        const lastSavedPath = "/out/2026-09-11 14-30-00.mp4";
+        const lastSavedPath = path.join("/out", "2026-09-11 14-30-00.mp4");
         expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath });
         const before = ctx.events.length;
         ctx.presenter.calls = [];
@@ -2567,10 +2567,10 @@ describe("Recorder countdown (plan 040)", () => {
       ctx.host.emit({ type: "stopped", sessionId: "s1" });
       await flush();
       expect(ctx.events.filter((event) => event.type === "saved")).toEqual([
-        { type: "saved", path: "/out/2026-09-11 14-30-00.mp4", stoppedEarly: "sleep", session: traced() },
+        { type: "saved", path: path.join("/out", "2026-09-11 14-30-00.mp4"), stoppedEarly: "sleep", session: traced() },
       ]);
       expect(ctx.events.some((event) => event.type === "failed" || event.type === "failureStatus")).toBe(false);
-      expect(ctx.logs).toContainEqual(expect.stringContaining("file finalized /out/2026-09-11 14-30-00.mp4 (stopped early: the Mac went to sleep)"));
+      expect(ctx.logs).toContainEqual(expect.stringContaining(`file finalized ${path.join("/out", "2026-09-11 14-30-00.mp4")} (stopped early: the Mac went to sleep)`));
     });
 
     it("sends the stop to the host before the stopping state reaches subscribers (review pass 1)", async () => {

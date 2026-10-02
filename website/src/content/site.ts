@@ -2,8 +2,11 @@
  * Every sentence the site shows. Facts here are limited to what README.md,
  * resources/INSTALL.md, docs/system-design/desktop.md and the verification
  * record already state; nothing promises notarization, warning-free launch,
- * automatic updates or platforms that were never verified.
+ * automatic updates or platforms that were never verified. Windows is offered
+ * only together with the statement that it was never verified on hardware.
  */
+
+import { LAST_MACOS_ONLY_VERSION } from "../../../scripts/lib/release-manifest.mts";
 
 export const SITE_NAME = "RecordStuff";
 
@@ -111,6 +114,54 @@ export const retainedData = [
   { data: "Logs", location: "~/Library/Logs/recordstuff" },
 ] as const;
 
+/** CI-checked, never run on Windows hardware: shown wherever the Windows installer is offered. */
+export const windowsBoundary =
+  "CI builds the installer, silently installs and uninstalls it on a GitHub Windows runner and checks its version, architecture and files. Screen capture, system audio, notifications and the tray have not been verified on Windows hardware, and some app wording still assumes macOS, such as “menu bar” and “the Mac went to sleep”.";
+
+/** Shown while the published release predates Windows. */
+export const windowsUpcoming = `Windows x64 installers are published on GitHub Releases starting with the first release after ${LAST_MACOS_ONLY_VERSION}.`;
+
+export const windowsSmartScreen =
+  "The installer is not code-signed, which its file name states. Windows SmartScreen may show “Windows protected your PC”: click More info, then Run anyway.";
+
+export const windowsInstallSteps: Step[] = [
+  {
+    title: "Download the installer and run it",
+    body: "The file ends in `-x64-unsigned-setup.exe`. It installs RecordStuff for your Windows account only, without an administrator prompt, and creates a Start-menu shortcut, which Windows notifications need.",
+  },
+  {
+    title: "If SmartScreen appears, choose More info → Run anyway",
+    body: "Only do this for an installer you downloaded from the RecordStuff release and, ideally, whose SHA-256 you compared. Organization-managed PCs may not allow it.",
+  },
+  {
+    title: "Find the icon in the system tray",
+    body: "RecordStuff has no regular window. Its icon is in the system tray; click it to record and click again to stop. Right-click it for Settings, the output folder, logs and Quit. Recordings are saved to Videos → RecordStuff by default.",
+  },
+];
+
+export const windowsUpdateSteps: Step[] = [
+  { title: "Stop any recording and choose Quit from the tray menu", body: "" },
+  {
+    title: "Download the new installer and run it",
+    body: "Optionally compare its SHA-256 first: in PowerShell run `Get-FileHash` on the downloaded file and compare the result, ignoring case, with the installer's line in the release's SHA256SUMS file. Your settings and recordings are kept.",
+  },
+];
+
+export const windowsRemoveSteps: Step[] = [
+  { title: "Stop any recording and choose Quit from the tray menu", body: "" },
+  {
+    title: "Open Settings → Apps → Installed apps, find RecordStuff and choose Uninstall",
+    body: "Uninstalling never deletes your data. Your recordings, settings, history and logs stay on disk; delete them yourself only if you no longer need them.",
+  },
+];
+
+/** Where the Windows build keeps its data: Electron's standard locations for this app. */
+export const windowsRetainedData = [
+  { data: "Recordings", location: "Videos\\RecordStuff in your user folder, or the output folder you chose" },
+  { data: "Settings and history", location: "%APPDATA%\\recordstuff" },
+  { data: "Logs", location: "%APPDATA%\\recordstuff\\logs" },
+] as const;
+
 export const settings = [
   { setting: "Screen", options: "Primary display / a connected display", fallback: "Primary display" },
   { setting: "Output folder", options: "Any folder, with Change… and Show in Finder (also in the menu bar)", fallback: "Movies → RecordStuff" },
@@ -131,15 +182,16 @@ export const permissionsTroubleshooting =
 
 export const platformBoundary = {
   verified:
-    "Verified on an Apple M1 Pro running macOS 26 with Electron 44. The published installer is arm64 only.",
+    "Verified on an Apple M1 Pro running macOS 26 with Electron 44. The published macOS installer is arm64 only.",
+  windows: `Windows x64 is published but unverified: every release after ${LAST_MACOS_ONLY_VERSION} also carries an unsigned Windows x64 installer. ${windowsBoundary}`,
   unverified:
-    "Windows, Linux, Intel Macs and other macOS versions are unverified. No Windows, Linux or Intel build is published, and Apple notarization is not planned.",
+    "Windows on Arm, Linux, Intel Macs and other macOS versions are unverified, and no build is published for them. Apple notarization is not planned, and Windows code signing is not planned for now.",
 } as const;
 
 export const privacy = [
-  "Recordings, settings and logs stay on your Mac in the locations listed under Help.",
+  "Recordings, settings and logs stay on your computer in the locations listed under Help.",
   "The app has no upload backend, account, telemetry or crash reporting.",
-  "Update checks contact the website version feed, with GitHub Releases as fallback, without installation identifiers. You can turn off the default-on launch check in Settings → General; manual checks remain available.",
+  "Update checks contact the website version feed, with GitHub Releases as fallback (on Windows, GitHub Releases only), without installation identifiers. You can turn off the default-on launch check in Settings → General; manual checks remain available.",
   "This website is static and sets no cookies. Downloads are served by GitHub Releases.",
 ] as const;
 

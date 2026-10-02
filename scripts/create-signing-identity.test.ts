@@ -7,7 +7,8 @@ import { describe, expect, it } from 'vitest';
 import { createIdentity } from './create-signing-identity.mts';
 
 describe('encrypted signing identity creation', () => {
-  it('creates a matching code-signing identity, protects its archive, and refuses overwrite', () => {
+  // The macOS signing tool runs the system /usr/bin/openssl.
+  it.skipIf(process.platform !== 'darwin')('creates a matching code-signing identity, protects its archive, and refuses overwrite', () => {
     const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'recordstuff-identity-test-')));
     const output = path.join(root, 'identity');
     const password = randomBytes(32).toString('hex');

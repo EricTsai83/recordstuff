@@ -1,4 +1,4 @@
-# RecordStuff — macOS 安裝、更新與移除
+# RecordStuff — macOS 與 Windows 安裝、更新與移除
 
 [English](INSTALL.md) | [繁體中文](INSTALL.zh-TW.md)
 
@@ -7,7 +7,8 @@ RecordStuff.app 已由開發者自己的憑證簽署，尚未經 Apple 公證。
 檔名含 arm64 的版本適用 Apple 晶片 Mac。
 
 DMG 裡只有 App 與 Applications（應用程式）捷徑，本頁就是安裝說明，
-每個 GitHub release 都會連到這裡。
+每個 GitHub release 都會連到這裡。「語言」以前的各節說明 macOS；
+尚未驗證的 Windows x64 安裝程式見文末的 [Windows](#windows)。
 
 ## 安裝與第一次開啟（全程可用滑鼠）
 
@@ -79,3 +80,67 @@ Apple 操作說明：https://support.apple.com/102445
 
 RecordStuff 預設英文。右鍵點選單列圖示，選 Settings → General → Language → 繁體中文即可切換，
 下次開啟會保留選擇。App 診斷維持英文，macOS 原生權限提示依系統語言。
+
+## Windows
+
+自 1.1.1 之後的第一個版本起，GitHub Releases 會發布 Windows x64 安裝程式，
+檔名為 `RecordStuff-<version>-x64-unsigned-setup.exe`。不支援 Windows on Arm。
+
+**尚未在 Windows 實機上驗證。** CI 會建置安裝程式，在 GitHub 的 Windows runner 上
+靜默安裝與解除安裝，並檢查版本、架構與檔案；但螢幕擷取、系統音訊、通知與系統匣
+都尚未在 Windows 實機上驗證。部分 App 文字仍以 macOS 為前提，例如「選單列」與
+「Mac 進入睡眠」。上方各節是針對 macOS 撰寫並在 macOS 上驗證的。
+
+### 安裝
+
+1. 從[最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)下載安裝程式並執行。
+   它只為目前的 Windows 帳號安裝 RecordStuff，不會要求系統管理員權限，
+   並建立「開始」功能表捷徑；Windows 通知需要這個捷徑。
+2. 安裝程式沒有程式碼簽章，檔名已標明這一點。若 Windows SmartScreen 顯示
+   「Windows 已保護您的電腦」，確認來源可信後，點「其他資訊」，再點「仍要執行」。
+   受組織管理的電腦可能不允許此操作，請洽該機器的管理者。
+3. RecordStuff 沒有一般主視窗，圖示在系統匣中；點一下開始錄製，再點一下停止。
+   右鍵點圖示可開啟設定、輸出資料夾、log 與「結束」。影片預設存放在「影片 → RecordStuff」。
+
+### 驗證下載檔
+
+SHA256SUMS 同時列出 DMG 與安裝程式，各占一行。在 PowerShell 執行：
+
+```powershell
+Get-FileHash $HOME\Downloads\RecordStuff-<version>-x64-unsigned-setup.exe
+```
+
+`Get-FileHash` 會以大寫字母輸出雜湊值；比對時忽略大小寫，與 SHA256SUMS 中安裝程式那一行比對。
+release 中的 `release-win32-x64.json` 記錄安裝程式的來源 commit、版本、大小與 SHA-256。
+安裝程式另附 GitHub build provenance attestation，可用 GitHub CLI 檢查：
+
+```bash
+gh attestation verify RecordStuff-<version>-x64-unsigned-setup.exe --repo EricTsai83/recordstuff
+```
+
+### 更新
+
+「設定 → 一般」的「檢查更新…」在 Windows 上同樣可用，它會讀取 GitHub 上的最新版本。
+安裝仍需手動完成：
+
+1. 停止錄影，從 RecordStuff 系統匣選單選「結束」。
+2. 從[最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)下載新的安裝程式，
+   可依上述方式驗證後再執行。
+
+設定與錄影都會保留。
+
+### 解除安裝
+
+1. 停止錄影，從 RecordStuff 系統匣選單選「結束」。
+2. 開啟「設定 → 應用程式 → 已安裝的應用程式」，找到 RecordStuff 並選「解除安裝」。
+
+解除安裝不會刪除你的資料，App 也不會刪除任何錄影。App 把資料存放在下列位置；
+只有在確定不再需要時才自行刪除：
+
+| 資料 | 位置 |
+| --- | --- |
+| 錄影 | 使用者資料夾中的 `Videos\RecordStuff`，或你自行選擇的輸出資料夾 |
+| 設定與歷史紀錄 | `%APPDATA%\recordstuff` |
+| Log | `%APPDATA%\recordstuff\logs` |
+
+在檔案總管的網址列貼上路徑即可開啟。

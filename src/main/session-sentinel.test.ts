@@ -127,7 +127,8 @@ it("removes the sentinels when an entry is reviewed and removed while the launch
   expect(restarted.results.all.map(r => r.id)).toEqual(["older"]);
 });
 
-it("keeps a sentinel it cannot read now and reports it once it can", async () => {
+// chmod cannot make a file unreadable to its owner on Windows.
+it.skipIf(process.platform === "win32")("keeps a sentinel it cannot read now and reports it once it can", async () => {
   const previous = new SessionSentinels(sentinelDir);
   await previous.write(sentinel("e5", "e5"));
   const file = path.join(sentinelDir, "e5.json");

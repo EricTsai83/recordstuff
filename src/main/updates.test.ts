@@ -31,6 +31,14 @@ describe("release validation", () => {
     for (const bad of [{ ...gh, draft: true }, { ...gh, prerelease: true }, { ...gh, assets: [] }]) expect(() => githubVersion(bad, "darwin", "arm64")).toThrow();
     expect(() => githubVersion(gh, "darwin", "x64")).toThrow();
   });
+  it("finds the Windows x64 installer in a two-platform release, and nothing for another platform or a macOS-only one", () => {
+    const both = { ...gh, assets: [{ name: feed.dmg.name }, { name: "RecordStuff-0.2.0-x64-unsigned-setup.exe" }, { name: "SHA256SUMS" }] };
+    expect(githubVersion(both, "win32", "x64")).toBe("0.2.0");
+    // A macOS app still finds its DMG among the extra assets.
+    expect(githubVersion(both, "darwin", "arm64")).toBe("0.2.0");
+    expect(() => githubVersion(gh, "win32", "x64")).toThrow();
+    for (const [platform, arch] of [["win32", "arm64"], ["linux", "x64"]] as const) expect(() => githubVersion(both, platform, arch)).toThrow();
+  });
 });
 describe("network", () => {
   it("makes only the static request on success", async () => {
@@ -47,6 +55,16 @@ describe("network", () => {
       // A working fallback must not hide a broken feed.
       expect(log).toHaveBeenCalledWith(expect.stringMatching(/^updates: feed failed \(Error: (HTTP 503|invalid release object)\); trying GitHub$/));
     }
+  });
+  it("reads only GitHub on Windows, since the feed describes the macOS DMG", async () => {
+    const release = { ...gh, assets: [{ name: "RecordStuff-0.2.0-x64-unsigned-setup.exe" }] };
+    const request = vi.fn<typeof fetch>().mockResolvedValue(Response.json(release));
+    const log = vi.fn();
+    expect(await fetchVersion("win32", "x64", new AbortController().signal, request, log)).toBe("0.2.0");
+    expect(request.mock.calls.map(([url]) => url)).toEqual([API_URL]);
+    expect(log).not.toHaveBeenCalled();
+    request.mockResolvedValue(new Response("", { status: 503 }));
+    await expect(fetchVersion("win32", "x64", new AbortController().signal, request)).rejects.toThrow("HTTP 503");
   });
   it("rejects with both causes when both sources fail", async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response("", { status: 404 })).mockRejectedValueOnce(new Error("offline"));

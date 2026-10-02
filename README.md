@@ -6,9 +6,9 @@ A menu bar button that records one screen (your primary display by default) and 
 
 ## Platform status
 
-Electron supports Windows, Linux, and macOS. **Due to available hardware, recordstuff has only been verified on macOS.** The tested environment is Apple M1 Pro, macOS 26, and Electron 44.3; the verified installer is arm64. Windows, Linux, Intel Macs, and other macOS versions are unverified. Existing cross-platform code does not imply verified recording or installation support. See [Electron's platform information](https://github.com/electron/electron#platform-support).
+Electron supports Windows, Linux, and macOS. **Due to available hardware, recordstuff has only been verified on macOS.** The tested environment is Apple M1 Pro, macOS 26, and Electron 44.3; the verified installer is arm64. Starting with the first release after 1.1.1, each release also carries an unsigned Windows x64 installer that is built and checked by CI but not verified on Windows hardware: CI silently installs and uninstalls it on a GitHub Windows runner and checks its version, architecture and files, while screen capture, system audio, notifications and the tray remain untested on Windows, and some app wording still assumes macOS (for example "menu bar" and "the Mac went to sleep"). Windows on Arm, Linux, Intel Macs, and other macOS versions are unverified and have no published build. Existing cross-platform code does not imply verified recording or installation support. See [Electron's platform information](https://github.com/electron/electron#platform-support).
 
-The product target is a downloadable, self-signed macOS app. Apple certification/notarization and Windows/Linux verification are not planned release requirements.
+The product target is a downloadable, self-signed macOS app, plus the unverified Windows x64 installer. Apple certification/notarization and Windows code signing are not planned, and Windows/Linux verification is not a release requirement.
 
 ## Download and install
 
@@ -22,7 +22,9 @@ SHA-256: `64aca9703ac46aaa2fd45932c42160505bdc2e6f4c5ec27358af37a73dbce5f2`.
 
 1.0.0 was built, signed, published and publicly re-verified by CI. Local recording and QuickTime playback checks used the tagged source; see [1.0.0 evidence and untested cases](docs/verification/releases/1.0.0.md).
 
-Download the arm64 DMG and drag RecordStuff onto the Applications folder shown in the disk image; the DMG contains only the app and that Applications shortcut. The [installation guide](resources/INSTALL.md) covers first launch, manual update (quit, download, replace at the same path; settings are kept) and removal (quit, move the app to Trash; recordings, settings and logs stay unless you delete them). Settings → General offers Check for updates… and an optional launch check (on by default, at most once per 24 hours). Installation remains manual; there is no automatic installer or uninstaller. Recipients do not need Node, pnpm, FFmpeg, or certificates. If blocked after installing or updating, manually open System Settings → Privacy & Security, scroll down to Security, find RecordStuff and click Open Anyway. Done only dismisses the warning. A warning-free first launch is not promised; see [Apple's guidance](https://support.apple.com/102445).
+Download the arm64 DMG and drag RecordStuff onto the Applications folder shown in the disk image; the DMG contains only the app and that Applications shortcut. The [installation guide](resources/INSTALL.md) covers first launch, manual update (quit, download, replace at the same path; settings are kept) and removal (quit, move the app to Trash; recordings, settings and logs stay unless you delete them). Settings → General offers Check for updates… and an optional launch check (on by default, at most once per 24 hours). Installation remains manual; on macOS there is no automatic installer or uninstaller. Recipients do not need Node, pnpm, FFmpeg, or certificates. If blocked after installing or updating, manually open System Settings → Privacy & Security, scroll down to Security, find RecordStuff and click Open Anyway. Done only dismisses the warning. A warning-free first launch is not promised; see [Apple's guidance](https://support.apple.com/102445).
+
+On Windows x64, run `RecordStuff-<version>-x64-unsigned-setup.exe`: a per-user one-click installer without an admin prompt that creates a Start-menu shortcut (needed for Windows notifications) and registers an uninstaller in Settings → Apps → Installed apps. It is not code-signed, so SmartScreen may show "Windows protected your PC"; click More info, then Run anyway. SHA256SUMS lists both installers (compare `Get-FileHash` output in PowerShell with its line), `release-win32-x64.json` records the installer's facts, and the installer carries a GitHub build-provenance attestation. To update, quit RecordStuff from its tray menu, then download and run the new installer; settings and recordings are kept. Uninstalling never deletes recordings, settings or logs. The [installation guide](resources/INSTALL.md#windows) has the details and data locations.
 
 ## Use
 
@@ -65,9 +67,10 @@ pnpm check             # Typecheck, tests, build
 pnpm icons             # Regenerate PNG/ICO; regenerate ICNS on macOS
 pnpm log               # Follow the macOS diagnostic log
 pnpm dist:mac    # Produce the self-signed DMG in dist/ (CI builds the released one)
+pnpm dist:win    # Produce the unsigned Windows x64 installer in dist/ (CI builds the released one)
 ```
 
-The self-signed workflow requires a valid, uniquely named local code-signing identity, default `RecordStuff Dev`; RECORDSTUFF_SIGN_IDENTITY may select its exact name or SHA-1. Before rebuilding, check whether recordstuff/project Electron is recording; stop and save your recording before quitting it. It does not publish or notarize, and recipients do not install the signing certificate. Only macOS packaging is provided; the cross-platform code paths are kept but no Windows or Linux build target exists.
+The self-signed workflow requires a valid, uniquely named local code-signing identity, default `RecordStuff Dev`; RECORDSTUFF_SIGN_IDENTITY may select its exact name or SHA-1. Before rebuilding, check whether recordstuff/project Electron is recording; stop and save your recording before quitting it. It does not publish or notarize, and recipients do not install the signing certificate. `pnpm dist:win` produces the unsigned Windows x64 NSIS installer in `dist/`, without the macOS signing path; CI builds and checks the released one on a GitHub Windows runner. No Linux build target exists.
 
 Use a compatible Node version (package requirement ≥22.12); the TypeScript measurement tools are run with Node 24. Install FFmpeg only for developer verification:
 
