@@ -1,0 +1,225 @@
+/**
+ * Native macOS input and Accessibility reads for the scripted acceptance runners
+ * (plan 063; docs/system-design/tooling.md#scripted-native-acceptance). One
+ * JavaScript for Automation helper calls the AX C API through the ObjC bridge,
+ * which reads a menu in about 0.1 s where System Events took 29 s, and posts
+ * CoreGraphics mouse and key events, which the OS delivers like a person's.
+ * Every read names its target by pid; nothing here looks up an app by name.
+ * The parsers are pure and unit-tested against recorded dumps (native-ax.test.ts).
+ */
+import { command } from "./acceptance-runtime.mts";
+
+/**
+ * `osascript -l JavaScript -e <script> <command> …`, one JSON object out.
+ * Commands: `status <pid>`, `press <pid> <menu index>`, `mouse left|right <x> <y>`,
+ * `key <code> [flags]`, `windows <pid>`, `manual <pid>`, `banners`.
+ * Any failed AX call is reported as its AXError code rather than thrown, so the
+ * caller can tell a missing permission (-25211) from an element that is gone.
+ */
+export const AX_SCRIPT = String.raw`
+ObjC.import('Cocoa');
+ObjC.import('ApplicationServices');
+function run(argv) {
+  ObjC.bindFunction('AXIsProcessTrusted', ['bool', []]);
+  ObjC.bindFunction('AXUIElementCreateApplication', ['id', ['int']]);
+  ObjC.bindFunction('AXUIElementCopyAttributeValue', ['int', ['id', 'id', 'id*']]);
+  ObjC.bindFunction('AXUIElementSetAttributeValue', ['int', ['id', 'id', 'id']]);
+  ObjC.bindFunction('AXUIElementPerformAction', ['int', ['id', 'id']]);
+  ObjC.bindFunction('CFCopyDescription', ['id', ['id']]);
+  const [cmd, a, b, c] = argv;
+  const out = value => JSON.stringify(value);
+  if (cmd === 'mouse') {
+    const right = a === 'right';
+    const point = $.CGPointMake(Number(b), Number(c));
+    const button = right ? 1 : 0;
+    // Move first, as a pointer would, then down and up: kCGEventMouseMoved 5, left 1/2, right 3/4.
+    for (const type of [5, right ? 3 : 1, right ? 4 : 2]) {
+      $.CGEventPost(0, $.CGEventCreateMouseEvent($(), type, point, button));
+      delay(0.04);
+    }
+    return out({ posted: true });
+  }
+  if (cmd === 'key') {
+    for (const down of [true, false]) {
+      const event = $.CGEventCreateKeyboardEvent($(), Number(a), down);
+      $.CGEventSetFlags(event, Number(b || 0));
+      $.CGEventPost(0, event);
+      delay(0.03);
+    }
+    return out({ posted: true });
+  }
+  if (!$.AXIsProcessTrusted()) return out({ error: -25211 });
+  const raw = (el, name) => { const ref = Ref(); const err = $.AXUIElementCopyAttributeValue(el, $(name), ref); return err === 0 ? ref[0] : err; };
+  const ok = v => typeof v !== 'number';
+  const plain = v => { if (!ok(v)) return undefined; const u = ObjC.unwrap(v); return typeof u === 'string' || typeof u === 'number' || typeof u === 'boolean' ? u : undefined; };
+  const geometry = el => {
+    const pos = raw(el, 'AXPosition'), size = raw(el, 'AXSize');
+    if (!ok(pos) || !ok(size)) return undefined;
+    const p = /x:(-?[\d.]+) y:(-?[\d.]+)/.exec(ObjC.unwrap($.CFCopyDescription(pos)));
+    const s = /w:(-?[\d.]+) h:(-?[\d.]+)/.exec(ObjC.unwrap($.CFCopyDescription(size)));
+    return p && s ? { x: Number(p[1]), y: Number(p[2]), width: Number(s[1]), height: Number(s[2]) } : undefined;
+  };
+  const children = (el, name) => { const list = raw(el, name || 'AXChildren'); const items = []; if (ok(list)) for (let i = 0; i < list.count; i++) items.push(list.objectAtIndex(i)); return items; };
+  if (cmd === 'banners') {
+    const apps = $.NSRunningApplication.runningApplicationsWithBundleIdentifier('com.apple.notificationcenterui');
+    if (!apps.count) return out({ banners: [] });
+    const center = $.AXUIElementCreateApplication(apps.objectAtIndex(0).processIdentifier);
+    const banners = [];
+    const walk = (el, depth) => {
+      const subrole = plain(raw(el, 'AXSubrole'));
+      if (subrole === 'AXNotificationCenterBanner' || subrole === 'AXNotificationCenterAlert') {
+        const texts = {};
+        for (const child of children(el)) { const id = plain(raw(child, 'AXIdentifier')); if (id) texts[id] = plain(raw(child, 'AXValue')); }
+        banners.push({ id: plain(raw(el, 'AXIdentifier')), subrole, description: plain(raw(el, 'AXDescription')), title: texts.title, body: texts.body });
+        return;
+      }
+      if (depth < 12) for (const child of children(el)) walk(child, depth + 1);
+    };
+    for (const window of children(center, 'AXWindows')) walk(window, 0);
+    return out({ banners });
+  }
+  const pid = Number(a);
+  const app = $.AXUIElementCreateApplication(pid);
+  if (cmd === 'manual') return out({ error: $.AXUIElementSetAttributeValue(app, $('AXManualAccessibility'), $.NSNumber.numberWithBool(true)) || undefined });
+  if (cmd === 'status' || cmd === 'press') {
+    const bar = raw(app, 'AXExtrasMenuBar');
+    if (!ok(bar)) return out({ error: bar });
+    const item = children(bar)[0];
+    if (!item) return out({ error: 'no status item' });
+    const menu = children(item).find(child => plain(raw(child, 'AXRole')) === 'AXMenu');
+    const entries = menu ? children(menu).filter(child => plain(raw(child, 'AXRole')) === 'AXMenuItem') : [];
+    if (cmd === 'press') {
+      const target = entries[Number(b)];
+      if (!target) return out({ error: 'no menu item ' + b });
+      return out({ error: $.AXUIElementPerformAction(target, $('AXPress')) || undefined });
+    }
+    // macOS 26 draws status items in Control Center's windows, one per display, named by the
+    // owner's bundle identifier on the primary menu bar; an item crowded out by the front app's
+    // menus stays in the list but off screen, while AX still reports its frame.
+    const list = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(0, 0))) || [];
+    const hosts = $.NSRunningApplication.runningApplicationsWithBundleIdentifier('com.apple.controlcenter');
+    const host = hosts.count ? hosts.objectAtIndex(0).processIdentifier : -1;
+    const statusWindows = list.filter(w => w.kCGWindowOwnerPID === host && w.kCGWindowLayer === 25 && w.kCGWindowBounds).map(w => ({
+      name: w.kCGWindowName || '', onscreen: w.kCGWindowIsOnscreen === true,
+      frame: { x: w.kCGWindowBounds.X, y: w.kCGWindowBounds.Y, width: w.kCGWindowBounds.Width, height: w.kCGWindowBounds.Height },
+    }));
+    return out({
+      statusWindows,
+      item: { frame: geometry(item), title: plain(raw(item, 'AXTitle')) || '' },
+      menu: menu && entries.length ? { frame: geometry(menu), items: entries.map(entry => ({
+        title: plain(raw(entry, 'AXTitle')) || '', enabled: plain(raw(entry, 'AXEnabled')) === true,
+        cmdChar: plain(raw(entry, 'AXMenuItemCmdChar')) || '', cmdModifiers: plain(raw(entry, 'AXMenuItemCmdModifiers')) || 0,
+        selected: plain(raw(entry, 'AXSelected')) === true, frame: geometry(entry),
+      })) } : null,
+    });
+  }
+  if (cmd === 'windows') {
+    const describe = el => ({ title: plain(raw(el, 'AXTitle')) || '', main: plain(raw(el, 'AXMain')) === true, minimized: plain(raw(el, 'AXMinimized')) === true, frame: geometry(el) });
+    const focusedWindow = raw(app, 'AXFocusedWindow');
+    const focused = raw(app, 'AXFocusedUIElement');
+    const front = $.NSWorkspace.sharedWorkspace.frontmostApplication;
+    return out({
+      frontmostPid: front.isNil() ? null : front.processIdentifier,
+      windows: children(app, 'AXWindows').map(describe),
+      focusedWindow: ok(focusedWindow) ? plain(raw(focusedWindow, 'AXTitle')) || '' : null,
+      focused: ok(focused) ? { role: plain(raw(focused, 'AXRole')) || '', title: plain(raw(focused, 'AXTitle')) || '', description: plain(raw(focused, 'AXDescription')) || '' } : null,
+    });
+  }
+  throw new Error('unknown command ' + cmd);
+}
+`;
+
+/** kAXErrorAPIDisabled: the terminal running the runner has no Accessibility access. */
+export const AX_API_DISABLED = -25211;
+
+export class AccessibilityBlockedError extends Error {}
+
+export interface Frame { x: number; y: number; width: number; height: number }
+
+export interface NativeMenuItem {
+  title: string;
+  enabled: boolean;
+  /** `AXMenuItemCmdChar`: the key of a right-aligned shortcut, "" when none. */
+  cmdChar: string;
+  /** `AXMenuItemCmdModifiers`: 1 Shift, 2 Option, 4 Control, 8 no Command. */
+  cmdModifiers: number;
+  selected: boolean;
+  frame: Frame | undefined;
+}
+
+/** One status-item window of Control Center (layer 25), as the window list reports it. */
+export interface StatusWindow { name: string; onscreen: boolean; frame: Frame }
+
+export interface StatusSnapshot {
+  /** Control Center's status-item windows on every display; absent from older helpers. */
+  statusWindows?: StatusWindow[];
+  item: { frame: Frame | undefined; title: string };
+  /** The open menu, or null when none is open. */
+  menu: { frame: Frame | undefined; items: NativeMenuItem[] } | null;
+}
+
+export interface WindowSnapshot {
+  frontmostPid: number | null;
+  windows: Array<{ title: string; main: boolean; minimized: boolean; frame: Frame | undefined }>;
+  focusedWindow: string | null;
+  focused: { role: string; title: string; description: string } | null;
+}
+
+export interface Banner {
+  id: string | undefined;
+  subrole: string;
+  /** "<app name> <title>, <body>" as Notification Center describes the group. */
+  description: string | undefined;
+  title: string | undefined;
+  body: string | undefined;
+}
+
+/** Parses one helper result; an AXError becomes a typed failure, a missing permission a blocked one. */
+export function parseAxResult<T>(output: string, what: string): T {
+  const value = JSON.parse(output) as { error?: number | string } & T;
+  if (value.error === AX_API_DISABLED) {
+    throw new AccessibilityBlockedError(`${what}: macOS denied Accessibility access to this terminal (AXError -25211). Allow it in System Settings → Privacy & Security → Accessibility; runners never change that list.`);
+  }
+  if (value.error !== undefined) throw new Error(`${what}: ${typeof value.error === "number" ? `AXError ${value.error}` : value.error}`);
+  return value;
+}
+
+/** Key codes and CGEventFlags the runners post. */
+export const KEY = { escape: 53, down: 125, up: 126, return: 36, tab: 48, m: 46, w: 13 } as const;
+export const FLAG = { command: 0x100000, shift: 0x20000 } as const;
+
+export interface NativeAx {
+  status(pid: number): Promise<StatusSnapshot>;
+  press(pid: number, index: number): Promise<void>;
+  mouse(button: "left" | "right", x: number, y: number): Promise<void>;
+  key(code: number, flags?: number): Promise<void>;
+  windows(pid: number): Promise<WindowSnapshot>;
+  /** Asks Chromium to build its accessibility tree, as assistive software does, so web focus is readable. */
+  enableWebAccessibility(pid: number): Promise<void>;
+  banners(): Promise<Banner[]>;
+}
+
+/** The real helper, each call bounded by `timeoutMs` and the runner's signal. */
+export function osascriptAx(signal: AbortSignal, timeoutMs = 10_000): NativeAx {
+  const run = async <T,>(what: string, ...args: Array<string | number>): Promise<T> =>
+    parseAxResult<T>(await command("osascript", ["-l", "JavaScript", "-e", AX_SCRIPT, ...args.map(String)], signal, timeoutMs), what);
+  return {
+    status: pid => run<StatusSnapshot>("status item", "status", pid),
+    press: async (pid, index) => { await run("menu item press", "press", pid, index); },
+    mouse: async (button, x, y) => { await run(`${button} click`, "mouse", button, x, y); },
+    key: async (code, flags = 0) => { await run(`key ${code}`, "key", code, flags); },
+    windows: pid => run<WindowSnapshot>("windows", "windows", pid),
+    enableWebAccessibility: async pid => { await run("web accessibility", "manual", pid); },
+    banners: async () => (await run<{ banners: Banner[] }>("Notification Center", "banners")).banners,
+  };
+}
+
+/** The centre of a frame, where a click lands. */
+export function centre(frame: Frame): { x: number; y: number } {
+  return { x: Math.round(frame.x + frame.width / 2), y: Math.round(frame.y + frame.height / 2) };
+}
+
+/** `screencapture -R` takes whole points; grow the frame by `margin` so its shadow and edges show. */
+export function captureRect(frame: Frame, margin = 8): string {
+  return [Math.floor(frame.x - margin), Math.floor(frame.y - margin), Math.ceil(frame.width + 2 * margin), Math.ceil(frame.height + 2 * margin)].join(",");
+}

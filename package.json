@@ -49,7 +49,8 @@
     "acceptance:shortcut-layout": "pnpm build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-shortcut-layout.mts",
     "acceptance:quit-dialog": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-quit-dialog.mts",
     "acceptance:controlled": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-controlled.mts",
-    "acceptance:playback": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-playback.mts"
+    "acceptance:playback": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-playback.mts",
+    "acceptance:tray": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-tray.mts"
   },
   "devDependencies": {
     "@types/node": "^24.13.4",
