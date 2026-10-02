@@ -136,7 +136,7 @@ pnpm check
 # Build, sign, verify, and launch the development App
 pnpm start:app
 
-# Verify and reopen an existing development App
+# Verify and reopen the existing development App; refuses one built from other runtime inputs
 pnpm open:app
 
 # Release candidate DMG; defaults to RecordStuff Dev

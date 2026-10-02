@@ -11,8 +11,8 @@
 | pnpm install | 安裝依賴 |
 | pnpm dev | 熱重載；授權對象可能歸於啟動的終端機／編輯器 |
 | pnpm start | build 後透過 macOS open 開啟 Electron.app，供音訊測試 |
-| pnpm start:app | 建置、自簽、驗證、開啟 RecordStuff.app |
-| pnpm open:app | 驗證並開啟既有開發包，不重建 |
+| pnpm start:app | 建置、自簽、驗證、開啟 RecordStuff.app；印出各階段耗時，並記錄 bundle 的 runtime 輸入 |
+| pnpm open:app | 記錄的 runtime 輸入仍相符時，驗證並開啟既有開發包，不重建 |
 | pnpm check | typecheck、完整 Vitest、build |
 | pnpm icons | PNG／ICO、DMG 背景圖（1x／2x）；macOS 額外產 native ICNS |
 | pnpm log | 追蹤 macOS log |
@@ -22,6 +22,7 @@
 | `pnpm acceptance:playback` | 以 QuickTime Player 的 AppleScript 字典播放一個已存檔的錄影，判定長度、尺寸、即時播放、跳轉、畫面隨跳轉改變及播放到結尾；報告寫在 docs/verification/measurements，截圖只在未通過時保留（[說明](#播放檢查)） |
 | pnpm acceptance:settings | 對已建置的產物：在真實 Electron 視窗載入 `out/preload/settings.js` 與 `out/renderer/settings.html`，判定出貨 CSP、sandbox preload 邊界與真實 IPC 往返；報告與截圖寫到 docs/verification/measurements。需要先 `pnpm build`，不需要 tray 或已安裝的 App |
 | `pnpm acceptance:regression` | 一個指令執行 check（含建置）、設定 fixture 與快捷鍵整合；包含重複開啟／關閉／Tray 路徑重開。隔離偏好與程序，各 runner 保留報告；任一步失敗立即停止。不會啟動或關閉使用者的 RecordStuff，也不錄影。 |
+| `pnpm acceptance:recipe` | 逐階段執行驗證配方，相同輸入只建置一次，並寫出計時報告（[詳見](#驗證配方與計時)） |
 | pnpm acceptance:notification | 對 /Applications 裡的 App（可用 `--install` 在本次換成 dist 的建置）：錄影、透過輔助使用按下「已儲存」橫幅、判定 Finder 是否在最前面且顯示該檔，每個 Finder 狀態連點多次，預設英文；報告寫到 docs/verification/measurements |
 
 main、preload、renderer 分別建置，打包只納入 out、package metadata 與指定 resources。測試、量測與文件不屬 runtime；App 不呼叫 FFmpeg。
@@ -32,7 +33,7 @@ main、preload、renderer 分別建置，打包只納入 out、package metadata 
 
 - `build/` 是納入版本控制的打包資源：`icon.png`、macOS 原生 `icon.icns`，以及 DMG 背景 `background.png` 與 Retina 配對 `background@2x.png`（540×380 點）。打包設定以此作為 `buildResources`，明確指定 macOS 使用 ICNS，並用 `tiffutil` 把背景配對合成多解析度 TIFF。請保留；修改圖案後以 `pnpm icons` 重新產生。所有圖像都由程式產生，repo 沒有手繪二進位檔。
 - `resources/` 包含執行時使用的選單列圖示、macOS entitlements，以及雙語安裝／更新／移除指南（`INSTALL.md`、`INSTALL.zh-TW.md`）。指南是由 GitHub release 與 README 連結的文件；打包 filter 只複製 PNG／ICO，因此指南不會進入 App 或 DMG。
-- `out/` 由 `pnpm build` 產生；`dist/` 是 `pnpm start:app`（App bundle 在 `dist/mac-arm64/`）與 `pnpm dist:mac`（同一個 bundle 加 DMG）共用的唯一輸出目錄。兩者都由 Git 忽略，可以重新產生。清理 `dist/` 前應保留仍需要的安裝檔；`pnpm open:app` 需要已有的 App bundle。本機建的 DMG 用來檢查打包；發布的 DMG 一律由 CI 從 tag 建置。
+- `out/` 由 `pnpm build` 產生；`dist/` 是 `pnpm start:app`（App bundle 在 `dist/mac-arm64/`）與 `pnpm dist:mac`（同一個 bundle 加 DMG）共用的唯一輸出目錄。兩者都由 Git 忽略，可以重新產生。清理 `dist/` 前應保留仍需要的安裝檔；`pnpm open:app` 需要以目前 runtime 輸入建置的既有 App bundle。本機建的 DMG 用來檢查打包；發布的 DMG 一律由 CI 從 tag 建置。
 - `node_modules/` 放已安裝的開發依賴，可透過 `pnpm install` 還原。
 
 品質選項與錯誤碼各自只維護一份常數清單，TypeScript 型別由清單推導，選單也共用品質清單。型別檢查會拒絕未使用的區域變數與參數。設定檔 v1 遷移仍保留，以延續既有的輸出資料夾偏好。
@@ -345,6 +346,21 @@ pnpm acceptance:regression
 先執行 TypeScript、Vitest 與 build，再依序執行設定 fixture 和快捷鍵整合，避免重複建置。Console 會列出各自的 `docs/verification/measurements/` 報告；非零退出碼代表失敗，`&&` 確保失敗後不繼續下一階段。隔離整合另外連跑兩輪「設定快捷鍵 callback → 真正 Electron 按鍵 ⌘W（其他平台 Ctrl+W）→ Tray 設定 handler 重開」，斷言只有一個視窗、可見且聚焦、App 與註冊仍存在、偏好沒有改寫且未開始錄影或產生影片。
 
 這是正式 main／preload／renderer 的整合回歸；快捷鍵註冊及 Tray 邊界受控，不能聲稱測過 OS 全域送鍵或實際 Tray 點擊。原生入口仍用 `pnpm acceptance:settings-shortcut` 加 computer use／人工觀察；真實錄影仍用 `pnpm start:app` 與 `pnpm acceptance`，後者會正常結束測試 App。實體拔插螢幕、VoiceOver 聽感及使用者理解仍需人工。已通過的案例若程式、環境或測試條件沒有相關變更，不要求使用者反覆重測。
+
+### 驗證配方與計時
+
+```bash
+pnpm acceptance:recipe -- --list
+pnpm acceptance:recipe -- shortcut-registration
+```
+
+配方是某一類修改所需組合檢查的 leaf 指令（[測試規則](../testing.md#選定一次並對每個版本驗證一次)），依序執行，相同輸入只建置一次。`check` 即 `pnpm check`；`settings` 即 `pnpm acceptance:regression`；`shortcut-registration` 再加上鍵盤配置 runner，但不跑 `pnpm acceptance:shortcut-layout` 開頭那次額外的 `pnpm build`；`recording` 執行 typecheck、測試、`pnpm start:app`（其中的 `electron-vite build` 就是 check 的建置）與 `pnpm acceptance`。`pnpm acceptance` 可以緊接在 `start:app` 之後執行，因為它最多等 30 秒，直到 log 最新的 session 依 run id 確認屬於執行中的 pid 且已 idle；plan 061 之前它可能拿前一個 App 的 session 來判斷。播放仍是對已存錄影另外執行 `pnpm acceptance:playback -- <file>`。`-- --dry-run` 只印出配方的指令而不執行。單元測試確保每個配方的 runner 與它取代的 package scripts 相同。
+
+每個階段在自己的程序群組執行並連接主控台；未通過時就停止配方，與 `&&` 相同，之後的階段記為未執行。桌面 runner 的 exit code 2 代表 blocked；typecheck、測試或建置的 2 則是失敗。SIGINT 或 SIGTERM 會對執行中的階段送 SIGTERM，最多等 60 秒讓它自行收尾，之後才結束整個群組，因此 runner 仍會結束 App 並還原它改過的設定；配方接著以 130 或 143 結束；收尾不完整時以 1 結束。超過一小時的階段會被停止並判為失敗；程序群組在階段結束後仍存在，或必須用 SIGKILL 才清得掉時，即使 exit 0 也判為失敗。`recording` 負責 `pnpm start:app` 開啟的 bundle：如果在 `pnpm acceptance` 退出 App 之前就結束（失敗、runner blocked 或中斷），它會要求該 bundle 正常退出（錄影中會先存檔），最多等 30 秒讓該 bundle 的所有程序（含 helper）結束；它不會強制結束 App，無法確認程序已結束時整輪判為失敗。配方開始前就已在執行的 App 不歸它退出。除此之外，配方本身不做任何桌面操作，各 runner 的交接、鎖定與收尾規則維持不變。
+
+報告寫在 `docs/verification/measurements/<timestamp>-recipe-<name>/`（`--out <new directory>` 可指定新目錄，已存在的目錄會被拒絕）。`report.json` 與 `report.md` 記錄 wall time、各階段以 monotonic clock 量得的起始偏移與耗時、結果、exit code 與清理狀態，以及階段之外的時間（identity 雜湊與 App 清理；寫報告的時間不計）。知道自身邊界的子程序會把邊界附加到 `RECORDSTUFF_TIMING_FILE` 指定的檔案；`pnpm start:app` 以此回報 preflight（程序檢查與簽章身分）、build、package、verify，以及 open 或 DMG，這些時間顯示在所屬階段內，不會重複計入總計。報告也記錄 revision、包含未追蹤檔的未提交變更摘要、runtime 輸入摘要、執行前後的 `out/` 與 `app.asar` 摘要，以及 Node、pnpm、Electron 與 OS 版本。執行期間原始碼、測試或設定有變時，原本會通過的一輪判為 **invalid** 並以 1 結束，因為它的證據不屬於任何單一 revision。Agent 協作空檔與桌面交接等待發生在程序之外，報告記為 unknown，不記為 0。
+
+**沿用 bundle。** 建置與簽章驗證成功後，`pnpm start:app` 在 bundle 旁寫入 `dist/mac-arm64/RecordStuff.app.inputs.json`，位置在簽章與 DMG 之外。檔案內含每項 runtime 輸入的摘要——不含 `*.test.ts` 的 `src/`、`build/`、不含 Markdown 的 `resources/`、`package.json`、lockfile、electron-builder／electron-vite 與 App 的 TypeScript 設定，以及已安裝的 Electron、electron-builder、electron-vite 與 Vite 版本——和 `app.asar` 的摘要。Symlink 會被追蹤，所以摘要涵蓋它指向的內容。原始碼會從 `scripts/` import 的驗收 workspace 副本（`acceptance:updates` 與 `acceptance:controlled` 的插樁方式）也會納入 `scripts/`。輸入在建置前讀取；驗證結束時若已改變，就不寫入紀錄。重新建置會先刪除舊紀錄，因此建置失敗時不會留下紀錄。`pnpm open:app` 會在驗證簽章前拒絕沒有紀錄、紀錄無法讀取、`app.asar` 已變或輸入已變的 bundle，並列出最多五個變更的檔案；請用 `pnpm start:app` 重新建置。因此只改測試、腳本、文件、計畫或網站時，已驗證的 bundle 仍可沿用；任何原始碼或設定變更都會要求重新建置。
 
 ## 錄製生命週期驗收
 

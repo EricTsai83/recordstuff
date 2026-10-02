@@ -138,7 +138,7 @@ pnpm check
 # 建置、簽署、驗證並啟動開發 App
 pnpm start:app
 
-# 僅驗證並開啟既有開發 App
+# 僅驗證並開啟既有開發 App；以其他 runtime 輸入建置的會被拒絕
 pnpm open:app
 
 # 發布候選 DMG；預設使用 RecordStuff Dev
