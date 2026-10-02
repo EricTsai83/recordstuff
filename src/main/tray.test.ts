@@ -482,6 +482,21 @@ describe("tray menu template (plan 048)", () => {
     expect(template.find((entry) => entry.label === "Show log")).not.toHaveProperty("accelerator");
     expect(template.at(-1)).toMatchObject({ label: "Quit RecordStuff" });
   });
+
+  it("logs the menu it pops up, so a native runner can compare the NSMenu with it (plan 063)", async () => {
+    const { Menu, Tray } = await import("electron");
+    const { tray, logs } = setup();
+    vi.mocked(Menu.buildFromTemplate).mockClear();
+    const instance = (tray as unknown as { tray: InstanceType<typeof Tray> }).tray;
+    const rightClick = vi.mocked(instance.on).mock.calls.find(([name]) => name === "right-click")?.[1] as () => void;
+    rightClick();
+    const template = vi.mocked(Menu.buildFromTemplate).mock.calls[0]![0] as Electron.MenuItemConstructorOptions[];
+    const line = logs.find((message) => message.startsWith("tray: menu opened in idle: "))!;
+    const logged = JSON.parse(line.slice("tray: menu opened in idle: ".length)) as Array<{ separator?: true; label?: string; enabled?: boolean; accelerator?: string }>;
+    expect(logged).toEqual(template.map((entry) => entry.type === "separator" ? { separator: true }
+      : { label: entry.label, enabled: entry.enabled, ...(entry.accelerator === undefined ? {} : { accelerator: entry.accelerator }) }));
+    expect(logged.find((entry) => entry.label === "Start recording")).toEqual({ label: "Start recording", enabled: true, accelerator: "CommandOrControl+Shift+1" });
+  });
 });
 
 describe("AppTray after destroy (plan 035 D4)", () => {

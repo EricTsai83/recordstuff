@@ -18,6 +18,7 @@ import {
   languageWriteFailedNotification,
   frameRateDowngradeNotification,
   hotkeyRegistrationFailedNotification,
+  menuLogText,
   hotkeyWriteFailedNotification,
   notificationsEnabledNotification,
   permissionNotification,
@@ -379,6 +380,7 @@ export class AppTray {
   private popUpMenu(): void {
     if (this.destroyed) return;
     const model = trayModel(this.lastState, this.options.context());
+    this.log(`tray: menu opened in ${this.lastState.type}: ${menuLogText(model.menu)}`);
     this.tray.popUpContextMenu(Menu.buildFromTemplate(model.menu.map((entry) => this.toTemplate(entry))));
   }
 

@@ -189,6 +189,16 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
   }
 }
 
+/**
+ * The menu as `tray: menu opened` logs it each time it pops up (plan 063):
+ * what Electron is given, so a native acceptance runner can compare the NSMenu
+ * it reads through Accessibility with the production model for the same state.
+ */
+export function menuLogText(menu: readonly TrayMenuItem[]): string {
+  return JSON.stringify(menu.map(entry => entry.kind === "separator" ? { separator: true }
+    : { label: entry.label, enabled: entry.enabled, ...(entry.accelerator === undefined ? {} : { accelerator: entry.accelerator }) }));
+}
+
 export interface NotificationText {
   title: string;
   body: string;
