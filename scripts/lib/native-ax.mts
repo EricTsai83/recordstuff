@@ -12,7 +12,7 @@ import { command } from "./acceptance-runtime.mts";
 /**
  * `osascript -l JavaScript -e <script> <command> …`, one JSON object out.
  * Commands: `status <pid>`, `press <pid> <menu index>`, `mouse left|right <x> <y>`,
- * `key <code> [flags]`, `windows <pid>`, `manual <pid>`, `banners`.
+ * `key <code> [flags]`, `windows <pid>`, `menubar <pid>`, `manual <pid>`, `banners`.
  * Any failed AX call is reported as its AXError code rather than thrown, so the
  * caller can tell a missing permission (-25211) from an element that is gone.
  */
@@ -80,6 +80,17 @@ function run(argv) {
   }
   const pid = Number(a);
   const app = $.AXUIElementCreateApplication(pid);
+  if (cmd === 'menubar') {
+    const bar = raw(app, 'AXMenuBar');
+    if (!ok(bar)) return out({ error: bar });
+    const items = top => {
+      const menu = children(top).find(child => plain(raw(child, 'AXRole')) === 'AXMenu');
+      return menu ? children(menu).filter(child => plain(raw(child, 'AXRole')) === 'AXMenuItem').map(entry => ({
+        title: plain(raw(entry, 'AXTitle')) || '', cmdChar: plain(raw(entry, 'AXMenuItemCmdChar')) || '', cmdModifiers: plain(raw(entry, 'AXMenuItemCmdModifiers')) || 0,
+      })) : [];
+    };
+    return out({ menus: children(bar).map(top => ({ title: plain(raw(top, 'AXTitle')) || '', items: items(top) })) });
+  }
   if (cmd === 'manual') return out({ error: $.AXUIElementSetAttributeValue(app, $('AXManualAccessibility'), $.NSNumber.numberWithBool(true)) || undefined });
   if (cmd === 'status' || cmd === 'press') {
     const bar = raw(app, 'AXExtrasMenuBar');
@@ -165,6 +176,31 @@ export interface WindowSnapshot {
   focused: { role: string; title: string; description: string } | null;
 }
 
+/** One top-level menu of an app's menu bar and its own items (submenus are not opened). */
+export interface AppMenu {
+  title: string;
+  items: Array<Pick<NativeMenuItem, "title" | "cmdChar" | "cmdModifiers">>;
+}
+
+/**
+ * The key equivalents RecordStuff's application menu must and must not bind
+ * (src/main/index.ts): Electron's default View menu answers ⌘R and ⌘⌥I in
+ * Settings, while Edit and the App and Window menus keep copy, paste,
+ * minimize and quit. Modifiers are `AXMenuItemCmdModifiers` (0 is ⌘ alone).
+ */
+const MENU_FORBIDDEN = [{ key: "R", modifiers: 0, name: "⌘R (Reload)" }, { key: "I", modifiers: 2, name: "⌘⌥I (Developer Tools)" }];
+const MENU_REQUIRED = [{ key: "C", name: "⌘C" }, { key: "V", name: "⌘V" }, { key: "M", name: "⌘M" }, { key: "Q", name: "⌘Q" }].map(entry => ({ ...entry, modifiers: 0 }));
+
+/** Which forbidden shortcuts some item binds, and which required ones none does. */
+export function judgeAppMenu(menus: readonly AppMenu[]): { bound: string[]; missing: string[] } {
+  const binds = (key: string, modifiers: number): boolean =>
+    menus.some(menu => menu.items.some(item => item.cmdChar.toUpperCase() === key && item.cmdModifiers === modifiers));
+  return {
+    bound: MENU_FORBIDDEN.filter(entry => binds(entry.key, entry.modifiers)).map(entry => entry.name),
+    missing: MENU_REQUIRED.filter(entry => !binds(entry.key, entry.modifiers)).map(entry => entry.name),
+  };
+}
+
 export interface Banner {
   id: string | undefined;
   subrole: string;
@@ -185,8 +221,8 @@ export function parseAxResult<T>(output: string, what: string): T {
 }
 
 /** Key codes and CGEventFlags the runners post. */
-export const KEY = { escape: 53, down: 125, up: 126, return: 36, tab: 48, m: 46, w: 13 } as const;
-export const FLAG = { command: 0x100000, shift: 0x20000 } as const;
+export const KEY = { escape: 53, down: 125, up: 126, return: 36, tab: 48, m: 46, w: 13, r: 15, i: 34, q: 12 } as const;
+export const FLAG = { command: 0x100000, shift: 0x20000, option: 0x80000 } as const;
 
 export interface NativeAx {
   status(pid: number): Promise<StatusSnapshot>;
@@ -194,6 +230,7 @@ export interface NativeAx {
   mouse(button: "left" | "right", x: number, y: number): Promise<void>;
   key(code: number, flags?: number): Promise<void>;
   windows(pid: number): Promise<WindowSnapshot>;
+  menuBar(pid: number): Promise<AppMenu[]>;
   /** Asks Chromium to build its accessibility tree, as assistive software does, so web focus is readable. */
   enableWebAccessibility(pid: number): Promise<void>;
   banners(): Promise<Banner[]>;
@@ -209,6 +246,7 @@ export function osascriptAx(signal: AbortSignal, timeoutMs = 10_000): NativeAx {
     mouse: async (button, x, y) => { await run(`${button} click`, "mouse", button, x, y); },
     key: async (code, flags = 0) => { await run(`key ${code}`, "key", code, flags); },
     windows: pid => run<WindowSnapshot>("windows", "windows", pid),
+    menuBar: async pid => (await run<{ menus: AppMenu[] }>("menu bar", "menubar", pid)).menus,
     enableWebAccessibility: async pid => { await run("web accessibility", "manual", pid); },
     banners: async () => (await run<{ banners: Banner[] }>("Notification Center", "banners")).banners,
   };

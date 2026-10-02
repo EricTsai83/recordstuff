@@ -92,6 +92,7 @@ function fakeAx(): NativeAx & { calls: string[]; open: boolean } {
     async mouse(button: "left" | "right", x: number, y: number) { ax.calls.push(`${button} ${x},${y}`); if (button === "right") ax.open = true; },
     async key(code: number) { ax.calls.push(`key ${code}`); if (code === 53) ax.open = false; },
     async windows() { throw new Error("unused"); },
+    async menuBar() { throw new Error("unused"); },
     async enableWebAccessibility() { throw new Error("unused"); },
     async banners() { return []; },
   };

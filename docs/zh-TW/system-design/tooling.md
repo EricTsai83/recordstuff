@@ -322,11 +322,12 @@ pnpm acceptance:tray -- --long-start <run> # 對執行中的受控 build 跑 pla
 ```bash
 pnpm acceptance:settings-shortcut                # 只檢查 callback
 pnpm acceptance:settings-shortcut -- --observe   # 另外以輔助使用檢查視窗
+pnpm acceptance:settings-shortcut -- --observe --quit   # 最後按 ⌘Q，並確認產物的所有程序都結束
 ```
 
 設定關閉、另一個 App 在前景時，這個 macOS arm64 腳本會核對本機 bundle 程序、最新 log session 與目前設定鍵註冊，再透過 System Events 送出 ⌘⌥,。擷取暫停、衝突或註冊失敗時拒絕送鍵。成功退出只代表收到本次設定 callback（最多等 30 秒），不代表視窗可見或聚焦。每次報告與 log 都寫入 `docs/verification/measurements/` 下的獨立目錄。
 
-`--observe`（plan 063）在設定已開啟時拒絕執行；它先讓 Finder 置前、送出按鍵，再透過輔助使用斷言：設定視窗是 main 且有焦點、RecordStuff 在前景；Tab 會移動焦點所在的控制項（先設定 `AXManualAccessibility`，這是輔助軟體使用的開關，讓 Chromium 公開網頁焦點）；⌘M 會最小化；第二次送鍵會把它還原到前景；⌘W 會關閉；第三次送鍵會重新開啟。callback 與輔助使用檢查分開列為腳本證據，面板保持開啟。排版與外觀仍由 `pnpm acceptance:settings` 的截圖或觀察判斷。權限拒絕只回報，不自動修改；沒有使用 IPC 或測試專用開窗入口。OS 衝突與錄製持續需各自驗證。
+`--observe`（plan 063）在設定已開啟時拒絕執行；它先讓 Finder 置前、送出按鍵，再透過輔助使用斷言：設定視窗是 main 且有焦點、RecordStuff 在前景；Tab 會移動焦點所在的控制項（先設定 `AXManualAccessibility`，這是輔助軟體使用的開關，讓 Chromium 公開網頁焦點）；應用程式選單沒有綁定 ⌘R（重新載入）或 ⌘⌥I（開發者工具），並保留 ⌘C、⌘V、⌘M 與 ⌘Q，依選單的快捷鍵判斷，因為開發者工具可能停靠在視窗內而不新增視窗；⌘R 與 ⌘⌥I 送出後 2 秒內焦點不變，重新載入會重設焦點；⌘M 會最小化；第二次送鍵會把它還原到前景；⌘W 會關閉；第三次送鍵會重新開啟。callback 與輔助使用檢查分開列為腳本證據，面板保持開啟；加 `--quit` 時改以在設定中按 ⌘Q 結束本輪，並斷言產物的所有程序在 30 秒內結束。排版與外觀仍由 `pnpm acceptance:settings` 的截圖或觀察判斷。權限拒絕只回報，不自動修改；沒有使用 IPC 或測試專用開窗入口。OS 衝突與錄製持續需各自驗證。
 
 `pnpm acceptance:shortcut` 另執行第三個隔離的設定階段，使用正式 main／preload／頁面，透過受控註冊 adapter 驗證既存平台等價衝突、恢復、雙語拒絕、擷取暫停與 renderer 崩潰清理。測試會最小化真正的 Electron 視窗，再經註冊 callback 還原，斷言視窗數量與焦點。這屬於整合證據，與原生 Computer Use、真正 OS 衝突測試分開記錄；三個程序及暫存偏好皆會清理。
 
@@ -367,7 +368,7 @@ Exit code：
 
 各 runner 共用程序比對與啟動環境（plan 052）。[processes.mts](../../../scripts/lib/processes.mts) 產生所有 `pgrep`/`pkill` pattern：RecordStuff bundle 用 `recordStuffPattern`，checkout 的開發用 Electron.app 用 `electronPattern`，兩者都會跳脫路徑並加上錨點，因此位於 `~/Code (2026)/` 之下的 checkout 只會比對到自己，不會比對到相鄰路徑或在參數中提到它的程序；`pgrepPids` 在無法啟動 `pgrep`，或 status 不是 0 與 1（1 表示沒有）時丟出錯誤。程序群組探測只把 `ESRCH` 視為已不存在；`EPERM` 表示群組仍存在，送出訊號失敗會回報收尾錯誤。因此 `pgrep` 失敗會擋下這一輪，而不是被當成「沒有東西在執行」：preflight 階段會在啟動任何東西前停止；收尾階段則以 exit 1 結束（中斷後會印出 `CLEANUP FAILED`），因為此時無法證明本回合的程序已經結束。所有會啟動 Electron 或 App 的 runner 都從 [runner-env.mts](../../../scripts/lib/runner-env.mts) 的 `scrubbedEnv()` 開始，它會移除 `ELECTRON_RUN_AS_NODE`、`ELECTRON_RENDERER_URL`、`RECORDSTUFF_AUTORECORD` 與 `NODE_OPTIONS`（VS Code 的 JavaScript Debug Terminal 會設定最後這個），runner 只再加上自己負責的值，例如 autorecord 要求、fault point 或 `PATH`；若有 runner 自行刪除這些 key 或複製 `process.env`，單元測試會失敗。`matrix`、`measure:finalization` 與 `diagnose:cadence` 以非同步方式在建置自己的程序群組中建置，因此建置期間的 Ctrl-C 或 SIGTERM 只會送到 runner，由它的處理程序停止整個群組，收尾後 exit 130 或 143。`matrix`、`measure:finalization` 與 `diagnose:cadence` 和 `acceptance`、`measure:cpu`、`acceptance:updates` 一樣，以本回合用 `mkdtemp` 建立的私有 Chrome profile 開啟素材；收尾會等該瀏覽器結束後刪除 profile，無法刪除時列為收尾未完成。
 
-`pnpm acceptance` 會讓受測 App 保持關閉，並在 `report.md` 記錄包含收尾的最終結果；若程序已更換或無法確認待命，拒絕退出。通知驗收還原安裝產物與設定後保持 App 關閉。設定驗收管理自己的程序群組，包含中斷與逾時清理，結果寫入 `cleanup.json`。隔離 runner 只清理自己的程序；單元檢查不關閉無關 App。設定快捷鍵入口仍保留面板供原生檢查，由完整回合負責退出。Tray 驗收和 `pnpm acceptance` 一樣讓 App 保持關閉。下一輪錄影驗收前需重新啟動；程式改動後用 `pnpm start:app` 重建。
+`pnpm acceptance` 會讓受測 App 保持關閉，並在 `report.md` 記錄包含收尾的最終結果；若程序已更換或無法確認待命，拒絕退出。通知驗收還原安裝產物與設定後保持 App 關閉。設定驗收管理自己的程序群組，包含中斷與逾時清理，結果寫入 `cleanup.json`。隔離 runner 只清理自己的程序；單元檢查不關閉無關 App。設定快捷鍵入口仍保留面板供原生檢查，除非以 `--quit` 按 ⌘Q 結束；否則由完整回合負責退出。Tray 驗收和 `pnpm acceptance` 一樣讓 App 保持關閉。下一輪錄影驗收前需重新啟動；程式改動後用 `pnpm start:app` 重建。
 
 快捷鍵 runner 在送出開始按鍵前及失敗時寫入 `input-diagnostics.json`：包含實際 AppleScript、App PID、送鍵程序、System Events UI 狀態、前景 App，以及 IORegistry 回報的 Secure Input 擁有者。沒有回報擁有者不代表已證明 Secure Input 關閉。診斷查詢唯讀、有時限，不會授予權限。失敗時也保留 `events.log` 與本次 `app-session.log`。osascript 成功不等於按鍵送達，必須收到 App callback 才算；逾時後不要盲目重送切換快捷鍵，以免停止延遲開始的錄影。送鍵失敗時，先對同一個 bundle 與輸入環境比較實體按鍵和產生的腳本，再判斷是否為 App 故障。
 
