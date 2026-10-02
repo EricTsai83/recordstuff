@@ -159,7 +159,7 @@ Session record（plan 029）。run id 由啟動時間加 pid 組成（例如 `20
 
 設定版本 3 新增可選的 `updates: { enabled, lastAttempt }`。舊檔預設開啟且無檢查紀錄。原子、序列化寫入保留其他設定。發出網路請求前保存嘗試時間，失敗亦計入，避免重開繞過 24 小時限制；系統時鐘回調造成的未來時間戳視為應重新檢查。手動檢查不受此限制，時間戳寫入失敗時記錄錯誤後仍繼續連線。App 執行期間沒有輪詢計時器。關閉偏好只影響啟動檢查。
 
-App 注入 Electron `net.fetch`，採用 Chromium 網路層及系統代理／PAC 設定；單元測試注入測試用傳輸。檢查先讀取 `https://record.ericts.com/release.json`，失敗改查儲存庫的 GitHub latest-release API。每個來源最多等待 8 秒，結束 App 時取消請求。與 `app.getVersion()` 比較穩定語意版本；不相容的產物、無效資料與預覽版不會產生更新提示。啟動檢查失敗恢復先前選單並寫 log；手動失敗提供發布頁與重試。成功顯示本地檢查時間，或顯示新版並開啟固定官網下載頁；下載、取代仍為手動。
+App 注入 Electron `net.fetch`，採用 Chromium 網路層及系統代理／PAC 設定；單元測試注入測試用傳輸。檢查先讀取 `https://record.ericts.com/release.json`，失敗改查儲存庫的 GitHub latest-release API。Windows x64 上只讀 GitHub latest-release API，且只接受帶有 `RecordStuff-<version>-x64-unsigned-setup.exe` 的 release，因為 feed 維持已安裝 macOS App 解析的格式、只描述 DMG；在沒有發布資產的平台上，檢查找不到相容的 release。這條 Windows 路徑只有單元測試涵蓋。每個來源最多等待 8 秒，結束 App 時取消請求。與 `app.getVersion()` 比較穩定語意版本；不相容的產物、無效資料與預覽版不會產生更新提示。啟動檢查失敗恢復先前選單並寫 log；手動失敗提供發布頁與重試。成功顯示本地檢查時間，或顯示新版並開啟固定官網下載頁；下載、取代仍為手動。
 
 ## 通知開關
 

@@ -30,8 +30,8 @@
 | 固定自簽憑證 + DMG | 開發者可產生可安裝下載版，收件者不需開發工具或憑證 | 未 Apple 公證，首次開啟可能需手動允許；固定身分也不保證所有環境 TCC 行為 |
 | DMG 只有 App 與 Applications 連結 | 拖曳到 Applications 的視窗是使用者早已熟悉的安裝慣例；附帶文件只增加雜訊與混淆 | 說明、更新與移除指引必須線上可及並由每個 release 連結；任何多出的可見檔案都會讓發布閘門失敗 |
 | tag 即發布也是版本；驗證在打 tag 之前 | 單一維護者與單一 Mac 無法支撐 nightly 通道，pipeline 內的人工驗收閘門只是重複開發期已做的檢查，而打 tag 前先在 repo 寫版本號只是多一個會出錯的步驟 | CI 證明建置、簽章、版面與 bytes 一致，但不證明擷取；壞版本以新版本修正，絕不覆寫；record job 以 bot 身分 commit 到 main |
-| 手動更新與垃圾桶移除，不做更新器／解除安裝器 | 同一身分與路徑讓取代後保留設定與權限；單鍵錄影工具從背景更新機制得到的好處有限 | 使用者需自行下載新版；絕不自動刪除使用者資料；只透過延後的更新評估重新考慮 |
-| macOS 為唯一已驗平台與唯一打包目標 | 使用者設備只有 Mac，Windows／Linux 不作發布阻擋，也不該提供沒驗過的安裝檔 | 保留跨平台程式（Windows 系統匣分支、平台判斷），但不承諾未驗平台正常；在有維護者能實機驗證前，不設 `win`／`nsis` 打包目標與 `dist:win` 指令 |
+| 手動更新，不做更新器；macOS 以垃圾桶移除，Windows 用每位使用者的解除安裝程式（Windows 部分：維護者 2026-10-03 決定） | 同一身分與路徑讓取代後保留設定與權限；單鍵錄影工具從背景更新機制得到的好處有限。在 Windows 上，使用者預期從「設定 → 應用程式」移除已安裝的 App，每位使用者的安裝檔會在那裡登記 | 兩個平台的使用者都需自行下載新版；絕不自動刪除使用者資料。macOS 規則不變。Windows 解除安裝程式移除 App、開始選單捷徑與其登記，保留錄影、設定與 log（`deleteAppDataOnUninstall: false`）。只透過延後的更新評估重新考慮更新器 |
+| Windows x64 與 macOS 由同一個 tag 一起發布，只由 CI 檢查，沒有 Windows 實機（維護者 2026-10-03 決定，[計畫](../../../plans/README.zh-TW.md)中的 plan 064；[發布契約](releases.md#發布契約)） | 維護者沒有 Windows 機器，但希望 Windows 使用者走與 Mac 相同的流程；GitHub 的 Windows runner 能建置、安裝、檢查並解除安裝安裝檔，只是不能錄影。每位使用者的一鍵 NSIS 安裝檔（`oneClick`、`perMachine: false`、不需管理員權限）是在 GitHub 發布的 Electron App 的常見做法（T3 Code，pingdotgg/t3code，在 DMG 旁附一個），其開始選單捷徑帶有 appId `com.ericts.record` 作為 Windows toast 所需的 AppUserModelID | 實機驗證仍只有 macOS。Windows 的證據只有 CI：`windows-2025` 上的 `pnpm check`，以及發布前後的每位使用者靜默安裝、登記、版本、架構、簽章狀態、系統匣圖示、捷徑與靜默解除安裝；擷取、系統音訊、通知與系統匣在 Windows 上都未驗證（035 的 N17 系統匣矩陣仍未結案），部分文案仍假設 macOS，也沒有強制的 Windows 最低版本。不簽章，資產名稱寫明這點，因此 SmartScreen 會警告；完整性由 SHA256SUMS、`release-win32-x64.json` 與 GitHub build-provenance attestation 承擔。Windows 失敗時整個 tag 在發布前失敗。只有 x64：Windows on Arm 與 Linux 沒有建置。有 Windows 機器時記錄實機證據；若 SmartScreen 或使用者回報讓未簽章安裝檔不可行，再考慮簽章 |
 | 英文正式版與繁體中文翻譯 | GitHub 文件、註解與診斷共用英文，App 可明確選中文 | catalog 與雙語文件需同步維護 |
 | 設計與計畫分離 | 已完成執行日志不適合長期當規格 | 更新行為時需維護設計、驗證紀錄；plans 只留剩餘交付 |
 | 原始量測留在本機 | 每次執行的報告、log 與探測都綁定機器，貢獻者一多就會倍增；只有解讀後的結論值得長存 | `docs/verification/measurements/` 已 gitignore；驗證紀錄與 release 紀錄必須帶足數字，不依賴原始檔；`acc6342` 之前的歷史仍保有早期原始量測 |
@@ -41,6 +41,6 @@
 
 現有建置採 electron-vite、打包採 electron-builder。依賴維持穩定版本路線；升级需重新跑相關檢查及媒體驗證，不能只因套件更新就沿用舊平台結論。
 
-沒有為未来先引入 Effect、schema framework、monorepo、React、Rust 或完整 PlatformRecorder。當確實需要新視窗，可新增 UI renderer 但媒體仍不經 UI；當 Chromium 能力已確認不足，可在維持 Recorder 契約的前提下評估替代 host。沒有排程的錄影庫、編輯、快捷鍵、自動更新與其他平台支援，不是目前下載版的必要前置。
+沒有為未来先引入 Effect、schema framework、monorepo、React、Rust 或完整 PlatformRecorder。當確實需要新視窗，可新增 UI renderer 但媒體仍不經 UI；當 Chromium 能力已確認不足，可在維持 Recorder 契約的前提下評估替代 host。沒有排程的錄影庫、編輯、快捷鍵、自動更新、Windows 實機驗證，以及 macOS 與 Windows x64 以外的平台支援，不是目前下載版的必要前置。
 
 歷史原生引擎候選與第三方比較未當成現有實作或未來承諾；需要採用時重新調查相應 API 與依賴。

@@ -2,9 +2,11 @@
 
 [English](064-windows-release.md) | [繁體中文](064-windows-release.zh-TW.md)
 
-Status: proposed; next in the queue, after 065 ([closed](../docs/verification/history-2026-10.md#plan-065-closure--2026-10-03)), started only after 062 ([closed](../docs/verification/history-2026-10.md#plan-062-closure--2026-10-02)) and 063 ([closed](../docs/verification/history-2026-10.md#plan-063-closure--2026-10-02)) have closed. Dependencies: step 1 is a maintainer decision gate and every later step requires it; step 3 requires step 2's installer; steps 4–7 require step 3's feasibility verdict; step 8 requires steps 4–7. Step 2 changes `scripts/start-app.mjs` in the shape 062 leaves it; step 3 labels evidence with 063's kinds; step 4's macOS recheck uses 063's `pnpm acceptance:tray` when 063 built it, otherwise Computer Use or manual observation under 063's selection rule; step 9 reuses 063's evidence labels. Independent of the deferred 058–060.
+Status: active since 2026-10-03, revised by the maintainer's decisions of that day. They replaced the same-day deferral at step 1 (no Windows machine) with the decision recorded in [design decisions](../docs/system-design/decisions.md): publish Windows x64 together with the macOS DMG through the same tag-triggered release, packaged and checked by GitHub Actions, without verification on Windows hardware ("the flow should be the same as Mac"). Progress on branch `windows-packaging`, not yet on main: step 1 is decided; steps 2, 5, 6 and 7 and the update-check part of step 4 are implemented. Waived by the decision: step 3's hardware round, the hardware smoke in step 8 and step 9. Remaining: the rest of step 4 (Windows-specific wording and a Windows version floor), which stays in this plan but does not block the release; step 8's pre-release rehearsal and first two-platform stable release, each only on the maintainer's explicit tag request; and the closure record. CI evidence so far: run 37040450544 passed both jobs: on Windows `pnpm check` (typecheck, 94 test files with 5 platform-skipped, build), `pnpm dist:win` and the `windows-smoke` install, inspection and uninstall of the 1.1.1-stamped installer. Its predecessors 062, 063 and 065 have closed ([062](../docs/verification/history-2026-10.md#plan-062-closure--2026-10-02), [063](../docs/verification/history-2026-10.md#plan-063-closure--2026-10-02), [065](../docs/verification/history-2026-10.md#plan-065-closure--2026-10-03)). Dependencies: step 8 requires steps 2 and 5–7 on main with both check jobs passing; the rest of step 4 does not gate step 8 and, if finished after it, ships in a later release; its macOS tray recheck uses 063's `pnpm acceptance:tray`. Independent of the deferred 058–060.
 
 ## Problem and evidence
+
+This section records the state before the work began (2026-10-02). The decision it quotes was replaced on 2026-10-03, and the branch changed the items each step below marks as done.
 
 RecordStuff ships only a self-signed macOS arm64 DMG. Windows is not merely unconfigured; it is excluded by an adopted decision. [Design decisions](../docs/system-design/decisions.md) record "macOS-only verification and packaging: … no `win`/`nsis` build target or `dist:win` script until a maintainer can verify on hardware", and [release automation](../docs/system-design/releases.md) lists "Windows/Intel delivery" as outside scope. The closed 034 drew the Windows tray artwork without a Windows machine; 035 waived its native check (N17), so nothing Windows-specific has ever run on Windows.
 
@@ -21,92 +23,82 @@ Inventory of the current tree (2026-10-02):
 
 ## Target
 
-One `vX.Y.Z` tag publishes one GitHub release carrying both the existing macOS DMG and a Windows x64 installer, or publishes nothing. Each platform is built, verified, published, re-downloaded anonymously and verified again by the same gates it has today. Already-installed macOS apps see no change in the feed or assets they read. The website offers each verified platform and describes the Windows first-run warning honestly. The release record states which Windows behaviour was verified on real hardware and which was not.
+One `vX.Y.Z` tag publishes one GitHub release carrying both the existing macOS DMG and a Windows x64 installer, or publishes nothing. Each platform is built, gated, published, re-downloaded anonymously and gated again on its own runner type. Already-installed macOS apps see no change in the feed or assets they read. The website offers both platforms, says that the Windows installer is unsigned and unverified on hardware, and describes its SmartScreen warning honestly. The release record states that Windows was checked by CI only and lists what is untested.
 
 ## Steps
 
 Each step is independently completable and leaves the documents consistent.
 
-### 1. Maintainer decision gate
+### 1. Maintainer decision gate — decided 2026-10-03
 
-Ask the maintainer to decide, and record each answer with its date in [design decisions](../docs/system-design/decisions.md) and its translation, replacing the "macOS-only verification and packaging" row. Recommendations are listed first.
+The first answer that day, no Windows machine, deferred this plan; the maintainer then decided to publish without hardware verification ("Do not verify Windows for me, but let GitHub Actions do the packaging"). The answers, recorded in [design decisions](../docs/system-design/decisions.md) and its translation, replacing the "macOS-only verification and packaging" row and amending the manual-update row:
 
-- **Verification hardware.** Which Windows machine counts as verification: a physical x64 Windows 11 PC (recommended), or a Windows 11 on Arm VM on the reference Mac, whose x64 emulation and virtual audio device are not equivalent. A VM result is labelled as such and cannot close step 3's capture cases alone. Without any Windows machine, stop here: the existing decision stays and this plan is deferred.
-- **Architecture.** x64 only for the first release (recommended); arm64 Windows is a later, separately verified addition.
-- **Installer and the "no uninstaller" decision.** A per-user NSIS installer (`oneClick`, `perMachine: false`, no admin prompt) creates the Start-menu shortcut that toast notifications need and registers the Windows-conventional uninstaller in Settings → Apps (recommended). A portable ZIP keeps the "no uninstaller" rule but loses notifications unless the app creates its own shortcut. With NSIS, record that uninstalling never deletes user data (`deleteAppDataOnUninstall: false`), so the existing data rule holds, and that the macOS rule is unchanged.
-- **Signing.** Options: unsigned, with integrity carried by SHA256SUMS, `release.json` and a GitHub build-provenance attestation (recommended for the first release); an OV code-signing certificate on a hardware or cloud key, which costs money and still shows SmartScreen until reputation builds; Azure Artifact Signing, which as of 2026 issues public-trust certificates to individuals only in the USA and Canada. A macOS-style self-signed certificate adds nothing on Windows: users would have to trust it by hand. Whatever is chosen, the asset name states it, as `-selfsigned` does for the DMG, and warning-free installation stays outside scope.
-- **Release coupling.** A Windows failure fails the whole tag before publication (recommended, matching "the tag is the version"), rather than publishing macOS alone.
-- **Minimum Windows version.** Electron 44's supported floor, narrowed to what step 3 verifies, enforced the way `osSupported` enforces Darwin 22.
+- **Verification hardware.** None. Windows evidence is CI only, from GitHub's `windows-2025` runners, and is labelled as such; there is no VM round.
+- **Architecture.** x64 only; Windows on Arm stays out of scope.
+- **Installer and the "no uninstaller" decision.** A per-user one-click NSIS installer (`oneClick: true`, `perMachine: false`, no admin prompt), chosen as the common practice: T3 Code (pingdotgg/t3code) ships one from the same GitHub release as its DMG. Its Start-menu shortcut carries the appId `com.ericts.record` as AppUserModelID, and it registers the Windows uninstaller in Settings → Apps with `deleteAppDataOnUninstall: false`, so uninstalling never deletes user data. The macOS rule (manual update, Trash removal) is unchanged; there is still no updater on either platform.
+- **Signing.** Unsigned, with integrity carried by SHA256SUMS (one line per binary asset), `release-win32-x64.json` and a GitHub build-provenance attestation; the asset name `RecordStuff-<version>-x64-unsigned-setup.exe` states it. The options weighed are kept in [signing](../docs/system-design/signing.md#windows-installer-unsigned-by-decision).
+- **Release coupling.** A Windows failure fails the whole tag before publication.
+- **Minimum Windows version.** Not decided: no hardware can narrow Electron 44's floor. Left to step 4's remainder.
 
-If the maintainer rejects Windows delivery, record the decision and close this plan.
+### 2. Windows build and Windows check in CI — done on the branch
 
-### 2. Windows build and Windows check in CI
+- `electron-builder.yml` has `win` and `nsis` sections per step 1, the artifact name above and `build/icon.ico`, which `pnpm icons` now writes (16–256 px) and `scripts/make-icons.test.ts` checks byte for byte. `files` and `extraResources` stay shared.
+- `pnpm dist:win` is `electron-vite build && electron-builder --win nsis --x64 --publish never`, without the macOS signing path; `start-app.mjs` still refuses non-macOS hosts and points to it. The macOS phase timing, runtime-input record and signing support are unchanged.
+- `.gitattributes` sets `* text=auto eol=lf`; the Windows-sensitive tests are platform-aware rather than skipped on both platforms.
+- `check.yml` has a `check-windows` job on `windows-2025` (the pinned image the release uses, rather than `windows-latest`): `pnpm check`, `pnpm dist:win`, `release.mts windows-smoke dist` (the step 5 install gates) and the installer as a 7-day build artifact. `workflow_dispatch` lets a work branch be checked.
 
-- Add `win` and `nsis` sections to `electron-builder.yml` per step 1, an explicit Windows artifact name, and `build/icon.ico` generated by `pnpm icons` (16–256 px) with a byte test like the tray ICOs. Keep `files` and `extraResources` shared so `app.asar` contents stay platform-independent.
-- Add `pnpm dist:win`, a plain `electron-builder --win --x64` without the macOS signing path in `start-app.mjs`, and have `start-app.mjs` keep refusing non-macOS hosts with a pointer to it. Keep the phase timing and the runtime-input build record that `pnpm open:app` checks (plan 061), and any signing support 062 extracted, unchanged on macOS.
-- Add `.gitattributes` (`* text=auto eol=lf`) and fix the Windows test failures listed above with platform-aware expectations or guarded fixtures, never by skipping a behaviour test on both platforms.
-- Add a `windows-latest` job to `check.yml` that runs `pnpm check`, then `pnpm dist:win`, and uploads the installer as a short-retention artifact. This is a build artifact, not a release; it exists to feed step 3.
+Evidence: run 37040450544 passed `pnpm check`, `pnpm dist:win` and the `windows-smoke` gates on `windows-2025`; the release workflow's jobs have not run, since no tag was pushed.
 
-Verification: `pnpm check` on both runners, `pnpm dist:mac` unchanged on the Mac, the installer artifact downloaded and its contents listed.
+### 3. Feasibility round on Windows hardware — waived
 
-### 3. Feasibility round on Windows hardware
+Waived by the decision: there is no Windows machine. The decision accepts that a published Windows build may not record at all, so the gate this step held ("a Windows build that cannot record does not proceed") no longer applies, and the release notes, README and website say capture is unverified. The CI gates of step 5 stand in only for installation, registration, the shortcut's presence and uninstallation, and only as runner evidence. Every other case stays untested on Windows and is listed as such in each release record: SmartScreen's text, the Start-menu shortcut's AppUserModelID in use, the first-run "system tray" hint, the five tray ICO states on light and dark taskbars at 100/125/150/200 %, tray clicks and tooltip (035's N17 matrix stays open and carried), recording with picture and system audio, `MediaRecorder` MP4 support, `restrictOwnAudio`, the saved toast and its Explorer reveal, Settings persistence, single-instance focus, sleep during recording, Quit, and uninstalling and reinstalling with data kept. If a Windows machine becomes available, these cases need their own round under the [desktop handoff](../docs/testing.md#confirm-desktop-handoff-before-testing).
 
-On the machine chosen in step 1, under the [desktop handoff](../docs/testing.md#confirm-desktop-handoff-before-testing), install step 2's artifact and record pass, fail or blocked for each case, keeping VM results separate:
+### 4. App adjustments for Windows — update check done; the rest remaining, not blocking the release
 
-- Install without admin rights, SmartScreen text as shown, the Start-menu shortcut and its AppUserModelID, first launch with the "system tray" hint.
-- The tray: the five ICO states on light and dark taskbars at 100/125/150/200 %, left click starts and stops, right click opens the menu, tooltip text. This closes 035's N17 under the same matrix.
-- Recording with the default shortcut and from the tray: a test video with sound playing, the MP4 opens in the Windows player and plays with picture and system audio, RecordStuff's own countdown tick is not recorded when the sound is on (`restrictOwnAudio`), the file name and `Videos\RecordStuff` folder. Copy the file to the Mac and run `pnpm verify -- <file>` for integrity, format and audio energy.
-- The saved toast appears and its click opens Explorer with the file selected; Settings opens, changes the shortcut and output folder, and keeps them across relaunch; a second launch focuses the running instance; sleep during recording saves the file; Quit leaves no process.
-- Uninstall from Settings → Apps leaves settings, history and recordings in place; reinstall picks them up.
+- **Done on the branch: the update check.** On win32/x64 it reads GitHub's latest release only and accepts it only with the Windows asset, because the website feed describes the macOS DMG. There is no Windows feed: the website manifest's optional `windows` block serves the download page. `feedVersion` and `githubVersion` still accept exactly what macOS apps already read; `src/main/updates.test.ts` covers a two-platform release, another platform, a macOS-only release and Windows reading only GitHub.
+- **Remaining:** platform-specific wording for sleep, missing system audio, unsupported OS and "menu bar"/"system tray", in both languages; reserved shortcuts per platform (macOS screenshot/Spotlight chords on macOS only); a Windows version floor, which without hardware can only be Electron 44's documented floor, enforced through `osSupported` and the existing `unsupported_os_version` path with Windows guidance, or recorded as not enforced. Each fix gets a focused test; on macOS, changed tray wording is checked with `pnpm acceptance:tray` in both languages; Windows appearance stays unverified. This does not block step 8; done after it, it ships in a later release.
 
-Gate: if capture, audio or MP4 encoding fails, record the evidence and stop. A capture path change is a separate plan; steps 4–8 do not proceed on a Windows build that cannot record.
+### 5. Multi-platform release tooling — done on the branch
 
-### 4. App adjustments for Windows
+- **Compatibility.** The `release.json` asset and the website's `/release.json` keep their darwin-arm64 shape for installed macOS apps. Windows has its own record, `release-win32-x64.json`. SHA256SUMS lists every binary asset, one line each, so `shasum -a 256 -c` still checks it and a Windows user can compare `Get-FileHash` with its line.
+- **Asset sets by version.** `LAST_MACOS_ONLY_VERSION = "1.1.1"`: earlier tags keep the three-asset contract, so `published` can still re-verify them from main; every later version, pre-releases included, carries five: the DMG, the Windows installer, SHA256SUMS and both records. `release.mts assets` prints a tag's set for the workflow.
+- **Windows gates**, on a Windows runner (`candidate-windows`, `published-windows`, `windows-smoke`): silent per-user install; exactly one HKCU uninstall entry, none under HKLM, with DisplayVersion equal to the version; `RecordStuff.exe` PE machine x64 and ProductVersion equal to the version; Authenticode `NotSigned` for the installer and the exe; the tray ICOs and the Start-menu shortcut present; the `app.asar` hash recorded; then silent uninstall and a check that the app, the shortcut and the registration are gone. The two platforms' `app.asar` hashes sit in their two records; equality is not enforced.
+- **Records and text.** The manifest schema has an optional `windows` block, required exactly for versions after 1.1.1; promotion, unchanged and historical-only rules compare its fields; README download blocks, release notes (macOS, Windows and Verify sections), verification record skeletons and the release title cover both platforms. The release tests cover releases before and after Windows and a missing, mismatched or unlisted Windows asset.
 
-- Platform-specific wording for sleep, missing system audio, unsupported OS and "menu bar"/"system tray", in both languages; reserved shortcuts per platform (macOS screenshot/Spotlight chords on macOS only; Windows chords such as Win-key combinations already refused).
-- A Windows version floor from step 1 with the existing `unsupported_os_version` path and Windows guidance.
-- The update check for Windows: a Windows feed and a GitHub fallback that look for the Windows asset, while `feedVersion` and `githubVersion` keep accepting exactly what macOS apps already read. Tests cover old macOS release objects, new multi-asset releases on both platforms and a Windows app reading a macOS-only release (no update, not an error worth reporting as broken).
-- Anything else step 3 found. Each fix gets a focused test; visible changes are rechecked on both platforms. On macOS, changed tray wording is checked with `pnpm acceptance:tray` in both languages when 063 provided it; otherwise follow 063's selection rule.
+### 6. Release workflow — done on the branch
 
-### 5. Multi-platform release tooling
+- `build-windows` on `windows-2025` (x64 assertion) runs in parallel with the macOS build: the same preflight, version stamp, frozen install, explicit Electron install, `pnpm check`, `pnpm dist:win`, `candidate-windows`, `actions/attest-build-provenance` and its own artifact, with no signing secrets.
+- `publish` needs both builds, re-verifies both candidates and publishes one release. `verify-published` runs on macOS; `verify-published-windows` on `windows-2025` downloads anonymously, compares `Get-FileHash` with SHA256SUMS, runs `gh attestation verify` and `published-windows`. `record` needs both; `deploy-website` is unchanged.
+- The workflow is renamed "Release" and its delivery group `recordstuff-macos-delivery` → `recordstuff-delivery`. The new name takes effect when the branch reaches main: merge it while no release run is queued, because a run queued under the old group would not serialize with one under the new.
 
-- **Compatibility first.** The `release.json` asset and the website's `/release.json` keep their current darwin-arm64 shape and bytes semantics. Windows gets its own record, `release-win32-x64.json`, and feed, `/release-win32-x64.json`. SHA256SUMS lists every binary asset, one line each, so `shasum -a 256 -c` still checks it and a Windows user can compare `Get-FileHash` output with its line.
-- **Asset sets by version.** Releases before the first Windows version keep the three-asset contract so `published` can still re-verify any older tag from main; from that version on the set is the DMG, the Windows installer, SHA256SUMS and both records.
-- **Windows candidate gates**, run on the Windows runner: silent per-user install into a temporary directory, PE machine type x64 for `RecordStuff.exe`, file and product version equal to the tag, `resources/app.asar` hash recorded, the tray ICOs present, the expected signature state (absent, or the pinned certificate), then silent uninstall and a check that no installed files remain. Record whether the two platforms' `app.asar` hashes match; enforce equality only if repeated builds show it is deterministic.
-- **Records and text.** The manifest schema gains a Windows entry; promotion, unchanged and historical-only rules compare each platform's facts; README download blocks, release notes, verification record skeletons and the GitHub release title cover both platforms. Extend `scripts/release-record.test.ts` and the release tests with releases before and after Windows, a missing Windows asset, a mismatched digest and a Windows-only failure.
+The workflow has not run on a tag yet; step 8 exercises it.
 
-### 6. Release workflow
+### 7. Website and user guidance — done on the branch
 
-- Add a `build-windows` job on `windows-latest` (x64) in parallel with the macOS build, running the same preflight, version stamp, `pnpm install --frozen-lockfile`, the explicit Electron install, `pnpm check`, `pnpm dist:win` and the step 5 candidate gates, then uploading its own artifact. If step 1 chose signing, provision the key the way the macOS job does: environment `release`, secrets only in that step, masked values and always-cleanup.
-- `publish` needs both builds, re-verifies both candidates and publishes one release. `verify-published` runs on both runner types against the public URLs. If step 1 chose attestation, add `actions/attest-build-provenance` to each build and `gh attestation verify` to `verify-published`.
-- Rename the workflow and its concurrency group to cover both platforms, changing the group name only when no release run is queued. `record` and `deploy-website` stay single jobs.
+The download page has a Windows section with size, SHA-256 and links from the manifest's `windows` block; Help covers Windows install, the SmartScreen "More info → Run anyway" step, manual update, uninstall and where data stays; Support's platform boundary is updated. `resources/INSTALL.md`, both READMEs and the release notes template carry the Windows instructions, in both languages where the document has two. Every claim is limited to CI evidence.
 
-### 7. Website and user guidance
+### 8. Pre-release rehearsal, then the first stable release — remaining
 
-- Download page with a section per verified platform, size, SHA-256 and links; the Windows feed endpoint; help for Windows install, the SmartScreen "More info → Run anyway" step, manual update, uninstall and where data stays; Support's platform boundary updated. Keep claims to what step 3 and step 8 verified.
-- `resources/INSTALL.md`, both READMEs and the release notes template gain Windows instructions in both languages. Run `pnpm site:check`.
+- After steps 2 and 5–7 are on main with both check jobs passing, and only on the maintainer's explicit request, do the usual macOS acceptance before tagging and tag `vX.Y.Z-rc.1` (a version after 1.1.1). Confirm both builds, `publish`, both verification jobs and `record`; the pre-release must not move the stable manifest, README or package.json. The install from the public URL on Windows hardware is waived; `verify-published-windows` is the only Windows download check.
+- Then, on the maintainer's explicit request, tag the stable version. Afterwards, on the Mac, check that an installed macOS 1.1.1 app still reports its update status correctly against the new feed and release and that the download page shows both platforms. A Windows app's "current" result rests on unit tests only. Complete the release record: Windows evidence is CI only, and every step 3 case is untested on hardware.
 
-### 8. Pre-release rehearsal, then the first stable release
+### 9. Optional: Windows acceptance runner — waived
 
-- Tag `vX.Y.Z-rc.1` on main: the pre-release path publishes both platforms without moving the stable manifest, README or package.json. Confirm the workflow, both `verify-published` runs and an install from the public URL on the step 1 machine, repeating the step 3 smoke on the downloaded installer.
-- Then tag the stable version. Afterwards, check that an installed macOS 1.1.1 app still reports its update status correctly against the new feed and release, and that the Windows app reports "current". Complete the release record with the Windows evidence and its untested cases.
-
-### 9. Optional: Windows acceptance runner
-
-Only if the maintainer wants repeatable Windows rounds after step 8: a PowerShell or Node runner that starts and stops a recording with the global shortcut and checks the log and file, labelled with 063's evidence kinds. Without it, Windows acceptance before each release is the manual step 3 smoke on the candidate, which the [release operation](../docs/system-design/releases.md) must then list.
+Waived: there is no Windows machine to run it on. The [release operation](../docs/system-design/releases.md#operation) states that no manual Windows smoke precedes a tag.
 
 ## Out of scope
 
-Windows on Arm and Intel Mac builds (separate verification), Microsoft Store, MSIX, winget, automatic updates on either platform, warning-free installation, Linux, and any change to the macOS signing identity or DMG contract.
+Windows on Arm and Intel Mac builds, Microsoft Store, MSIX, winget, automatic updates on either platform, Windows code signing, warning-free installation, Windows hardware verification while no machine exists, Linux, and any change to the macOS signing identity or DMG contract.
 
 ## Verification and completion
 
-Apply the [testing policy](../docs/testing.md) to each step's diff. Step 1 and this plan are documentation: links, anchors, command names, translations and `git diff --check`. Step 2 and step 5 fall under build configuration and release tooling: `pnpm check` on both platforms, the affected package commands and the release-tool tests. Step 4 is app source: `pnpm check` plus Windows and macOS rechecks of changed visible behaviour. Step 6 is the release workflow: its tests and a pre-release run; a code or documentation task never authorizes a tag push, so step 8's tags need the maintainer's explicit request. CI proves the installer builds, installs, matches its records and publishes the verified bytes; it does not prove capture, system audio, notifications or tray appearance, which only step 3 and step 8 on real hardware establish.
+Apply the [testing policy](../docs/testing.md) to each step's diff. Step 1 and this plan are documentation: links, anchors, command names, translations and `git diff --check`. Steps 2 and 5 fall under build configuration and release tooling: `pnpm check` on both runners, the release-tool tests, `pnpm dist:win` with `windows-smoke` on the runner, and `pnpm dist:mac` unchanged on the Mac. The rest of step 4 is app source: `pnpm check` plus macOS rechecks of changed visible behaviour. Step 6 is the release workflow: its tests and step 8's pre-release run. Step 7 is the website: `pnpm site:check`. A code or documentation task never authorizes a push to main or a tag push; both need the maintainer's explicit request. CI proves the installer builds, installs per user, matches its records and attestation, publishes the verified bytes and uninstalls; it does not prove capture, system audio, notifications or tray appearance, and nothing in this plan now establishes them on Windows.
 
 Completion requires all of the following:
 
-- The design decision row records the maintainer's choices and date, and the macOS-only statements in [overview](../docs/system-design/overview.md), [releases](../docs/system-design/releases.md), [tooling](../docs/system-design/tooling.md), [delivery](../docs/system-design/delivery.md) and [signing](../docs/system-design/signing.md) describe the new boundary in both languages.
-- A stable release carries both platforms, both passed `verify-published`, and an installed macOS app's update check behaves as before.
-- The Windows release record lists each step 3 case as passed on hardware, passed only in a VM, or untested, and N17's tray matrix is closed or explicitly carried.
+- The design decision rows record the maintainer's choices and date, and the macOS-only statements in [overview](../docs/system-design/overview.md), [releases](../docs/system-design/releases.md), [tooling](../docs/system-design/tooling.md), [delivery](../docs/system-design/delivery.md) and [signing](../docs/system-design/signing.md) describe the new boundary in both languages (done with this revision).
+- A stable release carries both platforms, `verify-published` and `verify-published-windows` both passed, and an installed macOS app's update check behaves as before.
+- The Windows release record states that Windows evidence is CI only and lists each step 3 case as untested on hardware; N17's tray matrix is explicitly carried.
+- The rest of step 4 is done, or the maintainer decides to keep it as a documented known limitation.
 
 Record the outcomes in the verification history and the durable rules in system design, then follow [plan completion](README.md#completing-a-plan).

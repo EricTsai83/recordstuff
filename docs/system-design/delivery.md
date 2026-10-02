@@ -2,7 +2,7 @@
 
 [English](delivery.md) | [繁體中文](../zh-TW/system-design/delivery.md)
 
-Updated: 2026-09-20. These diagrams describe the implemented CI/CD design, not proof that every hosted path has passed acceptance. See [release automation](releases.md) for operations and the [verification record](../verification/README.md) for evidence and limits.
+Updated: 2026-10-03. These diagrams describe the implemented CI/CD design, not proof that every hosted path has passed acceptance. See [release automation](releases.md) for operations and the [verification record](../verification/README.md) for evidence and limits.
 
 ## Two entry points, one website deployment
 
@@ -12,9 +12,9 @@ Website changes pushed to main deploy without a version bump. Only a version tag
 flowchart TD
     W["Website, shared manifest module or website.yml changes pushed to main"] --> D["website.yml: shared website deployment"]
     M["Manual Website deployment retry on main"] --> D
-    T["Push a new version tag"] --> A["release.yml: check, build, sign App"]
-    A --> P["Verify candidate and publish GitHub Release"]
-    P --> V["Download public assets; verify signatures and hashes"]
+    T["Push a new version tag"] --> A["release.yml: check and build the signed macOS App and, after 1.1.1, the unsigned Windows installer"]
+    A --> P["Verify both candidates and publish one GitHub Release"]
+    P --> V["Download public assets on macOS and Windows runners; verify signatures, hashes, attestation and install"]
     V --> S{"Stable version?"}
     S -->|Yes| R["record: release facts on main; manifest only for a newer stable version"]
     R -->|Explicit reusable workflow call| D
@@ -25,6 +25,8 @@ flowchart TD
     C --> F["Compare generated feed; check built links"]
     F --> O["Website and release.json go live"]
 ```
+
+A Windows failure at any step before publication fails the whole tag, as a macOS failure does; the Windows gates run on GitHub's runners only and prove nothing about capture ([design decisions](decisions.md)).
 
 The standalone website trigger watches main pushes affecting `website/**`, the shared release manifest modules `scripts/lib/release-manifest*.mts` (the website build imports them), the version grammar they import, `src/shared/version.ts`, or `.github/workflows/website.yml`. Other documentation or App-only commits do not trigger it. The release record job pushes with `GITHUB_TOKEN`, which does not trigger another push workflow, so the release explicitly calls the reusable website workflow.
 
@@ -53,11 +55,15 @@ Actions provides shared verification, explicit ordering after public App verific
 flowchart LR
     A["Published GitHub App assets"] -->|Generate after verification| M["website/release-manifest.json"]
     M -->|Reverify online during build| F["Website release.json"]
-    U["App with update-check support"] -->|HTTPS check| F
+    U["macOS App with update-check support"] -->|HTTPS check| F
     U -->|Fallback when feed fails| G["GitHub latest release API"]
+    W["Windows App"] -->|Only source: looks for the Windows installer asset| G
+    W -->|User clicks after a newer version is found| D
     U -->|User clicks after a newer version is found| D["Browser opens download page"]
     D --> I["User downloads and replaces App manually"]
 ```
+
+The feed and the `release.json` asset keep the darwin-arm64 shape installed macOS apps parse, so they describe only the DMG; the website manifest's optional `windows` block feeds the download page, not the app. A Windows app therefore reads GitHub's latest release alone and accepts it only when it carries `RecordStuff-<version>-x64-unsigned-setup.exe`.
 
 For example, main can contain unreleased update-check functionality while the public release remains 0.1.2. A website-only deployment still advertises 0.1.2. The website advertises a new version only after a new stable App release, public asset verification, and manifest update. Website changes cannot add functionality to the already-published 0.1.2 App.
 

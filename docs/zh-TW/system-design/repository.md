@@ -69,9 +69,9 @@
 
 ## 打包輸入
 
-- `build/` 是 electron-builder 的 `buildResources`：`icon.png`、macOS 的 `icon.icns`，以及 DMG 背景 `background.png` 與 `background@2x.png`。全部由 `pnpm icons` 以程式產生。
+- `build/` 是 electron-builder 的 `buildResources`：`icon.png`、macOS 的 `icon.icns`、Windows 的 `icon.ico`，以及 DMG 背景 `background.png` 與 `background@2x.png`。全部由 `pnpm icons` 以程式產生。
 - `resources/` 放 App 執行期所需資源：每個 tray 狀態（idle、busy、countdown、recording、warning）各一張 macOS template 圖（含 `@2x`）與一枚 Windows `.ico`（全部由 `pnpm icons` 產生，`scripts/make-icons.test.ts` 逐 byte 核對）、`entitlements.mac.plist`，以及雙語安裝指南。打包過濾只複製 `*.png` 與 `*.ico`，因此 entitlements 與指南不會進入出貨的 App。
-- `electron-builder.yml` 是共用打包設定，`electron-builder.local.yml` 以 `extends` 延伸出本機免費自簽。`files` 只允許 `out/**` 與 `package.json`，因此 `src/`、`scripts/`、`docs/`、`plans/` 的任何內容都不會抵達使用者。
+- `electron-builder.yml` 是共用打包設定，包含未簽章 Windows 安裝檔的 `win`／`nsis` 區段；`electron-builder.local.yml` 以 `extends` 延伸出本機免費自簽。`files` 只允許 `out/**` 與 `package.json`，因此 `src/`、`scripts/`、`docs/`、`plans/` 的任何內容都不會抵達使用者。
 
 ## 網站
 

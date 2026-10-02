@@ -14,9 +14,10 @@
 | pnpm start:app | 建置、自簽、驗證、開啟 RecordStuff.app；印出各階段耗時，並記錄 bundle 的 runtime 輸入 |
 | pnpm open:app | 記錄的 runtime 輸入仍相符時，驗證並開啟既有開發包，不重建 |
 | pnpm check | typecheck、完整 Vitest、build |
-| pnpm icons | PNG／ICO、DMG 背景圖（1x／2x）；macOS 額外產 native ICNS |
+| pnpm icons | PNG／ICO（系統匣圖示與 Windows App 圖示 `build/icon.ico`）、DMG 背景圖（1x／2x）；macOS 額外產 native ICNS |
 | pnpm log | 追蹤 macOS log |
 | pnpm dist:mac | 自簽 App 驗證後，在 dist/ 旁邊產生 DMG |
+| `pnpm dist:win` | `electron-vite build` 後在 dist/ 產生未簽章、每位使用者安裝的 Windows x64 NSIS 安裝檔（`electron-builder --win nsis --x64 --publish never`）；不簽章。只有 CI 的 Windows runner 執行過（[細節](#windows-打包與-ci)） |
 | `pnpm diagnose:cadence` | 經由隔離的 capture host fixture 錄製測試素材，比對 track 送達的影格時間戳與計數和檔案 pts，找出幀率不足發生在哪一層（[說明](#影格節奏診斷)）；僅限 macOS，不做通過／失敗判定 |
 | pnpm acceptance | 對執行中的 App，使用其實際設定（含倒數）：全螢幕開素材、以 System Events 送全域快捷鍵開始／停止錄影、分別回報準備時間、每格倒數、`record → started` 與第一片、裁出最初影格的數字區域、驗完整性層級（test-material 模式），再以第二次按鍵取消另一次嘗試；把報告寫到 docs/verification/measurements（已 gitignore，只留本機） |
 | `pnpm acceptance:playback` | 以 QuickTime Player 的 AppleScript 字典播放一個已存檔的錄影，判定長度、尺寸、即時播放、跳轉、畫面隨跳轉改變及播放到結尾；報告寫在 docs/verification/measurements，截圖只在未通過時保留（[說明](#播放檢查)） |
@@ -32,9 +33,9 @@ main、preload、renderer 分別建置，打包只納入 out、package metadata 
 
 ## 資源與產生的輸出
 
-- `build/` 是納入版本控制的打包資源：`icon.png`、macOS 原生 `icon.icns`，以及 DMG 背景 `background.png` 與 Retina 配對 `background@2x.png`（540×380 點）。打包設定以此作為 `buildResources`，明確指定 macOS 使用 ICNS，並用 `tiffutil` 把背景配對合成多解析度 TIFF。請保留；修改圖案後以 `pnpm icons` 重新產生。所有圖像都由程式產生，repo 沒有手繪二進位檔。
+- `build/` 是納入版本控制的打包資源：`icon.png`、macOS 原生 `icon.icns`、Windows 的 `icon.ico`（16–256 px，供執行檔、安裝檔與捷徑使用），以及 DMG 背景 `background.png` 與 Retina 配對 `background@2x.png`（540×380 點）。打包設定以此作為 `buildResources`，明確指定 macOS 使用 ICNS，並用 `tiffutil` 把背景配對合成多解析度 TIFF。請保留；修改圖案後以 `pnpm icons` 重新產生。所有圖像都由程式產生，repo 沒有手繪二進位檔。
 - `resources/` 包含執行時使用的選單列圖示、macOS entitlements，以及雙語安裝／更新／移除指南（`INSTALL.md`、`INSTALL.zh-TW.md`）。指南是由 GitHub release 與 README 連結的文件；打包 filter 只複製 PNG／ICO，因此指南不會進入 App 或 DMG。
-- `out/` 由 `pnpm build` 產生；`dist/` 是 `pnpm start:app`（App bundle 在 `dist/mac-arm64/`）與 `pnpm dist:mac`（同一個 bundle 加 DMG）共用的唯一輸出目錄。兩者都由 Git 忽略，可以重新產生。清理 `dist/` 前應保留仍需要的安裝檔；`pnpm open:app` 需要以目前 runtime 輸入建置的既有 App bundle。本機建的 DMG 用來檢查打包；發布的 DMG 一律由 CI 從 tag 建置。
+- `out/` 由 `pnpm build` 產生；`dist/` 是 `pnpm start:app`（App bundle 在 `dist/mac-arm64/`）、`pnpm dist:mac`（同一個 bundle 加 DMG）與 `pnpm dist:win`（`RecordStuff-<version>-x64-unsigned-setup.exe`）共用的唯一輸出目錄。兩者都由 Git 忽略，可以重新產生。清理 `dist/` 前應保留仍需要的安裝檔；`pnpm open:app` 需要以目前 runtime 輸入建置的既有 App bundle。本機建的 DMG 用來檢查打包；發布的 DMG 與 Windows 安裝檔一律由 CI 從 tag 建置。
 - `node_modules/` 放已安裝的開發依賴，可透過 `pnpm install` 還原。
 
 品質選項與錯誤碼各自只維護一份常數清單，TypeScript 型別由清單推導，選單也共用品質清單。型別檢查會拒絕未使用的區域變數與參數。設定檔 v1 遷移仍保留，以延續既有的輸出資料夾偏好。
@@ -51,9 +52,15 @@ main、preload、renderer 分別建置，打包只納入 out、package metadata 
 
 驗證深度 codesign、巢狀 app／framework 公開憑證、identifier、runtime 與最外層 designated requirement；不追 symlink。先驗過 App 才封 DMG。
 
-[共用設定](../../../electron-builder.yml) 定義安裝介面：540×380 的 Finder 視窗、程式產生的箭頭背景、128 點圖示，以及恰好兩個項目——App 在 x=130、`/Applications` 連結在 x=410，中心皆在 y=190。[local 設定](../../../electron-builder.local.yml) 繼承它並停用公證／timestamp／DMG 簽章與更新 metadata；不得再加 `dmg.contents`，因為 `extends` 會串接陣列，而發布閘門拒絕 `Applications`、`RecordStuff.app` 與隱藏 Finder 版面檔以外的任何根目錄項目。刻意不附任何格式的說明檔，安裝、更新與移除指引放在線上。檔名為 RecordStuff-版本-架構-selfsigned.dmg，arm64 與 x64 非 universal；目前只有 arm64 驗過。pnpm dist:mac 產生與 CI 在 tag 推送時建置並公開相同的 DMG（取代舊的 dist:mac:local 別名與分開的 dist/dev、dist/local 資料夾）；共用設定停用公證。目前沒有 `dist:win` script 或 Windows 打包目標。
+[共用設定](../../../electron-builder.yml) 定義安裝介面：540×380 的 Finder 視窗、程式產生的箭頭背景、128 點圖示，以及恰好兩個項目——App 在 x=130、`/Applications` 連結在 x=410，中心皆在 y=190。[local 設定](../../../electron-builder.local.yml) 繼承它並停用公證／timestamp／DMG 簽章與更新 metadata；不得再加 `dmg.contents`，因為 `extends` 會串接陣列，而發布閘門拒絕 `Applications`、`RecordStuff.app` 與隱藏 Finder 版面檔以外的任何根目錄項目。刻意不附任何格式的說明檔，安裝、更新與移除指引放在線上。檔名為 RecordStuff-版本-架構-selfsigned.dmg，arm64 與 x64 非 universal；目前只有 arm64 驗過。pnpm dist:mac 產生與 CI 在 tag 推送時建置並公開相同的 DMG（取代舊的 dist:mac:local 別名與分開的 dist/dev、dist/local 資料夾）；共用設定停用公證。
 
-收件者可能需要單一 App 的「仍要打開」，受管理 Mac 也可能不允許；依 [安裝指南](../../../resources/INSTALL.zh-TW.md) 與 [Apple](https://support.apple.com/102445) 正常操作，不修改全域安全設定。同一份指南也說明手動更新（結束、下載、在相同 Applications 路徑取代；身分與設定保留）與移除（結束、把 App 移到垃圾桶；錄影、`~/Library/Application Support/recordstuff` 與 `~/Library/Logs/recordstuff` 除非使用者自行刪除否則保留）。沒有解除安裝器、背景服務或自動權限重置。
+收件者可能需要單一 App 的「仍要打開」，受管理 Mac 也可能不允許；依 [安裝指南](../../../resources/INSTALL.zh-TW.md) 與 [Apple](https://support.apple.com/102445) 正常操作，不修改全域安全設定。同一份指南也說明手動更新（結束、下載、在相同 Applications 路徑取代；身分與設定保留）與移除（結束、把 App 移到垃圾桶；錄影、`~/Library/Application Support/recordstuff` 與 `~/Library/Logs/recordstuff` 除非使用者自行刪除否則保留）。macOS 沒有解除安裝器、背景服務或自動權限重置。
+
+### Windows 打包與 CI
+
+依維護者 2026-10-03 的決定（[設計決策](decisions.md)），共用設定也有 `win` 與 `nsis` 區段：使用 `build/icon.ico` 的 x64 NSIS 目標、產物名稱 `RecordStuff-<version>-<arch>-unsigned-setup.exe`、每位使用者的一鍵安裝檔（`oneClick: true`、`perMachine: false`、不需管理員權限），其開始選單捷徑帶有 appId `com.ericts.record` 作為 Windows toast 所需的 AppUserModelID；`deleteAppDataOnUninstall: false`，所以「設定 → 應用程式」中的解除安裝程式保留錄影、設定與 log；`differentialPackage: false`，因為沒有更新器就不需要 blockmap。`files` 與 `extraResources` 維持共用，所以 Windows 安裝內容帶有相同的 `app.asar` 輸入與系統匣 ICO。`pnpm dist:win` 是單純的 electron-builder 呼叫，不走 macOS 簽章路徑；`start-app.mjs` 仍拒絕 macOS arm64／x64 以外的主機，並指向它。沒有任何維護者機器執行 Windows，因此這些只在 GitHub 的 runner 上建置與檢查過，從未在 Windows 實機上執行。
+
+[check.yml](../../../.github/workflows/check.yml) 在每次推送到 main，以及每個改動不只是文件或網站的 pull request 時執行 `pnpm check`，分成兩個 job：`macos-15` 上的 `check` 與 `windows-2025` 上的 `check-windows`，與發布建置使用相同的 runner image。`check-windows` 另外執行 `pnpm dist:win`，接著執行 `node scripts/release.mts windows-smoke dist`，也就是與發布相同的靜默安裝、檢查與解除安裝閘門（[發布契約](releases.md#發布契約)），並把安裝檔上傳為保留 7 天的 `windows-installer` artifact；它是建置產物，不是發布。`workflow_dispatch` 可在任何分支執行這兩個 job，讓工作分支在進入 main 前就能在 Windows 上檢查。[.gitattributes](../../../.gitattributes) 設定 `* text=auto eol=lf`，讓 Windows checkout 保留 README 與 fixture 的 byte 比對所預期的 LF 換行；預期值因平台而異的測試（路徑分隔符、`chmod` fixture、只有 POSIX 才有的工具）改為依平台判斷，而不是在兩個平台都略過。
 
 ## 量測工具
 
@@ -240,7 +247,7 @@ pnpm audio:quality -- verify /absolute/path/recording-of-v2.mp4
 
 v0.1.0 已在本機完成瀏覽器下載／安裝驗證，Gatekeeper 需要單一 App 的「仍要打開」放行。詳見[本版證據](../verification/releases/0.1.0.md)。自簽不會消除此首次啟動阻擋；若重新考慮範圍，Developer ID 簽署及 Apple 公證是另一條發行路徑。
 
-乾淨環境安裝依賴後，執行 `node node_modules/electron/install.js` 安裝 Electron 44 runtime（套件沒有 postinstall）。CI 發布流程已包含此步驟，見 [發布自動化](releases.md)。
+乾淨環境安裝依賴後，執行 `node node_modules/electron/install.js` 安裝 Electron 44 runtime（套件沒有 postinstall）。CI 的 Windows job 與發布建置都包含此步驟，見 [發布自動化](releases.md)。
 
 ## 官方網站
 
@@ -249,8 +256,8 @@ v0.1.0 已在本機完成瀏覽器下載／安裝驗證，Gatekeeper 需要單�
 | 指令（repo 根目錄） | 用途 |
 | --- | --- |
 | `pnpm site:dev` | Astro 開發伺服器 `http://localhost:4173/`；因未執行驗證，頁尾會顯示「manifest not re-verified」警語。Astro 7 會讓它常駐背景：以 `pnpm --dir website exec astro dev stop` 停止 |
-| `pnpm site:manifest generate vX.Y.Z` | 抓取公開 release（GitHub API、release.json、SHA256SUMS）交叉核對後寫入 `website/release-manifest.json`；拒絕草稿、prerelease、多出或缺少的 asset，以及三個來源間任何不一致 |
-| `pnpm site:manifest verify [--online\|--offline]` | 重新抓取並逐欄比對已存 manifest，並對 DMG 連結做 HEAD 檢查；`--offline` 只做結構檢查 |
+| `pnpm site:manifest generate vX.Y.Z` | 抓取公開 release（GitHub API、release.json、SHA256SUMS，1.1.1 之後另有 release-win32-x64.json）交叉核對後寫入 `website/release-manifest.json`；拒絕草稿、prerelease、多出或缺少的 asset，以及三個來源間任何不一致 |
+| `pnpm site:manifest verify [--online\|--offline]` | 重新抓取並逐欄比對已存 manifest，並對 DMG 連結與存在時的 Windows 安裝檔連結做 HEAD 檢查；`--offline` 只做結構檢查 |
 | `pnpm site:build` | 先 `manifest verify --online`，再以 `SITE_MANIFEST_VERIFIED=1` 執行 `astro build`；輸出到 `website/dist/` |
 | `pnpm site:check` | 網站單元測試、`astro check`、重新執行線上驗證與建置，再檢查該次產物的連結（站內路徑、fragment id、外部 URL）；不需預先存在 `dist/` |
 | `pnpm site:screenshots` | 以 puppeteer-core 驅動已安裝的 Chrome，對每頁產生桌機（1440 px）、手機（390 px）與窄螢幕（320 px）整頁截圖到 `website/compare/`（已 gitignore）；同時把首頁場景停在錄影中的那一幀重新輸出 `website/src/assets/og.png`（1200×630 社群預覽圖；場景變動時需一併提交） |

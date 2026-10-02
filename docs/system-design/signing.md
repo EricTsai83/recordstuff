@@ -2,7 +2,7 @@
 
 [English](signing.md) | [繁體中文](../zh-TW/system-design/signing.md)
 
-Updated: 2026-09-15. This document covers the implemented local signing contract, developer operations, and CI identity provisioning from 011. Implementation and live verification status are tracked in [release automation](releases.md).
+Updated: 2026-10-03. This document covers the implemented local signing contract, developer operations, and CI identity provisioning from 011, all for macOS; the Windows installer is unsigned by decision ([Windows](#windows-installer-unsigned-by-decision)). Implementation and live verification status are tracked in [release automation](releases.md).
 
 ## Purpose and terminology
 
@@ -215,6 +215,12 @@ Signing provisioning is complete when a clean runner signs with the **same finge
 | Screen permission requested again after updating | Check certificate, identifier, installation path, and OS state, then follow the permission recovery guide |
 
 Recipients install only the App, with no Node, pnpm, certificate, or private key. Follow the [installation guide](../../resources/INSTALL.md) and [Apple's guidance](https://support.apple.com/102445) for Open Anyway. Do not disable Gatekeeper globally; managed Macs may disallow exceptions.
+
+## Windows installer: unsigned by decision
+
+By the maintainer's decision of 2026-10-03 ([design decisions](decisions.md)), the Windows x64 installer and the `RecordStuff.exe` it installs carry no Authenticode signature, and the asset name `RecordStuff-<version>-x64-unsigned-setup.exe` says so, as `-selfsigned` does for the DMG. The options weighed: an OV code-signing certificate on a hardware or cloud key costs money and still shows SmartScreen until reputation builds; Azure Artifact Signing, as of 2026, issues public-trust certificates to individuals only in the USA and Canada; a self-signed certificate like the macOS one adds nothing on Windows, because users would have to trust it by hand. SmartScreen may therefore show "Windows protected your PC" on first run ([installation guide](../../resources/INSTALL.md#windows)).
+
+Integrity rests on three published records instead: the installer's line in SHA256SUMS (which `Get-FileHash` can be compared with), `release-win32-x64.json` (version, source commit, size, SHA-256, installed `app.asar` hash, signature state `unsigned`) and a GitHub build-provenance attestation from the `build-windows` job, which `gh attestation verify <file> --repo EricTsai83/recordstuff` checks and the `verify-published-windows` job runs. The release gates require Authenticode `NotSigned` for both the installer and `RecordStuff.exe`, so a signature that appears unexpectedly fails the tag rather than shipping unannounced. The Windows build has no signing secrets; this is the decided state, not the missing-secret fallback rejected below.
 
 ## T3 Code reference
 

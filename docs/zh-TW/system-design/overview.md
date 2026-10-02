@@ -27,13 +27,13 @@ RecordStuff 在 macOS 選單列提供一個錄影按鈕：點一下錄下一個�
 
 Electron 是可用於 Windows、Linux、macOS 的框架；RecordStuff 因設備限制，只驗證過 macOS 版本，具體環境是 Apple M1 Pro／macOS 26／Electron 44.3。框架跨平台不等於錄影、系統音訊或安裝流程在所有平台都通過。
 
-現有程式保留 Windows 系統匣分支（ICO 素材、首次啟動提示），但未實機驗證，也沒有設定 Windows 打包目標；Linux 沒有專用打包／錄製驗證。macOS 程式有 Darwin 22（macOS 13）最低版本檢查，這只是程式門檻，不能視為已測遍 macOS 13 以上版本。Intel Mac 也未驗證，目前已驗的安裝產物是 arm64。
+依維護者 2026-10-03 的決定（[設計決策](decisions.md)），1.1.1 之後的每個版本也附上只由 CI 建置與檢查、未簽章的 Windows x64 安裝檔。GitHub 的 Windows runner 執行 `pnpm check`，以目前使用者身分靜默安裝，檢查其登記、版本、架構、簽章狀態、系統匣圖示與開始選單捷徑，再解除安裝；沒有任何東西在 Windows 實機上跑過，因此錄影、系統音訊、通知與 Windows 系統匣分支（ICO 素材、首次啟動提示）在那裡都未驗證，部分文案仍假設 macOS（「menu bar」、「the Mac went to sleep」），也沒有強制的 Windows 最低版本。Linux 沒有專用打包／錄製驗證。macOS 程式有 Darwin 22（macOS 13）最低版本檢查，這只是程式門檻，不能視為已測遍 macOS 13 以上版本。Intel Mac 與 Windows on Arm 也未驗證，且沒有發布建置；目前已驗的安裝產物是 arm64。
 
-目標交付是可下載的 macOS 自簽 DMG：收件者不需 Node、pnpm、FFmpeg 或編譯工具。安裝到 Applications，完成系統允許開啟與錄影授權後即可操作。Apple 認證／公證、App Store、Windows／Linux 驗收不是交付條件。未公證 App 首次開啟可能需要手動安全例外，不能承諾免提示；見 [Apple 說明](https://support.apple.com/102445)。
+目標交付是可下載的 macOS 自簽 DMG，同一個 release 另附未驗證的 Windows x64 安裝檔：收件者不需 Node、pnpm、FFmpeg、編譯工具或簽章憑證。macOS 上安裝到 Applications，完成系統允許開啟與錄影授權後即可操作；Windows 上安裝檔以目前使用者身分安裝、不需管理員權限，並登記會保留使用者資料的解除安裝程式。Apple 認證／公證、Windows 程式碼簽章、App Store、Windows／Linux 實機驗收不是交付條件。未公證 App 首次開啟可能需要手動安全例外，SmartScreen 也可能對未簽章的 Windows 安裝檔提出警告，不能承諾免提示；見 [Apple 說明](https://support.apple.com/102445)。
 
 ## 資料與產品邊界
 
-錄影與設定留在本機；目前沒有登入、雲端儲存、上傳服務、遙測、錄影庫、編輯器或自動下載／安裝。更新檢查會連線至網站版本 feed，失敗時改查 GitHub Releases，不傳送安裝識別碼；預設開啟的啟動檢查可以關閉。App 本身不提供遠端錄製 API。開發版的自動錄製環境變數在打包版被忽略。
+錄影與設定留在本機；目前沒有登入、雲端儲存、上傳服務、遙測、錄影庫、編輯器或自動下載／安裝。更新檢查會連線至網站版本 feed，失敗時改查 GitHub Releases（Windows 上只查 GitHub Releases，因為 feed 只描述 macOS DMG），不傳送安裝識別碼；預設開啟的啟動檢查可以關閉。App 本身不提供遠端錄製 API。開發版的自動錄製環境變數在打包版被忽略。
 
 目前沒有區域／視窗選擇、暫停續錄、分段檔、FFmpeg 修復或專門的休眠處理。已有螢幕移除處理：使用中的擷取螢幕被移除時，錄影會以失敗收尾並盡力保留已寫入媒體。這些不列入本次交付的待辦。將來若有具體需求，再建立小範圍計畫。
 

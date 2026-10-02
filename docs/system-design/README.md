@@ -27,4 +27,4 @@ Updated: 2026-09-21. These documents describe the current implementation and rep
 
 Source code defines implemented behavior. Update the corresponding design document whenever behavior changes. The function reference covers production code and developer tools; anonymous event callbacks are documented with their owning flow. Test cases remain in adjacent `*.test.ts` files.
 
-[Plans](../../plans/README.md) contain unfinished work only. Windows/Linux verification and Apple-certified distribution are outside the current delivery scope. Git history retains previous execution plans.
+[Plans](../../plans/README.md) contain unfinished work only. Windows/Linux hardware verification and Apple-certified distribution are outside the current delivery scope; the Windows x64 installer is published checked by CI only ([decisions](decisions.md)). Git history retains previous execution plans.

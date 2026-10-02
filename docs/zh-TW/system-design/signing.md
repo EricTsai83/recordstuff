@@ -2,7 +2,7 @@
 
 [English](../../system-design/signing.md) | [繁體中文](signing.md)
 
-更新：2026-09-15。本文說明目前自簽實作、開發者操作方式，以及 011 的 CI 身分配置。CI 實作與實際驗證進度見 [發布自動化](releases.md)。
+更新：2026-10-03。本文說明目前自簽實作、開發者操作方式，以及 011 的 CI 身分配置，全部針對 macOS；Windows 安裝檔依決策不簽章（[Windows](#windows-安裝檔依決策不簽章)）。CI 實作與實際驗證進度見 [發布自動化](releases.md)。
 
 ## 設計目的與名詞
 
@@ -217,6 +217,12 @@ Secrets、暫存 keychain 與清理模式參考 [GitHub 官方流程](https://do
 | 更新後再次詢問錄影權限 | 核對憑證、identifier、安裝路徑及系統狀態，再依權限指引重新授權 |
 
 收件者只需安裝 App，不需要 Node、pnpm、憑證或私鑰。首次開啟依 [安裝指南](../../../resources/INSTALL.zh-TW.md) 與 [Apple 說明](https://support.apple.com/102445) 使用「仍要打開」；不要求停用全域 Gatekeeper。受管理 Mac 可能禁止例外。
+
+## Windows 安裝檔：依決策不簽章
+
+依維護者 2026-10-03 的決定（[設計決策](decisions.md)），Windows x64 安裝檔與它安裝的 `RecordStuff.exe` 都沒有 Authenticode 簽章，資產名稱 `RecordStuff-<version>-x64-unsigned-setup.exe` 寫明這點，就像 DMG 的 `-selfsigned`。考慮過的選項：放在硬體或雲端金鑰上的 OV 程式碼簽章憑證需要付費，而且在累積信譽前仍會出現 SmartScreen；Azure Artifact Signing 截至 2026 年只對美國與加拿大的個人核發公開信任憑證；像 macOS 那樣的自簽憑證在 Windows 上沒有幫助，因為使用者得手動信任它。因此首次執行時 SmartScreen 可能顯示「Windows 已保護您的電腦」（[安裝指南](../../../resources/INSTALL.zh-TW.md#windows)）。
+
+完整性改由三份公開紀錄承擔：SHA256SUMS 中安裝檔的那一行（可與 `Get-FileHash` 比對）、`release-win32-x64.json`（版本、source commit、大小、SHA-256、安裝後的 `app.asar` 雜湊、簽章狀態 `unsigned`），以及 `build-windows` job 產生的 GitHub build-provenance attestation，可用 `gh attestation verify <file> --repo EricTsai83/recordstuff` 檢查，`verify-published-windows` job 也會執行。發布閘門要求安裝檔與 `RecordStuff.exe` 的 Authenticode 狀態都是 `NotSigned`，所以意外出現的簽章會讓 tag 失敗，而不是默默發布。Windows 建置沒有任何簽章 secret；這是決定好的狀態，不是下方拒絕採用的「缺少 secrets 時改為不簽章」後備。
 
 ## T3 Code 參考
 

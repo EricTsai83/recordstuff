@@ -2,7 +2,7 @@
 
 [English](../../system-design/delivery.md) | [繁體中文](delivery.md)
 
-更新：2026-09-20。本文描述已實作的 CI/CD 設計；流程圖不代表每條線上路徑都已驗收。操作細節見[發布自動化](releases.md)，實際測試與限制見[驗證紀錄](../verification/README.md)。
+更新：2026-10-03。本文描述已實作的 CI/CD 設計；流程圖不代表每條線上路徑都已驗收。操作細節見[發布自動化](releases.md)，實際測試與限制見[驗證紀錄](../verification/README.md)。
 
 ## 兩種入口，共用網站部署
 
@@ -12,9 +12,9 @@
 flowchart TD
     W["網站、共用 manifest 模組或 website.yml 變更 push 到 main"] --> D["website.yml：共用網站部署"]
     M["在 main 手動重試 Website deployment"] --> D
-    T["推送新版本 tag"] --> A["release.yml：檢查、建置、簽署 App"]
-    A --> P["驗證候選產物並發布 GitHub Release"]
-    P --> V["下載公開產物，驗證簽章與雜湊"]
+    T["推送新版本 tag"] --> A["release.yml：檢查並建置已簽署的 macOS App，1.1.1 之後另建未簽章的 Windows 安裝檔"]
+    A --> P["驗證兩個候選產物並發布一個 GitHub Release"]
+    P --> V["在 macOS 與 Windows runner 下載公開產物，驗證簽章、雜湊、attestation 與安裝"]
     V --> S{"穩定版本？"}
     S -->|是| R["record：更新 main 的版本紀錄；只有較新的正式版才更新網站 manifest"]
     R -->|明確呼叫共用 workflow| D
@@ -25,6 +25,8 @@ flowchart TD
     C --> F["比對建置 feed，檢查產物連結"]
     F --> O["官網與 release.json 上線"]
 ```
+
+發布前任何一步的 Windows 失敗都會讓整個 tag 失敗，與 macOS 失敗相同；Windows 閘門只在 GitHub 的 runner 上執行，不證明任何擷取行為（[設計決策](decisions.md)）。
 
 網站入口只監聽 `website/**`、共用的 release manifest 模組 `scripts/lib/release-manifest*.mts`（網站建置會引用它們）、它們引用的版本語法 `src/shared/version.ts` 與 `.github/workflows/website.yml` 的 main push；一般文件或 App 原始碼變更不會單獨觸發網站部署。release 的 record job 使用 `GITHUB_TOKEN` 推送，這不會觸發另一個 push workflow，因此 release 必須明確呼叫共用網站 workflow。
 
@@ -53,11 +55,15 @@ flowchart LR
 flowchart LR
     A["GitHub 已發布的 App 產物"] -->|驗證後產生| M["website/release-manifest.json"]
     M -->|建置時再次線上驗證| F["官網 release.json"]
-    U["具備更新檢查功能的 App"] -->|HTTPS 檢查| F
+    U["具備更新檢查功能的 macOS App"] -->|HTTPS 檢查| F
     U -->|feed 失敗時備援| G["GitHub latest release API"]
+    W["Windows App"] -->|唯一來源：尋找 Windows 安裝檔資產| G
+    W -->|發現新版後，使用者點擊| D
     U -->|發現新版後，使用者點擊| D["瀏覽器開啟下載頁"]
     D --> I["使用者手動下載並替換 App"]
 ```
+
+feed 與 `release.json` 資產維持已安裝 macOS App 解析的 darwin-arm64 格式，因此只描述 DMG；網站 manifest 中選用的 `windows` 區塊供下載頁使用，不給 App 讀。所以 Windows App 只讀 GitHub 的最新 release，且只在它帶有 `RecordStuff-<version>-x64-unsigned-setup.exe` 時接受。
 
 例如：main 已有尚未發版的更新功能，但公開版本仍是 0.1.2，單獨部署網站後 feed 仍是 0.1.2。只有新穩定版 App 發布、公開產物驗證及 manifest 更新完成後，網站才會宣告新版本。已發布的 0.1.2 不會因網站更新而取得新的 App 功能。
 
