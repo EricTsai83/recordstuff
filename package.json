@@ -43,6 +43,7 @@
     "site:manifest": "pnpm --dir website manifest",
     "site:screenshots": "pnpm --dir website screenshots",
     "acceptance:updates": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-updates.mts",
+    "acceptance:recipe": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-recipe.mts",
     "acceptance:regression": "pnpm check && pnpm acceptance:settings && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-shortcut.mts",
     "acceptance:shortcut": "pnpm build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-shortcut.mts",
     "acceptance:shortcut-layout": "pnpm build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-shortcut-layout.mts",
