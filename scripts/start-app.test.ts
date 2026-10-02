@@ -1,9 +1,10 @@
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { X509Certificate } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildStampPath, runtimeInputFiles, writeBuildStamp } from "./lib/runtime-inputs.mjs";
 
 type Call = { name: string; args: string[]; nodeMode?: string; releaseSecret?: string; discovery?: string };
 let fixtures: string;
@@ -22,13 +23,23 @@ function certificate(name: string, ca = false): string {
   return new X509Certificate(readFileSync(certPath)).fingerprint.replaceAll(":", "");
 }
 
-function invoke(overrides: Record<string, string> = {}, args: string[] = []) {
+const appDir = (root: string): string => path.join(root, "dist", process.arch === "arm64" ? "mac-arm64" : "mac", "RecordStuff.app");
+/** A valid build record for the bundle `invoke` creates, as a previous `start:app` would leave it. */
+const stamped = (root: string): void => {
+  mkdirSync(path.dirname(appDir(root)), { recursive: true });
+  writeBuildStamp(root, appDir(root), hash, runtimeInputFiles(root));
+};
+
+function invoke(overrides: Record<string, string> = {}, args: string[] = [], prepare?: (root: string) => void) {
   const dir = realpathSync(mkdtempSync(path.join(tmpdir(), "recordstuff-local-sign-")));
   const root = path.join(dir, "project with spaces");
   const bin = path.join(dir, "bin");
   const calls = path.join(dir, "calls.jsonl");
   try {
-    mkdirSync(path.join(root, "scripts"), { recursive: true });
+    mkdirSync(path.join(root, "scripts/lib"), { recursive: true });
+    mkdirSync(path.join(root, "src"));
+    writeFileSync(path.join(root, "src/main.ts"), "export {};\n");
+    copyFileSync(path.resolve("scripts/lib/runtime-inputs.mjs"), path.join(root, "scripts/lib/runtime-inputs.mjs"));
     mkdirSync(bin);
     const electron = path.join(root, "node_modules/.pnpm/electron@fixture/node_modules/electron");
     mkdirSync(path.join(electron, "dist/Electron.app/Contents/MacOS"), { recursive: true });
@@ -39,6 +50,7 @@ function invoke(overrides: Record<string, string> = {}, args: string[] = []) {
       mkdirSync(path.join(root, "dist", process.arch === "arm64" ? "mac-arm64" : "mac",
         "RecordStuff.app/Contents/Frameworks/RecordStuff Helper.app/Contents"), { recursive: true });
     }
+    prepare?.(root);
     writeFileSync(calls, "");
     const stub = path.join(dir, "stub.cjs");
     writeFileSync(stub, `
@@ -84,11 +96,18 @@ if (name === 'codesign' && args.includes('-r-')) process.stderr.write(env.WRONG_
         ...process.env, PATH: bin, CALLS: calls, ROOT: root, TEST_NODE: testNode, TEST_STUB: stub,
         HASH: hash, PUBLIC_CERT: path.join(fixtures, "selected.pem"), OTHER_CERT: path.join(fixtures, "other.pem"),
         ELECTRON_RUN_AS_NODE: "1", CSC_LINK: "must-not-import", APPLE_API_KEY: "must-not-notarize",
-        RECORDSTUFF_SIGN_IDENTITY: "RecordStuff Dev", ...overrides,
+        RECORDSTUFF_SIGN_IDENTITY: "RecordStuff Dev",
+        // Never an outer recipe's file: this run's phases are not the outer phase's.
+        RECORDSTUFF_TIMING_FILE: path.join(dir, "timing.jsonl"), ...overrides,
       },
     });
+    const timing = existsSync(path.join(dir, "timing.jsonl"))
+      ? readFileSync(path.join(dir, "timing.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line) as { runner: string; phase: string; ok: boolean })
+      : [];
     const commands: Call[] = readFileSync(calls, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
-    return { ...result, commands };
+    let stamp: { inputs: string; files: Record<string, string> } | undefined;
+    try { stamp = JSON.parse(readFileSync(buildStampPath(appDir(root)), "utf8")); } catch { stamp = undefined; }
+    return { ...result, commands, stamp, timing };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -226,11 +245,47 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () =
   });
 
   it("reopens a verified existing build without rebuilding its TCC identity", () => {
-    const result = invoke({}, ["--open"]);
+    const result = invoke({}, ["--open"], stamped);
     expect(result.status, result.stderr).toBe(0);
     expect(result.commands.some(call => call.name === "pnpm")).toBe(false);
     expect(result.commands.at(-1)?.name).toBe("open");
-    expectNoDelivery(invoke({ WRONG_CERT: "outer" }, ["--open"]));
+    expect(result.stdout).toMatch(/Timing: preflight \d+\.\d\d s, freshness \d+\.\d\d s, verify \d+\.\d\d s, open \d+\.\d\d s/);
+    expectNoDelivery(invoke({ WRONG_CERT: "outer" }, ["--open"], stamped));
+  });
+
+  it("records the inputs of a verified build, and only after verification", () => {
+    const built = invoke();
+    expect(built.status, built.stderr).toBe(0);
+    expect(built.stamp?.files["src/main.ts"]).toMatch(/^[\da-f]{64}$/);
+    expect(built.stdout).toMatch(/Timing: preflight .* build .* package .* verify .* open /);
+    expect(built.timing.map(({ runner, phase, ok }) => `${runner}:${phase}:${ok}`))
+      .toEqual(["start-app:preflight:true", "start-app:build:true", "start-app:package:true", "start-app:verify:true", "start-app:open:true"]);
+    // A stale record from an earlier build is removed before rebuilding, even when verification then fails.
+    const failed = invoke({ FAIL_VERIFY: "1" }, [], stamped);
+    expect(failed.stamp).toBeUndefined();
+    expect(failed.timing.at(-1)).toMatchObject({ phase: "verify", ok: false });
+  });
+
+  it.each([
+    ["no build record", (): void => undefined, "has no build record"],
+    ["a changed source", (root: string): void => { stamped(root); writeFileSync(path.join(root, "src/main.ts"), "export const changed = 1;\n"); }, "src/main.ts"],
+    ["a new source", (root: string): void => { stamped(root); writeFileSync(path.join(root, "src/extra.ts"), "export {};\n"); }, "src/extra.ts"],
+  ])("refuses to reopen a bundle with %s", (_label, prepare, reason) => {
+    const result = invoke({}, ["--open"], prepare);
+    expectNoDelivery(result);
+    expect(result.stderr).toContain(reason);
+    expect(result.stderr).toContain("pnpm start:app");
+    expect(result.commands.some(call => call.name === "codesign")).toBe(false);
+  });
+
+  it("reopens after a change that cannot reach the bundle", () => {
+    const result = invoke({}, ["--open"], (root) => {
+      stamped(root);
+      writeFileSync(path.join(root, "src/main.test.ts"), "// test only\n");
+      writeFileSync(path.join(root, "scripts/helper.mts"), "// tooling only\n");
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.commands.at(-1)?.name).toBe("open");
   });
 
   it("verifies a packaged App without private keys, building or launching", () => {

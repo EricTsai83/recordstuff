@@ -1,10 +1,12 @@
 // Self-signed app/DMG for development and macOS releases.
 import { spawnSync } from "node:child_process";
 import { X509Certificate } from "node:crypto";
-import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { removeBuildStamp, runtimeInputFiles, staleBundleReason, writeBuildStamp } from "./lib/runtime-inputs.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const env = { ...process.env };
@@ -24,6 +26,24 @@ function run(command, args, capture = false) {
     throw new Error(`${command} failed: ${reason}`);
   }
   return result;
+}
+
+// Phase durations for `pnpm acceptance:recipe` (scripts/lib/verification-timing.mts) and the console.
+const timings = [];
+function timed(phase, action) {
+  const start = performance.now();
+  let ok = false;
+  try {
+    const value = action();
+    ok = true;
+    return value;
+  } finally {
+    const ms = Math.round(performance.now() - start);
+    timings.push({ phase, ms, ok });
+    if (process.env.RECORDSTUFF_TIMING_FILE) {
+      appendFileSync(process.env.RECORDSTUFF_TIMING_FILE, `${JSON.stringify({ runner: "start-app", phase, ms, ok })}\n`);
+    }
+  }
 }
 
 const fingerprint = (cert) => cert.fingerprint.replaceAll(":", "").toUpperCase();
@@ -136,8 +156,10 @@ function main() {
     throw new Error("Usage: node scripts/start-app.mjs [--dmg | --open]");
   }
   const dmg = args[0] === "--dmg";
-  assertNotRunning();
-  const identity = resolveIdentity();
+  const identity = timed("preflight", () => {
+    assertNotRunning();
+    return resolveIdentity();
+  });
   console.log(`Local signing: ${identity.name}; SHA-1 ${identity.hash}; expires ${identity.expires}`);
   // One output directory for development and release builds: the App is the same
   // signed bundle either way, and dist:mac only adds the DMG next to it.
@@ -148,18 +170,29 @@ function main() {
     `-c.directories.output=${output}`, `-c.mac.identity=${identity.hash}`,
     "-c.mac.notarize=false", "-c.mac.timestamp=none", "-c.forceCodeSigning=true",
   ];
-  if (args[0] !== "--open") {
-    run("pnpm", ["exec", "electron-vite", "build"]);
-    run("pnpm", ["exec", "electron-builder", "--dir", "--mac", `--${process.arch}`, "--publish", "never", ...config]);
+  let inputs;
+  if (args[0] === "--open") {
+    // Reopening is only valid for the bundle the current sources would build.
+    const stale = timed("freshness", () => staleBundleReason(root, appPath));
+    if (stale) throw new Error(`Refusing to reopen ${appPath}: ${stale}. Rebuild it with \`pnpm start:app\`.`);
+  } else {
+    // A failed rebuild must not leave the previous bundle's record behind.
+    removeBuildStamp(appPath);
+    inputs = runtimeInputFiles(root);
+    timed("build", () => run("pnpm", ["exec", "electron-vite", "build"]));
+    timed("package", () => run("pnpm", ["exec", "electron-builder", "--dir", "--mac", `--${process.arch}`, "--publish", "never", ...config]));
   }
-  verifyBundle(appPath, identity);
+  timed("verify", () => verifyBundle(appPath, identity));
+  if (inputs && !writeBuildStamp(root, appPath, identity.hash, inputs)) {
+    console.warn("Runtime inputs changed during the build; this bundle has no build record, so `pnpm open:app` will refuse it.");
+  }
   if (dmg) {
     // Generate the disk image only after the embedded app has passed identity checks.
-    run("pnpm", ["exec", "electron-builder", "--mac", "dmg", `--${process.arch}`,
-      "--prepackaged", appPath, "--publish", "never", ...config]);
+    timed("dmg", () => run("pnpm", ["exec", "electron-builder", "--mac", "dmg", `--${process.arch}`,
+      "--prepackaged", appPath, "--publish", "never", ...config]));
     console.log(`Local DMG generated in ${output}/. Self-signed, not notarized; CI builds the release DMG from the tag (docs/system-design/releases.md).`);
   } else {
-    run("open", ["-a", appPath]);
+    timed("open", () => run("open", ["-a", appPath]));
     console.log(`Opened ${appPath}\nLog: ~/Library/Logs/recordstuff/recordstuff.log`);
   }
 }
@@ -167,4 +200,8 @@ function main() {
 try { main(); } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
+} finally {
+  if (timings.length) {
+    console.log(`Timing: ${timings.map(({ phase, ms, ok }) => `${phase} ${(ms / 1000).toFixed(2)} s${ok ? "" : " (failed)"}`).join(", ")}`);
+  }
 }
