@@ -114,7 +114,7 @@ App 已由呼叫者以 pnpm start:app 建置並啟動，輸出在 <start-app.log
 以 `pnpm acceptance:settings-shortcut -- --observe` 送出 ⌘⌥, 並以輔助使用檢查真正的設定視窗。純 `Target.pressKey()` 在本機多次沒有觸發全域 callback；保留失敗紀錄，不要求維護者先點開設定。
 
 1. 沿用本次由 `pnpm start:app` 建置啟動的 bundle。設定若已開啟，`--observe` 會拒絕執行：先記錄狀態，再透過 UI 關閉。
-2. 執行 `pnpm acceptance:settings-shortcut -- --observe`。它核對本 checkout 的 arm64 bundle 程序及最新 App log，只有設定快捷鍵仍註冊時才送鍵；先讓 Finder 置前，再斷言設定視窗是 main 且有焦點、RecordStuff 在前景、Tab 移動焦點、應用程式選單沒有綁定 ⌘R／⌘⌥I 且保留 ⌘C、⌘V、⌘M、⌘Q、⌘R 與 ⌘⌥I 不改變焦點、⌘M 最小化、第二次送鍵還原、⌘W 關閉、第三次送鍵重開。callback 與每項輔助使用檢查分開記錄，面板保持開啟。
+2. 執行 `pnpm acceptance:settings-shortcut -- --observe`。它核對本 checkout 的 arm64 bundle 程序及最新 App log，只有設定快捷鍵仍註冊時才送鍵；先讓 Finder 置前，再斷言設定視窗是 main 且有焦點、RecordStuff 在前景、Tab 移動焦點、應用程式選單沒有綁定 ⌘R／⌘⌥I 且保留 ⌘C、⌘A、⌘M、⌘Q、⌘R 與 ⌘⌥I 不改變焦點、⌘A 再 ⌘C 能複製面板文字（剪貼簿會先保存後還原）、⌘M 最小化、第二次送鍵還原、⌘W 關閉、第三次送鍵重開。callback 與每項輔助使用檢查分開記錄，面板保持開啟。
 3. 這些都是腳本證據。排版與外觀依 `pnpm acceptance:settings` 的截圖，或以 computer use 觀察面板；本次範圍需要在面板內變更設定時，也用 computer use 操作。UI 受阻仍記 blocked。
 4. 依本次範圍繼續雙語、快捷鍵擷取與錄製中鎖定等案例。註冊衝突與失敗的 deterministic 測試不能當成 OS 實測。
 5. 每次執行會留下 `docs/verification/measurements/<timestamp>-settings-entry-<suffix>/report.md` 與本次 log。還原偏好並關閉本次新增面板。這個指令不建置、不啟動錄影、不修改偏好或權限。

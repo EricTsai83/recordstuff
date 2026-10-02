@@ -93,6 +93,8 @@ function fakeAx(): NativeAx & { calls: string[]; open: boolean } {
     async key(code: number) { ax.calls.push(`key ${code}`); if (code === 53) ax.open = false; },
     async windows() { throw new Error("unused"); },
     async menuBar() { throw new Error("unused"); },
+    async savePasteboard() { throw new Error("unused"); },
+    async restorePasteboard() { throw new Error("unused"); },
     async enableWebAccessibility() { throw new Error("unused"); },
     async banners() { return []; },
   };

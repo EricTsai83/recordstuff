@@ -3,12 +3,14 @@
  * only (the callback), and the panel is judged by observation. `--observe` (plan 063, step 5)
  * also asserts through Accessibility that the window opened in front with focus, that Tab moves
  * the focused control, that the application menu binds no Reload or Developer Tools shortcut and
- * that ⌘R and ⌘⌥I leave the focus where it was, and that minimize, restore, close and reopen work,
+ * that ⌘R and ⌘⌥I leave the focus where it was, that ⌘A then ⌘C copies the panel's text (the
+ * user's pasteboard is saved first and restored), and that minimize, restore, close and reopen work,
  * as scripted evidence kept apart from the callback. Layout and appearance stay with the Settings
  * fixture screenshots. `--quit` then ends the round with ⌘Q and asserts that every process of the
  * bundle exits; without it the panel is left open for the next step.
  */
 import fs from "node:fs";
+import os from "node:os";
 import { escapeRegExp } from "./lib/processes.mts";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +19,7 @@ import { acceleratorToKeystroke, keystrokeScript, lastStartIndex, registeredSett
 import { command, waitForLog } from "./lib/acceptance-runtime.mts";
 import { LogReader, evidenceSince } from "./lib/log-reader.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
-import { AccessibilityBlockedError, FLAG, KEY, judgeAppMenu, osascriptAx, type WindowSnapshot } from "./lib/native-ax.mts";
+import { AccessibilityBlockedError, FLAG, KEY, judgeAppMenu, osascriptAx, type PasteboardManifest, type WindowSnapshot } from "./lib/native-ax.mts";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings } from "./lib/runner-env.mts";
 import { isLanguage, translate } from "../src/shared/i18n.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -38,12 +40,29 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => co
 const appLog = new LogReader(logPath);
 const roundFrom = appLog.end();
 let evidence = "";
-/** Accessibility checks of `--observe`, each `pass`/`fail` with what was seen; empty without it. */
-const observations: Array<{ check: string; ok: boolean; seen: string }> = [];
+/** Accessibility checks of `--observe` with what was seen; `blocked` lacked a prerequisite and is never a pass. Empty without it. */
+const observations: Array<{ check: string; ok: boolean | "blocked"; seen: string }> = [];
 let desktop: DesktopRound | undefined;
 /** `--quit` sent ⌘Q; until then a failed round leaves the app running and says so. */
 let quitSent = false;
+/** The user's pasteboard, saved before ⌘C and restored however the round ends. */
+let pasteboard: { directory: string; manifest?: PasteboardManifest } | undefined;
 const sleep = (ms: number): Promise<void> => delay(ms, undefined, { signal: controller.signal });
+const PASTEBOARD_RESTORED = "the user's pasteboard is restored after ⌘C";
+/**
+ * Gives the saved pasteboard back once, before any verdict is written, and records the outcome as a
+ * check, so a failed restore fails the round. A fresh signal: an interrupted round still restores it.
+ */
+const restorePasteboard = async (): Promise<void> => {
+  const saved = pasteboard;
+  pasteboard = undefined;
+  if (!saved) return;
+  const failure = saved.manifest
+    ? await osascriptAx(new AbortController().signal).restorePasteboard(saved.manifest).then(() => "", (cause: unknown) => String(cause))
+    : "";
+  if (saved.manifest) observations.push({ check: PASTEBOARD_RESTORED, ok: !failure, seen: failure ? `${failure}; the saved items stay in ${saved.directory}` : "restored" });
+  if (!failure) fs.rmSync(saved.directory, { recursive: true, force: true });
+};
 try {
   if (process.platform !== "darwin" || process.arch !== "arm64") throw new Error("This runner requires the local macOS arm64 pnpm start:app bundle.");
   // The panel this opens is judged by native observation on an awake, unlocked display.
@@ -66,7 +85,8 @@ try {
   };
   const ax = osascriptAx(controller.signal);
   const settings = readAppSettings(APP_SETTINGS_PATH) ?? {};
-  const title = translate("RecordStuff - Settings", isLanguage(settings["language"]) ? settings["language"] : "en");
+  const language = isLanguage(settings["language"]) ? settings["language"] : "en";
+  const title = translate("RecordStuff - Settings", language);
   const settingsWindow = (snapshot: WindowSnapshot) => snapshot.windows.find(window => window.title === title);
   /** Polls the app's windows for up to 30 s, the skill's limit for one UI state. */
   const until = async (what: string, accept: (snapshot: WindowSnapshot) => boolean): Promise<WindowSnapshot> => {
@@ -77,7 +97,7 @@ try {
     }
     return snapshot;
   };
-  const check = (name: string, ok: boolean, seen: string): void => { observations.push({ check: name, ok, seen }); };
+  const check = (name: string, ok: boolean | "blocked", seen: string): void => { observations.push({ check: name, ok, seen }); };
   /** Command chords go to the frontmost app: send them only while RecordStuff is in front with Settings focused (review pass 2). */
   const chord = async (code: number, what: string, flags: number = FLAG.command): Promise<void> => {
     const snapshot = await ax.windows(Number(pid));
@@ -110,7 +130,7 @@ try {
     // add no window; the menu shows either binding whatever the panel does.
     const menus = await ax.menuBar(Number(pid));
     const { bound, missing } = judgeAppMenu(menus);
-    check("the application menu binds neither ⌘R (Reload) nor ⌘⌥I (Developer Tools) and keeps ⌘C, ⌘V, ⌘M and ⌘Q",
+    check("the application menu binds neither ⌘R (Reload) nor ⌘⌥I (Developer Tools) and keeps ⌘C, ⌘A, ⌘M and ⌘Q",
       bound.length === 0 && missing.length === 0,
       `menus ${menus.map(menu => menu.title).join(", ")}${bound.length ? `; bound ${bound.join(", ")}` : ""}${missing.length ? `; missing ${missing.join(", ")}` : ""}`);
     // A reload resets the focus Tab placed, and Developer Tools would take it.
@@ -123,6 +143,26 @@ try {
         if (describe(snapshot) !== kept || settingsWindow(snapshot)?.main !== true) moved = snapshot;
       }
       check(`${name} neither reloads Settings nor opens Developer Tools: the focus stays`, moved === undefined, moved ? `${kept} → ${describe(moved)}` : `${kept} for 2 s`);
+    }
+    // Copying an error's details is the panel's one text use; ⌘A selects the whole page without a pointer.
+    pasteboard = { directory: fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-pasteboard-")) };
+    const saved = await ax.savePasteboard(pasteboard.directory);
+    const copyCheck = "⌘A then ⌘C copies the panel's text";
+    if (saved.unsaved.length) {
+      // Clearing would lose what could not be saved, so the user's pasteboard is left untouched.
+      check(copyCheck, "blocked", `the pasteboard holds data that cannot be saved (${saved.unsaved.join(", ")}); left untouched. Copy plain text and run again`);
+    } else {
+      pasteboard.manifest = saved.items;
+      await ax.restorePasteboard([]);
+      await chord(KEY.a, "⌘A");
+      await chord(KEY.c, "⌘C");
+      const labels = [translate("Recording settings", language), translate("General", language)];
+      let copied = "";
+      for (const deadline = Date.now() + 2000; Date.now() < deadline && !labels.every(label => copied.includes(label)); await sleep(150)) {
+        copied = await command("pbpaste", [], controller.signal);
+      }
+      check(copyCheck, labels.every(label => copied.includes(label)),
+        copied ? `${copied.length} characters, ${labels.map(label => `${JSON.stringify(label)} ${copied.includes(label) ? "present" : "absent"}`).join(", ")}` : "pasteboard still empty after 2 s");
     }
     await chord(KEY.m, "⌘M");
     const minimized = await until("⌘M to minimize Settings", snapshot => settingsWindow(snapshot)?.minimized === true).catch(() => undefined);
@@ -145,22 +185,31 @@ try {
       check("⌘Q quits RecordStuff: every process of the bundle exits", !left, left ? `still running after 30 s: pids ${left.split("\n").join(", ")}` : "no process left");
     }
   }
+  await restorePasteboard();
   desktop.end();
   if (desktop.lockedAt) throw new DesktopBlockedError(desktop.summary);
-  const failed = observations.filter(observation => !observation.ok);
-  const table = observations.length ? `\n## Accessibility observation (scripted, --observe)\n\n| Check | Result | Seen |\n| --- | --- | --- |\n${observations.map(o => `| ${o.check} | ${o.ok ? "PASS" : "FAIL"} | ${o.seen.replaceAll("|", "\\|")} |`).join("\n")}\n` : "";
-  const verdict = failed.length ? "FAIL" : "PASS";
+  const failed = observations.filter(observation => observation.ok === false);
+  const unmet = observations.filter(observation => observation.ok === "blocked");
+  const result = (o: (typeof observations)[number]): string => o.ok === "blocked" ? "BLOCKED" : o.ok ? "PASS" : "FAIL";
+  const table = observations.length ? `\n## Accessibility observation (scripted, --observe)\n\n| Check | Result | Seen |\n| --- | --- | --- |\n${observations.map(o => `| ${o.check} | ${result(o)} | ${o.seen.replaceAll("|", "\\|")} |`).join("\n")}\n` : "";
+  const verdict = failed.length ? "FAIL" : unmet.length ? "BLOCKED" : "PASS";
   fs.writeFileSync(path.join(out, "report.md"), `# Settings shortcut entry — ${verdict}${observe ? "" : " (callback only)"}\n\n## Callback (scripted input)\n\n${evidence}${desktop.summary}\nNo IPC or test-only opening route.\n${table}\n${observe
     ? `Accessibility state is scripted evidence: it does not judge layout, appearance or legibility, which stay with the \`pnpm acceptance:settings\` screenshots or an observation. ${quit ? "The round ended with ⌘Q." : "The panel is left open, as the entry step always leaves it."}`
     : "Panel visibility, focus, keyboard navigation and recording continuity are NOT verified by this script. Run it with `-- --observe` or continue with an observation; do not report full UI acceptance from this exit code."}\n`);
   if (failed.length) {
     console.error(`FAIL: ${failed.map(o => o.check).join("; ")}\nEvidence: ${out}`);
     process.exitCode = 1;
+  } else if (unmet.length) {
+    console.error(`BLOCKED: ${unmet.map(o => `${o.check} (${o.seen})`).join("; ")}\nEvidence: ${out}`);
+    process.exitCode = DESKTOP_BLOCKED_EXIT;
   } else console.log(`PASS: Settings callback received${observe ? "; Accessibility checks passed" : ". Continue with an observation of the panel"}. Evidence: ${out}`);
 } catch (error) {
+  await restorePasteboard();
   desktop?.end();
-  const blocked = error instanceof DesktopBlockedError || error instanceof AccessibilityBlockedError;
-  const seen = observations.map(o => `${o.ok ? "PASS" : "FAIL"} ${o.check}: ${o.seen}`).join("\n");
+  // A pasteboard left changed is a failed cleanup, which outranks a blocked round.
+  const blocked = (error instanceof DesktopBlockedError || error instanceof AccessibilityBlockedError)
+    && !observations.some(o => o.check === PASTEBOARD_RESTORED && o.ok === false);
+  const seen = observations.map(o => `${o.ok === "blocked" ? "BLOCKED" : o.ok ? "PASS" : "FAIL"} ${o.check}: ${o.seen}`).join("\n");
   // ⌘Q is never sent blind after a failure: another app may be in front, and the round's signal may be aborted.
   const cleanup = quit && !quitSent
     ? await command("pgrep", ["-f", bundleProcesses], new AbortController().signal, 5000, [0, 1]).then(

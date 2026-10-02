@@ -12,7 +12,8 @@ import { command } from "./acceptance-runtime.mts";
 /**
  * `osascript -l JavaScript -e <script> <command> …`, one JSON object out.
  * Commands: `status <pid>`, `press <pid> <menu index>`, `mouse left|right <x> <y>`,
- * `key <code> [flags]`, `windows <pid>`, `menubar <pid>`, `manual <pid>`, `banners`.
+ * `key <code> [flags]`, `windows <pid>`, `menubar <pid>`, `manual <pid>`, `banners`,
+ * `pasteboard-save <dir>` and `pasteboard-restore <manifest json>`.
  * Any failed AX call is reported as its AXError code rather than thrown, so the
  * caller can tell a missing permission (-25211) from an element that is gone.
  */
@@ -47,6 +48,45 @@ function run(argv) {
       delay(0.03);
     }
     return out({ posted: true });
+  }
+  // Every item and type of the general pasteboard, each type's bytes in its own file so a large
+  // image never passes through stdout; restoring an empty manifest clears the pasteboard.
+  if (cmd === 'pasteboard-save') {
+    const items = $.NSPasteboard.generalPasteboard.pasteboardItems;
+    const manifest = [];
+    // A type whose data cannot be read now (promised data) could not be put back: name it, so the caller leaves the pasteboard alone.
+    const unsaved = [];
+    for (let i = 0; i < (items.isNil() ? 0 : items.count); i++) {
+      const item = items.objectAtIndex(i);
+      const entry = [];
+      for (let j = 0; j < item.types.count; j++) {
+        const type = item.types.objectAtIndex(j);
+        const data = item.dataForType(type);
+        if (data.isNil()) { unsaved.push(ObjC.unwrap(type)); continue; }
+        const file = a + '/' + i + '-' + j;
+        if (!data.writeToFileAtomically(file, true)) return out({ error: 'cannot write ' + file });
+        entry.push({ type: ObjC.unwrap(type), file });
+      }
+      manifest.push(entry);
+    }
+    return out({ items: manifest, unsaved });
+  }
+  if (cmd === 'pasteboard-restore') {
+    const pasteboard = $.NSPasteboard.generalPasteboard;
+    // Every saved file is read and every type accepted before the current contents are cleared.
+    const objects = [];
+    for (const entry of JSON.parse(a)) {
+      const item = $.NSPasteboardItem.alloc.init;
+      for (const { type, file } of entry) {
+        const data = $.NSData.dataWithContentsOfFile(file);
+        if (data.isNil()) return out({ error: 'cannot read ' + file });
+        if (!item.setDataForType(data, type)) return out({ error: 'pasteboard item refused ' + type });
+      }
+      objects.push(item);
+    }
+    pasteboard.clearContents;
+    if (objects.length && !pasteboard.writeObjects($(objects))) return out({ error: 'pasteboard refused the restored items' });
+    return out({ restored: objects.length });
   }
   if (!$.AXIsProcessTrusted()) return out({ error: -25211 });
   const raw = (el, name) => { const ref = Ref(); const err = $.AXUIElementCopyAttributeValue(el, $(name), ref); return err === 0 ? ref[0] : err; };
@@ -200,11 +240,13 @@ export interface AppMenu {
 /**
  * The key equivalents RecordStuff's application menu must and must not bind
  * (src/main/index.ts): Electron's default View menu answers ⌘R and ⌘⌥I in
- * Settings, while Edit and the App and Window menus keep copy, paste,
- * minimize and quit. Modifiers are `AXMenuItemCmdModifiers` (0 is ⌘ alone).
+ * Settings, while Edit and the App and Window menus keep copy and select all
+ * (the panel's only text use: copying an error's details), minimize and quit.
+ * Settings has no field to paste into, so ⌘V is not required. Modifiers are
+ * `AXMenuItemCmdModifiers` (0 is ⌘ alone).
  */
 const MENU_FORBIDDEN = [{ key: "R", modifiers: 0, name: "⌘R (Reload)" }, { key: "I", modifiers: 2, name: "⌘⌥I (Developer Tools)" }];
-const MENU_REQUIRED = [{ key: "C", name: "⌘C" }, { key: "V", name: "⌘V" }, { key: "M", name: "⌘M" }, { key: "Q", name: "⌘Q" }].map(entry => ({ ...entry, modifiers: 0 }));
+const MENU_REQUIRED = [{ key: "C", name: "⌘C" }, { key: "A", name: "⌘A" }, { key: "M", name: "⌘M" }, { key: "Q", name: "⌘Q" }].map(entry => ({ ...entry, modifiers: 0 }));
 
 /** Which forbidden shortcuts some item binds, and which required ones none does. */
 export function judgeAppMenu(menus: readonly AppMenu[]): { bound: string[]; missing: string[] } {
@@ -236,7 +278,7 @@ export function parseAxResult<T>(output: string, what: string): T {
 }
 
 /** Key codes and CGEventFlags the runners post. */
-export const KEY = { escape: 53, down: 125, up: 126, return: 36, tab: 48, m: 46, w: 13, r: 15, i: 34, q: 12 } as const;
+export const KEY = { escape: 53, down: 125, up: 126, return: 36, tab: 48, m: 46, w: 13, r: 15, i: 34, q: 12, a: 0, c: 8 } as const;
 export const FLAG = { command: 0x100000, shift: 0x20000, option: 0x80000 } as const;
 
 export interface NativeAx {
@@ -249,7 +291,14 @@ export interface NativeAx {
   /** Asks Chromium to build its accessibility tree, as assistive software does, so web focus is readable. */
   enableWebAccessibility(pid: number): Promise<void>;
   banners(): Promise<Banner[]>;
+  /** Saves the general pasteboard into `directory`; the manifest restores it, and `unsaved` names types whose data could not be read. */
+  savePasteboard(directory: string): Promise<{ items: PasteboardManifest; unsaved: string[] }>;
+  /** Replaces the pasteboard with a saved manifest; `[]` clears it. */
+  restorePasteboard(manifest: PasteboardManifest): Promise<void>;
 }
+
+/** Per pasteboard item, each type and the file holding its bytes. */
+export type PasteboardManifest = Array<Array<{ type: string; file: string }>>;
 
 /** The real helper, each call bounded by `timeoutMs` and the runner's signal. */
 export function osascriptAx(signal: AbortSignal, timeoutMs = 10_000): NativeAx {
@@ -264,6 +313,8 @@ export function osascriptAx(signal: AbortSignal, timeoutMs = 10_000): NativeAx {
     menuBar: async pid => (await run<{ menus: AppMenu[] }>("menu bar", "menubar", pid)).menus,
     enableWebAccessibility: async pid => { await run("web accessibility", "manual", pid); },
     banners: async () => (await run<{ banners: Banner[] }>("Notification Center", "banners")).banners,
+    savePasteboard: directory => run<{ items: PasteboardManifest; unsaved: string[] }>("pasteboard save", "pasteboard-save", directory),
+    restorePasteboard: async manifest => { await run("pasteboard restore", "pasteboard-restore", JSON.stringify(manifest)); },
   };
 }
 
