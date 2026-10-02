@@ -129,7 +129,47 @@ export function classifyCleanup(facts: CleanupFacts): Layer {
   return problems.length ? { status: "fail", reason: `${problems.join("; ")}.` } : { status: "pass", reason: "Owned process groups exited and the signed temporary copy was removed." };
 }
 
-export interface Layers { setup: Layer; lifecycle: Layer; delivery: Layer; cleanup: Layer }
+/** The deferred-quit message the fixture's media deferral shows (`DEFERRAL_MESSAGE.media` in src/main/quit-feedback.ts). */
+export const DEFERRED_QUIT_MEDIA_MESSAGE = "Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. After it finishes, retry the same action: Quit or Relaunch.";
+
+/** A banner as Notification Center's Accessibility tree shows it (scripts/lib/native-ax.mts). */
+export interface BannerSighting { id: string | undefined; title: string | undefined; body: string | undefined }
+
+/**
+ * Plan 063, step 6: the banner text read through Accessibility while the notice is up. Only
+ * banners titled RecordStuff that were not already listed before the fixture launched count as
+ * this round's. Exactly one must appear and its body must be the round's language text; the
+ * other language's text is a language failure. Truncation and readability stay visual.
+ */
+export function classifyBannerText(input: {
+  before: readonly BannerSighting[];
+  polls: ReadonlyArray<readonly BannerSighting[]>;
+  expected: string;
+  otherLanguage: string;
+  delivery: Layer;
+  blocked?: string;
+}): Layer & { bodies?: string[] } {
+  if (input.blocked) return { status: "blocked", reason: input.blocked };
+  if (input.delivery.status !== "pass") return { status: "not run", reason: "No shown notification to read." };
+  // Identity is the banner's AXIdentifier; without it neither "new" nor "exactly one" can be told (review pass 2).
+  const ours = (banner: BannerSighting): boolean => banner.title === "RecordStuff";
+  if ([input.before, ...input.polls].some(list => list.some(banner => ours(banner) && !banner.id))) {
+    return { status: "blocked", reason: "Notification Center listed a RecordStuff banner without an identifier, so this round's banners could not be told apart or counted." };
+  }
+  const known = new Set(input.before.map(banner => banner.id));
+  const round = new Map<string, BannerSighting>();
+  for (const poll of input.polls) for (const banner of poll) {
+    if (ours(banner) && !known.has(banner.id)) round.set(banner.id!, banner);
+  }
+  const bodies = [...round.values()].map(banner => banner.body ?? "");
+  if (bodies.length === 0) return { status: "fail", bodies, reason: `No RecordStuff banner from this round appeared in Notification Center's Accessibility tree in ${input.polls.length} reads.` };
+  if (bodies.length > 1) return { status: "fail", bodies, reason: `${bodies.length} RecordStuff banners from this round appeared; one was expected.` };
+  if (bodies[0] === input.expected) return { status: "pass", bodies, reason: "One banner from this round, its full body in the round's language as Accessibility reports it (not proof that it was visible or untruncated)." };
+  if (bodies[0] === input.otherLanguage) return { status: "fail", bodies, reason: "The banner's body is in the other language." };
+  return { status: "fail", bodies, reason: `The banner's body differs from the expected text: ${JSON.stringify(bodies[0])}.` };
+}
+
+export interface Layers { setup: Layer; lifecycle: Layer; delivery: Layer; bannerText: Layer; cleanup: Layer }
 
 /**
  * Any failure outranks blocked; a lock seen during the round or a layer that could not run makes
@@ -144,7 +184,7 @@ export function combineVerdict(layers: Layers, lockedAt: string | undefined): { 
 
 export const VISUAL_PENDING: Layer = {
   status: "not run",
-  reason: "Pending: this command cannot see the banner. An observer (the native acceptance skill or the maintainer) records visibility, the single banner and its complete text separately; a shown event is not visual proof.",
+  reason: "Pending: this command cannot see the banner. An observer (the native acceptance skill or the maintainer) records whether it was visible and readable and whether its text was truncated; a shown event and the Accessibility text are not visual proof.",
 };
 
 export function renderReport(input: {
@@ -161,13 +201,14 @@ export function renderReport(input: {
   return [
     `# Deferred-quit notice (${input.language})`,
     "",
-    `Automated evidence: **${verdict.automated.toUpperCase()}** (exit ${verdict.exitCode}): signed fixture app, lifecycle, notification delivery event and cleanup. Visual banner observation: **pending**, not part of this result.`,
+    `Automated evidence: **${verdict.automated.toUpperCase()}** (exit ${verdict.exitCode}): signed fixture app, lifecycle, notification delivery event, the banner's text read through Accessibility and cleanup. Visual banner observation: **pending**, not part of this result.`,
     "",
     "| Layer | Result | Reason |",
     "| --- | --- | --- |",
     row("Signed fixture app", layers.setup),
     row("Lifecycle and timers", layers.lifecycle),
     row("Notification delivery event", layers.delivery),
+    row("Banner text (Accessibility)", layers.bannerText),
     row("Visual banner observation", VISUAL_PENDING),
     row("Cleanup", layers.cleanup),
     "",

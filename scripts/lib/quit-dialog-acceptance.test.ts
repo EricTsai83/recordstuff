@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { DEFERRAL_MESSAGE } from "../../src/main/quit-feedback";
+import { translate } from "../../src/shared/i18n";
 import {
-  classifyCleanup, classifyDelivery, classifyLifecycle, classifySetup, combineVerdict, isAuthorizationDenial,
+  DEFERRED_QUIT_MEDIA_MESSAGE, classifyBannerText, classifyCleanup, classifyDelivery, classifyLifecycle, classifySetup, combineVerdict, isAuthorizationDenial,
   parseNotificationEvents, renderReport, type Layer, type Layers, type NotificationEvent,
 } from "./quit-dialog-acceptance.mts";
 
 const at = (ms: number): string => new Date(Date.UTC(2026, 9, 2, 12, 0, 0) + ms).toISOString();
 const requested: NotificationEvent = { time: at(0), event: "requested", supported: true };
 const pass: Layer = { status: "pass", reason: "ok" };
-const layers = (overrides: Partial<Layers> = {}): Layers => ({ setup: pass, lifecycle: pass, delivery: pass, cleanup: pass, ...overrides });
+const layers = (overrides: Partial<Layers> = {}): Layers => ({ setup: pass, lifecycle: pass, delivery: pass, bannerText: pass, cleanup: pass, ...overrides });
 
 describe("notification events", () => {
   it("parses appended lines and ignores a line torn by a killed process", () => {
@@ -146,5 +148,44 @@ describe("report", () => {
     expect(text).toContain("| Notification delivery event | PASS | a \\| b |");
     expect(text).toContain("- Commit abc");
     expect(text).toContain("Details: [report.json](report.json), [setup.log](setup.log).");
+  });
+});
+
+describe("banner text through Accessibility (plan 063)", () => {
+  const zh = translate(DEFERRED_QUIT_MEDIA_MESSAGE, "zh-TW");
+  const en = translate(DEFERRED_QUIT_MEDIA_MESSAGE, "en");
+  const banner = (id: string, body: string, title = "RecordStuff") => ({ id, title, body });
+  const judge = (polls: Array<Array<ReturnType<typeof banner>>>, before: Array<ReturnType<typeof banner>> = [], delivery: Layer = pass) =>
+    classifyBannerText({ before, polls, expected: zh, otherLanguage: en, delivery });
+
+  it("expects the production deferral message, so a reworded notice cannot pass against stale text", () => {
+    expect(DEFERRED_QUIT_MEDIA_MESSAGE).toBe(DEFERRAL_MESSAGE.media);
+  });
+
+  it("passes one new RecordStuff banner whose body is the round's language, seen across several reads", () => {
+    expect(judge([[], [banner("a", zh)], [banner("a", zh)]])).toMatchObject({ status: "pass", bodies: [zh] });
+  });
+
+  it("ignores banners listed before launch and banners of other apps", () => {
+    const stale = banner("old", zh);
+    expect(judge([[stale, banner("mail", zh, "Mail"), banner("a", zh)]], [stale])).toMatchObject({ status: "pass" });
+  });
+
+  it("fails no banner, two banners, the other language or different text", () => {
+    expect(judge([[], []]).status).toBe("fail");
+    expect(judge([[banner("a", zh), banner("b", zh)]])).toMatchObject({ status: "fail", reason: expect.stringContaining("2 RecordStuff banners") });
+    expect(judge([[banner("a", en)]])).toMatchObject({ status: "fail", reason: "The banner's body is in the other language." });
+    expect(judge([[banner("a", "something else")]]).reason).toContain("differs");
+  });
+
+  it("is blocked, not passed, when a RecordStuff banner has no identifier to count it by", () => {
+    const anonymous = { id: undefined, title: "RecordStuff", body: zh };
+    expect(classifyBannerText({ before: [], polls: [[anonymous, anonymous]], expected: zh, otherLanguage: en, delivery: pass }).status).toBe("blocked");
+    expect(classifyBannerText({ before: [anonymous], polls: [[banner("a", zh)]], expected: zh, otherLanguage: en, delivery: pass }).status).toBe("blocked");
+  });
+
+  it("is not run without a shown notification and blocked without Accessibility access", () => {
+    expect(judge([], [], { status: "fail", reason: "x" }).status).toBe("not run");
+    expect(classifyBannerText({ before: [], polls: [], expected: zh, otherLanguage: en, delivery: pass, blocked: "AXError -25211" }).status).toBe("blocked");
   });
 });

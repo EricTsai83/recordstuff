@@ -13,10 +13,11 @@ import { runIsolatedProcess } from "./lib/isolated-process.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
 import { workingTreeIdentity } from "./lib/verification-timing.mts";
 import {
-  DELIVERY_WINDOW_MS, MAX_LATE_MS, VISUAL_PENDING, classifyCleanup, classifyDelivery, classifyLifecycle, classifySetup,
-  combineVerdict, parseNotificationEvents, renderReport, type DeliveryLayer, type Layer,
+  DEFERRED_QUIT_MEDIA_MESSAGE, DELIVERY_WINDOW_MS, MAX_LATE_MS, VISUAL_PENDING, classifyBannerText, classifyCleanup, classifyDelivery, classifyLifecycle, classifySetup,
+  combineVerdict, parseNotificationEvents, renderReport, type BannerSighting, type DeliveryLayer, type Layer,
 } from "./lib/quit-dialog-acceptance.mts";
-import { isLanguage } from "../src/shared/i18n.ts";
+import { AccessibilityBlockedError, osascriptAx } from "./lib/native-ax.mts";
+import { isLanguage, translate } from "../src/shared/i18n.ts";
 
 /** Copy, sign and verify take about two seconds; a keychain prompt waiting for a person must not hold the round. */
 const SETUP_TIMEOUT_MS = 60_000;
@@ -98,8 +99,30 @@ if (args.length === 1 && args[0] === "--help") {
     let lifecycle = notRun("No fixture launched: the signed app was not ready.");
     let delivery: DeliveryLayer = notRun("No fixture launched.");
     let result: Record<string, unknown> | undefined;
+    // Plan 063, step 6: Notification Center's Accessibility tree, read before launch and while the notice is up.
+    const ax = osascriptAx(abort.signal, 5000);
+    let bannersBefore: BannerSighting[] = [];
+    const bannerPolls: BannerSighting[][] = [];
+    let bannerBlocked: string | undefined;
+    let polling = false;
+    const pollBanners = async (): Promise<void> => {
+      while (polling && !abort.signal.aborted) {
+        try { bannerPolls.push(await ax.banners()); }
+        catch (cause) {
+          if (cause instanceof AccessibilityBlockedError) { bannerBlocked = cause.message; return; }
+          if (abort.signal.aborted) return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    };
+    let poller: Promise<void> | undefined;
     if (setup.status === "pass") {
+      try { bannersBefore = await ax.banners(); } catch (cause) { if (cause instanceof AccessibilityBlockedError) bannerBlocked = cause.message; }
+      polling = !bannerBlocked;
+      poller = pollBanners();
       execution = await supervise({ executable, args: [fixture, dir, language], env: scrubbedEnv(), logFd: fd, timeoutMs: 40_000, stopSignal: "SIGKILL" });
+      polling = false;
+      await poller;
       const resultPath = path.join(dir, "result.json");
       result = readJson(resultPath);
       lifecycle = classifyLifecycle(execution, result as Parameters<typeof classifyLifecycle>[1]);
@@ -112,7 +135,11 @@ if (args.length === 1 && args[0] === "--help") {
     const fixtureGroupGone = execution?.groupGone;
     if (setupGroupGone && (execution === undefined || fixtureGroupGone)) fs.rmSync(temporary, { recursive: true, force: true });
     const cleanup = classifyCleanup({ setupGroupGone, fixtureGroupGone, forced: Boolean(setupRun.forced || execution?.forced), temporaryRemoved: !fs.existsSync(temporary) });
-    const layers = { setup, lifecycle, delivery, cleanup };
+    const other = language === "en" ? "zh-TW" : "en";
+    const bannerText = setup.status === "pass"
+      ? classifyBannerText({ before: bannersBefore, polls: bannerPolls, expected: translate(DEFERRED_QUIT_MEDIA_MESSAGE, language), otherLanguage: translate(DEFERRED_QUIT_MEDIA_MESSAGE, other), delivery, ...(bannerBlocked ? { blocked: bannerBlocked } : {}) })
+      : { status: "not run" as const, reason: "No fixture launched." };
+    const layers = { setup, lifecycle, delivery, bannerText, cleanup };
     const verdict = combineVerdict(layers, desktop.lockedAt);
     fs.writeFileSync(path.join(dir, "report.json"), JSON.stringify({
       automated: verdict.automated, exitCode: verdict.exitCode, layers: { ...layers, visual: VISUAL_PENDING },
@@ -122,7 +149,7 @@ if (args.length === 1 && args[0] === "--help") {
     const files = ["report.json", "signature.json", "setup.log", "electron.log", "notification.jsonl", "result.json"].filter(file => fs.existsSync(path.join(dir, file)));
     fs.writeFileSync(path.join(dir, "report.md"), renderReport({ language, layers, verdict, desktop: desktop.summary, provenance, files }));
     reported = true;
-    console.log(`${verdict.automated.toUpperCase()}: setup ${setup.status}, lifecycle ${lifecycle.status}, delivery ${delivery.status}, cleanup ${cleanup.status}. 原生畫面結果仍需另行記錄。\nReport: ${path.join(dir, "report.md")}`);
+    console.log(`${verdict.automated.toUpperCase()}: setup ${setup.status}, lifecycle ${lifecycle.status}, delivery ${delivery.status}, banner text ${bannerText.status}, cleanup ${cleanup.status}. 原生畫面結果仍需另行記錄。\nReport: ${path.join(dir, "report.md")}`);
     process.exitCode = verdict.exitCode;
   } catch (cause) {
     console.error(cause);
