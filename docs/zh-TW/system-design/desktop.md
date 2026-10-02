@@ -6,13 +6,13 @@
 
 來源：[tray-model.ts](../../../src/main/tray-model.ts)、[tray.ts](../../../src/main/tray.ts)、[index.ts](../../../src/main/index.ts)。
 
-TrayModel 是純函式產物，包含 icon、title、tooltip 與一份扁平的指令清單；偏好設定完全不在 tray 裡，所以模型回傳什麼、選單就顯示什麼。AppTray 只把模型映射到 Electron；不保存第二份業務狀態。左鍵呼叫 toggle（倒數期間則取消倒數），右鍵才動態組選單；不使用會攔截左鍵的 `setContextMenu`。[全域快捷鍵](#錄影快捷鍵)呼叫與左鍵相同的 toggle。
+TrayModel 是純函式產物，包含 icon、title、tooltip 與一份扁平的指令清單；偏好設定完全不在 tray 裡，所以模型回傳什麼、選單就顯示什麼。AppTray 只把模型映射到 Electron；不保存第二份業務狀態。左鍵呼叫 toggle（倒數期間，或 start 已持續一秒時〔plan 065〕，則取消），右鍵才動態組選單；不使用會攔截左鍵的 `setContextMenu`。[全域快捷鍵](#錄影快捷鍵)呼叫與左鍵相同的 toggle。
 
 | 狀態 | 圖示／標題 | Tray 指令 | 設定視窗中的偏好 |
 | --- | --- | --- | --- |
 | needsPermission | 圓環／空白 | 權限說明、開設定或重啟；權限遺失期間存過檔才能顯示最後錄影；儲存位置 | 全部可調 |
 | idle | 圓環／空白 | 待命或位置不可用；「開始錄製」（與左鍵相同的開始，包括倒數）；有 lastSavedPath 才能顯示最後錄影，錄影失敗後也保留；儲存位置 | 全部可調 |
-| starting | 沙漏／空白 | 提醒完成系統提示；取消錄影 | 語言與外觀；About 連結仍可用 |
+| starting | 沙漏／空白 | 提醒完成系統提示；取消錄影（已註冊快捷鍵時，提示文字會和倒數時一樣標出快捷鍵） | 語言與外觀；About 連結仍可用 |
 | countdown | 碼錶／空白 | 「n 秒後開始錄製」（不可點）；「取消錄影」（已註冊快捷鍵時 tooltip 顯示組合鍵）；tooltip 說明按一下即可取消 | 語言與外觀；About 連結仍可用 |
 | recording | 實心圓點／`REC` | 可停止（已註冊快捷鍵時 tooltip 顯示組合鍵）；儲存位置變灰 | 語言與外觀；About 連結仍可用 |
 | stopping | 沙漏／空白 | 儲存中 | 語言與外觀；About 連結仍可用 |
@@ -67,7 +67,7 @@ Tray 只保留必須一鍵可達的指令，所有偏好設定都在同一個獨
 
 來源：[hotkey.ts](../../../src/main/hotkey.ts)、[shortcuts.ts](../../../src/main/shortcuts.ts)、[shared/hotkey.ts](../../../src/shared/hotkey.ts)、[index.ts](../../../src/main/index.ts)。計畫 016 加入全域開始／停止快捷鍵：其他 App 在最前景時也能切換錄製，而且讓沒有視窗的程序有一個系統層級入口，可供無人值守驗收使用。
 
-RecordingHotkey 包裝 Electron `globalShortcut`。按下快捷鍵呼叫與 tray 左鍵相同的 `toggle` 函式，所以 `Recorder.toggle()` 仍是唯一決策點：idle 開始、倒數中取消、recording 停止、needsPermission 重發權限通知，starting／stopping 期間忽略。每次按下都先寫 log `hotkey: <accelerator> pressed` 再 toggle。`apply(settings)` 先釋放前一個註冊再註冊新的，更改時不會同時有兩個組合鍵生效；`dispose()` 在 will-quit 執行。
+RecordingHotkey 包裝 Electron `globalShortcut`。按下快捷鍵呼叫與 tray 左鍵相同的 `toggle` 函式，所以 `Recorder.toggle()` 仍是唯一決策點：idle 開始、倒數中取消、recording 停止、needsPermission 重發權限通知；start 已持續一秒時，會和「取消錄影」一樣取消這次 start（plan 065）；start 的第一秒內與 stopping 期間則忽略。每次按下都先寫 log `hotkey: <accelerator> pressed` 再 toggle；被忽略的按鍵另寫 `recorder: session <id> toggle ignored while starting (<n> ms after the start)` 或 `… while stopping …`，所以沒有作用的按鍵也會出現在 log 中（見[錄影設計](recording.md#倒數)）。`apply(settings)` 先釋放前一個註冊再註冊新的，更改時不會同時有兩個組合鍵生效；`dispose()` 在 will-quit 執行。
 
 使用者在 「設定」視窗的「快捷鍵」欄位選一組建議快捷鍵、「自訂快捷鍵…」或「關閉」（與品質相同，只在 idle／needsPermission 可改）。預設 `CommandOrControl+Shift+1`（macOS 顯示 ⌘⇧1，其他平台 Ctrl+Shift+1），2026-09-21 由維護者決定。全域快捷鍵優先於最前景 App，因此預設必須是常見 App 都不會預期的組合。最直覺的 ⌘⇧R 因此被否決過兩次：2026-09-19 的衝突檢查發現它是 Chrome／Firefox 的強制重新載入、Safari 的閱讀器、Zoom 的本機錄製，在瀏覽器按下去會變成開始螢幕錄影而不是重新載入。既有使用者若已選用它則保留，顯示為自訂；不再列為建議選項。數字鍵是比較安靜的區段 — macOS 以 ⌘⇧3/4/5 佔用截圖與螢幕錄製，而 App 綁定的是不加 Shift 的 ⌘1…9（分頁與檢視模式）— 但 ⌘⇧1 尚未經過同樣逐一 App 的查核，那屬於原生驗收範圍。前一個預設 `CommandOrControl+Alt+Shift+R` 在 2026-09 已驗證於 Chrome、Safari、Firefox、Finder、Xcode、VS Code、Slack 與 Zoom 均未被佔用，現在僅保留既有使用者已儲存的值，不另列替代選項。舊版曾提供的每一組快捷鍵都仍然有效，由相容性測試檢查；選單只提供 `DEFAULT_HOTKEY`。自訂值由 `validateAccelerator` 驗證：至少含 CommandOrControl 或 Control，可加 Alt／Shift，只能有一個支援按鍵、不可重複修飾鍵、長度最多 64 字元，並排除少量 macOS 保留組合。標準順序為 CommandOrControl、Control、Alt、Shift、按鍵。不合法的儲存值仍回預設並記 warning。
 

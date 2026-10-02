@@ -16,7 +16,7 @@ stateDiagram-v2
     starting --> recording: prepared、record、started（關閉倒數）
     countdown --> recording: record、started
     countdown --> idle: cancelled（toggle／選單／退出／睡眠）
-    starting --> idle: cancelled（選單／退出／睡眠）
+    starting --> idle: cancelled（1 秒後的 toggle／選單／退出／睡眠）
     recording --> stopping: stop / 退出
     stopping --> idle: 寫完並改名 / saved
     starting --> idle: failed
@@ -25,7 +25,7 @@ stateDiagram-v2
     stopping --> idle: failed
 ```
 
-`needsPermission` 帶 `needsRelaunch`，權限遺失期間存過檔時也帶 `lastSavedPath`；`idle` 可帶 `lastSavedPath` 或 `outputDirUnavailable`。`countdown` 帶 `remaining`，為整數秒且至少為 1；`record` 等待 `started` 期間維持 1。最新權限狀態不是 granted 時，session 結束（saved 或 failed）會進入 needsPermission 而不是 idle（見[螢幕權限](desktop.md#螢幕權限)）；`recording` 帶 ISO `startedAt`。錯誤是 `failed` 事件，沒有持久的 `failed` 狀態；取消既不是失敗也不是狀態。缺權限時點圖示只發 `permissionRequested`；starting／stopping 期間點擊無作用。倒數期間點擊或按快捷鍵會取消（見[倒數](#倒數)）。
+`needsPermission` 帶 `needsRelaunch`，權限遺失期間存過檔時也帶 `lastSavedPath`；`idle` 可帶 `lastSavedPath` 或 `outputDirUnavailable`。`countdown` 帶 `remaining`，為整數秒且至少為 1；`record` 等待 `started` 期間維持 1。最新權限狀態不是 granted 時，session 結束（saved 或 failed）會進入 needsPermission 而不是 idle（見[螢幕權限](desktop.md#螢幕權限)）；`recording` 帶 ISO `startedAt`。錯誤是 `failed` 事件，沒有持久的 `failed` 狀態；取消既不是失敗也不是狀態。缺權限時點圖示只發 `permissionRequested`；stopping 期間與 starting 的第一秒內點擊無作用，並寫入 log。倒數期間，以及 start 已持續一秒後，點擊或按快捷鍵會取消（見[倒數](#倒數)）。
 
 ## 開始流程
 
@@ -47,7 +47,9 @@ stateDiagram-v2
 - Overlay（見[桌面設計](desktop.md#倒數-overlay)）以具備 `show`、`update`、`dismiss`、`close` 的 presenter 注入，Recorder 因此不依賴 Electron。Presenter 錯誤只寫 log，永不讓錄影失敗；tray 仍會顯示倒數。
 - 倒數音效（plan 046，預設開啟，可在「設定 → 錄影」切換）在每個 session 與倒數一起讀取一次並傳給 presenter；`prepared` log 行以 `sound on` 或 `sound off` 結尾。overlay 頁面在每個新數字時播放一聲 −20 dBFS、523 Hz 的柔和馬林巴般提示音，數字 1 升高五度；歸零、取消或倒數關閉時都不響。每聲從該數字的 tick 時間起持續 140 ms，因此最後一聲（數字 1）在 `record` 前 860 ms 就結束，遠早於 overlay 離開：錄影靠時間上的分離保持乾淨（與數字相同），不依賴仍未驗證的 `restrictOwnAudio`。`pnpm acceptance` 會以兩個音高檢查有音效的 session 錄影前 500 ms 的音訊。autorecord 永遠不發聲，因此矩陣與音訊品質錄影只有素材本身的聲音。
 - 送出 `record` 前，toggle、tray 選單的「取消錄影」或快捷鍵都會取消這次嘗試：清除 timer、停止 host、關閉 overlay、abandon writer 讓空的暫存檔被刪除，並回到嘗試前的 idle（保留 lastSavedPath）。`cancelled` 事件帶取消原因（`toggle`、`menu`、`quit` 或 `sleep`），log 寫 `cancelled: session … (reason); no media was recorded`。不產生失敗狀態、歷史項目、通知或螢幕診斷。
-- 送出 `record` 後，toggle 會變成既有的「開始後停止」要求，等 `started` 到達再套用，因此幾毫秒的競態不會讓擷取持續進行。倒數設為「關」時，`record` 在 `prepared` 就送出，狀態仍是 starting，因此選單的「取消錄影」也會變成同一個要求。starting 與 stopping 期間的點擊仍然無作用。倒數期間開啟的 tray 選單在開著時不會更新（見[桌面設計](desktop.md#tray-與通知)），所以擷取開始後才點選其中的「取消錄影」，會停止錄影並存檔。
+- 送出 `record` 後，toggle 會變成既有的「開始後停止」要求，等 `started` 到達再套用，因此幾毫秒的競態不會讓擷取持續進行。倒數設為「關」時，`record` 在 `prepared` 就送出，狀態仍是 starting，因此選單的「取消錄影」或超過寬限時間的 toggle 也會變成同一個要求。倒數期間開啟的 tray 選單在開著時不會更新（見[桌面設計](desktop.md#tray-與通知)），所以擷取開始後才點選其中的「取消錄影」，會停止錄影並存檔。
+- starting 期間的 toggle（plan 065）：start 持續達 `START_CANCEL_GRACE_MS`（1 秒）後，toggle 會和「取消錄影」完全一樣地取消這次嘗試；時間以 Recorder 的 monotonic clock 從 session 請求起算，該時間點與進入 starting 在同一個同步步驟中取得。仍在開啟資料夾或準備擷取時，取消後不留檔案、失敗項目或通知；已送出 `record` 時則變成「開始後停止」。寬限時間內的按鍵視為連按而忽略，stopping 期間的按鍵也一律忽略；兩者都會寫入 log（`recorder: session <id> toggle ignored while starting (<n> ms after the start)` 與 `… while stopping (<n> ms after the stop)`），因此「快捷鍵沒反應」的回報可以和按鍵遺失區分。starting 選單的「取消錄影」會和倒數時一樣標出已註冊的快捷鍵（見[桌面設計](desktop.md#tray-與通知)）。
+- Plan 065 的決定由維護者於 2026-10-03 做出，依據 2026-09-12 至 2026-10-02 保留的 log：739 次 start，中位數 289 ms、第 95 百分位 396 ms；超過 1 秒的九次全部卡在準備階段（權限被拒、缺少音訊軌與舊的 8 秒時限造成 1.1–9.4 秒；擷取請求一直未回應時四次各 120 秒），沒有卡在開啟資料夾的，另有一次（2026-09-13）卡在 `record` 之後。log 中最快的連按間隔為 290 ms。寬限時間定為 1 秒，而非「starting 期間隨時可取消」或「只在準備期間可取消」；starting 的「取消錄影」標出快捷鍵；開啟資料夾或準備期間退出會立即取消（見[終止責任與正常退出](#終止責任與正常退出)），不再等待擷取請求，過去曾因此讓一次退出等了 286 秒。
 - 所有時間與外觀數值都集中在 [countdown.ts](../../../src/shared/countdown.ts)，作為初始目標；只有書面證據支持時才調整。
 
 ## 期限與故障隔離
@@ -79,7 +81,7 @@ CaptureHost 在等待 Blob 轉換之前固定第一個終止原因。後續使�
 
 Recorder 接受 `stopped` 後由 finalizer 獨占該次收尾。遲到的 host crash／error、重複 stop 或螢幕移除不能 abandon 正在發布的檔案；磁碟錯誤仍進入失敗清理。所有開檔、存檔、清理工作在同步 subscriber 執行前登記。開檔逾時立即讓 UI 回到 idle，但結果保持 pending，直到遲到的開檔與關閉完成。多次失敗各自保留清理工作的責任。
 
-所有 `before-quit`（包含 idle）共用 `installQuitCoordinator`。重複退出加入同一嘗試，退出判定期間拒絕開始新錄影，並自動停止擷取。`record` 前不存在任何媒體，所以退出永遠不會錄下尚未開始的 session（plan 040，任何倒數設定皆然）：倒數期間退出會立即取消；開啟資料夾期間退出會在任何擷取請求之前取消；準備期間退出會標記這次嘗試，之後的 `prepared` 會直接取消，不倒數也不錄影，即使退出已延期亦然。只有已送出 `record` 的 session 保留停止意圖，擷取一開始就停止並收尾。必須沒有 session 與未完成工作，包含遲到開檔、先前失敗清理與失敗結果查核／發布，才允許退出。退出期限只延後退出；已開始擷取的失敗仍由既有停止回應 timer 判定，而已標記的嘗試若在 `prepared` 前結束（擷取請求逾時或被拒、host 遺失或螢幕被移除），因為尚未擷取任何內容，會改為取消。未完成的磁碟／結果發布工作仍被持有，App 保持開啟，使用者可重試退出。不為滿足退出期限摧毀 host 或宣稱未確認的保留路徑。強制退出、程序終止與斷電不受此保證保護；沒有當機復原或放棄媒體的破壞性退出選項。下次啟動會透過中斷 sentinel 回報這類 session（見[寫檔與失敗](#寫檔與失敗)）。只有在此媒體階段完成後，退出才嘗試保存失敗歷史；其明確的「只放棄提醒」退出永遠不會放棄媒體工作（見[桌面設計](desktop.md#延後退出)）。
+所有 `before-quit`（包含 idle）共用 `installQuitCoordinator`。重複退出加入同一嘗試，退出判定期間拒絕開始新錄影，並自動停止擷取。`record` 前不存在任何媒體，所以退出永遠不會錄下尚未開始的 session（plan 040，任何倒數設定皆然）：倒數期間、開啟資料夾期間或準備期間退出，都會和「取消錄影」一樣立即取消（plan 065；在此之前，準備期間退出會等到 `prepared` 或 120 秒的擷取請求期限）。host 會收到停止待處理請求的指令，因此遲到的 `prepared` 屬於過期 session，會再被停止一次；仍在進行的資料夾檢查由已取消的嘗試持有，退出會等它結束。要求退出時也會標記這次嘗試，因此在協調器檢查前結束它的任何原因都算作這次取消。只有已送出 `record` 的 session 保留停止意圖，擷取一開始就停止並收尾。必須沒有 session 與未完成工作，包含遲到開檔、先前失敗清理與失敗結果查核／發布，才允許退出。退出期限只延後退出；已開始擷取的失敗仍由既有停止回應 timer 判定。未完成的磁碟／結果發布工作仍被持有，App 保持開啟，使用者可重試退出。不為滿足退出期限摧毀 host 或宣稱未確認的保留路徑。強制退出、程序終止與斷電不受此保證保護；沒有當機復原或放棄媒體的破壞性退出選項。下次啟動會透過中斷 sentinel 回報這類 session（見[寫檔與失敗](#寫檔與失敗)）。只有在此媒體階段完成後，退出才嘗試保存失敗歷史；其明確的「只放棄提醒」退出永遠不會放棄媒體工作（見[桌面設計](desktop.md#延後退出)）。
 
 ## 品質與編碼
 
@@ -155,7 +157,7 @@ FileWriter 限制已接受但尚未確認寫入的位元組數（`backlogBytes`�
 
 可用空間保護讀取輸出資料夾的 `fs.statfs`。低於停止門檻時要求正常停止，讓檔案在仍有空間時排空、sync 並發布；saved 事件帶有 `stoppedEarly: "lowDisk"`，log 會註明，存檔通知顯示「已儲存 {file}。磁碟空間即將用盡，已提前停止錄製」。這類錄影屬於成功，不進入失敗紀錄。若發布仍失敗，沿用一般失敗流程與部分檔保留。
 
-睡眠也用同樣的方式處理（plan 050）。從 `starting` 到狀態回到穩定之前，main 會持有一個類型為 `prevent-display-sleep` 的 `powerSaveBlocker`（[keep-awake.ts](../../../src/main/keep-awake.ts)），因此閒置造成的螢幕睡眠與系統睡眠不會結束擷取；每一條回到 idle 或 needsPermission 的路徑與 `will-quit` 都會釋放它，log 會記下每個 blocker。使用者要求的睡眠（Apple 選單 →「睡眠」、沒有外接螢幕時闔上筆電、電源鍵），以及低電量或過熱造成的睡眠都無法拒絕，擷取會在睡眠開始後約 150 ms 結束（035 的 N31）。所以 `powerMonitor` 的 `suspend` handler 只先設定 tray 的通知保留，接著在任何 log 之前呼叫 `Recorder.systemWillSleep()`，而 `stop()` 會在 `stopping` 狀態傳給訂閱者之前就把停止送到 host：錄影中時以 `stoppedEarly: "sleep"` 要求正常停止，擷取程序已經收到停止，之後軌道結束也會被忽略，因此檔案會像一般停止一樣發布，存檔通知顯示「已儲存 {file}。Mac 進入睡眠，已停止錄製。」；倒數中或仍在準備的嘗試以 `sleep` 為原因取消（已被睡眠或退出標記的嘗試，若在 `prepared` 前因其他原因結束，例如 host 錯誤或遺失、螢幕被移除、擷取請求逾時或被拒，或資料夾未在時限內開啟，也會取消，因為尚未擷取任何內容；資料夾回報錯誤時仍算失敗），已送出 `record` 的嘗試會在擷取開始後立刻停止。在 plan 050 的驗收中，macOS 在 `suspend` 約 5 秒後才進入睡眠，而存檔只花 13 ms，所以通常會在睡眠前完成；若 Mac 睡著時存檔仍在進行，會在醒來後完成，但計時器在睡眠期間照常計時，停止期限可能已經到期。若軌道先結束，就走一般的失敗流程。醒來後不會接續同一個檔案：`MediaRecorder` 無法替換軌道。Cap 則是把自己的擷取重建回同一段錄影，RecordStuff 的管線做不到。
+睡眠也用同樣的方式處理（plan 050）。從 `starting` 到狀態回到穩定之前，main 會持有一個類型為 `prevent-display-sleep` 的 `powerSaveBlocker`（[keep-awake.ts](../../../src/main/keep-awake.ts)），因此閒置造成的螢幕睡眠與系統睡眠不會結束擷取；每一條回到 idle 或 needsPermission 的路徑與 `will-quit` 都會釋放它，log 會記下每個 blocker。使用者要求的睡眠（Apple 選單 →「睡眠」、沒有外接螢幕時闔上筆電、電源鍵），以及低電量或過熱造成的睡眠都無法拒絕，擷取會在睡眠開始後約 150 ms 結束（035 的 N31）。所以 `powerMonitor` 的 `suspend` handler 只先設定 tray 的通知保留，接著在任何 log 之前呼叫 `Recorder.systemWillSleep()`，而 `stop()` 會在 `stopping` 狀態傳給訂閱者之前就把停止送到 host：錄影中時以 `stoppedEarly: "sleep"` 要求正常停止，擷取程序已經收到停止，之後軌道結束也會被忽略，因此檔案會像一般停止一樣發布，存檔通知顯示「已儲存 {file}。Mac 進入睡眠，已停止錄製。」；倒數會立即以 `sleep` 為原因取消，仍在準備的嘗試則在 `prepared` 到達時取消，因為睡眠不像退出（plan 065）會停止待處理的擷取請求（已被睡眠標記的嘗試，若在 `prepared` 前因其他原因結束，例如 host 錯誤或遺失、螢幕被移除、擷取請求逾時或被拒，或資料夾未在時限內開啟，也會取消，因為尚未擷取任何內容；資料夾回報錯誤時仍算失敗），已送出 `record` 的嘗試會在擷取開始後立刻停止。在 plan 050 的驗收中，macOS 在 `suspend` 約 5 秒後才進入睡眠，而存檔只花 13 ms，所以通常會在睡眠前完成；若 Mac 睡著時存檔仍在進行，會在醒來後完成，但計時器在睡眠期間照常計時，停止期限可能已經到期。若軌道先結束，就走一般的失敗流程。醒來後不會接續同一個檔案：`MediaRecorder` 無法替換軌道。Cap 則是把自己的擷取重建回同一段錄影，RecordStuff 的管線做不到。
 
 Writer 在擷取請求前開啟，而擷取請求可能為了權限提示等待最多 120 秒，期間每 5 秒 sync。若該次嘗試隨後以泛用的 `capture_start_failed` 結束（首片期限、擷取請求逾時、host start 被拒，或 host 回報 capture_start_failed），失敗流程會先排空 writer 最多 2 秒；若 writer 已保留寫入或 sync 錯誤，就以該代碼（disk_full 或 output_write_failed）回報，沿用既有的資料夾／磁碟指引，detail 同時列出兩個原因。代碼在發布 pending 結果前決定，因此通知與紀錄一致。權限或缺少音訊等具體 host 原因維持原代碼；乾淨的 writer 維持 `capture_start_failed`。排空未能在上限內完成時也維持 `capture_start_failed`。
 
@@ -188,7 +190,7 @@ Main 的來源 handler 可記錄具體拒絕原因，取代 renderer 的泛用 A
 
 ### 稽核加固
 
-「取消錄影」也可取消資料夾開啟與擷取準備；重複的開始切換在倒數前仍會忽略。準備例外會釋放 tracks。Renderer Blob 傳送與 main writer 等待佇列各有 64 MiB 上限。finish 共用同一個 Promise、拒絕後續 append，並與 abandon 協調，避免重複清理刪到較新的錄影。
+「取消錄影」也可取消資料夾開啟與擷取準備；重複的開始切換在 start 的第一秒內忽略，之後會取消這次 start（plan 065）。準備例外會釋放 tracks。Renderer Blob 傳送與 main writer 等待佇列各有 64 MiB 上限。finish 共用同一個 Promise、拒絕後續 append，並與 abandon 協調，避免重複清理刪到較新的錄影。
 
 完整複製發佈前，先確認可用空間至少有整個錄影大小加 8 MiB。複製後的 open／sync／close 失敗會移除目的檔，保留原始錄影。成功發佈後先持久化 finalized-path checkpoint 再刪 sentinel；下次啟動遇到完成 checkpoint 不再誤報中斷。發佈與 checkpoint 之間的小型崩潰空窗無法證明完成，因此未完成 sentinel 明確說明完成狀態未知，可能已有正式檔。
 

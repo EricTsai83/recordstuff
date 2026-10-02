@@ -168,9 +168,10 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
       return model("idle", "", status, stateGroup, [...lastSaved(state.lastSavedPath), ...outputDirItems(ctx, true)]);
     }
     case "starting":
+      // The shortcut cancels too once the start has lasted a second (plan 065), so it is named as in the countdown.
       return model("busy", "", text("Starting… Check for system permission prompts"), [
         disabled(text("Starting… Check for system permission prompts")),
-        item(text("Cancel recording"), "cancelCountdown"),
+        item(text("Cancel recording"), "cancelCountdown", shortcutHint(ctx, "Cancel recording with {value}"), shortcut),
       ]);
     case "countdown": {
       const seconds = { seconds: state.remaining };

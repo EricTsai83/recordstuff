@@ -239,6 +239,12 @@ interface Session {
 }
 
 const DEFAULT_START_TIMEOUT_MS = 8000;
+/**
+ * How long a start must have lasted before the shortcut or a click cancels it (plan 065):
+ * above the 399 ms 95th percentile of 740 logged starts and the fastest logged double
+ * press (290 ms), below the waits a person would try to escape (1.1 s and up).
+ */
+export const START_CANCEL_GRACE_MS = 1000;
 const DEFAULT_CAPTURE_REQUEST_TIMEOUT_MS = 120_000;
 const MAX_NAME_ATTEMPTS = 10;
 const DEFAULT_STOP_TIMEOUT_MS = 10_000;
@@ -350,7 +356,9 @@ export class Recorder {
 
   /**
    * Left click and the shortcut (plan 016, one action for both): start when idle, stop when
-   * recording, cancel a countdown, else ignore.
+   * recording, cancel a countdown, and cancel a start that has lasted `START_CANCEL_GRACE_MS`
+   * (plan 065), as Cancel recording does. Within the grace a second press is a double press
+   * and is ignored, as are presses while stopping; both are logged.
    */
   toggle(): void {
     switch (this._state.type) {
@@ -366,9 +374,20 @@ export class Recorder {
       case "needsPermission":
         this.emit({ type: "permissionRequested", needsRelaunch: this._state.needsRelaunch });
         return;
-      case "starting":
-      case "stopping":
+      case "starting": {
+        const session = this.session;
+        // `requestedAt` is taken in the same synchronous step that enters starting.
+        const since = session ? this.monotonic() - session.requestedAt : undefined;
+        if (since !== undefined && since >= START_CANCEL_GRACE_MS) this.cancelCountdown("toggle");
+        else this.deps.log(`recorder: session ${session?.id ?? "?"} toggle ignored while starting (${since === undefined ? "?" : Math.round(since)} ms after the start)`);
         return;
+      }
+      case "stopping": {
+        const session = this.session;
+        const since = session?.stopRequestedAt === undefined ? "?" : this.elapsed(session.stopRequestedAt);
+        this.deps.log(`recorder: session ${session?.id ?? "?"} toggle ignored while stopping (${since} ms after the stop)`);
+        return;
+      }
     }
   }
 
@@ -382,9 +401,10 @@ export class Recorder {
    * arrive after capture began. It still means "no recording", so it stops at
    * once and the file is saved, as a toggle after `record` would.
    *
-   * The same Cancel is offered while starting. With the countdown Off,
-   * `record` goes out at `prepared` and the state stays starting, so a Cancel
-   * after it becomes the stop-on-start request, as it does during a countdown.
+   * The same Cancel is offered while starting, and a toggle reaches it once the
+   * start has lasted the grace. With the countdown Off, `record` goes out at
+   * `prepared` and the state stays starting, so a Cancel after it becomes the
+   * stop-on-start request, as it does during a countdown.
    */
   cancelCountdown(reason: "toggle" | "menu" = "menu"): void {
     const session = this.session;
@@ -458,8 +478,11 @@ export class Recorder {
   shutdown(): Promise<boolean> {
     if (this.shuttingDown) return this.shuttingDown;
     this.quitAdmission = true;
-    // No media exists before `record`: quit cancels the attempt instead of
-    // recording and saving it. After `record`, capture stops once it starts.
+    // No media exists before `record`: quit cancels the attempt at once, as
+    // Cancel recording does (plan 065), instead of waiting for a capture
+    // request that may stay pending for minutes. The mark covers whatever
+    // could end the attempt before `check` runs. After `record`, capture
+    // stops once it starts.
     const pending = this.session;
     if (pending && (pending.phase === "opening" || pending.phase === "preparing")) pending.cancelOnPrepared ??= "quit";
     if (pending && pending.phase === "arming") pending.stopOnStart = true;
@@ -476,7 +499,8 @@ export class Recorder {
         if (checking) return;
         checking = true;
         if (this._state.type === "recording") this.stop();
-        if (this.session?.phase === "countdown") this.cancel(this.session, "quit");
+        const phase = this.session?.phase;
+        if (phase === "opening" || phase === "preparing" || phase === "countdown") this.cancel(this.session!, "quit");
         checking = false;
         if (!this.mediaPending) finish(true);
       };
@@ -484,7 +508,7 @@ export class Recorder {
       this.workChanged.add(check);
       const timer = setTimeout(() => {
         // Capture's own start/stop timers own failure. A quit deadline cannot
-        // cancel an in-flight permission request or a filesystem operation.
+        // end a filesystem operation the cancelled attempt still awaits.
         finish(false);
       }, this.deps.shutdownTimeoutMs);
       check();

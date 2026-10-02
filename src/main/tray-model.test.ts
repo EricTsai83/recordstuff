@@ -153,6 +153,16 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(enabledActions(m.menu)).toEqual(["cancelCountdown", "openSettings", "revealLog", "quit"]);
   });
 
+  it("starting names the shortcut on Cancel recording, as the countdown does (plan 065)", () => {
+    const cancel = (ctx: AppContext) => trayModel({ type: "starting" }, ctx).menu.find((i) => i.kind === "item" && i.action === "cancelCountdown");
+    expect(cancel(mac)).toMatchObject({ label: "取消錄影", toolTip: "以 ⌘⇧1 取消錄影", accelerator: "CommandOrControl+Shift+1" });
+    expect(cancel({ ...mac, language: "en" })).toMatchObject({ label: "Cancel recording", toolTip: "Cancel recording with ⌘⇧1", accelerator: "CommandOrControl+Shift+1" });
+    for (const hotkey of [{ ...DEFAULT_HOTKEY, registered: false }, { ...DEFAULT_HOTKEY, enabled: false, registered: true }]) {
+      expect(cancel({ ...mac, hotkey })).not.toHaveProperty("toolTip");
+      expect(cancel({ ...mac, hotkey })).not.toHaveProperty("accelerator");
+    }
+  });
+
   it("recording: red icon, REC title, stop; output dir items greyed", () => {
     const m = trayModel({ type: "recording", startedAt: "2026-09-11T06:30:00Z" }, mac);
     expect(m.icon).toBe("recording");

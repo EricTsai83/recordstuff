@@ -261,9 +261,103 @@ describe("Recorder happy path", () => {
   });
 });
 
+describe("a toggle during a long start (plan 065)", () => {
+  function timed(overrides: Parameters<typeof setup>[0] = {}) {
+    const clock = { now: 0 };
+    const logs: string[] = [];
+    const ctx = setup({ ...overrides, log: (message) => logs.push(message), deps: { ...overrides.deps, monotonic: () => clock.now } });
+    return { ...ctx, clock, logs };
+  }
+  const outcomes = (ctx: ReturnType<typeof setup>, from = 0) =>
+    ctx.events.slice(from).filter((event) => event.type === "failed" || event.type === "failureStatus" || event.type === "saved" || event.type === "cancelled");
+
+  it("ignores and logs a press within the grace, including one 8 ms after the start (plan 063's case)", async () => {
+    const ctx = timed({ deps: { countdownSeconds: () => 3 } });
+    ctx.recorder.toggle();
+    await flush();
+    for (const at of [8, 999]) {
+      ctx.clock.now = at;
+      ctx.recorder.toggle();
+      expect(ctx.recorder.state.type).toBe("starting");
+      expect(ctx.logs).toContain(`recorder: session s1 toggle ignored while starting (${at} ms after the start)`);
+    }
+    expect(ctx.host.started).toEqual(["s1"]);
+    expect(ctx.host.stopped).toEqual([]);
+    ctx.host.emit(prepared("s1"));
+    expect(ctx.recorder.state).toEqual({ type: "countdown", remaining: 3 });
+  });
+
+  it("after the grace, cancels an attempt preparing capture as Cancel recording does, keeping Show last recording", async () => {
+    const ctx = timed({ deps: { countdownSeconds: () => 3 } });
+    ctx.recorder.toggle();
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    await vi.advanceTimersByTimeAsync(3000);
+    ctx.host.emit(chunk("s1", 0));
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    const lastSavedPath = ctx.writers[0]!.finalPath;
+    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath });
+
+    ctx.clock.now = 10_000;
+    ctx.recorder.toggle();
+    await flush();
+    const before = ctx.events.length;
+    ctx.clock.now = 11_000;
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath });
+    expect(ctx.host.stopped.at(-1)).toBe("s1");
+    expect(ctx.writers[1]!.abandoned).toBe(true);
+    expect(outcomes(ctx, before)).toEqual([{ type: "cancelled", reason: "toggle", session: traced() }]);
+    expect(ctx.logs).toContain("recorder: session s1 cancelled (toggle) while preparing capture");
+    // Its capture-request timer went with it, and a late prepared is a stale session's.
+    ctx.host.emit(prepared("s1"));
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(ctx.host.recorded).toEqual(["s1"]);
+    expect(outcomes(ctx, before)).toHaveLength(1);
+  });
+
+  it("after the grace, cancels an attempt still opening the folder before any capture request or file", async () => {
+    let open!: () => void;
+    const ctx = timed({ ensureWritableDir: () => new Promise<void>((resolve) => { open = resolve; }) });
+    ctx.recorder.toggle();
+    await flush();
+    ctx.clock.now = 1500;
+    ctx.recorder.toggle();
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+    open();
+    await flush();
+    expect(ctx.host.started).toEqual([]);
+    expect(ctx.writers).toEqual([]);
+    expect(outcomes(ctx)).toEqual([{ type: "cancelled", reason: "toggle", session: traced() }]);
+  });
+
+  it("with the countdown Off, a press after record becomes stop-on-start and the recording is saved", async () => {
+    const ctx = timed();
+    ctx.host.autoStart = false;
+    ctx.recorder.toggle();
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    expect(ctx.host.recorded).toEqual(["s1"]);
+    expect(ctx.recorder.state.type).toBe("starting");
+    ctx.clock.now = 1200;
+    ctx.recorder.toggle();
+    expect(ctx.logs).toContain("recorder: session s1 cancel (toggle) arrived after record was sent; stopping once capture starts");
+    ctx.host.emit({ type: "started", sessionId: "s1" });
+    expect(ctx.recorder.state.type).toBe("stopping");
+    ctx.host.emit(chunk("s1", 0));
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(outcomes(ctx).map((event) => event.type)).toEqual(["saved"]);
+  });
+});
+
 describe("Recorder ignores illegal transitions", () => {
   it("ignores clicks while starting and stopping", async () => {
-    const ctx = setup();
+    // A fixed clock keeps the start inside the grace (plan 065) however slowly the test runs.
+    const ctx = setup({ deps: { monotonic: () => 0 } });
     ctx.recorder.toggle();
     await flush();
     expect(ctx.recorder.state.type).toBe("starting");
@@ -279,6 +373,20 @@ describe("Recorder ignores illegal transitions", () => {
     ctx.recorder.toggle();
     expect(ctx.recorder.state.type).toBe("stopping");
     expect(ctx.host.stopped).toEqual(["s1"]);
+  });
+
+  it("logs a toggle ignored while stopping", async () => {
+    let clock = 0;
+    const logs: string[] = [];
+    const ctx = setup({ log: (message) => logs.push(message), deps: { monotonic: () => clock } });
+    await startRecording(ctx);
+    clock = 100;
+    ctx.recorder.toggle();
+    clock = 340;
+    ctx.recorder.toggle();
+    expect(ctx.recorder.state.type).toBe("stopping");
+    expect(ctx.host.stopped).toEqual(["s1"]);
+    expect(logs).toContain("recorder: session s1 toggle ignored while stopping (240 ms after the stop)");
   });
 
   it("two rapid clicks in idle start exactly one session", async () => {
@@ -947,18 +1055,20 @@ describe("Recorder shutdown", () => {
     expect(ctx.writers[0]!.finished).toBe(true);
   });
 
-  it("cancels an attempt still preparing when prepared arrives: no media existed, so nothing records or fails", async () => {
+  it("cancels an attempt still preparing at once, without waiting for prepared (plan 065): no media existed, so nothing records or fails", async () => {
     const ctx = setup({ deps: { countdownSeconds: () => 3 } });
     ctx.recorder.toggle();
     await flush();
     const shutdown = ctx.recorder.shutdown();
     await flush();
-    expect(ctx.recorder.state.type).toBe("starting");
+    expect(ctx.recorder.state.type).toBe("idle");
+    expect(await shutdown).toBe(true);
+    expect(ctx.host.stopped).toEqual(["s1"]);
+    // The late answer is a stale session's: stopped again, never counted down or recorded.
     ctx.host.emit(prepared("s1"));
     await flush();
-    expect(await shutdown).toBe(true);
     expect(ctx.host.recorded).toEqual([]);
-    expect(ctx.host.stopped).toEqual(["s1"]);
+    expect(ctx.host.stopped).toEqual(["s1", "s1"]);
     expect(ctx.states.map((state) => state.type)).toEqual(["starting", "idle"]);
     expect(ctx.writers[0]!.abandoned).toBe(true);
     expect(ctx.events.filter((event) => event.type === "cancelled")).toEqual([
@@ -985,8 +1095,6 @@ describe("Recorder shutdown", () => {
     let admitted: boolean | undefined;
     void ctx.recorder.shutdown().then((safe) => { admitted = safe; });
     await flush();
-    ctx.host.emit(prepared("s1"));
-    await flush();
     expect(ctx.recorder.state.type).toBe("idle");
     expect(admitted).toBeUndefined();
     expect(writers[0]!.abandoned).toBe(false);
@@ -998,11 +1106,12 @@ describe("Recorder shutdown", () => {
     expect(admitted).toBe(true);
   });
 
-  it("cancels at prepared with the countdown Off too", async () => {
+  it("a prepared arriving before the deferred check still cancels, with the countdown Off too", async () => {
     const ctx = setup();
     ctx.recorder.toggle();
     await flush();
     const shutdown = ctx.recorder.shutdown();
+    // Synchronously after the quit, before its check runs: the mark turns it into the cancel.
     ctx.host.emit(prepared("s1"));
     await flush();
     expect(await shutdown).toBe(true);
@@ -1011,18 +1120,23 @@ describe("Recorder shutdown", () => {
     expect(ctx.events.filter((event) => event.type === "cancelled")).toHaveLength(1);
   });
 
-  it("cancels during opening without asking for capture at all", async () => {
+  it("cancels during opening without asking for capture at all, once the folder check it awaits returns", async () => {
     let open!: () => void;
     const ctx = setup({ ensureWritableDir: () => new Promise<void>((resolve) => { open = resolve; }) });
     ctx.recorder.toggle();
     await flush();
-    const shutdown = ctx.recorder.shutdown();
+    let admitted: boolean | undefined;
+    void ctx.recorder.shutdown().then((safe) => { admitted = safe; });
+    await flush();
+    expect(ctx.recorder.state.type).toBe("idle");
+    // The cancelled attempt still owns the folder check, so quit waits for it.
+    expect(admitted).toBeUndefined();
     open();
     await flush();
-    expect(await shutdown).toBe(true);
+    expect(admitted).toBe(true);
     expect(ctx.host.started).toEqual([]);
     expect(ctx.host.stopped).toEqual([]);
-    expect(ctx.writers[0]!.abandoned).toBe(true);
+    expect(ctx.writers).toEqual([]);
     expect(ctx.events.filter((event) => event.type === "cancelled")).toEqual([{ type: "cancelled", reason: "quit", session: traced() }]);
   });
 
@@ -1787,22 +1901,22 @@ it("retains a late-open candidate as uncertain when its close cannot be confirme
   expect(ctx.events.filter(event => event.type === "failed")).toHaveLength(1);
 });
 
-it("defers quit without cancelling an interactive capture request at the quit deadline", async () => {
-  const ctx = setup({ captureRequestTimeoutMs: "default" });
+it("quits at once during an interactive capture request instead of waiting up to two minutes (plan 065)", async () => {
+  const logs: string[] = [];
+  const ctx = setup({ captureRequestTimeoutMs: "default", log: (message) => logs.push(message) });
   ctx.recorder.toggle(); await flush();
   const quitting = ctx.recorder.shutdown();
-  await vi.advanceTimersByTimeAsync(13_000);
-  expect(await quitting).toBe(false);
-  expect(ctx.recorder.state.type).toBe("starting");
-  expect(ctx.host.stopped).toEqual([]);
-  expect(ctx.events.some(event => event.type === "failed")).toBe(false);
-  // The attempt stays marked: its late answer cancels it instead of recording.
-  ctx.host.emit(prepared("s1")); await flush();
+  await flush();
+  expect(await quitting).toBe(true);
   expect(ctx.recorder.state.type).toBe("idle");
-  expect(ctx.host.recorded).toEqual([]);
   expect(ctx.host.stopped).toEqual(["s1"]);
+  expect(logs).toContain("recorder: session s1 cancelled (quit) while preparing capture");
+  // The capture request's timer went with the session: nothing fails two minutes later.
+  await vi.advanceTimersByTimeAsync(120_000);
+  ctx.host.emit(prepared("s1")); await flush();
+  expect(ctx.host.recorded).toEqual([]);
   expect(ctx.events.filter(event => event.type === "cancelled")).toHaveLength(1);
-  expect(ctx.events.some(event => event.type === "failed" || event.type === "saved")).toBe(false);
+  expect(ctx.events.some(event => event.type === "failed" || event.type === "failureStatus" || event.type === "saved")).toBe(false);
 });
 
 describe("disk headroom guard", () => {
@@ -2515,20 +2629,20 @@ describe("Recorder countdown (plan 040)", () => {
       }
     });
 
+    // Quit cancels at once (plan 065) and never waits for these; sleep still does.
     it("cancels, not fails, a marked attempt that times out, loses its host or its display before prepared", async () => {
-      const triggers: Array<[string, "sleep" | "quit", (ctx: ReturnType<typeof counting>) => Promise<unknown> | void, string]> = [
-        ["capture request timeout", "sleep", () => vi.advanceTimersByTimeAsync(8000), "capture request timed out"],
-        ["host crash", "sleep", (ctx) => ctx.host.crash(), "capture_host_crashed after cancel (sleep) was requested: killed"],
-        ["unresponsive host", "sleep", (ctx) => ctx.host.hang(), "capture_host_unresponsive"],
-        ["display removal", "sleep", (ctx) => ctx.recorder.displayRemoved(), "recording display removed"],
-        ["capture request timeout after a deferred quit", "quit", () => vi.advanceTimersByTimeAsync(8000), "capture request timed out after cancel (quit)"],
+      const reason = "sleep";
+      const triggers: Array<[string, (ctx: ReturnType<typeof counting>) => Promise<unknown> | void, string]> = [
+        ["capture request timeout", () => vi.advanceTimersByTimeAsync(8000), "capture request timed out"],
+        ["host crash", (ctx) => ctx.host.crash(), "capture_host_crashed after cancel (sleep) was requested: killed"],
+        ["unresponsive host", (ctx) => ctx.host.hang(), "capture_host_unresponsive"],
+        ["display removal", (ctx) => ctx.recorder.displayRemoved(), "recording display removed"],
       ];
-      for (const [name, reason, trigger, logged] of triggers) {
+      for (const [name, trigger, logged] of triggers) {
         const ctx = counting(3);
         ctx.recorder.toggle();
         await flush();
-        if (reason === "sleep") ctx.recorder.systemWillSleep();
-        else void ctx.recorder.shutdown();
+        ctx.recorder.systemWillSleep();
         await trigger(ctx);
         await flush();
         expect(ctx.recorder.state.type, name).toBe("idle");
