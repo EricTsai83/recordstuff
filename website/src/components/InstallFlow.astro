@@ -9,8 +9,8 @@ const stages = [
   { label: "Grant access", body: "Grant Screen & System Audio Recording access in System Settings.", kind: "permissions" },
   { label: "Record", body: "Click the icon to record. Click again to stop and save.", kind: "record" },
 ] as const;
-// The wire: the trunk forks squarely round the two permissions, with small rounded corners, and rejoins
-// into the tail, in the 1000 x 240 viewBox the band is stretched to.
+// The still wire: the trunk forks squarely round the two permissions, with small rounded corners, and
+// rejoins into the tail. It is what the script draws, in the 1000 x 240 viewBox the band is stretched to.
 const wire = "M100 120H590Q600 120 600 110V70Q600 60 610 60H790Q800 60 800 70V110Q800 120 810 120H900M590 120Q600 120 600 130V170Q600 180 610 180H790Q800 180 800 170V130Q800 120 810 120";
 ---
 
@@ -21,9 +21,11 @@ const wire = "M100 120H590Q600 120 600 110V70Q600 60 610 60H790Q800 60 800 70V11
     <svg class="desktop-wires" viewBox="0 0 1000 240" preserveAspectRatio="none" aria-hidden="true">
       <path d={wire} />
     </svg>
+    <!-- The same wire, laid out in px and drawn by the script as one stroke (one path per arm). -->
+    <svg class="desktop-wires trace" aria-hidden="true"><path /><path /></svg>
 
     <ol class="stages">
-      {stages.map((stage) => <li class:list={["stage", stage.kind === "permissions" && "stage--permissions"]}>
+      {stages.map((stage) => <li class:list={["stage", stage.kind === "permissions" && "stage--permissions"]} data-kind={stage.kind}>
         <div class="stage-art" aria-hidden="true">
           {stage.kind === "permissions" ? <>
             <svg class="mobile-wires" viewBox="0 0 1000 180" preserveAspectRatio="none"><path d="M500 0V30M250 72V38Q250 30 258 30H742Q750 30 750 38V152Q750 160 742 160H258Q250 160 250 152V72M500 160V180" /></svg>
@@ -38,14 +40,205 @@ const wire = "M100 120H590Q600 120 600 110V70Q600 60 610 60H790Q800 60 800 70V11
   </div>
 </div>
 
+<script>
+  // The first time the diagram scrolls into view it draws itself in one stroke, Download to Record, and
+  // each stage appears as the drawing reaches it and acts out its step; then it stays drawn. Nothing ahead
+  // of the drawing shows. Motion is armed only once this runs, so without scripting, with reduced motion or
+  // on a narrow screen (where the diagram stacks into a column), the still diagram shows.
+  const still = matchMedia("(prefers-reduced-motion: reduce), (max-width: 900px)");
+  /** Milliseconds to draw the wire from Download to Record, at one pace and without stopping. */
+  const DRAW_MS = 2000;
+  /** Radius of the wire's corners round the permissions, in px. */
+  const CORNER = 10;
+  const STAGE_ATTRS = ["data-power", "data-act"];
+
+  /** A point where a stage starts (the drawing reaches its box) or the drawing leaves it, as px along the wire. */
+  type Mark = { stage: number; edge: "in" | "out"; at: number };
+
+  for (const flow of document.querySelectorAll<HTMLElement>(".install-flow")) {
+    const stages = [...flow.querySelectorAll<HTMLElement>(".stage")];
+    const trace = flow.querySelector<SVGSVGElement>(".trace");
+    const strokes = [...flow.querySelectorAll<SVGPathElement>(".trace path")];
+    if (!trace || strokes.length < 2) continue;
+    let visible = false;
+    let played = false;
+    let run = 0;
+    let owned: Animation[] = [];
+    let held: Animation[] = [];
+
+    /**
+     * The wire's two arms in px at the current width, as `wire` draws them: the trunk, the square fork round
+     * Screen (above) and System audio (below), and the tail into Record. Both arms are the same length, so
+     * they part and meet together as they draw. Columns are fifths of the width; --box and --pbox are half
+     * an icon's opaque box, so the marks fall where the drawing reaches and leaves each one.
+     */
+    const layout = (): { width: number; box: number; length: number; arms: string[]; marks: Mark[] } => {
+      const width = flow.clientWidth;
+      const style = getComputedStyle(flow);
+      const box = parseFloat(style.getPropertyValue("--box"));
+      const pbox = parseFloat(style.getPropertyValue("--pbox"));
+      const x = (percent: number): number => (percent * width) / 100;
+      const r = CORNER;
+      const arm = (side: -1 | 1): string => {
+        const y = 120 + side * 60;
+        // Sweep flags for the four turns: the upper arm turns left, right, right, left; the lower the reverse.
+        const [a, b, c, d] = side < 0 ? [0, 1, 1, 0] : [1, 0, 0, 1];
+        return [
+          `M${x(10)} 120H${x(60) - r}`,
+          `A${r} ${r} 0 0 ${a} ${x(60)} ${120 + side * r}V${y - side * r}`,
+          `A${r} ${r} 0 0 ${b} ${x(60) + r} ${y}H${x(80) - r}`,
+          `A${r} ${r} 0 0 ${c} ${x(80)} ${y - side * r}V${120 + side * r}`,
+          `A${r} ${r} 0 0 ${d} ${x(80) + r} 120H${x(90)}`,
+        ].join("");
+      };
+      const quarter = (Math.PI * r) / 2;
+      const across = x(60) + r; // where an arm's long side starts
+      const acrossAt = x(60) - r - x(10) + 2 * quarter + (60 - 2 * r);
+      const tail = x(80) + r; // where the tail starts
+      const tailAt = acrossAt + (x(80) - r - across) + 2 * quarter + (60 - 2 * r);
+      const onTrunk = (px: number): number => px - x(10);
+      const marks: Mark[] = [
+        { stage: 0, edge: "out", at: onTrunk(x(10) + box) },
+        { stage: 1, edge: "in", at: onTrunk(x(30) - box) },
+        { stage: 1, edge: "out", at: onTrunk(x(30) + box) },
+        { stage: 2, edge: "in", at: onTrunk(x(50) - box) },
+        { stage: 2, edge: "out", at: onTrunk(x(50) + box) },
+        { stage: 3, edge: "in", at: acrossAt + x(70) - pbox - across },
+        { stage: 3, edge: "out", at: acrossAt + x(70) + pbox - across },
+        { stage: 4, edge: "in", at: tailAt + x(90) - box - tail },
+      ];
+      return { width, box, length: tailAt + x(90) - tail, arms: [arm(-1), arm(1)], marks };
+    };
+    const own = (animation: Animation): Promise<Animation> => {
+      owned.push(animation);
+      // Cancelling rejects `finished`; only the awaited ones need to hear about it.
+      animation.finished.catch(() => undefined);
+      return animation.finished;
+    };
+    // Waits are animations too, all on the page's one timeline, so the stage cues stay in step with the
+    // drawing and pausing the flow's animations holds everything where it is.
+    const wait = (ms: number): Promise<Animation> => own(flow.animate([], { duration: ms }));
+    /** Shows a stage, fading it in over `fade` ms (as long as the drawing takes to cross its box), and sets its glyph acting. */
+    const reach = (stage: HTMLElement, fade: number): void => {
+      stage.style.setProperty("--fade-in", `${fade}ms`);
+      // A play starts by clearing these, a frame or more before they are set, so setting them starts the
+      // stage's animations without forcing a layout.
+      stage.dataset.power = "on";
+      stage.setAttribute("data-act", "");
+    };
+    /** Starts the drawing and every stage cue together; resolves when the drawing reaches Record. */
+    const draw = (): Promise<Animation> => {
+      const { width, box, length, arms, marks } = layout();
+      trace.setAttribute("viewBox", `0 0 ${width} 240`);
+      const ms = (px: number): number => (px / length) * DRAW_MS;
+      const timing: KeyframeAnimationOptions = { duration: DRAW_MS, easing: "linear", fill: "forwards" };
+      // The wire draws itself as a dash as long as the path, slid in from its full length. Before and after
+      // a play it is hidden the same way, so cancelling the drawing hides it again.
+      const drawings = strokes.map((stroke, i) => {
+        stroke.setAttribute("d", arms[i]);
+        stroke.style.strokeDasharray = `${length} ${length}`;
+        stroke.style.strokeDashoffset = `${length}`;
+        return own(stroke.animate([{ strokeDashoffset: length }, { strokeDashoffset: 0 }], timing));
+      });
+      for (const cue of marks.filter(({ edge }) => edge === "in")) {
+        // Record has no exit, so it fades in over a box's width at the same pace.
+        const exit = marks.find(({ stage, edge }) => stage === cue.stage && edge === "out");
+        const fade = ms(exit ? exit.at - cue.at : 2 * box);
+        void wait(ms(cue.at)).then(() => reach(stages[cue.stage], fade), () => undefined);
+      }
+      return drawings[0];
+    };
+    const reset = (): void => {
+      run++;
+      owned.forEach((animation) => animation.cancel());
+      owned = [];
+      held = [];
+      stages.forEach((stage) => STAGE_ATTRS.forEach((name) => stage.removeAttribute(name)));
+    };
+    // The section fades up into place as it scrolls in. Starting inside that move would run the first
+    // glyph's action on a layer still in motion, so the drawing waits for it to settle.
+    const settled = async (): Promise<void> => {
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const block = flow.closest<HTMLElement>("[data-reveal]");
+      await Promise.all((block?.getAnimations() ?? []).map((animation) => animation.finished.catch(() => undefined)));
+    };
+    const play = async (): Promise<void> => {
+      played = true;
+      reset();
+      const id = run;
+      try {
+        await settled();
+        if (id !== run) return;
+        await wait(400);
+        // Download fades in over the time the drawing takes to cross a box, and the wire sets off from its
+        // centre halfway through.
+        const { box, length } = layout();
+        const half = (box / length) * DRAW_MS;
+        reach(stages[0], 2 * half);
+        await wait(half);
+        await draw();
+      } catch {
+        // Reduced motion or a narrow screen cancelled this play; the still diagram stands.
+      }
+    };
+    const arm = (): void => {
+      if (still.matches) {
+        flow.removeAttribute("data-armed");
+        reset();
+        return;
+      }
+      flow.setAttribute("data-armed", "");
+      // Back from reduced motion or a narrow screen, a diagram already seen plays again.
+      if (visible && played) void play();
+    };
+
+    new IntersectionObserver(
+      ([entry]) => {
+        visible = entry.isIntersecting;
+        if (still.matches) return;
+        if (visible && !played) void play();
+        // Scrolled away mid-draw, everything holds where it is and carries on when it is back.
+        else if (visible) {
+          held.forEach((animation) => animation.play());
+          held = [];
+        } else {
+          held = flow.getAnimations({ subtree: true }).filter((animation) => animation.playState === "running");
+          held.forEach((animation) => animation.pause());
+        }
+      },
+      { threshold: 0.4 },
+    ).observe(flow);
+
+    // The drawn wire is in px, so on a new width it is laid out again; the drawing's keyframes take the new
+    // length and keep their progress, so a finished drawing stays fully drawn and a running one carries on.
+    new ResizeObserver(() => {
+      if (!strokes[0].getAttribute("d") || still.matches) return;
+      const { width, length, arms } = layout();
+      trace.setAttribute("viewBox", `0 0 ${width} 240`);
+      strokes.forEach((stroke, i) => {
+        stroke.setAttribute("d", arms[i]);
+        stroke.style.strokeDasharray = `${length} ${length}`;
+        stroke.style.strokeDashoffset = `${length}`;
+        stroke.getAnimations().forEach((animation) => (animation.effect as KeyframeEffect).setKeyframes([{ strokeDashoffset: length }, { strokeDashoffset: 0 }]));
+      });
+    }).observe(flow);
+
+    still.addEventListener("change", arm);
+    arm();
+  }
+</script>
+
 <style>
   .install-flow {
-    /* The narrow layout's connectors; the desktop wire is the brighter grey below. */
+    /* The narrow layout's connectors; the desktop wire is the drawn grey below. */
     --wire: color-mix(in srgb, var(--fg) 30%, transparent);
+    /* Opaque rather than translucent, so where the drawn arms share the trunk and tail they are not doubled. */
     --line: color-mix(in srgb, var(--fg) 62%, var(--bg));
     --art-height: 240px;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.645, 0.045, 0.355, 1);
     /* Half the width of an icon's opaque box (64px glyph + 16px padding a side) and of a permission glyph's
-       (48 + 16): the wire fades out at these edges. */
+       (48 + 16): the wire fades out and the drawing reaches each stage at these edges. */
     --box: 48px;
     --pbox: 40px;
     --fade: 32px;
@@ -83,6 +276,9 @@ const wire = "M100 120H590Q600 120 600 110V70Q600 60 610 60H790Q800 60 800 70V11
     mask-image: var(--wire-mask);
   }
   .desktop-wires path, .mobile-wires path { vector-effect: non-scaling-stroke; }
+  /* Not stretched to the band (the script sets its viewBox to the band's px), so its stroke and dash stay true. */
+  .trace { overflow: visible; }
+  .trace path { vector-effect: none; }
   .permission-node { position: absolute; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: .4rem; white-space: nowrap; color: var(--fg-muted); font-size: .75rem; }
   .permission-node--screen { top: 26px; }
   .permission-node--audio { top: 146px; }
@@ -90,6 +286,81 @@ const wire = "M100 120H590Q600 120 600 110V70Q600 60 610 60H790Q800 60 800 70V11
   .permission-node .glyph :global(svg) { width: 48px; height: 48px; }
   .permission-node>span:last-child { background: var(--bg); padding: 0 .4rem; }
   .mobile-wires { display: none; }
+
+  /* ── Drawing in one stroke ────────────────────────────────────────────
+     Armed, nothing ahead of the drawing shows: the still wire gives way to
+     .trace, which the script draws, and each stage is hidden until the
+     drawing reaches it, then fades in over --fade-in. Hiding is set at once
+     (fading it would overlap the drawing's start). The stages' fade is
+     composited, its layers made when armed rather than on first use. */
+  .install-flow[data-armed] .desktop-wires:not(.trace) { opacity: 0; }
+  .install-flow[data-armed] :is(.stage-label, .permission-node > span:last-child),
+  .install-flow[data-armed] .glyph > :global(svg) { opacity: 0; will-change: opacity; }
+  .install-flow .stage[data-power="on"] :is(.stage-label, .permission-node > span:last-child) { opacity: 1; transition: opacity .3s ease; }
+  /* The fade-in animation starts from hidden, so the drawing switches to full opacity at once and the animation does the fade. */
+  .install-flow .stage[data-power="on"] .glyph > :global(svg) { opacity: 1; animation: flow-appear var(--fade-in, .2s) linear backwards; }
+
+  /* ── Each glyph acts out its step as the drawing reaches it ───────────
+     Parts scale and turn about their own centre; the pointer presses about its tip. */
+  .glyph :global(:is(.ig-arrow, .ig-tray, .ig-app, .ig-folder, .ig-dot, .ig-ring, .ig-rec, .ig-bar, .ig-frame, .ig-mark)) { transform-box: fill-box; transform-origin: center; }
+  .glyph :global(.ig-cursor) { transform-box: view-box; transform-origin: 44px 40px; }
+  .install-flow .stage[data-act] .permission-node--audio { --act: .1s; }
+
+  /* Download: the arrow settles into place from above and the tray rises a little into place; nothing bounces. */
+  .install-flow .stage[data-act][data-kind="download"] .glyph :global(.ig-arrow) { animation: ig-drop .6s var(--ease-out) both; }
+  .install-flow .stage[data-act][data-kind="download"] .glyph :global(.ig-tray) { animation: ig-rise .6s var(--ease-out) both; }
+
+  /* Drag: the dashed hint clears as the app lifts and follows its route (down, then across) into the folder,
+     which takes it; then the app and the hint come back in the DMG, ready as drawn. */
+  .install-flow .stage[data-act][data-kind="drag"] .glyph :global(.ig-app) { animation: ig-carry 1s var(--ease-in-out) both; }
+  .install-flow .stage[data-act][data-kind="drag"] .glyph :global(.ig-folder) { animation: ig-receive 1s var(--ease-out) both; }
+  .install-flow .stage[data-act][data-kind="drag"] .glyph :global(.ig-trail) { animation: ig-clear 1s ease both; }
+
+  /* Open: the pointer comes in and clicks; the app's red dot wakes. */
+  .install-flow .stage[data-act][data-kind="open"] .glyph :global(.ig-cursor) { animation: ig-press .9s var(--ease-in-out) both; }
+  .install-flow .stage[data-act][data-kind="open"] .glyph :global(.ig-dot) { animation: ig-wake .9s var(--ease-out) both; }
+
+  /* Grant access: the screen powers on with a small swell and its corner mark appears; the audio bars bounce like a level meter. */
+  .install-flow .stage[data-act] .glyph :global(.ig-frame) { animation: ig-screen-on .7s var(--ease-out) both; }
+  .install-flow .stage[data-act] .glyph :global(.ig-mark) { animation: ig-show .5s var(--ease-out) .25s both; }
+  .install-flow .stage[data-act] .glyph :global(.ig-bar) { animation: ig-level .9s var(--ease-in-out) calc(var(--act, 0s) + var(--b) * 55ms) both; }
+
+  /* Record: the pointer rises to the menu bar and a red dot lights inside the ring, as in the RecordStuff mark, and stays. */
+  .install-flow .stage[data-act][data-kind="record"] .glyph :global(.ig-arrow) { animation: ig-lift .7s var(--ease-out) both; }
+  .install-flow .stage[data-act][data-kind="record"] .glyph :global(.ig-rec) { animation: ig-rec-on .8s var(--ease-out) .3s both; }
+
+  @keyframes flow-appear { from { opacity: 0; } }
+  @keyframes ig-drop { from { translate: 0 -6px; opacity: 0; } }
+  @keyframes ig-rise { from { translate: 0 3px; } }
+  @keyframes ig-carry {
+    12% { translate: 0 0; scale: 1.1; opacity: 1; }
+    38% { translate: 0 23px; scale: .8; opacity: 1; }
+    60% { translate: 31px 28px; scale: .55; opacity: 1; }
+    68% { translate: 31px 28px; scale: .45; opacity: 0; }
+    76% { translate: 0 0; scale: .85; opacity: 0; }
+  }
+  @keyframes ig-clear { 0%, 100% { opacity: 1; } 12%, 80% { opacity: 0; } }
+  @keyframes ig-receive { 0%, 50%, 100% { scale: 1; } 66% { scale: 1.07; } }
+  @keyframes ig-press {
+    from { translate: 7px 9px; opacity: 0; }
+    35% { translate: 0 0; opacity: 1; scale: 1; }
+    48% { scale: .82; }
+    62% { scale: 1; }
+  }
+  @keyframes ig-wake { 0%, 48% { scale: 0; } 72% { scale: 1.3; } }
+  @keyframes ig-screen-on { from { scale: .88; } 55% { scale: 1.05; } }
+  @keyframes ig-show { from { opacity: 0; translate: 0 4px; } }
+  @keyframes ig-level {
+    20% { scale: 1 .3; }
+    45% { scale: 1 1.25; }
+    70% { scale: 1 .6; }
+  }
+  @keyframes ig-lift { from { translate: 0 6px; opacity: 0; } }
+  @keyframes ig-rec-on {
+    from { opacity: 0; scale: 0; }
+    55% { opacity: 1; scale: 1.3; }
+    to { opacity: 1; scale: 1; }
+  }
 
   @media (max-width: 1000px) {
     .install-flow { --box: 38px; --fade: 24px; }
@@ -112,5 +383,8 @@ const wire = "M100 120H590Q600 120 600 110V70Q600 60 610 60H790Q800 60 800 70V11
     .permission-node--audio { left: 75%; }
     .permission-node .glyph { padding: 6px 10px; }
     .permission-node>span:last-child { font-size: .7rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .install-flow *, .install-flow :global(svg *) { animation: none; }
   }
 </style>
