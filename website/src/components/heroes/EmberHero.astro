@@ -8,11 +8,7 @@ import { links, release } from "../../lib/release";
 
 <section class="hero">
   <div class="container hero-inner">
-    <h1 class="hero-title display">
-      {hero.titleLines.map((line, index) => (
-        <Fragment>{index > 0 && <br />}<span class={index > 0 ? "accent" : undefined}>{line}</span></Fragment>
-      ))}
-    </h1>
+    <h1 class="hero-title display">{hero.title}</h1>
     <div class="hero-actions">
       <a class="btn btn-primary btn-lg" href={release.dmgUrl}><AppleMark size={18} /><span>{hero.primaryCta}</span></a>
       <a class="hero-source-link" href={links.repository} target="_blank" rel="noopener noreferrer"><GitHubMark size={15} /><span>{hero.secondaryCta}</span></a>

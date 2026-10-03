@@ -7,10 +7,9 @@
 import { links, release } from "../lib/release";
 
 interface Props {
-  class?: string;
   platform?: "macos" | "windows";
 }
-const { class: className, platform = "macos" } = Astro.props;
+const { platform = "macos" } = Astro.props;
 const windows = platform === "windows" ? release.windows : undefined;
 if (platform === "windows" && !windows) throw new Error(`Release ${release.version} carries no Windows installer.`);
 const file = windows
@@ -24,7 +23,7 @@ const rows = [
 ];
 ---
 
-<div class:list={["checksum", className]}>
+<div class="checksum">
   <dl class="facts">
     {
       rows.map((row) => (

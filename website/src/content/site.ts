@@ -18,7 +18,7 @@ export const meta = {
 } as const;
 
 export const hero = {
-  titleLines: ["One click. Recording."],
+  title: "One click. Recording.",
   primaryCta: "Download for macOS",
   secondaryCta: "View source on GitHub",
   /** The demo loops for as long as the page is open; this control stops it (WCAG 2.2.2). */
