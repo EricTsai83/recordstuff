@@ -624,20 +624,27 @@ async function main() {
   if (mode === 'verify') { console.log(`Verified ${metadata.file}: ${metadata.sha256}`); return; }
   // Every version after the last macOS-only one ships both platforms or nothing.
   const windows = carriesWindows(c.version) ? await verifyWindowsCandidate(directory, c) : undefined;
-  if (windows) writeFileSync(path.join(directory, 'SHA256SUMS'), sha256sums([metadata, windows]));
-  // publish: the tag already exists (pushed by the maintainer); the release must not.
-  // One listing answers both "not yet released" and where latest must point.
-  const existing = releases(c.repository);
-  assertUnreleased(existing, tag);
-  if (api(`repos/${c.repository}/commits/${tag}`).sha !== c.sourceCommit) throw new Error('Tag does not point to the verified source commit.');
-  const body = path.join(directory, 'release-notes.md');
-  writeFileSync(body, notes(c.version, c.repository, c.sourceCommit));
-  const flag = latestFlag(c.version, existing);
-  run('gh', ['release', 'create', tag, '--repo', c.repository, '--verify-tag', flag,
-    '--title', `RecordStuff ${c.version} — macOS arm64${windows ? ' and Windows x64' : ''}`, '--notes-file', body,
-    ...[metadata.file, 'SHA256SUMS', 'release.json', ...(windows ? [windows.file, WINDOWS_RECORD] : [])].map(f => path.join(directory, f))]);
-  const as = { '--prerelease': ' as a pre-release', '--latest': ' as latest', '--latest=false': ' without moving latest' }[flag];
-  console.log(`Published ${tag}${as} from verified candidates ${metadata.sha256}${windows ? ` and ${windows.sha256}` : ''}.`);
+  const sums = path.join(directory, 'SHA256SUMS');
+  if (windows) writeFileSync(sums, sha256sums([metadata, windows]));
+  try {
+    // publish: the tag already exists (pushed by the maintainer); the release must not.
+    // One listing answers both "not yet released" and where latest must point.
+    const existing = releases(c.repository);
+    assertUnreleased(existing, tag);
+    if (api(`repos/${c.repository}/commits/${tag}`).sha !== c.sourceCommit) throw new Error('Tag does not point to the verified source commit.');
+    const body = path.join(directory, 'release-notes.md');
+    writeFileSync(body, notes(c.version, c.repository, c.sourceCommit));
+    const flag = latestFlag(c.version, existing);
+    run('gh', ['release', 'create', tag, '--repo', c.repository, '--verify-tag', flag,
+      '--title', `RecordStuff ${c.version} — macOS arm64${windows ? ' and Windows x64' : ''}`, '--notes-file', body,
+      ...[metadata.file, 'SHA256SUMS', 'release.json', ...(windows ? [windows.file, WINDOWS_RECORD] : [])].map(f => path.join(directory, f))]);
+    const as = { '--prerelease': ' as a pre-release', '--latest': ' as latest', '--latest=false': ' without moving latest' }[flag];
+    console.log(`Published ${tag}${as} from verified candidates ${metadata.sha256}${windows ? ` and ${windows.sha256}` : ''}.`);
+  } catch (error) {
+    // The candidate's own list again, so a fix and rerun of verify or publish still matches it.
+    if (windows) writeFileSync(sums, sha256sums([metadata]));
+    throw error;
+  }
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   void main().catch((error: unknown) => { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; });

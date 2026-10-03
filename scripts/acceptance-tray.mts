@@ -109,8 +109,8 @@ let roundError: string | undefined;
 let blocked: string | undefined;
 /** Set once preflight accepted this bundle and pid; cleanup operates no app it never took over (review pass 2). */
 let owned = false;
-/** Finder windows open before a Show last recording, so cleanup can find one an interrupted reveal opened. */
-let revealBaseline: { ids: Set<number>; folder: string } | undefined;
+/** Finder windows open before each Show last recording not yet cleaned up, so cleanup can find one a failed or interrupted reveal opened. */
+const revealBaselines: Array<{ ids: Set<number>; folder: string }> = [];
 
 /** This pid wrote the log's latest session and it is idle: the only app state the runner acts from. */
 const confirmedIdleFor = (text: readonly string[], expected: string): boolean => sessionBelongsTo(text, expected) && confirmedIdle(text);
@@ -221,9 +221,11 @@ async function runCase(id: string, title: string, language: Language | undefined
     c.problems.push(error instanceof Error ? error.message : String(error));
   }
   // A failed step must not leave its menu open, or its session running, under the next case.
-  await driver?.close().catch((error: unknown) => { c.problems.push(`menu left open: ${String(error)}`); });
-  if (settle && driver?.alive()) await settleIfBusy(driver, signal).then(saved => { if (saved) { recordings.push(saved); c.details.push(`settled a session the case left running; saved ${saved}`); } })
-    .catch((error: unknown) => { c.problems.push(`session left running: ${String(error)}`); });
+  // An interruption during this is not the case's failure: the round's cleanup closes and settles instead.
+  await driver?.close().catch((error: unknown) => { if (!signal.aborted) c.problems.push(`menu left open: ${String(error)}`); });
+  if (settle && driver?.alive() && !signal.aborted) await settleIfBusy(driver, signal).then(saved => { if (saved) { recordings.push(saved); c.details.push(`settled a session the case left running; saved ${saved}`); } })
+    .catch((error: unknown) => { if (!signal.aborted) c.problems.push(`session left running: ${String(error)}`); });
+  if (signal.aborted && !c.problems.length) { c.status = "not run"; c.details.push("interrupted"); cases.push(c); throw signal.reason; }
   c.status ??= c.problems.length ? "fail" : "pass";
   const clicks = driver?.clicks.splice(0) ?? [];
   if (clicks.length) c.details.push(`clicks: ${clicks.join("; ")}`);
@@ -344,7 +346,9 @@ async function startStopFromMenu(language: Language, countdown: number): Promise
   if (!saved) return;
   await runCase("show-last-recording", "Show last recording brings Finder forward with the file selected", language, async c => {
     const before = new Set(await finderWindowIds());
-    revealBaseline = { ids: before, folder: path.dirname(saved!) };
+    // Kept until this reveal's windows are owned: a later language's baseline would already count them.
+    const baseline = { ids: before, folder: path.dirname(saved!) };
+    revealBaselines.push(baseline);
     await driver!.open();
     await driver!.select(t("Show last recording", language));
     const fronts: string[] = [];
@@ -363,7 +367,7 @@ async function startStopFromMenu(language: Language, countdown: number): Promise
     if (fronts.at(-1) !== "Finder") c.problems.push(`frontmost after 3 s is ${fronts.at(-1)}, not Finder`);
     if (!fileSelected(saved!, { selected, selectedRow, windowTarget })) c.problems.push(`Finder does not show ${path.basename(saved!)} selected`);
     await closeOwnedFinderWindows();
-    revealBaseline = undefined;
+    revealBaselines.splice(revealBaselines.indexOf(baseline), 1);
   });
 }
 
@@ -691,9 +695,9 @@ try {
   }
   await step("close Finder windows this round opened", async () => {
     // A reveal interrupted before its windows were listed: new windows showing the recordings' folder are the round's.
-    if (revealBaseline) {
-      const listed = await command("osascript", ["-e", `tell application "Finder"\nset found to {}\nrepeat with w in Finder windows\ntry\nif POSIX path of (target of w as alias) is ${JSON.stringify(`${revealBaseline.folder}/`)} then set end of found to id of w\nend try\nend repeat\nreturn found\nend tell`], bounded);
-      for (const id of listed.split(",").map(part => Number(part.trim())).filter(Number.isInteger)) if (!revealBaseline.ids.has(id)) ownedFinderWindows.add(id);
+    for (const baseline of revealBaselines) {
+      const listed = await command("osascript", ["-e", `tell application "Finder"\nset found to {}\nrepeat with w in Finder windows\ntry\nif POSIX path of (target of w as alias) is ${JSON.stringify(`${baseline.folder}/`)} then set end of found to id of w\nend try\nend repeat\nreturn found\nend tell`], bounded);
+      for (const id of listed.split(",").map(part => Number(part.trim())).filter(Number.isInteger)) if (!baseline.ids.has(id)) ownedFinderWindows.add(id);
     }
     for (const id of ownedFinderWindows) {
       await command("osascript", ["-e", `tell application "Finder"\nif exists Finder window id ${id} then close Finder window id ${id}\nend tell`], bounded);

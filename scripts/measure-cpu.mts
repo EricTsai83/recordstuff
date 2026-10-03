@@ -45,6 +45,7 @@ import {
 } from "./lib/cpu-sampler.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
 import { LogReader, type LogCursor } from "./lib/log-reader.mts";
+import { AccessibilityBlockedError, osascriptAx } from "./lib/native-ax.mts";
 import { parseSessionRecord } from "./lib/session-records.mts";
 import { percentile } from "./lib/stats.mts";
 import { SETTINGS_SHORTCUT } from "../src/shared/hotkey.ts";
@@ -338,6 +339,9 @@ async function main(): Promise<number> {
       await waitForLog(log, beforeSettings, /\] settings shortcut: .* pressed/, "the Settings shortcut's delivery", AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]));
       await sleep(2000);
       if (readRoles(appPid)["renderer"] !== 1) fail("Settings did not open: the shortcut was delivered but no Settings renderer is running");
+      // The pre-warmed renderer of a launch without recordings counts as one too, so the window itself is the evidence.
+      const { windows } = await osascriptAx(controller.signal).windows(appPid);
+      if (!windows.some((window) => window.title.startsWith("RecordStuff - "))) fail(`Settings did not open: RecordStuff shows no Settings window (${JSON.stringify(windows.map((window) => window.title))})`);
       await command("osascript", ["-e", 'tell application "Finder" to activate'], AbortSignal.timeout(5000));
       note("C. Settings open behind Finder; settling 10 s");
       await sleep(10_000);
@@ -391,9 +395,12 @@ async function main(): Promise<number> {
     }
     await sampler?.stop();
     try { await quitApp(); } catch (error) { cleanup.push(String(error)); }
-    const problem = restoreSettings();
+    // The backup first, since the recovery message below points at it; a failed write must not skip the restore.
+    try { if (originalSettings?.length) fs.writeFileSync(path.join(dir, "settings-before.json"), originalSettings); }
+    catch (error) { cleanup.push(`could not write settings-before.json: ${String(error)}`); }
+    let problem: string | undefined;
+    try { problem = restoreSettings(); } catch (error) { problem = String(error); }
     if (problem) cleanup.push(`settings NOT restored: ${problem}; quit RecordStuff and restore ${SETTINGS_PATH} from the report folder's settings-before.json`);
-    if (originalSettings?.length) fs.writeFileSync(path.join(dir, "settings-before.json"), originalSettings);
     desktop.end();
   }
 
@@ -411,6 +418,7 @@ async function main(): Promise<number> {
   const failed = scenarios.flatMap((s) => s.verdicts).some((v) => v.verdict === "fail");
   const result = interruptedBy ? `INTERRUPTED (${interruptedBy}); partial results only`
     : desktop.lockedAt ? "BLOCKED (the screen locked)"
+      : runError instanceof AccessibilityBlockedError ? `BLOCKED (${runError.message})`
       : runError ? `ERROR: ${runError instanceof Error ? runError.message : String(runError)}`
         : failed ? "FAIL" : "PASS";
   fs.writeFileSync(path.join(dir, "report.json"), `${JSON.stringify({ result, options: { minutes, repeat, fps60: with60, skipRecording, skipSettings }, environment, scenarios, recordings, cleanup, events }, null, 2)}\n`);
@@ -419,7 +427,7 @@ async function main(): Promise<number> {
   console.log(result);
   if (cleanup.some((line) => /NOT restored|could not|did not exit|still running/.test(line))) return 1;
   if (interruptedBy) return interruptedBy === "SIGINT" ? 130 : 143;
-  if (desktop.lockedAt) return DESKTOP_BLOCKED_EXIT;
+  if (desktop.lockedAt || runError instanceof AccessibilityBlockedError) return DESKTOP_BLOCKED_EXIT;
   return runError || failed ? 1 : 0;
 }
 
