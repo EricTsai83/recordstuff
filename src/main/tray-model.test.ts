@@ -4,6 +4,7 @@ import type { RecordingState } from "../shared/state";
 import { DEFAULT_HOTKEY } from "../shared/hotkey";
 import {
   trayHintNotification,
+  updateAvailableNotification,
   frameRateDowngradeNotification,
   hotkeyRegistrationFailedNotification,
   recordingFailureNotification,
@@ -552,5 +553,12 @@ describe("one group order in every state (plan 048)", () => {
     expect(registered.filter((i) => i.kind === "item" && i.accelerator).map((i) => i.kind === "item" ? [i.action, i.accelerator] : [])).toEqual([
       ["start", "CommandOrControl+Shift+1"], ["openSettings", "CommandOrControl+Alt+,"],
     ]);
+  });
+});
+
+describe("update notification", () => {
+  it("names the version and what a click does, in both languages", () => {
+    expect(updateAvailableNotification("1.3.0", "en")).toEqual({ title: "RecordStuff", body: "RecordStuff 1.3.0 is available. Click to open the download page." });
+    expect(updateAvailableNotification("1.3.0", "zh-TW").body).toBe("RecordStuff 1.3.0 已推出，按一下開啟下載頁。");
   });
 });

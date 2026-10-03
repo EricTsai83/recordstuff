@@ -294,6 +294,13 @@ async function main(): Promise<void> {
     localVersion: app.getVersion(), settled,
     preference: () => settings.updates,
     saveAttempt: (lastAttempt) => settings.setUpdates({ lastAttempt }),
+    saveNotified: (notifiedVersion) => settings.setUpdates({ notifiedVersion }),
+    // The download page the banner promises, not `openUpdate`, whose destination follows a later check's
+    // state; but under the same lock, so a click after a recording starts opens nothing over the capture.
+    announce: (version) => tray.notifyUpdateAvailable(version, () => {
+      if (!settled()) { log("updates: notification click ignored while recording or quitting"); return; }
+      shell.openExternal(DOWNLOAD_URL).catch((error: unknown) => log(`updates: download link failed: ${String(error)}`));
+    }),
     fetch: (signal) => fetchVersion(process.platform, process.arch, signal, (url, init) => net.fetch(url, init), log),
     // The checker holds results back during a session itself; every change it reports is current.
     changed: () => refreshUi(), log,

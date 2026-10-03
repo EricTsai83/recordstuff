@@ -21,6 +21,7 @@ import {
   menuLogText,
   hotkeyWriteFailedNotification,
   notificationsEnabledNotification,
+  updateAvailableNotification,
   permissionNotification,
   qualityWriteFailedNotification,
   recordingFailureNotification,
@@ -296,6 +297,11 @@ export class AppTray {
 
   notifyTrayHint(): void {
     this.show(trayHintNotification(this.options.context().platform, this.language));
+  }
+
+  /** `openDownload` answers the click; main owns the download page and the recording lock it must respect. */
+  notifyUpdateAvailable(version: string, openDownload: () => void): void {
+    this.show(updateAvailableNotification(version, this.language), openDownload);
   }
 
   notifyNotificationsEnabled(): void {

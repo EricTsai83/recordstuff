@@ -460,6 +460,17 @@ describe("update preferences", () => {
     expect(store().updates).toEqual({ enabled: false, lastAttempt: 123 });
     expect(store().language).toBe("zh-TW");
   });
+  it("keeps the announced version beside the other update fields and refuses one that was never published", async () => {
+    const s = store();
+    await s.setUpdates({ lastAttempt: 9 }); await s.setUpdates({ notifiedVersion: "1.2.0" });
+    expect(store().updates).toEqual({ enabled: true, lastAttempt: 9, notifiedVersion: "1.2.0" });
+    await s.setUpdates({ lastAttempt: 10 });
+    expect(store().updates).toEqual({ enabled: true, lastAttempt: 10, notifiedVersion: "1.2.0" });
+    for (const notifiedVersion of ["1.3.0-rc.1", "v1.3.0", "", 3 as unknown as string]) {
+      await expect(s.setUpdates({ notifiedVersion })).rejects.toThrow(/updates/);
+    }
+    expect(store().updates.notifiedVersion).toBe("1.2.0");
+  });
   it("defaults malformed timestamps and flags", () => {
     expect(parseSettings(JSON.stringify({ version: 1, outputDir: "/a", updates: { enabled: "no", lastAttempt: -1 } }))?.settings.updates).toEqual({ enabled: true, lastAttempt: 0 });
     expect(parseSettings(JSON.stringify({ version: 1, outputDir: "/a", updates: { enabled: false, lastAttempt: 5 } }))?.settings.updates).toEqual({ enabled: false, lastAttempt: 5 });
@@ -472,6 +483,9 @@ describe("update preferences", () => {
     expect(parsed?.warnings).toEqual(expect.arrayContaining([
       "notifications is not a boolean: using on", "updates.enabled is not a boolean: using on", "updates.lastAttempt is invalid: using 0"]));
     expect(parseSettings(JSON.stringify({ version: 1, outputDir: "/a", updates: "off" }))?.warnings).toContain("updates is not an object: using defaults");
+    const told = parseSettings(JSON.stringify({ version: 1, outputDir: "/a", updates: { enabled: true, lastAttempt: 5, notifiedVersion: "1.2.0-rc.1" } }));
+    expect(told?.settings.updates).toEqual({ enabled: true, lastAttempt: 5 });
+    expect(told?.warnings).toContain("updates.notifiedVersion is invalid: announcing the next newer version");
     // A file from before these fields existed is not spoiled: it takes the defaults silently.
     expect(parseSettings(JSON.stringify({ version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY }))?.warnings).toEqual([]);
   });

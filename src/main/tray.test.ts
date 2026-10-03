@@ -466,6 +466,22 @@ it("routes recording-failure notification clicks to results without acknowledgin
   off.tray.destroy();
 });
 
+it("answers an update notification's click with main's download opener, not a tray action, and drops it when notifications are off", () => {
+  const { tray, onAction } = setup();
+  const openDownload = vi.fn();
+  tray.notifyUpdateAvailable("9.0.0", openDownload);
+  const notification = Fake.instances[0]!;
+  expect(notification.options.body).toBe("RecordStuff 9.0.0 is available. Click to open the download page.");
+  notification.listeners.get("click")?.();
+  expect(openDownload).toHaveBeenCalledOnce();
+  expect(onAction).not.toHaveBeenCalled();
+  tray.destroy();
+  const off = setup(true, () => false);
+  off.tray.notifyUpdateAvailable("9.0.0", openDownload);
+  expect(Fake.instances).toHaveLength(0);
+  off.tray.destroy();
+});
+
 describe("tray menu template (plan 048)", () => {
   it("shows a registered shortcut right-aligned without registering it again, and Start calls the start action", async () => {
     const { Menu, Tray } = await import("electron");

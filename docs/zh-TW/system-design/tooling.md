@@ -279,7 +279,7 @@ CI 從 repository 根目錄執行 Vercel CLI，平台專案的 Root Directory �
 
 Runner 將原始碼與建置資源複製至專用報告目錄，只修改該副本，再執行 `pnpm start:app`。沿用正式更新 action handler、AppTray context、SettingsStore、Recorder、隱藏擷取主機與 shutdown 流程。只在測試副本中替換固定 HTTP 回應與時鐘，隔離設定／log／錄影，並攔截 `shell.openExternal` 核對 URL。正常建置沒有測試命令通道；若正式程式接線改變，anchor 檢查會停止，避免測到過期的替代流程。
 
-預設案例涵蓋檢查中／重疊、相同／新版、GitHub 備援、失敗後恢復、語言／偏好跨程序重開、已到期但關閉啟動檢查、24 小時間隔（含失敗嘗試）、錄影中延後請求、存檔後才顯示結果，以及請求中結束。`--full` 另測舊版、無效／預覽／不相容 feed 與實際逾時取消；這些邊界已有單元測試，不必每次 smoke 都重跑。報告會記錄模式與所選 feed 情境。真實擷取沿用 System Events 全域快捷鍵、Chrome 固定素材、媒體完整性檢查與閃光／嗶聲門檻。兩種模式都保留兩段各約十秒的錄影，分別測延後請求與延後顯示結果。權限／工具缺失或素材受背景聲音污染，都不算通過。
+預設案例涵蓋檢查中／重疊、相同／新版、啟動檢查發現新版只通知一次（更新通知與存檔通知一樣被攔截，手動結果視為已告知）、GitHub 備援、失敗後恢復、語言／偏好跨程序重開、已到期但關閉啟動檢查、24 小時間隔（含失敗嘗試）、錄影中延後請求、存檔後才顯示結果，以及請求中結束。`--full` 另測舊版、無效／預覽／不相容 feed 與實際逾時取消；這些邊界已有單元測試，不必每次 smoke 都重跑。報告會記錄模式與所選 feed 情境。真實擷取沿用 System Events 全域快捷鍵、Chrome 固定素材、媒體完整性檢查與閃光／嗶聲門檻。兩種模式都保留兩段各約十秒的錄影，分別測延後請求與延後顯示結果。權限／工具缺失或素材受背景聲音污染，都不算通過。
 
 錄影狀態 snapshot 由同一份契約判定：[update-acceptance.mts](../../../scripts/lib/update-acceptance.mts) 的 `assertLockContract`。只有 recording 顯示 REC 與一個可用的 Stop；starting 與儲存中都顯示 `…`，也都不提供 Stop。Starting、錄影與儲存中會鎖定螢幕、畫質、解析度上限、影格率、快捷鍵、通知、啟動檢查與更新 action 群組，以及 tray 的變更輸出資料夾；語言、外觀與 About 連結維持可用，逐一檢查每個選項。錄影器回到 idle 或 needsPermission 後所有群組解鎖；因自身原因停用的選項（例如檢查已在進行）不屬於此契約。Tray 永遠不含更新 action。預期行為取自 `BUSY_SETTINGS_POLICY`，不是複製模型目前的旗標：設定群組不在表中，或表中群組已不再提供，都會失敗，直到明確分類。真實執行對錄影中 snapshot 及其前後的 idle snapshot 套用此契約；starting、儲存中與權限狀態由單元測試以真正的 `settingsView`／`trayModel` snapshot 涵蓋，因為 runner 無法停在這些短暫狀態。
 

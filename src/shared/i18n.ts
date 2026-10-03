@@ -133,6 +133,7 @@ export const ZH_TW = {
   "Check for updates…": "檢查更新…",
   "Checking for updates…": "正在檢查更新…",
   "Version {version} is available.": "有可用的新版本：{version}。",
+  "RecordStuff {version} is available. Click to open the download page.": "RecordStuff {version} 已推出，按一下開啟下載頁。",
   "Download {version}…": "下載 {version}…",
   "Up to date (checked {time})": "已是最新版本（檢查時間：{time}）",
   "Could not check for updates.": "無法檢查更新。",

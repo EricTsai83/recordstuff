@@ -97,8 +97,12 @@ export async function fetchVersion(platform: string, arch: string, signal: Abort
 interface Options {
   localVersion: string;
   settled: () => boolean;
-  preference: () => { enabled: boolean; lastAttempt: number };
+  preference: () => { enabled: boolean; lastAttempt: number; notifiedVersion?: string };
   saveAttempt: (at: number) => Promise<void>;
+  /** Remembers the newest version the user has been told about, in a notification or the panel. */
+  saveNotified?: (version: string) => Promise<void>;
+  /** A launch check found a version the user has not been told about yet. */
+  announce?: (version: string) => void;
   fetch: (signal: AbortSignal) => Promise<string>;
   changed: () => void;
   log: (message: string) => void;
@@ -110,12 +114,18 @@ export class UpdateChecker {
   private retryLaunch = false;
   private manualPending = false;
   private deferred: UpdateState | undefined;
+  /** Whether the deferred result came from a launch check, which alone notifies. */
+  private deferredLaunch = false;
   private controller: AbortController | undefined;
   private disposed = false;
   constructor(private readonly options: Options) {}
   flush(): void {
     if (this.disposed || !this.options.settled()) return;
-    if (this.deferred) { this.state = this.deferred; this.deferred = undefined; this.options.changed(); }
+    if (this.deferred) {
+      const result = this.deferred, launch = this.deferredLaunch;
+      this.state = result; this.deferred = undefined; this.deferredLaunch = false; this.options.changed();
+      this.told(result, launch);
+    }
     if (this.manualPending) { this.manualPending = false; void this.check(true); }
     else if (this.launchPending) void this.check(false);
   }
@@ -147,6 +157,7 @@ export class UpdateChecker {
         // Nothing was fetched: show the previous result, not a check that is not running.
         this.state = previous;
         this.deferred = previous;
+        this.deferredLaunch = false;
         if (manual) this.manualPending = true;
         else { this.launchPending = true; this.retryLaunch = true; }
         this.options.changed();
@@ -165,11 +176,30 @@ export class UpdateChecker {
       this.controller = undefined;
     }
     if (this.disposed) return;
-    if (this.options.settled()) { this.state = result; this.options.changed(); return; }
+    if (this.options.settled()) { this.state = result; this.options.changed(); this.told(result, !manual); return; }
     // Recording began during the fetch: the result waits, and the check is no longer running.
     this.state = previous;
     this.deferred = result;
+    this.deferredLaunch = !manual;
     this.options.changed();
+  }
+  /**
+   * A newer version is announced once: a launch check notifies about a version
+   * newer than the last one told, and any shown result marks it told, so a
+   * version first seen in the panel never notifies at a later launch. The told
+   * version only moves forward: a stale source offering an older release than
+   * one already told neither notifies nor lowers it. A failed save only means
+   * the next launch may notify again.
+   */
+  private told(result: UpdateState, launch: boolean): void {
+    const told = this.options.preference().notifiedVersion;
+    if (result.kind !== "available" || (told !== undefined && !isNewer(result.version, told))) return;
+    if (launch && this.options.announce) {
+      this.options.announce(result.version);
+      this.options.log(`updates: announced ${result.version}`);
+    }
+    this.options.saveNotified?.(result.version).catch((error: unknown) =>
+      this.options.log(`updates: cannot persist the announced version: ${String(error)}`));
   }
   dispose(): void { this.disposed = true; this.controller?.abort(); }
 }

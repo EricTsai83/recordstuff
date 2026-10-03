@@ -296,6 +296,10 @@ export function frameRateDowngradeNotification(
     }),
   );
 }
+/** A launch check found a newer version; the click opens the download page (docs/system-design/desktop.md#update-checks). */
+export function updateAvailableNotification(version: string, language?: Language): NotificationText {
+  return notice(t("RecordStuff {version} is available. Click to open the download page.", language, { version }));
+}
 /** Sent when the user turns the switch on, so the confirmation is also the test. */
 export function notificationsEnabledNotification(language?: Language): NotificationText {
   return notice(t("Notifications are on. This is what a RecordStuff notification looks like.", language));

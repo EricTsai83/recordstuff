@@ -27,11 +27,17 @@ import { DEFAULT_QUALITY, isQualitySettings, type QualitySettings } from "../sha
 import { DEFAULT_COUNTDOWN, DEFAULT_COUNTDOWN_SOUND, isCountdownSeconds, type CountdownSeconds } from "../shared/countdown";
 import { DEFAULT_LANGUAGE, isLanguage, type Language } from "../shared/i18n";
 import { DEFAULT_HOTKEY, canonicalizeAccelerator, isHotkeySettings, type HotkeySettings } from "../shared/hotkey";
+import { stableVersion } from "../shared/version";
 import { writeFileAtomic } from "./atomic-file";
 import { drainQueue } from "./drain-queue";
 import { errnoCode } from "./errors";
 
 export const SETTINGS_VERSION = 3;
+
+/** Only a published stable version can have been announced. */
+function isNotifiedVersion(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 64 && stableVersion(value) !== undefined;
+}
 
 export interface Settings {
   version: typeof SETTINGS_VERSION;
@@ -40,7 +46,8 @@ export interface Settings {
   language: Language;
   appearance: Appearance;
   hotkey: HotkeySettings;
-  updates: { enabled: boolean; lastAttempt: number };
+  /** `notifiedVersion`: the newest version the user was told about, so a launch announces each version once. */
+  updates: { enabled: boolean; lastAttempt: number; notifiedVersion?: string };
   /** Whether the app sends any notification at all; the OS permission is separate. */
   notifications: boolean;
   display: DisplayPreference;
@@ -143,11 +150,13 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
     enabled: field("enabled", isBoolean, defaults.updates.enabled, `updates.enabled is not a boolean: using ${defaults.updates.enabled ? "on" : "off"}`, u),
     lastAttempt: field("lastAttempt", isTimestamp, defaults.updates.lastAttempt, `updates.lastAttempt is invalid: using ${defaults.updates.lastAttempt}`, u),
   };
+  const notifiedVersion = field<string | undefined>("notifiedVersion", isNotifiedVersion, undefined, "updates.notifiedVersion is invalid: announcing the next newer version", u);
   const notifications = field("notifications", isBoolean, defaults.notifications, `notifications is not a boolean: using ${defaults.notifications ? "on" : "off"}`);
   const display = field("display", isDisplayPreference, DEFAULT_DISPLAY_PREFERENCE, "display is invalid: using primary display");
   const countdown = field("countdown", isCountdownSeconds, DEFAULT_COUNTDOWN, `countdown is unsupported: using ${DEFAULT_COUNTDOWN} seconds`);
   const countdownSound = field("countdownSound", isBoolean, DEFAULT_COUNTDOWN_SOUND, `countdownSound is not a boolean: using ${DEFAULT_COUNTDOWN_SOUND ? "on" : "off"}`);
-  return { settings: { appearance, display, version: SETTINGS_VERSION, outputDir, quality, language, hotkey, updates, notifications, countdown, countdownSound }, warnings };
+  return { settings: { appearance, display, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
+    updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound }, warnings };
 }
 
 export class SettingsStore {
@@ -216,7 +225,8 @@ export class SettingsStore {
   setUpdates(patch: Partial<Settings["updates"]>): Promise<void> {
     patch = { ...patch };
     if ((patch.enabled !== undefined && typeof patch.enabled !== "boolean") ||
-        (patch.lastAttempt !== undefined && !(Number.isFinite(patch.lastAttempt) && patch.lastAttempt >= 0))) {
+        (patch.lastAttempt !== undefined && !(Number.isFinite(patch.lastAttempt) && patch.lastAttempt >= 0)) ||
+        (patch.notifiedVersion !== undefined && !isNotifiedVersion(patch.notifiedVersion))) {
       return Promise.reject(new Error(`unsupported updates setting: ${JSON.stringify(patch)}`));
     }
     return this.save((current) => ({ ...current, updates: { ...current.updates, ...patch } }));

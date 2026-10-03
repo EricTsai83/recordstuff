@@ -5,9 +5,11 @@ const feed = { version: "0.2.0", tag: "v0.2.0", platform: "darwin-arm64", archit
 const gh = { tag_name: "v0.2.0", draft: false, prerelease: false, assets: [{ name: feed.dmg.name }] };
 function harness() {
   let settled = true;
-  const preference = { enabled: true, lastAttempt: 0 };
+  const preference: { enabled: boolean; lastAttempt: number; notifiedVersion?: string } = { enabled: true, lastAttempt: 0 };
   const options = { localVersion: "0.1.2", settled: () => settled, preference: () => preference,
     saveAttempt: vi.fn(async (at: number) => { preference.lastAttempt = at; }),
+    saveNotified: vi.fn(async (version: string) => { preference.notifiedVersion = version; }),
+    announce: vi.fn((_version: string) => {}),
     fetch: vi.fn(async (_signal: AbortSignal) => "0.2.0"), changed: vi.fn(), log: vi.fn(), now: () => DAY_MS * 2 };
   return { checker: new UpdateChecker(options), options, preference, busy: (value: boolean) => { settled = !value; } };
 }
@@ -185,5 +187,65 @@ describe("launch check settles visibly (plan 049)", () => {
     off.preference.enabled = false;
     await off.checker.check(false);
     expect(off.options.log).toHaveBeenCalledWith("updates: launch check skipped (off)");
+  });
+});
+
+describe("announcing a newer version once", () => {
+  it("notifies when a launch check finds a version not yet told, and remembers it", async () => {
+    const h = harness(); await h.checker.check(false);
+    expect(h.options.announce).toHaveBeenCalledExactlyOnceWith("0.2.0");
+    expect(h.options.saveNotified).toHaveBeenCalledExactlyOnceWith("0.2.0");
+    expect(h.options.log).toHaveBeenCalledWith("updates: announced 0.2.0");
+    // The next day's launch finds the same version: the panel shows it, no second notification.
+    h.preference.lastAttempt = 0;
+    const tomorrow = new UpdateChecker(h.options); await tomorrow.check(false);
+    expect(tomorrow.state).toEqual({ kind: "available", version: "0.2.0" });
+    expect(h.options.announce).toHaveBeenCalledTimes(1); expect(h.options.saveNotified).toHaveBeenCalledTimes(1);
+  });
+  it("notifies again for a version newer than the one told", async () => {
+    const h = harness(); h.preference.notifiedVersion = "0.1.9"; await h.checker.check(false);
+    expect(h.options.announce).toHaveBeenCalledExactlyOnceWith("0.2.0");
+  });
+  it("never lowers the told version or announces an older release from a stale source", async () => {
+    const h = harness(); h.preference.notifiedVersion = "0.3.0";
+    await h.checker.check(false); await h.checker.check(true);
+    expect(h.checker.state).toEqual({ kind: "available", version: "0.2.0" });
+    expect(h.options.announce).not.toHaveBeenCalled(); expect(h.options.saveNotified).not.toHaveBeenCalled();
+    expect(h.preference.notifiedVersion).toBe("0.3.0");
+  });
+  it("marks a manual result as told without notifying, so a later launch stays quiet", async () => {
+    const h = harness(); await h.checker.check(true);
+    expect(h.options.announce).not.toHaveBeenCalled(); expect(h.preference.notifiedVersion).toBe("0.2.0");
+    h.preference.lastAttempt = 0;
+    await new UpdateChecker(h.options).check(false); expect(h.options.announce).not.toHaveBeenCalled();
+  });
+  it("says nothing for a current version or a failed launch check", async () => {
+    const current = harness(); current.options.fetch.mockResolvedValue("0.1.2"); await current.checker.check(false);
+    const failed = harness(); failed.options.fetch.mockRejectedValue(new Error("offline")); await failed.checker.check(false);
+    for (const h of [current, failed]) { expect(h.options.announce).not.toHaveBeenCalled(); expect(h.options.saveNotified).not.toHaveBeenCalled(); }
+  });
+  it("holds the notification with the result while recording, then notifies once it ends", async () => {
+    const h = harness(); let resolve!: (v: string) => void;
+    h.options.fetch.mockImplementation(() => new Promise((r) => { resolve = r; }));
+    const pending = h.checker.check(false); await vi.waitFor(() => expect(h.options.fetch).toHaveBeenCalledTimes(1));
+    h.busy(true); resolve("0.2.0"); await pending;
+    expect(h.options.announce).not.toHaveBeenCalled(); expect(h.options.saveNotified).not.toHaveBeenCalled();
+    h.busy(false); h.checker.flush();
+    expect(h.options.announce).toHaveBeenCalledExactlyOnceWith("0.2.0"); expect(h.preference.notifiedVersion).toBe("0.2.0");
+    h.checker.flush(); expect(h.options.announce).toHaveBeenCalledTimes(1);
+  });
+  it("does not notify for a manual result held by recording", async () => {
+    const h = harness(); let resolve!: (v: string) => void;
+    h.options.fetch.mockImplementation(() => new Promise((r) => { resolve = r; }));
+    const pending = h.checker.check(true); await vi.waitFor(() => expect(h.options.fetch).toHaveBeenCalledTimes(1));
+    h.busy(true); resolve("0.2.0"); await pending;
+    h.busy(false); h.checker.flush();
+    expect(h.checker.state.kind).toBe("available"); expect(h.options.announce).not.toHaveBeenCalled();
+  });
+  it("logs a failed save of the told version and still notifies", async () => {
+    const h = harness(); h.options.saveNotified.mockRejectedValue(new Error("disk full"));
+    await h.checker.check(false);
+    expect(h.options.announce).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(h.options.log).toHaveBeenCalledWith(expect.stringContaining("cannot persist the announced version: Error: disk full")));
   });
 });

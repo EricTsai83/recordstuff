@@ -12,16 +12,18 @@ import type { SettingsView } from '../../src/shared/settings-panel';
 import { API_URL, DOWNLOAD_URL, FEED_URL, RELEASES_URL, fetchVersion, type UpdateChecker, type UpdateState } from '../../src/main/updates';
 import type { RecordingState } from '../../src/shared/state';
 
-export type Scenario = 'current' | 'newer' | 'older' | 'delayed' | 'offline' | 'http-fallback' | 'malformed' | 'prerelease' | 'architecture' | 'timeout';
+export type Scenario = 'current' | 'newer' | 'next' | 'older' | 'delayed' | 'offline' | 'http-fallback' | 'malformed' | 'prerelease' | 'architecture' | 'timeout';
 export interface AcceptanceConfig { now: number; scenario: Scenario }
 export interface AcceptanceSnapshot {
   pid: number; version: string; recording: RecordingState; update: UpdateState; model: TrayModel;
   /** What the settings window would show right now; the panel itself is not opened. */
   settings: SettingsView;
   hotkey: AppContext['hotkey'] | null;
-  language: string; preference: { enabled: boolean; lastAttempt: number };
+  language: string; preference: { enabled: boolean; lastAttempt: number; notifiedVersion?: string };
   calls: Array<{ url: string; scenario: Scenario }>; pending: number; aborted: number;
   opened: string[]; errors: string[];
+  /** Versions this process announced in an update notification, intercepted before the OS. */
+  announced: string[];
 }
 interface Attached {
   recorder: Recorder; updates: UpdateChecker; settings: SettingsStore; tray: AppTray;
@@ -36,7 +38,7 @@ export function configureAcceptance(dir: string) {
   app.setPath('userData', userData);
   app.setPath('logs', logs);
   const calls: AcceptanceSnapshot['calls'] = [];
-  const opened: string[] = [], errors: string[] = [];
+  const opened: string[] = [], errors: string[] = [], announced: string[] = [];
   let aborted = 0;
   const waiting = new Set<() => void>();
   const events = (value: unknown): void => fs.appendFileSync(path.join(dir, 'events.jsonl'), JSON.stringify({ at: Date.now(), ...value as object }) + '\n');
@@ -46,8 +48,10 @@ export function configureAcceptance(dir: string) {
     fs.writeFileSync(configPath, JSON.stringify(config));
   }
   const newer = `${BigInt(app.getVersion().split('.')[0]!) + 1n}.0.0`;
+  // A second, later release, for a launch check after `newer` was already shown.
+  const next = `${BigInt(app.getVersion().split('.')[0]!) + 2n}.0.0`;
   function response(url: string, scenario: Scenario): Response {
-    const version = scenario === 'older' ? '0.0.0' : ['newer', 'delayed'].includes(scenario) ? newer : app.getVersion();
+    const version = scenario === 'older' ? '0.0.0' : scenario === 'next' ? next : ['newer', 'delayed'].includes(scenario) ? newer : app.getVersion();
     if (scenario === 'offline') throw new Error('acceptance: simulated offline');
     if (scenario === 'http-fallback' && url === FEED_URL) return new Response('', { status: 503 });
     if (scenario === 'malformed') return Response.json({});
@@ -78,7 +82,7 @@ export function configureAcceptance(dir: string) {
     dir, outputDir, config: () => config, now: () => config.now,
     fetch: (signal: AbortSignal) => fetchVersion(process.platform, process.arch, signal, request),
     set: persist, release: () => { for (const release of [...waiting]) release(); },
-    calls, opened, errors, pending: () => waiting.size, aborted: () => aborted, events,
+    calls, opened, errors, announced, pending: () => waiting.size, aborted: () => aborted, events,
   };
 }
 export function attachAcceptance(a: ReturnType<typeof configureAcceptance>, attached: Attached): void {
@@ -87,13 +91,15 @@ export function attachAcceptance(a: ReturnType<typeof configureAcceptance>, atta
   if (settings.countdown !== 0) void settings.setCountdown(0).catch((cause: unknown) => a.errors.push(`countdown seed: ${String(cause)}`));
   // Notification delivery has its own acceptance runner. Do not let a save banner obscure the next capture's marker.
   tray.notifySaved = (savedPath: string) => a.events({ type: 'saved-notification-intercepted', path: savedPath });
+  // The same for the update banner: the production announce path runs, the OS banner does not.
+  tray.notifyUpdateAvailable = (version: string, _openDownload: () => void) => { a.announced.push(version); a.events({ type: 'update-notification-intercepted', version }); };
   // Read the real AppTray context, not a second reconstruction of the production settings wiring.
   const context = (): AppContext => (tray as unknown as { options: { context: () => AppContext } }).options.context();
   const snapshot = (): AcceptanceSnapshot => ({
     pid: process.pid, version: app.getVersion(), recording: recorder.state, update: updates.state,
     model: trayModel(recorder.state, context()), settings: settingsView(recorder.state, context()),
     hotkey: context().hotkey ?? null, language: settings.language, preference: settings.updates,
-    calls: [...a.calls], pending: a.pending(), aborted: a.aborted(), opened: [...a.opened], errors: [...a.errors],
+    calls: [...a.calls], pending: a.pending(), aborted: a.aborted(), opened: [...a.opened], errors: [...a.errors], announced: [...a.announced],
   });
   recorder.subscribe(event => { if (event.type === 'state' || event.type === 'saved') a.events({ type: 'recorder', event }); });
   const seen = new Set(fs.readdirSync(path.join(a.dir, 'requests')));

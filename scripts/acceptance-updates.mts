@@ -48,7 +48,7 @@ const feedScenarios: Scenario[] = values.full
   ? ['older', 'http-fallback', 'malformed', 'prerelease', 'architecture', 'offline', 'timeout', 'current']
   : ['http-fallback', 'offline', 'current'];
 const feedCase = values.full ? 'version filters, fallback, failure and recovery' : 'fallback, failure and recovery';
-const requiredCases = ['preflight and isolation', 'build, sign, launch and initial check', 'manual checking, overlap and timestamp', feedCase, 'newer version and intercepted download action', 'language and preference survive real process restart', 'launch rate limit and due launch failure', ...(!values['logic-only'] ? ['real recording: deferred check and deferred result'] : []), 'shutdown cancels pending check'];
+const requiredCases = ['preflight and isolation', 'build, sign, launch and initial check', 'manual checking, overlap and timestamp', feedCase, 'newer version and intercepted download action', 'language and preference survive real process restart', 'launch rate limit and due launch failure', 'launch announces a newer version once', ...(!values['logic-only'] ? ['real recording: deferred check and deferred result'] : []), 'shutdown cancels pending check'];
 const protectedFiles = [path.join(ROOT, 'src/main/index.ts'), path.join(ROOT, 'package.json'), APP_SETTINGS_PATH];
 let config: AcceptanceConfig = { now: Date.now(), scenario: 'current' };
 let sequence = 0, appMayBeRunning = false, cancelled = false;
@@ -181,7 +181,7 @@ function report(): void {
   const exit = acceptanceExitCode(cases);
   const data = { exitCode: exit, mode: values.full ? 'full' : 'smoke', feedScenarios, scope: values['logic-only'] ? 'packaged handler/model integration only' : 'packaged handler/model integration + real shortcut capture', cases, workspaceRetained: appMayBeRunning };
   fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify(data, null, 2) + '\n');
-  fs.writeFileSync(path.join(dir, 'report.md'), ['# Update acceptance', '', `Result: ${exit === 0 ? 'PASS for the stated scope' : exit === 2 ? 'BLOCKED / INCOMPLETE' : 'FAIL'}`, '', `Mode: ${data.mode}; feed scenarios: ${feedScenarios.join(", ")}. Scope: ${data.scope}. Actions use the production handler and real tray context; shell.openExternal is intercepted. Saved notifications are intercepted in the fixture to keep capture material unobscured. This is not native mouse/Tray, notification or visual-browser acceptance.`, '', ...cases.map(c => `- **${c.status}** ${c.name}${c.required ? '' : ' (outside required scope)'}: ${c.detail}`), '', 'Evidence: report.json, build.log, requests/, responses/, events.jsonl, logs/, and recording-verify.json when capture ran.', '', `Fixture left running: ${appMayBeRunning}. Recordings and logs are retained. No user settings were changed; no network disconnect, publication or installation was performed.`, ''].join('\n'));
+  fs.writeFileSync(path.join(dir, 'report.md'), ['# Update acceptance', '', `Result: ${exit === 0 ? 'PASS for the stated scope' : exit === 2 ? 'BLOCKED / INCOMPLETE' : 'FAIL'}`, '', `Mode: ${data.mode}; feed scenarios: ${feedScenarios.join(", ")}. Scope: ${data.scope}. Actions use the production handler and real tray context; shell.openExternal is intercepted. Saved and update notifications are intercepted in the fixture to keep capture material unobscured. This is not native mouse/Tray, notification or visual-browser acceptance.`, '', ...cases.map(c => `- **${c.status}** ${c.name}${c.required ? '' : ' (outside required scope)'}: ${c.detail}`), '', 'Evidence: report.json, build.log, requests/, responses/, events.jsonl, logs/, and recording-verify.json when capture ran.', '', `Fixture left running: ${appMayBeRunning}. Recordings and logs are retained. No user settings were changed; no network disconnect, publication or installation was performed.`, ''].join('\n'));
   process.exitCode = exit;
   console.log(`Report: ${path.join(dir, 'report.md')}`);
 }
@@ -246,6 +246,11 @@ try {
     const s = await until(s => s.update.kind === 'available', 'available version');
     assert(menuAction(s, 'openUpdate').label.includes(s.update.kind === 'available' ? s.update.version : 'missing'));
     await action('openUpdate'); assert.deepEqual((await snapshot()).opened.slice(s.opened.length), ['https://record.ericts.com/download']);
+    // A manual result is shown in the panel, never announced, and counts as told.
+    const shown = s.update.kind === 'available' ? s.update.version : 'missing';
+    // The told version is saved after the result is shown; wait for the write instead of racing it.
+    const told = await until(t => t.preference.notifiedVersion === shown, 'manual result saved as told');
+    assert.deepEqual(told.announced, []);
   });
   await check('language and preference survive real process restart', async () => {
     await action({ setLanguage: 'zh-TW' }); await action({ setUpdateChecks: false });
@@ -271,6 +276,19 @@ try {
     const s = await until(s => s.calls.length === 2 && s.update.kind === 'idle', 'silent failed launch');
     assert.equal(menuAction(s, 'checkUpdates').label, 'Check for updates…');
     await restart(); assert.equal((await snapshot()).calls.length, 0); // Failed attempts are rate-limited too.
+  });
+  await check('launch announces a newer version once', async () => {
+    await scenario('next', DAY + 1); await restart();
+    // The announcement precedes the asynchronous save of the told version; wait for both.
+    const first = await until(s => s.update.kind === 'available' && s.announced.length === 1 && s.preference.notifiedVersion === s.update.version, 'launch announcement saved as told');
+    const version = first.update.kind === 'available' ? first.update.version : 'missing';
+    assert.deepEqual(first.announced, [version]);
+    // The next due launch finds the same version: the panel shows it, the banner does not repeat.
+    await scenario('next', DAY + 1); await restart();
+    const again = await until(s => s.update.kind === 'available', 'second due launch');
+    assert.deepEqual(again.announced, []); assert.equal(again.preference.notifiedVersion, version);
+    // Leave a rate-limited, idle check for the recording case, which judges the deferred result from idle.
+    await restart(); assert.equal((await snapshot()).update.kind, 'idle');
   });
   if (!values['logic-only']) await check('real recording: deferred check and deferred result', async () => {
     const before = await snapshot();
