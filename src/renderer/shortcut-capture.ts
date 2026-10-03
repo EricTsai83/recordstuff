@@ -36,8 +36,9 @@ const NAMED_KEYS: Record<string, string> = {
 
 /** Physical letter/digit/function keys stay stable when Shift/Option changes event.key. */
 export function shortcutCandidate(event: ShortcutKey, platform = "darwin"): string | undefined {
-  if (event.metaKey && platform !== "darwin") return "Unsupported";
+  // A modifier alone, the Windows key included, is still being held: no candidate yet.
   if (/^(Meta|Control|Alt|Shift)(Left|Right)$/.test(event.code)) return undefined;
+  if (event.metaKey && platform !== "darwin") return "Unsupported";
   const key = /^Key[A-Z]$/.test(event.code) ? event.code.slice(3)
     : /^Digit[0-9]$/.test(event.code) ? event.code.slice(5)
       : /^F([1-9]|1[0-9]|2[0-4])$/.test(event.code) ? event.code

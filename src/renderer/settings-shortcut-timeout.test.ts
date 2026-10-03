@@ -31,7 +31,10 @@ it("shows and announces timeout, restores focus, translates and clears it on a n
     await vi.waitFor(() => expect(document.activeElement?.id).toBe("shortcut-capture"));
   };
   await open();
-  expect(document.querySelector(".capture-help")?.textContent).toContain("15 seconds");
+  const help = document.querySelector<HTMLElement>(".capture-help")!;
+  expect(help.textContent).toContain("15 seconds");
+  // The time limit reaches a screen reader through the field's description, and leaves it with the editor.
+  expect(document.getElementById("shortcut-capture")!.getAttribute("aria-describedby")).toContain(help.id);
   current = structuredClone(current);
   current.groups[0]!.capturing = false;
   current.groups[0]!.captureTimedOut = true;
@@ -42,6 +45,7 @@ it("shows and announces timeout, restores focus, translates and clears it on a n
   expect(document.getElementById("feedback")?.textContent).toBe(timeout.textContent);
   expect(document.activeElement).toBe(select);
   expect(select.getAttribute("aria-describedby")).toContain(timeout.id);
+  expect(select.getAttribute("aria-describedby")).not.toContain(help.id);
   current = { ...current, language: "zh-TW" }; push(current);
   expect(timeout.textContent).toContain("已超過 15 秒");
   await open();

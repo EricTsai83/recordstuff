@@ -116,7 +116,7 @@ export const ZH_TW = {
   "Dark": "深色",
   "Press a combination": "請按下快捷鍵組合",
   "Escape to cancel": "按 Escape 取消",
-  "A shortcut needs Command or Control.": "快捷鍵需要包含 ⌘ 或 ⌃。",
+  "A shortcut needs Command or Control.": "快捷鍵需要包含 Command 或 Control。",
   "This key cannot be used.": "無法使用這個按鍵。",
   "macOS reserves this combination.": "macOS 已保留這個組合。",
   "Recording settings": "錄影",

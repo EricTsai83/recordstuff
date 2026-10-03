@@ -258,7 +258,10 @@ function updateRows(groups: SettingsGroup[]): void {
         field.replaceChildren(indicator, ...(preview ? previewParts.map(key => node("kbd", "", key)) : [document.createTextNode(display)]));
         field.setAttribute("aria-label", sentences([display, text("Escape to cancel")], view?.language));
       }
-      setText(container.querySelector(".capture-help")!, text("Press a combination and Confirm within 15 seconds; Esc cancels"));
+      const help = container.querySelector<HTMLElement>(".capture-help")!;
+      // Its own flag, so the description list below names the time limit only while the editor shows it.
+      help.hidden = area.hidden;
+      setText(help, text("Press a combination and Confirm within 15 seconds; Esc cancels"));
       const timeout = container.querySelector<HTMLElement>(".capture-timeout")!;
       timeout.hidden = !group.captureTimedOut;
       setText(timeout, group.captureTimedOut ? text("Shortcut editing timed out after 15 seconds. The shortcut was not changed. Choose Custom shortcut… to try again.") : "");
@@ -273,7 +276,7 @@ function updateRows(groups: SettingsGroup[]): void {
     }
     // Only what is shown: a hidden region still lends its text, stale failure copy included, to a description.
     // Status changes use the single announcer below, not duplicate live regions.
-    const description = [`${controlId(group)}-note`, `${controlId(group)}-diagnostics`, `${controlId(group)}-timeout`]
+    const description = [`${controlId(group)}-help`, `${controlId(group)}-note`, `${controlId(group)}-diagnostics`, `${controlId(group)}-timeout`]
       .filter(id => document.getElementById(id)?.hidden === false).join(" ");
     for (const el of container.querySelectorAll<HTMLElement>("select, input, button[data-action], #shortcut-capture")) {
       if (description) el.setAttribute("aria-describedby", description); else el.removeAttribute("aria-describedby");
@@ -399,7 +402,8 @@ function row(group: SettingsGroup): HTMLElement {
     // A mouse-down would move focus before the click fires. Keep the current
     // focus so the explicit confirmation arrives while the editor holds it.
     confirm.addEventListener("mousedown", event => { if (event.button === 0) event.preventDefault(); });
-    area.append(field, confirm, button("shortcut-cancel", () => void capture(false, true)), node("p", "capture-help")); container.append(area);
+    const help = node("p", "capture-help"); help.id = `${controlId(group)}-help`;
+    area.append(field, confirm, button("shortcut-cancel", () => void capture(false, true)), help); container.append(area);
     const timeout = node("p", "capture-timeout"); timeout.id = `${controlId(group)}-timeout`; timeout.hidden = true;
     container.append(timeout);
   }
