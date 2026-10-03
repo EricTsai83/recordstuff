@@ -276,6 +276,19 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(enabledActions(m.menu)).toContain("revealLog");
   });
 
+  it("keeps a Windows tooltip within the 127 characters the notification area shows, marking the cut and keeping the hint", () => {
+    const english = { ...win, language: "en" as const, errorBoxHeld: true, quitDeferred: "metadata" as const };
+    const recording = trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, english).tooltip;
+    expect(recording.length).toBe(127);
+    expect(recording.startsWith("RecordStuff: Recording\nAn unexpected error occurred.")).toBe(true);
+    expect(recording.endsWith("…\nRight-click to open the menu")).toBe(true);
+    // A tooltip that fits, and every macOS tooltip, stays whole.
+    expect(trayModel({ type: "idle" }, { ...win, language: "en" }).tooltip).toBe("RecordStuff: Ready\nRight-click to open the menu");
+    const macTooltip = trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, { ...english, platform: "darwin" }).tooltip;
+    expect(macTooltip.length).toBeGreaterThan(127);
+    expect(macTooltip).not.toContain("…\n");
+  });
+
   it("Windows shows the abbreviated path and keeps the full path as toolTip", () => {
     const m = trayModel({ type: "idle" }, win);
     const dirItem = m.menu.find((i) => i.kind === "item" && i.action === "openOutputDir");

@@ -81,6 +81,14 @@ const QUIT_DEFERRED = {
   media: "Quit or relaunch postponed: recording work is still pending. Retry the same action once it finishes.",
   metadata: "Quit or relaunch postponed: settings or the log are still being written. Retry the same action in a moment.",
 } as const satisfies Record<QuitDeferral, PlainMessageKey>;
+/** Windows keeps only the first 127 UTF-16 units of a notification-area tooltip (`NOTIFYICONDATA.szTip`) and drops the rest unmarked. */
+const WINDOWS_TOOLTIP_MAX = 127;
+/** Over that limit the cut is marked and the hint stays: the menu it points to repeats every line in full. */
+function fitTooltip(platform: NodeJS.Platform, body: string, hint: string): string {
+  const full = `${body}\n${hint}`;
+  if (platform !== "win32" || full.length <= WINDOWS_TOOLTIP_MAX) return full;
+  return `${body.slice(0, WINDOWS_TOOLTIP_MAX - hint.length - 2).trimEnd()}…\n${hint}`;
+}
 function appGroup(language: Language): TrayMenuItem[] {
   return [item(t("Show log", language), "revealLog"), item(t("Quit RecordStuff", language), "quit")];
 }
@@ -139,7 +147,8 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
     return {
       icon: icon === "idle" && unread.length > 0 ? "warning" : icon,
       title,
-      tooltip: `${APP_NAME}: ${status}${notes.map(note => `\n${note}`).join("")}${unread.length > 0 ? `\n${unreadText}` : ""}\n${text("Right-click to open the menu")}`,
+      tooltip: fitTooltip(ctx.platform, [`${APP_NAME}: ${status}`, ...notes, ...(unread.length > 0 ? [unreadText] : [])].join("\n"),
+        text("Right-click to open the menu")),
       // A quit in progress ignores every other action (the quit stops capture itself), so none looks available.
       menu: ctx.quitting ? menu.map(entry => entry.kind === "item" && entry.action !== "quit" ? { ...entry, enabled: false } : entry) : menu,
     };
