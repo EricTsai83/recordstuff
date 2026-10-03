@@ -1,26 +1,23 @@
 /* Design tokens and base rules adapted from T3 Code's marketing Layout.astro (MIT, see THIRD_PARTY.md). */
 
 :root {
-  --bg: #09090b;
-  --bg-elev: #0c0c0e;
-  --bg-card: #111113;
-  --fg: #fafafa;
-  --fg-muted: #a1a1aa;
-  --fg-dim: #8b8b93; /* 5.9:1 on --bg, 5.6:1 on --bg-card; T3 Code's #71717a fails 4.5:1 */
-  --fg-faint: #52525b;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.14);
-  --accent-h: 250;
-  --accent: oklch(0.68 0.17 var(--accent-h));
-  --accent-dim: oklch(0.68 0.17 var(--accent-h) / 0.15);
-  --accent-ring: oklch(0.78 0.14 var(--accent-h));
+  /* Graphite: near-black neutrals, white type, one red for the recording dot. No coloured glows. */
+  --bg: #0a0a0b;
+  --fg: #f5f5f4;
+  --fg-muted: #a3a3a0;
+  --fg-dim: #8a8a87; /* 5.7:1 on --bg; T3 Code's #71717a fails 4.5:1 */
+  --border: rgba(245, 245, 244, 0.08);
+  --border-strong: rgba(245, 245, 244, 0.16);
+  --accent-dim: rgba(245, 245, 244, 0.1);
+  --accent-ring: #ffffff;
+  --rec: #ff3b30;
   --ok: oklch(0.72 0.16 150);
   --warn: oklch(0.76 0.15 75);
   --font-sans: "Geist Variable", "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-  --radius: 12px;
+  --radius: 14px;
   --radius-sm: 8px;
-  --radius-lg: 16px;
+  --radius-lg: 22px;
   --nav-h: 56px;
   /* Vertical rhythm. Every block on the page pads half a gap above and below
      itself, so the space between any two of them is the same 2 x --section-y

@@ -1,7 +1,7 @@
 ---
 /**
  * Page shell shared by every page: metadata, sticky nav, footer, motion and
- * the skip link. Visual tokens live in ../themes/ember.css.
+ * the skip link. Visual tokens live in ../styles/global.css, theme rules in ../themes/ember.css.
  */
 import { getImage } from "astro:assets";
 import ogSource from "../assets/og.png";
@@ -52,7 +52,7 @@ const canonicalUrl = new URL(currentPath, Astro.site);
 const social = await getImage({ src: ogSource, width: 1200, height: 630, fit: "cover", format: "jpeg", quality: 80 });
 const socialImageUrl = new URL(social.src, Astro.site);
 const year = new Date().getFullYear();
-// Matches --bg in themes/ember.css, so the browser chrome is the same colour
+// Matches --bg in styles/global.css, so the browser chrome is the same colour
 // as the page rather than a slightly bluer one.
 const themeColor = "#0a0a0b";
 // Favicon: the real mark (ring + red dot), no square background.
