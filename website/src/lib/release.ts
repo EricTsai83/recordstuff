@@ -11,14 +11,12 @@
 
 import manifestJson from "../../release-manifest.json" with { type: "json" };
 import {
-  LATEST_RELEASE_URL,
   RELEASES_URL,
   REPOSITORY,
   REPOSITORY_URL,
   assertManifestShape,
   formatBytes,
   formatReleaseDate,
-  LAST_MACOS_ONLY_VERSION,
   type ReleaseManifest,
 } from "../../../scripts/lib/release-manifest.mts";
 
@@ -54,21 +52,16 @@ export const release = {
   sizeBytes: manifest.dmg.size,
   sizeLabel: formatBytes(manifest.dmg.size),
   sha256: manifest.dmg.sha256,
-  publishedAt: manifest.publishedAt,
   publishedLabel: formatReleaseDate(manifest.publishedAt),
-  sourceCommit: manifest.sourceCommit,
   sourceCommitShort: manifest.sourceCommit.slice(0, 7),
-  verifiedAt: manifest.verifiedAt,
   /** Direct DMG. Always present because the manifest validated; the Releases page is the visible fallback. */
   dmgUrl: manifest.dmg.url,
   sha256sumsUrl: manifest.sha256sumsUrl,
   releaseJsonUrl: manifest.releaseJsonUrl,
-  releaseUrl: manifest.releaseUrl,
   notesUrl: manifest.notesUrl,
   sourceCommitUrl: `${REPOSITORY_URL}/commit/${manifest.sourceCommit}`,
   /** Absent for macOS-only releases; pages then say which release first carries Windows. */
   windows: windowsRelease(manifest),
-  lastMacOSOnlyVersion: LAST_MACOS_ONLY_VERSION,
 } as const;
 
 export const links = {
@@ -76,7 +69,6 @@ export const links = {
   /** owner/name, as `gh attestation verify --repo` takes it. */
   repositorySlug: REPOSITORY,
   releases: RELEASES_URL,
-  latestRelease: LATEST_RELEASE_URL,
   issues: `${REPOSITORY_URL}/issues`,
   license: `${REPOSITORY_URL}/blob/main/LICENSE`,
   installGuide: `${REPOSITORY_URL}/blob/${manifest.sourceCommit}/resources/INSTALL.md`,
