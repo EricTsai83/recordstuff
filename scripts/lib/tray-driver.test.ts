@@ -4,7 +4,7 @@ import { TrayDriver, axAccelerator, clickTarget, compareMenu, isSeparator, norma
 
 /** The idle menu read from the maintainer's app on 2026-10-02 (zh-TW, four unread failures), trimmed to what the parser keeps. */
 const RECORDED_IDLE: Array<[string, boolean, string, number]> = [
-  ["待命中", false, "", 0], ["開始錄製", true, "1", 1], ["", false, "", 0],
+  ["待命中", false, "", 0], ["開始錄影", true, "1", 1], ["", false, "", 0],
   ["尚未確認的錄影失敗：4 筆", false, "", 0], ["查看失敗紀錄…", true, "", 0], ["", false, "", 0],
   ["儲存位置：~/Movies/RecordStuff", true, "", 0], ["更改儲存位置…", true, "", 0], ["", false, "", 0],
   ["設定…", true, ",", 2], ["", false, "", 0], ["顯示 log", true, "", 0], ["結束 RecordStuff", true, "", 0],
@@ -12,7 +12,7 @@ const RECORDED_IDLE: Array<[string, boolean, string, number]> = [
 const native = (rows: Array<[string, boolean, string, number]>): NativeMenuItem[] =>
   rows.map(([title, enabled, cmdChar, cmdModifiers]) => ({ title, enabled, cmdChar, cmdModifiers, selected: false, frame: undefined }));
 /** The line the same popup logged. */
-const LOGGED_IDLE = `[2026-10-02T14:42:50.949Z] tray: menu opened in idle: [{"label":"待命中","enabled":false},{"label":"開始錄製","enabled":true,"accelerator":"CommandOrControl+Shift+1"},{"separator":true},{"label":"尚未確認的錄影失敗：4 筆","enabled":false},{"label":"查看失敗紀錄…","enabled":true},{"separator":true},{"label":"儲存位置：~/Movies/RecordStuff","enabled":true},{"label":"更改儲存位置…","enabled":true},{"separator":true},{"label":"設定…","enabled":true,"accelerator":"CommandOrControl+Alt+,"},{"separator":true},{"label":"顯示 log","enabled":true},{"label":"結束 RecordStuff","enabled":true}]`;
+const LOGGED_IDLE = `[2026-10-02T14:42:50.949Z] tray: menu opened in idle: [{"label":"待命中","enabled":false},{"label":"開始錄影","enabled":true,"accelerator":"CommandOrControl+Shift+1"},{"separator":true},{"label":"尚未確認的錄影失敗：4 筆","enabled":false},{"label":"查看失敗紀錄…","enabled":true},{"separator":true},{"label":"儲存位置：~/Movies/RecordStuff","enabled":true},{"label":"更改儲存位置…","enabled":true},{"separator":true},{"label":"設定…","enabled":true,"accelerator":"CommandOrControl+Alt+,"},{"separator":true},{"label":"顯示 log","enabled":true},{"label":"結束 RecordStuff","enabled":true}]`;
 
 describe("tray menu comparison (plan 063)", () => {
   it("finds no difference between the recorded native menu and the model it was built from", () => {
@@ -45,13 +45,13 @@ describe("tray menu comparison (plan 063)", () => {
   });
 
   it("notes a named key it cannot compare instead of failing it", () => {
-    const { problems, notes } = compareMenu(native([["開始錄製", true, "", 0]]), [{ label: "開始錄製", enabled: true, accelerator: "CommandOrControl+F5" }]);
+    const { problems, notes } = compareMenu(native([["開始錄影", true, "", 0]]), [{ label: "開始錄影", enabled: true, accelerator: "CommandOrControl+F5" }]);
     expect(problems).toEqual([]);
     expect(notes[0]).toMatch(/named key/);
   });
 
   it("checks each state's structure: Start only in idle, Stop only while recording, greyed folder items", () => {
-    const recording = native([["錄製中", false, "", 0], ["停止", true, "1", 1], ["", false, "", 0],
+    const recording = native([["錄影中", false, "", 0], ["停止", true, "1", 1], ["", false, "", 0],
       ["儲存位置：~/Movies/RecordStuff", false, "", 0], ["更改儲存位置…", false, "", 0], ["", false, "", 0],
       ["設定…", true, ",", 2], ["", false, "", 0], ["顯示 log", true, "", 0], ["結束 RecordStuff", true, "", 0]]);
     expect(structureProblems(recording, "recording", "zh-TW")).toEqual([]);
@@ -118,8 +118,8 @@ describe("TrayDriver", () => {
     await driver.open();
     await expect(driver.select("待命中")).rejects.toThrow("disabled");
     await expect(driver.select("Start recording")).rejects.toThrow('has no "Start recording"');
-    await driver.select("開始錄製");
-    expect(ax.calls.at(-1)).toBe("press 開始錄製");
+    await driver.select("開始錄影");
+    expect(ax.calls.at(-1)).toBe("press 開始錄影");
     expect(ax.open).toBe(false);
   });
 

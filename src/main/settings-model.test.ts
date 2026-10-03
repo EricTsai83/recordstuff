@@ -44,13 +44,13 @@ describe("settingsView", () => {
     // Off: the status stays on screen, and the permission no longer matters.
     const off = group(idle, { ...context, notifications: false }, "notifications")!;
     expect([off.noteKind, off.info]).toEqual(["status", undefined]);
-    expect(off.note).toBe("Notifications are off. Recording failures remain visible in the menu bar and in Settings → Failures.");
+    expect(off.note).toBe("Failures still appear in the menu bar and the Failures tab.");
     expect(group(idle, { ...context, platform: "win32" }, "notifications")).not.toHaveProperty("info");
     expect(group(idle, { ...context, platform: "win32" }, "notifications")).not.toHaveProperty("note");
     // Only status notes stay visible; the remaining explanations sit behind an ⓘ.
     expect(group(idle, context, "screen")).not.toHaveProperty("note");
-    expect(group(idle, context, "videoQuality")?.info).toBe("Higher quality preserves more detail and uses more space at the same resolution.");
-    expect(group(idle, context, "resolutionCap")?.info).toBe("Limits pixel dimensions while keeping the aspect ratio. Smaller sources are not enlarged.");
+    expect(group(idle, context, "videoQuality")?.info).toBe("Higher quality keeps more detail but makes larger files.");
+    expect(group(idle, context, "resolutionCap")?.info).toBe("Scales larger screens down, keeping the aspect ratio. Smaller ones are not enlarged.");
   });
   it("offers every preference with a stable id and exactly one committed choice", () => {
     const view = settingsView(idle, context);
@@ -114,10 +114,10 @@ describe("settingsView", () => {
     const conflicted = { ...context, hotkey: { ...DEFAULT_HOTKEY, registered: false } };
     expect(group(idle, conflicted, "hotkey")).toMatchObject({
       label: "Shortcut",
-      diagnostics: [{ kind: "current", heading: "Shortcut unavailable", reason: "Unavailable: another app may be using this shortcut.", guidance: "Recording is still available from the menu. Choose another shortcut." }],
+      diagnostics: [{ kind: "current", heading: "Shortcut unavailable", reason: "Another app may be using this shortcut.", guidance: "Record from the menu, or choose another shortcut." }],
     });
     expect(checked(idle, conflicted, "hotkey")).toBe(DEFAULT_HOTKEY.accelerator);
-    expect(group(idle, { ...conflicted, language: "zh-TW" }, "hotkey")?.diagnostics?.[0]?.reason).toBe("無法使用：這個快捷鍵可能被其他 App 佔用。");
+    expect(group(idle, { ...conflicted, language: "zh-TW" }, "hotkey")?.diagnostics?.[0]?.reason).toBe("這個快捷鍵可能被其他 App 佔用。");
     // A registered shortcut needs no warning at all.
     expect(group(idle, context, "hotkey")).not.toHaveProperty("note");
   });
@@ -135,7 +135,7 @@ describe("settingsView", () => {
 describe("recording locks every preference except the language", () => {
   it.each(busy)("$type", (state) => {
     const view = settingsView(state, context);
-    expect(view.hint).toBe("Recording in progress. Only language and appearance can change until it ends.");
+    expect(view.hint).toBe("Recording in progress; only language and appearance can change.");
     for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["language", "appearance", "about"].includes(entry.id));
     expect(settingsAction(state, context, "language", "zh-TW")).toEqual({ setLanguage: "zh-TW" });
     for (const [group, choice] of [["videoQuality", "high"], ["frameRate", "60"], ["hotkey", "off"], ["updateChecks", "off"]]) {
@@ -206,7 +206,7 @@ describe("a quit in progress", () => {
     const ctx: AppContext = { ...context, quitting: true, recordingResults: [
       { id: "f", code: "disk_full", detail: "", occurredAt: "2026-09-24T12:00:00Z", outcome: "empty", acknowledged: false }] };
     const view = settingsView(idle, ctx);
-    expect(view.hint).toBe("Quitting… RecordStuff quits once the recording is saved or cleaned up.");
+    expect(view.hint).toBe("Quitting once the recording is saved or cleaned up…");
     expect(view.groups.filter(g => g.enabled).map(g => g.id)).toEqual([]);
     expect(view.recordingResults?.flatMap(r => r.actions).filter(a => a.enabled)).toEqual([]);
     expect(settingsAction(idle, ctx, "language", "zh-TW")).toBeUndefined();
@@ -276,7 +276,7 @@ describe("countdown group (plan 040)", () => {
       expect(group(state, context, "countdown")?.enabled, state.type).toBe(false);
       expect(settingsAction(state, context, "countdown", "5"), state.type).toBeUndefined();
     }
-    expect(settingsView({ type: "countdown", remaining: 2 }, context).hint).toBe("Recording in progress. Only language and appearance can change until it ends.");
+    expect(settingsView({ type: "countdown", remaining: 2 }, context).hint).toBe("Recording in progress; only language and appearance can change.");
     expect(settingsChecked(idle, { ...context, countdown: 10 }, "countdown", "10")).toBe(true);
   });
 });
@@ -331,7 +331,7 @@ describe("notifications in General", () => {
   /** Off is obeyed, not compensated for: the cost is stated where the choice is. */
   it("states what turning it off costs and where to look instead", () => {
     const off = group(idle, { ...context, notifications: false }, "notifications")?.note ?? "";
-    expect(off).toContain(t("Notifications are off. Recording failures remain visible in the menu bar and in Settings → Failures.", "en"));
+    expect(off).toContain(t("Failures still appear in the menu bar and the Failures tab.", "en"));
     // The macOS caveat is about a permission the user did not choose; it would
     // only confuse the reading of a switch the user did choose to turn off.
     expect(off).not.toContain("System Settings");
@@ -395,7 +395,7 @@ describe("screen choice", () => {
   it("keeps last source failure visible with notifications off without calling it disconnected", () => {
     const ctx = { ...selected, notifications: false, displayFailure: "source_missing" as const };
     expect(group(idle, ctx, "screen")?.diagnostics?.[0]).toMatchObject({ kind: "history", heading: "Last recording failure" });
-    expect(group(idle, ctx, "screen")?.diagnostics?.[0]?.reason).toContain("Display is connected");
+    expect(group(idle, ctx, "screen")?.diagnostics?.[0]?.reason).toContain("capture source is unavailable");
     expect(group(idle, ctx, "screen")?.recovery).toBeUndefined();
     expect(group(idle, ctx, "screen")?.choices.find((c) => c.checked)?.enabled).toBe(true);
   });
@@ -500,7 +500,7 @@ it("offers result actions by exact failure identity with recording and cleanup l
   expect(settingsAction(idle, done, "recordingResult:old", "acknowledge")).toBeUndefined();
   expect(settingsAction({ type: "recording", startedAt: "" }, done, "recordingResult:failure-1", "folder")).toBeUndefined();
   expect(settingsAction({ type: "recording", startedAt: "" }, done, "recordingResult:failure-1", "reveal")).toBeDefined();
-  expect(settingsView(idle, done).recordingResults?.[0]?.outcome).toContain("may not be playable");
+  expect(settingsView(idle, done).recordingResults?.[0]?.outcome).toContain("may not play");
 });
 
 it("offers macOS permission recovery with pending relaunch locked and no macOS action on Windows", () => {
@@ -523,7 +523,7 @@ it("offers persistence retry for an acknowledged result and bases restored relau
   const ctx = { ...context, platform: "darwin" as const, recordingResults: [result] };
   const view = settingsView(idle, ctx).recordingResults![0]!;
   expect(view.actions.find(a => a.id === "retry")).toMatchObject({ label: "Retry saving the record", enabled: true });
-  expect(view.guidance).toContain("previous recording failure");
+  expect(view.guidance).toContain("earlier session");
   expect(settingsAction(idle, ctx, "recordingResult:old", "relaunch")).toBeUndefined();
   expect(settingsAction({ type: "needsPermission", needsRelaunch: true }, ctx, "recordingResult:old", "relaunch")).toBeDefined();
 });
@@ -541,7 +541,7 @@ it("gives accurate persistence guidance, retries only what retrying can fix and 
   const row = (extra: object, language: "en" | "zh-TW" = "en", historyLoading = false) =>
     settingsView(idle, { ...context, language, historyLoading, recordingResults: [{ ...base, ...extra }] });
   const io = row({ persistenceFailed: "io" }).recordingResults![0]!;
-  expect(io.persistenceWarning).toContain("retries automatically");
+  expect(io.persistenceWarning).toContain("keeps retrying");
   expect(io.actions.map(a => a.id)).toContain("retry");
   const blocked = row({ persistenceFailed: "blocked" }).recordingResults![0]!;
   expect(blocked.persistenceWarning).toContain("will not overwrite");
@@ -658,7 +658,7 @@ it("explains a Settings shortcut that is not registered, not only a retry button
   const failed = group(idle, { ...context, settingsShortcut: { kind: "failed", accelerator: "CommandOrControl+Alt+,", reason: "taken" } }, "hotkey");
   expect(failed?.actions?.map(action => action.id)).toEqual(["retryRegistration"]);
   expect(failed?.diagnostics).toEqual([expect.objectContaining({ heading: "Settings shortcut unavailable",
-    reason: "⌘⌥, could not be registered to open Settings; another app may use it." })]);
+    reason: "Another app may be using ⌘⌥,." })]);
   const conflict = group(idle, { ...context, settingsShortcut: { kind: "conflict" } }, "hotkey");
   expect(conflict?.actions).toBeUndefined();
   expect(conflict?.diagnostics?.[0]?.reason).toBe("⌘⌥, is the recording shortcut, so it does not open Settings.");

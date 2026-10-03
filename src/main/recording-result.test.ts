@@ -87,12 +87,12 @@ it("distinguishes unknown from empty and does not promise recoverability", () =>
 });
 
 it("names both causes of missing system audio on macOS, a very busy Mac first, and keeps the permission actions", () => {
-  expect(failureReason("no_audio_track", "en")).toBe("System audio was unavailable when recording started, so nothing was recorded.");
-  expect(failureReason("no_audio_track", "zh-TW")).toBe("開始錄製時拿不到系統音訊，沒有開始錄製");
+  expect(failureReason("no_audio_track", "en")).toBe("System audio was unavailable at start, so nothing was recorded.");
+  expect(failureReason("no_audio_track", "zh-TW")).toBe("開始時無法取得系統音訊，未錄到任何內容");
   const en = failureGuidance("no_audio_track", "en", "darwin");
-  expect(en.indexOf("very heavy load")).toBeLessThan(en.indexOf("System Settings"));
+  expect(en.indexOf("Heavy load")).toBeLessThan(en.indexOf("System Settings"));
   expect(en).toContain("then relaunch");
-  expect(failureGuidance("no_audio_track", "zh-TW", "darwin")).toContain("負載非常重");
+  expect(failureGuidance("no_audio_track", "zh-TW", "darwin")).toContain("負載過重");
   // A missing permission grant keeps its own guidance; other platforms keep the device hint.
   expect(failureGuidance("permission_denied", "en", "darwin")).toBe("Check recording permissions in System Settings. Relaunch if access was recently granted.");
   expect(failureGuidance("no_audio_track", "en", "win32")).toContain("audio devices");

@@ -77,7 +77,7 @@ async function main(): Promise<void> {
   };
 
   const prompts: Array<{ message: string; buttons: string[] | undefined; detail: string | undefined; copyHeld: boolean; savedPath?: string; busy: boolean }> = [];
-  const answers = [0, 1, 2]; // Keep waiting, Stay in app, Exit without saving these records.
+  const answers = [0, 1, 2]; // Keep waiting, Stay in app, Exit without saving.
   let joined = 0, deferred = 0, resumed = 0;
   installQuitCoordinator(app, {
     shutdown: () => recorder.shutdown(),

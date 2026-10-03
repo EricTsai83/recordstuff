@@ -337,7 +337,7 @@ async function main(): Promise<void> {
     shortcuts.flush();
   };
   let captureDegraded = false;
-  const captureWarning = () => translate("The resolution cap could not be confirmed. The recording may use a larger size.", settings.language);
+  const captureWarning = () => translate("Could not confirm the resolution cap. The recording may be larger.", settings.language);
   const appContext = (): AppContext => ({
     ...(captureDegraded ? { captureWarning: captureWarning() } : {}),
     recordingResults: recordingResults.all,

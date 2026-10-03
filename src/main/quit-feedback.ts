@@ -7,8 +7,8 @@ import { APP_NAME } from "./ui-model";
 export type QuitDeferral = "media" | "metadata";
 
 export const DEFERRAL_MESSAGE = {
-  media: "Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. After it finishes, retry the same action: Quit or Relaunch.",
-  metadata: "Settings or the log are still being written. RecordStuff will stay open. In a moment, retry the same action: Quit or Relaunch.",
+  media: "Recording is still starting, saving or cleaning up, so RecordStuff stays open. A recording that has not started is cancelled. Try Quit or Relaunch again when it finishes.",
+  metadata: "Settings or the log are still being written, so RecordStuff stays open. Try Quit or Relaunch again in a moment.",
 } as const;
 
 /**
@@ -62,12 +62,12 @@ export function createHistoryQuit(deps: {
       const issue = unsaved.find(result => result.persistenceFailed)?.persistenceFailed;
       // A pending acknowledgement alone leaves no reminder unsaved, only an unfinished write.
       const detail = [...unsaved.length ? [translate("Unsaved records: {count}", language, { count: unsaved.length }), ...listed, ""] : [],
-        writing ? translate("The save has not finished. RecordStuff stays open instead of exiting while the history file may still be written.", language)
-          : `${issue && issue !== "io" ? persistenceWarning(issue, language) : translate("Check free disk space and access to the app's data folder, then retry.", language)}\n\n${translate("If you exit without saving, these records are lost and will not appear after RecordStuff restarts. Recording files are not affected.", language)}`];
+        writing ? translate("The save has not finished, so RecordStuff stays open.", language)
+          : `${issue && issue !== "io" ? persistenceWarning(issue, language) : translate("Check free disk space and access to the app's data folder, then retry.", language)}\n\n${translate("Exiting without saving loses these records. Recording files are not affected.", language)}`];
       // An unreadable, newer or oversized history fails the same way on every attempt while the prompt holds the app.
       const retryable = writing || !issue || issue === "io";
       const choices = [...(retryable ? ["retry" as const] : []), "stay" as const, ...(writing ? [] : ["exit" as const])];
-      const labels = { retry: writing ? "Keep waiting" : "Retry", stay: "Stay in app", exit: "Exit without saving these records" } as const;
+      const labels = { retry: writing ? "Keep waiting" : "Retry", stay: "Stay in app", exit: "Exit without saving" } as const;
       let response = choices.indexOf("stay");
       try { deps.focus(); }
       catch (cause) { deps.log(`quit: prompt focus failed: ${String(cause)}`); }

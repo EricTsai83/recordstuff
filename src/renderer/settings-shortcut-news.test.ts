@@ -3,7 +3,7 @@ import { expect, it, vi } from "vitest";
 import type { SettingsGroup, SettingsView } from "../shared/settings-panel";
 import { DEFAULT_HOTKEY } from "../shared/hotkey";
 
-const NOTE = "Unavailable: another app may be using this shortcut.";
+const NOTE = "Another app may be using this shortcut.";
 const diagnostic = (reason: string) => ({ kind: "current" as const, heading: "Shortcut unavailable", reason, guidance: "Choose another shortcut." });
 function view(shortcut: Partial<SettingsGroup> = {}): SettingsView {
   return {

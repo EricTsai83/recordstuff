@@ -113,7 +113,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(m.title).toBe("");
     expect(labels(m.menu)).toEqual([
       "待命中",
-      "開始錄製",
+      "開始錄影",
       "—",
       "儲存位置：~/Movies/RecordStuff",
       "更改儲存位置…",
@@ -168,7 +168,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(m.icon).toBe("recording");
     expect(m.title).toBe("REC");
     expect(labels(m.menu)).toEqual([
-      "錄製中",
+      "錄影中",
       "停止",
       "—",
       "儲存位置：~/Movies/RecordStuff",
@@ -195,11 +195,11 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     const m = trayModel({ type: "countdown", remaining: 3 }, ctx);
     expect(m.icon).toBe("countdown");
     expect(m.title).toBe("");
-    expect(m.tooltip.split("\n")[0]).toBe("RecordStuff: 3 秒後開始錄製，按一下即可取消。");
-    expect(labels(m.menu)).toEqual(["3 秒後開始錄製", "取消錄影", "—", "設定…", "—", "顯示 log", "結束 RecordStuff"]);
+    expect(m.tooltip.split("\n")[0]).toBe("RecordStuff: 3 秒後開始錄影，按一下即可取消。");
+    expect(labels(m.menu)).toEqual(["3 秒後開始錄影", "取消錄影", "—", "設定…", "—", "顯示 log", "結束 RecordStuff"]);
     expect(enabledActions(m.menu)).toEqual(["cancelCountdown", "openSettings", "revealLog", "quit"]);
     expect(m.menu.find((i) => i.kind === "item" && i.action === "cancelCountdown")).toMatchObject({ toolTip: "以 ⌘⇧1 取消錄影", accelerator: "CommandOrControl+Shift+1" });
-    expect(trayModel({ type: "countdown", remaining: 1 }, ctx).menu[0]).toMatchObject({ label: "1 秒後開始錄製", enabled: false });
+    expect(trayModel({ type: "countdown", remaining: 1 }, ctx).menu[0]).toMatchObject({ label: "1 秒後開始錄影", enabled: false });
     const english = trayModel({ type: "countdown", remaining: 2 }, { ...ctx, language: "en" });
     expect(english.tooltip.split("\n")[0]).toBe("RecordStuff: Recording starts in 2 s. Click to cancel.");
     expect(labels(english.menu).slice(0, 2)).toEqual(["Recording starts in 2 s", "Cancel recording"]);
@@ -238,11 +238,11 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     for (const state of [{ type: "idle" } as const, { type: "needsPermission", needsRelaunch: false } as const]) {
       const m = trayModel(state, { ...mac, quitting: true, recordingResults: unread });
       expect(m.icon).toBe("busy");
-      expect(m.tooltip.split("\n")[0]).toBe("RecordStuff: 正在結束…錄影存檔或清理完成後就會結束。");
-      expect(labels(m.menu)).toEqual(["正在結束…錄影存檔或清理完成後就會結束。", "—", "尚未確認的錄影失敗：1 筆", "查看失敗紀錄…", "—", "設定…", "—", "顯示 log", "結束 RecordStuff"]);
+      expect(m.tooltip.split("\n")[0]).toBe("RecordStuff: 錄影存檔或清理完成後即結束…");
+      expect(labels(m.menu)).toEqual(["錄影存檔或清理完成後即結束…", "—", "尚未確認的錄影失敗：1 筆", "查看失敗紀錄…", "—", "設定…", "—", "顯示 log", "結束 RecordStuff"]);
     }
     const english = trayModel({ type: "idle" }, { ...mac, language: "en", quitting: true });
-    expect(english.menu[0]).toMatchObject({ label: "Quitting… RecordStuff quits once the recording is saved or cleaned up.", enabled: false });
+    expect(english.menu[0]).toMatchObject({ label: "Quitting once the recording is saved or cleaned up…", enabled: false });
     // A capture still running keeps its own state; the quit stops it, so its Stop is shown but not offered.
     const recording = trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, { ...mac, quitting: true });
     expect(recording.title).toBe("REC");
@@ -259,19 +259,19 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
 
   it("says in every state that a quit was postponed, beside the state, since its banner may not be seen (plan 056)", () => {
     const zh = trayModel({ type: "idle" }, { ...mac, quitDeferred: "media" });
-    expect(labels(zh.menu).slice(0, 3)).toEqual(["待命中", "退出或重新啟動已延後：錄影工作仍在進行，完成後請重試原本的操作。", "開始錄製"]);
+    expect(labels(zh.menu).slice(0, 3)).toEqual(["待命中", "錄影工作仍在進行，暫不結束或重新啟動；完成後請再試一次。", "開始錄影"]);
     expect(zh.menu[1]).toMatchObject({ enabled: false });
-    expect(zh.tooltip.split("\n").slice(0, 2)).toEqual(["RecordStuff: 待命中", "退出或重新啟動已延後：錄影工作仍在進行，完成後請重試原本的操作。"]);
+    expect(zh.tooltip.split("\n").slice(0, 2)).toEqual(["RecordStuff: 待命中", "錄影工作仍在進行，暫不結束或重新啟動；完成後請再試一次。"]);
     const saving = trayModel({ type: "stopping" }, { ...mac, language: "en", quitDeferred: "metadata" });
-    expect(labels(saving.menu).slice(0, 2)).toEqual(["Saving…", "Quit or relaunch postponed: settings or the log are still being written. Retry the same action in a moment."]);
-    expect(labels(trayModel({ type: "idle" }, mac).menu)).not.toContain("退出或重新啟動已延後：錄影工作仍在進行，完成後請重試原本的操作。");
+    expect(labels(saving.menu).slice(0, 2)).toEqual(["Saving…", "Quit or relaunch postponed: settings or the log are being written. Try again in a moment."]);
+    expect(labels(trayModel({ type: "idle" }, mac).menu)).not.toContain("錄影工作仍在進行，暫不結束或重新啟動；完成後請再試一次。");
   });
 
   it("says an error box is waiting for the recording, even while it records (plan 056)", () => {
     const m = trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, { ...mac, language: "en", errorBoxHeld: true, quitDeferred: "media" });
     expect(m.title).toBe("REC");
     expect(labels(m.menu).slice(0, 4)).toEqual(["Recording", "An unexpected error occurred. See the log for details.",
-      "Quit or relaunch postponed: recording work is still pending. Retry the same action once it finishes.", "Stop"]);
+      "Quit or relaunch postponed: recording work is pending. Try again when it finishes.", "Stop"]);
     expect(m.tooltip.split("\n")[1]).toBe("An unexpected error occurred. See the log for details.");
     expect(enabledActions(m.menu)).toContain("revealLog");
   });
@@ -318,7 +318,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
 
 describe("notification text", () => {
   it("frame-rate downgrade names both numbers", () => {
-    expect(frameRateDowngradeNotification(60, 30, "zh-TW").body).toBe("系統只提供 30 fps，本次以 30 fps 錄製（設定為 60 fps）。");
+    expect(frameRateDowngradeNotification(60, 30, "zh-TW").body).toBe("系統無法提供 60 fps，本次以 30 fps 錄影。");
   });
 
   it("saved notification uses the file name", () => {
@@ -329,26 +329,26 @@ describe("notification text", () => {
 
   it("a recording stopped by the disk guard says so in the saved notification", () => {
     expect(savedNotification("/Volumes/Small/demo.mp4", "en", "lowDisk").body).toBe(
-      "Saved demo.mp4. Recording stopped early because the disk is almost full.",
+      "Saved demo.mp4. Stopped early: the disk is almost full.",
     );
-    expect(savedNotification("/Volumes/Small/demo.mp4", "zh-TW", "lowDisk").body).toBe("已儲存 demo.mp4。磁碟空間即將用盡，已提前停止錄製。");
+    expect(savedNotification("/Volumes/Small/demo.mp4", "zh-TW", "lowDisk").body).toBe("已儲存 demo.mp4。磁碟空間即將用盡，已提前停止錄影。");
   });
 
   it("a recording stopped because the Mac went to sleep says so in the saved notification (plan 050)", () => {
     expect(savedNotification("/Users/eric/Movies/RecordStuff/demo.mp4", "en", "sleep").body).toBe(
-      "Saved demo.mp4. Recording stopped because the Mac went to sleep.",
+      "Saved demo.mp4. Stopped because the Mac went to sleep.",
     );
-    expect(savedNotification("/Users/eric/Movies/RecordStuff/demo.mp4", "zh-TW", "sleep").body).toBe("已儲存 demo.mp4。Mac 進入睡眠，已停止錄製。");
+    expect(savedNotification("/Users/eric/Movies/RecordStuff/demo.mp4", "zh-TW", "sleep").body).toBe("已儲存 demo.mp4。Mac 進入睡眠，已停止錄影。");
   });
 
   it("a failure notification joins its reason and the result hint as sentences in each language (plan 035 D1)", () => {
-    expect(recordingFailureNotification("output_write_failed", "zh-TW")).toEqual({ title: "錄影失敗", body: "寫入錄影失敗。點此查看錄影結果。" });
-    expect(recordingFailureNotification("output_open_failed", "zh-TW").body).toBe("無法寫入儲存位置。點此查看錄影結果。");
-    expect(recordingFailureNotification("output_write_failed", "en")).toEqual({ title: "Recording failed", body: "Could not write the recording. Click to view the recording result." });
+    expect(recordingFailureNotification("output_write_failed", "zh-TW")).toEqual({ title: "錄影失敗", body: "寫入錄影失敗。點此查看詳情。" });
+    expect(recordingFailureNotification("output_open_failed", "zh-TW").body).toBe("無法寫入儲存位置。點此查看詳情。");
+    expect(recordingFailureNotification("output_write_failed", "en")).toEqual({ title: "Recording failed", body: "Could not write the recording. Click for details." });
   });
   it("a refused shortcut registration points at Settings, in the user's language", () => {
     expect(hotkeyRegistrationFailedNotification(DEFAULT_HOTKEY.accelerator, "darwin", "zh-TW").body).toBe(
-      "無法註冊快捷鍵 ⌘⇧1，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵。",
+      "無法註冊 ⌘⇧1，可能被其他 App 佔用。請在設定改用其他快捷鍵。",
     );
     expect(hotkeyRegistrationFailedNotification(DEFAULT_HOTKEY.accelerator, "win32").body).toContain("Ctrl+Shift+1");
   });
@@ -372,7 +372,7 @@ describe("English default and language switching", () => {
     expect(english.title).toBe("REC");
     expect(chinese.title).toBe("REC");
     expect(english.tooltip).toBe("RecordStuff: Recording\nRight-click to open the menu");
-    expect(chinese.tooltip).toBe("RecordStuff: 錄製中\n右鍵開啟選單");
+    expect(chinese.tooltip).toBe("RecordStuff: 錄影中\n右鍵開啟選單");
     expect(enabledActions(english.menu)).toEqual(enabledActions(chinese.menu));
     expect(state.type).toBe("recording");
   });
@@ -445,7 +445,7 @@ describe("display tray feedback", () => {
     const ctx: AppContext = { ...mac, language: "en", notifications: false, display: { kind: "display", id: "7", label: "Studio" }, displayFailure: "source_missing" };
     const menu = trayModel({ type: "idle" }, ctx).menu;
     expect(menu[0]).toMatchObject({ label: "Selected display is unavailable. Choose another screen." });
-    expect(menu[1]).toMatchObject({ label: "Last display failure: Display is connected but its capture source is unavailable. Retry or choose another screen." });
+    expect(menu[1]).toMatchObject({ label: "Last display failure: The display's capture source is unavailable. Retry or choose another screen." });
   });
 });
 
@@ -487,7 +487,7 @@ describe("one group order in every state (plan 048)", () => {
     ]);
     // Reviewed failures leave the top: only a way back beside Settings, and no "Recent failure" line.
     expect(idle("reviewed", "zh-TW")).toEqual([
-      "待命中", "開始錄製", "—",
+      "待命中", "開始錄影", "—",
       "顯示最後一個錄影", "儲存位置：~/Movies/RecordStuff", "更改儲存位置…", "—",
       "查看失敗紀錄…", "設定…", "—",
       "顯示 log", "結束 RecordStuff",
@@ -498,7 +498,7 @@ describe("one group order in every state (plan 048)", () => {
     expect(recording).toEqual(["Recording", "Stop", "—", "Unreviewed recording failures: 1", "View recording failures…", "—",
       "Output folder: ~/Movies/RecordStuff", "Change output folder…", "—", "Settings…", "—", "Show log", "Quit RecordStuff"]);
     const countdown = labels(trayModel({ type: "countdown", remaining: 3 }, { ...mac, recordingResults: histories.reviewed }).menu);
-    expect(countdown).toEqual(["3 秒後開始錄製", "取消錄影", "—", "查看失敗紀錄…", "設定…", "—", "顯示 log", "結束 RecordStuff"]);
+    expect(countdown).toEqual(["3 秒後開始錄影", "取消錄影", "—", "查看失敗紀錄…", "設定…", "—", "顯示 log", "結束 RecordStuff"]);
     for (const history of Object.keys(histories) as Array<keyof typeof histories>) {
       for (const state of STATES) {
         const menu = labels(trayModel(state, { ...mac, recordingResults: histories[history] }).menu);

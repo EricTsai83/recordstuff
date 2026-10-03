@@ -4,7 +4,7 @@ import type { RecordingResultView, SettingsView } from "../shared/settings-panel
 
 /** Plan 047: the Recording failures tab, driven through the real page module with a fake bridge. */
 const row = (id: string, over: Partial<RecordingResultView> = {}): RecordingResultView => ({
-  id, reason: "The disk is full.", day: "Today", time: "2:05 PM", outcome: "No recording content was kept.",
+  id, reason: "The disk is full.", day: "Today", time: "2:05 PM", outcome: "No recording was kept.",
   guidance: "Free disk space or choose another output folder before recording again.", detail: "ENOSPC: fixture",
   acknowledged: false, actions: [{ id: "acknowledge", label: "Got it", enabled: true, checked: false }], ...over,
 });
@@ -66,7 +66,7 @@ it("keeps the history in its own tab, as collapsed day-grouped rows with one ope
   expect(first.querySelector(".result-unread-label")!.textContent).toBe("Unread, ");
   expect(first.querySelector(".result-reason")!.textContent).toBe("The disk is full.");
   expect(first.querySelector(".result-time")!.textContent).toBe("2:05 PM");
-  expect(first.querySelector(".result-outcome")!.textContent).toBe("No recording content was kept.");
+  expect(first.querySelector(".result-outcome")!.textContent).toBe("No recording was kept.");
   expect(headers()[1]!.querySelector<HTMLElement>(".result-unread-label")!.hidden).toBe(true);
   // Details: no repeated heading or time, the file name, and the full path under Technical details.
   const old = rows()[1]!;
@@ -74,7 +74,7 @@ it("keeps the history in its own tab, as collapsed day-grouped rows with one ope
   expect(old.querySelector(".result-file")!.textContent).toBe("2026-09-27 09-12-00.mp4");
   expect(old.querySelector(".result-technical pre")!.textContent).toBe("/Users/me/Movies/RecordStuff/2026-09-27 09-12-00.mp4\nENOSPC: fixture");
   expect([...old.querySelectorAll(".result-actions button")].map((b) => b.textContent)).toEqual(["Remove from history"]);
-  expect(document.querySelector(".result-history-note")!.textContent).toContain("Keeps all unreviewed failures and the 20 most recently reviewed failures.");
+  expect(document.querySelector(".result-history-note")!.textContent).toContain("Keeps unreviewed failures and the 20 most recently reviewed.");
 
   // One open row at a time.
   rows()[0]!.open = true; rows()[0]!.dispatchEvent(new Event("toggle"));
@@ -207,7 +207,7 @@ it("keeps the missing-file explanation instead of offering an impossible reveal 
   (document.querySelector('.result-actions button') as HTMLButtonElement).click();
   await vi.waitFor(() => expect(document.querySelector('.result-outcome')?.textContent).toBe("The file is no longer available."));
   expect(document.querySelector<HTMLElement>('.result-error')!.hidden).toBe(true);
-  expect(document.getElementById("feedback")!.textContent).not.toContain("Please try again");
+  expect(document.getElementById("feedback")!.textContent).not.toContain("Could not complete this action");
 });
 
 it("announces an action that fails again, although its message is the same", async () => {
@@ -226,7 +226,7 @@ it("announces an action that fails again, although its message is the same", asy
   // The live region's text changed both times, so a screen reader speaks the second failure too.
   const failures = spoken.filter(t => t.startsWith("Could not complete this action."));
   expect(failures[0]).not.toBe(failures[1]);
-  expect(failures.map(t => t.trim())).toEqual(Array(2).fill("Could not complete this action. Please try again."));
+  expect(failures.map(t => t.trim())).toEqual(Array(2).fill("Could not complete this action. Try again."));
 });
 
 it("pages older failures in without announcing them or dropping focus, and still announces a new one", async () => {
@@ -247,7 +247,7 @@ it("pages older failures in without announcing them or dropping focus, and still
   expect(document.activeElement).toBe(document.getElementById("recording-result-o1-summary"));
   await vi.waitFor(() => expect(more.hasAttribute("aria-disabled")).toBe(false));
   await show(view([row("n0", { reason: "Capture stopped." }), row("n1"), row("n2"), reviewed("o1"), reviewed("o2")]));
-  expect(document.getElementById("feedback")!.textContent).toBe("Capture stopped. No recording content was kept.");
+  expect(document.getElementById("feedback")!.textContent).toBe("Capture stopped. No recording was kept.");
 });
 
 it("updates the scroll hint when technical details grow the content", async () => {

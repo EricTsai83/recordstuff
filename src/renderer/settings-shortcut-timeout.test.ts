@@ -41,7 +41,7 @@ it("shows and announces timeout, restores focus, translates and clears it on a n
   push(current);
   const timeout = document.querySelector<HTMLElement>(".capture-timeout")!;
   expect(timeout.hidden).toBe(false);
-  expect(timeout.textContent).toContain("timed out after 15 seconds");
+  expect(timeout.textContent).toContain("Timed out after 15 seconds");
   expect(document.getElementById("feedback")?.textContent).toBe(timeout.textContent);
   expect(document.activeElement).toBe(select);
   expect(select.getAttribute("aria-describedby")).toContain(timeout.id);

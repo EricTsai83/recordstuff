@@ -66,7 +66,7 @@ const view = (language: Language): SettingsView => {
     title: zh ? "RecordStuff - 設定" : "RecordStuff - Settings",
     hint: "",
     failure: zh
-      ? "無法套用這項設定，目前顯示的是實際使用的設定。"
+      ? "無法套用此設定，已顯示目前的設定。"
       : "Could not apply this setting. Your current settings are shown.",
     tabs: [
       { id: "recording", label: zh ? "錄影" : "Recording settings" },
@@ -92,7 +92,7 @@ const view = (language: Language): SettingsView => {
         id: "hotkey",
         tab: "recording",
         label: zh ? "快捷鍵" : "Shortcut",
-        note: zh ? "無法使用：這個快捷鍵可能被其他 App 佔用。" : "Unavailable: another app may be using this shortcut.",
+        note: zh ? "這個快捷鍵可能被其他 App 佔用。" : "Another app may be using this shortcut.",
         enabled: true,
         choices: [
           { id: "CommandOrControl+Alt+Shift+R", label: "⌘⌥⇧R", enabled: true, checked: true },
@@ -324,7 +324,7 @@ async function run() {
   );
   record(
     "a refused shortcut shows its note and the control points at it",
-    rendered.note === "無法使用：這個快捷鍵可能被其他 App 佔用。" &&
+    rendered.note === "這個快捷鍵可能被其他 App 佔用。" &&
       rendered.controls[1]?.describedBy?.includes("setting-hotkey-note") === true,
     JSON.stringify([rendered.note, rendered.controls[1]?.describedBy]),
   );
@@ -822,7 +822,7 @@ async function run() {
   };
   await pushResult("zh-TW", 1);
   record("recording failure visible immediately with notifications off; pending result cannot be acknowledged",
-    await read<boolean>(window, `document.querySelector(".recording-result").open && document.querySelector('.recording-result [data-action="acknowledge"]').disabled && document.querySelector(".result-outcome").textContent.includes("尚未確認") && document.activeElement === document.querySelector(".recording-result > summary")`), "pending and focus");
+    await read<boolean>(window, `document.querySelector(".recording-result").open && document.querySelector('.recording-result [data-action="acknowledge"]').disabled && document.querySelector(".result-outcome").textContent.includes("正在處理錄影") && document.activeElement === document.querySelector(".recording-result > summary")`), "pending and focus");
   recordingResults.update({ ...failure, outcome: "partial", partialPath: "/tmp/錄影資料夾/2026-09-24 20-00-00.recording.mp4" });
   for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
     nativeTheme.themeSource = scheme;
@@ -919,7 +919,7 @@ async function run() {
       window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Return" });
       if (!await until(() => read<boolean>(window, `document.querySelector(".recording-result").open`))) throw new Error("History summary did not open");
     }
-    record(`acknowledged ${lang} result offers a readable save retry`, await read<boolean>(window, `(() => { const b = document.querySelector('.recording-result [data-action="retry"]'); return !b.disabled && b.scrollWidth <= b.clientWidth && b.textContent.includes(${JSON.stringify(lang === "en" ? "Retry saving the record" : "重新嘗試寫入紀錄")}); })()`), "acknowledged persistence failure");
+    record(`acknowledged ${lang} result offers a readable save retry`, await read<boolean>(window, `(() => { const b = document.querySelector('.recording-result [data-action="retry"]'); return !b.disabled && b.scrollWidth <= b.clientWidth && b.textContent.includes(${JSON.stringify(lang === "en" ? "Retry saving the record" : "重試儲存紀錄")}); })()`), "acknowledged persistence failure");
     await shot(`result-retry-${lang}.png`);
   }
   await clickAck(() => read<boolean>(window, `!document.querySelector(".result-error").hidden`), "retry");
@@ -1003,7 +1003,7 @@ async function run() {
   recordingResults.update({ ...failure, id: "auto-retry" }); recordingResults.update({ ...failure, id: "auto-retry", outcome: "empty" });
   await recordingResults.persist();
   await pushResult("en", ++lastFocus);
-  const autoWarning = await read<boolean>(window, `!document.querySelector(".result-persistence").hidden && document.querySelector(".result-persistence").textContent.includes("retries automatically")`);
+  const autoWarning = await read<boolean>(window, `!document.querySelector(".result-persistence").hidden && document.querySelector(".result-persistence").textContent.includes("keeps retrying")`);
   resultSaveFails = false;
   record("automatic retry clears the persistence warning without acknowledging", autoWarning && await until(async () => !recordingResults.current?.persistenceFailed
     && await read<boolean>(window, `document.querySelector(".result-persistence").hidden && document.querySelector(".recording-result").open`)) && !recordingResults.current?.acknowledged, "300 ms controlled backoff");

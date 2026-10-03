@@ -130,7 +130,7 @@ export function classifyCleanup(facts: CleanupFacts): Layer {
 }
 
 /** The deferred-quit message the fixture's media deferral shows (`DEFERRAL_MESSAGE.media` in src/main/quit-feedback.ts). */
-export const DEFERRED_QUIT_MEDIA_MESSAGE = "Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. After it finishes, retry the same action: Quit or Relaunch.";
+export const DEFERRED_QUIT_MEDIA_MESSAGE = "Recording is still starting, saving or cleaning up, so RecordStuff stays open. A recording that has not started is cancelled. Try Quit or Relaunch again when it finishes.";
 
 /** A banner as Notification Center's Accessibility tree shows it (scripts/lib/native-ax.mts). */
 export interface BannerSighting { id: string | undefined; title: string | undefined; body: string | undefined }

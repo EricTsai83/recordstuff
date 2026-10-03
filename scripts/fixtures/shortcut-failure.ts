@@ -138,7 +138,7 @@ async function waitFor(check: () => unknown | Promise<unknown>, detail: string) 
   }
   throw new Error('Timed out: ' + detail);
 }
-const failureNotifications = () => notifications.filter(n => n.body?.startsWith('Could not register the shortcut '));
+const failureNotifications = () => notifications.filter(n => n.body?.startsWith('Could not register '));
 const group = () => evaluate<SettingsGroup>("window.settings.read().then(v => v.groups.find(g => g.id === 'hotkey'))");
 async function arm() {
   if (!panel) throw new Error('Settings window is not ready');
@@ -420,7 +420,7 @@ require(path.join(root, 'out/main/index.js'));
     const saved = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
     const restored = await group();
     record('restart loads failed custom selection without reseeding', saved.hotkey.enabled && saved.hotkey.accelerator === accelerator && restored.choices.some(c => c.id === accelerator && c.checked), JSON.stringify(saved.hotkey));
-    record('restart retries registration and renders failure', recordingAttempts().length === 1 && recordingAttempts()[0]?.registered === false && restored.diagnostics?.[0]?.reason === 'Unavailable: another app may be using this shortcut.' && await evaluate("document.querySelector('#setting-hotkey-diagnostics .diagnostic p').textContent === 'Unavailable: another app may be using this shortcut.'"), JSON.stringify(attempts));
+    record('restart retries registration and renders failure', recordingAttempts().length === 1 && recordingAttempts()[0]?.registered === false && restored.diagnostics?.[0]?.reason === 'Another app may be using this shortcut.' && await evaluate("document.querySelector('#setting-hotkey-diagnostics .diagnostic p').textContent === 'Another app may be using this shortcut.'"), JSON.stringify(attempts));
     record('restart requests failure notification', failureNotifications().length === 1 && failureNotifications()[0]?.body?.includes('F20'), JSON.stringify(failureNotifications()));
     finish();
     return;
@@ -429,7 +429,7 @@ require(path.join(root, 'out/main/index.js'));
   const failed = await group();
   const persisted = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
   record('real Electron registration failure and persistence', recordingAttempts().at(-1)?.registered === false && recordingAttempts().at(-1)?.forcedFailure && persisted.hotkey.enabled && persisted.hotkey.accelerator === accelerator, JSON.stringify({ attempt: recordingAttempts().at(-1), hotkey: persisted.hotkey }));
-  record('failure note rendered by production page', failed.diagnostics?.[0]?.reason === 'Unavailable: another app may be using this shortcut.' && await evaluate("document.querySelector('#setting-hotkey-diagnostics .diagnostic p').textContent === 'Unavailable: another app may be using this shortcut.'"), failed.diagnostics?.[0]?.reason ?? '');
+  record('failure note rendered by production page', failed.diagnostics?.[0]?.reason === 'Another app may be using this shortcut.' && await evaluate("document.querySelector('#setting-hotkey-diagnostics .diagnostic p').textContent === 'Another app may be using this shortcut.'"), failed.diagnostics?.[0]?.reason ?? '');
   record('notification requested with shortcut and recovery direction', failureNotifications().length === 1 && failureNotifications()[0]?.body?.includes('F20') && failureNotifications()[0]?.body?.includes('Settings'), JSON.stringify(failureNotifications()));
   if (drill === '--drill-failure') throw new Error('Intentional assertion-failure cleanup drill');
   if (drill === '--drill-timeout') { console.log('DRILL_READY'); await new Promise(() => {}); }
@@ -442,7 +442,7 @@ require(path.join(root, 'out/main/index.js'));
   await choose('hotkey', 'off');
   const off = await group();
   // Every registration fails here, ⌘⌥, too: Off removes only the recording shortcut's note.
-  record('Off retains value and removes failure note', !off.diagnostics?.some(d => d.reason === 'Unavailable: another app may be using this shortcut.') && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.enabled === false && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator && !globalShortcut.isRegistered(accelerator), 'saved disabled; no note or registration');
+  record('Off retains value and removes failure note', !off.diagnostics?.some(d => d.reason === 'Another app may be using this shortcut.') && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.enabled === false && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator && !globalShortcut.isRegistered(accelerator), 'saved disabled; no note or registration');
   record('a failed Settings shortcut is explained in the card, not only by a retry button',
     off.diagnostics?.length === 1 && off.diagnostics[0]?.heading === 'Settings shortcut unavailable' && off.actions?.some(a => a.id === 'retryRegistration') === true
       && await evaluate("document.querySelector('#setting-hotkey-diagnostics .diagnostic strong').textContent === '⚠ Settings shortcut unavailable'"),

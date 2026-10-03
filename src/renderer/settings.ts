@@ -270,7 +270,7 @@ function updateRows(groups: SettingsGroup[]): void {
       setText(help, text("Press a combination and Confirm within 15 seconds; Esc cancels"));
       const timeout = container.querySelector<HTMLElement>(".capture-timeout")!;
       timeout.hidden = !group.captureTimedOut;
-      setText(timeout, group.captureTimedOut ? text("Shortcut editing timed out after 15 seconds. The shortcut was not changed. Choose Custom shortcut… to try again.") : "");
+      setText(timeout, group.captureTimedOut ? text("Timed out after 15 seconds; the shortcut is unchanged. Choose Custom shortcut… to try again.") : "");
       const confirm = container.querySelector<HTMLButtonElement>("#shortcut-confirm")!;
       setText(confirm, text("Confirm"));
       confirm.disabled = !group.enabled || !candidateToConfirm;
@@ -549,7 +549,7 @@ function updateRecordingResult(focusRequested: boolean): void {
         const loaded = view?.recordingResults?.find(r => !known.has(r.id)) ?? view?.recordingResults?.at(-1);
         if (loaded) document.getElementById(`${resultDomId(loaded.id)}-summary`)?.focus({ preventScroll: true });
       })
-        .catch(() => announce(text("Could not complete this action. Please try again.")))
+        .catch(() => announce(text("Could not complete this action. Try again.")))
         .finally(() => { more!.removeAttribute("aria-disabled"); });
     });
     more.className = "history-more";
@@ -563,7 +563,7 @@ function updateRecordingResult(focusRequested: boolean): void {
   empty.hidden = Boolean(results.length || status); setText(empty, text("No recording failures."));
   const note = list.querySelector<HTMLElement>(".result-history-note")!;
   note.hidden = !results.length;
-  setText(note, translate("Keeps all unreviewed failures and the {count} most recently reviewed failures. Removing a record does not delete the recording file.",
+  setText(note, translate("Keeps unreviewed failures and the {count} most recently reviewed. Removing a record does not delete its file.",
     view?.language, { count: REVIEWED_FAILURES_KEPT }));
   const days = list.querySelector<HTMLElement>(".result-days")!;
   const focusId = (results.find(r => !r.acknowledged) ?? results[0])?.id;
@@ -726,7 +726,7 @@ function fillRow(area: HTMLDetailsElement, result: RecordingResultView): void {
   savingLine.hidden = !savingText; setText(savingLine, savingText);
   const error = area.querySelector<HTMLElement>(".result-error")!;
   error.hidden = !resultErrors.has(result.id);
-  setText(error, error.hidden ? "" : text("Could not complete this action. Please try again."));
+  setText(error, error.hidden ? "" : text("Could not complete this action. Try again."));
   const technical = area.querySelector<HTMLDetailsElement>(".result-technical")!;
   // The full path moved here from the row (plan 047); the file name stays above.
   const technicalText = [result.file, result.detail].filter(Boolean).join("\n");
@@ -883,8 +883,8 @@ function render(next: SettingsView): void {
       return messages;
     });
     if (endedByMain && document.hasFocus()) changes.unshift(next.groups.some(g => g.captureTimedOut)
-      ? text("Shortcut editing timed out after 15 seconds. The shortcut was not changed. Choose Custom shortcut… to try again.")
-      : text("Shortcut editing ended; the shortcut was not changed."));
+      ? text("Timed out after 15 seconds; the shortcut is unchanged. Choose Custom shortcut… to try again.")
+      : text("Editing ended; the shortcut is unchanged."));
     // The history arriving from disk is not news: every row would be read out at once.
     const historyLoaded = Boolean(previous.recordingHistoryStatus) && !next.recordingHistoryStatus;
     const olds = new Map((previous.recordingResults ?? []).map(r => [r.id, r]));
@@ -918,7 +918,7 @@ async function chooseResult(id: string, action: string, control: string): Promis
     offeredAfter = Boolean(result.view.recordingResults?.find(r => r.id === id)?.actions.some(choice => choice.id === action));
   } catch { /* Keep the current projection; main owns the state. */ }
   resultIntents.delete(id);
-  if (!applied && offeredAfter) { resultErrors.add(id); announce(text("Could not complete this action. Please try again.")); }
+  if (!applied && offeredAfter) { resultErrors.add(id); announce(text("Could not complete this action. Try again.")); }
   else if (announced() === text("Saving this change…")) announce("");
   draw();
   restoreResultFocus(id, intent);

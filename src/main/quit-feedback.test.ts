@@ -10,16 +10,16 @@ it("tells a deferred quit in a notification in the current language and returns 
   const feedback = createQuitFeedback({ language: () => language, notify, log: vi.fn() });
   // Nothing to await: the deadlines the notice describes keep running while it is shown.
   expect(feedback()).toBeUndefined();
-  expect(notify).toHaveBeenCalledExactlyOnceWith("Recording is still starting, saving or cleaning up. RecordStuff will stay open. A recording that has not started yet will be cancelled. After it finishes, retry the same action: Quit or Relaunch.");
+  expect(notify).toHaveBeenCalledExactlyOnceWith("Recording is still starting, saving or cleaning up, so RecordStuff stays open. A recording that has not started is cancelled. Try Quit or Relaunch again when it finishes.");
   language = "zh-TW";
   feedback("media");
-  expect(notify.mock.calls[1]?.[0]).toContain("RecordStuff 將保持開啟");
+  expect(notify.mock.calls[1]?.[0]).toContain("RecordStuff 會保持開啟");
 });
 
 it("names a pending preference or log write instead of a recording when media had settled", () => {
   const notify = vi.fn((_body: string) => undefined);
   createQuitFeedback({ language: () => "en", notify, log: vi.fn() })("metadata");
-  expect(notify).toHaveBeenCalledExactlyOnceWith("Settings or the log are still being written. RecordStuff will stay open. In a moment, retry the same action: Quit or Relaunch.");
+  expect(notify).toHaveBeenCalledExactlyOnceWith("Settings or the log are still being written, so RecordStuff stays open. Try Quit or Relaunch again in a moment.");
 });
 
 it("logs a failed notification instead of throwing into the deferred quit", () => {
@@ -46,7 +46,7 @@ it("never offers exit while a save is still in flight; waiting again can then ad
   expect(await createHistoryQuit({ results, language: () => "en", focus() {}, show, log: vi.fn() })()).toBe(true);
   expect(results.flush).toHaveBeenCalledWith(HISTORY_QUIT_WAIT_MS);
   expect(show.mock.calls[0]?.[0]).toMatchObject({ message: "Still saving failure records", buttons: ["Keep waiting", "Stay in app"], cancelId: 1 });
-  expect(show.mock.calls[0]?.[0].detail).toContain("may still be written");
+  expect(show.mock.calls[0]?.[0].detail).toContain("The save has not finished");
 });
 
 it("lists unsaved reminders and exits without saving only on explicit choice and an idle writer", async () => {
@@ -62,7 +62,7 @@ it("lists unsaved reminders and exits without saving only on explicit choice and
   expect(await createHistoryQuit({ results, language: () => "en", focus() {}, show, log })()).toBe(true);
   expect(show).toHaveBeenCalledTimes(2);
   const options = show.mock.calls[0]![0];
-  expect(options.buttons).toEqual(["Retry", "Stay in app", "Exit without saving these records"]);
+  expect(options.buttons).toEqual(["Retry", "Stay in app", "Exit without saving"]);
   expect(options.defaultId).toBe(0);
   expect(options.detail).toContain("Unsaved records: 7");
   expect(options.detail).toContain("The disk is full.");
@@ -78,7 +78,7 @@ it("staying, a failed prompt and Chinese copy keep the app open and resume retri
   expect(await createHistoryQuit({ results, language: () => "zh-TW", focus() {}, show, log: vi.fn() })()).toBe(false);
   expect(results.resume).toHaveBeenCalledOnce(); expect(results.close).not.toHaveBeenCalled();
   // A blocked history fails every retry, so staying is the default and Retry is not offered.
-  expect(show.mock.calls[0]?.[0]).toMatchObject({ message: "無法儲存失敗紀錄", buttons: ["留在 App", "不儲存這些紀錄並結束"], defaultId: 0, cancelId: 0 });
+  expect(show.mock.calls[0]?.[0]).toMatchObject({ message: "無法儲存失敗紀錄", buttons: ["留在 App", "不儲存並結束"], defaultId: 0, cancelId: 0 });
   expect(show.mock.calls[0]?.[0].detail).toContain("不會覆寫");
   const broken = historyResults(["unsaved"]), log = vi.fn();
   expect(await createHistoryQuit({ results: broken, language: () => "en", focus() {}, show: async () => { throw new Error("no dialog"); }, log })()).toBe(false);
@@ -97,9 +97,9 @@ it("still shows the history prompt when bringing the app forward fails", async (
 
 it("an oversized history offers no Retry but still lets the user exit without saving", async () => {
   const results = historyResults(["unsaved"], [{ id: "a", occurredAt: "2026-09-25T04:05:06Z", code: "disk_full", detail: "", outcome: "empty", acknowledged: false, persistenceFailed: "tooLarge" }]);
-  const show = vi.fn(async (options: MessageBoxOptions) => ({ response: options.buttons!.indexOf("Exit without saving these records") }));
+  const show = vi.fn(async (options: MessageBoxOptions) => ({ response: options.buttons!.indexOf("Exit without saving") }));
   expect(await createHistoryQuit({ results, language: () => "en", focus() {}, show, log: vi.fn() })()).toBe(true);
   expect(show).toHaveBeenCalledOnce();
-  expect(show.mock.calls[0]?.[0]).toMatchObject({ buttons: ["Stay in app", "Exit without saving these records"], defaultId: 0, cancelId: 0 });
+  expect(show.mock.calls[0]?.[0]).toMatchObject({ buttons: ["Stay in app", "Exit without saving"], defaultId: 0, cancelId: 0 });
   expect(results.flush).toHaveBeenCalledOnce(); expect(results.close).toHaveBeenCalledOnce();
 });

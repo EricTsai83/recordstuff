@@ -30,17 +30,17 @@ function problemText(problem: Problem, dir: string, language: Language): string 
   const values = { path: dir };
   switch (problem.kind) {
     case "missing":
-      return translate("{path} was not found. It may have been moved or deleted, or its drive may be disconnected. Reconnect the drive and try again, or choose another folder.", language, values);
+      return translate("{path} was not found. It may have been moved or deleted, or its drive disconnected. Try again or choose another folder.", language, values);
     case "parentMissing":
-      return translate("{path} could not be created because its parent folder {parent} is missing or is not a folder. Restore that folder and try again, or choose another folder.", language, { ...values, parent: problem.parent });
+      return translate("Could not create {path}: {parent} is missing or not a folder. Restore it and try again, or choose another folder.", language, { ...values, parent: problem.parent });
     case "notFolder":
       return translate("{path} is a file, not a folder. Choose another folder.", language, values);
     case "createFailed":
-      return translate("{path} could not be created. Check the permissions of its parent folder and try again, or choose another folder.", language, values);
+      return translate("Could not create {path}. Check its parent folder's permissions, or choose another folder.", language, values);
     case "denied":
-      return translate("RecordStuff does not have permission to open {path}. Check the folder's permissions and try again, or choose another folder.", language, values);
+      return translate("No permission to open {path}. Check the folder's permissions, or choose another folder.", language, values);
     case "unavailable":
-      return translate("{path} is unavailable. Check the folder and its drive, then try again, or choose another folder.", language, values);
+      return translate("{path} is unavailable. Check the folder and its drive, or choose another folder.", language, values);
     case "openFailed":
       return translate("{path} could not be opened. Try again, or choose another folder.", language, values);
   }

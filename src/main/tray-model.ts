@@ -78,8 +78,8 @@ function windowsGroup(ctx: AppContext, reviewedOnly: boolean): TrayMenuItem[] {
   ];
 }
 const QUIT_DEFERRED = {
-  media: "Quit or relaunch postponed: recording work is still pending. Retry the same action once it finishes.",
-  metadata: "Quit or relaunch postponed: settings or the log are still being written. Retry the same action in a moment.",
+  media: "Quit or relaunch postponed: recording work is pending. Try again when it finishes.",
+  metadata: "Quit or relaunch postponed: settings or the log are being written. Try again in a moment.",
 } as const satisfies Record<QuitDeferral, PlainMessageKey>;
 /** Windows keeps only the first 127 UTF-16 units of a notification-area tooltip (`NOTIFYICONDATA.szTip`) and drops the rest unmarked. */
 const WINDOWS_TOOLTIP_MAX = 127;
@@ -105,7 +105,7 @@ function outputDirItems(ctx: AppContext, enabled: boolean): TrayMenuItem[] {
 }
 function permissionActions(needsRelaunch: boolean, language: Language): TrayMenuItem[] {
   const hint = t(
-    "After allowing access in System Settings, relaunch RecordStuff if this process still cannot capture.",
+    "If capture still fails after you allow access, relaunch RecordStuff.",
     language,
   );
   return needsRelaunch
@@ -155,7 +155,7 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
   };
   // A settled recorder shows no work of its own, so a quit waiting on cleanup would look like nothing happened.
   if (ctx.quitting && preferencesUnlocked(state)) {
-    const quitting = text("Quitting… RecordStuff quits once the recording is saved or cleaned up.");
+    const quitting = text("Quitting once the recording is saved or cleaned up…");
     return model("busy", "", quitting, [disabled(quitting)]);
   }
   const lastSaved = (path: string | undefined): TrayMenuItem[] => (path ? [item(text("Show last recording"), "revealLastSaved", path)] : []);
@@ -216,20 +216,20 @@ export interface NotificationText {
 const notice = (body: string): NotificationText => ({ title: APP_NAME, body });
 export function savedNotification(savedPath: string, language?: Language, stoppedEarly?: EarlyStop): NotificationText {
   const file = path.basename(savedPath);
-  if (stoppedEarly === "lowDisk") return notice(t("Saved {file}. Recording stopped early because the disk is almost full.", language, { file }));
-  if (stoppedEarly === "sleep") return notice(t("Saved {file}. Recording stopped because the Mac went to sleep.", language, { file }));
+  if (stoppedEarly === "lowDisk") return notice(t("Saved {file}. Stopped early: the disk is almost full.", language, { file }));
+  if (stoppedEarly === "sleep") return notice(t("Saved {file}. Stopped because the Mac went to sleep.", language, { file }));
   return notice(t("Saved {file}", language, { file }));
 }
 /** The reason, then how to reach the result section, joined per language (plan 035 D1). */
 export function recordingFailureNotification(code: ErrorCode, language: Language = DEFAULT_LANGUAGE): NotificationText {
   return { title: t("Recording failed", language),
-    body: sentences([failureReason(code, language), t("Click to view the recording result.", language)], language) };
+    body: sentences([failureReason(code, language), t("Click for details.", language)], language) };
 }
 export function permissionNotification(needsRelaunch: boolean, language?: Language): NotificationText {
   return notice(
     t(
       needsRelaunch
-        ? "RecordStuff cannot capture the screen. Check that screen recording is allowed in System Settings, then relaunch RecordStuff. Click to relaunch."
+        ? "RecordStuff cannot capture the screen. Allow screen recording in System Settings, then click to relaunch."
         : "RecordStuff needs screen recording access. Click to open System Settings.",
       language,
     ),
@@ -241,7 +241,7 @@ export function settingsWriteFailedNotification(
   language?: Language,
 ): NotificationText {
   return notice(
-    t("Could not save settings. The output folder is unchanged. Try choosing {path} again.", language, {
+    t("Could not change the output folder. Try choosing {path} again.", language, {
       path: abbreviateHome(chosenDir, homeDir),
     }),
   );
@@ -267,7 +267,7 @@ export function hotkeyRegistrationFailedNotification(
 ): NotificationText {
   return notice(
     t(
-      "Could not register the shortcut {value}. Another app may be using it. Choose another shortcut in Settings.",
+      "Could not register {value}; another app may be using it. Choose another shortcut in Settings.",
       language,
       { value: describeAccelerator(accelerator, platform) },
     ),
@@ -282,7 +282,7 @@ export function frameRateDowngradeNotification(
   language?: Language,
 ): NotificationText {
   return notice(
-    t("The system provides {actual} fps. This recording uses {actual} fps (requested {requested} fps).", language, {
+    t("The system cannot provide {requested} fps, so this recording uses {actual} fps.", language, {
       actual,
       requested,
     }),

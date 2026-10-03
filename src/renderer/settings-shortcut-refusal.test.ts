@@ -71,8 +71,8 @@ it("names no internal key for an unusable one, and states a refused combination 
 
   // A main-side expiry closes the editor without saving, clears its error and tells the focused user.
   for (const [language, message] of [
-    ["en", "Shortcut editing ended; the shortcut was not changed."],
-    ["zh-TW", "快捷鍵編輯已結束，快捷鍵沒有變更。"],
+    ["en", "Editing ended; the shortcut is unchanged."],
+    ["zh-TW", "已結束編輯，快捷鍵未變更。"],
   ] as const) {
     current = { ...structuredClone(current), language }; push(current);
     select.value = "custom"; select.dispatchEvent(new Event("change"));

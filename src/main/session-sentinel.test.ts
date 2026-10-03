@@ -165,9 +165,9 @@ it("never reports this process's own sessions and discards unusable leftovers", 
 
 it("explains the interruption without pointing at settings, the folder or permissions", () => {
   expect(failureReason("app_terminated", "en")).toBe("RecordStuff did not exit normally while recording.");
-  expect(failureReason("app_terminated", "zh-TW")).toBe("RecordStuff 在錄製期間未正常結束");
-  expect(failureGuidance("app_terminated", "en")).toContain("may be incomplete. RecordStuff does not repair it");
-  expect(failureGuidance("app_terminated", "zh-TW")).toContain("不會修復");
+  expect(failureReason("app_terminated", "zh-TW")).toBe("RecordStuff 在錄影期間未正常結束");
+  expect(failureGuidance("app_terminated", "en")).toContain("may be incomplete; missing content cannot be recovered");
+  expect(failureGuidance("app_terminated", "zh-TW")).toContain("無法恢復");
   expect(isOutputFolderFailure("app_terminated") || isPermissionFailure("app_terminated")).toBe(false);
 });
 

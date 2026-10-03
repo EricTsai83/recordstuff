@@ -68,7 +68,7 @@ for (const mode of ["copy", "cleanup", "result"]) {
     assert.equal(result.joined, 1); assert.equal(result.resumed, 1); assert.equal(result.deferred, 1);
     assert.equal(result.peak, 1); assert.equal(result.busyAtExit, false); assert.equal(result.historyFileWritten, false);
     assert.equal(result.prompts.length, 3);
-    assert.deepEqual(result.prompts[2].buttons, ["Retry", "Stay in app", "Exit without saving these records"]);
+    assert.deepEqual(result.prompts[2].buttons, ["Retry", "Stay in app", "Exit without saving"]);
     assert.equal(result.prompts[2].copyHeld, false); assert.ok(result.prompts[2].savedPath);
     assert.match(result.prompts[2].detail, /Unsaved records: 1/);
     assert.deepEqual(result.mediaBytes, [44, 55, 66]); assert.deepEqual(result.partialBytes, [11, 22, 33]);

@@ -34,21 +34,21 @@ describe("language catalog", () => {
   it("substitutes repeated values and preserves filenames verbatim", () => {
     expect(
       translate(
-        "The system provides {actual} fps. This recording uses {actual} fps (requested {requested} fps).",
+        "The system cannot provide {requested} fps, so this recording uses {actual} fps.",
         "zh-TW",
         { actual: 30, requested: 60 },
       ),
-    ).toBe("系統只提供 30 fps，本次以 30 fps 錄製（設定為 60 fps）。");
+    ).toBe("系統無法提供 60 fps，本次以 30 fps 錄影。");
     expect(translate("Saved {file}", "zh-TW", { file: "demo {file} $&.mp4" })).toBe("已儲存 demo {file} $&.mp4");
   });
 });
 
 describe("sentences", () => {
   it("closes and joins messages per language without doubling punctuation", () => {
-    expect(sentences(["寫入錄影失敗", "點此查看錄影結果。"], "zh-TW")).toBe("寫入錄影失敗。點此查看錄影結果。");
-    expect(sentences(["所選螢幕無法使用，請選擇其他螢幕", "點此查看錄影結果。"], "zh-TW")).toBe("所選螢幕無法使用，請選擇其他螢幕。點此查看錄影結果。");
-    expect(sentences(["Screen recording permission required", "Click to view the recording result."], "en"))
-      .toBe("Screen recording permission required. Click to view the recording result.");
-    expect(sentences(["The disk is full.", "Click to view the recording result."])).toBe("The disk is full. Click to view the recording result.");
+    expect(sentences(["寫入錄影失敗", "點此查看詳情。"], "zh-TW")).toBe("寫入錄影失敗。點此查看詳情。");
+    expect(sentences(["所選螢幕無法使用，請選擇其他螢幕", "點此查看詳情。"], "zh-TW")).toBe("所選螢幕無法使用，請選擇其他螢幕。點此查看詳情。");
+    expect(sentences(["Screen recording permission required", "Click for details."], "en"))
+      .toBe("Screen recording permission required. Click for details.");
+    expect(sentences(["The disk is full.", "Click for details."])).toBe("The disk is full. Click for details.");
   });
 });

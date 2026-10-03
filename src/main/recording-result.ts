@@ -467,10 +467,10 @@ export class RecordingResults {
 
 const reasons: Record<ErrorCode, PlainMessageKey> = {
   permission_denied: "Screen recording permission required",
-  unsupported_os_version: "This system version does not support system audio capture. macOS 13 or newer is required on Mac.",
+  unsupported_os_version: "This system cannot capture system audio. Mac requires macOS 13 or newer.",
   display_unavailable: "Selected display is unavailable",
   no_display: "No display is available for recording.",
-  no_audio_track: "System audio was unavailable when recording started, so nothing was recorded.",
+  no_audio_track: "System audio was unavailable at start, so nothing was recorded.",
   mp4_unsupported: "MP4 recording is not supported on this computer.",
   capture_start_failed: "Could not start recording.",
   capture_failed: "Recording was interrupted.",
@@ -490,22 +490,22 @@ export function failureGuidance(code: ErrorCode, language: Language, platform: N
     : isOutputFolderFailure(code) ? "Check the output folder, its permissions and the connected drive before recording again."
     // The capture host sees the same ended track for a missing grant and for a Mac too loaded
     // to start system audio (plan 040's load tests), so both causes are named, the cheap one first.
-    : code === "no_audio_track" ? "Try again after closing demanding apps: a Mac under very heavy load can fail to provide system audio. If it keeps happening, allow RecordStuff in System Settings > Privacy & Security > Screen & System Audio Recording, then relaunch."
+    : code === "no_audio_track" ? "Heavy load can block system audio: close demanding apps and try again. If it keeps happening, allow RecordStuff in System Settings → Privacy & Security → Screen & System Audio Recording, then relaunch."
     : isPermissionFailure(code) ? "Check recording permissions in System Settings. Relaunch if access was recently granted."
-    : code === "display_unavailable" || code === "no_display" ? "Choose Primary display or another available screen."
-    : code === "app_terminated" ? "The recording file may be incomplete. RecordStuff does not repair it, and starting again does not recover missing content."
-    : "Check your recording settings before trying again. Starting again does not recover missing content.", language);
+    : code === "display_unavailable" || code === "no_display" ? "Choose Primary display or another screen."
+    : code === "app_terminated" ? "The recording file may be incomplete; missing content cannot be recovered."
+    : "Check your recording settings, then try again. Missing content cannot be recovered.", language);
 }
 const persistenceWarnings: Record<PersistenceIssue, PlainMessageKey> = {
-  io: "This failure record is not saved yet. RecordStuff keeps it and retries automatically. If this continues, check free disk space and access to the app's data folder. A force-quit loses unsaved records.",
-  blocked: "The saved failure history could not be read or comes from a newer version, so RecordStuff will not overwrite it. This record is kept only until RecordStuff quits.",
-  tooLarge: "The failure history is too large to save. Remove reviewed failures, then retry. Until then this record is kept only until RecordStuff quits.",
+  io: "This record is not saved yet; RecordStuff keeps retrying. If this continues, check free disk space and access to the app's data folder. Force-quitting loses unsaved records.",
+  blocked: "The saved failure history is unreadable or from a newer version, so RecordStuff will not overwrite it. This record is kept only until RecordStuff quits.",
+  tooLarge: "The failure history is too large to save. Remove reviewed failures, then retry; until then this record is kept only until RecordStuff quits.",
 };
 /** Only `io` promises automatic retry; freeing disk space does not fix every storage error. */
 export const persistenceWarning = (issue: PersistenceIssue, language: Language): string => t(persistenceWarnings[issue], language);
 export function failureOutcome(result: RecordingFailure, language: Language): string {
-  return t(result.outcome === "pending" ? "Processing the recorded data… The file result is not yet confirmed."
-    : result.outcome === "partial" ? "A partial recording was kept. It may not be playable."
-    : result.outcome === "empty" ? "No recording content was kept."
-    : "Could not confirm whether recording content was kept. Check the output folder.", language);
+  return t(result.outcome === "pending" ? "Processing the recording…"
+    : result.outcome === "partial" ? "A partial recording was kept; it may not play."
+    : result.outcome === "empty" ? "No recording was kept."
+    : "Could not confirm whether anything was kept. Check the output folder.", language);
 }

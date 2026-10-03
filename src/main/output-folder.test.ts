@@ -86,7 +86,7 @@ it("never creates the default folder's missing parent", async () => {
   expect(h.io.mkdir).not.toHaveBeenCalled();
   expect(h.openPath).not.toHaveBeenCalled();
   expect(h.dialog()).toMatchObject({ type: "warning", title: "RecordStuff", message: "Could not open the output folder",
-    detail: expect.stringContaining(`because its parent folder ${path.join(h.home, "Movies")} is missing`),
+    detail: expect.stringContaining(`: ${path.join(h.home, "Movies")} is missing or not a folder`),
     buttons: ["Change output folder", "Cancel"], defaultId: 0, cancelId: 1 });
   await h.settingsUnchanged();
 });
@@ -99,7 +99,7 @@ it("never recreates a deleted custom folder, even inside an existing parent", as
   expect(await exists(custom)).toBe(false);
   expect(h.io.mkdir).not.toHaveBeenCalled();
   expect(h.openPath).not.toHaveBeenCalled();
-  expect(h.dialog().detail).toBe(`${custom} was not found. It may have been moved or deleted, or its drive may be disconnected. Reconnect the drive and try again, or choose another folder.`);
+  expect(h.dialog().detail).toBe(`${custom} was not found. It may have been moved or deleted, or its drive disconnected. Try again or choose another folder.`);
   await h.settingsUnchanged();
 });
 
@@ -111,7 +111,7 @@ it("never writes onto the system disk for a disconnected volume", async () => {
   expect(h.io.mkdir).not.toHaveBeenCalled();
   expect(await exists(volume)).toBe(false);
   expect(h.dialog().detail).toContain(`${custom} was not found.`);
-  expect(h.dialog().detail).toContain("its drive may be disconnected");
+  expect(h.dialog().detail).toContain("its drive disconnected");
   await h.settingsUnchanged();
 });
 
@@ -120,7 +120,7 @@ it("reports a refused default-folder creation with its error", async () => {
   await h.open();
   expect(await exists(h.defaultOutputDir)).toBe(false);
   expect(h.openPath).not.toHaveBeenCalled();
-  expect(h.dialog().detail).toBe(`${h.defaultOutputDir} could not be created. Check the permissions of its parent folder and try again, or choose another folder.`
+  expect(h.dialog().detail).toBe(`Could not create ${h.defaultOutputDir}. Check its parent folder's permissions, or choose another folder.`
     + `\n\nDetails: EACCES: permission denied, mkdir '${h.defaultOutputDir}'`);
 });
 
@@ -136,7 +136,7 @@ it("lets Finder try a folder RecordStuff may not inspect, and explains a refusal
   await refused.open();
   expect(refused.io.mkdir).not.toHaveBeenCalled();
   expect(await exists(custom)).toBe(false);
-  expect(refused.dialog().detail).toBe(`RecordStuff does not have permission to open ${custom}. Check the folder's permissions and try again, or choose another folder.`
+  expect(refused.dialog().detail).toBe(`No permission to open ${custom}. Check the folder's permissions, or choose another folder.`
     + `\n\nDetails: EPERM: operation not permitted, stat '${custom}'`);
   expect(refused.log).toHaveBeenCalledWith(`output folder: openPath(${custom}) failed: The folder could not be opened.`);
 });
@@ -175,7 +175,7 @@ it("surfaces shell errors, rejected opens and unreadable paths with their contex
 
   const io = await harness({ custom: path.join(root, "Busy"), fs: { stat: async () => { throw errno("EIO", "i/o error"); } } });
   await io.open();
-  expect(io.dialog().detail).toBe(`${path.join(root, "Busy")} is unavailable. Check the folder and its drive, then try again, or choose another folder.\n\nDetails: EIO: i/o error`);
+  expect(io.dialog().detail).toBe(`${path.join(root, "Busy")} is unavailable. Check the folder and its drive, or choose another folder.\n\nDetails: EIO: i/o error`);
 });
 
 it("opens a folder that appeared while it was being created", async () => {
@@ -256,7 +256,7 @@ it("speaks the current language", async () => {
   const h = await harness({ custom, language: "zh-TW", fs: { stat: async () => { throw errno("EIO", "i/o error"); } } });
   await h.open();
   expect(h.dialog()).toMatchObject({ message: "無法開啟儲存位置", buttons: ["更改儲存位置", "取消"],
-    detail: `${custom} 目前無法使用。請檢查資料夾與所在磁碟後再試一次，或選擇其他位置。\n\n詳細資訊：EIO: i/o error` });
+    detail: `${custom} 無法使用。請檢查資料夾與所在磁碟，或選擇其他位置。\n\n詳細資訊：EIO: i/o error` });
 });
 
 it("tells a problem found while recording work is pending in a notification, never the modal warning", async () => {
@@ -267,7 +267,7 @@ it("tells a problem found while recording work is pending in a notification, nev
   expect(h.show).not.toHaveBeenCalled();
   expect(h.focus).not.toHaveBeenCalled();
   expect(h.chooseFolder).not.toHaveBeenCalled();
-  expect(h.notify).toHaveBeenCalledExactlyOnceWith(`找不到 ${custom}。它可能已被移動或刪除，或所在的磁碟未連接。請重新連接磁碟後再試一次，或選擇其他位置。`);
+  expect(h.notify).toHaveBeenCalledExactlyOnceWith(`找不到 ${custom}，可能已被移動、刪除，或所在磁碟未連接。請再試一次或選擇其他位置。`);
   expect(h.log).toHaveBeenCalledWith(`output folder: cannot open ${custom}: missing`);
   expect(h.log).toHaveBeenCalledWith("output folder: recording work is pending; telling the problem in a notification instead of a warning");
   await h.settingsUnchanged();

@@ -86,15 +86,15 @@ function screenGroup(ctx: AppContext, enabled: boolean): Group {
   result.diagnostics = [];
   if (!resolution.ok) {
     result.diagnostics.push({ kind: "current", heading: t("Selected display is unavailable", ctx.language),
-      reason: t("{label} is unavailable, so recording cannot start.", ctx.language, { label: preference.kind === "display" ? displayLabel(preference, ctx.language) : t("Primary display", ctx.language) }),
-      guidance: t("Choose Primary display or another available screen.", ctx.language) });
+      reason: t("Recording cannot start on {label}.", ctx.language, { label: preference.kind === "display" ? displayLabel(preference, ctx.language) : t("Primary display", ctx.language) }),
+      guidance: t("Choose Primary display or another screen.", ctx.language) });
     if (preference.kind === "display" && ctx.displays.some(d => d.primary && ctx.displays.filter(other => other.id === d.id).length === 1))
       result.recovery = { choice: "primary", label: t("Use Primary display", ctx.language) };
   }
   if (ctx.displayFailure) result.diagnostics.push({ kind: "history",
     heading: t(["target_removed", "track_ended"].includes(ctx.displayFailure) ? "Last recording interrupted" : "Last recording failure", ctx.language),
-    reason: displayFailureText(ctx.displayFailure, ctx.language),
-    guidance: t("Try recording again using the shortcut or menu, or choose another screen.", ctx.language) });
+    // The reason already says what to do next.
+    reason: displayFailureText(ctx.displayFailure, ctx.language), guidance: "" });
   if (ctx.captureWarning) result.diagnostics.push({ kind: "history", heading: t("Recording resolution", ctx.language), reason: ctx.captureWarning, guidance: "" });
   return result;
 }
@@ -150,14 +150,14 @@ function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {
       enabled: true,
       checked: value === videoQuality,
       action: { setQuality: { videoQuality: value } },
-    }))), info: t("Higher quality preserves more detail and uses more space at the same resolution.", language) },
+    }))), info: t("Higher quality keeps more detail but makes larger files.", language) },
     { ...group("resolutionCap", t("Resolution cap", language), enabled, RESOLUTION_CAPS.map((value) => ({
       id: value,
       label: value === "source" ? t("Source", language) : RESOLUTION_CAP_LABELS[value],
       enabled: true,
       checked: value === resolutionCap,
       action: { setQuality: { resolutionCap: value } },
-    }))), info: t("Limits pixel dimensions while keeping the aspect ratio. Smaller sources are not enlarged.", language) },
+    }))), info: t("Scales larger screens down, keeping the aspect ratio. Smaller ones are not enlarged.", language) },
     // A frame rate that is not verified on this platform stays visible and
     // says why, rather than silently disappearing from the list.
     group("frameRate", t("Frame rate", language), enabled, FRAME_RATES.map((value) => ({
@@ -180,7 +180,7 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group {
   const hotkey = ctx.hotkey;
   const language = ctx.language;
   const unavailable = hotkey.enabled && !hotkey.registered
-    ? t("Unavailable: another app may be using this shortcut.", language)
+    ? t("Another app may be using this shortcut.", language)
     : undefined;
   const diagnostics = hotkeyDiagnostics(ctx, unavailable);
   const recommended = DEFAULT_HOTKEY.accelerator;
@@ -217,10 +217,10 @@ function hotkeyDiagnostics(ctx: AppContext, unavailable: string | undefined): No
   const kind = ctx.settingsShortcut?.kind;
   return [
     ...(unavailable ? [{ kind: "current" as const, heading: t("Shortcut unavailable", language), reason: unavailable,
-      guidance: t("Recording is still available from the menu. Choose another shortcut.", language) }] : []),
+      guidance: t("Record from the menu, or choose another shortcut.", language) }] : []),
     ...(kind === "failed" ? [{ kind: "current" as const, heading: t("Settings shortcut unavailable", language),
-      reason: t("{shortcut} could not be registered to open Settings; another app may use it.", language, { shortcut: settings }),
-      guidance: t("Settings stays available from the menu bar icon. Retry after the other app releases it.", language) }] : []),
+      reason: t("Another app may be using {shortcut}.", language, { shortcut: settings }),
+      guidance: t("Open Settings from the menu bar icon, or retry once the other app releases it.", language) }] : []),
     ...(kind === "conflict" ? [{ kind: "current" as const, heading: t("Settings shortcut unavailable", language),
       reason: t("{shortcut} is the recording shortcut, so it does not open Settings.", language, { shortcut: settings }),
       guidance: t("Choose another recording shortcut to open Settings with {shortcut} again.", language, { shortcut: settings }) }] : []),
@@ -272,7 +272,7 @@ function notificationsGroup(ctx: AppContext, enabled: boolean): Group {
   // The switch controls OS notifications; in-app failure status stays available.
   const switchGroup = group("notifications", t("Notifications", language), enabled,
     switchChoices(language, ctx.notifications, (value) => ({ setNotifications: value })),
-    ctx.notifications ? undefined : t("Notifications are off. Recording failures remain visible in the menu bar and in Settings → Failures.", language));
+    ctx.notifications ? undefined : t("Failures still appear in the menu bar and the Failures tab.", language));
   switchGroup.noteKind = ctx.notifications ? "explanation" : "status";
   if (ctx.notifications && ctx.platform === "darwin") switchGroup.info = t("macOS must also allow RecordStuff in System Settings → Notifications.", language);
   // Only macOS hides notifications behind a pane worth linking to. It sits in
@@ -375,7 +375,7 @@ function projectResult(result: RecordingResult, state: RecordingState, ctx: AppC
       day: failureDay(new Date(result.occurredAt), now, language),
       time: failureTime(new Date(result.occurredAt), language),
       outcome: failureOutcome(result, language), guidance: ctx.platform === "darwin" && result.restored && isPermissionFailure(result.code)
-        ? t("This is a previous recording failure. Check current recording permissions before trying again.", language)
+        ? t("This failure is from an earlier session. Check recording permissions before trying again.", language)
         : failureGuidance(result.code, language, ctx.platform),
       persistenceWarning: result.persistenceFailed ? persistenceWarning(result.persistenceFailed, language) : "",
       ...(result.saving ? { saving: t("Saving this change…", language) } : {}),
@@ -398,14 +398,14 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
   const results = (ctx.recordingResults ?? []).slice(0, ctx.historyLimit).map(result => projectResult(result, state, ctx, now));
   return {
     language,
-    ...(ctx.historyFailed ? { recordingHistoryStatus: t("Failure history could not be read. The existing file has been preserved; check the log for details.", language) } : {}),
+    ...(ctx.historyFailed ? { recordingHistoryStatus: t("Could not read the failure history. The file was kept; see the log.", language) } : {}),
     ...(ctx.historyLoading ? { recordingHistoryStatus: t("Loading failure history…", language) } : {}),
     recordingResults: quitting ? results.map(result => ({ ...result, actions: result.actions.map(action => ({ ...action, enabled: false })) })) : results,
     recordingResultsRemaining: Math.max(0, (ctx.recordingResults?.length ?? 0) - (ctx.historyLimit ?? Infinity)),
     title: t("RecordStuff - Settings", language),
     // One line above the tabs: the lock covers General too, so it is not the Recording tab's own note.
-    hint: quitting ? t("Quitting… RecordStuff quits once the recording is saved or cleaned up.", language)
-      : unlocked ? "" : t("Recording in progress. Only language and appearance can change until it ends.", language),
+    hint: quitting ? t("Quitting once the recording is saved or cleaned up…", language)
+      : unlocked ? "" : t("Recording in progress; only language and appearance can change.", language),
     failure: t("Could not apply this setting. Your current settings are shown.", language),
     tabs: [{ id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) }, failuresTab(ctx)],
     groups: settingsGroups(state, ctx).map(({ choices, actions, ...rest }) => ({

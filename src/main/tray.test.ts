@@ -442,7 +442,7 @@ describe("notification language follows current settings", () => {
     expect(Fake.instances.at(-1)?.options.body).toContain("無法儲存語言設定");
     language = "en";
     tray.notifyPermission(true);
-    expect(Fake.instances.at(-1)?.options.body).toContain("then relaunch RecordStuff");
+    expect(Fake.instances.at(-1)?.options.body).toContain("then click to relaunch");
     Fake.instances.at(-1)?.listeners.get("click")?.();
     // Main resolves the click against the permission state it has then, not the one the banner was sent for.
     expect(permissionAction).toHaveBeenCalledOnce();
@@ -541,8 +541,8 @@ describe("notifications around sleep (plan 050)", () => {
       idle.seconds = RETURN_IDLE_SECONDS;
       await vi.advanceTimersByTimeAsync(WAKE_CHECK_MS);
       expect(Fake.instances.map((n) => [n.options.body, n.shown])).toEqual([
-        ["Saved a.mp4. Recording stopped because the Mac went to sleep.", 1],
-        [expect.stringContaining("Click to view the recording result."), 1],
+        ["Saved a.mp4. Stopped because the Mac went to sleep.", 1],
+        [expect.stringContaining("Click for details."), 1],
       ]);
       // Awake again: the next one is shown at once, and checking has stopped.
       tray.notifySaved("/Users/eric/Movies/RecordStuff/b.mp4");
