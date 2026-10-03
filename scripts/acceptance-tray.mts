@@ -36,6 +36,7 @@ import { StoredOverride } from "./lib/stored-override.mts";
 import { TrayDriver, compareMenu, parseMenuLogLine, structureProblems, type TrayState } from "./lib/tray-driver.mts";
 import { classifyTrayRound, renderTrayReport, type TrayCase } from "./lib/tray-acceptance.mts";
 import { CONTROLLED_TOOL } from "./lib/controlled-acceptance.mts";
+import { developmentAppPath } from "./lib/verification-timing.mts";
 import { controlledPid, readJson, sendControlled, type Until } from "./lib/controlled-client.mts";
 import type { ControlledCommand } from "./fixtures/controlled-acceptance";
 
@@ -43,7 +44,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const USAGE = `pnpm acceptance:tray [-- options]
   --languages en,zh-TW   languages to cover, in order (default: the stored language, then the other)
   --seconds <n>          how long each tray recording runs before Stop (default 3)
-  --bundle <app>         the RecordStuff.app under test (default dist/mac-arm64/RecordStuff.app)
+  --bundle <app>         the RecordStuff.app under test (default dist/mac-arm64/RecordStuff.app, dist/mac on Intel)
   --log <file>           its log (default ~/Library/Logs/recordstuff/recordstuff.log)
   --settings <file>      its settings.json (default the app's), read for the language, countdown and folder
   --long-start <run>     plan 065's long-start cases against the running controlled build of <run>
@@ -69,7 +70,7 @@ if (longStartRun && (argv.includes("--languages") || argv.includes("--seconds"))
 const runFile = (relative: string): string | undefined => longStartRun && path.join(longStartRun, relative);
 const bundle = path.resolve(option("--bundle")
   ?? runFile(path.join("workspace/dist", process.arch === "arm64" ? "mac-arm64" : "mac", "RecordStuff.app"))
-  ?? path.join(root, "dist/mac-arm64/RecordStuff.app")).replace(/\/$/, "");
+  ?? developmentAppPath(root)).replace(/\/$/, "");
 const logPath = path.resolve(option("--log") ?? runFile("logs/recordstuff.log") ?? APP_LOG_PATH);
 const settingsPath = path.resolve(option("--settings") ?? runFile("user-data/settings.json") ?? APP_SETTINGS_PATH);
 /** The bundle identifier names its status-item window on the primary menu bar (clickTarget in tray-driver.mts). */

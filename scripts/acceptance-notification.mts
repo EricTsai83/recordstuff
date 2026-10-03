@@ -23,6 +23,7 @@ import {
   registeredAccelerator,
 } from "./lib/acceptance.mts";
 import { LogReader, evidenceSince, type LogCursor } from "./lib/log-reader.mts";
+import { developmentAppPath } from "./lib/verification-timing.mts";
 import {
   FINDER_SELECTED_ROW_SCRIPT,
   FINDER_SELECTION_SCRIPT,
@@ -43,7 +44,7 @@ import {
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const APP_TITLE = "RecordStuff";
 const INSTALLED_APP = "/Applications/RecordStuff.app";
-const BUILT_APP = path.join(REPO_ROOT, "dist/mac-arm64/RecordStuff.app");
+const BUILT_APP = developmentAppPath(REPO_ROOT);
 const LOG_PATH = APP_LOG_PATH;
 const SETTINGS_PATH = APP_SETTINGS_PATH;
 /** How long the frontmost app is sampled after the click; the OS activation lands ~110 ms after it. */

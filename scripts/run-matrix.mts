@@ -60,7 +60,7 @@ import {
 } from "./lib/matrix.mts";
 import { electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, recordStuffPids, signalPids, startBuild, stopGroup } from "./lib/processes.mts";
 import { ToolMissingError, hasTool, timeTools, type ToolTiming } from "./lib/media-tools.mts";
-import { REPO_ROOT, appendMeasurements, measurementsPath, readLogPairs, verifyRecording, type VerifyResult } from "./lib/verify-recording.mts";
+import { REPO_ROOT, appendMeasurements, measurementsPath, verifyRecording, type VerifyResult } from "./lib/verify-recording.mts";
 import { pairRecordingsWithLog } from "./lib/verify.mts";
 import { BLOCKED_EXIT, blocksSuccess, formatText, parseAutorecordOutcome, verdictExitCode, type CpuFigures } from "./lib/verify.mts";
 
@@ -435,8 +435,7 @@ async function main(): Promise<void> {
           const file = outcome.file;
           // Only this case's lines: its own `start:`, capture and saved records all follow the cursor taken
           // before launch, so the retained history is not re-read and re-paired for every case.
-          const caseLog = owned.caseLog;
-          const pairs = caseLog ? pairRecordingsWithLog(logSince(caseLog).lines.join("\n")) : readLogPairs(LOG_PATH);
+          const pairs = pairRecordingsWithLog(logSince(owned.caseLog!).lines.join("\n"));
           const result = timeTools(tools, () => verifyRecording(file, pairs, options));
           // Media measurements stand; judging against the requested settings needs this session's own metadata.
           const metadata = result.pairing.status === "matched" ? undefined
@@ -473,20 +472,16 @@ async function main(): Promise<void> {
   const judged = withUnreached(cases, runs, "not run: the round stopped early after a tool went missing");
   const verified = runs.filter((r) => r.result !== undefined);
   const target = measurementsPath();
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  if (verified.length > 0) {
-    appendMeasurements(
-      target,
-      verified.map((r) => r.result!),
-      {
-        title: (_result, i) => verified[i]?.planned.title ?? "",
-        material: `scripts/test-material.html${openMaterial ? " (Chrome kiosk)" : ""}`,
-        runLabel,
-      },
-    );
-  } else {
-    fs.appendFileSync(target, `\n## ${new Date().toISOString()} — ${runLabel}\n\n`, "utf8");
-  }
+  // Even a round with nothing verified goes through appendMeasurements, so a new file gets its header.
+  appendMeasurements(
+    target,
+    verified.map((r) => r.result!),
+    {
+      title: (_result, i) => verified[i]?.planned.title ?? "",
+      material: `scripts/test-material.html${openMaterial ? " (Chrome kiosk)" : ""}`,
+      runLabel,
+    },
+  );
   const sections = [formatRoundTiming({ preflightSeconds, buildSeconds, materialSeconds, totalSeconds: (Date.now() - roundStarted) / 1000, cases: timings })];
   const summaries = summarizeRuns(judged);
   if (summaries.some((s) => s.runs > 1)) sections.push(formatRepeatSummary(summaries));

@@ -3,7 +3,7 @@
  *
  * The CPU budget on the packaged app (plan 049, docs/system-design/tooling.md#cpu-budget).
  * Build and quit the bundle first (`pnpm start:app`, then Quit); this runner refuses to start
- * while any RecordStuff runs, launches dist/mac-arm64/RecordStuff.app itself and samples its
+ * while any RecordStuff runs, launches that bundle (dist/mac-arm64, dist/mac on Intel) itself and samples its
  * process tree once a second with the shared sampler (scripts/lib/cpu-sampler.mts):
  *
  * - A. Idle after launch, Settings closed: `--minutes` (5) after a 60-second warm-up.
@@ -48,10 +48,11 @@ import { LogReader, type LogCursor } from "./lib/log-reader.mts";
 import { AccessibilityBlockedError, osascriptAx } from "./lib/native-ax.mts";
 import { parseSessionRecord } from "./lib/session-records.mts";
 import { percentile } from "./lib/stats.mts";
+import { developmentAppPath } from "./lib/verification-timing.mts";
 import { SETTINGS_SHORTCUT } from "../src/shared/hotkey.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const BUNDLE = path.join(REPO_ROOT, "dist/mac-arm64/RecordStuff.app");
+const BUNDLE = developmentAppPath(REPO_ROOT);
 const EXECUTABLE = path.join(BUNDLE, "Contents/MacOS/RecordStuff");
 const ELECTRON_APP = path.join(REPO_ROOT, "node_modules/electron/dist/Electron.app");
 const ELECTRON_APP_REAL = fs.existsSync(ELECTRON_APP) ? fs.realpathSync(ELECTRON_APP) : ELECTRON_APP;
