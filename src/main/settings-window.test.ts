@@ -509,7 +509,8 @@ describe("settings window size", () => {
   it("debounces resize writes and flushes the final size before closing/reopening", () => {
     vi.useFakeTimers();
     try {
-      const geometry = { size: { width: 600, height: 700 }, save: vi.fn() };
+      // Like SettingsWindowState, a save is remembered in memory before its write finishes.
+      const geometry = { size: { width: 600, height: 700 }, save: vi.fn((size: { width: number; height: number }) => { geometry.size = size; }) };
       const s = setup({ geometry }); s.panel.show();
       s.window().getSize.mockReturnValue([620, 710]); s.window().events.get("resize")!();
       s.window().getSize.mockReturnValue([640, 730]); s.window().events.get("resize")!();

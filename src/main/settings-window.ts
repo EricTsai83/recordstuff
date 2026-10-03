@@ -62,7 +62,6 @@ export class SettingsWindow {
   private painted = false;
   private resizeTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingSize: WindowSize | undefined;
-  private rememberedSize: WindowSize | undefined;
   /** One save at a time, in request order: a queued request is never a failure. */
   private queue: Promise<unknown> = Promise.resolve();
   /** The last view the page received by any route; an identical refresh is not pushed again. */
@@ -163,7 +162,7 @@ export class SettingsWindow {
     const view = this.view();
     const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
     const workArea = display.workAreaSize;
-    const size = fitSettingsSize(this.rememberedSize ?? this.options.geometry?.size ?? DEFAULT_SETTINGS_SIZE, workArea);
+    const size = fitSettingsSize(this.options.geometry?.size ?? DEFAULT_SETTINGS_SIZE, workArea);
     const window = new BrowserWindow({
       ...size,
       x: Math.round(display.workArea.x + (workArea.width - size.width) / 2),
@@ -192,7 +191,7 @@ export class SettingsWindow {
       if (width === undefined || height === undefined) return;
       if (width === lastSize.width && height === lastSize.height) return;
       lastSize = { width, height };
-      this.pendingSize = this.rememberedSize = lastSize;
+      this.pendingSize = lastSize;
       clearTimeout(this.resizeTimer);
       this.resizeTimer = setTimeout(() => this.flushSize(), 250);
     });
