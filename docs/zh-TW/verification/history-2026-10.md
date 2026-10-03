@@ -22,7 +22,7 @@ Plan 064 讓同一個 tag 在 macOS DMG 旁一起發布 Windows x64 安裝檔。
 - 每次打 tag 前的 macOS：`pnpm acceptance` 與 `pnpm acceptance:playback` 在乾淨且已推送的原始碼上通過（[1.2.0-rc.1](releases/1.2.0-rc.1.md#打-tag-前的本機驗收)、[1.2.0](releases/1.2.0.md#打-tag-前的本機驗收)）。
 - 已安裝的 macOS App：1.0.0 與 1.1.1 的更新解析器把線上 feed 與 GitHub release 讀為 1.2.0，已安裝的 1.0.0 記錄 `updates: available; remote 1.2.0`（[紀錄](releases/1.2.0.md#發布後已安裝-app-的更新檢查)）。設定仍是 version 3，歷史格式不變，因此 1.2.0 不需要資料 migration；1.2.0 原始碼讀取真實設定與九筆歷史紀錄時沒有任何警告。
 
-未驗證：Windows 實機上的一切。step 3 的案例（SmartScreen、AppUserModelID、首次執行提示、系統匣 ICO 與點擊、含畫面與系統音訊的錄影、`MediaRecorder` MP4、`restrictOwnAudio`、通知與檔案總管顯示、設定、單一執行個體、睡眠、結束、保留資料重新安裝）都在每份發布紀錄中列為未測試，035 的 N17 系統匣矩陣在有 Windows 機器前仍未結案。未觀察已安裝 App 的系統匣更新項目，也沒有執行已安裝的 1.1.1。在 1.2.0 之後執行比 1.1.0 更舊的 App，會刪掉它不認得的 `countdown` 與 `countdownSound` 設定並重設為預設值；1.1.0 與 1.1.1 會保留它們（只影響降版）。
+未驗證：Windows 實機上的一切。step 3 的案例（SmartScreen、AppUserModelID、首次執行提示、系統匣 ICO 與點擊、含畫面與系統音訊的錄影、`MediaRecorder` MP4、`restrictOwnAudio`、通知與檔案總管顯示、設定、單一執行個體、睡眠、結束、保留資料重新安裝）都在每份發布紀錄中列為未測試，035 的 N17 系統匣矩陣在有 Windows 機器前仍未結案。未觀察已安裝 App 在「設定 → 一般」中的更新結果，也沒有執行已安裝的 1.1.1。在 1.2.0 之後執行比 1.1.0 更舊的 App，會刪掉它不認得的 `countdown` 與 `countdownSound` 設定並重設為預設值；1.1.0 與 1.1.1 會保留它們（只影響降版）。
 
 依決定豁免：Windows 實機回合（step 3）、從公開網址在實機安裝（step 8）與 Windows 驗收 runner（step 9）。
 
