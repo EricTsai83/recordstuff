@@ -173,7 +173,7 @@ export const ZH_TW = {
   "Recording starts in {seconds} s": "{seconds} 秒後開始錄製",
   "Recording starts in {seconds} s. Click to cancel.": "{seconds} 秒後開始錄製，按一下即可取消。",
   "Cancel recording": "取消錄影",
-  "Quitting… RecordStuff quits once the recording is saved or cleaned up.": "正在結束…錄影存檔或清理完成後就會結束",
+  "Quitting… RecordStuff quits once the recording is saved or cleaned up.": "正在結束…錄影存檔或清理完成後就會結束。",
   "Cancel recording with {value}": "以 {value} 取消錄影",
   "Saved {file}": "已儲存 {file}",
   "Saved {file}. Recording stopped early because the disk is almost full.": "已儲存 {file}。磁碟空間即將用盡，已提前停止錄製。",
@@ -191,7 +191,7 @@ export const ZH_TW = {
   "Could not save the language. Your previous language is still in use.":
     "無法儲存語言設定，仍使用原本的語言。",
   "The system provides {actual} fps. This recording uses {actual} fps (requested {requested} fps).":
-    "系統只提供 {actual} fps，本次以 {actual} fps 錄製（設定為 {requested} fps）",
+    "系統只提供 {actual} fps，本次以 {actual} fps 錄製（設定為 {requested} fps）。",
   "RecordStuff is ready in the system tray. Click to start recording; click again to stop.":
     "RecordStuff 在系統匣待命。左鍵點圖示開始錄製，再點一下停止。",
   "RecordStuff is ready in the menu bar. Click to start recording; click again to stop.":
@@ -262,8 +262,8 @@ export const ZH_TW = {
   "{path} could not be opened. Try again, or choose another folder.": "無法開啟 {path}。請再試一次，或選擇其他位置。",
   "Details: {error}": "詳細資訊：{error}",
   "An unexpected error occurred. See the log for details.": "發生未預期的錯誤，請查看 log 取得詳細資訊。",
-  "Quit or relaunch postponed: recording work is still pending. Retry the same action once it finishes.": "退出或重新啟動已延後：錄影工作仍在進行，完成後請重試原本的操作",
-  "Quit or relaunch postponed: settings or the log are still being written. Retry the same action in a moment.": "退出或重新啟動已延後：設定或 log 仍在寫入，請稍後重試原本的操作",
+  "Quit or relaunch postponed: recording work is still pending. Retry the same action once it finishes.": "退出或重新啟動已延後：錄影工作仍在進行，完成後請重試原本的操作。",
+  "Quit or relaunch postponed: settings or the log are still being written. Retry the same action in a moment.": "退出或重新啟動已延後：設定或 log 仍在寫入，請稍後重試原本的操作。",
 } as const;
 
 export type MessageKey = keyof typeof ZH_TW;

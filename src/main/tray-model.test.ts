@@ -238,8 +238,8 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     for (const state of [{ type: "idle" } as const, { type: "needsPermission", needsRelaunch: false } as const]) {
       const m = trayModel(state, { ...mac, quitting: true, recordingResults: unread });
       expect(m.icon).toBe("busy");
-      expect(m.tooltip.split("\n")[0]).toBe("RecordStuff: 正在結束…錄影存檔或清理完成後就會結束");
-      expect(labels(m.menu)).toEqual(["正在結束…錄影存檔或清理完成後就會結束", "—", "尚未確認的錄影失敗：1 筆", "查看失敗紀錄…", "—", "設定…", "—", "顯示 log", "結束 RecordStuff"]);
+      expect(m.tooltip.split("\n")[0]).toBe("RecordStuff: 正在結束…錄影存檔或清理完成後就會結束。");
+      expect(labels(m.menu)).toEqual(["正在結束…錄影存檔或清理完成後就會結束。", "—", "尚未確認的錄影失敗：1 筆", "查看失敗紀錄…", "—", "設定…", "—", "顯示 log", "結束 RecordStuff"]);
     }
     const english = trayModel({ type: "idle" }, { ...mac, language: "en", quitting: true });
     expect(english.menu[0]).toMatchObject({ label: "Quitting… RecordStuff quits once the recording is saved or cleaned up.", enabled: false });
@@ -259,12 +259,12 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
 
   it("says in every state that a quit was postponed, beside the state, since its banner may not be seen (plan 056)", () => {
     const zh = trayModel({ type: "idle" }, { ...mac, quitDeferred: "media" });
-    expect(labels(zh.menu).slice(0, 3)).toEqual(["待命中", "退出或重新啟動已延後：錄影工作仍在進行，完成後請重試原本的操作", "開始錄製"]);
+    expect(labels(zh.menu).slice(0, 3)).toEqual(["待命中", "退出或重新啟動已延後：錄影工作仍在進行，完成後請重試原本的操作。", "開始錄製"]);
     expect(zh.menu[1]).toMatchObject({ enabled: false });
-    expect(zh.tooltip.split("\n").slice(0, 2)).toEqual(["RecordStuff: 待命中", "退出或重新啟動已延後：錄影工作仍在進行，完成後請重試原本的操作"]);
+    expect(zh.tooltip.split("\n").slice(0, 2)).toEqual(["RecordStuff: 待命中", "退出或重新啟動已延後：錄影工作仍在進行，完成後請重試原本的操作。"]);
     const saving = trayModel({ type: "stopping" }, { ...mac, language: "en", quitDeferred: "metadata" });
     expect(labels(saving.menu).slice(0, 2)).toEqual(["Saving…", "Quit or relaunch postponed: settings or the log are still being written. Retry the same action in a moment."]);
-    expect(labels(trayModel({ type: "idle" }, mac).menu)).not.toContain("退出或重新啟動已延後：錄影工作仍在進行，完成後請重試原本的操作");
+    expect(labels(trayModel({ type: "idle" }, mac).menu)).not.toContain("退出或重新啟動已延後：錄影工作仍在進行，完成後請重試原本的操作。");
   });
 
   it("says an error box is waiting for the recording, even while it records (plan 056)", () => {
@@ -318,7 +318,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
 
 describe("notification text", () => {
   it("frame-rate downgrade names both numbers", () => {
-    expect(frameRateDowngradeNotification(60, 30, "zh-TW").body).toBe("系統只提供 30 fps，本次以 30 fps 錄製（設定為 60 fps）");
+    expect(frameRateDowngradeNotification(60, 30, "zh-TW").body).toBe("系統只提供 30 fps，本次以 30 fps 錄製（設定為 60 fps）。");
   });
 
   it("saved notification uses the file name", () => {

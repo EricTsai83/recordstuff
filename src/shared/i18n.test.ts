@@ -38,7 +38,7 @@ describe("language catalog", () => {
         "zh-TW",
         { actual: 30, requested: 60 },
       ),
-    ).toBe("系統只提供 30 fps，本次以 30 fps 錄製（設定為 60 fps）");
+    ).toBe("系統只提供 30 fps，本次以 30 fps 錄製（設定為 60 fps）。");
     expect(translate("Saved {file}", "zh-TW", { file: "demo {file} $&.mp4" })).toBe("已儲存 demo {file} $&.mp4");
   });
 });
