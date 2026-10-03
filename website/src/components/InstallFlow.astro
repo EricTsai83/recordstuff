@@ -169,7 +169,7 @@ const wire = "M100 120H590Q600 120 600 110V70Q600 60 610 60H790Q800 60 800 70V11
       try {
         await settled();
         if (id !== run) return;
-        await wait(400);
+        await wait(150);
         // Download fades in over the time the drawing takes to cross a box, and the wire sets off from its
         // centre halfway through.
         const { box, length } = layout();
@@ -206,7 +206,7 @@ const wire = "M100 120H590Q600 120 600 110V70Q600 60 610 60H790Q800 60 800 70V11
           held.forEach((animation) => animation.pause());
         }
       },
-      { threshold: 0.4 },
+      { threshold: 0.25 },
     ).observe(flow);
 
     // The drawn wire is in px, so on a new width it is laid out again; the drawing's keyframes take the new
@@ -311,10 +311,11 @@ const wire = "M100 120H590Q600 120 600 110V70Q600 60 610 60H790Q800 60 800 70V11
   .install-flow .stage[data-act][data-kind="download"] .glyph :global(.ig-tray) { animation: ig-rise .6s var(--ease-out) both; }
 
   /* Drag: the dashed hint clears as the app lifts and follows its route (down, then across) into the folder,
-     which takes it; then the app and the hint come back in the DMG, ready as drawn. */
-  .install-flow .stage[data-act][data-kind="drag"] .glyph :global(.ig-app) { animation: ig-carry 1s var(--ease-in-out) both; }
+     which takes it; then the app and the hint come back in the DMG, ready as drawn. The comeback has about
+     half a second and starts gently: in 0.24 s it snapped back faster than anything around it moved. */
+  .install-flow .stage[data-act][data-kind="drag"] .glyph :global(.ig-app) { animation: ig-carry 1.3s var(--ease-in-out) both; }
   .install-flow .stage[data-act][data-kind="drag"] .glyph :global(.ig-folder) { animation: ig-receive 1s var(--ease-out) both; }
-  .install-flow .stage[data-act][data-kind="drag"] .glyph :global(.ig-trail) { animation: ig-clear 1s ease both; }
+  .install-flow .stage[data-act][data-kind="drag"] .glyph :global(.ig-trail) { animation: ig-clear 1.3s ease both; }
 
   /* Open: the pointer comes in and clicks; the app's red dot wakes. */
   .install-flow .stage[data-act][data-kind="open"] .glyph :global(.ig-cursor) { animation: ig-press .9s var(--ease-in-out) both; }
@@ -332,14 +333,15 @@ const wire = "M100 120H590Q600 120 600 110V70Q600 60 610 60H790Q800 60 800 70V11
   @keyframes flow-appear { from { opacity: 0; } }
   @keyframes ig-drop { from { translate: 0 -6px; opacity: 0; } }
   @keyframes ig-rise { from { translate: 0 3px; } }
+  /* Over 1.3 s; the carry keeps the times it had over 1 s (0.12, 0.38, 0.6, 0.68, 0.76 s). */
   @keyframes ig-carry {
-    12% { translate: 0 0; scale: 1.1; opacity: 1; }
-    38% { translate: 0 23px; scale: .8; opacity: 1; }
-    60% { translate: 31px 28px; scale: .55; opacity: 1; }
-    68% { translate: 31px 28px; scale: .45; opacity: 0; }
-    76% { translate: 0 0; scale: .85; opacity: 0; }
+    9.2% { translate: 0 0; scale: 1.1; opacity: 1; }
+    29.2% { translate: 0 23px; scale: .8; opacity: 1; }
+    46.2% { translate: 31px 28px; scale: .55; opacity: 1; }
+    52.3% { translate: 31px 28px; scale: .45; opacity: 0; }
+    58.5% { translate: 0 0; scale: .85; opacity: 0; animation-timing-function: ease; }
   }
-  @keyframes ig-clear { 0%, 100% { opacity: 1; } 12%, 80% { opacity: 0; } }
+  @keyframes ig-clear { 0%, 100% { opacity: 1; } 9.2%, 70% { opacity: 0; } }
   @keyframes ig-receive { 0%, 50%, 100% { scale: 1; } 66% { scale: 1.07; } }
   @keyframes ig-press {
     from { translate: 7px 9px; opacity: 0; }

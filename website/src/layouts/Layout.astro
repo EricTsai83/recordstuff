@@ -129,8 +129,11 @@ const favicon =
       window.addEventListener("scroll", onScroll, { passive: true });
       onScroll();
 
-      // Each [data-reveal] block fades up as a whole when its top reaches the
-      // lower part of the viewport, so the page arrives one block at a time.
+      // Each [data-reveal] block fades up as a whole once its top is just inside
+      // the viewport, so the page arrives one block at a time. Blocks open with
+      // their padding, so the fade is under way by the time their content shows;
+      // waiting for the lower eighth of the viewport left a scrolling reader
+      // looking at blank space.
       const blocks = document.querySelectorAll<HTMLElement>("[data-reveal]");
       const show = (el: HTMLElement) => el.classList.add("is-revealed");
       if ("IntersectionObserver" in window) {
@@ -141,7 +144,7 @@ const favicon =
               show(entry.target as HTMLElement);
               observer.unobserve(entry.target);
             }),
-          { rootMargin: "0px 0px -12% 0px" },
+          { rootMargin: "0px 0px -4% 0px" },
         );
         // Hide only once the observer exists. A missing bundle leaves content visible.
         blocks.forEach((block) => observer.observe(block));
