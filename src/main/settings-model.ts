@@ -13,7 +13,7 @@
 import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure, persistenceWarning } from "./recording-result";
 import { displayLabel, displayFailureText } from "../shared/display";
 import { displayResolution } from "./display-source";
-import { sentences, translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
+import { translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
 import {
   FRAME_RATES,
   RESOLUTION_CAPS,
@@ -82,8 +82,7 @@ function screenGroup(ctx: AppContext, enabled: boolean): Group {
   }
   if (preference.kind === "display" && !resolution.ok) choices.push({ id: preference.id,
     label: t("{label} — Unavailable", ctx.language, { label: displayLabel(preference, ctx.language) }), enabled: false, checked: true, action: { setDisplay: preference } });
-  const result = group("screen", t("Screen", ctx.language), enabled, choices,
-    t("Captures one whole screen. System audio is unaffected.", ctx.language));
+  const result = group("screen", t("Screen", ctx.language), enabled, choices);
   result.diagnostics = [];
   if (!resolution.ok) {
     result.diagnostics.push({ kind: "current", heading: t("Selected display is unavailable", ctx.language),
@@ -115,20 +114,20 @@ function outputFolderGroup(ctx: AppContext, enabled: boolean): Group {
 
 /**
  * Seconds before capture begins (plan 040); locked with the other recording settings.
- * The note names the shortcut as a way to cancel only while it is on and registered.
+ * Its ⓘ says how to cancel, naming the shortcut only while it is on and registered.
  */
 function countdownGroup(ctx: AppContext, enabled: boolean): Group {
   const language = ctx.language;
   const shortcutWorks = ctx.hotkey.enabled && ctx.hotkey.registered;
-  return group("countdown", t("Countdown", language), enabled, COUNTDOWN_CHOICES.map((value) => ({
+  return { ...group("countdown", t("Countdown", language), enabled, COUNTDOWN_CHOICES.map((value) => ({
     id: String(value),
     label: value === 0 ? t("Off", language) : t("{value} s", language, { value }),
     enabled: true,
     checked: value === ctx.countdown,
     action: { setCountdown: value },
-  })), shortcutWorks
-    ? t("Before recording starts, the digits appear at the top-right of the recorded screen. Click the menu bar icon or press the shortcut to cancel.", language)
-    : t("Before recording starts, the digits appear at the top-right of the recorded screen. Click the menu bar icon to cancel.", language));
+  }))), info: shortcutWorks
+    ? t("Click the menu bar icon or press the shortcut to cancel.", language)
+    : t("Click the menu bar icon to cancel.", language) };
 }
 
 /**
@@ -137,28 +136,28 @@ function countdownGroup(ctx: AppContext, enabled: boolean): Group {
  */
 function countdownSoundGroup(ctx: AppContext, enabled: boolean): Group {
   const language = ctx.language;
-  return group("countdownSound", t("Countdown sound", language), enabled && ctx.countdown !== 0,
-    switchChoices(language, ctx.countdownSound, (value) => ({ setCountdownSound: value })), t("A short tick plays with each digit. It stops before recording starts and is not recorded.", language));
+  return { ...group("countdownSound", t("Countdown sound", language), enabled && ctx.countdown !== 0,
+    switchChoices(language, ctx.countdownSound, (value) => ({ setCountdownSound: value }))), info: t("The tick is not recorded.", language) };
 }
 
 function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {
   const { videoQuality, resolutionCap, frameRate } = ctx.quality;
   const language = ctx.language;
   return [
-    group("videoQuality", t("Video quality", language), enabled, VIDEO_QUALITIES.map((value) => ({
+    { ...group("videoQuality", t("Video quality", language), enabled, VIDEO_QUALITIES.map((value) => ({
       id: value,
       label: t(VIDEO_QUALITY_LABELS[value], language),
       enabled: true,
       checked: value === videoQuality,
       action: { setQuality: { videoQuality: value } },
-    })), t("Higher quality preserves more detail and uses more space at the same resolution.", language)),
-    group("resolutionCap", t("Resolution cap", language), enabled, RESOLUTION_CAPS.map((value) => ({
+    }))), info: t("Higher quality preserves more detail and uses more space at the same resolution.", language) },
+    { ...group("resolutionCap", t("Resolution cap", language), enabled, RESOLUTION_CAPS.map((value) => ({
       id: value,
       label: value === "source" ? t("Source", language) : RESOLUTION_CAP_LABELS[value],
       enabled: true,
       checked: value === resolutionCap,
       action: { setQuality: { resolutionCap: value } },
-    })), t("Limits pixel dimensions while keeping the aspect ratio. Smaller sources are not enlarged.", language)),
+    }))), info: t("Limits pixel dimensions while keeping the aspect ratio. Smaller sources are not enlarged.", language) },
     // A frame rate that is not verified on this platform stays visible and
     // says why, rather than silently disappearing from the list.
     group("frameRate", t("Frame rate", language), enabled, FRAME_RATES.map((value) => ({
@@ -265,21 +264,17 @@ function updateActions(ctx: AppContext, enabled: boolean): Group {
  * path checks one boolean and nothing else. Cap can also gate its switch on
  * the OS permission because Tauri exposes `isPermissionGranted`; Electron has
  * no equivalent — `getMediaAccessStatus` accepts microphone, camera and
- * screen only — so the app never claims to know the OS state. The note
+ * screen only — so the app never claims to know the OS state. The ⓘ
  * carries the recovery path instead of a status line that could be wrong.
  */
 function notificationsGroup(ctx: AppContext, enabled: boolean): Group {
   const language = ctx.language;
-  const what = t("Shows a notification when a recording is saved or an error occurs.", language);
   // The switch controls OS notifications; in-app failure status stays available.
-  const note = !ctx.notifications
-    ? t("Notifications are off. Recording failures remain visible in the menu bar and in Settings → Failures.", language)
-    : ctx.platform === "darwin"
-      ? sentences([what, t("macOS must also allow RecordStuff in System Settings → Notifications.", language)], language)
-      : what;
   const switchGroup = group("notifications", t("Notifications", language), enabled,
-    switchChoices(language, ctx.notifications, (value) => ({ setNotifications: value })), note);
+    switchChoices(language, ctx.notifications, (value) => ({ setNotifications: value })),
+    ctx.notifications ? undefined : t("Notifications are off. Recording failures remain visible in the menu bar and in Settings → Failures.", language));
   switchGroup.noteKind = ctx.notifications ? "explanation" : "status";
+  if (ctx.notifications && ctx.platform === "darwin") switchGroup.info = t("macOS must also allow RecordStuff in System Settings → Notifications.", language);
   // Only macOS hides notifications behind a pane worth linking to. It sits in
   // this card so the switch and the permission that can override it read as
   // one decision rather than two unrelated settings.

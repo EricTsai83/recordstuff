@@ -97,7 +97,6 @@ export const ZH_TW = {
   "Primary display": "主螢幕",
   "Display {id}": "螢幕 {id}",
   "{label} (Primary)": "{label}（主螢幕）",
-  "Captures one whole screen. System audio is unaffected.": "錄製一個完整螢幕，不影響系統音訊。",
   "Selected display is unavailable. Choose another screen.": "所選螢幕無法使用，請選擇其他螢幕。",
   "Display is connected but its capture source is unavailable. Retry or choose another screen.": "螢幕已連接，但無法取得錄製來源。請重試或選擇其他螢幕。",
   "Display configuration changed. Retry.": "螢幕配置已變更，請重試。",
@@ -228,19 +227,16 @@ export const ZH_TW = {
   Off: "關閉",
   Countdown: "倒數",
   "{value} s": "{value} 秒",
-  "Before recording starts, the digits appear at the top-right of the recorded screen. Click the menu bar icon or press the shortcut to cancel.":
-    "開始錄製前，數字會顯示在被錄製螢幕的右上角。按一下選單列圖示或按快捷鍵即可取消。",
-  "Before recording starts, the digits appear at the top-right of the recorded screen. Click the menu bar icon to cancel.":
-    "開始錄製前，數字會顯示在被錄製螢幕的右上角。按一下選單列圖示即可取消。",
+  "Click the menu bar icon or press the shortcut to cancel.": "按一下選單列圖示或按快捷鍵即可取消。",
+  "Click the menu bar icon to cancel.": "按一下選單列圖示即可取消。",
   "Countdown sound": "倒數音效",
-  "A short tick plays with each digit. It stops before recording starts and is not recorded.":
-    "每個數字出現時會響一聲短促的提示音；開始錄製前就會停止，不會被錄進去。",
+  "The tick is not recorded.": "提示音不會被錄進影片。",
+  "More about {label}": "{label}的說明",
   "Could not register the shortcut {value}. Another app may be using it. Choose another shortcut in Settings.":
     "無法註冊快捷鍵 {value}，可能被其他 App 佔用。可以在設定視窗改用其他快捷鍵。",
   "Could not save the shortcut. Your previous shortcut is still in use.":
     "無法儲存快捷鍵設定，仍使用原本的快捷鍵。",
   Notifications: "通知",
-  "Shows a notification when a recording is saved or an error occurs.": "錄影儲存完成或發生錯誤時顯示通知。",
   "macOS must also allow RecordStuff in System Settings → Notifications.":
     "macOS 另外還要在「系統設定 → 通知」中允許 RecordStuff。",
   "Could not open System Settings. Allow RecordStuff in System Settings → Privacy & Security → Screen & System Audio Recording.":

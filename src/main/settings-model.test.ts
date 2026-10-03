@@ -34,14 +34,23 @@ const checked = (state: RecordingState, ctx: AppContext, id: string) =>
   group(state, ctx, id)?.choices.find((choice) => choice.checked)?.id;
 
 describe("settingsView", () => {
-  it("titles the capture warning by what it is about and joins the notifications note as sentences in each language", () => {
+  it("titles the capture warning by what it is about and puts the macOS notification permission behind the ⓘ", () => {
     const zh = { ...context, language: "zh-TW" as const, captureWarning: "無法確認解析度上限。" };
     expect(group(idle, zh, "screen")?.diagnostics?.at(-1)).toMatchObject({ kind: "history", heading: "錄影解析度" });
     expect(group(idle, { ...context, captureWarning: "x" }, "screen")?.diagnostics?.at(-1)?.heading).toBe("Recording resolution");
-    expect(group(idle, zh, "notifications")?.note).toBe(
-      `${t("Shows a notification when a recording is saved or an error occurs.", "zh-TW")}${t("macOS must also allow RecordStuff in System Settings → Notifications.", "zh-TW")}`);
-    expect(group(idle, context, "notifications")?.note).toBe(
-      "Shows a notification when a recording is saved or an error occurs. macOS must also allow RecordStuff in System Settings → Notifications.");
+    expect(group(idle, zh, "notifications")).toMatchObject({ info: t("macOS must also allow RecordStuff in System Settings → Notifications.", "zh-TW") });
+    expect(group(idle, zh, "notifications")?.note).toBeUndefined();
+    expect(group(idle, context, "notifications")?.info).toBe("macOS must also allow RecordStuff in System Settings → Notifications.");
+    // Off: the status stays on screen, and the permission no longer matters.
+    const off = group(idle, { ...context, notifications: false }, "notifications")!;
+    expect([off.noteKind, off.info]).toEqual(["status", undefined]);
+    expect(off.note).toBe("Notifications are off. Recording failures remain visible in the menu bar and in Settings → Failures.");
+    expect(group(idle, { ...context, platform: "win32" }, "notifications")).not.toHaveProperty("info");
+    expect(group(idle, { ...context, platform: "win32" }, "notifications")).not.toHaveProperty("note");
+    // Only status notes stay visible; the remaining explanations sit behind an ⓘ.
+    expect(group(idle, context, "screen")).not.toHaveProperty("note");
+    expect(group(idle, context, "videoQuality")?.info).toBe("Higher quality preserves more detail and uses more space at the same resolution.");
+    expect(group(idle, context, "resolutionCap")?.info).toBe("Limits pixel dimensions while keeping the aspect ratio. Smaller sources are not enlarged.");
   });
   it("offers every preference with a stable id and exactly one committed choice", () => {
     const view = settingsView(idle, context);
@@ -244,19 +253,19 @@ describe("countdown group (plan 040)", () => {
     const countdown = group(idle, context, "countdown")!;
     expect(countdown).toMatchObject({ label: "Countdown", control: "segmented", tab: "recording", section: "recording", noteKind: "explanation" });
     expect(countdown.choices.map((c) => [c.id, c.label, c.checked])).toEqual([["0", "Off", false], ["3", "3 s", true], ["5", "5 s", false], ["10", "10 s", false]]);
-    expect(countdown.note).toContain("top-right of the recorded screen");
+    expect(countdown).not.toHaveProperty("note");
+    expect(countdown.info).toBe("Click the menu bar icon or press the shortcut to cancel.");
     const zh = group(idle, { ...context, language: "zh-TW" }, "countdown")!;
     expect([zh.label, ...zh.choices.map((c) => c.label)]).toEqual(["倒數", "關閉", "3 秒", "5 秒", "10 秒"]);
-    expect(zh.note).toContain("右上角");
+    expect(zh.info).toBe("按一下選單列圖示或按快捷鍵即可取消。");
     expect(checked(idle, { ...context, countdown: 0 }, "countdown")).toBe("0");
   });
 
   it("names the shortcut as a way to cancel only while it works", () => {
-    expect(group(idle, context, "countdown")!.note).toContain("press the shortcut");
+    expect(group(idle, context, "countdown")!.info).toContain("press the shortcut");
     for (const hotkey of [{ ...context.hotkey, enabled: false }, { ...context.hotkey, registered: false }]) {
-      expect(group(idle, { ...context, hotkey }, "countdown")!.note).toBe(
-        "Before recording starts, the digits appear at the top-right of the recorded screen. Click the menu bar icon to cancel.");
-      expect(group(idle, { ...context, hotkey, language: "zh-TW" }, "countdown")!.note).toBe("開始錄製前，數字會顯示在被錄製螢幕的右上角。按一下選單列圖示即可取消。");
+      expect(group(idle, { ...context, hotkey }, "countdown")!.info).toBe("Click the menu bar icon to cancel.");
+      expect(group(idle, { ...context, hotkey, language: "zh-TW" }, "countdown")!.info).toBe("按一下選單列圖示即可取消。");
     }
   });
 
@@ -273,14 +282,15 @@ describe("countdown group (plan 040)", () => {
 });
 
 describe("countdown sound (plan 046)", () => {
-  it("is a switch directly after Countdown with the note that it is not recorded, in both languages", () => {
+  it("is a switch directly after Countdown whose ⓘ says the tick is not recorded, in both languages", () => {
     const sound = group(idle, context, "countdownSound")!;
     expect(sound).toMatchObject({ label: "Countdown sound", control: "switch", tab: "recording", section: "recording", noteKind: "explanation", enabled: true });
     expect(sound.choices.map((c) => [c.id, c.label, c.checked])).toEqual([["on", "On", true], ["off", "Off", false]]);
-    expect(sound.note).toBe("A short tick plays with each digit. It stops before recording starts and is not recorded.");
+    expect(sound).not.toHaveProperty("note");
+    expect(sound.info).toBe("The tick is not recorded.");
     const zh = group(idle, { ...context, language: "zh-TW" }, "countdownSound")!;
     expect([zh.label, ...zh.choices.map((c) => c.label)]).toEqual(["倒數音效", "開啟", "關閉"]);
-    expect(zh.note).toContain("不會被錄進去");
+    expect(zh.info).toBe("提示音不會被錄進影片。");
     expect(checked(idle, { ...context, countdownSound: false }, "countdownSound")).toBe("off");
   });
 
@@ -329,11 +339,11 @@ describe("notifications in General", () => {
   });
 
   /** Claiming an OS state the app cannot read would be worse than saying nothing. */
-  it("names the macOS recovery path in the note without reporting a permission state", () => {
-    const note = group(idle, context, "notifications")?.note ?? "";
-    expect(note).toContain("System Settings");
-    expect(note).not.toMatch(/denied|authoriz/i);
-    expect(group(idle, { ...context, platform: "win32" }, "notifications")?.note).not.toContain("System Settings");
+  it("names the macOS recovery path behind the ⓘ without reporting a permission state", () => {
+    const info = group(idle, context, "notifications")?.info ?? "";
+    expect(info).toContain("System Settings");
+    expect(info).not.toMatch(/denied|authoriz/i);
+    expect(group(idle, { ...context, notifications: false }, "notifications")?.info).toBeUndefined();
   });
 
   /** One card: changing the switch and checking the OS are one decision. */
@@ -378,7 +388,7 @@ describe("screen choice", () => {
       expect(screen.choices.find((c) => c.checked)).toMatchObject({ id: "7", enabled: false });
       expect(settingsAction(idle, ctx, "screen", "7")).toBeUndefined();
       expect(screen.diagnostics?.[0]?.heading).toBe("Selected display is unavailable");
-      expect(screen.note).not.toContain("unavailable");
+      expect(screen.note).toBeUndefined();
       expect(settingsAction(idle, ctx, "screen", "primary")).toEqual({ setDisplay: { kind: "primary" } });
     }
   });

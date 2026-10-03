@@ -38,6 +38,12 @@ main { height: 100dvh; max-width: 720px; margin: auto; padding: 22px 24px 0; dis
 .row + .row { border-top: 1px solid var(--separator); }
 .row-line { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .group-label { font-weight: 500; min-width: 0; }
+.group-title { display: flex; align-items: center; gap: 3px; min-width: 0; }
+/* The ⓘ beside a label and the explanation it shows in the top layer. */
+.group-title .info-button { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 3px; border: 0; border-radius: 50%; background: transparent; color: var(--secondary); }
+.group-title .info-button:hover, .group-title .info-button[aria-expanded="true"] { color: var(--text); }
+.info-button svg { width: 14px; height: 14px; }
+.info-popover { position: fixed; inset: auto; margin: 0; max-width: min(280px, calc(100vw - 16px)); padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); font-size: 12px; line-height: 1.4; box-shadow: 0 4px 14px rgb(0 0 0 / .16); }
 .controls { display: flex; align-items: center; justify-content: flex-end; gap: 7px; max-width: 70%; min-width: 0; }
 select, button { font: inherit; color: inherit; background: var(--control); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 9px; max-width: 100%; }
 select { min-width: 0; text-overflow: ellipsis; }
@@ -104,6 +110,7 @@ kbd { font: inherit; display: inline-block; min-width: 20px; padding: 1px 4px; m
   .switch::before { display: none; }
   .segment input:checked + span { color: CanvasText; background: Canvas; }
   .diagnostics { border: 1px solid CanvasText; }
+  .info-popover { border-color: CanvasText; box-shadow: none; }
 }
 @media (prefers-reduced-motion: no-preference) { .switch::before { transition: left .1s; } }
 

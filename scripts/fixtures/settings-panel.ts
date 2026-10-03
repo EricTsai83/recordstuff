@@ -104,7 +104,7 @@ const view = (language: Language): SettingsView => {
         control: "switch", section: "notifications",
         tab: "general",
         label: zh ? "通知" : "Notifications",
-        note: zh ? "錄影儲存完成或發生錯誤時顯示通知。" : "Shows a notification when a recording is saved or an error occurs.",
+        info: zh ? "macOS 另外還要在「系統設定 → 通知」中允許 RecordStuff。" : "macOS must also allow RecordStuff in System Settings → Notifications.",
         enabled: true,
         choices: [
           { id: "on", label: zh ? "開啟" : "On", enabled: true, checked: notifications },
@@ -414,7 +414,8 @@ async function run() {
     const kids = row ? [...row.children].map(el => el.tagName.toLowerCase() + (el.id ? "#" + el.id : "." + el.className)) : [];
     return {
       controls: [...document.querySelectorAll("input[role=switch]")].map(s => s.id),
-      buttons: [...document.querySelectorAll(".row button")].filter(b => !b.closest("[hidden]")).map(b => ({ id: b.id, text: b.textContent, disabled: b.disabled })),
+      // The ⓘ beside the label has its own cases.
+      buttons: [...document.querySelectorAll(".row button:not(.info-button)")].filter(b => !b.closest("[hidden]")).map(b => ({ id: b.id, text: b.textContent, disabled: b.disabled })),
       value: document.querySelector("#setting-notifications")?.value ?? null,
       order: kids,
     };
@@ -584,6 +585,44 @@ async function run() {
   record("countdown sound: disabled while the countdown is Off, keeping its value, and a click sends nothing",
     disabledSound.checked && disabledSound.disabled && disabledSound.calls === "[]" && disabledSound.after, JSON.stringify(disabledSound));
   soundContext = undefined;
+  // The ⓘ beside a label: real hover and real Tab show its explanation in the top layer, inside the window; Escape closes it before the window.
+  const infoState = (id: string) => read<{ open: boolean; expanded: string | null; text: string; inside: boolean; describes: boolean }>(window, `(() => {
+    const id = ${JSON.stringify(`setting-${id}`)}, popover = document.getElementById(id + "-info"), r = popover.getBoundingClientRect();
+    const control = document.querySelector("#" + id + "-row .switch, #" + id + "-row select, #" + id + "-row .segments input");
+    return { open: popover.matches(":popover-open"), expanded: document.getElementById(id + "-info-button").getAttribute("aria-expanded"), text: popover.textContent,
+      inside: r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
+      describes: (control?.getAttribute("aria-describedby") ?? "").split(" ").includes(popover.id) }; })()`);
+  for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {
+    window.setSize(size === "default" ? 560 : 380, size === "default" ? 680 : 360);
+    window.webContents.send("settings:changed", settingsView({ type: "idle" }, { ...ctx, language: lang }));
+    await settle(80);
+    await read(window, `document.getElementById("tab-recording").click()`); await settle(60);
+    const hoverSpan = await activeSpan();
+    const at = await read<{ x: number; y: number }>(window, `(() => { const el = document.getElementById("setting-countdownSound-info-button"); el.scrollIntoView({ block: "center" });
+      const r = el.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`);
+    window.webContents.sendInputEvent({ type: "mouseMove", x: at.x, y: at.y }); await settle(120);
+    const hovered = await infoState("countdownSound");
+    await shot(`info-hover-${lang}-light-${size}.png`);
+    // The explanation itself is hoverable: the pointer crosses onto it and it stays.
+    const onto = await read<{ x: number; y: number }>(window, `(() => { const r = document.getElementById("setting-countdownSound-info").getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`);
+    window.webContents.sendInputEvent({ type: "mouseMove", x: Math.round((at.x + onto.x) / 2), y: Math.round((at.y + onto.y) / 2) });
+    window.webContents.sendInputEvent({ type: "mouseMove", x: onto.x, y: onto.y }); await settle(300);
+    const kept = await infoState("countdownSound");
+    window.webContents.sendInputEvent({ type: "mouseMove", x: 4, y: 4 }); await settle(300);
+    const left = await infoState("countdownSound");
+    await recordActive(hoverSpan, `${lang}/${size}: hovering the ⓘ shows its explanation inside the window, it stays while the pointer is on it, and leaving both hides it`,
+      hovered.open && hovered.expanded === "true" && hovered.inside && hovered.describes && hovered.text === (lang === "en" ? "The tick is not recorded." : "提示音不會被錄進影片。")
+      && kept.open && !left.open && left.expanded === "false", JSON.stringify({ hovered, kept, left }));
+    const keySpan = await activeSpan();
+    await read(window, `document.querySelector("#setting-videoQuality input:checked").focus()`);
+    window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" }); window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" }); await settle(150);
+    const tabbed = { active: await read<string>(window, `document.activeElement.id`), ...await infoState("resolutionCap") };
+    await shot(`info-focus-${lang}-light-${size}.png`);
+    window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" }); window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" }); await settle(120);
+    const escaped = { windowOpen: !window.isDestroyed(), ...await infoState("resolutionCap") };
+    await recordActive(keySpan, `${lang}/${size}: a real Tab reaches the next ⓘ and shows its explanation; Escape closes it and leaves the window open`,
+      tabbed.active === "setting-resolutionCap-info-button" && tabbed.open && tabbed.inside && escaped.windowOpen && !escaped.open, JSON.stringify({ tabbed, escaped }));
+  }
   // Repeated checks preserve the row, button, result text and lower-row position.
   window.setSize(560, 680);
   const updatePrevious = { kind: "current" as const, checkedAt: 1000 };
@@ -684,7 +723,13 @@ async function run() {
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });
   await settle(100);
   const tabExit = await read<string>(window, `document.activeElement.id`);
-  await recordActive(tabSpan, "real Tab exits capture to the next visible preference", tabExit === "setting-notifications", tabExit);
+  // Notifications' ⓘ comes first, then its switch.
+  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });
+  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });
+  await settle(100);
+  const tabNext = await read<string>(window, `document.activeElement.id`);
+  await recordActive(tabSpan, "real Tab exits capture to the next visible preference, its ⓘ and then its switch",
+    tabExit === "setting-notifications-info-button" && tabNext === "setting-notifications", JSON.stringify({ tabExit, tabNext }));
   const backSpan = await activeSpan();
   await read(window, `(() => { const s = document.getElementById("setting-hotkey"); s.value = "custom"; s.dispatchEvent(new Event("change")); })()`);
   await settle(100);

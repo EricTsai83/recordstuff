@@ -38,6 +38,8 @@ export interface SettingsGroup {
   platform?: string;
   /** Extra line under the control, e.g. a shortcut the OS refused to register. */
   note?: string;
+  /** A secondary explanation behind an ⓘ beside the label, shown on hover, focus or click and still describing the control. */
+  info?: string;
   enabled: boolean;
   choices: SettingsChoice[];
   /**

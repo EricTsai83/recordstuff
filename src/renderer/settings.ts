@@ -198,6 +198,11 @@ function updateRows(groups: SettingsGroup[]): void {
     label.hidden = !group.label;
     const note = container.querySelector<HTMLElement>(".note")!;
     setText(note, group.note ?? ""); note.hidden = !group.note;
+    const info = document.getElementById(`${controlId(group)}-info`)!;
+    const infoButton = document.getElementById(`${controlId(group)}-info-button`)!;
+    if (!group.info && openInfo?.popover === info) hideInfo();
+    setText(info, group.info ?? ""); info.hidden = infoButton.hidden = !group.info;
+    infoButton.setAttribute("aria-label", translate("More about {label}", view?.language, { label: group.label }));
     for (const el of container.querySelectorAll<HTMLInputElement | HTMLSelectElement>("select, input")) {
       setDisabled(el, !group.enabled, Boolean(saving && saving.group !== group.id));
       if (el instanceof HTMLSelectElement) {
@@ -276,7 +281,7 @@ function updateRows(groups: SettingsGroup[]): void {
     }
     // Only what is shown: a hidden region still lends its text, stale failure copy included, to a description.
     // Status changes use the single announcer below, not duplicate live regions.
-    const description = [`${controlId(group)}-help`, `${controlId(group)}-note`, `${controlId(group)}-diagnostics`, `${controlId(group)}-timeout`]
+    const description = [`${controlId(group)}-help`, `${controlId(group)}-note`, `${controlId(group)}-info`, `${controlId(group)}-diagnostics`, `${controlId(group)}-timeout`]
       .filter(id => document.getElementById(id)?.hidden === false).join(" ");
     for (const el of container.querySelectorAll<HTMLElement>("select, input, button[data-action], #shortcut-capture")) {
       if (description) el.setAttribute("aria-describedby", description); else el.removeAttribute("aria-describedby");
@@ -302,6 +307,76 @@ function actionButton(group: SettingsGroup, choice: SettingsGroup["choices"][num
   }
   return el;
 }
+/**
+ * A group's secondary explanation: an ⓘ button beside the label and the
+ * popover it shows. Hover and keyboard focus show it while they last; a click
+ * pins it until another click, Escape or focus leaving. The popover sits in
+ * the top layer, so the scrolling panel cannot clip it, and its text still
+ * describes the control through `aria-describedby`.
+ */
+let openInfo: { button: HTMLButtonElement; popover: HTMLElement; pinned: boolean } | undefined;
+/** Pending close after the pointer left the button or its explanation; entering either again cancels it. */
+let infoLeave: ReturnType<typeof setTimeout> | undefined;
+function showInfo(button: HTMLButtonElement, popover: HTMLElement, pinned: boolean): void {
+  clearTimeout(infoLeave);
+  if (openInfo && openInfo.popover !== popover) hideInfo();
+  openInfo = { button, popover, pinned: pinned || (openInfo?.pinned ?? false) };
+  button.setAttribute("aria-expanded", "true");
+  if (!popover.matches(":popover-open")) popover.showPopover?.();
+  placeInfo();
+}
+/**
+ * Below the button, left-aligned to it and kept inside the window; above it when
+ * there is no room below. A button scrolled out of the panel closes it instead.
+ */
+function placeInfo(): void {
+  if (!openInfo) return;
+  const { button, popover } = openInfo;
+  const anchor = button.getBoundingClientRect(), box = popover.getBoundingClientRect(), gap = 6, margin = 8;
+  const panel = button.closest("#settings-panel")?.getBoundingClientRect();
+  if (panel && (anchor.bottom < panel.top || anchor.top > panel.bottom)) { hideInfo(); return; }
+  const left = Math.max(margin, Math.min(anchor.left, innerWidth - box.width - margin));
+  const below = anchor.bottom + gap;
+  const top = below + box.height <= innerHeight - margin ? below : Math.max(margin, anchor.top - gap - box.height);
+  popover.style.left = `${Math.round(left)}px`; popover.style.top = `${Math.round(top)}px`;
+}
+function hideInfo(): boolean {
+  clearTimeout(infoLeave);
+  if (!openInfo) return false;
+  const { button, popover } = openInfo;
+  openInfo = undefined;
+  button.setAttribute("aria-expanded", "false");
+  if (popover.matches(":popover-open")) popover.hidePopover?.();
+  return true;
+}
+function infoParts(id: string): [HTMLButtonElement, HTMLElement] {
+  const popover = node("div", "info-popover"); popover.id = `${id}-info`;
+  popover.setAttribute("popover", "manual"); popover.setAttribute("role", "tooltip");
+  const info = button(`${id}-info-button`, () => {
+    if (openInfo?.popover === popover && openInfo.pinned) hideInfo(); else showInfo(info, popover, true);
+  });
+  info.className = "info-button"; info.setAttribute("aria-describedby", popover.id); info.setAttribute("aria-expanded", "false");
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 16 16"); svg.setAttribute("aria-hidden", "true"); svg.setAttribute("focusable", "false");
+  svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.3"); svg.setAttribute("stroke-linecap", "round");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", "M14.5 8a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0ZM8 7.2v4M8 4.9v.1");
+  svg.append(path); info.append(svg);
+  // The explanation is hoverable too (WCAG 1.4.13): the pointer may cross the gap onto it, and keyboard focus keeps it open.
+  const leave = (): void => {
+    clearTimeout(infoLeave);
+    infoLeave = setTimeout(() => {
+      if (openInfo?.popover === popover && !openInfo.pinned && document.activeElement !== info) hideInfo();
+    }, 120);
+  };
+  info.addEventListener("mouseenter", () => showInfo(info, popover, false));
+  info.addEventListener("mouseleave", leave);
+  popover.addEventListener("mouseenter", () => { if (openInfo?.popover === popover) clearTimeout(infoLeave); });
+  popover.addEventListener("mouseleave", leave);
+  info.addEventListener("focus", () => showInfo(info, popover, false));
+  info.addEventListener("blur", () => { if (openInfo?.popover === popover) hideInfo(); });
+  return [info, popover];
+}
 function row(group: SettingsGroup): HTMLElement {
   const id = controlId(group);
   const container = node("div", "row"); container.id = `${id}-row`;
@@ -312,7 +387,9 @@ function row(group: SettingsGroup): HTMLElement {
   label.id = `${id}-label`;
   const controls = node("div", "controls");
   if (group.kind === "actions") { controls.setAttribute("role", "group"); controls.setAttribute("aria-labelledby", label.id); }
-  line.append(label, controls); container.append(line);
+  const title = node("div", "group-title");
+  title.append(label, ...infoParts(id));
+  line.append(title, controls); container.append(line);
   if (group.kind === "actions") {
     for (const choice of group.choices) controls.append(actionButton(group, choice));
   } else if (group.control === "switch") {
@@ -687,6 +764,8 @@ function draw(): void {
   const structure = JSON.stringify([selectedTab, current.tabs.map(t => t.id), groups.map(g => [g.id, g.kind, g.control, g.section, g.control === "segmented" ? g.choices.map(c => c.id) : null])]);
   if (structure !== renderedStructure) {
     renderedStructure = structure;
+    // The rebuild removes the open explanation's nodes without a leave or blur, so its state goes first.
+    hideInfo();
     const active = document.activeElement;
     const restore = active instanceof HTMLElement && form.contains(active) ? active.id : "";
     const scroll = document.getElementById("settings-panel")?.scrollTop ?? 0;
@@ -916,12 +995,18 @@ document.addEventListener("keydown", event => {
 form.addEventListener("submit", event => event.preventDefault());
 document.addEventListener("keydown", event => {
   if (event.key === "Escape" && (shortcutGroup()?.capturing || arming)) { event.preventDefault(); void capture(false, true); return; }
+  // An open explanation closes first; the next Escape closes the window.
+  if (event.key === "Escape" && hideInfo()) { event.preventDefault(); return; }
   if (event.key === "Escape" || isCloseChord(event, platform())) window.close();
 });
 // An inactive window shows no focus ring (plan 047), even where Chromium keeps :focus-visible.
 window.addEventListener("focus", () => { delete document.documentElement.dataset.window; });
+// A shown explanation follows its button through scrolling, as keyboard focus scrolls it into view, and resizing.
+document.addEventListener("scroll", placeInfo, true);
+window.addEventListener("resize", placeInfo);
 window.addEventListener("blur", () => {
   document.documentElement.dataset.window = "inactive";
+  hideInfo();
   for (const intent of resultIntents.values()) intent.moved = true;
   if (shortcutGroup()?.capturing || arming) void capture(false);
 });
