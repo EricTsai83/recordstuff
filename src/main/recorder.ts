@@ -621,6 +621,7 @@ export class Recorder {
     try {
       await session.opening;
     } catch (cause) {
+      if (this.cancelMarked(session, "opening the folder failed", messageOf(cause))) return;
       const code = errorCodeOf(cause, "output_open_failed");
       // A full disk is not an unusable folder: the tray says "Output folder unavailable" only for the latter.
       await this.fail(session.id, code, messageOf(cause), code === "disk_full" ? {} : { outputDirUnavailable: true });

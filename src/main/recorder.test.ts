@@ -995,6 +995,20 @@ describe("Recorder permission", () => {
     expect(ctx.recorder.state).toEqual({ type: "idle", outputDirUnavailable: true });
   });
 
+  it("cancels, not fails, an opening that sleep marked and whose folder check then fails", async () => {
+    let rejectDir!: (cause: Error) => void;
+    const ctx = setup({ ensureWritableDir: () => new Promise((_resolve, reject) => { rejectDir = reject; }) });
+    ctx.recorder.toggle();
+    await flush();
+    ctx.recorder.systemWillSleep();
+    rejectDir(new Error("EIO"));
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+    expect(ctx.events.filter((event) => event.type === "cancelled")).toEqual([{ type: "cancelled", reason: "sleep", session: traced() }]);
+    expect(ctx.events.some((event) => event.type === "failed" || event.type === "failureStatus")).toBe(false);
+    expect(ctx.host.started).toEqual([]);
+  });
+
   it("choosing a folder while permission is missing forgets the unusable-folder flag", async () => {
     const ctx = setup({ ensureWritableDir: async () => { throw new Error("EACCES"); } });
     ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
