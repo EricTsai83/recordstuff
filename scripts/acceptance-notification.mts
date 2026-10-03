@@ -10,7 +10,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings } from "./lib/runner-env.mts";
 import { recordStuffPattern } from "./lib/processes.mts";
-import { command, finishRecording, waitForLog } from "./lib/acceptance-runtime.mts";
+import { command, settleRecording, waitForLog } from "./lib/acceptance-runtime.mts";
 import fs from "node:fs";
 import os from "node:os";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
@@ -428,13 +428,15 @@ end tell`, "close test document");
     let recordingSettled = recordingFrom === undefined;
     if (recordingFrom !== undefined) {
       try {
-        const savedPath = await finishRecording({
+        // A shortcut that never started a recording leaves an idle app, which is still quit and restored.
+        const { saved: savedPath, neverStarted } = await settleRecording({
           log: appLog, from: recordingFrom, stopSent, signal: operationSignal,
           stop: () => run("osascript", ["-e", currentKey ?? fail("shortcut unknown")], "stop the script's recording"),
         });
         if (savedPath && !recordings.includes(savedPath)) recordings.push(savedPath);
         recordingSettled = true;
-        cleanup.push(`recording settled${savedPath ? ` and saved (${savedPath})` : " without a saved file"}`);
+        cleanup.push(neverStarted ? "no recording started; the app stayed idle"
+          : `recording settled${savedPath ? ` and saved (${savedPath})` : " without a saved file"}`);
       } catch (error) { problem(`could not settle the script's recording: ${String(error)}`); }
     }
     try {
@@ -578,5 +580,6 @@ end tell`, "quit empty TextEdit");
 main().catch((error: unknown) => {
   if (error instanceof AcceptanceFailure) console.error(`✗ ${error.message}`);
   else console.error(error);
-  process.exit(1);
+  // A lock seen during the round makes it blocked even when a step also threw.
+  process.exit(process.exitCode === DESKTOP_BLOCKED_EXIT ? DESKTOP_BLOCKED_EXIT : 1);
 });

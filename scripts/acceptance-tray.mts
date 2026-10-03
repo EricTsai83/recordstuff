@@ -241,17 +241,27 @@ async function settleIfBusy(tray: TrayDriver | undefined, bound: AbortSignal): P
   const state = currentState(lines());
   if (state !== "countdown" && state !== "recording" && state !== "starting") return undefined;
   const from = appLog.end();
-  try { if (!tray) throw new Error("no driver"); await tray.click(); }
-  catch (error) {
-    const accelerator = registeredAccelerator(lines());
-    const keystroke = accelerator ? acceleratorToKeystroke(accelerator) : undefined;
-    if (!keystroke) throw new Error(`could not click the status item (${String(error)}) and no shortcut is registered`, { cause: error });
-    await command("osascript", ["-e", keystrokeScript(keystroke)], bound, 5000);
-  }
+  const toggle = async (): Promise<void> => {
+    try { if (!tray) throw new Error("no driver"); await tray.click(); }
+    catch (error) {
+      const accelerator = registeredAccelerator(lines());
+      const keystroke = accelerator ? acceleratorToKeystroke(accelerator) : undefined;
+      if (!keystroke) throw new Error(`could not click the status item (${String(error)}) and no shortcut is registered`, { cause: error });
+      await command("osascript", ["-e", keystrokeScript(keystroke)], bound, 5000);
+    }
+  };
+  await toggle();
+  let retoggled = false;
   for (const deadline = Date.now() + 30_000; ; await delay(200, undefined, { signal: bound })) {
     const since = lines(from);
     const outcome = recordingOutcome(since);
-    if (outcome.settled && currentState(since) === "idle") return outcome.saved;
+    const state = currentState(since);
+    if (outcome.settled && state === "idle") return outcome.saved;
+    // Within a start's first second the toggle is only logged (START_CANCEL_GRACE_MS); once the start moved on, toggle again.
+    if (!retoggled && (state === "countdown" || state === "recording") && since.some(line => line.includes(" toggle ignored while starting "))) {
+      retoggled = true;
+      await toggle();
+    }
     if (Date.now() > deadline) throw new Error("the session did not settle within 30 s");
   }
 }
