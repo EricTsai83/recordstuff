@@ -32,14 +32,15 @@ export function createQuitFeedback(deps: {
 
 /** Initial bounded wait for the final history save at quit; local saves measured far below it. */
 export const HISTORY_QUIT_WAIT_MS = 5000;
-type HistoryQuitResults = Pick<RecordingResults, "flush" | "unsaved" | "resume" | "close" | "busy">;
+type HistoryQuitResults = Pick<RecordingResults, "flush" | "unsaved" | "close" | "busy">;
 
 /**
  * The metadata phase of quit/relaunch. Retry repeats the bounded save attempt
  * and is offered only when another attempt could succeed, Stay in app declines
  * exit, and exiting without saving is offered only when the last attempt
  * failed with no write in flight. A timed-out save is never
- * treated as stopped I/O, so it keeps the app open.
+ * treated as stopped I/O, so it keeps the app open. False leaves resuming
+ * retries to the quit coordinator's `resume`, which also covers a step that threw.
  */
 export function createHistoryQuit(deps: {
   results: HistoryQuitResults;
@@ -89,7 +90,6 @@ export function createHistoryQuit(deps: {
         deps.results.close();
         return true;
       }
-      deps.results.resume();
       return false;
     }
   };

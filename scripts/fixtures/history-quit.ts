@@ -88,7 +88,7 @@ async function main(): Promise<void> {
         return { response: answers.shift() ?? 1 };
       } }),
     pending: () => { deferred++; note("quit deferred: media pending"); },
-    resume: () => { resumed++; recorder.resumeAdmission(); note("quit declined: stayed in app"); },
+    resume: () => { resumed++; recorder.resumeAdmission(); results.resume(); note("quit declined: stayed in app"); },
     joined: () => { joined++; },
     error: cause => { console.error(cause); app.exit(1); },
   });

@@ -800,7 +800,7 @@ async function main(): Promise<void> {
       } }),
     resume: () => {
       endQuitting();
-      // The history prompt resumes retries when the user stays; a history step that threw did not.
+      // Staying at the history prompt, or a history step that threw, leaves failure-history retries paused.
       recordingResults.resume();
       log("quit declined: failure history is not saved");
       refreshUi();

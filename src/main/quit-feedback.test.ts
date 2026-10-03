@@ -31,7 +31,7 @@ it("logs a failed notification instead of throwing into the deferred quit", () =
 
 function historyResults(outcomes: Array<"safe" | "unsaved" | "writing">, unsaved: RecordingResult[] = [{ id: "a", occurredAt: "2026-09-25T04:05:06Z", code: "disk_full", detail: "", outcome: "empty", acknowledged: false, persistenceFailed: "io" }]) {
   return { flush: vi.fn(async (_ms: number) => outcomes.shift() ?? "safe"), unsaved: vi.fn(() => unsaved),
-    resume: vi.fn(), close: vi.fn(), busy: false };
+    close: vi.fn(), busy: false };
 }
 
 it("admits exit without a prompt once history is saved", async () => {
@@ -72,17 +72,17 @@ it("lists unsaved reminders and exits without saving only on explicit choice and
   expect(log).toHaveBeenCalledWith(expect.stringContaining("exiting without saving 7"));
 });
 
-it("staying, a failed prompt and Chinese copy keep the app open and resume retries", async () => {
+it("staying, a failed prompt and Chinese copy keep the app open", async () => {
   const results = historyResults(["unsaved"], [{ id: "a", occurredAt: "2026-09-25T04:05:06Z", code: "disk_full", detail: "", outcome: "empty", acknowledged: false, persistenceFailed: "blocked" }]);
   const show = vi.fn(async (options: MessageBoxOptions) => ({ response: options.buttons!.indexOf("留在 App") }));
   expect(await createHistoryQuit({ results, language: () => "zh-TW", focus() {}, show, log: vi.fn() })()).toBe(false);
-  expect(results.resume).toHaveBeenCalledOnce(); expect(results.close).not.toHaveBeenCalled();
+  expect(results.close).not.toHaveBeenCalled();
   // A blocked history fails every retry, so staying is the default and Retry is not offered.
   expect(show.mock.calls[0]?.[0]).toMatchObject({ message: "無法儲存失敗紀錄", buttons: ["留在 App", "不儲存並結束"], defaultId: 0, cancelId: 0 });
   expect(show.mock.calls[0]?.[0].detail).toContain("不會覆寫");
   const broken = historyResults(["unsaved"]), log = vi.fn();
   expect(await createHistoryQuit({ results: broken, language: () => "en", focus() {}, show: async () => { throw new Error("no dialog"); }, log })()).toBe(false);
-  expect(broken.resume).toHaveBeenCalledOnce(); expect(log).toHaveBeenCalledWith(expect.stringContaining("no dialog"));
+  expect(broken.close).not.toHaveBeenCalled(); expect(log).toHaveBeenCalledWith(expect.stringContaining("no dialog"));
 });
 
 it("still shows the history prompt when bringing the app forward fails", async () => {
@@ -91,7 +91,6 @@ it("still shows the history prompt when bringing the app forward fails", async (
   const results = historyResults(["unsaved"]);
   expect(await createHistoryQuit({ results, language: () => "en", focus, show, log })()).toBe(false);
   expect(show).toHaveBeenCalledOnce();
-  expect(results.resume).toHaveBeenCalledOnce();
   expect(log).toHaveBeenCalledWith(expect.stringContaining("focus unavailable"));
 });
 
