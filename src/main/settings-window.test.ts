@@ -517,7 +517,7 @@ describe("settings window size", () => {
       vi.advanceTimersByTime(250);
       expect(geometry.save).toHaveBeenCalledExactlyOnceWith({ width: 640, height: 730 });
       s.window().getSize.mockReturnValue([660, 750]); s.window().events.get("resize")!();
-      s.window().events.get("close")!(); s.window().events.get("closed")!();
+      s.window().events.get("closed")!();
       expect(geometry.save).toHaveBeenLastCalledWith({ width: 660, height: 750 });
       s.panel.show(); expect(mock.windows[1].options).toMatchObject({ width: 660, height: 750 });
       s.panel.destroy(); vi.runAllTimers(); expect(geometry.save).toHaveBeenCalledTimes(2);

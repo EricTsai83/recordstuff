@@ -139,7 +139,6 @@ export class SettingsWindow {
     this.entryTab = tab;
     this.resultFocus++;
     this.show(true);
-    this.refresh();
   }
 
   show(resultEntry = false): void {
@@ -197,7 +196,6 @@ export class SettingsWindow {
       clearTimeout(this.resizeTimer);
       this.resizeTimer = setTimeout(() => this.flushSize(), 250);
     });
-    window.on("close", () => this.flushSize());
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
     window.once("ready-to-show", () => {

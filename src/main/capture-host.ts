@@ -147,10 +147,7 @@ export class CaptureHost implements RecorderHost {
         if (message.type === "pong") this.missedPongs = 0;
         // The session is over once the host reports it stopped or failed;
         // nothing is expected from the renderer until the next start.
-        if (
-          (message.type === "stopped" && message.sessionId === this.watching) ||
-          (message.type === "error" && message.sessionId === this.watching)
-        ) {
+        if ((message.type === "stopped" || message.type === "error") && message.sessionId === this.watching) {
           this.stopHeartbeat();
         }
         for (const listener of this.messageListeners) listener(message);

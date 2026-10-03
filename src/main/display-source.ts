@@ -72,7 +72,7 @@ export class DisplayRequest<S extends Source> {
   private async attempts(finish: (source?: S) => void, deny: (code: ErrorCode, detail: DisplayFailure, attempt: number) => void): Promise<void> {
     const preference = this.deps.preference;
     for (let attempt = 1; attempt <= 3; attempt++) {
-      if (this.cancelled) { finish(); return; }
+      if (this.cancelled) return;
       const before = this.deps.snapshot();
       const resolution = resolveDisplayPreference({ ...before, preference });
       if (!resolution.ok) { deny("display_unavailable", resolution.detail, attempt); return; }
@@ -84,7 +84,7 @@ export class DisplayRequest<S extends Source> {
         deny("capture_start_failed", "source_missing", attempt);
         return;
       }
-      if (this.cancelled) { finish(); return; }
+      if (this.cancelled) return;
       const after = this.deps.snapshot();
       const current = resolveDisplayPreference({ ...after, preference });
       if (!current.ok) { deny("display_unavailable", current.detail, attempt); return; }
