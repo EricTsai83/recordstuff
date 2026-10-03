@@ -322,23 +322,30 @@ describe("notification text", () => {
   });
 
   it("saved notification uses the file name", () => {
-    expect(savedNotification("/Users/eric/Movies/RecordStuff/2026-09-11 14-30-00.mp4", "zh-TW").body).toBe(
+    expect(savedNotification("/Users/eric/Movies/RecordStuff/2026-09-11 14-30-00.mp4", "darwin", "zh-TW").body).toBe(
       "已儲存 2026-09-11 14-30-00.mp4",
     );
   });
 
   it("a recording stopped by the disk guard says so in the saved notification", () => {
-    expect(savedNotification("/Volumes/Small/demo.mp4", "en", "lowDisk").body).toBe(
+    expect(savedNotification("/Volumes/Small/demo.mp4", "darwin", "en", "lowDisk").body).toBe(
       "Saved demo.mp4. Stopped early: the disk is almost full.",
     );
-    expect(savedNotification("/Volumes/Small/demo.mp4", "zh-TW", "lowDisk").body).toBe("已儲存 demo.mp4。磁碟空間即將用盡，已提前停止錄影。");
+    expect(savedNotification("/Volumes/Small/demo.mp4", "darwin", "zh-TW", "lowDisk").body).toBe("已儲存 demo.mp4。磁碟空間即將用盡，已提前停止錄影。");
   });
 
   it("a recording stopped because the Mac went to sleep says so in the saved notification (plan 050)", () => {
-    expect(savedNotification("/Users/eric/Movies/RecordStuff/demo.mp4", "en", "sleep").body).toBe(
+    expect(savedNotification("/Users/eric/Movies/RecordStuff/demo.mp4", "darwin", "en", "sleep").body).toBe(
       "Saved demo.mp4. Stopped because the Mac went to sleep.",
     );
-    expect(savedNotification("/Users/eric/Movies/RecordStuff/demo.mp4", "zh-TW", "sleep").body).toBe("已儲存 demo.mp4。Mac 進入睡眠，已停止錄影。");
+    expect(savedNotification("/Users/eric/Movies/RecordStuff/demo.mp4", "darwin", "zh-TW", "sleep").body).toBe("已儲存 demo.mp4。Mac 進入睡眠，已停止錄影。");
+  });
+
+  it("off macOS the sleep notice names the computer, not the Mac (plan 064)", () => {
+    expect(savedNotification("/home/eric/Videos/RecordStuff/demo.mp4", "win32", "en", "sleep").body).toBe(
+      "Saved demo.mp4. Stopped because the computer went to sleep.",
+    );
+    expect(savedNotification("/home/eric/Videos/RecordStuff/demo.mp4", "win32", "zh-TW", "sleep").body).toBe("已儲存 demo.mp4。電腦進入睡眠，已停止錄影。");
   });
 
   it("a failure notification joins its reason and the result hint as sentences in each language (plan 035 D1)", () => {
@@ -362,7 +369,7 @@ describe("English default and language switching", () => {
     expect(labels(m.menu)).toContain("Settings…");
     expect(labels(m.menu).slice(0, 2)).toEqual(["Ready", "Start recording"]);
     expect(labels(m.menu).at(-1)).toBe("Quit RecordStuff");
-    expect(savedNotification("/tmp/demo.mp4").body).toBe("Saved demo.mp4");
+    expect(savedNotification("/tmp/demo.mp4", "darwin").body).toBe("Saved demo.mp4");
   });
 
   it("changes presentation during recording without changing recording controls", () => {

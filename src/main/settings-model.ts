@@ -126,9 +126,9 @@ function countdownGroup(ctx: AppContext, enabled: boolean): Group {
     enabled: true,
     checked: value === ctx.countdown,
     action: { setCountdown: value },
-  }))), info: shortcutWorks
-    ? t("Click the menu bar icon or press the shortcut to cancel.", language)
-    : t("Click the menu bar icon to cancel.", language) };
+  }))), info: ctx.platform === "darwin"
+    ? t(shortcutWorks ? "Click the menu bar icon or press the shortcut to cancel." : "Click the menu bar icon to cancel.", language)
+    : t(shortcutWorks ? "Click the system tray icon or press the shortcut to cancel." : "Click the system tray icon to cancel.", language) };
 }
 
 /**
@@ -221,7 +221,8 @@ function hotkeyDiagnostics(ctx: AppContext, unavailable: string | undefined): No
       guidance: t("Record from the menu, or choose another shortcut.", language) }] : []),
     ...(kind === "failed" ? [{ kind: "current" as const, heading: t("Settings shortcut unavailable", language),
       reason: t("Another app may be using {shortcut}.", language, { shortcut: settings }),
-      guidance: t("Open Settings from the menu bar icon, or retry once the other app releases it.", language) }] : []),
+      guidance: t(ctx.platform === "darwin" ? "Open Settings from the menu bar icon, or retry once the other app releases it."
+        : "Open Settings from the system tray icon, or retry once the other app releases it.", language) }] : []),
     ...(kind === "conflict" ? [{ kind: "current" as const, heading: t("Settings shortcut unavailable", language),
       reason: t("{shortcut} is the recording shortcut, so it does not open Settings.", language, { shortcut: settings }),
       guidance: t("Choose another recording shortcut to open Settings with {shortcut} again.", language, { shortcut: settings }) }] : []),
@@ -273,7 +274,8 @@ function notificationsGroup(ctx: AppContext, enabled: boolean): Group {
   // The switch controls OS notifications; in-app failure status stays available.
   const switchGroup = group("notifications", t("Notifications", language), enabled,
     switchChoices(language, ctx.notifications, (value) => ({ setNotifications: value })),
-    ctx.notifications ? undefined : t("Failures still appear in the menu bar and the Failures tab.", language));
+    ctx.notifications ? undefined : t(ctx.platform === "darwin" ? "Failures still appear in the menu bar and the Failures tab."
+      : "Failures still appear in the system tray and the Failures tab.", language));
   switchGroup.noteKind = ctx.notifications ? "explanation" : "status";
   if (ctx.notifications && ctx.platform === "darwin") switchGroup.info = t("macOS must also allow RecordStuff in System Settings → Notifications.", language);
   // Only macOS hides notifications behind a pane worth linking to. It sits in
@@ -465,7 +467,7 @@ export function settingsAction(
     return resultActions(state, ctx, result).find(choice => choice.id === choiceId && choice.enabled)?.action;
   }
   if (proposesHotkey(groupId, choiceId) && preferencesUnlocked(state)) {
-    const accelerator = canonicalizeAccelerator(choiceId);
+    const accelerator = canonicalizeAccelerator(choiceId, ctx.platform);
     return accelerator && !isSettingsShortcut(accelerator, ctx.platform) ? { setHotkey: { enabled: true, accelerator } } : undefined;
   }
   const choice = find(state, ctx, groupId, choiceId);

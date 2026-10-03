@@ -203,7 +203,7 @@ export class AppTray {
   }
 
   notifySaved(savedPath: string, stoppedEarly?: EarlyStop): void {
-    this.show(savedNotification(savedPath, this.language, stoppedEarly), () => this.revealFromNotification(savedPath));
+    this.show(savedNotification(savedPath, this.options.context().platform, this.language, stoppedEarly), () => this.revealFromNotification(savedPath));
   }
 
   notifyRecordingFailure(code: ErrorCode): void {

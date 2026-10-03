@@ -484,6 +484,9 @@ const reasons: Record<ErrorCode, PlainMessageKey> = {
 };
 export const failureReason = (code: ErrorCode, language: Language): string => t(reasons[code], language);
 export function failureGuidance(code: ErrorCode, language: Language, platform: NodeJS.Platform = process.platform): string {
+  // Windows loopback records the default playback device, so a missing one ends system audio (plan 064).
+  if (platform === "win32" && code === "no_audio_track")
+    return t("System audio comes from the default playback device. Check that one is connected and enabled in Windows sound settings, then try again.", language);
   if (platform !== "darwin" && isPermissionFailure(code))
     return t("Check capture permissions and audio devices before recording again.", language);
   return t(code === "disk_full" ? "Free disk space or choose another output folder before recording again."

@@ -6,7 +6,7 @@
 
 ## 平台狀態
 
-Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前只有 macOS 版本經過驗證。** 已測環境為 Apple M1 Pro、macOS 26、Electron 44.3，安裝產物為 arm64。自 1.1.1 之後的第一個版本起，每個版本另附未簽章的 Windows x64 安裝程式，由 CI 建置並檢查，但未在 Windows 實機上驗證：CI 會在 GitHub 的 Windows runner 上靜默安裝與解除安裝，並檢查版本、架構與檔案；螢幕擷取、系統音訊、通知與系統匣在 Windows 上仍未測試，部分 App 文字也仍以 macOS 為前提（例如「選單列」與「Mac 進入睡眠」）。Windows on Arm、Linux、Intel Mac 與其他 macOS 版本未驗證，也沒有發布版本；現有跨平台程式不代表錄影或安裝已通過。參見 [Electron 平台資訊](https://github.com/electron/electron#platform-support)。
+Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前只有 macOS 版本經過驗證。** 已測環境為 Apple M1 Pro、macOS 26、Electron 44.3，安裝產物為 arm64。自 1.1.1 之後的第一個版本起，每個版本另附未簽章的 Windows x64 安裝程式，由 CI 建置並檢查，但未在 Windows 實機上驗證：CI 會在 GitHub 的 Windows runner 上靜默安裝與解除安裝，並檢查版本、架構與檔案；螢幕擷取、系統音訊、通知與系統匣在 Windows 上仍未測試，App 的 Windows 文字（例如以「系統匣」取代「選單列」）也一樣。Electron 需要 Windows 10 以上。Windows on Arm、Linux、Intel Mac 與其他 macOS 版本未驗證，也沒有發布版本；現有跨平台程式不代表錄影或安裝已通過。參見 [Electron 平台資訊](https://github.com/electron/electron#platform-support)。
 
 交付目標是可下載的 macOS 自簽 App，以及尚未驗證的 Windows x64 安裝程式；不規劃 Apple 認證／公證與 Windows 程式碼簽章，也不以 Windows／Linux 驗收作為發布條件。
 

@@ -106,9 +106,9 @@ Windows on Arm is not supported.
 **Not verified on Windows hardware.** CI builds the installer, silently installs
 and uninstalls it on a GitHub Windows runner and checks its version,
 architecture and files. Screen capture, system audio, notifications and the tray
-have not been verified on Windows hardware. Some app wording still assumes
-macOS, such as "menu bar" and "the Mac went to sleep". The sections above were
-written for, and verified on, macOS.
+have not been verified on Windows hardware, nor has the app's Windows wording,
+such as "system tray" where macOS says "menu bar". Windows 10 or newer is
+required. The sections above were written for, and verified on, macOS.
 
 ### Install
 

@@ -541,7 +541,7 @@ describe("notifications around sleep (plan 050)", () => {
       idle.seconds = RETURN_IDLE_SECONDS;
       await vi.advanceTimersByTimeAsync(WAKE_CHECK_MS);
       expect(Fake.instances.map((n) => [n.options.body, n.shown])).toEqual([
-        ["Saved a.mp4. Stopped because the Mac went to sleep.", 1],
+        [`Saved a.mp4. Stopped because the ${process.platform === "darwin" ? "Mac" : "computer"} went to sleep.`, 1],
         [expect.stringContaining("Click for details."), 1],
       ]);
       // Awake again: the next one is shown at once, and checking has stopped.

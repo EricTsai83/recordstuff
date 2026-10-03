@@ -88,8 +88,8 @@ RecordStuff 預設英文。右鍵點選單列圖示，選 Settings → General �
 
 **尚未在 Windows 實機上驗證。** CI 會建置安裝程式，在 GitHub 的 Windows runner 上
 靜默安裝與解除安裝，並檢查版本、架構與檔案；但螢幕擷取、系統音訊、通知與系統匣
-都尚未在 Windows 實機上驗證。部分 App 文字仍以 macOS 為前提，例如「選單列」與
-「Mac 進入睡眠」。上方各節是針對 macOS 撰寫並在 macOS 上驗證的。
+都尚未在 Windows 實機上驗證，App 的 Windows 文字（例如以「系統匣」取代
+「選單列」）也一樣。需要 Windows 10 以上。上方各節是針對 macOS 撰寫並在 macOS 上驗證的。
 
 ### 安裝
 

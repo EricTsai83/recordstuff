@@ -47,6 +47,9 @@ describe("settingsView", () => {
     expect(off.note).toBe("Failures still appear in the menu bar and the Failures tab.");
     expect(group(idle, { ...context, platform: "win32" }, "notifications")).not.toHaveProperty("info");
     expect(group(idle, { ...context, platform: "win32" }, "notifications")).not.toHaveProperty("note");
+    // Windows has a system tray, not a menu bar (plan 064).
+    expect(group(idle, { ...context, platform: "win32", notifications: false }, "notifications")?.note).toBe("Failures still appear in the system tray and the Failures tab.");
+    expect(group(idle, { ...context, platform: "win32", notifications: false, language: "zh-TW" }, "notifications")?.note).toBe("失敗仍會顯示在系統匣與「失敗紀錄」分頁。");
     // Only status notes stay visible; the remaining explanations sit behind an ⓘ.
     expect(group(idle, context, "screen")).not.toHaveProperty("note");
     expect(group(idle, context, "videoQuality")?.info).toBe("Higher quality keeps more detail but makes larger files.");
@@ -269,6 +272,15 @@ describe("countdown group (plan 040)", () => {
     }
   });
 
+  it("points Windows at the system tray icon instead of the menu bar (plan 064)", () => {
+    const windows = { ...context, platform: "win32" as const };
+    expect(group(idle, windows, "countdown")!.info).toBe("Click the system tray icon or press the shortcut to cancel.");
+    expect(group(idle, { ...windows, language: "zh-TW" }, "countdown")!.info).toBe("按一下系統匣圖示或按快捷鍵即可取消。");
+    const hotkey = { ...context.hotkey, enabled: false };
+    expect(group(idle, { ...windows, hotkey }, "countdown")!.info).toBe("Click the system tray icon to cancel.");
+    expect(group(idle, { ...windows, hotkey, language: "zh-TW" }, "countdown")!.info).toBe("按一下系統匣圖示即可取消。");
+  });
+
   it("resolves each choice to setCountdown and is locked while starting, counting down, recording or saving", () => {
     for (const value of [0, 3, 5, 10] as const) expect(settingsAction(idle, context, "countdown", String(value))).toEqual({ setCountdown: value });
     expect(settingsAction(idle, context, "countdown", "4")).toBeUndefined();
@@ -364,6 +376,10 @@ describe("notifications in General", () => {
 it("accepts canonical custom candidates only in the unlocked shortcut group", () => {
   expect(settingsAction(idle, context, "hotkey", "Shift+Control+F12")).toEqual({ setHotkey: { enabled: true, accelerator: "Control+Shift+F12" } });
   expect(settingsAction(idle, context, "hotkey", "CommandOrControl+Space")).toBeUndefined();
+  // Reserved combinations follow the platform (plan 064): Spotlight's chord is free on Windows, Ctrl+Q is not.
+  const windows = { ...context, platform: "win32" as const };
+  expect(settingsAction(idle, windows, "hotkey", "CommandOrControl+Space")).toEqual({ setHotkey: { enabled: true, accelerator: "CommandOrControl+Space" } });
+  expect(settingsAction(idle, windows, "hotkey", "Control+Q")).toBeUndefined();
   for (const state of busy) expect(settingsAction(state, context, "hotkey", "Control+F12")).toBeUndefined();
   const ctx = { ...context, hotkey: { enabled: true, registered: true, accelerator: "Control+Shift+F12" } };
   expect(checked(idle, ctx, "hotkey")).toBe("Control+Shift+F12");
@@ -532,7 +548,7 @@ it("retains audio-device guidance for a restored Windows audio failure", () => {
   const result = { id: "old-audio", occurredAt: "2026-09-25T00:00:00Z", code: "no_audio_track" as const,
     detail: "", outcome: "empty" as const, acknowledged: false, restored: true };
   const ctx = { ...context, platform: "win32" as const, recordingResults: [result] };
-  expect(settingsView(idle, ctx).recordingResults?.[0]?.guidance).toContain("audio devices");
+  expect(settingsView(idle, ctx).recordingResults?.[0]?.guidance).toContain("default playback device");
   expect(settingsAction(idle, ctx, "recordingResult:old-audio", "relaunch")).toBeUndefined();
 });
 
@@ -663,4 +679,8 @@ it("explains a Settings shortcut that is not registered, not only a retry button
   expect(conflict?.actions).toBeUndefined();
   expect(conflict?.diagnostics?.[0]?.reason).toBe("⌘⌥, is the recording shortcut, so it does not open Settings.");
   expect(group(idle, { ...context, settingsShortcut: { kind: "registered", accelerator: "CommandOrControl+Alt+," } }, "hotkey")?.diagnostics).toBeUndefined();
+  expect(failed?.diagnostics?.[0]?.guidance).toBe("Open Settings from the menu bar icon, or retry once the other app releases it.");
+  const windows = { ...context, platform: "win32" as const, settingsShortcut: { kind: "failed" as const, accelerator: "CommandOrControl+Alt+,", reason: "taken" } };
+  expect(group(idle, windows, "hotkey")?.diagnostics?.[0]?.guidance).toBe("Open Settings from the system tray icon, or retry once the other app releases it.");
+  expect(group(idle, { ...windows, language: "zh-TW" }, "hotkey")?.diagnostics?.[0]?.guidance).toBe("可從系統匣圖示開啟設定，或待其他 App 釋放後重試。");
 });

@@ -326,8 +326,9 @@ export class SettingsWindow {
       this.release(lease);
       const view = this.view();
       // A refused shortcut says why once, in the card's own error; its diagnostics keep describing the registration.
+      const platform = this.options.context().platform;
       const error = proposesHotkey(group, choice)
-        ? isSettingsShortcut(choice, this.options.context().platform) ? SETTINGS_SHORTCUT_RESERVED : validateAccelerator(choice).error
+        ? isSettingsShortcut(choice, platform) ? SETTINGS_SHORTCUT_RESERVED : validateAccelerator(choice, platform).error
         : undefined;
       return this.deliver({ view, applied: false, ...(error ? { failure: translate(error, view.language), refused: true as const } : { failure: view.failure }) }, recipient);
     }

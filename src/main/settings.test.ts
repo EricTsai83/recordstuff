@@ -413,6 +413,19 @@ describe("hotkey settings (plan 016)", () => {
     expect(store().hotkey).toEqual(DEFAULT_HOTKEY);
   });
 
+  it("validates a saved or chosen shortcut against the platform's reserved combinations (plan 064)", async () => {
+    const file = (accelerator: string) => JSON.stringify({ version: 3, outputDir: "/kept", quality: DEFAULT_QUALITY, hotkey: { enabled: true, accelerator } });
+    expect(parseSettings(file("CommandOrControl+Space"), "darwin")?.settings.hotkey).toEqual(DEFAULT_HOTKEY);
+    expect(parseSettings(file("CommandOrControl+Space"), "win32")?.settings.hotkey).toEqual({ enabled: true, accelerator: "CommandOrControl+Space" });
+    expect(parseSettings(file("Control+Q"), "darwin")?.settings.hotkey).toEqual({ enabled: true, accelerator: "Control+Q" });
+    expect(parseSettings(file("Control+Q"), "win32")?.settings.hotkey).toEqual(DEFAULT_HOTKEY);
+    const windows = new SettingsStore({ filePath, defaultOutputDir: DEFAULT, platform: "win32" });
+    await expect(windows.setHotkey({ enabled: true, accelerator: "Control+W" })).rejects.toThrow(/unsupported shortcut/);
+    await windows.setHotkey({ enabled: true, accelerator: "Shift+CommandOrControl+3" });
+    expect(new SettingsStore({ filePath, defaultOutputDir: DEFAULT, platform: "win32" }).hotkey).toEqual({ enabled: true, accelerator: "CommandOrControl+Shift+3" });
+    expect(new SettingsStore({ filePath, defaultOutputDir: DEFAULT, platform: "darwin" }).hotkey).toEqual(DEFAULT_HOTKEY);
+  });
+
   it("rejects a non-preset accelerator without touching the file, and keeps the choice on a failed write", async () => {
     const s = store();
     await s.setHotkey(custom);

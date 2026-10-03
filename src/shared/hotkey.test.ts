@@ -2,31 +2,51 @@ import { expect, it } from "vitest";
 import { canonicalizeAccelerator, describeAccelerator, isAccelerator, sameShortcut, validateAccelerator } from "./hotkey";
 
 it("keeps every preset and validates the bounded custom vocabulary", () => {
-  for (const value of ["CommandOrControl+Shift+1", "CommandOrControl+Alt+Shift+R", "CommandOrControl+Shift+R", "CommandOrControl+Alt+R", "Control+F24", "CommandOrControl+Alt+Space", "Control+Left", "Control+Plus", "Control+;"]) expect(isAccelerator(value), value).toBe(true);
-  for (const value of [null, "R", "Shift+R", "Control", "Control+Shift", "Control+R+S", "Control+Nope", "Control+Control+R", "Control+" + "A".repeat(65), "CommandOrControl+Space", "CommandOrControl+Tab", "CommandOrControl+Q", "CommandOrControl+W", ...[3, 4, 5, 6].map(n => `Shift+CommandOrControl+${n}`)]) expect(isAccelerator(value), String(value)).toBe(false);
-  expect(validateAccelerator("Shift+R").error).toBe("A shortcut needs Command or Control.");
-  expect(validateAccelerator("CommandOrControl+Tab").error).toBe("macOS reserves this combination.");
+  for (const platform of ["darwin", "win32"]) {
+    for (const value of ["CommandOrControl+Shift+1", "CommandOrControl+Alt+Shift+R", "CommandOrControl+Shift+R", "CommandOrControl+Alt+R", "Control+F24", "CommandOrControl+Alt+Space", "Control+Left", "Control+Plus", "Control+;"]) expect(isAccelerator(value, platform), `${platform} ${value}`).toBe(true);
+    for (const value of [null, "R", "Shift+R", "Control", "Control+Shift", "Control+R+S", "Control+Nope", "Control+Control+R", "Control+" + "A".repeat(65), "CommandOrControl+Tab", "CommandOrControl+Q", "CommandOrControl+W"]) expect(isAccelerator(value, platform), `${platform} ${String(value)}`).toBe(false);
+  }
+  expect(validateAccelerator("Shift+R", "darwin").error).toBe("A shortcut needs Command or Control.");
+  expect(validateAccelerator("CommandOrControl+Tab", "darwin").error).toBe("macOS reserves this combination.");
   // Command+W stays every window's close key; macOS Control+W and Command+Shift+W remain choices.
-  expect(validateAccelerator("CommandOrControl+W").error).toBe("macOS reserves this combination.");
-  expect(validateAccelerator("Control+W").accelerator).toBe("Control+W");
-  expect(validateAccelerator("Shift+CommandOrControl+W").accelerator).toBe("CommandOrControl+Shift+W");
+  expect(validateAccelerator("CommandOrControl+W", "darwin").error).toBe("macOS reserves this combination.");
+  expect(validateAccelerator("Control+W", "darwin").accelerator).toBe("Control+W");
+  expect(validateAccelerator("Shift+CommandOrControl+W", "darwin").accelerator).toBe("CommandOrControl+Shift+W");
 });
+
+it("reserves the macOS screenshot and Spotlight chords on macOS only (plan 064)", () => {
+  const chords = ["CommandOrControl+Space", ...[3, 4, 5, 6].map(n => `Shift+CommandOrControl+${n}`)];
+  for (const value of chords) expect(validateAccelerator(value, "darwin").error, value).toBe("macOS reserves this combination.");
+  for (const value of chords) expect(isAccelerator(value, "win32"), value).toBe(true);
+  expect(canonicalizeAccelerator("Shift+CommandOrControl+3", "win32")).toBe("CommandOrControl+Shift+3");
+});
+
+it("off macOS, refuses every app's switch, quit and close keys however Ctrl is spelled, with Windows wording (plan 064)", () => {
+  // The Windows editor reports Ctrl as Control, so Control+Q used to slip past a Command-only list.
+  for (const value of ["Control+Q", "CommandOrControl+Q", "CommandOrControl+Control+Q", "Control+W", "Control+Tab"]) {
+    expect(validateAccelerator(value, "win32").error, value).toBe("Other apps use this combination.");
+  }
+  expect(validateAccelerator("Control+Shift+Q", "win32").accelerator).toBe("Control+Shift+Q");
+  expect(validateAccelerator("Alt+Shift+R", "win32").error).toBe("A shortcut needs Ctrl.");
+  expect(validateAccelerator("Alt+Shift+R", "linux").error).toBe("A shortcut needs Ctrl.");
+});
+
 it("canonicalizes without changing key identity and describes named keys", () => {
-  const value = canonicalizeAccelerator("Shift+Alt+Control+CommandOrControl+Left")!;
+  const value = canonicalizeAccelerator("Shift+Alt+Control+CommandOrControl+Left", "darwin")!;
   expect(value).toBe("CommandOrControl+Control+Alt+Shift+Left");
-  expect(canonicalizeAccelerator(value)).toBe(value);
+  expect(canonicalizeAccelerator(value, "darwin")).toBe(value);
   expect(describeAccelerator(value, "darwin")).toBe("⌘⌃⌥⇧←");
   expect(describeAccelerator("Control+F24", "win32")).toBe("Ctrl+F24");
   expect(describeAccelerator("Control+Space", "darwin")).toBe("⌃␣");
-  expect(describeAccelerator(canonicalizeAccelerator("Control+Plus")!, "darwin")).toBe("⌃⇧=");
+  expect(describeAccelerator(canonicalizeAccelerator("Control+Plus", "darwin")!, "darwin")).toBe("⌃⇧=");
 });
 
 it("normalizes shifted glyph aliases before checking reserved combinations", () => {
-  expect(canonicalizeAccelerator("Control+Plus")).toBe("Control+Shift+=");
-  expect(canonicalizeAccelerator("Shift+Control+Plus")).toBe("Control+Shift+=");
-  expect(canonicalizeAccelerator("Control+?")).toBe("Control+Shift+/");
-  expect(isAccelerator("CommandOrControl+Shift+#")).toBe(false);
-  expect(isAccelerator("CommandOrControl+$")).toBe(false);
+  expect(canonicalizeAccelerator("Control+Plus", "darwin")).toBe("Control+Shift+=");
+  expect(canonicalizeAccelerator("Shift+Control+Plus", "darwin")).toBe("Control+Shift+=");
+  expect(canonicalizeAccelerator("Control+?", "darwin")).toBe("Control+Shift+/");
+  expect(isAccelerator("CommandOrControl+Shift+#", "darwin")).toBe(false);
+  expect(isAccelerator("CommandOrControl+$", "darwin")).toBe(false);
 });
 
 it("compares shortcuts by the keys they press on each platform", () => {

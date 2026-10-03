@@ -62,6 +62,7 @@ export const ZH_TW = {
   "Check capture permissions and audio devices before recording again.": "再次錄影前，請檢查擷取權限與音訊裝置。",
   "Click for details.": "點此查看詳情。",
   "Failures still appear in the menu bar and the Failures tab.": "失敗仍會顯示在選單列與「失敗紀錄」分頁。",
+  "Failures still appear in the system tray and the Failures tab.": "失敗仍會顯示在系統匣與「失敗紀錄」分頁。",
 
   "RecordStuff - Settings": "RecordStuff - 設定",
   "{label} — Unavailable": "{label} — 無法使用",
@@ -115,8 +116,10 @@ export const ZH_TW = {
   "Press a combination": "請按下快捷鍵組合",
   "Escape to cancel": "按 Escape 取消",
   "A shortcut needs Command or Control.": "快捷鍵需要包含 Command 或 Control。",
+  "A shortcut needs Ctrl.": "快捷鍵需要包含 Ctrl。",
   "This key cannot be used.": "無法使用這個按鍵。",
   "macOS reserves this combination.": "macOS 已保留這個組合。",
+  "Other apps use this combination.": "其他 App 會使用這個組合。",
   "Recording settings": "錄影",
   "Recording resolution": "錄影解析度",
   General: "一般",
@@ -177,6 +180,7 @@ export const ZH_TW = {
   "Saved {file}": "已儲存 {file}",
   "Saved {file}. Stopped early: the disk is almost full.": "已儲存 {file}。磁碟空間即將用盡，已提前停止錄影。",
   "Saved {file}. Stopped because the Mac went to sleep.": "已儲存 {file}。Mac 進入睡眠，已停止錄影。",
+  "Saved {file}. Stopped because the computer went to sleep.": "已儲存 {file}。電腦進入睡眠，已停止錄影。",
   "RecordStuff cannot capture the screen. Allow screen recording in System Settings, then click to relaunch.":
     "RecordStuff 無法擷取螢幕。請在系統設定允許螢幕錄製，再點這則通知重新啟動。",
   "RecordStuff needs screen recording access. Click to open System Settings.":
@@ -201,6 +205,8 @@ export const ZH_TW = {
   "System audio was unavailable at start, so nothing was recorded.": "開始時無法取得系統音訊，未錄到任何內容",
   "Heavy load can block system audio: close demanding apps and try again. If it keeps happening, allow RecordStuff in System Settings → Privacy & Security → Screen & System Audio Recording, then relaunch.":
     "系統負載過重時可能無法取得系統音訊：請關閉耗資源的 App 後再試。若持續發生，請在「系統設定 → 隱私權與安全性 → 螢幕與系統音訊錄製」允許 RecordStuff，然後重新啟動。",
+  "System audio comes from the default playback device. Check that one is connected and enabled in Windows sound settings, then try again.":
+    "系統音訊取自預設的播放裝置。請確認已連接播放裝置，並在 Windows 音效設定中啟用後再試。",
   "MP4 recording is not supported on this computer.": "這台電腦不支援 MP4 錄影",
   "Could not start recording.": "無法開始錄影",
   "Recording was interrupted.": "錄影中斷",
@@ -220,6 +226,7 @@ export const ZH_TW = {
   "Settings shortcut unavailable": "設定快捷鍵無法使用",
   "Another app may be using {shortcut}.": "{shortcut} 可能被其他 App 佔用。",
   "Open Settings from the menu bar icon, or retry once the other app releases it.": "可從選單列圖示開啟設定，或待其他 App 釋放後重試。",
+  "Open Settings from the system tray icon, or retry once the other app releases it.": "可從系統匣圖示開啟設定，或待其他 App 釋放後重試。",
   "{shortcut} is the recording shortcut, so it does not open Settings.": "{shortcut} 已是錄影快捷鍵，不會開啟設定。",
   "Choose another recording shortcut to open Settings with {shortcut} again.": "選擇其他錄影快捷鍵後，即可再用 {shortcut} 開啟設定。",
   "Start / stop recording with {value}": "以 {value} 開始／停止錄影",
@@ -228,6 +235,8 @@ export const ZH_TW = {
   "{value} s": "{value} 秒",
   "Click the menu bar icon or press the shortcut to cancel.": "按一下選單列圖示或按快捷鍵即可取消。",
   "Click the menu bar icon to cancel.": "按一下選單列圖示即可取消。",
+  "Click the system tray icon or press the shortcut to cancel.": "按一下系統匣圖示或按快捷鍵即可取消。",
+  "Click the system tray icon to cancel.": "按一下系統匣圖示即可取消。",
   "Countdown sound": "倒數音效",
   "The tick is not recorded.": "提示音不會被錄進影片。",
   "More about {label}": "{label}的說明",

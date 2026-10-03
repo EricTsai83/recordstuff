@@ -437,7 +437,7 @@ function row(group: SettingsGroup): HTMLElement {
       candidateToConfirm = undefined;
       setPreview(candidate ?? shortcutModifiers(event, p).join("+"), p);
       if (candidate === undefined) { draw(); return; }
-      const result = validateAccelerator(candidate);
+      const result = validateAccelerator(candidate, p);
       // The Settings shortcut is refused here like the other reserved combinations, so the editor stays open; main refuses it too.
       const error = result.error ?? (isSettingsShortcut(result.accelerator, p) ? SETTINGS_SHORTCUT_RESERVED : undefined);
       if (error) {

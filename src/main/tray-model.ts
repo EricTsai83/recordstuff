@@ -214,10 +214,18 @@ export interface NotificationText {
   body: string;
 }
 const notice = (body: string): NotificationText => ({ title: APP_NAME, body });
-export function savedNotification(savedPath: string, language?: Language, stoppedEarly?: EarlyStop): NotificationText {
+export function savedNotification(
+  savedPath: string,
+  platform: NodeJS.Platform,
+  language?: Language,
+  stoppedEarly?: EarlyStop,
+): NotificationText {
   const file = path.basename(savedPath);
   if (stoppedEarly === "lowDisk") return notice(t("Saved {file}. Stopped early: the disk is almost full.", language, { file }));
-  if (stoppedEarly === "sleep") return notice(t("Saved {file}. Stopped because the Mac went to sleep.", language, { file }));
+  if (stoppedEarly === "sleep") {
+    return notice(t(platform === "darwin" ? "Saved {file}. Stopped because the Mac went to sleep."
+      : "Saved {file}. Stopped because the computer went to sleep.", language, { file }));
+  }
   return notice(t("Saved {file}", language, { file }));
 }
 /** The reason, then how to reach the result section, joined per language (plan 035 D1). */

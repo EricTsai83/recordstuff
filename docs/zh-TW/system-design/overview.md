@@ -27,7 +27,7 @@ RecordStuff 在 macOS 選單列提供一個錄影按鈕：點一下錄下一個�
 
 Electron 是可用於 Windows、Linux、macOS 的框架；RecordStuff 因設備限制，只驗證過 macOS 版本，具體環境是 Apple M1 Pro／macOS 26／Electron 44.3。框架跨平台不等於錄影、系統音訊或安裝流程在所有平台都通過。
 
-依維護者 2026-10-03 的決定（[設計決策](decisions.md)），1.1.1 之後的每個版本也附上只由 CI 建置與檢查、未簽章的 Windows x64 安裝檔。GitHub 的 Windows runner 執行 `pnpm check`，以目前使用者身分靜默安裝，檢查其登記、版本、架構、簽章狀態、系統匣圖示與開始選單捷徑，再解除安裝；沒有任何東西在 Windows 實機上跑過，因此錄影、系統音訊、通知與 Windows 系統匣分支（ICO 素材、首次啟動提示）在那裡都未驗證，部分文案仍假設 macOS（「menu bar」、「the Mac went to sleep」），也沒有強制的 Windows 最低版本。Linux 沒有專用打包／錄影驗證。macOS 程式有 Darwin 22（macOS 13）最低版本檢查，這只是程式門檻，不能視為已測遍 macOS 13 以上版本。Intel Mac 與 Windows on Arm 也未驗證，且沒有發布建置；目前已驗的安裝產物是 arm64。
+依維護者 2026-10-03 的決定（[設計決策](decisions.md)），1.1.1 之後的每個版本也附上只由 CI 建置與檢查、未簽章的 Windows x64 安裝檔。GitHub 的 Windows runner 執行 `pnpm check`，以目前使用者身分靜默安裝，檢查其登記、版本、架構、簽章狀態、系統匣圖示與開始選單捷徑，再解除安裝；沒有任何東西在 Windows 實機上跑過，因此錄影、系統音訊、通知與 Windows 系統匣分支（ICO 素材、首次啟動提示）在那裡都未驗證，Windows 專用文案（「系統匣」、「電腦進入睡眠」、只提 Ctrl 的快捷鍵訊息）也未在那裡看過；除了 Electron 44 本身要求的 Windows 10，App 不另外強制 Windows 最低版本。Linux 沒有專用打包／錄影驗證。macOS 程式有 Darwin 22（macOS 13）最低版本檢查，這只是程式門檻，不能視為已測遍 macOS 13 以上版本。Intel Mac 與 Windows on Arm 也未驗證，且沒有發布建置；目前已驗的安裝產物是 arm64。
 
 目標交付是可下載的 macOS 自簽 DMG，同一個 release 另附未驗證的 Windows x64 安裝檔：收件者不需 Node、pnpm、FFmpeg、編譯工具或簽章憑證。macOS 上安裝到 Applications，完成系統允許開啟與錄影授權後即可操作；Windows 上安裝檔以目前使用者身分安裝、不需管理員權限，並登記會保留使用者資料的解除安裝程式。Apple 認證／公證、Windows 程式碼簽章、App Store、Windows／Linux 實機驗收不是交付條件。未公證 App 首次開啟可能需要手動安全例外，SmartScreen 也可能對未簽章的 Windows 安裝檔提出警告，不能承諾免提示；見 [Apple 說明](https://support.apple.com/102445)。
 

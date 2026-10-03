@@ -95,7 +95,11 @@ it("names both causes of missing system audio on macOS, a very busy Mac first, a
   expect(failureGuidance("no_audio_track", "zh-TW", "darwin")).toContain("負載過重");
   // A missing permission grant keeps its own guidance; other platforms keep the device hint.
   expect(failureGuidance("permission_denied", "en", "darwin")).toBe("Check recording permissions in System Settings. Relaunch if access was recently granted.");
-  expect(failureGuidance("no_audio_track", "en", "win32")).toContain("audio devices");
+  // Windows loopback records the default playback device (plan 064); other platforms keep the device hint.
+  expect(failureGuidance("no_audio_track", "en", "win32")).toContain("default playback device");
+  expect(failureGuidance("no_audio_track", "zh-TW", "win32")).toBe("系統音訊取自預設的播放裝置。請確認已連接播放裝置，並在 Windows 音效設定中啟用後再試。");
+  expect(failureGuidance("no_audio_track", "en", "linux")).toContain("audio devices");
+  expect(failureGuidance("permission_denied", "en", "win32")).toContain("audio devices");
   expect(isPermissionFailure("no_audio_track")).toBe(true);
 });
 

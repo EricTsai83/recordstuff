@@ -23,45 +23,61 @@ const SHIFTED_KEYS: Record<string, string> = {
   "!": "1", "@": "2", "#": "3", "$": "4", "%": "5", "^": "6", "&": "7", "*": "8", "(": "9", ")": "0",
   "_": "-", "Plus": "=", "{": "[", "}": "]", "|": "\\", ":": ";", '"': "'", "<": ",", ">": ".", "?": "/", "~": "`",
 };
-const RESERVED = new Set([
+/** Every app's switch, quit and close keys; the shortcut editor closes on the close key instead of capturing it. */
+const APP_KEYS = ["Tab", "Q", "W"];
+/** macOS also owns its screenshot and Spotlight chords; Control is a separate key there, so only Command is reserved. */
+const MAC_RESERVED = new Set([
   ...[3, 4, 5, 6].map((key) => `CommandOrControl+Shift+${key}`),
-  "CommandOrControl+Space", "CommandOrControl+Tab", "CommandOrControl+Q",
-  // Every window's close key; the shortcut editor closes on it instead of capturing it.
-  "CommandOrControl+W",
+  "CommandOrControl+Space",
+  ...APP_KEYS.map((key) => `CommandOrControl+${key}`),
 ]);
-export type AcceleratorError = "A shortcut needs Command or Control." | "This key cannot be used." | "macOS reserves this combination.";
+/** Off macOS, Command is Control, and the editor reports Ctrl as `Control`: both spellings are reserved. */
+const OTHER_RESERVED = new Set(APP_KEYS.map((key) => `Control+${key}`));
+export type AcceleratorError =
+  | "A shortcut needs Command or Control." | "A shortcut needs Ctrl." | "This key cannot be used."
+  | "macOS reserves this combination." | "Other apps use this combination.";
 export type AcceleratorValidation = { accelerator: string; error?: never } | { error: AcceleratorError; accelerator?: never };
 
-export function validateAccelerator(value: unknown): AcceleratorValidation {
+/** Reserved combinations differ by `platform` (plan 064), so a file is valid on the platform that wrote it. */
+export function validateAccelerator(value: unknown, platform: string): AcceleratorValidation {
   if (typeof value !== "string" || value.length > 64) return { error: "This key cannot be used." };
+  const mac = platform === "darwin";
   const parts = value.split("+");
   let key = parts.pop() ?? "";
   if (new Set(parts).size !== parts.length || parts.some(part => !(MODIFIER_ORDER as readonly string[]).includes(part))) {
     return { error: "This key cannot be used." };
   }
-  if (!parts.includes("CommandOrControl") && !parts.includes("Control")) return { error: "A shortcut needs Command or Control." };
+  if (!parts.includes("CommandOrControl") && !parts.includes("Control")) {
+    return { error: mac ? "A shortcut needs Command or Control." : "A shortcut needs Ctrl." };
+  }
   if (SHIFTED_KEYS[key]) {
     key = SHIFTED_KEYS[key]!;
     if (!parts.includes("Shift")) parts.push("Shift");
   }
   const accelerator = [...MODIFIER_ORDER.filter(part => parts.includes(part)), key].join("+");
-  if (RESERVED.has(accelerator)) return { error: "macOS reserves this combination." };
+  if (mac && MAC_RESERVED.has(accelerator)) return { error: "macOS reserves this combination." };
+  if (!mac) {
+    const pressed = parts.map(part => part === "CommandOrControl" ? "Control" : part);
+    if (OTHER_RESERVED.has([...MODIFIER_ORDER.filter(part => pressed.includes(part)), key].join("+"))) {
+      return { error: "Other apps use this combination." };
+    }
+  }
   if (!KEYS.has(key)) return { error: "This key cannot be used." };
   return { accelerator };
 }
 
-export function isAccelerator(value: unknown): value is string {
-  return validateAccelerator(value).accelerator !== undefined;
+export function isAccelerator(value: unknown, platform: string): value is string {
+  return validateAccelerator(value, platform).accelerator !== undefined;
 }
 
-export function canonicalizeAccelerator(value: unknown): string | undefined {
-  return validateAccelerator(value).accelerator;
+export function canonicalizeAccelerator(value: unknown, platform: string): string | undefined {
+  return validateAccelerator(value, platform).accelerator;
 }
 
-export function isHotkeySettings(value: unknown): value is HotkeySettings {
+export function isHotkeySettings(value: unknown, platform: string): value is HotkeySettings {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
-  return typeof record["enabled"] === "boolean" && isAccelerator(record["accelerator"]);
+  return typeof record["enabled"] === "boolean" && isAccelerator(record["accelerator"], platform);
 }
 
 /** Names for `MODIFIER_ORDER` and the named `KEYS`: validation leaves no other spelling (`Plus` becomes `Shift+=`). */
@@ -100,7 +116,7 @@ export const SETTINGS_SHORTCUT_RESERVED = "This combination is reserved for Sett
  */
 export function sameShortcut(a: unknown, b: unknown, platform: string): boolean {
   const keys = (value: unknown): string | undefined => {
-    const canonical = canonicalizeAccelerator(value);
+    const canonical = canonicalizeAccelerator(value, platform);
     return canonical && [...new Set(canonical.split("+").map(part =>
       part === "CommandOrControl" ? (platform === "darwin" ? "Command" : "Control") : part))].sort().join("+");
   };

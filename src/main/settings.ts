@@ -54,6 +54,8 @@ export interface SettingsStoreOptions {
   filePath: string;
   defaultOutputDir: string;
   log?: (message: string) => void;
+  /** Which combinations a saved shortcut may use; tests pin it. */
+  platform?: NodeJS.Platform;
 }
 
 export interface ParsedSettings {
@@ -85,7 +87,7 @@ export function defaultSettings(outputDir: string): Settings {
  * and reports a warning: the user's folder choice must survive a broken
  * quality field.
  */
-export function parseSettings(text: string): ParsedSettings | undefined {
+export function parseSettings(text: string, platform: NodeJS.Platform = process.platform): ParsedSettings | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -127,8 +129,8 @@ export function parseSettings(text: string): ParsedSettings | undefined {
   let hotkey: HotkeySettings = DEFAULT_HOTKEY;
   if (version !== SETTINGS_VERSION) {
     warnings.push(`version ${version} file: shortcut set to default`);
-  } else if (isHotkeySettings(record["hotkey"])) {
-    hotkey = { enabled: record["hotkey"].enabled, accelerator: canonicalizeAccelerator(record["hotkey"].accelerator)! };
+  } else if (isHotkeySettings(record["hotkey"], platform)) {
+    hotkey = { enabled: record["hotkey"].enabled, accelerator: canonicalizeAccelerator(record["hotkey"].accelerator, platform)! };
   } else {
     warnings.push("hotkey is missing or has unsupported values: using the default shortcut");
   }
@@ -154,6 +156,7 @@ export class SettingsStore {
   private queue: Promise<void> = Promise.resolve();
   private readonly filePath: string;
   private readonly log: (message: string) => void;
+  private readonly platform: NodeJS.Platform;
   /** The folder a fresh or unreadable file falls back to; the one folder opening may create (plan 033). */
   readonly defaultOutputDir: string;
   /** The file on disk exists but could not be used; the first write moves it aside instead of replacing it. */
@@ -162,6 +165,7 @@ export class SettingsStore {
   constructor(options: SettingsStoreOptions) {
     this.filePath = options.filePath;
     this.log = options.log ?? (() => undefined);
+    this.platform = options.platform ?? process.platform;
     this.defaultOutputDir = options.defaultOutputDir;
     this.settings = this.load(options.defaultOutputDir);
   }
@@ -232,8 +236,8 @@ export class SettingsStore {
   /** Rejects (and keeps the previous choice) when the accelerator is not a valid shortcut or the write fails. */
   setHotkey(hotkey: HotkeySettings): Promise<void> {
     hotkey = { ...hotkey };
-    if (!isHotkeySettings(hotkey)) return Promise.reject(new Error(`unsupported shortcut: ${JSON.stringify(hotkey)}`));
-    return this.save((current) => ({ ...current, hotkey: { enabled: hotkey.enabled, accelerator: canonicalizeAccelerator(hotkey.accelerator)! } }));
+    if (!isHotkeySettings(hotkey, this.platform)) return Promise.reject(new Error(`unsupported shortcut: ${JSON.stringify(hotkey)}`));
+    return this.save((current) => ({ ...current, hotkey: { enabled: hotkey.enabled, accelerator: canonicalizeAccelerator(hotkey.accelerator, this.platform)! } }));
   }
 
   setLanguage(language: Language): Promise<void> {
@@ -289,7 +293,7 @@ export class SettingsStore {
       }
       return fallback;
     }
-    const parsed = parseSettings(text);
+    const parsed = parseSettings(text, this.platform);
     if (!parsed) {
       this.log(`settings: ${this.filePath} is invalid or has an unknown version; using defaults`);
       this.unusableOnDisk = true;

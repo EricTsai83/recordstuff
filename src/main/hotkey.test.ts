@@ -138,11 +138,11 @@ describe("RecordingHotkey (plan 016)", () => {
 
 describe("hotkey definitions", () => {
   it("validates supported accelerators with a boolean enabled flag", () => {
-    expect(isHotkeySettings(DEFAULT_HOTKEY)).toBe(true);
-    expect(isHotkeySettings({ enabled: false, accelerator: SECOND })).toBe(true);
-    expect(isHotkeySettings({ enabled: "yes", accelerator: SECOND })).toBe(false);
-    expect(isHotkeySettings({ enabled: true, accelerator: "Command+Q" })).toBe(false);
-    expect(isHotkeySettings(null)).toBe(false);
+    expect(isHotkeySettings(DEFAULT_HOTKEY, "darwin")).toBe(true);
+    expect(isHotkeySettings({ enabled: false, accelerator: SECOND }, "darwin")).toBe(true);
+    expect(isHotkeySettings({ enabled: "yes", accelerator: SECOND }, "darwin")).toBe(false);
+    expect(isHotkeySettings({ enabled: true, accelerator: "Command+Q" }, "darwin")).toBe(false);
+    expect(isHotkeySettings(null, "darwin")).toBe(false);
   });
 
   /**
@@ -157,7 +157,7 @@ describe("hotkey definitions", () => {
       "CommandOrControl+Shift+R",
       "CommandOrControl+Alt+R",
       "CommandOrControl+Shift+1",
-    ]) expect(isAccelerator(shipped)).toBe(true);
+    ]) for (const platform of ["darwin", "win32"]) expect(isAccelerator(shipped, platform), `${platform} ${shipped}`).toBe(true);
     expect(DEFAULT_HOTKEY).toEqual({ enabled: true, accelerator: "CommandOrControl+Shift+1" });
   });
 
