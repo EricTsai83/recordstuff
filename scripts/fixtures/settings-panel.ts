@@ -684,6 +684,22 @@ async function run() {
   const scrollTopHint = await read<boolean>(window, `!document.getElementById("scroll-hint").hidden && getComputedStyle(document.getElementById("scroll-hint")).pointerEvents === "none"`);
   record("overflow shows non-interactive glass scroll cue", scrollTopHint, String(scrollTopHint));
   await shot("panel-scroll-cue.png");
+  // Real Tabs down the overflowing panel: the scroll padding keeps each focused control above the cue, never under it.
+  await read(window, `document.querySelector('[role="tab"][aria-selected="true"]').focus()`);
+  const tabbedUnderCue: string[] = [];
+  let tabbedScroll = 0;
+  for (let step = 0; step < 24; step += 1) {
+    key("Tab");
+    await settle(60);
+    const focus = await read<{ id: string; covered: boolean; scrollTop: number }>(window, `(() => {
+      const cue = document.getElementById("scroll-hint"), active = document.activeElement, panel = document.getElementById("settings-panel");
+      const hint = cue.getBoundingClientRect(), box = active.getBoundingClientRect();
+      return { id: active.id || active.tagName, covered: panel.contains(active) && !cue.hidden && box.bottom > hint.top + 1 && box.top < hint.bottom, scrollTop: panel.scrollTop };
+    })()`);
+    if (focus.covered) tabbedUnderCue.push(focus.id);
+    tabbedScroll = Math.max(tabbedScroll, focus.scrollTop);
+  }
+  record("a real Tab never leaves the focused control under the scroll cue", tabbedScroll > 0 && tabbedUnderCue.length === 0, JSON.stringify({ tabbedScroll, tabbedUnderCue }));
   await read(window, `document.getElementById("settings-panel").scrollTop = document.getElementById("settings-panel").scrollHeight`);
   await settle(60);
   const bottomHint = await read<boolean>(window, `document.getElementById("scroll-hint").hidden`);
