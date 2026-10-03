@@ -31,7 +31,7 @@
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings } from "./lib/runner-env.mts";
-import { escapeRegExp, pgrepPids, recordStuffPids, signalPids } from "./lib/processes.mts";
+import { electronPattern, escapeRegExp, pgrepPids, recordStuffPids, signalPids } from "./lib/processes.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -52,6 +52,8 @@ import { SETTINGS_SHORTCUT } from "../src/shared/hotkey.ts";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BUNDLE = path.join(REPO_ROOT, "dist/mac-arm64/RecordStuff.app");
 const EXECUTABLE = path.join(BUNDLE, "Contents/MacOS/RecordStuff");
+const ELECTRON_APP = path.join(REPO_ROOT, "node_modules/electron/dist/Electron.app");
+const ELECTRON_APP_REAL = fs.existsSync(ELECTRON_APP) ? fs.realpathSync(ELECTRON_APP) : ELECTRON_APP;
 const LOG_PATH = APP_LOG_PATH;
 const SETTINGS_PATH = APP_SETTINGS_PATH;
 const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
@@ -69,7 +71,7 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (arg === "--fps" && argv[i + 1] === "60") { with60 = true; i += 1; }
   else if (arg === "--skip-recording") skipRecording = true;
   else if (arg === "--skip-settings") skipSettings = true;
-  else if (arg === "--out") outDir = argv[++i];
+  else if (arg === "--out" && argv[i + 1] && !argv[i + 1]!.startsWith("--")) outDir = argv[++i];
   else { console.error(usage); process.exit(2); }
 }
 // An odd count, so the median is one run's own figure and its breakdown.
@@ -95,6 +97,8 @@ const fail = (message: string): never => { throw new Failure(message); };
 function running(): number | undefined {
   return recordStuffPids()[0];
 }
+/** This checkout's development app shares the bundle's settings.json and userData lock. */
+const developmentRunning = (): boolean => pgrepPids(electronPattern(ELECTRON_APP_REAL, "bundle")).length > 0;
 
 async function waitUntilGone(timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
@@ -116,10 +120,12 @@ async function launch(): Promise<{ pid: number; run: string; recordingKey: strin
   launchIssued = true;
   await command("open", ["-a", BUNDLE], AbortSignal.timeout(15_000));
   const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]);
-  const start = await waitForLog(log, from, /\] start: /, "`start:`", signal);
-  await waitForLog(log, start.at, /\] ready;/, "`ready;`", signal);
-  await waitForLog(log, start.at, /recording history: (loaded|load failed)/, "the history load", signal);
-  await waitForLog(log, start.at, /\] updates: (?!cannot persist)/, "the launch update check or its skip", signal);
+  // Each wait is bounded by the launch's shared 60 s rather than its own default.
+  const start = await waitForLog(log, from, /\] start: /, "`start:`", signal, 60_000);
+  await waitForLog(log, start.at, /\] ready;/, "`ready;`", signal, 60_000);
+  await waitForLog(log, start.at, /recording history: (loaded|load failed)/, "the history load", signal, 60_000);
+  // The check's outcome or its skip; `feed failed …; trying GitHub` is the check still running.
+  await waitForLog(log, start.at, /\] updates: (launch check skipped|current;|available;|check failed:)/, "the launch update check or its skip", signal, 60_000);
   // Bounded like the waits above: without screen permission the app never reports idle.
   while (!confirmedIdle(log.since(start.at).lines.map((line) => line.text))) {
     if (signal.aborted && !controller.signal.aborted) fail("RecordStuff did not confirm idle with screen-recording permission within 60 s of launch");
@@ -148,7 +154,7 @@ let seeded = false;
 const readSettings = (): Record<string, unknown> => readAppSettings(SETTINGS_PATH) ?? {};
 const writeSettings = (next: Record<string, unknown>): void => writeAppSettings(next, SETTINGS_PATH);
 function seed(frameRate: 30 | 60): void {
-  if (running() !== undefined) fail("refusing to change settings.json while RecordStuff runs");
+  if (running() !== undefined || developmentRunning()) fail("refusing to change settings.json while RecordStuff runs");
   originalSettings ??= fs.existsSync(SETTINGS_PATH) ? fs.readFileSync(SETTINGS_PATH) : Buffer.alloc(0);
   const current = readSettings();
   if (!Object.keys(current).length) fail(`no ${SETTINGS_PATH}: launch RecordStuff once and choose an output folder first`);
@@ -188,7 +194,7 @@ interface Recording { fps: 30 | 60; file?: string; summary: Summary; roles: Role
 async function main(): Promise<number> {
   if (process.platform !== "darwin") fail("macOS only");
   if (!fs.existsSync(EXECUTABLE)) fail(`no bundle at ${BUNDLE}: build it with \`pnpm start:app\`, then quit it`);
-  if (running() !== undefined) fail("RecordStuff is running: quit it first; this runner launches the bundle itself and must own its process tree");
+  if (running() !== undefined || developmentRunning()) fail("RecordStuff or this project's Electron.app is running: quit it first; this runner launches the bundle itself and must own its process tree");
   const stamp = now().replace(/[:.]/g, "-");
   const dir = outDir ?? path.join(REPO_ROOT, "docs/verification/measurements", `${stamp}-cpu`);
   if (fs.existsSync(dir) && fs.readdirSync(dir).length) fail("output directory is not empty");
@@ -260,7 +266,7 @@ async function main(): Promise<number> {
     // Marked first: a stop key possibly delivered is never followed by a second toggle.
     active.stopSent = true;
     await sendKeys(recordingKey);
-    const settled = await waitForLog(log, beforeStop, terminal, "the session's saved or failed record", AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]));
+    const settled = await waitForLog(log, beforeStop, terminal, "the session's saved or failed record", AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]), 60_000);
     active = undefined;
     const record = parseSessionRecord(settled.line);
     const file = record?.kind === "saved" ? record.path : undefined;

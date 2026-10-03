@@ -132,7 +132,7 @@ Autorecord 存檔後立即退出，因此 macOS 待送的儲存通知會被退�
 
 **取樣程式。**[cpu-sampler.c](../../../scripts/lib/cpu-sampler.c) 參考 Cap 的逐程序取樣程式，以 Command Line Tools 的 `clang` 編譯到該次執行的資料夾；沒有 Command Line Tools 時量測是 blocked（exit 2），不會略過。它依固定時程每秒列出所有程序，保留 App 的主程序與其所有子孫程序（每次取樣都重新解析），以及所有名為 VTEncoderXPCService 的程序，並印出各程序 `proc_pid_rusage` 的計數：以奈秒計的 CPU 時間、idle 與 interrupt 喚醒、能耗與常駐記憶體。不使用 `ps`：它的 CPU 時間以百分之一秒為單位，對待機的一秒太粗（0.2% 只有 2 ms），而它的 `%cpu` 是會衰減的平均，會壓平尖峰，也會把啟動時的負載帶到之後的取樣。[cpu-sampler.mts](../../../scripts/lib/cpu-sampler.mts) 把計數轉成每秒數字，回報每個程序與合計的平均、第 95 百分位（nearest rank）與最大值。一段範圍只計入完全落在範圍內的每秒區間，所以範圍開始前用掉的 CPU 不會混進來；App 的程序組合有變化的那一秒會被捨棄並列出，預期會有程序開始或結束的地方除外。判定的區間不到範圍的 80%，或取樣程式在被停止前就結束時，該範圍判定失敗：缺少的取樣絕不會被當成 0% CPU 而通過。系統的硬體編碼器 VTEncoderXPCService 另外回報，不算進 App；它是系統共用的服務（參考機待機時就有四個），所以判讀它的 CPU，而不是它是否存在。能耗是 macOS 自己對每個程序的估計，只回報不判定。
 
-**情境。**先用 `pnpm start:app` 建置並結束 App，再執行 `pnpm measure:cpu`。有任何 RecordStuff 在執行時它會拒絕開始。它在 App 結束的狀態下，把倒數設為關閉、錄影螢幕設為主螢幕（素材會開在那裡）、品質設為標準、原始解析度、30 fps 寫入 settings.json，啟動 `dist/mac-arm64/RecordStuff.app`，並等到 `ready;`、權限已授予、`recording history: loaded`，以及啟動時更新檢查的結果或 `updates: launch check skipped` 那一行出現，確保啟動工作都結束後才開始判定：
+**情境。**先用 `pnpm start:app` 建置並結束 App，再執行 `pnpm measure:cpu`。有任何 RecordStuff 或這個 checkout 的開發版 Electron.app 在執行時它會拒絕開始。它在 App 結束的狀態下，把倒數設為關閉、錄影螢幕設為主螢幕（素材會開在那裡）、品質設為標準、原始解析度、30 fps 寫入 settings.json，啟動 `dist/mac-arm64/RecordStuff.app`，並等到 `ready;`、權限已授予、`recording history: loaded`，以及啟動時更新檢查的結果或 `updates: launch check skipped` 那一行出現，確保啟動工作都結束後才開始判定：
 
 - **A. 啟動後待機**，設定視窗關閉：暖機 60 秒後量 `--minutes`（預設 5）分鐘。
 - **R. 錄影**：以錄影快捷鍵開始並停止一段 60 秒的錄影，畫面上是持續移動的測試素材（主螢幕上的 Chrome kiosk），只判定第 5 到 55 秒，並追蹤 VTEncoderXPCService。`--repeat N`（奇數，1–9，讓中位數就是其中一次的實際結果）錄 N 次、判定中位數那一次。`--fps 60` 之後會結束 App、寫入 60 fps 再重新啟動，錄第二組。
