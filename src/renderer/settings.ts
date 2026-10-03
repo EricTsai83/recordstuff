@@ -1,6 +1,7 @@
 /** Main owns committed preferences, diagnostics and authorized choice ids. */
 import { SETTINGS_SHORTCUT_RESERVED, describeAccelerator, isSettingsShortcut, validateAccelerator } from "../shared/hotkey";
 import { isCloseChord, shortcutCandidate, shortcutModifiers } from "./shortcut-capture";
+import { infoPlacement } from "./info-placement";
 import { isLanguage, sentences, translate, type Language, type PlainMessageKey } from "../shared/i18n";
 import { REVIEWED_FAILURES_KEPT, persistsHistory } from "../shared/recording-result";
 import type { RecordingResultView, SettingsBridge, SettingsGroup, SettingsTab, SettingsView } from "../shared/settings-panel";
@@ -325,20 +326,16 @@ function showInfo(button: HTMLButtonElement, popover: HTMLElement, pinned: boole
   if (!popover.matches(":popover-open")) popover.showPopover?.();
   placeInfo();
 }
-/**
- * Below the button, left-aligned to it and kept inside the window; above it when
- * there is no room below. A button scrolled out of the panel closes it instead.
- */
+/** Placed by `infoPlacement`, above the button when it fits. A button scrolled out of the panel closes it instead. */
 function placeInfo(): void {
   if (!openInfo) return;
   const { button, popover } = openInfo;
-  const anchor = button.getBoundingClientRect(), box = popover.getBoundingClientRect(), gap = 6, margin = 8;
+  const anchor = button.getBoundingClientRect();
   const panel = button.closest("#settings-panel")?.getBoundingClientRect();
   if (panel && (anchor.bottom < panel.top || anchor.top > panel.bottom)) { hideInfo(); return; }
-  const left = Math.max(margin, Math.min(anchor.left, innerWidth - box.width - margin));
-  const below = anchor.bottom + gap;
-  const top = below + box.height <= innerHeight - margin ? below : Math.max(margin, anchor.top - gap - box.height);
-  popover.style.left = `${Math.round(left)}px`; popover.style.top = `${Math.round(top)}px`;
+  const { left, top, side, bridge } = infoPlacement(anchor, popover.getBoundingClientRect(), { width: innerWidth, height: innerHeight });
+  popover.style.left = `${left}px`; popover.style.top = `${top}px`; popover.dataset.side = side;
+  popover.style.setProperty("--bridge-left", `${bridge.left}px`); popover.style.setProperty("--bridge-width", `${bridge.width}px`);
 }
 function hideInfo(): boolean {
   clearTimeout(infoLeave);

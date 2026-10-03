@@ -603,16 +603,20 @@ async function run() {
     window.webContents.sendInputEvent({ type: "mouseMove", x: at.x, y: at.y }); await settle(120);
     const hovered = await infoState("countdownSound");
     await shot(`info-hover-${lang}-light-${size}.png`);
-    // The explanation itself is hoverable: the pointer crosses onto it and it stays.
-    const onto = await read<{ x: number; y: number }>(window, `(() => { const r = document.getElementById("setting-countdownSound-info").getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`);
-    window.webContents.sendInputEvent({ type: "mouseMove", x: Math.round((at.x + onto.x) / 2), y: Math.round((at.y + onto.y) / 2) });
-    window.webContents.sendInputEvent({ type: "mouseMove", x: onto.x, y: onto.y }); await settle(300);
+    // It sits above the row it explains. The pointer may pause in the gap on the way, here just off the
+    // button, longer than the leave grace, and stay on the explanation itself; leaving both hides it.
+    const geometry = await read<{ above: boolean; gap: { x: number; y: number }; onto: { x: number; y: number } }>(window, `(() => {
+      const b = document.getElementById("setting-countdownSound-info-button").getBoundingClientRect(), r = document.getElementById("setting-countdownSound-info").getBoundingClientRect();
+      return { above: r.bottom <= b.top, gap: { x: Math.round(b.x + b.width / 2), y: Math.floor(b.top) - 1 }, onto: { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) } }; })()`);
+    window.webContents.sendInputEvent({ type: "mouseMove", x: geometry.gap.x, y: geometry.gap.y }); await settle(300);
+    const inGap = await infoState("countdownSound");
+    window.webContents.sendInputEvent({ type: "mouseMove", x: geometry.onto.x, y: geometry.onto.y }); await settle(300);
     const kept = await infoState("countdownSound");
     window.webContents.sendInputEvent({ type: "mouseMove", x: 4, y: 4 }); await settle(300);
     const left = await infoState("countdownSound");
-    await recordActive(hoverSpan, `${lang}/${size}: hovering the ⓘ shows its explanation inside the window, it stays while the pointer is on it, and leaving both hides it`,
+    await recordActive(hoverSpan, `${lang}/${size}: hovering the ⓘ shows its explanation above it inside the window, it stays through a pause in the gap and while the pointer is on it, and leaving both hides it`,
       hovered.open && hovered.expanded === "true" && hovered.inside && hovered.describes && hovered.text === (lang === "en" ? "The tick is not recorded." : "提示音不會被錄進影片。")
-      && kept.open && !left.open && left.expanded === "false", JSON.stringify({ hovered, kept, left }));
+      && geometry.above && inGap.open && kept.open && !left.open && left.expanded === "false", JSON.stringify({ hovered, geometry, inGap, kept, left }));
     const keySpan = await activeSpan();
     await read(window, `document.querySelector("#setting-videoQuality input:checked").focus()`);
     window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" }); window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" }); await settle(150);
