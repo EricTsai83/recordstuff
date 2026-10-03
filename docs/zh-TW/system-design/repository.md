@@ -11,7 +11,7 @@
 | 位置 | 內容 |
 | --- | --- |
 | `src/` | App 原始碼，依 Electron 程序切分 |
-| `scripts/` | 開發者工具：建置啟動、簽署、發布、錄製驗證與驗收 |
+| `scripts/` | 開發者工具：建置啟動、簽署、發布、錄影驗證與驗收 |
 | `tests/` | 同時需要瀏覽器 DOM 與 Node API 的跨程序測試 |
 | `docs/` | 系統設計、驗證證據，以及繁體中文鏡像 |
 | `plans/` | 只放尚未完成的執行計畫 |
@@ -30,10 +30,10 @@
 
 | 目錄 | 執行於 | 內容 |
 | --- | --- | --- |
-| `src/main/` | 主程序 | 生命週期（`index.ts`）、錄製狀態機（`recorder.ts`）、擷取頁面監管、倒數 overlay 視窗（`countdown-overlay.ts`）、檔案寫入、權限偵測、設定、選單列、全域快捷鍵、儲存通知、更新檢查、log，以及僅供開發的無人值守錄製（`autorecord.ts`） |
+| `src/main/` | 主程序 | 生命週期（`index.ts`）、錄影狀態機（`recorder.ts`）、擷取頁面監管、倒數 overlay 視窗（`countdown-overlay.ts`）、檔案寫入、權限偵測、設定、選單列、全域快捷鍵、儲存通知、更新檢查、log，以及僅供開發的無人值守錄影（`autorecord.ts`） |
 | `src/renderer/` | 繪製程序 | 三個入口：隱藏的擷取頁面（`index.html` + `capture-host.ts`，負責媒體串流與編碼）、設定面板（`settings.html`、`settings.ts`、`settings.css`），以及倒數 overlay（`countdown.html`、`countdown.ts`、`countdown.css`） |
 | `src/preload/` | Preload，sandbox | 每個 renderer 各一個：`index.ts` 只把 MessagePort 交給擷取頁面、不對外開放任何 API；`settings.ts` 承載設定面板的 IPC 契約；`countdown.ts` 只提供 overlay 的數值訂閱 |
-| `src/shared/` | 兩邊共用 | 狀態（`state.ts`）、MessagePort 協定、錄製品質運算、設定面板契約、螢幕偏好、外觀、快捷鍵驗證，以及翻譯（`i18n.ts`） |
+| `src/shared/` | 兩邊共用 | 狀態（`state.ts`）、MessagePort 協定、錄影品質運算、設定面板契約、螢幕偏好、外觀、快捷鍵驗證，以及翻譯（`i18n.ts`） |
 
 這棵樹有四條共通慣例：
 

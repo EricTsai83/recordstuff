@@ -1,6 +1,6 @@
 ---
 name: native-acceptance
-description: 驗收 RecordStuff 透過 pnpm start:app 建置啟動的 macOS 原生選單列 App。執行者不限：任何能在本機執行指令並看得到截圖的 agent（例如 Claude）先選定並執行專案 runner（Tray、設定入口、快捷鍵錄影、通知、播放），再判讀 runner 與自己保存的截圖及報告；只有沒有 runner、需要即時 computer use 的操作才使用 computer use 或委派 Codex GPT-6 Astra。腳本、agent 觀察與人工證據分開標示。適用於要求實際操作 App、桌面驗收或功能 smoke test；不以單元測試、瀏覽器頁面或直接呼叫錄製邏輯的腳本（matrix、autorecord）代替原生 UI 驗收。
+description: 驗收 RecordStuff 透過 pnpm start:app 建置啟動的 macOS 原生選單列 App。執行者不限：任何能在本機執行指令並看得到截圖的 agent（例如 Claude）先選定並執行專案 runner（Tray、設定入口、快捷鍵錄影、通知、播放），再判讀 runner 與自己保存的截圖及報告；只有沒有 runner、需要即時 computer use 的操作才使用 computer use 或委派 Codex GPT-6 Astra。腳本、agent 觀察與人工證據分開標示。適用於要求實際操作 App、桌面驗收或功能 smoke test；不以單元測試、瀏覽器頁面或直接呼叫錄影邏輯的腳本（matrix、autorecord）代替原生 UI 驗收。
 ---
 
 # Native Acceptance
@@ -94,7 +94,7 @@ App 已由呼叫者以 pnpm start:app 建置並啟動，輸出在 <start-app.log
 - 使用環境提供的原生 computer use 工具，依該工具文件初始化並取得桌面狀態；不依賴特定供應商或工具名稱。若沒有原生 computer use 工具，明確回報相關案例 blocked。
 - RecordStuff 是選單列 App，沒有一般主視窗。從桌面／選單列快照定位圖示；必要時使用工具支援的桌面介面，不因視窗列表為空就判定啟動失敗。
 - 僅使用工具文件實際提供的 API。依最新快照、可存取性節點或螢幕截圖定位，點擊後重新觀察狀態；不要猜固定座標，也不要沿用已失效的節點。
-- Shell 可用於建置啟動、唯讀檢查程序／產物身分、讀取本次 log、檢查錄影檔與保存報告。`pnpm matrix`、`pnpm audio:quality` 或直接呼叫錄製邏輯不能算作 computer use 驗收。
+- Shell 可用於建置啟動、唯讀檢查程序／產物身分、讀取本次 log、檢查錄影檔與保存報告。`pnpm matrix`、`pnpm audio:quality` 或直接呼叫錄影邏輯不能算作 computer use 驗收。
 - 若工具無法存取原生桌面或缺少必要權限，記錄具體阻礙，完成仍可做的獨立檢查；依賴該介面的案例標示 blocked，不用其他自動化冒充完成。
 - 唯一的權限例外（維護者 2026-09-26 授權，見[共用驗收指南](../../../docs/zh-TW/acceptance.md#依影響追加案例)）：受測的 RecordStuff build 開始擷取時，若 macOS 跳出「要求略過系統私密視窗選擇器並直接取用你的畫面和音訊」的提示，可透過 computer use 按「允許」，並記錄 macOS 是否接受。若被忽略，就讓提示保持開啟並回報。其他權限提示、「系統設定」的隱私權清單與 TCC 一律不碰。
 
@@ -116,7 +116,7 @@ App 已由呼叫者以 pnpm start:app 建置並啟動，輸出在 <start-app.log
 1. 沿用本次由 `pnpm start:app` 建置啟動的 bundle。設定若已開啟，`--observe` 會拒絕執行：先記錄狀態，再透過 UI 關閉。
 2. 執行 `pnpm acceptance:settings-shortcut -- --observe`。它核對本 checkout 的 arm64 bundle 程序及最新 App log，只有設定快捷鍵仍註冊時才送鍵；先讓 Finder 置前，再斷言設定視窗是 main 且有焦點、RecordStuff 在前景、Tab 移動焦點、應用程式選單沒有綁定 ⌘R／⌘⌥I 且保留 ⌘C、⌘A、⌘M、⌘Q、⌘R 與 ⌘⌥I 不改變焦點、⌘A 再 ⌘C 能複製面板文字（剪貼簿會先保存後還原）、⌘M 最小化、第二次送鍵還原、⌘W 關閉、第三次送鍵重開。callback 與每項輔助使用檢查分開記錄，面板保持開啟。
 3. 這些都是腳本證據。排版與外觀依 `pnpm acceptance:settings` 的截圖，或以 computer use 觀察面板；本次範圍需要在面板內變更設定時，也用 computer use 操作。UI 受阻仍記 blocked。
-4. 依本次範圍繼續雙語、快捷鍵擷取與錄製中鎖定等案例。註冊衝突與失敗的 deterministic 測試不能當成 OS 實測。
+4. 依本次範圍繼續雙語、快捷鍵擷取與錄影中鎖定等案例。註冊衝突與失敗的 deterministic 測試不能當成 OS 實測。
 5. 每次執行會留下 `docs/verification/measurements/<timestamp>-settings-entry-<suffix>/report.md` 與本次 log。還原偏好並關閉本次新增面板。這個指令不建置、不啟動錄影、不修改偏好或權限。
 
 System Events 或輔助使用缺少權限時如實回報為 blocked，不自動更改權限或繞過核准；不使用 IPC 或測試專用開窗入口。

@@ -6,7 +6,7 @@
 
 ## 回報問題或提出變更
 
-回報 bug 時，請提供重現步驟、預期與實際行為、App 版本或 commit，以及作業系統版本與硬體。錄製問題也請附上螢幕解析度、錄影品質設定及音訊輸出裝置。必要時附上相關 log 或簡短範例，並先移除私人資訊。在 macOS 上可用 `pnpm log` 追蹤 App log。
+回報 bug 時，請提供重現步驟、預期與實際行為、App 版本或 commit，以及作業系統版本與硬體。錄影問題也請附上螢幕解析度、錄影品質設定及音訊輸出裝置。必要時附上相關 log 或簡短範例，並先移除私人資訊。在 macOS 上可用 `pnpm log` 追蹤 App log。
 
 新增功能或大幅調整設計前，可以先開 issue 說明要解決的問題及預期行為，方便在實作前討論範圍。[系統設計](system-design/README.md)與[待辦計畫](../../plans/README.zh-TW.md)可用來了解現有行為與進行中的工作。
 
@@ -27,7 +27,7 @@
    pnpm dev
    ```
 
-目前僅在 macOS 上完成驗證。在 macOS 上，`pnpm start` 會建置並開啟開發用 Electron App，適合進行錄製檢查。出現提示時，請授予螢幕與系統音訊錄製權限；使用 `pnpm dev` 時，權限可能歸屬於啟動它的終端機或編輯器。若權限變更尚未生效，請重新啟動。
+目前僅在 macOS 上完成驗證。在 macOS 上，`pnpm start` 會建置並開啟開發用 Electron App，適合進行錄影檢查。出現提示時，請授予螢幕與系統音訊錄製權限；使用 `pnpm dev` 時，權限可能歸屬於啟動它的終端機或編輯器。若權限變更尚未生效，請重新啟動。
 
 若需測試封裝後的 macOS App，`pnpm start:app` 會建置、自簽、驗證並開啟本機 App bundle。這需要本機程式碼簽署身分，設定細節見[建置與驗證工具](system-design/tooling.md)。一般原始碼修改不需要先封裝。
 
@@ -35,11 +35,11 @@
 
 | 位置 | 職責 |
 | --- | --- |
-| `src/main/` | App 生命週期、錄製協調、檔案寫入、權限、設定、選單列與 log |
+| `src/main/` | App 生命週期、錄影協調、檔案寫入、權限、設定、選單列與 log |
 | `src/renderer/` | 隱藏的擷取頁面、媒體串流與編碼 |
 | `src/preload/` | MessagePort 交接 |
-| `src/shared/` | 狀態、訊息協定、錄製品質與翻譯 |
-| `scripts/` | 建置、簽署與錄製驗證工具 |
+| `src/shared/` | 狀態、訊息協定、錄影品質與翻譯 |
+| `scripts/` | 建置、簽署與錄影驗證工具 |
 | `docs/system-design/` | 架構與模組文件 |
 | `website/` | Astro 網站，獨立套件，由根目錄 `pnpm site:*` 指令代為執行 |
 
@@ -58,7 +58,7 @@ App 文案位於 `src/shared/i18n.ts`。新增或修改文案時，同步更新�
 | 僅文件 | 檢查受影響連結／錨點、指令與翻譯；`git diff --check`。不啟動 App、不錄影 |
 | App 程式 | `pnpm check`（TypeScript、Vitest、正式建置），加規則中依影響選取的檢查 |
 | 設定／快捷鍵整合 | `pnpm acceptance:regression`，已包含 `pnpm check`；檢視受影響 UI／截圖 |
-| 錄製行為 | `pnpm check`，再用新 `pnpm start:app` 產物執行[錄影 smoke 案例](acceptance.md)。`pnpm acceptance` 自動開始／停止／存檔／verify，播放另行觀察 |
+| 錄影行為 | `pnpm check`，再用新 `pnpm start:app` 產物執行[錄影 smoke 案例](acceptance.md)。`pnpm acceptance` 自動開始／停止／存檔／verify，播放另行觀察 |
 | 網站 | `pnpm site:check`；視覺修改檢視受影響頁面 |
 
 每次修改都執行 `git diff --check`。開發中可按需單獨執行 `pnpm typecheck`、`pnpm test` 或 `pnpm build`；最終版本已被成功組合指令涵蓋的檢查不重跑，相同輸入也不建置兩次（[選定一次並對每個版本驗證一次](testing.md#選定一次並對每個版本驗證一次)）。每次推送到 main，以及每個改動不只是文件或網站的 pull request，GitHub Actions 都會在 macOS 與 Windows runner 上執行 `pnpm check`（[check.yml](../../.github/workflows/check.yml)），Windows job 另外建置未簽章的安裝檔並安裝、解除安裝一次。這會在打 release tag 之前先攔下型別、測試或建置的錯誤，但不證明擷取可用。網站由 [website.yml](../../.github/workflows/website.yml) 負責：改動 `website/**`、`scripts/lib/release-manifest*.mts`、`src/shared/version.ts` 或該 workflow 的 pull request，會在不使用 secrets 的情況下執行網站測試、`astro check`、離線 manifest 檢查、離線建置與離線連結檢查。線上 manifest 驗證與外部連結只由 `pnpm site:check` 以及合併後 Vercel 的正式建置檢查。
@@ -77,7 +77,7 @@ App 文案位於 `src/shared/i18n.ts`。新增或修改文案時，同步更新�
 
 - 要解決的問題，以及相關 issue（若有）。
 - 行為如何改變，以及 reviewer 需要了解的設計選擇。
-- 執行過的檢查與結果，包括相關的手動錄製檢查及未測情境。
+- 執行過的檢查與結果，包括相關的手動錄影檢查及未測情境。
 - 若有助於呈現介面變更，附上截圖或簡短錄影。
 
 將無關的整理拆成獨立修改，方便 reviewer 評估這次貢獻。若依 review 再次修改，請重跑受影響的檢查，並更新 PR 描述中的最終行為與驗證結果。

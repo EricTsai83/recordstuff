@@ -2,7 +2,7 @@
 
 [English](../../system-design/functions.md) | [繁體中文](functions.md)
 
-以下按原始碼檔案說明具名函式及方法的契約。型別、參數的完整 TypeScript 宣告由各檔案連結查閱；這裡記錄輸入如何變成結果、狀態及副作用。constructor、getter 與流程內具名 helper 也列出；匿名 callback 的順序見 [錄製管線](recording.md) 與 [桌面功能](desktop.md)。
+以下按原始碼檔案說明具名函式及方法的契約。型別、參數的完整 TypeScript 宣告由各檔案連結查閱；這裡記錄輸入如何變成結果、狀態及副作用。constructor、getter 與流程內具名 helper 也列出；匿名 callback 的順序見 [錄影管線](recording.md) 與 [桌面功能](desktop.md)。
 
 ## App 組裝 — main/index.ts
 
@@ -35,7 +35,7 @@
 
 [main/display-source.ts](../../../src/main/display-source.ts)：`resolveDisplayPreference` 解析保存的主螢幕或指定目標；`selectScreenSource` 要求恰好一個來源的 display id 與解析出的主螢幕或指定螢幕相符，不做回退。`DisplayRequest.run` 在來源列舉前後檢查配置，兩種偏好在來源缺失或配置變更時都最多嘗試三次，callback 只結算一次，途中拋出例外時也一樣（經可選的 `failed` 依賴回報）。`cancel` 結算等待中的 callback 並清除重試延遲。`displayResolution` 讓 tray 與設定共用可用性判定。
 
-[main/display-media.ts](../../../src/main/display-media.ts)：`DisplayMedia` 保存跨錄製嘗試的 display-media 狀態。`begin(sessionId)` 取消前一個請求並快照保存的螢幕偏好；`answer(owns, callback)` 只替本次嘗試擁有的 frame 執行 `DisplayRequest`，否則不給來源；`explain(code)` 以 main 的拒絕原因取代一個可解釋的 host 錯誤；`settle()` 取消未完成的工作並停止監看使用中的螢幕；`topologyChanged(connectedIds)` 推進配置世代，並回報錄製中的螢幕是否已中斷連線。`failure` 是 tray 與設定顯示的螢幕診斷。
+[main/display-media.ts](../../../src/main/display-media.ts)：`DisplayMedia` 保存跨錄影嘗試的 display-media 狀態。`begin(sessionId)` 取消前一個請求並快照保存的螢幕偏好；`answer(owns, callback)` 只替本次嘗試擁有的 frame 執行 `DisplayRequest`，否則不給來源；`explain(code)` 以 main 的拒絕原因取代一個可解釋的 host 錯誤；`settle()` 取消未完成的工作並停止監看使用中的螢幕；`topologyChanged(connectedIds)` 推進配置世代，並回報錄影中的螢幕是否已中斷連線。`failure` 是 tray 與設定顯示的螢幕診斷。
 
 ## 狀態機 — main/recorder.ts
 
@@ -50,7 +50,7 @@
 | `sessionId` getter | 進行中的 session id，供睡眠／喚醒 log 等診斷使用 |
 | `subscribe(listener)` | 加入事件集合 → unsubscribe 函式 |
 | `toggle()` | idle 開始、recording 停止、倒數中取消、needsPermission 發引導事件、已啟動至少 1 秒（`START_CANCEL_GRACE_MS`）的開始會被取消，其餘忽略 |
-| `cancelCountdown(reason)` | `record` 前取消這次嘗試；之後改為擷取開始後停止；錄製中才到達的選單「取消錄影」會停止錄影；其餘忽略 |
+| `cancelCountdown(reason)` | `record` 前取消這次嘗試；之後改為擷取開始後停止；錄影中才到達的選單「取消錄影」會停止錄影；其餘忽略 |
 | `stop()` | 僅 matching recording session → stopping（記下要求停止時間），設 stop timeout，送 stop，再發布 stopping |
 | `systemWillSleep()` | Mac 即將睡眠（plan 050）：錄影中以 `stoppedEarly: "sleep"` 停止，倒數中或準備中的嘗試以 `sleep` 取消，arming 中的嘗試在擷取開始後停止；stopping 或沒有 session 時不動作 |
 | `shutdown()` | 立即取消開檔、準備中或倒數中的嘗試（plan 065）、`record` 後保留停止意圖、停止 recording、等 stopping／failure，並與退出期限競速 |
@@ -68,12 +68,12 @@
 | `handleChunk(session, seq, bytes)` | 驗連續 seq、清首片 timer、started 後的非空媒體重設停滯保護、append；write reject 轉 fail |
 | `finalize(session)` | 等 pending append，確認 session 未失效，finish writer；成功 idle＋saved（附提前停止原因與 session trace），再移除 sentinel |
 | `armStall(session)` | 媒體開始後的 chunk 間隔 timer：警告門檻記錄一次，第二門檻以 capture_failed 失敗 |
-| `watchDisk(session)` | 錄製中以單一不重疊 timer 查詢可用空間；低於警告門檻記錄一次，低於停止門檻只要求一次正常停止；查詢失敗記錄一次 |
+| `watchDisk(session)` | 錄影中以單一不重疊 timer 查詢可用空間；低於警告門檻記錄一次，低於停止門檻只要求一次正常停止；查詢失敗記錄一次 |
 | `retainedWriteError(session)` | 在上限內排空 writer，回傳其保留的寫入／sync 錯誤；只用於改報 capture_start_failed |
-| `handleHostFailure(code, detail)` | 有 session 才進 fail；`record` 前改為註明階段的 capture_start_failed；idle 時不假造錄製錯誤 |
+| `handleHostFailure(code, detail)` | 有 session 才進 fail；`record` 前改為註明階段的 capture_start_failed；idle 時不假造錄影錯誤 |
 | `cancelMarked(session, cause, detail)` | 已在 `prepared` 前被睡眠或退出標記的嘗試，遇到 host 錯誤或遺失、螢幕移除、請求逾時或被拒時，以該原因取消而非失敗 |
 | `fail(id, code, detail, flags)` | 先 detach session／清 deadline、倒數與健康 timer／關 overlay／stop／idle，writer 已保留磁碟錯誤時取代 capture_start_failed，後 abandon，最後 failed 帶檔案結果、session trace 與 partialPath，再移除 sentinel |
-| `trace(session)` | captureStarted、saved、failed 帶的 session id、暫存路徑與錄製／要求停止時間（plan 029） |
+| `trace(session)` | captureStarted、saved、failed 帶的 session id、暫存路徑與錄影／要求停止時間（plan 029） |
 | `clearTimer` / `clearDisk` / `clearHealth` | 取消並清除 session deadline／可用空間查詢／查詢與停滯 timer |
 | `setState(state)` / `emit(event)` | 替換狀態並發事件／依序呼叫 listeners；某個 listener 拋出時只記 log，其他 listener 與 recorder 自身的清理照常執行 |
 
@@ -121,7 +121,7 @@
 | `describe(cause)` | Error name/message 或 String，用於診斷 |
 | `classifyGetDisplayMediaError(cause)` | NotAllowedError→permission_denied；NotFoundError→no_display；其他→capture_start_failed |
 
-頁面 message listener 檢查 source／標記／port 後建立 host。MediaRecorder callbacks 的先後順序是 chunk chain → terminal message，詳見 [錄製管線](recording.md)。
+頁面 message listener 檢查 source／標記／port 後建立 host。MediaRecorder callbacks 的先後順序是 chunk chain → terminal message，詳見 [錄影管線](recording.md)。
 
 ## 影片儲存 — main/file-writer.ts
 
@@ -207,7 +207,7 @@
 | --- | --- |
 | `overlayWindowOptions(bounds, preload, platform)` | 透明、無邊框、無陰影、固定、不可聚焦、sandbox 並設定 `autoplayPolicy: "no-user-gesture-required"` 的視窗選項；macOS 為 non-activating panel |
 | `prepare(presentation)` | 在主螢幕只建立一次隱藏視窗，位於 `screen-saver` 層級、出現在每個 Space、點擊穿透；載入頁面，session 有提示音時帶 `?sound=1`（旗標不同就重建頁面）；當機或載入失敗即關閉 |
-| `show(n, presentation)` / `update(n)` | 放到被錄製的螢幕（不知道時用主螢幕並寫 log）、連同螢幕範圍記錄位置、傳送數字，頁面載入後不啟動 App 地顯示／傳送下一個數字 |
+| `show(n, presentation)` / `update(n)` | 放到被錄影的螢幕（不知道時用主螢幕並寫 log）、連同螢幕範圍記錄位置、傳送數字，頁面載入後不啟動 App 地顯示／傳送下一個數字 |
 | `dismiss()` | 傳 `null` 讓數字淡出，淡出與穩定間隔後銷毀視窗再 resolve；尚未畫出任何內容時立即銷毀 |
 | `close()` / `destroy()` | 立即銷毀並讓等待中的 dismissal resolve；`destroy` 是 App 在穩定狀態與退出時的保險 |
 
@@ -265,7 +265,7 @@
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
-| `SettingsWindow.constructor(options)` | 註冊三個 IPC handler（`settings:capture`、`settings:read`、`settings:choose`），非設定視窗 main frame 的來源一律拒絕；`capture` 在快捷鍵編輯器錄製新組合時暫停全域快捷鍵 |
+| `SettingsWindow.constructor(options)` | 註冊三個 IPC handler（`settings:capture`、`settings:read`、`settings:choose`），非設定視窗 main frame 的來源一律拒絕；`capture` 在快捷鍵編輯器擷取新組合時暫停全域快捷鍵 |
 | `show()` | 先讓選單列 App 取得前景，已有視窗就聚焦，否則建 sandbox 視窗並帶當前語言載入頁面 |
 | `refresh()` | 推送目前 view 並更新標題；視窗關閉時不做事；與頁面已持有的 view（經推送或 invoke 回覆，由 `deliver` 記錄）相同時不再推送 |
 | `destroy()` | 退出時移除 handler 與視窗 |
@@ -286,7 +286,7 @@
 | `outputDirItems(ctx, enabled)` | 產生位置與更改位置項目，按狀態鎖定 |
 | `shortcutHint(ctx, key)` | 「開始／停止」或「取消錄影」的 tooltip 提示已註冊組合鍵；關閉或未註冊時為 undefined |
 | `permissionActions(needsRelaunch, language)` | 已判斷需重啟只給重啟；否則給設定與「已經允許了？」重啟 |
-| `trayModel(state, ctx)` | 狀態 → 完整圖示／標題／tooltip／menu；每個狀態一個圖示（圓環、沙漏、碼錶、實心圓點；警示標記只取代 idle 圓環），只有錄製中有標題；tooltip 含狀態與右鍵提示 |
+| `trayModel(state, ctx)` | 狀態 → 完整圖示／標題／tooltip／menu；每個狀態一個圖示（圓環、沙漏、碼錶、實心圓點；警示標記只取代 idle 圓環），只有錄影中有標題；tooltip 含狀態與右鍵提示 |
 | `savedNotification(path)` | filename → 存檔文案 |
 | `permissionNotification(needsRelaunch)` | 設定／重啟的提示文案 |
 | `settingsWriteFailedNotification(dir, home)` | 說明位置設定未保存、仍使用原值 |
@@ -333,7 +333,7 @@
 | `toTemplate(entry)` | 分隔線或指令項目 → Electron MenuItemConstructorOptions，click 分派 action |
 | `TRAY_ICON_FILES` / `loadIcons(dir, log)` | 每個狀態的素材／每個狀態載入 Windows ICO；其他走 template PNG，macOS 配合 @2x 素材；載入成空圖時留 log，因為圖示會看不見 |
 
-## Log 與自動錄製
+## Log 與自動錄影
 
 [log.ts](../../../src/main/log.ts)：`rotatedPath(path, index)` 組 archive 檔名；`rotateLog(path, keep)` 刪最舊再逆序搬移；`formatLine(message, now)` 加 ISO 前綴；`createFileLogger(options)` 回傳帶 `flush()` 的 logger：每行立即寫 stdout，並加入一條序列化、上限 1 MiB 的非同步檔案佇列（超過上限的行只從檔案捨棄，並回報一次）。第一次寫入建立目錄並在每個程序只查一次長度；之後累計寫入位元組、超過 `maxBytes` 時先輪替；磁碟已滿或 logs 資料夾被刪除時只略過這些行，之後寫入成功時記下檔案漏掉幾行，其他檔案錯誤則停用檔案輸出。`flushBeforeExit(log, timeoutMs)` 有上限地等待佇列寫完，讓啟動失敗或第二個實例結束前，原因已寫進檔案。
 

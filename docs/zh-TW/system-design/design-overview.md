@@ -113,7 +113,7 @@ RecordStuff 大部分時間都在待命，所以待命有預算（plan 049）：
 
 | 目的 | 文件 |
 | --- | --- |
-| 骨幹——要動這個 app 就讀這幾份 | [產品總覽](overview.md) → 本文件 → [系統架構](architecture.md) → [錄製管線](recording.md) → [桌面功能](desktop.md) |
+| 骨幹——要動這個 app 就讀這幾份 | [產品總覽](overview.md) → 本文件 → [系統架構](architecture.md) → [錄影管線](recording.md) → [桌面功能](desktop.md) |
 | 專題——改動牽涉媒體時才讀 | [Electron、Chromium 與 WebRTC](webrtc.md)、[音質測試設計](audio-quality.md) |
 | 交付——改動要出貨時才讀 | [交付](delivery.md)、[發布自動化](releases.md)、[簽署](signing.md)、[建置與工具](tooling.md)  |
 | 參考——用查的，不用通讀 | [函式設計索引](functions.md)、[設計決策](decisions.md)、[本機驗證紀錄](../verification/README.md) |

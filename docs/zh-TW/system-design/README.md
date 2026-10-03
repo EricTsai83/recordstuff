@@ -12,8 +12,8 @@
 | [設計總覽](design-overview.md) | 設計骨幹、分層方向、一次錄影的完整路徑與跨切面不變式 |
 | [系統架構](architecture.md) | 程序如何分工、媒體如何流動、資料與資源由誰擁有 |
 | [目錄結構](repository.md) | 每個目錄放什麼、命名與翻譯慣例，以及結構由什麼維持 |
-| [Electron、Chromium 與 WebRTC](webrtc.md) | 媒體引擎分層、本機錄製與網路通訊的區別、音訊處理及驗證邊界 |
-| [錄製管線](recording.md) | 開始、編碼、分段傳輸、停止、失敗與檔案保存如何運作 |
+| [Electron、Chromium 與 WebRTC](webrtc.md) | 媒體引擎分層、本機錄影與網路通訊的區別、音訊處理及驗證邊界 |
+| [錄影管線](recording.md) | 開始、編碼、分段傳輸、停止、失敗與檔案保存如何運作 |
 | [桌面功能](desktop.md) | 選單、通知、權限、設定與 log 的細節 |
 | [函式設計索引](functions.md) | 各原始碼模組的函式／方法、輸入輸出、副作用與協作關係 |
 | [網站、App 與更新 feed 交付](delivery.md) | 流程圖、部署負責者、token 需求與發布邊界 |

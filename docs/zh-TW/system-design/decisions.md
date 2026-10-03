@@ -10,7 +10,7 @@
 | Bundle identifier 用維護者自有網域反寫（`com.ericts.record`；[原因](signing.md#bundle-identifier)） | identifier 沒有註冊機構，自有網域是唯一的唯一性保證；它也是 App 在 TCC 授權、通知與簽章裡的身分 | 選一次就不再動：改了 macOS 會視為新 App，使用者需重新允許螢幕錄製 |
 | Chromium getDisplayMedia + MediaRecorder | 不自寫音訊裝置或原生 sidecar，先完成錄影核心 | 對 codec／時間戳控制有限；明確要求 EC／NS／AGC false 已恢復本機高頻與立體聲，引擎／平台變更需重測 |
 | 隱藏 renderer 專做擷取 | DOM 媒體 API 位於 renderer；UI 仍可用原生 API | 多一條 MessagePort；需 ready、session、順序与心跳管理 |
-| Main 擁有狀態與影片 writer | UI、擷取程序不能各自宣稱錄製成功 | 程序中止時 main 要協調故障收尾 |
+| Main 擁有狀態與影片 writer | UI、擷取程序不能各自宣稱錄影成功 | 程序中止時 main 要協調故障收尾 |
 | MP4 H.264 + AAC | 本機 QuickTime 可直接播放，硬體編碼已有量測證據 | fragmented MP4；非所有損壞檔都可播，無轉檔 fallback |
 | 原生 Tray／Menu／Notification | 一個按鈕的產品不需要一般視窗與 UI framework | 通知呈現與 Finder 排序受系統控制 |
 | 只由已提交的 runner 以腳本輸入操作 RecordStuff 自己的 UI（維護者 2026-10-02 決定，plan 063；[工具](tooling.md#腳本化原生驗收)） | Computer Use 無法存取純 tray 的程序，Tray 案例只能等維護者或記為受阻；048 與 035 的回合中，CoreGraphics 點擊與按鍵加上輔助使用讀取已到達所有狀態，runner 能重複這些操作，並把原生選單和正式 model 的 log 行比對 | 腳本輸入只證明送達與狀態，不證明外觀，外觀仍要觀察它的截圖。點擊會移動真正的游標（在 macOS 26 上直接送給程序打不開選單），所以每輪仍需桌面交接，期間有人操作也不會被偵測；能消除這一點的是隔離的 macOS 工作階段或 VM。狀態列項目由控制中心承載，每次 macOS 更新後都要重新確認項目定位 |

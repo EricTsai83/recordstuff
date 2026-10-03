@@ -1,4 +1,4 @@
-# 錄製管線與檔案設計
+# 錄影管線與檔案設計
 
 [English](../../system-design/recording.md) | [繁體中文](recording.md)
 
@@ -147,13 +147,13 @@ FileWriter 的 append、週期 sync 與 finish 都排在同一佇列。每次 ap
 
 成功 finish 等待佇列、sync、close，再以硬連結把暫存檔發布成 `.mp4`；正式檔撞名時依序嘗試 `-2`、`-3` 等尾碼。連結不會取代既有名稱（EEXIST 就換下一個尾碼），耗時固定且不需要剩餘空間，因此 15 秒與一小時的錄影儲存所需時間相同，低空間提前停止也仍能儲存。儲存的檔案就是錄影寫入的那個檔案，所以建立時間是錄影開始的時間。若磁碟區因其他原因拒絕連結，例如 exFAT（ENOTSUP）或部分網路磁碟區，這個與之後每個尾碼都改用原本的排他複製（`COPYFILE_EXCL`），複本 sync 後才移除暫存名稱；複製耗時與檔案大小成正比，且需要與檔案同樣大小的剩餘空間。發布失敗時，ENOSPC 與其他寫入一樣回報 disk_full，其餘回報 output_write_failed。程式仍要求 `COPYFILE_FICLONE`，但在 macOS 上從不會 clone：libuv 在 macOS 沒有實作 clone（Electron 44 中 `COPYFILE_FICLONE_FORCE` 回傳 ENOSYS），所以 plan 037 之前每次儲存，包括 APFS，都是完整複製。發布後盡力刪除暫存名稱，之後 Recorder 才以實際存檔路徑發 saved。清理失敗會留下暫存名稱，它是已儲存檔案的第二個連結（改用複製時則是完整副本），但不影響已成功儲存的影片。log 的 `finalize timing` 行記錄最後的 host 交付、佇列寫入、flush、close、發布（`by link` 或 `by copy (link <code>)`）與清理各花多少時間。失敗時先清除 session、stop host、立刻回 idle，再 abandon writer；已有計數 bytes 就保留 `.recording.mp4`，零 bytes 盡力刪除。部分檔案沒有自動修復或重新封裝；曾實測可播不代表所有中斷都可復原。
 
-成功必須有非空媒體。唯一的發布步驟 FileWriter.finish 就是關卡：排空佇列後檢查實際確認寫入的位元組數，不採用要求寫入的 chunk 長度。已保留的 append 或背景 sync 錯誤優先以原代碼回報（例如 disk_full），即使一個位元組都沒寫入。否則零位元組（不論是在任何 chunk 之前停止，或只收到空 chunk）會讓 finish 釋放 handle 與 sync timer、刪除空暫存檔，並以 `capture_start_failed` 與 detail `capture ended without media; no bytes were written` 拒絕，與首片期限使用同一代碼。Recorder 把這個拒絕導入單一失敗流程，因此不發 saved、不設定 lastSavedPath，也不產生 `.mp4`；結果為 empty，可立即重試。Abandon 具冪等性，失敗流程稍後的清理不會刪掉在同一秒內重用該檔名的重試錄影。Recorder 不自行預先檢查位元組數：佇列排空前看不到排隊中或執行中的 sync 失敗，會把磁碟錯誤誤報為沒有媒體。沒有最短錄製秒數；非常短但非空的錄影照常儲存。
+成功必須有非空媒體。唯一的發布步驟 FileWriter.finish 就是關卡：排空佇列後檢查實際確認寫入的位元組數，不採用要求寫入的 chunk 長度。已保留的 append 或背景 sync 錯誤優先以原代碼回報（例如 disk_full），即使一個位元組都沒寫入。否則零位元組（不論是在任何 chunk 之前停止，或只收到空 chunk）會讓 finish 釋放 handle 與 sync timer、刪除空暫存檔，並以 `capture_start_failed` 與 detail `capture ended without media; no bytes were written` 拒絕，與首片期限使用同一代碼。Recorder 把這個拒絕導入單一失敗流程，因此不發 saved、不設定 lastSavedPath，也不產生 `.mp4`；結果為 empty，可立即重試。Abandon 具冪等性，失敗流程稍後的清理不會刪掉在同一秒內重用該檔名的重試錄影。Recorder 不自行預先檢查位元組數：佇列排空前看不到排隊中或執行中的 sync 失敗，會把磁碟錯誤誤報為沒有媒體。沒有最短錄影秒數；非常短但非空的錄影照常儲存。
 
 非空只是必要的最低門檻，不代表檔案可播放。Cap 的 AVFoundation writer [在沒有最後影格時拒絕 finish](https://github.com/CapSoftware/Cap/blob/ce785e705e79652adba4b8bf752669c4093499e0/crates/enc-avfoundation/src/mp4.rs#L961-L990)（該 revision 的靜態檢視），但 RecordStuff 收到的是編碼後 chunk 而非影格時間戳，不解析 MP4，也不確認含可解碼影格。可播放性只由驗收時的媒體檢查（如 ffprobe 與完整解碼）確立，執行期不檢查。
 
 排他建立同時保護暫存檔與正式檔名，包括錄影途中才出現的同名正式檔；短寫取得進展後失敗時，保留確認寫入量與非空部分檔；後續 append 與 finish 拒絕且不產生完成檔，abandon 關閉 handle 並停止 sync。背景 sync 的 rejection 會被接住，首次失敗仍被保留。完整寫入與 fsync 耐久性是不同保證，不承諾所有 crash、斷電或檔案系統故障都可復原。更完整的耐久性需求應先建測試，再改實作。
 
-FileWriter 限制已接受但尚未確認寫入的位元組數（`backlogBytes`，停滯與低空間警告也會記錄；Plan 037 結案時沒有加入重疊存檔，因此沒有開始條件讀取它）。會超過 64 MiB 的 append 立即被拒絕且不排入佇列，之後的 append 也一律拒絕，因此檔案不會出現缺口；拒絕前已接受的 bytes 仍會寫入，finish 會拒絕，Recorder 以 output_write_failed 與積壓 detail 結束該 session；若先前已保留磁碟錯誤，則沿用該錯誤。不暫停、不丟棄、不重試：MediaRecorder 無法節流，此上限讓緩慢或離線的儲存裝置以保留部分檔結束錄影，而不是無限制占用記憶體。因此持續低於位元率的磁碟吞吐量仍會結束錄影。沒有磁碟空間預留、切換資料夾、降低品質或無限長錄製承諾。
+FileWriter 限制已接受但尚未確認寫入的位元組數（`backlogBytes`，停滯與低空間警告也會記錄；Plan 037 結案時沒有加入重疊存檔，因此沒有開始條件讀取它）。會超過 64 MiB 的 append 立即被拒絕且不排入佇列，之後的 append 也一律拒絕，因此檔案不會出現缺口；拒絕前已接受的 bytes 仍會寫入，finish 會拒絕，Recorder 以 output_write_failed 與積壓 detail 結束該 session；若先前已保留磁碟錯誤，則沿用該錯誤。不暫停、不丟棄、不重試：MediaRecorder 無法節流，此上限讓緩慢或離線的儲存裝置以保留部分檔結束錄影，而不是無限制占用記憶體。因此持續低於位元率的磁碟吞吐量仍會結束錄影。沒有磁碟空間預留、切換資料夾、降低品質或無限長錄影承諾。
 
 可用空間保護讀取輸出資料夾的 `fs.statfs`。低於停止門檻時要求正常停止，讓檔案在仍有空間時排空、sync 並發布；saved 事件帶有 `stoppedEarly: "lowDisk"`，log 會註明，存檔通知顯示「已儲存 {file}。磁碟空間即將用盡，已提前停止錄影」。這類錄影屬於成功，不進入失敗紀錄。若發布仍失敗，沿用一般失敗流程與部分檔保留。
 
@@ -168,7 +168,7 @@ Writer 在擷取請求前開啟，而擷取請求可能為了權限提示等待�
 | 類型 | code | 對使用者的結果 |
 | --- | --- | --- |
 | 權限／環境 | permission_denied、unsupported_os_version | 引導系統設定／重啟或說明版本 |
-| 來源／編碼 | no_display、display_unavailable、no_audio_track、mp4_unsupported | 不開始錄製，說明缺少能力 |
+| 來源／編碼 | no_display、display_unavailable、no_audio_track、mp4_unsupported | 不開始錄影，說明缺少能力 |
 | 擷取 | capture_start_failed、capture_failed、capture_host_crashed、capture_host_unresponsive | 回 idle；有部分檔則提供位置；`record` 前任何擷取中斷都是 capture_start_failed，結果為 empty |
 | 檔案 | output_open_failed、output_write_failed、disk_full | 說明位置／磁碟問題，盡力保留 bytes |
 | 停止 | stop_timeout | 停止等待擷取回覆並盡力保留部分檔 |
@@ -178,9 +178,9 @@ Main 的來源 handler 可記錄具體拒絕原因，取代 renderer 的泛用 A
 
 ## 螢幕選擇
 
-`display-source.ts` 分開處理 Screen API 的目前目標與錄製來源配對。指定螢幕保存 `{ kind: "display", id, label }`，名稱只供顯示。目標缺失或 id 重複立即拒絕；來源缺失／重複或配置變更每隔 150 ms 重試，最多列舉三次。列舉例外經 `failed` 回報，並以 `capture_start_failed`（`source_missing`）拒絕這次嘗試，不當成權限問題。掛住的列舉仍受 recorder 的開始逾時限制；作業結束或被新作業取代會取消 callback 與重試計時器，延遲結果不能授予錄製或覆寫診斷。`display-media.ts` 保存跨作業的狀態：偏好快照、用來解釋下一個 host 錯誤的拒絕原因、監看是否被移除的使用中螢幕，以及螢幕診斷。
+`display-source.ts` 分開處理 Screen API 的目前目標與錄影來源配對。指定螢幕保存 `{ kind: "display", id, label }`，名稱只供顯示。目標缺失或 id 重複立即拒絕；來源缺失／重複或配置變更每隔 150 ms 重試，最多列舉三次。列舉例外經 `failed` 回報，並以 `capture_start_failed`（`source_missing`）拒絕這次嘗試，不當成權限問題。掛住的列舉仍受 recorder 的開始逾時限制；作業結束或被新作業取代會取消 callback 與重試計時器，延遲結果不能授予錄影或覆寫診斷。`display-media.ts` 保存跨作業的狀態：偏好快照、用來解釋下一個 host 錯誤的拒絕原因、監看是否被移除的使用中螢幕，以及螢幕診斷。
 
-`display_unavailable` 表示無法安全解析精確目標，另以 `target_missing`、`source_missing` 或 `topology_changed` 區分原因。不按名稱、尺寸或位置配對，也不自動改寫 id；id 被重用並不能證明同一實體硬體。移除錄製中的螢幕會走 recorder 的冪等 `capture_failed` 路徑，保留可救回的部分內容而不切換來源。螢幕資料是 DIP 邏輯尺寸與縮放比例；輸出像素仍依實際 track 和解析度上限決定。
+`display_unavailable` 表示無法安全解析精確目標，另以 `target_missing`、`source_missing` 或 `topology_changed` 區分原因。不按名稱、尺寸或位置配對，也不自動改寫 id；id 被重用並不能證明同一實體硬體。移除錄影中的螢幕會走 recorder 的冪等 `capture_failed` 路徑，保留可救回的部分內容而不切換來源。螢幕資料是 DIP 邏輯尺寸與縮放比例；輸出像素仍依實際 track 和解析度上限決定。
 
 主程序在作業結束時銷毀 capture host，下一次使用新 frame；media request 必須同時匹配目前 frame 與 session，避免舊請求在新作業期間才抵達。Video track 非預期結束會透過結構化 `displayFailure: "track_ended"` 回報，先保留診斷再回 idle；audio track 結束不會誤標為螢幕問題。正常停止已送出後（不論 host 是否已回覆、檔案是否已在 finalize）的螢幕移除不產生失敗或診斷：由停止回覆或其期限決定結果，檔案保留停止前錄到的內容。
 

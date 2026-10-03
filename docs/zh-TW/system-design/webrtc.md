@@ -6,14 +6,14 @@
 
 ## WebRTC 在產品裡負責什麼？
 
-RecordStuff 使用 Electron 內建 Chromium 提供的媒體 API，在本機完成錄製，目前沒有建立 WebRTC peer connection。WebRTC 與我們有關，是因為 Chromium 的擷取路徑可以重用 WebRTC 的原生音訊處理元件；即使沒有透過網路傳送聲音，也可能用到這些元件。
+RecordStuff 使用 Electron 內建 Chromium 提供的媒體 API，在本機完成錄影，目前沒有建立 WebRTC peer connection。WebRTC 與我們有關，是因為 Chromium 的擷取路徑可以重用 WebRTC 的原生音訊處理元件；即使沒有透過網路傳送聲音，也可能用到這些元件。
 
 這裡要分清楚三種意思：
 
 | 名稱 | 在這份設計中的意義 |
 | --- | --- |
 | 瀏覽器媒體 API | `getDisplayMedia` 取得畫面與系統音訊軌；`MediaStream` 承載軌道；`MediaRecorder` 編碼成可寫入檔案的資料。通話產品也能使用這些 API。 |
-| WebRTC 通訊 | `RTCPeerConnection`、連線協商、ICE／STUN／TURN 與網路媒體傳輸。目前 RecordStuff 的錄製流程沒有實作這些功能。 |
+| WebRTC 通訊 | `RTCPeerConnection`、連線協商、ICE／STUN／TURN 與網路媒體傳輸。目前 RecordStuff 的錄影流程沒有實作這些功能。 |
 | 原生 WebRTC 元件 | Chromium 內部使用的實作，例如 Audio Processing Module（APM，音訊處理模組）。是否使用取決於擷取路徑與設定；我們沒有直接引入或設定它的 C++ 模組。 |
 
 `getDisplayMedia` 屬於 [Screen Capture 規格](https://www.w3.org/TR/screen-capture/)；`MediaRecorder` 屬於 [MediaStream Recording 規格](https://www.w3.org/TR/mediastream-recording/)。呼叫這些 API 本身不會建立 peer connection，也不會把錄影上傳。
@@ -37,11 +37,11 @@ flowchart TD
 | --- | --- | --- |
 | 作業系統 | 畫面、音訊來源與擷取權限 | 權限不足或音訊路由不同，不能靠提高編碼 bitrate 解決。 |
 | Electron main | 解析保存的螢幕選擇（預設主螢幕、指定目標精確匹配 id）、要求 `audio: "loopback"`，管理生命週期與寫檔 | 來源選擇與檔案存取不交給 sandbox 中的 capture renderer。 |
-| Chromium 媒體引擎 | 實作擷取、軌道設定、內部處理與錄製支援 | 即使應用程式碼沒改，升級 Electron／Chromium 也可能改變行為。 |
+| Chromium 媒體引擎 | 實作擷取、軌道設定、內部處理與錄影支援 | 即使應用程式碼沒改，升級 Electron／Chromium 也可能改變行為。 |
 | 隱藏 capture renderer | 提出擷取條件、讀取軌道設定、操作 `MediaRecorder`、送出 chunks | 我們在這裡表達音質政策，並取得執行時證據。 |
 | 本機 IPC 與 writer | 跨程序搬運編碼資料、保存檔案 | MessagePort 是本機 IPC，不是 `RTCDataChannel`；寫檔錯誤與擷取失真是不同問題。 |
 
-Renderer 要求 `video/mp4;codecs=avc1,mp4a.40.2` 並檢查支援度。AAC 是選定的錄製編碼，不能據此推論有 WebRTC 網路連線。FFmpeg 用於開發驗證工具，正式產品沒有啟動 FFmpeg 子程序錄影。停止、失敗與檔案保存行為見[錄製管線](recording.md)及[系統架構](architecture.md)。
+Renderer 要求 `video/mp4;codecs=avc1,mp4a.40.2` 並檢查支援度。AAC 是選定的錄影編碼，不能據此推論有 WebRTC 網路連線。FFmpeg 用於開發驗證工具，正式產品沒有啟動 FFmpeg 子程序錄影。停止、失敗與檔案保存行為見[錄影管線](recording.md)及[系統架構](architecture.md)。
 
 ## 為什麼本機錄音也會受到語音處理影響？
 
@@ -74,7 +74,7 @@ Chromium 的[螢幕擷取音訊處理路徑](https://chromium.googlesource.com/c
 
 ## 目前邊界與未來擴充
 
-目前實作的錄製媒體路徑沒有 signaling service、peer 傳輸、STUN／TURN 依賴或雲端上傳。這個結論限定於該路徑，不是對所有開發工具或 Electron 網路行為做過全面稽核。
+目前實作的錄影媒體路徑沒有 signaling service、peer 傳輸、STUN／TURN 依賴或雲端上傳。這個結論限定於該路徑，不是對所有開發工具或 Electron 網路行為做過全面稽核。
 
 若未來加入即時分享，需要另外設計傳輸架構，明確決定連線協商、peer／server、連通性、驗證與媒體隱私。若加入麥克風旁白，也需要獨立音訊政策：回音消除可能有用，但不應自動把語音處理套到系統音訊軌。目前設計尚無這兩項功能。
 

@@ -197,7 +197,7 @@ pre code .o { color: #ff946e; }
   <li><strong>macOS 擷取。</strong>ScreenCaptureKit 是 Apple 提供的螢幕擷取框架，負責「在畫面改變時產生一張影格」。系統聲音則由 CoreAudio 的 tap 以 loopback 方式取得，也就是直接拿電腦正在播放的數位聲音，不經過麥克風。</li>
   <li><strong>Chromium 與 <code>getDisplayMedia</code>。</strong><code>getDisplayMedia</code> 是 W3C 的 Web 標準 API，意思是「給我某個螢幕的畫面與聲音」。呼叫時可以附上 constraints（限制條件），例如 <code>frameRate: { ideal: 30, max: 30 }</code>。Chromium 會把這些條件翻譯成給作業系統的設定。</li>
   <li><strong>MediaStream 與 track。</strong>拿到的結果是一個 stream，裡面有一條影像軌（video track）和一條音訊軌（audio track）。軌道可以回報自己的設定（<code>getSettings()</code>）和統計數字（<code>track.stats</code>），但回報的內容不一定等於實際情況，後面會看到例子。</li>
-  <li><strong>MediaRecorder 編碼。</strong>MediaRecorder 是瀏覽器內建的錄製 API，把影像壓縮成 H.264、聲音壓縮成 AAC，再包進 MP4。H.264 在 Mac 上由硬體編碼器（VideoToolbox）處理，所以 CPU 負擔不大。</li>
+  <li><strong>MediaRecorder 編碼。</strong>MediaRecorder 是瀏覽器內建的錄影 API，把影像壓縮成 H.264、聲音壓縮成 AAC，再包進 MP4。H.264 在 Mac 上由硬體編碼器（VideoToolbox）處理，所以 CPU 負擔不大。</li>
   <li><strong>寫檔。</strong>MediaRecorder 每秒交出一段 fragmented MP4（分段 MP4），主程序依序寫進磁碟。分段的好處是即使中途當機，已寫入的段落仍然能播放。</li>
   <li><strong>量測。</strong>ffprobe 和 ffmpeg 是開發時用的命令列工具，只讀成品、算指標，不隨 App 發佈。</li>
 </ul>
