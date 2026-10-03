@@ -30,6 +30,8 @@ const [outDir, root] = (() => {
   return [output, repository] as const;
 })();
 const out = path.join(root, "out");
+// Chromium's profile and caches stay in the run's evidence, not in the shared default Electron folder.
+app.setPath("userData", path.join(outDir, "user-data"));
 const results: SettingsCase[] = [];
 /** Each case is also logged, so electron.log shows how far a round got. */
 const push = (result: SettingsCase): void => {
