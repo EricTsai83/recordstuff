@@ -1261,7 +1261,7 @@ async function run() {
     nativeTheme.themeSource = scheme;
     await pushResult(lang, lastFocus);
     await mouse("#tab-recording"); await settle(80);
-    for (const [name, selector, offset] of [["tab", "#tab-recording", "-"], ["menu", "#setting-screen", "-"], ["segment", "#setting-countdown input:checked", "gap"],
+    for (const [name, selector, offset] of [["tab", "#tab-recording", "-"], ["menu", "#setting-screen", "-"], ["segment", "#setting-countdown input:checked", "-"],
       ["switch", "#setting-countdownSound", "gap"]] as const) {
       const span = await activeSpan();
       const reached = await keyboardFocus(selector);
@@ -1273,10 +1273,16 @@ async function run() {
     }
     await mouse("#tab-general"); await settle(80);
     const buttonSpan = await activeSpan();
-    const buttonReached = await keyboardFocus("#setting-notifications-openSettings");
+    const buttonReached = await keyboardFocus("#setting-updates-check");
     const buttonRing = await read<{ style: string; width: string; offset: string }>(window, `(() => { const s = getComputedStyle(document.activeElement); return { style: s.outlineStyle, width: s.outlineWidth, offset: s.outlineOffset }; })()`);
     await shot(`focus-button-${lang}-${scheme}-minimum.png`);
     await recordActive(buttonSpan, `${lang}/${scheme}: a button shows the focus line on its own border`, buttonReached && buttonRing.style === "solid" && buttonRing.width === expectedWidth && buttonRing.offset === `-${expectedWidth}`, JSON.stringify({ buttonReached, ...buttonRing }));
+    // A row's extra action is a borderless text link, so its line sits just off the text.
+    const linkSpan = await activeSpan();
+    const linkReached = await keyboardFocus("#setting-notifications-openSettings");
+    const linkRing = await read<{ style: string; width: string; offset: string }>(window, `(() => { const s = getComputedStyle(document.activeElement); return { style: s.outlineStyle, width: s.outlineWidth, offset: s.outlineOffset }; })()`);
+    await shot(`focus-link-${lang}-${scheme}-minimum.png`);
+    await recordActive(linkSpan, `${lang}/${scheme}: a row's text-link action shows the focus line 2 px off its text`, linkReached && linkRing.style === "solid" && linkRing.width === expectedWidth && linkRing.offset === "2px", JSON.stringify({ linkReached, ...linkRing }));
     await mouse("#tab-failures"); await settle(80);
     await shot(`failures-${lang}-${scheme}-minimum.png`);
   }

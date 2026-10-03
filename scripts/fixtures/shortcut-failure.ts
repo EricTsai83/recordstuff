@@ -470,7 +470,7 @@ require(path.join(root, 'out/main/index.js'));
   record('Off retains value and removes failure note', !off.diagnostics?.some(d => d.reason === 'Another app may be using this shortcut.') && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.enabled === false && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator && !globalShortcut.isRegistered(accelerator), 'saved disabled; no note or registration');
   record('a failed Settings shortcut is explained in the card, not only by a retry button',
     off.diagnostics?.length === 1 && off.diagnostics[0]?.heading === 'Settings shortcut unavailable' && off.actions?.some(a => a.id === 'retryRegistration') === true
-      && await evaluate("document.querySelector('#setting-hotkey-diagnostics .diagnostic strong').textContent === '⚠ Settings shortcut unavailable'"),
+      && await evaluate("(h => h.textContent === 'Settings shortcut unavailable' && h.querySelector('svg[aria-hidden=\"true\"]') !== null)(document.querySelector('#setting-hotkey-diagnostics .diagnostic strong'))"),
     JSON.stringify(off.diagnostics));
   await choose('notifications', 'off');
   await commit();

@@ -150,6 +150,17 @@ function retryAllowed(group: SettingsGroup): boolean {
   return Boolean(failure?.choice && failure.group === group.id && group.enabled &&
     failure.baseline === committed(group) && group.choices.some(c => c.id === failure?.choice && c.enabled));
 }
+/** Drawn like the ⓘ, so the warning looks the same on every platform instead of following the font's ⚠. */
+function warningIcon(): SVGSVGElement {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 16 16"); svg.setAttribute("aria-hidden", "true"); svg.setAttribute("focusable", "false");
+  svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.3");
+  svg.setAttribute("stroke-linecap", "round"); svg.setAttribute("stroke-linejoin", "round");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", "M8 1.9 14.8 13.6H1.2L8 1.9ZM8 6.2v3.4M8 11.6v.1");
+  svg.append(path);
+  return svg;
+}
 function updateDiagnostic(container: HTMLElement, group: SettingsGroup): void {
   const area = container.querySelector<HTMLElement>(".diagnostics")!;
   // Reuse the region: a push must not replace focused recovery/retry buttons.
@@ -160,7 +171,9 @@ function updateDiagnostic(container: HTMLElement, group: SettingsGroup): void {
     content.dataset.signature = signature;
     content.replaceChildren(...items.map(item => {
       const block = node("div", `diagnostic ${item.kind}`);
-      block.append(node("strong", "diagnostic-heading", `⚠ ${item.heading}`), node("p", "", item.reason), node("p", "guidance", item.guidance));
+      const title = node("strong", "diagnostic-heading");
+      title.append(warningIcon(), item.heading);
+      block.append(title, node("p", "", item.reason), node("p", "guidance", item.guidance));
       return block;
     }));
   }

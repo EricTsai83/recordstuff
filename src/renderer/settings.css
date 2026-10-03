@@ -11,6 +11,10 @@
   --on-accent: light-dark(#fff, #192b50);
   --warning: light-dark(#745015, #f3ca82);
   --warning-surface: light-dark(#fff8eb, #373126);
+  /* The raised selection in a tab strip or segmented control; lighter than the track in both themes, as on macOS. */
+  --selected: light-dark(#fff, #5d5e65);
+  --selected-shadow: 0 1px 2px rgb(0 0 0 / .14), 0 0 0 .5px rgb(0 0 0 / .06);
+  --recording: light-dark(#d93025, #ff6b5e);
   --radius: 6px;
   /* One focus weight for every control and failure row (plan 047): about 0.3 mm, 1.5 px on Retina and 1 px at 1×, where 1.5 px would blur. */
   --focus-width: 1px;
@@ -24,20 +28,23 @@
 body { margin: 0; overflow: hidden; }
 main { height: 100dvh; max-width: 720px; margin: auto; padding: 22px 24px 0; display: flex; flex-direction: column; }
 #hint, .note, .section-footnote, .capture-help, .capture-timeout { color: var(--secondary); font-size: 12px; }
-#hint { flex: none; margin: 0 0 12px; }
+/* The recording lock: a banner rather than a gray line, so the dimmed controls below it are explained. */
+#hint { flex: none; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
+#hint::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--recording); }
 #settings { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .tabs { flex: none; display: flex; padding: 3px; gap: 3px; border-radius: 8px; background: var(--separator); margin-bottom: 16px; }
 /* Sized to their labels, never wrapping: three tabs fit the 380 pt minimum (plan 047). */
 .tabs button { flex: 1 1 auto; white-space: nowrap; border-color: transparent; background: transparent; padding: 4px 8px; }
-.tabs button[aria-selected="true"] { background: var(--surface); border-color: var(--border); }
+.tabs button[aria-selected="true"] { background: var(--selected); box-shadow: var(--selected-shadow); }
 /* Keyboard focus and scrollIntoView stop above the scroll hint below, not under it. */
 #settings-panel { flex: 1; min-height: 0; overflow-y: auto; padding: 3px 3px 24px; margin: 0; scrollbar-width: none; scroll-padding-bottom: 38px; }
-.section { margin-bottom: 16px; }
+.section { margin-bottom: 18px; }
 .section-heading { font-size: 12px; font-weight: 600; margin: 0 12px 6px; color: var(--secondary); }
 .inset-list { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; }
-.row { padding: 12px; }
+/* Every row is the same height whatever its control: the line is as tall as the tallest control. */
+.row { padding: 9px 12px; }
 .row + .row { border-top: 1px solid var(--separator); }
-.row-line { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.row-line { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 28px; }
 .group-label { font-weight: 500; min-width: 0; }
 .group-title { display: flex; align-items: center; gap: 3px; min-width: 0; }
 /* The ⓘ beside a label and the explanation it shows in the top layer. */
@@ -55,6 +62,7 @@ main { height: 100dvh; max-width: 720px; margin: auto; padding: 22px 24px 0; dis
 .info-popover[data-side="below"]::before { bottom: calc(100% + 1px); }
 .controls { display: flex; align-items: center; justify-content: flex-end; gap: 7px; max-width: 70%; min-width: 0; }
 select, button { font: inherit; color: inherit; background: var(--control); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 9px; max-width: 100%; }
+.controls > :is(select, button) { min-height: 26px; padding-block: 2px; }
 select { min-width: 0; text-overflow: ellipsis; }
 /* Only actionable hit areas advertise a click, including associated labels. */
 :is(button, select, .switch, .segment input) { cursor: pointer; }
@@ -70,19 +78,24 @@ select { min-width: 0; text-overflow: ellipsis; }
 /* A text disclosure has no border of its own: the line sits just off its text. */
 :root:not([data-input="pointer"]):not([data-window="inactive"]) .result-technical > summary:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: var(--focus-gap); border-radius: 3px; }
 /* Accent-filled controls: a checked switch, the selected segment, Confirm. */
-:root:not([data-input="pointer"]):not([data-window="inactive"]) :is(.switch:checked, .segment input:checked, #shortcut-confirm):focus-visible { outline-offset: var(--focus-gap); }
-.note { margin: 9px 0 0; }
-.row > button { margin-top: 9px; }
+:root:not([data-input="pointer"]):not([data-window="inactive"]) :is(.switch:checked, #shortcut-confirm):focus-visible { outline-offset: var(--focus-gap); }
+/* A row's note reads as its subtitle: the output folder's path, a notification status. */
+.note { margin: 2px 0 0; }
+/* A row's secondary action (notification settings, a retry) is a text link under the row, not a second control. */
+.row > button[data-action] { display: block; margin: 4px 0 0; padding: 0; border: 0; background: transparent; color: var(--accent); font-size: 12px; text-align: start; }
+.row > button[data-action]:enabled:hover { text-decoration: underline; }
+:root:not([data-input="pointer"]):not([data-window="inactive"]) .row > button[data-action]:focus-visible { outline-offset: var(--focus-gap); border-radius: 3px; }
 .section-footnote { margin: 7px 12px 0; }
 .switch { appearance: none; flex: none; width: 32px; height: 19px; border: 1px solid var(--border); border-radius: 10px; background: var(--separator); margin: 1px; position: relative; }
 .switch::before { content: ""; position: absolute; width: 13px; height: 13px; top: 2px; left: 2px; background: var(--surface); border-radius: 50%; }
 .switch:checked { background: var(--accent); border-color: var(--accent); }
 .switch:checked::before { left: 15px; background: var(--on-accent); }
-.segments { display: flex; background: var(--control); border: 1px solid var(--border); border-radius: var(--radius); padding: 2px; gap: 2px; }
+/* Built like the tab strip: a recessed track with the choice raised, so the window has one way to show a selection. */
+.segments { display: flex; background: var(--separator); border-radius: 7px; padding: 2px; gap: 2px; }
 .segment { position: relative; display: flex; min-width: 0; }
 .segment input { appearance: none; position: absolute; inset: 0; margin: 0; border-radius: 4px; width: 100%; height: 100%; }
-.segment span { padding: 3px 8px; border-radius: 4px; white-space: nowrap; pointer-events: none; }
-.segment input:checked + span { color: var(--on-accent); background: var(--accent); }
+.segment span { padding: 2px 10px; border-radius: 5px; white-space: nowrap; pointer-events: none; }
+.segment input:checked + span { background: var(--selected); box-shadow: var(--selected-shadow); font-weight: 500; }
 .segment input:disabled:not(.saving-disabled) + span { opacity: .5; }
 .capture-area { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
 #shortcut-capture { flex: 1; min-height: 34px; background: var(--background); border-style: dashed; }
@@ -92,6 +105,8 @@ kbd { font: inherit; display: inline-block; min-width: 20px; padding: 1px 4px; m
 .diagnostics { margin-top: 10px; border-left: 3px solid var(--warning); background: var(--warning-surface); padding: 9px 10px; border-radius: 3px; }
 .diagnostic + .diagnostic, .save-error:not([hidden]) { margin-top: 7px; }
 .diagnostic-heading, .save-error strong { color: var(--warning); display: block; font-size: 12px; }
+.diagnostic-heading { display: flex; align-items: center; gap: 5px; }
+.diagnostic-heading svg { flex: none; width: 13px; height: 13px; }
 .diagnostics p { margin: 4px 0; font-size: 12px; }
 .diagnostics button { margin-top: 7px; font-size: 12px; }
 .applying { color: var(--secondary); font-size: 12px; }
@@ -117,7 +132,9 @@ kbd { font: inherit; display: inline-block; min-width: 20px; padding: 1px 4px; m
   :root { --accent: Highlight; --warning: CanvasText; --border: ButtonBorder; --focus-width: 2px; }
   .switch, .segment input { appearance: auto; position: static; width: auto; height: auto; }
   .switch::before { display: none; }
-  .segment input:checked + span { color: CanvasText; background: Canvas; }
+  .segment input:checked + span { color: CanvasText; background: Canvas; box-shadow: none; }
+  .tabs button[aria-selected="true"] { box-shadow: none; border-color: Highlight; }
+  #hint::before { forced-color-adjust: none; background: CanvasText; }
   .diagnostics { border: 1px solid CanvasText; }
   .info-popover { border-color: CanvasText; box-shadow: none; }
 }

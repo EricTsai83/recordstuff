@@ -254,7 +254,7 @@ describe("update actions in General", () => {
 describe("countdown group (plan 040)", () => {
   it("offers Off, 3, 5 and 10 seconds as a segmented control after Screen, with the cancel note", () => {
     const countdown = group(idle, context, "countdown")!;
-    expect(countdown).toMatchObject({ label: "Countdown", control: "segmented", tab: "recording", section: "recording", noteKind: "explanation" });
+    expect(countdown).toMatchObject({ label: "Countdown", control: "segmented", tab: "recording", section: "countdown", noteKind: "explanation" });
     expect(countdown.choices.map((c) => [c.id, c.label, c.checked])).toEqual([["0", "Off", false], ["3", "3 s", true], ["5", "5 s", false], ["10", "10 s", false]]);
     expect(countdown).not.toHaveProperty("note");
     expect(countdown.info).toBe("Click the menu bar icon or press the shortcut to cancel.");
@@ -296,7 +296,7 @@ describe("countdown group (plan 040)", () => {
 describe("countdown sound (plan 046)", () => {
   it("is a switch directly after Countdown whose ⓘ says the tick is not recorded, in both languages", () => {
     const sound = group(idle, context, "countdownSound")!;
-    expect(sound).toMatchObject({ label: "Countdown sound", control: "switch", tab: "recording", section: "recording", noteKind: "explanation", enabled: true });
+    expect(sound).toMatchObject({ label: "Countdown sound", control: "switch", tab: "recording", section: "countdown", noteKind: "explanation", enabled: true });
     expect(sound.choices.map((c) => [c.id, c.label, c.checked])).toEqual([["on", "On", true], ["off", "Off", false]]);
     expect(sound).not.toHaveProperty("note");
     expect(sound.info).toBe("The tick is not recorded.");
@@ -421,11 +421,11 @@ describe("screen choice", () => {
 it("declares presentation without changing choice identities, and authorizes only fixed links", () => {
   const groups = settingsView(idle, context).groups;
   expect(groups.map(g => [g.id, g.control, g.section])).toEqual([
-    ["screen", "menu", "recording"], ["outputFolder", "menu", "recording"], ["countdown", "segmented", "recording"], ["countdownSound", "switch", "recording"],
-    ["videoQuality", "segmented", "recording"],
-    ["resolutionCap", "menu", "recording"], ["frameRate", "menu", "recording"],
-    ["hotkey", "menu", "hotkey"], ["notifications", "switch", "notifications"],
-    ["language", "segmented", "language"], ["appearance", "menu", "appearance"],
+    ["screen", "menu", "source"], ["outputFolder", "menu", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"],
+    ["videoQuality", "segmented", "video"],
+    ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
+    ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],
+    ["language", "segmented", "display"], ["appearance", "menu", "display"],
     ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"], ["about", "menu", "about"],
   ]);
   expect(group(idle, { ...context, notifications: false }, "notifications")?.noteKind).toBe("status");
@@ -617,7 +617,7 @@ describe("Recording failures tab (plan 047)", () => {
 describe("Output folder in Settings → Recording (plan 048)", () => {
   it("shows the path after Screen with Change… and Show in Finder through the tray's handlers", () => {
     const folder = group(idle, context, "outputFolder")!;
-    expect(folder).toMatchObject({ label: "Output folder", kind: "actions", tab: "recording", section: "recording", enabled: true, note: "~/recordings" });
+    expect(folder).toMatchObject({ label: "Output folder", kind: "actions", tab: "recording", section: "source", enabled: true, note: "~/recordings" });
     expect(folder.choices.map((c) => [c.id, c.label, c.enabled])).toEqual([["change", "Change…", true], ["reveal", "Show in Finder", true]]);
     expect(settingsAction(idle, context, "outputFolder", "change")).toBe("changeOutputDir");
     expect(settingsAction(idle, context, "outputFolder", "reveal")).toBe("openOutputDir");
@@ -639,6 +639,17 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
     const general = settingsView(idle, context).groups.filter((g) => g.tab === "general");
     expect(general.map((g) => g.id)).toEqual(["hotkey", "notifications", "language", "appearance", "updateChecks", "updates", "about"]);
     expect(general.find((g) => g.id === "updateChecks")?.sectionHeading).toBe("Updates");
+  });
+
+  it("heads each section once, on its first row, in both languages", () => {
+    const headings = (language: "en" | "zh-TW") => settingsView(idle, { ...context, language }).groups
+      .filter((g) => g.sectionHeading).map((g) => [g.id, g.sectionHeading]);
+    expect(headings("en")).toEqual([
+      ["screen", "Source and output"], ["countdown", "Before recording"], ["videoQuality", "Video"],
+      ["hotkey", "Shortcut and notifications"], ["language", "Language and appearance"], ["updateChecks", "Updates"],
+    ]);
+    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "影像", "快捷鍵與通知", "語言與外觀", "更新"]);
+    expect(group(idle, context, "updates")?.label).toBe("Manual check");
   });
 });
 

@@ -58,9 +58,27 @@ function group(
   const tab = ["screen", "outputFolder", "countdown", "countdownSound", "videoQuality", "resolutionCap", "frameRate"].includes(id) ? "recording" : "general";
   return { id, label, enabled, choices, tab,
     control: ["notifications", "updateChecks", "countdownSound"].includes(id) ? "switch" : ["countdown", "videoQuality", "language"].includes(id) ? "segmented" : "menu",
-    section: tab === "recording" ? "recording" : id === "updateChecks" ? "updates" : id,
+    section: SECTIONS[id] ?? id,
     noteKind: "explanation", ...(note === undefined ? {} : { note }) };
 }
+
+/** Related rows share an inset list; a section's first row carries its heading. */
+const SECTIONS: Record<string, string> = {
+  screen: "source", outputFolder: "source",
+  countdown: "countdown", countdownSound: "countdown",
+  videoQuality: "video", resolutionCap: "video", frameRate: "video",
+  hotkey: "controls", notifications: "controls",
+  language: "display", appearance: "display",
+  updateChecks: "updates", updates: "updates",
+};
+const SECTION_HEADINGS: Record<string, PlainMessageKey> = {
+  source: "Source and output",
+  countdown: "Before recording",
+  video: "Video",
+  controls: "Shortcut and notifications",
+  display: "Language and appearance",
+  updates: "Updates",
+};
 
 /** On, then Off, for a switch whose action carries the chosen value. */
 function switchChoices(language: Language, current: boolean, action: (value: boolean) => AppAction): Group["choices"] {
@@ -232,7 +250,7 @@ function hotkeyDiagnostics(ctx: AppContext, unavailable: string | undefined): No
 function updateChecksGroup(ctx: AppContext, enabled: boolean): Group {
   const language = ctx.language;
   return { ...group("updateChecks", t("Check for updates on launch", language), enabled,
-    switchChoices(language, ctx.updates.enabled, (value) => ({ setUpdateChecks: value }))), sectionHeading: t("Updates", language) };
+    switchChoices(language, ctx.updates.enabled, (value) => ({ setUpdateChecks: value }))) };
 }
 
 function updateActions(ctx: AppContext, enabled: boolean): Group {
@@ -257,7 +275,8 @@ function updateActions(ctx: AppContext, enabled: boolean): Group {
     : result?.kind === "available" ? t("Version {version} is available.", language, { version: result.version })
     : result?.kind === "failed" ? t("Could not check for updates.", language)
     : undefined;
-  return { ...group("updates", t("Updates", language), enabled, choices, note), kind: "actions", noteKind: "status" };
+  // Not "Updates" again: that is already the section's heading.
+  return { ...group("updates", t("Manual check", language), enabled, choices, note), kind: "actions", noteKind: "status" };
 }
 
 /**
@@ -303,6 +322,17 @@ function languageGroup(language: Language): Group {
 }
 
 function settingsGroups(state: RecordingState, ctx: AppContext): Group[] {
+  return withSectionHeadings(ungroupedSettings(state, ctx), ctx.language);
+}
+
+function withSectionHeadings(groups: Group[], language: Language): Group[] {
+  return groups.map((group, index) => {
+    const heading = group.section === undefined ? undefined : SECTION_HEADINGS[group.section];
+    return heading && groups[index - 1]?.section !== group.section ? { ...group, sectionHeading: t(heading, language) } : group;
+  });
+}
+
+function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
   const unlocked = preferencesUnlocked(state);
   return [
     screenGroup(ctx, unlocked),
