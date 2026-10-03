@@ -1,19 +1,27 @@
 {
-  "version": "1.1.1",
-  "tag": "v1.1.1",
-  "sourceCommit": "1dd675c47161e987eccfdf6a38ca2272d7f5f3d6",
-  "publishedAt": "2026-09-28T15:15:17Z",
+  "version": "1.2.0",
+  "tag": "v1.2.0",
+  "sourceCommit": "c19d5eb57c7ba18d8c1c83acf5950af31f544c8b",
+  "publishedAt": "2026-10-03T12:30:04Z",
   "platform": "darwin-arm64",
   "architecture": "arm64",
   "dmg": {
-    "name": "RecordStuff-1.1.1-arm64-selfsigned.dmg",
-    "size": 127402912,
-    "sha256": "64aca9703ac46aaa2fd45932c42160505bdc2e6f4c5ec27358af37a73dbce5f2",
-    "url": "https://github.com/EricTsai83/recordstuff/releases/download/v1.1.1/RecordStuff-1.1.1-arm64-selfsigned.dmg"
+    "name": "RecordStuff-1.2.0-arm64-selfsigned.dmg",
+    "size": 127411677,
+    "sha256": "f1c4bcbb2408735c9f9ea7f59d1d38e889f99c441fe91a7fccd0f2d5b6d6e940",
+    "url": "https://github.com/EricTsai83/recordstuff/releases/download/v1.2.0/RecordStuff-1.2.0-arm64-selfsigned.dmg"
   },
-  "sha256sumsUrl": "https://github.com/EricTsai83/recordstuff/releases/download/v1.1.1/SHA256SUMS",
-  "releaseJsonUrl": "https://github.com/EricTsai83/recordstuff/releases/download/v1.1.1/release.json",
-  "releaseUrl": "https://github.com/EricTsai83/recordstuff/releases/tag/v1.1.1",
-  "notesUrl": "https://github.com/EricTsai83/recordstuff/releases/tag/v1.1.1",
-  "verifiedAt": "2026-09-28T15:16:09.847Z"
+  "sha256sumsUrl": "https://github.com/EricTsai83/recordstuff/releases/download/v1.2.0/SHA256SUMS",
+  "windows": {
+    "platform": "win32-x64",
+    "name": "RecordStuff-1.2.0-x64-unsigned-setup.exe",
+    "size": 100296976,
+    "sha256": "63a3991c57c08bd8f5fe98c9f6b199cedb1318e63022ce7891c27f1aff8b3ff8",
+    "url": "https://github.com/EricTsai83/recordstuff/releases/download/v1.2.0/RecordStuff-1.2.0-x64-unsigned-setup.exe",
+    "recordUrl": "https://github.com/EricTsai83/recordstuff/releases/download/v1.2.0/release-win32-x64.json"
+  },
+  "releaseJsonUrl": "https://github.com/EricTsai83/recordstuff/releases/download/v1.2.0/release.json",
+  "releaseUrl": "https://github.com/EricTsai83/recordstuff/releases/tag/v1.2.0",
+  "notesUrl": "https://github.com/EricTsai83/recordstuff/releases/tag/v1.2.0",
+  "verifiedAt": "2026-10-03T12:31:20.711Z"
 }

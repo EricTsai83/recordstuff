@@ -15,9 +15,13 @@ Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前
 [官方網站](https://record.ericts.com) · [下載頁](https://record.ericts.com/download) · [使用說明](https://record.ericts.com/help)（網站為英文）。
 
 <!-- release-download:start -->
-下載 **[RecordStuff 1.1.1：macOS Apple silicon（arm64）](https://github.com/EricTsai83/recordstuff/releases/download/v1.1.1/RecordStuff-1.1.1-arm64-selfsigned.dmg)**（127,402,912 bytes）。[英文發行說明](https://github.com/EricTsai83/recordstuff/releases/tag/v1.1.1) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v1.1.1/SHA256SUMS) · [最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)。
+下載 **[RecordStuff 1.2.0：macOS Apple silicon（arm64）](https://github.com/EricTsai83/recordstuff/releases/download/v1.2.0/RecordStuff-1.2.0-arm64-selfsigned.dmg)**（127,411,677 bytes）。[英文發行說明](https://github.com/EricTsai83/recordstuff/releases/tag/v1.2.0) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v1.2.0/SHA256SUMS) · [最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)。
 
-SHA-256：`64aca9703ac46aaa2fd45932c42160505bdc2e6f4c5ec27358af37a73dbce5f2`。
+SHA-256：`f1c4bcbb2408735c9f9ea7f59d1d38e889f99c441fe91a7fccd0f2d5b6d6e940`。
+
+Windows：**[RecordStuff 1.2.0：Windows x64](https://github.com/EricTsai83/recordstuff/releases/download/v1.2.0/RecordStuff-1.2.0-x64-unsigned-setup.exe)**（100,296,976 bytes），未簽章、由 CI 建置；錄影尚未在 Windows 實機上驗證。
+
+SHA-256：`63a3991c57c08bd8f5fe98c9f6b199cedb1318e63022ce7891c27f1aff8b3ff8`。
 <!-- release-download:end -->
 
 1.0.0 已由 CI 建置、簽署、發布並重新驗證公開下載。本機錄影與 QuickTime 播放使用該 tag 原始碼檢查；詳見 [1.0.0 證據與未測項目](docs/zh-TW/verification/releases/1.0.0.md)。
