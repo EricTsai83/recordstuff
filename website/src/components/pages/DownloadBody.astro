@@ -101,6 +101,8 @@ const windows = release.windows;
     font-weight: 500;
     font-size: 1.35rem;
     letter-spacing: -0.01em;
+    /* The home page links to these headings; clear the sticky nav as .prose h2 does. */
+    scroll-margin-top: calc(var(--nav-h) + 16px);
   }
   .platform-note,
   .platform-fine {
