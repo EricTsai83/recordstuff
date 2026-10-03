@@ -52,6 +52,12 @@ it("ends a round with not-run cases blocked, unless a judged case failed", () =>
   expect(round([pass("a"), pass("b")])).toEqual({ outcome: "pass", reasons: [] });
 });
 
+it("keeps a locked round blocked but still names a fixture process that did not exit cleanly", () => {
+  expect(round([pass("a")], undefined, { locked: true })).toEqual({ outcome: "blocked", reasons: ["the screen locked during the round"] });
+  expect(round([pass("a")], undefined, { locked: true, processClean: false })).toEqual({ outcome: "blocked",
+    reasons: ["the screen locked during the round", "the fixture's process did not exit cleanly; see cleanup.json"] });
+});
+
 it("classifies a capture that threw as blocked only when the shown window was inactive or hidden at that moment", () => {
   const capture = (window: WindowState | undefined, shown = true): FixtureFailure =>
     ({ error: "UnknownVizError", screenshot: "focus-tab-en-light-minimum.png", window, shown, frontmost: "ChatGPT" });

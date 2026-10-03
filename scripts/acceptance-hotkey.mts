@@ -86,7 +86,7 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (arg === "--no-open-material") openMaterial = false;
   else if (arg === "--skip-cancel") cancelCase = false;
   else if (arg === "--countdown-sound") countdownSound = true;
-  else if (arg === "--out") outDir = argv[++i];
+  else if (arg === "--out" && argv[i + 1] !== undefined && !argv[i + 1]!.startsWith("--")) outDir = argv[++i];
   else {
     console.error("usage: pnpm acceptance [-- --seconds N] [--no-open-material] [--skip-cancel] [--countdown-sound] [--out <dir>]");
     process.exit(2);
@@ -551,7 +551,12 @@ async function main(): Promise<void> {
     const passed = !runError && cleanupErrors.length === 0;
     if (!fs.existsSync(report)) fs.writeFileSync(report, "# Global shortcut acceptance\n");
     fs.appendFileSync(report, `\n\n## Final result (including cleanup)\n\nInput context: [input-diagnostics.json](input-diagnostics.json). Run events: [events.log](events.log). App callbacks: [app-session.log](app-session.log).\n\n${desktop.lockedAt ? "BLOCKED" : passed ? "PASS" : "FAIL"}\n\n${desktop.summary}\n\n${runError ? `Run: ${String(runError)}\n` : ""}Cleanup: ${cleanupErrors.length ? cleanupErrors.join("; ") : "complete; RecordStuff exited"}\n`);
-    if (desktop.lockedAt) { console.error(`✗ ${desktop.summary}`); process.exit(DESKTOP_BLOCKED_EXIT); }
+    if (desktop.lockedAt) {
+      console.error(`✗ ${desktop.summary}`);
+      // Blocked still names what cleanup left behind, such as the countdown sound to set back by hand.
+      if (cleanupErrors.length) console.error(`✗ cleanup: ${cleanupErrors.join("; ")}`);
+      process.exit(DESKTOP_BLOCKED_EXIT);
+    }
     if (!passed) fail([runError && String(runError), ...cleanupErrors].filter(Boolean).join("; "));
   }
   console.log("✅ shortcut acceptance and cleanup passed");

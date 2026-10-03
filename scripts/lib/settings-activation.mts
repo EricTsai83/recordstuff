@@ -96,11 +96,12 @@ export function settingsOutcome(input: {
   locked: boolean;
 }): { outcome: SettingsOutcome; reasons: string[] } {
   const { cases, failure } = input;
-  if (input.locked) return { outcome: "blocked", reasons: ["the screen locked during the round"] };
+  const unclean = input.processClean ? [] : ["the fixture's process did not exit cleanly; see cleanup.json"];
+  // A lock blocks the round, but a fixture left running is still named.
+  if (input.locked) return { outcome: "blocked", reasons: ["the screen locked during the round", ...unclean] };
   const failed = cases.filter(result => !result.ok && !result.notRun);
   const notRun = cases.filter(result => result.notRun);
-  const reasons: string[] = [];
-  if (!input.processClean) reasons.push("the fixture's process did not exit cleanly; see cleanup.json");
+  const reasons: string[] = [...unclean];
   const expected = expectedFixtureExit(cases, failure);
   if (input.exit !== expected) reasons.push(`the fixture exited ${input.exit ?? "by signal"}, not ${expected}`);
   if (failed.length) reasons.push(`${failed.length} case${failed.length === 1 ? "" : "s"} failed`);

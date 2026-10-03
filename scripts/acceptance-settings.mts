@@ -36,8 +36,8 @@ const TIMEOUT_MS = 90_000;
 const argv = process.argv.slice(2).filter((arg, index) => !(index === 0 && arg === "--"));
 let outDir: string | undefined;
 for (let i = 0; i < argv.length; i += 1) {
-  if (argv[i] === "--out") outDir = argv[++i];
-  else fail(`Unknown argument ${argv[i]}`);
+  if (argv[i] === "--out" && argv[i + 1] !== undefined && !argv[i + 1]!.startsWith("--")) outDir = argv[++i];
+  else fail(argv[i] === "--out" ? "--out needs a directory" : `Unknown argument ${argv[i]}`);
 }
 
 /** Exit 2 means blocked (a missing prerequisite or a locked desktop); 1 means the round ran and failed. */
@@ -129,6 +129,6 @@ const report = [
 fs.writeFileSync(path.join(dir, "report.md"), report);
 
 console.log(`\n${passed}/${cases.length} cases passed, ${notRun} not run. Evidence: ${dir}`);
-if (desktop.lockedAt) console.error(desktop.summary);
+if (desktop.lockedAt) console.error(`${desktop.summary}${verdict.reasons.length > 1 ? ` Also: ${verdict.reasons.slice(1).join("; ")}.` : ""}`);
 else if (verdict.outcome !== "pass") console.error(`${verdict.outcome === "blocked" ? "BLOCKED" : "FAILED"}: ${verdict.reasons.join("; ")}.`);
 process.exit(verdict.outcome === "blocked" ? DESKTOP_BLOCKED_EXIT : verdict.outcome === "pass" ? 0 : 1);

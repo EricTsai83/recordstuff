@@ -20,11 +20,15 @@ let signalName: keyof typeof INTERRUPT_EXIT | undefined;
 const interrupt = (name: keyof typeof INTERRUPT_EXIT) => (): void => { signalName ??= name; controller.abort(); };
 process.on("SIGINT", interrupt("SIGINT"));
 process.on("SIGTERM", interrupt("SIGTERM"));
-/** After an interrupt the round is neither pass nor fail: 130/143 once the fixture's group is gone, 1 when it survived. */
-async function exitIfInterrupted(execution: { groupGone: boolean }): Promise<void> {
+/**
+ * After an interrupt the round is neither pass nor fail: 130/143 once the fixture's group is gone, 1 when it survived.
+ * Without an execution the interrupt came during the history fixture's build, when no group exists; a signal
+ * cannot be handled between the loop's runs, which pass from one to the next without yielding to the event loop.
+ */
+async function exitIfInterrupted(execution?: { groupGone: boolean }): Promise<void> {
   if (!controller.signal.aborted) return;
-  console.error(`Interrupted: fixture stopped. Evidence: ${dir}`);
-  process.exit(await interruptExitCode(signalName ?? "SIGINT", async () => execution.groupGone ? [] : ["the fixture's process group"]));
+  console.error(`Interrupted${execution ? ": fixture stopped" : " between fixtures"}. Evidence: ${dir}`);
+  process.exit(await interruptExitCode(signalName ?? "SIGINT", async () => execution?.groupGone === false ? ["the fixture's process group"] : []));
 }
 const require = createRequire(import.meta.url);
 const results = [];
@@ -47,6 +51,7 @@ for (const mode of ["copy", "cleanup", "result"]) {
 // Plan 036: unsaved history through the same production quit wiring.
 {
   const historyFixture = await buildFixture("history-quit", dir);
+  await exitIfInterrupted();
   const output = path.join(dir, "history"); fs.mkdirSync(output);
   const logFd = fs.openSync(path.join(output, "electron.log"), "w");
   try {
