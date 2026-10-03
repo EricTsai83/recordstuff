@@ -24,7 +24,7 @@ import { links, release } from "../../lib/release";
            Tucked into the scene's corner and shown on hover: WCAG 2.2.2 asks for a way to stop the loop, not for it to compete with the demo.
            Its ring fills once per loop, so it also tells how far the story has come. -->
       <button class="scene-toggle" type="button" data-scene-toggle data-pause={hero.pauseScene} data-play={hero.playScene} aria-label={hero.pauseScene} title={hero.pauseScene} hidden>
-        <svg class="scene-toggle-ring" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="13" class="scene-toggle-track" /><circle cx="14" cy="14" r="13" pathLength="100" class="scene-toggle-progress" data-scene-progress /></svg>
+        <span class="scene-toggle-ring" aria-hidden="true"><span class="scene-toggle-progress" data-scene-progress></span></span>
         <svg class="scene-toggle-pause" viewBox="0 0 10 10" aria-hidden="true"><rect x="2" y="1.5" width="2" height="7" rx="0.5" /><rect x="6" y="1.5" width="2" height="7" rx="0.5" /></svg>
         <svg class="scene-toggle-play" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.8v6.4a.5.5 0 0 0 .77.42l4.9-3.2a.5.5 0 0 0 0-.84l-4.9-3.2A.5.5 0 0 0 3 1.8z" /></svg>
       </button>
@@ -61,7 +61,7 @@ import { links, release } from "../../lib/release";
     };
     // The ring takes its length and position from the scene's own clock, so the loop's timing lives in
     // DesktopScene alone; once aligned, both pause and resume on the same attribute changes and stay together.
-    const progress = toggle.querySelector<SVGElement>("[data-scene-progress]");
+    const progress = toggle.querySelector<HTMLElement>("[data-scene-progress]");
     const clock = frame.querySelector<SVGElement>(".ds-camera");
     const syncProgress = (): void => {
       if (!progress || !clock) return;
@@ -185,23 +185,32 @@ import { links, release } from "../../lib/release";
    * that grows from twelve o'clock through one loop of the scene. Linear, so
    * the arc reads as elapsed time. The script sets the duration from the
    * scene; it stops with the scene, off-screen or paused.
+   *
+   * The arc is a full ring revealed by a conic mask whose edge fades over 16°.
+   * One loop moves the tip only a few pixels a second, and a hard tip lit one
+   * pixel after another, so it seemed to tick; the fade spreads each step over
+   * the pixels behind the tip, which brighten together. The mask sweeps past
+   * 360° by the fade's width, so the ring closes as the loop ends. The 0.25 px
+   * inset keeps the ring just inside the disc's edge.
    */
+  @property --scene-sweep {
+    syntax: "<angle>";
+    inherits: false;
+    initial-value: 0deg;
+  }
   .scene-toggle-ring {
     position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    transform: rotate(-90deg);
-    fill: none;
-    stroke-width: 1.5;
-  }
-  .scene-toggle-track {
-    stroke: var(--border-strong);
+    inset: 0.25px;
+    border: 1.5px solid var(--border-strong);
+    border-radius: 50%;
   }
   .scene-toggle-progress {
-    stroke: currentColor;
-    stroke-dasharray: 100;
-    stroke-dashoffset: 100;
+    position: absolute;
+    inset: -1.5px;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+    -webkit-mask: conic-gradient(#000 calc(var(--scene-sweep) - 16deg), transparent var(--scene-sweep));
+    mask: conic-gradient(#000 calc(var(--scene-sweep) - 16deg), transparent var(--scene-sweep));
     animation: scene-progress linear infinite;
   }
   [data-offscreen] + .scene-toggle .scene-toggle-progress,
@@ -210,7 +219,7 @@ import { links, release } from "../../lib/release";
   }
   @keyframes scene-progress {
     to {
-      stroke-dashoffset: 0;
+      --scene-sweep: 376deg;
     }
   }
   .scene-toggle-play,
