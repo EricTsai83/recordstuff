@@ -94,6 +94,7 @@ export const SETTINGS_CHANNELS = {
   read: "settings:read",
   choose: "settings:choose",
   changed: "settings:changed",
+  ready: "settings:ready",
 } as const;
 export interface SettingsChoiceResult {
   view: SettingsView;
@@ -109,4 +110,6 @@ export interface SettingsBridge {
   capture(armed: boolean): Promise<SettingsView>;
   choose(group: string, choice: string): Promise<SettingsChoiceResult>;
   onChanged(callback: (view: SettingsView) => void): () => void;
+  /** The page has painted its first content (or its failed read): a new window may be shown now. */
+  ready(): Promise<void>;
 }

@@ -28,7 +28,7 @@ it("reads a shortcut failure once and not again when the editor closes", async (
     current = armed ? view({ capturing: true }) : structuredClone(afterCapture);
     return current;
   });
-  window.settings = { read: async () => current, capture, choose: vi.fn(), onChanged: (cb) => { push = cb; return () => {}; } };
+  window.settings = { read: async () => current, capture, choose: vi.fn(), ready: async () => {}, onChanged: (cb) => { push = cb; return () => {}; } };
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();

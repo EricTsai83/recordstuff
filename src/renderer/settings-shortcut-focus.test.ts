@@ -22,7 +22,7 @@ it("keeps a candidate when Tab or VoiceOver moves focus to Confirm, and ends cap
     current.groups[0]!.capturing = armed;
     return current;
   });
-  window.settings = { read: async () => current, capture, choose: vi.fn(), onChanged: () => () => {} };
+  window.settings = { read: async () => current, capture, choose: vi.fn(), ready: async () => {}, onChanged: () => () => {} };
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();

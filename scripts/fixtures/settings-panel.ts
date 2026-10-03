@@ -158,6 +158,8 @@ let holdSaves = false;
 const heldSaves: Array<() => void> = [];
 const pendingSaveCount = (): number => heldSaves.length;
 ipcMain.handle("settings:read", () => view(language));
+// The fixture shows its window itself, when a case needs it active.
+ipcMain.handle("settings:ready", () => {});
 ipcMain.handle("settings:capture", (_event, armed: boolean) => {
   if (!captureView) return view(language);
   captureView = structuredClone(captureView);
@@ -296,8 +298,8 @@ async function run() {
   const compactHeader = await read<boolean>(window, `!document.querySelector(".app-icon") && document.getElementById("title").classList.contains("visually-hidden") && document.getElementById("hint").hidden`);
   record("content starts with tabs without duplicate branding or autosave hint", compactHeader, String(compactHeader));
   record(
-    "the preload exposes capture/read/choose/onChanged and nothing else",
-    JSON.stringify(rendered.bridge) === '["capture","choose","onChanged","read"]',
+    "the preload exposes capture/read/choose/onChanged/ready and nothing else",
+    JSON.stringify(rendered.bridge) === '["capture","choose","onChanged","read","ready"]',
     JSON.stringify(rendered.bridge),
   );
   record(

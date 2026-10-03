@@ -18,7 +18,7 @@ it("refuses Ctrl+Q and a chord without Ctrl in Windows words, and offers the mac
     return structuredClone(current);
   });
   const choose = vi.fn(async () => ({ view: structuredClone(current), applied: true }));
-  window.settings = { read: async () => structuredClone(current), capture, choose, onChanged: () => () => {} };
+  window.settings = { read: async () => structuredClone(current), capture, choose, ready: async () => {}, onChanged: () => () => {} };
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();

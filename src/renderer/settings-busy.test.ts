@@ -31,7 +31,7 @@ it("keeps a running action focusable, ignores its second activation and leaves f
     await new Promise<void>((resolve) => { finish = resolve; });
     return { view: current, applied: true };
   });
-  window.settings = { read: async () => current, capture: async () => current, choose, onChanged: (cb) => { push = cb; return () => {}; } };
+  window.settings = { read: async () => current, capture: async () => current, choose, ready: async () => {}, onChanged: (cb) => { push = cb; return () => {}; } };
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();

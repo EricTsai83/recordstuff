@@ -1,7 +1,7 @@
 /**
  * The settings panel's only door to main (docs/system-design/desktop.md):
- * read the current view, choose one offered option, arm the shortcut editor
- * and subscribe to pushes.
+ * read the current view, choose one offered option, arm the shortcut editor,
+ * subscribe to pushes and say when the first content is painted.
  * No Node API and no generic IPC reaches the page.
  */
 import { contextBridge, ipcRenderer } from "electron";
@@ -18,5 +18,6 @@ const bridge: SettingsBridge = {
     ipcRenderer.on("settings:changed", listener);
     return () => ipcRenderer.removeListener("settings:changed", listener);
   },
+  ready: () => ipcRenderer.invoke("settings:ready"),
 };
 contextBridge.exposeInMainWorld("settings", bridge);

@@ -25,7 +25,7 @@ it("names no internal key for an unusable one, and states a refused combination 
     return { view: current, applied: false, failure: "This combination is reserved for Settings.", refused: true as const };
   });
   let push!: (next: SettingsView) => void;
-  window.settings = { read: async () => current, capture, choose, onChanged: cb => { push = cb; return () => {}; } };
+  window.settings = { read: async () => current, capture, choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();

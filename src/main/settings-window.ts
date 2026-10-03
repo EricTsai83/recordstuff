@@ -21,6 +21,8 @@ import { translate } from "../shared/i18n";
 import type { AppAction, AppContext } from "./ui-model";
 
 const HISTORY_PAGE_ROWS = 50;
+/** How long a painted page that never reports its content may stay hidden: a broken page still opens. */
+const REVEAL_FALLBACK_MS = 1000;
 
 export interface SettingsWindowOptions {
   state: () => RecordingState;
@@ -58,8 +60,10 @@ export class SettingsWindow {
   private lease: CaptureLease | undefined;
   private captureTimedOut = false;
   private window: BrowserWindow | undefined;
-  /** The current window painted its first frame; before that, `ready-to-show` shows it. */
+  /** The current window was shown with its content; before that, its own reveal shows it. */
   private painted = false;
+  /** Shows the current window once its page reports its first content, or `ready-to-show` plus a fallback. */
+  private reveal: (() => void) | undefined;
   private resizeTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingSize: WindowSize | undefined;
   /** One save at a time, in request order: a queued request is never a failure. */
@@ -91,6 +95,10 @@ export class SettingsWindow {
         this.options.capture?.(true);
       }
       return this.deliver(this.view());
+    });
+    ipcMain.handle(SETTINGS_CHANNELS.ready, (event) => {
+      authorize(event);
+      this.reveal?.();
     });
     ipcMain.handle(SETTINGS_CHANNELS.read, (event) => {
       authorize(event);
@@ -148,7 +156,7 @@ export class SettingsWindow {
     if (process.platform === "darwin") app.focus({ steal: true });
     const existing = this.window;
     if (existing && !existing.isDestroyed()) {
-      // A window still loading would show blank; its own `ready-to-show` shows and focuses it.
+      // A window still loading would show blank; its own reveal shows and focuses it.
       if (this.painted) {
         if (existing.isMinimized()) existing.restore();
         existing.show();
@@ -197,10 +205,19 @@ export class SettingsWindow {
     });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
-    window.once("ready-to-show", () => {
-      if (this.window === window) this.painted = true;
+    // `ready-to-show` is the first frame, painted before the page has read its view, so
+    // showing then flashes an empty window; the page reports when its content is painted.
+    let revealTimer: ReturnType<typeof setTimeout> | undefined;
+    const reveal = (): void => {
+      clearTimeout(revealTimer);
+      if (this.window !== window || this.painted || window.isDestroyed()) return;
+      this.painted = true;
       window.show();
       window.focus();
+    };
+    this.reveal = reveal;
+    window.once("ready-to-show", () => {
+      if (this.window === window && !this.painted) revealTimer = setTimeout(reveal, REVEAL_FALLBACK_MS);
     });
     window.on("blur", () => { this.release(this.leaseOf(window)); this.refresh(); });
     // A dead page cannot be revived in place; the next show creates a fresh
@@ -212,6 +229,7 @@ export class SettingsWindow {
       if (!window.isDestroyed()) window.destroy();
     });
     window.on("closed", () => {
+      clearTimeout(revealTimer);
       this.flushSize();
       this.retire(window);
     });
@@ -257,6 +275,7 @@ export class SettingsWindow {
     this.release(this.lease);
     ipcMain.removeHandler(SETTINGS_CHANNELS.capture);
     ipcMain.removeHandler(SETTINGS_CHANNELS.read);
+    ipcMain.removeHandler(SETTINGS_CHANNELS.ready);
     ipcMain.removeHandler(SETTINGS_CHANNELS.choose);
     this.window?.destroy();
     this.window = undefined;
@@ -307,7 +326,7 @@ export class SettingsWindow {
   /** Close and crash act only on their own window, never on its replacement. */
   private retire(window: BrowserWindow): void {
     this.release(this.leaseOf(window));
-    if (this.window === window) { this.window = undefined; this.captureTimedOut = false; }
+    if (this.window === window) { this.window = undefined; this.reveal = undefined; this.captureTimedOut = false; }
   }
 
   private async applyResult(group: string, choice: unknown, recipient: BrowserWindow): Promise<SettingsChoiceResult> {

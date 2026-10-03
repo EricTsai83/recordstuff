@@ -53,7 +53,7 @@ it("captures macOS Control+W as a shortcut while exact Command+W still closes", 
       { id: choice, label: `${choice} (custom)`, checked: true, enabled: true }];
     return { view: current, applied: true };
   });
-  window.settings = { read: async () => current, capture, choose, onChanged: cb => { push = cb; return () => {}; } };
+  window.settings = { read: async () => current, capture, choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();

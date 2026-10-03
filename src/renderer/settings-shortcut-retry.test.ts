@@ -17,7 +17,7 @@ it("moves focus to the shortcut select when a successful registration retry remo
   const registered = structuredClone(failed);
   delete registered.groups[0]!.actions;
   const choose = vi.fn(async () => ({ view: registered, applied: true }));
-  window.settings = { read: async () => failed, capture: async () => failed, choose, onChanged: () => () => {} };
+  window.settings = { read: async () => failed, capture: async () => failed, choose, ready: async () => {}, onChanged: () => () => {} };
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();

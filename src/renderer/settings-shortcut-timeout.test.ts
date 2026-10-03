@@ -19,7 +19,7 @@ it("shows and announces timeout, restores focus, translates and clears it on a n
       current.groups[0]!.capturing = armed;
       delete current.groups[0]!.captureTimedOut;
       return current;
-    }, onChanged: cb => { push = cb; return () => {}; } };
+    }, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();

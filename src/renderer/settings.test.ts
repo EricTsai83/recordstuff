@@ -28,7 +28,7 @@ it("arms only after main acknowledges, captures a combination, cancels and obeys
     current.groups[0]!.choices.push({ id: "Control+Alt+R", label: "⌃⌥R", enabled: true, checked: true });
     return { view: current, applied: true };
   });
-  window.settings = { read: async () => current, capture, choose, onChanged: cb => { push = cb; return () => {}; } };
+  window.settings = { read: async () => current, capture, choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();

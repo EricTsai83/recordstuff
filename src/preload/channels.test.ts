@@ -19,7 +19,7 @@ beforeEach(() => { electron.used.clear(); electron.listeners.clear(); vi.resetMo
 it("settings preload uses exactly the settings channels main handles and sends", async () => {
   await import("./settings");
   const bridge = electron.exposed.settings;
-  await bridge.capture(true); await bridge.read(); await bridge.choose("hotkey", "off");
+  await bridge.capture(true); await bridge.read(); await bridge.choose("hotkey", "off"); await bridge.ready();
   bridge.onChanged(() => {})();
   expect([...electron.used].sort()).toEqual(Object.values(SETTINGS_CHANNELS).sort());
 });

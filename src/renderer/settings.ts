@@ -45,6 +45,14 @@ let preview = "";
 /** The preview's keys, one box each: modifiers and the key, never the characters of a name like F12 or Ctrl. */
 let previewParts: string[] = [];
 let candidateToConfirm: string | undefined;
+/** Main keeps a new window hidden until this page has painted something to show. */
+let reportedReady = false;
+/** Once, after the frame holding the first content: the first `requestAnimationFrame` runs before that frame, the second after it. */
+function reportReady(): void {
+  if (reportedReady) return;
+  reportedReady = true;
+  requestAnimationFrame(() => requestAnimationFrame(() => { void window.settings.ready().catch(() => {}); }));
+}
 /** The first read failed and its error is shown in `#feedback`, made visible. */
 let startupFailed = false;
 /** `editor`: the shortcut editor refused the key just pressed; the error belongs to that editor and closes with it. */
@@ -883,6 +891,7 @@ function render(next: SettingsView): void {
     announce("");
   }
   draw();
+  reportReady();
   if (previous) {
     // Only news is read out: a language switch retranslates every note and row without changing them.
     const sameLanguage = previous.language === next.language;
@@ -1032,4 +1041,5 @@ void window.settings.read().then(render).catch(() => {
   document.documentElement.lang = documentLanguage(startupLanguage);
   feedback.classList.remove("visually-hidden");
   announce(translate("Could not open settings. Close this window and open it again.", startupLanguage));
+  reportReady();
 });

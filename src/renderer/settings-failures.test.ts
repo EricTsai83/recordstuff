@@ -46,7 +46,7 @@ it("keeps the history in its own tab, as collapsed day-grouped rows with one ope
   document.body.innerHTML = '<h1 id="title"></h1><p id="hint"></p><p id="feedback"></p><form id="settings"></form>';
   current = view([row("new"), reviewed("old", { day: "Yesterday", time: "9:12 AM", fileName: "2026-09-27 09-12-00.mp4",
     file: "/Users/me/Movies/RecordStuff/2026-09-27 09-12-00.mp4" }), reviewed("older", { day: "September 24" })]);
-  window.settings = { read: async () => current, capture: async () => current, choose, onChanged: (cb) => { push = cb; return () => {}; } };
+  window.settings = { read: async () => current, capture: async () => current, choose, ready: async () => {}, onChanged: (cb) => { push = cb; return () => {}; } };
   await import("./settings");
   await vi.waitFor(() => expect(tab("failures")).toBeTruthy());
 

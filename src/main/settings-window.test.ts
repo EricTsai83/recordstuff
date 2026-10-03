@@ -114,6 +114,8 @@ function crash(window: any): void {
   window.webContents.on.mock.calls.find((call: any[]) => call[0] === "render-process-gone")[1]({}, { reason: "crashed" });
 }
 const from = (window: any) => ({ sender: window.webContents, senderFrame: window.webContents.mainFrame });
+/** The page reports that its first content is painted. */
+const ready = (window: any) => mock.handlers.get("settings:ready")!(from(window));
 
 beforeEach(() => {
   mock.handlers.clear();
@@ -133,9 +135,13 @@ describe("settings window lifecycle", () => {
       expect(mock.focus).toHaveBeenCalledWith({ steal: true });
       expect(mock.focus).toHaveBeenCalledTimes(2);
     } else expect(mock.focus).not.toHaveBeenCalled();
-    // A second request while the page still loads must not show a blank window.
+    // A second request while the page still loads must not show a blank window,
+    // nor may its first frame, painted before the page has its view.
     expect(s.window().show).not.toHaveBeenCalled();
     s.window().events.get("ready-to-show")!();
+    expect(s.window().show).not.toHaveBeenCalled();
+    ready(s.window());
+    ready(s.window());
     expect(s.window().show).toHaveBeenCalledTimes(1);
     expect(s.window().focus).toHaveBeenCalledTimes(1);
     s.panel.show();
@@ -149,6 +155,39 @@ describe("settings window lifecycle", () => {
     });
     // The panel needs a language before its first read can fail.
     expect(s.window().loadFile).toHaveBeenCalledWith(expect.stringContaining("settings.html"), { query: { lang: "en" } });
+  });
+
+  it("shows a page that never reports its content one second after its first frame", () => {
+    vi.useFakeTimers();
+    try {
+      const s = setup();
+      s.panel.show();
+      const window = s.window();
+      vi.advanceTimersByTime(5000);
+      expect(window.show).not.toHaveBeenCalled();
+      window.events.get("ready-to-show")!();
+      vi.advanceTimersByTime(999);
+      expect(window.show).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(window.show).toHaveBeenCalledTimes(1);
+      expect(window.focus).toHaveBeenCalledTimes(1);
+      // Reported after the fallback: already shown, nothing more.
+      ready(window);
+      expect(window.show).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("a window closed before its fallback is never shown", () => {
+    vi.useFakeTimers();
+    try {
+      const s = setup();
+      s.panel.show();
+      const window = s.window();
+      window.events.get("ready-to-show")!();
+      window.destroy();
+      vi.advanceTimersByTime(1000);
+      expect(window.show).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
   });
 
   it("reopens after the user closes it, and pushes changes only while open", () => {
@@ -434,7 +473,7 @@ it("keeps capture through a confirmed commit, then ends only that capture", asyn
 
 it("restores a minimized panel, reuses it and creates one replacement after close", () => {
   const s = setup(); s.panel.show();
-  const first = s.window(); first.events.get("ready-to-show")!(); first.focus.mockClear();
+  const first = s.window(); ready(first); first.focus.mockClear();
   first.isMinimized.mockReturnValue(true);
   s.panel.show(); s.panel.show();
   expect(mock.windows).toHaveLength(1);
@@ -808,11 +847,12 @@ describe("crashed and replaced settings windows", () => {
     crash(old);
     expect(s.capture.mock.calls).toEqual([[true]]);
     expect(s.read(from(replacement)).groups.find((g: any) => g.id === "hotkey").capturing).toBe(true);
-    // The old window's late first paint marks nothing: the replacement still waits for its own.
+    // The old window's late first paint or content marks nothing: the replacement still waits for its own.
     old.events.get("ready-to-show")();
+    expect(() => ready(old)).toThrow("Invalid settings sender");
     s.panel.show();
     expect(replacement.focus).not.toHaveBeenCalled();
-    replacement.events.get("ready-to-show")();
+    ready(replacement);
     s.panel.show();
     expect(mock.windows).toHaveLength(2);
     expect(replacement.focus).toHaveBeenCalled();

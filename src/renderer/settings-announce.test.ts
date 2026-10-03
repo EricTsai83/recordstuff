@@ -34,7 +34,7 @@ it("reads out only news, as sentences of the panel's language, and keeps focus w
     }
     return { view: current, applied: false };
   });
-  window.settings = { read: async () => current, capture: async () => current, choose, onChanged: (cb) => { push = cb; return () => {}; } };
+  window.settings = { read: async () => current, capture: async () => current, choose, ready: async () => {}, onChanged: (cb) => { push = cb; return () => {}; } };
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
@@ -96,7 +96,7 @@ it("reads out a finished update check, even one whose result repeats the last", 
       ...(note ? [{ id: "open", label: "Open releases page…", enabled: true, checked: false, ...(busy ? { busy } : {}) }] : [])] });
   let current = view("en", { groups: [updates(false)] });
   let push!: (next: SettingsView) => void;
-  window.settings = { read: async () => current, capture: async () => current, choose: vi.fn(), onChanged: (cb) => { push = cb; return () => {}; } };
+  window.settings = { read: async () => current, capture: async () => current, choose: vi.fn(), ready: async () => {}, onChanged: (cb) => { push = cb; return () => {}; } };
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();

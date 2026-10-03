@@ -25,7 +25,7 @@ it("shows the explanation on hover and focus, pins it on click, closes it with E
   let current = view("en", "The tick is not recorded.");
   let push!: (next: SettingsView) => void;
   window.settings = { read: async () => current, capture: async () => current, choose: async () => ({ view: current, applied: true }),
-    onChanged: (cb) => { push = cb; return () => {}; } };
+    ready: async () => {}, onChanged: (cb) => { push = cb; return () => {}; } };
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("setting-countdownSound")).toBeTruthy());
 
