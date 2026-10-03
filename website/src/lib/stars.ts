@@ -23,13 +23,14 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-export function generateStars(options: { seed?: number; count?: number; width: number; skyBottom: number }): Star[] {
-  const { seed = 20260920, count = 170, width, skyBottom } = options;
+export function generateStars(options: { seed?: number; width: number; skyBottom: number }): Star[] {
+  const { seed = 20260920, width, skyBottom } = options;
   const rnd = mulberry32(seed);
   const stars: Star[] = [];
   // Milky Way axis: from lower-left to upper-right of the sky region.
   const axis = (x: number) => skyBottom * 0.85 - (x / width) * skyBottom * 0.55;
-  for (let i = 0; i < count; i += 1) {
+  // 170 draws; those outside the sky are skipped.
+  for (let i = 0; i < 170; i += 1) {
     const inBand = rnd() < 0.55;
     const x = rnd() * width;
     let y: number;
@@ -51,13 +52,13 @@ export function generateStars(options: { seed?: number; count?: number; width: n
   return stars;
 }
 
-export function starsToSvg(stars: Star[], className = "st"): string {
+export function starsToSvg(stars: Star[]): string {
   return stars
     .map((s) => {
-      const core = `<circle cx="${s.x}" cy="${s.y}" r="${s.r}" class="${className}" style="--o:${s.o}"/>`;
+      const core = `<circle cx="${s.x}" cy="${s.y}" r="${s.r}" class="st" style="--o:${s.o}"/>`;
       if (!s.bright) return core;
       const len = s.r * 3.2;
-      return `${core}<path d="M${s.x - len} ${s.y}H${s.x + len}M${s.x} ${s.y - len}V${s.y + len}" class="${className}-spark" style="--o:${s.o}"/>`;
+      return `${core}<path d="M${s.x - len} ${s.y}H${s.x + len}M${s.x} ${s.y - len}V${s.y + len}" class="st-spark" style="--o:${s.o}"/>`;
     })
     .join("");
 }

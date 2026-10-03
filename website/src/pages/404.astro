@@ -6,7 +6,7 @@ import { notFound } from "../content/site";
 
 <Layout title={`${notFound.title} — RecordStuff`} description={notFound.description} noindex>
   <TextPage title={notFound.title} description={notFound.description}>
-    <ul class="prose not-found-links">
+    <ul class="prose">
       {notFound.links.map((link) => <li><a href={link.href}>{link.label}</a></li>)}
     </ul>
   </TextPage>
