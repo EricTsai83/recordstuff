@@ -20,6 +20,9 @@ export const meta = {
 export const hero = {
   title: "One click. Recording.",
   primaryCta: "Download for macOS",
+  /** Replaces the macOS button for Windows visitors, only while the release carries the installer. */
+  windowsCta: "Download for Windows",
+  windowsNote: "not verified on Windows hardware",
   secondaryCta: "View source on GitHub",
   /** The demo loops for as long as the page is open; this control stops it (WCAG 2.2.2). */
   pauseScene: "Pause animation",
