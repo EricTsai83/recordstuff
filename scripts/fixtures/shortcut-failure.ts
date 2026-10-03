@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
+import { execFileSync } from 'node:child_process';
 import type { BrowserWindow as ElectronWindow, Menu, NotificationConstructorOptions } from 'electron';
 import type { SettingsGroup } from '../../src/shared/settings-panel';
 // Internal CommonJS hook: keep the assertion at this test-only boundary.
@@ -26,6 +27,16 @@ const settingsKey = 'CommandOrControl+Alt+,';
 const settingsPhase = drill === 'settings';
 const accelerator = 'Control+Shift+F20';
 const owned = new Map<string, () => void>();
+/** The Settings shortcut editor's limit in src/main/settings-window.ts. */
+const SHORTCUT_EDITOR_LIMIT_MS = 15_000;
+/** Names the app that took focus, so an interrupted round says so instead of failing without a reason. */
+const frontmostApp = (): string => {
+  if (process.platform !== 'darwin') return 'unknown';
+  try {
+    const info = execFileSync('/bin/sh', ['-c', 'lsappinfo info -only name "$(lsappinfo front)"'], { encoding: 'utf8' });
+    return /"LSDisplayName"="(.*)"/.exec(info)?.[1] ?? 'unknown';
+  } catch { return 'unknown'; }
+};
 const recordingAttempts = () => attempts.filter(attempt => attempt.accelerator === accelerator);
 let lastMenu: Menu | undefined;
 const settingsFile = path.join(temporary, 'userData/settings.json');
@@ -298,15 +309,29 @@ require(path.join(root, 'out/main/index.js'));
     for (const language of ['en', 'zh-TW']) {
       await click(`setting-language-${language}`);
       await waitFor(() => evaluate(`document.documentElement.lang === '${language === 'en' ? 'en' : 'zh-Hant'}' && !document.querySelector('.row[aria-busy="true"]')`), 'language committed');
-      await arm();
-      nativeKey('K', ['control']);
-      await waitFor(() => evaluate("!document.getElementById('shortcut-confirm').disabled"), 'input event creates an unconfirmed candidate');
-      await pause(15_100);
+      // Main starts the limit while `arm` runs, so time measured from before it never runs ahead of main's timer.
+      const armedAt = performance.now();
+      // The editor ends, by design, when Settings loses focus; another app taking it is an interrupted round, not a timeout.
+      const focusLosses: string[] = [];
+      const onBlur = () => focusLosses.push(`+${Math.round(performance.now() - armedAt)} ms to ${frontmostApp()}`);
+      const interruption = () => focusLosses.length ? `; Settings lost focus ${focusLosses.join(', ')}` : '';
+      panel!.on('blur', onBlur);
+      try {
+        await arm();
+        nativeKey('K', ['control']);
+        await waitFor(() => evaluate("!document.getElementById('shortcut-confirm').disabled"), 'input event creates an unconfirmed candidate');
+        await pause(armedAt + SHORTCUT_EDITOR_LIMIT_MS - 1000 - performance.now());
+        record(`shortcut editor stays open until its limit (${language})`, (await group()).capturing
+          && await evaluate("document.querySelector('.capture-timeout').hidden"), `open 1 s before the limit${interruption()}`);
+        // The timeout reaches the page through main's push and a render: wait for its outcome, not a fixed delay.
+        await pause(armedAt + SHORTCUT_EDITOR_LIMIT_MS - performance.now());
+        await waitFor(() => evaluate("!document.querySelector('.capture-timeout').hidden"), 'shortcut editor times out').catch(() => undefined);
+      } finally { panel!.off('blur', onBlur); }
       const expired = await group();
       const message = await evaluate<string>("document.querySelector('.capture-timeout').textContent");
       record(`shortcut timeout explains the unchanged value (${language})`, expired.captureTimedOut === true && !expired.capturing
         && await evaluate("!document.querySelector('.capture-timeout').hidden && document.activeElement.id === 'setting-hotkey'")
-        && message.includes(language === 'en' ? '15 seconds' : '15 秒') && savedKey() === accelerator && owned.size === 2, message);
+        && message.includes(language === 'en' ? '15 seconds' : '15 秒') && savedKey() === accelerator && owned.size === 2, `${message}${interruption()}`);
       fs.writeFileSync(path.join(reportDir, `shortcut-timeout-${language}.png`), (await panel!.webContents.capturePage()).toPNG());
       await arm();
       record(`new edit clears shortcut timeout (${language})`, !(await group()).captureTimedOut
