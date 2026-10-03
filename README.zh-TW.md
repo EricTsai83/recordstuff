@@ -2,11 +2,11 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-選單列上的一個錄影按鈕：點一下錄製一個螢幕（預設主螢幕）與系統音訊，再點一下停止並儲存 MP4。沒有一般主視窗，不需要帳號。
+選單列上的一個錄影按鈕：點一下錄影一個螢幕（預設主螢幕）與系統音訊，再點一下停止並儲存 MP4。沒有一般主視窗，不需要帳號。
 
 ## 平台狀態
 
-Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前只有 macOS 版本經過驗證。** 已測環境為 Apple M1 Pro、macOS 26、Electron 44.3，安裝產物為 arm64。自 1.1.1 之後的第一個版本起，每個版本另附未簽章的 Windows x64 安裝程式，由 CI 建置並檢查，但未在 Windows 實機上驗證：CI 會在 GitHub 的 Windows runner 上靜默安裝與解除安裝，並檢查版本、架構與檔案；螢幕擷取、系統音訊、通知與系統匣在 Windows 上仍未測試，部分 App 文字也仍以 macOS 為前提（例如「選單列」與「Mac 進入睡眠」）。Windows on Arm、Linux、Intel Mac 與其他 macOS 版本未驗證，也沒有發布版本；現有跨平台程式不代表錄製或安裝已通過。參見 [Electron 平台資訊](https://github.com/electron/electron#platform-support)。
+Electron 支援 Windows、Linux、macOS。**因設備限制，recordstuff 目前只有 macOS 版本經過驗證。** 已測環境為 Apple M1 Pro、macOS 26、Electron 44.3，安裝產物為 arm64。自 1.1.1 之後的第一個版本起，每個版本另附未簽章的 Windows x64 安裝程式，由 CI 建置並檢查，但未在 Windows 實機上驗證：CI 會在 GitHub 的 Windows runner 上靜默安裝與解除安裝，並檢查版本、架構與檔案；螢幕擷取、系統音訊、通知與系統匣在 Windows 上仍未測試，部分 App 文字也仍以 macOS 為前提（例如「選單列」與「Mac 進入睡眠」）。Windows on Arm、Linux、Intel Mac 與其他 macOS 版本未驗證，也沒有發布版本；現有跨平台程式不代表錄影或安裝已通過。參見 [Electron 平台資訊](https://github.com/electron/electron#platform-support)。
 
 交付目標是可下載的 macOS 自簽 App，以及尚未驗證的 Windows x64 安裝程式；不規劃 Apple 認證／公證與 Windows 程式碼簽章，也不以 Windows／Linux 驗收作為發布條件。
 
@@ -29,11 +29,11 @@ Windows x64 請執行 `RecordStuff-<version>-x64-unsigned-setup.exe`：這是只
 ## 使用方式
 
 1. 從 Applications 啟動，依提示允許螢幕與系統音訊錄製；授權未生效時重啟 App。
-2. 左鍵點選單列圖示，或在任何 App 中按 **⌘⇧1** 錄製所選螢幕與系統音訊，再點一次或再按一次停止。從「設定 → 錄影設定 → 螢幕」選擇螢幕；預設跟隨主螢幕。
+2. 左鍵點選單列圖示，或在任何 App 中按 **⌘⇧1** 錄影所選螢幕與系統音訊，再點一次或再按一次停止。從「設定 → 錄影 → 螢幕」選擇螢幕；預設跟隨主螢幕。
 3. 預設影片存在 `~/Movies/RecordStuff`；點存檔通知或用選單尋找檔案。
-4. 右鍵可開啟儲存位置、顯示 log 或結束。預設資料夾不存在時，開啟儲存位置會先建立它；不存在的自訂資料夾（例如在未連接的磁碟上）一律不重建，RecordStuff 會說明原因並提供「更改儲存位置」。開啟「設定」可連續調整螢幕、錄製品質、語言、外觀、通知、快捷鍵與更新檢查，設定視窗不會因選取而關閉。
+4. 右鍵可開啟儲存位置、顯示 log 或結束。預設資料夾不存在時，開啟儲存位置會先建立它；不存在的自訂資料夾（例如在未連接的磁碟上）一律不重建，RecordStuff 會說明原因並提供「更改儲存位置」。開啟「設定」可連續調整螢幕、錄影品質、語言、外觀、通知、快捷鍵與更新檢查，設定視窗不會因選取而關閉。
 
-**App 預設英文。** 從 **Settings → General → Language → 繁體中文** 切換，選擇會保存；錄製中切換不改動本次擷取設定。診斷日誌維持英文，macOS 原生權限提示依系統語言。
+**App 預設英文。** 從 **Settings → General → Language → 繁體中文** 切換，選擇會保存；錄影中切換不改動本次擷取設定。診斷日誌維持英文，macOS 原生權限提示依系統語言。
 
 | 設定 | 選項 | 預設 |
 | --- | --- | --- |
@@ -43,7 +43,7 @@ Windows x64 請執行 `RecordStuff-<version>-x64-unsigned-setup.exe`：這是只
 | 幀率 | 30／60 fps | 30；60 只在 macOS 開放 |
 | 快捷鍵 | ⌘⇧1（建議）／自訂快捷鍵／關閉 | ⌘⇧1；被其他 App 佔用時設定視窗會標示 |
 
-可從右鍵選單或 **⌘⌥,** 開啟設定。外觀提供跟隨系統／淺色／深色（預設跟隨系統）；通知預設開啟，也需要 macOS 允許。錄製中只能修改語言與外觀，其他設定鎖定。指定螢幕必須可用，App 不會默默改錄其他螢幕。每次擷取一個完整螢幕，沒有麥克風、視窗或區域選擇。
+可從右鍵選單或 **⌘⌥,** 開啟設定。外觀提供跟隨系統／淺色／深色（預設跟隨系統）；通知預設開啟，也需要 macOS 允許。錄影中只能修改語言與外觀，其他設定鎖定。指定螢幕必須可用，App 不會默默改錄其他螢幕。每次擷取一個完整螢幕，沒有麥克風、視窗或區域選擇。
 
 輸出 H.264／AAC MP4。音訊要求 256 kbps，並明確關閉語音處理；本機診斷錄音能保留高頻與左右聲道分離。實際位元率取決於編碼器與內容。擷取時要求的幀率略高於 30 或 60 fps，在測試的 Mac 上實測約 29.9 與 59.8 fps；60 fps 的檔案明顯較大。
 
@@ -51,7 +51,7 @@ Windows x64 請執行 `RecordStuff-<version>-x64-unsigned-setup.exe`：這是只
 
 [1.0.0 驗收](docs/zh-TW/verification/releases/1.0.0.md)檢查了 1920×1080 短錄影、存檔完整性與 QuickTime 播放；該輪未測完整原生設定／選單迴歸、主觀聽音、首次授權、長錄影與手動 DMG 安裝。較早的驗證涵蓋 Retina 擷取、權限復原、部分檔案保留、安裝與同身分更新；環境與限制仍記錄於[驗證紀錄](docs/zh-TW/verification/README.md)。
 
-- [System design](docs/zh-TW/system-design/README.md)：產品總覽、架構、錄製流程、桌面功能、函式細節、工具與決策。
+- [System design](docs/zh-TW/system-design/README.md)：產品總覽、架構、錄影流程、桌面功能、函式細節、工具與決策。
 - [驗證紀錄](docs/zh-TW/verification/README.md)：已取得證據與限制。
 - [剩餘計畫](plans/README.zh-TW.md)：計畫狀態與驗證索引；已完成或取消的計畫已移除。
 - [貢獻指南](docs/zh-TW/CONTRIBUTING.md)：開發環境、問題回報、測試與 PR 提交流程。
@@ -86,7 +86,7 @@ pnpm audio:quality -- record /tmp/audio-run-001 --repeat 3  # 音質迴歸測試
 
 ## 目錄
 
-src/main 是生命週期、錄製狀態機、寫檔、權限、原生 UI 與設定視窗；renderer 包含隱藏擷取宿主與設定面板；preload 轉交 MessagePort 並提供設定橋接；shared 是狀態、協定、品質及語言 catalog。scripts 放開發工具，resources 放素材與雙語安裝指南，docs/system-design 是英文正式設計，docs/zh-TW 是翻譯，docs/verification 是證據，plans 只放尚未完成工作，website 是官方網站（Astro，獨立套件，見 docs/zh-TW/system-design/tooling.md）。
+src/main 是生命週期、錄影狀態機、寫檔、權限、原生 UI 與設定視窗；renderer 包含隱藏擷取宿主與設定面板；preload 轉交 MessagePort 並提供設定橋接；shared 是狀態、協定、品質及語言 catalog。scripts 放開發工具，resources 放素材與雙語安裝指南，docs/system-design 是英文正式設計，docs/zh-TW 是翻譯，docs/verification 是證據，plans 只放尚未完成工作，website 是官方網站（Astro，獨立套件，見 docs/zh-TW/system-design/tooling.md）。
 
 影片與設定留在本機；更新檢查會連線至網站的靜態版本 feed，失敗時改查 GitHub Releases，不傳送安裝識別碼或遙測；沒有雲端後端或自動安裝。故障時盡力保留部分影片，不保證所有當機／斷電都可復原。
 
