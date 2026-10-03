@@ -50,6 +50,18 @@ it("shows the explanation on hover and focus, pins it on click, closes it with E
   expect(expanded()).toBe("true");
   popover.dispatchEvent(new MouseEvent("mouseleave")); await past();
   expect(expanded()).toBe("false");
+  // Crossing from the bridge onto the explanation, Chromium reports a leave with the pointer still on it:
+  // the explanation stays while it is hovered, and the real leave that follows closes it.
+  info.dispatchEvent(new MouseEvent("mouseenter"));
+  info.dispatchEvent(new MouseEvent("mouseleave")); popover.dispatchEvent(new MouseEvent("mouseenter"));
+  const hovered = vi.spyOn(popover, "matches").mockImplementation(function (this: Element, selector: string) {
+    return selector === ":hover" || Element.prototype.matches.call(this, selector);
+  });
+  popover.dispatchEvent(new MouseEvent("mouseleave")); await past();
+  expect(expanded()).toBe("true");
+  hovered.mockRestore();
+  popover.dispatchEvent(new MouseEvent("mouseleave")); await past();
+  expect(expanded()).toBe("false");
   // A click pins it through the pointer leaving; a second click closes it.
   info.dispatchEvent(new MouseEvent("mouseenter")); info.click(); info.dispatchEvent(new MouseEvent("mouseleave")); await past();
   expect(expanded()).toBe("true");

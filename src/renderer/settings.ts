@@ -363,6 +363,9 @@ function infoParts(id: string): [HTMLButtonElement, HTMLElement] {
   const leave = (): void => {
     clearTimeout(infoLeave);
     infoLeave = setTimeout(() => {
+      // Chromium reports a leave, and no enter, when the pointer crosses from the ::before bridge onto the
+      // explanation itself, so only a pointer over neither one closes it; a real leave follows and closes it then.
+      if (info.matches(":hover") || popover.matches(":hover")) return;
       if (openInfo?.popover === popover && !openInfo.pinned && document.activeElement !== info) hideInfo();
     }, 120);
   };
