@@ -4,6 +4,28 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 064 結案 — 2026-10-03
+
+Plan 064 讓同一個 tag 在 macOS DMG 旁一起發布 Windows x64 安裝檔。2026-10-03 維護者先確認沒有 Windows 機器，接著決定仍然發布，Windows 只由 GitHub Actions 檢查，流程與 Mac 相同（[設計決策](../system-design/decisions.md)）。耐久規則見[發布自動化](../system-design/releases.md#發布契約)、[交付](../system-design/delivery.md)、[簽章](../system-design/signing.md)、[桌面設計](../system-design/desktop.md#錄影快捷鍵)與[工具](../system-design/tooling.md)。[1.2.0](releases/1.2.0.md) 是第一個雙平台正式版，之前先以 [1.2.0-rc.1](releases/1.2.0-rc.1.md) 演練。
+
+- **決定。** 每位使用者的一鍵 NSIS（不需管理員權限、開始選單捷徑帶 AppUserModelID `com.ericts.record`、解除安裝保留使用者資料），只有 x64，不簽章，以 SHA256SUMS、`release-win32-x64.json` 與 build-provenance attestation 承擔完整性；Windows 失敗時整個 tag 失敗。除了 Electron 44 的 Windows 10 以外，不設 Windows 最低版本。
+- **建置與 CI。** `electron-builder.yml` 新增 `win`／`nsis` 與 `build/icon.ico`；`pnpm dist:win` 建置安裝檔；`.gitattributes` 與依平台處理的測試讓 `pnpm check` 在 Windows 上通過；`check.yml` 新增 `windows-2025` 上的 `check-windows`（`pnpm check`、`pnpm dist:win`、`release.mts windows-smoke`）。
+- **App。** Windows 上的更新檢查讀 GitHub latest release，並要求有 Windows 資產；`feedVersion` 與 `githubVersion` 接受的內容與已安裝的 macOS App 完全相同。Windows 文案改稱系統匣、電腦進入睡眠、預設播放裝置與 Ctrl；保留快捷鍵依平台而定，補上 Windows 編輯器的 `Control+Q` 能通過只列 Command 清單的缺口。macOS 文案不變。
+- **發布工具與 workflow。** 1.1.1 之後的版本帶五個資產（DMG、安裝檔、SHA256SUMS 與兩份紀錄）；`build-windows` 與 `verify-published-windows` 在發布前後檢查安裝檔（每位使用者安裝、一筆 HKCU 登記、版本、x64、`NotSigned`、系統匣 ICO、捷徑、`app.asar` hash、乾淨解除安裝）。workflow 名為「Release」，屬於 `recordstuff-delivery` group。
+- **網站與指南。** 下載頁、Help、Support、`resources/INSTALL.md`、兩份 README 與 release notes 都涵蓋 Windows、其 SmartScreen 步驟與只有 CI 的證據。
+
+### 驗證
+
+- CI：Check run 37040450544 在 `windows-2025` 上通過 `pnpm check`、`pnpm dist:win` 與 `windows-smoke` 閘門；run 37115590280（`5fae167`）、37118120707（`0fa2a0a`）與 37122157756（`c19d5eb`，即 1.2.0 原始碼）兩個 job 都通過。
+- 預發布：[run 37045588224](https://github.com/EricTsai83/recordstuff/actions/runs/37045588224) 為兩個平台建置、公開並重驗 `v1.2.0-rc.1`；其紀錄讓 package.json 維持 1.1.1，穩定版 manifest 與 README 都未變動。
+- 正式版：[run 37122799887](https://github.com/EricTsai83/recordstuff/actions/runs/37122799887) 建置並以 latest 公開 `v1.2.0`，通過 `verify-published` 與 `verify-published-windows`，紀錄寫回 main 並部署網站；網站的 `/release.json` 提供 1.2.0，下載頁同時連結 DMG 與安裝檔。
+- 每次打 tag 前的 macOS：`pnpm acceptance` 與 `pnpm acceptance:playback` 在乾淨且已推送的原始碼上通過（[1.2.0-rc.1](releases/1.2.0-rc.1.md#打-tag-前的本機驗收)、[1.2.0](releases/1.2.0.md#打-tag-前的本機驗收)）。
+- 已安裝的 macOS App：1.0.0 與 1.1.1 的更新解析器把線上 feed 與 GitHub release 讀為 1.2.0，已安裝的 1.0.0 記錄 `updates: available; remote 1.2.0`（[紀錄](releases/1.2.0.md#發布後已安裝-app-的更新檢查)）。設定仍是 version 3，歷史格式不變，因此 1.2.0 不需要資料 migration；1.2.0 原始碼讀取真實設定與九筆歷史紀錄時沒有任何警告。
+
+未驗證：Windows 實機上的一切。step 3 的案例（SmartScreen、AppUserModelID、首次執行提示、系統匣 ICO 與點擊、含畫面與系統音訊的錄影、`MediaRecorder` MP4、`restrictOwnAudio`、通知與檔案總管顯示、設定、單一執行個體、睡眠、結束、保留資料重新安裝）都在每份發布紀錄中列為未測試，035 的 N17 系統匣矩陣在有 Windows 機器前仍未結案。未觀察已安裝 App 的系統匣更新項目，也沒有執行已安裝的 1.1.1。在 1.2.0 之後執行比 1.1.0 更舊的 App，會刪掉它不認得的 `countdown` 與 `countdownSound` 設定並重設為預設值；1.1.0 與 1.1.1 會保留它們（只影響降版）。
+
+依決定豁免：Windows 實機回合（step 3）、從公開網址在實機安裝（step 8）與 Windows 驗收 runner（step 9）。
+
 ## Plan 065 結案 — 2026-10-03
 
 Plan 065 讓錄影快捷鍵與狀態列項目的左鍵點擊，可以在 start 持續一秒後取消它，和選單的「取消錄影」一樣。由 Claude 實作，Codex GPT-6.1 Sol review。在此之前，`Recorder.toggle()` 在 starting 期間忽略所有按鍵：因擷取請求未回應而等待 120 秒的 start 只能從選單取消，按鍵也不留 log；這段期間退出則要等擷取請求結束（曾經長達 286 秒）。耐久規則見[錄影設計](../system-design/recording.md#倒數)、[桌面設計](../system-design/desktop.md#錄影快捷鍵)、[驗收](../acceptance.md#依影響追加案例)與[工具](../system-design/tooling.md#tray-驗收)。

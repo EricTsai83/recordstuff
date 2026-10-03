@@ -4,7 +4,7 @@
 
 更新：2026-10-03。推送版本 tag 是唯一的發布動作，而且 tag 就是版本：CI 在一次執行中把它寫入建置、簽署、驗證、公開、重驗公開下載，並把事實回寫到 main。含 pipeline 內人工驗收閘門的 draft／promote 流程用於 [0.1.1](../verification/releases/0.1.1.md)，並在準備 0.1.2 的同一天退役；人工檢查改在打 tag 之前進行。[0.1.2](../verification/releases/0.1.2.md) 是此流程的第一個版本：從推送 tag 到公開不到三分鐘。
 
-依維護者 2026-10-03 的決定（[設計決策](decisions.md)），1.1.1 之後的每個版本（`scripts/lib/release-manifest.mts` 的 `LAST_MACOS_ONLY_VERSION`），同一個 tag 也會建置並發布未簽章的 Windows x64 安裝檔，流程與 Mac 相同：建置、過閘門、發布、匿名下載後再過一次閘門。它的閘門在 GitHub 的 Windows runner 上執行，沒有用到 Windows 實機，因此發布不驗證 Windows 上的擷取、系統音訊、通知或系統匣。截至本次更新，尚未發布任何雙平台版本；第一個（先預發布演練，再正式版）等維護者明確要求推送 tag。
+依維護者 2026-10-03 的決定（[設計決策](decisions.md)），1.1.1 之後的每個版本（`scripts/lib/release-manifest.mts` 的 `LAST_MACOS_ONLY_VERSION`），同一個 tag 也會建置並發布未簽章的 Windows x64 安裝檔，流程與 Mac 相同：建置、過閘門、發布、匿名下載後再過一次閘門。它的閘門在 GitHub 的 Windows runner 上執行，沒有用到 Windows 實機，因此發布不驗證 Windows 上的擷取、系統音訊、通知或系統匣。第一個雙平台版本是 2026-10-03 的 [1.2.0](../verification/releases/1.2.0.md)，之前先以 [1.2.0-rc.1](../verification/releases/1.2.0-rc.1.md) 演練。
 
 網站與 App 的分工、部署負責者及更新 feed 流程，見[交付設計圖](delivery.md)。
 
