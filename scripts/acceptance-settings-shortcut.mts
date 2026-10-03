@@ -86,7 +86,7 @@ try {
   const ax = osascriptAx(controller.signal);
   const settings = readAppSettings(APP_SETTINGS_PATH) ?? {};
   const language = isLanguage(settings["language"]) ? settings["language"] : "en";
-  const title = translate("RecordStuff - Settings", language);
+  const title = "RecordStuff";
   const settingsWindow = (snapshot: WindowSnapshot) => snapshot.windows.find(window => window.title === title);
   /** Polls the app's windows for up to 30 s, the skill's limit for one UI state. */
   const until = async (what: string, accept: (snapshot: WindowSnapshot) => boolean): Promise<WindowSnapshot> => {

@@ -6,7 +6,7 @@ import { DEFAULT_HOTKEY } from "../shared/hotkey";
 /** A retry that works removes its own button; focus must return to the shortcut card, not the page. */
 it("moves focus to the shortcut select when a successful registration retry removes its button", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><p id="hint"></p><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
   const failed: SettingsView = {
     language: "en", title: "Settings", hint: "", failure: "Could not apply this setting.",
     tabs: [{ id: "recording", label: "Recording" }, { id: "general", label: "General" }],

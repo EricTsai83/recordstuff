@@ -342,7 +342,7 @@ async function main(): Promise<number> {
       if (readRoles(appPid)["renderer"] !== 1) fail("Settings did not open: the shortcut was delivered but no Settings renderer is running");
       // The pre-warmed renderer of a launch without recordings counts as one too, so the window itself is the evidence.
       const { windows } = await osascriptAx(controller.signal).windows(appPid);
-      if (!windows.some((window) => window.title.startsWith("RecordStuff - "))) fail(`Settings did not open: RecordStuff shows no Settings window (${JSON.stringify(windows.map((window) => window.title))})`);
+      if (!windows.some((window) => window.title === "RecordStuff")) fail(`Settings did not open: RecordStuff shows no Settings window (${JSON.stringify(windows.map((window) => window.title))})`);
       await command("osascript", ["-e", 'tell application "Finder" to activate'], AbortSignal.timeout(5000));
       note("C. Settings open behind Finder; settling 10 s");
       await sleep(10_000);

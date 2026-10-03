@@ -1,12 +1,12 @@
 /**
  * Tray icon, right-click menu and notifications (docs/system-design/recording.md). This is a
  * projection of `RecordingState`; every decision lives in `recorder.ts`.
- * Left click toggles (`tray.on('click')`); right click pops a menu rebuilt
- * from the current state each time — never `setContextMenu`, which would make
- * macOS pop the menu on left click too. The menu is a flat list of commands:
+ * Left click opens the menu or toggles, as the user chose (`trayClick`, 2026-10-04); right click
+ * always pops the menu. The menu is rebuilt from the current state each time — never
+ * `setContextMenu`, which would make macOS pop it on every left click regardless of the choice. The menu is a flat list of commands:
  * preferences live in the settings window (docs/system-design/desktop.md).
  */
-import { Menu, Notification, Tray, app, nativeImage, type MenuItemConstructorOptions } from "electron";
+import { Menu, Notification, Tray, nativeImage, type MenuItemConstructorOptions } from "electron";
 import path from "node:path";
 import type { ErrorCode, RecordingState } from "../shared/state";
 import type { FrameRate } from "../shared/quality";
@@ -35,14 +35,6 @@ import {
 import { APP_NAME, type AppAction, type AppContext } from "./ui-model";
 import type { EarlyStop } from "../shared/session-record";
 
-/**
- * How long after a notification-click reveal the system's activation of this
- * app is still treated as part of that click. Measured on macOS 26.6: the
- * activation arrived ~110 ms after the click callback in local runs. This
- * heuristic bounds the retry; it cannot distinguish a user switch within the window.
- */
-export const ACTIVATION_WINDOW_MS = 1000;
-
 /** After waking, how often to check whether the user is back before showing held notifications (plan 050). */
 export const WAKE_CHECK_MS = 1000;
 /**
@@ -56,8 +48,8 @@ export interface TrayOptions {
   resourcesDir: string;
   context: () => AppContext;
   onToggle: () => void;
-  /** Show a saved file from its notification; main opens the output folder instead when the file is gone. */
-  revealSaved: (file: string) => Promise<void>;
+  /** Show a saved recording from its notification: the Recordings tab with it in view. */
+  showSaved: (file: string) => void;
   /** The permission notification's click, resolved against the permission state at click time. */
   permissionAction: () => void;
   onAction: (action: AppAction) => void;
@@ -90,7 +82,10 @@ export class AppTray {
     this.icons = loadIcons(options.resourcesDir, (message) => this.log(message));
     this.tray = new Tray(this.icons.idle);
     this.tray.setIgnoreDoubleClickEvents(true);
-    this.tray.on("click", () => options.onToggle());
+    this.tray.on("click", () => {
+      if ((options.context().trayClick ?? "record") === "menu") this.popUpMenu();
+      else options.onToggle();
+    });
     this.tray.on("right-click", () => this.popUpMenu());
   }
 
@@ -204,52 +199,15 @@ export class AppTray {
   }
 
   notifySaved(savedPath: string, stoppedEarly?: EarlyStop): void {
-    this.show(savedNotification(savedPath, this.options.context().platform, this.language, stoppedEarly), () => this.revealFromNotification(savedPath));
+    this.show(savedNotification(savedPath, this.options.context().platform, this.language, stoppedEarly), () => {
+      // The app's own window, so the activation macOS gives the clicked app is what brings it forward.
+      this.log(`notification: show saved ${savedPath}`);
+      this.options.showSaved(savedPath);
+    });
   }
 
   notifyRecordingFailure(code: ErrorCode): void {
     this.show(recordingFailureNotification(code, this.language), () => this.options.onAction("openRecordingResult"));
-  }
-
-  /**
-   * Reveal a file in response to an explicit notification click (plan 014).
-   *
-   * On macOS the click does two things: it delivers the response to us, and it
-   * asks the system to activate the notifying app. The second part lands about
-   * 100 ms after our callback. Finder is asked to select the file right away,
-   * but if the system then makes this windowless app active, Finder is pushed
-   * back behind the user's previous window and nothing visible happens — the
-   * v0.1.0 report. Windowless RecordStuff cannot decline that activation, so
-   * when `did-become-active` arrives after the reveal, the file is revealed
-   * again from the now-active app: Finder's activation then lands last and it
-   * stays in front. The listener is armed only by the click and only for a
-   * bounded window; saving in the background never touches Finder.
-   */
-  private revealFromNotification(filePath: string): void {
-    const failed = (error: unknown): void => this.log(`notification: reveal failed (${String(error)}): ${filePath}`);
-    const reveal = (repeat: boolean): void => {
-      try {
-        void this.options.revealSaved(filePath).catch(failed);
-        this.log(`notification: reveal ${repeat ? "repeated after activation" : "requested"} ${filePath}`);
-      } catch (error) {
-        failed(error);
-      }
-    };
-    if (process.platform !== "darwin") {
-      reveal(false);
-      return;
-    }
-    // Let macOS finish the native notification response before asking Finder
-    // to take focus. Its completion handler runs after our click callback.
-    setImmediate(() => {
-      reveal(false);
-      const onActive = (): void => {
-        clearTimeout(timer);
-        reveal(true);
-      };
-      const timer = setTimeout(() => app.removeListener("did-become-active", onActive), ACTIVATION_WINDOW_MS);
-      app.once("did-become-active", onActive);
-    });
   }
 
   /** `answer`: a reply to the user's own click or shortcut, shown even with notifications off, like a deferred quit. */
@@ -296,7 +254,8 @@ export class AppTray {
   }
 
   notifyTrayHint(): void {
-    this.show(trayHintNotification(this.options.context().platform, this.language));
+    const context = this.options.context();
+    this.show(trayHintNotification(context.platform, this.language, context.trayClick));
   }
 
   /** `openDownload` answers the click; main owns the download page and the recording lock it must respect. */

@@ -5,7 +5,8 @@
  * native menu, the app log, the output folder and Finder show. The menu of
  * idle, countdown and recording is compared with the production model's
  * `tray: menu opened` line for the same popup, in each requested language;
- * Start, Stop, Show last recording, the three cancellations (second click,
+ * Start, Stop, Open RecordStuff (2026-10-04, formerly Settings…), a left click
+ * that opens the menu when that is the choice, the three cancellations (second click,
  * Cancel recording, Quit), a Start chosen after the state moved on, keyboard
  * navigation and Quit RecordStuff are exercised. Screenshots of each menu are
  * saved for visual review, which this runner never claims. The round leaves
@@ -29,7 +30,6 @@ import { command, confirmedIdle, recordingOutcome, waitForLog } from "./lib/acce
 import { DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
 import { LogReader, evidenceSince, type LogCursor } from "./lib/log-reader.mts";
 import { AccessibilityBlockedError, FLAG, KEY, captureRect, osascriptAx, type Frame, type NativeMenuItem } from "./lib/native-ax.mts";
-import { FINDER_SELECTED_ROW_SCRIPT, FINDER_SELECTION_SCRIPT, FINDER_TARGET_SCRIPT, fileSelected } from "./lib/notification-acceptance.mts";
 import { INTERRUPT_EXIT, escapeRegExp, pgrepPids, recordStuffPattern, recordStuffPids } from "./lib/processes.mts";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings } from "./lib/runner-env.mts";
 import { StoredOverride } from "./lib/stored-override.mts";
@@ -101,17 +101,19 @@ const cases: TrayCase[] = [];
 const recordings: string[] = [];
 const notes: string[] = [];
 const cleanup: string[] = [];
-const ownedFinderWindows = new Set<number>();
 let desktop: DesktopRound | undefined;
 let driver: TrayDriver | undefined;
 let pid: number | undefined;
 let languageOverride: StoredOverride<unknown> | undefined;
+/**
+ * The icon's left click for the round (2026-10-04): the click cases need the click that records, and
+ * the menu-click case the one that opens the menu. Set only while the app is quit; set back after the round.
+ */
+let clickOverride: StoredOverride<unknown> | undefined;
 let roundError: string | undefined;
 let blocked: string | undefined;
 /** Set once preflight accepted this bundle and pid; cleanup operates no app it never took over (review pass 2). */
 let owned = false;
-/** Finder windows open before each Show last recording not yet cleaned up, so cleanup can find one a failed or interrupted reveal opened. */
-const revealBaselines: Array<{ ids: Set<number>; folder: string }> = [];
 
 /** This pid wrote the log's latest session and it is idle: the only app state the runner acts from. */
 const confirmedIdleFor = (text: readonly string[], expected: string): boolean => sessionBelongsTo(text, expected) && confirmedIdle(text);
@@ -166,6 +168,25 @@ async function quitIdle(): Promise<void> {
 
 function storedSettings(): Record<string, unknown> {
   return readAppSettings(settingsPath) ?? {};
+}
+
+function writeTrayClick(value: unknown): void {
+  const settings = storedSettings();
+  if (value === undefined) delete settings["trayClick"]; else settings["trayClick"] = value;
+  writeAppSettings(settings, settingsPath);
+}
+
+/** Quits the idle app, stores the click for the round and relaunches the same bundle. */
+async function useClick(value: "menu" | "record"): Promise<void> {
+  if (!clickOverride) {
+    clickOverride = new StoredOverride<unknown>({ quit: quitIdle, running: () => bundlePid() !== undefined, write: writeTrayClick, relaunch: launch }, storedSettings()["trayClick"], value);
+    await clickOverride.apply();
+  } else {
+    await quitIdle();
+    writeTrayClick(value);
+    await launch();
+  }
+  notes.push(`stored icon click set to ${value} for the round; relaunched the same bundle (pid ${pid})`);
 }
 
 function writeLanguage(value: unknown): void {
@@ -289,8 +310,8 @@ function listing(folder: string): Set<string> {
   try { return new Set(fs.readdirSync(folder)); } catch { return new Set(); }
 }
 
-/** A cancellation leaves no file, no failure and no notification, and idle still offers Show last recording. */
-async function judgeCancelled(c: TrayCase, from: LogCursor, folder: string, before: Set<string>, language: Language, quit = false, hadLastRecording = true): Promise<void> {
+/** A cancellation leaves no file, no failure and no notification, and idle offers Start recording again. */
+async function judgeCancelled(c: TrayCase, from: LogCursor, folder: string, before: Set<string>, language: Language, quit = false): Promise<void> {
   const since = lines(from);
   const outcome = recordingOutcome(since);
   if (!outcome.settled || !outcome.cancelled) c.problems.push(`expected a cancelled countdown, the log shows ${JSON.stringify(outcome)}`);
@@ -299,27 +320,9 @@ async function judgeCancelled(c: TrayCase, from: LogCursor, folder: string, befo
   if (since.some(line => /\] notification: show requested/.test(line))) c.problems.push("a notification was requested");
   if (quit) return;
   const menu = await driver!.open();
-  const kept = menu.items.some(item => item.title === t("Show last recording", language));
+  const kept = menu.items.some(item => item.title === t("Start recording", language) && item.enabled);
   await driver!.close();
-  if (hadLastRecording && !kept) c.problems.push("idle no longer offers Show last recording");
-}
-
-async function frontmost(): Promise<string> {
-  const asn = (await command("lsappinfo", ["front"], signal)).trim();
-  const info = await command("lsappinfo", ["info", "-only", "name", asn], signal);
-  return /"LSDisplayName"="([^"]*)"/.exec(info)?.[1] ?? info.trim();
-}
-
-async function finderWindowIds(): Promise<number[]> {
-  const text = await command("osascript", ["-e", 'tell application "Finder" to get id of every Finder window'], signal);
-  return text.split(",").map(part => Number(part.trim())).filter(Number.isInteger);
-}
-
-async function closeOwnedFinderWindows(): Promise<void> {
-  for (const id of ownedFinderWindows) {
-    await command("osascript", ["-e", `tell application "Finder"\nif exists Finder window id ${id} then close Finder window id ${id}\nend tell`], signal);
-    ownedFinderWindows.delete(id);
-  }
+  if (!kept) c.problems.push("idle does not offer Start recording again");
 }
 
 /** Start from the menu, read the countdown and recording menus, then Stop; returns the saved file. */
@@ -343,32 +346,12 @@ async function startStopFromMenu(language: Language, countdown: number): Promise
     const outcome = await waitSettled(stopFrom);
     if (!outcome.saved) c.problems.push(`Stop did not save: ${JSON.stringify(outcome)}`);
     else { saved = outcome.saved; recordings.push(saved); c.details.push(`saved ${saved}`); }
-  });
-  if (!saved) return;
-  await runCase("show-last-recording", "Show last recording brings Finder forward with the file selected", language, async c => {
-    const before = new Set(await finderWindowIds());
-    // Kept until this reveal's windows are owned: a later language's baseline would already count them.
-    const baseline = { ids: before, folder: path.dirname(saved!) };
-    revealBaselines.push(baseline);
-    await driver!.open();
-    await driver!.select(t("Show last recording", language));
-    const fronts: string[] = [];
-    const end = Date.now() + 3000;
-    while (Date.now() < end) {
-      const front = await frontmost();
-      if (fronts.at(-1) !== front) fronts.push(front);
-      await sleep(100);
+    // The saved banner follows 500 ms after the save (saved-notification.ts): let it land here, or the next
+    // case, which would otherwise start inside that half second, counts it as one of its own.
+    if (saved) {
+      const name = path.basename(saved);
+      await waitForLog(appLog, stopFrom, new RegExp(`notification: (?!saved scheduled).*${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`), "the saved notification's outcome", signal, 3000).catch(() => undefined);
     }
-    const run = (script: string): Promise<string> => command("osascript", ["-e", script], signal, 10_000);
-    const selected = await run(FINDER_SELECTION_SCRIPT) || undefined;
-    const selectedRow = await run(FINDER_SELECTED_ROW_SCRIPT) || undefined;
-    const windowTarget = await run(FINDER_TARGET_SCRIPT) || undefined;
-    for (const id of await finderWindowIds()) if (!before.has(id)) ownedFinderWindows.add(id);
-    c.details.push(`front: ${fronts.join(" → ")}; row ${selectedRow ?? "none"} in ${windowTarget ?? "no window"}`);
-    if (fronts.at(-1) !== "Finder") c.problems.push(`frontmost after 3 s is ${fronts.at(-1)}, not Finder`);
-    if (!fileSelected(saved!, { selected, selectedRow, windowTarget })) c.problems.push(`Finder does not show ${path.basename(saved!)} selected`);
-    await closeOwnedFinderWindows();
-    revealBaselines.splice(revealBaselines.indexOf(baseline), 1);
   });
 }
 
@@ -392,7 +375,9 @@ async function main(): Promise<void> {
   const languages = (requestedLanguages as Language[] | undefined) ?? [stored, stored === "en" ? "zh-TW" : "en"] as Language[];
   const accelerator = registeredAccelerator(lines());
   notes.push(`bundle ${bundle}, pid ${pid}; stored language ${stored}; countdown ${countdown} s; output folder ${folder}; recording shortcut ${accelerator ?? "not registered"}`);
-  const windowsAtStart = (await ax.windows(pid)).windows.map(window => window.title);
+  // The click cases toggle with a left click: a stored "menu" (a new install) is set to "record" for the round.
+  if (settings["trayClick"] === "menu") await useClick("record");
+  const windowsAtStart = (await ax.windows(pid!)).windows.map(window => window.title);
   if (windowsAtStart.length) notes.push(`RecordStuff windows at the start: ${JSON.stringify(windowsAtStart)}`);
 
   for (const [index, language] of languages.entries()) {
@@ -421,8 +406,8 @@ async function main(): Promise<void> {
     if (idle.status === "blocked") return;
 
     if (first) {
-      await runCase("keyboard", "Arrow keys move the selection, Return chooses Settings…, ⌘W closes it", language, async c => {
-        if (windowsAtStart.some(title => title.startsWith("RecordStuff - "))) { c.status = "not run"; c.details.push("a Settings window was already open"); return; }
+      await runCase("keyboard", "Arrow keys move the selection, Return chooses Open RecordStuff, ⌘W closes it", language, async c => {
+        if (windowsAtStart.some(title => title === "RecordStuff")) { c.status = "not run"; c.details.push("a Settings window was already open"); return; }
         const menu = await driver!.open();
         const enabled = menu.items.filter(item => item.enabled).map(item => item.title);
         const firstDown = await driver!.navigate(KEY.down);
@@ -430,19 +415,19 @@ async function main(): Promise<void> {
         const up = await driver!.navigate(KEY.up);
         c.details.push(`Down → ${firstDown}, Down → ${secondDown}, Up → ${up}`);
         if (firstDown !== enabled[0] || secondDown !== enabled[1] || up !== enabled[0]) c.problems.push(`expected ${enabled[0]}, ${enabled[1]}, ${enabled[0]}`);
-        const settingsLabel = t("Settings…", language);
+        const settingsLabel = t("Open RecordStuff", language);
         for (let i = 0; i < menu.items.length && (await driver!.status()).menu?.items.find(item => item.selected)?.title !== settingsLabel; i += 1) await driver!.navigate(KEY.down);
-        if ((await driver!.status()).menu?.items.find(item => item.selected)?.title !== settingsLabel) { c.problems.push("the arrow keys never reached Settings…"); return; }
+        if ((await driver!.status()).menu?.items.find(item => item.selected)?.title !== settingsLabel) { c.problems.push("the arrow keys never reached Open RecordStuff"); return; }
         await ax.key(KEY.return);
         await driver!.waitClosed();
-        const title = t("RecordStuff - Settings", language);
+        const title = "RecordStuff";
         const opened = await driver!.until("the Settings window", async () => {
           const snapshot = await ax.windows(pid!);
           return snapshot.windows.some(window => window.title === title) ? snapshot : undefined;
         });
         const others = opened.windows.filter(window => window.title !== title).length;
         // ⌘W goes to the frontmost app: never send it unless that is RecordStuff with Settings focused.
-        if (opened.frontmostPid !== pid || opened.focusedWindow !== title) { c.problems.push("RecordStuff with Settings focused is not frontmost after Settings… opened it; ⌘W not sent, Settings left open"); return; }
+        if (opened.frontmostPid !== pid || opened.focusedWindow !== title) { c.problems.push("RecordStuff with its window focused is not frontmost after Open RecordStuff; ⌘W not sent, the window left open"); return; }
         await ax.key(KEY.w, FLAG.command);
         await driver!.until("the Settings window to close", async () => ((await ax.windows(pid!)).windows.some(window => window.title === title) ? undefined : true));
         if (others) c.details.push(`${others} other RecordStuff window(s) stayed as they were`);
@@ -459,7 +444,7 @@ async function main(): Promise<void> {
         await waitState(from, "countdown", 10_000);
         await driver!.click();
         await waitSettled(from);
-        await judgeCancelled(c, from, folder, before, language, false, recordings.length > 0);
+        await judgeCancelled(c, from, folder, before, language, false);
       });
       await runCase("cancel-menu", "Cancel recording in the countdown menu cancels it", language, async c => {
         const before = listing(folder);
@@ -469,7 +454,7 @@ async function main(): Promise<void> {
         await driver!.open();
         await driver!.select(t("Cancel recording", language));
         await waitSettled(from);
-        await judgeCancelled(c, from, folder, before, language, false, recordings.length > 0);
+        await judgeCancelled(c, from, folder, before, language, false);
       });
     }
 
@@ -511,6 +496,22 @@ async function main(): Promise<void> {
     }
 
     if (last) {
+      await runCase("menu-click", "With the menu as the icon's click, a left click opens the idle menu and starts nothing", language, async c => {
+        await useClick("menu");
+        const from = appLog.end();
+        await driver!.click();
+        const menu = await driver!.until("the menu from a left click", async () => {
+          const snapshot = await driver!.status();
+          return snapshot.menu?.items.length ? snapshot.menu : undefined;
+        }, 5000).catch(() => undefined);
+        if (!menu) { c.problems.push("a left click opened no menu"); return; }
+        c.details.push(`${menu.items.length} items; ${menu.items.some(item => item.title === t("Start recording", language)) ? "Start recording offered" : "no Start recording"}`);
+        if (!menu.items.some(item => item.title === t("Start recording", language))) c.problems.push("the menu a left click opened offers no Start recording");
+        await driver!.close();
+        await sleep(500);
+        const moved = lines(from).find(line => /\] state → /.test(line));
+        if (moved) c.problems.push(`the left click changed the state: ${moved.split("] ")[1]}`);
+      });
       await runCase("quit", "Quit RecordStuff from the idle menu exits every process", language, async () => {
         await driver!.open();
         await driver!.select(t("Quit RecordStuff", language));
@@ -604,7 +605,7 @@ async function longStart(dir: string): Promise<void> {
     c.details.push(`third press: ${cancelled.line.split("] ")[1]}`);
     await waitSettled(from);
     await releaseCancelled(c, dir, from, historyBefore);
-    await judgeCancelled(c, from, folder, before, language, false, false);
+    await judgeCancelled(c, from, folder, before, language, false);
   });
 
   await runCase("long-start-click", "The starting menu names the shortcut; a left click after the grace cancels the held start", language, async c => {
@@ -626,7 +627,7 @@ async function longStart(dir: string): Promise<void> {
     c.details.push(cancelled.line.split("] ")[1]!);
     await waitSettled(from);
     await releaseCancelled(c, dir, from, historyBefore);
-    await judgeCancelled(c, from, folder, before, language, false, false);
+    await judgeCancelled(c, from, folder, before, language, false);
   });
 
   await runCase("long-start-quit", "Quit RecordStuff while the start is held cancels it at once and exits", language, async c => {
@@ -691,20 +692,9 @@ try {
     });
     await step("close Settings", async () => {
       const snapshot = await cleanupAx.windows(running);
-      if (snapshot.frontmostPid === running && snapshot.focusedWindow?.startsWith("RecordStuff - ")) await cleanupAx.key(KEY.w, FLAG.command);
+      if (snapshot.frontmostPid === running && snapshot.focusedWindow === "RecordStuff") await cleanupAx.key(KEY.w, FLAG.command);
     });
   }
-  await step("close Finder windows this round opened", async () => {
-    // A reveal interrupted before its windows were listed: new windows showing the recordings' folder are the round's.
-    for (const baseline of revealBaselines) {
-      const listed = await command("osascript", ["-e", `tell application "Finder"\nset found to {}\nrepeat with w in Finder windows\ntry\nif POSIX path of (target of w as alias) is ${JSON.stringify(`${baseline.folder}/`)} then set end of found to id of w\nend try\nend repeat\nreturn found\nend tell`], bounded);
-      for (const id of listed.split(",").map(part => Number(part.trim())).filter(Number.isInteger)) if (!baseline.ids.has(id)) ownedFinderWindows.add(id);
-    }
-    for (const id of ownedFinderWindows) {
-      await command("osascript", ["-e", `tell application "Finder"\nif exists Finder window id ${id} then close Finder window id ${id}\nend tell`], bounded);
-    }
-    ownedFinderWindows.clear();
-  });
   if (owned) {
     await step("quit RecordStuff", async () => {
       const left = bundlePid();
@@ -719,6 +709,12 @@ try {
     await step("restore the stored language", async () => {
       const problem = await languageOverride!.restore(false);
       if (problem) throw new Error(`${problem}; quit RecordStuff, then set "language" back in ${settingsPath}`);
+    });
+  }
+  if (clickOverride?.pending) {
+    await step("restore the stored icon click", async () => {
+      const problem = await clickOverride!.restore(false);
+      if (problem) throw new Error(`${problem}; quit RecordStuff, then set "trayClick" back in ${settingsPath}`);
     });
   }
   const remaining = (() => { try { return pgrepPids(`^${escapeRegExp(bundle)}/Contents/`); } catch (error) { return [String(error)]; } })();

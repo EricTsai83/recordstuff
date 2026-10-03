@@ -6,7 +6,7 @@ import { DEFAULT_HOTKEY } from "../shared/hotkey";
 /** The Windows editor reports Ctrl as Control; the reserved combinations and their wording follow the platform (plan 064). */
 it("refuses Ctrl+Q and a chord without Ctrl in Windows words, and offers the macOS screenshot chord", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><p id="hint"></p><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
   const current: SettingsView = {
     language: "en", title: "Settings", hint: "", failure: "Could not apply this setting.",
     tabs: [{ id: "recording", label: "Recording" }, { id: "general", label: "General" }],

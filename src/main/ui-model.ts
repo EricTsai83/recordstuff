@@ -9,7 +9,7 @@
  * handler in index.ts, which re-checks the recording state before acting.
  */
 import type { RecordingResult, RecordingResultAction } from "../shared/recording-result";
-import type { Appearance } from "../shared/appearance";
+import type { Appearance, TrayClick } from "../shared/appearance";
 import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../shared/display";
 import type { Language } from "../shared/i18n";
 import type { QualitySettings } from "../shared/quality";
@@ -19,6 +19,7 @@ import type { RecordingState } from "../shared/state";
 import type { SettingsHotkeyStatus } from "./settings-hotkey";
 import type { UpdateState } from "./updates";
 import type { QuitDeferral } from "./quit-feedback";
+import type { LibraryState, RecordingFileAction } from "./recordings-library";
 
 export const APP_NAME = "RecordStuff";
 
@@ -31,13 +32,14 @@ export type AppAction =
   /** Settings on the Recording tab, where the resolution warning a capture notice names is shown. */
   | "openRecordingSettings"
   | { recordingResult: { id: string; action: RecordingResultAction } }
+  /** A video the Recordings tab lists, by the id the page was given. */
+  | { recordingFile: { id: string; action: RecordingFileAction } }
   | "openPermissionSettings"
   | "openNotificationSettings"
   | "relaunch"
   | "start"
   | "stop"
   | "cancelCountdown"
-  | "revealLastSaved"
   | "openOutputDir"
   | "changeOutputDir"
   | "revealLog"
@@ -54,6 +56,7 @@ export type AppAction =
   | { setCountdown: CountdownSeconds }
   | { setCountdownSound: boolean }
   | { setAppearance: Appearance }
+  | { setTrayClick: TrayClick }
   | { setLanguage: Language }
   | { setHotkey: HotkeySettings };
 
@@ -75,12 +78,18 @@ export interface AppContext {
   platform: NodeJS.Platform;
   outputDir: string;
   homeDir: string;
+  /** The output folder's videos for the Recordings tab; absent before the first listing. */
+  library?: LibraryState;
+  /** The running app's version, shown beside the credit in Settings. */
+  version?: string;
   quality: QualitySettings;
   countdown: CountdownSeconds;
   /** The stored switch (plan 046); it only sounds while the countdown is on. */
   countdownSound: boolean;
   language: Language;
   appearance?: Appearance;
+  /** The icon's left click; absent is the click that records, as before the choice. */
+  trayClick?: TrayClick;
   hotkey: AppHotkey;
   settingsShortcut?: SettingsHotkeyStatus;
   updates: { state: UpdateState; enabled: boolean };

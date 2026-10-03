@@ -83,17 +83,24 @@ vi.mock("electron", () => {
 import { app, Notification, shell } from "electron";
 import type { Language } from "../shared/i18n";
 import { DEFAULT_QUALITY } from "../shared/quality";
-import { ACTIVATION_WINDOW_MS, AppTray, RETURN_IDLE_SECONDS, TRAY_ICON_FILES, WAKE_CHECK_MS } from "./tray";
+import { AppTray, RETURN_IDLE_SECONDS, TRAY_ICON_FILES, WAKE_CHECK_MS } from "./tray";
 
 const Fake = Notification as unknown as FakeNotificationCtor;
 
+const onToggle = vi.fn();
+/** The saved notification's click; reset with each setup. */
+const showSaved = vi.fn();
+/** The icon's left click the context reports; each test sets what it needs. */
+let trayClick: "menu" | "record" | undefined;
 function setup(supported = true, canNotify?: () => boolean, idleSeconds?: () => number, onNotificationClick?: () => void, now?: () => number): { tray: AppTray; logs: string[]; onAction: ReturnType<typeof vi.fn> } {
   vi.mocked(shell.showItemInFolder).mockReset();
+  showSaved.mockReset();
   app.removeAllListeners();
   Fake.instances.length = 0;
   Fake.supported = supported;
   const logs: string[] = [];
   const onAction = vi.fn();
+  onToggle.mockReset();
   const tray = new AppTray({
     ...(onNotificationClick ? { onNotificationClick } : {}),
     resourcesDir: "/resources",
@@ -108,10 +115,10 @@ function setup(supported = true, canNotify?: () => boolean, idleSeconds?: () => 
       updates: { state: { kind: "idle" }, enabled: true },
       notifications: true,
   displays: [], display: { kind: "primary" },
+      ...(trayClick ? { trayClick } : {}),
     }),
-    onToggle: vi.fn(),
-    // Production selects the file the same way once it has checked that the file still exists.
-    revealSaved: async (file) => shell.showItemInFolder(file),
+    onToggle,
+    showSaved,
     permissionAction: vi.fn(),
     onAction,
     log: (message) => logs.push(message),
@@ -163,7 +170,7 @@ describe("AppTray icons (plan 040)", () => {
 
   it("logs an icon file that yields an empty image instead of showing an invisible item", () => {
     const logs: string[] = [];
-    new AppTray({ resourcesDir: "/missing", context: () => { throw new Error("unused"); }, onToggle: vi.fn(), onAction: vi.fn(), revealSaved: vi.fn(), permissionAction: vi.fn(), log: (m) => logs.push(m) });
+    new AppTray({ resourcesDir: "/missing", context: () => { throw new Error("unused"); }, onToggle: vi.fn(), onAction: vi.fn(), showSaved: vi.fn(), permissionAction: vi.fn(), log: (m) => logs.push(m) });
     expect(logs.filter((m) => m.startsWith("tray: icon "))).toHaveLength(Object.keys(TRAY_ICON_FILES).length);
     expect(logs[0]).toContain(`${path.join("/missing")}${path.sep}`);
     const { logs: healthy } = setup();
@@ -327,83 +334,17 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
     expect(logs.at(-1)).toContain("notification: not supported");
   });
 
-  it("reveals the saved file after the native macOS click callback returns", async () => {
+  it("opens the saved recording in Recordings from its notification, never Finder (2026-10-04)", () => {
     const { tray, logs } = setup();
-    const file = "/Users/eric/Movies/RecordStuff/a.mp4";
+    const file = "/Users/eric/Movies/RecordStuff/測試 錄影 2026-09-20 01-27-11.mp4";
     tray.notifySaved(file);
+    expect(showSaved).not.toHaveBeenCalled();
     Fake.instances.at(-1)?.listeners.get("click")?.();
-    if (process.platform === "darwin") {
-      expect(shell.showItemInFolder).not.toHaveBeenCalled();
-      await new Promise<void>((resolve) => setImmediate(resolve));
-    }
-    expect(shell.showItemInFolder).toHaveBeenCalledExactlyOnceWith(file);
-    expect(logs).toContain(`notification: reveal requested ${file}`);
-  });
-
-  const darwin = process.platform === "darwin" ? describe : describe.skip;
-  darwin("macOS foreground after the notification click (plan 014)", () => {
-    const flush = (): Promise<void> => new Promise<void>((resolve) => setImmediate(resolve));
-
-    it("saving in the background never touches Finder or listens for activation", () => {
-      const { tray } = setup();
-      tray.notifySaved("/Users/eric/Movies/RecordStuff/a.mp4");
-      expect(shell.showItemInFolder).not.toHaveBeenCalled();
-      expect(app.listenerCount("did-become-active")).toBe(0);
-    });
-
-    it("reveals again when macOS activates the app after the first reveal, so Finder ends in front", async () => {
-      vi.useFakeTimers();
-      try {
-        const { tray, logs } = setup();
-        const file = "/Users/eric/Movies/RecordStuff/測試 錄影 2026-09-20 01-27-11.mp4";
-        tray.notifySaved(file);
-        Fake.instances.at(-1)?.listeners.get("click")?.();
-        await vi.advanceTimersByTimeAsync(0);
-        expect(shell.showItemInFolder).toHaveBeenCalledTimes(1);
-        expect(app.listenerCount("did-become-active")).toBe(1);
-        // The system's activation for the click lands ~110 ms after our callback (measured on macOS 26.6).
-        await vi.advanceTimersByTimeAsync(110);
-        app.emit("did-become-active");
-        expect(shell.showItemInFolder).toHaveBeenCalledTimes(2);
-        expect(shell.showItemInFolder).toHaveBeenLastCalledWith(file);
-        expect(logs.filter((line) => line.startsWith("notification: reveal"))).toEqual([`notification: reveal requested ${file}`, `notification: reveal repeated after activation ${file}`]);
-        // One-shot: a later activation (the user switching apps) does not re-open Finder.
-        app.emit("did-become-active");
-        expect(shell.showItemInFolder).toHaveBeenCalledTimes(2);
-        expect(app.listenerCount("did-become-active")).toBe(0);
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it("stops listening after the activation window so a later app switch is not treated as the click", async () => {
-      vi.useFakeTimers();
-      try {
-        const { tray } = setup();
-        tray.notifySaved("/Users/eric/Movies/RecordStuff/a.mp4");
-        Fake.instances.at(-1)?.listeners.get("click")?.();
-        await vi.advanceTimersByTimeAsync(ACTIVATION_WINDOW_MS + 1);
-        expect(app.listenerCount("did-become-active")).toBe(0);
-        app.emit("did-become-active");
-        expect(shell.showItemInFolder).toHaveBeenCalledTimes(1);
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it("logs a failed reveal without throwing into the click handler or the activation listener", async () => {
-      const { tray, logs } = setup();
-      const file = "/Users/eric/Movies/RecordStuff/a b.mp4";
-      vi.mocked(shell.showItemInFolder).mockImplementation(() => {
-        throw new Error("Finder is gone");
-      });
-      tray.notifySaved(file);
-      expect(() => Fake.instances.at(-1)?.listeners.get("click")?.()).not.toThrow();
-      await flush();
-      expect(() => app.emit("did-become-active")).not.toThrow();
-      await flush();
-      expect(logs.filter((l) => l.startsWith("notification: reveal failed (Error: Finder is gone)"))).toHaveLength(2);
-    });
+    expect(showSaved).toHaveBeenCalledExactlyOnceWith(file);
+    expect(shell.showItemInFolder).not.toHaveBeenCalled();
+    expect(logs).toContain(`notification: show saved ${file}`);
+    // The activation macOS gives the clicked app is what brings the window forward: nothing waits for it.
+    expect(app.listenerCount("did-become-active")).toBe(0);
   });
 
   it("keeps the click handler working alongside the failure listener", () => {
@@ -426,7 +367,7 @@ describe("notification language follows current settings", () => {
     const tray = new AppTray({
       resourcesDir: "/resources",
       context: () => ({ platform: process.platform, outputDir: "/tmp/recordings", homeDir: "/tmp", quality: DEFAULT_QUALITY, countdown: 3, countdownSound: true, language, hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: "idle" }, enabled: true }, notifications: true, displays: [], display: { kind: "primary" } }),
-      onToggle: vi.fn(), onAction: action, revealSaved: vi.fn(async () => undefined), permissionAction,
+      onToggle: vi.fn(), onAction: action, showSaved: vi.fn(), permissionAction,
     });
     tray.notifySaved("/tmp/demo.mp4");
     expect(Fake.instances.at(-1)?.options.body).toBe("Saved demo.mp4");
@@ -496,7 +437,7 @@ describe("tray menu template (plan 048)", () => {
     start.click?.({} as never, undefined, {} as never);
     expect(onAction).toHaveBeenCalledWith("start");
     // Items without a registered shortcut carry no accelerator at all.
-    expect(template.find((entry) => entry.label === "Show log")).not.toHaveProperty("accelerator");
+    expect(template.find((entry) => entry.label === "Quit RecordStuff")).not.toHaveProperty("accelerator");
     expect(template.at(-1)).toMatchObject({ label: "Quit RecordStuff" });
   });
 
@@ -688,4 +629,42 @@ it("contains native notification constructor failures", () => {
     expect(() => tray.notifySaved("/saved.mp4")).not.toThrow();
     expect(logs.join("\n")).toContain("native notification unavailable");
   } finally { Fake.throwOnConstruct = false; tray.destroy(); }
+});
+
+describe("the icon's left click (2026-10-04)", () => {
+  type Native = { on: ReturnType<typeof vi.fn>; popUpContextMenu: ReturnType<typeof vi.fn> };
+  const nativeOf = (tray: AppTray): Native => (tray as unknown as { tray: Native }).tray;
+  const leftClick = (native: Native): void => {
+    const handler = native.on.mock.calls.findLast((call: unknown[]) => call[0] === "click")?.[1] as (() => void) | undefined;
+    handler?.();
+  };
+  it("opens the menu when the user chose the menu, and records only from it", () => {
+    trayClick = "menu";
+    const native = nativeOf(setup().tray);
+    native.popUpContextMenu.mockClear();
+    leftClick(native);
+    expect(native.popUpContextMenu).toHaveBeenCalledTimes(1);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+  it("starts or stops recording when the user chose that, and when an older context names no choice", () => {
+    for (const choice of ["record", undefined] as const) {
+      trayClick = choice;
+      const native = nativeOf(setup().tray);
+      native.popUpContextMenu.mockClear();
+      leftClick(native);
+      expect(onToggle).toHaveBeenCalledTimes(1);
+      expect(native.popUpContextMenu).not.toHaveBeenCalled();
+    }
+    trayClick = undefined;
+  });
+  it("follows a change of choice at the next click, without a new tray", () => {
+    trayClick = "record";
+    const native = nativeOf(setup().tray);
+    trayClick = "menu";
+    native.popUpContextMenu.mockClear();
+    leftClick(native);
+    expect(native.popUpContextMenu).toHaveBeenCalledTimes(1);
+    expect(onToggle).not.toHaveBeenCalled();
+    trayClick = undefined;
+  });
 });

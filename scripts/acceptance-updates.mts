@@ -12,7 +12,6 @@ import { parseArgs } from 'node:util';
 import { prepareUpdateAcceptance, acceptanceExitCode, safeCaptureShortcut, createAcceptanceOutput, assertLockContract, type CaseResult } from './lib/update-acceptance.mts';
 import { acceleratorToKeystroke, createMaterialProfile, keystrokeScript, materialOpenArgs, removeMaterialProfile } from './lib/acceptance.mts';
 import { hasTool } from './lib/media-tools.mts';
-import { translate } from '../src/shared/i18n.ts';
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from './lib/desktop-session.mts';
 import { readLogPairs, verifyRecording } from './lib/verify-recording.mts';
 import { blocksSuccess } from './lib/verify.mts';
@@ -259,7 +258,7 @@ try {
     assert.equal(menuAction(s, 'checkUpdates').label, '檢查更新…');
     // The settings panel projects the same committed values, in the same language.
     // The panel's title key since b262188; judge the language, not the copy.
-    assert.equal(s.settings.title, translate('RecordStuff - Settings', 'zh-TW'));
+    assert.equal(s.settings.title, 'RecordStuff');
     assert.equal(settingsChoice(s, 'language').label, '繁體中文');
     assert.equal(settingsChoice(s, 'updateChecks').id, 'off');
     await action('checkUpdates'); await until(s => s.update.kind === 'current', 'manual while preference off');

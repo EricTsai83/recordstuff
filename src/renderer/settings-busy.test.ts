@@ -21,7 +21,7 @@ function view(checking: boolean): SettingsView {
 
 it("keeps a running action focusable, ignores its second activation and leaves focus on it", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><p id="hint"></p><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
   let current = view(false);
   let push!: (next: SettingsView) => void;
   let finish: (() => void) | undefined;

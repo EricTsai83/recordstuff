@@ -12,6 +12,7 @@ import { failureReason } from "./recording-result";
 import { displayLabel, displayFailureText } from "../shared/display";
 import { displayResolution } from "./display-source";
 import type { EarlyStop } from "../shared/session-record";
+import type { TrayClick } from "../shared/appearance";
 import type { QuitDeferral } from "./quit-feedback";
 import path from "node:path";
 import { DEFAULT_LANGUAGE, sentences, translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
@@ -19,7 +20,7 @@ import type { FrameRate } from "../shared/quality";
 import type { ErrorCode, RecordingState } from "../shared/state";
 import { describeAccelerator, SETTINGS_SHORTCUT, type HotkeyAccelerator } from "../shared/hotkey";
 
-import { APP_NAME, abbreviateHome, compactPath, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
+import { APP_NAME, abbreviateHome, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 
 /**
  * One same-size template per state (plan 040): only `REC` changes the item
@@ -65,15 +66,18 @@ function grouped(...groups: TrayMenuItem[][]): TrayMenuItem[] {
 function registeredShortcut(ctx: AppContext): HotkeyAccelerator | undefined {
   return ctx.hotkey.enabled && ctx.hotkey.registered ? ctx.hotkey.accelerator : undefined;
 }
-/** Settings stays reachable mid-recording; reviewed failures sit beside it, not at the top. */
-function windowsGroup(ctx: AppContext, reviewedOnly: boolean): TrayMenuItem[] {
+/**
+ * The app's window, reachable in every state, under the shortcut that opens it (2026-10-04: it holds the
+ * recordings, so the menu opens RecordStuff rather than its settings). Reviewed failures, the output folder
+ * and the log live there; the menu keeps only what is to be done now.
+ */
+function windowsGroup(ctx: AppContext): TrayMenuItem[] {
   const { language, settingsShortcut } = ctx;
   const explanation = settingsShortcut?.kind === "conflict"
-    ? t("Settings shortcut unavailable: open Settings above to change the recording shortcut.", language)
-    : settingsShortcut?.kind === "failed" ? t("Settings shortcut unavailable: another app may use it. Open Settings above.", language) : undefined;
+    ? t("The shortcut for RecordStuff is the recording shortcut: open RecordStuff above to change it.", language)
+    : settingsShortcut?.kind === "failed" ? t("The shortcut for RecordStuff is unavailable: another app may use it. Open RecordStuff above.", language) : undefined;
   return [
-    ...(reviewedOnly ? [item(t("View recording failures…", language), "openRecordingResult")] : []),
-    item(t("Settings…", language), "openSettings", undefined, settingsShortcut?.kind === "registered" ? SETTINGS_SHORTCUT : undefined),
+    item(t("Open RecordStuff", language), "openSettings", undefined, settingsShortcut?.kind === "registered" ? SETTINGS_SHORTCUT : undefined),
     ...(explanation ? [disabled(explanation)] : []),
   ];
 }
@@ -89,19 +93,9 @@ function fitTooltip(platform: NodeJS.Platform, body: string, hint: string): stri
   if (platform !== "win32" || full.length <= WINDOWS_TOOLTIP_MAX) return full;
   return `${body.slice(0, WINDOWS_TOOLTIP_MAX - hint.length - 2).trimEnd()}…\n${hint}`;
 }
+/** Quit alone ends the menu: Show log moved to RecordStuff → General (2026-10-04). */
 function appGroup(language: Language): TrayMenuItem[] {
-  return [item(t("Show log", language), "revealLog"), item(t("Quit RecordStuff", language), "quit")];
-}
-function outputDirItems(ctx: AppContext, enabled: boolean): TrayMenuItem[] {
-  const label = t("Output folder: {path}", ctx.language, { path: compactPath(abbreviateHome(ctx.outputDir, ctx.homeDir)) });
-  return [
-    enabled
-      ? item(label, "openOutputDir", ctx.outputDir)
-      : { kind: "item", label, enabled: false, toolTip: ctx.outputDir },
-    enabled
-      ? item(t("Change output folder…", ctx.language), "changeOutputDir")
-      : disabled(t("Change output folder…", ctx.language)),
-  ];
+  return [item(t("Quit RecordStuff", language), "quit")];
 }
 function permissionActions(needsRelaunch: boolean, language: Language): TrayMenuItem[] {
   const hint = t(
@@ -128,7 +122,7 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
   const unreadText = t("Unreviewed recording failures: {value}", language, { value: String(unread.length) });
   // Unread failures get their own group after the state; reviewed ones only a way back, beside Settings.
   const unreadGroup: TrayMenuItem[] = unread.length ? [disabled(unreadText), item(text("View recording failures…"), "openRecordingResult")] : [];
-  const windows = windowsGroup(ctx, unread.length === 0 && results.length > 0);
+  const windows = windowsGroup(ctx);
   const app = appGroup(language);
   const shortcut = registeredShortcut(ctx);
   // What a notification alone may not have told (plan 056): they sit with the state, in every state.
@@ -142,13 +136,14 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
     const at = lines < 0 ? group.length : lines;
     return [...group.slice(0, at), ...notes.map(disabled), ...group.slice(at)];
   };
-  const model = (icon: TrayIcon, title: string, status: string, stateGroup: TrayMenuItem[], files: TrayMenuItem[] = []): TrayModel => {
-    const menu = grouped(withNotes(stateGroup), unreadGroup, files, windows, app);
+  const menuOnClick = ctx.trayClick === "menu";
+  const model = (icon: TrayIcon, title: string, status: string, stateGroup: TrayMenuItem[]): TrayModel => {
+    const menu = grouped(withNotes(stateGroup), unreadGroup, windows, app);
     return {
       icon: icon === "idle" && unread.length > 0 ? "warning" : icon,
       title,
       tooltip: fitTooltip(ctx.platform, [`${APP_NAME}: ${status}`, ...notes, ...(unread.length > 0 ? [unreadText] : [])].join("\n"),
-        text("Right-click to open the menu")),
+        text(menuOnClick ? "Click to open the menu" : "Right-click to open the menu")),
       // A quit in progress ignores every other action (the quit stops capture itself), so none looks available.
       menu: ctx.quitting ? menu.map(entry => entry.kind === "item" && entry.action !== "quit" ? { ...entry, enabled: false } : entry) : menu,
     };
@@ -158,13 +153,12 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
     const quitting = text("Quitting once the recording is saved or cleaned up…");
     return model("busy", "", quitting, [disabled(quitting)]);
   }
-  const lastSaved = (path: string | undefined): TrayMenuItem[] => (path ? [item(text("Show last recording"), "revealLastSaved", path)] : []);
   switch (state.type) {
     case "needsPermission":
       return model("idle", "", text("Screen recording permission required"), [
         disabled(text("Screen recording permission required")),
         ...permissionActions(state.needsRelaunch, language),
-      ], [...lastSaved(state.lastSavedPath), ...outputDirItems(ctx, true)]);
+      ]);
     case "idle": {
       const resolution = displayResolution(ctx.displays, ctx.display);
       const status = state.outputDirUnavailable ? text("Output folder unavailable")
@@ -174,7 +168,9 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
       if (ctx.displayFailure) stateGroup.push(disabled(t("Last display failure: {reason}", language, { reason: displayFailureText(ctx.displayFailure, language) })));
       // Whenever a left click would start: the same toggle, countdown included (plan 048).
       stateGroup.push(item(text("Start recording"), "start", shortcutHint(ctx, "Start / stop recording with {value}"), shortcut));
-      return model("idle", "", status, stateGroup, [...lastSaved(state.lastSavedPath), ...outputDirItems(ctx, true)]);
+      // The one folder item left: the fix, while the folder is what stops the next recording.
+      if (state.outputDirUnavailable) stateGroup.push(item(text("Change output folder…"), "changeOutputDir", ctx.outputDir));
+      return model("idle", "", status, stateGroup);
     }
     case "starting":
       // The shortcut cancels too once the start has lasted a second (plan 065), so it is named as in the countdown.
@@ -184,7 +180,8 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
       ]);
     case "countdown": {
       const seconds = { seconds: state.remaining };
-      return model("countdown", "", t("Recording starts in {seconds} s. Click to cancel.", language, seconds), [
+      // A click that opens the menu cancels only through Cancel recording, which the menu shows.
+      return model("countdown", "", t(menuOnClick ? "Recording starts in {seconds} s" : "Recording starts in {seconds} s. Click to cancel.", language, seconds), [
         disabled(t("Recording starts in {seconds} s", language, seconds)),
         item(text("Cancel recording"), "cancelCountdown", shortcutHint(ctx, "Cancel recording with {value}"), shortcut),
       ]);
@@ -193,7 +190,7 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
       return model("recording", "REC", text("Recording"), [
         disabled(text("Recording")),
         item(text("Stop"), "stop", shortcutHint(ctx, "Start / stop recording with {value}"), shortcut),
-      ], outputDirItems(ctx, false));
+      ]);
     case "stopping":
       return model("busy", "", text("Saving…"), [disabled(text("Saving…"))]);
   }
@@ -312,7 +309,10 @@ export function notificationsEnabledNotification(language?: Language): Notificat
  * app screen recording, so the ask is in context instead of arriving at the
  * end of their first recording (docs/system-design/desktop.md).
  */
-export function trayHintNotification(platform: NodeJS.Platform, language?: Language): NotificationText {
+export function trayHintNotification(platform: NodeJS.Platform, language?: Language, trayClick: TrayClick = "record"): NotificationText {
+  if (trayClick === "menu") return notice(platform === "darwin"
+    ? t("RecordStuff is ready in the menu bar. Click its icon and choose Start recording.", language)
+    : t("RecordStuff is ready in the system tray. Click its icon and choose Start recording.", language));
   return notice(platform === "darwin"
     ? t("RecordStuff is ready in the menu bar. Click to start recording; click again to stop.", language)
     : t("RecordStuff is ready in the system tray. Click to start recording; click again to stop.", language));

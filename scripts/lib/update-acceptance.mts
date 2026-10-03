@@ -53,13 +53,14 @@ export function safeCaptureShortcut(pid: number, runningPids: number[], hotkey: 
 /**
  * What a starting, recording or saving recorder must do to each settings group, from product intent
  * (docs/system-design/desktop.md), not from what the model currently returns: preferences and update
- * actions lock; language, appearance and the About links stay usable. A group missing from this table,
+ * actions lock; language, appearance, the icon's click (nothing a session holds depends on it) and the
+ * About links stay usable. A group missing from this table,
  * or a listed group the panel no longer offers, fails until someone classifies it here.
  */
 export const BUSY_SETTINGS_POLICY: Readonly<Record<string, "locked" | "available">> = {
   screen: "locked", outputFolder: "locked", countdown: "locked", countdownSound: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
   notifications: "locked", updateChecks: "locked", updates: "locked",
-  language: "available", appearance: "available", about: "available",
+  language: "available", appearance: "available", trayClick: "available", log: "available", about: "available",
 };
 export type LockSnapshot = { recording: RecordingState; model: TrayModel; settings: SettingsView };
 

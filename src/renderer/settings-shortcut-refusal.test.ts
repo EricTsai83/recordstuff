@@ -6,7 +6,7 @@ import { DEFAULT_HOTKEY } from "../shared/hotkey";
 /** What the shortcut editor shows for a key it cannot use and for a combination main refuses. */
 it("names no internal key for an unusable one, and states a refused combination once without reselect guidance", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><p id="hint"></p><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
   let current: SettingsView = {
     language: "en", title: "Settings", hint: "", failure: "Could not apply this setting.",
     tabs: [{ id: "recording", label: "Recording" }, { id: "general", label: "General" }],

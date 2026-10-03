@@ -4,18 +4,20 @@ import { isCloseChord, shortcutCandidate, shortcutModifiers } from "./shortcut-c
 import { infoPlacement } from "./info-placement";
 import { isLanguage, sentences, translate, type Language, type PlainMessageKey } from "../shared/i18n";
 import { REVIEWED_FAILURES_KEPT, persistsHistory } from "../shared/recording-result";
-import type { RecordingResultView, SettingsBridge, SettingsGroup, SettingsTab, SettingsView } from "../shared/settings-panel";
+import type { LibraryItemView, RecordingResultView, SettingsBridge, SettingsGroup, SettingsTab, SettingsView } from "../shared/settings-panel";
 
 declare global { interface Window { settings: SettingsBridge } }
 const form = document.querySelector<HTMLFormElement>("#settings")!;
 const heading = document.querySelector<HTMLHeadingElement>("#title")!;
 const hint = document.querySelector<HTMLParagraphElement>("#hint")!;
+const statusCard = document.querySelector<HTMLElement>("#status")!;
 const feedback = document.querySelector<HTMLParagraphElement>("#feedback")!;
 const startupLanguage = ((v: string | null) => isLanguage(v) ? v : undefined)(new URLSearchParams(location.search).get("lang"));
 /** The BCP 47 tag assistive technology reads the page's text with. */
 const documentLanguage = (language: Language | undefined): string => language === "zh-TW" ? "zh-Hant" : "en";
 let view: SettingsView | undefined;
-let selectedTab: SettingsTab = "recording";
+/** A new window opens on the recordings, the app's home (2026-10-04). */
+let selectedTab: SettingsTab = "library";
 let renderedStructure = "";
 /** The tab the current panel was built for, so switching can store where it was left. */
 let renderedTab: SettingsTab | undefined;
@@ -68,6 +70,7 @@ const isRecoveryControl = (control: string): boolean => /-(retry|recovery)$/.tes
 const shortcutGroup = (): SettingsGroup | undefined => view?.groups.find(g => g.kind === "shortcut");
 /** Main's platform; before the first view (a failed read) the page must still close. */
 const platform = (): string => shortcutGroup()?.platform ?? (navigator.platform.startsWith("Mac") ? "darwin" : navigator.platform);
+document.documentElement.dataset.platform = platform();
 function setText(element: Element, value: string): void { if (element.textContent !== value) element.textContent = value; }
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", value = ""): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag); el.className = className; el.textContent = value; return el;
@@ -169,6 +172,74 @@ function warningIcon(): SVGSVGElement {
   svg.append(path);
   return svg;
 }
+/**
+ * Line icons on a 24-unit grid, drawn with the text colour: one per row, tab and empty state, so
+ * a row is found by its shape before its label is read. Each entry is stroked paths, then filled ones.
+ */
+const ICONS: Record<string, [string, string?]> = {
+  screen: ["M4 3.5h16a2 2 0 0 1 2 2v9.5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2ZM8 21h8M12 17v4"],
+  outputFolder: ["M20 20a2 2 0 0 0 2-2V8.5a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 4.4a2 2 0 0 0-1.7-.9H4a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2Z"],
+  countdown: ["M10 2h4M12 14l3-3M12 22a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"],
+  countdownSound: ["M11 5 6 9H2v6h4l5 4V5ZM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"],
+  videoQuality: ["M12 3.5 13.9 9l5.6 1.9-5.6 1.9L12 18.5l-1.9-5.7-5.6-1.9L10.1 9ZM19 2.5v4M17 4.5h4M5 17.5v3M3.5 19h3"],
+  resolutionCap: ["M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3M9 9h6v6H9z"],
+  frameRate: ["M22 12h-4l-3 8L9 4l-3 8H2"],
+  trayClick: ["M9 9l5 12 1.8-5.2L21 14ZM7.2 2.2 8 5.1M5.1 8l-2.9-.8M14 4.1 12 6M6 12l-1.9 2"],
+  hotkey: ["M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"],
+  notifications: ["M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a2 2 0 0 0 3.4 0"],
+  language: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20ZM2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20"],
+  appearance: ["M12 21.5a9.5 9.5 0 1 0 0-19 9.5 9.5 0 0 0 0 19Z", "M12 2.5a9.5 9.5 0 0 1 0 19Z"],
+  updateChecks: ["M21 12a9 9 0 0 0-15.5-6.2L3 8.5M3 3.5v5h5M3 12a9 9 0 0 0 15.5 6.2L21 15.5M21 20.5v-5h-5"],
+  log: ["M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8ZM14 2.5V8h5.5M8.5 13h7M8.5 17h7M8.5 9h2"],
+  updates: ["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"],
+  "tab-library": ["M3 5.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2ZM3 9h18M7.5 3.5 9.5 9M13 3.5l2 5.5M10 13v4.5l4-2.25Z"],
+  play: ["", "M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"],
+  film: ["M3 5.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2ZM3 9h18M7.5 3.5 9.5 9M13 3.5l2 5.5M10 13v4.5l4-2.25Z"],
+  "tab-recording": ["M12 21.5a9.5 9.5 0 1 0 0-19 9.5 9.5 0 0 0 0 19Z", "M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"],
+  "tab-general": ["M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1.5 14h5M9.5 8h5M17.5 16h5"],
+  "tab-failures": ["M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0ZM12 9v4M12 17h.01"],
+  empty: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20ZM8 12.5l2.7 2.7L16 9.8"],
+};
+function icon(name: string, className = "icon"): SVGSVGElement | undefined {
+  const paths = ICONS[name];
+  if (!paths) return undefined;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("aria-hidden", "true"); svg.setAttribute("focusable", "false");
+  svg.setAttribute("class", className);
+  const [stroked, filled] = paths;
+  if (stroked) {
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    line.setAttribute("d", stroked); line.setAttribute("fill", "none"); line.setAttribute("stroke", "currentColor");
+    line.setAttribute("stroke-width", "1.7"); line.setAttribute("stroke-linecap", "round"); line.setAttribute("stroke-linejoin", "round");
+    svg.append(line);
+  }
+  if (filled) {
+    const fill = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    fill.setAttribute("d", filled); fill.setAttribute("fill", "currentColor"); svg.append(fill);
+  }
+  return svg;
+}
+/**
+ * The status card, only when there is something to say (2026-10-04): a recording, a countdown or a save,
+ * with the lock `hint` explaining the dimmed settings, or a problem with its fix. Ready says nothing.
+ */
+function updateStatus(current: SettingsView): void {
+  const value = current.status;
+  statusCard.hidden = !value || value.tone === "ready";
+  if (!value) return;
+  statusCard.dataset.tone = value.tone;
+  setText(document.getElementById("status-title")!, value.title);
+  const detail = document.getElementById("status-detail")!;
+  setText(detail, value.detail);
+  detail.hidden = !value.detail || Boolean(current.hint);
+  const action = document.getElementById("status-action") as HTMLButtonElement;
+  action.hidden = !value.action;
+  if (value.action) {
+    action.dataset.action = value.action.id;
+    setText(action, value.action.label);
+    setActionDisabled(action, false, Boolean(saving));
+  }
+}
 function updateDiagnostic(container: HTMLElement, group: SettingsGroup): void {
   const area = container.querySelector<HTMLElement>(".diagnostics")!;
   // Reuse the region: a push must not replace focused recovery/retry buttons.
@@ -213,6 +284,17 @@ function updateDiagnostic(container: HTMLElement, group: SettingsGroup): void {
     groupControl(group.id, saving?.group === group.id ? saving.choice : failure?.choice)?.focus({ preventScroll: true });
 }
 function updateRows(groups: SettingsGroup[]): void {
+  // A section's footnote comes from whichever of its groups carries one.
+  const footnotes = new Map<Element, string>();
+  for (const group of groups) {
+    const section = document.getElementById(`${controlId(group)}-row`)?.closest(".section");
+    if (section && !footnotes.has(section)) footnotes.set(section, "");
+    if (section && group.footnote) footnotes.set(section, group.footnote);
+  }
+  for (const [section, value] of footnotes) {
+    const footnote = section.querySelector<HTMLElement>(":scope > .section-footnote");
+    if (footnote) { setText(footnote, value); footnote.hidden = !value; }
+  }
   for (const group of groups) {
     const container = document.getElementById(`${controlId(group)}-row`)!;
     const label = container.querySelector<HTMLElement>(".group-label")!;
@@ -310,23 +392,26 @@ function updateRows(groups: SettingsGroup[]): void {
     }
   }
 }
+/** The About links' marks: a globe for the website, the GitHub mark for the source. */
+function aboutIcon(choiceId: string): SVGSVGElement {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("aria-hidden", "true"); svg.setAttribute("focusable", "false");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  if (choiceId === "website") {
+    svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.6");
+    path.setAttribute("d", "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z");
+  } else {
+    svg.setAttribute("fill", "currentColor");
+    path.setAttribute("d", "M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.54v-2.07c-3.1.67-3.76-1.31-3.76-1.31-.51-1.28-1.24-1.62-1.24-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.14 1.71 1.14 1 .1.74 1.89 3.26 1.2.1-.73.4-1.23.71-1.51-2.48-.28-5.08-1.24-5.08-5.52 0-1.22.44-2.22 1.14-3-.11-.28-.5-1.41.11-2.94 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.61 1.53.22 2.66.11 2.94.71.78 1.14 1.78 1.14 3 0 4.29-2.61 5.23-5.1 5.51.4.35.75 1.02.75 2.06v3.05c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z");
+  }
+  svg.append(path);
+  return svg;
+}
 function actionButton(group: SettingsGroup, choice: SettingsGroup["choices"][number]): HTMLButtonElement {
   const id = `${controlId(group)}-${choice.id}`;
   const el = button(id, () => { if (!inactive(el)) void choose(group.id, choice.id, id); });
   el.dataset.action = choice.id;
-  if (group.id === "about") {
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("aria-hidden", "true"); svg.setAttribute("focusable", "false");
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    if (choice.id === "website") {
-      svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.6");
-      path.setAttribute("d", "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z");
-    } else {
-      svg.setAttribute("fill", "currentColor");
-      path.setAttribute("d", "M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.54v-2.07c-3.1.67-3.76-1.31-3.76-1.31-.51-1.28-1.24-1.62-1.24-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.14 1.71 1.14 1 .1.74 1.89 3.26 1.2.1-.73.4-1.23.71-1.51-2.48-.28-5.08-1.24-5.08-5.52 0-1.22.44-2.22 1.14-3-.11-.28-.5-1.41.11-2.94 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.61 1.53.22 2.66.11 2.94.71.78 1.14 1.78 1.14 3 0 4.29-2.61 5.23-5.1 5.51.4.35.75 1.02.75 2.06v3.05c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z");
-    }
-    svg.append(path); el.append(svg);
-  }
+  if (group.id === "about") el.append(aboutIcon(choice.id));
   return el;
 }
 /**
@@ -409,7 +494,8 @@ function row(group: SettingsGroup): HTMLElement {
   const controls = node("div", "controls");
   if (group.kind === "actions") { controls.setAttribute("role", "group"); controls.setAttribute("aria-labelledby", label.id); }
   const title = node("div", "group-title");
-  title.append(label, ...infoParts(id));
+  const glyph = icon(group.id, "row-icon");
+  title.append(...(glyph ? [glyph] : []), label, ...infoParts(id));
   line.append(title, controls); container.append(line);
   if (group.kind === "actions") {
     for (const choice of group.choices) controls.append(actionButton(group, choice));
@@ -433,7 +519,9 @@ function row(group: SettingsGroup): HTMLElement {
         select.value = committed(shortcutGroup()!);
         void capture(true);
       } else void choose(group.id, select.value, id);
-    }); controls.append(select);
+    });
+    // The menu draws its own chevron: the wrapper carries it, since a select has no pseudo-elements.
+    const menu = node("span", "select"); menu.append(select); controls.append(menu);
   }
   if (group.kind === "shortcut") {
     const area = node("div", "capture-area");
@@ -584,7 +672,11 @@ function updateRecordingResult(focusRequested: boolean): void {
   const statusLine = list.querySelector<HTMLElement>(".result-history-status")!;
   statusLine.hidden = !status; setText(statusLine, status);
   const empty = list.querySelector<HTMLElement>(".result-empty")!;
-  empty.hidden = Boolean(results.length || status); setText(empty, text("No recording failures."));
+  empty.hidden = Boolean(results.length || status);
+  if (empty.dataset.text !== text("No recording failures.")) {
+    empty.dataset.text = text("No recording failures.");
+    empty.replaceChildren(icon("empty", "empty-icon")!, node("span", "", text("No recording failures.")));
+  }
   const note = list.querySelector<HTMLElement>(".result-history-note")!;
   note.hidden = !results.length;
   setText(note, translate("Keeps unreviewed failures and the {count} most recently reviewed. Removing a record does not delete its file.",
@@ -759,6 +851,204 @@ function fillRow(area: HTMLDetailsElement, result: RecordingResultView): void {
   setText(technical.querySelector("pre")!, technicalText);
 }
 
+/**
+ * The sidebar's foot (2026-10-04): who built it and the version, with the two links as icons beside them, from the About group
+ * General's footer shows in a narrow window. Its links ask main for the same `about` choices.
+ */
+const sidebarAbout = document.getElementById("sidebar-about") as HTMLElement | null;
+function updateSidebarAbout(current: SettingsView): void {
+  if (!sidebarAbout) return;
+  const about = current.groups.find(group => group.id === "about");
+  sidebarAbout.hidden = !about;
+  if (!about) return;
+  setText(sidebarAbout.querySelector(".sidebar-credit")!, about.label);
+  const version = sidebarAbout.querySelector<HTMLElement>(".sidebar-version")!;
+  setText(version, about.note ?? ""); version.hidden = !about.note;
+  const links = sidebarAbout.querySelector<HTMLElement>(".sidebar-links")!;
+  for (const choice of about.choices) {
+    const id = `sidebar-about-${choice.id}`;
+    let link = document.getElementById(id) as HTMLButtonElement | null;
+    if (!link) {
+      link = button(id, () => { if (!inactive(link!)) void choose("about", choice.id, id); });
+      link.className = "sidebar-link";
+      link.append(aboutIcon(choice.id));
+      links.append(link);
+    }
+    // An icon alone, named for assistive technology and in its tooltip, as in General's narrow footer.
+    if (link.getAttribute("aria-label") !== choice.label) { link.setAttribute("aria-label", choice.label); link.title = choice.label; }
+    setActionDisabled(link, !about.enabled || !choice.enabled, Boolean(saving));
+  }
+}
+/**
+ * The Recordings tab (2026-10-04): the output folder's videos as cards grouped by day, newest first.
+ * A card plays in the page's own player, and drags out as the file itself into another app. Cards are
+ * kept by id, so a refresh after a save or a focus change neither reloads thumbnails nor moves focus.
+ */
+function updateLibrary(): void {
+  const library = view?.library;
+  const panel = document.getElementById("settings-panel")!;
+  let area = document.getElementById("library");
+  if (selectedTab !== "library") { area?.remove(); return; }
+  if (!area) {
+    area = node("section"); area.id = "library"; area.setAttribute("aria-labelledby", "tab-library");
+    const head = node("div", "library-head");
+    const reveal = button("library-reveal", () => { if (!inactive(reveal)) void choose("outputFolder", "reveal", reveal.id); });
+    head.append(node("p", "library-summary"), reveal);
+    const empty = node("div", "library-empty");
+    empty.append(icon("film", "empty-icon")!, node("p", "library-empty-title"), node("p", "library-empty-detail"));
+    area.append(head, node("p", "library-status"), empty, node("div", "library-days"));
+    panel.append(area);
+  }
+  const items = library?.items ?? [];
+  const summary = area.querySelector<HTMLElement>(".library-summary")!;
+  setText(summary, library?.summary ?? ""); summary.hidden = !library?.summary;
+  const reveal = area.querySelector<HTMLButtonElement>("#library-reveal")!;
+  setText(reveal, text(platform() === "darwin" ? "Show in Finder" : "Open folder"));
+  const folderGroup = view?.groups.find(group => group.id === "outputFolder");
+  setActionDisabled(reveal, !folderGroup?.enabled, Boolean(saving));
+  const status = area.querySelector<HTMLElement>(".library-status")!;
+  setText(status, library?.status ?? ""); status.hidden = !library?.status;
+  const empty = area.querySelector<HTMLElement>(".library-empty")!;
+  empty.hidden = Boolean(items.length || library?.status || !library);
+  setText(empty.querySelector(".library-empty-title")!, text("No recordings yet"));
+  setText(empty.querySelector(".library-empty-detail")!, translate("Recordings saved to {path} appear here.", view?.language, { path: library?.folder ?? "" }));
+  const days = area.querySelector<HTMLElement>(".library-days")!;
+  const groups: Array<{ day: string; items: LibraryItemView[] }> = [];
+  for (const item of items) {
+    if (groups.at(-1)?.day !== item.day) groups.push({ day: item.day, items: [] });
+    groups.at(-1)!.items.push(item);
+  }
+  const sections = new Map([...days.querySelectorAll<HTMLElement>(".library-day")].map(section => [section.dataset.day!, section]));
+  const focused = days.contains(document.activeElement) ? document.activeElement as HTMLElement : undefined;
+  const ids = new Set(items.map(item => item.id));
+  for (const card of days.querySelectorAll<HTMLElement>(".clip")) if (!ids.has(card.dataset.id!)) card.remove();
+  for (const [index, group] of groups.entries()) {
+    let section = sections.get(group.day);
+    sections.delete(group.day);
+    if (!section) {
+      section = node("section", "library-day"); section.dataset.day = group.day;
+      section.append(node("h2", "result-day-heading", group.day), node("div", "library-grid"));
+    }
+    place(days, section, index);
+    const grid = section.querySelector<HTMLElement>(".library-grid")!;
+    for (const [position, item] of group.items.entries()) {
+      const card = document.getElementById(`clip-${item.id}`) ?? clipCard(item.id);
+      place(grid, card, position);
+      fillClip(card, item);
+    }
+  }
+  for (const section of sections.values()) section.remove();
+  if (focused && !focused.isConnected) document.getElementById(`tab-library`)?.focus({ preventScroll: true });
+  else if (focused?.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
+  // The player's recording left the folder (moved to the Trash here or elsewhere).
+  if (player?.open && !ids.has(player.dataset.id ?? "")) player.close();
+}
+const libraryItem = (id: string): LibraryItemView | undefined => view?.library?.items.find(item => item.id === id);
+function clipCard(id: string): HTMLElement {
+  const card = node("div", "clip"); card.id = `clip-${id}`; card.dataset.id = id; card.draggable = true;
+  const open = button(`clip-${id}-open`, () => { const item = libraryItem(id); if (item) openPlayer(item); });
+  open.className = "clip-open";
+  const thumb = node("span", "clip-thumb");
+  const image = node("img"); image.alt = ""; image.loading = "lazy"; image.decoding = "async";
+  image.addEventListener("error", () => thumb.classList.add("no-thumb"));
+  image.addEventListener("load", () => thumb.classList.remove("no-thumb"));
+  const play = node("span", "clip-play"); play.setAttribute("aria-hidden", "true"); play.append(icon("play", "play-icon")!);
+  const fallback = icon("film", "clip-fallback")!;
+  thumb.append(fallback, image, node("span", "clip-duration"), play);
+  const label = node("span", "clip-text");
+  label.append(node("span", "clip-title"), node("span", "clip-meta"));
+  open.append(thumb, label); card.append(open);
+  // The file itself leaves the window: main starts a native drag with it, so any app that takes files can take it.
+  card.addEventListener("animationend", () => card.classList.remove("arrived"));
+  // Without motion the outline does not fade; it goes once the user moves on.
+  card.addEventListener("focusout", () => card.classList.remove("arrived"));
+  card.addEventListener("dragstart", event => {
+    event.preventDefault();
+    void window.settings.choose(`recordingFile:${id}`, "drag").catch(() => {});
+  });
+  return card;
+}
+function fillClip(card: HTMLElement, item: LibraryItemView): void {
+  const image = card.querySelector("img")!;
+  if (image.getAttribute("src") !== item.thumbnail) image.src = item.thumbnail;
+  const duration = card.querySelector<HTMLElement>(".clip-duration")!;
+  setText(duration, item.duration ?? ""); duration.hidden = !item.duration;
+  setText(card.querySelector(".clip-title")!, item.title);
+  setText(card.querySelector(".clip-meta")!, [item.duration, item.size].filter(Boolean).join(" · "));
+  card.title = sentences([item.name, text("Drag into another app to share.")], view?.language);
+  card.querySelector("button")!.setAttribute("aria-label", translate("Play {title}", view?.language, { title: [item.day, item.title, item.duration, item.size].filter(Boolean).join(", ") }));
+}
+/** The in-page player: a modal dialog, closed by Escape, Close or the recording leaving; closing stops and releases the file. */
+let player: HTMLDialogElement | undefined;
+function openPlayer(item: LibraryItemView): void {
+  if (!player) {
+    player = node("dialog", "player"); player.setAttribute("aria-labelledby", "player-title");
+    const video = node("video"); video.controls = true; video.playsInline = true;
+    const bar = node("div", "player-bar");
+    const info = node("div", "player-info");
+    const title = node("p", "player-title"); title.id = "player-title";
+    info.append(title, node("p", "player-meta"));
+    const actions = node("div", "player-actions");
+    for (const action of ["reveal", "open", "trash"] as const) {
+      const el = button(`player-${action}`, () => void playerAction(action, el));
+      el.dataset.action = action; actions.append(el);
+    }
+    const close = button("player-close", () => player!.close()); close.className = "player-close";
+    actions.append(close);
+    bar.append(info, actions); player.append(video, bar);
+    player.addEventListener("close", () => { video.pause(); video.removeAttribute("src"); video.load(); });
+    // A click on the backdrop, outside the dialog's own box, closes it.
+    player.addEventListener("click", event => { if (event.target === player) player!.close(); });
+    document.body.append(player);
+  }
+  player.dataset.id = item.id;
+  const mac = platform() === "darwin";
+  setText(player.querySelector("#player-title")!, `${item.day}, ${item.title}`);
+  setText(player.querySelector(".player-meta")!, [item.name, item.duration, item.size].filter(Boolean).join(" · "));
+  setText(player.querySelector("#player-reveal")!, text(mac ? "Show in Finder" : "Open folder"));
+  setText(player.querySelector("#player-open")!, text("Open"));
+  setText(player.querySelector("#player-trash")!, text(mac ? "Move to Trash" : "Move to Recycle Bin"));
+  setText(player.querySelector("#player-close")!, text("Close"));
+  const video = player.querySelector("video")!;
+  video.src = item.video;
+  player.showModal();
+  void video.play().catch(() => {});
+}
+async function playerAction(action: "reveal" | "open" | "trash", el: HTMLButtonElement): Promise<void> {
+  const id = player?.dataset.id;
+  if (!id || inactive(el)) return;
+  el.setAttribute("aria-disabled", "true");
+  try {
+    if (action === "trash") player!.querySelector("video")!.pause();
+    const result = await window.settings.choose(`recordingFile:${id}`, action);
+    render(result.view);
+    if (!result.applied) announce(libraryItem(id) ? (result.failure ?? text("Could not complete this action. Try again.")) : text("This recording is no longer in the folder."));
+    else if (action === "trash") announce(text(platform() === "darwin" ? "Moved to the Trash" : "Moved to the Recycle Bin"));
+  } catch {
+    announce(text("Could not complete this action. Try again."));
+  } finally {
+    el.removeAttribute("aria-disabled");
+  }
+}
+/**
+ * A tab's icon and label; an unread count, "Failures (2)", becomes a badge. The parentheses stay
+ * in the text, visually hidden, so the label reads and matches as main wrote it.
+ */
+function tabLabel(el: HTMLElement, id: string, label: string): void {
+  if (el.dataset.label === label) return;
+  el.dataset.label = label;
+  const count = /^(.*?)(\s?[（(])(\d+)([)）])$/.exec(label);
+  const glyph = icon(`tab-${id}`, "tab-icon");
+  const name = node("span", "tab-name", count ? count[1] : label);
+  el.replaceChildren(...(glyph ? [glyph] : []), name);
+  if (count) el.append(node("span", "visually-hidden", count[2]), node("span", "tab-badge", count[3]), node("span", "visually-hidden", count[4]));
+}
+/** The sidebar lists the tabs in a column (settings.css, from 600 px): assistive technology is told which axis. */
+const sidebarLayout = matchMedia("(min-width: 600px)");
+function updateTabOrientation(): void {
+  form.querySelector('[role="tablist"]')?.setAttribute("aria-orientation", sidebarLayout.matches ? "vertical" : "horizontal");
+}
+sidebarLayout.addEventListener("change", updateTabOrientation);
 function updateScrollHint(): void {
   const panel = document.getElementById("settings-panel");
   const hint = document.getElementById("scroll-hint");
@@ -772,13 +1062,22 @@ function draw(): void {
   const focusRequested = (current.resultFocus ?? 0) > resultFocus;
   resultFocus = current.resultFocus ?? 0;
   const entryTab = current.entryTab ?? "failures";
+  // A view without the open tab (an older main, a fixture's own view) opens its first one instead of nothing.
+  if (!current.tabs.some(tab => tab.id === selectedTab) && current.tabs[0]) selectedTab = current.tabs[0].id;
+  // An entry's destination is behind the player's modal, where nothing can take focus: the player closes first.
+  if (focusRequested && player?.open) player.close();
   if (focusRequested) {
     // Like a tab click: the editor leaves with its tab, and main must not keep both shortcuts suspended.
     if (selectedTab !== entryTab && (shortcutGroup()?.capturing || arming)) void capture(false);
     selectedTab = entryTab;
   }
   document.documentElement.lang = documentLanguage(current.language);
+  // macOS insets the window controls in the page's top edge, which then leaves room for them.
+  const platformName = shortcutGroup()?.platform;
+  if (platformName && document.documentElement.dataset.platform !== platformName) document.documentElement.dataset.platform = platformName;
   document.title = current.title; setText(heading, current.title); setText(hint, current.hint); hint.hidden = !current.hint;
+  updateStatus(current);
+  updateSidebarAbout(current);
   const groups = current.groups.filter(g => g.tab === selectedTab);
   /** Set when the panel was rebuilt: the offset it gets once everything above its content has settled. */
   let restoreScroll: number | undefined;
@@ -803,21 +1102,27 @@ function draw(): void {
       const el = button(`tab-${tab.id}`, activate);
       el.setAttribute("role", "tab"); el.setAttribute("aria-selected", String(selectedTab === tab.id)); el.setAttribute("aria-controls", "settings-panel"); el.tabIndex = selectedTab === tab.id ? 0 : -1;
       el.addEventListener("keydown", event => {
-        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        // Both axes: the tabs are a row in a narrow window and a column in the sidebar.
+        if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
         event.preventDefault();
         const index = current.tabs.findIndex(t => t.id === selectedTab);
-        const next = event.key === "Home" ? 0 : event.key === "End" ? current.tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + current.tabs.length) % current.tabs.length;
+        const forward = event.key === "ArrowRight" || event.key === "ArrowDown";
+        const next = event.key === "Home" ? 0 : event.key === "End" ? current.tabs.length - 1 : (index + (forward ? 1 : -1) + current.tabs.length) % current.tabs.length;
         document.getElementById(`tab-${current.tabs[next]!.id}`)?.click();
       }); tabs.append(el);
     }
     const panel = node("div"); panel.id = "settings-panel"; panel.setAttribute("role", "tabpanel"); panel.setAttribute("aria-labelledby", `tab-${selectedTab}`);
+    // The open tab's name over its content, where the sidebar layout has no tab strip above it; not a heading
+    // of its own, since the tab already names the panel.
+    const pageTitle = node("p", "page-title"); pageTitle.id = "page-title"; pageTitle.setAttribute("aria-hidden", "true"); panel.append(pageTitle);
     let section: HTMLElement | undefined; let previous: string | undefined;
     for (const group of groups) {
       const sectionId = group.section ?? group.id;
       if (!section || sectionId !== previous) {
         section = node("section", group.id === "about" ? "section about" : "section");
         const title = node("h2", "section-heading"); title.id = `${controlId(group)}-section-heading`;
-        section.append(title, node("div", "inset-list")); panel.append(section); previous = sectionId;
+        const footnote = node("p", "section-footnote"); footnote.hidden = true;
+        section.append(title, node("div", "inset-list"), footnote); panel.append(section); previous = sectionId;
       }
       section.querySelector(".inset-list")!.append(row(group));
     }
@@ -837,16 +1142,20 @@ function draw(): void {
       if (focusTarget && !focusTarget.closest("[hidden]")) focusTarget.focus({ preventScroll: true });
       else if (isRecoveryControl(restore)) groupControl(restore.replace(/^setting-|-(recovery|retry)$/g, ""))?.focus({ preventScroll: true });
     }
-    // Rows first; the offset is applied below, once the panel, failure rows included, is complete.
+    // Rows first; the offset is applied below, once the panel, failure rows and recordings included, is complete.
     updateRecordingResult(false);
+    updateLibrary();
     restoreScroll = target;
   } else updateRows(groups);
   form.querySelector('[role="tablist"]')!.setAttribute("aria-label", current.title);
+  updateTabOrientation();
   for (const tab of current.tabs) {
     const el = document.getElementById(`tab-${tab.id}`)!;
-    setText(el, tab.label);
+    tabLabel(el, tab.id, tab.label);
     if (tab.accessibleLabel) el.setAttribute("aria-label", tab.accessibleLabel); else el.removeAttribute("aria-label");
   }
+  const openTab = current.tabs.find(tab => tab.id === selectedTab);
+  if (openTab) setText(document.getElementById("page-title")!, /^(.*?)\s?[（(]\d+[)）]$/.exec(openTab.label)?.[1] ?? openTab.label);
   for (const group of groups) {
     const title = document.getElementById(`${controlId(group)}-section-heading`);
     if (title) { setText(title, group.sectionHeading ?? ""); title.hidden = !group.sectionHeading; }
@@ -854,6 +1163,16 @@ function draw(): void {
   // After the headings above settle, so scroll anchoring cannot shift the restored offset; an entry's own scroll wins.
   if (restoreScroll !== undefined) document.getElementById("settings-panel")!.scrollTop = restoreScroll;
   updateRecordingResult(focusRequested);
+  updateLibrary();
+  // A saved recording's entry lands on its card, outlined for a moment, without playing it.
+  if (focusRequested && entryTab === "library" && current.libraryFocus) {
+    const card = document.getElementById(`clip-${current.libraryFocus}`);
+    if (card) {
+      card.scrollIntoView({ block: "nearest" });
+      card.querySelector<HTMLElement>(".clip-open")?.focus({ preventScroll: true });
+      card.classList.remove("arrived"); void card.offsetWidth; card.classList.add("arrived");
+    }
+  } else if (focusRequested && entryTab === "library") document.getElementById("tab-library")?.focus({ preventScroll: true });
   // The shortcut entry lands on the card's control, as the failures entry lands on its row.
   // An editor already open there keeps its own focus.
   if (focusRequested && entryTab === "general" && !shortcutGroup()?.capturing && !arming) document.getElementById("setting-hotkey")?.focus();
@@ -1015,7 +1334,13 @@ document.addEventListener("keydown", event => {
     document.documentElement.dataset.input = "keyboard";
 }, true);
 form.addEventListener("submit", event => event.preventDefault());
+document.getElementById("status-action")?.addEventListener("click", event => {
+  const el = event.currentTarget as HTMLButtonElement;
+  if (!inactive(el) && el.dataset.action) void choose("status", el.dataset.action, el.id);
+});
 document.addEventListener("keydown", event => {
+  // The player is a modal dialog: Escape closes it, not the window.
+  if (event.key === "Escape" && player?.open) return;
   if (event.key === "Escape" && (shortcutGroup()?.capturing || arming)) { event.preventDefault(); void capture(false, true); return; }
   // An open explanation closes first; the next Escape closes the window.
   if (event.key === "Escape" && hideInfo()) { event.preventDefault(); return; }

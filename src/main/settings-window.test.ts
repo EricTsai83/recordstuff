@@ -32,6 +32,7 @@ const mock = vi.hoisted(() => {
       this.destroyed = true;
       this.events.get("closed")?.();
     });
+    close = vi.fn(() => this.destroy());
     once = (name: string, callback: () => void) => this.events.set(name, callback);
     on = this.once;
     constructor(public options: any) {
@@ -195,8 +196,8 @@ describe("settings window lifecycle", () => {
     s.panel.refresh(); // closed: nothing to push, nothing to throw
     s.panel.show();
     s.panel.refresh();
-    expect(s.window().webContents.send).toHaveBeenCalledWith("settings:changed", expect.objectContaining({ title: "RecordStuff - Settings" }));
-    expect(s.window().setTitle).toHaveBeenCalledWith("RecordStuff - Settings");
+    expect(s.window().webContents.send).toHaveBeenCalledWith("settings:changed", expect.objectContaining({ title: "RecordStuff" }));
+    expect(s.window().setTitle).toHaveBeenCalledWith("RecordStuff");
     expect(s.window().destroy).not.toHaveBeenCalled();
     s.window().events.get("closed")!();
     s.panel.refresh();
@@ -309,7 +310,7 @@ describe("settings window IPC", () => {
   it("answers only its own window's main frame", async () => {
     const s = setup();
     s.panel.show();
-    expect(s.read(s.event())).toMatchObject({ title: "RecordStuff - Settings" });
+    expect(s.read(s.event())).toMatchObject({ title: "RecordStuff" });
     expect(() => s.read({ sender: {}, senderFrame: {} })).toThrow("Invalid settings sender");
     expect(() => s.read({ sender: s.window().webContents, senderFrame: {} })).toThrow("Invalid settings sender");
     // `ipcMain.handle` turns a thrown error into a rejected invoke for the panel.
@@ -619,6 +620,19 @@ it("the shortcut entry names the General tab with a new token, and an ordinary o
   s.panel.destroy();
 });
 
+it("a saved recording's entry names Recordings and that recording with a new token, and an ordinary open names neither", () => {
+  const s = setup();
+  s.panel.showLibrary("abc123");
+  expect(s.read(s.event())).toMatchObject({ resultFocus: 1, entryTab: "library", libraryFocus: "abc123" });
+  s.panel.showLibrary();
+  expect(s.read(s.event())).toMatchObject({ resultFocus: 2, entryTab: "library" });
+  expect(s.read(s.event())).not.toHaveProperty("libraryFocus");
+  s.panel.show();
+  expect(s.read(s.event())).not.toHaveProperty("libraryFocus");
+  expect(s.read(s.event()).entryTab).toBeUndefined();
+  s.panel.destroy();
+});
+
 it("routes the exact offered recording result through act and returns its applied result", async () => {
   const act = vi.fn(async (_action: AppAction) => false);
   const ctx = setup({ act });
@@ -830,7 +844,7 @@ describe("crashed and replaced settings windows", () => {
     }
     s.panel.show();
     expect(mock.windows).toHaveLength(4);
-    expect(s.read(from(mock.windows[3]))).toMatchObject({ title: "RecordStuff - Settings" });
+    expect(s.read(from(mock.windows[3]))).toMatchObject({ title: "RecordStuff" });
     expect(s.log).toHaveBeenCalledWith(expect.stringContaining("renderer gone (crashed)"));
   });
 
@@ -867,6 +881,27 @@ describe("crashed and replaced settings windows", () => {
     s.panel.show();
     expect(mock.windows).toHaveLength(2);
     expect(mock.windows[1].loadFile).toHaveBeenCalledTimes(1);
-    expect(s.read(from(mock.windows[1]))).toMatchObject({ title: "RecordStuff - Settings" });
+    expect(s.read(from(mock.windows[1]))).toMatchObject({ title: "RecordStuff" });
   });
+});
+
+describe("the status card's action", () => {
+  it("runs the fix the card offers, through the tray's own action, and keeps the window", async () => {
+    const s = setup();
+    s.panel.show();
+    expect(await s.choose(s.event(), "status", "start")).toMatchObject({ applied: false });
+    s.setState({ type: "needsPermission", needsRelaunch: false });
+    expect(await s.choose(s.event(), "status", "permission")).toMatchObject({ applied: true });
+    expect(s.act).toHaveBeenCalledWith("openPermissionSettings");
+    expect(s.act).toHaveBeenCalledTimes(1);
+    expect(s.window().close).not.toHaveBeenCalled();
+  });
+});
+
+it("says Show log failed in its own words, not as a link that would not open", async () => {
+  const s = setup({ act: vi.fn(async () => false) });
+  s.panel.show();
+  expect(await s.choose(s.event(), "log", "show")).toMatchObject({ applied: false, failure: "Could not complete this action. Try again." });
+  expect(await s.choose(s.event(), "about", "website")).toMatchObject({ applied: false, failure: "Could not open the link. Try again." });
+  s.panel.destroy();
 });

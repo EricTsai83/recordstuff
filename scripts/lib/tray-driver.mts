@@ -98,8 +98,8 @@ export type TrayState = "idle" | "starting" | "countdown" | "recording";
  * The acceptance case's rules for one state's menu (docs/acceptance.md, plan
  * 048), judged on the native entries: no separator leads, trails or doubles;
  * Start recording only in idle; Stop only while recording and Cancel recording
- * only while starting (plan 065's long start) or in the countdown; the folder items greyed while recording; the menu
- * ends with Show log and Quit RecordStuff.
+ * only while starting (plan 065's long start) or in the countdown; Open RecordStuff in every state; no output-folder
+ * item but the fix for an unavailable folder, and no Show log (2026-10-04: RecordStuff holds them); the menu ends with Quit RecordStuff.
  */
 export function structureProblems(native: readonly NativeMenuItem[], state: TrayState, language: Language): string[] {
   const problems: string[] = [];
@@ -117,12 +117,11 @@ export function structureProblems(native: readonly NativeMenuItem[], state: Tray
   const cancel = find(t("Cancel recording"));
   const cancellable = state === "starting" || state === "countdown";
   if (cancellable !== Boolean(cancel?.enabled)) problems.push(cancellable ? `${state} has no enabled Cancel recording` : `${state} offers Cancel recording`);
-  if (state === "recording") {
-    const folder = native.filter(item => item.title.startsWith(translate("Output folder: {path}", language, { path: "" })) || item.title === t("Change output folder…"));
-    if (folder.length !== 2 || folder.some(item => item.enabled)) problems.push("the output-folder items are not both shown and greyed while recording");
-  }
-  const tail = native.slice(-2).map(item => item.title);
-  if (tail[0] !== t("Show log") || tail[1] !== t("Quit RecordStuff")) problems.push(`the menu ends with ${JSON.stringify(tail)}, not Show log and Quit RecordStuff`);
+  if (!find(t("Open RecordStuff"))?.enabled) problems.push(`${state} has no enabled Open RecordStuff`);
+  if (native.some(item => item.title.startsWith(translate("Output folder: {path}", language, { path: "" })) || item.title === t("Show log") || item.title === t("Show last recording")))
+    problems.push(`${state} still lists an item RecordStuff now holds (output folder, Show last recording or Show log)`);
+  const last = native.at(-1)?.title;
+  if (last !== t("Quit RecordStuff")) problems.push(`the menu ends with ${JSON.stringify(last)}, not Quit RecordStuff`);
   return problems;
 }
 

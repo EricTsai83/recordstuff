@@ -87,8 +87,9 @@ class TestTray extends EventEmitter {
   destroy() { this.destroyed = true; this.removeAllListeners(); }
   popUpContextMenu(menu: Menu) {
     lastMenu = menu;
-    const settings = menu.items.find(item => item.label.startsWith('Settings') || item.label.startsWith('設定'));
-    if (!settings) throw new Error('Production tray no longer offers Settings');
+    // The window's entry (formerly Settings…, Open RecordStuff since 2026-10-04) in either language.
+    const settings = menu.items.find(item => item.label === 'Open RecordStuff' || item.label === '開啟 RecordStuff');
+    if (!settings) throw new Error('Production tray no longer offers Open RecordStuff');
     settings.click(undefined, undefined, { triggeredByAccelerator: false });
   }
 }
@@ -232,7 +233,7 @@ require(path.join(root, 'out/main/index.js'));
     record('legacy equivalent key retains recording ownership and value', attempts.length === 1 && owned.has(settingsKey)
       && (await group()).choices.some(c => c.id === settingsKey && c.checked)
       && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === 'Alt+CommandOrControl+,', JSON.stringify(attempts));
-    record('legacy collision keeps tray access with recovery explanation', lastMenu?.items.some(i => i.label.includes('open Settings above to change the recording shortcut.')), lastMenu?.items.map(i => i.label).join(' | ') ?? '');
+    record('legacy collision keeps tray access with recovery explanation', lastMenu?.items.some(i => i.label.includes('open RecordStuff above to change it.')), lastMenu?.items.map(i => i.label).join(' | ') ?? '');
     await commit();
     await waitFor(() => owned.has(settingsKey) && owned.has(accelerator), 'independent registrations after legacy recovery');
     record('changing legacy key recovers Settings independently', owned.size === 2, [...owned.keys()].join(', '));
@@ -265,7 +266,7 @@ require(path.join(root, 'out/main/index.js'));
     for (const language of ['en', 'zh-TW']) {
       await evaluate(`window.settings.choose('language', '${language}')`);
       tray.emit('right-click');
-      record(`${language} Settings registration failure is explained without working label`, lastMenu?.items.some(i => i.label.includes(language === 'en' ? 'Settings shortcut unavailable:' : '設定快捷鍵無法使用：'))
+      record(`${language} Settings registration failure is explained without working label`, lastMenu?.items.some(i => i.label.includes(language === 'en' ? 'The shortcut for RecordStuff is unavailable:' : '開啟 RecordStuff 的快捷鍵無法使用，'))
         && !lastMenu?.items.some(i => i.label.includes('⌘⌥,')), lastMenu?.items.map(i => i.label).join(' | ') ?? '');
     }
     const beforeRefresh = attempts.length;
@@ -469,8 +470,8 @@ require(path.join(root, 'out/main/index.js'));
   // Every registration fails here, ⌘⌥, too: Off removes only the recording shortcut's note.
   record('Off retains value and removes failure note', !off.diagnostics?.some(d => d.reason === 'Another app may be using this shortcut.') && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.enabled === false && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator && !globalShortcut.isRegistered(accelerator), 'saved disabled; no note or registration');
   record('a failed Settings shortcut is explained in the card, not only by a retry button',
-    off.diagnostics?.length === 1 && off.diagnostics[0]?.heading === 'Settings shortcut unavailable' && off.actions?.some(a => a.id === 'retryRegistration') === true
-      && await evaluate("(h => h.textContent === 'Settings shortcut unavailable' && h.querySelector('svg[aria-hidden=\"true\"]') !== null)(document.querySelector('#setting-hotkey-diagnostics .diagnostic strong'))"),
+    off.diagnostics?.length === 1 && off.diagnostics[0]?.heading === 'The shortcut for RecordStuff is unavailable' && off.actions?.some(a => a.id === 'retryRegistration') === true
+      && await evaluate("(h => h.textContent === 'The shortcut for RecordStuff is unavailable' && h.querySelector('svg[aria-hidden=\"true\"]') !== null)(document.querySelector('#setting-hotkey-diagnostics .diagnostic strong'))"),
     JSON.stringify(off.diagnostics));
   await choose('notifications', 'off');
   await commit();

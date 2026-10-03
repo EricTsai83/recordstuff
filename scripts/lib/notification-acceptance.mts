@@ -1,7 +1,9 @@
 /**
  * Pure helpers for `pnpm acceptance:notification` (scripts/acceptance-notification.mts):
  * the AppleScript that presses the app's banner in Notification Center, the
- * expected localized banner body, and the verdict for one notification click.
+ * expected localized banner body, and the verdict for one notification click: since
+ * 2026-10-04 the saved banner opens Settings on Recordings with that recording, so a click
+ * passes when RecordStuff is in front with Settings focused and the app named the file.
  * Kept free of I/O so the judgement is unit-tested (notification-acceptance.test.ts).
  */
 import path from "node:path";
@@ -10,18 +12,21 @@ export const FINDER_STATES = ["closed", "behind", "minimized"] as const;
 export type FinderState = (typeof FINDER_STATES)[number];
 export type Language = "en" | "zh-TW";
 
-/** Where the frontmost application ended up after the click, plus what Finder shows. */
+/** Where the frontmost application ended up after the click, and whether RecordStuff's Settings has focus. */
 export interface ClickObservation {
   /** Frontmost app when the sampling window closed (about 3 s after the click). */
   finalFront: string;
   /** Distinct frontmost apps seen during the window, in order. */
   fronts: string[];
-  /** POSIX path Finder's `selection` reports, or undefined (empty on macOS 26 while the list lacks keyboard focus). */
-  selected: string | undefined;
-  /** File name of the selected row read from Finder's Accessibility tree, or undefined. */
-  selectedRow: string | undefined;
-  /** Folder shown by Finder's front window, or undefined. */
-  windowTarget: string | undefined;
+  /** RecordStuff's focused window was its Settings window when the sampling window closed. */
+  settingsFocused: boolean;
+  /**
+   * The page's focus is a recording card's play button (its accessible name starts with "Play "), read through
+   * Accessibility after rendering: the renderer, not only main's log line, took the Recordings entry.
+   */
+  recordingFocused: boolean;
+  /** What Accessibility reported as focused, `role: name`, kept for the report. */
+  focusedName?: string;
   /** Banner body text read from Notification Center before pressing it. */
   bannerBody: string | undefined;
   /** App log lines emitted after `saved` (notification/reveal diagnostics). */
@@ -55,10 +60,9 @@ export function samePath(a: string | undefined, b: string | undefined): boolean 
 }
 
 /**
- * A click passes only when Finder is frontmost at the end of the window *and*
- * the selected file is the one the app saved. "Finder selected the file" and
- * "Finder is in front" are recorded separately in `reasons` so a partial result
- * is legible (plan 014 asks for the two to be reported apart).
+ * A click passes only when RecordStuff is frontmost at the end of the window with Settings focused
+ * *and* the app logged the Recordings entry for the file it saved. The two are recorded separately in
+ * `reasons` so a partial result is legible, as plan 014 asked of the earlier Finder reveal.
  */
 export function judgeClick(
   language: Language,
@@ -79,43 +83,28 @@ export function judgeClick(
   if (!clickDelivered(observation, observation.bannerBody ?? expectedBannerBody(savedPath, language))) {
     reasons.push("no click callback was logged for this saved notification");
   }
-  if (!observation.appLog.some((line) =>
-    line.endsWith(`notification: reveal requested ${savedPath}`) ||
-    line.endsWith(`notification: reveal repeated after activation ${savedPath}`))) {
-    reasons.push("no successful reveal request was logged for this saved file");
+  if (!observation.appLog.some((line) => line.endsWith(`show last recording: Recordings with ${savedPath}`))) {
+    reasons.push("no Recordings entry was logged for this saved file");
   }
   const expected = expectedBannerBody(savedPath, language);
   if (observation.bannerBody !== undefined && observation.bannerBody !== expected) {
     reasons.push(`banner body was "${observation.bannerBody}", expected "${expected}"`);
   }
-  if (!fileSelected(savedPath, observation)) {
-    reasons.push(
-      `Finder does not show the saved file selected (selection ${observation.selected ?? "empty"}, row ${observation.selectedRow ?? "none"}, window ${observation.windowTarget ?? "none"})`,
-    );
-  }
-  if (observation.finalFront !== "Finder")
-    reasons.push(`frontmost app after the click is ${observation.finalFront}, not Finder`);
+  if (observation.finalFront !== "RecordStuff")
+    reasons.push(`frontmost app after the click is ${observation.finalFront}, not RecordStuff`);
+  else if (!observation.settingsFocused) reasons.push("RecordStuff is in front but its Settings window does not have focus");
+  else if (!observation.recordingFocused) reasons.push("Settings is in front but focus is not on a recording in Recordings");
   return { ...base, verdict: reasons.length === 0 ? "pass" : "fail", reasons };
 }
 
-/** Callback evidence is separate from reveal success, and tied to this save. */
-export function clickDelivered(o: Pick<ClickObservation, "appLog">, body: string): boolean {
-  return o.appLog.some((line) => line.endsWith(`notification: clicked: ${body}`));
+/** The accessible-name prefix of a Recordings card's play button (shared/i18n.ts "Play {title}"). */
+export function playPrefix(language: Language): string {
+  return language === "zh-TW" ? "播放 " : "Play ";
 }
 
-/**
- * The saved file counts as selected when Finder's `selection` names it, or when
- * the front window shows its folder and the selected row carries its name. On
- * macOS 26 `selection` came back empty right after a reveal even though the row
- * was highlighted and the path bar showed the file, so the Accessibility row is
- * the primary evidence and `selection` the secondary one.
- */
-export function fileSelected(
-  savedPath: string,
-  o: Pick<ClickObservation, "selected" | "selectedRow" | "windowTarget">,
-): boolean {
-  if (samePath(o.selected, savedPath)) return true;
-  return o.selectedRow === path.basename(savedPath) && samePath(o.windowTarget, path.dirname(savedPath));
+/** Callback evidence is separate from the entry, and tied to this save. */
+export function clickDelivered(o: Pick<ClickObservation, "appLog">, body: string): boolean {
+  return o.appLog.some((line) => line.endsWith(`notification: clicked: ${body}`));
 }
 
 /** Finder setup before a click: no windows, a window behind the front app, or a minimized one. */
@@ -130,68 +119,17 @@ export function finderSetupScript(state: FinderState): string {
   }
 }
 
-/** Finder's selection as a POSIX path, or "" — one line, no trailing newline. */
-export const FINDER_SELECTION_SCRIPT = `tell application "Finder"
-try
-return POSIX path of (item 1 of (get selection as alias list))
-end try
-return ""
-end tell`;
-
-/** Folder of Finder's front window as a POSIX path (with trailing slash), or "". */
-export const FINDER_TARGET_SCRIPT = `tell application "Finder"
-try
-return POSIX path of (target of front Finder window as alias)
-end try
-return ""
-end tell`;
-
 /**
- * File name of the selected row in Finder's front window, read through
- * Accessibility: the first non-empty text under the first cell of the row whose
- * `selected` is true. "" when no window or no selected row. About 2 s.
+ * RecordStuff's front window title, or "" when it shows none: the Settings window a saved banner opens.
+ * One line, read through Accessibility.
  */
-export const FINDER_SELECTED_ROW_SCRIPT = `on textIn(e, depth)
-  tell application "System Events"
-    try
-      set v to value of e
-      if class of v is text and v is not "" then return v
-    end try
-    if depth < 6 then
-      try
-        repeat with c in UI elements of e
-          set t to my textIn(c, depth + 1)
-          if t is not "" then return t
-        end repeat
-      end try
-    end if
-  end tell
-  return ""
-end textIn
-on findRow(e, depth)
-  tell application "System Events"
-    try
-      if (role of e) is "AXRow" then
-        if selected of e then return my textIn(UI element 1 of e, 0)
-        return ""
-      end if
-    end try
-    if depth < 12 then
-      try
-        repeat with c in UI elements of e
-          set t to my findRow(c, depth + 1)
-          if t is not "" then return t
-        end repeat
-      end try
-    end if
-  end tell
-  return ""
-end findRow
-tell application "System Events" to tell process "Finder"
-  if (count of windows) = 0 then return ""
-  set w to window 1
+export const RECORDSTUFF_WINDOW_SCRIPT = `tell application "System Events"
+if not (exists process "RecordStuff") then return ""
+tell process "RecordStuff"
+if (count of windows) = 0 then return ""
+return name of window 1
 end tell
-return my findRow(w, 0)`;
+end tell`;
 
 /**
  * Press the banner whose title is `title` and whose body is exactly `body`.

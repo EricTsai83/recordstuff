@@ -5,7 +5,7 @@ import { DEFAULT_HOTKEY } from "../shared/hotkey";
 
 it("shows and announces timeout, restores focus, translates and clears it on a new edit", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><p id="hint"></p><p id="feedback" class="visually-hidden"></p><form id="settings"></form>';
+  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback" class="visually-hidden"></p><form id="settings"></form>';
   let current: SettingsView = {
     language: "en", title: "Settings", hint: "", failure: "Save failed",
     tabs: [{ id: "general", label: "General" }],

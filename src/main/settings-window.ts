@@ -9,7 +9,7 @@
  * tray uses. Closing the window does not quit the menu-bar app.
  */
 import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE, fitSettingsSize, type SettingsWindowState, type WindowSize } from "./settings-window-state";
-import { BrowserWindow, app, ipcMain, screen, type IpcMainInvokeEvent } from "electron";
+import { BrowserWindow, app, ipcMain, screen, type IpcMainInvokeEvent, type WebContents } from "electron";
 import path from "node:path";
 import { SETTINGS_CHANNELS, type SettingsChoiceResult, type SettingsTab, type SettingsView } from "../shared/settings-panel";
 import type { RecordingState } from "../shared/state";
@@ -35,6 +35,10 @@ export interface SettingsWindowOptions {
   act: (action: AppAction) => Promise<boolean | void>;
   capture?: (armed: boolean) => void;
   geometry?: Pick<SettingsWindowState, "size" | "save"> & Partial<Pick<SettingsWindowState, "flush">>;
+  /** The window was shown or regained focus: what it lists from disk may have changed meanwhile. */
+  activated?: () => void;
+  /** Starts dragging a listed recording out of the page; false when it is no longer listed. */
+  drag?: (contents: WebContents, id: string) => Promise<boolean>;
   log?: (message: string) => void;
 }
 
@@ -56,6 +60,8 @@ export class SettingsWindow {
   private historyLimit = HISTORY_PAGE_ROWS;
   private resultEntry = false;
   private entryTab: SettingsTab = "failures";
+  /** The recording the last Recordings entry brings into view; sent with that entry's token only. */
+  private libraryFocus: string | undefined;
   /** Holds both global shortcuts suspended; never held by a pending save. */
   private lease: CaptureLease | undefined;
   private captureTimedOut = false;
@@ -112,6 +118,8 @@ export class SettingsWindow {
       }
       // A result action waits for durable history; it must not hold preference saves or shortcut capture.
       if (typeof group === "string" && group.startsWith("recordingResult:")) return this.applyResult(group, choice, window);
+      // A recording's actions touch files, not preferences, and a drag must start while the pointer is still down.
+      if (typeof group === "string" && group.startsWith("recordingFile:")) return this.applyFile(group, choice, window);
       // Completing a request ends the capture it was sent from, never a later one.
       const lease = this.leaseOf(window);
       if (group === "hotkey") {
@@ -136,6 +144,12 @@ export class SettingsWindow {
     this.showEntry("general");
   }
 
+  /** A saved recording's entry, from its notification or the tray: Recordings, with that recording in view when listed. */
+  showLibrary(fileId?: string): void {
+    this.libraryFocus = fileId;
+    this.showEntry("library");
+  }
+
   /** The capture-warning banner's entry: Recording, where the resolution warning is shown. */
   showRecording(): void {
     this.showEntry("recording");
@@ -154,6 +168,7 @@ export class SettingsWindow {
     // app forward on its own; without this the panel can open behind the
     // frontmost app, the same reason index.ts focuses before a file dialog.
     if (process.platform === "darwin") app.focus({ steal: true });
+    this.options.activated?.();
     const existing = this.window;
     if (existing && !existing.isDestroyed()) {
       // A window still loading would show blank; its own reveal shows and focuses it.
@@ -181,6 +196,9 @@ export class SettingsWindow {
       title: view.title,
       maximizable: false,
       fullscreenable: false,
+      // macOS: the sidebar runs to the top edge with the window controls inset in it; the page draws
+      // its own drag region and keeps the title for the window list and accessibility. Elsewhere the native frame stays.
+      ...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 18, y: 18 } } : {}),
       webPreferences: {
         preload: path.join(__dirname, "../preload/settings.js"),
         sandbox: true,
@@ -220,6 +238,7 @@ export class SettingsWindow {
       if (this.window === window && !this.painted) revealTimer = setTimeout(reveal, REVEAL_FALLBACK_MS);
     });
     window.on("blur", () => { this.release(this.leaseOf(window)); this.refresh(); });
+    window.on("focus", () => { if (this.window === window) this.options.activated?.(); });
     // A dead page cannot be revived in place; the next show creates a fresh
     // window instead. No automatic reload, so a page that keeps crashing
     // cannot loop.
@@ -297,6 +316,7 @@ export class SettingsWindow {
     view.revision = ++this.revision;
     view.resultFocus = this.resultEntry ? this.resultFocus : 0;
     if (this.resultEntry && this.entryTab !== "failures") view.entryTab = this.entryTab;
+    if (this.resultEntry && this.entryTab === "library" && this.libraryFocus) view.libraryFocus = this.libraryFocus;
     const shortcut = view.groups.find(group => group.kind === "shortcut");
     if (shortcut) {
       shortcut.capturing = this.lease !== undefined;
@@ -327,6 +347,17 @@ export class SettingsWindow {
   private retire(window: BrowserWindow): void {
     this.release(this.leaseOf(window));
     if (this.window === window) { this.window = undefined; this.reveal = undefined; this.captureTimedOut = false; }
+  }
+
+  private async applyFile(group: string, choice: unknown, recipient: BrowserWindow): Promise<SettingsChoiceResult> {
+    const action = settingsAction(this.options.state(), this.options.context(), group, choice);
+    if (!action || typeof action !== "object" || !("recordingFile" in action)) this.log(`settings window: refused ${JSON.stringify({ group, choice })}`);
+    const file = action && typeof action === "object" && "recordingFile" in action ? action.recordingFile : undefined;
+    const applied = !file ? false : file.action === "drag"
+      ? !recipient.isDestroyed() && (await this.options.drag?.(recipient.webContents, file.id) ?? false)
+      : await this.options.act(action!) === true;
+    const view = this.view();
+    return this.deliver({ view, applied, ...(applied ? {} : { failure: translate("Could not complete this action. Try again.", view.language) }) }, recipient);
   }
 
   private async applyResult(group: string, choice: unknown, recipient: BrowserWindow): Promise<SettingsChoiceResult> {
@@ -362,7 +393,8 @@ export class SettingsWindow {
       : settingsChecked(this.options.state(), this.options.context(), group, choice);
     // An action that opened nothing says what failed, not that a setting could not be applied.
     const language = this.options.context().language;
-    const actionFailure = group === "about" || action === "openUpdate" ? translate("Could not open the link. Try again.", language)
+    const actionFailure = action === "revealLog" ? translate("Could not complete this action. Try again.", language)
+      : group === "about" || action === "openUpdate" ? translate("Could not open the link. Try again.", language)
       : action === "openNotificationSettings" ? translate("Could not open System Settings. Allow RecordStuff in System Settings → Notifications.", language)
       : action === "retryShortcuts" ? translate("The shortcut is still unavailable; another app may be using it.", language)
       : undefined;

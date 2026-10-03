@@ -16,7 +16,7 @@ export interface SettingsChoice {
   /** Offered, but its own work is running: the button keeps focus and ignores activation until it ends (plan 053). */
   busy?: boolean;
 }
-export type SettingsTab = "recording" | "general" | "failures";
+export type SettingsTab = "library" | "recording" | "general" | "failures";
 export interface SettingsGroup {
   id: string;
   label: string;
@@ -38,6 +38,8 @@ export interface SettingsGroup {
   platform?: string;
   /** Extra line under the control, e.g. a shortcut the OS refused to register. */
   note?: string;
+  /** A line under the group's whole section, such as the Video section's size estimate. */
+  footnote?: string;
   /** A secondary explanation behind an ⓘ beside the label, shown on hover, focus or click and still describing the control. */
   info?: string;
   enabled: boolean;
@@ -69,8 +71,46 @@ export interface RecordingResultView {
   acknowledged: boolean;
   actions: SettingsChoice[];
 }
+/**
+ * The card above the tabs: what the app is doing and how to record. It is not
+ * a live region; `#feedback` stays the page's one announcer.
+ */
+export interface SettingsStatus {
+  tone: "ready" | "busy" | "recording" | "attention";
+  title: string;
+  /** What to do about an attention state; empty while ready, and while the lock `hint` explains a busy one. */
+  detail: string;
+  /** What fixes a problem that blocks recording; chosen as group `status`. Starting stays with the tray and the shortcut. */
+  action?: { id: StatusActionId; label: string };
+}
+export type StatusActionId = "permission" | "relaunch" | "folder" | "primary";
+/** One video in the Recordings tab; the page reaches its bytes only through these URLs, which name an id. */
+export interface LibraryItemView {
+  id: string;
+  /** The recorded time for the app's own files, the file name for any other. */
+  title: string;
+  /** Localized day heading: Today, Yesterday or the date. */
+  day: string;
+  name: string;
+  /** `1:23`, absent until its length is read. */
+  duration?: string;
+  size: string;
+  thumbnail: string;
+  video: string;
+}
+export interface LibraryView {
+  /** The output folder as shown, home abbreviated. */
+  folder: string;
+  /** Localized: loading or an unreadable folder; the list is empty meanwhile. */
+  status?: string;
+  /** "12 recordings · 2.4 GB". */
+  summary?: string;
+  items: LibraryItemView[];
+}
 export interface SettingsView {
   revision?: number;
+  library?: LibraryView;
+  status?: SettingsStatus;
   recordingResultsRemaining?: number;
   recordingResults?: RecordingResultView[];
   /** Localized status while saved history loads. */
@@ -79,6 +119,8 @@ export interface SettingsView {
   resultFocus?: number;
   /** The tab that entry opens: the failures tab when absent, General for the shortcut card. */
   entryTab?: SettingsTab;
+  /** With a Recordings entry: the recording to bring into view, from its notification or the tray. */
+  libraryFocus?: string;
   language: Language;
   title: string;
   hint: string;

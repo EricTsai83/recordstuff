@@ -33,7 +33,7 @@ it("recognizes only the platform's exact close chord", () => {
 it("captures macOS Control+W as a shortcut while exact Command+W still closes", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
   const close = vi.spyOn(window, "close").mockImplementation(() => undefined);
-  document.body.innerHTML = '<h1 id="title"></h1><p id="hint"></p><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
   let current: SettingsView = {
     language: "en", title: "Settings", hint: "", failure: "Save failed",
     tabs: [{ id: "recording", label: "Recording" }, { id: "general", label: "General" }],

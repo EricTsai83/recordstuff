@@ -21,7 +21,7 @@ function view(language: "en" | "zh-TW", info: string | undefined): SettingsView 
 it("shows the explanation on hover and focus, pins it on click, closes it with Escape before the window, and keeps it describing the control", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
   const close = vi.spyOn(window, "close").mockImplementation(() => {});
-  document.body.innerHTML = '<h1 id="title"></h1><p id="hint"></p><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
   let current = view("en", "The tick is not recorded.");
   let push!: (next: SettingsView) => void;
   window.settings = { read: async () => current, capture: async () => current, choose: async () => ({ view: current, applied: true }),

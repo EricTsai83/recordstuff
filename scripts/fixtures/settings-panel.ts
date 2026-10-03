@@ -211,6 +211,8 @@ const read = <T = unknown>(window: BrowserWindow, script: string): Promise<T> =>
     throw new Error(`${String(error)} in: ${script.trim().split("\n")[0]!.slice(0, 160)}`);
   });
 
+/** Outer window sizes for the visual snapshots: the 960 × 640 default, a 560 × 680 window (the default before the sidebar) and the minimum. */
+const SNAPSHOT_SIZES = { default: [960, 640], narrow: [560, 680], minimum: [380, 360] } as const satisfies Record<string, readonly [number, number]>;
 async function run() {
   const window = new BrowserWindow({
     width: 460,
@@ -534,8 +536,9 @@ async function run() {
     displays: [{ id: "1", label: "Built-in Display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true }] };
   for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
     nativeTheme.themeSource = scheme;
-    for (const size of ["default", "minimum"] as const) {
-      window.setSize(size === "default" ? 560 : 380, size === "default" ? 680 : 360);
+    // The sidebar layout at the default size, the tabs-on-top layout of a narrower window, and the minimum.
+    for (const size of ["default", "narrow", "minimum"] as const) {
+      window.setSize(SNAPSHOT_SIZES[size][0], SNAPSHOT_SIZES[size][1]);
       for (const state of ["recording", "general", "listening", "error", "locked", "sound-off", "countdown-off"] as const) {
         const snapshot = settingsView(state === "locked" ? { type: "starting" } : { type: "idle" }, {
           ...ctx, language: lang,
@@ -558,6 +561,15 @@ async function run() {
         const fits = await read<boolean>(window, `document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth && document.getElementById("settings-panel").scrollWidth <= document.getElementById("settings-panel").clientWidth`);
         const geometry = await read(window, `({root: [document.documentElement.scrollWidth, document.documentElement.scrollHeight], viewport: [innerWidth, innerHeight], main: document.querySelector("main").getBoundingClientRect().toJSON(), form: document.querySelector("form").getBoundingClientRect().toJSON(), panel: document.getElementById("settings-panel").getBoundingClientRect().toJSON()})`);
         record(`${lang}/${scheme}/${size}/${state}: no horizontal or outer-page overflow`, fits, JSON.stringify(geometry));
+        if (state === "recording" || state === "locked") {
+          // The status card speaks only when there is something to say (2026-10-04): never while ready, and a busy
+          // app keeps its title in view at every size. The sidebar's foot carries the credit and links when wide.
+          const card = await read<{ shown: boolean; tone: string; foot: boolean; links: number }>(window, `(() => { const el = document.getElementById("status"), foot = document.getElementById("sidebar-about");
+            return { shown: el.getBoundingClientRect().height > 0, tone: el.dataset.tone ?? "", foot: foot.getBoundingClientRect().height > 0, links: foot.querySelectorAll(".sidebar-link").length }; })()`);
+          const expected = (state === "locked" ? card.shown && card.tone === "busy" : !card.shown && card.tone === "ready")
+            && (size === "default" ? card.foot && card.links === 2 : !card.foot);
+          record(`${lang}/${scheme}/${size}/${state}: the status card speaks only when needed; the credit sits in the sidebar when wide`, expected, JSON.stringify(card));
+        }
         await shot(`panel-${lang}-${scheme}-${size}-${state}.png`);
       }
     }
@@ -587,6 +599,24 @@ async function run() {
   record("countdown sound: disabled while the countdown is Off, keeping its value, and a click sends nothing",
     disabledSound.checked && disabledSound.disabled && disabledSound.calls === "[]" && disabledSound.after, JSON.stringify(disabledSound));
   soundContext = undefined;
+  // The status card's fix (2026-10-04): a real click in the sidebar asks main for the card's own action, and nothing else.
+  // A ready card offers no button: recording starts from the menu bar icon, its menu or the shortcut.
+  window.setSize(SNAPSHOT_SIZES.default[0], SNAPSHOT_SIZES.default[1]);
+  window.webContents.send("settings:changed", settingsView({ type: "idle" }, ctx));
+  await settle(80);
+  const readyButton = await read<boolean>(window, `document.getElementById("status-action").hidden`);
+  record("status card: a ready card offers no Start button", readyButton, String(readyButton));
+  window.webContents.send("settings:changed", settingsView({ type: "idle", outputDirUnavailable: true }, ctx));
+  await settle(80);
+  chooseCalls.length = 0;
+  const fixButton = await read<{ x: number; y: number; label: string; inSidebar: boolean }>(window, `(() => {
+    const el = document.getElementById("status-action"), r = el.getBoundingClientRect(), panel = document.querySelector(".settings-viewport").getBoundingClientRect();
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2), label: el.textContent, inSidebar: r.right <= panel.left }; })()`);
+  window.webContents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, x: fixButton.x, y: fixButton.y });
+  window.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, x: fixButton.x, y: fixButton.y });
+  await settle(150);
+  record("status card: Change output folder… sits in the sidebar and a real click asks main for status/folder",
+    fixButton.label === "Change output folder…" && fixButton.inSidebar && JSON.stringify(chooseCalls) === '[["status","folder"]]', JSON.stringify({ fixButton, chooseCalls }));
   // The ⓘ beside a label: real hover and real Tab show its explanation in the top layer, inside the window; Escape closes it before the window.
   const infoState = (id: string) => read<{ open: boolean; expanded: string | null; text: string; inside: boolean; describes: boolean }>(window, `(() => {
     const id = ${JSON.stringify(`setting-${id}`)}, popover = document.getElementById(id + "-info"), r = popover.getBoundingClientRect();
@@ -595,7 +625,7 @@ async function run() {
       inside: r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
       describes: (control?.getAttribute("aria-describedby") ?? "").split(" ").includes(popover.id) }; })()`);
   for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {
-    window.setSize(size === "default" ? 560 : 380, size === "default" ? 680 : 360);
+    window.setSize(SNAPSHOT_SIZES[size][0], SNAPSHOT_SIZES[size][1]);
     window.webContents.send("settings:changed", settingsView({ type: "idle" }, { ...ctx, language: lang }));
     await settle(80);
     await read(window, `document.getElementById("tab-recording").click()`); await settle(60);
@@ -710,8 +740,8 @@ async function run() {
   await settle(60);
   const bottomHint = await read<boolean>(window, `document.getElementById("scroll-hint").hidden`);
   record("scroll cue disappears at the bottom", bottomHint, String(bottomHint));
-  // Tall enough for the Recording tab, which since plan 048's Output folder row scrolls slightly at the 560 × 680 default.
-  window.setSize(560, 760);
+  // Tall enough for the whole Recording tab, which may scroll at the 960 × 640 default in Traditional Chinese.
+  window.setSize(720, 800);
   await read(window, `document.getElementById("tab-recording").click()`);
   await settle(100);
   const fitting = await read<{ hidden: boolean; scrollHeight: number; clientHeight: number; tab: string }>(window, `({ hidden: document.getElementById("scroll-hint").hidden,
@@ -722,8 +752,13 @@ async function run() {
   window.webContents.send("settings:changed", captureView);
   await settle(60);
   await read(window, `document.getElementById("tab-general").click()`);
+  // General's own footer is the narrow layout's; the sidebar carries it when wide (2026-10-04).
+  window.setSize(560, 760);
+  await settle(100);
   const footer = await read<boolean>(window, `(() => { const row = document.getElementById("setting-about-row"); const buttons = [...row.querySelectorAll(".controls button")]; const credit = row.querySelector(".group-label"); return credit.textContent.includes("Eric Tsai") && buttons.length === 2 && buttons.every(b => b.querySelector("svg") && b.getAttribute("aria-label") && b.title === b.getAttribute("aria-label")) && credit.getBoundingClientRect().right <= buttons[0].getBoundingClientRect().left; })()`);
-  record("footer credits Eric Tsai on the left with two labeled icon links on the right", footer, String(footer));
+  record("narrow footer credits Eric Tsai on the left with two labeled icon links on the right", footer, String(footer));
+  const logRow = await read<boolean>(window, `(() => { const row = document.getElementById("setting-log-row"); const show = document.getElementById("setting-log-show"); return Boolean(row?.querySelector(".row-icon")) && row.querySelector(".group-label").textContent === "Log file" && show?.textContent === "Show log" && !show.disabled; })()`);
+  record("Show log is a labelled row of its own, with an icon and a text button", logRow, String(logRow));
   await read(window, `document.getElementById("setting-about-website").click()`);
   await settle(100);
   const retryFits = await read<boolean>(window, `(() => { const retry = document.getElementById("setting-about-retry"); return !retry.hidden && retry.getBoundingClientRect().width > 32 && retry.scrollWidth <= retry.clientWidth && document.querySelector("#setting-about-website svg") !== null; })()`);
@@ -1095,10 +1130,12 @@ async function run() {
     record(`${lang}: a normal open shows no history in the Recording and General tabs`, recordingTab && generalTab, JSON.stringify({ recordingTab, generalTab }));
     // Lines are counted from the rendered text, since stretched buttons share a height even when one wraps.
     const strip = await read<{ fits: boolean; lines: number[]; labels: string[] }>(window, `(() => { const tabs = [...document.querySelectorAll('[role="tab"]')];
-      const lines = tabs.map(t => { const range = document.createRange(); range.selectNodeContents(t); return new Set([...range.getClientRects()].map(r => Math.round(r.top))).size; });
+      // A narrow strip names only the open tab; the others show their icon and keep their name for assistive technology.
+      const shown = tabs.map(t => t.querySelector(".tab-name")).filter(name => name && getComputedStyle(name).clipPath === "none");
+      const lines = shown.map(t => { const range = document.createRange(); range.selectNodeContents(t); return new Set([...range.getClientRects()].map(r => Math.round(r.top))).size; });
       return { fits: tabs.every(t => t.scrollWidth <= t.clientWidth), lines, labels: tabs.map(t => t.textContent) }; })()`);
-    record(`${lang}: the three tab labels fit the 380 pt window without wrapping or truncation`, strip.fits && strip.lines.every(n => n === 1)
-      && strip.labels[2] === (lang === "en" ? "Failures (1)" : "失敗紀錄（1）"), JSON.stringify(strip));
+    record(`${lang}: the four tabs fit the 380 pt window without wrapping or truncation, the open one by name`, strip.fits && strip.lines.length >= 1 && strip.lines.every(n => n === 1)
+      && strip.labels[3] === (lang === "en" ? "Failures (1)" : "失敗紀錄（1）"), JSON.stringify(strip));
     for (const scheme of ["light", "dark"] as const) {
       nativeTheme.themeSource = scheme; await settle(120);
       await mouse("#tab-recording"); await settle(60);
@@ -1106,11 +1143,11 @@ async function run() {
     }
     nativeTheme.themeSource = "light";
   }
-  // Arrow keys, Home and End cover all three tabs.
+  // Arrow keys, Home and End cover all four tabs, wrapping from Failures to Recordings.
   await mouse("#tab-recording"); await settle(60);
   const tabKeys: string[] = [];
   for (const keyCode of ["Right", "Right", "Right", "End", "Home", "Left"]) { press(keyCode); await settle(60); tabKeys.push(await selected()); }
-  record("keyboard navigation covers the three tabs", JSON.stringify(tabKeys) === JSON.stringify(["tab-general", "tab-failures", "tab-recording", "tab-failures", "tab-recording", "tab-failures"])
+  record("keyboard navigation covers the four tabs", JSON.stringify(tabKeys) === JSON.stringify(["tab-general", "tab-failures", "tab-library", "tab-failures", "tab-library", "tab-failures"])
     && await read<boolean>(window, `document.activeElement.id === "tab-failures"`), JSON.stringify(tabKeys));
   // Day groups, collapsed rows, header navigation and one open row, all in English at the minimum size.
   await pushResult("en", lastFocus);

@@ -18,7 +18,7 @@ const failed = (reason = NOTE): SettingsView => view({ note: reason, diagnostics
 /** A registration failure is read once, and the editor handing its note back on close is not news. */
 it("reads a shortcut failure once and not again when the editor closes", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><p id="hint"></p><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
   let current = view();
   let push!: (next: SettingsView) => void;
   /** What main shows once the editor closes. */

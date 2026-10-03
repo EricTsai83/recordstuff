@@ -23,7 +23,7 @@ function view(language: "en" | "zh-TW", over: Partial<SettingsView> = {}): Setti
 
 it("reads out only news, as sentences of the panel's language, and keeps focus when an action's retry hides", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><p id="hint"></p><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
   let current = view("en");
   let push!: (next: SettingsView) => void;
   let finish: (() => void) | undefined;
@@ -89,7 +89,7 @@ it("reads out only news, as sentences of the panel's language, and keeps focus w
 it("reads out a finished update check, even one whose result repeats the last", async () => {
   vi.resetModules();
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><p id="hint"></p><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
   const updates = (busy: boolean, note?: string): SettingsGroup => ({ id: "updates", label: "Updates", tab: "general", kind: "actions",
     noteKind: "status", enabled: true, ...(note ? { note } : {}), choices: [
       { id: "check", label: busy ? "Checking for updates…" : "Check for updates…", enabled: true, checked: false, ...(busy ? { busy } : {}) },

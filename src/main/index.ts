@@ -18,10 +18,12 @@ import {
   desktopCapturer,
   dialog,
   globalShortcut,
+  nativeImage,
   net,
   nativeTheme,
   powerMonitor,
   powerSaveBlocker,
+  protocol,
   screen,
   session,
   shell,
@@ -51,6 +53,7 @@ import { parseAutoRecord, runAutoRecord } from "./autorecord";
 import { UpdateChecker, fetchVersion, DOWNLOAD_URL, RELEASES_URL, SOURCE_URL, WEBSITE_URL } from "./updates";
 import { AppTray } from "./tray";
 import { SettingsWindow } from "./settings-window";
+import { MEDIA_SCHEME, RecordingsLibrary, fileId } from "./recordings-library";
 import { APP_NAME, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 import { effectiveQuality, frameRateDowngrade, type QualitySettings } from "../shared/quality";
 import { AppShortcuts } from "./shortcuts";
@@ -157,6 +160,9 @@ async function main(): Promise<void> {
   // Closing Settings must leave the menu-bar recorder running.
   app.on("window-all-closed", () => undefined);
 
+  // The Recordings tab's videos and thumbnails (recordings-library.ts): a standard, streaming scheme, so
+  // <video> can fetch byte ranges. Only privileged before ready.
+  protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } }]);
   await app.whenReady();
   if (process.platform === "darwin") app.dock?.hide();
   // Without a menu Electron installs its default one, whose Reload and Developer
@@ -173,6 +179,20 @@ async function main(): Promise<void> {
     log,
   });
   nativeTheme.themeSource = settings.appearance;
+  const library = new RecordingsLibrary({
+    dir: () => settings.outputDir,
+    // Only Settings shows the listing; the tray has nothing to redraw.
+    changed: () => settingsWindow.refresh(),
+    thumbnail: async file => {
+      const image = await nativeImage.createThumbnailFromPath(file, { width: 480, height: 270 });
+      return image.isEmpty() ? undefined : image.toPNG();
+    },
+    trash: file => shell.trashItem(file),
+    open: file => shell.openPath(file),
+    reveal: file => shell.showItemInFolder(file),
+    log,
+  });
+  protocol.handle(MEDIA_SCHEME, request => library.handle(request));
   currentLanguage = settings.language;
   log(
     `start: ${APP_NAME} ${app.getVersion()}; run ${runId}; electron ${process.versions.electron}; ` +
@@ -354,11 +374,14 @@ async function main(): Promise<void> {
     platform: process.platform,
     outputDir: settings.outputDir,
     homeDir: os.homedir(),
+    version: app.getVersion(),
+    library: library.state,
     quality: quality(),
     countdown: countdownSeconds(),
     countdownSound: countdownSound(),
     language: settings.language,
     appearance: settings.appearance,
+    trayClick: settings.trayClick,
     updates: { state: updates.state, enabled: settings.updates.enabled },
     notifications: settings.notifications,
     settingsShortcut: shortcuts.settingsStatus,
@@ -373,6 +396,16 @@ async function main(): Promise<void> {
     context: appContext,
     act: handleAction,
     capture: armed => shortcuts.capture(armed),
+    activated: () => void library.refresh(),
+    drag: async (contents, id) => {
+      const file = library.find(id);
+      if (!file) return false;
+      // macOS refuses a drag without an image: the thumbnail, else the file's own icon.
+      const png = await library.thumbnail(file);
+      const icon = png ? nativeImage.createFromBuffer(png).resize({ width: 160 }) : await app.getFileIcon(file.path, { size: "normal" });
+      contents.startDrag({ file: file.path, icon });
+      return true;
+    },
     log,
   });
   /** Set once every listener is wired, near the end of startup; a click before then has no reopen to explain. */
@@ -385,7 +418,7 @@ async function main(): Promise<void> {
     idleSeconds: () => powerMonitor.getSystemIdleTime(),
     onNotificationClick: () => reopen?.notificationClicked(),
     onToggle: toggle,
-    revealSaved,
+    showSaved: file => void showSavedRecording(file),
     permissionAction: () => {
       const state = recorder.state;
       runAction(state.type === "needsPermission" ? state.needsRelaunch ? "relaunch" : "openPermissionSettings" : "openSettings", "permission notification");
@@ -434,6 +467,11 @@ async function main(): Promise<void> {
 
   async function handleAction(action: AppAction): Promise<boolean | void> {
     if (quitRequested && action !== "quit") return false;
+    if (typeof action !== "string" && "recordingFile" in action) {
+      const { id, action: verb } = action.recordingFile;
+      // A drag belongs to the window it starts in (settings-window.ts).
+      return verb === "drag" ? false : library.act(id, verb);
+    }
     if (typeof action !== "string" && "recordingResult" in action) {
       const request = action.recordingResult;
       return recordingResults.act(request.id, request.action, {
@@ -465,6 +503,12 @@ async function main(): Promise<void> {
         // switch on is the one moment the system prompt can appear at the
         // user's own request. The confirmation doubles as the delivery test.
         if (turningOn && settings.notifications) tray.notifyNotificationsEnabled();
+      } else if ("setTrayClick" in action) {
+        // A click mid-recording follows the new choice at once; nothing a session holds depends on it.
+        await savePreference("tray click", {
+          write: () => settings.setTrayClick(action.setTrayClick),
+          applied: () => log(`settings: tray click ${settings.trayClick}`),
+        });
       } else if ("setAppearance" in action) {
         await savePreference("appearance", {
           write: () => settings.setAppearance(action.setAppearance),
@@ -572,16 +616,9 @@ async function main(): Promise<void> {
       case "relaunch":
         quitCoordinator.relaunch();
         return;
-      case "revealLastSaved": {
-        const state = recorder.state;
-        if ((state.type === "idle" || state.type === "needsPermission") && state.lastSavedPath) {
-          await revealSaved(state.lastSavedPath);
-        }
-        return;
-      }
+      // Settings → General's footer reads the outcome (2026-10-04); the log moved there from the tray.
       case "revealLog":
-        await revealLog();
-        return;
+        return revealLog();
       // Explicit outcomes: the Settings row reads them (plan 048 review); the tray ignores them.
       case "openOutputDir":
         // The opener reports each failure itself in a native warning, so the row adds no second one.
@@ -593,36 +630,35 @@ async function main(): Promise<void> {
   }
 
   /**
-   * Show last recording: select the file, or, when the user moved or deleted it
-   * since it was saved, open the output folder instead of doing nothing visible.
+   * Show last recording, from the tray or the saved notification (2026-10-04): the Recordings tab, listed
+   * afresh so the new file is there, with that recording in view. One the user moved or deleted since is
+   * simply not listed, and the tab shows what the folder holds now.
    */
-  async function revealSaved(savedPath: string): Promise<void> {
-    try {
-      await fs.access(savedPath);
-    } catch {
-      log(`reveal last recording: ${savedPath} is gone; opening the output folder instead`);
-      await openOutputDir();
-      return;
-    }
-    shell.showItemInFolder(savedPath);
+  async function showSavedRecording(savedPath: string): Promise<void> {
+    await library.refresh();
+    const listed = library.state.files.some(file => file.path === savedPath);
+    log(listed ? `show last recording: Recordings with ${savedPath}` : `show last recording: ${savedPath} is not in the folder any more; opening Recordings`);
+    settingsWindow.showLibrary(listed ? fileId(savedPath) : undefined);
   }
 
   /**
    * Select the log file in Finder / Explorer. If file logging was disabled
    * (no file was ever written) fall back to opening the logs folder.
    */
-  async function revealLog(): Promise<void> {
+  /** Whether the file or, without one yet, its folder was shown. */
+  async function revealLog(): Promise<boolean> {
     try {
       await fs.access(logPath);
       log("reveal log: showing file in Finder");
       shell.showItemInFolder(logPath);
-      return;
+      return true;
     } catch {
       // No log file yet: open (or fail to open) the folder instead.
     }
     log("reveal log: file missing, opening folder");
     const error = await shell.openPath(path.dirname(logPath));
     if (error) log(`openPath(${path.dirname(logPath)}) failed: ${error}`);
+    return !error;
   }
 
   const preferenceActions = createPreferenceActions({
@@ -637,7 +673,7 @@ async function main(): Promise<void> {
     },
     saveFolder: folder => settings.setOutputDir(folder),
     focus: focusApp,
-    folderChanged: () => recorder.outputDirChanged(),
+    folderChanged: () => { recorder.outputDirChanged(); void library.refresh(); },
     folderFailed: folder => tray.notifySettingsWriteFailed(folder),
     // Told once the recording ends: a banner now could be muted while the display is shared.
     folderRefused: folder => captureNotices.hold("output folder not changed", () => tray.notifyFolderRefused(folder)),
@@ -683,6 +719,7 @@ async function main(): Promise<void> {
       }
       case "saved":
         savedNotification.schedule(event.path, event.stoppedEarly);
+        void library.refresh();
         return;
       case "displayFailed":
         displayMedia.failure = event.detail;

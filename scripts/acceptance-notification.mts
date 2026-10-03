@@ -10,6 +10,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings } from "./lib/runner-env.mts";
 import { recordStuffPattern } from "./lib/processes.mts";
+import { osascriptAx } from "./lib/native-ax.mts";
 import { command, settleRecording, waitForLog } from "./lib/acceptance-runtime.mts";
 import fs from "node:fs";
 import os from "node:os";
@@ -25,12 +26,10 @@ import {
 import { LogReader, evidenceSince, type LogCursor } from "./lib/log-reader.mts";
 import { developmentAppPath } from "./lib/verification-timing.mts";
 import {
-  FINDER_SELECTED_ROW_SCRIPT,
-  FINDER_SELECTION_SCRIPT,
   FINDER_STATES,
-  FINDER_TARGET_SCRIPT,
+  RECORDSTUFF_WINDOW_SCRIPT,
+  playPrefix,
   expectedBannerBody,
-  fileSelected,
   finderSetupScript,
   judgeClick,
   pressBannerScript,
@@ -356,24 +355,36 @@ async function main(): Promise<void> {
         if (fronts[fronts.length - 1] !== f) fronts.push(f);
         await sleep(80);
       }
-      const selected = await osascript(FINDER_SELECTION_SCRIPT, "Finder selection") || undefined;
-      const selectedRow = await osascript(FINDER_SELECTED_ROW_SCRIPT, "Finder selected row") || undefined;
-      const windowTarget = await osascript(FINDER_TARGET_SCRIPT, "Finder window folder") || undefined;
-      if (savedPath && windowTarget?.replace(/\/$/, "") === path.dirname(savedPath)) {
-        const id = await osascript('tell application "Finder" to return id of front Finder window', "revealed window id");
-        if (/^\d+$/.test(id)) finderWindows.add(Number(id));
+      // The saved banner opens Settings on Recordings (2026-10-04): its title is the localized window name.
+      const settingsTitle = "RecordStuff";
+      const frontWindow = await osascript(RECORDSTUFF_WINDOW_SCRIPT, "RecordStuff window");
+      // What the page focused, after it rendered the entry: Chromium builds its tree only when asked.
+      // Turning it on builds the tree asynchronously: until then focus reads as the web area, so it is polled briefly.
+      let focusedName = "";
+      const pid = Number(await appPid());
+      if (pid) {
+        const ax = osascriptAx(operationSignal);
+        await ax.enableWebAccessibility(pid);
+        for (const until = Date.now() + 2500; ; await sleep(150)) {
+          const focused = (await ax.windows(pid)).focused;
+          focusedName = focused ? `${focused.role}: ${focused.description || focused.title}` : "";
+          if ((focused?.description || focused?.title || "").startsWith(playPrefix(language)) || Date.now() > until) break;
+        }
       }
       const appLogLines = appLog.since(saved.next).lines.map((l) => l.text)
-        .filter((l) => /notification|reveal/.test(l));
+        .filter((l) => /notification|show last recording/.test(l));
       observation = {
         finalFront: fronts[fronts.length - 1] ?? "",
         fronts,
-        selected,
-        selectedRow,
-        windowTarget,
+        settingsFocused: frontWindow === settingsTitle,
+        recordingFocused: focusedName.replace(/^[^:]*: /, "").startsWith(playPrefix(language)),
+        focusedName,
         bannerBody,
         appLog: appLogLines,
       };
+      // Close only RecordStuff's own Settings, with RecordStuff in front, so the next click opens it afresh.
+      if (observation.finalFront === "RecordStuff" && observation.settingsFocused)
+        await osascript('tell application "System Events" to keystroke "w" using command down', "close Settings");
     }
     const result = judgeClick(language, finderState, click, savedPath, observation);
     let accessibilityAfter: string | undefined;
@@ -391,7 +402,7 @@ async function main(): Promise<void> {
     note(
       `[${language} ${finderState} click ${click}] front before ${frontBefore}; ${
         observation
-          ? `after click: ${observation.fronts.join(" → ")}; row ${observation.selectedRow ?? "none"} in ${observation.windowTarget ?? "no window"}`
+          ? `after click: ${observation.fronts.join(" → ")}; Settings ${observation.settingsFocused ? "focused" : "not focused"}`
           : "banner not pressed"
       } → ${result.verdict} (${((Date.now() - started) / 1000).toFixed(1)} s)${result.reasons.length ? ` (${result.reasons.join("; ")})` : ""}`,
     );
@@ -538,7 +549,7 @@ end tell`, "quit empty TextEdit");
     const rows = results.map(
       (r) =>
         `| ${r.language} | ${r.finderState} | ${r.click} | ${r.observation?.fronts.join(" → ") ?? "—"} | ${
-          r.observation && r.savedPath ? (fileSelected(r.savedPath, r.observation) ? "yes" : "no") : "—"
+          r.observation ? (r.observation.settingsFocused ? "yes" : "no") : "—"
         } | ${r.verdict}${r.reasons.length ? `: ${r.reasons.join("; ")}` : ""} |`,
     );
     fs.writeFileSync(
@@ -550,9 +561,9 @@ end tell`, "quit empty TextEdit");
         "",
         desktop.summary,
         "",
-        `Result: **${desktop.lockedAt ? "blocked" : ok ? "pass" : "fail"}** (${summary.pass} pass, ${summary.fail} fail, ${summary.notRun} not run${problems.length ? `; ${problems.join("; ")}` : ""}). A click passes only when Finder is frontmost at the end of the window and its selection is the saved file; the two are reported separately below.`,
+        `Result: **${desktop.lockedAt ? "blocked" : ok ? "pass" : "fail"}** (${summary.pass} pass, ${summary.fail} fail, ${summary.notRun} not run${problems.length ? `; ${problems.join("; ")}` : ""}). A click passes only when RecordStuff is frontmost at the end of the window with Settings focused and the app logged the Recordings entry for the saved file; the two are reported separately below.`,
         "",
-        "| Language | Finder | Click | Frontmost after click | Selected saved file | Verdict |",
+        "| Language | Finder | Click | Frontmost after click | Settings focused | Verdict |",
         "| --- | --- | --- | --- | --- | --- |",
         ...rows,
         "",
@@ -560,7 +571,7 @@ end tell`, "quit empty TextEdit");
         "",
         ...events.map((e) => `- ${e}`),
         "",
-        "Evidence: [cases.json](cases.json), [app-session.log](app-session.log). Not covered: tray menu reveal, other Spaces, clicks from the Notification Center list after the banner left.",
+        "Evidence: [cases.json](cases.json), [app-session.log](app-session.log). Not covered: Show last recording from the menu (\`pnpm acceptance:tray\`), other Spaces, clicks from the Notification Center list after the banner left.",
       ].join("\n"),
     );
     console.log(`Report ${path.relative(REPO_ROOT, dir)}/report.md`);

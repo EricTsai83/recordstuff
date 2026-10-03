@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   expectedBannerBody,
-  fileSelected,
   finderSetupScript,
   judgeClick,
   pressBannerScript,
@@ -12,93 +11,51 @@ import {
 
 const saved = "/Users/eric/Movies/RecordStuff/2026-09-20 01-27-11.mp4";
 const good: ClickObservation = {
-  finalFront: "Finder",
-  fronts: ["Finder"],
-  selected: saved,
-  selectedRow: "2026-09-20 01-27-11.mp4",
-  windowTarget: "/Users/eric/Movies/RecordStuff/",
+  finalFront: "RecordStuff",
+  fronts: ["TextEdit", "RecordStuff"],
+  settingsFocused: true,
+  recordingFocused: true,
   bannerBody: "Saved 2026-09-20 01-27-11.mp4",
   appLog: [
     `[2026-09-19T17:27:15.840Z] notification: clicked: ${expectedBannerBody(saved, "en")}`,
-    `[2026-09-19T17:27:15.843Z] notification: reveal requested ${saved}`,
+    `[2026-09-19T17:27:15.843Z] notification: show saved ${saved}`,
+    `[2026-09-19T17:27:15.860Z] show last recording: Recordings with ${saved}`,
   ],
 };
 
-describe("notification acceptance judgement (plan 014)", () => {
-  it("passes only when Finder is frontmost and shows the saved file", () => {
+describe("notification acceptance judgement (Recordings entry, 2026-10-04)", () => {
+  it("passes only when RecordStuff is in front with Settings focused and the entry named the saved file", () => {
     expect(judgeClick("en", "closed", 2, saved, good).verdict).toBe("pass");
   });
 
-  it("reports file selection and foreground separately when Finder stayed behind", () => {
-    // The v0.1.0 report: Finder selected the file, the windowless app stayed frontmost.
-    const r = judgeClick("en", "behind", 2, saved, { ...good, finalFront: "RecordStuff", fronts: ["RecordStuff"] });
+  it("reports the front app and Settings focus separately from the entry", () => {
+    const behind = judgeClick("en", "behind", 2, saved, { ...good, finalFront: "Finder", fronts: ["Finder"] });
+    expect(behind.reasons).toEqual(["frontmost app after the click is Finder, not RecordStuff"]);
+    const unfocused = judgeClick("en", "closed", 2, saved, { ...good, settingsFocused: false });
+    expect(unfocused.reasons).toEqual(["RecordStuff is in front but its Settings window does not have focus"]);
+    // Main logged the entry, but the page did not land on a recording (a player left open, a failed render).
+    const unrendered = judgeClick("en", "closed", 2, saved, { ...good, recordingFocused: false });
+    expect(unrendered.reasons).toEqual(["Settings is in front but focus is not on a recording in Recordings"]);
+  });
+
+  it("names an undelivered click separately from the window facts", () => {
+    const r = judgeClick("en", "closed", 5, saved, { ...good, settingsFocused: false, appLog: [] });
     expect(r.verdict).toBe("fail");
-    expect(r.reasons).toEqual(["frontmost app after the click is RecordStuff, not Finder"]);
-  });
-
-  it("names an undelivered click separately from the Finder facts", () => {
-    // Seen on macOS 26: the banner was pressed, the app was activated, but no reveal ran.
-    const r = judgeClick("en", "closed", 5, saved, {
-      ...good,
-      finalFront: "RecordStuff",
-      selected: undefined,
-      selectedRow: undefined,
-      windowTarget: undefined,
-      appLog: [],
-    });
-    expect(r.verdict).toBe("fail");
-    expect(r.reasons[0]).toContain("no click callback");
-    expect(r.reasons).toHaveLength(4);
-  });
-
-  it("separates a delivered callback with failed reveal from a missing callback", () => {
-    const r = judgeClick("en", "closed", 1, saved, { ...good, appLog: [
-      good.appLog[0]!, `notification: reveal failed (Error: refused): ${saved}`,
-    ] });
-    expect(r.reasons).toEqual(["no successful reveal request was logged for this saved file"]);
-  });
-
-  it("does not accept callback or reveal evidence for another saved file", () => {
-    const r = judgeClick("en", "closed", 1, saved, { ...good, appLog: [
-      "notification: clicked: Saved other.mp4", "notification: reveal requested /tmp/other.mp4",
-    ] });
     expect(r.reasons).toEqual([
       "no click callback was logged for this saved notification",
-      "no successful reveal request was logged for this saved file",
+      "no Recordings entry was logged for this saved file",
+      "RecordStuff is in front but its Settings window does not have focus",
     ]);
   });
 
-  it("fails when Finder is in front but shows another file", () => {
-    const r = judgeClick("en", "closed", 1, saved, { ...good, selected: undefined, selectedRow: "other.mp4" });
-    expect(r.verdict).toBe("fail");
-    expect(r.reasons[0]).toContain("does not show the saved file selected");
-  });
-
-  it("accepts either Finder's selection or the highlighted row in the saved file's folder", () => {
-    // macOS 26 returned an empty `selection` right after a reveal while the row was highlighted.
-    expect(
-      fileSelected(saved, {
-        selected: undefined,
-        selectedRow: "2026-09-20 01-27-11.mp4",
-        windowTarget: "/Users/eric/Movies/RecordStuff/",
-      }),
-    ).toBe(true);
-    expect(fileSelected(saved, { selected: saved, selectedRow: undefined, windowTarget: undefined })).toBe(true);
-    // Same name in another folder is not the saved file.
-    expect(
-      fileSelected(saved, {
-        selected: undefined,
-        selectedRow: "2026-09-20 01-27-11.mp4",
-        windowTarget: "/Users/eric/Desktop/",
-      }),
-    ).toBe(false);
-    expect(
-      fileSelected(saved, {
-        selected: undefined,
-        selectedRow: undefined,
-        windowTarget: "/Users/eric/Movies/RecordStuff/",
-      }),
-    ).toBe(false);
+  it("does not accept callback or entry evidence for another saved file", () => {
+    const r = judgeClick("en", "closed", 1, saved, { ...good, appLog: [
+      "notification: clicked: Saved other.mp4", "show last recording: Recordings with /tmp/other.mp4",
+    ] });
+    expect(r.reasons).toEqual([
+      "no click callback was logged for this saved notification",
+      "no Recordings entry was logged for this saved file",
+    ]);
   });
 
   it("checks the banner body in the configured language", () => {
@@ -109,7 +66,7 @@ describe("notification acceptance judgement (plan 014)", () => {
     expect(r.reasons[0]).toContain('expected "已儲存');
     expect(
       judgeClick("zh-TW", "closed", 1, saved, { ...good, bannerBody: "已儲存 2026-09-20 01-27-11.mp4",
-        appLog: [`notification: clicked: ${expectedBannerBody(saved, "zh-TW")}`, good.appLog[1]!],
+        appLog: [`notification: clicked: ${expectedBannerBody(saved, "zh-TW")}`, good.appLog[2]!],
       }).verdict,
     ).toBe("pass");
   });
@@ -143,7 +100,7 @@ describe("notification acceptance judgement (plan 014)", () => {
     const pass = judgeClick("en", "closed", 1, saved, good);
     const pass2 = { ...pass, click: 2 };
     const notRun = judgeClick("en", "closed", 3, saved, undefined);
-    const failed = judgeClick("en", "closed", 2, saved, { ...good, finalFront: "RecordStuff" });
+    const failed = judgeClick("en", "closed", 2, saved, { ...good, finalFront: "Finder" });
     expect(summarize([pass, pass2, notRun])).toMatchObject({ pass: 2, notRun: 1, ok: true });
     // Only the first click ran: the second-click case was never observed.
     expect(summarize([pass, notRun, notRun])).toMatchObject({ ok: false, uncovered: ["en/closed"] });

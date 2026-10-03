@@ -6,7 +6,8 @@ import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT } from "../shared/hotkey";
 const LEGACY_HOTKEYS = ["CommandOrControl+Alt+Shift+R", "CommandOrControl+Shift+R", "CommandOrControl+Alt+R"];
 import type { RecordingState } from "../shared/state";
 import { translate as t } from "../shared/i18n";
-import { failureDay, failureTime, proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
+import { failureDay, failureTime, formatDuration, proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
+import type { LibraryState, RecordingFile } from "./recordings-library";
 import type { AppContext } from "./ui-model";
 
 const context: AppContext = {
@@ -66,12 +67,14 @@ describe("settingsView", () => {
       "resolutionCap",
       "frameRate",
       // General (plan 048): everyday preferences first, maintenance beside the About footer.
+      "trayClick",
       "hotkey",
       "notifications",
       "language",
       "appearance",
       "updateChecks",
       "updates",
+      "log",
       "about",
     ]);
     for (const entry of view.groups) {
@@ -86,6 +89,9 @@ describe("settingsView", () => {
     expect(checked(idle, context, "hotkey")).toBe(DEFAULT_HOTKEY.accelerator);
     expect(checked(idle, context, "updateChecks")).toBe("on");
     expect(checked(idle, context, "language")).toBe("en");
+    // A context without the choice is an app from before it: the click that records.
+    expect(checked(idle, context, "trayClick")).toBe("record");
+    expect(checked(idle, { ...context, trayClick: "menu" }, "trayClick")).toBe("menu");
   });
 
   it("never leaks an action to the renderer", () => {
@@ -97,10 +103,11 @@ describe("settingsView", () => {
   it("translates titles, hints and labels, and reflects a committed language", () => {
     const view = settingsView(idle, { ...context, language: "zh-TW" });
     expect(view.language).toBe("zh-TW");
-    expect(view.title).toBe("RecordStuff - 設定");
+    // Named after the app, not translated (2026-10-04).
+    expect(view.title).toBe("RecordStuff");
     expect(view.hint).toBe("");
     expect(group(idle, { ...context, language: "zh-TW" }, "videoQuality")?.label).toBe("影像品質");
-    expect(settingsView(idle, context).title).toBe("RecordStuff - Settings");
+    expect(settingsView(idle, context).title).toBe("RecordStuff");
   });
 
   it("keeps an unverified frame rate visible, selectable only where it is verified", () => {
@@ -139,7 +146,8 @@ describe("recording locks every preference except the language", () => {
   it.each(busy)("$type", (state) => {
     const view = settingsView(state, context);
     expect(view.hint).toBe("Recording in progress; only language and appearance can change.");
-    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["language", "appearance", "about"].includes(entry.id));
+    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["trayClick", "language", "appearance", "log", "about"].includes(entry.id));
+    expect(settingsAction(state, context, "trayClick", "menu")).toEqual({ setTrayClick: "menu" });
     expect(settingsAction(state, context, "language", "zh-TW")).toEqual({ setLanguage: "zh-TW" });
     for (const [group, choice] of [["videoQuality", "high"], ["frameRate", "60"], ["hotkey", "off"], ["updateChecks", "off"]]) {
       expect(settingsAction(state, context, group, choice), group).toBeUndefined();
@@ -424,9 +432,9 @@ it("declares presentation without changing choice identities, and authorizes onl
     ["screen", "menu", "source"], ["outputFolder", "menu", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"],
     ["videoQuality", "segmented", "video"],
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
-    ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],
+    ["trayClick", "menu", "controls"], ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],
     ["language", "segmented", "display"], ["appearance", "menu", "display"],
-    ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"], ["about", "menu", "about"],
+    ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"], ["log", "menu", "support"], ["about", "menu", "about"],
   ]);
   expect(group(idle, { ...context, notifications: false }, "notifications")?.noteKind).toBe("status");
   expect(group(idle, context, "videoQuality")?.noteKind).toBe("explanation");
@@ -574,18 +582,18 @@ it("gives accurate persistence guidance, retries only what retrying can fix and 
 
 describe("Recording failures tab (plan 047)", () => {
   const base = { occurredAt: "2026-09-24T12:00:00Z", code: "disk_full" as const, detail: "ENOSPC", outcome: "empty" as const };
-  it("always offers a third tab after General, counting unread failures in its label and accessible name", () => {
+  it("always offers Failures last, after Recordings, Recording and General, counting unread failures in its label and accessible name", () => {
     expect(settingsView(idle, context).tabs).toEqual([
-      { id: "recording", label: "Recording settings" }, { id: "general", label: "General" }, { id: "failures", label: "Failures", accessibleLabel: "Recording failures" },
+      { id: "library", label: "Recordings" }, { id: "recording", label: "Recording settings" }, { id: "general", label: "General" }, { id: "failures", label: "Failures", accessibleLabel: "Recording failures" },
     ]);
     const results = [{ ...base, id: "a", acknowledged: false }, { ...base, id: "b", acknowledged: false }, { ...base, id: "c", acknowledged: true }];
-    expect(settingsView(idle, { ...context, recordingResults: results }).tabs[2]).toEqual({
+    expect(settingsView(idle, { ...context, recordingResults: results }).tabs[3]).toEqual({
       id: "failures", label: "Failures (2)", accessibleLabel: "Recording failures, 2 unread",
     });
     expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs.map((tab) => tab.label))
-      .toEqual(["錄影", "一般", "失敗紀錄（2）"]);
-    expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs[2]!.accessibleLabel).toBe("失敗紀錄，2 筆未確認");
-    expect(settingsView(idle, { ...context, recordingResults: [results[2]!] }).tabs[2]).toEqual({ id: "failures", label: "Failures", accessibleLabel: "Recording failures" });
+      .toEqual(["錄影檔", "錄影", "一般", "失敗紀錄（2）"]);
+    expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs[3]!.accessibleLabel).toBe("失敗紀錄，2 筆未確認");
+    expect(settingsView(idle, { ...context, recordingResults: [results[2]!] }).tabs[3]).toEqual({ id: "failures", label: "Failures", accessibleLabel: "Recording failures" });
   });
 
   it("names the day a row is grouped under: Today, Yesterday, then the date with the year only for an earlier year", () => {
@@ -635,9 +643,9 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
     }
   });
 
-  it("orders General as Shortcut, Notifications, Language, Appearance, Updates and About, headings moving with their groups", () => {
+  it("orders General as the icon's click, Shortcut, Notifications, Language, Appearance, Updates and About, headings moving with their groups", () => {
     const general = settingsView(idle, context).groups.filter((g) => g.tab === "general");
-    expect(general.map((g) => g.id)).toEqual(["hotkey", "notifications", "language", "appearance", "updateChecks", "updates", "about"]);
+    expect(general.map((g) => g.id)).toEqual(["trayClick", "hotkey", "notifications", "language", "appearance", "updateChecks", "updates", "log", "about"]);
     expect(general.find((g) => g.id === "updateChecks")?.sectionHeading).toBe("Updates");
   });
 
@@ -646,9 +654,9 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
       .filter((g) => g.sectionHeading).map((g) => [g.id, g.sectionHeading]);
     expect(headings("en")).toEqual([
       ["screen", "Source and output"], ["countdown", "Before recording"], ["videoQuality", "Video"],
-      ["hotkey", "Shortcut and notifications"], ["language", "Language and appearance"], ["updateChecks", "Updates"],
+      ["trayClick", "Controls and notifications"], ["language", "Language and appearance"], ["updateChecks", "Updates"], ["log", "Troubleshooting"],
     ]);
-    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "影像", "快捷鍵與通知", "語言與外觀", "更新"]);
+    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "影像", "操作與通知", "語言與外觀", "更新", "疑難排解"]);
     expect(group(idle, context, "updates")?.label).toBe("Manual check");
   });
 });
@@ -684,14 +692,138 @@ it("routes shortcut retry only while the failed registration can be changed", ()
 it("explains a Settings shortcut that is not registered, not only a retry button", () => {
   const failed = group(idle, { ...context, settingsShortcut: { kind: "failed", accelerator: "CommandOrControl+Alt+,", reason: "taken" } }, "hotkey");
   expect(failed?.actions?.map(action => action.id)).toEqual(["retryRegistration"]);
-  expect(failed?.diagnostics).toEqual([expect.objectContaining({ heading: "Settings shortcut unavailable",
+  expect(failed?.diagnostics).toEqual([expect.objectContaining({ heading: "The shortcut for RecordStuff is unavailable",
     reason: "Another app may be using ⌘⌥,." })]);
   const conflict = group(idle, { ...context, settingsShortcut: { kind: "conflict" } }, "hotkey");
   expect(conflict?.actions).toBeUndefined();
   expect(conflict?.diagnostics?.[0]?.reason).toBe("⌘⌥, is the recording shortcut, so it does not open Settings.");
   expect(group(idle, { ...context, settingsShortcut: { kind: "registered", accelerator: "CommandOrControl+Alt+," } }, "hotkey")?.diagnostics).toBeUndefined();
-  expect(failed?.diagnostics?.[0]?.guidance).toBe("Open Settings from the menu bar icon, or retry once the other app releases it.");
+  expect(failed?.diagnostics?.[0]?.guidance).toBe("Open RecordStuff from the menu bar icon, or retry once the other app releases it.");
   const windows = { ...context, platform: "win32" as const, settingsShortcut: { kind: "failed" as const, accelerator: "CommandOrControl+Alt+,", reason: "taken" } };
-  expect(group(idle, windows, "hotkey")?.diagnostics?.[0]?.guidance).toBe("Open Settings from the system tray icon, or retry once the other app releases it.");
-  expect(group(idle, { ...windows, language: "zh-TW" }, "hotkey")?.diagnostics?.[0]?.guidance).toBe("可從系統匣圖示開啟設定，或待其他 App 釋放後重試。");
+  expect(group(idle, windows, "hotkey")?.diagnostics?.[0]?.guidance).toBe("Open RecordStuff from the system tray icon, or retry once the other app releases it.");
+  expect(group(idle, { ...windows, language: "zh-TW" }, "hotkey")?.diagnostics?.[0]?.guidance).toBe("可從系統匣圖示開啟 RecordStuff，或待其他 App 釋放後重試。");
+});
+
+describe("the status card", () => {
+  it("has nothing to say while ready, whatever the click and the shortcut: the page shows no card then", () => {
+    for (const ctx of [context, { ...context, trayClick: "menu" as const }, { ...context, hotkey: { ...context.hotkey, registered: false } }, { ...context, platform: "win32" as const, language: "zh-TW" as const }]) {
+      expect(settingsView(idle, ctx).status).toEqual({ tone: "ready", title: t("Ready to record", ctx.language), detail: "" });
+    }
+  });
+  it("names the state like the tray while the lock hint explains it, leaving Stop and Cancel to the tray", () => {
+    expect(busy.map((state) => settingsView(state, context).status)).toEqual([
+      { tone: "busy", title: "Starting… Check for system permission prompts", detail: "" },
+      { tone: "busy", title: "Recording starts in 2 s", detail: "" },
+      { tone: "recording", title: "Recording", detail: "" },
+      { tone: "busy", title: "Saving…", detail: "" },
+    ]);
+    expect(settingsView(idle, { ...context, quitting: true }).status).toEqual({ tone: "busy", title: "Quitting once the recording is saved or cleaned up…", detail: "" });
+  });
+  it("turns to attention for what stops the next recording, with the fix as its action", () => {
+    expect(settingsView({ type: "needsPermission", needsRelaunch: false }, context).status).toMatchObject({ tone: "attention", action: { id: "permission", label: "Open System Settings" } });
+    expect(settingsView({ type: "needsPermission", needsRelaunch: true }, context).status?.action?.id).toBe("relaunch");
+    expect(settingsView({ type: "idle", outputDirUnavailable: true }, context).status).toMatchObject({ tone: "attention", title: "Output folder unavailable", action: { id: "folder" } });
+    const gone = { ...context, display: { kind: "display" as const, id: "9", label: "Gone" } };
+    // The way back, once there is a Primary display to go back to.
+    expect(settingsView(idle, gone).status).toEqual({ tone: "attention", title: "Selected display is unavailable", detail: "" });
+    const withPrimary = { ...gone, displays: [{ id: "1", label: "Built-in", logicalWidth: 1512, logicalHeight: 982, scaleFactor: 2, internal: true, primary: true }] };
+    expect(settingsView(idle, withPrimary).status?.action).toEqual({ id: "primary", label: "Use Primary display" });
+    expect(settingsAction(idle, withPrimary, "status", "primary")).toEqual({ setDisplay: { kind: "primary" } });
+    expect(settingsAction(idle, withPrimary, "status", "folder")).toBeUndefined();
+  });
+  it("resolves only the offered fix to the tray's own action: never a start, a stop or anything while quitting", () => {
+    expect(settingsAction({ type: "idle", outputDirUnavailable: true }, context, "status", "folder")).toBe("changeOutputDir");
+    expect(settingsAction({ type: "needsPermission", needsRelaunch: false }, context, "status", "permission")).toBe("openPermissionSettings");
+    expect(settingsAction({ type: "needsPermission", needsRelaunch: true }, context, "status", "relaunch")).toBe("relaunch");
+    expect(settingsAction(idle, context, "status", "folder")).toBeUndefined();
+    for (const state of [idle, ...busy]) for (const id of ["start", "stop", "cancel"]) expect(settingsAction(state, context, "status", id)).toBeUndefined();
+    expect(settingsAction({ type: "idle", outputDirUnavailable: true }, { ...context, quitting: true }, "status", "folder")).toBeUndefined();
+  });
+  it("puts the running version under the credit", () => {
+    expect(group(idle, { ...context, version: "1.3.0" }, "about")?.note).toBe("Version 1.3.0");
+    expect(group(idle, { ...context, version: "1.3.0", language: "zh-TW" }, "about")?.note).toBe("版本 1.3.0");
+    expect(group(idle, context, "about")).not.toHaveProperty("note");
+  });
+});
+
+describe("the Video section's size estimate", () => {
+  const retina = { ...context, displays: [{ id: "1", label: "Built-in", logicalWidth: 1512, logicalHeight: 982, scaleFactor: 2, internal: true, primary: true }] };
+  it("states about how much a minute takes on the selected screen, following every Video choice", () => {
+    expect(group(idle, retina, "frameRate")?.footnote).toBe("About 180 MB per minute at 3024 × 1964, 30 fps.");
+    expect(group(idle, { ...retina, quality: { ...DEFAULT_QUALITY, resolutionCap: "1080p" } }, "frameRate")?.footnote)
+      .toBe("About 54 MB per minute at 1662 × 1080, 30 fps.");
+    expect(group(idle, { ...retina, quality: { ...DEFAULT_QUALITY, frameRate: 60 }, language: "zh-TW" }, "frameRate")?.footnote)
+      .toBe("每分鐘約 700 MB（3024 × 1964、60 fps）。");
+    // Windows records 30 fps whatever is stored, and the estimate says what it will record.
+    expect(group(idle, { ...retina, platform: "win32", quality: { ...DEFAULT_QUALITY, frameRate: 60 } }, "frameRate")?.footnote).toContain("30 fps");
+  });
+  it("says nothing without a screen to measure", () => {
+    expect(group(idle, context, "frameRate")).not.toHaveProperty("footnote");
+    expect(group(idle, { ...retina, display: { kind: "display", id: "9", label: "Gone" } }, "frameRate")).not.toHaveProperty("footnote");
+  });
+});
+
+describe("the Recordings tab", () => {
+  const now = new Date(2026, 9, 4, 15, 0);
+  const file = (name: string, recordedAt: Date, extra: Partial<RecordingFile> = {}): RecordingFile =>
+    ({ id: `id-${name}`, path: `/tmp/recordings/${name}`, name, size: 176_000_000, recordedAt: recordedAt.getTime(), version: "v1", ...extra });
+  const files = [
+    file("2026-10-04 14-02-11.mp4", new Date(2026, 9, 4, 14, 2, 11), { duration: 83.4 }),
+    file("Product demo.mp4", new Date(2026, 9, 3, 9, 30), { size: 2_200_000_000, duration: 3725 }),
+  ];
+  const library = (state: Partial<LibraryState>): AppContext => ({ ...context, now, library: { dir: "/tmp/recordings", loading: false, failed: false, files, ...state } });
+  it("lists every video newest first with its day, time or name, length, size and id-only URLs", () => {
+    const view = settingsView(idle, library({})).library!;
+    expect(view.summary).toBe("2 recordings · 2.4 GB");
+    expect(view.folder).toBe("~/recordings");
+    expect(view.items).toEqual([
+      { id: "id-2026-10-04 14-02-11.mp4", name: "2026-10-04 14-02-11.mp4", day: "Today", title: new Date(2026, 9, 4, 14, 2).toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" }),
+        duration: "1:23", size: "180 MB", thumbnail: "recordstuff-media://thumb/id-2026-10-04 14-02-11.mp4?v=v1", video: "recordstuff-media://video/id-2026-10-04 14-02-11.mp4?v=v1" },
+      expect.objectContaining({ day: "Yesterday", title: "Product demo", duration: "1:02:05", size: "2.2 GB" }),
+    ]);
+    expect(settingsView(idle, { ...library({}), language: "zh-TW" }).library!.summary).toBe("2 個錄影・2.4 GB");
+    expect(settingsView(idle, library({ files: [files[0]!] })).library!.summary).toBe("1 recording · 180 MB");
+  });
+  it("says it is loading or cannot read the folder instead of claiming it is empty", () => {
+    expect(settingsView(idle, library({ loading: true, files: [] })).library).toEqual({ folder: "~/recordings", status: "Loading recordings…", items: [] });
+    expect(settingsView(idle, library({ failed: true, files: [] })).library?.status).toBe("Could not read the output folder.");
+    expect(settingsView(idle, library({ files: [] })).library).toEqual({ folder: "~/recordings", items: [] });
+    expect(settingsView(idle, context)).not.toHaveProperty("library");
+  });
+  it("resolves only listed ids and offered actions, even while recording", () => {
+    const ctx = library({});
+    expect(settingsAction(idle, ctx, "recordingFile:id-Product demo.mp4", "trash")).toEqual({ recordingFile: { id: "id-Product demo.mp4", action: "trash" } });
+    expect(settingsAction(busy[2]!, ctx, "recordingFile:id-Product demo.mp4", "drag")).toEqual({ recordingFile: { id: "id-Product demo.mp4", action: "drag" } });
+    expect(settingsAction(idle, ctx, "recordingFile:/etc/passwd", "open")).toBeUndefined();
+    expect(settingsAction(idle, ctx, "recordingFile:id-Product demo.mp4", "delete")).toBeUndefined();
+  });
+  it("prints lengths as minutes and seconds, with hours from an hour", () => {
+    expect([formatDuration(0), formatDuration(59.6), formatDuration(83), formatDuration(3725)]).toEqual(["0:00", "1:00", "1:23", "1:02:05"]);
+  });
+});
+
+describe("the icon's left click (2026-10-04)", () => {
+  it("is a menu in General, in both languages, whose ⓘ says the right click opens the menu", () => {
+    expect(group(idle, context, "trayClick")).toMatchObject({ label: "Icon click", control: "menu", info: "A right click always opens the menu.",
+      choices: [{ id: "menu", label: "Open the menu", checked: false }, { id: "record", label: "Start / stop recording", checked: true }] });
+    expect(group(idle, { ...context, platform: "win32", language: "zh-TW" }, "trayClick")?.choices.map(c => c.label)).toEqual(["開啟選單", "開始／停止錄影"]);
+    expect(settingsAction(idle, context, "trayClick", "toggle")).toBeUndefined();
+  });
+  it("tells how to cancel a countdown by the chosen click", () => {
+    const menu = { ...context, trayClick: "menu" as const };
+    expect(group(idle, menu, "countdown")?.info).toBe("Choose Cancel recording from the menu bar icon, or press the shortcut.");
+    expect(group(idle, { ...menu, hotkey: { ...menu.hotkey, enabled: false } }, "countdown")?.info).toBe("Choose Cancel recording from the menu bar icon.");
+    expect(group(idle, context, "countdown")?.info).toBe("Click the menu bar icon or press the shortcut to cancel.");
+  });
+});
+
+describe("the menu's support items in RecordStuff (2026-10-04)", () => {
+  it("gives Show log a row of its own under Troubleshooting, last before the credit, usable while recording", () => {
+    const general = settingsView(idle, context).groups.filter(g => g.tab === "general").map(g => g.id);
+    expect(general.slice(-2)).toEqual(["log", "about"]);
+    expect(group(idle, context, "log")).toMatchObject({ label: "Log file", kind: "actions", sectionHeading: "Troubleshooting", choices: [{ id: "show", label: "Show log" }] });
+    expect(group(idle, { ...context, language: "zh-TW" }, "log")).toMatchObject({ label: "記錄檔（log）", sectionHeading: "疑難排解", choices: [{ label: "顯示 log" }] });
+    expect(settingsAction(busy[2]!, context, "log", "show")).toBe("revealLog");
+    expect(group(idle, context, "about")?.choices.map(c => c.id)).toEqual(["website", "source"]);
+  });
 });

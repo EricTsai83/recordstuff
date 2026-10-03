@@ -18,18 +18,23 @@ import {
   FRAME_RATES,
   RESOLUTION_CAPS,
   VIDEO_QUALITIES,
+  effectiveQuality,
+  estimatedBytesPerMinute,
+  fitWithinCap,
+  formatBytes,
   isFrameRateAvailable,
   type ResolutionCap,
   type VideoQuality,
 } from "../shared/quality";
 import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut, sameShortcut } from "../shared/hotkey";
 import { COUNTDOWN_CHOICES } from "../shared/countdown";
-import type { RecordingResultView, SettingsChoice, SettingsGroup, SettingsView } from "../shared/settings-panel";
+import type { LibraryView, RecordingResultView, SettingsChoice, SettingsGroup, SettingsStatus, SettingsView, StatusActionId } from "../shared/settings-panel";
+import { MEDIA_SCHEME, RECORDING_FILE_ACTIONS, type RecordingFileAction } from "./recordings-library";
 import type { RecordingResult, RecordingResultAction } from "../shared/recording-result";
 import type { RecordingState } from "../shared/state";
 
 import path from "node:path";
-import { abbreviateHome, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
+import { APP_NAME, abbreviateHome, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 
 /** A group as main knows it: exactly the wire shape plus the action per choice. */
 interface Group extends SettingsGroup {
@@ -67,17 +72,19 @@ const SECTIONS: Record<string, string> = {
   screen: "source", outputFolder: "source",
   countdown: "countdown", countdownSound: "countdown",
   videoQuality: "video", resolutionCap: "video", frameRate: "video",
-  hotkey: "controls", notifications: "controls",
+  trayClick: "controls", hotkey: "controls", notifications: "controls",
   language: "display", appearance: "display",
   updateChecks: "updates", updates: "updates",
+  log: "support",
 };
 const SECTION_HEADINGS: Record<string, PlainMessageKey> = {
   source: "Source and output",
   countdown: "Before recording",
   video: "Video",
-  controls: "Shortcut and notifications",
+  controls: "Controls and notifications",
   display: "Language and appearance",
   updates: "Updates",
+  support: "Troubleshooting",
 };
 
 /** On, then Off, for a switch whose action carries the chosen value. */
@@ -144,9 +151,18 @@ function countdownGroup(ctx: AppContext, enabled: boolean): Group {
     enabled: true,
     checked: value === ctx.countdown,
     action: { setCountdown: value },
-  }))), info: ctx.platform === "darwin"
-    ? t(shortcutWorks ? "Click the menu bar icon or press the shortcut to cancel." : "Click the menu bar icon to cancel.", language)
-    : t(shortcutWorks ? "Click the system tray icon or press the shortcut to cancel." : "Click the system tray icon to cancel.", language) };
+  }))), info: countdownCancelText(ctx, shortcutWorks) };
+}
+
+/** How a countdown is cancelled, by the click the user chose: a click that records cancels, a menu offers Cancel recording. */
+function countdownCancelText(ctx: AppContext, shortcutWorks: boolean): string {
+  const mac = ctx.platform === "darwin";
+  if (ctx.trayClick === "menu") return t(mac
+    ? shortcutWorks ? "Choose Cancel recording from the menu bar icon, or press the shortcut." : "Choose Cancel recording from the menu bar icon."
+    : shortcutWorks ? "Choose Cancel recording from the system tray icon, or press the shortcut." : "Choose Cancel recording from the system tray icon.", ctx.language);
+  return t(mac
+    ? shortcutWorks ? "Click the menu bar icon or press the shortcut to cancel." : "Click the menu bar icon to cancel."
+    : shortcutWorks ? "Click the system tray icon or press the shortcut to cancel." : "Click the system tray icon to cancel.", ctx.language);
 }
 
 /**
@@ -179,7 +195,7 @@ function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {
     }))), info: t("Scales larger screens down, keeping the aspect ratio. Smaller ones are not enlarged.", language) },
     // A frame rate that is not verified on this platform stays visible and
     // says why, rather than silently disappearing from the list.
-    group("frameRate", t("Frame rate", language), enabled, FRAME_RATES.map((value) => ({
+    { ...group("frameRate", t("Frame rate", language), enabled, FRAME_RATES.map((value) => ({
       id: String(value),
       label: isFrameRateAvailable(value, ctx.platform)
         ? `${value} fps`
@@ -187,8 +203,23 @@ function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {
       enabled: isFrameRateAvailable(value, ctx.platform),
       checked: value === frameRate,
       action: { setQuality: { frameRate: value } },
-    }))),
+    }))), ...sizeEstimate(ctx) },
   ];
+}
+
+/**
+ * What the Video choices cost (2026-10-04): about how much a minute takes on the selected screen,
+ * from the encoder targets, so quality is chosen knowing the file size rather than only told it grows.
+ */
+function sizeEstimate(ctx: AppContext): { footnote?: string } {
+  const resolution = displayResolution(ctx.displays, ctx.display);
+  const display = resolution.ok ? ctx.displays.find((d) => d.id === resolution.id) : undefined;
+  if (!display) return {};
+  const quality = effectiveQuality(ctx.quality, ctx.platform);
+  const even = (value: number): number => Math.max(2, Math.round(value / 2) * 2);
+  const size = fitWithinCap({ width: even(display.logicalWidth * display.scaleFactor), height: even(display.logicalHeight * display.scaleFactor) }, quality.resolutionCap);
+  return { footnote: t("About {size} per minute at {width} × {height}, {fps} fps.", ctx.language,
+    { size: formatBytes(estimatedBytesPerMinute(size, quality)), width: size.width, height: size.height, fps: quality.frameRate }) };
 }
 
 /**
@@ -237,11 +268,11 @@ function hotkeyDiagnostics(ctx: AppContext, unavailable: string | undefined): No
   return [
     ...(unavailable ? [{ kind: "current" as const, heading: t("Shortcut unavailable", language), reason: unavailable,
       guidance: t("Record from the menu, or choose another shortcut.", language) }] : []),
-    ...(kind === "failed" ? [{ kind: "current" as const, heading: t("Settings shortcut unavailable", language),
+    ...(kind === "failed" ? [{ kind: "current" as const, heading: t("The shortcut for RecordStuff is unavailable", language),
       reason: t("Another app may be using {shortcut}.", language, { shortcut: settings }),
-      guidance: t(ctx.platform === "darwin" ? "Open Settings from the menu bar icon, or retry once the other app releases it."
-        : "Open Settings from the system tray icon, or retry once the other app releases it.", language) }] : []),
-    ...(kind === "conflict" ? [{ kind: "current" as const, heading: t("Settings shortcut unavailable", language),
+      guidance: t(ctx.platform === "darwin" ? "Open RecordStuff from the menu bar icon, or retry once the other app releases it."
+        : "Open RecordStuff from the system tray icon, or retry once the other app releases it.", language) }] : []),
+    ...(kind === "conflict" ? [{ kind: "current" as const, heading: t("The shortcut for RecordStuff is unavailable", language),
       reason: t("{shortcut} is the recording shortcut, so it does not open Settings.", language, { shortcut: settings }),
       guidance: t("Choose another recording shortcut to open Settings with {shortcut} again.", language, { shortcut: settings }) }] : []),
   ];
@@ -310,6 +341,20 @@ function notificationsGroup(ctx: AppContext, enabled: boolean): Group {
   }] };
 }
 
+/**
+ * What the icon's left click does (2026-10-04). Never locked: a session holds nothing that depends on it,
+ * and the next click simply follows the new choice. The right click always opens the menu, as the ⓘ says.
+ */
+function trayClickGroup(ctx: AppContext): Group {
+  const language = ctx.language;
+  const current = ctx.trayClick ?? "record";
+  return { ...group("trayClick", t("Icon click", language), true,
+    (["menu", "record"] as const).map((value) => ({
+      id: value, label: t(value === "menu" ? "Open the menu" : "Start / stop recording", language),
+      enabled: true, checked: value === current, action: { setTrayClick: value },
+    }))), info: t("A right click always opens the menu.", language) };
+}
+
 /** Language is presentation only: it never touches a running capture, so it is never locked. */
 function languageGroup(language: Language): Group {
   return group("language", t("Language", language), true, (["en", "zh-TW"] as const).map((value) => ({
@@ -341,6 +386,7 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
     countdownSoundGroup(ctx, unlocked),
     ...qualityGroups(ctx, unlocked),
     // General: everyday preferences first, then maintenance beside the About footer (plan 048).
+    trayClickGroup(ctx),
     hotkeyGroup(ctx, unlocked),
     notificationsGroup(ctx, unlocked),
     languageGroup(ctx.language),
@@ -350,10 +396,15 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
     }))),
     updateChecksGroup(ctx, unlocked),
     updateActions(ctx, unlocked),
+    // Moved from the tray (2026-10-04): a row like any other, so what it does is read, not guessed from an icon.
+    // Never locked: showing a file touches nothing a recording holds.
+    { ...group("log", t("Log file", ctx.language), true, [
+      { id: "show", label: t("Show log", ctx.language), enabled: true, checked: false, action: "revealLog" },
+    ]), kind: "actions" },
     { ...group("about", t("Built by Eric Tsai", ctx.language), true, [
       { id: "website", label: t("Official website", ctx.language), enabled: true, checked: false, action: "openWebsite" },
       { id: "source", label: t("GitHub source", ctx.language), enabled: true, checked: false, action: "openSource" },
-    ]), kind: "actions" },
+    ], ctx.version ? t("Version {version}", ctx.language, { version: ctx.version }) : undefined), kind: "actions" },
   ];
 }
 
@@ -421,6 +472,100 @@ function projectResult(result: RecordingResult, state: RecordingState, ctx: AppC
   return view;
 }
 
+/**
+ * The status card above the tabs: the same states the tray shows, said as
+ * what the user can do now. A settled app explains how to start; a busy one
+ * leaves the explanation to the lock `hint`.
+ */
+export function settingsStatus(state: RecordingState, ctx: AppContext): SettingsStatus {
+  const status = statusText(state, ctx);
+  const id = ctx.quitting ? undefined : statusActionId(state, ctx);
+  return id ? { ...status, action: { id, label: t(STATUS_ACTION_LABELS[id], ctx.language) } } : status;
+}
+
+/**
+ * The card's button, in the tray's words, and the tray action it runs: only a fix for what blocks the next
+ * recording. Start, Stop and Cancel stay with the menu bar icon, its menu and the shortcut, where recording begins.
+ */
+const STATUS_ACTION_LABELS: Record<StatusActionId, PlainMessageKey> = {
+  permission: "Open System Settings", relaunch: "Relaunch", folder: "Change output folder…", primary: "Use Primary display",
+};
+const STATUS_ACTIONS: Record<StatusActionId, AppAction> = {
+  permission: "openPermissionSettings", relaunch: "relaunch", folder: "changeOutputDir", primary: { setDisplay: { kind: "primary" } },
+};
+function statusActionId(state: RecordingState, ctx: AppContext): StatusActionId | undefined {
+  switch (state.type) {
+    case "needsPermission": return state.needsRelaunch ? "relaunch" : "permission";
+    case "idle":
+      if (state.outputDirUnavailable) return "folder";
+      // The Screen row's own way back, when there is one.
+      if (!displayResolution(ctx.displays, ctx.display).ok) return screenGroup(ctx, true).recovery ? "primary" : undefined;
+      return undefined;
+    default: return undefined;
+  }
+}
+
+function statusText(state: RecordingState, ctx: AppContext): SettingsStatus {
+  const language = ctx.language;
+  if (ctx.quitting) return { tone: "busy", title: t("Quitting once the recording is saved or cleaned up…", language), detail: "" };
+  switch (state.type) {
+    case "needsPermission":
+      return { tone: "attention", title: t("Screen recording permission required", language),
+        detail: t("Check recording permissions in System Settings. Relaunch if access was recently granted.", language) };
+    case "starting": return { tone: "busy", title: t("Starting… Check for system permission prompts", language), detail: "" };
+    case "countdown": return { tone: "busy", title: t("Recording starts in {seconds} s", language, { seconds: state.remaining }), detail: "" };
+    case "recording": return { tone: "recording", title: t("Recording", language), detail: "" };
+    case "stopping": return { tone: "busy", title: t("Saving…", language), detail: "" };
+    case "idle": break;
+  }
+  if (state.outputDirUnavailable) return { tone: "attention", title: t("Output folder unavailable", language),
+    detail: t("Check the output folder, its permissions and the connected drive before recording again.", language) };
+  const resolution = displayResolution(ctx.displays, ctx.display);
+  // The Screen row below says why and offers the way back; the card only names the problem.
+  if (!resolution.ok) return { tone: "attention", title: t("Selected display is unavailable", language), detail: "" };
+  // Nothing to say while ready: the page shows no card then, and the menu bar icon is where recording starts.
+  return { tone: "ready", title: t("Ready to record", language), detail: "" };
+}
+
+/** `1:23`, or `1:02:03` from an hour. */
+export function formatDuration(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds));
+  const two = (n: number): string => String(n).padStart(2, "0");
+  const h = Math.floor(total / 3600), m = Math.floor(total / 60) % 60, s = total % 60;
+  return h ? `${h}:${two(m)}:${two(s)}` : `${m}:${two(s)}`;
+}
+
+/**
+ * The Recordings tab (2026-10-04): the output folder's videos, newest first, grouped by day like the
+ * failures, each with the URLs the page may load it by. Totals count every listed file.
+ */
+function libraryView(ctx: AppContext, now: Date): LibraryView | undefined {
+  const library = ctx.library;
+  if (!library) return undefined;
+  const language = ctx.language;
+  const folder = abbreviateHome(library.dir, ctx.homeDir);
+  if (library.failed) return { folder, status: t("Could not read the output folder.", language), items: [] };
+  if (library.loading) return { folder, status: t("Loading recordings…", language), items: [] };
+  const total = library.files.reduce((sum, file) => sum + file.size, 0);
+  const count = library.files.length;
+  return {
+    folder,
+    ...(count ? { summary: t(count === 1 ? "1 recording · {size}" : "{count} recordings · {size}", language, { count, size: formatBytes(total) }) } : {}),
+    items: library.files.map(file => {
+      const stamped = /^\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}(-\d+)?\.mp4$/.test(file.name);
+      const at = new Date(file.recordedAt);
+      return {
+        id: file.id, name: file.name, day: failureDay(at, now, language),
+        title: stamped ? at.toLocaleTimeString(language, { hour: "numeric", minute: "2-digit" }) : file.name.replace(/\.[^.]+$/, ""),
+        ...(file.duration === undefined ? {} : { duration: formatDuration(file.duration) }),
+        size: formatBytes(file.size),
+        thumbnail: `${MEDIA_SCHEME}://thumb/${file.id}?v=${file.version}`,
+        video: `${MEDIA_SCHEME}://video/${file.id}?v=${file.version}`,
+      };
+    }),
+  };
+}
+
 /** Everything the panel renders. Actions stay in main; the panel only sees ids. */
 export function settingsView(state: RecordingState, ctx: AppContext): SettingsView {
   const language = ctx.language;
@@ -435,12 +580,15 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
     ...(ctx.historyLoading ? { recordingHistoryStatus: t("Loading failure history…", language) } : {}),
     recordingResults: quitting ? results.map(result => ({ ...result, actions: result.actions.map(action => ({ ...action, enabled: false })) })) : results,
     recordingResultsRemaining: Math.max(0, (ctx.recordingResults?.length ?? 0) - (ctx.historyLimit ?? Infinity)),
-    title: t("RecordStuff - Settings", language),
+    // The app's own window, holding the recordings as well as the settings (2026-10-04): named after the app in every language.
+    title: APP_NAME,
+    status: settingsStatus(state, ctx),
+    ...(ctx.library ? { library: libraryView(ctx, now)! } : {}),
     // One line above the tabs: the lock covers General too, so it is not the Recording tab's own note.
     hint: quitting ? t("Quitting once the recording is saved or cleaned up…", language)
       : unlocked ? "" : t("Recording in progress; only language and appearance can change.", language),
     failure: t("Could not apply this setting. Your current settings are shown.", language),
-    tabs: [{ id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) }, failuresTab(ctx)],
+    tabs: [{ id: "library", label: t("Recordings", language) }, { id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) }, failuresTab(ctx)],
     groups: settingsGroups(state, ctx).map(({ choices, actions, ...rest }) => ({
       ...rest,
       ...(quitting ? { enabled: false } : {}),
@@ -496,6 +644,15 @@ export function settingsAction(
     if (!result) return undefined;
     return resultActions(state, ctx, result).find(choice => choice.id === choiceId && choice.enabled)?.action;
   }
+  if (typeof groupId === "string" && groupId.startsWith("recordingFile:")) {
+    const file = ctx.library?.files.find(candidate => groupId === `recordingFile:${candidate.id}`);
+    return file && RECORDING_FILE_ACTIONS.includes(choiceId as RecordingFileAction)
+      ? { recordingFile: { id: file.id, action: choiceId as RecordingFileAction } } : undefined;
+  }
+  if (groupId === "status") {
+    const offered = settingsStatus(state, ctx).action;
+    return offered && offered.id === choiceId ? STATUS_ACTIONS[offered.id] : undefined;
+  }
   if (proposesHotkey(groupId, choiceId) && preferencesUnlocked(state)) {
     const accelerator = canonicalizeAccelerator(choiceId, ctx.platform);
     return accelerator && !isSettingsShortcut(accelerator, ctx.platform) ? { setHotkey: { enabled: true, accelerator } } : undefined;
@@ -511,6 +668,8 @@ export function settingsChecked(
   groupId: unknown,
   choiceId: unknown,
 ): boolean {
+  // The card's actions, like the tray's, are requests whose result the card itself then shows.
+  if (groupId === "status") return true;
   if (proposesHotkey(groupId, choiceId)) return ctx.hotkey.enabled && sameShortcut(choiceId, ctx.hotkey.accelerator, ctx.platform);
   return find(state, ctx, groupId, choiceId)?.checked ?? false;
 }
