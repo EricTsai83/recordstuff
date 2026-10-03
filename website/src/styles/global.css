@@ -15,8 +15,6 @@
   --warn: oklch(0.76 0.15 75);
   --font-sans: "Geist Variable", "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-  --radius: 14px;
-  --radius-sm: 8px;
   --radius-lg: 22px;
   --nav-h: 56px;
   /* Vertical rhythm. Every block on the page pads half a gap above and below
@@ -210,24 +208,7 @@ kbd {
 
 .prose h2 {
   color: var(--fg);
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  font-size: 1.5rem;
-  margin: 3rem 0 1rem;
   scroll-margin-top: calc(var(--nav-h) + 16px);
-}
-
-.prose h3 {
-  color: var(--fg);
-  font-weight: 500;
-  font-size: 1.1rem;
-  margin: 2rem 0 0.6rem;
-  scroll-margin-top: calc(var(--nav-h) + 16px);
-}
-
-.prose p,
-.prose li {
-  margin-bottom: 0.75rem;
 }
 
 .prose ol,
@@ -254,14 +235,12 @@ kbd {
 .prose table {
   width: 100%;
   border-collapse: collapse;
-  margin: 1rem 0 1.5rem;
   font-size: 0.95rem;
 }
 
 .prose th,
 .prose td {
   text-align: left;
-  padding: 0.6rem 0.75rem;
   border-bottom: 1px solid var(--border);
   vertical-align: top;
 }
@@ -281,15 +260,6 @@ kbd {
   border: 1px solid var(--border);
   padding: 0.1em 0.4em;
   border-radius: 6px;
-}
-
-.callout {
-  border: 1px solid var(--border-strong);
-  border-left: 3px solid var(--warn);
-  border-radius: var(--radius-sm);
-  padding: 0.9rem 1rem;
-  background: rgba(255, 255, 255, 0.02);
-  margin: 1.25rem 0;
 }
 
 /*
