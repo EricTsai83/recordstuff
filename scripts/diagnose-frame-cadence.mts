@@ -76,7 +76,12 @@ function parseArgs(argv: string[]): Options {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--rates") { options.rates = value(i).split(",").map(rate); i += 1; }
-    else if (arg === "--runs") { options.runs = Math.round(positive(value(i), 10)); i += 1; }
+    else if (arg === "--runs") {
+      // A fraction rounding to 0 would record nothing and still report complete.
+      options.runs = positive(value(i), 10);
+      if (!Number.isInteger(options.runs)) usage(`--runs expects a whole number, got ${value(i)}`);
+      i += 1;
+    }
     else if (arg === "--seconds") { options.seconds = positive(value(i), 600); i += 1; }
     else if (arg === "--request") {
       for (const pair of value(i).split(",")) {
