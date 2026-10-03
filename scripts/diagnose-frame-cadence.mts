@@ -275,13 +275,19 @@ function analyse(run: RunReport, result: FixtureResult, recording: string): void
   if (counters) run.trackCounters = counters;
   if (p.errors.length > 0) run.error = p.errors.join("; ");
   if (fs.existsSync(recording) && fs.statSync(recording).size > 0) {
-    const [times] = frameTimes(recording, undefined);
-    const file = cadenceStats(times ?? [], run.setting);
-    if (file) run.file = file;
-    const video = probe(recording).info.streams.find((s) => s.codec_type === "video");
-    const frames = Number(video?.nb_read_frames);
-    const duration = Number(video?.duration);
-    if (Number.isFinite(frames) && Number.isFinite(duration) && duration > 0) run.fileAverageFps = frames / duration;
+    // A torn or unreadable file fails this run only; the summary still keeps the runs before it.
+    try {
+      const [times] = frameTimes(recording, undefined);
+      const file = cadenceStats(times ?? [], run.setting);
+      if (file) run.file = file;
+      const video = probe(recording).info.streams.find((s) => s.codec_type === "video");
+      const frames = Number(video?.nb_read_frames);
+      const duration = Number(video?.duration);
+      if (Number.isFinite(frames) && Number.isFinite(duration) && duration > 0) run.fileAverageFps = frames / duration;
+    } catch (cause) {
+      const problem = `recording.mp4 not analysed: ${cause instanceof Error ? cause.message : String(cause)}`;
+      run.error = run.error ? `${run.error}; ${problem}` : problem;
+    }
   }
   const classified = classifyCadence({
     nominalFps: run.setting, delivered: run.delivered, file: run.file,

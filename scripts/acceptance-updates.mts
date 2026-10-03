@@ -10,7 +10,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { prepareUpdateAcceptance, acceptanceExitCode, safeCaptureShortcut, createAcceptanceOutput, assertLockContract, type CaseResult } from './lib/update-acceptance.mts';
-import { acceleratorToKeystroke, keystrokeScript, materialOpenArgs } from './lib/acceptance.mts';
+import { acceleratorToKeystroke, createMaterialProfile, keystrokeScript, materialOpenArgs, removeMaterialProfile } from './lib/acceptance.mts';
 import { hasTool } from './lib/media-tools.mts';
 import { translate } from '../src/shared/i18n.ts';
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from './lib/desktop-session.mts';
@@ -165,7 +165,8 @@ async function closeMaterial(): Promise<void> {
   const result = spawnSync('pkill', ['-f', pattern]);
   if (result.status !== 0 && result.status !== 1) throw new Error('Cannot close the owned material browser');
   await wait(async () => spawnSync('pgrep', ['-f', pattern]).status === 1 ? true : undefined, 'material browser exit', 10_000, true);
-  fs.rmSync(profile, { recursive: true, force: true });
+  const problem = await removeMaterialProfile(profile);
+  if (problem) throw new Error(problem);
   materialProfile = undefined;
 }
 function report(): void {
@@ -267,7 +268,7 @@ try {
     const before = await snapshot();
     if (before.recording.type !== 'idle') throw new Blocked('Screen/system-audio permission unavailable; not reset or bypassed.');
     assertLockContract(before);
-    materialProfile = fs.mkdtempSync(path.join(os.tmpdir(), 'recordstuff-update-material-'));
+    materialProfile = createMaterialProfile('update');
     const material = spawnSync('open', materialOpenArgs(path.join(ROOT, 'scripts/test-material.html'), materialProfile), { timeout: 10_000 });
     assert.equal(material.status, 0); await pause(5000);
     await scenario('delayed'); const count = (await snapshot()).calls.length;

@@ -38,7 +38,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { command, confirmedIdle, recordingOutcome, settleRecording, waitForLog } from "./lib/acceptance-runtime.mts";
-import { acceleratorToKeystroke, createMaterialProfile, currentRunId, keystrokeScript, materialOpenArgs, registeredAccelerator, removeMaterialProfile } from "./lib/acceptance.mts";
+import { acceleratorToKeystroke, createMaterialProfile, currentRunId, keystrokeScript, lastStartIndex, materialOpenArgs, registeredAccelerator, removeMaterialProfile } from "./lib/acceptance.mts";
 import {
   CpuSampler, ENCODER_SERVICE, IDLE_ROLES, SamplerBlockedError, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgeRecording, judgeRoles, judgeSettingsOpen,
   judgeSteadyState, machineModel, readRoles, roleText, summarize, type RoleCounts, type Summary, type Verdict,
@@ -397,12 +397,13 @@ async function main(): Promise<number> {
     desktop.end();
   }
 
+  const lines = log.all();
   const environment = {
     machine: model,
     chip: spawnSync("sysctl", ["-n", "machdep.cpu.brand_string"], { encoding: "utf8" }).stdout.trim(),
     cores: os.cpus().length,
     macOS: spawnSync("sw_vers", ["-productVersion"], { encoding: "utf8" }).stdout.trim(),
-    electron: /electron (\S+);/.exec(log.all().filter((line) => line.includes("] start: ")).at(-1) ?? "")?.[1] ?? "?",
+    electron: /electron (\S+);/.exec(lines[lastStartIndex(lines)] ?? "")?.[1] ?? "?",
     power: spawnSync("pmset", ["-g", "batt"], { encoding: "utf8" }).stdout.split("\n")[0]?.replace(/^Now drawing from /, "").replace(/'/g, "") ?? "?",
     displays: spawnSync("system_profiler", ["SPDisplaysDataType"], { encoding: "utf8" }).stdout.split("\n").filter((line) => /Resolution:|Main Display: Yes/.test(line)).map((line) => line.trim()),
     bundle: { path: BUNDLE, modified: fs.statSync(EXECUTABLE).mtime.toISOString() },

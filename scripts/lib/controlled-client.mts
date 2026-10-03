@@ -14,7 +14,7 @@ export type Until = <T>(read: () => T | undefined, label: string, timeoutMs: num
 export const readJson = <T,>(file: string): T | undefined => {
   try { return JSON.parse(fs.readFileSync(file, "utf8")) as T; } catch { return undefined; }
 };
-const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
+export const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
 /** The pid the run's app reported at ready, while that process still runs. */
 export function controlledPid(dir: string): number | undefined {

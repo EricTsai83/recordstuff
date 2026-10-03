@@ -38,7 +38,7 @@ for (let i = 0; i < args.length; i += 1) {
   const arg = args[i]!;
   if (arg === "--dry-run") dryRun = true;
   else if (arg === "--list") list = true;
-  else if (arg === "--out" && args[i + 1] && !outDir) outDir = path.resolve(args[++i]!);
+  else if (arg === "--out" && args[i + 1] && !args[i + 1]!.startsWith("--") && !outDir) outDir = path.resolve(args[++i]!);
   else if (!arg.startsWith("--") && !name) name = arg;
   else { console.error(usage); process.exit(2); }
 }

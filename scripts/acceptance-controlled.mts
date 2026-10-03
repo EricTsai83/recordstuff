@@ -17,7 +17,7 @@ import {
   CONTROLLED_TOOL, USAGE, instrumentControlledAcceptance, latestRun, parseControlledArgs,
   seedFiles, selfTestFiles, writeSeedFiles, type ControlledArgs, type RunMarker, type Seed,
 } from "./lib/controlled-acceptance.mts";
-import { readJson, sendControlled } from "./lib/controlled-client.mts";
+import { alive, readJson, sendControlled } from "./lib/controlled-client.mts";
 import { pgrepProcesses, recordStuffPattern } from "./lib/processes.mts";
 import { scrubbedEnv } from "./lib/runner-env.mts";
 import { FAULT_MODES, HOLD_TARGETS, type FaultName } from "./fixtures/controlled-modes.ts";
@@ -39,7 +39,6 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => {
 
 const sha256 = (file: string): string => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 const appPath = (dir: string): string => path.join(dir, "workspace/dist", process.arch === "arm64" ? "mac-arm64" : "mac", "RecordStuff.app");
-const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
 /** Any RecordStuff bundle, normal or controlled: two would fight over the shortcut and the tray. */
 function runningRecordStuff(): string[] {

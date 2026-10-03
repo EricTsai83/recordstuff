@@ -55,7 +55,7 @@ function parseOptions(argv: string[]): Options {
   const options: Options = { dir: "", sizes: [64 * 1024 ** 2, 2 * 1024 ** 3], repeat: 3, label: "", keep: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
-    const value = (): string => { const next = argv[++i]; if (next === undefined) usage(`${arg} needs a value`); return next; };
+    const value = (): string => { const next = argv[++i]; if (next === undefined || next.startsWith("--")) usage(`${arg} needs a value`); return next; };
     if (arg === "--dir") options.dir = value();
     else if (arg === "--sizes") {
       const sizes = value().split(",").map(parseByteSize);

@@ -66,6 +66,7 @@ const usage = (): never => {
 };
 for (let i = 0; i < argv.length; i += 1) {
   const arg = argv[i];
+  const value = (): string => { const next = argv[++i]; return next === undefined || next.startsWith("--") ? usage() : next; };
   if (arg === "--install") install = true;
   else if (arg === "--full") {
     finderStates = [...FINDER_STATES];
@@ -73,9 +74,9 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (arg === "--seconds") seconds = Number(argv[++i]);
   else if (arg === "--languages") languages = (argv[++i] ?? "").split(",").filter(Boolean) as Language[];
   else if (arg === "--finder") finderStates = (argv[++i] ?? "").split(",").filter(Boolean) as FinderState[];
-  else if (arg === "--front") frontApp = argv[++i] ?? usage();
+  else if (arg === "--front") frontApp = value();
   else if (arg === "--keep-recordings") keepRecordings = true;
-  else if (arg === "--out") outDir = argv[++i] ?? usage();
+  else if (arg === "--out") outDir = value();
   else usage();
 }
 if (!Number.isInteger(clicks) || clicks < 2 || clicks > 10) usage();

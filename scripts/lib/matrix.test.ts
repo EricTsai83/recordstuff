@@ -51,6 +51,7 @@ describe("arguments", () => {
     expect(parseMatrixArgs([",fps"], KNOWN)).toMatchObject({ ok: false });
     expect(parseMatrixArgs(["fps", "--repeats", "2"], KNOWN)).toEqual({ ok: false, error: "unknown option --repeats" });
     expect(parseMatrixArgs(["fps", "--screen", "wide"], KNOWN)).toMatchObject({ ok: false, error: expect.stringContaining("--screen") });
+    expect(parseMatrixArgs(["fps", "--screen", "1920x0"], KNOWN)).toMatchObject({ ok: false, error: expect.stringContaining("--screen") });
     expect(parseMatrixArgs([], KNOWN)).toEqual({ ok: false, error: "name at least one matrix" });
     expect(parseMatrixArgs(["--dry-run"], KNOWN)).toMatchObject({ ok: false });
   });

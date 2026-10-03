@@ -7,7 +7,7 @@
 import { lineTime } from "./acceptance.mts";
 import { medianSorted } from "./stats.mts";
 import type { ToolTiming } from "./media-tools.mts";
-import type { VerifyResult } from "./verify-recording.mts";
+import { parseDimensions, type VerifyResult } from "./verify-recording.mts";
 import { blocksSuccess, type Verdict } from "./verify.mts";
 import type { Dimensions, QualitySettings } from "../../src/shared/quality.ts";
 
@@ -88,9 +88,9 @@ export function parseMatrixArgs(argv: readonly string[], known: readonly string[
     else if (arg === "--no-open-material") options.openMaterial = false;
     else if (arg === "--dry-run") options.dryRun = true;
     else if (arg === "--screen") {
-      const match = /^(\d+)x(\d+)$/.exec((argv[i + 1] ?? "").trim());
-      if (!match) return { ok: false, error: "--screen needs WxH, for example 1920x1080" };
-      options.screen = { width: Number(match[1]), height: Number(match[2]) };
+      const screen = parseDimensions(argv[i + 1] ?? "");
+      if (!screen) return { ok: false, error: "--screen needs WxH, for example 1920x1080" };
+      options.screen = screen;
       i += 1;
     } else if (arg === "--repeat") {
       const text = argv[i + 1] ?? "";

@@ -70,7 +70,7 @@ function parseOptions(argv: string[]): Options {
   const options: Options = { dir: "", seconds: 15, repeat: 5, quality: "standard", fps: 60, label: "", keep: false, openMaterial: true, build: true, verify: "quick" };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
-    const value = (): string => { const next = argv[++i]; if (next === undefined) usage(`${arg} needs a value`); return next; };
+    const value = (): string => { const next = argv[++i]; if (next === undefined || next.startsWith("--")) usage(`${arg} needs a value`); return next; };
     if (arg === "--dir") options.dir = value();
     else if (arg === "--seconds") options.seconds = Number(value());
     else if (arg === "--repeat") options.repeat = Number(value());
