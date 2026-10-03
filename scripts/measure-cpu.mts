@@ -37,7 +37,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { command, confirmedIdle, settleRecording, waitForLog } from "./lib/acceptance-runtime.mts";
+import { command, confirmedIdle, recordingOutcome, settleRecording, waitForLog } from "./lib/acceptance-runtime.mts";
 import { acceleratorToKeystroke, createMaterialProfile, currentRunId, keystrokeScript, materialOpenArgs, registeredAccelerator, removeMaterialProfile } from "./lib/acceptance.mts";
 import {
   CpuSampler, ENCODER_SERVICE, IDLE_ROLES, SamplerBlockedError, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgeRecording, judgeRoles, judgeSettingsOpen,
@@ -250,6 +250,12 @@ async function main(): Promise<number> {
     await waitForLog(log, from, /\] state → recording/, "`state → recording`", AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]));
     const started = Date.now();
     await sleep(RECORDING_SECONDS * 1000);
+    // A session that already ended must not get the key: on an idle app it starts a new recording.
+    const ended = recordingOutcome(log.since(from).lines.map((line) => line.text));
+    if (ended.settled) {
+      active = undefined;
+      throw new Failure(`the ${fps} fps recording ended before its stop key: ${ended.failure ?? (ended.saved ? `saved early (${ended.saved})` : "cancelled")}`);
+    }
     const beforeStop = log.end();
     // Marked first: a stop key possibly delivered is never followed by a second toggle.
     active.stopSent = true;
