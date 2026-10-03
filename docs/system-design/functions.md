@@ -49,11 +49,11 @@ Process callbacks log uncaught exceptions and rejections; the first uncaught exc
 | state getter | Current authoritative RecordingState |
 | sessionId getter | In-flight session ID for diagnostics such as sleep/wake logging |
 | subscribe | Register event listener and return unsubscribe |
-| toggle | Start when idle, stop when recording, cancel a countdown, request permission guidance when blocked, otherwise ignore |
+| toggle | Start when idle, stop when recording, cancel a countdown, request permission guidance when blocked, cancel a start that has lasted at least 1 s (`START_CANCEL_GRACE_MS`), otherwise ignore |
 | cancelCountdown | Before `record`: cancel the attempt; after it: request stop once capture starts; a menu's Cancel recording arriving while recording stops the recording; otherwise ignore |
 | stop | Matching recording session → stopping (recording its stop-request time), arm deadline, send stop, then publish stopping |
 | systemWillSleep | The Mac is going to sleep (plan 050): stop a recording with `stoppedEarly: "sleep"`, cancel a countdown or a preparing attempt with reason `sleep`, stop an arming one once capture starts; nothing while stopping or without a session |
-| shutdown | Cancel a countdown, mark an opening/preparing attempt to cancel at `prepared`, keep stop intent after `record`, stop a recording, wait completion/failure while racing the quit deadline |
+| shutdown | Cancel an opening, preparing or countdown attempt at once (plan 065), keep stop intent after `record`, stop a recording, wait completion/failure while racing the quit deadline |
 | setPermission | Always store the latest status; while idle/needsPermission re-settle on a change, never replace a busy state |
 | outputDirChanged | Clear the remembered outputDirUnavailable, also while needsPermission; update the state only when idle |
 | start | Preflight (a refusal emits a failed event marked `preflight`, naming no session), quality and countdown snapshots, session, folder probe, unique writer, overlay prepare, host start; clean late results |
@@ -142,7 +142,7 @@ The page's window-message callback checks source/marker/port before creating the
 | finish | Queued sync; reject after a refusal; release, exclusive hard link with collision suffixes (exclusive copy once a link is refused other than EEXIST), best-effort temporary removal → actual final path and `finishTimings`; reject failure |
 | finishTimings | After a successful finish: flush, close, publish and cleanup milliseconds, `link` or `copy`, and the link's error code when it copied; diagnostics only |
 | abandon | Drain, best-effort close, preserve nonempty temporary file or remove empty file; never throw |
-| release | Once-only closed flag, timer cleanup, and handle close |
+| release | Once-only closed flag and handle close; `beginTerminal` already stopped the fsync timer |
 | enqueue | Serialize operations; retain first failure and reject later operations consistently |
 
 ## Settings, quality, language, and protocol
@@ -266,7 +266,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 | Function/method | Contract |
 | --- | --- |
-| SettingsWindow constructor | Register the two IPC handlers, each refusing any sender but the panel's main frame |
+| SettingsWindow constructor | Register the three IPC handlers (`settings:capture`, `settings:read`, `settings:choose`), each refusing any sender but the panel's main frame; `capture` suspends the global shortcuts while the shortcut editor records a new one |
 | show | Focus the menu-bar app first, reuse a live window, otherwise create a sandboxed one and load the page with the current language |
 | refresh | Push the current view and retitle; a closed panel needs nothing, and a view identical to the one the page already holds (by push or by an invoke reply, tracked through `deliver`) is not sent again |
 | destroy | Remove the handlers and the window on quit |
@@ -283,9 +283,9 @@ The page's window-message callback checks source/marker/port before creating the
 | Function | Contract |
 | --- | --- |
 | disabled / item | Build disabled/enabled model entries |
-| footer | Settings, Show log, and Quit in every state |
+| windowsGroup / appGroup | Settings… (with the Settings shortcut, and an explanation when it is unavailable) and reviewed failures / Show log and Quit, in every state |
 | outputDirItems | Folder label and selection action with state-dependent enablement |
-| stopHint / cancelHint | Stop / Cancel recording tooltip naming the registered accelerator; undefined when disabled or unregistered |
+| shortcutHint | Start/stop or Cancel recording tooltip naming the registered accelerator; undefined when disabled or unregistered |
 | permissionActions | Relaunch alone when required; otherwise settings and fallback relaunch |
 | trayModel / text / model | Pure state/context projection with local translation/status helpers; one icon per state (ring, hourglass, stopwatch, filled dot, badge on the idle ring only), a title only while recording; the tooltip carries the status and the right-click hint |
 | notice | Wrap body with product title |
@@ -295,7 +295,7 @@ The page's window-message callback checks source/marker/port before creating the
 | qualityWriteFailedNotification / languageWriteFailedNotification / hotkeyWriteFailedNotification | Explain retained quality/language/shortcut |
 | hotkeyRegistrationFailedNotification(accelerator, platform) | Localized conflict notice with the platform rendering of the accelerator, pointing at Settings |
 | frameRateDowngradeNotification | Include actual and requested fps |
-| trayHintNotification | Windows first-run tray discovery text |
+| trayHintNotification | First-launch text pointing at the menu bar on macOS or the system tray elsewhere; on macOS it also raises the one notification authorization prompt |
 
 [main/recording-result.ts](../../src/main/recording-result.ts):
 
@@ -321,7 +321,7 @@ The page's window-message callback checks source/marker/port before creating the
 | AppTray constructor | Load icons, create Tray, ignore double-click events, bind left/right clicks |
 | render / refresh | Remember presentation state and update image/title/tooltip, each only when it changed; refresh rereads context |
 | destroy | Destroy native Tray once, drop held notifications; later render, refresh, right-click and notifications do nothing |
-| systemWillSleep / systemDidWake / userDidUnlock | Hold notifications from `suspend`; after `resume`, check each second and show them in order once the idle time is at most 2 s; unlocking shows them at once (plan 050) |
+| systemWillSleep / systemDidWake / userDidUnlock | Hold notifications from `suspend`; after `resume`, check each second and show them in order once the idle time is at most 2 s or shows input since the wake; unlocking shows them at once (plan 050) |
 | notifySaved | Current-language saved notice with reveal callback |
 | notifyRecordingFailure(code) | Open failure history at the newest unread record without acknowledging it |
 | revealFromNotification / reveal | Defer macOS Finder call and record requested/failed |
@@ -341,7 +341,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 [main/session-log.ts](../../src/main/session-log.ts): `createRunId` forms the per-launch run id from launch time and pid; `logSessionEvent` writes the human `saved`/`failed:` line and then the versioned session record for captureStarted, saved, failed and a preflight refusal; a cancelled countdown is one plain `cancelled:` line naming its temporary file and no record; other events are ignored. [shared/session-record.ts](../../src/shared/session-record.ts) defines the record schema, prefix and version and formats one record; it has only type imports so scripts load it directly.
 
-[main/autorecord.ts](../../src/main/autorecord.ts): `parseAutoRecord` ignores packaged/empty input, validates seconds in (0,3600], quality keys and an optional countdown (0 unless named), sets `countdownSound: false` whatever is given (plan 046), and merges defaults. `runAutoRecord` waits 1.5 seconds before toggle, starts its stop timer only after recording begins, and quits after saved/failed, or needsPermission before its press, through once-only `finish`. It does not write settings.
+[main/autorecord.ts](../../src/main/autorecord.ts): `parseAutoRecord` ignores packaged/empty input, validates seconds in (0,3600], quality keys and an optional countdown (0 unless named), sets `countdownSound: false` whatever is given (plan 046), and merges defaults. `runAutoRecord` waits 1.5 seconds before toggle, starts its stop timer only after recording begins, and quits after saved/failed/cancelled, or needsPermission before its press, through once-only `finish`. An absolute `outputDir` overrides the saved folder for that run only; it does not write settings.
 
 ## Packaging and icons
 
@@ -446,6 +446,6 @@ The [design guide](audio-quality.md) explains the mathematics, gates, and limita
 
 ## Release verification tools
 
-[release.mts](../../scripts/release.mts) defines release gates in `validateTag` (stable or pre-release version equal to the tag), `isPrerelease`, `validateDigest`, and `assertUnreleased`; `latestFlag` marks a stable release latest only when no newer stable release is public. `verifyDmg` mounts read-only and checks packaging/signatures; `assertDmgContents` requires the visible root to be exactly `Applications` and `RecordStuff.app` and rejects hidden entries other than the permitted Finder layout files, checking with `lstat` that each is a regular file rather than a directory or symlink; `verifyCandidate` checks final checksums/metadata. `context` resolves source/version/repository and `notes` produces English notes. `assertPublishedAssets` requires a non-draft release whose assets match the verified files by name, size and digest. `compareVersions`, `setPackageVersion`, `replaceMarked`, `renderDownloadSection` and `renderVerificationRecord` are the pure helpers of the record step. CLI `main` dispatches preflight, version, candidate, verify, publish, published and record; only publish writes to GitHub, and only record writes repository files, creating the public release (latest, historical or pre-release) after reverifying the candidate and the tag's commit. `start-app.mjs --verify-app` reuses `verifyBundle` without Keychain private keys.
+[release.mts](../../scripts/release.mts) defines release gates in `validateTag` (stable or pre-release version equal to the tag), `isPrerelease` and `assertUnreleased`; `latestFlag` marks a stable release latest only when no newer stable release is public. `verifyDmg` mounts read-only and checks packaging/signatures; `assertDmgContents` requires the visible root to be exactly `Applications` and `RecordStuff.app` and rejects hidden entries other than the permitted Finder layout files, checking with `lstat` that each is a regular file rather than a directory or symlink; `verifyCandidate` checks final checksums/metadata. `context` resolves source/version/repository and `notes` produces English notes. `assertPublishedAssets` requires a non-draft release whose assets match the verified files by name, size and digest. `compareVersions`, `setPackageVersion`, `replaceMarked`, `renderDownloadSection` and `renderVerificationRecord` are the pure helpers of the record step. CLI `main` dispatches preflight, version, candidate, verify, publish, published and record; only publish writes to GitHub, and only record writes repository files, creating the public release (latest, historical or pre-release) after reverifying the candidate and the tag's commit. `start-app.mjs --verify-app` reuses `verifyBundle` without Keychain private keys.
 
 `cleanup-release-keychain.py` only runs on disposable GitHub-hosted runners. It removes per-run trust and keychain state with a 15-second bound per command, kills timed-out process groups with a warning, and removes temporary certificate/archive files.

@@ -49,11 +49,11 @@
 | `state` getter | 回目前權威狀態；不得由 Tray 另外維護一份業務狀態 |
 | `sessionId` getter | 進行中的 session id，供睡眠／喚醒 log 等診斷使用 |
 | `subscribe(listener)` | 加入事件集合 → unsubscribe 函式 |
-| `toggle()` | idle 開始、recording 停止、倒數中取消、needsPermission 發引導事件，其餘忽略 |
+| `toggle()` | idle 開始、recording 停止、倒數中取消、needsPermission 發引導事件、已啟動至少 1 秒（`START_CANCEL_GRACE_MS`）的開始會被取消，其餘忽略 |
 | `cancelCountdown(reason)` | `record` 前取消這次嘗試；之後改為擷取開始後停止；錄製中才到達的選單「取消錄影」會停止錄影；其餘忽略 |
 | `stop()` | 僅 matching recording session → stopping（記下要求停止時間），設 stop timeout，送 stop，再發布 stopping |
 | `systemWillSleep()` | Mac 即將睡眠（plan 050）：錄影中以 `stoppedEarly: "sleep"` 停止，倒數中或準備中的嘗試以 `sleep` 取消，arming 中的嘗試在擷取開始後停止；stopping 或沒有 session 時不動作 |
-| `shutdown()` | 取消倒數、標記開檔／準備中的嘗試在 `prepared` 時取消、`record` 後保留停止意圖、停止 recording、等 stopping／failure，並與退出期限競速 |
+| `shutdown()` | 立即取消開檔、準備中或倒數中的嘗試（plan 065）、`record` 後保留停止意圖、停止 recording、等 stopping／failure，並與退出期限競速 |
 | `setPermission(status)` | 一律保存最新狀態；idle／needsPermission 時狀態有變才重新落定，不覆蓋忙碌 session 狀態 |
 | `outputDirChanged()` | 清掉記住的 outputDirUnavailable（needsPermission 時也清）；只有 idle 才更新狀態 |
 | `start()` | preflight（拒絕時送出標記 `preflight`、不指名 session 的 failed 事件）、建立品質與倒數快照與 session、驗位置、開 writer、準備 overlay、start host；每階段處理 late 結果 |
@@ -143,7 +143,7 @@
 | `finish()` | enqueue sync；曾拒絕 append 時 reject；release、排他硬連結並以尾碼避撞名（連結因 EEXIST 以外的原因被拒後改用排他複製）、盡力刪除暫存名稱 → 實際最終路徑與 `finishTimings`；失敗 reject |
 | `finishTimings` | 成功 finish 後的 flush、close、發布與清理毫秒數，`link` 或 `copy`，以及改用複製時連結的錯誤碼；僅供診斷 |
 | `abandon()` | 等佇列、best effort release；有 bytes 留暫存路徑，空檔盡力刪除；不拋出 |
-| `release()` | 一次性 closed／清 fsync timer／close handle |
+| `release()` | 一次性 closed／close handle；fsync timer 已由 `beginTerminal` 停止 |
 | `enqueue(task)` | 依序執行；首個 failure 被記住，後續回同一錯誤，內部 queue 保持可接續 |
 
 ## 設定、品質與協定
@@ -265,7 +265,7 @@
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
-| `SettingsWindow.constructor(options)` | 註冊兩個 IPC handler，非設定視窗 main frame 的來源一律拒絕 |
+| `SettingsWindow.constructor(options)` | 註冊三個 IPC handler（`settings:capture`、`settings:read`、`settings:choose`），非設定視窗 main frame 的來源一律拒絕；`capture` 在快捷鍵編輯器錄製新組合時暫停全域快捷鍵 |
 | `show()` | 先讓選單列 App 取得前景，已有視窗就聚焦，否則建 sandbox 視窗並帶當前語言載入頁面 |
 | `refresh()` | 推送目前 view 並更新標題；視窗關閉時不做事；與頁面已持有的 view（經推送或 invoke 回覆，由 `deliver` 記錄）相同時不再推送 |
 | `destroy()` | 退出時移除 handler 與視窗 |
@@ -282,9 +282,9 @@
 | 函式 | 契約 |
 | --- | --- |
 | `disabled(label)` / `item(label, action, tooltip?)` | 建灰色／可點模型項目 |
-| `footer(language)` | 產生「設定」、顯示 log、結束，所有狀態皆可用 |
+| `windowsGroup(ctx, reviewedOnly)` / `appGroup(language)` | 「設定…」（附設定快捷鍵，無法使用時附說明）與已看過的失敗紀錄／顯示 log 與結束，所有狀態皆可用 |
 | `outputDirItems(ctx, enabled)` | 產生位置與更改位置項目，按狀態鎖定 |
-| `stopHint(ctx)` / `cancelHint(ctx)` | 「停止」／「取消錄影」的 tooltip 提示已註冊組合鍵；關閉或未註冊時為 undefined |
+| `shortcutHint(ctx, key)` | 「開始／停止」或「取消錄影」的 tooltip 提示已註冊組合鍵；關閉或未註冊時為 undefined |
 | `permissionActions(needsRelaunch, language)` | 已判斷需重啟只給重啟；否則給設定與「已經允許了？」重啟 |
 | `trayModel(state, ctx)` | 狀態 → 完整圖示／標題／tooltip／menu；每個狀態一個圖示（圓環、沙漏、碼錶、實心圓點；警示標記只取代 idle 圓環），只有錄製中有標題；tooltip 含狀態與右鍵提示 |
 | `savedNotification(path)` | filename → 存檔文案 |
@@ -293,7 +293,7 @@
 | `qualityWriteFailedNotification()` / `languageWriteFailedNotification()` / `hotkeyWriteFailedNotification()` | 說明品質／語言／快捷鍵設定未保存 |
 | `hotkeyRegistrationFailedNotification(accelerator, platform)` | 本地化的佔用提示，含平台顯示形式的組合鍵，並指向設定視窗 |
 | `frameRateDowngradeNotification(requested, actual)` | 說明系統實際提供的 fps |
-| `trayHintNotification()` | Windows 首次啟動尋找系統匣提示 |
+| `trayHintNotification(platform)` | 首次啟動時指向 macOS 選單列或其他平台系統匣的提示；在 macOS 上也藉此觸發唯一一次通知授權詢問 |
 
 [recording-result.ts](../../../src/main/recording-result.ts)：
 
@@ -319,7 +319,7 @@
 | `AppTray.constructor(options)` | loadIcons、建 Tray、忽略 double-click event、註冊左右鍵 |
 | `render(state)` / `refresh()` | 保存呈現用 lastState，圖示／title／tooltip 各自只在改變時更新；refresh 用同狀態重讀 context |
 | `destroy()` | 只銷毀一次原生 Tray，並丟棄保留中的通知；之後的 render、refresh、右鍵與通知都不動作 |
-| `systemWillSleep()` / `systemDidWake()` / `userDidUnlock()` | 從 `suspend` 起保留通知；`resume` 後每秒檢查，閒置時間在 2 秒內時依序顯示；解鎖時立刻顯示（plan 050） |
+| `systemWillSleep()` / `systemDidWake()` / `userDidUnlock()` | 從 `suspend` 起保留通知；`resume` 後每秒檢查，閒置時間在 2 秒內或顯示喚醒後已有輸入時依序顯示；解鎖時立刻顯示（plan 050） |
 | `notifySaved(path)` | show 存檔通知，點擊 reveal |
 | `notifyRecordingFailure(code)` | 開啟設定失敗歷史並定位最新未確認紀錄，不自動標成已讀 |
 | `revealFromNotification(path)` / `reveal()` | macOS setImmediate 後 showItemInFolder，記 requested／failed |
@@ -339,7 +339,7 @@
 
 [session-log.ts](../../../src/main/session-log.ts)：`createRunId(launchedAt, pid)` 由啟動時間與 pid 組成每次啟動的 run id；`logSessionEvent(log, run, event)` 對 captureStarted、saved、failed 與 preflight 拒絕先寫人類可讀的 `saved`／`failed:` 行，再寫有版本的 session record；取消的倒數只寫一行記下暫存檔的 `cancelled:`，不寫 record；其他事件忽略。[shared/session-record.ts](../../../src/shared/session-record.ts) 定義 record schema、前綴與版本並格式化一筆 record；只有 type import，scripts 可直接載入。
 
-[autorecord.ts](../../../src/main/autorecord.ts)：`parseAutoRecord(value, isPackaged)` 在打包版／空值回 undefined；其餘解析 seconds∈(0,3600]、合法 quality patch 與選填的 countdown（未指定為 0），不論輸入為何都設 `countdownSound: false`（plan 046），合併預設而非使用者設定。`runAutoRecord(config, deps)` 等預設 1.5 秒後由公開 toggle 開始，進 recording 才排計時停止，saved／failed，或按下開始前的 needsPermission 後，由內部 `finish(message)` 一次性 log＋quit。用於開發量測，不在正式版提供遠端控制。
+[autorecord.ts](../../../src/main/autorecord.ts)：`parseAutoRecord(value, isPackaged)` 在打包版／空值回 undefined；其餘解析 seconds∈(0,3600]、合法 quality patch 與選填的 countdown（未指定為 0），不論輸入為何都設 `countdownSound: false`（plan 046），合併預設而非使用者設定。`runAutoRecord(config, deps)` 等預設 1.5 秒後由公開 toggle 開始，進 recording 才排計時停止，saved／failed／cancelled，或按下開始前的 needsPermission 後，由內部 `finish(message)` 一次性 log＋quit。絕對路徑的 `outputDir` 只在這次執行取代已存的資料夾，不寫入設定。用於開發量測，不在正式版提供遠端控制。
 
 ## 簽章與圖示工具
 
@@ -448,6 +448,6 @@
 
 ## 發布驗證工具
 
-[release.mts](../../../scripts/release.mts) 的 `validateTag`（等於 tag 的穩定或 pre-release 版本）、`isPrerelease`、`validateDigest` 與 `assertUnreleased` 定義發布閘門；`latestFlag` 只在沒有更新的正式版已公開時，才把正式版標為 latest。`verifyDmg` 唯讀掛載、核對封裝與簽章，`assertDmgContents` 要求可見根目錄恰為 `Applications` 與 `RecordStuff.app`，並拒絕允許的 Finder 版面檔以外的隱藏項目，以 `lstat` 確認每個都是一般檔案而非目錄或符號連結，`verifyCandidate` 比對最終 checksum／metadata；`context` 取得來源／版本／repository，`notes` 產生英文發行說明。`assertPublishedAssets` 要求 release 非 draft 且 assets 的名稱、大小與 digest 與已驗證檔案相符。`compareVersions`、`setPackageVersion`、`replaceMarked`、`renderDownloadSection` 與 `renderVerificationRecord` 是 record 步驟的純函式。CLI `main` 分派 preflight、version、candidate、verify、publish、published 與 record；只有 publish 寫入 GitHub，只有 record 寫入 repo 檔案，在重驗候選版與 tag 的 commit 後建立公開 release（latest、歷史版本或 pre-release）。`start-app.mjs --verify-app` 共用 `verifyBundle`，不需要 Keychain 私鑰。
+[release.mts](../../../scripts/release.mts) 的 `validateTag`（等於 tag 的穩定或 pre-release 版本）、`isPrerelease` 與 `assertUnreleased` 定義發布閘門；`latestFlag` 只在沒有更新的正式版已公開時，才把正式版標為 latest。`verifyDmg` 唯讀掛載、核對封裝與簽章，`assertDmgContents` 要求可見根目錄恰為 `Applications` 與 `RecordStuff.app`，並拒絕允許的 Finder 版面檔以外的隱藏項目，以 `lstat` 確認每個都是一般檔案而非目錄或符號連結，`verifyCandidate` 比對最終 checksum／metadata；`context` 取得來源／版本／repository，`notes` 產生英文發行說明。`assertPublishedAssets` 要求 release 非 draft 且 assets 的名稱、大小與 digest 與已驗證檔案相符。`compareVersions`、`setPackageVersion`、`replaceMarked`、`renderDownloadSection` 與 `renderVerificationRecord` 是 record 步驟的純函式。CLI `main` 分派 preflight、version、candidate、verify、publish、published 與 record；只有 publish 寫入 GitHub，只有 record 寫入 repo 檔案，在重驗候選版與 tag 的 commit 後建立公開 release（latest、歷史版本或 pre-release）。`start-app.mjs --verify-app` 共用 `verifyBundle`，不需要 Keychain 私鑰。
 
 `cleanup-release-keychain.py` 僅在 disposable GitHub-hosted runner 清理該次憑證信任與 keychain，每項命令最多等待 15 秒，逾時終止該程序群組並警告，最後移除公開憑證與加密封裝暫存檔。

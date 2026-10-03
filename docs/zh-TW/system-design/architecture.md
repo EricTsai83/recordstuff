@@ -59,7 +59,7 @@ Tray、選單與通知全在 main，使用原生 Electron API。設定面板是�
 | `main/ui-model.ts` | 兩個介面共用的 action union、context 快照與設定鎖定規則 | 自己不做任何投影 |
 | `main/settings-model.ts` | 所有偏好設定、穩定 id，以及面板請求的授權判定 | 不碰 Electron、IPC 或持久化 |
 | `main/settings-window.ts` | 設定視窗、來源驗證與序列化保存 | 不定義任何設定的語意 |
-| `renderer/settings.ts` / `preload/settings.ts` | 畫出 view 並回傳 id／read-choose-subscribe 橋接 | 不持有設定狀態、不產生 action、不碰 Node API |
+| `renderer/settings.ts` / `preload/settings.ts` | 畫出 view 並回傳 id／read-choose-capture-subscribe 橋接 | 不持有設定狀態、不產生 action、不碰 Node API |
 | `main/permission.ts` | 螢幕授權驗證快取與輪詢 timer | 不認定系統音訊已授權 |
 | `main/log.ts` | 經有上限的非同步佇列寫入並輪替的文字 log | 不保存媒體 bytes |
 | `main/session-log.ts` | 每次啟動的 run id，以及每個 capture 與結果行旁的有版本 session record | 不負責配對錄影與 session（那是開發用分析器的工作） |
@@ -70,10 +70,11 @@ Tray、選單與通知全在 main，使用原生 Electron API。設定面板是�
 
 所有 renderer 都使用 `sandbox: true`、`contextIsolation: true`、`nodeIntegration: false`、`webSecurity: true`，並禁止新視窗與導覽；隱藏的擷取視窗與倒數 overlay 另外停用 background throttling。Overlay 的 preload 只提供 `countdown.onValue`；main 以 `countdown:value` 傳送數字或 `null`，preload 只接受正整數或 `null`。打包版載入本機 HTML；開發版可載入 electron-vite URL。
 
-設定面板有自己的 preload，只暴露三個呼叫。`settings:read` 與 `settings:choose` 會驗證來源必須是設定視窗的 main frame，否則拒絕。choose 請求帶的是群組 id 與選項 id，不是 action；main 依當下重新產生的模型解析這組 id，因此請求只能做到 App 當下提供、而且錄製狀態允許的事。保存依請求順序序列化，回應會告知實際提交的值。
+設定面板有自己的 preload，只暴露四個呼叫。`settings:capture`、`settings:read` 與 `settings:choose` 會驗證來源必須是設定視窗的 main frame，否則拒絕。choose 請求帶的是群組 id 與選項 id，不是 action；main 依當下重新產生的模型解析這組 id，因此請求只能做到 App 當下提供、而且錄製狀態允許的事。保存依請求順序序列化，回應會告知實際提交的值。
 
 | 方向 | 訊息 | 意義 |
 | --- | --- | --- |
+| 面板 → main | `settings:capture { armed }` | 開啟或關閉快捷鍵編輯器；開啟期間暫停全域快捷鍵，讓新組合送到面板 |
 | 面板 → main | `settings:read` | 取得目前的 view |
 | 面板 → main | `settings:choose { group, choice }` | 套用一個被提供的選項；回傳 view 與是否真的提交 |
 | main → 面板 | `settings:changed` | 狀態或 context 改變，重新繪製 |

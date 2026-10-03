@@ -57,7 +57,7 @@ The tray, menu and notifications are native Electron APIs in main. The settings 
 | `main/ui-model.ts` | The action union, the context snapshot and the preference-lock rule both interfaces share | Any projection of its own |
 | `main/settings-model.ts` | Every preference, its stable ids, and the authorization of a panel request | Electron, IPC or persistence |
 | `main/settings-window.ts` | The panel window, sender validation and serialized saves | What a preference means |
-| `renderer/settings.ts` / `preload/settings.ts` | Rendering a view and echoing an id / the read-choose-subscribe bridge | Preference state, actions or Node APIs |
+| `renderer/settings.ts` / `preload/settings.ts` | Rendering a view and echoing an id / the read-choose-capture-subscribe bridge | Preference state, actions or Node APIs |
 | `main/permission.ts` | Screen-permission cache and polling | Proof of system-audio permission |
 | `main/log.ts` | Text logging through a bounded asynchronous queue, with rotation | Media content |
 | `main/session-log.ts` | The per-launch run id and the versioned session record beside each capture and outcome line | Pairing recordings with sessions (a development analyzer's job) |
@@ -68,10 +68,11 @@ The tray, menu and notifications are native Electron APIs in main. The settings 
 
 Every renderer enables sandboxing, context isolation, and web security, disables Node integration, and blocks navigation and new windows. The hidden capture window and the countdown overlay additionally disable background throttling. The overlay's preload exposes only `countdown.onValue`; main sends `countdown:value` with a digit or `null`, and the preload accepts only positive integers or `null`. Packaged builds load local HTML. Development builds may load the electron-vite URL.
 
-The settings panel has its own preload exposing exactly three calls. `settings:read` and `settings:choose` are refused unless the sender is the panel window's main frame. A choose request carries a group id and a choice id — never an action — and main resolves the pair against a freshly built model, so a request can only perform work the app is offering at that moment, and only while the recording state allows it. Saves are serialized in request order and the answer reports the committed value.
+The settings panel has its own preload exposing exactly four calls. `settings:capture`, `settings:read` and `settings:choose` are refused unless the sender is the panel window's main frame. A choose request carries a group id and a choice id — never an action — and main resolves the pair against a freshly built model, so a request can only perform work the app is offering at that moment, and only while the recording state allows it. Saves are serialized in request order and the answer reports the committed value.
 
 | Direction | Message | Meaning |
 | --- | --- | --- |
+| Panel → main | `settings:capture { armed }` | Open or close the shortcut editor; while it is open the global shortcuts are suspended so the new combination reaches the panel |
 | Panel → main | `settings:read` | The current view |
 | Panel → main | `settings:choose { group, choice }` | Apply an offered option; answers with the view and whether it committed |
 | Main → panel | `settings:changed` | State or context moved; re-render |

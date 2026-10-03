@@ -69,9 +69,9 @@ Settings → Recording chooses Off, 3, 5 or 10 seconds; the default is 3, also f
 | Stop response | 10 s | stop_timeout |
 | Renderer terminal drain | 5 s after termination begins | Error if stop/final Blob handoff is missing; discard subsequent handoff |
 | Quit wait | 13 s per attempt (stop timeout + 3 s) | Defer quit with localized feedback while any owned work remains; never truncate finalization |
+| Heartbeat | Check/send every 5 s while a session is in flight | Tear down when the check finds two unanswered pings |
 
 Before `record` nothing was captured, so track end, display removal, a crashed or unresponsive host and a refused or timed-out `record` during preparation or countdown are start failures: `capture_start_failed` with a detail naming the phase (`while preparing capture`, `while counting down`, `while starting capture`), the display diagnostic still emitted and an empty outcome. A disk error the writer already retained keeps its own code. A stale `prepared` or `started` for a detached session triggers a host stop.
-| Heartbeat | Check/send every 5 s while a session is in flight | Tear down when the check finds two unanswered pings |
 
 These are project waiting limits, not OS standards or exact end-to-end timing guarantees. A timed-out disk operation is not actually canceled. The health rows (stall, free space, backlog, start drain) are initial targets kept in one place, [recording-health.ts](../../src/main/recording-health.ts); tune them only with written evidence. Heartbeats only prove the renderer answers; the stall guard proves media still arrives. A failed free-space poll is logged once and never stops a recording. `powerMonitor` suspend and resume are logged with the in-flight session ID so a later failure can be read against sleep; how sleep itself stops a recording or cancels an attempt is described under [file completion](#file-completion-and-failure).
 
