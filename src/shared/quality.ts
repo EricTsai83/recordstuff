@@ -142,6 +142,23 @@ export function videoBitsPerSecond(size: Dimensions, frameRate: number, quality:
 export const AUDIO_BITS_PER_SECOND = 256_000;
 
 /**
+ * About how many bytes one minute takes: the encoder targets above plus audio. At 60 fps Chromium
+ * delivered about twice the video target in the verification noted at `BITS_PER_PIXEL`, so the
+ * estimate doubles it there rather than promise half the real size.
+ */
+export function estimatedBytesPerMinute(size: Dimensions, quality: QualitySettings): number {
+  const video = videoBitsPerSecond(size, quality.frameRate, quality.videoQuality) * (quality.frameRate === 60 ? 2 : 1);
+  return (video + AUDIO_BITS_PER_SECOND) * 60 / 8;
+}
+
+/** "62 MB", "480 MB", "1.2 GB": decimal units, as Finder shows file sizes, two significant figures at most. */
+export function formatBytes(bytes: number): string {
+  const mb = bytes / 1e6;
+  if (mb >= 1000) return `${(mb / 1000).toFixed(mb >= 10_000 ? 0 : 1)} GB`;
+  return `${mb >= 100 ? Math.round(mb / 10) * 10 : Math.max(1, Math.round(mb))} MB`;
+}
+
+/**
  * What the capture host observed and asked the encoder for, reported in
  * `prepared`. Track settings the platform did not expose are left undefined
  * and logged as unknown; the bitrates are targets, not measured output.

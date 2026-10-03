@@ -179,3 +179,14 @@ describe("describeCapture", () => {
     expect(line).toContain("warnings: a; b");
   });
 });
+
+describe("size estimate", () => {
+  it("adds audio to the video target, doubles it at 60 fps as measured, and prints Finder-style units", async () => {
+    const { estimatedBytesPerMinute, formatBytes } = await import("./quality");
+    // Standard 1080p30 is the 8 Mbps baseline: about 60 MB a minute with audio.
+    expect(formatBytes(estimatedBytesPerMinute({ width: 1920, height: 1080 }, { videoQuality: "standard", resolutionCap: "source", frameRate: 30 }))).toBe("63 MB");
+    expect(estimatedBytesPerMinute({ width: 1920, height: 1080 }, { videoQuality: "standard", resolutionCap: "source", frameRate: 60 }))
+      .toBe((16_200_000 * 2 + 256_000) * 60 / 8);
+    expect([formatBytes(4e5), formatBytes(54.4e6), formatBytes(176e6), formatBytes(1.24e9), formatBytes(12.6e9)]).toEqual(["1 MB", "54 MB", "180 MB", "1.2 GB", "13 GB"]);
+  });
+});
