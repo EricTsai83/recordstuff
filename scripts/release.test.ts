@@ -159,6 +159,8 @@ describe('record helpers', () => {
       sourceCommit: manifest.sourceCommit, file: manifest.dmg.name, size: manifest.dmg.size,
       sha256: manifest.dmg.sha256, publishedAt: manifest.publishedAt,
       date: manifest.publishedAt.slice(0, 10), runUrl,
+      // The committed pointer carries the installer from the first two-platform release (1.2.0) on.
+      ...(manifest.windows ? { windows: { file: manifest.windows.name, size: manifest.windows.size, sha256: manifest.windows.sha256 } } : {}),
     });
     expect(() => releaseFactsFromManifest({ ...manifest, tag: 'v99.0.0' }, runUrl)).toThrow();
     expect(() => releaseFactsFromManifest({ ...manifest, dmg: { ...manifest.dmg, sha256: 'invalid' } }, runUrl)).toThrow();
