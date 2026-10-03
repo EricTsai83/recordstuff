@@ -188,8 +188,10 @@ const wire = "M100 120H590Q600 120 600 110V70Q600 60 610 60H790Q800 60 800 70V11
         return;
       }
       flow.setAttribute("data-armed", "");
-      // Back from reduced motion or a narrow screen, a diagram already seen plays again.
-      if (visible && played) void play();
+      // Armed hides the still diagram, so one on screen draws now; one off screen draws from the start
+      // when it next scrolls in.
+      if (visible) void play();
+      else played = false;
     };
 
     new IntersectionObserver(
@@ -302,7 +304,7 @@ const wire = "M100 120H590Q600 120 600 110V70Q600 60 610 60H790Q800 60 800 70V11
 
   /* ── Each glyph acts out its step as the drawing reaches it ───────────
      Parts scale and turn about their own centre; the pointer presses about its tip. */
-  .glyph :global(:is(.ig-arrow, .ig-tray, .ig-app, .ig-folder, .ig-dot, .ig-ring, .ig-rec, .ig-bar, .ig-frame, .ig-mark)) { transform-box: fill-box; transform-origin: center; }
+  .glyph :global(:is(.ig-arrow, .ig-tray, .ig-app, .ig-folder, .ig-dot, .ig-rec, .ig-bar, .ig-frame, .ig-mark)) { transform-box: fill-box; transform-origin: center; }
   .glyph :global(.ig-cursor) { transform-box: view-box; transform-origin: 44px 40px; }
   .install-flow .stage[data-act] .permission-node--audio { --act: .1s; }
 

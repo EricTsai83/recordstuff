@@ -6,7 +6,7 @@ import { features } from "../content/site";
 <ol class="features">
   {features.map((feature, index) => (
     <li class="feature">
-      <span class="feature-index mono">{String(index + 1).padStart(2, "0")}</span>
+      <span class="feature-index mono" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
       <div class="feature-text">
         <h3>{feature.title}</h3>
         <p>{feature.body}</p>
