@@ -302,19 +302,17 @@ export class AppTray {
     this.show(notificationsEnabledNotification(this.language));
   }
 
-  /** The answer to the user's own quit, like the dialog it replaced (plan 055), so the switch for saved and failure notices does not apply. */
-  notifyQuitDeferred(body: string): void {
+  /**
+   * Answers the user's own click, so the switch for saved and failure notices does not apply: a deferred quit,
+   * like the dialog it replaced (plan 055), or System Settings failing to open while recording work is pending (plan 056).
+   */
+  notifyAnswer(body: string): void {
     this.show({ title: APP_NAME, body }, undefined, true);
   }
 
   /** The output-folder warning while recording work is pending (plan 056); like the quit notice it answers the user's own click. */
   notifyOutputFolderProblem(body: string): void {
     this.show({ title: translate("Could not open the output folder", this.language), body }, undefined, true);
-  }
-
-  /** System Settings could not open while recording work is pending (plan 056); it answers the user's own click, like the warning it replaces. */
-  notifyPermissionSettingsFailed(body: string): void {
-    this.show({ title: APP_NAME, body }, undefined, true);
   }
 
   /**

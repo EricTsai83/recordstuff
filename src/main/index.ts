@@ -550,7 +550,7 @@ async function main(): Promise<void> {
           // A windowless warning would hold the failed session's cleanup until answered (plan 056).
           if (recorder.mediaPending) {
             log("permission: recording work is pending; telling the problem in a notification instead of a warning");
-            captureNotices.hold("permission settings warning", () => tray.notifyPermissionSettingsFailed(detail));
+            captureNotices.hold("permission settings warning", () => tray.notifyAnswer(detail));
             return;
           }
           focusApp();
@@ -757,7 +757,7 @@ async function main(): Promise<void> {
 
   const showQuitFeedback = createQuitFeedback({
     language: () => currentLanguage,
-    notify: body => tray.notifyQuitDeferred(body),
+    notify: body => tray.notifyAnswer(body),
     log,
   });
   let historyPrompt = false;

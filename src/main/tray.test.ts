@@ -283,7 +283,7 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
   it("still answers a deferred quit with the switch off, since the user asked to quit (plan 055)", () => {
     const { tray } = setup(true, () => false);
     tray.notifySaved("/tmp/a.mp4");
-    tray.notifyQuitDeferred("RecordStuff will stay open.");
+    tray.notifyAnswer("RecordStuff will stay open.");
     expect(Fake.instances.map((notification) => notification.options)).toEqual([{ title: "RecordStuff", body: "RecordStuff will stay open.", silent: true }]);
     expect(Fake.instances[0]!.shown).toBe(1);
   });
@@ -297,7 +297,7 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
 
   it("tells System Settings could not open during recording work with the switch off, since the user clicked (plan 056)", () => {
     const { tray } = setup(true, () => false);
-    tray.notifyPermissionSettingsFailed("Could not open System Settings.");
+    tray.notifyAnswer("Could not open System Settings.");
     expect(Fake.instances.map((notification) => notification.options)).toEqual([{ title: "RecordStuff", body: "Could not open System Settings.", silent: true }]);
     expect(Fake.instances[0]!.shown).toBe(1);
   });

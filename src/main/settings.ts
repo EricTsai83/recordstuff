@@ -101,6 +101,14 @@ export function parseSettings(text: string): ParsedSettings | undefined {
     return undefined;
   }
   const warnings: string[] = [];
+  /** A missing value falls back silently; a present but unsupported one also warns. */
+  const field = <T>(key: string, valid: (value: unknown) => value is T, fallback: T, warning: string): T => {
+    const value = record[key];
+    if (valid(value)) return value;
+    if (value !== undefined) warnings.push(warning);
+    return fallback;
+  };
+  const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
   let quality: QualitySettings = DEFAULT_QUALITY;
   if (version === 1) {
     warnings.push("version 1 file: quality set to defaults");
@@ -114,12 +122,8 @@ export function parseSettings(text: string): ParsedSettings | undefined {
     warnings.push("quality is missing or has unsupported values: using defaults");
   }
   const defaults = defaultSettings(outputDir);
-  const appearance = isAppearance(record["appearance"]) ? record["appearance"] : defaults.appearance;
-  if (record["appearance"] !== undefined && !isAppearance(record["appearance"])) warnings.push(`appearance is unsupported: using ${defaults.appearance}`);
-  const language = isLanguage(record["language"]) ? record["language"] : DEFAULT_LANGUAGE;
-  if (record["language"] !== undefined && !isLanguage(record["language"])) {
-    warnings.push("language is unsupported: using English");
-  }
+  const appearance = field("appearance", isAppearance, defaults.appearance, `appearance is unsupported: using ${defaults.appearance}`);
+  const language = field("language", isLanguage, DEFAULT_LANGUAGE, "language is unsupported: using English");
   let hotkey: HotkeySettings = DEFAULT_HOTKEY;
   if (version !== SETTINGS_VERSION) {
     warnings.push(`version ${version} file: shortcut set to default`);
@@ -140,14 +144,10 @@ export function parseSettings(text: string): ParsedSettings | undefined {
     enabled: enabledValid ? u!["enabled"] as boolean : defaults.updates.enabled,
     lastAttempt: lastAttemptValid ? lastAttempt : defaults.updates.lastAttempt,
   };
-  const notifications = typeof record["notifications"] === "boolean" ? record["notifications"] : defaults.notifications;
-  if (record["notifications"] !== undefined && typeof record["notifications"] !== "boolean") warnings.push(`notifications is not a boolean: using ${defaults.notifications ? "on" : "off"}`);
-  const display = isDisplayPreference(record["display"]) ? record["display"] : DEFAULT_DISPLAY_PREFERENCE;
-  if (record["display"] !== undefined && !isDisplayPreference(record["display"])) warnings.push("display is invalid: using primary display");
-  const countdown = isCountdownSeconds(record["countdown"]) ? record["countdown"] : DEFAULT_COUNTDOWN;
-  if (record["countdown"] !== undefined && !isCountdownSeconds(record["countdown"])) warnings.push(`countdown is unsupported: using ${DEFAULT_COUNTDOWN} seconds`);
-  const countdownSound = typeof record["countdownSound"] === "boolean" ? record["countdownSound"] : DEFAULT_COUNTDOWN_SOUND;
-  if (record["countdownSound"] !== undefined && typeof record["countdownSound"] !== "boolean") warnings.push(`countdownSound is not a boolean: using ${DEFAULT_COUNTDOWN_SOUND ? "on" : "off"}`);
+  const notifications = field("notifications", isBoolean, defaults.notifications, `notifications is not a boolean: using ${defaults.notifications ? "on" : "off"}`);
+  const display = field("display", isDisplayPreference, DEFAULT_DISPLAY_PREFERENCE, "display is invalid: using primary display");
+  const countdown = field("countdown", isCountdownSeconds, DEFAULT_COUNTDOWN, `countdown is unsupported: using ${DEFAULT_COUNTDOWN} seconds`);
+  const countdownSound = field("countdownSound", isBoolean, DEFAULT_COUNTDOWN_SOUND, `countdownSound is not a boolean: using ${DEFAULT_COUNTDOWN_SOUND ? "on" : "off"}`);
   return { settings: { appearance, display, version: SETTINGS_VERSION, outputDir, quality, language, hotkey, updates, notifications, countdown, countdownSound }, warnings };
 }
 

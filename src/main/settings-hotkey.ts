@@ -7,7 +7,6 @@ export type SettingsHotkeyStatus = HotkeyStatus | { kind: "conflict" };
 export class SettingsHotkey {
   private readonly registration: RecordingHotkey;
   private conflict = false;
-  private suspended = false;
   private disposed = false;
   private initialized = false;
   constructor(private readonly options: {
@@ -29,15 +28,8 @@ export class SettingsHotkey {
     this.registration.apply({ enabled: !conflict, accelerator: SETTINGS_SHORTCUT });
   }
   retry(recording: HotkeySettings): void { this.initialized = false; this.reconcile(recording); }
-  suspend(): void {
-    if (this.disposed) return;
-    this.suspended = true;
-    this.registration.suspend();
-  }
-  resume(): void {
-    if (this.disposed || !this.suspended) return;
-    this.suspended = false;
-    this.registration.resume();
-  }
+  /** The registration ignores a repeated call and any call after `dispose`. */
+  suspend(): void { this.registration.suspend(); }
+  resume(): void { this.registration.resume(); }
   dispose(): void { this.disposed = true; this.registration.dispose(); }
 }

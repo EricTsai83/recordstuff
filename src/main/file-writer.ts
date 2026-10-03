@@ -191,7 +191,7 @@ export class FileWriter {
    * still written, so the kept partial is a gapless prefix.
    */
   append(bytes: Uint8Array): Promise<void> {
-    if (this.terminal || this.closed) return Promise.reject(new Error("FileWriter is closed"));
+    if (this.terminal) return Promise.reject(new Error("FileWriter is closed"));
     if (this.refused) return Promise.reject(this.refused);
     if (this._backlogBytes + bytes.byteLength > this.backlogLimitBytes) {
       // An earlier disk error stays the reported one.
@@ -334,8 +334,7 @@ export class FileWriter {
     try {
       await this.release();
     } catch {
-      this.preservationUncertain = true;
-      // The path may exist, but closing could not be confirmed.
+      // The path may exist, but closing could not be confirmed; `release` marked preservation uncertain.
     }
     if (this._bytesWritten > 0) return this.recordingPath;
     try {
@@ -347,10 +346,9 @@ export class FileWriter {
   }
 
   private async release(): Promise<void> {
+    // Only after `beginTerminal`, which already stopped the fsync timer.
     if (this.closed) return;
     this.closed = true;
-    if (this.fsyncTimer) clearInterval(this.fsyncTimer);
-    this.fsyncTimer = undefined;
     try {
       await this.handle.close();
     } catch (error) {
