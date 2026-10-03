@@ -11,7 +11,6 @@ import { stableVersion } from "../../src/shared/version.ts";
 export const REPOSITORY = "EricTsai83/recordstuff";
 export const REPOSITORY_URL = `https://github.com/${REPOSITORY}`;
 export const RELEASES_URL = `${REPOSITORY_URL}/releases`;
-export const LATEST_RELEASE_URL = `${RELEASES_URL}/latest`;
 export const ARCHITECTURE = "arm64";
 export const PLATFORM = "darwin-arm64";
 export const WINDOWS_ARCHITECTURE = "x64";

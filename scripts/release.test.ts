@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { assertDmgContents, assertPublishedAssets, assertUnreleased, compareVersions, failureReason, isPrerelease, latestFlag, notes, PE_MACHINE_X64, peMachine, releaseMount, windowsVersionMatches, renderDownloadSection, releaseFactsFromManifest, renderVerificationRecord, replaceMarked, setPackageVersion, sha256sums, splitCommandLine, validateDigest, validateTag, type ReleaseFacts } from './release.mts';
+import { assertDmgContents, assertPublishedAssets, assertUnreleased, compareVersions, failureReason, isPrerelease, latestFlag, notes, PE_MACHINE_X64, peMachine, releaseMount, windowsVersionMatches, renderDownloadSection, releaseFactsFromManifest, renderVerificationRecord, replaceMarked, setPackageVersion, sha256sums, splitCommandLine, validateTag, type ReleaseFacts } from './release.mts';
 
 describe('release gates', () => {
   it('accepts only a tag equal to v + package version, stable or pre-release', () => {
@@ -33,11 +33,6 @@ describe('release gates', () => {
     expect(() => assertPublishedAssets({ ...ok, assets: ok.assets.map(a => a.name.endsWith('.dmg') ? { ...a, digest: `sha256:${'b'.repeat(64)}` } : a) }, files)).toThrow(/digest/);
     expect(() => assertPublishedAssets({ ...ok, assets: ok.assets.map(a => ({ ...a, digest: null })) }, files)).toThrow(/missing/);
     expect(() => assertPublishedAssets({ ...ok, assets: [...ok.assets.slice(0, 2), { name: 'extra.txt', size: 2, digest: `sha256:${sha}` }] }, files)).toThrow(/Missing published asset release.json/);
-  });
-  it('rejects incorrect and malformed checksums', () => {
-    expect(() => validateDigest('a'.repeat(64), 'a'.repeat(64))).not.toThrow();
-    expect(() => validateDigest('a'.repeat(64), 'b'.repeat(64))).toThrow();
-    expect(() => validateDigest('', '')).toThrow();
   });
   it('preserves English self-signing, update and removal instructions with commit-pinned bilingual guide links', () => {
     const body = notes('0.1.2', 'owner/repo', 'a'.repeat(40));

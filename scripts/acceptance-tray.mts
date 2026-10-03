@@ -30,7 +30,7 @@ import { DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib
 import { LogReader, evidenceSince, type LogCursor } from "./lib/log-reader.mts";
 import { AccessibilityBlockedError, FLAG, KEY, captureRect, osascriptAx, type Frame, type NativeMenuItem } from "./lib/native-ax.mts";
 import { FINDER_SELECTED_ROW_SCRIPT, FINDER_SELECTION_SCRIPT, FINDER_TARGET_SCRIPT, fileSelected } from "./lib/notification-acceptance.mts";
-import { INTERRUPT_EXIT, pgrepPids, recordStuffPattern, recordStuffPids } from "./lib/processes.mts";
+import { INTERRUPT_EXIT, escapeRegExp, pgrepPids, recordStuffPattern, recordStuffPids } from "./lib/processes.mts";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings } from "./lib/runner-env.mts";
 import { StoredOverride } from "./lib/stored-override.mts";
 import { TrayDriver, compareMenu, parseMenuLogLine, structureProblems, type TrayState } from "./lib/tray-driver.mts";
@@ -716,7 +716,7 @@ try {
       if (problem) throw new Error(`${problem}; quit RecordStuff, then set "language" back in ${settingsPath}`);
     });
   }
-  const remaining = (() => { try { return pgrepPids(`^${bundle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/Contents/`); } catch (error) { return [String(error)]; } })();
+  const remaining = (() => { try { return pgrepPids(`^${escapeRegExp(bundle)}/Contents/`); } catch (error) { return [String(error)]; } })();
   if (remaining.length) cleanup.push(`processes of ${bundle} still running: ${remaining.join(", ")}`);
   desktop?.end();
   if (fs.existsSync(logPath)) fs.writeFileSync(path.join(out, "app.log"), `${evidenceSince(appLog, roundFrom).join("\n")}\n`);

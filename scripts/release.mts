@@ -25,9 +25,6 @@ export function latestFlag(version: string, published: { tag_name: string; draft
   const newer = published.some(r => !r.draft && !r.prerelease && stableVersion(r.tag_name.slice(1)) && compareVersions(r.tag_name.slice(1), version) > 0);
   return newer ? '--latest=false' : '--latest';
 }
-export function validateDigest(actual: string, expected: string) {
-  if (!/^[a-f0-9]{64}$/.test(expected) || actual !== expected) throw new Error('Checksum mismatch.');
-}
 export function assertUnreleased(releases: { tag_name: string }[], tag: string) {
   if (releases.some(r => r.tag_name === tag)) throw new Error('Version already has a release (including drafts); refusing reuse.');
 }

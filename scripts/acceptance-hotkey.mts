@@ -51,6 +51,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   acceleratorToKeystroke,
+  createMaterialProfile,
   currentRunId,
   currentState,
   sessionBelongsTo,
@@ -58,6 +59,7 @@ import {
   lineTime,
   materialOpenArgs,
   registeredAccelerator,
+  removeMaterialProfile,
 } from "./lib/acceptance.mts";
 import { LogReader, evidenceSince, type LogCursor } from "./lib/log-reader.mts";
 import { hasTool, syncMarkers } from "./lib/media-tools.mts";
@@ -156,8 +158,7 @@ async function quitBundle(pid: string, signal: AbortSignal): Promise<string | un
     },
   });
   if (bundle) {
-    const pattern = `${bundle}/Contents/`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    while ((await command("pgrep", ["-f", `^${pattern}`], signal, 5000, [0, 1])).trim()) {
+    while ((await command("pgrep", ["-f", `^${escapeRegExp(bundle)}/Contents/`], signal, 5000, [0, 1])).trim()) {
       await delay(100, undefined, { signal });
     }
   }
@@ -265,7 +266,7 @@ async function main(): Promise<void> {
     const keystroke = acceleratorToKeystroke(accelerator) ?? fail(`cannot type accelerator ${accelerator} through System Events`);
     script = keystrokeScript(keystroke);
     fs.mkdirSync(dir, { recursive: true });
-    MATERIAL_PROFILE = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-acceptance-profile-"));
+    MATERIAL_PROFILE = createMaterialProfile("acceptance");
   } catch (error) {
     // Nothing was recorded; the round's value goes back once the app it launched is gone.
     const changed = soundOverride?.pending ?? false;
@@ -534,15 +535,8 @@ async function main(): Promise<void> {
           await delay(100, undefined, { signal });
         }
       } catch (error) { cleanupErrors.push(`material process: ${String(error)}`); }
-      // Chrome keeps writing for a moment after pkill returns, so a single rm
-      // races it. Report any residue after bounded retries.
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        try { fs.rmSync(MATERIAL_PROFILE, { recursive: true, force: true }); break; }
-        catch (error) {
-          if (attempt === 4) cleanupErrors.push(`material profile: ${String(error)}`);
-          else await delay(400);
-        }
-      }
+      const profileProblem = MATERIAL_PROFILE ? await removeMaterialProfile(MATERIAL_PROFILE) : undefined;
+      if (profileProblem) cleanupErrors.push(profileProblem);
     }
     desktop.end();
     fs.writeFileSync(path.join(dir, "app-session.log"), evidenceSince(appLog, sessionFrom).filter(Boolean).join("\n") + "\n");
