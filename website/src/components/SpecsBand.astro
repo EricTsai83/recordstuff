@@ -34,7 +34,7 @@ const checks = ["Free and MIT licensed.", "Verified on macOS 26, Apple silicon."
 
 <style>
   .specs {
-    padding: var(--section-y) 32px;
+    padding-block: var(--section-y);
     display: flex;
     flex-direction: column;
     gap: 2rem;
@@ -110,9 +110,6 @@ const checks = ["Free and MIT licensed.", "Verified on macOS 26, Apple silicon."
     }
   }
   @media (max-width: 640px) {
-    .specs {
-      padding: var(--section-y) 20px;
-    }
     .cell-value {
       white-space: normal;
     }

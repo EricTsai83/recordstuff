@@ -48,7 +48,7 @@ const steps = [
 
 <style>
   .how {
-    padding: var(--section-y) 32px;
+    padding-block: var(--section-y);
     /* Shared by the grid gap and by the connector, which bridges that gap. */
     --how-gap: 1.6rem;
   }
@@ -175,6 +175,9 @@ const steps = [
     border: 1px solid var(--border-strong);
     background: rgba(40, 40, 46, 0.96);
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  }
+  /* Enters with its block, which the scroll reveal holds hidden until it is on screen. */
+  :global(:root[data-motion="on"]) .how.is-revealed .how-toast {
     animation: how-toast-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
   .how-toast-text {
@@ -203,7 +206,7 @@ const steps = [
     to { opacity: 1; transform: none; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .how-toast { animation: none; }
+    :global(:root[data-motion="on"]) .how.is-revealed .how-toast { animation: none; }
     :global(:root[data-motion="on"]) .how-link,
     :global(:root[data-motion="on"]) .how.is-revealed .how-link {
       clip-path: none;

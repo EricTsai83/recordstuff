@@ -126,20 +126,26 @@ const wire = "M100 120H590Q600 120 600 110V70Q600 60 610 60H790Q800 60 800 70V11
       stage.dataset.power = "on";
       stage.setAttribute("data-act", "");
     };
+    /**
+     * Lays the wire out at the current width. It draws itself as a dash as long as the path, slid in from its
+     * full length; before and after a play it is hidden the same way, so cancelling the drawing hides it again.
+     */
+    const lay = (): ReturnType<typeof layout> => {
+      const wire = layout();
+      trace.setAttribute("viewBox", `0 0 ${wire.width} 240`);
+      strokes.forEach((stroke, i) => {
+        stroke.setAttribute("d", wire.arms[i]);
+        stroke.style.strokeDasharray = `${wire.length} ${wire.length}`;
+        stroke.style.strokeDashoffset = `${wire.length}`;
+      });
+      return wire;
+    };
     /** Starts the drawing and every stage cue together; resolves when the drawing reaches Record. */
     const draw = (): Promise<Animation> => {
-      const { width, box, length, arms, marks } = layout();
-      trace.setAttribute("viewBox", `0 0 ${width} 240`);
+      const { box, length, marks } = lay();
       const ms = (px: number): number => (px / length) * DRAW_MS;
       const timing: KeyframeAnimationOptions = { duration: DRAW_MS, easing: "linear", fill: "forwards" };
-      // The wire draws itself as a dash as long as the path, slid in from its full length. Before and after
-      // a play it is hidden the same way, so cancelling the drawing hides it again.
-      const drawings = strokes.map((stroke, i) => {
-        stroke.setAttribute("d", arms[i]);
-        stroke.style.strokeDasharray = `${length} ${length}`;
-        stroke.style.strokeDashoffset = `${length}`;
-        return own(stroke.animate([{ strokeDashoffset: length }, { strokeDashoffset: 0 }], timing));
-      });
+      const drawings = strokes.map((stroke) => own(stroke.animate([{ strokeDashoffset: length }, { strokeDashoffset: 0 }], timing)));
       for (const cue of marks.filter(({ edge }) => edge === "in")) {
         // Record has no exit, so it fades in over a box's width at the same pace.
         const exit = marks.find(({ stage, edge }) => stage === cue.stage && edge === "out");
@@ -215,14 +221,8 @@ const wire = "M100 120H590Q600 120 600 110V70Q600 60 610 60H790Q800 60 800 70V11
     // length and keep their progress, so a finished drawing stays fully drawn and a running one carries on.
     new ResizeObserver(() => {
       if (!strokes[0].getAttribute("d") || still.matches) return;
-      const { width, length, arms } = layout();
-      trace.setAttribute("viewBox", `0 0 ${width} 240`);
-      strokes.forEach((stroke, i) => {
-        stroke.setAttribute("d", arms[i]);
-        stroke.style.strokeDasharray = `${length} ${length}`;
-        stroke.style.strokeDashoffset = `${length}`;
-        stroke.getAnimations().forEach((animation) => (animation.effect as KeyframeEffect).setKeyframes([{ strokeDashoffset: length }, { strokeDashoffset: 0 }]));
-      });
+      const { length } = lay();
+      strokes.forEach((stroke) => stroke.getAnimations().forEach((animation) => (animation.effect as KeyframeEffect).setKeyframes([{ strokeDashoffset: length }, { strokeDashoffset: 0 }])));
     }).observe(flow);
 
     still.addEventListener("change", arm);
@@ -387,8 +387,5 @@ const wire = "M100 120H590Q600 120 600 110V70Q600 60 610 60H790Q800 60 800 70V11
     .permission-node--audio { left: 75%; }
     .permission-node .glyph { padding: 6px 10px; }
     .permission-node>span:last-child { font-size: .7rem; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .install-flow *, .install-flow :global(svg *) { animation: none; }
   }
 </style>
