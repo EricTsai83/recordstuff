@@ -4,7 +4,17 @@ import { drainQueue } from "./drain-queue";
 import { errnoCode } from "./errors";
 
 export interface WindowSize { width: number; height: number }
-export const DEFAULT_SETTINGS_SIZE: WindowSize = { width: 560, height: 680 };
+/**
+ * Room for the sidebar beside three recording cards in a row and unhurried settings rows (2026-10-04);
+ * narrower windows put the tabs on top. A smaller work area still fits it down (`fitSettingsSize`).
+ */
+export const DEFAULT_SETTINGS_SIZE: WindowSize = { width: 960, height: 640 };
+/**
+ * The default a stored size was chosen against. One from before the sidebar (no `layout`) or from the first,
+ * narrower sidebar default (`layout: 2`, 720 × 580) opens once at the current default; sizes saved since keep
+ * the user's choice.
+ */
+const LAYOUT = 3;
 export const MIN_SETTINGS_SIZE: WindowSize = { width: 380, height: 360 };
 function validSize(value: unknown): value is WindowSize {
   if (!value || typeof value !== "object") return false;
@@ -20,7 +30,8 @@ export class SettingsWindowState {
     try {
       const size: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
       if (!validSize(size)) throw new Error("invalid window size");
-      this.current = { width: size.width, height: size.height };
+      if ((size as { layout?: unknown }).layout === LAYOUT) this.current = { width: size.width, height: size.height };
+      else this.log(`settings window: ${size.width}×${size.height} was chosen against an earlier default; opening at the default`);
     } catch (error) {
       if (errnoCode(error) !== "ENOENT") this.log(`settings window: size read failed, using default: ${String(error)}`);
     }
@@ -30,7 +41,7 @@ export class SettingsWindowState {
     if (!validSize(size)) return;
     // Remember within this process even if disk is temporarily unavailable.
     this.current = { ...size };
-    const snapshot = { ...size };
+    const snapshot = { width: size.width, height: size.height, layout: LAYOUT };
     this.queue = this.queue.then(() => writeFileAtomic(this.file, JSON.stringify(snapshot)))
       .catch(error => this.log(`settings window: size save failed: ${String(error)}`));
   }

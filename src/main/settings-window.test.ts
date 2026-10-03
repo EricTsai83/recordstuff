@@ -538,7 +538,7 @@ it("reports save refusal rather than static screen help when recording starts", 
 describe("settings window size", () => {
   it("uses a compact default and fits saved dimensions to the display", () => {
     const fresh = setup(); fresh.panel.show();
-    expect(fresh.window().options).toMatchObject({ width: 560, height: 680 });
+    expect(fresh.window().options).toMatchObject({ width: 960, height: 640 });
     fresh.panel.destroy(); mock.windows.length = 0;
     const saved = setup({ geometry: { size: { width: 2000, height: 1500 }, save: vi.fn() } });
     saved.panel.show();

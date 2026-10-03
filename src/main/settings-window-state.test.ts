@@ -37,3 +37,15 @@ it("fits large and small preferences without exceeding even a tiny work area", (
   expect(fitSettingsSize({ width: 10, height: 10 }, { width: 1280, height: 800 })).toEqual({ width: 380, height: 360 });
   expect(fitSettingsSize(DEFAULT_SETTINGS_SIZE, { width: 320, height: 300 })).toEqual({ width: 320, height: 300 });
 });
+it("opens any size stored before the sidebar once at the new default, then keeps what the user chooses", async () => {
+  // Before the sidebar, and against its first 720 × 580 default (layout 2).
+  for (const old of ['{"width":560,"height":680}', '{"width":380,"height":603}', '{"width":900,"height":700}', '{"width":874,"height":543,"layout":2}']) {
+    fs.writeFileSync(file, old);
+    expect(new SettingsWindowState(file).size).toEqual({ width: 960, height: 640 });
+  }
+  const store = new SettingsWindowState(file);
+  store.save({ width: 380, height: 603 });
+  await store.flush();
+  expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ width: 380, height: 603, layout: 3 });
+  expect(new SettingsWindowState(file).size).toEqual({ width: 380, height: 603 });
+});
