@@ -19,7 +19,7 @@
  * keeps working and takes the default, so existing users also get the
  * 3-second countdown and its tick.
  */
-import { isAppearance, type Appearance } from "../shared/appearance";
+import { isAppearance, isTrayClick, type Appearance, type TrayClick } from "../shared/appearance";
 import { DEFAULT_DISPLAY_PREFERENCE, isDisplayPreference, type DisplayPreference } from "../shared/display";
 import fs from "node:fs";
 import path from "node:path";
@@ -55,6 +55,8 @@ export interface Settings {
   countdown: CountdownSeconds;
   /** A tick with each countdown digit (plan 046); kept while the countdown is Off. */
   countdownSound: boolean;
+  /** The icon's left click; a file from before the choice keeps the click that records. */
+  trayClick: TrayClick;
 }
 
 export interface SettingsStoreOptions {
@@ -85,6 +87,8 @@ export function defaultSettings(outputDir: string): Settings {
     display: DEFAULT_DISPLAY_PREFERENCE,
     countdown: DEFAULT_COUNTDOWN,
     countdownSound: DEFAULT_COUNTDOWN_SOUND,
+    // A new install opens the menu, as menu bar icons do; recording is one choice away or on the shortcut.
+    trayClick: "menu",
   };
 }
 
@@ -155,8 +159,10 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const display = field("display", isDisplayPreference, DEFAULT_DISPLAY_PREFERENCE, "display is invalid: using primary display");
   const countdown = field("countdown", isCountdownSeconds, DEFAULT_COUNTDOWN, `countdown is unsupported: using ${DEFAULT_COUNTDOWN} seconds`);
   const countdownSound = field("countdownSound", isBoolean, DEFAULT_COUNTDOWN_SOUND, `countdownSound is not a boolean: using ${DEFAULT_COUNTDOWN_SOUND ? "on" : "off"}`);
+  // Everyone who used the app before the choice existed learned a click that records; an upgrade keeps it.
+  const trayClick = field("trayClick", isTrayClick, "record", "trayClick is unsupported: using record");
   return { settings: { appearance, display, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
-    updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound }, warnings };
+    updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound, trayClick }, warnings };
 }
 
 export class SettingsStore {
@@ -207,6 +213,13 @@ export class SettingsStore {
   setCountdownSound(enabled: boolean): Promise<void> {
     if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported countdown sound: ${JSON.stringify(enabled)}`));
     return this.save((current) => ({ ...current, countdownSound: enabled }));
+  }
+
+  get trayClick(): TrayClick { return this.settings.trayClick; }
+
+  setTrayClick(trayClick: TrayClick): Promise<void> {
+    if (!isTrayClick(trayClick)) return Promise.reject(new Error(`unsupported tray click: ${JSON.stringify(trayClick)}`));
+    return this.save((current) => ({ ...current, trayClick }));
   }
 
   get appearance(): Appearance { return this.settings.appearance; }

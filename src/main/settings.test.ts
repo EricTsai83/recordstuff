@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_HOTKEY } from "../shared/hotkey";
 import { DEFAULT_QUALITY } from "../shared/quality";
-import { SettingsStore, parseSettings } from "./settings";
+import { SettingsStore, parseSettings, defaultSettings } from "./settings";
 
 let dir: string;
 let filePath: string;
@@ -105,7 +105,7 @@ describe("SettingsStore", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true,
+      countdown: 3, countdownSound: true, trayClick: "menu",
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -189,7 +189,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true,
+      countdown: 3, countdownSound: true, trayClick: "menu",
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -209,7 +209,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true,
+      countdown: 3, countdownSound: true, trayClick: "menu",
     });
   });
 
@@ -263,7 +263,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true,
+      countdown: 3, countdownSound: true, trayClick: "menu",
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -297,14 +297,14 @@ describe("parseSettings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true,
+      countdown: 3, countdownSound: true, trayClick: "record",
     });
     expect(parseSettings('{"version":2,"outputDir":"/a","quality":' + JSON.stringify(DEFAULT_QUALITY) + "}")).toEqual({
-      settings: { language: "en", appearance: "system", version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" }, countdown: 3, countdownSound: true },
+      settings: { language: "en", appearance: "system", version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" }, countdown: 3, countdownSound: true, trayClick: "record" },
       warnings: ["version 2 file: shortcut set to default"],
     });
     const v3 = { version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
-    expect(parseSettings(JSON.stringify(v3))).toEqual({ settings: { ...v3, language: "en", appearance: "system", updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" }, countdown: 3, countdownSound: true }, warnings: [] });
+    expect(parseSettings(JSON.stringify(v3))).toEqual({ settings: { ...v3, language: "en", appearance: "system", updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" }, countdown: 3, countdownSound: true, trayClick: "record" }, warnings: [] });
     expect(parseSettings('{"version":1,"outputDir":""}')).toBeUndefined();
     expect(parseSettings("null")).toBeUndefined();
     expect(parseSettings("[]")).toBeUndefined();
@@ -389,7 +389,7 @@ describe("hotkey settings (plan 016)", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true,
+      countdown: 3, countdownSound: true, trayClick: "menu",
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.
@@ -637,4 +637,20 @@ it("flush includes a save accepted while the earlier write is draining", async (
   await flushed;
   expect(store().outputDir).toBe("/second");
   await Promise.all([first, second]);
+});
+
+describe("the icon's left click (2026-10-04)", () => {
+  it("opens the menu on a new install, keeps the click that records on an upgrade, and round-trips the choice", async () => {
+    expect(defaultSettings("/a").trayClick).toBe("menu");
+    expect(parseSettings(JSON.stringify({ version: 3, outputDir: "/a", hotkey: DEFAULT_HOTKEY }))?.settings.trayClick).toBe("record");
+    expect(parseSettings(JSON.stringify({ version: 3, outputDir: "/a", hotkey: DEFAULT_HOTKEY, trayClick: "menu" }))?.settings.trayClick).toBe("menu");
+    expect(parseSettings(JSON.stringify({ version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, trayClick: "double" })))
+      .toMatchObject({ settings: { trayClick: "record" }, warnings: ["trayClick is unsupported: using record"] });
+    const s = store();
+    expect(s.trayClick).toBe("menu");
+    await s.setTrayClick("record");
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ trayClick: "record" });
+    expect(store().trayClick).toBe("record");
+    await expect(s.setTrayClick("double" as never)).rejects.toThrow("unsupported tray click");
+  });
 });

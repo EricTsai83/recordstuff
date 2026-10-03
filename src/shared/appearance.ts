@@ -1,3 +1,11 @@
+/**
+ * What a left click on the menu bar (system tray) icon does (2026-10-04): open the menu, as menu bar
+ * icons usually do, or start and stop recording. A right click always opens the menu.
+ */
+export type TrayClick = "menu" | "record";
+export function isTrayClick(value: unknown): value is TrayClick {
+  return value === "menu" || value === "record";
+}
 /** Persisted appearance choice; system follows the OS live. */
 export type Appearance = "system" | "light" | "dark";
 export function isAppearance(value: unknown): value is Appearance {
