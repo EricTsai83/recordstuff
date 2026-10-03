@@ -50,6 +50,8 @@ let startupFailed = false;
 let failure: { group: string; choice?: string; text: string; baseline?: string; refused?: true; editor?: true } | undefined;
 const text = (key: PlainMessageKey): string => translate(key, view?.language);
 const controlId = (group: SettingsGroup): string => `setting-${group.id}`;
+/** A failure row's `<details>`; its summary adds `-summary`. */
+const resultDomId = (id: string): string => `recording-result-${encodeURIComponent(id)}`;
 /** The shortcut editor's own buttons: their outcome returns focus to the shortcut select. */
 const isCaptureControl = (control: string): boolean => control === "shortcut-capture" || control === "shortcut-confirm";
 /** A group's retry or recovery button; it hides once it worked, so focus falls back to the group. */
@@ -242,7 +244,6 @@ function updateRows(groups: SettingsGroup[]): void {
     if (group.kind === "shortcut") {
       const edit = container.querySelector<HTMLSelectElement>("#setting-hotkey")!;
       const customOption = edit.querySelector<HTMLOptionElement>('option[value="custom"]')!;
-      setText(customOption, text("Custom shortcut…"));
       customOption.disabled = Boolean(saving) || arming || Boolean(group.capturing);
       const area = container.querySelector<HTMLElement>(".capture-area")!;
       const field = container.querySelector<HTMLButtonElement>("#shortcut-capture")!;
@@ -324,11 +325,8 @@ function row(group: SettingsGroup): HTMLElement {
     }
     controls.append(segments);
   } else {
+    // Its options, including the shortcut's Custom entry, come from `updateRows`, which `draw` runs next.
     const select = node("select"); select.id = id;
-    for (const choice of group.choices) { const option = node("option"); option.value = choice.id; select.append(option); }
-    if (group.kind === "shortcut") {
-      const custom = node("option"); custom.value = "custom"; select.append(custom);
-    }
     select.addEventListener("change", () => {
       if (group.kind === "shortcut" && select.value === "custom") {
         select.value = committed(shortcutGroup()!);
@@ -341,7 +339,8 @@ function row(group: SettingsGroup): HTMLElement {
     const field = button("shortcut-capture", () => {});
     field.addEventListener("keydown", event => {
       if (!shortcutGroup()?.capturing) return;
-      if (isCloseChord(event, platform())) return; // Not a candidate: the document handler closes.
+      const p = platform();
+      if (isCloseChord(event, p)) return; // Not a candidate: the document handler closes.
       if (event.key === "Tab" && !event.metaKey && !event.ctrlKey && !event.altKey) {
         if (candidateToConfirm) return; // Tab reaches Confirm, then Cancel.
         void capture(false);
@@ -355,18 +354,18 @@ function row(group: SettingsGroup): HTMLElement {
       if (candidateToConfirm && event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
         void choose(group.id, candidateToConfirm, "shortcut-capture"); return;
       }
-      const candidate = shortcutCandidate(event, group.platform);
+      const candidate = shortcutCandidate(event, p);
       // Releasing or pressing a modifier must not erase a complete preview.
       if (candidate === undefined && candidateToConfirm) return;
       candidateToConfirm = undefined;
-      setPreview(candidate ?? shortcutModifiers(event, group.platform).join("+"), group.platform ?? "darwin");
+      setPreview(candidate ?? shortcutModifiers(event, p).join("+"), p);
       if (candidate === undefined) { draw(); return; }
       const result = validateAccelerator(candidate);
       // The Settings shortcut is refused here like the other reserved combinations, so the editor stays open; main refuses it too.
-      const error = result.error ?? (isSettingsShortcut(result.accelerator, group.platform ?? "darwin") ? SETTINGS_SHORTCUT_RESERVED : undefined);
+      const error = result.error ?? (isSettingsShortcut(result.accelerator, p) ? SETTINGS_SHORTCUT_RESERVED : undefined);
       if (error) {
         // A key the editor cannot use has no name to show (only the internal "Unsupported"): keep the held modifiers.
-        setPreview(shortcutModifiers(event, group.platform).join("+"), group.platform ?? "darwin");
+        setPreview(shortcutModifiers(event, p).join("+"), p);
         failure = { group: group.id, text: translate(error, view?.language), refused: true, editor: true };
         announce(failure.text); draw(); return;
       }
@@ -378,7 +377,8 @@ function row(group: SettingsGroup): HTMLElement {
     field.addEventListener("keyup", event => {
       if (!shortcutGroup()?.capturing || saving || candidateToConfirm) return;
       if (["Meta", "Control", "Alt", "Shift"].includes(event.key)) {
-        setPreview(shortcutModifiers(event, group.platform).join("+"), group.platform ?? "darwin"); draw();
+        const p = platform();
+        setPreview(shortcutModifiers(event, p).join("+"), p); draw();
       }
     });
     // A user-driven focus move runs this microtask before the new element is
@@ -469,7 +469,7 @@ function updateRecordingResult(focusRequested: boolean): void {
         render(result.view);
         if (!hadFocus || !more!.hidden || !document.hasFocus()) return;
         const loaded = view?.recordingResults?.find(r => !known.has(r.id)) ?? view?.recordingResults?.at(-1);
-        if (loaded) document.getElementById(`recording-result-${encodeURIComponent(loaded.id)}-summary`)?.focus({ preventScroll: true });
+        if (loaded) document.getElementById(`${resultDomId(loaded.id)}-summary`)?.focus({ preventScroll: true });
       })
         .catch(() => announce(text("Could not complete this action. Please try again.")))
         .finally(() => { more!.removeAttribute("aria-disabled"); });
@@ -530,7 +530,7 @@ function updateRecordingResult(focusRequested: boolean): void {
     place(days, section, groupIndex);
     const rows = section.querySelector<HTMLElement>(".result-rows")!;
     for (const [index, result] of group.rows.entries()) {
-      const domId = `recording-result-${encodeURIComponent(result.id)}`;
+      const domId = resultDomId(result.id);
       let area = document.getElementById(domId) as HTMLDetailsElement | null;
       let state = resultStates.get(result.id);
       if (!state) { state = { open: false, acknowledged: result.acknowledged }; resultStates.set(result.id, state); }
@@ -555,14 +555,14 @@ function updateRecordingResult(focusRequested: boolean): void {
       area.querySelector<HTMLElement>(":scope > summary")!.focus({ preventScroll: true });
   }
   if (focusRequested && focusId) {
-    const target = document.getElementById(`recording-result-${encodeURIComponent(focusId)}`);
+    const target = document.getElementById(resultDomId(focusId));
     target?.querySelector<HTMLElement>(":scope > summary")?.focus({ preventScroll: true });
     target?.scrollIntoView({ block: "nearest" });
   }
   if (focusAfterRemoval !== undefined) {
     // The row that took the removed one's place, or the new last row; brought into view.
     const next = (focusAfterRemoval === null ? undefined
-      : document.getElementById(`recording-result-${encodeURIComponent(focusAfterRemoval)}`)?.querySelector<HTMLElement>(":scope > summary"))
+      : document.getElementById(resultDomId(focusAfterRemoval))?.querySelector<HTMLElement>(":scope > summary"))
       ?? resultHeaders().at(-1);
     next?.focus({ preventScroll: true });
     next?.scrollIntoView({ block: "nearest" });
@@ -849,7 +849,7 @@ function restoreResultFocus(id: string, intent: { action: string; control: strin
   const control = document.getElementById(intent.control);
   const active = document.activeElement;
   if (active && active !== document.body && active !== control) return;
-  const area = document.getElementById(`recording-result-${encodeURIComponent(id)}`) as HTMLDetailsElement | null;
+  const area = document.getElementById(resultDomId(id)) as HTMLDetailsElement | null;
   if (control && area?.open && !persistsHistory(intent.action)) { control.focus({ preventScroll: true }); return; }
   const target = area?.querySelector<HTMLElement>(":scope > summary") ?? document.querySelector<HTMLElement>(".recording-result > summary")
     ?? document.getElementById(`tab-${selectedTab}`);
