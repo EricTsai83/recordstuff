@@ -194,6 +194,8 @@ it("never turns a Windows/Linux Meta press into an unrelated Control shortcut", 
   expect(shortcutCandidate(key, "darwin")).toBe("CommandOrControl+K");
   for (const platform of ["win32", "linux"]) {
     expect(shortcutCandidate(key, platform)).toBe("Unsupported");
+    // Held with Ctrl, it stays an unusable key rather than a chord missing Ctrl.
+    expect(shortcutCandidate({ ...key, ctrlKey: true }, platform)).toBe("Control+Unsupported");
     expect(shortcutCandidate({ ...key, metaKey: false, ctrlKey: true }, platform)).toBe("Control+K");
     // The Windows key alone is a held modifier, so a complete draft survives it.
     expect(shortcutCandidate({ ...key, code: "MetaLeft", key: "Meta" }, platform)).toBeUndefined();

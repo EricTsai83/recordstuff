@@ -38,10 +38,11 @@ const NAMED_KEYS: Record<string, string> = {
 export function shortcutCandidate(event: ShortcutKey, platform = "darwin"): string | undefined {
   // A modifier alone, the Windows key included, is still being held: no candidate yet.
   if (/^(Meta|Control|Alt|Shift)(Left|Right)$/.test(event.code)) return undefined;
-  if (event.metaKey && platform !== "darwin") return "Unsupported";
-  const key = /^Key[A-Z]$/.test(event.code) ? event.code.slice(3)
-    : /^Digit[0-9]$/.test(event.code) ? event.code.slice(5)
-      : /^F([1-9]|1[0-9]|2[0-4])$/.test(event.code) ? event.code
-        : NAMED_KEYS[event.code] ?? "Unsupported";
+  // The Windows key has no accelerator name: unusable like a keypad key, keeping the other modifiers.
+  const key = event.metaKey && platform !== "darwin" ? "Unsupported"
+    : /^Key[A-Z]$/.test(event.code) ? event.code.slice(3)
+      : /^Digit[0-9]$/.test(event.code) ? event.code.slice(5)
+        : /^F([1-9]|1[0-9]|2[0-4])$/.test(event.code) ? event.code
+          : NAMED_KEYS[event.code] ?? "Unsupported";
   return [...shortcutModifiers(event, platform), key].join("+");
 }

@@ -34,6 +34,10 @@ it("refuses Ctrl+Q and a chord without Ctrl in Windows words, and offers the mac
   expect(confirm().disabled).toBe(true);
   field().dispatchEvent(new KeyboardEvent("keydown", { key: "r", code: "KeyR", altKey: true, shiftKey: true, bubbles: true }));
   expect(error()).toBe("A shortcut needs Ctrl.");
+  // The Windows key is unusable; with Ctrl held the editor must not claim Ctrl is missing.
+  field().dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", metaKey: true, ctrlKey: true, bubbles: true }));
+  expect(error()).toBe("This key cannot be used.");
+  expect(field().textContent).toBe("Ctrl");
 
   // macOS keeps Command+Shift+3 for screenshots; Windows has no such chord, so Ctrl+Shift+3 is a choice.
   field().dispatchEvent(new KeyboardEvent("keydown", { key: "#", code: "Digit3", ctrlKey: true, shiftKey: true, bubbles: true }));
