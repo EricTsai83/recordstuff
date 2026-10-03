@@ -1302,7 +1302,7 @@ Tray 選單改為扁平指令清單，所有偏好設定移入單一 sandbox 設
 
 ## 通知開關取代原生橋接 — 2026-09-21
 
-Plan 019 最初實作為通往 macOS `UserNotifications` 的 Node-API 橋接（保存在 `wip/019-native-notification-bridge`）：權限狀態機、啟動時引導對話框、設定中的狀態顯示，以及每次建置都編譯 `.node` 的建置與打包管線。審查發現該橋接把失敗方向反了。`AppTray.show` 以一個初值為 `unknown` 的狀態為閘門，因此橋接載入失敗就會丟棄每一則通知 — 而由於該閘門同時擋住 `Notification.show()`，也就一併擋掉 Electron 在該呼叫內部發出的授權請求。兩個現實觸發點確實存在：建置腳本只針對 `process.arch` 編譯，且寫死 `-mmacosx-version-min=13.0`，而 App 並未宣告 `minimumSystemVersion`。受影響的使用者拿到的可用通知會比改動前更少。
+Plan 019 最初實作為通往 macOS `UserNotifications` 的 Node-API 橋接：權限狀態機、啟動時引導對話框、設定中的狀態顯示，以及每次建置都編譯 `.node` 的建置與打包管線。審查發現該橋接把失敗方向反了。`AppTray.show` 以一個初值為 `unknown` 的狀態為閘門，因此橋接載入失敗就會丟棄每一則通知 — 而由於該閘門同時擋住 `Notification.show()`，也就一併擋掉 Electron 在該呼叫內部發出的授權請求。兩個現實觸發點確實存在：建置腳本只針對 `process.arch` 編譯，且寫死 `-mmacosx-version-min=13.0`，而 App 並未宣告 `minimumSystemVersion`。受影響的使用者拿到的可用通知會比改動前更少。
 
 Electron 44.3.0 的行為改以檢視實際隨附的 framework 二進位確立 — 這正是計畫第一步要求卻未完成的項目。`Electron Framework` 內含 `requestAuthorizationWithOptions:completionHandler:` 以及 Electron 自己的 log 字串 `Notification authorization granted: `，所以 `Notification.show()` 確實會向 macOS 請求授權。其中不存在 `getNotificationSettingsWithCompletionHandler`，而 `systemPreferences.getMediaAccessStatus` 的型別只接受 `microphone | camera | screen`，因此無從讀取狀態。`setPermissionRequestHandler` 中的 `'notifications'` 是 Chromium 的網頁內容權限，不是 App 本身的權限。這是二進位符號檢查而非原始碼閱讀；Objective-C selector 以字串常量儲存，因此出現與不出現都算相當可靠。
 
