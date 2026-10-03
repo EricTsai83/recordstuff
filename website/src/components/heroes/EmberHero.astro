@@ -18,6 +18,10 @@ const windows = release.windows;
       <a class="hero-source-link" href={links.repository} target="_blank" rel="noopener noreferrer"><GitHubMark size={15} /><span>{hero.secondaryCta}</span></a>
       <p class="hero-version dim" data-download-os="mac">v{release.version} · {release.sizeLabel} · Apple silicon · <a class="link" href="/download">checksum</a></p>
       {windows && <p class="hero-version dim" data-download-os="windows" hidden>v{release.version} · {windows.sizeLabel} · {windows.architectureLabel} · {hero.windowsNote} · <a class="link" href="/download#windows-title">details</a></p>}
+      <!-- The other platform's section on /download, for a wrong guess or a download meant for another computer.
+           Windows is reached through its section, where its unverified state is stated beside the installer. -->
+      {windows && <a class="hero-other link" href="/download#windows-title" data-download-os="mac">{hero.otherWindows}</a>}
+      {windows && <a class="hero-other link" href="/download#macos-title" data-download-os="windows" hidden>{hero.otherMac}</a>}
     </div>
     <!-- Inline so it runs while the page is parsed, before the hero paints: a Windows visitor never sees the macOS
          button first. Without scripting, on any other system or for a release without the installer, macOS stays.
@@ -130,8 +134,13 @@ const windows = release.windows;
   .hero-source-link:hover {
     color: var(--fg);
   }
-  .hero-version {
+  .hero-version,
+  .hero-other {
     font-size: 0.85rem;
+  }
+  /* Read as one block with the version line above it. */
+  .hero-other {
+    margin-top: -0.55rem;
   }
   /* .btn sets display, which would otherwise outrank the hidden attribute. */
   .hero-actions [hidden] {

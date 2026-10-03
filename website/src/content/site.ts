@@ -23,6 +23,9 @@ export const hero = {
   /** Replaces the macOS button for Windows visitors, only while the release carries the installer. */
   windowsCta: "Download for Windows",
   windowsNote: "not verified on Windows hardware",
+  /** Under the version line: the other platform, for a wrong guess or another computer. */
+  otherWindows: "Also available for Windows",
+  otherMac: "Also available for macOS",
   secondaryCta: "View source on GitHub",
   /** The demo loops for as long as the page is open; this control stops it (WCAG 2.2.2). */
   pauseScene: "Pause animation",
