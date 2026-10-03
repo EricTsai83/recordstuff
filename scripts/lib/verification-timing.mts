@@ -228,9 +228,10 @@ export function exitCode(outcome: RecipeOutcome, signal?: NodeJS.Signals): numbe
 
 const sha256 = (data: string | Buffer): string => createHash("sha256").update(data).digest("hex");
 
-function git(cwd: string, args: string[]): string | undefined {
+/** `latin1` keeps a binary diff byte for byte; paths are `utf8`, as git prints them. */
+function git(cwd: string, args: string[], encoding: "latin1" | "utf8" = "latin1"): string | undefined {
   const result = spawnSync("git", args, { cwd, encoding: "buffer", maxBuffer: 256 * 1024 * 1024 });
-  return result.status === 0 ? result.stdout.toString("latin1") : undefined;
+  return result.status === 0 ? result.stdout.toString(encoding) : undefined;
 }
 
 /**
@@ -239,7 +240,7 @@ function git(cwd: string, args: string[]): string | undefined {
  */
 export function workingTreeIdentity(cwd: string): { head: string; dirty: boolean; content: string } | undefined {
   const head = git(cwd, ["rev-parse", "HEAD"])?.trim();
-  const status = git(cwd, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
+  const status = git(cwd, ["status", "--porcelain=v1", "-z", "--untracked-files=all"], "utf8");
   const diff = git(cwd, ["diff", "HEAD", "--binary"]);
   if (!head || status === undefined || diff === undefined) return undefined;
   const untracked = status.split("\0").filter(entry => entry.startsWith("?? ")).map(entry => entry.slice(3)).sort();

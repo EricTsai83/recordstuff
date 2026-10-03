@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { hasTool } from "./media-tools.mts";
-import { appendMeasurements } from "./verify-recording.mts";
+import { appendMeasurements, parseDimensions } from "./verify-recording.mts";
 import { parseStableTag } from "./release-manifest.mts";
 
 let directory: string | undefined;
@@ -19,6 +19,16 @@ it("rejects a tool with a failing version command and bounds a hung tool", () =>
   const start = performance.now();
   expect(hasTool(tool)).toBe(false);
   expect(performance.now() - start).toBeLessThan(2000);
+});
+
+it("reports a bad media timeout instead of a missing tool", () => {
+  vi.stubEnv("RECORDSTUFF_MEDIA_TIMEOUT_MS", "30s");
+  expect(() => hasTool("ffprobe")).toThrow(/RECORDSTUFF_MEDIA_TIMEOUT_MS/);
+});
+
+it.each(["0x1080", "1920x0", "x1080"])("refuses the screen size %s", text => {
+  expect(parseDimensions(text)).toBeUndefined();
+  expect(parseDimensions("1920x1080")).toEqual({ width: 1920, height: 1080 });
 });
 
 it.each(["v01.2.3", "v1.02.3", "v1.2.03", "v1.2.3+build"])("rejects inconsistent stable tag %s", tag => {

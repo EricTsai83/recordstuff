@@ -56,9 +56,14 @@ export function timeTools<T>(into: ToolTiming[], measure: () => T): T {
   }
 }
 
-function run(tool: string, args: string[], label?: string): RunResult {
+function mediaTimeout(): number {
   const timeout = Number(process.env["RECORDSTUFF_MEDIA_TIMEOUT_MS"] ?? 900_000);
   if (!Number.isSafeInteger(timeout) || timeout <= 0) throw new MeasurementError("RECORDSTUFF_MEDIA_TIMEOUT_MS must be a positive integer");
+  return timeout;
+}
+
+function run(tool: string, args: string[], label?: string): RunResult {
+  const timeout = mediaTimeout();
   const started = performance.now();
   try {
     const result = spawnSync(tool, args, { encoding: "utf8", maxBuffer: MAX_BUFFER, timeout, killSignal: "SIGKILL" });
@@ -84,6 +89,8 @@ function completed(what: string, result: RunResult): RunResult {
 }
 
 export function hasTool(tool: string): boolean {
+  // Outside the try: a bad RECORDSTUFF_MEDIA_TIMEOUT_MS is a usage error, not a missing tool.
+  mediaTimeout();
   try {
     return run(tool, ["-version"]).status === 0;
   } catch {

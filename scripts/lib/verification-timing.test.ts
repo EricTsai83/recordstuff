@@ -203,6 +203,11 @@ describe("identity", () => {
       expect(first.head).toBe(clean.head);
       expect(first.dirty).toBe(true);
       expect(new Set([clean.content, first.content, second.content]).size).toBe(3);
+      // A non-ASCII name is read by its UTF-8 path, so its content counts too.
+      fs.writeFileSync(path.join(dir, "é.txt"), "1\n");
+      const named = workingTreeIdentity(dir)!;
+      fs.writeFileSync(path.join(dir, "é.txt"), "2\n");
+      expect(workingTreeIdentity(dir)!.content).not.toBe(named.content);
       expect(workingTreeIdentity(os.tmpdir())).toBeUndefined();
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });

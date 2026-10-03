@@ -120,7 +120,7 @@ export function verifyRecording(
 
 /** `1920x1080` → dimensions. */
 export function parseDimensions(text: string): Dimensions | undefined {
-  const match = /^(\d+)x(\d+)$/.exec(text.trim());
+  const match = /^([1-9]\d*)x([1-9]\d*)$/.exec(text.trim());
   return match ? { width: Number(match[1]), height: Number(match[2]) } : undefined;
 }
 
