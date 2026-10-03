@@ -90,7 +90,7 @@ function parseArgs(argv: string[]): Options {
       }
       i += 1;
     } else if (arg === "--ideal-only") options.idealOnly = true;
-    else if (arg === "--load") { options.load = Math.round(Number(value(i))); if (!(options.load >= 0 && options.load <= 64)) usage("--load takes 0–64"); i += 1; }
+    else if (arg === "--load") { options.load = Number(value(i)); if (!/^\d+$/.test(value(i)) || options.load > 64) usage("--load takes a whole number of busy processes, 0–64"); i += 1; }
     else if (arg === "--label") { options.label = value(i); i += 1; }
     else if (arg === "--no-open-material") options.openMaterial = false;
     else usage(`unknown argument ${arg}`);

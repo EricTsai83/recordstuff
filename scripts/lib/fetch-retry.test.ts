@@ -45,7 +45,9 @@ describe("retry rules", () => {
     expect(retryDelayMs(answer(429, { "retry-after": "3" }), 0, { now })).toBe(3000);
     expect(retryDelayMs(answer(429, { "retry-after": "600" }), 0, { now })).toBe(10_000);
     expect(retryDelayMs(answer(429, { "retry-after": new Date(1_004_000).toUTCString() }), 0, { now })).toBe(4000);
-    expect(retryDelayMs(answer(403, { "x-ratelimit-reset": "1005" }), 0, { now })).toBe(5000);
+    expect(retryDelayMs(answer(403, { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1005" }), 0, { now })).toBe(5000);
+    // A 5xx carries the reset time too, but with quota left it is no reason to wait for it.
+    expect(retryDelayMs(answer(503, { "x-ratelimit-remaining": "4999", "x-ratelimit-reset": "4600" }), 1, { now })).toBe(2000);
     expect(retryDelayMs(undefined, 2, { now })).toBe(4000);
   });
 });

@@ -22,11 +22,19 @@ import type { AppAction } from '../src/main/ui-model';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const DAY = 86_400_000;
-const { values } = parseArgs({ args: process.argv.slice(2).filter(a => a !== '--'), options: {
-  full: { type: 'boolean', default: false },
-  'logic-only': { type: 'boolean', default: false }, out: { type: 'string' },
-  'require-native-ui': { type: 'boolean', default: false },
-} });
+const { values } = (() => {
+  try {
+    return parseArgs({ args: process.argv.slice(2).filter(a => a !== '--'), options: {
+      full: { type: 'boolean', default: false },
+      'logic-only': { type: 'boolean', default: false }, out: { type: 'string' },
+      'require-native-ui': { type: 'boolean', default: false },
+    } });
+  } catch (error) {
+    // A mistyped option is a usage error, as in the other runners, not a failed round.
+    console.error(`${error instanceof Error ? error.message : String(error)}\nusage: pnpm acceptance:updates [-- --full] [--logic-only] [--require-native-ui] [--out <new directory>]`);
+    process.exit(2);
+  }
+})();
 const parent = path.join(ROOT, 'docs/verification/measurements');
 fs.mkdirSync(parent, { recursive: true });
 const dir = values.out ? path.resolve(values.out) : fs.mkdtempSync(path.join(parent, `${new Date().toISOString().replace(/[:.]/g, '-')}-updates-`));

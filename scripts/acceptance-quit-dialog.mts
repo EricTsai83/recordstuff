@@ -28,7 +28,8 @@ if (args.length === 1 && args[0] === "--help") {
   if (process.platform !== "darwin") throw new Error("This guided native check requires macOS.");
   const language = args[1];
   if (args.length !== 2 || args[0] !== "--language" || !isLanguage(language)) {
-    throw new Error("Use --language en or --language zh-TW (or --help). No app launched.");
+    console.error("Use --language en or --language zh-TW (or --help). No app launched.");
+    process.exit(2);
   }
   // The observer judges the notification on an awake, unlocked display.
   const desktop = await beginDesktopRound().catch((cause: unknown) => {

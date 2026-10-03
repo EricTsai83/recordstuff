@@ -24,7 +24,11 @@ export function retryable(response: Response): boolean {
   return response.status === 403 && (response.headers.get("x-ratelimit-remaining") === "0" || response.headers.has("retry-after"));
 }
 
-/** `retry-after` (seconds or an HTTP date), then GitHub's `x-ratelimit-reset`, then exponential backoff; always capped. */
+/**
+ * `retry-after` (seconds or an HTTP date), then GitHub's `x-ratelimit-reset` once the limit is spent, then
+ * exponential backoff; always capped. GitHub sends the reset time on every answer, a 5xx included, where it
+ * says when the hour's quota renews rather than when to try again.
+ */
 export function retryDelayMs(response: Response | undefined, retry: number, options: RetryOptions = {}): number {
   const base = (options.baseDelayMs ?? 1000) * 2 ** retry;
   const max = options.maxDelayMs ?? 10_000;
@@ -33,7 +37,7 @@ export function retryDelayMs(response: Response | undefined, retry: number, opti
   const reset = response?.headers.get("x-ratelimit-reset");
   let asked: number | undefined;
   if (after) asked = /^\d+$/.test(after.trim()) ? Number(after) * 1000 : Date.parse(after) - now;
-  else if (reset && /^\d+$/.test(reset)) asked = Number(reset) * 1000 - now;
+  else if (reset && /^\d+$/.test(reset) && response?.headers.get("x-ratelimit-remaining") === "0") asked = Number(reset) * 1000 - now;
   const wait = asked !== undefined && Number.isFinite(asked) ? Math.max(asked, 0) : base;
   return Math.min(wait, max);
 }

@@ -32,7 +32,7 @@ const logPath = APP_LOG_PATH;
 const args = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--"));
 const observe = args[0] === "--observe";
 const quit = observe && args[1] === "--quit";
-if (args.length !== (quit ? 2 : observe ? 1 : 0)) throw new Error("usage: pnpm acceptance:settings-shortcut [-- --observe [--quit]]");
+if (args.length !== (quit ? 2 : observe ? 1 : 0)) { console.error("usage: pnpm acceptance:settings-shortcut [-- --observe [--quit]]"); process.exit(2); }
 fs.mkdirSync(path.join(root, "docs/verification/measurements"), { recursive: true });
 const out = fs.mkdtempSync(path.join(root, "docs/verification/measurements/", `${new Date().toISOString().replaceAll(":", "-")}-settings-entry-`));
 const controller = new AbortController();
