@@ -24,8 +24,8 @@
 | pnpm acceptance:settings | 對已建置的產物：在真實 Electron 視窗載入 `out/preload/settings.js` 與 `out/renderer/settings.html`，判定出貨 CSP、sandbox preload 邊界與真實 IPC 往返；報告與截圖寫到 docs/verification/measurements。需要先 `pnpm build`，不需要 tray 或已安裝的 App |
 | `pnpm acceptance:regression` | 一個指令執行 check（含建置）、設定 fixture 與快捷鍵整合；包含重複開啟／關閉／Tray 路徑重開。隔離偏好與程序，各 runner 保留報告；任一步失敗立即停止。不會啟動或關閉使用者的 RecordStuff，也不錄影。 |
 | `pnpm acceptance:recipe` | 逐階段執行驗證配方，相同輸入只建置一次，並寫出計時報告（[詳見](#驗證配方與計時)） |
-| `pnpm acceptance:tray` | 對執行中的 bundle：以 CoreGraphics 點擊與按鍵、輔助使用的 press 操作真正的狀態列項目與選單；雙語比對 idle、倒數與錄影選單和正式 model，並涵蓋開始與停止、顯示上一段錄影、三種取消、鍵盤導覽與結束；保存選單截圖供視覺檢視（[說明](#tray-驗收)） |
-| pnpm acceptance:notification | 對 /Applications 裡的 App（可用 `--install` 在本次換成 dist 的建置）：錄影、透過輔助使用按下「已儲存」橫幅、判定 Finder 是否在最前面且顯示該檔，每個 Finder 狀態連點多次，預設英文；報告寫到 docs/verification/measurements |
+| `pnpm acceptance:tray` | 對執行中的 bundle：以 CoreGraphics 點擊與按鍵、輔助使用的 press 操作真正的狀態列項目與選單；雙語比對 idle、倒數與錄影選單和正式 model，並涵蓋開始與停止、左鍵開啟選單、三種取消、以鍵盤到「開啟 RecordStuff」與結束；保存選單截圖供視覺檢視（[說明](#tray-驗收)） |
+| pnpm acceptance:notification | 對 /Applications 裡的 App（可用 `--install` 在本次換成 dist 的建置）：錄影、透過輔助使用按下「已儲存」橫幅、判定 RecordStuff 是否在最前面、設定視窗聚焦並開在該檔的「錄影檔」（2026-10-04；之前為 Finder），每個 Finder 狀態連點多次，預設英文；報告寫到 docs/verification/measurements |
 
 main、preload、renderer 分別建置，打包只納入 out、package metadata 與指定 resources。測試、量測與文件不屬 runtime；App 不呼叫 FFmpeg。
 
@@ -73,7 +73,7 @@ pnpm acceptance -- --skip-cancel --countdown-sound   # 同上，本回合開啟�
 pnpm acceptance:playback -- /absolute/path/recording.mp4   # 以 QuickTime Player 做播放案例；約 20 秒
 pnpm acceptance:settings                           # 設定頁面與 preload 在真實 Electron 視窗；包含截圖矩陣
 pnpm acceptance:notification -- --install --clicks 2  # 通知日常 smoke：兩次點擊
-pnpm acceptance:notification -- --install          # 點「已儲存」通知 → Finder 置前；約 1 分鐘；本次把建置好的 App 換進 /Applications
+pnpm acceptance:notification -- --install          # 點「已儲存」通知 → 設定的「錄影檔」置前；約 1 分鐘；本次把建置好的 App 換進 /Applications
 pnpm acceptance:notification -- --install --full   # 三種 Finder 狀態、英文；估計約 3 分鐘
 pnpm matrix -- quick
 pnpm matrix -- all
@@ -169,13 +169,13 @@ Updates 使用插樁副本，matrix 使用 autorecord，兩者都不能代替正
 
 ### 通知驗收
 
-驗收現在分別要求：與實際觀察到的通知文字相符的 `clicked` 事件（缺少文字時才用本次儲存的預期語言／檔名），以及完整路徑相符的成功 reveal 要求。兩者各自判定，不再只因缺少 reveal 紀錄就宣稱 callback 未送達。沒有 click 日誌的舊版無法通過此較嚴格的 runner；歷史報告保留原判定。
+驗收現在分別要求：與實際觀察到的通知文字相符的 `clicked` 事件（缺少文字時才用本次儲存的預期語言／檔名），以及（2026-10-04 起）完整路徑相符的 `show last recording: Recordings with <path>` 這一行，取代以前的 reveal 要求。兩者各自判定，不會只因缺少入口紀錄就宣稱 callback 未送達。沒有 click 日誌的舊版無法通過此較嚴格的 runner；歷史報告保留原判定。
 
 通知時序診斷包含 `tracksStoppedAt`（renderer 停止 tracks 後的 wall-clock 毫秒）、主程序 `host stopped`、`file finalized`，以及 `saved scheduled`、`saved cancelled`、`saved request failed`。JS 時間戳不代表 OS 已就緒；需與既有 request／show／click 日誌、AX 觀察及可取得的窄範圍 macOS 紀錄對照。App 不要求系統日誌存取。macOS 的儲存通知延遲 500 ms，runner 仍只在存檔後搜尋 5 秒。歷史 Plan 017 結案門檻與結果保留於[驗證歷史](../verification/history-2026-09.md#儲存通知時序2026-09-20)，不作為每次修改的預設門檻。
 
 每個案例另外保存 `<language>-<finder>-<click>-diagnostics.json`：帶時間的搜尋嘗試、有限長度的 Accessibility 結構文字／錯誤，以及 App 通知生命週期事件。未通過案例會再取一份只觀察、不點擊的快照（最多 5 秒，因此失敗案例可能較久）。App 分別記錄請求顯示、shown、clicked、closed、failed；shown 事件本身不代表腳本找到可見橫幅。這些本地檔案可能包含通知文字，不會提交。
 
-`pnpm acceptance:notification` 檢查明確點擊儲存通知後，是否選到檔案且 Finder 置前。每個案例錄影 2 秒、最多搜尋該次通知 5 秒、取樣前景 App 3 秒，再讀取 Finder 選取與輔助使用反白列。找不到橫幅記為未執行，不再額外錄影重試。每組至少需要兩次通過且沒有失敗；未執行次數仍會列出。
+`pnpm acceptance:notification` 檢查明確點擊儲存通知後，設定是否開在「錄影檔」並置前（2026-10-04；之前檢查是否選到檔案且 Finder 置前）。每個案例錄影 2 秒、最多搜尋該次通知 5 秒、取樣前景 App 3 秒，再以輔助使用讀取 RecordStuff 的前景視窗，並在 Chromium 輔助樹開啟後（它以非同步建立，所以最多輪詢 2.5 秒）讀取聚焦元素，必須是錄影卡片的「播放 …」按鈕；若 RecordStuff 在前且聚焦的是設定視窗，就以 ⌘W 關閉，讓下一次點擊重新開啟。Finder 狀態保留為點擊時桌面的不同情況。找不到橫幅記為未執行，不再額外錄影重試。每組至少需要兩次通過且沒有失敗；未執行次數仍會列出。
 
 預設為英文、Finder 關閉、五次點擊，約一分鐘；`--full` 涵蓋三種 Finder 狀態 × 五次點擊，維持英文，共 15 個案例；依先前單次耗時推估約三分鐘，實際時間受輔助使用操作影響。它只擴充 Finder 覆蓋，不改語言。通知翻譯由單元測試覆蓋；原生繁中驗證可指定 `--languages zh-TW`，明確需要雙語時使用 `--full --languages en,zh-TW`（30 個案例）。每個案例印出開始、進度與耗時。較短的 smoke check 可用 `--clicks 2`，低於二會拒絕。其他選項：`--finder closed,behind,minimized`、`--languages en,zh-TW`、`--seconds`、`--front <app>`、`--keep-recordings`、`--out`。
 
@@ -185,7 +185,7 @@ Updates 使用插樁副本，matrix 使用 autorecord，兩者都不能代替正
 
 Ctrl-C 或 SIGTERM 會取消命令與等待。命令上限為 10 秒（程序查詢 5 秒，App 複製 60 秒）；快捷鍵送出與 Finder 建立視窗會先完成其最多 5 秒的命令，再處理取消。清理有獨立的 120 秒期限，給本段錄影最多 30 秒完成停止／存檔，停止只送一次，不會用前段紀錄判定本段已停止。若無法確認錄影停止，保留執行中的 App 與備份，不結束或替換它。App 停止後才還原語言設定；即使原先在執行，收尾後也保持關閉。未完成、取消或清理失敗都讓報告失敗。期限涵蓋非同步操作，不保證能處理無回應的檔案系統或 OS。
 
-未涵蓋 Tray 選單定位、其他 Spaces、橫幅消失後從通知中心清單點擊。歷史耗時、失敗及後續完成證據保留於[通知歷史](../verification/history-2026-09.md#通知點擊後-finder-置前--2026-09-20)，不要把舊失敗狀態當成本次結果。
+未涵蓋其他 Spaces、橫幅消失後從通知中心清單點擊。歷史耗時、失敗及後續完成證據保留於[通知歷史](../verification/history-2026-09.md#通知點擊後-finder-置前--2026-09-20)，不要把舊失敗狀態當成本次結果。
 
 ### 播放檢查
 
@@ -307,7 +307,7 @@ pnpm acceptance:tray -- --languages zh-TW # 單一語言；另有 --seconds、--
 pnpm acceptance:tray -- --long-start <run> # 對執行中的受控 build 跑 plan 065 的長時間 start 案例
 ```
 
-在 `pnpm start:app` 或 `pnpm open:app` 之後、App 待命時執行；它只判讀執行中 pid 自己的 log session，最多等 30 秒。Tray 每次彈出選單都會記錄 `tray: menu opened in <state>: <json>`，也就是交給 Electron 的選單。runner 在 idle、倒數與錄影三種狀態，把原生選單逐項和這一行比對，涵蓋 Electron 到 NSMenu 的邊界，並檢查案例規則：開頭、結尾沒有分隔線，也沒有相鄰的分隔線；「開始錄影」只在 idle，「停止」只在錄影中，「取消錄影」只在倒數（或在下方的長時間 start 模式中，於 starting 期間）；錄影中儲存位置項目為灰色；最後是「顯示 log」與「結束 RecordStuff」。它也從選單開始、停止，用通知 runner 的 Finder 置前與選取判定檢查「顯示上一段錄影」，以第二次點擊與「取消錄影」取消倒數（回到 idle、保留「顯示上一段錄影」、沒有新檔案、失敗紀錄或通知），在倒數中結束，並以方向鍵加 Return 開啟「設定…」。第二種語言是在 App 結束時寫進 settings.json 再重新啟動；App 結束後再寫回原值。它保存每個選單的截圖，保留自己錄下的目前畫面短片（沒有測試素材，所以不做媒體檢查），最後選「結束 RecordStuff」。
+在 `pnpm start:app` 或 `pnpm open:app` 之後、App 待命時執行；它只判讀執行中 pid 自己的 log session，最多等 30 秒。Tray 每次彈出選單都會記錄 `tray: menu opened in <state>: <json>`，也就是交給 Electron 的選單。runner 在 idle、倒數與錄影三種狀態，把原生選單逐項和這一行比對，涵蓋 Electron 到 NSMenu 的邊界，並檢查案例規則：開頭、結尾沒有分隔線，也沒有相鄰的分隔線；「開始錄影」只在 idle，「停止」只在錄影中，「取消錄影」只在倒數（或在下方的長時間 start 模式中，於 starting 期間）；每個狀態都有「開啟 RecordStuff」，且不再列出已移進 RecordStuff 的項目（儲存位置、顯示最後一個錄影、顯示 log）；最後是「結束 RecordStuff」。它也從選單開始、停止，以第二次點擊與「取消錄影」取消倒數（回到 idle、可再次「開始錄影」、沒有新檔案、失敗紀錄或通知），在倒數中結束，並以方向鍵加 Return 選「開啟 RecordStuff」。第二種語言是在 App 結束時寫進 settings.json 再重新啟動；App 結束後再寫回原值。圖示點擊也同樣處理（2026-10-04）：儲存值為 `trayClick: "menu"` 時，點擊案例期間改為 `record`；最後選「結束」之前，改為 `menu` 並重新啟動，確認左鍵會開啟含「開始錄影」的待命選單且不改變狀態；整輪結束後寫回原值。它保存每個選單的截圖，保留自己錄下的目前畫面短片（沒有測試素材，所以不做媒體檢查），最後選「結束 RecordStuff」。
 
 `--long-start <run>`（plan 065）改以 `pnpm acceptance:controlled -- launch` 為 `<run>` 啟動的 App 為對象，該 run 的 bundle、log、設定與輸出資料夾成為預設值；遇到其他 bundle，或 pid 與該 run 的 `ready.json` 回報不同時會拒絕執行。它透過 run 的命令通道啟用 `prepare=hold`，讓每次 start 都停在 starting、capture host 的 `prepared` 回覆被暫停，然後：在同一個 System Events 腳本中相隔 0.2 秒按兩次錄影快捷鍵，預期第二次在寬限時間內被記為忽略，1.3 秒後的第三次則記錄 `cancelled (toggle) while preparing capture`；左鍵點擊狀態列項目，把 starting 選單和它的 `tray: menu opened in starting` 那一行比對（「取消錄影」必須標出快捷鍵），1.3 秒後再左鍵點擊以取消；最後在 start 被暫停時選「結束 RecordStuff」，必須記錄 `cancelled (quit) while preparing capture` 並在 10 秒內結束。每次取消後放行暫停的回覆，Recorder 必須把它當作過期 session 停止，並檢查輸出資料夾沒有新項目、沒有要求通知，失敗歷史也沒有增加。它不錄影，只使用該 run 儲存的語言；它是 runner 的一個模式而不是另一支 runner，因為它需要的正是這支 runner 的狀態列 driver、選單比對、收尾與報告。收尾會先用「取消錄影」取消仍被暫停的 start，避免放行的回覆送出 `record`（倒數設為「關」時會因此開始錄影），再關閉 `prepare`、放行暫停的回覆，最後才結束其他狀態。它的證據屬於受控狀態證據：暫停發生在 main，而不是真實的擷取請求。
 

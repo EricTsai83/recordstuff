@@ -20,11 +20,11 @@
 
 | 案例 | 操作與預期觀察 |
 | --- | --- |
-| 啟動／Tray（原生；`pnpm acceptance:tray`） | 開啟選單，確認待命／權限狀態及相關操作；核對受測 App，避免重複或舊安裝副本。每個狀態的選單都依同一組順序：狀態與主要動作（開始錄影、停止、取消錄影）、未讀失敗、檔案、視窗（設定…），最後是顯示 log 與結束 RecordStuff，沒有多餘的分隔線；已註冊的快捷鍵靠右顯示；已確認的失敗放在「設定…」旁而非頂端（plan 048）。runner 把每個選單與正式 model 及這些規則比對；淺色與深色選單列、對齊與可讀性，則觀察它的截圖。needsPermission 選單仍由維護者處理，因為要到達它必須撤銷權限 |
+| 啟動／Tray（原生；`pnpm acceptance:tray`） | 開啟選單，確認待命／權限狀態及相關操作；核對受測 App，避免重複或舊安裝副本。每個狀態的選單都依同一組順序：狀態與主要動作（開始錄影、停止、取消錄影；儲存位置無法使用時才有更改儲存位置…）、未讀失敗、開啟 RecordStuff，最後是結束 RecordStuff，沒有多餘的分隔線；已註冊的快捷鍵靠右顯示；儲存位置、顯示最後一個錄影、已確認的失敗與顯示 log 都在 RecordStuff 裡，不在選單（2026-10-04）。runner 把每個選單與正式 model 及這些規則比對；淺色與深色選單列、對齊與可讀性，則觀察它的截圖。needsPermission 選單仍由維護者處理，因為要到達它必須撤銷權限 |
 | 開始 | 經選定的真正使用者路徑開始，確認錄影；動態素材與左右交替嗶聲持續約 10–15 秒 |
 | 錄影 UI（原生；錄影中選單用 `pnpm acceptance:tray`） | 依現行需求確認受影響狀態、停止操作及鎖定設定 |
 | 停止／存檔 | 停止一次，等待 saved／待命，記錄新 MP4 路徑；觀察到 Saving 就保存，沒捕捉短暫狀態本身不算失敗 |
-| 定位檔案（原生；通知橫幅用 `pnpm acceptance:notification`，「顯示上一段錄影」用 `pnpm acceptance:tray`） | 操作受影響通知或「顯示最後一個錄影」；分別判定 Finder 正確選取及置前，嘗試替代路徑前保留失敗 |
+| 存檔錄影入口（原生；`pnpm acceptance:notification`） | 點存檔橫幅；分別判定 RecordStuff 置前且視窗聚焦，以及「錄影檔」中那段錄影的卡片取得焦點；嘗試替代路徑前保留失敗 |
 | 播放 | 開啟該檔，播放與拖曳，觀察內容及進度前進；記錄是否真的能做主觀聽感檢查。`pnpm acceptance:playback -- <檔案>` 以 QuickTime Player 涵蓋此案例，點擊其控制項與聽感除外（[播放檢查](system-design/tooling.md#播放檢查)） |
 | 媒體驗證 | 復用同檔／同範圍的 runner 報告，或依下方執行 `pnpm verify`；保留每個判定失敗，音軌存在不等於非靜音 |
 
@@ -50,11 +50,11 @@ pnpm verify -- /absolute/path/recording.mp4 --test-material --json /absolute/pat
 | 操作 | 腳本 runner | 仍由 Computer Use 或維護者負責 |
 | --- | --- | --- |
 | 以全域快捷鍵開始、停止與存檔，並做完整性檢查 | `pnpm acceptance` 透過 System Events 送出已註冊的按鍵 | 倒數與 REC 在選單列上的樣子 |
-| 點擊存檔通知 → Finder | `pnpm acceptance:notification` 透過輔助使用按下橫幅，判定 Finder 是否置前並選取檔案（[通知驗收](system-design/tooling.md#通知驗收)） | 橫幅可讀性 |
+| 點擊存檔通知 → 錄影檔 | `pnpm acceptance:notification` 透過輔助使用按下橫幅，判定 RecordStuff 是否置前、視窗聚焦且那段錄影的卡片取得焦點（[通知驗收](system-design/tooling.md#通知驗收)） | 橫幅可讀性；卡片的框線 |
 | 以快捷鍵開啟設定 | `pnpm acceptance:settings-shortcut` 透過 System Events 送出 ⌘⌥,，檢查 callback；加 `-- --observe` 時，另以輔助使用斷言視窗在前景且有焦點、Tab、應用程式選單沒有重新載入或開發者工具（⌘R、⌘⌥I 不改變焦點），且綁定 ⌘C、⌘A、⌘M 與 ⌘Q、⌘A 再 ⌘C 能複製面板文字並還原剪貼簿、最小化與還原、關閉與重開；加 `--quit` 再按 ⌘Q 並確認所有程序結束 | 排版與外觀（`pnpm acceptance:settings` 的截圖） |
 | 播放 | `pnpm acceptance:playback -- <檔案>` 驅動 QuickTime Player（[播放檢查](system-design/tooling.md#播放檢查)） | 案例要求時點擊播放器自身的控制項；聽感 |
 | 延後退出通知 | `pnpm acceptance:quit-dialog -- --language <en 或 zh-TW>` 檢查簽章 fixture 的生命週期、送達事件，並透過輔助使用確認本輪恰有一則橫幅、文字為本輪語言（[引導式通知驗收](system-design/tooling.md#引導式延期退出通知驗收)） | 橫幅是否可見、可讀、未截斷 |
-| Tray 選單：雙語的 idle、倒數與錄影選單、開始錄影、停止、取消錄影、第二次點擊、顯示上一段錄影、以鍵盤選「設定…」與結束 RecordStuff | `pnpm acceptance:tray` 右鍵點擊真正的狀態列項目，把每個選單和正式 model 比對，並判讀 log、資料夾與 Finder（[Tray 驗收](system-design/tooling.md#tray-驗收)） | 截圖上的外觀、對齊與可讀性；needsPermission 選單（需撤銷權限）；狀態改變後才選的「開始錄影」，macOS 不讓腳本輸入排出這個順序。Computer Use 無法存取純 tray 的程序（`-10005 timeoutReached`，見 [033 的回合](verification/history-2026-09.md#plan-033-結案--2026-09-26)） |
+| Tray 選單：雙語的 idle、倒數與錄影選單、開始錄影、停止、取消錄影、第二次點擊、左鍵開啟選單、以鍵盤選「開啟 RecordStuff」與結束 RecordStuff | `pnpm acceptance:tray` 右鍵點擊真正的狀態列項目，把每個選單和正式 model 比對，並判讀 log 與資料夾（[Tray 驗收](system-design/tooling.md#tray-驗收)） | 截圖上的外觀、對齊與可讀性；needsPermission 選單（需撤銷權限）；狀態改變後才選的「開始錄影」，macOS 不讓腳本輸入排出這個順序。Computer Use 無法存取純 tray 的程序（`-10005 timeoutReached`，見 [033 的回合](verification/history-2026-09.md#plan-033-結案--2026-09-26)） |
 | 長時間 start（plan 065）：一秒寬限內與寬限後按快捷鍵、寬限後左鍵點擊、starting 選單，以及 starting 期間結束 | `pnpm acceptance:tray -- --long-start <run>`，對象是以 `prepare=hold` 讓 start 停在 starting 的[受控建置](system-design/tooling.md#受控驗收-build)，依 log、資料夾、失敗紀錄與 starting 選單判定 | starting 選單截圖的外觀；真實擷取請求造成的長時間 start，任何建置都無法隨時重現 |
 | 略過系統私密視窗選擇器的提示 | 刻意不提供 | 只能用 Computer Use，依[下方](#依影響追加案例)的例外 |
 | VoiceOver、外觀與可讀性、主觀聽感、睡眠與喚醒 | 無 | 依各案例說明，由 Computer Use 觀察或維護者負責 |
