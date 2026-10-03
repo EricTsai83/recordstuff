@@ -11,7 +11,7 @@
  * index.ts re-checks recording locks before saving.
  */
 import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure, persistenceWarning } from "./recording-result";
-import { displayLabel, displayFailureText } from "../shared/display";
+import { displayLabel, displayFailureText, type DisplayInfo } from "../shared/display";
 import { displayResolution } from "./display-source";
 import { translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
 import {
@@ -71,25 +71,26 @@ function switchChoices(language: Language, current: boolean, action: (value: boo
 
 function screenGroup(ctx: AppContext, enabled: boolean): Group {
   const preference = ctx.display;
-  const resolution = displayResolution(ctx.displays, preference);
+  // An id two displays share cannot be chosen.
+  const unique = (display: DisplayInfo): boolean => ctx.displays.filter((d) => d.id === display.id).length === 1;
   const choices: Group["choices"] = [{ id: "primary", label: t("Primary display", ctx.language), enabled: true,
     checked: preference.kind === "primary", action: { setDisplay: { kind: "primary" } } }];
-  for (const display of ctx.displays) {
-    if (ctx.displays.filter((d) => d.id === display.id).length !== 1) continue;
+  for (const display of ctx.displays.filter(unique)) {
     choices.push({ id: display.id, label: displayLabel(display, ctx.language), enabled: true,
       checked: preference.kind === "display" && preference.id === display.id,
       action: { setDisplay: { kind: "display", id: display.id, label: display.label } } });
   }
-  if (preference.kind === "display" && !resolution.ok) choices.push({ id: preference.id,
+  // Only a chosen display can be unavailable: Primary display always resolves.
+  const unavailable = preference.kind === "display" && !displayResolution(ctx.displays, preference).ok;
+  if (unavailable) choices.push({ id: preference.id,
     label: t("{label} — Unavailable", ctx.language, { label: displayLabel(preference, ctx.language) }), enabled: false, checked: true, action: { setDisplay: preference } });
   const result = group("screen", t("Screen", ctx.language), enabled, choices);
   result.diagnostics = [];
-  if (!resolution.ok) {
+  if (unavailable) {
     result.diagnostics.push({ kind: "current", heading: t("Selected display is unavailable", ctx.language),
-      reason: t("Recording cannot start on {label}.", ctx.language, { label: preference.kind === "display" ? displayLabel(preference, ctx.language) : t("Primary display", ctx.language) }),
+      reason: t("Recording cannot start on {label}.", ctx.language, { label: displayLabel(preference, ctx.language) }),
       guidance: t("Choose Primary display or another screen.", ctx.language) });
-    if (preference.kind === "display" && ctx.displays.some(d => d.primary && ctx.displays.filter(other => other.id === d.id).length === 1))
-      result.recovery = { choice: "primary", label: t("Use Primary display", ctx.language) };
+    if (ctx.displays.some((d) => d.primary && unique(d))) result.recovery = { choice: "primary", label: t("Use Primary display", ctx.language) };
   }
   if (ctx.displayFailure) result.diagnostics.push({ kind: "history",
     heading: t(["target_removed", "track_ended"].includes(ctx.displayFailure) ? "Last recording interrupted" : "Last recording failure", ctx.language),

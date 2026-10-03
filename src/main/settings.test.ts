@@ -449,6 +449,9 @@ describe("update preferences", () => {
   });
   it("defaults malformed timestamps and flags", () => {
     expect(parseSettings(JSON.stringify({ version: 1, outputDir: "/a", updates: { enabled: "no", lastAttempt: -1 } }))?.settings.updates).toEqual({ enabled: true, lastAttempt: 0 });
+    expect(parseSettings(JSON.stringify({ version: 1, outputDir: "/a", updates: { enabled: false, lastAttempt: 5 } }))?.settings.updates).toEqual({ enabled: false, lastAttempt: 5 });
+    // The update fields are read from `updates` only, never from the top level.
+    expect(parseSettings(JSON.stringify({ version: 1, outputDir: "/a", enabled: false, lastAttempt: 5 }))?.settings.updates).toEqual({ enabled: true, lastAttempt: 0 });
   });
   it("says in the log when a spoiled switch or update record falls back, like every other field", () => {
     const parsed = parseSettings(JSON.stringify({ version: 1, outputDir: "/a", notifications: "no", updates: { enabled: "no", lastAttempt: -1 } }));

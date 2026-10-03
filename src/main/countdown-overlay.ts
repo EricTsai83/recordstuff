@@ -178,11 +178,6 @@ export class CountdownOverlay implements CountdownPresenter {
     if (window && !window.isDestroyed()) window.destroy();
   }
 
-  /** Safety net: the app destroys the overlay again on every settled state and at quit. */
-  destroy(): void {
-    this.close();
-  }
-
   private endFade(): void {
     const fading = this.fading;
     this.fading = undefined;

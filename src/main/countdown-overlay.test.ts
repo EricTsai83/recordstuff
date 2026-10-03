@@ -206,7 +206,7 @@ describe("CountdownOverlay", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(done).toBe(true);
     second.presenter.close();
-    second.presenter.destroy();
+    second.presenter.close();
     expect(second.window().destroy).toHaveBeenCalledOnce();
   });
 
@@ -279,7 +279,7 @@ describe("no timer outlives the overlay (plan 049)", () => {
     presenter.close();
     expect(vi.getTimerCount()).toBe(0);
     presenter.show(2, SILENT);
-    presenter.destroy();
+    presenter.close();
     expect(vi.getTimerCount()).toBe(0);
   });
 });

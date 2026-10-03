@@ -3,10 +3,9 @@
  * human-readable line people read, then one versioned session record carrying
  * the run and session ids that development analyzers pair by.
  */
-import { formatSessionRecord } from "../shared/session-record";
+import { EARLY_STOP_TEXT, formatSessionRecord } from "../shared/session-record";
 import type { Log } from "./log";
 import type { RecorderEvent } from "./recorder";
-import { EARLY_STOP_TEXT } from "../shared/session-record";
 
 /**
  * One id per launch, printed in the `start:` line and carried in every

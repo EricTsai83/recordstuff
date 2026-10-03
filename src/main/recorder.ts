@@ -444,9 +444,11 @@ export class Recorder {
    * The Mac is going to sleep (plan 050). An app cannot refuse a sleep the user
    * asked for, and capture ends about 150 ms later, so a recording is stopped
    * and saved now: once the host has the stop, a track ending afterwards no
-   * longer turns it into a failure. Before capture there is nothing to keep, so
-   * the attempt is cancelled, exactly as quit does. The save may finish after
-   * waking, because the system suspends the processes.
+   * longer turns it into a failure. Before capture there is nothing to keep: a
+   * countdown is cancelled at once, and an attempt still opening or preparing is
+   * cancelled once `prepared` (or whatever else ends it) arrives, since unlike
+   * quit, sleep does not stop a pending capture request. The save may finish
+   * after waking, because the system suspends the processes.
    */
   systemWillSleep(): void {
     const session = this.session;

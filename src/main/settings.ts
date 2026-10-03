@@ -102,8 +102,8 @@ export function parseSettings(text: string): ParsedSettings | undefined {
   }
   const warnings: string[] = [];
   /** A missing value falls back silently; a present but unsupported one also warns. */
-  const field = <T>(key: string, valid: (value: unknown) => value is T, fallback: T, warning: string): T => {
-    const value = record[key];
+  const field = <T>(key: string, valid: (value: unknown) => value is T, fallback: T, warning: string, source: Record<string, unknown> = record): T => {
+    const value = source[key];
     if (valid(value)) return value;
     if (value !== undefined) warnings.push(warning);
     return fallback;
@@ -133,16 +133,13 @@ export function parseSettings(text: string): ParsedSettings | undefined {
     warnings.push("hotkey is missing or has unsupported values: using the default shortcut");
   }
   const rawUpdates = record["updates"];
-  const u = typeof rawUpdates === "object" && rawUpdates !== null && !Array.isArray(rawUpdates) ? rawUpdates as Record<string, unknown> : undefined;
-  if (rawUpdates !== undefined && !u) warnings.push("updates is not an object: using defaults");
-  const enabledValid = typeof u?.["enabled"] === "boolean";
-  if (u?.["enabled"] !== undefined && !enabledValid) warnings.push(`updates.enabled is not a boolean: using ${defaults.updates.enabled ? "on" : "off"}`);
-  const lastAttempt = u?.["lastAttempt"];
-  const lastAttemptValid = typeof lastAttempt === "number" && Number.isFinite(lastAttempt) && lastAttempt >= 0;
-  if (lastAttempt !== undefined && !lastAttemptValid) warnings.push(`updates.lastAttempt is invalid: using ${defaults.updates.lastAttempt}`);
+  const isRecord = typeof rawUpdates === "object" && rawUpdates !== null && !Array.isArray(rawUpdates);
+  if (rawUpdates !== undefined && !isRecord) warnings.push("updates is not an object: using defaults");
+  const u = isRecord ? rawUpdates as Record<string, unknown> : {};
+  const isTimestamp = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
   const updates = {
-    enabled: enabledValid ? u!["enabled"] as boolean : defaults.updates.enabled,
-    lastAttempt: lastAttemptValid ? lastAttempt : defaults.updates.lastAttempt,
+    enabled: field("enabled", isBoolean, defaults.updates.enabled, `updates.enabled is not a boolean: using ${defaults.updates.enabled ? "on" : "off"}`, u),
+    lastAttempt: field("lastAttempt", isTimestamp, defaults.updates.lastAttempt, `updates.lastAttempt is invalid: using ${defaults.updates.lastAttempt}`, u),
   };
   const notifications = field("notifications", isBoolean, defaults.notifications, `notifications is not a boolean: using ${defaults.notifications ? "on" : "off"}`);
   const display = field("display", isDisplayPreference, DEFAULT_DISPLAY_PREFERENCE, "display is invalid: using primary display");

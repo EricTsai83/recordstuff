@@ -661,7 +661,7 @@ async function main(): Promise<void> {
           displayMedia.settle();
           host.destroy();
           // The recorder closes the overlay on every path; this is the safety net.
-          overlay.destroy();
+          overlay.close();
         }
         savedNotification.stateChanged(event.state);
         captureNotices.stateChanged(event.state);
@@ -833,7 +833,7 @@ async function main(): Promise<void> {
     shortcuts.dispose();
     permission?.stop();
     host.destroy();
-    overlay.destroy();
+    overlay.close();
     settingsWindow.destroy();
     tray.destroy();
   });
