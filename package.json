@@ -51,6 +51,8 @@
     "acceptance:quit-dialog": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-quit-dialog.mts",
     "acceptance:controlled": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-controlled.mts",
     "acceptance:playback": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-playback.mts",
+    "acceptance:player": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-player.mts",
+    "preview:ui": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/preview-ui.mts",
     "acceptance:tray": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-tray.mts"
   },
   "devDependencies": {
