@@ -5,7 +5,6 @@ import { translate, type Language } from "../shared/i18n";
 import { APP_NAME } from "./ui-model";
 import { errnoCode, messageOf } from "./errors";
 
-/** The two filesystem calls opening may make; injectable so tests can refuse them. */
 /**
  * Whether two folder paths name the same folder as written (`~/Movies/RecordStuff/` and `…/RecordStuff`).
  * The default folder is the one RecordStuff may create; recording and Open output folder both ask with this.
@@ -14,6 +13,7 @@ export function isSameFolder(a: string, b: string): boolean {
   return path.resolve(a) === path.resolve(b);
 }
 
+/** The two filesystem calls opening may make; injectable so tests can refuse them. */
 export interface OutputFolderFs {
   stat(dir: string): Promise<{ isDirectory(): boolean }>;
   /** Never recursive: only the known default folder itself is ever created here. */

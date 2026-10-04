@@ -57,7 +57,7 @@ const SEPARATOR: TrayMenuItem = { kind: "separator" };
 
 /**
  * One group order for every state (plan 048): state and its primary action,
- * unread failures, files, windows, then the app. An empty group is omitted,
+ * unread failures, the window, then the app. An empty group is omitted,
  * so no separator leads, trails or doubles and an item never changes places.
  */
 function grouped(...groups: TrayMenuItem[][]): TrayMenuItem[] {
@@ -121,7 +121,7 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
   const results = ctx.recordingResults ?? [];
   const unread = results.filter(r => !r.acknowledged);
   const unreadText = t("Unreviewed recording failures: {value}", language, { value: String(unread.length) });
-  // Unread failures get their own group after the state; reviewed ones only a way back, beside Settings.
+  // Unread failures get their own group after the state; reviewed ones live in the window's Failures tab.
   const unreadGroup: TrayMenuItem[] = unread.length ? [disabled(unreadText), item(text("View recording failures…"), "openRecordingResult")] : [];
   const windows = windowsGroup(ctx);
   const app = appGroup(language);
