@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_HOTKEY, describeAccelerator, isAccelerator, isHotkeySettings } from "../shared/hotkey";
+import { DEFAULT_HOTKEY, canonicalHotkeySettings, describeAccelerator, isAccelerator, isHotkeySettings } from "../shared/hotkey";
 import { LAYOUT_AWARE_HOTKEYS_FEATURE, RecordingHotkey, physicalHotkeyFeatures, type GlobalShortcutApi } from "./hotkey";
 
 /**
@@ -143,6 +143,9 @@ describe("hotkey definitions", () => {
     expect(isHotkeySettings({ enabled: "yes", accelerator: SECOND }, "darwin")).toBe(false);
     expect(isHotkeySettings({ enabled: true, accelerator: "Command+Q" }, "darwin")).toBe(false);
     expect(isHotkeySettings(null, "darwin")).toBe(false);
+    // One validation gives the canonical value that is stored.
+    expect(canonicalHotkeySettings({ enabled: false, accelerator: "Shift+CommandOrControl+R" }, "darwin")).toEqual({ enabled: false, accelerator: "CommandOrControl+Shift+R" });
+    expect(canonicalHotkeySettings({ enabled: true, accelerator: "Command+Q" }, "darwin")).toBeUndefined();
   });
 
   /**

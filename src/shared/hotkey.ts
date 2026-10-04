@@ -79,9 +79,15 @@ export function canonicalizeAccelerator(value: unknown, platform: string): strin
 }
 
 export function isHotkeySettings(value: unknown, platform: string): value is HotkeySettings {
-  if (typeof value !== "object" || value === null) return false;
+  return canonicalHotkeySettings(value, platform) !== undefined;
+}
+
+/** Valid settings with their accelerator in canonical order, from one validation; undefined for anything else. */
+export function canonicalHotkeySettings(value: unknown, platform: string): HotkeySettings | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
   const record = value as Record<string, unknown>;
-  return typeof record["enabled"] === "boolean" && isAccelerator(record["accelerator"], platform);
+  const accelerator = canonicalizeAccelerator(record["accelerator"], platform);
+  return typeof record["enabled"] === "boolean" && accelerator !== undefined ? { enabled: record["enabled"], accelerator } : undefined;
 }
 
 /** Names for `MODIFIER_ORDER` and the named `KEYS`: validation leaves no other spelling (`Plus` becomes `Shift+=`). */

@@ -30,7 +30,7 @@ import path from "node:path";
 import { DEFAULT_QUALITY, isQualitySettings, type QualitySettings } from "../shared/quality";
 import { DEFAULT_COUNTDOWN, DEFAULT_COUNTDOWN_SOUND, isCountdownSeconds, type CountdownSeconds } from "../shared/countdown";
 import { DEFAULT_LANGUAGE, isLanguage, type Language } from "../shared/i18n";
-import { DEFAULT_HOTKEY, canonicalizeAccelerator, isHotkeySettings, type HotkeySettings } from "../shared/hotkey";
+import { DEFAULT_HOTKEY, canonicalHotkeySettings, type HotkeySettings } from "../shared/hotkey";
 import { stableVersion } from "../shared/version";
 import { writeFileAtomic } from "./atomic-file";
 import { drainQueue } from "./drain-queue";
@@ -41,6 +41,10 @@ export const SETTINGS_VERSION = 3;
 /** Only a published stable version can have been announced. */
 function isNotifiedVersion(value: unknown): value is string {
   return typeof value === "string" && value.length <= 64 && stableVersion(value) !== undefined;
+}
+/** When an update check was last attempted, in epoch milliseconds; read from the file and accepted by `setUpdates` alike. */
+function isTimestamp(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
 export interface Settings {
@@ -142,10 +146,11 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const appearance = field("appearance", isAppearance, defaults.appearance, `appearance is unsupported: using ${defaults.appearance}`);
   const language = field("language", isLanguage, DEFAULT_LANGUAGE, "language is unsupported: using English");
   let hotkey: HotkeySettings = DEFAULT_HOTKEY;
+  const storedHotkey = canonicalHotkeySettings(record["hotkey"], platform);
   if (version !== SETTINGS_VERSION) {
     warnings.push(`version ${version} file: shortcut set to default`);
-  } else if (isHotkeySettings(record["hotkey"], platform)) {
-    hotkey = { enabled: record["hotkey"].enabled, accelerator: canonicalizeAccelerator(record["hotkey"].accelerator, platform)! };
+  } else if (storedHotkey) {
+    hotkey = storedHotkey;
   } else {
     warnings.push("hotkey is missing or has unsupported values: using the default shortcut");
   }
@@ -153,7 +158,6 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const isRecord = typeof rawUpdates === "object" && rawUpdates !== null && !Array.isArray(rawUpdates);
   if (rawUpdates !== undefined && !isRecord) warnings.push("updates is not an object: using defaults");
   const u = isRecord ? rawUpdates as Record<string, unknown> : {};
-  const isTimestamp = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
   const updates = {
     enabled: field("enabled", isBoolean, defaults.updates.enabled, `updates.enabled is not a boolean: using ${defaults.updates.enabled ? "on" : "off"}`, u),
     lastAttempt: field("lastAttempt", isTimestamp, defaults.updates.lastAttempt, `updates.lastAttempt is invalid: using ${defaults.updates.lastAttempt}`, u),
@@ -242,7 +246,7 @@ export class SettingsStore {
   setUpdates(patch: Partial<Settings["updates"]>): Promise<void> {
     patch = { ...patch };
     if ((patch.enabled !== undefined && typeof patch.enabled !== "boolean") ||
-        (patch.lastAttempt !== undefined && !(Number.isFinite(patch.lastAttempt) && patch.lastAttempt >= 0)) ||
+        (patch.lastAttempt !== undefined && !isTimestamp(patch.lastAttempt)) ||
         (patch.notifiedVersion !== undefined && !isNotifiedVersion(patch.notifiedVersion))) {
       return Promise.reject(new Error(`unsupported updates setting: ${JSON.stringify(patch)}`));
     }
@@ -262,9 +266,9 @@ export class SettingsStore {
 
   /** Rejects (and keeps the previous choice) when the accelerator is not a valid shortcut or the write fails. */
   setHotkey(hotkey: HotkeySettings): Promise<void> {
-    hotkey = { ...hotkey };
-    if (!isHotkeySettings(hotkey, this.platform)) return Promise.reject(new Error(`unsupported shortcut: ${JSON.stringify(hotkey)}`));
-    return this.save((current) => ({ ...current, hotkey: { enabled: hotkey.enabled, accelerator: canonicalizeAccelerator(hotkey.accelerator, this.platform)! } }));
+    const canonical = canonicalHotkeySettings(hotkey, this.platform);
+    if (!canonical) return Promise.reject(new Error(`unsupported shortcut: ${JSON.stringify(hotkey)}`));
+    return this.save((current) => ({ ...current, hotkey: canonical }));
   }
 
   setLanguage(language: Language): Promise<void> {
