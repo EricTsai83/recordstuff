@@ -928,8 +928,10 @@ function updateLibrary(): void {
   setText(summary, library?.summary ?? ""); summary.hidden = !library?.summary;
   const reveal = area.querySelector<HTMLButtonElement>("#library-reveal")!;
   setText(reveal, text(platform() === "darwin" ? "Show in Finder" : "Open folder"));
+  // The header's Show in Finder is the Output folder row's own: it follows that choice, which a recording does not lock.
   const folderGroup = view?.groups.find(group => group.id === "outputFolder");
-  setActionDisabled(reveal, !folderGroup?.enabled, Boolean(saving));
+  const folderReveal = folderGroup?.choices.find(choice => choice.id === "reveal");
+  setActionDisabled(reveal, !folderGroup?.enabled || !folderReveal?.enabled, Boolean(saving));
   const status = area.querySelector<HTMLElement>(".library-status")!;
   setText(status, library?.status ?? ""); status.hidden = !library?.status;
   const empty = area.querySelector<HTMLElement>(".library-empty")!;

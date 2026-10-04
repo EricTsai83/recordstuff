@@ -131,13 +131,15 @@ function screenGroup(ctx: AppContext, enabled: boolean): Group {
 
 /**
  * Where recordings go (plan 048): the path, with Change… and Show in Finder through main's own folder
- * actions, which the status card's fix and the menu's Change output folder… share. Locked like the other recording settings,
- * since a session's temporary file is already open in the current folder.
+ * actions, which the status card's fix and the menu's Change output folder… share. Change… is locked like the
+ * other recording settings, since a session's temporary file is already open in the current folder. Showing the
+ * folder touches nothing a session holds, so it stays available, as the Recordings cards' own Show in Finder and the
+ * Log row do; a problem the opener finds meanwhile is told in a notification, not a modal warning (index.ts).
  */
-function outputFolderGroup(ctx: AppContext, enabled: boolean): Group {
+function outputFolderGroup(ctx: AppContext, unlocked: boolean): Group {
   const language = ctx.language;
-  return { ...group("outputFolder", t("Output folder", language), enabled, [
-    { id: "change", label: t("Change…", language), enabled: true, checked: false, action: "changeOutputDir" },
+  return { ...group("outputFolder", t("Output folder", language), true, [
+    { id: "change", label: t("Change…", language), enabled: unlocked, checked: false, action: "changeOutputDir" },
     { id: "reveal", label: t(ctx.platform === "darwin" ? "Show in Finder" : "Open folder", language), enabled: true, checked: false, action: "openOutputDir" },
   ], abbreviateHome(ctx.outputDir, ctx.homeDir)), kind: "actions" };
 }

@@ -112,6 +112,17 @@ describe('recording lock contract', () => {
     expect(group(snap(recording, withUpdate(offered)), 'updates').choices.find(c => c.id === 'open')?.enabled).toBe(true);
   });
 
+  it('keeps Show in Finder while busy and locks only the output folder Change…', () => {
+    for (const state of [recording, { type: 'starting' }, { type: 'countdown', remaining: 2 }, { type: 'stopping' }] as RecordingState[]) {
+      expect(() => assertLockContract(snap(state)), state.type).not.toThrow();
+      const usable = snap(state); group(usable, 'outputFolder').choices.find(c => c.id === 'change')!.enabled = true;
+      expect(() => assertLockContract(usable)).toThrow(`settings choice outputFolder/change while ${state.type}`);
+      const hidden = snap(state); group(hidden, 'outputFolder').choices.find(c => c.id === 'reveal')!.enabled = false;
+      expect(() => assertLockContract(hidden)).toThrow(`settings choice outputFolder/reveal while ${state.type}`);
+    }
+    expect(() => assertLockContract(snap({ type: 'idle' }))).not.toThrow();
+  });
+
   it('rejects a snapshot that locks language, appearance or an About link', () => {
     for (const id of ['language', 'appearance', 'about']) {
       const s = snap(recording); group(s, id).enabled = false;

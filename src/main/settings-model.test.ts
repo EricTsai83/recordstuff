@@ -157,7 +157,9 @@ describe("recording locks every preference except the language", () => {
   it.each(busy)("$type", (state) => {
     const view = settingsView(state, context);
     expect(view.hint).toBe("Recording in progress; only language and appearance can change.");
-    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["trayClick", "language", "appearance", "log", "about"].includes(entry.id));
+    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["outputFolder", "trayClick", "language", "appearance", "log", "about"].includes(entry.id));
+    // The folder row keeps only Show in Finder: Change… waits for the session to end.
+    expect(view.groups.find(entry => entry.id === "outputFolder")?.choices.map(choice => [choice.id, choice.enabled])).toEqual([["change", false], ["reveal", true]]);
     expect(settingsAction(state, context, "trayClick", "menu")).toEqual({ setTrayClick: "menu" });
     expect(settingsAction(state, context, "language", "zh-TW")).toEqual({ setLanguage: "zh-TW" });
     for (const [group, choice] of [["videoQuality", "high"], ["frameRate", "60"], ["hotkey", "off"], ["updateChecks", "off"]]) {
@@ -667,12 +669,13 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
     expect(group(idle, { ...context, platform: "win32" }, "outputFolder")!.choices[1]!.label).toBe("Open folder");
   });
 
-  it("is locked while starting, counting down, recording or saving, as the tray's folder items are", () => {
+  it("locks Change… while starting, counting down, recording or saving, but keeps Show in Finder, as the Recordings cards do", () => {
     for (const state of [{ type: "starting" }, { type: "countdown", remaining: 2 }, { type: "recording", startedAt: "x" }, { type: "stopping" }] as RecordingState[]) {
-      expect(group(state, context, "outputFolder")?.enabled, state.type).toBe(false);
       expect(settingsAction(state, context, "outputFolder", "change"), state.type).toBeUndefined();
-      expect(settingsAction(state, context, "outputFolder", "reveal"), state.type).toBeUndefined();
+      expect(settingsAction(state, context, "outputFolder", "reveal"), state.type).toBe("openOutputDir");
     }
+    // A quit in progress still offers nothing.
+    expect(settingsAction({ type: "recording", startedAt: "x" }, { ...context, quitting: true }, "outputFolder", "reveal")).toBeUndefined();
   });
 
   it("orders General as the icon's click, Shortcut, Notifications, Language, Appearance, Updates and About, headings moving with their groups", () => {
