@@ -46,14 +46,14 @@ export const VIDEO_CHANNELS = {
 } as const;
 
 /** Query parameters the fullscreen page is loaded with. */
-export const VIDEO_QUERY = { src: "src", time: "t", playing: "play", volume: "vol", muted: "mute", language: "lang" } as const;
+export const VIDEO_QUERY = { src: "src", time: "t", playing: "play", volume: "vol", muted: "mute", language: "lang", title: "title" } as const;
 
 export const VIDEO_TIMING = {
   /** The window's fade in and out. */
   fadeMs: 150,
   /** A page that never reports its first frame (a file it cannot decode) is shown after this, to be left again. */
   readyTimeoutMs: 2000,
-  /** The exit button and the pointer hide after the pointer has rested this long. */
+  /** The player's controls and the pointer hide after the pointer has rested this long while a video plays. */
   idleMs: 2000,
 } as const;
 

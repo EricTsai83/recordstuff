@@ -1,3 +1,4 @@
+@import "./player-controls.css";
 /*
  * Ink on quiet greys, as Apple Music draws its window (2026-10-05): its red, not the brand's, only for what is chosen —
  * the open tab, a switch that is on — and a recording's play button. Words on a fill stay ink. The brand red keeps to
@@ -482,34 +483,37 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
   .clip-thumb { transition: box-shadow .15s ease, transform .15s ease; }
 }
 
-/* The player: the video on black, its name and actions underneath, over a dimmed window. */
 /*
- * A column: the name and actions keep their height and the video takes what is left, so in a short window
- * (or for a portrait recording) the picture shrinks rather than the buttons, Close included, leaving the dialog.
- * Scrolling remains the fallback for a window too short for the actions themselves.
+ * The player (2026-10-05): the video alone over a dimmed window, its title and controls laid over the picture as in
+ * YouTube's full screen (player-controls.css). A 16:9 stage sized by the window alone, as YouTube's is: as wide as
+ * 860 px, the window less its margins, or the height allows, whichever is least. The recording fits inside it, black
+ * above and below when wider, beside when narrower (a Mac's screen, a portrait clip), so the stage neither jumps when
+ * the recording's size arrives nor changes shape from one recording to the next.
  */
-.player { width: min(860px, calc(100vw - 48px)); max-height: calc(100dvh - 48px); padding: 0; border: 0; border-radius: 14px; overflow-y: auto; background: #0b0b0c; color: #f4f4f5; box-shadow: 0 24px 64px rgb(0 0 0 / .4); }
+.player { --stage-top: 24px; width: min(860px, calc(100vw - 48px), calc((100dvh - var(--stage-top) - 24px) * 16 / 9)); aspect-ratio: 16 / 9; max-height: none; padding: 0; border: 0; border-radius: 14px; overflow: hidden; background: #000; color: #f4f4f5; box-shadow: 0 24px 64px rgb(0 0 0 / .4); }
 .player[open] { display: flex; flex-direction: column; }
 .player::backdrop { background: rgb(0 0 0 / .45); backdrop-filter: blur(3px); }
-.player video { display: block; flex: 1 1 auto; min-height: 96px; width: 100%; height: auto; object-fit: contain; background: #000; }
-/* Opening focuses the video, so Space plays and pauses; the ring is for keyboard use only, in white on the dark player. */
-.player video:focus { outline: none; }
-:root:not([data-input="pointer"]):not([data-window="inactive"]) .player video:focus-visible { outline: var(--focus-width) solid #f4f4f5; outline-offset: -2px; }
-.player-bar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 14px; }
-.player-info { min-width: 0; flex: 1 1 200px; }
-.player-title { margin: 0; font-weight: 600; }
-.player-meta { margin: 1px 0 0; color: #a1a1aa; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.player-error { margin: 4px 0 0; color: #ff8a80; font-size: 12px; }
-.player-actions { flex: none; display: flex; gap: 8px; }
-/* Full screen is the player's own button (a window of its own): `controlslist="nofullscreen"` only dims the controls'. */
-.player video::-webkit-media-controls-fullscreen-button { display: none; }
-/* Full screen beside Close, quieter: an outline on the dark player. */
-.player-fullscreen { flex: none; background: transparent; border-color: rgb(255 255 255 / .28); color: #f4f4f5; box-shadow: none; }
-.player-fullscreen:enabled:not([aria-disabled="true"]):hover { background: rgb(255 255 255 / .1); }
-:root:not([data-input="pointer"]):not([data-window="inactive"]) .player-fullscreen:focus-visible { outline-color: #f4f4f5; }
-.player-close { flex: none; background: #f4f4f5; border-color: #f4f4f5; color: #18181b; box-shadow: none; }
-.player-close:enabled:not([aria-disabled="true"]):hover { background: #f4f4f5; opacity: .88; }
-:root:not([data-input="pointer"]):not([data-window="inactive"]) .player-close:focus-visible { outline-color: #f4f4f5; }
+.player .pc { flex: 1 1 auto; min-height: 0; }
+.player video { height: 100%; object-fit: contain; }
+/* A short stage keeps its shades short, so the title and the controls never meet. */
+@media (max-height: 440px) {
+  .player .pc-top { padding-bottom: 12px; }
+  .player .pc-bottom { padding-top: 14px; }
+  .player .pc-meta { display: none; }
+}
+/*
+ * macOS draws the window controls in the page's top-left corner (TRAFFIC_LIGHT_ZONE, 86 × 40 pt), where nothing
+ * clickable may lie: the player centres in the space below the title bar strip instead, so its corner, title and
+ * picture never sit under the buttons, however small the window.
+ */
+:root[data-platform="darwin"] .player { --stage-top: 48px; top: 48px; }
+/*
+ * The title bar strip drags the window at the system's level, before the page sees the click: while the player is
+ * open the strip gives way, so a click on the dimmed backdrop above the player closes it, as anywhere else around it.
+ */
+:root:has(dialog.player[open]) .titlebar { -webkit-app-region: no-drag; }
+/* The page's accent ring would be ink on the picture: the player's controls keep their white one. */
+:root:not([data-input="pointer"]):not([data-window="inactive"]) .player :is(button, input):focus-visible { outline: 1.5px solid #fff; outline-offset: 1px; }
 @media (forced-colors: active) {
   .player { border: 1px solid CanvasText; }
   .clip-menu { border: 1px solid CanvasText; background: Canvas; }

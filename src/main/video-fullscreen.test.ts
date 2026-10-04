@@ -48,10 +48,10 @@ describe("a recording played full screen in a window of its own (2026-10-05)", (
 
   it("covers the screen hidden and black, fades in on the first frame, and hands the time back as it fades out", async () => {
     const closed = vi.fn();
-    const playing = create().play({ src: "recordstuff-media://video/abc?v=1", state, display, language: "zh-TW", closed });
+    const playing = create().play({ src: "recordstuff-media://video/abc?v=1", state, display, language: "zh-TW", title: "今天，下午1:30", closed });
     const window = electron.FakeWindow.instances[0]!;
     expect(window.options).toMatchObject({ ...display, show: false, frame: false, backgroundColor: "#000000", fullscreenable: false });
-    expect([window.opacity, window.loaded]).toEqual([0, { file: "/r/video.html", query: { src: "recordstuff-media://video/abc?v=1", t: "12.5", play: "1", vol: "0.8", mute: "0", lang: "zh-TW" } }]);
+    expect([window.opacity, window.loaded]).toEqual([0, { file: "/r/video.html", query: { src: "recordstuff-media://video/abc?v=1", t: "12.5", play: "1", vol: "0.8", mute: "0", lang: "zh-TW", title: "今天，下午1:30" } }]);
     // The page's first frame: the screen is covered (the simple kind, already the screen's size), then it fades in.
     await ready(window);
     expect([window.simple, window.shown]).toEqual([true, true]);

@@ -18,7 +18,7 @@ import { proposesHotkey, settingsAction, settingsChecked, settingsView } from ".
 import { TRAFFIC_LIGHT_POSITION } from "../shared/window-controls";
 import { preferencesUnlocked } from "./ui-model";
 import { validateAccelerator, isSettingsShortcut, SETTINGS_SHORTCUT_RESERVED } from "../shared/hotkey";
-import { translate } from "../shared/i18n";
+import { phrases, translate } from "../shared/i18n";
 import { isFullScreenChoice, type FullScreenChoice } from "../shared/video-player";
 import type { VideoFullScreen } from "./video-fullscreen";
 import type { AppAction, AppContext } from "./ui-model";
@@ -439,6 +439,7 @@ export class SettingsWindow {
       state: choice.state,
       display: screen.getDisplayMatching(recipient.getBounds()).bounds,
       language: this.options.context().language,
+      title: phrases([item.day, item.title], this.options.context().language),
       closed: () => { if (!recipient.isDestroyed() && this.window === recipient) recipient.focus(); },
     });
     this.escapeQuietUntil = Date.now() + FULLSCREEN_ESCAPE_QUIET_MS;

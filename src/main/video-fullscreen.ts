@@ -30,6 +30,8 @@ export interface VideoFullScreenRequest {
   /** The whole display to cover. */
   display: Rectangle;
   language: Language;
+  /** The recording's name over the picture, as the listing shows it; main's own words, never the page's. */
+  title?: string;
   /** The window has gone: give focus back to the one it played for. */
   closed?: () => void;
 }
@@ -112,6 +114,7 @@ export class VideoFullScreen {
         [VIDEO_QUERY.volume]: String(state.volume),
         [VIDEO_QUERY.muted]: state.muted ? "1" : "0",
         [VIDEO_QUERY.language]: request.language,
+        ...(request.title ? { [VIDEO_QUERY.title]: request.title } : {}),
       };
       const loading = this.options.devUrl
         ? window.loadURL(`${this.options.devUrl}?${new URLSearchParams(query).toString()}`)

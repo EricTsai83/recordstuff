@@ -1,18 +1,17 @@
-/* The fullscreen video (src/renderer/video.ts): the picture on black, and one way out at the top right. */
-html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
-video { display: block; width: 100vw; height: 100vh; object-fit: contain; background: #000; outline: none; }
-/* The window is the fullscreen: `controlslist="nofullscreen"` only dims the controls' own button, so it goes. */
-video::-webkit-media-controls-fullscreen-button { display: none; }
-.exit {
-  position: fixed; top: 16px; right: 16px; display: grid; place-items: center; width: 36px; height: 36px; padding: 0;
-  border: 0; border-radius: 10px; background: rgb(0 0 0 / .55); color: #fff; cursor: pointer; backdrop-filter: blur(8px);
-  font: inherit; opacity: 1; transition: opacity .2s ease;
-}
-.exit:hover { background: rgb(0 0 0 / .72); }
-.exit svg { width: 18px; height: 18px; }
-:root:not([data-input="keyboard"]) .exit:focus { outline: none; }
-.exit:focus-visible { outline: 1px solid #f4f4f5; outline-offset: 2px; }
-/* At rest the way out and the pointer step aside; a move brings both back. */
-body.idle { cursor: none; }
-body.idle .exit { opacity: 0; pointer-events: none; }
-@media (prefers-reduced-motion: reduce) { .exit { transition: none; } }
+@import "./player-controls.css";
+/* The full-screen video (src/renderer/video.ts): the picture on black under the player's own controls, its way out at the bar's right end. */
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+.pc { width: 100vw; height: 100vh; }
+.pc video { height: 100%; }
+/* Larger than in the window's player, as YouTube's full screen is. */
+.pc-top { padding: 26px 28px 72px 32px; }
+.pc-title { font-size: 22px; }
+.pc-bottom { padding: 64px 24px 10px; }
+.pc-seek { height: 20px; }
+.pc-row { height: 60px; gap: 6px; }
+.pc-button { width: 52px; height: 52px; }
+.pc-button svg { width: 32px; height: 32px; }
+.pc-time { font-size: 16px; margin-left: 12px; }
+.pc-volume:hover .pc-level, .pc-volume:focus-within .pc-level { width: 88px; }
+/* Focus rings only for the keyboard: a click on a control draws none. */
+:root:not([data-input="keyboard"]) .pc :is(button, input):focus-visible { outline: none; }

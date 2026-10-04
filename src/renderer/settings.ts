@@ -2,6 +2,7 @@
 import { SETTINGS_SHORTCUT_RESERVED, describeAccelerator, isSettingsShortcut, validateAccelerator } from "../shared/hotkey";
 import { isCloseChord, shortcutCandidate, shortcutModifiers } from "./shortcut-capture";
 import { infoPlacement } from "./info-placement";
+import { controlButton, mark, playerControls, type PlayerControls, type PlayerLabels } from "./player-controls";
 import { isLanguage, phrases, sentences, translate, type Language, type PlainMessageKey } from "../shared/i18n";
 import { REVIEWED_FAILURES_KEPT, persistsHistory } from "../shared/recording-result";
 import type { LibraryItemView, RecordingResultView, SettingsBridge, SettingsGroup, SettingsTab, SettingsView } from "../shared/settings-panel";
@@ -1170,26 +1171,32 @@ async function fileAction(id: string, action: FileAction, anchor: HTMLButtonElem
 let player: HTMLDialogElement | undefined;
 /** The player's announcer, inside the dialog (see `announce`). */
 let playerFeedback: HTMLElement | undefined;
+let playerControlsUi: PlayerControls | undefined;
+/** Four arrows pointing out: full screen, as the full-screen window's way out points in. */
+const FULL_SCREEN_MARK = "M4 9V4h5v1.8H5.8V9ZM15 4h5v5h-1.8V5.8H15ZM18.2 15H20v5h-5v-1.8h3.2ZM4 15h1.8v3.2H9V20H4Z";
+const CLOSE_MARK = "M6.3 5 12 10.7 17.7 5 19 6.3 13.3 12l5.7 5.7-1.3 1.3-5.7-5.7L6.3 19 5 17.7l5.7-5.7L5 6.3Z";
+const playerLabels = (): PlayerLabels => ({ play: text("Play"), pause: text("Pause"), mute: text("Mute"), unmute: text("Unmute"), volume: text("Volume"), position: text("Playback position") });
 function openPlayer(item: LibraryItemView): void {
   closeClipMenu(false);
   if (!player) {
     player = node("dialog", "player"); player.setAttribute("aria-labelledby", "player-title");
-    const video = node("video"); video.controls = true; video.playsInline = true;
-    // Full screen is a window of its own (playFullScreen): the controls' button would grow this window instead.
-    video.setAttribute("controlslist", "nofullscreen noremoteplayback");
+    const video = node("video"); video.playsInline = true;
+    // The page's own controls (player-controls.ts): opening focuses the picture, so Space plays and pauses.
+    video.autofocus = true;
+    // A double-click plays full screen, in a window of its own (playFullScreen), as YouTube's does.
     video.addEventListener("dblclick", event => { event.preventDefault(); void playFullScreen(); });
-    const bar = node("div", "player-bar");
-    const info = node("div", "player-info");
-    const title = node("p", "player-title"); title.id = "player-title";
-    info.append(title, node("p", "player-meta"), node("p", "player-error"));
+    // The title over the top edge with Close beside it, as YouTube's full screen shows its title (2026-10-05).
+    const heading = node("div", "pc-heading");
+    const info = node("div", "pc-heading-text");
+    const title = node("p", "pc-title"); title.id = "player-title";
+    info.append(title, node("p", "pc-meta player-meta"), node("p", "pc-error player-error"));
     // Watching is all the player does (2026-10-04): the file's actions are on its card, before it is opened.
-    const close = button("player-close", () => player!.close()); close.className = "player-close";
-    const fullScreen = button("player-fullscreen", () => void playFullScreen()); fullScreen.className = "player-fullscreen";
-    const actions = node("div", "player-actions");
-    actions.append(fullScreen, close);
-    bar.append(info, actions);
+    const close = controlButton("player-close"); close.addEventListener("click", () => player!.close()); close.append(mark(CLOSE_MARK));
+    heading.append(info, close);
+    const fullScreen = controlButton("player-fullscreen"); fullScreen.addEventListener("click", () => void playFullScreen()); fullScreen.append(mark(FULL_SCREEN_MARK));
+    playerControlsUi = playerControls(video, { id: "player", labels: playerLabels(), top: heading, trailing: [fullScreen], fullScreen: () => void playFullScreen() });
     playerFeedback = node("p", "visually-hidden"); playerFeedback.setAttribute("role", "status"); playerFeedback.setAttribute("aria-live", "polite");
-    player.append(video, bar, playerFeedback);
+    player.append(playerControlsUi.root, playerFeedback);
     player.addEventListener("close", () => { video.pause(); video.removeAttribute("src"); video.load(); });
     // A file that left the folder since it was listed, a damaged one, or a format Chromium cannot decode: say so, and
     // where Open is. Closing empties the source on purpose, which is not a failure to report.
@@ -1213,11 +1220,15 @@ function openPlayer(item: LibraryItemView): void {
   setText(player.querySelector(".player-meta")!, [item.name, item.duration, item.size].filter(Boolean).join(" · "));
   player.querySelector<HTMLElement>(".player-error")!.hidden = true;
   setText(playerFeedback!, "");
-  setText(player.querySelector("#player-close")!, text("Close"));
-  setText(player.querySelector("#player-fullscreen")!, text("Full screen"));
+  for (const [id, label] of [["player-close", text("Close")], ["player-fullscreen", text("Full screen")]] as const) {
+    const el = player.querySelector<HTMLElement>(`#${id}`)!;
+    setAttr(el, "aria-label", label); setAttr(el, "title", label);
+  }
+  playerControlsUi!.relabel(playerLabels());
   const video = player.querySelector("video")!;
   video.src = item.video;
   player.showModal();
+  playerControlsUi!.wake();
   void video.play().catch(() => {});
 }
 /** Whether a full-screen play is under way: the player waits for it, and a second request is not sent. */

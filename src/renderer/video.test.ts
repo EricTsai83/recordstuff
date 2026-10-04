@@ -40,8 +40,11 @@ it("starts nothing after the viewer has left, even when the first frame comes la
 });
 
 it("leaves on a double-click but not on a held Escape's repeats, and names its way out in the page's language", async () => {
-  const { video, exit } = await load("src=s&t=0&play=0&vol=1&mute=1&lang=zh-TW");
+  const { video, exit } = await load(`src=s&t=0&play=0&vol=1&mute=1&lang=zh-TW&title=${encodeURIComponent("今天，下午1:30")}`);
   expect(document.getElementById("exit")!.getAttribute("aria-label")).toBe("結束全螢幕");
+  // The player's own controls (2026-10-05): the title main named over the top, the way out at the bar's right end, all in the page's language.
+  expect([document.querySelector(".pc-title")!.textContent, document.querySelector(".pc-row")!.lastElementChild!.id, document.getElementById("video-play")!.getAttribute("aria-label"), video.controls])
+    .toEqual(["今天，下午1:30", "exit", "播放", false]);
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", repeat: true, cancelable: true }));
   expect(exit).not.toHaveBeenCalled();
   video.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));

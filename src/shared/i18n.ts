@@ -221,6 +221,13 @@ export const ZH_TW = {
   // The player's fullscreen, in a window of its own (2026-10-05).
   "Full screen": "全螢幕",
   "Exit full screen": "結束全螢幕",
+  // The player's own controls (2026-10-05).
+  Play: "播放",
+  Pause: "暫停",
+  Mute: "靜音",
+  Unmute: "取消靜音",
+  Volume: "音量",
+  "Playback position": "播放位置",
   // The menu bar's own menus, in the words macOS uses for them (2026-10-04).
   "About RecordStuff": "關於 RecordStuff",
   Services: "服務",

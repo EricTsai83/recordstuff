@@ -1,0 +1,62 @@
+/*
+ * The player's controls (player-controls.ts), as YouTube's full screen lays them out: the title on a shade along
+ * the top, and on a shade along the bottom a seek bar the picture's width over play, volume and the time, full
+ * screen at the right. White on the picture, as the website draws on black. Imported by settings.css and video.css.
+ */
+.pc { position: relative; display: flex; min-height: 0; overflow: hidden; background: #000; color: #fff; }
+.pc video { display: block; flex: 1 1 auto; width: 100%; min-width: 0; min-height: 0; object-fit: contain; background: #000; outline: none; cursor: pointer; }
+.pc-top, .pc-bottom { position: absolute; left: 0; right: 0; transition: opacity .2s ease; }
+.pc-top { top: 0; padding: 14px 14px 40px 18px; background: linear-gradient(rgb(0 0 0 / .62), rgb(0 0 0 / .28) 55%, transparent); pointer-events: none; }
+.pc-top > * { pointer-events: auto; }
+.pc-bottom { bottom: 0; padding: 36px 12px 4px; background: linear-gradient(transparent, rgb(0 0 0 / .32) 40%, rgb(0 0 0 / .72)); }
+/* At rest while it plays, the shades, the controls and the pointer step aside. */
+.pc.pc-idle:not(.pc-paused) :is(.pc-top, .pc-bottom) { opacity: 0; pointer-events: none; }
+.pc.pc-idle:not(.pc-paused), .pc.pc-idle:not(.pc-paused) video { cursor: none; }
+
+/* The title block: the recording's name, what it is, and a line when it cannot be played. */
+.pc-heading { display: flex; align-items: flex-start; gap: 12px; }
+.pc-heading-text { flex: 1; min-width: 0; padding-top: 2px; text-shadow: 0 1px 2px rgb(0 0 0 / .5); }
+.pc-title { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-meta { margin: 2px 0 0; color: rgb(255 255 255 / .72); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pc-error { margin: 6px 0 0; color: #ff8a80; font-size: 12.5px; text-shadow: none; }
+
+/* The seek bar: a thin line that thickens under the pointer, white for what has played, its thumb only when needed. */
+.pc-seek, .pc-level { appearance: none; display: block; margin: 0; padding: 0; height: 16px; background: transparent; cursor: pointer; }
+.pc-seek { width: calc(100% - 4px); margin: 0 2px; }
+.pc-seek::-webkit-slider-runnable-track, .pc-level::-webkit-slider-runnable-track {
+  height: 3px; border-radius: 2px; background: linear-gradient(to right, #fff var(--pc-fill, 0%), rgb(255 255 255 / .28) var(--pc-fill, 0%));
+}
+.pc-seek::-webkit-slider-thumb, .pc-level::-webkit-slider-thumb {
+  appearance: none; width: 13px; height: 13px; margin-top: -5px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .4);
+}
+.pc-seek::-webkit-slider-thumb { transform: scale(0); }
+.pc-seek:hover::-webkit-slider-runnable-track, .pc-seek:active::-webkit-slider-runnable-track { height: 5px; }
+.pc-seek:hover::-webkit-slider-thumb, .pc-seek:active::-webkit-slider-thumb, .pc-seek:focus-visible::-webkit-slider-thumb { transform: scale(1); margin-top: -4px; }
+
+.pc-row { display: flex; align-items: center; gap: 2px; height: 42px; }
+.pc-spacer { flex: 1; }
+.pc-button { flex: none; display: grid; place-items: center; width: 38px; height: 38px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: transparent; box-shadow: none; color: #fff; cursor: pointer; }
+.pc .pc-button:enabled:hover { background: rgb(255 255 255 / .14); }
+.pc-button svg { width: 24px; height: 24px; filter: drop-shadow(0 1px 2px rgb(0 0 0 / .35)); }
+/* Volume: the level slides out beside its button while the pointer or focus is on either. */
+.pc-volume { display: flex; align-items: center; }
+.pc-level { width: 0; opacity: 0; transition: width .15s ease, opacity .15s ease, margin .15s ease; }
+.pc-volume:hover .pc-level, .pc-volume:focus-within .pc-level { width: 64px; opacity: 1; margin: 0 8px 0 2px; }
+.pc-time { margin-left: 8px; font-size: 12.5px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; text-shadow: 0 1px 2px rgb(0 0 0 / .5); }
+
+/* Keyboard focus in white, the one colour that reads on any picture. */
+.pc :is(button, input):focus { outline: none; }
+.pc :is(button, input):focus-visible { outline: 1.5px solid #fff; outline-offset: 1px; }
+.pc input:focus-visible { border-radius: 4px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .pc-seek::-webkit-slider-runnable-track { transition: height .1s ease; }
+  .pc-seek::-webkit-slider-thumb { transition: transform .1s ease; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pc-top, .pc-bottom, .pc-level { transition: none; }
+}
+@media (forced-colors: active) {
+  .pc-top, .pc-bottom { background: Canvas; }
+  .pc-seek, .pc-level { appearance: auto; }
+}

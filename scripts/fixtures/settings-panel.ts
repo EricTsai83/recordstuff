@@ -693,12 +693,16 @@ async function run() {
           // The player over the tab. The file is served, byte ranges and all, but holds no media, so it shows what a recording that cannot be played gets.
           await read(window, `document.querySelector(".clip-open").click()`);
           const opened = await until(() => read<boolean>(window, `(() => { const p = document.querySelector("dialog.player"); return Boolean(p?.open && !p.querySelector(".player-error").hidden); })()`));
-          const player = await read<{ open: boolean; error: string; spoken: string; fits: boolean; buttons: string[] }>(window, `(() => { const p = document.querySelector("dialog.player"), r = p.getBoundingClientRect();
+          // Its own controls over the picture (2026-10-05): Close by the title, play, volume and Full screen along the bar, each named, and none of Chromium's.
+          const player = await read<{ open: boolean; error: string; spoken: string; fits: boolean; buttons: string[]; named: boolean; native: boolean; barInside: boolean }>(window, `(() => { const p = document.querySelector("dialog.player"), r = p.getBoundingClientRect();
+            const buttons = [...p.querySelectorAll("button")], bar = p.querySelector(".pc-bottom").getBoundingClientRect();
             return { open: p.open, error: p.querySelector(".player-error").hidden ? "" : p.querySelector(".player-error").textContent,
-              spoken: p.querySelector('[role="status"]').textContent, buttons: [...p.querySelectorAll("button")].map(b => b.id),
+              spoken: p.querySelector('[role="status"]').textContent, buttons: buttons.map(b => b.id), named: buttons.every(b => b.getAttribute("aria-label") && b.querySelector("svg")),
+              native: p.querySelector("video").controls, barInside: bar.bottom <= r.bottom + 0.5 && bar.top >= r.top,
               fits: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight && p.scrollWidth <= p.clientWidth }; })()`);
-          record(`${lang}/${scheme}/${size}/player: opens over Recordings with Full screen and Close, fits the window and says a recording it cannot play cannot be played here`,
-            opened && player.open && player.error !== "" && player.spoken === player.error && player.buttons.join() === "player-fullscreen,player-close" && player.fits, JSON.stringify(player));
+          record(`${lang}/${scheme}/${size}/player: opens over Recordings with its own named controls over the picture, fits the window and says a recording it cannot play cannot be played here`,
+            opened && player.open && player.error !== "" && player.spoken === player.error && player.buttons.join() === "player-close,player-play,player-mute,player-fullscreen"
+              && player.named && !player.native && player.barInside && player.fits, JSON.stringify(player));
           await underControls(`${lang}/${scheme}/${size}/player`);
           await shot(`player-${lang}-${scheme}-${size}.png`);
           await read(window, `document.getElementById("player-close").click()`);

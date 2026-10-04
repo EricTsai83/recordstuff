@@ -1,10 +1,12 @@
 /**
  * The fullscreen video page (src/shared/video-player.ts): plays one recording from where the player was, says when
  * its first frame is drawn so the window can fade in, and leaves on Escape, a double-click or its exit button with
- * where the video is now. Main owns the window and its fades; the page never closes it.
+ * where the video is now. Main owns the window and its fades; the page never closes it. The title and controls are
+ * the player's own (player-controls.ts), laid out as YouTube's full screen is.
  */
 import { translate, isLanguage } from "../shared/i18n";
-import { VIDEO_QUERY, VIDEO_TIMING, type PlaybackState, type VideoBridge } from "../shared/video-player";
+import { VIDEO_QUERY, type PlaybackState, type VideoBridge } from "../shared/video-player";
+import { mark, playerControls } from "./player-controls";
 
 declare global {
   interface Window {
@@ -14,21 +16,30 @@ declare global {
 
 const query = new URLSearchParams(location.search);
 const number = (key: string, fallback: number): number => { const value = Number(query.get(key)); return Number.isFinite(value) ? value : fallback; };
-const language = query.get(VIDEO_QUERY.language);
+const queried = query.get(VIDEO_QUERY.language);
+const language = isLanguage(queried) ? queried : undefined;
 const video = document.getElementById("video") as HTMLVideoElement;
 const exitButton = document.getElementById("exit") as HTMLButtonElement;
 
-const label = translate("Exit full screen", isLanguage(language) ? language : undefined);
+const label = translate("Exit full screen", language);
 exitButton.setAttribute("aria-label", label);
 exitButton.title = label;
-// Two arrows pointing in, drawn with the text colour.
-const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("aria-hidden", "true");
-const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-path.setAttribute("d", "M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7");
-path.setAttribute("fill", "none"); path.setAttribute("stroke", "currentColor"); path.setAttribute("stroke-width", "1.8");
-path.setAttribute("stroke-linecap", "round"); path.setAttribute("stroke-linejoin", "round");
-svg.append(path); exitButton.append(svg);
+exitButton.className = "pc-button";
+exitButton.hidden = false;
+// Four corners pointing in: the way out, at the bar's right end where the player's Full screen was.
+exitButton.append(mark("M9 4v5H4V7.2h3.2V4ZM15 4h1.8v3.2H20V9h-5ZM15 20v-5h5v1.8h-3.2V20ZM4 15h5v5H7.2v-3.2H4Z"));
+// The recording's name over the top edge, as main named it from the listing.
+const heading = document.createElement("div"); heading.className = "pc-heading";
+const headingText = document.createElement("div"); headingText.className = "pc-heading-text";
+const title = document.createElement("p"); title.className = "pc-title"; title.textContent = query.get(VIDEO_QUERY.title) ?? "";
+headingText.append(title); heading.append(headingText);
+heading.hidden = !title.textContent;
+const controls = playerControls(video, {
+  id: "video", top: heading, trailing: [exitButton], fullScreen: leave,
+  labels: { play: translate("Play", language), pause: translate("Pause", language), mute: translate("Mute", language), unmute: translate("Unmute", language),
+    volume: translate("Volume", language), position: translate("Playback position", language) },
+});
+document.body.prepend(controls.root);
 
 const start: PlaybackState = {
   time: Math.max(0, number(VIDEO_QUERY.time, 0)),
@@ -81,14 +92,5 @@ document.addEventListener("keydown", event => {
 });
 document.addEventListener("pointerdown", () => { delete document.documentElement.dataset.input; });
 
-// The exit button and the pointer show while the pointer moves, and step aside once it rests.
-let idle: ReturnType<typeof setTimeout> | undefined;
-function wake(): void {
-  exitButton.hidden = false;
-  document.body.classList.remove("idle");
-  clearTimeout(idle);
-  idle = setTimeout(() => { if (!exitButton.matches(":hover, :focus-visible")) document.body.classList.add("idle"); }, VIDEO_TIMING.idleMs);
-}
-document.addEventListener("pointermove", wake);
-document.addEventListener("keydown", wake);
-wake();
+// The controls show while the pointer moves and step aside once it rests while the video plays (player-controls.ts).
+controls.wake();

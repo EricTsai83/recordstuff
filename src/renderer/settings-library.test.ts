@@ -70,7 +70,8 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   expect(close).not.toHaveBeenCalled();
   // Full screen is a window of its own (2026-10-05): the player asks main, waits, and goes on from where it ended.
   const playerVideo = player.querySelector("video")!;
-  expect(playerVideo.getAttribute("controlslist")).toContain("nofullscreen");
+  // The page's own controls (2026-10-05): none of Chromium's, whose full-screen button would grow this window.
+  expect([playerVideo.controls, Boolean(player.querySelector(".pc-seek")), document.getElementById("player-fullscreen")!.getAttribute("aria-label")]).toEqual([false, true, "Full screen"]);
   const pause = vi.spyOn(HTMLMediaElement.prototype, "pause");
   document.getElementById("player-fullscreen")!.click();
   await vi.waitFor(() => expect(choose).toHaveBeenLastCalledWith("recordingFile:a", { action: "fullscreen", state: { time: 0, playing: false, volume: 1, muted: false } }));
@@ -145,8 +146,8 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   expect([player.open, player.querySelector("video")!.hasAttribute("src"), document.activeElement?.id]).toEqual([false, false, "clip-b-open"]);
   first.querySelector("button")!.click();
   expect(player.open).toBe(true);
-  // The player only plays: Full screen and Close are its actions (2026-10-05).
-  expect([...player.querySelectorAll("button")].map(el => el.id)).toEqual(["player-fullscreen", "player-close"]);
+  // The player only plays: Close over the title, then play, volume and Full screen along the bar (2026-10-05).
+  expect([...player.querySelectorAll("button")].map(el => el.id)).toEqual(["player-close", "player-play", "player-mute", "player-fullscreen"]);
 
   // A recording the page cannot play says so, and points to Open in the card's menu; the next one starts without the message.
   const video = player.querySelector("video")!;
