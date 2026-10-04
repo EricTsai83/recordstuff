@@ -1,6 +1,7 @@
 /*
- * One quiet palette shared with the website: ink for choices, the brand red only for recording
- * and unread failures, amber for warnings. Cards float on a slightly darker window.
+ * Ink on quiet greys, as Apple Music draws its window (2026-10-05): its red, not the brand's, only for what is chosen —
+ * the open tab, a switch that is on — and a recording's play button. Words on a fill stay ink. The brand red keeps to
+ * recording and unread failures, amber to warnings. Cards float on a slightly darker window.
  */
 :root {
   color-scheme: light dark;
@@ -21,6 +22,12 @@
   --secondary: light-dark(#64646c, #a1a1aa);
   --accent: light-dark(#18181b, #f4f4f5);
   --on-accent: light-dark(#fff, #18181b);
+  /*
+   * The red for what is chosen — the open tab's mark and name, a switch that is on, a recording's play button and the
+   * keyboard's ring: Apple Music's in light; in dark a calmer red the maintainer picked (2026-10-05).
+   */
+  --chosen: light-dark(#fa2d48, #e85a62);
+  --focus: var(--chosen);
   --rec: light-dark(#e5352b, #ff5a4f);
   --rec-surface: light-dark(#fff3f2, #2a1715);
   --rec-border: light-dark(#fbd5d2, #4a2421);
@@ -91,7 +98,8 @@ main { height: 100dvh; max-width: 720px; margin: auto; padding: 16px 20px 0; dis
 /* Sized to their labels, never wrapping; below 600 px the closed tabs give way to their icons (see the end of this file). */
 .tabs button { flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; border: 0; background: transparent; box-shadow: none; padding: 5px 8px; border-radius: 7px; color: var(--secondary); font-weight: 500; }
 .tabs button:hover { color: var(--text); background: transparent; }
-.tabs button[aria-selected="true"] { background: var(--selected); box-shadow: var(--selected-shadow); color: var(--text); }
+/* The open tab's mark and name in Apple Music's red, in the narrow strip as in the sidebar. */
+.tabs button[aria-selected="true"] { background: var(--selected); box-shadow: var(--selected-shadow); color: var(--chosen); }
 .tab-icon { flex: none; width: 15px; height: 15px; }
 .tab-badge { min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: var(--rec); color: #fff; font-size: 10.5px; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums; }
 /* Keyboard focus and scrollIntoView stop above the scroll hint below, not under it. */
@@ -142,9 +150,9 @@ select { min-width: 0; text-overflow: ellipsis; }
 :is(button, select, input).saving-disabled { opacity: 1; }
 :is(button, select, input, summary):focus { outline: none; }
 /* Keyboard focus only, and only while the window is active. On buttons and menus the line sits on the control's own border. */
-:root:not([data-input="pointer"]):not([data-window="inactive"]) :is(button, select, input):focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: calc(-1 * var(--focus-width)); }
+:root:not([data-input="pointer"]):not([data-window="inactive"]) :is(button, select, input):focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: calc(-1 * var(--focus-width)); }
 /* A text disclosure has no border of its own: the line sits just off its text. */
-:root:not([data-input="pointer"]):not([data-window="inactive"]) .result-technical > summary:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: var(--focus-gap); border-radius: 3px; }
+:root:not([data-input="pointer"]):not([data-window="inactive"]) .result-technical > summary:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-gap); border-radius: 3px; }
 /* Accent-filled controls: a checked switch, Confirm, the update link and the status card's fix. */
 :root:not([data-input="pointer"]):not([data-window="inactive"]) :is(.switch:checked, #shortcut-confirm, #setting-updates-open, .status-action):focus-visible { outline-offset: var(--focus-gap); }
 /* A row's note reads as its subtitle: the output folder's path, a notification status. */
@@ -156,8 +164,8 @@ select { min-width: 0; text-overflow: ellipsis; }
 .section-footnote { margin: 8px 4px 0; }
 .switch { appearance: none; flex: none; width: 34px; height: 20px; border: 0; border-radius: 10px; background: light-dark(#d9d9de, #3f3f46); margin: 1px; position: relative; box-shadow: none; }
 .switch::before { content: ""; position: absolute; width: 16px; height: 16px; top: 2px; left: 2px; background: #fff; border-radius: 50%; box-shadow: 0 1px 2px rgb(0 0 0 / .2), 0 0 0 .5px rgb(0 0 0 / .04); }
-.switch:checked { background: var(--accent); }
-.switch:checked::before { left: 16px; background: var(--on-accent); }
+.switch:checked { background: var(--chosen); }
+.switch:checked::before { left: 16px; background: #fff; }
 /* Built like the tab strip: a recessed track with the choice raised, so the window has one way to show a selection. */
 .segments { display: flex; background: var(--track); border-radius: 8px; padding: 2px; gap: 2px; }
 .segment { position: relative; display: flex; min-width: 0; }
@@ -220,7 +228,7 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 @media (min-resolution: 2dppx) { :root { --focus-width: 1.5px; } }
 @media (prefers-contrast: more) { :root { --focus-width: 2px; --card-border: var(--border); } }
 @media (forced-colors: active) {
-  :root { --accent: Highlight; --warning: CanvasText; --border: ButtonBorder; --focus-width: 2px; }
+  :root { --accent: Highlight; --chosen: Highlight; --focus: Highlight; --warning: CanvasText; --border: ButtonBorder; --focus-width: 2px; }
   .switch, .segment input { appearance: auto; position: static; width: auto; height: auto; }
   .switch::before { display: none; }
   .segment input:checked + span { color: CanvasText; background: Canvas; box-shadow: none; }
@@ -304,7 +312,7 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .result-history-note { margin: 4px 4px 0; }
 .history-more { margin: 0 0 12px; }
 /* Keyboard focus on a header: a thin accent border around the whole record, and the hairlines beside it hide. */
-:root:not([data-input="pointer"]):not([data-window="inactive"]) .recording-result:has(> summary:focus-visible) { border-color: var(--accent); }
+:root:not([data-input="pointer"]):not([data-window="inactive"]) .recording-result:has(> summary:focus-visible) { border-color: var(--focus); }
 /* Focus inside an open row: the row's border turns neutral at 1 px, the focused control's own border turns accent. */
 :root:not([data-input="pointer"]):not([data-window="inactive"]) .recording-result:has(.result-details :focus-visible) { border-color: var(--border); border-width: 1px; margin: calc(var(--focus-width) - 1px); }
 :root:not([data-input="pointer"]):not([data-window="inactive"]) .recording-result:has(> summary:focus-visible, .result-details :focus-visible)::before,
@@ -322,7 +330,9 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
  * foot, beside the open tab's content. The form's tab strip and viewport become grid items in place.
  */
 @media (min-width: 600px) {
-  :root { --sidebar: light-dark(#ebebee, #18181b); --nav-selected: light-dark(rgb(0 0 0 / .07), rgb(255 255 255 / .08)); }
+  /* Hover a faint grey; the open tab a near-white raised tile in light, as a native sidebar lifts its selection. */
+  :root { --sidebar: light-dark(#ebebee, #18181b); --nav-selected: light-dark(rgb(0 0 0 / .05), rgb(255 255 255 / .06));
+    --nav-chosen: light-dark(rgb(255 255 255 / .9), rgb(255 255 255 / .09)); --nav-chosen-shadow: 0 1px 2px light-dark(rgb(0 0 0 / .06), transparent); }
   main { max-width: none; margin: 0; padding: 0; display: grid; grid-template-columns: 208px minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto auto; }
   main::before { content: ""; grid-column: 1; grid-row: 1 / -1; background: var(--sidebar); border-right: 1px solid var(--card-border); }
   .brand { grid-column: 1; grid-row: 1; display: flex; align-items: center; gap: 9px; padding: 18px 18px 16px; font-size: 14px; font-weight: 650; letter-spacing: -.01em; }
@@ -331,12 +341,15 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
   .tabs { grid-column: 1; grid-row: 2; flex-direction: column; align-self: start; padding: 0 10px; margin: 0; gap: 1px; border-radius: 0; background: none; }
   .tabs button { justify-content: flex-start; gap: 10px; padding: 6px 8px; border-radius: 8px; color: var(--text); font-weight: 500; }
   .tabs button:hover { background: var(--nav-selected); }
-  .tabs button[aria-selected="true"] { background: var(--nav-selected); box-shadow: none; font-weight: 600; }
-  .tab-icon { width: 16px; height: 16px; opacity: .8; }
+  .tabs button[aria-selected="true"], .tabs button[aria-selected="true"]:hover { background: var(--nav-chosen); box-shadow: var(--nav-chosen-shadow); font-weight: 600; color: var(--chosen); }
+  /* A grey highlight under the open tab's red mark and name, as in Apple Music's sidebar; the others in ink. */
+  .tab-icon { width: 17px; height: 17px; opacity: .8; }
+  .tabs button[aria-selected="true"] .tab-icon { opacity: 1; }
   .tab-badge { margin-left: auto; }
   .settings-viewport { grid-column: 2; grid-row: 1 / -1; }
   #settings-panel { padding: 24px 28px 32px; }
-  .page-title { display: block; margin: 0 4px 20px; font-size: 20px; font-weight: 650; letter-spacing: -.015em; }
+  /* A large title, as Apple Music heads its pages. */
+  .page-title { display: block; margin: 0 4px 18px; font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
   #feedback:not(.visually-hidden) { grid-column: 2; grid-row: 1; padding: 24px 28px; }
   /* The card stacks: what is happening, how to start, then the button across the card. */
   /* The brand mark is already above, so the card says its state with a light before the title instead. */
@@ -401,7 +414,9 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .library-empty .empty-icon { margin-bottom: 8px; }
 .library-empty-title { margin: 0; font-size: 14px; font-weight: 600; }
 .library-empty-detail { margin: 0; color: var(--secondary); max-width: 320px; overflow-wrap: anywhere; }
-.library-day { margin-bottom: 20px; }
+.library-day { margin-bottom: 22px; }
+/* The days head their cards as Apple Music heads a shelf: in words, bold, not small capitals. */
+.library-day .result-day-heading { margin: 0 2px 10px; color: var(--text); font-size: 17px; font-weight: 700; letter-spacing: -.01em; text-transform: none; }
 .library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 14px; }
 .clip { position: relative; min-width: 0; border-radius: 10px; }
 /* A card's file actions: shown over its thumbnail while the pointer is on the card, the button has focus or its menu is open. */
@@ -441,8 +456,9 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .clip-thumb.no-thumb img { display: none; }
 .clip-fallback { position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; color: var(--secondary); opacity: .6; }
 .clip-duration { position: absolute; right: 7px; bottom: 7px; padding: 1px 6px; border-radius: 5px; background: rgb(0 0 0 / .66); color: #fff; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.clip-play { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; background: rgb(0 0 0 / .55); color: #fff; opacity: 0; transform: scale(.9); backdrop-filter: blur(6px); }
-.play-icon { width: 18px; height: 18px; margin-left: 2px; }
+.clip-play { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; background: var(--chosen); color: #fff; opacity: 0; transform: scale(.9); box-shadow: 0 4px 12px rgb(0 0 0 / .25); }
+/* The triangle is drawn about its own centroid (ICONS.play), so it sits at the circle's centre without a nudge. */
+.play-icon { width: 18px; height: 18px; }
 .clip-open:hover .clip-play, .clip-open:focus-visible .clip-play { opacity: 1; transform: none; }
 .clip-open:hover .clip-thumb { box-shadow: inset 0 0 0 1px var(--card-border), 0 8px 22px light-dark(rgb(0 0 0 / .14), rgb(0 0 0 / .45)); transform: translateY(-2px); }
 /* One line under the picture: when, and the size beside it. */
@@ -451,7 +467,7 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .clip-meta { flex: none; color: var(--secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
 /* Keyboard focus rings the thumbnail, where the eye already is. */
 :root:not([data-input="pointer"]):not([data-window="inactive"]) .clip-open:focus-visible { outline: none; }
-:root:not([data-input="pointer"]):not([data-window="inactive"]) .clip-open:focus-visible .clip-thumb { outline: var(--focus-width) solid var(--accent); outline-offset: var(--focus-gap); }
+:root:not([data-input="pointer"]):not([data-window="inactive"]) .clip-open:focus-visible .clip-thumb { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-gap); }
 /* The recording a notification or the menu opened: outlined in the brand red, which then fades. */
 .clip.arrived .clip-thumb { outline: 2px solid var(--rec); outline-offset: 2px; }
 @media (prefers-reduced-motion: no-preference) {

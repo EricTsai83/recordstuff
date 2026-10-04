@@ -1388,9 +1388,10 @@ async function run() {
   const closed = await read<boolean[]>(window, `[...document.querySelectorAll(".recording-result")].map(r => r.open)`);
   record("Enter and Space open and close a row, and opening another closes the first", JSON.stringify(openRows) === JSON.stringify([false, true, false, false, false, false, false])
     && closed.every(open => !open), JSON.stringify({ openRows, closed }));
-  // The focus border: accent around the focused record, hairlines beside it hidden; neutral with a focused control inside.
+  // The focus border: the focus colour around the focused record, hairlines beside it hidden; neutral with a focused control inside.
+  // Focus has its own colour since the red accent (2026-10-05): ink, so a ring never reads as a fault. `accent` below is that focus colour.
   const colours = await read<{ accent: string; border: string }>(window, `(() => { const probe = document.createElement("div"); document.body.append(probe);
-    probe.style.color = "var(--accent)"; const accent = getComputedStyle(probe).color; probe.style.color = "var(--border)"; const border = getComputedStyle(probe).color; probe.remove(); return { accent, border }; })()`);
+    probe.style.color = "var(--focus)"; const accent = getComputedStyle(probe).color; probe.style.color = "var(--border)"; const border = getComputedStyle(probe).color; probe.remove(); return { accent, border }; })()`);
   const rowFocus = (index: number) => read<{ colour: string; width: string; own: string; next: string; input: string | undefined }>(window, `(() => { const rows = document.querySelectorAll(".recording-result"); const r = rows[${index}];
     const style = getComputedStyle(r); return { colour: style.borderTopColor, width: style.borderTopWidth, own: getComputedStyle(r, "::before").opacity, next: rows[${index + 1}] ? getComputedStyle(rows[${index + 1}], "::before").opacity : "none", input: document.documentElement.dataset.input }; })()`);
   // A middle row of a day, so both hairlines beside it exist.
