@@ -166,4 +166,13 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   document.getElementById("player-close")!.focus();
   push({ ...base, revision: 8, library: { ...base.library!, items: [base.library!.items[0]!] } });
   expect([player.open, document.activeElement?.id]).toEqual([false, "clip-a-open"]);
+
+  // Another tab and back: the same cards return, so no thumbnail is fetched and decoded again.
+  const card = document.getElementById("clip-a")!, image = card.querySelector("img")!;
+  document.getElementById("tab-recording")!.click();
+  expect([document.getElementById("clip-a"), card.isConnected]).toEqual([null, false]);
+  document.getElementById("tab-library")!.click();
+  expect(document.getElementById("clip-a")).toBe(card);
+  expect(card.querySelector("img")).toBe(image);
+  expect(document.querySelectorAll("#library")).toHaveLength(1);
 });

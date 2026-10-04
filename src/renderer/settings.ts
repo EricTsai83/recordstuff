@@ -900,12 +900,19 @@ function updateSidebarAbout(current: SettingsView): void {
  * A card plays in the page's own player, and drags out as the file itself into another app. Cards are
  * kept by id, so a refresh after a save or a focus change neither reloads thumbnails nor moves focus.
  */
+/**
+ * The Recordings section while another tab is open: kept out of the document rather than dropped, so coming back
+ * reconciles the same cards instead of building them again and fetching and decoding every thumbnail anew.
+ */
+let libraryArea: HTMLElement | undefined;
 function updateLibrary(): void {
   const library = view?.library;
   const panel = document.getElementById("settings-panel")!;
-  let area = document.getElementById("library");
+  let area = document.getElementById("library") ?? libraryArea;
   // The card menu lives in the top layer, outside the tab: it leaves with its cards, or its items would act on a hidden recording.
-  if (selectedTab !== "library") { closeClipMenu(false); area?.remove(); return; }
+  if (selectedTab !== "library") { closeClipMenu(false); libraryArea = area ?? undefined; area?.remove(); return; }
+  libraryArea = undefined;
+  if (area && !area.isConnected) panel.append(area);
   if (!area) {
     area = node("section"); area.id = "library"; area.setAttribute("aria-labelledby", "tab-library");
     const head = node("div", "library-head");
@@ -1274,6 +1281,8 @@ function draw(): void {
     scrollObserver?.disconnect();
     scrollObserver = new ResizeObserver(updateScrollHint);
     scrollObserver.observe(panel);
+    // The recordings outlive the panel they were drawn in (`libraryArea`); `updateLibrary` places them below.
+    libraryArea ??= document.getElementById("library") ?? undefined;
     form.replaceChildren(tabs, viewport);
     updateRows(groups);
     if (restore && document.hasFocus()) {
