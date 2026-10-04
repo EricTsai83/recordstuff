@@ -592,7 +592,7 @@ async function main(): Promise<void> {
         recorder.cancelCountdown("menu");
         return;
       case "quit":
-        app.quit();
+        quitCoordinator.quit();
         return;
       // A pressed button that opens nothing must say so: this state blocks
       // recording entirely, and the tray menu is its only route.

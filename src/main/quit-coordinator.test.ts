@@ -117,3 +117,16 @@ it("runs the exit step only once exit is admitted, and a failing one still exits
   listener({ preventDefault() {} }); await new Promise(resolve => setTimeout(resolve, 0));
   expect(order).toEqual(["exit", "quit"]);
 });
+
+it("lets the menu's Quit, chosen while a Relaunch waits on the same attempt, cancel the relaunch", async () => {
+  let listener!: (event: { preventDefault(): void }) => void;
+  const app = { on: (_: "before-quit", fn: typeof listener) => { listener = fn; }, quit: vi.fn(() => listener({ preventDefault() {} })) };
+  let release!: (safe: boolean) => void;
+  const relaunch = vi.fn();
+  const coordinator = installQuitCoordinator(app, { shutdown: () => new Promise<boolean>(resolve => { release = resolve; }), pending() {}, error() {}, relaunch });
+  coordinator.relaunch();
+  coordinator.quit();
+  release(true); await new Promise(resolve => setTimeout(resolve, 0));
+  expect(relaunch).not.toHaveBeenCalled();
+  expect(app.quit).toHaveBeenCalledTimes(3);
+});

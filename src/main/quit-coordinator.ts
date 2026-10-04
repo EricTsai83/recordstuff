@@ -20,7 +20,7 @@ export function installQuitCoordinator(app: QuitApp, deps: {
   exit?(): Promise<void>;
   /** A repeated request joined the running attempt. */
   joined?(): void;
-}): { relaunch(): void } {
+}): { relaunch(): void; quit(): void } {
   let admitted = false;
   let active = false;
   let relaunchRequested = false;
@@ -51,5 +51,12 @@ export function installQuitCoordinator(app: QuitApp, deps: {
       active = false;
     });
   });
-  return { relaunch: () => { relaunchRequested = true; app.quit(); } };
+  return {
+    relaunch: () => { relaunchRequested = true; app.quit(); },
+    /**
+     * The menu's Quit: the user's latest choice, so it cancels a Relaunch still waiting on the same attempt (while a
+     * quit runs, Quit is the one item the menu leaves enabled). Other quits (⌘Q, logging out) join it unchanged.
+     */
+    quit: () => { relaunchRequested = false; app.quit(); },
+  };
 }
