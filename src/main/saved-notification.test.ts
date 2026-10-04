@@ -48,12 +48,22 @@ describe("saved notification lifecycle", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("drops a save received during capture", () => {
-    const { notification, show } = setup();
+  it("drops a save received during capture, and says so in the log", () => {
+    const { notification, show, log } = setup();
     notification.stateChanged({ type: "starting" });
     notification.schedule("/old.mp4");
     vi.runAllTimers();
     expect(show).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith("notification: saved dropped (session in progress) /old.mp4");
+  });
+
+  it("logs a save finalized while a quit waits for it, instead of dropping it silently", () => {
+    const { notification, show, log } = setup();
+    notification.setQuitting(true);
+    notification.schedule("/saved.mp4");
+    vi.runAllTimers();
+    expect(show).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith("notification: saved dropped (shutdown) /saved.mp4");
   });
 
   it("cancels pending work on exit and drops saves finalized during shutdown", () => {

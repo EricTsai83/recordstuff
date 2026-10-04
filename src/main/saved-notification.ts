@@ -27,7 +27,12 @@ export class SavedNotification {
   /** `stoppedEarly` adds the reason the recording ended before the user asked. */
   schedule(path: string, stoppedEarly?: EarlyStop): void {
     this.cancel("replaced");
-    if (this.disposed || this.quitting || !this.idle) return;
+    const blocked = this.blocked();
+    if (blocked) {
+      // Logged like every other path that ends without a banner, so the log says why no notification followed the save.
+      this.options.log(`notification: saved dropped (${blocked}) ${path}`);
+      return;
+    }
     if (this.options.platform !== "darwin") {
       this.deliver(path, stoppedEarly);
       return;
@@ -35,7 +40,9 @@ export class SavedNotification {
     this.options.log(`notification: saved scheduled delayMs=${SAVED_NOTIFICATION_DELAY_MS} ${path}${stoppedEarly ? ` stoppedEarly=${stoppedEarly}` : ""}`);
     const timer = setTimeout(() => {
       this.pending = undefined;
-      if (!this.disposed && !this.quitting && this.idle) this.deliver(path, stoppedEarly);
+      const late = this.blocked();
+      if (late) this.options.log(`notification: saved dropped (${late}) ${path}`);
+      else this.deliver(path, stoppedEarly);
     }, SAVED_NOTIFICATION_DELAY_MS);
     timer.unref();
     this.pending = { timer, path };
@@ -49,6 +56,11 @@ export class SavedNotification {
   dispose(): void {
     this.disposed = true;
     this.cancel("shutdown");
+  }
+
+  /** Why a saved notification cannot go out now, or undefined when it can. */
+  private blocked(): string | undefined {
+    return this.disposed || this.quitting ? "shutdown" : this.idle ? undefined : "session in progress";
   }
 
   private cancel(reason: string): void {
