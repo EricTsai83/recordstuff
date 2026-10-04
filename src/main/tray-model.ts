@@ -90,11 +90,10 @@ const QUIT_DEFERRED = {
 } as const satisfies Record<QuitDeferral, PlainMessageKey>;
 /** Windows keeps only the first 127 UTF-16 units of a notification-area tooltip (`NOTIFYICONDATA.szTip`) and drops the rest unmarked. */
 const WINDOWS_TOOLTIP_MAX = 127;
-/** Over that limit the cut is marked and the hint stays: the menu it points to repeats every line in full. */
-function fitTooltip(platform: NodeJS.Platform, body: string, hint: string): string {
-  const full = `${body}\n${hint}`;
-  if (platform !== "win32" || full.length <= WINDOWS_TOOLTIP_MAX) return full;
-  return `${body.slice(0, WINDOWS_TOOLTIP_MAX - hint.length - 2).trimEnd()}…\n${hint}`;
+/** Over that limit the cut is marked: the menu repeats every line in full. */
+function fitTooltip(platform: NodeJS.Platform, text: string): string {
+  if (platform !== "win32" || text.length <= WINDOWS_TOOLTIP_MAX) return text;
+  return `${text.slice(0, WINDOWS_TOOLTIP_MAX - 1).trimEnd()}…`;
 }
 /** Quit alone ends the menu: Show log moved to RecordStuff → General (2026-10-04). */
 function appGroup(language: Language): TrayMenuItem[] {
@@ -139,14 +138,13 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
     const at = lines < 0 ? group.length : lines;
     return [...group.slice(0, at), ...notes.map(disabled), ...group.slice(at)];
   };
-  const menuOnClick = ctx.trayClick === "menu";
   const model = (icon: TrayIcon, title: string, status: string, stateGroup: TrayMenuItem[]): TrayModel => {
     const menu = grouped(withNotes(stateGroup), unreadGroup, windows, app);
     return {
       icon: icon === "idle" && unread.length > 0 ? "warning" : icon,
       title,
-      tooltip: fitTooltip(ctx.platform, [`${APP_NAME}: ${status}`, ...notes, ...(unread.length > 0 ? [unreadText] : [])].join("\n"),
-        text(menuOnClick ? "Click to open the menu" : "Right-click to open the menu")),
+      // The state and what it holds back, nothing about clicking: what a click does is the user's choice (2026-10-04).
+      tooltip: fitTooltip(ctx.platform, [`${APP_NAME}: ${status}`, ...notes, ...(unread.length > 0 ? [unreadText] : [])].join("\n")),
       // A quit in progress ignores every other action (the quit stops capture itself), so none looks available.
       menu: ctx.quitting ? menu.map(entry => entry.kind === "item" && entry.action !== "quit" ? { ...entry, enabled: false } : entry) : menu,
     };
@@ -185,8 +183,7 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
       ]);
     case "countdown": {
       const seconds = { seconds: state.remaining };
-      // A click that opens the menu cancels only through Cancel recording, which the menu shows.
-      return model("countdown", "", t(menuOnClick ? "Recording starts in {seconds} s" : "Recording starts in {seconds} s. Click to cancel.", language, seconds), [
+      return model("countdown", "", t("Recording starts in {seconds} s", language, seconds), [
         disabled(t("Recording starts in {seconds} s", language, seconds)),
         item(text("Cancel recording"), "cancelCountdown", shortcutHint(ctx, "Cancel recording with {value}"), shortcut),
       ]);

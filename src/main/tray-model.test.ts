@@ -134,13 +134,13 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     const m = trayModel({ type: "countdown", remaining: 3 }, ctx);
     expect(m.icon).toBe("countdown");
     expect(m.title).toBe("");
-    expect(m.tooltip.split("\n")[0]).toBe("RecordStuff: 3 秒後開始錄影，按一下即可取消。");
+    expect(m.tooltip).toBe("RecordStuff: 3 秒後開始錄影");
     expect(labels(m.menu)).toEqual(["3 秒後開始錄影", "取消錄影", "—", "開啟 RecordStuff", "顯示最後一個錄影", "—", "結束 RecordStuff"]);
     expect(enabledActions(m.menu)).toEqual(["cancelCountdown", "openSettings", "showLastRecording", "quit"]);
     expect(m.menu.find((i) => i.kind === "item" && i.action === "cancelCountdown")).toMatchObject({ toolTip: "以 ⌘⇧1 取消錄影", accelerator: "CommandOrControl+Shift+1" });
     expect(trayModel({ type: "countdown", remaining: 1 }, ctx).menu[0]).toMatchObject({ label: "1 秒後開始錄影", enabled: false });
     const english = trayModel({ type: "countdown", remaining: 2 }, { ...ctx, language: "en" });
-    expect(english.tooltip.split("\n")[0]).toBe("RecordStuff: Recording starts in 2 s. Click to cancel.");
+    expect(english.tooltip).toBe("RecordStuff: Recording starts in 2 s");
     expect(labels(english.menu).slice(0, 2)).toEqual(["Recording starts in 2 s", "Cancel recording"]);
   });
 
@@ -214,14 +214,14 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(enabledActions(m.menu)).toContain("openSettings");
   });
 
-  it("keeps a Windows tooltip within the 127 characters the notification area shows, marking the cut and keeping the hint", () => {
+  it("keeps a Windows tooltip within the 127 characters the notification area shows, marking the cut", () => {
     const english = { ...win, language: "en" as const, errorBoxHeld: true, quitDeferred: "metadata" as const };
     const recording = trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, english).tooltip;
-    expect(recording.length).toBe(127);
+    expect(recording.length).toBeLessThanOrEqual(127);
     expect(recording.startsWith("RecordStuff: Recording\nAn unexpected error occurred.")).toBe(true);
-    expect(recording.endsWith("…\nRight-click to open the menu")).toBe(true);
+    expect(recording.endsWith("…")).toBe(true);
     // A tooltip that fits, and every macOS tooltip, stays whole.
-    expect(trayModel({ type: "idle" }, { ...win, language: "en" }).tooltip).toBe("RecordStuff: Ready\nRight-click to open the menu");
+    expect(trayModel({ type: "idle" }, { ...win, language: "en" }).tooltip).toBe("RecordStuff: Ready");
     const macTooltip = trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, { ...english, platform: "darwin" }).tooltip;
     expect(macTooltip.length).toBeGreaterThan(127);
     expect(macTooltip).not.toContain("…\n");
@@ -316,8 +316,8 @@ describe("English default and language switching", () => {
     const chinese = trayModel(state, { ...mac, language: "zh-TW" });
     expect(english.title).toBe("REC");
     expect(chinese.title).toBe("REC");
-    expect(english.tooltip).toBe("RecordStuff: Recording\nRight-click to open the menu");
-    expect(chinese.tooltip).toBe("RecordStuff: 錄影中\n右鍵開啟選單");
+    expect(english.tooltip).toBe("RecordStuff: Recording");
+    expect(chinese.tooltip).toBe("RecordStuff: 錄影中");
     expect(enabledActions(english.menu)).toEqual(enabledActions(chinese.menu));
     expect(state.type).toBe("recording");
   });
@@ -510,17 +510,16 @@ describe("update notification", () => {
 });
 
 describe("the icon's left click in the tray's own words (2026-10-04)", () => {
-  it("says a click opens the menu, and drops Click to cancel from the countdown, when the click opens the menu", () => {
+  it("keeps the icon's tooltip to the state, the same whatever the click does", () => {
     const menu = { ...mac, language: "en" as const, trayClick: "menu" as const };
-    expect(trayModel({ type: "idle" }, menu).tooltip).toContain("Click to open the menu");
-    expect(trayModel({ type: "countdown", remaining: 2 }, menu).tooltip).toContain("Recording starts in 2 s");
-    expect(trayModel({ type: "countdown", remaining: 2 }, menu).tooltip).not.toContain("Click to cancel");
     const record = { ...menu, trayClick: "record" as const };
-    expect(trayModel({ type: "idle" }, record).tooltip).toContain("Right-click to open the menu");
-    expect(trayModel({ type: "countdown", remaining: 2 }, record).tooltip).toContain("Recording starts in 2 s. Click to cancel.");
-    // An older context names no choice: the click that records, as before.
     const { trayClick: _choice, ...older } = menu;
-    expect(trayModel({ type: "idle" }, older).tooltip).toContain("Right-click to open the menu");
+    for (const state of [{ type: "idle" }, { type: "countdown", remaining: 2 }, { type: "recording", startedAt: "x" }] as RecordingState[]) {
+      const tooltips = [menu, record, older].map(ctx => trayModel(state, ctx).tooltip);
+      expect(new Set(tooltips).size, state.type).toBe(1);
+      expect(tooltips[0]).not.toMatch(/click/i);
+    }
+    expect(trayModel({ type: "countdown", remaining: 2 }, record).tooltip).toBe("RecordStuff: Recording starts in 2 s");
   });
   it("first-run hint tells a new install to choose Start recording from the menu", () => {
     expect(trayHintNotification("darwin", "en", "menu").body).toBe("RecordStuff is ready in the menu bar. Click its icon and choose Start recording.");
