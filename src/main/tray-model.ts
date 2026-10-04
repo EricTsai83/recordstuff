@@ -2,11 +2,12 @@
  * Pure state-to-presentation projection for the native tray. See
  * docs/system-design/desktop.md.
  *
- * The tray holds the commands that must stay one click away — start/stop, the
- * output folder, log, quit — and an entry that opens the settings
- * window. Preferences themselves live in [settings-model.ts](settings-model.ts);
- * this model never builds a submenu, so what it returns is exactly what the
- * menu shows.
+ * The tray holds only what is to be done now: the state with its primary action
+ * (start, stop or cancel, and the fix when permission or the output folder blocks
+ * recording), unread failures, Open RecordStuff and Quit. The recordings, reviewed
+ * failures, the output folder, the log and every preference live in the app's
+ * window ([settings-model.ts](settings-model.ts)); this model never builds a
+ * submenu, so what it returns is exactly what the menu shows.
  */
 import { failureReason } from "./recording-result";
 import { displayLabel, displayFailureText } from "../shared/display";
