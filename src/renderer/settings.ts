@@ -5,6 +5,7 @@ import { infoPlacement } from "./info-placement";
 import { isLanguage, phrases, sentences, translate, type Language, type PlainMessageKey } from "../shared/i18n";
 import { REVIEWED_FAILURES_KEPT, persistsHistory } from "../shared/recording-result";
 import type { LibraryItemView, RecordingResultView, SettingsBridge, SettingsGroup, SettingsTab, SettingsView } from "../shared/settings-panel";
+import type { FullScreenChoice, PlaybackState } from "../shared/video-player";
 
 declare global { interface Window { settings: SettingsBridge } }
 const form = document.querySelector<HTMLFormElement>("#settings")!;
@@ -1173,13 +1174,19 @@ function openPlayer(item: LibraryItemView): void {
   if (!player) {
     player = node("dialog", "player"); player.setAttribute("aria-labelledby", "player-title");
     const video = node("video"); video.controls = true; video.playsInline = true;
+    // Full screen is a window of its own (playFullScreen): the controls' button would grow this window instead.
+    video.setAttribute("controlslist", "nofullscreen noremoteplayback");
+    video.addEventListener("dblclick", event => { event.preventDefault(); void playFullScreen(); });
     const bar = node("div", "player-bar");
     const info = node("div", "player-info");
     const title = node("p", "player-title"); title.id = "player-title";
     info.append(title, node("p", "player-meta"), node("p", "player-error"));
     // Watching is all the player does (2026-10-04): the file's actions are on its card, before it is opened.
     const close = button("player-close", () => player!.close()); close.className = "player-close";
-    bar.append(info, close);
+    const fullScreen = button("player-fullscreen", () => void playFullScreen()); fullScreen.className = "player-fullscreen";
+    const actions = node("div", "player-actions");
+    actions.append(fullScreen, close);
+    bar.append(info, actions);
     playerFeedback = node("p", "visually-hidden"); playerFeedback.setAttribute("role", "status"); playerFeedback.setAttribute("aria-live", "polite");
     player.append(video, bar, playerFeedback);
     player.addEventListener("close", () => { video.pause(); video.removeAttribute("src"); video.load(); });
@@ -1192,6 +1199,10 @@ function openPlayer(item: LibraryItemView): void {
       setText(error, message); error.hidden = false;
       announce(message);
     });
+    // Escape closing the player starts the pause in which further Escapes close nothing (see `escapeClosed`). Chromium
+    // can close it on Escape without a keydown the page sees (2026-10-04, right after a fullscreen), so it is
+    // marked here, where both ways arrive.
+    player.addEventListener("cancel", () => { escapeClosed = performance.now(); });
     // A click on the backdrop, outside the dialog's own box, closes it.
     player.addEventListener("click", event => { if (event.target === player) player!.close(); });
     document.body.append(player);
@@ -1202,10 +1213,50 @@ function openPlayer(item: LibraryItemView): void {
   player.querySelector<HTMLElement>(".player-error")!.hidden = true;
   setText(playerFeedback!, "");
   setText(player.querySelector("#player-close")!, text("Close"));
+  setText(player.querySelector("#player-fullscreen")!, text("Full screen"));
   const video = player.querySelector("video")!;
   video.src = item.video;
   player.showModal();
   void video.play().catch(() => {});
+}
+/** Whether a full-screen play is under way: the player waits for it, and a second request is not sent. */
+let fullScreenPending = false;
+/** How many times RecordStuff was hidden: a full screen that ends after a hide leaves the player paused. */
+let hideCount = 0;
+/**
+ * Plays the player's recording full screen in a window of its own (2026-10-05): this window keeps its size. The
+ * video here pauses meanwhile; main answers once the viewer has left, with where the video was, and the player
+ * carries on from there, playing if it was. A player closed or showing another recording by then is left alone.
+ */
+async function playFullScreen(): Promise<void> {
+  const shown = player;
+  const id = shown?.dataset.id;
+  if (!shown?.open || !id || fullScreenPending) return;
+  const video = shown.querySelector("video")!;
+  const state: PlaybackState = { time: video.currentTime || 0, playing: !video.paused && !video.ended, volume: video.volume, muted: video.muted };
+  fullScreenPending = true;
+  video.pause();
+  // Without a state handed back (ended by main, as when RecordStuff is hidden), the player stays paused where it was.
+  let end: PlaybackState = { ...state, playing: false };
+  const hides = hideCount;
+  try {
+    const result = await window.settings.choose(`recordingFile:${id}`, { action: "fullscreen", state } satisfies FullScreenChoice);
+    render(result.view);
+    end = result.playback ?? end;
+  } catch {
+    // Not played full screen: the player simply goes on.
+  } finally {
+    fullScreenPending = false;
+  }
+  if (!shown.open || shown.dataset.id !== id) return;
+  // Hidden meanwhile, even while the fullscreen faded out after the viewer left it: nothing starts unseen.
+  if (hideCount !== hides) end = { ...end, playing: false };
+  // The Escapes that ended it, pressed again, close nothing here (main also drops them for a second).
+  escapeClosed = performance.now();
+  video.volume = end.volume; video.muted = end.muted;
+  video.currentTime = end.time;
+  if (end.playing) void video.play().catch(() => {});
+  video.focus({ preventScroll: true });
 }
 /**
  * A tab's icon and label; an unread count, "Failures (2)", becomes a badge. The parentheses stay
@@ -1524,7 +1575,23 @@ for (const id of ["status-action", "status-secondary"]) document.getElementById(
   const el = event.currentTarget as HTMLButtonElement;
   if (!inactive(el) && el.dataset.action) void choose("status", el.dataset.action, el.id);
 });
+/**
+ * Escapes this soon after one closed the player, or after a video's fullscreen ended, belong to that press, so
+ * pressing again and again closes one thing at a time; when that last happened.
+ */
+const ESCAPE_SETTLE_MS = 1000;
+let escapeClosed = -Infinity;
+// A video plays full screen in a window of its own (video-fullscreen.ts). Should the page's own fullscreen start
+// anyway, it is handed over at once, so RecordStuff's window never grows to the screen (2026-10-05).
+document.addEventListener("fullscreenchange", () => {
+  if (!document.fullscreenElement) return;
+  void document.exitFullscreen().catch(() => {});
+  void playFullScreen();
+});
 document.addEventListener("keydown", event => {
+  // A held Escape repeats, and quick presses follow one that closed something: none of them closes the next thing,
+  // so pressing again and again after a fullscreen no longer closed the player and then the window (2026-10-04).
+  if (event.key === "Escape" && (event.repeat || performance.now() - escapeClosed < ESCAPE_SETTLE_MS)) { event.preventDefault(); return; }
   // The player is a modal dialog: Escape closes it, not the window.
   if (event.key === "Escape" && player?.open) return;
   if (event.key === "Escape" && (shortcutGroup()?.capturing || arming)) { event.preventDefault(); void capture(false, true); return; }
@@ -1544,6 +1611,11 @@ window.addEventListener("blur", () => {
   if (shortcutGroup()?.capturing || arming) void capture(false);
 });
 window.settings.onChanged(render);
+// Hidden (⌘H): the player stops, and a full screen ending around then does not start it again (review 2026-10-05).
+window.settings.onHidden?.(() => {
+  hideCount++;
+  player?.querySelector("video")?.pause();
+});
 void window.settings.read().then(render).catch(() => {
   // A push that already drew the panel answers what the read could not.
   if (view) return;

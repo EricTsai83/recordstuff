@@ -27,6 +27,7 @@ const mock = vi.hoisted(() => {
     setFullScreen = vi.fn((on: boolean) => { this.fullScreen = on; });
     isFullScreen = () => this.fullScreen;
     getSize = vi.fn(() => [this.options.width, this.options.height]);
+    getBounds = () => ({ x: 0, y: 0, width: this.options.width, height: this.options.height });
     loadFile = vi.fn(() => load());
     loadURL = vi.fn(() => load());
     destroyed = false;
@@ -36,7 +37,7 @@ const mock = vi.hoisted(() => {
       this.destroyed = true;
       this.events.get("closed")?.();
     });
-    close = vi.fn(() => this.destroy());
+    close = vi.fn(() => { this.events.get("close")?.(); this.destroy(); });
     once = (name: string, callback: () => void) => this.events.set(name, callback);
     on = this.once;
     constructor(public options: any) {
@@ -59,7 +60,8 @@ const mock = vi.hoisted(() => {
 vi.mock("electron", () => ({
   app: { isPackaged: true, focus: mock.focus },
   BrowserWindow: mock.Window,
-  screen: { getCursorScreenPoint: () => ({ x: 0, y: 0 }), getDisplayNearestPoint: () => ({ workAreaSize: { width: 1440, height: 900 }, workArea: { x: 0, y: 0, width: 1440, height: 900 } }) },
+  screen: { getCursorScreenPoint: () => ({ x: 0, y: 0 }), getDisplayNearestPoint: () => ({ workAreaSize: { width: 1440, height: 900 }, workArea: { x: 0, y: 0, width: 1440, height: 900 } }),
+    getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1440, height: 900 } }) },
   ipcMain: {
     handle: (name: string, fn: (...args: any[]) => any) => mock.handlers.set(name, fn),
     removeHandler: (name: string) => mock.handlers.delete(name),
@@ -84,7 +86,7 @@ const context: AppContext = {
 };
 
 /** A panel wired to a mutable copy of the committed settings. */
-function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void } = {}) {
+function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void; fullScreen?: SettingsWindowOptions["fullScreen"] } = {}) {
   const live = { ...context };
   let state: RecordingState = { type: "idle" };
   const act = overrides.act ?? vi.fn(async (action: AppAction) => {
@@ -96,6 +98,7 @@ function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>
     ...(overrides.geometry ? { geometry: overrides.geometry } : {}),
     ...(overrides.opened ? { opened: overrides.opened } : {}),
     ...(overrides.closed ? { closed: overrides.closed } : {}),
+    ...(overrides.fullScreen ? { fullScreen: overrides.fullScreen } : {}),
     capture,
     state: overrides.state ?? (() => state),
     context: () => live,
@@ -133,43 +136,50 @@ beforeEach(() => {
 });
 
 describe("settings window lifecycle", () => {
-  it("lets a video's fullscreen fill the screen, then takes fullscreen away again", () => {
-    const s = setup();
+  it("plays a listed recording full screen in a window of its own and answers with where the video was (2026-10-05)", async () => {
+    const played: Array<{ src: string; display: unknown; closed?: () => void }> = [];
+    const fullScreen = { close: vi.fn(), play: vi.fn(async (request: { src: string; display: unknown; closed?: () => void }) => {
+      played.push(request);
+      return { time: 42, playing: true, volume: 0.5, muted: false };
+    }) };
+    const s = setup({ fullScreen });
+    s.live.library = { dir: "/Users/eric/Movies/RecordStuff", loading: false, failed: false,
+      files: [{ id: "abc", path: "/Users/eric/Movies/RecordStuff/a.mp4", name: "a.mp4", size: 1, recordedAt: 0, version: "1" }] };
     s.panel.show();
     const window = s.window();
-    window.events.get("enter-html-full-screen")();
-    expect([window.setFullScreenable.mock.calls, window.setFullScreen.mock.calls]).toEqual([[[true]], [[true]]]);
-    window.events.get("leave-html-full-screen")();
-    expect(window.setFullScreen).toHaveBeenLastCalledWith(false);
-    window.events.get("leave-full-screen")();
-    expect(window.setFullScreenable).toHaveBeenLastCalledWith(false);
-    // Already out of fullscreen (the window left it first): only fullscreen is taken away.
-    window.setFullScreen.mockClear();
-    window.events.get("leave-html-full-screen")();
-    expect(window.setFullScreen).not.toHaveBeenCalled();
-    expect(window.setFullScreenable).toHaveBeenLastCalledWith(false);
+    const state = { time: 3, playing: true, volume: 0.5, muted: false };
+    const result = await s.choose(s.event(), "recordingFile:abc", { action: "fullscreen", state }) as { applied: boolean; playback?: unknown; view: any };
+    // The source is the listing's own URL for the id, over the screen this window is on; this window keeps its size.
+    const listed = result.view.library.items[0].video;
+    expect([played[0]!.src, played[0]!.display, result.applied, result.playback]).toEqual([listed, { x: 0, y: 0, width: 1440, height: 900 }, true, { time: 42, playing: true, volume: 0.5, muted: false }]);
+    expect(fullScreen.play).toHaveBeenCalledWith(expect.objectContaining({ state }));
+    // Leaving gives this window its focus back.
+    window.focus.mockClear(); played[0]!.closed?.();
+    expect(window.focus).toHaveBeenCalledOnce();
+    // An id the listing does not have plays nothing.
+    const refused = await s.choose(s.event(), "recordingFile:gone", { action: "fullscreen", state });
+    expect([refused.applied, fullScreen.play.mock.calls.length]).toEqual([false, 1]);
+    // Its window closing ends a video still playing for it.
+    window.close();
+    expect(fullScreen.close).toHaveBeenCalled();
   });
-  it("never remembers the size a video's fullscreen gave the window, even when it closes in fullscreen (review pass 1, F1)", () => {
+  it("drops Escapes for a second after a video's fullscreen ended, and a held Escape's repeats always", async () => {
     vi.useFakeTimers();
     try {
-      const geometry = { size: { width: 600, height: 700 }, save: vi.fn() };
-      const s = setup({ geometry }); s.panel.show();
-      const window = s.window();
-      window.events.get("enter-html-full-screen")();
-      window.getSize.mockReturnValue([1920, 1080]); window.events.get("resize")();
-      vi.advanceTimersByTime(500);
-      window.close();
-      expect(geometry.save).not.toHaveBeenCalled();
-      // Out of fullscreen, a resize is the user's again.
+      const fullScreen = { close: vi.fn(), play: vi.fn(async () => ({ time: 0, playing: false, volume: 1, muted: false })) };
+      const s = setup({ fullScreen });
+      s.live.library = { dir: "/d", loading: false, failed: false, files: [{ id: "abc", path: "/d/a.mp4", name: "a.mp4", size: 1, recordedAt: 0, version: "1" }] };
       s.panel.show();
-      const next = mock.windows[1];
-      next.events.get("enter-html-full-screen")();
-      next.getSize.mockReturnValue([1920, 1080]); next.events.get("resize")();
-      next.events.get("leave-html-full-screen")(); next.events.get("leave-full-screen")();
-      next.getSize.mockReturnValue([600, 700]); next.events.get("resize")();
-      next.getSize.mockReturnValue([640, 720]); next.events.get("resize")();
-      vi.advanceTimersByTime(250);
-      expect(geometry.save).toHaveBeenCalledExactlyOnceWith({ width: 640, height: 720 });
+      const window = s.window();
+      const input = (window.webContents.on.mock.calls as Array<[string, (event: { preventDefault: () => void }, input: { type: string; key: string; isAutoRepeat: boolean }) => void]>)
+        .find(([name]) => name === "before-input-event")![1];
+      const press = (isAutoRepeat = false): boolean => { const event = { preventDefault: vi.fn() }; input(event, { type: "keyDown", key: "Escape", isAutoRepeat }); return event.preventDefault.mock.calls.length > 0; };
+      expect([press(), press(true)]).toEqual([false, true]);
+      await s.choose(s.event(), "recordingFile:abc", { action: "fullscreen", state: { time: 0, playing: false, volume: 1, muted: false } });
+      vi.advanceTimersByTime(900);
+      expect(press()).toBe(true);
+      vi.advanceTimersByTime(200);
+      expect(press()).toBe(false);
     } finally { vi.useRealTimers(); }
   });
   it("says once when its window closes, so nothing keeps following the disk for it", () => {
@@ -186,14 +196,17 @@ describe("settings window lifecycle", () => {
   });
 
   it("hides its window as it is on Hide RecordStuff and shows it again as it was (2026-10-05)", () => {
+    const fullScreen = { close: vi.fn(), play: vi.fn() };
     const opened = vi.fn();
-    const s = setup({ opened });
+    const s = setup({ fullScreen, opened });
     s.panel.show();
     const window = s.window();
     ready(window);
     window.hide = vi.fn();
     s.panel.hide();
-    expect([window.hide.mock.calls.length, window.destroyed ?? false]).toEqual([1, false]);
+    expect([window.hide.mock.calls.length, fullScreen.close.mock.calls.length, window.destroyed ?? false]).toEqual([1, 1, false]);
+    // The page hears it first, so its player stops rather than sounding from a window out of sight.
+    expect(window.webContents.send).toHaveBeenCalledWith("settings:hidden");
     window.show.mockClear();
     s.panel.show();
     // The same window, not a new one, and the app is told it is opening again.

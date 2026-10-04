@@ -19,9 +19,13 @@ import { TRAFFIC_LIGHT_POSITION } from "../shared/window-controls";
 import { preferencesUnlocked } from "./ui-model";
 import { validateAccelerator, isSettingsShortcut, SETTINGS_SHORTCUT_RESERVED } from "../shared/hotkey";
 import { translate } from "../shared/i18n";
+import { isFullScreenChoice, type FullScreenChoice } from "../shared/video-player";
+import type { VideoFullScreen } from "./video-fullscreen";
 import type { AppAction, AppContext } from "./ui-model";
 
 const HISTORY_PAGE_ROWS = 50;
+/** Escapes this soon after a video's fullscreen ended belong to the press that ended it. */
+const FULLSCREEN_ESCAPE_QUIET_MS = 1000;
 /**
  * The one description of the Settings window, for the app and for the Settings fixture alike, so the fixture's
  * screenshots show the window the app opens (same frame, same content size) and cannot drift from it: `size`
@@ -76,6 +80,8 @@ export interface SettingsWindowOptions {
   closed?: () => void;
   /** Starts dragging a listed recording out of the page; false when it is no longer listed. */
   drag?: (contents: WebContents, id: string) => Promise<boolean>;
+  /** Plays a listed recording full screen in a window of its own (video-fullscreen.ts). */
+  fullScreen?: Pick<VideoFullScreen, "play" | "close">;
   log?: (message: string) => void;
 }
 
@@ -103,6 +109,8 @@ export class SettingsWindow {
   private lease: CaptureLease | undefined;
   private captureTimedOut = false;
   private window: BrowserWindow | undefined;
+  /** Until when Escape is dropped: a second after a video's fullscreen ended. */
+  private escapeQuietUntil = 0;
   /** Hidden by Hide RecordStuff until it is opened again: a first paint still pending must not show it (review pass 2, F2). */
   private hiddenByUser = false;
   /** The current window was shown with its content; before that, its own reveal shows it. */
@@ -157,6 +165,8 @@ export class SettingsWindow {
       }
       // A result action waits for durable history; it must not hold preference saves or shortcut capture.
       if (typeof group === "string" && group.startsWith("recordingResult:")) return this.applyResult(group, choice, window);
+      // Full screen answers when the viewer leaves it, with where the video is then.
+      if (typeof group === "string" && group.startsWith("recordingFile:") && isFullScreenChoice(choice)) return this.playFullScreen(group, choice, window);
       // A recording's actions touch files, not preferences, and a drag must start while the pointer is still down.
       if (typeof group === "string" && group.startsWith("recordingFile:")) return this.applyFile(group, choice, window);
       // Completing a request ends the capture it was sent from, never a later one.
@@ -203,13 +213,16 @@ export class SettingsWindow {
 
   /**
    * Hide RecordStuff (⌘H, app-menu.ts): the window goes out of sight as it is, and comes back as it was the next
-   * time it is opened. A shortcut being recorded is let go.
+   * time it is opened. A shortcut being recorded is let go, and a video playing full screen for it ends.
    */
   hide(): void {
+    this.options.fullScreen?.close();
     const window = this.window;
     if (!window || window.isDestroyed()) return;
     this.hiddenByUser = true;
     this.release(this.leaseOf(window));
+    // The player stops first: hidden, RecordStuff has no Dock icon, and a sound from nowhere would be hard to trace.
+    window.webContents.send(SETTINGS_CHANNELS.hidden);
     window.hide();
   }
 
@@ -245,10 +258,8 @@ export class SettingsWindow {
     this.painted = false;
     this.delivered = undefined;
     let lastSize = size;
-    /** A video fills the screen: its size is not the user's, so it is never remembered (review pass 1, F1). */
-    let videoFullScreen = false;
     window.on("resize", () => {
-      if (window.isMinimized() || videoFullScreen) return;
+      if (window.isMinimized()) return;
       const [width, height] = window.getSize();
       if (width === undefined || height === undefined) return;
       if (width === lastSize.width && height === lastSize.height) return;
@@ -276,15 +287,13 @@ export class SettingsWindow {
       if (this.window === window && !this.painted) revealTimer = setTimeout(reveal, REVEAL_FALLBACK_MS);
     });
     window.on("blur", () => { this.release(this.leaseOf(window)); this.refresh(); });
-    // A video's own fullscreen fills the screen, not just this window (2026-10-04, probed on macOS 26 with
-    // Electron 44.3: with `fullscreenable: false` the page's request only fills the window). The window
-    // allows fullscreen only while the page asks for it, so its title bar never offers a fullscreen space.
-    window.on("enter-html-full-screen", () => { videoFullScreen = true; window.setFullScreenable(true); window.setFullScreen(true); });
-    window.on("leave-html-full-screen", () => {
-      if (window.isFullScreen()) window.setFullScreen(false);
-      else { videoFullScreen = false; window.setFullScreenable(false); }
+    // Escapes pressed again as a video's fullscreen ends, and a held Escape's repeats, never reach the page:
+    // Chromium turned one into a close request that shut the player without a keydown the page could refuse, and
+    // the next one closed the window (2026-10-04, traced on the built app). Main drops them before the page, the
+    // dialog and the menu see them.
+    window.webContents.on("before-input-event", (event, input) => {
+      if (input.type === "keyDown" && input.key === "Escape" && (input.isAutoRepeat || Date.now() < this.escapeQuietUntil)) event.preventDefault();
     });
-    window.on("leave-full-screen", () => { videoFullScreen = false; window.setFullScreenable(false); });
     window.on("focus", () => { if (this.window === window) this.options.activated?.(); });
     // A dead page cannot be revived in place; the next show creates a fresh
     // window instead. No automatic reload, so a page that keeps crashing
@@ -394,6 +403,8 @@ export class SettingsWindow {
   private retire(window: BrowserWindow): void {
     this.release(this.leaseOf(window));
     if (this.window !== window) return;
+    // A video playing full screen for it has nothing left to return to.
+    this.options.fullScreen?.close();
     this.window = undefined; this.reveal = undefined; this.captureTimedOut = false;
     this.options.closed?.();
   }
@@ -407,6 +418,32 @@ export class SettingsWindow {
       : await this.options.act(action!) === true;
     const view = this.view();
     return this.deliver({ view, applied, ...(applied ? {} : { failure: translate("Could not complete this action. Try again.", view.language) }) }, recipient);
+  }
+
+  /**
+   * Plays a listed recording full screen over the screen this window is on (video-fullscreen.ts); this window keeps
+   * its size. The source is the listing's own URL for the id, never one the page sent. Answers once the viewer has
+   * left, with where the video was, and gives this window its focus back.
+   */
+  private async playFullScreen(group: string, choice: FullScreenChoice, recipient: BrowserWindow): Promise<SettingsChoiceResult> {
+    const id = group.slice("recordingFile:".length);
+    const item = this.view().library?.items.find(entry => entry.id === id);
+    const fullScreen = this.options.fullScreen;
+    if (!item || !fullScreen || recipient.isDestroyed()) {
+      this.log(`settings window: refused ${JSON.stringify({ group, choice: "fullscreen" })}`);
+      const view = this.view();
+      return this.deliver({ view, applied: false }, recipient);
+    }
+    const playback = await fullScreen.play({
+      src: item.video,
+      state: choice.state,
+      display: screen.getDisplayMatching(recipient.getBounds()).bounds,
+      language: this.options.context().language,
+      closed: () => { if (!recipient.isDestroyed() && this.window === recipient) recipient.focus(); },
+    });
+    this.escapeQuietUntil = Date.now() + FULLSCREEN_ESCAPE_QUIET_MS;
+    const view = this.view();
+    return this.deliver({ view, applied: playback !== undefined, ...(playback ? { playback } : {}) }, recipient);
   }
 
   private async applyResult(group: string, choice: unknown, recipient: BrowserWindow): Promise<SettingsChoiceResult> {

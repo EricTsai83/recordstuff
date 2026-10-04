@@ -6,6 +6,7 @@
  * id back. Ids identify a setting, not an action, so nothing the renderer
  * sends can describe work main did not already offer.
  */
+import type { FullScreenChoice, PlaybackState } from "./video-player";
 import type { Language } from "./i18n";
 
 export interface SettingsChoice {
@@ -140,6 +141,8 @@ export const SETTINGS_CHANNELS = {
   choose: "settings:choose",
   changed: "settings:changed",
   ready: "settings:ready",
+  /** RecordStuff was hidden (⌘H): the player stops, as nothing should sound from a window out of sight. */
+  hidden: "settings:hidden",
 } as const;
 export interface SettingsChoiceResult {
   view: SettingsView;
@@ -148,13 +151,18 @@ export interface SettingsChoiceResult {
   failure?: string;
   /** Main refused the value itself (a reserved or invalid shortcut): nothing was saved and choosing it again fails the same way. */
   refused?: true;
+  /** A recording played full screen: where the video was when the viewer left (video-player.ts). */
+  playback?: PlaybackState;
 }
 /** What the preload exposes to the panel. */
 export interface SettingsBridge {
   read(): Promise<SettingsView>;
   capture(armed: boolean): Promise<SettingsView>;
-  choose(group: string, choice: string): Promise<SettingsChoiceResult>;
+  /** A choice is an offered option's id, or a full-screen request for a recording (video-player.ts). */
+  choose(group: string, choice: string | FullScreenChoice): Promise<SettingsChoiceResult>;
   onChanged(callback: (view: SettingsView) => void): () => void;
+  /** RecordStuff was hidden (⌘H); main says so before the window goes out of sight. The preload always offers it. */
+  onHidden?(callback: () => void): () => void;
   /** The page has painted its first content (or its failed read): a new window may be shown now. */
   ready(): Promise<void>;
 }

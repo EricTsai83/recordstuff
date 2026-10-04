@@ -19,5 +19,10 @@ const bridge: SettingsBridge = {
     return () => ipcRenderer.removeListener("settings:changed", listener);
   },
   ready: () => ipcRenderer.invoke("settings:ready"),
+  onHidden: (callback) => {
+    const listener = (): void => callback();
+    ipcRenderer.on("settings:hidden", listener);
+    return () => ipcRenderer.removeListener("settings:hidden", listener);
+  },
 };
 contextBridge.exposeInMainWorld("settings", bridge);

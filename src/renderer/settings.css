@@ -483,6 +483,13 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .player-title { margin: 0; font-weight: 600; }
 .player-meta { margin: 1px 0 0; color: #a1a1aa; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .player-error { margin: 4px 0 0; color: #ff8a80; font-size: 12px; }
+.player-actions { flex: none; display: flex; gap: 8px; }
+/* Full screen is the player's own button (a window of its own): `controlslist="nofullscreen"` only dims the controls'. */
+.player video::-webkit-media-controls-fullscreen-button { display: none; }
+/* Full screen beside Close, quieter: an outline on the dark player. */
+.player-fullscreen { flex: none; background: transparent; border-color: rgb(255 255 255 / .28); color: #f4f4f5; box-shadow: none; }
+.player-fullscreen:enabled:not([aria-disabled="true"]):hover { background: rgb(255 255 255 / .1); }
+:root:not([data-input="pointer"]):not([data-window="inactive"]) .player-fullscreen:focus-visible { outline-color: #f4f4f5; }
 .player-close { flex: none; background: #f4f4f5; border-color: #f4f4f5; color: #18181b; box-shadow: none; }
 .player-close:enabled:not([aria-disabled="true"]):hover { background: #f4f4f5; opacity: .88; }
 :root:not([data-input="pointer"]):not([data-window="inactive"]) .player-close:focus-visible { outline-color: #f4f4f5; }

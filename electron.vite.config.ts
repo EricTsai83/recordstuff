@@ -1,8 +1,8 @@
 import { resolve } from "node:path";
 import { defineConfig } from "electron-vite";
 
-// Main, one preload per renderer, and three renderer entries (hidden capture
-// host, settings panel, countdown overlay); no framework.
+// Main, one preload per renderer, and four renderer entries (hidden capture
+// host, settings panel, countdown overlay, fullscreen video); no framework.
 export default defineConfig({
   // electron-vite externalizes dependencies by default (`build.externalizeDeps`).
   main: {},
@@ -13,6 +13,7 @@ export default defineConfig({
           index: resolve(__dirname, "src/preload/index.ts"),
           settings: resolve(__dirname, "src/preload/settings.ts"),
           countdown: resolve(__dirname, "src/preload/countdown.ts"),
+          video: resolve(__dirname, "src/preload/video.ts"),
         },
       },
     },
@@ -24,6 +25,7 @@ export default defineConfig({
           index: resolve(__dirname, "src/renderer/index.html"),
           settings: resolve(__dirname, "src/renderer/settings.html"),
           countdown: resolve(__dirname, "src/renderer/countdown.html"),
+          video: resolve(__dirname, "src/renderer/video.html"),
         },
       },
     },

@@ -377,8 +377,8 @@ async function run() {
   const compactHeader = await read<boolean>(window, `!document.querySelector(".app-icon") && document.getElementById("title").classList.contains("visually-hidden") && document.getElementById("hint").hidden`);
   record("content starts with tabs without duplicate branding or autosave hint", compactHeader, String(compactHeader));
   record(
-    "the preload exposes capture/read/choose/onChanged/ready and nothing else",
-    JSON.stringify(rendered.bridge) === '["capture","choose","onChanged","read","ready"]',
+    "the preload exposes capture/read/choose/onChanged/onHidden/ready and nothing else",
+    JSON.stringify(rendered.bridge) === '["capture","choose","onChanged","onHidden","read","ready"]',
     JSON.stringify(rendered.bridge),
   );
   record(
@@ -696,8 +696,8 @@ async function run() {
             return { open: p.open, error: p.querySelector(".player-error").hidden ? "" : p.querySelector(".player-error").textContent,
               spoken: p.querySelector('[role="status"]').textContent, buttons: [...p.querySelectorAll("button")].map(b => b.id),
               fits: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight && p.scrollWidth <= p.clientWidth }; })()`);
-          record(`${lang}/${scheme}/${size}/player: opens over Recordings with Close alone, fits the window and says a recording it cannot play cannot be played here`,
-            opened && player.open && player.error !== "" && player.spoken === player.error && player.buttons.join() === "player-close" && player.fits, JSON.stringify(player));
+          record(`${lang}/${scheme}/${size}/player: opens over Recordings with Full screen and Close, fits the window and says a recording it cannot play cannot be played here`,
+            opened && player.open && player.error !== "" && player.spoken === player.error && player.buttons.join() === "player-fullscreen,player-close" && player.fits, JSON.stringify(player));
           await underControls(`${lang}/${scheme}/${size}/player`);
           await shot(`player-${lang}-${scheme}-${size}.png`);
           await read(window, `document.getElementById("player-close").click()`);

@@ -218,6 +218,9 @@ export const ZH_TW = {
   // The menu bar's Record menu while the window is open (2026-10-04).
   Record: "錄影",
   "Stop recording": "停止錄影",
+  // The player's fullscreen, in a window of its own (2026-10-05).
+  "Full screen": "全螢幕",
+  "Exit full screen": "結束全螢幕",
   // The menu bar's own menus, in the words macOS uses for them (2026-10-04).
   "About RecordStuff": "關於 RecordStuff",
   Services: "服務",

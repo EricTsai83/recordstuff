@@ -23,13 +23,18 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
     groups: [{ id: "outputFolder", label: "Output folder", tab: "recording", kind: "actions", enabled: true, choices: [{ id: "reveal", label: "Show in Finder", enabled: true, checked: false }] }],
     library: { folder: "~/Movies/RecordStuff", summary: "3 recordings · 400 MB", items: [item("a", "Today", "2:02 PM"), item("b", "Today", "11:40 AM"), item("c", "Yesterday", "Demo")] } };
   let current = base;
-  const choose = vi.fn(async (group: string, choice: string) => {
+  let endedByMain = false;
+  const choose = vi.fn(async (group: string, choice: unknown) => {
     if (group === "recordingFile:a" && choice === "trash") current = { ...base, library: { ...base.library!, items: base.library!.items.slice(1) } };
+    // Full screen answers once the viewer has left it, with where the video was; ended by main, with nothing.
+    if (typeof choice === "object") return endedByMain ? { view: current, applied: false } : { view: current, applied: true, playback: { time: 42, playing: false, volume: 0.5, muted: true } };
     return { view: current, applied: true };
   });
   const close = vi.spyOn(window, "close").mockImplementation(() => {});
   let push!: (view: SettingsView) => void;
-  window.settings = { read: async () => base, capture: async () => base, choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
+  let hidden!: () => void;
+  window.settings = { read: async () => base, capture: async () => base, choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; },
+    onHidden: cb => { hidden = cb; return () => {}; } };
   await import("./settings");
   await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(3));
   expect([...document.querySelectorAll(".library-day")].map(day => [day.querySelector("h2")!.textContent, day.querySelectorAll(".clip").length])).toEqual([["Today", 2], ["Yesterday", 1]]);
@@ -63,13 +68,85 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   // Escape belongs to the player while it is open; the window stays.
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
   expect(close).not.toHaveBeenCalled();
+  // Full screen is a window of its own (2026-10-05): the player asks main, waits, and goes on from where it ended.
+  const playerVideo = player.querySelector("video")!;
+  expect(playerVideo.getAttribute("controlslist")).toContain("nofullscreen");
+  const pause = vi.spyOn(HTMLMediaElement.prototype, "pause");
+  document.getElementById("player-fullscreen")!.click();
+  await vi.waitFor(() => expect(choose).toHaveBeenLastCalledWith("recordingFile:a", { action: "fullscreen", state: { time: 0, playing: false, volume: 1, muted: false } }));
+  await vi.waitFor(() => expect([playerVideo.currentTime, playerVideo.volume, playerVideo.muted]).toEqual([42, 0.5, true]));
+  expect([player.open, pause.mock.calls.length > 0]).toEqual([true, true]);
+  // A double-click asks the same, as does the page's own fullscreen, which is handed over at once.
+  const calls = (): number => choose.mock.calls.filter(([, choice]) => typeof choice === "object").length;
+  await vi.waitFor(() => expect(calls()).toBe(1));
+  playerVideo.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(calls()).toBe(2));
+  const exitFullscreen = vi.fn(async () => {});
+  Object.defineProperty(document, "exitFullscreen", { value: exitFullscreen, configurable: true });
+  Object.defineProperty(document, "fullscreenElement", { value: playerVideo, configurable: true });
+  document.dispatchEvent(new Event("fullscreenchange"));
+  Object.defineProperty(document, "fullscreenElement", { value: null, configurable: true });
+  await vi.waitFor(() => expect([exitFullscreen.mock.calls.length, calls()]).toEqual([1, 3]));
+  pause.mockRestore();
+  // Ended by main (RecordStuff hidden): no state comes back, and the player stays paused rather than sounding unseen (review pass 2, F1).
+  endedByMain = true;
+  const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(async () => {});
+  await new Promise(resolve => setTimeout(resolve, 0));
+  play.mockClear();
+  Object.defineProperty(playerVideo, "paused", { value: false, configurable: true });
+  document.getElementById("player-fullscreen")!.click();
+  await vi.waitFor(() => expect(calls()).toBe(4));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(play).not.toHaveBeenCalled();
+  delete (playerVideo as Partial<{ paused: boolean }>).paused;
+  endedByMain = false;
+  // Hidden (⌘H) while it plays: the player stops; and a full screen the viewer left playing, answered after the
+  // hide (it was still fading out), does not start it again unseen (review 2026-10-05).
+  const pauses = vi.spyOn(HTMLMediaElement.prototype, "pause");
+  hidden();
+  expect(pauses).toHaveBeenCalled();
+  let answer!: (result: unknown) => void;
+  choose.mockImplementationOnce(() => new Promise(resolve => { answer = resolve as (result: unknown) => void; }));
+  document.getElementById("player-fullscreen")!.click();
+  await vi.waitFor(() => expect(calls()).toBe(5));
+  hidden();
+  play.mockClear();
+  answer({ view: current, applied: true, playback: { time: 3, playing: true, volume: 1, muted: false } });
+  await vi.waitFor(() => expect(playerVideo.currentTime).toBe(3));
+  expect(play).not.toHaveBeenCalled();
+  pauses.mockRestore();
+  play.mockRestore();
+  // A quick press after the fullscreen ended belongs to that exit: the player stays.
+  const now = vi.spyOn(performance, "now").mockReturnValue(performance.now());
+  const quick = new KeyboardEvent("keydown", { key: "Escape", cancelable: true });
+  document.dispatchEvent(quick);
+  // A held Escape repeats: it closes nothing, neither the player nor then the window.
+  now.mockReturnValue(1e9);
+  const held = new KeyboardEvent("keydown", { key: "Escape", repeat: true, cancelable: true });
+  document.dispatchEvent(held);
+  // A press that closes the player starts the same pause, however Chromium delivered it (as the dialog's cancel,
+  // sometimes without a keydown): the next quick one leaves the window open.
+  const closesPlayer = new KeyboardEvent("keydown", { key: "Escape", cancelable: true });
+  document.dispatchEvent(closesPlayer);
+  player.dispatchEvent(new Event("cancel"));
+  player.close();
+  now.mockReturnValue(1e9 + 500);
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", cancelable: true }));
+  expect(close).not.toHaveBeenCalled();
+  // After a pause, Escape closes the window as before.
+  now.mockReturnValue(1e9 + 1200);
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", cancelable: true }));
+  now.mockRestore();
+  expect([quick.defaultPrevented, held.defaultPrevented, closesPlayer.defaultPrevented, close.mock.calls.length]).toEqual([true, true, false, 1]);
+  close.mockClear();
+  first.querySelector("button")!.click();
   // An entry while it plays (another saved notification) closes it first, then lands on the card (review pass 1, F1).
   push({ ...base, revision: 3, resultFocus: 2, entryTab: "library", libraryFocus: "b" });
   expect([player.open, player.querySelector("video")!.hasAttribute("src"), document.activeElement?.id]).toEqual([false, false, "clip-b-open"]);
   first.querySelector("button")!.click();
   expect(player.open).toBe(true);
-  // The player only plays: its one action is Close (2026-10-04).
-  expect([...player.querySelectorAll("button")].map(el => el.id)).toEqual(["player-close"]);
+  // The player only plays: Full screen and Close are its actions (2026-10-05).
+  expect([...player.querySelectorAll("button")].map(el => el.id)).toEqual(["player-fullscreen", "player-close"]);
 
   // A recording the page cannot play says so, and points to Open in the card's menu; the next one starts without the message.
   const video = player.querySelector("video")!;

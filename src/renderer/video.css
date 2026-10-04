@@ -1,0 +1,18 @@
+/* The fullscreen video (src/renderer/video.ts): the picture on black, and one way out at the top right. */
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+video { display: block; width: 100vw; height: 100vh; object-fit: contain; background: #000; outline: none; }
+/* The window is the fullscreen: `controlslist="nofullscreen"` only dims the controls' own button, so it goes. */
+video::-webkit-media-controls-fullscreen-button { display: none; }
+.exit {
+  position: fixed; top: 16px; right: 16px; display: grid; place-items: center; width: 36px; height: 36px; padding: 0;
+  border: 0; border-radius: 10px; background: rgb(0 0 0 / .55); color: #fff; cursor: pointer; backdrop-filter: blur(8px);
+  font: inherit; opacity: 1; transition: opacity .2s ease;
+}
+.exit:hover { background: rgb(0 0 0 / .72); }
+.exit svg { width: 18px; height: 18px; }
+:root:not([data-input="keyboard"]) .exit:focus { outline: none; }
+.exit:focus-visible { outline: 1px solid #f4f4f5; outline-offset: 2px; }
+/* At rest the way out and the pointer step aside; a move brings both back. */
+body.idle { cursor: none; }
+body.idle .exit { opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .exit { transition: none; } }

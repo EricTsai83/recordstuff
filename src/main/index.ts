@@ -52,6 +52,7 @@ import { parseAutoRecord, runAutoRecord } from "./autorecord";
 import { UpdateChecker, fetchVersion, DOWNLOAD_URL, RELEASES_URL, SOURCE_URL, WEBSITE_URL } from "./updates";
 import { AppTray } from "./tray";
 import { AppMenu } from "./app-menu";
+import { VideoFullScreen } from "./video-fullscreen";
 import { SettingsWindow } from "./settings-window";
 import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "./recordings-library";
 import { APP_NAME, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
@@ -415,6 +416,13 @@ async function main(): Promise<void> {
       contents.startDrag({ file: file.path, icon });
       return true;
     },
+    fullScreen: new VideoFullScreen({
+      preloadPath: path.join(__dirname, "../preload/video.js"),
+      htmlPath: path.join(__dirname, "../renderer/video.html"),
+      devUrl: !app.isPackaged && process.env["ELECTRON_RENDERER_URL"] ? new URL("video.html", process.env["ELECTRON_RENDERER_URL"]).href : undefined,
+      platform: process.platform,
+      log,
+    }),
     log,
   });
   /** Set once every listener is wired, near the end of startup; a click before then has no reopen to explain. */

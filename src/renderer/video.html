@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; media-src recordstuff-media:" />
+  <title>RecordStuff</title>
+  <link rel="stylesheet" href="./video.css" />
+</head>
+<body>
+  <video id="video" controls playsinline disablepictureinpicture controlslist="nofullscreen noremoteplayback"></video>
+  <button type="button" id="exit" class="exit" hidden></button>
+  <script type="module" src="./video.ts"></script>
+</body>
+</html>

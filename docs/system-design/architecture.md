@@ -40,7 +40,7 @@ flowchart LR
     Writer --> Disk[Local MP4]
 ```
 
-The tray, menu and notifications are native Electron APIs in main. The settings panel is the one HTML page a user interacts with; it has no framework and no state of its own, rendering a view main sends and returning the id of the option the user picked. The countdown overlay is a click-through page that only draws the digit main sends and cannot reply. The capture renderer obtains streams, applies quality, and encodes. Main selects the source, owns recording state, decides every action, and writes files.
+The tray, menu and notifications are native Electron APIs in main. The settings panel is the one HTML page a user interacts with; it has no framework and no state of its own, rendering a view main sends and returning the id of the option the user picked. The countdown overlay is a click-through page that only draws the digit main sends and cannot reply. The fullscreen video page plays one recording over the screen and hands its playback state back when the viewer leaves. The capture renderer obtains streams, applies quality, and encodes. Main selects the source, owns recording state, decides every action, and writes files.
 
 | Module | Owns | Does not own |
 | --- | --- | --- |
@@ -48,6 +48,8 @@ The tray, menu and notifications are native Electron APIs in main. The settings 
 | `main/recorder.ts` | Authoritative RecordingState, session IDs, ordering, deadlines, the countdown's timing and cancel | Electron or DOM APIs |
 | `main/countdown-overlay.ts` | The countdown window's lifetime, placement on the recorded display and the values it is sent | When to count, record or cancel |
 | `renderer/countdown.ts` / `preload/countdown.ts` | Drawing the digit and its fades / the one value subscription | Timing, state or any reply to main |
+| `main/video-fullscreen.ts` | The fullscreen video window's lifetime, its screen, its fades and the playback state it hands back | Which recording plays or its source URL (the settings window resolves it from the listing) |
+| `renderer/video.ts` / `preload/video.ts` | Playing from the given time, its exit control / saying ready and leaving with the playback state | The window, its fades or closing it |
 | `main/capture-host.ts` | Hidden BrowserWindow, main port, readiness and heartbeat | File-success decisions |
 | `renderer/capture-host.ts` | MediaStream, MediaRecorder, sequence numbers, Blob chain | Settings files, output paths, disk writes |
 | `preload/index.ts` | Port handoff | Exposing Node APIs to the page |

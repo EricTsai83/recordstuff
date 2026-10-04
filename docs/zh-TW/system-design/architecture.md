@@ -40,7 +40,7 @@ flowchart LR
     Writer --> Disk[本機 MP4]
 ```
 
-Tray、選單與通知全在 main，使用原生 Electron API。設定面板是使用者唯一會操作的 HTML 頁面：沒有框架、也沒有自己的狀態，只負責畫出 main 給的 view，並回傳使用者選到的選項 id。倒數 overlay 是點擊可穿透的頁面，只畫 main 傳來的數字，無法回傳。Capture renderer 取得 stream、套用品質並編碼；main 選取來源、決定錄影狀態、決定所有動作與寫檔。
+Tray、選單與通知全在 main，使用原生 Electron API。設定面板是使用者唯一會操作的 HTML 頁面：沒有框架、也沒有自己的狀態，只負責畫出 main 給的 view，並回傳使用者選到的選項 id。倒數 overlay 是點擊可穿透的頁面，只畫 main 傳來的數字，無法回傳。全螢幕影片頁面在整個螢幕上播放一支錄影，使用者離開時交回播放狀態。Capture renderer 取得 stream、套用品質並編碼；main 選取來源、決定錄影狀態、決定所有動作與寫檔。
 
 ## 模組邊界
 
@@ -50,6 +50,8 @@ Tray、選單與通知全在 main，使用原生 Electron API。設定面板是�
 | `main/recorder.ts` | 唯一 `RecordingState`、session id、順序與 timeout、倒數的時間與取消 | 不 import Electron；不接觸 DOM |
 | `main/countdown-overlay.ts` | 倒數視窗的生命週期、放在被錄影螢幕上的位置與傳給它的值 | 不決定何時倒數、錄影或取消 |
 | `renderer/countdown.ts` / `preload/countdown.ts` | 繪製數字與淡化／唯一的數值訂閱 | 不持有時間、狀態，也不回傳 main |
+| `main/video-fullscreen.ts` | 全螢幕影片視窗的生命週期、所在螢幕、淡入淡出，以及交回的播放狀態 | 不決定播放哪支錄影或其來源網址（由設定視窗依清單查出） |
+| `renderer/video.ts` / `preload/video.ts` | 從指定時間播放、結束全螢幕的操作／回報就緒並帶著播放狀態離開 | 不負責視窗、淡入淡出或關閉視窗 |
 | `main/capture-host.ts` | 隱藏 BrowserWindow、main port、ready／heartbeat | 不作檔案成功判定 |
 | `renderer/capture-host.ts` | MediaStream、MediaRecorder、序號、Blob 傳送鏈 | 不讀設定檔、不選輸出路徑、不寫檔 |
 | `preload/index.ts` | 轉交 main 提供的 MessagePort | 不暴露 Node API |
