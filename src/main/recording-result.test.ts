@@ -85,6 +85,10 @@ it("distinguishes unknown from empty and does not promise recoverability", () =>
   expect(failureOutcome({ ...a, outcome: "partial" }, "zh-TW")).toContain("可能無法播放");
   expect(failureGuidance("disk_full", "zh-TW")).toContain("釋放磁碟");
 });
+it("tells a Mac too old to record to update, not to change settings or that content was lost", () => {
+  expect([failureGuidance("unsupported_os_version", "en", "darwin"), failureGuidance("unsupported_os_version", "zh-TW", "darwin")])
+    .toEqual(["Update macOS, then record again.", "請更新 macOS 後再錄影。"]);
+});
 
 it("names both causes of missing system audio on macOS, a very busy Mac first, and keeps the permission actions", () => {
   expect(failureReason("no_audio_track", "en")).toBe("System audio was unavailable at start, so nothing was recorded.");

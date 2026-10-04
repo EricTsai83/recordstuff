@@ -38,6 +38,7 @@ export const ZH_TW = {
   "Check the output folder, its permissions and the connected drive before recording again.": "請檢查儲存位置、存取權限與外接磁碟後重新錄影。",
   "Check recording permissions in System Settings. Relaunch if access was recently granted.": "請在系統設定檢查錄影權限；若剛授權，請重新啟動 App。",
   "Check your recording settings, then try again. Missing content cannot be recovered.": "請檢查錄影設定後再試。遺失的內容無法恢復。",
+  "Update macOS, then record again.": "請更新 macOS 後再錄影。",
   "Processing the recording…": "正在處理錄影…",
   "A partial recording was kept; it may not play.": "已保留部分錄影，可能無法播放。",
   "No recording was kept.": "沒有保留錄影內容。",

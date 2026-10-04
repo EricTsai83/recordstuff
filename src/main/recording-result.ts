@@ -497,6 +497,8 @@ export function failureGuidance(code: ErrorCode, language: Language, platform: N
     : isPermissionFailure(code) ? "Check recording permissions in System Settings. Relaunch if access was recently granted."
     : code === "display_unavailable" || code === "no_display" ? "Choose Primary display or another screen."
     : code === "app_terminated" ? "The recording file may be incomplete; missing content cannot be recovered."
+    // Refused before anything started: no setting or retry helps, and nothing was lost.
+    : code === "unsupported_os_version" ? "Update macOS, then record again."
     : "Check your recording settings, then try again. Missing content cannot be recovered.", language);
 }
 const persistenceWarnings: Record<PersistenceIssue, PlainMessageKey> = {
