@@ -22,10 +22,10 @@
 | `handleAction(action)` | 字串 action、失敗紀錄動作，以及每一種偏好變更 → 對應 stop／quit／設定／relaunch／Finder 動作；偏好一律經 `savePreference` 或 `AppShortcuts.set` |
 | `savePreference(what, save)` | 單一偏好寫入：`locked` 的偏好需要 recorder 已 settle；等待寫入，失敗留 log 並在 tray 有對應通知時通知；之後兩個投影一起 refresh |
 | `focusApp()` | 對話框或視窗出現前先讓選單列 App 取得前景（macOS），避免開在最前面的 App 後方 |
-| `revealSaved(path)` | 顯示最後一個錄影：選取檔案；若之後被移動或刪除，留 log 並改開儲存位置 |
+| `showSavedRecording(path)` | 存檔通知的點擊：重新列出資料夾並開啟「錄影檔」、帶出那段錄影；若之後被移動或刪除，則顯示資料夾目前的內容 |
 | `revealLog()` | 有 log 選檔，沒有則開 logs 目錄；開啟失敗留 log |
 | `changeOutputDir()` | 系統對話框 → 保存使用者選擇，失敗通知；成功清位置錯誤並 refresh |
-| `openOutputDir()` | Tray 的儲存位置動作：以 `shell.openPath`、原生警告、App focus 與經 settled 檢查的 `changeOutputDir` 組成 `createOutputFolderOpener` |
+| `openOutputDir()` | 設定中儲存位置的「在 Finder 中顯示」：以 `shell.openPath`、原生警告、App focus 與經 settled 檢查的 `changeOutputDir` 組成 `createOutputFolderOpener` |
 
 [main/output-folder.ts](../../../src/main/output-folder.ts)：`createOutputFolderOpener` 回傳同時只進行一次的開啟動作。先 stat 資料夾：是資料夾就開啟；不存在的已知預設資料夾，只在上層資料夾存在時以非遞迴 `mkdir` 建立；不存在的自訂資料夾、檔案、建立被拒、無法讀取的路徑或 Finder 失敗，都變成一則附路徑、詳細資訊與「更改儲存位置／取消」的在地化警告；錄影工作仍在進行時，改為記入 log 並由 `CaptureNotices` 保留成通知告知，因為模態警告會卡住那些工作。存取被拒時仍先請 Finder 開啟。永遠不寫入設定；重複點擊會併入進行中的那次，警告開著時把它帶到前景。`nodeOutputFolderFs` 是真正的 stat／mkdir 邊界。
 
@@ -146,6 +146,23 @@
 | `release()` | 一次性 closed／close handle；fsync timer 已由 `beginTerminal` 停止 |
 | `enqueue(task)` | 依序執行；首個 failure 被記住，後續回同一錯誤，內部 queue 保持可接續 |
 
+## 錄影檔資料庫 — main/recordings-library.ts
+
+[原始碼](../../../src/main/recordings-library.ts) 為「錄影檔」分頁列出儲存位置，也是沙箱頁面取得錄影內容的唯一途徑；片長由 [main/mp4-duration.ts](../../../src/main/mp4-duration.ts) 讀取。見[桌面設計](desktop.md#錄影檔)。
+
+| 函式／方法 | 契約與副作用 |
+| --- | --- |
+| `isListedName(name)` | 分頁會列出的影片：`.mp4`、`.m4v` 或 `.mov`，非隱藏檔，也不是仍在寫入的 `.recording.mp4` |
+| `stampedTime(name)` | App 自己的 `YYYY-MM-DD HH-MM-SS[-n].mp4` 檔名所記的本地時間；其他檔名為 undefined |
+| `fileId(path)` | 路徑的穩定 id（截短的 SHA-256），頁面只拿 id、不拿路徑，重新列出時卡片得以保留 |
+| `parseRange(header, size)` | size 內的單一 `bytes=` 範圍；沒有 header 為 undefined，無法提供的範圍為 null（416） |
+| `RecordingsLibrary.refresh()` | 由新到舊列出資料夾並發布；同時只列一次，期間的請求共用其後的一次列出；未知片長之後再讀（`lengths`）並一起發布；已不在清單的檔案，其片長與縮圖從記憶體移除；無法讀取的資料夾會說明，而不是顯示為空 |
+| `RecordingsLibrary.act(id, action)` | 對已列出的 id 執行「顯示」、「開啟」或「丟到垃圾桶」；任何失敗都先重新列出資料夾再回傳 false，讓已離開的檔案不出現在回覆中 |
+| `RecordingsLibrary.thumbnail(file)` | 已列出檔案的 PNG 縮圖；在最近顯示的 `THUMBNAILS_KEPT`（64）張之內時，同一版本只產生一次 |
+| `RecordingsLibrary.watch()` / `unwatch()` | 視窗開著時監看資料夾（不輪詢），對已列名稱的一串事件結束 `WATCH_SETTLE_MS`（250 毫秒）後重新讀取；儲存位置改變時跟著換；視窗關閉時 `unwatch`，不留下監看或計時器；無法監看的資料夾只記一次 log |
+| `RecordingsLibrary.handle(request)` | `recordstuff-media:` 的 handler：只為已列出的 id 提供可依 byte range 讀取的 `video/<id>` 與 `thumb/<id>`，其餘一律 404 |
+| `mp4Duration(path)` | 只讀 box 算出秒數：分段檔取最後一個 `tfdt` 加上其 sample 時長，否則用 `mvhd`；box 沒有資訊時為 undefined；不拋出 |
+
 ## 設定、品質與協定
 
 [SettingsStore](../../../src/main/settings.ts)：
@@ -256,8 +273,9 @@
 | `hotkeyGroup(ctx, enabled)` | 建議的預設鍵、不同於預設的已存自訂值與「關閉」；renderer 加上「自訂快捷鍵…」；註冊失敗顯示診斷，設定快捷鍵（⌘⌥,）註冊失敗或被錄影快捷鍵佔用時也會顯示；關閉保留記住的組合鍵 |
 | `updateChecksGroup(ctx, enabled)` | 啟動檢查的開／關 |
 | `languageGroup(language)` | 英文與繁體中文；永不鎖定，因為語言不影響擷取 |
-| `settingsView(state, ctx)` | 面板完整 view：標題、說明、失敗文案、三個分頁（失敗紀錄分頁計算未確認筆數），以及移除 action 後的群組；失敗列帶日期、短時間、檔名與完整路徑 |
-| `failureDay` / `failureTime` | 失敗列的日期標題（今天、昨天、日期，不是今年才加年份）與短時間，以 `ctx.now` 為基準（plan 047） |
+| `settingsView(state, ctx)` | 面板完整 view：標題、說明、失敗文案、四個分頁（失敗紀錄分頁計算未確認筆數）、附媒體 URL 的錄影檔清單，以及移除 action 後的群組；失敗列帶日期、短時間、檔名與完整路徑 |
+| `formatDuration(seconds)` | 錄影長度寫成 `1:23`，滿一小時為 `1:02:03` |
+| `dayHeading` / `shortTime` | 失敗列與錄影檔共用的日期標題（今天、昨天、日期，不是今年才加年份），以及失敗列或 App 命名錄影的短時間，以 `ctx.now` 為基準（plan 047） |
 | `settingsAction(state, ctx, group, choice)` | 當下有提供且可用的 group/choice 才回傳對應 action，否則 undefined |
 | `settingsChecked(state, ctx, group, choice)` | 該選項是否為實際提交值；main 用它回報保存是否生效 |
 
@@ -282,7 +300,7 @@
 | 函式 | 契約 |
 | --- | --- |
 | `disabled(label)` / `item(label, action, tooltip?)` | 建灰色／可點模型項目 |
-| `windowsGroup(ctx, reviewedOnly)` / `appGroup(language)` | 「設定…」（附設定快捷鍵，無法使用時附說明）與已看過的失敗紀錄／顯示 log 與結束，所有狀態皆可用 |
+| `windowsGroup(ctx)` / `appGroup(language)` | 「開啟 RecordStuff」（開啟它的快捷鍵已註冊時附上，無法使用時下方附說明）／「結束 RecordStuff」，所有狀態皆可用 |
 | `outputDirItems(ctx, enabled)` | 產生位置與更改位置項目，按狀態鎖定 |
 | `shortcutHint(ctx, key)` | 「開始／停止」或「取消錄影」的 tooltip 提示已註冊組合鍵；關閉或未註冊時為 undefined |
 | `permissionActions(needsRelaunch, language)` | 已判斷需重啟只給重啟；否則給設定與「已經允許了？」重啟 |

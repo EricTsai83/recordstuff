@@ -2,7 +2,7 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-A menu bar button that records one screen (your primary display by default) and system audio. Click to start, click again to stop, and open the saved MP4. No main window or account is required.
+Screen and sound. Nothing else. A menu bar app that records one screen (your primary display by default) with its system audio to a plain MP4: choose Start recording from its menu or press ⌘⇧1, and stop the same way. No account is required.
 
 ## Platform status
 
@@ -32,9 +32,9 @@ On Windows x64, run `RecordStuff-<version>-x64-unsigned-setup.exe`: a per-user o
 
 ## Use
 
-1. Launch recordstuff from Applications and grant screen/system-audio recording permission when requested. Relaunch if access does not take effect.
+1. Launch RecordStuff from Applications and grant screen/system-audio recording permission when requested. Relaunch if access does not take effect.
 2. Press **⌘⇧1** from any app, or click the menu bar icon and choose **Start recording**, to record the selected screen and system audio. Choose a screen in **Settings → Recording settings → Screen**; the default follows the primary display. To start and stop with one click on the icon instead, choose **Settings → General → Icon click → Start / stop recording** (kept for anyone who used RecordStuff before this choice existed).
-3. Press the shortcut again, or choose **Stop** from the menu, to stop. Recordings default to `~/Movies/RecordStuff`; click the saved notification, or choose **Open RecordStuff** from the menu, to see it in **Recordings**, newest first, where you can play a recording, drag it into another app, show it in Finder or move it to the Trash.
+3. Press the shortcut again, or choose **Stop** from the menu, to stop. Recordings default to `~/Movies/RecordStuff`; click the saved notification, or choose **Open RecordStuff** from the menu, to see it in **Recordings**, newest first, where you can play a recording (its fullscreen fills the screen), drag it into another app, or use its **⋯** menu or a right-click to show it in Finder, open it in another app or move it to the Trash. A recording deleted in Finder leaves the list at once.
 4. The menu (a right-click always opens it) keeps what you do right now: start or stop, unread failures, **Open RecordStuff** and quit. The output folder, logs and reviewed failures are in RecordStuff. Showing the output folder creates the default folder if it is missing; a missing custom folder, for example on a disconnected drive, is never recreated: RecordStuff explains the problem and offers **Change output folder** (also in the menu while it blocks recording). Open RecordStuff to adjust the screen, recording quality, language, appearance, notifications, shortcut, and update checks without closing the settings window.
 
 **English is the default.** Choose **Settings → General → Language → 繁體中文** to switch the app to Traditional Chinese. The choice persists and can change during recording without changing capture settings. Application diagnostics remain English; native permission dialogs follow macOS settings.
@@ -48,7 +48,7 @@ On Windows x64, run `RecordStuff-<version>-x64-unsigned-setup.exe`: a per-user o
 | Shortcut | ⌘⇧1 (recommended) / Custom shortcut / Off | ⌘⇧1; Settings says so if another app already owns the combination |
 | Icon click | Open the menu / Start / stop recording | Open the menu; Start / stop recording for settings from before this choice |
 
-Open Settings from the right-click menu or with **⌘⌥,**. Appearance offers System / Light / Dark (System by default); notifications are on by default and also require macOS permission. Language and appearance can change while recording; other settings are locked. A specific display must be available: the app does not silently switch to another screen. Capture covers one whole screen, without a microphone, window or region selector.
+Open these settings with **Open RecordStuff** in the menu or with **⌘⌥,**. Appearance offers System / Light / Dark (System by default); notifications are on by default and also require macOS permission. Language and appearance can change while recording; other settings are locked. A specific display must be available: the app does not silently switch to another screen. Capture covers one whole screen, without a microphone, window or region selector.
 
 Output is H.264/AAC MP4. Audio requests 256 kbps with voice processing explicitly disabled; local diagnostic recordings preserve high frequencies and left/right separation. Actual bitrate depends on the encoder and content. The capture asks for slightly more than 30 or 60 fps so the tested Mac records about 29.9 and 59.8 fps; 60 fps files are substantially larger. These are measured limitations, not hidden quality guarantees.
 

@@ -83,7 +83,7 @@ App 已由呼叫者以 pnpm start:app 建置並啟動，輸出在 <start-app.log
 
 依[腳本 runner 或 Computer Use](../../../docs/zh-TW/testing.md#腳本-runner-或-computer-use) 與[驗收對照](../../../docs/zh-TW/acceptance.md#腳本-runner-或-computer-use)選定每項操作。維護者 2026-10-02 核准以已提交的 runner 操作 RecordStuff 自己的 Tray 選單、設定視窗與選單項目（[限制](../../../docs/zh-TW/acceptance.md#依影響追加案例)），因此：
 
-- **由 runner 操作**：Tray 選單的結構、開始／停止、三種取消、顯示上一段錄影、以鍵盤選「設定…」與結束用 `pnpm acceptance:tray`（見下方「Tray」）；以快捷鍵開設定與視窗狀態用 `pnpm acceptance:settings-shortcut -- --observe`；快捷鍵錄影用 `pnpm acceptance`；存檔通知 → Finder 用 `pnpm acceptance:notification`；播放用 `pnpm acceptance:playback`；延後退出通知用 `pnpm acceptance:quit-dialog`。runner 需要 `pgrep` 與桌面：執行者能在 sandbox 外執行時就自己執行；委派到 sandbox 內的 Astra 時，由呼叫者執行後把報告路徑寫進 prompt。
+- **由 runner 操作**：Tray 選單的結構、開始／停止、三種取消、以鍵盤選「開啟 RecordStuff」與結束用 `pnpm acceptance:tray`（見下方「Tray」）；以快捷鍵開設定與視窗狀態用 `pnpm acceptance:settings-shortcut -- --observe`；快捷鍵錄影用 `pnpm acceptance`；存檔通知 → Finder 用 `pnpm acceptance:notification`；播放用 `pnpm acceptance:playback`；延後退出通知用 `pnpm acceptance:quit-dialog`。runner 需要 `pgrep` 與桌面：執行者能在 sandbox 外執行時就自己執行；委派到 sandbox 內的 Astra 時，由呼叫者執行後把報告路徑寫進 prompt。
 - **由執行者觀察**：判讀 runner 與自己保存的截圖（選單外觀、淺色／深色選單列、對齊與可讀性、倒數數字、通知橫幅是否可見與截斷、設定排版）。
 - **由 computer use 操作**（目前 agent 沒有工具時委派 Astra）：沒有 runner 的操作，包括在設定面板內變更設定、手動錄影時點擊素材的開始控制項、案例要求時點擊播放器自身的控制項、VoiceOver，與下方唯一的權限提示例外。
 - 除了執行已提交的 runner，不要自行用 AppleScript、System Events、CoreGraphics 事件、IPC、renderer evaluate、Playwright 或測試 hook 代按 UI。runner 的狀態列點擊會移動真正的游標，所以它的回合同樣需要桌面交接。
@@ -127,7 +127,7 @@ Computer use 無法存取純 tray 的程序（`-10005 timeoutReached`），Tray 
 
 1. 呼叫者在 `pnpm start:app`（或之後的 `pnpm open:app`）後、App 待命時執行 `pnpm acceptance:tray`；預設先儲存的語言再另一種，`--languages` 可限縮。它會以目前畫面錄下幾段短片並保留，最後結束 App。
 2. 讀取 `report.md`、`result.json` 與 `app.log`：每個案例的狀態、與正式 model 的比對差異、Finder 判定與收尾。not run 的案例（例如 macOS 先處理選單 Start 時的 stale-start）照實回報，不算通過。
-3. 以 computer use 判讀報告目錄中的選單截圖：群組、分隔線、靠右的快捷鍵、錄影中灰色的儲存位置項目、淺色／深色選單列的可讀性。這是 computer use 觀察，與 runner 的腳本證據分開列出。
+3. 以 computer use 判讀報告目錄中的選單截圖：群組、分隔線、靠右的快捷鍵、淺色／深色選單列的可讀性。這是 computer use 觀察，與 runner 的腳本證據分開列出。
 4. needsPermission 選單需撤銷權限，維持由維護者處理；不要為了它修改 TCC。
 
 ## 無人值守快捷鍵驗收（沒有可見視窗時）
@@ -146,7 +146,7 @@ pnpm acceptance     # 全螢幕開素材 → System Events 送快捷鍵 → 錄 
 1. 依序執行 `pnpm start:app` 與 `pnpm acceptance`，本次範圍需要播放時再對存下的檔案執行 `pnpm acceptance:playback -- <path>`。委派到 sandbox 內的 Astra 時（sandbox 禁止 `ps`／`pgrep`，見「非互動執行的前置」），改由呼叫者在 sandbox 外執行並把各指令的輸出檔路徑與報告目錄寫進 prompt，Astra 不重跑這些指令、不重建、不重開 App。
 2. 讀取腳本報告、`verify.json` 與本次 App log；核對送鍵到 `pressed` 的延遲、`state` 順序、`saved` 路徑與完整性層級結果；引用原始報告與 `verify.json`，摘要整體判定、fail／n/a 和證據限制，不逐項重抄指標，也不重跑同一檔案的相同分析；不把腳本的 pass 當成未執行的 UI 或播放案例通過。
 3. 播放案例由 `pnpm acceptance:playback -- <path>` 以腳本輸入完成：它判定時長與尺寸、即時播放、seek、seek 後畫面改變與播放到結尾，並自行關閉文件、退出播放器（見[播放檢查](../../../docs/zh-TW/system-design/tooling.md#播放檢查)）。讀取並引用它的 `report.md`／`result.json`；QuickTime Player 已在執行時它回 blocked（exit 2），不要為了讓它執行而關閉使用者的文件或強制退出。只有案例要求點擊播放器自身的控制項時，才以 `open -a "QuickTime Player" <path>` 開啟，用 computer use 按控制項、確認進度前進並截一張畫面存入報告目錄，再依下方「播放器收尾」清理本次視窗；QuickTime 需在 Computer Use 核准清單內，不在則記 blocked。聽感需要聆聽者，維持未驗或由維護者判斷。
-4. 本次範圍需要的 Tray 案例（例如顯示上一段錄影、錄影中選單狀態）由 `pnpm acceptance:tray` 完成，見上方「Tray」；語言／快捷鍵設定僅在相關變更或使用者指定時加入。主觀聽感維持未驗。除了已提交的 runner，不要用 `osascript` 或其他自動化代按 Tray UI。
+4. 本次範圍需要的 Tray 案例（例如錄影中的選單狀態、點擊圖示開啟選單）由 `pnpm acceptance:tray` 完成，見上方「Tray」；語言／快捷鍵設定僅在相關變更或使用者指定時加入。主觀聽感維持未驗。除了已提交的 runner，不要用 `osascript` 或其他自動化代按 Tray UI。
 5. 報告依「證據、收尾與報告」寫入 `docs/verification/measurements/<timestamp>-computer-use/report.md`，明確標示「無人值守快捷鍵路徑（pnpm acceptance 送鍵）」，並連結腳本的報告目錄。用於發布時，待 record job 的 commit 落到 main 並 pull 後，把英文結論摘要填進 `docs/verification/releases/<version>.md` 的「Local acceptance before tagging — fill in」段落（錄影長度、verify 結果、播放結果、blocked 清單），並同步既存的繁中對應檔；沒有做的檢查寫進「Not recorded」。
 
 沒有 Codex 或 computer use 時，`pnpm start:app` 後依序執行 `pnpm acceptance`、`pnpm acceptance:playback`、`pnpm acceptance:tray` 與 `pnpm acceptance:settings-shortcut -- --observe`，本身就是可接受的無人值守錄影、播放、Tray 與設定入口檢查；只是播放器控制項點擊與所有畫面的視覺判讀沒有人觀察，報告要如此標示。

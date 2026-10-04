@@ -22,10 +22,10 @@ Named application and tool functions are grouped by source file. Follow source l
 | handleAction | Dispatch stop/quit/settings/relaunch/Finder, result actions, and every preference change through `savePreference` or `AppShortcuts.set` |
 | savePreference | One preference write: a `locked` one needs a settled recorder; the write is awaited, a failure logged and, where the tray has one, notified; both projections refresh afterwards |
 | focusApp | Bring the menu-bar app forward on macOS before a dialog or window, so it does not open behind the frontmost app |
-| revealSaved | Show last recording: select the file, or, when it was moved or deleted since, log that and open the output folder |
+| showSavedRecording | The saved notification's click: list the folder again and open Recordings with that recording in view, or, when it was moved or deleted since, on what the folder holds now |
 | revealLog | Reveal the file, otherwise open its directory; log open failures |
 | changeOutputDir | Native folder dialog → persist choice; failure notification or successful refresh |
-| openOutputDir | The tray's output-folder action: `createOutputFolderOpener` over `shell.openPath`, the native warning, app focus and `changeOutputDir` behind the settled check |
+| openOutputDir | Settings' Show in Finder for the output folder: `createOutputFolderOpener` over `shell.openPath`, the native warning, app focus and `changeOutputDir` behind the settled check |
 
 [main/output-folder.ts](../../src/main/output-folder.ts): `createOutputFolderOpener` returns the single-flight open action. It stats the folder. A directory opens; the missing known default is created with a non-recursive `mkdir` only inside an existing parent folder; a missing custom folder, a file, a refused creation, an unreadable path or a Finder failure becomes one localized warning with the path, details and Change output folder/Cancel; while recording work is pending, the problem is logged and told in a notification held by `CaptureNotices` instead, because a modal warning would hold that work. An access refusal still asks Finder first. It never writes settings; a repeated click joins, focusing an open warning. `nodeOutputFolderFs` is the real stat/mkdir boundary.
 
@@ -145,6 +145,23 @@ The page's window-message callback checks source/marker/port before creating the
 | release | Once-only closed flag and handle close; `beginTerminal` already stopped the fsync timer |
 | enqueue | Serialize operations; retain first failure and reject later operations consistently |
 
+## Recordings library
+
+[main/recordings-library.ts](../../src/main/recordings-library.ts) lists the output folder for the Recordings tab and is the only way the sandboxed page reaches a recording's bytes; [main/mp4-duration.ts](../../src/main/mp4-duration.ts) reads lengths. See [desktop](desktop.md#recordings).
+
+| Function/method | Contract |
+| --- | --- |
+| isListedName | A video the tab lists: `.mp4`, `.m4v` or `.mov`, not hidden, not a `.recording.mp4` still being written |
+| stampedTime | The local time in the app's own `YYYY-MM-DD HH-MM-SS[-n].mp4` name, or undefined for any other name |
+| fileId | A stable id for a path (a truncated SHA-256), so the page holds ids, never paths, and keeps a card across listings |
+| parseRange | One `bytes=` range within a size; undefined without a header, null for a range that cannot be served (416) |
+| RecordingsLibrary.refresh | List the folder newest first and publish it; one listing at a time, and requests made meanwhile share one more listing after it; unknown lengths are read afterwards (`lengths`) and published together; lengths and thumbnails of files no longer listed are dropped; an unreadable folder is reported, not shown empty |
+| RecordingsLibrary.act | Reveal, open or move to the Trash a listed id; any failure lists the folder again before answering false, so a file that left it is gone from the reply |
+| RecordingsLibrary.thumbnail | A listed file's PNG thumbnail, made once per file version while it is among the `THUMBNAILS_KEPT` (64) shown most recently |
+| RecordingsLibrary.watch / unwatch | While the window is open: watch the folder (no poll) and list it again `WATCH_SETTLE_MS` (250 ms) after a burst of events on a listed name; follows a changed folder; `unwatch` when the window closes leaves no watcher or timer; a folder that cannot be watched is logged once |
+| RecordingsLibrary.handle | The `recordstuff-media:` handler: `video/<id>` with byte ranges and `thumb/<id>` for listed ids only; anything else is 404 |
+| mp4Duration | Seconds from the boxes alone: a fragmented file's last `tfdt` plus its samples' durations, otherwise `mvhd`; undefined when the boxes do not say; never throws |
+
 ## Settings, quality, language, and protocol
 
 [main/settings.ts](../../src/main/settings.ts):
@@ -255,8 +272,9 @@ The page's window-message callback checks source/marker/port before creating the
 | hotkeyGroup | Recommended default, the saved custom value when distinct, and Off; the renderer adds Custom shortcut…; a refused registration adds a diagnostic, as does a Settings shortcut (⌘⌥,) that failed to register or is taken by the recording shortcut; Off keeps the remembered accelerator |
 | updateChecksGroup | On/Off for the launch check |
 | languageGroup | English and Traditional Chinese; never locked, because language cannot touch a capture |
-| settingsView | The panel's whole view: title, hint, failure text, the three tabs (the failures tab counting unread rows) and groups with the actions stripped; failure rows carry their day, short time, file name and full path |
-| failureDay / failureTime | A failure row's day heading (Today, Yesterday, the date, the year only for an earlier year) and short local time, relative to `ctx.now` (plan 047) |
+| settingsView | The panel's whole view: title, hint, failure text, the four tabs (Failures counting unread rows), the Recordings listing with its media URLs, and groups with the actions stripped; failure rows carry their day, short time, file name and full path |
+| formatDuration | A recording's length as `1:23`, or `1:02:03` from an hour |
+| dayHeading / shortTime | The day heading failure rows and recordings are grouped under (Today, Yesterday, the date, the year only for an earlier year) and the short local time of a failure row or an app-named recording, relative to `ctx.now` (plan 047) |
 | settingsAction | The action for a group/choice pair that is offered and enabled right now, or nothing |
 | settingsChecked | Whether a choice is the committed one; how main reports that a save took effect |
 
@@ -283,7 +301,7 @@ The page's window-message callback checks source/marker/port before creating the
 | Function | Contract |
 | --- | --- |
 | disabled / item | Build disabled/enabled model entries |
-| windowsGroup / appGroup | Settings… (with the Settings shortcut, and an explanation when it is unavailable) and reviewed failures / Show log and Quit, in every state |
+| windowsGroup / appGroup | Open RecordStuff (with the shortcut that opens it while that is registered, and an explanation under it when it is unavailable) / Quit RecordStuff, in every state |
 | outputDirItems | Folder label and selection action with state-dependent enablement |
 | shortcutHint | Start/stop or Cancel recording tooltip naming the registered accelerator; undefined when disabled or unregistered |
 | permissionActions | Relaunch alone when required; otherwise settings and fallback relaunch |
