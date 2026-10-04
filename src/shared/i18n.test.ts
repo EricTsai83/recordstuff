@@ -55,6 +55,8 @@ describe("sentences", () => {
   it("closes and joins messages per language without doubling punctuation", () => {
     expect(sentences(["寫入錄影失敗", "點此查看詳情。"], "zh-TW")).toBe("寫入錄影失敗。點此查看詳情。");
     expect(sentences(["所選螢幕無法使用，請選擇其他螢幕", "點此查看詳情。"], "zh-TW")).toBe("所選螢幕無法使用，請選擇其他螢幕。點此查看詳情。");
+    // An ellipsis already ends the sentence, in both languages: no 「…。」.
+    expect(sentences(["錄影中斷", "正在處理錄影…"], "zh-TW")).toBe("錄影中斷。正在處理錄影…");
     expect(sentences(["Screen recording permission required", "Click for details."], "en"))
       .toBe("Screen recording permission required. Click for details.");
     expect(sentences(["The disk is full.", "Click for details."])).toBe("The disk is full. Click for details.");

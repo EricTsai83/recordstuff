@@ -327,7 +327,7 @@ export type MessageKey = keyof typeof ZH_TW;
  * Failure reasons omit that 。 because they also appear as headings.
  */
 export function sentences(parts: readonly string[], language: Language = DEFAULT_LANGUAGE): string {
-  if (language === "zh-TW") return parts.map(part => /[。！？]$/.test(part) ? part : `${part}。`).join("");
+  if (language === "zh-TW") return parts.map(part => /[。！？…]$/.test(part) ? part : `${part}。`).join("");
   return parts.map(part => /[.!?…]$/.test(part) ? part : `${part}.`).join(" ");
 }
 
