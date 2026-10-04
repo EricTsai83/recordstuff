@@ -872,6 +872,10 @@ function updateSidebarAbout(current: SettingsView): void {
   setText(sidebarAbout.querySelector(".sidebar-credit")!, about.label);
   const version = sidebarAbout.querySelector<HTMLElement>(".sidebar-version")!;
   setText(version, about.note ?? ""); version.hidden = !about.note;
+  // A link that failed to open says so where it was clicked: General's About row, which shows the same
+  // failure, is hidden while the sidebar is (`.section.about`). `#feedback` announces it either way.
+  const error = sidebarAbout.querySelector<HTMLElement>(".sidebar-error");
+  if (error) { setText(error, failure?.group === "about" ? failure.text : ""); error.hidden = failure?.group !== "about"; }
   const links = sidebarAbout.querySelector<HTMLElement>(".sidebar-links")!;
   for (const choice of about.choices) {
     const id = `sidebar-about-${choice.id}`;

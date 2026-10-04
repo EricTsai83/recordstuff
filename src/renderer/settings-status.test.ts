@@ -8,7 +8,7 @@ import type { SettingsView } from "../shared/settings-panel";
  */
 it("hides the card while ready, shows a problem with its fix and a recording with the lock, and fills the sidebar's foot", async () => {
   document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p><button id="status-action" hidden></button></div>'
-    + '<footer id="sidebar-about" hidden><div class="sidebar-text"><p class="sidebar-credit"></p><p class="sidebar-version"></p></div><div class="sidebar-links"></div></footer><p id="feedback"></p><form id="settings"></form>';
+    + '<footer id="sidebar-about" hidden><div class="sidebar-text"><p class="sidebar-credit"></p><p class="sidebar-version"></p><p class="sidebar-error" hidden></p></div><div class="sidebar-links"></div></footer><p id="feedback"></p><form id="settings"></form>';
   const ready: SettingsView = { language: "en", title: "RecordStuff", hint: "", failure: "",
     status: { tone: "ready", title: "Ready to record", detail: "" },
     tabs: [{ id: "recording", label: "Recording settings" }, { id: "failures", label: "Failures (2)", accessibleLabel: "Recording failures, 2 unread" }],
@@ -31,6 +31,14 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   expect(choose).toHaveBeenCalledWith("about", "source");
   // One request at a time (settings.ts `choose`): the next click waits for this one to settle.
   await vi.waitFor(() => expect(foot.querySelector("#sidebar-about-source")!.getAttribute("aria-disabled")).toBe("false"));
+  // A link that did not open says so beside it: General's About row, which also shows it, is hidden beside a sidebar.
+  const error = foot.querySelector<HTMLElement>(".sidebar-error")!;
+  expect(error.hidden).toBe(true);
+  choose.mockImplementationOnce(async () => ({ view: ready, applied: false, failure: "Could not open the link. Try again." }));
+  (foot.querySelector("#sidebar-about-website") as HTMLButtonElement).click();
+  await vi.waitFor(() => expect([error.hidden, error.textContent]).toEqual([false, "Could not open the link. Try again."]));
+  (foot.querySelector("#sidebar-about-website") as HTMLButtonElement).click();
+  await vi.waitFor(() => expect(error.hidden).toBe(true));
 
   push({ ...ready, revision: 2, status: { tone: "attention", title: "Output folder unavailable", detail: "Check the output folder.", action: { id: "folder", label: "Change output folder…" } } });
   expect([card.hidden, card.dataset.tone, detail.textContent, action.hidden, action.textContent]).toEqual([false, "attention", "Check the output folder.", false, "Change output folder…"]);
