@@ -680,12 +680,13 @@ async function run() {
         }
         if (state === "recording" || state === "locked") {
           // The status card speaks only when there is something to say (2026-10-04): never while ready, and a busy
-          // app keeps its title in view at every size. The sidebar's foot carries the credit and links when wide.
-          const card = await read<{ shown: boolean; tone: string; foot: boolean; links: number; quit: string }>(window, `(() => { const el = document.getElementById("status"), foot = document.getElementById("sidebar-about");
-            return { shown: el.getBoundingClientRect().height > 0, tone: el.dataset.tone ?? "", foot: foot.getBoundingClientRect().height > 0, links: foot.querySelectorAll(".sidebar-link").length, quit: foot.querySelector(".sidebar-quit")?.textContent ?? "" }; })()`);
+          // app keeps its title in view at every size. The sidebar's foot is Quit RecordStuff alone when wide (2026-10-05).
+          const card = await read<{ shown: boolean; tone: string; foot: boolean; buttons: number; quit: string }>(window, `(() => { const el = document.getElementById("status"), foot = document.getElementById("sidebar-about");
+            return { shown: el.getBoundingClientRect().height > 0, tone: el.dataset.tone ?? "", foot: foot.getBoundingClientRect().height > 0, buttons: foot.querySelectorAll("button").length,
+              quit: foot.querySelector(".sidebar-quit")?.textContent ?? "" }; })()`);
           const expected = (state === "locked" ? card.shown && card.tone === "busy" : !card.shown && card.tone === "ready")
-            && (size === "default" ? card.foot && card.links === 2 && card.quit === translate("Quit RecordStuff", lang) : !card.foot);
-          record(`${lang}/${scheme}/${size}/${state}: the status card speaks only when needed; the credit and Quit RecordStuff sit in the sidebar when wide`, expected, JSON.stringify(card));
+            && (size === "default" ? card.foot && card.buttons === 1 && card.quit === translate("Quit RecordStuff", lang) : !card.foot);
+          record(`${lang}/${scheme}/${size}/${state}: the status card speaks only when needed; Quit RecordStuff alone sits in the sidebar's foot when wide`, expected, JSON.stringify(card));
         }
         await shot(`panel-${lang}-${scheme}-${size}-${state}.png`);
         if (state === "library") {
@@ -965,11 +966,17 @@ async function run() {
   window.webContents.send("settings:changed", captureView);
   await settle(60);
   await read(window, `document.getElementById("tab-general").click()`);
-  // General's own footer is the narrow layout's; the sidebar carries it when wide (2026-10-04).
+  // General's own footer, at every width since the sidebar's foot became Quit alone (2026-10-05): beside the sidebar
+  // (720 px, set above) it shows the credit and both links, and leaves Quit to the sidebar's own row.
+  await settle(100);
+  const wideFooter = await read<{ credit: boolean; shown: string[] }>(window, `(() => { const row = document.getElementById("setting-about-row");
+    return { credit: row.querySelector(".group-label").getBoundingClientRect().height > 0, shown: [...row.querySelectorAll(".controls button")].filter(b => b.getBoundingClientRect().height > 0).map(b => b.dataset.action) }; })()`);
+  record("beside the sidebar, General's footer shows the credit with the website and source links, and its Quit gives way to the sidebar's",
+    wideFooter.credit && wideFooter.shown.join() === "website,source", JSON.stringify(wideFooter));
   window.setSize(560, 760);
   await settle(100);
   const footer = await read<boolean>(window, `(() => { const row = document.getElementById("setting-about-row"); const buttons = [...row.querySelectorAll(".controls button")]; const credit = row.querySelector(".group-label"); return credit.textContent.includes("Eric Tsai") && buttons.map(b => b.dataset.action).join() === "website,source,quit" && buttons.every(b => b.querySelector("svg") && b.getAttribute("aria-label") && b.title === b.getAttribute("aria-label")) && credit.getBoundingClientRect().right <= buttons[0].getBoundingClientRect().left; })()`);
-  // Quit RecordStuff joins the links there (2026-10-05); the wide sidebar gives it a row with its words.
+  // Quit RecordStuff joins the links there in a narrow window (2026-10-05); the wide sidebar gives it a row with its words instead.
   record("narrow footer credits Eric Tsai on the left with the website, source and Quit RecordStuff as labeled icons on the right", footer, String(footer));
   const logRow = await read<boolean>(window, `(() => { const row = document.getElementById("setting-log-row"); const show = document.getElementById("setting-log-show"); return Boolean(row?.querySelector(".row-icon")) && row.querySelector(".group-label").textContent === "Log file" && show?.textContent === "Show log" && !show.disabled; })()`);
   record("Show log is a labelled row of its own, with an icon and a text button", logRow, String(logRow));

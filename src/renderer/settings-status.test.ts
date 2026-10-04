@@ -3,17 +3,18 @@ import { expect, it, vi } from "vitest";
 import type { SettingsView } from "../shared/settings-panel";
 
 /**
- * The status card speaks only when there is something to say (2026-10-04); the sidebar's foot carries the
- * credit, version and links; the tab strip turns an unread count into a badge without changing its text.
+ * The status card speaks only when there is something to say (2026-10-04); the sidebar's foot is Quit alone
+ * (2026-10-05); the tab strip turns an unread count into a badge without changing its text.
  */
-it("hides the card while ready, shows a problem with its fix and a recording with the lock, and fills the sidebar's foot", async () => {
+it("hides the card while ready, shows a problem with its fix and a recording with the lock, and puts Quit in the sidebar's foot", async () => {
   document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p><button id="status-secondary" hidden></button><button id="status-action" hidden></button></div>'
-    + '<footer id="sidebar-about" hidden><div class="sidebar-text"><p class="sidebar-credit"></p><p class="sidebar-version"></p><p class="sidebar-error" hidden></p></div><div class="sidebar-links"></div></footer><p id="feedback"></p><form id="settings"></form>';
+    + '<footer id="sidebar-about" hidden><p class="sidebar-error" hidden></p></footer><p id="feedback"></p><form id="settings"></form>';
   const ready: SettingsView = { language: "en", title: "RecordStuff", hint: "", failure: "",
     status: { tone: "ready", title: "Ready to record", detail: "" },
     tabs: [{ id: "recording", label: "Recording settings" }, { id: "failures", label: "Failures (2)", accessibleLabel: "Recording failures, 2 unread" }],
     groups: [{ id: "about", label: "Built by Eric Tsai", note: "Version 1.3.0", tab: "general", kind: "actions", enabled: true,
-      choices: [{ id: "website", label: "Official website", enabled: true, checked: false }, { id: "source", label: "GitHub source", enabled: true, checked: false }] }] };
+      choices: [{ id: "website", label: "Official website", enabled: true, checked: false }, { id: "source", label: "GitHub source", enabled: true, checked: false },
+        { id: "quit", label: "Quit RecordStuff", enabled: true, checked: false }] }] };
   let push!: (view: SettingsView) => void;
   const choose = vi.fn(async () => ({ view: ready, applied: true }));
   window.settings = { read: async () => ready, capture: async () => ready, choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
@@ -22,22 +23,23 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   const card = document.getElementById("status")!, detail = document.getElementById("status-detail")!, action = document.getElementById("status-action")!;
   expect(card.hidden).toBe(true);
 
-  // The sidebar's foot: the credit, the version and both links as named icons, which ask main for the About choices.
+  // The sidebar's foot: Quit RecordStuff with its words and mark, and nothing else; the credit, version and links stay in General.
   const foot = document.getElementById("sidebar-about")!;
-  expect([foot.hidden, foot.querySelector(".sidebar-credit")!.textContent, foot.querySelector(".sidebar-version")!.textContent]).toEqual([false, "Built by Eric Tsai", "Version 1.3.0"]);
-  expect([...foot.querySelectorAll<HTMLButtonElement>(".sidebar-link")].map(link => [link.textContent, link.getAttribute("aria-label"), link.title, Boolean(link.querySelector("svg"))]))
-    .toEqual([["", "Official website", "Official website", true], ["", "GitHub source", "GitHub source", true]]);
-  (foot.querySelector("#sidebar-about-source") as HTMLButtonElement).click();
-  expect(choose).toHaveBeenCalledWith("about", "source");
+  const quit = foot.querySelector<HTMLButtonElement>("#sidebar-about-quit")!;
+  expect([foot.hidden, quit.textContent, Boolean(quit.querySelector("svg")), foot.querySelectorAll("button").length]).toEqual([false, "Quit RecordStuff", true, 1]);
+  quit.click();
+  expect(choose).toHaveBeenCalledWith("about", "quit");
   // One request at a time (settings.ts `choose`): the next click waits for this one to settle.
-  await vi.waitFor(() => expect(foot.querySelector("#sidebar-about-source")!.getAttribute("aria-disabled")).toBe("false"));
-  // A link that did not open says so beside it: General's About row, which also shows it, is hidden beside a sidebar.
+  await vi.waitFor(() => expect(quit.getAttribute("aria-disabled")).toBe("false"));
+  // A quit that failed says so beside it: General's About row hides its own Quit beside a sidebar.
   const error = foot.querySelector<HTMLElement>(".sidebar-error")!;
   expect(error.hidden).toBe(true);
-  choose.mockImplementationOnce(async () => ({ view: ready, applied: false, failure: "Could not open the link. Try again." }));
-  (foot.querySelector("#sidebar-about-website") as HTMLButtonElement).click();
-  await vi.waitFor(() => expect([error.hidden, error.textContent]).toEqual([false, "Could not open the link. Try again."]));
-  (foot.querySelector("#sidebar-about-website") as HTMLButtonElement).click();
+  choose.mockImplementationOnce(async () => ({ view: ready, applied: false, failure: "Could not quit. Try again." }));
+  quit.click();
+  await vi.waitFor(() => expect([error.hidden, error.textContent]).toEqual([false, "Could not quit. Try again."]));
+  // The failure reads under the row it came from.
+  expect(quit.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  quit.click();
   await vi.waitFor(() => expect(error.hidden).toBe(true));
 
   push({ ...ready, revision: 2, status: { tone: "attention", title: "Output folder unavailable", detail: "Check the output folder.", action: { id: "folder", label: "Change output folder…" } } });
@@ -79,6 +81,8 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   push({ ...ready, revision: 3, hint: "Recording in progress; only language and appearance can change.",
     status: { tone: "recording", title: "Recording", detail: "" }, tabs: [ready.tabs[0]!, { id: "failures", label: "Failures" }] });
   expect([card.hidden, card.dataset.tone, detail.hidden, document.getElementById("hint")!.hidden, action.hidden]).toEqual([false, "recording", true, false, true]);
+  // The open tab is on the root, where the stylesheet leaves the lock hint out beside the recordings and failures.
+  expect(document.documentElement.dataset.tab).toBe("recording");
   // Switching tabs rebuilt the strip, so the tab is looked up again.
   const failures = document.getElementById("tab-failures")!;
   expect([failures.textContent, failures.querySelector(".tab-badge")]).toEqual(["Failures", null]);

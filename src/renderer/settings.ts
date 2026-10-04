@@ -882,39 +882,32 @@ function fillRow(area: HTMLDetailsElement, result: RecordingResultView): void {
 }
 
 /**
- * The sidebar's foot (2026-10-04): who built it and the version, with the two links as icons beside them, from the About group
- * General's footer shows in a narrow window. Its links ask main for the same `about` choices.
+ * The sidebar's foot (2026-10-05): Quit RecordStuff alone, a row with its words like the tabs above it. The credit,
+ * the version and the two links stay in General's own footer at every width, so the foot no longer stacks them.
  */
 const sidebarAbout = document.getElementById("sidebar-about") as HTMLElement | null;
 function updateSidebarAbout(current: SettingsView): void {
   if (!sidebarAbout) return;
-  const about = current.groups.find(group => group.id === "about");
-  sidebarAbout.hidden = !about;
-  if (!about) return;
-  setText(sidebarAbout.querySelector(".sidebar-credit")!, about.label);
-  const version = sidebarAbout.querySelector<HTMLElement>(".sidebar-version")!;
-  setText(version, about.note ?? ""); version.hidden = !about.note;
-  // A link that failed to open says so where it was clicked: General's About row, which shows the same
-  // failure, is hidden while the sidebar is (`.section.about`). `#feedback` announces it either way.
+  const quit = current.groups.find(group => group.id === "about")?.choices.find(choice => choice.id === "quit");
+  sidebarAbout.hidden = !quit;
+  if (!quit) return;
+  const about = current.groups.find(group => group.id === "about")!;
+  // A quit that failed says so where it was clicked: General's About row, which shows the same failure, hides its
+  // own Quit beside a sidebar. A link's failure stays in that row, beside the link. `#feedback` announces both.
   const error = sidebarAbout.querySelector<HTMLElement>(".sidebar-error");
-  if (error) { setText(error, failure?.group === "about" ? failure.text : ""); error.hidden = failure?.group !== "about"; }
-  const links = sidebarAbout.querySelector<HTMLElement>(".sidebar-links")!;
-  for (const choice of about.choices) {
-    const id = `sidebar-about-${choice.id}`;
-    // Quit is read, not guessed from a mark: a row of its own under the credit, with its words (2026-10-05).
-    const quit = choice.id === "quit";
-    let link = document.getElementById(id) as HTMLButtonElement | null;
-    if (!link) {
-      link = button(id, () => { if (!inactive(link!)) void choose("about", choice.id, id); });
-      link.className = quit ? "sidebar-quit" : "sidebar-link";
-      link.append(aboutIcon(choice.id));
-      if (quit) { link.append(node("span", "sidebar-quit-label")); sidebarAbout.append(link); } else links.append(link);
-    }
-    if (quit) setText(link.querySelector(".sidebar-quit-label")!, choice.label);
-    // An icon alone, named for assistive technology and in its tooltip, as in General's narrow footer.
-    else if (link.getAttribute("aria-label") !== choice.label) { link.setAttribute("aria-label", choice.label); link.title = choice.label; }
-    setActionDisabled(link, !about.enabled || !choice.enabled, Boolean(saving));
+  const quitFailed = failure?.group === "about" && failure.choice === "quit";
+  if (error) { setText(error, quitFailed ? failure!.text : ""); error.hidden = !quitFailed; }
+  const id = "sidebar-about-quit";
+  let link = document.getElementById(id) as HTMLButtonElement | null;
+  if (!link) {
+    link = button(id, () => { if (!inactive(link!)) void choose("about", "quit", id); });
+    link.className = "sidebar-quit";
+    link.append(aboutIcon("quit"), node("span", "sidebar-quit-label"));
+    // Before the error line, so a failure reads under the row it came from.
+    sidebarAbout.prepend(link);
   }
+  setText(link.querySelector(".sidebar-quit-label")!, quit.label);
+  setActionDisabled(link, !about.enabled || !quit.enabled, Boolean(saving));
 }
 /**
  * The Recordings tab (2026-10-04): the output folder's videos as cards grouped by day, newest first.
@@ -1300,6 +1293,8 @@ function draw(): void {
     selectedTab = entryTab;
   }
   document.documentElement.lang = documentLanguage(current.language);
+  // The status card's lock hint is about the settings: the stylesheet leaves it out beside the recordings and failures.
+  if (document.documentElement.dataset.tab !== selectedTab) document.documentElement.dataset.tab = selectedTab;
   // macOS insets the window controls in the page's top edge, which then leaves room for them.
   const platformName = shortcutGroup()?.platform;
   if (platformName && document.documentElement.dataset.platform !== platformName) document.documentElement.dataset.platform = platformName;
