@@ -5,8 +5,8 @@ import { release } from "../lib/release";
 
 const platforms = release.windows ? "macOS and Windows" : "macOS";
 const assets = release.windows
-  ? "Direct DMG for Apple silicon and an unsigned x64 Windows installer from GitHub Releases, each with its SHA-256 checksum."
-  : "Direct DMG from GitHub Releases with SHA-256 checksum.";
+  ? "DMG for Apple silicon and an unsigned x64 Windows installer, with SHA-256 checksums."
+  : "DMG for Apple silicon, with SHA-256 checksum.";
 ---
 
 <Layout title={`Download — RecordStuff ${release.version} for ${platforms}`} description={`Download RecordStuff ${release.version} for ${release.windows ? "macOS on Apple silicon and Windows x64" : "macOS on Apple silicon"}. ${assets}`}>

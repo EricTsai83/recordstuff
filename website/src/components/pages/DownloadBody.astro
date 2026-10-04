@@ -1,20 +1,23 @@
 ---
 import TextPage from "./TextPage.astro";
 import ChecksumBlock from "../ChecksumBlock.astro";
+import PlatformSwitch from "../PlatformSwitch.astro";
 import AppleMark from "../AppleMark.astro";
+import WindowsMark from "../WindowsMark.astro";
 import { windowsBoundary, windowsSmartScreen, windowsUpcoming } from "../../content/site";
 import { links, release } from "../../lib/release";
 
 const windows = release.windows;
 ---
 
-<TextPage title="Download RecordStuff" description={`Download the latest release for Apple silicon Macs${windows ? " and x64 Windows PCs" : ""}, view release details, and verify your download.`}>
+<TextPage title="Download RecordStuff" description={`Version ${release.version}, released ${release.publishedLabel}.`}>
   <p slot="meta" class="head-meta">
     <a class="link" href={release.notesUrl} target="_blank" rel="noopener noreferrer">v{release.version} release notes ↗</a>
   </p>
 
+  <PlatformSwitch macIds={["macos-title"]} windowsIds={["windows-title"]} />
   <div class="platforms">
-    <section class="platform-section platform-section--download" aria-labelledby="macos-title">
+    <section class="platform-section" aria-labelledby="macos-title" data-only="mac">
       <div class="platform-header">
         <h2 id="macos-title" class="platform-name">macOS</h2>
         <span class="platform-note dim">For Apple silicon Macs.</span>
@@ -26,11 +29,11 @@ const windows = release.windows;
         <p class="download-details dim">v{release.version} · {release.architectureLabel} · .dmg · {release.sizeLabel}</p>
       </div>
       <p class="platform-fine dim">
-        Intel Macs are not supported. Not notarized by Apple: first installation or an update may require <a class="link" href="/help#open-anyway">Open Anyway</a>. No certificate is installed.
+        Not notarized by Apple, so the first launch may need <a class="link" href="/help#open-anyway">Open Anyway</a>. Intel Macs are not supported.
       </p>
     </section>
 
-    <section class="platform-section" aria-labelledby="windows-title">
+    <section class="platform-section" aria-labelledby="windows-title" data-only="windows">
       <div class="platform-header">
         <h2 id="windows-title" class="platform-name">Windows</h2>
         <span class="platform-note dim">{windows ? "For x64 PCs. Not verified on Windows hardware." : "Not in this release."}</span>
@@ -38,36 +41,38 @@ const windows = release.windows;
       {windows ? (
         <>
           <div class="download-action">
-            <a class="btn btn-primary" href={windows.url} download={windows.name}>Download for Windows</a>
+            <a class="btn btn-primary" href={windows.url} download={windows.name}><WindowsMark size={16} /> Download for Windows</a>
             <p class="download-details dim">v{release.version} · {windows.architectureLabel} · .exe installer · {windows.sizeLabel}</p>
           </div>
           <p class="platform-fine dim">
-            {windowsBoundary} {windowsSmartScreen} See <a class="link" href="/help#windows">Windows help</a>. Windows on Arm and Linux are not supported.
+            {windowsBoundary} {windowsSmartScreen} See <a class="link" href="/help#windows">Windows help</a>.
           </p>
         </>
       ) : (
         <p class="platform-fine dim">
-          {windowsUpcoming} {windowsBoundary} See the <a class="link" href={links.releases} target="_blank" rel="noopener noreferrer">GitHub releases page</a> and <a class="link" href="/help#windows">Windows help</a>. Windows on Arm and Linux are not supported.
+          {windowsUpcoming} {windowsBoundary} See <a class="link" href="/help#windows">Windows help</a>.
         </p>
       )}
     </section>
 
     <section class="platform-section" aria-labelledby="verify-title">
       <div class="platform-header"><h2 id="verify-title" class="platform-name">Verify your download</h2></div>
-      {windows ? (
-        <>
-          <h3 class="verify-name">macOS DMG</h3>
-          <ChecksumBlock />
+      <div class="verify-platform" data-only="mac">
+        {windows && <h3 class="verify-name">macOS DMG</h3>}
+        <ChecksumBlock />
+      </div>
+      {windows && (
+        <div class="verify-platform" data-only="windows">
           <h3 class="verify-name">Windows installer</h3>
           <ChecksumBlock platform="windows" />
-        </>
-      ) : <ChecksumBlock />}
+        </div>
+      )}
     </section>
 
     <section class="platform-section" aria-labelledby="older-title">
       <div class="platform-header"><h2 id="older-title" class="platform-name">Older versions</h2></div>
       <p class="muted">
-        Every release, with its SHA256SUMS and release.json, is on the <a class="link" href={links.releases} target="_blank" rel="noopener noreferrer">GitHub releases page</a>. Updating is a manual download and replace; see <a class="link" href="/help#update">Help</a>{windows && <>, or <a class="link" href="/help#windows-update">Windows help</a> for the installer</>}.
+        Every release is on <a class="link" href={links.releases} target="_blank" rel="noopener noreferrer">GitHub Releases</a>. To update, see <a class="link" href="/help#update" data-only="mac">Help</a>{windows && <a class="link" href="/help#windows-update" data-only="windows">Help</a>}.
       </p>
     </section>
   </div>
@@ -81,12 +86,12 @@ const windows = release.windows;
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 4.5rem;
+    gap: 3.5rem;
   }
   .platform-section {
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: 1.5rem;
   }
   .platform-header {
     display: flex;
@@ -112,10 +117,20 @@ const windows = release.windows;
   .platform-fine { max-width: 720px; }
   .download-action { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem 1.5rem; }
   .download-details { font-size: 0.85rem; line-height: 1.8; }
+  .verify-platform { display: flex; flex-direction: column; gap: 1.5rem; }
   .verify-name { font-weight: 500; font-size: 1rem; color: var(--fg); }
-  .verify-name:not(:first-of-type) { margin-top: 1.5rem; }
+  /* With the switch, the chosen platform is already named above: drop the per-platform names. */
+  :global(:root[data-platform]) .platform-section[data-only] .platform-header,
+  :global(:root[data-platform]) .verify-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
   @media (max-width: 640px) {
-    .platforms { gap: 3.5rem; }
-    .platform-section { gap: 1.75rem; }
+    .platforms { gap: 2.75rem; }
+    .platform-section { gap: 1.25rem; }
   }
 </style>

@@ -1,7 +1,7 @@
 ---
 /**
- * Verified release facts for one installer: filename, size, date, source
- * commit and SHA-256 with a copy button. `windows` renders the x64 installer
+ * Verified release facts for one installer: filename, size, source commit
+ * and SHA-256 with a copy button. `windows` renders the x64 installer
  * and must only be passed when the release carries one.
  */
 import { links, release } from "../lib/release";
@@ -13,13 +13,11 @@ const { platform = "macos" } = Astro.props;
 const windows = platform === "windows" ? release.windows : undefined;
 if (platform === "windows" && !windows) throw new Error(`Release ${release.version} carries no Windows installer.`);
 const file = windows
-  ? { name: windows.name, size: windows.size, sizeLabel: windows.sizeLabel, sha256: windows.sha256, architecture: "x64 (64-bit Intel or AMD)", id: "win-sha256" }
-  : { name: release.fileName, size: release.sizeBytes, sizeLabel: release.sizeLabel, sha256: release.sha256, architecture: "arm64 (Apple silicon)", id: "dmg-sha256" };
+  ? { name: windows.name, size: windows.size, sizeLabel: windows.sizeLabel, sha256: windows.sha256, id: "win-sha256" }
+  : { name: release.fileName, size: release.sizeBytes, sizeLabel: release.sizeLabel, sha256: release.sha256, id: "dmg-sha256" };
 const rows = [
   { label: "File", value: file.name, mono: true },
   { label: "Size", value: `${file.size.toLocaleString("en")} bytes (${file.sizeLabel})` },
-  { label: "Published", value: release.publishedLabel },
-  { label: "Architecture", value: file.architecture },
 ];
 ---
 
@@ -52,15 +50,15 @@ const rows = [
   </dl>
   {windows ? (
     <p class="verify-note">
-      Verify after downloading, in PowerShell: <code>Get-FileHash $HOME\Downloads\{windows.name}</code>. It prints the hash in capitals; compare it, ignoring case, with this value and the installer's line in the published{" "}
-      <a class="link" href={release.sha256sumsUrl} target="_blank" rel="noopener noreferrer">SHA256SUMS</a>.{" "}
-      <a class="link" href={windows.recordUrl} target="_blank" rel="noopener noreferrer">release-win32-x64.json</a> records the same value with the source commit, version and size. The installer also carries a GitHub build-provenance attestation: <code>gh attestation verify {windows.name} --repo {links.repositorySlug}</code>.
+      In PowerShell: <code>Get-FileHash $HOME\Downloads\{windows.name}</code>, then compare, ignoring case. Also in{" "}
+      <a class="link" href={release.sha256sumsUrl} target="_blank" rel="noopener noreferrer">SHA256SUMS</a> and{" "}
+      <a class="link" href={windows.recordUrl} target="_blank" rel="noopener noreferrer">release-win32-x64.json</a>; build provenance: <code>gh attestation verify {windows.name} --repo {links.repositorySlug}</code>.
     </p>
   ) : (
     <p class="verify-note">
-      Verify after downloading: <code>shasum -a 256 ~/Downloads/{release.fileName}</code>. The published{" "}
+      In Terminal: <code>shasum -a 256 ~/Downloads/{release.fileName}</code>. Also in{" "}
       <a class="link" href={release.sha256sumsUrl} target="_blank" rel="noopener noreferrer">SHA256SUMS</a> and{" "}
-      <a class="link" href={release.releaseJsonUrl} target="_blank" rel="noopener noreferrer">release.json</a> carry the same value.
+      <a class="link" href={release.releaseJsonUrl} target="_blank" rel="noopener noreferrer">release.json</a>.
     </p>
   )}
 </div>

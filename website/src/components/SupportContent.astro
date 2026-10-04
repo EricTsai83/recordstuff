@@ -7,21 +7,21 @@ const H = "h2";
 ---
 
 <div class="prose">
-  <H id="platforms">Verified platforms</H>
+  <H id="platforms">Platforms</H>
   <p>{platformBoundary.verified}</p>
-  <p>{release.windows ? platformBoundary.windows : `${windowsUpcoming} ${windowsBoundary}`} See <a href="/help#windows">Install on Windows</a>.</p>
+  <p>{release.windows ? platformBoundary.windows : `${windowsUpcoming} ${windowsBoundary}`} See <a href="/help#windows">Windows help</a>.</p>
   <p>{platformBoundary.unverified}</p>
 
-  <H id="privacy">Privacy and data</H>
+  <H id="privacy">Privacy</H>
   <ul>
     {privacy.map((item) => <li>{item}</li>)}
   </ul>
 
   <H id="source">Source and issues</H>
   <p>
-    RecordStuff is MIT licensed. The code, design documents and the <a href={links.verificationRecord} target="_blank" rel="noopener noreferrer">verification record</a> behind every claim on this site are on <a href={links.repository} target="_blank" rel="noopener noreferrer">GitHub</a>. Version {release.version} was built by CI from commit <a href={release.sourceCommitUrl} target="_blank" rel="noopener noreferrer"><code>{release.sourceCommitShort}</code></a>.
+    RecordStuff is MIT licensed. Code, design docs and the <a href={links.verificationRecord} target="_blank" rel="noopener noreferrer">verification record</a> are on <a href={links.repository} target="_blank" rel="noopener noreferrer">GitHub</a>. v{release.version} was built by CI from <a href={release.sourceCommitUrl} target="_blank" rel="noopener noreferrer"><code>{release.sourceCommitShort}</code></a>.
   </p>
   <p>
-    To report a problem, <a href={links.issues} target="_blank" rel="noopener noreferrer">open an issue</a> and include the relevant lines from the log; choose <em>Open RecordStuff</em> from the menu bar icon (the tray icon on Windows), then <em>General → Show log</em> to find it.
+    Found a problem? <a href={links.issues} target="_blank" rel="noopener noreferrer">Open an issue</a> with the relevant log lines. To find the log, open RecordStuff and choose <em>General → Show log</em>.
   </p>
 </div>

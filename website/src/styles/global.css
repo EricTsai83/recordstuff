@@ -300,6 +300,22 @@ kbd {
   }
 }
 
+/* PlatformSwitch sets data-platform; without it (no scripting, or a page without the switch) both platforms show. */
+:root[data-platform="mac"] [data-only="windows"],
+:root[data-platform="windows"] [data-only="mac"] {
+  display: none;
+}
+
+/* " on Windows" after a heading: needed when both platforms show, read only by assistive technology once one is chosen. */
+:root[data-platform] .platform-suffix {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

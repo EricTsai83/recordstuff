@@ -1,10 +1,10 @@
 ---
 /**
- * The full help text (allowing the app to open, install, permissions, use,
- * update, remove, retained data, then the Windows installer). Headings carry
- * ids so other pages can deep-link to a section, such as Download's Open
- * Anyway and Windows links.
+ * The help text (allowing the app to open, install, record, update, remove,
+ * then the Windows installer). Headings carry ids so other pages can
+ * deep-link to a section, such as Download's Open Anyway and Windows links.
  */
+import PlatformSwitch from "./PlatformSwitch.astro";
 import StepList from "./StepList.astro";
 import {
   installSteps,
@@ -17,7 +17,6 @@ import {
   windowsInstallSteps,
   windowsRemoveSteps,
   windowsRetainedData,
-  windowsSmartScreen,
   windowsUpcoming,
   windowsUpdateSteps,
 } from "../content/site";
@@ -26,81 +25,79 @@ import { links, release } from "../lib/release";
 const H = "h2";
 ---
 
+<PlatformSwitch macIds={["open-anyway", "install", "use", "update", "remove"]} windowsIds={["windows", "windows-update", "windows-remove"]} />
 <div class="prose help">
-  <H id="open-anyway">App blocked by macOS?</H>
-  <p>RecordStuff is not notarized by Apple, so macOS can block it the first time you open it and again after an update. Clicking Done only dismisses the warning; allow the app here instead.</p>
-  <ol>
-    <li>Manually open <strong>System Settings → Privacy &amp; Security</strong>.</li>
-    <li>Scroll down to <strong>Security</strong> near the bottom.</li>
-    <li>Find the RecordStuff message, click <strong>Open Anyway</strong> and confirm.</li>
-  </ol>
-  <p class="dim">Only allow a download you trust. Managed Macs may restrict this. For malware or damaged-file warnings, stop and report the issue. <a href={links.appleOpenAnyway} target="_blank" rel="noopener noreferrer">Apple’s instructions ↗</a></p>
+  <div data-only="mac">
+    <H id="open-anyway">App blocked by macOS?</H>
+    <p>RecordStuff isn't notarized by Apple, so macOS may block it on first launch and after updates. Don't click Done; instead:</p>
+    <ol>
+      <li>Open <strong>System Settings → Privacy &amp; Security</strong>.</li>
+      <li>Scroll to <strong>Security</strong>, click <strong>Open Anyway</strong> next to RecordStuff and confirm.</li>
+    </ol>
+    <p class="dim">For malware or damaged-file warnings, stop and report the issue. <a href={links.appleOpenAnyway} target="_blank" rel="noopener noreferrer">Apple’s instructions ↗</a></p>
 
-  <H id="install">Install and first launch</H>
-  <p>No Terminal, developer tools or certificates are needed. Files with <code>arm64</code> in the name are for Apple silicon Macs.</p>
-  <StepList steps={installSteps} />
-  <div class="callout">
-    <p><strong>Two separate permissions.</strong> {permissionsTroubleshooting}</p>
+    <H id="install">Install</H>
+    <StepList steps={installSteps} />
+    <div class="callout">
+      <p>{permissionsTroubleshooting}</p>
+    </div>
+
+    <H id="use">Record</H>
+    <ul>
+      <li><strong>Start:</strong> click the menu bar icon and choose <em>Start recording</em>, or press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>1</kbd>.</li>
+      <li><strong>Cancel or stop:</strong> the same menu or shortcut. Cancelling during the countdown saves nothing.</li>
+      <li><strong>Find recordings:</strong> click the saved notification, or choose <em>Open RecordStuff</em> from the menu.</li>
+    </ul>
+    <p>RecordStuff records one whole screen with system audio to an H.264/AAC MP4, without a microphone. Change these in the RecordStuff window:</p>
+    <div class="table-scroll" role="region" aria-label="Settings" tabindex="0">
+      <table>
+        <thead><tr><th>Setting</th><th>Options</th><th>Default</th></tr></thead>
+        <tbody>
+          {settings.map((row) => (<tr><td>{row.setting}</td><td>{row.options}</td><td>{row.fallback}</td></tr>))}
+        </tbody>
+      </table>
+    </div>
+    <p>Language (English or <span lang="zh-Hant">繁體中文</span>) and appearance are under General, and are the only settings you can change while recording.</p>
+
+    <H id="update">Update</H>
+    <p>By default RecordStuff checks for updates at launch and notifies you of a new version. To install it:</p>
+    <StepList steps={updateSteps} />
+
+    <H id="remove">Remove</H>
+    <StepList steps={removeSteps} />
+    <div class="table-scroll" role="region" aria-label="Retained data locations" tabindex="0">
+      <table>
+        <thead><tr><th>Data</th><th>Location</th></tr></thead>
+        <tbody>
+          {retainedData.map((row) => (<tr><td>{row.data}</td><td><code>{row.location}</code></td></tr>))}
+        </tbody>
+      </table>
+    </div>
   </div>
 
-  <H id="use">Record</H>
-  <p>Click the menu bar icon and choose <em>Start recording</em>, or press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>1</kbd> from any app, to record the selected screen and system audio. A stopwatch replaces the icon and a faint 3, 2, 1 counts down at the top-right of the recorded screen; the digits are gone before capture begins, and REC appears once it has. Choose <em>Cancel recording</em> or press the shortcut again during the countdown to cancel it (nothing is saved), and <em>Stop</em> or the shortcut while recording to stop. To start, cancel and stop with one click on the icon instead, choose <em>General → Icon click → Start / stop recording</em>; a right-click still opens the menu. Choose Off, 5 or 10 seconds under <em>Recording settings → Countdown</em>; each digit also plays a soft tick, which never reaches the recording, and <em>Countdown sound</em> right below turns it off. Recordings are saved to Movies → RecordStuff by default. Click the saved notification, or choose <em>Open RecordStuff</em> from the menu (or press <kbd>⌘</kbd><kbd>⌥</kbd><kbd>,</kbd>), to see them in <em>Recordings</em>, newest first: play one (its fullscreen fills the screen), drag it into another app, or use its <em>⋯</em> menu or a right-click to show it in Finder, open it in another app or move it to the Trash. A recording deleted in Finder leaves the list at once. The same window holds the settings. Under <em>Recording settings → Screen</em>, choose the primary display or a connected display. A specific display must be available; the app will not silently record another screen. The panel includes these settings, under Recording settings unless noted:</p>
-  <div class="table-scroll" role="region" aria-label="Settings" tabindex="0">
-    <table>
-      <thead><tr><th>Setting</th><th>Options</th><th>Default</th></tr></thead>
-      <tbody>
-        {settings.map((row) => (<tr><td>{row.setting}</td><td>{row.options}</td><td>{row.fallback}</td></tr>))}
-      </tbody>
-    </table>
+  <div data-only="windows">
+    <H id="windows">Install<span class="platform-suffix"> on Windows</span></H>
+    <p>{release.windows ? <>An x64 installer is on the <a href="/download">Download</a> page.</> : windowsUpcoming}</p>
+    <div class="callout">
+      <p><strong>Not verified on Windows hardware.</strong> {windowsBoundary}</p>
+    </div>
+    <StepList steps={windowsInstallSteps} />
+
+    <H id="windows-update">Update<span class="platform-suffix"> on Windows</span></H>
+    <StepList steps={windowsUpdateSteps} />
+
+    <H id="windows-remove">Uninstall<span class="platform-suffix"> on Windows</span></H>
+    <StepList steps={windowsRemoveSteps} />
+    <div class="table-scroll" role="region" aria-label="Retained data locations on Windows" tabindex="0">
+      <table>
+        <thead><tr><th>Data</th><th>Location</th></tr></thead>
+        <tbody>
+          {windowsRetainedData.map((row) => (<tr><td>{row.data}</td><td><code>{row.location}</code></td></tr>))}
+        </tbody>
+      </table>
+    </div>
   </div>
-  <p>Recording captures one whole screen, with no microphone, window or region selector. General settings also include System / Light / Dark appearance (System by default) and notifications (on by default, subject to macOS permission). Only language and appearance can change during recording.</p>
-  <p>Output is H.264/AAC MP4. Audio requests 256 kbps with voice processing disabled. Actual bitrate depends on the encoder and content.</p>
-
-  <H id="language">Language</H>
-  <p>RecordStuff starts in English. Open RecordStuff from the menu and choose <em>General → Language → <span lang="zh-Hant">繁體中文</span></em> for Traditional Chinese. The choice is saved and can change during a recording without affecting capture settings. Diagnostics stay English; macOS permission dialogs follow the system language.</p>
-
-  <H id="update">Update manually</H>
-  <p>Use Check for updates… under General in RecordStuff to find a newer version and open its download page. Check for updates on launch is optional, on by default, and runs at most once per 24 hours. When it finds a newer version, RecordStuff sends one notification for that version; clicking it opens the download page. A version you already saw in RecordStuff is not announced again. Checks wait while recording. Installation stays manual; older builds without update checks can use the download page directly.</p>
-  <StepList steps={updateSteps} />
-
-  <H id="remove">Remove</H>
-  <StepList steps={removeSteps} />
-  <p>Removing the app leaves your data in place. The app never deletes recordings. Delete these yourself only if you no longer need them:</p>
-  <div class="table-scroll" role="region" aria-label="Retained data locations" tabindex="0">
-    <table>
-      <thead><tr><th>Data</th><th>Location</th></tr></thead>
-      <tbody>
-        {retainedData.map((row) => (<tr><td>{row.data}</td><td><code>{row.location}</code></td></tr>))}
-      </tbody>
-    </table>
-  </div>
-  <p>In Finder choose Go → Go to Folder and paste a path to open it. Any remaining entry under Privacy &amp; Security → Screen &amp; System Audio Recording can be removed there; this is optional.</p>
-
-  <H id="windows">Install on Windows</H>
-  <p>{release.windows ? <>RecordStuff {release.version} includes an x64 installer for Windows on the <a href="/download">Download</a> page.</> : windowsUpcoming} Windows on Arm is not supported.</p>
-  <div class="callout">
-    <p><strong>Not verified on Windows hardware.</strong> {windowsBoundary} The sections above were written for, and verified on, macOS.</p>
-  </div>
-  <p>{windowsSmartScreen}</p>
-  <StepList steps={windowsInstallSteps} />
-
-  <H id="windows-update">Update on Windows</H>
-  <p>Check for updates… under General in RecordStuff also works on Windows: it reads the latest release on GitHub. Installation stays manual.</p>
-  <StepList steps={windowsUpdateSteps} />
-
-  <H id="windows-remove">Uninstall on Windows</H>
-  <StepList steps={windowsRemoveSteps} />
-  <p>The app never deletes recordings. It keeps your data in these locations:</p>
-  <div class="table-scroll" role="region" aria-label="Retained data locations on Windows" tabindex="0">
-    <table>
-      <thead><tr><th>Data</th><th>Location</th></tr></thead>
-      <tbody>
-        {windowsRetainedData.map((row) => (<tr><td>{row.data}</td><td><code>{row.location}</code></td></tr>))}
-      </tbody>
-    </table>
-  </div>
-  <p>Paste a path into the File Explorer address bar to open it.</p>
-  <p class="dim">The same guide is on GitHub in <a href={links.installGuide} target="_blank" rel="noopener noreferrer">English</a> and <a href={links.installGuideZh} hreflang="zh-Hant" target="_blank" rel="noopener noreferrer">Traditional Chinese</a>, pinned to the released commit.</p>
+  <p class="dim">This guide is also on GitHub in <a href={links.installGuide} target="_blank" rel="noopener noreferrer">English</a> and <a href={links.installGuideZh} hreflang="zh-Hant" target="_blank" rel="noopener noreferrer">繁體中文</a>.</p>
 </div>
 
 <style>

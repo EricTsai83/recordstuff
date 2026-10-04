@@ -1,0 +1,105 @@
+---
+/**
+ * macOS / Windows switch for pages that cover both: blocks marked
+ * data-only="mac" or data-only="windows" are hidden by global.css while the
+ * other platform is chosen. The choice comes from the URL fragment (an id
+ * listed in `windowsIds` or `macIds`), then the visitor's last choice, then
+ * the system; without scripting the switch stays hidden and both show.
+ */
+import AppleMark from "./AppleMark.astro";
+import WindowsMark from "./WindowsMark.astro";
+
+interface Props {
+  macIds: string[];
+  windowsIds: string[];
+}
+const { macIds, windowsIds } = Astro.props;
+---
+
+<div class="platform-switch" role="group" aria-label="Platform" data-mac-ids={macIds.join(" ")} data-windows-ids={windowsIds.join(" ")} hidden>
+  <button type="button" data-choice="mac" aria-pressed="false"><AppleMark size={15} /><span>macOS</span></button>
+  <button type="button" data-choice="windows" aria-pressed="false"><WindowsMark size={13} /><span>Windows</span></button>
+</div>
+<!-- Inline so the platform is set before the content below is parsed: the other platform never flashes. -->
+<script is:inline>
+  (() => {
+    const KEY = "recordstuff-platform";
+    const root = document.documentElement;
+    const control = document.currentScript.previousElementSibling;
+    const owner = (hash) => {
+      const id = decodeURIComponent(hash.slice(1));
+      if (!id) return undefined;
+      if (control.dataset.windowsIds.split(" ").includes(id)) return "windows";
+      if (control.dataset.macIds.split(" ").includes(id)) return "mac";
+      return undefined;
+    };
+    const set = (platform) => {
+      root.dataset.platform = platform;
+      control.querySelectorAll("button").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.choice === platform)));
+    };
+    let stored;
+    try { stored = localStorage.getItem(KEY); } catch { /* storage blocked: fall back to the system */ }
+    const system = navigator.userAgentData?.platform || navigator.userAgent;
+    set(owner(location.hash) || (stored === "mac" || stored === "windows" ? stored : /Windows/i.test(system) ? "windows" : "mac"));
+    control.hidden = false;
+    control.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-choice]");
+      if (!button) return;
+      const platform = button.dataset.choice;
+      set(platform);
+      try { localStorage.setItem(KEY, platform); } catch { /* the choice just isn't remembered */ }
+      // A fragment into the other platform would switch back on reload.
+      const linked = owner(location.hash);
+      if (linked && linked !== platform) history.replaceState(null, "", location.pathname + location.search);
+    });
+    addEventListener("hashchange", () => {
+      const linked = owner(location.hash);
+      if (linked) set(linked);
+    });
+  })();
+</script>
+
+<style>
+  .platform-switch {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    margin-bottom: 2.5rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .platform-switch[hidden] {
+    display: none;
+  }
+  .platform-switch button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1.1rem;
+    border: 0;
+    border-radius: 999px;
+    background: none;
+    color: var(--fg-muted);
+    font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .platform-switch button:hover {
+    color: var(--fg);
+  }
+  .platform-switch button[aria-pressed="true"] {
+    background: var(--fg);
+    color: var(--bg);
+  }
+  .platform-switch button:focus-visible {
+    outline: 2px solid var(--accent-ring);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .platform-switch button {
+      transition: none;
+    }
+  }
+</style>

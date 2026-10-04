@@ -1,5 +1,4 @@
 ---
-import FeatureGrid from "../FeatureGrid.astro";
 import HowItWorks from "../HowItWorks.astro";
 import Section from "../Section.astro";
 import SpecsBand from "../SpecsBand.astro";
@@ -8,10 +7,6 @@ import InstallFlow from "../InstallFlow.astro";
 
 <slot />
 <HowItWorks />
-<Section id="features" title="Stays out of the way">
-  <FeatureGrid />
-</Section>
-
 <SpecsBand />
 <Section id="get" title="Ready in five steps">
   <InstallFlow />
@@ -20,12 +15,10 @@ import InstallFlow from "../InstallFlow.astro";
 <style>
   /* Match the installation diagram's visible content: its first icon starts
      36px inside the desktop art band, and 14px inside the mobile band. */
-  :global(#features),
   :global(.specs) {
     --section-head-gap: calc(2rem + 36px);
   }
   @media (max-width: 900px) {
-    :global(#features),
     :global(.specs) {
       --section-head-gap: calc(2rem + 14px);
     }

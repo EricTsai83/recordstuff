@@ -13,7 +13,7 @@ export const SITE_NAME = "RecordStuff";
 export const meta = {
   title: "RecordStuff — screen and sound, nothing else",
   description:
-    "RecordStuff is a free, open-source macOS menu bar app that records one screen with its system audio to a plain MP4. Start from its menu or with ⌘⇧1; no account, no editor, and your files stay on your Mac.",
+    "A free, open-source macOS menu bar app that records your screen and system audio to a plain MP4. No account, no editor; files stay on your Mac.",
   ogImageAlt: "A low-poly Mac desktop with a campsite at night; in the menu bar the RecordStuff icon is a filled dot with REC beside it, meaning a recording is in progress.",
 } as const;
 
@@ -34,7 +34,7 @@ export const hero = {
 
 export const notFound = {
   title: "Page not found",
-  description: "This address does not lead to a RecordStuff page. It may have moved, or the link may be mistyped.",
+  description: "This page doesn't exist or has moved.",
   links: [
     { href: "/", label: "Home" },
     { href: "/download", label: "Download RecordStuff" },
@@ -48,22 +48,10 @@ export interface Feature {
 }
 
 export const features: Feature[] = [
-  {
-    title: "One icon in the menu bar",
-    body: "Click it to start or stop, or to open RecordStuff. Its window lists your recordings to play, share or trash, and holds every setting: screen, output folder, countdown, quality and shortcut.",
-  },
-  {
-    title: "Your folder, your files",
-    body: "Recordings go to Movies → RecordStuff, or any folder you pick.",
-  },
-  {
-    title: "Recovery when possible",
-    body: "On failure, RecordStuff tries to preserve written media. Recovery after every crash or power loss is not guaranteed.",
-  },
-  {
-    title: "English and Traditional Chinese",
-    body: "Switch language any time, even mid-recording.",
-  },
+  { title: "Lives in the menu bar", body: "One icon to start, stop and find your recordings." },
+  { title: "Your files stay yours", body: "Plain MP4s in Movies → RecordStuff, or any folder you pick." },
+  { title: "Keeps what it can", body: "If a recording fails, it tries to save what was written." },
+  { title: "English and 繁體中文", body: "Switch any time, even while recording." },
 ];
 
 export interface Step {
@@ -72,138 +60,122 @@ export interface Step {
 }
 
 export const installSteps: Step[] = [
+  { title: "Open the DMG and drag RecordStuff onto Applications", body: "Then eject the DMG." },
   {
-    title: "Open the DMG and drag RecordStuff onto Applications",
-    body: "The disk image contains only the app and an Applications shortcut. Eject it afterwards; ejecting does not remove the installed app.",
+    title: "Open RecordStuff from Applications",
+    body: "If macOS blocks it, see ‘App blocked by macOS?’ above.",
   },
   {
-    title: "Allow the app to open",
-    body: "Open RecordStuff from Applications. If macOS blocks it, follow ‘App blocked by macOS?’ at the top of this page.",
+    title: "Allow Screen & System Audio Recording",
+    body: "Follow the app's prompt to System Settings → Privacy & Security, allow RecordStuff, then choose Quit & Reopen. Allow the system audio prompt too if one appears.",
   },
   {
-    title: "Grant Screen & System Audio Recording",
-    body: "Follow the app's prompt to System Settings → Privacy & Security → Screen & System Audio Recording and allow RecordStuff. Choose Quit & Reopen if macOS asks; the app menu also offers a restart. If a separate system audio prompt appears, allow it too.",
-  },
-  {
-    title: "Find the icon in the menu bar",
-    body: "RecordStuff lives in the menu bar. Look for its icon at the top of the screen, click it and choose Start recording, or press ⌘⇧1: a stopwatch replaces the icon and a faint 3, 2, 1 counts down at the top-right of the screen, then REC appears. Choose Cancel recording or Stop from the same menu, or press the shortcut again. The menu also opens RecordStuff, with your recordings and settings, and quits.",
+    title: "Record from the menu bar",
+    body: "Click the icon and choose Start recording, or press ⌘⇧1. Stop the same way.",
   },
 ];
 
 export const updateSteps: Step[] = [
-  { title: "Stop any recording and choose Quit from the menu bar icon", body: "" },
+  { title: "Quit RecordStuff from its menu bar icon", body: "" },
   {
     title: "Download the new DMG",
-    body: "Optionally compare its SHA-256 with the release's SHA256SUMS file: open Terminal and run `shasum -a 256` on the downloaded file.",
+    body: "Optionally check it with `shasum -a 256` against the release's SHA256SUMS.",
   },
   {
     title: "Drag RecordStuff onto Applications and choose Replace",
-    body: "Every release is signed with the same certificate and installed at the same path, so your language, output folder and other settings are kept and macOS normally keeps the recording permission. If a prompt appears again, allow it and relaunch.",
+    body: "Settings are kept, and macOS normally keeps the recording permission. If it asks again, allow it and relaunch.",
   },
-  {
-    title: "Launch the updated app and allow it to open",
-    body: "Eject the DMG and open RecordStuff from Applications. If blocked, follow ‘App blocked by macOS?’ at the top of this page.",
-  },
+  { title: "Open the updated app", body: "If macOS blocks it, see ‘App blocked by macOS?’ above." },
 ];
 
 export const removeSteps: Step[] = [
-  { title: "Stop any recording and choose Quit from the menu bar icon", body: "" },
+  { title: "Quit RecordStuff from its menu bar icon", body: "" },
   {
-    title: "Drag RecordStuff.app from Applications to the Trash and empty it",
-    body: "There is no separate uninstaller and no background service. Your recordings, settings and logs stay on disk; delete them yourself only if you no longer need them.",
+    title: "Drag RecordStuff from Applications to the Trash",
+    body: "There is no uninstaller or background service. Your data stays where it is:",
   },
 ];
 
 export const retainedData = [
-  { data: "Recordings", location: "Movies → RecordStuff in your home folder, or the output folder you chose" },
-  { data: "Settings and cache", location: "~/Library/Application Support/recordstuff" },
+  { data: "Recordings", location: "Movies → RecordStuff, or the folder you chose" },
+  { data: "Settings", location: "~/Library/Application Support/recordstuff" },
   { data: "Logs", location: "~/Library/Logs/recordstuff" },
 ] as const;
 
 /** CI-checked, never run on Windows hardware: shown wherever the Windows installer is offered. */
 export const windowsBoundary =
-  "CI builds the installer, silently installs and uninstalls it on a GitHub Windows runner and checks its version, architecture and files. Screen capture, system audio, notifications and the tray have not been verified on Windows hardware, and some app wording still assumes macOS, such as “menu bar” and “the Mac went to sleep”.";
+  "CI checks that the installer installs and uninstalls; screen capture, system audio, notifications and the tray have not been tested on Windows hardware.";
 
 /** Shown while the published release predates Windows. */
 export const windowsUpcoming = `Windows x64 installers are published on GitHub Releases starting with the first release after ${LAST_MACOS_ONLY_VERSION}.`;
 
 export const windowsSmartScreen =
-  "The installer is not code-signed, which its file name states. Windows SmartScreen may show “Windows protected your PC”: click More info, then Run anyway.";
+  "The installer is unsigned, so SmartScreen may warn: choose More info → Run anyway.";
 
 export const windowsInstallSteps: Step[] = [
   {
-    title: "Download the installer and run it",
-    body: "The file ends in `-x64-unsigned-setup.exe`. It installs RecordStuff for your Windows account only, without an administrator prompt, and creates a Start-menu shortcut, which Windows notifications need.",
+    title: "Run the installer",
+    body: "It installs for your account only, with no administrator prompt, and adds a Start-menu shortcut.",
   },
   {
     title: "If SmartScreen appears, choose More info → Run anyway",
-    body: "Only do this for an installer you downloaded from the RecordStuff release and, ideally, whose SHA-256 you compared. Organization-managed PCs may not allow it.",
+    body: "Only for an installer from the RecordStuff release. Managed PCs may block this.",
   },
   {
-    title: "Find the icon in the system tray",
-    body: "RecordStuff lives in the system tray. Click its icon and choose Start recording, or press Ctrl+Shift+1; choose Stop from the same menu, or press the shortcut again. The menu also opens RecordStuff, with your recordings and settings, and quits. Recordings are saved to Videos → RecordStuff by default.",
+    title: "Record from the system tray",
+    body: "Click the icon and choose Start recording, or press Ctrl+Shift+1. Recordings go to Videos → RecordStuff.",
   },
 ];
 
 export const windowsUpdateSteps: Step[] = [
-  { title: "Stop any recording and choose Quit from the tray menu", body: "" },
+  { title: "Quit RecordStuff from its tray icon", body: "" },
   {
-    title: "Download the new installer and run it",
-    body: "Optionally compare its SHA-256 first: in PowerShell run `Get-FileHash` on the downloaded file and compare the result, ignoring case, with the installer's line in the release's SHA256SUMS file. Your settings and recordings are kept.",
+    title: "Run the new installer",
+    body: "Optionally check it with `Get-FileHash` against the release's SHA256SUMS. Settings and recordings are kept.",
   },
 ];
 
 export const windowsRemoveSteps: Step[] = [
-  { title: "Stop any recording and choose Quit from the tray menu", body: "" },
+  { title: "Quit RecordStuff from its tray icon", body: "" },
   {
-    title: "Open Settings → Apps → Installed apps, find RecordStuff and choose Uninstall",
-    body: "Uninstalling never deletes your data. Your recordings, settings, history and logs stay on disk; delete them yourself only if you no longer need them.",
+    title: "Uninstall it in Settings → Apps → Installed apps",
+    body: "Your data stays where it is:",
   },
 ];
 
 /** Where the Windows build keeps its data: Electron's standard locations for this app. */
 export const windowsRetainedData = [
-  { data: "Recordings", location: "Videos\\RecordStuff in your user folder, or the output folder you chose" },
-  { data: "Settings and history", location: "%APPDATA%\\recordstuff" },
+  { data: "Recordings", location: "Videos\\RecordStuff, or the folder you chose" },
+  { data: "Settings", location: "%APPDATA%\\recordstuff" },
   { data: "Logs", location: "%APPDATA%\\recordstuff\\logs" },
 ] as const;
 
 export const settings = [
-  { setting: "Screen", options: "Primary display / a connected display", fallback: "Primary display" },
-  { setting: "Output folder", options: "Any folder, with Change… and Show in Finder", fallback: "Movies → RecordStuff" },
-  { setting: "Countdown", options: "Off / 3 s / 5 s / 10 s", fallback: "3 s" },
-  { setting: "Countdown sound", options: "On / Off (a soft tick with each digit; unavailable while the countdown is Off)", fallback: "On" },
+  { setting: "Screen", options: "Primary or a connected display", fallback: "Primary" },
+  { setting: "Output folder", options: "Any folder", fallback: "Movies → RecordStuff" },
+  { setting: "Countdown", options: "Off / 3 / 5 / 10 s, with an optional tick", fallback: "3 s, tick on" },
   { setting: "Video quality", options: "Economy / Standard / High", fallback: "Standard" },
   { setting: "Resolution cap", options: "1080p / 1440p / 4K / Source", fallback: "Source" },
-  { setting: "Frame rate", options: "30 / 60 fps", fallback: "30; 60 is enabled only on macOS" },
-  {
-    setting: "Shortcut (General)",
-    options: "⌘⇧1 (recommended) / Custom shortcut / Off",
-    fallback: "⌘⇧1; RecordStuff shows a warning if another app already owns the combination",
-  },
-  {
-    setting: "Icon click (General)",
-    options: "Open the menu / Start / stop recording",
-    fallback: "Open the menu; Start / stop recording for settings from before this choice",
-  },
+  { setting: "Frame rate", options: "30 / 60 fps", fallback: "30 fps" },
+  { setting: "Shortcut", options: "⌘⇧1 / custom / off", fallback: "⌘⇧1" },
+  { setting: "Icon click", options: "Open the menu / Start or stop", fallback: "Open the menu" },
 ] as const;
 
 export const permissionsTroubleshooting =
-  "If permission prompts continue after you granted access, make sure you open RecordStuff from Applications, then quit and reopen it. Allowing the app to open and granting recording permission are separate steps; both are required. Do not install certificates, disable Gatekeeper for the whole Mac or reset permissions for other apps.";
+  "Opening the app and recording the screen are separate permissions; both are needed. If prompts keep coming back, open RecordStuff from Applications and relaunch it.";
 
 export const platformBoundary = {
-  verified:
-    "Verified on an Apple M1 Pro running macOS 26 with Electron 44. The published macOS installer is arm64 only.",
-  windows: `Windows x64 is published but unverified: every release after ${LAST_MACOS_ONLY_VERSION} also carries an unsigned Windows x64 installer. ${windowsBoundary}`,
+  verified: "Verified on an Apple M1 Pro with macOS 26. The macOS build is Apple silicon only.",
+  windows: `A Windows x64 build is published but not verified: ${windowsBoundary}`,
   unverified:
-    "Windows on Arm, Linux, Intel Macs and other macOS versions are unverified, and no build is published for them. Apple notarization is not planned, and Windows code signing is not planned for now.",
+    "No builds for Intel Macs, Windows on Arm or Linux. Apple notarization and Windows code signing are not planned.",
 } as const;
 
 export const privacy = [
-  "Recordings, settings and logs stay on your computer in the locations listed under Help.",
-  "The app has no upload backend, account, telemetry or crash reporting.",
-  "Update checks contact the website version feed, with GitHub Releases as fallback (on Windows, GitHub Releases only), without installation identifiers. You can turn off the default-on launch check in Settings → General; manual checks remain available.",
-  "This website is static and sets no cookies. Downloads are served by GitHub Releases.",
+  "Recordings, settings and logs stay on your computer.",
+  "No account, uploads, telemetry or crash reporting.",
+  "Update checks send nothing that identifies you. The check at launch can be turned off in Settings → General.",
+  "This website sets no cookies; it only remembers your macOS or Windows choice in your browser. Downloads come from GitHub Releases.",
 ] as const;
 
 export const footer = {
