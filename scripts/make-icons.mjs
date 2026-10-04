@@ -139,14 +139,19 @@ const AMBER = [255, 185, 0, 255];
 // Rim of the Windows tray base: separates it from a dark taskbar.
 const EDGE = [120, 120, 126, 255];
 
+// The ring and the dot share one outer radius so switching state doesn't make
+// the icon jump. At 0.36 (11.5 pt across) it read as small beside other menu
+// bar icons; 0.44 leaves about 1 pt of margin at 16 pt. The stroke stays 0.12.
+const TRAY_RADIUS = 0.44;
+
 function idleShape(size) {
   const c = size / 2;
-  return ring(c, c, size * 0.36, size * 0.24);
+  return ring(c, c, size * TRAY_RADIUS, size * (TRAY_RADIUS - 0.12));
 }
 
 function recordingShape(size) {
   const c = size / 2;
-  return circle(c, c, size * 0.36);
+  return circle(c, c, size * TRAY_RADIUS);
 }
 
 /** Axis-aligned box in fractions of the icon size. */
