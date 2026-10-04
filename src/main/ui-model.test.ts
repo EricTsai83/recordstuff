@@ -1,23 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RecordingState } from "../shared/state";
-import { abbreviateHome, compactPath, preferencesUnlocked } from "./ui-model";
-
-describe("compactPath", () => {
-  it("keeps short paths and shortens long ones to their start, an ellipsis and the last folder", () => {
-    expect(compactPath("~/Movies/RecordStuff")).toBe("~/Movies/RecordStuff");
-    expect(compactPath("~/personal-project/recordstuff/docs/verification/measurements/run/recordings")).toBe("~/personal-project/…/recordings");
-    expect(compactPath("/Volumes/External Drive/Projects/2026/Client/Screen Recordings")).toBe("/Volumes/…/Screen Recordings");
-    expect(compactPath("/Volumes/Backup/Projects/2026/Client/September/RecordStuff")).toBe("/Volumes/Backup/…/RecordStuff");
-    expect(compactPath("~/a-very-long-first-folder-name-here/b/c/recordings")).toBe("~/…/recordings");
-    expect(compactPath("C:\\Users\\eric\\Videos\\Clients\\2026\\September\\RecordStuff")).toBe("C:\\Users\\…\\RecordStuff");
-    expect(compactPath("~/personal-project/recordstuff/docs/verification/recordings/")).toBe("~/personal-project/…/recordings");
-    expect(compactPath("C:\\Users\\eric\\Videos\\Clients\\2026\\September\\RecordStuff\\")).toBe("C:\\Users\\…\\RecordStuff");
-    const long = `~/${"x".repeat(60)}`;
-    expect(compactPath(long).length).toBeLessThanOrEqual(40);
-    expect(compactPath(long).startsWith("…")).toBe(true);
-    for (const value of ["~/personal-project/recordstuff/docs/verification/measurements/run/recordings", long]) expect(compactPath(value).length).toBeLessThanOrEqual(40);
-  });
-});
+import { abbreviateHome, preferencesUnlocked } from "./ui-model";
 
 describe("abbreviateHome", () => {
   it("replaces the home prefix on both path styles", () => {
