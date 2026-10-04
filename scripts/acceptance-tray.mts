@@ -93,6 +93,12 @@ for (const name of ["SIGINT", "SIGTERM"] as const) process.on(name, () => { inte
 const signal = controller.signal;
 const sleep = (ms: number): Promise<void> => delay(ms, undefined, { signal });
 const ax = osascriptAx(signal);
+/** Who held the front instead, for a failure that is otherwise only "not frontmost": another app taking it is not the app's fault. */
+async function frontmostOf(snapshot: { frontmostPid: number | null; focusedWindow: string | null }): Promise<string> {
+  const front = snapshot.frontmostPid;
+  const name = front === null ? "" : (await command("ps", ["-p", String(front), "-o", "comm="], signal, 10_000, [0, 1]).catch(() => "")).trim();
+  return `frontmost: ${front === null ? "none" : `${name ? path.basename(name) : "unknown"} (pid ${front})`}, focused window ${JSON.stringify(snapshot.focusedWindow)}`;
+}
 const appLog = new LogReader(logPath);
 const lines = (from?: LogCursor): string[] => (from ? appLog.since(from).lines.map(line => line.text) : appLog.all());
 
@@ -474,7 +480,7 @@ async function main(): Promise<void> {
         });
         const others = opened.windows.filter(window => window.title !== title).length;
         // ⌘W goes to the frontmost app: never send it unless that is RecordStuff with Settings focused.
-        if (opened.frontmostPid !== pid || opened.focusedWindow !== title) { c.problems.push("RecordStuff with its window focused is not frontmost after Open RecordStuff; ⌘W not sent, the window left open"); return; }
+        if (opened.frontmostPid !== pid || opened.focusedWindow !== title) { c.problems.push(`RecordStuff with its window focused is not frontmost after Open RecordStuff (${await frontmostOf(opened)}); ⌘W not sent, the window left open`); return; }
         await ax.key(KEY.w, FLAG.command);
         await driver!.until("the Settings window to close", async () => ((await ax.windows(pid!)).windows.some(window => window.title === title) ? undefined : true));
         if (others) c.details.push(`${others} other RecordStuff window(s) stayed as they were`);
@@ -487,6 +493,14 @@ async function main(): Promise<void> {
       await runCase("show-last", "Show last recording opens RecordStuff on Recordings with the newest recording focused, not the folder", language, async c => {
         if ((await ax.windows(pid!)).windows.some(window => window.title === "RecordStuff")) { c.status = "not run"; c.details.push("a RecordStuff window was already open"); return; }
         const saved = recordings.at(-1);
+        // From another app, as a user reaches it: an earlier case can leave RecordStuff active with no window,
+        // and then the entry would need no activation at all. Finder is always running and opens no window.
+        await command("osascript", ["-e", 'tell application "Finder" to activate'], signal);
+        const before = await driver!.until("Finder in front", async () => {
+          const snapshot = await ax.windows(pid!);
+          return snapshot.frontmostPid !== pid ? snapshot : undefined;
+        });
+        c.details.push(`frontmost before: pid ${before.frontmostPid}`);
         const from = appLog.end();
         await driver!.open();
         await driver!.select(t("Show last recording", language));
@@ -527,7 +541,7 @@ async function main(): Promise<void> {
         if (lines(from).some(line => /openPath|reveal|Finder/.test(line))) c.problems.push("it opened the folder");
         // ⌘W goes to the frontmost app: never send it unless that is RecordStuff with its window focused.
         const front = await ax.windows(pid!);
-        if (front.frontmostPid !== pid || front.focusedWindow !== title) { c.problems.push("RecordStuff with its window focused is not frontmost; ⌘W not sent, the window left open"); return; }
+        if (front.frontmostPid !== pid || front.focusedWindow !== title) { c.problems.push(`RecordStuff with its window focused is not frontmost (${await frontmostOf(front)}); ⌘W not sent, the window left open`); return; }
         await ax.key(KEY.w, FLAG.command);
         await driver!.until("the RecordStuff window to close", async () => ((await ax.windows(pid!)).windows.some(window => window.title === title) ? undefined : true));
         if (opened.windows.length > 1) c.details.push(`${opened.windows.length - 1} other RecordStuff window(s) stayed as they were`);
