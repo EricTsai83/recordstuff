@@ -119,8 +119,16 @@ export class CaptureHost implements RecorderHost {
       this.teardown();
       this.emitFailure("capture_host_crashed", details.reason);
     });
+    // Closed by anyone but `teardown` (which lets go of it first) while a session needs it: the host is gone, as after a
+    // crash, and the session hears so now instead of from the stall guard or the capture-request deadline.
     window.on("closed", () => {
-      if (this.window === window) this.teardown();
+      if (this.window !== window) return;
+      const lost = this.watching !== undefined;
+      this.teardown();
+      if (lost) {
+        this.log("capture host: window closed during a session");
+        this.emitFailure("capture_host_crashed", "capture window closed");
+      }
     });
 
     const { port1, port2 } = new MessageChannelMain();

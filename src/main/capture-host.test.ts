@@ -161,6 +161,18 @@ describe("capture host supervision", () => {
     expect(s.port().closed).toBe(true);
   });
 
+  it("reports a window closed under a running session, and not one closed between sessions", async () => {
+    const s = setup();
+    await s.start();
+    s.window().events.get("closed")!();
+    expect(s.failures).toEqual([{ code: "capture_host_crashed", detail: "capture window closed" }]);
+    expect(s.port().closed).toBe(true);
+    await s.start("s2");
+    s.port().emit({ type: "stopped", sessionId: "s2" });
+    s.window().events.get("closed")!();
+    expect(s.failures).toHaveLength(1);
+  });
+
   it("reports a crashed renderer at any time", async () => {
     const s = setup();
     await s.start();
