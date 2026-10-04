@@ -408,11 +408,30 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .clip-more .more-icon { width: 18px; height: 18px; }
 .clip:hover .clip-more, .clip-more:focus-visible, .clip-more[aria-expanded="true"] { opacity: 1; }
 :is(button, select).clip-more:enabled:not([aria-disabled="true"]):hover { background: rgb(0 0 0 / .72); }
-.clip-menu { position: fixed; inset: auto; margin: 0; min-width: 180px; padding: 5px; border: 1px solid var(--card-border); border-radius: 10px; background: var(--surface); color: inherit; box-shadow: 0 10px 30px rgb(0 0 0 / .18); }
+/*
+ * The card menu, drawn like a macOS menu: a raised sheet over the cards, icons in a column, a
+ * quiet tint under the item the pointer or arrows are on (its words keep their colour), and Move to
+ * Trash set apart below a line, red throughout with a red tint of its own.
+ */
+.clip-menu {
+  --menu-tint: light-dark(rgb(0 0 0 / .075), rgb(255 255 255 / .11));
+  --menu-tint-danger: light-dark(rgb(229 53 43 / .1), rgb(255 90 79 / .12));
+  /* The brand red, a step deeper in light and lighter in dark: 4.5:1 or more on the sheet and on its tint. */
+  --menu-danger: light-dark(#c4271d, #ff7369);
+  position: fixed; inset: auto; margin: 0; min-width: 196px; padding: 5px; border: 0; border-radius: 11px; color: var(--text);
+  background: light-dark(rgb(255 255 255 / .97), rgb(37 37 41 / .97)); backdrop-filter: blur(20px);
+  box-shadow: 0 0 0 .5px light-dark(rgb(0 0 0 / .14), rgb(0 0 0 / .6)), inset 0 0 0 .5px light-dark(transparent, rgb(255 255 255 / .12)),
+    0 12px 32px light-dark(rgb(0 0 0 / .14), rgb(0 0 0 / .5)), 0 2px 6px light-dark(rgb(0 0 0 / .06), rgb(0 0 0 / .3));
+}
 .clip-menu:popover-open { display: flex; flex-direction: column; }
-.clip-menu [role="menuitem"] { width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: none; box-shadow: none; text-align: start; font-weight: 400; }
-.clip-menu [role="menuitem"]:focus, :is(button, select).clip-menu [role="menuitem"]:hover, .clip-menu [role="menuitem"]:hover { background: var(--accent); color: var(--on-accent); outline: none; }
-.clip-menu [data-action="trash"] { color: var(--rec); }
+.clip-menu [role="menuitem"] { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 0; padding: 5px 9px; border: 0; border-radius: 6px; background: none; box-shadow: none; color: inherit; text-align: start; font-weight: 400; line-height: 18px; transition: none; }
+.clip-menu .menu-icon { flex: none; width: 15px; height: 15px; color: var(--secondary); }
+.clip-menu .menu-separator { height: 1px; margin: 4px 9px; background: light-dark(rgb(0 0 0 / .09), rgb(255 255 255 / .09)); }
+/* Above the page's button hover, which would otherwise lay its own fill under the item. */
+.clip-menu [role="menuitem"]:is(:focus, :enabled:hover) { background: var(--menu-tint); outline: none; }
+.clip-menu [role="menuitem"]:is(:focus, :enabled:hover) .menu-icon { color: inherit; }
+.clip-menu [data-action="trash"], .clip-menu [data-action="trash"] .menu-icon { color: var(--menu-danger); }
+.clip-menu [data-action="trash"]:is(:focus, :enabled:hover) { background: var(--menu-tint-danger); }
 .clip[draggable="true"] { cursor: grab; }
 .clip-open { display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 0; border: 0; background: none; box-shadow: none; text-align: start; border-radius: 10px; font-weight: 400; }
 :is(button, select).clip-open:enabled:not([aria-disabled="true"]):hover { background: none; }
@@ -465,7 +484,10 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 :root:not([data-input="pointer"]):not([data-window="inactive"]) .player-close:focus-visible { outline-color: #f4f4f5; }
 @media (forced-colors: active) {
   .player { border: 1px solid CanvasText; }
-  .clip-menu { border: 1px solid CanvasText; }
+  .clip-menu { border: 1px solid CanvasText; background: Canvas; }
+  .clip-menu [role="menuitem"]:is(:focus, :enabled:hover) { background: Highlight; color: HighlightText; }
+  .clip-menu [role="menuitem"]:is(:focus, :enabled:hover) .menu-icon { color: HighlightText; }
+  .clip-menu .menu-separator { background: CanvasText; }
   .clip-thumb { border: 1px solid CanvasText; }
 }
 

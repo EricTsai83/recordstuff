@@ -102,6 +102,9 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   // Arrows move through it; Escape closes it, not the window, and gives focus back.
   menu.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
   expect(document.activeElement?.id).toBe("clip-menu-trash");
+  // The pointer takes the highlight: the item it moves over is the one focused, not a second lit item.
+  document.getElementById("clip-menu-open")!.dispatchEvent(new PointerEvent("pointermove", { bubbles: true }));
+  expect(document.activeElement?.id).toBe("clip-menu-open");
   document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   expect([("open" in menu.dataset), more.getAttribute("aria-expanded"), document.activeElement?.id, close.mock.calls.length]).toEqual([false, "false", "clip-a-more", 0]);
   // A right-click on the card opens the same menu; its choice reaches main as the file's action.

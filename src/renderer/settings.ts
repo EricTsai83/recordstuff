@@ -202,6 +202,10 @@ const ICONS: Record<string, [string, string?]> = {
   "tab-library": [FILM],
   play: ["", "M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"],
   film: [FILM],
+  // The card menu's actions: the folder above, out to another app, and the Trash.
+  "file-reveal": ["M20 20a2 2 0 0 0 2-2V8.5a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 4.4a2 2 0 0 0-1.7-.9H4a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2Z"],
+  "file-open": ["M14 3.5h6.5V10M20.5 3.5 11 13M18 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"],
+  "file-trash": ["M3.5 6h17M9 6V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V6M5.5 6l1 13.6A1.5 1.5 0 0 0 8 21h8a1.5 1.5 0 0 0 1.5-1.4L18.5 6M10 10.5v6M14 10.5v6"],
   more: ["", "M5.2 12a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0-3.2 0ZM10.4 12a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0-3.2 0ZM15.6 12a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0-3.2 0Z"],
   "tab-recording": ["M12 21.5a9.5 9.5 0 1 0 0-19 9.5 9.5 0 0 0 0 19Z", "M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"],
   "tab-general": ["M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1.5 14h5M9.5 8h5M17.5 16h5"],
@@ -1043,7 +1047,7 @@ function fillClip(card: HTMLElement, item: LibraryItemView): void {
 type FileAction = "reveal" | "open" | "trash";
 /**
  * A card's file actions (2026-10-04): Show in Finder, Open in the default app and Move to Trash, chosen
- * before the recording is opened. One menu in the top layer serves every card; arrows move through it,
+ * before the recording is opened. One menu in the top layer serves every card; arrows and the pointer move through it,
  * Escape closes it and gives focus back, and a click elsewhere, a scroll or the window losing focus closes it.
  */
 let clipMenu: { el: HTMLElement; id?: string; anchor?: HTMLButtonElement; offset?: { x: number; y: number } } | undefined;
@@ -1056,8 +1060,16 @@ function clipMenuElement(): HTMLElement {
       if (id && anchor) void fileAction(id, action, anchor);
     });
     item.setAttribute("role", "menuitem"); item.tabIndex = -1; item.dataset.action = action;
+    item.append(icon(`file-${action}`, "menu-icon")!, node("span", "menu-label"));
+    // Set apart from the others, as Finder does: the one action that takes the file away.
+    if (action === "trash") { const line = node("div", "menu-separator"); line.setAttribute("role", "separator"); el.append(line); }
     el.append(item);
   }
+  // The pointer takes the highlight with it, as in a native menu: one item is lit, and the arrows go on from there.
+  el.addEventListener("pointermove", event => {
+    const item = (event.target as Element).closest<HTMLButtonElement>("[role=menuitem]");
+    if (item && item !== document.activeElement) item.focus({ preventScroll: true });
+  });
   el.addEventListener("keydown", event => {
     const items = [...el.querySelectorAll<HTMLButtonElement>("[role=menuitem]")];
     const at = items.indexOf(document.activeElement as HTMLButtonElement);
@@ -1082,9 +1094,9 @@ function openClipMenu(id: string, anchor: HTMLButtonElement, at?: { x: number; y
   const el = clipMenuElement();
   closeClipMenu(false);
   const mac = platform() === "darwin";
-  setText(el.querySelector("#clip-menu-reveal")!, text(mac ? "Show in Finder" : "Open folder"));
-  setText(el.querySelector("#clip-menu-open")!, text("Open"));
-  setText(el.querySelector("#clip-menu-trash")!, text(mac ? "Move to Trash" : "Move to Recycle Bin"));
+  setText(el.querySelector("#clip-menu-reveal .menu-label")!, text(mac ? "Show in Finder" : "Open folder"));
+  setText(el.querySelector("#clip-menu-open .menu-label")!, text("Open"));
+  setText(el.querySelector("#clip-menu-trash .menu-label")!, text(mac ? "Move to Trash" : "Move to Recycle Bin"));
   // One menu serves every card: it takes the name of the ⋯ button it opened from, "More actions for Today, 2:02 PM".
   el.setAttribute("aria-labelledby", anchor.id);
   el.showPopover?.();

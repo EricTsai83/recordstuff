@@ -723,6 +723,24 @@ async function run() {
           await read(window, `new Promise(done => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))`);
           await underControls(`${lang}/${scheme}/${size}/card menu`);
           await shot(`clip-menu-${lang}-${scheme}-${size}.png`);
+          // A real hover on the last item: it alone is lit, it takes focus from the first, and its words stay legible on the fill.
+          const last = await read<{ x: number; y: number }>(window, `(() => { const r = document.querySelector("#clip-menu [role=menuitem]:last-child").getBoundingClientRect();
+            return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`);
+          window.webContents.sendInputEvent({ type: "mouseMove", x: last.x, y: last.y }); await settle(150);
+          const hovered = await read<{ lit: string[]; focused: string; contrast: number }>(window, `(() => {
+            const rgba = value => { const [r, g, b, a = 1] = value.match(/[\\d.]+/g).map(Number); return [r, g, b, a]; };
+            // The tint and the sheet are translucent: each is laid over what is under it, down to the window's own background.
+            const over = (top, under) => top.slice(0, 3).map((c, i) => c * top[3] + under[i] * (1 - top[3])).concat(1);
+            const luminance = ([r, g, b]) => [r, g, b].map(c => { c /= 255; return c <= .03928 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4; }).reduce((sum, c, i) => sum + c * [.2126, .7152, .0722][i], 0);
+            const items = [...document.querySelectorAll("#clip-menu [role=menuitem]")];
+            const lit = items.filter(i => rgba(getComputedStyle(i).backgroundColor)[3] > 0);
+            const sheet = over(rgba(getComputedStyle(document.getElementById("clip-menu")).backgroundColor), rgba(getComputedStyle(document.documentElement).backgroundColor));
+            const style = lit[0] && getComputedStyle(lit[0]);
+            const [a, b] = style ? [luminance(rgba(style.color)), luminance(over(rgba(style.backgroundColor), sheet))] : [0, 0];
+            return { lit: lit.map(i => i.id), focused: document.activeElement?.id ?? "", contrast: (Math.max(a, b) + .05) / (Math.min(a, b) + .05) }; })()`);
+          await shot(`clip-menu-hover-${lang}-${scheme}-${size}.png`);
+          record(`${lang}/${scheme}/${size}/card menu: hovering an item lights it alone, focuses it and keeps its words legible`,
+            hovered.lit.join() === "clip-menu-trash" && hovered.focused === "clip-menu-trash" && hovered.contrast >= 4.5, JSON.stringify({ last, hovered }));
           // An Escape with no menu open would close the window, ending every case after this one: only one that opened is answered.
           if ((await menuState()).open) window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
           await settle(100);
