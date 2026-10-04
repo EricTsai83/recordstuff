@@ -70,16 +70,8 @@ export function validateAccelerator(value: unknown, platform: string): Accelerat
   return { accelerator };
 }
 
-export function isAccelerator(value: unknown, platform: string): value is string {
-  return validateAccelerator(value, platform).accelerator !== undefined;
-}
-
 export function canonicalizeAccelerator(value: unknown, platform: string): string | undefined {
   return validateAccelerator(value, platform).accelerator;
-}
-
-export function isHotkeySettings(value: unknown, platform: string): value is HotkeySettings {
-  return canonicalHotkeySettings(value, platform) !== undefined;
 }
 
 /** Valid settings with their accelerator in canonical order, from one validation; undefined for anything else. */

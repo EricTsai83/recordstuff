@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_HOTKEY, canonicalHotkeySettings, describeAccelerator, isAccelerator, isHotkeySettings } from "../shared/hotkey";
+import { DEFAULT_HOTKEY, canonicalHotkeySettings, canonicalizeAccelerator, describeAccelerator } from "../shared/hotkey";
 import { LAYOUT_AWARE_HOTKEYS_FEATURE, RecordingHotkey, physicalHotkeyFeatures, type GlobalShortcutApi } from "./hotkey";
 
 /**
@@ -138,11 +138,11 @@ describe("RecordingHotkey (plan 016)", () => {
 
 describe("hotkey definitions", () => {
   it("validates supported accelerators with a boolean enabled flag", () => {
-    expect(isHotkeySettings(DEFAULT_HOTKEY, "darwin")).toBe(true);
-    expect(isHotkeySettings({ enabled: false, accelerator: SECOND }, "darwin")).toBe(true);
-    expect(isHotkeySettings({ enabled: "yes", accelerator: SECOND }, "darwin")).toBe(false);
-    expect(isHotkeySettings({ enabled: true, accelerator: "Command+Q" }, "darwin")).toBe(false);
-    expect(isHotkeySettings(null, "darwin")).toBe(false);
+    expect(canonicalHotkeySettings(DEFAULT_HOTKEY, "darwin")).toBeDefined();
+    expect(canonicalHotkeySettings({ enabled: false, accelerator: SECOND }, "darwin")).toBeDefined();
+    expect(canonicalHotkeySettings({ enabled: "yes", accelerator: SECOND }, "darwin")).toBeUndefined();
+    expect(canonicalHotkeySettings({ enabled: true, accelerator: "Command+Q" }, "darwin")).toBeUndefined();
+    expect(canonicalHotkeySettings(null, "darwin")).toBeUndefined();
     // One validation gives the canonical value that is stored.
     expect(canonicalHotkeySettings({ enabled: false, accelerator: "Shift+CommandOrControl+R" }, "darwin")).toEqual({ enabled: false, accelerator: "CommandOrControl+Shift+R" });
     expect(canonicalHotkeySettings({ enabled: true, accelerator: "Command+Q" }, "darwin")).toBeUndefined();
@@ -160,7 +160,7 @@ describe("hotkey definitions", () => {
       "CommandOrControl+Shift+R",
       "CommandOrControl+Alt+R",
       "CommandOrControl+Shift+1",
-    ]) for (const platform of ["darwin", "win32"]) expect(isAccelerator(shipped, platform), `${platform} ${shipped}`).toBe(true);
+    ]) for (const platform of ["darwin", "win32"]) expect(canonicalizeAccelerator(shipped, platform), `${platform} ${shipped}`).toBe(shipped);
     expect(DEFAULT_HOTKEY).toEqual({ enabled: true, accelerator: "CommandOrControl+Shift+1" });
   });
 

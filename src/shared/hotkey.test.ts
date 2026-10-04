@@ -1,10 +1,12 @@
 import { expect, it } from "vitest";
-import { canonicalizeAccelerator, describeAccelerator, isAccelerator, sameShortcut, validateAccelerator } from "./hotkey";
+import { canonicalizeAccelerator, describeAccelerator, sameShortcut, validateAccelerator } from "./hotkey";
+
+const isAccepted = (value: unknown, platform: string): boolean => canonicalizeAccelerator(value, platform) !== undefined;
 
 it("keeps every preset and validates the bounded custom vocabulary", () => {
   for (const platform of ["darwin", "win32"]) {
-    for (const value of ["CommandOrControl+Shift+1", "CommandOrControl+Alt+Shift+R", "CommandOrControl+Shift+R", "CommandOrControl+Alt+R", "Control+F24", "CommandOrControl+Alt+Space", "Control+Left", "Control+Plus", "Control+;"]) expect(isAccelerator(value, platform), `${platform} ${value}`).toBe(true);
-    for (const value of [null, "R", "Shift+R", "Control", "Control+Shift", "Control+R+S", "Control+Nope", "Control+Control+R", "Control+" + "A".repeat(65), "CommandOrControl+Tab", "CommandOrControl+Q", "CommandOrControl+W"]) expect(isAccelerator(value, platform), `${platform} ${String(value)}`).toBe(false);
+    for (const value of ["CommandOrControl+Shift+1", "CommandOrControl+Alt+Shift+R", "CommandOrControl+Shift+R", "CommandOrControl+Alt+R", "Control+F24", "CommandOrControl+Alt+Space", "Control+Left", "Control+Plus", "Control+;"]) expect(isAccepted(value, platform), `${platform} ${value}`).toBe(true);
+    for (const value of [null, "R", "Shift+R", "Control", "Control+Shift", "Control+R+S", "Control+Nope", "Control+Control+R", "Control+" + "A".repeat(65), "CommandOrControl+Tab", "CommandOrControl+Q", "CommandOrControl+W"]) expect(isAccepted(value, platform), `${platform} ${String(value)}`).toBe(false);
   }
   expect(validateAccelerator("Shift+R", "darwin").error).toBe("A shortcut needs Command or Control.");
   expect(validateAccelerator("CommandOrControl+Tab", "darwin").error).toBe("macOS reserves this combination.");
@@ -18,7 +20,7 @@ it("reserves the macOS screenshot and Spotlight chords on macOS only (plan 064)"
   // With Control the screenshot goes to the clipboard: ⌃⇧⌘3, ⌃⇧⌘4 and the Touch Bar's ⌃⇧⌘6 are the system's too.
   const chords = ["CommandOrControl+Space", ...[3, 4, 5, 6].map(n => `Shift+CommandOrControl+${n}`), ...[3, 4, 6].map(n => `Control+Shift+CommandOrControl+${n}`)];
   for (const value of chords) expect(validateAccelerator(value, "darwin").error, value).toBe("macOS reserves this combination.");
-  for (const value of chords) expect(isAccelerator(value, "win32"), value).toBe(true);
+  for (const value of chords) expect(isAccepted(value, "win32"), value).toBe(true);
   expect(canonicalizeAccelerator("Shift+CommandOrControl+3", "win32")).toBe("CommandOrControl+Shift+3");
 });
 
@@ -46,8 +48,8 @@ it("normalizes shifted glyph aliases before checking reserved combinations", () 
   expect(canonicalizeAccelerator("Control+Plus", "darwin")).toBe("Control+Shift+=");
   expect(canonicalizeAccelerator("Shift+Control+Plus", "darwin")).toBe("Control+Shift+=");
   expect(canonicalizeAccelerator("Control+?", "darwin")).toBe("Control+Shift+/");
-  expect(isAccelerator("CommandOrControl+Shift+#", "darwin")).toBe(false);
-  expect(isAccelerator("CommandOrControl+$", "darwin")).toBe(false);
+  expect(isAccepted("CommandOrControl+Shift+#", "darwin")).toBe(false);
+  expect(isAccepted("CommandOrControl+$", "darwin")).toBe(false);
 });
 
 it("compares shortcuts by the keys they press on each platform", () => {

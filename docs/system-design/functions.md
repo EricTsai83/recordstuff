@@ -198,7 +198,7 @@ The page's window-message callback checks source/marker/port before creating the
 | frameRateDowngrade | Requested 60 and reported ≤30 → rounded actual fps, otherwise undefined |
 | unknown / describeCapture | Format unknown values / English requested, track, target, and warning diagnostics |
 
-[shared/hotkey.ts](../../src/shared/hotkey.ts): `DEFAULT_HOTKEY` enables ⌘⇧1; the accelerators earlier versions shipped stay valid, checked by `hotkey.test.ts`. `validateAccelerator` validates supported custom combinations, requires Command or Control and rejects reserved keys; `canonicalizeAccelerator` normalizes modifier order and shifted glyphs. `isAccelerator` / `isHotkeySettings` validate persisted values without restricting them to the offered choices; `describeAccelerator(accelerator, platform)` renders `⌘⌥⇧R` on darwin and `Ctrl+Alt+Shift+R` elsewhere for menus, notifications and logs.
+[shared/hotkey.ts](../../src/shared/hotkey.ts): `DEFAULT_HOTKEY` enables ⌘⇧1; the accelerators earlier versions shipped stay valid, checked by `hotkey.test.ts`. `validateAccelerator` validates supported custom combinations, requires Command or Control and rejects reserved keys; `canonicalizeAccelerator` normalizes modifier order and shifted glyphs. `canonicalHotkeySettings` validates a persisted shortcut with the same rules, without restricting it to the offered choices, and returns it in canonical order; `describeAccelerator(accelerator, platform)` renders `⌘⌥⇧R` on darwin and `Ctrl+Alt+Shift+R` elsewhere for menus, notifications and logs.
 
 [main/hotkey.ts](../../src/main/hotkey.ts):
 
