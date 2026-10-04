@@ -50,7 +50,7 @@ export function instrumentControlledAcceptance(source: string, runDir: string): 
 }
 
 /** Recognizable filler for seeded partial files; it is not a playable recording. */
-export const SEED_BYTES = "RecordStuff controlled acceptance seed: synthetic bytes, not a playable recording\n";
+const SEED_BYTES = "RecordStuff controlled acceptance seed: synthetic bytes, not a playable recording\n";
 const HOUR = 3_600_000;
 
 function record(id: string, occurredAt: number, fields: Partial<RecordingResult>): RecordingResult {

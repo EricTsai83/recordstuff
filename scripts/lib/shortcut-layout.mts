@@ -9,7 +9,7 @@
 export const LAYOUT_ACCELERATOR = "CommandOrControl+Control+Alt+Shift+7";
 /** ANSI key codes: the number row for 0–9 and the keypad key for the accelerator's 7. */
 export const NUMBER_ROW_KEY_CODES = [29, 18, 19, 20, 21, 23, 22, 26, 28, 25] as const;
-export const NUMBER_ROW_SEVEN = 26;
+const NUMBER_ROW_SEVEN = 26;
 export const KEYPAD_SEVEN = 89;
 
 /**

@@ -52,13 +52,6 @@ export function expectedBannerBody(savedPath: string, language: Language): strin
   return language === "zh-TW" ? `已儲存 ${file}` : `Saved ${file}`;
 }
 
-/** `/private/tmp/x` and `/tmp/x` are the same file to Finder; compare after stripping `/private`. */
-export function samePath(a: string | undefined, b: string | undefined): boolean {
-  if (!a || !b) return false;
-  const norm = (p: string): string => p.replace(/^\/private(?=\/)/, "").replace(/\/+$/, "");
-  return norm(a) === norm(b);
-}
-
 /**
  * A click passes only when RecordStuff is frontmost at the end of the window with Settings focused
  * *and* the app logged the Recordings entry for the file it saved. The two are recorded separately in

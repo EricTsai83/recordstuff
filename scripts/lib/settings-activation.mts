@@ -64,7 +64,7 @@ export function activation(before: WindowState, after: WindowState, blurs: numbe
 const describe = (state: WindowState): string =>
   `focused ${state.focused}, visible ${state.visible}, data-window ${state.page || "unset"}`;
 
-export function notRunReason(active: Activation): string {
+function notRunReason(active: Activation): string {
   const when = !windowActive(active.before) ? `was not active when the case started (${describe(active.before)})`
     : active.blurs > 0 ? `lost activation during the case (${active.blurs} blur event${active.blurs === 1 ? "" : "s"}; then ${describe(active.after)})`
       : `was not active when the case was judged (${describe(active.after)})`;

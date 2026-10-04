@@ -4,7 +4,6 @@ import {
   finderSetupScript,
   judgeClick,
   pressBannerScript,
-  samePath,
   summarize,
   type ClickObservation,
 } from "./notification-acceptance.mts";
@@ -74,12 +73,6 @@ describe("notification acceptance judgement (Recordings entry, 2026-10-04)", () 
   it("marks a missing banner or a missing save as not run, never as pass", () => {
     expect(judgeClick("en", "closed", 3, saved, undefined).verdict).toBe("not-run");
     expect(judgeClick("en", "closed", 3, undefined, good).verdict).toBe("not-run");
-  });
-
-  it("treats Finder's /private prefix and paths with spaces or non-ASCII as the same file", () => {
-    expect(samePath("/private/tmp/測試 資料夾/錄影 test.mp4", "/tmp/測試 資料夾/錄影 test.mp4")).toBe(true);
-    expect(samePath("/tmp/a.mp4", "/tmp/b.mp4")).toBe(false);
-    expect(samePath(undefined, "/tmp/a.mp4")).toBe(false);
   });
 
   it("builds Finder setup scripts for every state", () => {

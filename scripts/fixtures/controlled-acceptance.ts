@@ -19,7 +19,7 @@ import type { RecordingState } from "../../src/shared/state";
 import { ControlledFaults } from "./controlled-faults";
 import { isFaultName, isHoldTarget, type Faults, type HoldTarget } from "./controlled-modes";
 
-export const CONTROLLED_LABEL = "[Controlled acceptance build]";
+const CONTROLLED_LABEL = "[Controlled acceptance build]";
 
 export interface ControlledConfig { holdHistoryLoad?: boolean }
 
