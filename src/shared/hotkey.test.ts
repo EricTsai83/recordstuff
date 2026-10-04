@@ -15,7 +15,8 @@ it("keeps every preset and validates the bounded custom vocabulary", () => {
 });
 
 it("reserves the macOS screenshot and Spotlight chords on macOS only (plan 064)", () => {
-  const chords = ["CommandOrControl+Space", ...[3, 4, 5, 6].map(n => `Shift+CommandOrControl+${n}`)];
+  // With Control the screenshot goes to the clipboard: ⌃⇧⌘3, ⌃⇧⌘4 and the Touch Bar's ⌃⇧⌘6 are the system's too.
+  const chords = ["CommandOrControl+Space", ...[3, 4, 5, 6].map(n => `Shift+CommandOrControl+${n}`), ...[3, 4, 6].map(n => `Control+Shift+CommandOrControl+${n}`)];
   for (const value of chords) expect(validateAccelerator(value, "darwin").error, value).toBe("macOS reserves this combination.");
   for (const value of chords) expect(isAccelerator(value, "win32"), value).toBe(true);
   expect(canonicalizeAccelerator("Shift+CommandOrControl+3", "win32")).toBe("CommandOrControl+Shift+3");

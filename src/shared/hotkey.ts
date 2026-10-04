@@ -25,9 +25,13 @@ const SHIFTED_KEYS: Record<string, string> = {
 };
 /** Every app's switch, quit and close keys; the shortcut editor closes on the close key instead of capturing it. */
 const APP_KEYS = ["Tab", "Q", "W"];
-/** macOS also owns its screenshot and Spotlight chords; Control is a separate key there, so only Command is reserved. */
+/**
+ * macOS also owns its screenshot and Spotlight chords; Control is a separate key there, so only Command is reserved.
+ * Adding Control to ⌘⇧3, 4 and 6 sends the same screenshot to the clipboard, so those forms are the system's too.
+ */
 const MAC_RESERVED = new Set([
   ...[3, 4, 5, 6].map((key) => `CommandOrControl+Shift+${key}`),
+  ...[3, 4, 6].map((key) => `CommandOrControl+Control+Shift+${key}`),
   "CommandOrControl+Space",
   ...APP_KEYS.map((key) => `CommandOrControl+${key}`),
 ]);
