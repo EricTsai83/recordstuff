@@ -5,9 +5,12 @@
  * the focused control, that the application menu binds no Reload or Developer Tools shortcut and
  * that ⌘R and ⌘⌥I leave the focus where it was, that ⌘A then ⌘C copies the panel's text (the
  * user's pasteboard is saved first and restored), and that minimize, restore, close and reopen work,
- * as scripted evidence kept apart from the callback. Layout and appearance stay with the Settings
- * fixture screenshots. `--quit` then ends the round with ⌘Q and asserts that every process of the
- * bundle exits; without it the panel is left open for the next step.
+ * as scripted evidence kept apart from the callback. It also reads the opened window's corner through
+ * Accessibility (the page fills the window under the inset window controls, the controls lie in the zone
+ * the page leaves them, and nothing clickable lies under them) and saves `settings-window.png`, the one
+ * screenshot of the app's own window with its controls; layout across languages, appearances and sizes
+ * stays with the Settings fixture screenshots. `--quit` then ends the round with ⌘Q and asserts that
+ * every process of the bundle exits; without it the panel is left open for the next step.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -19,7 +22,8 @@ import { acceleratorToKeystroke, keystrokeScript, lastStartIndex, registeredSett
 import { command, waitForLog } from "./lib/acceptance-runtime.mts";
 import { LogReader, evidenceSince } from "./lib/log-reader.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
-import { AccessibilityBlockedError, FLAG, KEY, judgeAppMenu, osascriptAx, type PasteboardManifest, type WindowSnapshot } from "./lib/native-ax.mts";
+import { AccessibilityBlockedError, FLAG, KEY, captureRect, judgeAppMenu, judgeWindowLayout, osascriptAx, type PasteboardManifest, type WindowSnapshot } from "./lib/native-ax.mts";
+import { TRAFFIC_LIGHT_ZONE } from "../src/shared/window-controls.ts";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings } from "./lib/runner-env.mts";
 import { isLanguage, translate } from "../src/shared/i18n.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -122,6 +126,17 @@ try {
     // Chromium builds its accessibility tree only for assistive software; this is the switch they use, and it changes nothing visible.
     await ax.enableWebAccessibility(Number(pid));
     const before = await until("a focused control in Settings", snapshot => snapshot.focused !== null);
+    // The app's own frame, read before anything scrolls (a new window starts each tab at the top), then its picture.
+    const layout = await ax.layout(Number(pid), title, TRAFFIC_LIGHT_ZONE);
+    const problems = judgeWindowLayout(layout, TRAFFIC_LIGHT_ZONE);
+    check("the page fills the window under the inset window controls, which lie in their reserved corner with nothing clickable under them",
+      problems.length === 0, problems.length ? problems.join("; ")
+        : `window ${JSON.stringify(layout.frame)}; controls ${JSON.stringify(layout.controls.map(control => control.frame))}; ${layout.visited} elements read`);
+    const picture = path.join(out, "settings-window.png");
+    const captured = await command("screencapture", ["-x", "-R", captureRect(layout.frame), picture], controller.signal, 10_000).then(() => "", (cause: unknown) => String(cause));
+    // A picture is observation material, not a verdict: one that could not be taken leaves the round blocked, never passed.
+    check("a screenshot of the opened window, its controls included, is saved for observation (settings-window.png)",
+      captured ? "blocked" : fs.existsSync(picture), captured || path.basename(picture));
     await ax.key(KEY.tab);
     const describe = (snapshot: WindowSnapshot): string => JSON.stringify(snapshot.focused);
     const after = await until("Tab to move the focus", snapshot => snapshot.focused !== null && describe(snapshot) !== describe(before)).catch(() => undefined);
@@ -194,7 +209,7 @@ try {
   const table = observations.length ? `\n## Accessibility observation (scripted, --observe)\n\n| Check | Result | Seen |\n| --- | --- | --- |\n${observations.map(o => `| ${o.check} | ${result(o)} | ${o.seen.replaceAll("|", "\\|")} |`).join("\n")}\n` : "";
   const verdict = failed.length ? "FAIL" : unmet.length ? "BLOCKED" : "PASS";
   fs.writeFileSync(path.join(out, "report.md"), `# Settings shortcut entry — ${verdict}${observe ? "" : " (callback only)"}\n\n## Callback (scripted input)\n\n${evidence}${desktop.summary}\nNo IPC or test-only opening route.\n${table}\n${observe
-    ? `Accessibility state is scripted evidence: it does not judge layout, appearance or legibility, which stay with the \`pnpm acceptance:settings\` screenshots or an observation. ${quit ? "The round ended with ⌘Q." : "The panel is left open, as the entry step always leaves it."}`
+    ? `Accessibility state is scripted evidence: the window's corner is measured, but appearance and legibility are judged by observing \`settings-window.png\` (this app's own window, with its controls) and the \`pnpm acceptance:settings\` screenshots (every language, appearance and size, without the controls the system draws). ${quit ? "The round ended with ⌘Q." : "The panel is left open, as the entry step always leaves it."}`
     : "Panel visibility, focus, keyboard navigation and recording continuity are NOT verified by this script. Run it with `-- --observe` or continue with an observation; do not report full UI acceptance from this exit code."}\n`);
   if (failed.length) {
     console.error(`FAIL: ${failed.map(o => o.check).join("; ")}\nEvidence: ${out}`);

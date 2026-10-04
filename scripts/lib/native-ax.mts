@@ -12,7 +12,7 @@ import { command } from "./acceptance-runtime.mts";
 /**
  * `osascript -l JavaScript -e <script> <command> …`, one JSON object out.
  * Commands: `status <pid>`, `press <pid> <menu index>`, `mouse left|right <x> <y>`,
- * `key <code> [flags]`, `windows <pid>`, `menubar <pid>`, `manual <pid>`, `banners`,
+ * `key <code> [flags]`, `windows <pid>`, `layout <pid> <title> <zone json>`, `menubar <pid>`, `manual <pid>`, `banners`,
  * `pasteboard-save <dir>` and `pasteboard-restore <manifest json>`.
  * Any failed AX call is reported as its AXError code rather than thrown, so the
  * caller can tell a missing permission (-25211) from an element that is gone.
@@ -191,6 +191,36 @@ function run(argv) {
       focused: ok(focused) ? { role: plain(raw(focused, 'AXRole')) || '', title: plain(raw(focused, 'AXTitle')) || '', description: plain(raw(focused, 'AXDescription')) || '' } : null,
     });
   }
+  if (cmd === 'layout') {
+    // The window titled b: its frame, its window controls, its web content's frame and the clickable web elements
+    // that overlap the zone c ({width,height} from the window's corner). Read right after the window opens, before
+    // anything scrolls, so no element is scrolled out of view yet. Every node is walked: a fixed or absolutely placed
+    // control stays under its flow parent in the tree wherever it is drawn, so no subtree can be skipped by its box.
+    const win = children(app, 'AXWindows').find(w => plain(raw(w, 'AXTitle')) === b);
+    if (!win) return out({ error: 'no window ' + b });
+    const frame = geometry(win);
+    if (!frame) return out({ error: 'no frame for window ' + b });
+    const zone = JSON.parse(c);
+    const overlaps = f => f && f.x < frame.x + zone.width && f.x + f.width > frame.x && f.y < frame.y + zone.height && f.y + f.height > frame.y;
+    const controls = ['AXCloseButton', 'AXMinimizeButton', 'AXZoomButton'].map(name => { const el = raw(win, name); return { name, frame: ok(el) ? geometry(el) : undefined }; });
+    const find = (el, depth) => { if (plain(raw(el, 'AXRole')) === 'AXWebArea') return el; if (depth > 12) return undefined; for (const child of children(el)) { const hit = find(child, depth + 1); if (hit) return hit; } return undefined; };
+    const web = find(win, 0);
+    const clickable = [];
+    const roles = ['AXButton', 'AXPopUpButton', 'AXCheckBox', 'AXRadioButton', 'AXTextField', 'AXLink', 'AXMenuButton', 'AXDisclosureTriangle', 'AXComboBox', 'AXSlider'];
+    let visited = 0, truncated = false;
+    const walk = (el, depth) => {
+      if (visited >= 20000 || depth > 120) { truncated = true; return; }
+      visited++;
+      const role = plain(raw(el, 'AXRole'));
+      if (roles.includes(role)) {
+        const f = geometry(el);
+        if (f && f.width > 0 && f.height > 0 && overlaps(f)) clickable.push({ role, title: plain(raw(el, 'AXTitle')) || plain(raw(el, 'AXDescription')) || '', frame: f });
+      }
+      for (const child of children(el)) walk(child, depth + 1);
+    };
+    if (web) walk(web, 0);
+    return out({ frame, controls, webArea: web ? geometry(web) : null, clickable, visited, truncated });
+  }
   throw new Error('unknown command ' + cmd);
 }
 `;
@@ -229,6 +259,39 @@ export interface WindowSnapshot {
   windows: Array<{ title: string; main: boolean; minimized: boolean; frame: Frame | undefined }>;
   focusedWindow: string | null;
   focused: { role: string; title: string; description: string } | null;
+}
+
+/** What `layout` reads of one window: where its controls and its web content are, and what can be clicked in a corner. */
+export interface WindowLayout {
+  frame: Frame;
+  controls: Array<{ name: string; frame: Frame | undefined }>;
+  webArea: Frame | null;
+  clickable: Array<{ role: string; title: string; frame: Frame }>;
+  visited: number;
+  /** The walk hit its node or depth bound: what it did not reach is unjudged (review pass 1, F1-2). */
+  truncated: boolean;
+}
+
+/**
+ * Problems with a `hiddenInset` window's top-left corner, empty when there are none: the web content fills the window
+ * (no title bar above it), each window control lies inside `zone` (the page's own reserve, src/shared/window-controls.ts),
+ * and nothing clickable in the page overlaps that zone. One point of rounding is allowed.
+ */
+export function judgeWindowLayout(layout: WindowLayout, zone: { width: number; height: number }): string[] {
+  const problems: string[] = [];
+  const near = (a: number, b: number): boolean => Math.abs(a - b) <= 1;
+  const { frame, webArea } = layout;
+  if (!webArea) problems.push("no web content found in the window");
+  else if (!near(webArea.y, frame.y) || !near(webArea.height, frame.height)) problems.push(`the web content starts ${webArea.y - frame.y} pt below the window's top (a title bar?)`);
+  for (const control of layout.controls) {
+    const f = control.frame;
+    if (!f) problems.push(`${control.name} not found`);
+    else if (f.x < frame.x - 1 || f.y < frame.y - 1 || f.x + f.width > frame.x + zone.width + 1 || f.y + f.height > frame.y + zone.height + 1)
+      problems.push(`${control.name} at ${f.x - frame.x},${f.y - frame.y} ${f.width}×${f.height} lies outside the ${zone.width}×${zone.height} zone`);
+  }
+  for (const element of layout.clickable) problems.push(`${element.role} "${element.title}" at ${element.frame.x - frame.x},${element.frame.y - frame.y} lies under the window controls`);
+  if (layout.truncated) problems.push(`the page's accessibility tree was read only in part (${layout.visited} elements): nothing past them was checked`);
+  return problems;
 }
 
 /** One top-level menu of an app's menu bar and its own items (submenus are not opened). */
@@ -287,6 +350,8 @@ export interface NativeAx {
   mouse(button: "left" | "right", x: number, y: number): Promise<void>;
   key(code: number, flags?: number): Promise<void>;
   windows(pid: number): Promise<WindowSnapshot>;
+  /** The titled window's corner as `judgeWindowLayout` needs it; read with web accessibility enabled. */
+  layout(pid: number, title: string, zone: { width: number; height: number }): Promise<WindowLayout>;
   menuBar(pid: number): Promise<AppMenu[]>;
   /** Asks Chromium to build its accessibility tree, as assistive software does, so web focus is readable. */
   enableWebAccessibility(pid: number): Promise<void>;
@@ -302,14 +367,17 @@ export type PasteboardManifest = Array<Array<{ type: string; file: string }>>;
 
 /** The real helper, each call bounded by `timeoutMs` and the runner's signal. */
 export function osascriptAx(signal: AbortSignal, timeoutMs = 10_000): NativeAx {
-  const run = async <T,>(what: string, ...args: Array<string | number>): Promise<T> =>
-    parseAxResult<T>(await command("osascript", ["-l", "JavaScript", "-e", AX_SCRIPT, ...args.map(String)], signal, timeoutMs), what);
+  const runFor = async <T,>(limitMs: number, what: string, ...args: Array<string | number>): Promise<T> =>
+    parseAxResult<T>(await command("osascript", ["-l", "JavaScript", "-e", AX_SCRIPT, ...args.map(String)], signal, limitMs), what);
+  const run = <T,>(what: string, ...args: Array<string | number>): Promise<T> => runFor<T>(timeoutMs, what, ...args);
   return {
     status: pid => run<StatusSnapshot>("status item", "status", pid),
     press: async (pid, index) => { await run("menu item press", "press", pid, index); },
     mouse: async (button, x, y) => { await run(`${button} click`, "mouse", button, x, y); },
     key: async (code, flags = 0) => { await run(`key ${code}`, "key", code, flags); },
     windows: pid => run<WindowSnapshot>("windows", "windows", pid),
+    // Every element of the page is read, a few AX calls each: a long Recordings tab needs longer than one menu.
+    layout: (pid, title, zone) => runFor<WindowLayout>(60_000, "window layout", "layout", pid, title, JSON.stringify(zone)),
     menuBar: async pid => (await run<{ menus: AppMenu[] }>("menu bar", "menubar", pid)).menus,
     enableWebAccessibility: async pid => { await run("web accessibility", "manual", pid); },
     banners: async () => (await run<{ banners: Banner[] }>("Notification Center", "banners")).banners,
