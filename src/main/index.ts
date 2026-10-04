@@ -53,7 +53,7 @@ import { parseAutoRecord, runAutoRecord } from "./autorecord";
 import { UpdateChecker, fetchVersion, DOWNLOAD_URL, RELEASES_URL, SOURCE_URL, WEBSITE_URL } from "./updates";
 import { AppTray } from "./tray";
 import { SettingsWindow } from "./settings-window";
-import { MEDIA_SCHEME, RecordingsLibrary, fileId } from "./recordings-library";
+import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary, fileId } from "./recordings-library";
 import { APP_NAME, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 import { effectiveQuality, frameRateDowngrade, type QualitySettings } from "../shared/quality";
 import { AppShortcuts } from "./shortcuts";
@@ -162,7 +162,7 @@ async function main(): Promise<void> {
 
   // The Recordings tab's videos and thumbnails (recordings-library.ts): a standard, streaming scheme, so
   // <video> can fetch byte ranges. Only privileged before ready.
-  protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } }]);
+  protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { ...MEDIA_SCHEME_PRIVILEGES } }]);
   await app.whenReady();
   if (process.platform === "darwin") app.dock?.hide();
   // Without a menu Electron installs its default one, whose Reload and Developer

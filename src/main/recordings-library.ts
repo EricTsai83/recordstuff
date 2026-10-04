@@ -20,6 +20,11 @@ import { Readable } from "node:stream";
 import { mp4Duration } from "./mp4-duration";
 
 export const MEDIA_SCHEME = "recordstuff-media";
+/**
+ * What the scheme is registered with before ready, by the app and by the Settings fixture alike: standard and
+ * streaming, so <video> can fetch byte ranges, and allowed by the page's CSP as a secure origin.
+ */
+export const MEDIA_SCHEME_PRIVILEGES = { standard: true, secure: true, stream: true, supportFetchAPI: true } as const;
 export type RecordingFileAction = "reveal" | "open" | "trash" | "drag";
 export const RECORDING_FILE_ACTIONS: readonly RecordingFileAction[] = ["reveal", "open", "trash", "drag"];
 
