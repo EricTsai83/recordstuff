@@ -15,13 +15,13 @@ The product target is a downloadable, self-signed macOS app, plus the unverified
 [Official website](https://record.ericts.com) · [Downloads](https://record.ericts.com/download) · [Help](https://record.ericts.com/help).
 
 <!-- release-download:start -->
-Download **[RecordStuff 1.4.0 for macOS Apple silicon (arm64)](https://github.com/EricTsai83/recordstuff/releases/download/v1.4.0/RecordStuff-1.4.0-arm64-selfsigned.dmg)** (127,442,004 bytes). [Release notes](https://github.com/EricTsai83/recordstuff/releases/tag/v1.4.0) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v1.4.0/SHA256SUMS) · [Latest release](https://github.com/EricTsai83/recordstuff/releases/latest).
+Download **[RecordStuff 1.5.0 for macOS Apple silicon (arm64)](https://github.com/EricTsai83/recordstuff/releases/download/v1.5.0/RecordStuff-1.5.0-arm64-selfsigned.dmg)** (127,440,717 bytes). [Release notes](https://github.com/EricTsai83/recordstuff/releases/tag/v1.5.0) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v1.5.0/SHA256SUMS) · [Latest release](https://github.com/EricTsai83/recordstuff/releases/latest).
 
-SHA-256: `5dbfccb517c2c8cb26b73aa420e63be1315ed5af1badc5f054e80634a6e9d548`.
+SHA-256: `2646fae4e9ec694e3a40bca0e6dcfe176da3563b1a0293652e981f402e80106e`.
 
-Windows: **[RecordStuff 1.4.0 for Windows x64](https://github.com/EricTsai83/recordstuff/releases/download/v1.4.0/RecordStuff-1.4.0-x64-unsigned-setup.exe)** (100,316,478 bytes), unsigned and built by CI; capture has not been verified on Windows hardware.
+Windows: **[RecordStuff 1.5.0 for Windows x64](https://github.com/EricTsai83/recordstuff/releases/download/v1.5.0/RecordStuff-1.5.0-x64-unsigned-setup.exe)** (100,317,889 bytes), unsigned and built by CI; capture has not been verified on Windows hardware.
 
-SHA-256: `572d7cd241e7e231db5758871923d697b0e2d3ae79ab22a41386fad5b7228fa1`.
+SHA-256: `bac6b72552d0513ec9817593a7ef22f0edc811e171400db48337bf750eca380e`.
 <!-- release-download:end -->
 
 1.0.0 was built, signed, published and publicly re-verified by CI. Local recording and QuickTime playback checks used the tagged source; see [1.0.0 evidence and untested cases](docs/verification/releases/1.0.0.md).
