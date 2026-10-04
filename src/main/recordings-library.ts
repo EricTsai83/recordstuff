@@ -51,6 +51,8 @@ export interface LibraryDeps {
   open: (filePath: string) => Promise<string>;
   reveal: (filePath: string) => void;
   log: (message: string) => void;
+  /** Milliseconds on a monotonic clock; paces publishing lengths. */
+  now?: () => number;
 }
 
 const VIDEO = /\.(mp4|m4v|mov)$/i;
@@ -61,6 +63,8 @@ const VIDEO = /\.(mp4|m4v|mov)$/i;
 export const THUMBNAILS_KEPT = 64;
 /** How long the folder stays quiet before it is listed again: a save, a copy or a move to the Trash is a burst of events. */
 export const WATCH_SETTLE_MS = 250;
+/** How often lengths read so far are published while a long folder is still being read. */
+export const LENGTHS_PUBLISH_MS = 500;
 /** `2026-10-04 14-02-11.mp4`, or `-2` and on when a name was taken (recorder.ts formatTimestamp). */
 const STAMPED = /^(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})(?:-\d+)?\.mp4$/;
 
@@ -127,8 +131,8 @@ export class RecordingsLibrary {
 
   /**
    * Lists the folder and resolves once the listing is published, so an entry can open on it at once.
-   * Lengths not yet known are read afterwards in the background, one file at a time, and published
-   * together (`lengths` settles when they are); a newer refresh abandons them.
+   * Lengths not yet known are read afterwards in the background, one file at a time, and published as
+   * they are read, at most every `LENGTHS_PUBLISH_MS` (`lengths` settles once all are); a newer refresh abandons them.
    *
    * One listing reads the folder at a time. Opening Settings asks twice (the show, then the focus it
    * brings), and a saved recording's entry once more: requests made while a listing runs share one
@@ -243,14 +247,28 @@ export class RecordingsLibrary {
     }
   }
 
+  /**
+   * Reads the unknown lengths one file at a time. They are published every `LENGTHS_PUBLISH_MS` while
+   * reading and once at the end, so a folder of long recordings fills in as it goes, not only once all are read.
+   */
   private async readLengths(generation: number, files: RecordingFile[]): Promise<void> {
     const missing = files.filter(file => this.durations.get(file.path)?.version !== file.version);
     if (!missing.length) return;
-    for (const file of missing) {
+    const now = this.deps.now ?? (() => performance.now());
+    let published = now();
+    for (const [index, file] of missing.entries()) {
       const seconds = await mp4Duration(file.path);
       if (generation !== this.generation) return;
       this.durations.set(file.path, { version: file.version, seconds });
+      if (index < missing.length - 1 && now() - published >= LENGTHS_PUBLISH_MS) {
+        this.publishLengths();
+        published = now();
+      }
     }
+    this.publishLengths();
+  }
+
+  private publishLengths(): void {
     this.current = { ...this.current, files: this.current.files.map(file => {
       const seconds = this.durations.get(file.path);
       return seconds?.version === file.version && seconds.seconds !== undefined ? { ...file, duration: seconds.seconds } : file;

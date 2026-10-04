@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RecordingsLibrary, THUMBNAILS_KEPT, WATCH_SETTLE_MS, fileId, isListedName, parseRange, stampedTime } from "./recordings-library";
+import { LENGTHS_PUBLISH_MS, RecordingsLibrary, THUMBNAILS_KEPT, WATCH_SETTLE_MS, fileId, isListedName, parseRange, stampedTime } from "./recordings-library";
 import { formatTimestamp } from "./recorder";
 
 let dir: string;
@@ -69,6 +69,22 @@ describe("RecordingsLibrary", () => {
     await library.refresh(); await library.lengths;
     expect(library.state.files[0]!.duration).toBe(2);
     expect(changed).toHaveBeenCalledTimes(3);
+  });
+
+  it("publishes lengths read so far while a long folder is still being read, then the rest at the end", async () => {
+    for (const seconds of [1, 2, 3]) fs.writeFileSync(path.join(dir, `2026-10-0${seconds} 09-00-00.mp4`), movieOf(seconds));
+    let clock = 0;
+    const changed = vi.fn();
+    const library = new RecordingsLibrary({
+      dir: () => dir, changed, log: vi.fn(), thumbnail: vi.fn(), trash: vi.fn(), open: vi.fn(), reveal: vi.fn(),
+      // Each read takes longer than the publishing interval.
+      now: () => (clock += LENGTHS_PUBLISH_MS),
+    });
+    const seen: (number | undefined)[][] = [];
+    changed.mockImplementation(() => seen.push(library.state.files.map(file => file.duration).sort()));
+    await library.refresh(); await library.lengths;
+    // The listing (newest first), then after each of the first two reads, then the last one once at the end.
+    expect(seen).toEqual([[undefined, undefined, undefined], [3, undefined, undefined], [2, 3, undefined], [1, 2, 3]]);
   });
 
   it("lists the folder newest first, skipping a recording still being written and anything not a video", async () => {
