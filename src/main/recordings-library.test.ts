@@ -44,6 +44,7 @@ describe("names", () => {
     expect([parseRange("bytes=0-1", 10), parseRange("bytes=4-", 10), parseRange("bytes=-3", 10), parseRange("bytes=8-99", 10)])
       .toEqual([{ start: 0, end: 1 }, { start: 4, end: 9 }, { start: 7, end: 9 }, { start: 8, end: 9 }]);
     expect([parseRange("bytes=10-", 10), parseRange("bytes=5-2", 10), parseRange("items=0-1", 10), parseRange("bytes=-", 10)]).toEqual([null, null, null, null]);
+    expect([parseRange("bytes=-3", 0), parseRange("bytes=0-", 0)]).toEqual([null, null]);
     expect(parseRange(null, 10)).toBeUndefined();
   });
 });

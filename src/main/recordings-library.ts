@@ -96,7 +96,8 @@ export function fileId(filePath: string): string {
 export function parseRange(header: string | null, size: number): { start: number; end: number } | null | undefined {
   if (!header) return undefined;
   const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
-  if (!match || (!match[1] && !match[2])) return null;
+  // An empty file has no byte to serve, whichever form the range takes.
+  if (!match || (!match[1] && !match[2]) || size === 0) return null;
   if (!match[1]) {
     const suffix = Number(match[2]);
     if (suffix === 0) return null;
