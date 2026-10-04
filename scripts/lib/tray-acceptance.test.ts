@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { classifyTrayRound, renderTrayReport, type TrayCase } from "./tray-acceptance.mts";
+import { fileId } from "../../src/main/recordings-library";
+import { classifyTrayRound, recordingCardOpenId, renderTrayReport, type TrayCase } from "./tray-acceptance.mts";
+
+it("names a Recordings card's Play button as the page does, from the library's own file id", () => {
+  for (const file of ["/Users/me/Movies/RecordStuff/2026-10-04 20-35-08.mp4", "/tmp/測試 資料夾/錄影.mov"]) {
+    expect(recordingCardOpenId(file)).toBe(`clip-${fileId(file)}-open`);
+  }
+  expect(recordingCardOpenId("/a/2026-10-04 20-35-08.mp4")).not.toBe(recordingCardOpenId("/a/2026-10-04 20-35-40.mp4"));
+});
 
 const one = (status: TrayCase["status"], problems: string[] = []): TrayCase =>
   ({ id: "menu-idle", title: "Idle menu", language: "en", status, evidence: "scripted input", problems, details: [], screenshots: ["en-idle-menu.png"] });

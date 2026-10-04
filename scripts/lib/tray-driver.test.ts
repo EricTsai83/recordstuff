@@ -19,10 +19,11 @@ describe("tray menu comparison (plan 063)", () => {
     const logged = parseMenuLogLine(LOGGED_IDLE)!;
     expect(logged.state).toBe("idle");
     expect(compareMenu(native(RECORDED_IDLE), logged.menu)).toEqual({ problems: [], notes: [] });
-    // That menu predates 2026-10-04: its folder items, Settings… and Show log are now RecordStuff's.
+    // That menu predates 2026-10-04: its folder items, Settings… and Show log are now RecordStuff's, and Show last recording came back as the window's way in.
     expect(structureProblems(native(RECORDED_IDLE), "idle", "zh-TW")).toEqual([
       "idle has no enabled Open RecordStuff",
-      "idle still lists an item RecordStuff now holds (output folder, Show last recording or Show log)",
+      "idle has no enabled Show last recording",
+      "idle still lists an item RecordStuff now holds (output folder or Show log)",
     ]);
   });
 
@@ -56,15 +57,16 @@ describe("tray menu comparison (plan 063)", () => {
 
   it("checks each state's structure: Start only in idle, Stop only while recording, Open RecordStuff and Quit last", () => {
     const recording = native([["錄影中", false, "", 0], ["停止", true, "1", 1], ["", false, "", 0],
-      ["開啟 RecordStuff", true, ",", 2], ["", false, "", 0], ["結束 RecordStuff", true, "", 0]]);
+      ["開啟 RecordStuff", true, ",", 2], ["顯示最後一個錄影", true, "", 0], ["", false, "", 0], ["結束 RecordStuff", true, "", 0]]);
     expect(structureProblems(recording, "recording", "zh-TW")).toEqual([]);
     expect(structureProblems([...recording.slice(0, 3), ...native([["儲存位置：~/Movies/RecordStuff", false, "", 0], ["", false, "", 0]]), ...recording.slice(3)], "recording", "zh-TW"))
-      .toEqual(["recording still lists an item RecordStuff now holds (output folder, Show last recording or Show log)"]);
+      .toEqual(["recording still lists an item RecordStuff now holds (output folder or Show log)"]);
     expect(structureProblems(recording.filter((_, i) => i !== 3), "recording", "zh-TW")).toContain("recording has no enabled Open RecordStuff");
+    expect(structureProblems(recording.filter((_, i) => i !== 4), "recording", "zh-TW")).toEqual(["recording has no enabled Show last recording"]);
     expect(structureProblems(native(RECORDED_IDLE), "countdown", "zh-TW")).toEqual(expect.arrayContaining(["countdown offers Start recording", "countdown has no enabled Cancel recording"]));
     // A long start offers the same Cancel recording as the countdown (plan 065).
     const starting = native([["啟動中，請留意系統權限提示…", false, "", 0], ["取消錄影", true, "1", 1], ["", false, "", 0],
-      ["開啟 RecordStuff", true, ",", 2], ["", false, "", 0], ["結束 RecordStuff", true, "", 0]]);
+      ["開啟 RecordStuff", true, ",", 2], ["顯示最後一個錄影", true, "", 0], ["", false, "", 0], ["結束 RecordStuff", true, "", 0]]);
     expect(structureProblems(starting, "starting", "zh-TW")).toEqual([]);
     expect(structureProblems(starting, "idle", "zh-TW")).toContain("idle offers Cancel recording");
     expect(structureProblems(starting.filter((_, i) => i !== 1), "starting", "zh-TW")).toEqual(["starting has no enabled Cancel recording"]);

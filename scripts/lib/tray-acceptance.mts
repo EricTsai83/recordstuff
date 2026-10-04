@@ -5,6 +5,17 @@
  * screenshots it saves are for a separate visual review, which stays pending
  * here. Pure, so the verdict is unit-tested (tray-acceptance.test.ts).
  */
+import { createHash } from "node:crypto";
+
+/**
+ * The HTML id of a Recordings card's Play button (settings.ts `clip-<id>-open`), whose id is the library's
+ * `fileId` of the file's path (recordings-library.ts): unique per recording, unlike its title. The runner
+ * cannot import the main-process module, so the derivation is repeated here and a test keeps the two equal.
+ */
+export function recordingCardOpenId(filePath: string): string {
+  return `clip-${createHash("sha256").update(filePath).digest("hex").slice(0, 20)}-open`;
+}
+
 export type CaseStatus = "pass" | "fail" | "blocked" | "not run";
 
 export interface TrayCase {

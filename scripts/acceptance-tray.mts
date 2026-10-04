@@ -5,7 +5,8 @@
  * native menu, the app log and the output folder show. The menu of
  * idle, countdown and recording is compared with the production model's
  * `tray: menu opened` line for the same popup, in each requested language;
- * Start, Stop, Open RecordStuff (2026-10-04, formerly Settings…), a left click
+ * Start, Stop, Open RecordStuff (2026-10-04, formerly Settings…), Show last recording
+ * (the window on Recordings with the newest take focused), a left click
  * that opens the menu when that is the choice, the three cancellations (second click,
  * Cancel recording, Quit), a Start chosen after the state moved on, keyboard
  * navigation and Quit RecordStuff are exercised. Screenshots of each menu are
@@ -34,8 +35,9 @@ import { INTERRUPT_EXIT, escapeRegExp, pgrepPids, recordStuffPattern, recordStuf
 import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings } from "./lib/runner-env.mts";
 import { StoredOverride } from "./lib/stored-override.mts";
 import { TrayDriver, compareMenu, parseMenuLogLine, structureProblems, type TrayState } from "./lib/tray-driver.mts";
-import { classifyTrayRound, renderTrayReport, type TrayCase } from "./lib/tray-acceptance.mts";
+import { classifyTrayRound, recordingCardOpenId, renderTrayReport, type TrayCase } from "./lib/tray-acceptance.mts";
 import { CONTROLLED_TOOL, SETTINGS_FILE_VERSION } from "./lib/controlled-acceptance.mts";
+import { playPrefix } from "./lib/notification-acceptance.mts";
 import { developmentAppPath } from "./lib/verification-timing.mts";
 import { controlledPid, readJson, sendControlled, type Until } from "./lib/controlled-client.mts";
 import type { ControlledCommand } from "./fixtures/controlled-acceptance";
@@ -254,6 +256,22 @@ async function readMenu(c: TrayCase, state: TrayState, language: Language): Prom
 }
 
 /** `settle` is off for a case nested inside another's session, which must keep running. */
+/** `YYYY-MM-DD HH-MM-SS` of an app-named recording (recorder.ts formatTimestamp), comparable as text; undefined for other names. */
+function stampOf(file: string): string | undefined {
+  return /^(\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2})(?:-\d+)?\.mp4$/.exec(path.basename(file))?.[1];
+}
+
+/** The title a Recordings card shows (settings-model.ts libraryView): the local time for an app-named file, else its name. */
+function cardTitle(file: string, language: Language): string {
+  const stamp = stampOf(file)?.match(/\d+/g)?.map(Number);
+  if (!stamp) return path.basename(file).replace(/\.[^.]+$/, "");
+  const [y, mo, d, h, mi, sec] = stamp as [number, number, number, number, number, number];
+  return new Intl.DateTimeFormat(language, { hour: "numeric", minute: "2-digit" }).format(new Date(y, mo - 1, d, h, mi, sec));
+}
+
+/** Electron and Node may space a time differently (U+202F before PM): compare without spaces. */
+const squeeze = (text: string): string => text.replace(/[\s\u00a0\u202f]/g, "");
+
 /** A case this round cannot reach, listed as not run with why, so the report never implies it passed. */
 function notRun(id: string, title: string, language: Language | undefined, reason: string): void {
   console.log(`▶ ${id}${language ? ` (${language})` : ""}: ${title}\n  NOT RUN: ${reason}`);
@@ -464,6 +482,57 @@ async function main(): Promise<void> {
     }
 
     await startStopFromMenu(language, countdown);
+
+    if (first) {
+      await runCase("show-last", "Show last recording opens RecordStuff on Recordings with the newest recording focused, not the folder", language, async c => {
+        if ((await ax.windows(pid!)).windows.some(window => window.title === "RecordStuff")) { c.status = "not run"; c.details.push("a RecordStuff window was already open"); return; }
+        const saved = recordings.at(-1);
+        const from = appLog.end();
+        await driver!.open();
+        await driver!.select(t("Show last recording", language));
+        const entry = await waitForLog(appLog, from, /\] show last recording: (.*)$/, "the Show last recording entry", signal, 10_000);
+        c.details.push(entry.line.split("] ")[1]!);
+        // The app picks the Recordings tab's first card. Only an app-named file older than this round's save is wrong:
+        // a newer one, or a file the folder dates by its birth time, can rightly come first (review pass 1, F1).
+        const target = /show last recording: Recordings with (.+)$/.exec(entry.line)?.[1];
+        if (!target) { c.problems.push("no recording was named, although this round saved one"); return; }
+        const older = saved !== undefined && target !== saved && stampOf(target) !== undefined && stampOf(saved) !== undefined && stampOf(target)! < stampOf(saved)!;
+        if (older) c.problems.push(`it named ${target}, older than this round's save ${saved}`);
+        else if (saved !== undefined && target !== saved) c.details.push(`the folder's first card is ${target}, not this round's save`);
+        const title = "RecordStuff";
+        const opened = await driver!.until("the RecordStuff window", async () => {
+          const snapshot = await ax.windows(pid!);
+          return snapshot.windows.some(window => window.title === title) ? snapshot : undefined;
+        });
+        // What the page focused once it rendered the entry; Chromium builds its accessibility tree only when asked, asynchronously.
+        await ax.enableWebAccessibility(pid!);
+        let focused = "", domId = "";
+        for (const until = Date.now() + 3000; ; await delay(150)) {
+          const now = (await ax.windows(pid!)).focused;
+          focused = now ? now.description || now.title : "";
+          domId = now?.domId ?? "";
+          if (focused.startsWith(playPrefix(language)) || Date.now() > until) break;
+        }
+        c.details.push(`focused: ${focused || "nothing"}${domId ? ` (#${domId})` : ""}`);
+        // That card's own Play button, by its id, which names the file (review pass 2): titles repeat within a minute.
+        // Without an id from Accessibility the title is the weaker check, and the details say so (review pass 1, F2).
+        const expectedId = recordingCardOpenId(target);
+        const titleOf = cardTitle(target, language);
+        if (!focused.startsWith(playPrefix(language))) c.problems.push("no recording's Play button is focused");
+        else if (domId) { if (domId !== expectedId) c.problems.push(`the focused Play button is #${domId}, not ${path.basename(target)}'s #${expectedId}`); }
+        else {
+          c.details.push("Accessibility gave no element id; judged by the card's title");
+          if (!squeeze(focused).includes(squeeze(titleOf))) c.problems.push(`the focused Play button is not ${path.basename(target)}'s (its title ${titleOf} is not in the name)`);
+        }
+        if (lines(from).some(line => /openPath|reveal|Finder/.test(line))) c.problems.push("it opened the folder");
+        // ⌘W goes to the frontmost app: never send it unless that is RecordStuff with its window focused.
+        const front = await ax.windows(pid!);
+        if (front.frontmostPid !== pid || front.focusedWindow !== title) { c.problems.push("RecordStuff with its window focused is not frontmost; ⌘W not sent, the window left open"); return; }
+        await ax.key(KEY.w, FLAG.command);
+        await driver!.until("the RecordStuff window to close", async () => ((await ax.windows(pid!)).windows.some(window => window.title === title) ? undefined : true));
+        if (opened.windows.length > 1) c.details.push(`${opened.windows.length - 1} other RecordStuff window(s) stayed as they were`);
+      });
+    }
 
     if (first && countdown > 0) {
       await runCase("cancel-second-click", "A second click on the status item cancels the countdown", language, async c => {

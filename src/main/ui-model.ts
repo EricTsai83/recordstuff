@@ -31,6 +31,8 @@ export type AppAction =
   | "openShortcutSettings"
   /** Settings on the Recording tab, where the resolution warning a capture notice names is shown. */
   | "openRecordingSettings"
+  /** The window on Recordings with the newest recording in view and focused: the tray's way to the last take. */
+  | "showLastRecording"
   | { recordingResult: { id: string; action: RecordingResultAction } }
   /** A video the Recordings tab lists, by the id the page was given. */
   | { recordingFile: { id: string; action: RecordingFileAction } }

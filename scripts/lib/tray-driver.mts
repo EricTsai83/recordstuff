@@ -118,8 +118,10 @@ export function structureProblems(native: readonly NativeMenuItem[], state: Tray
   const cancellable = state === "starting" || state === "countdown";
   if (cancellable !== Boolean(cancel?.enabled)) problems.push(cancellable ? `${state} has no enabled Cancel recording` : `${state} offers Cancel recording`);
   if (!find(t("Open RecordStuff"))?.enabled) problems.push(`${state} has no enabled Open RecordStuff`);
-  if (native.some(item => item.title.startsWith(translate("Output folder: {path}", language, { path: "" })) || item.title === t("Show log") || item.title === t("Show last recording")))
-    problems.push(`${state} still lists an item RecordStuff now holds (output folder, Show last recording or Show log)`);
+  // The way to the newest take, through the window rather than the folder (2026-10-04), in every state.
+  if (!find(t("Show last recording"))?.enabled) problems.push(`${state} has no enabled Show last recording`);
+  if (native.some(item => item.title.startsWith(translate("Output folder: {path}", language, { path: "" })) || item.title === t("Show log")))
+    problems.push(`${state} still lists an item RecordStuff now holds (output folder or Show log)`);
   const last = native.at(-1)?.title;
   if (last !== t("Quit RecordStuff")) problems.push(`the menu ends with ${JSON.stringify(last)}, not Quit RecordStuff`);
   return problems;

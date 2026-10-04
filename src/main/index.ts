@@ -53,7 +53,7 @@ import { parseAutoRecord, runAutoRecord } from "./autorecord";
 import { UpdateChecker, fetchVersion, DOWNLOAD_URL, RELEASES_URL, SOURCE_URL, WEBSITE_URL } from "./updates";
 import { AppTray } from "./tray";
 import { SettingsWindow } from "./settings-window";
-import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary, fileId } from "./recordings-library";
+import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "./recordings-library";
 import { APP_NAME, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 import { effectiveQuality, frameRateDowngrade, type QualitySettings } from "../shared/quality";
 import { AppShortcuts } from "./shortcuts";
@@ -421,7 +421,7 @@ async function main(): Promise<void> {
     idleSeconds: () => powerMonitor.getSystemIdleTime(),
     onNotificationClick: () => reopen?.notificationClicked(),
     onToggle: toggle,
-    showSaved: file => void showSavedRecording(file),
+    showSaved: file => void showRecording(file),
     permissionAction: () => {
       const state = recorder.state;
       runAction(state.type === "needsPermission" ? state.needsRelaunch ? "relaunch" : "openPermissionSettings" : "openSettings", "permission notification");
@@ -560,6 +560,9 @@ async function main(): Promise<void> {
       case "openSettings":
         settingsWindow.show();
         return;
+      case "showLastRecording":
+        await showRecording();
+        return;
       case "retryShortcuts":
         return shortcuts.retry();
       case "checkUpdates":
@@ -633,15 +636,19 @@ async function main(): Promise<void> {
   }
 
   /**
-   * The saved notification's click (2026-10-04): the Recordings tab, listed
-   * afresh so the new file is there, with that recording in view. One the user moved or deleted since is
-   * simply not listed, and the tab shows what the folder holds now.
+   * The Recordings tab, listed afresh so a new file is there, with one recording in view and focused:
+   * the saved notification's own file (2026-10-04), or without one the newest the folder holds, for the
+   * tray's Show last recording. A file the user moved or deleted since is simply not listed, and an empty
+   * or unreadable folder opens the tab on what it shows; never the folder itself.
    */
-  async function showSavedRecording(savedPath: string): Promise<void> {
+  async function showRecording(savedPath?: string): Promise<void> {
     await library.refresh();
-    const listed = library.state.files.some(file => file.path === savedPath);
-    log(listed ? `show last recording: Recordings with ${savedPath}` : `show last recording: ${savedPath} is not in the folder any more; opening Recordings`);
-    settingsWindow.showLibrary(listed ? fileId(savedPath) : undefined);
+    const files = library.state.files;
+    const target = savedPath === undefined ? files[0] : files.find(file => file.path === savedPath);
+    if (target) log(`show last recording: Recordings with ${target.path}`);
+    else if (savedPath !== undefined) log(`show last recording: ${savedPath} is not in the folder any more; opening Recordings`);
+    else log(`show last recording: ${library.state.failed ? "the output folder could not be listed" : "no recording in the output folder"}; opening Recordings`);
+    settingsWindow.showLibrary(target?.id);
   }
 
   /**

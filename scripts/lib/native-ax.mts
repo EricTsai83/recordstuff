@@ -201,7 +201,8 @@ function run(argv) {
       frontmostPid: front.isNil() ? null : front.processIdentifier,
       windows: children(app, 'AXWindows').map(describe),
       focusedWindow: ok(focusedWindow) ? plain(raw(focusedWindow, 'AXTitle')) || '' : null,
-      focused: ok(focused) ? { role: plain(raw(focused, 'AXRole')) || '', title: plain(raw(focused, 'AXTitle')) || '', description: plain(raw(focused, 'AXDescription')) || '' } : null,
+      focused: ok(focused) ? { role: plain(raw(focused, 'AXRole')) || '', title: plain(raw(focused, 'AXTitle')) || '', description: plain(raw(focused, 'AXDescription')) || '',
+        domId: plain(raw(focused, 'AXDOMIdentifier')) || '' } : null,
     });
   }
   if (cmd === 'layout') {
@@ -271,7 +272,8 @@ export interface WindowSnapshot {
   frontmostPid: number | null;
   windows: Array<{ title: string; main: boolean; minimized: boolean; frame: Frame | undefined }>;
   focusedWindow: string | null;
-  focused: { role: string; title: string; description: string } | null;
+  /** `domId`: the element's HTML id, which Chromium exposes once its web accessibility is on; empty elsewhere. */
+  focused: { role: string; title: string; description: string; domId?: string } | null;
 }
 
 /** What `layout` reads of one window: where its controls and its web content are, and what can be clicked in a corner. */
