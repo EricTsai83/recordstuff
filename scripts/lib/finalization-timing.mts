@@ -41,7 +41,11 @@ export interface FinalizationSample extends FinalizeTiming {
   stoppedEarly: boolean;
 }
 
-const TIMING = /^recorder: session (\S+) finalize timing: host (\S+) ms, writes (\S+) ms, flush (\S+) ms, close (\S+) ms, publish (\S+) ms by (\S+)(?: \(link (\S+)\))?, cleanup (\S+) ms(?: \(temporary name kept: ([^)]+)\))?(?:, checkpoint (\S+) ms)?; (\S+) bytes$/;
+/**
+ * The error fields are `errnoCode ?? messageOf(cause)` (file-writer.ts): a message may hold spaces and
+ * parentheses, so they match lazily up to the fixed text that follows them.
+ */
+const TIMING = /^recorder: session (\S+) finalize timing: host (\S+) ms, writes (\S+) ms, flush (\S+) ms, close (\S+) ms, publish (\S+) ms by (\S+)(?: \(link (.+?)\))?, cleanup (\S+) ms(?: \(temporary name kept: (.+?)\))?(?:, checkpoint (\S+) ms)?; (\S+) bytes$/;
 
 const number = (text: string | undefined): number | undefined => {
   if (text === undefined || text === "?") return undefined;

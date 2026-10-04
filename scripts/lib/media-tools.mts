@@ -1,8 +1,9 @@
 /**
- * The only place the verification toolkit runs external programs: ffprobe for
+ * Where the verification toolkit runs external programs: ffprobe for
  * container / stream facts and frame timestamps, ffmpeg for per-channel
  * loudness and the flash / beep sync markers of `scripts/test-material.html`.
- * Both come from `brew install ffmpeg`. Development only, never shipped.
+ * Both come from `brew install ffmpeg`. The countdown evidence decodes raw
+ * frames itself, bounded by the same `mediaTimeout`. Development only, never shipped.
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -56,7 +57,8 @@ export function timeTools<T>(into: ToolTiming[], measure: () => T): T {
   }
 }
 
-function mediaTimeout(): number {
+/** How long one tool run may take before it is killed: `RECORDSTUFF_MEDIA_TIMEOUT_MS`, 15 minutes by default. */
+export function mediaTimeout(): number {
   const timeout = Number(process.env["RECORDSTUFF_MEDIA_TIMEOUT_MS"] ?? 900_000);
   if (!Number.isSafeInteger(timeout) || timeout <= 0) throw new MeasurementError("RECORDSTUFF_MEDIA_TIMEOUT_MS must be a positive integer");
   return timeout;
@@ -125,8 +127,10 @@ export function probe(file: string): { info: ProbeInfo; decodeErrors: string } {
  * damaged tail shows up in well under a second, where a full decode of a 2 GB
  * file takes over a minute. ffprobe, not `ffmpeg -f null`: the null muxer
  * reports repeated timestamps of static screen content as errors although
- * every frame decodes. `nb_read_frames` is absent; a window that decodes no
- * frame counts as an error; decode errors are joined.
+ * every frame decodes. `nb_read_frames` is absent; each video and audio
+ * track is decoded on its own, so audio still playing cannot hide a video
+ * track that ended early; a window where a track decodes no frame counts as
+ * an error; decode errors are joined.
  */
 export function probeEdges(file: string, edgeSeconds = 1): { info: ProbeInfo; decodeErrors: string } {
   const { stdout, stderr } = completed("ffprobe", run("ffprobe", [
@@ -135,15 +139,20 @@ export function probeEdges(file: string, edgeSeconds = 1): { info: ProbeInfo; de
   const info = parseProbe(stdout, stderr);
   const duration = Number(info.format.duration);
   if (!Number.isFinite(duration)) throw new MeasurementError("ffprobe reported no duration, so the last second cannot be located");
-  const decode = (what: string, interval: string): string => {
-    const window = completed(`ffprobe ${what} decode`, run("ffprobe", [
-      "-v", "error", "-read_intervals", interval, "-show_entries", "frame=pts_time", "-of", "csv=p=0", file,
+  const tracks = (["video", "audio"] as const).filter((type) => info.streams.some((stream) => stream.codec_type === type));
+  // `-read_intervals` starts at the keyframe before the window, so frames before `from` say nothing about it.
+  const decode = (what: string, from: number | undefined, type: "video" | "audio"): string => {
+    const label = `${what} (${type})`;
+    const window = completed(`ffprobe ${label} decode`, run("ffprobe", [
+      "-v", "error", "-select_streams", `${type[0]}:0`, "-read_intervals", from === undefined ? `%+${edgeSeconds}` : `${from}%`,
+      "-show_entries", "frame=pts_time", "-of", "csv=p=0", file,
     ], "ffprobe edges"));
-    return window.stdout.trim() === "" ? `${window.stderr}\n${what}: no frame decoded` : window.stderr;
+    const decoded = parseFrameTimes(window.stdout).some((time) => from === undefined || time >= from);
+    return decoded ? window.stderr : `${window.stderr}\n${label}: no frame decoded`;
   };
-  const head = decode("first second", `%+${edgeSeconds}`);
-  const tail = decode("last second", `${Math.max(0, duration - edgeSeconds)}%`);
-  return { info, decodeErrors: [stderr, head, tail].map((text) => text.trim()).filter(Boolean).join("\n") };
+  const tailFrom = Math.max(0, duration - edgeSeconds);
+  const edges = tracks.flatMap((type) => [decode("first second", undefined, type), decode("last second", tailFrom, type)]);
+  return { info, decodeErrors: [stderr, ...edges].map((text) => text.trim()).filter(Boolean).join("\n") };
 }
 
 /**

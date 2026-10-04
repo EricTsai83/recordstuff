@@ -70,6 +70,11 @@ describe("crop comparison", () => {
     expect(result).toMatchObject({ judged: 2, pass: true, worst: 1 });
     expect(result.comparisons[1]).toEqual({ frame: 1, skipped: "flash" });
   });
+  it("tells a frame with no later counterpart from a flash", () => {
+    const result = compareCrops([flat(10), flat(10), flat(10)], [flat(10), flat(10, 32)]);
+    expect(result.comparisons.slice(1)).toEqual([{ frame: 1, skipped: "missing" }, { frame: 2, skipped: "missing" }]);
+    expect(result).toMatchObject({ judged: 1, pass: true });
+  });
   it("fails when an early frame still carries a faint digit", () => {
     const digit = flat(10);
     for (let i = 0; i < 16; i += 1) digit[i] = 10 + 71;

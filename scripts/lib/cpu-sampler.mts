@@ -153,7 +153,7 @@ export interface Summary {
   maxResidentBytes: number;
   /** Per process, heaviest first. */
   processes: Array<{ name: string; pid: number; followed: boolean; cpuPercent: Stat; wakeupsPerSecond: number; maxResidentBytes: number }>;
-  /** Process names seen in the window, the app's first, sorted. */
+  /** The app's own process names seen in the window, sorted; followed helpers are in `followed` and `processes` only. */
   processNames: string[];
 }
 

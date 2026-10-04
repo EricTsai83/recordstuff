@@ -22,6 +22,12 @@ describe.skipIf(!has("ffmpeg") || !has("ffprobe"))("probeEdges (requires ffmpeg/
       "-t", "3", "-c:v", "mpeg4", "-g", "30", "-c:a", "aac", "-ar", "48000", "-movflags", "frag_keyframe+empty_moov", path.join(dir, "whole.mp4"),
     ], { encoding: "utf8" });
     if (made.status !== 0) throw new Error(`could not generate media: ${made.stderr}`);
+    // Video that stops halfway while audio plays on: the tail holds audio frames only.
+    const short = spawnSync("ffmpeg", [
+      "-v", "error", "-nostdin", "-f", "lavfi", "-t", "1.5", "-i", "testsrc2=size=320x180:rate=30", "-f", "lavfi", "-t", "3", "-i", "sine=frequency=660:sample_rate=48000",
+      "-c:v", "mpeg4", "-g", "30", "-c:a", "aac", "-ar", "48000", "-movflags", "frag_keyframe+empty_moov", path.join(dir, "video-ends-early.mp4"),
+    ], { encoding: "utf8" });
+    if (short.status !== 0) throw new Error(`could not generate media: ${short.stderr}`);
     const bytes = fs.readFileSync(path.join(dir, "whole.mp4"));
     fs.writeFileSync(path.join(dir, "cut.mp4"), bytes.subarray(0, Math.floor(bytes.length * 0.6)));
   });
@@ -33,6 +39,13 @@ describe.skipIf(!has("ffmpeg") || !has("ffprobe"))("probeEdges (requires ffmpeg/
     expect(info.streams.map((s) => s.codec_type).sort()).toEqual(["audio", "video"]);
     expect(info.streams.every((s) => s.nb_read_frames === undefined)).toBe(true);
     expect(decodeErrors).toBe("");
+  });
+
+  it("reports a video track that ended early even while audio fills the last second", () => {
+    const { info, decodeErrors } = probeEdges(path.join(dir, "video-ends-early.mp4"));
+    expect(Number(info.format.duration)).toBeCloseTo(3, 0);
+    expect(decodeErrors).toContain("last second (video): no frame decoded");
+    expect(decodeErrors).not.toContain("(audio): no frame decoded");
   });
 
   it("shows a file cut short by its duration and tail decode errors", () => {

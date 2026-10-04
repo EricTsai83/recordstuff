@@ -65,7 +65,7 @@ import { LogReader, evidenceSince, type LogCursor } from "./lib/log-reader.mts";
 import { hasTool, syncMarkers } from "./lib/media-tools.mts";
 import { readLogPairs, verifyRecording } from "./lib/verify-recording.mts";
 import { BLOCKED_EXIT, blocksSuccess, formatText } from "./lib/verify.mts";
-import { DIGIT_DIFF_THRESHOLD, TICK_EXCESS_DB, TICK_FLOOR_DBFS, countdownTimeline, digitCrops, digitRegion, tickCheck, type CountdownTimeline, type TickCheck } from "./lib/countdown-evidence.mts";
+import { DIGIT_DIFF_THRESHOLD, TICK_EXCESS_DB, TICK_FLOOR_DBFS, countdownTimeline, digitCrops, digitRegion, skippedCrops, tickCheck, type CountdownTimeline, type TickCheck } from "./lib/countdown-evidence.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
 import { StoredOverride } from "./lib/stored-override.mts";
 
@@ -473,7 +473,7 @@ async function main(): Promise<void> {
         "## Countdown digit",
         "",
         crops
-          ? `Crops of the first 15 frames and of the 15 frames ${crops.laterSeconds} s later: [digit-crops/](digit-crops/). ${crops.judged} frame(s) judged; worst mean luma difference ${crops.worst?.toFixed(2) ?? "n/a"} (threshold ${DIGIT_DIFF_THRESHOLD}; flash frames skipped)${openMaterial ? "" : "; material not opened, so not judged"}.`
+          ? `Crops of the first 15 frames and of the 15 frames ${crops.laterSeconds} s later: [digit-crops/](digit-crops/). ${crops.judged} frame(s) judged; worst mean luma difference ${crops.worst?.toFixed(2) ?? "n/a"} (threshold ${DIGIT_DIFF_THRESHOLD}; skipped: ${skippedCrops(crops.comparisons, "flash")} flash, ${skippedCrops(crops.comparisons, "missing")} without a later frame)${openMaterial ? "" : "; material not opened, so not judged"}.`
           : timeline.countdown ? "No crops (see guards)." : "Countdown Off: nothing to crop.",
         "",
         "## Countdown sound",

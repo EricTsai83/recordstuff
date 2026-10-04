@@ -32,6 +32,11 @@ describe("finalize timing line", () => {
       .toMatchObject({ method: "copy", linkError: "ENOTSUP", cleanupMs: 3, cleanupError: "EPERM", bytes: 10 });
   });
 
+  it("keeps an error without an errno code, whose message has spaces and parentheses", () => {
+    expect(parseFinalizeTiming("recorder: session s1 finalize timing: host 9 ms, writes 0 ms, flush 30 ms, close 0 ms, publish 1400 ms by copy (link Operation not supported (os error 45)), cleanup 3 ms (temporary name kept: file is busy (locked)), checkpoint 2 ms; 10 bytes"))
+      .toMatchObject({ method: "copy", linkError: "Operation not supported (os error 45)", cleanupMs: 3, cleanupError: "file is busy (locked)", checkpointMs: 2, bytes: 10 });
+  });
+
   it("leaves unknown phases out and ignores other lines", () => {
     expect(parseFinalizeTiming("recorder: session s1 finalize timing: host ? ms, writes 0 ms, flush ? ms, close ? ms, publish ? ms by ?, cleanup ? ms; ? bytes"))
       .toEqual({ session: "s1", writesMs: 0 });

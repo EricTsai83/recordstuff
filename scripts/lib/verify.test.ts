@@ -370,6 +370,8 @@ describe("sync markers", () => {
         ].join("\n"),
       ),
     ).toEqual([-23.5, Number.NEGATIVE_INFINITY]);
+    // Both signs of infinity are numbers, not NaN; only "nan" stays NaN.
+    expect(parseChannelRms("Channel: 1\nRMS level dB: inf\nChannel: 2\nRMS level dB: nan")).toEqual([Number.POSITIVE_INFINITY, Number.NaN]);
   });
 
   it("matches flashes to the nearest beep and measures head/tail drift", () => {
@@ -466,6 +468,9 @@ describe("measure + judge", () => {
     expect(byMetric["Video bitrate"]?.verdict).toBe("pass");
     expect(byMetric["Audio bitrate"]?.verdict).toBe("pass");
     expect(byMetric["CPU (app process tree)"]?.verdict).toBe("n/a");
+    // No sampled interval is missing evidence: the drop rate of 0 it computes must not pass.
+    const unsampled = judge(measure("a.mp4", 31_335_000, info(), [[]], { nominalFps: 30 }), ENTRY, { movingMaterial: true });
+    expect(unsampled.find((c) => c.metric === "Dropped frames")).toMatchObject({ verdict: "incomplete", note: expect.stringContaining("Fewer than two") });
     const busy = judge(measure("cpu.mp4", 1, info(), [evenFrames(900, 30)], { cpu: { averagePercent: 55, peakPercent: 80 } }), ENTRY, { movingMaterial: true });
     expect(busy.find((c) => c.metric.startsWith("CPU"))?.verdict).toBe("fail");
     const calm = judge(measure("cpu.mp4", 1, info(), [evenFrames(900, 30)], { cpu: { averagePercent: 15, peakPercent: 20 } }), ENTRY, { movingMaterial: true });

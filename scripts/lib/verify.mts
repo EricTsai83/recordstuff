@@ -543,7 +543,7 @@ export function parseChannelRms(stderr: string): number[] {
     const match = inChannel ? /RMS level dB:\s*(-?[\d.]+|-inf|inf|nan)/.exec(line) : null;
     if (match) {
       const text = match[1] ?? "";
-      levels.push(text === "-inf" ? Number.NEGATIVE_INFINITY : Number(text));
+      levels.push(text === "-inf" ? Number.NEGATIVE_INFINITY : text === "inf" ? Number.POSITIVE_INFINITY : Number(text));
       inChannel = false;
     }
   }
@@ -986,8 +986,11 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
     metric: "Dropped frames",
     expected: `< ${THRESHOLDS.maxDropRate * 100}%`,
     actual: m.frames ? `${(m.frames.dropRate * 100).toFixed(2)}% (${m.frames.dropped} frames / sampled ${m.frames.frames} frames, max gap ${ms(m.frames.maxGapMs)})` : "—",
-    verdict: m.frames && options.movingMaterial ? pass(m.frames.dropRate < THRESHOLDS.maxDropRate) : "n/a",
-    ...(options.movingMaterial ? {} : { note: MATERIAL_NOTE }),
+    // Fewer than two sampled frames give no interval to judge: a 0% drop rate is then no evidence, not a pass.
+    verdict: !m.frames || !options.movingMaterial ? "n/a"
+      : m.frames.medianIntervalMs === undefined ? "incomplete" : pass(m.frames.dropRate < THRESHOLDS.maxDropRate),
+    ...(!options.movingMaterial ? { note: MATERIAL_NOTE }
+      : m.frames && m.frames.medianIntervalMs === undefined ? { note: "Fewer than two video frames were sampled, so no frame interval could be judged" } : {}),
   });
 
   // Audio-video duration difference

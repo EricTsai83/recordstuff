@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { COUNTDOWN_TICK, tickFrequencyHz } from "../../src/shared/countdown.ts";
 import { lineTime } from "./acceptance.mts";
+import { mediaTimeout } from "./media-tools.mts";
 import { escapeRegExp } from "./processes.mts";
 
 export interface Rect { x: number; y: number; width: number; height: number }
@@ -100,7 +101,8 @@ export const FLASH_MEAN = 96;
 export interface CropComparison {
   frame: number;
   meanDiff?: number;
-  skipped?: "flash";
+  /** `flash`: the material's flash covers the region; `missing`: no later frame of the same size to compare with. */
+  skipped?: "flash" | "missing";
 }
 
 function mean(bytes: Uint8Array): number {
@@ -116,7 +118,7 @@ function mean(bytes: Uint8Array): number {
 export function compareCrops(early: readonly Uint8Array[], later: readonly Uint8Array[]): { comparisons: CropComparison[]; judged: number; worst?: number; pass: boolean } {
   const comparisons = early.map((crop, frame): CropComparison => {
     const other = later[frame];
-    if (!other || other.length !== crop.length) return { frame, skipped: "flash" };
+    if (!other || other.length !== crop.length) return { frame, skipped: "missing" };
     if (mean(crop) > FLASH_MEAN || mean(other) > FLASH_MEAN) return { frame, skipped: "flash" };
     let sum = 0;
     for (let i = 0; i < crop.length; i += 1) sum += Math.abs(crop[i]! - other[i]!);
@@ -127,10 +129,23 @@ export function compareCrops(early: readonly Uint8Array[], later: readonly Uint8
   return { comparisons, judged: judged.length, ...(worst === undefined ? {} : { worst }), pass: judged.length > 0 && worst! <= DIGIT_DIFF_THRESHOLD };
 }
 
+/** How many frames `compareCrops` skipped for `reason`, for the report. */
+export function skippedCrops(comparisons: readonly CropComparison[], reason: NonNullable<CropComparison["skipped"]>): number {
+  return comparisons.filter((comparison) => comparison.skipped === reason).length;
+}
+
+/** Bounded like every media tool run: a file that makes ffmpeg stall must not hold the acceptance run forever. */
 function ffmpeg(args: string[], encoding: "buffer" | "utf8" = "utf8"): Buffer | string {
-  const result = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", ...args], { maxBuffer: 256 * 1024 * 1024, ...(encoding === "utf8" ? { encoding } : {}) });
+  const timeout = mediaTimeout();
+  const result = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", ...args],
+    { maxBuffer: 256 * 1024 * 1024, timeout, killSignal: "SIGKILL", ...(encoding === "utf8" ? { encoding } : {}) });
+  const tail = String(result.stderr ?? "").trim().split("\n").slice(-2).join(" | ");
+  const stderr = tail ? `: ${tail}` : "";
+  // A run past the bound is killed, which spawnSync reports as an ETIMEDOUT error.
+  if ((result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT") throw new Error(`ffmpeg did not finish within ${timeout} ms and was killed${stderr}`);
   if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`ffmpeg exited ${result.status}: ${String(result.stderr).trim().split("\n").slice(-2).join(" | ")}`);
+  if (result.signal) throw new Error(`ffmpeg was killed by ${result.signal}${stderr}`);
+  if (result.status !== 0) throw new Error(`ffmpeg exited ${result.status}${stderr}`);
   return result.stdout;
 }
 
