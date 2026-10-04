@@ -228,7 +228,9 @@ describe("a quit in progress", () => {
     const ctx: AppContext = { ...context, quitting: true, recordingResults: [
       { id: "f", code: "disk_full", detail: "", occurredAt: "2026-09-24T12:00:00Z", outcome: "empty", acknowledged: false }] };
     const view = settingsView(idle, ctx);
-    expect(view.hint).toBe("Quitting once the recording is saved or cleaned up…");
+    // Said once, by the status card; the hint under its title would only repeat it.
+    expect(view.status?.title).toBe("Quitting once the recording is saved or cleaned up…");
+    expect(view.hint).toBe("");
     expect(view.groups.filter(g => g.enabled).map(g => g.id)).toEqual([]);
     expect(view.recordingResults?.flatMap(r => r.actions).filter(a => a.enabled)).toEqual([]);
     expect(settingsAction(idle, ctx, "language", "zh-TW")).toBeUndefined();

@@ -612,9 +612,9 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
     title: APP_NAME,
     status: settingsStatus(state, ctx),
     ...(ctx.library ? { library: libraryView(ctx, now, format)! } : {}),
-    // One line above the tabs: the lock covers General too, so it is not the Recording tab's own note.
-    hint: quitting ? t("Quitting once the recording is saved or cleaned up…", language)
-      : unlocked ? "" : t("Recording in progress; only language and appearance can change.", language),
+    // One line above the tabs: the lock covers General too, so it is not the Recording tab's own note. A quit
+    // needs none: the status card's own title already says it, and the hint sits right under that title.
+    hint: quitting || unlocked ? "" : t("Recording in progress; only language and appearance can change.", language),
     failure: t("Could not apply this setting. Your current settings are shown.", language),
     tabs: [{ id: "library", label: t("Recordings", language) }, { id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) }, failuresTab(ctx)],
     groups: settingsGroups(state, ctx).map(({ choices, actions, ...rest }) => ({
