@@ -112,6 +112,8 @@ export class RecordingsLibrary {
   private unwatchable: string | undefined;
   /** The window wants the folder followed, whether or not a watcher could be attached yet (review pass 1, F2). */
   private watching = false;
+  /** Settles once the last listing's unknown lengths are read and published, or a newer listing abandoned them. */
+  lengths: Promise<void> = Promise.resolve();
 
   constructor(private readonly deps: LibraryDeps) {
     this.current = { dir: deps.dir(), loading: true, failed: false, files: [] };
@@ -132,7 +134,6 @@ export class RecordingsLibrary {
    * brings), and a saved recording's entry once more: requests made while a listing runs share one
    * more listing after it, so each still sees the folder as it was when it asked.
    */
-  lengths: Promise<void> = Promise.resolve();
   refresh(): Promise<void> {
     if (!this.listing) return this.listing = this.list().finally(() => { this.listing = undefined; });
     const next = (): Promise<void> => { this.relisting = undefined; return this.refresh(); };
