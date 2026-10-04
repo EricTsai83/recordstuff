@@ -215,8 +215,9 @@ describe("PermissionWatcher", () => {
     ctx.state.granted = true;
     await vi.advanceTimersByTimeAsync(20_000);
     expect(ctx.countScreens).toHaveBeenCalledTimes(1);
-    // The overdue validation still guides the user while the prompt is pending.
+    // The overdue validation still guides the user while the prompt is pending, and the log names what waits.
     expect(ctx.changes.at(-1)).toEqual({ granted: false, needsRelaunch: true });
+    expect(ctx.logs).toContain("permission: the prompt call is unanswered after 4000 ms, so no validation was sent; no new request until it settles");
     ctx.pending[0]?.resolve(1);
     await flush();
     expect(ctx.countScreens).toHaveBeenCalledTimes(2); // a prompt result never validates

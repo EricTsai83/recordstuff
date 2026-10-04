@@ -235,7 +235,10 @@ export class PermissionWatcher {
       this.check();
       return;
     }
-    this.log(`permission: validation unanswered after ${this.validateTimeoutMs} ms; no new request until it settles`);
+    // The slot may still hold the prompt call, in which case no validation was ever sent: the log says which waits.
+    this.log(this.inFlight?.purpose === "prompt"
+      ? `permission: the prompt call is unanswered after ${this.validateTimeoutMs} ms, so no validation was sent; no new request until it settles`
+      : `permission: validation unanswered after ${this.validateTimeoutMs} ms; no new request until it settles`);
     this.relaunchRequired = true;
     this.emit({ granted: false, needsRelaunch: true });
   }
