@@ -105,7 +105,7 @@ function setDisabled(el: HTMLButtonElement | HTMLSelectElement | HTMLInputElemen
  */
 function setActionDisabled(el: HTMLButtonElement, unavailable: boolean, busy: boolean): void {
   setDisabled(el, unavailable, false);
-  el.setAttribute("aria-disabled", String(unavailable || busy));
+  setAttr(el, "aria-disabled", String(unavailable || busy));
   el.classList.toggle("saving-disabled", !unavailable && busy);
 }
 const inactive = (el: HTMLElement): boolean => el.getAttribute("aria-disabled") === "true";
@@ -314,10 +314,13 @@ function updateRows(groups: SettingsGroup[]): void {
     const infoButton = document.getElementById(`${controlId(group)}-info-button`)!;
     if (!group.info && openInfo?.popover === info) hideInfo();
     setText(info, group.info ?? ""); info.hidden = infoButton.hidden = !group.info;
-    infoButton.setAttribute("aria-label", translate("More about {label}", view?.language, { label: group.label }));
+    setAttr(infoButton, "aria-label", translate("More about {label}", view?.language, { label: group.label }));
+    // Each control's state is decided once and written only when it changes: a disabled flag flipped off and on
+    // again on every push would still reach assistive technology as changes.
+    const othersSaving = Boolean(saving && saving.group !== group.id);
     for (const el of container.querySelectorAll<HTMLInputElement | HTMLSelectElement>("select, input")) {
-      setDisabled(el, !group.enabled, Boolean(saving && saving.group !== group.id));
       if (el instanceof HTMLSelectElement) {
+        setDisabled(el, !group.enabled, othersSaving);
         // Reconcile menu options locally: a new custom key or display must not
         // recreate the panel, its neighbouring controls, or their focus.
         const choices = [...group.choices, ...(group.kind === "shortcut" ? [{ id: "custom", label: text("Custom shortcut…"), enabled: true, checked: false }] : [])];
@@ -334,10 +337,11 @@ function updateRows(groups: SettingsGroup[]): void {
       } else if (group.control === "switch") {
         el.checked = committed(group) === "on";
         el.value = committed(group);
-        el.disabled ||= !group.choices.find(c => c.id === (el.checked ? "off" : "on"))?.enabled;
+        setDisabled(el, !group.enabled || !group.choices.find(c => c.id === (el.checked ? "off" : "on"))?.enabled, othersSaving);
       } else {
         const choice = group.choices.find(c => c.id === el.value)!;
-        el.checked = choice.checked; el.disabled ||= !choice.enabled;
+        el.checked = choice.checked;
+        setDisabled(el, !group.enabled || !choice.enabled, othersSaving);
         setText(el.nextElementSibling!, choice.label);
       }
     }
@@ -350,11 +354,11 @@ function updateRows(groups: SettingsGroup[]): void {
       let el = document.getElementById(`${controlId(group)}-${choice.id}`) as HTMLButtonElement | null;
       if (!el) { el = actionButton(group, choice); actionParent.append(el); }
       if (group.id === "about") {
-        el.setAttribute("aria-label", choice.label); el.title = choice.label;
+        setAttr(el, "aria-label", choice.label); setAttr(el, "title", choice.label);
       } else setText(el, choice.label);
       setActionDisabled(el, !group.enabled || !choice.enabled, Boolean(saving) || choice.busy === true);
     }
-    container.setAttribute("aria-busy", String(saving?.group === group.id));
+    setAttr(container, "aria-busy", String(saving?.group === group.id));
     const applying = container.querySelector<HTMLElement>(".applying")!;
     setText(applying, saving?.group === group.id && !actions.some(choice => choice.id === saving?.choice) ? text("Applying…") : "");
     updateDiagnostic(container, group);
@@ -385,7 +389,7 @@ function updateRows(groups: SettingsGroup[]): void {
       const confirm = container.querySelector<HTMLButtonElement>("#shortcut-confirm")!;
       setText(confirm, text("Confirm"));
       confirm.disabled = !group.enabled || !candidateToConfirm;
-      confirm.setAttribute("aria-disabled", String(Boolean(saving) || confirm.disabled));
+      setAttr(confirm, "aria-disabled", String(Boolean(saving) || confirm.disabled));
       confirm.tabIndex = candidateToConfirm ? 0 : -1;
       const cancel = container.querySelector<HTMLButtonElement>("#shortcut-cancel")!;
       setText(cancel, text("Cancel")); cancel.disabled = Boolean(saving); cancel.tabIndex = 0;
@@ -396,7 +400,7 @@ function updateRows(groups: SettingsGroup[]): void {
     const description = [`${controlId(group)}-help`, `${controlId(group)}-note`, `${controlId(group)}-info`, `${controlId(group)}-diagnostics`, `${controlId(group)}-timeout`]
       .filter(id => document.getElementById(id)?.hidden === false).join(" ");
     for (const el of container.querySelectorAll<HTMLElement>("select, input, button[data-action], #shortcut-capture")) {
-      if (description) el.setAttribute("aria-describedby", description); else el.removeAttribute("aria-describedby");
+      if (description) setAttr(el, "aria-describedby", description); else if (el.hasAttribute("aria-describedby")) el.removeAttribute("aria-describedby");
     }
   }
 }
@@ -1283,12 +1287,12 @@ function draw(): void {
     updateLibrary();
     restoreScroll = target;
   } else updateRows(groups);
-  form.querySelector('[role="tablist"]')!.setAttribute("aria-label", current.title);
+  setAttr(form.querySelector('[role="tablist"]')!, "aria-label", current.title);
   updateTabOrientation();
   for (const tab of current.tabs) {
     const el = document.getElementById(`tab-${tab.id}`)!;
     tabLabel(el, tab.id, tab.label);
-    if (tab.accessibleLabel) el.setAttribute("aria-label", tab.accessibleLabel); else el.removeAttribute("aria-label");
+    if (tab.accessibleLabel) setAttr(el, "aria-label", tab.accessibleLabel); else if (el.hasAttribute("aria-label")) el.removeAttribute("aria-label");
   }
   const openTab = current.tabs.find(tab => tab.id === selectedTab);
   if (openTab) setText(document.getElementById("page-title")!, /^(.*?)\s?[（(]\d+[)）]$/.exec(openTab.label)?.[1] ?? openTab.label);
