@@ -448,9 +448,11 @@ it("declares presentation without changing choice identities, and authorizes onl
     ["videoQuality", "segmented", "video"],
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
     ["trayClick", "menu", "controls"], ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],
-    ["language", "segmented", "display"], ["appearance", "menu", "display"],
+    ["language", "segmented", "display"], ["appearance", "segmented", "display"],
     ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"], ["log", "menu", "support"], ["about", "menu", "about"],
   ]);
+  // Appearance is three icons, one click each (2026-10-05); no other row is.
+  expect(groups.filter(g => g.iconChoices).map(g => [g.id, g.choices.map(c => c.id)])).toEqual([["appearance", ["system", "light", "dark"]]]);
   expect(group(idle, { ...context, notifications: false }, "notifications")?.noteKind).toBe("status");
   expect(group(idle, context, "videoQuality")?.noteKind).toBe("explanation");
   expect(group(idle, context, "updates")?.noteKind).toBe("status");

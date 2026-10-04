@@ -25,6 +25,8 @@ export interface SettingsGroup {
   kind?: "actions" | "shortcut";
   /** Presentation only; omitted controls default to a native menu. */
   control?: "switch" | "segmented" | "menu";
+  /** Segments drawn as icons named by their labels (Appearance's screen, sun and moon); presentation only. */
+  iconChoices?: boolean;
   /** Consecutive rows with this id share an inset list. */
   section?: string;
   sectionHeading?: string;

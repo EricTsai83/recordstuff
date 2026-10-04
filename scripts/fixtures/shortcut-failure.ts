@@ -192,7 +192,10 @@ async function commit() {
   await waitFor(async () => !(await group()).capturing, 'capture committed');
 }
 async function choose(id: string, value: string) {
-  await evaluate(`(() => { const select = document.getElementById(${JSON.stringify('setting-' + id)}); if (select.type === "checkbox") select.checked = ${JSON.stringify(value)} === "on"; else select.value = ${JSON.stringify(value)}; select.dispatchEvent(new Event('change')); })()`);
+  // A segmented row (Appearance since 2026-10-05) is chosen through its radio; a menu by its value; a switch by checking it.
+  await evaluate(`(() => { const radio = document.getElementById(${JSON.stringify(`setting-${id}-${value}`)});
+    if (radio?.type === "radio") { radio.checked = true; radio.dispatchEvent(new Event('change')); return; }
+    const select = document.getElementById(${JSON.stringify('setting-' + id)}); if (select.type === "checkbox") select.checked = ${JSON.stringify(value)} === "on"; else select.value = ${JSON.stringify(value)}; select.dispatchEvent(new Event('change')); })()`);
   await waitFor(() => evaluate(`!document.querySelector('.row[aria-busy="true"]')`), 'save settled');
 }
 function finish(error?: unknown) {
@@ -247,7 +250,8 @@ require(path.join(root, 'out/main/index.js'));
       await waitFor(() => evaluate(`matchMedia('(prefers-color-scheme: dark)').matches === ${electron.nativeTheme.shouldUseDarkColors}`), 'renderer appearance');
       record(`${appearance} appearance updates native theme, renderer and saved preference`,
         JSON.parse(fs.readFileSync(settingsFile, 'utf8')).appearance === appearance
-        && await evaluate(`document.getElementById('setting-appearance').value === '${appearance}'`), electron.nativeTheme.themeSource);
+        // Appearance is three icon segments (2026-10-05): the chosen one is the checked radio.
+        && await evaluate(`document.getElementById('setting-appearance-${appearance}').checked`), electron.nativeTheme.themeSource);
     }
     const opened = panel!;
     const count = BrowserWindow.getAllWindows().length;

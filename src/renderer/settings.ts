@@ -197,6 +197,10 @@ const ICONS: Record<string, [string, string?]> = {
   notifications: ["M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a2 2 0 0 0 3.4 0"],
   language: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20ZM2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20"],
   appearance: ["M12 21.5a9.5 9.5 0 1 0 0-19 9.5 9.5 0 0 0 0 19Z", "M12 2.5a9.5 9.5 0 0 1 0 19Z"],
+  // Appearance's three segments (2026-10-05): the screen for the system's choice, the sun and the moon.
+  "appearance-system": ["M4 4h16a1.5 1.5 0 0 1 1.5 1.5v10A1.5 1.5 0 0 1 20 17H4a1.5 1.5 0 0 1-1.5-1.5v-10A1.5 1.5 0 0 1 4 4ZM8.5 21h7M12 17v4"],
+  "appearance-light": ["M12 16.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9ZM12 2v2.2M12 19.8V22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M2 12h2.2M19.8 12H22M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6"],
+  "appearance-dark": ["M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1Z"],
   updateChecks: ["M21 12a9 9 0 0 0-15.5-6.2L3 8.5M3 3.5v5h5M3 12a9 9 0 0 0 15.5 6.2L21 15.5M21 20.5v-5h-5"],
   log: ["M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8ZM14 2.5V8h5.5M8.5 13h7M8.5 17h7M8.5 9h2"],
   updates: ["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"],
@@ -356,7 +360,8 @@ function updateRows(groups: SettingsGroup[]): void {
         const choice = group.choices.find(c => c.id === el.value)!;
         el.checked = choice.checked;
         setDisabled(el, !group.enabled || !choice.enabled, othersSaving);
-        setText(el.nextElementSibling!, choice.label);
+        if (group.iconChoices) { setAttr(el, "aria-label", choice.label); setAttr(el.parentElement!, "title", choice.label); }
+        else setText(el.nextElementSibling!, choice.label);
       }
     }
     const actions = group.kind === "actions" ? group.choices : group.actions ?? [];
@@ -538,7 +543,10 @@ function row(group: SettingsGroup): HTMLElement {
       const item = node("label", "segment");
       const input = node("input"); input.type = "radio"; input.name = id; input.id = `${id}-${choice.id}`; input.value = choice.id;
       input.addEventListener("change", () => { if (input.checked) void choose(group.id, choice.id, input.id); });
-      item.append(input, node("span")); segments.append(item);
+      // An icon segment shows its mark; its label names the radio and is its tooltip (`updateRows`).
+      const face = node("span");
+      if (group.iconChoices) { item.classList.add("segment-icon"); const glyph = icon(`${group.id}-${choice.id}`, "segment-glyph"); if (glyph) face.append(glyph); }
+      item.append(input, face); segments.append(item);
     }
     controls.append(segments);
   } else {

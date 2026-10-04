@@ -63,12 +63,15 @@ function group(
   const section = SECTIONS[id] ?? id;
   return { id, label, enabled, choices, tab: RECORDING_SECTIONS.has(section) ? "recording" : "general",
     control: SWITCHES.has(id) ? "switch" : SEGMENTED.has(id) ? "segmented" : "menu",
+    ...(ICON_SEGMENTS.has(id) ? { iconChoices: true } : {}),
     section, noteKind: "explanation", ...(note === undefined ? {} : { note }) };
 }
 
 /** Rows drawn as an on/off switch, and as a row of segments; any other choice row is a menu. */
 const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound"]);
-const SEGMENTED = new Set(["countdown", "videoQuality", "language"]);
+const SEGMENTED = new Set(["countdown", "videoQuality", "language", "appearance"]);
+/** Segments drawn as icons, each named by its label: Appearance's three, one click each (2026-10-05, formerly a menu). */
+const ICON_SEGMENTS = new Set(["appearance"]);
 /** The sections on the Recording settings tab; every other row is General's. A row's tab follows its section, so a section is never split. */
 const RECORDING_SECTIONS = new Set(["source", "countdown", "video"]);
 /** Related rows share an inset list; a section's first row carries its heading. */
