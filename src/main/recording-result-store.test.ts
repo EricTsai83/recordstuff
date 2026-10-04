@@ -560,4 +560,9 @@ it("loads a history larger than the main-thread parsing threshold without losing
   await store.save(rows);
   expect(fs.statSync(file).size).toBeGreaterThan(1024 * 1024);
   expect(await new RecordingResultStore(file).load()).toEqual(rows);
+  // Each record comes back from the worker as text and is still checked on main: one bad row keeps the file unread.
+  const text = JSON.parse(fs.readFileSync(file, "utf8")) as { results: unknown[] };
+  fs.writeFileSync(file, JSON.stringify({ ...text, results: [...text.results, { ...rows[0], id: "" }] }));
+  const damaged = new RecordingResultStore(file);
+  expect([await damaged.load(), damaged.loadIssue]).toEqual([[], true]);
 });

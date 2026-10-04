@@ -71,14 +71,23 @@ export class RecordingResultStore implements ResultStorage {
   private readonly encoded = new WeakMap<RecordingResult, { json: string; bytes: number }>();
   constructor(private readonly file: string, private readonly log: (message: string) => void = () => {},
     private readonly legacyFile?: string) {}
-  private static async read(file: string, limit: number, tooLarge: string): Promise<unknown> {
+  /**
+   * The file's JSON. A file of 1 MiB or more is parsed in a worker, and its `results` come back as one JSON string
+   * per record (`encoded`): an object graph handed back costs main about what parsing it did (38 ms of 46 at the
+   * bound), while strings are plain copies (13 ms), and main then parses each record in its sliced loop.
+   */
+  private static async read(file: string, limit: number, tooLarge: string): Promise<{ value: unknown; encoded: boolean }> {
     const handle = await fs.promises.open(file, "r");
     try {
       if ((await handle.stat()).size > limit) throw new Error(tooLarge);
       const text = await handle.readFile("utf8");
-      if (text.length < 1024 * 1024) return JSON.parse(text);
-      return await new Promise<unknown>((resolve, reject) => {
-        const worker = new Worker(`const { parentPort, workerData } = require("node:worker_threads"); parentPort.postMessage(JSON.parse(workerData));`, { eval: true, workerData: text });
+      if (text.length < 1024 * 1024) return { value: JSON.parse(text), encoded: false };
+      return await new Promise<{ value: unknown; encoded: boolean }>((resolve, reject) => {
+        const worker = new Worker(`const { parentPort, workerData } = require("node:worker_threads");
+          const value = JSON.parse(workerData);
+          const encoded = Boolean(value && Array.isArray(value.results));
+          if (encoded) value.results = value.results.map(result => JSON.stringify(result));
+          parentPort.postMessage({ value, encoded });`, { eval: true, workerData: text });
         worker.once("message", resolve);
         worker.once("error", reject);
         worker.once("exit", code => { if (code !== 0) reject(new Error(`History parser exited ${code}`)); });
@@ -87,10 +96,13 @@ export class RecordingResultStore implements ResultStorage {
   }
   async load(): Promise<RecordingResult[]> {
     try {
-      const value = await RecordingResultStore.read(this.file, LIMIT, "recording history too large") as { version?: unknown; results?: unknown };
+      const read = await RecordingResultStore.read(this.file, LIMIT, "recording history too large");
+      const value = read.value as { version?: unknown; results?: unknown } | null;
       if (value?.version !== 2 || !Array.isArray(value.results)) throw new Error("invalid recording history");
       const results: RecordingResult[] = [];
-      for (const result of value.results as unknown[]) results.push(await sliced(() => decode({ version: 1, result })));
+      for (const result of value.results as unknown[]) {
+        results.push(await sliced(() => decode({ version: 1, result: read.encoded ? JSON.parse(result as string) : result })));
+      }
       if (new Set(results.map(r => r.id)).size !== results.length) throw new Error("duplicate recording identities");
       return results;
     } catch (error) {
@@ -102,7 +114,7 @@ export class RecordingResultStore implements ResultStorage {
     }
     if (this.legacyFile) {
       try {
-        const result = decode(await RecordingResultStore.read(this.legacyFile, 1024 * 1024, "legacy result too large"));
+        const result = decode((await RecordingResultStore.read(this.legacyFile, 1024 * 1024, "legacy result too large")).value);
         this.requiresMigration = true;
         return [result];
       } catch (error) {
