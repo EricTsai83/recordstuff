@@ -67,8 +67,8 @@ try {
     const animations = document.getAnimations();
     animations.forEach((animation) => {
       animation.pause();
-      // Recording, camera pulled back, callout not yet drawn (DesktopScene timeline, 22.5 s loop).
-      animation.currentTime = 10700;
+      // Recording, camera pulled back, callout not yet drawn (DesktopScene timeline, 27 s loop).
+      animation.currentTime = 11750;
     });
     return animations.length;
   });

@@ -11,14 +11,14 @@ import { LAST_MACOS_ONLY_VERSION } from "../../../scripts/lib/release-manifest.m
 export const SITE_NAME = "RecordStuff";
 
 export const meta = {
-  title: "RecordStuff — one click in the menu bar records your screen and its sound",
+  title: "RecordStuff — screen and sound, nothing else",
   description:
-    "RecordStuff is a free, open-source macOS menu bar app. Click once to record one screen with system audio to MP4, click again to stop. No main window, no account, files stay on your Mac.",
+    "RecordStuff is a free, open-source macOS menu bar app that records one screen with its system audio to a plain MP4. Start from its menu or with ⌘⇧1; no account, no editor, and your files stay on your Mac.",
   ogImageAlt: "A low-poly Mac desktop with a campsite at night; in the menu bar the RecordStuff icon is a filled dot with REC beside it, meaning a recording is in progress.",
 } as const;
 
 export const hero = {
-  title: "One click. Recording.",
+  title: "Screen and sound. Nothing else.",
   primaryCta: "Download for macOS",
   /** Replaces the macOS button for Windows visitors, only while the release carries the installer. */
   windowsCta: "Download for Windows",
@@ -49,8 +49,8 @@ export interface Feature {
 
 export const features: Feature[] = [
   {
-    title: "One icon, no main window",
-    body: "Right-click to start or stop, and for your output folder, Settings and logs. Choose a screen, output folder, countdown, quality and shortcut in Settings.",
+    title: "One icon in the menu bar",
+    body: "Click it to start or stop, or to open RecordStuff. Its window lists your recordings to play, share or trash, and holds every setting: screen, output folder, countdown, quality and shortcut.",
   },
   {
     title: "Your folder, your files",
@@ -86,7 +86,7 @@ export const installSteps: Step[] = [
   },
   {
     title: "Find the icon in the menu bar",
-    body: "RecordStuff has no regular window. Look for its icon at the top of the screen. Left-click to record: a stopwatch replaces the icon and a faint 3, 2, 1 counts down at the top-right of the screen, then REC appears. Left-click again to cancel the countdown or to stop. Right-click to start or stop, and for the output folder, Settings, logs and Quit.",
+    body: "RecordStuff lives in the menu bar. Look for its icon at the top of the screen, click it and choose Start recording, or press ⌘⇧1: a stopwatch replaces the icon and a faint 3, 2, 1 counts down at the top-right of the screen, then REC appears. Choose Cancel recording or Stop from the same menu, or press the shortcut again. The menu also opens RecordStuff, with your recordings and settings, and quits.",
   },
 ];
 
@@ -141,7 +141,7 @@ export const windowsInstallSteps: Step[] = [
   },
   {
     title: "Find the icon in the system tray",
-    body: "RecordStuff has no regular window. Its icon is in the system tray; click it to record and click again to stop. Right-click it for Settings, the output folder, logs and Quit. Recordings are saved to Videos → RecordStuff by default.",
+    body: "RecordStuff lives in the system tray. Click its icon and choose Start recording, or press Ctrl+Shift+1; choose Stop from the same menu, or press the shortcut again. The menu also opens RecordStuff, with your recordings and settings, and quits. Recordings are saved to Videos → RecordStuff by default.",
   },
 ];
 
@@ -170,7 +170,7 @@ export const windowsRetainedData = [
 
 export const settings = [
   { setting: "Screen", options: "Primary display / a connected display", fallback: "Primary display" },
-  { setting: "Output folder", options: "Any folder, with Change… and Show in Finder (also in the menu bar)", fallback: "Movies → RecordStuff" },
+  { setting: "Output folder", options: "Any folder, with Change… and Show in Finder", fallback: "Movies → RecordStuff" },
   { setting: "Countdown", options: "Off / 3 s / 5 s / 10 s", fallback: "3 s" },
   { setting: "Countdown sound", options: "On / Off (a soft tick with each digit; unavailable while the countdown is Off)", fallback: "On" },
   { setting: "Video quality", options: "Economy / Standard / High", fallback: "Standard" },
@@ -179,7 +179,12 @@ export const settings = [
   {
     setting: "Shortcut (General)",
     options: "⌘⇧1 (recommended) / Custom shortcut / Off",
-    fallback: "⌘⇧1; Settings shows a warning if another app already owns the combination",
+    fallback: "⌘⇧1; RecordStuff shows a warning if another app already owns the combination",
+  },
+  {
+    setting: "Icon click (General)",
+    options: "Open the menu / Start / stop recording",
+    fallback: "Open the menu; Start / stop recording for settings from before this choice",
   },
 ] as const;
 

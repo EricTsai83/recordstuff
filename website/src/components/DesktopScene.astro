@@ -1,19 +1,25 @@
 ---
 /**
  * Inline SVG of a low-poly Mac desktop at a campsite that tells the product
- * story on a 22.5-second loop: three seconds of stillness so the viewer
+ * story on a 27-second loop, following the app's default click (2026-10-04: a
+ * click on the icon opens its menu): three seconds of stillness so the viewer
  * notices the screen first; the camera pushes in on the top-right corner as
- * the pointer arrives; click → a brief hourglass while capture is prepared,
- * then a stopwatch while a faint 3, 2, 1 counts down at the screen's top-right
- * (the digit leaves 0.3 s early) and the pointer moves away; then the filled
- * dot with "REC" beside it and the status item shifts left to make room
- * (exactly what the app does: tray-model.ts swaps the template image and sets
- * the title; nothing blinks); the camera pulls back; a callout arrow points at the recording dot and says
- * "Click again to stop recording", then holds for three seconds so it can be
- * read; the pointer clicks, the hourglass shows while saving, and half a second later the "Saved <timestamp>.mp4"
- * notification pops in, the same beat the app waits before posting it
- * (SAVED_NOTIFICATION_DELAY_MS). The hero pauses the loop while the scene is
- * off-screen and offers a button that pauses it; prefers-reduced-motion shows the final frame. Cost:
+ * the pointer arrives and clicks the ring; the menu the app shows while idle
+ * drops down (tray-model.ts: Ready, Start recording with its shortcut, Open
+ * RecordStuff, Quit RecordStuff) and the pointer chooses Start recording; a
+ * brief hourglass while capture is prepared, then a stopwatch while a faint
+ * 3, 2, 1 counts down at the screen's top-right (the digit leaves 0.3 s early)
+ * and the pointer moves away; then the filled dot with "REC" beside it and the
+ * status item shifts left to make room (exactly what the app does: the
+ * template image swaps and the title is set; nothing blinks); the camera pulls
+ * back; a callout arrow points at the recording dot and says "Click again,
+ * then choose Stop", held for three seconds so it can be read; the camera
+ * pushes in again, the pointer clicks the dot, the recording menu drops down
+ * and the pointer chooses Stop; the hourglass shows while saving, and half a
+ * second later the "Saved <timestamp>.mp4" notification pops in, the same beat
+ * the app waits before posting it (SAVED_NOTIFICATION_DELAY_MS). The hero
+ * pauses the loop while the scene is off-screen and offers a button that
+ * pauses it; prefers-reduced-motion shows the final frame. Cost:
  * transform/opacity on a handful of nodes, composited by the browser. Zero
  * image requests.
  */
@@ -28,7 +34,7 @@ const savedFile = "2026-09-20 21-14-33.mp4";
   class="ds"
   viewBox="0 0 1600 900"
   role="img"
-  aria-label="Animation: the pointer clicks the RecordStuff ring in the macOS menu bar, a stopwatch replaces it while a faint 3, 2, 1 counts down in the top-right corner of the screen, then a filled dot with REC beside it shows the recording, a callout says to click again to stop, the second click stops it and a notification says the recording was saved."
+  aria-label="Animation: the pointer clicks the RecordStuff ring in the macOS menu bar and chooses Start recording from its menu; a stopwatch replaces the ring while a faint 3, 2, 1 counts down in the top-right corner of the screen, then a filled dot with REC beside it shows the recording; a callout says to click again and choose Stop; the pointer opens the menu again, chooses Stop, and a notification says the recording was saved."
 >
   <defs>
     <clipPath id="ds-clip"><rect width="1600" height="900" rx="18" /></clipPath>
@@ -91,7 +97,7 @@ const savedFile = "2026-09-20 21-14-33.mp4";
         <path d="M1301 194 C1279 158 1291 106 1313 68 C1318 59 1322 52 1325 46" class="ds-sketch-2" />
         <path d="M1309 49 C1314 47 1319 45 1322 44 C1323 49 1324 53 1326 58" />
       </g>
-      <text x="1292" y="250" text-anchor="middle" class="ds-callout-text" transform="rotate(-9 1292 250)">Click again to stop recording</text>
+      <text x="1292" y="250" text-anchor="middle" class="ds-callout-text" transform="rotate(-9 1292 250)">Click again, then choose Stop</text>
     </g>
 
     <!-- saved notification -->
@@ -106,6 +112,31 @@ const savedFile = "2026-09-20 21-14-33.mp4";
       <text x="372" y="30" class="ds-toast-time" text-anchor="end">now</text>
     </g>
 
+    <!-- the status item's menus, as tray-model.ts builds them while idle and while recording; the highlight is the item under the pointer -->
+    <g class="ds-menu ds-menu-idle" transform="translate(1330 56)">
+      <rect width="250" height="118" rx="9" class="ds-menu-bg" />
+      <rect x="5" y="27" width="240" height="22" rx="5" class="ds-menu-hl" />
+      <text x="14" y="16" class="ds-menu-text ds-menu-off">Ready</text>
+      <text x="14" y="38" class="ds-menu-text">Start recording</text>
+      <text x="236" y="38" class="ds-menu-key">⇧⌘1</text>
+      <line x1="12" x2="238" y1="54" y2="54" class="ds-menu-sep" />
+      <text x="14" y="70" class="ds-menu-text">Open RecordStuff</text>
+      <text x="236" y="70" class="ds-menu-key">⌥⌘,</text>
+      <line x1="12" x2="238" y1="86" y2="86" class="ds-menu-sep" />
+      <text x="14" y="102" class="ds-menu-text">Quit RecordStuff</text>
+    </g>
+    <g class="ds-menu ds-menu-rec" transform="translate(1312 56)">
+      <rect width="250" height="118" rx="9" class="ds-menu-bg" />
+      <rect x="5" y="27" width="240" height="22" rx="5" class="ds-menu-hl" />
+      <text x="14" y="16" class="ds-menu-text ds-menu-off">Recording</text>
+      <text x="14" y="38" class="ds-menu-text">Stop</text>
+      <text x="236" y="38" class="ds-menu-key">⇧⌘1</text>
+      <line x1="12" x2="238" y1="54" y2="54" class="ds-menu-sep" />
+      <text x="14" y="70" class="ds-menu-text">Open RecordStuff</text>
+      <text x="236" y="70" class="ds-menu-key">⌥⌘,</text>
+      <line x1="12" x2="238" y1="86" y2="86" class="ds-menu-sep" />
+      <text x="14" y="102" class="ds-menu-text">Quit RecordStuff</text>
+    </g>
     <!-- pointer -->
     <g class="ds-pointer">
       <path d="M0 0 L0 22 L6 17 L10 26 L14 24 L10 15 L17 15 Z" fill="#fff" stroke="#000" stroke-width="1.5" stroke-linejoin="round" />
@@ -122,7 +153,7 @@ const savedFile = "2026-09-20 21-14-33.mp4";
     --ds-bar-bg: rgba(12, 12, 20, 0.72);
     --ds-bar-fg: #f4f4f5;
     --ds-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
-    --story: 22.5s; /* 3 s idle, slow camera moves, a 3 s countdown, a 3 s beat to read the callout, a ~0.5 s beat before the notification, rest on the saved frame */
+    --story: 27s; /* 3 s idle, a menu to start from, slow camera moves, a 3 s countdown, a 3 s beat to read the callout, a menu to stop from, a ~0.5 s beat before the notification, rest on the saved frame */
   }
   .ds :global(.st) {
     fill: #e6ebf2;
@@ -262,90 +293,153 @@ const savedFile = "2026-09-20 21-14-33.mp4";
     font-family: var(--ds-font);
     font-size: 12px;
   }
+  .ds-menu {
+    opacity: 0;
+  }
+  .ds-menu-idle { animation: ds-menu-idle var(--story) linear infinite; }
+  .ds-menu-rec { animation: ds-menu-rec var(--story) linear infinite; }
+  .ds-menu-bg {
+    fill: rgba(36, 36, 44, 0.95);
+    stroke: rgba(255, 255, 255, 0.16);
+    filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.45));
+  }
+  .ds-menu-hl {
+    fill: #0a64d8;
+    opacity: 0;
+  }
+  .ds-menu-idle .ds-menu-hl { animation: ds-menu-idle-hl var(--story) linear infinite; }
+  .ds-menu-rec .ds-menu-hl { animation: ds-menu-rec-hl var(--story) linear infinite; }
+  .ds-menu-text,
+  .ds-menu-key {
+    fill: #f4f4f5;
+    font-family: var(--ds-font);
+    font-size: 15px;
+    dominant-baseline: central;
+  }
+  .ds-menu-off {
+    fill: rgba(255, 255, 255, 0.42);
+  }
+  .ds-menu-key {
+    fill: rgba(255, 255, 255, 0.55);
+    font-size: 14px;
+    text-anchor: end;
+  }
+  .ds-menu-sep {
+    stroke: rgba(255, 255, 255, 0.14);
+    stroke-width: 1;
+  }
   .ds-pointer {
     transform: translate(1040px, 520px);
     animation: ds-pointer var(--story) cubic-bezier(0.45, 0, 0.15, 1) infinite;
   }
 
   @keyframes ds-pointer {
-    0%, 13.5% { transform: translate(1040px, 520px) scale(1); }
-    19.87%, 23.22% { transform: translate(1372px, 30px) scale(1); }
-    23.64% { transform: translate(1372px, 30px) scale(0.85); }
-    24.07%, 25.33% { transform: translate(1372px, 30px) scale(1); }
-    32%, 64.89% { transform: translate(1180px, 330px) scale(1); }
-    69.56%, 70.47% { transform: translate(1324px, 30px) scale(1); }
-    70.89% { transform: translate(1324px, 30px) scale(0.85); }
-    71.31%, 72.89% { transform: translate(1324px, 30px) scale(1); }
-    81.33%, 100% { transform: translate(1040px, 520px) scale(1); }
+    0%, 11.11% { transform: translate(1040px, 520px) scale(1); }
+    16.56%, 18.81% { transform: translate(1372px, 30px) scale(1); }
+    19.26% { transform: translate(1372px, 30px) scale(0.85); }
+    19.70% { transform: translate(1372px, 30px) scale(1); }
+    22.22%, 23.07% { transform: translate(1396px, 91px) scale(1); }
+    23.52% { transform: translate(1396px, 91px) scale(0.85); }
+    23.96%, 24.44% { transform: translate(1396px, 91px) scale(1); }
+    30.74%, 55.56% { transform: translate(1180px, 330px) scale(1); }
+    60%, 61.04% { transform: translate(1324px, 30px) scale(1); }
+    61.48% { transform: translate(1324px, 30px) scale(0.85); }
+    61.93% { transform: translate(1324px, 30px) scale(1); }
+    64.07%, 65.11% { transform: translate(1378px, 91px) scale(1); }
+    65.56% { transform: translate(1378px, 91px) scale(0.85); }
+    66%, 66.67% { transform: translate(1378px, 91px) scale(1); }
+    73.70%, 100% { transform: translate(1040px, 520px) scale(1); }
   }
   /*
-    Timeline (percent of 22.5 s): 0–13.5 idle; 13.5–19.9 pointer in, camera pushes in 15.6–22;
-    23.6 click; 23.7–25.1 hourglass while capture is prepared; 25.1–38.4 stopwatch and the
-    corner digits 3, 2, 1 (one per 4.4%, the last fading out by 37.1, 0.3 s before capture),
-    while the pointer moves away 25.3–32; 38.5 REC; pull back 40–46.7; 49.3–51.1 the callout
-    "Click again to stop recording" is drawn beside the pointer; 51.1–64.9 a 3 s beat to read
-    it; 64.9–69.6 pointer returns; 70.9 stop click, hourglass while saving to 72.4, then a
-    ~0.5 s beat before the notification pops in by 74.7, matching the app's delay;
-    72.9–81.3 pointer leaves; 95.6 notification fades; rest to 100.
+    Timeline (seconds of 27): 0–3 idle; 3–4.5 pointer in, camera pushes in 3.5–4.9; 5.2 click on the ring and
+    the idle menu drops down; 5.3–6.0 pointer to Start recording, which highlights; 6.35 choose it, the menu
+    closes; 6.5–6.8 hourglass while capture is prepared; 6.8–9.8 stopwatch and the corner digits 3, 2, 1 (the
+    last fading out 0.3 s before capture) while the pointer moves away; 9.8 REC; pull back 10.2–11.7; 11.9–12.3
+    the callout "Click again, then choose Stop" is drawn; a 3 s beat to read it; 15–16.2 camera pushes in and
+    the pointer returns; 16.6 click on the dot and the recording menu drops down; 17.3 pointer on Stop; 17.7
+    choose it, hourglass while saving to 18.1, then a ~0.5 s beat before the notification pops in by 18.95,
+    matching the app's delay; pull back 18.3–19.7 while the pointer leaves; 25.7 notification fades; rest to 27.
   */
   @keyframes ds-camera {
-    0%, 15.56% { transform: scale(1); }
-    21.96%, 40% { transform: scale(2.1); }
-    46.67%, 100% { transform: scale(1); }
+    0%, 12.96% { transform: scale(1); }
+    18.30%, 37.78% { transform: scale(2.1); }
+    43.33%, 55.56% { transform: scale(1); }
+    60%, 67.78% { transform: scale(2.1); }
+    72.96%, 100% { transform: scale(1); }
+  }
+  @keyframes ds-menu-idle {
+    0%, 19.26% { opacity: 0; }
+    19.30%, 23.96% { opacity: 1; }
+    24%, 100% { opacity: 0; }
+  }
+  @keyframes ds-menu-idle-hl {
+    0%, 21.67% { opacity: 0; }
+    21.85%, 23.96% { opacity: 1; }
+    24%, 100% { opacity: 0; }
+  }
+  @keyframes ds-menu-rec {
+    0%, 61.48% { opacity: 0; }
+    61.52%, 66% { opacity: 1; }
+    66.04%, 100% { opacity: 0; }
+  }
+  @keyframes ds-menu-rec-hl {
+    0%, 63.52% { opacity: 0; }
+    63.70%, 66% { opacity: 1; }
+    66.04%, 100% { opacity: 0; }
   }
   @keyframes ds-dot {
-    0%, 38.4% { opacity: 0; }
-    38.5%, 70.8% { opacity: 1; }
-    70.9%, 100% { opacity: 0; }
+    0%, 36.22% { opacity: 0; }
+    36.30%, 66% { opacity: 1; }
+    66.04%, 100% { opacity: 0; }
   }
   @keyframes ds-ring {
-    0%, 23.6% { opacity: 1; }
-    23.7%, 72.4% { opacity: 0; }
-    72.5%, 100% { opacity: 1; }
+    0%, 23.96% { opacity: 1; }
+    24%, 67.04% { opacity: 0; }
+    67.07%, 100% { opacity: 1; }
   }
   @keyframes ds-busy {
-    0%, 23.6% { opacity: 0; }
-    23.7%, 25.1% { opacity: 1; }
-    25.2%, 70.8% { opacity: 0; }
-    70.9%, 72.4% { opacity: 1; }
-    72.5%, 100% { opacity: 0; }
+    0%, 23.96% { opacity: 0; }
+    24%, 25.19% { opacity: 1; }
+    25.22%, 66% { opacity: 0; }
+    66.04%, 67.04% { opacity: 1; }
+    67.07%, 100% { opacity: 0; }
   }
   @keyframes ds-watch {
-    0%, 25.1% { opacity: 0; }
-    25.2%, 38.4% { opacity: 1; }
-    38.5%, 100% { opacity: 0; }
+    0%, 25.19% { opacity: 0; }
+    25.22%, 36.22% { opacity: 1; }
+    36.30%, 100% { opacity: 0; }
   }
   /* 120 ms fade in, 150 ms crossfades, 120 ms fade out ending 0.3 s before REC. */
   @keyframes ds-digit-3 {
     0%, 25.11% { opacity: 0; }
-    25.64%, 29.23% { opacity: 1; }
-    29.89%, 100% { opacity: 0; }
+    25.56%, 28.56% { opacity: 1; }
+    29.07%, 100% { opacity: 0; }
   }
   @keyframes ds-digit-2 {
-    0%, 29.23% { opacity: 0; }
-    29.89%, 33.67% { opacity: 1; }
-    34.33%, 100% { opacity: 0; }
+    0%, 28.56% { opacity: 0; }
+    29.07%, 32.22% { opacity: 1; }
+    32.78%, 100% { opacity: 0; }
   }
   @keyframes ds-digit-1 {
-    0%, 33.67% { opacity: 0; }
-    34.33%, 36.58% { opacity: 1; }
-    37.11%, 100% { opacity: 0; }
+    0%, 32.22% { opacity: 0; }
+    32.78%, 34.67% { opacity: 1; }
+    35.11%, 100% { opacity: 0; }
   }
   /* The status item grows by the width of "REC"; macOS pushes it left of the items that follow. */
   @keyframes ds-rs-shift {
-    0%, 38.4% { transform: translateX(0); }
-    38.5%, 70.8% { transform: translateX(-48px); }
-    70.9%, 100% { transform: translateX(0); }
+    0%, 36.22% { transform: translateX(0); }
+    36.30%, 66% { transform: translateX(-48px); }
+    66.04%, 100% { transform: translateX(0); }
   }
   @keyframes ds-callout {
-    0%, 49.33% { opacity: 0; }
-    51.11%, 69.9% { opacity: 1; }
-    70.89%, 100% { opacity: 0; }
+    0%, 44.07% { opacity: 0; }
+    45.56%, 55.19% { opacity: 1; }
+    56.30%, 100% { opacity: 0; }
   }
   @keyframes ds-toast {
-    0%, 73.11% { opacity: 0; transform: translate(1176px, 40px); }
-    74.67%, 93.78% { opacity: 1; transform: translate(1176px, 66px); }
-    95.56%, 100% { opacity: 0; transform: translate(1176px, 40px); }
+    0%, 68.89% { opacity: 0; transform: translate(1176px, 40px); }
+    70.19%, 93.70% { opacity: 1; transform: translate(1176px, 66px); }
+    95.19%, 100% { opacity: 0; transform: translate(1176px, 40px); }
   }
   @keyframes ds-flicker {
     from { transform: scale(1, 1); }
@@ -368,6 +462,8 @@ const savedFile = "2026-09-20 21-14-33.mp4";
     .ds-digit,
     .ds-callout,
     .ds-toast,
+    .ds-menu,
+    .ds-menu-hl,
     .ds-pointer {
       animation: none;
     }

@@ -44,7 +44,7 @@ const H = "h2";
   </div>
 
   <H id="use">Record</H>
-  <p>Left-click the menu bar icon, or press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>1</kbd> from any app, to record the selected screen and system audio. A stopwatch replaces the icon and a faint 3, 2, 1 counts down at the top-right of the recorded screen; the digits are gone before capture begins, and REC appears once it has. Click or press again during the countdown to cancel it (so does <em>Cancel recording</em> in the menu; nothing is saved), or while recording to stop. Choose Off, 5 or 10 seconds under <em>Recording settings → Countdown</em>; each digit also plays a soft tick, which never reaches the recording, and <em>Countdown sound</em> right below turns it off. Recordings are saved to Movies → RecordStuff by default; click the saved notification or choose <em>Show last recording</em> from the menu to find the file. Right-click and choose <em>Settings</em>, or press <kbd>⌘</kbd><kbd>⌥</kbd><kbd>,</kbd>. Under <em>Recording settings → Screen</em>, choose the primary display or a connected display. A specific display must be available; the app will not silently record another screen. The panel includes these settings, under Recording settings unless noted:</p>
+  <p>Click the menu bar icon and choose <em>Start recording</em>, or press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>1</kbd> from any app, to record the selected screen and system audio. A stopwatch replaces the icon and a faint 3, 2, 1 counts down at the top-right of the recorded screen; the digits are gone before capture begins, and REC appears once it has. Choose <em>Cancel recording</em> or press the shortcut again during the countdown to cancel it (nothing is saved), and <em>Stop</em> or the shortcut while recording to stop. To start, cancel and stop with one click on the icon instead, choose <em>General → Icon click → Start / stop recording</em>; a right-click still opens the menu. Choose Off, 5 or 10 seconds under <em>Recording settings → Countdown</em>; each digit also plays a soft tick, which never reaches the recording, and <em>Countdown sound</em> right below turns it off. Recordings are saved to Movies → RecordStuff by default. Click the saved notification, or choose <em>Open RecordStuff</em> from the menu (or press <kbd>⌘</kbd><kbd>⌥</kbd><kbd>,</kbd>), to see them in <em>Recordings</em>, newest first: play one (its fullscreen fills the screen), drag it into another app, or use its <em>⋯</em> menu or a right-click to show it in Finder, open it in another app or move it to the Trash. A recording deleted in Finder leaves the list at once. The same window holds the settings. Under <em>Recording settings → Screen</em>, choose the primary display or a connected display. A specific display must be available; the app will not silently record another screen. The panel includes these settings, under Recording settings unless noted:</p>
   <div class="table-scroll" role="region" aria-label="Settings" tabindex="0">
     <table>
       <thead><tr><th>Setting</th><th>Options</th><th>Default</th></tr></thead>
@@ -57,10 +57,10 @@ const H = "h2";
   <p>Output is H.264/AAC MP4. Audio requests 256 kbps with voice processing disabled. Actual bitrate depends on the encoder and content.</p>
 
   <H id="language">Language</H>
-  <p>RecordStuff starts in English. Right-click the icon and choose <em>Settings → General → Language → <span lang="zh-Hant">繁體中文</span></em> for Traditional Chinese. The choice is saved and can change during a recording without affecting capture settings. Diagnostics stay English; macOS permission dialogs follow the system language.</p>
+  <p>RecordStuff starts in English. Open RecordStuff from the menu and choose <em>General → Language → <span lang="zh-Hant">繁體中文</span></em> for Traditional Chinese. The choice is saved and can change during a recording without affecting capture settings. Diagnostics stay English; macOS permission dialogs follow the system language.</p>
 
   <H id="update">Update manually</H>
-  <p>Use Check for updates… in Settings → General to find a newer version and open its download page. Check for updates on launch is optional, on by default, and runs at most once per 24 hours. When it finds a newer version, RecordStuff sends one notification for that version; clicking it opens the download page. A version you already saw in Settings is not announced again. Checks wait while recording. Installation stays manual; older builds without update checks can use the download page directly.</p>
+  <p>Use Check for updates… under General in RecordStuff to find a newer version and open its download page. Check for updates on launch is optional, on by default, and runs at most once per 24 hours. When it finds a newer version, RecordStuff sends one notification for that version; clicking it opens the download page. A version you already saw in RecordStuff is not announced again. Checks wait while recording. Installation stays manual; older builds without update checks can use the download page directly.</p>
   <StepList steps={updateSteps} />
 
   <H id="remove">Remove</H>
@@ -85,7 +85,7 @@ const H = "h2";
   <StepList steps={windowsInstallSteps} />
 
   <H id="windows-update">Update on Windows</H>
-  <p>Check for updates… in Settings → General also works on Windows: it reads the latest release on GitHub. Installation stays manual.</p>
+  <p>Check for updates… under General in RecordStuff also works on Windows: it reads the latest release on GitHub. Installation stays manual.</p>
   <StepList steps={windowsUpdateSteps} />
 
   <H id="windows-remove">Uninstall on Windows</H>
