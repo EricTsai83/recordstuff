@@ -141,4 +141,13 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   expect(document.querySelector("#clip-c .clip-open")!.getAttribute("aria-label")).toBe("播放 今天，下午2:02，1:23，180 MB");
   document.querySelector<HTMLButtonElement>("#clip-c .clip-open")!.click();
   expect(document.getElementById("player-title")!.textContent).toBe("今天，下午2:02");
+
+  // An entry to another tab (a banner or the tray, with no blur) takes the cards away: their menu leaves with them,
+  // so none of its items can act on a recording no longer shown.
+  document.getElementById("player-close")!.click();
+  const moreC = document.getElementById("clip-c-more") as HTMLButtonElement;
+  moreC.click();
+  expect(("open" in menu.dataset)).toBe(true);
+  push({ ...base, revision: 5, resultFocus: 3, entryTab: "recording", library: { ...base.library!, items: [item("c", "今天", "下午2:02")] } });
+  expect([("open" in menu.dataset), moreC.isConnected]).toEqual([false, false]);
 });

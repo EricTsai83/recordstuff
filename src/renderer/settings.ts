@@ -900,7 +900,8 @@ function updateLibrary(): void {
   const library = view?.library;
   const panel = document.getElementById("settings-panel")!;
   let area = document.getElementById("library");
-  if (selectedTab !== "library") { area?.remove(); return; }
+  // The card menu lives in the top layer, outside the tab: it leaves with its cards, or its items would act on a hidden recording.
+  if (selectedTab !== "library") { closeClipMenu(false); area?.remove(); return; }
   if (!area) {
     area = node("section"); area.id = "library"; area.setAttribute("aria-labelledby", "tab-library");
     const head = node("div", "library-head");
@@ -1063,6 +1064,8 @@ function openClipMenu(id: string, anchor: HTMLButtonElement, at?: { x: number; y
 function placeClipMenu(): void {
   if (!clipMenu?.anchor || !clipMenu.offset) return;
   const { el, anchor, offset } = clipMenu;
+  // A rebuilt panel took the card away: there is nothing left to place the menu by.
+  if (!anchor.isConnected) { closeClipMenu(false); return; }
   const box = anchor.getBoundingClientRect(), size = el.getBoundingClientRect();
   // The whole card decides: a right-click can land on its visible part while ⋯ is scrolled out of the panel.
   const card = (anchor.closest(".clip") ?? anchor).getBoundingClientRect();
