@@ -69,6 +69,7 @@ export const ZH_TW = {
   "Selected display is unavailable": "所選螢幕無法使用",
   "Recording cannot start on {label}.": "無法在 {label} 開始錄影。",
   "Choose Primary display or another screen.": "請選擇主螢幕或其他螢幕。",
+  "Check that a display is connected and awake, then try again or choose another screen.": "請確認螢幕已連接且未進入睡眠後再試，或選擇其他螢幕。",
   "Use Primary display": "使用主螢幕",
   "Last recording interrupted": "上次錄影中斷",
   "Last recording failure": "上次錄影失敗",

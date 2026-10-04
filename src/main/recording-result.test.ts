@@ -85,6 +85,13 @@ it("distinguishes unknown from empty and does not promise recoverability", () =>
   expect(failureOutcome({ ...a, outcome: "partial" }, "zh-TW")).toContain("可能無法播放");
   expect(failureGuidance("disk_full", "zh-TW")).toContain("釋放磁碟");
 });
+it("does not tell a Primary display failure to choose Primary display", () => {
+  expect(failureGuidance("display_unavailable", "en")).toBe("Choose Primary display or another screen.");
+  expect([failureGuidance("no_display", "en"), failureGuidance("no_display", "zh-TW")]).toEqual([
+    "Check that a display is connected and awake, then try again or choose another screen.",
+    "請確認螢幕已連接且未進入睡眠後再試，或選擇其他螢幕。",
+  ]);
+});
 it("tells a Mac too old to record to update, not to change settings or that content was lost", () => {
   expect([failureGuidance("unsupported_os_version", "en", "darwin"), failureGuidance("unsupported_os_version", "zh-TW", "darwin")])
     .toEqual(["Update macOS, then record again.", "請更新 macOS 後再錄影。"]);

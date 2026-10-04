@@ -495,7 +495,9 @@ export function failureGuidance(code: ErrorCode, language: Language, platform: N
     // to start system audio (plan 040's load tests), so both causes are named, the cheap one first.
     : code === "no_audio_track" ? "Heavy load can block system audio: close demanding apps and try again. If it keeps happening, allow RecordStuff in System Settings → Privacy & Security → Screen & System Audio Recording, then relaunch."
     : isPermissionFailure(code) ? "Check recording permissions in System Settings. Relaunch if access was recently granted."
-    : code === "display_unavailable" || code === "no_display" ? "Choose Primary display or another screen."
+    : code === "display_unavailable" ? "Choose Primary display or another screen."
+    // Only Primary display (or no screen at all) reports this: choosing Primary again cannot help.
+    : code === "no_display" ? "Check that a display is connected and awake, then try again or choose another screen."
     : code === "app_terminated" ? "The recording file may be incomplete; missing content cannot be recovered."
     // Refused before anything started: no setting or retry helps, and nothing was lost.
     : code === "unsupported_os_version" ? "Update macOS, then record again."
