@@ -80,7 +80,7 @@ main { height: 100dvh; max-width: 720px; margin: auto; padding: 16px 20px 0; dis
 #settings { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .brand, .page-title, .sidebar-about { display: none; }
 .tabs { flex: none; display: flex; padding: 3px; gap: 2px; border-radius: 10px; background: var(--track); margin-bottom: 16px; }
-/* Sized to their labels, never wrapping: three tabs fit the 380 pt minimum (plan 047). */
+/* Sized to their labels, never wrapping; below 600 px the closed tabs give way to their icons (see the end of this file). */
 .tabs button { flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; border: 0; background: transparent; box-shadow: none; padding: 5px 8px; border-radius: 7px; color: var(--secondary); font-weight: 500; }
 .tabs button:hover { color: var(--text); background: transparent; }
 .tabs button[aria-selected="true"] { background: var(--selected); box-shadow: var(--selected-shadow); color: var(--text); }
@@ -137,7 +137,7 @@ select { min-width: 0; text-overflow: ellipsis; }
 :root:not([data-input="pointer"]):not([data-window="inactive"]) :is(button, select, input):focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: calc(-1 * var(--focus-width)); }
 /* A text disclosure has no border of its own: the line sits just off its text. */
 :root:not([data-input="pointer"]):not([data-window="inactive"]) .result-technical > summary:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: var(--focus-gap); border-radius: 3px; }
-/* Accent-filled controls: a checked switch, the selected segment, Confirm. */
+/* Accent-filled controls: a checked switch, Confirm, the update link and the status card's fix. */
 :root:not([data-input="pointer"]):not([data-window="inactive"]) :is(.switch:checked, #shortcut-confirm, #setting-updates-open, .status-action):focus-visible { outline-offset: var(--focus-gap); }
 /* A row's note reads as its subtitle: the output folder's path, a notification status. */
 .note { margin: 3px 0 0 var(--indent); }
@@ -170,7 +170,6 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .diagnostic-heading svg { flex: none; width: 13px; height: 13px; }
 .diagnostics p { margin: 4px 0; font-size: 12px; }
 .diagnostics button { margin-top: 7px; font-size: 12px; }
-.applying { color: var(--secondary); font-size: 12px; }
 .applying:empty { display: none; }
 /* The credit, the version and two links: a quiet footer, not another card. */
 .about { margin-top: -4px; }
@@ -193,8 +192,6 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
   main { padding: 12px 12px 0; }
   .status { padding: 9px 12px 9px 9px; gap: 10px; margin-bottom: 10px; }
   .status-mark { --m: 30px; }
-  /* Three labels on one line at the 380 pt minimum: the icons give way first. */
-  .tab-icon { display: none; }
   .tabs { margin-bottom: 12px; }
   .status-action { padding-inline: 10px; }
 }
@@ -206,11 +203,7 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
   .row-line:has(.switch) { flex-direction: row; align-items: center; }
   .row-line:has(.switch) .controls { margin-left: 0; }
 }
-/*
- * A short window keeps the status to its title, so the settings keep the room; "ready" only
- * repeats how to start, so it gives way entirely. Recording or a problem stays in view.
- */
-@media (max-height: 440px) and (max-width: 599px) { .status[data-tone="ready"] { display: none; } }
+/* A short window keeps the status to its title, so the settings keep the room. (Ready shows no card at all: settings.ts.) */
 @media (max-height: 440px) {
   .status { padding-block: 7px; margin-bottom: 10px; }
   .status-detail, #hint { display: none; }
@@ -413,7 +406,7 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 :is(button, select).clip-more:enabled:not([aria-disabled="true"]):hover { background: rgb(0 0 0 / .72); }
 .clip-menu { position: fixed; inset: auto; margin: 0; min-width: 180px; padding: 5px; border: 1px solid var(--card-border); border-radius: 10px; background: var(--surface); color: inherit; box-shadow: 0 10px 30px rgb(0 0 0 / .18); }
 .clip-menu:popover-open { display: flex; flex-direction: column; }
-.clip-menu [role="menuitem"] { justify-content: flex-start; width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: none; box-shadow: none; text-align: start; font-weight: 400; }
+.clip-menu [role="menuitem"] { width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: none; box-shadow: none; text-align: start; font-weight: 400; }
 .clip-menu [role="menuitem"]:focus, :is(button, select).clip-menu [role="menuitem"]:hover, .clip-menu [role="menuitem"]:hover { background: var(--accent); color: var(--on-accent); outline: none; }
 .clip-menu [data-action="trash"] { color: var(--rec); }
 .clip[draggable="true"] { cursor: grab; }

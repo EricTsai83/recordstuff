@@ -457,8 +457,8 @@ export function shortTime(occurredAt: Date, language: Language, format = dateFor
 }
 
 /**
- * The third tab (plan 047): always present, its label counting unread
- * failures. "Failures" keeps three labels on one line at the 380 pt minimum;
+ * The last tab (plan 047): always present, its label counting unread
+ * failures. "Failures" stays short, so the four tabs fit the 380 pt minimum;
  * the accessible name keeps the full name and the count.
  */
 function failuresTab(ctx: AppContext): SettingsView["tabs"][number] {
