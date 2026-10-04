@@ -9,18 +9,51 @@
  * tray uses. Closing the window does not quit the menu-bar app.
  */
 import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE, fitSettingsSize, type SettingsWindowState, type WindowSize } from "./settings-window-state";
-import { BrowserWindow, app, ipcMain, screen, type IpcMainInvokeEvent, type WebContents } from "electron";
+import { BrowserWindow, app, ipcMain, screen, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent, type Rectangle, type WebContents } from "electron";
 import path from "node:path";
 import { SETTINGS_CHANNELS, type SettingsChoiceResult, type SettingsTab, type SettingsView } from "../shared/settings-panel";
 import type { RecordingState } from "../shared/state";
 
 import { proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
+import { TRAFFIC_LIGHT_POSITION } from "../shared/window-controls";
 import { preferencesUnlocked } from "./ui-model";
 import { validateAccelerator, isSettingsShortcut, SETTINGS_SHORTCUT_RESERVED } from "../shared/hotkey";
 import { translate } from "../shared/i18n";
 import type { AppAction, AppContext } from "./ui-model";
 
 const HISTORY_PAGE_ROWS = 50;
+/**
+ * The one description of the Settings window, for the app and for the Settings fixture alike, so the fixture's
+ * screenshots show the window the app opens (same frame, same content size) and cannot drift from it: `size`
+ * is fitted to `workArea` and centred in it, and the minimum follows `MIN_SETTINGS_SIZE` within it.
+ */
+export function settingsWindowOptions(options: {
+  platform: NodeJS.Platform; preloadPath: string; title: string; size: WindowSize; workArea: Rectangle;
+}): BrowserWindowConstructorOptions & WindowSize {
+  const { workArea } = options;
+  const size = fitSettingsSize(options.size, workArea);
+  return {
+    ...size,
+    x: Math.round(workArea.x + (workArea.width - size.width) / 2),
+    y: Math.round(workArea.y + (workArea.height - size.height) / 2),
+    minWidth: Math.min(MIN_SETTINGS_SIZE.width, workArea.width),
+    minHeight: Math.min(MIN_SETTINGS_SIZE.height, workArea.height),
+    show: false,
+    title: options.title,
+    maximizable: false,
+    fullscreenable: false,
+    // macOS: the sidebar runs to the top edge with the window controls inset in it; the page draws
+    // its own drag region and keeps the title for the window list and accessibility. Elsewhere the native frame stays.
+    ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { ...TRAFFIC_LIGHT_POSITION } } : {}),
+    webPreferences: {
+      preload: options.preloadPath,
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: true,
+    },
+  };
+}
 /** How long a painted page that never reports its content may stay hidden: a broken page still opens. */
 const REVEAL_FALLBACK_MS = 1000;
 
@@ -186,29 +219,10 @@ export class SettingsWindow {
     this.historyLimit = HISTORY_PAGE_ROWS;
     const view = this.view();
     const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-    const workArea = display.workAreaSize;
-    const size = fitSettingsSize(this.options.geometry?.size ?? DEFAULT_SETTINGS_SIZE, workArea);
-    const window = new BrowserWindow({
-      ...size,
-      x: Math.round(display.workArea.x + (workArea.width - size.width) / 2),
-      y: Math.round(display.workArea.y + (workArea.height - size.height) / 2),
-      minWidth: Math.min(MIN_SETTINGS_SIZE.width, workArea.width),
-      minHeight: Math.min(MIN_SETTINGS_SIZE.height, workArea.height),
-      show: false,
-      title: view.title,
-      maximizable: false,
-      fullscreenable: false,
-      // macOS: the sidebar runs to the top edge with the window controls inset in it; the page draws
-      // its own drag region and keeps the title for the window list and accessibility. Elsewhere the native frame stays.
-      ...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 18, y: 18 } } : {}),
-      webPreferences: {
-        preload: path.join(__dirname, "../preload/settings.js"),
-        sandbox: true,
-        contextIsolation: true,
-        nodeIntegration: false,
-        webSecurity: true,
-      },
-    });
+    const options = settingsWindowOptions({ platform: process.platform, preloadPath: path.join(__dirname, "../preload/settings.js"),
+      title: view.title, size: this.options.geometry?.size ?? DEFAULT_SETTINGS_SIZE, workArea: display.workArea });
+    const size = { width: options.width, height: options.height };
+    const window = new BrowserWindow(options);
     this.window = window;
     this.painted = false;
     this.delivered = undefined;

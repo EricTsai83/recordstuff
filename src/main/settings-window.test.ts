@@ -65,7 +65,8 @@ vi.mock("electron", () => ({
     removeHandler: (name: string) => mock.handlers.delete(name),
   },
 }));
-import { SettingsWindow, type SettingsWindowOptions } from "./settings-window";
+import { SettingsWindow, settingsWindowOptions, type SettingsWindowOptions } from "./settings-window";
+import { TRAFFIC_LIGHT_POSITION, TRAFFIC_LIGHT_ZONE } from "../shared/window-controls";
 import { preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 import { AppShortcuts } from "./shortcuts";
 
@@ -961,4 +962,23 @@ it("says Show log failed in its own words, not as a link that would not open", a
   expect(await s.choose(s.event(), "log", "show")).toMatchObject({ applied: false, failure: "Could not complete this action. Try again." });
   expect(await s.choose(s.event(), "about", "website")).toMatchObject({ applied: false, failure: "Could not open the link. Try again." });
   s.panel.destroy();
+});
+
+describe("the one Settings window description, shared with the Settings fixture", () => {
+  const base = { preloadPath: "/out/preload/settings.js", title: "RecordStuff", size: { width: 960, height: 640 }, workArea: { x: 100, y: 25, width: 1440, height: 875 } };
+  it("insets the window controls in the page on macOS and keeps the native frame elsewhere", () => {
+    const mac = settingsWindowOptions({ ...base, platform: "darwin" });
+    expect(mac).toMatchObject({ titleBarStyle: "hiddenInset", trafficLightPosition: TRAFFIC_LIGHT_POSITION, maximizable: false, fullscreenable: false, show: false,
+      webPreferences: { preload: "/out/preload/settings.js", sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true } });
+    const windows = settingsWindowOptions({ ...base, platform: "win32" });
+    expect(windows).not.toHaveProperty("titleBarStyle");
+    expect(windows).not.toHaveProperty("trafficLightPosition");
+    // The controls' zone covers them with air to spare (three 16 pt buttons 7 pt apart, as macOS 26 draws them).
+    expect(TRAFFIC_LIGHT_POSITION.x + 3 * 16 + 2 * 7).toBeLessThan(TRAFFIC_LIGHT_ZONE.width);
+  });
+  it("fits the size to the work area, centres it there, and lowers the minimum to fit a small screen", () => {
+    expect(settingsWindowOptions({ ...base, platform: "darwin" })).toMatchObject({ width: 960, height: 640, x: 340, y: 143, minWidth: 380, minHeight: 360 });
+    expect(settingsWindowOptions({ ...base, platform: "darwin", size: { width: 2000, height: 2000 }, workArea: { x: 0, y: 0, width: 360, height: 300 } }))
+      .toMatchObject({ width: 360, height: 300, x: 0, y: 0, minWidth: 360, minHeight: 300 });
+  });
 });
