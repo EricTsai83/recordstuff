@@ -229,6 +229,18 @@ describe("CountdownOverlay", () => {
     presenter.show(2, SILENT);
     expect(mock.windows).toHaveLength(3);
     expect(window().destroyed).toBe(false);
+    // An attempt that ends while the page still loads closes it; the load it rejects is not a failure to log.
+    const before = logs.length;
+    mock.Window.loadError = new Error("ERR_ABORTED (-3) loading 'countdown.html'");
+    try {
+      presenter.close();
+      presenter.prepare(SILENT);
+      presenter.close();
+      await vi.advanceTimersByTimeAsync(0);
+    } finally {
+      mock.Window.loadError = undefined;
+    }
+    expect(logs.slice(before).filter(line => line.includes("failed to load"))).toEqual([]);
   });
 
   it("loads the dev server page when one is given", () => {

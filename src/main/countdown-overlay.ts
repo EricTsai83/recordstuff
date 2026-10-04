@@ -108,9 +108,12 @@ export class CountdownOverlay implements CountdownPresenter {
     window.setIgnoreMouseEvents(true);
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
+    // A window the overlay already closed or replaced is no failure: destroying it ends its page and rejects its load
+    // (an attempt that ends while preparing closes the overlay before its page loads), so only the current one is told.
     window.webContents.on("render-process-gone", (_event, details) => {
+      if (this.window !== window) return;
       this.options.log(`countdown overlay: render process gone (${details.reason}); the tray still shows the countdown`);
-      if (this.window === window) this.close();
+      this.close();
     });
     window.webContents.once("did-finish-load", () => {
       if (this.window !== window || window.isDestroyed()) return;
@@ -125,8 +128,9 @@ export class CountdownOverlay implements CountdownPresenter {
       ? window.loadURL(withSound(this.options.devUrl, presentation.sound))
       : window.loadFile(this.options.htmlPath, presentation.sound ? { query: { [COUNTDOWN_SOUND_QUERY]: "1" } } : {});
     void load.catch((cause: unknown) => {
+      if (this.window !== window) return;
       this.options.log(`countdown overlay: page failed to load: ${String(cause)}`);
-      if (this.window === window) this.close();
+      this.close();
     });
   }
 
