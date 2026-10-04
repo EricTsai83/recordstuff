@@ -147,7 +147,8 @@ function check() {
       const cleanup = {
         registered: globalShortcut.isRegistered(accelerator) || globalShortcut.isRegistered(settingsKey),
         windows: BrowserWindow.getAllWindows().length,
-        trayDestroyed: Boolean(tray?.destroyed),
+        // A quit before production made its tray leaves none behind.
+        trayDestroyed: tray === undefined || tray.destroyed,
       };
       globalShortcut.unregisterAll();
       for (const window of BrowserWindow.getAllWindows()) window.destroy();

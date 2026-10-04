@@ -294,6 +294,10 @@ async function selftest(out: string | undefined): Promise<number> {
     // A held cleanup would defer the exit and a failing save would ask about reminders, with nobody to answer.
     try { await disarm(dir); await quitApp(dir, false); }
     catch (error) { steps.push({ name: "cleanup after failure", status: "fail", detail: String(error) }); }
+    // As after a pass, the workspace (a source copy and the signed build) goes once the app has exited;
+    // `clean` refuses while it still runs, and the report then names what was kept.
+    try { clean(dir); }
+    catch (error) { steps.push({ name: "workspace cleanup", status: "fail", detail: `workspace retained at ${path.join(dir, "workspace")}: ${String(error)}` }); }
   }
   const exit = steps.some(s => s.status === "fail") ? 1 : steps.every(s => s.status === "pass") ? 0 : BLOCKED;
   const left = runningRecordStuff();

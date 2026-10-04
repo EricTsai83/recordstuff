@@ -221,6 +221,8 @@ export interface KeyResult {
 export interface FixtureCleanup {
   registered: boolean;
   windows: number;
+  /** Production's tray is gone at quit (true when it never made one); absent from results written before it was checked. */
+  trayDestroyed?: boolean;
 }
 
 export interface RunOutcome {
@@ -269,6 +271,7 @@ export function classify(outcome: RunOutcome): { status: Status; exitCode: 0 | 1
     ...(outcome.processesGone ? [] : ["a fixture process group remained"]),
     ...(outcome.fixtureCleanup?.registered ? ["a global shortcut stayed registered at quit"] : []),
     ...(outcome.fixtureCleanup?.windows ? [`${outcome.fixtureCleanup.windows} window(s) stayed open at quit`] : []),
+    ...(outcome.fixtureCleanup?.trayDestroyed === false ? ["the tray was not destroyed at quit"] : []),
   ];
   const failedKeys = outcome.keys.filter(key => key.observed !== key.expected || key.error)
     .map(key => `${key.name}: ${key.error ?? (key.expected ? "did not fire" : "fired")}`);

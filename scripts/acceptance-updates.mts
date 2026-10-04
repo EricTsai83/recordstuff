@@ -134,8 +134,17 @@ async function start(build: boolean): Promise<void> {
 }
 async function stop(cleanup = false): Promise<void> {
   if (!appMayBeRunning) return;
+  const bundle = path.join(workspace, 'dist/mac-arm64/RecordStuff.app');
   // Production app.quit waits for Recorder.shutdown and saves a recording before exiting.
   if (fs.existsSync(path.join(dir, 'ready.json'))) {
+    // A fixture that already ended (a crash, or a quit an interrupted stop had sent) has no endpoint to answer:
+    // asking it to quit would only wait out the deadline and report a live fixture that does not exist.
+    const ready = JSON.parse(fs.readFileSync(path.join(dir, 'ready.json'), 'utf8')) as Partial<AcceptanceSnapshot>;
+    const alive = (pid: unknown): boolean => {
+      if (typeof pid !== 'number') return false;
+      try { process.kill(pid, 0); return true; } catch { return false; }
+    };
+    if (!alive(ready.pid) && !recordStuffPids(bundle).length) { appMayBeRunning = false; return; }
     await command({ kind: 'quit' }, cleanup);
     await wait(async () => fs.existsSync(path.join(dir, 'stopped.json')) ? true : undefined, 'saved shutdown', 30_000, cleanup);
     const s = JSON.parse(fs.readFileSync(path.join(dir, 'stopped.json'), 'utf8')) as AcceptanceSnapshot;
@@ -145,7 +154,7 @@ async function stop(cleanup = false): Promise<void> {
     }, 'owned fixture process exit', 30_000, cleanup);
   } else {
     // A failed build can be cleaned only after confirming no fixture executable exists.
-    if (recordStuffPids(path.join(workspace, 'dist/mac-arm64/RecordStuff.app')).length) throw new Error('Fixture has no control endpoint; left intact for manual cleanup.');
+    if (recordStuffPids(bundle).length) throw new Error('Fixture has no control endpoint; left intact for manual cleanup.');
   }
   appMayBeRunning = false;
 }
@@ -178,9 +187,14 @@ async function closeMaterial(): Promise<void> {
 }
 function report(): void {
   const exit = acceptanceExitCode(cases);
+  // Said from the case that compared them, never assumed: a changed hash must not read as "unchanged" here.
+  const unchanged = cases.find(c => c.name === 'source and user settings unchanged')?.status;
+  const settingsLine = unchanged === 'pass' ? 'No user settings were changed'
+    : unchanged === 'fail' ? 'Source or user settings CHANGED during the round (see "source and user settings unchanged")'
+    : 'Whether source or user settings changed was not checked';
   const data = { exitCode: exit, mode: values.full ? 'full' : 'smoke', feedScenarios, scope: values['logic-only'] ? 'packaged handler/model integration only' : 'packaged handler/model integration + real shortcut capture', cases, workspaceRetained: appMayBeRunning };
   fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify(data, null, 2) + '\n');
-  fs.writeFileSync(path.join(dir, 'report.md'), ['# Update acceptance', '', `Result: ${exit === 0 ? 'PASS for the stated scope' : exit === 2 ? 'BLOCKED / INCOMPLETE' : 'FAIL'}`, '', `Mode: ${data.mode}; feed scenarios: ${feedScenarios.join(", ")}. Scope: ${data.scope}. Actions use the production handler and real tray context; shell.openExternal is intercepted. Saved and update notifications are intercepted in the fixture to keep capture material unobscured. This is not native mouse/Tray, notification or visual-browser acceptance.`, '', ...cases.map(c => `- **${c.status}** ${c.name}${c.required ? '' : ' (outside required scope)'}: ${c.detail}`), '', 'Evidence: report.json, build.log, requests/, responses/, events.jsonl, logs/, and recording-verify.json when capture ran.', '', `Fixture left running: ${appMayBeRunning}. Recordings and logs are retained. No user settings were changed; no network disconnect, publication or installation was performed.`, ''].join('\n'));
+  fs.writeFileSync(path.join(dir, 'report.md'), ['# Update acceptance', '', `Result: ${exit === 0 ? 'PASS for the stated scope' : exit === 2 ? 'BLOCKED / INCOMPLETE' : 'FAIL'}`, '', `Mode: ${data.mode}; feed scenarios: ${feedScenarios.join(", ")}. Scope: ${data.scope}. Actions use the production handler and real tray context; shell.openExternal is intercepted. Saved and update notifications are intercepted in the fixture to keep capture material unobscured. This is not native mouse/Tray, notification or visual-browser acceptance.`, '', ...cases.map(c => `- **${c.status}** ${c.name}${c.required ? '' : ' (outside required scope)'}: ${c.detail}`), '', 'Evidence: report.json, build.log, requests/, responses/, events.jsonl, logs/, and recording-verify.json when capture ran.', '', `Fixture left running: ${appMayBeRunning}. Recordings and logs are retained. ${settingsLine}; no network disconnect, publication or installation was performed.`, ''].join('\n'));
   process.exitCode = exit;
   console.log(`Report: ${path.join(dir, 'report.md')}`);
 }

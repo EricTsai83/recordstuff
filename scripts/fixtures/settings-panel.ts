@@ -821,7 +821,9 @@ async function run() {
     window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" }); window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" }); await settle(150);
     const tabbed = { active: await read<string>(window, `document.activeElement.id`), ...await infoState("resolutionCap") };
     await shot(`info-focus-${lang}-light-${size}.png`);
-    window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" }); window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" }); await settle(120);
+    // An Escape with no explanation open would close the window, ending every case after this one; the case then fails on `tabbed`.
+    if (tabbed.open) { window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" }); window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" }); }
+    await settle(120);
     const escaped = { windowOpen: !window.isDestroyed(), ...await infoState("resolutionCap") };
     await recordActive(keySpan, `${lang}/${size}: a real Tab reaches the next ⓘ and shows its explanation; Escape closes it and leaves the window open`,
       tabbed.active === "setting-resolutionCap-info-button" && tabbed.open && tabbed.inside && escaped.windowOpen && !escaped.open, JSON.stringify({ tabbed, escaped }));
@@ -1498,6 +1500,8 @@ async function run() {
   return results.every((result) => result.ok);
 }
 
+// A window the page closed must not quit the fixture before it writes its results; the next case fails instead.
+app.on("window-all-closed", () => undefined);
 app.whenReady()
   .then(run)
   .then((ok) => app.exit(ok ? 0 : 1))

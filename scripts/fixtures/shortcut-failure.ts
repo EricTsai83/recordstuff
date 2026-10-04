@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import type { BrowserWindow as ElectronWindow, Menu, NotificationConstructorOptions } from 'electron';
 import type { SettingsGroup } from '../../src/shared/settings-panel';
 // Internal CommonJS hook: keep the assertion at this test-only boundary.
@@ -29,13 +29,17 @@ const accelerator = 'Control+Shift+F20';
 const owned = new Map<string, () => void>();
 /** The Settings shortcut editor's limit in src/main/settings-window.ts. */
 const SHORTCUT_EDITOR_LIMIT_MS = 15_000;
-/** Names the app that took focus, so an interrupted round says so instead of failing without a reason. */
+/**
+ * Names the app that took focus, so an interrupted round says so instead of failing without a reason. It runs
+ * synchronously in main from a blur handler, so each call is bounded; the name is read as `lsappinfoName`
+ * (settings-activation.mts) reads it, which this transpiled-only fixture cannot import at run time.
+ */
 const frontmostApp = (): string => {
   if (process.platform !== 'darwin') return 'unknown';
-  try {
-    const info = execFileSync('/bin/sh', ['-c', 'lsappinfo info -only name "$(lsappinfo front)"'], { encoding: 'utf8' });
-    return /"LSDisplayName"="(.*)"/.exec(info)?.[1] ?? 'unknown';
-  } catch { return 'unknown'; }
+  const asn = spawnSync('lsappinfo', ['front'], { encoding: 'utf8', timeout: 2000 }).stdout?.trim();
+  if (!asn) return 'unknown';
+  const info = spawnSync('lsappinfo', ['info', '-only', 'name', asn], { encoding: 'utf8', timeout: 2000 }).stdout ?? '';
+  return /"(?:LSDisplayName|CFBundleName)"="([^"]*)"/.exec(info)?.[1] || 'unknown';
 };
 const recordingAttempts = () => attempts.filter(attempt => attempt.accelerator === accelerator);
 let lastMenu: Menu | undefined;

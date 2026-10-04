@@ -158,6 +158,9 @@ it("blocks for missing prerequisites and a lock, but reports cleanup failures fi
     .toMatchObject({ status: "FAIL", exitCode: 1, reasons: ["cleanup: input source not restored: input source is Zhuyin, expected ABC"] });
   expect(classify(outcome({ processesGone: false }))).toMatchObject({ status: "FAIL", reasons: ["cleanup: a fixture process group remained"] });
   expect(classify(outcome({ fixtureCleanup: { registered: true, windows: 0 } }))).toMatchObject({ status: "FAIL" });
+  expect(classify(outcome({ fixtureCleanup: { registered: false, windows: 0, trayDestroyed: false } })))
+    .toMatchObject({ status: "FAIL", reasons: ["cleanup: the tray was not destroyed at quit"] });
+  expect(classify(outcome({ fixtureCleanup: { registered: false, windows: 0, trayDestroyed: true } }))).toMatchObject({ status: "PASS" });
 });
 
 it("fails an interrupted round even when its keys had passed", () => {

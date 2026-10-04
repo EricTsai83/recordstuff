@@ -128,4 +128,7 @@ async function main(): Promise<void> {
   }, null, 2));
   app.quit();
 }
+// The `will-quit` assertions throw outside any promise: without this Electron shows its error dialog and keeps
+// the process alive until the runner kills it, which reports a timeout instead of the failed assertion.
+process.on("uncaughtException", cause => { console.error(cause); app.exit(1); });
 void main().catch(cause => { console.error(cause); app.exit(1); });
