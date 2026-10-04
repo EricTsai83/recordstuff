@@ -1302,8 +1302,11 @@ function draw(): void {
   }
   // After the headings above settle, so scroll anchoring cannot shift the restored offset; an entry's own scroll wins.
   if (restoreScroll !== undefined) document.getElementById("settings-panel")!.scrollTop = restoreScroll;
-  updateRecordingResult(focusRequested);
-  updateLibrary();
+  // A rebuilt panel filled its failure rows and recordings above; only an entry still has focus to place in them.
+  if (restoreScroll === undefined || focusRequested) {
+    updateRecordingResult(focusRequested);
+    updateLibrary();
+  }
   // A saved recording's entry lands on its card, outlined for a moment, without playing it.
   if (focusRequested && entryTab === "library" && current.libraryFocus) {
     const card = document.getElementById(`clip-${current.libraryFocus}`);
