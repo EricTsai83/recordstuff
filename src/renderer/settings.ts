@@ -1414,7 +1414,8 @@ async function choose(group: string, choice: string, control: string): Promise<v
         ...(result.refused ? { refused: true as const } : {}) };
       announce(failure.text);
     } else if (isCaptureControl(control) && !shortcutGroup()?.diagnostics?.length) announce(text("Shortcut saved"));
-    else if (control.endsWith("-recovery")) announce(text("Switched to Primary display"));
+    // The status card's Use Primary display is the Screen row's recovery, offered where the problem is named.
+    else if (control.endsWith("-recovery") || (control === "status-action" && choice === "primary")) announce(text("Switched to Primary display"));
   } catch {
     if (id === requestId && view) {
       failure = { group, choice, text: view.failure, baseline: committed(view.groups.find(g => g.id === group)!) }; announce(failure.text);
@@ -1432,7 +1433,10 @@ async function choose(group: string, choice: string, control: string): Promise<v
     draw();
     if (lost && document.hasFocus()) {
       const again = document.getElementById(control);
-      (again && !again.closest("[hidden]") ? again : groupControl(group, choice))?.focus({ preventScroll: true });
+      // The status card hides once its fix worked and has no group row to stand for it: the tab keeps the place,
+      // so the next Tab does not start over and the next Escape does not close the window.
+      (again && !again.closest("[hidden]") ? again : groupControl(group, choice) ?? document.getElementById(`tab-${selectedTab}`))
+        ?.focus({ preventScroll: true });
     }
     if ((restore || returnCaptureFocus) && document.hasFocus() && isCaptureControl(control) && !shortcutGroup()?.capturing)
       document.getElementById("setting-hotkey")?.focus({ preventScroll: true });

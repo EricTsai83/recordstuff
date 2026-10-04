@@ -39,6 +39,15 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   // Main answers with the fixed, ready state: the card has nothing left to say.
   await vi.waitFor(() => expect(card.hidden).toBe(true));
 
+  // A keyboard user's fix hides the card under their focus: the selected tab keeps the place, and the switch is said.
+  push({ ...ready, revision: 2, status: { tone: "attention", title: "Selected display is unavailable", detail: "", action: { id: "primary", label: "Use Primary display" } } });
+  // Chromium drops focus to the page when the focused button's card hides; happy-dom keeps it, so the reply does it.
+  choose.mockImplementationOnce(async () => { (document.activeElement as HTMLElement).blur(); return { view: ready, applied: true }; });
+  action.focus(); action.click();
+  await vi.waitFor(() => expect(card.hidden).toBe(true));
+  await vi.waitFor(() => expect(document.activeElement?.id).toMatch(/^tab-/));
+  expect(document.getElementById("feedback")!.textContent).toBe("Switched to Primary display");
+
   const tab = document.getElementById("tab-failures")!;
   expect([tab.textContent, tab.querySelector(".tab-badge")?.textContent]).toEqual(["Failures (2)", "2"]);
   // The sidebar lists the tabs in a column: Up and Down move between them as Left and Right do (review pass 1, F3).
