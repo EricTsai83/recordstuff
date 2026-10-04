@@ -571,7 +571,7 @@ end tell`, "quit empty TextEdit");
         "",
         ...events.map((e) => `- ${e}`),
         "",
-        "Evidence: [cases.json](cases.json), [app-session.log](app-session.log). Not covered: Show last recording from the menu (\`pnpm acceptance:tray\`), other Spaces, clicks from the Notification Center list after the banner left.",
+        "Evidence: [cases.json](cases.json), [app-session.log](app-session.log). Not covered: other Spaces, clicks from the Notification Center list after the banner left.",
       ].join("\n"),
     );
     console.log(`Report ${path.relative(REPO_ROOT, dir)}/report.md`);

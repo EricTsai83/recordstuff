@@ -1,7 +1,7 @@
 /**
  * Verdict and report of `pnpm acceptance:tray` (scripts/acceptance-tray.mts, plan 063).
  * Every case is scripted-input evidence: the OS delivered real clicks and keys
- * and the native menu, log, folder and Finder reached the expected state. The
+ * and the native menu, log and folder reached the expected state. The
  * screenshots it saves are for a separate visual review, which stays pending
  * here. Pure, so the verdict is unit-tested (tray-acceptance.test.ts).
  */
@@ -70,7 +70,7 @@ export function renderTrayReport(input: {
   return [
     `# Tray acceptance — ${verdict.status}`,
     "",
-    `Scripted native input (\`pnpm acceptance:tray\`) against \`${input.bundle}\`: CoreGraphics clicks and keys and Accessibility presses on the real status item and menu, judged from the native menu, the app log, the output folder and Finder. ${verdict.counts.pass} pass, ${verdict.counts.fail} fail, ${verdict.counts.blocked} blocked, ${verdict.counts["not run"]} not run.${verdict.reasons.length ? ` Reasons: ${verdict.reasons.join("; ")}.` : ""}`,
+    `Scripted native input (\`pnpm acceptance:tray\`) against \`${input.bundle}\`: CoreGraphics clicks and keys and Accessibility presses on the real status item and menu, judged from the native menu, the app log and the output folder. ${verdict.counts.pass} pass, ${verdict.counts.fail} fail, ${verdict.counts.blocked} blocked, ${verdict.counts["not run"]} not run.${verdict.reasons.length ? ` Reasons: ${verdict.reasons.join("; ")}.` : ""}`,
     "",
     "| Case | Language | Status | Evidence | Details |",
     "| --- | --- | --- | --- | --- |",
@@ -80,7 +80,7 @@ export function renderTrayReport(input: {
     "",
     `Recordings this round saved (kept): ${input.recordings.length ? input.recordings.map(file => `\`${file}\``).join(", ") : "none"}. They record the current display without the test material; media checks are not part of this runner.`,
     "",
-    `Cleanup: ${input.cleanup.length ? input.cleanup.join("; ") : input.cases.length ? "menus closed, the round's Settings and Finder windows closed, the stored language restored when it was changed, and the app quit with no process left" : "nothing to clean up: the round took over no app"}.`,
+    `Cleanup: ${input.cleanup.length ? input.cleanup.join("; ") : input.cases.length ? "menus closed, the round's Settings window closed, the stored language and icon click restored when they were changed, and the app quit with no process left" : "nothing to clean up: the round took over no app"}.`,
     ...(input.desktop ? ["", input.desktop] : []),
     ...(input.interrupted ? ["", `Interrupted by ${input.interrupted}.`] : []),
     ...(input.blocked ? ["", `Blocked: ${input.blocked}`] : []),

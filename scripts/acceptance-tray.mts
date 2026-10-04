@@ -2,7 +2,7 @@
  * `pnpm acceptance:tray` (plan 063, step 4; docs/system-design/tooling.md#tray-acceptance):
  * operates the running RecordStuff bundle's real status item and menu with
  * CoreGraphics clicks and keys and Accessibility actions, and judges what the
- * native menu, the app log, the output folder and Finder show. The menu of
+ * native menu, the app log and the output folder show. The menu of
  * idle, countdown and recording is compared with the production model's
  * `tray: menu opened` line for the same popup, in each requested language;
  * Start, Stop, Open RecordStuff (2026-10-04, formerly Settings…), a left click
@@ -35,7 +35,7 @@ import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings } fr
 import { StoredOverride } from "./lib/stored-override.mts";
 import { TrayDriver, compareMenu, parseMenuLogLine, structureProblems, type TrayState } from "./lib/tray-driver.mts";
 import { classifyTrayRound, renderTrayReport, type TrayCase } from "./lib/tray-acceptance.mts";
-import { CONTROLLED_TOOL } from "./lib/controlled-acceptance.mts";
+import { CONTROLLED_TOOL, SETTINGS_FILE_VERSION } from "./lib/controlled-acceptance.mts";
 import { developmentAppPath } from "./lib/verification-timing.mts";
 import { controlledPid, readJson, sendControlled, type Until } from "./lib/controlled-client.mts";
 import type { ControlledCommand } from "./fixtures/controlled-acceptance";
@@ -170,16 +170,39 @@ function storedSettings(): Record<string, unknown> {
   return readAppSettings(settingsPath) ?? {};
 }
 
-function writeTrayClick(value: unknown): void {
-  const settings = storedSettings();
-  if (value === undefined) delete settings["trayClick"]; else settings["trayClick"] = value;
+/**
+ * What the app's left click does with the stored settings, by its own rule (settings.ts `parseSettings`):
+ * no file is a new install, which opens the menu; a file without the choice, or with one it does not
+ * support, keeps the click that records.
+ */
+function effectiveTrayClick(): "menu" | "record" {
+  const settings = readAppSettings(settingsPath);
+  if (!settings) return "menu";
+  return settings["trayClick"] === "menu" ? "menu" : "record";
+}
+
+/**
+ * Sets one stored preference while the app is quit. Without a file the app runs on its defaults; a file
+ * holding only this key would not parse (settings.ts needs a version and an absolute outputDir) and the
+ * app would ignore it, so the new install's defaults are written with it, the click that opens the menu included.
+ */
+function writeSetting(key: string, value: unknown): void {
+  const settings = readAppSettings(settingsPath)
+    ?? { version: SETTINGS_FILE_VERSION, outputDir: path.join(os.homedir(), "Movies", "RecordStuff"), trayClick: "menu" };
+  if (value === undefined) delete settings[key]; else settings[key] = value;
   writeAppSettings(settings, settingsPath);
+}
+
+function writeTrayClick(value: unknown): void {
+  writeSetting("trayClick", value);
 }
 
 /** Quits the idle app, stores the click for the round and relaunches the same bundle. */
 async function useClick(value: "menu" | "record"): Promise<void> {
   if (!clickOverride) {
-    clickOverride = new StoredOverride<unknown>({ quit: quitIdle, running: () => bundlePid() !== undefined, write: writeTrayClick, relaunch: launch }, storedSettings()["trayClick"], value);
+    // Without a file the app's default is the menu: restoring "no key" would turn it into the click that records.
+    const original = readAppSettings(settingsPath) ? storedSettings()["trayClick"] : "menu";
+    clickOverride = new StoredOverride<unknown>({ quit: quitIdle, running: () => bundlePid() !== undefined, write: writeTrayClick, relaunch: launch }, original, value);
     await clickOverride.apply();
   } else {
     await quitIdle();
@@ -190,12 +213,12 @@ async function useClick(value: "menu" | "record"): Promise<void> {
 }
 
 function writeLanguage(value: unknown): void {
-  const settings = storedSettings();
-  if (value === undefined) delete settings["language"]; else settings["language"] = value;
-  writeAppSettings(settings, settingsPath);
+  writeSetting("language", value);
 }
 
 const t = (key: PlainMessageKey, language: Language): string => translate(key, language);
+/** Why the countdown cases cannot run: with the stored countdown Off a start records at once. */
+const COUNTDOWN_OFF = "the stored countdown is Off, so there is no countdown to cancel; set a countdown to run this case";
 
 async function screenshot(frame: Frame | undefined, name: string): Promise<string | undefined> {
   if (!frame) return undefined;
@@ -231,6 +254,12 @@ async function readMenu(c: TrayCase, state: TrayState, language: Language): Prom
 }
 
 /** `settle` is off for a case nested inside another's session, which must keep running. */
+/** A case this round cannot reach, listed as not run with why, so the report never implies it passed. */
+function notRun(id: string, title: string, language: Language | undefined, reason: string): void {
+  console.log(`▶ ${id}${language ? ` (${language})` : ""}: ${title}\n  NOT RUN: ${reason}`);
+  cases.push({ id, title, language, status: "not run", evidence: "scripted input", problems: [], details: [reason], screenshots: [] });
+}
+
 async function runCase(id: string, title: string, language: Language | undefined, body: (c: TrayCase) => Promise<void>, settle = true): Promise<TrayCase> {
   const c: TrayCase = { id, title, language, status: undefined, evidence: "scripted input", problems: [], details: [], screenshots: [] };
   const started = Date.now();
@@ -336,7 +365,7 @@ async function startStopFromMenu(language: Language, countdown: number): Promise
       await waitState(from, "countdown", 10_000);
       const countdownCase = await runCase("menu-countdown", "Countdown menu against the model", language, async inner => { await readMenu(inner, "countdown", language); }, false);
       if (countdownCase.status === "fail") c.details.push("the countdown menu differed (see menu-countdown)");
-    }
+    } else notRun("menu-countdown", "Countdown menu against the model", language, COUNTDOWN_OFF);
     await waitState(from, "recording", (countdown + 10) * 1000);
     await sleep(seconds * 1000);
     await runCase("menu-recording", "Recording menu against the model, folder items greyed", language, async inner => { await readMenu(inner, "recording", language); }, false);
@@ -376,7 +405,7 @@ async function main(): Promise<void> {
   const accelerator = registeredAccelerator(lines());
   notes.push(`bundle ${bundle}, pid ${pid}; stored language ${stored}; countdown ${countdown} s; output folder ${folder}; recording shortcut ${accelerator ?? "not registered"}`);
   // The click cases toggle with a left click: a stored "menu" (a new install) is set to "record" for the round.
-  if (settings["trayClick"] === "menu") await useClick("record");
+  if (effectiveTrayClick() === "menu") await useClick("record");
   const windowsAtStart = (await ax.windows(pid!)).windows.map(window => window.title);
   if (windowsAtStart.length) notes.push(`RecordStuff windows at the start: ${JSON.stringify(windowsAtStart)}`);
 
@@ -456,6 +485,9 @@ async function main(): Promise<void> {
         await waitSettled(from);
         await judgeCancelled(c, from, folder, before, language, false);
       });
+    } else if (first) {
+      notRun("cancel-second-click", "A second click on the status item cancels the countdown", language, COUNTDOWN_OFF);
+      notRun("cancel-menu", "Cancel recording in the countdown menu cancels it", language, COUNTDOWN_OFF);
     }
 
     if (first) {
@@ -480,6 +512,7 @@ async function main(): Promise<void> {
       });
     }
 
+    if (first && !last && countdown === 0) notRun("quit-countdown", "Quit RecordStuff during the countdown cancels it and exits", language, COUNTDOWN_OFF);
     if (first && !last && countdown > 0) {
       await runCase("quit-countdown", "Quit RecordStuff during the countdown cancels it and exits", language, async c => {
         const before = listing(folder);
@@ -584,6 +617,14 @@ async function longStart(dir: string): Promise<void> {
   notes.push(`long-start mode: controlled run ${dir}; bundle ${bundle}, pid ${pid}; language ${language}; output folder ${folder}; recording shortcut ${accelerator ?? "not registered"}; prepare=hold armed; ${historyBefore} history entries`);
   // The grace is measured from the start; each cancelling press waits past it with a margin.
   const pastGrace = 1300;
+  // A controlled run cannot be relaunched with another icon click: when the click opens the menu, a held
+  // start begins from the menu's Start recording instead, and the case about the click's cancel cannot run.
+  const clickRecords = effectiveTrayClick() === "record";
+  const startHeld = async (): Promise<void> => {
+    if (clickRecords) await driver!.click();
+    else { await driver!.open(); await driver!.select(t("Start recording", language)); }
+  };
+  notes.push(`icon click ${clickRecords ? "starts and stops recording" : "opens the menu; held starts begin from Start recording"}`);
 
   await runCase("long-start-shortcut", "The shortcut within the grace is ignored and logged; after it, it cancels the held start", language, async c => {
     const keystroke = accelerator ? acceleratorToKeystroke(accelerator) : undefined;
@@ -609,6 +650,7 @@ async function longStart(dir: string): Promise<void> {
   });
 
   await runCase("long-start-click", "The starting menu names the shortcut; a left click after the grace cancels the held start", language, async c => {
+    if (!clickRecords) { c.status = "not run"; c.details.push("the stored icon click opens the menu; set Icon click to Start / stop recording for this run"); return; }
     const before = listing(folder);
     const from = appLog.end();
     await driver!.click();
@@ -633,7 +675,7 @@ async function longStart(dir: string): Promise<void> {
   await runCase("long-start-quit", "Quit RecordStuff while the start is held cancels it at once and exits", language, async c => {
     const before = listing(folder);
     const from = appLog.end();
-    await driver!.click();
+    await startHeld();
     await waitState(from, "starting", 10_000);
     await waitHeld(dir);
     await driver!.open();
@@ -725,7 +767,9 @@ try {
   const report = renderTrayReport({ verdict, cases, cleanup, notes, recordings, roundError, blocked, desktop: desktop?.summary, bundle, interrupted });
   fs.writeFileSync(path.join(out, "report.md"), report);
   fs.writeFileSync(path.join(out, "result.json"), `${JSON.stringify({ verdict, cases, cleanup, notes, recordings, roundError, blocked, desktop: desktop?.summary, bundle }, null, 2)}\n`);
-  console.log(`${verdict.status}: ${verdict.reasons.join("; ") || "every case passed"}\nReport: ${path.join(out, "report.md")}`);
+  // The counts, not "every case passed": a not-run case did not pass.
+  const tally = `${verdict.counts.pass} passed${verdict.counts["not run"] ? `, ${verdict.counts["not run"]} not run` : ""}`;
+  console.log(`${verdict.status}: ${verdict.reasons.join("; ") || tally}\nReport: ${path.join(out, "report.md")}`);
   // An interrupted round that left nothing behind exits 130/143, as the other runners do.
   exitCode = verdict.status === "INTERRUPTED" && interrupted ? INTERRUPT_EXIT[interrupted] : verdict.exitCode;
 }
