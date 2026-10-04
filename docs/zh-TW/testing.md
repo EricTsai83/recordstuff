@@ -15,7 +15,7 @@
 | 僅文件、計畫、指示或 skill | 檢查受影響的相對連結／錨點、指令名稱與 package scripts、英繁中一致性；skill metadata 改動時驗證格式 | App 建置、單元測試、啟動 App、錄影。不因文件提到指令就執行它 |
 | App 原始碼、執行期資源或重構 | `pnpm check`；有意義時補行為測試，尤其可重現 bug 的回歸測試；更具體分類未涵蓋時，仍須檢視受影響的可見行為 | 未影響 OS 或需觀察的介面行為時，不需封裝／原生驗收 |
 | 僅顯示文案或翻譯 | `pnpm check`；檢視受影響語言／介面的語意與溢位。設定文案在 check 建置後跑 `pnpm acceptance:settings` 並檢視相關截圖 | 錄影、原生快捷鍵送達、音訊／矩陣測試 |
-| 設定排版、外觀、控制項、持久化、視窗生命週期或設定 IPC／preload | `pnpm acceptance:regression`（已包含 check／build）；視覺修改檢視相關截圖；互動改動在 fixture 使用真正滑鼠／鍵盤事件覆蓋 | 純排版／外觀不需錄影。只有受影響的 OS 邊界或 fixture 無法呈現的行為需要原生檢查 |
+| 設定排版、外觀、控制項、持久化、視窗生命週期或設定 IPC／preload | `pnpm acceptance:regression`（已包含 check／build）；視覺修改檢視相關截圖；互動改動在 fixture 使用真正滑鼠／鍵盤事件覆蓋。修改視窗選項（`settingsWindowOptions`）、`src/shared/window-controls.ts` 或頁面左上角畫的內容時，另需在新的 `pnpm start:app` 產物上執行 `pnpm acceptance:settings-shortcut -- --observe`，這是唯一檢查 macOS 所畫視窗按鈕的項目，並觀察其 `settings-window.png` | 純排版／外觀不需錄影。其他原生檢查只限受影響的 OS 邊界或 fixture 無法呈現的行為 |
 | 全域快捷鍵註冊／送達、Tray 操作、焦點、原生入口、應用程式選單或 OS 無障礙 | 設定／快捷鍵整合跑 `pnpm acceptance:regression`，其他跑 `pnpm check`。在新建置的 App 操作受影響原生行為：Tray 操作與選單用 `pnpm acceptance:tray`，設定入口與應用程式選單的快捷鍵用 `pnpm acceptance:settings-shortcut -- --observe`，外觀則觀察保存的截圖。註冊方式改動另需 `pnpm acceptance:shortcut-layout`；`pnpm acceptance:recipe -- shortcut-registration` 以一次建置跑完兩者 | 完整原生狀態矩陣；不會開始／停止或干擾擷取的操作不需錄影 |
 | 錄影開始／停止、capture host／協定、編碼、檔案寫入、來源／品質選擇、錄影鎖定、權限或錄影中退出 | `pnpm check`，加新 `pnpm start:app` 產物的一輪錄影 smoke：開始、停止、存檔、媒體驗證與播放。追加改動案例，例如輸出資料夾或螢幕選擇；設定路徑也改動時加設定回歸 | 所有解析度／品質、長錄影、權限重設及實體拔插，除非影響該行為或需求指定 |
 | 幀時序、同步、解析度／fps 或音質 | 錄影列，加相關矩陣子集：`pnpm matrix -- quick`、`levels`、`fps` 或 `long`（依影響選案例）；音質使用工具指南中的相關 `pnpm audio:quality` 診斷 | 預設跑完整矩陣；沒有長錄需求時跑十分鐘錄影 |

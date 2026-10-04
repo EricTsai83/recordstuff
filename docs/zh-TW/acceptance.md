@@ -51,7 +51,7 @@ pnpm verify -- /absolute/path/recording.mp4 --test-material --json /absolute/pat
 | --- | --- | --- |
 | 以全域快捷鍵開始、停止與存檔，並做完整性檢查 | `pnpm acceptance` 透過 System Events 送出已註冊的按鍵 | 倒數與 REC 在選單列上的樣子 |
 | 點擊存檔通知 → 錄影檔 | `pnpm acceptance:notification` 透過輔助使用按下橫幅，判定 RecordStuff 是否置前、視窗聚焦且那段錄影的卡片取得焦點（[通知驗收](system-design/tooling.md#通知驗收)） | 橫幅可讀性；卡片的框線 |
-| 以快捷鍵開啟設定 | `pnpm acceptance:settings-shortcut` 透過 System Events 送出 ⌘⌥,，檢查 callback；加 `-- --observe` 時，另以輔助使用斷言視窗在前景且有焦點、Tab、應用程式選單沒有重新載入或開發者工具（⌘R、⌘⌥I 不改變焦點），且綁定 ⌘C、⌘A、⌘M 與 ⌘Q、⌘A 再 ⌘C 能複製面板文字並還原剪貼簿、最小化與還原、關閉與重開；加 `--quit` 再按 ⌘Q 並確認所有程序結束 | 排版與外觀（`pnpm acceptance:settings` 的截圖） |
+| 以快捷鍵開啟設定 | `pnpm acceptance:settings-shortcut` 透過 System Events 送出 ⌘⌥,，檢查 callback；加 `-- --observe` 時，另以輔助使用斷言視窗在前景且有焦點、Tab、應用程式選單沒有重新載入或開發者工具（⌘R、⌘⌥I 不改變焦點），且綁定 ⌘C、⌘A、⌘M 與 ⌘Q、⌘A 再 ⌘C 能複製面板文字並還原剪貼簿、最小化與還原、關閉與重開，以及頁面填滿視窗、視窗按鈕下沒有可點擊元素，並存下 `settings-window.png`；加 `--quit` 再按 ⌘Q 並確認所有程序結束 | 外觀與可讀性，依 `settings-window.png`（此視窗，含視窗按鈕）與 `pnpm acceptance:settings` 的截圖（所有語言、外觀與尺寸）判斷 |
 | 播放 | `pnpm acceptance:playback -- <檔案>` 驅動 QuickTime Player（[播放檢查](system-design/tooling.md#播放檢查)） | 案例要求時點擊播放器自身的控制項；聽感 |
 | 延後退出通知 | `pnpm acceptance:quit-dialog -- --language <en 或 zh-TW>` 檢查簽章 fixture 的生命週期、送達事件，並透過輔助使用確認本輪恰有一則橫幅、文字為本輪語言（[引導式通知驗收](system-design/tooling.md#引導式延期退出通知驗收)） | 橫幅是否可見、可讀、未截斷 |
 | Tray 選單：雙語的 idle、倒數與錄影選單、開始錄影、停止、取消錄影、第二次點擊、左鍵開啟選單、以鍵盤選「開啟 RecordStuff」與結束 RecordStuff | `pnpm acceptance:tray` 右鍵點擊真正的狀態列項目，把每個選單和正式 model 比對，並判讀 log 與資料夾（[Tray 驗收](system-design/tooling.md#tray-驗收)） | 截圖上的外觀、對齊與可讀性；needsPermission 選單（需撤銷權限）；狀態改變後才選的「開始錄影」，macOS 不讓腳本輸入排出這個順序。Computer Use 無法存取純 tray 的程序（`-10005 timeoutReached`，見 [033 的回合](verification/history-2026-09.md#plan-033-結案--2026-09-26)） |
@@ -65,7 +65,7 @@ pnpm verify -- /absolute/path/recording.mp4 --test-material --json /absolute/pat
 
 | 影響 | 觀察項目 |
 | --- | --- |
-| 排版／翻譯／外觀 | 相關語言、主題、最小尺寸、裁切與焦點；fixture 所代表環境的排版可用其截圖驗證 |
+| 排版／翻譯／外觀 | 相關語言、主題、最小尺寸、裁切與焦點；fixture 所代表環境的排版可用其截圖驗證，該環境與 App 共用視窗外框與尺寸；macOS 畫在頁面角落的視窗按鈕只出現在 `settings-shortcut -- --observe` 的截圖中 |
 | 控制項／設定持久化 | 改動控制項的滑鼠及鍵盤操作，關閉重開與程序重啟後保存；還原偏好 |
 | 原生設定入口 | 另一 App 在前景，透過受影響入口開啟設定，檢查可見／焦點、關閉與重開；腳本 callback 不足以證明。`pnpm acceptance:settings-shortcut -- --observe` 透過輔助使用涵蓋快捷鍵入口，`pnpm acceptance:tray` 涵蓋以鍵盤從選單選「開啟 RecordStuff」 |
 | 品質／來源／輸出資料夾 | 從 UI 選取受影響選項，錄影並對照真正尺寸／fps／來源／存檔位置 |
