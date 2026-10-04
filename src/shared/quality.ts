@@ -152,12 +152,16 @@ export function estimatedBytesPerMinute(size: Dimensions, quality: QualitySettin
 }
 
 /**
- * "62 MB", "480 MB", "1.2 GB": decimal units, as Finder shows file sizes, two significant figures at most.
- * The unit follows the rounded value, so 999.6 MB reads "1.0 GB" and 9.97 GB "10 GB", never "1000 MB" or "10.0 GB".
+ * "400 KB", "62 MB", "480 MB", "1.2 GB": decimal units, as Finder shows file sizes, two significant figures at most.
+ * The unit follows the rounded value, so 999.6 KB reads "1 MB", 999.6 MB "1.0 GB" and 9.97 GB "10 GB", never
+ * "1000 MB" or "10.0 GB". A short clip in the Recordings tab is not "1 MB".
  */
 export function formatBytes(bytes: number): string {
+  const kb = bytes / 1e3;
+  const roundedKb = kb >= 100 ? Math.round(kb / 10) * 10 : Math.round(kb);
+  if (roundedKb < 1000) return `${roundedKb} KB`;
   const mb = bytes / 1e6;
-  const roundedMb = mb >= 100 ? Math.round(mb / 10) * 10 : Math.max(1, Math.round(mb));
+  const roundedMb = mb >= 100 ? Math.round(mb / 10) * 10 : Math.round(mb);
   if (roundedMb < 1000) return `${roundedMb} MB`;
   const tenthsGb = Math.round(mb / 100) / 10;
   return tenthsGb >= 10 ? `${Math.round(mb / 1000)} GB` : `${tenthsGb.toFixed(1)} GB`;

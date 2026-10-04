@@ -187,7 +187,9 @@ describe("size estimate", () => {
     expect(formatBytes(estimatedBytesPerMinute({ width: 1920, height: 1080 }, { videoQuality: "standard", resolutionCap: "source", frameRate: 30 }))).toBe("63 MB");
     expect(estimatedBytesPerMinute({ width: 1920, height: 1080 }, { videoQuality: "standard", resolutionCap: "source", frameRate: 60 }))
       .toBe((16_200_000 * 2 + 256_000) * 60 / 8);
-    expect([formatBytes(4e5), formatBytes(54.4e6), formatBytes(176e6), formatBytes(1.24e9), formatBytes(12.6e9)]).toEqual(["1 MB", "54 MB", "180 MB", "1.2 GB", "13 GB"]);
+    // Under a megabyte the size reads in kilobytes, as Finder shows it.
+    expect([formatBytes(0), formatBytes(1234), formatBytes(4e5), formatBytes(999.6e3)]).toEqual(["0 KB", "1 KB", "400 KB", "1 MB"]);
+    expect([formatBytes(1.4e6), formatBytes(54.4e6), formatBytes(176e6), formatBytes(1.24e9), formatBytes(12.6e9)]).toEqual(["1 MB", "54 MB", "180 MB", "1.2 GB", "13 GB"]);
     // A value that rounds into the next unit or precision is written in it.
     expect([formatBytes(994e6), formatBytes(996e6), formatBytes(1e9), formatBytes(9.94e9), formatBytes(9.97e9), formatBytes(10e9)])
       .toEqual(["990 MB", "1.0 GB", "1.0 GB", "9.9 GB", "10 GB", "10 GB"]);
