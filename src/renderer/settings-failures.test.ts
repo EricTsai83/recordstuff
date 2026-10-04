@@ -24,7 +24,7 @@ const choose = vi.fn(async (group: string, choice: string) => {
 function view(results: RecordingResultView[], over: Partial<SettingsView> = {}): SettingsView {
   const unread = results.filter((r) => !r.acknowledged).length;
   return {
-    language: "en", title: "RecordStuff - Settings", hint: "", failure: "Could not apply this setting.",
+    language: "en", title: "RecordStuff", hint: "", failure: "Could not apply this setting.",
     tabs: [{ id: "recording", label: "Recording settings" }, { id: "general", label: "General" },
       unread ? { id: "failures", label: `Failures (${unread})`, accessibleLabel: `Recording failures, ${unread} unread` } : { id: "failures", label: "Failures", accessibleLabel: "Recording failures" }],
     groups: [

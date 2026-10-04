@@ -2,7 +2,7 @@
 import { SETTINGS_SHORTCUT_RESERVED, describeAccelerator, isSettingsShortcut, validateAccelerator } from "../shared/hotkey";
 import { isCloseChord, shortcutCandidate, shortcutModifiers } from "./shortcut-capture";
 import { infoPlacement } from "./info-placement";
-import { isLanguage, sentences, translate, type Language, type PlainMessageKey } from "../shared/i18n";
+import { isLanguage, phrases, sentences, translate, type Language, type PlainMessageKey } from "../shared/i18n";
 import { REVIEWED_FAILURES_KEPT, persistsHistory } from "../shared/recording-result";
 import type { LibraryItemView, RecordingResultView, SettingsBridge, SettingsGroup, SettingsTab, SettingsView } from "../shared/settings-panel";
 
@@ -72,6 +72,8 @@ const shortcutGroup = (): SettingsGroup | undefined => view?.groups.find(g => g.
 const platform = (): string => shortcutGroup()?.platform ?? (navigator.platform.startsWith("Mac") ? "darwin" : navigator.platform);
 document.documentElement.dataset.platform = platform();
 function setText(element: Element, value: string): void { if (element.textContent !== value) element.textContent = value; }
+/** Like `setText`: an attribute rewritten with its own value would still be a DOM mutation, once per card on every push. */
+function setAttr(element: Element, name: string, value: string): void { if (element.getAttribute(name) !== value) element.setAttribute(name, value); }
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", value = ""): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag); el.className = className; el.textContent = value; return el;
 }
@@ -81,12 +83,15 @@ const REPEAT_MARK = "\u00A0";
 const announced = (): string => (feedback.textContent ?? "").replace(/\u00A0$/, "");
 /**
  * A live region speaks only when its text changes, so the same message again (a retry that
- * failed again, a second refused key) toggles the repeat mark to be heard again.
+ * failed again, a second refused key) toggles the repeat mark to be heard again. While the
+ * player is open its own region speaks: a modal dialog makes the rest of the page, `#feedback`
+ * included, inert and silent.
  */
 function announce(value: string): void {
-  const current = feedback.textContent ?? "";
-  if (value && announced() === value) feedback.textContent = current === value ? `${value}${REPEAT_MARK}` : value;
-  else setText(feedback, value);
+  const target = player?.open && playerFeedback ? playerFeedback : feedback;
+  const current = target.textContent ?? "";
+  if (value && current.replace(/\u00A0$/, "") === value) target.textContent = current === value ? `${value}${REPEAT_MARK}` : value;
+  else setText(target, value);
 }
 function committed(group: SettingsGroup | undefined): string { return group?.choices.find(c => c.checked)?.id ?? ""; }
 function setDisabled(el: HTMLButtonElement | HTMLSelectElement | HTMLInputElement, unavailable: boolean, busy: boolean): void {
@@ -172,6 +177,8 @@ function warningIcon(): SVGSVGElement {
   svg.append(path);
   return svg;
 }
+/** A film frame: the Recordings tab, and a card or empty folder with nothing better to show. */
+const FILM = "M3 5.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2ZM3 9h18M7.5 3.5 9.5 9M13 3.5l2 5.5M10 13v4.5l4-2.25Z";
 /**
  * Line icons on a 24-unit grid, drawn with the text colour: one per row, tab and empty state, so
  * a row is found by its shape before its label is read. Each entry is stroked paths, then filled ones.
@@ -192,9 +199,10 @@ const ICONS: Record<string, [string, string?]> = {
   updateChecks: ["M21 12a9 9 0 0 0-15.5-6.2L3 8.5M3 3.5v5h5M3 12a9 9 0 0 0 15.5 6.2L21 15.5M21 20.5v-5h-5"],
   log: ["M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8ZM14 2.5V8h5.5M8.5 13h7M8.5 17h7M8.5 9h2"],
   updates: ["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"],
-  "tab-library": ["M3 5.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2ZM3 9h18M7.5 3.5 9.5 9M13 3.5l2 5.5M10 13v4.5l4-2.25Z"],
+  "tab-library": [FILM],
   play: ["", "M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"],
-  film: ["M3 5.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2ZM3 9h18M7.5 3.5 9.5 9M13 3.5l2 5.5M10 13v4.5l4-2.25Z"],
+  film: [FILM],
+  more: ["", "M5.2 12a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0-3.2 0ZM10.4 12a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0-3.2 0ZM15.6 12a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0-3.2 0Z"],
   "tab-recording": ["M12 21.5a9.5 9.5 0 1 0 0-19 9.5 9.5 0 0 0 0 19Z", "M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"],
   "tab-general": ["M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1.5 14h5M9.5 8h5M17.5 16h5"],
   "tab-failures": ["M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0ZM12 9v4M12 17h.01"],
@@ -940,8 +948,13 @@ function updateLibrary(): void {
   for (const section of sections.values()) section.remove();
   if (focused && !focused.isConnected) document.getElementById(`tab-library`)?.focus({ preventScroll: true });
   else if (focused?.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
-  // The player's recording left the folder (moved to the Trash here or elsewhere).
+  // The player's or the menu's recording left the folder (moved to the Trash here or elsewhere).
   if (player?.open && !ids.has(player.dataset.id ?? "")) player.close();
+  if (clipMenu?.id && !ids.has(clipMenu.id)) {
+    const inMenu = clipMenu.el.contains(document.activeElement);
+    closeClipMenu(false);
+    if (inMenu) document.getElementById("tab-library")?.focus({ preventScroll: true });
+  }
 }
 const libraryItem = (id: string): LibraryItemView | undefined => view?.library?.items.find(item => item.id === id);
 function clipCard(id: string): HTMLElement {
@@ -957,7 +970,13 @@ function clipCard(id: string): HTMLElement {
   thumb.append(fallback, image, node("span", "clip-duration"), play);
   const label = node("span", "clip-text");
   label.append(node("span", "clip-title"), node("span", "clip-meta"));
-  open.append(thumb, label); card.append(open);
+  open.append(thumb, label);
+  // What can be done with the file, before it is opened (2026-10-04): this button, or a right-click on the card.
+  const more = button(`clip-${id}-more`, () => toggleClipMenu(id, more));
+  more.className = "clip-more"; more.setAttribute("aria-haspopup", "menu"); more.setAttribute("aria-expanded", "false");
+  more.append(icon("more", "more-icon")!);
+  card.append(open, more);
+  card.addEventListener("contextmenu", event => { event.preventDefault(); openClipMenu(id, more, { x: event.clientX, y: event.clientY }); });
   // The file itself leaves the window: main starts a native drag with it, so any app that takes files can take it.
   card.addEventListener("animationend", () => card.classList.remove("arrived"));
   // Without motion the outline does not fade; it goes once the user moves on.
@@ -974,61 +993,160 @@ function fillClip(card: HTMLElement, item: LibraryItemView): void {
   const duration = card.querySelector<HTMLElement>(".clip-duration")!;
   setText(duration, item.duration ?? ""); duration.hidden = !item.duration;
   setText(card.querySelector(".clip-title")!, item.title);
-  setText(card.querySelector(".clip-meta")!, [item.duration, item.size].filter(Boolean).join(" · "));
-  card.title = sentences([item.name, text("Drag into another app to share.")], view?.language);
-  card.querySelector("button")!.setAttribute("aria-label", translate("Play {title}", view?.language, { title: [item.day, item.title, item.duration, item.size].filter(Boolean).join(", ") }));
+  // The length is on the thumbnail already; under it goes the size (desktop.md#recordings). The button's name keeps both.
+  setText(card.querySelector(".clip-meta")!, item.size);
+  setAttr(card, "title", sentences([item.name, text("Drag into another app to share.")], view?.language));
+  setAttr(card.querySelector(".clip-open")!, "aria-label", translate("Play {title}", view?.language, { title: phrases([item.day, item.title, item.duration, item.size].filter((part): part is string => Boolean(part)), view?.language) }));
+  setAttr(card.querySelector(".clip-more")!, "aria-label", translate("More actions for {title}", view?.language, { title: phrases([item.day, item.title], view?.language) }));
 }
-/** The in-page player: a modal dialog, closed by Escape, Close or the recording leaving; closing stops and releases the file. */
-let player: HTMLDialogElement | undefined;
-function openPlayer(item: LibraryItemView): void {
-  if (!player) {
-    player = node("dialog", "player"); player.setAttribute("aria-labelledby", "player-title");
-    const video = node("video"); video.controls = true; video.playsInline = true;
-    const bar = node("div", "player-bar");
-    const info = node("div", "player-info");
-    const title = node("p", "player-title"); title.id = "player-title";
-    info.append(title, node("p", "player-meta"));
-    const actions = node("div", "player-actions");
-    for (const action of ["reveal", "open", "trash"] as const) {
-      const el = button(`player-${action}`, () => void playerAction(action, el));
-      el.dataset.action = action; actions.append(el);
-    }
-    const close = button("player-close", () => player!.close()); close.className = "player-close";
-    actions.append(close);
-    bar.append(info, actions); player.append(video, bar);
-    player.addEventListener("close", () => { video.pause(); video.removeAttribute("src"); video.load(); });
-    // A click on the backdrop, outside the dialog's own box, closes it.
-    player.addEventListener("click", event => { if (event.target === player) player!.close(); });
-    document.body.append(player);
+type FileAction = "reveal" | "open" | "trash";
+/**
+ * A card's file actions (2026-10-04): Show in Finder, Open in the default app and Move to Trash, chosen
+ * before the recording is opened. One menu in the top layer serves every card; arrows move through it,
+ * Escape closes it and gives focus back, and a click elsewhere, a scroll or the window losing focus closes it.
+ */
+let clipMenu: { el: HTMLElement; id?: string; anchor?: HTMLButtonElement; offset?: { x: number; y: number } } | undefined;
+function clipMenuElement(): HTMLElement {
+  if (clipMenu) return clipMenu.el;
+  const el = node("div", "clip-menu"); el.id = "clip-menu"; el.setAttribute("role", "menu"); el.setAttribute("popover", "manual");
+  for (const action of ["reveal", "open", "trash"] as const) {
+    const item = button(`clip-menu-${action}`, () => {
+      const id = clipMenu?.id, anchor = clipMenu?.anchor;
+      if (id && anchor) void fileAction(id, action, anchor);
+    });
+    item.setAttribute("role", "menuitem"); item.tabIndex = -1; item.dataset.action = action;
+    el.append(item);
   }
-  player.dataset.id = item.id;
-  const mac = platform() === "darwin";
-  setText(player.querySelector("#player-title")!, `${item.day}, ${item.title}`);
-  setText(player.querySelector(".player-meta")!, [item.name, item.duration, item.size].filter(Boolean).join(" · "));
-  setText(player.querySelector("#player-reveal")!, text(mac ? "Show in Finder" : "Open folder"));
-  setText(player.querySelector("#player-open")!, text("Open"));
-  setText(player.querySelector("#player-trash")!, text(mac ? "Move to Trash" : "Move to Recycle Bin"));
-  setText(player.querySelector("#player-close")!, text("Close"));
-  const video = player.querySelector("video")!;
-  video.src = item.video;
-  player.showModal();
-  void video.play().catch(() => {});
+  el.addEventListener("keydown", event => {
+    const items = [...el.querySelectorAll<HTMLButtonElement>("[role=menuitem]")];
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    const to = event.key === "ArrowDown" ? (at + 1) % items.length : event.key === "ArrowUp" ? (at - 1 + items.length) % items.length
+      : event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : undefined;
+    if (to !== undefined) { event.preventDefault(); items[to]!.focus(); return; }
+    // Escape and Tab belong to the menu, before the page's own Escape closes the window.
+    if (event.key === "Escape" || event.key === "Tab") { event.preventDefault(); event.stopPropagation(); closeClipMenu(true); }
+  });
+  document.body.append(el);
+  clipMenu = { el };
+  return el;
 }
-async function playerAction(action: "reveal" | "open" | "trash", el: HTMLButtonElement): Promise<void> {
-  const id = player?.dataset.id;
-  if (!id || inactive(el)) return;
-  el.setAttribute("aria-disabled", "true");
+function toggleClipMenu(id: string, anchor: HTMLButtonElement): void {
+  // Open while it has an anchor: the popover is manual, so nothing but `closeClipMenu` hides it.
+  if (clipMenu?.id === id && clipMenu.anchor) closeClipMenu(true);
+  else openClipMenu(id, anchor);
+}
+/** Under the ⋯ button, or at the pointer for a right-click, kept inside the window. */
+function openClipMenu(id: string, anchor: HTMLButtonElement, at?: { x: number; y: number }): void {
+  if (!libraryItem(id)) return;
+  const el = clipMenuElement();
+  closeClipMenu(false);
+  const mac = platform() === "darwin";
+  setText(el.querySelector("#clip-menu-reveal")!, text(mac ? "Show in Finder" : "Open folder"));
+  setText(el.querySelector("#clip-menu-open")!, text("Open"));
+  setText(el.querySelector("#clip-menu-trash")!, text(mac ? "Move to Trash" : "Move to Recycle Bin"));
+  el.showPopover?.();
+  const box = anchor.getBoundingClientRect(), size = el.getBoundingClientRect();
+  // Kept relative to the ⋯ button, so the menu moves with its card when the panel scrolls.
+  const offset = at ? { x: at.x - box.left, y: at.y - box.top } : { x: box.width - size.width, y: box.height + 4 };
+  clipMenu = { el, id, anchor, offset };
+  placeClipMenu();
+  // A card out of the panel closes the menu as it is placed: nothing is left to expand or focus (review pass 1, F3).
+  if (clipMenu.anchor !== anchor) return;
+  anchor.setAttribute("aria-expanded", "true");
+  el.querySelector<HTMLButtonElement>("[role=menuitem]")!.focus({ preventScroll: true });
+}
+/** Beside its card, flipped above it when there is no room below and kept inside the window; a card scrolled out of the panel closes it. */
+function placeClipMenu(): void {
+  if (!clipMenu?.anchor || !clipMenu.offset) return;
+  const { el, anchor, offset } = clipMenu;
+  const box = anchor.getBoundingClientRect(), size = el.getBoundingClientRect();
+  // The whole card decides: a right-click can land on its visible part while ⋯ is scrolled out of the panel.
+  const card = (anchor.closest(".clip") ?? anchor).getBoundingClientRect();
+  const panel = anchor.closest("#settings-panel")?.getBoundingClientRect();
+  if (panel && (card.bottom < panel.top || card.top > panel.bottom)) { closeClipMenu(true); return; }
+  const x = box.left + offset.x, y = box.top + offset.y;
+  el.style.left = `${Math.max(8, Math.min(x, innerWidth - size.width - 8))}px`;
+  // Flipped above when there is no room below; either way never above the window's top (review pass 2, P2-1).
+  el.style.top = `${Math.max(8, y + size.height + 8 > innerHeight ? Math.min(y, box.top) - size.height - 4 : y)}px`;
+}
+function closeClipMenu(restoreFocus: boolean): void {
+  if (!clipMenu?.anchor) return;
+  const { el, anchor } = clipMenu;
+  clipMenu = { el };
+  anchor.setAttribute("aria-expanded", "false");
+  el.hidePopover?.();
+  if (restoreFocus && anchor.isConnected) anchor.focus({ preventScroll: true });
+}
+document.addEventListener("pointerdown", event => {
+  if (clipMenu?.anchor && !clipMenu.el.contains(event.target as Node) && !clipMenu.anchor.contains(event.target as Node)) closeClipMenu(false);
+}, true);
+document.addEventListener("scroll", placeClipMenu, true);
+window.addEventListener("resize", placeClipMenu);
+// Focus inside a hidden menu would fall to the page, where the next Escape closes the window: it goes back to the ⋯ button.
+window.addEventListener("blur", () => closeClipMenu(true));
+/** Runs a card's file action and says how it went; a recording that left the folder hands focus to its neighbour. */
+async function fileAction(id: string, action: FileAction, anchor: HTMLButtonElement): Promise<void> {
+  closeClipMenu(false);
+  const card = document.getElementById(`clip-${id}`);
+  const cards = [...document.querySelectorAll<HTMLElement>(".clip")];
+  const index = card ? cards.indexOf(card) : -1;
+  const neighbour = cards[index + 1] ?? cards[index - 1];
+  anchor.focus({ preventScroll: true });
   try {
-    if (action === "trash") player!.querySelector("video")!.pause();
     const result = await window.settings.choose(`recordingFile:${id}`, action);
     render(result.view);
     if (!result.applied) announce(libraryItem(id) ? (result.failure ?? text("Could not complete this action. Try again.")) : text("This recording is no longer in the folder."));
     else if (action === "trash") announce(text(platform() === "darwin" ? "Moved to the Trash" : "Moved to the Recycle Bin"));
   } catch {
     announce(text("Could not complete this action. Try again."));
-  } finally {
-    el.removeAttribute("aria-disabled");
   }
+  if (!anchor.isConnected && document.hasFocus()) {
+    const next = neighbour?.isConnected ? neighbour.querySelector<HTMLElement>(".clip-open") : document.getElementById("tab-library");
+    next?.focus({ preventScroll: true });
+  }
+}
+/** The in-page player: a modal dialog with the video and Close, closed by Escape, Close or the recording leaving; closing stops and releases the file. */
+let player: HTMLDialogElement | undefined;
+/** The player's announcer, inside the dialog (see `announce`). */
+let playerFeedback: HTMLElement | undefined;
+function openPlayer(item: LibraryItemView): void {
+  closeClipMenu(false);
+  if (!player) {
+    player = node("dialog", "player"); player.setAttribute("aria-labelledby", "player-title");
+    const video = node("video"); video.controls = true; video.playsInline = true;
+    const bar = node("div", "player-bar");
+    const info = node("div", "player-info");
+    const title = node("p", "player-title"); title.id = "player-title";
+    info.append(title, node("p", "player-meta"), node("p", "player-error"));
+    // Watching is all the player does (2026-10-04): the file's actions are on its card, before it is opened.
+    const close = button("player-close", () => player!.close()); close.className = "player-close";
+    bar.append(info, close);
+    playerFeedback = node("p", "visually-hidden"); playerFeedback.setAttribute("role", "status"); playerFeedback.setAttribute("aria-live", "polite");
+    player.append(video, bar, playerFeedback);
+    player.addEventListener("close", () => { video.pause(); video.removeAttribute("src"); video.load(); });
+    // A file that left the folder since it was listed, a damaged one, or a format Chromium cannot decode: say so, and
+    // where Open is. Closing empties the source on purpose, which is not a failure to report.
+    video.addEventListener("error", () => {
+      if (!player?.open || !video.getAttribute("src")) return;
+      const message = text("This recording cannot be played here. Choose Open from its ⋯ menu to play it in another app.");
+      const error = player.querySelector<HTMLElement>(".player-error")!;
+      setText(error, message); error.hidden = false;
+      announce(message);
+    });
+    // A click on the backdrop, outside the dialog's own box, closes it.
+    player.addEventListener("click", event => { if (event.target === player) player!.close(); });
+    document.body.append(player);
+  }
+  player.dataset.id = item.id;
+  setText(player.querySelector("#player-title")!, phrases([item.day, item.title], view?.language));
+  setText(player.querySelector(".player-meta")!, [item.name, item.duration, item.size].filter(Boolean).join(" · "));
+  player.querySelector<HTMLElement>(".player-error")!.hidden = true;
+  setText(playerFeedback!, "");
+  setText(player.querySelector("#player-close")!, text("Close"));
+  const video = player.querySelector("video")!;
+  video.src = item.video;
+  player.showModal();
+  void video.play().catch(() => {});
 }
 /**
  * A tab's icon and label; an unread count, "Failures (2)", becomes a badge. The parentheses stay

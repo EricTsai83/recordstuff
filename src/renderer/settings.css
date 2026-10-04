@@ -48,7 +48,7 @@ body { margin: 0; overflow: hidden; }
 main { height: 100dvh; max-width: 720px; margin: auto; padding: 16px 20px 0; display: flex; flex-direction: column; }
 .note, .section-footnote, .capture-help, .capture-timeout { color: var(--secondary); font-size: 12px; }
 
-/* The status card: what the app is doing and how to record, above everything it explains. */
+/* The status card: what the app is doing, only when there is something to say; at the sidebar's foot, or above the tabs when narrow. */
 .status { flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 12px; row-gap: 10px; margin: 0 0 14px; padding: 11px 12px 11px 11px; border: 1px solid var(--card-border); border-radius: var(--card-radius); background: var(--surface); box-shadow: var(--card-shadow); }
 /* The fix for what blocks recording, in ink. */
 .status-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 30px; padding: 4px 13px; border-color: var(--accent); background: var(--accent); color: var(--on-accent); white-space: nowrap; }
@@ -368,6 +368,17 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
   :root[data-platform="darwin"] .brand { padding-top: 50px; }
   :root[data-platform="darwin"] .settings-viewport { padding-top: 16px; }
 }
+/*
+ * A narrow window on macOS (2026-10-04): the strip beside the window controls is a title bar that names the
+ * app, centred as a native title is and level with the controls, and the tabs start below it with room to
+ * breathe. It stays a drag region: the brand takes no pointer events. Elsewhere the native frame carries the title.
+ */
+@media (max-width: 599px) {
+  :root[data-platform="darwin"] .titlebar { height: 48px; }
+  :root[data-platform="darwin"] main { padding-top: 54px; }
+  :root[data-platform="darwin"] .brand { position: fixed; top: 0; left: 0; right: 0; z-index: 2; height: 48px; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 13px; font-weight: 650; letter-spacing: -.01em; pointer-events: none; }
+  :root[data-platform="darwin"] .brand-mark { --m: 20px; }
+}
 @media (forced-colors: active) {
   main::before { border-right: 1px solid CanvasText; }
   .tabs button[aria-selected="true"] { outline: 1px solid Highlight; }
@@ -393,7 +404,17 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .library-empty-detail { margin: 0; color: var(--secondary); max-width: 320px; overflow-wrap: anywhere; }
 .library-day { margin-bottom: 20px; }
 .library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 14px; }
-.clip { min-width: 0; border-radius: 10px; }
+.clip { position: relative; min-width: 0; border-radius: 10px; }
+/* A card's file actions: shown over its thumbnail while the pointer is on the card, the button has focus or its menu is open. */
+.clip-more { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 28px; min-height: 0; height: 28px; padding: 0; border: 0; border-radius: 8px; background: rgb(0 0 0 / .55); color: #fff; box-shadow: none; opacity: 0; backdrop-filter: blur(6px); }
+.clip-more .more-icon { width: 18px; height: 18px; }
+.clip:hover .clip-more, .clip-more:focus-visible, .clip-more[aria-expanded="true"] { opacity: 1; }
+:is(button, select).clip-more:enabled:not([aria-disabled="true"]):hover { background: rgb(0 0 0 / .72); }
+.clip-menu { position: fixed; inset: auto; margin: 0; min-width: 180px; padding: 5px; border: 1px solid var(--card-border); border-radius: 10px; background: var(--surface); color: inherit; box-shadow: 0 10px 30px rgb(0 0 0 / .18); }
+.clip-menu:popover-open { display: flex; flex-direction: column; }
+.clip-menu [role="menuitem"] { justify-content: flex-start; width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: none; box-shadow: none; text-align: start; font-weight: 400; }
+.clip-menu [role="menuitem"]:focus, :is(button, select).clip-menu [role="menuitem"]:hover, .clip-menu [role="menuitem"]:hover { background: var(--accent); color: var(--on-accent); outline: none; }
+.clip-menu [data-action="trash"] { color: var(--rec); }
 .clip[draggable="true"] { cursor: grab; }
 .clip-open { display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 0; border: 0; background: none; box-shadow: none; text-align: start; border-radius: 10px; font-weight: 400; }
 :is(button, select).clip-open:enabled:not([aria-disabled="true"]):hover { background: none; }
@@ -440,15 +461,13 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .player-info { min-width: 0; flex: 1 1 200px; }
 .player-title { margin: 0; font-weight: 600; }
 .player-meta { margin: 1px 0 0; color: #a1a1aa; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.player-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.player-actions button { color: #f4f4f5; background: #27272b; border-color: #3a3a40; box-shadow: none; }
-.player-actions :is(button):enabled:not([aria-disabled="true"]):hover { background: #2f2f34; }
-.player-actions [data-action="trash"] { color: #ff8a80; }
-.player-actions .player-close { background: #f4f4f5; border-color: #f4f4f5; color: #18181b; }
-.player-actions .player-close:enabled:not([aria-disabled="true"]):hover { background: #f4f4f5; opacity: .88; }
-:root:not([data-input="pointer"]):not([data-window="inactive"]) .player-actions button:focus-visible { outline-color: #f4f4f5; }
+.player-error { margin: 4px 0 0; color: #ff8a80; font-size: 12px; }
+.player-close { flex: none; background: #f4f4f5; border-color: #f4f4f5; color: #18181b; box-shadow: none; }
+.player-close:enabled:not([aria-disabled="true"]):hover { background: #f4f4f5; opacity: .88; }
+:root:not([data-input="pointer"]):not([data-window="inactive"]) .player-close:focus-visible { outline-color: #f4f4f5; }
 @media (forced-colors: active) {
   .player { border: 1px solid CanvasText; }
+  .clip-menu { border: 1px solid CanvasText; }
   .clip-thumb { border: 1px solid CanvasText; }
 }
 

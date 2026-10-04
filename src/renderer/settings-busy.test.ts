@@ -13,7 +13,7 @@ function view(checking: boolean): SettingsView {
       { id: "unavailable", label: "Unavailable", enabled: false, checked: false }] },
   ];
   return {
-    language: "en", title: "RecordStuff - Settings", hint: "", failure: "Could not apply this setting.",
+    language: "en", title: "RecordStuff", hint: "", failure: "Could not apply this setting.",
     tabs: [{ id: "recording", label: "Recording" }, { id: "general", label: "General" }, { id: "failures", label: "Failures" }],
     groups, recordingResults: [],
   };

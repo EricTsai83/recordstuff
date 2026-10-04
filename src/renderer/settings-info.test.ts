@@ -12,7 +12,7 @@ function view(language: "en" | "zh-TW", info: string | undefined): SettingsView 
       choices: [{ id: "30", label: "30 fps", enabled: true, checked: true }] },
   ];
   return {
-    language, title: "RecordStuff - Settings", hint: "", failure: "Could not apply this setting.",
+    language, title: "RecordStuff", hint: "", failure: "Could not apply this setting.",
     tabs: [{ id: "recording", label: "Recording" }, { id: "general", label: "General" }, { id: "failures", label: "Failures" }],
     groups, recordingResults: [],
   };

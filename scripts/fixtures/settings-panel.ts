@@ -13,13 +13,14 @@ import { settingsAction } from "../../src/main/settings-model";
  * Compiled automatically by acceptance-settings.mts before Electron loads it.
  */
 import { app, BrowserWindow, ipcMain, nativeTheme } from "electron";
-import type { Language } from "../../src/shared/i18n";
+import { translate, type Language } from "../../src/shared/i18n";
 import type { SettingsView } from "../../src/shared/settings-panel";
 import fs from "node:fs";
 import { settingsView } from "../../src/main/settings-model";
 import { DEFAULT_QUALITY } from "../../src/shared/quality";
 import { DEFAULT_HOTKEY } from "../../src/shared/hotkey";
 import type { AppContext } from "../../src/main/ui-model";
+import type { LibraryState, RecordingFile } from "../../src/main/recordings-library";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { activation, judgeActive, lsappinfoName, windowActive, type Activation, type FixtureFailure, type SettingsCase, type WindowState } from "../lib/settings-activation.mts";
@@ -63,13 +64,14 @@ const view = (language: Language): SettingsView => {
   const zh = language === "zh-TW";
   return {
     language,
-    title: zh ? "RecordStuff - 設定" : "RecordStuff - Settings",
+    // The window is the app's own, named "RecordStuff" in both languages (2026-10-04).
+    title: "RecordStuff",
     hint: "",
     failure: zh
       ? "無法套用此設定，已顯示目前的設定。"
       : "Could not apply this setting. Your current settings are shown.",
     tabs: [
-      { id: "recording", label: zh ? "錄影" : "Recording settings" },
+      { id: "recording", label: zh ? "錄影設定" : "Recording settings" },
       { id: "general", label: zh ? "一般" : "General" },
     ],
     groups: [
@@ -311,8 +313,9 @@ async function run() {
   );
   record(
     "the URL language localizes the first render",
-    rendered.title === "RecordStuff - 設定" && rendered.docTitle === "RecordStuff - 設定" && rendered.lang === "zh-Hant",
-    JSON.stringify([rendered.title, rendered.docTitle, rendered.lang]),
+    rendered.title === "RecordStuff" && rendered.docTitle === "RecordStuff" && rendered.lang === "zh-Hant"
+      && rendered.controls.find(control => control.id === "setting-hotkey")?.label === "快捷鍵",
+    JSON.stringify([rendered.title, rendered.docTitle, rendered.lang, rendered.controls.map(control => control.label)]),
   );
   record(
     "each group renders one live control showing the committed value",
@@ -351,7 +354,7 @@ async function run() {
   );
   record(
     "the committed answer re-renders the whole panel in the new language",
-    applied.title === "RecordStuff - Settings" && applied.lang === "en" && applied.hotkeyLabel === "Shortcut",
+    applied.title === "RecordStuff" && applied.lang === "en" && applied.hotkeyLabel === "Shortcut",
     JSON.stringify(applied),
   );
   record("a committed change shows no failure text", applied.feedback === "", JSON.stringify(applied.feedback));
@@ -397,13 +400,14 @@ async function run() {
     pending.value === "zh-TW" && pending.locked && pending.feedback === "", JSON.stringify(pending));
   heldSaves.shift()!();
   await settle(100);
-  const finished = await read<{ value: string; locked: boolean; title: string }>(window, `({
+  const finished = await read<{ value: string; locked: boolean; lang: string; hotkeyLabel: string }>(window, `({
     value: document.querySelector("#setting-language input:checked").value,
     locked: document.querySelector("#setting-hotkey").disabled,
-    title: document.title,
+    lang: document.documentElement.lang,
+    hotkeyLabel: document.querySelector("label[for='setting-hotkey']").textContent,
   })`);
   record("the final completion unlocks controls and displays committed settings",
-    finished.value === "en" && !finished.locked && finished.title === "RecordStuff - Settings", JSON.stringify(finished));
+    finished.value === "en" && !finished.locked && finished.lang === "en" && finished.hotkeyLabel === "Shortcut", JSON.stringify(finished));
 
   // Stop holding saves: the cases below judge settled state, and a still-pending
   // save keeps `saving` set, which renders every button disabled.
@@ -534,21 +538,35 @@ async function run() {
     quality: DEFAULT_QUALITY, countdown: 3, countdownSound: true, hotkey: { ...DEFAULT_HOTKEY, registered: true }, notifications: true,
     updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" },
     displays: [{ id: "1", label: "Built-in Display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true }] };
+  // The Recordings tab, the window's home (2026-10-04): two days of cards, one named by its user at length, and an empty folder.
+  // Nothing serves `recordstuff-media:` here, so every card shows the fallback a missing thumbnail gets.
+  const now = new Date(2026, 9, 4, 18, 0, 0);
+  const libraryFile = (name: string, recordedAt: Date, size: number, duration?: number): RecordingFile => ({
+    id: name.replace(/\W/g, "").slice(0, 20), path: `/tmp/${name}`, name, size, recordedAt: recordedAt.getTime(), version: "1",
+    ...(duration === undefined ? {} : { duration }) });
+  const library: LibraryState = { dir: "/tmp", loading: false, failed: false, files: [
+    libraryFile("2026-10-04 14-02-11.mp4", new Date(2026, 9, 4, 14, 2, 11), 182e6, 83),
+    libraryFile("A long product walkthrough recorded for the onboarding review.mp4", new Date(2026, 9, 4, 9, 30), 1.24e9, 3725),
+    libraryFile("2026-10-03 21-15-00.mp4", new Date(2026, 9, 3, 21, 15), 54e6),
+  ] };
   for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
     nativeTheme.themeSource = scheme;
     // The sidebar layout at the default size, the tabs-on-top layout of a narrower window, and the minimum.
     for (const size of ["default", "narrow", "minimum"] as const) {
       window.setSize(SNAPSHOT_SIZES[size][0], SNAPSHOT_SIZES[size][1]);
-      for (const state of ["recording", "general", "listening", "error", "locked", "sound-off", "countdown-off"] as const) {
+      for (const state of ["recording", "general", "listening", "error", "locked", "sound-off", "countdown-off", "library", "library-empty", "library-failed"] as const) {
         const snapshot = settingsView(state === "locked" ? { type: "starting" } : { type: "idle" }, {
           ...ctx, language: lang,
           ...(state === "error" ? { display: { kind: "display", id: "2", label: "BenQ BL2480T" }, displayFailure: "target_removed" } : {}),
           // Plan 046: the switch off, and disabled with its value kept while the countdown is Off.
           ...(state === "sound-off" ? { countdownSound: false } : {}),
           ...(state === "countdown-off" ? { countdown: 0 as const } : {}),
+          ...(state === "library" ? { library, now } : state === "library-empty" ? { library: { ...library, files: [] }, now }
+            : state === "library-failed" ? { library: { ...library, failed: true, files: [] }, now } : {}),
         });
         if (state === "listening") snapshot.groups.find(g => g.id === "hotkey")!.capturing = true;
-        await read(window, `document.getElementById("tab-${state === "general" || state === "listening" ? "general" : "recording"}").click()`);
+        const tab = state === "library" || state === "library-empty" || state === "library-failed" ? "library" : state === "general" || state === "listening" ? "general" : "recording";
+        await read(window, `document.getElementById("tab-${tab}").click()`);
         await settle(60);
         window.webContents.send("settings:changed", snapshot);
         await settle(60);
@@ -561,6 +579,18 @@ async function run() {
         const fits = await read<boolean>(window, `document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth && document.getElementById("settings-panel").scrollWidth <= document.getElementById("settings-panel").clientWidth`);
         const geometry = await read(window, `({root: [document.documentElement.scrollWidth, document.documentElement.scrollHeight], viewport: [innerWidth, innerHeight], main: document.querySelector("main").getBoundingClientRect().toJSON(), form: document.querySelector("form").getBoundingClientRect().toJSON(), panel: document.getElementById("settings-panel").getBoundingClientRect().toJSON()})`);
         record(`${lang}/${scheme}/${size}/${state}: no horizontal or outer-page overflow`, fits, JSON.stringify(geometry));
+        if (tab === "library") {
+          const shown = await read<{ days: number; cards: number; empty: boolean; summary: string }>(window, `({
+            days: document.querySelectorAll(".library-day").length, cards: document.querySelectorAll(".clip").length,
+            empty: !document.querySelector(".library-empty").hidden, summary: document.querySelector(".library-summary").textContent })`);
+          const status = await read<string>(window, `(() => { const el = document.querySelector(".library-status"); return el.hidden ? "" : el.textContent; })()`);
+          // The failed folder shows its own message, with the next step, in this language (review pass 1, F1); the others show none.
+          const unreadable = translate("Could not read the output folder. Check the folder and its drive, or choose another folder.", lang);
+          const expected = state === "library" ? shown.days === 2 && shown.cards === 3 && !shown.empty && shown.summary !== "" && status === ""
+            : state === "library-empty" ? shown.cards === 0 && shown.empty && status === "" : shown.cards === 0 && !shown.empty && status === unreadable;
+          record(`${lang}/${scheme}/${size}/${state}: Recordings shows ${state === "library" ? "its cards by day" : state === "library-empty" ? "the empty folder" : "why the folder cannot be read"}`,
+            expected, JSON.stringify({ ...shown, status }));
+        }
         if (state === "recording" || state === "locked") {
           // The status card speaks only when there is something to say (2026-10-04): never while ready, and a busy
           // app keeps its title in view at every size. The sidebar's foot carries the credit and links when wide.
@@ -571,6 +601,54 @@ async function run() {
           record(`${lang}/${scheme}/${size}/${state}: the status card speaks only when needed; the credit sits in the sidebar when wide`, expected, JSON.stringify(card));
         }
         await shot(`panel-${lang}-${scheme}-${size}-${state}.png`);
+        if (state === "library") {
+          // The player over the tab. Nothing serves the video here, so it shows what a recording that cannot be played gets.
+          await read(window, `document.querySelector(".clip-open").click()`);
+          const opened = await until(() => read<boolean>(window, `(() => { const p = document.querySelector("dialog.player"); return Boolean(p?.open && !p.querySelector(".player-error").hidden); })()`));
+          const player = await read<{ open: boolean; error: string; spoken: string; fits: boolean; buttons: string[] }>(window, `(() => { const p = document.querySelector("dialog.player"), r = p.getBoundingClientRect();
+            return { open: p.open, error: p.querySelector(".player-error").hidden ? "" : p.querySelector(".player-error").textContent,
+              spoken: p.querySelector('[role="status"]').textContent, buttons: [...p.querySelectorAll("button")].map(b => b.id),
+              fits: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight && p.scrollWidth <= p.clientWidth }; })()`);
+          record(`${lang}/${scheme}/${size}/player: opens over Recordings with Close alone, fits the window and says a recording it cannot play cannot be played here`,
+            opened && player.open && player.error !== "" && player.spoken === player.error && player.buttons.join() === "player-close" && player.fits, JSON.stringify(player));
+          await shot(`player-${lang}-${scheme}-${size}.png`);
+          await read(window, `document.getElementById("player-close").click()`);
+          const closed = await until(() => read<boolean>(window, `!document.querySelector("dialog.player").open`));
+          record(`${lang}/${scheme}/${size}/player: Close closes it`, closed, JSON.stringify({ closed }));
+          // A Close that failed is recorded above; the next states must still start without a modal over them (review pass 1, F1).
+          if (!closed) await read(window, `document.querySelector("dialog.player").close()`);
+          // The card's file actions (2026-10-04), with real input: a click on its ⋯ button, then a right-click on the card.
+          const menuState = (): Promise<{ open: boolean; items: string[]; fits: boolean; focused: string; expanded: string | null }> => read(window, `(() => {
+            const m = document.getElementById("clip-menu"), r = m?.getBoundingClientRect();
+            return { open: Boolean(m?.matches(":popover-open")), items: m ? [...m.querySelectorAll("[role=menuitem]")].map(i => i.textContent) : [],
+              fits: Boolean(r && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight), focused: document.activeElement?.id ?? "",
+              expanded: document.querySelector(".clip-more").getAttribute("aria-expanded") }; })()`);
+          const target = await read<{ more: { x: number; y: number }; card: { x: number; y: number } }>(window, `(() => {
+            const card = document.querySelector(".clip"); card.scrollIntoView({ block: "nearest" });
+            const centre = el => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; };
+            return { more: centre(card.querySelector(".clip-more")), card: centre(card.querySelector(".clip-thumb")) }; })()`);
+          window.webContents.sendInputEvent({ type: "mouseMove", x: target.card.x, y: target.card.y });
+          for (const type of ["mouseDown", "mouseUp"] as const) window.webContents.sendInputEvent({ type, button: "left", clickCount: 1, x: target.more.x, y: target.more.y });
+          await until(async () => (await menuState()).open, 2000);
+          const fromButton = await menuState();
+          // The frame holding the menu, not the one before it.
+          await read(window, `new Promise(done => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))`);
+          await shot(`clip-menu-${lang}-${scheme}-${size}.png`);
+          // An Escape with no menu open would close the window, ending every case after this one: only one that opened is answered.
+          if ((await menuState()).open) window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
+          await settle(100);
+          const escaped = await menuState();
+          for (const type of ["mouseDown", "mouseUp"] as const) window.webContents.sendInputEvent({ type, button: "right", clickCount: 1, x: target.card.x, y: target.card.y });
+          await until(async () => (await menuState()).open, 2000);
+          const fromRightClick = await menuState();
+          await read(window, `document.getElementById("clip-menu").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+          const mac = ctx.platform === "darwin";
+          const expectedItems = [translate(mac ? "Show in Finder" : "Open folder", lang), translate("Open", lang), translate(mac ? "Move to Trash" : "Move to Recycle Bin", lang)].join("|");
+          record(`${lang}/${scheme}/${size}/card menu: ⋯ and a right-click open the file's actions inside the window; Escape closes it and gives focus back`,
+            fromButton.open && fromButton.items.join("|") === expectedItems && fromButton.fits && fromButton.focused.startsWith("clip-menu-") && fromButton.expanded === "true"
+              && !escaped.open && escaped.expanded === "false" && escaped.focused.endsWith("-more") && !window.isDestroyed()
+              && fromRightClick.open && fromRightClick.fits, JSON.stringify({ target, fromButton, escaped, fromRightClick }));
+        }
       }
     }
   }
