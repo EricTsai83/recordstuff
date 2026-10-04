@@ -1,6 +1,7 @@
 /**
- * Persistent preferences: output folder, recording display, quality, countdown,
- * shortcut, notifications, update checks, language and appearance.
+ * Persistent preferences: output folder, recording display, quality, countdown
+ * and its tick, shortcut, the menu bar icon's left click, notifications, update
+ * checks, language and appearance.
  * See docs/system-design/desktop.md for the schema and migration rules.
  * Writes replace the file atomically (`writeFileAtomic`), so a crash or power
  * loss mid-write leaves the previous file. Any read problem falls back to the
@@ -10,14 +11,17 @@
  * replaces the user's choices with defaults.
  *
  * Version 1 files (outputDir only) are read as-is and get the default
- * quality; version 2 files get the default shortcut. Both are rewritten as
- * version 3 on the next successful save. Older files without a language
- * field default to English.
+ * quality; version 1 and 2 files get the default shortcut. Both are rewritten
+ * as version 3 on the next successful save.
  *
- * `updates`, `notifications`, `countdown` and `countdownSound` are read
- * leniently rather than versioned: a file written before any of them existed
- * keeps working and takes the default, so existing users also get the
- * 3-second countdown and its tick.
+ * Every other field is read leniently rather than versioned: a file written
+ * before it existed, or holding a value this version does not support, keeps
+ * working and takes the default (a present but unsupported value also logs a
+ * warning). So older files without a language read as English, and existing
+ * users also get the 3-second countdown and its tick. `trayClick` is the one
+ * exception: a new install opens the menu, while a file from before the choice
+ * keeps the click that records, so an existing user's click does not change
+ * under them.
  */
 import { isAppearance, isTrayClick, type Appearance, type TrayClick } from "../shared/appearance";
 import { DEFAULT_DISPLAY_PREFERENCE, isDisplayPreference, type DisplayPreference } from "../shared/display";
