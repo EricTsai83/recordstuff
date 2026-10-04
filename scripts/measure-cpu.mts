@@ -417,7 +417,10 @@ async function main(): Promise<number> {
     bundle: { path: BUNDLE, modified: fs.statSync(EXECUTABLE).mtime.toISOString() },
   };
   const failed = scenarios.flatMap((s) => s.verdicts).some((v) => v.verdict === "fail");
-  const result = interruptedBy ? `INTERRUPTED (${interruptedBy}); partial results only`
+  // The same test as the exit code below: a report must not read PASS while the run exits 1 for its cleanup.
+  const cleanupIncomplete = cleanup.some((line) => /NOT restored|could not|did not exit|still running/.test(line));
+  const result = cleanupIncomplete ? "INCOMPLETE CLEANUP (see Cleanup); the run exits 1"
+    : interruptedBy ? `INTERRUPTED (${interruptedBy}); partial results only`
     : desktop.lockedAt ? "BLOCKED (the screen locked)"
       : runError instanceof AccessibilityBlockedError ? `BLOCKED (${runError.message})`
       : runError ? `ERROR: ${runError instanceof Error ? runError.message : String(runError)}`
@@ -426,7 +429,7 @@ async function main(): Promise<number> {
   fs.writeFileSync(path.join(dir, "report.md"), renderReport(result, environment, scenarios, recordings, cleanup));
   console.log(`Report ${path.relative(REPO_ROOT, dir)}/report.md`);
   console.log(result);
-  if (cleanup.some((line) => /NOT restored|could not|did not exit|still running/.test(line))) return 1;
+  if (cleanupIncomplete) return 1;
   if (interruptedBy) return interruptedBy === "SIGINT" ? 130 : 143;
   if (desktop.lockedAt || runError instanceof AccessibilityBlockedError) return DESKTOP_BLOCKED_EXIT;
   return runError || failed ? 1 : 0;

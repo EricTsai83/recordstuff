@@ -334,7 +334,15 @@ async function recordOnce(run: RunReport, fixture: string, config: object, secon
     run.error ??= "fixture wrote no result.json (see fixture.log)";
     return;
   }
-  analyse(run, JSON.parse(fs.readFileSync(resultPath, "utf8")) as FixtureResult, path.join(run.dir, "recording.mp4"));
+  // Like a torn recording, a torn result (a fixture stopped mid-write) fails this run only.
+  let result: FixtureResult;
+  try { result = JSON.parse(fs.readFileSync(resultPath, "utf8")) as FixtureResult; }
+  catch (cause) {
+    const problem = `result.json unreadable: ${cause instanceof Error ? cause.message : String(cause)}`;
+    run.error = run.error ? `${run.error}; ${problem}` : problem;
+    return;
+  }
+  analyse(run, result, path.join(run.dir, "recording.mp4"));
 }
 
 const f = (value: number | undefined, digits = 2): string => (value === undefined ? "—" : value.toFixed(digits));
@@ -403,7 +411,7 @@ async function main(): Promise<void> {
       console.log("Opened the test material in Chrome kiosk on the primary display; waiting 5 seconds");
     } else console.log(`Open ${path.relative(REPO_ROOT, MATERIAL)} full screen on the primary display; starting in 5 seconds`);
     await sleep(5000);
-    // Rates alternate so neither one always runs first or warmest.
+    // Rates interleave, one run of each per pass, so a drift over the round reaches every rate alike.
     const order = Array.from({ length: options.runs }, () => options.rates).flat();
     for (const [i, setting] of order.entries()) {
       if (i > 0) await sleep(REST_SECONDS * 1000);

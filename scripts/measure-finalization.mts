@@ -161,6 +161,8 @@ interface Take {
   /** The app outlived the take's bound; how it was then stopped. Always a failed take. */
   timedOut?: AppStop;
   sample?: FinalizationSample;
+  /** Partial `.recording.mp4` files a take that saved nothing left in `--dir`, removed unless `--keep`. */
+  partials?: { files: string[]; removed: boolean };
   sizeBytes?: number;
   media?: { durationSeconds?: number; video: boolean; audio: boolean; decodeErrors: string; decoded: "all frames" | "first and last second" };
   verified: boolean;
@@ -206,7 +208,15 @@ async function recordTake(options: Options, index: number): Promise<Take> {
   if (outcome.failed) { take.outcome = "failed"; take.detail = outcome.failed; }
   const sample = finalizationSample(lines);
   if (sample) take.sample = sample;
-  if (!outcome.saved) return take;
+  if (!outcome.saved) {
+    // A failed or killed take keeps its partial file (FileWriter.abandon); without this they would pile up on the volume.
+    const partials = partialsSince(options.dir, owned.launchedAt);
+    if (partials.length) {
+      if (!options.keep) for (const file of partials) fs.rmSync(file, { force: true });
+      take.partials = { files: partials, removed: !options.keep };
+    }
+    return take;
+  }
   take.outcome = "saved";
   try {
     take.sizeBytes = fs.statSync(outcome.saved).size;
@@ -234,6 +244,14 @@ async function recordTake(options: Options, index: number): Promise<Take> {
   return take;
 }
 
+/** `.recording.mp4` files in `dir` created at or after `since` (epoch ms): the takes' own temporary files. */
+function partialsSince(dir: string, since: number): string[] {
+  try {
+    return fs.readdirSync(dir).filter((name) => name.endsWith(".recording.mp4")).map((name) => path.join(dir, name))
+      .filter((file) => { try { return fs.statSync(file).birthtimeMs >= since - 1000; } catch { return false; } });
+  } catch { return []; }
+}
+
 const mb = (bytes: number | undefined): string => bytes === undefined ? "?" : (bytes / 1024 / 1024).toFixed(1);
 
 function describeTake(take: Take): string {
@@ -241,7 +259,8 @@ function describeTake(take: Take): string {
   const phases = s ? `stop→ready ${s.stopToReadyMs} ms (host ${s.hostMs ?? "?"}, writes ${s.writesMs ?? "?"}, flush ${s.flushMs ?? "?"}, close ${s.closeMs ?? "?"}, publish ${s.publishMs ?? "?"} by ${s.method ?? "?"}, cleanup ${s.cleanupMs ?? "?"}, checkpoint ${s.checkpointMs ?? "?"}, ui ${s.uiMs ?? "?"})` : "no stop→ready sample";
   const media = take.media ? `; ${take.media.durationSeconds?.toFixed(2) ?? "?"} s, video ${take.media.video}, audio ${take.media.audio}, decoded ${take.media.decoded}${take.media.decodeErrors ? `, decode errors: ${take.media.decodeErrors.slice(0, 200)}` : ""}` : "";
   const late = take.timedOut ? `; TIMED OUT, app ${take.timedOut === "forced" ? `killed after ${QUIT_GRACE_MS / 1000} s` : take.timedOut === "quit" ? "quit on SIGTERM" : "already gone"}` : "";
-  return `${take.outcome}${take.detail ? ` (${take.detail})` : ""}${late}; ${mb(take.sizeBytes)} MiB${s?.stoppedEarly ? " (stopped early)" : ""}; ${phases}${media}; verified ${take.verified}`;
+  const partials = take.partials ? `; partial ${take.partials.files.map((file) => path.basename(file)).join(", ")} ${take.partials.removed ? "removed" : "kept (--keep)"}` : "";
+  return `${take.outcome}${take.detail ? ` (${take.detail})` : ""}${late}${partials}; ${mb(take.sizeBytes)} MiB${s?.stoppedEarly ? " (stopped early)" : ""}; ${phases}${media}; verified ${take.verified}`;
 }
 
 function summary(options: Options, volume: { mount: string; type: string }, takes: Take[], desktop: string): string {

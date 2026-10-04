@@ -139,17 +139,19 @@ async function main(): Promise<void> {
   const results: Result[] = [];
   let buffered = "";
   child.stdout.setEncoding("utf8");
+  const take = (line: string): void => {
+    if (!line) return;
+    let result: Result;
+    try { result = JSON.parse(line) as Result; }
+    catch { console.error(`  (ignored non-JSON output: ${line.slice(0, 200)})`); return; }
+    results.push(result);
+    console.log(`  ${describe(result)}`);
+  };
   child.stdout.on("data", (text: string) => {
     buffered += text;
     for (let end = buffered.indexOf("\n"); end >= 0; end = buffered.indexOf("\n")) {
-      const line = buffered.slice(0, end).trim();
+      take(buffered.slice(0, end).trim());
       buffered = buffered.slice(end + 1);
-      if (!line) continue;
-      let result: Result;
-      try { result = JSON.parse(line) as Result; }
-      catch { console.error(`  (ignored non-JSON output: ${line.slice(0, 200)})`); continue; }
-      results.push(result);
-      console.log(`  ${describe(result)}`);
     }
   });
   const removeOwnFiles = (): void => {
@@ -168,14 +170,18 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => interrupt(130));
   process.on("SIGTERM", () => interrupt(143));
   const code = await new Promise<number | null>((resolve) => {
-    child.on("exit", (exit) => resolve(exit));
-    // A spawn that fails emits no exit; treat it as a failed run so the files are still removed.
+    // `close`, not `exit`: the fixture prints its last result just before exiting, and stdout may still
+    // hold it when `exit` fires. A spawn that fails emits `error`; it counts as a failed run.
+    child.on("close", (exit) => resolve(exit));
     child.on("error", (cause) => { console.error(`fixture could not run: ${cause.message}`); resolve(1); });
   });
+  take(buffered.trim());
   if (interrupted !== undefined) {
     removeOwnFiles();
     process.exit(interrupted);
   }
+  // A fixture that died mid-size leaves its file behind; it deletes its own files only after each finished size.
+  if (code !== 0) removeOwnFiles();
   const text = summary(options, volume, results);
   fs.writeFileSync(path.join(report, "summary.md"), text);
   fs.writeFileSync(path.join(report, "summary.json"), JSON.stringify({ options, volume, results }, null, 2));
