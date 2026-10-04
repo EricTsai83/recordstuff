@@ -102,7 +102,7 @@ Main 建立 `MessageChannelMain`，透過 `capture-host-port` 將其中一端交
 
 | 資料 | 所在位置 | 生命週期 |
 | --- | --- | --- |
-| `RecordingState` | main 記憶體 | App 重啟重設；`lastSavedPath` 不持久化 |
+| `RecordingState` | main 記憶體 | App 重啟重設；不持久化 |
 | main `Session` | Recorder 記憶體 | 開始到成功、失敗或取消；包含品質與倒數快照、擷取報告、倒數 timer、writer、nextSeq、timer |
 | renderer 已準備的 session | capture host 記憶體 | 存活的 stream 與未啟動的 recorder，直到 `record`、`stop` 或軌道結束 |
 | renderer `Session` | capture host 記憶體 | stream、recorder、seq、chain、backlogBytes、cause、timer、draining、handoffFailed、finished |

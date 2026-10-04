@@ -109,7 +109,7 @@ describe("Recorder-driven log pairing", () => {
     await a.begin("C", "1440p", 1440);
     a.recorder.toggle();
     a.host.emit({ type: "stopped", sessionId: "C" });
-    await vi.waitFor(() => expect(a.recorder.state).toMatchObject({ type: "idle", lastSavedPath: expect.stringContaining(".mp4") }));
+    await vi.waitFor(() => expect(a.recorder.state).toMatchObject({ type: "idle" }));
     slow.release();
     await vi.waitFor(() => expect(readRetainedLog(a.logFile, 20)).toContain('"kind":"failed","session":"A"'));
     expect(fs.existsSync(`${a.logFile.replace(/\.log$/, "")}.2.log`)).toBe(true);

@@ -75,7 +75,7 @@ Each stage of a recording belongs to a different document. These are the layer c
 4. **Mechanism acquires.** The renderer checks support, rejects absent or ended audio tracks and measures actual frames before reporting `started`, which is a report about itself rather than a verdict that recording succeeded.
 5. **Mechanism back to decision, repeatedly.** Every chunk is gated on the session ID and a consecutive sequence number before its bytes reach the single writer queue.
 6. **Commitment.** After stop, the file is drained, synced, closed and renamed; `saved` exists only after the rename.
-7. **Decision to projections.** Returning to idle carrying `lastSavedPath` is what makes the tray offer to reveal the file and the notification schedule itself — the surfaces react to state instead of being told separately.
+7. **Decision to projections.** Returning to idle redraws the tray and the window, and the `saved` event schedules the notification and lists the folder again for Recordings — the surfaces react to the recorder's state and events instead of being told separately.
 
 Failure at any point takes one path: detach the session, clear deadlines, stop the host, return to idle, preserve whatever bytes exist ([recording.md](recording.md#file-completion-and-failure)). Permission changes apply only while idle or `needsPermission`, so polling never interrupts a running session.
 

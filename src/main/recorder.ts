@@ -267,7 +267,7 @@ export class Recorder {
   private _state: RecordingState = { type: "idle" };
   /** Latest watcher status, independent of the recording state (plan 027). */
   private permission: PermissionStatus = { granted: true, needsRelaunch: false };
-  /** What idle shows once permission allows; needsPermission carries only its lastSavedPath. */
+  /** What idle shows once permission allows: the unusable-folder flag, which needsPermission does not carry. */
   private idleState: IdleState = { type: "idle" };
   private session: Session | undefined;
   /** Registered before any synchronous subscriber can request exit. */
@@ -1015,7 +1015,7 @@ export class Recorder {
     this.deps.log(`recorder: session ${session.id} file finalized ${finalPath}${early}`);
     this.logFinalizeTiming(session, drainedAt, checkpointMs);
     this.session = undefined;
-    this.settle({ type: "idle", lastSavedPath: finalPath });
+    this.settle({ type: "idle" });
     this.emit({ type: "saved", path: finalPath, ...(session.stoppedEarly ? { stoppedEarly: session.stoppedEarly } : {}), session: this.trace(session) });
     await this.clearInFlight(session);
   }
@@ -1164,9 +1164,7 @@ export class Recorder {
     // End the recording state before file cleanup. Native painting can still
     // wait on synchronous subscriber IO (docs/system-design/recording.md).
     // Set idle and request tray updates before synchronous metadata persistence.
-    // The last saved recording is still on disk, so its reveal stays offered.
-    const { lastSavedPath } = this.idleState;
-    this.settle({ type: "idle", ...(lastSavedPath ? { lastSavedPath } : {}), ...idleFlags });
+    this.settle({ type: "idle", ...idleFlags });
     if (code === "capture_start_failed") {
       const retained = await this.retainedWriteError(session);
       if (retained) {
@@ -1223,10 +1221,7 @@ export class Recorder {
   /** Every return to a non-busy state lands here, so it reflects the latest permission. */
   private settle(idle: IdleState): void {
     this.idleState = idle;
-    this.setState(this.permission.granted ? idle : {
-      type: "needsPermission", needsRelaunch: this.permission.needsRelaunch,
-      ...(idle.lastSavedPath ? { lastSavedPath: idle.lastSavedPath } : {}),
-    });
+    this.setState(this.permission.granted ? idle : { type: "needsPermission", needsRelaunch: this.permission.needsRelaunch });
   }
 
   private setState(state: RecordingState): void {

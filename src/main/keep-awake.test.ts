@@ -18,7 +18,7 @@ describe("KeepAwake (plan 050)", () => {
     for (const state of busy) keep.update(state);
     expect(blocker.start).toHaveBeenCalledTimes(1);
     expect(blocker.start).toHaveBeenCalledWith("prevent-display-sleep");
-    keep.update({ type: "idle", lastSavedPath: "/out/a.mp4" });
+    keep.update({ type: "idle" });
     expect(blocker.stop).toHaveBeenCalledWith(7);
     keep.update({ type: "idle" });
     expect(blocker.stop).toHaveBeenCalledTimes(1);

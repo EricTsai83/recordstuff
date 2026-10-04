@@ -218,7 +218,7 @@ describe("Recorder happy path", () => {
     expect(line).toContain("by copy (link ENOTSUP), cleanup 0 ms (temporary name kept: EPERM), checkpoint ? ms; 4 bytes");
   });
 
-  it("idle → starting → recording → stopping → idle with lastSavedPath", async () => {
+  it("idle → starting → recording → stopping → idle", async () => {
     const ctx = setup();
     await startRecording(ctx);
     expect(ctx.host.started).toEqual(["s1"]);
@@ -236,7 +236,7 @@ describe("Recorder happy path", () => {
     expect(writer.chunks).toHaveLength(3);
     expect(writer.finished).toBe(true);
     expect(writer.recordingPath).toBe(path.join("/out", "2026-09-11 14-30-00.recording.mp4"));
-    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: path.join("/out", "2026-09-11 14-30-00.mp4") });
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
     expect(ctx.events.at(-1)).toEqual({ type: "saved", path: path.join("/out", "2026-09-11 14-30-00.mp4"), session: {
       id: "s1", recordingPath: path.join("/out", "2026-09-11 14-30-00.recording.mp4"),
       recordingAt: new Date(2026, 8, 11, 14, 30, 0).toISOString(), stoppingAt: new Date(2026, 8, 11, 14, 30, 0).toISOString(),
@@ -287,7 +287,7 @@ describe("a toggle during a long start (plan 065)", () => {
     expect(ctx.recorder.state).toEqual({ type: "countdown", remaining: 3 });
   });
 
-  it("after the grace, cancels an attempt preparing capture as Cancel recording does, keeping Show last recording", async () => {
+  it("after the grace, cancels an attempt preparing capture as Cancel recording does, returning to idle", async () => {
     const ctx = timed({ deps: { countdownSeconds: () => 3 } });
     ctx.recorder.toggle();
     await flush();
@@ -297,8 +297,7 @@ describe("a toggle during a long start (plan 065)", () => {
     ctx.recorder.stop();
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
     await flush();
-    const lastSavedPath = ctx.writers[0]!.finalPath;
-    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath });
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
 
     ctx.clock.now = 10_000;
     ctx.recorder.toggle();
@@ -307,7 +306,7 @@ describe("a toggle during a long start (plan 065)", () => {
     ctx.clock.now = 11_000;
     ctx.recorder.toggle();
     await flush();
-    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath });
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
     expect(ctx.host.stopped.at(-1)).toBe("s1");
     expect(ctx.writers[1]!.abandoned).toBe(true);
     expect(outcomes(ctx, before)).toEqual([{ type: "cancelled", reason: "toggle", session: traced() }]);
@@ -602,21 +601,6 @@ describe("Recorder failures", () => {
     expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "capture_failed" });
   });
 
-  it("a failure keeps offering the last saved recording (plan 035 O1)", async () => {
-    const ctx = setup();
-    await startRecording(ctx);
-    ctx.recorder.toggle();
-    ctx.host.emit({ type: "stopped", sessionId: "s1" });
-    await flush();
-    const saved = ctx.writers[0]!.finalPath;
-    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: saved });
-    await startRecording(ctx);
-    ctx.host.emit({ type: "stopped", sessionId: "s1" });
-    await flush();
-    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "capture_failed" });
-    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: saved });
-  });
-
   it("write error → disk_full from the writer's code", async () => {
     const ctx = setup();
     await startRecording(ctx);
@@ -767,7 +751,7 @@ describe("Recorder review fixes", () => {
     expect(ctx.events.some((e) => e.type === "failed")).toBe(false);
     releaseFinish!();
     await flush();
-    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: writer.finalPath });
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
     expect(ctx.events.at(-1)).toEqual({ type: "saved", path: writer.finalPath, session: traced() });
   });
 
@@ -815,7 +799,7 @@ describe("Recorder review fixes", () => {
     expect(settled).toBe(false);
     releaseFinish();
     await flush();
-    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: writer.finalPath });
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
     expect(settled).toBe(true);
     expect(ctx.recorder.mediaPending).toBe(false);
   });
@@ -945,18 +929,18 @@ describe("Recorder permission", () => {
     await flush();
   };
 
-  it("a revoke during recording settles the save into needsPermission and keeps the file discoverable", async () => {
+  it("a revoke during recording settles the save into needsPermission and still reports it saved", async () => {
     const ctx = setup();
     await startRecording(ctx);
     ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
     await saveRecording(ctx);
-    expect(ctx.recorder.state).toEqual({ type: "needsPermission", needsRelaunch: false, lastSavedPath: SAVED });
+    expect(ctx.recorder.state).toEqual({ type: "needsPermission", needsRelaunch: false });
     expect(ctx.events.at(-1)).toEqual({ type: "saved", path: SAVED, session: traced() });
     ctx.recorder.toggle();
     expect(ctx.events.at(-1)).toEqual({ type: "permissionRequested", needsRelaunch: false });
     expect(ctx.host.started).toEqual(["s1"]);
     ctx.recorder.setPermission({ granted: true, needsRelaunch: false });
-    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: SAVED });
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
   });
 
   it("a revoke during stopping settles into the latest needsRelaunch", async () => {
@@ -966,7 +950,7 @@ describe("Recorder permission", () => {
     ctx.recorder.setPermission({ granted: false, needsRelaunch: true });
     expect(ctx.recorder.state.type).toBe("stopping");
     await saveRecording(ctx);
-    expect(ctx.recorder.state).toEqual({ type: "needsPermission", needsRelaunch: true, lastSavedPath: SAVED });
+    expect(ctx.recorder.state).toEqual({ type: "needsPermission", needsRelaunch: true });
   });
 
   it("a capture failure after a revoke settles into needsPermission and still reports the failure", async () => {
@@ -1028,20 +1012,20 @@ describe("Recorder permission", () => {
     ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
     ctx.recorder.setPermission({ granted: true, needsRelaunch: false });
     await saveRecording(ctx);
-    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: SAVED });
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
     expect(ctx.states.map((s) => s.type)).toEqual(["starting", "recording", "stopping", "idle"]);
   });
 
-  it("needsRelaunch transitions after a save keep its path until the grant returns", async () => {
+  it("needsRelaunch transitions after a save stay in needsPermission until the grant returns", async () => {
     const ctx = setup();
     await startRecording(ctx);
     ctx.recorder.setPermission({ granted: false, needsRelaunch: true });
     await saveRecording(ctx);
     ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
     ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
-    expect(ctx.recorder.state).toEqual({ type: "needsPermission", needsRelaunch: false, lastSavedPath: SAVED });
+    expect(ctx.recorder.state).toEqual({ type: "needsPermission", needsRelaunch: false });
     ctx.recorder.setPermission({ granted: true, needsRelaunch: false });
-    expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: SAVED });
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
     expect(ctx.states.map((s) => s.type)).toEqual(["starting", "recording", "stopping", "needsPermission", "needsPermission", "idle"]);
   });
 });
@@ -1457,7 +1441,7 @@ describe("Recorder rejects zero-byte output with real FileWriter", () => {
         const saved = ctx.of("saved")[0]!.path;
         expect(await fs.readFile(saved)).toEqual(Buffer.from([5, 6, 7]));
         expect(await fs.readdir(ctx.dir)).toEqual([path.basename(saved)]);
-        expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath: saved });
+        expect(ctx.recorder.state).toEqual({ type: "idle" });
         expect(ctx.of("failed")).toHaveLength(1);
       } finally {
         await ctx.cleanup();
@@ -2481,9 +2465,9 @@ describe("Recorder countdown (plan 040)", () => {
       ["the Mac going to sleep (plan 050)", "sleep", (recorder) => recorder.systemWillSleep()],
     ];
     for (const [name, reason, act] of cases) {
-      it(`${name} returns to idle with lastSavedPath and no failure, file or later record`, async () => {
+      it(`${name} returns to idle with no failure, file or later record`, async () => {
         const ctx = counting(3);
-        // One saved recording first, so idle has something to keep.
+        // One saved recording first, so the cancel returns to the idle a save left.
         ctx.recorder.toggle();
         await flush();
         ctx.host.emit(prepared("s1"));
@@ -2492,8 +2476,7 @@ describe("Recorder countdown (plan 040)", () => {
         ctx.recorder.stop();
         ctx.host.emit({ type: "stopped", sessionId: "s1" });
         await flush();
-        const lastSavedPath = path.join("/out", "2026-09-11 14-30-00.mp4");
-        expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath });
+        expect(ctx.recorder.state).toEqual({ type: "idle" });
         const before = ctx.events.length;
         ctx.presenter.calls = [];
 
@@ -2504,7 +2487,7 @@ describe("Recorder countdown (plan 040)", () => {
         expect(ctx.recorder.state).toEqual({ type: "countdown", remaining: 2 });
         const quit = act(ctx.recorder);
         await flush();
-        expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath });
+        expect(ctx.recorder.state).toEqual({ type: "idle" });
         if (quit instanceof Promise) expect(await quit).toBe(true);
         expect(ctx.host.stopped.at(-1)).toBe("s1");
         expect(ctx.writers[1]!.abandoned).toBe(true);
@@ -2516,7 +2499,7 @@ describe("Recorder countdown (plan 040)", () => {
         // Its timers are gone: nothing records or ticks later.
         await vi.advanceTimersByTimeAsync(20_000);
         expect(ctx.host.recorded).toEqual(["s1"]);
-        expect(ctx.recorder.state).toEqual({ type: "idle", lastSavedPath });
+        expect(ctx.recorder.state).toEqual({ type: "idle" });
       });
     }
 

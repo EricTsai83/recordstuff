@@ -42,7 +42,6 @@ const STATES: RecordingState[] = [
   { type: "needsPermission", needsRelaunch: false },
   { type: "needsPermission", needsRelaunch: true },
   { type: "idle" },
-  { type: "idle", lastSavedPath: "/tmp/a.mp4" },
   { type: "starting" },
   { type: "countdown", remaining: 3 },
   { type: "recording", startedAt: "2026-09-14T00:00:00Z" },
@@ -82,21 +81,12 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(enabledActions(m.menu)).not.toContain("openPermissionSettings");
   });
 
-  it("needsPermission after a save lists no file: the recording is in RecordStuff (2026-10-04)", () => {
-    const m = trayModel({ type: "needsPermission", needsRelaunch: true, lastSavedPath: "/Users/eric/Movies/RecordStuff/a.mp4" }, mac);
-    expect(labels(m.menu)).toEqual(["需要螢幕錄製權限", "重新啟動", "—", "開啟 RecordStuff", "—", "結束 RecordStuff"]);
-  });
-
-  it("idle without a last recording", () => {
+  it("idle", () => {
     const m = trayModel({ type: "idle" }, mac);
     expect(m.icon).toBe("idle");
     expect(m.title).toBe("");
     expect(labels(m.menu)).toEqual(["待命中", "開始錄影", "—", "開啟 RecordStuff", "—", "結束 RecordStuff"]);
     expect(enabledActions(m.menu)).toEqual(["start", "openSettings", "quit"]);
-  });
-
-  it("idle after a save looks the same: the recording is in RecordStuff, newest first (2026-10-04)", () => {
-    expect(labels(trayModel({ type: "idle", lastSavedPath: "/Users/eric/Movies/RecordStuff/a.mp4" }, mac).menu)).toEqual(labels(trayModel({ type: "idle" }, mac).menu));
   });
 
   it("idle with an unusable output dir says so on the first line and offers its fix beside Start", () => {
@@ -165,11 +155,11 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     const unread = { ...mac, recordingResults: [{ id: "f", code: "disk_full" as const, detail: "", occurredAt: "2026-09-26T00:00:00Z", outcome: "empty" as const, acknowledged: false }] };
     const icons = STATES.map((state) => [state.type, trayModel(state, unread).icon]);
     expect(icons).toEqual([
-      ["needsPermission", "warning"], ["needsPermission", "warning"], ["idle", "warning"], ["idle", "warning"],
+      ["needsPermission", "warning"], ["needsPermission", "warning"], ["idle", "warning"],
       ["starting", "busy"], ["countdown", "countdown"], ["recording", "recording"], ["stopping", "busy"],
     ]);
     // Only REC changes the item width: every other state has an empty title.
-    expect(STATES.map((state) => trayModel(state, mac).title)).toEqual(["", "", "", "", "", "", "REC", ""]);
+    expect(STATES.map((state) => trayModel(state, mac).title)).toEqual(["", "", "", "", "", "REC", ""]);
   });
 
   it("keeps the output folder, the last recording and the log out of every menu: RecordStuff holds them (2026-10-04)", () => {
@@ -431,7 +421,7 @@ describe("one group order in every state (plan 048)", () => {
 
   it("puts the state first, unread failures next, then RecordStuff and Quit, in both languages", () => {
     const idle = (history: keyof typeof histories, language: "en" | "zh-TW") =>
-      labels(trayModel({ type: "idle", lastSavedPath: "/Users/eric/Movies/RecordStuff/a.mp4" }, { ...mac, language, recordingResults: histories[history] }).menu);
+      labels(trayModel({ type: "idle" }, { ...mac, language, recordingResults: histories[history] }).menu);
     expect(idle("unread", "en")).toEqual([
       "Ready", "Start recording", "—",
       "Unreviewed recording failures: 1", "View recording failures…", "—",

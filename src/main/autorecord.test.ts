@@ -131,7 +131,7 @@ describe("runAutoRecord", () => {
     h.timers[1]?.fn();
     expect(h.calls).toEqual(["toggle", "stop"]);
     h.emit({ type: "state", state: { type: "stopping" } });
-    h.emit({ type: "state", state: { type: "idle", lastSavedPath: "/x/a.mp4" } });
+    h.emit({ type: "state", state: { type: "idle" } });
     h.emit({ type: "saved", path: "/x/a.mp4", session: { id: "s1" } });
     expect(h.calls).toEqual(["toggle", "stop", "quit"]);
     expect(h.logs.at(-1)).toBe("autorecord: saved /x/a.mp4");
@@ -160,7 +160,7 @@ describe("runAutoRecord", () => {
     h.timers[0]?.fn();
     h.emit({ type: "state", state: { type: "recording", startedAt: "t" } });
     h.timers[1]?.fn();
-    h.emit({ type: "state", state: { type: "needsPermission", needsRelaunch: false, lastSavedPath: "/x/a.mp4" } });
+    h.emit({ type: "state", state: { type: "needsPermission", needsRelaunch: false } });
     h.emit({ type: "saved", path: "/x/a.mp4", session: { id: "s1" } });
     expect(h.calls).toEqual(["toggle", "stop", "quit"]);
     expect(h.logs.at(-1)).toBe("autorecord: saved /x/a.mp4");

@@ -100,7 +100,7 @@ There is no per-chunk ACK or backpressure. Blob conversion and disk writes are s
 
 | Data | Location | Lifetime |
 | --- | --- | --- |
-| RecordingState | Main memory | Reset on restart; lastSavedPath is not persisted |
+| RecordingState | Main memory | Reset on restart; not persisted |
 | Main Session | Recorder memory | Quality and countdown snapshots, capture report, countdown timers, writer, nextSeq, timer, and pending writes until success, failure or cancel |
 | Renderer prepared session | Capture-host memory | Live stream and inactive recorder until `record`, `stop` or a track end |
 | Renderer Session | Capture-host memory | Stream, recorder, seq, chain, backlogBytes, cause, timer, draining, handoffFailed, finished |
