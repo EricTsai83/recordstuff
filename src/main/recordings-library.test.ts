@@ -48,6 +48,20 @@ describe("names", () => {
   });
 });
 
+/**
+ * Writes `file` until the watched library lists `expected`. On macOS libuv starts the FSEvents stream on its own
+ * thread after `fs.watch` returns, so a write right after a watcher is attached can precede the stream and go
+ * unseen, more often under load. Each write waits longer than the settle delay, so a retry never keeps resetting it.
+ */
+async function writeUntilListed(library: RecordingsLibrary, file: string, expected: string[]): Promise<void> {
+  const listed = (): boolean => JSON.stringify(library.state.files.map(entry => entry.name)) === JSON.stringify(expected);
+  for (let attempt = 0; attempt < 6 && !listed(); attempt++) {
+    fs.writeFileSync(file, `x${attempt}`);
+    await vi.waitFor(() => { if (!listed()) throw new Error("not listed yet"); }, { timeout: WATCH_SETTLE_MS * 4 }).catch(() => undefined);
+  }
+  expect(library.state.files.map(entry => entry.name)).toEqual(expected);
+}
+
 /** A movie header stating `seconds`, enough for mp4Duration. */
 const movieOf = (seconds: number): Buffer => {
   const u32 = (n: number): Buffer => { const b = Buffer.alloc(4); b.writeUInt32BE(n); return b; };
@@ -158,8 +172,8 @@ describe("RecordingsLibrary", () => {
       await new Promise(resolve => setTimeout(resolve, WATCH_SETTLE_MS * 3));
       expect(readdir).not.toHaveBeenCalled();
       readdir.mockRestore();
-      const added = touch("new.mp4");
-      await vi.waitFor(() => expect(library.state.files.map(file => file.name)).toEqual(["new.mp4"]), { timeout: 3000 });
+      const added = path.join(dir, "new.mp4");
+      await writeUntilListed(library, added, ["new.mp4"]);
       fs.rmSync(added);
       await vi.waitFor(() => expect(library.state.files).toEqual([]), { timeout: 3000 });
     } finally { library.unwatch(); }
@@ -177,8 +191,7 @@ describe("RecordingsLibrary", () => {
       expect(library.state.loading).toBe(true);
       library.watch();
       folder = other; await library.refresh();
-      fs.writeFileSync(path.join(other, "there.mp4"), "x");
-      await vi.waitFor(() => expect(library.state.files.map(file => file.name)).toEqual(["there.mp4"]), { timeout: 3000 });
+      await writeUntilListed(library, path.join(other, "there.mp4"), ["there.mp4"]);
       library.unwatch();
       folder = path.join(other, "missing");
       library.watch(); library.watch();
@@ -186,8 +199,7 @@ describe("RecordingsLibrary", () => {
       // Still wanted: once the folder lists, it is followed without another activation (review pass 1, F2).
       fs.mkdirSync(folder);
       await library.refresh();
-      fs.writeFileSync(path.join(folder, "later.mp4"), "x");
-      await vi.waitFor(() => expect(library.state.files.map(file => file.name)).toEqual(["later.mp4"]), { timeout: 3000 });
+      await writeUntilListed(library, path.join(folder, "later.mp4"), ["later.mp4"]);
     } finally { library.unwatch(); fs.rmSync(other, { recursive: true, force: true }); }
   });
   // macOS watches folders by path (FSEvents), so this passes there either way; on Windows and Linux the watcher holds
@@ -199,8 +211,7 @@ describe("RecordingsLibrary", () => {
     try {
       fs.rmSync(dir, { recursive: true }); fs.mkdirSync(dir);
       await library.refresh();
-      touch("after.mp4");
-      await vi.waitFor(() => expect(library.state.files.map(file => file.name)).toEqual(["after.mp4"]), { timeout: 3000 });
+      await writeUntilListed(library, path.join(dir, "after.mp4"), ["after.mp4"]);
     } finally { library.unwatch(); }
   });
   it("forgets the length and thumbnail of a file that left the folder", async () => {
