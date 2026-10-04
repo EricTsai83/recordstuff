@@ -346,10 +346,13 @@ export function diffManifest(stored: ReleaseManifest, fresh: ReleaseManifest): s
   return differences;
 }
 
+/** Each unit is chosen by the value as it will be shown, so rounding never prints "1000 kB" or "1000.0 MB". */
 export function formatBytes(bytes: number): string {
-  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(2)} GB`;
-  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
-  if (bytes >= 1_000) return `${(bytes / 1_000).toFixed(0)} kB`;
+  const megabytes = (bytes / 1_000_000).toFixed(1);
+  if (Number(megabytes) >= 1000) return `${(bytes / 1_000_000_000).toFixed(2)} GB`;
+  const kilobytes = (bytes / 1_000).toFixed(0);
+  if (Number(kilobytes) >= 1000) return `${megabytes} MB`;
+  if (bytes >= 1_000) return `${kilobytes} kB`;
   return `${bytes} bytes`;
 }
 

@@ -152,6 +152,11 @@ test("diffManifest catches a release-notes link pointed at another release", () 
 test("formatBytes renders megabytes for a DMG", () => {
   assert.equal(formatBytes(127314171), "127.3 MB");
   assert.equal(formatBytes(532), "532 bytes");
+  // A unit is chosen after rounding: the value never reads as 1000 of the smaller unit.
+  assert.equal(formatBytes(999_499), "999 kB");
+  assert.equal(formatBytes(999_999), "1.0 MB");
+  assert.equal(formatBytes(999_950_000), "1.00 GB");
+  assert.equal(formatBytes(1_500_000_000), "1.50 GB");
 });
 
 // The first two-platform version: every version after 1.1.1 carries Windows.
