@@ -78,7 +78,7 @@ export const ZH_TW = {
   "Ready to record": "隨時可以錄影",
   Recordings: "錄影檔",
   "Loading recordings…": "正在載入錄影…",
-  "Could not read the output folder.": "無法讀取儲存位置。",
+  "Could not read the output folder. Check the folder and its drive, or choose another folder.": "無法讀取儲存位置。請檢查資料夾與所在磁碟，或選擇其他位置。",
   "1 recording · {size}": "1 個錄影・{size}",
   "{count} recordings · {size}": "{count} 個錄影・{size}",
   "No recordings yet": "還沒有錄影",
@@ -92,6 +92,8 @@ export const ZH_TW = {
   "Close": "關閉",
   "Drag into another app to share.": "拖曳到其他 App 即可分享。",
   "This recording is no longer in the folder.": "這個錄影已不在資料夾中。",
+  "This recording cannot be played here. Choose Open from its ⋯ menu to play it in another app.": "無法在這裡播放這段錄影，可從它的「⋯」選單選「開啟」改用其他 App 播放。",
+  "More actions for {title}": "{title} 的更多動作",
   "About {size} per minute at {width} × {height}, {fps} fps.": "每分鐘約 {size}（{width} × {height}、{fps} fps）。",
   "Official website": "官方網站",
   "GitHub source": "GitHub 原始碼",
@@ -138,7 +140,7 @@ export const ZH_TW = {
   "This key cannot be used.": "無法使用這個按鍵。",
   "macOS reserves this combination.": "macOS 已保留這個組合。",
   "Other apps use this combination.": "其他 App 會使用這個組合。",
-  "Recording settings": "錄影",
+  "Recording settings": "錄影設定",
   "Recording resolution": "錄影解析度",
   General: "一般",
   Updates: "更新",
@@ -190,10 +192,10 @@ export const ZH_TW = {
   "Open RecordStuff": "開啟 RecordStuff",
   "The shortcut for RecordStuff is the recording shortcut: open RecordStuff above to change it.": "開啟 RecordStuff 的快捷鍵與錄影快捷鍵相同：請從上方開啟 RecordStuff 更改。",
   "The shortcut for RecordStuff is unavailable: another app may use it. Open RecordStuff above.": "開啟 RecordStuff 的快捷鍵無法使用，可能被其他 App 佔用。請從上方開啟 RecordStuff。",
+  // Gone from the menu since 2026-10-04: kept for the tray runner, which checks it stays gone (scripts/lib/tray-driver.mts).
   "Output folder: {path}": "儲存位置：{path}",
   "Start recording": "開始錄影",
   "Quit RecordStuff": "結束 RecordStuff",
-  "Settings…": "設定…",
   "Change output folder…": "更改儲存位置…",
   "Output folder": "儲存位置",
   "Change…": "更改…",
@@ -208,6 +210,7 @@ export const ZH_TW = {
   "Screen recording permission required": "需要螢幕錄製權限",
   "Output folder unavailable": "儲存位置無法使用",
   Ready: "待命中",
+  // Gone from the menu since 2026-10-04: kept for the tray runner, which checks it stays gone (scripts/lib/tray-driver.mts).
   "Show last recording": "顯示最後一個錄影",
   "Starting… Check for system permission prompts": "啟動中，請留意系統權限提示…",
   Recording: "錄影中",
@@ -324,6 +327,11 @@ export type MessageKey = keyof typeof ZH_TW;
 export function sentences(parts: readonly string[], language: Language = DEFAULT_LANGUAGE): string {
   if (language === "zh-TW") return parts.map(part => /[。！？]$/.test(part) ? part : `${part}。`).join("");
   return parts.map(part => /[.!?…]$/.test(part) ? part : `${part}.`).join(" ");
+}
+
+/** Joins the parts of one name or line, such as a day and a time, with each language's comma: "Today, 2:02 PM", 「今天，下午2:02」. */
+export function phrases(parts: readonly string[], language: Language = DEFAULT_LANGUAGE): string {
+  return parts.join(language === "zh-TW" ? "，" : ", ");
 }
 
 /** The `{name}` placeholders of a message: `"Saved {file}"` → `"file"`. */

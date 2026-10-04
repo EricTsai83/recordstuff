@@ -29,7 +29,7 @@ import {
 import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut, sameShortcut } from "../shared/hotkey";
 import { COUNTDOWN_CHOICES } from "../shared/countdown";
 import type { LibraryView, RecordingResultView, SettingsChoice, SettingsGroup, SettingsStatus, SettingsView, StatusActionId } from "../shared/settings-panel";
-import { MEDIA_SCHEME, RECORDING_FILE_ACTIONS, type RecordingFileAction } from "./recordings-library";
+import { MEDIA_SCHEME, RECORDING_FILE_ACTIONS, stampedTime, type RecordingFileAction } from "./recordings-library";
 import type { RecordingResult, RecordingResultAction } from "../shared/recording-result";
 import type { RecordingState } from "../shared/state";
 
@@ -60,13 +60,17 @@ function group(
   choices: Group["choices"],
   note?: string,
 ): Group {
-  const tab = ["screen", "outputFolder", "countdown", "countdownSound", "videoQuality", "resolutionCap", "frameRate"].includes(id) ? "recording" : "general";
-  return { id, label, enabled, choices, tab,
-    control: ["notifications", "updateChecks", "countdownSound"].includes(id) ? "switch" : ["countdown", "videoQuality", "language"].includes(id) ? "segmented" : "menu",
-    section: SECTIONS[id] ?? id,
-    noteKind: "explanation", ...(note === undefined ? {} : { note }) };
+  const section = SECTIONS[id] ?? id;
+  return { id, label, enabled, choices, tab: RECORDING_SECTIONS.has(section) ? "recording" : "general",
+    control: SWITCHES.has(id) ? "switch" : SEGMENTED.has(id) ? "segmented" : "menu",
+    section, noteKind: "explanation", ...(note === undefined ? {} : { note }) };
 }
 
+/** Rows drawn as an on/off switch, and as a row of segments; any other choice row is a menu. */
+const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound"]);
+const SEGMENTED = new Set(["countdown", "videoQuality", "language"]);
+/** The sections on the Recording settings tab; every other row is General's. A row's tab follows its section, so a section is never split. */
+const RECORDING_SECTIONS = new Set(["source", "countdown", "video"]);
 /** Related rows share an inset list; a section's first row carries its heading. */
 const SECTIONS: Record<string, string> = {
   screen: "source", outputFolder: "source",
@@ -126,8 +130,8 @@ function screenGroup(ctx: AppContext, enabled: boolean): Group {
 }
 
 /**
- * Where recordings go (plan 048): the path, with Change… and Show in Finder
- * through the tray's own handlers. Locked like the other recording settings,
+ * Where recordings go (plan 048): the path, with Change… and Show in Finder through main's own folder
+ * actions, which the status card's fix and the menu's Change output folder… share. Locked like the other recording settings,
  * since a session's temporary file is already open in the current folder.
  */
 function outputFolderGroup(ctx: AppContext, enabled: boolean): Group {
@@ -408,16 +412,16 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
   ];
 }
 
-/** A calendar day in local time, for grouping and naming failure rows. */
+/** A calendar day in local time, for grouping and naming failure rows and recordings. */
 function localDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
 /**
- * The day heading a failure row is grouped under (plan 047): Today, Yesterday,
+ * The day heading failure rows (plan 047) and recordings are grouped under: Today, Yesterday,
  * then the date, with the year only when it is not the current year.
  */
-export function failureDay(occurredAt: Date, now: Date, language: Language): string {
+export function dayHeading(occurredAt: Date, now: Date, language: Language): string {
   const days = Math.round((localDay(now) - localDay(occurredAt)) / 86_400_000);
   if (days === 0) return t("Today", language);
   if (days === 1) return t("Yesterday", language);
@@ -426,8 +430,8 @@ export function failureDay(occurredAt: Date, now: Date, language: Language): str
   });
 }
 
-/** The short local time a failure row shows beside its reason. */
-export function failureTime(occurredAt: Date, language: Language): string {
+/** The short local time a failure row shows beside its reason, and the title of a recording the app named. */
+export function shortTime(occurredAt: Date, language: Language): string {
   return occurredAt.toLocaleTimeString(language, { hour: "numeric", minute: "2-digit" });
 }
 
@@ -456,8 +460,8 @@ function projectResult(result: RecordingResult, state: RecordingState, ctx: AppC
   const view = {
       id: result.id,
       reason: failureReason(result.code, language),
-      day: failureDay(new Date(result.occurredAt), now, language),
-      time: failureTime(new Date(result.occurredAt), language),
+      day: dayHeading(new Date(result.occurredAt), now, language),
+      time: shortTime(new Date(result.occurredAt), language),
       outcome: failureOutcome(result, language), guidance: ctx.platform === "darwin" && result.restored && isPermissionFailure(result.code)
         ? t("This failure is from an earlier session. Check recording permissions before trying again.", language)
         : failureGuidance(result.code, language, ctx.platform),
@@ -544,7 +548,7 @@ function libraryView(ctx: AppContext, now: Date): LibraryView | undefined {
   if (!library) return undefined;
   const language = ctx.language;
   const folder = abbreviateHome(library.dir, ctx.homeDir);
-  if (library.failed) return { folder, status: t("Could not read the output folder.", language), items: [] };
+  if (library.failed) return { folder, status: t("Could not read the output folder. Check the folder and its drive, or choose another folder.", language), items: [] };
   if (library.loading) return { folder, status: t("Loading recordings…", language), items: [] };
   const total = library.files.reduce((sum, file) => sum + file.size, 0);
   const count = library.files.length;
@@ -552,11 +556,12 @@ function libraryView(ctx: AppContext, now: Date): LibraryView | undefined {
     folder,
     ...(count ? { summary: t(count === 1 ? "1 recording · {size}" : "{count} recordings · {size}", language, { count, size: formatBytes(total) }) } : {}),
     items: library.files.map(file => {
-      const stamped = /^\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}(-\d+)?\.mp4$/.test(file.name);
+      // The app's own name already says when; any other file is known by its name.
+      const stamped = stampedTime(file.name) !== undefined;
       const at = new Date(file.recordedAt);
       return {
-        id: file.id, name: file.name, day: failureDay(at, now, language),
-        title: stamped ? at.toLocaleTimeString(language, { hour: "numeric", minute: "2-digit" }) : file.name.replace(/\.[^.]+$/, ""),
+        id: file.id, name: file.name, day: dayHeading(at, now, language),
+        title: stamped ? shortTime(at, language) : file.name.replace(/\.[^.]+$/, ""),
         ...(file.duration === undefined ? {} : { duration: formatDuration(file.duration) }),
         size: formatBytes(file.size),
         thumbnail: `${MEDIA_SCHEME}://thumb/${file.id}?v=${file.version}`,

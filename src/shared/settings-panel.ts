@@ -72,8 +72,9 @@ export interface RecordingResultView {
   actions: SettingsChoice[];
 }
 /**
- * The card above the tabs: what the app is doing and how to record. It is not
- * a live region; `#feedback` stays the page's one announcer.
+ * The status card, at the foot of the sidebar or above the tabs in a narrow window: what the app is doing,
+ * shown only when there is something to say (2026-10-04), never while ready. It is not a live region;
+ * `#feedback` stays the page's one announcer.
  */
 export interface SettingsStatus {
   tone: "ready" | "busy" | "recording" | "attention";
@@ -119,7 +120,7 @@ export interface SettingsView {
   resultFocus?: number;
   /** The tab that entry opens: the failures tab when absent, General for the shortcut card. */
   entryTab?: SettingsTab;
-  /** With a Recordings entry: the recording to bring into view, from its notification or the tray. */
+  /** With a Recordings entry: the recording to bring into view, from its saved notification. */
   libraryFocus?: string;
   language: Language;
   title: string;

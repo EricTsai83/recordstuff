@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_LANGUAGE, ZH_TW, isLanguage, sentences, translate } from "./i18n";
+import { DEFAULT_LANGUAGE, ZH_TW, isLanguage, phrases, sentences, translate } from "./i18n";
 
 /** Without values English returns the key verbatim; the placeholder check is bypassed on purpose. */
 const english = translate as unknown as (key: string) => string;
@@ -40,6 +40,14 @@ describe("language catalog", () => {
       ),
     ).toBe("系統無法提供 60 fps，本次以 30 fps 錄影。");
     expect(translate("Saved {file}", "zh-TW", { file: "demo {file} $&.mp4" })).toBe("已儲存 demo {file} $&.mp4");
+  });
+});
+
+describe("phrases", () => {
+  it("joins the parts of one name with each language's comma", () => {
+    expect(phrases(["Today", "2:02 PM", "1:23"], "en")).toBe("Today, 2:02 PM, 1:23");
+    expect(phrases(["今天", "下午2:02", "1:23"], "zh-TW")).toBe("今天，下午2:02，1:23");
+    expect(phrases(["Today"])).toBe("Today");
   });
 });
 

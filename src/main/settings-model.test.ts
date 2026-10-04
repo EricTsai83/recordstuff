@@ -6,7 +6,7 @@ import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT } from "../shared/hotkey";
 const LEGACY_HOTKEYS = ["CommandOrControl+Alt+Shift+R", "CommandOrControl+Shift+R", "CommandOrControl+Alt+R"];
 import type { RecordingState } from "../shared/state";
 import { translate as t } from "../shared/i18n";
-import { failureDay, failureTime, formatDuration, proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
+import { dayHeading, shortTime, formatDuration, proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
 import type { LibraryState, RecordingFile } from "./recordings-library";
 import type { AppContext } from "./ui-model";
 
@@ -139,6 +139,17 @@ describe("settingsView", () => {
     expect(settingsAction(idle, off, "hotkey", "off")).toEqual({
       setHotkey: { enabled: false, accelerator: LEGACY_HOTKEYS[0]! },
     });
+  });
+});
+
+describe("tabs follow sections", () => {
+  it("puts the source, countdown and video sections on Recording settings and never splits a section across tabs", () => {
+    const groups = settingsView(idle, context).groups;
+    const tabs = new Map<string, Set<string>>();
+    for (const group of groups) tabs.set(group.section!, (tabs.get(group.section!) ?? new Set()).add(group.tab));
+    expect([...tabs.values()].every(sectionTabs => sectionTabs.size === 1)).toBe(true);
+    expect(groups.filter(group => group.tab === "recording").map(group => group.section))
+      .toEqual(["source", "source", "countdown", "countdown", "video", "video", "video"]);
   });
 });
 
@@ -591,28 +602,28 @@ describe("Recording failures tab (plan 047)", () => {
       id: "failures", label: "Failures (2)", accessibleLabel: "Recording failures, 2 unread",
     });
     expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs.map((tab) => tab.label))
-      .toEqual(["錄影檔", "錄影", "一般", "失敗紀錄（2）"]);
+      .toEqual(["錄影檔", "錄影設定", "一般", "失敗紀錄（2）"]);
     expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs[3]!.accessibleLabel).toBe("失敗紀錄，2 筆未確認");
     expect(settingsView(idle, { ...context, recordingResults: [results[2]!] }).tabs[3]).toEqual({ id: "failures", label: "Failures", accessibleLabel: "Recording failures" });
   });
 
   it("names the day a row is grouped under: Today, Yesterday, then the date with the year only for an earlier year", () => {
     const now = new Date(2026, 8, 28, 9, 30);
-    expect(failureDay(new Date(2026, 8, 28, 0, 5), now, "en")).toBe("Today");
-    expect(failureDay(new Date(2026, 8, 27, 23, 55), now, "en")).toBe("Yesterday");
-    expect(failureDay(new Date(2026, 8, 24, 12), now, "en")).toBe("September 24");
-    expect(failureDay(new Date(2025, 11, 31, 12), now, "en")).toBe("December 31, 2025");
-    expect(failureDay(new Date(2026, 8, 28, 0, 5), now, "zh-TW")).toBe("今天");
-    expect(failureDay(new Date(2026, 8, 27, 12), now, "zh-TW")).toBe("昨天");
-    expect(failureDay(new Date(2026, 8, 24, 12), now, "zh-TW")).toBe("9月24日");
-    expect(failureDay(new Date(2025, 11, 31, 12), now, "zh-TW")).toBe("2025年12月31日");
+    expect(dayHeading(new Date(2026, 8, 28, 0, 5), now, "en")).toBe("Today");
+    expect(dayHeading(new Date(2026, 8, 27, 23, 55), now, "en")).toBe("Yesterday");
+    expect(dayHeading(new Date(2026, 8, 24, 12), now, "en")).toBe("September 24");
+    expect(dayHeading(new Date(2025, 11, 31, 12), now, "en")).toBe("December 31, 2025");
+    expect(dayHeading(new Date(2026, 8, 28, 0, 5), now, "zh-TW")).toBe("今天");
+    expect(dayHeading(new Date(2026, 8, 27, 12), now, "zh-TW")).toBe("昨天");
+    expect(dayHeading(new Date(2026, 8, 24, 12), now, "zh-TW")).toBe("9月24日");
+    expect(dayHeading(new Date(2025, 11, 31, 12), now, "zh-TW")).toBe("2025年12月31日");
     // Across a month boundary, Yesterday is the previous calendar day.
-    expect(failureDay(new Date(2026, 8, 30, 22), new Date(2026, 9, 1, 1), "en")).toBe("Yesterday");
+    expect(dayHeading(new Date(2026, 8, 30, 22), new Date(2026, 9, 1, 1), "en")).toBe("Yesterday");
   });
 
   it("gives each row a short local time, its day, the file name and the full path, without a repeated heading", () => {
-    expect(failureTime(new Date(2026, 8, 28, 14, 5), "en")).toBe("2:05 PM");
-    expect(failureTime(new Date(2026, 8, 28, 14, 5), "zh-TW")).toBe("下午2:05");
+    expect(shortTime(new Date(2026, 8, 28, 14, 5), "en")).toBe("2:05 PM");
+    expect(shortTime(new Date(2026, 8, 28, 14, 5), "zh-TW")).toBe("下午2:05");
     const occurredAt = new Date(2026, 8, 28, 14, 5).toISOString();
     const row = settingsView(idle, { ...context, now: new Date(2026, 8, 28, 20), recordingResults: [{ ...base, id: "p", occurredAt, acknowledged: false,
       outcome: "partial", partialPath: "/Users/me/Movies/RecordStuff/2026-09-28 14-05-00.recording.mp4" }] }).recordingResults![0]!;
@@ -786,7 +797,7 @@ describe("the Recordings tab", () => {
   });
   it("says it is loading or cannot read the folder instead of claiming it is empty", () => {
     expect(settingsView(idle, library({ loading: true, files: [] })).library).toEqual({ folder: "~/recordings", status: "Loading recordings…", items: [] });
-    expect(settingsView(idle, library({ failed: true, files: [] })).library?.status).toBe("Could not read the output folder.");
+    expect(settingsView(idle, library({ failed: true, files: [] })).library?.status).toBe("Could not read the output folder. Check the folder and its drive, or choose another folder.");
     expect(settingsView(idle, library({ files: [] })).library).toEqual({ folder: "~/recordings", items: [] });
     expect(settingsView(idle, context)).not.toHaveProperty("library");
   });
