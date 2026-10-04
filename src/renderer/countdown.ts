@@ -104,6 +104,8 @@ export function createCountdownView(stage: HTMLElement, onDigit?: (digit: number
   return (value) => {
     if (value === null) {
       stage.classList.remove("visible");
+      // A digit after the fade, even the same one, is new: it must show the stage again.
+      shown = undefined;
       return;
     }
     if (value === shown) return;
@@ -133,7 +135,8 @@ if (typeof window !== "undefined" && window.countdown) {
   }
   const tick = context ? (digit: number): void => {
     try {
-      if (context.state === "suspended") void context.resume();
+      // The `try` cannot catch a rejected resume; the tick then plays on a suspended context, silently.
+      if (context.state === "suspended") context.resume().catch(() => undefined);
       playTick(context, digit);
     } catch {
       // A failed tick never stops the digit.

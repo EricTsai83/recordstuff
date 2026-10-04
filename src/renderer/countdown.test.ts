@@ -27,6 +27,9 @@ describe("countdown overlay page", () => {
     expect(el.classList.contains("visible")).toBe(false);
     // The last digit stays in place while it fades.
     expect(faces(el)).toEqual([["10", true], ["2", false]]);
+    // A digit after the fade, even the one that faded, shows the stage again.
+    render(10);
+    expect([el.classList.contains("visible"), faces(el)]).toEqual([true, [["10", true], ["2", false]]]);
   });
 
   it("takes every appearance and timing value from the shared module", () => {
