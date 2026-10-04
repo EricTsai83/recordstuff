@@ -166,6 +166,8 @@ export class CaptureHost implements RecorderHost {
     readyReceived.catch(() => undefined);
     port1.start();
 
+    /** Whether the page took `port2`; until then main owns both ends, and a failed start closes this one too. */
+    let handedOver = false;
     try {
       const loaded = this.options.devUrl ? window.loadURL(this.options.devUrl) : window.loadFile(this.options.htmlPath);
       // A deadline or teardown can win the race below; destroying the window then
@@ -175,8 +177,10 @@ export class CaptureHost implements RecorderHost {
       await Promise.race([loaded, readyReceived]);
       if (this.window !== window) throw new Error("capture host was torn down during page load");
       window.webContents.postMessage(CAPTURE_HOST_PORT_CHANNEL, null, [port2]);
+      handedOver = true;
       await readyReceived;
     } finally {
+      if (!handedOver) port2.close();
       if (readyTimer) clearTimeout(readyTimer);
       if (this.abandonReady === abandon) this.abandonReady = undefined;
     }

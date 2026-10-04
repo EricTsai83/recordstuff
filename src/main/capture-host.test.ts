@@ -6,6 +6,7 @@ const mock = vi.hoisted(() => {
   const loading = vi.fn<() => Promise<void>>();
   const windows: any[] = [];
   const ports: any[] = [];
+  const channels: any[] = [];
   class Port {
     listeners: Array<(event: { data: unknown }) => void> = [];
     sent: unknown[] = [];
@@ -23,9 +24,10 @@ const mock = vi.hoisted(() => {
   }
   class MessageChannelMain {
     port1 = new Port();
-    port2 = { id: "port2" };
+    port2 = { id: "port2", close: vi.fn() };
     constructor() {
       ports.push(this.port1);
+      channels.push(this);
     }
   }
   class Window {
@@ -53,7 +55,7 @@ const mock = vi.hoisted(() => {
       windows.push(this);
     }
   }
-  return { windows, ports, Window, MessageChannelMain, loading };
+  return { windows, ports, channels, Window, MessageChannelMain, loading };
 });
 vi.mock("electron", () => ({ BrowserWindow: mock.Window, MessageChannelMain: mock.MessageChannelMain }));
 import { CaptureHost } from "./capture-host";
@@ -91,6 +93,7 @@ function setup() {
 
 beforeEach(() => {
   mock.loading.mockReset().mockResolvedValue(undefined);
+  mock.channels.length = 0;
   mock.windows.length = 0;
   mock.ports.length = 0;
   vi.useFakeTimers();
@@ -159,6 +162,8 @@ describe("capture host supervision", () => {
     await rejected;
     expect(s.window().destroy).toHaveBeenCalledOnce();
     expect(s.port().closed).toBe(true);
+    // Handed to the page, `port2` is the page's to close.
+    expect(mock.channels.at(-1).port2.close).not.toHaveBeenCalled();
   });
 
   it("reports a window closed under a running session, and not one closed between sessions", async () => {
@@ -307,6 +312,8 @@ it.each(["destroy", "deadline"])("settles a stalled page load on %s and ignores 
   else await vi.advanceTimersByTimeAsync(8000);
   await rejected;
   expect(old.destroyed).toBe(true);
+  // The page never took its end of the channel, so main closes both.
+  expect(mock.channels.at(-1).port2.close).toHaveBeenCalledOnce();
   expect(vi.getTimerCount()).toBe(0);
   await s.start("new");
   loaded();
