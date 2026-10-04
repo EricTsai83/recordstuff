@@ -637,7 +637,8 @@ describe("Recording failures tab (plan 047)", () => {
   });
 
   it("names times in the system zone of each view, even after the zone changes to one with the same offset (review batch 1)", () => {
-    const zone = process.env["TZ"];
+    // Restored by name: deleting TZ leaves Windows in the last zone set, and later tests would read Lima times.
+    const zone = process.env["TZ"] ?? new Intl.DateTimeFormat().resolvedOptions().timeZone;
     try {
       // January in New York and July in Lima are both UTC−5; a formatter kept across views would read 1:00 PM.
       process.env["TZ"] = "America/New_York";
@@ -651,7 +652,7 @@ describe("Recording failures tab (plan 047)", () => {
       expect(shortTime(new Date("2026-07-15T17:00:00Z"), "en")).toBe("12:00 PM");
       expect(show()).toBe("12:00 PM");
     } finally {
-      if (zone === undefined) delete process.env["TZ"]; else process.env["TZ"] = zone;
+      process.env["TZ"] = zone;
     }
   });
 });
