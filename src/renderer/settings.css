@@ -7,7 +7,9 @@
   --background: light-dark(#f4f4f5, #111113);
   --surface: light-dark(#fff, #1b1b1e);
   --card-border: light-dark(rgb(0 0 0 / .075), rgb(255 255 255 / .07));
-  --card-shadow: light-dark(0 1px 2px rgb(0 0 0 / .04), 0 1px 2px rgb(0 0 0 / .3));
+  /* light-dark() takes colours only: the shadow's shape is shared and its colour follows the theme (2026-10-05; whole
+     shadows inside it had made these tokens invalid, so no card or control drew one). */
+  --card-shadow: 0 1px 2px light-dark(rgb(0 0 0 / .04), rgb(0 0 0 / .3));
   --control: light-dark(#fff, #27272b);
   --control-hover: light-dark(#f7f7f8, #2f2f34);
   --border: light-dark(#d9d9de, #3a3a40);
@@ -29,7 +31,7 @@
   /* The raised selection in a tab strip or segmented control; lighter than the track in both themes, as on macOS. */
   --selected: light-dark(#fff, #3c3c43);
   --selected-shadow: 0 1px 2px rgb(0 0 0 / .12), 0 0 0 .5px rgb(0 0 0 / .06);
-  --control-shadow: light-dark(0 1px 1px rgb(0 0 0 / .04), none);
+  --control-shadow: 0 1px 1px light-dark(rgb(0 0 0 / .04), transparent);
   --radius: 7px;
   --card-radius: 12px;
   /* Where a row's text starts: past its icon tile, so notes, links and editors line up under the label. */
