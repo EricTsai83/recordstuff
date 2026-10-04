@@ -226,6 +226,20 @@ it("joins repeated clicks: one warning, brought forward, and a fresh attempt aft
   await second;
 });
 
+it("brings the folder chooser forward when a click joins while it is open", async () => {
+  const h = await harness({ custom: path.join(root, "Gone"), show: async () => ({ response: 0 }) });
+  let chosen!: () => void;
+  h.chooseFolder.mockImplementation(() => new Promise<undefined>(resolve => { chosen = () => resolve(undefined); }));
+  const first = h.open();
+  await vi.waitFor(() => expect(h.chooseFolder).toHaveBeenCalledOnce());
+  const before = h.focus.mock.calls.length;
+  expect(h.open()).toBe(first);
+  expect(h.focus).toHaveBeenCalledTimes(before + 1);
+  chosen();
+  await first;
+  expect(h.chooseFolder).toHaveBeenCalledOnce();
+});
+
 it("joins clicks while Finder is still opening without stealing focus", async () => {
   const custom = path.join(root, "Recordings");
   await fs.mkdir(custom);

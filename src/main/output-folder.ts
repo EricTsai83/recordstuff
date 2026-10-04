@@ -90,6 +90,7 @@ export function createOutputFolderOpener(deps: {
 }): () => Promise<void> {
   const io = deps.fs ?? nodeOutputFolderFs;
   let active: Promise<void> | undefined;
+  /** The warning or the folder chooser it leads to is open: a repeated click brings it forward. */
   let prompting = false;
 
   const open = async (dir: string, deniedBy?: unknown): Promise<Problem | undefined> => {
@@ -156,17 +157,17 @@ export function createOutputFolderOpener(deps: {
     const detail = text
       + ("error" in problem ? `\n\n${translate("Details: {error}", language, { error: problem.error })}` : "");
     prompting = true;
-    let response: number;
     try {
       focus();
-      ({ response } = await deps.show({
+      const { response } = await deps.show({
         type: "warning", title: APP_NAME,
         message: translate("Could not open the output folder", language), detail,
         buttons: [translate("Change output folder", language), translate("Cancel", language)],
         defaultId: 0, cancelId: 1, noLink: true,
-      }));
+      });
+      // The chooser is windowless too and can sit behind other apps; a click meanwhile must not look dead.
+      if (response === 0) await deps.chooseFolder();
     } finally { prompting = false; }
-    if (response === 0) await deps.chooseFolder();
   };
 
   return () => {
