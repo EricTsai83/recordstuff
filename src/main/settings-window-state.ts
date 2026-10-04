@@ -11,8 +11,8 @@ export interface WindowSize { width: number; height: number }
 export const DEFAULT_SETTINGS_SIZE: WindowSize = { width: 960, height: 640 };
 /**
  * The default a stored size was chosen against. One from before the sidebar (no `layout`) or from the first,
- * narrower sidebar default (`layout: 2`, 720 × 580) opens once at the current default; sizes saved since keep
- * the user's choice.
+ * narrower sidebar default (`layout: 2`, 720 × 580) is ignored, so the window opens at the current default until
+ * the user resizes it; sizes saved since keep the user's choice.
  */
 const LAYOUT = 3;
 export const MIN_SETTINGS_SIZE: WindowSize = { width: 380, height: 360 };

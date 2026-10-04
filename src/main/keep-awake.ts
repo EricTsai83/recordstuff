@@ -5,8 +5,9 @@ import { preferencesUnlocked } from "./ui-model";
  * Keeps the display and the system awake while a session runs (plan 050). An
  * idle display sleep or system sleep would end the capture, so one Electron
  * `prevent-display-sleep` blocker is held from `starting` until the state
- * settles; on macOS it also keeps idle system sleep away. A sleep the user asks
- * for cannot be refused: the Recorder stops and saves instead.
+ * settles; on every platform it keeps idle system sleep away as well as the
+ * display's. A sleep the user asks for cannot be refused: the Recorder stops
+ * and saves instead.
  */
 export interface PowerBlocker {
   start(type: "prevent-display-sleep"): number;

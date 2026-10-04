@@ -421,7 +421,8 @@ export class CaptureHost {
       if (session.finished) return;
       // Copied, not transferred: on Electron 44 a transferred ArrayBuffer over
       // this MessagePort hangs the main process (verified with a probe when the
-      // host was written). One second of media, about 1 MB, per copy is negligible.
+      // host was written). One second of media is about 1 MB at the 8 Mbps baseline and up to about 15 MB at the
+      // 60 Mbps cap at 60 fps (quality.ts); the 64 MiB hand-off bound, not the copy, is what limits a slow reader.
       this.port.postMessage({ type: "chunk", sessionId: session.id, seq, bytes } satisfies HostMessage);
     }).catch((cause: unknown) => {
       session.handoffFailed = true;
