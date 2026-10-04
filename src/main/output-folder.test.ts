@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { MessageBoxOptions } from "electron";
-import { createOutputFolderOpener, nodeOutputFolderFs, type OutputFolderFs } from "./output-folder";
+import { createOutputFolderOpener, isSameFolder, nodeOutputFolderFs, type OutputFolderFs } from "./output-folder";
 import { SettingsStore } from "./settings";
 import type { Language } from "../shared/i18n";
 
@@ -299,4 +299,10 @@ it("opens a working folder while recording work is pending without telling anyth
   expect(h.openPath).toHaveBeenCalledExactlyOnceWith(custom);
   expect(h.notify).not.toHaveBeenCalled();
   expect(h.show).not.toHaveBeenCalled();
+});
+
+it("treats the default folder written another way as the default, and nothing else (recording and the opener share the rule)", () => {
+  expect(isSameFolder("/Users/me/Movies/RecordStuff/", "/Users/me/Movies/RecordStuff")).toBe(true);
+  expect(isSameFolder("/Users/me/Movies/./RecordStuff", "/Users/me/Movies/RecordStuff")).toBe(true);
+  expect(isSameFolder("/Users/me/Movies/RecordStuff 2", "/Users/me/Movies/RecordStuff")).toBe(false);
 });

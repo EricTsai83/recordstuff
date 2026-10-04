@@ -6,6 +6,14 @@ import { APP_NAME } from "./ui-model";
 import { errnoCode, messageOf } from "./errors";
 
 /** The two filesystem calls opening may make; injectable so tests can refuse them. */
+/**
+ * Whether two folder paths name the same folder as written (`~/Movies/RecordStuff/` and `…/RecordStuff`).
+ * The default folder is the one RecordStuff may create; recording and Open output folder both ask with this.
+ */
+export function isSameFolder(a: string, b: string): boolean {
+  return path.resolve(a) === path.resolve(b);
+}
+
 export interface OutputFolderFs {
   stat(dir: string): Promise<{ isDirectory(): boolean }>;
   /** Never recursive: only the known default folder itself is ever created here. */
@@ -119,7 +127,7 @@ export function createOutputFolderOpener(deps: {
     try { stats = await io.stat(dir); }
     catch (cause) {
       if (isMissing(cause)) {
-        return path.resolve(dir) === path.resolve(deps.defaultOutputDir) ? create(dir) : { kind: "missing" };
+        return isSameFolder(dir, deps.defaultOutputDir) ? create(dir) : { kind: "missing" };
       }
       // RecordStuff may be refused where Finder is not (macOS privacy folders).
       if (isDenied(cause)) return open(dir, cause);

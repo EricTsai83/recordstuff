@@ -36,7 +36,7 @@ import { CaptureHost } from "./capture-host";
 import { CountdownOverlay } from "./countdown-overlay";
 import { FileWriter, ensureWritableDir } from "./file-writer";
 import { KeepAwake } from "./keep-awake";
-import { createOutputFolderOpener } from "./output-folder";
+import { createOutputFolderOpener, isSameFolder } from "./output-folder";
 import { createUncaughtExceptionHandler } from "./fault-dialog";
 import { createFileLogger, flushBeforeExit } from "./log";
 import { stackOf } from "./errors";
@@ -275,8 +275,9 @@ async function main(): Promise<void> {
     countdownSeconds,
     countdownSound,
     countdown: overlay,
+    // Only RecordStuff's own folders are created; a chosen one that is missing may be an offline drive.
     ensureWritableDir: dir => ensureWritableDir(dir, undefined,
-      dir === settings.defaultOutputDir || dir === outputDirOverride),
+      isSameFolder(dir, settings.defaultOutputDir) || dir === outputDirOverride),
     openWriter: (recordingPath, finalPath) => FileWriter.open(recordingPath, finalPath),
     freeSpace: async (dir) => { const volume = await fs.statfs(dir); return volume.bavail * volume.bsize; },
     sentinels,
