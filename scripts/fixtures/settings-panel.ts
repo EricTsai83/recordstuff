@@ -681,11 +681,11 @@ async function run() {
         if (state === "recording" || state === "locked") {
           // The status card speaks only when there is something to say (2026-10-04): never while ready, and a busy
           // app keeps its title in view at every size. The sidebar's foot carries the credit and links when wide.
-          const card = await read<{ shown: boolean; tone: string; foot: boolean; links: number }>(window, `(() => { const el = document.getElementById("status"), foot = document.getElementById("sidebar-about");
-            return { shown: el.getBoundingClientRect().height > 0, tone: el.dataset.tone ?? "", foot: foot.getBoundingClientRect().height > 0, links: foot.querySelectorAll(".sidebar-link").length }; })()`);
+          const card = await read<{ shown: boolean; tone: string; foot: boolean; links: number; quit: string }>(window, `(() => { const el = document.getElementById("status"), foot = document.getElementById("sidebar-about");
+            return { shown: el.getBoundingClientRect().height > 0, tone: el.dataset.tone ?? "", foot: foot.getBoundingClientRect().height > 0, links: foot.querySelectorAll(".sidebar-link").length, quit: foot.querySelector(".sidebar-quit")?.textContent ?? "" }; })()`);
           const expected = (state === "locked" ? card.shown && card.tone === "busy" : !card.shown && card.tone === "ready")
-            && (size === "default" ? card.foot && card.links === 2 : !card.foot);
-          record(`${lang}/${scheme}/${size}/${state}: the status card speaks only when needed; the credit sits in the sidebar when wide`, expected, JSON.stringify(card));
+            && (size === "default" ? card.foot && card.links === 2 && card.quit === translate("Quit RecordStuff", lang) : !card.foot);
+          record(`${lang}/${scheme}/${size}/${state}: the status card speaks only when needed; the credit and Quit RecordStuff sit in the sidebar when wide`, expected, JSON.stringify(card));
         }
         await shot(`panel-${lang}-${scheme}-${size}-${state}.png`);
         if (state === "library") {
@@ -968,8 +968,9 @@ async function run() {
   // General's own footer is the narrow layout's; the sidebar carries it when wide (2026-10-04).
   window.setSize(560, 760);
   await settle(100);
-  const footer = await read<boolean>(window, `(() => { const row = document.getElementById("setting-about-row"); const buttons = [...row.querySelectorAll(".controls button")]; const credit = row.querySelector(".group-label"); return credit.textContent.includes("Eric Tsai") && buttons.length === 2 && buttons.every(b => b.querySelector("svg") && b.getAttribute("aria-label") && b.title === b.getAttribute("aria-label")) && credit.getBoundingClientRect().right <= buttons[0].getBoundingClientRect().left; })()`);
-  record("narrow footer credits Eric Tsai on the left with two labeled icon links on the right", footer, String(footer));
+  const footer = await read<boolean>(window, `(() => { const row = document.getElementById("setting-about-row"); const buttons = [...row.querySelectorAll(".controls button")]; const credit = row.querySelector(".group-label"); return credit.textContent.includes("Eric Tsai") && buttons.map(b => b.dataset.action).join() === "website,source,quit" && buttons.every(b => b.querySelector("svg") && b.getAttribute("aria-label") && b.title === b.getAttribute("aria-label")) && credit.getBoundingClientRect().right <= buttons[0].getBoundingClientRect().left; })()`);
+  // Quit RecordStuff joins the links there (2026-10-05); the wide sidebar gives it a row with its words.
+  record("narrow footer credits Eric Tsai on the left with the website, source and Quit RecordStuff as labeled icons on the right", footer, String(footer));
   const logRow = await read<boolean>(window, `(() => { const row = document.getElementById("setting-log-row"); const show = document.getElementById("setting-log-show"); return Boolean(row?.querySelector(".row-icon")) && row.querySelector(".group-label").textContent === "Log file" && show?.textContent === "Show log" && !show.disabled; })()`);
   record("Show log is a labelled row of its own, with an icon and a text button", logRow, String(logRow));
   await read(window, `document.getElementById("setting-about-website").click()`);

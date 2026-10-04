@@ -13,7 +13,6 @@ import { SettingsWindowState } from "./settings-window-state";
 import { DisplayMedia } from "./display-media";
 import { isDisplayInfo, type DisplayInfo } from "../shared/display";
 import {
-  Menu,
   app,
   desktopCapturer,
   dialog,
@@ -52,6 +51,7 @@ import { SettingsStore } from "./settings";
 import { parseAutoRecord, runAutoRecord } from "./autorecord";
 import { UpdateChecker, fetchVersion, DOWNLOAD_URL, RELEASES_URL, SOURCE_URL, WEBSITE_URL } from "./updates";
 import { AppTray } from "./tray";
+import { AppMenu } from "./app-menu";
 import { SettingsWindow } from "./settings-window";
 import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "./recordings-library";
 import { APP_NAME, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
@@ -159,19 +159,15 @@ async function main(): Promise<void> {
   app.setAppUserModelId(app.isPackaged ? APP_ID : process.execPath);
   // Closing Settings must leave the menu-bar recorder running.
   app.on("window-all-closed", () => undefined);
+  // A menu-bar app from its first moment: the bundle declares no LSUIElement (app-menu.ts), so the Dock icon is
+  // hidden as the app finishes launching, where macOS reads the policy, and again once ready.
+  if (process.platform === "darwin") app.once("will-finish-launching", () => app.dock?.hide());
 
   // The Recordings tab's videos and thumbnails (recordings-library.ts): a standard, streaming scheme, so
   // <video> can fetch byte ranges. Only privileged before ready.
   protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { ...MEDIA_SCHEME_PRIVILEGES } }]);
   await app.whenReady();
   if (process.platform === "darwin") app.dock?.hide();
-  // Without a menu Electron installs its default one, whose Reload and Developer
-  // Tools shortcuts work in Settings even in a release build. macOS draws no menu
-  // bar here but still routes key equivalents through the menu, so it keeps Quit,
-  // Hide, copy and paste, and Minimize; elsewhere no menu removes the menu bar.
-  Menu.setApplicationMenu(process.platform === "darwin"
-    ? Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }, { role: "windowMenu" }])
-    : null);
 
   const settings = new SettingsStore({
     filePath: path.join(app.getPath("userData"), "settings.json"),
@@ -179,6 +175,15 @@ async function main(): Promise<void> {
     log,
   });
   nativeTheme.themeSource = settings.appearance;
+  // Without a menu Electron installs its default one, whose Reload and Developer Tools shortcuts work in Settings
+  // even in a release build. It is installed before any window, in the saved language; while the window is open
+  // the menu bar shows it with a Record menu.
+  const appMenu = new AppMenu({
+    state: () => recorder.state, context: () => appContext(), language: () => settings.language,
+    onAction: action => runAction(action, "app menu"), log,
+    // Hiding leaves only the menu bar's icon, as closing does; Quit alone ends RecordStuff.
+    hide: () => { settingsWindow.hide(); appMenu.windowClosed(); },
+  });
   const library = new RecordingsLibrary({
     dir: () => settings.outputDir,
     // Only Settings shows the listing; the tray has nothing to redraw.
@@ -399,7 +404,8 @@ async function main(): Promise<void> {
     capture: armed => shortcuts.capture(armed),
     // While the window is open the Recordings tab follows the folder: a video deleted in Finder leaves at once.
     activated: () => { library.watch(); void library.refresh(); },
-    closed: () => library.unwatch(),
+    opened: () => appMenu.windowOpened(),
+    closed: () => { library.unwatch(); appMenu.windowClosed(); },
     drag: async (contents, id) => {
       const file = library.find(id);
       if (!file) return false;
@@ -429,15 +435,17 @@ async function main(): Promise<void> {
     onAction: (action) => runAction(action, "tray"),
     log,
   });
-  /** The tray and the settings panel project the same state; they move together. */
+  /** The tray, the settings panel and the menu bar's Record menu project the same state; they move together. */
   function renderUi(state: RecordingState): void {
     tray.render(state);
     settingsWindow.refresh();
+    appMenu.refresh();
   }
   /** Context changed while the state did not (output folder, language, quality). */
   function refreshUi(): void {
     tray.refresh();
     settingsWindow.refresh();
+    appMenu.refresh();
   }
   renderUi(recorder.state);
   faultWiring.recorder = recorder;

@@ -410,6 +410,8 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
     { ...group("about", t("Built by Eric Tsai", ctx.language), true, [
       { id: "website", label: t("Official website", ctx.language), enabled: true, checked: false, action: "openWebsite" },
       { id: "source", label: t("GitHub source", ctx.language), enabled: true, checked: false, action: "openSource" },
+      // Closing the window leaves RecordStuff in the menu bar: this ends it, as the tray's Quit does (2026-10-05).
+      { id: "quit", label: t("Quit RecordStuff", ctx.language), enabled: true, checked: false, action: "quit" },
     ], ctx.version ? t("Version {version}", ctx.language, { version: ctx.version }) : undefined), kind: "actions" },
   ];
 }

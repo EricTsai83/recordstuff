@@ -199,6 +199,22 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
 }
 
 /**
+ * The Record menu in the macOS menu bar, and the Dock icon's menu, while the window is open (2026-10-04, at the
+ * maintainer's request): the tray's state actions, Stop named in full since no state line stands above it, then
+ * the newest take. The state lines stay in the tray: a countdown rewrites its line every second, which would
+ * rebuild a menu the user may have open. A state with no action, saving or a quit in progress, keeps its line.
+ */
+export function recordMenu(state: RecordingState, ctx: AppContext): TrayMenuItem[] {
+  const menu = trayModel(state, ctx).menu;
+  const end = menu.findIndex(entry => entry.kind === "separator");
+  const stateGroup = menu.slice(0, end < 0 ? menu.length : end);
+  const actions = stateGroup.flatMap(entry => entry.kind === "item" && entry.action !== undefined
+    ? [entry.action === "stop" ? { ...entry, label: t("Stop recording", ctx.language) } : entry] : []);
+  const last = menu.find(entry => entry.kind === "item" && entry.action === "showLastRecording");
+  return [...(actions.length ? actions : stateGroup.slice(0, 1)), ...(last ? [SEPARATOR, last] : [])];
+}
+
+/**
  * The menu as `tray: menu opened` logs it each time it pops up (plan 063):
  * what Electron is given, so a native acceptance runner can compare the NSMenu
  * it reads through Accessibility with the production model for the same state.

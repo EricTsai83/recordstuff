@@ -116,6 +116,6 @@ Main 持有影片 handle；設定與 log 模組也會寫自己的檔案，因此
 
 ## 啟動與關閉
 
-Main 先建立 logger、註冊未捕捉錯誤處理並取得 single-instance lock。ready 後隱藏 Dock、載入設定、註冊 display-media handler、組裝 Recorder／host／權限 watcher／Tray、訂閱事件並開始權限輪詢。每次錄影嘗試都建立新的 capture renderer，有倒數時另建 overlay 視窗，嘗試結束時由 main 一併銷毀；錄影之間不保留 capture 或 overlay renderer，也沒有心跳 timer。
+Main 先建立 logger、註冊未捕捉錯誤處理並取得 single-instance lock。在 App 完成啟動前及 ready 後隱藏 Dock（App 套件不宣告 `LSUIElement`；macOS 上只在視窗開著時連同選單列的選單一起出現）、載入設定、註冊 display-media handler、組裝 Recorder／host／權限 watcher／Tray、訂閱事件並開始權限輪詢。每次錄影嘗試都建立新的 capture renderer，有倒數時另建 overlay 視窗，嘗試結束時由 main 一併銷毀；錄影之間不保留 capture 或 overlay renderer，也沒有心跳 timer。
 
 `window-all-closed` 不退出 App。`before-quit` 一律先等 `Recorder.shutdown()`（即使 tray 已 idle，也包含 failure cleanup），再等設定、視窗尺寸與 log 寫入以及失敗歷史保存，之後才再次 quit（[延後退出](desktop.md#延後退出)）；`will-quit` 停止權限輪詢並銷毀 host、overlay 與 Tray。硬斷電、main 強制終止、阻塞磁碟並不具有完整落盤保證。

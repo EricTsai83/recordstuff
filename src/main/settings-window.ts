@@ -68,6 +68,8 @@ export interface SettingsWindowOptions {
   act: (action: AppAction) => Promise<boolean | void>;
   capture?: (armed: boolean) => void;
   geometry?: Pick<SettingsWindowState, "size" | "save"> & Partial<Pick<SettingsWindowState, "flush">>;
+  /** The window is about to be shown: on macOS the app becomes a Dock app with its menus while it is open (app-menu.ts). */
+  opened?: () => void;
   /** The window was shown or regained focus: what it lists from disk may have changed meanwhile. */
   activated?: () => void;
   /** The window closed or its page died: nothing needs to follow the disk for it any more. */
@@ -101,6 +103,8 @@ export class SettingsWindow {
   private lease: CaptureLease | undefined;
   private captureTimedOut = false;
   private window: BrowserWindow | undefined;
+  /** Hidden by Hide RecordStuff until it is opened again: a first paint still pending must not show it (review pass 2, F2). */
+  private hiddenByUser = false;
   /** The current window was shown with its content; before that, its own reveal shows it. */
   private painted = false;
   /** Shows the current window once its page reports its first content, or `ready-to-show` plus a fallback. */
@@ -197,11 +201,25 @@ export class SettingsWindow {
     this.show(true);
   }
 
+  /**
+   * Hide RecordStuff (⌘H, app-menu.ts): the window goes out of sight as it is, and comes back as it was the next
+   * time it is opened. A shortcut being recorded is let go.
+   */
+  hide(): void {
+    const window = this.window;
+    if (!window || window.isDestroyed()) return;
+    this.hiddenByUser = true;
+    this.release(this.leaseOf(window));
+    window.hide();
+  }
+
   show(resultEntry = false): void {
+    this.hiddenByUser = false;
     this.resultEntry = resultEntry;
     // A menu-bar app has no Dock icon, so showing a window does not bring the
     // app forward on its own; without this the panel can open behind the
     // frontmost app, the same reason index.ts focuses before a file dialog.
+    this.options.opened?.();
     if (process.platform === "darwin") app.focus({ steal: true });
     this.options.activated?.();
     const existing = this.window;
@@ -248,6 +266,8 @@ export class SettingsWindow {
       clearTimeout(revealTimer);
       if (this.window !== window || this.painted || window.isDestroyed()) return;
       this.painted = true;
+      // Painted while hidden: it stays hidden, and the next open shows it as it is.
+      if (this.hiddenByUser) return;
       window.show();
       window.focus();
     };

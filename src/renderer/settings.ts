@@ -417,7 +417,7 @@ function updateRows(groups: SettingsGroup[]): void {
     }
   }
 }
-/** The About links' marks: a globe for the website, the GitHub mark for the source. */
+/** The About actions' marks: a globe for the website, the GitHub mark for the source, a power sign for Quit. */
 function aboutIcon(choiceId: string): SVGSVGElement {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("aria-hidden", "true"); svg.setAttribute("focusable", "false");
@@ -425,6 +425,10 @@ function aboutIcon(choiceId: string): SVGSVGElement {
   if (choiceId === "website") {
     svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.6");
     path.setAttribute("d", "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z");
+  } else if (choiceId === "quit") {
+    svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.7");
+    svg.setAttribute("stroke-linecap", "round");
+    path.setAttribute("d", "M12 3v8M6.3 6.8a8 8 0 1 0 11.4 0");
   } else {
     svg.setAttribute("fill", "currentColor");
     path.setAttribute("d", "M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.54v-2.07c-3.1.67-3.76-1.31-3.76-1.31-.51-1.28-1.24-1.62-1.24-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.14 1.71 1.14 1 .1.74 1.89 3.26 1.2.1-.73.4-1.23.71-1.51-2.48-.28-5.08-1.24-5.08-5.52 0-1.22.44-2.22 1.14-3-.11-.28-.5-1.41.11-2.94 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.61 1.53.22 2.66.11 2.94.71.78 1.14 1.78 1.14 3 0 4.29-2.61 5.23-5.1 5.51.4.35.75 1.02.75 2.06v3.05c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z");
@@ -896,15 +900,18 @@ function updateSidebarAbout(current: SettingsView): void {
   const links = sidebarAbout.querySelector<HTMLElement>(".sidebar-links")!;
   for (const choice of about.choices) {
     const id = `sidebar-about-${choice.id}`;
+    // Quit is read, not guessed from a mark: a row of its own under the credit, with its words (2026-10-05).
+    const quit = choice.id === "quit";
     let link = document.getElementById(id) as HTMLButtonElement | null;
     if (!link) {
       link = button(id, () => { if (!inactive(link!)) void choose("about", choice.id, id); });
-      link.className = "sidebar-link";
+      link.className = quit ? "sidebar-quit" : "sidebar-link";
       link.append(aboutIcon(choice.id));
-      links.append(link);
+      if (quit) { link.append(node("span", "sidebar-quit-label")); sidebarAbout.append(link); } else links.append(link);
     }
+    if (quit) setText(link.querySelector(".sidebar-quit-label")!, choice.label);
     // An icon alone, named for assistive technology and in its tooltip, as in General's narrow footer.
-    if (link.getAttribute("aria-label") !== choice.label) { link.setAttribute("aria-label", choice.label); link.title = choice.label; }
+    else if (link.getAttribute("aria-label") !== choice.label) { link.setAttribute("aria-label", choice.label); link.title = choice.label; }
     setActionDisabled(link, !about.enabled || !choice.enabled, Boolean(saving));
   }
 }

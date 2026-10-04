@@ -869,6 +869,11 @@ describe("the menu's support items in RecordStuff (2026-10-04)", () => {
     expect(group(idle, context, "log")).toMatchObject({ label: "Log file", kind: "actions", sectionHeading: "Troubleshooting", choices: [{ id: "show", label: "Show log" }] });
     expect(group(idle, { ...context, language: "zh-TW" }, "log")).toMatchObject({ label: "記錄檔（log）", sectionHeading: "疑難排解", choices: [{ label: "顯示 log" }] });
     expect(settingsAction(busy[2]!, context, "log", "show")).toBe("revealLog");
-    expect(group(idle, context, "about")?.choices.map(c => c.id)).toEqual(["website", "source"]);
+    expect(group(idle, context, "about")?.choices.map(c => c.id)).toEqual(["website", "source", "quit"]);
+  });
+  it("offers Quit RecordStuff in the window, since closing it leaves the menu-bar recorder running (2026-10-05)", () => {
+    expect(group(idle, { ...context, language: "zh-TW" }, "about")?.choices.find(c => c.id === "quit")).toMatchObject({ label: "結束 RecordStuff", enabled: true });
+    // Also while recording: the quit waits for the recording to be saved, as the tray's Quit does.
+    expect(settingsAction(busy[2]!, context, "about", "quit")).toBe("quit");
   });
 });

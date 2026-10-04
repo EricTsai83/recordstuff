@@ -9,6 +9,7 @@ import {
   hotkeyRegistrationFailedNotification,
   recordingFailureNotification,
   savedNotification,
+  recordMenu,
   trayModel,
   type TrayMenuItem,
 } from "./tray-model";
@@ -525,5 +526,29 @@ describe("the icon's left click in the tray's own words (2026-10-04)", () => {
     expect(trayHintNotification("darwin", "en", "menu").body).toBe("RecordStuff is ready in the menu bar. Click its icon and choose Start recording.");
     expect(trayHintNotification("win32", "zh-TW", "menu").body).toBe("RecordStuff 在系統匣待命。點圖示並選「開始錄影」即可開始。");
     expect(trayHintNotification("darwin", "en").body).toBe("RecordStuff is ready in the menu bar. Click to start recording; click again to stop.");
+  });
+});
+
+describe("the menu bar's Record menu while the window is open (2026-10-04)", () => {
+  const actions = (menu: TrayMenuItem[]) => menu.map(m => m.kind === "separator" ? "—" : `${m.label}${m.enabled ? "" : " (disabled)"}${m.accelerator ? ` ${m.accelerator}` : ""}`);
+  it("holds the tray's state actions without their lines, Stop in full, then the newest take", () => {
+    const shortcut = mac.hotkey.accelerator;
+    expect(actions(recordMenu({ type: "idle" }, mac))).toEqual([`開始錄影 ${shortcut}`, "—", "顯示最後一個錄影"]);
+    expect(actions(recordMenu({ type: "recording", startedAt: "2026-10-04T00:00:00Z" }, mac))).toEqual([`停止錄影 ${shortcut}`, "—", "顯示最後一個錄影"]);
+    expect(actions(recordMenu({ type: "needsPermission", needsRelaunch: false }, mac))).toEqual(["開啟系統設定", "已經允許了？重新啟動 RecordStuff", "—", "顯示最後一個錄影"]);
+    // Saving has no action: its line stays, so the menu never stands empty.
+    expect(actions(recordMenu({ type: "stopping" }, mac))).toEqual(["儲存中… (disabled)", "—", "顯示最後一個錄影"]);
+  });
+  it("stays the same through a countdown, so a menu held open is not rebuilt every second", () => {
+    expect(recordMenu({ type: "countdown", remaining: 3 }, mac)).toEqual(recordMenu({ type: "countdown", remaining: 2 }, mac));
+    expect(actions(recordMenu({ type: "countdown", remaining: 3 }, mac))[0]).toBe(`取消錄影 ${mac.hotkey.accelerator}`);
+  });
+  it("names no shortcut while it is not registered, as while the editor records a new one", () => {
+    const suspended = { ...mac, hotkey: { ...mac.hotkey, registered: false } };
+    expect(actions(recordMenu({ type: "idle" }, suspended))[0]).toBe("開始錄影");
+  });
+  it("offers nothing to act on while a quit is in progress", () => {
+    const quitting = recordMenu({ type: "recording", startedAt: "2026-10-04T00:00:00Z" }, { ...mac, quitting: true });
+    expect(quitting.every(m => m.kind === "separator" || !m.enabled)).toBe(true);
   });
 });

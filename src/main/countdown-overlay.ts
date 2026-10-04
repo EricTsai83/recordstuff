@@ -103,7 +103,7 @@ export class CountdownOverlay implements CountdownPresenter {
     this.value = undefined;
     this.visible = false;
     window.setAlwaysOnTop(true, "screen-saver");
-    // The process is already an accessory app (no Dock icon); transforming it would flash windows.
+    // Transforming the process would flash windows: it is an accessory app, or a regular one while Settings is open.
     window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     window.setIgnoreMouseEvents(true);
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));

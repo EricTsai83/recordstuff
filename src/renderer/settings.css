@@ -347,7 +347,7 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
   .status-detail, #hint { line-height: 1.5; margin-top: 3px; }
   .status-action { grid-column: 1 / -1; width: 100%; }
   /* The sidebar's foot carries the credit, version and links, so General's own footer gives way to it. */
-  .sidebar-about:not([hidden]) { grid-column: 1; grid-row: 5; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 12px 14px; padding: 12px 2px 0 6px; border-top: 1px solid var(--card-border); }
+  .sidebar-about:not([hidden]) { grid-column: 1; grid-row: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 12px 14px; padding: 12px 2px 0 6px; border-top: 1px solid var(--card-border); }
   .section.about { display: none; }
 }
 .sidebar-text { min-width: 0; }
@@ -358,6 +358,10 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .sidebar-link { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 6px; border: 0; border-radius: 7px; background: transparent; box-shadow: none; color: var(--secondary); }
 :is(button, select).sidebar-link:enabled:not([aria-disabled="true"]):hover { background: var(--nav-selected, transparent); color: var(--text); }
 .sidebar-link svg { width: 16px; height: 16px; }
+/* Quit, under the credit: a quiet row with its words, as the sidebar's tabs are. */
+.sidebar-quit { flex: 1 0 100%; display: flex; align-items: center; gap: 8px; min-height: 0; margin: 0 -6px; padding: 6px; border: 0; border-radius: 7px; background: transparent; box-shadow: none; color: var(--secondary); font-weight: 400; text-align: start; }
+:is(button, select).sidebar-quit:enabled:not([aria-disabled="true"]):hover { background: var(--nav-selected, transparent); color: var(--text); }
+.sidebar-quit svg { flex: none; width: 15px; height: 15px; }
 /* macOS draws the window controls inset at the top-left: the page leaves them room and a strip to drag the window by. */
 :root[data-platform="darwin"] .titlebar { position: fixed; top: 0; left: 0; right: 0; height: 40px; -webkit-app-region: drag; z-index: 1; }
 :root[data-platform="darwin"] main { padding-top: 40px; }

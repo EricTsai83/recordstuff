@@ -25,8 +25,9 @@ mac:
   entitlementsInherit: resources/entitlements.mac.plist
   # The supported release command supplies and verifies the fixed self-signed identity.
   notarize: false
+  # No LSUIElement (2026-10-05): main hides the Dock icon as it launches and shows it while the window is open,
+  # so reopening from Finder or Spotlight brings RecordStuff's own menus (src/main/app-menu.ts).
   extendInfo:
-    LSUIElement: true
     NSScreenCaptureUsageDescription: RecordStuff needs screen recording access to capture the primary display and system audio.
     NSAudioCaptureUsageDescription: RecordStuff records audio played by your computer.
 dmg:

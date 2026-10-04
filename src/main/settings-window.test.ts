@@ -84,7 +84,7 @@ const context: AppContext = {
 };
 
 /** A panel wired to a mutable copy of the committed settings. */
-function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; closed?: () => void } = {}) {
+function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void } = {}) {
   const live = { ...context };
   let state: RecordingState = { type: "idle" };
   const act = overrides.act ?? vi.fn(async (action: AppAction) => {
@@ -94,6 +94,7 @@ function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>
   const capture = vi.fn();
   const panel = new SettingsWindow({
     ...(overrides.geometry ? { geometry: overrides.geometry } : {}),
+    ...(overrides.opened ? { opened: overrides.opened } : {}),
     ...(overrides.closed ? { closed: overrides.closed } : {}),
     capture,
     state: overrides.state ?? (() => state),
@@ -182,6 +183,42 @@ describe("settings window lifecycle", () => {
     expect(closed).toHaveBeenCalledTimes(2);
     s.panel.destroy();
     expect(closed).toHaveBeenCalledTimes(2);
+  });
+
+  it("hides its window as it is on Hide RecordStuff and shows it again as it was (2026-10-05)", () => {
+    const opened = vi.fn();
+    const s = setup({ opened });
+    s.panel.show();
+    const window = s.window();
+    ready(window);
+    window.hide = vi.fn();
+    s.panel.hide();
+    expect([window.hide.mock.calls.length, window.destroyed ?? false]).toEqual([1, false]);
+    window.show.mockClear();
+    s.panel.show();
+    // The same window, not a new one, and the app is told it is opening again.
+    expect([mock.windows.length, window.show.mock.calls.length, opened.mock.calls.length]).toEqual([1, 1, 2]);
+  });
+  it("keeps a window hidden while it was still loading hidden, and shows it on the next open (review pass 2, F2)", () => {
+    const s = setup();
+    s.panel.show();
+    const window = s.window();
+    window.hide = vi.fn();
+    s.panel.hide();
+    window.show.mockClear();
+    // Its first paint arrives after Hide: it stays out of sight.
+    ready(window);
+    expect(window.show).not.toHaveBeenCalled();
+    s.panel.show();
+    expect(window.show).toHaveBeenCalledOnce();
+  });
+  it("says before every show that its window is opening, so the app can take its Dock icon and menus (app-menu.ts)", () => {
+    const opened = vi.fn();
+    const s = setup({ opened });
+    s.panel.show();
+    expect(opened).toHaveBeenCalledTimes(1);
+    s.panel.show();
+    expect(opened).toHaveBeenCalledTimes(2);
   });
 
   it("opens one sandboxed window, brings the menu-bar app forward, and reuses it", () => {
