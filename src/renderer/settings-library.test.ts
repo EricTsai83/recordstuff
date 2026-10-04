@@ -97,6 +97,8 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   const items = (): string[] => [...menu.querySelectorAll("[role=menuitem]")].map(el => el.textContent ?? "");
   expect([("open" in menu.dataset), more.getAttribute("aria-expanded"), items(), document.activeElement?.id])
     .toEqual([true, "true", ["Show in Finder", "Open", "Move to Trash"], "clip-menu-reveal"]);
+  // Named for the recording it acts on, by the button it opened from.
+  expect([menu.getAttribute("aria-labelledby"), more.getAttribute("aria-controls")]).toEqual(["clip-a-more", "clip-menu"]);
   // Arrows move through it; Escape closes it, not the window, and gives focus back.
   menu.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
   expect(document.activeElement?.id).toBe("clip-menu-trash");

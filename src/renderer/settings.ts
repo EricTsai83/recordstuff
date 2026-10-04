@@ -992,7 +992,7 @@ function clipCard(id: string): HTMLElement {
   open.append(thumb, label);
   // What can be done with the file, before it is opened (2026-10-04): this button, or a right-click on the card.
   const more = button(`clip-${id}-more`, () => toggleClipMenu(id, more));
-  more.className = "clip-more"; more.setAttribute("aria-haspopup", "menu"); more.setAttribute("aria-expanded", "false");
+  more.className = "clip-more"; more.setAttribute("aria-haspopup", "menu"); more.setAttribute("aria-expanded", "false"); more.setAttribute("aria-controls", "clip-menu");
   more.append(icon("more", "more-icon")!);
   card.append(open, more);
   card.addEventListener("contextmenu", event => { event.preventDefault(); openClipMenu(id, more, { x: event.clientX, y: event.clientY }); });
@@ -1063,6 +1063,8 @@ function openClipMenu(id: string, anchor: HTMLButtonElement, at?: { x: number; y
   setText(el.querySelector("#clip-menu-reveal")!, text(mac ? "Show in Finder" : "Open folder"));
   setText(el.querySelector("#clip-menu-open")!, text("Open"));
   setText(el.querySelector("#clip-menu-trash")!, text(mac ? "Move to Trash" : "Move to Recycle Bin"));
+  // One menu serves every card: it takes the name of the ⋯ button it opened from, "More actions for Today, 2:02 PM".
+  el.setAttribute("aria-labelledby", anchor.id);
   el.showPopover?.();
   const box = anchor.getBoundingClientRect(), size = el.getBoundingClientRect();
   // Kept relative to the ⋯ button, so the menu moves with its card when the panel scrolls.
