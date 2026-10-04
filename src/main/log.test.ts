@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
+import { promises as logFs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFileLogger, flushBeforeExit, rotateLog, rotatedPath } from "./log";
 
 let dir: string;
@@ -87,6 +88,43 @@ describe("createFileLogger", () => {
     expect(await read(rotatedPath(filePath, 2))).toEqual(["line 3", "line 4"]);
     expect(await exists(rotatedPath(filePath, 3))).toBe(false);
     expect(err).toEqual([]);
+  });
+
+  it("keeps writing to the active file when another process blocks its rotation, says so there, and does not retry every line", async () => {
+    const log = logger({ maxBytes: 40, keep: 1 });
+    log("line 1"); log("line 2");
+    await log.flush();
+    // Windows refuses to rename a file a viewer or a scanner holds open.
+    const rename = vi.spyOn(logFs, "rename").mockRejectedValue(Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" }));
+    try {
+      for (let i = 3; i <= 6; i += 1) log(`line ${i}`);
+      await log.flush();
+      expect(rename).toHaveBeenCalledTimes(1);
+    } finally { rename.mockRestore(); }
+    const text = await fs.readFile(filePath, "utf8");
+    expect(text.match(/line \d/g)).toEqual(["line 1", "line 2", "line 3", "line 4", "line 5", "line 6"]);
+    expect(text.match(/could not rotate/g)).toHaveLength(1);
+    expect(err).toEqual([]);
+  });
+
+  it("loses no further archive while the active file's rename keeps failing (review batch 4)", async () => {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    for (const index of [1, 2, 3]) await fs.writeFile(rotatedPath(filePath, index), `archive ${index}\n`);
+    await fs.writeFile(filePath, "active\n");
+    const rename = logFs.rename.bind(logFs);
+    const blocked = vi.spyOn(logFs, "rename").mockImplementation(async (from, to) => {
+      if (from === filePath) throw Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+      return rename(from, to);
+    });
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) await expect(rotateLog(filePath, 3)).rejects.toThrow("EBUSY");
+    } finally { blocked.mockRestore(); }
+    // The first attempt dropped the oldest archive, as a rotation does; the retries moved nothing.
+    const read = (index: number) => fs.readFile(rotatedPath(filePath, index), "utf8").catch(() => undefined);
+    expect([await read(1), await read(2), await read(3)]).toEqual([undefined, "archive 1\n", "archive 2\n"]);
+    // Once the file is free the gap takes it, still without dropping anything.
+    await rotateLog(filePath, 3);
+    expect([await read(1), await read(2), await read(3)]).toEqual(["active\n", "archive 1\n", "archive 2\n"]);
   });
 
   it("does not rotate while the file is at or under maxBytes", async () => {
@@ -204,14 +242,14 @@ describe("rotateLog", () => {
     expect(await exists(rotatedPath(filePath, 4))).toBe(false);
   });
 
-  it("skips missing links in the chain", async () => {
+  it("fills the first gap in the chain and moves nothing past it", async () => {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, "active");
     await fs.writeFile(rotatedPath(filePath, 2), "two");
     await rotateLog(filePath, 3);
     expect(await fs.readFile(rotatedPath(filePath, 1), "utf8")).toBe("active");
-    expect(await exists(rotatedPath(filePath, 2))).toBe(false);
-    expect(await fs.readFile(rotatedPath(filePath, 3), "utf8")).toBe("two");
+    expect(await fs.readFile(rotatedPath(filePath, 2), "utf8")).toBe("two");
+    expect(await exists(rotatedPath(filePath, 3))).toBe(false);
   });
 
   it("removes the active file when no archives are kept", async () => {

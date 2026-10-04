@@ -7,7 +7,8 @@
  * archives. The size is read from disk once per process and counted from
  * then on; the running app is the file's only rotating writer (a second
  * instance that loses the single-instance lock appends its one line unbounded). A full disk or a removed logs folder only
- * skips lines: the next line looks again and, once written, says how many the file missed. Any
+ * skips lines: the next line looks again and, once written, says how many the file missed. A rotation
+ * another process blocks keeps appending to the active file and retries later. Any
  * other failed write is reported to stderr once; after that the logger keeps writing to stdout
  * only so logging can never take the app down.
  */
@@ -21,6 +22,8 @@ const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 const TRANSIENT_WRITE_ERRORS = new Set(["ENOSPC", "ENOENT"]);
 /** Lines waiting for the file beyond this are dropped from it; stdout still gets every line. */
 const MAX_QUEUED_BYTES = 1024 * 1024;
+/** After a failed rotation the file keeps growing; rotation is tried again once it has grown this much more. */
+const ROTATION_RETRY_BYTES = 512 * 1024;
 export const DEFAULT_KEEP = 3;
 
 export interface FileLoggerOptions {
@@ -45,13 +48,20 @@ export function rotatedPath(filePath: string, index: number): string {
 
 /**
  * Shift the archive chain by one: drop `.keep`, move `.N` to `.N+1`, then move
- * the active file to `.1`. Missing links are skipped; with `keep` 0 the active
- * file is removed. The logger's own rotation, exported for the log readers' tests.
+ * the active file to `.1`. The shift stops at the first free slot, so nothing
+ * past a gap moves or is dropped: a rotation whose last rename failed (another
+ * process holds the active file) loses no further archive when it is tried
+ * again (review batch 4). With `keep` 0 the active file is removed. The
+ * logger's own rotation, exported for the log readers' tests.
  */
 export async function rotateLog(filePath: string, keep: number): Promise<void> {
   if (keep === 0) { await fs.promises.rm(filePath, { force: true }); return; }
-  await fs.promises.rm(rotatedPath(filePath, keep), { force: true });
-  for (let index = keep - 1; index >= 0; index--) {
+  let free = keep;
+  for (let index = 1; index < keep; index++) {
+    if (!await fs.promises.access(rotatedPath(filePath, index)).then(() => true, () => false)) { free = index; break; }
+  }
+  if (free === keep) await fs.promises.rm(rotatedPath(filePath, keep), { force: true });
+  for (let index = free - 1; index >= 0; index--) {
     try { await fs.promises.rename(index ? rotatedPath(filePath, index) : filePath, rotatedPath(filePath, index + 1)); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   }
@@ -87,6 +97,8 @@ export function createFileLogger(options: FileLoggerOptions): FileLog {
   const now = options.now ?? (() => new Date());
   let fileEnabled = true;
   let size: number | undefined;
+  /** The size above which the next write rotates first; past `maxBytes` only after a rotation failed. */
+  let rotateAbove = maxBytes;
   let queuedBytes = 0;
   let overflowReported = false;
   /** Lines the full queue refused; the next accepted line says how many, so the file shows the gap. */
@@ -119,10 +131,19 @@ export function createFileLogger(options: FileLoggerOptions): FileLog {
         try { size = (await fs.promises.stat(options.filePath)).size; }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; size = 0; }
       }
-      if (size > maxBytes) { await rotateLog(options.filePath, keep); size = 0; }
+      // A rotation another process blocks (Windows refuses to rename a file a viewer or a scanner holds open) is
+      // no reason to stop writing: the active file grows meanwhile, says why once, and rotation is tried again later.
+      let blocked = "";
+      if (size > rotateAbove) {
+        try { await rotateLog(options.filePath, keep); size = 0; rotateAbove = maxBytes; }
+        catch (cause) {
+          rotateAbove = size + ROTATION_RETRY_BYTES;
+          blocked = `${formatLine(`log: could not rotate ${options.filePath} (${String(cause)}); appending to it and retrying after ${ROTATION_RETRY_BYTES} more bytes`, time)}\n`;
+        }
+      }
       const missed = unwritten ? `${formatLine(`log: ${unwritten} line(s) could not be written to this file (stdout has them)`, time)}\n` : "";
-      await fs.promises.appendFile(options.filePath, `${missed}${text}`, "utf8");
-      size += bytes + Buffer.byteLength(missed);
+      await fs.promises.appendFile(options.filePath, `${blocked}${missed}${text}`, "utf8");
+      size += bytes + Buffer.byteLength(missed) + Buffer.byteLength(blocked);
       unwritten = 0;
     }).catch(cause => {
       if (TRANSIENT_WRITE_ERRORS.has((cause as NodeJS.ErrnoException).code ?? "")) {
