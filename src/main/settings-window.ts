@@ -37,6 +37,8 @@ export interface SettingsWindowOptions {
   geometry?: Pick<SettingsWindowState, "size" | "save"> & Partial<Pick<SettingsWindowState, "flush">>;
   /** The window was shown or regained focus: what it lists from disk may have changed meanwhile. */
   activated?: () => void;
+  /** The window closed or its page died: nothing needs to follow the disk for it any more. */
+  closed?: () => void;
   /** Starts dragging a listed recording out of the page; false when it is no longer listed. */
   drag?: (contents: WebContents, id: string) => Promise<boolean>;
   log?: (message: string) => void;
@@ -144,7 +146,7 @@ export class SettingsWindow {
     this.showEntry("general");
   }
 
-  /** A saved recording's entry, from its notification or the tray: Recordings, with that recording in view when listed. */
+  /** A saved recording's entry, from its notification: Recordings, with that recording in view when listed. */
   showLibrary(fileId?: string): void {
     this.libraryFocus = fileId;
     this.showEntry("library");
@@ -211,8 +213,10 @@ export class SettingsWindow {
     this.painted = false;
     this.delivered = undefined;
     let lastSize = size;
+    /** A video fills the screen: its size is not the user's, so it is never remembered (review pass 1, F1). */
+    let videoFullScreen = false;
     window.on("resize", () => {
-      if (window.isMinimized()) return;
+      if (window.isMinimized() || videoFullScreen) return;
       const [width, height] = window.getSize();
       if (width === undefined || height === undefined) return;
       if (width === lastSize.width && height === lastSize.height) return;
@@ -238,6 +242,15 @@ export class SettingsWindow {
       if (this.window === window && !this.painted) revealTimer = setTimeout(reveal, REVEAL_FALLBACK_MS);
     });
     window.on("blur", () => { this.release(this.leaseOf(window)); this.refresh(); });
+    // A video's own fullscreen fills the screen, not just this window (2026-10-04, probed on macOS 26 with
+    // Electron 44.3: with `fullscreenable: false` the page's request only fills the window). The window
+    // allows fullscreen only while the page asks for it, so its title bar never offers a fullscreen space.
+    window.on("enter-html-full-screen", () => { videoFullScreen = true; window.setFullScreenable(true); window.setFullScreen(true); });
+    window.on("leave-html-full-screen", () => {
+      if (window.isFullScreen()) window.setFullScreen(false);
+      else { videoFullScreen = false; window.setFullScreenable(false); }
+    });
+    window.on("leave-full-screen", () => { videoFullScreen = false; window.setFullScreenable(false); });
     window.on("focus", () => { if (this.window === window) this.options.activated?.(); });
     // A dead page cannot be revived in place; the next show creates a fresh
     // window instead. No automatic reload, so a page that keeps crashing
@@ -346,7 +359,9 @@ export class SettingsWindow {
   /** Close and crash act only on their own window, never on its replacement. */
   private retire(window: BrowserWindow): void {
     this.release(this.leaseOf(window));
-    if (this.window === window) { this.window = undefined; this.reveal = undefined; this.captureTimedOut = false; }
+    if (this.window !== window) return;
+    this.window = undefined; this.reveal = undefined; this.captureTimedOut = false;
+    this.options.closed?.();
   }
 
   private async applyFile(group: string, choice: unknown, recipient: BrowserWindow): Promise<SettingsChoiceResult> {

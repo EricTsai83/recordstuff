@@ -396,7 +396,9 @@ async function main(): Promise<void> {
     context: appContext,
     act: handleAction,
     capture: armed => shortcuts.capture(armed),
-    activated: () => void library.refresh(),
+    // While the window is open the Recordings tab follows the folder: a video deleted in Finder leaves at once.
+    activated: () => { library.watch(); void library.refresh(); },
+    closed: () => library.unwatch(),
     drag: async (contents, id) => {
       const file = library.find(id);
       if (!file) return false;
@@ -616,7 +618,7 @@ async function main(): Promise<void> {
       case "relaunch":
         quitCoordinator.relaunch();
         return;
-      // Settings → General's footer reads the outcome (2026-10-04); the log moved there from the tray.
+      // Settings → General → Log file reads the outcome (2026-10-04); the log moved there from the tray.
       case "revealLog":
         return revealLog();
       // Explicit outcomes: the Settings row reads them (plan 048 review); the tray ignores them.
@@ -630,7 +632,7 @@ async function main(): Promise<void> {
   }
 
   /**
-   * Show last recording, from the tray or the saved notification (2026-10-04): the Recordings tab, listed
+   * The saved notification's click (2026-10-04): the Recordings tab, listed
    * afresh so the new file is there, with that recording in view. One the user moved or deleted since is
    * simply not listed, and the tab shows what the folder holds now.
    */
@@ -644,8 +646,8 @@ async function main(): Promise<void> {
   /**
    * Select the log file in Finder / Explorer. If file logging was disabled
    * (no file was ever written) fall back to opening the logs folder.
+   * Resolves whether the file or, without one yet, its folder was shown.
    */
-  /** Whether the file or, without one yet, its folder was shown. */
   async function revealLog(): Promise<boolean> {
     try {
       await fs.access(logPath);
@@ -879,6 +881,7 @@ async function main(): Promise<void> {
     host.destroy();
     overlay.close();
     settingsWindow.destroy();
+    library.unwatch();
     tray.destroy();
   });
 

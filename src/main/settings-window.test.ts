@@ -22,6 +22,10 @@ const mock = vi.hoisted(() => {
     show = vi.fn();
     focus = vi.fn();
     setTitle = vi.fn();
+    fullScreen = false;
+    setFullScreenable = vi.fn();
+    setFullScreen = vi.fn((on: boolean) => { this.fullScreen = on; });
+    isFullScreen = () => this.fullScreen;
     getSize = vi.fn(() => [this.options.width, this.options.height]);
     loadFile = vi.fn(() => load());
     loadURL = vi.fn(() => load());
@@ -79,7 +83,7 @@ const context: AppContext = {
 };
 
 /** A panel wired to a mutable copy of the committed settings. */
-function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"] } = {}) {
+function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; closed?: () => void } = {}) {
   const live = { ...context };
   let state: RecordingState = { type: "idle" };
   const act = overrides.act ?? vi.fn(async (action: AppAction) => {
@@ -89,6 +93,7 @@ function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>
   const capture = vi.fn();
   const panel = new SettingsWindow({
     ...(overrides.geometry ? { geometry: overrides.geometry } : {}),
+    ...(overrides.closed ? { closed: overrides.closed } : {}),
     capture,
     state: overrides.state ?? (() => state),
     context: () => live,
@@ -126,6 +131,58 @@ beforeEach(() => {
 });
 
 describe("settings window lifecycle", () => {
+  it("lets a video's fullscreen fill the screen, then takes fullscreen away again", () => {
+    const s = setup();
+    s.panel.show();
+    const window = s.window();
+    window.events.get("enter-html-full-screen")();
+    expect([window.setFullScreenable.mock.calls, window.setFullScreen.mock.calls]).toEqual([[[true]], [[true]]]);
+    window.events.get("leave-html-full-screen")();
+    expect(window.setFullScreen).toHaveBeenLastCalledWith(false);
+    window.events.get("leave-full-screen")();
+    expect(window.setFullScreenable).toHaveBeenLastCalledWith(false);
+    // Already out of fullscreen (the window left it first): only fullscreen is taken away.
+    window.setFullScreen.mockClear();
+    window.events.get("leave-html-full-screen")();
+    expect(window.setFullScreen).not.toHaveBeenCalled();
+    expect(window.setFullScreenable).toHaveBeenLastCalledWith(false);
+  });
+  it("never remembers the size a video's fullscreen gave the window, even when it closes in fullscreen (review pass 1, F1)", () => {
+    vi.useFakeTimers();
+    try {
+      const geometry = { size: { width: 600, height: 700 }, save: vi.fn() };
+      const s = setup({ geometry }); s.panel.show();
+      const window = s.window();
+      window.events.get("enter-html-full-screen")();
+      window.getSize.mockReturnValue([1920, 1080]); window.events.get("resize")();
+      vi.advanceTimersByTime(500);
+      window.close();
+      expect(geometry.save).not.toHaveBeenCalled();
+      // Out of fullscreen, a resize is the user's again.
+      s.panel.show();
+      const next = mock.windows[1];
+      next.events.get("enter-html-full-screen")();
+      next.getSize.mockReturnValue([1920, 1080]); next.events.get("resize")();
+      next.events.get("leave-html-full-screen")(); next.events.get("leave-full-screen")();
+      next.getSize.mockReturnValue([600, 700]); next.events.get("resize")();
+      next.getSize.mockReturnValue([640, 720]); next.events.get("resize")();
+      vi.advanceTimersByTime(250);
+      expect(geometry.save).toHaveBeenCalledExactlyOnceWith({ width: 640, height: 720 });
+    } finally { vi.useRealTimers(); }
+  });
+  it("says once when its window closes, so nothing keeps following the disk for it", () => {
+    const closed = vi.fn();
+    const s = setup({ closed });
+    s.panel.show();
+    s.window().close();
+    expect(closed).toHaveBeenCalledTimes(1);
+    s.panel.show();
+    crash(mock.windows[1]);
+    expect(closed).toHaveBeenCalledTimes(2);
+    s.panel.destroy();
+    expect(closed).toHaveBeenCalledTimes(2);
+  });
+
   it("opens one sandboxed window, brings the menu-bar app forward, and reuses it", () => {
     const s = setup();
     s.panel.show();

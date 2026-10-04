@@ -260,7 +260,7 @@ it("speaks the current language", async () => {
 });
 
 it("tells a problem found while recording work is pending in a notification, never the modal warning", async () => {
-  // Show last recording's fallback during a later recording (plan 056): a warning now would hold its writes.
+  // Opening the folder while recording work is pending (plan 056): a warning now would hold its writes.
   const custom = path.join(root, "外接", "錄影");
   const h = await harness({ custom, language: "zh-TW", mediaPending: () => true });
   await h.open();

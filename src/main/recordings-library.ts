@@ -9,10 +9,11 @@
  * actions resolve the same way. A recording still being written keeps its
  * `.recording.mp4` name and is not listed. Listing is a read of the folder on
  * request (Settings opening or regaining focus, a recording saved, the folder
- * changed or a file moved to the Trash), never a watcher or a timer.
+ * changed or a file moved to the Trash) and, only while RecordStuff's window is
+ * open, after the folder's own change events (`watch`); never a timer or a poll.
  */
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, statSync, watch as watchFolder, type FSWatcher } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -53,6 +54,13 @@ export interface LibraryDeps {
 }
 
 const VIDEO = /\.(mp4|m4v|mov)$/i;
+/**
+ * Thumbnails held in memory, a few screens of cards: each is a PNG of up to a few hundred kilobytes, and a
+ * menu bar app stays running for days. The least recently shown goes first and is made again if shown.
+ */
+export const THUMBNAILS_KEPT = 64;
+/** How long the folder stays quiet before it is listed again: a save, a copy or a move to the Trash is a burst of events. */
+export const WATCH_SETTLE_MS = 250;
 /** `2026-10-04 14-02-11.mp4`, or `-2` and on when a name was taken (recorder.ts formatTimestamp). */
 const STAMPED = /^(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})(?:-\d+)?\.mp4$/;
 
@@ -95,6 +103,15 @@ export class RecordingsLibrary {
   private durations = new Map<string, { version: string; seconds: number | undefined }>();
   private thumbnails = new Map<string, { version: string; png: Promise<Buffer | undefined> }>();
   private generation = 0;
+  /** The listing being read, and the one requested meanwhile, which every later caller shares. */
+  private listing: Promise<void> | undefined;
+  private relisting: Promise<void> | undefined;
+  /** The folder watched while the window is open, and the listing its last burst of events is waiting for. */
+  private watcher: { dir: string; ino: number; handle: FSWatcher; settle?: ReturnType<typeof setTimeout> | undefined } | undefined;
+  /** A folder that could not be watched is said once, not on every focus. */
+  private unwatchable: string | undefined;
+  /** The window wants the folder followed, whether or not a watcher could be attached yet (review pass 1, F2). */
+  private watching = false;
 
   constructor(private readonly deps: LibraryDeps) {
     this.current = { dir: deps.dir(), loading: true, failed: false, files: [] };
@@ -110,9 +127,19 @@ export class RecordingsLibrary {
    * Lists the folder and resolves once the listing is published, so an entry can open on it at once.
    * Lengths not yet known are read afterwards in the background, one file at a time, and published
    * together (`lengths` settles when they are); a newer refresh abandons them.
+   *
+   * One listing reads the folder at a time. Opening Settings asks twice (the show, then the focus it
+   * brings), and a saved recording's entry once more: requests made while a listing runs share one
+   * more listing after it, so each still sees the folder as it was when it asked.
    */
   lengths: Promise<void> = Promise.resolve();
-  async refresh(): Promise<void> {
+  refresh(): Promise<void> {
+    if (!this.listing) return this.listing = this.list().finally(() => { this.listing = undefined; });
+    const next = (): Promise<void> => { this.relisting = undefined; return this.refresh(); };
+    return this.relisting ??= this.listing.then(next, next);
+  }
+
+  private async list(): Promise<void> {
     const generation = ++this.generation;
     const dir = this.deps.dir();
     if (dir !== this.current.dir) this.current = { dir, loading: true, failed: false, files: [] };
@@ -137,6 +164,8 @@ export class RecordingsLibrary {
       }).sort((a, b) => b.recordedAt - a.recordedAt || a.name.localeCompare(b.name));
     } catch (cause) {
       if (generation !== this.generation) return;
+      // A watcher on a folder that went away would stay on it even once one is made again at the same path.
+      this.detach();
       this.deps.log(`library: could not list ${dir}: ${String(cause)}`);
       this.current = { dir, loading: false, failed: true, files: [] };
       this.deps.changed();
@@ -144,8 +173,73 @@ export class RecordingsLibrary {
     }
     if (generation !== this.generation) return;
     this.current = { dir, loading: false, failed: false, files };
+    this.forget(files);
     this.deps.changed();
     this.lengths = this.readLengths(generation, files);
+    // The output folder changed while the window watches, one that could not be watched now lists, or the folder at
+    // this path was replaced (review pass 2, P2-2): follow it. After publishing, so the listing never waits for it.
+    if (this.watching) {
+      const ino = await fs.stat(dir).then(stat => stat.ino, () => undefined);
+      if (generation === this.generation && this.watching && (this.watcher?.dir !== dir || (ino !== undefined && ino !== this.watcher.ino))) {
+        this.detach(); this.watch();
+      }
+    }
+  }
+
+  /**
+   * While RecordStuff's window is open (2026-10-04): a video that appears in the folder, changes or
+   * leaves it (deleted or moved in Finder) is listed again a moment later, so the tab follows the folder
+   * without waiting for the window to regain focus. Event-driven (FSEvents on macOS), never polled; a
+   * recording's growing `.recording.mp4` and other files are ignored. Idempotent; `unwatch` when the
+   * window closes, so the menu bar app watches nothing while idle.
+   */
+  watch(): void {
+    this.watching = true;
+    const dir = this.deps.dir();
+    if (this.watcher?.dir === dir) return;
+    this.detach();
+    let handle: FSWatcher, ino: number;
+    try {
+      ino = statSync(dir).ino;
+      handle = watchFolder(dir, { persistent: false }, (_event, name) => {
+        const watcher = this.watcher;
+        if (watcher?.handle !== handle || (name && !isListedName(String(name)))) return;
+        clearTimeout(watcher.settle);
+        watcher.settle = setTimeout(() => { watcher.settle = undefined; void this.refresh(); }, WATCH_SETTLE_MS);
+      });
+    } catch (cause) {
+      if (this.unwatchable !== dir) this.deps.log(`library: cannot watch ${dir}; it is listed when the window opens or regains focus: ${String(cause)}`);
+      this.unwatchable = dir;
+      return;
+    }
+    this.unwatchable = undefined;
+    handle.on("error", (cause: unknown) => {
+      this.deps.log(`library: stopped watching ${dir}: ${String(cause)}`);
+      if (this.watcher?.handle === handle) this.detach();
+    });
+    this.watcher = { dir, ino, handle };
+  }
+
+  /** The window closed: no watcher and no pending listing remain. */
+  unwatch(): void {
+    this.watching = false;
+    this.detach();
+  }
+
+  private detach(): void {
+    const watcher = this.watcher;
+    if (!watcher) return;
+    this.watcher = undefined;
+    clearTimeout(watcher.settle);
+    watcher.handle.close();
+  }
+
+  /** Drops the lengths and thumbnails of files no longer listed: trashed, renamed or in a folder left behind. */
+  private forget(files: RecordingFile[]): void {
+    const listed = new Set(files.map(file => file.path));
+    for (const cache of [this.durations, this.thumbnails]) {
+      for (const filePath of cache.keys()) if (!listed.has(filePath)) cache.delete(filePath);
+    }
   }
 
   private async readLengths(generation: number, files: RecordingFile[]): Promise<void> {
@@ -163,7 +257,11 @@ export class RecordingsLibrary {
     this.deps.changed();
   }
 
-  /** Runs an offered action on a listed file; false when it is gone or the action failed. Drag is the window's. */
+  /**
+   * Runs an offered action on a listed file; false when it is gone or the action failed. Drag is the window's.
+   * A failure lists the folder again before answering, so the reply already shows a file that left it: the
+   * page then says so instead of offering a retry that cannot work.
+   */
   async act(id: string, action: Exclude<RecordingFileAction, "drag">): Promise<boolean> {
     const file = this.find(id);
     if (!file) return false;
@@ -171,29 +269,39 @@ export class RecordingsLibrary {
       if (action === "reveal") { await fs.access(file.path); this.deps.reveal(file.path); return true; }
       if (action === "open") {
         const error = await this.deps.open(file.path);
-        if (error) this.deps.log(`library: open ${file.path} failed: ${error}`);
-        return !error;
+        if (!error) return true;
+        this.deps.log(`library: open ${file.path} failed: ${error}`);
+      } else {
+        await this.deps.trash(file.path);
+        this.deps.log(`library: moved ${file.path} to the Trash`);
+        await this.refresh();
+        return true;
       }
-      await this.deps.trash(file.path);
-      this.deps.log(`library: moved ${file.path} to the Trash`);
-      await this.refresh();
-      return true;
     } catch (cause) {
       this.deps.log(`library: ${action} ${file.path} failed: ${String(cause)}`);
-      void this.refresh();
-      return false;
     }
+    await this.refresh();
+    return false;
   }
 
-  /** A listed file's thumbnail, made once per version of the file. */
+  /** A listed file's thumbnail, made once per version of the file while it is among the `THUMBNAILS_KEPT` last shown. */
   thumbnail(file: RecordingFile): Promise<Buffer | undefined> {
     const cached = this.thumbnails.get(file.path);
-    if (cached?.version === file.version) return cached.png;
+    // Map order is use order: deleting and setting again makes this one the newest.
+    this.thumbnails.delete(file.path);
+    if (cached?.version === file.version) {
+      this.thumbnails.set(file.path, cached);
+      return cached.png;
+    }
     const png = this.deps.thumbnail(file.path).catch((cause: unknown) => {
       this.deps.log(`library: no thumbnail for ${file.path}: ${String(cause)}`);
       return undefined;
     });
     this.thumbnails.set(file.path, { version: file.version, png });
+    for (const oldest of this.thumbnails.keys()) {
+      if (this.thumbnails.size <= THUMBNAILS_KEPT) break;
+      this.thumbnails.delete(oldest);
+    }
     return png;
   }
 
