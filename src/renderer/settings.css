@@ -66,6 +66,10 @@ main { height: 100dvh; max-width: 720px; margin: auto; padding: 16px 20px 0; dis
 .status-text { min-width: 0; flex: 1; }
 .status-title { margin: 0; font-size: 13.5px; font-weight: 600; letter-spacing: -.005em; }
 .status-detail, #hint { margin: 1px 0 0; color: var(--secondary); font-size: 12px; }
+/* The card's second way out (Relaunch beside Open System Settings) is a text link under its words, like a row's secondary action. */
+.status-secondary { display: block; margin: 5px 0 0; padding: 0; border: 0; font-weight: 400; background: transparent; box-shadow: none; color: var(--text); font-size: 12px; text-align: start; text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; }
+:is(button).status-secondary:enabled:not([aria-disabled="true"]):hover { background: transparent; text-decoration-color: currentColor; }
+:root:not([data-input="pointer"]):not([data-window="inactive"]) .status-secondary:focus-visible { outline-offset: var(--focus-gap); border-radius: 3px; }
 .status[data-tone="recording"] { background: var(--rec-surface); border-color: var(--rec-border); }
 .status[data-tone="recording"] .status-mark { background: var(--rec); box-shadow: 0 0 0 4px light-dark(rgb(229 53 43 / .14), rgb(255 90 79 / .18)); }
 .status[data-tone="recording"] .status-mark::after { background: #fff; }
@@ -339,7 +343,7 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
   .status[data-tone="recording"] .status-title::before { background: var(--rec); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rec) 22%, transparent); }
   .status[data-tone="busy"] .status-title::before { background: var(--secondary); box-shadow: none; }
   .status[data-tone="attention"] .status-title::before { background: var(--warning); box-shadow: none; }
-  .status-detail, #hint { padding-left: 15px; }
+  .status-detail, #hint, .status-secondary { padding-left: 15px; }
   .status-detail, #hint { line-height: 1.5; margin-top: 3px; }
   .status-action { grid-column: 1 / -1; width: 100%; }
   /* The sidebar's foot carries the credit, version and links, so General's own footer gives way to it. */

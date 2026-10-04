@@ -83,6 +83,8 @@ export interface SettingsStatus {
   detail: string;
   /** What fixes a problem that blocks recording; chosen as group `status`. Starting stays with the tray and the shortcut. */
   action?: { id: StatusActionId; label: string };
+  /** A second way out, drawn as a text link under the detail: Relaunch once access may already be granted, as the tray offers. */
+  secondaryAction?: { id: StatusActionId; label: string };
 }
 export type StatusActionId = "permission" | "relaunch" | "folder" | "primary";
 /** One video in the Recordings tab; the page reaches its bytes only through these URLs, which name an id. */

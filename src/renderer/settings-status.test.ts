@@ -7,7 +7,7 @@ import type { SettingsView } from "../shared/settings-panel";
  * credit, version and links; the tab strip turns an unread count into a badge without changing its text.
  */
 it("hides the card while ready, shows a problem with its fix and a recording with the lock, and fills the sidebar's foot", async () => {
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p><button id="status-action" hidden></button></div>'
+  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p><button id="status-secondary" hidden></button><button id="status-action" hidden></button></div>'
     + '<footer id="sidebar-about" hidden><div class="sidebar-text"><p class="sidebar-credit"></p><p class="sidebar-version"></p><p class="sidebar-error" hidden></p></div><div class="sidebar-links"></div></footer><p id="feedback"></p><form id="settings"></form>';
   const ready: SettingsView = { language: "en", title: "RecordStuff", hint: "", failure: "",
     status: { tone: "ready", title: "Ready to record", detail: "" },
@@ -45,6 +45,16 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   action.click();
   expect(choose).toHaveBeenLastCalledWith("status", "folder");
   // Main answers with the fixed, ready state: the card has nothing left to say.
+  await vi.waitFor(() => expect(card.hidden).toBe(true));
+
+  // Permission: the system pane is the action, and Relaunch for access already granted is the link under the words.
+  const secondary = document.getElementById("status-secondary")!;
+  expect(secondary.hidden).toBe(true);
+  push({ ...ready, revision: 3, status: { tone: "attention", title: "Screen recording permission required", detail: "Check recording permissions in System Settings.",
+    action: { id: "permission", label: "Open System Settings" }, secondaryAction: { id: "relaunch", label: "Already allowed? Relaunch RecordStuff" } } });
+  expect([action.textContent, secondary.hidden, secondary.textContent]).toEqual(["Open System Settings", false, "Already allowed? Relaunch RecordStuff"]);
+  secondary.click();
+  expect(choose).toHaveBeenLastCalledWith("status", "relaunch");
   await vi.waitFor(() => expect(card.hidden).toBe(true));
 
   // A keyboard user's fix hides the card under their focus: the selected tab keeps the place, and the switch is said.

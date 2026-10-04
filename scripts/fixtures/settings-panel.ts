@@ -784,6 +784,32 @@ async function run() {
   await settle(150);
   record("status card: Change output folder… sits in the sidebar and a real click asks main for status/folder",
     fixButton.label === "Change output folder…" && fixButton.inSidebar && JSON.stringify(chooseCalls) === '[["status","folder"]]', JSON.stringify({ fixButton, chooseCalls }));
+  // A missing permission (2026-10-04): Open System Settings is the button, and the tray's second step, Relaunch for access
+  // already granted, is a text link under the card's words; a real click on it asks main for status/relaunch only.
+  const permission = { type: "needsPermission", needsRelaunch: false } as const;
+  for (const [lang, scheme, size] of [["en", "light", "default"], ["en", "dark", "narrow"], ["zh-TW", "light", "minimum"]] as const) {
+    nativeTheme.themeSource = scheme;
+    window.setSize(SNAPSHOT_SIZES[size][0], SNAPSHOT_SIZES[size][1]);
+    window.webContents.send("settings:changed", settingsView(permission, { ...ctx, language: lang }));
+    await settle(150);
+    await shot(`status-permission-${lang}-${scheme}-${size}.png`);
+  }
+  nativeTheme.themeSource = "light";
+  window.setSize(SNAPSHOT_SIZES.default[0], SNAPSHOT_SIZES.default[1]);
+  window.webContents.send("settings:changed", settingsView(permission, ctx));
+  await settle(150);
+  chooseCalls.length = 0;
+  const relaunchLink = await read<{ x: number; y: number; label: string; button: string; below: boolean; inside: boolean }>(window, `(() => {
+    const el = document.getElementById("status-secondary"), r = el.getBoundingClientRect(), card = document.getElementById("status").getBoundingClientRect();
+    const detail = document.getElementById("status-detail").getBoundingClientRect();
+    return { x: Math.round(r.x + Math.min(r.width / 2, 40)), y: Math.round(r.y + r.height / 2), label: el.hidden ? "" : el.textContent, button: document.getElementById("status-action").textContent,
+      below: r.top >= detail.bottom - 1, inside: r.width > 0 && r.left >= card.left && r.right <= card.right && r.bottom <= card.bottom }; })()`);
+  window.webContents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, x: relaunchLink.x, y: relaunchLink.y });
+  window.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, x: relaunchLink.x, y: relaunchLink.y });
+  await settle(150);
+  record("status card: a missing permission offers Open System Settings and, under the words, Relaunch; a real click on the link asks main for status/relaunch",
+    relaunchLink.label === "Already allowed? Relaunch RecordStuff" && relaunchLink.button === "Open System Settings" && relaunchLink.below && relaunchLink.inside
+      && JSON.stringify(chooseCalls) === '[["status","relaunch"]]', JSON.stringify({ relaunchLink, chooseCalls }));
   // The ⓘ beside a label: real hover and real Tab show its explanation in the top layer, inside the window; Escape closes it before the window.
   const infoState = (id: string) => read<{ open: boolean; expanded: string | null; text: string; inside: boolean; describes: boolean }>(window, `(() => {
     const id = ${JSON.stringify(`setting-${id}`)}, popover = document.getElementById(id + "-info"), r = popover.getBoundingClientRect();

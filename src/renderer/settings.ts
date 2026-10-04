@@ -247,6 +247,15 @@ function updateStatus(current: SettingsView): void {
     setText(action, value.action.label);
     setActionDisabled(action, false, Boolean(saving));
   }
+  const secondary = document.getElementById("status-secondary") as HTMLButtonElement | null;
+  if (secondary) {
+    secondary.hidden = !value.secondaryAction;
+    if (value.secondaryAction) {
+      secondary.dataset.action = value.secondaryAction.id;
+      setText(secondary, value.secondaryAction.label);
+      setActionDisabled(secondary, false, Boolean(saving));
+    }
+  }
 }
 function updateDiagnostic(container: HTMLElement, group: SettingsGroup): void {
   const area = container.querySelector<HTMLElement>(".diagnostics")!;
@@ -1492,7 +1501,7 @@ document.addEventListener("keydown", event => {
     document.documentElement.dataset.input = "keyboard";
 }, true);
 form.addEventListener("submit", event => event.preventDefault());
-document.getElementById("status-action")?.addEventListener("click", event => {
+for (const id of ["status-action", "status-secondary"]) document.getElementById(id)?.addEventListener("click", event => {
   const el = event.currentTarget as HTMLButtonElement;
   if (!inactive(el) && el.dataset.action) void choose("status", el.dataset.action, el.id);
 });

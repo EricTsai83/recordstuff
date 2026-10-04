@@ -507,8 +507,15 @@ function projectResult(result: RecordingResult, state: RecordingState, ctx: AppC
  */
 export function settingsStatus(state: RecordingState, ctx: AppContext): SettingsStatus {
   const status = statusText(state, ctx);
-  const id = ctx.quitting ? undefined : statusActionId(state, ctx);
-  return id ? { ...status, action: { id, label: t(STATUS_ACTION_LABELS[id], ctx.language) } } : status;
+  if (ctx.quitting) return status;
+  const id = statusActionId(state, ctx);
+  // The detail says to relaunch if access was just granted: the card offers it, as the tray's permission steps do.
+  const relaunch = state.type === "needsPermission" && !state.needsRelaunch;
+  return {
+    ...status,
+    ...(id ? { action: { id, label: t(STATUS_ACTION_LABELS[id], ctx.language) } } : {}),
+    ...(relaunch ? { secondaryAction: { id: "relaunch" as const, label: t("Already allowed? Relaunch RecordStuff", ctx.language) } } : {}),
+  };
 }
 
 /**
@@ -680,8 +687,9 @@ export function settingsAction(
       ? { recordingFile: { id: file.id, action: choiceId as RecordingFileAction } } : undefined;
   }
   if (groupId === "status") {
-    const offered = settingsStatus(state, ctx).action;
-    return offered && offered.id === choiceId ? STATUS_ACTIONS[offered.id] : undefined;
+    const { action: offered, secondaryAction: secondary } = settingsStatus(state, ctx);
+    const chosen = [offered, secondary].find(action => action?.id === choiceId);
+    return chosen ? STATUS_ACTIONS[chosen.id] : undefined;
   }
   if (proposesHotkey(groupId, choiceId) && preferencesUnlocked(state)) {
     const accelerator = canonicalizeAccelerator(choiceId, ctx.platform);

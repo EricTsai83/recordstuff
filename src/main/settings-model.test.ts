@@ -755,8 +755,14 @@ describe("the status card", () => {
     expect(settingsView(idle, { ...context, quitting: true }).status).toEqual({ tone: "busy", title: "Quitting once the recording is saved or cleaned up…", detail: "" });
   });
   it("turns to attention for what stops the next recording, with the fix as its action", () => {
-    expect(settingsView({ type: "needsPermission", needsRelaunch: false }, context).status).toMatchObject({ tone: "attention", action: { id: "permission", label: "Open System Settings" } });
-    expect(settingsView({ type: "needsPermission", needsRelaunch: true }, context).status?.action?.id).toBe("relaunch");
+    // Like the tray's permission steps: the system pane first, and Relaunch for access that may already be granted.
+    expect(settingsView({ type: "needsPermission", needsRelaunch: false }, context).status).toMatchObject({ tone: "attention",
+      action: { id: "permission", label: "Open System Settings" }, secondaryAction: { id: "relaunch", label: "Already allowed? Relaunch RecordStuff" } });
+    expect(settingsView({ type: "needsPermission", needsRelaunch: false }, { ...context, language: "zh-TW" }).status?.secondaryAction?.label).toBe("已經允許了？重新啟動 RecordStuff");
+    // Once only a relaunch can help, it is the action itself, offered once.
+    expect(settingsView({ type: "needsPermission", needsRelaunch: true }, context).status).toMatchObject({ action: { id: "relaunch" } });
+    expect(settingsView({ type: "needsPermission", needsRelaunch: true }, context).status?.secondaryAction).toBeUndefined();
+    expect(settingsView({ type: "needsPermission", needsRelaunch: false }, { ...context, quitting: true }).status?.secondaryAction).toBeUndefined();
     expect(settingsView({ type: "idle", outputDirUnavailable: true }, context).status).toMatchObject({ tone: "attention", title: "Output folder unavailable", action: { id: "folder" } });
     const gone = { ...context, display: { kind: "display" as const, id: "9", label: "Gone" } };
     // The way back, once there is a Primary display to go back to.
@@ -770,6 +776,9 @@ describe("the status card", () => {
     expect(settingsAction({ type: "idle", outputDirUnavailable: true }, context, "status", "folder")).toBe("changeOutputDir");
     expect(settingsAction({ type: "needsPermission", needsRelaunch: false }, context, "status", "permission")).toBe("openPermissionSettings");
     expect(settingsAction({ type: "needsPermission", needsRelaunch: true }, context, "status", "relaunch")).toBe("relaunch");
+    expect(settingsAction({ type: "needsPermission", needsRelaunch: false }, context, "status", "relaunch")).toBe("relaunch");
+    expect(settingsAction({ type: "needsPermission", needsRelaunch: false }, { ...context, quitting: true }, "status", "relaunch")).toBeUndefined();
+    expect(settingsAction({ type: "idle", outputDirUnavailable: true }, context, "status", "relaunch")).toBeUndefined();
     expect(settingsAction(idle, context, "status", "folder")).toBeUndefined();
     for (const state of [idle, ...busy]) for (const id of ["start", "stop", "cancel"]) expect(settingsAction(state, context, "status", id)).toBeUndefined();
     expect(settingsAction({ type: "idle", outputDirUnavailable: true }, { ...context, quitting: true }, "status", "folder")).toBeUndefined();
