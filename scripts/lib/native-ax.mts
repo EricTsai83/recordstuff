@@ -34,8 +34,12 @@ function run(argv) {
     const point = $.CGPointMake(Number(b), Number(c));
     const button = right ? 1 : 0;
     // Move first, as a pointer would, then down and up: kCGEventMouseMoved 5, left 1/2, right 3/4.
+    // A plain click, whatever modifier state earlier synthetic keys left: a status item takes a Command-click as a
+    // drag to rearrange the menu bar and never reports it (2026-10-04, after a synthetic Command+W).
     for (const type of [5, right ? 3 : 1, right ? 4 : 2]) {
-      $.CGEventPost(0, $.CGEventCreateMouseEvent($(), type, point, button));
+      const event = $.CGEventCreateMouseEvent($(), type, point, button);
+      $.CGEventSetFlags(event, 0);
+      $.CGEventPost(0, event);
       delay(0.04);
     }
     return out({ posted: true });
@@ -45,6 +49,15 @@ function run(argv) {
       const event = $.CGEventCreateKeyboardEvent($(), Number(a), down);
       $.CGEventSetFlags(event, Number(b || 0));
       $.CGEventPost(0, event);
+      delay(0.03);
+    }
+    // The modifiers were only flags on this key, never pressed: release them as a person's hand would (kCGEventFlagsChanged 12),
+    // so the session's modifier state does not stay on for the next synthetic or real input.
+    if (Number(b || 0)) {
+      const release = $.CGEventCreate($());
+      $.CGEventSetType(release, 12);
+      $.CGEventSetFlags(release, 0);
+      $.CGEventPost(0, release);
       delay(0.03);
     }
     return out({ posted: true });
