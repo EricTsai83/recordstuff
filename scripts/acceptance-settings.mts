@@ -6,8 +6,11 @@
  * `out/preload/settings.js` and `out/renderer/settings.html` in a real
  * window, drives it, and reports each case. This is the only check that
  * exercises the shipped CSP, the sandboxed preload boundary and a real IPC
- * round trip; `settings-model` and `SettingsWindow` are covered by unit
- * tests, so the fixture supplies its own view and handlers.
+ * round trip. The window is the app's own (`settingsWindowOptions`: the same
+ * frame, so a size is the content size the app shows) and the Recordings tab
+ * reads a real folder through the app's `RecordingsLibrary` under its
+ * `recordstuff-media:` scheme; the IPC handlers and most views are the
+ * fixture's own, since `settings-model` and `SettingsWindow` have unit tests.
  *
  * It does not click the tray, open the window through Settings, or claim
  * anything about macOS window focus — a windowless app's tray is not
@@ -114,8 +117,11 @@ const report = [
   desktop.summary,
   "",
   "Built artifacts under test: `out/preload/settings.js`, `out/renderer/settings.html`.",
-  "The fixture supplies its own view and IPC handlers, so this run judges the page,",
-  "the preload boundary and the IPC round trip — not `settings-model` or `SettingsWindow`.",
+  "The window has the app's own frame (`settingsWindowOptions`), and the Recordings tab is read from a real",
+  "folder by the app's `RecordingsLibrary` and served under `recordstuff-media:`. The IPC handlers and most",
+  "views are the fixture's own, so this run judges the page, the preload boundary and the IPC round trip —",
+  "not `SettingsWindow`'s handlers. Screenshots are `capturePage()` of the page: the window controls macOS",
+  "draws over its corner are not in them (`pnpm acceptance:settings-shortcut -- --observe` saves one with them).",
   "No tray click, no Settings item and no macOS window focus behaviour was exercised.",
   "",
   "A case marked NOT RUN needs an active window and its window was not active around it; its detail is what was read anyway.",

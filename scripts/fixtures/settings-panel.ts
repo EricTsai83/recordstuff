@@ -12,7 +12,7 @@ import { settingsAction } from "../../src/main/settings-model";
  *
  * Compiled automatically by acceptance-settings.mts before Electron loads it.
  */
-import { app, BrowserWindow, ipcMain, nativeTheme } from "electron";
+import { app, BrowserWindow, ipcMain, nativeImage, nativeTheme, protocol, screen } from "electron";
 import { translate, type Language } from "../../src/shared/i18n";
 import type { SettingsView } from "../../src/shared/settings-panel";
 import fs from "node:fs";
@@ -20,7 +20,10 @@ import { settingsView } from "../../src/main/settings-model";
 import { DEFAULT_QUALITY } from "../../src/shared/quality";
 import { DEFAULT_HOTKEY } from "../../src/shared/hotkey";
 import type { AppContext } from "../../src/main/ui-model";
-import type { LibraryState, RecordingFile } from "../../src/main/recordings-library";
+import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "../../src/main/recordings-library";
+import { settingsWindowOptions } from "../../src/main/settings-window";
+import { TRAFFIC_LIGHT_ZONE } from "../../src/shared/window-controls";
+import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE } from "../../src/main/settings-window-state";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { activation, judgeActive, lsappinfoName, windowActive, type Activation, type FixtureFailure, type SettingsCase, type WindowState } from "../lib/settings-activation.mts";
@@ -33,6 +36,8 @@ const [outDir, root] = (() => {
 const out = path.join(root, "out");
 // Chromium's profile and caches stay in the run's evidence, not in the shared default Electron folder.
 app.setPath("userData", path.join(outDir, "user-data"));
+// The Recordings tab's media, served as the app serves it (index.ts): only privileged before ready.
+protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { ...MEDIA_SCHEME_PRIVILEGES } }]);
 const results: SettingsCase[] = [];
 /** Each case is also logged, so electron.log shows how far a round got. */
 const push = (result: SettingsCase): void => {
@@ -213,21 +218,63 @@ const read = <T = unknown>(window: BrowserWindow, script: string): Promise<T> =>
     throw new Error(`${String(error)} in: ${script.trim().split("\n")[0]!.slice(0, 160)}`);
   });
 
-/** Outer window sizes for the visual snapshots: the 960 × 640 default, a 560 × 680 window (the default before the sidebar) and the minimum. */
-const SNAPSHOT_SIZES = { default: [960, 640], narrow: [560, 680], minimum: [380, 360] } as const satisfies Record<string, readonly [number, number]>;
+/** A movie header stating `seconds`, all mp4Duration reads; the rest of the file stays sparse. */
+const movieOf = (seconds: number): Buffer => {
+  const u32 = (value: number): Buffer => { const bytes = Buffer.alloc(4); bytes.writeUInt32BE(value); return bytes; };
+  const mvhd = Buffer.concat([u32(108), Buffer.from("mvhd"), Buffer.alloc(12), u32(1000), u32(seconds * 1000), Buffer.alloc(80)]);
+  return Buffer.concat([u32(mvhd.length + 8), Buffer.from("moov"), mvhd]);
+};
+/** A 16:9 picture in one hue, darker towards the bottom, deterministic for screenshots. */
+const pictureOf = (red: number, green: number, blue: number): Buffer => {
+  const width = 480, height = 270, pixels = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const shade = 1 - (y / height) * 0.45, at = (y * width + x) * 4;
+    pixels[at] = Math.round(blue * shade); pixels[at + 1] = Math.round(green * shade); pixels[at + 2] = Math.round(red * shade); pixels[at + 3] = 255;
+  }
+  return nativeImage.createFromBitmap(pixels, { width, height }).toPNG();
+};
+/**
+ * The Recordings tab's folder, read by the app's own `RecordingsLibrary` and served by its handler under the app's
+ * scheme: real ids, lengths read from the files' boxes, sizes and dates from the file system, and thumbnails over
+ * `recordstuff-media:` under the shipped CSP. The files are movie headers made sparse to their sizes, dated with
+ * `utimes` (which on macOS also moves the birth time back), and two have pictures while the third shows the fallback.
+ */
+async function recordingsFolder(dir: string): Promise<RecordingsLibrary> {
+  fs.mkdirSync(dir, { recursive: true });
+  const files = [
+    { name: "2026-10-04 14-02-11.mp4", at: new Date(2026, 9, 4, 14, 2, 11), size: 182e6, seconds: 83, picture: pictureOf(64, 112, 196) },
+    { name: "A long product walkthrough recorded for the onboarding review.mp4", at: new Date(2026, 9, 4, 9, 30), size: 1.24e9, seconds: 3725, picture: pictureOf(196, 120, 64) },
+    { name: "2026-10-03 21-15-00.mp4", at: new Date(2026, 9, 3, 21, 15), size: 54e6, seconds: 0, picture: undefined },
+  ];
+  for (const file of files) {
+    const filePath = path.join(dir, file.name);
+    fs.writeFileSync(filePath, file.seconds ? movieOf(file.seconds) : Buffer.alloc(0));
+    fs.truncateSync(filePath, file.size);
+    fs.utimesSync(filePath, file.at, file.at);
+  }
+  const pictures = new Map(files.map(file => [path.join(dir, file.name), file.picture]));
+  const library = new RecordingsLibrary({ dir: () => dir, changed: () => {}, thumbnail: async file => pictures.get(file),
+    trash: async () => {}, open: async () => "", reveal: () => {}, log: message => console.log(message) });
+  protocol.handle(MEDIA_SCHEME, request => library.handle(request));
+  await library.refresh();
+  await library.lengths;
+  return library;
+}
+
+/**
+ * Window sizes for the visual snapshots: the app's default and minimum, and a 560 × 680 window (the default before the
+ * sidebar). With the app's own frame (`settingsWindowOptions`) each is also the content size, as in the app.
+ */
+const SNAPSHOT_SIZES = {
+  default: [DEFAULT_SETTINGS_SIZE.width, DEFAULT_SETTINGS_SIZE.height], narrow: [560, 680], minimum: [MIN_SETTINGS_SIZE.width, MIN_SETTINGS_SIZE.height],
+} as const satisfies Record<string, readonly [number, number]>;
 async function run() {
-  const window = new BrowserWindow({
-    width: 460,
-    height: 560,
-    show: false,
-    webPreferences: {
-      preload: path.join(out, "preload/settings.js"),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      webSecurity: true,
-    },
-  });
+  // Before any page loads, as in the app (index.ts): a frame takes the custom schemes registered when it navigates,
+  // so a handler added after the page loaded would never answer it.
+  const recordings = await recordingsFolder(path.join(outDir, "recordings"));
+  // The app's own window description (settings-window.ts): the same frame, so a size here is the content size the app shows.
+  const window = new BrowserWindow(settingsWindowOptions({ platform: process.platform, preloadPath: path.join(out, "preload/settings.js"),
+    title: "RecordStuff", size: { width: 460, height: 560 }, workArea: screen.getPrimaryDisplay().workArea }));
   // Plan 057: a case that needs an active window is judged only if its window stayed active.
   let blurs = 0;
   let shown = false;
@@ -263,6 +310,28 @@ async function run() {
     }
     fs.writeFileSync(path.join(outDir, file), image.toPNG());
   };
+  /**
+   * The window controls sit over the page's top-left corner (TRAFFIC_LIGHT_ZONE): nothing a person can click may lie
+   * under them. The page's own hit testing decides what lies there, every 2 px across the zone and through every layer
+   * (`elementsFromPoint`), so clipping, scrolling, fixed placement and the top layer count as they draw; while a modal
+   * dialog is open only what it holds can be clicked (review pass 1, F1-1).
+   */
+  const underControls = async (label: string): Promise<void> => {
+    if (process.platform !== "darwin") return;
+    const covered = await read<string[]>(window, `(() => {
+      const clickable = 'button, select, input, a[href], summary, [tabindex]:not([tabindex="-1"])';
+      const modal = document.querySelector("dialog:modal");
+      const found = new Set();
+      for (let x = 1; x < ${TRAFFIC_LIGHT_ZONE.width}; x += 2) for (let y = 1; y < ${TRAFFIC_LIGHT_ZONE.height}; y += 2) {
+        for (const hit of document.elementsFromPoint(x, y)) {
+          const control = hit.closest(clickable);
+          if (control && (!modal || modal.contains(control))) found.add(control.id || control.className || control.tagName);
+        }
+      }
+      return [...found];
+    })()`);
+    record(`${label}: nothing clickable lies under the window controls`, covered.length === 0, JSON.stringify(covered));
+  };
   const consoleErrors: string[] = [];
   window.webContents.on("console-message", (event) => {
     if (event.level === "error") consoleErrors.push(event.message);
@@ -271,6 +340,12 @@ async function run() {
   // Main puts the language in the URL so a failed first read is localized.
   await window.loadFile(path.join(out, "renderer/settings.html"), { query: { lang: "zh-TW" } });
   await settle(700);
+  // Plan: the fixture's window is the app's (settings-window.ts), so its screenshots show the frame the app opens.
+  const frame = window.getBounds(), content = window.getContentBounds();
+  record(process.platform === "darwin" ? "the window has the app's frame: no title bar, the page fills it under the inset window controls"
+    : "the window has the app's frame: the native title bar above the page",
+  process.platform === "darwin" ? content.y === frame.y && content.height === frame.height : content.height < frame.height,
+  JSON.stringify({ frame, content }));
 
   const rendered = await read<{ title: string; docTitle: string; lang: string; hint: string; feedback: string;
     bridge: string[]; exposed: string[]; note: string | null;
@@ -534,21 +609,22 @@ async function run() {
   await settle(100);
 
   // Real model snapshots cover visual states without touching user preferences.
-  const ctx: AppContext = { platform: "darwin", language: "en", outputDir: "/tmp", homeDir: "/tmp",
+  // The running version, as the app shows it beside the credit (the fixture's own Electron reports its version, not the app's).
+  const version = (JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { version: string }).version;
+  const ctx: AppContext = { platform: "darwin", language: "en", outputDir: "/tmp", homeDir: "/tmp", version,
     quality: DEFAULT_QUALITY, countdown: 3, countdownSound: true, hotkey: { ...DEFAULT_HOTKEY, registered: true }, notifications: true,
     updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" },
     displays: [{ id: "1", label: "Built-in Display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true }] };
-  // The Recordings tab, the window's home (2026-10-04): two days of cards, one named by its user at length, and an empty folder.
-  // Nothing serves `recordstuff-media:` here, so every card shows the fallback a missing thumbnail gets.
+  // The Recordings tab, the window's home (2026-10-04): two days of cards, one named by its user at length, and an empty folder,
+  // read from a real folder by the app's own library and served under its scheme (`recordingsFolder`).
   const now = new Date(2026, 9, 4, 18, 0, 0);
-  const libraryFile = (name: string, recordedAt: Date, size: number, duration?: number): RecordingFile => ({
-    id: name.replace(/\W/g, "").slice(0, 20), path: `/tmp/${name}`, name, size, recordedAt: recordedAt.getTime(), version: "1",
-    ...(duration === undefined ? {} : { duration }) });
-  const library: LibraryState = { dir: "/tmp", loading: false, failed: false, files: [
-    libraryFile("2026-10-04 14-02-11.mp4", new Date(2026, 9, 4, 14, 2, 11), 182e6, 83),
-    libraryFile("A long product walkthrough recorded for the onboarding review.mp4", new Date(2026, 9, 4, 9, 30), 1.24e9, 3725),
-    libraryFile("2026-10-03 21-15-00.mp4", new Date(2026, 9, 3, 21, 15), 54e6),
-  ] };
+  const library = recordings.state;
+  record("the Recordings folder is read by the app's library: names, dates, sizes and lengths from the files",
+    JSON.stringify(library.files.map(file => [file.name, file.recordedAt, file.size, file.duration ?? null])) === JSON.stringify([
+      ["2026-10-04 14-02-11.mp4", new Date(2026, 9, 4, 14, 2, 11).getTime(), 182e6, 83],
+      ["A long product walkthrough recorded for the onboarding review.mp4", new Date(2026, 9, 4, 9, 30).getTime(), 1.24e9, 3725],
+      ["2026-10-03 21-15-00.mp4", new Date(2026, 9, 3, 21, 15).getTime(), 54e6, null],
+    ]), JSON.stringify(library.files.map(file => ({ name: file.name, recordedAt: new Date(file.recordedAt).toISOString(), size: file.size, duration: file.duration }))));
   for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
     nativeTheme.themeSource = scheme;
     // The sidebar layout at the default size, the tabs-on-top layout of a narrower window, and the minimum.
@@ -579,6 +655,7 @@ async function run() {
         const fits = await read<boolean>(window, `document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth && document.getElementById("settings-panel").scrollWidth <= document.getElementById("settings-panel").clientWidth`);
         const geometry = await read(window, `({root: [document.documentElement.scrollWidth, document.documentElement.scrollHeight], viewport: [innerWidth, innerHeight], main: document.querySelector("main").getBoundingClientRect().toJSON(), form: document.querySelector("form").getBoundingClientRect().toJSON(), panel: document.getElementById("settings-panel").getBoundingClientRect().toJSON()})`);
         record(`${lang}/${scheme}/${size}/${state}: no horizontal or outer-page overflow`, fits, JSON.stringify(geometry));
+        await underControls(`${lang}/${scheme}/${size}/${state}`);
         if (tab === "library") {
           const shown = await read<{ days: number; cards: number; empty: boolean; summary: string }>(window, `({
             days: document.querySelectorAll(".library-day").length, cards: document.querySelectorAll(".clip").length,
@@ -590,6 +667,16 @@ async function run() {
             : state === "library-empty" ? shown.cards === 0 && shown.empty && status === "" : shown.cards === 0 && !shown.empty && status === unreadable;
           record(`${lang}/${scheme}/${size}/${state}: Recordings shows ${state === "library" ? "its cards by day" : state === "library-empty" ? "the empty folder" : "why the folder cannot be read"}`,
             expected, JSON.stringify({ ...shown, status }));
+          if (state === "library" && size === "default") {
+            // Every card is in view at the default size, so each lazy image loads: two pictures over the scheme, one fallback.
+            const thumbs = async () => read<{ pictures: number; fallback: number; pending: number }>(window, `(() => { const images = [...document.querySelectorAll(".clip-thumb img")];
+              return { pictures: images.filter(i => i.complete && i.naturalWidth === 480).length, fallback: document.querySelectorAll(".clip-thumb.no-thumb").length,
+                pending: images.filter(i => !i.complete).length }; })()`);
+            await until(async () => { const t = await thumbs(); return t.pending === 0 && t.pictures + t.fallback === 3; });
+            const seen = await thumbs();
+            record(`${lang}/${scheme}/${size}/${state}: thumbnails arrive over ${MEDIA_SCHEME}: under the shipped CSP, and a recording without one shows the fallback`,
+              seen.pictures === 2 && seen.fallback === 1, JSON.stringify(seen));
+          }
         }
         if (state === "recording" || state === "locked") {
           // The status card speaks only when there is something to say (2026-10-04): never while ready, and a busy
@@ -602,7 +689,7 @@ async function run() {
         }
         await shot(`panel-${lang}-${scheme}-${size}-${state}.png`);
         if (state === "library") {
-          // The player over the tab. Nothing serves the video here, so it shows what a recording that cannot be played gets.
+          // The player over the tab. The file is served, byte ranges and all, but holds no media, so it shows what a recording that cannot be played gets.
           await read(window, `document.querySelector(".clip-open").click()`);
           const opened = await until(() => read<boolean>(window, `(() => { const p = document.querySelector("dialog.player"); return Boolean(p?.open && !p.querySelector(".player-error").hidden); })()`));
           const player = await read<{ open: boolean; error: string; spoken: string; fits: boolean; buttons: string[] }>(window, `(() => { const p = document.querySelector("dialog.player"), r = p.getBoundingClientRect();
@@ -611,6 +698,7 @@ async function run() {
               fits: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight && p.scrollWidth <= p.clientWidth }; })()`);
           record(`${lang}/${scheme}/${size}/player: opens over Recordings with Close alone, fits the window and says a recording it cannot play cannot be played here`,
             opened && player.open && player.error !== "" && player.spoken === player.error && player.buttons.join() === "player-close" && player.fits, JSON.stringify(player));
+          await underControls(`${lang}/${scheme}/${size}/player`);
           await shot(`player-${lang}-${scheme}-${size}.png`);
           await read(window, `document.getElementById("player-close").click()`);
           const closed = await until(() => read<boolean>(window, `!document.querySelector("dialog.player").open`));
@@ -633,6 +721,7 @@ async function run() {
           const fromButton = await menuState();
           // The frame holding the menu, not the one before it.
           await read(window, `new Promise(done => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))`);
+          await underControls(`${lang}/${scheme}/${size}/card menu`);
           await shot(`clip-menu-${lang}-${scheme}-${size}.png`);
           // An Escape with no menu open would close the window, ending every case after this one: only one that opened is answered.
           if ((await menuState()).open) window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
