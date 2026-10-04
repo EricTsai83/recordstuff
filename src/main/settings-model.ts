@@ -417,22 +417,43 @@ function localDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
+const DATE_FORMATS = {
+  day: { month: "long", day: "numeric" },
+  dayOfYear: { year: "numeric", month: "long", day: "numeric" },
+  time: { hour: "numeric", minute: "2-digit" },
+} satisfies Record<string, Intl.DateTimeFormatOptions>;
+/** Formats a date in one of the shapes above; `zone` is the system time zone the view was made in. */
+export type DateFormats = ((date: Date, format: keyof typeof DATE_FORMATS) => string) & { readonly zone: string };
+/**
+ * One view's date formatters, each made on first use. Every view names each failure row and recording
+ * again, and `toLocale…String` builds a new ICU formatter per call (tens of microseconds each), so a folder
+ * of hundreds of recordings made every refresh slow. Made per view, never kept across views: a formatter
+ * keeps the time zone it was made in, and the system zone can change while the app runs (review batch 1).
+ */
+export function dateFormats(language: Language): DateFormats {
+  const made = new Map<keyof typeof DATE_FORMATS, Intl.DateTimeFormat>();
+  const format = (date: Date, shape: keyof typeof DATE_FORMATS): string => {
+    let formatter = made.get(shape);
+    if (!formatter) made.set(shape, formatter = new Intl.DateTimeFormat(language, DATE_FORMATS[shape]));
+    return formatter.format(date);
+  };
+  return Object.assign(format, { zone: new Intl.DateTimeFormat().resolvedOptions().timeZone });
+}
+
 /**
  * The day heading failure rows (plan 047) and recordings are grouped under: Today, Yesterday,
  * then the date, with the year only when it is not the current year.
  */
-export function dayHeading(occurredAt: Date, now: Date, language: Language): string {
+export function dayHeading(occurredAt: Date, now: Date, language: Language, format = dateFormats(language)): string {
   const days = Math.round((localDay(now) - localDay(occurredAt)) / 86_400_000);
   if (days === 0) return t("Today", language);
   if (days === 1) return t("Yesterday", language);
-  return occurredAt.toLocaleDateString(language, {
-    month: "long", day: "numeric", ...(occurredAt.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
-  });
+  return format(occurredAt, occurredAt.getFullYear() === now.getFullYear() ? "day" : "dayOfYear");
 }
 
 /** The short local time a failure row shows beside its reason, and the title of a recording the app named. */
-export function shortTime(occurredAt: Date, language: Language): string {
-  return occurredAt.toLocaleTimeString(language, { hour: "numeric", minute: "2-digit" });
+export function shortTime(occurredAt: Date, language: Language, format = dateFormats(language)): string {
+  return format(occurredAt, "time");
 }
 
 /**
@@ -452,16 +473,17 @@ function failuresTab(ctx: AppContext): SettingsView["tabs"][number] {
 }
 
 const resultViews = new WeakMap<RecordingResult, { key: string; view: RecordingResultView }>();
-function projectResult(result: RecordingResult, state: RecordingState, ctx: AppContext, now: Date): RecordingResultView {
+function projectResult(result: RecordingResult, state: RecordingState, ctx: AppContext, now: Date, format: DateFormats): RecordingResultView {
   const language = ctx.language;
-  const key = `${language}:${ctx.platform}:${localDay(now)}:${state.type}:${state.type === "needsPermission" && state.needsRelaunch}`;
+  // The zone too: a row's time and day are local, and the system zone can change while the app runs (review batch 2).
+  const key = `${language}:${ctx.platform}:${format.zone}:${localDay(now)}:${state.type}:${state.type === "needsPermission" && state.needsRelaunch}`;
   const previous = resultViews.get(result);
   if (previous?.key === key) return previous.view;
   const view = {
       id: result.id,
       reason: failureReason(result.code, language),
-      day: dayHeading(new Date(result.occurredAt), now, language),
-      time: shortTime(new Date(result.occurredAt), language),
+      day: dayHeading(new Date(result.occurredAt), now, language, format),
+      time: shortTime(new Date(result.occurredAt), language, format),
       outcome: failureOutcome(result, language), guidance: ctx.platform === "darwin" && result.restored && isPermissionFailure(result.code)
         ? t("This failure is from an earlier session. Check recording permissions before trying again.", language)
         : failureGuidance(result.code, language, ctx.platform),
@@ -543,7 +565,7 @@ export function formatDuration(seconds: number): string {
  * The Recordings tab (2026-10-04): the output folder's videos, newest first, grouped by day like the
  * failures, each with the URLs the page may load it by. Totals count every listed file.
  */
-function libraryView(ctx: AppContext, now: Date): LibraryView | undefined {
+function libraryView(ctx: AppContext, now: Date, format: DateFormats): LibraryView | undefined {
   const library = ctx.library;
   if (!library) return undefined;
   const language = ctx.language;
@@ -560,8 +582,8 @@ function libraryView(ctx: AppContext, now: Date): LibraryView | undefined {
       const stamped = stampedTime(file.name) !== undefined;
       const at = new Date(file.recordedAt);
       return {
-        id: file.id, name: file.name, day: dayHeading(at, now, language),
-        title: stamped ? shortTime(at, language) : file.name.replace(/\.[^.]+$/, ""),
+        id: file.id, name: file.name, day: dayHeading(at, now, language, format),
+        title: stamped ? shortTime(at, language, format) : file.name.replace(/\.[^.]+$/, ""),
         ...(file.duration === undefined ? {} : { duration: formatDuration(file.duration) }),
         size: formatBytes(file.size),
         thumbnail: `${MEDIA_SCHEME}://thumb/${file.id}?v=${file.version}`,
@@ -576,9 +598,10 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
   const language = ctx.language;
   const unlocked = preferencesUnlocked(state);
   const now = ctx.now ?? new Date();
+  const format = dateFormats(language);
   // A quit in progress refuses every action but quit, as the tray shows; the panel must not offer one either.
   const quitting = ctx.quitting === true;
-  const results = (ctx.recordingResults ?? []).slice(0, ctx.historyLimit).map(result => projectResult(result, state, ctx, now));
+  const results = (ctx.recordingResults ?? []).slice(0, ctx.historyLimit).map(result => projectResult(result, state, ctx, now, format));
   return {
     language,
     ...(ctx.historyFailed ? { recordingHistoryStatus: t("Could not read the failure history. The file was kept; see the log.", language) } : {}),
@@ -588,7 +611,7 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
     // The app's own window, holding the recordings as well as the settings (2026-10-04): named after the app in every language.
     title: APP_NAME,
     status: settingsStatus(state, ctx),
-    ...(ctx.library ? { library: libraryView(ctx, now)! } : {}),
+    ...(ctx.library ? { library: libraryView(ctx, now, format)! } : {}),
     // One line above the tabs: the lock covers General too, so it is not the Recording tab's own note.
     hint: quitting ? t("Quitting once the recording is saved or cleaned up…", language)
       : unlocked ? "" : t("Recording in progress; only language and appearance can change.", language),

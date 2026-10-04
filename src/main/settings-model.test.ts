@@ -631,6 +631,25 @@ describe("Recording failures tab (plan 047)", () => {
       file: "/Users/me/Movies/RecordStuff/2026-09-28 14-05-00.recording.mp4" });
     expect(row).not.toHaveProperty("heading");
   });
+
+  it("names times in the system zone of each view, even after the zone changes to one with the same offset (review batch 1)", () => {
+    const zone = process.env["TZ"];
+    try {
+      // January in New York and July in Lima are both UTC−5; a formatter kept across views would read 1:00 PM.
+      process.env["TZ"] = "America/New_York";
+      expect(shortTime(new Date("2026-01-15T17:00:00Z"), "en")).toBe("12:00 PM");
+      // The same failure, shown again after the change on the same day, is not a cached row from the old zone (review batch 2).
+      const occurredAt = "2026-07-15T17:00:00.000Z";
+      const result = { ...base, id: "z", occurredAt, acknowledged: false };
+      const show = (): string => settingsView(idle, { ...context, now: new Date("2026-01-15T17:00:00Z"), recordingResults: [result] }).recordingResults![0]!.time;
+      expect(show()).toBe("1:00 PM");
+      process.env["TZ"] = "America/Lima";
+      expect(shortTime(new Date("2026-07-15T17:00:00Z"), "en")).toBe("12:00 PM");
+      expect(show()).toBe("12:00 PM");
+    } finally {
+      if (zone === undefined) delete process.env["TZ"]; else process.env["TZ"] = zone;
+    }
+  });
 });
 
 describe("Output folder in Settings → Recording (plan 048)", () => {
