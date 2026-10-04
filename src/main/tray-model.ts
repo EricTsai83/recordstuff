@@ -11,7 +11,7 @@
  */
 import { failureReason } from "./recording-result";
 import { displayLabel, displayFailureText } from "../shared/display";
-import { displayResolution } from "./display-source";
+import { displayResolution, primaryDisplayChoosable } from "./display-source";
 import type { EarlyStop } from "../shared/session-record";
 import type { TrayClick } from "../shared/appearance";
 import type { QuitDeferral } from "./quit-feedback";
@@ -171,6 +171,8 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
       stateGroup.push(item(text("Start recording"), "start", shortcutHint(ctx, "Start / stop recording with {value}"), shortcut));
       // The one folder item left: the fix, while the folder is what stops the next recording.
       if (state.outputDirUnavailable) stateGroup.push(item(text("Change output folder…"), "changeOutputDir", ctx.outputDir));
+      // Likewise the way back from a chosen display that is gone, as Settings offers it.
+      else if (!resolution.ok && primaryDisplayChoosable(ctx.displays)) stateGroup.push(item(text("Use Primary display"), { setDisplay: { kind: "primary" } }));
       return model("idle", "", status, stateGroup);
     }
     case "starting":

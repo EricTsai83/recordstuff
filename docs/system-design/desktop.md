@@ -11,7 +11,7 @@ TrayModel is a pure projection containing icon, title, tooltip, and a flat list 
 | State | Icon/title | Tray commands | Preferences in Settings |
 | --- | --- | --- | --- |
 | needsPermission | Ring/empty | Permission guidance; Open System Settings and "Already allowed? Relaunch RecordStuff", or only Relaunch once capture was refused despite the grant | All editable |
-| idle | Ring/empty | Ready or folder unavailable; Start recording (the toggle's start, countdown included); Change output folder… only while the folder is unavailable | All editable |
+| idle | Ring/empty | Ready, folder unavailable or display unavailable; Start recording (the toggle's start, countdown included); Change output folder… only while the folder is unavailable, otherwise Use Primary display while the chosen display is unavailable and a primary exists | All editable |
 | starting | Hourglass/empty | Permission-prompt guidance; Cancel recording (tooltip names the shortcut when registered, as in the countdown) | Language and appearance; About links stay available |
 | countdown | Stopwatch/empty | "Recording starts in n s" (disabled); Cancel recording (tooltip names the shortcut when registered); the tooltip says a click cancels | Language and appearance; About links stay available |
 | recording | Filled dot/`REC` | Stop (tooltip names the shortcut when registered) | Language and appearance; About links stay available |

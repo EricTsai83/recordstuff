@@ -12,7 +12,7 @@
  */
 import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure, persistenceWarning } from "./recording-result";
 import { displayLabel, displayFailureText, type DisplayInfo } from "../shared/display";
-import { displayResolution } from "./display-source";
+import { displayResolution, primaryDisplayChoosable } from "./display-source";
 import { translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
 import {
   FRAME_RATES,
@@ -119,7 +119,7 @@ function screenGroup(ctx: AppContext, enabled: boolean): Group {
     result.diagnostics.push({ kind: "current", heading: t("Selected display is unavailable", ctx.language),
       reason: t("Recording cannot start on {label}.", ctx.language, { label: displayLabel(preference, ctx.language) }),
       guidance: t("Choose Primary display or another screen.", ctx.language) });
-    if (ctx.displays.some((d) => d.primary && unique(d))) result.recovery = { choice: "primary", label: t("Use Primary display", ctx.language) };
+    if (primaryDisplayChoosable(ctx.displays)) result.recovery = { choice: "primary", label: t("Use Primary display", ctx.language) };
   }
   if (ctx.displayFailure) result.diagnostics.push({ kind: "history",
     heading: t(["target_removed", "track_ended"].includes(ctx.displayFailure) ? "Last recording interrupted" : "Last recording failure", ctx.language),

@@ -390,6 +390,22 @@ describe("display tray feedback", () => {
     expect(menu[0]).toMatchObject({ label: "Selected display is unavailable. Choose another screen." });
     expect(menu[1]).toMatchObject({ label: "Last display failure: The display's capture source is unavailable. Retry or choose another screen." });
   });
+  it("offers Use Primary display as the way back from a chosen display that is gone, as Settings does", () => {
+    const primary = { id: "1", label: "Built-in", logicalWidth: 1512, logicalHeight: 982, scaleFactor: 2, internal: true, primary: true };
+    const gone: AppContext = { ...mac, language: "en", display: { kind: "display", id: "7", label: "Studio" }, displays: [primary] };
+    const labels = (ctx: AppContext): string[] => trayModel({ type: "idle" }, ctx).menu.flatMap(entry => entry.kind === "item" ? [entry.label] : []);
+    expect(labels(gone).slice(0, 3)).toEqual(["Selected display is unavailable. Choose another screen.", "Start recording", "Use Primary display"]);
+    expect(trayModel({ type: "idle" }, gone).menu.find(entry => entry.kind === "item" && entry.label === "Use Primary display"))
+      .toMatchObject({ enabled: true, action: { setDisplay: { kind: "primary" } } });
+    expect(labels({ ...gone, language: "zh-TW" })).toContain("使用主螢幕");
+    // No primary to go back to, or the display is back: nothing to offer.
+    expect(labels({ ...gone, displays: [] })).not.toContain("Use Primary display");
+    expect(labels({ ...gone, displays: [primary, { ...primary, primary: false }] })).not.toContain("Use Primary display");
+    expect(labels({ ...gone, displays: [primary, { ...primary, id: "7", primary: false }] })).not.toContain("Use Primary display");
+    // An unavailable folder's fix is the one shown; a busy recorder offers no settings change.
+    expect(trayModel({ type: "idle", outputDirUnavailable: true }, gone).menu.some(entry => entry.kind === "item" && entry.label === "Use Primary display")).toBe(false);
+    expect(trayModel({ type: "recording", startedAt: "x" }, gone).menu.some(entry => entry.kind === "item" && entry.label === "Use Primary display")).toBe(false);
+  });
 });
 
 it("uses one badged idle icon, prioritizes REC and leaves reviewed failures to RecordStuff", () => {
