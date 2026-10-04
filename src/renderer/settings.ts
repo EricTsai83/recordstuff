@@ -934,7 +934,15 @@ function updateLibrary(): void {
   const sections = new Map([...days.querySelectorAll<HTMLElement>(".library-day")].map(section => [section.dataset.day!, section]));
   const focused = days.contains(document.activeElement) ? document.activeElement as HTMLElement : undefined;
   const ids = new Set(items.map(item => item.id));
-  for (const card of days.querySelectorAll<HTMLElement>(".clip")) if (!ids.has(card.dataset.id!)) card.remove();
+  // The card that held focus, or whose recording plays in the focused player: when it leaves the folder (moved to the
+  // Trash here, deleted in Finder), the card after it takes its place, else the one before, as a removed failure row's does.
+  const previousCards = [...days.querySelectorAll<HTMLElement>(".clip")];
+  const playing = player?.open && player.contains(document.activeElement) ? player.dataset.id : undefined;
+  const leaving = previousCards.findIndex(card => !ids.has(card.dataset.id!) && ((focused && card.contains(focused)) || card.dataset.id === playing));
+  const remaining = (cards: HTMLElement[]): string | undefined => cards.find(card => ids.has(card.dataset.id!))?.dataset.id;
+  const successor = leaving < 0 ? undefined
+    : remaining(previousCards.slice(leaving + 1)) ?? remaining(previousCards.slice(0, leaving).reverse()) ?? null;
+  for (const card of previousCards) if (!ids.has(card.dataset.id!)) card.remove();
   for (const [index, group] of groups.entries()) {
     let section = sections.get(group.day);
     sections.delete(group.day);
@@ -951,10 +959,16 @@ function updateLibrary(): void {
     }
   }
   for (const section of sections.values()) section.remove();
-  if (focused && !focused.isConnected) document.getElementById(`tab-library`)?.focus({ preventScroll: true });
-  else if (focused?.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
-  // The player's or the menu's recording left the folder (moved to the Trash here or elsewhere).
+  // The player's or the menu's recording left the folder (moved to the Trash here or elsewhere); closing the player
+  // hands focus back to its card, which is gone, so the successor below is chosen after it.
   if (player?.open && !ids.has(player.dataset.id ?? "")) player.close();
+  // Also while the window is inactive (deleted in Finder): the page keeps its own focus for when the user comes back,
+  // and focusing inside an inactive window does not bring it forward (review batch 3).
+  if (successor !== undefined) {
+    (successor === null ? document.getElementById("tab-library") : document.querySelector<HTMLElement>(`#clip-${successor} .clip-open`))
+      ?.focus({ preventScroll: true });
+  } else if (focused && !focused.isConnected) document.getElementById("tab-library")?.focus({ preventScroll: true });
+  else if (focused?.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
   if (clipMenu?.id && !ids.has(clipMenu.id)) {
     const inMenu = clipMenu.el.contains(document.activeElement);
     closeClipMenu(false);
@@ -1091,13 +1105,12 @@ document.addEventListener("scroll", placeClipMenu, true);
 window.addEventListener("resize", placeClipMenu);
 // Focus inside a hidden menu would fall to the page, where the next Escape closes the window: it goes back to the ⋯ button.
 window.addEventListener("blur", () => closeClipMenu(true));
-/** Runs a card's file action and says how it went; a recording that left the folder hands focus to its neighbour. */
+/**
+ * Runs a card's file action and says how it went. Focus waits on the card's ⋯ button, so a recording that left
+ * the folder hands it to its neighbour when the reply is rendered (`updateLibrary`).
+ */
 async function fileAction(id: string, action: FileAction, anchor: HTMLButtonElement): Promise<void> {
   closeClipMenu(false);
-  const card = document.getElementById(`clip-${id}`);
-  const cards = [...document.querySelectorAll<HTMLElement>(".clip")];
-  const index = card ? cards.indexOf(card) : -1;
-  const neighbour = cards[index + 1] ?? cards[index - 1];
   anchor.focus({ preventScroll: true });
   try {
     const result = await window.settings.choose(`recordingFile:${id}`, action);
@@ -1106,10 +1119,6 @@ async function fileAction(id: string, action: FileAction, anchor: HTMLButtonElem
     else if (action === "trash") announce(text(platform() === "darwin" ? "Moved to the Trash" : "Moved to the Recycle Bin"));
   } catch {
     announce(text("Could not complete this action. Try again."));
-  }
-  if (!anchor.isConnected && document.hasFocus()) {
-    const next = neighbour?.isConnected ? neighbour.querySelector<HTMLElement>(".clip-open") : document.getElementById("tab-library");
-    next?.focus({ preventScroll: true });
   }
 }
 /** The in-page player: a modal dialog with the video and Close, closed by Escape, Close or the recording leaving; closing stops and releases the file. */

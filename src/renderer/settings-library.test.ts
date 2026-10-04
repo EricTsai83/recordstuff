@@ -150,4 +150,18 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   expect(("open" in menu.dataset)).toBe(true);
   push({ ...base, revision: 5, resultFocus: 3, entryTab: "recording", library: { ...base.library!, items: [item("c", "今天", "下午2:02")] } });
   expect([("open" in menu.dataset), moreC.isConnected]).toEqual([false, false]);
+
+  // A focused card deleted in Finder, while Finder is in front: the card after it takes its place, as a removed
+  // failure row's does, so the window opens on it when the user comes back (review batch 3).
+  push({ ...base, revision: 6, resultFocus: 4, entryTab: "library" });
+  document.querySelector<HTMLElement>("#clip-b .clip-open")!.focus();
+  const inactive = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+  push({ ...base, revision: 7, library: { ...base.library!, items: [base.library!.items[0]!, base.library!.items[2]!] } });
+  inactive.mockRestore();
+  expect(document.activeElement?.id).toBe("clip-c-open");
+  // The recording playing in the focused player leaves: the player closes and the card before it, the last one left, has focus.
+  document.querySelector<HTMLButtonElement>("#clip-c .clip-open")!.click();
+  document.getElementById("player-close")!.focus();
+  push({ ...base, revision: 8, library: { ...base.library!, items: [base.library!.items[0]!] } });
+  expect([player.open, document.activeElement?.id]).toEqual([false, "clip-a-open"]);
 });
