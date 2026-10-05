@@ -146,9 +146,10 @@ export class UpdateChecker {
     this.retryLaunch = false;
     const controller = this.controller = new AbortController();
     const previous = this.state;
-    this.state = { kind: "checking", ...(previous.kind !== "idle" && previous.kind !== "checking" ? { previous } : {}) }; this.options.changed();
     let result: UpdateState = previous;
     try {
+      // Inside the try: a throwing redraw must still release the controller, or no check could ever run again.
+      this.state = { kind: "checking", ...(previous.kind !== "idle" && previous.kind !== "checking" ? { previous } : {}) }; this.options.changed();
       // Persist before networking, so fast relaunches (including failures) respect the limit.
       try { await this.options.saveAttempt(now); }
       catch (error) {

@@ -141,6 +141,15 @@ describe("lifecycle", () => {
     h.checker.dispose(); h.options.changed.mockClear(); expect(signal.aborted).toBe(true); resolve("0.2.0"); await pending;
     h.checker.flush(); await h.checker.check(true); expect(h.options.changed).not.toHaveBeenCalled();
   });
+  it("a redraw that throws as the check begins fails that check and leaves later ones free to run", async () => {
+    const h = harness();
+    h.options.changed.mockImplementationOnce(() => { throw new Error("tray gone"); });
+    await h.checker.check(true);
+    expect(h.checker.state.kind).toBe("failed");
+    expect(h.options.log).toHaveBeenCalledWith("updates: check failed: Error: tray gone");
+    await h.checker.check(true);
+    expect(h.checker.state.kind).toBe("available");
+  });
 });
 
 
