@@ -1584,7 +1584,8 @@ let playerControlsUi: PlayerControls | undefined;
 /** Four arrows pointing out: full screen, as the full-screen window's way out points in. */
 const FULL_SCREEN_MARK = "M4 9V4h5v1.8H5.8V9ZM15 4h5v5h-1.8V5.8H15ZM18.2 15H20v5h-5v-1.8h3.2ZM4 15h1.8v3.2H9V20H4Z";
 const CLOSE_MARK = "M6.3 5 12 10.7 17.7 5 19 6.3 13.3 12l5.7 5.7-1.3 1.3-5.7-5.7L6.3 19 5 17.7l5.7-5.7L5 6.3Z";
-const playerLabels = (): PlayerLabels => ({ play: text("Play"), pause: text("Pause"), mute: text("Mute"), unmute: text("Unmute"), volume: text("Volume"), position: text("Playback position") });
+const playerLabels = (): PlayerLabels => ({ play: text("Play"), pause: text("Pause"), mute: text("Mute"), unmute: text("Unmute"), volume: text("Volume"), position: text("Playback position"),
+  seconds: value => translate("{value} s", view?.language, { value }) });
 function openPlayer(item: LibraryItemView): void {
   closeClipMenu(false);
   if (!player) {

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { playbackOf, playerControls } from "./player-controls";
 import { VIDEO_TIMING, formatDuration } from "../shared/video-player";
 
-const labels = { play: "Play", pause: "Pause", mute: "Mute", unmute: "Unmute", volume: "Volume", position: "Playback position" };
+const labels = { play: "Play", pause: "Pause", mute: "Mute", unmute: "Unmute", volume: "Volume", position: "Playback position", seconds: (value: number) => `${value} s` };
 
 /** A video whose playing state, length and position the test sets, as happy-dom plays nothing. */
 function setup(): { video: HTMLVideoElement; root: HTMLElement; fullScreen: ReturnType<typeof vi.fn>; set: (state: { paused?: boolean; duration?: number }) => void } {
@@ -148,6 +148,41 @@ it("turns the volume up and down a step with ↑ and ↓ wherever focus is in th
   expect(key(root.querySelector(".pc-level")!, "ArrowUp").defaultPrevented).toBe(false);
   key(video, "ArrowUp", { metaKey: true });
   expect(video.volume).toBe(0.5);
+});
+
+it("flashes what a key did over the picture, as YouTube does: the volume at the centre with its level, a seek at its side (2026-10-06)", () => {
+  const { video, root, set } = setup();
+  set({ duration: 60 });
+  video.volume = 0.5; video.muted = false;
+  const bezel = root.querySelector<HTMLElement>(".pc-bezel")!, level = root.querySelector<HTMLElement>(".pc-bezel-text")!;
+  const back = root.querySelector<HTMLElement>(".pc-seek-back")!, forward = root.querySelector<HTMLElement>(".pc-seek-forward")!;
+  // None of it is in the way, or read out: the controls already say their values.
+  expect([bezel, level, back, forward].map(el => [el.hidden, el.getAttribute("aria-hidden")])).toEqual([[true, "true"], [true, "true"], [true, "true"], [true, "true"]]);
+  key(video, "ArrowUp");
+  expect([bezel.hidden, bezel.dataset.kind, level.hidden, level.textContent]).toEqual([false, "up", false, "55%"]);
+  key(video, "ArrowDown"); key(video, "ArrowDown");
+  expect([bezel.dataset.kind, level.textContent]).toEqual(["down", "45%"]);
+  // The circle goes after half a second, its level a little later.
+  vi.advanceTimersByTime(500);
+  expect([bezel.hidden, level.hidden]).toEqual([true, false]);
+  vi.advanceTimersByTime(300);
+  expect(level.hidden).toBe(true);
+  video.volume = 0.05; key(video, "ArrowDown");
+  expect([bezel.dataset.kind, level.textContent]).toEqual(["muted", "0%"]);
+  // → shows +5 at the right, ← −5 at the left, each putting the other away; pressed again it starts over.
+  key(video, "ArrowRight");
+  expect([forward.hidden, forward.textContent, back.hidden]).toEqual([false, "+5 s", true]);
+  key(video, "ArrowLeft");
+  expect([back.hidden, back.textContent, forward.hidden]).toEqual([false, "−5 s", true]);
+  vi.advanceTimersByTime(500);
+  key(video, "ArrowLeft");
+  vi.advanceTimersByTime(500);
+  expect(back.hidden).toBe(false);
+  vi.advanceTimersByTime(200);
+  expect(back.hidden).toBe(true);
+  // The volume slider's own arrows flash nothing.
+  key(root.querySelector(".pc-level")!, "ArrowUp");
+  expect(bezel.hidden).toBe(true);
 });
 
 it("moves to where the seek bar is dragged, and sets the volume from its slider, at zero muted and brought back by its button", () => {

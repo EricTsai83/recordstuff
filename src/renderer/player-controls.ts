@@ -16,6 +16,8 @@ export interface PlayerLabels {
   unmute: string;
   volume: string;
   position: string;
+  /** "5 s", "5 秒": what ← and → show they moved, with a sign before it (2026-10-06). */
+  seconds(value: number): string;
 }
 export interface PlayerControlsOptions {
   labels: PlayerLabels;
@@ -42,13 +44,52 @@ const MARKS = {
   pause: "M7 5h3.2v14H7ZM13.8 5H17v14h-3.2Z",
   volume: "M4 9.2h3.6L12 5v14l-4.4-4.2H4ZM15 8.6a4.6 4.6 0 0 1 0 6.8l-1.1-1.1a3.1 3.1 0 0 0 0-4.6ZM17.4 6.2a8 8 0 0 1 0 11.6l-1.1-1.1a6.4 6.4 0 0 0 0-9.4Z",
   muted: "M4 9.2h3.6L12 5v14l-4.4-4.2H4ZM15.3 9.4l1.1-1.1 2.3 2.3 2.3-2.3 1.1 1.1-2.3 2.3 2.3 2.3-1.1 1.1-2.3-2.3-2.3 2.3-1.1-1.1 2.3-2.3Z",
+  /** The volume turned down: the speaker with its nearer wave only. */
+  volumeDown: "M4 9.2h3.6L12 5v14l-4.4-4.2H4ZM15 8.6a4.6 4.6 0 0 1 0 6.8l-1.1-1.1a3.1 3.1 0 0 0 0-4.6Z",
+  /** One of the three arrows a seek shows, pointing forward. */
+  chevron: "M7 5.5 17 12 7 18.5Z",
 } as const;
+/** One step of the volume: the slider's, and what ↑ and ↓ turn it by. */
+const VOLUME_STEP = 0.05;
+/** How far ← and → move, in seconds. */
+const ARROW_SEEK_SECONDS = 5;
+/** How long each flash lasts: the volume's circle, its level at the top, and a seek's arrows and seconds. */
+const BEZEL_MS = 500, BEZEL_TEXT_MS = 800, SEEK_HINT_MS = 650;
+const reducedMotion = (): boolean => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+/**
+ * The flashes, as YouTube's: the circle grows to twice its size as it fades; the level and a seek hold, then fade. With
+ * reduced motion the circle only fades, and the arrows hold still (player-controls.css).
+ */
+const FLASHES: Record<"bezel" | "text" | "seek", (reduced: boolean) => Keyframe[]> = {
+  bezel: reduced => reduced ? [{ opacity: 1 }, { opacity: 0 }]
+    : [{ opacity: 1, transform: "translate(-50%, -50%) scale(1)" }, { opacity: 0, transform: "translate(-50%, -50%) scale(2)" }],
+  text: () => [{ opacity: 1, offset: 0 }, { opacity: 1, offset: 0.7 }, { opacity: 0, offset: 1 }],
+  seek: () => [{ opacity: 1, offset: 0 }, { opacity: 1, offset: 0.6 }, { opacity: 0, offset: 1 }],
+};
+/** Each shown flash's end, which puts it away; a newer flash of the same overlay replaces it. */
+const flashEnds = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
+/** Shows an overlay for `ms`, starting its animation over if it was already showing (a key pressed again). */
+function flash(el: HTMLElement, kind: keyof typeof FLASHES, ms: number): void {
+  stopFlash(el);
+  el.hidden = false;
+  // The arrows' own animation (CSS) starts over with the class.
+  void el.offsetWidth;
+  el.classList.add("pc-flashing");
+  // A flash cut short by the next one rejects its `finished` promise: nothing waits on it.
+  el.animate?.(FLASHES[kind](reducedMotion()), { duration: ms, easing: "linear", fill: "forwards" })?.finished.catch(() => {});
+  flashEnds.set(el, setTimeout(() => stopFlash(el), ms));
+}
+function stopFlash(el: HTMLElement): void {
+  clearTimeout(flashEnds.get(el));
+  flashEnds.delete(el);
+  for (const animation of el.getAnimations?.() ?? []) animation.cancel();
+  el.classList.remove("pc-flashing");
+  el.hidden = true;
+}
 /**
  * Where a video is and how it sounds, as one window hands it to the other: the player going full screen, and the
  * full-screen window handing back. One reading, so resuming behaves the same in both directions.
  */
-/** One step of the volume: the slider's, and what ↑ and ↓ turn it by. */
-const VOLUME_STEP = 0.05;
 export function playbackOf(video: HTMLVideoElement): PlaybackState {
   return { time: video.currentTime || 0, playing: !video.paused && !video.ended, volume: video.volume, muted: video.muted };
 }
@@ -96,7 +137,20 @@ export function playerControls(video: HTMLVideoElement, options: PlayerControlsO
   const time = element("span", "pc-time");
   row.append(play, volume, time, element("span", "pc-spacer"), ...options.trailing);
   bottom.append(seek, row);
-  root.append(video, top, bottom);
+  // What a key just did, flashed over the picture as YouTube does (2026-10-06): the volume in a circle at the centre
+  // with its level at the top, and a seek as three arrows and the seconds at the side it went. Seen, not read: the
+  // slider and the seek bar already say their values, and none of it takes a click meant for the picture.
+  const bezel = element("div", "pc-bezel"); bezel.hidden = true;
+  const levelText = element("div", "pc-bezel-text"); levelText.hidden = true;
+  const [seekBack, seekForward] = (["back", "forward"] as const).map(side => {
+    const hint = element("div", `pc-seek-hint pc-seek-${side}`); hint.hidden = true;
+    const arrows = element("div", "pc-seek-arrows");
+    for (let index = 0; index < 3; index++) { const arrow = element("span", "pc-seek-arrow"); arrow.append(mark(MARKS.chevron)); arrows.append(arrow); }
+    hint.append(arrows, element("div", "pc-seek-label"));
+    return hint;
+  });
+  for (const overlay of [bezel, levelText, seekBack!, seekForward!]) overlay.setAttribute("aria-hidden", "true");
+  root.append(video, bezel, levelText, seekBack!, seekForward!, top, bottom);
 
   /** The thumb is held: the bar follows the hand, not the video catching up. */
   let scrubbing = false;
@@ -155,6 +209,18 @@ export function playerControls(video: HTMLVideoElement, options: PlayerControlsO
     const to = Math.round(Math.min(1, Math.max(0, from + by)) * 100) / 100;
     video.volume = to;
     video.muted = to === 0;
+    bezel.replaceChildren(mark(MARKS[to === 0 ? "muted" : by > 0 ? "volume" : "volumeDown"]));
+    bezel.dataset.kind = to === 0 ? "muted" : by > 0 ? "up" : "down";
+    flash(bezel, "bezel", BEZEL_MS);
+    levelText.textContent = `${Math.round(to * 100)}%`;
+    flash(levelText, "text", BEZEL_TEXT_MS);
+  }
+  /** → or ←: the arrows and the seconds at that side, the other side's put away. */
+  function showSeek(forward: boolean): void {
+    const hint = forward ? seekForward! : seekBack!;
+    stopFlash(forward ? seekBack! : seekForward!);
+    hint.querySelector(".pc-seek-label")!.textContent = `${forward ? "+" : "−"}${labels.seconds(ARROW_SEEK_SECONDS)}`;
+    flash(hint, "seek", SEEK_HINT_MS);
   }
 
   /** Kept within the video; a length not known yet bounds nothing, or every step forward would land on 0. */
@@ -180,7 +246,10 @@ export function playerControls(video: HTMLVideoElement, options: PlayerControlsO
     const onButton = target instanceof HTMLButtonElement, onVolume = target === level;
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
     if ((key === " " && !onButton) || key === "k") toggle();
-    else if ((key === "ArrowLeft" || key === "ArrowRight") && !onVolume) seekTo(video.currentTime + (key === "ArrowLeft" ? -5 : 5));
+    else if ((key === "ArrowLeft" || key === "ArrowRight") && !onVolume) {
+      seekTo(video.currentTime + (key === "ArrowLeft" ? -ARROW_SEEK_SECONDS : ARROW_SEEK_SECONDS));
+      showSeek(key === "ArrowRight");
+    }
     else if ((key === "ArrowUp" || key === "ArrowDown") && !onVolume) nudgeVolume(key === "ArrowUp" ? VOLUME_STEP : -VOLUME_STEP);
     else if (target === seek && Object.hasOwn(SEEK_KEYS, key)) seekTo(SEEK_KEYS[key]!(video.currentTime));
     else if (key === "m") toggleMute();

@@ -170,6 +170,10 @@ async function run(): Promise<void> {
         await shoot(window, `player-playing-${lang}-${scheme}.png`, `player playing · ${lang} · ${scheme}`);
         await window.webContents.executeJavaScript(`(() => { const v = document.querySelector("dialog.player video"); v.pause(); v.currentTime = 3; })()`);
         await shoot(window, `player-paused-${lang}-${scheme}.png`, `player paused · ${lang} · ${scheme}`);
+        // What → and ↑ flash over the picture (2026-10-06), caught a quarter of a second in.
+        await window.webContents.executeJavaScript(`(() => { const v = document.querySelector("dialog.player video"); v.volume = 0.5; v.muted = false;
+          for (const key of ["ArrowRight", "ArrowUp"]) v.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })); })()`);
+        await shoot(window, `player-flash-${lang}-${scheme}.png`, `player after → and ↑ · ${lang} · ${scheme}`);
         await window.webContents.executeJavaScript(`document.querySelector("dialog.player").close()`);
       }
     }

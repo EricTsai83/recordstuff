@@ -44,7 +44,7 @@ heading.hidden = !title.textContent;
 const controls = playerControls(video, {
   id: "video", top: heading, trailing: [exitButton], fullScreen: leave,
   labels: { play: translate("Play", language), pause: translate("Pause", language), mute: translate("Mute", language), unmute: translate("Unmute", language),
-    volume: translate("Volume", language), position: translate("Playback position", language) },
+    volume: translate("Volume", language), position: translate("Playback position", language), seconds: value => translate("{value} s", language, { value }) },
 });
 document.body.prepend(controls.root);
 
