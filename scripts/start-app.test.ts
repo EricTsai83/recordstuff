@@ -63,6 +63,13 @@ fs.appendFileSync(env.CALLS, JSON.stringify({ name, args, nodeMode: env.ELECTRON
 if (env.FAIL_COMMAND === name || (env.FAIL_VERIFY && name === 'codesign' && args[0] === '--verify')) process.exit(2);
 if (env.FAIL_SIGN && name === 'codesign' && args[0] === '--force') { process.stderr.write(env.FAIL_SIGN + '\\n'); process.exit(1); }
 if (name === 'ditto') fs.mkdirSync(path.join(args[1], 'Contents/Frameworks/Electron Helper.app/Contents'), { recursive: true });
+if (name === 'pgrep' && env.PGREP_STATUS3) {
+  // The first PGREP_STATUS3 calls fail as macOS pgrep does while the process table changes.
+  const count = path.join(path.dirname(env.CALLS), 'pgrep-count');
+  const seen = fs.existsSync(count) ? Number(fs.readFileSync(count, 'utf8')) : 0;
+  fs.writeFileSync(count, String(seen + 1));
+  if (seen < Number(env.PGREP_STATUS3)) { process.stderr.write('pgrep: Cannot get process list\\n'); process.exit(3); }
+}
 if (name === 'pgrep') {
   const running = (env.RUNNING || '').replaceAll('{root}', env.ROOT);
   process.exit(running && new RegExp(args[1]).test(running) ? 0 : 1);
@@ -216,6 +223,16 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () =
 
   it.each(["pgrep", "security", "pnpm"])("stops on a %s failure without opening an old app", command => {
     expectNoDelivery(invoke({ FAIL_COMMAND: command }));
+  });
+
+  it("asks pgrep again after a passing internal error, and names the error when it persists", () => {
+    const passing = invoke({ PGREP_STATUS3: "2" });
+    expect(passing.status, passing.stderr).toBe(0);
+    expect(passing.commands.filter(call => call.name === "pgrep")).toHaveLength(3);
+    const persistent = invoke({ PGREP_STATUS3: "3" });
+    expectNoDelivery(persistent);
+    expect(persistent.stderr).toContain("Could not check for a running RecordStuff.app (pgrep exit 3: pgrep: Cannot get process list).");
+    expect(persistent.commands.map(call => call.name)).toEqual(["pgrep", "pgrep", "pgrep"]);
   });
 
   it("is not blocked by a process that only names this checkout's Electron in its arguments", () => {
