@@ -16,7 +16,7 @@ const windows = release.windows;
       <a class="btn btn-primary btn-lg" href={release.dmgUrl} data-download-os="mac"><AppleMark size={18} /><span>{hero.primaryCta}</span></a>
       {windows && <a class="btn btn-primary btn-lg" href={windows.url} data-download-os="windows" hidden><WindowsMark size={16} /><span>{hero.windowsCta}</span></a>}
       <a class="hero-source-link" href={links.repository} target="_blank" rel="noopener noreferrer"><GitHubMark size={15} /><span>{hero.secondaryCta}</span></a>
-      <p class="hero-version dim" data-download-os="mac">v{release.version} · {release.sizeLabel} · Apple silicon · <a class="link" href="/download">checksum</a></p>
+      <p class="hero-version dim" data-download-os="mac">v{release.version} · {release.sizeLabel} · Apple silicon · <a class="link" href="/download#macos-title">checksum</a></p>
       {windows && <p class="hero-version dim" data-download-os="windows" hidden>v{release.version} · {windows.sizeLabel} · {windows.architectureLabel} · {hero.windowsNote} · <a class="link" href="/download#windows-title">details</a></p>}
       <!-- The other platform's section on /download, for a wrong guess or a download meant for another computer.
            Windows is reached through its section, where its unverified state is stated beside the installer. -->
