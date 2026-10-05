@@ -460,6 +460,7 @@ function placeInfo(): void {
   const { left, top, side, bridge } = infoPlacement(anchor, popover.getBoundingClientRect(), { width: innerWidth, height: innerHeight });
   popover.style.left = `${left}px`; popover.style.top = `${top}px`; popover.dataset.side = side;
   popover.style.setProperty("--bridge-left", `${bridge.left}px`); popover.style.setProperty("--bridge-width", `${bridge.width}px`);
+  popover.style.setProperty("--bridge-height", `${bridge.height}px`);
 }
 function hideInfo(): boolean {
   clearTimeout(infoLeave);

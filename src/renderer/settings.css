@@ -125,11 +125,12 @@ main { height: 100dvh; max-width: 720px; margin: auto; padding: 16px 20px 0; dis
 .info-button svg { width: 14px; height: 14px; }
 .info-popover { position: fixed; inset: auto; margin: 0; max-width: min(280px, calc(100vw - 16px)); padding: 8px 11px; border: 1px solid var(--card-border); border-radius: 9px; background: var(--surface); color: var(--text); font-size: 12px; line-height: 1.45; box-shadow: 0 8px 24px rgb(0 0 0 / .16), 0 1px 3px rgb(0 0 0 / .08); overflow: visible; }
 /*
- * An invisible bridge over the 6 px gap to its button (INFO_GAP), only as wide as the button, so a pointer
+ * An invisible bridge over the gap to its button (INFO_GAP), only as wide as the button, so a pointer
  * crossing slowly stays on the explanation without the strip covering a neighbouring control. It is placed
- * from the padding box, so it starts past the 1 px border and reaches 1 px further to absorb rounding.
+ * from the padding box, so it starts past the 1 px border and reaches 1 px further to absorb rounding; placeInfo
+ * sets its size and position from the same placement (info-placement.ts), the fallbacks matching a 6 px gap.
  */
-.info-popover::before { content: ""; position: absolute; left: calc(var(--bridge-left, 0px) - 1px); width: var(--bridge-width, 20px); height: 7px; }
+.info-popover::before { content: ""; position: absolute; left: calc(var(--bridge-left, 0px) - 1px); width: var(--bridge-width, 20px); height: var(--bridge-height, 7px); }
 .info-popover[data-side="above"]::before { top: calc(100% + 1px); }
 .info-popover[data-side="below"]::before { bottom: calc(100% + 1px); }
 .controls { display: flex; align-items: center; justify-content: flex-end; gap: 7px; max-width: 70%; min-width: 0; }

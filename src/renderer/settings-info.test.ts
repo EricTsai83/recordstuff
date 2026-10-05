@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
 import type { SettingsGroup, SettingsView } from "../shared/settings-panel";
+import { INFO_GAP } from "./info-placement";
 
 /** A group's secondary explanation sits behind an ⓘ beside its label, driven through the real page module. */
 function view(language: "en" | "zh-TW", info: string | undefined): SettingsView {
@@ -45,6 +46,8 @@ it("shows the explanation on hover and focus, pins it on click, closes it with E
   const past = () => new Promise(resolve => setTimeout(resolve, 200));
   info.dispatchEvent(new MouseEvent("mouseenter"));
   expect(expanded()).toBe("true");
+  // The strip over the gap is sized from the same placement as the gap itself.
+  expect(popover.style.getPropertyValue("--bridge-height")).toBe(`${INFO_GAP + 1}px`);
   // The pointer may cross onto the explanation, which keeps it open; leaving both closes it.
   info.dispatchEvent(new MouseEvent("mouseleave")); popover.dispatchEvent(new MouseEvent("mouseenter")); await past();
   expect(expanded()).toBe("true");
