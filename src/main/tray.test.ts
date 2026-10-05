@@ -727,7 +727,7 @@ describe("the menu a press attaches on macOS (2026-10-05)", () => {
       menu.emit("menu-will-show");
       expect(tray.menuOpen).toBe(true);
       expect(logs.filter(line => line.startsWith("tray: menu opened in countdown: ")).length).toBe(1);
-      expect(logs.at(-1)).toContain("Recording starts in 2 s");
+      expect(logs.at(-1)).toContain("\"label\":\"Cancel recording\"");
       // Open: it stays attached through the timers.
       vi.runAllTimers();
       expect(native.setContextMenu).toHaveBeenCalledTimes(1);

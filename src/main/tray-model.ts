@@ -165,7 +165,10 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
       const status = state.outputDirUnavailable ? text("Output folder unavailable")
         : !resolution.ok ? displayFailureText(resolution.detail, language)
         : ctx.display.kind === "display" ? t("Ready — {label}", language, { label: displayLabel(resolution, language) }) : text("Ready");
-      const stateGroup = [disabled(status)];
+      // A plain "Ready" says no more than Start recording below, so the line shows only when it says more:
+      // the chosen display, or what stops the next recording (2026-10-05). The tooltip keeps the status.
+      const plain = !state.outputDirUnavailable && resolution.ok && ctx.display.kind !== "display";
+      const stateGroup = plain ? [] : [disabled(status)];
       if (ctx.displayFailure) stateGroup.push(disabled(t("Last display failure: {reason}", language, { reason: displayFailureText(ctx.displayFailure, language) })));
       // Whenever a left click would start: the same toggle, countdown included (plan 048).
       stateGroup.push(item(text("Start recording"), "start", shortcutHint(ctx, "Start / stop recording with {value}"), shortcut));
@@ -183,14 +186,15 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
       ]);
     case "countdown": {
       const seconds = { seconds: state.remaining };
+      // No status line: an open menu keeps its items, so its seconds would go stale, and the
+      // stopwatch and Cancel recording already say it (2026-10-05).
       return model("countdown", "", t("Recording starts in {seconds} s", language, seconds), [
-        disabled(t("Recording starts in {seconds} s", language, seconds)),
         item(text("Cancel recording"), "cancelCountdown", shortcutHint(ctx, "Cancel recording with {value}"), shortcut),
       ]);
     }
     case "recording":
+      // `REC` beside the icon and Stop say it; the line is gone (2026-10-05).
       return model("recording", "REC", text("Recording"), [
-        disabled(text("Recording")),
         item(text("Stop"), "stop", shortcutHint(ctx, "Start / stop recording with {value}"), shortcut),
       ]);
     case "stopping":
