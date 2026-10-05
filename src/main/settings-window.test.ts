@@ -15,6 +15,8 @@ const mock = vi.hoisted(() => {
       on: vi.fn(),
       send: vi.fn(),
       isDestroyed: () => false,
+      setZoomMode: vi.fn(),
+      setZoomFactor: vi.fn(),
     };
     events = new Map<string, () => void>();
     isMinimized = vi.fn(() => false);
@@ -67,7 +69,7 @@ vi.mock("electron", () => ({
     removeHandler: (name: string) => mock.handlers.delete(name),
   },
 }));
-import { SettingsWindow, settingsWindowOptions, type SettingsWindowOptions } from "./settings-window";
+import { SettingsWindow, nextZoom, settingsWindowOptions, zoomRequest, type SettingsWindowOptions } from "./settings-window";
 import { TRAFFIC_LIGHT_POSITION, TRAFFIC_LIGHT_ZONE } from "../shared/window-controls";
 import { preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 import { AppShortcuts } from "./shortcuts";
@@ -1070,5 +1072,33 @@ describe("the one Settings window description, shared with the Settings fixture"
     expect(settingsWindowOptions({ ...base, platform: "darwin" })).toMatchObject({ width: 960, height: 640, x: 340, y: 143, minWidth: 380, minHeight: 360 });
     expect(settingsWindowOptions({ ...base, platform: "darwin", size: { width: 2000, height: 2000 }, workArea: { x: 0, y: 0, width: 360, height: 300 } }))
       .toMatchObject({ width: 360, height: 300, x: 0, y: 0, minWidth: 360, minHeight: 300 });
+  });
+});
+
+describe("the page's zoom (2026-10-05)", () => {
+  it("steps between 80% and 150%, and reads ⌘= ⌘+ ⌘- ⌘0 on macOS and Ctrl elsewhere", () => {
+    expect([nextZoom(1, "in"), nextZoom(1.5, "in"), nextZoom(1, "out"), nextZoom(0.8, "out"), nextZoom(1.25, "reset"), nextZoom(1.17, "out")])
+      .toEqual([1.1, 1.5, 0.9, 0.8, 1, 1.1]);
+    const key = (key: string, extra: Partial<{ meta: boolean; control: boolean; alt: boolean; type: string }> = {}) =>
+      ({ type: "keyDown", key, meta: false, control: false, alt: false, ...extra });
+    expect(["=", "+", "-", "_", "0", "9"].map(k => zoomRequest(key(k, { meta: true }), "darwin"))).toEqual(["in", "in", "out", "out", "reset", undefined]);
+    expect(zoomRequest(key("=", { control: true }), "darwin")).toBeUndefined();
+    expect(zoomRequest(key("=", { meta: true, alt: true }), "darwin")).toBeUndefined();
+    expect(zoomRequest(key("=", { meta: true, type: "keyUp" }), "darwin")).toBeUndefined();
+    expect(zoomRequest(key("-", { control: true }), "win32")).toBe("out");
+  });
+  it("zooms its own page alone, from the saved factor, and remembers each step", () => {
+    const saveZoom = vi.fn();
+    const s = setup({ geometry: { size: { width: 960, height: 640 }, save: vi.fn(), zoom: 1.25, saveZoom } });
+    s.panel.show();
+    const contents = s.window().webContents;
+    expect(contents.setZoomMode).toHaveBeenCalledWith("isolated");
+    expect(contents.setZoomFactor).toHaveBeenLastCalledWith(1.25);
+    const input = contents.on.mock.calls.find((call: any[]) => call[0] === "before-input-event")[1];
+    const event = { preventDefault: vi.fn() };
+    input(event, { type: "keyDown", key: "=", meta: process.platform === "darwin", control: process.platform !== "darwin", alt: false });
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(saveZoom).toHaveBeenLastCalledWith(1.5);
+    expect(contents.setZoomFactor).toHaveBeenLastCalledWith(1.5);
   });
 });

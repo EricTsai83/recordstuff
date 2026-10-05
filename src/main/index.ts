@@ -188,6 +188,7 @@ async function main(): Promise<void> {
     // Hiding leaves only the menu bar's icon, as closing does; Quit alone ends RecordStuff. The folder is not
     // followed out of sight either: showing the window again watches and lists it afresh (`activated`).
     hide: () => { settingsWindow.hide(); library.unwatch(); appMenu.windowClosed(); },
+    zoom: request => settingsWindow.zoom(request),
   });
   const library = new RecordingsLibrary({
     dir: () => settings.outputDir,

@@ -16,13 +16,16 @@ import { translate, type Language, type PlainMessageKey } from "../shared/i18n";
 import type { RecordingState } from "../shared/state";
 import { recordMenu, type TrayMenuItem } from "./tray-model";
 import type { AppAction, AppContext } from "./ui-model";
+import type { ZoomRequest } from "./settings-window";
 
 /**
  * The app, Edit and Window menus in the app's language, which Electron's roles would leave in English. They keep
  * the key equivalents the window relies on (Quit, Hide, copy and paste, Minimize); Close stays out, as the page
- * closes on ⌘W itself, and Zoom too, as the window is not maximizable.
+ * closes on ⌘W itself, and Zoom too, as the window is not maximizable. View lists the page's zoom keys (2026-10-05):
+ * the window handles them itself on every platform (settings-window.ts `zoomRequest`), so the items show their keys
+ * without binding them, and a key is never handled twice.
  */
-function systemMenus(language: Language, record: MenuItemConstructorOptions[], hide?: () => void): MenuItemConstructorOptions[] {
+function systemMenus(language: Language, record: MenuItemConstructorOptions[], hide?: () => void, zoom?: (request: ZoomRequest) => void): MenuItemConstructorOptions[] {
   const t = (key: PlainMessageKey): string => translate(key, language);
   const separator: MenuItemConstructorOptions = { type: "separator" };
   return [
@@ -38,6 +41,11 @@ function systemMenus(language: Language, record: MenuItemConstructorOptions[], h
       { role: "undo", label: t("Undo") }, { role: "redo", label: t("Redo") }, separator,
       { role: "cut", label: t("Cut") }, { role: "copy", label: t("Copy") }, { role: "paste", label: t("Paste") }, { role: "selectAll", label: t("Select All") },
     ] },
+    ...(zoom ? [{ label: t("View"), submenu: [
+      { label: t("Actual Size"), accelerator: "Command+0", registerAccelerator: false, click: () => zoom("reset") },
+      { label: t("Zoom In"), accelerator: "Command+Plus", registerAccelerator: false, click: () => zoom("in") },
+      { label: t("Zoom Out"), accelerator: "Command+-", registerAccelerator: false, click: () => zoom("out") },
+    ] } satisfies MenuItemConstructorOptions] : []),
     ...record,
     { label: t("Window"), role: "window", submenu: [{ role: "minimize", label: t("Minimize") }, separator, { role: "front", label: t("Bring All to Front") }] },
   ];
@@ -52,6 +60,8 @@ const SYMBOLS: Partial<Record<string, string>> = { start: "record.circle", stop:
 export interface AppMenuOptions {
   /** Hide RecordStuff (⌘H): the window goes out of sight and the app is a menu-bar app until it is opened again. */
   hide?: () => void;
+  /** Zooms the window's page (View → Zoom In, Zoom Out, Actual Size). */
+  zoom?: (request: ZoomRequest) => void;
   state: () => RecordingState;
   context: () => AppContext;
   /** The saved language, readable before the rest of the context exists. */
@@ -140,7 +150,7 @@ export class AppMenu {
     this.built = key;
     const record: MenuItemConstructorOptions[] = items.length
       ? [{ label: translate("Record", language), submenu: items.map(entry => this.toTemplate(entry)) }] : [];
-    Menu.setApplicationMenu(Menu.buildFromTemplate(systemMenus(language, record, this.options.hide)));
+    Menu.setApplicationMenu(Menu.buildFromTemplate(systemMenus(language, record, this.options.hide, this.options.zoom)));
     // The Dock's own items (Show All Windows, Quit) follow ours.
     if (items.length) app.dock?.setMenu(Menu.buildFromTemplate(items.map(entry => this.toTemplate(entry))));
   }

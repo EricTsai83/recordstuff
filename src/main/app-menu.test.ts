@@ -88,6 +88,17 @@ describe("the app menu and Dock icon (2026-10-04)", () => {
     // Without the callback the system's own Hide stays.
     expect(titles(lastMenu()[0]!.submenu!)).toContain("Hide RecordStuff");
   });
+  it("lists the page's zoom keys under View without binding them, and runs the same zoom when chosen (2026-10-05)", () => {
+    const zoom = vi.fn();
+    const zooming = new AppMenu({ state: () => state, context: () => ctx, language: () => ctx.language, onAction, zoom });
+    zooming.windowOpened();
+    expect(titles(lastMenu())).toEqual(["appMenu", "Edit", "View", "Record", "Window"]);
+    const items = lastMenu()[2]!.submenu! as Array<Template & { registerAccelerator?: boolean }>;
+    expect(items.map(entry => [entry.label, entry.accelerator, entry.registerAccelerator]))
+      .toEqual([["Actual Size", "Command+0", false], ["Zoom In", "Command+Plus", false], ["Zoom Out", "Command+-", false]]);
+    items[1]!.click!();
+    expect(zoom).toHaveBeenCalledWith("in");
+  });
   it("hides the Dock icon again when macOS finishes making the app regular after a quick hide (2026-10-05)", () => {
     vi.useFakeTimers();
     try {

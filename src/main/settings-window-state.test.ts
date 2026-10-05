@@ -49,3 +49,23 @@ it("opens any size stored before the sidebar once at the new default, then keeps
   expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ width: 380, height: 603, layout: 3 });
   expect(new SettingsWindowState(file).size).toEqual({ width: 380, height: 603 });
 });
+it("remembers the page's zoom beside the size, and keeps each when the other is saved (2026-10-05)", async () => {
+  const log = vi.fn();
+  const store = new SettingsWindowState(file, log);
+  expect(store.zoom).toBe(1);
+  store.saveZoom(1.25);
+  await store.flush();
+  // Zoomed before any resize: the file keeps the zoom alone, which reads back without a complaint.
+  expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ zoom: 1.25 });
+  expect([new SettingsWindowState(file, log).zoom, new SettingsWindowState(file, log).size]).toEqual([1.25, DEFAULT_SETTINGS_SIZE]);
+  expect(log).not.toHaveBeenCalled();
+  store.save({ width: 700, height: 600 });
+  await store.flush();
+  const reopened = new SettingsWindowState(file);
+  expect([reopened.zoom, reopened.size]).toEqual([1.25, { width: 700, height: 600 }]);
+  reopened.saveZoom(1);
+  await reopened.flush();
+  expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ width: 700, height: 600, layout: 3 });
+  fs.writeFileSync(file, '{"width":700,"height":600,"layout":3,"zoom":40}');
+  expect(new SettingsWindowState(file).zoom).toBe(1);
+});

@@ -27,6 +27,24 @@ const HISTORY_PAGE_ROWS = 50;
 /** Escapes this soon after a video's fullscreen ended belong to the press that ended it. */
 const FULLSCREEN_ESCAPE_QUIET_MS = 1000;
 /**
+ * The page's zoom steps (2026-10-05): ⌘+ and ⌘- (Ctrl elsewhere) move one step, ⌘0 returns to 100%. Kept between
+ * 80% and 150%, where the sidebar layout and the cards still fit the default window.
+ */
+export const ZOOM_STEPS = [0.8, 0.9, 1, 1.1, 1.25, 1.5] as const;
+export type ZoomRequest = "in" | "out" | "reset";
+/** The step a zoom request lands on from `current`, which may lie between steps (a value saved by another version). */
+export function nextZoom(current: number, request: ZoomRequest): number {
+  if (request === "reset") return 1;
+  const steps = request === "in" ? ZOOM_STEPS : [...ZOOM_STEPS].reverse();
+  return steps.find(step => request === "in" ? step > current + 0.001 : step < current - 0.001) ?? steps.at(-1)!;
+}
+/** The zoom key a keyboard event is, by the key it types: ⌘= or ⌘+ zooms in (with or without Shift), ⌘- out, ⌘0 resets. */
+export function zoomRequest(input: { type: string; key: string; meta: boolean; control: boolean; alt: boolean }, platform: NodeJS.Platform): ZoomRequest | undefined {
+  const command = platform === "darwin" ? input.meta && !input.control : input.control && !input.meta;
+  if (input.type !== "keyDown" || !command || input.alt) return undefined;
+  return input.key === "=" || input.key === "+" ? "in" : input.key === "-" || input.key === "_" ? "out" : input.key === "0" ? "reset" : undefined;
+}
+/**
  * The one description of the Settings window, for the app and for the Settings fixture alike, so the fixture's
  * screenshots show the window the app opens (same frame, same content size) and cannot drift from it: `size`
  * is fitted to `workArea` and centred in it, and the minimum follows `MIN_SETTINGS_SIZE` within it.
@@ -71,7 +89,7 @@ export interface SettingsWindowOptions {
    */
   act: (action: AppAction) => Promise<boolean | void>;
   capture?: (armed: boolean) => void;
-  geometry?: Pick<SettingsWindowState, "size" | "save"> & Partial<Pick<SettingsWindowState, "flush">>;
+  geometry?: Pick<SettingsWindowState, "size" | "save"> & Partial<Pick<SettingsWindowState, "flush" | "zoom" | "saveZoom">>;
   /** The window is about to be shown: on macOS the app becomes a Dock app with its menus while it is open (app-menu.ts). */
   opened?: () => void;
   /** The window was shown or regained focus: what it lists from disk may have changed meanwhile. */
@@ -298,7 +316,15 @@ export class SettingsWindow {
     // dialog and the menu see them.
     window.webContents.on("before-input-event", (event, input) => {
       if (input.type === "keyDown" && input.key === "Escape" && (input.isAutoRepeat || Date.now() < this.escapeQuietUntil)) event.preventDefault();
+      // ⌘+, ⌘- and ⌘0 zoom this window's page on every platform; the View menu shows the same keys without binding them.
+      const zoom = zoomRequest(input, process.platform);
+      if (zoom) { event.preventDefault(); this.zoom(zoom); }
     });
+    // Zoom is this window's alone: by default Chromium shares it with every page of the same origin, the full-screen
+    // video and the countdown overlay included.
+    window.webContents.setZoomMode("isolated");
+    window.webContents.setZoomFactor(this.zoomFactor());
+    window.webContents.on("did-finish-load", () => { if (!window.isDestroyed()) window.webContents.setZoomFactor(this.zoomFactor()); });
     window.on("focus", () => { if (this.window === window) this.options.activated?.(); });
     // A dead page cannot be revived in place; the next show creates a fresh
     // window instead. No automatic reload, so a page that keeps crashing
@@ -362,6 +388,17 @@ export class SettingsWindow {
   }
 
   async flush(): Promise<void> { this.flushSize(); await this.options.geometry?.flush?.(); }
+
+  /** The saved zoom, or 100%. */
+  private zoomFactor(): number { return this.options.geometry?.zoom ?? 1; }
+
+  /** Zooms the open window's page one step in or out, or back to 100% (⌘+, ⌘-, ⌘0 and the View menu), and remembers it. */
+  zoom(request: ZoomRequest): void {
+    const window = this.window;
+    const factor = nextZoom(this.zoomFactor(), request);
+    this.options.geometry?.saveZoom?.(factor);
+    if (window && !window.isDestroyed()) window.webContents.setZoomFactor(factor);
+  }
 
   private flushSize(): void {
     clearTimeout(this.resizeTimer);
