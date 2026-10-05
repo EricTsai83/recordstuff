@@ -260,7 +260,8 @@ interface RunReport {
   file?: CadenceStats;
   fileAverageFps?: number;
   trackCounters?: CounterDelta;
-  cpu: { averagePercent: number; peakPercent: number };
+  /** Absent when the sampler could not cover the recording (`error` says why): never a 0% that was not measured. */
+  cpu?: { averagePercent: number; peakPercent: number };
   layer?: CadenceLayer;
   reason?: string;
 }
@@ -394,7 +395,7 @@ function markdown(runs: RunReport[], env: Record<string, string | undefined>, op
     "",
     "| Run | Setting | Request | Layer | Delivered (track, before MediaRecorder) | File pts | Track counters | getSettings fps | CPU avg |",
     "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
-    ...runs.map((run) => `| ${run.index} | ${run.setting} | ${run.request ? JSON.stringify(run.request) : "product"} | ${run.layer ?? "—"} | ${describeStats(run.delivered)} | ${describeStats(run.file)}; container ${f(run.fileAverageFps)} fps | ${run.trackCounters ? `delivered ${run.trackCounters.delivered ?? "?"}, discarded ${run.trackCounters.discarded ?? "?"}, total ${run.trackCounters.total ?? "?"}` : "unavailable"} | ${run.settingsFrameRates?.join(", ") || "—"} | ${f(run.cpu.averagePercent, 0)}% |`),
+    ...runs.map((run) => `| ${run.index} | ${run.setting} | ${run.request ? JSON.stringify(run.request) : "product"} | ${run.layer ?? "—"} | ${describeStats(run.delivered)} | ${describeStats(run.file)}; container ${f(run.fileAverageFps)} fps | ${run.trackCounters ? `delivered ${run.trackCounters.delivered ?? "?"}, discarded ${run.trackCounters.discarded ?? "?"}, total ${run.trackCounters.total ?? "?"}` : "unavailable"} | ${run.settingsFrameRates?.join(", ") || "—"} | ${run.cpu ? `${f(run.cpu.averagePercent, 0)}%` : "—"} |`),
     "",
     ...runs.flatMap((run) => [
       `- Run ${run.index}: ${run.outcome}${run.error ? `; error: ${run.error}` : ""}. Arrival (performance.now): ${describeStats(run.arrival)}. ${run.reason ?? ""} Requests: ${JSON.stringify(run.requests ?? [])}. Evidence: ${path.basename(run.dir)}/`,
@@ -463,7 +464,7 @@ async function main(): Promise<void> {
       const quality: QualitySettings = { videoQuality: "standard", resolutionCap: "source", frameRate: setting };
       const run: RunReport = {
         index: i + 1, setting, request, load: options.load, outcome: "not run",
-        dir: path.join(dir, `run-${i + 1}-${setting}fps`), cpu: { averagePercent: 0, peakPercent: 0 },
+        dir: path.join(dir, `run-${i + 1}-${setting}fps`),
       };
       console.log(`▶ Run ${run.index}: ${setting} fps, request ${request ? JSON.stringify(request) : "product"}${options.load ? `, load ${options.load}` : ""}`);
       await recordOnce(run, fixture, { seconds: options.seconds, quality, request, preloadPath, rendererScript }, options.seconds);
@@ -472,7 +473,7 @@ async function main(): Promise<void> {
       console.log(`  ${run.outcome}${run.error ? ` (${run.error})` : ""}; layer ${run.layer ?? "—"}`);
       console.log(`  delivered: ${describeStats(run.delivered)}`);
       console.log(`  file:      ${describeStats(run.file)}; container ${f(run.fileAverageFps)} fps`);
-      console.log(`  counters:  ${JSON.stringify(run.trackCounters ?? "unavailable")}; getSettings ${run.settingsFrameRates?.join(", ") || "—"}; CPU ${f(run.cpu.averagePercent, 0)}%`);
+      console.log(`  counters:  ${JSON.stringify(run.trackCounters ?? "unavailable")}; getSettings ${run.settingsFrameRates?.join(", ") || "—"}; CPU ${run.cpu ? `${f(run.cpu.averagePercent, 0)}%` : "not measured"}`);
     }
   } finally {
     if (interrupted) await halt();
