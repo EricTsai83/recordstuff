@@ -63,8 +63,11 @@ const { macIds, windowsIds } = Astro.props;
 </script>
 
 <style>
+  /* Equal columns: both buttons take the wider label's width, so macOS is as wide as Windows. */
   .platform-switch {
-    display: inline-flex;
+    display: inline-grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
     gap: 2px;
     padding: 3px;
     margin-bottom: 2.5rem;
@@ -78,6 +81,7 @@ const { macIds, windowsIds } = Astro.props;
   .platform-switch button {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.5rem;
     padding: 0.5rem 1.1rem;
     border: 0;
