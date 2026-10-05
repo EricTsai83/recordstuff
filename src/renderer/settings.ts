@@ -631,6 +631,31 @@ function row(group: SettingsGroup): HTMLElement {
 function place(parent: Element, node: Element, index: number): void {
   if (parent.children[index] !== node) parent.insertBefore(node, parent.children[index] ?? null);
 }
+/**
+ * Items under one heading per consecutive day, in order (the failure rows and the recordings alike): each day's
+ * section is found again by its heading, so its rows or cards move only when their day changes; `fill` places the
+ * day's items in its content; a day with nothing left goes.
+ */
+function placeDays<T extends { day: string }>(days: HTMLElement, items: readonly T[], classes: { section: string; content: string },
+  fill: (content: HTMLElement, dayItems: T[]) => void): void {
+  const groups: Array<{ day: string; items: T[] }> = [];
+  for (const item of items) {
+    if (groups.at(-1)?.day !== item.day) groups.push({ day: item.day, items: [] });
+    groups.at(-1)!.items.push(item);
+  }
+  const sections = new Map([...days.querySelectorAll<HTMLElement>(`:scope > .${classes.section}`)].map(section => [section.dataset.day!, section]));
+  for (const [index, group] of groups.entries()) {
+    let section = sections.get(group.day);
+    sections.delete(group.day);
+    if (!section) {
+      section = node("section", classes.section); section.dataset.day = group.day;
+      section.append(node("h2", "result-day-heading", group.day), node("div", classes.content));
+    }
+    place(days, section, index);
+    fill(section.querySelector<HTMLElement>(`.${classes.content}`)!, group.items);
+  }
+  for (const section of sections.values()) section.remove();
+}
 /** Row headers in reading order, across day groups. */
 function resultHeaders(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>("#recording-results .recording-result > summary")];
@@ -721,26 +746,10 @@ function updateRecordingResult(focusRequested: boolean): void {
     if (hadFocus || focusRequested) document.getElementById(`tab-${selectedTab}`)?.focus({ preventScroll: true });
     return;
   }
-  // One group per consecutive day heading; groups are kept by heading so rows move only when their day changes.
-  const groups: Array<{ day: string; rows: typeof results }> = [];
-  for (const result of results) {
-    if (groups.at(-1)?.day !== result.day) groups.push({ day: result.day, rows: [] });
-    groups.at(-1)!.rows.push(result);
-  }
-  const sections = new Map([...days.querySelectorAll<HTMLElement>(".result-day")].map(section => [section.dataset.day!, section]));
   /** Rows whose action had focus before this update; a button replaced or a collapse returns it to the header. */
   const actionFocus = new Set<HTMLDetailsElement>();
-  for (const [groupIndex, group] of groups.entries()) {
-    let section = sections.get(group.day);
-    sections.delete(group.day);
-    if (!section) {
-      section = node("section", "result-day"); section.dataset.day = group.day;
-      const heading = node("h2", "result-day-heading", group.day);
-      section.append(heading, node("div", "result-rows"));
-    }
-    place(days, section, groupIndex);
-    const rows = section.querySelector<HTMLElement>(".result-rows")!;
-    for (const [index, result] of group.rows.entries()) {
+  placeDays(days, results, { section: "result-day", content: "result-rows" }, (rows, dayResults) => {
+    for (const [index, result] of dayResults.entries()) {
       const domId = resultDomId(result.id);
       let area = document.getElementById(domId) as HTMLDetailsElement | null;
       let state = resultStates.get(result.id);
@@ -752,9 +761,7 @@ function updateRecordingResult(focusRequested: boolean): void {
       place(rows, area, index);
       fillRow(area, result);
     }
-  }
-  // A group whose rows all moved elsewhere or were removed.
-  for (const section of sections.values()) section.remove();
+  });
   // A row that moved to another day group, such as across midnight, keeps the focus it had. This only gives
   // DOM focus back to the element that held it, so it also runs in an inactive window, where it activates nothing.
   if (focused?.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
@@ -933,10 +940,11 @@ function updateLibrary(): void {
   const summary = area.querySelector<HTMLElement>(".library-summary")!;
   setText(summary, library?.summary ?? ""); summary.hidden = !library?.summary;
   const reveal = area.querySelector<HTMLButtonElement>("#library-reveal")!;
-  setText(reveal, text(platform() === "darwin" ? "Show in Finder" : "Open folder"));
-  // The header's Show in Finder is the Output folder row's own: it follows that choice, which a recording does not lock.
+  // The header's Show in Finder is the Output folder row's own: it follows that choice, which a recording does not lock,
+  // and says what main named it there.
   const folderGroup = view?.groups.find(group => group.id === "outputFolder");
   const folderReveal = folderGroup?.choices.find(choice => choice.id === "reveal");
+  setText(reveal, folderReveal?.label ?? text(platform() === "darwin" ? "Show in Finder" : "Open folder"));
   setActionDisabled(reveal, !folderGroup?.enabled || !folderReveal?.enabled, Boolean(saving));
   const error = area.querySelector<HTMLElement>(".library-error")!;
   setText(error, libraryError ?? ""); error.hidden = !libraryError;
@@ -947,12 +955,6 @@ function updateLibrary(): void {
   setText(empty.querySelector(".library-empty-title")!, text("No recordings yet"));
   setText(empty.querySelector(".library-empty-detail")!, translate("Recordings saved to {path} appear here.", view?.language, { path: library?.folder ?? "" }));
   const days = area.querySelector<HTMLElement>(".library-days")!;
-  const groups: Array<{ day: string; items: LibraryItemView[] }> = [];
-  for (const item of items) {
-    if (groups.at(-1)?.day !== item.day) groups.push({ day: item.day, items: [] });
-    groups.at(-1)!.items.push(item);
-  }
-  const sections = new Map([...days.querySelectorAll<HTMLElement>(".library-day")].map(section => [section.dataset.day!, section]));
   const focused = days.contains(document.activeElement) ? document.activeElement as HTMLElement : undefined;
   const ids = new Set(items.map(item => item.id));
   // The card that held focus, or whose recording plays in the focused player: when it leaves the folder (moved to the
@@ -964,22 +966,13 @@ function updateLibrary(): void {
   const successor = leaving < 0 ? undefined
     : remaining(previousCards.slice(leaving + 1)) ?? remaining(previousCards.slice(0, leaving).reverse()) ?? null;
   for (const card of previousCards) if (!ids.has(card.dataset.id!)) card.remove();
-  for (const [index, group] of groups.entries()) {
-    let section = sections.get(group.day);
-    sections.delete(group.day);
-    if (!section) {
-      section = node("section", "library-day"); section.dataset.day = group.day;
-      section.append(node("h2", "result-day-heading", group.day), node("div", "library-grid"));
-    }
-    place(days, section, index);
-    const grid = section.querySelector<HTMLElement>(".library-grid")!;
-    for (const [position, item] of group.items.entries()) {
+  placeDays(days, items, { section: "library-day", content: "library-grid" }, (grid, dayItems) => {
+    for (const [position, item] of dayItems.entries()) {
       const card = document.getElementById(`clip-${item.id}`) ?? clipCard(item.id);
       place(grid, card, position);
       fillClip(card, item);
     }
-  }
-  for (const section of sections.values()) section.remove();
+  });
   // The player's or the menu's recording left the folder (moved to the Trash here or elsewhere); closing the player
   // hands focus back to its card, which is gone, so the successor below is chosen after it.
   if (player?.open && !ids.has(player.dataset.id ?? "")) player.close();
@@ -1298,6 +1291,10 @@ async function playFullScreen(): Promise<void> {
   if (end.playing) void video.play().catch(() => {});
   video.focus({ preventScroll: true });
 }
+/** A tab label's trailing unread count, "Failures (2)" or 「失敗（2）」: the name, the opening bracket, the count, the closing one. */
+const UNREAD_COUNT = /^(.*?)(\s?[（(])(\d+)([)）])$/;
+/** The tab's name without its count, as the page title shows it. */
+const tabName = (label: string): string => UNREAD_COUNT.exec(label)?.[1] ?? label;
 /**
  * A tab's icon and label; an unread count, "Failures (2)", becomes a badge. The parentheses stay
  * in the text, visually hidden, so the label reads and matches as main wrote it.
@@ -1305,7 +1302,7 @@ async function playFullScreen(): Promise<void> {
 function tabLabel(el: HTMLElement, id: string, label: string): void {
   if (el.dataset.label === label) return;
   el.dataset.label = label;
-  const count = /^(.*?)(\s?[（(])(\d+)([)）])$/.exec(label);
+  const count = UNREAD_COUNT.exec(label);
   const tabIcon = icon(`tab-${id}`, "tab-icon");
   const name = node("span", "tab-name", count ? count[1] : label);
   el.replaceChildren(...(tabIcon ? [tabIcon] : []), name);
@@ -1429,7 +1426,7 @@ function draw(): void {
     if (tab.accessibleLabel) setAttr(el, "aria-label", tab.accessibleLabel); else if (el.hasAttribute("aria-label")) el.removeAttribute("aria-label");
   }
   const openTab = current.tabs.find(tab => tab.id === selectedTab);
-  if (openTab) setText(document.getElementById("page-title")!, /^(.*?)\s?[（(]\d+[)）]$/.exec(openTab.label)?.[1] ?? openTab.label);
+  if (openTab) setText(document.getElementById("page-title")!, tabName(openTab.label));
   for (const group of groups) {
     const title = document.getElementById(`${controlId(group)}-section-heading`);
     if (title) { setText(title, group.sectionHeading ?? ""); title.hidden = !group.sectionHeading; }

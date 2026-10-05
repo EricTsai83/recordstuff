@@ -55,6 +55,11 @@ it("keeps the history in its own tab, as collapsed day-grouped rows with one ope
   expect(document.getElementById("recording-results")).toBeNull();
   expect([tab("recording"), tab("general"), tab("failures")].map((t) => t.textContent)).toEqual(["Recording settings", "General", "Failures (1)"]);
   expect(tab("failures").getAttribute("aria-label")).toBe("Recording failures, 1 unread");
+  // The count is the tab's badge; the page's own title names the tab without it.
+  expect([...tab("failures").querySelectorAll(".tab-badge")].map(badge => badge.textContent)).toEqual(["1"]);
+  tab("failures").click();
+  expect(document.getElementById("page-title")!.textContent).toBe("Failures");
+  tab("recording").click();
   tab("general").click();
   expect(document.getElementById("recording-results")).toBeNull();
 
