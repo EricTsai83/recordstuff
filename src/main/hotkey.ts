@@ -2,8 +2,9 @@
  * Registers the global start/stop shortcut with Electron `globalShortcut`
  * (docs/system-design/desktop.md). A press calls `onToggle`, the same toggle
  * as the tray icon's left click when it is set to record, so `Recorder.toggle()`
- * remains the only decision point: presses while starting or stopping are
- * ignored there. The menu's Start and Stop items are not toggles: they ask
+ * remains the only decision point and holds the rules: it also cancels a
+ * countdown or a start that has lasted its grace, and ignores a double press
+ * within it and presses while stopping. The menu's Start and Stop items are not toggles: they ask
  * for the one they name.
  *
  * Registration can fail when another app owns the combination. That is

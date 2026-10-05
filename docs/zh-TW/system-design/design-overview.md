@@ -20,7 +20,7 @@ RecordStuff 只有一顆選單列按鈕，沒有主視窗。使用者無法打�
 
 [`main/recorder.ts`](../../../src/main/recorder.ts) 擁有權威的 `RecordingState`、session ID、順序與各項期限，而且不碰任何 Electron 或 DOM API。renderer 負責取得與編碼媒體、writer 負責搬移位元組、tray 負責繪製，沒有任何一方可以自行判定錄影成功。隱藏的 capture renderer 存在的唯一理由是 DOM 媒體 API 必須跑在 renderer，而不是因為擷取是對等的權威；它回報的 `started`、`chunk`、`stopped` 是關於它自己的事實，由 main 來解讀。
 
-這也是兩個進入點能安全共存的原因：選單左鍵與全域快捷鍵都呼叫 `Recorder.toggle()`，因此只有一個決策點——idle 時開始、recording 時停止、`needsPermission` 時重發權限提示、starting 與 stopping 期間忽略。要加第三個進入點，做法是呼叫同一個函式，不是多開一條分支。
+這也是兩個進入點能安全共存的原因：選單左鍵與全域快捷鍵都呼叫 `Recorder.toggle()`，因此只有一個決策點——idle 時開始、recording 時停止、倒數中取消倒數、`needsPermission` 時重發權限提示、starting 超過一秒時取消這次啟動（plan 065），一秒內的連按與 stopping 期間則忽略。要加第三個進入點，做法是呼叫同一個函式，不是多開一條分支。
 
 ### 有觀察到的事實，才能做出宣告
 

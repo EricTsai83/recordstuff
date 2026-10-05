@@ -20,7 +20,7 @@ Two consequences run through every module.
 
 [`main/recorder.ts`](../../src/main/recorder.ts) owns the authoritative `RecordingState`, the session IDs, the ordering and the deadlines, and it touches no Electron or DOM API. The renderers acquire and encode media, the writer moves bytes, the tray draws — none of them may conclude that a recording succeeded. The hidden capture renderer exists only because DOM media APIs require a renderer, not because capture is a peer authority; it reports `started`, `chunk` and `stopped` as facts about itself, and main interprets them.
 
-This is what makes the two entry points safe: a tray left click and the global shortcut both call `Recorder.toggle()`, so there is one decision point that starts when idle, stops when recording, re-issues permission guidance in `needsPermission`, and ignores presses while starting or stopping. Adding a third entry point means calling the same function, not adding a branch.
+This is what makes the two entry points safe: a tray left click and the global shortcut both call `Recorder.toggle()`, so there is one decision point that starts when idle, stops when recording, cancels a countdown, re-issues permission guidance in `needsPermission`, cancels a start that has lasted a second (plan 065), and ignores a double press within that second and presses while stopping. Adding a third entry point means calling the same function, not adding a branch.
 
 ### A claim requires an observable fact
 

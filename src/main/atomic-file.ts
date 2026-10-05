@@ -1,6 +1,6 @@
 /**
- * Whole-file replacement for small metadata files: settings, window size and
- * failure history. A reader sees either the previous or the new content, also
+ * Whole-file replacement for small metadata files: settings, window size,
+ * failure history and the recording sessions' interruption sentinels. A reader sees either the previous or the new content, also
  * after a crash or power loss: the content goes to `<file>.tmp`, is flushed to
  * disk, and only then renamed over `file`. Without the flush a rename can
  * reach the disk before the data and leave an empty file behind.

@@ -75,7 +75,7 @@ export interface RecordingResultView {
   actions: SettingsChoice[];
 }
 /**
- * The status card, at the foot of the sidebar or above the tabs in a narrow window: what the app is doing,
+ * The status card, at the foot of the sidebar or between the tabs and the content in a narrow window: what the app is doing,
  * shown only when there is something to say (2026-10-04), never while ready. It is not a live region;
  * `#feedback` stays the page's one announcer.
  */
