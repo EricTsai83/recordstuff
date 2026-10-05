@@ -713,6 +713,39 @@ describe("Recorder review fixes", () => {
     await flush();
     expect(late.abandoned).toBe(true);
     expect(ctx.host.started).toEqual([]);
+    // The folder opened after all: it is no longer said to be unavailable, though the attempt stays a failure.
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+  });
+
+  it("clears the unavailable folder once a late check writes to it, and keeps it when the late check fails", async () => {
+    for (const late of ["writes", "fails"] as const) {
+      let settle: ((ok: boolean) => void) | undefined;
+      const ctx = setup({ ensureWritableDir: () => new Promise<void>((resolve, reject) => { settle = ok => ok ? resolve() : reject(new Error("EIO")); }) });
+      ctx.recorder.toggle();
+      await vi.advanceTimersByTimeAsync(8000);
+      expect(ctx.recorder.state).toEqual({ type: "idle", outputDirUnavailable: true });
+      settle!(late === "writes");
+      await flush();
+      expect(ctx.recorder.state).toEqual(late === "writes" ? { type: "idle" } : { type: "idle", outputDirUnavailable: true });
+      expect(ctx.events.filter(event => event.type === "failed").map(event => event.type === "failed" && event.code)).toEqual(["output_open_failed"]);
+    }
+  });
+
+  it("leaves a newer attempt's unavailable folder alone when an older one's late check then writes (review pass 1, F1)", async () => {
+    let settleFirst: (() => void) | undefined;
+    let calls = 0;
+    const ctx = setup({ ensureWritableDir: () => ++calls === 1
+      ? new Promise<void>((resolve) => { settleFirst = resolve; })
+      : Promise.reject(Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" })) });
+    ctx.recorder.toggle();
+    await vi.advanceTimersByTimeAsync(8000);
+    // The second attempt fails on its own, while the first one's cleanup still waits for its check.
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "idle", outputDirUnavailable: true });
+    settleFirst!();
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "idle", outputDirUnavailable: true });
   });
 
   it("goes idle before waiting for the partial file to close", async () => {

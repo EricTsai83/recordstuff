@@ -1180,6 +1180,8 @@ export class Recorder {
     // wait on synchronous subscriber IO (docs/system-design/recording.md).
     // Set idle and request tray updates before synchronous metadata persistence.
     this.settle({ type: "idle", ...idleFlags });
+    /** The idle this failure set; any later settle, folder change or failure replaces it, and with it the flag's owner. */
+    const flaggedIdle = this.idleState;
     if (code === "capture_start_failed") {
       const retained = await this.retainedWriteError(session);
       if (retained) {
@@ -1193,8 +1195,10 @@ export class Recorder {
     await this.publishFailure(result);
     let partialPath: string | undefined;
     let outcome: FailureOutcome = "empty";
+    /** The opening finished after all: its probe wrote to the folder, whatever else ended the attempt. */
+    let opened = false;
     try {
-      await session.opening?.catch(() => undefined);
+      opened = session.opening ? await session.opening.then(() => true, () => false) : false;
       partialPath = session.writer ? await session.writer.abandon() : undefined;
       outcome = session.writer?.preservationUncertain ? "unknown" : partialPath ? "partial" : "empty";
       if (outcome === "unknown") partialPath = undefined;
@@ -1210,6 +1214,13 @@ export class Recorder {
     });
     this.emit({ type: "failed", code, detail, ...(partialPath === undefined ? {} : { partialPath }), outcome, session: this.trace(session) });
     await this.clearInFlight(session);
+    // A folder that answered only after the opening deadline (a drive waking, a slow share) is usable: the flag this
+    // failure set would otherwise go on saying it is unavailable until another folder is chosen. Only while the flag is
+    // still this failure's: a newer attempt, even one that failed on its own folder, decides (review pass 1, F1).
+    if (opened && idleFlags.outputDirUnavailable && !this.session && this.idleState === flaggedIdle) {
+      this.deps.log(`recorder: session ${session.id} the output folder answered after the failure; it is usable again`);
+      this.outputDirChanged();
+    }
   }
 
   private async publishFailure(result: RecordingFailure): Promise<void> {
