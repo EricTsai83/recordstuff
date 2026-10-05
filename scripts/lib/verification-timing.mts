@@ -100,6 +100,8 @@ export function classifyPhase(spec: PhaseSpec, execution: {
   if (execution.error) return { outcome: "fail", detail: `${interrupted}${execution.error}` };
   if (!execution.groupGone) return { outcome: "fail", detail: `${interrupted}its process group was still running after cleanup` };
   if (execution.forced) return { outcome: "fail", detail: `${interrupted}exit ${execution.code ?? "by signal"}, but its process group needed SIGKILL to clean up` };
+  // A desktop runner stopped cleanly exits 130 or 143; its 1 says its own cleanup was incomplete (round-exit.mts).
+  if (interrupted && spec.blockedExit && execution.code === 1) return { outcome: "fail", detail: "interrupted; exit 1: its own cleanup was incomplete" };
   if (interrupted) return { outcome: "interrupted", detail: "stopped by an interrupt" };
   if (execution.stopped === "timeout") return { outcome: "fail", detail: `stopped after ${spec.timeoutMs ?? HOUR} ms` };
   if (execution.code === 0) return { outcome: "pass" };

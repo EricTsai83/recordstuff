@@ -202,6 +202,13 @@ function describeTimeline(t: CountdownTimeline): string {
 
 async function main(): Promise<void> {
   if (process.platform !== "darwin") fail("macOS only");
+  const stamp = now().replace(/[:.]/g, "-");
+  const dir = outDir ?? path.join(REPO_ROOT, "docs/verification/measurements", `${stamp}-hotkey-acceptance`);
+  // A usage error, as in the other runners, checked before anything else can refuse or change the round.
+  if (fs.existsSync(dir) && fs.readdirSync(dir).length) {
+    console.error(`✗ ${dir} is not empty; choose a new directory so no earlier evidence is overwritten. Nothing was sent or changed.`);
+    process.exit(2);
+  }
   requireMediaTimeout();
   const missingTools = ["ffprobe", "ffmpeg"].filter((tool) => !hasTool(tool));
   if (missingTools.length > 0) {
@@ -234,9 +241,6 @@ async function main(): Promise<void> {
       }, false, true);
     }
   }
-  const stamp = now().replace(/[:.]/g, "-");
-  const dir = outDir ?? path.join(REPO_ROOT, "docs/verification/measurements", `${stamp}-hotkey-acceptance`);
-  if (fs.existsSync(dir) && fs.readdirSync(dir).length) fail("output directory is not empty; preserving existing evidence");
   // A slept or locked display would be recorded instead of the material.
   const desktop = await beginDesktopRound().catch((cause: unknown) => {
     if (cause instanceof DesktopBlockedError) { console.error(`BLOCKED: ${cause.message} No key was sent.`); process.exit(DESKTOP_BLOCKED_EXIT); }

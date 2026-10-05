@@ -231,6 +231,8 @@ export interface RunOutcome {
   drill: boolean;
   /** Missing prerequisite, unavailable layout or refused registration. */
   blocked: string[];
+  /** The input source changed during the check: like a lock, it may be why a key failed, so it keeps the round blocked. */
+  sourceChanged?: boolean;
   locked: boolean;
   /** The first signal that interrupted the round. */
   interrupted: keyof typeof INTERRUPT_EXIT | undefined;
@@ -266,7 +268,9 @@ export type Status = "PASS" | "FAIL" | "BLOCKED" | "INTERRUPTED";
 /**
  * Exit 0 pass, 1 fail, 2 blocked, in the order the desktop runners share (round-exit.mts): cleanup failures
  * outrank everything, an interrupt that left nothing exits 130 or 143, a lock makes the round blocked even if
- * keys passed, and the drill is an intentional failure that never passes.
+ * keys passed, a key that was sent and did the wrong thing fails the round even when a later key could not be
+ * sent (unless the input source changed meanwhile, which may explain it), and the drill is an intentional
+ * failure that never passes.
  */
 export function classify(outcome: RunOutcome): { status: Status; exitCode: number; reasons: string[]; drillDetected: boolean | undefined } {
   const cleanup = [
@@ -287,6 +291,10 @@ export function classify(outcome: RunOutcome): { status: Status; exitCode: numbe
   if (outcome.locked) return result("BLOCKED", ["the screen locked during the round"]);
   const processes = outcome.executions.map(abnormal).filter(reason => reason !== undefined);
   if (processes.length) return result("FAIL", processes);
+  // Only keys that were sent and observed: one System Events could not send carries an error and is the block's.
+  const wrongKeys = outcome.keys.filter(key => !key.error && key.observed !== key.expected)
+    .map(key => `${key.name}: ${key.expected ? "did not fire" : "fired"}`);
+  if (wrongKeys.length && !outcome.drill && !outcome.sourceChanged) return result("FAIL", [...wrongKeys, ...outcome.blocked.map(reason => `then blocked: ${reason}`)]);
   if (outcome.blocked.length) return result("BLOCKED", outcome.blocked);
   if (outcome.error) return result("FAIL", [outcome.error]);
   if (!outcome.keys.length) return result("FAIL", ["no key results"]);

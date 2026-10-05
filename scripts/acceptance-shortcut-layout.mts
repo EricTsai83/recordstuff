@@ -64,6 +64,8 @@ interface FixtureResult {
 }
 interface Attempt { source: string; activated: boolean; activationFocused?: boolean; state?: LayoutState; qualifies: boolean; reason: string }
 const blocked: string[] = [];
+/** The input source moved during the check (see `RunOutcome.sourceChanged`). */
+let sourceChanged = false;
 const attempts: Attempt[] = [];
 const executions: Array<Execution & { groupGone: boolean }> = [];
 let error: string | undefined;
@@ -168,6 +170,7 @@ try {
   if (fixture.error) throw new Error(`Fixture error: ${fixture.error}`);
   after = await readState();
   if (after.source !== during.source || after.layout !== during.layout) {
+    sourceChanged = true;
     blocked.push(`The input source changed during the check: ${during.source}/${during.layout} → ${after.source}/${after.layout}.`);
   }
 } catch (cause) {
@@ -187,7 +190,7 @@ process.removeListener("SIGINT", interrupt);
 process.removeListener("SIGTERM", interrupt);
 
 const verdict = classify({
-  drill, blocked, locked: desktop?.lockedAt !== undefined, interrupted: interruptedBy, error,
+  drill, blocked, sourceChanged, locked: desktop?.lockedAt !== undefined, interrupted: interruptedBy, error,
   keys: fixture?.keys ?? [], restore, processesGone, executions, fixtureCleanup: fixture?.cleanup,
 });
 const describeState = (state?: LayoutState) => state ? `${state.source} (layout ${state.layout})` : "not read";

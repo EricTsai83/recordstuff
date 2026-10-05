@@ -13,6 +13,7 @@
 import { scrubbedEnv } from "./lib/runner-env.mts";
 import { buildFixture } from "./lib/build-fixture.mts";
 import { runIsolatedProcess } from "./lib/isolated-process.mts";
+import { INTERRUPT_EXIT, interruptExitCode } from "./lib/processes.mts";
 import { hasTool, requireMediaTimeout } from "./lib/media-tools.mts";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -74,9 +75,12 @@ const fixture = await buildFixture("ui-preview", dir);
 // The fixture runs in a process group of its own, which a terminal's Ctrl+C never reaches: pass it on, so the group
 // is stopped and its cleanup recorded rather than left running unsupervised (as the acceptance runners do).
 const controller = new AbortController();
-const interrupt = (): void => controller.abort();
-process.on("SIGINT", interrupt);
-process.on("SIGTERM", interrupt);
+/** The first signal names the exit code (130 or 143) once the group is gone. */
+let interruptedBy: keyof typeof INTERRUPT_EXIT | undefined;
+const onSignal = (name: keyof typeof INTERRUPT_EXIT) => (): void => { interruptedBy ??= name; controller.abort(); };
+const interrupt = { SIGINT: onSignal("SIGINT"), SIGTERM: onSignal("SIGTERM") };
+process.on("SIGINT", interrupt.SIGINT);
+process.on("SIGTERM", interrupt.SIGTERM);
 const log = fs.openSync(path.join(dir, "electron.log"), "a");
 let execution;
 try {
@@ -84,10 +88,16 @@ try {
     env: scrubbedEnv(), logFd: log, timeoutMs: 180_000, signal: controller.signal });
 } finally {
   fs.closeSync(log);
-  process.removeListener("SIGINT", interrupt);
-  process.removeListener("SIGTERM", interrupt);
+  process.removeListener("SIGINT", interrupt.SIGINT);
+  process.removeListener("SIGTERM", interrupt.SIGTERM);
 }
 fs.writeFileSync(path.join(dir, "cleanup.json"), JSON.stringify(execution, null, 2));
+// Stopped by the user: 130 or 143 once nothing is left, as the acceptance runners exit; 1 when the group survived.
+if (interruptedBy && execution.stopped === "interrupted" && !execution.error) {
+  console.error(`Interrupted by ${interruptedBy}; no gallery was finished. Evidence: ${dir}`);
+  process.exit(await interruptExitCode(interruptedBy, async () =>
+    !execution.groupGone ? ["the preview's process group"] : execution.forced ? ["the preview's process group, until SIGKILL,"] : []));
+}
 // A gallery that left Electron's helpers running is not a finished run (review: cleanup).
 if (execution.error || execution.stopped || !execution.groupGone) fail(`The preview left processes behind or was stopped (see cleanup.json): ${JSON.stringify(execution)}\nEvidence: ${dir}`, 1);
 if (execution.code !== 0 || !fs.existsSync(path.join(dir, "index.html"))) {

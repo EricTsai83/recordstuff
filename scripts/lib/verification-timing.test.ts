@@ -100,6 +100,12 @@ describe.skipIf(process.platform === "win32")("verification phases", () => {
       .toEqual({ outcome: "fail", detail: "interrupted; exit 143, but its process group needed SIGKILL to clean up" });
     expect(classifyPhase(spec, { code: null, stopped: "interrupted", forced: false, groupGone: false, error: undefined }).outcome).toBe("fail");
     expect(classifyPhase(spec, { code: 143, stopped: "interrupted", forced: false, groupGone: true, error: undefined }).outcome).toBe("interrupted");
+    // A desktop runner that reports its own cleanup incomplete fails the phase; a check stopped with 1 was only interrupted.
+    const desktop = { ...spec, blockedExit: true };
+    expect(classifyPhase(desktop, { code: 1, stopped: "interrupted", forced: false, groupGone: true, error: undefined }))
+      .toEqual({ outcome: "fail", detail: "interrupted; exit 1: its own cleanup was incomplete" });
+    expect(classifyPhase(desktop, { code: 130, stopped: "interrupted", forced: false, groupGone: true, error: undefined }).outcome).toBe("interrupted");
+    expect(classifyPhase(spec, { code: 1, stopped: "interrupted", forced: false, groupGone: true, error: undefined }).outcome).toBe("interrupted");
     expect(classifyPhase(spec, { code: 0, stopped: undefined, forced: false, groupGone: false, error: undefined }).outcome).toBe("fail");
     expect(classifyPhase(spec, { code: 0, stopped: undefined, forced: true, groupGone: true, error: undefined }))
       .toEqual({ outcome: "fail", detail: "exit 0, but its process group needed SIGKILL to clean up" });

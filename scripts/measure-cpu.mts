@@ -48,6 +48,7 @@ import { LogReader, type LogCursor } from "./lib/log-reader.mts";
 import { AccessibilityBlockedError, osascriptAx } from "./lib/native-ax.mts";
 import { parseSessionRecord } from "./lib/session-records.mts";
 import { percentile } from "./lib/stats.mts";
+import { roundExit } from "./lib/round-exit.mts";
 import { developmentAppPath } from "./lib/verification-timing.mts";
 import { SETTINGS_SHORTCUT } from "../src/shared/hotkey.ts";
 
@@ -80,7 +81,7 @@ for (let i = 0; i < argv.length; i += 1) {
 if (!(minutes > 0 && minutes <= 60) || !Number.isInteger(repeat) || repeat < 1 || repeat > 9 || repeat % 2 === 0) { console.error(usage); process.exit(2); }
 
 const controller = new AbortController();
-let interruptedBy: NodeJS.Signals | undefined;
+let interruptedBy: keyof typeof INTERRUPT_EXIT | undefined;
 for (const name of ["SIGINT", "SIGTERM"] as const) {
   process.on(name, () => {
     interruptedBy ??= name;
@@ -432,20 +433,22 @@ async function main(): Promise<number> {
   const failed = scenarios.flatMap((s) => s.verdicts).some((v) => v.verdict === "fail");
   // The same test as the exit code below: a report must not read PASS while the run exits 1 for its cleanup.
   const cleanupIncomplete = cleanup.some((line) => /NOT restored|could not|did not exit|still running/.test(line));
+  // A missing Accessibility grant blocks what is left of the run; a budget already failed still fails it (round-exit.mts).
+  const accessibility = runError instanceof AccessibilityBlockedError ? runError : undefined;
+  const errored = Boolean(runError) && !accessibility;
+  const locked = desktop.lockedAt !== undefined;
+  const { outcome, code } = roundExit({ cleanupIncomplete, interrupted: interruptedBy, locked, failed: failed || errored, blocked: accessibility !== undefined });
   const result = cleanupIncomplete ? "INCOMPLETE CLEANUP (see Cleanup); the run exits 1"
-    : interruptedBy ? `INTERRUPTED (${interruptedBy}); partial results only`
-    : desktop.lockedAt ? "BLOCKED (the screen locked)"
-      : runError instanceof AccessibilityBlockedError ? `BLOCKED (${runError.message})`
-      : runError ? `ERROR: ${runError instanceof Error ? runError.message : String(runError)}`
-        : failed ? "FAIL" : "PASS";
+    : outcome === "interrupted" ? `INTERRUPTED (${interruptedBy}); partial results only`
+    : locked ? "BLOCKED (the screen locked)"
+    : errored ? `ERROR: ${runError instanceof Error ? runError.message : String(runError)}`
+    : outcome === "fail" ? `FAIL${accessibility ? `; later blocked (${accessibility.message})` : ""}`
+    : accessibility ? `BLOCKED (${accessibility.message})` : "PASS";
   fs.writeFileSync(path.join(dir, "report.json"), `${JSON.stringify({ result, options: { minutes, repeat, fps60: with60, skipRecording, skipSettings }, environment, scenarios, recordings, cleanup, events }, null, 2)}\n`);
   fs.writeFileSync(path.join(dir, "report.md"), renderReport(result, environment, scenarios, recordings, cleanup));
   console.log(`Report ${path.relative(REPO_ROOT, dir)}/report.md`);
   console.log(result);
-  if (cleanupIncomplete) return 1;
-  if (interruptedBy) return interruptedBy === "SIGINT" ? 130 : 143;
-  if (desktop.lockedAt || runError instanceof AccessibilityBlockedError) return DESKTOP_BLOCKED_EXIT;
-  return runError || failed ? 1 : 0;
+  return code;
 }
 
 const mb = (bytes: number): string => `${(bytes / 1024 / 1024).toFixed(0)} MB`;

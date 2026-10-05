@@ -163,6 +163,20 @@ it("blocks for missing prerequisites and a lock, but reports cleanup failures fi
   expect(classify(outcome({ fixtureCleanup: { registered: false, windows: 0, trayDestroyed: true } }))).toMatchObject({ status: "PASS" });
 });
 
+it("fails a key that was sent and did the wrong thing even when a later key could not be sent, unless the input source moved", () => {
+  const notSent: KeyResult = { ...key(89, false, false), error: "not sent" };
+  const sendBlocked = ["System Events could not send key 89: not allowed"];
+  // The number row was sent and did not fire: a real failure, which the later block must not hide.
+  expect(classify(outcome({ keys: [key(43, true, true), key(26, true, false), notSent], blocked: sendBlocked })))
+    .toMatchObject({ status: "FAIL", exitCode: 1, reasons: ["key 26: did not fire", `then blocked: ${sendBlocked[0]}`] });
+  // Nothing sent went wrong: the key that could not be sent is the block's alone.
+  expect(classify(outcome({ keys: [key(43, true, true), key(26, true, true), notSent], blocked: sendBlocked })))
+    .toMatchObject({ status: "BLOCKED", exitCode: 2, reasons: sendBlocked });
+  // A layout that changed under the check may be why the key failed, as a lock may be.
+  expect(classify(outcome({ keys: [key(43, true, true), key(26, true, false), key(89, false, false)], sourceChanged: true, blocked: ["The input source changed during the check"] })))
+    .toMatchObject({ status: "BLOCKED", exitCode: 2 });
+});
+
 it("exits 130 or 143 for an interrupted round that left nothing, even when its keys had passed or the screen locked", () => {
   expect(classify(outcome({ interrupted: "SIGINT", executions: [exited("check", { stopped: "interrupted" })] })))
     .toMatchObject({ status: "INTERRUPTED", exitCode: 130, reasons: ["interrupted by SIGINT before completion"] });
