@@ -75,3 +75,24 @@ it("starts at full volume from the beginning when main leaves the numbers out", 
   const { video } = await load("src=recordstuff-media%3A%2F%2Fvideo%2Fa&play=0&mute=0&vol=");
   expect([video.volume, video.muted]).toEqual([1, false]);
 });
+
+it("says ready once the first frame is decoded, not when only the metadata is known", async () => {
+  const { video, ready } = await load("src=s&t=0&play=0&vol=1&mute=0&lang=en");
+  video.dispatchEvent(new Event("loadedmetadata"));
+  await new Promise(resolve => setTimeout(resolve, 50));
+  expect(ready).not.toHaveBeenCalled();
+  video.dispatchEvent(new Event("loadeddata"));
+  await vi.waitFor(() => expect(ready).toHaveBeenCalledOnce());
+});
+
+it("says ready after the seek to the player's time lands", async () => {
+  const { video, ready } = await load("src=s&t=5&play=0&vol=1&mute=0&lang=en");
+  vi.spyOn(video, "duration", "get").mockReturnValue(60);
+  video.dispatchEvent(new Event("loadedmetadata"));
+  expect(video.currentTime).toBe(5);
+  video.dispatchEvent(new Event("loadeddata"));
+  await new Promise(resolve => setTimeout(resolve, 50));
+  expect(ready).not.toHaveBeenCalled();
+  video.dispatchEvent(new Event("seeked"));
+  await vi.waitFor(() => expect(ready).toHaveBeenCalledOnce());
+});

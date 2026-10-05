@@ -69,12 +69,16 @@ function sayReady(): void {
   if (start.playing && !left) void video.play().catch(() => {});
   video.focus({ preventScroll: true });
 }
+/** The frame is drawn two animation frames after it is decoded, as the settings page reports its first paint. */
+const drawn = (): void => { requestAnimationFrame(() => requestAnimationFrame(sayReady)); };
 video.addEventListener("loadedmetadata", () => {
-  if (start.time > 0 && start.time < video.duration) video.currentTime = start.time;
-  else video.dispatchEvent(new Event("seeked"));
+  if (start.time > 0 && start.time < video.duration) {
+    video.addEventListener("seeked", drawn, { once: true });
+    video.currentTime = start.time;
+  // Metadata decodes no frame: without a seek, the first one is there once the current position's data is.
+  } else if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) drawn();
+  else video.addEventListener("loadeddata", drawn, { once: true });
 }, { once: true });
-// The frame is drawn two animation frames after the seek lands, as the settings page reports its first paint.
-video.addEventListener("seeked", () => requestAnimationFrame(() => requestAnimationFrame(sayReady)), { once: true });
 // A file that cannot be decoded still shows the window, to be left again.
 video.addEventListener("error", sayReady);
 video.src = query.get(VIDEO_QUERY.src) ?? "";
