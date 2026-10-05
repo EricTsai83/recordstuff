@@ -12,7 +12,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { command } from "./lib/acceptance-runtime.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
-import { hasTool } from "./lib/media-tools.mts";
+import { hasTool, requireMediaTimeout } from "./lib/media-tools.mts";
 import { INTERRUPT_EXIT, escapeRegExp, pgrepPids } from "./lib/processes.mts";
 import {
   judgePlayback, meanAbsDiff, parseBounds, parseDocumentState, parseVolumeSettings, playbackScript,
@@ -90,6 +90,7 @@ let observations: PlaybackObservations | undefined;
 try {
   if (process.platform !== "darwin") throw new Blocked("QuickTime playback needs macOS.");
   if (!fs.existsSync(file)) throw new Error(`No such file: ${file}`);
+  requireMediaTimeout();
   for (const tool of ["ffmpeg", "ffprobe"]) if (!hasTool(tool)) throw new Blocked(`${tool} is missing; install it with brew install ffmpeg`);
   // Only a player this round started is closed and quit; an open one may hold someone's work.
   if (quickTimePids().length > 0) throw new Blocked("QuickTime Player is already running. Quit it first; this check closes only what it opens.");

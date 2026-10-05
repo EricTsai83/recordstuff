@@ -6,6 +6,8 @@
  * here. Pure, so the verdict is unit-tested (tray-acceptance.test.ts).
  */
 import { createHash } from "node:crypto";
+import type { INTERRUPT_EXIT } from "./processes.mts";
+import { roundExit, type RoundOutcome } from "./round-exit.mts";
 
 /**
  * The HTML id of a Recordings card's Play button (settings.ts `clip-<id>-open`), whose id is the library's
@@ -31,16 +33,18 @@ export interface TrayCase {
 
 export interface TrayVerdict {
   status: "PASS" | "FAIL" | "BLOCKED" | "INTERRUPTED";
-  exitCode: 0 | 1 | 2;
+  exitCode: number;
   reasons: string[];
   counts: Record<CaseStatus, number>;
 }
 
+const STATUS: Record<RoundOutcome, TrayVerdict["status"]> = { pass: "PASS", fail: "FAIL", blocked: "BLOCKED", interrupted: "INTERRUPTED" };
+
 /**
- * Cleanup failures and failed cases fail the round; a lock or missing
- * Accessibility access blocks it even when cases passed; a refusal before or
- * during the round fails it. A case that could not reach its state is not run
- * and shown in the counts, never a pass.
+ * The round's exit in the order the desktop runners share (round-exit.mts): a cleanup problem fails it; an
+ * interrupt that left nothing exits 130/143 and a lock blocks it, even after a failed case, which the lock may
+ * have caused; then a failed case, a refusal or a round where no case ran fails it, and missing Accessibility
+ * access blocks it. A case that could not reach its state is not run and shown in the counts, never a pass.
  */
 export function classifyTrayRound(input: {
   cases: readonly TrayCase[];
@@ -48,18 +52,22 @@ export function classifyTrayRound(input: {
   roundError: string | undefined;
   blocked: string | undefined;
   lockedAt: string | undefined;
-  interrupted: boolean;
+  interrupted: keyof typeof INTERRUPT_EXIT | undefined;
 }): TrayVerdict {
   const counts: Record<CaseStatus, number> = { pass: 0, fail: 0, blocked: 0, "not run": 0 };
   for (const c of input.cases) counts[c.status ?? "not run"] += 1;
   const failed = input.cases.filter(c => c.status === "fail").map(c => `${c.id}${c.language ? ` (${c.language})` : ""}: ${c.problems.join("; ")}`);
-  const reasons = [...input.cleanup.map(problem => `cleanup: ${problem}`), ...failed, ...(input.roundError ? [input.roundError.split("\n")[0]!] : [])];
-  if (input.cleanup.length || failed.length || input.roundError) return { status: "FAIL", exitCode: 1, reasons, counts };
-  if (input.interrupted) return { status: "INTERRUPTED", exitCode: 1, reasons: ["interrupted before every case ran"], counts };
-  if (input.lockedAt) return { status: "BLOCKED", exitCode: 2, reasons: [`the screen locked at ${input.lockedAt}`], counts };
-  if (input.blocked) return { status: "BLOCKED", exitCode: 2, reasons: [input.blocked], counts };
-  if (!input.cases.length) return { status: "FAIL", exitCode: 1, reasons: ["no case ran"], counts };
-  return { status: "PASS", exitCode: 0, reasons: [], counts };
+  const failures = [...failed, ...(input.roundError ? [input.roundError.split("\n")[0]!] : [])];
+  const noCase = !input.cases.length && !input.blocked;
+  const { outcome, code } = roundExit({
+    cleanupIncomplete: input.cleanup.length > 0, interrupted: input.interrupted, locked: input.lockedAt !== undefined,
+    failed: failures.length > 0 || noCase, blocked: input.blocked !== undefined,
+  });
+  const reasons = outcome === "fail" ? [...input.cleanup.map(problem => `cleanup: ${problem}`), ...failures, ...(noCase && !failures.length && !input.cleanup.length ? ["no case ran"] : [])]
+    : outcome === "interrupted" ? [`interrupted by ${input.interrupted} before every case ran`, ...failures]
+    : outcome === "blocked" ? [input.lockedAt ? `the screen locked at ${input.lockedAt}` : input.blocked!, ...failures]
+    : [];
+  return { status: STATUS[outcome], exitCode: code, reasons, counts };
 }
 
 const cell = (text: string): string => text.replaceAll("|", "\\|").replaceAll("\n", " ");

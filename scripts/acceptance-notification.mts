@@ -9,7 +9,7 @@
  */
 import { setTimeout as delay } from "node:timers/promises";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings } from "./lib/runner-env.mts";
-import { recordStuffPattern } from "./lib/processes.mts";
+import { escapeRegExp, pgrepPids, recordStuffPattern } from "./lib/processes.mts";
 import { osascriptAx } from "./lib/native-ax.mts";
 import { SAVED_LINE, command, savedPathOf, settleRecording, waitForLog } from "./lib/acceptance-runtime.mts";
 import fs from "node:fs";
@@ -125,6 +125,11 @@ async function appPid(): Promise<string | undefined> {
   return (await command("pgrep", ["-f", recordStuffPattern()], operationSignal, 5000, [0, 1])).split("\n")[0] || undefined;
 }
 
+/** Every process running from the installed bundle: its Chromium helpers can outlive the main process for a moment. */
+function installedBundlePids(): number[] {
+  return pgrepPids(`^${escapeRegExp(INSTALLED_APP)}/Contents/`);
+}
+
 async function frontmost(): Promise<string> {
   const asn = (await run("lsappinfo", ["front"], "frontmost app")).trim();
   const info = await run("lsappinfo", ["info", "-only", "name", asn], "frontmost app name");
@@ -132,14 +137,20 @@ async function frontmost(): Promise<string> {
 }
 
 async function quitApp(): Promise<void> {
-  if (!await appPid()) return;
+  const deadline = Date.now() + 10_000;
+  const running = async (): Promise<boolean> => Boolean(await appPid()) || installedBundlePids().length > 0;
+  if (!await appPid()) {
+    // Only helpers of a quit that just ended are left: wait for them, never send another quit.
+    while (await running() && Date.now() < deadline) await sleep(250);
+    if (await running()) fail("RecordStuff's helper processes did not exit within 10 s");
+    return;
+  }
   const state = currentState(readLines());
   if (state === "recording" || state === "starting" || state === "countdown" || state === "stopping")
     fail(`RecordStuff is ${state}; not interrupting a recording`);
   await osascript(`tell application "${APP_TITLE}" to quit`, "quit RecordStuff");
-  const deadline = Date.now() + 10_000;
-  while (await appPid() && Date.now() < deadline) await sleep(250);
-  if (await appPid()) fail("RecordStuff did not quit within 10 s");
+  while (await running() && Date.now() < deadline) await sleep(250);
+  if (await running()) fail("RecordStuff did not quit within 10 s");
 }
 
 async function launchApp(): Promise<string> {
@@ -197,6 +208,11 @@ async function main(): Promise<void> {
   if (process.platform !== "darwin") fail("macOS only");
   const stamp = now().replace(/:/g, "");
   const dir = outDir ?? path.join(REPO_ROOT, "docs/verification/measurements", `${stamp}-notification-acceptance`);
+  // Another run's cases, report and logs are evidence; a reused directory would overwrite them.
+  if (fs.existsSync(dir) && fs.readdirSync(dir).length) {
+    console.error(`✗ ${dir} is not empty; choose a new directory so no earlier evidence is overwritten. Nothing was installed or changed.`);
+    process.exit(2);
+  }
   fs.mkdirSync(dir, { recursive: true });
   const events: string[] = [];
   const note = (s: string): void => {
@@ -462,7 +478,7 @@ end tell`, "close test document");
     }
     // The bundle is only replaced once no process runs from it.
     let appStillRunning = true;
-    try { appStillRunning = Boolean(await appPid()); }
+    try { appStillRunning = Boolean(await appPid()) || installedBundlePids().length > 0; }
     catch (error) { problem(`could not check app process: ${String(error)}`); }
     if (appStillRunning) problem("RecordStuff is still running after the quit attempt");
     try {
@@ -605,6 +621,8 @@ end tell`, "quit empty TextEdit");
 main().catch((error: unknown) => {
   if (error instanceof AcceptanceFailure) console.error(`✗ ${error.message}`);
   else console.error(error);
-  // A lock seen during the round makes it blocked even when a step also threw.
-  process.exit(process.exitCode === DESKTOP_BLOCKED_EXIT ? DESKTOP_BLOCKED_EXIT : 1);
+  // The report already chose the round's exit (round-exit.mts): a lock stays blocked and an interrupt 130 or 143
+  // even when a step also threw; only a throw before the report is a plain failure.
+  const decided = Number(process.exitCode ?? 0);
+  process.exit(decided > 0 ? decided : 1);
 });

@@ -89,9 +89,17 @@ const press = (window: BrowserWindow, keyCode: string): void => {
   window.webContents.sendInputEvent({ type: "keyUp", keyCode });
 };
 interface Playback { time: number; paused: boolean; muted: boolean; volume: number; src: string; duration: number }
-const playback = (window: BrowserWindow, selector: string): Promise<Playback> => read(window, `(() => {
+/**
+ * A video not made yet (the click that opens the player is delivered after this poll) throws here, in the fixture,
+ * so `until` counts it as not yet; thrown in the page it would also be logged there as an uncaught error.
+ */
+const playback = async (window: BrowserWindow, selector: string): Promise<Playback> => {
+  const state = await read<Playback | null>(window, `(() => {
   const v = document.querySelector(${JSON.stringify(selector)});
-  return { time: v.currentTime, paused: v.paused, muted: v.muted, volume: v.volume, src: v.getAttribute("src") ?? "", duration: v.duration }; })()`);
+  return v && { time: v.currentTime, paused: v.paused, muted: v.muted, volume: v.volume, src: v.getAttribute("src") ?? "", duration: v.duration }; })()`);
+  if (!state) throw new Error(`no ${selector} yet`);
+  return state;
+};
 /** Whether the controls have stepped aside: the resting class, the shade faded out and the pointer hidden. */
 const resting = (window: BrowserWindow): Promise<{ idle: boolean; opacity: string; cursor: string }> => read(window, `(() => {
   const root = document.querySelector(".pc");
@@ -160,6 +168,8 @@ async function run(): Promise<boolean> {
   const picture = await box(window, "dialog.player video");
   move(window, picture!.x, picture!.y);
   await settle(VIDEO_TIMING.idleMs + 600);
+  // The same state judged, with time for a timer a loaded machine runs late (it failed once 600 ms past it).
+  await until(async () => (await resting(window)).idle, 1500);
   const rested = await resting(window);
   await shot(window, "player-resting-light.png");
   record(`while it plays, the controls and the pointer step aside after ${VIDEO_TIMING.idleMs / 1000} s at rest`, rested.idle && rested.opacity === "0" && rested.cursor === "none", rested);
@@ -203,7 +213,8 @@ async function run(): Promise<boolean> {
   move(window, seek!.left + seek!.width * 0.2, seek!.y);
   window.webContents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, x: Math.round(seek!.left + seek!.width * 0.2), y: Math.round(seek!.y) });
   // A move with the button held, as a hand drags: without the held button Chromium ends the slider's drag at the first move.
-  for (const at of [0.35, 0.5, 0.65, 0.75]) { window.webContents.sendInputEvent({ type: "mouseMove", button: "left", modifiers: ["leftbuttondown"], x: Math.round(seek!.left + seek!.width * at), y: Math.round(seek!.y) }); await settle(40); }
+  // Spaced so each move is handled before the next, also on a loaded machine (once only the first one landed).
+  for (const at of [0.35, 0.5, 0.65, 0.75]) { window.webContents.sendInputEvent({ type: "mouseMove", button: "left", modifiers: ["leftbuttondown"], x: Math.round(seek!.left + seek!.width * at), y: Math.round(seek!.y) }); await settle(100); }
   window.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, x: Math.round(seek!.left + seek!.width * 0.75), y: Math.round(seek!.y) });
   const sought = await until(async () => { const p = await playback(window, "dialog.player video"); return p.paused && Math.abs(p.time - p.duration * 0.75) < 0.6; });
   record("a drag along the seek bar moves the video from 0.5 s to where it is let go", sought, await playback(window, "dialog.player video"));

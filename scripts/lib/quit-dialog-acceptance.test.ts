@@ -133,9 +133,17 @@ describe("combined verdict", () => {
     expect(combineVerdict(layers({ setup: blocked, lifecycle: notRun, delivery: notRun }), undefined).automated).toBe("blocked");
   });
 
-  it("lets any failure outrank blocked results, including a lock", () => {
+  it("lets a failure outrank a layer that could not run, but not a lock, which may be why it failed", () => {
     expect(combineVerdict(layers({ setup: blocked, cleanup: fail }), undefined).automated).toBe("fail");
-    expect(combineVerdict(layers({ delivery: blocked, lifecycle: fail }), at(0))).toEqual({ automated: "fail", exitCode: 1 });
+    expect(combineVerdict(layers({ delivery: blocked, lifecycle: fail }), undefined)).toEqual({ automated: "fail", exitCode: 1 });
+    expect(combineVerdict(layers({ delivery: blocked, lifecycle: fail }), at(0))).toEqual({ automated: "blocked", exitCode: 2 });
+  });
+
+  it("exits 130 or 143 for an interrupt that left nothing, and fails one whose cleanup did not finish", () => {
+    const stopped = layers({ lifecycle: { status: "fail", reason: "The fixture was stopped: interrupted." }, delivery: notRun, bannerText: notRun });
+    expect(combineVerdict(stopped, undefined, "SIGINT")).toEqual({ automated: "interrupted", exitCode: 130 });
+    expect(combineVerdict(stopped, at(0), "SIGTERM")).toEqual({ automated: "interrupted", exitCode: 143 });
+    expect(combineVerdict({ ...stopped, cleanup: fail }, undefined, "SIGINT")).toEqual({ automated: "fail", exitCode: 1 });
   });
 });
 

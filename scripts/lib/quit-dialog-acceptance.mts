@@ -5,6 +5,8 @@
  * passing lifecycle cannot hide a failed delivery, and a delivery event is not visual proof.
  * Kept free of I/O so the judgement is unit-tested (quit-dialog-acceptance.test.ts).
  */
+import type { INTERRUPT_EXIT } from "./processes.mts";
+import { roundExit, type RoundOutcome } from "./round-exit.mts";
 
 export type LayerStatus = "pass" | "fail" | "blocked" | "not run";
 export interface Layer { status: LayerStatus; reason: string }
@@ -115,6 +117,7 @@ export interface CleanupFacts {
   setupGroupGone: boolean | undefined;
   /** Undefined when the fixture was never launched. */
   fixtureGroupGone: boolean | undefined;
+  /** A group needed SIGKILL. An interrupt stops the disposable fixture that way, so the runner passes false for it. */
   forced: boolean;
   temporaryRemoved: boolean;
 }
@@ -172,14 +175,19 @@ export function classifyBannerText(input: {
 export interface Layers { setup: Layer; lifecycle: Layer; delivery: Layer; bannerText: Layer; cleanup: Layer }
 
 /**
- * Any failure outranks blocked; a lock seen during the round or a layer that could not run makes
- * it blocked. Exit 0 is automated evidence only: the visual layer stays pending for an observer.
+ * The round's exit in the order the desktop runners share (round-exit.mts): a cleanup layer that failed fails it;
+ * an interrupt that left nothing exits 130/143 and a lock seen during the round blocks it, even when a layer also
+ * failed, since either may be why; then a failed layer fails it and one that could not run blocks it. Exit 0 is
+ * automated evidence only: the visual layer stays pending for an observer.
  */
-export function combineVerdict(layers: Layers, lockedAt: string | undefined): { automated: "pass" | "fail" | "blocked"; exitCode: 0 | 1 | 2 } {
-  const statuses = Object.values(layers).map(layer => layer.status);
-  if (statuses.includes("fail")) return { automated: "fail", exitCode: 1 };
-  if (lockedAt || statuses.some(status => status !== "pass")) return { automated: "blocked", exitCode: 2 };
-  return { automated: "pass", exitCode: 0 };
+export function combineVerdict(layers: Layers, lockedAt: string | undefined, interrupted?: keyof typeof INTERRUPT_EXIT): { automated: RoundOutcome; exitCode: number } {
+  const { cleanup, ...rest } = layers;
+  const statuses = Object.values(rest).map(layer => layer.status);
+  const { outcome, code } = roundExit({
+    cleanupIncomplete: cleanup.status === "fail", interrupted, locked: lockedAt !== undefined,
+    failed: statuses.includes("fail"), blocked: cleanup.status !== "pass" || statuses.some(status => status !== "pass"),
+  });
+  return { automated: outcome, exitCode: code };
 }
 
 export const VISUAL_PENDING: Layer = {

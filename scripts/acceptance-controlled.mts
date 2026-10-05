@@ -18,7 +18,7 @@ import {
   seedFiles, selfTestFiles, writeSeedFiles, type ControlledArgs, type RunMarker, type Seed,
 } from "./lib/controlled-acceptance.mts";
 import { alive, readJson, sendControlled } from "./lib/controlled-client.mts";
-import { pgrepProcesses, recordStuffPattern } from "./lib/processes.mts";
+import { INTERRUPT_EXIT, escapeRegExp, pgrepProcesses, recordStuffPattern } from "./lib/processes.mts";
 import { scrubbedEnv } from "./lib/runner-env.mts";
 import { FAULT_MODES, HOLD_TARGETS, type FaultName } from "./fixtures/controlled-modes.ts";
 import type { ControlledCommand, ControlledConfig, ControlledResponse, ControlledSnapshot } from "./fixtures/controlled-acceptance";
@@ -29,6 +29,8 @@ const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const PARENT = path.join(ROOT, "docs/verification/measurements");
 const BLOCKED = 2;
 class Blocked extends Error {}
+/** Ctrl-C or SIGTERM stopped a launch and nothing of it is left running: 130 or 143, as the other runners exit. */
+class Interrupted extends Error {}
 
 const env = scrubbedEnv();
 let child: ReturnType<typeof spawn> | undefined;
@@ -92,6 +94,12 @@ function bundleProcesses(dir: string): string[] {
   catch (error) { throw new Error(`Could not check for the controlled app of ${dir}: ${error instanceof Error ? error.message : String(error)}`); }
 }
 
+/** Every process running from the run's bundle, its Chromium helpers too, which can outlive the main process for a moment. */
+function bundleTree(dir: string): string[] {
+  try { return pgrepProcesses(`^${escapeRegExp(appPath(dir))}/Contents/`); }
+  catch (error) { throw new Error(`Could not check for the controlled app of ${dir}: ${error instanceof Error ? error.message : String(error)}`); }
+}
+
 /** Opens the run's bundle (building it first when `build`) and waits for the instrumented app to report ready. */
 async function openApp(dir: string, build: boolean): Promise<ControlledSnapshot> {
   requireNoRecordStuff();
@@ -100,7 +108,9 @@ async function openApp(dir: string, build: boolean): Promise<ControlledSnapshot>
     await run("pnpm", [build ? "start:app" : "open:app"], path.join(dir, "workspace"), path.join(dir, build ? "build.log" : "open.log"), 600_000);
     return await until(() => readJson<ControlledSnapshot>(path.join(dir, "ready.json")), "the controlled app to report ready", 60_000);
   } catch (error) {
-    throw new Error(`${error instanceof Error ? error.message : String(error)}\n${await abandonLaunch(dir)}`);
+    const left = await abandonLaunch(dir);
+    const message = `${error instanceof Error ? error.message : String(error)}\n${left.message}`;
+    throw cancelledBy && left.clean ? new Interrupted(message) : new Error(message);
   }
 }
 
@@ -109,16 +119,22 @@ async function openApp(dir: string, build: boolean): Promise<ControlledSnapshot>
  * interrupt or failure can leave it starting. Wait briefly for it: a ready app quits through
  * the production path; one that never reports ready is named for the user to quit.
  */
-async function abandonLaunch(dir: string): Promise<string> {
+async function abandonLaunch(dir: string): Promise<{ message: string; clean: boolean }> {
   const began = Date.now();
   const ready = (): boolean => fs.existsSync(path.join(dir, "ready.json"));
   while (!ready() && Date.now() - began < 15_000 && (Date.now() - began < 5000 || bundleProcesses(dir).length)) await pause(250);
   if (ready()) {
-    try { await quitApp(dir, false); return "The controlled app had started; it quit normally."; }
-    catch (error) { return `The controlled app started but did not quit: ${String(error)}`; }
+    try { await quitApp(dir, false); }
+    catch (error) { return { message: `The controlled app started but did not quit: ${String(error)}`, clean: false }; }
   }
   const left = bundleProcesses(dir);
-  return left.length ? `The controlled app started without reporting ready and still runs; quit it from its menu:\n${left.join("\n")}` : "No controlled app process remains.";
+  if (left.length) return { message: `The controlled app started without reporting ready and still runs; quit it from its menu:\n${left.join("\n")}`, clean: false };
+  // Clean only once nothing runs from the bundle: the main process can exit before its helpers (review pass 1, P2).
+  const settled = Date.now() + 5000;
+  while (bundleTree(dir).length && Date.now() < settled) await pause(250);
+  const helpers = bundleTree(dir);
+  if (helpers.length) return { message: `The controlled app's helper processes still run:\n${helpers.join("\n")}`, clean: false };
+  return { message: ready() ? "The controlled app had started; it quit normally." : "No controlled app process remains.", clean: true };
 }
 
 function createRun(out: string | undefined, seed: Seed, selftest: boolean, holdHistoryLoad: boolean): string {
@@ -381,5 +397,5 @@ catch (error) { console.error(`${error instanceof Error ? error.message : String
 try { process.exitCode = await main(args); }
 catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = error instanceof Blocked ? BLOCKED : 1;
+  process.exitCode = error instanceof Blocked ? BLOCKED : error instanceof Interrupted ? INTERRUPT_EXIT[cancelledBy!] : 1;
 }

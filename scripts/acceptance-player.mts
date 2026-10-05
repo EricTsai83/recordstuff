@@ -19,7 +19,8 @@ import { buildFixture } from "./lib/build-fixture.mts";
 import { runIsolatedProcess } from "./lib/isolated-process.mts";
 import { DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
 import { roundExit } from "./lib/round-exit.mts";
-import { hasTool } from "./lib/media-tools.mts";
+import { hasTool, requireMediaTimeout } from "./lib/media-tools.mts";
+import { recordStuffPids } from "./lib/processes.mts";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -47,11 +48,16 @@ for (const required of ["out/preload/settings.js", "out/preload/video.js", "out/
   if (!fs.existsSync(path.join(REPO_ROOT, required))) fail(`BLOCKED: ${required} is missing; run \`pnpm build\` first.`);
 }
 if (!fs.existsSync(ELECTRON)) fail("BLOCKED: node_modules/.bin/electron is missing; run `pnpm install` first.");
+requireMediaTimeout();
 if (!hasTool("ffmpeg")) fail("BLOCKED: ffmpeg is missing; install it with `brew install ffmpeg` (it makes the clip the player plays).");
+// A running RecordStuff takes focus and windows from the full-screen cases (2026-10-05: its rest case failed in every
+// round run beside the app, in none without it), so the round would judge the desktop's sharing, not the player.
+if (recordStuffPids().length) fail("BLOCKED: RecordStuff is running; quit it first, as its windows and focus interfere with the full-screen cases.");
 
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 const dir = outDir ? path.resolve(outDir) : path.join(REPO_ROOT, "docs/verification/measurements", `${stamp}-player-acceptance`);
-fs.mkdirSync(dir, { recursive: !outDir });
+if (outDir && fs.existsSync(dir)) fail(`${dir} already exists; choose a new directory so no earlier evidence is overwritten.`);
+fs.mkdirSync(dir, { recursive: true });
 
 // The clip, named as the app names its recordings a minute ago, so its card reads "Today" and its time.
 const clips = path.join(dir, "recordings");

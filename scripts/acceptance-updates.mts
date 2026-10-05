@@ -1,7 +1,7 @@
 /** Packaged handler/model integration + optional real capture. Native Tray clicks are explicitly not claimed. */
 import fs from 'node:fs';
 import { APP_SETTINGS_PATH, scrubbedEnv } from './lib/runner-env.mts';
-import { escapeRegExp, recordStuffPids } from './lib/processes.mts';
+import { escapeRegExp, groupAlive, recordStuffPids, stopGroup } from './lib/processes.mts';
 import path from 'node:path';
 import os from 'node:os';
 import assert from 'node:assert/strict';
@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { prepareUpdateAcceptance, acceptanceExitCode, safeCaptureShortcut, createAcceptanceOutput, assertLockContract, type CaseResult } from './lib/update-acceptance.mts';
 import { acceleratorToKeystroke, createMaterialProfile, keystrokeScript, materialOpenArgs, removeMaterialProfile } from './lib/acceptance.mts';
-import { hasTool } from './lib/media-tools.mts';
+import { hasTool, requireMediaTimeout } from './lib/media-tools.mts';
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from './lib/desktop-session.mts';
 import { roundExit } from './lib/round-exit.mts';
 import { readLogPairs, verifyRecording } from './lib/verify-recording.mts';
@@ -54,6 +54,8 @@ let config: AcceptanceConfig = { now: Date.now(), scenario: 'current' };
 let sequence = 0, appMayBeRunning = false, cancelled = false;
 let materialProfile: string | undefined;
 let child: ReturnType<typeof spawn> | undefined;
+/** The process group `run` started last; a failed build's cleanup confirms it is gone. */
+let lastGroup: number | undefined;
 const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH ?? ''}` };
 const pause = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 const hash = (p: string): string => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
@@ -118,10 +120,20 @@ async function run(program: string, args: string[], cwd: string, label: string, 
   await new Promise<void>((resolve, reject) => {
     const fd = fs.openSync(path.join(dir, `${label}.log`), 'a');
     const proc = child = spawn(program, args, { cwd, env, stdio: ['ignore', fd, fd], detached: true });
+    lastGroup = proc.pid;
     fs.closeSync(fd);
-    const timer = setTimeout(() => { try { if (proc.pid) process.kill(-proc.pid, 'SIGTERM'); } catch {} reject(new Error(`${label} timed out`)); }, timeout);
+    let timedOut = false;
+    // The whole group (pnpm, electron-builder, codesign) is stopped, SIGKILL after 5 s, before the step fails, so
+    // cleanup never removes the workspace beneath a build that is still writing it.
+    const timer = setTimeout(() => {
+      timedOut = true;
+      void stopGroup(proc.pid).catch(() => undefined).finally(() => reject(new Error(`${label} timed out after ${timeout} ms; see ${label}.log`)));
+    }, timeout);
     proc.on('error', error => { clearTimeout(timer); child = undefined; reject(error); });
-    proc.on('exit', code => { clearTimeout(timer); child = undefined; code === 0 ? resolve() : reject(new Error(`${label} exited ${code}; see ${label}.log`)); });
+    proc.on('exit', code => {
+      clearTimeout(timer); child = undefined;
+      if (!timedOut) code === 0 ? resolve() : reject(new Error(`${label} exited ${code}; see ${label}.log`));
+    });
   });
 }
 async function start(build: boolean): Promise<void> {
@@ -154,8 +166,9 @@ async function stop(cleanup = false): Promise<void> {
       try { process.kill(s.pid, 0); return undefined; } catch { return true; }
     }, 'owned fixture process exit', 30_000, cleanup);
   } else {
-    // A failed build can be cleaned only after confirming no fixture executable exists.
+    // A failed build can be cleaned only after confirming no fixture executable and no build process remain.
     if (recordStuffPids(bundle).length) throw new Error('Fixture has no control endpoint; left intact for manual cleanup.');
+    if (groupAlive(lastGroup)) throw new Error(`The build's process group ${lastGroup} is still running; left intact for manual cleanup.`);
   }
   appMayBeRunning = false;
 }
@@ -214,6 +227,8 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => {
   if (child?.pid) try { process.kill(-child.pid, 'SIGTERM'); } catch {}
 });
 
+// A usage error, before the workspace or any report exists.
+if (!values['logic-only']) requireMediaTimeout();
 try {
   await check('preflight and isolation', async () => {
     if (process.platform !== 'darwin' || process.arch !== 'arm64') throw new Blocked('Packaged acceptance currently requires macOS arm64.');

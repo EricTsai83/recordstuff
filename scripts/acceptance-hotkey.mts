@@ -62,7 +62,7 @@ import {
   removeMaterialProfile,
 } from "./lib/acceptance.mts";
 import { LogReader, evidenceSince, type LogCursor } from "./lib/log-reader.mts";
-import { hasTool, syncMarkers } from "./lib/media-tools.mts";
+import { hasTool, requireMediaTimeout, syncMarkers } from "./lib/media-tools.mts";
 import { readLogPairs, verifyRecording } from "./lib/verify-recording.mts";
 import { BLOCKED_EXIT, blocksSuccess, formatText } from "./lib/verify.mts";
 import { DIGIT_DIFF_THRESHOLD, TICK_EXCESS_DB, TICK_FLOOR_DBFS, countdownTimeline, digitCrops, digitRegion, skippedCrops, tickCheck, type CountdownTimeline, type TickCheck } from "./lib/countdown-evidence.mts";
@@ -202,6 +202,7 @@ function describeTimeline(t: CountdownTimeline): string {
 
 async function main(): Promise<void> {
   if (process.platform !== "darwin") fail("macOS only");
+  requireMediaTimeout();
   const missingTools = ["ffprobe", "ffmpeg"].filter((tool) => !hasTool(tool));
   if (missingTools.length > 0) {
     console.error(`BLOCKED: ${missingTools.join(" and ")} missing (brew install ffmpeg); channel energy is required evidence. No key was sent.`);
@@ -273,19 +274,28 @@ async function main(): Promise<void> {
   } catch (error) {
     // Nothing was recorded; the round's value goes back once the app it launched is gone.
     const changed = soundOverride?.pending ?? false;
+    let unrestored = false;
     try {
       const problem = await soundOverride?.restore(true);
+      unrestored = Boolean(problem);
       if (problem) console.error(`✗ countdown sound NOT restored: ${problem}. Quit RecordStuff, then set "countdownSound": false in ${SETTINGS_PATH}.`);
       else if (changed) console.error("countdown sound set back to off in the stored settings");
     } catch (restoreError) {
+      unrestored = true;
       console.error(`✗ countdown sound NOT restored: ${String(restoreError)}. Quit RecordStuff, then set "countdownSound": false in ${SETTINGS_PATH}.`);
     } finally {
       desktop.end();
     }
-    // A lock during setup makes the round blocked, like a lock during the recording.
-    if (desktop.lockedAt) {
+    // The same order as the recording's end (round-exit.mts): an unrestored setting fails the round, an interrupt
+    // exits 130 or 143 and a lock is blocked, before the setup failure itself.
+    const end = roundExit({ cleanupIncomplete: unrestored, interrupted: interruptedBy, locked: Boolean(desktop.lockedAt), failed: true });
+    if (end.outcome === "blocked") {
       console.error(`✗ ${desktop.summary} (setup also failed: ${String(error)})`);
-      process.exit(DESKTOP_BLOCKED_EXIT);
+      process.exit(end.code);
+    }
+    if (end.outcome === "interrupted") {
+      console.error(`✗ INTERRUPTED (${interruptedBy}) during setup; nothing was recorded`);
+      process.exit(end.code);
     }
     throw error;
   }

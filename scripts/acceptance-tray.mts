@@ -852,14 +852,13 @@ try {
   }
   desktop?.end();
   if (fs.existsSync(logPath)) fs.writeFileSync(path.join(out, "app.log"), `${evidenceSince(appLog, roundFrom).join("\n")}\n`);
-  const verdict = classifyTrayRound({ cases, cleanup, roundError, blocked, lockedAt: desktop?.lockedAt, interrupted: interrupted !== undefined });
+  const verdict = classifyTrayRound({ cases, cleanup, roundError, blocked, lockedAt: desktop?.lockedAt, interrupted });
   const report = renderTrayReport({ verdict, cases, cleanup, notes, recordings, roundError, blocked, desktop: desktop?.summary, bundle, interrupted });
   fs.writeFileSync(path.join(out, "report.md"), report);
   fs.writeFileSync(path.join(out, "result.json"), `${JSON.stringify({ verdict, cases, cleanup, notes, recordings, roundError, blocked, desktop: desktop?.summary, bundle }, null, 2)}\n`);
   // The counts, not "every case passed": a not-run case did not pass.
   const tally = `${verdict.counts.pass} passed${verdict.counts["not run"] ? `, ${verdict.counts["not run"]} not run` : ""}`;
   console.log(`${verdict.status}: ${verdict.reasons.join("; ") || tally}\nReport: ${path.join(out, "report.md")}`);
-  // An interrupted round that left nothing behind exits 130/143, as the other runners do.
-  exitCode = verdict.status === "INTERRUPTED" && interrupted ? INTERRUPT_EXIT[interrupted] : verdict.exitCode;
+  exitCode = verdict.exitCode;
 }
 process.exit(exitCode);

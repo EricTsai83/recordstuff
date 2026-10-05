@@ -4,6 +4,8 @@
  * sources, the choice of a source whose number row types no digits, restore
  * bookkeeping and the run's verdict. The runner owns processes and files.
  */
+import { DESKTOP_BLOCKED_EXIT } from "./desktop-session.mts";
+import { INTERRUPT_EXIT } from "./processes.mts";
 
 /** Chosen so no preset, reserved or commonly bound combination collides with it. */
 export const LAYOUT_ACCELERATOR = "CommandOrControl+Control+Alt+Shift+7";
@@ -230,7 +232,8 @@ export interface RunOutcome {
   /** Missing prerequisite, unavailable layout or refused registration. */
   blocked: string[];
   locked: boolean;
-  interrupted: boolean;
+  /** The first signal that interrupted the round. */
+  interrupted: keyof typeof INTERRUPT_EXIT | undefined;
   error: string | undefined;
   keys: KeyResult[];
   restore: RestoreRecord | undefined;
@@ -258,14 +261,14 @@ function abnormal(execution: Execution): string | undefined {
   return undefined;
 }
 
-export type Status = "PASS" | "FAIL" | "BLOCKED";
+export type Status = "PASS" | "FAIL" | "BLOCKED" | "INTERRUPTED";
 
 /**
- * Exit 0 pass, 1 fail, 2 blocked, as in the other runners. Cleanup failures
- * outrank everything, a lock makes the round blocked even if keys passed, and
- * the drill is an intentional failure that never passes.
+ * Exit 0 pass, 1 fail, 2 blocked, in the order the desktop runners share (round-exit.mts): cleanup failures
+ * outrank everything, an interrupt that left nothing exits 130 or 143, a lock makes the round blocked even if
+ * keys passed, and the drill is an intentional failure that never passes.
  */
-export function classify(outcome: RunOutcome): { status: Status; exitCode: 0 | 1 | 2; reasons: string[]; drillDetected: boolean | undefined } {
+export function classify(outcome: RunOutcome): { status: Status; exitCode: number; reasons: string[]; drillDetected: boolean | undefined } {
   const cleanup = [
     ...(outcome.restore && !outcome.restore.confirmed ? [`input source not restored: ${outcome.restore.error ?? "unconfirmed"}`] : []),
     ...(outcome.processesGone ? [] : ["a fixture process group remained"]),
@@ -278,10 +281,10 @@ export function classify(outcome: RunOutcome): { status: Status; exitCode: 0 | 1
   const numberRow = outcome.keys.find(key => key.keyCode === NUMBER_ROW_SEVEN);
   const drillDetected = outcome.drill && numberRow ? !numberRow.observed : undefined;
   const result = (status: Status, reasons: string[]) =>
-    ({ status, exitCode: status === "PASS" ? 0 as const : status === "FAIL" ? 1 as const : 2 as const, reasons, drillDetected });
+    ({ status, exitCode: status === "PASS" ? 0 : status === "FAIL" ? 1 : status === "BLOCKED" ? DESKTOP_BLOCKED_EXIT : INTERRUPT_EXIT[outcome.interrupted!], reasons, drillDetected });
   if (cleanup.length) return result("FAIL", cleanup.map(reason => `cleanup: ${reason}`));
+  if (outcome.interrupted) return result("INTERRUPTED", [`interrupted by ${outcome.interrupted} before completion`]);
   if (outcome.locked) return result("BLOCKED", ["the screen locked during the round"]);
-  if (outcome.interrupted) return result("FAIL", ["interrupted before completion"]);
   const processes = outcome.executions.map(abnormal).filter(reason => reason !== undefined);
   if (processes.length) return result("FAIL", processes);
   if (outcome.blocked.length) return result("BLOCKED", outcome.blocked);

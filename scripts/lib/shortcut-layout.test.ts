@@ -139,7 +139,7 @@ const confirmed = { original: "ABC", changed: true, selected: true, restored: "A
 const exited = (phase: string, extra: Partial<Execution> = {}): Execution =>
   ({ phase, code: 0, stopped: undefined, forced: false, error: undefined, ...extra });
 const outcome = (extra: Partial<RunOutcome> = {}): RunOutcome => ({
-  drill: false, blocked: [], locked: false, interrupted: false, error: undefined, keys: passingKeys,
+  drill: false, blocked: [], locked: false, interrupted: undefined, error: undefined, keys: passingKeys,
   restore: confirmed, processesGone: true, executions: [exited("check")], fixtureCleanup: { registered: false, windows: 0 }, ...extra,
 });
 
@@ -163,9 +163,10 @@ it("blocks for missing prerequisites and a lock, but reports cleanup failures fi
   expect(classify(outcome({ fixtureCleanup: { registered: false, windows: 0, trayDestroyed: true } }))).toMatchObject({ status: "PASS" });
 });
 
-it("fails an interrupted round even when its keys had passed", () => {
-  expect(classify(outcome({ interrupted: true, executions: [exited("check", { stopped: "interrupted" })] })))
-    .toMatchObject({ status: "FAIL", exitCode: 1, reasons: ["interrupted before completion"] });
+it("exits 130 or 143 for an interrupted round that left nothing, even when its keys had passed or the screen locked", () => {
+  expect(classify(outcome({ interrupted: "SIGINT", executions: [exited("check", { stopped: "interrupted" })] })))
+    .toMatchObject({ status: "INTERRUPTED", exitCode: 130, reasons: ["interrupted by SIGINT before completion"] });
+  expect(classify(outcome({ interrupted: "SIGTERM", locked: true }))).toMatchObject({ status: "INTERRUPTED", exitCode: 143 });
 });
 
 it("fails passing results from a process that then hung, crashed or had to be killed", () => {

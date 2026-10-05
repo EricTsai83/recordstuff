@@ -464,7 +464,7 @@ require(path.join(root, 'out/main/index.js'));
   const persisted = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
   record('real Electron registration failure and persistence', recordingAttempts().at(-1)?.registered === false && recordingAttempts().at(-1)?.forcedFailure && persisted.hotkey.enabled && persisted.hotkey.accelerator === accelerator, JSON.stringify({ attempt: recordingAttempts().at(-1), hotkey: persisted.hotkey }));
   record('failure note rendered by production page', failed.diagnostics?.[0]?.reason === 'Another app may be using this shortcut.' && await evaluate("document.querySelector('#setting-hotkey-diagnostics .diagnostic p').textContent === 'Another app may be using this shortcut.'"), failed.diagnostics?.[0]?.reason ?? '');
-  record('notification requested with shortcut and recovery direction', failureNotifications().length === 1 && failureNotifications()[0]?.body?.includes('F20') && failureNotifications()[0]?.body?.includes('Settings'), JSON.stringify(failureNotifications()));
+  record('notification requested with shortcut and recovery direction', failureNotifications().length === 1 && failureNotifications()[0]?.body?.includes('F20') && failureNotifications()[0]?.body?.includes('Open RecordStuff'), JSON.stringify(failureNotifications()));
   if (drill === '--drill-failure') throw new Error('Intentional assertion-failure cleanup drill');
   if (drill === '--drill-timeout') { console.log('DRILL_READY'); await new Promise(() => {}); }
   await arm();

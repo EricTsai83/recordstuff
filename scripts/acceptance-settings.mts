@@ -58,7 +58,8 @@ if (!fs.existsSync(ELECTRON)) fail("node_modules/.bin/electron is missing; run `
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 const dir = outDir ? path.resolve(outDir) : path.join(REPO_ROOT, "docs/verification/measurements", `${stamp}-settings-acceptance`);
 // Never overwrite another run's evidence.
-fs.mkdirSync(dir, { recursive: !outDir });
+if (outDir && fs.existsSync(dir)) fail(`${dir} already exists; choose a new directory so no earlier evidence is overwritten.`);
+fs.mkdirSync(dir, { recursive: true });
 const fixture = await buildFixture("settings-panel", dir);
 
 /** Electron needs a real app launch: no ELECTRON_RUN_AS_NODE, no inherited signing env. */

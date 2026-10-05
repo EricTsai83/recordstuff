@@ -44,9 +44,9 @@ const helper = path.join(temporary, "input-source.js");
 fs.writeFileSync(helper, INPUT_SOURCE_SCRIPT);
 const logFd = fs.openSync(path.join(reportDir, "electron.log"), "w");
 const controller = new AbortController();
-let interruptedBy: string | undefined;
+let interruptedBy: "SIGINT" | "SIGTERM" | undefined;
 // Stay installed through the restore, so a second Ctrl+C cannot skip it.
-const interrupt = (signal: NodeJS.Signals): void => { interruptedBy ??= signal; controller.abort(new Error(`interrupted: ${signal}`)); };
+const interrupt = (signal: "SIGINT" | "SIGTERM"): void => { interruptedBy ??= signal; controller.abort(new Error(`interrupted: ${signal}`)); };
 process.on("SIGINT", interrupt);
 process.on("SIGTERM", interrupt);
 const env = scrubbedEnv();
@@ -187,7 +187,7 @@ process.removeListener("SIGINT", interrupt);
 process.removeListener("SIGTERM", interrupt);
 
 const verdict = classify({
-  drill, blocked, locked: desktop?.lockedAt !== undefined, interrupted: interruptedBy !== undefined, error,
+  drill, blocked, locked: desktop?.lockedAt !== undefined, interrupted: interruptedBy, error,
   keys: fixture?.keys ?? [], restore, processesGone, executions, fixtureCleanup: fixture?.cleanup,
 });
 const describeState = (state?: LayoutState) => state ? `${state.source} (layout ${state.layout})` : "not read";

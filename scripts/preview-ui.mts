@@ -13,7 +13,7 @@
 import { scrubbedEnv } from "./lib/runner-env.mts";
 import { buildFixture } from "./lib/build-fixture.mts";
 import { runIsolatedProcess } from "./lib/isolated-process.mts";
-import { hasTool } from "./lib/media-tools.mts";
+import { hasTool, requireMediaTimeout } from "./lib/media-tools.mts";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -38,8 +38,11 @@ for (const required of ["out/preload/settings.js", "out/preload/video.js", "out/
 if (!fs.existsSync(ELECTRON)) fail("node_modules/.bin/electron is missing; run `pnpm install` first.");
 
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+// Before the output exists, so a usage error leaves no half-made gallery that a corrected rerun's --out would hit.
+requireMediaTimeout();
 const dir = outDir ? path.resolve(outDir) : path.join(REPO_ROOT, "docs/verification/measurements", `${stamp}-ui-preview`);
-fs.mkdirSync(dir, { recursive: !outDir });
+if (outDir && fs.existsSync(dir)) fail(`${dir} already exists; choose a new directory so no earlier evidence is overwritten.`);
+fs.mkdirSync(dir, { recursive: true });
 const clips = path.join(dir, "recordings");
 fs.mkdirSync(clips);
 

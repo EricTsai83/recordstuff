@@ -48,7 +48,8 @@ if (args.length === 1 && args[0] === "--help") {
     `Fixture ${path.basename(fixture)} sha256 ${sha256(fixture)}`,
   ];
   const abort = new AbortController();
-  const cancel = (): void => abort.abort();
+  let interruptedBy: "SIGINT" | "SIGTERM" | undefined;
+  const cancel = (name: "SIGINT" | "SIGTERM"): void => { interruptedBy ??= name; abort.abort(); };
   process.on("SIGINT", cancel); process.on("SIGTERM", cancel);
   // Unique per round and owned by it: removed after its processes exit, never node_modules or dist/.
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-quit-dialog-"));
@@ -135,13 +136,13 @@ if (args.length === 1 && args[0] === "--help") {
     const setupGroupGone = setupRun.groupGone;
     const fixtureGroupGone = execution?.groupGone;
     if (setupGroupGone && (execution === undefined || fixtureGroupGone)) fs.rmSync(temporary, { recursive: true, force: true });
-    const cleanup = classifyCleanup({ setupGroupGone, fixtureGroupGone, forced: Boolean(setupRun.forced || execution?.forced), temporaryRemoved: !fs.existsSync(temporary) });
+    const cleanup = classifyCleanup({ setupGroupGone, fixtureGroupGone, forced: !interruptedBy && Boolean(setupRun.forced || execution?.forced), temporaryRemoved: !fs.existsSync(temporary) });
     const other = language === "en" ? "zh-TW" : "en";
     const bannerText = setup.status === "pass"
       ? classifyBannerText({ before: bannersBefore, polls: bannerPolls, expected: translate(DEFERRED_QUIT_MEDIA_MESSAGE, language), otherLanguage: translate(DEFERRED_QUIT_MEDIA_MESSAGE, other), delivery, ...(bannerBlocked ? { blocked: bannerBlocked } : {}) })
       : { status: "not run" as const, reason: "No fixture launched." };
     const layers = { setup, lifecycle, delivery, bannerText, cleanup };
-    const verdict = combineVerdict(layers, desktop.lockedAt);
+    const verdict = combineVerdict(layers, desktop.lockedAt, interruptedBy);
     fs.writeFileSync(path.join(dir, "report.json"), JSON.stringify({
       automated: verdict.automated, exitCode: verdict.exitCode, layers: { ...layers, visual: VISUAL_PENDING },
       limits: { maxLateMs: MAX_LATE_MS, deliveryWindowMs: DELIVERY_WINDOW_MS, setupTimeoutMs: SETUP_TIMEOUT_MS },
