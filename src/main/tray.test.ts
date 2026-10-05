@@ -274,7 +274,7 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
     const { tray, onAction } = setup();
     tray.notifyHotkeyRegistrationFailed(DEFAULT_HOTKEY.accelerator);
     const notification = Fake.instances.at(-1)!;
-    expect(notification.options.body).toContain("Choose another shortcut in Settings.");
+    expect(notification.options.body).toContain("Open RecordStuff to choose another shortcut.");
     notification.listeners.get("click")?.();
     expect(onAction).toHaveBeenCalledWith("openShortcutSettings");
   });

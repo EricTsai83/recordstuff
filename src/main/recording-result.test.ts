@@ -87,6 +87,9 @@ it("distinguishes unknown from empty and does not promise recoverability", () =>
 });
 it("does not tell a Primary display failure to choose Primary display", () => {
   expect(failureGuidance("display_unavailable", "en")).toBe("Choose Primary display or another screen.");
+  // A start that kept nothing has nothing to recover: the guidance does not say content was lost.
+  expect([failureGuidance("capture_start_failed", "en"), failureGuidance("capture_start_failed", "zh-TW")]).toEqual([
+    "Try again. If it keeps failing, choose a lower video quality or relaunch RecordStuff.", "請再試一次；若持續失敗，請選擇較低的影像品質，或重新啟動 RecordStuff。"]);
   expect([failureGuidance("no_display", "en"), failureGuidance("no_display", "zh-TW")]).toEqual([
     "Check that a display is connected and awake, then try again or choose another screen.",
     "請確認螢幕已連接且未進入睡眠後再試，或選擇其他螢幕。",
@@ -282,5 +285,24 @@ describe("action log (plan 047)", () => {
     h.release();
     expect(await acknowledging).toBe(true);
     expect(h.lines()).toEqual(["recording result: acknowledge a saved"]);
+  });
+});
+
+describe("rows a launch sentinel keeps (an unreadable history)", () => {
+  const interrupted: RecordingFailure = { id: "interrupted-s1", code: "app_terminated", detail: "", occurredAt: "2026-10-05T00:00:00Z",
+    outcome: "unknown", recordingPath: "/s1.recording.mp4", previouslyPartial: true };
+  it("neither prompts at quit nor warns that a row its sentinel keeps is lost, until it is saved", async () => {
+    // A history from a newer version: it loads as unreadable and is never overwritten.
+    let blocked = true;
+    const store = new RecordingResults({ load: async () => [], save: async () => { if (blocked) throw new Error("EACCES"); }, get loadIssue() { return blocked; } },
+      () => {}, () => {}, [60_000]);
+    const io = effects();
+    io.stat.mockRejectedValue(new Error("missing"));
+    expect(await store.restore(io.stat, io.refresh, [interrupted])).toBe(false);
+    expect([store.unsaved().map(row => row.id), store.all[0]!.persistenceFailed]).toEqual([["interrupted-s1"], "blocked"]);
+    store.hold(["interrupted-s1"]);
+    expect([store.unsaved(), store.all[0]!.persistenceFailed]).toEqual([[], undefined]);
+    expect(await store.flush(50)).toBe("safe");
+    store.close();
   });
 });

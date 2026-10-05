@@ -9,7 +9,7 @@ function harness() {
   const options = { localVersion: "0.1.2", settled: () => settled, preference: () => preference,
     saveAttempt: vi.fn(async (at: number) => { preference.lastAttempt = at; }),
     saveNotified: vi.fn(async (version: string) => { preference.notifiedVersion = version; }),
-    announce: vi.fn((_version: string) => {}),
+    announce: vi.fn((_version: string): boolean | void => {}),
     fetch: vi.fn(async (_signal: AbortSignal) => "0.2.0"), changed: vi.fn(), log: vi.fn(), now: () => DAY_MS * 2 };
   return { checker: new UpdateChecker(options), options, preference, busy: (value: boolean) => { settled = !value; } };
 }
@@ -201,6 +201,14 @@ describe("announcing a newer version once", () => {
     const tomorrow = new UpdateChecker(h.options); await tomorrow.check(false);
     expect(tomorrow.state).toEqual({ kind: "available", version: "0.2.0" });
     expect(h.options.announce).toHaveBeenCalledTimes(1); expect(h.options.saveNotified).toHaveBeenCalledTimes(1);
+  });
+  it("leaves a version untold when a launch check could not notify, so a later launch announces it", async () => {
+    const h = harness();
+    h.options.announce.mockReturnValueOnce(false);
+    await h.checker.check(false);
+    expect(h.checker.state.kind).toBe("available");
+    expect([h.options.announce.mock.calls.length, h.options.saveNotified.mock.calls.length, h.preference.notifiedVersion]).toEqual([1, 0, undefined]);
+    expect(h.options.log).toHaveBeenCalledWith("updates: 0.2.0 not announced: notifications are off");
   });
   it("notifies again for a version newer than the one told", async () => {
     const h = harness(); h.preference.notifiedVersion = "0.1.9"; await h.checker.check(false);

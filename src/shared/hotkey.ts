@@ -35,8 +35,13 @@ const MAC_RESERVED = new Set([
   "CommandOrControl+Space",
   ...APP_KEYS.map((key) => `CommandOrControl+${key}`),
 ]);
+/**
+ * Cut, copy, paste, select all, undo and redo, in every app: a global shortcut on one would take it from all of them,
+ * so pasting would start a recording instead.
+ */
+const MAC_EDITING = new Set([..."XCVAZ"].map((key) => `CommandOrControl+${key}`).concat("CommandOrControl+Shift+Z"));
 /** Off macOS, Command is Control, and the editor reports Ctrl as `Control`: both spellings are reserved. */
-const OTHER_RESERVED = new Set(APP_KEYS.map((key) => `Control+${key}`));
+const OTHER_RESERVED = new Set([...APP_KEYS, ..."XCVAZY"].map((key) => `Control+${key}`).concat("Control+Shift+Z"));
 export type AcceleratorError =
   | "A shortcut needs Command or Control." | "A shortcut needs Ctrl." | "This key cannot be used."
   | "macOS reserves this combination." | "Other apps use this combination.";
@@ -60,6 +65,7 @@ export function validateAccelerator(value: unknown, platform: string): Accelerat
   }
   const accelerator = [...MODIFIER_ORDER.filter(part => parts.includes(part)), key].join("+");
   if (mac && MAC_RESERVED.has(accelerator)) return { error: "macOS reserves this combination." };
+  if (mac && MAC_EDITING.has(accelerator)) return { error: "Other apps use this combination." };
   if (!mac) {
     const pressed = parts.map(part => part === "CommandOrControl" ? "Control" : part);
     if (OTHER_RESERVED.has([...MODIFIER_ORDER.filter(part => pressed.includes(part)), key].join("+"))) {

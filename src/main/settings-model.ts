@@ -35,7 +35,7 @@ import type { RecordingResult, RecordingResultAction } from "../shared/recording
 import type { RecordingState } from "../shared/state";
 
 import path from "node:path";
-import { APP_NAME, abbreviateHome, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
+import { APP_NAME, QUITTING_TEXT, abbreviateHome, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 
 /** A group as main knows it: exactly the wire shape plus the action per choice. */
 interface Group extends SettingsGroup {
@@ -552,7 +552,7 @@ function statusActionId(state: RecordingState, ctx: AppContext): StatusActionId 
 
 function statusText(state: RecordingState, ctx: AppContext): SettingsStatus {
   const language = ctx.language;
-  if (ctx.quitting) return { tone: "busy", title: t("Quitting once the recording is saved or cleaned up…", language), detail: "" };
+  if (ctx.quitting) return { tone: "busy", title: t(QUITTING_TEXT[ctx.quitStep ?? "media"], language), detail: "" };
   switch (state.type) {
     case "needsPermission":
       return { tone: "attention", title: t("Screen recording permission required", language),
@@ -604,13 +604,17 @@ function libraryView(ctx: AppContext, now: Date, format: DateFormats): LibraryVi
   };
 }
 
+/** About's Quit RecordStuff, the one choice a quit in progress leaves, as the tray leaves its Quit. */
+const isQuitChoice = (groupId: unknown, choiceId: unknown): boolean => groupId === "about" && choiceId === "quit";
+
 /** Everything the panel renders. Actions stay in main; the panel only sees ids. */
 export function settingsView(state: RecordingState, ctx: AppContext): SettingsView {
   const language = ctx.language;
   const unlocked = preferencesUnlocked(state);
   const now = ctx.now ?? new Date();
   const format = dateFormats(language);
-  // A quit in progress refuses every action but quit, as the tray shows; the panel must not offer one either.
+  // A quit in progress refuses every action but quit, as the tray shows; the panel offers no other either. Quit stays,
+  // so a Relaunch still waiting on a save can be turned into a plain quit from here too (quit-coordinator.ts).
   const quitting = ctx.quitting === true;
   const results = (ctx.recordingResults ?? []).slice(0, ctx.historyLimit).map(result => projectResult(result, state, ctx, now, format));
   return {
@@ -630,8 +634,8 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
     tabs: [{ id: "library", label: t("Recordings", language) }, { id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) }, failuresTab(ctx)],
     groups: settingsGroups(state, ctx).map(({ choices, actions, ...rest }) => ({
       ...rest,
-      ...(quitting ? { enabled: false } : {}),
-      choices: choices.map(({ action: _action, ...choice }) => choice),
+      ...(quitting && rest.id !== "about" ? { enabled: false } : {}),
+      choices: choices.map(({ action: _action, ...choice }) => quitting && !isQuitChoice(rest.id, choice.id) ? { ...choice, enabled: false } : choice),
       ...(actions === undefined ? {} : { actions: actions.map(({ action: _action, ...choice }) => choice) }),
     })),
   };
@@ -676,8 +680,8 @@ export function settingsAction(
   groupId: unknown,
   choiceId: unknown,
 ): AppAction | undefined {
-  // Nothing is offered while a quit runs (see `settingsView`).
-  if (ctx.quitting) return undefined;
+  // Nothing but Quit is offered while a quit runs (see `settingsView`).
+  if (ctx.quitting && !isQuitChoice(groupId, choiceId)) return undefined;
   if (typeof groupId === "string" && groupId.startsWith("recordingResult:")) {
     const result = ctx.recordingResults?.find(r => groupId === `recordingResult:${r.id}`);
     if (!result) return undefined;

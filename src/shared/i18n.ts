@@ -45,6 +45,7 @@ export const ZH_TW = {
   "Check your recording settings, then try again. Missing content cannot be recovered.": "請檢查錄影設定後再試。遺失的內容無法恢復。",
   "Update macOS, then record again.": "請更新 macOS 後再錄影。",
   "Update the system and RecordStuff, then record again.": "請更新系統與 RecordStuff 後再錄影。",
+  "Try again. If it keeps failing, choose a lower video quality or relaunch RecordStuff.": "請再試一次；若持續失敗，請選擇較低的影像品質，或重新啟動 RecordStuff。",
   "Processing the recording…": "正在處理錄影…",
   "A partial recording was kept; it may not play.": "已保留部分錄影，可能無法播放。",
   "No recording was kept.": "沒有保留錄影內容。",
@@ -172,6 +173,7 @@ export const ZH_TW = {
   "Choose Cancel recording from the system tray icon.": "從系統匣圖示選「取消錄影」即可取消。",
   "Recording in progress; only language, appearance and icon click can change.": "錄影中，只能變更語言、外觀與點擊圖示。",
   "Could not apply this setting. Your current settings are shown.": "無法套用此設定，已顯示目前的設定。",
+  "This window could not load. Close it and open RecordStuff again.": "這個視窗無法載入，請關閉後再開啟 RecordStuff。",
   "Could not open settings. Close this window and open it again.": "無法開啟設定，請關閉這個視窗後再開一次。",
   "Check for updates…": "檢查更新…",
   "Checking for updates…": "正在檢查更新…",
@@ -254,6 +256,7 @@ export const ZH_TW = {
   "Recording starts in {seconds} s": "{seconds} 秒後開始錄影",
   "Cancel recording": "取消錄影",
   "Quitting once the recording is saved or cleaned up…": "錄影存檔或清理完成後即結束…",
+  "Quitting once settings and failure history are saved…": "設定與失敗紀錄儲存完成後即結束…",
   "Cancel recording with {value}": "以 {value} 取消錄影",
   "Saved {file}": "已儲存 {file}",
   "Saved {file}. Stopped early: the disk is almost full.": "已儲存 {file}。磁碟空間即將用盡，已提前停止錄影。",
@@ -316,8 +319,8 @@ export const ZH_TW = {
   "Countdown sound": "倒數音效",
   "The tick is not recorded.": "提示音不會被錄進影片。",
   "More about {label}": "{label}的說明",
-  "Could not register {value}; another app may be using it. Choose another shortcut in Settings.":
-    "無法註冊 {value}，可能被其他 App 佔用。請在設定改用其他快捷鍵。",
+  "Could not register {value}; another app may be using it. Open RecordStuff to choose another shortcut.":
+    "無法註冊 {value}，可能被其他 App 佔用。請開啟 RecordStuff 改用其他快捷鍵。",
   "Could not save the shortcut. Your previous shortcut is still in use.":
     "無法儲存快捷鍵設定，仍使用原本的快捷鍵。",
   Notifications: "通知",

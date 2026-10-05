@@ -34,6 +34,17 @@ it("off macOS, refuses every app's switch, quit and close keys however Ctrl is s
   expect(validateAccelerator("Alt+Shift+R", "linux").error).toBe("A shortcut needs Ctrl.");
 });
 
+it("refuses the editing keys every app shares, so pasting never starts a recording", () => {
+  for (const value of ["CommandOrControl+C", "CommandOrControl+V", "CommandOrControl+X", "CommandOrControl+A", "CommandOrControl+Z", "Shift+CommandOrControl+Z"]) {
+    expect(validateAccelerator(value, "darwin").error, value).toBe("Other apps use this combination.");
+    expect(validateAccelerator(value, "win32").error, value).toBe("Other apps use this combination.");
+  }
+  for (const value of ["Control+C", "Control+V", "Control+Y", "Control+Shift+Z"]) expect(validateAccelerator(value, "win32").error, value).toBe("Other apps use this combination.");
+  // With another modifier, or Control on macOS, which is a key of its own there, they stay choices.
+  for (const value of ["CommandOrControl+Alt+V", "CommandOrControl+Shift+C", "Control+V", "CommandOrControl+Y"]) expect(isAccepted(value, "darwin"), value).toBe(true);
+  expect(isAccepted("Control+Alt+V", "win32")).toBe(true);
+});
+
 it("canonicalizes without changing key identity and describes named keys", () => {
   const value = canonicalizeAccelerator("Shift+Alt+Control+CommandOrControl+Left", "darwin")!;
   expect(value).toBe("CommandOrControl+Control+Alt+Shift+Left");

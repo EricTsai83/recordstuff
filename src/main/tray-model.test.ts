@@ -181,6 +181,10 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     }
     const english = trayModel({ type: "idle" }, { ...mac, language: "en", quitting: true });
     expect(english.menu[0]).toMatchObject({ label: "Quitting once the recording is saved or cleaned up…", enabled: false });
+    // Once recording work has settled, a quit still waiting names the saves it waits on, not a recording.
+    expect(trayModel({ type: "idle" }, { ...mac, language: "en", quitting: true, quitStep: "metadata" }).menu[0])
+      .toMatchObject({ label: "Quitting once settings and failure history are saved…", enabled: false });
+    expect(trayModel({ type: "idle" }, { ...mac, quitting: true, quitStep: "metadata" }).menu[0]).toMatchObject({ label: "設定與失敗紀錄儲存完成後即結束…" });
     // A capture still running keeps its own state; the quit stops it, so its Stop is shown but not offered.
     const recording = trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, { ...mac, quitting: true });
     expect(recording.title).toBe("REC");
@@ -292,9 +296,9 @@ describe("notification text", () => {
     expect(recordingFailureNotification("output_open_failed", "zh-TW").body).toBe("無法寫入儲存位置。點此查看詳情。");
     expect(recordingFailureNotification("output_write_failed", "en")).toEqual({ title: "Recording failed", body: "Could not write the recording. Click for details." });
   });
-  it("a refused shortcut registration points at Settings, in the user's language", () => {
+  it("a refused shortcut registration points at RecordStuff's window, in the user's language", () => {
     expect(hotkeyRegistrationFailedNotification(DEFAULT_HOTKEY.accelerator, "darwin", "zh-TW").body).toBe(
-      "無法註冊 ⇧⌘1，可能被其他 App 佔用。請在設定改用其他快捷鍵。",
+      "無法註冊 ⇧⌘1，可能被其他 App 佔用。請開啟 RecordStuff 改用其他快捷鍵。",
     );
     expect(hotkeyRegistrationFailedNotification(DEFAULT_HOTKEY.accelerator, "win32").body).toContain("Ctrl+Shift+1");
   });

@@ -328,10 +328,15 @@ async function main(): Promise<void> {
     saveNotified: (notifiedVersion) => settings.setUpdates({ notifiedVersion }),
     // The download page the banner promises, not `openUpdate`, whose destination follows a later check's
     // state; but under the same lock, so a click after a recording starts opens nothing over the capture.
-    announce: (version) => tray.notifyUpdateAvailable(version, () => {
-      if (!settled()) { log("updates: notification click ignored while recording or quitting"); return; }
-      shell.openExternal(DOWNLOAD_URL).catch((error: unknown) => log(`updates: download link failed: ${String(error)}`));
-    }),
+    // With notifications off nothing is shown, so the version is not counted as told (updates.ts `told`).
+    announce: (version) => {
+      if (!settings.notifications) return false;
+      tray.notifyUpdateAvailable(version, () => {
+        if (!settled()) { log("updates: notification click ignored while recording or quitting"); return; }
+        shell.openExternal(DOWNLOAD_URL).catch((error: unknown) => log(`updates: download link failed: ${String(error)}`));
+      });
+      return true;
+    },
     fetch: (signal) => fetchVersion(process.platform, process.arch, signal, (url, init) => net.fetch(url, init), log),
     // The checker holds results back during a session itself; every change it reports is current.
     changed: () => refreshUi(), log,
@@ -342,6 +347,8 @@ async function main(): Promise<void> {
       path.join(app.getPath("userData"), "recording-result.json")), log, () => refreshUi());
   /** A quit waits for recording work or a history save; set shortly after it starts so a quick exit shows nothing. */
   let quitting = false;
+  /** What that quit waits on, so the tray and the window name it (`AppContext.quitStep`). */
+  let quitStep: QuitDeferral = "media";
   let quitFeedback: ReturnType<typeof setTimeout> | undefined;
   /** What held the last deferred quit, while the tray still says so (plan 056). */
   let quitDeferred: QuitDeferral | undefined;
@@ -397,7 +404,7 @@ async function main(): Promise<void> {
     notifications: settings.notifications,
     settingsShortcut: shortcuts.settingsStatus,
     hotkey: { ...settings.hotkey, registered: shortcuts.registered },
-    ...(quitting ? { quitting } : {}),
+    ...(quitting ? { quitting, quitStep } : {}),
     ...(quitDeferred ? { quitDeferred } : {}),
     ...(errorBoxHeld ? { errorBoxHeld } : {}),
   });
@@ -409,6 +416,7 @@ async function main(): Promise<void> {
     capture: armed => shortcuts.capture(armed),
     // While the window is open the Recordings tab follows the folder: a video deleted in Finder leaves at once.
     activated: () => { library.watch(); void library.refresh(); },
+    quitRequested: () => quitRequested,
     opened: () => appMenu.windowOpened(),
     closed: () => { library.unwatch(); appMenu.windowClosed(); },
     drag: async (contents, id) => {
@@ -518,7 +526,8 @@ async function main(): Promise<void> {
           locked: true,
           write: () => settings.setDisplay(action.setDisplay),
           applied: () => {
-            if (JSON.stringify(settings.display) !== before) displayMedia.failure = undefined;
+            // What the last recording on another screen ran into is no longer what the next one will.
+            if (JSON.stringify(settings.display) !== before) { displayMedia.failure = undefined; captureDegraded = false; }
             log(`settings: display ${JSON.stringify(settings.display)}`);
           },
           notifyFailure: () => tray.notifyDisplayWriteFailed(),
@@ -563,10 +572,15 @@ async function main(): Promise<void> {
           applied: () => log(`settings: countdown sound ${settings.countdownSound ? "on" : "off"}`),
         });
       } else {
+        const cap = settings.quality.resolutionCap;
         await savePreference("quality", {
           locked: true,
           write: () => settings.setQuality(action.setQuality),
-          applied: () => log(`settings: quality ${JSON.stringify(settings.quality)}`),
+          applied: () => {
+            // The unconfirmed cap was the last recording's; another cap is the next recording's to confirm.
+            if (settings.quality.resolutionCap !== cap) captureDegraded = false;
+            log(`settings: quality ${JSON.stringify(settings.quality)}`);
+          },
           notifyFailure: () => tray.notifyQualityWriteFailed(),
         });
       }
@@ -710,7 +724,7 @@ async function main(): Promise<void> {
     },
     saveFolder: folder => settings.setOutputDir(folder),
     focus: focusApp,
-    folderChanged: () => { recorder.outputDirChanged(); void library.refresh(); },
+    folderChanged: () => { recorder.outputDirChanged(); void library.refreshIfWatched(); },
     folderFailed: folder => tray.notifySettingsWriteFailed(folder),
     // Told once the recording ends: a banner now could be muted while the display is shared.
     folderRefused: folder => captureNotices.hold("output folder not changed", () => tray.notifyFolderRefused(folder)),
@@ -756,7 +770,7 @@ async function main(): Promise<void> {
       }
       case "saved":
         savedNotification.schedule(event.path, event.stoppedEarly);
-        void library.refresh();
+        void library.refreshIfWatched();
         return;
       case "displayFailed":
         displayMedia.failure = event.detail;
@@ -823,6 +837,7 @@ async function main(): Promise<void> {
   void reportInterruptions(sentinels, {
     restore: interrupted => recordingResults.restore(file => fs.stat(file), refreshUi, interrupted),
     saved: ids => recordingResults.saved(ids),
+    hold: ids => recordingResults.hold(ids),
   }, log).catch((cause: unknown) => log(`start: interruption check failed: ${stackOf(cause)}`));
 
   if (autoRecord?.ok) {
@@ -848,12 +863,13 @@ async function main(): Promise<void> {
   const quitCoordinator = installQuitCoordinator(app, {
     relaunch: () => app.relaunch(),
     shutdown: async () => {
-      quitDeferral = "media";
+      quitDeferral = quitStep = "media";
       clearQuitDeferred();
       beginQuitting();
       if (!await recorder.shutdown()) return false;
       // Media is settled here, so a timeout names the metadata write that is still pending.
-      quitDeferral = "metadata";
+      quitDeferral = quitStep = "metadata";
+      if (quitting) refreshUi();
       const pending = new Set(["settings", "window size", "log"]);
       const flushes = ([["settings", settings.flush()], ["window size", settingsWindow.flush()], ["log", log.flush()]] as const)
         .map(([name, flush]) => flush.then(() => { pending.delete(name); }));

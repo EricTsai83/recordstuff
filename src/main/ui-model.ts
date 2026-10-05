@@ -11,7 +11,7 @@
 import type { RecordingResult, RecordingResultAction } from "../shared/recording-result";
 import type { Appearance, TrayClick } from "../shared/appearance";
 import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../shared/display";
-import type { Language } from "../shared/i18n";
+import type { Language, PlainMessageKey } from "../shared/i18n";
 import type { QualitySettings } from "../shared/quality";
 import type { CountdownSeconds } from "../shared/countdown";
 import type { HotkeySettings } from "../shared/hotkey";
@@ -100,6 +100,11 @@ export interface AppContext {
   /** Quit waits for recording work to finish; the tray says so until the app exits or quit is deferred. */
   quitting?: boolean;
   /**
+   * What the quit waits on: recording work, then the settings, log and failure-history saves (and the prompt about
+   * unsaved failures). Absent is recording work, the first step.
+   */
+  quitStep?: QuitDeferral;
+  /**
    * The last quit was deferred and what held it (plan 056). Its notification may be refused,
    * hidden by Focus or muted while the display is shared, so the tray says so too, until the
    * next state change or quit, or until what held it has finished.
@@ -110,6 +115,12 @@ export interface AppContext {
   /** When the view is built; failure rows are grouped by day relative to it. Tests pin it. */
   now?: Date;
 }
+
+/** What the tray and the window say while a quit waits, by the step it waits on (`AppContext.quitStep`). */
+export const QUITTING_TEXT: Record<QuitDeferral, PlainMessageKey> = {
+  media: "Quitting once the recording is saved or cleaned up…",
+  metadata: "Quitting once settings and failure history are saved…",
+};
 
 /**
  * Settings that touch a live capture may change only while the recorder is

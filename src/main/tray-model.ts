@@ -21,7 +21,7 @@ import type { FrameRate } from "../shared/quality";
 import type { ErrorCode, RecordingState } from "../shared/state";
 import { describeAccelerator, SETTINGS_SHORTCUT, type HotkeyAccelerator } from "../shared/hotkey";
 
-import { APP_NAME, abbreviateHome, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
+import { APP_NAME, QUITTING_TEXT, abbreviateHome, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 
 /**
  * One same-size template per state (plan 040): only `REC` changes the item
@@ -151,7 +151,7 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
   };
   // A settled recorder shows no work of its own, so a quit waiting on cleanup would look like nothing happened.
   if (ctx.quitting && preferencesUnlocked(state)) {
-    const quitting = text("Quitting once the recording is saved or cleaned up…");
+    const quitting = text(QUITTING_TEXT[ctx.quitStep ?? "media"]);
     return model("busy", "", quitting, [disabled(quitting)]);
   }
   switch (state.type) {
@@ -290,7 +290,7 @@ export function hotkeyRegistrationFailedNotification(
 ): NotificationText {
   return notice(
     t(
-      "Could not register {value}; another app may be using it. Choose another shortcut in Settings.",
+      "Could not register {value}; another app may be using it. Open RecordStuff to choose another shortcut.",
       language,
       { value: describeAccelerator(accelerator, platform) },
     ),

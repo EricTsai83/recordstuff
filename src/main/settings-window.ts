@@ -82,6 +82,11 @@ export interface SettingsWindowOptions {
   drag?: (contents: WebContents, id: string) => Promise<boolean>;
   /** Plays a listed recording full screen in a window of its own (video-fullscreen.ts). */
   fullScreen?: Pick<VideoFullScreen, "play" | "close">;
+  /**
+   * A quit has begun. `context().quitting` says so only 300 ms later, for the tray's sake; what this window opens
+   * itself, rather than through `act`, which refuses at once, asks this.
+   */
+  quitRequested?: () => boolean;
   log?: (message: string) => void;
 }
 
@@ -430,7 +435,7 @@ export class SettingsWindow {
     const item = this.view().library?.items.find(entry => entry.id === id);
     const fullScreen = this.options.fullScreen;
     // While a quit runs nothing new opens, as every other action is refused then (`settingsAction`).
-    if (!item || !fullScreen || recipient.isDestroyed() || this.options.context().quitting) {
+    if (!item || !fullScreen || recipient.isDestroyed() || this.options.quitRequested?.() || this.options.context().quitting) {
       this.log(`settings window: refused ${JSON.stringify({ group, choice: "fullscreen" })}`);
       const view = this.view();
       return this.deliver({ view, applied: false }, recipient);

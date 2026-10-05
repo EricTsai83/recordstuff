@@ -8,12 +8,13 @@
  * player can seek) or a thumbnail for a listed id and nothing else, and the
  * actions resolve the same way. A recording still being written keeps its
  * `.recording.mp4` name and is not listed. Listing is a read of the folder on
- * request (Settings opening or regaining focus, a recording saved, the folder
- * changed or a file moved to the Trash) and, only while RecordStuff's window is
- * open, after the folder's own change events (`watch`); never a timer or a poll.
+ * request (the window opening or regaining focus, Show last recording, a file
+ * moved to the Trash, and while the window is open a recording saved or the
+ * folder changed) and, only while RecordStuff's window is open, after the
+ * folder's own change events (`watch`); never a timer or a poll.
  */
 import { createHash } from "node:crypto";
-import { createReadStream, statSync, watch as watchFolder, type FSWatcher } from "node:fs";
+import { createReadStream, watch as watchFolder, type FSWatcher } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -123,6 +124,8 @@ export class RecordingsLibrary {
   private unwatchable: string | undefined;
   /** The window wants the folder followed, whether or not a watcher could be attached yet (review pass 1, F2). */
   private watching = false;
+  /** The folder `watch` is looking at before it attaches, so a second focus meanwhile does not look again. */
+  private attaching: string | undefined;
   /** Settles once the last listing's unknown lengths are read and published, or a newer listing abandoned them. */
   lengths: Promise<void> = Promise.resolve();
 
@@ -149,6 +152,15 @@ export class RecordingsLibrary {
     if (!this.listing) return this.listing = this.list().finally(() => { this.listing = undefined; });
     const next = (): Promise<void> => { this.relisting = undefined; return this.refresh(); };
     return this.relisting ??= this.listing.then(next, next);
+  }
+
+  /**
+   * A listing for an open window only. A save or a changed folder asks for one; with the window closed nothing would
+   * show it, and the window lists the folder itself when it opens (and Show last recording before it does), so the
+   * folder and every new file's boxes are not read for nobody, right as the next recording may start.
+   */
+  refreshIfWatched(): Promise<void> {
+    return this.watching ? this.refresh() : Promise.resolve();
   }
 
   private async list(): Promise<void> {
@@ -192,8 +204,8 @@ export class RecordingsLibrary {
     // this path was replaced (review pass 2, P2-2): follow it. After publishing, so the listing never waits for it.
     if (this.watching) {
       const ino = await fs.stat(dir).then(stat => stat.ino, () => undefined);
-      if (generation === this.generation && this.watching && (this.watcher?.dir !== dir || (ino !== undefined && ino !== this.watcher.ino))) {
-        this.detach(); this.watch();
+      if (generation === this.generation && this.watching && ino !== undefined && (this.watcher?.dir !== dir || ino !== this.watcher.ino)) {
+        this.attach(dir, ino);
       }
     }
   }
@@ -203,16 +215,28 @@ export class RecordingsLibrary {
    * leaves it (deleted or moved in Finder) is listed again a moment later, so the tab follows the folder
    * without waiting for the window to regain focus. Event-driven (FSEvents on macOS), never polled; a
    * recording's growing `.recording.mp4` and other files are ignored. Idempotent; `unwatch` when the
-   * window closes or is hidden, so the menu bar app watches nothing while idle.
+   * window closes or is hidden, so the menu bar app watches nothing while idle. The folder is looked at
+   * asynchronously first: it is asked for on every focus, and on a network folder whose server has gone
+   * a synchronous look would hold the main process (the tray, the shortcut, a recording's chunks) for its timeout.
    */
   watch(): void {
     this.watching = true;
     const dir = this.deps.dir();
-    if (this.watcher?.dir === dir) return;
+    if (this.watcher?.dir === dir || this.attaching === dir) return;
+    this.attaching = dir;
+    void fs.stat(dir).then(stat => stat.ino, (cause: unknown) => ({ cause })).then(found => {
+      if (this.attaching === dir) this.attaching = undefined;
+      if (!this.watching || this.deps.dir() !== dir || this.watcher?.dir === dir) return;
+      if (typeof found === "number") this.attach(dir, found);
+      else this.cannotWatch(dir, found.cause);
+    });
+  }
+
+  /** Follows `dir`, whose inode was just read, in place of any folder watched before. */
+  private attach(dir: string, ino: number): void {
     this.detach();
-    let handle: FSWatcher, ino: number;
+    let handle: FSWatcher;
     try {
-      ino = statSync(dir).ino;
       handle = watchFolder(dir, { persistent: false }, (_event, name) => {
         const watcher = this.watcher;
         if (watcher?.handle !== handle || (name && !isListedName(String(name)))) return;
@@ -220,8 +244,7 @@ export class RecordingsLibrary {
         watcher.settle = setTimeout(() => { watcher.settle = undefined; void this.refresh(); }, WATCH_SETTLE_MS);
       });
     } catch (cause) {
-      if (this.unwatchable !== dir) this.deps.log(`library: cannot watch ${dir}; it is listed when the window opens or regains focus: ${String(cause)}`);
-      this.unwatchable = dir;
+      this.cannotWatch(dir, cause);
       return;
     }
     this.unwatchable = undefined;
@@ -230,6 +253,11 @@ export class RecordingsLibrary {
       if (this.watcher?.handle === handle) this.detach();
     });
     this.watcher = { dir, ino, handle };
+  }
+
+  private cannotWatch(dir: string, cause: unknown): void {
+    if (this.unwatchable !== dir) this.deps.log(`library: cannot watch ${dir}; it is listed when the window opens or regains focus: ${String(cause)}`);
+    this.unwatchable = dir;
   }
 
   /** The window closed: no watcher and no pending listing remain. */

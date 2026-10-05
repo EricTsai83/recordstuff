@@ -22,7 +22,7 @@ function start(options: { log?: (message: string) => void; storage?: ResultStora
   const results = new RecordingResults(options.storage ?? new RecordingResultStore(historyFile), () => {}, () => {}, [10]);
   const sentinels = new SessionSentinels(sentinelDir, options.log);
   const reported = reportInterruptions(sentinels, {
-    restore: interrupted => results.restore(stat, vi.fn(), interrupted), saved: ids => results.saved(ids),
+    restore: interrupted => results.restore(stat, vi.fn(), interrupted), saved: ids => results.saved(ids), hold: ids => results.hold(ids),
   }, options.log ?? (() => {}));
   return { results, sentinels, reported };
 }
@@ -72,6 +72,10 @@ it("keeps sentinels while the history cannot be saved and never adds an entry tw
   await vi.waitFor(() => expect(log).toHaveBeenCalledWith("start: interruption sentinels kept until the failure history is saved"));
   expect(blocked.results.all).toEqual([expect.objectContaining({ id: "interrupted-c3", code: "app_terminated" })]);
   expect(remaining()).toEqual(["c3.json"]);
+  // Its sentinel keeps it, so a quit meanwhile loses nothing: no "exit without saving" prompt for it, every launch.
+  expect(blocked.results.unsaved()).toEqual([]);
+  expect(await blocked.results.flush(50)).toBe("safe");
+  blocked.results.close();
 
   // Once history is healthy the entry is saved; a sentinel whose removal failed is not reported again.
   fs.rmSync(historyFile);

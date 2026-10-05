@@ -86,7 +86,7 @@ const context: AppContext = {
 };
 
 /** A panel wired to a mutable copy of the committed settings. */
-function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void; fullScreen?: SettingsWindowOptions["fullScreen"] } = {}) {
+function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void; fullScreen?: SettingsWindowOptions["fullScreen"]; quitRequested?: () => boolean } = {}) {
   const live = { ...context };
   let state: RecordingState = { type: "idle" };
   const act = overrides.act ?? vi.fn(async (action: AppAction) => {
@@ -99,6 +99,7 @@ function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>
     ...(overrides.opened ? { opened: overrides.opened } : {}),
     ...(overrides.closed ? { closed: overrides.closed } : {}),
     ...(overrides.fullScreen ? { fullScreen: overrides.fullScreen } : {}),
+    ...(overrides.quitRequested ? { quitRequested: overrides.quitRequested } : {}),
     capture,
     state: overrides.state ?? (() => state),
     context: () => live,
@@ -142,7 +143,8 @@ describe("settings window lifecycle", () => {
       played.push(request);
       return { time: 42, playing: true, volume: 0.5, muted: false };
     }) };
-    const s = setup({ fullScreen });
+    let quitRequested = false;
+    const s = setup({ fullScreen, quitRequested: () => quitRequested });
     s.live.library = { dir: "/Users/eric/Movies/RecordStuff", loading: false, failed: false,
       files: [{ id: "abc", path: "/Users/eric/Movies/RecordStuff/a.mp4", name: "a.mp4", size: 1, recordedAt: 0, version: "1" }] };
     s.panel.show();
@@ -167,6 +169,11 @@ describe("settings window lifecycle", () => {
     const quitting = await s.choose(s.event(), "recordingFile:abc", { action: "fullscreen", state });
     expect([quitting.applied, fullScreen.play.mock.calls.length]).toEqual([false, 1]);
     delete s.live.quitting;
+    // Nor in the 300 ms before the tray says a quit runs: a quit refuses at once what this window opens itself.
+    quitRequested = true;
+    const requested = await s.choose(s.event(), "recordingFile:abc", { action: "fullscreen", state });
+    expect([requested.applied, fullScreen.play.mock.calls.length]).toEqual([false, 1]);
+    quitRequested = false;
     // Its window closing ends a video still playing for it.
     window.close();
     expect(fullScreen.close).toHaveBeenCalled();

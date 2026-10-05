@@ -226,14 +226,18 @@ describe("a remembered shortcut that is now the Settings shortcut", () => {
 });
 
 describe("a quit in progress", () => {
-  it("offers nothing but says why, as the tray does", () => {
+  it("offers nothing but Quit and says why, as the tray does", () => {
     const ctx: AppContext = { ...context, quitting: true, recordingResults: [
       { id: "f", code: "disk_full", detail: "", occurredAt: "2026-09-24T12:00:00Z", outcome: "empty", acknowledged: false }] };
     const view = settingsView(idle, ctx);
     // Said once, by the status card; the hint under its title would only repeat it.
     expect(view.status?.title).toBe("Quitting once the recording is saved or cleaned up…");
     expect(view.hint).toBe("");
-    expect(view.groups.filter(g => g.enabled).map(g => g.id)).toEqual([]);
+    // Quit stays, as in the tray, so a Relaunch still waiting can become a plain quit; About's links do not.
+    expect(view.groups.filter(g => g.enabled).map(g => g.id)).toEqual(["about"]);
+    expect(view.groups.find(g => g.id === "about")!.choices.filter(c => c.enabled).map(c => c.id)).toEqual(["quit"]);
+    expect(settingsAction(idle, ctx, "about", "quit")).toBe("quit");
+    expect(settingsAction(idle, ctx, "about", "website")).toBeUndefined();
     expect(view.recordingResults?.flatMap(r => r.actions).filter(a => a.enabled)).toEqual([]);
     expect(settingsAction(idle, ctx, "language", "zh-TW")).toBeUndefined();
     expect(settingsAction(idle, ctx, "recordingResult:f", "acknowledge")).toBeUndefined();
@@ -756,6 +760,7 @@ describe("the status card", () => {
       { tone: "busy", title: "Saving…", detail: "" },
     ]);
     expect(settingsView(idle, { ...context, quitting: true }).status).toEqual({ tone: "busy", title: "Quitting once the recording is saved or cleaned up…", detail: "" });
+    expect(settingsView(idle, { ...context, quitting: true, quitStep: "metadata" }).status).toEqual({ tone: "busy", title: "Quitting once settings and failure history are saved…", detail: "" });
   });
   it("turns to attention for what stops the next recording, with the fix as its action", () => {
     // Like the tray's permission steps: the system pane first, and Relaunch for access that may already be granted.

@@ -79,6 +79,11 @@ export class RecordingResults {
   private loadFailed = false;
   private quitting = false;
   private closed = false;
+  /**
+   * Rows adopted from launch sentinels that are kept until these rows are saved (session-sentinel.ts): exiting
+   * without saving loses none of them, since the next launch adopts them again (`hold`).
+   */
+  private readonly held = new Set<string>();
   /** Settles when the saved history has been read and merged. */
   readonly ready: Promise<void>;
   private fingerprint(result: RecordingResult): string {
@@ -133,7 +138,8 @@ export class RecordingResults {
   get all(): readonly RecordingResult[] {
     return this.results.map(result => {
       const saving = this.pending.get(result.id)?.kind;
-      const failed = this.flagged.get(result.id);
+      // A held row is not lost on quit, so no warning says it will be.
+      const failed = this.heldBySentinel(result) ? undefined : this.flagged.get(result.id);
       return saving || failed ? { ...result, ...(saving ? { saving } : {}), ...(failed ? { persistenceFailed: failed } : {}) } : result;
     });
   }
@@ -281,12 +287,24 @@ export class RecordingResults {
     this.schedule();
     return promise;
   }
-  /** Rows whose current state is not in the saved file, as the user sees them. */
+  /** Rows whose current state is not in the saved file, as the user sees them; a held row is kept by its sentinel. */
   unsaved(): RecordingResult[] {
     return this.all.filter((_, index) => {
       const row = this.results[index]!;
-      return !this.loaded || this.savedRows.get(row.id) !== this.fingerprint(row);
+      return !this.heldBySentinel(row) && (!this.loaded || this.savedRows.get(row.id) !== this.fingerprint(row));
     });
+  }
+  /**
+   * These adopted rows' launch sentinels stay until the rows are saved (an unsaved history, an unreadable or newer
+   * one included): quitting without saving loses none of them, as the next launch adopts them again, so neither the
+   * quit prompt nor their warning counts them. A review of one, like any, is applied only once it is saved.
+   */
+  hold(ids: readonly string[]): void {
+    for (const id of ids) if (!this.everSaved.has(id)) this.held.add(id);
+    this.changed();
+  }
+  private heldBySentinel(row: RecordingResult): boolean {
+    return this.held.has(row.id) && !this.everSaved.has(row.id);
   }
   /**
    * Quit: suspend automatic retry and attempt the latest save with a bounded wait.
@@ -503,6 +521,9 @@ export function failureGuidance(code: ErrorCode, language: Language, platform: N
     : code === "unsupported_os_version" ? "Update macOS, then record again."
     // Also refused before anything started: the encoder, not a quality setting, lacks MP4.
     : code === "mp4_unsupported" ? "Update the system and RecordStuff, then record again."
+    // Ended before any media was kept, so nothing is missing; a source that stopped while quality settings were
+    // applied, or a capture that never started, is what remains.
+    : code === "capture_start_failed" ? "Try again. If it keeps failing, choose a lower video quality or relaunch RecordStuff."
     : "Check your recording settings, then try again. Missing content cannot be recovered.", language);
 }
 const persistenceWarnings: Record<PersistenceIssue, PlainMessageKey> = {

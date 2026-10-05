@@ -147,6 +147,8 @@ function interruptionFailure(sentinel: SessionSentinel): RecordingFailure {
 export interface InterruptionHistory {
   restore(interrupted: RecordingFailure[]): Promise<boolean>;
   saved(ids: readonly string[]): Promise<void>;
+  /** The entries' sentinels stay until they are saved, so a quit meanwhile loses none of them. */
+  hold?(ids: readonly string[]): void;
 }
 
 /**
@@ -164,7 +166,10 @@ export async function reportInterruptions(
   const leftovers = await sentinels.leftovers();
   if (leftovers.length) log(`start: ${leftovers.length} recording session(s) did not finish before the previous exit`);
   const entries = leftovers.map(interruptionFailure);
-  if (!await history.restore(entries) && leftovers.length) log("start: interruption sentinels kept until the failure history is saved");
+  if (!await history.restore(entries) && leftovers.length) {
+    log("start: interruption sentinels kept until the failure history is saved");
+    history.hold?.(entries.map(entry => entry.id));
+  }
   await history.saved(entries.map(entry => entry.id));
   for (const sentinel of leftovers) await sentinels.remove(sentinel.sessionId);
 }

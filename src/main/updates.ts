@@ -101,8 +101,11 @@ interface Options {
   saveAttempt: (at: number) => Promise<void>;
   /** Remembers the newest version the user has been told about, in a notification or the panel. */
   saveNotified?: (version: string) => Promise<void>;
-  /** A launch check found a version the user has not been told about yet. */
-  announce?: (version: string) => void;
+  /**
+   * A launch check found a version the user has not been told about yet. False when no notification could be asked
+   * for (the user turned them off): the version then stays untold, so a launch once they are back on announces it.
+   */
+  announce?: (version: string) => boolean | void;
   fetch: (signal: AbortSignal) => Promise<string>;
   changed: () => void;
   log: (message: string) => void;
@@ -188,14 +191,18 @@ export class UpdateChecker {
    * newer than the last one told, and any shown result marks it told, so a
    * version first seen in the panel never notifies at a later launch. The told
    * version only moves forward: a stale source offering an older release than
-   * one already told neither notifies nor lowers it. A failed save only means
-   * the next launch may notify again.
+   * one already told neither notifies nor lowers it. A launch check that
+   * could not notify (notifications off) leaves it untold. A failed save only
+   * means the next launch may notify again.
    */
   private told(result: UpdateState, launch: boolean): void {
     const told = this.options.preference().notifiedVersion;
     if (result.kind !== "available" || (told !== undefined && !isNewer(result.version, told))) return;
     if (launch && this.options.announce) {
-      this.options.announce(result.version);
+      if (this.options.announce(result.version) === false) {
+        this.options.log(`updates: ${result.version} not announced: notifications are off`);
+        return;
+      }
       this.options.log(`updates: announced ${result.version}`);
     }
     this.options.saveNotified?.(result.version).catch((error: unknown) =>

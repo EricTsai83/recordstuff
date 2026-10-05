@@ -196,12 +196,41 @@ describe("RecordingsLibrary", () => {
       library.unwatch();
       folder = path.join(other, "missing");
       library.watch(); library.watch();
+      // Looked at asynchronously, so a folder whose server is gone never holds the main process.
+      await vi.waitFor(() => expect(log.mock.calls.filter(([line]) => String(line).includes("cannot watch"))).toHaveLength(1));
+      library.watch();
+      await new Promise(resolve => setTimeout(resolve, 20));
       expect(log.mock.calls.filter(([line]) => String(line).includes("cannot watch"))).toHaveLength(1);
       // Still wanted: once the folder lists, it is followed without another activation (review pass 1, F2).
       fs.mkdirSync(folder);
       await library.refresh();
       await writeUntilListed(library, path.join(folder, "later.mp4"), ["later.mp4"]);
     } finally { library.unwatch(); fs.rmSync(other, { recursive: true, force: true }); }
+  });
+  it("lists a save or a changed folder only while the window follows the folder", async () => {
+    touch("a.mp4");
+    const { library } = setup();
+    const readdir = vi.spyOn(fs.promises, "readdir");
+    try {
+      await library.refreshIfWatched();
+      expect(readdir).not.toHaveBeenCalled();
+      library.watch();
+      await library.refreshIfWatched();
+      expect(readdir).toHaveBeenCalledTimes(1);
+      library.unwatch();
+      await library.refreshIfWatched();
+      expect(readdir).toHaveBeenCalledTimes(1);
+    } finally { readdir.mockRestore(); library.unwatch(); }
+  });
+  it("never reads the folder synchronously when the window asks to follow it", async () => {
+    const { library } = setup();
+    const statSync = vi.spyOn(fs, "statSync");
+    try {
+      library.watch();
+      await library.refresh();
+      await writeUntilListed(library, path.join(dir, "followed.mp4"), ["followed.mp4"]);
+      expect(statSync).not.toHaveBeenCalled();
+    } finally { statSync.mockRestore(); library.unwatch(); }
   });
   // macOS watches folders by path (FSEvents), so this passes there either way; on Windows and Linux the watcher holds
   // the folder itself, and the library attaches to the replacement (review pass 2, P2-2).
