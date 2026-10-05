@@ -87,8 +87,11 @@ export const THUMBNAILS_KEPT = 64;
 export const WATCH_SETTLE_MS = 250;
 /** How often lengths read so far are published while a long folder is still being read. */
 export const LENGTHS_PUBLISH_MS = 500;
-/** How long a recording moved to the Trash can be brought back before it is really moved. */
-export const UNDO_TRASH_MS = 10_000;
+/**
+ * How long a recording moved to the Trash can be brought back before it is really moved: longer than its toast stays
+ * (2026-10-06, formerly 10 s), since ⌘Z still works once the toast has gone, and waiting only keeps the file in place.
+ */
+export const UNDO_TRASH_MS = 30_000;
 /** `2026-10-04 14-02-11.mp4`, or `-2` and on when a name was taken (recorder.ts formatTimestamp). */
 const STAMPED = /^(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})(?:-\d+)?\.mp4$/;
 

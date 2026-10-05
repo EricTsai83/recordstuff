@@ -1001,11 +1001,7 @@ function updateLibrary(): void {
     head.append(node("p", "library-summary"), layoutSwitch(), reveal);
     const empty = node("div", "library-empty");
     empty.append(icon("film", "empty-icon")!, node("p", "library-empty-title"), node("p", "library-empty-detail"));
-    // What Move to Trash just took, with the way back while it waits (2026-10-05). Not a live region: `announce` says it.
-    const undoBar = node("div", "library-undo");
-    const undo = button("library-undo", () => { if (!inactive(undo)) void undoTrash(); });
-    undoBar.append(node("span", "library-undo-text"), undo);
-    area.append(head, undoBar, node("p", "library-error"), node("p", "library-status"), empty, node("div", "library-days"));
+    area.append(head, node("p", "library-error"), node("p", "library-status"), empty, node("div", "library-days"));
     panel.append(area);
   }
   const layout: LibraryLayout = library?.layout ?? "grid";
@@ -1017,17 +1013,6 @@ function updateLibrary(): void {
     setAttr(input, "aria-label", label); setAttr(input.parentElement!, "title", label);
   }
   setAttr(area.querySelector(".library-layout")!, "aria-label", text("Layout"));
-  const undoBar = area.querySelector<HTMLElement>(".library-undo")!;
-  const trashed = library?.trashed;
-  const undoButton = undoBar.querySelector<HTMLButtonElement>("#library-undo")!;
-  const undoHadFocus = document.activeElement === undoButton;
-  undoBar.hidden = !trashed;
-  setText(undoBar.querySelector(".library-undo-text")!, trashed?.message ?? "");
-  setText(undoButton, trashed?.undo ?? "");
-  setAttr(undoButton, "title", `${trashed?.undo ?? ""} (${platform() === "darwin" ? "⌘Z" : "Ctrl+Z"})`);
-  setActionDisabled(undoButton, false, undoing);
-  // The bar went (the file was moved, or brought back elsewhere): its button's focus stays in the tab.
-  if (undoHadFocus && undoBar.hidden && document.hasFocus()) document.getElementById("tab-library")?.focus({ preventScroll: true });
   // A delayed move that failed is news once; the line stays until the next action.
   const notice = library?.notice;
   if (notice && notice !== lastNotice) announce(notice);
@@ -1123,13 +1108,13 @@ async function chooseLayout(layout: LibraryLayout): Promise<void> {
 let undoing = false;
 /** Cards Move to Trash took, newest last: Undo brings back the newest, whose card then takes the focus it had. */
 const trashedCards: string[] = [];
-/** Brings back the recording Move to Trash took last, while it still waits (the bar's Undo, or ⌘Z on this tab). */
+/** Brings back the recording Move to Trash took last, while it still waits: the toast's Undo, or ⌘Z on any tab. */
 async function undoTrash(): Promise<void> {
   const trashed = view?.library?.trashed;
   if (!trashed || undoing) return;
   undoing = true;
-  updateLibrary();
-  const fromBar = document.activeElement?.id === "library-undo";
+  updateToast();
+  const fromToast = Boolean(toast?.el.contains(document.activeElement));
   try {
     const result = await window.settings.choose("library", "undoTrash");
     undoing = false;
@@ -1137,18 +1122,119 @@ async function undoTrash(): Promise<void> {
     if (!result.applied) { announce(result.failure ?? text("Could not complete this action. Try again.")); return; }
     announce(translate("Restored {name}", view?.language, { name: trashed.name }));
     const id = trashedCards.pop();
+    // On Recordings the card that came back is in the document; on another tab it waits there, and the tab stays.
     const card = id ? document.querySelector<HTMLElement>(`#clip-${id} .clip-open`) : null;
-    // The bar's button hid with the bar, or nothing had focus: the card that came back takes it.
-    if (card && document.hasFocus() && (fromBar || document.activeElement === document.body || document.activeElement?.id === "tab-library")) {
-      card.focus({ preventScroll: true });
-      card.scrollIntoView({ block: "nearest" });
+    showToast("restored", text("Restored"), trashed.name, RESTORED_TOAST_MS);
+    // The toast's Undo went with it, or nothing had focus: the card that came back takes it, else the open tab.
+    if (document.hasFocus() && (fromToast || document.activeElement === document.body || document.activeElement?.id === "tab-library")) {
+      if (card) { card.focus({ preventScroll: true }); card.scrollIntoView({ block: "nearest" }); }
+      else if (fromToast) document.getElementById(`tab-${selectedTab}`)?.focus({ preventScroll: true });
     }
   } catch {
     announce(text("Could not complete this action. Try again."));
   } finally {
     undoing = false;
-    updateLibrary();
+    updateToast();
   }
+}
+/** How long a toast stays when nothing holds it: the pointer on it or focus in it pauses the count. */
+const TRASHED_TOAST_MS = 8000;
+const RESTORED_TOAST_MS = 3000;
+/**
+ * The toast (2026-10-06): one card at the window's bottom right, over every tab, drawn as Sonner draws its toasts
+ * (shadcn/ui's): a title, the file's name beneath, an Undo button with its ⌘Z, and a round close button on the corner.
+ * Move to Trash shows it and Undo replaces it with a short "Restored" without a button; a newer one replaces the last,
+ * so they never stack. It leaves after `TRASHED_TOAST_MS`, paused while the pointer is on it or focus is in it, or at
+ * once with ×, and as soon as nothing waits to be undone. Undo outlives it: ⌘Z still works until the file is really
+ * moved (`UNDO_TRASH_MS` in recordings-library.ts). Not a live region: `announce` says what it says.
+ */
+let toast: { el: HTMLElement; kind: "trashed" | "restored"; remaining: number; started: number; timer?: ReturnType<typeof setTimeout> | undefined; held: { pointer: boolean; focus: boolean } } | undefined;
+/** The pending removal of a closing toast's node from view, after its fade. */
+let toastExit: ReturnType<typeof setTimeout> | undefined;
+function toastElement(): HTMLElement {
+  if (toast) return toast.el;
+  const el = node("div", "toast"); el.id = "toast"; el.hidden = true;
+  const close = button("toast-close", () => hideToast());
+  close.className = "toast-close";
+  close.append(glyph("0 0 24 24", { fill: "none", stroke: "currentColor", "stroke-width": "2.4", "stroke-linecap": "round" }, { d: "M7 7l10 10M17 7 7 17" }));
+  const content = node("div", "toast-content");
+  content.append(node("p", "toast-title"), node("p", "toast-description"));
+  const action = button("toast-action", () => { if (!inactive(action)) void undoTrash(); });
+  action.className = "toast-action";
+  action.append(node("span", "toast-action-label"), node("kbd", "toast-key"));
+  el.append(close, content, action);
+  const hold = (what: "pointer" | "focus", on: boolean): void => {
+    if (!toast || toast.held[what] === on) return;
+    const wasHeld = toast.held.pointer || toast.held.focus;
+    toast.held[what] = on;
+    const isHeld = toast.held.pointer || toast.held.focus;
+    if (!wasHeld && isHeld) pauseToast(); else if (wasHeld && !isHeld) resumeToast();
+  };
+  el.addEventListener("mouseenter", () => hold("pointer", true));
+  el.addEventListener("mouseleave", () => hold("pointer", false));
+  el.addEventListener("focusin", () => hold("focus", true));
+  el.addEventListener("focusout", event => { if (!el.contains(event.relatedTarget as Node | null)) hold("focus", false); });
+  // Escape closes the toast its focus is in, before the page's own Escape closes the window.
+  el.addEventListener("keydown", event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); hideToast(); } });
+  document.body.append(el);
+  toast = { el, kind: "trashed", remaining: 0, started: 0, held: { pointer: false, focus: false } };
+  return el;
+}
+function showToast(kind: "trashed" | "restored", title: string, description: string, ms: number): void {
+  const el = toastElement();
+  clearTimeout(toastExit);
+  clearTimeout(toast!.timer);
+  toast!.kind = kind;
+  el.dataset.kind = kind;
+  setText(el.querySelector(".toast-title")!, title);
+  setText(el.querySelector(".toast-description")!, description);
+  setAttr(el.querySelector(".toast-close")!, "aria-label", text("Close"));
+  el.hidden = false;
+  el.dataset.state = "open";
+  // A toast replacing one that was closing keeps its node, so no new enter or focus event says the pointer or focus is
+  // already on it (an Undo clicked on the last waiting recording): read both now (review of 2026-10-06, F2).
+  toast!.held = { pointer: el.matches(":hover"), focus: el.contains(document.activeElement) };
+  toast!.remaining = ms;
+  updateToast();
+  if (!toast!.held.pointer && !toast!.held.focus) resumeToast();
+}
+function pauseToast(): void {
+  if (!toast?.timer) return;
+  clearTimeout(toast.timer);
+  toast.timer = undefined;
+  toast.remaining = Math.max(0, toast.remaining - (Date.now() - toast.started));
+}
+function resumeToast(): void {
+  if (!toast || toast.el.hidden || toast.el.dataset.state !== "open") return;
+  clearTimeout(toast.timer);
+  toast.started = Date.now();
+  toast.timer = setTimeout(() => hideToast(), toast.remaining);
+}
+/** Closes the toast; focus in it goes to the open tab, so the next Tab or Escape does not start over. */
+function hideToast(): void {
+  if (!toast || toast.el.hidden || toast.el.dataset.state === "closed") return;
+  const { el } = toast;
+  clearTimeout(toast.timer);
+  toast.timer = undefined;
+  const hadFocus = el.contains(document.activeElement);
+  el.dataset.state = "closed";
+  if (hadFocus) document.getElementById(`tab-${selectedTab}`)?.focus({ preventScroll: true });
+  toast.held = { pointer: false, focus: false };
+  // After its fade (settings.css); a toast shown again meanwhile keeps its node.
+  toastExit = setTimeout(() => { if (el.dataset.state === "closed") el.hidden = true; }, 200);
+}
+/** The toast follows what main offers: its Undo while a recording waits, and it leaves once none does. */
+function updateToast(): void {
+  if (!toast || toast.el.hidden) return;
+  const trashed = view?.library?.trashed;
+  if (toast.kind === "trashed" && !trashed) { hideToast(); return; }
+  const action = toast.el.querySelector<HTMLButtonElement>(".toast-action")!;
+  action.hidden = toast.kind !== "trashed";
+  const mac = platform() === "darwin";
+  setText(action.querySelector(".toast-action-label")!, trashed?.undo ?? text("Undo"));
+  setText(action.querySelector(".toast-key")!, mac ? "⌘Z" : "Ctrl+Z");
+  setAttr(action, "aria-keyshortcuts", mac ? "Meta+Z" : "Control+Z");
+  setActionDisabled(action, false, undoing);
 }
 /**
  * The header's Show in Finder is the Output folder row's own action, whose failure that row shows on another tab:
@@ -1462,8 +1548,12 @@ async function fileAction(id: string, action: FileAction, anchor: HTMLButtonElem
     if (result.applied && action === "trash") trashedCards.push(id);
     render(result.view);
     if (!result.applied) problem = libraryItem(id) ? (result.failure ?? text("Could not complete this action. Try again.")) : text("This recording is no longer in the folder.");
-    // Said with its name and the way back: the bar shows the same until the file is really moved.
-    else if (action === "trash") announce(view?.library?.trashed?.message ?? text(platform() === "darwin" ? "Moved to the Trash" : "Moved to the Recycle Bin"));
+    // Said with its name, and shown with the way back in the toast.
+    else if (action === "trash") {
+      const moved = text(platform() === "darwin" ? "Moved to the Trash" : "Moved to the Recycle Bin");
+      announce(view?.library?.trashed?.message ?? moved);
+      showToast("trashed", moved, view?.library?.trashed?.name ?? "", TRASHED_TOAST_MS);
+    }
   } catch {
     problem = text("Could not complete this action. Try again.");
   } finally {
@@ -1639,6 +1729,7 @@ function draw(): void {
   setText(heading, current.title); setText(hint, current.hint); hint.hidden = !current.hint;
   updateStatus(current);
   updateSidebarAbout(current);
+  updateToast();
   const groups = current.groups.filter(g => g.tab === selectedTab);
   /** Set when the panel was rebuilt: the offset it gets once everything above its content has settled. */
   let restoreScroll: number | undefined;
@@ -1940,10 +2031,10 @@ document.addEventListener("fullscreenchange", () => {
   void playFullScreen();
 });
 document.addEventListener("keydown", event => {
-  // ⌘Z (Ctrl+Z elsewhere) on the Recordings tab brings back the recording Move to Trash took last, while it waits; in a
-  // text field it stays the field's own undo, and with nothing waiting it goes on to the Edit menu as before.
+  // ⌘Z (Ctrl+Z elsewhere) on any tab brings back the recording Move to Trash took last, while it waits, toast shown or
+  // not (2026-10-06); in a text field it stays the field's own undo, and with nothing waiting it goes on to the Edit menu.
   const command = platform() === "darwin" ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
-  if (command && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "z" && selectedTab === "library" && view?.library?.trashed
+  if (command && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "z" && view?.library?.trashed
     && !player?.open && !(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)) {
     event.preventDefault();
     void undoTrash();
@@ -1957,6 +2048,9 @@ document.addEventListener("keydown", event => {
   if (event.key === "Escape" && (shortcutGroup()?.capturing || arming)) { event.preventDefault(); void capture(false, true); return; }
   // An open explanation closes first; the next Escape closes the window.
   if (event.key === "Escape" && hideInfo()) { event.preventDefault(); return; }
+  // So does an open toast, wherever focus is: closing the window would move the recording to the Trash at once and end
+  // its Undo (review of 2026-10-06, F1).
+  if (event.key === "Escape" && toast && !toast.el.hidden && toast.el.dataset.state === "open") { event.preventDefault(); hideToast(); return; }
   if (event.key === "Escape" || isCloseChord(event, platform())) window.close();
 });
 // An inactive window shows no focus ring (plan 047), even where Chromium keeps :focus-visible.

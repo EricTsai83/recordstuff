@@ -38,7 +38,8 @@ it("switches layout, brings back a trashed recording, and renames one in place",
     }
     return { view: current, applied: true };
   });
-  window.settings = { read: async () => current, capture: async () => current, choose, ready: async () => {}, onChanged: () => () => {} };
+  let push!: (next: SettingsView) => void;
+  window.settings = { read: async () => current, capture: async () => current, choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
   await import("./settings");
   await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(2));
   const library = document.getElementById("library")!;
@@ -52,20 +53,57 @@ it("switches layout, brings back a trashed recording, and renames one in place",
   await vi.waitFor(() => expect(choose).toHaveBeenCalledWith("library", "list"));
   expect(document.querySelector("#clip-a .clip-detail")!.textContent).toBe("1:23 · 180 MB");
 
-  // Move to Trash: the card leaves, the bar offers Undo, and ⌘Z brings it back with the focus it had.
-  const more = document.getElementById("clip-a-more") as HTMLButtonElement;
-  more.click();
-  document.getElementById("clip-menu-trash")!.click();
-  await vi.waitFor(() => expect(document.getElementById("clip-a")).toBeNull());
-  const bar = document.querySelector<HTMLElement>(".library-undo")!;
-  expect([bar.hidden, bar.querySelector(".library-undo-text")!.textContent, document.getElementById("library-undo")!.textContent])
-    .toEqual([false, "Moved 2026-10-05 14-02-11.mp4 to the Trash.", "Undo"]);
+  // Move to Trash: the card leaves, the toast offers Undo with its ⌘Z, and the toast's Undo brings it back with the focus it had.
+  const toastOf = () => document.getElementById("toast")!;
+  const trash = async (id: string): Promise<void> => {
+    (document.getElementById(`clip-${id}-more`) as HTMLButtonElement).click();
+    document.getElementById("clip-menu-trash")!.click();
+    await vi.waitFor(() => expect(document.getElementById(`clip-${id}`)).toBeNull());
+  };
+  await trash("a");
+  const toastText = () => [toastOf().dataset.state, toastOf().querySelector(".toast-title")!.textContent, toastOf().querySelector(".toast-description")!.textContent,
+    toastOf().querySelector<HTMLElement>(".toast-action")!.hidden, toastOf().querySelector(".toast-action-label")!.textContent, toastOf().querySelector(".toast-key")!.textContent];
+  expect(toastText()).toEqual(["open", "Moved to the Trash", "2026-10-05 14-02-11.mp4", false, "Undo", "⌘Z"]);
+  expect(toastOf().querySelector(".toast-action")!.getAttribute("aria-keyshortcuts")).toBe("Meta+Z");
   expect(document.getElementById("feedback")!.textContent).toBe("Moved 2026-10-05 14-02-11.mp4 to the Trash.");
+  // The old bar under the header is gone.
+  expect(document.querySelector(".library-undo")).toBeNull();
+  (document.getElementById("toast-action") as HTMLButtonElement).focus();
+  document.getElementById("toast-action")!.click();
+  await vi.waitFor(() => expect(document.getElementById("clip-a")).not.toBeNull());
+  expect(choose).toHaveBeenLastCalledWith("library", "undoTrash");
+  // A short "Restored" without a button replaces it; focus left the button for the card that came back.
+  expect(toastText().slice(0, 4)).toEqual(["open", "Restored", "2026-10-05 14-02-11.mp4", true]);
+  expect([document.getElementById("feedback")!.textContent, document.activeElement?.id]).toEqual(["Restored 2026-10-05 14-02-11.mp4", "clip-a-open"]);
+
+  // ⌘Z works on another tab too, toast or not: the card waits in Recordings, and the tab stays where it is.
+  await trash("a");
+  document.getElementById("tab-general")!.click();
+  expect(toastOf().dataset.state).toBe("open");
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(toastOf().querySelector(".toast-title")!.textContent).toBe("Restored"));
+  expect([document.querySelector('[aria-selected="true"]')!.id, document.activeElement?.id]).toEqual(["tab-general", "tab-general"]);
+  document.getElementById("tab-library")!.click();
+  expect(document.getElementById("clip-a")).not.toBeNull();
+
+  // × closes it at once without undoing anything; ⌘Z still brings the file back while it waits.
+  await trash("a");
+  document.querySelector<HTMLButtonElement>(".toast-close")!.click();
+  expect(toastOf().dataset.state).toBe("closed");
+  expect(document.getElementById("clip-a")).toBeNull();
   document.getElementById("tab-library")!.focus();
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true, cancelable: true }));
   await vi.waitFor(() => expect(document.getElementById("clip-a")).not.toBeNull());
-  expect(choose).toHaveBeenLastCalledWith("library", "undoTrash");
-  expect([bar.hidden, document.getElementById("feedback")!.textContent, document.activeElement?.id]).toEqual([true, "Restored 2026-10-05 14-02-11.mp4", "clip-a-open"]);
+  expect(document.activeElement?.id).toBe("clip-a-open");
+
+  // The toast leaves as soon as nothing waits to be undone: the file was moved meanwhile.
+  await trash("a");
+  current = view({ items: [items[1]!] }, ++revision);
+  push(current);
+  expect(toastOf().dataset.state).toBe("closed");
+  current = view({ items }, ++revision);
+  push(current);
+
   // With nothing waiting, ⌘Z is left to the Edit menu.
   const calls = choose.mock.calls.length;
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true, cancelable: true }));

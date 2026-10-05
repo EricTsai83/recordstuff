@@ -88,7 +88,17 @@ async function run(): Promise<void> {
   ipcMain.handle("settings:read", () => view());
   ipcMain.handle("settings:ready", () => {});
   ipcMain.handle("settings:capture", () => view());
-  ipcMain.handle("settings:choose", () => ({ view: view(), applied: false }));
+  // Move to Trash and Undo run for real, so the toast can be drawn (2026-10-06): the library's Trash is a no-op here and
+  // its delayed move is undone before the window closes; every other choice changes nothing.
+  ipcMain.handle("settings:choose", async (_event, group: unknown, choice: unknown) => {
+    if (typeof group === "string" && group.startsWith("recordingFile:") && choice === "trash") {
+      // The answer's view is made after the action, as the app's is (settings-window.ts applyFile).
+      const applied = await library.act(group.slice("recordingFile:".length), "trash");
+      return { view: view(), applied };
+    }
+    if (group === "library" && choice === "undoTrash") { const applied = await library.undoTrash(); return { view: view(), applied }; }
+    return { view: view(), applied: false };
+  });
   ipcMain.handle(VIDEO_CHANNELS.ready, () => {});
   ipcMain.handle(VIDEO_CHANNELS.exit, () => {});
 
@@ -162,6 +172,15 @@ async function run(): Promise<void> {
         await shoot(window, `player-paused-${lang}-${scheme}.png`, `player paused · ${lang} · ${scheme}`);
         await window.webContents.executeJavaScript(`document.querySelector("dialog.player").close()`);
       }
+    }
+    // The toast after Move to Trash, in Traditional Chinese at both sizes, then undone so the folder is listed whole again.
+    if (lang === "zh-TW") {
+      state = { type: "idle" };
+      await show(window, "library");
+      await window.webContents.executeJavaScript(`(() => { document.querySelector(".clip-more").click(); document.getElementById("clip-menu-trash").click(); })()`);
+      await settle(700);
+      await shoot(window, `toast-${lang}-${scheme}-${sizeName}.png`, `toast after Move to Trash · ${lang} · ${scheme} · ${sizeName}`);
+      await library.undoTrash();
     }
     window.destroy();
   }

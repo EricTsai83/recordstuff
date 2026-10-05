@@ -437,10 +437,6 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .library-layout { margin-left: auto; flex: none; }
 .library-layout .segment-icon span { padding: 3px 10px; }
 .library-layout .segment-glyph { width: 15px; height: 15px; }
-/* What Move to Trash just took, with Undo, while the file waits to be moved. */
-.library-undo { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -6px 2px 14px; padding: 7px 8px 7px 12px; border: 1px solid var(--card-border); border-radius: 10px; background: var(--surface); box-shadow: var(--card-shadow); }
-.library-undo-text { min-width: 0; overflow-wrap: anywhere; }
-#library-undo { flex: none; min-height: 26px; padding-block: 2px; }
 .library-status { color: var(--secondary); margin: 4px 4px 12px; }
 /* A card's action that failed, in the warnings' amber. */
 .library-error { color: var(--warning); margin: -8px 4px 12px; }
@@ -594,7 +590,7 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
   .clip-menu .menu-separator { background: CanvasText; }
   .clip-thumb { border: 1px solid CanvasText; }
   .clip-rename { border: 1px solid CanvasText; background: Canvas; }
-  #library[data-layout="list"] .library-grid, .library-undo { border: 1px solid CanvasText; }
+  #library[data-layout="list"] .library-grid, .toast, .toast-close { border: 1px solid CanvasText; }
   .recording-result[open] { outline: 1px solid CanvasText; }
 }
 
@@ -610,3 +606,40 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
   .tabs button[aria-selected="false"] .tab-name { position: static; width: auto; height: auto; clip-path: none; }
   .tabs button { flex: 1 1 auto; }
 }
+
+/*
+ * The toast (2026-10-06), drawn as Sonner draws shadcn/ui's: a white card (near black in dark) with a hairline border,
+ * 8 px corners and a soft shadow at the window's bottom right, over every tab; a title and the file's name, an Undo
+ * button filled with the text colour, and a round close button on its top-left corner. It rises in, and fades down out.
+ */
+.toast {
+  --toast-bg: light-dark(#fff, #171717); --toast-border: light-dark(#ededed, #2e2e2e);
+  --toast-text: light-dark(#171717, #ededed); --toast-muted: light-dark(#6b6b6b, #a1a1a1);
+  position: fixed; right: 24px; bottom: 24px; z-index: 3; width: min(356px, calc(100vw - 32px));
+  display: flex; align-items: center; gap: 8px 14px; padding: 14px 16px;
+  border: 1px solid var(--toast-border); border-radius: 8px; background: var(--toast-bg); color: var(--toast-text);
+  box-shadow: 0 4px 12px rgb(0 0 0 / .1);
+}
+.toast[data-state="closed"] { opacity: 0; transform: translateY(8px); pointer-events: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .toast[data-state="open"] { transition: opacity .4s ease, transform .4s cubic-bezier(.21, 1.02, .73, 1); }
+  @starting-style { .toast[data-state="open"] { opacity: 0; transform: translateY(100%); } }
+  .toast[data-state="closed"] { transition: opacity .2s ease, transform .2s ease; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast[data-state="closed"] { transform: none; }
+}
+.toast-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.toast-title { margin: 0; font-weight: 500; line-height: 1.35; }
+.toast-description { margin: 0; color: var(--toast-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toast-action { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 0; height: 26px; padding: 0 9px; border: 0; border-radius: 5px; background: var(--toast-text); color: var(--toast-bg); font-size: 12px; font-weight: 500; box-shadow: none; }
+:is(button).toast-action:enabled:not([aria-disabled="true"]):hover { background: var(--toast-text); opacity: .86; }
+.toast-key { min-width: 0; margin: 0; padding: 0; border: 0; background: none; font: inherit; font-size: 11px; opacity: .6; }
+.toast-close { position: absolute; top: 0; left: 0; transform: translate(-35%, -35%); display: grid; place-items: center; width: 20px; height: 20px; min-height: 0; padding: 0; border: 1px solid var(--toast-border); border-radius: 50%; background: var(--toast-bg); color: var(--toast-text); box-shadow: none; }
+:is(button).toast-close:enabled:hover { background: light-dark(#f4f4f4, #262626); }
+.toast-close svg { width: 10px; height: 10px; }
+:root:not([data-input="pointer"]):not([data-window="inactive"]) .toast-action:focus-visible { outline-offset: var(--focus-gap); }
+/* A narrow window: across the content's foot, and the button under the words when they need the room (as Cap's do). */
+@media (max-width: 599px) { .toast { left: 12px; right: 12px; bottom: 12px; width: auto; } }
+/* The words take the whole first row, so the button wraps beneath them (review of 2026-10-06, F3). */
+@media (max-width: 420px) { .toast { flex-wrap: wrap; } .toast-content { flex-basis: 100%; } .toast-action { margin-left: auto; } }

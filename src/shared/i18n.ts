@@ -120,6 +120,7 @@ export const ZH_TW = {
   "Moved {name} to the Trash.": "已將 {name} 丟到垃圾桶。",
   "Moved {name} to the Recycle Bin.": "已將 {name} 移到資源回收筒。",
   "Restored {name}": "已還原 {name}",
+  "Restored": "已還原",
   "Could not move {name} to the Trash. It is back in the folder.": "無法將 {name} 丟到垃圾桶，檔案仍在資料夾中。",
   "Could not move {name} to the Recycle Bin. It is back in the folder.": "無法將 {name} 移到資源回收筒，檔案仍在資料夾中。",
   "Layout": "呈現方式",
