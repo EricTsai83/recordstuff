@@ -4,10 +4,11 @@
 
 現在該跑什麼，依[測試規則](../testing.md)及[共用驗收案例](../acceptance.md)。本索引摘要既有證據；文件整理不代表重新測試或擴大覆蓋。
 
-## 截至 2026-09-24 的已記錄範圍
+## 已記錄範圍
 
 | 項目 | 既有結果與限制 |
 | --- | --- |
+| 1.7.0 發布，2026-10-06 | Tagged source `50d42905` 的 1,710 項測試、設定 516/516、快捷鍵整合 57/57、播放器 19/19、簽章 bundle 錄影／音訊標記與 QuickTime 播放通過；原生重新命名、自訂格式、兩種還原與音量／快轉提示已檢查。Tray 15 項通過、stale Start 競態 1 項未執行；閒置與背景設定 CPU 通過。雙平台發布／下載門檻、網站部署、公開 feed 與正式 Electron 網路 transport 通過；Windows 硬體與主觀聆聽仍未驗證。見[發布證據](releases/1.7.0.md)。 |
 | Plan 064 Windows 發布，2026-10-03 | 依維護者決定，Windows x64 與 DMG 由同一個 tag 發布，只由 CI 檢查。`check-windows` 與發布的 `build-windows`、`verify-published-windows` 在發布前後於 `windows-2025` 上安裝、檢查並解除安裝每位使用者安裝檔；`v1.2.0-rc.1` 演練了五個資產的發布且未移動穩定版指標，`v1.2.0` 以 latest 公開，兩個驗證 job 都通過，網站提供 1.2.0 與兩個下載。每次打 tag 前 macOS 驗收與播放都通過，已安裝的 1.0.0 記錄 `updates: available; remote 1.2.0`。限制：沒有在 Windows 實機上執行任何東西（擷取、系統音訊、通知、系統匣與 035 的 N17 仍未測試）；未觀察設定中的更新結果（[紀錄](history-2026-10.md#plan-064-結案--2026-10-03)） |
 | Plan 065 取消長時間 start，2026-10-03 | 保留的 log 顯示每次超過 1 秒的 start 都卡在準備階段（四次各 120 秒；中位數 289 ms、第 95 百分位 396 ms），最快的人工連按為 290 ms，因此寬限定為 1 秒。對暫停 `prepared` 的受控 build：start 後 213 ms 的快捷鍵被忽略並寫入 log，寬限後的快捷鍵與左鍵點擊都取消了 start，沒有檔案、通知或歷史項目；starting 選單標出 ⇧⌘1；start 被暫停時選「結束」，0.9 秒內結束。在新 bundle 上錄影 smoke、播放與雙語 tray 回合都通過。限制：暫停屬於受控狀態證據，不是真實未回應的擷取請求；長時間 start 案例只以英文執行（[紀錄](history-2026-10.md#plan-065-結案--2026-10-03)） |
 | Plan 063 腳本化原生驗收，2026-10-02 | `pnpm acceptance:tray` 以 CoreGraphics 點擊與按鍵、輔助使用 press 操作真正的狀態列項目與選單：zh-TW 與 en 的 idle、倒數與錄影選單都與正式 model 的 `tray: menu opened` 一致，開始／停止、顯示上一段錄影（Finder 置前並選取檔案）、第二次點擊、取消錄影、倒數中結束、鍵盤導覽與結束都通過（15 通過、1 not run）。`acceptance:settings-shortcut -- --observe` 通過六項輔助使用檢查，`acceptance:quit-dialog` 的新橫幅文字層兩種語言都通過。限制：點擊會移動真正的游標（macOS 26 上 `CGEventPostToPid` 打不開選單），needsPermission 選單與過時的開始錄製留在 runner 外，外觀仍靠觀察截圖，回合中有人操作也不會被偵測（[紀錄](history-2026-10.md#plan-063-結案--2026-10-02)） |
@@ -66,7 +67,7 @@
 
 - [2026 年 10 月歷史](history-2026-10.md)：2026 年 10 月起的計畫結案。
 - [2026 年 9 月歷史](history-2026-09.md)：開發輪次、量測、失敗、修復、已接受限制與計畫結案，保留原標題。
-- 發布紀錄：[0.1.0](releases/0.1.0.md)、[0.1.1](releases/0.1.1.md)、[0.1.2](releases/0.1.2.md)、[0.1.3](releases/0.1.3.md)、[0.1.4](releases/0.1.4.md)、[0.1.5](releases/0.1.5.md)、[1.0.0](releases/1.0.0.md)。
+- 發布紀錄：[0.1.0](releases/0.1.0.md)、[0.1.1](releases/0.1.1.md)、[0.1.2](releases/0.1.2.md)、[0.1.3](releases/0.1.3.md)、[0.1.4](releases/0.1.4.md)、[0.1.5](releases/0.1.5.md)、[1.0.0](releases/1.0.0.md)、[1.7.0](releases/1.7.0.md)。
 - `docs/verification/measurements/`：已 gitignore 的原始執行、log、媒體分析及截圖。連到此處的是**本機證據參照**，不是 repository 可下載附件；新 clone 不會包含。2026-09-26 維護者已要求刪除維護者電腦上到當天為止的所有原始執行紀錄，以及 ~/Movies/RecordStuff 裡的測試錄影；指向更早執行紀錄的連結在任何地方都已無法開啟，保留下來的是本目錄中整理過的紀錄。
 
 新增值得長期保存的結果時，寫入對應月份歷史的日期段落（跨月建立新檔），或版本發布紀錄。已支持範圍改變時更新本摘要，並同步既有翻譯。依[報告範本](../acceptance.md#報告範本)記錄來源／產物、指令／案例、收尾與限制。歷史只追加，連結／格式修正除外，不把舊失敗改成通過。摘要須在缺少本機原始資料時仍可理解；協作者需要原始證據時，透過約定可存取的位置提供去識別 artifact，並標明可取得性。
