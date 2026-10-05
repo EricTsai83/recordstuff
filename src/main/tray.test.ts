@@ -73,6 +73,7 @@ vi.mock("electron", () => {
       setTitle = vi.fn(this.live);
       setToolTip = vi.fn(this.live);
       popUpContextMenu = vi.fn(this.live);
+      setContextMenu = vi.fn(this.live);
       destroy = vi.fn(() => { this.destroyed = true; });
       on = vi.fn();
     },
@@ -689,5 +690,115 @@ describe("the icon's left click (2026-10-04)", () => {
     expect(native.popUpContextMenu).toHaveBeenCalledTimes(1);
     expect(onToggle).not.toHaveBeenCalled();
     trayClick = undefined;
+  });
+});
+
+describe("the menu a press attaches on macOS (2026-10-05)", () => {
+  type Native = { on: ReturnType<typeof vi.fn>; popUpContextMenu: ReturnType<typeof vi.fn>; setContextMenu: ReturnType<typeof vi.fn> };
+  const handler = (native: Native, name: string): (() => void) => native.on.mock.calls.findLast((call: unknown[]) => call[0] === name)?.[1] as () => void;
+  /** Electron's order for a mouse press on a menu that opens: `mouse-down`, then `click`, then the menu shows. */
+  const press = (native: Native): void => { handler(native, "mouse-down")(); handler(native, "click")(); };
+  /** A tray on `platform` whose click reads `choice()`, with the hotkey and language of the other tests. */
+  function pressSetup(platform: NodeJS.Platform, choice: () => "menu" | "record") {
+    setup();
+    const logs: string[] = [];
+    const menuClosed = vi.fn();
+    const tray = new AppTray({ resourcesDir: "/resources", context: () => ({ platform, outputDir: "/o", homeDir: "/h", quality: DEFAULT_QUALITY,
+      countdown: 3, countdownSound: true, language: "en", hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: "idle" }, enabled: true },
+      notifications: true, displays: [], display: { kind: "primary" } }), trayClick: choice, onToggle, showSaved, permissionAction: vi.fn(),
+      onAction: vi.fn(), menuClosed, log: (message) => logs.push(message) });
+    const native = (tray as unknown as { tray: Native }).tray;
+    native.popUpContextMenu.mockClear();
+    return { tray, native, logs, menuClosed };
+  }
+  const lastMenu = (): EventEmitter => vi.mocked(Menu.buildFromTemplate).mock.results.at(-1)!.value as EventEmitter;
+
+  it("attaches the current menu on the press, so macOS opens it there, and the click that follows does nothing", () => {
+    vi.useFakeTimers();
+    try {
+      const { tray, native, logs, menuClosed } = pressSetup("darwin", () => "menu");
+      tray.render({ type: "countdown", remaining: 2 });
+      press(native);
+      const menu = lastMenu();
+      expect(native.setContextMenu.mock.calls).toEqual([[menu]]);
+      expect([native.popUpContextMenu.mock.calls.length, onToggle.mock.calls.length]).toEqual([0, 0]);
+      // Showing it logs the line the tray runner compares, once, and marks it open for the Dock icon's hide.
+      menu.emit("menu-will-show");
+      menu.emit("menu-will-show");
+      expect(tray.menuOpen).toBe(true);
+      expect(logs.filter(line => line.startsWith("tray: menu opened in countdown: ")).length).toBe(1);
+      expect(logs.at(-1)).toContain("Recording starts in 2 s");
+      // Open: it stays attached through the timers.
+      vi.runAllTimers();
+      expect(native.setContextMenu).toHaveBeenCalledTimes(1);
+      menu.emit("menu-will-close");
+      expect([tray.menuOpen, menuClosed.mock.calls.length]).toEqual([false, 1]);
+      // Taken off after the close's own callback, not inside it.
+      expect(native.setContextMenu).toHaveBeenCalledTimes(1);
+      vi.runAllTimers();
+      expect(native.setContextMenu.mock.calls.at(-1)).toEqual([null]);
+      // Nothing attached any more: the next press attaches a menu of its own.
+      press(native);
+      expect(native.setContextMenu.mock.calls.at(-1)).toEqual([lastMenu()]);
+      expect(lastMenu()).not.toBe(menu);
+      tray.destroy();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("takes off a menu that did not open, so a later click that records cannot open it", () => {
+    vi.useFakeTimers();
+    try {
+      let choice: "menu" | "record" = "menu";
+      const { tray, native } = pressSetup("darwin", () => choice);
+      handler(native, "mouse-down")();
+      vi.runAllTimers();
+      expect(native.setContextMenu.mock.calls.at(-1)).toEqual([null]);
+      choice = "record";
+      press(native);
+      expect(native.setContextMenu).toHaveBeenCalledTimes(2);
+      expect(onToggle).toHaveBeenCalledTimes(1);
+      tray.destroy();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("keeps a later press's menu when an earlier one's removal runs after it", () => {
+    vi.useFakeTimers();
+    try {
+      const { tray, native } = pressSetup("darwin", () => "menu");
+      handler(native, "mouse-down")();
+      const first = lastMenu();
+      first.emit("menu-will-show");
+      first.emit("menu-will-close");
+      // Pressed again before the first menu came off: a fresh menu replaces it, and the late removal leaves it.
+      handler(native, "mouse-down")();
+      const second = lastMenu();
+      second.emit("menu-will-show");
+      vi.runAllTimers();
+      expect(native.setContextMenu.mock.calls).toEqual([[first], [second]]);
+      expect(tray.menuOpen).toBe(true);
+      tray.destroy();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("attaches nothing while a left click records, nor on Windows, nor for VoiceOver's press, which clicks first", () => {
+    for (const [platform, choice] of [["darwin", "record"], ["win32", "menu"]] as const) {
+      const { tray, native } = pressSetup(platform, () => choice);
+      press(native);
+      expect(native.setContextMenu).not.toHaveBeenCalled();
+      expect(choice === "record" ? onToggle : native.popUpContextMenu).toHaveBeenCalledTimes(1);
+      tray.destroy();
+    }
+    const { tray, native } = pressSetup("darwin", () => "menu");
+    handler(native, "click")();
+    handler(native, "mouse-down")();
+    expect([native.popUpContextMenu.mock.calls.length, native.setContextMenu.mock.calls.length]).toEqual([1, 0]);
+    tray.destroy();
+  });
+
+  it("ignores a press after the tray is destroyed", () => {
+    const { tray, native } = pressSetup("darwin", () => "menu");
+    tray.destroy();
+    expect(() => handler(native, "mouse-down")()).not.toThrow();
+    expect(native.setContextMenu).not.toHaveBeenCalled();
   });
 });

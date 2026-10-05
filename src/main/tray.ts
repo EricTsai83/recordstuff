@@ -2,8 +2,9 @@
  * Tray icon, right-click menu and notifications (docs/system-design/recording.md). This is a
  * projection of `RecordingState`; every decision lives in `recorder.ts`.
  * Left click opens the menu or toggles, as the user chose (`trayClick`, 2026-10-04); right click
- * always pops the menu. The menu is rebuilt from the current state each time — never
- * `setContextMenu`, which would make macOS pop it on every left click regardless of the choice. The menu is a flat list of commands:
+ * always pops the menu. The menu is rebuilt from the current state each time. On macOS a left click that
+ * opens it attaches it with `setContextMenu` for that press alone (`attachOnPress`): an attached menu would
+ * open on every left click, whatever the choice, so it never stays. The menu is a flat list of commands:
  * preferences live in the settings window (docs/system-design/desktop.md).
  */
 import { Menu, Notification, Tray, nativeImage, type MenuItemConstructorOptions } from "electron";
@@ -87,7 +88,11 @@ export class AppTray {
     this.icons = loadIcons(options.resourcesDir, (message) => this.log(message));
     this.tray = new Tray(this.icons.idle);
     this.tray.setIgnoreDoubleClickEvents(true);
+    // Emitted on the press, before Electron looks for an attached menu (macOS).
+    this.tray.on("mouse-down", () => this.attachOnPress());
     this.tray.on("click", () => {
+      // The press attached the menu and macOS opened it; Electron still reports the click.
+      if (this.pressMenu) return;
       const choice = options.trayClick ? options.trayClick() : options.context().trayClick;
       if ((choice ?? "record") === "menu") this.popUpMenu();
       else options.onToggle();
@@ -351,6 +356,48 @@ export class AppTray {
     return this.menuShown;
   }
   private menuShown = false;
+  /** The menu a press attached (`attachOnPress`), until it is taken off again. */
+  private pressMenu: Electron.Menu | undefined;
+
+  /**
+   * macOS: a left click that opens the menu attaches it on the press, so macOS opens it there with the item
+   * highlighted once. Popped from the click instead, it opened after the release and Electron pressed the item
+   * again, so the highlight blinked on, off and on (2026-10-05). It comes off once closed, or at once if it did
+   * not open: an attached menu opens on every left click, and Accessibility reports it as an open menu, which
+   * `pnpm acceptance:tray` read as a menu that never closed and every poll of as an opening (2026-10-05).
+   * VoiceOver's press reports the click before the press, so it pops the menu as before and attaches nothing.
+   */
+  private attachOnPress(): void {
+    if (this.destroyed || this.menuShown) return;
+    const choice = this.options.trayClick ? this.options.trayClick() : this.options.context().trayClick;
+    if (choice !== "menu") return;
+    const context = this.options.context();
+    if (context.platform !== "darwin") return;
+    const state = this.lastState;
+    const model = trayModel(state, context);
+    const menu = Menu.buildFromTemplate(model.menu.map((entry) => this.toTemplate(entry)));
+    menu.once("menu-will-show", () => {
+      this.menuShown = true;
+      this.log(`tray: menu opened in ${state.type}: ${menuLogText(model.menu)}`);
+    });
+    menu.once("menu-will-close", () => {
+      this.menuShown = false;
+      this.options.menuClosed?.();
+      // Not from inside the native menu's close: replacing the attached menu there would free it mid-callback.
+      setTimeout(() => this.detachPressMenu(menu), 0);
+    });
+    this.pressMenu = menu;
+    this.tray.setContextMenu(menu);
+    // macOS opens the menu before any task runs, so by then it is open or did not open at all.
+    setTimeout(() => this.detachPressMenu(menu), 0);
+  }
+
+  /** Takes `menu` off unless it is open, or a later press attached another. */
+  private detachPressMenu(menu: Electron.Menu): void {
+    if (this.pressMenu !== menu || this.menuShown) return;
+    this.pressMenu = undefined;
+    if (!this.destroyed) this.tray.setContextMenu(null);
+  }
 
   private popUpMenu(): void {
     if (this.destroyed) return;
