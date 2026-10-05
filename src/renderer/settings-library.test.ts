@@ -55,6 +55,19 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   await Promise.resolve();
   observer.disconnect();
   expect(mutations).toEqual([]);
+  // Nor does it look anything up on them: an unchanged card is skipped whole.
+  const lookups = vi.spyOn(HTMLElement.prototype, "querySelector");
+  push({ ...base, revision: 1.55 });
+  await Promise.resolve();
+  expect(lookups.mock.contexts.filter(target => (target as HTMLElement).classList.contains("clip"))).toEqual([]);
+  lookups.mockRestore();
+  // The header's Show in Finder is the Output folder row's own action, named as main names it there.
+  const named = (label: string): SettingsView => ({ ...base, revision: 1.56, groups: [{ ...base.groups[0]!, choices: [{ ...base.groups[0]!.choices[0]!, label }] }] });
+  push(named("Reveal the folder"));
+  await Promise.resolve();
+  expect(document.getElementById("library-reveal")!.textContent).toBe("Reveal the folder");
+  push({ ...base, revision: 1.57 });
+  await Promise.resolve();
 
   // A thumbnail that failed shows the film icon until the file changes; its next version gets its own try.
   const firstImage = first.querySelector("img")!;

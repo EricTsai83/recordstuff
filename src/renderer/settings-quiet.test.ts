@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import type { SettingsView } from "../shared/settings-panel";
 
 /**
@@ -27,6 +27,30 @@ it("leaves controls untouched when the same view arrives again", async () => {
   const observer = new MutationObserver(records => { for (const record of records) changes.push(`${(record.target as Element).id}:${record.attributeName}`); });
   observer.observe(document.getElementById("settings")!, { attributes: true, subtree: true,
     attributeFilter: ["disabled", "aria-disabled", "aria-label", "aria-busy", "aria-describedby", "title"] });
+  push({ ...view, revision: 2 });
+  await Promise.resolve();
+  observer.disconnect();
+  expect(changes).toEqual([]);
+});
+
+it("leaves an open failure row, the tab list and the window title untouched when the same view arrives again", async () => {
+  vi.resetModules();
+  document.head.innerHTML = "";
+  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p><button id="status-action" hidden></button></div><p id="feedback"></p><form id="settings"></form>';
+  const view: SettingsView = { language: "en", title: "RecordStuff", hint: "", failure: "", revision: 1,
+    tabs: [{ id: "recording", label: "Recording settings" }, { id: "failures", label: "Failures (1)", accessibleLabel: "Recording failures, 1 unread" }],
+    groups: [{ id: "screen", label: "Screen", tab: "recording", enabled: true, choices: [{ id: "primary", label: "Primary display", enabled: true, checked: true }] }],
+    recordingResults: [{ id: "r1", reason: "The disk is full.", day: "Today", time: "2:05 PM", outcome: "No recording was kept.",
+      guidance: "Free disk space.", detail: "ENOSPC", acknowledged: false, actions: [{ id: "acknowledge", label: "Got it", enabled: true, checked: false }] }] };
+  let push!: (next: SettingsView) => void;
+  window.settings = { read: async () => view, capture: async () => view, choose: async () => ({ view, applied: true }), ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
+  await import("./settings");
+  (await vi_waitFor(() => document.getElementById("tab-failures"))).click();
+  await vi_waitFor(() => document.querySelector(".recording-result[aria-busy]"));
+  const changes: string[] = [];
+  const observer = new MutationObserver(records => { for (const record of records) changes.push(`${(record.target as Element).id || (record.target as Element).nodeName}:${record.attributeName ?? record.type}`); });
+  observer.observe(document.getElementById("settings")!, { attributes: true, subtree: true, attributeFilter: ["aria-busy", "aria-orientation"] });
+  observer.observe(document.head, { childList: true, characterData: true, subtree: true });
   push({ ...view, revision: 2 });
   await Promise.resolve();
   observer.disconnect();

@@ -848,7 +848,7 @@ function fillRow(area: HTMLDetailsElement, result: RecordingResultView): void {
   }
   const intent = resultIntents.get(result.id);
   const busy = Boolean(intent || result.saving);
-  area.setAttribute("aria-busy", String(busy));
+  setAttr(area, "aria-busy", String(busy));
   for (const [position, action] of result.actions.entries()) {
     const actionDomId = `${domId}-${action.id}`;
     let el = document.getElementById(actionDomId) as HTMLButtonElement | null;
@@ -1035,6 +1035,11 @@ function clipCard(id: string): HTMLElement {
   return card;
 }
 function fillClip(card: HTMLElement, item: LibraryItemView): void {
+  // Every push draws the tab again, each second of a countdown too: a card whose item and language are unchanged has
+  // nothing to look up or word, which across a folder of hundreds of recordings is most of the work.
+  const filled = `${view?.language ?? ""}\n${JSON.stringify(item)}`;
+  if (card.dataset.filled === filled) return;
+  card.dataset.filled = filled;
   const image = card.querySelector("img")!;
   if (image.getAttribute("src") !== item.thumbnail) {
     // A new version of the file gets its own try: a hidden lazy image might never load, keeping the film icon for good.
@@ -1311,7 +1316,8 @@ function tabLabel(el: HTMLElement, id: string, label: string): void {
 /** The sidebar lists the tabs in a column (settings.css, from 600 px): assistive technology is told which axis. */
 const sidebarLayout = matchMedia("(min-width: 600px)");
 function updateTabOrientation(): void {
-  form.querySelector('[role="tablist"]')?.setAttribute("aria-orientation", sidebarLayout.matches ? "vertical" : "horizontal");
+  const tablist = form.querySelector('[role="tablist"]');
+  if (tablist) setAttr(tablist, "aria-orientation", sidebarLayout.matches ? "vertical" : "horizontal");
 }
 sidebarLayout.addEventListener("change", updateTabOrientation);
 function updateScrollHint(): void {
@@ -1342,7 +1348,8 @@ function draw(): void {
   // macOS insets the window controls in the page's top edge, which then leaves room for them.
   const platformName = shortcutGroup()?.platform;
   if (platformName && document.documentElement.dataset.platform !== platformName) document.documentElement.dataset.platform = platformName;
-  document.title = current.title; setText(heading, current.title); setText(hint, current.hint); hint.hidden = !current.hint;
+  if (document.title !== current.title) document.title = current.title;
+  setText(heading, current.title); setText(hint, current.hint); hint.hidden = !current.hint;
   updateStatus(current);
   updateSidebarAbout(current);
   const groups = current.groups.filter(g => g.tab === selectedTab);
