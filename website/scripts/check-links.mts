@@ -1,7 +1,8 @@
 /**
  * Checks every link in the built site (dist/): internal hrefs must resolve to a
  * built file (and, for fragments, an element id in that file); external URLs
- * must answer with a non-error status. `--offline` skips external checks.
+ * must answer with a non-error status. `--offline` (or SITE_MANIFEST_OFFLINE=1) skips external checks;
+ * `--online` checks them even when that variable is set, as `pnpm check` does before a deployment.
  * `--dir <path>` selects another build output, relative to the working directory.
  */
 import { readdir, readFile, stat } from "node:fs/promises";
@@ -25,9 +26,10 @@ async function mapLimited<T, R>(items: readonly T[], limit: number, task: (item:
   return results;
 }
 
-const { values } = parseArgs({ options: { dir: { type: "string" }, offline: { type: "boolean" } } });
+const { values } = parseArgs({ options: { dir: { type: "string" }, offline: { type: "boolean" }, online: { type: "boolean" } } });
 const dist = values.dir ? path.resolve(values.dir) : fileURLToPath(new URL("../dist", import.meta.url));
-const offline = values.offline || process.env.SITE_MANIFEST_OFFLINE === "1";
+// As in manifest.mts: an inherited SITE_MANIFEST_OFFLINE cannot skip the production check's external links.
+const offline = values.online ? false : values.offline || process.env.SITE_MANIFEST_OFFLINE === "1";
 /** Absolute href/src/srcset URLs on the configured site origin (the canonical link) are checked as internal paths; meta content such as og:image is not scanned. */
 const siteOrigin = new URL(configuredSite()).origin;
 

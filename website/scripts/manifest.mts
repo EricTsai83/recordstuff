@@ -1,7 +1,9 @@
 /**
  * Release manifest tool for the website.
  *
- *   node scripts/manifest.mts generate vX.Y.Z   fetch the public release and write release-manifest.json
+ *   node scripts/manifest.mts generate vX.Y.Z   fetch the public release and write release-manifest.json;
+ *                                               an older tag than the stored one needs --force, since
+ *                                               the stable pointer only moves forward (release.mts record)
  *   node scripts/manifest.mts verify            re-fetch and fail if the stored manifest drifted
  *   node scripts/manifest.mts verify --offline  structural check only (also SITE_MANIFEST_OFFLINE=1)
  *   node scripts/manifest.mts verify --online   force the network check even if SITE_MANIFEST_OFFLINE is set
@@ -20,6 +22,7 @@ import {
 } from "../../scripts/lib/release-manifest.mts";
 
 import { fetchManifest } from "../../scripts/lib/release-manifest-client.mts";
+import { stableVersion } from "../../src/shared/version.ts";
 
 const MANIFEST_PATH = fileURLToPath(new URL("../release-manifest.json", import.meta.url));
 
@@ -39,8 +42,20 @@ async function readStoredManifest(): Promise<ReleaseManifest> {
   return assertManifestShape(parsed);
 }
 
-async function generate(tag: string | undefined): Promise<void> {
-  if (!tag) throw new Error("Usage: manifest.mts generate vX.Y.Z");
+/** Whether stable `a` orders before stable `b`; either malformed reads as not older. */
+function older(a: string, b: string): boolean {
+  const x = stableVersion(a), y = stableVersion(b);
+  if (!x || !y) return false;
+  for (let i = 0; i < 3; i += 1) if (x[i] !== y[i]) return x[i]! < y[i]!;
+  return false;
+}
+
+async function generate(tag: string | undefined, force: boolean): Promise<void> {
+  if (!tag) throw new Error("Usage: manifest.mts generate vX.Y.Z [--force]");
+  const current = await readStoredManifest().catch(() => undefined);
+  if (current && !force && older(tag.replace(/^v/, ""), current.version)) {
+    throw new Error(`${tag} is older than the stored ${current.tag}: the site's stable release only moves forward, as \`release.mts record\` keeps it. Pass --force to move it back on purpose.`);
+  }
   const manifest = await fetchManifest(tag);
   await writeFile(MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
   console.log(`Wrote ${MANIFEST_PATH} for ${manifest.tag} (${manifest.dmg.name}, ${manifest.dmg.size} bytes).`);
@@ -62,21 +77,33 @@ async function verify(offline: boolean): Promise<void> {
   console.log(`Manifest ${stored.tag} matches the published release (${fresh.dmg.size} bytes, sha256 ${fresh.dmg.sha256}).`);
 }
 
+const USAGE = "Usage: manifest.mts <generate vX.Y.Z [--force] | verify [--offline|--online]>";
+/** What each command takes: a misspelt flag (`--ofline`) is refused, never silently ignored. */
+const FLAGS: Record<string, { flags: readonly string[]; positional: number }> = {
+  generate: { flags: ["--force"], positional: 1 },
+  verify: { flags: ["--offline", "--online"], positional: 0 },
+};
+
 async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
+  const accepted = command === undefined ? undefined : FLAGS[command];
+  if (!accepted) throw new Error(USAGE);
+  const unknown = rest.filter((arg) => arg.startsWith("--") && !accepted.flags.includes(arg));
+  if (unknown.length) throw new Error(`Unknown option ${unknown.join(", ")} for ${command}. ${USAGE}`);
+  if (rest.filter((arg) => !arg.startsWith("--")).length > accepted.positional) throw new Error(`Too many arguments for ${command}. ${USAGE}`);
   if (rest.includes("--offline") && rest.includes("--online")) throw new Error("--offline and --online are mutually exclusive.");
   // The production build passes --online so an inherited SITE_MANIFEST_OFFLINE cannot downgrade its verification.
   const offline = rest.includes("--online") ? false : rest.includes("--offline") || process.env.SITE_MANIFEST_OFFLINE === "1";
   const positional = rest.filter((arg) => !arg.startsWith("--"));
   switch (command) {
     case "generate":
-      await generate(positional[0]);
+      await generate(positional[0], rest.includes("--force"));
       return;
     case "verify":
       await verify(offline);
       return;
     default:
-      throw new Error("Usage: manifest.mts <generate vX.Y.Z | verify [--offline|--online]>");
+      throw new Error(USAGE);
   }
 }
 

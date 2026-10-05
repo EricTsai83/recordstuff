@@ -27,7 +27,10 @@ const { macIds, windowsIds } = Astro.props;
     const root = document.documentElement;
     const control = document.currentScript.previousElementSibling;
     const owner = (hash) => {
-      const id = decodeURIComponent(hash.slice(1));
+      // A fragment that is not valid percent-encoding (`#100%`) names no section; throwing here would leave both
+      // platforms shown and the switch hidden.
+      let id;
+      try { id = decodeURIComponent(hash.slice(1)); } catch { return undefined; }
       if (!id) return undefined;
       if (control.dataset.windowsIds.split(" ").includes(id)) return "windows";
       if (control.dataset.macIds.split(" ").includes(id)) return "mac";
