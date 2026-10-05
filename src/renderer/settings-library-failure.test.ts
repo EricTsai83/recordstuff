@@ -2,7 +2,7 @@
 import { expect, it, vi } from "vitest";
 import type { LibraryItemView, SettingsView } from "../shared/settings-panel";
 
-const item = (id: string): LibraryItemView => ({ id, day: "Today", title: id, name: `${id}.mp4`, duration: "1:23", size: "180 MB",
+const item = (id: string): LibraryItemView => ({ id, day: "Today", title: id, name: `${id}.mp4`, time: "2:02 PM", duration: "1:23", size: "180 MB",
   thumbnail: `recordstuff-media://thumb/${id}?v=1`, video: `recordstuff-media://video/${id}?v=1` });
 
 /** The tab's file actions that fail are shown under the header, not only spoken: the latest one, until the next action. */

@@ -2,7 +2,7 @@
 import { expect, it, vi } from "vitest";
 import type { LibraryItemView, SettingsView } from "../shared/settings-panel";
 
-const item = (id: string, day: string, title: string): LibraryItemView => ({ id, day, title, name: `${id}.mp4`, duration: "1:23", size: "180 MB",
+const item = (id: string, day: string, title: string): LibraryItemView => ({ id, day, title, name: `${id}.mp4`, time: "2:02 PM", duration: "1:23", size: "180 MB",
   thumbnail: `recordstuff-media://thumb/${id}?v=1`, video: `recordstuff-media://video/${id}?v=1` });
 
 /** The Recordings tab: cards by day, a drag that hands the file to main, and the page's own player. */
@@ -21,7 +21,7 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   const base: SettingsView = { language: "en", title: "Settings", hint: "", failure: "",
     tabs: [{ id: "library", label: "Recordings" }, { id: "recording", label: "Recording settings" }],
     groups: [{ id: "outputFolder", label: "Output folder", tab: "recording", kind: "actions", enabled: true, choices: [{ id: "reveal", label: "Show in Finder", enabled: true, checked: false }] }],
-    library: { folder: "~/Movies/RecordStuff", summary: "3 recordings · 400 MB", items: [item("a", "Today", "2:02 PM"), item("b", "Today", "11:40 AM"), item("c", "Yesterday", "Demo")] } };
+    library: { folder: "~/Movies/RecordStuff", summary: "3 recordings · 400 MB", items: [item("a", "Today", "Standup"), item("b", "Today", "Design review"), item("c", "Yesterday", "Demo")] } };
   let current = base;
   let endedByMain = false;
   const choose = vi.fn(async (group: string, choice: unknown) => {
@@ -43,7 +43,34 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   expect(document.querySelector(".library-summary")!.textContent).toBe("3 recordings · 400 MB");
   const first = document.getElementById("clip-a")!;
   expect([first.querySelector("img")!.getAttribute("src"), first.querySelector(".clip-meta")!.textContent, first.querySelector("button")!.getAttribute("aria-label")])
-    .toEqual(["recordstuff-media://thumb/a?v=1", "180 MB", "Play Today, 2:02 PM, 1:23, 180 MB"]);
+    .toEqual(["recordstuff-media://thumb/a?v=1", "2:02 PM · 180 MB", "Play Standup, Today, 2:02 PM, 1:23, 180 MB"]);
+  // Titled by its name (2026-10-06); its tooltip says what the card can do, not the name again.
+  expect([first.querySelector(".clip-title")!.textContent, first.getAttribute("title")]).toEqual(["Standup", "Drag into another app to share."]);
+  // Only a name cut short shows whole over itself: taller than its two lines in the grid, wider than its line in the list.
+  const name = first.querySelector<HTMLElement>(".clip-title")!;
+  const size = (scrollHeight: number, clientHeight: number, scrollWidth = 100, clientWidth = 100): void => {
+    for (const [key, value] of Object.entries({ scrollHeight, clientHeight, scrollWidth, clientWidth })) Object.defineProperty(name, key, { value, configurable: true });
+  };
+  size(36, 36);
+  name.dispatchEvent(new MouseEvent("mouseenter"));
+  expect(name.hasAttribute("title")).toBe(false);
+  size(54, 36);
+  name.dispatchEvent(new MouseEvent("mouseenter"));
+  expect(name.getAttribute("title")).toBe("Standup");
+  size(18, 18, 240, 180);
+  name.dispatchEvent(new MouseEvent("mouseenter"));
+  expect(name.getAttribute("title")).toBe("Standup");
+  // The window resized while the pointer stays on the name: the next move over it says so, without another entry.
+  size(18, 18);
+  name.dispatchEvent(new MouseEvent("mousemove"));
+  expect(name.hasAttribute("title")).toBe(false);
+  size(54, 36);
+  name.dispatchEvent(new MouseEvent("mousemove"));
+  expect(name.getAttribute("title")).toBe("Standup");
+  size(18, 18);
+  name.dispatchEvent(new MouseEvent("mouseenter"));
+  expect(name.hasAttribute("title")).toBe(false);
+  for (const key of ["scrollHeight", "clientHeight", "scrollWidth", "clientWidth"]) delete (name as unknown as Record<string, unknown>)[key];
   // The length is on the thumbnail, so the line under it gives the size alone.
   expect(first.querySelector(".clip-duration")!.textContent).toBe("1:23");
 
@@ -91,7 +118,7 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
 
   first.querySelector("button")!.click();
   const player = document.querySelector<HTMLDialogElement>("dialog.player")!;
-  expect([player.open, player.querySelector("video")!.getAttribute("src"), document.getElementById("player-title")!.textContent]).toEqual([true, "recordstuff-media://video/a?v=1", "Today, 2:02 PM"]);
+  expect([player.open, player.querySelector("video")!.getAttribute("src"), document.getElementById("player-title")!.textContent]).toEqual([true, "recordstuff-media://video/a?v=1", "Standup"]);
   // A press on the picture released over the backdrop reaches the dialog as a click, but it is no click on the backdrop.
   player.querySelector("video")!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
   player.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -203,9 +230,9 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
 
   // The file's actions come before it is opened: the card's ⋯ button opens a menu of them.
   const more = document.getElementById("clip-a-more") as HTMLButtonElement;
-  expect([more.getAttribute("aria-label"), more.getAttribute("aria-haspopup"), more.getAttribute("aria-expanded")]).toEqual(["More actions for Today, 2:02 PM", "menu", "false"]);
+  expect([more.getAttribute("aria-label"), more.getAttribute("aria-haspopup"), more.getAttribute("aria-expanded")]).toEqual(["More actions for Standup", "menu", "false"]);
   // Its tooltip says what it does, not the card's own about dragging.
-  expect(more.title).toBe("More actions for Today, 2:02 PM");
+  expect(more.title).toBe("More actions for Standup");
   // Before any menu exists, no button points at one.
   expect([document.getElementById("clip-menu"), more.hasAttribute("aria-controls")]).toEqual([null, false]);
   more.click();
@@ -259,10 +286,11 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   expect(document.activeElement?.id).toBe("clip-b-open");
 
   // Traditional Chinese joins a card's name and the player's title with its own comma.
-  push({ ...base, revision: 4, language: "zh-TW", library: { ...base.library!, items: [{ ...item("c", "今天", "下午2:02"), duration: "1:23" }] } });
-  expect(document.querySelector("#clip-c .clip-open")!.getAttribute("aria-label")).toBe("播放 今天，下午2:02，1:23，180 MB");
+  push({ ...base, revision: 4, language: "zh-TW", library: { ...base.library!, items: [{ ...item("c", "今天", "產品展示"), time: "下午2:02", duration: "1:23" }] } });
+  expect(document.querySelector("#clip-c .clip-open")!.getAttribute("aria-label")).toBe("播放 產品展示，今天，下午2:02，1:23，180 MB");
   document.querySelector<HTMLButtonElement>("#clip-c .clip-open")!.click();
-  expect(document.getElementById("player-title")!.textContent).toBe("今天，下午2:02");
+  expect(document.getElementById("player-title")!.textContent).toBe("產品展示");
+  expect(document.querySelector(".player-meta")!.textContent).toBe("今天，下午2:02 · 1:23 · 180 MB");
 
   // An entry to another tab (a banner or the tray, with no blur) takes the cards away: their menu leaves with them,
   // so none of its items can act on a recording no longer shown.

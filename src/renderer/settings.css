@@ -494,10 +494,10 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .play-icon { width: 18px; height: 18px; }
 /* Hover shows the play button alone (2026-10-05): the card no longer lifts or casts a shadow. */
 .clip-open:hover .clip-play, .clip-open:focus-visible .clip-play { opacity: 1; transform: none; }
-/* One line under the picture: when, and the size beside it. */
-.clip-text { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; padding: 0 2px; }
-.clip-title { min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.clip-meta { flex: none; color: var(--secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+/* Under the picture its name, up to two lines (2026-10-06), and beneath it when and how large. */
+.clip-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0 2px; }
+.clip-title { min-width: 0; font-weight: 600; overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.35; }
+.clip-meta { color: var(--secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
 /* Keyboard focus rings the thumbnail, where the eye already is. */
 :root:not([data-input="pointer"]):not([data-window="inactive"]) .clip-open:focus-visible { outline: none; }
 :root:not([data-input="pointer"]):not([data-window="inactive"]) .clip-open:focus-visible .clip-thumb { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-gap); }
@@ -527,7 +527,7 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 #library[data-layout="list"] .clip-text { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 0; }
 #library[data-layout="list"] .clip-meta { display: none; }
 #library[data-layout="list"] .clip-detail { display: block; color: var(--secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
-#library[data-layout="list"] .clip-title { max-width: 100%; }
+#library[data-layout="list"] .clip-title { max-width: 100%; display: block; white-space: nowrap; text-overflow: ellipsis; }
 #library[data-layout="list"] .clip-more { top: 50%; right: 10px; margin-top: -14px; background: transparent; color: var(--secondary); backdrop-filter: none; }
 #library[data-layout="list"] :is(button, select).clip-more:enabled:not([aria-disabled="true"]):hover { background: var(--track); color: var(--text); }
 #library[data-layout="list"] .clip:hover .clip-more, #library[data-layout="list"] .clip-more:focus-visible, #library[data-layout="list"] .clip-more[aria-expanded="true"] { opacity: 1; }

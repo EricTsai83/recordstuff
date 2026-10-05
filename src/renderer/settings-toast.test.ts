@@ -2,7 +2,7 @@
 import { expect, it, vi } from "vitest";
 import type { LibraryItemView, LibraryView, SettingsView } from "../shared/settings-panel";
 
-const item = (id: string): LibraryItemView => ({ id, day: "Today", title: id, name: `${id}.mp4`, duration: "1:23", size: "180 MB",
+const item = (id: string): LibraryItemView => ({ id, day: "Today", title: id, name: `${id}.mp4`, time: "2:02 PM", duration: "1:23", size: "180 MB",
   thumbnail: `recordstuff-media://thumb/${id}?v=1`, video: `recordstuff-media://video/${id}?v=1` });
 
 /** The toast's own clock (2026-10-06): 8 s untouched, paused by the pointer or by focus in it; "Restored" stays 3 s. */

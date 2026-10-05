@@ -103,8 +103,10 @@ export type StatusActionId = "permission" | "relaunch" | "folder" | "primary";
 /** One video in the Recordings tab; the page reaches its bytes only through these URLs, which name an id. */
 export interface LibraryItemView {
   id: string;
-  /** The recorded time for the app's own files, the file name for any other. */
+  /** The file's name without its extension: what the card, the player and full screen are titled by. */
   title: string;
+  /** Short local time it was recorded at, shown beside the day heading's date: the name's own timestamp, else the file's birth. */
+  time: string;
   /** Localized day heading: Today, Yesterday or the date. */
   day: string;
   name: string;

@@ -2,7 +2,7 @@
 import { expect, it, vi } from "vitest";
 import type { LibraryItemView, SettingsChoiceResult, SettingsView } from "../shared/settings-panel";
 
-const item: LibraryItemView = { id: "a", day: "Today", title: "2:02 PM", name: "a.mp4", duration: "1:23", size: "180 MB",
+const item: LibraryItemView = { id: "a", day: "Today", title: "a", time: "2:02 PM", name: "a.mp4", duration: "1:23", size: "180 MB",
   thumbnail: "recordstuff-media://thumb/a?v=1", video: "recordstuff-media://video/a?v=1" };
 
 /** The full-screen window takes a moment to appear; the page's player must not sound alongside it meanwhile. */

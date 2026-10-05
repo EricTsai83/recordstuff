@@ -1261,8 +1261,18 @@ function clipCard(id: string): HTMLElement {
   const fallback = icon("film", "clip-fallback")!;
   thumb.append(fallback, image, node("span", "clip-duration"), play);
   const label = node("span", "clip-text");
-  // The list's second line, the length and the size; the grid keeps the length on the picture and the size beside the title.
-  label.append(node("span", "clip-title"), node("span", "clip-meta"), node("span", "clip-detail"));
+  // The name, then when and how large: the grid's line under it (its length is on the picture), and the list's.
+  const title = node("span", "clip-title");
+  // A name cut short shows whole in a tooltip over it (2026-10-06); one that fits leaves the card's own tooltip. Read as
+  // the pointer arrives and as it moves over the name, so a resize or the other layout meanwhile is taken into account,
+  // even while the pointer stays on it (review of 2026-10-06).
+  const fullNameTooltip = (): void => {
+    const cut = title.scrollHeight > title.clientHeight + 1 || title.scrollWidth > title.clientWidth + 1;
+    if (cut) setAttr(title, "title", title.textContent ?? ""); else if (title.hasAttribute("title")) title.removeAttribute("title");
+  };
+  title.addEventListener("mouseenter", fullNameTooltip);
+  title.addEventListener("mousemove", fullNameTooltip);
+  label.append(title, node("span", "clip-meta"), node("span", "clip-detail"));
   open.append(thumb, label);
   // What can be done with the file, before it is opened (2026-10-04): this button, or a right-click on the card.
   const more = button(`clip-${id}-more`, () => toggleClipMenu(id, more));
@@ -1296,15 +1306,17 @@ function fillClip(card: HTMLElement, item: LibraryItemView): void {
   }
   const duration = card.querySelector<HTMLElement>(".clip-duration")!;
   setText(duration, item.duration ?? ""); duration.hidden = !item.duration;
+  // Its name first (2026-10-06): when and how large beneath it. The grid has the length on the picture already; the
+  // list says it in that line. The button's name keeps all of it.
   setText(card.querySelector(".clip-title")!, item.title);
-  // The length is on the thumbnail already; under it goes the size (desktop.md#recordings). The button's name keeps both.
-  setText(card.querySelector(".clip-meta")!, item.size);
-  setText(card.querySelector(".clip-detail")!, [item.duration, item.size].filter(Boolean).join(" · "));
-  setAttr(card, "title", sentences([item.name, text("Drag into another app to share.")], view?.language));
-  setAttr(card.querySelector(".clip-open")!, "aria-label", translate("Play {title}", view?.language, { title: phrases([item.day, item.title, item.duration, item.size].filter((part): part is string => Boolean(part)), view?.language) }));
+  setText(card.querySelector(".clip-meta")!, [item.time, item.size].join(" · "));
+  setText(card.querySelector(".clip-detail")!, [item.time, item.duration, item.size].filter(Boolean).join(" · "));
+  // The tooltip says what a card can do; its name is already the card's title.
+  setAttr(card, "title", text("Drag into another app to share."));
+  setAttr(card.querySelector(".clip-open")!, "aria-label", translate("Play {title}", view?.language, { title: phrases([item.title, item.day, item.time, item.duration, item.size].filter((part): part is string => Boolean(part)), view?.language) }));
   // Its own tooltip, too: without one the card's, about dragging, shows over the button that opens the actions.
   const more = card.querySelector<HTMLElement>(".clip-more")!;
-  const moreLabel = translate("More actions for {title}", view?.language, { title: phrases([item.day, item.title], view?.language) });
+  const moreLabel = translate("More actions for {title}", view?.language, { title: item.title });
   setAttr(more, "aria-label", moreLabel); setAttr(more, "title", moreLabel);
 }
 type FileAction = "reveal" | "open" | "trash";
@@ -1448,7 +1460,7 @@ function openRename(id: string, anchor: HTMLButtonElement): void {
   closeRename(false);
   const extension = /\.[^.]+$/.exec(item.name)?.[0] ?? "";
   const base = item.name.slice(0, item.name.length - extension.length);
-  setText(el.querySelector(".clip-rename-label")!, translate("New name for {title}", view?.language, { title: phrases([item.day, item.title], view?.language) }));
+  setText(el.querySelector(".clip-rename-label")!, translate("New name for {title}", view?.language, { title: item.title }));
   setText(el.querySelector(".clip-rename-extension")!, extension);
   setText(el.querySelector("#clip-rename-cancel")!, text("Cancel"));
   setText(el.querySelector("#clip-rename-confirm")!, text("Rename"));
@@ -1619,8 +1631,9 @@ function openPlayer(item: LibraryItemView): void {
     document.body.append(player);
   }
   player.dataset.id = item.id;
-  setText(player.querySelector("#player-title")!, phrases([item.day, item.title], view?.language));
-  setText(player.querySelector(".player-meta")!, [item.name, item.duration, item.size].filter(Boolean).join(" · "));
+  // Titled by its name (2026-10-06); when, how long and how large beneath it.
+  setText(player.querySelector("#player-title")!, item.title);
+  setText(player.querySelector(".player-meta")!, [phrases([item.day, item.time], view?.language), item.duration, item.size].filter(Boolean).join(" · "));
   player.querySelector<HTMLElement>(".player-error")!.hidden = true;
   setText(playerFeedback!, "");
   for (const [id, label] of [["player-close", text("Close")], ["player-fullscreen", text("Full screen")]] as const) {

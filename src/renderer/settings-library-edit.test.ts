@@ -2,7 +2,7 @@
 import { expect, it, vi } from "vitest";
 import type { LibraryItemView, LibraryView, SettingsView } from "../shared/settings-panel";
 
-const item = (id: string, title: string, name = `${id}.mp4`): LibraryItemView => ({ id, day: "Today", title, name, duration: "1:23", size: "180 MB",
+const item = (id: string, title: string, name = `${id}.mp4`): LibraryItemView => ({ id, day: "Today", title, name, time: "2:02 PM", duration: "1:23", size: "180 MB",
   thumbnail: `recordstuff-media://thumb/${id}?v=1`, video: `recordstuff-media://video/${id}?v=1` });
 
 /** The Recordings tab's layout switch, Move to Trash with Undo (the bar and ⌘Z), and a card's Rename… (2026-10-05). */
@@ -51,7 +51,7 @@ it("switches layout, brings back a trashed recording, and renames one in place",
   list.checked = true; list.dispatchEvent(new Event("change"));
   expect(library.dataset.layout).toBe("list");
   await vi.waitFor(() => expect(choose).toHaveBeenCalledWith("library", "list"));
-  expect(document.querySelector("#clip-a .clip-detail")!.textContent).toBe("1:23 · 180 MB");
+  expect(document.querySelector("#clip-a .clip-detail")!.textContent).toBe("2:02 PM · 1:23 · 180 MB");
 
   // Move to Trash: the card leaves, the toast offers Undo with its ⌘Z, and the toast's Undo brings it back with the focus it had.
   const toastOf = () => document.getElementById("toast")!;
@@ -115,7 +115,7 @@ it("switches layout, brings back a trashed recording, and renames one in place",
   const sheet = document.getElementById("clip-rename")!;
   const input = document.getElementById("clip-rename-input") as HTMLInputElement;
   expect(["open" in sheet.dataset, input.value, sheet.querySelector(".clip-rename-extension")!.textContent, document.activeElement]).toEqual([true, "Demo", ".mp4", input]);
-  expect(document.getElementById("clip-rename-label")!.textContent).toBe("New name for Today, Demo");
+  expect(document.getElementById("clip-rename-label")!.textContent).toBe("New name for Demo");
   // A name the folder cannot take is refused before anything is sent.
   input.value = "a/b";
   input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));

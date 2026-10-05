@@ -32,7 +32,7 @@ import { DEFAULT_FILE_NAME_TEMPLATE, FILE_NAME_TOKEN_LIST, canonicalFileNameTemp
 import { isLibraryLayout } from "../shared/appearance";
 import { formatDuration } from "../shared/video-player";
 import type { LibraryView, RecordingResultView, SettingsChoice, SettingsGroup, SettingsStatus, SettingsView, StatusActionId } from "../shared/settings-panel";
-import { MEDIA_SCHEME, RECORDING_FILE_ACTIONS, stampedTime, type RecordingFileAction } from "./recordings-library";
+import { MEDIA_SCHEME, RECORDING_FILE_ACTIONS, type RecordingFileAction } from "./recordings-library";
 import type { RecordingResult, RecordingResultAction } from "../shared/recording-result";
 import type { RecordingState } from "../shared/state";
 
@@ -618,12 +618,12 @@ function libraryView(ctx: AppContext, now: Date, format: DateFormats): LibraryVi
     ...extras,
     ...(count ? { summary: t(count === 1 ? "1 recording · {size}" : "{count} recordings · {size}", language, { count, size: formatBytes(total) }) } : {}),
     items: library.files.map(file => {
-      // The app's own name already says when; any other file is known by its name.
-      const stamped = stampedTime(file.name) !== undefined;
+      // Known by its name, whatever named it (2026-10-06, formerly the time for the app's own names); when it was
+      // recorded comes beside it.
       const at = new Date(file.recordedAt);
       return {
         id: file.id, name: file.name, day: dayHeading(at, now, language, format),
-        title: stamped ? shortTime(at, language, format) : file.name.replace(/\.[^.]+$/, ""),
+        title: file.name.replace(/\.[^.]+$/, ""), time: shortTime(at, language, format),
         ...(file.duration === undefined ? {} : { duration: formatDuration(file.duration) }),
         size: formatBytes(file.size),
         thumbnail: `${MEDIA_SCHEME}://thumb/${file.id}?v=${file.version}`,

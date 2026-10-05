@@ -827,14 +827,14 @@ describe("the Recordings tab", () => {
     file("Product demo.mp4", new Date(2026, 9, 3, 9, 30), { size: 2_200_000_000, duration: 3725 }),
   ];
   const library = (state: Partial<LibraryState>): AppContext => ({ ...context, now, library: { dir: "/tmp/recordings", loading: false, failed: false, files, ...state } });
-  it("lists every video newest first with its day, time or name, length, size and id-only URLs", () => {
+  it("lists every video newest first by its name, with its day, time, length, size and id-only URLs", () => {
     const view = settingsView(idle, library({})).library!;
     expect(view.summary).toBe("2 recordings · 2.4 GB");
     expect(view.folder).toBe("~/recordings");
     expect(view.items).toEqual([
-      { id: "id-2026-10-04 14-02-11.mp4", name: "2026-10-04 14-02-11.mp4", day: "Today", title: new Date(2026, 9, 4, 14, 2).toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" }),
+      { id: "id-2026-10-04 14-02-11.mp4", name: "2026-10-04 14-02-11.mp4", day: "Today", title: "2026-10-04 14-02-11", time: new Date(2026, 9, 4, 14, 2).toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" }),
         duration: "1:23", size: "180 MB", thumbnail: "recordstuff-media://thumb/id-2026-10-04 14-02-11.mp4?v=v1", video: "recordstuff-media://video/id-2026-10-04 14-02-11.mp4?v=v1" },
-      expect.objectContaining({ day: "Yesterday", title: "Product demo", duration: "1:02:05", size: "2.2 GB" }),
+      expect.objectContaining({ day: "Yesterday", title: "Product demo", time: new Date(2026, 9, 3, 9, 30).toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" }), duration: "1:02:05", size: "2.2 GB" }),
     ]);
     expect(settingsView(idle, { ...library({}), language: "zh-TW" }).library!.summary).toBe("2 個錄影・2.4 GB");
     expect(settingsView(idle, library({ files: [files[0]!] })).library!.summary).toBe("1 recording · 180 MB");

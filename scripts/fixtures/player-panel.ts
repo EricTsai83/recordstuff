@@ -128,7 +128,7 @@ async function run(): Promise<boolean> {
     const item = view().library?.items.find(entry => entry.id === id);
     if (!item || !isFullScreenChoice(choice)) return { view: view(), applied: false };
     const ended = await fullScreen.play({ src: item.video, state: choice.state, display: screen.getDisplayMatching(window.getBounds()).bounds,
-      language, title: phrases([item.day, item.title], language), closed: () => { if (!window.isDestroyed()) window.focus(); } });
+      language, title: item.title, closed: () => { if (!window.isDestroyed()) window.focus(); } });
     return { view: view(), applied: ended !== undefined, ...(ended ? { playback: ended } : {}) };
   });
 
@@ -158,7 +158,8 @@ async function run(): Promise<boolean> {
   record("the player has its own named controls, none of Chromium's, and the recording's name over the picture",
     !structure.native && structure.buttons.join() === "player-close,player-play,player-mute,player-fullscreen"
       && structure.labels.join() === [label("Close"), label("Playback position"), label("Pause"), label("Mute"), label("Volume"), label("Full screen")].join()
-      && structure.title === phrases([item.day, item.title], language) && structure.meta.includes(item.name), structure);
+      // Titled by the recording's name, with when it was recorded in the line beneath (2026-10-06).
+      && structure.title === item.title && structure.meta.includes(phrases([item.day, item.time], language)), structure);
 
   // Resting and waking: the pointer over the picture, then still.
   const bar = await box(window, "dialog.player .pc-bottom");
@@ -260,7 +261,7 @@ async function run(): Promise<boolean> {
   // Shown once its first frame at the handed time is drawn: within the click's travel and the fade, never from the start.
   const handedOver = fullPlayback.time >= handed - 0.3 && fullPlayback.time <= handed + 1.5;
   record("Full screen covers the display with the recording's name, the same controls and the time handed over, still playing",
-    fullState.title === phrases([item.day, item.title], language) && fullState.last === "exit" && !fullState.native
+    fullState.title === item.title && fullState.last === "exit" && !fullState.native
       && fullState.labels.join() === [label("Pause"), label("Mute"), label("Exit full screen")].join()
       && !fullPlayback.paused && handedOver && JSON.stringify(full.getBounds()) === JSON.stringify(display),
     { ...fullState, handed, ...fullPlayback, bounds: full.getBounds(), display });

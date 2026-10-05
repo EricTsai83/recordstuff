@@ -22,7 +22,7 @@ import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "../../
 import { settingsWindowOptions } from "../../src/main/settings-window";
 import { DEFAULT_SETTINGS_SIZE } from "../../src/main/settings-window-state";
 import { VIDEO_CHANNELS, VIDEO_QUERY } from "../../src/shared/video-player";
-import { phrases, type Language } from "../../src/shared/i18n";
+import type { Language } from "../../src/shared/i18n";
 
 const [outDir, root, clips] = (() => {
   const [output, repository, folder] = process.argv.slice(-3);
@@ -195,7 +195,7 @@ async function run(): Promise<void> {
       full.setContentSize(1440, 900);
       full.webContents.setAudioMuted(true);
       await full.loadFile(path.join(out, "renderer/video.html"), { query: { [VIDEO_QUERY.src]: playable.video, [VIDEO_QUERY.time]: "3", [VIDEO_QUERY.playing]: "0",
-        [VIDEO_QUERY.volume]: "1", [VIDEO_QUERY.muted]: "0", [VIDEO_QUERY.language]: language, [VIDEO_QUERY.title]: phrases([playable.day, playable.title], language) } });
+        [VIDEO_QUERY.volume]: "1", [VIDEO_QUERY.muted]: "0", [VIDEO_QUERY.language]: language, [VIDEO_QUERY.title]: playable.title } });
       await until(() => full.webContents.executeJavaScript(`document.getElementById("video").readyState >= 2`));
       await shoot(full, `fullscreen-${scheme}.png`, `full screen · paused · ${scheme}`);
       full.destroy();

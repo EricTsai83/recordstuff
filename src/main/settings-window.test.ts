@@ -159,9 +159,9 @@ describe("settings window lifecycle", () => {
     const listed = result.view.library.items[0].video;
     expect([played[0]!.src, played[0]!.display, result.applied, result.playback]).toEqual([listed, { x: 0, y: 0, width: 1440, height: 900 }, true, { time: 42, playing: true, volume: 0.5, muted: false }]);
     expect(fullScreen.play).toHaveBeenCalledWith(expect.objectContaining({ state }));
-    // Its name over the picture is main's own, from the listing: the day and title the card shows (2026-10-05).
+    // Its name over the picture is main's own, from the listing: the recording's name, as the card shows it (2026-10-06).
     const item = result.view.library.items[0];
-    expect((played[0] as { title?: string }).title).toBe(`${item.day}, ${item.title}`);
+    expect((played[0] as { title?: string }).title).toBe(item.title);
     // Leaving gives this window its focus back.
     window.focus.mockClear(); played[0]!.closed?.();
     expect(window.focus).toHaveBeenCalledOnce();
