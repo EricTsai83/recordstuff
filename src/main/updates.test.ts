@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { API_URL, DAY_MS, DOWNLOAD_URL, FEED_URL, RELEASES_URL, UpdateChecker, feedVersion, fetchVersion, githubVersion, isNewer } from "./updates";
 import { stableVersion } from "../shared/version";
+import fs from "node:fs";
 const feed = { version: "0.2.0", tag: "v0.2.0", platform: "darwin-arm64", architecture: "arm64", publishedAt: "2026-09-20T00:00:00Z", downloadUrl: DOWNLOAD_URL, releaseUrl: `${RELEASES_URL}/tag/v0.2.0`, dmg: { name: "RecordStuff-0.2.0-arm64-selfsigned.dmg", size: 123, sha256: "a".repeat(64) } };
 const gh = { tag_name: "v0.2.0", draft: false, prerelease: false, assets: [{ name: feed.dmg.name }] };
 function harness() {
@@ -40,6 +41,17 @@ describe("release validation", () => {
     expect(githubVersion(both, "darwin", "arm64")).toBe("0.2.0");
     expect(() => githubVersion(gh, "win32", "x64")).toThrow();
     for (const [platform, arch] of [["win32", "arm64"], ["linux", "x64"]] as const) expect(() => githubVersion(both, platform, arch)).toThrow();
+  });
+});
+describe("the website's release feed", () => {
+  it("names the download page the app accepts, on the origin the app fetches it from", () => {
+    // The feed's downloadUrl is compared byte for byte (feedVersion): a website that moved alone would hide every update.
+    // Read as text, not imported: importing makes Vite resolve website/tsconfig.json, which extends Astro's, and the
+    // root install (CI's check) has no website dependencies. A change of the file's shape fails here, to be looked at.
+    const site = fs.readFileSync(new URL("../../website/src/lib/site-origin.ts", import.meta.url), "utf8");
+    const origin = /^export const SITE_ORIGIN = "([^"]+)";$/m.exec(site)?.[1];
+    const download = /^export const DOWNLOAD_URL = `\$\{SITE_ORIGIN\}([^`]*)`;$/m.exec(site)?.[1];
+    expect([origin && download !== undefined ? `${origin}${download}` : site, FEED_URL.startsWith(`${origin}/`)]).toEqual([DOWNLOAD_URL, true]);
   });
 });
 describe("network", () => {
