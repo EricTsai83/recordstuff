@@ -42,4 +42,21 @@ it("shows the latest failed file action on the page until the next one, as well 
   document.getElementById("clip-menu-reveal")!.click();
   await vi.waitFor(() => expect(error.hidden).toBe(true));
   expect(error.textContent).toBe("");
+
+  // A second Move to Trash chosen while main still works on the first is not sent: on a slow volume it would find the
+  // file gone and say so over the first one's success.
+  let answer!: () => void;
+  choose.mockImplementationOnce(() => new Promise(resolve => { answer = () => resolve({ view, applied: true }); }));
+  const calls = choose.mock.calls.length;
+  document.getElementById("clip-a-more")!.click();
+  document.getElementById("clip-menu-trash")!.click();
+  document.getElementById("clip-a-more")!.click();
+  document.getElementById("clip-menu-trash")!.click();
+  expect(choose.mock.calls.length).toBe(calls + 1);
+  answer();
+  await vi.waitFor(() => expect(document.getElementById("feedback")!.textContent).toBe("Moved to the Trash"));
+  // Answered, the card takes actions again.
+  document.getElementById("clip-a-more")!.click();
+  document.getElementById("clip-menu-reveal")!.click();
+  expect(choose.mock.calls.length).toBe(calls + 2);
 });

@@ -14,7 +14,7 @@ it("marks a failed first read's message with the requested language, not the pag
   const feedback = document.getElementById("feedback")!;
   await new Promise(resolve => setTimeout(resolve, 0));
   await new Promise(resolve => setTimeout(resolve, 0));
-  expect(feedback.textContent).toBe("無法開啟設定，請關閉這個視窗後再開一次。");
+  expect(feedback.textContent).toBe("這個視窗無法載入，請關閉後再開啟 RecordStuff。");
   expect(document.documentElement.lang).toBe("zh-Hant");
   expect(feedback.classList.contains("visually-hidden")).toBe(false);
   // The error is content: main may show the window with it, and a refused report is not the page's failure.

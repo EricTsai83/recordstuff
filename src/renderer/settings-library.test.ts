@@ -56,6 +56,17 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   observer.disconnect();
   expect(mutations).toEqual([]);
 
+  // A thumbnail that failed shows the film icon until the file changes; its next version gets its own try.
+  const firstImage = first.querySelector("img")!;
+  firstImage.dispatchEvent(new Event("error"));
+  expect(first.querySelector(".clip-thumb")!.classList.contains("no-thumb")).toBe(true);
+  const changed = { ...base.library!.items[0]!, thumbnail: "recordstuff-media://thumb/a?v=2" };
+  push({ ...base, revision: 1.6, library: { ...base.library!, items: [changed, ...base.library!.items.slice(1)] } });
+  await Promise.resolve();
+  expect([firstImage.getAttribute("src"), first.querySelector(".clip-thumb")!.classList.contains("no-thumb")]).toEqual(["recordstuff-media://thumb/a?v=2", false]);
+  push({ ...base, revision: 1.7 });
+  await Promise.resolve();
+
   // A saved recording's entry (its notification) lands on its card and outlines it, without playing.
   push({ ...base, revision: 2, resultFocus: 1, entryTab: "library", libraryFocus: "c" });
   expect(document.activeElement?.id).toBe("clip-c-open");
@@ -180,6 +191,10 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   // The file's actions come before it is opened: the card's ⋯ button opens a menu of them.
   const more = document.getElementById("clip-a-more") as HTMLButtonElement;
   expect([more.getAttribute("aria-label"), more.getAttribute("aria-haspopup"), more.getAttribute("aria-expanded")]).toEqual(["More actions for Today, 2:02 PM", "menu", "false"]);
+  // Its tooltip says what it does, not the card's own about dragging.
+  expect(more.title).toBe("More actions for Today, 2:02 PM");
+  // Before any menu exists, no button points at one.
+  expect([document.getElementById("clip-menu"), more.hasAttribute("aria-controls")]).toEqual([null, false]);
   more.click();
   const menu = document.getElementById("clip-menu")!;
   const items = (): string[] => [...menu.querySelectorAll("[role=menuitem]")].map(el => el.textContent ?? "");
@@ -195,6 +210,7 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   expect(document.activeElement?.id).toBe("clip-menu-open");
   document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   expect([("open" in menu.dataset), more.getAttribute("aria-expanded"), document.activeElement?.id, close.mock.calls.length]).toEqual([false, "false", "clip-a-more", 0]);
+  expect(more.hasAttribute("aria-controls")).toBe(false);
   // A right-click on the card opens the same menu; its choice reaches main as the file's action.
   first.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 50 }));
   expect(("open" in menu.dataset)).toBe(true);

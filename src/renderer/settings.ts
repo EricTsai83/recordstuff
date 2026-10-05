@@ -232,6 +232,13 @@ function updateStatus(current: SettingsView): void {
   const detail = document.getElementById("status-detail")!;
   setText(detail, value.detail);
   detail.hidden = !value.detail || Boolean(current.hint);
+  // The card's own fix has no row to show its failure under: it says so here as well as aloud, until the next action.
+  const error = document.getElementById("status-error");
+  if (error) {
+    const statusFailed = failure?.group === "status";
+    setText(error, statusFailed ? failure!.text : "");
+    error.hidden = !statusFailed;
+  }
   const action = document.getElementById("status-action") as HTMLButtonElement;
   action.hidden = !value.action;
   if (value.action) {
@@ -1015,7 +1022,8 @@ function clipCard(id: string): HTMLElement {
   open.append(thumb, label);
   // What can be done with the file, before it is opened (2026-10-04): this button, or a right-click on the card.
   const more = button(`clip-${id}-more`, () => toggleClipMenu(id, more));
-  more.className = "clip-more"; more.setAttribute("aria-haspopup", "menu"); more.setAttribute("aria-expanded", "false"); more.setAttribute("aria-controls", "clip-menu");
+  // `aria-controls` names the menu only while it is open for this card: until the first one opens it does not exist.
+  more.className = "clip-more"; more.setAttribute("aria-haspopup", "menu"); more.setAttribute("aria-expanded", "false");
   more.append(icon("more", "more-icon")!);
   card.append(open, more);
   card.addEventListener("contextmenu", event => { event.preventDefault(); openClipMenu(id, more, { x: event.clientX, y: event.clientY }); });
@@ -1032,7 +1040,11 @@ function clipCard(id: string): HTMLElement {
 }
 function fillClip(card: HTMLElement, item: LibraryItemView): void {
   const image = card.querySelector("img")!;
-  if (image.getAttribute("src") !== item.thumbnail) image.src = item.thumbnail;
+  if (image.getAttribute("src") !== item.thumbnail) {
+    // A new version of the file gets its own try: a hidden lazy image might never load, keeping the film icon for good.
+    image.parentElement!.classList.remove("no-thumb");
+    image.src = item.thumbnail;
+  }
   const duration = card.querySelector<HTMLElement>(".clip-duration")!;
   setText(duration, item.duration ?? ""); duration.hidden = !item.duration;
   setText(card.querySelector(".clip-title")!, item.title);
@@ -1040,7 +1052,10 @@ function fillClip(card: HTMLElement, item: LibraryItemView): void {
   setText(card.querySelector(".clip-meta")!, item.size);
   setAttr(card, "title", sentences([item.name, text("Drag into another app to share.")], view?.language));
   setAttr(card.querySelector(".clip-open")!, "aria-label", translate("Play {title}", view?.language, { title: phrases([item.day, item.title, item.duration, item.size].filter((part): part is string => Boolean(part)), view?.language) }));
-  setAttr(card.querySelector(".clip-more")!, "aria-label", translate("More actions for {title}", view?.language, { title: phrases([item.day, item.title], view?.language) }));
+  // Its own tooltip, too: without one the card's, about dragging, shows over the button that opens the actions.
+  const more = card.querySelector<HTMLElement>(".clip-more")!;
+  const moreLabel = translate("More actions for {title}", view?.language, { title: phrases([item.day, item.title], view?.language) });
+  setAttr(more, "aria-label", moreLabel); setAttr(more, "title", moreLabel);
 }
 type FileAction = "reveal" | "open" | "trash";
 /**
@@ -1107,6 +1122,7 @@ function openClipMenu(id: string, anchor: HTMLButtonElement, at?: { x: number; y
   // A card out of the panel closes the menu as it is placed: nothing is left to expand or focus (review pass 1, F3).
   if (clipMenu.anchor !== anchor) return;
   anchor.setAttribute("aria-expanded", "true");
+  anchor.setAttribute("aria-controls", el.id);
   el.querySelector<HTMLButtonElement>("[role=menuitem]")!.focus({ preventScroll: true });
 }
 /** Beside its card, flipped above it when there is no room below and kept inside the window; a card scrolled out of the panel closes it. */
@@ -1130,6 +1146,7 @@ function closeClipMenu(restoreFocus: boolean): void {
   const { el, anchor } = clipMenu;
   clipMenu = { el };
   anchor.setAttribute("aria-expanded", "false");
+  anchor.removeAttribute("aria-controls");
   el.hidePopover?.();
   if (restoreFocus && anchor.isConnected) anchor.focus({ preventScroll: true });
 }
@@ -1140,6 +1157,8 @@ document.addEventListener("scroll", placeClipMenu, true);
 window.addEventListener("resize", placeClipMenu);
 // Focus inside a hidden menu would fall to the page, where the next Escape closes the window: it goes back to the ⋯ button.
 window.addEventListener("blur", () => closeClipMenu(true));
+/** Cards whose file action main has not answered yet: on a slow volume a second Move to Trash would find the file gone. */
+const fileActionsPending = new Set<string>();
 /**
  * Runs a card's file action and says how it went. Focus waits on the card's ⋯ button, so a recording that left
  * the folder hands it to its neighbour when the reply is rendered (`updateLibrary`).
@@ -1147,6 +1166,9 @@ window.addEventListener("blur", () => closeClipMenu(true));
 async function fileAction(id: string, action: FileAction, anchor: HTMLButtonElement): Promise<void> {
   closeClipMenu(false);
   anchor.focus({ preventScroll: true });
+  // The first choice stands; its answer is what the card then says.
+  if (fileActionsPending.has(id)) return;
+  fileActionsPending.add(id);
   libraryError = undefined;
   let problem: string | undefined;
   try {
@@ -1156,6 +1178,8 @@ async function fileAction(id: string, action: FileAction, anchor: HTMLButtonElem
     else if (action === "trash") announce(text(platform() === "darwin" ? "Moved to the Trash" : "Moved to the Recycle Bin"));
   } catch {
     problem = text("Could not complete this action. Try again.");
+  } finally {
+    fileActionsPending.delete(id);
   }
   libraryError = problem;
   // Drawn even when nothing failed, so a message an earlier action left goes.
@@ -1379,7 +1403,9 @@ function draw(): void {
     scrollObserver.observe(panel);
     // The recordings outlive the panel they were drawn in (`libraryArea`); `updateLibrary` places them below.
     libraryArea ??= document.getElementById("library") ?? undefined;
-    form.replaceChildren(tabs, viewport);
+    // The status card follows the tabs in the page's order, as the sidebar draws it under them (its grid row) and a
+    // narrow window above the content: the first Tab reaches the tabs, not a card drawn at the sidebar's foot.
+    form.replaceChildren(tabs, statusCard, viewport);
     updateRows(groups);
     if (restore && document.hasFocus()) {
       const destination = isCaptureControl(restore) && !shortcutGroup()?.capturing ? "setting-hotkey" : restore;
@@ -1457,7 +1483,14 @@ function render(next: SettingsView): void {
     feedback.classList.add("visually-hidden");
     announce("");
   }
+  const focusedBefore = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : undefined;
   draw();
+  // A push can hide the status card or remove a row's action while it has focus (a problem solved from the tray, an
+  // action main no longer offers): the tab keeps the place, so the next Tab does not start over and the next Escape
+  // does not close the window. A choice's own reply is left to `choose`, which knows the row that stands for it.
+  if (focusedBefore && !pending && document.hasFocus() && (!focusedBefore.isConnected || focusedBefore.closest("[hidden]"))
+    && (document.activeElement === document.body || document.activeElement === focusedBefore))
+    document.getElementById(`tab-${selectedTab}`)?.focus({ preventScroll: true });
   reportReady();
   if (previous) {
     // Only news is read out: a language switch retranslates every note and row without changing them.
@@ -1489,6 +1522,12 @@ function render(next: SettingsView): void {
       else if (old.outcome !== result.outcome) changes.unshift(say([result.reason, result.outcome]));
       else if (result.persistenceWarning && old.persistenceWarning !== result.persistenceWarning) changes.push(say([result.reason, result.persistenceWarning]));
     }
+    // The status card is no live region (`#feedback` stays the one announcer), so a state it newly shows is read here:
+    // a recording started from the shortcut, a save, a problem that appeared. Once per state, not every countdown
+    // second, and not again when a diagnostic already says it; Ready, which the card does not show, says nothing.
+    const status = next.status, was = previous.status;
+    if (sameLanguage && status && status.tone !== "ready" && (status.tone !== was?.tone || (status.tone === "attention" && status.title !== was?.title))
+      && !changes.some(change => change.includes(status.title))) changes.unshift(say([status.title, status.detail]));
     if (changes.length) announce(say(changes));
   }
 }
@@ -1638,6 +1677,6 @@ void window.settings.read().then(render).catch(() => {
   // No view ever drew, so the page still carries the HTML's `lang`; the message is in the requested language.
   document.documentElement.lang = documentLanguage(startupLanguage);
   feedback.classList.remove("visually-hidden");
-  announce(translate("Could not open settings. Close this window and open it again.", startupLanguage));
+  announce(translate("This window could not load. Close it and open RecordStuff again.", startupLanguage));
   reportReady();
 });

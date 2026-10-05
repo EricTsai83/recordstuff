@@ -107,6 +107,23 @@ it("seeks by five seconds with the arrows within the video, on the seek bar too,
   expect(fullScreen).toHaveBeenCalledOnce();
 });
 
+it("moves the seek bar's other keys by fixed steps, not by a share of the length: Up and Down 5 s, Page Up and Down 10 s, Home and End to the ends", () => {
+  const { video, root, set } = setup();
+  set({ duration: 3600 });
+  const seek = root.querySelector<HTMLInputElement>(".pc-seek")!;
+  const steps = ["ArrowUp", "ArrowUp", "PageUp", "ArrowDown", "PageDown", "End", "PageUp", "Home", "PageDown"].map(name => {
+    const event = key(seek, name);
+    return [name, video.currentTime, event.defaultPrevented];
+  });
+  expect(steps).toEqual([
+    ["ArrowUp", 5, true], ["ArrowUp", 10, true], ["PageUp", 20, true], ["ArrowDown", 15, true], ["PageDown", 5, true],
+    ["End", 3600, true], ["PageUp", 3600, true], ["Home", 0, true], ["PageDown", 0, true],
+  ]);
+  // Elsewhere in the player these keys are not the player's.
+  expect(key(video, "PageDown").defaultPrevented).toBe(false);
+  expect(key(root.querySelector(".pc-level")!, "ArrowUp").defaultPrevented).toBe(false);
+});
+
 it("moves to where the seek bar is dragged, and sets the volume from its slider, at zero muted and brought back by its button", () => {
   const { video, root, set } = setup();
   set({ duration: 8 });

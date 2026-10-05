@@ -174,7 +174,6 @@ export const ZH_TW = {
   "Recording in progress; only language, appearance and icon click can change.": "錄影中，只能變更語言、外觀與點擊圖示。",
   "Could not apply this setting. Your current settings are shown.": "無法套用此設定，已顯示目前的設定。",
   "This window could not load. Close it and open RecordStuff again.": "這個視窗無法載入，請關閉後再開啟 RecordStuff。",
-  "Could not open settings. Close this window and open it again.": "無法開啟設定，請關閉這個視窗後再開一次。",
   "Check for updates…": "檢查更新…",
   "Checking for updates…": "正在檢查更新…",
   "Version {version} is available.": "有可用的新版本：{version}。",

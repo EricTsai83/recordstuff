@@ -138,20 +138,32 @@ export function playerControls(video: HTMLVideoElement, options: PlayerControlsO
   seek.addEventListener("input", () => { video.currentTime = Number(seek.value); sync(); });
   level.addEventListener("input", () => { video.volume = Number(level.value); video.muted = video.volume === 0; });
 
+  /** Kept within the video; a length not known yet bounds nothing, or every step forward would land on 0. */
+  function seekTo(at: number): void {
+    const end = Number.isFinite(video.duration) ? video.duration : Infinity;
+    video.currentTime = Math.min(Math.max(0, at), end);
+  }
+  /**
+   * The seek bar's own keys, in seconds from where the video is, or where they send it. Its `step="any"` would move
+   * Up and Down by 1% of the length and Page Up and Down by 10%: 36 s and 6 min of an hour's recording, a tenth of a
+   * second of a short one. So they move 5 s like the arrows everywhere in the player, and Page Up and Down 10 s.
+   */
+  const SEEK_KEYS: Record<string, (at: number) => number> = {
+    ArrowUp: at => at + 5, ArrowDown: at => at - 5, PageUp: at => at + 10, PageDown: at => at - 10,
+    Home: () => 0, End: () => (Number.isFinite(video.duration) ? video.duration : video.currentTime),
+  };
+
   // The keys YouTube uses, wherever focus is in the player; a focused control keeps its own (Space on a button, arrows on
-  // the volume slider). The seek bar's arrows move 5 s as everywhere else: its `step="any"` would move 1% of the length,
-  // 36 s of an hour's recording and a tenth of a second of a short one.
+  // the volume slider). The arrows move 5 s, the seek bar's other keys as SEEK_KEYS says.
   root.addEventListener("keydown", event => {
     if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
     const target = event.target as HTMLElement;
     const onButton = target instanceof HTMLButtonElement, onVolume = target === level;
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
     if ((key === " " && !onButton) || key === "k") toggle();
-    else if ((key === "ArrowLeft" || key === "ArrowRight") && !onVolume) {
-      // Kept within the video; a length not known yet bounds nothing, or every step forward would land on 0.
-      const end = Number.isFinite(video.duration) ? video.duration : Infinity;
-      video.currentTime = Math.min(Math.max(0, video.currentTime + (key === "ArrowLeft" ? -5 : 5)), end);
-    } else if (key === "m") toggleMute();
+    else if ((key === "ArrowLeft" || key === "ArrowRight") && !onVolume) seekTo(video.currentTime + (key === "ArrowLeft" ? -5 : 5));
+    else if (target === seek && Object.hasOwn(SEEK_KEYS, key)) seekTo(SEEK_KEYS[key]!(video.currentTime));
+    else if (key === "m") toggleMute();
     else if (key === "f") options.fullScreen();
     else return;
     event.preventDefault();

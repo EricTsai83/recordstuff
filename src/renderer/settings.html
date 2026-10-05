@@ -12,17 +12,20 @@
   <main>
     <h1 id="title" class="visually-hidden"></h1>
     <div class="brand" aria-hidden="true"><span class="brand-mark"></span><span class="brand-name">RecordStuff</span></div>
-    <div id="status" class="status" hidden>
-      <span class="status-mark" aria-hidden="true"></span>
-      <div class="status-text">
-        <p id="status-title" class="status-title"></p>
-        <p id="status-detail" class="status-detail"></p>
-        <p id="hint" hidden></p>
-        <button type="button" id="status-secondary" class="status-secondary" hidden></button>
+    <!-- The script puts the status card between the tabs and their content (settings.ts `draw`). -->
+    <form id="settings">
+      <div id="status" class="status" hidden>
+        <span class="status-mark" aria-hidden="true"></span>
+        <div class="status-text">
+          <p id="status-title" class="status-title"></p>
+          <p id="status-detail" class="status-detail"></p>
+          <p id="hint" hidden></p>
+          <p id="status-error" class="status-error" hidden></p>
+          <button type="button" id="status-secondary" class="status-secondary" hidden></button>
+        </div>
+        <button type="button" id="status-action" class="status-action" hidden></button>
       </div>
-      <button type="button" id="status-action" class="status-action" hidden></button>
-    </div>
-    <form id="settings"></form>
+    </form>
     <!-- After the tabs and their content, as the sidebar shows it at its foot: Quit is never the first Tab stop. -->
     <footer id="sidebar-about" class="sidebar-about" hidden>
       <p class="sidebar-error" hidden></p>

@@ -7,7 +7,7 @@ import type { SettingsView } from "../shared/settings-panel";
  * (2026-10-05); the tab strip turns an unread count into a badge without changing its text.
  */
 it("hides the card while ready, shows a problem with its fix and a recording with the lock, and puts Quit in the sidebar's foot", async () => {
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p><button id="status-secondary" hidden></button><button id="status-action" hidden></button></div>'
+  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p><p id="status-error" hidden></p><button id="status-secondary" hidden></button><button id="status-action" hidden></button></div>'
     + '<footer id="sidebar-about" hidden><p class="sidebar-error" hidden></p></footer><p id="feedback"></p><form id="settings"></form>';
   const ready: SettingsView = { language: "en", title: "RecordStuff", hint: "", failure: "",
     status: { tone: "ready", title: "Ready to record", detail: "" },
@@ -22,6 +22,10 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   await vi.waitFor(() => expect(document.getElementById("tab-recording")).toBeTruthy());
   const card = document.getElementById("status")!, detail = document.getElementById("status-detail")!, action = document.getElementById("status-action")!;
   expect(card.hidden).toBe(true);
+  // In the page's order after the tabs and before their content, as the sidebar draws it under them: the first Tab
+  // reaches the tabs, not the card at the sidebar's foot.
+  expect([...document.getElementById("settings")!.children].map(el => el.id || el.className)).toEqual(["tabs", "status", "settings-viewport"]);
+  expect(document.getElementById("settings")!.firstElementChild!.getAttribute("role")).toBe("tablist");
 
   // The sidebar's foot: Quit RecordStuff with its words and mark, and nothing else; the credit, version and links stay in General.
   const foot = document.getElementById("sidebar-about")!;
@@ -44,7 +48,14 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
 
   push({ ...ready, revision: 2, status: { tone: "attention", title: "Output folder unavailable", detail: "Check the output folder.", action: { id: "folder", label: "Change output folder…" } } });
   expect([card.hidden, card.dataset.tone, detail.textContent, action.hidden, action.textContent]).toEqual([false, "attention", "Check the output folder.", false, "Change output folder…"]);
+  // A fix main refuses says so on the card, not only aloud, until the next action.
+  const statusError = document.getElementById("status-error")!;
+  const attention: SettingsView = { ...ready, revision: 2, status: { tone: "attention", title: "Output folder unavailable", detail: "Check the output folder.", action: { id: "folder", label: "Change output folder…" } } };
+  choose.mockImplementationOnce(async () => ({ view: attention, applied: false, failure: "Could not change the output folder. Try again." }) as { view: SettingsView; applied: boolean });
   action.click();
+  await vi.waitFor(() => expect([statusError.hidden, statusError.textContent]).toEqual([false, "Could not change the output folder. Try again."]));
+  action.click();
+  expect(statusError.hidden).toBe(true);
   expect(choose).toHaveBeenLastCalledWith("status", "folder");
   // Main answers with the fixed, ready state: the card has nothing left to say.
   await vi.waitFor(() => expect(card.hidden).toBe(true));
@@ -68,6 +79,13 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   await vi.waitFor(() => expect(document.activeElement?.id).toMatch(/^tab-/));
   expect(document.getElementById("feedback")!.textContent).toBe("Switched to Primary display");
 
+  // The problem goes away by itself (the folder's drive returns) while its fix has focus: the push hides the card, and
+  // the tab keeps the place, so the next Escape does not close the window.
+  push({ ...ready, revision: 2.5, status: { tone: "attention", title: "Output folder unavailable", detail: "", action: { id: "folder", label: "Change output folder…" } } });
+  action.focus();
+  push({ ...ready, revision: 2.6 });
+  expect([card.hidden, document.activeElement?.id]).toEqual([true, "tab-recording"]);
+
   const tab = document.getElementById("tab-failures")!;
   expect([tab.textContent, tab.querySelector(".tab-badge")?.textContent]).toEqual(["Failures (2)", "2"]);
   // The sidebar lists the tabs in a column: Up and Down move between them as Left and Right do (review pass 1, F3).
@@ -81,6 +99,19 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   push({ ...ready, revision: 3, hint: "Recording in progress; only language, appearance and icon click can change.",
     status: { tone: "recording", title: "Recording", detail: "" }, tabs: [ready.tabs[0]!, { id: "failures", label: "Failures" }] });
   expect([card.hidden, card.dataset.tone, detail.hidden, document.getElementById("hint")!.hidden, action.hidden]).toEqual([false, "recording", true, false, true]);
+  // The card is no live region: a state it newly shows is read through #feedback, once, a recording begun from the shortcut included.
+  const feedback = document.getElementById("feedback")!;
+  expect(feedback.textContent).toBe("Recording.");
+  feedback.textContent = "";
+  push({ ...ready, revision: 3.1, hint: "Recording in progress; only language, appearance and icon click can change.",
+    status: { tone: "recording", title: "Recording", detail: "" }, tabs: [ready.tabs[0]!, { id: "failures", label: "Failures" }] });
+  expect(feedback.textContent).toBe("");
+  // A countdown is said as it starts, not every second.
+  push({ ...ready, revision: 3.2, tabs: [ready.tabs[0]!, { id: "failures", label: "Failures" }], status: { tone: "busy", title: "Recording starts in 3 s", detail: "" } });
+  expect(feedback.textContent).toBe("Recording starts in 3 s.");
+  feedback.textContent = "";
+  push({ ...ready, revision: 3.3, tabs: [ready.tabs[0]!, { id: "failures", label: "Failures" }], status: { tone: "busy", title: "Recording starts in 2 s", detail: "" } });
+  expect(feedback.textContent).toBe("");
   // The open tab is on the root, where the stylesheet leaves the lock hint out beside the recordings and failures.
   expect(document.documentElement.dataset.tab).toBe("recording");
   // Switching tabs rebuilt the strip, so the tab is looked up again.

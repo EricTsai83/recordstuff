@@ -76,6 +76,8 @@ main { height: 100dvh; max-width: 720px; margin: auto; padding: 16px 20px 0; dis
 .status-text { min-width: 0; flex: 1; }
 .status-title { margin: 0; font-size: 13.5px; font-weight: 600; letter-spacing: -.005em; }
 .status-detail, #hint { margin: 1px 0 0; color: var(--secondary); font-size: 12px; }
+/* A fix of the card's own that failed, as the diagnostics name a problem on the same surface. */
+.status-error { margin: 3px 0 0; color: var(--warning); font-size: 12px; font-weight: 500; }
 /* The card's second way out (Relaunch beside Open System Settings) is a text link under its words, like a row's secondary action. */
 .status-secondary { display: block; margin: 5px 0 0; padding: 0; border: 0; font-weight: 400; background: transparent; box-shadow: none; color: var(--text); font-size: 12px; text-align: start; text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; }
 :is(button).status-secondary:enabled:not([aria-disabled="true"]):hover { background: transparent; text-decoration-color: currentColor; }
