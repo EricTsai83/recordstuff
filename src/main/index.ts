@@ -47,6 +47,7 @@ import { SavedNotification } from "./saved-notification";
 import { CaptureNotices } from "./capture-notices";
 import { PermissionNotices } from "./permission-notices";
 import { watchReopen, type ReopenWatcher } from "./reopen";
+import { holdSessionEnd } from "./session-end";
 import { SettingsStore } from "./settings";
 import { parseAutoRecord, runAutoRecord } from "./autorecord";
 import { UpdateChecker, fetchVersion, DOWNLOAD_URL, RELEASES_URL, SOURCE_URL, WEBSITE_URL } from "./updates";
@@ -908,6 +909,9 @@ async function main(): Promise<void> {
     exit: async () => { await flushBeforeExit(log); },
     error: (cause) => log(`quit deferred: ${stackOf(cause)}`),
   });
+
+  // Windows ends a session without before-quit: a recording in progress is saved by the normal quit first.
+  holdSessionEnd({ app, platform: process.platform, mediaPending: () => recorder.mediaPending, quit: () => quitCoordinator.quit(), log });
 
   // Opening the app again is the way in when its menu bar icon is hidden (plan 053).
   reopen = watchReopen({ events: app, platform: process.platform, open: () => handleAction("openSettings"), log, now: () => performance.now() });
