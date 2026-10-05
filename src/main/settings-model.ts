@@ -517,7 +517,7 @@ function projectResult(result: RecordingResult, state: RecordingState, ctx: AppC
  * leaves the explanation to the lock `hint`.
  */
 export function settingsStatus(state: RecordingState, ctx: AppContext): SettingsStatus {
-  const status = statusText(state, ctx);
+  const status = { ...statusText(state, ctx), phase: ctx.quitting ? "quitting" as const : state.type };
   if (ctx.quitting) return status;
   const id = statusActionId(state, ctx);
   // The detail says to relaunch if access was just granted: the card offers it, as the tray's permission steps do.

@@ -1531,10 +1531,10 @@ function render(next: SettingsView): void {
       else if (result.persistenceWarning && old.persistenceWarning !== result.persistenceWarning) changes.push(say([result.reason, result.persistenceWarning]));
     }
     // The status card is no live region (`#feedback` stays the one announcer), so a state it newly shows is read here:
-    // a recording started from the shortcut, a save, a problem that appeared. Once per state, not every countdown
-    // second, and not again when a diagnostic already says it; Ready, which the card does not show, says nothing.
+    // a recording started from the shortcut, a save, a problem that appeared, a countdown after starting (the same tone).
+    // Once per state, not every countdown second, and not again when a diagnostic already says it; Ready says nothing.
     const status = next.status, was = previous.status;
-    if (sameLanguage && status && status.tone !== "ready" && (status.tone !== was?.tone || (status.tone === "attention" && status.title !== was?.title))
+    if (sameLanguage && status && status.tone !== "ready" && (status.tone !== was?.tone || status.phase !== was?.phase || (status.tone === "attention" && status.title !== was?.title))
       && !changes.some(change => change.includes(status.title))) changes.unshift(say([status.title, status.detail]));
     if (changes.length) announce(say(changes));
   }

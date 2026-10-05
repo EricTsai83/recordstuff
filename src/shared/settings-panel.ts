@@ -8,6 +8,7 @@
  */
 import type { FullScreenChoice, PlaybackState } from "./video-player";
 import type { Language } from "./i18n";
+import type { RecordingState } from "./state";
 
 export interface SettingsChoice {
   id: string;
@@ -81,6 +82,11 @@ export interface RecordingResultView {
  */
 export interface SettingsStatus {
   tone: "ready" | "busy" | "recording" | "attention";
+  /**
+   * The state it says, which the page reads out once as it begins: starting and the countdown share the busy tone,
+   * and each countdown second changes the title, so neither tells a new state.
+   */
+  phase?: RecordingState["type"] | "quitting";
   title: string;
   /** What to do about an attention state; empty while ready, and while the lock `hint` explains a busy one. */
   detail: string;

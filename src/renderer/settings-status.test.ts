@@ -112,6 +112,17 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   feedback.textContent = "";
   push({ ...ready, revision: 3.3, tabs: [ready.tabs[0]!, { id: "failures", label: "Failures" }], status: { tone: "busy", title: "Recording starts in 2 s", detail: "" } });
   expect(feedback.textContent).toBe("");
+  // The usual way in: starting, then the countdown, both busy. Main names the state, so the countdown is still said, once.
+  const busy = (revision: number, phase: "starting" | "countdown", title: string): SettingsView =>
+    ({ ...ready, revision, tabs: [ready.tabs[0]!, { id: "failures", label: "Failures" }], status: { tone: "busy", phase, title, detail: "" } });
+  push(busy(3.4, "starting", "Starting… Check for system permission prompts"));
+  expect(feedback.textContent).toBe("Starting… Check for system permission prompts.");
+  feedback.textContent = "";
+  push(busy(3.5, "countdown", "Recording starts in 3 s"));
+  expect(feedback.textContent).toBe("Recording starts in 3 s.");
+  feedback.textContent = "";
+  push(busy(3.6, "countdown", "Recording starts in 2 s"));
+  expect(feedback.textContent).toBe("");
   // The open tab is on the root, where the stylesheet leaves the lock hint out beside the recordings and failures.
   expect(document.documentElement.dataset.tab).toBe("recording");
   // Switching tabs rebuilt the strip, so the tab is looked up again.

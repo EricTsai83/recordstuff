@@ -749,18 +749,18 @@ it("explains a Settings shortcut that is not registered, not only a retry button
 describe("the status card", () => {
   it("has nothing to say while ready, whatever the click and the shortcut: the page shows no card then", () => {
     for (const ctx of [context, { ...context, trayClick: "menu" as const }, { ...context, hotkey: { ...context.hotkey, registered: false } }, { ...context, platform: "win32" as const, language: "zh-TW" as const }]) {
-      expect(settingsView(idle, ctx).status).toEqual({ tone: "ready", title: t("Ready to record", ctx.language), detail: "" });
+      expect(settingsView(idle, ctx).status).toEqual({ tone: "ready", phase: "idle", title: t("Ready to record", ctx.language), detail: "" });
     }
   });
   it("names the state like the tray while the lock hint explains it, leaving Stop and Cancel to the tray", () => {
     expect(busy.map((state) => settingsView(state, context).status)).toEqual([
-      { tone: "busy", title: "Starting… Check for system permission prompts", detail: "" },
-      { tone: "busy", title: "Recording starts in 2 s", detail: "" },
-      { tone: "recording", title: "Recording", detail: "" },
-      { tone: "busy", title: "Saving…", detail: "" },
+      { tone: "busy", phase: "starting", title: "Starting… Check for system permission prompts", detail: "" },
+      { tone: "busy", phase: "countdown", title: "Recording starts in 2 s", detail: "" },
+      { tone: "recording", phase: "recording", title: "Recording", detail: "" },
+      { tone: "busy", phase: "stopping", title: "Saving…", detail: "" },
     ]);
-    expect(settingsView(idle, { ...context, quitting: true }).status).toEqual({ tone: "busy", title: "Quitting once the recording is saved or cleaned up…", detail: "" });
-    expect(settingsView(idle, { ...context, quitting: true, quitStep: "metadata" }).status).toEqual({ tone: "busy", title: "Quitting once settings and failure history are saved…", detail: "" });
+    expect(settingsView(idle, { ...context, quitting: true }).status).toEqual({ tone: "busy", phase: "quitting", title: "Quitting once the recording is saved or cleaned up…", detail: "" });
+    expect(settingsView(idle, { ...context, quitting: true, quitStep: "metadata" }).status).toEqual({ tone: "busy", phase: "quitting", title: "Quitting once settings and failure history are saved…", detail: "" });
   });
   it("turns to attention for what stops the next recording, with the fix as its action", () => {
     // Like the tray's permission steps: the system pane first, and Relaunch for access that may already be granted.
@@ -774,7 +774,7 @@ describe("the status card", () => {
     expect(settingsView({ type: "idle", outputDirUnavailable: true }, context).status).toMatchObject({ tone: "attention", title: "Output folder unavailable", action: { id: "folder" } });
     const gone = { ...context, display: { kind: "display" as const, id: "9", label: "Gone" } };
     // The way back, once there is a Primary display to go back to.
-    expect(settingsView(idle, gone).status).toEqual({ tone: "attention", title: "Selected display is unavailable", detail: "" });
+    expect(settingsView(idle, gone).status).toEqual({ tone: "attention", phase: "idle", title: "Selected display is unavailable", detail: "" });
     const withPrimary = { ...gone, displays: [{ id: "1", label: "Built-in", logicalWidth: 1512, logicalHeight: 982, scaleFactor: 2, internal: true, primary: true }] };
     expect(settingsView(idle, withPrimary).status?.action).toEqual({ id: "primary", label: "Use Primary display" });
     expect(settingsAction(idle, withPrimary, "status", "primary")).toEqual({ setDisplay: { kind: "primary" } });
