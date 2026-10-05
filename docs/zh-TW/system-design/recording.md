@@ -192,6 +192,6 @@ Main 的來源 handler 可記錄具體拒絕原因，取代 renderer 的泛用 A
 
 「取消錄影」也可取消資料夾開啟與擷取準備；重複的開始切換在 start 的第一秒內忽略，之後會取消這次 start（plan 065）。準備例外會釋放 tracks。Renderer Blob 傳送與 main writer 等待佇列各有 64 MiB 上限。finish 共用同一個 Promise、拒絕後續 append，並與 abandon 協調，避免重複清理刪到較新的錄影。
 
-完整複製發佈前，先確認可用空間至少有整個錄影大小加 8 MiB。複製後的 open／sync／close 失敗會移除目的檔，保留原始錄影。成功發佈後先持久化 finalized-path checkpoint 再刪 sentinel；下次啟動遇到完成 checkpoint 不再誤報中斷。發佈與 checkpoint 之間的小型崩潰空窗無法證明完成，因此未完成 sentinel 明確說明完成狀態未知，可能已有正式檔。
+完整複製發佈前，先確認可用空間至少有整個錄影大小加 8 MiB。複製後的 open／sync／close 失敗會移除目的檔，保留原始錄影。成功發佈後先持久化 finalized-path checkpoint 再刪 sentinel；下次啟動遇到完成 checkpoint 不再誤報中斷。發佈與 checkpoint 之間的小型崩潰空窗無法證明完成，因此未完成 sentinel 明確說明完成狀態未知，可能已有正式檔。失敗時也一樣，會在發布失敗紀錄之前先把它的 id 記到 sentinel（`failureId`）：失敗的清理還在進行時程序就結束了（例如分享磁碟卡住後被強制結束），下次啟動會以同一個 id 回報留下的 sentinel，因此失敗紀錄只有一筆：已儲存的那筆，或在它沒能儲存時改用 sentinel 的那筆（2026-10-05）。
 
 退出保護在第一次可互動的非同步等待之前安裝。媒體安全後，設定、視窗尺寸與 log 佇列最多等待五秒 flush；逾時延後退出並重新開放操作。解析度上限無法確認時會在設定的「螢幕」列顯示，直到下一次錄影開始或改選其他螢幕或解析度上限為止，並在該次錄影結束後以通知告知（[desktop](desktop.md#tray-與通知)），詳細擷取警告仍保留於 log。擷取程序只在錄影可能超過上限時於回報中標記（`capUnconfirmed`）：上限無法套用或無法重新量測，或限制後的畫面反而更大；比目標小的畫面只記警告。

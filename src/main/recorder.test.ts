@@ -2122,7 +2122,7 @@ describe("stalled capture guard", () => {
 
 describe("interruption sentinel lifecycle", () => {
   /** `failWrites` fails that many writes first; `fail` fails every one. */
-  function sentinels(options: { fail?: boolean; failWrites?: number; complete?: (sessionId: string) => Promise<void> } = {}) {
+  function sentinels(options: { fail?: boolean; failWrites?: number; complete?: (sessionId: string) => Promise<void>; failing?: boolean } = {}) {
     const files = new Map<string, SessionSentinel>();
     const calls: string[] = [];
     let failures = options.failWrites ?? 0;
@@ -2133,6 +2133,7 @@ describe("interruption sentinel lifecycle", () => {
         files.set(sentinel.sessionId, sentinel);
       },
       ...(options.complete ? { complete: async (sessionId: string) => { calls.push(`complete ${sessionId}`); await options.complete!(sessionId); } } : {}),
+      ...(options.failing ? { failing: async (sessionId: string, failureId: string) => { calls.push(`failing ${sessionId} ${failureId}`); } } : {}),
       remove: async (sessionId: string) => { calls.push(`remove ${sessionId}`); files.delete(sessionId); } };
   }
   const timingLine = (log: ReturnType<typeof vi.fn>): string | undefined =>
@@ -2194,6 +2195,38 @@ describe("interruption sentinel lifecycle", () => {
     expect(ctx.events.filter((event) => event.type === "failed")).toEqual([expect.objectContaining({ code })]);
     expect(store.calls).toEqual(["write 2026-09-11 14-30-00.recording.mp4", "remove s1"]);
     expect(store.files.size).toBe(0);
+  });
+
+  it("names the failure on the sentinel before its report is published, so a crash during its cleanup reports it once", async () => {
+    const store = sentinels({ failing: true });
+    const ctx = setup({ deps: { sentinels: store } });
+    ctx.recorder.subscribe((event) => { if (event.type === "failureStatus") store.calls.push(`report ${event.result.outcome}`); });
+    await startRecording(ctx);
+    ctx.host.crash();
+    await flush();
+    const reported = ctx.events.find((event) => event.type === "failureStatus");
+    const id = reported?.type === "failureStatus" ? reported.result.id : "";
+    expect(store.calls).toEqual(["write 2026-09-11 14-30-00.recording.mp4", `failing s1 ${id}`, "report pending", "report partial", "remove s1"]);
+  });
+
+  it("names the failure after a sentinel write still running, and tries no further name once the attempt ended (review pass 1, F1)", async () => {
+    const store = sentinels({ failing: true });
+    let releaseWrite: (() => void) | undefined;
+    const write = store.write;
+    // The first write is still running when the opening deadline fails the attempt.
+    store.write = async (sentinel) => { await new Promise<void>((resolve) => { releaseWrite = resolve; }); store.write = write; await write(sentinel); };
+    let rejectOpen: ((cause: unknown) => void) | undefined;
+    const ctx = setup({ deps: { sentinels: store }, openWriter: () => new Promise((_resolve, reject) => { rejectOpen = reject; }) });
+    ctx.recorder.toggle();
+    await vi.advanceTimersByTimeAsync(8000);
+    releaseWrite!();
+    await flush();
+    // The name was taken after all: the ended attempt does not move on to "-2" and rewrite its sentinel.
+    rejectOpen!(Object.assign(new Error("exists"), { cause: { code: "EEXIST" } }));
+    await flush();
+    const reported = ctx.events.find((event) => event.type === "failureStatus");
+    const id = reported?.type === "failureStatus" ? reported.result.id : "";
+    expect(store.calls).toEqual(["write 2026-09-11 14-30-00.recording.mp4", `failing s1 ${id}`, "remove s1"]);
   });
 
   it("isolates a throwing subscriber: the others still hear the failure and the sentinel is still removed", async () => {

@@ -118,6 +118,8 @@ export interface RecorderDeps {
     write(sentinel: SessionSentinel): Promise<void>;
     remove(sessionId: string): Promise<void>;
     complete?(sessionId: string, finalPath: string): Promise<void>;
+    /** Names the failure the session is about to be reported under, so a launch after a crash reports it once. */
+    failing?(sessionId: string, failureId: string): Promise<void>;
   };
   /** Overrides for the `RECORDING_HEALTH` guards Recorder applies, for tests; FileWriter reads its own backlog limit. */
   health?: Partial<RecorderHealth>;
@@ -236,6 +238,10 @@ interface Session {
   sentinelFailed: boolean;
   /** The latest write succeeded, so the file exists to be checkpointed; an earlier attempt's failure does not count. */
   sentinelWritten: boolean;
+  /** The sentinel's writes, checkpoint and removal, one at a time: they share the atomic writer's temporary file. */
+  sentinelOps: Promise<void>;
+  /** The failure this session is being reported under; every later sentinel write keeps it (`SessionSentinel.failureId`). */
+  failureId?: string;
 }
 
 const DEFAULT_START_TIMEOUT_MS = 8000;
@@ -596,6 +602,7 @@ export class Recorder {
       sentinel: false,
       sentinelFailed: false,
       sentinelWritten: false,
+      sentinelOps: Promise.resolve(),
     };
     this.session = session;
     session.opening = Promise.resolve().then(async () => {
@@ -689,20 +696,32 @@ export class Recorder {
       } catch (cause) {
         // `FileWriteError` wraps the open error as its cause.
         const errno = errnoCode(cause instanceof Error ? cause.cause : undefined);
-        if (errno !== "EEXIST" || attempt >= MAX_NAME_ATTEMPTS) throw cause;
+        // An attempt that already ended (its deadline, a cancel) creates no further name or sentinel.
+        if (errno !== "EEXIST" || attempt >= MAX_NAME_ATTEMPTS || this.session !== session) throw cause;
       }
     }
   }
 
+  /** Runs one sentinel operation after the session's earlier ones; the chain survives a failed one. */
+  private sentinelOp(session: Session, op: () => Promise<void>): Promise<void> {
+    const run = session.sentinelOps.then(op);
+    session.sentinelOps = run.catch(() => undefined);
+    return run;
+  }
+
   /** A failed sentinel write is logged once and never blocks the recording. */
-  private async markInFlight(session: Session, recordingPath: string): Promise<void> {
-    const sentinels = this.deps.sentinels;
-    if (!sentinels) return;
-    const earlier = session.sentinelWritten;
+  private markInFlight(session: Session, recordingPath: string): Promise<void> {
+    if (!this.deps.sentinels) return Promise.resolve();
     session.sentinel = true;
+    return this.sentinelOp(session, () => this.writeSentinel(session, recordingPath));
+  }
+
+  private async writeSentinel(session: Session, recordingPath: string): Promise<void> {
+    const sentinels = this.deps.sentinels!;
+    const earlier = session.sentinelWritten;
     session.sentinelWritten = false;
     try {
-      await sentinels.write({ sessionId: session.id, startedAt: session.startedAt, recordingPath });
+      await sentinels.write({ sessionId: session.id, startedAt: session.startedAt, recordingPath, ...(session.failureId ? { failureId: session.failureId } : {}) });
       session.sentinelWritten = true;
     } catch (cause) {
       if (!session.sentinelFailed) this.deps.log(`recorder: session ${session.id} interruption sentinel not written: ${messageOf(cause)}`);
@@ -719,10 +738,13 @@ export class Recorder {
 
   /** Every terminal outcome, including failures, removes the session's own sentinel. */
   private async clearInFlight(session: Session): Promise<void> {
-    if (!session.sentinel || !this.deps.sentinels) return;
+    const sentinels = this.deps.sentinels;
+    if (!session.sentinel || !sentinels) return;
     session.sentinel = false;
-    try { await this.deps.sentinels.remove(session.id); }
-    catch (cause) { this.deps.log(`recorder: session ${session.id} interruption sentinel not removed: ${messageOf(cause)}`); }
+    await this.sentinelOp(session, async () => {
+      try { await sentinels.remove(session.id); }
+      catch (cause) { this.deps.log(`recorder: session ${session.id} interruption sentinel not removed: ${messageOf(cause)}`); }
+    });
   }
 
   private handleHostMessage(message: HostMessage): void {
@@ -1022,8 +1044,10 @@ export class Recorder {
     const sentinels = this.deps.sentinels;
     if (sentinels?.complete && session.sentinelWritten) {
       const checkpointAt = this.monotonic();
-      try { await sentinels.complete(session.id, finalPath); }
-      catch (cause) { this.deps.log(`recorder: completion checkpoint failed: ${messageOf(cause)}`); }
+      await this.sentinelOp(session, async () => {
+        try { await sentinels.complete!(session.id, finalPath); }
+        catch (cause) { this.deps.log(`recorder: completion checkpoint failed: ${messageOf(cause)}`); }
+      });
       checkpointMs = this.monotonic() - checkpointAt;
     }
     const early = session.stoppedEarly ? ` (stopped early: ${EARLY_STOP_TEXT[session.stoppedEarly]})` : "";
@@ -1192,6 +1216,19 @@ export class Recorder {
     }
     const result: RecordingFailure = { id: randomUUID(), occurredAt,
       code, detail, outcome: "pending", ...(session.writer?.recordingPath ? { recordingPath: session.writer.recordingPath } : {}) };
+    // Before the report: should the process end while the cleanup below still runs (a stalled share, then a force
+    // quit), the launch reports the leftover sentinel under this id, the saved report's own, instead of a second
+    // entry saying it ended while recording.
+    // After any sentinel write still running, and kept by any later one (review pass 1, F1).
+    session.failureId = result.id;
+    const sentinels = this.deps.sentinels;
+    if (sentinels?.failing && session.sentinel) {
+      await this.sentinelOp(session, async () => {
+        if (!session.sentinelWritten) return;
+        try { await sentinels.failing!(session.id, result.id); }
+        catch (cause) { this.deps.log(`recorder: session ${session.id} failure checkpoint not written: ${messageOf(cause)}`); }
+      });
+    }
     await this.publishFailure(result);
     let partialPath: string | undefined;
     let outcome: FailureOutcome = "empty";

@@ -18,6 +18,11 @@ export interface SessionSentinel {
   /** The temporary `.recording.mp4` this session is about to create or has created. */
   recordingPath: string;
   finalizedPath?: string;
+  /**
+   * The failure this session was reported under, named before that report is published: a process that ended while
+   * the failure's cleanup still ran leaves its sentinel, and the launch reports it under the same id, one entry.
+   */
+  failureId?: string;
 }
 
 const SUFFIX = ".json";
@@ -34,7 +39,9 @@ function parse(sessionId: string, text: string): SessionSentinel | "newer" | und
       !path.isAbsolute(value.recordingPath) || value.recordingPath.includes("\0")) return undefined;
   const finalizedPath = value.finalizedPath;
   if (finalizedPath !== undefined && (typeof finalizedPath !== "string" || !path.isAbsolute(finalizedPath) || finalizedPath.includes("\0"))) return undefined;
-  return { sessionId, startedAt: value.startedAt, recordingPath: value.recordingPath, ...(finalizedPath ? { finalizedPath } : {}) };
+  const failureId = value.failureId;
+  if (failureId !== undefined && (typeof failureId !== "string" || !VALID_ID.test(failureId))) return undefined;
+  return { sessionId, startedAt: value.startedAt, recordingPath: value.recordingPath, ...(finalizedPath ? { finalizedPath } : {}), ...(failureId ? { failureId } : {}) };
 }
 
 export class SessionSentinels {
@@ -60,6 +67,14 @@ export class SessionSentinels {
     const sentinel = parse(sessionId, await fs.promises.readFile(this.file(sessionId), "utf8"));
     if (!sentinel || sentinel === "newer") throw new Error("invalid sentinel");
     await this.write({ ...sentinel, finalizedPath });
+  }
+
+  /** Names the failure this session is being reported under (`SessionSentinel.failureId`). */
+  async failing(sessionId: string, failureId: string): Promise<void> {
+    if (!VALID_ID.test(sessionId) || !VALID_ID.test(failureId)) throw new Error("invalid session or failure id");
+    const sentinel = parse(sessionId, await fs.promises.readFile(this.file(sessionId), "utf8"));
+    if (!sentinel || sentinel === "newer") throw new Error("invalid sentinel");
+    await this.write({ ...sentinel, failureId });
   }
 
   /** Never throws: completed checkpoints are safe to leave for the next launch. */
@@ -130,10 +145,14 @@ export class SessionSentinels {
   }
 }
 
-/** Launch-time evidence as one failure-history entry. The ID is derived from the session, so a retried launch cannot add it twice. */
+/**
+ * Launch-time evidence as one failure-history entry. The ID is derived from the session, so a retried launch cannot
+ * add it twice; a session whose failure was already reported takes that failure's id, so the history, which keeps one
+ * entry per id, shows it once (the saved report when it was saved, this one when the process ended first).
+ */
 function interruptionFailure(sentinel: SessionSentinel): RecordingFailure {
   return {
-    id: `interrupted-${sentinel.sessionId}`,
+    id: sentinel.failureId ?? `interrupted-${sentinel.sessionId}`,
     occurredAt: sentinel.startedAt,
     code: "app_terminated",
     detail: `session ${sentinel.sessionId} started ${sentinel.startedAt} had no confirmed terminal checkpoint when RecordStuff last ended; ` +

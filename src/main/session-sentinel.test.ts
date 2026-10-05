@@ -64,6 +64,27 @@ it("turns each leftover sentinel into one entry, partial only while its file exi
   expect(third.results.all.find(r => r.id === "interrupted-a1")).toMatchObject({ acknowledged: true });
 });
 
+it("reports a session whose failure was already being reported once, under that failure's id (2026-10-05)", async () => {
+  // The previous process saved its pending report, then ended while the failure's cleanup still ran.
+  const failureId = "3f1c2b9e-0d4a-4c3b-9a51-7e2f0c8d6b10";
+  const stalled = sentinel("c3", "stalled");
+  const previous = new SessionSentinels(sentinelDir);
+  await previous.write(stalled);
+  await previous.failing("c3", failureId);
+  await new RecordingResultStore(historyFile).save([{ id: failureId, occurredAt: "2026-09-25T10:00:05.000Z", code: "output_write_failed",
+    detail: "share went away", outcome: "pending", recordingPath: stalled.recordingPath, acknowledged: false }]);
+  const { results } = await launch();
+  expect(results.all).toEqual([expect.objectContaining({ id: failureId, code: "output_write_failed", outcome: "unknown" })]);
+  expect(remaining()).toEqual([]);
+
+  // Ended before the report was saved: the sentinel is the only evidence, and takes the same id.
+  fs.rmSync(historyFile);
+  await new SessionSentinels(sentinelDir).write({ ...stalled, failureId });
+  const second = await launch();
+  expect(second.results.all).toEqual([expect.objectContaining({ id: failureId, code: "app_terminated", outcome: "unknown" })]);
+  expect(remaining()).toEqual([]);
+});
+
 it("keeps sentinels while the history cannot be saved and never adds an entry twice", async () => {
   await new SessionSentinels(sentinelDir).write(sentinel("c3", "c3"));
   fs.writeFileSync(historyFile, "{ corrupt");
