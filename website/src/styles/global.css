@@ -306,6 +306,22 @@ kbd {
   display: none;
 }
 
+/* After a switch, the chosen platform's blocks rise in, so the switch reads as what changed them. */
+:root[data-platform-switched] [data-only] {
+  animation: platform-in 220ms cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+@keyframes platform-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-platform-switched] [data-only] {
+    animation: none;
+  }
+}
+
 /* What joins two platforms' links ("Help for macOS or Help for Windows"): only while both show. */
 :root[data-platform] .platform-joiner {
   display: none;

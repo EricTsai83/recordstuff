@@ -40,6 +40,8 @@ const { macIds, windowsIds } = Astro.props;
       root.dataset.platform = platform;
       control.querySelectorAll("button").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.choice === platform)));
     };
+    // Only a change after load animates what it shows (global.css): the first platform appears without motion.
+    const switched = () => { root.dataset.platformSwitched = ""; };
     let stored;
     try { stored = localStorage.getItem(KEY); } catch { /* storage blocked: fall back to the system */ }
     const system = navigator.userAgentData?.platform || navigator.userAgent;
@@ -49,6 +51,7 @@ const { macIds, windowsIds } = Astro.props;
       const button = event.target.closest("button[data-choice]");
       if (!button) return;
       const platform = button.dataset.choice;
+      if (platform !== root.dataset.platform) switched();
       set(platform);
       try { localStorage.setItem(KEY, platform); } catch { /* the choice just isn't remembered */ }
       // A fragment into the other platform would switch back on reload.
@@ -57,7 +60,10 @@ const { macIds, windowsIds } = Astro.props;
     });
     addEventListener("hashchange", () => {
       const linked = owner(location.hash);
-      if (linked) set(linked);
+      if (linked && linked !== root.dataset.platform) {
+        switched();
+        set(linked);
+      }
     });
   })();
 </script>
