@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DisplayInfo, DisplayPreference } from "../shared/display";
-import { DisplayRequest, resolveDisplayPreference, selectScreenSource } from "./display-source";
+import { DisplayRequest, primaryDisplayChoosable, resolveDisplayPreference, selectScreenSource, uniqueDisplay } from "./display-source";
 const display: DisplayInfo = { id: "1", label: "Same name", logicalWidth: 100, logicalHeight: 100, scaleFactor: 2, internal: true, primary: true };
 const explicit: DisplayPreference = { kind: "display", id: "1", label: "Same name" };
 const primary: DisplayPreference = { kind: "primary" };
@@ -13,6 +13,11 @@ describe("display resolution", () => {
     expect(resolve(explicit, [{ ...display, id: "2" }])).toEqual({ ok: false, detail: "target_missing" });
     expect(resolve(explicit, [display, display])).toMatchObject({ ok: false });
     expect(resolve(explicit, [{ ...display, id: "2" }, { ...display, id: "3" }])).toMatchObject({ ok: false });
+  });
+  it("names a display by an id only one display has, for recording, the Screen row and the way back to Primary alike", () => {
+    const other = { ...display, id: "2", primary: false };
+    expect([uniqueDisplay([display, other], "2"), uniqueDisplay([display, other], "3"), uniqueDisplay([display, display], "1")]).toEqual([other, undefined, undefined]);
+    expect([primaryDisplayChoosable([display, other]), primaryDisplayChoosable([display, display]), primaryDisplayChoosable([other])]).toEqual([true, false, false]);
   });
   it("rejects an ambiguous primary source and applies explicit empty-source precedence", () => {
     for (const sources of [[], [{ display_id: "" }], [source, source]]) {

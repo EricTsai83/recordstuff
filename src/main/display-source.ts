@@ -2,12 +2,20 @@ import type { DisplayFailure, DisplayInfo, DisplayPreference } from "../shared/d
 import type { ErrorCode } from "../shared/state";
 
 export type DisplayResolution = { ok: true; id: string; label: string } | { ok: false; detail: DisplayFailure };
+/**
+ * The one display under `id`, or undefined when none or several have it: an id two displays share names neither.
+ * Recording, the Screen row and the way back to Primary display all choose by this rule, so they always agree.
+ */
+export function uniqueDisplay(displays: readonly DisplayInfo[], id: string): DisplayInfo | undefined {
+  const matches = displays.filter((d) => d.id === id);
+  return matches.length === 1 ? matches[0] : undefined;
+}
 export function resolveDisplayPreference({ displays, primaryDisplayId, preference }: {
   displays: readonly DisplayInfo[]; primaryDisplayId: string; preference: DisplayPreference;
 }): DisplayResolution {
   if (preference.kind === "primary") return { ok: true, id: primaryDisplayId, label: displays.find((d) => d.id === primaryDisplayId)?.label ?? "" };
-  const matches = displays.filter((d) => d.id === preference.id);
-  return matches.length === 1 ? { ok: true, id: preference.id, label: matches[0]!.label } : { ok: false, detail: "target_missing" };
+  const display = uniqueDisplay(displays, preference.id);
+  return display ? { ok: true, id: preference.id, label: display.label } : { ok: false, detail: "target_missing" };
 }
 type Source = { display_id: string };
 export type Selection<S> = { ok: true; source: S; rule: "primary" | "exact" } | { ok: false; code: ErrorCode; detail: DisplayFailure };
@@ -116,7 +124,7 @@ export class DisplayRequest<S extends Source> {
  * display exists, under an id no other display shares. Settings and the tray offer it by the same rule.
  */
 export function primaryDisplayChoosable(displays: readonly DisplayInfo[]): boolean {
-  return displays.some((d) => d.primary && displays.filter((other) => other.id === d.id).length === 1);
+  return displays.some((d) => d.primary && uniqueDisplay(displays, d.id) !== undefined);
 }
 
 /** Whether the saved display is available now, and why not; the tray and Settings both project it, so they always agree. */

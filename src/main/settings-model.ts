@@ -12,7 +12,7 @@
  */
 import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure, persistenceWarning } from "./recording-result";
 import { displayLabel, displayFailureText, type DisplayInfo } from "../shared/display";
-import { displayResolution, primaryDisplayChoosable } from "./display-source";
+import { displayResolution, primaryDisplayChoosable, uniqueDisplay } from "./display-source";
 import { translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
 import {
   FRAME_RATES,
@@ -110,7 +110,7 @@ function chosenDisplayUnavailable(ctx: AppContext): boolean {
 function screenGroup(ctx: AppContext, enabled: boolean): Group {
   const preference = ctx.display;
   // An id two displays share cannot be chosen.
-  const unique = (display: DisplayInfo): boolean => ctx.displays.filter((d) => d.id === display.id).length === 1;
+  const unique = (display: DisplayInfo): boolean => uniqueDisplay(ctx.displays, display.id) !== undefined;
   const choices: Group["choices"] = [{ id: "primary", label: t("Primary display", ctx.language), enabled: true,
     checked: preference.kind === "primary", action: { setDisplay: { kind: "primary" } } }];
   for (const display of ctx.displays.filter(unique)) {
