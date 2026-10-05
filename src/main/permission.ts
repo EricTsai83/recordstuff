@@ -33,7 +33,9 @@
  * polls stage 1 alone rather than stacking native requests. A failed
  * validation retries with a bounded backoff counted from its completion.
  *
- * There is no window, so `activate` is unreliable; poll every 5 seconds.
+ * Permission changes in System Settings, and a menu bar app is not reliably
+ * activated afterwards (its Settings window is usually closed), so `activate`
+ * alone would miss it; poll every 5 seconds.
  * Windows needs nothing and this module is never used there.
  */
 import { app, desktopCapturer, shell, systemPreferences } from "electron";

@@ -50,3 +50,15 @@ it("leaves on a double-click but not on a held Escape's repeats, and names its w
   video.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
   expect(exit).toHaveBeenCalledWith({ time: 0, playing: false, volume: 1, muted: true });
 });
+
+it("reads in the language main gives it, for assistive technology too", async () => {
+  await load("src=recordstuff-media%3A%2F%2Fvideo%2Fa&t=0&play=0&vol=1&mute=0&lang=zh-TW");
+  expect([document.documentElement.lang, document.getElementById("exit")!.getAttribute("aria-label")]).toEqual(["zh-Hant", "結束全螢幕"]);
+  await load("src=recordstuff-media%3A%2F%2Fvideo%2Fa&t=0&play=0&vol=1&mute=0");
+  expect(document.documentElement.lang).toBe("en");
+});
+
+it("starts at full volume from the beginning when main leaves the numbers out", async () => {
+  const { video } = await load("src=recordstuff-media%3A%2F%2Fvideo%2Fa&play=0&mute=0&vol=");
+  expect([video.volume, video.muted]).toEqual([1, false]);
+});

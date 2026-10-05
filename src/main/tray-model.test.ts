@@ -106,8 +106,8 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
 
   it("starting names the shortcut on Cancel recording, as the countdown does (plan 065)", () => {
     const cancel = (ctx: AppContext) => trayModel({ type: "starting" }, ctx).menu.find((i) => i.kind === "item" && i.action === "cancelCountdown");
-    expect(cancel(mac)).toMatchObject({ label: "取消錄影", toolTip: "以 ⌘⇧1 取消錄影", accelerator: "CommandOrControl+Shift+1" });
-    expect(cancel({ ...mac, language: "en" })).toMatchObject({ label: "Cancel recording", toolTip: "Cancel recording with ⌘⇧1", accelerator: "CommandOrControl+Shift+1" });
+    expect(cancel(mac)).toMatchObject({ label: "取消錄影", toolTip: "以 ⇧⌘1 取消錄影", accelerator: "CommandOrControl+Shift+1" });
+    expect(cancel({ ...mac, language: "en" })).toMatchObject({ label: "Cancel recording", toolTip: "Cancel recording with ⇧⌘1", accelerator: "CommandOrControl+Shift+1" });
     for (const hotkey of [{ ...DEFAULT_HOTKEY, registered: false }, { ...DEFAULT_HOTKEY, enabled: false, registered: true }]) {
       expect(cancel({ ...mac, hotkey })).not.toHaveProperty("toolTip");
       expect(cancel({ ...mac, hotkey })).not.toHaveProperty("accelerator");
@@ -138,7 +138,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(m.tooltip).toBe("RecordStuff: 3 秒後開始錄影");
     expect(labels(m.menu)).toEqual(["3 秒後開始錄影", "取消錄影", "—", "開啟 RecordStuff", "顯示最後一個錄影", "—", "結束 RecordStuff"]);
     expect(enabledActions(m.menu)).toEqual(["cancelCountdown", "openSettings", "showLastRecording", "quit"]);
-    expect(m.menu.find((i) => i.kind === "item" && i.action === "cancelCountdown")).toMatchObject({ toolTip: "以 ⌘⇧1 取消錄影", accelerator: "CommandOrControl+Shift+1" });
+    expect(m.menu.find((i) => i.kind === "item" && i.action === "cancelCountdown")).toMatchObject({ toolTip: "以 ⇧⌘1 取消錄影", accelerator: "CommandOrControl+Shift+1" });
     expect(trayModel({ type: "countdown", remaining: 1 }, ctx).menu[0]).toMatchObject({ label: "1 秒後開始錄影", enabled: false });
     const english = trayModel({ type: "countdown", remaining: 2 }, { ...ctx, language: "en" });
     expect(english.tooltip).toBe("RecordStuff: Recording starts in 2 s");
@@ -294,7 +294,7 @@ describe("notification text", () => {
   });
   it("a refused shortcut registration points at Settings, in the user's language", () => {
     expect(hotkeyRegistrationFailedNotification(DEFAULT_HOTKEY.accelerator, "darwin", "zh-TW").body).toBe(
-      "無法註冊 ⌘⇧1，可能被其他 App 佔用。請在設定改用其他快捷鍵。",
+      "無法註冊 ⇧⌘1，可能被其他 App 佔用。請在設定改用其他快捷鍵。",
     );
     expect(hotkeyRegistrationFailedNotification(DEFAULT_HOTKEY.accelerator, "win32").body).toContain("Ctrl+Shift+1");
   });
@@ -336,7 +336,7 @@ describe("Stop tooltip (plan 016)", () => {
     );
 
   it("names the registered accelerator with macOS symbols", () => {
-    expect(stop(withHotkey())).toMatchObject({ toolTip: "Start / stop recording with ⌘⇧1" });
+    expect(stop(withHotkey())).toMatchObject({ toolTip: "Start / stop recording with ⇧⌘1" });
   });
 
   it("says nothing when the shortcut is off or unregistered", () => {
@@ -488,7 +488,7 @@ describe("one group order in every state (plan 048)", () => {
     const primary = (state: RecordingState, ctx: AppContext) => trayModel(state, ctx).menu.find((i) => i.kind === "item" && ["start", "stop", "cancelCountdown"].includes(String(i.action)));
     const states: RecordingState[] = [{ type: "idle" }, { type: "recording", startedAt: "" }, { type: "countdown", remaining: 3 }];
     for (const state of states) {
-      expect(primary(state, mac), state.type).toMatchObject({ accelerator: "CommandOrControl+Shift+1", toolTip: expect.stringContaining("⌘⇧1") });
+      expect(primary(state, mac), state.type).toMatchObject({ accelerator: "CommandOrControl+Shift+1", toolTip: expect.stringContaining("⇧⌘1") });
       for (const hotkey of [{ ...DEFAULT_HOTKEY, registered: false }, { ...DEFAULT_HOTKEY, enabled: false, registered: true }]) {
         const entry = primary(state, { ...mac, hotkey });
         expect(entry, state.type).not.toHaveProperty("accelerator");

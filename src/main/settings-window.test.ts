@@ -162,6 +162,11 @@ describe("settings window lifecycle", () => {
     // An id the listing does not have plays nothing.
     const refused = await s.choose(s.event(), "recordingFile:gone", { action: "fullscreen", state });
     expect([refused.applied, fullScreen.play.mock.calls.length]).toEqual([false, 1]);
+    // Nor does anything while a quit runs, as every other action is refused then.
+    s.live.quitting = true;
+    const quitting = await s.choose(s.event(), "recordingFile:abc", { action: "fullscreen", state });
+    expect([quitting.applied, fullScreen.play.mock.calls.length]).toEqual([false, 1]);
+    delete s.live.quitting;
     // Its window closing ends a video still playing for it.
     window.close();
     expect(fullScreen.close).toHaveBeenCalled();

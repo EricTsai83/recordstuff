@@ -2,10 +2,18 @@
 import { execFile } from "node:child_process";
 import { scrubbedEnv } from "./runner-env.mts";
 import { setTimeout as delay } from "node:timers/promises";
-import type { SessionRecord } from "../../src/shared/session-record.ts";
+import { EARLY_STOP_TEXT, type SessionRecord } from "../../src/shared/session-record.ts";
 import { currentState, lastStartIndex } from "./acceptance.mts";
 import type { LogCursor, LogReader } from "./log-reader.mts";
 import { isSessionRecordLine, parseSessionRecord } from "./session-records.mts";
+import { escapeRegExp } from "./processes.mts";
+
+/** The human `saved <path>` line, whose path an early stop follows with ` (stopped early: <reason>)` (session-log.ts). */
+export const SAVED_LINE = new RegExp(`\\] saved (.+?)(?: \\(stopped early: (?:${Object.values(EARLY_STOP_TEXT).map(escapeRegExp).join("|")})\\))?$`);
+/** The saved file a `saved` line names, without an early stop's reason. */
+export function savedPathOf(line: string): string | undefined {
+  return SAVED_LINE.exec(line)?.[1];
+}
 
 /** A newly launched app logs ready/permission but no initial state transition. */
 export function confirmedIdle(lines: readonly string[]): boolean {
@@ -100,7 +108,7 @@ export function recordingOutcome(lines: readonly string[], session?: string): { 
     if (!terminal) return { settled: false };
     return terminal.kind === "saved" ? { settled: true, saved: terminal.path } : { settled: true, failure: `${terminal.code} ${terminal.detail}` };
   }
-  const saved = lines.map((line) => /\] saved (.+)$/.exec(line)?.[1]).find(Boolean);
+  const saved = lines.map(savedPathOf).find(Boolean);
   if (saved) return { settled: true, saved };
   const failed = lines.map((line) => /\] failed: (.*)$/.exec(line)?.[1]).find((text) => text !== undefined);
   return failed === undefined ? { settled: false } : { settled: true, failure: failed };

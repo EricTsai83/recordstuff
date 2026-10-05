@@ -1,8 +1,10 @@
 /**
  * Registers the global start/stop shortcut with Electron `globalShortcut`
- * (docs/system-design/desktop.md). A press calls the same `onToggle` as a
- * left click on the tray icon, so `Recorder.toggle()` remains the only
- * decision point: presses while starting or stopping are ignored there.
+ * (docs/system-design/desktop.md). A press calls `onToggle`, the same toggle
+ * as the tray icon's left click when it is set to record, so `Recorder.toggle()`
+ * remains the only decision point: presses while starting or stopping are
+ * ignored there. The menu's Start and Stop items are not toggles: they ask
+ * for the one they name.
  *
  * Registration can fail when another app owns the combination. That is
  * logged here and reported to the caller, never swallowed: `AppShortcuts`
@@ -20,7 +22,7 @@ import { messageOf } from "./errors";
 /**
  * Chromium's macOS listener binds an accelerator to whichever key types its
  * character in the current layout. Under Zhuyin only the keypad types 1, so
- * ⌘⇧1 moved there while the editor records physical keys and refuses the
+ * ⇧⌘1 moved there while the editor records physical keys and refuses the
  * keypad. Disabling the feature registers the fixed US physical key
  * (docs/system-design/desktop.md#recording-shortcut).
  */
@@ -55,7 +57,7 @@ export type HotkeyRequestResult = HotkeyStatus | { kind: "deferred" };
 
 export interface RecordingHotkeyOptions {
   globalShortcut: GlobalShortcutApi;
-  /** The tray's left-click action. */
+  /** Start or stop, as the tray icon's left click does when it is set to record. */
   onToggle: () => void;
   log?: (message: string) => void;
 }

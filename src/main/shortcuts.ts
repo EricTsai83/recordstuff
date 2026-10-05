@@ -15,7 +15,7 @@ import { SettingsHotkey, type SettingsHotkeyStatus } from "./settings-hotkey";
 export interface AppShortcutsOptions {
   globalShortcut: GlobalShortcutApi;
   platform: string;
-  /** The tray's left-click action. */
+  /** Start or stop, as the tray icon's left click does when it is set to record. */
   toggle: () => void;
   openSettings: () => void;
   store: { readonly hotkey: HotkeySettings; setHotkey(setting: HotkeySettings): Promise<void> };

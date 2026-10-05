@@ -3,7 +3,7 @@
  * only (the callback), and the panel is judged by observation. `--observe` (plan 063, step 5)
  * also asserts through Accessibility that the window opened in front with focus, that Tab moves
  * the focused control, that the application menu binds no Reload or Developer Tools shortcut and
- * that ⌘R and ⌘⌥I leave the focus where it was, that ⌘A then ⌘C copies the panel's text (the
+ * that ⌘R and ⌥⌘I leave the focus where it was, that ⌘A then ⌘C copies the panel's text (the
  * user's pasteboard is saved first and restored), and that minimize, restore, close and reopen work,
  * as scripted evidence kept apart from the callback. It also reads the opened window's corner through
  * Accessibility (the page fills the window under the inset window controls, the controls lie in the zone
@@ -145,11 +145,11 @@ try {
     // add no window; the menu shows either binding whatever the panel does.
     const menus = await ax.menuBar(Number(pid));
     const { bound, missing } = judgeAppMenu(menus);
-    check("the application menu binds neither ⌘R (Reload) nor ⌘⌥I (Developer Tools) and keeps ⌘C, ⌘A, ⌘M and ⌘Q",
+    check("the application menu binds neither ⌘R (Reload) nor ⌥⌘I (Developer Tools) and keeps ⌘C, ⌘A, ⌘M and ⌘Q",
       bound.length === 0 && missing.length === 0,
       `menus ${menus.map(menu => menu.title).join(", ")}${bound.length ? `; bound ${bound.join(", ")}` : ""}${missing.length ? `; missing ${missing.join(", ")}` : ""}`);
     // A reload resets the focus Tab placed, and Developer Tools would take it.
-    for (const [code, flags, name] of [[KEY.r, FLAG.command, "⌘R"], [KEY.i, FLAG.command | FLAG.option, "⌘⌥I"]] as const) {
+    for (const [code, flags, name] of [[KEY.r, FLAG.command, "⌘R"], [KEY.i, FLAG.command | FLAG.option, "⌥⌘I"]] as const) {
       const kept = describe(await ax.windows(Number(pid)));
       await chord(code, name, flags);
       let moved: WindowSnapshot | undefined;
@@ -221,8 +221,9 @@ try {
 } catch (error) {
   await restorePasteboard();
   desktop?.end();
-  // A pasteboard left changed is a failed cleanup, which outranks a blocked round.
-  const blocked = (error instanceof DesktopBlockedError || error instanceof AccessibilityBlockedError)
+  // A lock seen during the round blocks it, whatever step then failed (docs/testing.md); a pasteboard left changed
+  // is a failed cleanup, which outranks a blocked round.
+  const blocked = (error instanceof DesktopBlockedError || error instanceof AccessibilityBlockedError || Boolean(desktop?.lockedAt))
     && !observations.some(o => o.check === PASTEBOARD_RESTORED && o.ok === false);
   const seen = observations.map(o => `${o.ok === "blocked" ? "BLOCKED" : o.ok ? "PASS" : "FAIL"} ${o.check}: ${o.seen}`).join("\n");
   // ⌘Q is never sent blind after a failure: another app may be in front, and the round's signal may be aborted.

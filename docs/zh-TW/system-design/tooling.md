@@ -275,7 +275,7 @@ CI 從 repository 根目錄執行 Vercel CLI，平台專案的 Root Directory �
 
 ### 更新功能驗收
 
-在 RecordStuff 已結束時執行 `pnpm acceptance:updates`。需要 macOS arm64、Node 24、既有本機簽章身分、Chrome、ffmpeg／ffprobe，以及 System Events 輔助使用權限。任何鍵盤輸入法都可以：隔離 fixture 使用預設 ⌘⇧1，自 plan 043 起依實體鍵位註冊。在那之前，注音（Bopomofo）會把它移到數字鍵盤，第一段錄影因此逾時。新簽章的 fixture 也可能觸發 macOS「要求略過系統私密視窗選擇器」的提示。沒有回應時，兩段錄影期間它都停在素材中央，fixture 結束後關閉。Runner 本身不會回應它；該回合的執行者可以依維護者授權的[例外](../acceptance.md#依影響追加案例)按「允許」。會在主螢幕進行兩段短錄影；擷取期間停止其他音訊並避免操作桌面。腳本不會結束既有 RecordStuff、不取代安裝版、不斷網，也不寫入真正的使用者設定。
+在 RecordStuff 已結束時執行 `pnpm acceptance:updates`。需要 macOS arm64、Node 24、既有本機簽章身分、Chrome、ffmpeg／ffprobe，以及 System Events 輔助使用權限。任何鍵盤輸入法都可以：隔離 fixture 使用預設 ⇧⌘1，自 plan 043 起依實體鍵位註冊。在那之前，注音（Bopomofo）會把它移到數字鍵盤，第一段錄影因此逾時。新簽章的 fixture 也可能觸發 macOS「要求略過系統私密視窗選擇器」的提示。沒有回應時，兩段錄影期間它都停在素材中央，fixture 結束後關閉。Runner 本身不會回應它；該回合的執行者可以依維護者授權的[例外](../acceptance.md#依影響追加案例)按「允許」。會在主螢幕進行兩段短錄影；擷取期間停止其他音訊並避免操作桌面。腳本不會結束既有 RecordStuff、不取代安裝版、不斷網，也不寫入真正的使用者設定。
 
 Runner 將原始碼與建置資源複製至專用報告目錄，只修改該副本，再執行 `pnpm start:app`。沿用正式更新 action handler、AppTray context、SettingsStore、Recorder、隱藏擷取主機與 shutdown 流程。只在測試副本中替換固定 HTTP 回應與時鐘，隔離設定／log／錄影，並攔截 `shell.openExternal` 核對 URL。正常建置沒有測試命令通道；若正式程式接線改變，anchor 檢查會停止，避免測到過期的替代流程。
 
@@ -325,9 +325,9 @@ pnpm acceptance:settings-shortcut -- --observe   # 另外以輔助使用檢查�
 pnpm acceptance:settings-shortcut -- --observe --quit   # 最後按 ⌘Q，並確認產物的所有程序都結束
 ```
 
-設定關閉、另一個 App 在前景時，這個 macOS arm64 腳本會核對本機 bundle 程序、最新 log session 與目前設定鍵註冊，再透過 System Events 送出 ⌘⌥,。擷取暫停、衝突或註冊失敗時拒絕送鍵。成功退出只代表收到本次設定 callback（最多等 30 秒），不代表視窗可見或聚焦。每次報告與 log 都寫入 `docs/verification/measurements/` 下的獨立目錄。
+設定關閉、另一個 App 在前景時，這個 macOS arm64 腳本會核對本機 bundle 程序、最新 log session 與目前設定鍵註冊，再透過 System Events 送出 ⌥⌘,。擷取暫停、衝突或註冊失敗時拒絕送鍵。成功退出只代表收到本次設定 callback（最多等 30 秒），不代表視窗可見或聚焦。每次報告與 log 都寫入 `docs/verification/measurements/` 下的獨立目錄。
 
-`--observe`（plan 063）在設定已開啟時拒絕執行；它先讓 Finder 置前、送出按鍵，再透過輔助使用斷言：設定視窗是 main 且有焦點、RecordStuff 在前景；Tab 會移動焦點所在的控制項（先設定 `AXManualAccessibility`，這是輔助軟體使用的開關，讓 Chromium 公開網頁焦點）；應用程式選單沒有綁定 ⌘R（重新載入）或 ⌘⌥I（開發者工具），並保留 ⌘C、⌘A、⌘M 與 ⌘Q（設定沒有可貼上的欄位，因此不要求 ⌘V），依選單的快捷鍵判斷，因為開發者工具可能停靠在視窗內而不新增視窗；⌘R 與 ⌘⌥I 送出後 2 秒內焦點不變，重新載入會重設焦點；⌘A 再 ⌘C 會把面板文字（含兩個分頁名稱）放進剪貼簿（複製錯誤細節是面板唯一的文字用途；先完整保存使用者剪貼簿的每個項目與類型，無論本輪如何結束都會還原；剪貼簿含有目前讀不到的資料（例如 Finder 檔案 promise）時不動它，此項記為 BLOCKED；還原失敗時保留暫存檔並使本輪失敗）；⌘M 會最小化；第二次送鍵會把它還原到前景；⌘W 會關閉；第三次送鍵會重新開啟。callback 與輔助使用檢查分開列為腳本證據，面板保持開啟；加 `--quit` 時改以在設定中按 ⌘Q 結束本輪，並斷言產物的所有程序在 30 秒內結束；在 ⌘Q 之前失敗或被中斷的回合不會盲目送出 ⌘Q，而是回報 `Cleanup incomplete` 與仍在執行的 pid。開啟後、尚未捲動前，它也透過輔助使用讀取視窗左上角並斷言：頁面填滿整個視窗（沒有標題列）、三個視窗按鈕位於 `TRAFFIC_LIGHT_ZONE`（src/shared/window-controls.ts，頁面為它們留下的角落；macOS 26 畫的是 16 pt、間隔 7 pt 的按鈕，距角落 79 × 33 pt 為止）之內，且沒有可點擊的網頁元素與它重疊；接著以 `screencapture -R` 存下 `settings-window.png`，這是唯一含視窗按鈕的 App 視窗截圖，供觀察判斷（無法截圖時本輪記為 blocked）。各語言、外觀與尺寸的排版仍由 `pnpm acceptance:settings` 的截圖或觀察判斷。權限拒絕只回報，不自動修改；沒有使用 IPC 或測試專用開窗入口。OS 衝突與錄影持續需各自驗證。
+`--observe`（plan 063）在設定已開啟時拒絕執行；它先讓 Finder 置前、送出按鍵，再透過輔助使用斷言：設定視窗是 main 且有焦點、RecordStuff 在前景；Tab 會移動焦點所在的控制項（先設定 `AXManualAccessibility`，這是輔助軟體使用的開關，讓 Chromium 公開網頁焦點）；應用程式選單沒有綁定 ⌘R（重新載入）或 ⌥⌘I（開發者工具），並保留 ⌘C、⌘A、⌘M 與 ⌘Q（設定沒有可貼上的欄位，因此不要求 ⌘V），依選單的快捷鍵判斷，因為開發者工具可能停靠在視窗內而不新增視窗；⌘R 與 ⌥⌘I 送出後 2 秒內焦點不變，重新載入會重設焦點；⌘A 再 ⌘C 會把面板文字（含兩個分頁名稱）放進剪貼簿（複製錯誤細節是面板唯一的文字用途；先完整保存使用者剪貼簿的每個項目與類型，無論本輪如何結束都會還原；剪貼簿含有目前讀不到的資料（例如 Finder 檔案 promise）時不動它，此項記為 BLOCKED；還原失敗時保留暫存檔並使本輪失敗）；⌘M 會最小化；第二次送鍵會把它還原到前景；⌘W 會關閉；第三次送鍵會重新開啟。callback 與輔助使用檢查分開列為腳本證據，面板保持開啟；加 `--quit` 時改以在設定中按 ⌘Q 結束本輪，並斷言產物的所有程序在 30 秒內結束；在 ⌘Q 之前失敗或被中斷的回合不會盲目送出 ⌘Q，而是回報 `Cleanup incomplete` 與仍在執行的 pid。開啟後、尚未捲動前，它也透過輔助使用讀取視窗左上角並斷言：頁面填滿整個視窗（沒有標題列）、三個視窗按鈕位於 `TRAFFIC_LIGHT_ZONE`（src/shared/window-controls.ts，頁面為它們留下的角落；macOS 26 畫的是 16 pt、間隔 7 pt 的按鈕，距角落 79 × 33 pt 為止）之內，且沒有可點擊的網頁元素與它重疊；接著以 `screencapture -R` 存下 `settings-window.png`，這是唯一含視窗按鈕的 App 視窗截圖，供觀察判斷（無法截圖時本輪記為 blocked）。各語言、外觀與尺寸的排版仍由 `pnpm acceptance:settings` 的截圖或觀察判斷。權限拒絕只回報，不自動修改；沒有使用 IPC 或測試專用開窗入口。OS 衝突與錄影持續需各自驗證。
 
 `pnpm acceptance:shortcut` 另執行第三個隔離的設定階段，使用正式 main／preload／頁面，透過受控註冊 adapter 驗證既存平台等價衝突、恢復、雙語拒絕、擷取暫停與 renderer 崩潰清理。測試會最小化真正的 Electron 視窗，再經註冊 callback 還原，斷言視窗數量與焦點。這屬於整合證據，與原生 Computer Use、真正 OS 衝突測試分開記錄；三個程序及暫存偏好皆會清理。
 
@@ -343,7 +343,7 @@ Plan 043 停用 Chromium 的 `LayoutAwareGlobalHotkeys`，讓全域快捷鍵依�
 - **選擇輸入法。** runner 讀取目前的輸入法與鍵盤配置，接著依序嘗試已啟用、可選取的鍵盤輸入法，目前的輸入法排第一。它停在第一個「數字列不輸入任何數字、數字鍵盤 7 仍輸入 7」的配置：依配置查找的數字快捷鍵，正是在這種配置下被移到數字鍵盤。`-- --source <id>` 只嘗試指定的輸入法；未啟用時，在任何變更之前就回報 blocked。runner 從不新增或啟用輸入法，也不改鍵盤設定。
 - **啟用輸入法。** 輸入法只有在文字欄位啟用它時，才會套用自己的配置。從背景程序選取時，它會沿用先前的配置，檢查也會在 bug 存在時照樣通過。因此對輸入法，runner 會開一個自己的小視窗並聚焦其中的文字欄位，最多等 8 秒讓配置回報變更，再關閉視窗。這會短暫搶走焦點。配置未在時限內改變時回報 blocked。
 - **受測 App。** Electron fixture 依 [shortcut-failure](../../../scripts/fixtures/shortcut-failure.ts) 的 boundary 模式載入建置好的 `out/main/index.js`：userData 與 log 都是隔離的，儲存的錄影快捷鍵為 `CommandOrControl+Control+Alt+Shift+7`。註冊會到達真正的 `globalShortcut`，但按鍵只被記錄，不會呼叫正式的 toggle，所以不會錄影，也不會出現權限提示。
-- **按鍵。** System Events 送出三個 key code。設定快捷鍵 ⌘⌥,（key code 43）是送達對照組，必須觸發。數字列 7（key code 26）必須觸發。數字鍵盤 7（key code 89）在 1.5 秒內不得觸發。沒有被任何程式註冊的組合鍵會送到最前面的 App。
+- **按鍵。** System Events 送出三個 key code。設定快捷鍵 ⌥⌘,（key code 43）是送達對照組，必須觸發。數字列 7（key code 26）必須觸發。數字鍵盤 7（key code 89）在 1.5 秒內不得觸發。沒有被任何程式註冊的組合鍵會送到最前面的 App。
 - **還原。** 不論成功、失敗、逾時、SIGINT 或 SIGTERM，都會還原原本的輸入法並確認；無法確認的還原算清理失敗。選取輸入法等同從輸入法選單選擇，因此 macOS 的最近使用清單可能改變。輸入法會保留它套用的配置直到下次使用；這屬於輸入法本身的狀態，不會還原。
 
 `-- --drill-layout-aware` 是預設流程之外的負向對照。fixture 會在 app ready 之前移除正式程式設定的 `disable-features`，讓 Chromium 依配置查找的功能恢復成 plan 043 之前的狀態。這時數字列的按鍵必須失敗、數字鍵盤會觸發；這次執行以 exit 1 結束，並照樣還原輸入法。報告會註明 drill 是否偵測到依配置查找。
@@ -420,7 +420,7 @@ fixture 只從完整簽章的 Electron.app 啟動（plan 062）：macOS 拒絕 `
 
 Plan 035 的原生驗收需要一些真實故障無法隨時產生的失敗狀態：平常只持續幾毫秒的 pending 結果、關檔失敗後的 unknown、緩慢或失敗的歷史儲存，以及預先放好的歷史資料。`pnpm acceptance:controlled` 為此建置一份清楚標示、已簽章的 App 副本。它和更新 fixture 一樣，把原始碼複製到 `docs/verification/measurements/<timestamp>-controlled/` 下的新 run 目錄，只透過 anchor 檢查在該副本插樁（[controlled-acceptance.mts](../../../scripts/lib/controlled-acceptance.mts)），再執行副本裡的 `pnpm start:app`。Bundle identifier 與簽章身分維持開發版的設定，因此沿用同一份螢幕錄製與通知權限。Tray、設定、Recorder、FileWriter、失敗歷史、通知與退出流程都是正式程式碼，一般建置沒有命令通道。副本只有三處不同：
 
-- **隔離資料。** userData、log 與預設輸出資料夾都在 run 目錄內，從不讀寫維護者的設定、失敗歷史或 `~/Movies/RecordStuff`。此 build 以預設偏好啟動（English、通知開啟、倒數 3 秒且有提示音、⌘⇧1）。
+- **隔離資料。** userData、log 與預設輸出資料夾都在 run 目錄內，從不讀寫維護者的設定、失敗歷史或 `~/Movies/RecordStuff`。此 build 以預設偏好啟動（English、通知開啟、倒數 3 秒且有提示音、⇧⌘1）。
 - **標示。** 每個 tray tooltip 開頭都是 `[Controlled acceptance build]`，log 中有一行 `controlled:` 記錄 run 目錄。這個 build 的證據屬於受控狀態證據：證明原生呈現與互動，不代表真實磁碟或擷取故障。
 - **故障注入點**（[controlled-faults.ts](../../../scripts/fixtures/controlled-faults.ts)），啟用前全部關閉：
   - `cleanup=hold` 在每個失敗的最終結果寫入歷史前先暫停，使 pending 結果（處理中、「知道了」停用、無法顯示檔案）持續顯示、退出被延後、該 session 若有中斷 sentinel 也會保留，直到 `release cleanup`。背後的檔案處理其實已經完成。

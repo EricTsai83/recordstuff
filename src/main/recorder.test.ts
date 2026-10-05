@@ -529,6 +529,21 @@ describe("Recorder failures", () => {
     expect(ctx.recorder.state).toEqual({ type: "idle", outputDirUnavailable: true });
   });
 
+  it("a capture host that throws on stop still lets the attempt settle, and the next one start", async () => {
+    const logs: string[] = [];
+    const ctx = setup({ log: (message) => logs.push(message) });
+    ctx.host.stop = () => { throw new Error("port closed"); };
+    ctx.recorder.toggle();
+    await flush();
+    ctx.recorder.cancelCountdown("menu");
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+    expect(logs).toContain("recorder: session s1 stop request failed: port closed");
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.host.started).toEqual(["s1", "s1"]);
+  });
+
   it("a cancel after the writer opened clears the unavailable folder", async () => {
     let attempt = 0;
     const ctx = setup({
@@ -867,6 +882,26 @@ describe("Recorder review fixes", () => {
     recorder.toggle();
     await flush();
     expect(started).toEqual(["s1"]);
+  });
+
+  it("a session start hook that throws is logged, and the attempt still goes on instead of jamming the recorder", async () => {
+    const host = new FakeHost();
+    const logs: string[] = [];
+    const recorder = new Recorder({
+      host,
+      outputDir: () => "/out",
+      quality: () => DEFAULT_QUALITY,
+      ensureWritableDir: async () => undefined,
+      openWriter: async () => new FakeWriter("a", "b"),
+      newSessionId: () => "s1",
+      onSessionStart: () => { throw new Error("no display request"); },
+      log: (message) => logs.push(message),
+    });
+    recorder.toggle();
+    await flush();
+    expect(host.started).toEqual(["s1"]);
+    expect(recorder.state.type).not.toBe("idle");
+    expect(logs).toContain("recorder: session s1 start hook failed: no display request");
   });
 
   it("mapHostError replaces the host's code with the owner's known cause", async () => {

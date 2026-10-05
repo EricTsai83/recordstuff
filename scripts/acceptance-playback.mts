@@ -136,7 +136,8 @@ try {
 } catch (error) {
   desktop?.end();
   problem = error instanceof Error ? error.message : String(error);
-  verdict = error instanceof Blocked || error instanceof DesktopBlockedError ? "blocked" : "fail";
+  // A lock seen during the round blocks it, whatever the step that then failed (docs/testing.md).
+  verdict = error instanceof Blocked || error instanceof DesktopBlockedError || desktop?.lockedAt ? "blocked" : "fail";
 } finally {
   const left = owned ? await cleanup().catch((cause: unknown) => `cleanup failed: ${String(cause)}`) : undefined;
   if (left) { verdict = "fail"; problem = [problem, `CLEANUP INCOMPLETE: ${left}`].filter(Boolean).join("; "); }

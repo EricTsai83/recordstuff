@@ -5,7 +5,7 @@
  * Both fade while a video plays and the pointer rests, and stay while it is paused. Nothing runs on a timer while
  * the video is still: the seek bar follows `timeupdate`, which fires only while it plays.
  */
-import { VIDEO_TIMING } from "../shared/video-player";
+import { VIDEO_TIMING, formatDuration } from "../shared/video-player";
 
 /** The controls' names for assistive technology and tooltips, in the page's language. */
 export interface PlayerLabels {
@@ -52,12 +52,6 @@ export function mark(d: string): SVGSVGElement {
   svg.append(path);
   return svg;
 }
-/** `1:05`, or `1:02:05` past an hour; an unknown length reads `0:00`. */
-export function clock(seconds: number): string {
-  const total = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
-  const h = Math.floor(total / 3600), m = Math.floor(total / 60) % 60, s = total % 60;
-  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
-}
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, className: string): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag); el.className = className; return el;
 }
@@ -68,6 +62,16 @@ export function controlButton(id: string, className = ""): HTMLButtonElement {
 }
 function name(el: HTMLElement, label: string): void {
   if (el.getAttribute("aria-label") !== label) { el.setAttribute("aria-label", label); el.title = label; }
+}
+/**
+ * The controls follow `timeupdate`, about four times a second while playing: what has not changed is not written
+ * again, so neither the page nor assistive technology is told of a change that did not happen.
+ */
+function setAttr(el: HTMLElement, attribute: string, value: string): void {
+  if (el.getAttribute(attribute) !== value) el.setAttribute(attribute, value);
+}
+function setFill(el: HTMLElement, value: string): void {
+  if (el.style.getPropertyValue("--pc-fill") !== value) el.style.setProperty("--pc-fill", value);
 }
 
 export function playerControls(video: HTMLVideoElement, options: PlayerControlsOptions): PlayerControls {
@@ -95,7 +99,7 @@ export function playerControls(video: HTMLVideoElement, options: PlayerControlsO
   const playing = (): boolean => !video.paused && !video.ended;
   function sync(): void {
     const paused = !playing();
-    root.classList.toggle("pc-paused", paused);
+    if (root.classList.contains("pc-paused") !== paused) root.classList.toggle("pc-paused", paused);
     const shown = paused ? "play" : "pause";
     if (play.dataset.mark !== shown) { play.dataset.mark = shown; play.replaceChildren(mark(MARKS[shown])); }
     name(play, paused ? labels.play : labels.pause);
@@ -103,20 +107,21 @@ export function playerControls(video: HTMLVideoElement, options: PlayerControlsO
     if (seek.max !== String(duration)) seek.max = String(duration);
     if (!scrubbing) seek.value = String(Math.min(video.currentTime || 0, duration));
     const at = Number(seek.value);
-    seek.style.setProperty("--pc-fill", `${duration ? (at / duration) * 100 : 0}%`);
-    const reading = `${clock(at)} / ${clock(duration)}`;
+    setFill(seek, `${duration ? (at / duration) * 100 : 0}%`);
+    const reading = `${formatDuration(at)} / ${formatDuration(duration)}`;
     if (time.textContent !== reading) time.textContent = reading;
-    seek.setAttribute("aria-valuetext", reading);
+    setAttr(seek, "aria-valuetext", reading);
     name(seek, labels.position);
     const silent = video.muted || video.volume === 0;
     const volumeMark = silent ? "muted" : "volume";
     if (mute.dataset.mark !== volumeMark) { mute.dataset.mark = volumeMark; mute.replaceChildren(mark(MARKS[volumeMark])); }
     name(mute, silent ? labels.unmute : labels.mute);
-    level.value = String(silent ? 0 : video.volume);
+    const volume = String(silent ? 0 : video.volume);
+    if (level.value !== volume) level.value = volume;
     const percent = `${Math.round(Number(level.value) * 100)}%`;
-    level.style.setProperty("--pc-fill", percent);
+    setFill(level, percent);
     // Read as a percentage, as the seek bar reads as the time; muted reads 0%, as the slider shows.
-    if (level.getAttribute("aria-valuetext") !== percent) level.setAttribute("aria-valuetext", percent);
+    setAttr(level, "aria-valuetext", percent);
     name(level, labels.volume);
   }
   for (const type of ["play", "pause", "ended", "timeupdate", "durationchange", "loadedmetadata", "volumechange", "seeked", "emptied"])
@@ -146,8 +151,9 @@ export function playerControls(video: HTMLVideoElement, options: PlayerControlsO
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
     if ((key === " " && !onButton) || key === "k") toggle();
     else if ((key === "ArrowLeft" || key === "ArrowRight") && !onSlider) {
-      const duration = Number.isFinite(video.duration) ? video.duration : 0;
-      video.currentTime = Math.min(Math.max(0, video.currentTime + (key === "ArrowLeft" ? -5 : 5)), duration);
+      // Kept within the video; a length not known yet bounds nothing, or every step forward would land on 0.
+      const end = Number.isFinite(video.duration) ? video.duration : Infinity;
+      video.currentTime = Math.min(Math.max(0, video.currentTime + (key === "ArrowLeft" ? -5 : 5)), end);
     } else if (key === "m") toggleMute();
     else if (key === "f") options.fullScreen();
     else return;

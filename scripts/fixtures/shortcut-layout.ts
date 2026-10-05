@@ -190,9 +190,9 @@ function check() {
     // The control proves delivery; the number row must fire before the keypad
     // window opens, so a late press cannot be credited to the wrong key.
     const plan = [
-      { name: 'Settings control ⌘⌥, (key code 43)', keyCode: 43, modifiers: 'command down, option down', accelerator: settingsKey, expected: true },
-      { name: 'number-row ⌘⌃⌥⇧7 (key code 26)', keyCode: 26, modifiers: all, accelerator, expected: true },
-      { name: 'keypad ⌘⌃⌥⇧7 (key code 89)', keyCode: 89, modifiers: all, accelerator, expected: false },
+      { name: 'Settings control ⌥⌘, (key code 43)', keyCode: 43, modifiers: 'command down, option down', accelerator: settingsKey, expected: true },
+      { name: 'number-row ⌃⌥⇧⌘7 (key code 26)', keyCode: 26, modifiers: all, accelerator, expected: true },
+      { name: 'keypad ⌃⌥⇧⌘7 (key code 89)', keyCode: 89, modifiers: all, accelerator, expected: false },
     ];
     for (const key of plan) {
       const count = () => presses.filter(press => press.accelerator === key.accelerator).length;

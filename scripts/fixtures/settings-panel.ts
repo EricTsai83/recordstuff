@@ -58,9 +58,22 @@ const frontmost = (): string | undefined => {
   return lsappinfoName(spawnSync("lsappinfo", ["info", "-only", "name", asn], { encoding: "utf8", timeout: 2000 }).stdout ?? "");
 };
 const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Polls until `check` holds. A check that throws, such as one reading an element the page has not made yet, counts
+ * as not yet: the case then passes or fails on its own record, never by stopping the round. Giving up says the last
+ * error thrown, and whether the checks after it still answered no.
+ */
 const until = async (check: () => Promise<boolean>, timeout = 3000): Promise<boolean> => {
   const deadline = Date.now() + timeout;
-  do { if (await check()) return true; await settle(25); } while (Date.now() < deadline);
+  let failure: unknown;
+  let answered = false;
+  do {
+    try { if (await check()) return true; answered = true; } catch (error) { failure = error; answered = false; }
+    await settle(25);
+  } while (Date.now() < deadline);
+  if (failure !== undefined) {
+    console.log(`until: gave up after ${timeout} ms; a check threw ${String(failure)}${answered ? ", and the later checks answered no" : ""}`);
+  }
   return false;
 };
 
@@ -102,7 +115,7 @@ const view = (language: Language): SettingsView => {
         note: zh ? "這個快捷鍵可能被其他 App 佔用。" : "Another app may be using this shortcut.",
         enabled: true,
         choices: [
-          { id: "CommandOrControl+Alt+Shift+R", label: "⌘⌥⇧R", enabled: true, checked: true },
+          { id: "CommandOrControl+Alt+Shift+R", label: "⌥⇧⌘R", enabled: true, checked: true },
           { id: "off", label: zh ? "關閉" : "Off", enabled: true, checked: false },
         ],
       },
@@ -231,7 +244,7 @@ const pictureOf = (red: number, green: number, blue: number): Buffer => {
     const shade = 1 - (y / height) * 0.45, at = (y * width + x) * 4;
     pixels[at] = Math.round(blue * shade); pixels[at + 1] = Math.round(green * shade); pixels[at + 2] = Math.round(red * shade); pixels[at + 3] = 255;
   }
-  return nativeImage.createFromBitmap(pixels, { width, height }).toPNG();
+  return nativeImage.createFromBitmap(pixels, { width, height }).toJPEG(85);
 };
 /**
  * The Recordings tab's folder, read by the app's own `RecordingsLibrary` and served by its handler under the app's
@@ -687,6 +700,17 @@ async function run() {
           const expected = (state === "locked" ? card.shown && card.tone === "busy" : !card.shown && card.tone === "ready")
             && (size === "default" ? card.foot && card.buttons === 1 && card.quit === translate("Quit RecordStuff", lang) : !card.foot);
           record(`${lang}/${scheme}/${size}/${state}: the status card speaks only when needed; Quit RecordStuff alone sits in the sidebar's foot when wide`, expected, JSON.stringify(card));
+          if (size === "default" && state === "recording") {
+            // The foot follows the tabs and their content in the document too: from the top of the page, the first
+            // Tab reaches the tabs, never Quit RecordStuff at the sidebar's foot. Focusing the body moves the starting point there.
+            await read(window, `(() => { document.body.tabIndex = -1; document.body.focus(); document.body.removeAttribute("tabindex"); })()`);
+            window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });
+            window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });
+            await settle(100);
+            const first = await read<string>(window, `document.activeElement?.id ?? ""`);
+            record(`${lang}/${scheme}/${size}/${state}: the first Tab from the top reaches the tabs, not Quit RecordStuff in the sidebar's foot`,
+              card.foot && first.startsWith("tab-"), JSON.stringify({ first }));
+          }
         }
         await shot(`panel-${lang}-${scheme}-${size}-${state}.png`);
         if (state === "library") {

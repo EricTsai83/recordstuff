@@ -71,7 +71,7 @@ export const installSteps: Step[] = [
   },
   {
     title: "Record from the menu bar",
-    body: "Click the icon and choose Start recording, or press ⌘⇧1. Stop the same way.",
+    body: "Click the icon and choose Start recording, or press ⇧⌘1. Stop the same way.",
   },
 ];
 
@@ -157,7 +157,7 @@ export const settings = [
   { setting: "Video quality", options: "Economy / Standard / High", fallback: "Standard" },
   { setting: "Resolution cap", options: "1080p / 1440p / 4K / Source", fallback: "Source" },
   { setting: "Frame rate", options: "30 / 60 fps", fallback: "30 fps" },
-  { setting: "Shortcut", options: "⌘⇧1 / custom / off", fallback: "⌘⇧1" },
+  { setting: "Shortcut", options: "⇧⌘1 / custom / off", fallback: "⇧⌘1" },
   { setting: "Icon click", options: "Open the menu / Start or stop", fallback: "Open the menu" },
 ] as const;
 

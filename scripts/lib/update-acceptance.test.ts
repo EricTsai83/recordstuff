@@ -25,7 +25,7 @@ describe('update acceptance boundary', () => {
   it('fails closed when production wiring drifts or an anchor is duplicated', () => {
     expect(() => instrumentUpdateAcceptance(source.replace('localVersion: app.getVersion(), settled,', 'localVersion: "changed", settled,'), '/tmp/test')).toThrow('anchor changed');
     expect(() => instrumentUpdateAcceptance(source.replace('show: (savedPath, stoppedEarly) => tray.notifySaved(savedPath, stoppedEarly),', 'show: otherNotificationPath,'), '/tmp/test')).toThrow('anchor changed');
-    expect(() => instrumentUpdateAcceptance(source + '\nlet currentLanguage: Language = DEFAULT_LANGUAGE;', '/tmp/test')).toThrow('anchor changed');
+    expect(() => instrumentUpdateAcceptance(source + '\nlet appLanguage: () => Language = () => DEFAULT_LANGUAGE;', '/tmp/test')).toThrow('anchor changed');
   });
   const c = (status: CaseResult['status'], required = true): CaseResult => ({ name: 'case', status, required, detail: '' });
   it('does not let missing, blocked or unexecuted required cases count as pass', () => {

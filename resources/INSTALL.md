@@ -30,7 +30,7 @@ installation guide; it is linked from every GitHub release. The sections up to
    If a separate system audio recording prompt appears, allow it as well
    to record sound playing on your computer.
 6. Click the menu bar icon to start recording, then click it again to stop.
-   You can also press Command-Shift-1 (⌘⇧1) from any app; Settings → General
+   You can also press Shift-Command-1 (⇧⌘1) from any app; Settings → General
    lets you enter a custom combination or turn the shortcut off.
    Settings → Recording settings → Screen selects one whole screen; the default
    follows the primary display. A selected display must be available.

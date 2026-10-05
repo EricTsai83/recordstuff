@@ -317,13 +317,13 @@ export interface AppMenu {
 
 /**
  * The key equivalents RecordStuff's application menu must and must not bind
- * (src/main/index.ts): Electron's default View menu answers ⌘R and ⌘⌥I in
+ * (src/main/index.ts): Electron's default View menu answers ⌘R and ⌥⌘I in
  * Settings, while Edit and the App and Window menus keep copy and select all
  * (the panel's only text use: copying an error's details), minimize and quit.
  * Settings has no field to paste into, so ⌘V is not required. Modifiers are
  * `AXMenuItemCmdModifiers` (0 is ⌘ alone).
  */
-const MENU_FORBIDDEN = [{ key: "R", modifiers: 0, name: "⌘R (Reload)" }, { key: "I", modifiers: 2, name: "⌘⌥I (Developer Tools)" }];
+const MENU_FORBIDDEN = [{ key: "R", modifiers: 0, name: "⌘R (Reload)" }, { key: "I", modifiers: 2, name: "⌥⌘I (Developer Tools)" }];
 const MENU_REQUIRED = [{ key: "C", name: "⌘C" }, { key: "A", name: "⌘A" }, { key: "M", name: "⌘M" }, { key: "Q", name: "⌘Q" }].map(entry => ({ ...entry, modifiers: 0 }));
 
 /** Which forbidden shortcuts some item binds, and which required ones none does. */

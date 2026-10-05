@@ -611,7 +611,10 @@ export class Recorder {
       if (this.session !== session) return;
       session.writer = await this.openUniqueWriter(session, formatTimestamp(requested));
     });
-    this.deps.onSessionStart?.(session.id);
+    // Isolated like the overlay and the subscribers: a throw here would leave the session set with no state to end it,
+    // refusing every later start. Without its preparation the attempt fails through the normal capture path.
+    try { this.deps.onSessionStart?.(session.id); }
+    catch (cause) { this.deps.log(`recorder: session ${session.id} start hook failed: ${messageOf(cause)}`); }
     this.setState({ type: "starting" });
     session.timer = setTimeout(() => {
       if (this.cancelMarked(session, "opening the folder timed out")) return;
@@ -935,7 +938,10 @@ export class Recorder {
     this.clearCountdown(session);
     this.clearHealth(session);
     this.closeOverlay(session);
-    if (session.phase !== "opening") this.deps.host.stop(session.id);
+    if (session.phase === "opening") return;
+    // The session is already gone: a throw here would leave its state with nothing to settle it.
+    try { this.deps.host.stop(session.id); }
+    catch (cause) { this.deps.log(`recorder: session ${session.id} stop request failed: ${messageOf(cause)}`); }
   }
 
   /**

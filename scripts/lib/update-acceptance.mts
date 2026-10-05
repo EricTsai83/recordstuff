@@ -8,8 +8,8 @@ import type { SettingsView } from "../../src/shared/settings-panel.ts";
 import type { RecordingState } from "../../src/shared/state.ts";
 
 export function instrumentUpdateAcceptance(source: string, runDir: string): string {
-  source = replaceOnce(source, 'let currentLanguage: Language = DEFAULT_LANGUAGE;',
-    `import { configureAcceptance, attachAcceptance } from "../../scripts/fixtures/update-acceptance";\nconst acceptance = configureAcceptance(${JSON.stringify(runDir)});\nlet currentLanguage: Language = DEFAULT_LANGUAGE;`);
+  source = replaceOnce(source, 'let appLanguage: () => Language = () => DEFAULT_LANGUAGE;',
+    `import { configureAcceptance, attachAcceptance } from "../../scripts/fixtures/update-acceptance";\nconst acceptance = configureAcceptance(${JSON.stringify(runDir)});\nlet appLanguage: () => Language = () => DEFAULT_LANGUAGE;`);
   source = replaceOnce(source, 'defaultOutputDir: defaultOutputDir(),', 'defaultOutputDir: acceptance.outputDir || defaultOutputDir(),');
   source = replaceOnce(source, 'localVersion: app.getVersion(), settled,', 'localVersion: app.getVersion(), settled, now: acceptance.now,');
   source = replaceOnce(source, 'fetch: (signal) => fetchVersion(process.platform, process.arch, signal, (url, init) => net.fetch(url, init), log),',

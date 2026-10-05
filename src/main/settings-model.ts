@@ -28,6 +28,7 @@ import {
 } from "../shared/quality";
 import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut, sameShortcut } from "../shared/hotkey";
 import { COUNTDOWN_CHOICES } from "../shared/countdown";
+import { formatDuration } from "../shared/video-player";
 import type { LibraryView, RecordingResultView, SettingsChoice, SettingsGroup, SettingsStatus, SettingsView, StatusActionId } from "../shared/settings-panel";
 import { MEDIA_SCHEME, RECORDING_FILE_ACTIONS, stampedTime, type RecordingFileAction } from "./recordings-library";
 import type { RecordingResult, RecordingResultAction } from "../shared/recording-result";
@@ -269,7 +270,7 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group {
     ...(diagnostics.length ? { diagnostics } : {}) };
 }
 
-/** Why a shortcut this card owns does not work: the recording one, and ⌘⌥, for Settings, which the tray also explains. */
+/** Why a shortcut this card owns does not work: the recording one, and ⌥⌘, for Settings, which the tray also explains. */
 function hotkeyDiagnostics(ctx: AppContext, unavailable: string | undefined): NonNullable<Group["diagnostics"]> {
   const language = ctx.language;
   const settings = describeAccelerator(SETTINGS_SHORTCUT, ctx.platform);
@@ -565,14 +566,6 @@ function statusText(state: RecordingState, ctx: AppContext): SettingsStatus {
   if (!resolution.ok) return { tone: "attention", title: t("Selected display is unavailable", language), detail: "" };
   // Nothing to say while ready: the page shows no card then, and the menu bar icon is where recording starts.
   return { tone: "ready", title: t("Ready to record", language), detail: "" };
-}
-
-/** `1:23`, or `1:02:03` from an hour. */
-export function formatDuration(seconds: number): string {
-  const total = Math.max(0, Math.round(seconds));
-  const two = (n: number): string => String(n).padStart(2, "0");
-  const h = Math.floor(total / 3600), m = Math.floor(total / 60) % 60, s = total % 60;
-  return h ? `${h}:${two(m)}:${two(s)}` : `${m}:${two(s)}`;
 }
 
 /**

@@ -140,7 +140,7 @@
 | `backlogBytes` getter | append 已接受、但尚未確認寫入或因失敗釋放的位元組數 |
 | `append(bytes)` | closed 或已拒絕時 reject；會超過積壓上限的 append 立即拒絕且不排入佇列（沿用先前的磁碟錯誤）；否則在佇列中補完剩餘 buffer 並累計確認進度；空輸入不 write，零／無效計數 reject |
 | `drain()` | 等待佇列作業後回傳已保留的失敗或拒絕（若有） |
-| `finish()` | enqueue sync；曾拒絕 append 時 reject；release、排他硬連結並以尾碼避撞名（連結因 EEXIST 以外的原因被拒後改用排他複製）、盡力刪除暫存名稱 → 實際最終路徑與 `finishTimings`；失敗 reject |
+| `finish()` | enqueue sync；曾拒絕 append 時 reject；release、排他硬連結並以尾碼避撞名，最多 `MAX_PUBLISH_ATTEMPTS`（100）個名稱（連結因 EEXIST 以外的原因被拒後改用排他複製）、盡力刪除暫存名稱 → 實際最終路徑與 `finishTimings`；失敗 reject |
 | `finishTimings` | 成功 finish 後的 flush、close、發布與清理毫秒數，`link` 或 `copy`，以及改用複製時連結的錯誤碼；僅供診斷 |
 | `abandon()` | 等佇列、best effort release；有 bytes 留暫存路徑，空檔盡力刪除；不拋出 |
 | `release()` | 一次性 closed／close handle；fsync timer 已由 `beginTerminal` 停止 |
@@ -158,7 +158,7 @@
 | `parseRange(header, size)` | size 內的單一 `bytes=` 範圍；沒有 header 為 undefined，無法提供的範圍為 null（416） |
 | `RecordingsLibrary.refresh()` | 由新到舊列出資料夾並發布；同時只列一次，期間的請求共用其後的一次列出；未知片長之後再讀（`lengths`）並一起發布；已不在清單的檔案，其片長與縮圖從記憶體移除；無法讀取的資料夾會說明，而不是顯示為空 |
 | `RecordingsLibrary.act(id, action)` | 對已列出的 id 執行「顯示」、「開啟」或「丟到垃圾桶」；任何失敗都先重新列出資料夾再回傳 false，讓已離開的檔案不出現在回覆中 |
-| `RecordingsLibrary.thumbnail(file)` | 已列出檔案的 PNG 縮圖；在最近顯示的 `THUMBNAILS_KEPT`（64）張之內時，同一版本只產生一次 |
+| `RecordingsLibrary.thumbnail(file)` | 已列出檔案的 JPEG 縮圖；在最近顯示的 `THUMBNAILS_KEPT`（64）張之內時，同一版本只產生一次 |
 | `RecordingsLibrary.watch()` / `unwatch()` | 視窗開著時監看資料夾（不輪詢），對已列名稱的一串事件結束 `WATCH_SETTLE_MS`（250 毫秒）後重新讀取；儲存位置改變時跟著換；視窗關閉時 `unwatch`，不留下監看或計時器；無法監看的資料夾只記一次 log |
 | `RecordingsLibrary.handle(request)` | `recordstuff-media:` 的 handler：只為已列出的 id 提供可依 byte range 讀取的 `video/<id>` 與 `thumb/<id>`，其餘一律 404 |
 | `mp4Duration(path)` | 只讀 box 算出秒數：分段檔取最後一個 `tfdt` 加上其 sample 時長，否則用 `mvhd`；box 沒有資訊時為 undefined；不拋出 |
@@ -184,7 +184,7 @@
 
 [main/atomic-file.ts](../../../src/main/atomic-file.ts)：`writeFileAtomic`／`writeFileAtomicSync` 建立父目錄、寫入 `<file>.tmp` 並 fsync，再 rename 覆蓋目標；失敗時移除暫存檔並保留原內容。設定、設定視窗尺寸與失敗歷史使用 `writeFileAtomic`；`writeFileAtomicSync` 只供驗證腳本使用。
 
-[shared/hotkey.ts](../../../src/shared/hotkey.ts)：`DEFAULT_HOTKEY` 啟用 ⌘⇧1；舊版曾提供的組合仍然有效，由 `hotkey.test.ts` 檢查。`validateAccelerator` 驗證支援的自訂組合，要求 Command 或 Control 並排除保留鍵；`canonicalizeAccelerator` 正規化修飾鍵順序與 Shift 符號。`canonicalHotkeySettings` 以相同規則驗證保存的快捷鍵，不限於選單提供的選項，並以正規化順序回傳；`describeAccelerator(accelerator, platform)` 在 darwin 顯示 `⌘⌥⇧R`、其他平台 `Ctrl+Alt+Shift+R`，供選單、通知與 log 使用。
+[shared/hotkey.ts](../../../src/shared/hotkey.ts)：`DEFAULT_HOTKEY` 啟用 ⇧⌘1；舊版曾提供的組合仍然有效，由 `hotkey.test.ts` 檢查。`validateAccelerator` 驗證支援的自訂組合，要求 Command 或 Control 並排除保留鍵；`canonicalizeAccelerator` 正規化修飾鍵順序與 Shift 符號。`canonicalHotkeySettings` 以相同規則驗證保存的快捷鍵，不限於選單提供的選項，並以正規化順序回傳；`describeAccelerator(accelerator, platform)` 在 darwin 顯示 `⌥⇧⌘R`、其他平台 `Ctrl+Alt+Shift+R`，供選單、通知與 log 使用。
 
 [main/hotkey.ts](../../../src/main/hotkey.ts)：
 
@@ -232,7 +232,9 @@
 
 [preload/index.ts](../../../src/preload/index.ts) 沒有具名函式：唯一 ipcRenderer callback 接收 `capture-host-port` 後將 event.ports 轉交 window，沒有 contextBridge API。
 
-[shared/i18n.ts](../../../src/shared/i18n.ts)：`isLanguage(value)` 驗 en／zh-TW；`translate(key, language, values)` 預設英文，依 ZH_TW 取得中文模板並代入所有具名 placeholder；編譯器要求 key 的每個 placeholder 都有值，標籤表使用 `PlainMessageKey`（沒有 placeholder 的文案）。`notice(body)` 包裝通知標題與內文；trayModel 的 `text`／`model` helper 產生翻譯與呈現模型。通知函式接受 optional language，預設英文。
+[shared/i18n.ts](../../../src/shared/i18n.ts)：`isLanguage(value)` 驗 en／zh-TW；`documentLanguage(language)` 是設定頁與全螢幕頁設定的 `<html lang>`（`zh-Hant` 或 `en`）；`translate(key, language, values)` 預設英文，依 ZH_TW 取得中文模板並代入所有具名 placeholder；編譯器要求 key 的每個 placeholder 都有值，標籤表使用 `PlainMessageKey`（沒有 placeholder 的文案）。`notice(body)` 包裝通知標題與內文；trayModel 的 `text`／`model` helper 產生翻譯與呈現模型。通知函式接受 optional language，預設英文。
+
+[shared/video-player.ts](../../../src/shared/video-player.ts)：`formatDuration(seconds)` 把長度或播放位置寫成 `1:23`，滿一小時為 `1:02:03`，整秒無條件捨去，讓錄影卡片上的長度與播放器的總長一致；未知長度為 `0:00`。`playbackState` 與 `isFullScreenChoice` 驗證全螢幕視窗與播放器送來的內容。
 
 ## 權限 — main/permission.ts
 
@@ -270,11 +272,10 @@
 | 函式 | 契約 |
 | --- | --- |
 | `qualityGroups(ctx, enabled)` | 影像品質、解析度上限、幀率；此平台未驗證的幀率仍列出但不可選 |
-| `hotkeyGroup(ctx, enabled)` | 建議的預設鍵、不同於預設的已存自訂值與「關閉」；renderer 加上「自訂快捷鍵…」；註冊失敗顯示診斷，設定快捷鍵（⌘⌥,）註冊失敗或被錄影快捷鍵佔用時也會顯示；關閉保留記住的組合鍵 |
+| `hotkeyGroup(ctx, enabled)` | 建議的預設鍵、不同於預設的已存自訂值與「關閉」；renderer 加上「自訂快捷鍵…」；註冊失敗顯示診斷，設定快捷鍵（⌥⌘,）註冊失敗或被錄影快捷鍵佔用時也會顯示；關閉保留記住的組合鍵 |
 | `updateChecksGroup(ctx, enabled)` | 啟動檢查的開／關 |
 | `languageGroup(language)` | 英文與繁體中文；永不鎖定，因為語言不影響擷取 |
 | `settingsView(state, ctx)` | 面板完整 view：標題、說明、失敗文案、四個分頁（失敗紀錄分頁計算未確認筆數）、附媒體 URL 的錄影檔清單，以及移除 action 後的群組；失敗列帶日期、短時間、檔名與完整路徑 |
-| `formatDuration(seconds)` | 錄影長度寫成 `1:23`，滿一小時為 `1:02:03` |
 | `dayHeading` / `shortTime` | 失敗列與錄影檔共用的日期標題（今天、昨天、日期，不是今年才加年份），以及失敗列或 App 命名錄影的短時間，以 `ctx.now` 為基準（plan 047） |
 | `settingsAction(state, ctx, group, choice)` | 當下有提供且可用的 group/choice 才回傳對應 action，否則 undefined |
 | `settingsChecked(state, ctx, group, choice)` | 該選項是否為實際提交值；main 用它回報保存是否生效 |

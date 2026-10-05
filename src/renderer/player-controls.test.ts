@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { clock, playerControls } from "./player-controls";
-import { VIDEO_TIMING } from "../shared/video-player";
+import { playerControls } from "./player-controls";
+import { VIDEO_TIMING, formatDuration } from "../shared/video-player";
 
 const labels = { play: "Play", pause: "Pause", mute: "Mute", unmute: "Unmute", volume: "Volume", position: "Playback position" };
 
@@ -36,8 +36,9 @@ const key = (target: EventTarget, key: string, init: KeyboardEventInit = {}): Ke
 beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); });
 
-it("reads the time as YouTube does, past an hour too, and an unknown length as 0:00", () => {
-  expect([clock(0), clock(65.9), clock(3725), clock(NaN), clock(Infinity)]).toEqual(["0:00", "1:05", "1:02:05", "0:00", "0:00"]);
+it("reads the time as YouTube does, past an hour too, and an unknown length as 0:00; a card's length reads the same", () => {
+  expect([formatDuration(0), formatDuration(59.6), formatDuration(65.9), formatDuration(3725), formatDuration(NaN), formatDuration(Infinity), formatDuration(-1)])
+    .toEqual(["0:00", "0:59", "1:05", "1:02:05", "0:00", "0:00", "0:00"]);
 });
 
 it("replaces the native controls with play, volume, the time and the page's own trailing button, all named", () => {
@@ -67,6 +68,15 @@ it("plays and pauses from its button, a click on the picture, Space and K; Space
   // Space on a focused button: the browser clicks it, so the keys handler leaves it alone (one toggle, not two).
   const spaceOnButton = key(play, " ");
   expect([spaceOnButton.defaultPrevented, (video.play as ReturnType<typeof vi.fn>).mock.calls.length]).toEqual([false, 2]);
+});
+
+it("steps forward with the arrows before the length is known, instead of back to the start", () => {
+  const { video } = setup();
+  video.currentTime = 2;
+  key(video, "ArrowRight");
+  expect(video.currentTime).toBe(7);
+  key(video, "ArrowLeft"); key(video, "ArrowLeft");
+  expect(video.currentTime).toBe(0);
 });
 
 it("seeks by five seconds with the arrows within the video, leaves the arrows to a focused slider, mutes with M and asks for full screen with F", () => {
@@ -121,4 +131,20 @@ it("steps the controls aside while it plays and the pointer rests, never while p
   video.pause();
   vi.advanceTimersByTime(VIDEO_TIMING.idleMs + 10);
   expect([root.classList.contains("pc-idle"), root.classList.contains("pc-paused")]).toEqual([false, true]);
+});
+
+it("writes nothing again while what it shows has not changed, though timeupdate fires several times a second", async () => {
+  const { video, root, set } = setup();
+  set({ duration: 8 });
+  video.currentTime = 2.1;
+  video.dispatchEvent(new Event("timeupdate"));
+  const changes: string[] = [];
+  const observer = new MutationObserver(records => { for (const record of records) changes.push(`${(record.target as Element).className}:${record.attributeName}`); });
+  observer.observe(root, { attributes: true, subtree: true });
+  video.currentTime = 2.4;
+  video.dispatchEvent(new Event("timeupdate"));
+  await Promise.resolve();
+  observer.disconnect();
+  // The bar's fill moves with the time; its reading, still 0:02, and the volume are left alone.
+  expect(changes).toEqual(["pc-seek:style"]);
 });

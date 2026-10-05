@@ -275,7 +275,7 @@ require(path.join(root, 'out/main/index.js'));
       await evaluate(`window.settings.choose('language', '${language}')`);
       tray.emit('right-click');
       record(`${language} Settings registration failure is explained without working label`, lastMenu?.items.some(i => i.label.includes(language === 'en' ? 'The shortcut for RecordStuff is unavailable:' : '開啟 RecordStuff 的快捷鍵無法使用，'))
-        && !lastMenu?.items.some(i => i.label.includes('⌘⌥,')), lastMenu?.items.map(i => i.label).join(' | ') ?? '');
+        && !lastMenu?.items.some(i => i.label.includes('⌥⌘,')), lastMenu?.items.map(i => i.label).join(' | ') ?? '');
     }
     const beforeRefresh = attempts.length;
     tray.emit('right-click'); tray.emit('right-click');
@@ -475,7 +475,7 @@ require(path.join(root, 'out/main/index.js'));
   record('explicit resave repeats failure notification', failureNotifications().length === 2, `notifications=${failureNotifications().length}`);
   await choose('hotkey', 'off');
   const off = await group();
-  // Every registration fails here, ⌘⌥, too: Off removes only the recording shortcut's note.
+  // Every registration fails here, ⌥⌘, too: Off removes only the recording shortcut's note.
   record('Off retains value and removes failure note', !off.diagnostics?.some(d => d.reason === 'Another app may be using this shortcut.') && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.enabled === false && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator && !globalShortcut.isRegistered(accelerator), 'saved disabled; no note or registration');
   record('a failed Settings shortcut is explained in the card, not only by a retry button',
     off.diagnostics?.length === 1 && off.diagnostics[0]?.heading === 'The shortcut for RecordStuff is unavailable' && off.actions?.some(a => a.id === 'retryRegistration') === true

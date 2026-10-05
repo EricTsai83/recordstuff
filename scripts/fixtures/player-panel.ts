@@ -51,9 +51,22 @@ app.on("web-contents-created", (_event, contents) => {
   contents.setAudioMuted(true);
 });
 const settle = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+/**
+ * Polls until `check` holds. A check that throws, such as one reading an element the page has not made yet, counts
+ * as not yet: the case then passes or fails on its own record, never by stopping the round. Giving up says the last
+ * error thrown, and whether the checks after it still answered no.
+ */
 const until = async (check: () => Promise<boolean> | boolean, timeout = 4000): Promise<boolean> => {
   const deadline = Date.now() + timeout;
-  do { if (await check()) return true; await settle(40); } while (Date.now() < deadline);
+  let failure: unknown;
+  let answered = false;
+  do {
+    try { if (await check()) return true; answered = true; } catch (error) { failure = error; answered = false; }
+    await settle(40);
+  } while (Date.now() < deadline);
+  if (failure !== undefined) {
+    console.log(`until: gave up after ${timeout} ms; a check threw ${String(failure)}${answered ? ", and the later checks answered no" : ""}`);
+  }
   return false;
 };
 const read = <T = unknown>(window: BrowserWindow, script: string): Promise<T> =>

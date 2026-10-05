@@ -111,7 +111,6 @@ export class DisplayRequest<S extends Source> {
   }
 }
 
-/** Both projections use the same availability and historical diagnostic. */
 /**
  * Whether "Use Primary display" can be offered as the way back from an unavailable display: one primary
  * display exists, under an id no other display shares. Settings and the tray offer it by the same rule.
@@ -120,6 +119,7 @@ export function primaryDisplayChoosable(displays: readonly DisplayInfo[]): boole
   return displays.some((d) => d.primary && displays.filter((other) => other.id === d.id).length === 1);
 }
 
+/** Whether the saved display is available now, and why not; the tray and Settings both project it, so they always agree. */
 export function displayResolution(displays: DisplayInfo[], preference: DisplayPreference): DisplayResolution {
   return resolveDisplayPreference({ displays, preference, primaryDisplayId: displays.find((d) => d.primary)?.id ?? "" });
 }

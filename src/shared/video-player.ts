@@ -16,6 +16,17 @@ export interface PlaybackState {
   muted: boolean;
 }
 
+/**
+ * A length or a position as `1:05`, or `1:02:05` past an hour; an unknown one reads `0:00`. Whole seconds are counted
+ * down, as a player's time is, so a card's length and its player's total read the same.
+ */
+export function formatDuration(seconds: number): string {
+  const total = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
+  const two = (n: number): string => String(n).padStart(2, "0");
+  const h = Math.floor(total / 3600), m = Math.floor(total / 60) % 60, s = total % 60;
+  return h ? `${h}:${two(m)}:${two(s)}` : `${m}:${two(s)}`;
+}
+
 /** The player's request, sent with `choose("recordingFile:<id>", …)`; main answers when the fullscreen ends. */
 export interface FullScreenChoice {
   action: "fullscreen";

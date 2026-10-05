@@ -38,7 +38,7 @@ it("canonicalizes without changing key identity and describes named keys", () =>
   const value = canonicalizeAccelerator("Shift+Alt+Control+CommandOrControl+Left", "darwin")!;
   expect(value).toBe("CommandOrControl+Control+Alt+Shift+Left");
   expect(canonicalizeAccelerator(value, "darwin")).toBe(value);
-  expect(describeAccelerator(value, "darwin")).toBe("⌘⌃⌥⇧←");
+  expect(describeAccelerator(value, "darwin")).toBe("⌃⌥⇧⌘←");
   expect(describeAccelerator("Control+F24", "win32")).toBe("Ctrl+F24");
   expect(describeAccelerator("Control+Space", "darwin")).toBe("⌃␣");
   expect(describeAccelerator(canonicalizeAccelerator("Control+Plus", "darwin")!, "darwin")).toBe("⌃⇧=");

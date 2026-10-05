@@ -6,7 +6,7 @@ import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT } from "../shared/hotkey";
 const LEGACY_HOTKEYS = ["CommandOrControl+Alt+Shift+R", "CommandOrControl+Shift+R", "CommandOrControl+Alt+R"];
 import type { RecordingState } from "../shared/state";
 import { translate as t } from "../shared/i18n";
-import { dayHeading, shortTime, formatDuration, proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
+import { dayHeading, shortTime, proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
 import type { LibraryState, RecordingFile } from "./recordings-library";
 import type { AppContext } from "./ui-model";
 
@@ -503,8 +503,8 @@ it("offers one recommended shortcut and only the currently saved custom value", 
   const recommended = DEFAULT_HOTKEY.accelerator;
   const choices = group(idle, context, "hotkey")!.choices;
   expect(choices.map(c => c.id)).toEqual([recommended, "off"]);
-  expect(choices[0]!.label).toBe("Recommended: ⌘⇧1");
-  expect(group(idle, { ...context, language: "zh-TW" }, "hotkey")!.choices[0]!.label).toBe("建議：⌘⇧1");
+  expect(choices[0]!.label).toBe("Recommended: ⇧⌘1");
+  expect(group(idle, { ...context, language: "zh-TW" }, "hotkey")!.choices[0]!.label).toBe("建議：⇧⌘1");
   for (const accelerator of [...LEGACY_HOTKEYS, "Control+Shift+F20"]) {
     const custom = { ...context, hotkey: { enabled: true, registered: true, accelerator } };
     const customChoices = group(idle, custom, "hotkey")!.choices;
@@ -731,10 +731,10 @@ it("explains a Settings shortcut that is not registered, not only a retry button
   const failed = group(idle, { ...context, settingsShortcut: { kind: "failed", accelerator: "CommandOrControl+Alt+,", reason: "taken" } }, "hotkey");
   expect(failed?.actions?.map(action => action.id)).toEqual(["retryRegistration"]);
   expect(failed?.diagnostics).toEqual([expect.objectContaining({ heading: "The shortcut for RecordStuff is unavailable",
-    reason: "Another app may be using ⌘⌥,." })]);
+    reason: "Another app may be using ⌥⌘,." })]);
   const conflict = group(idle, { ...context, settingsShortcut: { kind: "conflict" } }, "hotkey");
   expect(conflict?.actions).toBeUndefined();
-  expect(conflict?.diagnostics?.[0]?.reason).toBe("⌘⌥, is the recording shortcut, so it does not open Settings.");
+  expect(conflict?.diagnostics?.[0]?.reason).toBe("⌥⌘, is the recording shortcut, so it does not open Settings.");
   expect(group(idle, { ...context, settingsShortcut: { kind: "registered", accelerator: "CommandOrControl+Alt+," } }, "hotkey")?.diagnostics).toBeUndefined();
   expect(failed?.diagnostics?.[0]?.guidance).toBe("Open RecordStuff from the menu bar icon, or retry once the other app releases it.");
   const windows = { ...context, platform: "win32" as const, settingsShortcut: { kind: "failed" as const, accelerator: "CommandOrControl+Alt+,", reason: "taken" } };
@@ -843,9 +843,6 @@ describe("the Recordings tab", () => {
     expect(settingsAction(busy[2]!, ctx, "recordingFile:id-Product demo.mp4", "drag")).toEqual({ recordingFile: { id: "id-Product demo.mp4", action: "drag" } });
     expect(settingsAction(idle, ctx, "recordingFile:/etc/passwd", "open")).toBeUndefined();
     expect(settingsAction(idle, ctx, "recordingFile:id-Product demo.mp4", "delete")).toBeUndefined();
-  });
-  it("prints lengths as minutes and seconds, with hours from an hour", () => {
-    expect([formatDuration(0), formatDuration(59.6), formatDuration(83), formatDuration(3725)]).toEqual(["0:00", "1:00", "1:23", "1:02:05"]);
   });
 });
 

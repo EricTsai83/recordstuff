@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { electronPattern, pgrepPids, recordStuffPids } from "./processes.mts";
+import { INTERRUPT_EXIT, electronPattern, pgrepPids, recordStuffPids, startBuild, stopGroup } from "./processes.mts";
 import { scrubbedEnv } from "./runner-env.mts";
 import fs from "node:fs";
 import path from "node:path";
@@ -8,6 +8,7 @@ import { analyze, fixture, wav, RATE, type AudioReport } from "./audio-quality.m
 import { parseAutorecordOutcome } from "./verify.mts";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
+const BUILD_TIMEOUT_MS = 60_000;
 
 /** Decode without resampling or remixing: format faults must not be hidden. Bounded to 60 s. */
 export function inspectAudio(file: string): AudioReport {
@@ -44,9 +45,28 @@ export async function recordAudio(output: string): Promise<string> {
   // An installed copy holds the same userData lock, so the development app would exit before recording.
   if (recordStuffPids().length > 0) throw new Error("Quit RecordStuff before running audio capture");
   if (!built) {
-    const build = spawnSync("pnpm", ["build"], { cwd: ROOT, stdio: "inherit", timeout: 60_000 });
-    if (build.error) throw build.error;
-    if (build.status !== 0) throw new Error("Application build failed");
+    // In a process group of its own: a build past its time, or interrupted, is stopped whole, so no electron-vite or
+    // esbuild child keeps writing `out/` after pnpm alone was signalled. The terminal's Ctrl-C does not reach that
+    // group, so it is passed on here and the runner exits only once the group is gone.
+    const build = startBuild(ROOT, ["pnpm", "build"]);
+    let stopping: Promise<void> | undefined;
+    const interrupt = (signal: keyof typeof INTERRUPT_EXIT): void => {
+      stopping ??= stopGroup(build.child.pid).finally(() => process.exit(INTERRUPT_EXIT[signal]));
+    };
+    const onInt = (): void => interrupt("SIGINT"), onTerm = (): void => interrupt("SIGTERM");
+    process.once("SIGINT", onInt);
+    process.once("SIGTERM", onTerm);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const status = await Promise.race([build.done, new Promise<"timeout">((resolve) => { timer = setTimeout(() => resolve("timeout"), BUILD_TIMEOUT_MS); })])
+      .finally(() => { clearTimeout(timer); process.removeListener("SIGINT", onInt); process.removeListener("SIGTERM", onTerm); });
+    // pnpm ends first when its group is signalled: an interrupted build is not a failed one, and nothing goes on
+    // until the whole group is gone and the runner has exited.
+    if (stopping) await stopping;
+    if (status === "timeout") {
+      await stopGroup(build.child.pid);
+      throw new Error(`Application build did not finish within ${BUILD_TIMEOUT_MS / 1000} s; it was stopped`);
+    }
+    if (status !== 0) throw new Error("Application build failed");
     built = true;
   }
   const material = path.join(output, "reference.wav");

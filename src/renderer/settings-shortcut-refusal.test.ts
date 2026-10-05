@@ -36,7 +36,7 @@ it("names no internal key for an unusable one, and states a refused combination 
 
   // A keypad key has no accelerator name: the preview keeps the held modifiers, never "Unsupported".
   field().dispatchEvent(new KeyboardEvent("keydown", { key: "1", code: "Numpad1", metaKey: true, altKey: true, bubbles: true }));
-  expect([...field().querySelectorAll("kbd")].map(k => k.textContent)).toEqual(["⌘", "⌥"]);
+  expect([...field().querySelectorAll("kbd")].map(k => k.textContent)).toEqual(["⌥", "⌘"]);
   expect(field().getAttribute("aria-label") ?? "").not.toContain("Unsupported");
   expect(document.querySelector(".save-error strong")?.textContent).toBe("Shortcut unavailable");
 

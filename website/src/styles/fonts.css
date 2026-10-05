@@ -9,7 +9,7 @@
  * face is ready for that paint.
  *
  * Only latin and latin-ext are declared; the site is English. Characters outside
- * those ranges (⌘⌥⇧R, the arrows, any CJK) fall back to the system font either
+ * those ranges (⌥⇧⌘R, the arrows, any CJK) fall back to the system font either
  * way, exactly as they did with the upstream stylesheets.
  */
 

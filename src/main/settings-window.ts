@@ -429,7 +429,8 @@ export class SettingsWindow {
     const id = group.slice("recordingFile:".length);
     const item = this.view().library?.items.find(entry => entry.id === id);
     const fullScreen = this.options.fullScreen;
-    if (!item || !fullScreen || recipient.isDestroyed()) {
+    // While a quit runs nothing new opens, as every other action is refused then (`settingsAction`).
+    if (!item || !fullScreen || recipient.isDestroyed() || this.options.context().quitting) {
       this.log(`settings window: refused ${JSON.stringify({ group, choice: "fullscreen" })}`);
       const view = this.view();
       return this.deliver({ view, applied: false }, recipient);

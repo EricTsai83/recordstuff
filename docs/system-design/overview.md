@@ -17,7 +17,7 @@ RecordStuff provides one macOS menu bar button: click to record one screen (the 
 | Permission guidance | Open System Settings and offer relaunch when permission is unavailable | [Desktop](desktop.md) |
 | Failure and quit | Report errors, preserve written media when possible, and stop before quitting | [Recording](recording.md) |
 | Language | English by default; persistent Traditional Chinese choice, including while recording | [Desktop](desktop.md) |
-| Settings and shortcuts | Persistent settings panel; ⌘⇧1 starts/stops by default, a custom shortcut or Off is available, and ⌘⌥, opens Settings | [Desktop](desktop.md) |
+| Settings and shortcuts | Persistent settings panel; ⇧⌘1 starts/stops by default, a custom shortcut or Off is available, and ⌥⌘, opens Settings | [Desktop](desktop.md) |
 | Appearance and notifications | System/Light/Dark appearance; app notifications can be disabled independently of macOS permission | [Desktop](desktop.md) |
 | Diagnostics | Reveal the log from every tray state | [Desktop](desktop.md) |
 

@@ -11,7 +11,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings } from "./lib/runner-env.mts";
 import { recordStuffPattern } from "./lib/processes.mts";
 import { osascriptAx } from "./lib/native-ax.mts";
-import { command, settleRecording, waitForLog } from "./lib/acceptance-runtime.mts";
+import { SAVED_LINE, command, savedPathOf, settleRecording, waitForLog } from "./lib/acceptance-runtime.mts";
 import fs from "node:fs";
 import os from "node:os";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
@@ -318,9 +318,10 @@ async function main(): Promise<void> {
     operationSignal.throwIfAborted();
     await command("osascript", ["-e", key], AbortSignal.timeout(5000), 5000);
     stopSent = true;
-    const saved = await waitFor(beforeStop, /\] saved (.+)$/, "`saved <path>`");
+    const saved = await waitFor(beforeStop, SAVED_LINE, "`saved <path>`");
     recordingFrom = undefined;
-    const savedPath = /\] saved (.+)$/.exec(saved.line)?.[1];
+    // An early stop's reason follows the path on the line; the file is the path alone.
+    const savedPath = savedPathOf(saved.line);
     if (savedPath) recordings.push(savedPath);
 
     // Press the banner while it is still on screen (about 5 s).

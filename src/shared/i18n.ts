@@ -6,6 +6,11 @@ export function isLanguage(value: unknown): value is Language {
   return value === "en" || value === "zh-TW";
 }
 
+/** The BCP 47 tag a page's `<html lang>` takes, so assistive technology reads its text in the right voice. */
+export function documentLanguage(language: Language | undefined): string {
+  return language === "zh-TW" ? "zh-Hant" : "en";
+}
+
 export const ZH_TW = {
   "Retry shortcut registration": "重試註冊快捷鍵",
   "The shortcut is still unavailable; another app may be using it.": "快捷鍵仍無法使用，可能被其他 App 佔用。",
@@ -210,7 +215,7 @@ export const ZH_TW = {
   "Screen recording permission required": "需要螢幕錄製權限",
   "Output folder unavailable": "儲存位置無法使用",
   Ready: "待命中",
-  // Gone from the menu since 2026-10-04: kept for the tray runner, which checks it stays gone (scripts/lib/tray-driver.mts).
+  // The tray menu's and the Record menu's way to the newest recording (tray-model.ts); the tray runner checks it is offered.
   "Show last recording": "顯示最後一個錄影",
   "Starting… Check for system permission prompts": "啟動中，請留意系統權限提示…",
   Recording: "錄影中",

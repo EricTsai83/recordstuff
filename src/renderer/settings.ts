@@ -1,9 +1,9 @@
 /** Main owns committed preferences, diagnostics and authorized choice ids. */
-import { SETTINGS_SHORTCUT_RESERVED, describeAccelerator, isSettingsShortcut, validateAccelerator } from "../shared/hotkey";
+import { SETTINGS_SHORTCUT_RESERVED, acceleratorKeys, describeAccelerator, isSettingsShortcut, validateAccelerator } from "../shared/hotkey";
 import { isCloseChord, shortcutCandidate, shortcutModifiers } from "./shortcut-capture";
 import { infoPlacement } from "./info-placement";
 import { controlButton, mark, playerControls, type PlayerControls, type PlayerLabels } from "./player-controls";
-import { isLanguage, phrases, sentences, translate, type Language, type PlainMessageKey } from "../shared/i18n";
+import { documentLanguage, isLanguage, phrases, sentences, translate, type PlainMessageKey } from "../shared/i18n";
 import { REVIEWED_FAILURES_KEPT, persistsHistory } from "../shared/recording-result";
 import type { LibraryItemView, RecordingResultView, SettingsBridge, SettingsGroup, SettingsTab, SettingsView } from "../shared/settings-panel";
 import type { FullScreenChoice, PlaybackState } from "../shared/video-player";
@@ -15,8 +15,6 @@ const hint = document.querySelector<HTMLParagraphElement>("#hint")!;
 const statusCard = document.querySelector<HTMLElement>("#status")!;
 const feedback = document.querySelector<HTMLParagraphElement>("#feedback")!;
 const startupLanguage = ((v: string | null) => isLanguage(v) ? v : undefined)(new URLSearchParams(location.search).get("lang"));
-/** The BCP 47 tag assistive technology reads the page's text with. */
-const documentLanguage = (language: Language | undefined): string => language === "zh-TW" ? "zh-Hant" : "en";
 let view: SettingsView | undefined;
 /** A new window opens on the recordings, the app's home (2026-10-04). */
 let selectedTab: SettingsTab = "library";
@@ -148,7 +146,7 @@ function isAction(group: SettingsGroup, choice: string | undefined): boolean {
 }
 function setPreview(accelerator: string, platform: string): void {
   preview = describeAccelerator(accelerator, platform);
-  previewParts = accelerator.split("+").filter(Boolean).map(part => describeAccelerator(part, platform));
+  previewParts = acceleratorKeys(accelerator, platform);
 }
 /**
  * What stands for a group when its focused retry or recovery button hides. A
@@ -342,7 +340,9 @@ function updateRows(groups: SettingsGroup[]): void {
         setDisabled(el, !group.enabled, othersSaving);
         // Reconcile menu options locally: a new custom key or display must not
         // recreate the panel, its neighbouring controls, or their focus.
-        const choices = [...group.choices, ...(group.kind === "shortcut" ? [{ id: "custom", label: text("Custom shortcut…"), enabled: true, checked: false }] : [])];
+        // Custom shortcut… waits while a save runs or the editor is arming or listening.
+        const custom = { id: "custom", label: text("Custom shortcut…"), enabled: !saving && !arming && !group.capturing, checked: false };
+        const choices = [...group.choices, ...(group.kind === "shortcut" ? [custom] : [])];
         const ids = new Set(choices.map(choice => choice.id));
         for (const option of Array.from(el.options)) if (!ids.has(option.value)) option.remove();
         choices.forEach((choice, index) => {
@@ -384,8 +384,6 @@ function updateRows(groups: SettingsGroup[]): void {
     updateDiagnostic(container, group);
     if (group.kind === "shortcut") {
       const edit = container.querySelector<HTMLSelectElement>("#setting-hotkey")!;
-      const customOption = edit.querySelector<HTMLOptionElement>('option[value="custom"]')!;
-      customOption.disabled = Boolean(saving) || arming || Boolean(group.capturing);
       const area = container.querySelector<HTMLElement>(".capture-area")!;
       const field = container.querySelector<HTMLButtonElement>("#shortcut-capture")!;
       const wasFocused = area.contains(document.activeElement);
@@ -1032,13 +1030,14 @@ function clipCard(id: string): HTMLElement {
   more.append(icon("more", "more-icon")!);
   card.append(open, more);
   card.addEventListener("contextmenu", event => { event.preventDefault(); openClipMenu(id, more, { x: event.clientX, y: event.clientY }); });
-  // The file itself leaves the window: main starts a native drag with it, so any app that takes files can take it.
   card.addEventListener("animationend", () => card.classList.remove("arrived"));
   // Without motion the outline does not fade; it goes once the user moves on.
   card.addEventListener("focusout", () => card.classList.remove("arrived"));
+  // The file itself leaves the window: main starts a native drag with it, so any app that takes files can take it.
   card.addEventListener("dragstart", event => {
     event.preventDefault();
-    void window.settings.choose(`recordingFile:${id}`, "drag").catch(() => {});
+    // Its reply is the view main now counts as delivered (settings-window.ts `deliver`), so it is drawn like any other.
+    void window.settings.choose(`recordingFile:${id}`, "drag").then(result => render(result.view), () => {});
   });
   return card;
 }
@@ -1058,7 +1057,8 @@ type FileAction = "reveal" | "open" | "trash";
 /**
  * A card's file actions (2026-10-04): Show in Finder, Open in the default app and Move to Trash, chosen
  * before the recording is opened. One menu in the top layer serves every card; arrows and the pointer move through it,
- * Escape closes it and gives focus back, and a click elsewhere, a scroll or the window losing focus closes it.
+ * Escape closes it and gives focus back, and a click elsewhere or the window losing focus closes it; a scroll carries it
+ * along with its card, and closes it once the card leaves the panel.
  */
 let clipMenu: { el: HTMLElement; id?: string; anchor?: HTMLButtonElement; offset?: { x: number; y: number } } | undefined;
 function clipMenuElement(): HTMLElement {
@@ -1211,8 +1211,11 @@ function openPlayer(item: LibraryItemView): void {
     // can close it on Escape without a keydown the page sees (2026-10-04, right after a fullscreen), so it is
     // marked here, where both ways arrive.
     player.addEventListener("cancel", () => { escapeClosed = performance.now(); });
-    // A click on the backdrop, outside the dialog's own box, closes it.
-    player.addEventListener("click", event => { if (event.target === player) player!.close(); });
+    // A click on the backdrop, outside the dialog's own box, closes it. Only a press that began there: a press on the
+    // video or the title released over the backdrop also arrives as a click on the dialog, its common ancestor.
+    let pressedOnBackdrop = false;
+    player.addEventListener("pointerdown", event => { pressedOnBackdrop = event.target === player; });
+    player.addEventListener("click", event => { if (event.target === player && pressedOnBackdrop) player!.close(); });
     document.body.append(player);
   }
   player.dataset.id = item.id;

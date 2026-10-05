@@ -13,7 +13,7 @@ function setup() {
   const changed = vi.fn();
   const deps = {
     dir: () => dir, changed, log: vi.fn(),
-    thumbnail: vi.fn(async () => Buffer.from("png")),
+    thumbnail: vi.fn(async () => Buffer.from("jpeg")),
     trash: vi.fn(async (file: string) => fs.rmSync(file)),
     open: vi.fn(async () => ""), reveal: vi.fn(),
   };
@@ -134,7 +134,7 @@ describe("RecordingsLibrary", () => {
     expect((await library.handle(new Request(`recordstuff-media://video/${fileId("/etc/hosts")}`))).status).toBe(404);
     expect((await library.handle(new Request(`recordstuff-media://other/${id}`))).status).toBe(404);
     const thumb = await library.handle(new Request(`recordstuff-media://thumb/${id}`));
-    expect([thumb.status, thumb.headers.get("content-type"), await thumb.text()]).toEqual([200, "image/png", "png"]);
+    expect([thumb.status, thumb.headers.get("content-type"), await thumb.text()]).toEqual([200, "image/jpeg", "jpeg"]);
   });
   it("makes a thumbnail once per version of a file", async () => {
     const file = touch("clip.mp4");

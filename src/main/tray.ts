@@ -12,6 +12,7 @@ import type { ErrorCode, RecordingState } from "../shared/state";
 import type { FrameRate } from "../shared/quality";
 import type { HotkeyAccelerator } from "../shared/hotkey";
 import { translate, type Language } from "../shared/i18n";
+import type { TrayClick } from "../shared/appearance";
 import {
   displayWriteFailedNotification,
   folderRefusedNotification,
@@ -63,6 +64,10 @@ export interface TrayOptions {
   onNotificationClick?: () => void;
   /** The notification language; absent reads it from `context`, which also projects displays and the whole failure history. */
   language?: () => Language;
+  /** What a left click does, read at each click; absent reads it from `context`, as `language` does. */
+  trayClick?: () => TrayClick;
+  /** Its menu closed (`menuOpen` is false again): a Dock icon hide held back while it was open can run now. */
+  menuClosed?: () => void;
   /** Monotonic milliseconds, to tell input since waking from input before the sleep. Tests pin it. */
   now?: () => number;
 }
@@ -83,7 +88,8 @@ export class AppTray {
     this.tray = new Tray(this.icons.idle);
     this.tray.setIgnoreDoubleClickEvents(true);
     this.tray.on("click", () => {
-      if ((options.context().trayClick ?? "record") === "menu") this.popUpMenu();
+      const choice = options.trayClick ? options.trayClick() : options.context().trayClick;
+      if ((choice ?? "record") === "menu") this.popUpMenu();
       else options.onToggle();
     });
     this.tray.on("right-click", () => this.popUpMenu());
@@ -118,7 +124,7 @@ export class AppTray {
     }
   }
 
-  /** The output dir changed while the state did not; refresh labels. */
+  /** The context changed while the state did not (language, output folder): redraw the icon, title and tooltip. */
   refresh(): void {
     this.render(this.lastState);
   }
@@ -340,11 +346,21 @@ export class AppTray {
     this.options.log?.(message);
   }
 
+  /** Whether its menu is open: hiding the Dock icon now would close it under the pointer (app-menu.ts). */
+  get menuOpen(): boolean {
+    return this.menuShown;
+  }
+  private menuShown = false;
+
   private popUpMenu(): void {
     if (this.destroyed) return;
     const model = trayModel(this.lastState, this.options.context());
     this.log(`tray: menu opened in ${this.lastState.type}: ${menuLogText(model.menu)}`);
-    this.tray.popUpContextMenu(Menu.buildFromTemplate(model.menu.map((entry) => this.toTemplate(entry))));
+    const menu = Menu.buildFromTemplate(model.menu.map((entry) => this.toTemplate(entry)));
+    menu.once("menu-will-close", () => { this.menuShown = false; this.options.menuClosed?.(); });
+    this.menuShown = true;
+    try { this.tray.popUpContextMenu(menu); }
+    catch (error) { this.menuShown = false; throw error; }
   }
 
   private toTemplate(entry: TrayMenuItem): MenuItemConstructorOptions {

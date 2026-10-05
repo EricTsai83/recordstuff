@@ -139,7 +139,7 @@ The page's window-message callback checks source/marker/port before creating the
 | backlogBytes | Bytes accepted by append and not yet confirmed written or released after a failure |
 | append | Reject if closed or already refused; refuse at once, without queueing, an append that would exceed the backlog bound (keeping an earlier disk error); otherwise queue complete writes of the remaining buffer, counting confirmed progress; empty input skips write, zero/invalid counts reject |
 | drain | Wait for queued work, then return the retained failure or refusal, if any |
-| finish | Queued sync; reject after a refusal; release, exclusive hard link with collision suffixes (exclusive copy once a link is refused other than EEXIST), best-effort temporary removal → actual final path and `finishTimings`; reject failure |
+| finish | Queued sync; reject after a refusal; release, exclusive hard link with collision suffixes up to `MAX_PUBLISH_ATTEMPTS` (100) names (exclusive copy once a link is refused other than EEXIST), best-effort temporary removal → actual final path and `finishTimings`; reject failure |
 | finishTimings | After a successful finish: flush, close, publish and cleanup milliseconds, `link` or `copy`, and the link's error code when it copied; diagnostics only |
 | abandon | Drain, best-effort close, preserve nonempty temporary file or remove empty file; never throw |
 | release | Once-only closed flag and handle close; `beginTerminal` already stopped the fsync timer |
@@ -157,7 +157,7 @@ The page's window-message callback checks source/marker/port before creating the
 | parseRange | One `bytes=` range within a size; undefined without a header, null for a range that cannot be served (416) |
 | RecordingsLibrary.refresh | List the folder newest first and publish it; one listing at a time, and requests made meanwhile share one more listing after it; unknown lengths are read afterwards (`lengths`) and published together; lengths and thumbnails of files no longer listed are dropped; an unreadable folder is reported, not shown empty |
 | RecordingsLibrary.act | Reveal, open or move to the Trash a listed id; any failure lists the folder again before answering false, so a file that left it is gone from the reply |
-| RecordingsLibrary.thumbnail | A listed file's PNG thumbnail, made once per file version while it is among the `THUMBNAILS_KEPT` (64) shown most recently |
+| RecordingsLibrary.thumbnail | A listed file's JPEG thumbnail, made once per file version while it is among the `THUMBNAILS_KEPT` (64) shown most recently |
 | RecordingsLibrary.watch / unwatch | While the window is open: watch the folder (no poll) and list it again `WATCH_SETTLE_MS` (250 ms) after a burst of events on a listed name; follows a changed folder; `unwatch` when the window closes leaves no watcher or timer; a folder that cannot be watched is logged once |
 | RecordingsLibrary.handle | The `recordstuff-media:` handler: `video/<id>` with byte ranges and `thumb/<id>` for listed ids only; anything else is 404 |
 | mp4Duration | Seconds from the boxes alone: a fragmented file's last `tfdt` plus its samples' durations, otherwise `mvhd`; undefined when the boxes do not say; never throws |
@@ -198,7 +198,7 @@ The page's window-message callback checks source/marker/port before creating the
 | frameRateDowngrade | Requested 60 and reported ≤30 → rounded actual fps, otherwise undefined |
 | unknown / describeCapture | Format unknown values / English requested, track, target, and warning diagnostics |
 
-[shared/hotkey.ts](../../src/shared/hotkey.ts): `DEFAULT_HOTKEY` enables ⌘⇧1; the accelerators earlier versions shipped stay valid, checked by `hotkey.test.ts`. `validateAccelerator` validates supported custom combinations, requires Command or Control and rejects reserved keys; `canonicalizeAccelerator` normalizes modifier order and shifted glyphs. `canonicalHotkeySettings` validates a persisted shortcut with the same rules, without restricting it to the offered choices, and returns it in canonical order; `describeAccelerator(accelerator, platform)` renders `⌘⌥⇧R` on darwin and `Ctrl+Alt+Shift+R` elsewhere for menus, notifications and logs.
+[shared/hotkey.ts](../../src/shared/hotkey.ts): `DEFAULT_HOTKEY` enables ⇧⌘1; the accelerators earlier versions shipped stay valid, checked by `hotkey.test.ts`. `validateAccelerator` validates supported custom combinations, requires Command or Control and rejects reserved keys; `canonicalizeAccelerator` normalizes modifier order and shifted glyphs. `canonicalHotkeySettings` validates a persisted shortcut with the same rules, without restricting it to the offered choices, and returns it in canonical order; `describeAccelerator(accelerator, platform)` renders `⌥⇧⌘R` on darwin and `Ctrl+Alt+Shift+R` elsewhere for menus, notifications and logs.
 
 [main/hotkey.ts](../../src/main/hotkey.ts):
 
@@ -213,7 +213,9 @@ The page's window-message callback checks source/marker/port before creating the
 | pressed | Log `hotkey: <accelerator> pressed` and call the toggle |
 | release | Unregister only a `registered` accelerator; log an unregister error |
 
-[shared/i18n.ts](../../src/shared/i18n.ts): `isLanguage(value)` validates en/zh-TW; `translate(key, language, values)` selects an English-keyed template or Traditional Chinese translation and substitutes every named placeholder; the compiler requires a value for each placeholder of the key, and label tables use `PlainMessageKey` (messages without placeholders). DEFAULT_LANGUAGE is en; ZH_TW is a typed complete translation catalog. Technical logs do not use it.
+[shared/i18n.ts](../../src/shared/i18n.ts): `isLanguage(value)` validates en/zh-TW; `documentLanguage(language)` is the `<html lang>` tag (`zh-Hant` or `en`) the Settings and full-screen pages set; `translate(key, language, values)` selects an English-keyed template or Traditional Chinese translation and substitutes every named placeholder; the compiler requires a value for each placeholder of the key, and label tables use `PlainMessageKey` (messages without placeholders). DEFAULT_LANGUAGE is en; ZH_TW is a typed complete translation catalog. Technical logs do not use it.
+
+[shared/video-player.ts](../../src/shared/video-player.ts): `formatDuration(seconds)` writes a length or a position as `1:23`, or `1:02:03` from an hour, counting whole seconds down, so a recording card's length and its player's total read the same; an unknown length reads `0:00`. `playbackState` and `isFullScreenChoice` validate what the full-screen window and the player send.
 
 [shared/protocol.ts](../../src/shared/protocol.ts): `isRecord` and `isNonEmptyString` support `isMainMessage` and `isHostMessage`; `prepared` requires a mime type and a CaptureReport, `started` may carry neither; chunk validation requires nonnegative integer seq and ArrayBuffer bytes.
 
@@ -269,11 +271,10 @@ The page's window-message callback checks source/marker/port before creating the
 | Function | Contract |
 | --- | --- |
 | qualityGroups | Video quality, resolution cap and frame rate; an unverified frame rate stays listed but not selectable |
-| hotkeyGroup | Recommended default, the saved custom value when distinct, and Off; the renderer adds Custom shortcut…; a refused registration adds a diagnostic, as does a Settings shortcut (⌘⌥,) that failed to register or is taken by the recording shortcut; Off keeps the remembered accelerator |
+| hotkeyGroup | Recommended default, the saved custom value when distinct, and Off; the renderer adds Custom shortcut…; a refused registration adds a diagnostic, as does a Settings shortcut (⌥⌘,) that failed to register or is taken by the recording shortcut; Off keeps the remembered accelerator |
 | updateChecksGroup | On/Off for the launch check |
 | languageGroup | English and Traditional Chinese; never locked, because language cannot touch a capture |
 | settingsView | The panel's whole view: title, hint, failure text, the four tabs (Failures counting unread rows), the Recordings listing with its media URLs, and groups with the actions stripped; failure rows carry their day, short time, file name and full path |
-| formatDuration | A recording's length as `1:23`, or `1:02:03` from an hour |
 | dayHeading / shortTime | The day heading failure rows and recordings are grouped under (Today, Yesterday, the date, the year only for an earlier year) and the short local time of a failure row or an app-named recording, relative to `ctx.now` (plan 047) |
 | settingsAction | The action for a group/choice pair that is offered and enabled right now, or nothing |
 | settingsChecked | Whether a choice is the committed one; how main reports that a save took effect |

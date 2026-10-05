@@ -64,7 +64,8 @@ import type { CountdownSeconds } from "../shared/countdown";
 
 import { DEFAULT_LANGUAGE, translate, type Language } from "../shared/i18n";
 
-let currentLanguage: Language = DEFAULT_LANGUAGE;
+/** The saved language, read where it is needed; the default until the settings are loaded. One source, nothing to copy. */
+let appLanguage: () => Language = () => DEFAULT_LANGUAGE;
 /** Reverse-DNS of the maintainer's domain (docs/system-design/signing.md#bundle-identifier). */
 const APP_ID = "com.ericts.record";
 /** How long quit waits for the settings, window-size and log writes once media has settled. */
@@ -86,7 +87,7 @@ const faultWiring: { recorder?: Recorder; refresh?: () => void } = {};
 let errorBoxHeld = false;
 process.on("uncaughtException", createUncaughtExceptionHandler({
   log,
-  showErrorBox: () => dialog.showErrorBox(APP_NAME, translate("An unexpected error occurred. See the log for details.", currentLanguage)),
+  showErrorBox: () => dialog.showErrorBox(APP_NAME, translate("An unexpected error occurred. See the log for details.", appLanguage())),
   mediaPending: () => faultWiring.recorder?.mediaPending ?? false,
   whenMediaSettled: () => faultWiring.recorder?.whenMediaSettled() ?? Promise.resolve(),
   held: (waiting) => { errorBoxHeld = waiting; faultWiring.refresh?.(); },
@@ -151,7 +152,7 @@ if (!app.requestSingleInstanceLock()) {
   main().catch(async (cause: unknown) => {
     log(`start: failed: ${stackOf(cause)}; exiting`);
     await flushBeforeExit(log);
-    dialog.showErrorBox(APP_NAME, translate("An unexpected error occurred. See the log for details.", currentLanguage));
+    dialog.showErrorBox(APP_NAME, translate("An unexpected error occurred. See the log for details.", appLanguage()));
     app.exit(1);
   });
 }
@@ -182,8 +183,10 @@ async function main(): Promise<void> {
   const appMenu = new AppMenu({
     state: () => recorder.state, context: () => appContext(), language: () => settings.language,
     onAction: action => runAction(action, "app menu"), log,
-    // Hiding leaves only the menu bar's icon, as closing does; Quit alone ends RecordStuff.
-    hide: () => { settingsWindow.hide(); appMenu.windowClosed(); },
+    trayMenuOpen: () => tray.menuOpen,
+    // Hiding leaves only the menu bar's icon, as closing does; Quit alone ends RecordStuff. The folder is not
+    // followed out of sight either: showing the window again watches and lists it afresh (`activated`).
+    hide: () => { settingsWindow.hide(); library.unwatch(); appMenu.windowClosed(); },
   });
   const library = new RecordingsLibrary({
     dir: () => settings.outputDir,
@@ -191,7 +194,8 @@ async function main(): Promise<void> {
     changed: () => settingsWindow.refresh(),
     thumbnail: async file => {
       const image = await nativeImage.createThumbnailFromPath(file, { width: 480, height: 270 });
-      return image.isEmpty() ? undefined : image.toPNG();
+      // A video frame: as JPEG it is several times smaller than as PNG, in the cache and on the way to the page.
+      return image.isEmpty() ? undefined : image.toJPEG(85);
     },
     trash: file => shell.trashItem(file),
     open: file => shell.openPath(file),
@@ -199,7 +203,7 @@ async function main(): Promise<void> {
     log,
   });
   protocol.handle(MEDIA_SCHEME, request => library.handle(request));
-  currentLanguage = settings.language;
+  appLanguage = () => settings.language;
   log(
     `start: ${APP_NAME} ${app.getVersion()}; run ${runId}; electron ${process.versions.electron}; ` +
       `${process.platform} ${os.release()}; outputDir ${settings.outputDir}; ` +
@@ -303,8 +307,8 @@ async function main(): Promise<void> {
       ? new PermissionWatcher((status) => recorder.setPermission(status), { log })
       : undefined;
 
-  // One action for both entry points (plan 016): the tray's left click and the
-  // global shortcut call the same `toggle`, whose state guards decide.
+  // One toggle for both entry points (plan 016): the global shortcut and the tray icon's left click, when it is
+  // set to record, call the same `toggle`, whose state guards decide.
   /** A quit is running: every action but quit is ignored until it exits or is declined. */
   let quitRequested = false;
   const toggle = (): void => { if (!quitRequested) recorder.toggle(); };
@@ -411,8 +415,8 @@ async function main(): Promise<void> {
       const file = library.find(id);
       if (!file) return false;
       // macOS refuses a drag without an image: the thumbnail, else the file's own icon.
-      const png = await library.thumbnail(file);
-      const icon = png ? nativeImage.createFromBuffer(png).resize({ width: 160 }) : await app.getFileIcon(file.path, { size: "normal" });
+      const jpeg = await library.thumbnail(file);
+      const icon = jpeg ? nativeImage.createFromBuffer(jpeg).resize({ width: 160 }) : await app.getFileIcon(file.path, { size: "normal" });
       contents.startDrag({ file: file.path, icon });
       return true;
     },
@@ -432,10 +436,16 @@ async function main(): Promise<void> {
     context: appContext,
     canNotify: () => settings.notifications,
     language: () => settings.language,
+    trayClick: () => settings.trayClick,
+    menuClosed: () => appMenu.trayMenuClosed(),
     idleSeconds: () => powerMonitor.getSystemIdleTime(),
     onNotificationClick: () => reopen?.notificationClicked(),
     onToggle: toggle,
-    showSaved: file => void showRecording(file),
+    // A click on an earlier banner obeys the quit gate, as every other way in does (`handleAction`).
+    showSaved: file => {
+      if (quitRequested) { log(`notification: show saved ${file} ignored while quitting`); return; }
+      void showRecording(file).catch((cause: unknown) => log(`notification: show saved ${file} failed: ${stackOf(cause)}`));
+    },
     permissionAction: () => {
       const state = recorder.state;
       runAction(state.type === "needsPermission" ? state.needsRelaunch ? "relaunch" : "openPermissionSettings" : "openSettings", "permission notification");
@@ -536,7 +546,6 @@ async function main(): Promise<void> {
       } else if ("setLanguage" in action) {
         await savePreference("language", {
           write: () => settings.setLanguage(action.setLanguage),
-          applied: () => { currentLanguage = settings.language; },
           notifyFailure: () => tray.notifyLanguageWriteFailed(),
         });
       } else if ("setHotkey" in action) {
@@ -611,8 +620,10 @@ async function main(): Promise<void> {
         recorder.cancelCountdown("menu");
         return;
       case "quit":
+        // A request, as Relaunch is: a quit deferred for a save or refused says so itself. Settings' Quit has no
+        // checked value to compare, so without this answer it read as a failed link (settings-window.ts `apply`).
         quitCoordinator.quit();
-        return;
+        return true;
       // A pressed button that opens nothing must say so: this state blocks
       // recording entirely, and the tray menu is its only route.
       case "openPermissionSettings":
@@ -826,7 +837,7 @@ async function main(): Promise<void> {
   }
 
   const showQuitFeedback = createQuitFeedback({
-    language: () => currentLanguage,
+    language: appLanguage,
     notify: body => tray.notifyAnswer(body),
     log,
   });
@@ -863,7 +874,7 @@ async function main(): Promise<void> {
         .then(() => { if (token === deferralToken) clearQuitDeferred(); }, () => undefined);
     },
     // Media is safe here; unsaved reminders need a durable save or explicit consent.
-    history: createHistoryQuit({ results: recordingResults, language: () => currentLanguage, focus: focusApp, log,
+    history: createHistoryQuit({ results: recordingResults, language: appLanguage, focus: focusApp, log,
       show: async options => {
         historyPrompt = true;
         try { return await dialog.showMessageBox(options); } finally { historyPrompt = false; }

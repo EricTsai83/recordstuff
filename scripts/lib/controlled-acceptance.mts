@@ -30,9 +30,9 @@ const RESULTS = `  const recordingResults = new RecordingResults(
  * stays the production one.
  */
 export function instrumentControlledAcceptance(source: string, runDir: string): string {
-  source = replaceOnce(source, "let currentLanguage: Language = DEFAULT_LANGUAGE;",
+  source = replaceOnce(source, "let appLanguage: () => Language = () => DEFAULT_LANGUAGE;",
     `import { configureControlled } from "../../scripts/fixtures/controlled-acceptance";\n` +
-    `const controlled = configureControlled(${JSON.stringify(runDir)});\nlet currentLanguage: Language = DEFAULT_LANGUAGE;`);
+    `const controlled = configureControlled(${JSON.stringify(runDir)});\nlet appLanguage: () => Language = () => DEFAULT_LANGUAGE;`);
   source = replaceOnce(source, "defaultOutputDir: defaultOutputDir(),", "defaultOutputDir: controlled.outputDir || defaultOutputDir(),");
   source = replaceOnce(source, "  const recorder = new Recorder({\n    host,\n", "  const recorder = new Recorder({\n    host: controlled.host(host),\n");
   source = replaceOnce(source, "openWriter: (recordingPath, finalPath) => FileWriter.open(recordingPath, finalPath),",

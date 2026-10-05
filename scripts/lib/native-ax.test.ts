@@ -13,7 +13,7 @@ const MINIMAL: AppMenu[] = [
 it("passes the minimal menu and names Electron's default Reload and Developer Tools shortcuts", () => {
   expect(judgeAppMenu(MINIMAL)).toEqual({ bound: [], missing: [] });
   const withView = [...MINIMAL, { title: "View", items: [item("Reload", "R"), item("Force Reload", "R", 1), item("Toggle Developer Tools", "I", 2)] }];
-  expect(judgeAppMenu(withView).bound).toEqual(["⌘R (Reload)", "⌘⌥I (Developer Tools)"]);
+  expect(judgeAppMenu(withView).bound).toEqual(["⌘R (Reload)", "⌥⌘I (Developer Tools)"]);
 });
 
 it("requires ⌘ alone for copy, select all, minimize and quit, so Lock Screen's ⌃⌘Q does not count as Quit", () => {

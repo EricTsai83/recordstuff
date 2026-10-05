@@ -28,6 +28,8 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
     if (group === "recordingFile:a" && choice === "trash") current = { ...base, library: { ...base.library!, items: base.library!.items.slice(1) } };
     // Full screen answers once the viewer has left it, with where the video was; ended by main, with nothing.
     if (typeof choice === "object") return endedByMain ? { view: current, applied: false } : { view: current, applied: true, playback: { time: 42, playing: false, volume: 0.5, muted: true } };
+    // A drag's reply carries the view main now counts as the page's: what changed meanwhile arrives only with it.
+    if (choice === "drag") return { view: { ...current, revision: 2.5, library: { ...current.library!, summary: "3 recordings · 401 MB" } }, applied: true };
     return { view: current, applied: true };
   });
   const close = vi.spyOn(window, "close").mockImplementation(() => {});
@@ -61,10 +63,15 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   expect(document.querySelector<HTMLDialogElement>("dialog.player")?.open ?? false).toBe(false);
   first.dispatchEvent(new Event("dragstart", { cancelable: true }));
   expect(choose).toHaveBeenLastCalledWith("recordingFile:a", "drag");
+  await vi.waitFor(() => expect(document.querySelector(".library-summary")!.textContent).toBe("3 recordings · 401 MB"));
 
   first.querySelector("button")!.click();
   const player = document.querySelector<HTMLDialogElement>("dialog.player")!;
   expect([player.open, player.querySelector("video")!.getAttribute("src"), document.getElementById("player-title")!.textContent]).toEqual([true, "recordstuff-media://video/a?v=1", "Today, 2:02 PM"]);
+  // A press on the picture released over the backdrop reaches the dialog as a click, but it is no click on the backdrop.
+  player.querySelector("video")!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+  player.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  expect(player.open).toBe(true);
   // Escape belongs to the player while it is open; the window stays.
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
   expect(close).not.toHaveBeenCalled();
@@ -165,7 +172,10 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   expect(document.getElementById("feedback")!.textContent).toBe(said);
   first.querySelector("button")!.click();
   expect([player.open, error.hidden, spoken.textContent]).toEqual([true, true, ""]);
-  document.getElementById("player-close")!.click();
+  // A press and release on the backdrop itself closes it.
+  player.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+  player.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  expect(player.open).toBe(false);
 
   // The file's actions come before it is opened: the card's ⋯ button opens a menu of them.
   const more = document.getElementById("clip-a-more") as HTMLButtonElement;

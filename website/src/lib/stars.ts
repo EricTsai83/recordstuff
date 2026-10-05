@@ -23,6 +23,9 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+/** Coordinates go into the page's SVG: two decimals are finer than a pixel, and float noise only adds bytes. */
+const round = (value: number, places = 2): number => Math.round(value * 10 ** places) / 10 ** places;
+
 export function generateStars(options: { seed?: number; width: number; skyBottom: number }): Star[] {
   const { seed = 20260920, width, skyBottom } = options;
   const rnd = mulberry32(seed);
@@ -47,7 +50,7 @@ export function generateStars(options: { seed?: number; width: number; skyBottom
     const r = 0.35 + Math.pow(u, 3) * 1.9;
     const bright = r > 1.7 && rnd() < 0.6;
     const o = inBand ? 0.35 + rnd() * 0.5 : 0.25 + rnd() * 0.6;
-    stars.push({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, r: Math.round(r * 100) / 100, o: Math.round(o * 100) / 100, bright });
+    stars.push({ x: round(x, 1), y: round(y, 1), r: round(r), o: round(o), bright });
   }
   return stars;
 }
@@ -58,7 +61,7 @@ export function starsToSvg(stars: Star[]): string {
       const core = `<circle cx="${s.x}" cy="${s.y}" r="${s.r}" class="st" style="--o:${s.o}"/>`;
       if (!s.bright) return core;
       const len = s.r * 3.2;
-      return `${core}<path d="M${s.x - len} ${s.y}H${s.x + len}M${s.x} ${s.y - len}V${s.y + len}" class="st-spark" style="--o:${s.o}"/>`;
+      return `${core}<path d="M${round(s.x - len)} ${s.y}H${round(s.x + len)}M${s.x} ${round(s.y - len)}V${round(s.y + len)}" class="st-spark" style="--o:${s.o}"/>`;
     })
     .join("");
 }

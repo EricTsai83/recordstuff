@@ -78,7 +78,7 @@ it("captures macOS Control+W as a shortcut while exact Command+W still closes", 
   await arm();
   key(field(), { key: "W", code: "KeyW", metaKey: true, shiftKey: true });
   expect(close).not.toHaveBeenCalled();
-  expect(field().textContent).toContain("⌘⇧W");
+  expect(field().textContent).toContain("⇧⌘W");
   key(field(), { key: "w", code: "KeyW", metaKey: true });
   expect(close).toHaveBeenCalledTimes(1);
   expect(choose).toHaveBeenCalledTimes(1);

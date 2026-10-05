@@ -50,6 +50,7 @@ export interface LibraryDeps {
   dir: () => string;
   /** The listing changed; the UI re-projects. */
   changed: () => void;
+  /** A JPEG of the video's picture, or undefined when none can be made. */
   thumbnail: (filePath: string) => Promise<Buffer | undefined>;
   trash: (filePath: string) => Promise<void>;
   /** Resolves to an error message, empty on success, as `shell.openPath` does. */
@@ -62,7 +63,7 @@ export interface LibraryDeps {
 
 const VIDEO = /\.(mp4|m4v|mov)$/i;
 /**
- * Thumbnails held in memory, a few screens of cards: each is a PNG of up to a few hundred kilobytes, and a
+ * Thumbnails held in memory, a few screens of cards: each is a JPEG of some tens of kilobytes, and a
  * menu bar app stays running for days. The least recently shown goes first and is made again if shown.
  */
 export const THUMBNAILS_KEPT = 64;
@@ -111,7 +112,7 @@ export function parseRange(header: string | null, size: number): { start: number
 export class RecordingsLibrary {
   private current: LibraryState;
   private durations = new Map<string, { version: string; seconds: number | undefined }>();
-  private thumbnails = new Map<string, { version: string; png: Promise<Buffer | undefined> }>();
+  private thumbnails = new Map<string, { version: string; jpeg: Promise<Buffer | undefined> }>();
   private generation = 0;
   /** The listing being read, and the one requested meanwhile, which every later caller shares. */
   private listing: Promise<void> | undefined;
@@ -202,7 +203,7 @@ export class RecordingsLibrary {
    * leaves it (deleted or moved in Finder) is listed again a moment later, so the tab follows the folder
    * without waiting for the window to regain focus. Event-driven (FSEvents on macOS), never polled; a
    * recording's growing `.recording.mp4` and other files are ignored. Idempotent; `unwatch` when the
-   * window closes, so the menu bar app watches nothing while idle.
+   * window closes or is hidden, so the menu bar app watches nothing while idle.
    */
   watch(): void {
     this.watching = true;
@@ -316,18 +317,18 @@ export class RecordingsLibrary {
     this.thumbnails.delete(file.path);
     if (cached?.version === file.version) {
       this.thumbnails.set(file.path, cached);
-      return cached.png;
+      return cached.jpeg;
     }
-    const png = this.deps.thumbnail(file.path).catch((cause: unknown) => {
+    const jpeg = this.deps.thumbnail(file.path).catch((cause: unknown) => {
       this.deps.log(`library: no thumbnail for ${file.path}: ${String(cause)}`);
       return undefined;
     });
-    this.thumbnails.set(file.path, { version: file.version, png });
+    this.thumbnails.set(file.path, { version: file.version, jpeg });
     for (const oldest of this.thumbnails.keys()) {
       if (this.thumbnails.size <= THUMBNAILS_KEPT) break;
       this.thumbnails.delete(oldest);
     }
-    return png;
+    return jpeg;
   }
 
   /** `recordstuff-media://video/<id>` and `recordstuff-media://thumb/<id>`, for listed ids only. */
@@ -336,8 +337,8 @@ export class RecordingsLibrary {
     const file = this.find(url.pathname.replace(/^\//, ""));
     if (!file || request.method !== "GET") return new Response(null, { status: 404 });
     if (url.host === "thumb") {
-      const png = await this.thumbnail(file);
-      return png ? new Response(new Uint8Array(png), { headers: { "content-type": "image/png", "cache-control": "no-cache" } }) : new Response(null, { status: 404 });
+      const jpeg = await this.thumbnail(file);
+      return jpeg ? new Response(new Uint8Array(jpeg), { headers: { "content-type": "image/jpeg", "cache-control": "no-cache" } }) : new Response(null, { status: 404 });
     }
     if (url.host !== "video") return new Response(null, { status: 404 });
     let size: number;

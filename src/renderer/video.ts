@@ -4,7 +4,7 @@
  * where the video is now. Main owns the window and its fades; the page never closes it. The title and controls are
  * the player's own (player-controls.ts), laid out as YouTube's full screen is.
  */
-import { translate, isLanguage } from "../shared/i18n";
+import { documentLanguage, translate, isLanguage } from "../shared/i18n";
 import { VIDEO_QUERY, type PlaybackState, type VideoBridge } from "../shared/video-player";
 import { mark, playerControls } from "./player-controls";
 
@@ -15,9 +15,15 @@ declare global {
 }
 
 const query = new URLSearchParams(location.search);
-const number = (key: string, fallback: number): number => { const value = Number(query.get(key)); return Number.isFinite(value) ? value : fallback; };
+/** A number main gave; a missing or empty one takes the fallback, as `Number(null)` would read 0. */
+const number = (key: string, fallback: number): number => {
+  const raw = query.get(key)?.trim();
+  const value = raw ? Number(raw) : NaN;
+  return Number.isFinite(value) ? value : fallback;
+};
 const queried = query.get(VIDEO_QUERY.language);
 const language = isLanguage(queried) ? queried : undefined;
+document.documentElement.lang = documentLanguage(language);
 const video = document.getElementById("video") as HTMLVideoElement;
 const exitButton = document.getElementById("exit") as HTMLButtonElement;
 

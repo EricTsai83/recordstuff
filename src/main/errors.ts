@@ -1,7 +1,6 @@
 /**
  * Reading Node errors in one place: the `code` an errno error carries and the
- * message of any thrown value. Main-process modules share these; the renderer
- * keeps its own copy because it cannot import from main.
+ * message of any thrown value, shared by the main-process modules.
  */
 
 /** The errno code (`ENOENT`, `EEXIST`, …) of a thrown value, when it carries one. */

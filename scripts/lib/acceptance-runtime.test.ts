@@ -4,10 +4,20 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFileLogger, rotateLog } from "../../src/main/log.ts";
-import { formatSessionRecord } from "../../src/shared/session-record.ts";
-import { command, confirmedIdle, finishRecording, quitIdleApp, recordingOutcome, sessionEnded, settleRecording, waitForLog, waitForRecord } from "./acceptance-runtime.mts";
+import { EARLY_STOP_TEXT, formatSessionRecord } from "../../src/shared/session-record.ts";
+import { command, confirmedIdle, finishRecording, quitIdleApp, recordingOutcome, savedPathOf, sessionEnded, settleRecording, waitForLog, waitForRecord } from "./acceptance-runtime.mts";
 import { LogGapError, LogReader } from "./log-reader.mts";
 
+
+describe("the saved line", () => {
+  it("names the saved file alone, also when an early stop's reason follows it", () => {
+    const file = "/Users/me/Movies/RecordStuff/2026-10-05 05-13-18.mp4";
+    const at = "[2026-10-05T05:13:30.000Z] ";
+    expect([`${at}saved ${file}`, ...Object.values(EARLY_STOP_TEXT).map(reason => `${at}saved ${file} (stopped early: ${reason})`)].map(savedPathOf))
+      .toEqual([file, ...Object.values(EARLY_STOP_TEXT).map(() => file)]);
+    expect(recordingOutcome([`${at}saved ${file} (stopped early: ${EARLY_STOP_TEXT.lowDisk})`])).toEqual({ settled: true, saved: file });
+  });
+});
 
 describe("acceptance subprocess bounds", () => {
   it("cancels a running child even if it ignores SIGTERM", async () => {

@@ -36,7 +36,7 @@ describe("controlled acceptance instrumentation", () => {
     const changedNotice = source.replace('notify: code => permissionNotices.failed(code),', "notify: () => undefined,");
     expect(changedNotice).not.toBe(source);
     expect(() => instrumentControlledAcceptance(changedNotice, "/tmp/x")).toThrow("anchor changed");
-    expect(() => instrumentControlledAcceptance(source + "\nlet currentLanguage: Language = DEFAULT_LANGUAGE;", "/tmp/x")).toThrow("anchor changed");
+    expect(() => instrumentControlledAcceptance(source + "\nlet appLanguage: () => Language = () => DEFAULT_LANGUAGE;", "/tmp/x")).toThrow("anchor changed");
   });
 });
 

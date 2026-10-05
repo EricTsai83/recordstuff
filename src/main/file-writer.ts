@@ -73,6 +73,11 @@ export interface FinishTimings {
 
 /** Why finish refused to publish; the only gate between zero bytes and a saved `.mp4`. */
 export const NO_MEDIA_DETAIL = "capture ended without media; no bytes were written";
+/**
+ * Names tried for the saved file: `name.mp4`, then `name-2.mp4` and on. Same-second names collide a few times at
+ * most; a volume that answers EEXIST for every name ends the save as a failure that keeps the recording, not a loop.
+ */
+export const MAX_PUBLISH_ATTEMPTS = 100;
 
 export class FileWriteError extends Error {
   constructor(
@@ -289,7 +294,10 @@ export class FileWriter {
         }
         if (linkError !== undefined) await this.io.copyExclusive(this.recordingPath, target);
       } catch (cause) {
-        if (errnoCode(cause) === "EEXIST") continue;
+        if (errnoCode(cause) === "EEXIST") {
+          if (attempt < MAX_PUBLISH_ATTEMPTS) continue;
+          throw new FileWriteError("output_write_failed", this.recordingPath, new Error(`every name up to ${path.basename(target)} was taken`, { cause }));
+        }
         // A copy without room for the whole file is disk_full, like any other ENOSPC.
         throw new FileWriteError(classifyWriteError(cause), this.recordingPath, cause);
       }

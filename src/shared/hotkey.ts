@@ -27,7 +27,7 @@ const SHIFTED_KEYS: Record<string, string> = {
 const APP_KEYS = ["Tab", "Q", "W"];
 /**
  * macOS also owns its screenshot and Spotlight chords; Control is a separate key there, so only Command is reserved.
- * Adding Control to ⌘⇧3, 4 and 6 sends the same screenshot to the clipboard, so those forms are the system's too.
+ * Adding Control to ⇧⌘3, 4 and 6 sends the same screenshot to the clipboard, so those forms are the system's too.
  */
 const MAC_RESERVED = new Set([
   ...[3, 4, 5, 6].map((key) => `CommandOrControl+Shift+${key}`),
@@ -97,14 +97,27 @@ const OTHER_NAMES: Record<string, string> = {
   Control: "Ctrl",
 };
 
+/** The order macOS draws modifiers in, as its own menus show a shortcut: ⌃⌥⇧⌘. */
+const MAC_MODIFIER_ORDER = ["Control", "Alt", "Shift", "CommandOrControl"] as const;
+
 /**
- * Human-readable form of a canonical accelerator or an editor candidate, for
- * menus and logs: `⌘⌥⇧R` on macOS, `Ctrl+Alt+Shift+R` elsewhere.
+ * The keys of a canonical accelerator or an editor candidate as they are shown, one per key: on macOS its symbols
+ * in the order the system's own menus draw the same shortcut beside an item (⌥, ⇧, ⌘, R), elsewhere its names.
  */
+export function acceleratorKeys(accelerator: string, platform: string): string[] {
+  const parts = accelerator.split("+").filter(Boolean);
+  if (platform !== "darwin") return parts.map((part) => OTHER_NAMES[part] ?? part);
+  const rank = (part: string): number => {
+    const index = (MAC_MODIFIER_ORDER as readonly string[]).indexOf(part);
+    return index < 0 ? MAC_MODIFIER_ORDER.length : index;
+  };
+  // Stable: the key keeps its place after the modifiers.
+  return [...parts].sort((a, b) => rank(a) - rank(b)).map((part) => MAC_SYMBOLS[part] ?? part);
+}
+
+/** Human-readable form for menus, notifications and logs: `⌥⇧⌘R` on macOS, `Ctrl+Alt+Shift+R` elsewhere. */
 export function describeAccelerator(accelerator: string, platform: string): string {
-  const parts = accelerator.split("+");
-  if (platform === "darwin") return parts.map((part) => MAC_SYMBOLS[part] ?? part).join("");
-  return parts.map((part) => OTHER_NAMES[part] ?? part).join("+");
+  return acceleratorKeys(accelerator, platform).join(platform === "darwin" ? "" : "+");
 }
 
 /** Kept separate from persisted recording validation so legacy choices survive. */

@@ -57,11 +57,15 @@ export interface AppMenuOptions {
   /** The saved language, readable before the rest of the context exists. */
   language: () => Language;
   onAction: (action: AppAction) => void;
+  /** The tray's menu is open: a Dock icon hide then would close it, so it waits for `trayMenuClosed`. */
+  trayMenuOpen?: () => boolean;
   log?: (message: string) => void;
 }
 
 export class AppMenu {
   private windowOpen = false;
+  /** A recheck found the Dock icon back while the tray's menu was open, and hides it once that menu closes. */
+  private hidePending = false;
   /** What the menus were last built from: most refreshes change nothing they show, and a rebuild would close an open menu. */
   private built: string | undefined;
 
@@ -98,7 +102,26 @@ export class AppMenu {
    */
   private hideDock(): void {
     app.dock?.hide();
-    for (const ms of DOCK_RECHECK_MS) setTimeout(() => { if (!this.windowOpen && app.dock?.isVisible()) app.dock.hide(); }, ms);
+    for (const ms of DOCK_RECHECK_MS) setTimeout(() => this.hideDockAgain(), ms);
+  }
+
+  /**
+   * A hide transforms the process, which closes any menu that is open: the tray's menu opened just after the window
+   * closed vanished under the pointer about a second later (2026-10-05, `pnpm acceptance:tray`). While it is open,
+   * the hide waits for it to close (`trayMenuClosed`).
+   */
+  private hideDockAgain(): void {
+    if (this.windowOpen || !app.dock?.isVisible()) return;
+    if (this.options.trayMenuOpen?.()) { this.hidePending = true; return; }
+    this.hidePending = false;
+    app.dock.hide();
+  }
+
+  /** The tray's menu closed: a hide held back while it was open runs now, if the window is still closed. */
+  trayMenuClosed(): void {
+    if (!this.hidePending) return;
+    this.hidePending = false;
+    this.hideDockAgain();
   }
 
   /** The state or the context changed: the Record menu follows, as the tray does. */

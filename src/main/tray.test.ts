@@ -61,7 +61,8 @@ vi.mock("electron", () => {
   const app = new EventEmitter();
   return {
     app,
-    Menu: { buildFromTemplate: vi.fn(() => ({})) },
+    // Like Electron's Menu, it says when it closes.
+    Menu: { buildFromTemplate: vi.fn(() => new EventEmitter()) },
     Notification: FakeNotification,
     // Like Electron, a destroyed tray throws on every native call.
     Tray: class {
@@ -80,7 +81,7 @@ vi.mock("electron", () => {
   };
 });
 
-import { app, Notification, shell } from "electron";
+import { app, Menu, Notification, shell } from "electron";
 import type { Language } from "../shared/i18n";
 import { DEFAULT_QUALITY } from "../shared/quality";
 import { AppTray, RETURN_IDLE_SECONDS, TRAY_ICON_FILES, WAKE_CHECK_MS } from "./tray";
@@ -655,6 +656,28 @@ describe("the icon's left click (2026-10-04)", () => {
       expect(onToggle).toHaveBeenCalledTimes(1);
       expect(native.popUpContextMenu).not.toHaveBeenCalled();
     }
+    trayClick = undefined;
+  });
+  it("reads the choice alone at a click when given it, without projecting the whole context", () => {
+    setup();
+    const context = vi.fn(() => { throw new Error("not needed for a click"); });
+    const tray = new AppTray({ resourcesDir: "/resources", context, trayClick: () => "record", onToggle, showSaved, permissionAction: vi.fn(), onAction: vi.fn() });
+    leftClick(nativeOf(tray));
+    expect([onToggle.mock.calls.length, context.mock.calls.length]).toEqual([1, 0]);
+  });
+  it("knows while its menu is open and says when it closes, so a Dock icon hide can wait for it", () => {
+    trayClick = "menu";
+    const menuClosed = vi.fn();
+    setup();
+    const tray = new AppTray({ resourcesDir: "/resources", context: () => ({ platform: "darwin", outputDir: "/o", homeDir: "/h", quality: DEFAULT_QUALITY,
+      countdown: 3, countdownSound: true, language: "en", hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: "idle" }, enabled: true },
+      notifications: true, displays: [], display: { kind: "primary" }, trayClick: "menu" }), onToggle, showSaved, permissionAction: vi.fn(), onAction: vi.fn(), menuClosed });
+    expect(tray.menuOpen).toBe(false);
+    leftClick(nativeOf(tray));
+    expect(tray.menuOpen).toBe(true);
+    const menu = vi.mocked(Menu.buildFromTemplate).mock.results.at(-1)!.value as EventEmitter;
+    menu.emit("menu-will-close");
+    expect([tray.menuOpen, menuClosed.mock.calls.length]).toEqual([false, 1]);
     trayClick = undefined;
   });
   it("follows a change of choice at the next click, without a new tray", () => {

@@ -165,8 +165,8 @@ describe("hotkey definitions", () => {
   });
 
   it("describes accelerators with macOS symbols and Windows-style names elsewhere", () => {
-    expect(describeAccelerator(DEFAULT_ACCELERATOR, "darwin")).toBe("⌘⇧1");
-    expect(describeAccelerator(SECOND, "darwin")).toBe("⌘⌥⇧R");
+    expect(describeAccelerator(DEFAULT_ACCELERATOR, "darwin")).toBe("⇧⌘1");
+    expect(describeAccelerator(SECOND, "darwin")).toBe("⌥⇧⌘R");
     expect(describeAccelerator(DEFAULT_ACCELERATOR, "win32")).toBe("Ctrl+Shift+1");
     expect(describeAccelerator("Control+Alt+R", "linux")).toBe("Ctrl+Alt+R");
   });

@@ -68,10 +68,22 @@ if (hasTool("ffmpeg")) {
 } else console.warn("ffmpeg is missing (brew install ffmpeg): the player and full screen are left out of the gallery.");
 
 const fixture = await buildFixture("ui-preview", dir);
+// The fixture runs in a process group of its own, which a terminal's Ctrl+C never reaches: pass it on, so the group
+// is stopped and its cleanup recorded rather than left running unsupervised (as the acceptance runners do).
+const controller = new AbortController();
+const interrupt = (): void => controller.abort();
+process.on("SIGINT", interrupt);
+process.on("SIGTERM", interrupt);
 const log = fs.openSync(path.join(dir, "electron.log"), "a");
-const execution = await runIsolatedProcess({ executable: ELECTRON, args: [fixture, dir, REPO_ROOT, clips], cwd: REPO_ROOT,
-  env: scrubbedEnv(), logFd: log, timeoutMs: 180_000 });
-fs.closeSync(log);
+let execution;
+try {
+  execution = await runIsolatedProcess({ executable: ELECTRON, args: [fixture, dir, REPO_ROOT, clips], cwd: REPO_ROOT,
+    env: scrubbedEnv(), logFd: log, timeoutMs: 180_000, signal: controller.signal });
+} finally {
+  fs.closeSync(log);
+  process.removeListener("SIGINT", interrupt);
+  process.removeListener("SIGTERM", interrupt);
+}
 fs.writeFileSync(path.join(dir, "cleanup.json"), JSON.stringify(execution, null, 2));
 // A gallery that left Electron's helpers running is not a finished run (review: cleanup).
 if (execution.error || execution.stopped || !execution.groupGone) fail(`The preview left processes behind or was stopped (see cleanup.json): ${JSON.stringify(execution)}\nEvidence: ${dir}`, 1);

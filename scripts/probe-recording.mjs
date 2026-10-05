@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Development-only measurement for print the actual size,
- * average frame rate, bitrate, sample rate, channels, duration and file size
- * of one or more recordings. Wraps `ffprobe` (brew install ffmpeg); nothing
- * here ships with the app.
+ * Development-only measurement: prints the duration, file size, video size,
+ * average frame rate (counted from the decoded frames), bitrates, audio sample
+ * rate and channels, and the audio/video start offset of one or more recordings.
+ * Wraps `ffprobe` (brew install ffmpeg); nothing here ships with the app.
  *
  *   pnpm probe -- ~/Movies/RecordStuff/*.mp4
  */
@@ -21,7 +21,8 @@ function probe(file) {
   const json = execFileSync(
     "ffprobe",
     ["-v", "error", "-show_format", "-show_streams", "-count_frames", "-of", "json", file],
-    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+    // stderr is captured, not passed through, so a failure is printed once, below.
+    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] },
   );
   return JSON.parse(json);
 }
@@ -32,8 +33,12 @@ function ratio(text) {
   return den ? num / den : num;
 }
 
-const kbps = (bps) => (bps === undefined || Number.isNaN(bps) ? "unknown" : `${Math.round(bps / 1000)} kbps`);
-const fixed = (n, digits = 2) => (n === undefined || Number.isNaN(n) ? "unknown" : n.toFixed(digits));
+const known = (n) => n !== undefined && Number.isFinite(n);
+const kbps = (bps) => (known(bps) ? `${Math.round(bps / 1000)} kbps` : "unknown");
+/** `n` to `digits` places with its unit, or `unknown` without one. */
+const fixed = (n, digits = 2, unit = "") => (known(n) ? `${n.toFixed(digits)}${unit}` : "unknown");
+/** One aligned row of the report. */
+const row = (label, value) => console.log(`  ${label.padEnd(14)}${value}`);
 
 let failed = false;
 for (const file of files) {
@@ -43,7 +48,9 @@ for (const file of files) {
   } catch (cause) {
     failed = true;
     const missing = cause?.code === "ENOENT";
-    console.error(`${file}: ${missing ? "ffprobe is missing; install it with brew install ffmpeg" : String(cause.stderr ?? cause.message ?? cause)}`);
+    // ffprobe's own message already starts with the file's name.
+    const detail = missing ? "ffprobe is missing; install it with brew install ffmpeg" : String(cause.stderr || cause.message || cause).trim();
+    console.error(detail.startsWith(file) ? detail : `${file}: ${detail}`);
     if (missing) break;
     continue;
   }
@@ -58,20 +65,17 @@ for (const file of files) {
   const totalBps = duration ? (size * 8) / duration : undefined;
 
   console.log(file);
-  console.log(`  Duration          ${fixed(duration, 1)} s`);
-  console.log(`  File size      ${(size / 1024 / 1024).toFixed(1)} MB (total ${kbps(totalBps)})`);
-  console.log(
-    `  Video          ${video ? `${video.codec_name} ${video.width}x${video.height}` : "none"}` +
-      `, average ${fixed(avgFps, 2)} fps (${frames ?? "unknown"} frames, declared ${video?.r_frame_rate ?? "unknown"})` +
-      `, Bitrate ${kbps(videoBps)}${video?.pix_fmt ? `, ${video.pix_fmt}` : ""}`,
-  );
-  console.log(
-    `  Audio          ${audio ? `${audio.codec_name} ${audio.sample_rate} Hz, ${audio.channels} channels (${audio.channel_layout ?? "unknown"})` : "none"}` +
-      `, Bitrate ${kbps(audioBps)}`,
-  );
+  row("Duration", fixed(duration, 1, " s"));
+  row("File size", `${(size / 1024 / 1024).toFixed(1)} MB (total ${kbps(totalBps)})`);
+  row("Video", video
+    ? `${video.codec_name} ${video.width}x${video.height}, average ${fixed(avgFps, 2, " fps")} (${frames ?? "unknown"} frames, ` +
+      `declared ${video.r_frame_rate ?? "unknown"}), bitrate ${kbps(videoBps)}${video.pix_fmt ? `, ${video.pix_fmt}` : ""}`
+    : "none");
+  row("Audio", audio
+    ? `${audio.codec_name} ${audio.sample_rate} Hz, ${audio.channels} channels (${audio.channel_layout ?? "unknown"}), bitrate ${kbps(audioBps)}`
+    : "none");
   if (video?.start_time !== undefined && audio?.start_time !== undefined) {
-    const offset = Number(audio.start_time) - Number(video.start_time);
-    console.log(`  Start offset      Audio − Video = ${fixed(offset * 1000, 0)} ms`);
+    row("Start offset", `audio − video = ${fixed((Number(audio.start_time) - Number(video.start_time)) * 1000, 0, " ms")}`);
   }
 }
 process.exit(failed ? 1 : 0);

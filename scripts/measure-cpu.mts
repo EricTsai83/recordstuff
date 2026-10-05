@@ -355,8 +355,13 @@ async function main(): Promise<number> {
       note(`C: average ${settingsOpen.cpuPercent.average.toFixed(3)}%`);
       await sendKeys(SETTINGS_SHORTCUT);
       await sleep(800);
-      await command("osascript", ["-e", 'tell application "System Events" to keystroke "w" using {command down}'], AbortSignal.timeout(5000));
-      await sleep(1000);
+      // ⌘W goes to the frontmost app, which was Finder a moment ago: never send it unless RecordStuff is frontmost
+      // with Settings focused (as acceptance-tray does). Otherwise the window stays open until the quit below.
+      const front = await osascriptAx(controller.signal).windows(appPid);
+      if (front.frontmostPid === appPid && front.focusedWindow === "RecordStuff") {
+        await command("osascript", ["-e", 'tell application "System Events" to keystroke "w" using {command down}'], AbortSignal.timeout(5000));
+        await sleep(1000);
+      } else note(`C: RecordStuff with Settings focused is not frontmost (pid ${front.frontmostPid ?? "none"}); ⌘W not sent, the quit closes it`);
     }
     await sampler.stop();
     await quitApp();

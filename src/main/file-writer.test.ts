@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FileWriteError, FileWriter, NO_MEDIA_DETAIL, classifyWriteError, ensureWritableDir, nodeFs, type FileWriterFs, type WritableHandle } from "./file-writer";
+import { FileWriteError, FileWriter, MAX_PUBLISH_ATTEMPTS, NO_MEDIA_DETAIL, classifyWriteError, ensureWritableDir, nodeFs, type FileWriterFs, type WritableHandle } from "./file-writer";
 
 let dir: string;
 const activeWriters: FileWriter[] = [];
@@ -61,6 +61,17 @@ describe("FileWriter", () => {
     expect(await writer.finish()).toBe(path.join(dir, "t-2.mp4"));
     expect(copyExclusive).not.toHaveBeenCalled();
     expect(await fs.readFile(path.join(dir, "t.mp4"), "utf8")).toBe("old");
+  });
+
+  it("gives up publishing after the last candidate name and keeps the recording, on a volume that answers EEXIST for every name", async () => {
+    const recording = path.join(dir, "busy.recording.mp4");
+    const link = vi.fn(async () => { throw Object.assign(new Error("exists"), { code: "EEXIST" }); });
+    const writer = await FileWriter.open(recording, path.join(dir, "busy.mp4"), { io: { ...nodeFs, link } });
+    await writer.append(bytes(7));
+    await expect(writer.finish()).rejects.toMatchObject({ name: "FileWriteError", code: "output_write_failed" });
+    expect(link).toHaveBeenCalledTimes(MAX_PUBLISH_ATTEMPTS);
+    expect(link).toHaveBeenLastCalledWith(recording, path.join(dir, `busy-${MAX_PUBLISH_ATTEMPTS}.mp4`));
+    expect(await fs.readFile(recording)).toEqual(Buffer.from([7]));
   });
 
   it("refuses to overwrite an existing recording file", async () => {

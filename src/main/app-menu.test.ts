@@ -105,6 +105,29 @@ describe("the app menu and Dock icon (2026-10-04)", () => {
       expect(electron.dock.hide).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); electron.dock.visible = false; }
   });
+  it("holds a Dock icon hide back while the tray's menu is open, which the hide would close, and runs it once the menu closes", () => {
+    vi.useFakeTimers();
+    let trayOpen = false;
+    const held = new AppMenu({ state: () => state, context: () => ctx, language: () => ctx.language, onAction, trayMenuOpen: () => trayOpen });
+    try {
+      held.windowOpened();
+      held.windowClosed();
+      electron.dock.hide.mockClear();
+      electron.dock.visible = true;
+      // The tray's menu opened just after the window closed: the recheck must not close it under the pointer.
+      trayOpen = true;
+      vi.advanceTimersByTime(1000);
+      expect(electron.dock.hide).not.toHaveBeenCalled();
+      trayOpen = false;
+      held.trayMenuClosed();
+      expect(electron.dock.hide).toHaveBeenCalledOnce();
+      // Without a hide held back, a closing menu changes nothing; nor does it once the window is open again.
+      held.trayMenuClosed();
+      held.windowOpened();
+      held.trayMenuClosed();
+      expect(electron.dock.hide).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); electron.dock.visible = false; }
+  });
   it("rebuilds only when what it shows changes, so a menu held open stays open", () => {
     menu.windowOpened();
     const builds = electron.setApplicationMenu.mock.calls.length;
