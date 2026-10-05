@@ -6,8 +6,8 @@
  */
 import { documentLanguage, translate, isLanguage } from "../shared/i18n";
 import { VIDEO_QUERY, type PlaybackState, type VideoBridge } from "../shared/video-player";
-import { mark, playerControls } from "./player-controls";
-import { isCloseChord } from "./shortcut-capture";
+import { mark, playbackOf, playerControls } from "./player-controls";
+import { browserPlatform, isCloseChord } from "./shortcut-capture";
 
 declare global {
   interface Window {
@@ -90,7 +90,7 @@ video.src = query.get(VIDEO_QUERY.src) ?? "";
 function leave(): void {
   if (left) return;
   left = true;
-  const state = { time: video.currentTime || 0, playing: !video.paused && !video.ended, volume: video.volume, muted: video.muted };
+  const state = playbackOf(video);
   video.pause();
   window.video?.exit(state);
 }
@@ -98,7 +98,7 @@ exitButton.addEventListener("click", leave);
 // A double-click leaves, as it enters from the player; the controls' own double-click would ask for the page's fullscreen.
 video.addEventListener("dblclick", event => { event.preventDefault(); leave(); });
 // ⌘W (Ctrl+W elsewhere) leaves too: the app menu has no Close, since each page closes on it itself (app-menu.ts).
-const platform = navigator.platform.startsWith("Mac") ? "darwin" : navigator.platform;
+const platform = browserPlatform();
 document.addEventListener("keydown", event => {
   if ((event.key === "Escape" && !event.repeat) || isCloseChord(event, platform)) { event.preventDefault(); leave(); }
   if (event.key === "Tab") document.documentElement.dataset.input = "keyboard";

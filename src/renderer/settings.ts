@@ -1,9 +1,9 @@
 /** Main owns committed preferences, diagnostics and authorized choice ids. */
 import { SETTINGS_SHORTCUT_RESERVED, acceleratorKeys, describeAccelerator, isSettingsShortcut, validateAccelerator } from "../shared/hotkey";
-import { isCloseChord, shortcutCandidate, shortcutModifiers } from "./shortcut-capture";
+import { browserPlatform, isCloseChord, shortcutCandidate, shortcutModifiers } from "./shortcut-capture";
 import { infoPlacement } from "./info-placement";
 import { glyph } from "./glyph";
-import { controlButton, mark, playerControls, type PlayerControls, type PlayerLabels } from "./player-controls";
+import { controlButton, mark, playbackOf, playerControls, type PlayerControls, type PlayerLabels } from "./player-controls";
 import { documentLanguage, isLanguage, phrases, sentences, translate, type PlainMessageKey } from "../shared/i18n";
 import { REVIEWED_FAILURES_KEPT, persistsHistory } from "../shared/recording-result";
 import { SHORTCUT_CAPTURE_TIMEOUT_MS, type LibraryItemView, type RecordingResultView, type SettingsBridge, type SettingsGroup, type SettingsTab, type SettingsView } from "../shared/settings-panel";
@@ -73,7 +73,7 @@ const isCaptureControl = (control: string): boolean => control === "shortcut-cap
 const isRecoveryControl = (control: string): boolean => /-(retry|recovery)$/.test(control);
 const shortcutGroup = (): SettingsGroup | undefined => view?.groups.find(g => g.kind === "shortcut");
 /** Main's platform; before the first view (a failed read) the page must still close. */
-const platform = (): string => shortcutGroup()?.platform ?? (navigator.platform.startsWith("Mac") ? "darwin" : navigator.platform);
+const platform = (): string => shortcutGroup()?.platform ?? browserPlatform();
 document.documentElement.dataset.platform = platform();
 function setText(element: Element, value: string): void { if (element.textContent !== value) element.textContent = value; }
 /** Like `setText`: an attribute rewritten with its own value would still be a DOM mutation, once per card on every push. */
@@ -1273,7 +1273,7 @@ async function playFullScreen(): Promise<void> {
   const id = shown?.dataset.id;
   if (!shown?.open || !id || fullScreenPending) return;
   const video = shown.querySelector("video")!;
-  const state: PlaybackState = { time: video.currentTime || 0, playing: !video.paused && !video.ended, volume: video.volume, muted: video.muted };
+  const state = playbackOf(video);
   fullScreenPending = true;
   video.pause();
   // Without a state handed back (ended by main, as when RecordStuff is hidden), the player stays paused where it was.

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { playerControls } from "./player-controls";
+import { playbackOf, playerControls } from "./player-controls";
 import { VIDEO_TIMING, formatDuration } from "../shared/video-player";
 
 const labels = { play: "Play", pause: "Pause", mute: "Mute", unmute: "Unmute", volume: "Volume", position: "Playback position" };
@@ -170,4 +170,18 @@ it("writes nothing again while what it shows has not changed, though timeupdate 
   observer.disconnect();
   // The bar's fill moves with the time; its reading, still 0:02, and the volume are left alone.
   expect(changes).toEqual(["pc-seek:style"]);
+});
+
+it("reads where a video is the one way both windows hand it over: an ended or paused video is not playing, and no position is 0", () => {
+  const video = document.createElement("video");
+  let paused = false, ended = false, time = NaN;
+  Object.defineProperty(video, "paused", { get: () => paused, configurable: true });
+  Object.defineProperty(video, "ended", { get: () => ended, configurable: true });
+  Object.defineProperty(video, "currentTime", { get: () => time, configurable: true });
+  video.volume = 0.25; video.muted = true;
+  expect(playbackOf(video)).toEqual({ time: 0, playing: true, volume: 0.25, muted: true });
+  time = 12.5; ended = true;
+  expect(playbackOf(video)).toMatchObject({ time: 12.5, playing: false });
+  ended = false; paused = true;
+  expect(playbackOf(video).playing).toBe(false);
 });

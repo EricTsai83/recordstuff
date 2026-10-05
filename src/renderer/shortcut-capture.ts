@@ -23,6 +23,14 @@ export function isCloseChord(event: ShortcutKey, platform: string): boolean {
   return key === "w" || (event.code === "KeyW" && !/^[\x21-\x7e]$/.test(key));
 }
 
+/**
+ * The platform as the page's browser names it, in main's terms for macOS (`darwin`): what `isCloseChord` reads until
+ * main has said (the settings page) or where main never says (the full-screen page).
+ */
+export function browserPlatform(): string {
+  return navigator.platform.startsWith("Mac") ? "darwin" : navigator.platform;
+}
+
 export function shortcutModifiers(event: ShortcutKey, platform = "darwin"): string[] {
   return MODIFIER_ORDER.filter((_, index) => [event.metaKey && platform === "darwin", event.ctrlKey, event.altKey, event.shiftKey][index]);
 }

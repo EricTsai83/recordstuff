@@ -5,7 +5,7 @@
  * Both fade while a video plays and the pointer rests, and stay while it is paused. Nothing runs on a timer while
  * the video is still: the seek bar follows `timeupdate`, which fires only while it plays.
  */
-import { VIDEO_TIMING, formatDuration } from "../shared/video-player";
+import { VIDEO_TIMING, formatDuration, type PlaybackState } from "../shared/video-player";
 import { glyph } from "./glyph";
 
 /** The controls' names for assistive technology and tooltips, in the page's language. */
@@ -43,6 +43,13 @@ const MARKS = {
   volume: "M4 9.2h3.6L12 5v14l-4.4-4.2H4ZM15 8.6a4.6 4.6 0 0 1 0 6.8l-1.1-1.1a3.1 3.1 0 0 0 0-4.6ZM17.4 6.2a8 8 0 0 1 0 11.6l-1.1-1.1a6.4 6.4 0 0 0 0-9.4Z",
   muted: "M4 9.2h3.6L12 5v14l-4.4-4.2H4ZM15.3 9.4l1.1-1.1 2.3 2.3 2.3-2.3 1.1 1.1-2.3 2.3 2.3 2.3-1.1 1.1-2.3-2.3-2.3 2.3-1.1-1.1 2.3-2.3Z",
 } as const;
+/**
+ * Where a video is and how it sounds, as one window hands it to the other: the player going full screen, and the
+ * full-screen window handing back. One reading, so resuming behaves the same in both directions.
+ */
+export function playbackOf(video: HTMLVideoElement): PlaybackState {
+  return { time: video.currentTime || 0, playing: !video.paused && !video.ended, volume: video.volume, muted: video.muted };
+}
 /** A filled mark from its path, white on the picture. */
 export function mark(d: string): SVGSVGElement {
   return glyph("0 0 24 24", {}, { d, fill: "currentColor" });
@@ -91,7 +98,7 @@ export function playerControls(video: HTMLVideoElement, options: PlayerControlsO
 
   /** The thumb is held: the bar follows the hand, not the video catching up. */
   let scrubbing = false;
-  const playing = (): boolean => !video.paused && !video.ended;
+  const playing = (): boolean => playbackOf(video).playing;
   function sync(): void {
     const paused = !playing();
     if (root.classList.contains("pc-paused") !== paused) root.classList.toggle("pc-paused", paused);
