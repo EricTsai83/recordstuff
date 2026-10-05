@@ -18,8 +18,11 @@ import path from "node:path";
 // local import: it imports only built-ins, so it keeps its own queue drain and errno checks.
 
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
-/** Write failures the file can recover from: space freed later, a folder created again. */
-const TRANSIENT_WRITE_ERRORS = new Set(["ENOSPC", "ENOENT"]);
+/**
+ * Write failures the file can recover from: space freed later, a folder created again, a file another process holds
+ * open without sharing it for writing (EBUSY on Windows, as a rotation it blocks is retried too).
+ */
+const TRANSIENT_WRITE_ERRORS = new Set(["ENOSPC", "ENOENT", "EBUSY"]);
 /** Lines waiting for the file beyond this are dropped from it; stdout still gets every line. */
 const MAX_QUEUED_BYTES = 1024 * 1024;
 /** After a failed rotation the file keeps growing; rotation is tried again once it has grown this much more. */

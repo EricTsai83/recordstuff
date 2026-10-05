@@ -167,6 +167,24 @@ describe("createFileLogger", () => {
     expect(err[0]).toContain("skipping file lines until a write succeeds");
   });
 
+  it("writes again once another process stops holding the file (EBUSY on Windows), instead of giving the file up", async () => {
+    const log = logger();
+    log("before");
+    await log.flush();
+    const busy = vi.spyOn(logFs, "appendFile").mockRejectedValueOnce(Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" }));
+    log("held");
+    await log.flush();
+    busy.mockRestore();
+    log("after");
+    await log.flush();
+    expect((await fs.readFile(filePath, "utf8")).trimEnd().split("\n")).toEqual([
+      "[2026-09-12T10:00:00.000Z] before",
+      "[2026-09-12T10:00:00.000Z] log: 1 line(s) could not be written to this file (stdout has them)",
+      "[2026-09-12T10:00:00.000Z] after",
+    ]);
+    expect(err).toEqual([expect.stringContaining("skipping file lines until a write succeeds")]);
+  });
+
   it("stops touching the file after a mid-run write failure", async () => {
     const log = logger();
     log("before");
