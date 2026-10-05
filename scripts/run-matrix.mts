@@ -40,7 +40,7 @@ import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "
 import { CPU_BUDGET, CpuSampler, MIN_COVERAGE, SamplerBlockedError, SamplerInterruptedError, checkBaselines, compileSampler, cpuBaseline, intervals, summarize } from "./lib/cpu-sampler.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
 import { LAUNCHER_EXIT_MS, QUIT_GRACE_MS, stopDevApp, type AppStop } from "./lib/dev-app.mts";
-import { LogGapError, LogReader, type LogCursor } from "./lib/log-reader.mts";
+import { LogReader, type LogCursor } from "./lib/log-reader.mts";
 import {
   MATRICES,
   casePhases,
@@ -245,14 +245,7 @@ interface RunOutcome {
 const appLog = new LogReader(LOG_PATH);
 
 /** Log lines written since `start`; a rotated-away history is an explicit failure, not "no outcome". */
-function logSince(start: LogCursor): { lines: string[]; gap?: string } {
-  try {
-    return { lines: appLog.since(start).lines.map((line) => line.text) };
-  } catch (cause) {
-    if (cause instanceof LogGapError) return { lines: [], gap: cause.message };
-    throw cause;
-  }
-}
+const logSince = (start: LogCursor): { lines: string[]; gap?: string } => appLog.textSince(start);
 
 /** Where the sampler's helper was compiled, before the round started. */
 let samplerBinary = "";

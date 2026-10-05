@@ -233,6 +233,19 @@ export class LogReader {
   all(): string[] {
     return this.since({ offset: 0 }).lines.map((line) => line.text);
   }
+
+  /**
+   * The text of the lines written since `cursor`. History rotated away under it is the explicit `gap` (why), with no
+   * lines, so a runner reports it rather than reading it as "no outcome"; any other read error throws.
+   */
+  textSince(cursor: LogCursor): { lines: string[]; gap?: string } {
+    try {
+      return { lines: this.since(cursor).lines.map((line) => line.text) };
+    } catch (cause) {
+      if (cause instanceof LogGapError) return { lines: [], gap: cause.message };
+      throw cause;
+    }
+  }
 }
 
 /** A cursor at `offset` of `file`, marked with the bytes of `bytes` that precede index `end` (its position there). */

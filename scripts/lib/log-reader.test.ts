@@ -69,6 +69,9 @@ describe("rotation-aware log cursor", async () => {
     expect(() => reader.since(cursor)).toThrow(LogGapError);
     expect(() => reader.since(cursor)).toThrow(/no longer retained/);
     expect(evidenceSince(reader, cursor)).toEqual([expect.stringContaining("log evidence gap")]);
+    // The runners' read: the gap is said, with no lines, instead of thrown; a retained cursor reads its lines.
+    expect(reader.textSince(cursor)).toEqual({ lines: [], gap: expect.stringMatching(/no longer retained/) });
+    expect(reader.textSince(reader.end())).toEqual({ lines: [] });
   });
 
   it("reports an evidence gap when the file was truncated below the cursor", async () => {

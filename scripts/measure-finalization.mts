@@ -32,7 +32,7 @@ import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
 import { LAUNCHER_EXIT_MS, QUIT_GRACE_MS, stopDevApp, type AppStop } from "./lib/dev-app.mts";
 import { distribution, finalizationSample, formatDistribution, type FinalizationSample } from "./lib/finalization-timing.mts";
-import { LogGapError, LogReader, type LogCursor } from "./lib/log-reader.mts";
+import { LogReader } from "./lib/log-reader.mts";
 import { electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, recordStuffPids, signalPids, startBuild, stopGroup } from "./lib/processes.mts";
 import { freeBytes, volumeOf } from "./lib/volume.mts";
 import { hasTool, probe, probeEdges, requireMediaTimeout } from "./lib/media-tools.mts";
@@ -174,15 +174,6 @@ const appLog = new LogReader(LOG_PATH);
 /** In quick mode, only the first saved take is decoded frame by frame. */
 let fullyDecoded = false;
 
-/** Log lines written since `cursor`; a rotated-away history is an explicit gap, not "no outcome". */
-function linesSince(cursor: LogCursor): { lines: string[]; gap?: string } {
-  try {
-    return { lines: appLog.since(cursor).lines.map((line) => line.text) };
-  } catch (cause) {
-    if (cause instanceof LogGapError) return { lines: [], gap: cause.message };
-    throw cause;
-  }
-}
 
 async function recordTake(options: Options, index: number): Promise<Take> {
   const take: Take = { index, outcome: "no outcome", verified: false, deleted: false, freeBeforeBytes: freeBytes(options.dir) };
@@ -202,7 +193,7 @@ async function recordTake(options: Options, index: number): Promise<Take> {
     await Promise.race([exited, sleep(LAUNCHER_EXIT_MS)]);
     if (interrupted) await halt();
   }
-  const { lines, gap } = linesSince(cursor);
+  const { lines, gap } = appLog.textSince(cursor);
   if (gap) take.detail = `log evidence gap: ${gap}`;
   const outcome = parseAutorecordOutcome(lines.join("\n"));
   if (outcome.failed) { take.outcome = "failed"; take.detail = outcome.failed; }
