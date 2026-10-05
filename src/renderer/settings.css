@@ -437,6 +437,10 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .library-layout { margin-left: auto; flex: none; }
 .library-layout .segment-icon span { padding: 3px 10px; }
 .library-layout .segment-glyph { width: 15px; height: 15px; }
+/* What Move to Trash just took, with Undo, while the file waits to be moved. */
+.library-undo { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -6px 2px 14px; padding: 7px 8px 7px 12px; border: 1px solid var(--card-border); border-radius: 10px; background: var(--surface); box-shadow: var(--card-shadow); }
+.library-undo-text { min-width: 0; overflow-wrap: anywhere; }
+#library-undo { flex: none; min-height: 26px; padding-block: 2px; }
 .library-status { color: var(--secondary); margin: 4px 4px 12px; }
 /* A card's action that failed, in the warnings' amber. */
 .library-error { color: var(--warning); margin: -8px 4px 12px; }
@@ -590,7 +594,7 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
   .clip-menu .menu-separator { background: CanvasText; }
   .clip-thumb { border: 1px solid CanvasText; }
   .clip-rename { border: 1px solid CanvasText; background: Canvas; }
-  #library[data-layout="list"] .library-grid { border: 1px solid CanvasText; }
+  #library[data-layout="list"] .library-grid, .library-undo { border: 1px solid CanvasText; }
   .recording-result[open] { outline: 1px solid CanvasText; }
 }
 

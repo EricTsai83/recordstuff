@@ -119,6 +119,10 @@ export interface LibraryView {
   folder: string;
   /** Large thumbnails in a grid, or one row each (2026-10-05); chosen as group `library`, choice `grid` or `list`. Absent is the grid. */
   layout?: LibraryLayout;
+  /** Localized: the recording Move to Trash just took, which Undo (group `library`, choice `undoTrash`) brings back while it waits. */
+  trashed?: { name: string; message: string; undo: string };
+  /** Localized: a delayed move to the Trash that failed; the recording is listed again. */
+  notice?: string;
   /** Localized: loading or an unreadable folder; the list is empty meanwhile. */
   status?: string;
   /** "12 recordings · 2.4 GB". */

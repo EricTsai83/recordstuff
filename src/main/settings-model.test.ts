@@ -852,12 +852,20 @@ describe("the Recordings tab", () => {
     expect(settingsAction(idle, ctx, "recordingFile:/etc/passwd", "open")).toBeUndefined();
     expect(settingsAction(idle, ctx, "recordingFile:id-Product demo.mp4", "delete")).toBeUndefined();
   });
-  it("offers the layout at any time (2026-10-05)", () => {
+  it("offers the layout at any time and Undo only while a recording waits to go to the Trash (2026-10-05)", () => {
     const ctx = library({});
     expect(settingsView(idle, { ...ctx, libraryLayout: "list" }).library?.layout).toBe("list");
     expect(settingsAction(busy[2]!, ctx, "library", "list")).toEqual({ setLibraryLayout: "list" });
     expect(settingsAction(idle, ctx, "library", "shelf")).toBeUndefined();
     expect(settingsChecked(idle, { ...ctx, libraryLayout: "list" }, "library", "list")).toBe(true);
+    expect(settingsAction(idle, ctx, "library", "undoTrash")).toBeUndefined();
+    const waiting = library({ trashed: { name: "Product demo.mp4" } });
+    expect(settingsAction(idle, waiting, "library", "undoTrash")).toBe("undoTrash");
+    expect(settingsView(idle, waiting).library?.trashed).toEqual({ name: "Product demo.mp4", message: "Moved Product demo.mp4 to the Trash.", undo: "Undo" });
+    expect(settingsView(idle, { ...waiting, platform: "win32", language: "zh-TW" }).library?.trashed?.message).toBe("已將 Product demo.mp4 移到資源回收筒。");
+    expect(settingsView(idle, library({ trashFailed: "Product demo.mp4" })).library?.notice).toBe("Could not move Product demo.mp4 to the Trash. It is back in the folder.");
+    // A quit in progress offers nothing but Quit.
+    expect(settingsAction(idle, { ...waiting, quitting: true }, "library", "undoTrash")).toBeUndefined();
   });
 });
 

@@ -598,7 +598,17 @@ function libraryView(ctx: AppContext, now: Date, format: DateFormats): LibraryVi
   if (!library) return undefined;
   const language = ctx.language;
   const folder = abbreviateHome(library.dir, ctx.homeDir);
-  const extras = { layout: ctx.libraryLayout ?? "grid" };
+  const mac = ctx.platform === "darwin";
+  // What a Move to Trash left to say, whatever the listing shows meanwhile.
+  const extras = {
+    layout: ctx.libraryLayout ?? "grid",
+    ...(library.trashed ? { trashed: {
+      name: library.trashed.name,
+      message: t(mac ? "Moved {name} to the Trash." : "Moved {name} to the Recycle Bin.", language, { name: library.trashed.name }),
+      undo: t("Undo", language),
+    } } : {}),
+    ...(library.trashFailed ? { notice: t(mac ? "Could not move {name} to the Trash. It is back in the folder." : "Could not move {name} to the Recycle Bin. It is back in the folder.", language, { name: library.trashFailed }) } : {}),
+  };
   if (library.failed) return { folder, ...extras, status: t("Could not read the output folder. Check the folder and its drive, or choose another folder.", language), items: [] };
   if (library.loading) return { folder, ...extras, status: t("Loading recordings…", language), items: [] };
   const total = library.files.reduce((sum, file) => sum + file.size, 0);
@@ -711,8 +721,9 @@ export function settingsAction(
     return file && RECORDING_FILE_ACTIONS.includes(choiceId as RecordingFileAction)
       ? { recordingFile: { id: file.id, action: choiceId as RecordingFileAction } } : undefined;
   }
-  // The Recordings tab's own choice: its layout.
+  // The Recordings tab's own choices: its layout, and Undo while a recording waits to go to the Trash.
   if (groupId === "library") {
+    if (choiceId === "undoTrash") return ctx.library?.trashed ? "undoTrash" : undefined;
     return isLibraryLayout(choiceId) ? { setLibraryLayout: choiceId } : undefined;
   }
   // The file name pattern is typed, so any valid one is offered while recording settings are unlocked.
@@ -742,7 +753,7 @@ export function settingsChecked(
 ): boolean {
   // The card's actions, like the tray's, are requests whose result the card itself then shows.
   if (groupId === "status") return true;
-  if (groupId === "library") return (ctx.libraryLayout ?? "grid") === choiceId;
+  if (groupId === "library") return choiceId === "undoTrash" || (ctx.libraryLayout ?? "grid") === choiceId;
   if (groupId === "fileName") return canonicalFileNameTemplate(choiceId) === (ctx.fileNameTemplate ?? DEFAULT_FILE_NAME_TEMPLATE);
   if (proposesHotkey(groupId, choiceId)) return ctx.hotkey.enabled && sameShortcut(choiceId, ctx.hotkey.accelerator, ctx.platform);
   return find(state, ctx, groupId, choiceId)?.checked ?? false;

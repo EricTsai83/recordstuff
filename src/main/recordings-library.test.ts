@@ -3,7 +3,7 @@ import fsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LENGTHS_PUBLISH_MS, RecordingsLibrary, THUMBNAILS_KEPT, WATCH_SETTLE_MS, fileId, isListedName, parseRange, stampedTime } from "./recordings-library";
+import { LENGTHS_PUBLISH_MS, RecordingsLibrary, THUMBNAILS_KEPT, UNDO_TRASH_MS, WATCH_SETTLE_MS, fileId, isListedName, parseRange, stampedTime } from "./recordings-library";
 import { formatTimestamp } from "./recorder";
 
 let dir: string;
@@ -276,7 +276,7 @@ describe("RecordingsLibrary", () => {
     expect(deps.thumbnail).toHaveBeenCalledTimes(THUMBNAILS_KEPT + 2);
     expect(deps.thumbnail).toHaveBeenLastCalledWith(files[1]!.path);
   });
-  it("moves a listed file to the Trash and lists the folder again; opens and reveals only what it listed", async () => {
+  it("takes a file off the list at once and moves it to the Trash later; opens and reveals only what it listed", async () => {
     const file = touch("clip.mp4");
     const { library, deps } = setup();
     await library.refresh();
@@ -286,12 +286,100 @@ describe("RecordingsLibrary", () => {
     expect(await library.act(id, "reveal")).toBe(true);
     expect(deps.reveal).toHaveBeenCalledWith(file);
     expect(await library.act(id, "trash")).toBe(true);
-    expect(fs.existsSync(file)).toBe(false);
+    // Off the list, with Undo offered, while the file itself waits.
     expect(library.state.files).toEqual([]);
+    expect(library.state.trashed).toEqual({ name: "clip.mp4" });
+    expect(fs.existsSync(file)).toBe(true);
+    expect(deps.trash).not.toHaveBeenCalled();
+    await library.flushTrash();
+    expect(deps.trash).toHaveBeenCalledWith(file);
+    expect(fs.existsSync(file)).toBe(false);
+    expect(library.state.trashed).toBeUndefined();
     expect(await library.act(id, "open")).toBe(false);
     deps.open.mockResolvedValueOnce("no application");
     touch("other.mp4"); await library.refresh();
     expect(await library.act(library.state.files[0]!.id, "open")).toBe(false);
+  });
+  it("moves a waiting file once its time is up, and brings back the newest one first on Undo (2026-10-05)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const first = touch("first.mp4"), second = touch("second.mp4");
+      const { library, deps } = setup();
+      await library.refresh();
+      const idOf = (file: string): string => library.state.files.find(item => item.path === file)!.id;
+      await library.act(idOf(first), "trash");
+      await library.act(idOf(second), "trash");
+      expect(library.state).toMatchObject({ files: [], trashed: { name: "second.mp4" } });
+      expect(await library.undoTrash()).toBe(true);
+      expect(library.state.files.map(file => file.name)).toEqual(["second.mp4"]);
+      expect(library.state.trashed).toEqual({ name: "first.mp4" });
+      await vi.advanceTimersByTimeAsync(UNDO_TRASH_MS);
+      // The timer began the move, which reads the file's identity from disk first: a flush waits on that same move.
+      await library.flushTrash();
+      expect(deps.trash.mock.calls).toEqual([[first]]);
+      expect(library.state.trashed).toBeUndefined();
+      // Nothing left waiting: Undo has nothing to bring back, and the one brought back stays.
+      expect(await library.undoTrash()).toBe(false);
+      await vi.advanceTimersByTimeAsync(UNDO_TRASH_MS);
+      expect(fs.existsSync(second)).toBe(true);
+    } finally { vi.useRealTimers(); }
+  });
+  it("lists a file again and says so when its delayed move to the Trash fails", async () => {
+    const file = touch("clip.mp4");
+    const { library, deps } = setup();
+    await library.refresh();
+    await library.act(library.state.files[0]!.id, "trash");
+    deps.trash.mockRejectedValueOnce(new Error("volume has no Trash"));
+    await library.flushTrash();
+    expect(library.state.files.map(item => item.path)).toEqual([file]);
+    expect(library.state).toMatchObject({ trashFailed: "clip.mp4" });
+    expect(library.state.trashed).toBeUndefined();
+    // The next action on a file clears it.
+    await library.act(library.state.files[0]!.id, "reveal");
+    expect(library.state.trashFailed).toBeUndefined();
+  });
+  it("offers no Undo once a move has begun, and moves a file once however many flushes overlap it (review pass 1, F2)", async () => {
+    const file = touch("clip.mp4");
+    const { library, deps } = setup();
+    await library.refresh();
+    await library.act(library.state.files[0]!.id, "trash");
+    let finish!: () => void;
+    deps.trash.mockImplementationOnce(file => new Promise<void>(resolve => { finish = () => { fs.rmSync(file); resolve(); }; }));
+    const first = library.flushTrash();
+    // The move is under way: nothing to bring back, and the file stays off the list.
+    expect(library.state.trashed).toBeUndefined();
+    expect(await library.undoTrash()).toBe(false);
+    const second = library.flushTrash();
+    await library.refresh();
+    expect(library.state.files).toEqual([]);
+    // The move reads the file's identity from disk before it calls the Trash.
+    await vi.waitFor(() => expect(deps.trash).toHaveBeenCalledTimes(1));
+    finish();
+    await Promise.all([first, second]);
+    expect(deps.trash).toHaveBeenCalledTimes(1);
+    expect([fs.existsSync(file), library.state.trashFailed]).toEqual([false, undefined]);
+  });
+  it("leaves another file now at a waiting file's path where it is, and lists it (review pass 2, F1)", async () => {
+    const file = touch("clip.mp4");
+    const { library, deps } = setup();
+    await library.refresh();
+    await library.act(library.state.files[0]!.id, "trash");
+    // Renamed in Finder meanwhile, and a different file saved under the old name.
+    fs.renameSync(file, path.join(dir, "kept.mp4"));
+    touch("clip.mp4", "replacement");
+    await library.flushTrash();
+    expect(deps.trash).not.toHaveBeenCalled();
+    expect(fs.readFileSync(file, "utf8")).toBe("replacement");
+    expect(library.state.files.map(item => item.name).sort()).toEqual(["clip.mp4", "kept.mp4"]);
+    expect(library.state.trashed).toBeUndefined();
+  });
+  it("refuses to wait on a file that already left the folder", async () => {
+    const file = touch("clip.mp4");
+    const { library } = setup();
+    await library.refresh();
+    fs.rmSync(file);
+    expect(await library.act(library.state.files[0]!.id, "trash")).toBe(false);
+    expect(library.state.trashed).toBeUndefined();
   });
   it("renames within the folder keeping the extension, never over another file, and keeps its cached length", async () => {
     const file = touch("2026-10-04 14-02-11.mp4");

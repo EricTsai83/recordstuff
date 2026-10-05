@@ -197,7 +197,7 @@ export class SettingsWindow {
       if (typeof group === "string" && group.startsWith("recordingFile:") && isRenameChoice(choice)) return this.applyRename(group, choice, window);
       // A recording's actions touch files, not preferences, and a drag must start while the pointer is still down.
       if (typeof group === "string" && group.startsWith("recordingFile:")) return this.applyFile(group, choice, window);
-      // The Recordings tab's layout: no recording lock, no shortcut capture, nothing to wait behind.
+      // The Recordings tab's layout and Undo: no recording lock, no shortcut capture, nothing to wait behind.
       if (group === "library") return this.applyLibrary(choice, window);
       // Completing a request ends the capture it was sent from, never a later one.
       const lease = this.leaseOf(window);

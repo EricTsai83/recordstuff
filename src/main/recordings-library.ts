@@ -12,6 +12,11 @@
  * moved to the Trash, and while the window is open a recording saved or the
  * folder changed) and, only while RecordStuff's window is open, after the
  * folder's own change events (`watch`); never a timer or a poll.
+ *
+ * Move to Trash waits `UNDO_TRASH_MS` before the file goes (2026-10-05): the card leaves at once and Undo (or ⌘Z)
+ * brings it back meanwhile. A file in the Trash cannot be put back from here (the Trash's new name is not reported,
+ * and macOS keeps apps out of `~/.Trash`), so the move itself waits instead; closing or hiding the window and quitting
+ * move every waiting file at once.
  */
 import { createHash } from "node:crypto";
 import { createReadStream, watch as watchFolder, type FSWatcher } from "node:fs";
@@ -48,7 +53,13 @@ export interface LibraryState {
   loading: boolean;
   failed: boolean;
   files: RecordingFile[];
+  /** The last file Move to Trash took off the list, which Undo brings back until it is really moved. */
+  trashed?: { name: string };
+  /** A file whose delayed move to the Trash failed: it is listed again, and the tab says so until the next action. */
+  trashFailed?: string;
 }
+/** `ino` and `dev`: the file chosen, so a different file at its path by the time it is moved is never the one moved. */
+interface PendingTrash { path: string; name: string; ino: number; dev: number; timer: ReturnType<typeof setTimeout>; moving?: Promise<void> }
 /** Why a rename did not happen; `fileNameProblem`'s reasons, a name already taken, or the file system refusing. */
 export type RenameProblem = FileNameProblem | "exists" | "missing" | "failed";
 export interface LibraryDeps {
@@ -76,6 +87,8 @@ export const THUMBNAILS_KEPT = 64;
 export const WATCH_SETTLE_MS = 250;
 /** How often lengths read so far are published while a long folder is still being read. */
 export const LENGTHS_PUBLISH_MS = 500;
+/** How long a recording moved to the Trash can be brought back before it is really moved. */
+export const UNDO_TRASH_MS = 10_000;
 /** `2026-10-04 14-02-11.mp4`, or `-2` and on when a name was taken (recorder.ts formatTimestamp). */
 const STAMPED = /^(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})(?:-\d+)?\.mp4$/;
 
@@ -132,12 +145,25 @@ export class RecordingsLibrary {
   private attaching: string | undefined;
   /** Settles once the last listing's unknown lengths are read and published, or a newer listing abandoned them. */
   lengths: Promise<void> = Promise.resolve();
+  /**
+   * Files Move to Trash took off the list, oldest first, each waiting for its timer (or a flush) to be moved. Once its
+   * move has begun (`moving`) it can no longer be undone and every later flush waits on that same move.
+   */
+  private pendingTrash: PendingTrash[] = [];
+  /** The last delayed move that failed, until the next action on a file. */
+  private trashFailed: string | undefined;
 
   constructor(private readonly deps: LibraryDeps) {
     this.current = { dir: deps.dir(), loading: true, failed: false, files: [] };
   }
 
-  get state(): LibraryState { return this.current; }
+  get state(): LibraryState {
+    // Only a file whose move has not begun can still be brought back.
+    const trashed = this.pendingTrash.findLast(entry => !entry.moving);
+    return trashed || this.trashFailed
+      ? { ...this.current, ...(trashed ? { trashed: { name: trashed.name } } : {}), ...(this.trashFailed ? { trashFailed: this.trashFailed } : {}) }
+      : this.current;
+  }
 
   find(id: string): RecordingFile | undefined {
     return this.current.files.find(file => file.id === id);
@@ -174,7 +200,9 @@ export class RecordingsLibrary {
     let files: RecordingFile[];
     try {
       const entries = await fs.readdir(dir, { withFileTypes: true });
-      const stats = await Promise.all(entries.filter(entry => entry.isFile() && isListedName(entry.name)).map(async entry => {
+      // A file waiting to go to the Trash is already gone as far as the tab is concerned.
+      const waiting = new Set(this.pendingTrash.map(item => item.path));
+      const stats = await Promise.all(entries.filter(entry => entry.isFile() && isListedName(entry.name) && !waiting.has(path.join(dir, entry.name))).map(async entry => {
         const filePath = path.join(dir, entry.name);
         try {
           const stat = await fs.stat(filePath);
@@ -280,7 +308,8 @@ export class RecordingsLibrary {
 
   /** Drops the lengths and thumbnails of files no longer listed: trashed, renamed or in a folder left behind. */
   private forget(files: RecordingFile[]): void {
-    const listed = new Set(files.map(file => file.path));
+    // A file waiting for the Trash keeps them, so Undo brings its card back as it was.
+    const listed = new Set([...files.map(file => file.path), ...this.pendingTrash.map(entry => entry.path)]);
     for (const cache of [this.durations, this.thumbnails]) {
       for (const filePath of cache.keys()) if (!listed.has(filePath)) cache.delete(filePath);
     }
@@ -323,6 +352,7 @@ export class RecordingsLibrary {
   async act(id: string, action: Exclude<RecordingFileAction, "drag">): Promise<boolean> {
     const file = this.find(id);
     if (!file) return false;
+    this.trashFailed = undefined;
     try {
       if (action === "reveal") { await fs.access(file.path); this.deps.reveal(file.path); return true; }
       if (action === "open") {
@@ -330,8 +360,11 @@ export class RecordingsLibrary {
         if (!error) return true;
         this.deps.log(`library: open ${file.path} failed: ${error}`);
       } else {
-        await this.deps.trash(file.path);
-        this.deps.log(`library: moved ${file.path} to the Trash`);
+        // A file already gone fails now, while the page can still say so beside its card.
+        const { ino, dev } = await fs.stat(file.path);
+        const entry: PendingTrash = { path: file.path, name: file.name, ino, dev, timer: setTimeout(() => void this.commitTrash(entry), UNDO_TRASH_MS) };
+        this.pendingTrash.push(entry);
+        this.deps.log(`library: ${file.path} goes to the Trash in ${UNDO_TRASH_MS / 1000} s unless undone`);
         await this.refresh();
         return true;
       }
@@ -340,6 +373,62 @@ export class RecordingsLibrary {
     }
     await this.refresh();
     return false;
+  }
+
+  /** Brings back the file Move to Trash took last, while it still waits; false when none does. */
+  async undoTrash(): Promise<boolean> {
+    const entry = this.pendingTrash.findLast(item => !item.moving);
+    if (!entry) return false;
+    this.pendingTrash = this.pendingTrash.filter(item => item !== entry);
+    clearTimeout(entry.timer);
+    this.trashFailed = undefined;
+    this.deps.log(`library: kept ${entry.path}; its move to the Trash was undone`);
+    await this.refresh();
+    return true;
+  }
+
+  /** Moves every waiting file to the Trash now: the window closed or hid, or RecordStuff is quitting. Never throws. */
+  async flushTrash(): Promise<void> {
+    await Promise.all([...this.pendingTrash].map(entry => this.commitTrash(entry)));
+  }
+
+  /**
+   * Moves one waiting file once: a flush during a move its timer began waits on that move. A failure lists it again and
+   * says so. It leaves the waiting list, and so stays off the listing, only once moved or failed.
+   */
+  private commitTrash(entry: PendingTrash): Promise<void> {
+    clearTimeout(entry.timer);
+    if (entry.moving) return entry.moving;
+    // Undone meanwhile.
+    if (!this.pendingTrash.includes(entry)) return Promise.resolve();
+    entry.moving = this.moveToTrash(entry);
+    // Undo is no longer offered for it.
+    this.deps.changed();
+    return entry.moving;
+  }
+
+  private async moveToTrash(entry: PendingTrash): Promise<void> {
+    // Renamed or moved away in Finder meanwhile, with another file now at its path: that file stays, and is listed again
+    // (review pass 2, F1). A file already gone is left to the move, which fails and says so.
+    const now = await fs.stat(entry.path).catch(() => undefined);
+    if (now && (now.ino !== entry.ino || now.dev !== entry.dev)) {
+      this.deps.log(`library: ${entry.path} is another file now; it was not moved to the Trash`);
+      this.pendingTrash = this.pendingTrash.filter(item => item !== entry);
+      await this.refresh();
+      return;
+    }
+    try {
+      await this.deps.trash(entry.path);
+      this.deps.log(`library: moved ${entry.path} to the Trash`);
+      this.pendingTrash = this.pendingTrash.filter(item => item !== entry);
+      // The listing already left it out; only the Undo it offered changes.
+      this.deps.changed();
+    } catch (cause) {
+      this.deps.log(`library: moving ${entry.path} to the Trash failed: ${String(cause)}`);
+      this.pendingTrash = this.pendingTrash.filter(item => item !== entry);
+      this.trashFailed = entry.name;
+      await this.refresh();
+    }
   }
 
   /**
@@ -351,6 +440,7 @@ export class RecordingsLibrary {
   async rename(id: string, requested: string): Promise<{ id: string } | { problem: RenameProblem }> {
     const file = this.find(id);
     if (!file) return { problem: "missing" };
+    this.trashFailed = undefined;
     const name = requested.trim();
     const problem = fileNameProblem(name);
     if (problem) return { problem };

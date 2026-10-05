@@ -188,7 +188,7 @@ async function main(): Promise<void> {
     trayMenuOpen: () => tray.menuOpen,
     // Hiding leaves only the menu bar's icon, as closing does; Quit alone ends RecordStuff. The folder is not
     // followed out of sight either: showing the window again watches and lists it afresh (`activated`).
-    hide: () => { settingsWindow.hide(); library.unwatch(); appMenu.windowClosed(); },
+    hide: () => { settingsWindow.hide(); library.unwatch(); void library.flushTrash(); appMenu.windowClosed(); },
     zoom: request => settingsWindow.zoom(request),
   });
   const library = new RecordingsLibrary({
@@ -424,7 +424,8 @@ async function main(): Promise<void> {
     activated: () => { library.watch(); void library.refresh(); },
     quitRequested: () => quitRequested,
     opened: () => appMenu.windowOpened(),
-    closed: () => { library.unwatch(); appMenu.windowClosed(); },
+    // Recordings waiting to go to the Trash go now: nothing is left to undo them from.
+    closed: () => { library.unwatch(); void library.flushTrash(); appMenu.windowClosed(); },
     rename: (id, name) => library.rename(id, name),
     drag: async (contents, id) => {
       const file = library.find(id);
@@ -516,6 +517,7 @@ async function main(): Promise<void> {
       // A drag belongs to the window it starts in (settings-window.ts).
       return verb === "drag" ? false : library.act(id, verb);
     }
+    if (action === "undoTrash") return library.undoTrash();
     if (typeof action !== "string" && "recordingResult" in action) {
       const request = action.recordingResult;
       return recordingResults.act(request.id, request.action, {
@@ -886,8 +888,8 @@ async function main(): Promise<void> {
       // Media is settled here, so a timeout names the metadata write that is still pending.
       quitDeferral = quitStep = "metadata";
       if (quitting) refreshUi();
-      const pending = new Set(["settings", "window size", "log"]);
-      const flushes = ([["settings", settings.flush()], ["window size", settingsWindow.flush()], ["log", log.flush()]] as const)
+      const pending = new Set(["settings", "window size", "trash", "log"]);
+      const flushes = ([["settings", settings.flush()], ["window size", settingsWindow.flush()], ["trash", library.flushTrash()], ["log", log.flush()]] as const)
         .map(([name, flush]) => flush.then(() => { pending.delete(name); }));
       metadataWritten = Promise.all(flushes.map(flush => flush.catch(() => undefined))).then(() => undefined);
       const flushed = await flushBeforeExit({ flush: () => Promise.all(flushes).then(() => undefined) }, QUIT_METADATA_WAIT_MS);

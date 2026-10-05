@@ -1001,7 +1001,11 @@ function updateLibrary(): void {
     head.append(node("p", "library-summary"), layoutSwitch(), reveal);
     const empty = node("div", "library-empty");
     empty.append(icon("film", "empty-icon")!, node("p", "library-empty-title"), node("p", "library-empty-detail"));
-    area.append(head, node("p", "library-error"), node("p", "library-status"), empty, node("div", "library-days"));
+    // What Move to Trash just took, with the way back while it waits (2026-10-05). Not a live region: `announce` says it.
+    const undoBar = node("div", "library-undo");
+    const undo = button("library-undo", () => { if (!inactive(undo)) void undoTrash(); });
+    undoBar.append(node("span", "library-undo-text"), undo);
+    area.append(head, undoBar, node("p", "library-error"), node("p", "library-status"), empty, node("div", "library-days"));
     panel.append(area);
   }
   const layout: LibraryLayout = library?.layout ?? "grid";
@@ -1013,6 +1017,21 @@ function updateLibrary(): void {
     setAttr(input, "aria-label", label); setAttr(input.parentElement!, "title", label);
   }
   setAttr(area.querySelector(".library-layout")!, "aria-label", text("Layout"));
+  const undoBar = area.querySelector<HTMLElement>(".library-undo")!;
+  const trashed = library?.trashed;
+  const undoButton = undoBar.querySelector<HTMLButtonElement>("#library-undo")!;
+  const undoHadFocus = document.activeElement === undoButton;
+  undoBar.hidden = !trashed;
+  setText(undoBar.querySelector(".library-undo-text")!, trashed?.message ?? "");
+  setText(undoButton, trashed?.undo ?? "");
+  setAttr(undoButton, "title", `${trashed?.undo ?? ""} (${platform() === "darwin" ? "⌘Z" : "Ctrl+Z"})`);
+  setActionDisabled(undoButton, false, undoing);
+  // The bar went (the file was moved, or brought back elsewhere): its button's focus stays in the tab.
+  if (undoHadFocus && undoBar.hidden && document.hasFocus()) document.getElementById("tab-library")?.focus({ preventScroll: true });
+  // A delayed move that failed is news once; the line stays until the next action.
+  const notice = library?.notice;
+  if (notice && notice !== lastNotice) announce(notice);
+  lastNotice = notice;
   const items = library?.items ?? [];
   const summary = area.querySelector<HTMLElement>(".library-summary")!;
   setText(summary, library?.summary ?? ""); summary.hidden = !library?.summary;
@@ -1024,7 +1043,8 @@ function updateLibrary(): void {
   setText(reveal, folderReveal?.label ?? text(platform() === "darwin" ? "Show in Finder" : "Open folder"));
   setActionDisabled(reveal, !folderGroup?.enabled || !folderReveal?.enabled, Boolean(saving));
   const error = area.querySelector<HTMLElement>(".library-error")!;
-  setText(error, libraryError ?? ""); error.hidden = !libraryError;
+  const errorText = libraryError ?? library?.notice;
+  setText(error, errorText ?? ""); error.hidden = !errorText;
   const status = area.querySelector<HTMLElement>(".library-status")!;
   setText(status, library?.status ?? ""); status.hidden = !library?.status;
   const empty = area.querySelector<HTMLElement>(".library-empty")!;
@@ -1072,6 +1092,8 @@ function updateLibrary(): void {
     if (inEditor) document.getElementById("tab-library")?.focus({ preventScroll: true });
   }
 }
+/** The last delayed-move failure announced, so a push that repeats it says nothing again. */
+let lastNotice: string | undefined;
 /** The grid or list switch beside the summary: two icon segments, as Appearance's are drawn. */
 function layoutSwitch(): HTMLElement {
   const segments = node("div", "segments library-layout"); segments.setAttribute("role", "radiogroup");
@@ -1094,6 +1116,37 @@ async function chooseLayout(layout: LibraryLayout): Promise<void> {
     if (!result.applied) announce(result.failure ?? text("Could not complete this action. Try again."));
   } catch {
     announce(text("Could not complete this action. Try again."));
+    updateLibrary();
+  }
+}
+/** An Undo is on its way to main: a second press or ⌘Z waits for its answer. */
+let undoing = false;
+/** Cards Move to Trash took, newest last: Undo brings back the newest, whose card then takes the focus it had. */
+const trashedCards: string[] = [];
+/** Brings back the recording Move to Trash took last, while it still waits (the bar's Undo, or ⌘Z on this tab). */
+async function undoTrash(): Promise<void> {
+  const trashed = view?.library?.trashed;
+  if (!trashed || undoing) return;
+  undoing = true;
+  updateLibrary();
+  const fromBar = document.activeElement?.id === "library-undo";
+  try {
+    const result = await window.settings.choose("library", "undoTrash");
+    undoing = false;
+    render(result.view);
+    if (!result.applied) { announce(result.failure ?? text("Could not complete this action. Try again.")); return; }
+    announce(translate("Restored {name}", view?.language, { name: trashed.name }));
+    const id = trashedCards.pop();
+    const card = id ? document.querySelector<HTMLElement>(`#clip-${id} .clip-open`) : null;
+    // The bar's button hid with the bar, or nothing had focus: the card that came back takes it.
+    if (card && document.hasFocus() && (fromBar || document.activeElement === document.body || document.activeElement?.id === "tab-library")) {
+      card.focus({ preventScroll: true });
+      card.scrollIntoView({ block: "nearest" });
+    }
+  } catch {
+    announce(text("Could not complete this action. Try again."));
+  } finally {
+    undoing = false;
     updateLibrary();
   }
 }
@@ -1406,9 +1459,11 @@ async function fileAction(id: string, action: FileAction, anchor: HTMLButtonElem
   let problem: string | undefined;
   try {
     const result = await window.settings.choose(`recordingFile:${id}`, action);
+    if (result.applied && action === "trash") trashedCards.push(id);
     render(result.view);
     if (!result.applied) problem = libraryItem(id) ? (result.failure ?? text("Could not complete this action. Try again.")) : text("This recording is no longer in the folder.");
-    else if (action === "trash") announce(text(platform() === "darwin" ? "Moved to the Trash" : "Moved to the Recycle Bin"));
+    // Said with its name and the way back: the bar shows the same until the file is really moved.
+    else if (action === "trash") announce(view?.library?.trashed?.message ?? text(platform() === "darwin" ? "Moved to the Trash" : "Moved to the Recycle Bin"));
   } catch {
     problem = text("Could not complete this action. Try again.");
   } finally {
@@ -1885,6 +1940,15 @@ document.addEventListener("fullscreenchange", () => {
   void playFullScreen();
 });
 document.addEventListener("keydown", event => {
+  // ⌘Z (Ctrl+Z elsewhere) on the Recordings tab brings back the recording Move to Trash took last, while it waits; in a
+  // text field it stays the field's own undo, and with nothing waiting it goes on to the Edit menu as before.
+  const command = platform() === "darwin" ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+  if (command && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "z" && selectedTab === "library" && view?.library?.trashed
+    && !player?.open && !(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)) {
+    event.preventDefault();
+    void undoTrash();
+    return;
+  }
   // A held Escape repeats, and quick presses follow one that closed something: none of them closes the next thing,
   // so pressing again and again after a fullscreen no longer closed the player and then the window (2026-10-04).
   if (event.key === "Escape" && (event.repeat || performance.now() - escapeClosed < ESCAPE_SETTLE_MS)) { event.preventDefault(); return; }

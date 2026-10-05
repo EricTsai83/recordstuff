@@ -1120,6 +1120,19 @@ describe("a recording's new name (2026-10-05)", () => {
       .resolves.toMatchObject({ applied: false, failure: "This recording is no longer in the folder." });
     expect(rename).toHaveBeenCalledTimes(2);
   });
+  it("routes the layout and Undo to the app's handler, and refuses Undo with nothing waiting", async () => {
+    const act = vi.fn(async (action: AppAction) => action === "undoTrash" ? true : undefined);
+    const s = setup({ act });
+    s.live.library = { ...library, trashed: { name: "a.mp4" } };
+    s.panel.show();
+    await expect(s.choose(s.event(), "library", "undoTrash")).resolves.toMatchObject({ applied: true });
+    expect(act).toHaveBeenCalledWith("undoTrash");
+    s.live.library = library;
+    await expect(s.choose(s.event(), "library", "undoTrash")).resolves.toMatchObject({ applied: false });
+    act.mockImplementationOnce(async () => { s.live.libraryLayout = "list"; });
+    await expect(s.choose(s.event(), "library", "list")).resolves.toMatchObject({ applied: true });
+    expect(act).toHaveBeenLastCalledWith({ setLibraryLayout: "list" });
+  });
   it("says why a typed file name pattern was refused", async () => {
     const s = setup();
     s.panel.show();

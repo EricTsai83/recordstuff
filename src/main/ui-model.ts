@@ -36,6 +36,8 @@ export type AppAction =
   | { recordingResult: { id: string; action: RecordingResultAction } }
   /** A video the Recordings tab lists, by the id the page was given. */
   | { recordingFile: { id: string; action: RecordingFileAction } }
+  /** Brings back the recording Move to Trash took last, while it still waits to be moved. */
+  | "undoTrash"
   | "openPermissionSettings"
   | "openNotificationSettings"
   | "relaunch"
