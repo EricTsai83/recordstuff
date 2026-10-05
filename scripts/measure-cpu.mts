@@ -31,7 +31,7 @@
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings } from "./lib/runner-env.mts";
-import { electronPattern, escapeRegExp, pgrepPids, recordStuffPids, signalPids } from "./lib/processes.mts";
+import { INTERRUPT_EXIT, electronPattern, escapeRegExp, pgrepPids, recordStuffPids, signalPids } from "./lib/processes.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -40,7 +40,7 @@ import { fileURLToPath } from "node:url";
 import { command, confirmedIdle, recordingOutcome, settleRecording, waitForLog } from "./lib/acceptance-runtime.mts";
 import { acceleratorToKeystroke, createMaterialProfile, currentRunId, keystrokeScript, lastStartIndex, materialOpenArgs, registeredAccelerator, removeMaterialProfile } from "./lib/acceptance.mts";
 import {
-  CpuSampler, ENCODER_SERVICE, IDLE_ROLES, SamplerBlockedError, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgeRecording, judgeRoles, judgeSettingsOpen,
+  CpuSampler, ENCODER_SERVICE, IDLE_ROLES, SamplerBlockedError, SamplerInterruptedError, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgeRecording, judgeRoles, judgeSettingsOpen,
   judgeSteadyState, machineModel, readRoles, roleText, summarize, type RoleCounts, type Summary, type Verdict,
 } from "./lib/cpu-sampler.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
@@ -205,6 +205,8 @@ async function main(): Promise<number> {
   try { binary = compileSampler(dir); }
   catch (error) {
     if (error instanceof SamplerBlockedError) { console.error(`BLOCKED: ${error.message}`); return 2; }
+    // Nothing was launched yet: an interrupt here exits 130/143 like one during the round.
+    if (error instanceof SamplerInterruptedError) { console.error(`INTERRUPTED: ${error.message}; nothing was launched`); return INTERRUPT_EXIT[error.signal]; }
     throw error;
   }
   const desktop = await beginDesktopRound().catch((cause: unknown) => {

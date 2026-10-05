@@ -53,7 +53,8 @@ for (let i = 0; i < argv.length; i += 1) {
   const arg = argv[i] ?? "";
   const next = (): string => {
     const value = argv[i + 1];
-    if (value === undefined) usage();
+    // A missing value must not take the next option as one (`--json --out` would write a file named --out).
+    if (value === undefined || value.startsWith("--")) usage();
     i += 1;
     return value;
   };

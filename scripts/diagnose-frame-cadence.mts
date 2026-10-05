@@ -29,6 +29,7 @@ import os from "node:os";
 import path from "node:path";
 import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance.mts";
 import { buildFixture } from "./lib/build-fixture.mts";
+import { LAUNCHER_EXIT_MS, QUIT_GRACE_MS, stopDevApp } from "./lib/dev-app.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
 import { cadenceStats, classifyCadence, counterDelta, type CadenceLayer, type CadenceStats, type CounterDelta } from "./lib/frame-cadence.mts";
 import { frameTimes, hasTool, probe } from "./lib/media-tools.mts";
@@ -62,7 +63,11 @@ function usage(message?: string): never {
 
 function parseArgs(argv: string[]): Options {
   const options: Options = { rates: [30, 60], runs: 2, seconds: 30, requests: {}, idealOnly: false, load: 0, label: undefined, openMaterial: true };
-  const value = (i: number): string => argv[i + 1] ?? usage(`${argv[i]} needs a value`);
+  // A missing value must not take the next option as one (`--label --no-open-material`).
+  const value = (i: number): string => {
+    const next = argv[i + 1];
+    return next === undefined || next.startsWith("--") ? usage(`${argv[i]} needs a value`) : next;
+  };
   const rate = (text: string): FrameRate => {
     const n = Number(text);
     if (!(FRAME_RATES as readonly number[]).includes(n)) usage(`unsupported frame rate ${text}`);
@@ -305,7 +310,7 @@ async function recordOnce(run: RunReport, fixture: string, config: object, secon
   const started = Date.now();
   const child = spawn("open", ["-W", "-n", "-a", ELECTRON_APP, "--args", fixture, run.dir], { env, stdio: "ignore" });
   let exited = false;
-  child.on("exit", () => { exited = true; });
+  const launcherExited = new Promise<void>((resolve) => child.on("exit", () => { exited = true; resolve(); }));
   const samples: number[] = [];
   const deadline = (seconds + 60) * 1000;
   try {
@@ -314,9 +319,14 @@ async function recordOnce(run: RunReport, fixture: string, config: object, secon
       const pids = electronPids();
       if (pids.length > 0) samples.push(cpuPercent(pids));
       if (Date.now() - started > deadline) {
-        run.error = `fixture still running after ${deadline / 1000} s; terminated`;
-        stopFixture();
-        await sleep(2000);
+        // As matrix and finalization stop a take (dev-app.mts): SIGTERM, a grace, then SIGKILL. A stuck fixture left
+        // running would add its CPU to every later run's average without an error to show for it.
+        const stop = await stopDevApp(ELECTRON_APP_REAL, { launchedAt: started });
+        run.error = `fixture still running after ${deadline / 1000} s; ${stop === "forced" ? `killed after ${QUIT_GRACE_MS / 1000} s` : "terminated"}`;
+        // The next run's `open` must launch a new fixture, not bring this one forward.
+        await Promise.race([launcherExited, sleep(LAUNCHER_EXIT_MS)]);
+        const left = electronPids();
+        if (left.length > 0) throw new Error(`fixture processes ${left.join(", ")} survived SIGKILL; stopping the round`);
         break;
       }
     }

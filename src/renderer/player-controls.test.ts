@@ -79,7 +79,7 @@ it("steps forward with the arrows before the length is known, instead of back to
   expect(video.currentTime).toBe(0);
 });
 
-it("seeks by five seconds with the arrows within the video, leaves the arrows to a focused slider, mutes with M and asks for full screen with F", () => {
+it("seeks by five seconds with the arrows within the video, on the seek bar too, leaves them to the volume slider, mutes with M and asks for full screen with F", () => {
   const { video, root, fullScreen, set } = setup();
   set({ duration: 8 });
   key(video, "ArrowRight");
@@ -87,9 +87,15 @@ it("seeks by five seconds with the arrows within the video, leaves the arrows to
   expect(video.currentTime).toBe(8);
   key(video, "ArrowLeft");
   expect(video.currentTime).toBe(3);
+  // The seek bar's own step (`any`) would move 1% of the length: it moves 5 s like the rest of the player.
   const seek = root.querySelector<HTMLInputElement>(".pc-seek")!;
-  expect(key(seek, "ArrowLeft").defaultPrevented).toBe(false);
-  expect(video.currentTime).toBe(3);
+  expect(key(seek, "ArrowLeft").defaultPrevented).toBe(true);
+  expect(video.currentTime).toBe(0);
+  key(seek, "ArrowRight");
+  expect(video.currentTime).toBe(5);
+  const level = root.querySelector<HTMLInputElement>(".pc-level")!;
+  expect(key(level, "ArrowLeft").defaultPrevented).toBe(false);
+  expect(video.currentTime).toBe(5);
   key(video, "m");
   // happy-dom does not report the change itself, as Chromium does.
   video.dispatchEvent(new Event("volumechange"));

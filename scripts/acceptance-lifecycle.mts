@@ -15,7 +15,7 @@ const fixture = await buildFixture("recording-lifecycle", dir);
 const env = scrubbedEnv();
 // The fixtures run in their own process group, which a terminal's Ctrl+C never reaches: stop them through the supervisor.
 const controller = new AbortController();
-/** The first signal names the exit code, as in every other runner. */
+/** The first signal names the exit code (130 or 143); a later one during cleanup does not change it. */
 let signalName: keyof typeof INTERRUPT_EXIT | undefined;
 const interrupt = (name: keyof typeof INTERRUPT_EXIT) => (): void => { signalName ??= name; controller.abort(); };
 process.on("SIGINT", interrupt("SIGINT"));

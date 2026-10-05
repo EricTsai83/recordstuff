@@ -22,7 +22,7 @@ it("names no internal key for an unusable one, and states a refused combination 
   const choose = vi.fn(async () => {
     current = structuredClone(current);
     current.groups[0]!.capturing = false;
-    return { view: current, applied: false, failure: "This combination is reserved for Settings.", refused: true as const };
+    return { view: current, applied: false, failure: "This combination is reserved for opening RecordStuff.", refused: true as const };
   });
   let push!: (next: SettingsView) => void;
   window.settings = { read: async () => current, capture, choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
@@ -42,7 +42,7 @@ it("names no internal key for an unusable one, and states a refused combination 
 
   // The Settings shortcut is refused in the editor, like the other reserved combinations: it stays open to try another.
   field().dispatchEvent(new KeyboardEvent("keydown", { key: ",", code: "Comma", metaKey: true, altKey: true, bubbles: true }));
-  expect(document.querySelector(".save-error p")?.textContent).toBe("This combination is reserved for Settings.");
+  expect(document.querySelector(".save-error p")?.textContent).toBe("This combination is reserved for opening RecordStuff.");
   expect((document.getElementById("shortcut-confirm") as HTMLButtonElement).disabled).toBe(true);
   expect(current.groups[0]!.capturing).toBe(true);
   expect(choose).not.toHaveBeenCalled();
@@ -52,7 +52,7 @@ it("names no internal key for an unusable one, and states a refused combination 
   confirm.click();
   await vi.waitFor(() => expect(choose).toHaveBeenCalledWith("hotkey", "CommandOrControl+Shift+K"));
   const error = document.querySelector<HTMLElement>(".save-error")!;
-  await vi.waitFor(() => expect(error.querySelector("p")?.textContent).toBe("This combination is reserved for Settings."));
+  await vi.waitFor(() => expect(error.querySelector("p")?.textContent).toBe("This combination is reserved for opening RecordStuff."));
   expect(error.hidden).toBe(false);
   expect(error.querySelector("strong")?.textContent).toBe("Shortcut unavailable");
   // Choosing the same combination again would fail the same way.

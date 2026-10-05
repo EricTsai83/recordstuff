@@ -51,6 +51,19 @@ it("leaves on a double-click but not on a held Escape's repeats, and names its w
   expect(exit).toHaveBeenCalledWith({ time: 0, playing: false, volume: 1, muted: true });
 });
 
+it("leaves on the platform's close chord, as the app's other window closes on it", async () => {
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+  const mac = await load("src=s&t=0&play=0&vol=1&mute=0&lang=en");
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", ctrlKey: true, cancelable: true }));
+  expect(mac.exit).not.toHaveBeenCalled();
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", metaKey: true, cancelable: true }));
+  expect(mac.exit).toHaveBeenCalledOnce();
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
+  const windows = await load("src=s&t=0&play=0&vol=1&mute=0&lang=en");
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", ctrlKey: true, cancelable: true }));
+  expect(windows.exit).toHaveBeenCalledOnce();
+});
+
 it("reads in the language main gives it, for assistive technology too", async () => {
   await load("src=recordstuff-media%3A%2F%2Fvideo%2Fa&t=0&play=0&vol=1&mute=0&lang=zh-TW");
   expect([document.documentElement.lang, document.getElementById("exit")!.getAttribute("aria-label")]).toEqual(["zh-Hant", "結束全螢幕"]);

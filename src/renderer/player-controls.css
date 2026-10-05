@@ -9,8 +9,10 @@
 .pc-top { top: 0; padding: 14px 14px 40px 18px; background: linear-gradient(rgb(0 0 0 / .62), rgb(0 0 0 / .28) 55%, transparent); pointer-events: none; }
 .pc-top > * { pointer-events: auto; }
 .pc-bottom { bottom: 0; padding: 36px 12px 4px; background: linear-gradient(transparent, rgb(0 0 0 / .32) 40%, rgb(0 0 0 / .72)); }
-/* At rest while it plays, the shades, the controls and the pointer step aside. */
+/* At rest while it plays, the shades, the controls and the pointer step aside. The title row sets its own
+   pointer-events, so it is named too: an unseen title or Close must not take a click meant for the picture. */
 .pc.pc-idle:not(.pc-paused) :is(.pc-top, .pc-bottom) { opacity: 0; pointer-events: none; }
+.pc.pc-idle:not(.pc-paused) .pc-top > * { pointer-events: none; }
 .pc.pc-idle:not(.pc-paused), .pc.pc-idle:not(.pc-paused) video { cursor: none; }
 
 /* The title block: the recording's name, what it is, and a line when it cannot be played. */
@@ -56,7 +58,9 @@
 @media (prefers-reduced-motion: reduce) {
   .pc-top, .pc-bottom, .pc-level { transition: none; }
 }
+/* The shades are mostly padding, about 95 px at each edge: a solid Canvas there would cover half a small stage. Only
+   the title, the seek bar and the button row get a backplate; the gradients drop out in forced colors anyway. */
 @media (forced-colors: active) {
-  .pc-top, .pc-bottom { background: Canvas; }
+  .pc-heading, .pc-seek, .pc-row { background: Canvas; }
   .pc-seek, .pc-level { appearance: auto; }
 }

@@ -544,6 +544,19 @@ describe("Recorder failures", () => {
     expect(ctx.host.started).toEqual(["s1", "s1"]);
   });
 
+  it("a capture host that throws on a recording's stop still shows stopping, and the deadline keeps the file", async () => {
+    const logs: string[] = [];
+    const ctx = setup({ log: (message) => logs.push(message) });
+    await startRecording(ctx);
+    ctx.host.stop = () => { throw new Error("port closed"); };
+    expect(() => ctx.recorder.toggle()).not.toThrow();
+    expect(ctx.recorder.state).toEqual({ type: "stopping" });
+    expect(logs).toContain("recorder: session s1 stop request failed: port closed");
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "stop_timeout", partialPath: path.join("/out", "2026-09-11 14-30-00.recording.mp4") });
+  });
+
   it("a cancel after the writer opened clears the unavailable folder", async () => {
     let attempt = 0;
     const ctx = setup({

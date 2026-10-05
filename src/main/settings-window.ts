@@ -485,6 +485,7 @@ export class SettingsWindow {
       : group === "about" || action === "openUpdate" ? translate("Could not open the link. Try again.", language)
       : action === "openNotificationSettings" ? translate("Could not open System Settings. Allow RecordStuff in System Settings → Notifications.", language)
       : action === "retryShortcuts" ? translate("The shortcut is still unavailable; another app may be using it.", language)
+      : action === "openOutputDir" ? translate("Could not open the output folder", language)
       : undefined;
     return this.deliver({
       view: this.view(),

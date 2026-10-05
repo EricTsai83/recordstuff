@@ -72,7 +72,7 @@ const windows = release.windows;
     <section class="platform-section" aria-labelledby="older-title">
       <div class="platform-header"><h2 id="older-title" class="platform-name">Older versions</h2></div>
       <p class="muted">
-        Every release is on <a class="link" href={links.releases} target="_blank" rel="noopener noreferrer">GitHub Releases</a>. To update, see <a class="link" href="/help#update" data-only="mac">Help</a>{windows && <a class="link" href="/help#windows-update" data-only="windows">Help</a>}.
+        Every release is on <a class="link" href={links.releases} target="_blank" rel="noopener noreferrer">GitHub Releases</a>. To update, see <a class="link" href="/help#update" data-only="mac">Help<span class="platform-suffix"> for macOS</span></a>{windows && <><span class="platform-joiner"> or </span><a class="link" href="/help#windows-update" data-only="windows">Help<span class="platform-suffix"> for Windows</span></a></>}.
       </p>
     </section>
   </div>

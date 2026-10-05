@@ -15,6 +15,7 @@ import { SAVED_LINE, command, savedPathOf, settleRecording, waitForLog } from ".
 import fs from "node:fs";
 import os from "node:os";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
+import { roundExit } from "./lib/round-exit.mts";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -92,7 +93,8 @@ const sleep = async (ms: number): Promise<void> => { await delay(ms, undefined, 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     if (!abortedBy) console.log(`received ${signal}; cancelling the run, then cleaning up (up to 120 s)`);
-    abortedBy = signal;
+    // The first signal names the exit code (round-exit.mts).
+    abortedBy ??= signal;
     controller.abort(new Error(`interrupted by ${signal}`));
   });
 }
@@ -104,7 +106,7 @@ const nextIndex = (): LogCursor => appLog.end();
 
 class AcceptanceFailure extends Error {}
 /** Signal received while the run was in progress; loops stop at their next check. */
-let abortedBy: string | undefined;
+let abortedBy: "SIGINT" | "SIGTERM" | undefined;
 function fail(message: string): never {
   throw new AcceptanceFailure(message);
 }
@@ -516,6 +518,10 @@ end tell`, "quit empty TextEdit");
       } catch (error) {
         problem(`settings: ${String(error)}`);
       }
+    } else if (originalSettings) {
+      // A running app would write its values back over a restore: name what is left to set by hand, as the other runners do.
+      const was = (value: unknown): string => value === undefined ? "removed" : JSON.stringify(value);
+      problem(`settings not restored while RecordStuff runs: quit it, then set "language" back to ${was(originalSettings.language)} and "countdown" to ${was(originalSettings.countdown)} in ${SETTINGS_PATH}`);
     }
     if (!keepRecordings) {
       for (const file of recordings) {
@@ -537,6 +543,8 @@ end tell`, "quit empty TextEdit");
     const incomplete =
       results.length < planned ? `${results.length} of ${planned} planned clicks completed` : undefined;
     const ok = summary.ok && !incomplete && !runError && !cleanupFailed && !abortedBy;
+    // Anything left unrestored outranks a lock and an interrupt: the next round must not start over it (round-exit.mts).
+    const end = roundExit({ cleanupIncomplete: cleanupFailed, interrupted: abortedBy, locked: Boolean(desktop.lockedAt), failed: !ok });
     const problems = [
       incomplete,
       runError && `run stopped: ${runError}`,
@@ -562,7 +570,7 @@ end tell`, "quit empty TextEdit");
         "",
         desktop.summary,
         "",
-        `Result: **${desktop.lockedAt ? "blocked" : ok ? "pass" : "fail"}** (${summary.pass} pass, ${summary.fail} fail, ${summary.notRun} not run${problems.length ? `; ${problems.join("; ")}` : ""}). A click passes only when RecordStuff is frontmost at the end of the window with Settings focused and the app logged the Recordings entry for the saved file; the two are reported separately below.`,
+        `Result: **${end.outcome}** (${summary.pass} pass, ${summary.fail} fail, ${summary.notRun} not run${problems.length ? `; ${problems.join("; ")}` : ""}). A click passes only when RecordStuff is frontmost at the end of the window with Settings focused and the app logged the Recordings entry for the saved file; the two are reported separately below.`,
         "",
         "| Language | Finder | Click | Frontmost after click | Settings focused | Verdict |",
         "| --- | --- | --- | --- | --- | --- |",
@@ -576,9 +584,12 @@ end tell`, "quit empty TextEdit");
       ].join("\n"),
     );
     console.log(`Report ${path.relative(REPO_ROOT, dir)}/report.md`);
-    if (desktop.lockedAt) {
+    if (end.outcome === "blocked") {
       console.error(`✗ ${desktop.summary}`);
-      process.exitCode = DESKTOP_BLOCKED_EXIT;
+      process.exitCode = end.code;
+    } else if (end.outcome === "interrupted") {
+      console.error(`✗ interrupted by ${abortedBy}; cleanup restored everything this run changed`);
+      process.exitCode = end.code;
     } else if (!ok) {
       const bad = results
         .filter((r) => r.verdict !== "pass")
@@ -586,7 +597,7 @@ end tell`, "quit empty TextEdit");
       console.error(
         `✗ notification acceptance failed (${summary.fail} fail, ${summary.notRun} not run${problems.length ? `; ${problems.join("; ")}` : ""})${bad.length ? `: ${bad.join("; ")}` : ""}`,
       );
-      process.exitCode = 1;
+      process.exitCode = end.code;
     } else console.log("✅ notification acceptance passed");
   }
 }

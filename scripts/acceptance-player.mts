@@ -10,14 +10,15 @@
  *
  * Full screen covers the display it runs on, so this is a desktop round: it needs an awake, unlocked session and
  * the readiness handoff in docs/testing.md. Exit 0 when every case passed, 1 when one failed or cleanup was
- * incomplete, and 2 (blocked) for a missing prerequisite (`pnpm build` output, Electron, FFmpeg) or a locked
- * session. A report, the cases and screenshots go to docs/verification/measurements/<timestamp>-player-acceptance/.
+ * incomplete (even when the session also locked), 2 (blocked) for a missing prerequisite (`pnpm build` output,
+ * Electron, FFmpeg) or a locked session, and 130/143 after an interruption that left nothing running (round-exit.mts). A report, the cases and screenshots go to docs/verification/measurements/<timestamp>-player-acceptance/.
  * Nothing here ships with the app.
  */
 import { scrubbedEnv } from "./lib/runner-env.mts";
 import { buildFixture } from "./lib/build-fixture.mts";
 import { runIsolatedProcess } from "./lib/isolated-process.mts";
-import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
+import { DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
+import { roundExit } from "./lib/round-exit.mts";
 import { hasTool } from "./lib/media-tools.mts";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -79,9 +80,12 @@ const desktop = await beginDesktopRound().catch((cause: unknown) => {
   throw cause;
 });
 const controller = new AbortController();
-const interrupt = (): void => controller.abort();
-process.on("SIGINT", interrupt);
-process.on("SIGTERM", interrupt);
+/** The first signal names the exit code (round-exit.mts). */
+let interruptedBy: "SIGINT" | "SIGTERM" | undefined;
+const interrupt = (name: "SIGINT" | "SIGTERM") => (): void => { interruptedBy ??= name; controller.abort(); };
+const onSigint = interrupt("SIGINT"), onSigterm = interrupt("SIGTERM");
+process.on("SIGINT", onSigint);
+process.on("SIGTERM", onSigterm);
 const log = fs.openSync(path.join(dir, "electron.log"), "a");
 let execution;
 try {
@@ -90,17 +94,20 @@ try {
 } finally {
   desktop.end();
   fs.closeSync(log);
-  process.removeListener("SIGINT", interrupt);
-  process.removeListener("SIGTERM", interrupt);
+  process.removeListener("SIGINT", onSigint);
+  process.removeListener("SIGTERM", onSigterm);
 }
 fs.writeFileSync(path.join(dir, "cleanup.json"), JSON.stringify(execution, null, 2));
 const processClean = !execution.error && !execution.stopped && execution.groupGone;
+/** The fixture's process group may still exist, or its end could not be confirmed: that alone fails the round. */
+const cleanupIncomplete = Boolean(execution.error) || !execution.groupGone;
 
 const resultsPath = path.join(dir, "results.json");
 const cases = fs.existsSync(resultsPath) ? JSON.parse(fs.readFileSync(resultsPath, "utf8")) as Array<{ name: string; ok: boolean; detail: string }> : [];
 const stoppedEarly = fs.existsSync(path.join(dir, "error.txt")) ? fs.readFileSync(path.join(dir, "error.txt"), "utf8") : "";
 const failed = cases.filter(result => !result.ok);
-const outcome = desktop.lockedAt ? "blocked" : !cases.length || failed.length || stoppedEarly || !processClean || execution.code !== 0 ? "fail" : "pass";
+const { outcome, code } = roundExit({ cleanupIncomplete, interrupted: interruptedBy, locked: Boolean(desktop.lockedAt),
+  failed: !cases.length || failed.length > 0 || Boolean(stoppedEarly) || !processClean || execution.code !== 0 });
 for (const result of cases) console.log(`${result.ok ? "PASS" : "FAIL"}: ${result.name} — ${result.detail}`);
 if (stoppedEarly) console.error(`The fixture stopped: ${stoppedEarly.split("\n")[0]}`);
 const report = [
@@ -124,5 +131,7 @@ const report = [
 ].join("\n");
 fs.writeFileSync(path.join(dir, "report.md"), report);
 console.log(`\n${cases.length - failed.length}/${cases.length} cases passed. Evidence: ${dir}`);
-if (outcome !== "pass") console.error(`${outcome === "blocked" ? `BLOCKED: ${desktop.summary}` : "FAILED"}`);
-process.exit(outcome === "blocked" ? DESKTOP_BLOCKED_EXIT : outcome === "pass" ? 0 : 1);
+if (outcome !== "pass") console.error(outcome === "blocked" ? `BLOCKED: ${desktop.summary}`
+  : outcome === "interrupted" ? `INTERRUPTED (${interruptedBy}); the fixture exited and nothing was left running.`
+  : `FAILED${cleanupIncomplete ? ": cleanup incomplete (see cleanup.json)" : ""}`);
+process.exit(code);

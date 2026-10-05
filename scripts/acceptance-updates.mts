@@ -13,6 +13,7 @@ import { prepareUpdateAcceptance, acceptanceExitCode, safeCaptureShortcut, creat
 import { acceleratorToKeystroke, createMaterialProfile, keystrokeScript, materialOpenArgs, removeMaterialProfile } from './lib/acceptance.mts';
 import { hasTool } from './lib/media-tools.mts';
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from './lib/desktop-session.mts';
+import { roundExit } from './lib/round-exit.mts';
 import { readLogPairs, verifyRecording } from './lib/verify-recording.mts';
 import { blocksSuccess } from './lib/verify.mts';
 import type { AcceptanceSnapshot, AcceptanceConfig, Scenario } from './fixtures/update-acceptance';
@@ -186,7 +187,14 @@ async function closeMaterial(): Promise<void> {
   materialProfile = undefined;
 }
 function report(): void {
-  const exit = acceptanceExitCode(cases);
+  // A lock during capture makes the round blocked even when a case also failed, but never hides a fixture left running,
+  // material left open or a changed user setting; an interrupt with none of those exits 130/143; a required case that
+  // could not run is blocked only when nothing failed (round-exit.mts).
+  // The report says what the exit code says.
+  const verdict = acceptanceExitCode(cases);
+  const cleanupCases = new Set(['fixture shutdown', 'material cleanup', 'source and user settings unchanged']);
+  const exit = roundExit({ cleanupIncomplete: cases.some(c => cleanupCases.has(c.name) && c.status === 'fail'), interrupted: cancelledBy,
+    locked: Boolean(desktop?.lockedAt), blocked: verdict === DESKTOP_BLOCKED_EXIT, failed: verdict === 1 }).code;
   // Said from the case that compared them, never assumed: a changed hash must not read as "unchanged" here.
   const unchanged = cases.find(c => c.name === 'source and user settings unchanged')?.status;
   const settingsLine = unchanged === 'pass' ? 'No user settings were changed'
@@ -194,12 +202,15 @@ function report(): void {
     : 'Whether source or user settings changed was not checked';
   const data = { exitCode: exit, mode: values.full ? 'full' : 'smoke', feedScenarios, scope: values['logic-only'] ? 'packaged handler/model integration only' : 'packaged handler/model integration + real shortcut capture', cases, workspaceRetained: appMayBeRunning };
   fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify(data, null, 2) + '\n');
-  fs.writeFileSync(path.join(dir, 'report.md'), ['# Update acceptance', '', `Result: ${exit === 0 ? 'PASS for the stated scope' : exit === 2 ? 'BLOCKED / INCOMPLETE' : 'FAIL'}`, '', `Mode: ${data.mode}; feed scenarios: ${feedScenarios.join(", ")}. Scope: ${data.scope}. Actions use the production handler and real tray context; shell.openExternal is intercepted. Saved and update notifications are intercepted in the fixture to keep capture material unobscured. This is not native mouse/Tray, notification or visual-browser acceptance.`, '', ...cases.map(c => `- **${c.status}** ${c.name}${c.required ? '' : ' (outside required scope)'}: ${c.detail}`), '', 'Evidence: report.json, build.log, requests/, responses/, events.jsonl, logs/, and recording-verify.json when capture ran.', '', `Fixture left running: ${appMayBeRunning}. Recordings and logs are retained. ${settingsLine}; no network disconnect, publication or installation was performed.`, ''].join('\n'));
+  fs.writeFileSync(path.join(dir, 'report.md'), ['# Update acceptance', '', `Result: ${exit === 0 ? 'PASS for the stated scope' : exit === 2 ? 'BLOCKED / INCOMPLETE' : exit === 1 ? 'FAIL' : `INTERRUPTED (${cancelledBy}); cleanup complete`}`, '', `Mode: ${data.mode}; feed scenarios: ${feedScenarios.join(", ")}. Scope: ${data.scope}. Actions use the production handler and real tray context; shell.openExternal is intercepted. Saved and update notifications are intercepted in the fixture to keep capture material unobscured. This is not native mouse/Tray, notification or visual-browser acceptance.`, '', ...cases.map(c => `- **${c.status}** ${c.name}${c.required ? '' : ' (outside required scope)'}: ${c.detail}`), '', 'Evidence: report.json, build.log, requests/, responses/, events.jsonl, logs/, and recording-verify.json when capture ran.', '', `Fixture left running: ${appMayBeRunning}. Recordings and logs are retained. ${settingsLine}; no network disconnect, publication or installation was performed.`, ''].join('\n'));
   process.exitCode = exit;
   console.log(`Report: ${path.join(dir, 'report.md')}`);
 }
+/** The first signal names the exit code once cleanup has run (round-exit.mts). */
+let cancelledBy: 'SIGINT' | 'SIGTERM' | undefined;
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => {
   cancelled = true;
+  cancelledBy ??= signal;
   if (child?.pid) try { process.kill(-child.pid, 'SIGTERM'); } catch {}
 });
 
@@ -364,6 +375,4 @@ try {
   record('source and user settings unchanged', JSON.stringify(beforeHashes) === JSON.stringify(afterHashes) ? 'pass' : 'fail', 'Compared source index, package manifest and real user settings before/after.');
   record('native Tray clicks / visible browser / subjective listening', 'blocked', 'Not exercised by the handler/model driver. Computer Use windowless Tray access previously returned -10005; manual/native-driver evidence is separate.', values['require-native-ui']);
   report();
-  // A lock during capture makes the round blocked even when a case also failed.
-  if (desktop?.lockedAt) process.exitCode = DESKTOP_BLOCKED_EXIT;
 }

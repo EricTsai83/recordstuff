@@ -1,12 +1,13 @@
 /**
  * The fullscreen video page (src/shared/video-player.ts): plays one recording from where the player was, says when
- * its first frame is drawn so the window can fade in, and leaves on Escape, a double-click or its exit button with
+ * its first frame is drawn so the window can fade in, and leaves on Escape, ⌘W, a double-click or its exit button with
  * where the video is now. Main owns the window and its fades; the page never closes it. The title and controls are
  * the player's own (player-controls.ts), laid out as YouTube's full screen is.
  */
 import { documentLanguage, translate, isLanguage } from "../shared/i18n";
 import { VIDEO_QUERY, type PlaybackState, type VideoBridge } from "../shared/video-player";
 import { mark, playerControls } from "./player-controls";
+import { isCloseChord } from "./shortcut-capture";
 
 declare global {
   interface Window {
@@ -92,8 +93,10 @@ function leave(): void {
 exitButton.addEventListener("click", leave);
 // A double-click leaves, as it enters from the player; the controls' own double-click would ask for the page's fullscreen.
 video.addEventListener("dblclick", event => { event.preventDefault(); leave(); });
+// ⌘W (Ctrl+W elsewhere) leaves too: the app menu has no Close, since each page closes on it itself (app-menu.ts).
+const platform = navigator.platform.startsWith("Mac") ? "darwin" : navigator.platform;
 document.addEventListener("keydown", event => {
-  if (event.key === "Escape" && !event.repeat) { event.preventDefault(); leave(); }
+  if ((event.key === "Escape" && !event.repeat) || isCloseChord(event, platform)) { event.preventDefault(); leave(); }
   if (event.key === "Tab") document.documentElement.dataset.input = "keyboard";
 });
 document.addEventListener("pointerdown", () => { delete document.documentElement.dataset.input; });

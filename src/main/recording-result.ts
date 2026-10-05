@@ -501,6 +501,8 @@ export function failureGuidance(code: ErrorCode, language: Language, platform: N
     : code === "app_terminated" ? "The recording file may be incomplete; missing content cannot be recovered."
     // Refused before anything started: no setting or retry helps, and nothing was lost.
     : code === "unsupported_os_version" ? "Update macOS, then record again."
+    // Also refused before anything started: the encoder, not a quality setting, lacks MP4.
+    : code === "mp4_unsupported" ? "Update the system and RecordStuff, then record again."
     : "Check your recording settings, then try again. Missing content cannot be recovered.", language);
 }
 const persistenceWarnings: Record<PersistenceIssue, PlainMessageKey> = {

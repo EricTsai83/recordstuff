@@ -105,7 +105,7 @@ export class VideoFullScreen {
         playing.resolve(undefined);
         if (playing.returnFocus) request.closed?.();
       });
-      // Closed while it covers the screen (⌘W or quit): the menu bar and the Dock come back first.
+      // Closed while it covers the screen (by quitting): the menu bar and the Dock come back first.
       window.on("close", () => { if (mac && window.isSimpleFullScreen()) window.setSimpleFullScreen(false); });
       const query = {
         [VIDEO_QUERY.src]: request.src,

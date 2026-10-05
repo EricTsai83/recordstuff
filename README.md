@@ -48,7 +48,7 @@ On Windows x64, run `RecordStuff-<version>-x64-unsigned-setup.exe`: a per-user o
 | Shortcut | ⇧⌘1 (recommended) / Custom shortcut / Off | ⇧⌘1; Settings says so if another app already owns the combination |
 | Icon click | Open the menu / Start / stop recording | Open the menu; Start / stop recording for settings from before this choice |
 
-Open these settings with **Open RecordStuff** in the menu or with **⌥⌘,**. Appearance offers System / Light / Dark (System by default); notifications are on by default and also require macOS permission. Language and appearance can change while recording; other settings are locked. A specific display must be available: the app does not silently switch to another screen. Capture covers one whole screen, without a microphone, window or region selector.
+Open these settings with **Open RecordStuff** in the menu or with **⌥⌘,**. Appearance offers System / Light / Dark (System by default); notifications are on by default and also require macOS permission. Language, appearance and Icon click can change while recording; other settings are locked. A specific display must be available: the app does not silently switch to another screen. Capture covers one whole screen, without a microphone, window or region selector.
 
 Output is H.264/AAC MP4. Audio requests 256 kbps with voice processing explicitly disabled; local diagnostic recordings preserve high frequencies and left/right separation. Actual bitrate depends on the encoder and content. The capture asks for slightly more than 30 or 60 fps so the tested Mac records about 29.9 and 59.8 fps; 60 fps files are substantially larger. These are measured limitations, not hidden quality guarantees.
 

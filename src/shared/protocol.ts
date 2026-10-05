@@ -13,9 +13,11 @@ export const OUTPUT_MIME_TYPE = "video/mp4;codecs=avc1,mp4a.40.2";
 export const CHUNK_INTERVAL_MS = 1000;
 
 /**
- * Encoded bytes the capture page holds before main has taken them; past this the
- * page fails the session with `capture_failed`. Main's own writer bound is
- * `RECORDING_HEALTH.writerBacklogBytes`, which the page cannot import.
+ * Encoded bytes the capture page holds as Blobs not yet read and posted; past this
+ * the page fails the session with `capture_failed`. A chunk counts until it is
+ * posted, not until main has read it: posted messages wait in the port, outside
+ * this bound. Main's writer bound, `RECORDING_HEALTH.writerBacklogBytes` (which the
+ * page cannot import), counts them once main's handler has appended them.
  */
 export const HANDOFF_BACKLOG_LIMIT_BYTES = 64 * 1024 * 1024;
 

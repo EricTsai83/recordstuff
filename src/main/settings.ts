@@ -37,6 +37,8 @@ import { drainQueue } from "./drain-queue";
 import { errnoCode } from "./errors";
 
 export const SETTINGS_VERSION = 3;
+/** Names tried for keeping an unusable file aside: `.unreadable`, then `.unreadable.1` and on. */
+export const KEPT_UNUSABLE_NAMES = 100;
 
 /** Only a published stable version can have been announced. */
 function isNotifiedVersion(value: unknown): value is string {
@@ -351,10 +353,12 @@ export class SettingsStore {
    * Links the unusable file under the first free `.unreadable` name. Unlike
    * `rename`, `link` never replaces an existing name, so a copy kept by an
    * earlier launch survives a second unusable load; the atomic write then
-   * replaces only the original name.
+   * replaces only the original name. A volume that answers EEXIST for every name
+   * ends the keep as a failure after `KEPT_UNUSABLE_NAMES` names, as FileWriter's
+   * publication does, instead of holding the save queue forever.
    */
   private async keepUnusable(): Promise<void> {
-    for (let index = 0; ; index++) {
+    for (let index = 0; index < KEPT_UNUSABLE_NAMES; index++) {
       const kept = `${this.filePath}.unreadable${index ? `.${index}` : ""}`;
       try {
         await fs.promises.link(this.filePath, kept);
@@ -366,5 +370,6 @@ export class SettingsStore {
         if (code !== "EEXIST") throw cause;
       }
     }
+    throw new Error(`every name up to ${path.basename(this.filePath)}.unreadable.${KEPT_UNUSABLE_NAMES - 1} is taken`);
   }
 }

@@ -7,7 +7,7 @@
  * actions. The panel echoes an id back and `settingsAction` resolves it
  * against a freshly built model, so a request can only ever perform work the
  * app is offering at that moment. Recording preferences are locked
- * while a capture is running; language and appearance remain editable.
+ * while a capture is running; language, appearance and the icon click remain editable.
  * index.ts re-checks recording locks before saving.
  */
 import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure, persistenceWarning } from "./recording-result";
@@ -102,6 +102,11 @@ function switchChoices(language: Language, current: boolean, action: (value: boo
   }));
 }
 
+/** Only a chosen display can be unavailable: Primary display always resolves. The Screen row and the status card both ask. */
+function chosenDisplayUnavailable(ctx: AppContext): boolean {
+  return ctx.display.kind === "display" && !displayResolution(ctx.displays, ctx.display).ok;
+}
+
 function screenGroup(ctx: AppContext, enabled: boolean): Group {
   const preference = ctx.display;
   // An id two displays share cannot be chosen.
@@ -113,15 +118,15 @@ function screenGroup(ctx: AppContext, enabled: boolean): Group {
       checked: preference.kind === "display" && preference.id === display.id,
       action: { setDisplay: { kind: "display", id: display.id, label: display.label } } });
   }
-  // Only a chosen display can be unavailable: Primary display always resolves.
-  const unavailable = preference.kind === "display" && !displayResolution(ctx.displays, preference).ok;
-  if (unavailable) choices.push({ id: preference.id,
-    label: t("{label} — Unavailable", ctx.language, { label: displayLabel(preference, ctx.language) }), enabled: false, checked: true, action: { setDisplay: preference } });
+  // The chosen display, when it is the one that cannot be recorded.
+  const missing = preference.kind === "display" && chosenDisplayUnavailable(ctx) ? preference : undefined;
+  if (missing) choices.push({ id: missing.id,
+    label: t("{label} — Unavailable", ctx.language, { label: displayLabel(missing, ctx.language) }), enabled: false, checked: true, action: { setDisplay: missing } });
   const result = group("screen", t("Screen", ctx.language), enabled, choices);
   result.diagnostics = [];
-  if (unavailable) {
+  if (missing) {
     result.diagnostics.push({ kind: "current", heading: t("Selected display is unavailable", ctx.language),
-      reason: t("Recording cannot start on {label}.", ctx.language, { label: displayLabel(preference, ctx.language) }),
+      reason: t("Recording cannot start on {label}.", ctx.language, { label: displayLabel(missing, ctx.language) }),
       guidance: t("Choose Primary display or another screen.", ctx.language) });
     if (primaryDisplayChoosable(ctx.displays)) result.recovery = { choice: "primary", label: t("Use Primary display", ctx.language) };
   }
@@ -283,8 +288,8 @@ function hotkeyDiagnostics(ctx: AppContext, unavailable: string | undefined): No
       guidance: t(ctx.platform === "darwin" ? "Open RecordStuff from the menu bar icon, or retry once the other app releases it."
         : "Open RecordStuff from the system tray icon, or retry once the other app releases it.", language) }] : []),
     ...(kind === "conflict" ? [{ kind: "current" as const, heading: t("The shortcut for RecordStuff is unavailable", language),
-      reason: t("{shortcut} is the recording shortcut, so it does not open Settings.", language, { shortcut: settings }),
-      guidance: t("Choose another recording shortcut to open Settings with {shortcut} again.", language, { shortcut: settings }) }] : []),
+      reason: t("{shortcut} is the recording shortcut, so it does not open RecordStuff.", language, { shortcut: settings }),
+      guidance: t("Choose another recording shortcut to open RecordStuff with {shortcut} again.", language, { shortcut: settings }) }] : []),
   ];
 }
 
@@ -539,9 +544,8 @@ function statusActionId(state: RecordingState, ctx: AppContext): StatusActionId 
     case "needsPermission": return state.needsRelaunch ? "relaunch" : "permission";
     case "idle":
       if (state.outputDirUnavailable) return "folder";
-      // The Screen row's own way back, when there is one.
-      if (!displayResolution(ctx.displays, ctx.display).ok) return screenGroup(ctx, true).recovery ? "primary" : undefined;
-      return undefined;
+      // The Screen row's own way back (its `recovery`), when there is one.
+      return chosenDisplayUnavailable(ctx) && primaryDisplayChoosable(ctx.displays) ? "primary" : undefined;
     default: return undefined;
   }
 }
@@ -621,7 +625,7 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
     ...(ctx.library ? { library: libraryView(ctx, now, format)! } : {}),
     // One line above the tabs: the lock covers General too, so it is not the Recording tab's own note. A quit
     // needs none: the status card's own title already says it, and the hint sits right under that title.
-    hint: quitting || unlocked ? "" : t("Recording in progress; only language and appearance can change.", language),
+    hint: quitting || unlocked ? "" : t("Recording in progress; only language, appearance and icon click can change.", language),
     failure: t("Could not apply this setting. Your current settings are shown.", language),
     tabs: [{ id: "library", label: t("Recordings", language) }, { id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) }, failuresTab(ctx)],
     groups: settingsGroups(state, ctx).map(({ choices, actions, ...rest }) => ({

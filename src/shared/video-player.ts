@@ -52,7 +52,7 @@ export function isFullScreenChoice(value: unknown): value is FullScreenChoice {
 export const VIDEO_CHANNELS = {
   /** The first frame at the starting time is drawn: the window may fade in. */
   ready: "video:ready",
-  /** The viewer left (Escape, a double-click or the exit button), with where the video is now. */
+  /** The viewer left (Escape, ⌘W, a double-click, F or the exit button), with where the video is now. */
   exit: "video:exit",
 } as const;
 

@@ -102,7 +102,7 @@ main { height: 100dvh; max-width: 720px; margin: auto; padding: 16px 20px 0; dis
 /* The open tab's mark and name in Apple Music's red, in the narrow strip as in the sidebar. */
 .tabs button[aria-selected="true"] { background: var(--selected); box-shadow: var(--selected-shadow); color: var(--chosen); }
 .tab-icon { flex: none; width: 15px; height: 15px; }
-.tab-badge { min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: var(--rec); color: #fff; font-size: 10.5px; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums; }
+.tab-badge { min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: var(--chosen); color: #fff; font-size: 10.5px; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums; }
 /* Keyboard focus and scrollIntoView stop above the scroll hint below, not under it. */
 #settings-panel { flex: 1; min-height: 0; overflow-y: auto; padding: 3px 3px 24px; margin: 0; scrollbar-width: none; scroll-padding-bottom: 38px; }
 .section { margin-bottom: 20px; }
@@ -293,7 +293,7 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .recording-result > summary:hover { background: light-dark(rgb(0 0 0 / .025), rgb(255 255 255 / .03)); }
 .recording-result > summary::-webkit-details-marker { display: none; }
 .result-line { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
-.result-unread { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--rec); align-self: center; }
+.result-unread { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--chosen); align-self: center; }
 .result-reason { flex: 1; min-width: 0; font-weight: 500; }
 .recording-result.unread .result-reason { font-weight: 600; }
 .result-time { flex: none; color: var(--secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -414,6 +414,8 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .library-summary { margin: 0; color: var(--secondary); font-variant-numeric: tabular-nums; }
 #library-reveal { margin-left: auto; }
 .library-status { color: var(--secondary); margin: 4px 4px 12px; }
+/* A card's action that failed, in the warnings' amber. */
+.library-error { color: var(--warning); margin: -8px 4px 12px; }
 .library-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 40px 16px; text-align: center; }
 .library-empty .empty-icon { margin-bottom: 8px; }
 .library-empty-title { margin: 0; font-size: 14px; font-weight: 600; }

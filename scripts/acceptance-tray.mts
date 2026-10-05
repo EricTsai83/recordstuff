@@ -89,7 +89,7 @@ if (requestedLanguages && (requestedLanguages.length === 0 || requestedLanguages
 
 const controller = new AbortController();
 let interrupted: keyof typeof INTERRUPT_EXIT | undefined;
-for (const name of ["SIGINT", "SIGTERM"] as const) process.on(name, () => { interrupted = name; controller.abort(new Error(`interrupted: ${name}`)); });
+for (const name of ["SIGINT", "SIGTERM"] as const) process.on(name, () => { interrupted ??= name; controller.abort(new Error(`interrupted: ${name}`)); });
 const signal = controller.signal;
 const sleep = (ms: number): Promise<void> => delay(ms, undefined, { signal });
 const ax = osascriptAx(signal);
@@ -261,7 +261,6 @@ async function readMenu(c: TrayCase, state: TrayState, language: Language): Prom
   return menu.items;
 }
 
-/** `settle` is off for a case nested inside another's session, which must keep running. */
 /** `YYYY-MM-DD HH-MM-SS` of an app-named recording (recorder.ts formatTimestamp), comparable as text; undefined for other names. */
 function stampOf(file: string): string | undefined {
   return /^(\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2})(?:-\d+)?\.mp4$/.exec(path.basename(file))?.[1];
@@ -284,6 +283,10 @@ function notRun(id: string, title: string, language: Language | undefined, reaso
   cases.push({ id, title, language, status: "not run", evidence: "scripted input", problems: [], details: [reason], screenshots: [] });
 }
 
+/**
+ * Runs one case and records its outcome; a blocked or interrupted one is recorded and rethrown, so a returned case is
+ * never blocked. `settle` is off for a case nested inside another's session, which must keep running.
+ */
 async function runCase(id: string, title: string, language: Language | undefined, body: (c: TrayCase) => Promise<void>, settle = true): Promise<TrayCase> {
   const c: TrayCase = { id, title, language, status: undefined, evidence: "scripted input", problems: [], details: [], screenshots: [] };
   const started = Date.now();
@@ -449,14 +452,13 @@ async function main(): Promise<void> {
       notes.push(`stored language set back to ${language}; relaunched the same bundle (pid ${pid})`);
     } else if (!first) await launch();
 
-    const idle = await runCase("menu-idle", "Idle menu against the model and the group rules", language, async c => {
+    await runCase("menu-idle", "Idle menu against the model and the group rules", language, async c => {
       const items = await readMenu(c, "idle", language);
       // The count sits inside the text in Traditional Chinese (…：4 筆), so match both sides of it.
       const [head = "", tail = ""] = translate("Unreviewed recording failures: {value}", language, { value: "\u0000" }).split("\u0000");
       const unread = items?.some(item => item.title.startsWith(head) && item.title.endsWith(tail));
       c.details.push(unread ? "the unread-failures group is shown (N33a: idle with an unread failure)" : "no unread failure in this app's history: the unread group was not observed");
     });
-    if (idle.status === "blocked") return;
 
     if (first) {
       await runCase("keyboard", "Arrow keys move the selection, Return chooses Open RecordStuff, ⌘W closes it", language, async c => {
@@ -842,8 +844,12 @@ try {
       if (problem) throw new Error(`${problem}; quit RecordStuff, then set "trayClick" back in ${settingsPath}`);
     });
   }
-  const remaining = (() => { try { return pgrepPids(`^${escapeRegExp(bundle)}/Contents/`); } catch (error) { return [String(error)]; } })();
-  if (remaining.length) cleanup.push(`processes of ${bundle} still running: ${remaining.join(", ")}`);
+  // Only an app the round took over is its to quit: one left as it was found (a lock at the start, no Accessibility
+  // access) makes the round blocked, not a cleanup failure.
+  if (owned) {
+    const remaining = (() => { try { return pgrepPids(`^${escapeRegExp(bundle)}/Contents/`); } catch (error) { return [String(error)]; } })();
+    if (remaining.length) cleanup.push(`processes of ${bundle} still running: ${remaining.join(", ")}`);
+  }
   desktop?.end();
   if (fs.existsSync(logPath)) fs.writeFileSync(path.join(out, "app.log"), `${evidenceSince(appLog, roundFrom).join("\n")}\n`);
   const verdict = classifyTrayRound({ cases, cleanup, roundError, blocked, lockedAt: desktop?.lockedAt, interrupted: interrupted !== undefined });

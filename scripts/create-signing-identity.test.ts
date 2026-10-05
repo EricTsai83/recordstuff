@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { X509Certificate, createPrivateKey, randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { createIdentity } from './create-signing-identity.mts';
+import { certificatesNamed, createIdentity } from './create-signing-identity.mts';
 
 describe('encrypted signing identity creation', () => {
   // The macOS signing tool runs the system /usr/bin/openssl.
@@ -28,6 +28,16 @@ describe('encrypted signing identity creation', () => {
       const original = readFileSync(result.archive);
       expect(() => createIdentity('RecordStuff Fixture', output, password)).toThrow();
       expect(readFileSync(result.archive)).toEqual(original);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+  it.skipIf(process.platform !== 'darwin')('treats only an exact certificate name as existing, not one that merely contains it', () => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'recordstuff-identity-name-')));
+    try {
+      createIdentity('RecordStuff Fixture Old', path.join(root, 'old'), randomBytes(32).toString('hex'), 2);
+      const pem = readFileSync(path.join(root, 'old', 'certificate.pem'), 'utf8');
+      expect(certificatesNamed(pem, 'RecordStuff Fixture')).toEqual([]);
+      expect(certificatesNamed(pem, 'RecordStuff Fixture Old')).toHaveLength(1);
+      expect(certificatesNamed('', 'RecordStuff Fixture')).toEqual([]);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
   it('rejects unsafe inputs without creating files', () => {

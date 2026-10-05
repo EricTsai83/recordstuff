@@ -31,7 +31,8 @@ let drill = false;
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--drill-layout-aware" && !drill) drill = true;
   else if (args[i] === "--source" && !requested && args[i + 1] && !args[i + 1]!.startsWith("--")) requested = args[++i];
-  else throw new Error(usage);
+  // A usage error is not a failed round: exit 2, as the other runners do.
+  else { console.error(usage); process.exit(2); }
 }
 
 class Blocked extends Error {}

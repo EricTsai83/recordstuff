@@ -34,7 +34,7 @@ fs.mkdirSync(path.join(root, "docs/verification/measurements"), { recursive: tru
 const out = fs.mkdtempSync(path.join(root, "docs/verification/measurements/", `${new Date().toISOString().replaceAll(":", "-")}-playback-`));
 const controller = new AbortController();
 let interrupted: keyof typeof INTERRUPT_EXIT | undefined;
-for (const name of ["SIGINT", "SIGTERM"] as const) process.on(name, () => { interrupted = name; controller.abort(new Error(`interrupted: ${name}`)); });
+for (const name of ["SIGINT", "SIGTERM"] as const) process.on(name, () => { interrupted ??= name; controller.abort(new Error(`interrupted: ${name}`)); });
 const signal = controller.signal;
 
 class Blocked extends Error {}

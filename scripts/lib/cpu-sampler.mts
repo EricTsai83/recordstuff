@@ -20,6 +20,11 @@ export const ENCODER_SERVICE = "VTEncoderXPCService";
 
 /** Missing Command Line Tools block the measurement; they never turn it into a pass. */
 export class SamplerBlockedError extends Error {}
+/** clang was stopped by a signal (Ctrl-C reaches it as well as the runner): an interrupt, not missing tools. */
+export class SamplerInterruptedError extends Error {
+  readonly signal: "SIGINT" | "SIGTERM";
+  constructor(signal: "SIGINT" | "SIGTERM") { super(`compiling the CPU sampler was interrupted by ${signal}`); this.signal = signal; }
+}
 
 /** Compiles the helper into `dir` and returns its path. */
 export function compileSampler(dir: string): string {
@@ -27,6 +32,8 @@ export function compileSampler(dir: string): string {
   const binary = path.join(dir, "cpu-sampler");
   const env = scrubbedEnv();
   const result = spawnSync("clang", ["-O2", "-Wall", "-Wextra", "-o", binary, SOURCE], { encoding: "utf8", env });
+  // The runner's own handler only runs once this synchronous call returns, so the signal is read from clang's end.
+  if (result.signal === "SIGINT" || result.signal === "SIGTERM") throw new SamplerInterruptedError(result.signal);
   if (result.error || result.status !== 0) {
     throw new SamplerBlockedError(`could not compile the CPU sampler with clang (install the Command Line Tools: xcode-select --install): ${result.error?.message ?? result.stderr.trim()}`);
   }

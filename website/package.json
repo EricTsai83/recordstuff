@@ -5,12 +5,12 @@
   "type": "module",
   "description": "Static official website for RecordStuff: product, download and help pages.",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.18.0"
   },
   "scripts": {
-    "dev": "astro dev",
+    "dev": "env -u SITE_MANIFEST_VERIFIED astro dev",
     "build": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/manifest.mts verify --online && env -u SITE_MANIFEST_OFFLINE SITE_MANIFEST_VERIFIED=1 astro build",
-    "build:offline": "SITE_MANIFEST_OFFLINE=1 astro build",
+    "build:offline": "env -u SITE_MANIFEST_VERIFIED SITE_MANIFEST_OFFLINE=1 astro build",
     "preview": "astro preview",
     "manifest": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/manifest.mts",
     "check": "astro check && pnpm build && node scripts/check-release.mts && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-links.mts",

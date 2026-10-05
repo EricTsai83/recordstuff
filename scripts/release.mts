@@ -403,14 +403,20 @@ export async function verifyWindowsInstaller(directory: string, version: string)
   const shortcut = path.join(process.env.APPDATA ?? '', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'RecordStuff.lnk');
   const installed = spawnSync(installer, ['/S'], { encoding: 'utf8', timeout: 180_000 });
   if (installed.error || installed.status !== 0) throw new Error(`Silent install failed: ${failureReason(installed)}`);
-  const [entry, ...extra] = uninstallEntries('HKCU');
-  if (!entry || extra.length) throw new Error(`Expected one per-user uninstall entry, found ${extra.length + (entry ? 1 : 0)}.`);
+  const entries = uninstallEntries('HKCU');
+  const entry = entries[0];
+  // Without an entry, or with one whose command does not parse, nothing can uninstall it: say that the app is left.
+  if (!entry) throw new Error('The install registered no per-user uninstall entry; RecordStuff may be left installed.');
   console.log(`Installed: ${JSON.stringify(entry)}`);
-  const [uninstaller, uninstallArgs] = splitCommandLine(entry.QuietUninstallString);
+  let command: [string, string[]];
+  try { command = splitCommandLine(entry.QuietUninstallString); }
+  catch (error) { throw new Error(`${String(error)} RecordStuff is left installed${entry.InstallLocation ? ` in ${entry.InstallLocation}` : ''}.`); }
+  const [uninstaller, uninstallArgs] = command;
   const location = entry.InstallLocation || path.dirname(uninstaller);
   // From here every failure still uninstalls, so a reused machine is not left with the app.
   let removed = false;
   try {
+    if (entries.length !== 1) throw new Error(`Expected one per-user uninstall entry, found ${entries.length}.`);
     // Per user means HKCU only: an HKLM entry would have needed an administrator.
     if (uninstallEntries('HKLM').length) throw new Error('The installer registered a machine-wide uninstaller.');
     if (entry.DisplayVersion !== version) throw new Error(`Registered version ${entry.DisplayVersion} differs from ${version}.`);

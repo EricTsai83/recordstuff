@@ -7,7 +7,7 @@ import { errnoCode, messageOf } from "./errors";
 
 /**
  * Whether two folder paths name the same folder as written (`~/Movies/RecordStuff/` and `…/RecordStuff`).
- * The default folder is the one RecordStuff may create; recording and Open output folder both ask with this.
+ * The default folder is the one RecordStuff may create; recording and Show in Finder both ask with this.
  */
 export function isSameFolder(a: string, b: string): boolean {
   return path.resolve(a) === path.resolve(b);
@@ -55,7 +55,8 @@ function problemText(problem: Problem, dir: string, language: Language): string 
 }
 
 /**
- * The tray's output-folder action (plan 033). An existing folder opens as
+ * Show in Finder for the output folder (plan 033; Settings' Output folder row and the Recordings tab's header
+ * since the tray item moved there, 2026-10-04). An existing folder opens as
  * before. The known default folder, which recording creates only when it
  * starts, is created here too, but only itself and only inside an existing
  * parent. A missing custom folder is never recreated: it may live on a
@@ -69,8 +70,11 @@ function problemText(problem: Problem, dir: string, language: Language): string 
  * The warning is a windowless message box, which holds main's timers, I/O and
  * log until it is answered (plan 055). While recording work is pending, which a
  * saved file's fallback can meet during a later recording, the same text goes
- * to `notify` instead and the chooser stays with the settled tray and Settings
- * (plan 056).
+ * to `notify` instead and the chooser stays with Settings once the session has
+ * settled (plan 056).
+ *
+ * Resolves whether the user has been told: true once the folder opened or the warning was answered, false when the
+ * problem only waits in a notice held until the recording ends, so the Settings row says at once that it failed.
  */
 export function createOutputFolderOpener(deps: {
   outputDir(): string;
@@ -87,9 +91,9 @@ export function createOutputFolderOpener(deps: {
   notify(body: string): void;
   log(message: string): void;
   fs?: OutputFolderFs;
-}): () => Promise<void> {
+}): () => Promise<boolean> {
   const io = deps.fs ?? nodeOutputFolderFs;
-  let active: Promise<void> | undefined;
+  let active: Promise<boolean> | undefined;
   /** The warning or the folder chooser it leads to is open: a repeated click brings it forward. */
   let prompting = false;
 
@@ -142,17 +146,17 @@ export function createOutputFolderOpener(deps: {
     catch (cause) { deps.log(`output folder: focus failed: ${String(cause)}`); }
   };
 
-  const run = async (): Promise<void> => {
+  const run = async (): Promise<boolean> => {
     const dir = deps.outputDir();
     const problem = await attempt(dir);
-    if (!problem) return;
+    if (!problem) return true;
     deps.log(`output folder: cannot open ${dir}: ${problem.kind}${"error" in problem ? `: ${problem.error}` : ""}`);
     const language = deps.language();
     const text = problemText(problem, dir, language);
     if (deps.mediaPending()) {
       deps.log("output folder: recording work is pending; telling the problem in a notification instead of a warning");
       deps.notify(text);
-      return;
+      return false;
     }
     const detail = text
       + ("error" in problem ? `\n\n${translate("Details: {error}", language, { error: problem.error })}` : "");
@@ -168,6 +172,7 @@ export function createOutputFolderOpener(deps: {
       // The chooser is windowless too and can sit behind other apps; a click meanwhile must not look dead.
       if (response === 0) await deps.chooseFolder();
     } finally { prompting = false; }
+    return true;
   };
 
   return () => {
@@ -176,7 +181,7 @@ export function createOutputFolderOpener(deps: {
       return active;
     }
     active = Promise.resolve().then(run)
-      .catch((cause: unknown) => deps.log(`output folder: open action failed: ${String(cause)}`))
+      .catch((cause: unknown) => { deps.log(`output folder: open action failed: ${String(cause)}`); return false; })
       .finally(() => { active = undefined; });
     return active;
   };

@@ -6,6 +6,7 @@
  * the video is still: the seek bar follows `timeupdate`, which fires only while it plays.
  */
 import { VIDEO_TIMING, formatDuration } from "../shared/video-player";
+import { glyph } from "./glyph";
 
 /** The controls' names for assistive technology and tooltips, in the page's language. */
 export interface PlayerLabels {
@@ -35,7 +36,6 @@ export interface PlayerControls {
   wake(): void;
 }
 
-const SVG = "http://www.w3.org/2000/svg";
 /** Filled marks on a 24-unit grid, white on the picture. */
 const MARKS = {
   play: "M8 5.6v12.8a1 1 0 0 0 1.5.86l10.2-6.4a1 1 0 0 0 0-1.72L9.5 4.74A1 1 0 0 0 8 5.6Z",
@@ -45,12 +45,7 @@ const MARKS = {
 } as const;
 /** A filled mark from its path, white on the picture. */
 export function mark(d: string): SVGSVGElement {
-  const svg = document.createElementNS(SVG, "svg");
-  svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("aria-hidden", "true"); svg.setAttribute("focusable", "false");
-  const path = document.createElementNS(SVG, "path");
-  path.setAttribute("d", d); path.setAttribute("fill", "currentColor");
-  svg.append(path);
-  return svg;
+  return glyph("0 0 24 24", {}, { d, fill: "currentColor" });
 }
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, className: string): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag); el.className = className; return el;
@@ -143,14 +138,16 @@ export function playerControls(video: HTMLVideoElement, options: PlayerControlsO
   seek.addEventListener("input", () => { video.currentTime = Number(seek.value); sync(); });
   level.addEventListener("input", () => { video.volume = Number(level.value); video.muted = video.volume === 0; });
 
-  // The keys YouTube uses, wherever focus is in the player; a focused control keeps its own (Space on a button, arrows on a slider).
+  // The keys YouTube uses, wherever focus is in the player; a focused control keeps its own (Space on a button, arrows on
+  // the volume slider). The seek bar's arrows move 5 s as everywhere else: its `step="any"` would move 1% of the length,
+  // 36 s of an hour's recording and a tenth of a second of a short one.
   root.addEventListener("keydown", event => {
     if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
     const target = event.target as HTMLElement;
-    const onButton = target instanceof HTMLButtonElement, onSlider = target instanceof HTMLInputElement;
+    const onButton = target instanceof HTMLButtonElement, onVolume = target === level;
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
     if ((key === " " && !onButton) || key === "k") toggle();
-    else if ((key === "ArrowLeft" || key === "ArrowRight") && !onSlider) {
+    else if ((key === "ArrowLeft" || key === "ArrowRight") && !onVolume) {
       // Kept within the video; a length not known yet bounds nothing, or every step forward would land on 0.
       const end = Number.isFinite(video.duration) ? video.duration : Infinity;
       video.currentTime = Math.min(Math.max(0, video.currentTime + (key === "ArrowLeft" ? -5 : 5)), end);

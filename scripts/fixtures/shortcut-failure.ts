@@ -267,7 +267,7 @@ require(path.join(root, 'out/main/index.js'));
     await clickConfirm();
     await waitFor(async () => !(await group()).capturing, 'reserved candidate completes');
     record('reserved commit rejected and ownership restored', owned.size === 2 && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator
-      && await evaluate("document.getElementById('feedback').textContent.includes('reserved for Settings')"), 'saved recording shortcut retained');
+      && await evaluate("document.getElementById('feedback').textContent.includes('reserved for opening RecordStuff')"), 'saved recording shortcut retained');
     failRegistration = true;
     await arm(); await key('Escape', 'Escape');
     await waitFor(async () => !(await group()).capturing, 'failed resume');

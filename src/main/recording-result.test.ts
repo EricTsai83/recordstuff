@@ -97,6 +97,11 @@ it("tells a Mac too old to record to update, not to change settings or that cont
     .toEqual(["Update macOS, then record again.", "請更新 macOS 後再錄影。"]);
 });
 
+it("tells a computer without MP4 recording to update, not to change settings or that content was lost", () => {
+  expect([failureGuidance("mp4_unsupported", "en", "darwin"), failureGuidance("mp4_unsupported", "zh-TW", "win32")])
+    .toEqual(["Update the system and RecordStuff, then record again.", "請更新系統與 RecordStuff 後再錄影。"]);
+});
+
 it("names both causes of missing system audio on macOS, a very busy Mac first, and keeps the permission actions", () => {
   expect(failureReason("no_audio_track", "en")).toBe("System audio was unavailable at start, so nothing was recorded.");
   expect(failureReason("no_audio_track", "zh-TW")).toBe("開始時無法取得系統音訊，未錄到任何內容");

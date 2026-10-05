@@ -122,7 +122,7 @@ export function describeAccelerator(accelerator: string, platform: string): stri
 
 /** Kept separate from persisted recording validation so legacy choices survive. */
 export const SETTINGS_SHORTCUT = "CommandOrControl+Alt+,";
-export const SETTINGS_SHORTCUT_RESERVED = "This combination is reserved for Settings.";
+export const SETTINGS_SHORTCUT_RESERVED = "This combination is reserved for opening RecordStuff.";
 
 /**
  * Whether two accelerators press the same keys on `platform`. Off macOS

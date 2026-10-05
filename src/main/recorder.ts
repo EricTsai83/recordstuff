@@ -241,7 +241,7 @@ interface Session {
 const DEFAULT_START_TIMEOUT_MS = 8000;
 /**
  * How long a start must have lasted before the shortcut or a click cancels it (plan 065):
- * above the 399 ms 95th percentile of 740 logged starts and the fastest logged double
+ * above the 396 ms 95th percentile of 739 logged starts and the fastest logged double
  * press (290 ms), below the waits a person would try to escape (1.1 s and up).
  */
 export const START_CANCEL_GRACE_MS = 1000;
@@ -436,7 +436,8 @@ export class Recorder {
     }, this.deps.stopTimeoutMs);
     // The host's reply is always asynchronous, so the stop goes out before the
     // subscribers' logging and UI work: on sleep the tracks end ~150 ms later.
-    this.deps.host.stop(session.id);
+    // A request that throws still reads as stopping; the deadline above settles it.
+    this.requestHostStop(session.id);
     this.setState({ type: "stopping" });
   }
 
@@ -748,7 +749,7 @@ export class Recorder {
       // was still inside getDisplayMedia) must not keep capturing unseen.
       if (message.type === "prepared" || message.type === "started" || message.type === "chunk") {
         this.deps.log(`recorder: stopping stale session ${message.sessionId} (${message.type})`);
-        this.deps.host.stop(message.sessionId);
+        this.requestHostStop(message.sessionId);
       }
       return;
     }
@@ -940,8 +941,16 @@ export class Recorder {
     this.closeOverlay(session);
     if (session.phase === "opening") return;
     // The session is already gone: a throw here would leave its state with nothing to settle it.
-    try { this.deps.host.stop(session.id); }
-    catch (cause) { this.deps.log(`recorder: session ${session.id} stop request failed: ${messageOf(cause)}`); }
+    this.requestHostStop(session.id);
+  }
+
+  /**
+   * Every stop request goes through here. A throw must reach neither the caller (a sleep, a shortcut, the host's
+   * own message) nor the state: each path has a deadline or an outcome of its own that settles the session.
+   */
+  private requestHostStop(sessionId: string): void {
+    try { this.deps.host.stop(sessionId); }
+    catch (cause) { this.deps.log(`recorder: session ${sessionId} stop request failed: ${messageOf(cause)}`); }
   }
 
   /**

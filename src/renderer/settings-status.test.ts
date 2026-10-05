@@ -78,7 +78,7 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   document.getElementById("tab-failures")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
   expect(document.getElementById("tab-recording")!.getAttribute("aria-selected")).toBe("true");
 
-  push({ ...ready, revision: 3, hint: "Recording in progress; only language and appearance can change.",
+  push({ ...ready, revision: 3, hint: "Recording in progress; only language, appearance and icon click can change.",
     status: { tone: "recording", title: "Recording", detail: "" }, tabs: [ready.tabs[0]!, { id: "failures", label: "Failures" }] });
   expect([card.hidden, card.dataset.tone, detail.hidden, document.getElementById("hint")!.hidden, action.hidden]).toEqual([false, "recording", true, false, true]);
   // The open tab is on the root, where the stylesheet leaves the lock hint out beside the recordings and failures.

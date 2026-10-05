@@ -21,20 +21,20 @@ import {
 
 import { fetchManifest } from "../../scripts/lib/release-manifest-client.mts";
 
-export const MANIFEST_PATH = fileURLToPath(new URL("../release-manifest.json", import.meta.url));
+const MANIFEST_PATH = fileURLToPath(new URL("../release-manifest.json", import.meta.url));
 
-export async function readStoredManifest(path = MANIFEST_PATH): Promise<ReleaseManifest> {
+async function readStoredManifest(): Promise<ReleaseManifest> {
   let text: string;
   try {
-    text = await readFile(path, "utf8");
+    text = await readFile(MANIFEST_PATH, "utf8");
   } catch (error) {
-    throw new Error(`Cannot read ${path}: ${(error as Error).message}. Run \`pnpm manifest generate vX.Y.Z\` first.`);
+    throw new Error(`Cannot read ${MANIFEST_PATH}: ${(error as Error).message}. Run \`pnpm manifest generate vX.Y.Z\` first.`);
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch (error) {
-    throw new Error(`${path} is not valid JSON: ${(error as Error).message}. Regenerate it with \`pnpm manifest generate vX.Y.Z\`.`);
+    throw new Error(`${MANIFEST_PATH} is not valid JSON: ${(error as Error).message}. Regenerate it with \`pnpm manifest generate vX.Y.Z\`.`);
   }
   return assertManifestShape(parsed);
 }

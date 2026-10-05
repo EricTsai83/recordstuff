@@ -26,8 +26,9 @@
 import { scrubbedEnv } from "./lib/runner-env.mts";
 import { buildFixture } from "./lib/build-fixture.mts";
 import { runIsolatedProcess } from "./lib/isolated-process.mts";
-import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
+import { DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
 import { failureBlocked, settingsOutcome, type FixtureFailure, type SettingsCase } from "./lib/settings-activation.mts";
+import { roundExit } from "./lib/round-exit.mts";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -69,9 +70,12 @@ const desktop = await beginDesktopRound().catch((cause: unknown) => {
   throw cause;
 });
 const controller = new AbortController();
-const interrupt = (): void => controller.abort();
-process.on("SIGINT", interrupt);
-process.on("SIGTERM", interrupt);
+/** The first signal names the exit code (round-exit.mts). */
+let interruptedBy: "SIGINT" | "SIGTERM" | undefined;
+const interrupt = (name: "SIGINT" | "SIGTERM") => (): void => { interruptedBy ??= name; controller.abort(); };
+const onSigint = interrupt("SIGINT"), onSigterm = interrupt("SIGTERM");
+process.on("SIGINT", onSigint);
+process.on("SIGTERM", onSigterm);
 const log = fs.openSync(path.join(dir, "electron.log"), "a");
 let execution;
 try {
@@ -82,17 +86,20 @@ try {
 } finally {
   desktop.end();
   fs.closeSync(log);
-  process.removeListener("SIGINT", interrupt);
-  process.removeListener("SIGTERM", interrupt);
+  process.removeListener("SIGINT", onSigint);
+  process.removeListener("SIGTERM", onSigterm);
 }
 fs.writeFileSync(path.join(dir, "cleanup.json"), JSON.stringify(execution, null, 2));
 const processClean = !execution.error && !execution.stopped && execution.groupGone;
+/** The fixture's process group may still exist, or its end could not be confirmed: that alone fails the round. */
+const cleanupIncomplete = Boolean(execution.error) || !execution.groupGone;
 
 const resultsPath = path.join(dir, "results.json");
 if (!fs.existsSync(resultsPath)) {
   const detail = fs.existsSync(path.join(dir, "error.txt")) ? fs.readFileSync(path.join(dir, "error.txt"), "utf8") : "";
-  fail(`${desktop.lockedAt ? `${desktop.summary}\n` : ""}The fixture produced no results (exit ${execution.code ?? "by signal"}). ${detail}\nEvidence: ${dir}`,
-    desktop.lockedAt ? DESKTOP_BLOCKED_EXIT : 1);
+  const early = roundExit({ cleanupIncomplete, interrupted: interruptedBy, locked: Boolean(desktop.lockedAt), failed: true });
+  fail(`${early.outcome === "interrupted" ? `INTERRUPTED (${interruptedBy}) before any case was recorded; the fixture exited.\n` : desktop.lockedAt ? `${desktop.summary}\n` : ""}`
+    + `The fixture produced no results (exit ${execution.code ?? "by signal"}). ${detail}\nEvidence: ${dir}`, early.code);
 }
 const cases = JSON.parse(fs.readFileSync(resultsPath, "utf8")) as SettingsCase[];
 const failurePath = path.join(dir, "failure.json");
@@ -105,12 +112,14 @@ const stopped = failure && `The fixture stopped after ${cases.length} cases${fai
 if (stopped) console.error(stopped);
 
 const verdict = settingsOutcome({ cases, failure, exit: execution.code, processClean, locked: Boolean(desktop.lockedAt) });
+const end = roundExit({ cleanupIncomplete, interrupted: interruptedBy, locked: Boolean(desktop.lockedAt),
+  blocked: verdict.outcome === "blocked", failed: verdict.outcome === "fail" });
 const passed = cases.filter((result) => result.ok).length;
 const notRun = cases.filter((result) => result.notRun).length;
 const report = [
   `# Settings panel acceptance — ${stamp}`,
   "",
-  `Result: **${verdict.outcome}**${verdict.reasons.length ? ` — ${verdict.reasons.join("; ")}` : ""}.`,
+  `Result: **${end.outcome}**${end.outcome === "interrupted" ? ` (${interruptedBy}; nothing was left running)` : ""}${verdict.reasons.length ? ` — ${verdict.reasons.join("; ")}` : ""}.`,
   `Fixture exit code ${execution.code ?? "none (signal)"}; ${passed}/${cases.length} cases passed, ${notRun} not run.`,
   ...(stopped ? [stopped] : []),
   `Cleanup: process group gone=${execution.groupGone}; stopped=${execution.stopped ?? "no"}; error=${execution.error ?? "none"}. See cleanup.json.`,
@@ -135,6 +144,7 @@ const report = [
 fs.writeFileSync(path.join(dir, "report.md"), report);
 
 console.log(`\n${passed}/${cases.length} cases passed, ${notRun} not run. Evidence: ${dir}`);
-if (desktop.lockedAt) console.error(`${desktop.summary}${verdict.reasons.length > 1 ? ` Also: ${verdict.reasons.slice(1).join("; ")}.` : ""}`);
-else if (verdict.outcome !== "pass") console.error(`${verdict.outcome === "blocked" ? "BLOCKED" : "FAILED"}: ${verdict.reasons.join("; ")}.`);
-process.exit(verdict.outcome === "blocked" ? DESKTOP_BLOCKED_EXIT : verdict.outcome === "pass" ? 0 : 1);
+if (end.outcome === "interrupted") console.error(`INTERRUPTED (${interruptedBy}); the fixture exited and nothing was left running.`);
+else if (end.outcome === "blocked" && desktop.lockedAt) console.error(`${desktop.summary}${verdict.reasons.length > 1 ? ` Also: ${verdict.reasons.slice(1).join("; ")}.` : ""}`);
+else if (end.outcome !== "pass") console.error(`${end.outcome === "blocked" ? "BLOCKED" : "FAILED"}: ${cleanupIncomplete ? "cleanup incomplete; " : ""}${verdict.reasons.join("; ")}.`);
+process.exit(end.code);

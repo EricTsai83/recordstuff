@@ -257,7 +257,8 @@ it("joins clicks while Finder is still opening without stealing focus", async ()
 it("contains native dialog failures and still shows the warning when focus fails", async () => {
   const shows = [async () => { throw new Error("dialog refused"); }, async () => ({ response: 1 })];
   const h = await harness({ custom: path.join(root, "Gone"), show: () => shows.shift()!() });
-  await expect(h.open()).resolves.toBeUndefined();
+  // A warning that could not be shown told nothing: the row says it failed.
+  await expect(h.open()).resolves.toBe(false);
   expect(h.log).toHaveBeenCalledWith("output folder: open action failed: Error: dialog refused");
   h.focus.mockImplementation(() => { throw new Error("no focus"); });
   await h.open();
@@ -277,7 +278,8 @@ it("tells a problem found while recording work is pending in a notification, nev
   // Opening the folder while recording work is pending (plan 056): a warning now would hold its writes.
   const custom = path.join(root, "外接", "錄影");
   const h = await harness({ custom, language: "zh-TW", mediaPending: () => true });
-  await h.open();
+  // Only held for later: the row is told now that it failed.
+  expect(await h.open()).toBe(false);
   expect(h.show).not.toHaveBeenCalled();
   expect(h.focus).not.toHaveBeenCalled();
   expect(h.chooseFolder).not.toHaveBeenCalled();
@@ -299,7 +301,8 @@ it("reads pending work when the problem is found, and keeps the settled warning 
   // The work settled while Finder was answering: the warning is safe again.
   pending = false;
   opened("Finder refused");
-  await first;
+  // The warning told it, so the row adds nothing.
+  expect(await first).toBe(true);
   expect(h.notify).not.toHaveBeenCalled();
   expect(h.dialog()).toMatchObject({ message: "Could not open the output folder", buttons: ["Change output folder", "Cancel"] });
   expect(h.chooseFolder).toHaveBeenCalledOnce();
@@ -309,7 +312,7 @@ it("opens a working folder while recording work is pending without telling anyth
   const custom = path.join(root, "Recordings");
   await fs.mkdir(custom);
   const h = await harness({ custom, mediaPending: () => true });
-  await h.open();
+  expect(await h.open()).toBe(true);
   expect(h.openPath).toHaveBeenCalledExactlyOnceWith(custom);
   expect(h.notify).not.toHaveBeenCalled();
   expect(h.show).not.toHaveBeenCalled();

@@ -67,6 +67,7 @@ import { readLogPairs, verifyRecording } from "./lib/verify-recording.mts";
 import { BLOCKED_EXIT, blocksSuccess, formatText } from "./lib/verify.mts";
 import { DIGIT_DIFF_THRESHOLD, TICK_EXCESS_DB, TICK_FLOOR_DBFS, countdownTimeline, digitCrops, digitRegion, skippedCrops, tickCheck, type CountdownTimeline, type TickCheck } from "./lib/countdown-evidence.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
+import { roundExit } from "./lib/round-exit.mts";
 import { StoredOverride } from "./lib/stored-override.mts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -100,8 +101,10 @@ if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 600) {
 }
 
 const controller = new AbortController();
+/** The first signal names the exit code once the recording is settled and the app has quit (round-exit.mts). */
+let interruptedBy: "SIGINT" | "SIGTERM" | undefined;
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.on(signal, () => controller.abort(new Error(`run interrupted by ${signal}`)));
+  process.on(signal, () => { interruptedBy ??= signal; controller.abort(new Error(`run interrupted by ${signal}`)); });
 }
 const sleep = async (ms: number): Promise<void> => { await delay(ms, undefined, { signal: controller.signal }); };
 /** Rotation-aware: positions are cursors, and the retained archives count as history. */
@@ -542,16 +545,20 @@ async function main(): Promise<void> {
     fs.writeFileSync(path.join(dir, "app-session.log"), evidenceSince(appLog, sessionFrom).filter(Boolean).join("\n") + "\n");
     fs.writeFileSync(path.join(dir, "events.log"), events.join("\n"));
     const report = path.join(dir, "report.md");
-    const passed = !runError && cleanupErrors.length === 0;
+    // Incomplete cleanup outranks a lock and an interrupt: the next round must not start over it (round-exit.mts).
+    const end = roundExit({ cleanupIncomplete: cleanupErrors.length > 0, interrupted: interruptedBy, locked: Boolean(desktop.lockedAt), failed: Boolean(runError) });
+    const label = { pass: "PASS", fail: "FAIL", blocked: "BLOCKED", interrupted: `INTERRUPTED (${interruptedBy})` }[end.outcome];
     if (!fs.existsSync(report)) fs.writeFileSync(report, "# Global shortcut acceptance\n");
-    fs.appendFileSync(report, `\n\n## Final result (including cleanup)\n\nInput context: [input-diagnostics.json](input-diagnostics.json). Run events: [events.log](events.log). App callbacks: [app-session.log](app-session.log).\n\n${desktop.lockedAt ? "BLOCKED" : passed ? "PASS" : "FAIL"}\n\n${desktop.summary}\n\n${runError ? `Run: ${String(runError)}\n` : ""}Cleanup: ${cleanupErrors.length ? cleanupErrors.join("; ") : "complete; RecordStuff exited"}\n`);
-    if (desktop.lockedAt) {
+    fs.appendFileSync(report, `\n\n## Final result (including cleanup)\n\nInput context: [input-diagnostics.json](input-diagnostics.json). Run events: [events.log](events.log). App callbacks: [app-session.log](app-session.log).\n\n${label}\n\n${desktop.summary}\n\n${runError ? `Run: ${String(runError)}\n` : ""}Cleanup: ${cleanupErrors.length ? cleanupErrors.join("; ") : "complete; RecordStuff exited"}\n`);
+    if (end.outcome === "blocked") {
       console.error(`✗ ${desktop.summary}`);
-      // Blocked still names what cleanup left behind, such as the countdown sound to set back by hand.
-      if (cleanupErrors.length) console.error(`✗ cleanup: ${cleanupErrors.join("; ")}`);
-      process.exit(DESKTOP_BLOCKED_EXIT);
+      process.exit(end.code);
     }
-    if (!passed) fail([runError && String(runError), ...cleanupErrors].filter(Boolean).join("; "));
+    if (end.outcome === "interrupted") {
+      console.error(`✗ ${label}: the recording was settled and RecordStuff exited; nothing was left running`);
+      process.exit(end.code);
+    }
+    if (end.outcome === "fail") fail([runError && String(runError), ...cleanupErrors].filter(Boolean).join("; "));
   }
   console.log("✅ shortcut acceptance and cleanup passed");
 }

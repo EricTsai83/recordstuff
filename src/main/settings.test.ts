@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_HOTKEY } from "../shared/hotkey";
 import { DEFAULT_QUALITY } from "../shared/quality";
-import { SettingsStore, parseSettings, defaultSettings } from "./settings";
+import { KEPT_UNUSABLE_NAMES, SettingsStore, parseSettings, defaultSettings } from "./settings";
 
 let dir: string;
 let filePath: string;
@@ -68,6 +68,15 @@ describe("SettingsStore", () => {
     expect(await fs.readFile(`${filePath}.unreadable`, "utf8")).toBe("first");
     expect(await fs.readFile(`${filePath}.unreadable.2`, "utf8")).toBe("second");
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: 3, notifications: false });
+  });
+
+  it("gives up keeping the unusable file once every name is taken, rejecting the save and keeping the file", async () => {
+    for (let index = 0; index < KEPT_UNUSABLE_NAMES; index++) await fs.writeFile(`${filePath}.unreadable${index ? `.${index}` : ""}`, "older");
+    await fs.writeFile(filePath, "{ not json");
+    const first = store();
+    await expect(first.setNotifications(false)).rejects.toThrow(/is taken/);
+    expect(await fs.readFile(filePath, "utf8")).toBe("{ not json");
+    await expect(fs.access(`${filePath}.unreadable.${KEPT_UNUSABLE_NAMES}`)).rejects.toThrow();
   });
 
   // chmod cannot make a directory unwritable to its owner on Windows.

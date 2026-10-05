@@ -156,7 +156,7 @@ describe("tabs follow sections", () => {
 describe("recording locks every preference except the language", () => {
   it.each(busy)("$type", (state) => {
     const view = settingsView(state, context);
-    expect(view.hint).toBe("Recording in progress; only language and appearance can change.");
+    expect(view.hint).toBe("Recording in progress; only language, appearance and icon click can change.");
     for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["outputFolder", "trayClick", "language", "appearance", "log", "about"].includes(entry.id));
     // The folder row keeps only Show in Finder: Change… waits for the session to end.
     expect(view.groups.find(entry => entry.id === "outputFolder")?.choices.map(choice => [choice.id, choice.enabled])).toEqual([["change", false], ["reveal", true]]);
@@ -311,7 +311,7 @@ describe("countdown group (plan 040)", () => {
       expect(group(state, context, "countdown")?.enabled, state.type).toBe(false);
       expect(settingsAction(state, context, "countdown", "5"), state.type).toBeUndefined();
     }
-    expect(settingsView({ type: "countdown", remaining: 2 }, context).hint).toBe("Recording in progress; only language and appearance can change.");
+    expect(settingsView({ type: "countdown", remaining: 2 }, context).hint).toBe("Recording in progress; only language, appearance and icon click can change.");
     expect(settingsChecked(idle, { ...context, countdown: 10 }, "countdown", "10")).toBe(true);
   });
 });
@@ -734,7 +734,7 @@ it("explains a Settings shortcut that is not registered, not only a retry button
     reason: "Another app may be using ⌥⌘,." })]);
   const conflict = group(idle, { ...context, settingsShortcut: { kind: "conflict" } }, "hotkey");
   expect(conflict?.actions).toBeUndefined();
-  expect(conflict?.diagnostics?.[0]?.reason).toBe("⌥⌘, is the recording shortcut, so it does not open Settings.");
+  expect(conflict?.diagnostics?.[0]?.reason).toBe("⌥⌘, is the recording shortcut, so it does not open RecordStuff.");
   expect(group(idle, { ...context, settingsShortcut: { kind: "registered", accelerator: "CommandOrControl+Alt+," } }, "hotkey")?.diagnostics).toBeUndefined();
   expect(failed?.diagnostics?.[0]?.guidance).toBe("Open RecordStuff from the menu bar icon, or retry once the other app releases it.");
   const windows = { ...context, platform: "win32" as const, settingsShortcut: { kind: "failed" as const, accelerator: "CommandOrControl+Alt+,", reason: "taken" } };

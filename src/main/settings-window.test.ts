@@ -604,7 +604,7 @@ it("rejects the reserved Settings combination with localized feedback and ends c
   mock.handlers.get("settings:capture")!(s.event(), true);
   const result = await s.choose(s.event(), "hotkey", "Alt+CommandOrControl+,");
   expect(result.applied).toBe(false);
-  expect(result).toMatchObject({ failure: "這個組合鍵保留給設定使用。", refused: true });
+  expect(result).toMatchObject({ failure: "這個組合鍵保留用來開啟 RecordStuff。", refused: true });
   // Said once, in the card's error; the note still describes the registration.
   expect(result.view.groups.find((g: any) => g.id === "hotkey").note).toBeUndefined();
   expect(s.act).not.toHaveBeenCalled();
@@ -1019,6 +1019,8 @@ it("says Show log failed in its own words, not as a link that would not open", a
   s.panel.show();
   expect(await s.choose(s.event(), "log", "show")).toMatchObject({ applied: false, failure: "Could not complete this action. Try again." });
   expect(await s.choose(s.event(), "about", "website")).toMatchObject({ applied: false, failure: "Could not open the link. Try again." });
+  // Show in Finder whose problem only waits for a notice after the recording says so now (the opener answered false).
+  expect(await s.choose(s.event(), "outputFolder", "reveal")).toMatchObject({ applied: false, failure: "Could not open the output folder" });
   s.panel.destroy();
 });
 

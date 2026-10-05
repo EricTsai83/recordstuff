@@ -1,13 +1,16 @@
 ---
 /** Four verified behaviours, one line each, above the capture specs in SpecsBand; the click story is in HowItWorks. */
 import { features } from "../content/site";
+
+/** Chinese in the English copy ("English and 繁體中文") is marked as such, so a screen reader speaks it in a Chinese voice. */
+const runs = (text: string): string[] => text.split(/(\p{Script=Han}+)/u);
 ---
 
 <ul class="features">
   {features.map((feature) => (
     <li class="feature">
-      <h3>{feature.title}</h3>
-      <p>{feature.body}</p>
+      <h3>{runs(feature.title).map((run, index) => index % 2 ? <span lang="zh-Hant">{run}</span> : run)}</h3>
+      <p>{runs(feature.body).map((run, index) => index % 2 ? <span lang="zh-Hant">{run}</span> : run)}</p>
     </li>
   ))}
 </ul>

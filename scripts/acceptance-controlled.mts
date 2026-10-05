@@ -23,6 +23,7 @@ import { scrubbedEnv } from "./lib/runner-env.mts";
 import { FAULT_MODES, HOLD_TARGETS, type FaultName } from "./fixtures/controlled-modes.ts";
 import type { ControlledCommand, ControlledConfig, ControlledResponse, ControlledSnapshot } from "./fixtures/controlled-acceptance";
 import type { RecordingResult } from "../src/shared/recording-result.ts";
+import { roundExit } from "./lib/round-exit.mts";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const PARENT = path.join(ROOT, "docs/verification/measurements");
@@ -32,8 +33,11 @@ class Blocked extends Error {}
 const env = scrubbedEnv();
 let child: ReturnType<typeof spawn> | undefined;
 let cancelled = false;
+/** The first signal names the exit code once cleanup has run (round-exit.mts). */
+let cancelledBy: "SIGINT" | "SIGTERM" | undefined;
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => {
   cancelled = true;
+  cancelledBy ??= signal;
   if (child?.pid) try { process.kill(-child.pid, "SIGTERM"); } catch { /* already gone */ }
 });
 
@@ -299,11 +303,17 @@ async function selftest(out: string | undefined): Promise<number> {
     try { clean(dir); }
     catch (error) { steps.push({ name: "workspace cleanup", status: "fail", detail: `workspace retained at ${path.join(dir, "workspace")}: ${String(error)}` }); }
   }
-  const exit = steps.some(s => s.status === "fail") ? 1 : steps.every(s => s.status === "pass") ? 0 : BLOCKED;
   const left = runningRecordStuff();
+  const anyFailed = steps.some(s => s.status === "fail");
+  // A RecordStuff left running or a workspace left behind fails the round even when it was interrupted (round-exit.mts).
+  const end = roundExit({
+    cleanupIncomplete: left.length > 0 || steps.some(s => (s.name === "cleanup after failure" || s.name === "workspace cleanup") && s.status === "fail"),
+    interrupted: cancelledBy, locked: false, blocked: !steps.every(s => s.status === "pass"), failed: anyFailed,
+  });
+  const exit = end.code;
   fs.writeFileSync(path.join(dir, "report.json"), JSON.stringify({ exit, steps, runningAfter: left }, null, 2) + "\n");
   fs.writeFileSync(path.join(dir, "report.md"), [`# Controlled acceptance build self-test`, "",
-    `Result: ${exit === 0 ? "PASS" : exit === BLOCKED ? "BLOCKED / INCOMPLETE" : "FAIL"}`, "",
+    `Result: ${{ pass: "PASS", blocked: "BLOCKED / INCOMPLETE", fail: "FAIL", interrupted: `INTERRUPTED (${cancelledBy}); cleanup complete` }[end.outcome]}`, "",
     "Scope: the labeled signed build, its isolated data, the command channel, the cleanup hold, rejected and held history saves, a normal quit and a held history load at relaunch, driven by the runner (toggle and actions through the production handlers, not native clicks). No capture: the write and close faults are covered by unit tests only.", "",
     ...steps.map(s => `- **${s.status}** ${s.name}: ${s.detail}`), "",
     `RecordStuff processes after the run: ${left.length ? left.join("; ") : "none"}.`, "",

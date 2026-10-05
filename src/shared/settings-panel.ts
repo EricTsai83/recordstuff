@@ -39,7 +39,7 @@ export interface SettingsGroup {
   /** The last unsubmitted editor expired; cleared by another edit or shortcut choice. */
   captureTimedOut?: boolean;
   platform?: string;
-  /** Extra line under the control, e.g. a shortcut the OS refused to register. */
+  /** Extra line under the control, e.g. the output folder's path or an update check's result; problems go in `diagnostics`. */
   note?: string;
   /** A line under the group's whole section, such as the Video section's size estimate. */
   footnote?: string;

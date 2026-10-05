@@ -16,6 +16,17 @@ function openssl(args: string[], password: string): void {
   if (result.error || result.status !== 0) throw new Error(`OpenSSL ${args[0]} failed; no identity was retained.`);
 }
 
+/**
+ * The certificates in `pem` whose common name is exactly `name`. `security find-certificate -c` matches every name
+ * that contains it, so "RecordStuff Dev Old" alone must not read as an existing "RecordStuff Dev": `start-app.mjs`
+ * selects the identity by its exact name and would then find none.
+ */
+export function certificatesNamed(pem: string, name: string): X509Certificate[] {
+  return (pem.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g) ?? [])
+    .map(value => new X509Certificate(value))
+    .filter(cert => cert.subject.split('\n').includes(`CN=${name}`));
+}
+
 export function createIdentity(name: string, output: string, password: string, days = 3650) {
   if (!/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,79}$/.test(name) || name !== name.trim()) {
     throw new Error('Use a unique 1–80 character name containing ASCII letters, numbers, spaces, dots, underscores or hyphens.');
@@ -81,7 +92,7 @@ function main() {
   // Search all certificates, not just valid identities: expired/orphaned certificates must not be replaced silently.
   const found = spawnSync('/usr/bin/security', ['find-certificate', '-a', '-p', '-c', name], { encoding: 'utf8' });
   if (found.error || (found.status !== 0 && found.status !== 44)) throw new Error('Could not inspect Keychain; refusing to create an identity.');
-  if (found.stdout.trim()) {
+  if (certificatesNamed(found.stdout, name).length) {
     console.log(`Preserved existing Keychain certificate matching ${JSON.stringify(name)}. No new keys or files created.\nUse security find-identity -v -p codesigning to check usability; import the original identity when migrating machines.`);
     return;
   }

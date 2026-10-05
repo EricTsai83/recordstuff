@@ -2,6 +2,7 @@
 import { SETTINGS_SHORTCUT_RESERVED, acceleratorKeys, describeAccelerator, isSettingsShortcut, validateAccelerator } from "../shared/hotkey";
 import { isCloseChord, shortcutCandidate, shortcutModifiers } from "./shortcut-capture";
 import { infoPlacement } from "./info-placement";
+import { glyph } from "./glyph";
 import { controlButton, mark, playerControls, type PlayerControls, type PlayerLabels } from "./player-controls";
 import { documentLanguage, isLanguage, phrases, sentences, translate, type PlainMessageKey } from "../shared/i18n";
 import { REVIEWED_FAILURES_KEPT, persistsHistory } from "../shared/recording-result";
@@ -168,14 +169,8 @@ function retryAllowed(group: SettingsGroup): boolean {
 }
 /** Drawn like the ⓘ, so the warning looks the same on every platform instead of following the font's ⚠. */
 function warningIcon(): SVGSVGElement {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 16 16"); svg.setAttribute("aria-hidden", "true"); svg.setAttribute("focusable", "false");
-  svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.3");
-  svg.setAttribute("stroke-linecap", "round"); svg.setAttribute("stroke-linejoin", "round");
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute("d", "M8 1.9 14.8 13.6H1.2L8 1.9ZM8 6.2v3.4M8 11.6v.1");
-  svg.append(path);
-  return svg;
+  return glyph("0 0 16 16", { fill: "none", stroke: "currentColor", "stroke-width": "1.3", "stroke-linecap": "round", "stroke-linejoin": "round" },
+    { d: "M8 1.9 14.8 13.6H1.2L8 1.9ZM8 6.2v3.4M8 11.6v.1" });
 }
 /** A film frame: the Recordings tab, and a card or empty folder with nothing better to show. */
 const FILM = "M3 5.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2ZM3 9h18M7.5 3.5 9.5 9M13 3.5l2 5.5M10 13v4.5l4-2.25Z";
@@ -219,21 +214,10 @@ const ICONS: Record<string, [string, string?]> = {
 function icon(name: string, className = "icon"): SVGSVGElement | undefined {
   const paths = ICONS[name];
   if (!paths) return undefined;
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("aria-hidden", "true"); svg.setAttribute("focusable", "false");
-  svg.setAttribute("class", className);
   const [stroked, filled] = paths;
-  if (stroked) {
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    line.setAttribute("d", stroked); line.setAttribute("fill", "none"); line.setAttribute("stroke", "currentColor");
-    line.setAttribute("stroke-width", "1.7"); line.setAttribute("stroke-linecap", "round"); line.setAttribute("stroke-linejoin", "round");
-    svg.append(line);
-  }
-  if (filled) {
-    const fill = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    fill.setAttribute("d", filled); fill.setAttribute("fill", "currentColor"); svg.append(fill);
-  }
-  return svg;
+  return glyph("0 0 24 24", { class: className },
+    ...(stroked ? [{ d: stroked, fill: "none", stroke: "currentColor", "stroke-width": "1.7", "stroke-linecap": "round", "stroke-linejoin": "round" }] : []),
+    ...(filled ? [{ d: filled, fill: "currentColor" }] : []));
 }
 /**
  * The status card, only when there is something to say (2026-10-04): a recording, a countdown or a save,
@@ -424,22 +408,12 @@ function updateRows(groups: SettingsGroup[]): void {
 }
 /** The About actions' marks: a globe for the website, the GitHub mark for the source, a power sign for Quit. */
 function aboutIcon(choiceId: string): SVGSVGElement {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("aria-hidden", "true"); svg.setAttribute("focusable", "false");
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  if (choiceId === "website") {
-    svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.6");
-    path.setAttribute("d", "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z");
-  } else if (choiceId === "quit") {
-    svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.7");
-    svg.setAttribute("stroke-linecap", "round");
-    path.setAttribute("d", "M12 3v8M6.3 6.8a8 8 0 1 0 11.4 0");
-  } else {
-    svg.setAttribute("fill", "currentColor");
-    path.setAttribute("d", "M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.54v-2.07c-3.1.67-3.76-1.31-3.76-1.31-.51-1.28-1.24-1.62-1.24-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.14 1.71 1.14 1 .1.74 1.89 3.26 1.2.1-.73.4-1.23.71-1.51-2.48-.28-5.08-1.24-5.08-5.52 0-1.22.44-2.22 1.14-3-.11-.28-.5-1.41.11-2.94 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.61 1.53.22 2.66.11 2.94.71.78 1.14 1.78 1.14 3 0 4.29-2.61 5.23-5.1 5.51.4.35.75 1.02.75 2.06v3.05c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z");
-  }
-  svg.append(path);
-  return svg;
+  if (choiceId === "website") return glyph("0 0 24 24", { fill: "none", stroke: "currentColor", "stroke-width": "1.6" },
+    { d: "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z" });
+  if (choiceId === "quit") return glyph("0 0 24 24", { fill: "none", stroke: "currentColor", "stroke-width": "1.7", "stroke-linecap": "round" },
+    { d: "M12 3v8M6.3 6.8a8 8 0 1 0 11.4 0" });
+  return glyph("0 0 24 24", { fill: "currentColor" },
+    { d: "M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.54v-2.07c-3.1.67-3.76-1.31-3.76-1.31-.51-1.28-1.24-1.62-1.24-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.14 1.71 1.14 1 .1.74 1.89 3.26 1.2.1-.73.4-1.23.71-1.51-2.48-.28-5.08-1.24-5.08-5.52 0-1.22.44-2.22 1.14-3-.11-.28-.5-1.41.11-2.94 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.61 1.53.22 2.66.11 2.94.71.78 1.14 1.78 1.14 3 0 4.29-2.61 5.23-5.1 5.51.4.35.75 1.02.75 2.06v3.05c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z" });
 }
 function actionButton(group: SettingsGroup, choice: SettingsGroup["choices"][number]): HTMLButtonElement {
   const id = `${controlId(group)}-${choice.id}`;
@@ -493,12 +467,8 @@ function infoParts(id: string): [HTMLButtonElement, HTMLElement] {
     if (openInfo?.popover === popover && openInfo.pinned) hideInfo(); else showInfo(info, popover, true);
   });
   info.className = "info-button"; info.setAttribute("aria-describedby", popover.id); info.setAttribute("aria-expanded", "false");
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 16 16"); svg.setAttribute("aria-hidden", "true"); svg.setAttribute("focusable", "false");
-  svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.3"); svg.setAttribute("stroke-linecap", "round");
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute("d", "M14.5 8a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0ZM8 7.2v4M8 4.9v.1");
-  svg.append(path); info.append(svg);
+  info.append(glyph("0 0 16 16", { fill: "none", stroke: "currentColor", "stroke-width": "1.3", "stroke-linecap": "round" },
+    { d: "M14.5 8a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0ZM8 7.2v4M8 4.9v.1" }));
   // The explanation is hoverable too (WCAG 1.4.13): the pointer may cross the gap onto it, and keyboard focus keeps it open.
   const leave = (): void => {
     clearTimeout(infoLeave);
@@ -528,8 +498,8 @@ function row(group: SettingsGroup): HTMLElement {
   const controls = node("div", "controls");
   if (group.kind === "actions") { controls.setAttribute("role", "group"); controls.setAttribute("aria-labelledby", label.id); }
   const title = node("div", "group-title");
-  const glyph = icon(group.id, "row-icon");
-  title.append(...(glyph ? [glyph] : []), label, ...infoParts(id));
+  const rowIcon = icon(group.id, "row-icon");
+  title.append(...(rowIcon ? [rowIcon] : []), label, ...infoParts(id));
   line.append(title, controls); container.append(line);
   if (group.kind === "actions") {
     for (const choice of group.choices) controls.append(actionButton(group, choice));
@@ -544,7 +514,7 @@ function row(group: SettingsGroup): HTMLElement {
       input.addEventListener("change", () => { if (input.checked) void choose(group.id, choice.id, input.id); });
       // An icon segment shows its mark; its label names the radio and is its tooltip (`updateRows`).
       const face = node("span");
-      if (group.iconChoices) { item.classList.add("segment-icon"); const glyph = icon(`${group.id}-${choice.id}`, "segment-glyph"); if (glyph) face.append(glyph); }
+      if (group.iconChoices) { item.classList.add("segment-icon"); const choiceIcon = icon(`${group.id}-${choice.id}`, "segment-glyph"); if (choiceIcon) face.append(choiceIcon); }
       item.append(input, face); segments.append(item);
     }
     controls.append(segments);
@@ -926,6 +896,11 @@ function updateSidebarAbout(current: SettingsView): void {
  * reconciles the same cards instead of building them again and fetching and decoding every thumbnail anew.
  */
 let libraryArea: HTMLElement | undefined;
+/**
+ * The last of the tab's file actions (a card's, or the header's Show in Finder) when it failed, shown under the header
+ * until the next one starts: `announce` alone reaches only a screen reader, and a sighted user would see nothing change.
+ */
+let libraryError: string | undefined;
 function updateLibrary(): void {
   const library = view?.library;
   const panel = document.getElementById("settings-panel")!;
@@ -937,11 +912,11 @@ function updateLibrary(): void {
   if (!area) {
     area = node("section"); area.id = "library"; area.setAttribute("aria-labelledby", "tab-library");
     const head = node("div", "library-head");
-    const reveal = button("library-reveal", () => { if (!inactive(reveal)) void choose("outputFolder", "reveal", reveal.id); });
+    const reveal = button("library-reveal", () => { if (!inactive(reveal)) void revealFolder(reveal); });
     head.append(node("p", "library-summary"), reveal);
     const empty = node("div", "library-empty");
     empty.append(icon("film", "empty-icon")!, node("p", "library-empty-title"), node("p", "library-empty-detail"));
-    area.append(head, node("p", "library-status"), empty, node("div", "library-days"));
+    area.append(head, node("p", "library-error"), node("p", "library-status"), empty, node("div", "library-days"));
     panel.append(area);
   }
   const items = library?.items ?? [];
@@ -953,6 +928,8 @@ function updateLibrary(): void {
   const folderGroup = view?.groups.find(group => group.id === "outputFolder");
   const folderReveal = folderGroup?.choices.find(choice => choice.id === "reveal");
   setActionDisabled(reveal, !folderGroup?.enabled || !folderReveal?.enabled, Boolean(saving));
+  const error = area.querySelector<HTMLElement>(".library-error")!;
+  setText(error, libraryError ?? ""); error.hidden = !libraryError;
   const status = area.querySelector<HTMLElement>(".library-status")!;
   setText(status, library?.status ?? ""); status.hidden = !library?.status;
   const empty = area.querySelector<HTMLElement>(".library-empty")!;
@@ -1008,6 +985,18 @@ function updateLibrary(): void {
     closeClipMenu(false);
     if (inMenu) document.getElementById("tab-library")?.focus({ preventScroll: true });
   }
+}
+/**
+ * The header's Show in Finder is the Output folder row's own action, whose failure that row shows on another tab:
+ * this tab says it too, as the latest of its file actions.
+ */
+async function revealFolder(control: HTMLButtonElement): Promise<void> {
+  const before = requestId;
+  await choose("outputFolder", "reveal", control.id);
+  // Refused while another save ran: nothing happened, so the line keeps what it said.
+  if (requestId === before) return;
+  libraryError = failure?.group === "outputFolder" && failure.choice === "reveal" ? failure.text : undefined;
+  updateLibrary();
 }
 const libraryItem = (id: string): LibraryItemView | undefined => view?.library?.items.find(item => item.id === id);
 function clipCard(id: string): HTMLElement {
@@ -1158,14 +1147,20 @@ window.addEventListener("blur", () => closeClipMenu(true));
 async function fileAction(id: string, action: FileAction, anchor: HTMLButtonElement): Promise<void> {
   closeClipMenu(false);
   anchor.focus({ preventScroll: true });
+  libraryError = undefined;
+  let problem: string | undefined;
   try {
     const result = await window.settings.choose(`recordingFile:${id}`, action);
     render(result.view);
-    if (!result.applied) announce(libraryItem(id) ? (result.failure ?? text("Could not complete this action. Try again.")) : text("This recording is no longer in the folder."));
+    if (!result.applied) problem = libraryItem(id) ? (result.failure ?? text("Could not complete this action. Try again.")) : text("This recording is no longer in the folder.");
     else if (action === "trash") announce(text(platform() === "darwin" ? "Moved to the Trash" : "Moved to the Recycle Bin"));
   } catch {
-    announce(text("Could not complete this action. Try again."));
+    problem = text("Could not complete this action. Try again.");
   }
+  libraryError = problem;
+  // Drawn even when nothing failed, so a message an earlier action left goes.
+  updateLibrary();
+  if (problem) announce(problem);
 }
 /** The in-page player: a modal dialog with the video and Close, closed by Escape, Close or the recording leaving; closing stops and releases the file. */
 let player: HTMLDialogElement | undefined;
@@ -1198,6 +1193,9 @@ function openPlayer(item: LibraryItemView): void {
     playerFeedback = node("p", "visually-hidden"); playerFeedback.setAttribute("role", "status"); playerFeedback.setAttribute("aria-live", "polite");
     player.append(playerControlsUi.root, playerFeedback);
     player.addEventListener("close", () => { video.pause(); video.removeAttribute("src"); video.load(); });
+    // While the full-screen window is on its way (shown once its first frame is drawn), this window still takes
+    // clicks and keys: a play here would sound alongside it for the whole full screen, so it stops at once.
+    video.addEventListener("play", () => { if (fullScreenPending) video.pause(); });
     // A file that left the folder since it was listed, a damaged one, or a format Chromium cannot decode: say so, and
     // where Open is. Closing empties the source on purpose, which is not a failure to report.
     video.addEventListener("error", () => {
@@ -1281,9 +1279,9 @@ function tabLabel(el: HTMLElement, id: string, label: string): void {
   if (el.dataset.label === label) return;
   el.dataset.label = label;
   const count = /^(.*?)(\s?[（(])(\d+)([)）])$/.exec(label);
-  const glyph = icon(`tab-${id}`, "tab-icon");
+  const tabIcon = icon(`tab-${id}`, "tab-icon");
   const name = node("span", "tab-name", count ? count[1] : label);
-  el.replaceChildren(...(glyph ? [glyph] : []), name);
+  el.replaceChildren(...(tabIcon ? [tabIcon] : []), name);
   if (count) el.append(node("span", "visually-hidden", count[2]), node("span", "tab-badge", count[3]), node("span", "visually-hidden", count[4]));
 }
 /** The sidebar lists the tabs in a column (settings.css, from 600 px): assistive technology is told which axis. */

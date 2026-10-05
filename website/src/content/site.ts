@@ -1,5 +1,8 @@
 /**
- * Every sentence the site shows. Facts here are limited to what README.md,
+ * The copy several pages share. Sentences that belong to one section live in its
+ * component (HowItWorks, InstallFlow, SpecsBand, pages/*, HelpContent, …), so a
+ * changed product fact (a shortcut, a menu name) is searched for across
+ * src/components/ as well. Facts are limited to what README.md,
  * resources/INSTALL.md, docs/system-design/desktop.md and the verification
  * record already state; nothing promises notarization, warning-free launch,
  * automatic updates or platforms that were never verified. Windows is offered

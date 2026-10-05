@@ -306,6 +306,11 @@ kbd {
   display: none;
 }
 
+/* What joins two platforms' links ("Help for macOS or Help for Windows"): only while both show. */
+:root[data-platform] .platform-joiner {
+  display: none;
+}
+
 /* " on Windows" after a heading: needed when both platforms show, read only by assistive technology once one is chosen. */
 :root[data-platform] .platform-suffix {
   position: absolute;

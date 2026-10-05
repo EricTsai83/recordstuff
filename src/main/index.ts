@@ -654,9 +654,9 @@ async function main(): Promise<void> {
         return revealLog();
       // Explicit outcomes: the Settings row reads them (plan 048 review); the tray ignores them.
       case "openOutputDir":
-        // The opener reports each failure itself in a native warning, so the row adds no second one.
-        await openOutputDir();
-        return true;
+        // A failure the opener warned about itself answers true, so the row adds no second message; one only held
+        // for a notice until the recording ends answers false, and the row says it failed now.
+        return openOutputDir();
       case "changeOutputDir":
         return changeOutputDir();
     }
