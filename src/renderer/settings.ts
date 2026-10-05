@@ -1494,9 +1494,10 @@ function render(next: SettingsView): void {
   const focusedBefore = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : undefined;
   draw();
   // A push can hide the status card or remove a row's action while it has focus (a problem solved from the tray, an
-  // action main no longer offers): the tab keeps the place, so the next Tab does not start over and the next Escape
-  // does not close the window. A choice's own reply is left to `choose`, which knows the row that stands for it.
-  if (focusedBefore && !pending && document.hasFocus() && (!focusedBefore.isConnected || focusedBefore.closest("[hidden]"))
+  // action main no longer offers), or lock the control it is on (a recording started from the shortcut, which Chromium
+  // answers by dropping focus to the page): the tab keeps the place, so the next Tab does not start over and the next
+  // Escape does not close the window. A choice's own reply is left to `choose`, which knows the row that stands for it.
+  if (focusedBefore && !pending && document.hasFocus() && (!focusedBefore.isConnected || focusedBefore.closest("[hidden]") || focusedBefore.matches(":disabled"))
     && (document.activeElement === document.body || document.activeElement === focusedBefore))
     document.getElementById(`tab-${selectedTab}`)?.focus({ preventScroll: true });
   reportReady();
