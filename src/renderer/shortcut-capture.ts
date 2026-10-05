@@ -42,13 +42,23 @@ const NAMED_KEYS: Record<string, string> = {
   Space: "Space", ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right",
 };
 
-/** Physical letter/digit/function keys stay stable when Shift/Option changes event.key. */
+/**
+ * The letter a letter key stands for. macOS registers by physical position (hotkey.ts), so it is the US position the
+ * key code names. Windows registers by virtual key, which follows the layout's letters (AZERTY's A key is VK_A, at the
+ * US Q position): there it is the letter the key types, and the US position only where the layout types no Latin
+ * letter, which is also where Windows keeps the US virtual key (Russian й).
+ */
+function letterOf(event: ShortcutKey, platform: string): string {
+  return platform !== "darwin" && /^[a-z]$/i.test(event.key) ? event.key.toUpperCase() : event.code.slice(3);
+}
+
+/** Physical digit/function keys stay stable when Shift/Option changes event.key; letters follow `letterOf`. */
 export function shortcutCandidate(event: ShortcutKey, platform = "darwin"): string | undefined {
   // A modifier alone, the Windows key included, is still being held: no candidate yet.
   if (/^(Meta|Control|Alt|Shift)(Left|Right)$/.test(event.code)) return undefined;
   // The Windows key has no accelerator name: unusable like a keypad key, keeping the other modifiers.
   const key = event.metaKey && platform !== "darwin" ? "Unsupported"
-    : /^Key[A-Z]$/.test(event.code) ? event.code.slice(3)
+    : /^Key[A-Z]$/.test(event.code) ? letterOf(event, platform)
       : /^Digit[0-9]$/.test(event.code) ? event.code.slice(5)
         : /^F([1-9]|1[0-9]|2[0-4])$/.test(event.code) ? event.code
           : NAMED_KEYS[event.code] ?? "Unsupported";

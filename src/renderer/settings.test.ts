@@ -181,6 +181,18 @@ it("uses physical letters/digits and named keys, with modifiers held separately"
   expect(shortcutCandidate({ ...key, code: "MetaLeft", key: "Meta" })).toBeUndefined();
 });
 
+it("takes the letter a key types on Windows, where shortcuts follow the layout, and its US position on macOS", () => {
+  const ctrl = { metaKey: false, ctrlKey: true, altKey: false, shiftKey: true };
+  // AZERTY's A key sits at the US Q position; QWERTZ swaps Y and Z.
+  expect(shortcutCandidate({ ...ctrl, code: "KeyQ", key: "A" }, "win32")).toBe("Control+Shift+A");
+  expect(shortcutCandidate({ ...ctrl, code: "KeyY", key: "z" }, "win32")).toBe("Control+Shift+Z");
+  // No Latin letter on the key (Russian й), or AltGr typing a symbol: the US position, as Windows' virtual key is.
+  expect(shortcutCandidate({ ...ctrl, code: "KeyQ", key: "Й" }, "win32")).toBe("Control+Shift+Q");
+  expect(shortcutCandidate({ ...ctrl, altKey: true, code: "KeyQ", key: "@" }, "win32")).toBe("Control+Alt+Shift+Q");
+  // macOS keeps the physical position whatever the key types (hotkey.ts physicalHotkeyFeatures).
+  expect(shortcutCandidate({ ...ctrl, metaKey: true, ctrlKey: false, code: "KeyQ", key: "A" }, "darwin")).toBe("CommandOrControl+Shift+Q");
+});
+
 it("maps physical punctuation despite Option/Shift glyphs and rejects numpad aliases", () => {
   const key = { key: "…", code: "Semicolon", metaKey: true, ctrlKey: false, altKey: true, shiftKey: false };
   expect(shortcutCandidate(key)).toBe("CommandOrControl+Alt+;");
