@@ -11,7 +11,7 @@
 import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE, fitSettingsSize, type SettingsWindowState, type WindowSize } from "./settings-window-state";
 import { BrowserWindow, app, ipcMain, screen, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent, type Rectangle, type WebContents } from "electron";
 import path from "node:path";
-import { SETTINGS_CHANNELS, type SettingsChoiceResult, type SettingsTab, type SettingsView } from "../shared/settings-panel";
+import { SETTINGS_CHANNELS, SHORTCUT_CAPTURE_TIMEOUT_MS, type SettingsChoiceResult, type SettingsTab, type SettingsView } from "../shared/settings-panel";
 import type { RecordingState } from "../shared/state";
 
 import { proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
@@ -148,7 +148,7 @@ export class SettingsWindow {
           this.captureTimedOut = !lease.submitted;
           this.release(lease);
           this.refresh();
-        }, 15_000) };
+        }, SHORTCUT_CAPTURE_TIMEOUT_MS) };
         this.lease = lease;
         this.options.capture?.(true);
       }

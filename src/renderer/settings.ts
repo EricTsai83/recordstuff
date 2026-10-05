@@ -6,7 +6,7 @@ import { glyph } from "./glyph";
 import { controlButton, mark, playerControls, type PlayerControls, type PlayerLabels } from "./player-controls";
 import { documentLanguage, isLanguage, phrases, sentences, translate, type PlainMessageKey } from "../shared/i18n";
 import { REVIEWED_FAILURES_KEPT, persistsHistory } from "../shared/recording-result";
-import type { LibraryItemView, RecordingResultView, SettingsBridge, SettingsGroup, SettingsTab, SettingsView } from "../shared/settings-panel";
+import { SHORTCUT_CAPTURE_TIMEOUT_MS, type LibraryItemView, type RecordingResultView, type SettingsBridge, type SettingsGroup, type SettingsTab, type SettingsView } from "../shared/settings-panel";
 import type { FullScreenChoice, PlaybackState } from "../shared/video-player";
 
 declare global { interface Window { settings: SettingsBridge } }
@@ -61,6 +61,9 @@ let startupFailed = false;
 /** `editor`: the shortcut editor refused the key just pressed; the error belongs to that editor and closes with it. */
 let failure: { group: string; choice?: string; text: string; baseline?: string; refused?: true; editor?: true } | undefined;
 const text = (key: PlainMessageKey): string => translate(key, view?.language);
+/** The shortcut editor's time limit, as main arms it (`SHORTCUT_CAPTURE_TIMEOUT_MS`). */
+const captureText = (key: "Press a combination and Confirm within {seconds} seconds; Esc cancels" | "Timed out after {seconds} seconds; the shortcut is unchanged. Choose Custom shortcut… to try again."): string =>
+  translate(key, view?.language, { seconds: SHORTCUT_CAPTURE_TIMEOUT_MS / 1000 });
 const controlId = (group: SettingsGroup): string => `setting-${group.id}`;
 /** A failure row's `<details>`; its summary adds `-summary`. */
 const resultDomId = (id: string): string => `recording-result-${encodeURIComponent(id)}`;
@@ -391,10 +394,10 @@ function updateRows(groups: SettingsGroup[]): void {
       const help = container.querySelector<HTMLElement>(".capture-help")!;
       // Its own flag, so the description list below names the time limit only while the editor shows it.
       help.hidden = area.hidden;
-      setText(help, text("Press a combination and Confirm within 15 seconds; Esc cancels"));
+      setText(help, captureText("Press a combination and Confirm within {seconds} seconds; Esc cancels"));
       const timeout = container.querySelector<HTMLElement>(".capture-timeout")!;
       timeout.hidden = !group.captureTimedOut;
-      setText(timeout, group.captureTimedOut ? text("Timed out after 15 seconds; the shortcut is unchanged. Choose Custom shortcut… to try again.") : "");
+      setText(timeout, group.captureTimedOut ? captureText("Timed out after {seconds} seconds; the shortcut is unchanged. Choose Custom shortcut… to try again.") : "");
       const confirm = container.querySelector<HTMLButtonElement>("#shortcut-confirm")!;
       setText(confirm, text("Confirm"));
       confirm.disabled = !group.enabled || !candidateToConfirm;
@@ -1508,7 +1511,7 @@ function render(next: SettingsView): void {
       return messages;
     });
     if (endedByMain && document.hasFocus()) changes.unshift(next.groups.some(g => g.captureTimedOut)
-      ? text("Timed out after 15 seconds; the shortcut is unchanged. Choose Custom shortcut… to try again.")
+      ? captureText("Timed out after {seconds} seconds; the shortcut is unchanged. Choose Custom shortcut… to try again.")
       : text("Editing ended; the shortcut is unchanged."));
     // The history arriving from disk is not news: every row would be read out at once.
     const historyLoaded = Boolean(previous.recordingHistoryStatus) && !next.recordingHistoryStatus;

@@ -137,6 +137,8 @@ export interface SettingsView {
   groups: SettingsGroup[];
 }
 /** IPC between main and the settings preload, which keeps its own copies: a sandboxed preload imports nothing at runtime (src/preload/channels.test.ts). */
+/** How long a custom-shortcut capture stays armed; the editor's help and its timeout notice name the same limit. */
+export const SHORTCUT_CAPTURE_TIMEOUT_MS = 15_000;
 export const SETTINGS_CHANNELS = {
   capture: "settings:capture",
   read: "settings:read",
