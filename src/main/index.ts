@@ -64,6 +64,7 @@ import type { RecordingState } from "../shared/state";
 import type { CountdownSeconds } from "../shared/countdown";
 
 import { DEFAULT_LANGUAGE, translate, type Language } from "../shared/i18n";
+import { formatFileName } from "../shared/file-name";
 
 /** The saved language, read where it is needed; the default until the settings are loaded. One source, nothing to copy. */
 let appLanguage: () => Language = () => DEFAULT_LANGUAGE;
@@ -291,6 +292,7 @@ async function main(): Promise<void> {
     ensureWritableDir: dir => ensureWritableDir(dir, undefined,
       isSameFolder(dir, settings.defaultOutputDir) || dir === outputDirOverride),
     openWriter: (recordingPath, finalPath) => FileWriter.open(recordingPath, finalPath),
+    fileName: date => formatFileName(settings.fileNameTemplate, date),
     freeSpace: async (dir) => { const volume = await fs.statfs(dir); return volume.bavail * volume.bsize; },
     sentinels,
     publishFailure: result => recordingResults.receive(result, {
@@ -402,6 +404,7 @@ async function main(): Promise<void> {
     language: settings.language,
     appearance: settings.appearance,
     trayClick: settings.trayClick,
+    fileNameTemplate: settings.fileNameTemplate,
     libraryLayout: settings.libraryLayout,
     updates: { state: updates.state, enabled: settings.updates.enabled },
     notifications: settings.notifications,
@@ -422,6 +425,7 @@ async function main(): Promise<void> {
     quitRequested: () => quitRequested,
     opened: () => appMenu.windowOpened(),
     closed: () => { library.unwatch(); appMenu.windowClosed(); },
+    rename: (id, name) => library.rename(id, name),
     drag: async (contents, id) => {
       const file = library.find(id);
       if (!file) return false;
@@ -549,6 +553,13 @@ async function main(): Promise<void> {
         await savePreference("tray click", {
           write: () => settings.setTrayClick(action.setTrayClick),
           applied: () => log(`settings: tray click ${settings.trayClick}`),
+        });
+      } else if ("setFileNameTemplate" in action) {
+        // The next recording is named by it; a session in progress already named its file.
+        await savePreference("file name", {
+          locked: true,
+          write: () => settings.setFileNameTemplate(action.setFileNameTemplate),
+          applied: () => log(`settings: file name ${JSON.stringify(settings.fileNameTemplate)}`),
         });
       } else if ("setLibraryLayout" in action) {
         await savePreference("library layout", { write: () => settings.setLibraryLayout(action.setLibraryLayout) });

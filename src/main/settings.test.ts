@@ -114,7 +114,7 @@ describe("SettingsStore", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", libraryLayout: "grid",
+      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid",
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -198,7 +198,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", libraryLayout: "grid",
+      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid",
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -218,7 +218,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", libraryLayout: "grid",
+      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid",
     });
   });
 
@@ -272,7 +272,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", libraryLayout: "grid",
+      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid",
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -306,14 +306,14 @@ describe("parseSettings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "record", libraryLayout: "grid",
+      countdown: 3, countdownSound: true, trayClick: "record", fileNameTemplate: "{date} {time}", libraryLayout: "grid",
     });
     expect(parseSettings('{"version":2,"outputDir":"/a","quality":' + JSON.stringify(DEFAULT_QUALITY) + "}")).toEqual({
-      settings: { language: "en", appearance: "system", version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" }, countdown: 3, countdownSound: true, trayClick: "record", libraryLayout: "grid" },
+      settings: { language: "en", appearance: "system", version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" }, countdown: 3, countdownSound: true, trayClick: "record", fileNameTemplate: "{date} {time}", libraryLayout: "grid" },
       warnings: ["version 2 file: shortcut set to default"],
     });
     const v3 = { version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
-    expect(parseSettings(JSON.stringify(v3))).toEqual({ settings: { ...v3, language: "en", appearance: "system", updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" }, countdown: 3, countdownSound: true, trayClick: "record", libraryLayout: "grid" }, warnings: [] });
+    expect(parseSettings(JSON.stringify(v3))).toEqual({ settings: { ...v3, language: "en", appearance: "system", updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" }, countdown: 3, countdownSound: true, trayClick: "record", fileNameTemplate: "{date} {time}", libraryLayout: "grid" }, warnings: [] });
     expect(parseSettings('{"version":1,"outputDir":""}')).toBeUndefined();
     expect(parseSettings("null")).toBeUndefined();
     expect(parseSettings("[]")).toBeUndefined();
@@ -398,7 +398,7 @@ describe("hotkey settings (plan 016)", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", libraryLayout: "grid",
+      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid",
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.
@@ -661,5 +661,25 @@ describe("the icon's left click (2026-10-04)", () => {
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ trayClick: "record" });
     expect(store().trayClick).toBe("record");
     await expect(s.setTrayClick("double" as never)).rejects.toThrow("unsupported tray click");
+  });
+});
+
+describe("the file name pattern and the Recordings layout (2026-10-05)", () => {
+  it("defaults to the names recordings always had and the grid, and refuses a pattern that cannot name a file", async () => {
+    expect(defaultSettings("/a")).toMatchObject({ fileNameTemplate: "{date} {time}", libraryLayout: "grid" });
+    // A file from before the choice keeps both defaults, silently.
+    expect(parseSettings(JSON.stringify({ version: 3, outputDir: "/a", hotkey: DEFAULT_HOTKEY }))).toMatchObject({ settings: { fileNameTemplate: "{date} {time}", libraryLayout: "grid" } });
+    expect(parseSettings(JSON.stringify({ version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, fileNameTemplate: "Meeting {date}", libraryLayout: "shelf" })))
+      .toMatchObject({ settings: { fileNameTemplate: "{date} {time}", libraryLayout: "grid" },
+        warnings: ["fileNameTemplate is unsupported: using {date} {time}", "libraryLayout is unsupported: using grid"] });
+    const s = store();
+    await s.setFileNameTemplate("  Demo {date} {time}  ");
+    await s.setLibraryLayout("list");
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ fileNameTemplate: "Demo {date} {time}", libraryLayout: "list" });
+    expect([store().fileNameTemplate, store().libraryLayout]).toEqual(["Demo {date} {time}", "list"]);
+    await expect(s.setFileNameTemplate("Demo {date}")).rejects.toThrow("unsupported file name template");
+    await expect(s.setFileNameTemplate("a/b {time}")).rejects.toThrow("unsupported file name template");
+    await expect(s.setLibraryLayout("shelf" as never)).rejects.toThrow("unsupported library layout");
+    expect(s.fileNameTemplate).toBe("Demo {date} {time}");
   });
 });

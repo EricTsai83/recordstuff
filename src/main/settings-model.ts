@@ -28,6 +28,7 @@ import {
 } from "../shared/quality";
 import { DEFAULT_HOTKEY, settingsShortcut, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut, sameShortcut } from "../shared/hotkey";
 import { COUNTDOWN_CHOICES } from "../shared/countdown";
+import { DEFAULT_FILE_NAME_TEMPLATE, FILE_NAME_TOKEN_LIST, canonicalFileNameTemplate, formatFileName } from "../shared/file-name";
 import { isLibraryLayout } from "../shared/appearance";
 import { formatDuration } from "../shared/video-player";
 import type { LibraryView, RecordingResultView, SettingsChoice, SettingsGroup, SettingsStatus, SettingsView, StatusActionId } from "../shared/settings-panel";
@@ -78,7 +79,7 @@ const ICON_SEGMENTS = new Set(["appearance"]);
 const RECORDING_SECTIONS = new Set(["source", "countdown", "video"]);
 /** Related rows share an inset list; a section's first row carries its heading. */
 const SECTIONS: Record<string, string> = {
-  screen: "source", outputFolder: "source",
+  screen: "source", outputFolder: "source", fileName: "source",
   countdown: "countdown", countdownSound: "countdown",
   videoQuality: "video", resolutionCap: "video", frameRate: "video",
   trayClick: "controls", hotkey: "controls", notifications: "controls",
@@ -152,6 +153,20 @@ function outputFolderGroup(ctx: AppContext, unlocked: boolean): Group {
     { id: "change", label: t("Change…", language), enabled: unlocked, checked: false, action: "changeOutputDir" },
     { id: "reveal", label: t(ctx.platform === "darwin" ? "Show in Finder" : "Open folder", language), enabled: true, checked: false, action: "openOutputDir" },
   ], abbreviateHome(ctx.outputDir, ctx.homeDir)), kind: "actions" };
+}
+
+/**
+ * How new recordings are named (2026-10-05): a pattern the user types, its tokens replaced by the local time a
+ * recording starts at (file-name.ts). The one checked choice is the committed pattern; the page sends what was typed,
+ * which `settingsAction` validates. Locked with the other recording settings, though a session already named its file.
+ */
+function fileNameGroup(ctx: AppContext, enabled: boolean): Group {
+  const language = ctx.language;
+  const template = ctx.fileNameTemplate ?? DEFAULT_FILE_NAME_TEMPLATE;
+  return { ...group("fileName", t("File name format", language), enabled,
+    [{ id: template, label: template, enabled: true, checked: true, action: { setFileNameTemplate: template } }],
+    t("Example: {name}", language, { name: `${formatFileName(template, ctx.now ?? new Date())}.mp4` })),
+    control: "text", info: t("Placeholders: {tokens}. Include the time or seconds so each recording gets its own name.", language, { tokens: FILE_NAME_TOKEN_LIST }) };
 }
 
 /**
@@ -398,6 +413,7 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
   return [
     screenGroup(ctx, unlocked),
     outputFolderGroup(ctx, unlocked),
+    fileNameGroup(ctx, unlocked),
     countdownGroup(ctx, unlocked),
     countdownSoundGroup(ctx, unlocked),
     ...qualityGroups(ctx, unlocked),
@@ -699,6 +715,11 @@ export function settingsAction(
   if (groupId === "library") {
     return isLibraryLayout(choiceId) ? { setLibraryLayout: choiceId } : undefined;
   }
+  // The file name pattern is typed, so any valid one is offered while recording settings are unlocked.
+  if (groupId === "fileName") {
+    const template = canonicalFileNameTemplate(choiceId);
+    return template !== undefined && preferencesUnlocked(state) ? { setFileNameTemplate: template } : undefined;
+  }
   if (groupId === "status") {
     const { action: offered, secondaryAction: secondary } = settingsStatus(state, ctx);
     const chosen = [offered, secondary].find(action => action?.id === choiceId);
@@ -722,6 +743,7 @@ export function settingsChecked(
   // The card's actions, like the tray's, are requests whose result the card itself then shows.
   if (groupId === "status") return true;
   if (groupId === "library") return (ctx.libraryLayout ?? "grid") === choiceId;
+  if (groupId === "fileName") return canonicalFileNameTemplate(choiceId) === (ctx.fileNameTemplate ?? DEFAULT_FILE_NAME_TEMPLATE);
   if (proposesHotkey(groupId, choiceId)) return ctx.hotkey.enabled && sameShortcut(choiceId, ctx.hotkey.accelerator, ctx.platform);
   return find(state, ctx, groupId, choiceId)?.checked ?? false;
 }

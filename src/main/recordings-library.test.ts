@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -291,6 +292,51 @@ describe("RecordingsLibrary", () => {
     deps.open.mockResolvedValueOnce("no application");
     touch("other.mp4"); await library.refresh();
     expect(await library.act(library.state.files[0]!.id, "open")).toBe(false);
+  });
+  it("renames within the folder keeping the extension, never over another file, and keeps its cached length", async () => {
+    const file = touch("2026-10-04 14-02-11.mp4");
+    touch("Taken.mp4");
+    const { library, deps } = setup();
+    await library.refresh();
+    const id = library.state.files.find(item => item.path === file)!.id;
+    expect(await library.rename(id, "Taken")).toEqual({ problem: "exists" });
+    expect(await library.rename(id, "a/b")).toEqual({ problem: "characters" });
+    expect(await library.rename(id, "  ")).toEqual({ problem: "empty" });
+    expect(await library.rename(id, ".hidden")).toEqual({ problem: "dot" });
+    expect(fs.existsSync(file)).toBe(true);
+    const renamed = await library.rename(id, " Product demo ");
+    const target = path.join(dir, "Product demo.mp4");
+    expect(renamed).toEqual({ id: fileId(target) });
+    expect([fs.existsSync(file), fs.readFileSync(target, "utf8")]).toEqual([false, "0123456789"]);
+    expect(library.state.files.map(item => item.name).sort()).toEqual(["Product demo.mp4", "Taken.mp4"]);
+    expect(await library.rename(id, "Again")).toEqual({ problem: "missing" });
+    // The same name changes nothing.
+    expect(await library.rename(fileId(target), "Product demo")).toEqual({ id: fileId(target) });
+    expect(deps.log).toHaveBeenCalledWith(`library: renamed ${file} to ${target}`);
+  });
+  it("never replaces another file on a volume without hard links, reserving the new name first (review pass 1, F1)", async () => {
+    const file = touch("clip.mp4");
+    const { library } = setup();
+    await library.refresh();
+    const id = library.state.files[0]!.id;
+    const unsupported = Object.assign(new Error("not supported"), { code: "ENOTSUP" });
+    const link = vi.spyOn(fsPromises, "link").mockRejectedValue(unsupported);
+    try {
+      // Another file takes the name after the check: the exclusive create finds it, and it is kept as it was.
+      const lstat = vi.spyOn(fsPromises, "lstat").mockImplementationOnce(async target => {
+        fs.writeFileSync(String(target), "someone else's");
+        throw Object.assign(new Error("absent when checked"), { code: "ENOENT" });
+      });
+      expect(await library.rename(id, "Taken")).toEqual({ problem: "exists" });
+      expect(fs.readFileSync(path.join(dir, "Taken.mp4"), "utf8")).toBe("someone else's");
+      expect(fs.existsSync(file)).toBe(true);
+      lstat.mockRestore();
+      // A free name: the file moves onto its placeholder, with nothing left behind.
+      const renamed = await library.rename(id, "Demo");
+      expect(renamed).toEqual({ id: fileId(path.join(dir, "Demo.mp4")) });
+      expect(fs.readdirSync(dir).sort()).toEqual(["Demo.mp4", "Taken.mp4"]);
+      expect(fs.readFileSync(path.join(dir, "Demo.mp4"), "utf8")).toBe("0123456789");
+    } finally { link.mockRestore(); }
   });
   it("says a reveal failed when the file left the folder since the listing", async () => {
     const file = touch("clip.mp4");

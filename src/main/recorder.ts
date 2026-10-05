@@ -91,6 +91,8 @@ export interface RecorderDeps {
   monotonic?: () => number;
   ensureWritableDir: (dir: string) => Promise<void>;
   openWriter: (recordingPath: string, finalPath: string) => Promise<RecorderWriter>;
+  /** The saved file's name, without its extension, for a recording requested at `date`; read once per session. Defaults to `formatTimestamp`. */
+  fileName?: (date: Date) => string;
   now?: () => Date;
   newSessionId?: () => string;
   /** Returns an error code when recording is impossible on this machine. */
@@ -617,7 +619,7 @@ export class Recorder {
         if (free !== undefined && free < this.health.diskStopBytes) throw Object.assign(new Error("Insufficient free space to begin recording"), { code: "disk_full" });
       }
       if (this.session !== session) return;
-      session.writer = await this.openUniqueWriter(session, formatTimestamp(requested));
+      session.writer = await this.openUniqueWriter(session, (this.deps.fileName ?? formatTimestamp)(requested));
     });
     // Isolated like the overlay and the subscribers: a throw here would leave the session set with no state to end it,
     // refusing every later start. Without its preparation the attempt fails through the normal capture path.

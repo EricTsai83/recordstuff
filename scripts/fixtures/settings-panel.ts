@@ -779,7 +779,7 @@ async function run() {
           const fromRightClick = await menuState();
           await read(window, `document.getElementById("clip-menu").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
           const mac = ctx.platform === "darwin";
-          const expectedItems = [translate(mac ? "Show in Finder" : "Open folder", lang), translate("Open", lang), translate(mac ? "Move to Trash" : "Move to Recycle Bin", lang)].join("|");
+          const expectedItems = [translate(mac ? "Show in Finder" : "Open folder", lang), translate("Open", lang), translate("Rename…", lang), translate(mac ? "Move to Trash" : "Move to Recycle Bin", lang)].join("|");
           record(`${lang}/${scheme}/${size}/card menu: ⋯ and a right-click open the file's actions inside the window; Escape closes it and gives focus back`,
             fromButton.open && fromButton.items.join("|") === expectedItems && fromButton.fits && fromButton.focused.startsWith("clip-menu-") && fromButton.expanded === "true"
               && !escaped.open && escaped.expanded === "false" && escaped.focused.endsWith("-more") && !window.isDestroyed()

@@ -181,6 +181,12 @@ select { min-width: 0; text-overflow: ellipsis; }
 /* Icon segments (Appearance): the mark alone, as wide as a short word, named by its tooltip and label. */
 .segment-icon span { display: grid; place-items: center; padding: 3px 13px; }
 .segment-glyph { display: block; width: 17px; height: 17px; }
+/* A typed setting (the file name pattern): a field like the menus beside it, wide enough for a pattern and its tokens. */
+.text-field { font: inherit; color: inherit; width: min(240px, 100%); min-height: 28px; padding: 3px 9px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--control); box-shadow: var(--control-shadow); font-variant-numeric: tabular-nums; }
+.text-field:disabled { opacity: .5; }
+/* A field shows where typing goes however it was reached, as macOS fields do; still only while the window is active. */
+:root:not([data-window="inactive"]) .text-field:focus { outline: var(--focus-width) solid var(--focus); outline-offset: calc(-1 * var(--focus-width)); border-color: var(--focus); }
+.controls .text-field { flex: 1 1 auto; }
 .capture-area { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 0 var(--indent); }
 #shortcut-capture { flex: 1; min-height: 36px; background: var(--background); border-style: dashed; box-shadow: none; }
 kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; padding: 1px 5px; margin: 0 2px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; background: var(--surface); text-align: center; }
@@ -528,6 +534,22 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 /* Keyboard focus in the list rings the row, not just its picture. */
 :root:not([data-input="pointer"]):not([data-window="inactive"]) #library[data-layout="list"] .clip-open:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: calc(-1 * var(--focus-width)); }
 :root:not([data-input="pointer"]):not([data-window="inactive"]) #library[data-layout="list"] .clip-open:focus-visible .clip-thumb { outline: none; }
+/* A recording's new name: a raised sheet under its card, drawn like the card menu. */
+.clip-rename { position: fixed; inset: auto; margin: 0; width: min(320px, calc(100vw - 16px)); padding: 12px; border: 0; border-radius: 11px; color: var(--text);
+  background: light-dark(rgb(255 255 255 / .98), rgb(37 37 41 / .98)); backdrop-filter: blur(20px);
+  box-shadow: 0 0 0 .5px light-dark(rgb(0 0 0 / .14), rgb(0 0 0 / .6)), inset 0 0 0 .5px light-dark(transparent, rgb(255 255 255 / .12)),
+    0 12px 32px light-dark(rgb(0 0 0 / .14), rgb(0 0 0 / .5)), 0 2px 6px light-dark(rgb(0 0 0 / .06), rgb(0 0 0 / .3)); }
+.clip-rename:popover-open { display: flex; flex-direction: column; gap: 8px; }
+.clip-rename-label { font-size: 12px; font-weight: 500; color: var(--secondary); overflow-wrap: anywhere; }
+.clip-rename-field { display: flex; align-items: center; gap: 4px; }
+.clip-rename-field .text-field { flex: 1; width: auto; min-width: 0; }
+.clip-rename-extension { flex: none; color: var(--secondary); }
+.clip-rename-error { margin: 0; color: var(--warning); font-size: 12px; }
+.clip-rename-buttons { display: flex; justify-content: flex-end; gap: 7px; }
+.clip-rename-buttons button { min-height: 26px; padding-block: 2px; }
+#clip-rename-confirm { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+#clip-rename-confirm:enabled:not([aria-disabled="true"]):hover { background: var(--accent); opacity: .88; }
+:root:not([data-input="pointer"]):not([data-window="inactive"]) #clip-rename-confirm:focus-visible { outline-offset: var(--focus-gap); }
 
 /*
  * The player (2026-10-05): the video alone over a dimmed window, its title and controls laid over the picture as in
@@ -567,6 +589,7 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
   .clip-menu [role="menuitem"]:is(:focus, :enabled:hover) .menu-icon { color: HighlightText; }
   .clip-menu .menu-separator { background: CanvasText; }
   .clip-thumb { border: 1px solid CanvasText; }
+  .clip-rename { border: 1px solid CanvasText; background: Canvas; }
   #library[data-layout="list"] .library-grid { border: 1px solid CanvasText; }
   .recording-result[open] { outline: 1px solid CanvasText; }
 }

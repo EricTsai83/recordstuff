@@ -11,7 +11,9 @@
 import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE, fitSettingsSize, type SettingsWindowState, type WindowSize } from "./settings-window-state";
 import { BrowserWindow, app, ipcMain, screen, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent, type Rectangle, type WebContents } from "electron";
 import path from "node:path";
-import { SETTINGS_CHANNELS, SHORTCUT_CAPTURE_TIMEOUT_MS, type SettingsChoiceResult, type SettingsTab, type SettingsView } from "../shared/settings-panel";
+import { SETTINGS_CHANNELS, SHORTCUT_CAPTURE_TIMEOUT_MS, isRenameChoice, type RenameChoice, type SettingsChoiceResult, type SettingsTab, type SettingsView } from "../shared/settings-panel";
+import { fileNameProblemText, fileNameTemplateProblem } from "../shared/file-name";
+import type { RenameProblem } from "./recordings-library";
 import type { RecordingState } from "../shared/state";
 
 import { proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
@@ -90,6 +92,8 @@ export interface SettingsWindowOptions {
   act: (action: AppAction) => Promise<boolean | void>;
   capture?: (armed: boolean) => void;
   geometry?: Pick<SettingsWindowState, "size" | "save"> & Partial<Pick<SettingsWindowState, "flush" | "zoom" | "saveZoom">>;
+  /** Renames a listed recording (recordings-library.ts `rename`): its new id, or why it was not renamed. */
+  rename?: (id: string, name: string) => Promise<{ id: string } | { problem: RenameProblem }>;
   /** The window is about to be shown: on macOS the app becomes a Dock app with its menus while it is open (app-menu.ts). */
   opened?: () => void;
   /** The window was shown or regained focus: what it lists from disk may have changed meanwhile. */
@@ -190,6 +194,7 @@ export class SettingsWindow {
       if (typeof group === "string" && group.startsWith("recordingResult:")) return this.applyResult(group, choice, window);
       // Full screen answers when the viewer leaves it, with where the video is then.
       if (typeof group === "string" && group.startsWith("recordingFile:") && isFullScreenChoice(choice)) return this.playFullScreen(group, choice, window);
+      if (typeof group === "string" && group.startsWith("recordingFile:") && isRenameChoice(choice)) return this.applyRename(group, choice, window);
       // A recording's actions touch files, not preferences, and a drag must start while the pointer is still down.
       if (typeof group === "string" && group.startsWith("recordingFile:")) return this.applyFile(group, choice, window);
       // The Recordings tab's layout: no recording lock, no shortcut capture, nothing to wait behind.
@@ -470,8 +475,25 @@ export class SettingsWindow {
   }
 
   /**
-   * Resolves the Recordings tab's layout like any other offered choice.
+   * Renames a listed recording to the name typed in its card. The id must be listed now; the name is checked by the
+   * library (file-name.ts), never trusted. The reply carries the new id, so the page keeps the renamed card's focus.
    */
+  private async applyRename(group: string, choice: RenameChoice, recipient: BrowserWindow): Promise<SettingsChoiceResult> {
+    const id = group.slice("recordingFile:".length);
+    const listed = this.options.context().library?.files.some(file => file.id === id) === true;
+    if (!listed || !this.options.rename || recipient.isDestroyed() || this.quitStarted()) {
+      this.log(`settings window: refused ${JSON.stringify({ group, choice: "rename" })}`);
+      const view = this.view();
+      return this.deliver({ view, applied: false, failure: fileNameProblemText("missing", view.language) }, recipient);
+    }
+    const outcome = await this.options.rename(id, choice.name);
+    const view = this.view();
+    return this.deliver("id" in outcome
+      ? { view, applied: true, renamed: outcome.id }
+      : { view, applied: false, failure: fileNameProblemText(outcome.problem, view.language) }, recipient);
+  }
+
+  /** The Recordings tab's layout and Undo, resolved like any other offered choice. */
   private async applyLibrary(choice: unknown, recipient: BrowserWindow): Promise<SettingsChoiceResult> {
     const action = settingsAction(this.options.state(), this.options.context(), "library", choice);
     if (!action) this.log(`settings window: refused ${JSON.stringify({ group: "library", choice })}`);
@@ -528,6 +550,9 @@ export class SettingsWindow {
       const error = proposesHotkey(group, choice)
         ? isSettingsShortcut(choice, platform) ? SETTINGS_SHORTCUT_RESERVED : validateAccelerator(choice, platform).error
         : undefined;
+      // A pattern that cannot name a file says why, as the field's own error; the same text fails the same way again.
+      const templateProblem = group === "fileName" && typeof choice === "string" ? fileNameTemplateProblem(choice.trim()) : undefined;
+      if (templateProblem) return this.deliver({ view, applied: false, failure: fileNameProblemText(templateProblem, view.language), refused: true }, recipient);
       return this.deliver({ view, applied: false, ...(error ? { failure: translate(error, view.language), refused: true as const } : { failure: view.failure }) }, recipient);
     }
     let outcome: boolean | void;

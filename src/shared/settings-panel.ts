@@ -25,8 +25,11 @@ export interface SettingsGroup {
   label: string;
   tab: "recording" | "general";
   kind?: "actions" | "shortcut";
-  /** Presentation only; omitted controls default to a native menu. */
-  control?: "switch" | "segmented" | "menu";
+  /**
+   * Presentation only; omitted controls default to a native menu. `text` is a field whose committed value is the one
+   * checked choice's id; the page sends what was typed as the choice, which main validates (the file name pattern).
+   */
+  control?: "switch" | "segmented" | "menu" | "text";
   /** Segments drawn as icons named by their labels (Appearance's screen, sun and moon); presentation only. */
   iconChoices?: boolean;
   /** Consecutive rows with this id share an inset list. */
@@ -157,6 +160,11 @@ export const SETTINGS_CHANNELS = {
   /** RecordStuff was hidden (⌘H): the player stops, as nothing should sound from a window out of sight. */
   hidden: "settings:hidden",
 } as const;
+/** A recording's new name, as typed in its card (group `recordingFile:<id>`); main checks it before renaming. */
+export interface RenameChoice { action: "rename"; name: string }
+export function isRenameChoice(value: unknown): value is RenameChoice {
+  return typeof value === "object" && value !== null && (value as RenameChoice).action === "rename" && typeof (value as RenameChoice).name === "string";
+}
 export interface SettingsChoiceResult {
   view: SettingsView;
   /** Whether the requested choice is the committed one now. */
@@ -166,13 +174,15 @@ export interface SettingsChoiceResult {
   refused?: true;
   /** A recording played full screen: where the video was when the viewer left (video-player.ts). */
   playback?: PlaybackState;
+  /** A renamed recording's new id, so its card keeps the focus. */
+  renamed?: string;
 }
 /** What the preload exposes to the panel. */
 export interface SettingsBridge {
   read(): Promise<SettingsView>;
   capture(armed: boolean): Promise<SettingsView>;
-  /** A choice is an offered option's id, or a full-screen request for a recording (video-player.ts). */
-  choose(group: string, choice: string | FullScreenChoice): Promise<SettingsChoiceResult>;
+  /** A choice is an offered option's id, a full-screen request for a recording (video-player.ts) or its new name. */
+  choose(group: string, choice: string | FullScreenChoice | RenameChoice): Promise<SettingsChoiceResult>;
   onChanged(callback: (view: SettingsView) => void): () => void;
   /** RecordStuff was hidden (⌘H); main says so before the window goes out of sight. The preload always offers it. */
   onHidden?(callback: () => void): () => void;

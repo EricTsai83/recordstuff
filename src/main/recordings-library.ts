@@ -19,6 +19,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { mp4Duration } from "./mp4-duration";
+import { errnoCode } from "./errors";
+import { fileNameProblem, type FileNameProblem } from "../shared/file-name";
 
 export const MEDIA_SCHEME = "recordstuff-media";
 /**
@@ -47,6 +49,8 @@ export interface LibraryState {
   failed: boolean;
   files: RecordingFile[];
 }
+/** Why a rename did not happen; `fileNameProblem`'s reasons, a name already taken, or the file system refusing. */
+export type RenameProblem = FileNameProblem | "exists" | "missing" | "failed";
 export interface LibraryDeps {
   dir: () => string;
   /** The listing changed; the UI re-projects. */
@@ -336,6 +340,66 @@ export class RecordingsLibrary {
     }
     await this.refresh();
     return false;
+  }
+
+  /**
+   * Renames a listed file within its folder, keeping its extension: the page's new name, checked as a new recording's
+   * name is (file-name.ts). Never replaces another file: a hard link takes the new name only when it is free, then the
+   * old name goes; a volume without hard links takes the new name with an exclusive create, then moves the file onto it.
+   * Resolves to the file's new id, or why it did not.
+   */
+  async rename(id: string, requested: string): Promise<{ id: string } | { problem: RenameProblem }> {
+    const file = this.find(id);
+    if (!file) return { problem: "missing" };
+    const name = requested.trim();
+    const problem = fileNameProblem(name);
+    if (problem) return { problem };
+    const target = path.join(path.dirname(file.path), `${name}${path.extname(file.name)}`);
+    if (target === file.path) return { id };
+    let linked = false, reserved = false;
+    try {
+      try {
+        await fs.link(file.path, target);
+        linked = true;
+      } catch (cause) {
+        const code = errnoCode(cause);
+        if (code === "ENOENT") throw cause;
+        // Taken by another file, or the same file under another case on a case-insensitive volume, which may change case.
+        const taken = await fs.lstat(target).then(stat => stat, () => undefined);
+        const own = await fs.stat(file.path);
+        if (taken && (taken.ino !== own.ino || taken.dev !== own.dev)) return { problem: "exists" };
+        if (!taken) {
+          // No hard links on this volume: the name is taken first with an exclusive create, which fails if anything
+          // holds it, and the file then moves onto that empty placeholder, so no other file is ever replaced.
+          this.deps.log(`library: no hard link for ${file.path} (${code ?? String(cause)}); reserving the new name first`);
+          try {
+            await (await fs.open(target, "wx")).close();
+          } catch (reserve) {
+            if (errnoCode(reserve) === "EEXIST") return { problem: "exists" };
+            throw reserve;
+          }
+          reserved = true;
+        }
+        await fs.rename(file.path, target);
+        reserved = false;
+      }
+      if (linked) await fs.unlink(file.path);
+    } catch (cause) {
+      // The new name was linked but the old one stayed: the new one goes again, so the file is listed once. A
+      // placeholder the file did not move onto goes too.
+      if (linked || reserved) await fs.unlink(target).catch(() => undefined);
+      this.deps.log(`library: renaming ${file.path} to ${target} failed: ${String(cause)}`);
+      await this.refresh();
+      return { problem: errnoCode(cause) === "ENOENT" ? "missing" : "failed" };
+    }
+    this.deps.log(`library: renamed ${file.path} to ${target}`);
+    // The same bytes: its length and thumbnail carry over instead of being read again.
+    for (const cache of [this.durations, this.thumbnails] as Array<Map<string, unknown>>) {
+      const known = cache.get(file.path);
+      if (known !== undefined) { cache.delete(file.path); cache.set(target, known); }
+    }
+    await this.refresh();
+    return { id: fileId(target) };
   }
 
   /** A listed file's thumbnail, made once per version of the file while it is among the `THUMBNAILS_KEPT` last shown. */

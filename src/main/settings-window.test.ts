@@ -88,7 +88,7 @@ const context: AppContext = {
 };
 
 /** A panel wired to a mutable copy of the committed settings. */
-function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void; fullScreen?: SettingsWindowOptions["fullScreen"]; quitRequested?: () => boolean; drag?: SettingsWindowOptions["drag"] } = {}) {
+function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void; fullScreen?: SettingsWindowOptions["fullScreen"]; quitRequested?: () => boolean; drag?: SettingsWindowOptions["drag"]; rename?: SettingsWindowOptions["rename"] } = {}) {
   const live = { ...context };
   let state: RecordingState = { type: "idle" };
   const act = overrides.act ?? vi.fn(async (action: AppAction) => {
@@ -103,6 +103,7 @@ function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>
     ...(overrides.fullScreen ? { fullScreen: overrides.fullScreen } : {}),
     ...(overrides.quitRequested ? { quitRequested: overrides.quitRequested } : {}),
     ...(overrides.drag ? { drag: overrides.drag } : {}),
+    ...(overrides.rename ? { rename: overrides.rename } : {}),
     capture,
     state: overrides.state ?? (() => state),
     context: () => live,
@@ -1100,5 +1101,29 @@ describe("the page's zoom (2026-10-05)", () => {
     expect(event.preventDefault).toHaveBeenCalled();
     expect(saveZoom).toHaveBeenLastCalledWith(1.5);
     expect(contents.setZoomFactor).toHaveBeenLastCalledWith(1.5);
+  });
+});
+
+describe("a recording's new name (2026-10-05)", () => {
+  const library = { dir: "/tmp/recordings", loading: false, failed: false,
+    files: [{ id: "a", path: "/tmp/recordings/a.mp4", name: "a.mp4", size: 1, recordedAt: 0, version: "v" }] };
+  it("renames only a listed recording through the library, and answers with its new id or why not", async () => {
+    const rename = vi.fn(async (_id: string, name: string) => name === "Taken" ? { problem: "exists" as const } : { id: "b" });
+    const s = setup({ rename });
+    s.live.library = library;
+    s.panel.show();
+    await expect(s.choose(s.event(), "recordingFile:a", { action: "rename", name: "Demo" })).resolves.toMatchObject({ applied: true, renamed: "b" });
+    expect(rename).toHaveBeenCalledWith("a", "Demo");
+    await expect(s.choose(s.event(), "recordingFile:a", { action: "rename", name: "Taken" }))
+      .resolves.toMatchObject({ applied: false, failure: "A file with this name is already in the folder." });
+    await expect(s.choose(s.event(), "recordingFile:/etc/passwd", { action: "rename", name: "x" }))
+      .resolves.toMatchObject({ applied: false, failure: "This recording is no longer in the folder." });
+    expect(rename).toHaveBeenCalledTimes(2);
+  });
+  it("says why a typed file name pattern was refused", async () => {
+    const s = setup();
+    s.panel.show();
+    await expect(s.choose(s.event(), "fileName", "Meeting {date}"))
+      .resolves.toMatchObject({ applied: false, refused: true, failure: "Include {time} or {second} so each recording gets its own name." });
   });
 });

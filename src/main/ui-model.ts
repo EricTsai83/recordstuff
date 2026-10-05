@@ -59,6 +59,7 @@ export type AppAction =
   | { setCountdownSound: boolean }
   | { setAppearance: Appearance }
   | { setTrayClick: TrayClick }
+  | { setFileNameTemplate: string }
   | { setLibraryLayout: LibraryLayout }
   | { setLanguage: Language }
   | { setHotkey: HotkeySettings };
@@ -93,6 +94,8 @@ export interface AppContext {
   appearance?: Appearance;
   /** The icon's left click; absent is the click that records, as before the choice. */
   trayClick?: TrayClick;
+  /** How new recordings are named (file-name.ts); absent is the default pattern. */
+  fileNameTemplate?: string;
   /** The Recordings tab's grid or list; absent is the grid. */
   libraryLayout?: LibraryLayout;
   hotkey: AppHotkey;

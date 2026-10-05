@@ -1,7 +1,7 @@
 /**
  * Persistent preferences: output folder, recording display, quality, countdown
  * and its tick, shortcut, the menu bar icon's left click, notifications, update
- * checks, language and appearance, and the Recordings tab's layout.
+ * checks, language and appearance, the recordings' file name pattern and the Recordings tab's layout.
  * See docs/system-design/desktop.md for the schema and migration rules.
  * Writes replace the file atomically (`writeFileAtomic`), so a crash or power
  * loss mid-write leaves the previous file. Any read problem falls back to the
@@ -24,6 +24,7 @@
  * under them.
  */
 import { isAppearance, isLibraryLayout, isTrayClick, type Appearance, type LibraryLayout, type TrayClick } from "../shared/appearance";
+import { DEFAULT_FILE_NAME_TEMPLATE, canonicalFileNameTemplate } from "../shared/file-name";
 import { DEFAULT_DISPLAY_PREFERENCE, isDisplayPreference, type DisplayPreference } from "../shared/display";
 import fs from "node:fs";
 import path from "node:path";
@@ -67,6 +68,8 @@ export interface Settings {
   countdownSound: boolean;
   /** The icon's left click; a file from before the choice keeps the click that records. */
   trayClick: TrayClick;
+  /** How new recordings are named (file-name.ts); the default gives the names every recording had before the choice. */
+  fileNameTemplate: string;
   /** The Recordings tab's grid or list. */
   libraryLayout: LibraryLayout;
 }
@@ -101,6 +104,7 @@ export function defaultSettings(outputDir: string): Settings {
     countdownSound: DEFAULT_COUNTDOWN_SOUND,
     // A new install opens the menu, as menu bar icons do; recording is one choice away or on the shortcut.
     trayClick: "menu",
+    fileNameTemplate: DEFAULT_FILE_NAME_TEMPLATE,
     libraryLayout: "grid",
   };
 }
@@ -174,10 +178,13 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const countdownSound = field("countdownSound", isBoolean, DEFAULT_COUNTDOWN_SOUND, `countdownSound is not a boolean: using ${DEFAULT_COUNTDOWN_SOUND ? "on" : "off"}`);
   // Everyone who used the app before the choice existed learned a click that records; an upgrade keeps it.
   const trayClick = field("trayClick", isTrayClick, "record", "trayClick is unsupported: using record");
+  // Only a pattern stored as it would be saved: trimmed and usable.
+  const isTemplate = (value: unknown): value is string => typeof value === "string" && canonicalFileNameTemplate(value) === value;
+  const fileNameTemplate = field("fileNameTemplate", isTemplate, defaults.fileNameTemplate, `fileNameTemplate is unsupported: using ${defaults.fileNameTemplate}`);
   const libraryLayout = field("libraryLayout", isLibraryLayout, defaults.libraryLayout, `libraryLayout is unsupported: using ${defaults.libraryLayout}`);
   return { settings: { appearance, display, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
     updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound, trayClick,
-    libraryLayout }, warnings };
+    fileNameTemplate, libraryLayout }, warnings };
 }
 
 export class SettingsStore {
@@ -235,6 +242,14 @@ export class SettingsStore {
   setTrayClick(trayClick: TrayClick): Promise<void> {
     if (!isTrayClick(trayClick)) return Promise.reject(new Error(`unsupported tray click: ${JSON.stringify(trayClick)}`));
     return this.save((current) => ({ ...current, trayClick }));
+  }
+
+  get fileNameTemplate(): string { return this.settings.fileNameTemplate; }
+
+  setFileNameTemplate(template: string): Promise<void> {
+    const canonical = canonicalFileNameTemplate(template);
+    if (canonical === undefined) return Promise.reject(new Error(`unsupported file name template: ${JSON.stringify(template)}`));
+    return this.save((current) => ({ ...current, fileNameTemplate: canonical }));
   }
 
   get libraryLayout(): LibraryLayout { return this.settings.libraryLayout; }

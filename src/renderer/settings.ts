@@ -7,6 +7,7 @@ import { controlButton, mark, playbackOf, playerControls, type PlayerControls, t
 import { documentLanguage, isLanguage, phrases, sentences, translate, type PlainMessageKey } from "../shared/i18n";
 import { REVIEWED_FAILURES_KEPT, persistsHistory } from "../shared/recording-result";
 import { SHORTCUT_CAPTURE_TIMEOUT_MS, type LibraryItemView, type RecordingResultView, type SettingsBridge, type SettingsGroup, type SettingsTab, type SettingsView } from "../shared/settings-panel";
+import { fileNameProblem, fileNameProblemText, fileNameTemplateProblem, formatFileName } from "../shared/file-name";
 import type { LibraryLayout } from "../shared/appearance";
 import type { FullScreenChoice, PlaybackState } from "../shared/video-player";
 
@@ -185,6 +186,8 @@ const FILM = "M3 5.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1
 const ICONS: Record<string, [string, string?]> = {
   screen: ["M4 3.5h16a2 2 0 0 1 2 2v9.5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2ZM8 21h8M12 17v4"],
   outputFolder: ["M20 20a2 2 0 0 0 2-2V8.5a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 4.4a2 2 0 0 0-1.7-.9H4a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2Z"],
+  // A letter T between guides: the name a new recording is given.
+  fileName: ["M5 7V4.5h14V7M9.5 19.5h5M12 4.5v15"],
   countdown: ["M10 2h4M12 14l3-3M12 22a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"],
   countdownSound: ["M11 5 6 9H2v6h4l5 4V5ZM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"],
   videoQuality: ["M12 3.5 13.9 9l5.6 1.9-5.6 1.9L12 18.5l-1.9-5.7-5.6-1.9L10.1 9ZM19 2.5v4M17 4.5h4M5 17.5v3M3.5 19h3"],
@@ -208,9 +211,10 @@ const ICONS: Record<string, [string, string?]> = {
   // The Recordings tab's two layouts: four tiles, and rows.
   "layout-grid": ["M4.5 4h5.5a.5.5 0 0 1 .5.5V10a.5.5 0 0 1-.5.5H4.5A.5.5 0 0 1 4 10V4.5a.5.5 0 0 1 .5-.5ZM14 4h5.5a.5.5 0 0 1 .5.5V10a.5.5 0 0 1-.5.5H14a.5.5 0 0 1-.5-.5V4.5A.5.5 0 0 1 14 4ZM4.5 13.5h5.5a.5.5 0 0 1 .5.5v5.5a.5.5 0 0 1-.5.5H4.5a.5.5 0 0 1-.5-.5V14a.5.5 0 0 1 .5-.5ZM14 13.5h5.5a.5.5 0 0 1 .5.5v5.5a.5.5 0 0 1-.5.5H14a.5.5 0 0 1-.5-.5V14a.5.5 0 0 1 .5-.5Z"],
   "layout-list": ["M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"],
-  // The card menu's actions: the folder above, out to another app, and the Trash.
+  // The card menu's actions: the folder above, out to another app, a new name, and the Trash.
   "file-reveal": ["M20 20a2 2 0 0 0 2-2V8.5a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 4.4a2 2 0 0 0-1.7-.9H4a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2Z"],
   "file-open": ["M14 3.5h6.5V10M20.5 3.5 11 13M18 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"],
+  "file-rename": ["M12 20.5h8.5M16.4 3.6a2.1 2.1 0 0 1 3 3L7.2 18.8l-4 1 1-4Z"],
   "file-trash": ["M3.5 6h17M9 6V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V6M5.5 6l1 13.6A1.5 1.5 0 0 0 8 21h8a1.5 1.5 0 0 0 1.5-1.4L18.5 6M10 10.5v6M14 10.5v6"],
   more: ["", "M5.2 12a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0-3.2 0ZM10.4 12a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0-3.2 0ZM15.6 12a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0-3.2 0Z"],
   "tab-recording": ["M12 21.5a9.5 9.5 0 1 0 0-19 9.5 9.5 0 0 0 0 19Z", "M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"],
@@ -301,7 +305,8 @@ function updateDiagnostic(container: HTMLElement, group: SettingsGroup): void {
   setActionDisabled(retry, !group.enabled, Boolean(saving));
   const guidance = area.querySelector<HTMLElement>(".reselect")!;
   // "Choose the setting again" applies to a value; a failed action already says to try again.
-  guidance.hidden = !activeFailure || actionFailure || refusedKey || retryAllowed(group);
+  // A value main refused (a key, a file name pattern) fails the same way again: what to change is in its own message.
+  guidance.hidden = !activeFailure || actionFailure || activeFailure.refused === true || retryAllowed(group);
   setText(guidance, text("Choose the setting again to retry."));
   area.hidden = !items.length && !activeFailure;
   if (((hadRecoveryFocus && recovery.hidden) || (hadRetryFocus && retry.hidden)) && document.hasFocus())
@@ -325,7 +330,8 @@ function updateRows(groups: SettingsGroup[]): void {
     setText(label, group.label);
     label.hidden = !group.label;
     const note = container.querySelector<HTMLElement>(".note")!;
-    setText(note, group.note ?? ""); note.hidden = !group.note;
+    const noteText = group.control === "text" ? textNote(group) : group.note ?? "";
+    setText(note, noteText); note.hidden = !noteText;
     const info = document.getElementById(`${controlId(group)}-info`)!;
     const infoButton = document.getElementById(`${controlId(group)}-info-button`)!;
     if (!group.info && openInfo?.popover === info) hideInfo();
@@ -352,6 +358,15 @@ function updateRows(groups: SettingsGroup[]): void {
           if (option.disabled !== !choice.enabled) option.disabled = !choice.enabled;
         });
         if (el.value !== committed(group)) el.value = committed(group);
+      } else if (group.control === "text") {
+        // What the user is typing stays: only a committed value that changed meanwhile, or the one just saved, replaces it.
+        const value = committed(group);
+        if (el.dataset.committed !== value) {
+          const own = el.value.trim() === value;
+          el.dataset.committed = value;
+          if (own || document.activeElement !== el) el.value = value;
+        }
+        setDisabled(el, !group.enabled, othersSaving);
       } else if (group.control === "switch") {
         el.checked = committed(group) === "on";
         el.value = committed(group);
@@ -522,6 +537,8 @@ function row(group: SettingsGroup): HTMLElement {
   } else if (group.control === "switch") {
     const input = node("input", "switch"); input.type = "checkbox"; input.id = id; input.setAttribute("role", "switch");
     input.addEventListener("change", () => void choose(group.id, input.checked ? "on" : "off", id)); controls.append(input);
+  } else if (group.control === "text") {
+    controls.append(textField(group, id));
   } else if (group.control === "segmented") {
     const segments = node("div", "segments"); segments.id = id; segments.setAttribute("role", "radiogroup"); segments.setAttribute("aria-labelledby", label.id);
     for (const choice of group.choices) {
@@ -632,6 +649,52 @@ function row(group: SettingsGroup): HTMLElement {
   for (const choice of group.actions ?? []) container.append(actionButton(group, choice));
   container.append(node("span", "applying visually-hidden"));
   return container;
+}
+/**
+ * A typed setting (the file name pattern, 2026-10-05): saved by Enter or by leaving the field, previewed in the row's
+ * note while typing, put back by Escape. Main validates what is sent and refuses a pattern it cannot use, with why.
+ */
+function textField(group: SettingsGroup, id: string): HTMLInputElement {
+  const input = node("input", "text-field"); input.type = "text"; input.id = id;
+  input.spellcheck = false; input.autocomplete = "off"; input.setAttribute("autocapitalize", "off");
+  const current = (): SettingsGroup | undefined => view?.groups.find(g => g.id === group.id);
+  const submit = (): void => {
+    const live = current();
+    if (!live || input.disabled) return;
+    const value = input.value.trim();
+    // Nothing new, or the same text already sent: Enter is followed by the change event that leaving the field fires.
+    if (value === committed(live) || value === input.dataset.submitted) return;
+    input.dataset.submitted = value;
+    void choose(group.id, value, id).finally(() => { delete input.dataset.submitted; });
+  };
+  input.addEventListener("input", () => {
+    if (failure?.group === group.id) failure = undefined;
+    const live = current();
+    if (live) updateRows([live]);
+  });
+  input.addEventListener("change", submit);
+  input.addEventListener("keydown", event => {
+    if (event.key === "Enter") { event.preventDefault(); submit(); return; }
+    // A draft is put back first; the next Escape closes the window, as anywhere else.
+    const live = current();
+    if (event.key === "Escape" && live && input.value !== committed(live)) {
+      event.preventDefault(); event.stopPropagation();
+      input.value = committed(live);
+      if (failure?.group === group.id) failure = undefined;
+      updateRows([live]);
+    }
+  });
+  return input;
+}
+/** A typed setting's note: main's example for the saved value, or the draft's own example or problem while it differs. */
+function textNote(group: SettingsGroup): string {
+  const input = document.getElementById(controlId(group)) as HTMLInputElement | null;
+  const draft = input?.value.trim();
+  // Before the field first takes its value (the note is drawn first), there is no draft yet.
+  if (!input || input.dataset.committed === undefined || draft === undefined || draft === committed(group)) return group.note ?? "";
+  const problem = fileNameTemplateProblem(draft);
+  return problem ? fileNameProblemText(problem, view?.language ?? "en")
+    : translate("Example: {name}", view?.language, { name: `${formatFileName(draft, new Date())}.mp4` });
 }
 /** Moves `node` to `index` inside `parent` only when it is elsewhere, so a focused row keeps focus. */
 function place(parent: Element, node: Element, index: number): void {
@@ -928,7 +991,7 @@ function updateLibrary(): void {
   const panel = document.getElementById("settings-panel")!;
   let area = document.getElementById("library") ?? libraryArea;
   // The card menu lives in the top layer, outside the tab: it leaves with its cards, or its items would act on a hidden recording.
-  if (selectedTab !== "library") { closeClipMenu(false); libraryArea = area ?? undefined; area?.remove(); return; }
+  if (selectedTab !== "library") { closeClipMenu(false); closeRename(false); libraryArea = area ?? undefined; area?.remove(); return; }
   libraryArea = undefined;
   if (area && !area.isConnected) panel.append(area);
   if (!area) {
@@ -1001,6 +1064,12 @@ function updateLibrary(): void {
     const inMenu = clipMenu.el.contains(document.activeElement);
     closeClipMenu(false);
     if (inMenu) document.getElementById("tab-library")?.focus({ preventScroll: true });
+  }
+  // The recording being renamed left the folder: there is nothing left to name.
+  if (renaming && !renaming.pending && !ids.has(renaming.id)) {
+    const inEditor = renaming.el.contains(document.activeElement);
+    closeRename(false);
+    if (inEditor) document.getElementById("tab-library")?.focus({ preventScroll: true });
   }
 }
 /** The grid or list switch beside the summary: two icon segments, as Appearance's are drawn. */
@@ -1100,6 +1169,7 @@ function fillClip(card: HTMLElement, item: LibraryItemView): void {
   setAttr(more, "aria-label", moreLabel); setAttr(more, "title", moreLabel);
 }
 type FileAction = "reveal" | "open" | "trash";
+type MenuAction = FileAction | "rename";
 /**
  * A card's file actions (2026-10-04): Show in Finder, Open in the default app and Move to Trash, chosen
  * before the recording is opened. One menu in the top layer serves every card; arrows and the pointer move through it,
@@ -1110,10 +1180,10 @@ let clipMenu: { el: HTMLElement; id?: string; anchor?: HTMLButtonElement; offset
 function clipMenuElement(): HTMLElement {
   if (clipMenu) return clipMenu.el;
   const el = node("div", "clip-menu"); el.id = "clip-menu"; el.setAttribute("role", "menu"); el.setAttribute("popover", "manual");
-  for (const action of ["reveal", "open", "trash"] as const) {
+  for (const action of ["reveal", "open", "rename", "trash"] as const satisfies readonly MenuAction[]) {
     const item = button(`clip-menu-${action}`, () => {
       const id = clipMenu?.id, anchor = clipMenu?.anchor;
-      if (id && anchor) void fileAction(id, action, anchor);
+      if (id && anchor) { if (action === "rename") openRename(id, anchor); else void fileAction(id, action, anchor); }
     });
     item.setAttribute("role", "menuitem"); item.tabIndex = -1; item.dataset.action = action;
     item.append(icon(`file-${action}`, "menu-icon")!, node("span", "menu-label"));
@@ -1152,6 +1222,7 @@ function openClipMenu(id: string, anchor: HTMLButtonElement, at?: { x: number; y
   const mac = platform() === "darwin";
   setText(el.querySelector("#clip-menu-reveal .menu-label")!, text(mac ? "Show in Finder" : "Open folder"));
   setText(el.querySelector("#clip-menu-open .menu-label")!, text("Open"));
+  setText(el.querySelector("#clip-menu-rename .menu-label")!, text("Rename…"));
   setText(el.querySelector("#clip-menu-trash .menu-label")!, text(mac ? "Move to Trash" : "Move to Recycle Bin"));
   // One menu serves every card: it takes the name of the ⋯ button it opened from, "More actions for Today, 2:02 PM".
   el.setAttribute("aria-labelledby", anchor.id);
@@ -1199,6 +1270,126 @@ document.addEventListener("scroll", placeClipMenu, true);
 window.addEventListener("resize", placeClipMenu);
 // Focus inside a hidden menu would fall to the page, where the next Escape closes the window: it goes back to the ⋯ button.
 window.addEventListener("blur", () => closeClipMenu(true));
+/**
+ * A recording's new name (2026-10-05): a small sheet under its card, from the card menu's Rename…, with the name
+ * selected and the extension kept. Enter renames, Escape or a click elsewhere cancels; the error stays in the sheet.
+ * Main checks the name again and never replaces another file; the renamed card takes the focus.
+ */
+let renaming: { el: HTMLElement; id: string; anchor: HTMLButtonElement; pending: boolean } | undefined;
+function renameElement(): HTMLElement {
+  const existing = document.getElementById("clip-rename");
+  if (existing) return existing;
+  const el = node("div", "clip-rename"); el.id = "clip-rename"; el.setAttribute("popover", "manual");
+  el.setAttribute("role", "dialog"); el.setAttribute("aria-labelledby", "clip-rename-label");
+  const label = node("label", "clip-rename-label"); label.id = "clip-rename-label"; label.htmlFor = "clip-rename-input";
+  const field = node("span", "clip-rename-field");
+  const input = node("input", "text-field"); input.id = "clip-rename-input"; input.type = "text"; input.spellcheck = false; input.autocomplete = "off";
+  input.setAttribute("aria-describedby", "clip-rename-error");
+  field.append(input, node("span", "clip-rename-extension"));
+  const error = node("p", "clip-rename-error"); error.id = "clip-rename-error";
+  const buttons = node("div", "clip-rename-buttons");
+  const cancel = button("clip-rename-cancel", () => closeRename(true));
+  const confirm = button("clip-rename-confirm", () => { if (!inactive(confirm)) void submitRename(); });
+  buttons.append(cancel, confirm);
+  el.append(label, field, error, buttons);
+  input.addEventListener("input", () => { setText(error, ""); error.hidden = true; });
+  el.addEventListener("keydown", event => {
+    if (event.key === "Enter" && event.target === input) { event.preventDefault(); void submitRename(); return; }
+    // Escape belongs to the sheet, before the page's own Escape closes the window.
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeRename(true); }
+  });
+  document.body.append(el);
+  return el;
+}
+function openRename(id: string, anchor: HTMLButtonElement): void {
+  const item = libraryItem(id);
+  closeClipMenu(false);
+  if (!item) return;
+  const el = renameElement();
+  closeRename(false);
+  const extension = /\.[^.]+$/.exec(item.name)?.[0] ?? "";
+  const base = item.name.slice(0, item.name.length - extension.length);
+  setText(el.querySelector(".clip-rename-label")!, translate("New name for {title}", view?.language, { title: phrases([item.day, item.title], view?.language) }));
+  setText(el.querySelector(".clip-rename-extension")!, extension);
+  setText(el.querySelector("#clip-rename-cancel")!, text("Cancel"));
+  setText(el.querySelector("#clip-rename-confirm")!, text("Rename"));
+  const error = el.querySelector<HTMLElement>(".clip-rename-error")!;
+  setText(error, ""); error.hidden = true;
+  const input = el.querySelector<HTMLInputElement>("#clip-rename-input")!;
+  input.value = base;
+  renaming = { el, id, anchor, pending: false };
+  el.showPopover?.();
+  placeRename();
+  if (renaming?.el !== el) return;
+  input.focus({ preventScroll: true });
+  input.select();
+}
+/** Under its card, flipped above when there is no room below, kept inside the window; a card scrolled out of the panel cancels it. */
+function placeRename(): void {
+  if (!renaming) return;
+  const { el, anchor } = renaming;
+  if (!anchor.isConnected) { closeRename(false); return; }
+  const card = (anchor.closest(".clip") ?? anchor).getBoundingClientRect(), size = el.getBoundingClientRect();
+  const panel = anchor.closest("#settings-panel")?.getBoundingClientRect();
+  if (panel && (card.bottom < panel.top || card.top > panel.bottom)) { closeRename(true); return; }
+  el.style.left = `${Math.max(8, Math.min(card.left, innerWidth - size.width - 8))}px`;
+  el.style.top = `${Math.max(8, card.bottom + 6 + size.height + 8 > innerHeight ? card.top - size.height - 6 : card.bottom + 6)}px`;
+}
+function closeRename(restoreFocus: boolean): void {
+  if (!renaming) return;
+  const { el, anchor } = renaming;
+  renaming = undefined;
+  el.hidePopover?.();
+  if (restoreFocus && anchor.isConnected) anchor.focus({ preventScroll: true });
+}
+async function submitRename(): Promise<void> {
+  const current = renaming;
+  if (!current || current.pending) return;
+  const { el, id } = current;
+  const input = el.querySelector<HTMLInputElement>("#clip-rename-input")!;
+  const error = el.querySelector<HTMLElement>(".clip-rename-error")!;
+  const confirm = el.querySelector<HTMLButtonElement>("#clip-rename-confirm")!;
+  const item = libraryItem(id);
+  const name = input.value.trim();
+  const extension = item ? /\.[^.]+$/.exec(item.name)?.[0] ?? "" : "";
+  // Unchanged: nothing to do. A name the folder cannot take says so here, before anything is sent.
+  if (item && `${name}${extension}` === item.name) { closeRename(true); return; }
+  const problem = fileNameProblem(name);
+  const fail = (message: string): void => { setText(error, message); error.hidden = false; announce(message); input.focus({ preventScroll: true }); };
+  // The sheet closed meanwhile (its recording left the folder): the tab's own error line says it instead.
+  const failed = (message: string): void => {
+    if (renaming === current) { fail(message); return; }
+    libraryError = message; updateLibrary(); announce(message);
+  };
+  if (problem) { fail(fileNameProblemText(problem, view?.language ?? "en")); return; }
+  current.pending = true;
+  setActionDisabled(confirm, false, true);
+  try {
+    const result = await window.settings.choose(`recordingFile:${id}`, { action: "rename", name });
+    // Whether this sheet is still the one open, taken before the reply is drawn: while it is pending the drawing
+    // leaves it alone, and a sheet closed or opened for another card meanwhile keeps its own focus (review pass 1, F5).
+    const owned = renaming === current;
+    render(result.view);
+    if (owned && renaming === current && (result.applied || !libraryItem(id))) closeRename(false);
+    if (result.applied && result.renamed) {
+      announce(translate("Renamed to {name}", view?.language, { name: `${name}${extension}` }));
+      const card = document.querySelector<HTMLElement>(`#clip-${result.renamed} .clip-open`);
+      if (owned && card && document.hasFocus()) { card.focus({ preventScroll: true }); card.scrollIntoView({ block: "nearest" }); }
+      return;
+    }
+    failed(result.failure ?? text("Could not rename the recording. Try again."));
+  } catch {
+    failed(text("Could not rename the recording. Try again."));
+  } finally {
+    current.pending = false;
+    setActionDisabled(confirm, false, false);
+  }
+}
+document.addEventListener("pointerdown", event => {
+  if (renaming && !renaming.pending && !renaming.el.contains(event.target as Node)) closeRename(false);
+}, true);
+document.addEventListener("scroll", placeRename, true);
+window.addEventListener("resize", placeRename);
 /** Cards whose file action main has not answered yet: on a slow volume a second Move to Trash would find the file gone. */
 const fileActionsPending = new Set<string>();
 /**
@@ -1632,6 +1823,8 @@ async function choose(group: string, choice: string, control: string): Promise<v
         ...(result.refused ? { refused: true as const } : {}) };
       announce(failure.text);
     } else if (isCaptureControl(control) && !shortcutGroup()?.diagnostics?.length) announce(text("Shortcut saved"));
+    // A typed value changes nothing else on screen but the example under it.
+    else if (result.view.groups.find(g => g.id === group)?.control === "text") announce(text("Saved; new recordings use this name."));
     // The status card's Use Primary display is the Screen row's recovery, offered where the problem is named.
     else if (control.endsWith("-recovery") || (control === "status-action" && choice === "primary")) announce(text("Switched to Primary display"));
   } catch {

@@ -165,6 +165,14 @@ describe("formatTimestamp", () => {
   it("uses the local time with dashes only", () => {
     expect(formatTimestamp(new Date(2026, 8, 11, 14, 30, 5))).toBe("2026-09-11 14-30-05");
   });
+  it("names the session by the file name the owner chose, from the time it was requested (2026-10-05)", async () => {
+    const fileName = vi.fn((date: Date) => `Demo ${formatTimestamp(date)}`);
+    const ctx = setup({ deps: { fileName } });
+    await startRecording(ctx);
+    expect(fileName).toHaveBeenCalledWith(new Date(2026, 8, 11, 14, 30, 0));
+    expect([ctx.writers[0]!.recordingPath, ctx.writers[0]!.finalPath])
+      .toEqual([path.join("/out", "Demo 2026-09-11 14-30-00.recording.mp4"), path.join("/out", "Demo 2026-09-11 14-30-00.mp4")]);
+  });
 });
 
 describe("Recorder happy path", () => {

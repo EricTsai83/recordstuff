@@ -59,7 +59,7 @@ export function safeCaptureShortcut(pid: number, runningPids: number[], hotkey: 
  */
 export type BusyPolicy = "locked" | "available" | { lockedChoices: readonly string[] };
 export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
-  screen: "locked", outputFolder: { lockedChoices: ["change"] }, countdown: "locked", countdownSound: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
+  screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
   notifications: "locked", updateChecks: "locked", updates: "locked",
   language: "available", appearance: "available", trayClick: "available", log: "available", about: "available",
 };

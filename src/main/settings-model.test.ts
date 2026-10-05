@@ -61,6 +61,7 @@ describe("settingsView", () => {
     expect(view.groups.map((entry) => entry.id)).toEqual([
       "screen",
       "outputFolder",
+      "fileName",
       "countdown",
       "countdownSound",
       "videoQuality",
@@ -149,7 +150,7 @@ describe("tabs follow sections", () => {
     for (const group of groups) tabs.set(group.section!, (tabs.get(group.section!) ?? new Set()).add(group.tab));
     expect([...tabs.values()].every(sectionTabs => sectionTabs.size === 1)).toBe(true);
     expect(groups.filter(group => group.tab === "recording").map(group => group.section))
-      .toEqual(["source", "source", "countdown", "countdown", "video", "video", "video"]);
+      .toEqual(["source", "source", "source", "countdown", "countdown", "video", "video", "video"]);
   });
 });
 
@@ -274,7 +275,7 @@ describe("update actions in General", () => {
     expect(settingsAction(idle, ctx, "updates", "open")).toBeUndefined();
   });
   it("places quality controls in Recording", () => {
-    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "outputFolder", "countdown", "countdownSound", "videoQuality", "resolutionCap", "frameRate"]);
+    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "outputFolder", "fileName", "countdown", "countdownSound", "videoQuality", "resolutionCap", "frameRate"]);
   });
 });
 
@@ -448,7 +449,7 @@ describe("screen choice", () => {
 it("declares presentation without changing choice identities, and authorizes only fixed links", () => {
   const groups = settingsView(idle, context).groups;
   expect(groups.map(g => [g.id, g.control, g.section])).toEqual([
-    ["screen", "menu", "source"], ["outputFolder", "menu", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"],
+    ["screen", "menu", "source"], ["outputFolder", "menu", "source"], ["fileName", "text", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"],
     ["videoQuality", "segmented", "video"],
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
     ["trayClick", "menu", "controls"], ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],
@@ -857,6 +858,27 @@ describe("the Recordings tab", () => {
     expect(settingsAction(busy[2]!, ctx, "library", "list")).toEqual({ setLibraryLayout: "list" });
     expect(settingsAction(idle, ctx, "library", "shelf")).toBeUndefined();
     expect(settingsChecked(idle, { ...ctx, libraryLayout: "list" }, "library", "list")).toBe(true);
+  });
+});
+
+describe("the file name pattern (2026-10-05)", () => {
+  it("is a text row under Source and output with an example and its placeholders, locked while recording", () => {
+    const at = { ...context, now: new Date(2026, 9, 5, 14, 2, 11) };
+    expect(group(idle, at, "fileName")).toMatchObject({ label: "File name format", control: "text", section: "source", enabled: true,
+      note: "Example: 2026-10-05 14-02-11.mp4", choices: [{ id: "{date} {time}", checked: true }] });
+    expect(group(idle, at, "fileName")?.info).toContain("{date} {time} {year} {month} {day} {hour} {minute} {second}");
+    expect(group(idle, { ...at, fileNameTemplate: "Demo {year}{month}{day}-{time}" }, "fileName")?.note).toBe("Example: Demo 20261005-14-02-11.mp4");
+    expect(group(idle, { ...at, language: "zh-TW" }, "fileName")).toMatchObject({ label: "檔名格式", note: "範例：2026-10-05 14-02-11.mp4" });
+    expect(group(busy[2]!, at, "fileName")?.enabled).toBe(false);
+  });
+  it("accepts any usable pattern typed, trimmed, and refuses one that cannot name a file or would repeat", () => {
+    expect(settingsAction(idle, context, "fileName", "  Demo {date} {time} ")).toEqual({ setFileNameTemplate: "Demo {date} {time}" });
+    expect(settingsAction(idle, context, "fileName", "Demo {date}")).toBeUndefined();
+    expect(settingsAction(idle, context, "fileName", "a:b {time}")).toBeUndefined();
+    expect(settingsAction(idle, context, "fileName", "{time} {weekday}")).toBeUndefined();
+    expect(settingsAction(idle, context, "fileName", 42)).toBeUndefined();
+    expect(settingsAction(busy[2]!, context, "fileName", "Demo {time}")).toBeUndefined();
+    expect(settingsChecked(idle, { ...context, fileNameTemplate: "Demo {time}" }, "fileName", " Demo {time}")).toBe(true);
   });
 });
 
