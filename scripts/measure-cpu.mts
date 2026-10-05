@@ -40,7 +40,7 @@ import { fileURLToPath } from "node:url";
 import { command, confirmedIdle, recordingOutcome, settleRecording, waitForLog } from "./lib/acceptance-runtime.mts";
 import { acceleratorToKeystroke, createMaterialProfile, currentRunId, keystrokeScript, lastStartIndex, materialOpenArgs, registeredAccelerator, removeMaterialProfile } from "./lib/acceptance.mts";
 import {
-  CpuSampler, ENCODER_SERVICE, IDLE_ROLES, SamplerBlockedError, SamplerInterruptedError, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgeRecording, judgeRoles, judgeSettingsOpen,
+  CpuSampler, ENCODER_SERVICE, IDLE_ROLES, SamplerBlockedError, SamplerInterruptedError, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgeRecording, judgeRoles, judgeSettingsOpen,
   judgeSteadyState, machineModel, readRoles, roleText, summarize, type RoleCounts, type Summary, type Verdict,
 } from "./lib/cpu-sampler.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
@@ -196,7 +196,13 @@ interface Recording { fps: 30 | 60; file?: string; summary: Summary; roles: Role
 async function main(): Promise<number> {
   if (process.platform !== "darwin") fail("macOS only");
   if (!fs.existsSync(EXECUTABLE)) fail(`no bundle at ${BUNDLE}: build it with \`pnpm start:app\`, then quit it`);
-  if (running() !== undefined || developmentRunning()) fail("RecordStuff or this project's Electron.app is running: quit it first; this runner launches the bundle itself and must own its process tree");
+  // A missing prerequisite, as the other runners say it (blocked, 2), not a failed round.
+  if (running() !== undefined || developmentRunning()) {
+    console.error("BLOCKED: RecordStuff or this project's Electron.app is running: quit it first; this runner launches the bundle itself and must own its process tree");
+    return 2;
+  }
+  // Read after the recording scenarios: a malformed hand-edited file must stop the round before it records.
+  try { checkBaselines(); } catch (cause) { fail(cause instanceof Error ? cause.message : String(cause)); }
   const stamp = now().replace(/[:.]/g, "-");
   const dir = outDir ?? path.join(REPO_ROOT, "docs/verification/measurements", `${stamp}-cpu`);
   if (fs.existsSync(dir) && fs.readdirSync(dir).length) fail("output directory is not empty");

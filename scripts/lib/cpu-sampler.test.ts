@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  CPU_BUDGET, CpuSampler, IDLE_ROLES, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgeRecording, judgeRoles, judgeSettingsOpen, judgeSteadyState, parseSample,
+  BASELINES_PATH, CPU_BUDGET, CpuSampler, IDLE_ROLES, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgeRecording, judgeRoles, judgeSettingsOpen, judgeSteadyState, parseSample,
   processRole, rolesFromPs, summarize, type Sample, type Summary,
 } from "./cpu-sampler.mts";
 
@@ -116,6 +116,16 @@ describe("CPU budget verdicts (plan 049)", () => {
     expect(cpuBaseline("zero", "MacBookPro18,1", file)).toBeUndefined();
     fs.writeFileSync(file, "{");
     expect(() => cpuBaseline("measure:cpu recording 30", "MacBookPro18,1", file)).toThrow();
+  });
+
+  it("checks the whole hand-edited file at once, so a runner refuses it before recording", () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cpu-baselines-")), "cpu-baselines.json");
+    expect(checkBaselines(file)).toEqual({});
+    expect(() => checkBaselines(BASELINES_PATH)).not.toThrow();
+    for (const bad of ["{", "[]", JSON.stringify({ "Mac14,2": { recorded: "x", source: "y" } }), JSON.stringify({ "Mac14,2": { percent: { a: "15" } } })]) {
+      fs.writeFileSync(file, bad);
+      expect(() => checkBaselines(file), bad).toThrow(/cpu-baselines\.json/);
+    }
   });
 });
 

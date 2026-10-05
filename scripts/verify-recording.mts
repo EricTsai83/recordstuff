@@ -21,7 +21,7 @@
 import fs from "node:fs";
 import { APP_LOG_PATH } from "./lib/runner-env.mts";
 import path from "node:path";
-import { ToolMissingError } from "./lib/media-tools.mts";
+import { ToolMissingError, requireMediaTimeout } from "./lib/media-tools.mts";
 import {
   appendMeasurements,
   measurementsPath,
@@ -73,6 +73,9 @@ for (let i = 0; i < argv.length; i += 1) {
 }
 if (files.length === 0) usage();
 options.required = { energy: true, sync: options.sync === true };
+
+// Usage, like a bad option: exit 2 before any file is measured, not every file failing on it.
+requireMediaTimeout();
 
 let pairs;
 try {

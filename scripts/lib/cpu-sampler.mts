@@ -359,11 +359,28 @@ export function machineModel(): string {
   return spawnSync("sysctl", ["-n", "hw.model"], { encoding: "utf8" }).stdout?.trim() || "unknown";
 }
 
+/**
+ * The whole baselines file, checked: an object of models, each with a `percent` object of numbers. The file is
+ * edited by hand, so a runner calls this in its preflight, before it records, and a malformed one stops the round
+ * there with the reason instead of throwing after the cases have recorded and losing their evidence.
+ */
+export function checkBaselines(file = BASELINES_PATH): Record<string, MachineBaselines> {
+  if (!fs.existsSync(file)) return {};
+  let all: unknown;
+  try { all = JSON.parse(fs.readFileSync(file, "utf8")); }
+  catch (cause) { throw new Error(`${file} is not valid JSON: ${String(cause)}`); }
+  const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+  if (!isObject(all)) throw new Error(`${file} must be an object of machine models`);
+  for (const [model, entry] of Object.entries(all)) {
+    if (!isObject(entry) || !isObject(entry["percent"]) || Object.values(entry["percent"]).some(value => typeof value !== "number"))
+      throw new Error(`${file}: ${model} needs a "percent" object of numbers`);
+  }
+  return all as Record<string, MachineBaselines>;
+}
+
 /** This machine's baseline for `key`, when one was recorded; a malformed file is an error, not "no baseline". */
 export function cpuBaseline(key: string, model = machineModel(), file = BASELINES_PATH): number | undefined {
-  if (!fs.existsSync(file)) return undefined;
-  const all = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, MachineBaselines | undefined>;
-  const value = all[model]?.percent[key];
+  const value = checkBaselines(file)[model]?.percent[key];
   return typeof value === "number" && value > 0 ? value : undefined;
 }
 

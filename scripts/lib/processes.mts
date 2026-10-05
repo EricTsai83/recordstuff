@@ -43,9 +43,14 @@ export function electronPattern(appPath: string, part: "bundle" | "main"): strin
 type Pgrep = (args: string[]) => SpawnSyncReturns<string>;
 const runPgrep: Pgrep = (args) => spawnSync("pgrep", args, { encoding: "utf8" });
 
-/** `pgrep`'s output lines; throws on a spawn error or any status but 0 and 1 (1 means none). */
+/**
+ * `pgrep`'s output lines; throws on a spawn error or any status but 0 and 1 (1 means none). macOS `pgrep` can report
+ * an internal error (status 3) while the process table changes under it, as a bundle launches: it is asked twice more
+ * before that counts, so a runner's preflight does not crash on a moment's race.
+ */
 function pgrepLines(args: string[], run: Pgrep): string[] {
-  const result = run(args);
+  let result = run(args);
+  for (let attempt = 1; attempt < 3 && !result.error && result.status !== 0 && result.status !== 1; attempt += 1) result = run(args);
   if (result.error) throw new Error(`pgrep could not run: ${result.error.message}`, { cause: result.error });
   if (result.status !== 0 && result.status !== 1) throw new Error(`pgrep failed (${result.status ?? result.signal}): ${result.stderr.trim()}`);
   return result.stdout.split("\n").map((line) => line.trim()).filter(Boolean);

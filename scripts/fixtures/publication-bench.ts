@@ -34,7 +34,9 @@ async function main(): Promise<void> {
         const wrote = performance.now();
         const saved = await writer.finish();
         console.log(JSON.stringify({ round, bytes, writeMs: wrote - began, finishMs: performance.now() - wrote, ...writer.finishTimings }));
-        if (!config.keep) fs.rmSync(saved, { force: true });
+        // A save that kept its temporary name too (`cleanupError`) leaves a second name or a full copy: both go,
+        // or every round would leave one size's worth of disk behind.
+        if (!config.keep) for (const file of [saved, `${stem}.recording.mp4`]) fs.rmSync(file, { force: true });
       } catch (cause) {
         console.log(JSON.stringify({ round, bytes, error: cause instanceof Error ? cause.message : String(cause) }));
         const kept = await writer.abandon();

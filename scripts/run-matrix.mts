@@ -37,7 +37,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance.mts";
-import { CPU_BUDGET, CpuSampler, MIN_COVERAGE, SamplerBlockedError, compileSampler, cpuBaseline, intervals, summarize } from "./lib/cpu-sampler.mts";
+import { CPU_BUDGET, CpuSampler, MIN_COVERAGE, SamplerBlockedError, SamplerInterruptedError, checkBaselines, compileSampler, cpuBaseline, intervals, summarize } from "./lib/cpu-sampler.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
 import { LAUNCHER_EXIT_MS, QUIT_GRACE_MS, stopDevApp, type AppStop } from "./lib/dev-app.mts";
 import { LogGapError, LogReader, type LogCursor } from "./lib/log-reader.mts";
@@ -58,8 +58,8 @@ import {
   type MatrixEntry,
   type MatrixRun,
 } from "./lib/matrix.mts";
-import { electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, recordStuffPids, signalPids, startBuild, stopGroup } from "./lib/processes.mts";
-import { ToolMissingError, hasTool, timeTools, type ToolTiming } from "./lib/media-tools.mts";
+import { INTERRUPT_EXIT, electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, recordStuffPids, signalPids, startBuild, stopGroup } from "./lib/processes.mts";
+import { ToolMissingError, hasTool, requireMediaTimeout, timeTools, type ToolTiming } from "./lib/media-tools.mts";
 import { REPO_ROOT, appendMeasurements, measurementsPath, verifyRecording, type VerifyResult } from "./lib/verify-recording.mts";
 import { pairRecordingsWithLog } from "./lib/verify.mts";
 import { BLOCKED_EXIT, blocksSuccess, formatText, parseAutorecordOutcome, verdictExitCode, type CpuFigures } from "./lib/verify.mts";
@@ -344,26 +344,39 @@ async function main(): Promise<void> {
     for (const [index, planned] of cases.entries()) console.log(`  ${index + 1}. ${planned.title}: ${JSON.stringify(planned.entry.quality)}`);
     return;
   }
+  requireMediaTimeout();
   const missingTools = ["ffprobe", "ffmpeg"].filter((tool) => !hasTool(tool));
   if (missingTools.length > 0) {
     console.error(`BLOCKED: ${missingTools.join(" and ")} missing (brew install ffmpeg); every case requires channel energy and sync evidence. No case was recorded.`);
     process.exit(BLOCKED_EXIT);
   }
+  // Read after every case, so a hand-edited file that is malformed stops the round here, before anything records.
+  try { checkBaselines(); }
+  catch (cause) { console.error(`${String(cause instanceof Error ? cause.message : cause)}. No case was recorded.`); process.exit(1); }
   // An installed RecordStuff shares the development app's userData lock, so each case's launch would exit at once.
   if (electronPids().length > 0 || recordStuffPids().length > 0) {
-    console.error("RecordStuff or this project's Electron.app is running; quit it first (the single-instance lock would ignore automatic recording settings)");
-    process.exit(1);
+    // A missing prerequisite, as the other runners say it (blocked, 2), not a failed round.
+    console.error("BLOCKED: RecordStuff or this project's Electron.app is running; quit it first (the single-instance lock would ignore automatic recording settings). No case was recorded.");
+    process.exit(BLOCKED_EXIT);
   }
+  // Before the sampler's folder exists: Node's default handling of a signal would end the process without the
+  // `exit` event, and with it the folder's removal (cleanupSampler).
+  process.on("SIGINT", () => interrupt("SIGINT"));
+  process.on("SIGTERM", () => interrupt("SIGTERM"));
   try {
     samplerDir = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-matrix-cpu-"));
     samplerBinary = compileSampler(samplerDir);
   } catch (cause) {
+    if (cause instanceof SamplerInterruptedError) {
+      // Nothing was launched yet: the folder goes, and the exit is 130/143 like an interrupt during the round.
+      cleanupSampler();
+      console.error(`INTERRUPTED: ${cause.message}; no case was recorded`);
+      process.exit(INTERRUPT_EXIT[cause.signal]);
+    }
     if (!(cause instanceof SamplerBlockedError)) throw cause;
     console.error(`BLOCKED: ${cause.message}; every case requires its CPU figure. No case was recorded.`);
     process.exit(BLOCKED_EXIT);
   }
-  process.on("SIGINT", () => interrupt("SIGINT"));
-  process.on("SIGTERM", () => interrupt("SIGTERM"));
 
   // Every case records the primary display; a slept or locked display would be recorded instead.
   const desktop = await beginDesktopRound().catch((cause: unknown) => {
@@ -498,12 +511,14 @@ async function main(): Promise<void> {
     fs.appendFileSync(target, `\n## ${new Date().toISOString()} — ${runLabel} cases that did not pass\n\n${unsuccessful.map((line) => `- ${line}`).join("\n")}\n`, "utf8");
     for (const line of unsuccessful) console.error(`✗ ${line}`);
   }
+  // Leftovers fail the round even when the screen locked, so the next round never starts over them (round-exit.mts).
+  if (left.length > 0) process.exit(1);
   if (desktop.lockedAt) {
     fs.appendFileSync(target, `\n## ${new Date().toISOString()} — ${runLabel} blocked\n\n${desktop.summary}\n`, "utf8");
     console.error(desktop.summary);
     process.exit(DESKTOP_BLOCKED_EXIT);
   }
-  process.exit(left.length > 0 ? 1 : verdictExitCode(judged.map(runVerdict)));
+  process.exit(verdictExitCode(judged.map(runVerdict)));
 }
 
 /** The case verdict and each check that kept it from passing, with its reason. */

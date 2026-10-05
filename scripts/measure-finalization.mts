@@ -35,7 +35,7 @@ import { distribution, finalizationSample, formatDistribution, type Finalization
 import { LogGapError, LogReader, type LogCursor } from "./lib/log-reader.mts";
 import { electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, recordStuffPids, signalPids, startBuild, stopGroup } from "./lib/processes.mts";
 import { freeBytes, volumeOf } from "./lib/volume.mts";
-import { hasTool, probe, probeEdges } from "./lib/media-tools.mts";
+import { hasTool, probe, probeEdges, requireMediaTimeout } from "./lib/media-tools.mts";
 import { REPO_ROOT } from "./lib/verify-recording.mts";
 import { parseAutorecordOutcome } from "./lib/verify.mts";
 
@@ -241,6 +241,13 @@ async function recordTake(options: Options, index: number): Promise<Take> {
   if (!options.keep) {
     try { fs.unlinkSync(outcome.saved); take.deleted = true; } catch { /* reported as kept */ }
   }
+  // A save that could not remove its temporary name (the writer's `cleanupError`) leaves it beside the file, a full
+  // copy after a copy publication: it goes with the take, or long takes would pile up on the volume.
+  const leftovers = partialsSince(options.dir, owned.launchedAt);
+  if (leftovers.length) {
+    if (!options.keep) for (const file of leftovers) fs.rmSync(file, { force: true });
+    take.partials = { files: leftovers, removed: !options.keep };
+  }
   return take;
 }
 
@@ -295,9 +302,10 @@ function summary(options: Options, volume: { mount: string; type: string }, take
 async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--")));
   if (process.platform !== "darwin") { console.error("measure:finalization requires macOS"); process.exit(2); }
+  requireMediaTimeout();
   if (!hasTool("ffprobe")) { console.error("BLOCKED: ffprobe is required to verify each take"); process.exit(2); }
   if (electronPids().length > 0 || recordStuffPids().length > 0) {
-    console.error("RecordStuff or this project's Electron.app is running; quit it first so only this round records");
+    console.error("BLOCKED: RecordStuff or this project's Electron.app is running; quit it first so only this round records");
     process.exit(2);
   }
   fs.mkdirSync(options.dir, { recursive: true });
@@ -347,7 +355,8 @@ async function main(): Promise<void> {
   fs.writeFileSync(path.join(report, "summary.md"), text);
   fs.writeFileSync(path.join(report, "summary.json"), JSON.stringify({ options, volume, desktop: desktop.summary, takes }, null, 2));
   console.log(`\n${text}\nSummary: ${path.join(report, "summary.md")}`);
-  if (desktop.lockedAt) process.exit(DESKTOP_BLOCKED_EXIT);
+  // Leftovers fail the round even when the screen locked, so the next round never starts over them (round-exit.mts).
+  if (desktop.lockedAt && left.length === 0) process.exit(DESKTOP_BLOCKED_EXIT);
   process.exit(takes.every((take) => take.outcome === "saved" && take.verified && !take.timedOut) && left.length === 0 ? 0 : 1);
 }
 

@@ -67,6 +67,16 @@ describe("pgrep", () => {
     expect(() => pgrepProcesses("x", () => reply(3))).toThrow(/pgrep failed \(3\)/);
   });
 
+  it("asks again after a passing internal error, as macOS pgrep reports while the process table changes, but not forever", () => {
+    const answers = [reply(3), reply(0, "42\n")];
+    const flaky = vi.fn(() => answers.shift()!);
+    expect(pgrepPids("x", flaky)).toEqual([42]);
+    expect(flaky).toHaveBeenCalledTimes(2);
+    const broken = vi.fn(() => reply(3));
+    expect(() => pgrepPids("x", broken)).toThrow(/pgrep failed \(3\)/);
+    expect(broken).toHaveBeenCalledTimes(3);
+  });
+
   it.runIf(process.platform === "darwin")("finds a real process under such a path with the system pgrep", async () => {
     const executable = `${ELECTRON}/Contents/MacOS/Electron`;
     // exec -a sets the command line pgrep -f reads, without creating the path; $0 keeps it unexpanded.

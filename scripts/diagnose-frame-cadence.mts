@@ -31,8 +31,9 @@ import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "
 import { buildFixture } from "./lib/build-fixture.mts";
 import { LAUNCHER_EXIT_MS, QUIT_GRACE_MS, stopDevApp } from "./lib/dev-app.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
+import { CpuSampler, MIN_COVERAGE, SamplerBlockedError, SamplerInterruptedError, compileSampler, intervals, summarize } from "./lib/cpu-sampler.mts";
 import { cadenceStats, classifyCadence, counterDelta, type CadenceLayer, type CadenceStats, type CounterDelta } from "./lib/frame-cadence.mts";
-import { frameTimes, hasTool, probe } from "./lib/media-tools.mts";
+import { frameTimes, hasTool, probe, requireMediaTimeout } from "./lib/media-tools.mts";
 import { electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, recordStuffPids, signalPids, startBuild, stopGroup } from "./lib/processes.mts";
 import { MEASUREMENTS_DIR, REPO_ROOT } from "./lib/verify-recording.mts";
 import { FRAME_RATES, type FrameRate, type QualitySettings } from "../src/shared/quality.ts";
@@ -114,11 +115,14 @@ function requestFor(options: Options, setting: FrameRate): Request | null {
 /** Every process inside this checkout's Electron.app bundle (main + helpers), not the `open` launcher. */
 const electronPids = (): number[] => pgrepPids(electronPattern(ELECTRON_APP_REAL, "bundle"));
 
-function cpuPercent(pids: number[]): number {
-  if (pids.length === 0) return 0;
-  const result = spawnSync("ps", ["-o", "%cpu=", "-p", pids.join(",")], { encoding: "utf8" });
-  return result.stdout.split("\n").map((line) => Number(line.trim())).filter((n) => Number.isFinite(n)).reduce((a, b) => a + b, 0);
-}
+/** The fixture's Electron main process, the root of the tree the CPU sampler follows. */
+const electronMainPid = (): number | undefined => pgrepPids(electronPattern(ELECTRON_APP_REAL, "main"))[0];
+/**
+ * The shared sampler (cpu-sampler.mts), as `matrix` and `measure:cpu` measure: usage per second of the fixture's
+ * process tree. `ps %cpu`, used before, is a decaying average over up to a minute on macOS, so its figure could not be
+ * compared with theirs. Compiled once per round, into its evidence directory.
+ */
+let samplerBinary = "";
 
 function environment(): Record<string, string | undefined> {
   const displays = spawnSync("system_profiler", ["SPDisplaysDataType"], { encoding: "utf8" }).stdout ?? "";
@@ -144,7 +148,7 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  * make it a child), the material browser with the private profile created for
  * it, which cleanup removes, and the display assertion.
  */
-const owned: { busy: Set<ChildProcess>; build?: ChildProcess; fixture?: string; material?: ChildProcess; materialProfile?: string; desktop?: DesktopRound } = { busy: new Set() };
+const owned: { busy: Set<ChildProcess>; build?: ChildProcess; fixture?: string; material?: ChildProcess; materialProfile?: string; desktop?: DesktopRound; sampler?: CpuSampler } = { busy: new Set() };
 const materialPids = (): number[] => owned.materialProfile ? pgrepPids(escapeRegExp(owned.materialProfile)) : [];
 
 function stopBusy(): void {
@@ -178,6 +182,7 @@ function cleanup(): Promise<string[]> {
   return cleaning;
 }
 async function cleanupOnce(): Promise<string[]> {
+  await owned.sampler?.stop();
   await stopGroup(owned.build?.pid);
   stopBusy();
   stopFixture();
@@ -220,6 +225,8 @@ process.on("SIGTERM", () => interrupt("SIGTERM"));
 
 interface FixtureResult {
   outcome: string;
+  /** The host's messages as the fixture received them, `at` an ISO time. */
+  messages?: { at: string; type: string; detail?: unknown }[];
   bytes: number;
   capture?: { frameRate?: number; width?: number; height?: number; videoBitsPerSecond: number; warnings: string[] };
   versions?: Record<string, string>;
@@ -311,13 +318,13 @@ async function recordOnce(run: RunReport, fixture: string, config: object, secon
   const child = spawn("open", ["-W", "-n", "-a", ELECTRON_APP, "--args", fixture, run.dir], { env, stdio: "ignore" });
   let exited = false;
   const launcherExited = new Promise<void>((resolve) => child.on("exit", () => { exited = true; resolve(); }));
-  const samples: number[] = [];
+  let sampler: CpuSampler | undefined;
   const deadline = (seconds + 60) * 1000;
   try {
     while (!exited) {
       await sleep(1000);
-      const pids = electronPids();
-      if (pids.length > 0) samples.push(cpuPercent(pids));
+      const main = sampler ? undefined : electronMainPid();
+      if (main !== undefined) owned.sampler = sampler = new CpuSampler(samplerBinary, main);
       if (Date.now() - started > deadline) {
         // As matrix and finalization stop a take (dev-app.mts): SIGTERM, a grace, then SIGKILL. A stuck fixture left
         // running would add its CPU to every later run's average without an error to show for it.
@@ -332,13 +339,9 @@ async function recordOnce(run: RunReport, fixture: string, config: object, secon
     }
   } finally {
     stopBusy();
+    await sampler?.stop();
+    delete owned.sampler;
   }
-  const recording = samples.slice(3);
-  const source = recording.length > 0 ? recording : samples;
-  run.cpu = {
-    averagePercent: source.length > 0 ? source.reduce((a, b) => a + b, 0) / source.length : 0,
-    peakPercent: source.length > 0 ? Math.max(...source) : 0,
-  };
   const resultPath = path.join(run.dir, "result.json");
   if (!fs.existsSync(resultPath)) {
     run.error ??= "fixture wrote no result.json (see fixture.log)";
@@ -353,6 +356,25 @@ async function recordOnce(run: RunReport, fixture: string, config: object, secon
     return;
   }
   analyse(run, result, path.join(run.dir, "recording.mp4"));
+  // Judged over the recording itself, from the host's started to its stopped: not the launch, the save or the quit.
+  const at = (type: string): number | undefined => {
+    const message = result.messages?.find((entry) => entry.type === type);
+    return message ? Date.parse(message.at) : undefined;
+  };
+  const from = at("started"), to = at("stopped");
+  // As matrix accepts a case's CPU: only over a recording with both ends, nearly all of it sampled, by a sampler that
+  // ran to the end. A run that never reported stopped would otherwise average in its stop timeout.
+  const bounded = from !== undefined && to !== undefined && Number.isFinite(from) && Number.isFinite(to) && to > from;
+  const summary = sampler && bounded ? summarize(intervals(sampler.samples), from, to) : undefined;
+  const windowSeconds = bounded ? (to - from) / 1000 : 0;
+  const cpuProblem = !sampler ? "the sampler never found the fixture's main process"
+    : sampler.failure ? sampler.failure
+      : !bounded ? "the recording's start or stop was not reported"
+        : !summary?.judged ? "no one-second interval fell inside the recording"
+          : summary.seconds < windowSeconds * MIN_COVERAGE
+            ? `only ${summary.seconds.toFixed(0)} s of the ${windowSeconds.toFixed(0)} s recording was sampled` : undefined;
+  if (summary && !cpuProblem) run.cpu = { averagePercent: summary.cpuPercent.average, peakPercent: summary.cpuPercent.max };
+  else run.error = run.error ? `${run.error}; CPU not measured: ${cpuProblem}` : `CPU not measured: ${cpuProblem}`;
 }
 
 const f = (value: number | undefined, digits = 2): string => (value === undefined ? "—" : value.toFixed(digits));
@@ -385,10 +407,12 @@ function markdown(runs: RunReport[], env: Record<string, string | undefined>, op
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--")));
   if (process.platform !== "darwin") usage("the cadence diagnostic requires macOS");
+  requireMediaTimeout();
   if (!hasTool("ffprobe")) { console.error("BLOCKED: ffprobe missing (brew install ffmpeg). Nothing was recorded."); process.exit(2); }
   if (electronPids().length > 0 || recordStuffPids().length > 0) {
-    console.error("RecordStuff or this project's Electron.app is running; quit it first so only the diagnostic captures");
-    process.exit(1);
+    // A missing prerequisite, as the other runners say it (blocked, 2), not a failed round.
+    console.error("BLOCKED: RecordStuff or this project's Electron.app is running; quit it first so only the diagnostic captures. Nothing was recorded.");
+    process.exit(2);
   }
   const desktop = await beginDesktopRound().catch((cause: unknown) => {
     if (cause instanceof DesktopBlockedError) { console.error(`BLOCKED: ${cause.message} Nothing was recorded.`); process.exit(DESKTOP_BLOCKED_EXIT); }
@@ -397,6 +421,15 @@ async function main(): Promise<void> {
   owned.desktop = desktop;
   const dir = path.join(MEASUREMENTS_DIR, `${new Date().toISOString().replace(/[:.]/g, "-")}-frame-cadence`);
   fs.mkdirSync(dir, { recursive: true });
+  try { samplerBinary = compileSampler(path.join(dir, "cpu-sampler")); }
+  catch (cause) {
+    // The handler owns an interrupt's cleanup and exit (130/143); missing Command Line Tools block the round.
+    if (cause instanceof SamplerInterruptedError) await halt();
+    if (!(cause instanceof SamplerBlockedError)) throw cause;
+    desktop.end();
+    console.error(`BLOCKED: ${cause.message}; every run reports its CPU. Nothing was recorded.`);
+    process.exit(2);
+  }
   console.log(`Frame-cadence diagnostic: rates ${options.rates.join(", ")}; ${options.runs} run(s) each; ${options.seconds} s; load ${options.load}; evidence ${dir}`);
   if (interrupted) await halt();
   console.log("electron-vite build …");
@@ -451,7 +484,8 @@ async function main(): Promise<void> {
   fs.writeFileSync(path.join(dir, "summary.json"), JSON.stringify({ options, environment: env, desktop: desktop.summary, runs }, null, 2));
   fs.writeFileSync(path.join(dir, "summary.md"), markdown(runs, env, options, desktop.summary));
   console.log(`\nSummary: ${path.join(dir, "summary.md")}`);
-  if (desktop.lockedAt) process.exit(DESKTOP_BLOCKED_EXIT);
+  // Leftovers fail the round even when the screen locked, so the next round never starts over them (round-exit.mts).
+  if (desktop.lockedAt && left.length === 0) process.exit(DESKTOP_BLOCKED_EXIT);
   const complete = runs.every((run) => run.outcome === "stopped" && !run.error && run.delivered && run.file && run.layer !== "undetermined");
   process.exit(complete && left.length === 0 ? 0 : 1);
 }

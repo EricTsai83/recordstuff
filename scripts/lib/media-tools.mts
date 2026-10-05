@@ -64,6 +64,17 @@ export function mediaTimeout(): number {
   return timeout;
 }
 
+/**
+ * A runner's preflight, before it launches or records anything: a malformed `RECORDSTUFF_MEDIA_TIMEOUT_MS` is a usage
+ * error (exit 2) said in one line, not a stack trace from the first tool run or a file reported as failed.
+ */
+export function requireMediaTimeout(): void {
+  try { mediaTimeout(); } catch (cause) {
+    console.error(`${cause instanceof Error ? cause.message : String(cause)}; nothing was run.`);
+    process.exit(2);
+  }
+}
+
 function run(tool: string, args: string[], label?: string): RunResult {
   const timeout = mediaTimeout();
   const started = performance.now();
@@ -192,14 +203,16 @@ export function channelRms(file: string, channels: number | undefined): number[]
  * Sync markers of the test material page: the top-right box is black except
  * for a 100 ms white flash each second, and a short beep plays on the same
  * clock. `blackdetect` on that crop gives the flash starts (black_end),
- * `silencedetect` gives the beep starts (silence_end). The crop is expressed
- * in fractions of the frame height so it lands inside the box at any
- * landscape resolution.
+ * `silencedetect` gives the beep starts (silence_end). The page sizes the box
+ * in `vmin`, so the crop is expressed in fractions of the frame's shorter side:
+ * it lands inside the box at any resolution, a portrait display's included
+ * (sized by the height, it missed the box there and found no flash).
  */
+export const SYNC_MARKER_CROP = "crop=min(iw\\,ih)*0.08:min(iw\\,ih)*0.08:iw-min(iw\\,ih)*0.115:min(iw\\,ih)*0.035";
 export function syncMarkers(file: string, durationSeconds: number | undefined): { flashes: number[]; beeps: number[] } {
   const video = completed("ffmpeg blackdetect", run("ffmpeg", [
     "-hide_banner", "-nostats", "-an", "-i", file,
-    "-vf", "crop=ih*0.08:ih*0.08:iw-ih*0.115:ih*0.035,blackdetect=d=0.4:pix_th=0.10:pic_th=0.90",
+    "-vf", `${SYNC_MARKER_CROP},blackdetect=d=0.4:pix_th=0.10:pic_th=0.90`,
     "-f", "null", "-",
   ], "ffmpeg blackdetect"));
   const audio = completed("ffmpeg silencedetect", run("ffmpeg", [
