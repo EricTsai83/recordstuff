@@ -136,11 +136,11 @@ function bundlePid(): number | undefined {
 }
 
 /** Waits until this pid's session has started and settled idle, as `pnpm acceptance` does. */
-async function waitSession(expected: number): Promise<void> {
+async function waitSession(expected: number, wait: (ms: number) => Promise<void> = sleep): Promise<void> {
   const deadline = Date.now() + 30_000;
   while (!confirmedIdleFor(lines(), String(expected))) {
     if (Date.now() > deadline) refuse(`RecordStuff pid ${expected} did not log a settled idle session within 30 s (permission, another state or the log of another process)`);
-    await sleep(250);
+    await wait(250);
   }
 }
 
@@ -152,15 +152,21 @@ async function waitGone(what: string, timeoutMs = 30_000): Promise<void> {
   }
 }
 
+/**
+ * Its own bounded signal, not the interrupt, as the hotkey runner's relaunch: a launch already issued settles to
+ * idle, so cleanup can quit it and set the stored value back. Aborted halfway, the app would be left running and unchanged.
+ */
 async function launch(): Promise<void> {
-  await command("open", ["-a", bundle], signal, 15_000);
+  const bounded = AbortSignal.timeout(60_000);
+  const wait = (ms: number): Promise<void> => delay(ms, undefined, { signal: bounded });
+  await command("open", ["-a", bundle], bounded, 15_000);
   const deadline = Date.now() + 30_000;
   let next: number | undefined;
   while ((next = bundlePid()) === undefined) {
     if (Date.now() > deadline) refuse("the relaunched app did not start within 30 s");
-    await sleep(200);
+    await wait(200);
   }
-  await waitSession(next);
+  await waitSession(next, wait);
   pid = next;
   driver = new TrayDriver(ax, next, signal, undefined, bundleId);
 }
@@ -847,7 +853,11 @@ try {
   // Only an app the round took over is its to quit: one left as it was found (a lock at the start, no Accessibility
   // access) makes the round blocked, not a cleanup failure.
   if (owned) {
-    const remaining = (() => { try { return pgrepPids(`^${escapeRegExp(bundle)}/Contents/`); } catch (error) { return [String(error)]; } })();
+    const bundleProcesses = (): Array<number | string> => { try { return pgrepPids(`^${escapeRegExp(bundle)}/Contents/`); } catch (error) { return [String(error)]; } };
+    // Its Chromium helpers can outlive the main process the quit waited for by a moment, as the notification and
+    // hotkey runners wait for: only what is still there after that is left running.
+    let remaining = bundleProcesses();
+    for (const deadline = Date.now() + 5000; remaining.length && Date.now() < deadline; remaining = bundleProcesses()) await delay(200);
     if (remaining.length) cleanup.push(`processes of ${bundle} still running: ${remaining.join(", ")}`);
   }
   desktop?.end();

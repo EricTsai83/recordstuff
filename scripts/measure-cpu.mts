@@ -248,12 +248,15 @@ async function main(): Promise<number> {
     if (!launcher) return undefined;
     // `open` returns once Launch Services started Chrome; before that pkill could find nothing.
     if (launcher.exitCode === null && launcher.signalCode === null) await Promise.race([new Promise((resolve) => launcher.once("exit", resolve)), delay(10_000)]);
-    for (let attempt = 0; attempt < 40; attempt += 1) {
+    for (let attempt = 0; attempt < 40 && materialPids().length > 0; attempt += 1) {
       signalPids(materialPids(), "SIGTERM");
       await delay(250);
-      if (materialPids().length === 0) { material = undefined; return undefined; }
     }
-    return `the material browser (private profile ${profile}) is still running`;
+    if (materialPids().length > 0) return `the material browser (private profile ${profile}) is still running`;
+    // A launch that never settled may still start Chrome and recreate the profile (run-matrix.mts): not closed yet.
+    if (launcher.exitCode === null && launcher.signalCode === null) return "the material launch (`open`), which may still start Chrome";
+    material = undefined;
+    return undefined;
   };
   const closeMaterialOrFail = async (): Promise<void> => {
     const problem = await closeMaterial();
