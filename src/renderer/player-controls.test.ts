@@ -107,21 +107,47 @@ it("seeks by five seconds with the arrows within the video, on the seek bar too,
   expect(fullScreen).toHaveBeenCalledOnce();
 });
 
-it("moves the seek bar's other keys by fixed steps, not by a share of the length: Up and Down 5 s, Page Up and Down 10 s, Home and End to the ends", () => {
+it("moves the seek bar's other keys by fixed steps, not by a share of the length: Page Up and Down 10 s, Home and End to the ends", () => {
   const { video, root, set } = setup();
   set({ duration: 3600 });
   const seek = root.querySelector<HTMLInputElement>(".pc-seek")!;
-  const steps = ["ArrowUp", "ArrowUp", "PageUp", "ArrowDown", "PageDown", "End", "PageUp", "Home", "PageDown"].map(name => {
+  const steps = ["PageUp", "PageUp", "PageDown", "End", "PageUp", "Home", "PageDown"].map(name => {
     const event = key(seek, name);
     return [name, video.currentTime, event.defaultPrevented];
   });
   expect(steps).toEqual([
-    ["ArrowUp", 5, true], ["ArrowUp", 10, true], ["PageUp", 20, true], ["ArrowDown", 15, true], ["PageDown", 5, true],
+    ["PageUp", 10, true], ["PageUp", 20, true], ["PageDown", 10, true],
     ["End", 3600, true], ["PageUp", 3600, true], ["Home", 0, true], ["PageDown", 0, true],
   ]);
   // Elsewhere in the player these keys are not the player's.
   expect(key(video, "PageDown").defaultPrevented).toBe(false);
   expect(key(root.querySelector(".pc-level")!, "ArrowUp").defaultPrevented).toBe(false);
+});
+
+it("turns the volume up and down a step with ↑ and ↓ wherever focus is in the player, the seek bar included (2026-10-06)", () => {
+  const { video, root, set } = setup();
+  set({ duration: 60 });
+  video.volume = 0.5; video.muted = false;
+  const seek = root.querySelector<HTMLInputElement>(".pc-seek")!;
+  expect(key(video, "ArrowUp").defaultPrevented).toBe(true);
+  expect([video.volume, video.muted, video.currentTime]).toEqual([0.55, false, 0]);
+  key(seek, "ArrowDown"); key(seek, "ArrowDown");
+  expect([video.volume, video.currentTime]).toEqual([0.45, 0]);
+  // Kept between nothing and full: ↓ to nothing mutes, as the slider does, and ↑ brings the sound back a step.
+  video.volume = 0.98; key(video, "ArrowUp");
+  expect(video.volume).toBe(1);
+  video.volume = 0.04; key(video, "ArrowDown");
+  expect([video.volume, video.muted]).toEqual([0, true]);
+  key(video, "ArrowUp");
+  expect([video.volume, video.muted]).toEqual([0.05, false]);
+  // Muted counts as silent: ↑ unmutes at one step rather than jumping back to the old level.
+  video.volume = 0.8; video.muted = true; key(video, "ArrowUp");
+  expect([video.volume, video.muted]).toEqual([0.05, false]);
+  // The volume slider keeps its own arrows; a modifier makes it someone else's shortcut.
+  video.volume = 0.5;
+  expect(key(root.querySelector(".pc-level")!, "ArrowUp").defaultPrevented).toBe(false);
+  key(video, "ArrowUp", { metaKey: true });
+  expect(video.volume).toBe(0.5);
 });
 
 it("moves to where the seek bar is dragged, and sets the volume from its slider, at zero muted and brought back by its button", () => {

@@ -47,6 +47,8 @@ const MARKS = {
  * Where a video is and how it sounds, as one window hands it to the other: the player going full screen, and the
  * full-screen window handing back. One reading, so resuming behaves the same in both directions.
  */
+/** One step of the volume: the slider's, and what ↑ and ↓ turn it by. */
+const VOLUME_STEP = 0.05;
 export function playbackOf(video: HTMLVideoElement): PlaybackState {
   return { time: video.currentTime || 0, playing: !video.paused && !video.ended, volume: video.volume, muted: video.muted };
 }
@@ -89,7 +91,7 @@ export function playerControls(video: HTMLVideoElement, options: PlayerControlsO
   const play = controlButton(`${options.id}-play`);
   const volume = element("div", "pc-volume");
   const mute = controlButton(`${options.id}-mute`);
-  const level = element("input", "pc-level"); level.type = "range"; level.id = `${options.id}-volume`; level.min = "0"; level.max = "1"; level.step = "0.05";
+  const level = element("input", "pc-level"); level.type = "range"; level.id = `${options.id}-volume`; level.min = "0"; level.max = "1"; level.step = String(VOLUME_STEP);
   volume.append(mute, level);
   const time = element("span", "pc-time");
   row.append(play, volume, time, element("span", "pc-spacer"), ...options.trailing);
@@ -144,6 +146,16 @@ export function playerControls(video: HTMLVideoElement, options: PlayerControlsO
   for (const type of ["pointerup", "pointercancel", "change"]) seek.addEventListener(type, () => { scrubbing = false; sync(); });
   seek.addEventListener("input", () => { video.currentTime = Number(seek.value); sync(); });
   level.addEventListener("input", () => { video.volume = Number(level.value); video.muted = video.volume === 0; });
+  /**
+   * ↑ and ↓ turn the volume up or down a slider step (2026-10-06), as YouTube's do. Muted counts as silent, so ↑ brings
+   * the sound back at one step and ↓ to nothing mutes, as the slider does.
+   */
+  function nudgeVolume(by: number): void {
+    const from = video.muted ? 0 : video.volume;
+    const to = Math.round(Math.min(1, Math.max(0, from + by)) * 100) / 100;
+    video.volume = to;
+    video.muted = to === 0;
+  }
 
   /** Kept within the video; a length not known yet bounds nothing, or every step forward would land on 0. */
   function seekTo(at: number): void {
@@ -152,16 +164,16 @@ export function playerControls(video: HTMLVideoElement, options: PlayerControlsO
   }
   /**
    * The seek bar's own keys, in seconds from where the video is, or where they send it. Its `step="any"` would move
-   * Up and Down by 1% of the length and Page Up and Down by 10%: 36 s and 6 min of an hour's recording, a tenth of a
-   * second of a short one. So they move 5 s like the arrows everywhere in the player, and Page Up and Down 10 s.
+   * Page Up and Down by 10% of the length: 6 min of an hour's recording, a fraction of a second of a short one. So
+   * they move 10 s. Up and Down are the volume's everywhere in the player, the seek bar included (2026-10-06).
    */
   const SEEK_KEYS: Record<string, (at: number) => number> = {
-    ArrowUp: at => at + 5, ArrowDown: at => at - 5, PageUp: at => at + 10, PageDown: at => at - 10,
+    PageUp: at => at + 10, PageDown: at => at - 10,
     Home: () => 0, End: () => (Number.isFinite(video.duration) ? video.duration : video.currentTime),
   };
 
   // The keys YouTube uses, wherever focus is in the player; a focused control keeps its own (Space on a button, arrows on
-  // the volume slider). The arrows move 5 s, the seek bar's other keys as SEEK_KEYS says.
+  // the volume slider). ← and → move 5 s, ↑ and ↓ turn the volume, the seek bar's other keys as SEEK_KEYS says.
   root.addEventListener("keydown", event => {
     if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
     const target = event.target as HTMLElement;
@@ -169,6 +181,7 @@ export function playerControls(video: HTMLVideoElement, options: PlayerControlsO
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
     if ((key === " " && !onButton) || key === "k") toggle();
     else if ((key === "ArrowLeft" || key === "ArrowRight") && !onVolume) seekTo(video.currentTime + (key === "ArrowLeft" ? -5 : 5));
+    else if ((key === "ArrowUp" || key === "ArrowDown") && !onVolume) nudgeVolume(key === "ArrowUp" ? VOLUME_STEP : -VOLUME_STEP);
     else if (target === seek && Object.hasOwn(SEEK_KEYS, key)) seekTo(SEEK_KEYS[key]!(video.currentTime));
     else if (key === "m") toggleMute();
     else if (key === "f") options.fullScreen();
