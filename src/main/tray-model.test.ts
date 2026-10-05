@@ -383,6 +383,9 @@ it("only advertises a working Settings key and explains unavailable access in bo
       expect(menu.some(item => item.kind === "item" && !item.enabled && item.label.includes(language === "en" ? "The shortcut for RecordStuff" : "開啟 RecordStuff 的快捷鍵"))).toBe(true);
     }
   }
+  // Off macOS it is Ctrl+Shift+,: Windows sends AltGr as Ctrl+Alt (2026-10-05).
+  const windows = trayModel({ type: "idle" }, { ...mac, platform: "win32", settingsShortcut: { kind: "registered", accelerator: "Control+Shift+," } }).menu;
+  expect(windows).toContainEqual(expect.objectContaining({ action: "openSettings", accelerator: "Control+Shift+," }));
 });
 
 describe("display tray feedback", () => {

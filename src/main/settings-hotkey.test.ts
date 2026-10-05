@@ -3,11 +3,11 @@ import { SettingsHotkey } from "./settings-hotkey";
 import { RecordingHotkey } from "./hotkey";
 import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT, isSettingsShortcut } from "../shared/hotkey";
 
-function setup(register = vi.fn(() => true)) {
+function setup(register = vi.fn(() => true), platform = "darwin") {
   const api = { register, unregister: vi.fn() };
   const open = vi.fn();
   const log = vi.fn();
-  const key = new SettingsHotkey({ globalShortcut: api, platform: "darwin", open, log });
+  const key = new SettingsHotkey({ globalShortcut: api, platform, open, log });
   return { api, key, open, log };
 }
 describe("Settings shortcut ownership", () => {
@@ -47,8 +47,20 @@ describe("Settings shortcut ownership", () => {
     s.key.suspend(); s.key.resume();
     expect(s.api.register).toHaveBeenCalledTimes(2);
   });
+  it("registers Ctrl+Shift+, off macOS, where Ctrl+Alt is AltGr and would take AltGr+, from every app (2026-10-05)", () => {
+    const s = setup(vi.fn(() => true), "win32");
+    s.key.reconcile(DEFAULT_HOTKEY);
+    expect(s.api.register).toHaveBeenCalledWith("Control+Shift+,", expect.any(Function));
+    // A recording shortcut on those keys still owns them, as on macOS.
+    const owned = setup(vi.fn(() => true), "win32");
+    owned.key.reconcile({ enabled: true, accelerator: "CommandOrControl+Shift+," });
+    expect([owned.key.status.kind, owned.api.register.mock.calls.length]).toEqual(["conflict", 0]);
+  });
   it("resolves platform equivalents without conflating Control and Command on Mac", () => {
-    expect(isSettingsShortcut("Control+Alt+,", "win32")).toBe(true);
+    expect(isSettingsShortcut("Control+Shift+,", "win32")).toBe(true);
+    expect(isSettingsShortcut("CommandOrControl+Shift+,", "win32")).toBe(true);
+    // The former Windows shortcut is an ordinary choice there now.
+    expect(isSettingsShortcut("Control+Alt+,", "win32")).toBe(false);
     expect(isSettingsShortcut("Control+Alt+,", "darwin")).toBe(false);
     expect(isSettingsShortcut("Alt+CommandOrControl+,", "darwin")).toBe(true);
     expect(isSettingsShortcut("CommandOrControl+Alt+<", "darwin")).toBe(false);

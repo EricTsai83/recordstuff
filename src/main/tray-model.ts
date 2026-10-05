@@ -19,7 +19,7 @@ import path from "node:path";
 import { DEFAULT_LANGUAGE, sentences, translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
 import type { FrameRate } from "../shared/quality";
 import type { ErrorCode, RecordingState } from "../shared/state";
-import { describeAccelerator, SETTINGS_SHORTCUT, type HotkeyAccelerator } from "../shared/hotkey";
+import { describeAccelerator, settingsShortcut as openShortcut, type HotkeyAccelerator } from "../shared/hotkey";
 
 import { APP_NAME, QUITTING_TEXT, abbreviateHome, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
 
@@ -78,7 +78,7 @@ function windowsGroup(ctx: AppContext): TrayMenuItem[] {
     ? t("The shortcut for RecordStuff is the recording shortcut: open RecordStuff above to change it.", language)
     : settingsShortcut?.kind === "failed" ? t("The shortcut for RecordStuff is unavailable: another app may use it. Open RecordStuff above.", language) : undefined;
   return [
-    item(t("Open RecordStuff", language), "openSettings", undefined, settingsShortcut?.kind === "registered" ? SETTINGS_SHORTCUT : undefined),
+    item(t("Open RecordStuff", language), "openSettings", undefined, settingsShortcut?.kind === "registered" ? openShortcut(ctx.platform) : undefined),
     // The window itself, on Recordings with the newest take focused: never the folder.
     item(t("Show last recording", language), "showLastRecording"),
     ...(explanation ? [disabled(explanation)] : []),

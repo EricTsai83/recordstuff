@@ -126,8 +126,16 @@ export function describeAccelerator(accelerator: string, platform: string): stri
   return acceleratorKeys(accelerator, platform).join(platform === "darwin" ? "" : "+");
 }
 
-/** Kept separate from persisted recording validation so legacy choices survive. */
+/** Kept separate from persisted recording validation so legacy choices survive. macOS's: see `settingsShortcut`. */
 export const SETTINGS_SHORTCUT = "CommandOrControl+Alt+,";
+/**
+ * The fixed shortcut that opens RecordStuff on `platform`: ⌥⌘, on macOS, Ctrl+Shift+, elsewhere. Windows types
+ * characters with AltGr, which it sends as Ctrl+Alt, so a global Ctrl+Alt+, would take AltGr+, from every app on the
+ * layouts that type with it (2026-10-05). A user's own recording shortcut keeps whatever it was.
+ */
+export function settingsShortcut(platform: string): string {
+  return platform === "darwin" ? SETTINGS_SHORTCUT : "Control+Shift+,";
+}
 export const SETTINGS_SHORTCUT_RESERVED = "This combination is reserved for opening RecordStuff.";
 
 /**
@@ -146,5 +154,5 @@ export function sameShortcut(a: unknown, b: unknown, platform: string): boolean 
 }
 
 export function isSettingsShortcut(value: unknown, platform: string): boolean {
-  return sameShortcut(value, SETTINGS_SHORTCUT, platform);
+  return sameShortcut(value, settingsShortcut(platform), platform);
 }

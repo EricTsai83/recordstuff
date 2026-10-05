@@ -26,7 +26,7 @@ import {
   type ResolutionCap,
   type VideoQuality,
 } from "../shared/quality";
-import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut, sameShortcut } from "../shared/hotkey";
+import { DEFAULT_HOTKEY, settingsShortcut, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut, sameShortcut } from "../shared/hotkey";
 import { COUNTDOWN_CHOICES } from "../shared/countdown";
 import { formatDuration } from "../shared/video-player";
 import type { LibraryView, RecordingResultView, SettingsChoice, SettingsGroup, SettingsStatus, SettingsView, StatusActionId } from "../shared/settings-panel";
@@ -275,10 +275,10 @@ function hotkeyGroup(ctx: AppContext, enabled: boolean): Group {
     ...(diagnostics.length ? { diagnostics } : {}) };
 }
 
-/** Why a shortcut this card owns does not work: the recording one, and ⌥⌘, for Settings, which the tray also explains. */
+/** Why a shortcut this card owns does not work: the recording one, and RecordStuff's own (⌥⌘,), which the tray also explains. */
 function hotkeyDiagnostics(ctx: AppContext, unavailable: string | undefined): NonNullable<Group["diagnostics"]> {
   const language = ctx.language;
-  const settings = describeAccelerator(SETTINGS_SHORTCUT, ctx.platform);
+  const settings = describeAccelerator(settingsShortcut(ctx.platform), ctx.platform);
   const kind = ctx.settingsShortcut?.kind;
   return [
     ...(unavailable ? [{ kind: "current" as const, heading: t("Shortcut unavailable", language), reason: unavailable,

@@ -743,6 +743,8 @@ it("explains a Settings shortcut that is not registered, not only a retry button
   expect(failed?.diagnostics?.[0]?.guidance).toBe("Open RecordStuff from the menu bar icon, or retry once the other app releases it.");
   const windows = { ...context, platform: "win32" as const, settingsShortcut: { kind: "failed" as const, accelerator: "CommandOrControl+Alt+,", reason: "taken" } };
   expect(group(idle, windows, "hotkey")?.diagnostics?.[0]?.guidance).toBe("Open RecordStuff from the system tray icon, or retry once the other app releases it.");
+  // Named as it is there: Ctrl+Shift+,, since Windows sends AltGr as Ctrl+Alt (2026-10-05).
+  expect(group(idle, windows, "hotkey")?.diagnostics?.[0]?.reason).toBe("Another app may be using Ctrl+Shift+,.");
   expect(group(idle, { ...windows, language: "zh-TW" }, "hotkey")?.diagnostics?.[0]?.guidance).toBe("可從系統匣圖示開啟 RecordStuff，或待其他 App 釋放後重試。");
 });
 

@@ -1,4 +1,4 @@
-import { SETTINGS_SHORTCUT, isSettingsShortcut, type HotkeySettings } from "../shared/hotkey";
+import { isSettingsShortcut, settingsShortcut, type HotkeySettings } from "../shared/hotkey";
 import { RecordingHotkey, type GlobalShortcutApi, type HotkeyStatus } from "./hotkey";
 
 export type SettingsHotkeyStatus = HotkeyStatus | { kind: "conflict" };
@@ -25,7 +25,7 @@ export class SettingsHotkey {
     this.initialized = true;
     this.conflict = conflict;
     if (conflict) this.options.log("settings shortcut: unavailable; recording shortcut owns the combination");
-    this.registration.apply({ enabled: !conflict, accelerator: SETTINGS_SHORTCUT });
+    this.registration.apply({ enabled: !conflict, accelerator: settingsShortcut(this.options.platform) });
   }
   retry(recording: HotkeySettings): void { this.initialized = false; this.reconcile(recording); }
   /** The registration ignores a repeated call and any call after `dispose`. */
