@@ -16,6 +16,7 @@ import { DEFAULT_HOTKEY } from "../../src/shared/hotkey";
 import type { AppContext } from "../../src/main/ui-model";
 import type { RecordingState } from "../../src/shared/state";
 import type { SettingsTab } from "../../src/shared/settings-panel";
+import type { LibraryLayout } from "../../src/shared/appearance";
 import type { RecordingResult } from "../../src/shared/recording-result";
 import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "../../src/main/recordings-library";
 import { settingsWindowOptions } from "../../src/main/settings-window";
@@ -76,10 +77,11 @@ async function run(): Promise<void> {
   await library.lengths;
   let language: Language = "zh-TW";
   let state: RecordingState = { type: "idle" };
+  let libraryLayout: LibraryLayout = "grid";
   let recordingResults: RecordingResult[] = [];
   const context = (): AppContext => ({ platform: process.platform, language, outputDir: clips, homeDir: os.homedir(), version: "1.5.0",
     quality: DEFAULT_QUALITY, countdown: 3, countdownSound: true, hotkey: { ...DEFAULT_HOTKEY, registered: true }, notifications: true,
-    updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" }, displays: [], library: library.state, recordingResults });
+    updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" }, displays: [], library: library.state, libraryLayout, recordingResults });
   let entry = 0;
   let tab: SettingsTab = "library";
   const view = () => ({ ...settingsView(state, context()), resultFocus: entry, entryTab: tab });
@@ -133,6 +135,11 @@ async function run(): Promise<void> {
       await show(window, "library");
       await shoot(window, `permission-${lang}-${scheme}.png`, `screen recording permission missing · ${lang} · ${scheme}`);
       state = { type: "idle" };
+      // The Recordings list (2026-10-05), then the grid again for the player below.
+      libraryLayout = "list";
+      await show(window, "library");
+      await shoot(window, `library-list-${lang}-${scheme}.png`, `recordings as a list · ${lang} · ${scheme}`);
+      libraryLayout = "grid";
       // Failures with the newest open (2026-10-05): an open row reads apart from the closed ones.
       const at = (hours: number): string => new Date(Date.now() - hours * 3600_000).toISOString();
       recordingResults = [

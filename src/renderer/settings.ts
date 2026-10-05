@@ -7,6 +7,7 @@ import { controlButton, mark, playbackOf, playerControls, type PlayerControls, t
 import { documentLanguage, isLanguage, phrases, sentences, translate, type PlainMessageKey } from "../shared/i18n";
 import { REVIEWED_FAILURES_KEPT, persistsHistory } from "../shared/recording-result";
 import { SHORTCUT_CAPTURE_TIMEOUT_MS, type LibraryItemView, type RecordingResultView, type SettingsBridge, type SettingsGroup, type SettingsTab, type SettingsView } from "../shared/settings-panel";
+import type { LibraryLayout } from "../shared/appearance";
 import type { FullScreenChoice, PlaybackState } from "../shared/video-player";
 
 declare global { interface Window { settings: SettingsBridge } }
@@ -204,6 +205,9 @@ const ICONS: Record<string, [string, string?]> = {
   "tab-library": [FILM],
   play: ["", "M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"],
   film: [FILM],
+  // The Recordings tab's two layouts: four tiles, and rows.
+  "layout-grid": ["M4.5 4h5.5a.5.5 0 0 1 .5.5V10a.5.5 0 0 1-.5.5H4.5A.5.5 0 0 1 4 10V4.5a.5.5 0 0 1 .5-.5ZM14 4h5.5a.5.5 0 0 1 .5.5V10a.5.5 0 0 1-.5.5H14a.5.5 0 0 1-.5-.5V4.5A.5.5 0 0 1 14 4ZM4.5 13.5h5.5a.5.5 0 0 1 .5.5v5.5a.5.5 0 0 1-.5.5H4.5a.5.5 0 0 1-.5-.5V14a.5.5 0 0 1 .5-.5ZM14 13.5h5.5a.5.5 0 0 1 .5.5v5.5a.5.5 0 0 1-.5.5H14a.5.5 0 0 1-.5-.5V14a.5.5 0 0 1 .5-.5Z"],
+  "layout-list": ["M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"],
   // The card menu's actions: the folder above, out to another app, and the Trash.
   "file-reveal": ["M20 20a2 2 0 0 0 2-2V8.5a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 4.4a2 2 0 0 0-1.7-.9H4a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2Z"],
   "file-open": ["M14 3.5h6.5V10M20.5 3.5 11 13M18 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"],
@@ -931,12 +935,21 @@ function updateLibrary(): void {
     area = node("section"); area.id = "library"; area.setAttribute("aria-labelledby", "tab-library");
     const head = node("div", "library-head");
     const reveal = button("library-reveal", () => { if (!inactive(reveal)) void revealFolder(reveal); });
-    head.append(node("p", "library-summary"), reveal);
+    head.append(node("p", "library-summary"), layoutSwitch(), reveal);
     const empty = node("div", "library-empty");
     empty.append(icon("film", "empty-icon")!, node("p", "library-empty-title"), node("p", "library-empty-detail"));
     area.append(head, node("p", "library-error"), node("p", "library-status"), empty, node("div", "library-days"));
     panel.append(area);
   }
+  const layout: LibraryLayout = library?.layout ?? "grid";
+  area.dataset.layout = layout;
+  for (const choice of ["grid", "list"] as const) {
+    const input = document.getElementById(`library-layout-${choice}`) as HTMLInputElement;
+    input.checked = choice === layout;
+    const label = text(choice === "grid" ? "Grid" : "List");
+    setAttr(input, "aria-label", label); setAttr(input.parentElement!, "title", label);
+  }
+  setAttr(area.querySelector(".library-layout")!, "aria-label", text("Layout"));
   const items = library?.items ?? [];
   const summary = area.querySelector<HTMLElement>(".library-summary")!;
   setText(summary, library?.summary ?? ""); summary.hidden = !library?.summary;
@@ -990,6 +1003,31 @@ function updateLibrary(): void {
     if (inMenu) document.getElementById("tab-library")?.focus({ preventScroll: true });
   }
 }
+/** The grid or list switch beside the summary: two icon segments, as Appearance's are drawn. */
+function layoutSwitch(): HTMLElement {
+  const segments = node("div", "segments library-layout"); segments.setAttribute("role", "radiogroup");
+  for (const choice of ["grid", "list"] as const) {
+    const item = node("label", "segment segment-icon");
+    const input = node("input"); input.type = "radio"; input.name = "library-layout"; input.id = `library-layout-${choice}`; input.value = choice;
+    input.addEventListener("change", () => { if (input.checked) void chooseLayout(choice); });
+    const face = node("span"); face.append(icon(`layout-${choice}`, "segment-glyph")!);
+    item.append(input, face); segments.append(item);
+  }
+  return segments;
+}
+/** Shows the new layout at once and saves it; a save that failed puts the saved one back and says so. */
+async function chooseLayout(layout: LibraryLayout): Promise<void> {
+  const area = document.getElementById("library");
+  if (area) area.dataset.layout = layout;
+  try {
+    const result = await window.settings.choose("library", layout);
+    render(result.view);
+    if (!result.applied) announce(result.failure ?? text("Could not complete this action. Try again."));
+  } catch {
+    announce(text("Could not complete this action. Try again."));
+    updateLibrary();
+  }
+}
 /**
  * The header's Show in Finder is the Output folder row's own action, whose failure that row shows on another tab:
  * this tab says it too, as the latest of its file actions.
@@ -1015,7 +1053,8 @@ function clipCard(id: string): HTMLElement {
   const fallback = icon("film", "clip-fallback")!;
   thumb.append(fallback, image, node("span", "clip-duration"), play);
   const label = node("span", "clip-text");
-  label.append(node("span", "clip-title"), node("span", "clip-meta"));
+  // The list's second line, the length and the size; the grid keeps the length on the picture and the size beside the title.
+  label.append(node("span", "clip-title"), node("span", "clip-meta"), node("span", "clip-detail"));
   open.append(thumb, label);
   // What can be done with the file, before it is opened (2026-10-04): this button, or a right-click on the card.
   const more = button(`clip-${id}-more`, () => toggleClipMenu(id, more));
@@ -1052,6 +1091,7 @@ function fillClip(card: HTMLElement, item: LibraryItemView): void {
   setText(card.querySelector(".clip-title")!, item.title);
   // The length is on the thumbnail already; under it goes the size (desktop.md#recordings). The button's name keeps both.
   setText(card.querySelector(".clip-meta")!, item.size);
+  setText(card.querySelector(".clip-detail")!, [item.duration, item.size].filter(Boolean).join(" · "));
   setAttr(card, "title", sentences([item.name, text("Drag into another app to share.")], view?.language));
   setAttr(card.querySelector(".clip-open")!, "aria-label", translate("Play {title}", view?.language, { title: phrases([item.day, item.title, item.duration, item.size].filter((part): part is string => Boolean(part)), view?.language) }));
   // Its own tooltip, too: without one the card's, about dragging, shows over the button that opens the actions.

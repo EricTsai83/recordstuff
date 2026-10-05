@@ -1,7 +1,7 @@
 /**
  * Persistent preferences: output folder, recording display, quality, countdown
  * and its tick, shortcut, the menu bar icon's left click, notifications, update
- * checks, language and appearance.
+ * checks, language and appearance, and the Recordings tab's layout.
  * See docs/system-design/desktop.md for the schema and migration rules.
  * Writes replace the file atomically (`writeFileAtomic`), so a crash or power
  * loss mid-write leaves the previous file. Any read problem falls back to the
@@ -23,7 +23,7 @@
  * keeps the click that records, so an existing user's click does not change
  * under them.
  */
-import { isAppearance, isTrayClick, type Appearance, type TrayClick } from "../shared/appearance";
+import { isAppearance, isLibraryLayout, isTrayClick, type Appearance, type LibraryLayout, type TrayClick } from "../shared/appearance";
 import { DEFAULT_DISPLAY_PREFERENCE, isDisplayPreference, type DisplayPreference } from "../shared/display";
 import fs from "node:fs";
 import path from "node:path";
@@ -67,6 +67,8 @@ export interface Settings {
   countdownSound: boolean;
   /** The icon's left click; a file from before the choice keeps the click that records. */
   trayClick: TrayClick;
+  /** The Recordings tab's grid or list. */
+  libraryLayout: LibraryLayout;
 }
 
 export interface SettingsStoreOptions {
@@ -99,6 +101,7 @@ export function defaultSettings(outputDir: string): Settings {
     countdownSound: DEFAULT_COUNTDOWN_SOUND,
     // A new install opens the menu, as menu bar icons do; recording is one choice away or on the shortcut.
     trayClick: "menu",
+    libraryLayout: "grid",
   };
 }
 
@@ -171,8 +174,10 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const countdownSound = field("countdownSound", isBoolean, DEFAULT_COUNTDOWN_SOUND, `countdownSound is not a boolean: using ${DEFAULT_COUNTDOWN_SOUND ? "on" : "off"}`);
   // Everyone who used the app before the choice existed learned a click that records; an upgrade keeps it.
   const trayClick = field("trayClick", isTrayClick, "record", "trayClick is unsupported: using record");
+  const libraryLayout = field("libraryLayout", isLibraryLayout, defaults.libraryLayout, `libraryLayout is unsupported: using ${defaults.libraryLayout}`);
   return { settings: { appearance, display, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
-    updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound, trayClick }, warnings };
+    updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound, trayClick,
+    libraryLayout }, warnings };
 }
 
 export class SettingsStore {
@@ -230,6 +235,13 @@ export class SettingsStore {
   setTrayClick(trayClick: TrayClick): Promise<void> {
     if (!isTrayClick(trayClick)) return Promise.reject(new Error(`unsupported tray click: ${JSON.stringify(trayClick)}`));
     return this.save((current) => ({ ...current, trayClick }));
+  }
+
+  get libraryLayout(): LibraryLayout { return this.settings.libraryLayout; }
+
+  setLibraryLayout(libraryLayout: LibraryLayout): Promise<void> {
+    if (!isLibraryLayout(libraryLayout)) return Promise.reject(new Error(`unsupported library layout: ${JSON.stringify(libraryLayout)}`));
+    return this.save((current) => ({ ...current, libraryLayout }));
   }
 
   get appearance(): Appearance { return this.settings.appearance; }

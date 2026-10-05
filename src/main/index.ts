@@ -402,6 +402,7 @@ async function main(): Promise<void> {
     language: settings.language,
     appearance: settings.appearance,
     trayClick: settings.trayClick,
+    libraryLayout: settings.libraryLayout,
     updates: { state: updates.state, enabled: settings.updates.enabled },
     notifications: settings.notifications,
     settingsShortcut: shortcuts.settingsStatus,
@@ -549,6 +550,8 @@ async function main(): Promise<void> {
           write: () => settings.setTrayClick(action.setTrayClick),
           applied: () => log(`settings: tray click ${settings.trayClick}`),
         });
+      } else if ("setLibraryLayout" in action) {
+        await savePreference("library layout", { write: () => settings.setLibraryLayout(action.setLibraryLayout) });
       } else if ("setAppearance" in action) {
         await savePreference("appearance", {
           write: () => settings.setAppearance(action.setAppearance),

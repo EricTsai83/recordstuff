@@ -839,9 +839,9 @@ describe("the Recordings tab", () => {
     expect(settingsView(idle, library({ files: [files[0]!] })).library!.summary).toBe("1 recording · 180 MB");
   });
   it("says it is loading or cannot read the folder instead of claiming it is empty", () => {
-    expect(settingsView(idle, library({ loading: true, files: [] })).library).toEqual({ folder: "~/recordings", status: "Loading recordings…", items: [] });
+    expect(settingsView(idle, library({ loading: true, files: [] })).library).toEqual({ folder: "~/recordings", layout: "grid", status: "Loading recordings…", items: [] });
     expect(settingsView(idle, library({ failed: true, files: [] })).library?.status).toBe("Could not read the output folder. Check the folder and its drive, or choose another folder.");
-    expect(settingsView(idle, library({ files: [] })).library).toEqual({ folder: "~/recordings", items: [] });
+    expect(settingsView(idle, library({ files: [] })).library).toEqual({ folder: "~/recordings", layout: "grid", items: [] });
     expect(settingsView(idle, context)).not.toHaveProperty("library");
   });
   it("resolves only listed ids and offered actions, even while recording", () => {
@@ -850,6 +850,13 @@ describe("the Recordings tab", () => {
     expect(settingsAction(busy[2]!, ctx, "recordingFile:id-Product demo.mp4", "drag")).toEqual({ recordingFile: { id: "id-Product demo.mp4", action: "drag" } });
     expect(settingsAction(idle, ctx, "recordingFile:/etc/passwd", "open")).toBeUndefined();
     expect(settingsAction(idle, ctx, "recordingFile:id-Product demo.mp4", "delete")).toBeUndefined();
+  });
+  it("offers the layout at any time (2026-10-05)", () => {
+    const ctx = library({});
+    expect(settingsView(idle, { ...ctx, libraryLayout: "list" }).library?.layout).toBe("list");
+    expect(settingsAction(busy[2]!, ctx, "library", "list")).toEqual({ setLibraryLayout: "list" });
+    expect(settingsAction(idle, ctx, "library", "shelf")).toBeUndefined();
+    expect(settingsChecked(idle, { ...ctx, libraryLayout: "list" }, "library", "list")).toBe(true);
   });
 });
 

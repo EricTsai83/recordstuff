@@ -423,11 +423,14 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
  * Recordings (2026-10-04): the output folder's videos as 16:9 cards grouped by day, a play button
  * over the thumbnail on hover or focus, and the length on it once read. A card drags out as the file.
  */
-.library-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 4px 16px; min-height: 28px; }
+.library-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin: 0 4px 16px; min-height: 28px; }
 /* Under the page title, the summary reads as its subtitle. */
 @media (min-width: 600px) { .library-head { margin-top: -10px; } }
 .library-summary { margin: 0; color: var(--secondary); font-variant-numeric: tabular-nums; }
-#library-reveal { margin-left: auto; }
+#library-reveal { flex: none; }
+.library-layout { margin-left: auto; flex: none; }
+.library-layout .segment-icon span { padding: 3px 10px; }
+.library-layout .segment-glyph { width: 15px; height: 15px; }
 .library-status { color: var(--secondary); margin: 4px 4px 12px; }
 /* A card's action that failed, in the warnings' amber. */
 .library-error { color: var(--warning); margin: -8px 4px 12px; }
@@ -438,7 +441,10 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .library-day { margin-bottom: 22px; }
 /* The days head their cards as Apple Music heads a shelf: in words, bold, not small capitals. */
 .library-day .result-day-heading { margin: 0 2px 10px; color: var(--text); font-size: 17px; font-weight: 700; letter-spacing: -.01em; text-transform: none; }
-.library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 14px; }
+/* Large thumbnails (2026-10-05): two to a row in the default window, three and more as it widens. */
+/* Never wider than the panel: the narrowest window at 150% zoom leaves it about 220 px (review pass 2, F3). */
+.library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 18px 16px; }
+.clip-detail { display: none; }
 .clip { position: relative; min-width: 0; border-radius: 10px; }
 /* A card's file actions: shown over its thumbnail while the pointer is on the card, the button has focus or its menu is open. */
 .clip-more { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 28px; min-height: 0; height: 28px; padding: 0; border: 0; border-radius: 8px; background: rgb(0 0 0 / .55); color: #fff; box-shadow: none; opacity: 0; backdrop-filter: blur(6px); }
@@ -480,8 +486,8 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .clip-play { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; background: var(--chosen); color: #fff; opacity: 0; transform: scale(.9); box-shadow: 0 4px 12px rgb(0 0 0 / .25); }
 /* The triangle is drawn about its own centroid (ICONS.play), so it sits at the circle's centre without a nudge. */
 .play-icon { width: 18px; height: 18px; }
+/* Hover shows the play button alone (2026-10-05): the card no longer lifts or casts a shadow. */
 .clip-open:hover .clip-play, .clip-open:focus-visible .clip-play { opacity: 1; transform: none; }
-.clip-open:hover .clip-thumb { box-shadow: inset 0 0 0 1px var(--card-border), 0 8px 22px light-dark(rgb(0 0 0 / .14), rgb(0 0 0 / .45)); transform: translateY(-2px); }
 /* One line under the picture: when, and the size beside it. */
 .clip-text { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; padding: 0 2px; }
 .clip-title { min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -497,8 +503,31 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 @keyframes arrived { 0%, 60% { outline-color: var(--rec); } 100% { outline-color: transparent; } }
 @media (prefers-reduced-motion: no-preference) {
   .clip-play { transition: opacity .15s ease, transform .15s ease; }
-  .clip-thumb { transition: box-shadow .15s ease, transform .15s ease; }
 }
+
+/*
+ * The list (2026-10-05): one row per recording in a card like the failures', a small thumbnail, the title with its length
+ * and size beneath, and ⋯ at the end, shown on hover or focus as in the grid.
+ */
+#library[data-layout="list"] .library-grid { display: flex; flex-direction: column; gap: 0; padding: 3px; background: var(--surface); border: 1px solid var(--card-border); border-radius: var(--card-radius); box-shadow: var(--card-shadow); }
+#library[data-layout="list"] .clip { border-radius: 9px; }
+#library[data-layout="list"] .clip + .clip::before { content: ""; position: absolute; top: 0; left: 132px; right: 10px; border-top: 1px solid var(--separator); }
+#library[data-layout="list"] .clip:hover { background: light-dark(rgb(0 0 0 / .025), rgb(255 255 255 / .03)); }
+#library[data-layout="list"] .clip-open { flex-direction: row; align-items: center; gap: 14px; padding: 7px 48px 7px 8px; border-radius: 9px; }
+#library[data-layout="list"] .clip-thumb { flex: none; width: 110px; border-radius: 6px; }
+#library[data-layout="list"] .clip-play { width: 28px; height: 28px; margin: -14px 0 0 -14px; }
+#library[data-layout="list"] .play-icon { width: 13px; height: 13px; }
+#library[data-layout="list"] .clip-duration { display: none; }
+#library[data-layout="list"] .clip-text { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 0; }
+#library[data-layout="list"] .clip-meta { display: none; }
+#library[data-layout="list"] .clip-detail { display: block; color: var(--secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+#library[data-layout="list"] .clip-title { max-width: 100%; }
+#library[data-layout="list"] .clip-more { top: 50%; right: 10px; margin-top: -14px; background: transparent; color: var(--secondary); backdrop-filter: none; }
+#library[data-layout="list"] :is(button, select).clip-more:enabled:not([aria-disabled="true"]):hover { background: var(--track); color: var(--text); }
+#library[data-layout="list"] .clip:hover .clip-more, #library[data-layout="list"] .clip-more:focus-visible, #library[data-layout="list"] .clip-more[aria-expanded="true"] { opacity: 1; }
+/* Keyboard focus in the list rings the row, not just its picture. */
+:root:not([data-input="pointer"]):not([data-window="inactive"]) #library[data-layout="list"] .clip-open:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: calc(-1 * var(--focus-width)); }
+:root:not([data-input="pointer"]):not([data-window="inactive"]) #library[data-layout="list"] .clip-open:focus-visible .clip-thumb { outline: none; }
 
 /*
  * The player (2026-10-05): the video alone over a dimmed window, its title and controls laid over the picture as in
@@ -538,6 +567,7 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
   .clip-menu [role="menuitem"]:is(:focus, :enabled:hover) .menu-icon { color: HighlightText; }
   .clip-menu .menu-separator { background: CanvasText; }
   .clip-thumb { border: 1px solid CanvasText; }
+  #library[data-layout="list"] .library-grid { border: 1px solid CanvasText; }
   .recording-result[open] { outline: 1px solid CanvasText; }
 }
 

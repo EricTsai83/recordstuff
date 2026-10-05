@@ -28,6 +28,7 @@ import {
 } from "../shared/quality";
 import { DEFAULT_HOTKEY, settingsShortcut, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut, sameShortcut } from "../shared/hotkey";
 import { COUNTDOWN_CHOICES } from "../shared/countdown";
+import { isLibraryLayout } from "../shared/appearance";
 import { formatDuration } from "../shared/video-player";
 import type { LibraryView, RecordingResultView, SettingsChoice, SettingsGroup, SettingsStatus, SettingsView, StatusActionId } from "../shared/settings-panel";
 import { MEDIA_SCHEME, RECORDING_FILE_ACTIONS, stampedTime, type RecordingFileAction } from "./recordings-library";
@@ -581,12 +582,14 @@ function libraryView(ctx: AppContext, now: Date, format: DateFormats): LibraryVi
   if (!library) return undefined;
   const language = ctx.language;
   const folder = abbreviateHome(library.dir, ctx.homeDir);
-  if (library.failed) return { folder, status: t("Could not read the output folder. Check the folder and its drive, or choose another folder.", language), items: [] };
-  if (library.loading) return { folder, status: t("Loading recordings…", language), items: [] };
+  const extras = { layout: ctx.libraryLayout ?? "grid" };
+  if (library.failed) return { folder, ...extras, status: t("Could not read the output folder. Check the folder and its drive, or choose another folder.", language), items: [] };
+  if (library.loading) return { folder, ...extras, status: t("Loading recordings…", language), items: [] };
   const total = library.files.reduce((sum, file) => sum + file.size, 0);
   const count = library.files.length;
   return {
     folder,
+    ...extras,
     ...(count ? { summary: t(count === 1 ? "1 recording · {size}" : "{count} recordings · {size}", language, { count, size: formatBytes(total) }) } : {}),
     items: library.files.map(file => {
       // The app's own name already says when; any other file is known by its name.
@@ -692,6 +695,10 @@ export function settingsAction(
     return file && RECORDING_FILE_ACTIONS.includes(choiceId as RecordingFileAction)
       ? { recordingFile: { id: file.id, action: choiceId as RecordingFileAction } } : undefined;
   }
+  // The Recordings tab's own choice: its layout.
+  if (groupId === "library") {
+    return isLibraryLayout(choiceId) ? { setLibraryLayout: choiceId } : undefined;
+  }
   if (groupId === "status") {
     const { action: offered, secondaryAction: secondary } = settingsStatus(state, ctx);
     const chosen = [offered, secondary].find(action => action?.id === choiceId);
@@ -714,6 +721,7 @@ export function settingsChecked(
 ): boolean {
   // The card's actions, like the tray's, are requests whose result the card itself then shows.
   if (groupId === "status") return true;
+  if (groupId === "library") return (ctx.libraryLayout ?? "grid") === choiceId;
   if (proposesHotkey(groupId, choiceId)) return ctx.hotkey.enabled && sameShortcut(choiceId, ctx.hotkey.accelerator, ctx.platform);
   return find(state, ctx, groupId, choiceId)?.checked ?? false;
 }

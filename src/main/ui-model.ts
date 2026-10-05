@@ -9,7 +9,7 @@
  * handler in index.ts, which re-checks the recording state before acting.
  */
 import type { RecordingResult, RecordingResultAction } from "../shared/recording-result";
-import type { Appearance, TrayClick } from "../shared/appearance";
+import type { Appearance, LibraryLayout, TrayClick } from "../shared/appearance";
 import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../shared/display";
 import type { Language, PlainMessageKey } from "../shared/i18n";
 import type { QualitySettings } from "../shared/quality";
@@ -59,6 +59,7 @@ export type AppAction =
   | { setCountdownSound: boolean }
   | { setAppearance: Appearance }
   | { setTrayClick: TrayClick }
+  | { setLibraryLayout: LibraryLayout }
   | { setLanguage: Language }
   | { setHotkey: HotkeySettings };
 
@@ -92,6 +93,8 @@ export interface AppContext {
   appearance?: Appearance;
   /** The icon's left click; absent is the click that records, as before the choice. */
   trayClick?: TrayClick;
+  /** The Recordings tab's grid or list; absent is the grid. */
+  libraryLayout?: LibraryLayout;
   hotkey: AppHotkey;
   settingsShortcut?: SettingsHotkeyStatus;
   updates: { state: UpdateState; enabled: boolean };

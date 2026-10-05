@@ -192,6 +192,8 @@ export class SettingsWindow {
       if (typeof group === "string" && group.startsWith("recordingFile:") && isFullScreenChoice(choice)) return this.playFullScreen(group, choice, window);
       // A recording's actions touch files, not preferences, and a drag must start while the pointer is still down.
       if (typeof group === "string" && group.startsWith("recordingFile:")) return this.applyFile(group, choice, window);
+      // The Recordings tab's layout: no recording lock, no shortcut capture, nothing to wait behind.
+      if (group === "library") return this.applyLibrary(choice, window);
       // Completing a request ends the capture it was sent from, never a later one.
       const lease = this.leaseOf(window);
       if (group === "hotkey") {
@@ -463,6 +465,18 @@ export class SettingsWindow {
     const applied = !file ? false : file.action === "drag"
       ? !recipient.isDestroyed() && !this.quitStarted() && (await this.options.drag?.(recipient.webContents, file.id) ?? false)
       : await this.options.act(action!) === true;
+    const view = this.view();
+    return this.deliver({ view, applied, ...(applied ? {} : { failure: translate("Could not complete this action. Try again.", view.language) }) }, recipient);
+  }
+
+  /**
+   * Resolves the Recordings tab's layout like any other offered choice.
+   */
+  private async applyLibrary(choice: unknown, recipient: BrowserWindow): Promise<SettingsChoiceResult> {
+    const action = settingsAction(this.options.state(), this.options.context(), "library", choice);
+    if (!action) this.log(`settings window: refused ${JSON.stringify({ group: "library", choice })}`);
+    const outcome = action ? await this.options.act(action) : false;
+    const applied = typeof outcome === "boolean" ? outcome : settingsChecked(this.options.state(), this.options.context(), "library", choice);
     const view = this.view();
     return this.deliver({ view, applied, ...(applied ? {} : { failure: translate("Could not complete this action. Try again.", view.language) }) }, recipient);
   }

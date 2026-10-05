@@ -9,6 +9,7 @@
 import type { FullScreenChoice, PlaybackState } from "./video-player";
 import type { Language } from "./i18n";
 import type { RecordingState } from "./state";
+import type { LibraryLayout } from "./appearance";
 
 export interface SettingsChoice {
   id: string;
@@ -113,6 +114,8 @@ export interface LibraryItemView {
 export interface LibraryView {
   /** The output folder as shown, home abbreviated. */
   folder: string;
+  /** Large thumbnails in a grid, or one row each (2026-10-05); chosen as group `library`, choice `grid` or `list`. Absent is the grid. */
+  layout?: LibraryLayout;
   /** Localized: loading or an unreadable folder; the list is empty meanwhile. */
   status?: string;
   /** "12 recordings · 2.4 GB". */
