@@ -41,7 +41,7 @@ const headers = () => rows().map((r) => r.querySelector<HTMLElement>(":scope > s
 const key = (target: Element, name: string) => target.dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true, cancelable: true }));
 const show = async (next: SettingsView) => { current = next; push(next); await Promise.resolve(); };
 
-it("keeps the history in its own tab, as collapsed day-grouped rows with one open at a time", async () => {
+it("keeps the history in its own tab, as collapsed day-grouped rows that open independently", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
   document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
   current = view([row("new"), reviewed("old", { day: "Yesterday", time: "9:12 AM", fileName: "2026-09-27 09-12-00.mp4",
@@ -81,9 +81,11 @@ it("keeps the history in its own tab, as collapsed day-grouped rows with one ope
   expect([...old.querySelectorAll(".result-actions button")].map((b) => b.textContent)).toEqual(["Remove from history"]);
   expect(document.querySelector(".result-history-note")!.textContent).toContain("Keeps unreviewed failures and the 20 most recently reviewed.");
 
-  // One open row at a time.
+  // Each row opens on its own: opening another leaves the first open (2026-10-05).
   rows()[0]!.open = true; rows()[0]!.dispatchEvent(new Event("toggle"));
   rows()[1]!.open = true; rows()[1]!.dispatchEvent(new Event("toggle"));
+  expect(rows().map((r) => r.open)).toEqual([true, true, false]);
+  rows()[0]!.open = false; rows()[0]!.dispatchEvent(new Event("toggle"));
   expect(rows().map((r) => r.open)).toEqual([false, true, false]);
 
   // Up, Down, Home and End move between headers across day groups; Enter and Space open and close.

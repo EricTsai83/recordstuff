@@ -294,6 +294,18 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
 .recording-result + .recording-result::before { content: ""; position: absolute; top: calc(-1 * var(--focus-width) - 0.5px); left: 10px; right: 10px; border-top: 1px solid var(--separator); }
 .recording-result > summary { list-style: none; cursor: pointer; padding: 9px 10px; display: flex; flex-direction: column; gap: 2px; border-radius: 9px; }
 .recording-result > summary:hover { background: light-dark(rgb(0 0 0 / .025), rgb(255 255 255 / .03)); }
+/*
+ * An open row reads as one raised block (2026-10-05): a tint over the whole record, a hairline between its header and
+ * its details, the reason in full ink and the chevron darker; the hairlines beside it give way to the tint.
+ */
+.recording-result[open] { background: light-dark(rgb(0 0 0 / .032), rgb(255 255 255 / .045)); }
+.recording-result[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.recording-result[open] > summary:hover { background: transparent; }
+.recording-result[open] > .result-details { border-top: 1px solid light-dark(rgb(0 0 0 / .08), rgb(255 255 255 / .09)); margin: 0 10px; padding: 2px 0 10px 14px; }
+.recording-result[open]:not(.unread) > .result-details { padding-left: 0; }
+.recording-result[open] .result-reason { font-weight: 600; }
+.recording-result[open] .result-chevron { border-color: var(--text); }
+.recording-result[open]::before, .recording-result[open] + .recording-result::before { opacity: 0; }
 .recording-result > summary::-webkit-details-marker { display: none; }
 .result-line { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
 .result-unread { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--chosen); align-self: center; }
@@ -526,6 +538,7 @@ kbd { font: inherit; font-weight: 500; display: inline-block; min-width: 22px; p
   .clip-menu [role="menuitem"]:is(:focus, :enabled:hover) .menu-icon { color: HighlightText; }
   .clip-menu .menu-separator { background: CanvasText; }
   .clip-thumb { border: 1px solid CanvasText; }
+  .recording-result[open] { outline: 1px solid CanvasText; }
 }
 
 /* Four tabs in a narrow strip: the others give way to their icons, the open one keeps its name. */

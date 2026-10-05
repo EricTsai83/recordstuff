@@ -16,6 +16,7 @@ import { DEFAULT_HOTKEY } from "../../src/shared/hotkey";
 import type { AppContext } from "../../src/main/ui-model";
 import type { RecordingState } from "../../src/shared/state";
 import type { SettingsTab } from "../../src/shared/settings-panel";
+import type { RecordingResult } from "../../src/shared/recording-result";
 import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "../../src/main/recordings-library";
 import { settingsWindowOptions } from "../../src/main/settings-window";
 import { DEFAULT_SETTINGS_SIZE } from "../../src/main/settings-window-state";
@@ -75,9 +76,10 @@ async function run(): Promise<void> {
   await library.lengths;
   let language: Language = "zh-TW";
   let state: RecordingState = { type: "idle" };
+  let recordingResults: RecordingResult[] = [];
   const context = (): AppContext => ({ platform: process.platform, language, outputDir: clips, homeDir: os.homedir(), version: "1.5.0",
     quality: DEFAULT_QUALITY, countdown: 3, countdownSound: true, hotkey: { ...DEFAULT_HOTKEY, registered: true }, notifications: true,
-    updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" }, displays: [], library: library.state });
+    updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" }, displays: [], library: library.state, recordingResults });
   let entry = 0;
   let tab: SettingsTab = "library";
   const view = () => ({ ...settingsView(state, context()), resultFocus: entry, entryTab: tab });
@@ -131,6 +133,17 @@ async function run(): Promise<void> {
       await show(window, "library");
       await shoot(window, `permission-${lang}-${scheme}.png`, `screen recording permission missing · ${lang} · ${scheme}`);
       state = { type: "idle" };
+      // Failures with the newest open (2026-10-05): an open row reads apart from the closed ones.
+      const at = (hours: number): string => new Date(Date.now() - hours * 3600_000).toISOString();
+      recordingResults = [
+        { id: "disk", occurredAt: at(0.5), code: "disk_full", detail: "ENOSPC: no space left on device", outcome: "partial", partialPath: path.join(clips, "partial.recording.mp4"), acknowledged: false },
+        { id: "capture", occurredAt: at(2), code: "capture_start_failed", detail: "screen/audio capture request timed out", outcome: "empty", acknowledged: true },
+        { id: "folder", occurredAt: at(3), code: "output_open_failed", detail: "EACCES: permission denied", outcome: "empty", acknowledged: true },
+      ];
+      await show(window, "failures");
+      await window.webContents.executeJavaScript(`(() => { const row = document.querySelector("#recording-results .recording-result"); row.open = true; row.dispatchEvent(new Event("toggle")); })()`);
+      await shoot(window, `failures-open-${lang}-${scheme}.png`, `failures, newest open · ${lang} · ${scheme}`);
+      recordingResults = [];
       await show(window, "library");
       // The player on the decodable clip, if FFmpeg made one: playing with its controls, then paused.
       const playable = view().library?.items.find(item => item.name.startsWith("preview-"));

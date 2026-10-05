@@ -1414,8 +1414,11 @@ async function run() {
   const openRows = await read<boolean[]>(window, `[...document.querySelectorAll(".recording-result")].map(r => r.open)`);
   press("Space"); await settle(60);
   const closed = await read<boolean[]>(window, `[...document.querySelectorAll(".recording-result")].map(r => r.open)`);
-  record("Enter and Space open and close a row, and opening another closes the first", JSON.stringify(openRows) === JSON.stringify([false, true, false, false, false, false, false])
-    && closed.every(open => !open), JSON.stringify({ openRows, closed }));
+  // Rows open on their own (2026-10-05): opening the second leaves the first open, and Space closes only the second.
+  record("Enter and Space open and close a row, and opening another leaves the first open", JSON.stringify(openRows) === JSON.stringify([true, true, false, false, false, false, false])
+    && JSON.stringify(closed) === JSON.stringify([true, false, false, false, false, false, false]), JSON.stringify({ openRows, closed }));
+  // The first closes too, and focus returns to the second header, where the checks below start.
+  press("Up"); press("Space"); await settle(60); press("Down"); await settle(60);
   // The focus border: the focus colour around the focused record, hairlines beside it hidden; neutral with a focused control inside.
   // Focus has its own colour since the red accent (2026-10-05): ink, so a ring never reads as a fault. `accent` below is that focus colour.
   const colours = await read<{ accent: string; border: string }>(window, `(() => { const probe = document.createElement("div"); document.body.append(probe);
@@ -1466,6 +1469,9 @@ async function run() {
   };
   const where = () => read<{ active: string; day: string }>(window, `({ active: document.activeElement.id || document.activeElement.dataset.action || document.activeElement.tagName,
     day: document.activeElement.closest(".result-day")?.dataset.day ?? "" })`);
+  // From collapsed rows: they open on their own since 2026-10-05, so a row an earlier check opened stays open, and the
+  // Return below would close it instead of opening it.
+  await read(window, `document.querySelectorAll(".recording-result[open]").forEach(row => { row.open = false; })`); await settle(80);
   await read(window, `document.querySelectorAll(".recording-result > summary")[1].focus()`); press("Down"); press("Up"); await settle(60);
   const beforeRollover = await where();
   await rollover(1);

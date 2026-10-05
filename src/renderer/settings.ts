@@ -662,7 +662,7 @@ function placeDays<T extends { day: string }>(days: HTMLElement, items: readonly
 function resultHeaders(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>("#recording-results .recording-result > summary")];
 }
-/** Opens one row and closes every other; a pending save or action keeps its own state by id. */
+/** An explicit entry's target: opens it and closes every other, so the row it names stands alone; a pending save or action keeps its own state by id. */
 function openOnly(id: string | undefined): void {
   for (const [key, state] of resultStates) state.open = key === id;
   for (const area of document.querySelectorAll<HTMLDetailsElement>("#recording-results .recording-result")) {
@@ -673,8 +673,9 @@ function openOnly(id: string | undefined): void {
 /**
  * The Recording failures tab (plan 047): a status line, then rows grouped by
  * day on the window background, newest first, then the retention footnote.
- * Every row starts collapsed and only one is open at a time; an explicit entry
- * opens its target without acknowledging it.
+ * Every row starts collapsed and opens on its own (2026-10-05, formerly one at a time: closing the row above moved
+ * the clicked one under the pointer, and two failures could not be compared); an explicit entry opens its target alone
+ * without acknowledging it.
  */
 function updateRecordingResult(focusRequested: boolean): void {
   const results = view?.recordingResults ?? [];
@@ -824,8 +825,6 @@ function resultRow(id: string, domId: string, state: { open: boolean }): HTMLDet
   area.addEventListener("toggle", () => {
     if (!area.isConnected) return;
     state.open = area.open;
-    // One open row at a time.
-    if (area.open) openOnly(id);
     updateScrollHint();
   });
   return area;
