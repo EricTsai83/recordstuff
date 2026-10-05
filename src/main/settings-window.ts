@@ -141,7 +141,7 @@ export class SettingsWindow {
     ipcMain.handle(SETTINGS_CHANNELS.capture, (event, armed: unknown) => {
       const window = authorize(event);
       if (armed === false) this.release(this.leaseOf(window));
-      else if (armed === true && !this.lease && window.isFocused() && preferencesUnlocked(this.options.state())) {
+      else if (armed === true && !this.lease && window.isFocused() && preferencesUnlocked(this.options.state()) && !this.quitStarted()) {
         this.captureTimedOut = false;
         const lease: CaptureLease = { window, timer: setTimeout(() => {
           if (this.lease !== lease) return;
@@ -414,12 +414,17 @@ export class SettingsWindow {
     this.options.closed?.();
   }
 
+  /** A quit has begun, including the 300 ms before `context().quitting` says so: nothing this window starts itself begins then. */
+  private quitStarted(): boolean {
+    return this.options.quitRequested?.() === true || this.options.context().quitting === true;
+  }
+
   private async applyFile(group: string, choice: unknown, recipient: BrowserWindow): Promise<SettingsChoiceResult> {
     const action = settingsAction(this.options.state(), this.options.context(), group, choice);
     if (!action || typeof action !== "object" || !("recordingFile" in action)) this.log(`settings window: refused ${JSON.stringify({ group, choice })}`);
     const file = action && typeof action === "object" && "recordingFile" in action ? action.recordingFile : undefined;
     const applied = !file ? false : file.action === "drag"
-      ? !recipient.isDestroyed() && (await this.options.drag?.(recipient.webContents, file.id) ?? false)
+      ? !recipient.isDestroyed() && !this.quitStarted() && (await this.options.drag?.(recipient.webContents, file.id) ?? false)
       : await this.options.act(action!) === true;
     const view = this.view();
     return this.deliver({ view, applied, ...(applied ? {} : { failure: translate("Could not complete this action. Try again.", view.language) }) }, recipient);
@@ -435,7 +440,7 @@ export class SettingsWindow {
     const item = this.view().library?.items.find(entry => entry.id === id);
     const fullScreen = this.options.fullScreen;
     // While a quit runs nothing new opens, as every other action is refused then (`settingsAction`).
-    if (!item || !fullScreen || recipient.isDestroyed() || this.options.quitRequested?.() || this.options.context().quitting) {
+    if (!item || !fullScreen || recipient.isDestroyed() || this.quitStarted()) {
       this.log(`settings window: refused ${JSON.stringify({ group, choice: "fullscreen" })}`);
       const view = this.view();
       return this.deliver({ view, applied: false }, recipient);

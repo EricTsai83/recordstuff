@@ -86,7 +86,7 @@ const context: AppContext = {
 };
 
 /** A panel wired to a mutable copy of the committed settings. */
-function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void; fullScreen?: SettingsWindowOptions["fullScreen"]; quitRequested?: () => boolean } = {}) {
+function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void; fullScreen?: SettingsWindowOptions["fullScreen"]; quitRequested?: () => boolean; drag?: SettingsWindowOptions["drag"] } = {}) {
   const live = { ...context };
   let state: RecordingState = { type: "idle" };
   const act = overrides.act ?? vi.fn(async (action: AppAction) => {
@@ -100,6 +100,7 @@ function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>
     ...(overrides.closed ? { closed: overrides.closed } : {}),
     ...(overrides.fullScreen ? { fullScreen: overrides.fullScreen } : {}),
     ...(overrides.quitRequested ? { quitRequested: overrides.quitRequested } : {}),
+    ...(overrides.drag ? { drag: overrides.drag } : {}),
     capture,
     state: overrides.state ?? (() => state),
     context: () => live,
@@ -528,6 +529,28 @@ it("authorizes capture and restores ownership on cancel, blur, close, timeout an
     s.panel.destroy();
     expect(s.capture).toHaveBeenLastCalledWith(false);
   } finally { vi.useRealTimers(); }
+});
+
+it("arms no capture and starts no drag once a quit has begun, before the tray says so too", async () => {
+  let quitRequested = false;
+  const drag = vi.fn(async () => true);
+  const s = setup({ quitRequested: () => quitRequested, drag });
+  s.live.library = { dir: "/d", loading: false, failed: false, files: [{ id: "abc", path: "/d/a.mp4", name: "a.mp4", size: 1, recordedAt: 0, version: "1" }] };
+  s.panel.show();
+  const arm = (value: boolean) => mock.handlers.get("settings:capture")!(s.event(), value);
+  const capturing = (view: any): boolean => view.groups.find((g: any) => g.id === "hotkey").capturing;
+  // In the 300 ms before `quitting` is set, and once it is.
+  for (const begin of [() => { quitRequested = true; }, () => { s.live.quitting = true; }]) {
+    begin();
+    expect(capturing(arm(true))).toBe(false);
+    expect((await s.choose(s.event(), "recordingFile:abc", "drag")).applied).toBe(false);
+    quitRequested = false; delete s.live.quitting;
+  }
+  expect([s.capture.mock.calls.length, drag.mock.calls.length]).toEqual([0, 0]);
+  // A declined quit leaves both working again.
+  expect(capturing(arm(true))).toBe(true);
+  expect((await s.choose(s.event(), "recordingFile:abc", "drag")).applied).toBe(true);
+  arm(false);
 });
 
 it("ends capture even when saving throws and explains rejected candidates", async () => {
