@@ -129,6 +129,10 @@ test("assertManifestShape rejects tampered manifests", () => {
   assert.throws(() => assertManifestShape({ ...manifest, dmg: { ...manifest.dmg, sha256: "zz" } }), /sha256/);
   assert.throws(() => assertManifestShape({ ...manifest, releaseUrl: "http://github.com/EricTsai83/recordstuff/releases" }), /https/);
   assert.throws(() => assertManifestShape(null), /not an object/);
+  // The addresses the app's feed reader requires, caught offline too: another page of the repository is not enough.
+  assert.throws(() => assertManifestShape({ ...manifest, releaseUrl: "https://github.com/EricTsai83/recordstuff/releases/latest" }), /releaseUrl must be/);
+  assert.throws(() => assertManifestShape({ ...manifest, notesUrl: "https://github.com/EricTsai83/recordstuff/releases/tag/v0.1.1" }), /notesUrl must be/);
+  assert.throws(() => assertManifestShape({ ...manifest, sha256sumsUrl: "https://github.com/EricTsai83/recordstuff/releases/download/v0.1.1/SHA256SUMS" }), /sha256sumsUrl must be/);
 });
 
 test("diffManifest reports each changed field and nothing when equal", () => {

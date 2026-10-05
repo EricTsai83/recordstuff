@@ -283,6 +283,15 @@ export function assertManifestShape(value: unknown): ReleaseManifest {
   for (const key of ["sha256sumsUrl", "releaseJsonUrl", "releaseUrl", "notesUrl"] as const) {
     assertGitHubUrl(requireString(key), key);
   }
+  // The exact addresses the release has, so the offline check catches what the app's feed reader refuses
+  // (updates.ts `feedVersion` requires releaseUrl to be the tag's page), not only what online verification does.
+  const releasePage = `https://github.com/${REPOSITORY}/releases/tag/${tag}`;
+  const expected = { releaseUrl: releasePage, notesUrl: releasePage,
+    sha256sumsUrl: `https://github.com/${REPOSITORY}/releases/download/${tag}/SHA256SUMS`,
+    releaseJsonUrl: `https://github.com/${REPOSITORY}/releases/download/${tag}/release.json` } as const;
+  for (const [key, url] of Object.entries(expected)) {
+    if (manifest[key] !== url) throw new Error(`Manifest ${key} must be ${url}.`);
+  }
   const dmg = manifest.dmg as Record<string, unknown> | undefined;
   if (!dmg || typeof dmg !== "object") throw new Error("Manifest dmg block is missing.");
   if (dmg.name !== expectedDmgName(version)) throw new Error("Manifest dmg.name does not match the version.");

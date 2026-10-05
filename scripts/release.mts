@@ -9,9 +9,14 @@ import { fetchManifest } from './lib/release-manifest-client.mts';
 import { assertManifestShape, assertWindowsRecord, carriesWindows, diffManifest, expectedAssetNames, expectedDmgName, expectedWindowsInstallerName, REPOSITORY, WINDOWS_PLATFORM, WINDOWS_RECORD, type ReleaseManifest, type WindowsReleaseJson } from './lib/release-manifest.mts';
 
 export const signingSHA1 = '01B373511530BBF287CA35E54C10A5F017AAD637';
-/** Stable `1.2.3` or pre-release `1.2.3-rc.1`; the tag is always `v` + version. */
+/**
+ * Stable `1.2.3` or pre-release `1.2.3-rc.1`; the tag is always `v` + version. A numeric pre-release identifier
+ * has no leading zero, as semver requires: `rc.01` and `rc.1` would be two tags that order as one version.
+ */
 export function validateTag(tag: string, version: string) {
-  if (!stableVersion(version.split('-')[0]) || !/^\d+\.\d+\.\d+(-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/.test(version) || tag !== `v${version}`) throw new Error('Tag must match the package version (vX.Y.Z or vX.Y.Z-suffix).');
+  const prerelease = version.includes('-') ? version.slice(version.indexOf('-') + 1) : '';
+  if (!stableVersion(version.split('-')[0]) || !/^\d+\.\d+\.\d+(-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/.test(version) || tag !== `v${version}`
+    || prerelease.split('.').some(identifier => /^0\d+$/.test(identifier))) throw new Error('Tag must match the package version (vX.Y.Z or vX.Y.Z-suffix, no leading zeros in numeric suffix parts).');
 }
 /** Pre-release versions are published flagged as pre-release and never marked latest. */
 export const isPrerelease = (version: string) => version.includes('-');
@@ -402,7 +407,27 @@ export async function verifyWindowsInstaller(directory: string, version: string)
   if (uninstallEntries('HKCU').length || uninstallEntries('HKLM').length) throw new Error('RecordStuff is already installed on this machine; verify on a clean runner.');
   const shortcut = path.join(process.env.APPDATA ?? '', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'RecordStuff.lnk');
   const installed = spawnSync(installer, ['/S'], { encoding: 'utf8', timeout: 180_000 });
-  if (installed.error || installed.status !== 0) throw new Error(`Silent install failed: ${failureReason(installed)}`);
+  if (installed.error || installed.status !== 0) {
+    // A failed or timed-out install may have registered itself already: uninstall what it left, or say what remains,
+    // so a reused machine is not refused as "already installed" at the next check.
+    const left = uninstallEntries('HKCU')[0];
+    let cleanup = 'it registered no uninstall entry, so RecordStuff may be left partly installed';
+    if (left) {
+      try {
+        const [uninstaller, uninstallArgs] = splitCommandLine(left.QuietUninstallString);
+        const removed = spawnSync(uninstaller, uninstallArgs, { encoding: 'utf8', timeout: 180_000 });
+        if (removed.error || removed.status !== 0) cleanup = `its cleanup uninstall failed (${failureReason(removed)}); RecordStuff may be left installed`;
+        else {
+          // As after a successful check: the NSIS uninstaller copies itself away and may return before it has finished.
+          const exe = path.join(left.InstallLocation || path.dirname(uninstaller), 'RecordStuff.exe');
+          await waitFor('the cleanup uninstall removed the app, its shortcut and its registration',
+            () => !existsSync(exe) && !existsSync(shortcut) && uninstallEntries('HKCU').length === 0);
+          cleanup = 'what it installed was uninstalled';
+        }
+      } catch (error) { cleanup = `${String(error)}; RecordStuff may be left installed`; }
+    }
+    throw new Error(`Silent install failed: ${failureReason(installed)}; ${cleanup}.`);
+  }
   const entries = uninstallEntries('HKCU');
   const entry = entries[0];
   // Without an entry, or with one whose command does not parse, nothing can uninstall it: say that the app is left.

@@ -14,6 +14,8 @@ function withWindows(version: string) {
   const dmg = committed.dmg.name.replace(committed.version, version);
   return assertManifestShape({
     ...committed, version, tag,
+    releaseUrl: `https://github.com/EricTsai83/recordstuff/releases/tag/${tag}`, notesUrl: `https://github.com/EricTsai83/recordstuff/releases/tag/${tag}`,
+    sha256sumsUrl: `${base}/SHA256SUMS`, releaseJsonUrl: `${base}/release.json`,
     dmg: { ...committed.dmg, name: dmg, url: `${base}/${dmg}` },
     windows: { platform: "win32-x64", name, size: 98_765_432, sha256: "ab".repeat(32), url: `${base}/${name}`, recordUrl: `${base}/release-win32-x64.json` },
   });

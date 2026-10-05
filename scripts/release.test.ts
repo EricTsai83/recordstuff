@@ -9,10 +9,13 @@ describe('release gates', () => {
   it('accepts only a tag equal to v + package version, stable or pre-release', () => {
     expect(() => validateTag('v0.1.2', '0.1.2')).not.toThrow();
     expect(() => validateTag('v0.2.0-rc.1', '0.2.0-rc.1')).not.toThrow();
+    expect(() => validateTag('v0.2.0-rc.0', '0.2.0-rc.0')).not.toThrow();
+    expect(() => validateTag('v0.2.0-rc.10', '0.2.0-rc.10')).not.toThrow();
     for (const tag of ['v0.1.0', '0.1.2', 'v0.1.2-beta', 'v0.1.2\n', 'v0.1.2;echo x']) {
       expect(() => validateTag(tag, '0.1.2')).toThrow();
     }
-    for (const version of ['0.1', '0.1.2-', '0.1.2-rc 1', 'v0.1.2', '0.1.2+build']) {
+    // Semver forbids leading zeros in numeric identifiers: rc.01 and rc.1 would order as the same version.
+    for (const version of ['0.1', '0.1.2-', '0.1.2-rc 1', 'v0.1.2', '0.1.2+build', '0.1.2-rc.01', '0.1.2-00']) {
       expect(() => validateTag(`v${version}`, version)).toThrow();
     }
     expect(isPrerelease('0.1.2')).toBe(false);
