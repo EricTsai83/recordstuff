@@ -1,6 +1,6 @@
 {
   "name": "recordstuff",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "One menu bar button that records the main display with system audio.",
   "main": "./out/main/index.js",
   "author": "Eric Tsai",
