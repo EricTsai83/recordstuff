@@ -24,7 +24,7 @@ Vercel 的 Root Directory 仍為 `website`，必須啟用 **Include source files
 
 會停止發布的閘門，依序為：tag 指向的 commit 不是 `origin/main` 的祖先；tag 格式錯誤或比 package.json 最後記錄的版本舊；工作樹不乾淨；該 tag 已有 release（含 draft）；程式檢查失敗；缺 secrets 或匯入的憑證指紋不是 `01B373511530BBF287CA35E54C10A5F017AAD637`；bundle 簽章、identifier、hardened runtime 或 designated requirement 失敗；DMG 根目錄不是恰為 `Applications` 與 `RecordStuff.app` 加允許的隱藏 Finder 版面檔；App 版本或架構不符；重驗時候選 metadata 或 SHA256SUMS 不同；tag 不再指向已驗證的 commit。1.1.1 之後的版本，Windows 建置在下列情況也會停止發布：runner 不是 x64；安裝檔或安裝後的 `RecordStuff.exe` 的 Authenticode 狀態不是 `NotSigned`；每位使用者的靜默安裝失敗，或登記了全機（HKLM）解除安裝項目；HKCU 下不是恰好一個 DisplayVersion 等於該版本的解除安裝項目；`RecordStuff.exe` 的 PE machine 不是 x64 或 ProductVersion 不同；缺少系統匣 ICO 或開始選單捷徑；靜默解除安裝失敗，或留下 App、捷徑或登記；重驗時安裝檔的大小或 SHA-256 與 `release-win32-x64.json` 不同。沒有不用固定身分的 macOS 後備、部分驗證的後備，也沒有單一平台的後備路徑。
 
-版本語意：tag 是版本的唯一來源。build job 在 `pnpm dist:mac` 與 `pnpm dist:win` 前把 tag 的版本寫入工作樹的 package.json（`release.mts version`），所以 App、安裝檔與紀錄都帶著它；repo 裡的 package.json 記錄最新的已記錄正式版供 `preflight` 使用：record job 只讓它前進、永不倒退，下載指標則依已提交的 manifest。`vX.Y.Z` 公開為最新版本；若已有更新的正式版公開，則維持為歷史版本（`--latest=false`），讓 app 更新檢查的備援目標「最新版本」永不倒退。`vX.Y.Z-suffix`（例如 `v0.2.0-rc.1`）公開時標為 pre-release，永不標為 latest，也不更新 package.json 與 README。兩者使用相同的建置與閘門。資產組合依版本而定：1.1.1 及更早維持三個資產的契約（DMG、`release.json`、SHA256SUMS），讓 main 仍能驗證那些 tag；之後的每個版本（含預發布）有五個：這三個加上 `RecordStuff-<version>-x64-unsigned-setup.exe` 與 `release-win32-x64.json`。
+版本語意：tag 是版本的唯一來源。build job 在 `pnpm dist:mac` 與 `pnpm dist:win` 前把 tag 的版本寫入工作樹的 package.json（`release.mts version`），所以 App、安裝檔與紀錄都帶著它；repo 裡的 package.json 記錄最新的已記錄正式版供 `preflight` 使用：record job 只讓它前進、永不倒退，下載指標則依已提交的 manifest。`vX.Y.Z` 公開為最新版本；若已有更新的正式版公開，則維持為歷史版本（`--latest=false`），讓 app 更新檢查的備援目標「最新版本」永不倒退。`vX.Y.Z-suffix`（例如 `v0.2.0-rc.1`）公開時標為 pre-release，永不標為 latest，也不更新 package.json 與 README。後綴中的數字部分依 semver 不得有前導零（`rc.01` 會被拒絕），所以不會有兩個 tag 排序成同一版本。兩者使用相同的建置與閘門。資產組合依版本而定：1.1.1 及更早維持三個資產的契約（DMG、`release.json`、SHA256SUMS），讓 main 仍能驗證那些 tag；之後的每個版本（含預發布）有五個：這三個加上 `RecordStuff-<version>-x64-unsigned-setup.exe` 與 `release-win32-x64.json`。
 
 憑證指紋固定。每次建置把加密 PKCS#12 匯入暫時 keychain，設定 codesign 金鑰存取與該憑證的 Code Signing 信任。trap 與 always cleanup 移除憑證檔、keychain 與信任。此設計支援可拋棄的 GitHub-hosted runner，持久 runner 需另行調整。
 
@@ -71,6 +71,6 @@ CI 無法證明螢幕或系統音訊擷取：runner 沒有 TCC 授權。這是�
 
 Apple 公證、Windows 程式碼簽章、App 自動更新、Intel Mac 與 Windows on Arm 交付、Windows 實機驗證與免警告安裝仍在範圍外。T3 Code 比較見[簽署設計](signing.md)。
 
-frozen 安裝後，CI 明確執行 Electron 44 的 install.js，因為套件沒有 postinstall。cleanup-release-keychain.py 把每個 OS 清理操作限制在 15 秒內，失敗時警告並移除暫存檔；可拋棄 runner 的銷毀處理其餘 OS 狀態。
+frozen 安裝後，CI 明確執行 Electron 44 的 install.js，因為套件沒有 postinstall。cleanup-release-keychain.py 把每個 OS 清理操作限制在 15 秒內，失敗時警告並移除暫存檔，但信任移除失敗時保留憑證，讓第二次清理重試；可拋棄 runner 的銷毀處理其餘 OS 狀態。
 
 本機執行 `verify` 或 `publish` 時，工作樹必須 checkout 到 release.json 的 source commit；main 上後續文件提交不會改變候選產物。1.1.1 之後版本的本機 `publish` 還需要目錄裡有 CI 建置的 Windows 候選版與其紀錄。
