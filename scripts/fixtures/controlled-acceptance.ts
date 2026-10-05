@@ -150,7 +150,8 @@ export function configureControlled(dir: string) {
         try { response = await run(JSON.parse(fs.readFileSync(path.join(requests, name), "utf8")) as ControlledCommand); }
         catch (error) { response = { ok: false, error: String(error) }; }
         writeJson(path.join(responses, name), response);
-      });
+      // A reply that cannot be written (a full disk) times out that one request; the queue must still answer the next.
+      }).catch((error: unknown) => { console.error(`controlled: reply ${name} not written: ${String(error)}`); });
     }
   }, 50);
 

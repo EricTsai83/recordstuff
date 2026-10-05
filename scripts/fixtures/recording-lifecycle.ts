@@ -67,7 +67,7 @@ recorder.subscribe(event => {
   }
 });
 installQuitCoordinator(app, { shutdown: () => recorder.shutdown(), pending: () => { deferred++; },
-  error: cause => { throw cause; } });
+  error: cause => { console.error(cause); app.exit(1); } });
 app.on("will-quit", () => {
   assert.equal(diskPending, false, "process must retain pending disk ownership");
   assert.equal(terminal, 1);
@@ -97,4 +97,7 @@ await fs.writeFile(path.join(dir, "result.json"), JSON.stringify({ mode, deferre
 app.quit();
 
 }
+// A failed assertion in an event handler exits with it at once, not as an error dialog or the runner's timeout.
+process.on("uncaughtException", cause => { console.error(cause); app.exit(1); });
+process.on("unhandledRejection", cause => { console.error(cause); app.exit(1); });
 void main().catch(cause => { console.error(cause); app.exit(1); });
