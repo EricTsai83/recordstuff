@@ -8,6 +8,7 @@
 import { test, expect, type Launched } from "./fixtures";
 import type { Page } from "@playwright/test";
 import fs from "node:fs";
+import path from "node:path";
 import { read, until, centre, clickAt } from "./helpers";
 
 let host: Launched, page: Page;
@@ -138,11 +139,17 @@ test("S016–S021 the notification card: switch and pane button in one card, ids
 
 test("S022 the Recordings folder is read by the app's library: names, dates, sizes and lengths from the files", async () => {
   const files = await host.evaluate(h => h.library().state.files.map((file: { name: string; recordedAt: number; size: number; duration?: number }) => [file.name, file.recordedAt, file.size, file.duration ?? null]));
-  expect(files).toEqual([
+  // A name without a time stamp dates from the file's creation time; only macOS lets `utimes` move it back, so
+  // elsewhere the file system's own creation time is the date the library must read.
+  const named = "A long product walkthrough recorded for the onboarding review.mp4";
+  const stat = fs.statSync(path.join(host.data, "recordings", named));
+  const created = process.platform === "darwin" ? new Date(2026, 9, 4, 9, 30).getTime() : stat.birthtimeMs || stat.mtimeMs;
+  const expected: Array<[string, number, number, number | null]> = [
     ["2026-10-04 14-02-11.mp4", new Date(2026, 9, 4, 14, 2, 11).getTime(), 182e6, 83],
-    ["A long product walkthrough recorded for the onboarding review.mp4", new Date(2026, 9, 4, 9, 30).getTime(), 1.24e9, 3725],
+    [named, created, 1.24e9, 3725],
     ["2026-10-03 21-15-00.mp4", new Date(2026, 9, 3, 21, 15).getTime(), 54e6, null],
-  ]);
+  ];
+  expect(files).toEqual(expected.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])));
 });
 
 test("S037–S038 countdown sound: a click on the checked switch asks main for off; under countdown Off it is disabled, keeps its value and sends nothing", async () => {
@@ -375,3 +382,17 @@ test("S058–S066 the shortcut editor by keyboard: Tab and Shift+Tab leave captu
   await page.emulateMedia({ reducedMotion: null });
   await keep("panel.png");
 });
+
+for (const platform of ["darwin", "win32"] as const) {
+  test(`S116 ${platform}: the top of a narrow window is clickable: the window-drag strip covers no tab (macOS leaves it room; elsewhere it is not drawn)`, async () => {
+    // Plan 066 found the strip over the tabs on Windows CI; the page lays out by the platform its view names.
+    await host.evaluate((h, value) => { h.setSize(560, 680); h.pushModel({ type: "idle" }, { platform: value }); }, platform);
+    await expect(page.locator("html")).toHaveAttribute("data-platform", platform);
+    const strip = await read<{ shown: boolean; covers: string[] }>(page, `(() => { const strip = document.querySelector(".titlebar"), shown = getComputedStyle(strip).display !== "none";
+      return { shown, covers: [...document.querySelectorAll('[role="tab"]')].filter(tab => { const r = tab.getBoundingClientRect();
+        return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === strip; }).map(tab => tab.id) }; })()`);
+    expect.soft(strip, `S116 ${platform}: the strip is drawn only on macOS and covers no tab`).toEqual({ shown: platform === "darwin", covers: [] });
+    await page.getByRole("tab", { name: "General" }).click({ timeout: 3000 });
+    await expect(page.getByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");
+  });
+}

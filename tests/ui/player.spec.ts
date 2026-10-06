@@ -214,12 +214,17 @@ test("P11–P15 full screen: the full-screen page gets the name, the controls an
     last: document.querySelector(".pc-row").lastElementChild.id, labels: [...document.querySelectorAll(".pc button")].map(b => b.getAttribute("aria-label")), native: document.getElementById("video").controls }))()`);
   const geometry = await app.evaluate((h, _a, electron) => {
     const settings = h.settingsWindow(), video = h.videoWindow();
-    return { bounds: video.getBounds(), display: electron.screen.getDisplayMatching(settings.getBounds()).bounds, state: h.boundary.windowState(video) as { simpleFullScreen: boolean; fullScreen: boolean; visible: boolean } };
+    // What production asked for when it made the window: a hidden window is fitted to the work area by the OS (Windows'
+    // taskbar), so its own bounds are not the request.
+    const created = h.boundary.calls.filter((call: { kind: string }) => call.kind === "window:create").at(-1)!.detail as { bounds: unknown; fullscreen: boolean };
+    return { requested: created.bounds, fullscreenOption: created.fullscreen, display: electron.screen.getDisplayMatching(settings.getBounds()).bounds,
+      state: h.boundary.windowState(video) as { simpleFullScreen: boolean; fullScreen: boolean; visible: boolean } };
   });
   const handedOver = fullPlayback.time >= handed - 0.3 && fullPlayback.time <= handed + 1.5;
   expect.soft(shown && fullState.title === first.title && fullState.last === "exit" && !fullState.native
     && fullState.labels.join() === [label("Pause"), label("Mute"), label("Exit full screen")].join() && !fullPlayback.paused && handedOver
-    && JSON.stringify(geometry.bounds) === JSON.stringify(geometry.display) && (geometry.state.simpleFullScreen || geometry.state.fullScreen) && geometry.state.visible,
+    && JSON.stringify(geometry.requested) === JSON.stringify(geometry.display)
+    && (process.platform === "darwin" ? geometry.state.simpleFullScreen : geometry.fullscreenOption === true && geometry.state.fullScreen) && geometry.state.visible,
   `P11 the full-screen window is asked to cover the display, its page has the recording's name, the same controls and the time handed over, still playing ${JSON.stringify({ ...fullState, handed, ...fullPlayback, ...geometry })}`).toBe(true);
   const viewport = await read<{ width: number; height: number }>(full, "({ width: innerWidth, height: innerHeight })");
   await full.mouse.move(viewport.width / 2, viewport.height - 40);

@@ -22,7 +22,9 @@ Plan 066 依維護者要求，把例行的 renderer 與 Electron 整合驗收移
 
 - 鎖定的工作階段（結案後依維護者要求）：維護者於當地時間 18:35:51 至 18:37:27 鎖定螢幕（96 秒，每秒經 `CGSSessionScreenIsLocked` 讀取），期間的完整背景執行仍在 3.5 分鐘內通過 53/53，涵蓋元件、倒數、播放器與截圖矩陣測試；該次以 `--reporter=line` 啟動，因此沒有寫出逐次啟動的摘要，但每個測試的 teardown 仍執行圍堵檢查。
 
-未執行：結案時最終 revision 的 macOS 與 Windows CI（之後已在 `plan-066-background-playwright` 分支 dispatch）；沒有螢幕的機器。不宣稱：Windows UI job 通過不代表 Windows 原生視窗、Tray 或擷取有證據。
+- 結案後在 `plan-066-background-playwright` 分支的 Windows CI：套件第一次在 Windows 執行就發現一個 App bug。設定頁 40 px 的視窗拖曳條（`.titlebar`）在 macOS 不會蓋到內容，在 Windows 卻蓋住頁面最上方 40 px，因此窄視窗的分頁點不到；這也是 plan 066 之前 Windows 上三個位置測試失敗的原因。依維護者決定，拖曳條現在只在 macOS 繪製（`src/renderer/ui.css`），S116 檢查兩種版面；改回舊樣式時它會失敗。同一次執行的其他 Windows 失敗屬測試本身：Windows 無法回溯的檔案建立時間、平台的設定快捷鍵與訊息，以及被縮到工作區內的隱藏全螢幕視窗；現在都依平台判定。macOS CI 也找出兩個對 runner 的假設並已修正：比 1024 × 768 螢幕更大的視窗尺寸，以及在過渡動畫中量測的焦點環。
+
+結案時未執行：最終 revision 的 macOS 與 Windows CI（之後已執行，見上）；沒有螢幕的機器。不宣稱：Windows UI job 通過不代表 Windows 原生視窗、Tray 或擷取有證據。
 
 ## Plan 068 結案 — 2026-10-06
 

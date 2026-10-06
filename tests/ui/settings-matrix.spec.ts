@@ -83,7 +83,9 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
           empty: !document.querySelector(".library-empty").hidden, summary: document.querySelector(".library-summary").textContent,
           status: (el => el.hidden ? "" : el.textContent)(document.querySelector(".library-status")) })`);
         const unreadable = translate("Could not read the output folder. Check the folder and its drive, or choose another folder.", lang);
-        if (state === "library") expect.soft(shown.days === 2 && shown.cards === 3 && !shown.empty && shown.summary !== "" && shown.status === "", `S027 ${key}: Recordings shows its cards by day ${JSON.stringify(shown)}`).toBe(true);
+        // Two days on macOS; elsewhere the user-named recording dates from its creation, today, so three (settings-panel S022).
+        const days = await host.evaluate(h => new Set(h.library().state.files.map((file: { recordedAt: number }) => new Date(file.recordedAt).toDateString())).size);
+        if (state === "library") expect.soft(shown.days === days && days === (process.platform === "darwin" ? 2 : 3) && shown.cards === 3 && !shown.empty && shown.summary !== "" && shown.status === "", `S027 ${key}: Recordings shows its cards by day ${JSON.stringify(shown)}`).toBe(true);
         else if (state === "library-empty") expect.soft(shown.cards === 0 && shown.empty && shown.status === "", `S035 ${key}: Recordings shows the empty folder ${JSON.stringify(shown)}`).toBe(true);
         else expect.soft(shown.cards === 0 && !shown.empty && shown.status === unreadable, `S036 ${key}: Recordings shows why the folder cannot be read ${JSON.stringify(shown)}`).toBe(true);
         if (state === "library" && size === "default") {

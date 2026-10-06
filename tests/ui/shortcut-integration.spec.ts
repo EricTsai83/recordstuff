@@ -12,8 +12,12 @@ import type { Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { read, cdpKey, eventually } from "./helpers";
+import { describeAccelerator, settingsShortcut } from "../../src/shared/hotkey";
 
-const SETTINGS_KEY = "CommandOrControl+Alt+,";
+/** The Settings shortcut of this platform (hotkey.ts): ⌥⌘, on macOS, Ctrl+Shift+, elsewhere. */
+const SETTINGS_KEY = settingsShortcut(process.platform);
+/** The same combination as a stored recording shortcut written another way: the legacy collision K-S02 starts from. */
+const LEGACY_KEY = process.platform === "darwin" ? "Alt+CommandOrControl+," : "Shift+Control+,";
 const ACCELERATOR = "Control+Shift+F20";
 const F20 = { key: "F20", code: "F20", keyCode: 131 };
 /** The Settings shortcut editor's limit in src/main/settings/settings-window.ts. */
@@ -139,7 +143,7 @@ test("K-N01–K-N14 normal: a refused registration is saved, explained, notified
     && await s.checked(ACCELERATOR), "K-N10 retry button registration recovery clears error and retains selection").toBe(true);
   await s.arm();
   await s.page.keyboard.press("r");
-  await expect(s.page.locator("#feedback")).toContainText("Command or Control");
+  await expect(s.page.locator("#feedback")).toContainText(process.platform === "darwin" ? "Command or Control" : "Ctrl");
   expect.soft(s.savedKey(), "K-N11 invalid candidate does not change saved shortcut").toBe(ACCELERATOR);
   await s.escape();
   await s.choose("language", "zh-TW");
@@ -176,7 +180,7 @@ test("K-N01–K-N14 normal: a refused registration is saved, explained, notified
 
 test("K-S01–K-S39 settings: legacy key, appearance, entry and restore, reserved key, failed registrations in the tray, crash, editor limit, held saves, entry rounds", async ({ launchApp }) => {
   test.setTimeout(150_000);
-  const s = new Session(await launchApp({ settings: { appearance: "dark", hotkey: { enabled: true, accelerator: "Alt+CommandOrControl+," } } }));
+  const s = new Session(await launchApp({ settings: { appearance: "dark", hotkey: { enabled: true, accelerator: LEGACY_KEY } } }));
   const firstMenu = await s.trayMenu();
   const waiting = s.app.page("settings.html");
   await s.app.evaluate(h => h.clickTrayItem("^Open RecordStuff$"));
@@ -185,7 +189,7 @@ test("K-S01–K-S39 settings: legacy key, appearance, entry and restore, reserve
   expect.soft(await s.app.evaluate((_h, _a, electron) => electron.nativeTheme.themeSource) === "dark" && await read(s.page, `matchMedia('(prefers-color-scheme: dark)').matches`),
     "K-S01 saved dark appearance is applied at startup").toBe(true);
   const attempts = await s.attempts();
-  expect.soft(attempts.length === 1 && (await s.owned()).includes(SETTINGS_KEY) && await s.checked(SETTINGS_KEY) && s.saved().hotkey.accelerator === "Alt+CommandOrControl+,",
+  expect.soft(attempts.length === 1 && (await s.owned()).includes(SETTINGS_KEY) && await s.checked(SETTINGS_KEY) && s.saved().hotkey.accelerator === LEGACY_KEY,
     `K-S02 legacy equivalent key retains recording ownership and value ${JSON.stringify(attempts)}`).toBe(true);
   expect.soft(firstMenu.some(label => label.includes("open RecordStuff above to change it.")), `K-S03 legacy collision keeps tray access with recovery explanation: ${firstMenu.join(" | ")}`).toBe(true);
   const before = fs.readFileSync(s.settingsFile, "utf8");
@@ -213,7 +217,7 @@ test("K-S01–K-S39 settings: legacy key, appearance, entry and restore, reserve
     && (await s.settingsWindows()).length === count, `K-S09a the Settings callback asks to restore, show and focus the minimized window without duplication ${JSON.stringify({ restore, state })}`).toBe(true);
   await s.arm();
   expect.soft(await s.owned(), "K-S10 capture suspends both registrations").toEqual([]);
-  await s.page.keyboard.press(process.platform === "darwin" ? "Meta+Alt+Comma" : "Control+Alt+Comma");
+  await s.page.keyboard.press(process.platform === "darwin" ? "Meta+Alt+Comma" : "Control+Shift+Comma");
   // The page refuses the reserved key itself and leaves Confirm disabled; a click on it, as the former fixture's, ends the capture.
   await expect(s.page.locator("#shortcut-confirm")).toBeDisabled();
   await s.page.locator("#shortcut-confirm").click({ force: true });
@@ -226,7 +230,7 @@ test("K-S01–K-S39 settings: legacy key, appearance, entry and restore, reserve
   for (const [id, language] of [["K-S12", "en"], ["K-S13", "zh-TW"]] as const) {
     await s.page.evaluate(value => (window as unknown as { settings: { choose: (g: string, c: string) => Promise<unknown> } }).settings.choose("language", value), language);
     const menu = await s.trayMenu();
-    expect.soft(menu.some(label => label.includes(language === "en" ? "The shortcut for RecordStuff is unavailable:" : "開啟 RecordStuff 的快捷鍵無法使用，")) && !menu.some(label => label.includes("⌥⌘,")),
+    expect.soft(menu.some(label => label.includes(language === "en" ? "The shortcut for RecordStuff is unavailable:" : "開啟 RecordStuff 的快捷鍵無法使用，")) && !menu.some(label => label.includes(describeAccelerator(SETTINGS_KEY, process.platform))),
       `${id} ${language} Settings registration failure is explained without working label: ${menu.join(" | ")}`).toBe(true);
   }
   const beforeRefresh = (await s.attempts()).length;
