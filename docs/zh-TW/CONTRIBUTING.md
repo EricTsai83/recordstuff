@@ -51,6 +51,8 @@ App 文案位於 `src/shared/i18n.ts`。新增或修改文案時，同步更新�
 
 可見的 renderer 使用 React、Tailwind CSS 4 與 shadcn/ui 的 Base UI 版本。`components.json` 設定 `base-mira` registry、alias 與共用的 `src/renderer/ui.css` token。透過 `pnpm dlx shadcn@latest add <component>` 加入元件；產生的原始碼放在 `src/renderer/components/ui/`，並確認 Base UI 的 data attribute 與安裝版本一致。產生的 `cn` import 必須使用 `@/lib/utils`，不要加入無關的 `cn` 套件。`settings-app.tsx` 畫出已提交的 view；`settings-controller.ts` 負責 IPC、非同步請求所有權、焦點與宣告。`player.tsx` 由設定視窗與全螢幕視窗共用。倒數字型與播放覆蓋層是功能專用的 React 呈現；原生 OS 選單及隱藏的擷取 host 使用各自的平台 API。
 
+一般 UI 優先組合既有的 shadcn primitive：有標籤的設定與驗證用 Field、附固定副檔名的輸入用 InputGroup、空狀態用 Empty、收合區用 Collapsible、右鍵操作用 ContextMenu，控制項的視覺提示用 Tooltip。`ControlTooltip` 直接組合在既有控制項上，不增加 Tab 停靠點；控制項仍需保留可存取名稱。DropdownMenu 與 ContextMenu 共用檔案操作內容。草稿驗證與短暫提示的計時放在功能 hooks（`use-text-setting.ts`、`use-zoom-notice.ts`），畫面由 primitive 組合；縮放 IPC 放在對應 hook，已提交設定、檔案操作所有權與宣告仍由 controller 管理。縮放與復原回饋使用共用的 Sonner Toaster。導入 primitive 時保留既有鍵盤行為：失敗紀錄以 Collapsible 保留跨日期的方向鍵導覽。
+
 `pnpm test:ui` 是背景 UI 與整合套件：Playwright 驅動隱藏的離屏 Electron，載入建置好的頁面、preload 與正式 main，OS 效果換成會記錄的 adapter，因此不會從你的桌面拿走視窗、焦點、按鍵或聲音，執行時可以繼續工作。先執行 `pnpm build`，或使用已包含一次 build 與本套件的 `pnpm acceptance:regression`，不需要另外下載瀏覽器。它涵蓋頁面輸入、DOM 焦點、位置、IPC、儲存與靜音播放；OS 視窗啟用、原生視窗框、真正的註冊、在螢幕上全螢幕、擷取與音效仍由原生 runner 負責（`pnpm acceptance:recipe -- native-ui` 與錄影回合）。更換 primitive 時保留測試案例，改寫選取器及輸入序列，而非移除斷言。圖、trace 與摘要寫入 `test-results/ui/`、`test-results/ui-summary.json` 與 `playwright-report/`；詳見[背景 UI 套件](system-design/tooling.md#背景-ui-套件)。
 
 ## 驗證修改
