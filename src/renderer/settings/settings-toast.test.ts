@@ -8,7 +8,7 @@ const item = (id: string): LibraryItemView => ({ id, day: "Today", title: id, na
 
 /** The toast's own clock (2026-10-06): 8 s untouched, paused by the pointer or by focus in it; "Restored" stays 3 s. */
 it("leaves after 8 s unless the pointer or focus holds it, and says Restored for 3 s", async () => {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date", "requestAnimationFrame", "cancelAnimationFrame"] });
   try {
     document.body.innerHTML = '<div id="root"></div>';
     Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
@@ -36,13 +36,17 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
       click(document.getElementById("clip-menu-trash")!);
       await vi.advanceTimersByTimeAsync(0);
     };
-    const state = () => [document.getElementById("toast")!.dataset.state, document.getElementById("toast")!.hidden];
+    // Sonner mounts the toast for each show and unmounts it once it has slid out (2026-10-07): gone reads as closed and hidden.
+    const state = () => {
+      const node = document.getElementById("toast");
+      return node ? [node.dataset.state, node.hidden] : ["closed", true];
+    };
     await trash("a");
     expect(state()).toEqual(["open", false]);
     await vi.advanceTimersByTimeAsync(7_900);
     expect(state()).toEqual(["open", false]);
     // The pointer on it holds it however long, and leaving gives back only what was left.
-    const toast = document.getElementById("toast")!;
+    let toast = document.getElementById("toast")!;
     toast.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     await vi.advanceTimersByTimeAsync(20_000);
     expect(state()).toEqual(["open", false]);
@@ -51,8 +55,8 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
     expect(state()).toEqual(["open", false]);
     await vi.advanceTimersByTimeAsync(100);
     expect(state()).toEqual(["closed", false]);
-    // Gone from view once it has faded.
-    await vi.advanceTimersByTimeAsync(200);
+    // Gone once Sonner has slid it out (a frame, then its 200 ms), stepped so React's effects run between the timers.
+    for (let step = 0; step < 4; step++) await vi.advanceTimersByTimeAsync(100);
     expect(state()).toEqual(["closed", true]);
 
     // Focus in it holds it too; a newer trash replaces the toast and starts its count again.
@@ -74,6 +78,7 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
     // pointer still holds it (review of 2026-10-06, F2).
     await vi.advanceTimersByTimeAsync(300);
     await trash("a");
+    toast = document.getElementById("toast")!;
     toast.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     const original = Element.prototype.matches;
     const matches = vi.spyOn(Element.prototype, "matches").mockImplementation(function (this: Element, selector: string) {
@@ -99,5 +104,19 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
     // The next Escape, with nothing else open, closes the window as before.
     document.getElementById("tab-library")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     expect(close).toHaveBeenCalledTimes(1);
+
+    // A newer trash while the last toast is still sliding out shows a toast of its own, which stays (review of
+    // 2026-10-07, [1]): it must not inherit the leaving toast's removal.
+    await vi.advanceTimersByTimeAsync(1_000);
+    await trash("a");
+    document.getElementById("tab-library")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    for (let step = 0; step < 2; step++) await vi.advanceTimersByTimeAsync(50);
+    await trash("b");
+    // The one leaving still says what it said, and only the new one has the toast's ids.
+    const cards = [...document.querySelectorAll<HTMLElement>(".undo-toast")].map(card => [card.id, card.querySelector(".toast-description")!.textContent]);
+    expect(cards).toEqual(expect.arrayContaining([["", "a.mp4"], ["toast", "b.mp4"]]));
+    for (let step = 0; step < 10; step++) await vi.advanceTimersByTimeAsync(100);
+    expect(state()).toEqual(["open", false]);
+    expect(document.querySelector("#toast .toast-description")!.textContent).toBe("b.mp4");
   } finally { vi.useRealTimers(); }
 });

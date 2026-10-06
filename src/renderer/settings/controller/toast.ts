@@ -12,8 +12,11 @@ export let toastState:
       started: number;
       pointer: boolean;
       focus: boolean;
+      /** Which time it opened: "Restored" over an open toast keeps it, a toast after a closed one takes the next. */
+      show: number;
     }
   | undefined;
+let toastShows = 0;
 let toastFadeTimer: ReturnType<typeof setTimeout> | undefined;
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 export function showToast(
@@ -35,6 +38,7 @@ export function showToast(
     started: Date.now(),
     pointer: node?.matches(":hover") === true,
     focus: node?.contains(document.activeElement) === true,
+    show: toastState?.open ? toastState.show : ++toastShows,
   };
   draw();
   resumeToast();
