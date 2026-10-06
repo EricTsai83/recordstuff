@@ -215,16 +215,92 @@ test("U070-2 a settings menu is the app's own sheet: chosen with the pointer it 
   expect.soft(keyboard, "U070-2 reached by the keyboard, the menu shows its ring").toBe("solid");
 });
 
-test("U070-3 keyboard focus on a recording card is one thin line round the card, following its corners, with none inside it", async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: "en", library: h.library().state }); });
-  await page.locator("#tab-library").click();
-  await page.waitForTimeout(150);
-  await page.locator(".clip-more").first().focus();
-  await page.keyboard.press("Shift+Tab");
-  const focus = await read<{ active: string; card: string; cardWidth: string; cardRadius: string; button: string }>(page, `(() => {
-    const button = document.activeElement, card = button.closest(".clip"), c = getComputedStyle(card), b = getComputedStyle(button);
-    return { active: button.className.includes("clip-open") ? "clip-open" : button.id, card: c.outlineStyle, cardWidth: c.outlineWidth, cardRadius: c.borderTopLeftRadius,
-      button: b.outlineStyle === "none" || b.outlineWidth === "0px" ? "none" : b.outlineStyle + " " + b.outlineWidth }; })()`);
-  expect.soft(focus.active === "clip-open" && focus.card === "solid" && ["1px", "1.5px"].includes(focus.cardWidth) && focus.cardRadius !== "0px" && focus.button === "none",
-    `U070-3 the card, not its button, shows the focus line ${JSON.stringify(focus)}`).toBe(true);
-});
+/** Pixels at each edge must move toward the state colour, including the edges over the thumbnail. */
+async function visibleCardEdges(before: Buffer, after: Buffer, colour: string): Promise<string[]> {
+  return page.evaluate(async ({ before, after, colour }) => {
+    const decode = (png: string) => createImageBitmap(new Blob([Uint8Array.from(atob(png), c => c.charCodeAt(0))], { type: "image/png" }));
+    const [plain, marked] = await Promise.all([decode(before), decode(after)]);
+    try {
+      const canvas = new OffscreenCanvas(marked.width, marked.height), ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+      ctx.fillStyle = colour; ctx.fillRect(0, 0, 1, 1);
+      const expected = ctx.getImageData(0, 0, 1, 1).data.slice(0, 3);
+      ctx.drawImage(plain, 0, 0); const a = ctx.getImageData(0, 0, plain.width, plain.height).data;
+      ctx.drawImage(marked, 0, 0); const b = ctx.getImageData(0, 0, marked.width, marked.height).data;
+      const card = document.querySelector(".clip")!.getBoundingClientRect(), thumb = document.querySelector(".clip-thumb")!.getBoundingClientRect();
+      const scale = marked.width / card.width, w = marked.width, h = marked.height;
+      const x = Math.floor((thumb.left - card.left + thumb.width / 2) * scale), y = Math.floor((thumb.top - card.top + thumb.height / 2) * scale);
+      const points: Array<{ edge: string; at: (i: number) => [number, number] }> = [
+        { edge: "top over thumbnail", at: (i: number) => [x, i] },
+        { edge: "left over thumbnail", at: (i: number) => [i, y] },
+        { edge: "right", at: (i: number) => [w - 1 - i, y] },
+        { edge: "bottom", at: (i: number) => [Math.floor(w / 2), h - 1 - i] },
+      ];
+      return points.filter(({ at }) => Array.from({ length: Math.ceil(3 * scale) }, (_, i) => {
+        const [px, py] = at(i), k = (py * w + px) * 4;
+        const distance = (pixels: Uint8ClampedArray) => Math.hypot(...[0, 1, 2].map(c => pixels[k + c]! - expected[c]!));
+        // Allow antialiasing at fractional CSS edges, but require an actual visible change toward the state colour.
+        return distance(b) + 20 < distance(a);
+      }).some(Boolean)).map(({ edge }) => edge);
+    } finally { plain.close(); marked.close(); }
+  }, { before: before.toString("base64"), after: after.toString("base64"), colour });
+}
+
+for (const scheme of ["light", "dark"] as const) for (const layout of ["grid", "list"] as const) {
+  test(`U070-3 ${scheme}/${layout}: recording card state lines cover thumbnails, touch the content and follow its corners`, async ({}, testInfo) => {
+    await host.evaluate((h, args) => {
+      h.theme(args.scheme); h.setSize(...h.SNAPSHOT_SIZES.default);
+      h.pushModel({ type: "idle" }, { language: "en", library: h.library().state, libraryLayout: args.layout });
+    }, { scheme, layout });
+    await page.locator("#tab-library").click();
+    const card = page.locator(".clip").first();
+    await expect.poll(() => card.locator("img").evaluate(img => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    const plain = await card.screenshot();
+    await page.locator(".clip-more").first().focus();
+    await page.keyboard.press("Shift+Tab");
+    const edge = () => read<{ active: string; line: string; width: number; colour: string; inset: string[]; radius: number; button: string; gaps: number[] }>(page, `(() => {
+      const card = document.querySelector(".clip"), button = card.querySelector(".clip-open"), thumb = card.querySelector(".clip-thumb");
+      const c = getComputedStyle(card, "::after"), b = getComputedStyle(button), r = card.getBoundingClientRect(), t = thumb.getBoundingClientRect(), face = button.getBoundingClientRect();
+      return { active: document.activeElement?.id, line: c.borderTopStyle, width: parseFloat(c.borderTopWidth), colour: c.borderTopColor,
+        inset: [c.top, c.right, c.bottom, c.left], radius: parseFloat(c.borderTopLeftRadius),
+        button: b.outlineStyle === "none" || b.outlineWidth === "0px" ? "none" : b.outlineStyle + " " + b.outlineWidth,
+        // List thumbnails are vertically centered beside text; the whole button still meets the card's edges.
+        gaps: [t.left - r.left, face.top - r.top, face.right - r.right,
+          ...(card.closest("#library").dataset.layout === "grid" ? [t.top - r.top, t.right - r.right] : [])] }; })()`);
+    const focus = await edge();
+    expect.soft(focus.active?.endsWith("-open") && focus.line === "solid" && [1, 1.5].includes(focus.width) && focus.radius > 0 && focus.button === "none",
+      `U070-3 ${scheme}/${layout}: one focus line follows the whole card's corners ${JSON.stringify(focus)}`).toBe(true);
+    expect.soft(focus.inset, "the focus line lies against the card's inner edge").toEqual(["0px", "0px", "0px", "0px"]);
+    expect.soft(focus.gaps.every(gap => Math.abs(gap) < 0.5), "the thumbnail and button meet the card edges without a transparent border").toBe(true);
+    const focused = await card.screenshot({ path: testInfo.outputPath(`card-${scheme}-${layout}-focus.png`) });
+    const visible = ["top over thumbnail", "left over thumbnail", "right", "bottom"];
+    expect.soft(await visibleCardEdges(plain, focused, focus.colour), "focus pixels remain visible above the thumbnail on every edge").toEqual(visible);
+
+    // A notification entry focuses the saved card after pointer input and highlights it without playing.
+    await page.locator("#tab-library").click();
+    await host.evaluate((h, layout) => {
+      const view = h.settingsView({ type: "idle" }, { ...h.baseContext(), language: "en", library: h.library().state, libraryLayout: layout });
+      h.push({ ...view, entryTab: "library", libraryFocus: view.library.items[0].id, resultFocus: Date.now() });
+    }, layout);
+    await expect(card).toHaveClass(/arrived/);
+    // Hold the real highlight at its first frame so the picture and geometry show the same state.
+    await read(page, `document.querySelector(".clip").getAnimations().forEach(a => { a.pause(); a.currentTime = 0; })`);
+    const arrived = await edge();
+    expect.soft(arrived.line === "solid" && arrived.width === 2 && arrived.inset.every(v => v === "0px"),
+      `U070-3 ${scheme}/${layout}: the notification line also touches the content ${JSON.stringify(arrived)}`).toBe(true);
+    await expect(page.locator(".player[data-open]")).toHaveCount(0);
+    const highlighted = await card.screenshot({ path: testInfo.outputPath(`card-${scheme}-${layout}-arrived.png`) });
+    expect.soft(await visibleCardEdges(plain, highlighted, arrived.colour), "notification pixels remain visible above the thumbnail on every edge").toEqual(visible);
+    await read(page, `document.querySelector(".clip").getAnimations().forEach(a => a.finish())`);
+    await expect(card).not.toHaveClass(/arrived/);
+
+    // The visible line passes pointer input through to the picture and the card's menu.
+    const hit = await read<{ x: number; y: number }>(page, `(() => { const c = document.querySelector(".clip").getBoundingClientRect(), t = document.querySelector(".clip-thumb").getBoundingClientRect();
+      return { x: c.left + 1, y: t.top + t.height / 2 }; })()`);
+    await page.mouse.click(hit.x, hit.y);
+    await expect(page.locator(".player[data-open]")).toHaveCount(1);
+    await page.keyboard.press("Escape");
+    await page.locator(".clip-more").first().click();
+    await expect(page.locator("#clip-menu")).toBeVisible();
+    await page.keyboard.press("Escape");
+  });
+}

@@ -969,6 +969,17 @@
   }
   .clip {
     position: relative;
+    isolation: isolate;
+  }
+  /* Paint the state line above positioned thumbnails and controls, without intercepting their input. */
+  .clip::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: inherit;
+    border: 0 solid transparent;
+    pointer-events: none;
   }
   .clip-thumb {
     display: block;
@@ -1073,24 +1084,22 @@
     opacity: 1;
   }
   /* The recording a notification or the menu opened: outlined in the recording red, which then fades. */
-  /* Keyboard focus on a card: one line round the card itself, following its corners, not one inside it. */
-  .clip:has(> .clip-open:focus-visible):where(:root:not([data-input="pointer"]):not([data-window="inactive"]) *) {
-    outline: var(--focus-width) solid var(--ring);
-    outline-offset: 1px;
+  /* Both state lines follow the card's inner edge, touching its content without an outside gap. */
+  .clip:has(> .clip-open:focus-visible):where(:root:not([data-input="pointer"]):not([data-window="inactive"]) *)::after {
+    border: var(--focus-width) solid var(--ring);
   }
   /* With keyboard focus on it the card keeps its focus line instead (review of 2026-10-07); its blur ends the highlight. */
-  .clip.arrived:not(:has(> .clip-open:focus-visible)) {
-    outline: 2px solid transparent;
-    outline-offset: 2px;
+  .clip.arrived:not(:has(> .clip-open:focus-visible))::after {
+    border-width: 2px;
     animation: arrived 2.4s ease-out forwards;
   }
   @keyframes arrived {
     0%,
     60% {
-      outline-color: var(--recording-mark);
+      border-color: var(--recording-mark);
     }
     100% {
-      outline-color: transparent;
+      border-color: transparent;
     }
   }
   #library[data-layout="list"] .library-grid {
