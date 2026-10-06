@@ -14,15 +14,15 @@
 | --- | --- | --- |
 | 僅文件、計畫、指示或 skill | 檢查受影響的相對連結／錨點、指令名稱與 package scripts、英繁中一致性；skill metadata 改動時驗證格式 | App 建置、單元測試、啟動 App、錄影。不因文件提到指令就執行它 |
 | App 原始碼、執行期資源或重構 | `pnpm check`；有意義時補行為測試，尤其可重現 bug 的回歸測試；更具體分類未涵蓋時，仍須檢視受影響的可見行為 | 未影響 OS 或需觀察的介面行為時，不需封裝／原生驗收 |
-| 僅顯示文案或翻譯 | `pnpm check`；檢視受影響語言／介面的語意與溢位。設定文案在 check 建置後跑 `pnpm acceptance:settings` 並檢視相關截圖 | 錄影、原生快捷鍵送達、音訊／矩陣測試 |
-| 設定排版、外觀、控制項、持久化、視窗生命週期或設定 IPC／preload | `pnpm acceptance:regression`（已包含 check／build 與 Playwright UI 互動）；視覺修改檢視相關截圖；互動改動在 fixture 使用真正滑鼠／鍵盤事件覆蓋。修改視窗選項（`settingsWindowOptions`）、`src/shared/window-controls.ts` 或頁面左上角畫的內容時，另需在新的 `pnpm start:app` 產物上執行 `pnpm acceptance:settings-shortcut -- --observe`，這是唯一檢查 macOS 所畫視窗按鈕的項目，並觀察其 `settings-window.png` | 純排版／外觀不需錄影。其他原生檢查只限受影響的 OS 邊界或 fixture 無法呈現的行為 |
-| 全域快捷鍵註冊／送達、Tray 操作、焦點、原生入口、應用程式選單或 OS 無障礙 | 設定／快捷鍵整合跑 `pnpm acceptance:regression`，其他跑 `pnpm check`。在新建置的 App 操作受影響原生行為：Tray 操作與選單用 `pnpm acceptance:tray`，設定入口與應用程式選單的快捷鍵用 `pnpm acceptance:settings-shortcut -- --observe`，外觀則觀察保存的截圖。註冊方式改動另需 `pnpm acceptance:shortcut-layout`；`pnpm acceptance:recipe -- shortcut-registration` 以一次建置跑完兩者 | 完整原生狀態矩陣；不會開始／停止或干擾擷取的操作不需錄影 |
+| 僅顯示文案或翻譯 | `pnpm check`；檢視受影響語言／介面的語意與溢位。設定文案在 check 建置後跑背景套件（`pnpm acceptance:regression` 兩者都跑），並檢視 `test-results/ui/` 中相關的圖 | 錄影、原生快捷鍵送達、音訊／矩陣測試 |
+| 設定排版、外觀、控制項、持久化、視窗生命週期或設定 IPC／preload | `pnpm acceptance:regression`（check／build 與背景套件：在隱藏的離屏視窗以 Playwright 輸入，不需桌面回合）；視覺修改檢視相關的圖（`test-results/ui/`，選定的圖會與審核過的基準比對；`pnpm preview:ui` 另可畫出每個分頁、語言、外觀與尺寸的圖庫）；互動改動在背景套件以 Playwright 滑鼠／鍵盤輸入覆蓋。改動依賴 OS 啟用視窗、原生視窗框、跨視窗焦點或在螢幕上全螢幕時，在同一份建置上另跑對應的原生案例：啟用與視窗框用 `pnpm acceptance:settings-native`，錄影播放器或全螢幕影片的全螢幕與焦點交還用 `pnpm acceptance:player`（桌面回合）；`pnpm acceptance:recipe -- native-ui` 以一次建置跑完這些與 `pnpm acceptance:shortcut-native`。修改視窗選項（`settingsWindowOptions`）、`src/shared/window-controls.ts` 或頁面左上角畫的內容時，另需在新的 `pnpm start:app` 產物上執行 `pnpm acceptance:settings-shortcut -- --observe`，這是唯一檢查 macOS 所畫視窗按鈕的項目，並觀察其 `settings-window.png` | 純排版／外觀不需錄影。其他原生檢查只限受影響的 OS 邊界或 fixture 無法呈現的行為 |
+| 全域快捷鍵註冊／送達、Tray 操作、焦點、原生入口、應用程式選單或 OS 無障礙 | 設定／快捷鍵整合跑 `pnpm acceptance:regression`（背景，使用註冊 adapter），其他跑 `pnpm check`。在新建置的 App 操作受影響原生行為：Tray 操作與選單用 `pnpm acceptance:tray`，設定入口與應用程式選單的快捷鍵用 `pnpm acceptance:settings-shortcut -- --observe`，Electron 真正的註冊被拒與真實設定視窗狀態（最小化、還原、焦點、關閉鍵）用 `pnpm acceptance:shortcut-native`，外觀則觀察保存的截圖。註冊方式改動另需 `pnpm acceptance:shortcut-native` 與 `pnpm acceptance:shortcut-layout`；`pnpm acceptance:recipe -- shortcut-registration` 以一次建置跑完回歸與這兩者 | 完整原生狀態矩陣；不會開始／停止或干擾擷取的操作不需錄影 |
 | 錄影開始／停止、capture host／協定、編碼、檔案寫入、來源／品質選擇、錄影鎖定、權限或錄影中退出 | `pnpm check`，加新 `pnpm start:app` 產物的一輪錄影 smoke：開始、停止、存檔、媒體驗證與播放。追加改動案例，例如輸出資料夾或螢幕選擇；設定路徑也改動時加設定回歸 | 所有解析度／品質、長錄影、權限重設及實體拔插，除非影響該行為或需求指定 |
 | 幀時序、同步、解析度／fps 或音質 | 錄影列，加相關矩陣子集：`pnpm matrix -- quick`、`levels`、`fps` 或 `long`（依影響選案例）；音質使用工具指南中的相關 `pnpm audio:quality` 診斷 | 預設跑完整矩陣；沒有長錄需求時跑十分鐘錄影 |
 | 待機或錄影 CPU：新增或改動計時器、輪詢、監看、會持續存在的視窗或 renderer、Tray 工作，或升級 Electron | `pnpm check`（其中的計時器測試會抓出工作階段遺留的計時器），加新 `pnpm start:app` 產物上的 `pnpm measure:cpu`，依 [CPU 預算](system-design/tooling.md#cpu-預算)判定。升級 Electron 時以 `pnpm measure:cpu -- --fps 60 --repeat 3` 重新取 baseline，並更新記錄的 baseline。本來就需要跑矩陣的改動，也要看矩陣的 CPU 數字 | 未影響錄影 CPU 時不需 `--fps 60` 與重複；除非結果接近門檻，不需超過 5 分鐘的待機量測 |
 | 儲存通知送達、時序或 Finder 定位 | `pnpm check`；新簽章產物，再跑 `pnpm acceptance:notification -- --install --clicks 2`。偶發／時序修正依失敗情境選五次或 `--full`，記錄缺少橫幅的案例 | 此輪已提供所需錄影證據時，不另錄相同 smoke；未改文案時不預設雙語原生矩陣 |
 | 更新邏輯、feed 篩選或更新生命週期 | `pnpm check` 與 `pnpm acceptance:updates`；feed 篩選／逾時改動加 `--full`。只有 diff 限於邏輯，且不影響擷取、生命週期或 OS 整合時可用 `--logic-only`，並揭露省略錄影範圍 | 未影響正常 bundle 行為時不重複一般錄影驗收；插樁結果不能證明原生 Tray／瀏覽器操作 |
-| 僅測試、fixture、分析器或開發腳本 | 相關測試；TypeScript 執行 `pnpm typecheck`。runner 編排改動需跑該 runner，包含改動的失敗／清理路徑；純分析器使用受控媒體及既有樣本 | 純斷言／解析／報表格式不需 App 錄影。改動送鍵或真實錄影編排時須執行該真實路徑；fixture 讀取 `out/` 時先建置 |
+| 僅測試、fixture、分析器或開發腳本 | 相關測試；TypeScript 執行 `pnpm typecheck`。背景套件的 spec 在新的建置上執行（`pnpm acceptance:regression` 已涵蓋）；改動其 host、boundary、fixture 或 teardown 時另跑 `pnpm test:ui:drills`。runner 編排改動需跑該 runner，包含改動的失敗／清理路徑；純分析器使用受控媒體及既有樣本 | 純斷言／解析／報表格式不需 App 錄影。改動送鍵或真實錄影編排時須執行該真實路徑；fixture 讀取 `out/` 時先建置 |
 | 建置設定、Electron／執行期依賴、preload 安全、簽章或封裝 | `pnpm check` 與受影響的建置／封裝驗證（`pnpm start:app` 或 `pnpm dist:mac`；Windows 封裝沒有維護者機器能建置或執行，改為 dispatch 一次 [check.yml](../../.github/workflows/check.yml)，其 `check-windows` job 會在 runner 上建置安裝檔並執行安裝／解除安裝閘門）；檢視受影響產物／安裝介面。Electron／媒體／執行期／entitlement 改動加錄影 smoke，Electron 改動另需 `pnpm acceptance:shortcut-layout`（`shortcut-registration` 配方把它接在回歸之後，不再建置第二次），並在其 `pnpm start:app` 產物上跑 `pnpm acceptance:settings-shortcut -- --observe`，因為預設選單與其快捷鍵的分派由 Electron 決定；設定 preload／CSP 改動加設定回歸 | 發布、覆蓋使用者安裝、重設權限；純封裝修改不需完整錄影矩陣 |
 | 網站原始碼／資源／設定 | `pnpm site:check`（網站測試、診斷、線上 manifest 驗證、建置與產生頁面連結檢查）；視覺修改檢視受影響頁面 | 未改共用 App／發布輸入時，不需 App 測試與原生錄影 |
 | 發布工作流程或發布作業 | 相關發布工具測試及[發布指南](system-design/releases.md)要求；實際發布驗收綁定候選 SHA | 用發布來測試；程式／文件任務不代表允許推送 tag |
@@ -42,7 +42,7 @@
 | 之後又修改或修正 review | 重新判斷影響範圍；作廢受影響的證據與產物，只重跑適用的檢查，不自動重跑整個桌面矩陣 |
 | 檢查失敗或環境改變 | 先解決失敗或不確定因素，再重跑受影響範圍；失敗或 blocked 的結果永遠不能當作通過沿用 |
 
-`pnpm acceptance:recipe -- --list` 列出常見組合的配方：`check`、`settings`（即設定回歸）、`shortcut-registration` 與 `recording`（check、`pnpm start:app` 與 `pnpm acceptance`，只在 `start:app` 內建置一次）。每個配方跑的 leaf 檢查都與它取代的指令相同，並寫出分段計時報告（[工具指南](system-design/tooling.md#驗證配方與計時)）。自己執行組合指令同樣有效，只要沒有對相同輸入建置兩次。
+`pnpm acceptance:recipe -- --list` 列出常見組合的配方：`check`、`settings`（即設定回歸，沒有桌面階段）、`shortcut-registration`、`native-ui`（設定、快捷鍵與播放器的原生案例，屬桌面回合）與 `recording`（check、`pnpm start:app` 與 `pnpm acceptance`，只在 `start:app` 內建置一次）。每個配方跑的 leaf 檢查都與它取代的指令相同，並寫出分段計時報告（[工具指南](system-design/tooling.md#驗證配方與計時)）。自己執行組合指令同樣有效，只要沒有對相同輸入建置兩次。
 
 沿用證據只限同一個任務內，並受原始碼、依賴與設定的 identity、證據範圍、產物與環境限制。之後又修改時，只有受影響的呼叫端與依賴能證明先前證據不受影響，才可依[證據規則](#證據界線與停止條件)沿用。HEAD 或檔案時間戳無法證明產物對應未提交的工作樹；無法確認新鮮度時就重新建置。`pnpm open:app` 會以建置時記錄的 runtime 輸入摘要比對目前的輸入，替簽章 bundle 確認這一點。不同任務之間沒有可跳過檢查的快取。
 
@@ -50,7 +50,7 @@
 
 ## 證據界線與停止條件
 
-- `pnpm check` 涵蓋根目錄 TypeScript／Vitest／build，不含網站、Electron fixture 或真實擷取。設定回歸測正式元件，但 Tray／註冊邊界受控，不代表 OS 快捷鍵送達或實體 Tray 點擊。
+- `pnpm check` 涵蓋根目錄 TypeScript／Vitest／build，不含網站、Electron fixture 或真實擷取。設定回歸在隱藏的離屏視窗測正式元件，Tray、註冊、視窗啟用與通知邊界受控：adapter 呼叫只代表正式程式提出的要求，不是 OS 效果。它不涵蓋 OS 快捷鍵送達、視窗啟用、原生視窗框、在螢幕上全螢幕或實體 Tray 點擊。
 - 通知有三層證據：前後的生命週期、送達事件（`shown` 或 `failed`）與視覺橫幅。`shown` 事件不是視覺證明，生命週期通過也不代表已送達。macOS 拒絕 `node_modules` 中只有 linker／ad-hoc 簽章的 Electron 通知，因此判讀通知的 runner 都啟動完整簽章產物：`pnpm start:app` 的 bundle，或 `pnpm acceptance:quit-dialog` 每輪簽章的副本（[plan 062](verification/history-2026-10.md#plan-062-結案--2026-10-02)）。
 - 短錄影只驗證該設定與環境。媒體驗證不代表主觀聽感、VoiceOver、首次權限、長時間穩定或安裝通過。原生點擊、實體拔插與播放若列為必要，須實際觀察。
 - 相同檔案、分析器版本／參數與範圍可復用媒體分析。舊 UI 證據只有在相關實作、產物與環境未變時可復用，須引用來源。程式改動後原生驗收須重建。歷史測試數量不是現行通過門檻。
@@ -87,9 +87,9 @@
 
 使用鎖定的 pnpm 版本與 lockfile；TypeScript runner 使用 Node 24。一般單元／型別／建置不需擷取權限、簽章、Chrome 或 FFmpeg。部分音訊整合測試缺 FFmpeg／ffprobe 時會明確略過，應揭露相關 skip。網站驗證需要網路。原生 bundle 見[簽章設定](system-design/signing.md)；不要把建立／匯入憑證當作附帶測試步驟。
 
-真實錄影需要支援的 Mac、螢幕／系統音訊權限、Chrome 與 FFmpeg／ffprobe。System Events runner 另需輔助使用／自動化權限。記錄 OS／架構、來源螢幕、音訊輸出／音量與素材版本。設定整合需要可執行 Electron 的圖形工作階段，不需要已安裝的簽章 App。缺前置時指出受阻層級。
+真實錄影需要支援的 Mac、螢幕／系統音訊權限、Chrome 與 FFmpeg／ffprobe。System Events runner 另需輔助使用／自動化權限。記錄 OS／架構、來源螢幕、音訊輸出／音量與素材版本。背景套件與原生設定整合需要可執行 Electron 的圖形工作階段（macOS 上為未鎖定的使用者工作階段；鎖定中的工作階段與沒有螢幕的機器未測試），都不需要已安裝的簽章 App。背景套件不使用桌面：不需要準備交接，有人在用電腦時也可以執行。缺前置時指出受阻層級。
 
-不同 checkout／worktree 可並行執行獨立純測試。同一 checkout 中，建置與讀取 `out/`、`dist/` 的 runner 必須依序執行，不在 fixture 執行中重建。即使使用不同 worktree，同一時間也只能有一位執行者使用桌面、系統音訊、全域快捷鍵及替換安裝 App。偏好隔離不等於焦點或擷取裝置隔離。這些是協作規則，不代表每個 runner 都實作跨程序鎖。
+不同 checkout／worktree 可並行執行獨立純測試。同一 checkout 中，建置與讀取 `out/`、`dist/` 的 runner（包含背景套件）必須依序執行，不在 fixture 執行中重建。即使使用不同 worktree，同一時間也只能有一位執行者使用桌面、系統音訊、全域快捷鍵及替換安裝 App。偏好隔離不等於焦點或擷取裝置隔離。這些是協作規則，不代表每個 runner 都實作跨程序鎖。
 
 桌面驗收前確認執行者、checkout／產物與案例。開發期間已授權按需停止錄影、退出、重啟或重建 RecordStuff，不需另行確認，不因可能有人正在使用而阻擋工作。交接前須保存錄影、還原偏好、關閉本次測試 UI、正常退出受測 App 並確認程序結束。清理失敗會阻擋下一輪／重建，須回報殘留程序或視窗。詳見[驗收案例與格式](acceptance.md)。
 

@@ -398,8 +398,10 @@
 
 | 原始碼／函式 | 輸入 → 結果與副作用 |
 | --- | --- |
-| [acceptance-settings.mts](../../../scripts/acceptance-settings.mts) 頂層 | 要求已有建置產物與本機 Electron；以 90 秒上限在全新證據目錄執行 fixture；印出每個案例；寫 report.md；缺前置或無結果以 2 退出，任一 fail 以 1 退出 |
-| [fixtures/settings-panel.ts](../../../scripts/fixtures/settings-panel.ts) | 在隱藏的 sandbox 視窗載入已建置的 preload 與頁面，自備 view 與 IPC handler；判定 CSP／console、暴露的 bridge、沒有 Node API、URL 語言、畫出的控制項、不可用選項、被拒絕快捷鍵的註解、真實變更往返，以及未提交的選擇；寫出 results.json 與 panel.png |
+| [tests/ui/fixtures.ts](../../../tests/ui/fixtures.ts) `launchApp` / `launchView` / `launchCountdown` / `tearDown` | 在全新的暫存資料夾與清理過的環境啟動隱藏、離屏的 Electron host；每個測試後稽核邊界與視窗伺服器探測、正常結束、確認擁有的每個程序都已結束（後代與命令列帶有這次啟動資料夾的程序），只對這次啟動自己的程序樹強制結束；有任何違規、強制或無法確認的清理，或非預期的頁面錯誤時使測試失敗 |
+| [tests/ui/hosts/boundary.ts](../../../tests/ui/hosts/boundary.ts) `createBoundary` | 背景 host 中正式程式拿到的 Electron 模組：視窗隱藏、離屏、靜音，顯示／聚焦／最小化／還原／全螢幕都記錄並由虛擬狀態回答；Tray、通知、快捷鍵、對話框、shell、Dock、擷取與電源 adapter 記錄每個要求；防護會回報到達真正 OS API 的呼叫 |
+| [acceptance-settings-native.mts](../../../scripts/acceptance-settings-native.mts) 頂層 | 要求已有建置產物與本機 Electron；持有桌面回合；以 60 秒上限在全新證據目錄執行原生設定 fixture；印出每個案例；寫 report.md；blocked（缺前置、鎖定、啟用類案例的視窗未啟用）以 2 退出，任一失敗或收尾未完成以 1 退出 |
+| [fixtures/settings-native.ts](../../../scripts/fixtures/settings-native.ts) | 在 App 自己、已顯示的視窗：判定視窗框、另一個視窗在前時的焦點框與跨日，沿用 plan 057 的啟用判定；寫出 results.json、中途停止時的 failure.json 與圖 |
 | [acceptance-hotkey.mts](../../../scripts/acceptance-hotkey.mts) 頂層 | 要求 ffmpeg／ffprobe 可用，且 RecordStuff 執行中、idle、有 run id 且有 `hotkey: registered`；開 kiosk 素材；以 System Events 送組合鍵；從 rotation-aware cursor 各 30 秒內等 `pressed`、`state → recording`、本次的 capture record、第二個 `pressed` 與該 session 的終止 record；以 `testMaterial` 並要求聲道能量驗完整性層級，並要求檔案 metadata 配到該 session；寫 report.md／verify.json／app-session.log；缺 ffmpeg／ffprobe 時在送鍵前以 2 退出，任一檢查 fail、blocked 或 incomplete 以 1 退出 |
 | [lib/acceptance/acceptance.mts](../../../scripts/lib/acceptance/acceptance.mts) `acceleratorToKeystroke` / `keystrokeScript` | Electron accelerator → System Events `keystroke … using {…}`；無法輸入的鍵回 undefined |
 | 同檔 `lastStartIndex` / `registeredAccelerator` / `currentState` / `currentRunId` | 只讀目前程序的 log（略過被 lock 拒絕的第二次啟動的 `start:` 行）與其 run id |

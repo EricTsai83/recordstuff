@@ -1,27 +1,16 @@
 /**
- * `pnpm acceptance:settings [-- --out <dir>]`
+ * `pnpm acceptance:settings-native [-- --out <dir>]`
  *
- * Acceptance of the settings panel against the *built* artifacts: it runs
- * Electron on the compiled `scripts/fixtures/settings-panel.ts`, which loads
- * `out/preload/settings.js` and `out/renderer/settings.html` in a real
- * window, drives it, and reports each case. This is the only check that
- * exercises the shipped CSP, the sandboxed preload boundary and a real IPC
- * round trip. The window is the app's own (`settingsWindowOptions`: the same
- * frame, so a size is the content size the app shows) and the Recordings tab
- * reads a real folder through the app's `RecordingsLibrary` under its
- * `recordstuff-media:` scheme; the IPC handlers and most views are the
- * fixture's own, since `settings-model` and `SettingsWindow` have unit tests.
+ * The Settings cases that need the desktop (plan 066): the built preload and page in the app's own window with the
+ * frame macOS draws, shown and activated, with real Electron input events: the window's frame (N-S001), and the
+ * focus border and a day rollover while another window is in front (N-S103, N-S105). Every other former
+ * `acceptance:settings` case runs in the background Playwright suite (`pnpm test:ui`), which needs no desktop.
  *
- * It does not click the tray, open the window through Settings, or claim
- * anything about macOS window focus — a windowless app's tray is not
- * automatable (see .agents/skills/native-acceptance).
- *
- * Exit 0 when every case passed, 1 when one failed, and 2 (blocked) when the
- * desktop was not available: a locked session, or a window another app kept
- * inactive for a case that needs an active window (plan 057), which is
- * reported as not run. A report and screenshots are written to
- * docs/verification/measurements/<timestamp>-settings-acceptance/.
- * Requires `pnpm build` output. Nothing here ships with the app.
+ * A desktop round: it shows and focuses a window, so it needs an awake, unlocked session and the readiness handoff
+ * in docs/testing.md. Exit 0 when every case passed, 1 when one failed, and 2 (blocked) when the desktop was not
+ * available: a locked session, or a window another app kept inactive for a case that needs an active window
+ * (plan 057), reported as not run. A report and screenshots go to
+ * docs/verification/measurements/<timestamp>-settings-native/. Requires `pnpm build` output. Nothing here ships.
  */
 import { scrubbedEnv } from "./lib/runner/runner-env.mts";
 import { buildFixture } from "./lib/runner/build-fixture.mts";
@@ -35,8 +24,7 @@ import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ELECTRON = path.join(REPO_ROOT, "node_modules/.bin/electron");
-// The preserved layout/focus matrix includes shadcn transition settling; bound the complete round separately from each input wait.
-const TIMEOUT_MS = 120_000;
+const TIMEOUT_MS = 60_000;
 
 const argv = process.argv.slice(2).filter((arg, index) => !(index === 0 && arg === "--"));
 let outDir: string | undefined;
@@ -57,11 +45,11 @@ for (const required of ["out/preload/settings.js", "out/renderer/settings.html"]
 if (!fs.existsSync(ELECTRON)) fail("node_modules/.bin/electron is missing; run `pnpm install` first.");
 
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-const dir = outDir ? path.resolve(outDir) : path.join(REPO_ROOT, "docs/verification/measurements", `${stamp}-settings-acceptance`);
+const dir = outDir ? path.resolve(outDir) : path.join(REPO_ROOT, "docs/verification/measurements", `${stamp}-settings-native`);
 // Never overwrite another run's evidence.
 if (outDir && fs.existsSync(dir)) fail(`${dir} already exists; choose a new directory so no earlier evidence is overwritten.`);
 fs.mkdirSync(dir, { recursive: true });
-const fixture = await buildFixture("settings-panel", dir);
+const fixture = await buildFixture("settings-native", dir);
 
 /** Electron needs a real app launch: no ELECTRON_RUN_AS_NODE, no inherited signing env. */
 const env = scrubbedEnv();
@@ -119,7 +107,7 @@ const end = roundExit({ cleanupIncomplete, interrupted: interruptedBy, locked: B
 const passed = cases.filter((result) => result.ok).length;
 const notRun = cases.filter((result) => result.notRun).length;
 const report = [
-  `# Settings panel acceptance — ${stamp}`,
+  `# Settings native acceptance — ${stamp}`,
   "",
   `Result: **${end.outcome}**${end.outcome === "interrupted" ? ` (${interruptedBy}; nothing was left running)` : ""}${verdict.reasons.length ? ` — ${verdict.reasons.join("; ")}` : ""}.`,
   `Fixture exit code ${execution.code ?? "none (signal)"}; ${passed}/${cases.length} cases passed, ${notRun} not run.`,
@@ -127,13 +115,11 @@ const report = [
   `Cleanup: process group gone=${execution.groupGone}; stopped=${execution.stopped ?? "no"}; error=${execution.error ?? "none"}. See cleanup.json.`,
   desktop.summary,
   "",
-  "Built artifacts under test: `out/preload/settings.js`, `out/renderer/settings.html`.",
-  "The window has the app's own frame (`settingsWindowOptions`), and the Recordings tab is read from a real",
-  "folder by the app's `RecordingsLibrary` and served under `recordstuff-media:`. The IPC handlers and most",
-  "views are the fixture's own, so this run judges the page, the preload boundary and the IPC round trip —",
-  "not `SettingsWindow`'s handlers. Screenshots are `capturePage()` of the page: the window controls macOS",
-  "draws over its corner are not in them (`pnpm acceptance:settings-shortcut -- --observe` saves one with them).",
-  "No tray click, no Settings item and no macOS window focus behaviour was exercised.",
+  "Built artifacts under test: `out/preload/settings.js`, `out/renderer/settings.html`, in the app's own window",
+  "(`settingsWindowOptions`) with the frame the OS draws, shown and activated. Input is Electron's `sendInputEvent`",
+  "to the page; the window activation and the frame are the desktop's. The failures view is the real `settingsView`",
+  "over the production `RecordingResults`; the IPC handlers are the fixture's. Every other Settings case is in",
+  "`pnpm test:ui` (tests/ui), in the background. No tray click and no Settings entry was exercised.",
   "",
   "A case marked NOT RUN needs an active window and its window was not active around it; its detail is what was read anyway.",
   "",

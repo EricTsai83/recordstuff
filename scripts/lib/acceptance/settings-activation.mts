@@ -1,5 +1,5 @@
 /**
- * Window activation in `pnpm acceptance:settings` (plan 057). The page draws
+ * Window activation in `pnpm acceptance:settings-native` (plan 057; the other Settings cases left the desktop with plan 066). The page draws
  * no focus line while its window is inactive (plan 047), and on macOS
  * `BrowserWindow.focus()` does not take activation back from another app. A
  * case that depends on an active window is therefore judged only when the

@@ -89,7 +89,7 @@ RecordingHotkey 包裝 Electron `globalShortcut`。按下快捷鍵呼叫與 tray
 
 OS 拒絕註冊（其他 App 佔用，或 `register` 擲出）不會被吞掉：寫 log `hotkey: registration failed for …`、在 Settings → 快捷鍵顯示「這個快捷鍵可能被其他 App 佔用。」並提供重試，同時發出通知，點擊通知會開啟 Settings 的「一般」分頁並聚焦快捷鍵控制項；tray 選單的「開始錄影」旁不再顯示快捷鍵。設定仍會保存，使用者的選擇在重啟後保留；tray 照常可用。關閉快捷鍵不影響 tray 行為，並記住組合鍵，重新開啟即還原。更改快捷鍵先保存再註冊：寫入失敗保留舊註冊並通知「無法儲存快捷鍵設定」。若寫入期間開始了錄影，註冊變更會延後（`request` → 下一次回到 settled 狀態時 `flush`），讓開始這次錄影的組合鍵仍能停止它；期間選單把已保存的選擇顯示為無法使用。
 
-`pnpm acceptance:shortcut` 以隔離 Electron 驗證註冊失敗回報與跨程序重啟保留選擇，並檢查程序、視窗、快捷鍵與臨時資料清理。通知斷言觀察呼叫，不驗證 macOS 橫幅送達；也不保證偵測所有其他 App 攔截按鍵的情況。Plan 020 依維護者接受此證據結案，真實 OS 衝突與通知橫幅保留為未測限制，詳見[結案紀錄](../verification/history-2026-09.md#plan-020-結案--2026-09-23)。
+背景套件的快捷鍵整合（`pnpm acceptance:shortcut`，屬 `pnpm test:ui`）以隔離 Electron 與註冊 adapter 驗證註冊失敗回報與跨程序重啟保留選擇，並檢查程序、視窗與臨時資料清理；`pnpm acceptance:shortcut-native` 驗證 Electron 真正的註冊被拒與真實視窗狀態。通知斷言觀察呼叫，不驗證 macOS 橫幅送達；也不保證偵測所有其他 App 攔截按鍵的情況。Plan 020 依維護者接受此證據結案，真實 OS 衝突與通知橫幅保留為未測限制，詳見[結案紀錄](../verification/history-2026-09.md#plan-020-結案--2026-09-23)。
 
 ## 語言
 

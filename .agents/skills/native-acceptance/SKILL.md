@@ -7,7 +7,7 @@ description: 驗收 RecordStuff 透過 pnpm start:app 建置啟動的 macOS 原�
 
 以使用者操作路徑驗收目前原始碼建置的 App。以使用者的語言回報：依要求本次驗收的訊息判斷（語言混用時依主要敘述語言），整輪維持同一語言，使用者改用其他語言時跟著改；技術用語可保留英文；英文使用者改用 [testing](../../../docs/testing.md) 與 [acceptance](../../../docs/acceptance.md) 的英文版本與其報告範本。只有建立或修改本 skill 的請求，不代表要立即啟動錄影驗收。
 
-先依[共用測試規則](../../../docs/zh-TW/testing.md)選定範圍；案例、預期結果及報告格式以[共用驗收指南](../../../docs/zh-TW/acceptance.md)為準。本 skill 補充執行者與原生工具的執行方式，不另定測試門檻。每項原生操作依[腳本 runner 或 Computer Use](../../../docs/zh-TW/testing.md#腳本-runner-或-computer-use) 選擇：有已提交 runner 涵蓋的操作執行 runner，computer use 負責觀察與沒有 runner 的操作；各操作對應的 runner 見[驗收對照](../../../docs/zh-TW/acceptance.md#腳本-runner-或-computer-use)。純文件修改不啟動 App；純設定 UI 驗收不因使用本 skill 就加入錄影。
+背景 UI 套件（`pnpm test:ui`，由 `pnpm acceptance:regression` 執行）不使用桌面，不屬於本 skill，也不需要桌面交接；它的通過不是原生證據（adapter 呼叫只代表正式程式提出的要求）。先依[共用測試規則](../../../docs/zh-TW/testing.md)選定範圍；案例、預期結果及報告格式以[共用驗收指南](../../../docs/zh-TW/acceptance.md)為準。本 skill 補充執行者與原生工具的執行方式，不另定測試門檻。每項原生操作依[腳本 runner 或 Computer Use](../../../docs/zh-TW/testing.md#腳本-runner-或-computer-use) 選擇：有已提交 runner 涵蓋的操作執行 runner，computer use 負責觀察與沒有 runner 的操作；各操作對應的 runner 見[驗收對照](../../../docs/zh-TW/acceptance.md#腳本-runner-或-computer-use)。純文件修改不啟動 App；純設定 UI 驗收不因使用本 skill 就加入錄影。
 
 ## 執行者
 
@@ -83,7 +83,7 @@ App 已由呼叫者以 pnpm start:app 建置並啟動，輸出在 <start-app.log
 
 依[腳本 runner 或 Computer Use](../../../docs/zh-TW/testing.md#腳本-runner-或-computer-use) 與[驗收對照](../../../docs/zh-TW/acceptance.md#腳本-runner-或-computer-use)選定每項操作。維護者 2026-10-02 核准以已提交的 runner 操作 RecordStuff 自己的 Tray 選單、設定視窗與選單項目（[限制](../../../docs/zh-TW/acceptance.md#依影響追加案例)），因此：
 
-- **由 runner 操作**：Tray 選單的結構、開始／停止、三種取消、以鍵盤選「開啟 RecordStuff」與結束用 `pnpm acceptance:tray`（見下方「Tray」）；以快捷鍵開設定與視窗狀態用 `pnpm acceptance:settings-shortcut -- --observe`；快捷鍵錄影用 `pnpm acceptance`；存檔通知 → Finder 用 `pnpm acceptance:notification`；播放用 `pnpm acceptance:playback`；延後退出通知用 `pnpm acceptance:quit-dialog`。runner 需要 `pgrep` 與桌面：執行者能在 sandbox 外執行時就自己執行；委派到 sandbox 內的 Astra 時，由呼叫者執行後把報告路徑寫進 prompt。
+- **由 runner 操作**：Tray 選單的結構、開始／停止、三種取消、以鍵盤選「開啟 RecordStuff」與結束用 `pnpm acceptance:tray`（見下方「Tray」）；以快捷鍵開設定與視窗狀態用 `pnpm acceptance:settings-shortcut -- --observe`；背景套件無法回答的設定視窗框與啟用、真正的註冊被拒與真實視窗狀態、在螢幕上的全螢幕與焦點交還，用 `pnpm acceptance:recipe -- native-ui`（`out/` 產物，一次建置；RecordStuff 執行中時播放器 runner 會拒絕執行）；快捷鍵錄影用 `pnpm acceptance`；存檔通知 → Finder 用 `pnpm acceptance:notification`；播放用 `pnpm acceptance:playback`；延後退出通知用 `pnpm acceptance:quit-dialog`。runner 需要 `pgrep` 與桌面：執行者能在 sandbox 外執行時就自己執行；委派到 sandbox 內的 Astra 時，由呼叫者執行後把報告路徑寫進 prompt。
 - **由執行者觀察**：判讀 runner 與自己保存的截圖（選單外觀、淺色／深色選單列、對齊與可讀性、倒數數字、通知橫幅是否可見與截斷、設定排版）。
 - **由 computer use 操作**（目前 agent 沒有工具時委派 Astra）：沒有 runner 的操作，包括在設定面板內變更設定、手動錄影時點擊素材的開始控制項、案例要求時點擊播放器自身的控制項、VoiceOver，與下方唯一的權限提示例外。
 - 除了執行已提交的 runner，不要自行用 AppleScript、System Events、CoreGraphics 事件、IPC、renderer evaluate、Playwright 或測試 hook 代按 UI。runner 的狀態列點擊會移動真正的游標，所以它的回合同樣需要桌面交接。
@@ -115,7 +115,7 @@ App 已由呼叫者以 pnpm start:app 建置並啟動，輸出在 <start-app.log
 
 1. 沿用本次由 `pnpm start:app` 建置啟動的 bundle。設定若已開啟，`--observe` 會拒絕執行：先記錄狀態，再透過 UI 關閉。
 2. 執行 `pnpm acceptance:settings-shortcut -- --observe`。它核對本 checkout 的 arm64 bundle 程序及最新 App log，只有設定快捷鍵仍註冊時才送鍵；先讓 Finder 置前，再斷言設定視窗是 main 且有焦點、RecordStuff 在前景、Tab 移動焦點、應用程式選單沒有綁定 ⌘R／⌥⌘I 且保留 ⌘C、⌘A、⌘M、⌘Q、⌘R 與 ⌥⌘I 不改變焦點、⌘A 再 ⌘C 能複製面板文字（剪貼簿會先保存後還原）、⌘M 最小化、第二次送鍵還原、⌘W 關閉、第三次送鍵重開。callback 與每項輔助使用檢查分開記錄，面板保持開啟。
-3. 這些都是腳本證據。排版與外觀依 `pnpm acceptance:settings` 的截圖，或以 computer use 觀察面板；本次範圍需要在面板內變更設定時，也用 computer use 操作。UI 受阻仍記 blocked。
+3. 這些都是腳本證據。排版與外觀依背景套件的圖與基準（`pnpm test:ui`，在 `test-results/ui/`），或以 computer use 觀察面板；本次範圍需要在面板內變更設定時，也用 computer use 操作。UI 受阻仍記 blocked。
 4. 依本次範圍繼續雙語、快捷鍵擷取與錄影中鎖定等案例。註冊衝突與失敗的 deterministic 測試不能當成 OS 實測。
 5. 每次執行會留下 `docs/verification/measurements/<timestamp>-settings-entry-<suffix>/report.md` 與本次 log。還原偏好並關閉本次新增面板。這個指令不建置、不啟動錄影、不修改偏好或權限。
 

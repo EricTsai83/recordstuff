@@ -1,8 +1,18 @@
-/** Test-only Electron launcher. Runs the actual built app; no production test hook. */
+/**
+ * Test-only Electron launcher for `pnpm acceptance:shortcut-native` (plan 066): the actual built app behind a test
+ * boundary, for the shortcut cases that need the desktop. Every other former `acceptance:shortcut` case runs in the
+ * background Playwright suite (tests/ui/shortcut-integration.spec.ts). Phases:
+ *
+ * - `registration`: Electron's real `globalShortcut.register`, refused through `setSuspended` and then recovered by Retry, and the production
+ *   page, note, saved choice and notification request that follow (N-K01–N-K04).
+ * - `windows`: real window state: a minimized Settings window restored and focused by its shortcut's callback, and
+ *   the platform close key on a focused window followed by reopening it from the callback and the tray (N-K05–N-K08).
+ *
+ * `--drill-failure` and `--drill-timeout` are the runner's cleanup drills. No production test hook.
+ */
 import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import { spawnSync } from 'node:child_process';
 import type { BrowserWindow as ElectronWindow, Menu, NotificationConstructorOptions } from 'electron';
 import type { SettingsGroup } from '../../src/shared/settings-panel';
 // Internal CommonJS hook: keep the assertion at this test-only boundary.
@@ -24,25 +34,10 @@ let tray: TestTray | undefined;
 let finishing = false;
 let panel: ElectronWindow | undefined;
 const settingsKey = 'CommandOrControl+Alt+,';
-const settingsPhase = drill === 'settings';
+const settingsPhase = drill === 'windows';
 const accelerator = 'Control+Shift+F20';
 const owned = new Map<string, () => void>();
-/** The Settings shortcut editor's limit in src/main/settings/settings-window.ts. */
-const SHORTCUT_EDITOR_LIMIT_MS = 15_000;
-/**
- * Names the app that took focus, so an interrupted round says so instead of failing without a reason. It runs
- * synchronously in main from a blur handler, so each call is bounded; the name is read as `lsappinfoName`
- * (settings-activation.mts) reads it, which this transpiled-only fixture cannot import at run time.
- */
-const frontmostApp = (): string => {
-  if (process.platform !== 'darwin') return 'unknown';
-  const asn = spawnSync('lsappinfo', ['front'], { encoding: 'utf8', timeout: 2000 }).stdout?.trim();
-  if (!asn) return 'unknown';
-  const info = spawnSync('lsappinfo', ['info', '-only', 'name', asn], { encoding: 'utf8', timeout: 2000 }).stdout ?? '';
-  return /"(?:LSDisplayName|CFBundleName)"="([^"]*)"/.exec(info)?.[1] || 'unknown';
-};
 const recordingAttempts = () => attempts.filter(attempt => attempt.accelerator === accelerator);
-let lastMenu: Menu | undefined;
 const settingsFile = path.join(temporary, 'userData/settings.json');
 for (const name of ['userData', 'logs', 'sessionData', 'videos'] as const) {
   const folder = path.join(temporary, name);
@@ -51,36 +46,14 @@ for (const name of ['userData', 'logs', 'sessionData', 'videos'] as const) {
 }
 app.setName('RecordStuff Shortcut Integration');
 app.getAppPath = () => root;
-if (drill !== 'restart') fs.writeFileSync(settingsFile, JSON.stringify({
+fs.writeFileSync(settingsFile, JSON.stringify({
   version: 3, outputDir: path.join(temporary, 'videos'),
   quality: { videoQuality: 'standard', resolutionCap: 'source', frameRate: 30 },
-  language: 'en', hotkey: settingsPhase ? { enabled: true, accelerator: 'Alt+CommandOrControl+,' } : { enabled: false, accelerator },
+  // Windows phase: the recording shortcut is the fixture's key, so ⌥⌘, is the Settings shortcut whose callback opens Settings.
+  language: 'en', hotkey: settingsPhase ? { enabled: true, accelerator } : { enabled: false, accelerator },
   appearance: 'dark', notifications: true, updates: { enabled: false },
 }));
 fs.writeFileSync(path.join(temporary, 'userData/tray-hint-shown'), '');
-/**
- * Test-only I/O stall: the final rename of settings.json waits on a gate, so a
- * confirmed save is held deterministically. Other files are never delayed and
- * key delivery is unaffected; this is not a real disk stall.
- */
-interface WriteGate { started: boolean; settle: (fail: boolean) => void; outcome: Promise<boolean> }
-let writeGate: WriteGate | undefined;
-const rename = fs.promises.rename.bind(fs.promises);
-fs.promises.rename = (async (from: fs.PathLike, to: fs.PathLike) => {
-  const gate = to === settingsFile ? writeGate : undefined;
-  if (gate) {
-    writeGate = undefined;
-    gate.started = true;
-    if (await gate.outcome) throw Object.assign(new Error('controlled settings write failure'), { code: 'EIO' });
-  }
-  return rename(from, to);
-}) as typeof fs.promises.rename;
-function holdSettingsWrite(): WriteGate {
-  let settle!: (fail: boolean) => void;
-  const gate: WriteGate = { started: false, settle: fail => settle(fail), outcome: new Promise<boolean>(resolve => { settle = resolve; }) };
-  writeGate = gate;
-  return gate;
-}
 class TestTray extends EventEmitter {
   destroyed = false;
   constructor() { super(); tray = this; this.destroyed = false; }
@@ -90,7 +63,6 @@ class TestTray extends EventEmitter {
   setToolTip() {}
   destroy() { this.destroyed = true; this.removeAllListeners(); }
   popUpContextMenu(menu: Menu) {
-    lastMenu = menu;
     // The window's entry (formerly Settings…, Open RecordStuff since 2026-10-04) in either language.
     const settings = menu.items.find(item => item.label === 'Open RecordStuff' || item.label === '開啟 RecordStuff');
     if (!settings) throw new Error('Production tray no longer offers Open RecordStuff');
@@ -184,23 +156,12 @@ async function commit() {
   await arm();
   await key('F20', 'F20', { ctrlKey: true, shiftKey: true });
   if (!previewVerified) {
-    record('shortcut preview leaves saved preferences unchanged until Confirm', fs.readFileSync(settingsFile, 'utf8') === before
+    record('N-K01 shortcut preview leaves saved preferences unchanged until Confirm', fs.readFileSync(settingsFile, 'utf8') === before
       && (await group()).capturing && await evaluate("!document.getElementById('shortcut-confirm').disabled"), 'candidate stays local');
     previewVerified = true;
   }
   await clickConfirm();
   await waitFor(async () => !(await group()).capturing, 'capture committed');
-}
-async function choose(id: string, value: string) {
-  // Preserve committed-value coverage through shadcn toggles/switches and the native select.
-  await evaluate(`(() => {
-    const segment = document.getElementById(${JSON.stringify(`setting-${id}-${value}`)});
-    if (segment?.getAttribute("aria-pressed") !== null && segment) { if (segment.getAttribute("aria-pressed") !== "true") segment.click(); return; }
-    const control = document.getElementById(${JSON.stringify('setting-' + id)});
-    if (control.getAttribute("role") === "switch") { if ((control.getAttribute("aria-checked") === "true") !== (${JSON.stringify(value)} === "on")) control.click(); return; }
-    control.value = ${JSON.stringify(value)}; control.dispatchEvent(new Event('change', { bubbles: true }));
-  })()`);
-  await waitFor(() => evaluate(`!document.querySelector('.row[aria-busy="true"]')`), 'save settled');
 }
 function finish(error?: unknown) {
   if (finishing) return;
@@ -239,55 +200,19 @@ require(path.join(root, 'out/main/index.js'));
   await waitFor(() => evaluate("Boolean(document.getElementById('tab-general'))"), 'production renderer');
   await evaluate("document.getElementById('tab-general').click()");
   if (settingsPhase) {
-    record('saved dark appearance is applied at startup', electron.nativeTheme.themeSource === 'dark'
-      && await evaluate("matchMedia('(prefers-color-scheme: dark)').matches"), electron.nativeTheme.themeSource);
-    record('legacy equivalent key retains recording ownership and value', attempts.length === 1 && owned.has(settingsKey)
-      && (await group()).choices.some(c => c.id === settingsKey && c.checked)
-      && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === 'Alt+CommandOrControl+,', JSON.stringify(attempts));
-    record('legacy collision keeps tray access with recovery explanation', lastMenu?.items.some(i => i.label.includes('open RecordStuff above to change it.')), lastMenu?.items.map(i => i.label).join(' | ') ?? '');
-    await commit();
-    await waitFor(() => owned.has(settingsKey) && owned.has(accelerator), 'independent registrations after legacy recovery');
-    record('changing legacy key recovers Settings independently', owned.size === 2, [...owned.keys()].join(', '));
-    for (const appearance of ['light', 'dark', 'system'] as const) {
-      await choose('appearance', appearance);
-      await waitFor(() => electron.nativeTheme.themeSource === appearance, 'appearance applied');
-      await waitFor(() => evaluate(`matchMedia('(prefers-color-scheme: dark)').matches === ${electron.nativeTheme.shouldUseDarkColors}`), 'renderer appearance');
-      record(`${appearance} appearance updates native theme, renderer and saved preference`,
-        JSON.parse(fs.readFileSync(settingsFile, 'utf8')).appearance === appearance
-        // Appearance is three icon segments: the chosen shadcn toggle is pressed.
-        && await evaluate(`document.getElementById('setting-appearance-${appearance}').getAttribute('aria-pressed') === 'true'`), electron.nativeTheme.themeSource);
-    }
+    const settingsWindows = () => BrowserWindow.getAllWindows().filter(w => w.webContents.getURL().includes('settings.html'));
+    if (!owned.has(settingsKey) || !owned.has(accelerator)) throw new Error(`Expected both shortcuts registered: ${[...owned.keys()].join(', ')}`);
     const opened = panel!;
     const count = BrowserWindow.getAllWindows().length;
+    opened.show(); opened.focus();
+    await waitFor(() => opened.isFocused(), 'Settings focused before minimizing');
     opened.minimize();
     await waitFor(() => opened.isMinimized(), 'actual Electron minimized state');
     owned.get(settingsKey)!();
     await waitFor(() => !opened.isMinimized() && opened.isFocused(), 'callback restores and focuses');
     owned.get(settingsKey)!();
-    record('Settings callback restores real minimized window without duplication', panel === opened && BrowserWindow.getAllWindows().length === count, `windows=${count}; minimized=${opened.isMinimized()}; focused=${opened.isFocused()}`);
-    await arm();
-    record('capture suspends both registrations', owned.size === 0, [...owned.keys()].join(', '));
-    await key('Comma', ',', { metaKey: true, altKey: true });
-    await clickConfirm();
-    await waitFor(async () => !(await group()).capturing, 'reserved candidate completes');
-    record('reserved commit rejected and ownership restored', owned.size === 2 && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator
-      && await evaluate("document.getElementById('feedback').textContent.includes('reserved for opening RecordStuff')"), 'saved recording shortcut retained');
-    failRegistration = true;
-    await arm(); await key('Escape', 'Escape');
-    await waitFor(async () => !(await group()).capturing, 'failed resume');
-    for (const language of ['en', 'zh-TW']) {
-      await evaluate(`window.settings.choose('language', '${language}')`);
-      tray.emit('right-click');
-      record(`${language} Settings registration failure is explained without working label`, lastMenu?.items.some(i => i.label.includes(language === 'en' ? 'The shortcut for RecordStuff is unavailable:' : '開啟 RecordStuff 的快捷鍵無法使用，'))
-        && !lastMenu?.items.some(i => i.label.includes('⌥⌘,')), lastMenu?.items.map(i => i.label).join(' | ') ?? '');
-    }
-    const beforeRefresh = attempts.length;
-    tray.emit('right-click'); tray.emit('right-click');
-    record('tray refresh does not retry failed registrations', attempts.length === beforeRefresh, `attempts=${attempts.length}`);
-    failRegistration = false;
-    await arm(); await key('Escape', 'Escape');
-    await waitFor(() => owned.size === 2, 'cancel recovery');
-    const settingsWindows = () => BrowserWindow.getAllWindows().filter(w => w.webContents.getURL().includes('settings.html'));
+    record('N-K05 the Settings callback restores the real minimized window, focused, without duplication', panel === opened && BrowserWindow.getAllWindows().length === count,
+      `windows=${count}; minimized=${opened.isMinimized()}; focused=${opened.isFocused()}; visible=${opened.isVisible()}`);
     const closeWithKey = async () => {
       const closing = panel!;
       closing.show(); closing.focus(); closing.webContents.focus();
@@ -301,213 +226,36 @@ require(path.join(root, 'out/main/index.js'));
       await waitFor(() => { panel = settingsWindows()[0]; return panel?.isVisible() && panel.isFocused(); }, 'entry opens visible focused panel');
       await waitFor(() => evaluate("Boolean(document.getElementById('tab-general'))"), 'entry renderer ready');
     };
-    const nativeKey = (keyCode: string, modifiers: Array<'control' | 'meta' | 'shift' | 'alt'>) => {
-      panel!.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers });
-      panel!.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers });
-    };
-    const savedKey = (): string => JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator;
-    const checked = async (id: string) => (await group()).choices.some(c => c.id === id && c.checked);
-    const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-    await arm();
-    opened.webContents.forcefullyCrashRenderer();
-    await waitFor(() => opened.isDestroyed() && owned.size === 2, 'production disposes the crashed window and restores both registrations');
-    record('renderer crash disposes the window and restores shortcut ownership', owned.has(settingsKey) && owned.has(accelerator)
-      && settingsWindows().length === 0, `${[...owned.keys()].join(', ')}; settings windows=${settingsWindows().length}`);
+    const savedBeforeEntry = fs.readFileSync(settingsFile, 'utf8');
+    await closeWithKey();
+    record('N-K06 the platform close key on the focused window closes Settings and keeps the app', !tray!.destroyed && owned.has(settingsKey), 'window destroyed; tray and registration kept');
     owned.get(settingsKey)!();
     await waitForPanel();
-    record('the next open after a crash loads a replacement panel', panel !== opened && BrowserWindow.getAllWindows().length === count, `windows=${BrowserWindow.getAllWindows().length}`);
-    // The replacement is operated with Chromium input events: tab, capture key and Confirm.
-    await click('tab-general');
-    await waitFor(() => evaluate("document.getElementById('tab-general').getAttribute('aria-selected') === 'true'"), 'input event selects General');
-    for (const language of ['en', 'zh-TW']) {
-      await click(`setting-language-${language}`);
-      await waitFor(() => evaluate(`document.documentElement.lang === '${language === 'en' ? 'en' : 'zh-Hant'}' && !document.querySelector('.row[aria-busy="true"]')`), 'language committed');
-      // Main starts the limit while `arm` runs, so time measured from before it never runs ahead of main's timer.
-      const armedAt = performance.now();
-      // The editor ends, by design, when Settings loses focus; another app taking it is an interrupted round, not a timeout.
-      const focusLosses: string[] = [];
-      const onBlur = () => focusLosses.push(`+${Math.round(performance.now() - armedAt)} ms to ${frontmostApp()}`);
-      const interruption = () => focusLosses.length ? `; Settings lost focus ${focusLosses.join(', ')}` : '';
-      panel!.on('blur', onBlur);
-      try {
-        await arm();
-        nativeKey('K', ['control']);
-        await waitFor(() => evaluate("!document.getElementById('shortcut-confirm').disabled"), 'input event creates an unconfirmed candidate');
-        await pause(armedAt + SHORTCUT_EDITOR_LIMIT_MS - 1000 - performance.now());
-        record(`shortcut editor stays open until its limit (${language})`, (await group()).capturing
-          && await evaluate("document.querySelector('.capture-timeout').hidden"), `open 1 s before the limit${interruption()}`);
-        // The timeout reaches the page through main's push and a render: wait for its outcome, not a fixed delay.
-        await pause(armedAt + SHORTCUT_EDITOR_LIMIT_MS - performance.now());
-        await waitFor(() => evaluate("!document.querySelector('.capture-timeout').hidden"), 'shortcut editor times out').catch(() => undefined);
-      } finally { panel!.off('blur', onBlur); }
-      const expired = await group();
-      const message = await evaluate<string>("document.querySelector('.capture-timeout').textContent");
-      record(`shortcut timeout explains the unchanged value (${language})`, expired.captureTimedOut === true && !expired.capturing
-        && await evaluate("!document.querySelector('.capture-timeout').hidden && document.activeElement.id === 'setting-hotkey'")
-        && message.includes(language === 'en' ? '15 seconds' : '15 秒') && savedKey() === accelerator && owned.size === 2, `${message}${interruption()}`);
-      fs.writeFileSync(path.join(reportDir, `shortcut-timeout-${language}.png`), (await panel!.webContents.capturePage()).toPNG());
-      await arm();
-      record(`new edit clears shortcut timeout (${language})`, !(await group()).captureTimedOut
-        && await evaluate("document.querySelector('.capture-timeout').hidden"), 'timeout cleared');
-      nativeKey('Escape', []);
-      await waitFor(async () => !(await group()).capturing, 'cancel new edit');
-    }
-    await click('setting-language-en');
-    await waitFor(() => evaluate("document.documentElement.lang === 'en' && !document.querySelector('.row[aria-busy=\"true\"]')"), 'English restored');
-    if (process.platform === 'darwin') {
-      await arm();
-      nativeKey('W', ['control']);
-      await waitFor(() => evaluate("!document.getElementById('shortcut-confirm').disabled"), 'Control+W becomes a candidate');
-      record('replacement panel captures macOS Control+W from input events instead of closing', !panel!.isDestroyed()
-        && await evaluate("document.getElementById('shortcut-capture').textContent.includes('⌃W')"), await evaluate("document.getElementById('shortcut-capture').textContent"));
-      await clickConfirm();
-      await waitFor(() => owned.has('Control+W') && owned.has(settingsKey), 'Control+W saved and registered');
-      record('input-event Confirm saves and registers Control+W', savedKey() === 'Control+W' && !owned.has(accelerator) && await checked('Control+W'), [...owned.keys()].join(', '));
-      // Controlled I/O stall: the confirmed save outlives its window (fixture rename gate, not a disk stall).
-      let gate = holdSettingsWrite();
-      await arm();
-      await key('F20', 'F20', { ctrlKey: true, shiftKey: true });
-      await clickConfirm();
-      await waitFor(() => gate.started, 'confirmed save reaches the held write');
-      record('a held confirmed save keeps capture and both keys suspended', owned.size === 0 && (await group()).capturing, [...owned.keys()].join(', '));
-      await closeWithKey();
-      await waitFor(() => owned.has('Control+W') && owned.has(settingsKey), 'close restores the committed registrations');
-      await pause(1000);
-      record('Command+W during a held save restores the committed keys before the save settles', savedKey() === 'Control+W'
-        && owned.size === 2 && owned.has('Control+W'), `${[...owned.keys()].join(', ')}; saved=${savedKey()}`);
-      gate.settle(false);
-      await waitFor(() => owned.has(accelerator) && !owned.has('Control+W') && owned.has(settingsKey), 'held save registers after persistence');
-      owned.get(settingsKey)!();
-      await waitForPanel();
-      await evaluate("document.getElementById('tab-general').click()");
-      record('after the held save a reopened panel shows the persisted key', savedKey() === accelerator && await checked(accelerator), savedKey());
-      // Reopen during the held save, then capture again while it finishes.
-      gate = holdSettingsWrite();
-      await arm();
-      await key('KeyW', 'w', { ctrlKey: true });
-      await clickConfirm();
-      await waitFor(() => gate.started, 'second confirmed save reaches the held write');
-      await closeWithKey();
-      await waitFor(() => owned.has(accelerator) && owned.has(settingsKey), 'close restores the committed registrations again');
-      owned.get(settingsKey)!();
-      await waitForPanel();
-      await evaluate("document.getElementById('tab-general').click()");
-      record('a panel reopened during a held save shows the committed key', await checked(accelerator), savedKey());
-      await arm();
-      gate.settle(false);
-      await waitFor(async () => savedKey() === 'Control+W' && await checked('Control+W'), 'reopened panel receives the persisted key');
-      await pause(300);
-      record('an old save finishing during a new capture keeps both keys suspended', owned.size === 0 && (await group()).capturing, [...owned.keys()].join(', '));
-      await key('Escape', 'Escape');
-      await waitFor(() => owned.has('Control+W') && owned.has(settingsKey), 'cancel restores the newly persisted key');
-      record('cancelling the new capture registers the key the old save persisted', owned.size === 2 && !owned.has(accelerator), [...owned.keys()].join(', '));
-      // Crash while a failing save is held.
-      gate = holdSettingsWrite();
-      const noticesBefore = notifications.length;
-      await arm();
-      await key('F20', 'F20', { ctrlKey: true, shiftKey: true });
-      await clickConfirm();
-      await waitFor(() => gate.started, 'third confirmed save reaches the held write');
-      const crashing = panel!;
-      crashing.webContents.forcefullyCrashRenderer();
-      await waitFor(() => crashing.isDestroyed() && owned.has('Control+W') && owned.has(settingsKey), 'crash during the held save restores the committed keys');
-      gate.settle(true);
-      await waitFor(() => notifications.length > noticesBefore, 'write failure reported');
-      const failureNotice = notifications.slice(noticesBefore).map(n => n.body ?? '');
-      record('a failing held save after a crash keeps the prior setting and registration and says so', savedKey() === 'Control+W'
-        && owned.size === 2 && owned.has('Control+W') && failureNotice.length === 1
-        && /Could not save the shortcut|無法儲存快捷鍵設定/.test(failureNotice[0] ?? ''), JSON.stringify({ saved: savedKey(), owned: [...owned.keys()], failureNotice }));
-      owned.get(settingsKey)!();
-      await waitForPanel();
-      await evaluate("document.getElementById('tab-general').click()");
-      record('the panel reopened after that crash shows the retained key', await checked('Control+W'), savedKey());
-      // Leave the fixture key for the entry rounds.
-      await commit();
-      await waitFor(() => owned.has(accelerator) && owned.has(settingsKey), 'fixture key restored');
-    }
-    // Repeat the maintainer's entry smoke test against the production page.
-    // Registered callbacks and the tray boundary are controlled; this does not
-    // claim that macOS delivered the global key or a physical tray click.
-    const savedBeforeEntry = fs.readFileSync(settingsFile, 'utf8');
-    const logPath = path.join(temporary, 'logs/recordstuff.log');
-    const logBeforeEntry = fs.readFileSync(logPath, 'utf8').length;
-    panel!.setSize(620, 740);
-    await waitFor(() => panel!.getSize()[0] === 620 && panel!.getSize()[1] === 740, 'resized settings window');
-    for (let round = 1; round <= 2; round++) {
-      await closeWithKey();
-      owned.get(settingsKey)!();
-      await waitForPanel();
-      record(`entry round ${round}: resized dimensions survive close and reopen`, panel!.getSize()[0] === 620 && panel!.getSize()[1] === 740, JSON.stringify(panel!.getSize()));
-      const fromShortcut = panel;
-      owned.get(settingsKey)!();
-      record(`entry round ${round}: shortcut reuses one visible focused Settings window`, settingsWindows().length === 1 && panel === fromShortcut && panel!.isFocused(), 'registered production callback; no duplicate');
-      await closeWithKey();
-      tray.emit('right-click');
-      await waitForPanel();
-      record(`entry round ${round}: close key preserves app and tray reopens Settings`, panel !== fromShortcut && settingsWindows().length === 1 && !tray.destroyed && owned.has(settingsKey) && owned.has(accelerator), 'production tray menu handler; app and registrations retained');
-    }
-    const entryLog = fs.readFileSync(logPath, 'utf8').slice(logBeforeEntry);
-    record('Settings entry cycles never start capture or change preferences', !/state → (starting|countdown|recording)/.test(entryLog)
-      && fs.readdirSync(path.join(temporary, 'videos')).length === 0
-      && fs.readFileSync(settingsFile, 'utf8') === savedBeforeEntry,
-      'no start/recording transition, output file or settings write');
+    const fromShortcut = panel;
+    owned.get(settingsKey)!();
+    record('N-K07 the shortcut reopens one visible, focused Settings window and a second press reuses it', settingsWindows().length === 1 && panel === fromShortcut && panel!.isFocused() && panel!.isVisible(),
+      `windows=${settingsWindows().length}; focused=${panel!.isFocused()}; visible=${panel!.isVisible()}`);
+    await closeWithKey();
+    tray!.emit('right-click');
+    await waitForPanel();
+    record('N-K08 after the close key the tray reopens a visible, focused Settings window without changing preferences', panel !== fromShortcut && settingsWindows().length === 1
+      && panel!.isFocused() && fs.readFileSync(settingsFile, 'utf8') === savedBeforeEntry, 'production tray menu handler');
     finish(); return;
-  }
-  if (drill === 'restart') {
-    record('window size survives a fresh app process', panel!.getSize()[0] === 640 && panel!.getSize()[1] === 760, JSON.stringify(panel!.getSize()));
-    const saved = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
-    const restored = await group();
-    record('restart loads failed custom selection without reseeding', saved.hotkey.enabled && saved.hotkey.accelerator === accelerator && restored.choices.some(c => c.id === accelerator && c.checked), JSON.stringify(saved.hotkey));
-    record('restart retries registration and renders failure', recordingAttempts().length === 1 && recordingAttempts()[0]?.registered === false && restored.diagnostics?.[0]?.reason === 'Another app may be using this shortcut.' && await evaluate("document.querySelector('#setting-hotkey-diagnostics .diagnostic p').textContent === 'Another app may be using this shortcut.'"), JSON.stringify(attempts));
-    record('restart requests failure notification', failureNotifications().length === 1 && failureNotifications()[0]?.body?.includes('F20'), JSON.stringify(failureNotifications()));
-    finish();
-    return;
   }
   await commit();
   const failed = await group();
   const persisted = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
-  record('real Electron registration failure and persistence', recordingAttempts().at(-1)?.registered === false && recordingAttempts().at(-1)?.forcedFailure && persisted.hotkey.enabled && persisted.hotkey.accelerator === accelerator, JSON.stringify({ attempt: recordingAttempts().at(-1), hotkey: persisted.hotkey }));
-  record('failure note rendered by production page', failed.diagnostics?.[0]?.reason === 'Another app may be using this shortcut.' && await evaluate("document.querySelector('#setting-hotkey-diagnostics .diagnostic p').textContent === 'Another app may be using this shortcut.'"), failed.diagnostics?.[0]?.reason ?? '');
-  record('notification requested with shortcut and recovery direction', failureNotifications().length === 1 && failureNotifications()[0]?.body?.includes('F20') && failureNotifications()[0]?.body?.includes('Open RecordStuff'), JSON.stringify(failureNotifications()));
+  record('N-K02 real Electron registration failure and persistence', recordingAttempts().at(-1)?.registered === false && recordingAttempts().at(-1)?.forcedFailure && persisted.hotkey.enabled && persisted.hotkey.accelerator === accelerator, JSON.stringify({ attempt: recordingAttempts().at(-1), hotkey: persisted.hotkey }));
+  record('N-K03 failure note rendered by production page', failed.diagnostics?.[0]?.reason === 'Another app may be using this shortcut.' && await evaluate("document.querySelector('#setting-hotkey-diagnostics .diagnostic p').textContent === 'Another app may be using this shortcut.'"), failed.diagnostics?.[0]?.reason ?? '');
+  record('N-K04 notification requested with shortcut and recovery direction', failureNotifications().length === 1 && failureNotifications()[0]?.body?.includes('F20') && failureNotifications()[0]?.body?.includes('Open RecordStuff'), JSON.stringify(failureNotifications()));
   if (drill === '--drill-failure') throw new Error('Intentional assertion-failure cleanup drill');
   if (drill === '--drill-timeout') { console.log('DRILL_READY'); await new Promise(() => {}); }
-  await arm();
-  await key('Escape', 'Escape');
-  await waitFor(async () => !(await group()).capturing, 'Escape cancelled');
-  record('cancel does not repeat notification', failureNotifications().length === 1 && recordingAttempts().at(-1)?.registered === false, `notifications=${failureNotifications().length}`);
-  await commit();
-  record('explicit resave repeats failure notification', failureNotifications().length === 2, `notifications=${failureNotifications().length}`);
-  await choose('hotkey', 'off');
-  const off = await group();
-  // Every registration fails here, ⌥⌘, too: Off removes only the recording shortcut's note.
-  record('Off retains value and removes failure note', !off.diagnostics?.some(d => d.reason === 'Another app may be using this shortcut.') && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.enabled === false && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator && !globalShortcut.isRegistered(accelerator), 'saved disabled; no note or registration');
-  record('a failed Settings shortcut is explained in the card, not only by a retry button',
-    off.diagnostics?.length === 1 && off.diagnostics[0]?.heading === 'The shortcut for RecordStuff is unavailable' && off.actions?.some(a => a.id === 'retryRegistration') === true
-      && await evaluate("(h => h.textContent === 'The shortcut for RecordStuff is unavailable' && h.querySelector('svg[aria-hidden=\"true\"]') !== null)(document.querySelector('#setting-hotkey-diagnostics .diagnostic strong'))"),
-    JSON.stringify(off.diagnostics));
-  await choose('notifications', 'off');
-  await commit();
-  record('notification preference respected on failure', failureNotifications().length === 2 && Boolean((await group()).diagnostics?.length), `notifications=${failureNotifications().length}; note retained`);
+  // Recovery through Electron's real registration: no longer suspended, Retry registers the saved key for real.
   failRegistration = false;
   await waitFor(() => evaluate("document.getElementById('setting-hotkey-retryRegistration')?.disabled === false"), 'retry button enabled');
   await click('setting-hotkey-retryRegistration');
-  await waitFor(async () => globalShortcut.isRegistered(accelerator) && !(await group()).diagnostics?.length, 'retry registration');
-  record('retry button registration recovery clears error and retains selection', globalShortcut.isRegistered(accelerator) && !(await group()).diagnostics?.length && (await group()).choices.some(c => c.id === accelerator && c.checked), JSON.stringify(recordingAttempts().at(-1)));
-  await arm();
-  await key('KeyR', 'r');
-  record('invalid candidate does not change saved shortcut', JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator && await evaluate("document.getElementById('feedback').textContent.includes('Command or Control')"), 'bare R refused');
-  await key('Escape', 'Escape');
-  await waitFor(async () => !(await group()).capturing, 'final cancel');
-  await evaluate("window.settings.choose('language', 'zh-TW')");
-  record('other preferences remain usable after failure/recovery', JSON.parse(fs.readFileSync(settingsFile, 'utf8')).language === 'zh-TW', 'language save succeeded');
-  await evaluate("window.settings.choose('language', 'en')");
-  await choose('notifications', 'on');
-  failRegistration = true;
-  await commit();
-  record('leave failed selection for fresh process', Boolean((await group()).diagnostics?.length) && recordingAttempts().at(-1)?.registered === false && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.enabled, 'failed custom selection saved through production IPC');
-  panel!.setSize(640, 760);
-  const geometryFile = path.join(temporary, 'userData/settings-window.json');
-  await waitFor(() => fs.existsSync(geometryFile) && JSON.parse(fs.readFileSync(geometryFile, 'utf8')).width === 640, 'window size persisted');
-  record('window resize persists independently of shortcut preferences', JSON.parse(fs.readFileSync(geometryFile, 'utf8')).height === 760 && JSON.parse(fs.readFileSync(settingsFile, 'utf8')).hotkey.accelerator === accelerator, fs.readFileSync(geometryFile, 'utf8'));
+  await waitFor(async () => globalShortcut.isRegistered(accelerator) && !(await group()).diagnostics?.length, 'real registration after retry');
+  record('N-K04b Retry registers the saved key through Electron\'s real registration, clears the note and keeps the selection', globalShortcut.isRegistered(accelerator)
+    && !(await group()).diagnostics?.length && (await group()).choices.some(c => c.id === accelerator && c.checked), JSON.stringify(recordingAttempts().at(-1)));
   finish();
 })().catch(finish);

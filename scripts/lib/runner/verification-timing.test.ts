@@ -171,18 +171,24 @@ describe("recipes", () => {
 
   it("cover the composites they replace", () => {
     expect(scripts.check).toBe("pnpm typecheck && pnpm test && pnpm build");
-    // acceptance:regression = check, Playwright UI, settings fixture and shortcut integration.
-    expect(scripts["acceptance:regression"]).toContain("pnpm check && pnpm test:ui && pnpm acceptance:settings && ");
-    expect(scripts["acceptance:regression"]).toContain("scripts/acceptance-shortcut.mts");
-    expect(scripts["acceptance:settings"]).toContain("scripts/acceptance-settings.mts");
-    expect(runnerScripts("settings")).toEqual(["scripts/acceptance-settings.mts", "scripts/acceptance-shortcut.mts"]);
+    // acceptance:regression = check and the background suite: no desktop runner (plan 066).
+    expect(scripts["acceptance:regression"]).toBe("pnpm check && pnpm test:ui");
+    expect(scripts["test:ui"]).toBe("playwright test --project=background");
+    expect(runnerScripts("settings")).toEqual([]);
     expect(scripts["acceptance:shortcut-layout"]).toBe("pnpm build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-shortcut-layout.mts");
-    expect(runnerScripts("shortcut-registration")).toEqual([...runnerScripts("settings"), "scripts/acceptance-shortcut-layout.mts"]);
+    expect(runnerScripts("shortcut-registration")).toEqual(["scripts/acceptance-shortcut-native.mts", "scripts/acceptance-shortcut-layout.mts"]);
+    expect(scripts["acceptance:settings-native"]).toContain("scripts/acceptance-settings-native.mts");
+    expect(scripts["acceptance:shortcut-native"]).toBe("pnpm build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-shortcut-native.mts");
+    expect(scripts["acceptance:player"]).toContain("scripts/acceptance-player.mts");
+    expect(runnerScripts("native-ui")).toEqual(["scripts/acceptance-settings-native.mts", "scripts/acceptance-shortcut-native.mts", "scripts/acceptance-player.mts"]);
+    expect(findRecipe("native-ui")!.phases[0]!.args).toEqual(["build"]);
     expect(scripts["start:app"]).toBe("node scripts/start-app.mjs");
     expect(scripts.acceptance).toContain("scripts/acceptance-hotkey.mts");
     expect(runnerScripts("recording")).toEqual(["scripts/start-app.mjs", "scripts/acceptance-hotkey.mts"]);
     for (const name of ["settings", "shortcut-registration"]) {
       expect(findRecipe(name)!.phases.slice(0, 4).map(phase => phase.args[0])).toEqual(["typecheck", "test", "build", "test:ui"]);
+      // A missing build or clip is blocked (exit 2), a failed case a failure.
+      expect(findRecipe(name)!.phases[3]!.blockedExit).toBe(true);
     }
     expect(findRecipe("recording")!.phases.slice(0, 2).map(phase => phase.args[0])).toEqual(["typecheck", "test"]);
   });

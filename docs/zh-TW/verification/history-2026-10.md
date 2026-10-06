@@ -4,6 +4,24 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 066 結案 — 2026-10-06
+
+Plan 066 依維護者要求，把例行的 renderer 與 Electron 整合驗收移出桌面：`pnpm acceptance:regression` 現在是 `pnpm check` 加上背景 Playwright 套件（`pnpm test:ui`），不顯示視窗、不搶焦點、不送 OS 輸入、不註冊全域快捷鍵、不播放聲音、不送出通知，也不擷取任何畫面（[背景 UI 套件](../system-design/tooling.md#背景-ui-套件)）。每個舊案例都有 ledger ID 與去向（[遷移帳本](playwright-migration-066.md)）：設定 fixture 的 516 個案例有 513 個移到背景、3 個保留為原生；快捷鍵 fixture 的 57 個與播放器的 19 個都已移動，以 OS 為主張的部分有原生對應；沒有移除任何案例。App 原始碼沒有變更（前後 `out/` digest 都是 `a2965ca06e8e`）。
+
+- **Host 與邊界。** 三個 Electron host（正式 main、以真實 model 與 library 為底的 view host、正式倒數覆蓋層）在邊界後執行：每個視窗都以隱藏、離屏、靜音的方式建立，顯示、聚焦、最小化、還原與全螢幕由虛擬狀態回答；Tray、通知、快捷鍵、對話框、shell、Dock、擷取與電源是會記錄的 adapter。teardown 稽核邊界、在 macOS 取樣視窗伺服器、正常結束，並從程序表確認這次啟動擁有的每個程序都已結束。
+- **過程中的發現。** 離屏視窗的原生 `isVisible()` 會隨頁面變成 true，因此以視窗伺服器作為圍堵檢查；Playwright 的 CDP 按鍵到不了 Electron 的 `before-input-event`，因此 main 攔截的按鍵改用 `sendInputEvent`；Playwright 預設模擬淺色主題，曾讓深色基準畫成淺色；`BrowserWindow.getAllWindows()` 依建構子名稱辨識視窗。
+- **原生對應。** `pnpm acceptance:settings-native`、`pnpm acceptance:shortcut-native` 與縮減後的 `pnpm acceptance:player`，可用 `pnpm acceptance:recipe -- native-ui` 一起執行。測試片段已簽入（tests/ui/media），套件與播放器 runner 都不需要 FFmpeg。
+- **Review。** Codex GPT-6.1 Sol 進行兩輪 review。第一輪 8 項（Playwright 預設 `updateSnapshots` 下 CI 的基準、未回報的監督錯誤、只拍一次的程序快照、以資料夾路徑收編程序、未防護的真實對話框／通知／啟用／Tray、取消靜音只在最後檢查、App 自行結束時違規遺失、缺少 Electron 被報為失敗）與第二輪 3 項（註冊配方缺原生 runner、原生 fixture 少了真實註冊恢復、blocked 時沒有摘要）都已修正；演練 D08–D10 涵蓋圍堵與所有權修正。
+
+### 驗證
+
+- 沿用、未重新量測的基準：同日配方 `settings` 在 182.26 秒中佔用桌面 127.95 秒（設定 fixture 88.59 秒、快捷鍵 fixture 39.36 秒；`2026-10-06T05-27-52-850Z-recipe-settings`，revision `bcf744af`）。
+- 最終 `pnpm acceptance:recipe -- settings` 在 240.67 秒內通過，沒有桌面階段：typecheck、130 個測試檔與 1,741 項測試、建置，以及 210.25 秒的 `pnpm test:ui` 53/53（`2026-10-06T10-20-38-990Z-recipe-settings`）。圍堵：54 次啟動、265 次視窗伺服器取樣，沒有視窗上螢幕、沒有成為前景、沒有違規、沒有強制清理、沒有殘留程序、沒有監督錯誤。`pnpm test:ui:drills` 通過 13 項，演練目標依設計略過。
+- 視覺基準：36 張 macOS 26 圖，逐一看過兩種主題、語言與尺寸後採用；移除一張基準時會加註記且不寫入，換錯一張時會失敗，都已實測。
+- 桌面回合（維護者回覆準備好之後）：`acceptance:settings-native` 4/4（`2026-10-06T10-17-51-998Z-settings-native`）；`acceptance:shortcut-native` 的 windows 階段第一次失敗，原因是縮減後的 fixture 把舊格式的錄影快捷鍵留在 ⌥⌘,，callback 因而開始一次錄影嘗試，邊界提供的空螢幕清單讓它以 `no_display` 結束，沒有擷取任何畫面；改為寫入 fixture 自己的按鍵後 9/9 通過，收尾完成（`2026-10-06T10-18-38-132Z-shortcut-native`）。`acceptance:player` 4/4：全螢幕蓋住 1920 × 1080 的螢幕，F 與 Escape 之後焦點回到設定視窗（`2026-10-06T10-18-46-321Z-player-acceptance`）。觀察中的背景執行（播放器、倒數、快捷鍵整合，6/6）在 29 次取樣中前景始終是 Google Chrome，抽查的截圖也沒有出現 RecordStuff 視窗；截圖含有維護者的螢幕內容，事後已刪除。
+
+未執行：最終 revision 的 macOS 與 Windows CI，需要 push；鎖定中的工作階段與沒有螢幕的機器未測試。不宣稱：Windows UI job 通過不代表 Windows 原生視窗、Tray 或擷取有證據。
+
 ## Plan 068 結案 — 2026-10-06
 
 Plan 068 完成維護者在 2026-10-06 要求的模組邊界工作；同日稍早 `src/main/` 與 `src/renderer/` 已依模組分成資料夾（[模組邊界](../system-design/repository.md#模組邊界)）。維護者要求立即執行，而不是排在 066 與 067 之後。開始時的 working tree 同時含有尚未 commit 的 React／shadcn 遷移，因此單憑 HEAD `bcf744af` 無法辨識它的輸入。
