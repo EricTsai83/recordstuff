@@ -20,7 +20,9 @@ Plan 066 依維護者要求，把例行的 renderer 與 Electron 整合驗收移
 - 視覺基準：36 張 macOS 26 圖，逐一看過兩種主題、語言與尺寸後採用；移除一張基準時會加註記且不寫入，換錯一張時會失敗，都已實測。
 - 桌面回合（維護者回覆準備好之後）：`acceptance:settings-native` 4/4（`2026-10-06T10-17-51-998Z-settings-native`）；`acceptance:shortcut-native` 的 windows 階段第一次失敗，原因是縮減後的 fixture 把舊格式的錄影快捷鍵留在 ⌥⌘,，callback 因而開始一次錄影嘗試，邊界提供的空螢幕清單讓它以 `no_display` 結束，沒有擷取任何畫面；改為寫入 fixture 自己的按鍵後 9/9 通過，收尾完成（`2026-10-06T10-18-38-132Z-shortcut-native`）。`acceptance:player` 4/4：全螢幕蓋住 1920 × 1080 的螢幕，F 與 Escape 之後焦點回到設定視窗（`2026-10-06T10-18-46-321Z-player-acceptance`）。觀察中的背景執行（播放器、倒數、快捷鍵整合，6/6）在 29 次取樣中前景始終是 Google Chrome，抽查的截圖也沒有出現 RecordStuff 視窗；截圖含有維護者的螢幕內容，事後已刪除。
 
-未執行：最終 revision 的 macOS 與 Windows CI，需要 push；鎖定中的工作階段與沒有螢幕的機器未測試。不宣稱：Windows UI job 通過不代表 Windows 原生視窗、Tray 或擷取有證據。
+- 鎖定的工作階段（結案後依維護者要求）：維護者於當地時間 18:35:51 至 18:37:27 鎖定螢幕（96 秒，每秒經 `CGSSessionScreenIsLocked` 讀取），期間的完整背景執行仍在 3.5 分鐘內通過 53/53，涵蓋元件、倒數、播放器與截圖矩陣測試；該次以 `--reporter=line` 啟動，因此沒有寫出逐次啟動的摘要，但每個測試的 teardown 仍執行圍堵檢查。
+
+未執行：結案時最終 revision 的 macOS 與 Windows CI（之後已在 `plan-066-background-playwright` 分支 dispatch）；沒有螢幕的機器。不宣稱：Windows UI job 通過不代表 Windows 原生視窗、Tray 或擷取有證據。
 
 ## Plan 068 結案 — 2026-10-06
 

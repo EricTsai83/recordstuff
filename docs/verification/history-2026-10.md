@@ -20,7 +20,9 @@ Plan 066 moved routine renderer and Electron integration acceptance off the desk
 - Visual baselines: 36 macOS 26 pictures reviewed by looking at both themes, languages and sizes; a removed baseline was shown to be annotated and not written, and a swapped one to fail.
 - Desktop round, after the maintainer's readiness reply: `acceptance:settings-native` 4/4 (`2026-10-06T10-17-51-998Z-settings-native`); `acceptance:shortcut-native` first failed its windows phase because the reduced fixture kept a legacy recording key on ⌥⌘,, so the callback started a recording attempt, which the boundary's empty display list ended as `no_display` without capturing; after seeding the fixture's own key it passed 9/9 with cleanup complete (`2026-10-06T10-18-38-132Z-shortcut-native`). `acceptance:player` 4/4: full screen covered the 1920 × 1080 display and focus returned to Settings after F and Escape (`2026-10-06T10-18-46-321Z-player-acceptance`). An observed background run (player, countdown, shortcut integration, 6/6) kept Google Chrome frontmost in all 29 samples, and the sampled screenshots showed no RecordStuff window; the screenshots were deleted afterwards because they held the maintainer's screen.
 
-Not run: final-revision CI on macOS and Windows, which needs a push; a locked session and a machine without a display, which were not tested. Not claimed: Windows native windows, tray or capture from a passing Windows UI job.
+- Locked session, at the maintainer's request after closure: a full background run passed 53/53 in 3.5 minutes while the maintainer locked the screen from 18:35:51 to 18:37:27 local time (96 s, polled each second through `CGSSessionScreenIsLocked`), covering the component, countdown, player and screenshot-matrix tests; the run was started with `--reporter=line`, so its per-launch summary was not written, while each test's teardown still enforced containment.
+
+Not run: final-revision CI on macOS and Windows at closure (dispatched afterwards on branch `plan-066-background-playwright`); a machine without a display. Not claimed: Windows native windows, tray or capture from a passing Windows UI job.
 
 ## Plan 068 closure — 2026-10-06
 
