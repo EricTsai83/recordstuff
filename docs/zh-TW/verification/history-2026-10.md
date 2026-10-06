@@ -4,6 +4,24 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## 恢復外觀與動態 — 2026-10-07
+
+Plan 069 之後應維護者要求，在 069 的 token 分層上，恢復 React／shadcn 改寫（`3e0f58e3`）遺失的外觀與動態，以其上一版 `3210ae2f` 為對照（[桌面設計](../system-design/desktop.md#設定視窗)）。這次沒有另開計畫，本紀錄即為結案。本機證據：`measurements/2026-10-06T16-30-24Z-restore-look/`（gallery `iter1`…`iter4`）。
+
+- **配色。** 舊值改以 shadcn token 表達：墨色 `--primary`、安靜的灰、`--card-border`／`--card-shadow`、`--chosen`（#fa2d48，深色 #e85a62）用於開啟的分頁、開啟的開關、數量、未讀失敗、卡片播放鈕與焦點框，另有 `--sidebar*`、`--selected` 與錄影、警告、成功狀態。紅色文字使用 `--chosen-text`（#dc1a38，深色 #f06b73），因為 #fa2d48 在白底只有 3.8:1，低於 plan 067 的 4.5:1。
+- **版面。** 寬版側欄從視窗頂端到底部有自己的灰底，開啟的分頁以淺色底塊浮起、不畫線；在 macOS 上側欄承接視窗按鈕的角落，品牌位於按鈕下方，只有側欄頂端可拖曳視窗，內容從頂端開始。內容在視窗右緣捲動，捲軸較細。macOS 窄視窗在標題列顯示 App 名稱；窄分頁列保留紅線。分段控制恢復為凹槽中浮起的選項；卡片選單每項一行。
+- **動態。** 擷取中的跳動條、失敗紀錄箭頭的旋轉、新錄影外框 2.4 秒淡出（原本因 `Clip` 只在 `animationend` 重設而永不消失）、卡片紅色播放鈕放大淡入、播放器把手與加粗的軌道只在滑鼠移上時出現、快轉提示的邊緣弧形與依序亮起的箭頭、音量數值與快轉提示淡出，以及新增的點擊畫面、Space 或 K 時的播放／暫停閃現。減少動態效果時閃現不動。
+- **播放器細節。** 畫面與進度列為手指游標，畫面不畫焦點框，控制項 38 px、圖示 24 px（全螢幕 52／32），恢復舊的漸層與文字陰影。
+- **Toast。** 每個 toast 的生命週期交給 Sonner：每次開啟一個 Sonner toast（`toastState.show`），「已復原」原地更新，關閉時滑出；它填滿 Sonner 的位置，保留角落的關閉鈕與陰影，並位於對話框之下。
+- **Review。** Codex GPT-6.1 Sol 兩輪（約 4 分鐘）：[1] 上一個 toast 滑出時顯示的新 toast 被合併進去而消失；[2] unstyled toast 在寬視窗沒有寬度；[3] 離場中的 toast 換成新 toast 的文字。三項都接受並以回歸測試修正；[3] 的修正與之後的版面調整（內容從頂端開始、捲軸貼齊右緣）沒有再經 review。
+
+### 驗證
+
+- 最終原始碼上的 `pnpm acceptance:regression`：131 個檔案 1,743 項測試、建置，背景套件 65/65，含新增的 U070-1（側欄、開關、卡片選單、播放鈕）與 P20（游標、焦點、閃現），以及檢視後重新產生的 36 張 matrix 基準。
+- 維護者回覆準備好之後的桌面回合：`pnpm acceptance:player` 4/4（`2026-10-06T17-07-08-657Z-player-acceptance`）；`pnpm start:app` 與 `pnpm acceptance:settings-shortcut -- --observe --quit` 通過（`2026-10-06T17-08-25.491Z-settings-entry-Uc5wg0`）；Claude 判讀其 `settings-window.png`：視窗按鈕位於側欄頂端、品牌在其下方，內容從頂端開始，細捲軸貼齊右緣。沒有殘留程序。
+
+未執行：錄影、CPU、通知與網站檢查（只涉及外觀與 renderer 行為）。未手動驗證：強制色彩、減少動態效果與 VoiceOver。
+
 ## Plan 069 結案 — 2026-10-06
 
 Plan 069 依維護者要求，把 renderer 的樣式移到 shadcn 的三層，保留 067 定下的所有值，預期畫面完全不變（[分層](../system-design/desktop.md#設定視窗)）。改動前，`ui.css` 的每條功能規則都沒有 layer，因此會蓋過 primitive 的 utilities；移進 `@layer components` 後會輸給它們，所以凡是與 primitive 自身 utility 設定同一屬性的規則，都改成呼叫端的 utilities 或 primitive 的 variant。證據保存在本機的 `measurements/2026-10-06T15-31-12Z-shadcn-layers/`（`before`、`before-repeat`，以及 HEAD 上成對的 `run-a`／`run-a2` 與變更後的 `run-b`／`run-b2`）。

@@ -4,6 +4,24 @@
 
 [Back to the verification index](README.md). These are historical results; use the [testing guide](../testing.md) for current policy. Raw measurements links are local only and absent from a fresh clone.
 
+## Restored look and motion — 2026-10-07
+
+At the maintainer's request after plan 069, the look and motion the React/shadcn rebuild (`3e0f58e3`) had dropped came back on 069's token layers, compared against its parent `3210ae2f` ([desktop design](../system-design/desktop.md#settings-window)). No plan was opened; this record is its closure. Local evidence: `measurements/2026-10-06T16-30-24Z-restore-look/` (galleries `iter1`…`iter4`).
+
+- **Palette.** The pre-shadcn values as shadcn tokens: ink `--primary`, quiet greys, `--card-border`/`--card-shadow`, `--chosen` (#fa2d48, #e85a62 in dark) for the open tab, a switch that is on, a count, an unread failure, a card's play button and the focus ring, `--sidebar*`, `--selected`, and the recording, warning and success states. Red words use `--chosen-text` (#dc1a38, #f06b73 in dark) because #fa2d48 reads 3.8:1 on white, under plan 067's 4.5:1.
+- **Layout.** The wide sidebar has its own grey from the window's top to its foot, raises the open tab on a light tile and draws no line; on macOS it takes the window controls' corner, the brand sits under them, only its top drags the window, and the content starts at the top. The content scrolls at the window's right edge with a thin bar. A narrow macOS window names the app in the title bar strip; the narrow tab strip keeps a red line. Segmented controls are a raised choice in a recessed track again; the card menu is one line per item.
+- **Motion.** Listening bars, the failure chevron's turn, a new recording's outline fading over 2.4 s (it had never cleared, since `Clip` resets on `animationend`), a card's red play button growing in, the player's thumb and thicker track under the pointer, the seek hint's edge arc with arrows lighting in turn, the level pill and seek hint fading, and a new play/pause flash for a click on the picture, Space or K. With reduced motion the flashes hold still.
+- **Player details.** A pointing hand on the picture and the seek bar, no focus ring around the picture, 38 px controls with 24 px icons (52/32 in full screen), the old shades and text shadows.
+- **Toast.** Sonner owns each toast's life: one Sonner toast per opening (`toastState.show`), "Restored" updates it in place, a dismissal slides it out; it fills Sonner's slot, keeps its corner close button and shadow, and stays under dialogs.
+- **Review.** Codex GPT-6.1 Sol, two passes (about 4 minutes): [1] a toast shown while the last slid out merged into it and vanished; [2] the unstyled toast had no width on wide windows; [3] the leaving toast took the new toast's words. All three accepted and fixed with a regression test; [3]'s fix and the later layout change (content at the top, scroll bar at the edge) had no further review pass.
+
+### Verification
+
+- `pnpm acceptance:regression` on the final source: 131 files and 1,743 tests, build, background 65/65, including the new U070-1 (sidebar, switch, card menu, play button) and P20 (pointer, focus, flashes) and the 36 matrix baselines regenerated after inspection.
+- Desktop round after the maintainer's readiness reply: `pnpm acceptance:player` 4/4 (`2026-10-06T17-07-08-657Z-player-acceptance`); `pnpm start:app` and `pnpm acceptance:settings-shortcut -- --observe --quit` passed (`2026-10-06T17-08-25.491Z-settings-entry-Uc5wg0`); its `settings-window.png`, observed by Claude, shows the window controls on the sidebar's top with the brand beneath them, the content at the top and the thin scroll bar at the right edge. No process remained.
+
+Not run: recording, CPU, notification and website checks (appearance and renderer behaviour only). Not verified by hand: forced colours, reduced motion and VoiceOver.
+
 ## Plan 069 closure — 2026-10-06
 
 Plan 069 moved the renderer's styles into shadcn's three layers at the maintainer's request, keeping every value 067 settled; nothing was meant to look different ([layers](../system-design/desktop.md#settings-window)). Before the change every feature rule in `ui.css` was unlayered and so beat the primitives' utilities; in `@layer components` it loses to them, so each rule that set a property a primitive's own utility also sets moved to utilities at the call site or to a variant of the primitive. The evidence is local, in `measurements/2026-10-06T15-31-12Z-shadcn-layers/` (`before`, `before-repeat`, the paired `run-a`/`run-a2` on HEAD and `run-b`/`run-b2` on the change).
