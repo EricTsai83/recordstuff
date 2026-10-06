@@ -343,7 +343,10 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
           ) : group.control === "segmented" ? (
             <ToggleGroup
               id={id}
-              className="segments"
+              className="segments rounded-[8px] bg-muted p-0.5"
+              variant="segmented"
+              size="segment"
+              spacing={0.5}
               value={[value]}
               aria-labelledby={`${id}-label`}
               {...desc}

@@ -1,5 +1,5 @@
 /**
- * App change from the shadcn source (plan 069): a `size` variant. `default` keeps shadcn's 10px; `md` is the 12px the
+ * App changes from the shadcn source: a `chosen` variant, a count in the chosen red (2026-10-07); and (plan 069) a `size` variant. `default` keeps shadcn's 10px; `md` is the 12px the
  * app uses for metadata (plan 067), for a count beside a 13px label.
  */
 import { mergeProps } from "@base-ui/react/merge-props";
@@ -22,6 +22,7 @@ const badgeVariants = cva(
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
+        chosen: "bg-chosen-text font-semibold text-chosen-text-foreground",
       },
       size: {
         default: "text-[0.625rem]",

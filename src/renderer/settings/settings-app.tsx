@@ -27,7 +27,8 @@ function Status() {
   return (
     <Card
       id="status"
-      className="status gap-2.5 p-3"
+      // Recording and something to fix tint the card itself; the mark and the light say the rest (ui.css).
+      className="status gap-2.5 p-3 data-[tone=attention]:bg-warning-surface data-[tone=attention]:ring-warning-border data-[tone=recording]:bg-recording-surface data-[tone=recording]:ring-recording-border"
       hidden={!status || status.tone === "ready"}
       data-tone={status?.tone}
     >
@@ -52,7 +53,7 @@ function Status() {
         <Button
           id="status-secondary"
           variant="link"
-          className="h-auto max-w-full justify-start px-0 text-left whitespace-normal"
+          className="h-auto max-w-full justify-start px-0 text-left whitespace-normal wide:pl-[15px]"
           hidden={!status?.secondaryAction}
           data-action={status?.secondaryAction?.id}
           aria-disabled={Boolean(model.saving)}
@@ -131,7 +132,7 @@ export function SettingsApp() {
           <Tabs
             value={model.selectedTab}
             orientation={vertical ? "vertical" : "horizontal"}
-            className="settings-tabs h-full min-h-0 gap-3.5 wide:grid wide:grid-cols-[170px_minmax(0,1fr)] wide:grid-rows-[minmax(0,1fr)_auto] wide:gap-x-[22px] narrow:flex-col"
+            className="settings-tabs h-full min-h-0 gap-3.5 wide:contents narrow:flex-col"
             onValueChange={(value) => {
               if (
                 value === "library" ||
@@ -145,8 +146,8 @@ export function SettingsApp() {
             <TabsList
               activateOnFocus
               aria-orientation={vertical ? "vertical" : "horizontal"}
-              className="tabs flex-none items-stretch wide:col-start-1 wide:row-start-1 wide:w-[170px] wide:flex-col wide:self-start narrow:w-full"
-              variant="line"
+              className="tabs flex-none items-stretch wide:col-start-1 wide:row-start-2 wide:w-[170px] wide:flex-col wide:self-start narrow:w-full"
+              variant={vertical ? "sidebar" : "line"}
               aria-label={current?.title ?? "RecordStuff"}
               onKeyDown={(event) => {
                 const extra = vertical
@@ -198,7 +199,7 @@ export function SettingsApp() {
                         <span className="sr-only">{count[2]}</span>
                         <Badge
                           className="tab-badge ml-auto tabular-nums"
-                          variant="secondary"
+                          variant="chosen"
                           size="md"
                         >
                           {count[3]}

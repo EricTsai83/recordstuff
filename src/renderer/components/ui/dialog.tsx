@@ -1,3 +1,7 @@
+/**
+ * App change from the shadcn source (2026-10-07): `overlayClassName` styles a dialog's backdrop from its call site, so
+ * the player keeps its own lighter, softly blurred backdrop.
+ */
 "use client";
 
 import * as React from "react";
@@ -44,14 +48,16 @@ function DialogContent({
   children,
   showCloseButton = true,
   keepMounted = false,
+  overlayClassName,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
   keepMounted?: boolean;
+  overlayClassName?: string;
 }) {
   return (
     <DialogPortal keepMounted={keepMounted}>
-      <DialogOverlay />
+      <DialogOverlay className={overlayClassName} />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(

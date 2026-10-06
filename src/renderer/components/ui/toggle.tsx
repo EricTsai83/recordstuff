@@ -1,5 +1,7 @@
 /**
- * App change from the shadcn source (plan 069): in forced colours a pressed toggle draws a 2px Highlight outline, since
+ * App changes from the shadcn source: the `segmented` variant and `segment` size, the app's segmented control, where the
+ * choice is raised on a recessed track as macOS draws one (2026-10-07; the group draws the track); and (plan 069) in
+ * forced colours a pressed toggle draws a 2px Highlight outline, since
  * the system replaces the muted fill that marks it otherwise.
  */
 import { Toggle as TogglePrimitive } from "@base-ui/react/toggle";
@@ -13,12 +15,15 @@ const toggleVariants = cva(
       variant: {
         default: "bg-transparent",
         outline: "border border-input bg-transparent hover:bg-muted",
+        segmented:
+          "bg-transparent text-muted-foreground hover:bg-transparent hover:text-foreground aria-pressed:bg-selected aria-pressed:text-foreground aria-pressed:shadow-selected",
       },
       size: {
         default:
           "h-7 min-w-7 px-2 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5",
         sm: "h-6 min-w-6 rounded-[min(var(--radius-md),8px)] px-2 text-[0.625rem] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
         lg: "h-8 min-w-8 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+        segment: "h-6 min-w-6 rounded-[6px] px-2.5",
       },
     },
     defaultVariants: {

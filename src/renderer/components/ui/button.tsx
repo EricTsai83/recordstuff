@@ -1,7 +1,9 @@
 /**
- * App changes from the shadcn source (plan 069): the `media` variant (white controls over the player's black stage),
- * the `clip` size (a library card's whole face is one button), the `icon-xl` size (the full-screen page's controls)
- * and the `wrap` variant (a row's button wraps its label instead of running past the card, plan 067).
+ * App changes from the shadcn source (plan 069): the `media` variant (white controls over the player's black stage,
+ * their icons shadowed to read on any picture), the `clip` size (a library card's whole face is one button), the
+ * `icon-media` and `icon-xl` sizes (the player's and the full-screen page's controls) and the `wrap` variant (a row's
+ * button wraps its label instead of running past the card, plan 067). `outline` is the app's control: a card-white fill
+ * on a `--input` border that greys under the pointer (2026-10-07).
  */
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -13,10 +15,10 @@ const buttonVariants = cva(
     variants: {
       variant: {
         media:
-          "rounded-full border-transparent bg-transparent text-media-foreground hover:bg-media-foreground/15 focus-visible:ring-media-foreground",
+          "rounded-full border-transparent bg-transparent text-media-foreground hover:bg-media-foreground/15 focus-visible:ring-media-foreground [&_svg]:drop-shadow-(--media-icon-shadow)",
         default: "bg-primary text-primary-foreground hover:bg-primary/80",
         outline:
-          "border-border hover:bg-input/50 hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:bg-input/30",
+          "border-input bg-card hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground dark:bg-secondary dark:hover:bg-accent",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         ghost:
@@ -36,7 +38,8 @@ const buttonVariants = cva(
         "icon-xs": "size-5 rounded-sm [&_svg:not([class*='size-'])]:size-2.5",
         "icon-sm": "size-6 [&_svg:not([class*='size-'])]:size-3",
         "icon-lg": "size-8 [&_svg:not([class*='size-'])]:size-4",
-        "icon-xl": "size-13 [&_svg:not([class*='size-'])]:size-7",
+        "icon-media": "size-[38px] [&_svg:not([class*='size-'])]:size-6",
+        "icon-xl": "size-13 [&_svg:not([class*='size-'])]:size-8",
       },
       wrap: {
         true: "h-auto min-h-7 max-w-full text-left whitespace-normal",

@@ -133,3 +133,47 @@ test("U067-0 both measurements see what they claim to: faded text over a faded b
   expect.soft(Boolean(faded && faded.contrast < 4.5 && faded.contrast > 3.5) && field?.size === 10,
     `U067-0 the gallery's measurement agrees ${JSON.stringify({ faded, field })}`).toBe(true);
 });
+
+/**
+ * The look and motion restored on 2026-10-07 from the pre-shadcn page, measured on the computed page: the sidebar
+ * marks the open tab with a raised tile and no line (the narrow strip keeps its line, in the chosen red), a switch that
+ * is on is the chosen red, a card's menu is one line per item at its natural width, and a card's red play button grows
+ * in under the pointer.
+ */
+test("U070-1 the sidebar, a switch, the card menu and a card's play button look and move as before shadcn", async () => {
+  await host.evaluate(h => { h.theme("light"); h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: "zh-TW", library: h.library().state }); });
+  await page.locator("#tab-library").click();
+  await page.waitForTimeout(200);
+  const chosen = await read<string>(page, `(() => { const probe = document.createElement("p"); probe.style.color = "var(--chosen)"; document.body.append(probe); const c = getComputedStyle(probe).color; probe.remove(); return c; })()`);
+  const tab = (): Promise<{ line: string; fill: string; colour: string }> => read(page, `(() => { const t = document.getElementById("tab-library");
+    return { line: getComputedStyle(t, "::after").opacity, fill: getComputedStyle(t).backgroundColor, colour: getComputedStyle(t).color }; })()`);
+  const wide = await tab();
+  expect.soft(wide.line === "0" && wide.fill !== "rgba(0, 0, 0, 0)", `U070-1 the sidebar raises the open tab on a tile, with no line ${JSON.stringify(wide)}`).toBe(true);
+  await host.evaluate(h => h.setSize(...h.SNAPSHOT_SIZES.narrow));
+  await page.waitForTimeout(250);
+  const narrow = await tab();
+  expect.soft(narrow.line, `U070-1 the narrow strip keeps the open tab's line ${JSON.stringify(narrow)}`).toBe("1");
+  await host.evaluate(h => h.setSize(...h.SNAPSHOT_SIZES.default));
+  await page.waitForTimeout(250);
+  // A card's play button: hidden and a little small at rest, the chosen red, and it grows in under the pointer.
+  const play = (): Promise<{ opacity: string; scale: string; fill: string; transition: string }> => read(page, `(() => { const p = getComputedStyle(document.querySelector(".clip-play"));
+    return { opacity: p.opacity, scale: p.transform, fill: p.backgroundColor, transition: p.transitionDuration }; })()`);
+  const rest = await play();
+  await page.locator(".clip-open").first().hover();
+  await page.waitForTimeout(400);
+  const shown = await play();
+  expect.soft(rest.opacity === "0" && rest.scale !== "none" && shown.opacity === "1" && shown.scale === "none" && shown.fill === chosen && rest.transition.includes("0.15s"),
+    `U070-1 a card's red play button grows in under the pointer ${JSON.stringify({ rest, shown, chosen })}`).toBe(true);
+  // The card menu: every item on one line, however narrow its ⋯ button.
+  await page.locator(".clip-more").first().click();
+  await expect(page.locator("#clip-menu")).toBeVisible();
+  const items = await read<Array<{ text: string; lines: number }>>(page, `[...document.querySelectorAll("#clip-menu [role=menuitem]")].map(item => {
+    const s = getComputedStyle(item); return { text: item.textContent.trim(), lines: Math.round((item.getBoundingClientRect().height - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom)) / parseFloat(s.lineHeight)) }; })`);
+  expect.soft(items.length === 4 && items.every(item => item.lines === 1), `U070-1 the card menu keeps every item on one line ${JSON.stringify(items)}`).toBe(true);
+  await page.keyboard.press("Escape");
+  // A switch that is on is the chosen red.
+  await page.locator("#tab-general").click();
+  await page.waitForTimeout(150);
+  const on = await read<string | null>(page, `(() => { const s = document.querySelector("[data-slot=switch][data-checked]"); return s && getComputedStyle(s).backgroundColor; })()`);
+  expect.soft(on, "U070-1 a switch that is on is the chosen red").toBe(chosen);
+});

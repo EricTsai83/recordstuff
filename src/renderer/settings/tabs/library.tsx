@@ -104,7 +104,7 @@ export const Clip = memo(function Clip({
             {item.duration}
           </span>
           <span className="clip-play" aria-hidden="true">
-            <Play className="play-icon size-[26px]" />
+            <Play className="play-icon size-[18px] in-data-[layout=list]:size-[13px]" />
           </span>
         </span>
         <span className="clip-text">
@@ -149,7 +149,8 @@ export const Clip = memo(function Clip({
         <DropdownMenuContent
           finalFocus={false}
           id="clip-menu"
-          className="clip-menu"
+          // As wide as its longest item, never wrapping one (as a macOS menu), whatever the ⋯ button's width.
+          className="clip-menu w-auto min-w-[196px] whitespace-nowrap"
           align="end"
           onKeyDown={(event) => {
             if (event.key === "Tab") {
@@ -212,7 +213,10 @@ export function Library() {
           {library?.summary}
         </p>
         <ToggleGroup
-          className="library-layout segments"
+          className="library-layout segments rounded-[8px] bg-muted p-0.5"
+          variant="segmented"
+          size="segment"
+          spacing={0.5}
           aria-label={model.text("Layout")}
           value={[layout]}
           onValueChange={(values) => {
@@ -403,7 +407,8 @@ export function PlayerDialog() {
       <DialogContent
         keepMounted
         // The player's stage: as wide as the window allows at 16:9, black in both themes, below the title bar on macOS.
-        className="player aspect-video w-[min(860px,calc(100vw-48px),calc((100dvh-72px)*16/9))] max-w-none gap-0 overflow-hidden bg-media p-0 text-media-foreground sm:max-w-none darwin:top-[calc(50%+24px)]"
+        overlayClassName="bg-media-backdrop supports-backdrop-filter:backdrop-blur-[3px]"
+        className="player aspect-video rounded-[14px] shadow-player ring-0 w-[min(860px,calc(100vw-48px),calc((100dvh-72px)*16/9))] max-w-none gap-0 overflow-hidden bg-media p-0 text-media-foreground sm:max-w-none darwin:top-[calc(50%+24px)]"
         data-id={item?.id}
         showCloseButton={false}
         initialFocus={() => model.playerVideo}
@@ -446,7 +451,7 @@ export function PlayerDialog() {
             trailing={
               <Button
                 variant="media"
-                size="icon"
+                size="icon-media"
                 id="player-fullscreen"
                 aria-label={model.text("Full screen")}
                 title={model.text("Full screen")}
@@ -458,7 +463,7 @@ export function PlayerDialog() {
             close={
               <Button
                 variant="media"
-                size="icon"
+                size="icon-media"
                 id="player-close"
                 aria-label={model.text("Close")}
                 title={model.text("Close")}

@@ -30,15 +30,18 @@
   --text-xs--line-height: 1.45;
 }
 
-/* Tokens, the one place a colour is written (plan 069). shadcn's semantic variables keep the app's own values: a light
-   grey page under white cards, zinc greys and a 4.5:1 muted text (plan 067). The app adds its own meanings the way
-   shadcn adds --chart-* or --sidebar-*: the recording state, the brand mark, the red dot that also marks what is new,
-   and the media surfaces of the player and the full-screen page, which stay dark in both themes. */
+/* Tokens, the one place a colour is written (plan 069). The values are the app's own, as Apple Music draws its window
+   (2026-10-05, restored 2026-10-07): ink on quiet greys, cards floating on a slightly darker window, and Apple Music's
+   red only for what is chosen — the open tab, a switch that is on, a count, an unread failure, a recording's play
+   button and the keyboard's ring. shadcn's semantic variables carry them; the app adds its own meanings the way shadcn
+   adds --chart-* or --sidebar-*: --chosen, the recording and warning states, the brand mark, the selection raised in a
+   track, and the media surfaces of the player and the full-screen page, which stay dark in both themes. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-card-border: var(--card-border);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
@@ -53,16 +56,38 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-chosen: var(--chosen);
+  --color-chosen-foreground: var(--chosen-foreground);
+  --color-chosen-text: var(--chosen-text);
+  --color-chosen-text-foreground: var(--chosen-text-foreground);
+  --color-selected: var(--selected);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-selected: var(--sidebar-selected);
   --color-recording: var(--recording);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
   --color-indicator: var(--indicator);
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
   --color-media: var(--media);
   --color-media-foreground: var(--media-foreground);
+  --color-media-track: var(--media-track);
   --color-media-scrim: var(--media-scrim);
   --color-media-veil: var(--media-veil);
   --color-media-hover: var(--media-hover);
+  --color-media-error: var(--media-error);
+  --color-media-backdrop: var(--media-backdrop);
+  --color-recording-surface: var(--recording-surface);
+  --color-recording-border: var(--recording-border);
+  --color-warning-surface: var(--warning-surface);
+  --color-warning-border: var(--warning-border);
+  --shadow-player: var(--player-shadow);
+  --shadow-card: var(--card-shadow);
+  --shadow-selected: var(--selected-shadow);
+  --shadow-sidebar-selected: var(--sidebar-selected-shadow);
   --shadow-toast: var(--toast-shadow);
+  --shadow-chosen: var(--chosen-shadow);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -75,36 +100,80 @@
   --foreground: #18181b;
   --card: #fff;
   --card-foreground: #18181b;
+  --card-border: rgb(0 0 0 / 0.075);
+  --card-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
   --popover: #fff;
   --popover-foreground: #18181b;
+  /* Ink: the one action a place is for, a dark fill with light words. */
   --primary: #18181b;
-  --primary-foreground: #fafafa;
+  --primary-foreground: #fff;
+  /* A tile: a row's icon, an empty state's mark. */
   --secondary: #f1f1f3;
   --secondary-foreground: #18181b;
-  --muted: #eaeaed;
+  /* The recessed track of the tab strip and segmented controls, and a slider's track. */
+  --muted: #e9e9ec;
   /* At least 4.5:1 on the page, the cards and the muted fills in both themes (plan 067). */
   --muted-foreground: #68686f;
-  --accent: #f4f4f5;
+  /* A control under the pointer, a menu's highlighted item. */
+  --accent: #f2f2f4;
   --accent-foreground: #18181b;
   --destructive: #b91c1c;
-  --border: #e4e4e7;
-  --input: #d4d4d8;
-  --ring: #71717a;
-  /* The status card's title while recording. */
+  /* Hairlines between rows; --input is a control's own border. */
+  --border: #ececef;
+  --input: #d9d9de;
+  --ring: #fa2d48;
+  /* Apple Music's red for what is chosen; in dark a calmer red the maintainer picked (2026-10-05). */
+  --chosen: #fa2d48;
+  --chosen-foreground: #fff;
+  /* Words, and a count's fill, in the chosen red: a step deeper in light and lighter in dark, for 4.5:1 (plan 067). */
+  --chosen-text: #dc1a38;
+  --chosen-text-foreground: #fff;
+  --chosen-shadow: 0 4px 12px rgb(0 0 0 / 0.25);
+  /* The choice raised in a track (a segmented control, the narrow tab strip). */
+  --selected: #fff;
+  --selected-shadow: 0 1px 2px rgb(0 0 0 / 0.12), 0 0 0 0.5px rgb(0 0 0 / 0.06);
+  /* The wide window's sidebar, its hover and the open tab's raised tile. */
+  --sidebar: #ebebee;
+  --sidebar-accent: rgb(0 0 0 / 0.05);
+  --sidebar-selected: rgb(255 255 255 / 0.9);
+  --sidebar-selected-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+  /* Recording: the status title (4.5:1, plan 067), the status mark's tile and halo, and its card. */
   --recording: #d92020;
-  /* The record dot of the brand mark; the unread failure dot and a new recording's outline repeat it. */
-  --indicator: #ef4444;
+  --recording-mark: #e5352b;
+  --recording-halo: rgb(229 53 43 / 0.14);
+  --recording-surface: #fff3f2;
+  --recording-border: #fbd5d2;
+  /* Something to fix: the status card, its mark and a row's diagnostics, in amber. */
+  --warning: #8a5a00;
+  --warning-surface: #fff8eb;
+  --warning-border: #f5deb0;
+  /* Ready: the wide sidebar's status light. */
+  --success: #16a34a;
+  /* The record dot of the brand mark. */
+  --indicator: #ff3b30;
   /* The brand and status mark's tile and ring, the same in both themes. */
   --brand: #18181b;
   --brand-foreground: #fff;
-  /* The player and the full-screen page: a black stage, white controls, the scrim behind the controls and the
-     duration, the veil behind a volume or seek notice, and a clip's hover shade. */
+  --brand-edge: rgb(255 255 255 / 0.08);
+  /* The player and the full-screen page: a black stage, white controls and track, the shades behind the title and the
+     controls, the veil behind a flash, a clip's hover shade and the duration's backing. */
   --media: #000;
   --media-foreground: #fff;
-  --media-scrim: #000b;
-  --media-veil: #0009;
-  --media-hover: #0002;
-  --toast-shadow: 0 4px 18px #0002;
+  --media-track: rgb(255 255 255 / 0.28);
+  --media-scrim: rgb(0 0 0 / 0.66);
+  --media-veil: rgb(0 0 0 / 0.5);
+  --media-hover: rgb(0 0 0 / 0.22);
+  --media-error: #ff8a80;
+  --media-backdrop: rgb(0 0 0 / 0.45);
+  --media-shade-top: linear-gradient(rgb(0 0 0 / 0.62), rgb(0 0 0 / 0.28) 55%, transparent);
+  --media-shade-bottom: linear-gradient(transparent, rgb(0 0 0 / 0.32) 40%, rgb(0 0 0 / 0.72));
+  --media-text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+  --media-icon-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+  --media-thumb-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+  --player-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
+  --toast-shadow: 0 4px 12px rgb(0 0 0 / 0.1);
+  /* The content's thin scroll bar thumb. */
+  --scrollbar: rgb(0 0 0 / 0.22);
   /* Keyboard focus around a failure entry and inside it (plan 067): one device pixel at 1x, 1.5px on a Retina display. */
   --focus: var(--ring);
   --focus-width: 1px;
@@ -116,21 +185,40 @@
   --foreground: #f4f4f5;
   --card: #1b1b1e;
   --card-foreground: #f4f4f5;
-  --popover: #242427;
+  --card-border: rgb(255 255 255 / 0.07);
+  --card-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+  --popover: #252529;
   --popover-foreground: #f4f4f5;
-  --primary: #fafafa;
+  --primary: #f4f4f5;
   --primary-foreground: #18181b;
-  --secondary: #27272a;
+  --secondary: #26262a;
   --secondary-foreground: #f4f4f5;
-  --muted: #27272a;
+  --muted: #26262a;
   --muted-foreground: #a1a1aa;
-  --accent: #27272a;
+  --accent: #2f2f34;
   --accent-foreground: #f4f4f5;
   --destructive: #fca5a5;
-  --border: #3f3f46;
-  --input: #3f3f46;
-  --ring: #a1a1aa;
+  --border: #29292d;
+  --input: #3a3a40;
+  --ring: #e85a62;
+  --chosen: #e85a62;
+  --chosen-text: #f06b73;
+  --chosen-text-foreground: #18181b;
+  --selected: #3c3c43;
+  --sidebar: #18181b;
+  --sidebar-accent: rgb(255 255 255 / 0.06);
+  --sidebar-selected: rgb(255 255 255 / 0.09);
+  --sidebar-selected-shadow: 0 0 transparent;
   --recording: #f87171;
+  --recording-mark: #ff5a4f;
+  --recording-halo: rgb(255 90 79 / 0.18);
+  --recording-surface: #2a1715;
+  --recording-border: #4a2421;
+  --warning: #f3ca82;
+  --warning-surface: #2a2416;
+  --warning-border: #4a3d20;
+  --success: #4ade80;
+  --scrollbar: rgb(255 255 255 / 0.22);
 }
 @media (min-resolution: 2dppx) {
   :root {
@@ -205,8 +293,10 @@
     gap: 6px;
   }
   main {
+    --main-top: 16px;
     height: 100dvh;
-    padding: 16px 20px 0;
+    --main-right: 20px;
+    padding: var(--main-top) var(--main-right) 0;
     display: flex;
     flex-direction: column;
   }
@@ -219,34 +309,79 @@
     align-items: center;
     gap: 9px;
     margin-bottom: 20px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
   }
+  /* The app mark, in the status card and the brand: a dark tile, a white ring and the red dot, every part sized from
+     --m so the ring and the dot share one centre at any size. */
   .brand-mark,
   .status-mark {
-    --m: 24px;
+    --m: 26px;
     flex: none;
     display: block;
     width: var(--m);
     height: var(--m);
     background: var(--brand);
-    border-radius: 6px;
+    border-radius: calc(var(--m) * 0.28);
+    box-shadow: inset 0 0 0 1px var(--brand-edge);
     position: relative;
   }
-  .brand-mark::before,
-  .status-mark::before {
-    content: "";
-    position: absolute;
-    inset: 5px;
-    border: 1.5px solid var(--brand-foreground);
-    border-radius: 50%;
+  .status-mark {
+    --m: 36px;
   }
+  .brand-mark::before,
+  .status-mark::before,
   .brand-mark::after,
   .status-mark::after {
     content: "";
     position: absolute;
-    inset: 9px;
-    background: var(--indicator);
+    box-sizing: border-box;
     border-radius: 50%;
+  }
+  .brand-mark::before,
+  .status-mark::before {
+    inset: calc(var(--m) * 0.22);
+    border: calc(var(--m) * 0.0625) solid var(--brand-foreground);
+  }
+  .brand-mark::after,
+  .status-mark::after {
+    inset: calc(var(--m) * 0.375);
+    background: var(--indicator);
+  }
+  /* The status mark says the state: a red tile with a halo while recording, grey while busy, an amber "!" to fix. */
+  .status[data-tone="recording"] .status-mark {
+    background: var(--recording-mark);
+    box-shadow: 0 0 0 4px var(--recording-halo);
+  }
+  .status[data-tone="recording"] .status-mark::after {
+    background: var(--brand-foreground);
+  }
+  .status[data-tone="busy"] .status-mark {
+    background: var(--secondary);
+    box-shadow: inset 0 0 0 1px var(--card-border);
+  }
+  .status[data-tone="busy"] .status-mark::before {
+    border-color: var(--muted-foreground);
+  }
+  .status[data-tone="busy"] .status-mark::after {
+    background: var(--muted-foreground);
+  }
+  .status[data-tone="attention"] .status-mark {
+    background: var(--warning);
+  }
+  .status[data-tone="attention"] .status-mark::before {
+    border-color: var(--warning-surface);
+  }
+  .status[data-tone="attention"] .status-mark::after {
+    content: "!";
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: none;
+    color: var(--warning-surface);
+    font-weight: 800;
+    font-size: 13px;
   }
   .settings-viewport {
     flex: 1;
@@ -255,10 +390,17 @@
     position: relative;
     overflow: hidden;
   }
+  /* The content scrolls at the window's right edge, with a thin bar: the viewport reaches past main's padding and the
+     panel gives it back as its own (2026-10-07). */
+  .settings-viewport {
+    margin-right: calc(-1 * var(--main-right));
+  }
   .settings-panel {
     height: 100%;
     overflow: auto;
-    padding: 0 2px 44px;
+    padding: 0 calc(var(--main-right) - 6px) 44px 2px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar) transparent;
     scroll-padding-block: 16px 34px;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
@@ -395,13 +537,32 @@
   }
   .listening-indicator {
     display: inline-flex;
-    gap: 2px;
+    align-items: center;
+    gap: 3px;
+    height: 14px;
   }
   .listening-indicator span {
+    display: block;
     width: 3px;
-    height: 3px;
-    border-radius: 50%;
-    background: var(--foreground);
+    height: 8px;
+    border-radius: 2px;
+    background: var(--recording-mark);
+    animation: listening 1.2s ease-in-out infinite;
+  }
+  .listening-indicator span:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  .listening-indicator span:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+  @keyframes listening {
+    0%,
+    100% {
+      transform: scaleY(0.5);
+    }
+    50% {
+      transform: scaleY(1.4);
+    }
   }
   .status {
     align-items: center;
@@ -442,8 +603,11 @@
   :root:not([data-platform="darwin"]) .titlebar {
     display: none;
   }
-  :root[data-platform="darwin"] main {
-    padding-top: 52px;
+  /* A narrow window on macOS leaves the strip beside the window controls to the title (below). */
+  @media (max-width: 599px) {
+    :root[data-platform="darwin"] main {
+      --main-top: 52px;
+    }
   }
   .scroll-hint {
     pointer-events: none;
@@ -478,14 +642,15 @@
   .result-chevron {
     width: 14px;
     height: 14px;
+    transition: transform 150ms ease;
   }
   .recording-result[data-open] .result-chevron {
     transform: rotate(180deg);
   }
   .result-unread {
-    width: 5px;
-    height: 5px;
-    background: var(--indicator);
+    width: 7px;
+    height: 7px;
+    background: var(--chosen);
     border-radius: 50%;
   }
   .result-outcome {
@@ -594,20 +759,38 @@
     font-size: 12px;
     font-variant-numeric: tabular-nums;
   }
+  /* Hover or keyboard focus shows a red play button over the thumbnail, which grows in. */
   .clip-play {
     position: absolute;
-    inset: 0;
+    left: 50%;
+    top: 50%;
     display: grid;
     place-items: center;
+    width: 40px;
+    height: 40px;
+    margin: -20px 0 0 -20px;
+    border-radius: 50%;
+    background: var(--chosen);
+    color: var(--chosen-foreground);
+    box-shadow: var(--chosen-shadow);
     opacity: 0;
-    background: var(--media-hover);
+    transform: scale(0.9);
+    transition:
+      opacity 0.15s ease,
+      transform 0.15s ease;
   }
   .clip-play svg {
-    color: var(--media-foreground);
     fill: currentColor;
   }
-  .clip-open:hover .clip-play {
+  .clip-open:hover .clip-play,
+  .clip-open:focus-visible .clip-play {
     opacity: 1;
+    transform: none;
+  }
+  #library[data-layout="list"] .clip-play {
+    width: 28px;
+    height: 28px;
+    margin: -14px 0 0 -14px;
   }
   .clip-text {
     padding: 10px;
@@ -644,9 +827,20 @@
   .clip-more[aria-expanded="true"] {
     opacity: 1;
   }
+  /* The recording a notification or the menu opened: outlined in the recording red, which then fades. */
   .clip.arrived {
-    outline: 2px solid var(--indicator);
+    outline: 2px solid transparent;
     outline-offset: 2px;
+    animation: arrived 2.4s ease-out forwards;
+  }
+  @keyframes arrived {
+    0%,
+    60% {
+      outline-color: var(--recording-mark);
+    }
+    100% {
+      outline-color: transparent;
+    }
   }
   #library[data-layout="list"] .library-grid {
     display: flex;
@@ -691,7 +885,6 @@
   }
   .undo-toast {
     position: relative;
-    width: min(356px, calc(100vw - 32px));
     align-items: center;
   }
   .toast-content {
@@ -713,6 +906,8 @@
     top: -7px;
     left: -7px;
   }
+  /* The player's controls, as YouTube's full screen lays them out: the title on a shade along the top, a seek bar the
+     picture's width over play, volume and the time on a shade along the bottom. White on the picture. */
   .pc {
     position: relative;
     width: 100%;
@@ -726,6 +921,8 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
+    outline: none;
+    cursor: pointer;
   }
   .pc-top,
   .pc-bottom {
@@ -733,17 +930,17 @@
     left: 0;
     right: 0;
     z-index: 1;
-    transition: opacity 0.15s;
+    transition: opacity 0.2s ease;
   }
   .pc-top {
     top: 0;
-    padding: 14px 14px 36px;
-    background: linear-gradient(var(--media-scrim), transparent);
+    padding: 14px 14px 40px 18px;
+    background: var(--media-shade-top);
   }
   .pc-bottom {
     bottom: 0;
-    padding: 32px 14px 8px;
-    background: linear-gradient(transparent, var(--media-scrim));
+    padding: 32px 12px 4px;
+    background: var(--media-shade-bottom);
   }
   .pc-heading {
     display: flex;
@@ -753,24 +950,37 @@
   .pc-heading-text {
     flex: 1;
     min-width: 0;
+    padding-top: 2px;
+    text-shadow: var(--media-text-shadow);
   }
   .pc-title {
     font-size: 15px;
-    font-weight: 500;
+    font-weight: 600;
+    letter-spacing: -0.005em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .pc-meta,
-  .pc-error {
+  .pc-meta {
+    margin-top: 2px;
     font-size: 12px;
     opacity: 0.8;
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pc-error {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--media-error);
+    text-shadow: none;
   }
   .pc-row {
     display: flex;
-    height: 38px;
+    height: 42px;
     align-items: center;
-    gap: 3px;
+    gap: 2px;
   }
   .pc-spacer {
     flex: 1;
@@ -780,12 +990,15 @@
     align-items: center;
   }
   .pc-time {
+    margin-left: 8px;
     font-size: 12px;
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+    text-shadow: var(--media-text-shadow);
   }
   .pc-seek {
-    padding: 7px 0;
+    padding: 6px 0;
   }
   /* The volume slider opens beside the mute button on hover or focus. Its width is set at the call site, where it
      overrides the slider's own full width. */
@@ -794,8 +1007,9 @@
     overflow: hidden;
     margin-inline: 0;
     transition:
-      width 0.15s,
-      opacity 0.15s;
+      width 0.15s ease,
+      opacity 0.15s ease,
+      margin 0.15s ease;
   }
   .pc-volume:hover .pc-level,
   .pc-volume:focus-within .pc-level {
@@ -803,7 +1017,8 @@
     overflow: visible;
     margin-inline: 2px 8px;
   }
-  .pc-idle {
+  .pc-idle,
+  .pc-idle video {
     cursor: none;
   }
   .pc-idle .pc-top,
@@ -811,58 +1026,94 @@
     opacity: 0;
     pointer-events: none;
   }
+  /* What a click or key just did, flashed over the picture as YouTube does: play, pause or the volume in a dark circle
+     at the centre that grows as it fades, the level in a pill near the top, and a seek as three arrows lighting in turn
+     over the seconds in a dark arc at the side it went. Never in the way of a click. */
   .pc-bezel,
   .pc-bezel-text,
   .pc-seek-hint {
     position: absolute;
     pointer-events: none;
-    background: var(--media-veil);
     color: var(--media-foreground);
   }
   .pc-bezel {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 64px;
-    height: 64px;
+    width: 52px;
+    height: 52px;
     border-radius: 50%;
     display: grid;
     place-items: center;
-    animation: media-bezel 0.5s forwards;
+    background: var(--media-veil);
+    animation: media-bezel 0.5s linear forwards;
   }
   .pc-bezel svg {
     width: 32px;
     height: 32px;
   }
+  .pc-bezel[data-kind="play"] svg,
+  .pc-bezel[data-kind="pause"] svg {
+    fill: currentColor;
+  }
   .pc-bezel-text {
-    top: 14px;
+    top: 10%;
     left: 50%;
     transform: translateX(-50%);
-    padding: 5px 12px;
-    border-radius: 30px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    background: var(--media-veil);
+    font-size: 18px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    animation: media-hold 0.8s linear forwards;
   }
   .pc-seek-hint {
-    top: 50%;
-    transform: translateY(-50%);
-    padding: 20px 12px;
-    border-radius: 50%;
-    text-align: center;
+    top: 0;
+    bottom: 0;
+    width: min(22%, 200px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: var(--media-hover);
+    animation: media-hold-seek 0.65s linear forwards;
   }
   .pc-seek-back {
-    left: 8%;
+    left: 0;
+    border-radius: 0 50% 50% 0 / 0 50% 50% 0;
   }
   .pc-seek-forward {
-    right: 8%;
+    right: 0;
+    border-radius: 50% 0 0 50% / 50% 0 0 50%;
   }
   .pc-seek-arrows {
     display: flex;
   }
-  .pc-seek-arrow svg {
-    width: 18px;
-    height: 18px;
-  }
   .pc-seek-back .pc-seek-arrows {
-    transform: rotate(180deg);
+    transform: scaleX(-1);
+  }
+  .pc-seek-arrow svg {
+    display: block;
+    width: 22px;
+    height: 22px;
+    margin: 0 -2px;
+    opacity: 0.3;
+    fill: currentColor;
+    animation: pc-seek-arrow 0.6s linear both;
+  }
+  .pc-seek-arrow:nth-child(2) svg {
+    animation-delay: 0.1s;
+  }
+  .pc-seek-arrow:nth-child(3) svg {
+    animation-delay: 0.2s;
+  }
+  .pc-seek-label {
+    font-size: 15px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    text-shadow: var(--media-text-shadow);
   }
   :root[data-surface="video"],
   :root[data-surface="video"] body {
@@ -873,7 +1124,7 @@
     height: 100vh;
   }
   :root[data-surface="video"] .pc-top {
-    padding: 26px 28px 72px;
+    padding: 26px 28px 72px 32px;
   }
   :root[data-surface="video"] .pc-title {
     font-size: 22px;
@@ -881,11 +1132,15 @@
   :root[data-surface="video"] .pc-bottom {
     padding: 64px 24px 10px;
   }
+  :root[data-surface="video"] .pc-seek {
+    padding: 8px 0;
+  }
   :root[data-surface="video"] .pc-row {
     height: 60px;
     gap: 6px;
   }
   :root[data-surface="video"] .pc-time {
+    margin-left: 12px;
     font-size: 16px;
   }
   @keyframes media-bezel {
@@ -897,6 +1152,33 @@
       transform: translate(-50%, -50%) scale(2);
     }
   }
+  @keyframes media-hold {
+    0%,
+    70% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes media-hold-seek {
+    0%,
+    60% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes pc-seek-arrow {
+    0%,
+    100% {
+      opacity: 0.3;
+    }
+    35% {
+      opacity: 1;
+    }
+  }
   @media (min-width: 600px) {
     #setting-about-quit {
       display: none;
@@ -904,29 +1186,82 @@
     main {
       display: grid;
       grid-template-columns: 170px minmax(0, 1fr);
-      grid-template-rows: auto minmax(0, 1fr) auto;
+      grid-template-rows: auto auto minmax(0, 1fr) auto auto;
       column-gap: 22px;
+    }
+    /* The sidebar's own grey, from the window's top edge (under the macOS controls) to its foot, as Apple Music's. */
+    main::before {
+      content: "";
+      grid-column: 1;
+      grid-row: 1 / -1;
+      margin: calc(-1 * var(--main-top)) -11px 0 -20px;
+      background: var(--sidebar);
+    }
+    /* The brand is already above, so the card says its state with a light before the title instead of the mark. */
+    .status-mark {
+      display: none;
+    }
+    .status-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .status-title::before {
+      content: "";
+      flex: none;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 18%, transparent);
+    }
+    .status[data-tone="recording"] .status-title::before {
+      background: var(--recording-mark);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--recording-mark) 22%, transparent);
+    }
+    .status[data-tone="busy"] .status-title::before {
+      background: var(--muted-foreground);
+      box-shadow: none;
+    }
+    .status[data-tone="attention"] .status-title::before {
+      background: var(--warning);
+      box-shadow: none;
+    }
+    .status-detail,
+    #hint {
+      padding-left: 15px;
     }
     .brand {
       grid-column: 1;
+      grid-row: 1;
     }
+    /* On macOS the sidebar takes the window controls' corner: the brand sits under them, the content starts at the
+       top, and only the sidebar's top drags the window, so nothing in the content lies under a drag region. */
+    :root[data-platform="darwin"] .brand {
+      margin-top: 30px;
+    }
+    :root[data-platform="darwin"] .titlebar {
+      right: auto;
+      width: calc(20px + 170px + 11px);
+    }
+    /* The form and the tabs lay their parts straight into this grid: the brand, the tabs, the status card and Quit down the
+       sidebar, and the content beside them from the window's top to its foot. */
     #settings {
-      grid-column: 1 / -1;
-      grid-row: 2 / 4;
+      display: contents;
     }
     .status {
       grid-column: 1;
-      grid-row: 2;
+      grid-row: 4;
       flex-wrap: wrap;
-      margin-bottom: 60px;
+      margin-bottom: 6px;
     }
     .settings-viewport {
       grid-column: 2;
-      grid-row: 1 / 3;
+      grid-row: 1 / -1;
     }
     .sidebar-about {
       grid-column: 1;
-      grid-row: 3;
+      grid-row: 5;
       position: relative;
     }
     .page-title {
@@ -935,10 +1270,28 @@
   }
   @media (max-width: 599px) {
     main {
-      padding-inline: 12px;
+      --main-right: 12px;
+      padding-left: 12px;
     }
     .brand {
       display: none;
+    }
+    /* A narrow window on macOS: the strip beside the window controls names the app, centred as a native title is and
+       level with the controls. It stays a drag region: the brand takes no pointer events. */
+    :root[data-platform="darwin"] .brand {
+      position: fixed;
+      inset: 0 0 auto;
+      z-index: 2;
+      height: 40px;
+      display: flex;
+      justify-content: center;
+      gap: 7px;
+      margin: 0;
+      font-size: 13px;
+      pointer-events: none;
+    }
+    :root[data-platform="darwin"] .brand-mark {
+      --m: 20px;
     }
     .tabs [role="tab"][aria-selected="false"] .tab-name {
       display: none;
@@ -969,6 +1322,11 @@
       display: none;
     }
   }
+  @media (max-width: 480px) {
+    .status-mark {
+      --m: 30px;
+    }
+  }
   @media (max-width: 420px) {
     .undo-toast {
       flex-wrap: wrap;
@@ -994,8 +1352,15 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .pc-bezel {
+    /* The flashes hold still and leave when their time is up. */
+    .pc-bezel,
+    .pc-bezel-text,
+    .pc-seek-hint {
       animation: none;
+    }
+    .pc-seek-arrow svg {
+      animation: none;
+      opacity: 1;
     }
     .listening-indicator span {
       animation: none !important;
