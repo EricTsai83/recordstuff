@@ -314,14 +314,6 @@
    rules lay out the pages' own elements with tokens, and may place a primitive (margin, grid cell) where no utility of
    its sets the same property. */
 @layer components {
-  .zoom-toast {
-    position: fixed;
-    top: 16px;
-    right: 16px;
-    z-index: 60;
-    width: max-content;
-    max-width: calc(100vw - 32px);
-  }
   /* The undo toast is Sonner's own; only the shortcut beside its Undo is ours, quieter than the label. */
   .toast-key {
     margin-left: 6px;

@@ -19,7 +19,7 @@ test("zoom notification reflects applied zoom, has no close button, and dismisse
   const tab = page.getByRole("tab", { name: "Recordings", exact: true });
   await tab.focus();
   await host.evaluate(h => h.zoom("in"));
-  const notice = page.locator("#zoom-toast");
+  const notice = page.locator('.zoom-notice:not([data-removed="true"]):not([inert]) .zoom-toast');
   await expect(notice).toContainText("110%");
   await expect(notice.getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
   await expect(tab).toBeFocused();
@@ -76,7 +76,7 @@ for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", 
       h.setView({ ...args.view, language: args.language });
     }, { language, scheme, view });
     await expect(page.locator("html")).toHaveClass(scheme === "dark" ? /dark/ : /^(?!.*\bdark\b)/);
-    const notice = page.locator("#zoom-toast");
+    const notice = page.locator('.zoom-notice:not([data-removed="true"]):not([inert]) .zoom-toast');
     for (const factor of [0.8, 1, 1.5]) {
       await host.evaluate((h, target) => {
         h.zoom("reset");
@@ -450,6 +450,28 @@ test("shadcn tooltips name icon controls on hover and focus, update language, an
   await title.hover();
   await expect(tip).toHaveText(unbroken);
   expect(await tip.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+});
+
+test("a new zoom notice keeps focus ownership when the previous notice finishes leaving", async () => {
+  const tab = page.locator("#tab-library");
+  const notice = page.locator('.zoom-notice:not([data-removed="true"]):not([inert]) .zoom-toast');
+  await tab.focus();
+  await host.evaluate(h => h.zoom("in"));
+  await notice.getByRole("button", { name: "Reset", exact: true }).focus();
+  await page.keyboard.press("Escape");
+  await expect(tab).toBeFocused();
+  await host.evaluate(h => h.zoom("in"));
+  await expect(notice).toContainText("125%");
+  const reset = notice.getByRole("button", { name: "Reset", exact: true });
+  await reset.focus();
+  await expect(reset).toBeFocused();
+  // The old toast has left by now; focus on the new one still pauses its 1.5 s deadline.
+  await page.waitForTimeout(1700);
+  await expect(reset).toBeFocused();
+  await expect(notice).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(tab).toBeFocused();
+  await expect(notice).toBeHidden();
 });
 
 test("narrow tab tooltips keep the same focused control when the window widens", async () => {
