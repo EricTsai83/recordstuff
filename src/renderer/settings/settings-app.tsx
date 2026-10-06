@@ -91,7 +91,8 @@ export function SettingsApp() {
       () => matchMedia("(min-width: 600px)").matches,
     ),
     panel = useRef<HTMLDivElement>(null),
-    [overflow, setOverflow] = useState(false);
+    [overflow, setOverflow] = useState(false),
+    [scrolled, setScrolled] = useState(false);
   useEffect(model.start, []);
   useDarkClass();
   useEffect(() => {
@@ -103,8 +104,10 @@ export function SettingsApp() {
   useLayoutEffect(() => {
     const node = panel.current;
     if (!node) return;
-    const update = (): void =>
+    const update = (): void => {
       setOverflow(node.scrollHeight - node.clientHeight - node.scrollTop > 2);
+      setScrolled(node.scrollTop > 2);
+    };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(node);
@@ -234,6 +237,13 @@ export function SettingsApp() {
                   <Preferences />
                 ) : null}
               </TabsContent>
+              {/* Soft, blurred edges where the content runs on: above once it has scrolled, below while more follows. */}
+              <div
+                id="scroll-hint-top"
+                className="scroll-hint scroll-hint-top"
+                aria-hidden="true"
+                hidden={!scrolled}
+              />
               <div
                 id="scroll-hint"
                 className="scroll-hint"

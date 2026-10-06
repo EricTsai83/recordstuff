@@ -1,5 +1,5 @@
 /** The Failures tab: rows grouped by day, each with its guidance, recovery actions and technical details. */
-import { CircleAlert, ChevronDown } from "lucide-react";
+import { CircleAlert, ChevronDown, FileWarning } from "lucide-react";
 import type { RecordingResultView } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
 import { REVIEWED_FAILURES_KEPT, persistsHistory } from "../../../shared/recording-result";
@@ -51,23 +51,29 @@ export function FailureRow({ result }: { result: RecordingResultView }) {
           headers[next]?.scrollIntoView({ block: "nearest" });
         }}
       >
-        <span className="result-line">
-          <span
-            className="result-unread"
-            hidden={result.acknowledged}
-            aria-hidden="true"
-          />
-          <span
-            className="sr-only result-unread-label"
-            hidden={result.acknowledged}
-          >
-            {model.text("Unread, ")}
-          </span>
-          <span className="result-reason">{result.reason}</span>
-          <span className="result-time">{result.time}</span>
-          <ChevronDown className="result-chevron" aria-hidden="true" />
+        {/* What became of the recording at a glance: amber when part of it was kept, red when nothing was. */}
+        <span
+          className="result-mark"
+          data-kept={result.fileName ? "" : undefined}
+          aria-hidden="true"
+        >
+          {result.fileName ? <FileWarning /> : <CircleAlert />}
+          <span className="result-unread" hidden={result.acknowledged} />
         </span>
-        <span className="result-outcome">{result.outcome}</span>
+        <span className="result-text">
+          <span className="result-line">
+            <span
+              className="sr-only result-unread-label"
+              hidden={result.acknowledged}
+            >
+              {model.text("Unread, ")}
+            </span>
+            <span className="result-reason">{result.reason}</span>
+            <span className="result-time">{result.time}</span>
+            <ChevronDown className="result-chevron" aria-hidden="true" />
+          </span>
+          <span className="result-outcome">{result.outcome}</span>
+        </span>
       </CollapsibleTrigger>
       <CollapsibleContent className="result-details" keepMounted>
         <p className="result-guidance">{result.guidance}</p>

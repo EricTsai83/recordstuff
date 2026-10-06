@@ -6,6 +6,8 @@
    call site can use beside the primitives' own utilities (plan 069). The breakpoints keep their exact queries: 600 px
    and up is the sidebar layout, 599 px and down the tab strip, 420 px and down the stacked rows. */
 @custom-variant darwin (&:where([data-platform="darwin"] *));
+/* The last input was the pointer (the page sets data-input): a focus ring is for the keyboard only. */
+@custom-variant pointer (&:where([data-input="pointer"] *));
 @custom-variant wide {
   @media (min-width: 600px) {
     @slot;
@@ -30,9 +32,9 @@
   --text-xs--line-height: 1.45;
 }
 
-/* Tokens, the one place a colour is written (plan 069). The values are the app's own, as Apple Music draws its window
-   (2026-10-05, restored 2026-10-07): ink on quiet greys, cards floating on a slightly darker window, and Apple Music's
-   red only for what is chosen — the open tab, a switch that is on, a count, an unread failure, a recording's play
+/* Tokens, the one place a colour is written (plan 069). The values are Apple Music's (2026-10-07): white content beside a
+   light grey sidebar, near-black words with Apple's secondary grey, hairline-bordered groups without shadows, its neutral
+   dark greys, and its red only for what is chosen — the open tab, a switch that is on, a count, an unread failure, a recording's play
    button and the keyboard's ring. shadcn's semantic variables carry them; the app adds its own meanings the way shadcn
    adds --chart-* or --sidebar-*: --chosen, the recording and warning states, the brand mark, the selection raised in a
    track, and the media surfaces of the player and the full-screen page, which stay dark in both themes. */
@@ -96,47 +98,47 @@
 :root {
   color-scheme: light dark;
   --radius: 0.625rem;
-  --background: #f4f4f5;
-  --foreground: #18181b;
-  --card: #fff;
-  --card-foreground: #18181b;
-  --card-border: rgb(0 0 0 / 0.075);
-  --card-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
-  --popover: #fff;
-  --popover-foreground: #18181b;
+  --background: #ffffff;
+  --foreground: #1d1d1f;
+  --card: #ffffff;
+  --card-foreground: #1d1d1f;
+  --card-border: #e5e5ea;
+  --card-shadow: 0 0 transparent;
+  --popover: #ffffff;
+  --popover-foreground: #1d1d1f;
   /* Ink: the one action a place is for, a dark fill with light words. */
-  --primary: #18181b;
-  --primary-foreground: #fff;
+  --primary: #1d1d1f;
+  --primary-foreground: #ffffff;
   /* A tile: a row's icon, an empty state's mark. */
-  --secondary: #f1f1f3;
-  --secondary-foreground: #18181b;
+  --secondary: #f2f2f7;
+  --secondary-foreground: #1d1d1f;
   /* The recessed track of the tab strip and segmented controls, and a slider's track. */
-  --muted: #e9e9ec;
+  --muted: #efeff2;
   /* At least 4.5:1 on the page, the cards and the muted fills in both themes (plan 067). */
-  --muted-foreground: #68686f;
+  --muted-foreground: #636368;
   /* A control under the pointer, a menu's highlighted item. */
-  --accent: #f2f2f4;
-  --accent-foreground: #18181b;
+  --accent: #f2f2f5;
+  --accent-foreground: #1d1d1f;
   --destructive: #b91c1c;
   /* Hairlines between rows; --input is a control's own border. */
-  --border: #ececef;
-  --input: #d9d9de;
+  --border: #e5e5ea;
+  --input: #d2d2d7;
   --ring: #fa2d48;
-  /* Apple Music's red for what is chosen; in dark a calmer red the maintainer picked (2026-10-05). */
+  /* Apple Music's red for what is chosen, a little lighter in dark, as Apple Music draws it there. */
   --chosen: #fa2d48;
   --chosen-foreground: #fff;
   /* Words, and a count's fill, in the chosen red: a step deeper in light and lighter in dark, for 4.5:1 (plan 067). */
-  --chosen-text: #dc1a38;
+  --chosen-text: #cc0e2c;
   --chosen-text-foreground: #fff;
   --chosen-shadow: 0 4px 12px rgb(0 0 0 / 0.25);
   /* The choice raised in a track (a segmented control, the narrow tab strip). */
-  --selected: #fff;
+  --selected: #ffffff;
   --selected-shadow: 0 1px 2px rgb(0 0 0 / 0.12), 0 0 0 0.5px rgb(0 0 0 / 0.06);
   /* The wide window's sidebar, its hover and the open tab's raised tile. */
-  --sidebar: #ebebee;
-  --sidebar-accent: rgb(0 0 0 / 0.05);
-  --sidebar-selected: rgb(255 255 255 / 0.9);
-  --sidebar-selected-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+  --sidebar: #f5f5f7;
+  --sidebar-accent: rgb(0 0 0 / 0.04);
+  --sidebar-selected: #e8e8ed;
+  --sidebar-selected-shadow: 0 0 transparent;
   /* Recording: the status title (4.5:1, plan 067), the status mark's tile and halo, and its card. */
   --recording: #d92020;
   --recording-mark: #e5352b;
@@ -172,6 +174,8 @@
   --media-thumb-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
   --player-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
   --toast-shadow: 0 4px 12px rgb(0 0 0 / 0.1);
+  /* An opaque mask stop: a mask reads only its alpha. */
+  --mask-opaque: #000;
   /* The content's thin scroll bar thumb. */
   --scrollbar: rgb(0 0 0 / 0.22);
   /* Keyboard focus around a failure entry and inside it (plan 067): one device pixel at 1x, 1.5px on a Retina display. */
@@ -181,33 +185,33 @@
 /* The page sets .dark from the appearance setting (System follows the OS); color-scheme on :root keeps native controls
    and system colours in step with it. */
 .dark {
-  --background: #111113;
-  --foreground: #f4f4f5;
-  --card: #1b1b1e;
-  --card-foreground: #f4f4f5;
-  --card-border: rgb(255 255 255 / 0.07);
-  --card-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
-  --popover: #252529;
-  --popover-foreground: #f4f4f5;
-  --primary: #f4f4f5;
-  --primary-foreground: #18181b;
-  --secondary: #26262a;
-  --secondary-foreground: #f4f4f5;
-  --muted: #26262a;
-  --muted-foreground: #a1a1aa;
-  --accent: #2f2f34;
-  --accent-foreground: #f4f4f5;
+  --background: #1c1c1e;
+  --foreground: #f5f5f7;
+  --card: #2c2c2e;
+  --card-foreground: #f5f5f7;
+  --card-border: #38383a;
+  --card-shadow: 0 0 transparent;
+  --popover: #2c2c2e;
+  --popover-foreground: #f5f5f7;
+  --primary: #f5f5f7;
+  --primary-foreground: #1d1d1f;
+  --secondary: #3a3a3c;
+  --secondary-foreground: #f5f5f7;
+  --muted: #3a3a3c;
+  --muted-foreground: #aeaeb2;
+  --accent: #3a3a3c;
+  --accent-foreground: #f5f5f7;
   --destructive: #fca5a5;
-  --border: #29292d;
-  --input: #3a3a40;
-  --ring: #e85a62;
-  --chosen: #e85a62;
-  --chosen-text: #f06b73;
+  --border: #38383a;
+  --input: #48484a;
+  --ring: #fc3c44;
+  --chosen: #fc3c44;
+  --chosen-text: #ff7a80;
   --chosen-text-foreground: #18181b;
-  --selected: #3c3c43;
-  --sidebar: #18181b;
-  --sidebar-accent: rgb(255 255 255 / 0.06);
-  --sidebar-selected: rgb(255 255 255 / 0.09);
+  --selected: #636366;
+  --sidebar: #252527;
+  --sidebar-accent: rgb(255 255 255 / 0.05);
+  --sidebar-selected: #3a3a3c;
   --sidebar-selected-shadow: 0 0 transparent;
   --recording: #f87171;
   --recording-mark: #ff5a4f;
@@ -226,6 +230,14 @@
   }
 }
 @layer base {
+  /* Base UI's popups hide their own scroll bar with this class; its style tag is not rendered under the CSP
+     (electron.vite.config.ts). */
+  .base-ui-disable-scrollbar {
+    scrollbar-width: none;
+  }
+  .base-ui-disable-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
   :root {
     font:
       16px/1.45 -apple-system,
@@ -401,7 +413,7 @@
     padding: 0 calc(var(--main-right) - 6px) 44px 2px;
     scrollbar-width: thin;
     scrollbar-color: var(--scrollbar) transparent;
-    scroll-padding-block: 16px 34px;
+    scroll-padding-block: 36px 46px;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
   }
@@ -609,22 +621,82 @@
       --main-top: 52px;
     }
   }
+  /* The content's edges blur into the window where it runs on, as Apple Music's do; the scroll bar stays clear. */
   .scroll-hint {
     pointer-events: none;
     position: absolute;
-    inset: auto 0 0;
-    height: 18px;
+    inset: auto 12px 0 0;
+    height: 38px;
     background: linear-gradient(transparent, var(--background));
+    backdrop-filter: blur(4px);
+    mask-image: linear-gradient(transparent, var(--mask-opaque) 65%);
+  }
+  .scroll-hint-top {
+    inset: 0 12px auto 0;
+    height: 30px;
+    background: linear-gradient(var(--background), transparent);
+    mask-image: linear-gradient(var(--mask-opaque) 35%, transparent);
+  }
+  @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    .scroll-hint {
+      backdrop-filter: none;
+      mask-image: none;
+      background: var(--background);
+      border-top: 1px solid var(--border);
+    }
+    .scroll-hint-top {
+      border-top: 0;
+      border-bottom: 1px solid var(--border);
+    }
+  }
+  /* Failures (2026-10-07): each day one card like a settings section, a row per failure with a tile saying what became
+     of the recording, its time and a chevron; it opens inside the card, its guidance in a soft callout. */
+  .result-rows {
+    padding: 4px;
+    border-radius: 12px;
+    background: var(--card);
+    box-shadow:
+      inset 0 0 0 1px var(--card-border),
+      var(--card-shadow);
   }
   .result-summary {
-    display: block;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
     width: 100%;
     text-align: left;
-    padding: 12px;
+    padding: 10px 12px;
     border-radius: 8px;
   }
   .result-summary:hover {
     background: var(--accent);
+  }
+  .result-mark {
+    position: relative;
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    background: var(--recording-surface);
+    color: var(--recording-mark);
+  }
+  .result-mark[data-kept] {
+    background: var(--warning-surface);
+    color: var(--warning);
+  }
+  .result-mark svg {
+    width: 16px;
+    height: 16px;
+  }
+  .result-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-top: 1px;
   }
   .result-line {
     display: flex;
@@ -635,36 +707,55 @@
     flex: 1;
     font-weight: 500;
   }
+  .unread .result-reason {
+    font-weight: 600;
+  }
   .result-time {
     color: var(--muted-foreground);
     font-size: 12px;
+    font-variant-numeric: tabular-nums;
   }
   .result-chevron {
     width: 14px;
     height: 14px;
+    color: var(--muted-foreground);
     transition: transform 150ms ease;
   }
   .recording-result[data-open] .result-chevron {
     transform: rotate(180deg);
   }
+  /* Unread: the chosen red's dot on the tile's corner. */
   .result-unread {
-    width: 7px;
-    height: 7px;
-    background: var(--chosen);
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
+    background: var(--chosen);
+    box-shadow: 0 0 0 2px var(--card);
   }
   .result-outcome {
     display: block;
-    padding-left: 12px;
-    margin-top: 4px;
     color: var(--muted-foreground);
     font-size: 12px;
   }
   .result-details {
-    padding: 0 12px 12px 24px;
+    padding: 2px 12px 12px 52px;
   }
   .result-details p {
     margin: 6px 0;
+  }
+  .result-guidance {
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--secondary);
+  }
+  .result-file {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    color: var(--muted-foreground);
+    overflow-wrap: anywhere;
   }
   .result-actions {
     display: flex;
@@ -683,8 +774,15 @@
   .result-technical pre {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 12px;
     margin-top: 8px;
+    padding: 8px 10px;
+    border-radius: 7px;
+    background: var(--secondary);
+  }
+  .result-day {
+    margin-bottom: 18px;
   }
   .result-empty,
   .library-empty {
@@ -1264,6 +1362,10 @@
       grid-row: 5;
       position: relative;
     }
+    /* The page title sits a little below the window's top, level with the brand across the sidebar. */
+    .settings-panel {
+      padding-top: 22px;
+    }
     .page-title {
       margin-top: 0;
     }
@@ -1401,12 +1503,12 @@
     content: "";
     position: absolute;
     top: calc(-1 * var(--focus-width) - 0.5px);
-    left: 12px;
+    left: 52px;
     right: 12px;
     border-top: 1px solid var(--border);
   }
-  .recording-result[data-open] {
-    background: var(--card);
+  .recording-result[data-open] .result-summary:hover {
+    background: none;
   }
   .recording-result[data-open]::before,
   .recording-result[data-open] + .recording-result::before {
