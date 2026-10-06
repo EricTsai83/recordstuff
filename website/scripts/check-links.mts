@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { configuredSite } from "../src/lib/site-origin.ts";
-import { fetchWithRetry } from "../../scripts/lib/fetch-retry.mts";
+import { fetchWithRetry } from "../../scripts/lib/release/fetch-retry.mts";
 
 /** GitHub serves most external links; a few at a time stays clear of its per-address limits. */
 const EXTERNAL_CONCURRENCY = 4;

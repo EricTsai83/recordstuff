@@ -17,15 +17,15 @@
  * 130/143 after SIGINT/SIGTERM (the benchmark's own files are removed).
  */
 import { spawn } from "node:child_process";
-import { scrubbedEnv } from "./lib/runner-env.mts";
-import { MEASUREMENTS_DIR } from "./lib/verify-recording.mts";
+import { scrubbedEnv } from "./lib/runner/runner-env.mts";
+import { MEASUREMENTS_DIR } from "./lib/verification/verify-recording.mts";
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { buildFixture } from "./lib/build-fixture.mts";
-import { distribution, formatDistribution, parseByteSize } from "./lib/finalization-timing.mts";
-import { freeBytes, volumeOf } from "./lib/volume.mts";
-import { REPO_ROOT } from "./lib/verify-recording.mts";
+import { buildFixture } from "./lib/runner/build-fixture.mts";
+import { distribution, formatDistribution, parseByteSize } from "./lib/verification/finalization-timing.mts";
+import { freeBytes, volumeOf } from "./lib/verification/volume.mts";
+import { REPO_ROOT } from "./lib/verification/verify-recording.mts";
 
 const HEADROOM_BYTES = 1024 ** 3;
 const CHUNK_BYTES = 4 * 1024 ** 2;

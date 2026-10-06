@@ -9,7 +9,7 @@
  * only together with the statement that it was never verified on hardware.
  */
 
-import { LAST_MACOS_ONLY_VERSION } from "../../../scripts/lib/release-manifest.mts";
+import { LAST_MACOS_ONLY_VERSION } from "../../../scripts/lib/release/release-manifest.mts";
 
 export const SITE_NAME = "RecordStuff";
 

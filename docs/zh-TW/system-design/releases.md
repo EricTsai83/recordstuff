@@ -4,17 +4,17 @@
 
 更新：2026-10-03。推送版本 tag 是唯一的發布動作，而且 tag 就是版本：CI 在一次執行中把它寫入建置、簽署、驗證、公開、重驗公開下載，並把事實回寫到 main。含 pipeline 內人工驗收閘門的 draft／promote 流程用於 [0.1.1](../verification/releases/0.1.1.md)，並在準備 0.1.2 的同一天退役；人工檢查改在打 tag 之前進行。[0.1.2](../verification/releases/0.1.2.md) 是此流程的第一個版本：從推送 tag 到公開不到三分鐘。
 
-依維護者 2026-10-03 的決定（[設計決策](decisions.md)），1.1.1 之後的每個版本（`scripts/lib/release-manifest.mts` 的 `LAST_MACOS_ONLY_VERSION`），同一個 tag 也會建置並發布未簽章的 Windows x64 安裝檔，流程與 Mac 相同：建置、過閘門、發布、匿名下載後再過一次閘門。它的閘門在 GitHub 的 Windows runner 上執行，沒有用到 Windows 實機，因此發布不驗證 Windows 上的擷取、系統音訊、通知或系統匣。第一個雙平台版本是 2026-10-03 的 [1.2.0](../verification/releases/1.2.0.md)，之前先以 [1.2.0-rc.1](../verification/releases/1.2.0-rc.1.md) 演練。
+依維護者 2026-10-03 的決定（[設計決策](decisions.md)），1.1.1 之後的每個版本（`scripts/lib/release/release-manifest.mts` 的 `LAST_MACOS_ONLY_VERSION`），同一個 tag 也會建置並發布未簽章的 Windows x64 安裝檔，流程與 Mac 相同：建置、過閘門、發布、匿名下載後再過一次閘門。它的閘門在 GitHub 的 Windows runner 上執行，沒有用到 Windows 實機，因此發布不驗證 Windows 上的擷取、系統音訊、通知或系統匣。第一個雙平台版本是 2026-10-03 的 [1.2.0](../verification/releases/1.2.0.md)，之前先以 [1.2.0-rc.1](../verification/releases/1.2.0-rc.1.md) 演練。
 
 網站與 App 的分工、部署負責者及更新 feed 流程，見[交付設計圖](delivery.md)。
 
-正式版的 `record` 步驟與網站共用 `scripts/lib/release-manifest*.mts` 的驗證器，一次取得並交叉驗證 GitHub release、`release.json`、SHA256SUMS、1.1.1 之後版本的 `release-win32-x64.json` 與下載資產；網站 manifest 恰好只在這些版本帶 `windows` 區塊，`release.json` 資產與網站的 `/release.json` feed 則維持 darwin-arm64 格式，因為已安裝的 macOS App 會解析它們；同一份資料產生 `website/release-manifest.json`、中英文 README 下載區塊及缺少的驗證紀錄。README 與驗證紀錄都是輸出，不再反向解析 Markdown 作為資料來源。離線測試讀取已提交的 JSON manifest 驗證 README，不依賴 CI 建置時寫入的候選 `package.json` 版本；這只驗證提交資料的一致性，不宣稱已查詢 GitHub 的最新版本。預發布版本只產生歷史驗證紀錄，不修改正式版 manifest、README 或 package.json。
+正式版的 `record` 步驟與網站共用 `scripts/lib/release/release-manifest*.mts` 的驗證器，一次取得並交叉驗證 GitHub release、`release.json`、SHA256SUMS、1.1.1 之後版本的 `release-win32-x64.json` 與下載資產；網站 manifest 恰好只在這些版本帶 `windows` 區塊，`release.json` 資產與網站的 `/release.json` feed 則維持 darwin-arm64 格式，因為已安裝的 macOS App 會解析它們；同一份資料產生 `website/release-manifest.json`、中英文 README 下載區塊及缺少的驗證紀錄。README 與驗證紀錄都是輸出，不再反向解析 Markdown 作為資料來源。離線測試讀取已提交的 JSON manifest 驗證 README，不依賴 CI 建置時寫入的候選 `package.json` 版本；這只驗證提交資料的一致性，不宣稱已查詢 GitHub 的最新版本。預發布版本只產生歷史驗證紀錄，不修改正式版 manifest、README 或 package.json。
 
 已提交的 `website/release-manifest.json` 是正式版下載指標，`record` 在取得 release 之前先驗證它。經驗證的正式版比它新時為 **promoted**：manifest 與兩份 README 區塊由同一份 snapshot 寫出。版本相同時，若發布身分與資產事實（source commit、發布時間、DMG 名稱、大小與 SHA-256、版本帶有 Windows 安裝檔時其名稱、大小、SHA-256 與網址，以及資產與 release 網址，與 `pnpm site:manifest verify` 比對的欄位相同）都與已提交的一致，即為 **unchanged**：已提交的 manifest 保持原本 bytes（含 `verifiedAt`），README 區塊由相同事實產生；任何差異都在寫檔前失敗並列出欄位。較舊版本為 **historical only**：只補上缺少的驗證紀錄，不動 manifest 與 README，因此較晚才 record 或重跑的舊 tag 不能讓下載指標倒退。package.json 不是指標的依據，因為它可能是無關的開發或候選版本；它維持自己的規則：前進到較新的已記錄正式版，永不倒退。已提交的 manifest 缺少、無法讀取或格式錯誤時，record 會停止並提示修復方式（從 main 還原，或以 `pnpm site:manifest generate vX.Y.Z` 為目前的正式版重新產生）；`record` 沒有基準時絕不自行選擇指標，也沒有隱含的 bootstrap。輸出會寫明結果與寫入的檔案；沒有改變任何內容的重試不寫任何檔案。historical-only 的正式版 record 仍會執行 `deploy-website`，重新部署未變的指標。
 
-發布工具與網站只共用根目錄 `scripts/lib/release-manifest.mts`（資料模型與驗證）及 `release-manifest-client.mts`（公開發布資料讀取）；網站 CLI 保留自己的輸出路徑與命令。record 會先讀取、驗證所有輸入並在記憶體產生全部輸出，成功後才開始寫檔；這避免標記或輸入錯誤造成局部更新，但不是跨檔案的斷電交易。`scripts/release-record.test.ts` 透過暫存 checkout 執行真正 CLI，網路與 gh 邊界使用固定資料，涵蓋 promotion、較新版本之後才 record 的較舊正式版、同版重試與 source commit／digest／大小衝突、預發布版、package.json 超前與落後 manifest、基準缺少／非 JSON／格式錯誤／為預發布版、人工紀錄保留、候選版本、commit 不符及 README 標記錯誤；每種失敗都讓所有輸出維持不變。
+發布工具與網站只共用根目錄 `scripts/lib/release/release-manifest.mts`（資料模型與驗證）及 `release-manifest-client.mts`（公開發布資料讀取）；網站 CLI 保留自己的輸出路徑與命令。record 會先讀取、驗證所有輸入並在記憶體產生全部輸出，成功後才開始寫檔；這避免標記或輸入錯誤造成局部更新，但不是跨檔案的斷電交易。`scripts/release-record.test.ts` 透過暫存 checkout 執行真正 CLI，網路與 gh 邊界使用固定資料，涵蓋 promotion、較新版本之後才 record 的較舊正式版、同版重試與 source commit／digest／大小衝突、預發布版、package.json 超前與落後 manifest、基準缺少／非 JSON／格式錯誤／為預發布版、人工紀錄保留、候選版本、commit 不符及 README 標記錯誤；每種失敗都讓所有輸出維持不變。
 
-Vercel 的 Root Directory 仍為 `website`，必須啟用 **Include source files outside of the Root Directory in the Build Step**，讓建置可讀取共用模組；部署 workflow 會檢查此設定，並在 `scripts/lib/release-manifest*.mts` 變更時觸發網站建置。
+Vercel 的 Root Directory 仍為 `website`，必須啟用 **Include source files outside of the Root Directory in the Build Step**，讓建置可讀取共用模組；部署 workflow 會檢查此設定，並在 `scripts/lib/release/release-manifest*.mts` 變更時觸發網站建置。
 
 ## 發布契約
 

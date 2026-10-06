@@ -1,14 +1,14 @@
 /** Deterministic failure-path integration against the production bundles; no screen recording. */
-import { buildFixture } from "./lib/build-fixture.mts";
-import { scrubbedEnv } from "./lib/runner-env.mts";
+import { buildFixture } from "./lib/runner/build-fixture.mts";
+import { scrubbedEnv } from "./lib/runner/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { runIsolatedProcess } from "./lib/isolated-process.mts";
-import { roundExit } from "./lib/round-exit.mts";
-import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
+import { runIsolatedProcess } from "./lib/runner/isolated-process.mts";
+import { roundExit } from "./lib/runner/round-exit.mts";
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);

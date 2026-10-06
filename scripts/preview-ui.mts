@@ -10,11 +10,11 @@
  * docs/verification/measurements/<timestamp>-ui-preview/. Requires `pnpm build` output. Exit 2 when a prerequisite is
  * missing, 1 when the render failed. Nothing here ships with the app.
  */
-import { scrubbedEnv } from "./lib/runner-env.mts";
-import { buildFixture } from "./lib/build-fixture.mts";
-import { runIsolatedProcess } from "./lib/isolated-process.mts";
-import { INTERRUPT_EXIT, interruptExitCode } from "./lib/processes.mts";
-import { hasTool, requireMediaTimeout } from "./lib/media-tools.mts";
+import { scrubbedEnv } from "./lib/runner/runner-env.mts";
+import { buildFixture } from "./lib/runner/build-fixture.mts";
+import { runIsolatedProcess } from "./lib/runner/isolated-process.mts";
+import { INTERRUPT_EXIT, interruptExitCode } from "./lib/runner/processes.mts";
+import { hasTool, requireMediaTimeout } from "./lib/verification/media-tools.mts";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

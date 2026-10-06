@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { removeBuildStamp, runtimeInputFiles, staleBundleReason, writeBuildStamp } from "./lib/runtime-inputs.mjs";
+import { removeBuildStamp, runtimeInputFiles, staleBundleReason, writeBuildStamp } from "./lib/runner/runtime-inputs.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const env = { ...process.env };
@@ -31,7 +31,7 @@ function run(command, args, capture = false) {
   return result;
 }
 
-// Phase durations for `pnpm acceptance:recipe` (scripts/lib/verification-timing.mts) and the console.
+// Phase durations for `pnpm acceptance:recipe` (scripts/lib/runner/verification-timing.mts) and the console.
 const timings = [];
 function timed(phase, action) {
   const start = performance.now();

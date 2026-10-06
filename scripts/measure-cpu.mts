@@ -4,7 +4,7 @@
  * The CPU budget on the packaged app (plan 049, docs/system-design/tooling.md#cpu-budget).
  * Build and quit the bundle first (`pnpm start:app`, then Quit); this runner refuses to start
  * while any RecordStuff runs, launches that bundle (dist/mac-arm64, dist/mac on Intel) itself and samples its
- * process tree once a second with the shared sampler (scripts/lib/cpu-sampler.mts):
+ * process tree once a second with the shared sampler (scripts/lib/verification/cpu-sampler.mts):
  *
  * - A. Idle after launch, Settings closed: `--minutes` (5) after a 60-second warm-up.
  * - R. Recording: a 60-second recording started and stopped with the recording shortcut over
@@ -30,26 +30,26 @@
  * Line Tools, a locked screen) and 130/143 when interrupted. macOS only; never shipped.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings } from "./lib/runner-env.mts";
-import { INTERRUPT_EXIT, electronPattern, escapeRegExp, pgrepPids, recordStuffPids, signalPids } from "./lib/processes.mts";
+import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings } from "./lib/runner/runner-env.mts";
+import { INTERRUPT_EXIT, electronPattern, escapeRegExp, pgrepPids, recordStuffPids, signalPids, command } from "./lib/runner/processes.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { command, confirmedIdle, recordingOutcome, settleRecording, waitForLog } from "./lib/acceptance-runtime.mts";
-import { acceleratorToKeystroke, createMaterialProfile, currentRunId, keystrokeScript, lastStartIndex, materialOpenArgs, registeredAccelerator, removeMaterialProfile } from "./lib/acceptance.mts";
+import { confirmedIdle, recordingOutcome, settleRecording, waitForLog } from "./lib/acceptance/acceptance-runtime.mts";
+import { acceleratorToKeystroke, createMaterialProfile, currentRunId, keystrokeScript, lastStartIndex, materialOpenArgs, registeredAccelerator, removeMaterialProfile } from "./lib/acceptance/acceptance.mts";
 import {
   CpuSampler, ENCODER_SERVICE, IDLE_ROLES, SamplerBlockedError, SamplerInterruptedError, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgeRecording, judgeRoles, judgeSettingsOpen,
   judgeSteadyState, machineModel, readRoles, roleText, summarize, type RoleCounts, type Summary, type Verdict,
-} from "./lib/cpu-sampler.mts";
-import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
-import { LogReader, type LogCursor } from "./lib/log-reader.mts";
-import { AccessibilityBlockedError, osascriptAx } from "./lib/native-ax.mts";
-import { parseSessionRecord } from "./lib/session-records.mts";
-import { percentile } from "./lib/stats.mts";
-import { roundExit } from "./lib/round-exit.mts";
-import { developmentAppPath } from "./lib/verification-timing.mts";
+} from "./lib/verification/cpu-sampler.mts";
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
+import { LogReader, type LogCursor } from "./lib/runner/log-reader.mts";
+import { AccessibilityBlockedError, osascriptAx } from "./lib/runner/native-ax.mts";
+import { parseSessionRecord } from "./lib/runner/session-records.mts";
+import { percentile } from "./lib/verification/stats.mts";
+import { roundExit } from "./lib/runner/round-exit.mts";
+import { developmentAppPath } from "./lib/runner/verification-timing.mts";
 import { SETTINGS_SHORTCUT } from "../src/shared/hotkey.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

@@ -8,14 +8,14 @@
  * Finder window creation finish their bounded command before cancellation.
  */
 import { setTimeout as delay } from "node:timers/promises";
-import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings } from "./lib/runner-env.mts";
-import { escapeRegExp, pgrepPids, recordStuffPattern } from "./lib/processes.mts";
-import { osascriptAx } from "./lib/native-ax.mts";
-import { SAVED_LINE, command, savedPathOf, settleRecording, waitForLog } from "./lib/acceptance-runtime.mts";
+import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings } from "./lib/runner/runner-env.mts";
+import { escapeRegExp, pgrepPids, recordStuffPattern, command } from "./lib/runner/processes.mts";
+import { osascriptAx } from "./lib/runner/native-ax.mts";
+import { SAVED_LINE, savedPathOf, settleRecording, waitForLog } from "./lib/acceptance/acceptance-runtime.mts";
 import fs from "node:fs";
 import os from "node:os";
-import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
-import { roundExit } from "./lib/round-exit.mts";
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
+import { roundExit } from "./lib/runner/round-exit.mts";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -23,9 +23,9 @@ import {
   currentState,
   keystrokeScript,
   registeredAccelerator,
-} from "./lib/acceptance.mts";
-import { LogReader, evidenceSince, type LogCursor } from "./lib/log-reader.mts";
-import { developmentAppPath } from "./lib/verification-timing.mts";
+} from "./lib/acceptance/acceptance.mts";
+import { LogReader, evidenceSince, type LogCursor } from "./lib/runner/log-reader.mts";
+import { developmentAppPath } from "./lib/runner/verification-timing.mts";
 import {
   FINDER_STATES,
   RECORDSTUFF_WINDOW_SCRIPT,
@@ -39,7 +39,7 @@ import {
   type ClickObservation,
   type FinderState,
   type Language,
-} from "./lib/notification-acceptance.mts";
+} from "./lib/acceptance/notification-acceptance.mts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const APP_TITLE = "RecordStuff";

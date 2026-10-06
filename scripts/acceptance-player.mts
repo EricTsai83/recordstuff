@@ -14,13 +14,13 @@
  * Electron, FFmpeg) or a locked session, and 130/143 after an interruption that left nothing running (round-exit.mts). A report, the cases and screenshots go to docs/verification/measurements/<timestamp>-player-acceptance/.
  * Nothing here ships with the app.
  */
-import { scrubbedEnv } from "./lib/runner-env.mts";
-import { buildFixture } from "./lib/build-fixture.mts";
-import { runIsolatedProcess } from "./lib/isolated-process.mts";
-import { DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
-import { roundExit } from "./lib/round-exit.mts";
-import { hasTool, requireMediaTimeout } from "./lib/media-tools.mts";
-import { recordStuffPids } from "./lib/processes.mts";
+import { scrubbedEnv } from "./lib/runner/runner-env.mts";
+import { buildFixture } from "./lib/runner/build-fixture.mts";
+import { runIsolatedProcess } from "./lib/runner/isolated-process.mts";
+import { DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
+import { roundExit } from "./lib/runner/round-exit.mts";
+import { hasTool, requireMediaTimeout } from "./lib/verification/media-tools.mts";
+import { recordStuffPids } from "./lib/runner/processes.mts";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

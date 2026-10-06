@@ -2,9 +2,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { Recorder, type RecorderEvent } from "../src/main/recorder";
-import { FileWriter } from "../src/main/file-writer";
-import { CaptureHost, type HostPort } from "../src/renderer/capture-host";
+import { Recorder, type RecorderEvent } from "../src/main/recording/recorder";
+import { FileWriter } from "../src/main/recording/file-writer";
+import { CaptureHost, type HostPort } from "../src/renderer/capture/capture-host";
 import { DEFAULT_QUALITY } from "../src/shared/quality";
 import type { HostMessage, MainMessage } from "../src/shared/protocol";
 

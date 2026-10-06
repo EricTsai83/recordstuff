@@ -14,7 +14,7 @@ import {
   type GitHubRelease,
   type ReleaseJson,
   type WindowsReleaseJson,
-} from "../../scripts/lib/release-manifest.mts";
+} from "../../scripts/lib/release/release-manifest.mts";
 
 const TAG = "v0.1.2";
 const VERSION = "0.1.2";

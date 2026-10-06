@@ -1,0 +1,35 @@
+import { isSettingsShortcut, settingsShortcut, type HotkeySettings } from "../../shared/hotkey";
+import { RecordingHotkey, type GlobalShortcutApi, type HotkeyStatus } from "./hotkey";
+
+export type SettingsHotkeyStatus = HotkeyStatus | { kind: "conflict" };
+
+/** Independent ownership; stored recording shortcuts always have priority. */
+export class SettingsHotkey {
+  private readonly registration: RecordingHotkey;
+  private conflict = false;
+  private disposed = false;
+  private initialized = false;
+  constructor(private readonly options: {
+    globalShortcut: GlobalShortcutApi; platform: string; open: () => void; log: (message: string) => void;
+  }) {
+    this.registration = new RecordingHotkey({ globalShortcut: options.globalShortcut, onToggle: options.open,
+      log: message => options.log(message.replace("hotkey:", "settings shortcut:")) });
+  }
+  get status(): SettingsHotkeyStatus {
+    return this.conflict ? { kind: "conflict" } : this.registration.status;
+  }
+  reconcile(recording: HotkeySettings): void {
+    if (this.disposed) return;
+    const conflict = recording.enabled && isSettingsShortcut(recording.accelerator, this.options.platform);
+    if (this.initialized && conflict === this.conflict) return;
+    this.initialized = true;
+    this.conflict = conflict;
+    if (conflict) this.options.log("settings shortcut: unavailable; recording shortcut owns the combination");
+    this.registration.apply({ enabled: !conflict, accelerator: settingsShortcut(this.options.platform) });
+  }
+  retry(recording: HotkeySettings): void { this.initialized = false; this.reconcile(recording); }
+  /** The registration ignores a repeated call and any call after `dispose`. */
+  suspend(): void { this.registration.suspend(); }
+  resume(): void { this.registration.resume(); }
+  dispose(): void { this.disposed = true; this.registration.dispose(); }
+}

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertManifestShape, carriesWindows, expectedWindowsInstallerName } from "../../scripts/lib/release-manifest.mts";
+import { assertManifestShape, carriesWindows, expectedWindowsInstallerName } from "../../scripts/lib/release/release-manifest.mts";
 import { release, windowsRelease } from "../src/lib/release.ts";
 
 const committed = assertManifestShape(JSON.parse(await readFile(new URL("../release-manifest.json", import.meta.url), "utf8")));

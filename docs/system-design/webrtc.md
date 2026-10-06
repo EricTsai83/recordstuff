@@ -81,7 +81,7 @@ Adding live sharing would introduce a separate transport architecture and would 
 ## Code map
 
 - [Main entry](../../src/main/index.ts): display-media request handler and loopback source selection.
-- [Capture renderer](../../src/renderer/capture-host.ts): constraints, settings, `MediaRecorder`, and chunks.
+- [Capture renderer](../../src/renderer/capture/capture-host.ts): constraints, settings, `MediaRecorder`, and chunks.
 - [Shared protocol](../../src/shared/protocol.ts): MIME type and local messages.
 - [Quality policy](../../src/shared/quality.ts): requested encoding quality.
 - [Architecture](architecture.md): process ownership and IPC trust boundaries.

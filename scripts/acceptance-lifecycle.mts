@@ -1,8 +1,8 @@
 /** Real process-lifetime checks through the production quit coordinator. */
-import { buildFixture } from "./lib/build-fixture.mts";
-import { scrubbedEnv } from "./lib/runner-env.mts";
-import { runIsolatedProcess } from "./lib/isolated-process.mts";
-import { INTERRUPT_EXIT, interruptExitCode } from "./lib/processes.mts";
+import { buildFixture } from "./lib/runner/build-fixture.mts";
+import { scrubbedEnv } from "./lib/runner/runner-env.mts";
+import { runIsolatedProcess } from "./lib/runner/isolated-process.mts";
+import { INTERRUPT_EXIT, interruptExitCode } from "./lib/runner/processes.mts";
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";

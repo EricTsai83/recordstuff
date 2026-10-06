@@ -28,7 +28,7 @@ flowchart TD
 
 A Windows failure at any step before publication fails the whole tag, as a macOS failure does; the Windows gates run on GitHub's runners only and prove nothing about capture ([design decisions](decisions.md)).
 
-The standalone website trigger watches main pushes affecting `website/**`, the shared release manifest modules `scripts/lib/release-manifest*.mts` (the website build imports them), the version grammar they import, `src/shared/version.ts`, or `.github/workflows/website.yml`. Other documentation or App-only commits do not trigger it. The release record job pushes with `GITHUB_TOKEN`, which does not trigger another push workflow, so the release explicitly calls the reusable website workflow.
+The standalone website trigger watches main pushes affecting `website/**`, the shared release manifest modules `scripts/lib/release/release-manifest*.mts` (the website build imports them), the version grammar they import, `src/shared/version.ts`, or `.github/workflows/website.yml`. Other documentation or App-only commits do not trigger it. The release record job pushes with `GITHUB_TOKEN`, which does not trigger another push workflow, so the release explicitly calls the reusable website workflow.
 
 All website entry points share a deployment lock without cancelling active deployments. Each checks out main after acquiring the lock so an older queued trigger cannot deploy an older checkout. Deployment first checks the secrets; missing configuration skips with a notice. Failed website checks prevent deployment and leave the previous site serving. An App already published is not withdrawn if subsequent website delivery fails.
 

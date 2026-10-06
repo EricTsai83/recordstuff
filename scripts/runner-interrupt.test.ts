@@ -3,8 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { groupAlive, stopGroup } from "./lib/processes.mts";
-import { MEASUREMENTS_DIR, REPO_ROOT } from "./lib/verify-recording.mts";
+import { groupAlive, stopGroup } from "./lib/runner/processes.mts";
+import { MEASUREMENTS_DIR, REPO_ROOT } from "./lib/verification/verify-recording.mts";
 
 /**
  * Plan 052: a signal during a recording runner's build must reach the

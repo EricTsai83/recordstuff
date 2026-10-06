@@ -1,7 +1,7 @@
 /** Packaged handler/model integration + optional real capture. Native Tray clicks are explicitly not claimed. */
 import fs from 'node:fs';
-import { APP_SETTINGS_PATH, scrubbedEnv } from './lib/runner-env.mts';
-import { escapeRegExp, groupAlive, recordStuffPids, stopGroup } from './lib/processes.mts';
+import { APP_SETTINGS_PATH, scrubbedEnv } from './lib/runner/runner-env.mts';
+import { escapeRegExp, groupAlive, recordStuffPids, stopGroup } from './lib/runner/processes.mts';
 import path from 'node:path';
 import os from 'node:os';
 import assert from 'node:assert/strict';
@@ -9,16 +9,16 @@ import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { parseArgs } from 'node:util';
-import { prepareUpdateAcceptance, acceptanceExitCode, safeCaptureShortcut, createAcceptanceOutput, assertLockContract, type CaseResult } from './lib/update-acceptance.mts';
-import { acceleratorToKeystroke, createMaterialProfile, keystrokeScript, materialOpenArgs, removeMaterialProfile } from './lib/acceptance.mts';
-import { hasTool, requireMediaTimeout } from './lib/media-tools.mts';
-import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from './lib/desktop-session.mts';
-import { roundExit } from './lib/round-exit.mts';
-import { readLogPairs, verifyRecording } from './lib/verify-recording.mts';
-import { blocksSuccess } from './lib/verify.mts';
+import { prepareUpdateAcceptance, acceptanceExitCode, safeCaptureShortcut, createAcceptanceOutput, assertLockContract, type CaseResult } from './lib/acceptance/update-acceptance.mts';
+import { acceleratorToKeystroke, createMaterialProfile, keystrokeScript, materialOpenArgs, removeMaterialProfile } from './lib/acceptance/acceptance.mts';
+import { hasTool, requireMediaTimeout } from './lib/verification/media-tools.mts';
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from './lib/runner/desktop-session.mts';
+import { roundExit } from './lib/runner/round-exit.mts';
+import { readLogPairs, verifyRecording } from './lib/verification/verify-recording.mts';
+import { blocksSuccess } from './lib/verification/verify.mts';
 import type { AcceptanceSnapshot, AcceptanceConfig, Scenario } from './fixtures/update-acceptance';
-import type { TrayMenuItem } from '../src/main/tray-model';
-import type { AppAction } from '../src/main/ui-model';
+import type { TrayMenuItem } from '../src/main/menus/tray-model';
+import type { AppAction } from '../src/main/app/ui-model';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const DAY = 86_400_000;

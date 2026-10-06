@@ -207,11 +207,11 @@ Their speech benchmark decodes to mono at 16 kHz, so it cannot replace our stere
 
 | Module | Responsibility |
 | --- | --- |
-| [audio-quality.mts](../../scripts/lib/audio-quality.mts) | Pure fixture generation, WAV serialization, bounded frequency estimation, fitting, gates |
-| [audio-quality-tools.mts](../../scripts/lib/audio-quality-tools.mts) | Bounded FFprobe/FFmpeg calls; run the actual development app and owned audio player |
-| [audio-quality-summary.mts](../../scripts/lib/audio-quality-summary.mts) | Aggregate repeated measurements without hiding failures or missing values |
+| [audio-quality.mts](../../scripts/lib/audio/audio-quality.mts) | Pure fixture generation, WAV serialization, bounded frequency estimation, fitting, gates |
+| [audio-quality-tools.mts](../../scripts/lib/audio/audio-quality-tools.mts) | Bounded FFprobe/FFmpeg calls; run the actual development app and owned audio player |
+| [audio-quality-summary.mts](../../scripts/lib/audio/audio-quality-summary.mts) | Aggregate repeated measurements without hiding failures or missing values |
 | [CLI](../../scripts/audio-quality.mts) | Validate arguments, new output directory, environment snapshots, repeat loop, JSON and exit status |
-| [Tests](../../scripts/lib/audio-quality.test.ts) | Clean/damaged controls, real codecs, CLI contracts, summary behavior |
+| [Tests](../../scripts/lib/audio/audio-quality.test.ts) | Clean/damaged controls, real codecs, CLI contracts, summary behavior |
 
 Invariants: no upmixing/resampling to hide format faults; decode only the first 60 seconds with bounded buffers/timeouts; do not change production audio processing or user settings; do not overwrite an existing evidence directory; terminate only owned child processes; preserve prior raw measurements. Fixture v1 recordings must not be evaluated as v2. Generate and record v2 material, and keep the original v1 report as historical evidence.
 

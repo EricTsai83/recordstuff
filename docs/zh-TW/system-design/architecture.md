@@ -47,24 +47,25 @@ Tray、選單與通知全在 main，使用原生 Electron API。設定面板是�
 | 模組 | 擁有的資料／資源 | 不負責的工作 |
 | --- | --- | --- |
 | `main/index.ts` | App 生命週期、依賴組裝、來源 handler、退出協調 | 不編碼、不自行追加影片 bytes |
-| `main/recorder.ts` | 唯一 `RecordingState`、session id、順序與 timeout、倒數的時間與取消 | 不 import Electron；不接觸 DOM |
-| `main/countdown-overlay.ts` | 倒數視窗的生命週期、放在被錄影螢幕上的位置與傳給它的值 | 不決定何時倒數、錄影或取消 |
-| `renderer/countdown.ts` / `preload/countdown.ts` | 繪製數字與淡化／唯一的數值訂閱 | 不持有時間、狀態，也不回傳 main |
-| `main/video-fullscreen.ts` | 全螢幕影片視窗的生命週期、所在螢幕、淡入淡出，以及交回的播放狀態 | 不決定播放哪支錄影或其來源網址（由設定視窗依清單查出） |
-| `renderer/video.ts` / `preload/video.ts` | 從指定時間播放、結束全螢幕的操作／回報就緒並帶著播放狀態離開 | 不負責視窗、淡入淡出或關閉視窗 |
-| `main/capture-host.ts` | 隱藏 BrowserWindow、main port、ready／heartbeat | 不作檔案成功判定 |
-| `renderer/capture-host.ts` | MediaStream、MediaRecorder、序號、Blob 傳送鏈 | 不讀設定檔、不選輸出路徑、不寫檔 |
+| `main/actions/actions.ts` | 每個 `AppAction` 實際做的事，位於結束閘門與各偏好設定的鎖之後 | 不建立協作者，也不持有自己的狀態 |
+| `main/recording/recorder.ts` | 唯一 `RecordingState`、session id、順序與 timeout、倒數的時間與取消 | 不 import Electron；不接觸 DOM |
+| `main/recording/countdown-overlay.ts` | 倒數視窗的生命週期、放在被錄影螢幕上的位置與傳給它的值 | 不決定何時倒數、錄影或取消 |
+| `renderer/countdown/countdown.ts` / `preload/countdown.ts` | 繪製數字與淡化／唯一的數值訂閱 | 不持有時間、狀態，也不回傳 main |
+| `main/library/video-fullscreen.ts` | 全螢幕影片視窗的生命週期、所在螢幕、淡入淡出，以及交回的播放狀態 | 不決定播放哪支錄影或其來源網址（由設定視窗依清單查出） |
+| `renderer/video/video.ts` / `preload/video.ts` | 從指定時間播放、結束全螢幕的操作／回報就緒並帶著播放狀態離開 | 不負責視窗、淡入淡出或關閉視窗 |
+| `main/recording/capture-host.ts` | 隱藏 BrowserWindow、main port、ready／heartbeat | 不作檔案成功判定 |
+| `renderer/capture/capture-host.ts` | MediaStream、MediaRecorder、序號、Blob 傳送鏈 | 不讀設定檔、不選輸出路徑、不寫檔 |
 | `preload/index.ts` | 轉交 main 提供的 MessagePort | 不暴露 Node API |
-| `main/file-writer.ts` | 每個錄影 session 的影片 handle、寫入佇列 | 不決定 UI 狀態 |
-| `main/settings.ts` | 已提交設定、序列化保存佇列 | 不修改正在錄影的設定快照 |
-| `main/tray-model.ts` / `tray.ts` | Tray 扁平指令選單的純投影／原生圖示與通知 | 不放偏好設定，也不另建錄影狀態機 |
-| `main/ui-model.ts` | 兩個介面共用的 action union、context 快照與設定鎖定規則 | 自己不做任何投影 |
-| `main/settings-model.ts` | 所有偏好設定、穩定 id，以及面板請求的授權判定 | 不碰 Electron、IPC 或持久化 |
-| `main/settings-window.ts` | 設定視窗、來源驗證與序列化保存 | 不定義任何設定的語意 |
-| `renderer/settings.ts` / `preload/settings.ts` | 畫出 view 並回傳 id／read-choose-capture-subscribe 橋接 | 不持有設定狀態、不產生 action、不碰 Node API |
-| `main/permission.ts` | 螢幕授權驗證快取與輪詢 timer | 不認定系統音訊已授權 |
-| `main/log.ts` | 經有上限的非同步佇列寫入並輪替的文字 log | 不保存媒體 bytes |
-| `main/session-log.ts` | 每次啟動的 run id，以及每個 capture 與結果行旁的有版本 session record | 不負責配對錄影與 session（那是開發用分析器的工作） |
+| `main/recording/file-writer.ts` | 每個錄影 session 的影片 handle、寫入佇列 | 不決定 UI 狀態 |
+| `main/settings/settings.ts` | 已提交設定、序列化保存佇列 | 不修改正在錄影的設定快照 |
+| `main/menus/tray-model.ts` / `tray.ts` | Tray 扁平指令選單的純投影／原生圖示與通知 | 不放偏好設定，也不另建錄影狀態機 |
+| `main/app/ui-model.ts` | 兩個介面共用的 action union 與 context 快照；它們套用的設定鎖定規則在 `main/recording/recording-lock.ts` | 自己不做任何投影 |
+| `main/settings/settings-model.ts` | 所有偏好設定、穩定 id，以及面板請求的授權判定 | 不碰 Electron、IPC 或持久化 |
+| `main/settings/settings-window.ts` | 設定視窗、來源驗證與序列化保存 | 不定義任何設定的語意 |
+| `renderer/settings/settings.ts` / `preload/settings.ts` | 畫出 view 並回傳 id／read-choose-capture-subscribe 橋接 | 不持有設定狀態、不產生 action、不碰 Node API |
+| `main/permission/permission.ts` | 螢幕授權驗證快取與輪詢 timer | 不認定系統音訊已授權 |
+| `main/lib/log.ts` | 經有上限的非同步佇列寫入並輪替的文字 log | 不保存媒體 bytes |
+| `main/recording/session-log.ts` | 每次啟動的 run id，以及每個 capture 與結果行旁的有版本 session record | 不負責配對錄影與 session（那是開發用分析器的工作） |
 | `shared/i18n.ts` | 英文文案 key、繁體中文模板、語言驗證 | 不控制 OS 原生提示或翻譯技術日誌 |
 | `shared/*` | 狀態、訊息、品質與倒數型別／純函式 | 不依賴 Electron 或 DOM |
 

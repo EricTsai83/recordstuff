@@ -81,7 +81,7 @@ Chromium 的[螢幕擷取音訊處理路徑](https://chromium.googlesource.com/c
 ## 程式碼對照
 
 - [Main 入口](../../../src/main/index.ts)：display-media handler 與 loopback 來源選擇。
-- [Capture renderer](../../../src/renderer/capture-host.ts)：constraints、settings、`MediaRecorder` 與 chunks。
+- [Capture renderer](../../../src/renderer/capture/capture-host.ts)：constraints、settings、`MediaRecorder` 與 chunks。
 - [共用協定](../../../src/shared/protocol.ts)：MIME type 與本機訊息。
 - [品質政策](../../../src/shared/quality.ts)：要求的編碼品質。
 - [系統架構](architecture.md)：程序責任與 IPC 信任邊界。

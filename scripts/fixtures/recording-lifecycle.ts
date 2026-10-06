@@ -3,11 +3,11 @@ import { app } from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
 import assert from "node:assert/strict";
-import { FileWriter, nodeFs } from "../../src/main/file-writer";
-import { RecordingResults } from "../../src/main/recording-result";
-import { RecordingResultStore } from "../../src/main/recording-result-store";
-import { Recorder } from "../../src/main/recorder";
-import { installQuitCoordinator } from "../../src/main/quit-coordinator";
+import { FileWriter, nodeFs } from "../../src/main/recording/file-writer";
+import { RecordingResults } from "../../src/main/recording/recording-result";
+import { RecordingResultStore } from "../../src/main/recording/recording-result-store";
+import { Recorder } from "../../src/main/recording/recorder";
+import { installQuitCoordinator } from "../../src/main/app/quit-coordinator";
 import { DEFAULT_QUALITY } from "../../src/shared/quality";
 import type { HostMessage } from "../../src/shared/protocol";
 

@@ -19,9 +19,9 @@ import {
   assertManifestShape,
   diffManifest,
   type ReleaseManifest,
-} from "../../scripts/lib/release-manifest.mts";
+} from "../../scripts/lib/release/release-manifest.mts";
 
-import { fetchManifest } from "../../scripts/lib/release-manifest-client.mts";
+import { fetchManifest } from "../../scripts/lib/release/release-manifest-client.mts";
 import { stableVersion } from "../../src/shared/version.ts";
 
 const MANIFEST_PATH = fileURLToPath(new URL("../release-manifest.json", import.meta.url));

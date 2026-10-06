@@ -10,14 +10,13 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { command } from "./lib/acceptance-runtime.mts";
-import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
-import { hasTool, requireMediaTimeout } from "./lib/media-tools.mts";
-import { INTERRUPT_EXIT, escapeRegExp, pgrepPids } from "./lib/processes.mts";
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/runner/desktop-session.mts";
+import { hasTool, requireMediaTimeout } from "./lib/verification/media-tools.mts";
+import { INTERRUPT_EXIT, escapeRegExp, pgrepPids, command } from "./lib/runner/processes.mts";
 import {
   judgePlayback, meanAbsDiff, parseBounds, parseDocumentState, parseVolumeSettings, playbackScript,
   type Check, type DocumentState, type PlaybackObservations,
-} from "./lib/playback.mts";
+} from "./lib/verification/playback.mts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const QUICKTIME = "/System/Applications/QuickTime Player.app";

@@ -4,10 +4,10 @@ import path from "node:path";
 import os from "node:os";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { fixture, wav, type AudioReport } from "./lib/audio-quality.mts";
-import { inspectAudio, recordAudio } from "./lib/audio-quality-tools.mts";
-import { DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
-import { summarize } from "./lib/audio-quality-summary.mts";
+import { fixture, wav, type AudioReport } from "./lib/audio/audio-quality.mts";
+import { inspectAudio, recordAudio } from "./lib/audio/audio-quality-tools.mts";
+import { DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
+import { summarize } from "./lib/audio/audio-quality-summary.mts";
 
 const args = process.argv.slice(2).filter((a, i) => !(i === 0 && a === "--"));
 const [mode, target, repeatFlag, count] = args;
@@ -19,7 +19,7 @@ if (!mode || !target || !["fixture", "verify", "record"].includes(mode) ||
   process.exit(2);
 }
 const exitCode = (verdict: string): number => verdict === "pass" ? 0 : verdict === "invalid" ? 2 : 1;
-const implementation = Object.fromEntries(["./lib/audio-quality.mts", "./lib/audio-quality-tools.mts", "../src/renderer/capture-host.ts"].map(file => [file, createHash("sha256").update(fs.readFileSync(new URL(file, import.meta.url))).digest("hex")]));
+const implementation = Object.fromEntries(["./lib/audio/audio-quality.mts", "./lib/audio/audio-quality-tools.mts", "../src/renderer/capture/capture-host.ts"].map(file => [file, createHash("sha256").update(fs.readFileSync(new URL(file, import.meta.url))).digest("hex")]));
 const environment = { implementation, fixtureSha256: createHash("sha256").update(wav(fixture())).digest("hex"), platform: process.platform, release: os.release(), arch: process.arch, node: process.version };
 const inspect = (file: string) => ({ date: new Date().toISOString(), file, environment, ...inspectAudio(file) });
 let output: string | undefined;

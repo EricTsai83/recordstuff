@@ -4,9 +4,9 @@
  * a throwaway source copy made by acceptance:controlled imports this; no production
  * module does. Every fault is off until the runner arms it.
  */
-import { FileWriter, nodeFs, type FileWriterFs, type WritableHandle } from "../../src/main/file-writer";
-import type { RecorderHost } from "../../src/main/recorder";
-import type { ResultStorage } from "../../src/main/recording-result-store";
+import { FileWriter, nodeFs, type FileWriterFs, type WritableHandle } from "../../src/main/recording/file-writer";
+import type { RecorderHost } from "../../src/main/recording/recorder";
+import type { ResultStorage } from "../../src/main/recording/recording-result-store";
 import type { RecordingFailure, RecordingResult } from "../../src/shared/recording-result";
 import { FAULT_MODES, isFaultMode, type FaultName, type Faults, type HoldTarget } from "./controlled-modes";
 

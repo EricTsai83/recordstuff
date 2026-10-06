@@ -19,9 +19,9 @@
  * Development only (brew install ffmpeg); nothing here ships with the app.
  */
 import fs from "node:fs";
-import { APP_LOG_PATH } from "./lib/runner-env.mts";
+import { APP_LOG_PATH } from "./lib/runner/runner-env.mts";
 import path from "node:path";
-import { ToolMissingError, requireMediaTimeout } from "./lib/media-tools.mts";
+import { ToolMissingError, requireMediaTimeout } from "./lib/verification/media-tools.mts";
 import {
   appendMeasurements,
   measurementsPath,
@@ -30,8 +30,8 @@ import {
   verifyRecording,
   type VerifyResult,
   type VerifyRunOptions,
-} from "./lib/verify-recording.mts";
-import { formatText, verdictExitCode, type Verdict } from "./lib/verify.mts";
+} from "./lib/verification/verify-recording.mts";
+import { formatText, verdictExitCode, type Verdict } from "./lib/verification/verify.mts";
 
 const DEFAULT_LOG = APP_LOG_PATH;
 

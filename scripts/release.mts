@@ -5,8 +5,8 @@ import { closeSync, createReadStream, existsSync, lstatSync, mkdtempSync, openSy
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchManifest } from './lib/release-manifest-client.mts';
-import { assertManifestShape, assertWindowsRecord, carriesWindows, diffManifest, expectedAssetNames, expectedDmgName, expectedWindowsInstallerName, REPOSITORY, WINDOWS_PLATFORM, WINDOWS_RECORD, type ReleaseManifest, type WindowsReleaseJson } from './lib/release-manifest.mts';
+import { fetchManifest } from './lib/release/release-manifest-client.mts';
+import { assertManifestShape, assertWindowsRecord, carriesWindows, diffManifest, expectedAssetNames, expectedDmgName, expectedWindowsInstallerName, REPOSITORY, WINDOWS_PLATFORM, WINDOWS_RECORD, type ReleaseManifest, type WindowsReleaseJson } from './lib/release/release-manifest.mts';
 
 export const signingSHA1 = '01B373511530BBF287CA35E54C10A5F017AAD637';
 /**

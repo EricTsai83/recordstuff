@@ -24,20 +24,20 @@
  * can stop it.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { MEASUREMENTS_DIR } from "./lib/verify-recording.mts";
-import { APP_LOG_PATH, scrubbedEnv } from "./lib/runner-env.mts";
+import { MEASUREMENTS_DIR } from "./lib/verification/verify-recording.mts";
+import { APP_LOG_PATH, scrubbedEnv } from "./lib/runner/runner-env.mts";
 import fs from "node:fs";
 import path from "node:path";
-import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance.mts";
-import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
-import { LAUNCHER_EXIT_MS, QUIT_GRACE_MS, stopDevApp, type AppStop } from "./lib/dev-app.mts";
-import { distribution, finalizationSample, formatDistribution, type FinalizationSample } from "./lib/finalization-timing.mts";
-import { LogReader } from "./lib/log-reader.mts";
-import { electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, recordStuffPids, signalPids, startBuild, stopGroup } from "./lib/processes.mts";
-import { freeBytes, volumeOf } from "./lib/volume.mts";
-import { hasTool, probe, probeEdges, requireMediaTimeout } from "./lib/media-tools.mts";
-import { REPO_ROOT } from "./lib/verify-recording.mts";
-import { parseAutorecordOutcome } from "./lib/verify.mts";
+import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance/acceptance.mts";
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/runner/desktop-session.mts";
+import { LAUNCHER_EXIT_MS, QUIT_GRACE_MS, stopDevApp, type AppStop } from "./lib/runner/dev-app.mts";
+import { distribution, finalizationSample, formatDistribution, type FinalizationSample } from "./lib/verification/finalization-timing.mts";
+import { LogReader } from "./lib/runner/log-reader.mts";
+import { electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, recordStuffPids, signalPids, startBuild, stopGroup } from "./lib/runner/processes.mts";
+import { freeBytes, volumeOf } from "./lib/verification/volume.mts";
+import { hasTool, probe, probeEdges, requireMediaTimeout } from "./lib/verification/media-tools.mts";
+import { REPO_ROOT } from "./lib/verification/verify-recording.mts";
+import { parseAutorecordOutcome } from "./lib/verification/verify.mts";
 
 const ELECTRON_APP = path.join(REPO_ROOT, "node_modules/electron/dist/Electron.app");
 const ELECTRON_APP_REAL = fs.existsSync(ELECTRON_APP) ? fs.realpathSync(ELECTRON_APP) : ELECTRON_APP;

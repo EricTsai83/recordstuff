@@ -4,6 +4,27 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 068 結案 — 2026-10-06
+
+Plan 068 完成維護者在 2026-10-06 要求的模組邊界工作；同日稍早 `src/main/` 與 `src/renderer/` 已依模組分成資料夾（[模組邊界](../system-design/repository.md#模組邊界)）。維護者要求立即執行，而不是排在 066 與 067 之後。開始時的 working tree 同時含有尚未 commit 的 React／shadcn 遷移，因此單憑 HEAD `bcf744af` 無法辨識它的輸入。
+
+- **Action handler。** `handleAction` 的 29 個 case 原封不動地從 `src/main/index.ts` 的 closure 移到 `src/main/actions/actions.ts`（`createActionHandler`），協作者由外部傳入。`index.ts` 只保留一行宣告提升的轉交函式，從 1,033 行降到 871 行。`actions/` 是位於 `menus/` 與 `index.ts` 之間的新區域：handler 需要設定 store、設定視窗與 tray，若在 `app/` 用結構型別表達，會複製約 40 個成員。沒有任何 runner 錨點移動，`controlled-acceptance.test.ts` 與 `update-acceptance.test.ts` 也確認了這點。新的測試固定了結束閘門、各偏好設定的鎖、錄影中搶先按下的更新連結與拖曳。
+- **設定頁。** 約 1,800 行的 `settings-app.tsx` 逐行拆成外框，加上 `tabs/library.tsx`、`tabs/preferences.tsx`、`tabs/shortcut-editor.tsx`、`tabs/failures.tsx` 與 `undo-toast.tsx`。錄影與一般分頁共用同一個依 model 繪製的元件，所以分頁模組是三個而不是四個。`settings-controller.ts` 變成 `controller/`（core、shortcut、results、library、player、info、toast）之上的單一 `export *` 介面。跨職責的寫入改成擁有該狀態的模組提供的小函式（`dismissLibraryOverlays`、`forgetMissingItems`、`clearFeedback`、`forgetInfo`、`playerHidden`）。頁面測試是透過入口驅動整個頁面，因此留在入口旁邊。
+- **開發者工具。** `scripts/lib/` 的 83 個檔案分成 `runner/`、`acceptance/`、`verification/`、`audio/` 與 `release/`；入口檔留在頂層。`lineTime` 移到 `runner/log-reader.mts`，`command` 移到 `runner/processes.mts`，因此 `runner/` 與 `verification/` 不再匯入 `acceptance/`。網站的匯入與 `website.yml` 的路徑過濾跟著改到 `release/`。`pnpm audio:quality` 報告的實作 hash 改以新路徑（`./lib/audio/…`）為 key，因此 2026-10-06 之前的報告無法依 key 對應。
+- **邊界。** `tests/source-boundaries.test.ts` 現在也涵蓋 `scripts/`：`src/` 不匯入 `scripts/`，`scripts/lib/` 各分組只朝一個方向匯入且不匯入入口檔，fixture 只匯入 `src/`、`scripts/lib/` 與其他 fixture。在兩棵樹各放一個刻意違規的匯入時，測試都會失敗。
+- **搬移造成的缺陷。** 路徑改寫也改到了 update 與受控 runner 注入 `index.ts` 副本的 import 文字（`../../scripts/fixtures/…`），把它當成 runner 自己的 import。沒有單元測試會建置被修改的副本，所以只有 `runtime-inputs.test.ts` 中類似的字串失敗。三處都在任何 runner 執行前改回，兩個 runner 之後也都建置出修改後的副本並通過。
+
+### 驗證
+
+- 修改前 `pnpm typecheck` 與 `pnpm test` 通過（127 個測試檔、1,734 個測試），同一份建置的兩次離屏 `pnpm preview:ui` 圖庫逐像素相同（60/60），可作為確定性的基準。
+- 拆分設定頁後，圖庫與基準逐像素相同（60/60）。
+- 最後一次修改後，`pnpm acceptance:recipe -- settings` 通過：typecheck、130 個測試檔與 1,741 個測試、build、`pnpm test:ui` 13/13、設定 516/516 與快捷鍵整合（`2026-10-06T05-27-52-850Z-recipe-settings`）。每個 script 入口都能以 esbuild 打包且沒有無法解析的匯入（27/27），`pnpm site:check` 通過（5 個頁面、65 個內部參照、15 個外部網址）。
+- 桌面驗收（維護者回覆準備好之後）：`pnpm acceptance` 在新建的 `pnpm start:app` bundle 上以全域快捷鍵錄了 10.4 秒，所有完整性檢查通過，倒數取消案例也通過（`2026-10-06T05-36-51-803Z-hotkey-acceptance`）。`pnpm acceptance:tray` 15 個通過、1 個未執行：macOS 先送達選單的 Start、後送達佇列中的快捷鍵，所以 stale-start 案例沒有可判定的狀態變化。`pnpm acceptance:updates` 每個案例都通過，包括實際錄影；`pnpm acceptance:controlled -- selftest` 8/8 通過；兩者都建置了被修改的副本。每一輪結束後都沒有殘留 RecordStuff 程序。
+- 播放器：`pnpm acceptance:player` 起初 16:9 舞台案例在四次中失敗三次、進度條拖曳案例失敗一次；以當天早上的備份建置的重整前 working tree，同一個舞台案例三次中也失敗一次。兩者出問題的都是 fixture 而不是 App：影片 metadata 一到就量舞台，正好在 dialog 100 ms 的放大動畫期間（寬 826–851 px）；拖曳的移動事件固定間隔 100 ms 送出，機器忙時有一次拖曳停在 8 秒中的 4 秒。fixture 現在等 dialog 的動畫結束才量，並在前一次移動確實帶動影片後才送下一次，記錄每一步落在哪裡。之後連續五次都是 19/19：兩次開啟每次都量到 860 px，每次拖曳的每一步都落地（2.8、4、5.2、6 秒），滑桿全程保持拖曳狀態。
+- `settings-library.test.ts` 在八次完整執行中失敗一次，失敗點是選單打開後的焦點位置。同時執行三份測試套件時六次全部重現：共用的 `menu` helper 在 Base UI 把選單標為打開時就返回，比 Base UI 把焦點移進選單早一幀。helper 現在也等選單取得焦點，這也消除了另一個在打開選單後立刻按 Escape 的測試中的同類競態；同樣的加壓下不再有任何斷言失敗。加壓時仍有部分頁面測試超過 5 秒時限；它們單獨執行只要 2.0–2.4 秒，因此沒有調高時限。
+
+未執行：`check.yml` 的 Windows job，需要 push 或手動觸發；這次沒有修改打包。
+
 ## Plan 064 結案 — 2026-10-03
 
 Plan 064 讓同一個 tag 在 macOS DMG 旁一起發布 Windows x64 安裝檔。2026-10-03 維護者先確認沒有 Windows 機器，接著決定仍然發布，Windows 只由 GitHub Actions 檢查，流程與 Mac 相同（[設計決策](../system-design/decisions.md)）。耐久規則見[發布自動化](../system-design/releases.md#發布契約)、[交付](../system-design/delivery.md)、[簽章](../system-design/signing.md)、[桌面設計](../system-design/desktop.md#錄影快捷鍵)與[工具](../system-design/tooling.md)。[1.2.0](releases/1.2.0.md) 是第一個雙平台正式版，之前先以 [1.2.0-rc.1](releases/1.2.0-rc.1.md) 演練。
@@ -33,7 +54,7 @@ Plan 065 讓錄影快捷鍵與狀態列項目的左鍵點擊，可以在 start �
 - **量測與決定。** 2026-09-12 至 2026-10-02 保留的 log 有 739 次 start：中位數 289 ms，第 95 百分位 396 ms。超過 1 秒的九次全部卡在準備階段（權限被拒、缺少音訊軌與舊的 8 秒時限造成 1.1–9.4 秒；擷取請求未回應時四次各 120 秒，其中一次讓退出等了 286 秒），沒有卡在開啟資料夾的，另有一次（2026-09-13）卡在 `record` 之後。917 次快捷鍵按壓中，一秒內的人工連按間隔為 290、365 與 393 ms；約 600 ms 的配對是 runner 在取消倒數；落在 starting 期間的按鍵只有 plan 063 的 runner，在 start 後 4–8 ms。維護者於 2026-10-03 決定：(a) 寬限一秒；(b) starting 的「取消錄影」標出快捷鍵；(c) 開啟資料夾或準備期間退出立即取消，納入本計畫。計畫中的長時間 start 受控重現改由下方的原生回合承擔，因為 log 已能把每次長時間 start 歸到所在階段。
 - **Recorder。** starting 期間，從 session 請求起以 monotonic clock 計算，toggle 若晚於 `START_CANCEL_GRACE_MS`（1000 ms），就走「取消錄影」的路徑：開啟或準備中的嘗試會被取消，不留檔案、失敗項目或通知；已送出 `record` 時則變成「開始後停止」。寬限內的按鍵與 stopping 期間的按鍵都會被忽略並寫入 log。`shutdown()` 在延後的檢查中取消仍在開啟或準備的嘗試，因此同步的狀態變化不會再開啟第二次退出嘗試，標記仍保留作為後援；睡眠仍只標記。
 - **Tray。** starting 選單的「取消錄影」帶已註冊的快捷鍵作為 accelerator，提示文字也標出它，中英文皆同，與倒數時一致。
-- **工具。** 受控 build 新增 `prepare=hold` 故障與 `release prepare`，在 main 暫停 capture host 的 `prepared` 回覆。`pnpm acceptance:tray -- --long-start <run>` 操作該 build 真正的快捷鍵、狀態列項目與「結束」；命令通道 client 移到 `scripts/lib/controlled-client.mts`。
+- **工具。** 受控 build 新增 `prepare=hold` 故障與 `release prepare`，在 main 暫停 capture host 的 `prepared` 回覆。`pnpm acceptance:tray -- --long-start <run>` 操作該 build 真正的快捷鍵、狀態列項目與「結束」；命令通道 client 移到 `scripts/lib/acceptance/controlled-client.mts`。
 
 ### 驗證
 
@@ -81,7 +102,7 @@ Review：Codex GPT-6.1 Sol pass 1（步驟 1，約 76 秒）沒有 findings。Pa
 Plan 062 修好了隔離的延後退出通知檢查：過去即使 macOS 拒絕通知，它仍可能通過。由 Claude 實作，Codex GPT-6.1 Sol review。只改了開發工具與文件，App 沒有變更。長期規則見[引導式延期退出通知驗收](../system-design/tooling.md#引導式延期退出通知驗收)、[證據界線](../testing.md#證據界線與停止條件)的通知條目與[準備一輪驗收](../acceptance.md#準備一輪驗收)。
 
 - **根本原因。** `pnpm acceptance:quit-dialog` 直接啟動 `node_modules` 裡的 Electron，它只有 linker／ad-hoc 簽章（`Identifier=Electron`、`Sealed Resources=none`）。macOS 以 `UNErrorDomain` error 1 拒絕通知，而 runner 只判斷生命週期、timer 與清理，所以九月的回合在沒有橫幅的情況下通過（[plan 055](history-2026-09.md#plan-055-結案--2026-09-29)）。2026-10-01 的 A/B/A 比對沿用同一個複製路徑、bundle identifier `com.github.Electron` 與 fixture，只改簽章：原簽章被拒、完整 RecordStuff Dev 簽章兩種語言都送達、還原後又被拒。這證明完整簽章是條件，但沒有分別拆開憑證、Info.plist 與資源封存。沒有變更任何通知設定、信任、TCC 或 entitlement。九月那些 blocked 結果維持原紀錄。
-- **修復。** `node scripts/start-app.mjs --fixture-app` 把本 checkout 的 Electron.app 複製到每輪的暫存目錄，用 `pnpm start:app` 選取的 identity 簽署，再以同一個 `verifyBundle` 驗證。`verifyBundle` 改為可指定 identifier 與 hardened runtime，並明確拒絕 ad-hoc 簽章。一般模式保留原本的預設值、測試、階段計時與建置紀錄。runner 以 60 秒上限監督這段 setup，只啟動驗證過的副本。fixture 把通知事件附加到 `notification.jsonl`。[quit-dialog-acceptance.mts](../../../scripts/lib/quit-dialog-acceptance.mts) 分開判斷五層：簽章 App、生命週期、送達事件、視覺與清理。exit 0 是自動化證據，視覺層維持待補。
+- **修復。** `node scripts/start-app.mjs --fixture-app` 把本 checkout 的 Electron.app 複製到每輪的暫存目錄，用 `pnpm start:app` 選取的 identity 簽署，再以同一個 `verifyBundle` 驗證。`verifyBundle` 改為可指定 identifier 與 hardened runtime，並明確拒絕 ad-hoc 簽章。一般模式保留原本的預設值、測試、階段計時與建置紀錄。runner 以 60 秒上限監督這段 setup，只啟動驗證過的副本。fixture 把通知事件附加到 `notification.jsonl`。[quit-dialog-acceptance.mts](../../../scripts/lib/acceptance/quit-dialog-acceptance.mts) 分開判斷五層：簽章 App、生命週期、送達事件、視覺與清理。exit 0 是自動化證據，視覺層維持待補。
 
 ### 驗證
 
@@ -104,7 +125,7 @@ Pass 2（約 105 秒）審查修正後的 diff，沒有 findings。
 
 Plan 061 量測 `pnpm check` 之後的驗收工作，並移除其中發現的重複執行。由 Claude 實作，Codex GPT-6.1 Sol review。只改了開發工具與文件，App 本身沒有改動。長期規則見[選定一次並對每個版本驗證一次](../testing.md#選定一次並對每個版本驗證一次)與[驗證配方與計時](../system-design/tooling.md#驗證配方與計時)。
 
-- **計時。** [verification-timing.mts](../../../scripts/lib/verification-timing.mts) 讓每個 leaf 指令在自己的程序群組執行，每個階段記錄 monotonic 耗時、結果、exit code 與清理狀態。`pnpm start:app` 透過 `RECORDSTUFF_TIMING_FILE` 回報自己的 preflight、build、package、verify 與 open，這些時間顯示在所屬階段內，不重複計入。報告也記錄 revision、未提交內容的摘要、runtime 輸入、`out/` 與 `app.asar` 的摘要，以及工具版本。Agent 協作空檔與桌面交接等待記為 unknown。
+- **計時。** [verification-timing.mts](../../../scripts/lib/runner/verification-timing.mts) 讓每個 leaf 指令在自己的程序群組執行，每個階段記錄 monotonic 耗時、結果、exit code 與清理狀態。`pnpm start:app` 透過 `RECORDSTUFF_TIMING_FILE` 回報自己的 preflight、build、package、verify 與 open，這些時間顯示在所屬階段內，不重複計入。報告也記錄 revision、未提交內容的摘要、runtime 輸入、`out/` 與 `app.asar` 的摘要，以及工具版本。Agent 協作空檔與桌面交接等待記為 unknown。
 - **配方。** `pnpm acceptance:recipe -- <check|settings|shortcut-registration|recording>` 跑的 leaf 檢查與它取代的組合指令相同，相同輸入只建置一次。單元測試確保每個配方與它取代的 package scripts 相同。
 - **沿用 bundle。** `pnpm start:app` 在 bundle 旁記錄其 runtime 輸入；輸入改變時 `pnpm open:app` 會拒絕開啟。因此只改測試、腳本或文件之後的下一輪，可以重開已驗證的 bundle，不必重新建置。
 - **量測中發現並修正的 runner 問題。** 第一次跑配方時，`pnpm acceptance` 在 `open` 返回後 0 秒就開始，結果拿前一個 App 的 log session（run `…-49210`）去判斷新的 pid 71654，送出開始鍵後以「the app restarted」中止。只有在 `start:app` 之後立刻開始的回合會遇到。Runner 現在最多等 30 秒，直到 log 最新 session 的 run id 以執行中的 pid 結尾、且該 session 已 idle。`sessionBelongsTo` 有單元測試。

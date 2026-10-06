@@ -1,5 +1,5 @@
 /** Exercise the real record CLI in disposable checkouts; all external data is local. */
-import { buildFixture } from './lib/build-fixture.mts';
+import { buildFixture } from './lib/runner/build-fixture.mts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { releaseFactsFromManifest, renderDownloadSection } from './release.mts';
-import { carriesWindows } from './lib/release-manifest.mts';
+import { carriesWindows } from './lib/release/release-manifest.mts';
 
 const repositoryRoot = fileURLToPath(new URL('../', import.meta.url));
 const repository = 'EricTsai83/recordstuff';
@@ -42,7 +42,7 @@ function commitStable(version: string) {
 
 beforeEach(async () => {
   root = mkdtempSync(path.join(tmpdir(), 'recordstuff-record-test-'));
-  for (const file of ['scripts/release.mts', 'scripts/lib/release-manifest.mts', 'scripts/lib/release-manifest-client.mts', 'scripts/lib/fetch-retry.mts', 'src/shared/version.ts']) {
+  for (const file of ['scripts/release.mts', 'scripts/lib/release/release-manifest.mts', 'scripts/lib/release/release-manifest-client.mts', 'scripts/lib/release/fetch-retry.mts', 'src/shared/version.ts']) {
     const destination = path.join(root, file);
     mkdirSync(path.dirname(destination), { recursive: true });
     cpSync(path.join(repositoryRoot, file), destination);

@@ -2,14 +2,14 @@
 import { app, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Recorder } from '../../src/main/recorder';
-import type { SettingsStore } from '../../src/main/settings';
-import type { AppTray } from '../../src/main/tray';
-import { trayModel, type TrayModel } from '../../src/main/tray-model';
-import { settingsView } from '../../src/main/settings-model';
-import type { AppAction, AppContext } from '../../src/main/ui-model';
+import type { Recorder } from '../../src/main/recording/recorder';
+import type { SettingsStore } from '../../src/main/settings/settings';
+import type { AppTray } from '../../src/main/menus/tray';
+import { trayModel, type TrayModel } from '../../src/main/menus/tray-model';
+import { settingsView } from '../../src/main/settings/settings-model';
+import type { AppAction, AppContext } from '../../src/main/app/ui-model';
 import type { SettingsView } from '../../src/shared/settings-panel';
-import { API_URL, DOWNLOAD_URL, FEED_URL, RELEASES_URL, fetchVersion, type UpdateChecker, type UpdateState } from '../../src/main/updates';
+import { API_URL, DOWNLOAD_URL, FEED_URL, RELEASES_URL, fetchVersion, type UpdateChecker, type UpdateState } from '../../src/main/app/updates';
 import type { RecordingState } from '../../src/shared/state';
 
 export type Scenario = 'current' | 'newer' | 'next' | 'older' | 'delayed' | 'offline' | 'http-fallback' | 'malformed' | 'prerelease' | 'architecture' | 'timeout';

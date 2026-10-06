@@ -3,9 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ControlledFaults } from "./controlled-faults";
-import { Recorder } from "../../src/main/recorder";
-import { RecordingResults } from "../../src/main/recording-result";
-import { RecordingResultStore } from "../../src/main/recording-result-store";
+import { Recorder } from "../../src/main/recording/recorder";
+import { RecordingResults } from "../../src/main/recording/recording-result";
+import { RecordingResultStore } from "../../src/main/recording/recording-result-store";
 import { DEFAULT_QUALITY } from "../../src/shared/quality";
 import type { HostMessage } from "../../src/shared/protocol";
 

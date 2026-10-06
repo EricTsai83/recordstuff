@@ -14,18 +14,18 @@
  */
 import fs from "node:fs";
 import os from "node:os";
-import { escapeRegExp } from "./lib/processes.mts";
+import { escapeRegExp, command } from "./lib/runner/processes.mts";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SETTINGS_SHORTCUT } from "../src/shared/hotkey.ts";
-import { acceleratorToKeystroke, keystrokeScript, lastStartIndex, registeredSettingsAccelerator } from "./lib/acceptance.mts";
-import { command, waitForLog } from "./lib/acceptance-runtime.mts";
-import { LogReader, evidenceSince } from "./lib/log-reader.mts";
-import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
-import { roundExit } from "./lib/round-exit.mts";
-import { AccessibilityBlockedError, FLAG, KEY, captureRect, judgeAppMenu, judgeWindowLayout, osascriptAx, type PasteboardManifest, type WindowSnapshot } from "./lib/native-ax.mts";
+import { acceleratorToKeystroke, keystrokeScript, lastStartIndex, registeredSettingsAccelerator } from "./lib/acceptance/acceptance.mts";
+import { waitForLog } from "./lib/acceptance/acceptance-runtime.mts";
+import { LogReader, evidenceSince } from "./lib/runner/log-reader.mts";
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/runner/desktop-session.mts";
+import { roundExit } from "./lib/runner/round-exit.mts";
+import { AccessibilityBlockedError, FLAG, KEY, captureRect, judgeAppMenu, judgeWindowLayout, osascriptAx, type PasteboardManifest, type WindowSnapshot } from "./lib/runner/native-ax.mts";
 import { TRAFFIC_LIGHT_ZONE } from "../src/shared/window-controls.ts";
-import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings } from "./lib/runner-env.mts";
+import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings } from "./lib/runner/runner-env.mts";
 import { isLanguage, translate } from "../src/shared/i18n.ts";
 import { setTimeout as delay } from "node:timers/promises";
 

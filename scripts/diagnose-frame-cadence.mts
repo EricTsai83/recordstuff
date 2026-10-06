@@ -23,19 +23,19 @@
  * handler can stop it.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { scrubbedEnv } from "./lib/runner-env.mts";
+import { scrubbedEnv } from "./lib/runner/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance.mts";
-import { buildFixture } from "./lib/build-fixture.mts";
-import { LAUNCHER_EXIT_MS, QUIT_GRACE_MS, stopDevApp } from "./lib/dev-app.mts";
-import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
-import { CpuSampler, MIN_COVERAGE, SamplerBlockedError, SamplerInterruptedError, compileSampler, intervals, summarize } from "./lib/cpu-sampler.mts";
-import { cadenceStats, classifyCadence, counterDelta, type CadenceLayer, type CadenceStats, type CounterDelta } from "./lib/frame-cadence.mts";
-import { frameTimes, hasTool, probe, requireMediaTimeout } from "./lib/media-tools.mts";
-import { electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, recordStuffPids, signalPids, startBuild, stopGroup } from "./lib/processes.mts";
-import { MEASUREMENTS_DIR, REPO_ROOT } from "./lib/verify-recording.mts";
+import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance/acceptance.mts";
+import { buildFixture } from "./lib/runner/build-fixture.mts";
+import { LAUNCHER_EXIT_MS, QUIT_GRACE_MS, stopDevApp } from "./lib/runner/dev-app.mts";
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/runner/desktop-session.mts";
+import { CpuSampler, MIN_COVERAGE, SamplerBlockedError, SamplerInterruptedError, compileSampler, intervals, summarize } from "./lib/verification/cpu-sampler.mts";
+import { cadenceStats, classifyCadence, counterDelta, type CadenceLayer, type CadenceStats, type CounterDelta } from "./lib/verification/frame-cadence.mts";
+import { frameTimes, hasTool, probe, requireMediaTimeout } from "./lib/verification/media-tools.mts";
+import { electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, recordStuffPids, signalPids, startBuild, stopGroup } from "./lib/runner/processes.mts";
+import { MEASUREMENTS_DIR, REPO_ROOT } from "./lib/verification/verify-recording.mts";
 import { FRAME_RATES, type FrameRate, type QualitySettings } from "../src/shared/quality.ts";
 
 const ELECTRON_APP = path.join(REPO_ROOT, "node_modules/electron/dist/Electron.app");

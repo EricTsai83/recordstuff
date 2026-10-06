@@ -6,7 +6,7 @@
 
 ## App 組裝 — main/index.ts
 
-[原始碼](../../../src/main/index.ts)。`main()` 裡的動作函式閉包共享 settings、recorder、tray；它們不是可由 renderer 任意呼叫的 API。
+[原始碼](../../../src/main/index.ts)。`main()` 裡的閉包建立各協作者並交給 [action handler](#action-handler--mainactionsactionsts)；它們不是可由 renderer 任意呼叫的 API。
 
 | 函式 | 輸入 → 結果與設計 |
 | --- | --- |
@@ -19,7 +19,7 @@
 | `displayChanged()` | 把目前連線的螢幕 id 交給 DisplayMedia；使用中的螢幕移除時讓錄影失敗，並刷新 UI |
 | `main()` | 等 ready、組裝依賴、建立 Tray／watcher、註冊動作與退出；錯誤事件寫 log |
 | `quality()` | 開發記憶體 override 或已保存設定 → 平台可用的有效品質 |
-| `handleAction(action)` | 字串 action、失敗紀錄動作，以及每一種偏好變更 → 對應 stop／quit／設定／relaunch／Finder 動作；偏好一律經 `savePreference` 或 `AppShortcuts.set` |
+| `handleAction(action)` | 宣告提升（hoisted），讓比 handler 先建立的視窗與 tray 能持有它；每個 action 都轉交 `createActionHandler` 建立的 handler |
 | `savePreference(what, save)` | 單一偏好寫入：`locked` 的偏好需要 recorder 已 settle；等待寫入，失敗留 log 並在 tray 有對應通知時通知；之後兩個投影一起 refresh |
 | `focusApp()` | 對話框或視窗出現前先讓選單列 App 取得前景（macOS），避免開在最前面的 App 後方 |
 | `showSavedRecording(path)` | 存檔通知的點擊：重新列出資料夾並開啟「錄影檔」、帶出那段錄影；若之後被移動或刪除，則顯示資料夾目前的內容 |
@@ -27,19 +27,32 @@
 | `changeOutputDir()` | 系統對話框 → 保存使用者選擇，失敗通知；成功清位置錯誤並 refresh |
 | `openOutputDir()` | 設定中儲存位置的「在 Finder 中顯示」：以 `shell.openPath`、原生警告、App focus 與經 settled 檢查的 `changeOutputDir` 組成 `createOutputFolderOpener` |
 
-[main/output-folder.ts](../../../src/main/output-folder.ts)：`createOutputFolderOpener` 回傳同時只進行一次的開啟動作。先 stat 資料夾：是資料夾就開啟；不存在的已知預設資料夾，只在上層資料夾存在時以非遞迴 `mkdir` 建立；不存在的自訂資料夾、檔案、建立被拒、無法讀取的路徑或 Finder 失敗，都變成一則附路徑、詳細資訊與「更改儲存位置／取消」的在地化警告；錄影工作仍在進行時，改為記入 log 並由 `CaptureNotices` 保留成通知告知，因為模態警告會卡住那些工作。存取被拒時仍先請 Finder 開啟。永遠不寫入設定；重複點擊會併入進行中的那次，警告開著時把它帶到前景。`nodeOutputFolderFs` 是真正的 stat／mkdir 邊界。
+[main/library/output-folder.ts](../../../src/main/library/output-folder.ts)：`createOutputFolderOpener` 回傳同時只進行一次的開啟動作。先 stat 資料夾：是資料夾就開啟；不存在的已知預設資料夾，只在上層資料夾存在時以非遞迴 `mkdir` 建立；不存在的自訂資料夾、檔案、建立被拒、無法讀取的路徑或 Finder 失敗，都變成一則附路徑、詳細資訊與「更改儲存位置／取消」的在地化警告；錄影工作仍在進行時，改為記入 log 並由 `CaptureNotices` 保留成通知告知，因為模態警告會卡住那些工作。存取被拒時仍先請 Finder 開啟。永遠不寫入設定；重複點擊會併入進行中的那次，警告開著時把它帶到前景。`nodeOutputFolderFs` 是真正的 stat／mkdir 邊界。
 
 事件：uncaughtException 留 log，第一次另顯示對話框；unhandledRejection 留 log；`main()` 失敗時留 log、顯示對話框並結束程序。Recorder state／saved／captureStarted／failed／permissionRequested 分別更新 Tray、發通知、處理降級與失效授權。tray 左鍵與全域快捷鍵共用同一個 `toggle` closure。Recorder 取得 `fs.statfs` 可用空間與 `userData/recording-sessions` sentinel；啟動時經由歷史還原回報遺留 sentinel，`powerMonitor` 的 suspend／resume 連同進行中 session 寫入 log。before-quit 忙碌時等待 shutdown；will-quit 釋放快捷鍵與其他資源。
 
+[資料遷移與清除](../../../src/main/app/data-cleanup.ts)：`SettingsStore.migrate()` 在啟動時轉換 v1／v2 設定並保留原檔；較新版本拒絕覆寫。`DataCleanupRequest.request()` 管理原生確認與前後的 settle 檢查；`prepareDataCleanup()` 在退出已允許時提交一次性清除程序，等父程序退出才刪除 App 資料並保護錄影。`waitForDataCleanup()` 防止重新啟動與清除同時寫入。
+
+## Action handler — main/actions/actions.ts
+
+[原始碼](../../../src/main/actions/actions.ts)。Tray、設定面板、應用程式選單、通知與設定快捷鍵發出的每個 `AppAction` 都在這裡決定。協作者由 `index.ts` 傳入；本模組不建立任何協作者。
+
+| 函式 | 輸入 → 結果與設計 |
+| --- | --- |
+| `createActionHandler(deps)` | 綁定協作者一次，回傳 handler |
+| handler：結束閘門 | 結束進行中時，除了 quit 以外的每個 action 都回 false，且不觸碰任何東西 |
+| handler：偏好設定 | 每個 `set…` action 都經 `savePreference` 並帶著自己的鎖：螢幕、更新檢查、通知、檔名、倒數、倒數音效與品質需要 recorder 已 settle；tray 點擊、錄影檔版面、外觀與語言不需要；快捷鍵經 `AppShortcuts.set` |
+| handler：指令 | 開啟設定分頁、連結、輸出資料夾、log 或系統設定；開始、停止或取消；結束或重新啟動；清除 App 資料。每個都回傳設定列要讀的結果；錄影中搶先按下的更新連結回 true 且不開啟任何東西 |
+
 ## 螢幕選擇
 
-[main/display-source.ts](../../../src/main/display-source.ts)：`resolveDisplayPreference` 解析保存的主螢幕或指定目標；`selectScreenSource` 要求恰好一個來源的 display id 與解析出的主螢幕或指定螢幕相符，不做回退。`DisplayRequest.run` 在來源列舉前後檢查配置，兩種偏好在來源缺失或配置變更時都最多嘗試三次，callback 只結算一次，途中拋出例外時也一樣（經可選的 `failed` 依賴回報）。`cancel` 結算等待中的 callback 並清除重試延遲。`displayResolution` 讓 tray 與設定共用可用性判定。
+[main/display/display-source.ts](../../../src/main/display/display-source.ts)：`resolveDisplayPreference` 解析保存的主螢幕或指定目標；`selectScreenSource` 要求恰好一個來源的 display id 與解析出的主螢幕或指定螢幕相符，不做回退。`DisplayRequest.run` 在來源列舉前後檢查配置，兩種偏好在來源缺失或配置變更時都最多嘗試三次，callback 只結算一次，途中拋出例外時也一樣（經可選的 `failed` 依賴回報）。`cancel` 結算等待中的 callback 並清除重試延遲。`displayResolution` 讓 tray 與設定共用可用性判定。
 
-[main/display-media.ts](../../../src/main/display-media.ts)：`DisplayMedia` 保存跨錄影嘗試的 display-media 狀態。`begin(sessionId)` 取消前一個請求並快照保存的螢幕偏好；`answer(owns, callback)` 只替本次嘗試擁有的 frame 執行 `DisplayRequest`，否則不給來源；`explain(code)` 以 main 的拒絕原因取代一個可解釋的 host 錯誤；`settle()` 取消未完成的工作並停止監看使用中的螢幕；`topologyChanged(connectedIds)` 推進配置世代，並回報錄影中的螢幕是否已中斷連線。`failure` 是 tray 與設定顯示的螢幕診斷。
+[main/display/display-media.ts](../../../src/main/display/display-media.ts)：`DisplayMedia` 保存跨錄影嘗試的 display-media 狀態。`begin(sessionId)` 取消前一個請求並快照保存的螢幕偏好；`answer(owns, callback)` 只替本次嘗試擁有的 frame 執行 `DisplayRequest`，否則不給來源；`explain(code)` 以 main 的拒絕原因取代一個可解釋的 host 錯誤；`settle()` 取消未完成的工作並停止監看使用中的螢幕；`topologyChanged(connectedIds)` 推進配置世代，並回報錄影中的螢幕是否已中斷連線。`failure` 是 tray 與設定顯示的螢幕診斷。
 
-## 狀態機 — main/recorder.ts
+## 狀態機 — main/recording/recorder.ts
 
-[原始碼](../../../src/main/recorder.ts)。所有依賴可注入，便於不用 Electron 測 session 競態、I/O 與計時。
+[原始碼](../../../src/main/recording/recorder.ts)。所有依賴可注入，便於不用 Electron 測 session 競態、I/O 與計時。
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
@@ -77,9 +90,9 @@
 | `clearTimer` / `clearDisk` / `clearHealth` | 取消並清除 session deadline／可用空間查詢／查詢與停滯 timer |
 | `setState(state)` / `emit(event)` | 替換狀態並發事件／依序呼叫 listeners；某個 listener 拋出時只記 log，其他 listener 與 recorder 自身的清理照常執行 |
 
-## Host 監督器 — main/capture-host.ts
+## Host 監督器 — main/recording/capture-host.ts
 
-[原始碼](../../../src/main/capture-host.ts)。這個 CaptureHost 與 renderer 同名類別在不同程序。
+[原始碼](../../../src/main/recording/capture-host.ts)。這個 CaptureHost 與 renderer 同名類別在不同程序。
 
 | 方法 | 契約與副作用 |
 | --- | --- |
@@ -96,9 +109,9 @@
 | `emitFailure(code, detail)` | 發送程序失敗事件，由 Recorder 決定 session 收尾 |
 | `teardown()` | 停心跳、close port、清 ready、destroy 視窗，允許下次重建 |
 
-## 擷取與編碼 — renderer/capture-host.ts
+## 擷取與編碼 — renderer/capture/capture-host.ts
 
-[原始碼](../../../src/renderer/capture-host.ts)。沒有檔案或任意 Node API。
+[原始碼](../../../src/renderer/capture/capture-host.ts)。沒有檔案或任意 Node API。
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
@@ -123,14 +136,14 @@
 
 頁面 message listener 檢查 source／標記／port 後建立 host。MediaRecorder callbacks 的先後順序是 chunk chain → terminal message，詳見 [錄影管線](recording.md)。
 
-## 影片儲存 — main/file-writer.ts
+## 影片儲存 — main/recording/file-writer.ts
 
-[原始碼](../../../src/main/file-writer.ts)。nodeFs 將 open／link／排他複製／unlink／mkdir／writeFile 適配成可替換 I/O。
+[原始碼](../../../src/main/recording/file-writer.ts)。nodeFs 將 open／link／排他複製／unlink／mkdir／writeFile 適配成可替換 I/O。
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
 | `FileWriteError.constructor(code, filePath, cause)` | 附 code／路徑／原始 cause 的 Error |
-| `errnoCode(cause)` / `messageOf(cause)`（[main/errors.ts](../../../src/main/errors.ts)） | 取得 errno／文字，未知 errno 為 undefined；main 所有讀 Node 錯誤的模組共用 |
+| `errnoCode(cause)` / `messageOf(cause)`（[main/lib/errors.ts](../../../src/main/lib/errors.ts)） | 取得 errno／文字，未知 errno 為 undefined；main 所有讀 Node 錯誤的模組共用 |
 | `classifyWriteError(cause)` | ENOSPC → disk_full，其他 → output_write_failed |
 | `classifyOpenError(cause)` | ENOSPC → disk_full，其他 → output_open_failed（資料夾 probe 與獨占開檔） |
 | `ensureWritableDir(dir, io)` | mkdir＋寫 probe；失敗依 `classifyOpenError` 拋出錯誤碼；probe 刪除 best effort |
@@ -146,9 +159,9 @@
 | `release()` | 一次性 closed／close handle；fsync timer 已由 `beginTerminal` 停止 |
 | `enqueue(task)` | 依序執行；首個 failure 被記住，後續回同一錯誤，內部 queue 保持可接續 |
 
-## 錄影檔資料庫 — main/recordings-library.ts
+## 錄影檔資料庫 — main/library/recordings-library.ts
 
-[原始碼](../../../src/main/recordings-library.ts) 為「錄影檔」分頁列出儲存位置，也是沙箱頁面取得錄影內容的唯一途徑；片長由 [main/mp4-duration.ts](../../../src/main/mp4-duration.ts) 讀取。見[桌面設計](desktop.md#錄影檔)。
+[原始碼](../../../src/main/library/recordings-library.ts) 為「錄影檔」分頁列出儲存位置，也是沙箱頁面取得錄影內容的唯一途徑；片長由 [main/library/mp4-duration.ts](../../../src/main/library/mp4-duration.ts) 讀取。見[桌面設計](desktop.md#錄影檔)。
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
@@ -165,7 +178,7 @@
 
 ## 設定、品質與協定
 
-[SettingsStore](../../../src/main/settings.ts)：
+[SettingsStore](../../../src/main/settings/settings.ts)：
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
@@ -182,11 +195,11 @@
 | `save(update)` | 序列化寫入；write 成功才換記憶體；失敗不阻斷後續 queue |
 | `write(settings)` | `writeFileAtomic`：mkdir、寫入並 fsync JSON.tmp，再 rename；不負責通知 |
 
-[main/atomic-file.ts](../../../src/main/atomic-file.ts)：`writeFileAtomic`／`writeFileAtomicSync` 建立父目錄、寫入 `<file>.tmp` 並 fsync，再 rename 覆蓋目標；失敗時移除暫存檔並保留原內容。設定、設定視窗尺寸與失敗歷史使用 `writeFileAtomic`；`writeFileAtomicSync` 只供驗證腳本使用。
+[main/lib/atomic-file.ts](../../../src/main/lib/atomic-file.ts)：`writeFileAtomic`／`writeFileAtomicSync` 建立父目錄、寫入 `<file>.tmp` 並 fsync，再 rename 覆蓋目標；失敗時移除暫存檔並保留原內容。設定、設定視窗尺寸與失敗歷史使用 `writeFileAtomic`；`writeFileAtomicSync` 只供驗證腳本使用。
 
 [shared/hotkey.ts](../../../src/shared/hotkey.ts)：`DEFAULT_HOTKEY` 啟用 ⇧⌘1；舊版曾提供的組合仍然有效，由 `hotkey.test.ts` 檢查。`validateAccelerator` 驗證支援的自訂組合，要求 Command 或 Control 並排除保留鍵；`canonicalizeAccelerator` 正規化修飾鍵順序與 Shift 符號。`canonicalHotkeySettings` 以相同規則驗證保存的快捷鍵，不限於選單提供的選項，並以正規化順序回傳；`describeAccelerator(accelerator, platform)` 在 darwin 顯示 `⌥⇧⌘R`、其他平台 `Ctrl+Alt+Shift+R`，供選單、通知與 log 使用。
 
-[main/hotkey.ts](../../../src/main/hotkey.ts)：
+[main/shortcuts/hotkey.ts](../../../src/main/shortcuts/hotkey.ts)：
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
@@ -218,7 +231,7 @@
 
 [shared/countdown.ts](../../../src/shared/countdown.ts)：`COUNTDOWN_CHOICES`（0、3、5、10）、`DEFAULT_COUNTDOWN`（3）與 `isCountdownSeconds`；`COUNTDOWN_TIMING`（tick、overlay 提前量、dismissal 上限、淡化、穩定間隔）與 `COUNTDOWN_OVERLAY`（字級占螢幕短邊的比例與 56–216 pt 上下限、視窗與字級的比例、邊距、字型、數字、以 56 pt 為基準的外框與陰影、減少透明度的數值），提示音數值 `COUNTDOWN_TICK`（523 Hz 正弦波、最後一個數字 ×1.5、小聲的四倍泛音、attack 4 ms、140 ms、−20 dBFS）、`DEFAULT_COUNTDOWN_SOUND`（開啟）、`tickFrequencyHz(digit)` 與頁面的 `COUNTDOWN_SOUND_QUERY`（plan 046），是所有時間、外觀與聲音數值唯一的定義處；`overlayFontPt(displayBounds)` 算出某個螢幕上的字級，`overlayBounds(displayBounds, workArea)` 以整數 pt 算出位於工作區右上角的正方形視窗；另定義 overlay preload 的數值 channel 與 bridge 型別。
 
-[main/countdown-overlay.ts](../../../src/main/countdown-overlay.ts)：
+[main/recording/countdown-overlay.ts](../../../src/main/recording/countdown-overlay.ts)：
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
@@ -228,7 +241,7 @@
 | `dismiss()` | 傳 `null` 讓數字淡出，淡出與穩定間隔後銷毀視窗再 resolve；尚未畫出任何內容時立即銷毀 |
 | `close()` / `destroy()` | 立即銷毀並讓等待中的 dismissal resolve；`destroy` 是 App 在穩定狀態與退出時的保險 |
 
-[renderer/countdown.ts](../../../src/renderer/countdown.ts)：`overlayStyle()` 把共用外觀數值轉成 CSS custom properties；`createCountdownView(stage, onDigit?)` 在兩個疊放的面之間交叉淡化，收到 `null` 時整體淡出，每個新數字呼叫一次選填的 `onDigit`；`playTick` 依 `COUNTDOWN_TICK` 以 Web Audio 合成一聲提示音；`soundRequested` 讀取頁面的 query（plan 046）。[preload/countdown.ts](../../../src/preload/countdown.ts) 只提供 `countdown.onValue`，只轉交正整數或 `null`。[shared/state.ts](../../../src/shared/state.ts) 的 `isErrorCode()` 以 ERROR_CODES 白名單檢查字串。
+[renderer/countdown/countdown.ts](../../../src/renderer/countdown/countdown.ts)：`overlayStyle()` 把共用外觀數值轉成 CSS custom properties；`createCountdownView(stage, onDigit?)` 在兩個疊放的面之間交叉淡化，收到 `null` 時整體淡出，每個新數字呼叫一次選填的 `onDigit`；`playTick` 依 `COUNTDOWN_TICK` 以 Web Audio 合成一聲提示音；`soundRequested` 讀取頁面的 query（plan 046）。[preload/countdown.ts](../../../src/preload/countdown.ts) 只提供 `countdown.onValue`，只轉交正整數或 `null`。[shared/state.ts](../../../src/shared/state.ts) 的 `isErrorCode()` 以 ERROR_CODES 白名單檢查字串。
 
 [preload/index.ts](../../../src/preload/index.ts) 沒有具名函式：唯一 ipcRenderer callback 接收 `capture-host-port` 後將 event.ports 轉交 window，沒有 contextBridge API。
 
@@ -236,9 +249,9 @@
 
 [shared/video-player.ts](../../../src/shared/video-player.ts)：`formatDuration(seconds)` 把長度或播放位置寫成 `1:23`，滿一小時為 `1:02:03`，整秒無條件捨去，讓錄影卡片上的長度與播放器的總長一致；未知長度為 `0:00`。`playbackState` 與 `isFullScreenChoice` 驗證全螢幕視窗與播放器送來的內容。
 
-## 權限 — main/permission.ts
+## 權限 — main/permission/permission.ts
 
-[原始碼](../../../src/main/permission.ts)。
+[原始碼](../../../src/main/permission/permission.ts)。
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
@@ -255,19 +268,19 @@
 | `enumerate()` / `settle()` | 持有唯一呼叫直到它結束；只釋放自己的名額；忽略舊世代；成功快取或排入倍增退避 |
 | `emit(status)` | 相同 granted／needsRelaunch 不重送 |
 
-## 共用 UI 語彙 — main/ui-model.ts
+## 共用 UI 語彙 — main/app/ui-model.ts
 
-[原始碼](../../../src/main/ui-model.ts)。Tray 與設定面板共同的基礎；兩個投影互不衍生。
+[原始碼](../../../src/main/app/ui-model.ts)。Tray 與設定面板共同的基礎；兩個投影互不衍生。
 
 | 函式／型別 | 契約 |
 | --- | --- |
 | `AppAction` / `AppContext` / `AppHotkey` | 所有介面能發出的 action union，以及兩者共同投影的唯讀 context 快照 |
-| `preferencesUnlocked(state)` | 設定能否更改的唯一規則：只有 idle 與 needsPermission |
+| `preferencesUnlocked(state)`（[main/recording/recording-lock.ts](../../../src/main/recording/recording-lock.ts)） | 設定能否更改的唯一規則：只有 idle 與 needsPermission |
 | `abbreviateHome(path, home)` | 只縮寫相同 home 或完整路徑前綴，避免誤縮其他同名字首資料夾 |
 
-## 設定面板模型 — main/settings-model.ts
+## 設定面板模型 — main/settings/settings-model.ts
 
-[原始碼](../../../src/main/settings-model.ts)。每項偏好設定只宣告一次，並配穩定 id。
+[原始碼](../../../src/main/settings/settings-model.ts)。每項偏好設定只宣告一次，並配穩定 id。
 
 | 函式 | 契約 |
 | --- | --- |
@@ -280,7 +293,9 @@
 | `settingsAction(state, ctx, group, choice)` | 當下有提供且可用的 group/choice 才回傳對應 action，否則 undefined |
 | `settingsChecked(state, ctx, group, choice)` | 該選項是否為實際提交值；main 用它回報保存是否生效 |
 
-## 設定視窗 — main/settings-window.ts、renderer/settings.ts
+## 設定視窗 — main/settings/settings-window.ts、renderer/settings/settings.ts
+
+頁面外框是 `settings-app.tsx`；分頁是 `tabs/library.tsx`、`tabs/preferences.tsx`（含 `tabs/shortcut-editor.tsx`）與 `tabs/failures.tsx`。`settings-controller.ts` 是頁面讀取的唯一介面，內容依職責放在 `controller/`：投影與請求（`core.ts`）、快捷鍵編輯器、失敗紀錄列、錄影檔分頁、內嵌播放器、說明 popover 與提示。
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
@@ -290,13 +305,13 @@
 | `destroy()` | 退出時移除 handler 與視窗 |
 | `apply(group, choice)` | 解析 id、呼叫共用 action handler，回傳新 view 與是否真的提交 |
 | `settings:choose` 佇列 | 依請求順序序列化保存，第二個請求是等待而不是失敗 |
-| 面板 `draw()` / `row()` | 畫出 view，並把焦點還給重建後取代的同一個控制項；明確的失敗入口會切到失敗紀錄分頁；每個分頁離開時保存捲動位置，重建的面板穩定後還原 |
-| 面板 `updateRecordingResult()` / `resultRow()` / `fillRow()` | 失敗紀錄分頁（plan 047）：依 ID 保留、依日期分組的收合列，同時只展開一列，上下鍵、Home、End 在標題間移動，入口目標展開並聚焦，移除後焦點移到相鄰列，移除最後一列後移到分頁 |
+| `SettingsApp` / `controller.render()` | 透過 React／shadcn primitive 畫出已提交 view，保留 keyed 控制項與有焦點草稿；明確入口切到指定分頁，排版完成後還原各分頁捲動位置 |
+| `FailureRow` / `controller.toggleResult()` | 依 ID 保留、依日期分組、各自獨立展開的 Collapsible；上下鍵、Home、End 在標題間移動，入口目標展開並聚焦，移除後焦點移到相鄰列或分頁 |
 | 面板 `choose()` | 送出 id；保存期間正在操作的控制項保持可用、其餘暫時停用；未提交時顯示失敗文案 |
 
 ## Tray 模型與原生呈現
 
-[tray-model.ts](../../../src/main/tray-model.ts)：扁平指令選單，不含任何偏好設定。
+[tray-model.ts](../../../src/main/menus/tray-model.ts)：扁平指令選單，不含任何偏好設定。
 
 | 函式 | 契約 |
 | --- | --- |
@@ -314,7 +329,7 @@
 | `frameRateDowngradeNotification(requested, actual)` | 說明系統實際提供的 fps |
 | `trayHintNotification(platform)` | 首次啟動時指向 macOS 選單列或其他平台系統匣的提示；在 macOS 上也藉此觸發唯一一次通知授權詢問 |
 
-[recording-result.ts](../../../src/main/recording-result.ts)：
+[recording-result.ts](../../../src/main/recording/recording-result.ts)：
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
@@ -323,15 +338,15 @@
 | `RecordingResults.saved` | 所有指定 ID 都曾寫入已保存的檔案後 resolve（包含之後的自動重試）；本身不觸發保存 |
 | `isOutputFolderFailure` / `isPermissionFailure` | 共用的復原分類：輸出資料夾類失敗提供變更資料夾；權限類失敗（含 no_audio_track）在 macOS 提供系統設定與重新啟動 |
 
-[session-sentinel.ts](../../../src/main/session-sentinel.ts)：`SessionSentinels.write` 在暫存檔存在前以原子寫入記下它；`remove` 刪除且不拋出；`leftovers` 列出先前程序留下的 sentinel，略過本程序的 session，捨棄中斷寫入與無效內容，暫時無法讀取的則保留。`interruptionFailure` 將其轉為 ID 由 session 推導的 `app_terminated` 紀錄；`reportInterruptions` 在啟動時交給 `RecordingResults.restore`，待 `RecordingResults.saved` 確認紀錄已保存後才移除 sentinel。
+[session-sentinel.ts](../../../src/main/recording/session-sentinel.ts)：`SessionSentinels.write` 在暫存檔存在前以原子寫入記下它；`remove` 刪除且不拋出；`leftovers` 列出先前程序留下的 sentinel，略過本程序的 session，捨棄中斷寫入與無效內容，暫時無法讀取的則保留。`interruptionFailure` 將其轉為 ID 由 session 推導的 `app_terminated` 紀錄；`reportInterruptions` 在啟動時交給 `RecordingResults.restore`，待 `RecordingResults.saved` 確認紀錄已保存後才移除 sentinel。
 
-[recording-health.ts](../../../src/main/recording-health.ts)：`RECORDING_HEALTH` 是停滯、可用空間、writer 積壓與啟動排空門檻的唯一位置。
+[recording-health.ts](../../../src/main/recording/recording-health.ts)：`RECORDING_HEALTH` 是停滯、可用空間、writer 積壓與啟動排空門檻的唯一位置。
 
-[keep-awake.ts](../../../src/main/keep-awake.ts)：`KeepAwake.update` 從 `starting` 到狀態回到穩定前持有一個 `prevent-display-sleep` 電源 blocker，並記錄每次開始與停止；blocker 丟出錯誤時只記錄；`dispose` 在結束時釋放（plan 050）。
+[keep-awake.ts](../../../src/main/recording/keep-awake.ts)：`KeepAwake.update` 從 `starting` 到狀態回到穩定前持有一個 `prevent-display-sleep` 電源 blocker，並記錄每次開始與停止；blocker 丟出錯誤時只記錄；`dispose` 在結束時釋放（plan 050）。
 
-[recording-result-store.ts](../../../src/main/recording-result-store.ts)：驗證並原子替換版本化失敗歷史，升級舊單筆資料但不覆寫舊檔。精確 ID 的重試不改未讀狀態，移除僅刪已確認資訊。
+[recording-result-store.ts](../../../src/main/recording/recording-result-store.ts)：驗證並原子替換版本化失敗歷史，升級舊單筆資料但不覆寫舊檔。精確 ID 的重試不改未讀狀態，移除僅刪已確認資訊。
 
-[tray.ts](../../../src/main/tray.ts)：
+[tray.ts](../../../src/main/menus/tray.ts)：
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
@@ -354,11 +369,11 @@
 
 ## Log 與自動錄影
 
-[log.ts](../../../src/main/log.ts)：`rotatedPath(path, index)` 組 archive 檔名；`rotateLog(path, keep)` 刪最舊再逆序搬移；`formatLine(message, now)` 加 ISO 前綴；`createFileLogger(options)` 回傳帶 `flush()` 的 logger：每行立即寫 stdout，並加入一條序列化、上限 1 MiB 的非同步檔案佇列（超過上限的行只從檔案捨棄，並回報一次）。第一次寫入建立目錄並在每個程序只查一次長度；之後累計寫入位元組、超過 `maxBytes` 時先輪替；磁碟已滿或 logs 資料夾被刪除時只略過這些行，之後寫入成功時記下檔案漏掉幾行，其他檔案錯誤則停用檔案輸出。`flushBeforeExit(log, timeoutMs)` 有上限地等待佇列寫完，讓啟動失敗或第二個實例結束前，原因已寫進檔案。
+[log.ts](../../../src/main/lib/log.ts)：`rotatedPath(path, index)` 組 archive 檔名；`rotateLog(path, keep)` 刪最舊再逆序搬移；`formatLine(message, now)` 加 ISO 前綴；`createFileLogger(options)` 回傳帶 `flush()` 的 logger：每行立即寫 stdout，並加入一條序列化、上限 1 MiB 的非同步檔案佇列（超過上限的行只從檔案捨棄，並回報一次）。第一次寫入建立目錄並在每個程序只查一次長度；之後累計寫入位元組、超過 `maxBytes` 時先輪替；磁碟已滿或 logs 資料夾被刪除時只略過這些行，之後寫入成功時記下檔案漏掉幾行，其他檔案錯誤則停用檔案輸出。`flushBeforeExit(log, timeoutMs)` 有上限地等待佇列寫完，讓啟動失敗或第二個實例結束前，原因已寫進檔案。
 
-[session-log.ts](../../../src/main/session-log.ts)：`createRunId(launchedAt, pid)` 由啟動時間與 pid 組成每次啟動的 run id；`logSessionEvent(log, run, event)` 對 captureStarted、saved、failed 與 preflight 拒絕先寫人類可讀的 `saved`／`failed:` 行，再寫有版本的 session record；取消的倒數只寫一行記下暫存檔的 `cancelled:`，不寫 record；其他事件忽略。[shared/session-record.ts](../../../src/shared/session-record.ts) 定義 record schema、前綴與版本並格式化一筆 record；只有 type import，scripts 可直接載入。
+[session-log.ts](../../../src/main/recording/session-log.ts)：`createRunId(launchedAt, pid)` 由啟動時間與 pid 組成每次啟動的 run id；`logSessionEvent(log, run, event)` 對 captureStarted、saved、failed 與 preflight 拒絕先寫人類可讀的 `saved`／`failed:` 行，再寫有版本的 session record；取消的倒數只寫一行記下暫存檔的 `cancelled:`，不寫 record；其他事件忽略。[shared/session-record.ts](../../../src/shared/session-record.ts) 定義 record schema、前綴與版本並格式化一筆 record；只有 type import，scripts 可直接載入。
 
-[autorecord.ts](../../../src/main/autorecord.ts)：`parseAutoRecord(value, isPackaged)` 在打包版／空值回 undefined；其餘解析 seconds∈(0,3600]、合法 quality patch 與選填的 countdown（未指定為 0），不論輸入為何都設 `countdownSound: false`（plan 046），合併預設而非使用者設定。`runAutoRecord(config, deps)` 等預設 1.5 秒後由公開 toggle 開始，進 recording 才排計時停止，saved／failed／cancelled，或按下開始前的 needsPermission 後，由內部 `finish(message)` 一次性 log＋quit。絕對路徑的 `outputDir` 只在這次執行取代已存的資料夾，不寫入設定。用於開發量測，不在正式版提供遠端控制。
+[autorecord.ts](../../../src/main/recording/autorecord.ts)：`parseAutoRecord(value, isPackaged)` 在打包版／空值回 undefined；其餘解析 seconds∈(0,3600]、合法 quality patch 與選填的 countdown（未指定為 0），不論輸入為何都設 `countdownSound: false`（plan 046），合併預設而非使用者設定。`runAutoRecord(config, deps)` 等預設 1.5 秒後由公開 toggle 開始，進 recording 才排計時停止，saved／failed／cancelled，或按下開始前的 needsPermission 後，由內部 `finish(message)` 一次性 log＋quit。絕對路徑的 `outputDir` 只在這次執行取代已存的資料夾，不寫入設定。用於開發量測，不在正式版提供遠端控制。
 
 ## 簽章與圖示工具
 
@@ -386,22 +401,22 @@
 | [acceptance-settings.mts](../../../scripts/acceptance-settings.mts) 頂層 | 要求已有建置產物與本機 Electron；以 90 秒上限在全新證據目錄執行 fixture；印出每個案例；寫 report.md；缺前置或無結果以 2 退出，任一 fail 以 1 退出 |
 | [fixtures/settings-panel.ts](../../../scripts/fixtures/settings-panel.ts) | 在隱藏的 sandbox 視窗載入已建置的 preload 與頁面，自備 view 與 IPC handler；判定 CSP／console、暴露的 bridge、沒有 Node API、URL 語言、畫出的控制項、不可用選項、被拒絕快捷鍵的註解、真實變更往返，以及未提交的選擇；寫出 results.json 與 panel.png |
 | [acceptance-hotkey.mts](../../../scripts/acceptance-hotkey.mts) 頂層 | 要求 ffmpeg／ffprobe 可用，且 RecordStuff 執行中、idle、有 run id 且有 `hotkey: registered`；開 kiosk 素材；以 System Events 送組合鍵；從 rotation-aware cursor 各 30 秒內等 `pressed`、`state → recording`、本次的 capture record、第二個 `pressed` 與該 session 的終止 record；以 `testMaterial` 並要求聲道能量驗完整性層級，並要求檔案 metadata 配到該 session；寫 report.md／verify.json／app-session.log；缺 ffmpeg／ffprobe 時在送鍵前以 2 退出，任一檢查 fail、blocked 或 incomplete 以 1 退出 |
-| [lib/acceptance.mts](../../../scripts/lib/acceptance.mts) `acceleratorToKeystroke` / `keystrokeScript` | Electron accelerator → System Events `keystroke … using {…}`；無法輸入的鍵回 undefined |
-| 同檔 `lastStartIndex` / `registeredAccelerator` / `currentState` / `currentRunId` / `lineTime` | 只讀目前程序的 log（略過被 lock 拒絕的第二次啟動的 `start:` 行）與其 run id；解析行時間戳 |
-| [lib/log-reader.mts](../../../scripts/lib/log-reader.mts) `LogReader.end` / `since` / `all`、`readRetainedLog`、`evidenceSince` | 最後一個完整行之後的 rotation-aware cursor（檔案身分＋byte offset）；跨保留 archive 讀 cursor 之後的完整行、每行一次，retention 或截斷移除歷史時丟 `LogGapError`（cursor 的 64 bytes 標記也能抓到截斷後又長回的檔案）；由舊到新的所有保留行；以標記取代遺失歷史的證據行 |
-| [lib/session-records.mts](../../../scripts/lib/session-records.mts) `parseSessionRecord` / `startLineRun` / `logMessage` | 驗證已知版本的 session record（格式錯誤或未來版本忽略）；`start:` 行的 run id；去掉時間戳 |
-| [lib/acceptance-runtime.mts](../../../scripts/lib/acceptance-runtime.mts) `waitForLog` / `waitForRecord` / `recordingOutcome` / `finishRecording` / `settleRecording` | 從 cursor 起算的有時限等待，遇 evidence gap 立即 reject；App 有寫 record 時由 record、否則由人類可讀行判斷本次錄影結果，可限定單一 session；不重複切換的中斷錄影收尾；runner 對從未離開 idle 的 App 的退路 |
+| [lib/acceptance/acceptance.mts](../../../scripts/lib/acceptance/acceptance.mts) `acceleratorToKeystroke` / `keystrokeScript` | Electron accelerator → System Events `keystroke … using {…}`；無法輸入的鍵回 undefined |
+| 同檔 `lastStartIndex` / `registeredAccelerator` / `currentState` / `currentRunId` | 只讀目前程序的 log（略過被 lock 拒絕的第二次啟動的 `start:` 行）與其 run id |
+| [lib/runner/log-reader.mts](../../../scripts/lib/runner/log-reader.mts) `LogReader.end` / `since` / `all`、`readRetainedLog`、`evidenceSince`、`lineTime` | 最後一個完整行之後的 rotation-aware cursor（檔案身分＋byte offset）；跨保留 archive 讀 cursor 之後的完整行、每行一次，retention 或截斷移除歷史時丟 `LogGapError`（cursor 的 64 bytes 標記也能抓到截斷後又長回的檔案）；由舊到新的所有保留行；以標記取代遺失歷史的證據行；log 行的寫入時間 |
+| [lib/runner/session-records.mts](../../../scripts/lib/runner/session-records.mts) `parseSessionRecord` / `startLineRun` / `logMessage` | 驗證已知版本的 session record（格式錯誤或未來版本忽略）；`start:` 行的 run id；去掉時間戳 |
+| [lib/acceptance/acceptance-runtime.mts](../../../scripts/lib/acceptance/acceptance-runtime.mts) `waitForLog` / `waitForRecord` / `recordingOutcome` / `finishRecording` / `settleRecording` | 從 cursor 起算的有時限等待，遇 evidence gap 立即 reject；App 有寫 record 時由 record、否則由人類可讀行判斷本次錄影結果，可限定單一 session；不重複切換的中斷錄影收尾；runner 對從未離開 idle 的 App 的退路 |
 | [probe-recording.mjs](../../../scripts/probe-recording.mjs) `probe(file)` | ffprobe JSON → stream／container 數據；CLI 逐檔列出 |
 | 同檔 `ratio(text)`、`kbps(bps)`、`fixed(n, digits)` | 解析比例／格式化量測，未知以文字表示 |
 | [verify-recording.mts](../../../scripts/verify-recording.mts) `usage()` | 列參數格式並 exit 2；頂層解析 CLI，要求能量證據（帶 `--sync` 時也要求標記），逐檔驗證、輸出，依 `verdictExitCode` 退出：fail、incomplete 或無法讀取為 1，blocked 為 2 |
-| [lib/media-tools.mts](../../../scripts/lib/media-tools.mts) `ToolMissingError.constructor(tool)`、`MeasurementError.constructor(message)` | 缺工具的明確 Error；工具有執行但沒有產出有效量測 |
+| [lib/verification/media-tools.mts](../../../scripts/lib/verification/media-tools.mts) `ToolMissingError.constructor(tool)`、`MeasurementError.constructor(message)` | 缺工具的明確 Error；工具有執行但沒有產出有效量測 |
 | 同檔 `completed(what, result)`、`stderrTail(stderr)` | 只有 exit 0 才算量測；非 0 或被 signal 結束時丟 MeasurementError，附 stderr 最後幾行 |
 | 同檔 `run(tool, args)`、`hasTool(tool)` | spawnSync 包装／可啟動性檢查；有 maxBuffer，不載入影片到 App |
 | 同檔 `probe(file)` | ffprobe count_frames／streams／format，返回 JSON 與 decodeErrors；JSON 格式錯誤為 MeasurementError |
 | 同檔 `frameTimes(file, duration, edgeSeconds)`、`read(interval?)` | 影格 PTS；長片分別讀頭尾區間，不把中間空隙算掉幀 |
 | 同檔 `channelRms(file, channels)` | ffmpeg astats → 每聲道 dBFS；須回報串流的每個聲道才算完整 |
 | 同檔 `syncMarkers(file, duration)` | 解碼測試頁閃光／短音，回 flashes／beeps 時間點；偵測器須 exit 0 |
-| [lib/verify-recording.mts](../../../scripts/lib/verify-recording.mts) `readLogText(path)` | 所有保留檔案，由舊到新 |
+| [lib/verification/verify-recording.mts](../../../scripts/lib/verification/verify-recording.mts) `readLogText(path)` | 所有保留檔案，由舊到新 |
 | 同檔 `readLogPairs(path?)` | 有 log 則依身分配對，無 log 返回空的 LogPairs |
 | 同檔 `attempt(measurement)`、`verifyRecording(file, pairs, options)` | 查檔案的配對，再 probe／frame；能量（僅有音軌時）與 optional sync 轉為 Evidence（缺 ffmpeg 為 `unavailable`，其他失敗為 `error`）→measure→依呼叫端的必要證據 judge→帶配對狀態的 VerifyResult |
 | 同檔 `parseDimensions(text)` | WxH 字串 → dimensions 或 undefined |
@@ -412,18 +427,18 @@
 | 同檔 `mainDisplaySize()`、`outputDir()` | macOS 主螢幕／使用者設定或預設位置 |
 | 同檔 `sleep(ms)`、`electronPids()`、`electronMainPid()` | 回歸間隔；本 checkout 的 Electron.app 所有程序，以及它的主程序（CPU 取樣程式追蹤的根） |
 | 同檔 `logSince(start)` | 從本案例的 cursor 跨輪替讀 log；遺失歷史視為案例失敗 |
-| 同檔 `recordOnce(entry, key)` | 用環境變數啟動開發 App，以共用 CPU 取樣程式追蹤它的程序樹，等待結果，回 outcome；CPU 以錄影第 3 秒之後判定（lib/matrix.mts 的 `cpuWindow`），並附第 95 百分位、VTEncoderXPCService 與本機 baseline |
+| 同檔 `recordOnce(entry, key)` | 用環境變數啟動開發 App，以共用 CPU 取樣程式追蹤它的程序樹，等待結果，回 outcome；CPU 以錄影第 3 秒之後判定（lib/verification/matrix.mts 的 `cpuWindow`），並附第 95 百分位、VTEncoderXPCService 與本機 baseline |
 | 同檔 `main()` | 驗工具（先 ffmpeg／ffprobe，再檢查 CPU 取樣程式需要的 clang，缺少即在任何動作前 blocked exit 2）／平台、開素材頁、以能量與同步為必要證據依序 recordOnce＋verify、寫結果、cleanup，依 `verdictExitCode` 退出 |
 | 同檔 `unmetChecks(result)` | 案例判定與每個讓它未通過的檢查及原因 |
-| [lib/cpu-sampler.mts](../../../scripts/lib/cpu-sampler.mts) `compileSampler(dir)`、`CpuSampler` | 以 clang 編譯 [cpu-sampler.c](../../../scripts/lib/cpu-sampler.c)（沒有 Command Line Tools 時丟出 `SamplerBlockedError`）；持續讀取它每秒輸出的 `proc_pid_rusage` 計數，範圍是根程序、其子孫程序與追蹤的系統 helper（例如 VTEncoderXPCService），直到停止 |
+| [lib/verification/cpu-sampler.mts](../../../scripts/lib/verification/cpu-sampler.mts) `compileSampler(dir)`、`CpuSampler` | 以 clang 編譯 [cpu-sampler.c](../../../scripts/lib/verification/cpu-sampler.c)（沒有 Command Line Tools 時丟出 `SamplerBlockedError`）；持續讀取它每秒輸出的 `proc_pid_rusage` 計數，範圍是根程序、其子孫程序與追蹤的系統 helper（例如 VTEncoderXPCService），直到停止 |
 | 同檔 `parseSample`、`intervals`、`summarize`、`percentile` | 解析 helper 的一行；逐程序的每秒 CPU、喚醒與能耗，並標出 App 程序組合的變化；計算一段範圍的平均、nearest-rank 第 95 百分位與最大值，除非預期有變化，否則捨棄有變化的區間 |
 | 同檔 `CPU_BUDGET`、`judgeIdle`、`judgeSettingsOpen`、`judgeRecording`、`judgeCoverage`、`cpuBaseline`、`machineModel` | plan 049 的預算與判定（錄影門檻、編碼器回報、25% baseline 警告與 80% 取樣覆蓋）；從 cpu-baselines.json 讀本機記錄的 baseline |
 | 同檔 `processRole`、`rolesFromPs`、`readRoles`、`IDLE_ROLES`、`judgeRoles`、`judgeSteadyState` | 從命令列判斷 Chromium 程序的角色；App 程序樹的角色；各情境的待機契約；每次錄影後角色相同 |
 | [measure-cpu.mts](../../../scripts/measure-cpu.mts) `launch()`、`seed()`／`restoreSettings()`、`main()` | 啟動已結束的打包 App，等啟動工作結束；只在 App 結束時寫入倒數、錄影螢幕與品質，並在沒有程序後只把這三個鍵設回原值；執行 A、R、B、C 情境，寫出 report.md／report.json，結束 App 並確認退出，以 0／1／2／130／143 結束 |
 
-### 純量測邏輯 — scripts/lib/verify.mts
+### 純量測邏輯 — scripts/lib/verification/verify.mts
 
-[原始碼](../../../scripts/lib/verify.mts)。所有數學／解析與判定集中於此，不直接 spawn 程式。
+[原始碼](../../../scripts/lib/verification/verify.mts)。所有數學／解析與判定集中於此，不直接 spawn 程式。
 
 | 函式 | 契約 |
 | --- | --- |
@@ -453,12 +468,12 @@
 
 | 模組／函式 | 契約 |
 | --- | --- |
-| [audio-quality.mts](../../../scripts/lib/audio-quality.mts): fixture, wav | 產生 v2 已知雙聲道素材並序列化 PCM16 WAV |
+| [audio-quality.mts](../../../scripts/lib/audio/audio-quality.mts): fixture, wav | 產生 v2 已知雙聲道素材並序列化 PCM16 WAV |
 | 同上：fit, estimateFrequency | 含 DC 的最小平方正弦模型，以及有範圍限制的頻率搜尋；不呼叫外部程序 |
 | 同上：markerOnset, energy, analyze | 辨識標記、量功率、判定格式／頻率／聲道／連續性；回傳 pass、fail 或 invalid |
-| [audio-quality-tools.mts](../../../scripts/lib/audio-quality-tools.mts): inspectAudio | 先檢查格式，限時解碼前 60 秒，不重取樣、不混音 |
+| [audio-quality-tools.mts](../../../scripts/lib/audio/audio-quality-tools.mts): inspectAudio | 先檢查格式，限時解碼前 60 秒，不重取樣、不混音 |
 | 同上：recordAudio | 建置並驅動開發版程式，擷取開始後播放素材，驗證完成並只清理自有子程序 |
-| [audio-quality-summary.mts](../../../scripts/lib/audio-quality-summary.mts): summarize | 預期／完成 run 數、結果計數、min／median／max 與缺少值數；未完成為 incomplete |
+| [audio-quality-summary.mts](../../../scripts/lib/audio/audio-quality-summary.mts): summarize | 預期／完成 run 數、結果計數、min／median／max 與缺少值數；未完成為 incomplete |
 | [CLI](../../../scripts/audio-quality.mts): inspect, context, read, exitCode | 報告來源、環境快照、有限外部讀取與結束碼；頂層負責新目錄及 1–10 次重跑 |
 
 ## 簽署身分建立

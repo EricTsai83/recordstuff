@@ -26,7 +26,7 @@ Plan 057 讓 `pnpm acceptance:settings` 把視窗被其他 App 取消啟用的�
 
 - **案例前後的啟用狀態。** 在每個需要啟用視窗的案例前（focus line 與 focus border 矩陣、快捷鍵錄製、失敗紀錄操作或失敗連結 Retry 後歸還的焦點，以及它們一起拍的截圖），fixture 讀取 `BrowserWindow.isFocused()`、`isVisible()` 與頁面的 `data-window`。視窗未啟用時，先 `app.focus({ steal: true })` 再 `window.focus()` 要求啟用，判定時再讀一次，每段互動各自檢查。任一時點未啟用或中間發生 blur 的案例標為 `NOT RUN`，附上原因與 `lsappinfo` 讀到的最前面 App；該輪以 exit 2 結束，有已判定的失敗時仍為 exit 1。
 - **截圖失敗。** 所有 `capturePage()` 都經過同一個 helper。丟出錯誤時，fixture 寫出目前的案例，以及記錄截圖、錯誤與視窗狀態的 `failure.json`。只有在 fixture 已顯示視窗後，視窗於當下未啟用或被隱藏，才判為 blocked。這條路徑只由單元測試涵蓋：沒有辦法在實際回合中按需讓 `capturePage()` 失敗。
-- **測試。** [settings-activation.test.ts](../../../scripts/lib/settings-activation.test.ts) 涵蓋：
+- **測試。** [settings-activation.test.ts](../../../scripts/lib/acceptance/settings-activation.test.ts) 涵蓋：
   - 啟用、未啟用、隱藏與發生 blur 的視窗；
   - 啟用視窗上的通過與失敗；
   - 有無已判定失敗時的 not-run 案例；
@@ -58,7 +58,7 @@ Pass 2 無 findings。
 Plan 056 讓仍可能遇到進行中錄影的兩種對話框不再卡住錄影，並在延後退出通知看不到時提供可見的 fallback。由 Claude 實作，並由 Codex GPT-6 Astra review（[延後退出](../system-design/desktop.md#延後退出)、[對話框與 main 的 event loop](../system-design/desktop.md#對話框與-main-的-event-loop)、[受控 build](../system-design/tooling.md#受控驗收-build)）。
 
 - **未完成的媒體工作。** `Recorder.mediaPending` 在 session、或它留下的清理與存檔仍在進行時為 true，即使狀態已是 idle；`whenMediaSettled()` 在其結束時 resolve，判定與退出等待的相同。
-- **未捕捉例外。** `createUncaughtExceptionHandler`（[fault-dialog.ts](../../../src/main/fault-dialog.ts)）先寫 log，settled 的 App 立即顯示對話框。媒體工作未完成時，它等到工作 settle 才顯示、開啟前再確認一次，期間 tray 選單與 tooltip 顯示「發生未預期的錯誤，請查看 log 取得詳細資訊。」每個程序仍最多一次，handler 本身不會擲出例外。若錯誤同時讓工作無法 settle，只能透過這行 tray 文字、log 與 recorder 自身的期限呈現。
+- **未捕捉例外。** `createUncaughtExceptionHandler`（[fault-dialog.ts](../../../src/main/app/fault-dialog.ts)）先寫 log，settled 的 App 立即顯示對話框。媒體工作未完成時，它等到工作 settle 才顯示、開啟前再確認一次，期間 tray 選單與 tooltip 顯示「發生未預期的錯誤，請查看 log 取得詳細資訊。」每個程序仍最多一次，handler 本身不會擲出例外。若錯誤同時讓工作無法 settle，只能透過這行 tray 文字、log 與 recorder 自身的期限呈現。
 - **儲存位置警告。** opener 在媒體工作未完成時發現問題，會記 log，並以標題「無法開啟儲存位置」的通知送出同一段文字；它與擷取開始的提示一樣等畫面不再分享才送出，通知開關關閉時也會顯示。資料夾選擇器留給 settled 的 tray 與設定，那裡的警告不變。
 - **看不到的延後退出。** 以 `pnpm acceptance:quit-dialog -- --language en` 量測（`2026-09-29T14-03-29-867Z-quit-dialog-en`）：macOS 不允許開發用 Electron 通知，此時 `Notification.isSupported()` 回報 `true`，通知的 `failed` 事件在請求後 10 ms 帶著 `UNErrorDomain error 1` 到達。專注模式與畫面分享時被靜音的橫幅完全沒有訊號，所以 fallback 不依賴送達：延後退出會在任何狀態於 tray 選單與 tooltip 加上「尚未退出：…」（錄影工作，或設定／log 寫入），直到下一次狀態改變或退出要求，或擋住退出的工作完成為止。退出流程上沒有任何東西等待使用者。
 - **受控 build。** `pnpm acceptance:controlled -- throw` 在下一個 tick 從 timer 丟出一個合成的未捕捉例外。
@@ -103,7 +103,7 @@ Review：Codex GPT-6 Astra（medium reasoning、read-only），一個 pass，約
 
 Plan 054 補齊 plan 053 未能取得的原生證據，並加入 2026-09-29 20 項稽核的兩項快捷鍵 runner 修正與兩項原生觀察。所有原生檢查都通過，App 程式碼沒有變更。由 Claude 實作、Codex GPT-6 Astra review（[tooling](../system-design/tooling.md#收尾量測)、[第二次啟動](../system-design/desktop.md#設定快捷鍵)）。
 
-- **提早失敗後的停止。** `pnpm acceptance` 送出停止鍵前，會讀取本 session 自 capture 紀錄起的結束紀錄（[acceptance-runtime.mts](../../../scripts/lib/acceptance-runtime.mts) 的 `sessionEnded`）；已存檔或失敗的 session 會被回報並使該次執行失敗，不送出按鍵，因為 idle 的 App 會把它當成新的開始。App 在寫出結束紀錄前已回到 idle，因此收尾可以立即結束它。
+- **提早失敗後的停止。** `pnpm acceptance` 送出停止鍵前，會讀取本 session 自 capture 紀錄起的結束紀錄（[acceptance-runtime.mts](../../../scripts/lib/acceptance/acceptance-runtime.mts) 的 `sessionEnded`）；已存檔或失敗的 session 會被回報並使該次執行失敗，不送出按鍵，因為 idle 的 App 會把它當成新的開始。App 在寫出結束紀錄前已回到 idle，因此收尾可以立即結束它。
 - **被截斷的素材 beep。** 擷取在素材 beep 播放中開始時，檔案會先是一段靜音，接著 beep 直接以全音量出現；這個陡峭的起點讓兩個提示音音高出現約 −41 dBFS，而 2 秒後為 −69。`compareTickLevels` 現在會找出這種被截斷的起點（第一個達到窗內峰值一半的 sample，其前 25 ms 到 1 ms 之間不超過峰值十分之一，更早則沒有高於 −70 dBFS 的內容），只有找到時才把兩個視窗都靜音到該點並以 20 ms 淡入，使後段視窗維持約 −67 dBFS。第一版只把後段視窗靜音；review pass 1 指出這會把 reference 抬高到起點本身的能量，遮住 beep 下的提示音尾巴；pass 2 指出 −60 dBFS 的靜音門檻可能丟棄安靜的提示音，且一個 pre-echo sample 就能讓它失效，因此兩者都已替換。仍無法偵測：擷取同時也在 beep 中開始時，一個在擷取前約 60 ms 以上就開始、−28 dBFS 的提示音殘留的微弱尾巴。
 
 環境：M1 Pro、macOS 26.6.2、Electron 44.3.0，主螢幕 1920 × 1080（BenQ GW2785TC）另有第二個螢幕，版本為 `7470b28` 加上未提交的變更。維護者在桌面回合前回覆「好了」；暫停一個會被錄進去的瀏覽器影片後又回覆一次。
@@ -152,7 +152,7 @@ Review：Codex GPT-6 Astra（medium reasoning、read-only）。Pass 1（約 64 �
 
 桌面 runner 現在共用程序比對與啟動環境，由 Claude 實作，經 Codex GPT-6 Astra review（[工具](../system-design/tooling.md#驗收收尾)）。2026-09-29 第二輪稽核讀 `2088633` 時發現：`run-matrix`、`measure-finalization` 與 `diagnose-frame-cadence` 把真實 `Electron.app` 路徑未跳脫地放進 `pgrep`／`pkill` pattern，並忽略 `pgrep` 的結束碼；幾個 runner 只刪除 `ELECTRON_RUN_AS_NODE`，或自己維護 key 清單；四個 runner 重寫 RecordStuff pattern；`measure:finalization` 在阻塞式 build 期間被中斷會 exit 1；兩個素材 profile 是固定路徑且從不刪除。
 
-- **修改。** [processes.mts](../../../scripts/lib/processes.mts) 負責 `electronPattern` 與 `recordStuffPattern`（跳脫並加錨點）、`pgrepPids`／`pgrepProcesses`（無法啟動或結束碼不是 0 與 1 時丟出錯誤）、程序群組 build 與中斷結束碼；所有列名的 runner 都改用它們，`bundleProcessPattern` 與各自的 helper 已移除。所有會啟動 Electron 或 App 的 runner 都從 `scrubbedEnv()` 開始；`bench-publication` 在其上加 `ELECTRON_RUN_AS_NODE=1`。`measure:finalization`，以及回合後的 `diagnose:cadence`，都和 `matrix` 一樣在自己的程序群組中建置。`matrix`、`measure:finalization` 與 `diagnose:cadence` 用 `mkdtemp` 建立 Chrome profile，並在瀏覽器與其 `open` launcher 結束後刪除。
+- **修改。** [processes.mts](../../../scripts/lib/runner/processes.mts) 負責 `electronPattern` 與 `recordStuffPattern`（跳脫並加錨點）、`pgrepPids`／`pgrepProcesses`（無法啟動或結束碼不是 0 與 1 時丟出錯誤）、程序群組 build 與中斷結束碼；所有列名的 runner 都改用它們，`bundleProcessPattern` 與各自的 helper 已移除。所有會啟動 Electron 或 App 的 runner 都從 `scrubbedEnv()` 開始；`bench-publication` 在其上加 `ELECTRON_RUN_AS_NODE=1`。`measure:finalization`，以及回合後的 `diagnose:cadence`，都和 `matrix` 一樣在自己的程序群組中建置。`matrix`、`measure:finalization` 與 `diagnose:cadence` 用 `mkdtemp` 建立 Chrome profile，並在瀏覽器與其 `open` launcher 結束後刪除。
 - **環境。** M1 Pro、macOS 26.6.2、Electron 44.3.0，主螢幕 BenQ GW2785TC 1920 × 1080，另有一台直立副螢幕；基於 HEAD `44f5333` 加上未提交的修改；維護者在回合前回覆「好了」。agent 自己的 shell 帶有外層工具設定的 `ELECTRON_RUN_AS_NODE`，因此下列每次啟動也證明 runner 會清除它。
 - **實際執行的 runner。** `pnpm matrix -- quick` exit 0，3/3 段已儲存並通過驗證。帶 `NODE_OPTIONS=--require <標記>` 的 `pnpm measure:finalization -- --dir <tmp> --repeat 1` exit 0，停止到可再開始 40 ms：標記只被 pnpm、runner 與 electron-vite build 載入，沒有任何 Electron 程序載入（positive control 顯示 Electron 的 Node 會載入它）。`pnpm diagnose:cadence -- --runs 1` exit 0，兩段都是 `on-time`。`pnpm start:app` 後 `pnpm acceptance` exit 0，含倒數取消案例。`pnpm measure:cpu` PASS：閒置 0.043%、每秒喚醒 2.19 次，30 fps 錄影 15.9%，錄影後閒置 0.050% 且角色穩定，Settings 0.060%。`pnpm acceptance:updates -- --logic-only` exit 0，所有必要案例通過。每次結束後都沒有殘留 Electron、RecordStuff 或素材程序，也沒有 `recordstuff-*` profile。
 - **中斷。** `measure:finalization` 在 build 期間收到 SIGINT 時 exit 130（electron-vite 程序確實在執行，並隨群組停止）；在 take 期間收到 SIGTERM 時 exit 143，App 正常退出並儲存該段；`mkdtemp` 建立的 profile 在 take 期間存在，之後已刪除。回合後 `diagnose:cadence` 也改為相同的非同步 build；在第二次交接（「好了」）中，正常的 `--rates 30 --runs 1 --seconds 10` 一輪 exit 0（`on-time`），在真實 electron-vite build 期間收到 SIGINT 則 exit 130，build 群組已停止且沒有殘留。
@@ -229,7 +229,7 @@ RecordStuff 現在有待命與錄影的 CPU 預算，由 Claude 實作、Codex G
 
 矩陣回合 `pnpm matrix -- fps --repeat 3` 六次全部通過：Source Standard 30 fps 為 15.0／15.2／15.2%（第 95 百分位 16.2%、編碼器 2.1%），60 fps 為 21.6／21.9／22.1%（第 95 百分位 23.8%、編碼器 3.5%）。幀率、掉格、同步與位元率都和先前的回合一致。待機的喚醒大多是 Electron 本身的底線（主程序每秒約 1.2 次、GPU 0.7 次、網路服務 0.3 次）；RecordStuff 自己的週期工作只有權限輪詢，每秒 0.2 次。錄影 CPU 主要在 GPU 程序，30 fps 時約 8%，其次是 capture renderer 約 4%、主程序約 2%。
 
-每項目標都有充足餘裕通過，因此錄影門檻定為 30 fps ≤30%、60 fps ≤40%，中位數寫入 [cpu-baselines.json](../../../scripts/lib/cpu-baselines.json) 作為本機 baseline：`measure:cpu` 為 15.1% 與 22.2%，矩陣案例為 15.2% 與 21.9%。先前的 17%、21% 與 23% 是 `ps` 對整個案例的量測，無法比較。
+每項目標都有充足餘裕通過，因此錄影門檻定為 30 fps ≤30%、60 fps ≤40%，中位數寫入 [cpu-baselines.json](../../../scripts/lib/verification/cpu-baselines.json) 作為本機 baseline：`measure:cpu` 為 15.1% 與 22.2%，矩陣案例為 15.2% 與 21.9%。先前的 17%、21% 與 23% 是 `ps` 對整個案例的量測，無法比較。
 
 baseline 回合只有一項檢查失敗：B 的程序和啟動後不同。啟動時那個沒有載入頁面的 renderer，是 Electron 44 隨預設 session 預先啟動、讓第一個視窗更快開始的（[electron/electron#53144](https://github.com/electron/electron/pull/53144)），第一個 capture host 直接用了它（同一個 PID）。第一次擷取系統聲音時，Chromium 啟動了音訊服務，Chromium 152 會讓它一直存在到 App 結束：0.007%、每秒 0.30 次喚醒、49 MB。一個只碰了 `session.defaultSession` 的空白 Electron App 也會出現同樣的 renderer，停用 `SpareRendererForSitePerProcess` 也無法移除它。Chromium 152 的音訊服務沒有閒置結束機制。若停用 `AudioServiceOutOfProcess`、讓音訊在主程序中執行，只為了 49 MB 就要改變擷取架構，所以沒有嘗試。維護者決定接受這兩者並替換那項檢查：現在依 Chromium 角色對照待機契約判定程序，設定視窗關閉時錄影後不允許任何 renderer，而且每次儲存後 5 秒的角色必須和第一次錄影後相同。也就是說，每錄一次就多一份才算洩漏，而不是和冷啟動的差異。權限輪詢依維護者的選擇維持不變。第二輪每項檢查都通過。
 
@@ -444,7 +444,7 @@ Codex GPT-6 Astra（medium reasoning、read-only）pass 1 耗時 117 秒，回�
 
 回合之間的漂移對之後的計畫很重要：同一份程式碼，相隔十分鐘的兩個回合中 30 fps 案例相差約 0.25 fps，是同一回合內 spread（約 0.1 fps）的好幾倍。重用其他回合基準的前後比較，可能把這個漂移誤認為效果，因此[測試指南](../testing.md#縮短錄影回合)現在要求這類比較把基準和改動接連錄製（結果仍取決於該差異時用 A、B、A）；runner 每次呼叫只建置一次，所以兩個程式碼版本無法在同一個回合內執行。
 
-自動化證據：最終版本的 `pnpm check` 通過 typecheck、55 個檔案 914 項測試與建置；`scripts/lib/matrix.test.ts` 的 15 項新測試涵蓋矩陣清單與重複名稱、`--repeat` 上下限、未知與空白的名稱及選項、交錯順序、依名稱／時長／品質分組、從帶時間戳的 log 行計算階段、Timing 表、fail／blocked／incomplete／未驗證／metadata 未配對或沒有執行到的一次都會讓案例不算通過的重複摘要，以及真實 CLI 的 dry-run 順序與未知矩陣 exit 2。App 程式碼沒有改變，因此不需要錄影 smoke 或原生驗收；levels、十分鐘錄影與音訊診斷沒有執行。沒有重用先前的證據：runner 改變了，而且 step 1 需要分段數據。
+自動化證據：最終版本的 `pnpm check` 通過 typecheck、55 個檔案 914 項測試與建置；`scripts/lib/verification/matrix.test.ts` 的 15 項新測試涵蓋矩陣清單與重複名稱、`--repeat` 上下限、未知與空白的名稱及選項、交錯順序、依名稱／時長／品質分組、從帶時間戳的 log 行計算階段、Timing 表、fail／blocked／incomplete／未驗證／metadata 未配對或沒有執行到的一次都會讓案例不算通過的重複摘要，以及真實 CLI 的 dry-run 順序與未知矩陣 exit 2。App 程式碼沒有改變，因此不需要錄影 smoke 或原生驗收；levels、十分鐘錄影與音訊診斷沒有執行。沒有重用先前的證據：runner 改變了，而且 step 1 需要分段數據。
 
 每個回合結束後都沒有 Electron.app、RecordStuff 或素材瀏覽器程序殘留，`settings.json` 不變（前後 SHA-256 相同）。結案後依維護者要求刪除了本回合的測試產物：~/Movies/RecordStuff 中的 33 段錄影（`2026-09-26 05-22-17` 到 `05-57-19`），以及完全由本回合寫入的 `2026-09-26.md`／`.json`（包含重現 review finding 1 的無素材執行）。本節的數字即為保留的紀錄。本回合已依範圍分開 commit 在本機 main：runner `5d4efe1`、設計文件 `34fb0d6`，以及包含測試指南規則的本結案 commit。沒有 push 或發布。
 
@@ -454,7 +454,7 @@ Codex GPT-6 Astra（medium reasoning、read-only）pass 1 花 94 秒，回報四
 
 Tray 的儲存位置動作遇到不存在或無法使用的資料夾時，現在會以可見的方式復原（R2-08），由 Claude 實作、Codex GPT-6 Astra review（[桌面設計](../system-design/desktop.md#設定與儲存位置)）。原本 `openOutputDir` 呼叫 `shell.openPath` 後只把錯誤寫進 log。全新設定指向 `Movies/RecordStuff`，而錄影要到開始時才建立它，所以首次啟動時點擊沒有任何反應。
 
-- **行為。** [output-folder.ts](../../../src/main/output-folder.ts) 的 `createOutputFolderOpener` 先 stat 設定的資料夾：
+- **行為。** [output-folder.ts](../../../src/main/library/output-folder.ts) 的 `createOutputFolderOpener` 先 stat 設定的資料夾：
   - 既有資料夾照舊以 Finder 開啟；
   - 不存在的已知預設資料夾，只在上層資料夾存在時以非遞迴 `mkdir` 建立後開啟；
   - 不存在的自訂資料夾（例如在未連接的磁碟上）一律不重建。
@@ -462,8 +462,8 @@ Tray 的儲存位置動作遇到不存在或無法使用的資料夾時，現在
   - RecordStuff 自己的 stat 得到 `EACCES`／`EPERM` 時，仍會請 Finder 開啟，因為 macOS 隱私資料夾可能拒絕 App 而不拒絕 Finder。
   - 開啟永遠不寫入 settings.json。重複點擊會併入進行中的那次，警告開著時再點只會把它帶到前景。
   - 錄影的 `ensureWritableDir` 沒有改變。
-- **設定邊界。** `SettingsStore` 現在公開建構時拿到的 `defaultOutputDir`，opener 讀取它。第一次 `pnpm check` 只有 `scripts/lib/update-acceptance.test.ts` 失敗：它的 instrumentation 會替換唯一的 anchor `defaultOutputDir: defaultOutputDir(),`，而第一版接線重複了這段。改讀 store 的值後 anchor 仍只有一處，update fixture 的隔離資料夾也會同時套用到 store 與 opener。
-- **測試。** [output-folder.test.ts](../../../src/main/output-folder.test.ts) 的 17 項測試在真實暫存 home 與真實 `SettingsStore` 上執行正式 opener，並注入錯誤、shell 與對話框。涵蓋：
+- **設定邊界。** `SettingsStore` 現在公開建構時拿到的 `defaultOutputDir`，opener 讀取它。第一次 `pnpm check` 只有 `scripts/lib/acceptance/update-acceptance.test.ts` 失敗：它的 instrumentation 會替換唯一的 anchor `defaultOutputDir: defaultOutputDir(),`，而第一版接線重複了這段。改讀 store 的值後 anchor 仍只有一處，update fixture 的隔離資料夾也會同時套用到 store 與 opener。
+- **測試。** [output-folder.test.ts](../../../src/main/library/output-folder.test.ts) 的 17 項測試在真實暫存 home 與真實 `SettingsStore` 上執行正式 opener，並注入錯誤、shell 與對話框。涵蓋：
   - 全新預設資料夾只建立它本身再開啟，第二次點擊只開啟；
   - 既有資料夾；
   - 預設資料夾的上層不存在時不建立；
@@ -507,9 +507,9 @@ plan 043 手動執行的鍵盤配置檢查，現在由 `pnpm acceptance:shortcut
 - **只選取輸入法還不夠。** 從背景程序以 `TISSelectInputSource` 選取注音後，在觀察的 5 秒內鍵盤配置都停在 ABC。預設功能的 Electron probe 這時仍會觸發數字列 ⌘⌃⌥⇧7，所以只選取輸入法的檢查，會在 043 的 bug 存在時照樣通過。在 probe 自有視窗中聚焦一個文字欄位後，輸入法在 100 ms 內套用了 `com.apple.keylayout.ZhuyinBopomofo`。視窗關閉、probe 結束後配置仍然保留，預設功能的 probe 這時只觸發數字鍵盤。因此對輸入法，runner 會開這樣的視窗，最多等 8 秒讓配置套用後才繼續。
 - **組成。**
   - [runner](../../../scripts/acceptance-shortcut-layout.mts) 負責前置檢查、桌面回合、輸入法、fixture 程序與報告。
-  - [shortcut-layout.mts](../../../scripts/lib/shortcut-layout.mts) 包含 JavaScript for Automation 輔助程式（以 TIS 讀取與選取輸入法、以 CGEvent 讀取輸入的字元），以及輸入法選擇、還原紀錄、結果判定與其他 RecordStuff 程序的偵測。
+  - [shortcut-layout.mts](../../../scripts/lib/acceptance/shortcut-layout.mts) 包含 JavaScript for Automation 輔助程式（以 TIS 讀取與選取輸入法、以 CGEvent 讀取輸入的字元），以及輸入法選擇、還原紀錄、結果判定與其他 RecordStuff 程序的偵測。
   - 數字列沒有任何鍵輸入數字、且數字鍵盤 7 仍輸入 7 的輸入法才符合條件。已啟用的鍵盤輸入法依序嘗試，目前的輸入法排第一。
-  - [shortcut-layout.test.ts](../../../scripts/lib/shortcut-layout.test.ts) 的 16 項測試涵蓋：配置判定；嘗試順序，包括指定了未啟用或不可選取的輸入法；切換後、部分失敗後與第一次查詢失敗後的還原；無法確認的還原；pass／fail／blocked 的優先順序，包括程序寫出通過結果後又卡住或崩潰；drill；以及程序偵測，包括 `pnpm dev` 的相對 entry。
+  - [shortcut-layout.test.ts](../../../scripts/lib/acceptance/shortcut-layout.test.ts) 的 16 項測試涵蓋：配置判定；嘗試順序，包括指定了未啟用或不可選取的輸入法；切換後、部分失敗後與第一次查詢失敗後的還原；無法確認的還原；pass／fail／blocked 的優先順序，包括程序寫出通過結果後又卡住或崩潰；drill；以及程序偵測，包括 `pnpm dev` 的相對 entry。
   - 沒有新增 npm 依賴，共用的 shortcut-failure fixture 與 `acceptance-shortcut.mts` 都未修改。
 
 執行環境為 M1 Pro、macOS 26.6.2、Node 24.21.0、Electron 44.3.0，從 ABC 開始。已啟用的輸入法為 ABC 與注音。最終版本上的結果：
@@ -552,7 +552,7 @@ pass 2 約 1 分鐘，沒有 findings。30 分鐘的 review 預算用了約 2.5 
 
 全域快捷鍵改為依實體鍵位註冊，由 Claude 實作、Codex GPT-6 Astra review（[錄影快捷鍵](../system-design/desktop.md#錄影快捷鍵)、[設計決策](../system-design/decisions.md)）。問題是在 plan 032 的原生回合發現的：啟用注音時，預設的 ⌘⇧1 會被綁到數字鍵盤。Chromium 152 預設啟用 `LayoutAwareGlobalHotkeys`，會依目前配置找出輸入該字元的鍵來註冊，而 ZhuyinBopomofo 配置在數字列輸入注音符號。另一方面，快捷鍵編輯器記錄的是實體鍵位，並且拒絕數字鍵盤。Cap（`40f44a8`、`global-hotkey` 0.7.0）則是註冊固定的實體 key code。
 
-- **變更。** macOS 上，main 會在 app ready 之前設定 `disable-features`。這個值由 [hotkey.ts](../../../src/main/hotkey.ts) 的 `physicalHotkeyFeatures` 算出：
+- **變更。** macOS 上，main 會在 app ready 之前設定 `disable-features`。這個值由 [hotkey.ts](../../../src/main/shortcuts/hotkey.ts) 的 `physicalHotkeyFeatures` 算出：
   - 把 `LayoutAwareGlobalHotkeys` 附加到命令列上已有的清單，因為 Chromium 對重複的 switch 只保留最後一個值；
   - 清單已含此功能時不變，不論有沒有 field-trial 後綴；
   - 其他平台不做任何事。
@@ -564,7 +564,7 @@ pass 2 約 1 分鐘，沒有 findings。30 分鐘的 review 預算用了約 2.5 
   - 停用此功能後，數字列 ⌘⇧1 會觸發、數字鍵盤不再觸發，另外兩個仍會觸發。
 - **檢查**（最終版本，Node 24.21.0）：
   - `pnpm acceptance:regression` 通過：`pnpm check`（型別檢查、52 個檔案的 866 項測試、建置）、Settings 113/113，以及清理完整的快捷鍵失敗整合測試。
-  - `pnpm exec vitest run src/main/hotkey.test.ts` 通過 16 項測試。
+  - `pnpm exec vitest run src/main/shortcuts/hotkey.test.ts` 通過 16 項測試。
   - `git diff --check` 無問題。
 
 原生回合在 M1 Pro、macOS 26.6.2 上執行，版本為 `867b1c3` 加上未提交的變更；回合期間選用注音，結束後還原維護者原本的 ABC 輸入法：
@@ -586,9 +586,9 @@ Codex GPT-6 Astra（medium reasoning，log 開頭確認為 read-only sandbox）�
 
 更新驗收的設定鎖定契約（R2-06），由 Claude 實作、Codex GPT-6 Astra review（[更新功能驗收](../system-design/tooling.md#更新功能驗收)）。Runner 的 `assertNoUpdateActions` 假定錄製中只有語言可用；修改前把同一個檢查套用到真正的錄製中 `settingsView`，會在 `settings group appearance` 失敗。
 
-- **契約。** 改由 [update-acceptance.mts](../../../scripts/lib/update-acceptance.mts) 的 `assertLockContract` 判定。預期行為取自 `BUSY_SETTINGS_POLICY`，依桌面設計撰寫，而不是複製模型的旗標。Starting、錄製與儲存中會鎖定螢幕、畫質、解析度上限、影格率、快捷鍵、通知、啟動檢查與更新 action 群組，以及 tray 的變更輸出資料夾；語言、外觀與 About 逐一選項都維持可用。Idle 與兩種權限狀態下所有群組解鎖。只有 recording 要求 REC 與一個可用的 Stop；Stop 依 action 尋找，所以狀態行前面的失敗紀錄不會影響位置。Starting 與儲存中要求 `…`、沒有 Stop，tray 也永遠不含更新項目。設定群組不在政策表中，或表中群組已不再提供，都會失敗。Runner 對兩個錄製中 snapshot 及其前後的 idle snapshot 套用此契約。[桌面設計](../system-design/desktop.md#tray-與通知)的狀態表原本在忙碌狀態寫「只有語言」，已同步修正雙語版本。
+- **契約。** 改由 [update-acceptance.mts](../../../scripts/lib/acceptance/update-acceptance.mts) 的 `assertLockContract` 判定。預期行為取自 `BUSY_SETTINGS_POLICY`，依桌面設計撰寫，而不是複製模型的旗標。Starting、錄製與儲存中會鎖定螢幕、畫質、解析度上限、影格率、快捷鍵、通知、啟動檢查與更新 action 群組，以及 tray 的變更輸出資料夾；語言、外觀與 About 逐一選項都維持可用。Idle 與兩種權限狀態下所有群組解鎖。只有 recording 要求 REC 與一個可用的 Stop；Stop 依 action 尋找，所以狀態行前面的失敗紀錄不會影響位置。Starting 與儲存中要求 `…`、沒有 Stop，tray 也永遠不含更新項目。設定群組不在政策表中，或表中群組已不再提供，都會失敗。Runner 對兩個錄製中 snapshot 及其前後的 idle snapshot 套用此契約。[桌面設計](../system-design/desktop.md#tray-與通知)的狀態表原本在忙碌狀態寫「只有語言」，已同步修正雙語版本。
 - **第二個過時期望。** 第一次必要執行更早就在重啟案例失敗：它預期 zh-TW 面板標題為 `設定`，但自 `b262188`（2026-09-24）起標題 key 是 "RecordStuff - Settings"（`RecordStuff - 設置`）。Runner 改為比對該 key 的正式翻譯，檢查的是語言而不是文案。
-- **測試。** `scripts/lib/update-acceptance.test.ts` 新增 7 項測試，以正式的 `settingsView` 與 `trayModel` 建立 snapshot：
+- **測試。** `scripts/lib/acceptance/update-acceptance.test.ts` 新增 7 項測試，以正式的 `settingsView` 與 `trayModel` 建立 snapshot：
   - 英文與繁中各在六種更新狀態下錄製，包含已提供更新；
   - 八個鎖定群組在 starting、錄製與儲存中分別被錯誤解鎖；已提供的下載 action 本身是可用的，只靠群組鎖定才無法使用；
   - 語言、外觀與 About 被整組或單一選項鎖定；
@@ -596,7 +596,7 @@ Codex GPT-6 Astra（medium reasoning，log 開頭確認為 read-only sandbox）�
   - 錄製中缺 REC、缺 Stop 或 Stop 停用、變更資料夾可用、出現更新項目，以及失敗紀錄排在最前面；
   - Starting 與儲存中出現 REC 或 Stop；
   - Idle 與兩種權限狀態要求所有群組解鎖，同時容許因自身原因停用的選項（檢查進行中、螢幕不存在、未驗證的影格率）。
-- **檢查**（最終版本，Node 24.21.0）：`pnpm exec vitest run scripts/lib/update-acceptance.test.ts` 通過 1 個檔案的 15 項測試；`pnpm typecheck` 通過；runner 程式庫在 Node type stripping 下可載入；`git diff --check` 無問題。
+- **檢查**（最終版本，Node 24.21.0）：`pnpm exec vitest run scripts/lib/acceptance/update-acceptance.test.ts` 通過 1 個檔案的 15 項測試；`pnpm typecheck` 通過；runner 程式庫在 Node type stripping 下可載入；`git diff --check` 無問題。
 
 原生 `pnpm acceptance:updates`（預設 smoke 範圍，未使用 `--logic-only`）的執行環境：M1 Pro、macOS 26.6.2、Node 24.21.0、Electron 44.3.0，版本為 HEAD `7ceb83a` 加上未提交的變更。主螢幕 1920×1080，系統音訊輸出到外接耳機、音量 69，測試素材 SHA-256 `e631b973…`。每次執行都自行建置並簽章 fixture。
 
@@ -749,7 +749,7 @@ Codex GPT-6 Astra（medium reasoning、read-only）完成一個 pass，約用 30
 
 ## Plan 038 結案 — 2026-09-25
 
-錄影健康防護，由 Claude 實作、Codex GPT-6 Astra review。每項防護只做觀察，並透過既有的停止或失敗流程結束；沒有新增狀態、健康 UI，也不做任何復原、重新封裝或修復。所有門檻都是初始目標，集中在 [recording-health.ts](../../../src/main/recording-health.ts)（見[錄製設計](../system-design/recording.md#期限與故障隔離)）。
+錄影健康防護，由 Claude 實作、Codex GPT-6 Astra review。每項防護只做觀察，並透過既有的停止或失敗流程結束；沒有新增狀態、健康 UI，也不做任何復原、重新封裝或修復。所有門檻都是初始目標，集中在 [recording-health.ts](../../../src/main/recording/recording-health.ts)（見[錄製設計](../system-design/recording.md#期限與故障隔離)）。
 
 - **磁碟餘裕。** 從 `started` 到停止前，以單一不重疊 timer 每 5 秒讀取輸出資料夾的 `fs.statfs`。低於 1 GiB 記錄一次；低於 200 MiB 只要求一次正常停止，讓檔案排空、sync 並發布。saved 事件帶 `stoppedEarly: "lowDisk"`，log 與存檔通知會說明磁碟即將滿（「已儲存 {file}。磁碟空間即將用盡，已提前停止錄製」／"Saved {file}. Recording stopped early because the disk is almost full."）。這類錄影屬於成功，不進入失敗紀錄。查詢失敗只記錄一次，永不因此停止錄影。
 - **擷取停滯。** `started` 之後，每個非空 chunk 重設同一個 timer，空 chunk 不算。10 秒時記錄一次警告，30 秒時以 `capture_failed` 與停滯 detail 失敗，保留部分檔。收到 `stopped` 或任何失敗都會解除，因此正常停止後較慢的收尾不會被當成停滯。心跳與首片期限不變。
@@ -804,7 +804,7 @@ Codex GPT-6 Astra（medium reasoning、唯讀）完成兩個 pass，共 80 秒�
 
 ## 桌面閒置防護 — 2026-09-25
 
-Plan 036 回合的後續：當時四次設定 fixture 失敗都發生在本地時間 15:34 macOS 關閉螢幕並鎖定 session 之後；`sendInputEvent`／System Events 的模擬輸入不會重設閒置計時，這台 Mac 閒置 10 分鐘就會關閉螢幕。現在每個桌面 runner 開始前都執行 [desktop-session.mts](../../../scripts/lib/desktop-session.mts)：`caffeinate -u` 喚醒閒置關閉的螢幕；session 已鎖定（`ioreg` 的 `CGSSessionScreenIsLocked`）時，在啟動任何東西或送出按鍵前停止；`caffeinate -d -i -w <runner pid>` 持有防止螢幕與系統閒置睡眠的 assertion 直到 runner 結束。回合中（每 2 秒及結束時）偵測到鎖定，結果改為 BLOCKED、exit code 2，並在報告寫入 `Desktop:` 一行。已接入 `acceptance`、`acceptance:settings`、`acceptance:shortcut`、`acceptance:settings-shortcut`、`acceptance:quit-dialog`、`acceptance:notification`、`acceptance:updates`（含擷取範圍）、`matrix` 與 `audio:quality -- record`。
+Plan 036 回合的後續：當時四次設定 fixture 失敗都發生在本地時間 15:34 macOS 關閉螢幕並鎖定 session 之後；`sendInputEvent`／System Events 的模擬輸入不會重設閒置計時，這台 Mac 閒置 10 分鐘就會關閉螢幕。現在每個桌面 runner 開始前都執行 [desktop-session.mts](../../../scripts/lib/runner/desktop-session.mts)：`caffeinate -u` 喚醒閒置關閉的螢幕；session 已鎖定（`ioreg` 的 `CGSSessionScreenIsLocked`）時，在啟動任何東西或送出按鍵前停止；`caffeinate -d -i -w <runner pid>` 持有防止螢幕與系統閒置睡眠的 assertion 直到 runner 結束。回合中（每 2 秒及結束時）偵測到鎖定，結果改為 BLOCKED、exit code 2，並在報告寫入 `Desktop:` 一行。已接入 `acceptance`、`acceptance:settings`、`acceptance:shortcut`、`acceptance:settings-shortcut`、`acceptance:quit-dialog`、`acceptance:notification`、`acceptance:updates`（含擷取範圍）、`matrix` 與 `audio:quality -- record`。
 
 六項 helper 測試涵蓋鎖定解析、先喚醒再檢查、拒絕時不持有 assertion、只釋放一次、回合中與結束前鎖定、無法讀取鎖定狀態及非 macOS。實際執行 `pnpm acceptance:settings` 通過 113/113，期間 `pmset -g assertions` 顯示 caffeinate 代表 runner PID 持有 PreventUserIdleDisplaySleep 與 PreventUserIdleSystemSleep，結束後釋放，報告記錄 session 未鎖定（`2026-09-25T08-02-14-865Z-settings-acceptance`）。以 PATH shim 模擬鎖定時，上列九個指令都在啟動、安裝、建置或送出按鍵前以 BLOCKED 與 exit 2 結束（對執行中的開發 bundle 執行 `pnpm acceptance` 時 log 沒有任何快捷鍵按下，之後已正常結束該 bundle 並確認程序消失；`/Applications/RecordStuff.app` 未被修改）。讀取五次後才回報鎖定的 shim，使 113/113 的設定回合改為 BLOCKED、exit 2（`2026-09-25T08-04-16-478Z-settings-acceptance`）。未實測從真實閒置睡眠喚醒與真實密碼鎖定：這台 Mac 螢幕睡眠即會鎖定 session，只有預防能避免；也未嘗試鎖定維護者的螢幕。手動鎖定、闔上螢幕或受管理的政策仍可能中斷回合。
 
@@ -828,7 +828,7 @@ Codex GPT-6 Astra（medium reasoning、read-only）完成兩輪，共 153 秒 + 
 
 ## Plan 039 結案 — 2026-09-25
 
-儲存庫整理，只涉及文件與測試位置。兩份儲存庫版面文件現在說明 `tests/`（同時需要 DOM 與 Node API 的跨程序測試，由 `tsconfig.tests.json` 檢查、`vitest.config.ts` 收錄），在強制設定表列出 `tsconfig.tests.json`，並把 `test-material.html` 歸到 `scripts/` 進入點同層。`scripts/update-acceptance.test.ts` 移到 `scripts/lib/update-acceptance.test.ts`，`scripts/lib/settings-entry.test.ts` 併入 `scripts/lib/acceptance.test.ts`，根目錄 `tsconfig.json` 的 references 加入 tests 設定。
+儲存庫整理，只涉及文件與測試位置。兩份儲存庫版面文件現在說明 `tests/`（同時需要 DOM 與 Node API 的跨程序測試，由 `tsconfig.tests.json` 檢查、`vitest.config.ts` 收錄），在強制設定表列出 `tsconfig.tests.json`，並把 `test-material.html` 歸到 `scripts/` 進入點同層。`scripts/update-acceptance.test.ts` 移到 `scripts/lib/acceptance/update-acceptance.test.ts`，`scripts/lib/settings-entry.test.ts` 併入 `scripts/lib/acceptance/acceptance.test.ts`，根目錄 `tsconfig.json` 的 references 加入 tests 設定。
 
 重複 skill 一項依維護者決定不執行：Claude Code 只使用 `.claude/skills/`，其他 agent 使用 `.agents/skills/`，因此兩份 `claude-implement-with-gpt6-astra-review` 維持各自獨立的檔案，不改為 symlink。儲存庫版面文件已記錄這項分工。
 

@@ -18,7 +18,7 @@ import {
   formatBytes,
   formatReleaseDate,
   type ReleaseManifest,
-} from "../../../scripts/lib/release-manifest.mts";
+} from "../../../scripts/lib/release/release-manifest.mts";
 
 export const manifest: ReleaseManifest = assertManifestShape(manifestJson);
 

@@ -6,7 +6,7 @@
  * build of identical inputs. Stops at the first phase that does not pass. Writes
  * `report.json`/`report.md` with each phase's monotonic duration, outcome and cleanup, the
  * durations a child reports inside it, and the revision, runtime-input and artifact identity
- * before and after (scripts/lib/verification-timing.mts).
+ * before and after (scripts/lib/runner/verification-timing.mts).
  *
  * Exit 0 when every phase passed on unchanged inputs; 1 for a failure, or for sources that
  * changed during the run; 2 when a desktop runner was blocked; 130/143 after SIGINT/SIGTERM,
@@ -19,12 +19,12 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { escapeRegExp, pgrepPids, recordStuffPids } from "./lib/processes.mts";
-import { scrubbedEnv } from "./lib/runner-env.mts";
+import { escapeRegExp, pgrepPids, recordStuffPids } from "./lib/runner/processes.mts";
+import { scrubbedEnv } from "./lib/runner/runner-env.mts";
 import {
   RECIPES, developmentAppPath, displayCommand, exitCode, findRecipe, identity, inputsChanged, quitOwnedApp, recipeOutcome, renderMarkdown,
   runPhases, summarize, type AppCleanup, type RecipeReport,
-} from "./lib/verification-timing.mts";
+} from "./lib/runner/verification-timing.mts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const usage = `Usage: pnpm acceptance:recipe -- <${RECIPES.map(recipe => recipe.name).join("|")}> [--dry-run] [--out <new directory>] | --list`;

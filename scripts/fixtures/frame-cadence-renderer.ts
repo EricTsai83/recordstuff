@@ -8,7 +8,7 @@
  * `applyConstraints` is replaced, so candidates run through the same host.
  * The fixture's main process reads `window.__cadence` after the stop.
  */
-import "../../src/renderer/capture-host";
+import "../../src/renderer/capture/capture-host";
 
 interface FrameRateRequest { ideal?: number; max?: number }
 interface CadenceConfig { request: FrameRateRequest | null }

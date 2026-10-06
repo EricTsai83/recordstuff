@@ -401,10 +401,10 @@ private <span class="f">enqueue</span><span class="o">(</span>task<span class="o
 <section class="sources">
 <h2>參考</h2>
 <ul>
-  <li>原子寫入的同步與非同步版本：<a href="../../src/main/atomic-file.ts">src/main/atomic-file.ts</a></li>
-  <li>媒體分片的 promise 鏈與發布步驟：<a href="../../src/main/file-writer.ts">src/main/file-writer.ts</a></li>
-  <li>目前的開始與停止准入、session id 比對：<a href="../../src/main/recorder.ts">src/main/recorder.ts</a></li>
-  <li>失敗歷史的儲存與上限：<a href="../../src/main/recording-result-store.ts">src/main/recording-result-store.ts</a></li>
+  <li>原子寫入的同步與非同步版本：<a href="../../src/main/lib/atomic-file.ts">src/main/lib/atomic-file.ts</a></li>
+  <li>媒體分片的 promise 鏈與發布步驟：<a href="../../src/main/recording/file-writer.ts">src/main/recording/file-writer.ts</a></li>
+  <li>目前的開始與停止准入、session id 比對：<a href="../../src/main/recording/recorder.ts">src/main/recording/recorder.ts</a></li>
+  <li>失敗歷史的儲存與上限：<a href="../../src/main/recording/recording-result-store.ts">src/main/recording/recording-result-store.ts</a></li>
   <li>計畫：<a href="../zh-TW/verification/history-2026-09.md#plan-036-結案--2026-09-25">036 背景保存失敗歷史（結案紀錄）</a>、<a href="../zh-TW/verification/history-2026-09.md#plan-037-結案--2026-09-27">037 錄影收尾量測（結案紀錄）</a>、<a href="../zh-TW/verification/history-2026-09.md#plan-038-結案--2026-09-25">038 錄影健康防護（結案紀錄）</a></li>
   <li>目前實作的設計說明：<a href="../zh-TW/system-design/recording.md">錄影管線與檔案設計</a>、<a href="../zh-TW/system-design/decisions.md">設計決策</a></li>
   <li>Node.js 對 <code>fs.promises</code> 與執行緒池的說明：<a href="https://nodejs.org/api/fs.html#promises-api">Node.js fs Promises API</a></li>

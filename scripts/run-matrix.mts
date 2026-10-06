@@ -32,15 +32,15 @@
  * 0 otherwise.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { APP_LOG_PATH, APP_SETTINGS_PATH, scrubbedEnv } from "./lib/runner-env.mts";
+import { APP_LOG_PATH, APP_SETTINGS_PATH, scrubbedEnv } from "./lib/runner/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance.mts";
-import { CPU_BUDGET, CpuSampler, MIN_COVERAGE, SamplerBlockedError, SamplerInterruptedError, checkBaselines, compileSampler, cpuBaseline, intervals, summarize } from "./lib/cpu-sampler.mts";
-import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
-import { LAUNCHER_EXIT_MS, QUIT_GRACE_MS, stopDevApp, type AppStop } from "./lib/dev-app.mts";
-import { LogReader, type LogCursor } from "./lib/log-reader.mts";
+import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance/acceptance.mts";
+import { CPU_BUDGET, CpuSampler, MIN_COVERAGE, SamplerBlockedError, SamplerInterruptedError, checkBaselines, compileSampler, cpuBaseline, intervals, summarize } from "./lib/verification/cpu-sampler.mts";
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/runner/desktop-session.mts";
+import { LAUNCHER_EXIT_MS, QUIT_GRACE_MS, stopDevApp, type AppStop } from "./lib/runner/dev-app.mts";
+import { LogReader, type LogCursor } from "./lib/runner/log-reader.mts";
 import {
   MATRICES,
   casePhases,
@@ -57,12 +57,12 @@ import {
   type CaseTiming,
   type MatrixEntry,
   type MatrixRun,
-} from "./lib/matrix.mts";
-import { INTERRUPT_EXIT, electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, recordStuffPids, signalPids, startBuild, stopGroup } from "./lib/processes.mts";
-import { ToolMissingError, hasTool, requireMediaTimeout, timeTools, type ToolTiming } from "./lib/media-tools.mts";
-import { REPO_ROOT, appendMeasurements, measurementsPath, verifyRecording, type VerifyResult } from "./lib/verify-recording.mts";
-import { pairRecordingsWithLog } from "./lib/verify.mts";
-import { BLOCKED_EXIT, blocksSuccess, formatText, parseAutorecordOutcome, verdictExitCode, type CpuFigures } from "./lib/verify.mts";
+} from "./lib/verification/matrix.mts";
+import { INTERRUPT_EXIT, electronPattern, escapeRegExp, groupAlive, interruptExitCode, pgrepPids, recordStuffPids, signalPids, startBuild, stopGroup } from "./lib/runner/processes.mts";
+import { ToolMissingError, hasTool, requireMediaTimeout, timeTools, type ToolTiming } from "./lib/verification/media-tools.mts";
+import { REPO_ROOT, appendMeasurements, measurementsPath, verifyRecording, type VerifyResult } from "./lib/verification/verify-recording.mts";
+import { pairRecordingsWithLog } from "./lib/verification/verify.mts";
+import { BLOCKED_EXIT, blocksSuccess, formatText, parseAutorecordOutcome, verdictExitCode, type CpuFigures } from "./lib/verification/verify.mts";
 
 const ELECTRON_APP = path.join(REPO_ROOT, "node_modules/electron/dist/Electron.app");
 /** pnpm symlinks `node_modules/electron`; process command lines show the resolved `.pnpm/…` path. */

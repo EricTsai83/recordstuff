@@ -4,13 +4,15 @@
  * permission, and make quitting wait for recording work, metadata writes and failure history.
  * Settings use a separate sandboxed window; capture keeps its hidden host.
  */
-import { createPreferenceActions } from "./preferences";
-import { createHistoryQuit, createQuitFeedback, type QuitDeferral } from "./quit-feedback";
-import { installQuitCoordinator } from "./quit-coordinator";
-import { RecordingResultStore } from "./recording-result-store";
-import { RecordingResults } from "./recording-result";
-import { SettingsWindowState } from "./settings-window-state";
-import { DisplayMedia } from "./display-media";
+import { createPreferenceActions } from "./settings/preferences";
+import { createHistoryQuit, createQuitFeedback, type QuitDeferral } from "./app/quit-feedback";
+import { installQuitCoordinator } from "./app/quit-coordinator";
+import { CLEANUP_MARKER, prepareDataCleanup, waitForDataCleanup } from "./app/data-cleanup";
+import { DataCleanupRequest } from "./app/data-cleanup-request";
+import { RecordingResultStore } from "./recording/recording-result-store";
+import { RecordingResults } from "./recording/recording-result";
+import { SettingsWindowState } from "./settings/settings-window-state";
+import { DisplayMedia } from "./display/display-media";
 import { isDisplayInfo, type DisplayInfo } from "../shared/display";
 import {
   app,
@@ -31,35 +33,38 @@ import {
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { CaptureHost } from "./capture-host";
-import { CountdownOverlay } from "./countdown-overlay";
-import { FileWriter, ensureWritableDir } from "./file-writer";
-import { KeepAwake } from "./keep-awake";
-import { createOutputFolderOpener, isSameFolder } from "./output-folder";
-import { createUncaughtExceptionHandler } from "./fault-dialog";
-import { createFileLogger, flushBeforeExit } from "./log";
-import { stackOf } from "./errors";
-import { createRunId, logSessionEvent } from "./session-log";
-import { PermissionWatcher, openNotificationSettings, openScreenCaptureSettings } from "./permission";
-import { Recorder } from "./recorder";
-import { SessionSentinels, reportInterruptions } from "./session-sentinel";
-import { SavedNotification } from "./saved-notification";
-import { CaptureNotices } from "./capture-notices";
-import { PermissionNotices } from "./permission-notices";
-import { watchReopen, type ReopenWatcher } from "./reopen";
-import { holdSessionEnd } from "./session-end";
-import { SettingsStore } from "./settings";
-import { parseAutoRecord, runAutoRecord } from "./autorecord";
-import { UpdateChecker, fetchVersion, DOWNLOAD_URL, RELEASES_URL, SOURCE_URL, WEBSITE_URL } from "./updates";
-import { AppTray } from "./tray";
-import { AppMenu } from "./app-menu";
-import { VideoFullScreen } from "./video-fullscreen";
-import { SettingsWindow } from "./settings-window";
-import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "./recordings-library";
-import { APP_NAME, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
+import { CaptureHost } from "./recording/capture-host";
+import { CountdownOverlay } from "./recording/countdown-overlay";
+import { FileWriter, ensureWritableDir } from "./recording/file-writer";
+import { KeepAwake } from "./recording/keep-awake";
+import { createOutputFolderOpener, isSameFolder } from "./library/output-folder";
+import { createUncaughtExceptionHandler } from "./app/fault-dialog";
+import { createFileLogger, flushBeforeExit } from "./lib/log";
+import { stackOf } from "./lib/errors";
+import { createRunId, logSessionEvent } from "./recording/session-log";
+import { PermissionWatcher, openNotificationSettings, openScreenCaptureSettings } from "./permission/permission";
+import { Recorder } from "./recording/recorder";
+import { SessionSentinels, reportInterruptions } from "./recording/session-sentinel";
+import { SavedNotification } from "./recording/saved-notification";
+import { CaptureNotices } from "./recording/capture-notices";
+import { PermissionNotices } from "./permission/permission-notices";
+import { watchReopen, type ReopenWatcher } from "./app/reopen";
+import { holdSessionEnd } from "./app/session-end";
+import { SettingsStore } from "./settings/settings";
+import { parseAutoRecord, runAutoRecord } from "./recording/autorecord";
+import { UpdateChecker, fetchVersion, DOWNLOAD_URL } from "./app/updates";
+import { createActionHandler } from "./actions/actions";
+import { AppTray } from "./menus/tray";
+import { AppMenu } from "./menus/app-menu";
+import { VideoFullScreen } from "./library/video-fullscreen";
+import { SettingsWindow } from "./settings/settings-window";
+import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "./library/recordings-library";
+import type { AppAction, AppContext } from "./app/ui-model";
+import { APP_NAME } from "./lib/app-name";
+import { preferencesUnlocked } from "./recording/recording-lock";
 import { effectiveQuality, frameRateDowngrade, type QualitySettings } from "../shared/quality";
-import { AppShortcuts } from "./shortcuts";
-import { physicalHotkeyFeatures } from "./hotkey";
+import { AppShortcuts } from "./shortcuts/shortcuts";
+import { physicalHotkeyFeatures } from "./shortcuts/hotkey";
 import type { RecordingState } from "../shared/state";
 import type { CountdownSeconds } from "../shared/countdown";
 
@@ -142,16 +147,45 @@ function resourcesDir(): string {
 const disabledFeatures = physicalHotkeyFeatures(app.commandLine.getSwitchValue("disable-features"), process.platform);
 if (disabledFeatures) app.commandLine.appendSwitch("disable-features", disabledFeatures);
 
-// File logging is asynchronous: both exits below first let the line they explain reach the log.
-if (!app.requestSingleInstanceLock()) {
-  // The running instance owns the file and its rotation (log.ts counts its own size): this one only appends its line.
-  const loser = createFileLogger({ filePath: logPath, maxBytes: Number.POSITIVE_INFINITY });
-  loser(`start: another instance already holds the userData lock; run ${runId}; exiting`);
-  void flushBeforeExit(loser).then(() => app.quit());
-} else {
-  // A menu-bar app that fails to wire up has no window and no tray to quit
-  // from: it would sit invisible until Activity Monitor found it.
-  main().catch(async (cause: unknown) => {
+// Register before any asynchronous cleanup wait can let Electron become ready.
+protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { ...MEDIA_SCHEME_PRIVILEGES } }]);
+
+void start().catch((cause: unknown) => {
+  // Cleanup still owns the profile: even an error log must not recreate it.
+  console.error(`start: local data cleanup blocked startup: ${String(cause)}`);
+  dialog.showErrorBox(APP_NAME, String(cause));
+  app.exit(1);
+});
+
+async function start(): Promise<void> {
+  try { await waitForDataCleanup(app.getPath("userData")); }
+  catch (cause) {
+    // A failed/interrupted helper has stopped deleting. Tell the user before
+    // accepting new writes, then allow them to reopen Settings and retry.
+    dialog.showErrorBox(translate("Could not clear local app data", DEFAULT_LANGUAGE),
+      `${translate("Local data cleanup did not finish. Some app data may remain. Your recordings were kept. You can retry from Settings or remove the remaining app data manually.", DEFAULT_LANGUAGE)}\n\n${String(cause)}`);
+    // Never resume while a live helper could still be deleting this profile.
+    const marker = path.join(app.getPath("userData"), CLEANUP_MARKER);
+    const status = JSON.parse(await fs.readFile(marker, "utf8")) as { version?: number; pid?: number; status?: string };
+    if (status.version !== 1 || !Number.isSafeInteger(status.pid) || Number(status.pid) <= 0 || !["waiting", "committed", "failed"].includes(String(status.status)))
+      throw new Error("Invalid local data cleanup status; original marker retained");
+    if (status.status !== "failed") {
+      try { if (status.pid) { process.kill(status.pid, 0); throw new Error("Cleanup helper is still active"); } }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+    }
+    await fs.unlink(marker);
+  }
+
+  // Acquire the userData lock only after the helper finishes: otherwise it
+  // could delete a new instance's lock while that instance waits on cleanup.
+  if (!app.requestSingleInstanceLock()) {
+    const loser = createFileLogger({ filePath: logPath, maxBytes: Number.POSITIVE_INFINITY });
+    loser(`start: another instance already holds the userData lock; run ${runId}; exiting`);
+    await flushBeforeExit(loser);
+    app.quit();
+    return;
+  }
+  await main().catch(async (cause: unknown) => {
     log(`start: failed: ${stackOf(cause)}; exiting`);
     await flushBeforeExit(log);
     dialog.showErrorBox(APP_NAME, translate("An unexpected error occurred. See the log for details.", appLanguage()));
@@ -167,9 +201,6 @@ async function main(): Promise<void> {
   // hidden as the app finishes launching, where macOS reads the policy, and again once ready.
   if (process.platform === "darwin") app.once("will-finish-launching", () => app.dock?.hide());
 
-  // The Recordings tab's videos and thumbnails (recordings-library.ts): a standard, streaming scheme, so
-  // <video> can fetch byte ranges. Only privileged before ready.
-  protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { ...MEDIA_SCHEME_PRIVILEGES } }]);
   await app.whenReady();
   if (process.platform === "darwin") app.dock?.hide();
 
@@ -178,6 +209,7 @@ async function main(): Promise<void> {
     defaultOutputDir: defaultOutputDir(),
     log,
   });
+  await settings.migrate().catch(cause => log(`settings: startup migration failed; original retained: ${String(cause)}`));
   nativeTheme.themeSource = settings.appearance;
   // Without a menu Electron installs its default one, whose Reload and Developer Tools shortcuts work in Settings
   // even in a release build. It is installed before any window, in the saved language; while the window is open
@@ -315,6 +347,10 @@ async function main(): Promise<void> {
   // set to record, call the same `toggle`, whose state guards decide.
   /** A quit is running: every action but quit is ignored until it exits or is declined. */
   let quitRequested = false;
+  const clearData = new DataCleanupRequest({
+    settled: () => settled(), language: () => settings.language, quit: () => quitCoordinator.quit(),
+    confirm: options => { focusApp(); return dialog.showMessageBox(options); },
+  });
   const toggle = (): void => { if (!quitRequested) recorder.toggle(); };
   /** Settings that touch a session (quality, shortcut) change only here. */
   const settled = (): boolean => !quitRequested && preferencesUnlocked(recorder.state);
@@ -510,188 +546,9 @@ async function main(): Promise<void> {
       log(`${source}: action ${JSON.stringify(action)} failed: ${stackOf(cause)}`));
   }
 
-  async function handleAction(action: AppAction): Promise<boolean | void> {
-    if (quitRequested && action !== "quit") return false;
-    if (typeof action !== "string" && "recordingFile" in action) {
-      const { id, action: verb } = action.recordingFile;
-      // A drag belongs to the window it starts in (settings-window.ts).
-      return verb === "drag" ? false : library.act(id, verb);
-    }
-    if (action === "undoTrash") return library.undoTrash();
-    if (typeof action !== "string" && "recordingResult" in action) {
-      const request = action.recordingResult;
-      return recordingResults.act(request.id, request.action, {
-        stat: file => fs.stat(file), refresh: refreshUi, settled, platform: process.platform,
-        reveal: file => shell.showItemInFolder(file), folder: async () => { await changeOutputDir(); },
-        permission: async () => { await handleAction("openPermissionSettings"); },
-        relaunch: async () => { await handleAction("relaunch"); },
-        needsRelaunch: () => recorder.state.type === "needsPermission" && recorder.state.needsRelaunch,
-      });
-    }
-    if (typeof action !== "string") {
-      if ("setDisplay" in action) {
-        const before = JSON.stringify(settings.display);
-        await savePreference("display", {
-          locked: true,
-          write: () => settings.setDisplay(action.setDisplay),
-          applied: () => {
-            // What the last recording on another screen ran into is no longer what the next one will.
-            if (JSON.stringify(settings.display) !== before) { displayMedia.failure = undefined; captureDegraded = false; }
-            log(`settings: display ${JSON.stringify(settings.display)}`);
-          },
-          notifyFailure: () => tray.notifyDisplayWriteFailed(),
-        });
-      } else if ("setUpdateChecks" in action) {
-        await savePreference("update checks", { locked: true, write: () => settings.setUpdates({ enabled: action.setUpdateChecks }) });
-      } else if ("setNotifications" in action) {
-        const turningOn = action.setNotifications && !settings.notifications;
-        await savePreference("notifications", { locked: true, write: () => settings.setNotifications(action.setNotifications) });
-        // Electron asks macOS for authorization inside `show()`, so turning the
-        // switch on is the one moment the system prompt can appear at the
-        // user's own request. The confirmation doubles as the delivery test.
-        if (turningOn && settings.notifications) tray.notifyNotificationsEnabled();
-      } else if ("setTrayClick" in action) {
-        // A click mid-recording follows the new choice at once; nothing a session holds depends on it.
-        await savePreference("tray click", {
-          write: () => settings.setTrayClick(action.setTrayClick),
-          applied: () => log(`settings: tray click ${settings.trayClick}`),
-        });
-      } else if ("setFileNameTemplate" in action) {
-        // The next recording is named by it; a session in progress already named its file.
-        await savePreference("file name", {
-          locked: true,
-          write: () => settings.setFileNameTemplate(action.setFileNameTemplate),
-          applied: () => log(`settings: file name ${JSON.stringify(settings.fileNameTemplate)}`),
-        });
-      } else if ("setLibraryLayout" in action) {
-        await savePreference("library layout", { write: () => settings.setLibraryLayout(action.setLibraryLayout) });
-      } else if ("setAppearance" in action) {
-        await savePreference("appearance", {
-          write: () => settings.setAppearance(action.setAppearance),
-          applied: () => { nativeTheme.themeSource = settings.appearance; },
-        });
-      } else if ("setLanguage" in action) {
-        await savePreference("language", {
-          write: () => settings.setLanguage(action.setLanguage),
-          notifyFailure: () => tray.notifyLanguageWriteFailed(),
-        });
-      } else if ("setHotkey" in action) {
-        await shortcuts.set(action.setHotkey);
-      } else if ("setCountdown" in action) {
-        await savePreference("countdown", {
-          locked: true,
-          write: () => settings.setCountdown(action.setCountdown),
-          applied: () => log(`settings: countdown ${settings.countdown} s`),
-        });
-      } else if ("setCountdownSound" in action) {
-        await savePreference("countdown sound", {
-          locked: true,
-          write: () => settings.setCountdownSound(action.setCountdownSound),
-          applied: () => log(`settings: countdown sound ${settings.countdownSound ? "on" : "off"}`),
-        });
-      } else {
-        const cap = settings.quality.resolutionCap;
-        await savePreference("quality", {
-          locked: true,
-          write: () => settings.setQuality(action.setQuality),
-          applied: () => {
-            // The unconfirmed cap was the last recording's; another cap is the next recording's to confirm.
-            if (settings.quality.resolutionCap !== cap) captureDegraded = false;
-            log(`settings: quality ${JSON.stringify(settings.quality)}`);
-          },
-          notifyFailure: () => tray.notifyQualityWriteFailed(),
-        });
-      }
-      return;
-    }
-    switch (action) {
-      case "openRecordingResult":
-        settingsWindow.showRecordingResult();
-        return;
-      case "openShortcutSettings":
-        settingsWindow.showShortcut();
-        return;
-      case "openRecordingSettings":
-        settingsWindow.showRecording();
-        return;
-      case "openSettings":
-        settingsWindow.show();
-        return;
-      case "showLastRecording":
-        await showRecording();
-        return;
-      case "retryShortcuts":
-        return shortcuts.retry();
-      case "checkUpdates":
-        // Not awaited: the check can wait on two network timeouts, and the
-        // panel's save queue and its controls must not wait with it. The
-        // checker's state changes push the button's own progress.
-        void updates.check(true);
-        return true;
-      case "openWebsite":
-      case "openSource":
-        try {
-          await shell.openExternal(action === "openWebsite" ? WEBSITE_URL : SOURCE_URL);
-          return true;
-        } catch (error) { log(`settings: external link failed: ${String(error)}`); return false; }
-      case "openUpdate":
-        // Recording locks the button; a click that raced the lock opened nothing, which is not a failure.
-        if (!settled()) return true;
-        try {
-          await shell.openExternal(updates.state.kind === "available" ? DOWNLOAD_URL : RELEASES_URL);
-          return true;
-        } catch (error) { log(`settings: update link failed: ${String(error)}`); return false; }
-      case "start":
-        // An open macOS menu cannot change, so a Start chosen late is resolved now: only idle starts (plan 048).
-        if (!recorder.startIfIdle()) log(`tray: Start recording ignored in state ${recorder.state.type}`);
-        return;
-      case "stop":
-        recorder.stop();
-        return;
-      case "cancelCountdown":
-        recorder.cancelCountdown("menu");
-        return;
-      case "quit":
-        // A request, as Relaunch is: a quit deferred for a save or refused says so itself. Settings' Quit has no
-        // checked value to compare, so without this answer it read as a failed link (settings-window.ts `apply`).
-        quitCoordinator.quit();
-        return true;
-      // A pressed button that opens nothing must say so: this state blocks
-      // recording entirely, and the tray menu is its only route.
-      case "openPermissionSettings":
-        try { await openScreenCaptureSettings(); }
-        catch (cause) {
-          log(`permission: open settings failed: ${String(cause)}`);
-          const detail = translate("Could not open System Settings. Allow RecordStuff in System Settings → Privacy & Security → Screen & System Audio Recording.", settings.language);
-          // A windowless warning would hold the failed session's cleanup until answered (plan 056).
-          if (recorder.mediaPending) {
-            log("permission: recording work is pending; telling the problem in a notification instead of a warning");
-            captureNotices.hold("permission settings warning", () => tray.notifyAnswer(detail));
-            return;
-          }
-          focusApp();
-          await dialog.showMessageBox({ type: "info", title: APP_NAME, message: APP_NAME, detail });
-        }
-        return;
-      // An actions choice has no committed value to compare, so it reports its
-      // own outcome: a refused pane leaves the note's manual path as recovery.
-      case "openNotificationSettings":
-        try { await openNotificationSettings(); return true; }
-        catch (error) { log(`notifications: open settings failed: ${String(error)}`); return false; }
-      case "relaunch":
-        quitCoordinator.relaunch();
-        return;
-      // Settings → General → Log file reads the outcome (2026-10-04); the log moved there from the tray.
-      case "revealLog":
-        return revealLog();
-      // Explicit outcomes: the Settings row reads them (plan 048 review); the tray ignores them.
-      case "openOutputDir":
-        // A failure the opener warned about itself answers true, so the row adds no second message; one only held
-        // for a notice until the recording ends answers false, and the row says it failed now.
-        return openOutputDir();
-      case "changeOutputDir":
-        return changeOutputDir();
-    }
+  /** Hoisted, so the windows and the tray built above can hold it; every action is decided in actions/actions.ts. */
+  function handleAction(action: AppAction): Promise<boolean | void> {
+    return actionHandler(action);
   }
 
   /**
@@ -760,6 +617,24 @@ async function main(): Promise<void> {
   const permissionNotices = new PermissionNotices({
     permission: needsRelaunch => tray.notifyPermission(needsRelaunch),
     failure: code => captureNotices.hold(`recording failure ${code}`, () => tray.notifyRecordingFailure(code)),
+  });
+  const actionHandler = createActionHandler({
+    quitRequested: () => quitRequested, settled, platform: process.platform, log, refresh: refreshUi,
+    settings, recorder, library, recordingResults, tray, settingsWindow, shortcuts, updates, captureNotices, clearData,
+    savePreference, changeOutputDir, openOutputDir, revealLog,
+    showLastRecording: () => showRecording(),
+    displayPreferenceChanged: () => { displayMedia.failure = undefined; captureDegraded = false; },
+    resolutionCapChanged: () => { captureDegraded = false; },
+    applyAppearance: () => { nativeTheme.themeSource = settings.appearance; },
+    quit: () => quitCoordinator.quit(),
+    relaunch: () => quitCoordinator.relaunch(),
+    openExternal: url => shell.openExternal(url),
+    revealFile: file => shell.showItemInFolder(file),
+    openScreenCaptureSettings, openNotificationSettings,
+    showInfo: async detail => {
+      focusApp();
+      await dialog.showMessageBox({ type: "info", title: APP_NAME, message: APP_NAME, detail });
+    },
   });
   // A session keeps the display awake, so idle sleep cannot end its capture (plan 050).
   const keepAwake = new KeepAwake(powerSaveBlocker, log);
@@ -881,6 +756,7 @@ async function main(): Promise<void> {
   const quitCoordinator = installQuitCoordinator(app, {
     relaunch: () => app.relaunch(),
     shutdown: async () => {
+      if (clearData.confirming) return false;
       quitDeferral = quitStep = "media";
       clearQuitDeferred();
       beginQuitting();
@@ -897,6 +773,8 @@ async function main(): Promise<void> {
       return flushed;
     },
     pending: () => {
+      clearData.cancel();
+      recordingResults.resume();
       endQuitting();
       log(`quit deferred: ${quitDeferral === "media" ? "recording work" : "a preference or log write"} is still pending`);
       showQuitFeedback(quitDeferral);
@@ -908,15 +786,39 @@ async function main(): Promise<void> {
         .then(() => { if (token === deferralToken) clearQuitDeferred(); }, () => undefined);
     },
     // Media is safe here; unsaved reminders need a durable save or explicit consent.
-    history: createHistoryQuit({ results: recordingResults, language: appLanguage, focus: focusApp, log,
+    history: async () => {
+      if (clearData.requested) {
+        // The confirmed action discards history, so no second unsaved-history
+        // consent is needed. In-flight writes must still settle before exit.
+        const outcome = await recordingResults.flush(QUIT_METADATA_WAIT_MS);
+        if (outcome === "writing") throw new Error("Failure history is still writing; cleanup was not started");
+        return true;
+      }
+      return createHistoryQuit({ results: recordingResults, language: appLanguage, focus: focusApp, log,
       show: async options => {
         historyPrompt = true;
         try { return await dialog.showMessageBox(options); } finally { historyPrompt = false; }
-      } }),
+      } })();
+    },
+    beforeExit: async () => {
+      if (!clearData.requested) return;
+      await prepareDataCleanup({
+        userData: app.getPath("userData"), logs: app.getPath("logs"), sessionData: app.getPath("sessionData"),
+        outputDir: settings.outputDir, parentPid: process.pid,
+        media: recordingResults.all.flatMap(result => [result.partialPath, result.recordingPath].filter((file): file is string => Boolean(file))),
+      });
+      recordingResults.close();
+    },
     resume: () => {
+      const wasClearing = clearData.requested;
+      clearData.cancel();
       endQuitting();
       // Staying at the history prompt, or a history step that threw, leaves failure-history retries paused.
       recordingResults.resume();
+      if (wasClearing) {
+        dialog.showErrorBox(translate("Could not clear local app data", settings.language),
+          translate("Local data cleanup did not finish. Some app data may remain. Your recordings were kept. You can retry from Settings or remove the remaining app data manually.", settings.language));
+      }
       log("quit declined: failure history is not saved");
       refreshUi();
     },

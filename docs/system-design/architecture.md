@@ -45,24 +45,25 @@ The tray, menu and notifications are native Electron APIs in main. The settings 
 | Module | Owns | Does not own |
 | --- | --- | --- |
 | `main/index.ts` | App lifecycle, composition, source handler, quit coordination | Encoding or media append logic |
-| `main/recorder.ts` | Authoritative RecordingState, session IDs, ordering, deadlines, the countdown's timing and cancel | Electron or DOM APIs |
-| `main/countdown-overlay.ts` | The countdown window's lifetime, placement on the recorded display and the values it is sent | When to count, record or cancel |
-| `renderer/countdown.ts` / `preload/countdown.ts` | Drawing the digit and its fades / the one value subscription | Timing, state or any reply to main |
-| `main/video-fullscreen.ts` | The fullscreen video window's lifetime, its screen, its fades and the playback state it hands back | Which recording plays or its source URL (the settings window resolves it from the listing) |
-| `renderer/video.ts` / `preload/video.ts` | Playing from the given time, its exit control / saying ready and leaving with the playback state | The window, its fades or closing it |
-| `main/capture-host.ts` | Hidden BrowserWindow, main port, readiness and heartbeat | File-success decisions |
-| `renderer/capture-host.ts` | MediaStream, MediaRecorder, sequence numbers, Blob chain | Settings files, output paths, disk writes |
+| `main/actions/actions.ts` | What every `AppAction` does, behind the quit gate and each preference's lock | Constructing collaborators or holding state of its own |
+| `main/recording/recorder.ts` | Authoritative RecordingState, session IDs, ordering, deadlines, the countdown's timing and cancel | Electron or DOM APIs |
+| `main/recording/countdown-overlay.ts` | The countdown window's lifetime, placement on the recorded display and the values it is sent | When to count, record or cancel |
+| `renderer/countdown/countdown.ts` / `preload/countdown.ts` | Drawing the digit and its fades / the one value subscription | Timing, state or any reply to main |
+| `main/library/video-fullscreen.ts` | The fullscreen video window's lifetime, its screen, its fades and the playback state it hands back | Which recording plays or its source URL (the settings window resolves it from the listing) |
+| `renderer/video/video.ts` / `preload/video.ts` | Playing from the given time, its exit control / saying ready and leaving with the playback state | The window, its fades or closing it |
+| `main/recording/capture-host.ts` | Hidden BrowserWindow, main port, readiness and heartbeat | File-success decisions |
+| `renderer/capture/capture-host.ts` | MediaStream, MediaRecorder, sequence numbers, Blob chain | Settings files, output paths, disk writes |
 | `preload/index.ts` | Port handoff | Exposing Node APIs to the page |
-| `main/file-writer.ts` | A recording's media handle and I/O queue | UI state |
-| `main/settings.ts` | Committed settings and serialized saves | A running session's quality snapshot |
-| `main/tray-model.ts` / `tray.ts` | Pure projection of the tray's flat command menu / native presentation | Preferences, or a separate recording state machine |
-| `main/ui-model.ts` | The action union, the context snapshot and the preference-lock rule both interfaces share | Any projection of its own |
-| `main/settings-model.ts` | Every preference, its stable ids, and the authorization of a panel request | Electron, IPC or persistence |
-| `main/settings-window.ts` | The panel window, sender validation and serialized saves | What a preference means |
-| `renderer/settings.ts` / `preload/settings.ts` | Rendering a view and echoing an id / the read-choose-capture-subscribe bridge | Preference state, actions or Node APIs |
-| `main/permission.ts` | Screen-permission cache and polling | Proof of system-audio permission |
-| `main/log.ts` | Text logging through a bounded asynchronous queue, with rotation | Media content |
-| `main/session-log.ts` | The per-launch run id and the versioned session record beside each capture and outcome line | Pairing recordings with sessions (a development analyzer's job) |
+| `main/recording/file-writer.ts` | A recording's media handle and I/O queue | UI state |
+| `main/settings/settings.ts` | Committed settings and serialized saves | A running session's quality snapshot |
+| `main/menus/tray-model.ts` / `tray.ts` | Pure projection of the tray's flat command menu / native presentation | Preferences, or a separate recording state machine |
+| `main/app/ui-model.ts` | The action union and the context snapshot both interfaces share; the preference-lock rule they apply is `main/recording/recording-lock.ts` | Any projection of its own |
+| `main/settings/settings-model.ts` | Every preference, its stable ids, and the authorization of a panel request | Electron, IPC or persistence |
+| `main/settings/settings-window.ts` | The panel window, sender validation and serialized saves | What a preference means |
+| `renderer/settings/settings.ts` / `preload/settings.ts` | Rendering a view and echoing an id / the read-choose-capture-subscribe bridge | Preference state, actions or Node APIs |
+| `main/permission/permission.ts` | Screen-permission cache and polling | Proof of system-audio permission |
+| `main/lib/log.ts` | Text logging through a bounded asynchronous queue, with rotation | Media content |
+| `main/recording/session-log.ts` | The per-launch run id and the versioned session record beside each capture and outcome line | Pairing recordings with sessions (a development analyzer's job) |
 | `shared/i18n.ts` | English message keys, Traditional Chinese templates, language validation | OS dialog language or diagnostic translation |
 | `shared/*` | State, protocol, quality and countdown contracts and pure functions | Electron or DOM dependencies |
 

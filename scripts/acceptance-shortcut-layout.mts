@@ -4,23 +4,23 @@
  * digits, checks that a digit shortcut still fires from the number row and not
  * the keypad, and restores the input source (docs/system-design/tooling.md#keyboard-layout-shortcut-check).
  */
-import { buildFixture } from "./lib/build-fixture.mts";
-import { scrubbedEnv } from "./lib/runner-env.mts";
+import { command } from "./lib/runner/processes.mts";
+import { buildFixture } from "./lib/runner/build-fixture.mts";
+import { scrubbedEnv } from "./lib/runner/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { runIsolatedProcess } from "./lib/isolated-process.mts";
-import { command } from "./lib/acceptance-runtime.mts";
-import { DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/desktop-session.mts";
+import { runIsolatedProcess } from "./lib/runner/isolated-process.mts";
+import { DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/runner/desktop-session.mts";
 import {
   INPUT_SOURCE_SCRIPT, InputSourceGuard, LAYOUT_ACCELERATOR, classify, layoutVerdict, needsActivation, orderCandidates,
   otherRecordStuffProcesses, parseSources, parseState, type Execution, type FixtureCleanup, type KeyResult, type LayoutState, type RestoreRecord,
   KEYPAD_SEVEN,
   NUMBER_ROW_KEY_CODES,
-} from "./lib/shortcut-layout.mts";
+} from "./lib/acceptance/shortcut-layout.mts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);

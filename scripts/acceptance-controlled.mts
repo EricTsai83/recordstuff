@@ -12,18 +12,18 @@ import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { setTimeout as pause } from "node:timers/promises";
-import { copySourceWorkspace } from "./lib/update-acceptance.mts";
+import { copySourceWorkspace } from "./lib/acceptance/update-acceptance.mts";
 import {
   CONTROLLED_TOOL, USAGE, instrumentControlledAcceptance, latestRun, parseControlledArgs,
   seedFiles, selfTestFiles, writeSeedFiles, type ControlledArgs, type RunMarker, type Seed,
-} from "./lib/controlled-acceptance.mts";
-import { alive, readJson, sendControlled } from "./lib/controlled-client.mts";
-import { INTERRUPT_EXIT, escapeRegExp, pgrepProcesses, recordStuffPattern } from "./lib/processes.mts";
-import { scrubbedEnv } from "./lib/runner-env.mts";
+} from "./lib/acceptance/controlled-acceptance.mts";
+import { alive, readJson, sendControlled } from "./lib/acceptance/controlled-client.mts";
+import { INTERRUPT_EXIT, escapeRegExp, pgrepProcesses, recordStuffPattern } from "./lib/runner/processes.mts";
+import { scrubbedEnv } from "./lib/runner/runner-env.mts";
 import { FAULT_MODES, HOLD_TARGETS, type FaultName } from "./fixtures/controlled-modes.ts";
 import type { ControlledCommand, ControlledConfig, ControlledResponse, ControlledSnapshot } from "./fixtures/controlled-acceptance";
 import type { RecordingResult } from "../src/shared/recording-result.ts";
-import { roundExit } from "./lib/round-exit.mts";
+import { roundExit } from "./lib/runner/round-exit.mts";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const PARENT = path.join(ROOT, "docs/verification/measurements");

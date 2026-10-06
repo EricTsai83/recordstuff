@@ -6,46 +6,46 @@
 
 | # | 修復原因 | 修復結果 | 主要位置 |
 | --- | --- | --- | --- |
-| 1 | 自訂儲存目錄消失後被重建 | 只自動建立預設／開發覆寫目錄；自訂目錄不存在就報錯 | [file-writer.ts](../../../src/main/file-writer.ts) |
+| 1 | 自訂儲存目錄消失後被重建 | 只自動建立預設／開發覆寫目錄；自訂目錄不存在就報錯 | [file-writer.ts](../../../src/main/recording/file-writer.ts) |
 | 2 | 退出可能丟失排隊設定 | 媒體安全後等待設定、視窗尺寸與 log flush；逾時延後退出 | [index.ts](../../../src/main/index.ts) |
 | 3 | 退出保護安裝太晚 | 先安裝退出協調器，再等待首次使用檢查 | [index.ts](../../../src/main/index.ts) |
-| 4 | 選資料夾期間可能開始錄影 | 共用單一對話框，回傳後重查操作許可 | [preferences.ts](../../../src/main/preferences.ts) |
-| 5 | 排隊設定引用可被呼叫端改動 | 入列前複製 patch 與快捷鍵／品質物件 | [settings.ts](../../../src/main/settings.ts) |
-| 6 | getter 洩漏內部可變物件 | 螢幕、品質、更新、快捷鍵偏好回傳副本 | [settings.ts](../../../src/main/settings.ts) |
-| 7 | 讀不到歷史卻顯示沒有紀錄 | 保留檔案並顯示載入錯誤，禁止覆寫 | [recording-result-store.ts](../../../src/main/recording-result-store.ts) |
-| 8 | 成功存檔後 sentinel 殘留誤報 | 先持久化完成路徑；重啟忽略完成 checkpoint，空窗狀態明示未知 | [session-sentinel.ts](../../../src/main/session-sentinel.ts) |
-| 9 | 複製後同步失敗留下正式副檔名 | 失敗時清理目的檔，保留原始錄影 | [file-writer.ts](../../../src/main/file-writer.ts) |
-| 10 | 擷取準備例外未收束 | 捕捉 applyQuality 例外、釋放 tracks 並回報失敗 | [capture-host.ts](../../../src/renderer/capture-host.ts) |
-| 11 | Blob 傳送堆積無上限 | 64 MiB 等待上限；超限停止並回報失敗 | [capture-host.ts](../../../src/renderer/capture-host.ts) |
-| 12 | finish 重複執行與晚到 append | 共用 terminal Promise 並拒絕關閉後 append | [file-writer.ts](../../../src/main/file-writer.ts) |
-| 13 | 大型 JSON 解析阻塞 main | 超過 1 MiB 由 worker 解析；保留格式驗證 | [recording-result-store.ts](../../../src/main/recording-result-store.ts) |
-| 14 | 歷史重複格式化與序列化成本 | 快取不可變列投影，傳送已載入範圍 | [settings-model.ts](../../../src/main/settings-model.ts) |
-| 15 | 歷史 DOM 一次無限增長 | 初始 50 筆，以顯示更多每次追加 50 筆 | [settings.ts](../../../src/renderer/settings.ts) |
-| 16 | 同步 log 阻塞事件迴圈 | 非同步序列寫入、1 MiB 佇列上限與 flush | [log.ts](../../../src/main/log.ts) |
-| 17 | 視窗尺寸同步 fsync | 非同步原子寫入，退出等待完成 | [settings-window-state.ts](../../../src/main/settings-window-state.ts) |
+| 4 | 選資料夾期間可能開始錄影 | 共用單一對話框，回傳後重查操作許可 | [preferences.ts](../../../src/main/settings/preferences.ts) |
+| 5 | 排隊設定引用可被呼叫端改動 | 入列前複製 patch 與快捷鍵／品質物件 | [settings.ts](../../../src/main/settings/settings.ts) |
+| 6 | getter 洩漏內部可變物件 | 螢幕、品質、更新、快捷鍵偏好回傳副本 | [settings.ts](../../../src/main/settings/settings.ts) |
+| 7 | 讀不到歷史卻顯示沒有紀錄 | 保留檔案並顯示載入錯誤，禁止覆寫 | [recording-result-store.ts](../../../src/main/recording/recording-result-store.ts) |
+| 8 | 成功存檔後 sentinel 殘留誤報 | 先持久化完成路徑；重啟忽略完成 checkpoint，空窗狀態明示未知 | [session-sentinel.ts](../../../src/main/recording/session-sentinel.ts) |
+| 9 | 複製後同步失敗留下正式副檔名 | 失敗時清理目的檔，保留原始錄影 | [file-writer.ts](../../../src/main/recording/file-writer.ts) |
+| 10 | 擷取準備例外未收束 | 捕捉 applyQuality 例外、釋放 tracks 並回報失敗 | [capture-host.ts](../../../src/renderer/capture/capture-host.ts) |
+| 11 | Blob 傳送堆積無上限 | 64 MiB 等待上限；超限停止並回報失敗 | [capture-host.ts](../../../src/renderer/capture/capture-host.ts) |
+| 12 | finish 重複執行與晚到 append | 共用 terminal Promise 並拒絕關閉後 append | [file-writer.ts](../../../src/main/recording/file-writer.ts) |
+| 13 | 大型 JSON 解析阻塞 main | 超過 1 MiB 由 worker 解析；保留格式驗證 | [recording-result-store.ts](../../../src/main/recording/recording-result-store.ts) |
+| 14 | 歷史重複格式化與序列化成本 | 快取不可變列投影，傳送已載入範圍 | [settings-model.ts](../../../src/main/settings/settings-model.ts) |
+| 15 | 歷史 DOM 一次無限增長 | 初始 50 筆，以顯示更多每次追加 50 筆 | [settings.ts](../../../src/renderer/settings/settings.ts) |
+| 16 | 同步 log 阻塞事件迴圈 | 非同步序列寫入、1 MiB 佇列上限與 flush | [log.ts](../../../src/main/lib/log.ts) |
+| 17 | 視窗尺寸同步 fsync | 非同步原子寫入，退出等待完成 | [settings-window-state.ts](../../../src/main/settings/settings-window-state.ts) |
 | 18 | 解析度降級只寫 log | 設定診斷與通知顯示無法確認上限 | [index.ts](../../../src/main/index.ts) |
-| 19 | 設定回覆過時覆蓋新狀態 | 單調 view revision；隔離舊視窗的傳送快取 | [settings-window.ts](../../../src/main/settings-window.ts) |
-| 20 | index 偏好副作用責任混雜 | 抽出 preference actions，集中許可、持久化與刷新規則 | [preferences.ts](../../../src/main/preferences.ts) |
-| 21 | 主螢幕找不到就錄第一個來源 | 所有選擇均要求唯一精確 id，不任意 fallback | [display-source.ts](../../../src/main/display-source.ts) |
-| 22 | 來源列舉期間主螢幕改變 | 列舉後重查 generation 與 primary id 並有界重試 | [display-source.ts](../../../src/main/display-source.ts) |
-| 23 | 所有列舉例外都誤判權限 | 保留例外原因並回報 capture_start_failed | [display-source.ts](../../../src/main/display-source.ts) |
-| 24 | 準備阶段無法取消 | 選單取消支援 opening／preparing，清理仍由原 owner 負責 | [recorder.ts](../../../src/main/recorder.ts) |
-| 25 | 低磁碟仍開始擷取 | 開啟錄影前檢查 200 MiB 下限 | [recorder.ts](../../../src/main/recorder.ts) |
-| 26 | copy fallback 空間需求高於停止門檻 | 複製前檢查整個檔案大小加 8 MiB | [file-writer.ts](../../../src/main/file-writer.ts) |
-| 27 | 部分檔案 stat 無限等待 UI | 接收／顯示路徑 metadata 檢查最多等兩秒 | [recording-result.ts](../../../src/main/recording-result.ts) |
-| 28 | 權限狀態吞掉先前存檔通知 | needsPermission 可接收已完成錄影通知 | [saved-notification.ts](../../../src/main/saved-notification.ts) |
-| 29 | 通知 constructor 例外外洩 | 涵蓋支援檢查、建構與顯示的錯誤邊界 | [tray.ts](../../../src/main/tray.ts) |
+| 19 | 設定回覆過時覆蓋新狀態 | 單調 view revision；隔離舊視窗的傳送快取 | [settings-window.ts](../../../src/main/settings/settings-window.ts) |
+| 20 | index 偏好副作用責任混雜 | 抽出 preference actions，集中許可、持久化與刷新規則 | [preferences.ts](../../../src/main/settings/preferences.ts) |
+| 21 | 主螢幕找不到就錄第一個來源 | 所有選擇均要求唯一精確 id，不任意 fallback | [display-source.ts](../../../src/main/display/display-source.ts) |
+| 22 | 來源列舉期間主螢幕改變 | 列舉後重查 generation 與 primary id 並有界重試 | [display-source.ts](../../../src/main/display/display-source.ts) |
+| 23 | 所有列舉例外都誤判權限 | 保留例外原因並回報 capture_start_failed | [display-source.ts](../../../src/main/display/display-source.ts) |
+| 24 | 準備阶段無法取消 | 選單取消支援 opening／preparing，清理仍由原 owner 負責 | [recorder.ts](../../../src/main/recording/recorder.ts) |
+| 25 | 低磁碟仍開始擷取 | 開啟錄影前檢查 200 MiB 下限 | [recorder.ts](../../../src/main/recording/recorder.ts) |
+| 26 | copy fallback 空間需求高於停止門檻 | 複製前檢查整個檔案大小加 8 MiB | [file-writer.ts](../../../src/main/recording/file-writer.ts) |
+| 27 | 部分檔案 stat 無限等待 UI | 接收／顯示路徑 metadata 檢查最多等兩秒 | [recording-result.ts](../../../src/main/recording/recording-result.ts) |
+| 28 | 權限狀態吞掉先前存檔通知 | needsPermission 可接收已完成錄影通知 | [saved-notification.ts](../../../src/main/recording/saved-notification.ts) |
+| 29 | 通知 constructor 例外外洩 | 涵蓋支援檢查、建構與顯示的錯誤邊界 | [tray.ts](../../../src/main/menus/tray.ts) |
 | 30 | 舊權限通知仍要求重啟 | 點擊時依目前狀態重查必要動作 | [index.ts](../../../src/main/index.ts) |
-| 31 | 通知點擊已移動檔案無替代路徑 | 與既有 revealSaved 共用不存在檔案的替代流程 | [tray.ts](../../../src/main/tray.ts) |
-| 32 | 醒來後沒有通知也輪詢 | 只有 held notification 存在才啟動輪詢 | [tray.ts](../../../src/main/tray.ts) |
-| 33 | 快捷鍵衝突排除後無法重試 | 失敗診斷提供重試註冊控制 | [shortcuts.ts](../../../src/main/shortcuts.ts) |
+| 31 | 通知點擊已移動檔案無替代路徑 | 與既有 revealSaved 共用不存在檔案的替代流程 | [tray.ts](../../../src/main/menus/tray.ts) |
+| 32 | 醒來後沒有通知也輪詢 | 只有 held notification 存在才啟動輪詢 | [tray.ts](../../../src/main/menus/tray.ts) |
+| 33 | 快捷鍵衝突排除後無法重試 | 失敗診斷提供重試註冊控制 | [shortcuts.ts](../../../src/main/shortcuts/shortcuts.ts) |
 | 34 | release 與 updater 版本語法不同 | 共用 stableVersion 並拒絕數字前導零 | [version.ts](../../../src/shared/version.ts) |
 | 35 | 網站 JS 載入失敗時內容隱藏 | observer 安裝後才啟用隱藏樣式 | [Layout.astro](../../../website/src/layouts/Layout.astro) |
 | 36 | 相對連結以網站根目錄解析 | 以來源頁 URL 解析 query、fragment 與相對位置 | [check-links.mts](../../../website/scripts/check-links.mts) |
-| 37 | HEAD 302 被當下載有效 | 跟隨 redirect 並檢查最終成功狀態 | [release-manifest-client.mts](../../../scripts/lib/release-manifest-client.mts) |
-| 38 | 媒體子程序無逾時 | 預設 15 分鐘上限，可覆寫，逾時 SIGKILL | [media-tools.mts](../../../scripts/lib/media-tools.mts) |
-| 39 | 工具存在檢查忽略退出碼 | version 命令必須以零退出 | [media-tools.mts](../../../scripts/lib/media-tools.mts) |
-| 40 | 測量 Markdown／JSON 部分更新 | 原子替換加 journal，中斷後下次追加先恢復配對 | [verify-recording.mts](../../../scripts/lib/verify-recording.mts) |
+| 37 | HEAD 302 被當下載有效 | 跟隨 redirect 並檢查最終成功狀態 | [release-manifest-client.mts](../../../scripts/lib/release/release-manifest-client.mts) |
+| 38 | 媒體子程序無逾時 | 預設 15 分鐘上限，可覆寫，逾時 SIGKILL | [media-tools.mts](../../../scripts/lib/verification/media-tools.mts) |
+| 39 | 工具存在檢查忽略退出碼 | version 命令必須以零退出 | [media-tools.mts](../../../scripts/lib/verification/media-tools.mts) |
+| 40 | 測量 Markdown／JSON 部分更新 | 原子替換加 journal，中斷後下次追加先恢復配對 | [verify-recording.mts](../../../scripts/lib/verification/verify-recording.mts) |
 
 ## 驗證與限制
 

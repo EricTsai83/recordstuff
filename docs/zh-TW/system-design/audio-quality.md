@@ -209,11 +209,11 @@ Cap 的[音訊整合測試](https://github.com/CapSoftware/Cap/blob/17e17902691c
 
 | 模組 | 責任 |
 | --- | --- |
-| [audio-quality.mts](../../../scripts/lib/audio-quality.mts) | 純素材產生、WAV 序列化、有限頻率估計、擬合與門檻 |
-| [audio-quality-tools.mts](../../../scripts/lib/audio-quality-tools.mts) | 有界限的 FFprobe／FFmpeg 呼叫，啟動真正開發版程式與自有播放器 |
-| [audio-quality-summary.mts](../../../scripts/lib/audio-quality-summary.mts) | 彙總多次量測，不隱藏失敗或缺少值 |
+| [audio-quality.mts](../../../scripts/lib/audio/audio-quality.mts) | 純素材產生、WAV 序列化、有限頻率估計、擬合與門檻 |
+| [audio-quality-tools.mts](../../../scripts/lib/audio/audio-quality-tools.mts) | 有界限的 FFprobe／FFmpeg 呼叫，啟動真正開發版程式與自有播放器 |
+| [audio-quality-summary.mts](../../../scripts/lib/audio/audio-quality-summary.mts) | 彙總多次量測，不隱藏失敗或缺少值 |
 | [CLI](../../../scripts/audio-quality.mts) | 驗證參數、新目錄、環境快照、重跑迴圈、JSON 與結束碼 |
-| [Tests](../../../scripts/lib/audio-quality.test.ts) | 正常／劣化對照、實際編碼器、CLI 契約與摘要行為 |
+| [Tests](../../../scripts/lib/audio/audio-quality.test.ts) | 正常／劣化對照、實際編碼器、CLI 契約與摘要行為 |
 
 不可破壞的條件：不以混成立體聲或重新取樣掩蓋格式錯誤；只解碼前 60 秒，限制緩衝區與逾時；不修改正式音訊處理或使用者設定；不覆寫既有證據目錄；只終止自己啟動的子程序；保留歷史量測。第 1 版錄音不能拿來當第 2 版素材分析，應重新產生並錄影第 2 版，舊報告留作歷史證據。
 

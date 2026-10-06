@@ -5,18 +5,18 @@
 import fs from "node:fs";
 import os from "node:os";
 import { createHash } from "node:crypto";
-import { scrubbedEnv } from "./lib/runner-env.mts";
+import { scrubbedEnv } from "./lib/runner/runner-env.mts";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildFixture } from "./lib/build-fixture.mts";
-import { runIsolatedProcess } from "./lib/isolated-process.mts";
-import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
-import { workingTreeIdentity } from "./lib/verification-timing.mts";
+import { buildFixture } from "./lib/runner/build-fixture.mts";
+import { runIsolatedProcess } from "./lib/runner/isolated-process.mts";
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
+import { workingTreeIdentity } from "./lib/runner/verification-timing.mts";
 import {
   DEFERRED_QUIT_MEDIA_MESSAGE, DELIVERY_WINDOW_MS, MAX_LATE_MS, VISUAL_PENDING, classifyBannerText, classifyCleanup, classifyDelivery, classifyLifecycle, classifySetup,
   combineVerdict, parseNotificationEvents, renderReport, type BannerSighting, type DeliveryLayer, type Layer,
-} from "./lib/quit-dialog-acceptance.mts";
-import { AccessibilityBlockedError, osascriptAx } from "./lib/native-ax.mts";
+} from "./lib/acceptance/quit-dialog-acceptance.mts";
+import { AccessibilityBlockedError, osascriptAx } from "./lib/runner/native-ax.mts";
 import { isLanguage, translate } from "../src/shared/i18n.ts";
 
 /** Copy, sign and verify take about two seconds; a keychain prompt waiting for a person must not hold the round. */

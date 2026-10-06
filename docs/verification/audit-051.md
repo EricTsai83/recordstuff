@@ -6,46 +6,46 @@ All forty repairs are implemented; plan 051 closed on 2026-09-29 after guided di
 
 | # | Reason | Result | Main location |
 | --- | --- | --- | --- |
-| 1 | Missing custom folder recreated | Create only default/development folders; reject missing custom folders | [file-writer.ts](../../src/main/file-writer.ts) |
+| 1 | Missing custom folder recreated | Create only default/development folders; reject missing custom folders | [file-writer.ts](../../src/main/recording/file-writer.ts) |
 | 2 | Pending preferences lost on quit | Flush preferences, geometry and logs after media settles; defer on timeout | [index.ts](../../src/main/index.ts) |
 | 3 | Quit protection installed too late | Install the coordinator before first-run asynchronous interaction | [index.ts](../../src/main/index.ts) |
-| 4 | Recording starts while folder dialog is open | Deduplicate the dialog and recheck admission on return | [preferences.ts](../../src/main/preferences.ts) |
-| 5 | Queued setting input is mutable | Snapshot patches before enqueueing | [settings.ts](../../src/main/settings.ts) |
-| 6 | Getters expose mutable internal state | Return copies of structured preferences | [settings.ts](../../src/main/settings.ts) |
-| 7 | Unreadable history appears empty | Expose load failure and preserve the unreadable file | [recording-result-store.ts](../../src/main/recording-result-store.ts) |
-| 8 | Completed recording leaves false interruption | Persist completion checkpoint; describe the remaining crash gap as unknown | [session-sentinel.ts](../../src/main/session-sentinel.ts) |
-| 9 | Post-copy sync failure leaves a final-looking file | Remove failed destination and retain original media | [file-writer.ts](../../src/main/file-writer.ts) |
-| 10 | Uncontained capture preparation exception | Release tracks and report preparation failure | [capture-host.ts](../../src/renderer/capture-host.ts) |
-| 11 | Unbounded Blob handoff | Stop with failure at a 64 MiB backlog | [capture-host.ts](../../src/renderer/capture-host.ts) |
-| 12 | Repeated finish and late append | Own terminal operations and reject late appends | [file-writer.ts](../../src/main/file-writer.ts) |
-| 13 | Large JSON parsing blocks main | Parse histories above 1 MiB in a worker | [recording-result-store.ts](../../src/main/recording-result-store.ts) |
-| 14 | Repeated history projection costs | Cache immutable row projections and send loaded rows | [settings-model.ts](../../src/main/settings-model.ts) |
-| 15 | Unbounded initial history DOM | Render 50 rows initially, load more explicitly | [settings.ts](../../src/renderer/settings.ts) |
-| 16 | Synchronous logging blocks event loop | Bound and serialize asynchronous file logging | [log.ts](../../src/main/log.ts) |
-| 17 | Synchronous geometry fsync | Queue atomic geometry writes and flush on quit | [settings-window-state.ts](../../src/main/settings-window-state.ts) |
+| 4 | Recording starts while folder dialog is open | Deduplicate the dialog and recheck admission on return | [preferences.ts](../../src/main/settings/preferences.ts) |
+| 5 | Queued setting input is mutable | Snapshot patches before enqueueing | [settings.ts](../../src/main/settings/settings.ts) |
+| 6 | Getters expose mutable internal state | Return copies of structured preferences | [settings.ts](../../src/main/settings/settings.ts) |
+| 7 | Unreadable history appears empty | Expose load failure and preserve the unreadable file | [recording-result-store.ts](../../src/main/recording/recording-result-store.ts) |
+| 8 | Completed recording leaves false interruption | Persist completion checkpoint; describe the remaining crash gap as unknown | [session-sentinel.ts](../../src/main/recording/session-sentinel.ts) |
+| 9 | Post-copy sync failure leaves a final-looking file | Remove failed destination and retain original media | [file-writer.ts](../../src/main/recording/file-writer.ts) |
+| 10 | Uncontained capture preparation exception | Release tracks and report preparation failure | [capture-host.ts](../../src/renderer/capture/capture-host.ts) |
+| 11 | Unbounded Blob handoff | Stop with failure at a 64 MiB backlog | [capture-host.ts](../../src/renderer/capture/capture-host.ts) |
+| 12 | Repeated finish and late append | Own terminal operations and reject late appends | [file-writer.ts](../../src/main/recording/file-writer.ts) |
+| 13 | Large JSON parsing blocks main | Parse histories above 1 MiB in a worker | [recording-result-store.ts](../../src/main/recording/recording-result-store.ts) |
+| 14 | Repeated history projection costs | Cache immutable row projections and send loaded rows | [settings-model.ts](../../src/main/settings/settings-model.ts) |
+| 15 | Unbounded initial history DOM | Render 50 rows initially, load more explicitly | [settings.ts](../../src/renderer/settings/settings.ts) |
+| 16 | Synchronous logging blocks event loop | Bound and serialize asynchronous file logging | [log.ts](../../src/main/lib/log.ts) |
+| 17 | Synchronous geometry fsync | Queue atomic geometry writes and flush on quit | [settings-window-state.ts](../../src/main/settings/settings-window-state.ts) |
 | 18 | Resolution degradation is log-only | Expose a localized Settings diagnostic and notification | [index.ts](../../src/main/index.ts) |
-| 19 | Stale Settings response overwrites new state | Version views and isolate retired-window delivery caches | [settings-window.ts](../../src/main/settings-window.ts) |
-| 20 | Preference side effects crowd index | Extract shared preference orchestration | [preferences.ts](../../src/main/preferences.ts) |
-| 21 | Missing primary captures arbitrary source | Require exactly one matching display ID | [display-source.ts](../../src/main/display-source.ts) |
-| 22 | Primary changes during enumeration | Revalidate topology and primary identity after enumeration | [display-source.ts](../../src/main/display-source.ts) |
-| 23 | Enumeration exceptions misclassified as permissions | Preserve exception cause and report capture_start_failed | [display-source.ts](../../src/main/display-source.ts) |
-| 24 | Preparation cannot be cancelled | Add explicit cancellation during opening and preparation | [recorder.ts](../../src/main/recorder.ts) |
-| 25 | Capture starts with too little disk | Check minimum headroom before opening media | [recorder.ts](../../src/main/recorder.ts) |
-| 26 | Copy fallback needs recording-sized space | Check full file size plus 8 MiB before copying | [file-writer.ts](../../src/main/file-writer.ts) |
-| 27 | Partial-file stat stalls UI indefinitely | Bound metadata lookup to two seconds | [recording-result.ts](../../src/main/recording-result.ts) |
-| 28 | Permission state suppresses completed-save notice | Allow completed-save notices during permission recovery | [saved-notification.ts](../../src/main/saved-notification.ts) |
-| 29 | Notification constructor can throw | Contain construction and display exceptions | [tray.ts](../../src/main/tray.ts) |
+| 19 | Stale Settings response overwrites new state | Version views and isolate retired-window delivery caches | [settings-window.ts](../../src/main/settings/settings-window.ts) |
+| 20 | Preference side effects crowd index | Extract shared preference orchestration | [preferences.ts](../../src/main/settings/preferences.ts) |
+| 21 | Missing primary captures arbitrary source | Require exactly one matching display ID | [display-source.ts](../../src/main/display/display-source.ts) |
+| 22 | Primary changes during enumeration | Revalidate topology and primary identity after enumeration | [display-source.ts](../../src/main/display/display-source.ts) |
+| 23 | Enumeration exceptions misclassified as permissions | Preserve exception cause and report capture_start_failed | [display-source.ts](../../src/main/display/display-source.ts) |
+| 24 | Preparation cannot be cancelled | Add explicit cancellation during opening and preparation | [recorder.ts](../../src/main/recording/recorder.ts) |
+| 25 | Capture starts with too little disk | Check minimum headroom before opening media | [recorder.ts](../../src/main/recording/recorder.ts) |
+| 26 | Copy fallback needs recording-sized space | Check full file size plus 8 MiB before copying | [file-writer.ts](../../src/main/recording/file-writer.ts) |
+| 27 | Partial-file stat stalls UI indefinitely | Bound metadata lookup to two seconds | [recording-result.ts](../../src/main/recording/recording-result.ts) |
+| 28 | Permission state suppresses completed-save notice | Allow completed-save notices during permission recovery | [saved-notification.ts](../../src/main/recording/saved-notification.ts) |
+| 29 | Notification constructor can throw | Contain construction and display exceptions | [tray.ts](../../src/main/menus/tray.ts) |
 | 30 | Stale permission notice relaunches unnecessarily | Revalidate permission action at click time | [index.ts](../../src/main/index.ts) |
-| 31 | Missing saved file has no notification fallback | Reuse the shared saved-file reveal fallback | [tray.ts](../../src/main/tray.ts) |
-| 32 | Wake polling without pending notices | Poll only while held notifications await delivery | [tray.ts](../../src/main/tray.ts) |
-| 33 | Shortcut conflict cannot be retried | Expose explicit registration retry | [shortcuts.ts](../../src/main/shortcuts.ts) |
+| 31 | Missing saved file has no notification fallback | Reuse the shared saved-file reveal fallback | [tray.ts](../../src/main/menus/tray.ts) |
+| 32 | Wake polling without pending notices | Poll only while held notifications await delivery | [tray.ts](../../src/main/menus/tray.ts) |
+| 33 | Shortcut conflict cannot be retried | Expose explicit registration retry | [shortcuts.ts](../../src/main/shortcuts/shortcuts.ts) |
 | 34 | Release/update version grammar differs | Share stable-version grammar and reject leading zeros | [version.ts](../../src/shared/version.ts) |
 | 35 | Failed website script hides content | Activate reveal styling only after observer installation | [Layout.astro](../../website/src/layouts/Layout.astro) |
 | 36 | Relative links resolve from root incorrectly | Resolve against each source page URL | [check-links.mts](../../website/scripts/check-links.mts) |
-| 37 | HEAD redirect accepted without destination check | Follow redirects and require final success | [release-manifest-client.mts](../../scripts/lib/release-manifest-client.mts) |
-| 38 | Unbounded media subprocess | Apply configurable 15-minute timeout with SIGKILL | [media-tools.mts](../../scripts/lib/media-tools.mts) |
-| 39 | Tool probe ignores exit status | Require successful version-command exit | [media-tools.mts](../../scripts/lib/media-tools.mts) |
-| 40 | Measurement evidence partially updated | Atomically replace both files with replayable recovery journal | [verify-recording.mts](../../scripts/lib/verify-recording.mts) |
+| 37 | HEAD redirect accepted without destination check | Follow redirects and require final success | [release-manifest-client.mts](../../scripts/lib/release/release-manifest-client.mts) |
+| 38 | Unbounded media subprocess | Apply configurable 15-minute timeout with SIGKILL | [media-tools.mts](../../scripts/lib/verification/media-tools.mts) |
+| 39 | Tool probe ignores exit status | Require successful version-command exit | [media-tools.mts](../../scripts/lib/verification/media-tools.mts) |
+| 40 | Measurement evidence partially updated | Atomically replace both files with replayable recovery journal | [verify-recording.mts](../../scripts/lib/verification/verify-recording.mts) |
 
 ## Validation and limits
 

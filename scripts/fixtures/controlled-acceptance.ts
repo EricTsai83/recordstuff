@@ -8,12 +8,12 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { Recorder, RecorderHost } from "../../src/main/recorder";
-import type { RecordingResults } from "../../src/main/recording-result";
-import type { ResultStorage } from "../../src/main/recording-result-store";
-import type { SettingsStore } from "../../src/main/settings";
-import type { AppTray } from "../../src/main/tray";
-import type { AppAction } from "../../src/main/ui-model";
+import type { Recorder, RecorderHost } from "../../src/main/recording/recorder";
+import type { RecordingResults } from "../../src/main/recording/recording-result";
+import type { ResultStorage } from "../../src/main/recording/recording-result-store";
+import type { SettingsStore } from "../../src/main/settings/settings";
+import type { AppTray } from "../../src/main/menus/tray";
+import type { AppAction } from "../../src/main/app/ui-model";
 import type { RecordingFailure, RecordingResult } from "../../src/shared/recording-result";
 import type { RecordingState } from "../../src/shared/state";
 import { ControlledFaults } from "./controlled-faults";

@@ -28,7 +28,7 @@ flowchart TD
 
 發布前任何一步的 Windows 失敗都會讓整個 tag 失敗，與 macOS 失敗相同；Windows 閘門只在 GitHub 的 runner 上執行，不證明任何擷取行為（[設計決策](decisions.md)）。
 
-網站入口只監聽 `website/**`、共用的 release manifest 模組 `scripts/lib/release-manifest*.mts`（網站建置會引用它們）、它們引用的版本語法 `src/shared/version.ts` 與 `.github/workflows/website.yml` 的 main push；一般文件或 App 原始碼變更不會單獨觸發網站部署。release 的 record job 使用 `GITHUB_TOKEN` 推送，這不會觸發另一個 push workflow，因此 release 必須明確呼叫共用網站 workflow。
+網站入口只監聽 `website/**`、共用的 release manifest 模組 `scripts/lib/release/release-manifest*.mts`（網站建置會引用它們）、它們引用的版本語法 `src/shared/version.ts` 與 `.github/workflows/website.yml` 的 main push；一般文件或 App 原始碼變更不會單獨觸發網站部署。release 的 record job 使用 `GITHUB_TOKEN` 推送，這不會觸發另一個 push workflow，因此 release 必須明確呼叫共用網站 workflow。
 
 所有網站入口共用部署鎖，不取消正在執行的部署；取得鎖後才讀取 main，避免較舊的排隊觸發部署舊 checkout。圖中的部署需要先通過 secrets 設定檢查；缺少設定會略過並提示。網站檢查失敗時不部署，前一版網站繼續服務；若 App 已發布，它不會因後續網站失敗而被撤回。
 

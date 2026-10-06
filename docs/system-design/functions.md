@@ -6,7 +6,7 @@ Named application and tool functions are grouped by source file. Follow source l
 
 ## App composition
 
-[main/index.ts](../../src/main/index.ts). Nested action handlers share settings, Recorder, and Tray through closures; they are not renderer-callable APIs.
+[main/index.ts](../../src/main/index.ts). The closures here build the collaborators and pass them to the [action handler](#action-handler); none of them is a renderer-callable API.
 
 | Function | Contract |
 | --- | --- |
@@ -19,7 +19,7 @@ Named application and tool functions are grouped by source file. Follow source l
 | main | Wait ready, compose dependencies, register events/actions, start permission polling and optional development recording |
 | renderUi / refreshUi | Move the tray and the settings panel together on a state change or a context change |
 | quality | Development override or persisted settings → platform-effective quality |
-| handleAction | Dispatch stop/quit/settings/relaunch/Finder, result actions, and every preference change through `savePreference` or `AppShortcuts.set` |
+| handleAction | Hoisted, so the windows and the tray built before the handler can hold it; forwards every action to the handler `createActionHandler` built |
 | savePreference | One preference write: a `locked` one needs a settled recorder; the write is awaited, a failure logged and, where the tray has one, notified; both projections refresh afterwards |
 | focusApp | Bring the menu-bar app forward on macOS before a dialog or window, so it does not open behind the frontmost app |
 | showSavedRecording | The saved notification's click: list the folder again and open Recordings with that recording in view, or, when it was moved or deleted since, on what the folder holds now |
@@ -27,19 +27,32 @@ Named application and tool functions are grouped by source file. Follow source l
 | changeOutputDir | Native folder dialog → persist choice; failure notification or successful refresh |
 | openOutputDir | Settings' Show in Finder for the output folder: `createOutputFolderOpener` over `shell.openPath`, the native warning, app focus and `changeOutputDir` behind the settled check |
 
-[main/output-folder.ts](../../src/main/output-folder.ts): `createOutputFolderOpener` returns the single-flight open action. It stats the folder. A directory opens; the missing known default is created with a non-recursive `mkdir` only inside an existing parent folder; a missing custom folder, a file, a refused creation, an unreadable path or a Finder failure becomes one localized warning with the path, details and Change output folder/Cancel; while recording work is pending, the problem is logged and told in a notification held by `CaptureNotices` instead, because a modal warning would hold that work. An access refusal still asks Finder first. It never writes settings; a repeated click joins, focusing an open warning. `nodeOutputFolderFs` is the real stat/mkdir boundary.
+[main/library/output-folder.ts](../../src/main/library/output-folder.ts): `createOutputFolderOpener` returns the single-flight open action. It stats the folder. A directory opens; the missing known default is created with a non-recursive `mkdir` only inside an existing parent folder; a missing custom folder, a file, a refused creation, an unreadable path or a Finder failure becomes one localized warning with the path, details and Change output folder/Cancel; while recording work is pending, the problem is logged and told in a notification held by `CaptureNotices` instead, because a modal warning would hold that work. An access refusal still asks Finder first. It never writes settings; a repeated click joins, focusing an open warning. `nodeOutputFolderFs` is the real stat/mkdir boundary.
 
 Process callbacks log uncaught exceptions and rejections; the first uncaught exception also shows the error dialog, and a `main()` that rejects logs, shows it and exits. `savePreference` is the one place a preference write is awaited, logged and refreshed. Recorder events render state, notify saved/error/permission, and report clear frame-rate downgrades. The tray left click and the global shortcut share one `toggle` closure. Recorder receives `fs.statfs` free space and the `userData/recording-sessions` sentinels; launch reports leftover sentinels through the history restore, and `powerMonitor` suspend/resume are logged with the in-flight session. Before-quit coordinates shutdown; will-quit disposes the shortcut and releases resources. CurrentLanguage is updated only after a successful settings save and localizes unexpected-error dialogs.
 
+[Data migration and cleanup](../../src/main/app/data-cleanup.ts)：`SettingsStore.migrate()` upgrades v1/v2 settings at startup and keeps the original; newer schemas refuse writes. `DataCleanupRequest.request()` owns native consent and settled checks before/after it. `prepareDataCleanup()` commits a one-shot helper only once exit is admitted; it waits for parent exit before removing app data and protects recordings. `waitForDataCleanup()` prevents a new launch from writing during cleanup.
+
+## Action handler
+
+[main/actions/actions.ts](../../src/main/actions/actions.ts): every `AppAction` from the tray, the settings panel, the application menu, notifications and the Settings shortcut ends here. `index.ts` passes the collaborators in; this module constructs none.
+
+| Function | Contract |
+| --- | --- |
+| createActionHandler | Bind the collaborators once and return the handler |
+| handler: quit gate | While a quit runs, answer false to every action but quit, touching nothing |
+| handler: preferences | Each `set…` action through `savePreference` with its lock: display, update checks, notifications, file name, countdown, countdown sound and quality need a settled recorder; tray click, library layout, appearance and language do not; the shortcut goes through `AppShortcuts.set` |
+| handler: commands | Open a Settings tab, a link, the output folder, the log or System Settings; start, stop or cancel; quit or relaunch; clear app data. Each answers the outcome the Settings row reads; a raced update click while recording answers true and opens nothing |
+
 ## Display selection
 
-[main/display-source.ts](../../src/main/display-source.ts): `resolveDisplayPreference` resolves the saved primary or explicit display; `selectScreenSource` requires exactly one source whose display id matches the resolved primary or explicit display, with no fallback. `DisplayRequest.run` checks topology around source enumeration, retries a missing source or a topology change up to three attempts for either preference, and settles the callback once, also when something throws (reported through the optional `failed` dependency). `cancel` settles pending callbacks and clears retry delays. `displayResolution` shares availability with tray and settings.
+[main/display/display-source.ts](../../src/main/display/display-source.ts): `resolveDisplayPreference` resolves the saved primary or explicit display; `selectScreenSource` requires exactly one source whose display id matches the resolved primary or explicit display, with no fallback. `DisplayRequest.run` checks topology around source enumeration, retries a missing source or a topology change up to three attempts for either preference, and settles the callback once, also when something throws (reported through the optional `failed` dependency). `cancel` settles pending callbacks and clears retry delays. `displayResolution` shares availability with tray and settings.
 
-[main/display-media.ts](../../src/main/display-media.ts): `DisplayMedia` owns display-media state across attempts. `begin(sessionId)` cancels the previous request and snapshots the saved preference; `answer(owns, callback)` runs the attempt's `DisplayRequest` only for a frame the attempt owns and otherwise returns no source; `explain(code)` replaces one explainable host error with main's refusal reason; `settle()` cancels pending work and stops watching the active display; `topologyChanged(connectedIds)` advances the topology generation and reports whether the recorded display disconnected. `failure` is the display diagnostic shown by tray and settings.
+[main/display/display-media.ts](../../src/main/display/display-media.ts): `DisplayMedia` owns display-media state across attempts. `begin(sessionId)` cancels the previous request and snapshots the saved preference; `answer(owns, callback)` runs the attempt's `DisplayRequest` only for a frame the attempt owns and otherwise returns no source; `explain(code)` replaces one explainable host error with main's refusal reason; `settle()` cancels pending work and stops watching the active display; `topologyChanged(connectedIds)` advances the topology generation and reports whether the recorded display disconnected. `failure` is the display diagnostic shown by tray and settings.
 
 ## Recording state machine
 
-[main/recorder.ts](../../src/main/recorder.ts). Injected dependencies make timing, stale sessions, and I/O failures testable without Electron.
+[main/recording/recorder.ts](../../src/main/recording/recorder.ts). Injected dependencies make timing, stale sessions, and I/O failures testable without Electron.
 
 | Function/method | Contract |
 | --- | --- |
@@ -79,7 +92,7 @@ Process callbacks log uncaught exceptions and rejections; the first uncaught exc
 
 ## Main capture supervisor
 
-[main/capture-host.ts](../../src/main/capture-host.ts). Distinct from the same-named renderer class.
+[main/recording/capture-host.ts](../../src/main/recording/capture-host.ts). Distinct from the same-named renderer class.
 
 | Method | Contract |
 | --- | --- |
@@ -97,7 +110,7 @@ Process callbacks log uncaught exceptions and rejections; the first uncaught exc
 
 ## Renderer capture and encoding
 
-[renderer/capture-host.ts](../../src/renderer/capture-host.ts). No filesystem or arbitrary Node access.
+[renderer/capture/capture-host.ts](../../src/renderer/capture/capture-host.ts). No filesystem or arbitrary Node access.
 
 | Function/method | Contract |
 | --- | --- |
@@ -124,12 +137,12 @@ The page's window-message callback checks source/marker/port before creating the
 
 ## Media storage
 
-[main/file-writer.ts](../../src/main/file-writer.ts). NodeFs adapts open, link, exclusive copy, unlink, mkdir, and writeFile for injected I/O.
+[main/recording/file-writer.ts](../../src/main/recording/file-writer.ts). NodeFs adapts open, link, exclusive copy, unlink, mkdir, and writeFile for injected I/O.
 
 | Function/method | Contract |
 | --- | --- |
 | FileWriteError constructor | Error carrying code, path, and original cause |
-| errnoCode / messageOf ([main/errors.ts](../../src/main/errors.ts)) | Optional filesystem errno / error text, shared by every main module that reads a Node error |
+| errnoCode / messageOf ([main/lib/errors.ts](../../src/main/lib/errors.ts)) | Optional filesystem errno / error text, shared by every main module that reads a Node error |
 | classifyWriteError | ENOSPC→disk_full; otherwise output_write_failed |
 | classifyOpenError | ENOSPC→disk_full; otherwise output_open_failed (the folder probe and the exclusive open) |
 | ensureWritableDir | mkdir and write probe; throw classifyOpenError's code on failure; remove probe best effort |
@@ -147,7 +160,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 ## Recordings library
 
-[main/recordings-library.ts](../../src/main/recordings-library.ts) lists the output folder for the Recordings tab and is the only way the sandboxed page reaches a recording's bytes; [main/mp4-duration.ts](../../src/main/mp4-duration.ts) reads lengths. See [desktop](desktop.md#recordings).
+[main/library/recordings-library.ts](../../src/main/library/recordings-library.ts) lists the output folder for the Recordings tab and is the only way the sandboxed page reaches a recording's bytes; [main/library/mp4-duration.ts](../../src/main/library/mp4-duration.ts) reads lengths. See [desktop](desktop.md#recordings).
 
 | Function/method | Contract |
 | --- | --- |
@@ -164,7 +177,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 ## Settings, quality, language, and protocol
 
-[main/settings.ts](../../src/main/settings.ts):
+[main/settings/settings.ts](../../src/main/settings/settings.ts):
 
 | Function/method | Contract |
 | --- | --- |
@@ -181,7 +194,7 @@ The page's window-message callback checks source/marker/port before creating the
 | save | Serialize, write, then update memory; one failed operation does not block later saves |
 | write | `writeFileAtomic`: mkdir, write and fsync JSON.tmp, then rename |
 
-[main/atomic-file.ts](../../src/main/atomic-file.ts): `writeFileAtomic` / `writeFileAtomicSync` create the parent folder, write `<file>.tmp`, fsync it and rename it over the file; a failure removes the temporary file and keeps the previous content. Settings, settings-window size and failure history use `writeFileAtomic`; `writeFileAtomicSync` serves only the verification scripts.
+[main/lib/atomic-file.ts](../../src/main/lib/atomic-file.ts): `writeFileAtomic` / `writeFileAtomicSync` create the parent folder, write `<file>.tmp`, fsync it and rename it over the file; a failure removes the temporary file and keeps the previous content. Settings, settings-window size and failure history use `writeFileAtomic`; `writeFileAtomicSync` serves only the verification scripts.
 
 [shared/quality.ts](../../src/shared/quality.ts):
 
@@ -200,7 +213,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 [shared/hotkey.ts](../../src/shared/hotkey.ts): `DEFAULT_HOTKEY` enables ⇧⌘1; the accelerators earlier versions shipped stay valid, checked by `hotkey.test.ts`. `validateAccelerator` validates supported custom combinations, requires Command or Control and rejects reserved keys; `canonicalizeAccelerator` normalizes modifier order and shifted glyphs. `canonicalHotkeySettings` validates a persisted shortcut with the same rules, without restricting it to the offered choices, and returns it in canonical order; `describeAccelerator(accelerator, platform)` renders `⌥⇧⌘R` on darwin and `Ctrl+Alt+Shift+R` elsewhere for menus, notifications and logs.
 
-[main/hotkey.ts](../../src/main/hotkey.ts):
+[main/shortcuts/hotkey.ts](../../src/main/shortcuts/hotkey.ts):
 
 | Function/method | Contract |
 | --- | --- |
@@ -221,7 +234,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 [shared/countdown.ts](../../src/shared/countdown.ts): `COUNTDOWN_CHOICES` (0, 3, 5, 10), `DEFAULT_COUNTDOWN` (3) and `isCountdownSeconds`; `COUNTDOWN_TIMING` (tick, overlay lead, dismissal bound, fades, settle) and `COUNTDOWN_OVERLAY` (the font fraction of the display's shorter side and its 56–216 pt clamp, the window-to-font ratio, insets, font, digit, outline and shadows at the 56 pt reference size, reduced-transparency values), the tick's values `COUNTDOWN_TICK` (sine at 523 Hz, the last digit ×1.5, a quiet fourth partial, 4 ms attack, 140 ms, −20 dBFS), `DEFAULT_COUNTDOWN_SOUND` (on), `tickFrequencyHz(digit)` and the page's `COUNTDOWN_SOUND_QUERY` (plan 046), the one place every timing, appearance and sound value lives; `overlayFontPt(displayBounds)` gives the digit's size for a display and `overlayBounds(displayBounds, workArea)` the square window, in whole points, at the top-right of its work area; the value channel and bridge type the overlay preload exposes.
 
-[main/countdown-overlay.ts](../../src/main/countdown-overlay.ts):
+[main/recording/countdown-overlay.ts](../../src/main/recording/countdown-overlay.ts):
 
 | Function/method | Contract |
 | --- | --- |
@@ -231,13 +244,13 @@ The page's window-message callback checks source/marker/port before creating the
 | dismiss | Send `null` so the digit fades, destroy the window after the fade and settle interval, then resolve; destroy at once when nothing was drawn |
 | close / destroy | Destroy at once, resolving a pending dismissal; `destroy` is the app's safety net on settled states and quit |
 
-[renderer/countdown.ts](../../src/renderer/countdown.ts): `overlayStyle` turns the shared appearance values into CSS custom properties; `createCountdownView` crossfades two stacked faces, fades the stage out on `null` and calls its optional `onDigit` once per new digit; `playTick` synthesizes one tick from `COUNTDOWN_TICK` with Web Audio; `soundRequested` reads the page's query (plan 046). [preload/countdown.ts](../../src/preload/countdown.ts) exposes only `countdown.onValue` and forwards positive integers or `null`. [shared/state.ts](../../src/shared/state.ts): `isErrorCode` checks the ERROR_CODES whitelist.
+[renderer/countdown/countdown.ts](../../src/renderer/countdown/countdown.ts): `overlayStyle` turns the shared appearance values into CSS custom properties; `createCountdownView` crossfades two stacked faces, fades the stage out on `null` and calls its optional `onDigit` once per new digit; `playTick` synthesizes one tick from `COUNTDOWN_TICK` with Web Audio; `soundRequested` reads the page's query (plan 046). [preload/countdown.ts](../../src/preload/countdown.ts) exposes only `countdown.onValue` and forwards positive integers or `null`. [shared/state.ts](../../src/shared/state.ts): `isErrorCode` checks the ERROR_CODES whitelist.
 
 [preload/index.ts](../../src/preload/index.ts) has one IPC callback rather than named functions: forward the received capture-host-port to window with transferred ports. No contextBridge API is exposed.
 
 ## Permissions
 
-[main/permission.ts](../../src/main/permission.ts):
+[main/permission/permission.ts](../../src/main/permission/permission.ts):
 
 | Function/method | Contract |
 | --- | --- |
@@ -256,17 +269,17 @@ The page's window-message callback checks source/marker/port before creating the
 
 ## Shared UI vocabulary
 
-[main/ui-model.ts](../../src/main/ui-model.ts): what the tray and the settings panel both build on. Neither projection is derived from the other.
+[main/app/ui-model.ts](../../src/main/app/ui-model.ts): what the tray and the settings panel both build on. Neither projection is derived from the other.
 
 | Function | Contract |
 | --- | --- |
 | AppAction / AppContext / AppHotkey | The action union every interface raises, and the read-only context snapshot both project from |
-| preferencesUnlocked | The single rule for whether a preference may change: idle or needsPermission only |
+| preferencesUnlocked ([main/recording/recording-lock.ts](../../src/main/recording/recording-lock.ts)) | The single rule for whether a preference may change: idle or needsPermission only |
 | abbreviateHome | Shorten exact home or complete path prefix, avoiding similarly named folders |
 
 ## Settings panel model
 
-[main/settings-model.ts](../../src/main/settings-model.ts): every preference declared once, with stable ids.
+[main/settings/settings-model.ts](../../src/main/settings/settings-model.ts): every preference declared once, with stable ids.
 
 | Function | Contract |
 | --- | --- |
@@ -281,7 +294,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 ## Settings window
 
-[main/settings-window.ts](../../src/main/settings-window.ts) and [renderer/settings.ts](../../src/renderer/settings.ts).
+[main/settings/settings-window.ts](../../src/main/settings/settings-window.ts) and [renderer/settings/settings.ts](../../src/renderer/settings/settings.ts). The page's shell is `settings-app.tsx`; its tabs are `tabs/library.tsx`, `tabs/preferences.tsx` (with `tabs/shortcut-editor.tsx`) and `tabs/failures.tsx`. `settings-controller.ts` is the one surface the page reads, kept by concern in `controller/`: the projection and its requests (`core.ts`), the shortcut editor, the Failures rows, the Recordings tab, the embedded player, the explanation popovers and the toast.
 
 | Function/method | Contract |
 | --- | --- |
@@ -291,13 +304,13 @@ The page's window-message callback checks source/marker/port before creating the
 | destroy | Remove the handlers and the window on quit |
 | apply | Resolve the group/choice pair, run the shared action handler, answer with the new view and whether it committed |
 | queue (settings:choose) | Serialize saves in request order so a second request waits instead of being reported as a failure |
-| panel: draw / row | Render a view, restoring focus to the control the rebuild replaced; an explicit failure entry selects the failures tab; each tab's scroll offset is stored on leaving and restored once the rebuilt panel has settled |
-| panel: updateRecordingResult / resultRow / fillRow | The failures tab (plan 047): day groups of collapsed rows kept by ID, one open at a time, Up/Down/Home/End between headers, the entry target opened and focused, focus to the neighbour after a removal or to the tab after the last |
+| SettingsApp / controller.render | Render the committed view through React/shadcn primitives, retaining keyed controls and focused drafts; explicit entries select their tab, and tab scroll positions restore after layout |
+| FailureRow / controller.toggleResult | Keyed day groups with independently open Collapsibles; Up/Down/Home/End between headers; open/focus explicit entry; restore neighbour or tab focus after removal |
 | panel: choose | Send the ids, keep the control in use live while its neighbours go inert, and show the failure text if the value did not commit |
 
 ## Tray presentation
 
-[main/tray-model.ts](../../src/main/tray-model.ts): a flat command menu; preferences are not in it.
+[main/menus/tray-model.ts](../../src/main/menus/tray-model.ts): a flat command menu; preferences are not in it.
 
 | Function | Contract |
 | --- | --- |
@@ -316,7 +329,7 @@ The page's window-message callback checks source/marker/port before creating the
 | frameRateDowngradeNotification | Include actual and requested fps |
 | trayHintNotification | First-launch text pointing at the menu bar on macOS or the system tray elsewhere; on macOS it also raises the one notification authorization prompt |
 
-[main/recording-result.ts](../../src/main/recording-result.ts):
+[main/recording/recording-result.ts](../../src/main/recording/recording-result.ts):
 
 | Function/method | Contract |
 | --- | --- |
@@ -325,15 +338,15 @@ The page's window-message callback checks source/marker/port before creating the
 | RecordingResults.saved | Resolve once every given ID has been in a saved file, including through a later automatic retry; never starts a save |
 | isOutputFolderFailure / isPermissionFailure | The shared recovery categories: output-folder failures offer the folder action; permission failures, including no_audio_track, offer System Settings and Relaunch on macOS |
 
-[main/session-sentinel.ts](../../src/main/session-sentinel.ts): `SessionSentinels.write` atomically names a session's temporary file before it exists; `remove` deletes it without throwing; `leftovers` lists sentinels of earlier processes, skipping this process's sessions, discarding interrupted writes and invalid content, and keeping ones it cannot read now. `interruptionFailure` turns one into an `app_terminated` entry with a session-derived ID; `reportInterruptions` hands them to `RecordingResults.restore` at launch and removes them only once `RecordingResults.saved` confirms their entries were saved.
+[main/recording/session-sentinel.ts](../../src/main/recording/session-sentinel.ts): `SessionSentinels.write` atomically names a session's temporary file before it exists; `remove` deletes it without throwing; `leftovers` lists sentinels of earlier processes, skipping this process's sessions, discarding interrupted writes and invalid content, and keeping ones it cannot read now. `interruptionFailure` turns one into an `app_terminated` entry with a session-derived ID; `reportInterruptions` hands them to `RecordingResults.restore` at launch and removes them only once `RecordingResults.saved` confirms their entries were saved.
 
-[main/recording-health.ts](../../src/main/recording-health.ts): `RECORDING_HEALTH`, the single place for the stall, free-space, writer-backlog and start-drain thresholds.
+[main/recording/recording-health.ts](../../src/main/recording/recording-health.ts): `RECORDING_HEALTH`, the single place for the stall, free-space, writer-backlog and start-drain thresholds.
 
-[main/keep-awake.ts](../../src/main/keep-awake.ts): `KeepAwake.update` holds one `prevent-display-sleep` power blocker from `starting` until the state settles and logs each start and stop; a blocker that throws is logged only; `dispose` releases it on quit (plan 050).
+[main/recording/keep-awake.ts](../../src/main/recording/keep-awake.ts): `KeepAwake.update` holds one `prevent-display-sleep` power blocker from `starting` until the state settles and logs each start and stop; a blocker that throws is logged only; `dispose` releases it on quit (plan 050).
 
-[main/recording-result-store.ts](../../src/main/recording-result-store.ts): validates and atomically replaces versioned failure history; migrates the legacy single record without overwriting it. Exact-ID retry preserves unread state; removal deletes only reviewed metadata.
+[main/recording/recording-result-store.ts](../../src/main/recording/recording-result-store.ts): validates and atomically replaces versioned failure history; migrates the legacy single record without overwriting it. Exact-ID retry preserves unread state; removal deletes only reviewed metadata.
 
-[main/tray.ts](../../src/main/tray.ts):
+[main/menus/tray.ts](../../src/main/menus/tray.ts):
 
 | Function/method | Contract |
 | --- | --- |
@@ -356,11 +369,11 @@ The page's window-message callback checks source/marker/port before creating the
 
 ## Logging and automatic recording
 
-[main/log.ts](../../src/main/log.ts): `rotatedPath` constructs archive names; `rotateLog` removes the oldest and shifts archives; `formatLine` adds UTC ISO time; `createFileLogger` returns a logging function with `flush()`: each line goes to stdout at once and joins one serialized asynchronous file queue bounded at 1 MiB (lines past the bound are dropped from the file only, reported once). The first write creates the directory and reads the length once per process; later writes count the bytes, rotate before a write past `maxBytes`; a full disk or a removed logs folder skips lines until a later write succeeds and then records how many the file missed, while any other file error disables file logging. `flushBeforeExit` waits a bounded time for that queue, so a failed start or a second instance exits only after its reason reaches the file.
+[main/lib/log.ts](../../src/main/lib/log.ts): `rotatedPath` constructs archive names; `rotateLog` removes the oldest and shifts archives; `formatLine` adds UTC ISO time; `createFileLogger` returns a logging function with `flush()`: each line goes to stdout at once and joins one serialized asynchronous file queue bounded at 1 MiB (lines past the bound are dropped from the file only, reported once). The first write creates the directory and reads the length once per process; later writes count the bytes, rotate before a write past `maxBytes`; a full disk or a removed logs folder skips lines until a later write succeeds and then records how many the file missed, while any other file error disables file logging. `flushBeforeExit` waits a bounded time for that queue, so a failed start or a second instance exits only after its reason reaches the file.
 
-[main/session-log.ts](../../src/main/session-log.ts): `createRunId` forms the per-launch run id from launch time and pid; `logSessionEvent` writes the human `saved`/`failed:` line and then the versioned session record for captureStarted, saved, failed and a preflight refusal; a cancelled countdown is one plain `cancelled:` line naming its temporary file and no record; other events are ignored. [shared/session-record.ts](../../src/shared/session-record.ts) defines the record schema, prefix and version and formats one record; it has only type imports so scripts load it directly.
+[main/recording/session-log.ts](../../src/main/recording/session-log.ts): `createRunId` forms the per-launch run id from launch time and pid; `logSessionEvent` writes the human `saved`/`failed:` line and then the versioned session record for captureStarted, saved, failed and a preflight refusal; a cancelled countdown is one plain `cancelled:` line naming its temporary file and no record; other events are ignored. [shared/session-record.ts](../../src/shared/session-record.ts) defines the record schema, prefix and version and formats one record; it has only type imports so scripts load it directly.
 
-[main/autorecord.ts](../../src/main/autorecord.ts): `parseAutoRecord` ignores packaged/empty input, validates seconds in (0,3600], quality keys and an optional countdown (0 unless named), sets `countdownSound: false` whatever is given (plan 046), and merges defaults. `runAutoRecord` waits 1.5 seconds before toggle, starts its stop timer only after recording begins, and quits after saved/failed/cancelled, or needsPermission before its press, through once-only `finish`. An absolute `outputDir` overrides the saved folder for that run only; it does not write settings.
+[main/recording/autorecord.ts](../../src/main/recording/autorecord.ts): `parseAutoRecord` ignores packaged/empty input, validates seconds in (0,3600], quality keys and an optional countdown (0 unless named), sets `countdownSound: false` whatever is given (plan 046), and merges defaults. `runAutoRecord` waits 1.5 seconds before toggle, starts its stop timer only after recording begins, and quits after saved/failed/cancelled, or needsPermission before its press, through once-only `finish`. An absolute `outputDir` overrides the saved folder for that run only; it does not write settings.
 
 ## Packaging and icons
 
@@ -388,19 +401,19 @@ See [tooling](tooling.md) for pipeline and thresholds. These tools are developme
 | [acceptance-settings.mts](../../scripts/acceptance-settings.mts) top level | Require the build output and a local Electron; run the fixture with a 90-second deadline into a fresh evidence directory; print each case; write report.md; exit 2 on a missing prerequisite or no results, 1 on any failing case |
 | [fixtures/settings-panel.ts](../../scripts/fixtures/settings-panel.ts) | Load the built preload and page in a hidden sandboxed window with its own view and IPC handlers; judge CSP/console, the exposed bridge, absent Node APIs, the URL language, the rendered controls, an unavailable option, a refused shortcut's note, a real change round trip and an uncommitted choice; write results.json and panel.png |
 | [acceptance-hotkey.mts](../../scripts/acceptance-hotkey.mts) top level | Require ffmpeg/ffprobe and a running idle RecordStuff with a run id and its `hotkey: registered` line; open the kiosk material; send the accelerator through System Events; wait ≤30 s each, from rotation-aware cursors, for `pressed`, `state → recording`, this run's capture record, second `pressed` and that session's terminal record; verify the integrity tier with `testMaterial` and channel energy required, and require the file's metadata to match that session; write report.md/verify.json/app-session.log; exit 2 before any key without ffmpeg/ffprobe, exit 1 when a check failed, was blocked or is incomplete |
-| [lib/acceptance.mts](../../scripts/lib/acceptance.mts) `acceleratorToKeystroke` / `keystrokeScript` | Electron accelerator → System Events `keystroke … using {…}`; undefined for keys it cannot type |
-| Same file `lastStartIndex` / `registeredAccelerator` / `currentState` / `currentRunId` / `lineTime` | Scope log reading to the current process (skipping a lock-refused second launch's `start:` line) and its run id; parse the line timestamp |
-| [lib/log-reader.mts](../../scripts/lib/log-reader.mts) `LogReader.end` / `since` / `all`, `readRetainedLog`, `evidenceSince` | Rotation-aware cursor (file identity + byte offset) just past the last complete line; complete lines after a cursor across retained archives, each once, or `LogGapError` when retention or truncation removed that history (the cursor's 64-byte mark also catches a truncated file that regrew past it); every retained line oldest first; evidence lines with a marked gap |
-| [lib/session-records.mts](../../scripts/lib/session-records.mts) `parseSessionRecord` / `startLineRun` / `logMessage` | Validate one session record of a known version (malformed or future records are ignored); the run id of a `start:` line; strip the timestamp |
-| [lib/acceptance-runtime.mts](../../scripts/lib/acceptance-runtime.mts) `waitForLog` / `waitForRecord` / `recordingOutcome` / `finishRecording` / `settleRecording` | Bounded waits from a cursor that reject at once on an evidence gap; this recording's outcome from records when the app writes them, else from human lines, optionally for one session; interrupted-recording settlement that never toggles twice; its runner fallback for an app that never left idle |
+| [lib/acceptance/acceptance.mts](../../scripts/lib/acceptance/acceptance.mts) `acceleratorToKeystroke` / `keystrokeScript` | Electron accelerator → System Events `keystroke … using {…}`; undefined for keys it cannot type |
+| Same file `lastStartIndex` / `registeredAccelerator` / `currentState` / `currentRunId` | Scope log reading to the current process (skipping a lock-refused second launch's `start:` line) and its run id |
+| [lib/runner/log-reader.mts](../../scripts/lib/runner/log-reader.mts) `LogReader.end` / `since` / `all`, `readRetainedLog`, `evidenceSince`, `lineTime` | Rotation-aware cursor (file identity + byte offset) just past the last complete line; complete lines after a cursor across retained archives, each once, or `LogGapError` when retention or truncation removed that history (the cursor's 64-byte mark also catches a truncated file that regrew past it); every retained line oldest first; evidence lines with a marked gap; the time a log line was written |
+| [lib/runner/session-records.mts](../../scripts/lib/runner/session-records.mts) `parseSessionRecord` / `startLineRun` / `logMessage` | Validate one session record of a known version (malformed or future records are ignored); the run id of a `start:` line; strip the timestamp |
+| [lib/acceptance/acceptance-runtime.mts](../../scripts/lib/acceptance/acceptance-runtime.mts) `waitForLog` / `waitForRecord` / `recordingOutcome` / `finishRecording` / `settleRecording` | Bounded waits from a cursor that reject at once on an evidence gap; this recording's outcome from records when the app writes them, else from human lines, optionally for one session; interrupted-recording settlement that never toggles twice; its runner fallback for an app that never left idle |
 | [probe-recording.mjs](../../scripts/probe-recording.mjs): probe, ratio, kbps, fixed | Run ffprobe, parse ratios, format quick inspection output |
 | [verify-recording.mts](../../scripts/verify-recording.mts): usage, next | CLI help/exit 2 and argument values; top-level loop requires energy (and markers with `--sync`), verifies files and exits by `verdictExitCode`: 1 fail, incomplete or unreadable, 2 blocked |
-| [lib/media-tools.mts](../../scripts/lib/media-tools.mts): ToolMissingError, MeasurementError, run, hasTool | Missing tool; a tool that ran without a valid measurement; bounded-buffer subprocess invocation; availability check |
+| [lib/verification/media-tools.mts](../../scripts/lib/verification/media-tools.mts): ToolMissingError, MeasurementError, run, hasTool | Missing tool; a tool that ran without a valid measurement; bounded-buffer subprocess invocation; availability check |
 | Same: completed, stderrTail | Only a zero exit is a measurement; a nonzero exit or signal throws MeasurementError with the last stderr lines |
 | Same: probe | Container/stream/frame count and decode errors; malformed JSON is a MeasurementError |
 | Same: frameTimes, read | PTS intervals; long files sample head/tail separately |
 | Same: channelRms, syncMarkers | Per-channel astats energy, complete only when every channel of the stream is reported; flash/beep times from detector runs that exited 0 |
-| [lib/verify-recording.mts](../../scripts/lib/verify-recording.mts): readLogText, readLogPairs | Every retained file oldest first; identity pairing, empty without a log |
+| [lib/verification/verify-recording.mts](../../scripts/lib/verification/verify-recording.mts): readLogText, readLogPairs | Every retained file oldest first; identity pairing, empty without a log |
 | Same: attempt, verifyRecording | Look up the file's pairing, then probe/frame; energy (only with an audio stream) and optional sync become evidence (missing ffmpeg `unavailable`, any other failure `error`) → measure → judge with the caller's required evidence → result with the pairing status |
 | Same: parseDimensions | WxH string → dimensions or undefined |
 | Same: tryExec, environmentSummary | Best-effort machine/OS/Electron/display/tool facts |
@@ -410,10 +423,10 @@ See [tooling](tooling.md) for pipeline and thresholds. These tools are developme
 | Same: mainDisplaySize, outputDir | Primary-display dimensions and configured/default folder |
 | Same: sleep, electronPids, electronMainPid | Inter-case delay; every process of this checkout's Electron.app, and its main process, the root the CPU sampler follows |
 | Same: logSince | This case's lines from its cursor across rotation; a lost history is a case failure |
-| Same: recordOnce | Launch development app with automatic-recording config, follow its process tree with the shared CPU sampler, await outcome; CPU judged over the recording from its third second (`cpuWindow` in lib/matrix.mts), with the 95th percentile, VTEncoderXPCService and this machine's baseline |
+| Same: recordOnce | Launch development app with automatic-recording config, follow its process tree with the shared CPU sampler, await outcome; CPU judged over the recording from its third second (`cpuWindow` in lib/verification/matrix.mts), with the 95th percentile, VTEncoderXPCService and this machine's baseline |
 | Same: main | Validate prerequisites (ffmpeg/ffprobe, then clang for the CPU sampler; blocked exit 2 before anything runs), open material, run cases with energy and sync required, verify/save results, clean up, exit by `verdictExitCode` |
 | Same: unmetChecks | A case's verdict and each check that kept it from passing, with its reason |
-| [lib/cpu-sampler.mts](../../scripts/lib/cpu-sampler.mts) `compileSampler`, `CpuSampler` | Compile [cpu-sampler.c](../../scripts/lib/cpu-sampler.c) with clang (missing Command Line Tools: `SamplerBlockedError`); stream its once-a-second `proc_pid_rusage` counters for a root process, its descendants and followed helpers such as VTEncoderXPCService, until stopped |
+| [lib/verification/cpu-sampler.mts](../../scripts/lib/verification/cpu-sampler.mts) `compileSampler`, `CpuSampler` | Compile [cpu-sampler.c](../../scripts/lib/verification/cpu-sampler.c) with clang (missing Command Line Tools: `SamplerBlockedError`); stream its once-a-second `proc_pid_rusage` counters for a root process, its descendants and followed helpers such as VTEncoderXPCService, until stopped |
 | Same: `parseSample`, `intervals`, `summarize`, `percentile` | Parse one helper line; per-second CPU, wake-ups and energy per process with the app's process-set changes marked; average, nearest-rank 95th percentile and maximum over a window, discarding changed intervals unless changes are expected |
 | Same: `CPU_BUDGET`, `judgeIdle`, `judgeSettingsOpen`, `judgeRecording`, `judgeCoverage`, `cpuBaseline`, `machineModel` | The plan 049 budget and its verdicts (the recording threshold, encoder report, 25% baseline warning and the 80% sampled coverage); this machine's recorded baseline from cpu-baselines.json |
 | Same: `processRole`, `rolesFromPs`, `readRoles`, `IDLE_ROLES`, `judgeRoles`, `judgeSteadyState` | A Chromium process's role from its command line; the roles of an app's tree; the idle contract by scenario; the same roles after every recording |
@@ -421,7 +434,7 @@ See [tooling](tooling.md) for pipeline and thresholds. These tools are developme
 
 ### Pure measurement logic
 
-[scripts/lib/verify.mts](../../scripts/lib/verify.mts) never spawns processes.
+[scripts/lib/verification/verify.mts](../../scripts/lib/verification/verify.mts) never spawns processes.
 
 | Functions | Contract |
 | --- | --- |
@@ -451,12 +464,12 @@ The [design guide](audio-quality.md) explains the mathematics, gates, and limita
 
 | Module/functions | Contract |
 | --- | --- |
-| [audio-quality.mts](../../scripts/lib/audio-quality.mts): fixture, wav | Generate known stereo v2 material and serialize PCM16 WAV |
+| [audio-quality.mts](../../scripts/lib/audio/audio-quality.mts): fixture, wav | Generate known stereo v2 material and serialize PCM16 WAV |
 | Same: fit, estimateFrequency | Least-squares sinusoid model including DC, bounded frequency search; no external processes |
 | Same: markerOnset, energy, analyze | Identify markers, measure power, judge format/frequency/channels/continuity; return pass, fail, or invalid |
-| [audio-quality-tools.mts](../../scripts/lib/audio-quality-tools.mts): inspectAudio | Check format first; bounded decode of first 60 seconds without resampling/remixing |
+| [audio-quality-tools.mts](../../scripts/lib/audio/audio-quality-tools.mts): inspectAudio | Check format first; bounded decode of first 60 seconds without resampling/remixing |
 | Same: recordAudio | Build/drive development app, play after capture starts, verify completion, clean up only owned children |
-| [audio-quality-summary.mts](../../scripts/lib/audio-quality-summary.mts): summarize | Requested/completed counts, verdict counts, min/median/max and missing counts; incomplete batches remain incomplete |
+| [audio-quality-summary.mts](../../scripts/lib/audio/audio-quality-summary.mts): summarize | Requested/completed counts, verdict counts, min/median/max and missing counts; incomplete batches remain incomplete |
 | [CLI](../../scripts/audio-quality.mts): inspect, context, read, exitCode | Report provenance, environment snapshots, bounded external reads, exit mapping; top level owns new directory and 1–10 repeats |
 
 ## Signing identity creation

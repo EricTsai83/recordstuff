@@ -39,10 +39,10 @@
  * macOS only (`open`, `osascript`, `pgrep`). Nothing here ships with the app.
  */
 import { setTimeout as delay } from "node:timers/promises";
-import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings } from "./lib/runner-env.mts";
-import { escapeRegExp, recordStuffPids } from "./lib/processes.mts";
-import { command, confirmedIdle, quitIdleApp, sessionEnded, settleRecording, waitForLog, waitForRecord, type TerminalRecord } from "./lib/acceptance-runtime.mts";
-import { inputDiagnostics } from "./lib/acceptance-diagnostics.mts";
+import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings } from "./lib/runner/runner-env.mts";
+import { escapeRegExp, recordStuffPids, command } from "./lib/runner/processes.mts";
+import { confirmedIdle, quitIdleApp, sessionEnded, settleRecording, waitForLog, waitForRecord, type TerminalRecord } from "./lib/acceptance/acceptance-runtime.mts";
+import { inputDiagnostics } from "./lib/acceptance/acceptance-diagnostics.mts";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -56,19 +56,18 @@ import {
   currentState,
   sessionBelongsTo,
   keystrokeScript,
-  lineTime,
   materialOpenArgs,
   registeredAccelerator,
   removeMaterialProfile,
-} from "./lib/acceptance.mts";
-import { LogReader, evidenceSince, type LogCursor } from "./lib/log-reader.mts";
-import { hasTool, requireMediaTimeout, syncMarkers } from "./lib/media-tools.mts";
-import { readLogPairs, verifyRecording } from "./lib/verify-recording.mts";
-import { BLOCKED_EXIT, blocksSuccess, formatText } from "./lib/verify.mts";
-import { DIGIT_DIFF_THRESHOLD, TICK_EXCESS_DB, TICK_FLOOR_DBFS, countdownTimeline, digitCrops, digitRegion, skippedCrops, tickCheck, type CountdownTimeline, type TickCheck } from "./lib/countdown-evidence.mts";
-import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
-import { roundExit } from "./lib/round-exit.mts";
-import { StoredOverride } from "./lib/stored-override.mts";
+} from "./lib/acceptance/acceptance.mts";
+import { LogReader, evidenceSince, lineTime, type LogCursor } from "./lib/runner/log-reader.mts";
+import { hasTool, requireMediaTimeout, syncMarkers } from "./lib/verification/media-tools.mts";
+import { readLogPairs, verifyRecording } from "./lib/verification/verify-recording.mts";
+import { BLOCKED_EXIT, blocksSuccess, formatText } from "./lib/verification/verify.mts";
+import { DIGIT_DIFF_THRESHOLD, TICK_EXCESS_DB, TICK_FLOOR_DBFS, countdownTimeline, digitCrops, digitRegion, skippedCrops, tickCheck, type CountdownTimeline, type TickCheck } from "./lib/acceptance/countdown-evidence.mts";
+import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
+import { roundExit } from "./lib/runner/round-exit.mts";
+import { StoredOverride } from "./lib/acceptance/stored-override.mts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const LOG_PATH = APP_LOG_PATH;

@@ -12,7 +12,7 @@ This document describes where things live and why. [Architecture](architecture.m
 | --- | --- |
 | `src/` | Application source, split by Electron process |
 | `scripts/` | Developer tools: build/launch, signing, release, recording verification and acceptance |
-| `tests/` | Cross-process tests that need both browser DOM and Node APIs |
+| `tests/` | Cross-process tests that need both browser DOM and Node APIs, and the source-boundary check |
 | `docs/` | System design, verification evidence, and the Traditional Chinese mirror |
 | `plans/` | Execution plans for unfinished work only |
 | `resources/` | Runtime assets copied into the app, plus the installation guide |
@@ -26,19 +26,66 @@ This document describes where things live and why. [Architecture](architecture.m
 
 ## Application source
 
-`src/` is divided by Electron process, not by feature. Which process a file runs in determines what it may import, so that boundary comes first.
+`src/` is divided first by Electron process, then by module inside each process. The process decides which APIs a file may use, so that boundary comes first; the module folder says which part of the app a file belongs to and what it may depend on.
 
 | Directory | Runs in | Contents |
 | --- | --- | --- |
-| `src/main/` | Main process | Lifecycle (`index.ts`), the recording state machine (`recorder.ts`), capture-host supervision, the countdown overlay window (`countdown-overlay.ts`), file writing, permission detection, settings, tray, global shortcut, saved notification, update checks, logging, and development-only unattended recording (`autorecord.ts`) |
-| `src/renderer/` | Renderer processes | Three entries: the hidden capture host (`index.html` + `capture-host.ts`) that owns media streams and encoding, the settings panel (`settings.html`, `settings.ts`, `settings.css`) and the countdown overlay (`countdown.html`, `countdown.ts`, `countdown.css`) |
-| `src/preload/` | Preload, sandboxed | One file per renderer: `index.ts` hands the MessagePort to the capture host and exposes no API; `settings.ts` carries the settings panel's IPC contract; `countdown.ts` exposes only the overlay's value subscription |
+| `src/main/` | Main process | `index.ts`, the composition root that builds and wires every module, and one folder per module ([below](#main-process-modules)) |
+| `src/renderer/` | Renderer processes | The four HTML entries (`index.html` for the hidden capture host, `settings.html`, `countdown.html`, `video.html`) and the shared Tailwind tokens in `ui.css` at the top; one folder per page and the parts pages share ([below](#renderer-pages)) |
+| `src/preload/` | Preload, sandboxed | One file per renderer: `index.ts` hands the MessagePort to the capture host and exposes no API; `settings.ts` carries the settings panel's IPC contract; `countdown.ts` exposes the overlay value subscription and its unsubscribe; `video.ts` carries fullscreen ready/exit |
 | `src/shared/` | Both | State (`state.ts`), the MessagePort protocol, recording quality arithmetic, the settings-panel contract, display preferences, appearance, shortcut validation, and translations (`i18n.ts`) |
+
+### Main process modules
+
+| Folder | What it owns |
+| --- | --- |
+| `lib/` | Process-wide helpers that know no feature: atomic file replacement, the write-drain queue, reading errors, the file log, and the app name |
+| `recording/` | One recording session end to end: the state machine (`recorder.ts`), capture-host supervision, file writing, health thresholds, interruption sentinels, session log lines, the countdown overlay, keep-awake, capture and saved notices, the result history (`recording-result*.ts`), the preference lock (`recording-lock.ts`) and development-only unattended recording (`autorecord.ts`) |
+| `display/` | Which screen a recording uses, and main's side of display-media requests |
+| `permission/` | Screen-recording permission detection and its notices |
+| `library/` | The recordings on disk: the Recordings tab's library, MP4 duration, the output folder and the full-screen video window |
+| `shortcuts/` | Global shortcut registration: the recording key and the Settings key |
+| `app/` | App-wide vocabulary and lifecycle: the action and context both interfaces share (`ui-model.ts`), quitting and its feedback, Windows session end, reopening, uncaught faults, local data cleanup and update checks |
+| `settings/` | Preferences and their window: the persisted store, preference side effects, the panel model, the window and its saved size |
+| `menus/` | The tray (`tray.ts` with `tray-model.ts`) and the application menu |
+| `actions/` | What every `AppAction` does (`actions.ts`): the quit gate, each preference's lock and every command, with the collaborators `index.ts` passes in |
+
+### Renderer pages
+
+| Folder | What it holds |
+| --- | --- |
+| `capture/` | The hidden capture host, loaded by `index.html` |
+| `settings/` | The settings page: its entry, the shell (`settings-app.tsx`), one module per tab in `tabs/`, the undo and zoom toasts, the controller (`settings-controller.ts`, one surface over `controller/`, kept by concern), and the page's tests |
+| `countdown/` | The countdown digit and its own `countdown.css` |
+| `video/` | The full-screen video page |
+| `player/` | The playback controls the settings page and the video page share |
+| `components/ui/` | shadcn/ui primitives |
+| `lib/` | Page-independent helpers: `cn` (`utils.ts`), React mounting and shortcut capture |
+| `testing/` | Input helpers for renderer tests only |
+
+## Module boundaries
+
+Imports between folders point one way, so a folder's place in this order is its contract:
+
+```text
+main:      lib ← recording, display, permission, library, shortcuts ← app ← settings ← menus ← actions ← index.ts
+renderer:  lib ← components ← player ← capture, countdown, settings, video
+scripts:   runner, release ← verification ← audio;  runner, verification ← acceptance ← fixtures ← entry points
+```
+
+- **Feature folders** (`recording/`, `display/`, `permission/`, `library/`, `shortcuts/`) import only `lib/`, `src/shared/` and themselves, never each other. When two of them need the same thing, it moves down into `lib/` or `src/shared/`, or `index.ts` connects them.
+- **`app/`** may use the feature folders. `settings/` may also use `app/`, `menus/` may also use `settings/`, and `actions/` may use all of them. Nothing imports upward.
+- **Nothing imports `index.ts`.** It is the composition root; what an action does lives in `actions/`, so the root only builds and wires. The update and controlled acceptance runners patch a copy of it by text anchors, which is one more reason it stays at the top of `src/main/`.
+- **Renderer pages do not import one another.** What two pages share lives in `player/`, `components/` or `lib/`. Only tests import `testing/`.
+- **The HTML entries stay at the top of `src/renderer/`,** so the built pages remain `out/renderer/<name>.html`, where main and the fixtures load them.
+- **Developer tools never reach into the app's import graph.** Nothing in `src/` imports `scripts/`. Inside `scripts/lib/`, `runner/` and `release/` import no other group; `verification/` builds on them, `audio/` on `verification/`, and `acceptance/` on `runner/` and `verification/`. Fixtures import only `src/`, `scripts/lib/` and other fixtures, and nothing in `scripts/lib/` imports an entry point.
+
+[`tests/source-boundaries.test.ts`](../../tests/source-boundaries.test.ts) enforces these rules for `src/` and `scripts/` in `pnpm test`. A new folder needs its place in that test before its files may import anything. Test files may reach across folders for their fixtures, but never into `index.ts`.
 
 Four conventions hold across this tree:
 
 - **`src/shared/` stays environment-neutral.** It is the only directory included by both `tsconfig.node.json` and `tsconfig.web.json`, so it must import neither Electron nor DOM APIs.
-- **Tests sit next to their source** as `foo.test.ts`. The one exception is `tests/`, for cross-process tests that need both browser DOM and Node APIs; `tsconfig.tests.json` checks it so the renderer config stays free of Node types. `vitest.config.ts` collects `src/**/*.test.ts`, `scripts/**/*.test.ts` and `tests/**/*.test.ts`.
+- **Tests sit next to their source** as `foo.test.ts`. The exceptions are `tests/`, for cross-process tests that need both browser DOM and Node APIs, and `tests/ui/*.spec.ts`, for Playwright; `tsconfig.tests.json` checks it so the renderer config stays free of Node types. `vitest.config.ts` collects `src/**/*.test.ts`, `scripts/**/*.test.ts` and `tests/**/*.test.ts`.
 - **`*-model.ts` separates decisions from side effects.** `tray.ts`, `settings.ts` and `settings-window.ts` talk to Electron; `tray-model.ts`, `settings-model.ts` and `ui-model.ts` are pure projections that can be tested without a window. `recorder.ts` follows the same rule with injected collaborators.
 - **User-visible text lives in `src/shared/i18n.ts`,** in English and Traditional Chinese together, never inline in a module.
 
@@ -47,7 +94,7 @@ Four conventions hold across this tree:
 `scripts/` holds everything that supports development but ships with nothing:
 
 - **Entry points** at the top level, one per `package.json` script: `start-app.mjs`, `make-icons.mjs`, `probe-recording.mjs`, `verify-recording.mts`, `run-matrix.mts`, `diagnose-frame-cadence.mts`, `audio-quality.mts`, `acceptance-*.mts`, `create-signing-identity.mts`, `release.mts`, and `cleanup-release-keychain.py`. `test-material.html`, the page played during sync and audio-quality runs, sits beside them.
-- **`scripts/lib/`** for the shared implementation behind those entry points — acceptance runtime, verification and media tools, audio-quality analysis, release manifest clients.
+- **`scripts/lib/`** for the shared implementation behind those entry points, grouped by purpose: `runner/` (what every desktop runner shares: processes, the scrubbed environment, desktop sessions, round exits, native accessibility, fixture builds, the log reader and session records, timing and the bundle's runtime inputs), `acceptance/` (each acceptance runner's own logic), `verification/` (recording verification, the matrix, playback, media tools, frame cadence, finalization and CPU measurement), `audio/` (audio-quality analysis) and `release/` (the release manifest and its client, which the website also imports).
 - **`scripts/fixtures/`** for test doubles and injected stand-ins.
 
 Tools use `.mts`/`.mjs` because they run under Node directly rather than through the app's bundler. Their tests are ordinary `*.test.ts` files beside them.
@@ -87,7 +134,7 @@ Translation follows two different rules by design: documentation under `docs/` m
 | `website/release-manifest.json` | The committed manifest the build verifies before publishing |
 | `website/compare/` | Local screenshot comparisons; gitignored |
 
-The app's update check reads this site's `release.json`, so `scripts/lib/release-manifest*.mts` is shared across the boundary and the website workflow watches it. See [delivery](delivery.md) for the ownership split.
+The app's update check reads this site's `release.json`, so `scripts/lib/release/release-manifest*.mts` is shared across the boundary and the website workflow watches it. See [delivery](delivery.md) for the ownership split.
 
 ## Automation and generated paths
 
@@ -104,17 +151,19 @@ The structure is enforced by configuration, not convention alone:
 | `tsconfig.node.json` / `tsconfig.web.json` | Which directories typecheck against Node/Electron versus DOM libraries; `src/shared/` appears in both. The renderer-side fixture `scripts/fixtures/frame-cadence-renderer.ts` is excluded from the Node config and checked with the DOM one |
 | `tsconfig.tests.json` | `tests/` typechecks against both DOM and Node libraries, separately from the renderer |
 | `vitest.config.ts` | Tests are found only under `src/`, `scripts/` and `tests/`, as `*.test.ts` |
-| `electron.vite.config.ts` | The one main entry, three preload entries and three renderer HTML entries |
+| `electron.vite.config.ts` | The one main entry, four preload entries and four renderer HTML entries |
+| `tests/source-boundaries.test.ts` | Which module folders in `src/` and `scripts/` may import which ([module boundaries](#module-boundaries)) |
 | `electron-builder.yml` | What is packaged (`out/**`, `package.json`) and which resources are copied |
 | `.gitignore` | Generated output, raw measurements, and signing material stay untracked |
 | `website/scripts/check-links.mts` | Link integrity for the published site |
 
 ## Where a new file goes
 
-- Logic that touches Electron, the filesystem or the OS: `src/main/`, with the decision part extracted into a `*-model.ts` if it deserves a test.
+- Logic that touches Electron, the filesystem or the OS: the `src/main/` folder of the module it belongs to, with the decision part extracted into a `*-model.ts` if it deserves a test. A new module gets its own folder and its place in [the boundaries](#module-boundaries).
+- A new renderer page: its own folder under `src/renderer/`, with its HTML entry at the top of `src/renderer/` and in `electron.vite.config.ts`.
 - Types or pure functions both processes need: `src/shared/`, importing neither Electron nor DOM.
 - Anything a user reads: `src/shared/i18n.ts`, in both languages.
-- A tool you run by hand or from CI: `scripts/` as an entry point, with the logic in `scripts/lib/` so it can be tested.
+- A tool you run by hand or from CI: `scripts/` as an entry point, with the logic in the `scripts/lib/` group it belongs to so it can be tested.
 - A durable conclusion about behavior: `docs/system-design/`, with the Traditional Chinese mirror updated in the same change.
 - Evidence from a run: summarize in `docs/verification/README.md`; the raw output stays in the ignored `measurements/` directory.
 - Work not yet finished: `plans/`, and remove the plan once the behavior is documented.

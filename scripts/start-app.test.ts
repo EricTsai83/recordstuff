@@ -4,7 +4,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { X509Certificate } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildStampPath, runtimeInputFiles, writeBuildStamp } from "./lib/runtime-inputs.mjs";
+import { buildStampPath, runtimeInputFiles, writeBuildStamp } from "./lib/runner/runtime-inputs.mjs";
 
 type Call = { name: string; args: string[]; nodeMode?: string; releaseSecret?: string; discovery?: string };
 let fixtures: string;
@@ -36,10 +36,10 @@ function invoke(overrides: Record<string, string> = {}, args: string[] = [], pre
   const bin = path.join(dir, "bin");
   const calls = path.join(dir, "calls.jsonl");
   try {
-    mkdirSync(path.join(root, "scripts/lib"), { recursive: true });
+    mkdirSync(path.join(root, "scripts/lib/runner"), { recursive: true });
     mkdirSync(path.join(root, "src"));
     writeFileSync(path.join(root, "src/main.ts"), "export {};\n");
-    copyFileSync(path.resolve("scripts/lib/runtime-inputs.mjs"), path.join(root, "scripts/lib/runtime-inputs.mjs"));
+    copyFileSync(path.resolve("scripts/lib/runner/runtime-inputs.mjs"), path.join(root, "scripts/lib/runner/runtime-inputs.mjs"));
     mkdirSync(bin);
     const electron = path.join(root, "node_modules/.pnpm/electron@fixture/node_modules/electron");
     mkdirSync(path.join(electron, "dist/Electron.app/Contents/MacOS"), { recursive: true });

@@ -12,7 +12,7 @@
 import { BrowserWindow, app, desktopCapturer, screen, session } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import { CaptureHost } from "../../src/main/capture-host";
+import { CaptureHost } from "../../src/main/recording/capture-host";
 import type { HostMessage } from "../../src/shared/protocol";
 import type { QualitySettings } from "../../src/shared/quality";
 

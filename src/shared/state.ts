@@ -1,5 +1,5 @@
 /**
- * The authoritative recording state. Owned by `main/recorder.ts`; the tray is
+ * The authoritative recording state. Owned by `main/recording/recorder.ts`; the tray is
  * only a projection of it (docs/system-design/recording.md).
  *
  * `idle.outputDirUnavailable` is set when the last start attempt failed

@@ -7,7 +7,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { FileWriter } from "../../src/main/file-writer";
+import { FileWriter } from "../../src/main/recording/file-writer";
 
 interface BenchConfig {
   dir: string;
