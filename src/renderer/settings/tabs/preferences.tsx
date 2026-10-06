@@ -145,6 +145,9 @@ export function TextSetting({
   const value = model.committed(group),
     held = Boolean(group.enabled && model.saving && model.saving.group !== group.id),
     [draft, setDraft] = useState(value),
+    // The example's time is read once, when the field appears: redrawn with the clock it changed under the reader's
+    // eyes on every update of the page (2026-10-07).
+    [sampleTime] = useState(() => new Date()),
     field = useRef<HTMLInputElement>(null),
     submitted = useRef<string | undefined>(undefined),
     lastCommitted = useRef(value);
@@ -176,7 +179,7 @@ export function TextSetting({
       : problem
         ? fileNameProblemText(problem, model.view?.language ?? "en")
         : translate("Example: {name}", model.view?.language, {
-            name: `${formatFileName(draft.trim(), new Date())}.mp4`,
+            name: `${formatFileName(draft.trim(), sampleTime)}.mp4`,
           });
   return (
     <>

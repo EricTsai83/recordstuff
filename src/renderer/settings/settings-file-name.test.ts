@@ -33,9 +33,14 @@ it("previews a draft, saves it trimmed, says why main refused one, and keeps wha
   expect(note.textContent).toBe("Include {time} or {second} so each recording gets its own name.");
   input.value = "Demo {second}s"; input.dispatchEvent(new Event("input", { bubbles: true }));
   expect(note.textContent).toMatch(/^Example: Demo \d\ds\.mp4$/);
-  // A push meanwhile keeps the draft.
+  // A push meanwhile keeps the draft, and the example keeps its time: it is read once, not redrawn with the clock.
+  const example = note.textContent;
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(Date.now() + 5_000);
   push(row("{date} {time}", ++revision));
   expect(input.value).toBe("Demo {second}s");
+  expect(note.textContent).toBe(example);
+  vi.useRealTimers();
 
   // Main refuses a pattern it cannot use: its reason shows under the row, without "choose again".
   input.value = "Meeting {date}"; input.dispatchEvent(new Event("input", { bubbles: true }));
