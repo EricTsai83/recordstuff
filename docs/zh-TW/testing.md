@@ -87,7 +87,7 @@
 
 使用鎖定的 pnpm 版本與 lockfile；TypeScript runner 使用 Node 24。一般單元／型別／建置不需擷取權限、簽章、Chrome 或 FFmpeg。部分音訊整合測試缺 FFmpeg／ffprobe 時會明確略過，應揭露相關 skip。網站驗證需要網路。原生 bundle 見[簽章設定](system-design/signing.md)；不要把建立／匯入憑證當作附帶測試步驟。
 
-真實錄影需要支援的 Mac、螢幕／系統音訊權限、Chrome 與 FFmpeg／ffprobe。System Events runner 另需輔助使用／自動化權限。記錄 OS／架構、來源螢幕、音訊輸出／音量與素材版本。背景套件與原生設定整合需要可執行 Electron 的圖形工作階段（macOS 上為未鎖定的使用者工作階段；鎖定中的工作階段與沒有螢幕的機器未測試），都不需要已安裝的簽章 App。背景套件不使用桌面：不需要準備交接，有人在用電腦時也可以執行。缺前置時指出受阻層級。
+真實錄影需要支援的 Mac、螢幕／系統音訊權限、Chrome 與 FFmpeg／ffprobe。System Events runner 另需輔助使用／自動化權限。記錄 OS／架構、來源螢幕、音訊輸出／音量與素材版本。背景套件與原生設定整合需要可執行 Electron 的圖形工作階段（macOS 上為已登入的使用者工作階段；背景套件在螢幕鎖定時也通過，沒有螢幕的機器未測試），都不需要已安裝的簽章 App。背景套件不使用桌面：不需要準備交接，有人在用電腦時也可以執行。缺前置時指出受阻層級。
 
 不同 checkout／worktree 可並行執行獨立純測試。同一 checkout 中，建置與讀取 `out/`、`dist/` 的 runner（包含背景套件）必須依序執行，不在 fixture 執行中重建。即使使用不同 worktree，同一時間也只能有一位執行者使用桌面、系統音訊、全域快捷鍵及替換安裝 App。偏好隔離不等於焦點或擷取裝置隔離。這些是協作規則，不代表每個 runner 都實作跨程序鎖。
 
