@@ -4,6 +4,24 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Apple Music 配色、失敗紀錄卡片與選單 — 2026-10-07
+
+同日維護者檢視恢復後的外觀後的第二輪（[桌面設計](../system-design/desktop.md#設定視窗)）。證據：`measurements/2026-10-06T16-30-24Z-restore-look/iter5`。
+
+- **配色。** 只調顏色、更貼近 Apple Music（維護者從三個方向中選定）：純白內容區、#f5f5f7 側欄與 #e8e8ed 選中底塊、#1d1d1f 文字、無陰影的細框群組、Apple 的深灰，紅色 #fa2d48（深色 #fc3c44）。次要文字（#636368）與紅色文字（#cc0e2c，深色 #ff7a80）比 Apple 原值略調，以在凹槽與底塊上維持 4.5:1。
+- **失敗紀錄。** 每天一張卡片（維護者從三種版面中選定）：每列有狀態圖示（保留部分為琥珀色，沒有保留為紅色，未確認加紅點），詳情在卡片內展開，說明放在提示框。
+- **選單。** 依維護者選擇，設定的 NativeSelect 改為 shadcn Select。過程中發現並修正兩個缺陷：Base UI 會插入被 CSP 拒絕的 style 標籤（建置時移除，規則改放 `ui.css`）；頁面的 Escape 會在選單開啟時關掉整個視窗（現在交給選單處理）。觸發鈕的焦點框只在鍵盤操作時顯示，因此滑鼠選完後不再留下框（即維護者在原生選單上看到的殘留焦點框）。
+- **閃爍。** 儲存一項設定時，其他控制項都被 disable 並變成 50% 透明（shadcn 會讓 disabled 控制項變淡）；現在保持不動且不變淡，與 shadcn 前的 `.saving-disabled` 相同。側欄選取改為瞬間切換，不再交叉淡入淡出。
+- **邊緣。** 內容捲動後上緣也以模糊漸層融入視窗，與下緣相同；頁面標題下移 22 px。
+- **Review。** Codex GPT-6.1 Sol 一輪（約 2 分鐘）：無 findings。
+
+### 驗證
+
+- 最終原始碼上的 `pnpm acceptance:regression`：131 個檔案 1,743 項測試、建置，背景套件 66/66，含 U070-2（選單焦點框、焦點回歸、Escape），以及檢視後重新產生的 matrix 基準。
+- 維護者回覆準備好之後的桌面回合：`pnpm acceptance:player` 4/4（`2026-10-06T18-03-24-982Z-player-acceptance`）；`pnpm acceptance:shortcut-native` 通過，其 fixture 改由新選單啟動擷取；`pnpm start:app` 之後 `pnpm acceptance:settings-shortcut -- --observe --quit` 第二次執行通過（`2026-10-06T18-04-46.651Z-settings-entry-fZI2C3`）。第一次因為在剛開啟的 bundle 寫入啟動記錄前就讀取 app log 而停止，並留下 app，重跑同一個已驗證 bundle 前已從其選單結束。沒有殘留程序。
+
+未執行：錄影、CPU、通知與網站檢查。未手動驗證：VoiceOver 搭配新選單、強制色彩、減少動態效果。
+
 ## 恢復外觀與動態 — 2026-10-07
 
 Plan 069 之後應維護者要求，在 069 的 token 分層上，恢復 React／shadcn 改寫（`3e0f58e3`）遺失的外觀與動態，以其上一版 `3210ae2f` 為對照（[桌面設計](../system-design/desktop.md#設定視窗)）。這次沒有另開計畫，本紀錄即為結案。本機證據：`measurements/2026-10-06T16-30-24Z-restore-look/`（gallery `iter1`…`iter4`）。

@@ -4,6 +4,24 @@
 
 [Back to the verification index](README.md). These are historical results; use the [testing guide](../testing.md) for current policy. Raw measurements links are local only and absent from a fresh clone.
 
+## Apple Music palette, failures cards and menus — 2026-10-07
+
+The maintainer's second round the same day, after reviewing the restored look ([desktop design](../system-design/desktop.md#settings-window)). Evidence: `measurements/2026-10-06T16-30-24Z-restore-look/iter5`.
+
+- **Palette.** Closer to Apple Music, colours only (chosen by the maintainer among three directions): white content, a #f5f5f7 sidebar with a #e8e8ed open tab, #1d1d1f words, hairline groups without shadows, Apple's dark greys, red #fa2d48 (#fc3c44 in dark). Secondary text (#636368) and red words (#cc0e2c, #ff7a80 in dark) are a step off Apple's values to keep 4.5:1 on the tracks and tiles.
+- **Failures.** One card per day (chosen among three layouts): a status tile per row (amber when part was kept, red when nothing was, a red dot when unread), details opening inside the card, guidance in a callout.
+- **Menus.** The settings' NativeSelect became shadcn Select at the maintainer's choice. Two defects surfaced and were fixed: Base UI renders a style tag the CSP refuses (stripped at build, its rule in `ui.css`), and the page's Escape would have closed the window under an open menu (it now leaves Escape to the menu). The trigger draws its ring for the keyboard only, so a pointer choice leaves none (the persistent ring the maintainer saw on the native select).
+- **Flicker.** Saving one setting dimmed every other control to 50% (shadcn dims disabled controls); they now hold still undimmed, as the pre-shadcn `.saving-disabled` did. Sidebar selection changes at once instead of cross-fading.
+- **Edges.** The content blurs into the window at its top once scrolled, as at its bottom; the page title sits 22 px lower.
+- **Review.** Codex GPT-6.1 Sol, one pass (about 2 minutes): no findings.
+
+### Verification
+
+- `pnpm acceptance:regression` on the final source: 131 files and 1,743 tests, build, background 66/66, including U070-2 (menu ring, focus return, Escape) and the matrix baselines regenerated after inspection.
+- Desktop round after the maintainer's readiness reply: `pnpm acceptance:player` 4/4 (`2026-10-06T18-03-24-982Z-player-acceptance`), `pnpm acceptance:shortcut-native` passed with its fixture arming capture through the new menu, and after `pnpm start:app` `pnpm acceptance:settings-shortcut -- --observe --quit` passed on its second run (`2026-10-06T18-04-46.651Z-settings-entry-fZI2C3`); the first stopped because it read the app log before the freshly opened bundle had written its start line, and left the app running, which was quit from its menu before the rerun on the same verified bundle. No process remained.
+
+Not run: recording, CPU, notification and website checks. Not verified by hand: VoiceOver with the new menus, forced colours, reduced motion.
+
 ## Restored look and motion — 2026-10-07
 
 At the maintainer's request after plan 069, the look and motion the React/shadcn rebuild (`3e0f58e3`) had dropped came back on 069's token layers, compared against its parent `3210ae2f` ([desktop design](../system-design/desktop.md#settings-window)). No plan was opened; this record is its closure. Local evidence: `measurements/2026-10-06T16-30-24Z-restore-look/` (galleries `iter1`…`iter4`).
