@@ -4,6 +4,23 @@
 
 [Back to the verification index](README.md). These are historical results; use the [testing guide](../testing.md) for current policy. Raw measurements links are local only and absent from a fresh clone.
 
+## One focus line, the pre-shadcn red and a plain status card — 2026-10-07
+
+The maintainer's third round that day ([desktop design](../system-design/desktop.md#settings-window)). Evidence: `measurements/2026-10-06T16-30-24Z-restore-look/iter6` and the regression's `test-results/ui/` focus pictures.
+
+- **Red.** Back to the pre-shadcn `--chosen` (`3210ae2f` `settings.css`): #fa2d48 in light, #e85a62 in dark.
+- **Focus.** One style for every control: a single thin line (`--focus-width`) in the chosen red on the control's edge, no halo, outside a filled control, white in the player, keyboard only and never in an inactive window (`focus-ring`, `focus-ring-within`, `focus-ring-field` in `ui.css`). A recording card draws it round the card, following its corners, instead of a ring clipped inside it.
+- **Status card.** A plain card in every state, with no tint and no dot before the title; the fix spans the card and the second way out is a quiet link.
+- **Failures.** Grey icons; the outcome line carries the colour (red when nothing was kept, amber when part was).
+- **Scroll bar.** 7 px.
+- **Review.** Codex GPT-6.1 Sol, two passes (about 3 minutes): [1] the red outcome fell to 4.1:1 on the dark hover fill (`--outcome-red` now, >=5:1); [2] Base UI's slider thumb stops its arrows, so the page kept thinking the pointer came last and hid the keyboard line (a capture-phase listener now marks keyboard input; Chromium itself still does not count a range clicked with the pointer as focus-visible, so that case shows no line, as before); [3] the card's and thumb's `:has()` outlines stayed in an inactive window (excluded now); [4] a newly arrived card's highlight faded a keyboard focus line on the same card (the highlight now yields to focus). All accepted and fixed; [4] had no further pass. The style guard's false positive on `var(--outcome-red)` was fixed with a planted case.
+
+### Verification
+
+- `pnpm acceptance:regression` on the final source: 131 files and 1,743 tests, build, background 67/67, including S110–S115 (every control's line: solid, 1 or 1.5 px, the chosen red, no halo), U070-3 (the card's line) and the matrix baselines regenerated after inspection.
+
+No desktop round: colours, focus drawing and layout inside the page only; window options, the top-left corner, full screen and native input were untouched. Not verified by hand: forced colours, VoiceOver.
+
 ## Apple Music palette, failures cards and menus — 2026-10-07
 
 The maintainer's second round the same day, after reviewing the restored look ([desktop design](../system-design/desktop.md#settings-window)). Evidence: `measurements/2026-10-06T16-30-24Z-restore-look/iter5`.
