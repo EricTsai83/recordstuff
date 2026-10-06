@@ -58,12 +58,12 @@ describe("settingsView", () => {
     // Off: the status stays on screen, and the permission no longer matters.
     const off = group(idle, { ...context, notifications: false }, "notifications")!;
     expect([off.noteKind, off.info]).toEqual(["status", undefined]);
-    expect(off.note).toBe("Failures still appear in the menu bar and the Failures tab.");
+    expect(off.note).toBe("Failures still appear in the menu bar and the Troubleshooting tab.");
     expect(group(idle, { ...context, platform: "win32" }, "notifications")).not.toHaveProperty("info");
     expect(group(idle, { ...context, platform: "win32" }, "notifications")).not.toHaveProperty("note");
     // Windows has a system tray, not a menu bar (plan 064).
-    expect(group(idle, { ...context, platform: "win32", notifications: false }, "notifications")?.note).toBe("Failures still appear in the system tray and the Failures tab.");
-    expect(group(idle, { ...context, platform: "win32", notifications: false, language: "zh-TW" }, "notifications")?.note).toBe("失敗仍會顯示在系統匣與「失敗紀錄」分頁。");
+    expect(group(idle, { ...context, platform: "win32", notifications: false }, "notifications")?.note).toBe("Failures still appear in the system tray and the Troubleshooting tab.");
+    expect(group(idle, { ...context, platform: "win32", notifications: false, language: "zh-TW" }, "notifications")?.note).toBe("失敗仍會顯示在系統匣與「疑難排解」分頁。");
     // Only status notes stay visible; the remaining explanations sit behind an ⓘ.
     expect(group(idle, context, "screen")).not.toHaveProperty("note");
     expect(group(idle, context, "videoQuality")?.info).toBe("Higher quality keeps more detail but makes larger files.");
@@ -385,7 +385,7 @@ describe("notifications in General", () => {
   /** Off is obeyed, not compensated for: the cost is stated where the choice is. */
   it("states what turning it off costs and where to look instead", () => {
     const off = group(idle, { ...context, notifications: false }, "notifications")?.note ?? "";
-    expect(off).toContain(t("Failures still appear in the menu bar and the Failures tab.", "en"));
+    expect(off).toContain(t("Failures still appear in the menu bar and the Troubleshooting tab.", "en"));
     // The macOS caveat is about a permission the user did not choose; it would
     // only confuse the reading of a switch the user did choose to turn off.
     expect(off).not.toContain("System Settings");
@@ -468,7 +468,7 @@ it("declares presentation without changing choice identities, and authorizes onl
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
     ["trayClick", "menu", "controls"], ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],
     ["language", "segmented", "display"], ["appearance", "segmented", "display"],
-    ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"], ["log", "menu", "support"], ["localData", "menu", "localData"], ["about", "menu", "about"],
+    ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"], ["log", "menu", "diagnostics"], ["localData", "menu", "cleanup"], ["about", "menu", "about"],
   ]);
   // Appearance is three icons, one click each (2026-10-05); no other row is.
   expect(groups.filter(g => g.iconChoices).map(g => [g.id, g.choices.map(c => c.id)])).toEqual([["appearance", ["system", "light", "dark"]]]);
@@ -554,6 +554,7 @@ it("offers result actions by exact failure identity with recording and cleanup l
   const result = { id: "failure-1", occurredAt: "2026-09-24T12:00:00Z", code: "disk_full" as const,
     detail: "ENOSPC", outcome: "pending" as const, acknowledged: false };
   const ctx = { ...context, notifications: false, recordingResults: [result] };
+  expect(settingsView(idle, ctx).recordingResults?.[0]).toMatchObject({ code: "disk_full", outcomeState: "pending" });
   expect(settingsAction(idle, ctx, "recordingResult:failure-1", "acknowledge")).toBeUndefined();
   const done = { ...ctx, recordingResults: [{ ...result, outcome: "partial" as const, partialPath: "/tmp/a.recording.mp4" }] };
   expect(settingsAction(idle, done, "recordingResult:failure-1", "acknowledge")).toEqual({ recordingResult: { id: "failure-1", action: "acknowledge" } });
@@ -561,6 +562,9 @@ it("offers result actions by exact failure identity with recording and cleanup l
   expect(settingsAction({ type: "recording", startedAt: "" }, done, "recordingResult:failure-1", "folder")).toBeUndefined();
   expect(settingsAction({ type: "recording", startedAt: "" }, done, "recordingResult:failure-1", "reveal")).toBeDefined();
   expect(settingsView(idle, done).recordingResults?.[0]?.outcome).toContain("may not play");
+  expect(settingsView(idle, done).recordingResults?.[0]).toMatchObject({ code: "disk_full", outcomeState: "partial" });
+  const unknown = { ...ctx, recordingResults: [{ ...result, outcome: "unknown" as const, recordingPath: "/tmp/unconfirmed.mp4" }] };
+  expect(settingsView(idle, unknown).recordingResults?.[0]).toMatchObject({ code: "disk_full", outcomeState: "unknown", fileName: "unconfirmed.mp4" });
 });
 
 it("offers macOS permission recovery with pending relaunch locked and no macOS action on Windows", () => {
@@ -618,18 +622,18 @@ it("gives accurate persistence guidance, retries only what retrying can fix and 
 
 describe("Recording failures tab (plan 047)", () => {
   const base = { occurredAt: "2026-09-24T12:00:00Z", code: "disk_full" as const, detail: "ENOSPC", outcome: "empty" as const };
-  it("always offers Failures last, after Recordings, Recording and General, counting unread failures in its label and accessible name", () => {
+  it("always offers Troubleshooting last, after Recordings, Recording and General, counting unread failures in its label and accessible name", () => {
     expect(settingsView(idle, context).tabs).toEqual([
-      { id: "library", label: "Recordings" }, { id: "recording", label: "Recording settings" }, { id: "general", label: "General" }, { id: "failures", label: "Failures", accessibleLabel: "Recording failures" },
+      { id: "library", label: "Recordings" }, { id: "recording", label: "Recording settings" }, { id: "general", label: "General" }, { id: "failures", label: "Troubleshooting" },
     ]);
     const results = [{ ...base, id: "a", acknowledged: false }, { ...base, id: "b", acknowledged: false }, { ...base, id: "c", acknowledged: true }];
     expect(settingsView(idle, { ...context, recordingResults: results }).tabs[3]).toEqual({
-      id: "failures", label: "Failures (2)", accessibleLabel: "Recording failures, 2 unread",
+      id: "failures", label: "Troubleshooting (2)", accessibleLabel: "Troubleshooting, 2 unread recording failures",
     });
     expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs.map((tab) => tab.label))
-      .toEqual(["錄影檔", "錄影設定", "一般", "失敗紀錄（2）"]);
-    expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs[3]!.accessibleLabel).toBe("失敗紀錄，2 筆未確認");
-    expect(settingsView(idle, { ...context, recordingResults: [results[2]!] }).tabs[3]).toEqual({ id: "failures", label: "Failures", accessibleLabel: "Recording failures" });
+      .toEqual(["錄影檔", "錄影設定", "一般", "疑難排解（2）"]);
+    expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs[3]!.accessibleLabel).toBe("疑難排解，2 筆未確認失敗紀錄");
+    expect(settingsView(idle, { ...context, recordingResults: [results[2]!] }).tabs[3]).toEqual({ id: "failures", label: "Troubleshooting" });
   });
 
   it("names the day a row is grouped under: Today, Yesterday, then the date with the year only for an earlier year", () => {
@@ -702,7 +706,7 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
 
   it("orders General as the icon's click, Shortcut, Notifications, Language, Appearance, Updates and About, headings moving with their groups", () => {
     const general = settingsView(idle, context).groups.filter((g) => g.tab === "general");
-    expect(general.map((g) => g.id)).toEqual(["trayClick", "hotkey", "notifications", "language", "appearance", "updateChecks", "updates", "log", "localData", "about"]);
+    expect(general.map((g) => g.id)).toEqual(["trayClick", "hotkey", "notifications", "language", "appearance", "updateChecks", "updates", "about"]);
     expect(general.find((g) => g.id === "updateChecks")?.sectionHeading).toBe("Updates");
   });
 
@@ -711,9 +715,9 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
       .filter((g) => g.sectionHeading).map((g) => [g.id, g.sectionHeading]);
     expect(headings("en")).toEqual([
       ["screen", "Source and output"], ["countdown", "Before recording"], ["videoQuality", "Video"],
-      ["trayClick", "Controls and notifications"], ["language", "Language and appearance"], ["updateChecks", "Updates"], ["log", "Troubleshooting"],
+      ["trayClick", "Controls and notifications"], ["language", "Language and appearance"], ["updateChecks", "Updates"], ["log", "Diagnostic tools"], ["localData", "Reset and cleanup"],
     ]);
-    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "影像", "操作與通知", "語言與外觀", "更新", "疑難排解"]);
+    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "影像", "操作與通知", "語言與外觀", "更新", "診斷工具", "重設與清理"]);
     expect(group(idle, context, "updates")?.label).toBe("Manual check");
   });
 });
@@ -920,11 +924,12 @@ describe("the icon's left click (2026-10-04)", () => {
 });
 
 describe("the menu's support items in RecordStuff (2026-10-04)", () => {
-  it("gives Show log a row of its own under Troubleshooting, before data cleanup and the credit, usable while recording", () => {
+  it("gives Show log a row of its own under Troubleshooting, before separately grouped data cleanup, leaving the credit in General, usable while recording", () => {
     const general = settingsView(idle, context).groups.filter(g => g.tab === "general").map(g => g.id);
-    expect(general.slice(-3)).toEqual(["log", "localData", "about"]);
-    expect(group(idle, context, "log")).toMatchObject({ label: "Log file", kind: "actions", sectionHeading: "Troubleshooting", choices: [{ id: "show", label: "Show log" }] });
-    expect(group(idle, { ...context, language: "zh-TW" }, "log")).toMatchObject({ label: "記錄檔（log）", sectionHeading: "疑難排解", choices: [{ label: "顯示 log" }] });
+    expect(general.at(-1)).toBe("about");
+    expect(settingsView(idle, context).groups.filter(g => g.tab === "failures").map(g => g.id)).toEqual(["log", "localData"]);
+    expect(group(idle, context, "log")).toMatchObject({ label: "Log file", kind: "actions", tab: "failures", sectionHeading: "Diagnostic tools", choices: [{ id: "show", label: "Show log" }] });
+    expect(group(idle, { ...context, language: "zh-TW" }, "log")).toMatchObject({ label: "記錄檔（log）", tab: "failures", sectionHeading: "診斷工具", choices: [{ label: "顯示 log" }] });
     expect(settingsAction(busy[2]!, context, "log", "show")).toBe("revealLog");
     expect(group(idle, context, "about")?.choices.map(c => c.id)).toEqual(["website", "source", "quit"]);
   });

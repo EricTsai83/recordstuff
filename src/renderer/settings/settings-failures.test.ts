@@ -4,7 +4,7 @@ import type { RecordingResultView, SettingsView } from "../../shared/settings-pa
 
 /** Plan 047: the Recording failures tab, driven through the real page module with a fake bridge. */
 const row = (id: string, over: Partial<RecordingResultView> = {}): RecordingResultView => ({
-  id, reason: "The disk is full.", day: "Today", time: "2:05 PM", outcome: "No recording was kept.",
+  id, code: "disk_full", outcomeState: "empty", reason: "The disk is full.", day: "Today", time: "2:05 PM", outcome: "No recording was kept.",
   guidance: "Free disk space or choose another output folder before recording again.", detail: "ENOSPC: fixture",
   acknowledged: false, actions: [{ id: "acknowledge", label: "Got it", enabled: true, checked: false }], ...over,
 });
@@ -26,7 +26,7 @@ function view(results: RecordingResultView[], over: Partial<SettingsView> = {}):
   return {
     language: "en", title: "RecordStuff", hint: "", failure: "Could not apply this setting.",
     tabs: [{ id: "recording", label: "Recording settings" }, { id: "general", label: "General" },
-      unread ? { id: "failures", label: `Failures (${unread})`, accessibleLabel: `Recording failures, ${unread} unread` } : { id: "failures", label: "Failures", accessibleLabel: "Recording failures" }],
+      unread ? { id: "failures", label: `Troubleshooting (${unread})`, accessibleLabel: `Troubleshooting, ${unread} unread recording failures` } : { id: "failures", label: "Troubleshooting", accessibleLabel: "Troubleshooting" }],
     groups: [
       { id: "screen", label: "Screen", tab: "recording", enabled: true, choices: [{ id: "primary", label: "Primary display", enabled: true, checked: true }] },
       { id: "language", label: "Language", tab: "general", control: "segmented", enabled: true, choices: [{ id: "en", label: "English", enabled: true, checked: true }] },
@@ -53,12 +53,12 @@ it("keeps the history in its own tab, as collapsed day-grouped rows that open in
   // A normal open shows Recording, which carries no history.
   expect(document.querySelector('[role="tab"][aria-selected="true"]')!.id).toBe("tab-recording");
   expect(document.getElementById("recording-results")).toBeNull();
-  expect([tab("recording"), tab("general"), tab("failures")].map((t) => t.textContent)).toEqual(["Recording settings", "General", "Failures (1)"]);
-  expect(tab("failures").getAttribute("aria-label")).toBe("Recording failures, 1 unread");
+  expect([tab("recording"), tab("general"), tab("failures")].map((t) => t.textContent)).toEqual(["Recording settings", "General", "Troubleshooting (1)"]);
+  expect(tab("failures").getAttribute("aria-label")).toBe("Troubleshooting, 1 unread recording failures");
   // The count is the tab's badge; the page's own title names the tab without it.
   expect([...tab("failures").querySelectorAll(".tab-badge")].map(badge => badge.textContent)).toEqual(["1"]);
   tab("failures").click();
-  expect(document.getElementById("page-title")!.textContent).toBe("Failures");
+  expect(document.getElementById("page-title")!.textContent).toBe("Troubleshooting");
   tab("recording").click();
   tab("general").click();
   expect(document.getElementById("recording-results")).toBeNull();
@@ -112,8 +112,8 @@ it("keeps the history in its own tab, as collapsed day-grouped rows that open in
   await vi.waitFor(() => expect(choose).toHaveBeenCalledWith("recordingResult:new", "acknowledge"));
   await vi.waitFor(() => expect(document.activeElement).toBe(headers()[0]));
   expect(rows()[0]!.hasAttribute("data-open")).toBe(false);
-  expect(tab("failures").textContent).toBe("Failures");
-  expect(tab("failures").getAttribute("aria-label")).toBe("Recording failures");
+  expect(tab("failures").textContent).toBe("Troubleshooting");
+  expect(tab("failures").getAttribute("aria-label")).toBe("Troubleshooting");
 });
 
 it("opens only the target of an explicit entry, in its tab, without acknowledging it", async () => {

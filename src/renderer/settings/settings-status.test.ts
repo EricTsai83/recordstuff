@@ -10,7 +10,7 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   document.body.innerHTML = '<div id="root"></div>';
   const ready: SettingsView = { language: "en", title: "RecordStuff", hint: "", failure: "",
     status: { tone: "ready", title: "Ready to record", detail: "" },
-    tabs: [{ id: "recording", label: "Recording settings" }, { id: "failures", label: "Failures (2)", accessibleLabel: "Recording failures, 2 unread" }],
+    tabs: [{ id: "recording", label: "Recording settings" }, { id: "failures", label: "Troubleshooting (2)", accessibleLabel: "Troubleshooting, 2 unread recording failures" }],
     groups: [{ id: "about", label: "Built by Eric Tsai", note: "Version 1.3.0", tab: "general", kind: "actions", enabled: true,
       choices: [{ id: "website", label: "Official website", enabled: true, checked: false }, { id: "source", label: "GitHub source", enabled: true, checked: false },
         { id: "quit", label: "Quit RecordStuff", enabled: true, checked: false }] }] };
@@ -86,7 +86,7 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   expect([card.hidden, document.activeElement?.id]).toEqual([true, "tab-recording"]);
 
   const tab = document.getElementById("tab-failures")!;
-  expect([tab.textContent, tab.querySelector(".tab-badge")?.textContent]).toEqual(["Failures (2)", "2"]);
+  expect([tab.textContent, tab.querySelector(".tab-badge")?.textContent]).toEqual(["Troubleshooting (2)", "2"]);
   // The sidebar lists the tabs in a column: Up and Down move between them as Left and Right do (review pass 1, F3).
   const strip = document.querySelector('[role="tablist"]')!;
   expect(["horizontal", "vertical"]).toContain(strip.getAttribute("aria-orientation"));
@@ -98,24 +98,24 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   await vi.waitFor(() => expect(document.getElementById("tab-recording")!.getAttribute("aria-selected")).toBe("true"));
 
   push({ ...ready, revision: 3, hint: "Recording in progress; only language, appearance and icon click can change.",
-    status: { tone: "recording", title: "Recording", detail: "" }, tabs: [ready.tabs[0]!, { id: "failures", label: "Failures" }] });
+    status: { tone: "recording", title: "Recording", detail: "" }, tabs: [ready.tabs[0]!, { id: "failures", label: "Troubleshooting" }] });
   expect([card.hidden, card.dataset.tone, detail.hidden, document.getElementById("hint")!.hidden, action.hidden]).toEqual([false, "recording", true, false, true]);
   // The card is no live region: a state it newly shows is read through #feedback, once, a recording begun from the shortcut included.
   const feedback = document.getElementById("feedback")!;
   expect(feedback.textContent).toBe("Recording.");
   feedback.textContent = "";
   push({ ...ready, revision: 3.1, hint: "Recording in progress; only language, appearance and icon click can change.",
-    status: { tone: "recording", title: "Recording", detail: "" }, tabs: [ready.tabs[0]!, { id: "failures", label: "Failures" }] });
+    status: { tone: "recording", title: "Recording", detail: "" }, tabs: [ready.tabs[0]!, { id: "failures", label: "Troubleshooting" }] });
   expect(feedback.textContent).toBe("");
   // A countdown is said as it starts, not every second.
-  push({ ...ready, revision: 3.2, tabs: [ready.tabs[0]!, { id: "failures", label: "Failures" }], status: { tone: "busy", title: "Recording starts in 3 s", detail: "" } });
+  push({ ...ready, revision: 3.2, tabs: [ready.tabs[0]!, { id: "failures", label: "Troubleshooting" }], status: { tone: "busy", title: "Recording starts in 3 s", detail: "" } });
   expect(feedback.textContent).toBe("Recording starts in 3 s.");
   feedback.textContent = "";
-  push({ ...ready, revision: 3.3, tabs: [ready.tabs[0]!, { id: "failures", label: "Failures" }], status: { tone: "busy", title: "Recording starts in 2 s", detail: "" } });
+  push({ ...ready, revision: 3.3, tabs: [ready.tabs[0]!, { id: "failures", label: "Troubleshooting" }], status: { tone: "busy", title: "Recording starts in 2 s", detail: "" } });
   expect(feedback.textContent).toBe("");
   // The usual way in: starting, then the countdown, both busy. Main names the state, so the countdown is still said, once.
   const busy = (revision: number, phase: "starting" | "countdown", title: string): SettingsView =>
-    ({ ...ready, revision, tabs: [ready.tabs[0]!, { id: "failures", label: "Failures" }], status: { tone: "busy", phase, title, detail: "" } });
+    ({ ...ready, revision, tabs: [ready.tabs[0]!, { id: "failures", label: "Troubleshooting" }], status: { tone: "busy", phase, title, detail: "" } });
   push(busy(3.4, "starting", "Starting… Check for system permission prompts"));
   expect(feedback.textContent).toBe("Starting… Check for system permission prompts.");
   feedback.textContent = "";
@@ -128,6 +128,6 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   expect(document.documentElement.dataset.tab).toBe("recording");
   // Switching tabs rebuilt the strip, so the tab is looked up again.
   const failures = document.getElementById("tab-failures")!;
-  expect([failures.textContent, failures.querySelector(".tab-badge")]).toEqual(["Failures", null]);
+  expect([failures.textContent, failures.querySelector(".tab-badge")]).toEqual(["Troubleshooting", null]);
   expect(failures.querySelector("svg")).toBeTruthy();
 });

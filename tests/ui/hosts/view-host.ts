@@ -220,6 +220,8 @@ function installPanelHandlers(): void {
       return { view: settingsView({ type: "idle" }, state.updateContext), applied: action !== undefined };
     }
     if (group === "about" && state.captureView) return { view: state.captureView, applied: false, failure: "Could not open the link. Try again." };
+    // Diagnostic UI input keeps the production projection; the background host does not open Finder.
+    if (group === "log" && state.captureView) return { view: state.captureView, applied: choice === "show" };
     const commit = () => {
       if (group === "language" && (choice === "en" || choice === "zh-TW")) state.language = choice;
       if (group === "notifications" && choice !== "openSettings") state.notifications = choice === "on";
@@ -239,7 +241,7 @@ function installComponentHandlers(): { view: () => SettingsView } {
   const choice = (id: string, label: string, checked = false) => ({ id, label, checked, enabled: true });
   let view: SettingsView = {
     language: "en", title: "RecordStuff", hint: "", failure: "Could not apply this setting.", revision: 1,
-    tabs: [{ id: "library", label: "Recordings" }, { id: "recording", label: "Recording settings" }, { id: "general", label: "General" }, { id: "failures", label: "Failures (1)" }],
+    tabs: [{ id: "library", label: "Recordings" }, { id: "recording", label: "Recording settings" }, { id: "general", label: "General" }, { id: "failures", label: "Troubleshooting (1)" }],
     groups: [
       { id: "countdownSound", tab: "recording", label: "Countdown sound", enabled: true, control: "switch", info: "The tick is not recorded.", choices: [choice("on", "On", true), choice("off", "Off")] },
       { id: "fileName", tab: "recording", label: "File name format", enabled: true, control: "text", choices: [choice("{date} {time}", "Default", true)] },
@@ -248,9 +250,9 @@ function installComponentHandlers(): { view: () => SettingsView } {
         choices: [choice("system", "System default", true), choice("light", "Light"), choice("dark", "Dark")] },
     ],
     recordingResults: [
-      { id: "failure", reason: "The disk is full.", day: "Today", time: "2:05 PM", outcome: "No recording was kept.", guidance: "Free disk space.", detail: "ENOSPC",
+      { id: "failure", code: "disk_full", outcomeState: "empty", reason: "The disk is full.", day: "Today", time: "2:05 PM", outcome: "No recording was kept.", guidance: "Free disk space.", detail: "ENOSPC",
         acknowledged: false, actions: [choice("acknowledge", "Got it")] },
-      { id: "earlier", reason: "The recording could not start.", day: "Yesterday", time: "1:00 PM", outcome: "No recording was kept.", guidance: "Try again.",
+      { id: "earlier", code: "capture_start_failed", outcomeState: "empty", reason: "The recording could not start.", day: "Yesterday", time: "1:00 PM", outcome: "No recording was kept.", guidance: "Try again.",
         acknowledged: true, actions: [choice("remove", "Remove from history")] },
     ],
     library: {

@@ -16,7 +16,7 @@ function view(language: "en" | "zh-TW", over: Partial<SettingsView> = {}): Setti
   ];
   return {
     language, title: "RecordStuff", hint: "", failure: zh ? "無法套用這個設定。" : "Could not apply this setting.",
-    tabs: [{ id: "recording", label: "Recording" }, { id: "general", label: "General" }, { id: "failures", label: "Failures" }],
+    tabs: [{ id: "recording", label: "Recording" }, { id: "general", label: "General" }, { id: "failures", label: "Troubleshooting" }],
     groups, recordingResults: [], ...over,
   };
 }

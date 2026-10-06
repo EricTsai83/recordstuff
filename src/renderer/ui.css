@@ -199,8 +199,6 @@
   --media-thumb-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
   --player-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
   --toast-shadow: 0 4px 12px rgb(0 0 0 / 0.1);
-  /* A failure's outcome when nothing was kept: 4.5:1 on its card and under the pointer (review of 2026-10-07). */
-  --outcome-red: #c81e1e;
   /* An opaque mask stop: a mask reads only its alpha. */
   --mask-opaque: #000;
   /* The content's thin scroll bar thumb. */
@@ -250,7 +248,6 @@
   --warning-border: #4a3d20;
   --success: #4ade80;
   --scrollbar: rgb(255 255 255 / 0.22);
-  --outcome-red: #ff8a8a;
 }
 @media (min-resolution: 2dppx) {
   :root {
@@ -458,6 +455,103 @@
   }
   .section {
     margin-bottom: 18px;
+  }
+  .support-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    list-style: none;
+    color: var(--muted-foreground);
+  }
+  .support-summary::-webkit-details-marker {
+    display: none;
+  }
+  .support-summary h2 {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .support-toggle {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    gap: 6px;
+    min-height: 28px;
+    margin-left: auto;
+    padding: 3px 8px;
+    border: 1px solid var(--input);
+    border-radius: 6px;
+    background: var(--card);
+    color: var(--foreground);
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .support-summary:hover .support-toggle {
+    background: var(--accent);
+  }
+  .support-collapse,
+  .support-section[open] .support-expand {
+    display: none;
+  }
+  .support-section[open] .support-collapse {
+    display: inline;
+  }
+  .support-chevron {
+    width: 16px;
+    height: 16px;
+  }
+  .support-section[open] .support-chevron {
+    transform: rotate(180deg);
+  }
+  .about {
+    margin-top: 40px;
+    margin-bottom: 0;
+    padding-top: 28px;
+    border-top: 1px solid var(--border);
+  }
+  .settings-panel:has(> .about) {
+    padding-bottom: 24px;
+    scroll-padding-bottom: 26px;
+  }
+  .about .about-row {
+    padding: 0;
+  }
+  .about-row .row-line {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+  }
+  .about-identity {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .about-title {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .about-version,
+  .about-credit {
+    margin: 0;
+    font-size: 12px;
+    color: var(--muted-foreground);
+  }
+  .about-row .controls {
+    flex: none;
+    max-width: 100%;
+    margin-left: auto;
+    gap: 4px 8px;
+  }
+  .about-row .diagnostics {
+    margin-left: 0;
   }
   .section-heading,
   .day-heading {
@@ -695,8 +789,8 @@
       border-bottom: 1px solid var(--border);
     }
   }
-  /* Failures (2026-10-07): each day one card like a settings section, a row per failure with a tile saying what became
-     of the recording, its time and a chevron; it opens inside the card, its guidance in a soft callout. */
+  /* Failures (2026-10-07): each day one card like a settings section, a row per failure with a cause tile, preservation
+     badge, time and chevron; it opens inside the card, its guidance in a soft callout. */
   .result-rows {
     padding: 4px;
     border-radius: 12px;
@@ -717,7 +811,7 @@
   .result-summary:hover {
     background: var(--accent);
   }
-  /* The tile stays grey; the outcome beneath the reason carries the colour: amber when part was kept, red when nothing was. */
+  /* Cause icons stay neutral. Only the short preservation badge carries the outcome colour. */
   .result-mark {
     position: relative;
     flex: none;
@@ -743,22 +837,32 @@
   }
   .result-line {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 7px;
   }
-  .result-reason {
+  .result-heading {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 7px;
+  }
+  .result-reason {
+    overflow-wrap: anywhere;
     font-weight: 500;
   }
   .unread .result-reason {
     font-weight: 600;
   }
   .result-time {
+    flex: none;
     color: var(--muted-foreground);
     font-size: 12px;
     font-variant-numeric: tabular-nums;
   }
   .result-chevron {
+    flex: none;
     width: 14px;
     height: 14px;
     color: var(--muted-foreground);
@@ -767,7 +871,7 @@
   .recording-result[data-open] .result-chevron {
     transform: rotate(180deg);
   }
-  /* Unread: the chosen red's dot on the tile's corner. */
+  /* Unread is a neutral review marker, independent of the recording's preservation result. */
   .result-unread {
     position: absolute;
     top: -3px;
@@ -775,16 +879,13 @@
     width: 9px;
     height: 9px;
     border-radius: 50%;
-    background: var(--chosen);
+    background: var(--muted-foreground);
     box-shadow: 0 0 0 2px var(--card);
   }
   .result-outcome {
     display: block;
-    color: var(--outcome-red);
+    color: var(--muted-foreground);
     font-size: 12px;
-  }
-  .recording-result[data-kept] .result-outcome {
-    color: var(--warning);
   }
   .result-details {
     padding: 2px 12px 12px 52px;

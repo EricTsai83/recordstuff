@@ -66,7 +66,8 @@ function group(
   note?: string,
 ): Group {
   const section = SECTIONS[id] ?? id;
-  return { id, label, enabled, choices, tab: RECORDING_SECTIONS.has(section) ? "recording" : "general",
+  return { id, label, enabled, choices, tab: RECORDING_SECTIONS.has(section) ? "recording"
+    : TROUBLESHOOTING_SECTIONS.has(section) ? "failures" : "general",
     control: SWITCHES.has(id) ? "switch" : SEGMENTED.has(id) ? "segmented" : "menu",
     ...(ICON_SEGMENTS.has(id) ? { iconChoices: true } : {}),
     section, noteKind: "explanation", ...(note === undefined ? {} : { note }) };
@@ -77,8 +78,9 @@ const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound"]);
 const SEGMENTED = new Set(["countdown", "videoQuality", "language", "appearance"]);
 /** Segments drawn as icons, each named by its label: Appearance's three, one click each (2026-10-05, formerly a menu). */
 const ICON_SEGMENTS = new Set(["appearance"]);
-/** The sections on the Recording settings tab; every other row is General's. A row's tab follows its section, so a section is never split. */
+/** A row's tab follows its section, so a section is never split. */
 const RECORDING_SECTIONS = new Set(["source", "countdown", "video"]);
+const TROUBLESHOOTING_SECTIONS = new Set(["diagnostics", "cleanup"]);
 /** Related rows share an inset list; a section's first row carries its heading. */
 const SECTIONS: Record<string, string> = {
   screen: "source", outputFolder: "source", fileName: "source",
@@ -87,7 +89,7 @@ const SECTIONS: Record<string, string> = {
   trayClick: "controls", hotkey: "controls", notifications: "controls",
   language: "display", appearance: "display",
   updateChecks: "updates", updates: "updates",
-  log: "support",
+  log: "diagnostics", localData: "cleanup",
 };
 const SECTION_HEADINGS: Record<string, PlainMessageKey> = {
   source: "Source and output",
@@ -96,7 +98,8 @@ const SECTION_HEADINGS: Record<string, PlainMessageKey> = {
   controls: "Controls and notifications",
   display: "Language and appearance",
   updates: "Updates",
-  support: "Troubleshooting",
+  diagnostics: "Diagnostic tools",
+  cleanup: "Reset and cleanup",
 };
 
 /** On, then Off, for a switch whose action carries the chosen value. */
@@ -357,8 +360,8 @@ function notificationsGroup(ctx: AppContext, enabled: boolean): Group {
   // The switch controls OS notifications; in-app failure status stays available.
   const switchGroup = group("notifications", t("Notifications", language), enabled,
     switchChoices(language, ctx.notifications, (value) => ({ setNotifications: value })),
-    ctx.notifications ? undefined : t(ctx.platform === "darwin" ? "Failures still appear in the menu bar and the Failures tab."
-      : "Failures still appear in the system tray and the Failures tab.", language));
+    ctx.notifications ? undefined : t(ctx.platform === "darwin" ? "Failures still appear in the menu bar and the Troubleshooting tab."
+      : "Failures still appear in the system tray and the Troubleshooting tab.", language));
   switchGroup.noteKind = ctx.notifications ? "explanation" : "status";
   if (ctx.notifications && ctx.platform === "darwin") switchGroup.info = t("macOS must also allow RecordStuff in System Settings → Notifications.", language);
   // Only macOS hides notifications behind a pane worth linking to. It sits in
@@ -419,7 +422,7 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
     countdownGroup(ctx, unlocked),
     countdownSoundGroup(ctx, unlocked),
     ...qualityGroups(ctx, unlocked),
-    // General: everyday preferences first, then maintenance beside the About footer (plan 048).
+    // General contains everyday preferences and its About footer; maintenance lives in Troubleshooting.
     trayClickGroup(ctx),
     hotkeyGroup(ctx, unlocked),
     notificationsGroup(ctx, unlocked),
@@ -430,7 +433,7 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
     }))),
     updateChecksGroup(ctx, unlocked),
     updateActions(ctx, unlocked),
-    // Moved from the tray (2026-10-04): a row like any other, so what it does is read, not guessed from an icon.
+    // Troubleshooting: diagnostics stay visible, with destructive cleanup in a separate disclosure.
     // Never locked: showing a file touches nothing a recording holds.
     { ...group("log", t("Log file", ctx.language), true, [
       { id: "show", label: t("Show log", ctx.language), enabled: true, checked: false, action: "revealLog" },
@@ -492,18 +495,17 @@ export function shortTime(occurredAt: Date, language: Language, format = dateFor
 }
 
 /**
- * The last tab (plan 047): always present, its label counting unread
- * failures. "Failures" stays short, so the four tabs fit the 380 pt minimum;
- * the accessible name keeps the full name and the count.
+ * The last tab: Troubleshooting retains the failure entry id and unread count (plan 047),
+ * while its accessible name explains what that count means.
  */
 function failuresTab(ctx: AppContext): SettingsView["tabs"][number] {
   const language = ctx.language;
   const unread = (ctx.recordingResults ?? []).filter(result => !result.acknowledged).length;
-  if (!unread) return { id: "failures", label: t("Failures", language), accessibleLabel: t("Recording failures", language) };
+  if (!unread) return { id: "failures", label: t("Troubleshooting", language) };
   return {
     id: "failures",
-    label: t("Failures ({count})", language, { count: String(unread) }),
-    accessibleLabel: t("Recording failures, {count} unread", language, { count: String(unread) }),
+    label: t("Troubleshooting ({count})", language, { count: String(unread) }),
+    accessibleLabel: t("Troubleshooting, {count} unread recording failures", language, { count: String(unread) }),
   };
 }
 
@@ -514,8 +516,10 @@ function projectResult(result: RecordingResult, state: RecordingState, ctx: AppC
   const key = `${language}:${ctx.platform}:${format.zone}:${localDay(now)}:${state.type}:${state.type === "needsPermission" && state.needsRelaunch}`;
   const previous = resultViews.get(result);
   if (previous?.key === key) return previous.view;
-  const view = {
+  const view: RecordingResultView = {
       id: result.id,
+      code: result.code,
+      outcomeState: result.outcome,
       reason: failureReason(result.code, language),
       day: dayHeading(new Date(result.occurredAt), now, language, format),
       time: shortTime(new Date(result.occurredAt), language, format),

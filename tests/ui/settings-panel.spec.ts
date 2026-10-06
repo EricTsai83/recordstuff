@@ -298,7 +298,7 @@ test("S049–S052 the scroll cue: shown non-interactive on overflow, never over 
   await expect.poll(() => read(page, `!document.getElementById("scroll-hint").hidden && getComputedStyle(document.getElementById("scroll-hint")).pointerEvents === "none"`),
     { message: "S049 overflow shows non-interactive glass scroll cue" }).toBe(true);
   await keep("panel-scroll-cue.png");
-  await page.locator('[role="tab"][aria-selected="true"]').focus();
+  await page.locator('.tabs [role="tab"][aria-selected="true"]').focus();
   const covered: string[] = [];
   let scrolled = 0;
   for (let step = 0; step < 24; step += 1) {
@@ -326,15 +326,21 @@ test("S053–S057 General's footer and Show log: wide and narrow layouts, a fail
   await host.evaluate(h => { h.setSize(720, 900); h.state.captureView = h.settingsView({ type: "idle" }, h.baseContext()); h.push(h.state.captureView); });
   await page.locator("#tab-general").click();
   await page.waitForTimeout(100);
-  const wide = await read<{ credit: boolean; shown: string[] }>(page, `(() => { const row = document.getElementById("setting-about-row");
-    return { credit: row.querySelector(".group-label").getBoundingClientRect().height > 0, shown: [...row.querySelectorAll(".controls button")].filter(b => b.getBoundingClientRect().height > 0).map(b => b.dataset.action) }; })()`);
-  expect.soft(wide, "S053 beside the sidebar, General's footer shows the credit with the website and source links, and its Quit gives way to the sidebar's").toEqual({ credit: true, shown: ["website", "source"] });
+  const wide = await read<{ credit: boolean; shown: string[]; horizontal: boolean; icons: boolean }>(page, `(() => { const row = document.getElementById("setting-about-row"), credit = row.querySelector(".group-label").getBoundingClientRect();
+    const buttons = [...row.querySelectorAll(".controls button")].filter(b => b.getBoundingClientRect().height > 0), first = buttons[0].getBoundingClientRect(), last = buttons.at(-1).getBoundingClientRect();
+    return { credit: credit.height > 0, shown: buttons.map(b => b.dataset.action), horizontal: credit.right <= first.left && Math.abs(credit.top + credit.height / 2 - first.top - first.height / 2) < 1 && Math.abs(last.right - row.getBoundingClientRect().right) < 1,
+      icons: buttons.every(b => b.textContent.trim() === "" && b.querySelector("svg") && b.getAttribute("aria-label") && b.title === b.getAttribute("aria-label")) }; })()`);
+  expect.soft(wide, "S053 General's footer keeps the credit on the left and accessible website/source icons on the right, with Quit in the sidebar").toEqual({ credit: true, shown: ["website", "source"], horizontal: true, icons: true });
   await host.evaluate(h => h.setSize(560, 760));
   await page.waitForTimeout(100);
-  expect.soft(await read<boolean>(page, `(() => { const row = document.getElementById("setting-about-row"); const buttons = [...row.querySelectorAll(".controls button")]; const credit = row.querySelector(".group-label"); return credit.textContent.includes("Eric Tsai") && buttons.map(b => b.dataset.action).join() === "website,source,quit" && buttons.every(b => b.querySelector("svg") && b.getAttribute("aria-label") && b.title === b.getAttribute("aria-label")) && credit.getBoundingClientRect().right <= buttons[0].getBoundingClientRect().left; })()`),
-    "S054 narrow footer credits Eric Tsai on the left with the website, source and Quit RecordStuff as labeled icons on the right").toBe(true);
+  expect.soft(await read<boolean>(page, `(() => { const row = document.getElementById("setting-about-row"); const buttons = [...row.querySelectorAll(".controls button")]; const credit = row.querySelector(".group-label"), c = credit.getBoundingClientRect(), link = buttons[0].getBoundingClientRect(); return credit.textContent.includes("Eric Tsai") && buttons.map(b => b.dataset.action).join() === "website,source,quit" && buttons.every(b => b.querySelector("svg") && b.getAttribute("aria-label") && b.title === b.getAttribute("aria-label")) && buttons.slice(0, 2).every(b => b.textContent.trim() === "") && (c.right <= link.left || c.bottom <= link.top) && row.closest("footer") && !row.closest("[data-slot=card]"); })()`),
+    "S054 narrow footer keeps the credit and named link icons without overlap, and retains Quit outside the settings cards").toBe(true);
+  await expect(page.locator("#setting-log-show")).toBeHidden();
+  await page.locator("#tab-failures").click();
+  await page.locator("#troubleshooting-tools-tab").click();
   expect.soft(await read<boolean>(page, `(() => { const row = document.getElementById("setting-log-row"); const show = document.getElementById("setting-log-show"); return Boolean(row?.querySelector(".row-icon")) && row.querySelector(".group-label").textContent === "Log file" && show?.textContent === "Show log" && !show.disabled; })()`),
     "S055 Show log is a labelled row of its own, with an icon and a text button").toBe(true);
+  await page.locator("#tab-general").click();
   await page.locator("#setting-about-website").click();
   await expect.poll(() => read(page, `(() => { const retry = document.getElementById("setting-about-retry"); return !retry.hidden && retry.getBoundingClientRect().width > 32 && retry.scrollWidth <= retry.clientWidth && document.querySelector("#setting-about-website svg") !== null; })()`),
     { message: "S056 failed footer link retains readable text retry and icon" }).toBe(true);
@@ -344,6 +350,100 @@ test("S053–S057 General's footer and Show log: wide and narrow layouts, a fail
   const retry = await read<{ active: string; retryShown: boolean }>(page, `({ active: document.activeElement.id, retryShown: !document.getElementById("setting-about-retry").hidden })`);
   expect.soft(retry.retryShown && retry.active.startsWith("setting-about-"), `S057 a key on a failed link's Retry keeps focus in its row, not on the page ${JSON.stringify(retry)}`).toBe(true);
 });
+
+for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
+  test(`Troubleshooting sections, cleanup disclosure and General footer: ${language}/${scheme}, mouse and keyboard`, async () => {
+    await host.evaluate((h, args) => {
+      h.theme(args.scheme);
+      h.setSize(720, 900);
+      h.state.captureView = h.settingsView({ type: "idle" }, { ...h.baseContext(), language: args.language });
+      h.push(h.state.captureView);
+    }, { language, scheme });
+    await page.locator("#tab-general").click();
+    await expect(page.locator("#setting-log-show")).toBeHidden();
+    await expect(page.locator("#settings-data-cleanup-toggle")).toHaveCount(0);
+    await expect(page.locator("#setting-about-label")).toHaveText("RecordStuff");
+    await expect(page.locator("#setting-about-note")).toBeVisible();
+    await keep(`general-${language}-${scheme}.png`);
+    await page.locator("#tab-failures").click();
+    const historyTab = page.locator("#troubleshooting-history-tab"), toolsTab = page.locator("#troubleshooting-tools-tab");
+    await expect(historyTab).toHaveText(language === "en" ? "Failure history" : "失敗紀錄");
+    await expect(toolsTab).toHaveText(language === "en" ? "Diagnostics and cleanup" : "診斷與清理");
+    expect(await read<boolean>(page, `['troubleshooting-history-tab', 'troubleshooting-tools-tab'].every(id => { const range = document.createRange(); range.selectNodeContents(document.getElementById(id)); return new Set([...range.getClientRects()].map(r => Math.round(r.top))).size === 1; })`), "content tab labels fit on one line at the default width").toBe(true);
+    await expect(historyTab).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#recording-results")).toBeVisible();
+    await expect(page.locator("#setting-log-show")).toBeHidden();
+    await keep(`troubleshooting-${language}-${scheme}-history.png`);
+    await historyTab.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(toolsTab).toBeFocused();
+    await expect(toolsTab).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#recording-results")).toBeHidden();
+    await expect(page.locator("#tab-failures")).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("ArrowLeft");
+    await expect(historyTab).toBeFocused();
+    await expect(page.locator("#recording-results")).toBeVisible();
+    await toolsTab.click();
+    const toggle = page.locator("#settings-data-cleanup-toggle");
+    const heading = language === "en" ? "Reset and cleanup" : "重設與清理",
+      expand = language === "en" ? "Expand" : "展開",
+      collapse = language === "en" ? "Collapse" : "收合";
+    await expect(toggle.locator("h2")).toHaveText(heading);
+    await expect(toggle.locator(".support-expand")).toHaveText(expand);
+    await expect(toggle.locator(".support-expand")).toBeVisible();
+    await expect(toggle.locator(".support-collapse")).toBeHidden();
+    await expect(toggle).toHaveAccessibleName(new RegExp(`${heading}.*${expand}`));
+    await expect(page.locator("#recording-results-heading")).toHaveText(language === "en" ? "Recording failures" : "失敗紀錄");
+    await expect(page.locator("#setting-log-section-heading")).toHaveText(language === "en" ? "Diagnostic tools" : "診斷工具");
+    const aligned = await read<boolean>(page, `(() => { const log = document.getElementById("setting-log-section-heading").getBoundingClientRect(), cleanup = document.querySelector("#settings-data-cleanup-toggle h2").getBoundingClientRect(); return Math.abs(log.left - cleanup.left) < 1 && log.top < cleanup.top; })()`);
+    expect(aligned).toBe(true);
+    await expect(page.locator("#setting-log-show")).toBeVisible();
+    await expect(page.locator("#setting-localData-clear")).toBeHidden();
+    await page.locator("#setting-log-show").click();
+    await expect.poll(calls).toContainEqual(["log", "show"]);
+    await expect(page.locator("#tab-failures")).toHaveAttribute("aria-selected", "true");
+    await keep(`troubleshooting-${language}-${scheme}-collapsed.png`);
+    await toggle.locator(".support-toggle").click();
+    await expect(toggle.locator(".support-collapse")).toHaveText(collapse);
+    await expect(toggle.locator(".support-collapse")).toBeVisible();
+    await expect(toggle.locator(".support-expand")).toBeHidden();
+    await expect(toggle).toHaveAccessibleName(new RegExp(`${heading}.*${collapse}`));
+    await expect(page.locator("#setting-log-show")).toBeVisible();
+    await expect(page.locator("#setting-localData-clear")).toBeVisible();
+    await keep(`troubleshooting-${language}-${scheme}-expanded.png`);
+    await historyTab.click();
+    await expect(page.locator("#setting-localData-clear")).toBeHidden();
+    await toolsTab.click();
+    await expect(page.locator("#setting-localData-clear")).toBeVisible();
+    await toggle.focus();
+    await page.keyboard.press("Space");
+    await expect(toggle.locator(".support-expand")).toBeVisible();
+    await expect(page.locator("#setting-localData-clear")).toBeHidden();
+    await expect(toggle).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(toggle.locator(".support-collapse")).toBeVisible();
+    await expect(page.locator("#setting-log-show")).toBeVisible();
+    await page.keyboard.press("Tab");
+    await expect(page.locator("#setting-localData-clear")).toBeFocused();
+    // Model updates do not collapse the section or hide the action currently being used.
+    await host.evaluate(h => h.push(h.state.captureView));
+    await expect(page.locator("#setting-localData-clear")).toBeVisible();
+    await expect(page.locator("#setting-localData-clear")).toBeFocused();
+    await toggle.click();
+    await toggle.focus();
+    await page.keyboard.press("Shift+Tab");
+    await expect(page.locator("#setting-log-show")).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(toggle).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(page.locator("#setting-localData-clear")).not.toBeFocused();
+    await host.evaluate(h => h.setSize(360, 480));
+    await toggle.click();
+    await page.locator("#setting-localData-row").scrollIntoViewIfNeeded();
+    await keep(`troubleshooting-${language}-${scheme}-minimum.png`);
+    expect(await read<boolean>(page, `document.getElementById("settings-panel").scrollWidth <= document.getElementById("settings-panel").clientWidth`)).toBe(true);
+  });
+}
 
 test("S058–S066 the shortcut editor by keyboard: Tab and Shift+Tab leave capture, focus rings, listening indicator, Control+F12, Confirm, forced colors and reduced motion", async () => {
   await host.evaluate(h => { h.setSize(560, 760); h.state.captureView = h.settingsView({ type: "idle" }, h.baseContext()); h.push(h.state.captureView); });

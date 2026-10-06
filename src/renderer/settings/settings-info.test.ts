@@ -13,7 +13,7 @@ function view(language: "en" | "zh-TW", info: string | undefined): SettingsView 
   ];
   return {
     language, title: "RecordStuff", hint: "", failure: "Could not apply this setting.",
-    tabs: [{ id: "recording", label: "Recording" }, { id: "general", label: "General" }, { id: "failures", label: "Failures" }],
+    tabs: [{ id: "recording", label: "Recording" }, { id: "general", label: "General" }, { id: "failures", label: "Troubleshooting" }],
     groups, recordingResults: [],
   };
 }

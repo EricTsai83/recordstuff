@@ -1,6 +1,6 @@
 /** The settings window's shell: the tabs, the status card, the page each tab draws, the footer and the overlays. */
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Film, CircleAlert, Settings2, Settings } from "lucide-react";
+import { Film, Wrench, Settings2, Settings } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Card } from "../components/ui/card";
@@ -9,7 +9,7 @@ import { TooltipProvider } from "../components/ui/tooltip";
 import { ZoomToast } from "./zoom-toast";
 import * as model from "./settings-controller";
 import { Action, Preferences } from "./tabs/preferences";
-import { Failures } from "./tabs/failures";
+import { Troubleshooting } from "./tabs/troubleshooting";
 import { Library, RenameDialog, PlayerDialog } from "./tabs/library";
 import { ToastHost } from "./undo-toast";
 import { useDarkClass } from "../lib/color-scheme";
@@ -18,7 +18,7 @@ const tabIcons = {
   library: Film,
   recording: Settings2,
   general: Settings,
-  failures: CircleAlert,
+  failures: Wrench,
 };
 function Status() {
   const current = model.view,
@@ -151,7 +151,7 @@ export function SettingsApp() {
             <TabsList
               activateOnFocus
               aria-orientation={vertical ? "vertical" : "horizontal"}
-              className="tabs flex-none items-stretch wide:col-start-1 wide:row-start-2 wide:w-[170px] wide:flex-col wide:self-start narrow:w-full"
+              className="tabs flex-none items-stretch wide:col-start-1 wide:row-start-2 wide:w-[180px] wide:flex-col wide:self-start narrow:w-full"
               variant={vertical ? "sidebar" : "line"}
               aria-label={current?.title ?? "RecordStuff"}
               onKeyDown={(event) => {
@@ -190,27 +190,29 @@ export function SettingsApp() {
                     value={tab.id}
                     aria-label={tab.accessibleLabel ?? tab.label}
                     // A narrow window shows only the selected tab's name; the others name themselves on hover.
-                    title={vertical ? undefined : tab.label}
+                    title={vertical && tab.id !== "failures" ? undefined : tab.label}
                     // Every tab stays in the window, even zoomed in at the smallest size: the icon-only tabs keep their
                     // width and the selected tab's name gives way, with its full name on hover (plan 067).
                     className="min-h-[34px] justify-start gap-2.5 narrow:justify-center narrow:px-2 narrow:min-w-9 narrow:aria-selected:min-w-0 narrow:aria-selected:flex-auto"
                   >
                     <Icon className="tab-icon size-[18px]" />
-                    <span className="tab-name">
-                      {count ? count[1] : tab.label}
-                    </span>
-                    {count && (
-                      <>
-                        <span className="sr-only">{count[2]}</span>
-                        <Badge
-                          className="tab-badge ml-auto tabular-nums"
-                          variant="chosen"
-                          size="md"
-                        >
-                          {count[3]}
-                        </Badge>
-                        <span className="sr-only">{count[4]}</span>
-                      </>
+                    {count ? (
+                      <span className="inline-flex min-w-0 items-center gap-0.5">
+                        <span className="tab-name min-w-0 overflow-hidden text-ellipsis">{count[1]}</span>
+                        <>
+                          <span className="sr-only">{count[2]}</span>
+                          <Badge
+                            className="tab-badge h-[18px] min-w-[18px] shrink-0 px-0.5 tabular-nums"
+                            variant="chosen"
+                            size="md"
+                          >
+                            {count[3]}
+                          </Badge>
+                          <span className="sr-only">{count[4]}</span>
+                        </>
+                      </span>
+                    ) : (
+                      <span className="tab-name min-w-0 overflow-hidden text-ellipsis">{tab.label}</span>
                     )}
                   </TabsTrigger>
                 );
@@ -234,7 +236,7 @@ export function SettingsApp() {
                   <Library />
                 </div>
                 {model.selectedTab === "failures" ? (
-                  <Failures />
+                  <Troubleshooting />
                 ) : model.selectedTab !== "library" ? (
                   <Preferences />
                 ) : null}

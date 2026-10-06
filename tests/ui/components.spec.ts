@@ -128,13 +128,13 @@ test("tabs, switch and icon segments retain their names, keyboard navigation and
   const general = page.getByRole("tab", { name: "General", exact: true });
   await general.focus();
   await page.keyboard.press("ArrowDown");
-  await expect(page.getByRole("tab", { name: "Failures (1)" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "Troubleshooting (1)" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
 });
 test("failure rows open independently and acknowledgement collapses with focus returned", async () => {
-  await page.getByRole("tab", { name: "Failures (1)" }).click();
+  await page.getByRole("tab", { name: "Troubleshooting (1)" }).click();
   const headers = page.locator(".result-summary");
   const header = headers.first();
   await headers.nth(1).click();
@@ -361,14 +361,16 @@ for (const language of ["en", "zh-TW"] as const) {
   test(`local data cleanup shows its scope in ${language}, stays disabled during capture and sends one offered choice`, async () => {
     const current = await page.evaluate(() => (window as unknown as { settings: SettingsBridge }).settings.read());
     const group = {
-      id: "localData", tab: "general" as const, kind: "actions" as const, enabled: false,
+      id: "localData", tab: "failures" as const, section: "cleanup", kind: "actions" as const, enabled: false,
       label: language === "en" ? "Local app data" : "本機 App 資料",
       note: language === "en" ? "Clears settings, failure history, cache and logs. Recordings are kept." : "清除設定、失敗紀錄、快取與 log，錄影檔會保留。",
       choices: [{ id: "clear", label: language === "en" ? "Clear local app data and quit…" : "清除本機 App 資料並結束…", enabled: false, checked: false }],
     };
     const view = { ...current, language, groups: [...current.groups, group] };
     await setView(view as SettingsView);
-    await page.getByRole("tab", { name: "General", exact: true }).click();
+    await page.locator("#tab-failures").click();
+    await page.locator("#troubleshooting-tools-tab").click();
+    await page.locator("#settings-data-cleanup-toggle").click();
     const control = page.getByRole("button", { name: group.choices[0]!.label, exact: true });
     await expect(control).toBeDisabled();
     await expect(page.locator("#setting-localData-note")).toContainText(language === "en" ? "Recordings are kept" : "錄影檔會保留");

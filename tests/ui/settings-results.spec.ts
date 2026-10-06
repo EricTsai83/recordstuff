@@ -12,7 +12,7 @@ import fs from "node:fs";
 import { read, until, clickAt, centre, eventually } from "./helpers";
 
 const FAILURE = { id: "fixture-failure", occurredAt: "2026-09-24T12:00:00Z", code: "disk_full", detail: "ENOSPC: controlled fixture", outcome: "pending" };
-type Failure = Partial<typeof FAILURE> & { partialPath?: string };
+type Failure = Partial<typeof FAILURE> & { partialPath?: string; recordingPath?: string };
 
 let host: Launched, page: Page;
 test.beforeEach(async ({ launchView }) => {
@@ -58,6 +58,64 @@ async function clickAction(expected: string, action = "acknowledge"): Promise<vo
   await expect.poll(async () => await callCount() > before && Boolean(await read(page, expected)), { message: `recording-result ${action} settled: ${expected}` }).toBe(true);
 }
 
+test("failure causes stay distinct from preservation badges, review state and neutral descriptions in both languages and themes", async ({}, testInfo) => {
+  for (const failure of [
+    { id: "disk", code: "disk_full", outcome: "partial", partialPath: "/tmp/partial.mp4" },
+    { id: "write", code: "output_write_failed", outcome: "empty" },
+    { id: "display", code: "display_unavailable", outcome: "unknown", recordingPath: "/tmp/unconfirmed.mp4" },
+    { id: "permission", code: "permission_denied", outcome: "pending" },
+    { id: "audio", code: "no_audio_track", outcome: "empty" },
+    { id: "interrupted", code: "capture_failed", outcome: "empty" },
+  ]) {
+    await update({ ...failure, outcome: "pending" });
+    await update(failure);
+  }
+  await persist();
+  for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
+    await host.evaluate((h, value) => h.theme(value), scheme);
+    await pushResult(lang);
+    await page.locator("#tab-failures").click();
+    const label = lang === "en"
+      ? { empty: "Not kept", partial: "Partially kept", pending: "Processing", unknown: "Unconfirmed result" }
+      : { empty: "未保留", partial: "部分保留", pending: "處理中", unknown: "結果不明" };
+    for (const [id, state] of [["disk", "partial"], ["write", "empty"], ["display", "unknown"], ["permission", "pending"]] as const) {
+      await expect(page.locator(`[data-result-id="${id}"] .result-badge`)).toHaveText(label[state]);
+      await expect(page.locator(`[data-result-id="${id}"] .result-badge`)).toHaveAttribute("data-outcome", state);
+    }
+    const icons = await read<string[]>(page, `["disk", "write", "display", "permission", "audio", "interrupted"].map(id => document.querySelector('[data-result-id="' + id + '"] .result-mark svg').getAttribute("class"))`);
+    expect(icons[0]).toBe(icons[1]);
+    expect(new Set(icons).size).toBe(5);
+    const colours = await read<string[]>(page, `[...document.querySelectorAll(".result-outcome")].map(el => getComputedStyle(el).color)`);
+    expect(new Set(colours).size).toBe(1);
+    expect(colours[0]).toBe(await read(page, `getComputedStyle(document.querySelector(".result-time")).color`));
+    // Theme transitions finish before comparing the neutral badges with the row's final text colour.
+    await expect.poll(() => read<boolean>(page, `["display", "permission"].every(id => getComputedStyle(document.querySelector('[data-result-id="' + id + '"] .result-badge')).color === getComputedStyle(document.querySelector(".result-outcome")).color)`)).toBe(true);
+    const tones = await read<string[]>(page, `["disk", "write", "display", "permission"].map(id => getComputedStyle(document.querySelector('[data-result-id="' + id + '"] .result-badge')).color)`);
+    expect(tones[0]).not.toBe(tones[1]);
+    expect(tones[0]).not.toBe(colours[0]);
+    expect(tones[2]).toBe(colours[0]);
+    expect(tones[3]).toBe(colours[0]);
+    for (const [size, width, height] of [["default", 960, 640], ["minimum", 380, 360]] as const) {
+      await host.evaluate((h, value) => h.setSize(value.width, value.height), { width, height });
+      await read(page, `document.getElementById("settings-panel").scrollTop = 0`);
+      expect(await read<boolean>(page, `document.getElementById("settings-panel").scrollWidth <= document.getElementById("settings-panel").clientWidth && [...document.querySelectorAll(".result-heading")].every(el => el.scrollWidth <= el.clientWidth)`)).toBe(true);
+      const tab = await read<{ inside: boolean; fullName: boolean }>(page, `(() => { const tab = document.getElementById("tab-failures"), badge = tab.querySelector(".tab-badge"), name = tab.querySelector(".tab-name"), r = tab.getBoundingClientRect(), b = badge.getBoundingClientRect(); return { inside: b.left >= r.left && b.right <= r.right && b.top >= r.top && b.bottom <= r.bottom, fullName: name.scrollWidth <= name.clientWidth }; })()`);
+      expect(tab.inside, `${lang}/${scheme}/${size}: the unread count stays inside its tab tile`).toBe(true);
+      if (size === "default") expect(tab.fullName, `${lang}/${scheme}: the sidebar shows the full tab name beside the unread count`).toBe(true);
+      if (size === "default") {
+        const aligned = await read<boolean>(page, `(() => { const tabs = [...document.querySelectorAll('.tabs [role="tab"]')], first = tabs[0]; return tabs.every(tab => [".tab-icon", ".tab-name"].every(selector => Math.abs(tab.querySelector(selector).getBoundingClientRect().left - first.querySelector(selector).getBoundingClientRect().left) < 0.5)); })()`);
+        expect(aligned, `${lang}/${scheme}: every sidebar icon and name shares the same left edge`).toBe(true);
+      }
+      await shot(testInfo, `failure-design-${lang}-${scheme}-${size}.png`);
+    }
+  }
+  await openRowWith('[data-result-id="disk"] [data-action="acknowledge"]');
+  await clickAt(page, '[data-result-id="disk"] [data-action="acknowledge"]');
+  await expect(page.locator('[data-result-id="disk"]')).not.toHaveClass(/unread/);
+  await expect(page.locator('[data-result-id="disk"] .result-badge')).toHaveText("部分保留");
+  await expect(page.locator('[data-result-id="disk"] .result-mark svg')).toHaveClass(/hard-drive/);
+});
+
 test("S067–S086 the failure history: pending, partial, acknowledgement, entries, a stale press, persistence failures, retries and removal by mouse and keyboard", async ({}, testInfo) => {
   await host.evaluate(h => h.setSize(380, 360));
   await update({});
@@ -84,7 +142,7 @@ test("S067–S086 the failure history: pending, partial, acknowledgement, entrie
     "S071 explicit result entry expands and focuses an acknowledged result").toBe(true);
   await update({ id: "new-failure" });
   await pushResult("en", 3);
-  expect.soft(!(await current())!.acknowledged && await read<boolean>(page, `(() => { const row = document.querySelector(".recording-result"); return row.classList.contains("unread") && !row.hasAttribute("data-open") && row.querySelector('[data-action="acknowledge"]').disabled && document.getElementById("tab-failures").textContent === "Failures (1)"; })()`),
+  expect.soft(!(await current())!.acknowledged && await read<boolean>(page, `(() => { const row = document.querySelector(".recording-result"); return row.classList.contains("unread") && !row.hasAttribute("data-open") && row.querySelector('[data-action="acknowledge"]').disabled && document.getElementById("tab-failures").textContent === "Troubleshooting (1)"; })()`),
     "S072 a new failure becomes unread while notifications are disabled").toBe(true);
 
   // A press on the previous result's button, released after a new result replaced it.
@@ -241,7 +299,7 @@ for (const [delay, lang] of [[150, "en"], [2000, "zh-TW"]] as const) {
     await update({ id: moved, outcome: "empty" });
     await persist();
     await pushResult(lang, await lastFocus() + 1);
-    const tab = await read<string>(page, `document.querySelector('[role="tab"][aria-selected="true"]').id`);
+    const tab = await read<string>(page, `document.querySelector('.tabs [role="tab"][aria-selected="true"]').id`);
     await clickAt(page, `${row(moved)} [data-action="acknowledge"]`);
     await page.waitForTimeout(40);
     await clickAt(page, `#${tab}`);
@@ -282,7 +340,7 @@ async function seedHistory(): Promise<void> {
 test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, keyboard navigation, independent rows, focus borders, rollover, per-tab scroll, entry and count", async ({}, testInfo) => {
   await host.evaluate(h => h.setSize(380, 360));
   await seedHistory();
-  const selected = (): Promise<string> => read(page, `document.querySelector('[role="tab"][aria-selected="true"]').id`);
+  const selected = (): Promise<string> => read(page, `document.querySelector('.tabs [role="tab"][aria-selected="true"]').id`);
   for (const lang of ["en", "zh-TW"] as const) {
     await pushResult(lang, await lastFocus());
     await clickAt(page, "#tab-recording");
@@ -292,11 +350,11 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
     await page.waitForTimeout(80);
     const generalTab = await read<boolean>(page, `!document.getElementById("recording-results") && !document.querySelector(".recording-result")`);
     expect.soft(recordingTab && generalTab, `S094 ${lang}: a normal open shows no history in the Recording and General tabs`).toBe(true);
-    const strip = await read<{ fits: boolean; lines: number[]; labels: string[] }>(page, `(() => { const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const strip = await read<{ fits: boolean; lines: number[]; labels: string[] }>(page, `(() => { const tabs = [...document.querySelectorAll('.tabs [role="tab"]')];
       const shown = tabs.map(t => t.querySelector(".tab-name")).filter(name => name && name.getBoundingClientRect().width > 0 && getComputedStyle(name).clipPath === "none");
       const lines = shown.map(t => { const range = document.createRange(); range.selectNodeContents(t); return new Set([...range.getClientRects()].map(r => Math.round(r.top))).size; });
       return { fits: tabs.every(t => t.scrollWidth <= t.clientWidth), lines, labels: tabs.map(t => t.textContent) }; })()`);
-    expect.soft(strip.fits && strip.lines.length >= 1 && strip.lines.every(n => n === 1) && strip.labels[3] === (lang === "en" ? "Failures (1)" : "失敗紀錄（1）"),
+    expect.soft(strip.fits && strip.lines.length >= 1 && strip.lines.every(n => n === 1) && strip.labels[3] === (lang === "en" ? "Troubleshooting (1)" : "疑難排解（1）"),
       `S095 ${lang}: the four tabs fit the 380 pt window without wrapping or truncation, the open one by name ${JSON.stringify(strip)}`).toBe(true);
     for (const scheme of ["light", "dark"] as const) {
       await host.evaluate((h, value) => h.theme(value), scheme);
@@ -420,15 +478,21 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
   await pushResult("en", await lastFocus() + 1);
   const entry = await read<{ tab: string; open: string[]; active: string; visible: boolean }>(page, `(() => { const rows = [...document.querySelectorAll(".recording-result")];
     const target = document.getElementById("recording-result-t-old-unread"); const box = target.getBoundingClientRect(), panel = document.getElementById("settings-panel").getBoundingClientRect();
-    return { tab: document.querySelector('[role="tab"][aria-selected="true"]').id, open: rows.filter(r => r.hasAttribute("data-open")).map(r => r.dataset.resultId), active: document.activeElement.id,
+    return { tab: document.querySelector('.tabs [role="tab"][aria-selected="true"]').id, open: rows.filter(r => r.hasAttribute("data-open")).map(r => r.dataset.resultId), active: document.activeElement.id,
       visible: box.top >= panel.top - 1 && box.top < panel.bottom }; })()`);
   expect.soft({ ...entry, acknowledged: (await all()).find(r => r.id === "t-old-unread")?.acknowledged },
     "S108 an entry selects the failures tab, opens only the newest unread row, focuses its header and scrolls it into view, without acknowledging it")
     .toEqual({ tab: "tab-failures", open: ["t-old-unread"], active: "recording-result-t-old-unread-summary", visible: true, acknowledged: false });
+  // An explicit failure entry returns from tools to history before focusing its row.
+  await page.locator("#troubleshooting-tools-tab").click();
+  await expect(page.locator("#recording-results")).toBeHidden();
+  await pushResult("en", await lastFocus() + 1);
+  await expect(page.locator("#troubleshooting-history-tab")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#recording-result-t-old-unread-summary")).toBeFocused();
   const before = await read<string>(page, `document.getElementById("tab-failures").textContent`);
   await clickAction(`!document.getElementById("recording-result-t-old-unread").classList.contains("unread")`);
   const after = await read<string>(page, `document.getElementById("tab-failures").textContent`);
-  expect.soft({ before, after }, "S109 the tab count appears for unread failures and clears once they are acknowledged").toEqual({ before: "Failures (1)", after: "Failures" });
+  expect.soft({ before, after }, "S109 the tab count appears for unread failures and clears once they are acknowledged").toEqual({ before: "Troubleshooting (1)", after: "Troubleshooting" });
 });
 
 for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {

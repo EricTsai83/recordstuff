@@ -77,6 +77,12 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       { id: "capture", occurredAt: new Date(Date.now() - 7200_000).toISOString(), code: "capture_start_failed", detail: "timed out", outcome: "empty", acknowledged: true }] }); }, { lang, scheme });
     for (const tab of TABS) {
       await page.locator(`#tab-${tab}`).click();
+      if (tab === "failures") {
+        const history = await measure(page);
+        expect.soft(history, `${lang}/${tab}: history also stays readable and inside its panel`).toEqual({ small: [], tiny: [], faint: [], outside: [] });
+        await page.locator("#troubleshooting-tools-tab").click();
+        await page.locator("#settings-data-cleanup-toggle").click();
+      }
       await page.waitForTimeout(120);
       const found = await measure(page);
       expect.soft(found.small, `U067-1 ${lang}/${scheme}/${tab}: no text below 12px`).toEqual([]);
@@ -92,6 +98,12 @@ for (const lang of ["en", "zh-TW"] as const) {
       h.pushModel({ type: "idle" }, { language: args.lang, library: h.library().state }); }, { lang, zoom: LAST_ZOOM });
     for (const tab of TABS) {
       await page.locator(`#tab-${tab}`).click();
+      if (tab === "failures") {
+        const history = await measure(page);
+        expect.soft(history, `${lang}/${tab}: history also stays readable and inside its panel`).toEqual({ small: [], tiny: [], faint: [], outside: [] });
+        await page.locator("#troubleshooting-tools-tab").click();
+        await page.locator("#settings-data-cleanup-toggle").click();
+      }
       await page.waitForTimeout(150);
       const found = await measure(page);
       expect.soft(found.outside, `U067-2 ${lang}/${tab}: nothing runs past the window or is cut off by its card at ${LAST_ZOOM * 100}%`).toEqual([]);

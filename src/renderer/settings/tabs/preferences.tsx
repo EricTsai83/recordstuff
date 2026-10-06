@@ -1,6 +1,6 @@
-/** The Recording and General tabs: model-driven rows grouped into sections, with their controls and explanations. */
+/** Model-driven preference, diagnostic and cleanup rows grouped into sections. */
 import { useLayoutEffect, useRef, useState } from "react";
-import { CircleAlert, CircleHelp, Sun, Moon, Monitor, Keyboard, Settings2, Folder, Globe, Power, Code2, Bell, Timer, Volume2, Gauge, FileText, HardDrive, Info } from "lucide-react";
+import { ChevronDown, CircleAlert, CircleHelp, Sun, Moon, Monitor, Keyboard, Settings2, Folder, Globe, Power, Bell, Timer, Volume2, Gauge, FileText, HardDrive, Info } from "lucide-react";
 import type { SettingsGroup, SettingsChoice } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
 import { fileNameTemplateProblem, fileNameProblemText, formatFileName } from "../../../shared/file-name";
@@ -41,7 +41,13 @@ export function GroupIcon({ id }: { id: string }) {
   return <Icon className="row-icon" aria-hidden="true" />;
 }
 export function ActionIcon({ id }: { id: string }) {
-  const Icon = id === "source" ? Code2 : id === "quit" ? Power : Globe;
+  if (id === "source") return (
+    // The same GitHub mark as the website's GitHubMark.astro; Lucide's installed set has no brand icons.
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 .5C5.65.5.5 5.65.5 12a11.5 11.5 0 007.86 10.93c.58.1.79-.25.79-.56v-2c-3.2.69-3.88-1.37-3.88-1.37-.52-1.33-1.27-1.69-1.27-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.76 2.68 1.25 3.33.96.1-.75.4-1.25.72-1.54-2.55-.29-5.24-1.27-5.24-5.67 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.45.11-3.02 0 0 .96-.31 3.15 1.18a10.96 10.96 0 015.74 0c2.19-1.49 3.15-1.18 3.15-1.18.62 1.57.23 2.73.11 3.02.74.8 1.18 1.83 1.18 3.08 0 4.41-2.7 5.38-5.27 5.66.41.36.78 1.06.78 2.13v3.16c0 .31.21.67.8.56A11.5 11.5 0 0023.5 12C23.5 5.65 18.35.5 12 .5z" />
+    </svg>
+  );
+  const Icon = id === "quit" ? Power : Globe;
   return <Icon aria-hidden="true" />;
 }
 export function Action({
@@ -58,14 +64,16 @@ export function Action({
   wrap?: boolean;
   className?: string | undefined;
 }) {
-  const busy = Boolean(model.saving) || choice.busy === true;
+  const busy = Boolean(model.saving) || choice.busy === true,
+    iconOnly = group.id === "about" && (choice.id === "website" || choice.id === "source");
   return (
     <Button
       id={id}
       data-action={choice.id}
-      variant={group.id === "localData" ? "destructive" : choice.id === "quit" ? "ghost" : "outline"}
-      wrap={wrap}
-      className={className}
+      variant={group.id === "localData" ? "destructive" : group.id === "about" || choice.id === "quit" ? "ghost" : "outline"}
+      size={iconOnly ? "icon" : "default"}
+      wrap={iconOnly ? false : wrap}
+      className={group.id === "about" ? `px-0 ${className ?? ""}` : className}
       disabled={!group.enabled || !choice.enabled}
       aria-disabled={busy || !group.enabled || !choice.enabled}
       aria-label={group.id === "about" ? choice.label : undefined}
@@ -76,7 +84,7 @@ export function Action({
       }}
     >
       {group.id === "about" && <ActionIcon id={choice.id} />}
-      {choice.label}
+      {!iconOnly && choice.label}
     </Button>
   );
 }
@@ -282,11 +290,19 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
   return (
     <div
       id={`${id}-row`}
-      className="row"
+      className={group.id === "about" ? "row about-row" : "row"}
       aria-busy={model.saving?.group === group.id}
     >
       <div className="row-line">
-        <div className="group-title">
+        {group.id === "about" ? (
+          <div className="about-identity">
+            <h2 id={`${id}-label`} className="about-title">
+              RecordStuff
+            </h2>
+            <p id={`${id}-note`} className="about-version" hidden={!group.note}>{group.note}</p>
+            <p className="group-label about-credit">{group.label}</p>
+          </div>
+        ) : <div className="group-title">
           <GroupIcon id={group.id} />
           {group.kind === "actions" || group.control === "segmented" ? (
             <span
@@ -307,7 +323,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
             </Label>
           )}
           <Explanation group={group} />
-        </div>
+        </div>}
         <div
           className="controls"
           role={group.kind === "actions" ? "group" : undefined}
@@ -541,7 +557,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
           {model.text("Choose the setting again to retry.")}
         </p>
       </div>
-      {group.control !== "text" && (
+      {group.control !== "text" && group.id !== "about" && (
         <p id={`${id}-note`} className="note" hidden={!group.note}>
           {group.note}
         </p>
@@ -562,6 +578,32 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
     </div>
   );
 }
+function CleanupSection({ groups }: { groups: SettingsGroup[] }) {
+  const disclosure = useRef<HTMLDetailsElement>(null);
+  // A failed action remains visible even if the user collapsed the section while it was running.
+  useLayoutEffect(() => {
+    if (groups.some((group) => group.id === model.failure?.group) && disclosure.current)
+      disclosure.current.open = true;
+  }, [groups, model.failure]);
+  return (
+    <details ref={disclosure} className="section support-section" id="settings-data-cleanup">
+      <summary id="settings-data-cleanup-toggle" className="support-summary focus-ring">
+        <h2>{groups[0]?.sectionHeading ?? model.text("Reset and cleanup")}</h2>
+        <span className="support-toggle">
+          <span className="support-expand">{model.text("Expand")}</span>
+          <span className="support-collapse">{model.text("Collapse")}</span>
+          <ChevronDown className="support-chevron" aria-hidden="true" />
+        </span>
+      </summary>
+      <Card size="xs">
+        <CardContent className="inset-list px-3.5">
+          {groups.map((group) => <SettingRow key={group.id} group={group} />)}
+        </CardContent>
+      </Card>
+    </details>
+  );
+}
+
 export function Preferences() {
   const groups =
     model.view?.groups.filter((group) => group.tab === model.selectedTab) ?? [];
@@ -572,9 +614,15 @@ export function Preferences() {
     if (prior?.id === id) prior.groups.push(group);
     else sections.push({ id, groups: [group] });
   }
-  return sections.map((section) => (
+  return sections.map((section) => section.id === "cleanup" ? (
+    <CleanupSection key={section.id} groups={section.groups} />
+  ) : section.id === "about" ? (
+    <footer className="section about" key={section.id} aria-label={model.text("About RecordStuff")}>
+      {section.groups.map((group) => <SettingRow key={group.id} group={group} />)}
+    </footer>
+  ) : (
     <section
-      className={`section${section.id === "about" ? " about" : ""}`}
+      className="section"
       key={section.id}
     >
       <h2

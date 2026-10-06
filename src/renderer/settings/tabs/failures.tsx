@@ -1,11 +1,38 @@
-/** The Failures tab: rows grouped by day, each with its guidance, recovery actions and technical details. */
-import { CircleAlert, ChevronDown, FileWarning } from "lucide-react";
+/** Troubleshooting's failure history: rows grouped by day, with guidance, recovery actions and technical details. */
+import { CircleAlert, ChevronDown, FolderX, HardDrive, MonitorOff, ShieldAlert, TimerOff, VideoOff, VolumeX, Settings2, FileVideo, type LucideIcon } from "lucide-react";
 import type { RecordingResultView } from "../../../shared/settings-panel";
-import { translate } from "../../../shared/i18n";
+import { translate, type PlainMessageKey } from "../../../shared/i18n";
+import type { ErrorCode } from "../../../shared/state";
 import { REVIEWED_FAILURES_KEPT, persistsHistory } from "../../../shared/recording-result";
 import { Button } from "../../components/ui/button";
+import { Badge } from "../../components/ui/badge";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "../../components/ui/collapsible";
 import * as model from "../settings-controller";
+
+/** Cause and preservation are independent: a disk or display failure can still leave a partial file. */
+const failureIcons: Record<ErrorCode, LucideIcon> = {
+  permission_denied: ShieldAlert,
+  unsupported_os_version: Settings2,
+  no_display: MonitorOff,
+  display_unavailable: MonitorOff,
+  no_audio_track: VolumeX,
+  mp4_unsupported: FileVideo,
+  capture_start_failed: VideoOff,
+  capture_failed: VideoOff,
+  capture_host_crashed: CircleAlert,
+  capture_host_unresponsive: CircleAlert,
+  output_open_failed: FolderX,
+  output_write_failed: HardDrive,
+  disk_full: HardDrive,
+  stop_timeout: TimerOff,
+  app_terminated: CircleAlert,
+};
+const outcomeLabels: Record<RecordingResultView["outcomeState"], PlainMessageKey> = {
+  pending: "Processing",
+  partial: "Partially kept",
+  empty: "Not kept",
+  unknown: "Unconfirmed result",
+};
 
 export function FailureRow({ result }: { result: RecordingResultView }) {
   const id = model.resultDomId(result.id),
@@ -18,12 +45,13 @@ export function FailureRow({ result }: { result: RecordingResultView }) {
       ? model.text("Saving this change…")
       : "");
   const technical = [result.file, result.detail].filter(Boolean).join("\n");
+  const Icon = failureIcons[result.code];
   return (
     <Collapsible
       id={id}
       className={`recording-result${result.acknowledged ? "" : " unread"}`}
       data-result-id={result.id}
-      data-kept={result.fileName ? "" : undefined}
+      data-outcome={result.outcomeState}
       aria-busy={busy}
       open={state?.open ?? false}
       onOpenChange={(open) => model.toggleResult(result.id, open)}
@@ -52,13 +80,8 @@ export function FailureRow({ result }: { result: RecordingResultView }) {
           headers[next]?.scrollIntoView({ block: "nearest" });
         }}
       >
-        {/* What became of the recording at a glance: amber when part of it was kept, red when nothing was. */}
-        <span
-          className="result-mark"
-          data-kept={result.fileName ? "" : undefined}
-          aria-hidden="true"
-        >
-          {result.fileName ? <FileWarning /> : <CircleAlert />}
+        <span className="result-mark" aria-hidden="true">
+          <Icon />
           <span className="result-unread" hidden={result.acknowledged} />
         </span>
         <span className="result-text">
@@ -69,7 +92,23 @@ export function FailureRow({ result }: { result: RecordingResultView }) {
             >
               {model.text("Unread, ")}
             </span>
-            <span className="result-reason">{result.reason}</span>
+            <span className="result-heading">
+              <span className="result-reason">{result.reason}</span>
+              <Badge
+                className={`result-badge h-auto min-h-[18px] max-w-full rounded-[3px] px-1 py-0 leading-4 whitespace-normal ${
+                  result.outcomeState === "partial"
+                    ? "bg-warning-surface text-warning"
+                    : result.outcomeState === "pending" || result.outcomeState === "unknown"
+                      ? "text-muted-foreground"
+                      : ""
+                }`}
+                size="md"
+                variant={result.outcomeState === "empty" ? "destructive" : "secondary"}
+                data-outcome={result.outcomeState}
+              >
+                {model.text(outcomeLabels[result.outcomeState])}
+              </Badge>
+            </span>
             <span className="result-time">{result.time}</span>
             <ChevronDown className="result-chevron" aria-hidden="true" />
           </span>
@@ -130,12 +169,13 @@ export function FailureRow({ result }: { result: RecordingResultView }) {
     </Collapsible>
   );
 }
-export function Failures() {
+export function Failures({ headingHidden = false }: { headingHidden?: boolean } = {}) {
   const results = model.view?.recordingResults ?? [],
     status = model.view?.recordingHistoryStatus;
   const days = [...new Set(results.map((result) => result.day))];
   return (
-    <section id="recording-results" aria-labelledby="tab-failures">
+    <section id="recording-results" className="section" aria-labelledby="recording-results-heading">
+      <h2 id="recording-results-heading" className={headingHidden ? "sr-only" : "section-heading"}>{model.text("Recording failures")}</h2>
       <p className="result-history-status" hidden={!status}>
         {status}
       </p>
@@ -146,7 +186,7 @@ export function Failures() {
       <div className="result-days">
         {days.map((day) => (
           <section className="result-day" data-day={day} key={day}>
-            <h2 className="day-heading result-day-heading">{day}</h2>
+            <h3 className="day-heading result-day-heading">{day}</h3>
             <div className="result-rows">
               {results
                 .filter((result) => result.day === day)

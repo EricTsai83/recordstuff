@@ -8,7 +8,8 @@
  */
 import type { FullScreenChoice, PlaybackState } from "./video-player";
 import type { Language } from "./i18n";
-import type { RecordingState } from "./state";
+import type { ErrorCode, RecordingState } from "./state";
+import type { RecordingFailure } from "./recording-result";
 import type { LibraryLayout } from "./appearance";
 
 export interface SettingsChoice {
@@ -19,11 +20,12 @@ export interface SettingsChoice {
   /** Offered, but its own work is running: the button keeps focus and ignores activation until it ends (plan 053). */
   busy?: boolean;
 }
+/** `failures` is the stable entry id for Troubleshooting, which also contains diagnostic and cleanup actions. */
 export type SettingsTab = "library" | "recording" | "general" | "failures";
 export interface SettingsGroup {
   id: string;
   label: string;
-  tab: "recording" | "general";
+  tab: Exclude<SettingsTab, "library">;
   kind?: "actions" | "shortcut";
   /**
    * Presentation only; omitted controls default to a native menu. `text` is a field whose committed value is the one
@@ -61,6 +63,9 @@ export interface SettingsGroup {
 }
 export interface RecordingResultView {
   id: string;
+  /** Stable identities for the cause icon and preservation badge; never inferred from localized text or a path. */
+  code: ErrorCode;
+  outcomeState: RecordingFailure["outcome"];
   reason: string;
   /** Localized day heading the row is grouped under: Today, Yesterday or the date (plan 047). */
   day: string;
@@ -141,7 +146,7 @@ export interface SettingsView {
   recordingHistoryStatus?: string;
   /** Changes only on explicit entry through notification/tray; the page then selects `entryTab`. */
   resultFocus?: number;
-  /** The tab that entry opens: the failures tab when absent, General for the shortcut card. */
+  /** The tab that entry opens: Troubleshooting when absent, General for the shortcut card. */
   entryTab?: SettingsTab;
   /** With a Recordings entry: the recording to bring into view, from its saved notification. */
   libraryFocus?: string;
@@ -150,7 +155,7 @@ export interface SettingsView {
   hint: string;
   /** Shown when a choice did not take effect; already localized. */
   failure: string;
-  /** The failures tab is always offered; its label carries the unread count (plan 047). */
+  /** Troubleshooting is always offered; its label carries the unread failure count (plan 047). */
   tabs: Array<{ id: SettingsTab; label: string; accessibleLabel?: string }>;
   groups: SettingsGroup[];
 }
