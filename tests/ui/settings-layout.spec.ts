@@ -182,7 +182,7 @@ test("U070-2 a settings menu is the app's own sheet: chosen with the pointer it 
   await host.evaluate(h => { h.theme("light"); h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: "en" }); });
   await page.locator("#tab-recording").click();
   const trigger = page.locator("#setting-screen");
-  const ring = (): Promise<string> => read(page, `getComputedStyle(document.getElementById("setting-screen")).boxShadow`);
+  const ring = (): Promise<string> => read(page, `getComputedStyle(document.getElementById("setting-screen")).outlineStyle`);
   await trigger.click();
   await expect(page.locator('[data-slot="select-content"][data-open]')).toHaveCount(1);
   await page.keyboard.press("Escape");
@@ -195,10 +195,24 @@ test("U070-2 a settings menu is the app's own sheet: chosen with the pointer it 
   // Focus goes back to the menu once its sheet has closed.
   await expect.poll(() => read(page, `document.activeElement?.id`)).toBe("setting-screen");
   const pointer = await ring();
-  expect.soft(await read<boolean>(page, `document.activeElement?.id === "setting-screen"`) && !/rgba?\([^)]*\) 0px 0px 0px 2px/.test(pointer),
+  expect.soft(await read<boolean>(page, `document.activeElement?.id === "setting-screen"`) && pointer === "none",
     `U070-2 chosen with the pointer, the menu keeps focus without a ring ${pointer}`).toBe(true);
   await page.keyboard.press("Shift+Tab");
   await page.keyboard.press("Tab");
   const keyboard = await ring();
-  expect.soft(keyboard, "U070-2 reached by the keyboard, the menu shows its ring").toContain("0px 0px 0px 2px");
+  expect.soft(keyboard, "U070-2 reached by the keyboard, the menu shows its ring").toBe("solid");
+});
+
+test("U070-3 keyboard focus on a recording card is one thin line round the card, following its corners, with none inside it", async () => {
+  await host.evaluate(h => { h.theme("light"); h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: "en", library: h.library().state }); });
+  await page.locator("#tab-library").click();
+  await page.waitForTimeout(150);
+  await page.locator(".clip-more").first().focus();
+  await page.keyboard.press("Shift+Tab");
+  const focus = await read<{ active: string; card: string; cardWidth: string; cardRadius: string; button: string }>(page, `(() => {
+    const button = document.activeElement, card = button.closest(".clip"), c = getComputedStyle(card), b = getComputedStyle(button);
+    return { active: button.className.includes("clip-open") ? "clip-open" : button.id, card: c.outlineStyle, cardWidth: c.outlineWidth, cardRadius: c.borderTopLeftRadius,
+      button: b.outlineStyle === "none" || b.outlineWidth === "0px" ? "none" : b.outlineStyle + " " + b.outlineWidth }; })()`);
+  expect.soft(focus.active === "clip-open" && focus.card === "solid" && ["1px", "1.5px"].includes(focus.cardWidth) && focus.cardRadius !== "0px" && focus.button === "none",
+    `U070-3 the card, not its button, shows the focus line ${JSON.stringify(focus)}`).toBe(true);
 });

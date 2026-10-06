@@ -569,6 +569,21 @@ export function start(): () => void {
       if (event.target !== document.getElementById(intent.control))
         intent.moved = true;
   });
+  // Which input came last, in the capture phase: a control that stops a key's propagation (Base UI's slider thumb
+  // stops its arrows) must not leave the page thinking the pointer was last, which hides the keyboard focus line.
+  listen(
+    document,
+    "keydown",
+    (raw) => {
+      if (
+        ["Tab", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(
+          (raw as KeyboardEvent).key,
+        )
+      )
+        document.documentElement.dataset.input = "keyboard";
+    },
+    true,
+  );
   listen(document, "keydown", (raw) => {
     const event = raw as KeyboardEvent;
     if (

@@ -229,6 +229,12 @@ test("P20 the player's pointer, focus and flashes, as before shadcn (2026-10-07)
   const clicked = await read<{ kind: string | undefined; hidden: boolean; animation: string }>(page, `(() => { const b = document.querySelector(".player .pc-bezel");
     return { kind: b.dataset.kind, hidden: b.hidden, animation: getComputedStyle(b).animationName }; })()`);
   expect.soft(clicked, "P20 a click on the picture flashes play at the centre").toEqual({ kind: "play", hidden: false, animation: "media-bezel" });
+  // A click on the seek bar, then its arrows: the thumb stops their propagation, yet the page learns the keyboard came
+  // last (review of 2026-10-07), so a focus line the browser then draws is not hidden. Chromium itself does not count a
+  // range clicked with the pointer as focus-visible after its arrows, so no line is expected here.
+  await page.mouse.click(bar.x, bar.y);
+  await page.keyboard.press("ArrowRight");
+  expect.soft(await read<string | undefined>(page, "document.documentElement.dataset.input"), "P20 after a click, the seek bar's arrows mark keyboard input").toBe("keyboard");
   await page.locator("#player-close").click();
 });
 

@@ -71,7 +71,8 @@ export const Clip = memo(function Clip({
         size="clip"
         id={`clip-${item.id}-open`}
         // The list layout lays a card out in one line, leaving room on the right for its menu button.
-        className="clip-open in-data-[layout=list]:flex-row in-data-[layout=list]:items-center in-data-[layout=list]:pr-10"
+        // Its focus line is drawn round the whole card (ui.css), not inside it.
+        className="clip-open focus-visible:outline-none! in-data-[layout=list]:flex-row in-data-[layout=list]:items-center in-data-[layout=list]:pr-10"
         aria-label={translate(
           "Play {title}",
           language === "zh-TW" ? "zh-TW" : "en",

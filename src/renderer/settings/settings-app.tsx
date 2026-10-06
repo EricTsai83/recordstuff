@@ -27,8 +27,8 @@ function Status() {
   return (
     <Card
       id="status"
-      // Recording and something to fix tint the card itself; the mark and the light say the rest (ui.css).
-      className="status gap-2.5 p-3 data-[tone=attention]:bg-warning-surface data-[tone=attention]:ring-warning-border data-[tone=recording]:bg-recording-surface data-[tone=recording]:ring-recording-border"
+      // A plain card in every state: its words say what is happening and its button what to do (2026-10-07).
+      className="status gap-2.5 p-3"
       hidden={!status || status.tone === "ready"}
       data-tone={status?.tone}
     >
@@ -53,7 +53,7 @@ function Status() {
         <Button
           id="status-secondary"
           variant="link"
-          className="h-auto max-w-full justify-start px-0 text-left whitespace-normal wide:pl-[15px]"
+          className="h-auto max-w-full justify-start px-0 text-left font-normal whitespace-normal text-muted-foreground underline underline-offset-3 hover:text-foreground"
           hidden={!status?.secondaryAction}
           data-action={status?.secondaryAction?.id}
           aria-disabled={Boolean(model.saving)}
@@ -71,6 +71,8 @@ function Status() {
       </div>
       <Button
         id="status-action"
+        // In the sidebar the fix spans the card, under its words.
+        className="wide:w-full"
         hidden={!status?.action}
         data-action={status?.action?.id}
         aria-disabled={Boolean(model.saving)}

@@ -45,7 +45,7 @@ function SelectTrigger({
       data-slot="select-trigger"
       data-size={size}
       className={cn(
-        "flex w-fit max-w-full min-w-0 items-center justify-between gap-1.5 rounded-md border border-input bg-card py-0.5 pr-1.5 pl-2 text-xs/relaxed whitespace-nowrap transition-colors outline-none select-none hover:bg-accent focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 pointer:focus-visible:border-input pointer:focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 data-popup-open:bg-accent data-placeholder:text-muted-foreground data-[size=default]:h-7 data-[size=sm]:h-6 dark:bg-secondary dark:hover:bg-accent [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+        "focus-ring flex w-fit max-w-full min-w-0 items-center justify-between gap-1.5 rounded-md border border-input bg-card py-0.5 pr-1.5 pl-2 text-xs/relaxed whitespace-nowrap transition-colors outline-none select-none hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 data-popup-open:bg-accent data-placeholder:text-muted-foreground data-[size=default]:h-7 data-[size=sm]:h-6 dark:bg-secondary dark:hover:bg-accent [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
         className,
       )}
       {...props}

@@ -68,9 +68,9 @@ function Slider({
             key={index}
             {...thumbProps}
             className={cn(
-              "relative block size-3 shrink-0 rounded-md border border-ring bg-white ring-ring/30 transition-[color,box-shadow] select-none after:absolute after:-inset-2 hover:ring-2 focus-visible:ring-2 focus-visible:outline-hidden active:ring-2 disabled:pointer-events-none disabled:opacity-50",
+              "relative block size-3 shrink-0 rounded-md border border-ring bg-white transition-[color,box-shadow] select-none after:absolute after:-inset-2 focus-ring-within [--focus-offset:2px] disabled:pointer-events-none disabled:opacity-50",
               variant === "media" &&
-                "size-[13px] rounded-full border-0 bg-media-foreground shadow-[var(--media-thumb-shadow)] ring-media-foreground/30",
+                "size-[13px] rounded-full border-0 bg-media-foreground shadow-[var(--media-thumb-shadow)]",
               growOnHover &&
                 "scale-0 transition-[scale,box-shadow] duration-100 ease-out group-hover/slider:scale-100 group-active/slider:scale-100 has-focus-visible:scale-100",
             )}

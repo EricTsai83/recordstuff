@@ -276,12 +276,12 @@ test("S044–S048 update checks: repeated states keep nodes and geometry; Tab an
   await expect(page.locator("#setting-updates-check")).toHaveText("Checking for updates…");
   await page.waitForTimeout(150);
   const busy = await read<{ active: string; disabled: boolean; ariaDisabled: string | null; ring: string }>(page, `(() => { const el = document.getElementById("setting-updates-check");
-    return { active: document.activeElement.id, disabled: el.disabled, ariaDisabled: el.getAttribute("aria-disabled"), ring: getComputedStyle(el).boxShadow }; })()`);
+    return { active: document.activeElement.id, disabled: el.disabled, ariaDisabled: el.getAttribute("aria-disabled"), ring: getComputedStyle(el).outlineStyle }; })()`);
   await keep("update-check-busy.png");
   await page.keyboard.press("Enter");
   await page.waitForTimeout(100);
   expect.soft({ tabbed, calls: await calls() }, "S046 Tab reaches Check for updates… and Enter starts one check").toEqual({ tabbed: "setting-updates-check", calls: [["updates", "check"]] });
-  expect.soft({ active: busy.active, disabled: busy.disabled, ariaDisabled: busy.ariaDisabled, ring: /0px 0px 0px 2px/.test(busy.ring) },
+  expect.soft({ active: busy.active, disabled: busy.disabled, ariaDisabled: busy.ariaDisabled, ring: busy.ring === "solid" },
     "S047 a running check keeps keyboard focus and its ring on the busy, focusable button").toEqual({ active: "setting-updates-check", disabled: false, ariaDisabled: "true", ring: true });
   await host.evaluate(h => { h.state.updateContext = { ...h.state.updateContext, updates: { enabled: true, state: { kind: "current", checkedAt: 2000 } } }; h.push(h.settingsView({ type: "idle" }, h.state.updateContext)); });
   await expect(page.locator("#setting-updates-check")).toHaveAttribute("aria-disabled", "false");
@@ -360,7 +360,7 @@ test("S058–S066 the shortcut editor by keyboard: Tab and Shift+Tab leave captu
   await page.waitForTimeout(100);
   await page.keyboard.press("Shift+Tab");
   const back = await read<string>(page, "document.activeElement.id");
-  expect.soft(await read<boolean>(page, `(() => { const el = document.getElementById("setting-hotkey"); return el.matches(":focus-visible") && getComputedStyle(el).boxShadow.includes("0px 0px 0px 2px"); })()`),
+  expect.soft(await read<boolean>(page, `(() => { const el = document.getElementById("setting-hotkey"); return el.matches(":focus-visible") && getComputedStyle(el).outlineStyle === "solid"; })()`),
     "S059 keyboard navigation retains a visible focus ring").toBe(true);
   await read(page, `document.getElementById("setting-hotkey").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }))`);
   expect.soft(await read<boolean>(page, `getComputedStyle(document.getElementById("setting-hotkey")).outlineStyle === "none"`) && back === "setting-hotkey",

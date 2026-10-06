@@ -24,6 +24,30 @@
   }
 }
 
+/* One keyboard focus style for every control (2026-10-07, as before shadcn): a single line in the chosen red,
+   one device pixel at 1x and 1.5px on a Retina display (--focus-width), drawn on the control's own edge, with no faint
+   halo around it. A filled control draws it just outside (--focus-offset), the player's in white (--focus-color). Only
+   for the keyboard: after a pointer the page sets data-input="pointer" and no line is drawn; a text field shows where
+   typing goes however it was reached (focus-ring-field). */
+@utility focus-ring {
+  &:focus-visible:where(:root:not([data-input="pointer"]):not([data-window="inactive"]) *) {
+    outline: var(--focus-width) solid var(--focus-color, var(--ring));
+    outline-offset: var(--focus-offset, calc(-1 * var(--focus-width)));
+  }
+}
+@utility focus-ring-within {
+  &:has(:focus-visible):where(:root:not([data-input="pointer"]):not([data-window="inactive"]) *) {
+    outline: var(--focus-width) solid var(--focus-color, var(--ring));
+    outline-offset: var(--focus-offset, calc(-1 * var(--focus-width)));
+  }
+}
+@utility focus-ring-field {
+  &:focus-visible {
+    outline: var(--focus-width) solid var(--focus-color, var(--ring));
+    outline-offset: calc(-1 * var(--focus-width));
+  }
+}
+
 /* The type scale (plan 067): the root stays at the browser's 16px so the components' rem sizes keep their designed
    pixels (a 28px control, a 24px icon button), and the smallest step, which controls, menus and dialogs use, is 13px,
    the size macOS draws a control's label at. Help and metadata use 12px; nothing essential is smaller. */
@@ -124,7 +148,8 @@
   --border: #e5e5ea;
   --input: #d2d2d7;
   --ring: #fa2d48;
-  /* Apple Music's red for what is chosen, a little lighter in dark, as Apple Music draws it there. */
+  /* The app's red for what is chosen, as before shadcn: Apple Music's pinkish red in light, a calmer, deeper red the
+     maintainer picked for dark (2026-10-05). */
   --chosen: #fa2d48;
   --chosen-foreground: #fff;
   /* Words, and a count's fill, in the chosen red: a step deeper in light and lighter in dark, for 4.5:1 (plan 067). */
@@ -174,6 +199,8 @@
   --media-thumb-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
   --player-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
   --toast-shadow: 0 4px 12px rgb(0 0 0 / 0.1);
+  /* A failure's outcome when nothing was kept: 4.5:1 on its card and under the pointer (review of 2026-10-07). */
+  --outcome-red: #c81e1e;
   /* An opaque mask stop: a mask reads only its alpha. */
   --mask-opaque: #000;
   /* The content's thin scroll bar thumb. */
@@ -204,8 +231,8 @@
   --destructive: #fca5a5;
   --border: #38383a;
   --input: #48484a;
-  --ring: #fc3c44;
-  --chosen: #fc3c44;
+  --ring: #e85a62;
+  --chosen: #e85a62;
   --chosen-text: #ff7a80;
   --chosen-text-foreground: #18181b;
   --selected: #636366;
@@ -223,6 +250,7 @@
   --warning-border: #4a3d20;
   --success: #4ade80;
   --scrollbar: rgb(255 255 255 / 0.22);
+  --outcome-red: #ff8a8a;
 }
 @media (min-resolution: 2dppx) {
   :root {
@@ -379,11 +407,8 @@
   .status[data-tone="busy"] .status-mark::after {
     background: var(--muted-foreground);
   }
-  .status[data-tone="attention"] .status-mark {
-    background: var(--warning);
-  }
   .status[data-tone="attention"] .status-mark::before {
-    border-color: var(--warning-surface);
+    border: 0;
   }
   .status[data-tone="attention"] .status-mark::after {
     content: "!";
@@ -391,7 +416,7 @@
     display: grid;
     place-items: center;
     background: none;
-    color: var(--warning-surface);
+    color: var(--brand-foreground);
     font-weight: 800;
     font-size: 13px;
   }
@@ -411,8 +436,7 @@
     height: 100%;
     overflow: auto;
     padding: 0 calc(var(--main-right) - 6px) 44px 2px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar) transparent;
+
     scroll-padding-block: 36px 46px;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
@@ -621,6 +645,18 @@
       --main-top: 52px;
     }
   }
+  /* A narrow scroll bar, a rounded thumb with no track, drawn at the window's edge. */
+  .settings-panel::-webkit-scrollbar {
+    width: 7px;
+  }
+  .settings-panel::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .settings-panel::-webkit-scrollbar-thumb {
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: var(--scrollbar) padding-box;
+  }
   /* The content's edges blur into the window where it runs on, as Apple Music's do; the scroll bar stays clear. */
   .scroll-hint {
     pointer-events: none;
@@ -671,6 +707,7 @@
   .result-summary:hover {
     background: var(--accent);
   }
+  /* The tile stays grey; the outcome beneath the reason carries the colour: amber when part was kept, red when nothing was. */
   .result-mark {
     position: relative;
     flex: none;
@@ -679,12 +716,8 @@
     width: 28px;
     height: 28px;
     border-radius: 7px;
-    background: var(--recording-surface);
-    color: var(--recording-mark);
-  }
-  .result-mark[data-kept] {
-    background: var(--warning-surface);
-    color: var(--warning);
+    background: var(--secondary);
+    color: var(--muted-foreground);
   }
   .result-mark svg {
     width: 16px;
@@ -737,8 +770,11 @@
   }
   .result-outcome {
     display: block;
-    color: var(--muted-foreground);
+    color: var(--outcome-red);
     font-size: 12px;
+  }
+  .recording-result[data-kept] .result-outcome {
+    color: var(--warning);
   }
   .result-details {
     padding: 2px 12px 12px 52px;
@@ -926,7 +962,13 @@
     opacity: 1;
   }
   /* The recording a notification or the menu opened: outlined in the recording red, which then fades. */
-  .clip.arrived {
+  /* Keyboard focus on a card: one line round the card itself, following its corners, not one inside it. */
+  .clip:has(> .clip-open:focus-visible):where(:root:not([data-input="pointer"]):not([data-window="inactive"]) *) {
+    outline: var(--focus-width) solid var(--ring);
+    outline-offset: 1px;
+  }
+  /* With keyboard focus on it the card keeps its focus line instead (review of 2026-10-07); its blur ends the highlight. */
+  .clip.arrived:not(:has(> .clip-open:focus-visible)) {
     outline: 2px solid transparent;
     outline-offset: 2px;
     animation: arrived 2.4s ease-out forwards;
@@ -1299,36 +1341,7 @@
     .status-mark {
       display: none;
     }
-    .status-title {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-    }
-    .status-title::before {
-      content: "";
-      flex: none;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--success);
-      box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 18%, transparent);
-    }
-    .status[data-tone="recording"] .status-title::before {
-      background: var(--recording-mark);
-      box-shadow: 0 0 0 3px color-mix(in srgb, var(--recording-mark) 22%, transparent);
-    }
-    .status[data-tone="busy"] .status-title::before {
-      background: var(--muted-foreground);
-      box-shadow: none;
-    }
-    .status[data-tone="attention"] .status-title::before {
-      background: var(--warning);
-      box-shadow: none;
-    }
-    .status-detail,
-    #hint {
-      padding-left: 15px;
-    }
+
     .brand {
       grid-column: 1;
       grid-row: 1;

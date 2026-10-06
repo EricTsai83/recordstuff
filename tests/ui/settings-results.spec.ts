@@ -432,7 +432,7 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
 });
 
 for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
-  test(`S110–S115 ${lang}/${scheme}: tab, menu, segment, switch, button and row action show their shadcn keyboard focus rings at the minimum size`, async ({}, testInfo) => {
+  test(`S110–S115 ${lang}/${scheme}: tab, menu, segment, switch, button and row action show the one keyboard focus line at the minimum size`, async ({}, testInfo) => {
     await host.evaluate((h, value) => { h.setSize(380, 360); h.theme(value); }, scheme);
     await seedHistory();
     await pushResult(lang, 0);
@@ -445,19 +445,23 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       await page.waitForTimeout(40);
       return read<boolean>(page, `document.activeElement === document.querySelector(${JSON.stringify(selector)})`);
     };
-    const ring = (): Promise<{ keyboard: boolean; shadow: string }> => read(page, `(() => { const el = document.activeElement, s = getComputedStyle(el); return { keyboard: el.matches(":focus-visible"), shadow: s.boxShadow }; })()`);
+    // One focus style everywhere (2026-10-07): a single thin line in the chosen red, with no halo around it.
+    const ring = (): Promise<{ keyboard: boolean; line: boolean; halo: string }> => read(page, `(() => { const el = document.activeElement, s = getComputedStyle(el);
+      const probe = document.createElement("p"); probe.style.color = "var(--ring)"; document.body.append(probe); const red = getComputedStyle(probe).color; probe.remove();
+      return { keyboard: el.matches(":focus-visible"), line: s.outlineStyle === "solid" && ["1px", "1.5px"].includes(s.outlineWidth) && s.outlineColor === red,
+        halo: s.boxShadow.match(/0px 0px 0px [23]px/)?.[0] ?? "" }; })()`);
     await clickAt(page, "#tab-recording"); await page.waitForTimeout(80);
-    for (const [id, name, selector, width] of [["S110", "tab", "#tab-recording", 3], ["S111", "menu", "#setting-screen", 2], ["S112", "segment", "#setting-countdown button[aria-pressed=true]", 3],
-      ["S113", "switch", "#setting-countdownSound", 2]] as const) {
+    for (const [id, name, selector] of [["S110", "tab", "#tab-recording"], ["S111", "menu", "#setting-screen"], ["S112", "segment", "#setting-countdown button[aria-pressed=true]"],
+      ["S113", "switch", "#setting-countdownSound"]] as const) {
       const reached = await keyboardFocus(selector), shown = await ring();
       await shot(testInfo, `focus-${name}-${lang}-${scheme}-minimum.png`);
-      expect.soft(reached && shown.keyboard && shown.shadow.includes(`0px 0px 0px ${width}px`), `${id} ${lang}/${scheme}: the ${name} shows its shadcn keyboard focus ring ${JSON.stringify({ reached, ...shown })}`).toBe(true);
+      expect.soft(reached && shown.keyboard && shown.line && !shown.halo, `${id} ${lang}/${scheme}: the ${name} shows the keyboard focus line ${JSON.stringify({ reached, ...shown })}`).toBe(true);
     }
     await clickAt(page, "#tab-general"); await page.waitForTimeout(80);
     for (const [id, name, selector] of [["S114", "button", "#setting-updates-check"], ["S115", "link", "#setting-notifications-openSettings"]] as const) {
       const reached = await keyboardFocus(selector), shown = await ring();
       await shot(testInfo, `focus-${name}-${lang}-${scheme}-minimum.png`);
-      expect.soft(reached && shown.keyboard && shown.shadow.includes("0px 0px 0px 2px"), `${id} ${lang}/${scheme}: a ${name === "link" ? "row action" : name} shows its shadcn keyboard focus ring ${JSON.stringify({ reached, ...shown })}`).toBe(true);
+      expect.soft(reached && shown.keyboard && shown.line && !shown.halo, `${id} ${lang}/${scheme}: a ${name === "link" ? "row action" : name} shows the keyboard focus line ${JSON.stringify({ reached, ...shown })}`).toBe(true);
     }
     await clickAt(page, "#tab-failures"); await page.waitForTimeout(80);
     await shot(testInfo, `failures-${lang}-${scheme}-minimum.png`);

@@ -78,7 +78,8 @@ function styleViolations(files: StyleFile[]): string[] {
     if (EXEMPT.has(file.path)) continue;
     if (file.path.endsWith(".css")) {
       for (const declaration of declarations(file.text))
-        if (CSS_COLOUR.test(declaration.slice(declaration.indexOf(":") + 1)))
+        // A custom property's name is not a colour, even one named --outcome-red.
+        if (CSS_COLOUR.test(declaration.slice(declaration.indexOf(":") + 1).replace(/--[\w-]+/g, "")))
           problems.push(`${file.path}: hard-coded colour in "${declaration}"; add a token to ui.css`);
       const uncommented = file.text.replace(/\/\*[\s\S]*?\*\//g, "");
       for (const match of uncommented.matchAll(/\[data-slot[^\]]*\]/g))
@@ -140,6 +141,7 @@ describe("renderer style layers", () => {
     ]);
     expect(styleViolations([{ path: "settings/ok.tsx", text: 'const e = { background: "transparent", label: "White balance" };' }])).toEqual([]);
     expect(styleViolations([{ path: "countdown/countdown.css", text: ".a { color: #fff; }" }])).toEqual([]);
+    expect(styleViolations([{ path: "ui.css", text: "@layer components { .a { color: var(--outcome-red); } }" }])).toEqual([]);
     expect(styleViolations([{ path: "components/ui/slider.tsx", text: '"bg-white"' }])).toEqual([]);
   });
 });

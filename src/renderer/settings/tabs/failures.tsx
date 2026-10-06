@@ -23,6 +23,7 @@ export function FailureRow({ result }: { result: RecordingResultView }) {
       id={id}
       className={`recording-result${result.acknowledged ? "" : " unread"}`}
       data-result-id={result.id}
+      data-kept={result.fileName ? "" : undefined}
       aria-busy={busy}
       open={state?.open ?? false}
       onOpenChange={(open) => model.toggleResult(result.id, open)}
