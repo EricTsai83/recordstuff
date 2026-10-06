@@ -95,6 +95,7 @@ All 13 kept their assertions on the view host's `components` mode; the cleanup h
 
 | IDs | Behaviour | Destination |
 | --- | --- | --- |
+| S116 | The window-drag strip covers no tab at the top of a narrow window (darwin and win32 layouts) | settings-panel.spec.ts; added after the first Windows CI run found the strip over the tabs |
 | C01–C06 | Countdown overlay: digits in a hidden, non-activating overlay sized for the display; updates; fade and destruction on dismissal; cancel; the tick flag on load and a replaced page; a muted page | countdown.spec.ts |
 | D01–D10 | Cleanup drills: failed launch, assertion failure, timeout, renderer crash, hung main, containment violation, SIGINT; bypasses of the real dialog, notification, activation and unmute; a violation before the app quits itself; a foreign process naming the folder | drills.spec.ts (`pnpm test:ui:drills`) |
 

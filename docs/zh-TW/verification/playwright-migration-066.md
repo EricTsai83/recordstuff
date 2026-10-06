@@ -95,6 +95,7 @@ runner 的 `--drill-failure` 與 `--drill-timeout` 保留在 `pnpm acceptance:sh
 
 | ID | 行為 | 去向 |
 | --- | --- | --- |
+| S116 | 窄視窗頂端的拖曳條不蓋住任何分頁（darwin 與 win32 版面） | settings-panel.spec.ts；第一次 Windows CI 發現拖曳條蓋住分頁後新增 |
 | C01–C06 | 倒數覆蓋層：數字出現在隱藏、不啟用 App、依螢幕調整大小的覆蓋層；更新；結束時淡出並銷毀；取消；載入時的音效旗標與替換頁面；靜音的頁面 | countdown.spec.ts |
 | D01–D10 | 清理演練：啟動失敗、斷言失敗、逾時、renderer 崩潰、main 卡住、圍堵違規、SIGINT；繞過真實對話框、通知、啟用與取消靜音；App 自行結束前的違規；提到資料夾的外部程序 | drills.spec.ts（`pnpm test:ui:drills`） |
 

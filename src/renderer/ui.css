@@ -358,6 +358,11 @@ main {
 :root:has(.player[data-open]) .titlebar {
   -webkit-app-region: no-drag;
 }
+/* Only macOS draws the page under its title bar (hiddenInset); elsewhere the native frame drags the window, and a
+   strip here would lie over the page's first 40 px, the tabs of a narrow window among them. */
+:root:not([data-platform="darwin"]) .titlebar {
+  display: none;
+}
 :root[data-platform="darwin"] main {
   padding-top: 52px;
 }
