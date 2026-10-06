@@ -158,39 +158,50 @@ it("turns the volume up and down a step with ↑ and ↓ wherever focus is in th
   expect(video.volume).toBe(0.55);
 });
 
-it("flashes what a key did over the picture, as YouTube does: the volume at the centre with its level, a seek at its side (2026-10-06)", () => {
+it("flashes what a click or key did over the picture, as YouTube does: play or pause and the volume at the centre with its level, a seek at its side (2026-10-06)", () => {
   const { video, root, set } = setup();
   set({ duration: 60 });
   video.volume = 0.5; video.muted = false;
-  const bezel = root.querySelector<HTMLElement>(".pc-bezel")!, level = root.querySelector<HTMLElement>(".pc-bezel-text")!;
-  const back = root.querySelector<HTMLElement>(".pc-seek-back")!, forward = root.querySelector<HTMLElement>(".pc-seek-forward")!;
+  // Each flash is a fresh element, so its animation starts over: read them anew every time.
+  const bezel = () => root.querySelector<HTMLElement>(".pc-bezel")!, level = () => root.querySelector<HTMLElement>(".pc-bezel-text")!;
+  const back = () => root.querySelector<HTMLElement>(".pc-seek-back")!, forward = () => root.querySelector<HTMLElement>(".pc-seek-forward")!;
   // None of it is in the way, or read out: the controls already say their values.
-  expect([bezel, level, back, forward].map(el => [el.hidden, el.getAttribute("aria-hidden")])).toEqual([[true, "true"], [true, "true"], [true, "true"], [true, "true"]]);
+  expect([bezel(), level(), back(), forward()].map(el => [el.hidden, el.getAttribute("aria-hidden")])).toEqual([[true, "true"], [true, "true"], [true, "true"], [true, "true"]]);
   key(video, "ArrowUp");
-  expect([bezel.hidden, bezel.dataset.kind, level.hidden, level.textContent]).toEqual([false, "up", false, "55%"]);
+  expect([bezel().hidden, bezel().dataset.kind, level().hidden, level().textContent]).toEqual([false, "up", false, "55%"]);
   key(video, "ArrowDown"); key(video, "ArrowDown");
-  expect([bezel.dataset.kind, level.textContent]).toEqual(["down", "45%"]);
+  expect([bezel().dataset.kind, level().textContent]).toEqual(["down", "45%"]);
   // The circle goes after half a second, its level a little later.
   flushSync(() => vi.advanceTimersByTime(500));
-  expect([bezel.hidden, level.hidden]).toEqual([true, false]);
+  expect([bezel().hidden, level().hidden]).toEqual([true, false]);
   flushSync(() => vi.advanceTimersByTime(300));
-  expect(level.hidden).toBe(true);
+  expect(level().hidden).toBe(true);
   video.volume = 0.05; key(video, "ArrowDown");
-  expect([bezel.dataset.kind, level.textContent]).toEqual(["muted", "0%"]);
+  expect([bezel().dataset.kind, level().textContent]).toEqual(["muted", "0%"]);
   // → shows +5 at the right, ← −5 at the left, each putting the other away; pressed again it starts over.
   key(video, "ArrowRight");
-  expect([forward.hidden, forward.textContent, back.hidden]).toEqual([false, "+5 s", true]);
+  expect([forward().hidden, forward().textContent, back().hidden]).toEqual([false, "+5 s", true]);
   key(video, "ArrowLeft");
-  expect([back.hidden, back.textContent, forward.hidden]).toEqual([false, "−5 s", true]);
+  expect([back().hidden, back().textContent, forward().hidden]).toEqual([false, "−5 s", true]);
   flushSync(() => vi.advanceTimersByTime(500));
+  const first = back();
   key(video, "ArrowLeft");
+  expect(back()).not.toBe(first);
   flushSync(() => vi.advanceTimersByTime(500));
-  expect(back.hidden).toBe(false);
+  expect(back().hidden).toBe(false);
   flushSync(() => vi.advanceTimersByTime(200));
-  expect(back.hidden).toBe(true);
+  expect(back().hidden).toBe(true);
   // The volume slider's own arrows flash nothing.
+  flushSync(() => vi.advanceTimersByTime(800));
   key(slider(root, ".pc-level"), "ArrowUp");
-  expect(bezel.hidden).toBe(true);
+  expect(bezel().hidden).toBe(true);
+  // A click on the picture flashes what it did, and so does Space; the play button does not.
+  flushSync(() => video.click());
+  expect([bezel().hidden, bezel().dataset.kind, level().hidden]).toEqual([false, "play", true]);
+  flushSync(() => vi.advanceTimersByTime(500));
+  expect(bezel().hidden).toBe(true);
+  click(document.getElementById("p-play")!);
+  expect(bezel().hidden).toBe(true);
 });
 
 it("moves to where the seek bar is dragged, and sets the volume from its slider, at zero muted and brought back by its button", () => {

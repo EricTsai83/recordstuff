@@ -196,6 +196,42 @@ test("P01–P10, P16–P19 the player: a card plays the clip; named controls; re
   // P19: every page's console errors fail the test at teardown (fixtures.ts).
 });
 
+test("P20 the player's pointer, focus and flashes, as before shadcn (2026-10-07): a pointing hand on the picture and the seek bar, no ring around the picture, its thumb only under the pointer, and a flash for what a click or key did", async () => {
+  await openCard(0);
+  await eventually(async () => !(await playback(page, ".player video")).paused, 5000);
+  await read(page, `document.querySelector(".player video").pause()`);
+  const look = (): Promise<{ cursor: string; seekCursor: string; outline: string; thumb: string; track: number }> => read(page, `(() => {
+    const v = document.querySelector(".player video"), seek = document.querySelector(".player .pc-seek");
+    return { cursor: getComputedStyle(v).cursor, seekCursor: getComputedStyle(seek).cursor, outline: getComputedStyle(v).outlineStyle,
+      thumb: getComputedStyle(seek.querySelector("[data-slot=slider-thumb]")).scale, track: seek.querySelector("[data-slot=slider-track]").getBoundingClientRect().height }; })()`);
+  const picture = await centre(page, ".player video", false);
+  await page.mouse.move(picture.x, picture.y);
+  await page.waitForTimeout(200);
+  const atRest = await look();
+  const bar = await read<{ x: number; y: number }>(page, `(() => { const r = document.querySelector(".player .pc-seek").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+  await page.mouse.move(bar.x, bar.y);
+  await page.waitForTimeout(300);
+  const overSeek = await look();
+  expect.soft(atRest.cursor === "pointer" && atRest.seekCursor === "pointer" && atRest.thumb === "0" && overSeek.thumb === "1" && overSeek.track > atRest.track,
+    `P20 a pointing hand on the picture and the seek bar; the thumb grows in and the track thickens under the pointer ${JSON.stringify({ atRest, overSeek })}`).toBe(true);
+  // From the keyboard: the picture has focus and → seeks, yet no ring is drawn around it; the seek flashes at its side.
+  await read(page, `document.querySelector(".player video").focus({ focusVisible: true })`);
+  await page.keyboard.press("ArrowRight");
+  const seek = await read<{ outline: string; hint: string; arrow: string; hidden: boolean }>(page, `(() => { const hint = document.querySelector(".player .pc-seek-forward");
+    return { outline: getComputedStyle(document.querySelector(".player video")).outlineStyle, hint: getComputedStyle(hint).animationName,
+      arrow: getComputedStyle(hint.querySelector("svg")).animationName, hidden: hint.hidden }; })()`);
+  expect.soft(seek, "P20 a key seek flashes three arrows in an arc at its side, with no ring around the picture").toEqual({ outline: "none", hint: "media-hold-seek", arrow: "pc-seek-arrow", hidden: false });
+  await page.keyboard.press("ArrowUp");
+  const volume = await read<{ bezel: string; text: string }>(page, `({ bezel: getComputedStyle(document.querySelector(".player .pc-bezel")).animationName, text: getComputedStyle(document.querySelector(".player .pc-bezel-text")).animationName })`);
+  expect.soft(volume, "P20 a volume key grows a circle at the centre and holds its level, both fading").toEqual({ bezel: "media-bezel", text: "media-hold" });
+  await page.waitForTimeout(900);
+  await page.mouse.click(picture.x, picture.y);
+  const clicked = await read<{ kind: string | undefined; hidden: boolean; animation: string }>(page, `(() => { const b = document.querySelector(".player .pc-bezel");
+    return { kind: b.dataset.kind, hidden: b.hidden, animation: getComputedStyle(b).animationName }; })()`);
+  expect.soft(clicked, "P20 a click on the picture flashes play at the centre").toEqual({ kind: "play", hidden: false, animation: "media-bezel" });
+  await page.locator("#player-close").click();
+});
+
 test("P11–P15 full screen: the full-screen page gets the name, the controls and the time; rests and wakes; F and Escape hand the time back", async () => {
   const first = await item(0);
   const card = await centre(page, ".clip-open", false);

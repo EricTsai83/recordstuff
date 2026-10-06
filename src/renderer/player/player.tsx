@@ -14,7 +14,6 @@ import {
   Volume2,
   Volume1,
   VolumeX,
-  ChevronRight,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Slider } from "../components/ui/slider";
@@ -48,10 +47,20 @@ interface MediaView {
   muted: boolean;
 }
 interface Flash {
-  kind: "up" | "down" | "muted";
+  kind: "up" | "down" | "muted" | "play" | "pause";
   percent: string;
   bezel: boolean;
   text: boolean;
+  /** A new flash restarts its animation even when the last one is still showing. */
+  seq: number;
+}
+/** A seek's arrow, a filled triangle, as YouTube draws it. */
+function SeekArrow() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 5.5 17 12 7 18.5Z" />
+    </svg>
+  );
 }
 export function Player({
   id,
@@ -83,9 +92,10 @@ export function Player({
   });
   const [idle, setIdle] = useState(false),
     [flash, setFlash] = useState<Flash | undefined>(undefined),
-    [seekHint, setSeekHint] = useState<"back" | "forward" | undefined>(
-      undefined,
-    );
+    [seekHint, setSeekHint] = useState<
+      { side: "back" | "forward"; seq: number } | undefined
+    >(undefined),
+    flashes = useRef(0);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
       undefined,
     ),
@@ -193,12 +203,24 @@ export function Player({
     },
     [],
   );
-  const toggle = (): void => {
+  /** Play or pause; from the picture or a key it also flashes what it did at the centre, as YouTube does. */
+  const toggle = (feedback = false): void => {
     const el = video.current;
-    if (el) {
-      if (playbackOf(el).playing) el.pause();
-      else void el.play().catch(() => {});
-    }
+    if (!el) return;
+    const playing = playbackOf(el).playing;
+    if (playing) el.pause();
+    else void el.play().catch(() => {});
+    if (!feedback) return;
+    clearTimeout(bezelTimer.current);
+    clearTimeout(textTimer.current);
+    setFlash({
+      kind: playing ? "pause" : "play",
+      percent: "",
+      bezel: true,
+      text: false,
+      seq: ++flashes.current,
+    });
+    bezelTimer.current = setTimeout(() => setFlash(undefined), 500);
   };
   const mute = (): void => {
     const el = video.current;
@@ -240,6 +262,7 @@ export function Player({
       percent: `${Math.round(value * 100)}%`,
       bezel: true,
       text: true,
+      seq: ++flashes.current,
     });
     bezelTimer.current = setTimeout(
       () => setFlash((state) => (state ? { ...state, bezel: false } : state)),
@@ -249,7 +272,7 @@ export function Player({
   };
   const showSeek = (forward: boolean): void => {
     clearTimeout(seekTimer.current);
-    setSeekHint(forward ? "forward" : "back");
+    setSeekHint({ side: forward ? "forward" : "back", seq: ++flashes.current });
     seekTimer.current = setTimeout(() => setSeekHint(undefined), 650);
   };
   const keydown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
@@ -267,7 +290,7 @@ export function Player({
       onSeek = Boolean(target.closest(`#${id}-seek`)),
       el = video.current;
     if (!el) return;
-    if ((key === " " && !onButton) || key === "k") toggle();
+    if ((key === " " && !onButton) || key === "k") toggle(true);
     else if ((key === "ArrowLeft" || key === "ArrowRight") && !onVolume) {
       seekTo(el.currentTime + (key === "ArrowLeft" ? -5 : 5));
       showSeek(key === "ArrowRight");
@@ -296,11 +319,15 @@ export function Player({
     percent = `${Math.round((silent ? 0 : media.volume) * 100)}%`,
     reading = `${formatDuration(media.time)} / ${formatDuration(media.duration)}`;
   const BezelIcon =
-    flash?.kind === "muted"
-      ? VolumeX
-      : flash?.kind === "down"
-        ? Volume1
-        : Volume2;
+    flash?.kind === "play"
+      ? Play
+      : flash?.kind === "pause"
+        ? Pause
+        : flash?.kind === "muted"
+          ? VolumeX
+          : flash?.kind === "down"
+            ? Volume1
+            : Volume2;
   return (
     <div
       ref={root}
@@ -318,13 +345,14 @@ export function Player({
         playsInline
         disablePictureInPicture
         tabIndex={-1}
-        onClick={toggle}
+        onClick={() => toggle(true)}
         onDoubleClick={(event) => {
           event.preventDefault();
           onDoubleClick();
         }}
       />
       <div
+        key={`bezel-${flash?.seq ?? 0}`}
         className="pc-bezel"
         data-kind={flash?.kind}
         aria-hidden="true"
@@ -332,20 +360,25 @@ export function Player({
       >
         <BezelIcon />
       </div>
-      <div className="pc-bezel-text" aria-hidden="true" hidden={!flash?.text}>
+      <div
+        key={`text-${flash?.seq ?? 0}`}
+        className="pc-bezel-text"
+        aria-hidden="true"
+        hidden={!flash?.text}
+      >
         {flash?.percent}
       </div>
       {(["back", "forward"] as const).map((side) => (
         <div
-          key={side}
+          key={`${side}-${seekHint?.side === side ? seekHint.seq : 0}`}
           className={`pc-seek-hint pc-seek-${side}`}
           aria-hidden="true"
-          hidden={seekHint !== side}
+          hidden={seekHint?.side !== side}
         >
           <div className="pc-seek-arrows">
             {[0, 1, 2].map((index) => (
               <span key={index} className="pc-seek-arrow">
-                <ChevronRight />
+                <SeekArrow />
               </span>
             ))}
           </div>
@@ -408,19 +441,19 @@ export function Player({
         <div className="pc-row">
           <Button
             variant="media"
-            size={large ? "icon-xl" : "icon"}
+            size={large ? "icon-xl" : "icon-media"}
             id={`${id}-play`}
             aria-label={t(media.playing ? "Pause" : "Play")}
             title={t(media.playing ? "Pause" : "Play")}
             data-mark={media.playing ? "pause" : "play"}
-            onClick={toggle}
+            onClick={() => toggle()}
           >
             {media.playing ? <Pause /> : <Play />}
           </Button>
           <div className="pc-volume group/volume">
             <Button
               variant="media"
-              size={large ? "icon-xl" : "icon"}
+              size={large ? "icon-xl" : "icon-media"}
               id={`${id}-mute`}
               aria-label={t(silent ? "Unmute" : "Mute")}
               title={t(silent ? "Unmute" : "Mute")}
@@ -431,7 +464,11 @@ export function Player({
             </Button>
             <Slider
               id={`${id}-volume`}
-              className="pc-level data-[orientation=horizontal]:w-0 group-hover/volume:data-[orientation=horizontal]:w-[60px] group-focus-within/volume:data-[orientation=horizontal]:w-[60px]"
+              className={
+                large
+                  ? "pc-level data-[orientation=horizontal]:w-0 group-hover/volume:data-[orientation=horizontal]:w-[88px] group-focus-within/volume:data-[orientation=horizontal]:w-[88px]"
+                  : "pc-level data-[orientation=horizontal]:w-0 group-hover/volume:data-[orientation=horizontal]:w-16 group-focus-within/volume:data-[orientation=horizontal]:w-16"
+              }
               variant="media"
               thumbAlignment="center"
               min={0}
