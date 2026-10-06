@@ -27,7 +27,8 @@
     "acceptance:lifecycle": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-lifecycle.mts",
     "acceptance:notification": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-notification.mts",
     "acceptance:settings-shortcut": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-settings-shortcut.mts",
-    "acceptance:settings": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-settings.mts",
+    "acceptance:settings": "playwright test --project=background components settings-",
+    "acceptance:settings-native": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-settings-native.mts",
     "matrix": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/run-matrix.mts",
     "diagnose:cadence": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/diagnose-frame-cadence.mts",
     "measure:finalization": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/measure-finalization.mts",
@@ -45,8 +46,9 @@
     "site:screenshots": "pnpm --dir website screenshots",
     "acceptance:updates": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-updates.mts",
     "acceptance:recipe": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-recipe.mts",
-    "acceptance:regression": "pnpm check && pnpm test:ui && pnpm acceptance:settings && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-shortcut.mts",
-    "acceptance:shortcut": "pnpm build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-shortcut.mts",
+    "acceptance:regression": "pnpm check && pnpm test:ui",
+    "acceptance:shortcut": "pnpm build && playwright test --project=background shortcut-integration",
+    "acceptance:shortcut-native": "pnpm build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-shortcut-native.mts",
     "acceptance:shortcut-layout": "pnpm build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-shortcut-layout.mts",
     "acceptance:quit-dialog": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-quit-dialog.mts",
     "acceptance:controlled": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-controlled.mts",
@@ -54,7 +56,8 @@
     "acceptance:player": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-player.mts",
     "preview:ui": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/preview-ui.mts",
     "acceptance:tray": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-tray.mts",
-    "test:ui": "playwright test"
+    "test:ui": "playwright test --project=background",
+    "test:ui:drills": "playwright test --project=drills"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

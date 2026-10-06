@@ -1,8 +1,10 @@
 name: Check
-# `pnpm check` and `pnpm test:ui` on every push to main and every pull request, on the same
+# `pnpm check`, the background UI suite (`pnpm test:ui`) and its cleanup drills
+# (`pnpm test:ui:drills`) on every push to main and every pull request, on the same
 # runner images and Node/pnpm versions the release builds use, so a commit
 # that breaks the types, the tests or the build on either platform is caught
-# before a tag is pushed rather than by the release job. The Windows job also
+# before a tag is pushed rather than by the release job. The UI suite runs hidden,
+# offscreen Electron; it is no evidence of native windows, input or capture (plan 066). The Windows job also
 # packages the unsigned installer as a short-lived build artifact, because no
 # maintainer machine can build it; nothing here signs, records or publishes
 # (docs/system-design/releases.md). Dispatch runs both jobs on any branch.
@@ -39,7 +41,8 @@ concurrency:
 jobs:
   check:
     runs-on: macos-15
-    timeout-minutes: 20
+    # The background UI suite takes about 3.5 minutes on a developer Mac; a runner is slower.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -54,6 +57,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm test:ui
+      - run: pnpm test:ui:drills
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
@@ -61,11 +65,13 @@ jobs:
           path: |
             playwright-report/
             test-results/ui/
+            test-results/ui-summary.json
+            test-results/ui-report.json
           if-no-files-found: ignore
           retention-days: 7
   check-windows:
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -82,6 +88,7 @@ jobs:
         run: node node_modules/electron/install.js
       - run: pnpm check
       - run: pnpm test:ui
+      - run: pnpm test:ui:drills
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
@@ -89,6 +96,8 @@ jobs:
           path: |
             playwright-report/
             test-results/ui/
+            test-results/ui-summary.json
+            test-results/ui-report.json
           if-no-files-found: ignore
           retention-days: 7
       - run: pnpm dist:win

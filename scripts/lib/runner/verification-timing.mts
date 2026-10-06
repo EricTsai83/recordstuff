@@ -59,6 +59,12 @@ const runner = (name: string, script: string, blockedExit = true): PhaseSpec =>
 /** `pnpm check`, phase by phase, as `package.json` chains it. */
 const CHECK = [pnpm("typecheck", "typecheck"), pnpm("test", "test"), pnpm("build", "build")];
 
+/**
+ * The background Playwright suite (plan 066): no desktop. Its global setup exits 2 when `out/` or the test clips are
+ * missing, which is blocked; a failed case exits 1.
+ */
+const UI: PhaseSpec = { ...pnpm("background UI and integration", "test:ui"), blockedExit: true };
+
 /** Recipes: each runs the same leaf checks as the composites it replaces, with one build of identical inputs. */
 export const RECIPES: readonly Recipe[] = [
   {
@@ -66,15 +72,19 @@ export const RECIPES: readonly Recipe[] = [
     phases: CHECK,
   },
   {
-    name: "settings", purpose: "Settings layout, controls, persistence, window lifecycle or settings IPC/preload",
+    name: "settings", purpose: "Settings layout, controls, persistence, window lifecycle or settings IPC/preload, in the background (no desktop)",
     replaces: "pnpm acceptance:regression",
-    phases: [...CHECK, pnpm("UI interactions", "test:ui"), runner("settings fixture", "acceptance-settings.mts"), runner("shortcut integration", "acceptance-shortcut.mts")],
+    phases: [...CHECK, UI],
   },
   {
     name: "shortcut-registration", purpose: "Global shortcut registration or an Electron upgrade",
-    replaces: "pnpm acceptance:regression && pnpm acceptance:shortcut-layout (which builds again)",
-    phases: [...CHECK, pnpm("UI interactions", "test:ui"), runner("settings fixture", "acceptance-settings.mts"), runner("shortcut integration", "acceptance-shortcut.mts"),
-      runner("keyboard layout", "acceptance-shortcut-layout.mts")],
+    replaces: "pnpm acceptance:regression && pnpm acceptance:shortcut-native && pnpm acceptance:shortcut-layout (each builds again)",
+    phases: [...CHECK, UI, runner("shortcut native", "acceptance-shortcut-native.mts"), runner("keyboard layout", "acceptance-shortcut-layout.mts")],
+  },
+  {
+    name: "native-ui", purpose: "The native Settings, shortcut and player cases a background run cannot answer: frame, activation, real registration, window state and full screen (a desktop round)",
+    replaces: "pnpm build && pnpm acceptance:settings-native && pnpm acceptance:shortcut-native && pnpm acceptance:player (shortcut-native builds again)",
+    phases: [CHECK[2]!, runner("settings native", "acceptance-settings-native.mts"), runner("shortcut native", "acceptance-shortcut-native.mts"), runner("player full screen", "acceptance-player.mts")],
   },
   {
     name: "recording", ownsApp: true, purpose: "Recording start/stop, capture, encoding or file writing: the smoke round",

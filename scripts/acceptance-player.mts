@@ -1,17 +1,17 @@
 /**
  * `pnpm acceptance:player [-- --out <dir>]`
  *
- * Acceptance of the recordings player and its full-screen window against the *built* artifacts (2026-10-05): it
- * makes a short decodable clip with FFmpeg, then runs Electron on the compiled `scripts/fixtures/player-panel.ts`,
- * which opens `out/renderer/settings.html` in the app's own window, plays the clip from its card and drives the
- * player and `out/renderer/video.html` full screen with real mouse and key input: the player's own controls, their
- * resting and waking, Space, K, → and M, a seek-bar drag, the volume slider, the window controls' corner, full
- * screen from its button and a double-click with the title and the time handed both ways, F and Escape, and Close.
+ * The player cases that need the desktop (2026-10-05; reduced by plan 066): a checked-in decodable clip
+ * (tests/ui/media) plays from its card in the app's own Settings window and full screen in the app's own
+ * `VideoFullScreen`, shown on the display, with real input events sent to the pages: full screen covers the display,
+ * F and Escape leave it, and the Settings window has its focus back. The player's controls, keys, drag, rest and
+ * wake, the time handed both ways and the 16:9 stage run in the background suite (tests/ui/player.spec.ts).
  *
  * Full screen covers the display it runs on, so this is a desktop round: it needs an awake, unlocked session and
  * the readiness handoff in docs/testing.md. Exit 0 when every case passed, 1 when one failed or cleanup was
  * incomplete (even when the session also locked), 2 (blocked) for a missing prerequisite (`pnpm build` output,
- * Electron, FFmpeg) or a locked session, and 130/143 after an interruption that left nothing running (round-exit.mts). A report, the cases and screenshots go to docs/verification/measurements/<timestamp>-player-acceptance/.
+ * Electron, the clips) or a locked session, and 130/143 after an interruption that left nothing running
+ * (round-exit.mts). A report, the cases and screenshots go to docs/verification/measurements/<timestamp>-player-acceptance/.
  * Nothing here ships with the app.
  */
 import { scrubbedEnv } from "./lib/runner/runner-env.mts";
@@ -19,9 +19,7 @@ import { buildFixture } from "./lib/runner/build-fixture.mts";
 import { runIsolatedProcess } from "./lib/runner/isolated-process.mts";
 import { DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
 import { roundExit } from "./lib/runner/round-exit.mts";
-import { hasTool, requireMediaTimeout } from "./lib/verification/media-tools.mts";
 import { recordStuffPids } from "./lib/runner/processes.mts";
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,8 +27,8 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ELECTRON = path.join(REPO_ROOT, "node_modules/.bin/electron");
 const TIMEOUT_MS = 120_000;
-/** Long enough to rest, seek and skip 5 s within it; FFmpeg's test pattern and a tone, so frames and sound both move. */
-const CLIP_SECONDS = 8;
+/** The checked-in clips (tests/ui/media/README.md): decodable, with moving frames, and the landscape one with a tone. */
+const MEDIA = path.join(REPO_ROOT, "tests/ui/media");
 
 const argv = process.argv.slice(2).filter((arg, index) => !(index === 0 && arg === "--"));
 let outDir: string | undefined;
@@ -48,8 +46,7 @@ for (const required of ["out/preload/settings.js", "out/preload/video.js", "out/
   if (!fs.existsSync(path.join(REPO_ROOT, required))) fail(`BLOCKED: ${required} is missing; run \`pnpm build\` first.`);
 }
 if (!fs.existsSync(ELECTRON)) fail("BLOCKED: node_modules/.bin/electron is missing; run `pnpm install` first.");
-requireMediaTimeout();
-if (!hasTool("ffmpeg")) fail("BLOCKED: ffmpeg is missing; install it with `brew install ffmpeg` (it makes the clip the player plays).");
+for (const clip of ["landscape-8s.mp4", "portrait-4s.mp4"]) if (!fs.existsSync(path.join(MEDIA, clip))) fail(`BLOCKED: tests/ui/media/${clip} is missing.`);
 // A running RecordStuff takes focus and windows from the full-screen cases (2026-10-05: its rest case failed in every
 // round run beside the app, in none without it), so the round would judge the desktop's sharing, not the player.
 if (recordStuffPids().length) fail("BLOCKED: RecordStuff is running; quit it first, as its windows and focus interfere with the full-screen cases.");
@@ -59,23 +56,16 @@ const dir = outDir ? path.resolve(outDir) : path.join(REPO_ROOT, "docs/verificat
 if (outDir && fs.existsSync(dir)) fail(`${dir} already exists; choose a new directory so no earlier evidence is overwritten.`);
 fs.mkdirSync(dir, { recursive: true });
 
-// The clip, named as the app names its recordings a minute ago, so its card reads "Today" and its time.
+// The clips, named as the app names its recordings a minute and two minutes ago, so their cards read "Today".
 const clips = path.join(dir, "recordings");
 fs.mkdirSync(clips);
-const at = new Date(Date.now() - 60_000);
 const two = (value: number): string => String(value).padStart(2, "0");
-const clip = path.join(clips, `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())} ${two(at.getHours())}-${two(at.getMinutes())}-${two(at.getSeconds())}.mp4`);
-const made = spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `testsrc2=size=1280x720:rate=30:duration=${CLIP_SECONDS}`,
-  "-f", "lavfi", "-i", `sine=frequency=440:duration=${CLIP_SECONDS}`, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest",
-  "-movflags", "+faststart", clip], { encoding: "utf8", timeout: 60_000 });
-if (made.status !== 0 || !fs.existsSync(clip)) fail(`BLOCKED: ffmpeg could not make the clip: ${(made.stderr || made.error?.message || "").trim().slice(-400)}`);
+const nameAt = (at: Date): string => `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())} ${two(at.getHours())}-${two(at.getMinutes())}-${two(at.getSeconds())}.mp4`;
+const at = new Date(Date.now() - 60_000), portraitAt = new Date(at.getTime() - 60_000);
+const clip = path.join(clips, nameAt(at)), portrait = path.join(clips, nameAt(portraitAt));
+fs.copyFileSync(path.join(MEDIA, "landscape-8s.mp4"), clip);
+fs.copyFileSync(path.join(MEDIA, "portrait-4s.mp4"), portrait);
 fs.utimesSync(clip, at, at);
-// A portrait clip, older, so the stage is seen to keep its 16:9 shape and leave black beside a narrower recording.
-const portraitAt = new Date(at.getTime() - 60_000);
-const portrait = path.join(clips, `${portraitAt.getFullYear()}-${two(portraitAt.getMonth() + 1)}-${two(portraitAt.getDate())} ${two(portraitAt.getHours())}-${two(portraitAt.getMinutes())}-${two(portraitAt.getSeconds())}.mp4`);
-const madePortrait = spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=720x1280:rate=30:duration=4",
-  "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", portrait], { encoding: "utf8", timeout: 60_000 });
-if (madePortrait.status !== 0 || !fs.existsSync(portrait)) fail(`BLOCKED: ffmpeg could not make the portrait clip: ${(madePortrait.stderr || "").trim().slice(-400)}`);
 fs.utimesSync(portrait, portraitAt, portraitAt);
 
 const fixture = await buildFixture("player-panel", dir);
@@ -124,15 +114,15 @@ const report = [
   `Cleanup: process group gone=${execution.groupGone}; stopped=${execution.stopped ?? "no"}; error=${execution.error ?? "none"}. See cleanup.json.`,
   desktop.summary,
   "",
-  `Clips: \`${path.relative(dir, clip)}\`, ${CLIP_SECONDS} s 1280×720 H.264 with AAC, and \`${path.relative(dir, portrait)}\`, 4 s 720×1280, made by FFmpeg for this round.`,
+  `Clips: \`${path.relative(dir, clip)}\` and \`${path.relative(dir, portrait)}\`, copies of tests/ui/media (8 s 480×270 H.264 with AAC; 4 s 270×480).`,
   "Built artifacts under test: `out/renderer/settings.html`, `out/renderer/video.html` and their preloads, in the app's own",
-  "Settings window frame and the app's own `VideoFullScreen`. Input is sent to the pages (`sendInputEvent`); the IPC",
-  "handlers are the fixture's, answering as `SettingsWindow.playFullScreen` does. Whether the sound is heard is not judged.",
+  "Settings window frame and the app's own `VideoFullScreen`, shown on the display. Input is sent to the pages (`sendInputEvent`);",
+  "the IPC handlers are the fixture's, answering as `SettingsWindow.playFullScreen` does. Whether the sound is heard is not judged.",
+  "The player's controls, keys, drag, rest and wake, the time handed both ways and the stage: `pnpm test:ui` (tests/ui/player.spec.ts).",
   "",
   ...cases.map(result => `- ${result.ok ? "PASS" : "FAIL"} — ${result.name}\n  - ${result.detail}`),
   "",
-  "Screenshots: `player-playing-light.png`, `player-resting-light.png`, `player-paused-light.png`, `player-paused-dark.png`,",
-  "`fullscreen-playing.png`, `player-portrait-light.png`. Raw cases: `results.json`. Electron output: `electron.log`.",
+  "Screenshot: `fullscreen-playing.png`. Raw cases: `results.json`. Electron output: `electron.log`.",
   "",
 ].join("\n");
 fs.writeFileSync(path.join(dir, "report.md"), report);

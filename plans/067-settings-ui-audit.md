@@ -4,7 +4,7 @@
 
 Created: 2026-10-06. Status: planned; implementation and fresh screenshot acceptance have not started. Source: the maintainer requested a comprehensive assessment of Settings presentation and usability, including typography, spacing and layout, followed by screenshot-led improvements with as much agent automation as possible. This document is the executable plan; its creation does not claim the redesign is complete.
 
-Execute after [066](066-playwright-background-testing.md) closes, following [the plan index](README.md). This is a queue dependency: reuse the resulting background fixtures, but do not mix acceptance migration into the redesign. Select checks using the testing policy in force at execution; the commands below describe the inspected policy, not a waiver of later requirements.
+066 closed on 2026-10-06 ([record](../docs/verification/history-2026-10.md#plan-066-closure--2026-10-06)); execute next, following [the plan index](README.md). This is a queue dependency: reuse the resulting background fixtures, but do not mix acceptance migration into the redesign. Select checks using the testing policy in force at execution; the commands below describe the inspected policy, not a waiver of later requirements.
 
 ## Outcome and scope
 

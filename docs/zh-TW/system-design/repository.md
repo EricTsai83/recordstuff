@@ -85,7 +85,7 @@ scripts:   runner, release ← verification ← audio;  runner, verification ←
 這棵樹有四條共通慣例：
 
 - **`src/shared/` 必須與執行環境無關。** 它是唯一同時被 `tsconfig.node.json` 與 `tsconfig.web.json` 收錄的目錄，因此不得匯入 Electron 或 DOM API。
-- **測試與原始碼同層**，命名為 `foo.test.ts`。例外是 `tests/`，放同時需要瀏覽器 DOM 與 Node API 的跨程序測試，以及 `tests/ui/*.spec.ts` 的 Playwright 測試；由 `tsconfig.tests.json` 檢查，讓 renderer 設定不含 Node 型別。`vitest.config.ts` 收錄 `src/**/*.test.ts`、`scripts/**/*.test.ts` 與 `tests/**/*.test.ts`。
+- **測試與原始碼同層**，命名為 `foo.test.ts`。例外是 `tests/`，放同時需要瀏覽器 DOM 與 Node API 的跨程序測試，以及 `tests/ui/` 的背景 Playwright 套件：spec、fixture、由 global setup 編譯的 Electron host（`tests/ui/hosts/`）、審核過的截圖基準與簽入的測試片段（`tests/ui/media/`）；由 `tsconfig.tests.json` 檢查，讓 renderer 設定不含 Node 型別。`vitest.config.ts` 收錄 `src/**/*.test.ts`、`scripts/**/*.test.ts` 與 `tests/**/*.test.ts`。
 - **`*-model.ts` 把決策與副作用分開。** `tray.ts`、`settings.ts`、`settings-window.ts` 負責與 Electron 互動；`tray-model.ts`、`settings-model.ts`、`ui-model.ts` 是純投影，不需要視窗即可測試。`recorder.ts` 以注入協作者達成同一件事。
 - **所有使用者看得到的文字集中在 `src/shared/i18n.ts`**，英文與繁體中文成對維護，不散落在各模組。
 

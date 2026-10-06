@@ -6,7 +6,7 @@
  * `out/`, with the real model over a demonstration folder: cards over three days, and, when FFmpeg is installed, one
  * decodable clip the player and the full-screen page play. Both languages and themes, the default and a narrow size,
  * every tab, a recording, a missing permission, the player and full screen. It judges nothing; behaviour is
- * `pnpm acceptance:settings` and `pnpm acceptance:player`. Writes PNGs and index.html to
+ * `pnpm test:ui` (background) and the native runners (`pnpm acceptance:recipe -- native-ui`). Writes PNGs and index.html to
  * docs/verification/measurements/<timestamp>-ui-preview/. Requires `pnpm build` output. Exit 2 when a prerequisite is
  * missing, 1 when the render failed. Nothing here ships with the app.
  */

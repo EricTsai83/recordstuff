@@ -1,60 +1,23 @@
-import {
-  test,
-  expect,
-  _electron,
-  type ElectronApplication,
-  type Page,
-} from "@playwright/test";
-import type { SettingsBridge } from "../../src/shared/settings-panel";
+/**
+ * Component interactions on the production settings page and preload against the view host's synthetic view
+ * (hosts/view-host.ts, `components` mode): input, geometry and DOM focus. Formerly tests/ui/fixture.cjs.
+ */
+import { test, expect, type Launched } from "./fixtures";
+import type { Page } from "@playwright/test";
+import type { SettingsBridge, SettingsView } from "../../src/shared/settings-panel";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import { transformWithEsbuild } from "vite";
-import type { ChildProcess } from "node:child_process";
-let application: ElectronApplication, page: Page, data: string;
-let electronProcess: ChildProcess;
-let errors: string[];
-test.beforeEach(async () => {
-  data = await fs.mkdtemp(path.join(os.tmpdir(), "recordstuff-ui-"));
-  errors = [];
-  const environment: Record<string, string> = Object.fromEntries(
-    Object.entries(process.env).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined,
-    ),
-  );
-  environment.RECORDSTUFF_UI_DATA = path.join(data, "profile");
-  await fs.mkdir(environment.RECORDSTUFF_UI_DATA);
-  const helper = await transformWithEsbuild(await fs.readFile("src/main/app/data-cleanup.ts", "utf8"), "data-cleanup.ts", { format: "cjs", target: "node24" });
-  const quit = await transformWithEsbuild(await fs.readFile("src/main/app/quit-coordinator.ts", "utf8"), "quit-coordinator.ts", { format: "cjs", target: "node24" });
-  await fs.writeFile(path.join(data, "cleanup.cjs"), helper.code);
-  await fs.writeFile(path.join(data, "quit.cjs"), quit.code);
-  environment.RECORDSTUFF_UI_CLEANUP = path.join(data, "cleanup.cjs");
-  environment.RECORDSTUFF_UI_QUIT = path.join(data, "quit.cjs");
-  delete environment.ELECTRON_RUN_AS_NODE;
-  application = await _electron.launch({
-    timeout: 10_000,
-    args: [path.resolve("tests/ui/fixture.cjs")],
-    env: environment,
-  });
-  electronProcess = application.process();
-  page = await application.firstWindow();
-  page.on("pageerror", (error) => errors.push(error.message));
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
-  });
-  await expect(
-    page.getByRole("tab", { name: "Recordings", exact: true }),
-  ).toBeVisible();
+
+let host: Launched, page: Page;
+test.beforeEach(async ({ launchView }) => {
+  ({ launched: host, page } = await launchView({ mode: "components" }));
+  await expect(page.getByRole("tab", { name: "Recordings", exact: true })).toBeVisible();
 });
-test.afterEach(async () => {
-  if (application && electronProcess.exitCode === null && electronProcess.signalCode === null) await application.close();
-  await fs.rm(data, { recursive: true, force: true });
-  expect(errors).toEqual([]);
-});
+const setView = (view: SettingsView): Promise<void> => host.evaluate((h, next) => h.setView(next), view);
 test("zoom notification reflects applied zoom and its buttons change and reset it without stealing entry focus", async () => {
   const tab = page.getByRole("tab", { name: "Recordings", exact: true });
   await tab.focus();
-  await application.evaluate(({ app }) => app.emit("fixture:zoom", null, "in"));
+  await host.evaluate(h => h.zoom("in"));
   const notice = page.locator("#zoom-toast");
   await expect(notice).toContainText("110%");
   await expect(tab).toBeFocused();
@@ -67,7 +30,7 @@ test("zoom notification reflects applied zoom and its buttons change and reset i
   await expect(notice).toBeVisible();
   await notice.getByRole("button", { name: "Zoom In", exact: true }).click();
   await expect(notice).toContainText("125%");
-  expect(await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.getZoomFactor())).toBe(1.25);
+  expect(await host.evaluate(h => h.window().webContents.getZoomFactor())).toBe(1.25);
   await notice.getByRole("button", { name: "Zoom In", exact: true }).click();
   await expect(notice).toContainText("150%");
   await expect(notice.getByRole("button", { name: "Zoom In", exact: true })).toBeDisabled();
@@ -135,9 +98,7 @@ test("menu keyboard selection opens Rename and a committed rename returns focus 
   await expect(page.locator("#feedback")).toContainText("Renamed to Demo.mp4");
 });
 async function explanationAt(left: number, top: number, height = 30) {
-  await application.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0]!.setContentSize(560, 340),
-  );
+  await host.evaluate(h => h.setContentSize(560, 340));
   await page.getByRole("tab", { name: "Recording settings" }).click();
   const button = page.locator("#setting-countdownSound-info-button");
   await button.evaluate(
@@ -312,10 +273,7 @@ test("long settings content scrolls inside its panel without overflowing the win
     id: `long-${index}`,
     label: `Setting ${index}`,
   }));
-  await application.evaluate(
-    ({ app }, next) => app.emit("fixture:set", next),
-    view,
-  );
+  await setView(view);
   await page.getByRole("tab", { name: "Recording settings" }).click();
   const size = await page.evaluate(() => {
     const panel = document.getElementById("settings-panel")!;
@@ -340,29 +298,29 @@ for (const language of ["en", "zh-TW"] as const) {
       choices: [{ id: "clear", label: language === "en" ? "Clear local app data and quit…" : "清除本機 App 資料並結束…", enabled: false, checked: false }],
     };
     const view = { ...current, language, groups: [...current.groups, group] };
-    await application.evaluate(({ app }, next) => app.emit("fixture:set", next), view);
+    await setView(view as SettingsView);
     await page.getByRole("tab", { name: "General", exact: true }).click();
     const control = page.getByRole("button", { name: group.choices[0]!.label, exact: true });
     await expect(control).toBeDisabled();
     await expect(page.locator("#setting-localData-note")).toContainText(language === "en" ? "Recordings are kept" : "錄影檔會保留");
     group.enabled = true; group.choices[0]!.enabled = true;
-    await application.evaluate(({ app }, next) => app.emit("fixture:set", next), view);
+    await setView(view as SettingsView);
     await control.click();
-    expect(await application.evaluate(() => (globalThis as typeof globalThis & { cleanupChoices: number }).cleanupChoices)).toBe(1);
+    expect(await host.evaluate(h => h.chooseCalls.filter(([group, value]: [string, unknown]) => group === "localData" && value === "clear").length)).toBe(1);
     await expect(page.locator("#feedback")).not.toContainText("Could not");
   });
 }
 
 test("the Electron cleanup helper waits for normal quit and removes the final profile files while retaining recordings", async () => {
-  const profile = path.join(data, "profile"), output = path.join(data, "videos");
+  const data = host.data, profile = path.join(data, "profile"), output = path.join(data, "videos");
   await fs.mkdir(output); await fs.writeFile(path.join(output, "kept.mp4"), "user recording");
   await fs.writeFile(path.join(profile, "recording-result.json"), "old history");
   await fs.writeFile(path.join(profile, "settings.json.migration-backup"), "old settings");
-  await application.evaluate(({ app }, paths) => app.emit("fixture:cleanup", paths), { profile, output, logs: path.join(data, "logs") });
+  await host.evaluate((h, paths) => { void h.cleanup(paths); }, { profile, output, logs: path.join(data, "logs") });
   await expect.poll(async () => {
     try { await fs.access(profile); return false; } catch { return true; }
   }, { timeout: 10_000 }).toBe(true);
-  expect(electronProcess.exitCode).toBe(0);
+  await expect.poll(() => host.child.exitCode, { timeout: 10_000 }).toBe(0);
   await new Promise(resolve => setTimeout(resolve, 500));
   await expect(fs.access(profile)).rejects.toMatchObject({ code: "ENOENT" });
   expect(await fs.readFile(path.join(output, "kept.mp4"), "utf8")).toBe("user recording");

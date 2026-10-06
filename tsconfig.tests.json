@@ -14,7 +14,8 @@
       "@/*": [
         "./src/renderer/*"
       ]
-    }
+    },
+    "allowImportingTsExtensions": true
   },
   "include": [
     "tests/**/*.ts"
