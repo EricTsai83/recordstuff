@@ -89,7 +89,7 @@ export function Explanation({ group }: { group: SettingsGroup }) {
         }}
       >
         <PopoverTrigger
-          render={<Button variant="ghost" size="icon-xs" />}
+          render={<Button variant="ghost" size="icon-sm" />}
           id={`${id}-info-button`}
           hidden={!group.info}
           aria-label={translate("More about {label}", model.view?.language, {
@@ -110,7 +110,7 @@ export function Explanation({ group }: { group: SettingsGroup }) {
             else model.showInfo(group.id, true);
           }}
         >
-          <CircleHelp />
+          <CircleHelp className="size-3.5" />
         </PopoverTrigger>
         <PopoverContent
           align="start"
@@ -160,7 +160,8 @@ export function TextSetting({
       submitted.current = undefined;
     });
   };
-  const problem = fileNameTemplateProblem(draft.trim());
+  const problem = fileNameTemplateProblem(draft.trim()),
+    refused = Boolean(problem) && draft.trim() !== value;
   const note =
     draft.trim() === value
       ? (group.note ?? "")
@@ -184,6 +185,7 @@ export function TextSetting({
         autoComplete="off"
         autoCapitalize="off"
         aria-describedby={description || undefined}
+        aria-invalid={refused || undefined}
         onInput={(event) => {
           const draft = event.currentTarget.value;
           model.clearFailure(group.id);
@@ -206,7 +208,7 @@ export function TextSetting({
         }}
       />
       <p
-        className="note text-note"
+        className={`note text-note${refused ? " text-note-error" : ""}`}
         id={`setting-${group.id}-note`}
         hidden={!note}
       >
@@ -493,10 +495,13 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
           {group.note}
         </p>
       )}
-      {group.kind !== "actions" &&
-        actions.map((choice) => (
-          <Action key={choice.id} group={group} choice={choice} />
-        ))}
+      {group.kind !== "actions" && actions.length > 0 && (
+        <div className="row-actions">
+          {actions.map((choice) => (
+            <Action key={choice.id} group={group} choice={choice} />
+          ))}
+        </div>
+      )}
       <span className="applying sr-only">
         {model.saving?.group === group.id &&
         !actions.some((choice) => choice.id === model.saving?.choice)

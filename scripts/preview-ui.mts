@@ -4,8 +4,12 @@
  * A picture gallery of the built Settings window and full-screen page (2026-10-05), for looking at a design change
  * without a desktop round: Electron draws every page offscreen (no window appears, nothing takes focus or input) from
  * `out/`, with the real model over a demonstration folder: cards over three days, and, when FFmpeg is installed, one
- * decodable clip the player and the full-screen page play. Both languages and themes, the default and a narrow size,
- * every tab, a recording, a missing permission, the player and full screen. It judges nothing; behaviour is
+ * decodable clip the player and the full-screen page play. Both languages and themes, the default, narrow and minimum
+ * sizes, every tab and the bottom of each page that scrolls, either side of the 600 px and 420 px breakpoints, a large
+ * window, the app's zoom steps (and a 200% probe), a recording, a missing permission, help, an invalid file name, the
+ * card menu, renaming, an empty and an unreadable folder, keyboard focus, the zoom notice, the player and full screen
+ * (plan 067). Beside every picture, measurements.json keeps what the page measured: text sizes and contrast, control
+ * hit rectangles, overflow and cut-off text. shots.json is the manifest that pairs one run's pictures with another's. It judges nothing; behaviour is
  * `pnpm test:ui` (background) and the native runners (`pnpm acceptance:recipe -- native-ui`). Writes PNGs and index.html to
  * docs/verification/measurements/<timestamp>-ui-preview/. Requires `pnpm build` output. Exit 2 when a prerequisite is
  * missing, 1 when the render failed. Nothing here ships with the app.
@@ -61,8 +65,12 @@ for (const [ago, seconds, size] of [[0.4, 83, 180e6], [1.5, 22, 42e6], [3, 610, 
   const at = hoursAgo(ago), file = path.join(clips, stamped(at));
   fs.writeFileSync(file, movieOf(seconds)); fs.truncateSync(file, size); fs.utimesSync(file, at, at);
 }
-const named = path.join(clips, "Onboarding walkthrough for the review.mp4");
-fs.writeFileSync(named, movieOf(3725)); fs.truncateSync(named, 1.24e9); fs.utimesSync(named, hoursAgo(75), hoursAgo(75));
+// Named by their users, two of them long in each language, so cards, the list and the player meet long titles (plan 067).
+for (const [name, ago] of [["Onboarding walkthrough for the review", 75], ["Quarterly planning review with the design, engineering and customer support teams", 76],
+  ["產品示範：新版設定視窗的完整操作流程與常見問題說明（內部版）", 77]] as const) {
+  const named = path.join(clips, `${name}.mp4`);
+  fs.writeFileSync(named, movieOf(3725)); fs.truncateSync(named, 1.24e9); fs.utimesSync(named, hoursAgo(ago), hoursAgo(ago));
+}
 if (hasTool("ffmpeg")) {
   const clip = path.join(clips, "preview-product-demo.mp4");
   const made = spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30:duration=8", "-f", "lavfi", "-i", "sine=frequency=440:duration=8",
@@ -85,7 +93,7 @@ const log = fs.openSync(path.join(dir, "electron.log"), "a");
 let execution;
 try {
   execution = await runIsolatedProcess({ executable: ELECTRON, args: [fixture, dir, REPO_ROOT, clips], cwd: REPO_ROOT,
-    env: scrubbedEnv(), logFd: log, timeoutMs: 180_000, signal: controller.signal });
+    env: scrubbedEnv(), logFd: log, timeoutMs: 900_000, signal: controller.signal });
 } finally {
   fs.closeSync(log);
   process.removeListener("SIGINT", interrupt.SIGINT);

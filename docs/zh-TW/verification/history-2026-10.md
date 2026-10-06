@@ -4,6 +4,23 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 067 結案 — 2026-10-06
+
+Plan 067 依維護者要求盤點整個設定視窗（四個分頁、側欄、狀態卡、頁尾、說明、選單、改名、內嵌播放器、全螢幕、對話框與暫時回饋），修正截圖與量測確認的問題。多數問題來自同一個 token：`ui.css` 把根字級設為 13px，而 shadcn 元件以 rem 計算尺寸，因此每個控制項都以 9.75px 的文字畫在 22.75px 的框內，badge 只有 8px。根字級現在是 16px，`text-xs` 重新定義為 13px（[字級](../system-design/desktop.md#設定視窗)）。證據保存在本機的 `measurements/2026-10-06T14-22-44Z-settings-ui-audit/`（before、各次迭代、after、`compare.html`、`regression.log`）。
+
+- **矩陣。** `pnpm preview:ui` 現在畫出 252 張圖，附 `shots.json` manifest 與 `measurements.json`（computed 字級與對比，含欄位值與 opacity；點擊區；overflow 與被截斷的文字）：兩種語言、兩種主題在預設、窄與最小尺寸下的 48 張分頁圖與各自捲到底的畫面、599/600/601 與 419/420/421 px 斷點、1440×900、125% 與 150%（App 最大 zoom）以及 200% reflow 探測，還有暫時狀態（說明、無效檔名、卡片選單、改名與被拒、空資料夾與無法讀取、鍵盤焦點、zoom 通知、toast、失敗紀錄、錄影中、權限、播放器、全螢幕）。依 manifest 配對 252 組，前 → 後：小於 12px 的文字 3,628 → 0，低於對比下限的文字 665 → 0，超出視窗的控制項 30 → 0，overflow 0 → 0，小於 24px 的控制項 2,812 → 200（全是開關與滑桿把手，gallery 未計入其 `::after` 點擊區，以及周圍留白的 toast 20px 關閉鈕）。前值使用 review 修正 [1]–[3] 之前的量測，未涵蓋欄位值與 opacity；後值使用修正後的量測。
+- **問題清單。** 15 項確認問題全部修正，沒有延後。P1：L01 控制項、分頁、選單、對話框、toast 與狀態文字 9.75px，badge 8px；L02 控制項高 22.8px，ⓘ 16.3px；L03 失敗紀錄主標（9.75px）比次要文字（12px）小；L04 在 380×360 視窗 150% 時，分頁（原本就有）以及字變大後的長按鈕與分段控制超出視窗或被卡片裁掉。P2：L05 淺色 muted 文字 4.4:1（現為 `#68686f`，5.0:1）；L06 錄影中狀態 3.76:1（`--recording`）；L07 列自己的按鈕（開啟通知設定…）貼在圖示邊緣而非標籤欄；L08 檔名列標籤對著欄位與範例的中線、欄位靠在欄的左側；L09 無效檔名格式沒有標示（現為 `aria-invalid` 與錯誤色）；L10 窄視窗只顯示圖示的分頁 hover 時沒有名稱；L11 空資料夾狀態的長路徑在最小尺寸撐寬面板（迭代中發現）。P3：L12 區段卡片上下 padding（16 + 12px）與左右 14px 不一致；L13 metadata 11px；L14 改名欄位錯誤時未標 invalid；L15「技術細節」高 19.5px。接受的取捨：卡片 ⋯ 在 hover 或焦點時出現，選單也能以右鍵開啟；macOS 為視窗按鈕保留的 52px 在所有尺寸與 zoom 下維持；開關、滑桿把手與 toast 關閉鈕保持繪製尺寸，以擴大或留白的點擊區達標；最小尺寸兩欄網格中的長時間戳標題會換行；App zoom 上限 150%，200% 只是探測（可 reflow、沒有 overflow）。
+- **各頁。** 錄影檔、錄影設定、一般、失敗紀錄、側欄與窄分頁、狀態卡、選單、改名、說明、toast、zoom 通知、內嵌播放器與全螢幕頁，改動前後都以原解析度逐張檢視；修正後沒有未解決的問題。另修正一個 fixture 缺陷：gallery 會點擊分頁已自動展開的未讀失敗，反而把它收起。
+- **回歸斷言。** `tests/ui/settings-layout.spec.ts`：U067-0 以注入的探針檢查兩條量測（有背景又半透明的容器、小字欄位值）；U067-1 預設尺寸下兩種語言與主題的每個分頁沒有小於 12px 的文字、小於 24px 的控制項或低於對比下限的文字；U067-2 最小視窗 150% 時沒有東西超出視窗或卡片、沒有 overflow；U067-3 被拒的檔名格式會標示，Escape 還原。換回原本的 `ui.css` 會讓 U067-1 失敗。36 張 matrix 基準重新產生並逐張檢視；S016 改為在列的 `.row-actions` 中找通知按鈕。
+- **Review。** Codex GPT-6.1 Sol 兩輪（約 3.5 分鐘）：第一輪 [1] 欄位與選單未量測、[2] 忽略 opacity；第二輪 [3] opacity 在第一個背景擁有者就停止累乘。三項都接受並在 gallery 量測與 spec 中修正；[3] 的修正沒有再經 review。未回報任何 App 回歸。
+
+### 驗證
+
+- 最終 App 原始碼上的 `pnpm acceptance:regression`：`pnpm check` 通過（typecheck、130 個檔案 1,741 項測試、建置）；背景套件 61 通過、1 失敗（S016 只讀列的直接子元素），修正測試後 S016 在同一份 `out/` 通過。review 修正 [1]–[3] 只改測試與腳本，之後 `settings-layout` 8/8 與最終 gallery（252 張，cleanup `groupGone`）都在同一份 `out/` 上執行。
+- 維護者回覆準備好之後的桌面回合：`pnpm acceptance:player` 4/4（`2026-10-06T15-13-33-893Z-player-acceptance`）；`pnpm start:app` 建置並簽署 bundle；`pnpm acceptance:settings-shortcut -- --observe --quit` 所有檢查通過（含視窗按鈕角落），⌘Q 後沒有殘留程序（`2026-10-06T15-14-41.736Z-settings-entry-nWWT6G`）。Claude 判讀 `settings-window.png`：視窗按鈕沒有壓到品牌與分頁，新字級在 Retina 密度下清楚可讀。
+
+未執行：錄影、matrix、CPU、通知與網站檢查（純外觀變更）。不宣稱：VoiceOver、既有覆寫以外的強制色彩、Windows 繪製，以及 App 無法到達的 200% zoom。
+
 ## Plan 066 結案 — 2026-10-06
 
 Plan 066 依維護者要求，把例行的 renderer 與 Electron 整合驗收移出桌面：`pnpm acceptance:regression` 現在是 `pnpm check` 加上背景 Playwright 套件（`pnpm test:ui`），不顯示視窗、不搶焦點、不送 OS 輸入、不註冊全域快捷鍵、不播放聲音、不送出通知，也不擷取任何畫面（[背景 UI 套件](../system-design/tooling.md#背景-ui-套件)）。每個舊案例都有 ledger ID 與去向（[遷移帳本](playwright-migration-066.md)）：設定 fixture 的 516 個案例有 513 個移到背景、3 個保留為原生；快捷鍵 fixture 的 57 個與播放器的 19 個都已移動，以 OS 為主張的部分有原生對應；沒有移除任何案例。App 原始碼沒有變更（前後 `out/` digest 都是 `a2965ca06e8e`）。

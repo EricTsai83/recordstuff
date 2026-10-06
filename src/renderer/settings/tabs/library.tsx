@@ -347,6 +347,7 @@ export function RenameDialog() {
             spellCheck={false}
             autoComplete="off"
             aria-describedby="clip-rename-error"
+            aria-invalid={Boolean(rename?.error)}
             onInput={(event) => model.renameDraft(event.currentTarget.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {

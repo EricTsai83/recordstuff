@@ -91,7 +91,8 @@ test("S016–S021 the notification card: switch and pane button in one card, ids
     const row = document.querySelector("#setting-notifications")?.closest(".row");
     return { controls: [...document.querySelectorAll("[role=switch]")].map(s => s.id),
       buttons: [...document.querySelectorAll(".row button:not([data-slot=popover-trigger]):not([role=switch])")].filter(b => !b.closest("[hidden]")).map(b => ({ id: b.id, disabled: b.disabled })),
-      order: row ? [...row.children].map(el => el.tagName.toLowerCase() + (el.id ? "#" + el.id : "." + el.className)) : [] }; })()`);
+      // The row's own buttons sit in its .row-actions, under the label (plan 067).
+      order: row ? [...row.querySelectorAll(":scope > *, :scope > .row-actions > *")].map(el => el.tagName.toLowerCase() + (el.id ? "#" + el.id : "." + el.className)) : [] }; })()`);
   expect.soft(general.controls.join(), "S016 the general tab renders the notification switch").toBe("setting-notifications");
   expect.soft(general.buttons, "S016 …with its pane button in one card").toEqual([{ id: "setting-notifications-openSettings", disabled: false }]);
   expect.soft(general.order, "S016 …in the same card").toContain("button#setting-notifications-openSettings");

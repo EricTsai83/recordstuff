@@ -3,6 +3,14 @@
 @import "sonner/dist/styles.css";
 @custom-variant dark (&:is(.dark *));
 
+/* The type scale (plan 067): the root stays at the browser's 16px so the components' rem sizes keep their designed
+   pixels (a 28px control, a 24px icon button), and the smallest step, which controls, menus and dialogs use, is 13px,
+   the size macOS draws a control's label at. Help and metadata use 12px; nothing essential is smaller. */
+@theme {
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.45;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -38,14 +46,16 @@
   --primary-foreground: light-dark(#fafafa, #18181b);
   --secondary: light-dark(#f1f1f3, #27272a);
   --muted: light-dark(#eaeaed, #27272a);
-  --muted-foreground: light-dark(#71717a, #a1a1aa);
+  /* At least 4.5:1 on the page, the cards and the muted fills in both themes (plan 067). */
+  --muted-foreground: light-dark(#68686f, #a1a1aa);
   --accent: light-dark(#f4f4f5, #27272a);
   --destructive: light-dark(#b91c1c, #fca5a5);
   --border: light-dark(#e4e4e7, #3f3f46);
   --input: light-dark(#d4d4d8, #3f3f46);
   --ring: light-dark(#71717a, #a1a1aa);
+  --recording: light-dark(#d92020, #f87171);
   font:
-    13px/1.45 -apple-system,
+    16px/1.45 -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
@@ -66,6 +76,7 @@
   }
   body {
     margin: 0;
+    font-size: 13px;
   }
   [hidden] {
     display: none !important;
@@ -130,6 +141,7 @@ main {
 }
 .tab-badge {
   margin-left: auto;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 .brand {
@@ -199,6 +211,10 @@ main {
 .inset-list {
   padding: 0 14px;
 }
+/* The rows' own 12px plus 4px makes a section card's first and last rows sit as far from its edge as its sides (14px). */
+.section > [data-slot="card"] {
+  --card-spacing: 4px;
+}
 .row {
   padding: 12px 0;
 }
@@ -237,12 +253,23 @@ main {
 .controls [data-slot="native-select-wrapper"] {
   max-width: 100%;
 }
+/* A row's button wraps its label rather than run past the card, which would hide its end (plan 067). */
+.controls > [data-slot="button"],
+.row-actions > [data-slot="button"] {
+  max-width: 100%;
+  height: auto;
+  min-height: 28px;
+  white-space: normal;
+  text-align: left;
+}
+/* A segmented control wraps rather than reach past the window when zoom leaves it no room (plan 067). */
+.controls .segments {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
 .controls select {
   max-width: 280px;
   text-overflow: ellipsis;
-}
-.controls .text-field {
-  width: 250px;
 }
 .note,
 .section-footnote,
@@ -256,6 +283,30 @@ main {
 .text-note {
   flex-basis: 100%;
   margin-left: 0;
+}
+.text-note-error {
+  color: var(--destructive);
+}
+/* A text field's row (plan 067): the field and its example share one right-hand column, and the label lines up with
+   the field rather than with the middle of field and example together. */
+.controls:has(> .text-field) {
+  flex: 0 1 250px;
+}
+.controls > .text-field {
+  width: 100%;
+}
+.row-line:has(> .controls > .text-field) {
+  align-items: flex-start;
+}
+.row-line:has(> .controls > .text-field) > .group-title {
+  min-height: 28px;
+}
+/* A row's own buttons under its label, in the label's column (plan 067). */
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 7px 0 0 26px;
 }
 .diagnostics {
   margin: 10px 0 0 26px;
@@ -338,7 +389,7 @@ main {
   margin-top: 3px;
 }
 .status[data-tone="recording"] .status-title {
-  color: #ef4444;
+  color: var(--recording);
 }
 .sidebar-about {
   margin-top: auto;
@@ -436,13 +487,14 @@ main {
   margin-top: 8px;
 }
 .technical-summary {
+  min-height: 24px;
   font-size: 12px;
   color: var(--muted-foreground);
 }
 .result-technical pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 11px;
+  font-size: 12px;
   margin-top: 8px;
 }
 .result-empty,
@@ -450,6 +502,8 @@ main {
   padding: 40px 12px;
   text-align: center;
   color: var(--muted-foreground);
+  /* A long folder path wraps instead of widening the page (plan 067). */
+  overflow-wrap: anywhere;
 }
 .empty-icon {
   width: 38px;
@@ -518,7 +572,8 @@ main {
   padding: 1px 4px;
   color: white;
   background: #000b;
-  font-size: 11px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 .clip-play {
   position: absolute;
@@ -555,7 +610,7 @@ main {
 }
 .clip-meta,
 .clip-detail {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted-foreground);
 }
 .clip-detail {
@@ -652,6 +707,7 @@ main {
   border-radius: 50%;
 }
 .toast-key {
+  font-size: 12px;
   background: transparent;
   color: inherit;
   opacity: 0.6;
@@ -719,7 +775,7 @@ main {
 }
 .pc-meta,
 .pc-error {
-  font-size: 11px;
+  font-size: 12px;
   opacity: 0.8;
 }
 .pc-row {
@@ -921,6 +977,19 @@ main {
   .tabs [role="tab"][aria-selected="false"] .tab-name {
     display: none;
   }
+  /* Every tab stays in the window, even zoomed in at the smallest size: the icon-only tabs keep their width and the
+     selected tab's name gives way, with its full name on hover (plan 067). */
+  .tabs [role="tab"] {
+    min-width: 36px;
+  }
+  .tabs [role="tab"][aria-selected="true"] {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .tab-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .page-title {
     display: none;
   }
@@ -929,9 +998,6 @@ main {
   }
   .controls {
     max-width: 55%;
-  }
-  .controls .text-field {
-    width: 100%;
   }
   .library-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -962,6 +1028,9 @@ main {
   .controls {
     max-width: 100%;
     margin-left: 26px;
+  }
+  .controls:has(> .text-field) {
+    flex-basis: 100%;
   }
   .pc-meta {
     display: none;

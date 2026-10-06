@@ -189,6 +189,8 @@ export function SettingsApp() {
                     id={`tab-${tab.id}`}
                     value={tab.id}
                     aria-label={tab.accessibleLabel ?? tab.label}
+                    // A narrow window shows only the selected tab's name; the others name themselves on hover.
+                    title={vertical ? undefined : tab.label}
                   >
                     <Icon className="tab-icon" />
                     <span className="tab-name">
