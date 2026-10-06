@@ -440,8 +440,9 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       await read(page, `document.querySelector(${JSON.stringify(selector)}).scrollIntoView({ block: "center" }); document.querySelector(${JSON.stringify(selector)}).focus()`);
       await page.keyboard.press("Tab"); await page.waitForTimeout(40);
       await page.keyboard.press("Shift+Tab");
-      // The shadcn focus shadow transitions; judge its settled width, not an intermediate frame.
-      await page.waitForTimeout(240);
+      // The shadcn focus shadow transitions; judge its settled width, not an intermediate frame (a slow runner needs longer).
+      await until(page, `document.activeElement.getAnimations().every(animation => animation.playState !== "running")`, 2000);
+      await page.waitForTimeout(40);
       return read<boolean>(page, `document.activeElement === document.querySelector(${JSON.stringify(selector)})`);
     };
     const ring = (): Promise<{ keyboard: boolean; shadow: string }> => read(page, `(() => { const el = document.activeElement, s = getComputedStyle(el); return { keyboard: el.matches(":focus-visible"), shadow: s.boxShadow }; })()`);
