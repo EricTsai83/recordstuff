@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Card } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
+import { ControlTooltip } from "../components/control-tooltip";
 import { TooltipProvider } from "../components/ui/tooltip";
 import { ZoomToast } from "./zoom-toast";
 import * as model from "./settings-controller";
@@ -123,7 +124,7 @@ export function SettingsApp() {
   const about = current?.groups.find((group) => group.id === "about"),
     quit = about?.choices.find((choice) => choice.id === "quit");
   return (
-    <TooltipProvider>
+    <TooltipProvider delay={600}>
       <div className="titlebar" aria-hidden="true" />
       <main>
         <h1 id="title" className="sr-only visually-hidden">
@@ -184,37 +185,37 @@ export function SettingsApp() {
                 const Icon = tabIcons[tab.id],
                   count = /^(.*?)(\s?[（(])(\d+)([)）])$/.exec(tab.label);
                 return (
-                  <TabsTrigger
-                    key={tab.id}
-                    id={`tab-${tab.id}`}
-                    value={tab.id}
-                    aria-label={tab.accessibleLabel ?? tab.label}
-                    // A narrow window shows only the selected tab's name; the others name themselves on hover.
-                    title={vertical && tab.id !== "failures" ? undefined : tab.label}
-                    // Every tab stays in the window, even zoomed in at the smallest size: the icon-only tabs keep their
-                    // width and the selected tab's name gives way, with its full name on hover (plan 067).
-                    className="min-h-[34px] justify-start gap-2.5 narrow:justify-center narrow:px-2 narrow:min-w-9 narrow:aria-selected:min-w-0 narrow:aria-selected:flex-auto"
-                  >
-                    <Icon className="tab-icon size-[18px]" />
-                    {count ? (
-                      <span className="inline-flex min-w-0 items-center gap-0.5">
-                        <span className="tab-name min-w-0 overflow-hidden text-ellipsis">{count[1]}</span>
-                        <>
-                          <span className="sr-only">{count[2]}</span>
-                          <Badge
-                            className="tab-badge h-[18px] min-w-[18px] shrink-0 px-0.5 tabular-nums"
-                            variant="chosen"
-                            size="md"
-                          >
-                            {count[3]}
-                          </Badge>
-                          <span className="sr-only">{count[4]}</span>
-                        </>
-                      </span>
-                    ) : (
-                      <span className="tab-name min-w-0 overflow-hidden text-ellipsis">{tab.label}</span>
-                    )}
-                  </TabsTrigger>
+                  <ControlTooltip key={tab.id} label={!vertical || tab.id === "failures" ? tab.label : undefined}>
+                    <TabsTrigger
+                      id={`tab-${tab.id}`}
+                      value={tab.id}
+                      aria-label={tab.accessibleLabel ?? tab.label}
+                      // A narrow window shows only the selected tab's name; the others name themselves on hover.
+                      // Every tab stays in the window, even zoomed in at the smallest size: the icon-only tabs keep their
+                      // width and the selected tab's name gives way, with its full name on hover (plan 067).
+                      className="min-h-[34px] justify-start gap-2.5 narrow:justify-center narrow:px-2 narrow:min-w-9 narrow:aria-selected:min-w-0 narrow:aria-selected:flex-auto"
+                    >
+                      <Icon className="tab-icon size-[18px]" />
+                      {count ? (
+                        <span className="inline-flex min-w-0 items-center gap-0.5">
+                          <span className="tab-name min-w-0 overflow-hidden text-ellipsis">{count[1]}</span>
+                          <>
+                            <span className="sr-only">{count[2]}</span>
+                            <Badge
+                              className="tab-badge h-[18px] min-w-[18px] shrink-0 px-0.5 tabular-nums"
+                              variant="chosen"
+                              size="md"
+                            >
+                              {count[3]}
+                            </Badge>
+                            <span className="sr-only">{count[4]}</span>
+                          </>
+                        </span>
+                      ) : (
+                        <span className="tab-name min-w-0 overflow-hidden text-ellipsis">{tab.label}</span>
+                      )}
+                    </TabsTrigger>
+                  </ControlTooltip>
                 );
               })}
             </TabsList>

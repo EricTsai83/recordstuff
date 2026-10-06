@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { Minimize } from "lucide-react";
 import { Player } from "../player/player";
+import { ControlTooltip } from "../components/control-tooltip";
 import { Button } from "../components/ui/button";
 import { documentLanguage, translate, isLanguage } from "../../shared/i18n";
 import {
@@ -127,16 +128,17 @@ export function VideoApp() {
       fullScreen={leave}
       large
       trailing={
-        <Button
-          variant="media"
-          size="icon-xl"
-          id="exit"
-          aria-label={label}
-          title={label}
-          onClick={leave}
-        >
-          <Minimize />
-        </Button>
+        <ControlTooltip label={label}>
+          <Button
+            variant="media"
+            size="icon-xl"
+            id="exit"
+            aria-label={label}
+            onClick={leave}
+          >
+            <Minimize />
+          </Button>
+        </ControlTooltip>
       }
     />
   );

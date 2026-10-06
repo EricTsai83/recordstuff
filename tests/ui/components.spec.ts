@@ -4,6 +4,7 @@
  */
 import { test, expect, type Launched } from "./fixtures";
 import type { Page } from "@playwright/test";
+import { translate } from "../../src/shared/i18n";
 import type { SettingsBridge, SettingsView } from "../../src/shared/settings-panel";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -395,4 +396,97 @@ test("the Electron cleanup helper waits for normal quit and removes the final pr
   await new Promise(resolve => setTimeout(resolve, 500));
   await expect(fs.access(profile)).rejects.toMatchObject({ code: "ENOENT" });
   expect(await fs.readFile(path.join(output, "kept.mp4"), "utf8")).toBe("user recording");
+});
+
+
+test("shadcn tooltips name icon controls on hover and focus, update language, and reveal clipped recording titles", async ({}, testInfo) => {
+  await page.getByRole("tab", { name: "General", exact: true }).click();
+  const dark = page.locator("#setting-appearance-dark");
+  await dark.hover();
+  // Base UI 1.8 treats Tooltip as a visual label; controls own their accessible names.
+  const tip = page.locator('[data-slot="tooltip-content"][data-open]');
+  await expect(tip).toHaveText("Dark");
+  await dark.focus();
+  await expect(dark).toBeFocused();
+  await expect(tip).toHaveText("Dark");
+  await page.screenshot({ path: testInfo.outputPath("appearance-tooltip.png"), animations: "disabled" });
+  const current = await page.evaluate(() => (window as unknown as { settings: SettingsBridge }).settings.read());
+  const appearance = current.groups.find(group => group.id === "appearance")!;
+  await setView({ ...current, language: "zh-TW", groups: current.groups.map(group => group === appearance ? {
+    ...group, choices: group.choices.map(choice => ({ ...choice, label: { system: "跟隨系統", light: "淺色", dark: "深色" }[choice.id] ?? choice.label })),
+  } : group) });
+  await expect(tip).toHaveText("深色");
+  await expect(dark).toHaveAccessibleName("深色");
+  await page.mouse.move(10, 400);
+  await page.locator("#tab-library").click();
+  await expect(tip).toBeHidden();
+  const clip = page.locator("#clip-a-open"), title = clip.locator(".clip-title");
+  await clip.hover();
+  await expect(tip).toHaveText(translate("Drag into another app to share.", "zh-TW"));
+  // Force actual two-line grid overflow; the popup shows the complete name rather than the drag hint.
+  const longTitle = "Recording with a very long descriptive title ".repeat(8);
+  const library = current.library!;
+  await setView({ ...current, library: { ...library, items: library.items.map(item => item.id === "a" ? { ...item, title: longTitle } : item) } });
+  await page.mouse.move(10, 400);
+  await title.hover();
+  await expect.poll(() => title.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true);
+  await expect(tip).toHaveText(longTitle.trim());
+  await page.locator("#library-layout-list").click();
+  await title.hover();
+  await expect.poll(() => title.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
+  await expect(tip).toHaveText(longTitle.trim());
+  // A resize under the pointer is remeasured on movement, without another pointer entry.
+  await title.evaluate(node => { node.style.width = "6000px"; node.style.maxWidth = "none"; });
+  const box = await clip.boundingBox();
+  if (!box) throw new Error("Recording control is missing");
+  await page.mouse.move(box.x + 12, box.y + box.height / 2);
+  await expect(tip).toHaveText("Drag into another app to share.");
+  await title.evaluate(node => { node.style.width = ""; node.style.maxWidth = ""; });
+  await title.hover();
+  await expect(tip).toHaveText(longTitle.trim());
+  await page.screenshot({ path: testInfo.outputPath("recording-tooltip.png"), animations: "disabled" });
+  const unbroken = "Recording".repeat(30);
+  await setView({ ...current, library: { ...library, layout: "list", items: library.items.map(item => item.id === "a" ? { ...item, title: unbroken } : item) } });
+  await title.hover();
+  await expect(tip).toHaveText(unbroken);
+  expect(await tip.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+});
+
+test("narrow tab tooltips keep the same focused control when the window widens", async () => {
+  await host.evaluate(h => h.setSize(380, 360));
+  const tab = page.locator("#tab-general");
+  await tab.hover();
+  await expect(page.locator('[data-slot="tooltip-content"][data-open]')).toHaveText("General");
+  await tab.focus();
+  await expect(tab).toBeFocused();
+  await host.evaluate(h => h.setSize(960, 640));
+  await expect(tab).toBeFocused();
+  await expect(page.locator('[data-slot="tooltip-content"][data-open]')).toBeHidden();
+});
+
+test("context menu opens at the pointer, shares file actions, and restores focus after Escape and rename", async ({}, testInfo) => {
+  const card = page.locator("#clip-a");
+  await card.click({ button: "right", position: { x: 30, y: 40 } });
+  const menu = page.locator("#clip-context-menu");
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem")).toHaveText(["Show in Finder", "Open", "Rename…", "Move to Trash"]);
+  await expect(page.locator("#clip-a-more")).toHaveAttribute("aria-expanded", "false");
+  await page.screenshot({ path: testInfo.outputPath("recording-context-menu.png"), animations: "disabled" });
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(page.locator("#clip-a-more")).toBeFocused();
+  await card.click({ button: "right", position: { x: 30, y: 40 } });
+  await menu.getByRole("menuitem", { name: "Rename…", exact: true }).click();
+  const field = page.getByRole("textbox", { name: "Rename", exact: true });
+  await expect(field).toBeFocused();
+  await expect(page.locator(".clip-rename-extension")).toHaveText(".mp4");
+  expect(await field.evaluate(node => ({
+    group: getComputedStyle(node.closest('[data-slot="input-group"]')!).outlineStyle,
+    input: getComputedStyle(node).outlineStyle,
+  }))).toEqual({ group: "solid", input: "none" });
+  await page.screenshot({ path: testInfo.outputPath("rename-input-group.png"), animations: "disabled" });
+  await field.fill("Context menu recording");
+  await field.press("Enter");
+  await expect(page.locator("#clip-a-renamed-open")).toBeFocused();
+  await expect(page.locator("#feedback")).toContainText("Renamed to Context menu recording.mp4");
 });

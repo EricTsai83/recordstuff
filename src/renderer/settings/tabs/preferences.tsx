@@ -3,10 +3,12 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, CircleAlert, CircleHelp, Sun, Moon, Monitor, Keyboard, Settings2, Folder, Globe, Power, Bell, Timer, Volume2, Gauge, FileText, HardDrive, Info } from "lucide-react";
 import type { SettingsGroup, SettingsChoice } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
-import { fileNameTemplateProblem, fileNameProblemText, formatFileName } from "../../../shared/file-name";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { Label } from "../../components/ui/label";
+import { Field, FieldLabel, FieldTitle, FieldDescription, FieldError } from "../../components/ui/field";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "../../components/ui/collapsible";
+import { ControlTooltip } from "../../components/control-tooltip";
+import { useTextSetting } from "../use-text-setting";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
@@ -67,25 +69,26 @@ export function Action({
   const busy = Boolean(model.saving) || choice.busy === true,
     iconOnly = group.id === "about" && (choice.id === "website" || choice.id === "source");
   return (
-    <Button
-      id={id}
-      data-action={choice.id}
-      variant={group.id === "localData" ? "destructive" : group.id === "about" || choice.id === "quit" ? "ghost" : "outline"}
-      size={iconOnly ? "icon" : "default"}
-      wrap={iconOnly ? false : wrap}
-      className={group.id === "about" ? `px-0 ${className ?? ""}` : className}
-      disabled={!group.enabled || !choice.enabled}
-      aria-disabled={busy || !group.enabled || !choice.enabled}
-      aria-label={group.id === "about" ? choice.label : undefined}
-      title={group.id === "about" ? choice.label : undefined}
-      onClick={() => {
-        if (!busy && group.enabled && choice.enabled)
-          void model.choose(group.id, choice.id, id);
-      }}
-    >
-      {group.id === "about" && <ActionIcon id={choice.id} />}
-      {!iconOnly && choice.label}
-    </Button>
+    <ControlTooltip label={iconOnly ? choice.label : undefined}>
+      <Button
+        id={id}
+        data-action={choice.id}
+        variant={group.id === "localData" ? "destructive" : group.id === "about" || choice.id === "quit" ? "ghost" : "outline"}
+        size={iconOnly ? "icon" : "default"}
+        wrap={iconOnly ? false : wrap}
+        className={group.id === "about" ? `px-0 ${className ?? ""}` : className}
+        disabled={!group.enabled || !choice.enabled}
+        aria-disabled={busy || !group.enabled || !choice.enabled}
+        aria-label={group.id === "about" ? choice.label : undefined}
+        onClick={() => {
+          if (!busy && group.enabled && choice.enabled)
+            void model.choose(group.id, choice.id, id);
+        }}
+      >
+        {group.id === "about" && <ActionIcon id={choice.id} />}
+        {!iconOnly && choice.label}
+      </Button>
+    </ControlTooltip>
   );
 }
 export function Explanation({ group }: { group: SettingsGroup }) {
@@ -150,45 +153,7 @@ export function TextSetting({
   group: SettingsGroup;
   description: string;
 }) {
-  const value = model.committed(group),
-    held = Boolean(group.enabled && model.saving && model.saving.group !== group.id),
-    [draft, setDraft] = useState(value),
-    // The example's time is read once, when the field appears: redrawn with the clock it changed under the reader's
-    // eyes on every update of the page (2026-10-07).
-    [sampleTime] = useState(() => new Date()),
-    field = useRef<HTMLInputElement>(null),
-    submitted = useRef<string | undefined>(undefined),
-    lastCommitted = useRef(value);
-  useLayoutEffect(() => {
-    if (lastCommitted.current !== value) {
-      lastCommitted.current = value;
-      if (draft.trim() === value || document.activeElement !== field.current)
-        setDraft(value);
-    }
-  }, [value, draft]);
-  const submit = (): void => {
-    const name = (field.current?.value ?? draft).trim();
-    if (
-      !group.enabled ||
-      name === model.committed(group) ||
-      name === submitted.current
-    )
-      return;
-    submitted.current = name;
-    void model.choose(group.id, name, `setting-${group.id}`).finally(() => {
-      submitted.current = undefined;
-    });
-  };
-  const problem = fileNameTemplateProblem(draft.trim()),
-    refused = Boolean(problem) && draft.trim() !== value;
-  const note =
-    draft.trim() === value
-      ? (group.note ?? "")
-      : problem
-        ? fileNameProblemText(problem, model.view?.language ?? "en")
-        : translate("Example: {name}", model.view?.language, {
-            name: `${formatFileName(draft.trim(), sampleTime)}.mp4`,
-          });
+  const { value, held, draft, field, submit, refused, note, edit, reset } = useTextSetting(group);
   return (
     <>
       <Input
@@ -207,8 +172,7 @@ export function TextSetting({
         aria-invalid={refused || undefined}
         onInput={(event) => {
           const draft = event.currentTarget.value;
-          model.clearFailure(group.id);
-          flushSync(() => setDraft(draft));
+          flushSync(() => edit(draft));
         }}
         onBlur={submit}
         onKeyDown={(event) => {
@@ -221,18 +185,18 @@ export function TextSetting({
           ) {
             event.preventDefault();
             event.stopPropagation();
-            setDraft(value);
-            model.clearFailure(group.id);
+            reset();
           }
         }}
       />
-      <p
+      <FieldDescription
+        variant="note"
         className={`note text-note${refused ? " text-note-error" : ""}`}
         id={`setting-${group.id}-note`}
         hidden={!note}
       >
         {note}
-      </p>
+      </FieldDescription>
     </>
   );
 }
@@ -287,10 +251,11 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
         .groupControl(group.id, model.saving?.choice ?? model.failure?.choice)
         ?.focus({ preventScroll: true });
   });
+  const Row = group.kind === "actions" ? "div" : Field;
   return (
-    <div
+    <Row
       id={`${id}-row`}
-      className={group.id === "about" ? "row about-row" : "row"}
+      className={group.id === "about" ? "row about-row" : "row block gap-0 [&>*]:w-auto"}
       aria-busy={model.saving?.group === group.id}
     >
       <div className="row-line">
@@ -305,22 +270,22 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
         ) : <div className="group-title">
           <GroupIcon id={group.id} />
           {group.kind === "actions" || group.control === "segmented" ? (
-            <span
+            <FieldTitle
               id={`${id}-label`}
               className="group-label text-xs leading-[1.35]"
               hidden={!group.label}
             >
               {group.label}
-            </span>
+            </FieldTitle>
           ) : (
-            <Label
+            <FieldLabel
               id={`${id}-label`}
               className="group-label text-xs leading-[1.35]"
               htmlFor={id}
               hidden={!group.label}
             >
               {group.label}
-            </Label>
+            </FieldLabel>
           )}
           <Explanation group={group} />
         </div>}
@@ -384,39 +349,40 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
               }}
             >
               {group.choices.map((choice) => (
-                <ToggleGroupItem
-                  key={choice.id}
-                  id={`${id}-${choice.id}`}
-                  value={choice.id}
-                  onClick={() => {
-                    if (
-                      model.saving?.group === group.id &&
-                      model.saving.choice !== value &&
-                      choice.id === value
-                    )
-                      void model.choose(
-                        group.id,
-                        choice.id,
-                        `${id}-${choice.id}`,
-                      );
-                  }}
-                  disabled={!group.enabled || !choice.enabled || busy}
-                  className={held && choice.enabled ? "disabled:opacity-100" : undefined}
-                  aria-label={choice.label}
-                  title={group.iconChoices ? choice.label : undefined}
-                >
-                  {group.iconChoices ? (
-                    choice.id === "dark" ? (
-                      <Moon className="segment-glyph" />
-                    ) : choice.id === "light" ? (
-                      <Sun className="segment-glyph" />
+                <ControlTooltip key={choice.id} label={group.iconChoices ? choice.label : undefined}>
+                  <ToggleGroupItem
+                    key={choice.id}
+                    id={`${id}-${choice.id}`}
+                    value={choice.id}
+                    onClick={() => {
+                      if (
+                        model.saving?.group === group.id &&
+                        model.saving.choice !== value &&
+                        choice.id === value
+                      )
+                        void model.choose(
+                          group.id,
+                          choice.id,
+                          `${id}-${choice.id}`,
+                        );
+                    }}
+                    disabled={!group.enabled || !choice.enabled || busy}
+                    className={held && choice.enabled ? "disabled:opacity-100" : undefined}
+                    aria-label={choice.label}
+                  >
+                    {group.iconChoices ? (
+                      choice.id === "dark" ? (
+                        <Moon className="segment-glyph" />
+                      ) : choice.id === "light" ? (
+                        <Sun className="segment-glyph" />
+                      ) : (
+                        <Monitor className="segment-glyph" />
+                      )
                     ) : (
-                      <Monitor className="segment-glyph" />
-                    )
-                  ) : (
-                    choice.label
-                  )}
-                </ToggleGroupItem>
+                      choice.label
+                    )}
+                  </ToggleGroupItem>
+                </ControlTooltip>
               ))}
             </ToggleGroup>
           ) : (
@@ -495,7 +461,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
             </div>
           ))}
         </div>
-        <div className="save-error diagnostic" hidden={!ownFailure}>
+        <FieldError role={undefined} className="save-error diagnostic" hidden={!ownFailure}>
           <strong>
             {model.text(
               ownFailure?.refused && group.kind === "shortcut"
@@ -506,7 +472,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
             )}
           </strong>
           <p>{ownFailure?.text}</p>
-        </div>
+        </FieldError>
         <Button
           ref={recoveryRef}
           id={`${id}-recovery`}
@@ -558,9 +524,9 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
         </p>
       </div>
       {group.control !== "text" && group.id !== "about" && (
-        <p id={`${id}-note`} className="note" hidden={!group.note}>
+        <FieldDescription variant="note" id={`${id}-note`} className="note" hidden={!group.note}>
           {group.note}
-        </p>
+        </FieldDescription>
       )}
       {group.kind !== "actions" && actions.length > 0 && (
         <div className="row-actions">
@@ -575,32 +541,33 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
           ? model.text("Applying…")
           : ""}
       </span>
-    </div>
+    </Row>
   );
 }
 function CleanupSection({ groups }: { groups: SettingsGroup[] }) {
-  const disclosure = useRef<HTMLDetailsElement>(null);
+  const [open, setOpen] = useState(false);
   // A failed action remains visible even if the user collapsed the section while it was running.
   useLayoutEffect(() => {
-    if (groups.some((group) => group.id === model.failure?.group) && disclosure.current)
-      disclosure.current.open = true;
+    if (groups.some((group) => group.id === model.failure?.group)) setOpen(true);
   }, [groups, model.failure]);
   return (
-    <details ref={disclosure} className="section support-section" id="settings-data-cleanup">
-      <summary id="settings-data-cleanup-toggle" className="support-summary focus-ring">
+    <Collapsible open={open} onOpenChange={setOpen} className="section support-section" id="settings-data-cleanup">
+      <CollapsibleTrigger id="settings-data-cleanup-toggle" className="support-summary focus-ring w-full text-left">
         <h2>{groups[0]?.sectionHeading ?? model.text("Reset and cleanup")}</h2>
         <span className="support-toggle">
           <span className="support-expand">{model.text("Expand")}</span>
           <span className="support-collapse">{model.text("Collapse")}</span>
           <ChevronDown className="support-chevron" aria-hidden="true" />
         </span>
-      </summary>
-      <Card size="xs">
-        <CardContent className="inset-list px-3.5">
-          {groups.map((group) => <SettingRow key={group.id} group={group} />)}
-        </CardContent>
-      </Card>
-    </details>
+      </CollapsibleTrigger>
+      <CollapsibleContent keepMounted>
+        <Card size="xs">
+          <CardContent className="inset-list px-3.5">
+            {groups.map((group) => <SettingRow key={group.id} group={group} />)}
+          </CardContent>
+        </Card>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

@@ -19,6 +19,7 @@ import { showToast, toastNode } from "./toast";
 
 export let libraryError: string | undefined;
 export let menuId: string | undefined;
+export let menuKind: "dropdown" | "context" = "dropdown";
 export let renaming:
   | {
       id: string;
@@ -71,7 +72,7 @@ export async function revealFolder(): Promise<void> {
     draw();
   }
 }
-export function openMenu(id: string): void {
+export function openMenu(id: string, kind: typeof menuKind = "dropdown"): void {
   if (!view?.library?.items.some((item) => item.id === id)) return;
   const card = document.getElementById(`clip-${id}`)?.getBoundingClientRect(),
     panel = document.getElementById("settings-panel")?.getBoundingClientRect();
@@ -83,9 +84,10 @@ export function openMenu(id: string): void {
   ) {
     menuId = undefined;
     draw();
-    if (document.activeElement?.closest("#clip-menu")) focus(`clip-${id}-more`);
+    if (document.activeElement?.closest(".clip-menu")) focus(`clip-${id}-more`);
     return;
   }
+  menuKind = kind;
   menuId = id;
   draw();
 }
@@ -197,7 +199,7 @@ export async function fileAction(
         !menuId &&
         !renaming &&
         !playingItem &&
-        document.activeElement?.closest("#clip-menu")
+        document.activeElement?.closest(".clip-menu")
       )
         focus(`clip-${id}-more`);
     });

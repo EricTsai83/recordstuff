@@ -15,6 +15,8 @@ import {
   Volume1,
   VolumeX,
 } from "lucide-react";
+import { ControlTooltip } from "../components/control-tooltip";
+import { TooltipProvider } from "../components/ui/tooltip";
 import { Button } from "../components/ui/button";
 import { Slider } from "../components/ui/slider";
 import { VIDEO_TIMING, formatDuration } from "../../shared/video-player";
@@ -329,166 +331,170 @@ export function Player({
             ? Volume1
             : Volume2;
   return (
-    <div
-      ref={root}
-      className={`pc${media.playing ? "" : " pc-paused"}${idle ? " pc-idle" : ""}`}
-      onKeyDownCapture={keydown}
-      onPointerMove={() => flushSync(wake)}
-      onPointerDown={wake}
-      onFocus={wake}
-      onPointerLeave={rest}
-    >
-      <video
-        ref={assignVideo}
-        id={id === "video" ? "video" : undefined}
-        src={source || undefined}
-        playsInline
-        disablePictureInPicture
-        tabIndex={-1}
-        onClick={() => toggle(true)}
-        onDoubleClick={(event) => {
-          event.preventDefault();
-          onDoubleClick();
-        }}
-      />
+    <TooltipProvider delay={600}>
       <div
-        key={`bezel-${flash?.seq ?? 0}`}
-        className="pc-bezel"
-        data-kind={flash?.kind}
-        aria-hidden="true"
-        hidden={!flash?.bezel}
+        ref={root}
+        className={`pc${media.playing ? "" : " pc-paused"}${idle ? " pc-idle" : ""}`}
+        onKeyDownCapture={keydown}
+        onPointerMove={() => flushSync(wake)}
+        onPointerDown={wake}
+        onFocus={wake}
+        onPointerLeave={rest}
       >
-        <BezelIcon />
-      </div>
-      <div
-        key={`text-${flash?.seq ?? 0}`}
-        className="pc-bezel-text"
-        aria-hidden="true"
-        hidden={!flash?.text}
-      >
-        {flash?.percent}
-      </div>
-      {(["back", "forward"] as const).map((side) => (
-        <div
-          key={`${side}-${seekHint?.side === side ? seekHint.seq : 0}`}
-          className={`pc-seek-hint pc-seek-${side}`}
-          aria-hidden="true"
-          hidden={seekHint?.side !== side}
-        >
-          <div className="pc-seek-arrows">
-            {[0, 1, 2].map((index) => (
-              <span key={index} className="pc-seek-arrow">
-                <SeekArrow />
-              </span>
-            ))}
-          </div>
-          <div className="pc-seek-label">
-            {side === "forward" ? "+" : "−"}
-            {translate("{value} s", language, { value: 5 })}
-          </div>
-        </div>
-      ))}
-      <div className="pc-top" hidden={!title}>
-        <div className="pc-heading">
-          <div className="pc-heading-text">
-            <p className="pc-title">{title}</p>
-            <p className="pc-meta player-meta" hidden={!meta}>
-              {meta}
-            </p>
-            <p className="pc-error player-error" hidden={!error}>
-              {error}
-            </p>
-          </div>
-          {close}
-        </div>
-      </div>
-      <div className="pc-bottom">
-        <Slider
-          id={`${id}-seek`}
-          className="pc-seek"
-          variant="media"
-          growOnHover
-          value={[media.time]}
-          min={0}
-          max={media.duration || 1}
-          step={0.1}
-          thumbProps={{
-            "aria-label": t("Playback position"),
-            "aria-valuetext": reading,
-          }}
-          onPointerDown={() => {
-            scrubbing.current = true;
-            scrubTime.current = media.time;
-          }}
-          onPointerUp={() => {
-            scrubbing.current = false;
-            sync();
-          }}
-          onPointerCancel={() => {
-            scrubbing.current = false;
-            sync();
-          }}
-          onValueChange={(value) => {
-            const time = Array.isArray(value) ? (value[0] ?? 0) : value;
-            scrubTime.current = time;
-            seekTo(time);
-          }}
-          onValueCommitted={() => {
-            scrubbing.current = false;
-            sync();
+        <video
+          ref={assignVideo}
+          id={id === "video" ? "video" : undefined}
+          src={source || undefined}
+          playsInline
+          disablePictureInPicture
+          tabIndex={-1}
+          onClick={() => toggle(true)}
+          onDoubleClick={(event) => {
+            event.preventDefault();
+            onDoubleClick();
           }}
         />
-        <div className="pc-row">
-          <Button
-            variant="media"
-            size={large ? "icon-xl" : "icon-media"}
-            id={`${id}-play`}
-            aria-label={t(media.playing ? "Pause" : "Play")}
-            title={t(media.playing ? "Pause" : "Play")}
-            data-mark={media.playing ? "pause" : "play"}
-            onClick={() => toggle()}
+        <div
+          key={`bezel-${flash?.seq ?? 0}`}
+          className="pc-bezel"
+          data-kind={flash?.kind}
+          aria-hidden="true"
+          hidden={!flash?.bezel}
+        >
+          <BezelIcon />
+        </div>
+        <div
+          key={`text-${flash?.seq ?? 0}`}
+          className="pc-bezel-text"
+          aria-hidden="true"
+          hidden={!flash?.text}
+        >
+          {flash?.percent}
+        </div>
+        {(["back", "forward"] as const).map((side) => (
+          <div
+            key={`${side}-${seekHint?.side === side ? seekHint.seq : 0}`}
+            className={`pc-seek-hint pc-seek-${side}`}
+            aria-hidden="true"
+            hidden={seekHint?.side !== side}
           >
-            {media.playing ? <Pause /> : <Play />}
-          </Button>
-          <div className="pc-volume group/volume">
-            <Button
-              variant="media"
-              size={large ? "icon-xl" : "icon-media"}
-              id={`${id}-mute`}
-              aria-label={t(silent ? "Unmute" : "Mute")}
-              title={t(silent ? "Unmute" : "Mute")}
-              data-mark={silent ? "muted" : "volume"}
-              onClick={mute}
-            >
-              {silent ? <VolumeX /> : <Volume2 />}
-            </Button>
-            <Slider
-              id={`${id}-volume`}
-              className={
-                large
-                  ? "pc-level data-[orientation=horizontal]:w-0 group-hover/volume:data-[orientation=horizontal]:w-[88px] group-focus-within/volume:data-[orientation=horizontal]:w-[88px]"
-                  : "pc-level data-[orientation=horizontal]:w-0 group-hover/volume:data-[orientation=horizontal]:w-16 group-focus-within/volume:data-[orientation=horizontal]:w-16"
-              }
-              variant="media"
-              thumbAlignment="center"
-              min={0}
-              max={1}
-              step={0.05}
-              value={[silent ? 0 : media.volume]}
-              thumbProps={{
-                "aria-label": t("Volume"),
-                "aria-valuetext": percent,
-              }}
-              onValueChange={(value) =>
-                volumeTo(Array.isArray(value) ? (value[0] ?? 0) : value)
-              }
-            />
+            <div className="pc-seek-arrows">
+              {[0, 1, 2].map((index) => (
+                <span key={index} className="pc-seek-arrow">
+                  <SeekArrow />
+                </span>
+              ))}
+            </div>
+            <div className="pc-seek-label">
+              {side === "forward" ? "+" : "−"}
+              {translate("{value} s", language, { value: 5 })}
+            </div>
           </div>
-          <span className="pc-time">{reading}</span>
-          <span className="pc-spacer" />
-          {trailing}
+        ))}
+        <div className="pc-top" hidden={!title}>
+          <div className="pc-heading">
+            <div className="pc-heading-text">
+              <p className="pc-title">{title}</p>
+              <p className="pc-meta player-meta" hidden={!meta}>
+                {meta}
+              </p>
+              <p className="pc-error player-error" hidden={!error}>
+                {error}
+              </p>
+            </div>
+            {close}
+          </div>
+        </div>
+        <div className="pc-bottom">
+          <Slider
+            id={`${id}-seek`}
+            className="pc-seek"
+            variant="media"
+            growOnHover
+            value={[media.time]}
+            min={0}
+            max={media.duration || 1}
+            step={0.1}
+            thumbProps={{
+              "aria-label": t("Playback position"),
+              "aria-valuetext": reading,
+            }}
+            onPointerDown={() => {
+              scrubbing.current = true;
+              scrubTime.current = media.time;
+            }}
+            onPointerUp={() => {
+              scrubbing.current = false;
+              sync();
+            }}
+            onPointerCancel={() => {
+              scrubbing.current = false;
+              sync();
+            }}
+            onValueChange={(value) => {
+              const time = Array.isArray(value) ? (value[0] ?? 0) : value;
+              scrubTime.current = time;
+              seekTo(time);
+            }}
+            onValueCommitted={() => {
+              scrubbing.current = false;
+              sync();
+            }}
+          />
+          <div className="pc-row">
+            <ControlTooltip label={t(media.playing ? "Pause" : "Play")}>
+              <Button
+                variant="media"
+                size={large ? "icon-xl" : "icon-media"}
+                id={`${id}-play`}
+                aria-label={t(media.playing ? "Pause" : "Play")}
+                data-mark={media.playing ? "pause" : "play"}
+                onClick={() => toggle()}
+              >
+                {media.playing ? <Pause /> : <Play />}
+              </Button>
+            </ControlTooltip>
+            <div className="pc-volume group/volume">
+              <ControlTooltip label={t(silent ? "Unmute" : "Mute")}>
+                <Button
+                  variant="media"
+                  size={large ? "icon-xl" : "icon-media"}
+                  id={`${id}-mute`}
+                  aria-label={t(silent ? "Unmute" : "Mute")}
+                  data-mark={silent ? "muted" : "volume"}
+                  onClick={mute}
+                >
+                  {silent ? <VolumeX /> : <Volume2 />}
+                </Button>
+              </ControlTooltip>
+              <Slider
+                id={`${id}-volume`}
+                className={
+                  large
+                    ? "pc-level data-[orientation=horizontal]:w-0 group-hover/volume:data-[orientation=horizontal]:w-[88px] group-focus-within/volume:data-[orientation=horizontal]:w-[88px]"
+                    : "pc-level data-[orientation=horizontal]:w-0 group-hover/volume:data-[orientation=horizontal]:w-16 group-focus-within/volume:data-[orientation=horizontal]:w-16"
+                }
+                variant="media"
+                thumbAlignment="center"
+                min={0}
+                max={1}
+                step={0.05}
+                value={[silent ? 0 : media.volume]}
+                thumbProps={{
+                  "aria-label": t("Volume"),
+                  "aria-valuetext": percent,
+                }}
+                onValueChange={(value) =>
+                  volumeTo(Array.isArray(value) ? (value[0] ?? 0) : value)
+                }
+              />
+            </div>
+            <span className="pc-time">{reading}</span>
+            <span className="pc-spacer" />
+            {trailing}
+          </div>
         </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }

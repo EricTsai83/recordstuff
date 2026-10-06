@@ -5,6 +5,8 @@ import { translate, type PlainMessageKey } from "../../../shared/i18n";
 import type { ErrorCode } from "../../../shared/state";
 import { REVIEWED_FAILURES_KEPT, persistsHistory } from "../../../shared/recording-result";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
+import { Empty, EmptyHeader, EmptyMedia, EmptyDescription } from "../../components/ui/empty";
 import { Badge } from "../../components/ui/badge";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "../../components/ui/collapsible";
 import * as model from "../settings-controller";
@@ -179,21 +181,23 @@ export function Failures({ headingHidden = false }: { headingHidden?: boolean } 
       <p className="result-history-status" hidden={!status}>
         {status}
       </p>
-      <p className="result-empty" hidden={Boolean(results.length || status)}>
-        <CircleAlert className="empty-icon" />
-        <span>{model.text("No recording failures.")}</span>
-      </p>
+      <Empty className="result-empty py-10 text-muted-foreground" hidden={Boolean(results.length || status)}>
+        <EmptyHeader>
+          <EmptyMedia><CircleAlert className="size-[38px]" /></EmptyMedia>
+          <EmptyDescription>{model.text("No recording failures.")}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
       <div className="result-days">
         {days.map((day) => (
           <section className="result-day" data-day={day} key={day}>
             <h3 className="day-heading result-day-heading">{day}</h3>
-            <div className="result-rows">
+            <Card className="result-rows gap-0 p-1">
               {results
                 .filter((result) => result.day === day)
                 .map((result) => (
                   <FailureRow key={result.id} result={result} />
                 ))}
-            </div>
+            </Card>
           </section>
         ))}
       </div>

@@ -4,12 +4,16 @@ import { Film, MoreHorizontal, Play, Grid2X2, List, Folder, FileText, HardDrive,
 import type { LibraryItemView } from "../../../shared/settings-panel";
 import { phrases, translate } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
-import { Label } from "../../components/ui/label";
+import { Field, FieldLabel, FieldError } from "../../components/ui/field";
+import { InputGroup, InputGroupInput, InputGroupAddon, InputGroupText } from "../../components/ui/input-group";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "../../components/ui/empty";
+import { ControlTooltip } from "../../components/control-tooltip";
+import { useTruncated } from "../../lib/use-truncated";
+import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from "../../components/ui/context-menu";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { Card } from "../../components/ui/card";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "../../components/ui/dropdown-menu";
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "../../components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogHeader, DialogFooter } from "../../components/ui/dialog";
 import { flushSync } from "react-dom";
 import { Player } from "../../player/player";
 import * as model from "../settings-controller";
@@ -24,11 +28,11 @@ export const Clip = memo(function Clip({
   useSyncExternalStore(
     model.subscribe,
     () =>
-      `${model.menuId === item.id}/${model.view?.libraryFocus === item.id ? model.view.resultFocus : ""}`,
+      `${model.menuId === item.id ? model.menuKind : ""}/${model.view?.libraryFocus === item.id ? model.view.resultFocus : ""}`,
   );
   const [failed, setFailed] = useState(false),
     [arrived, setArrived] = useState(false),
-    title = useRef<HTMLSpanElement>(null);
+    title = useTruncated<HTMLSpanElement>();
   useEffect(() => {
     setFailed(false);
   }, [item.thumbnail]);
@@ -36,170 +40,190 @@ export const Clip = memo(function Clip({
     if (model.view?.libraryFocus === item.id && model.view.resultFocus)
       setArrived(true);
   }, [item.id, model.view?.resultFocus]);
-  const tooltip = (): void => {
-    const node = title.current;
-    if (!node) return;
-    if (
-      node.scrollHeight > node.clientHeight + 1 ||
-      node.scrollWidth > node.clientWidth + 1
-    )
-      node.title = item.title;
-    else node.removeAttribute("title");
-  };
-  const p = model.platform(),
-    t = model.text;
   return (
-    <Card
-      id={`clip-${item.id}`}
-      className={`clip gap-0 p-0${arrived ? " arrived" : ""}`}
-      data-id={item.id}
-      draggable
-      title={t("Drag into another app to share.")}
-      onDragStart={(event) => {
-        event.preventDefault();
-        void model.fileAction(item.id, "drag");
+    <ContextMenu
+      open={model.menuId === item.id && model.menuKind === "context"}
+      onOpenChange={(open) => {
+        if (open) model.openMenu(item.id, "context");
+        else if (model.menuId === item.id && model.menuKind === "context") model.closeMenu();
       }}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        model.openMenu(item.id);
-      }}
-      onAnimationEnd={() => setArrived(false)}
-      onBlur={() => setArrived(false)}
     >
-      <Button
-        variant="ghost"
-        size="clip"
-        id={`clip-${item.id}-open`}
-        // The list layout lays a card out in one line, leaving room on the right for its menu button.
-        // Its focus line is drawn round the whole card (ui.css), not inside it.
-        className="clip-open rounded-none border-0 focus-visible:outline-none! in-data-[layout=list]:flex-row in-data-[layout=list]:items-center in-data-[layout=list]:pr-10"
-        aria-label={translate(
-          "Play {title}",
-          language === "zh-TW" ? "zh-TW" : "en",
-          {
-            title: phrases(
-              [
-                item.title,
-                item.day,
-                item.time,
-                item.duration,
-                item.size,
-              ].filter((part): part is string => Boolean(part)),
-              language === "zh-TW" ? "zh-TW" : "en",
-            ),
-          },
-        )}
-        onClick={() => model.openPlayer(item)}
-      >
-        <span className={`clip-thumb${failed ? " no-thumb" : ""}`}>
-          <Film className="clip-fallback size-9" />
-          <img
-            alt=""
-            src={item.thumbnail}
-            loading="lazy"
-            decoding="async"
-            onError={() => flushSync(() => setFailed(true))}
-            onLoad={() => flushSync(() => setFailed(false))}
-          />
-          <span className="clip-duration" hidden={!item.duration}>
-            {item.duration}
-          </span>
-          <span className="clip-play" aria-hidden="true">
-            <Play className="play-icon size-[18px] in-data-[layout=list]:size-[13px]" />
-          </span>
-        </span>
-        <span className="clip-text">
-          <span
-            ref={title}
-            className="clip-title"
-            onMouseEnter={tooltip}
-            onMouseMove={tooltip}
-          >
-            {item.title}
-          </span>
-          <span className="clip-meta">
-            {[item.time, item.size].join(" · ")}
-          </span>
-          <span className="clip-detail">
-            {[item.time, item.duration, item.size].filter(Boolean).join(" · ")}
-          </span>
-        </span>
-      </Button>
-      <DropdownMenu
-        open={model.menuId === item.id}
-        onOpenChange={(open) => {
-          if (open) model.openMenu(item.id);
-          else if (model.menuId === item.id) model.closeMenu();
+      <ContextMenuTrigger render={<Card />}
+        id={`clip-${item.id}`}
+        className={`clip gap-0 p-0${arrived ? " arrived" : ""}`}
+        data-id={item.id}
+        draggable
+        onDragStart={(event) => {
+          event.preventDefault();
+          void model.fileAction(item.id, "drag");
         }}
+        onAnimationEnd={() => setArrived(false)}
+        onBlur={() => setArrived(false)}
       >
-        <DropdownMenuTrigger
-          render={<Button variant="secondary" size="icon-sm" />}
-          id={`clip-${item.id}-more`}
-          className="clip-more"
-          aria-label={translate(
-            "More actions for {title}",
-            model.view?.language,
-            { title: item.title },
-          )}
-          title={translate("More actions for {title}", model.view?.language, {
-            title: item.title,
-          })}
-        >
-          <MoreHorizontal />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          finalFocus={false}
-          id="clip-menu"
-          // As wide as its longest item, never wrapping one (as a macOS menu), whatever the ⋯ button's width.
-          className="clip-menu w-auto min-w-[196px] whitespace-nowrap"
-          align="end"
-          onKeyDown={(event) => {
-            if (event.key === "Tab") {
-              event.preventDefault();
-              event.stopPropagation();
-              model.closeMenu();
-            }
+        <ControlTooltip label={title.truncated ? item.title : model.text("Drag into another app to share.")}>
+          <Button
+            variant="ghost"
+            size="clip"
+            id={`clip-${item.id}-open`}
+            // The list layout lays a card out in one line, leaving room on the right for its menu button.
+            // Its focus line is drawn round the whole card (ui.css), not inside it.
+            className="clip-open rounded-none border-0 focus-visible:outline-none! in-data-[layout=list]:flex-row in-data-[layout=list]:items-center in-data-[layout=list]:pr-10"
+            aria-label={translate(
+              "Play {title}",
+              language === "zh-TW" ? "zh-TW" : "en",
+              {
+                title: phrases(
+                  [
+                    item.title,
+                    item.day,
+                    item.time,
+                    item.duration,
+                    item.size,
+                  ].filter((part): part is string => Boolean(part)),
+                  language === "zh-TW" ? "zh-TW" : "en",
+                ),
+              },
+            )}
+            onPointerEnter={() => flushSync(title.measure)}
+            onPointerMove={() => flushSync(title.measure)}
+            onFocus={() => flushSync(title.measure)}
+            onClick={() => model.openPlayer(item)}
+          >
+            <span className={`clip-thumb${failed ? " no-thumb" : ""}`}>
+              <Film className="clip-fallback size-9" />
+              <img
+                alt=""
+                src={item.thumbnail}
+                loading="lazy"
+                decoding="async"
+                onError={() => flushSync(() => setFailed(true))}
+                onLoad={() => flushSync(() => setFailed(false))}
+              />
+              <span className="clip-duration" hidden={!item.duration}>
+                {item.duration}
+              </span>
+              <span className="clip-play" aria-hidden="true">
+                <Play className="play-icon size-[18px] in-data-[layout=list]:size-[13px]" />
+              </span>
+            </span>
+            <span className="clip-text">
+              <span
+                ref={title.ref}
+                className="clip-title"
+              >
+                {item.title}
+              </span>
+              <span className="clip-meta">
+                {[item.time, item.size].join(" · ")}
+              </span>
+              <span className="clip-detail">
+                {[item.time, item.duration, item.size].filter(Boolean).join(" · ")}
+              </span>
+            </span>
+          </Button>
+        </ControlTooltip>
+        <DropdownMenu
+          open={model.menuId === item.id && model.menuKind === "dropdown"}
+          onOpenChange={(open) => {
+            if (open) model.openMenu(item.id);
+            else if (model.menuId === item.id && model.menuKind === "dropdown") model.closeMenu();
           }}
         >
-          <DropdownMenuItem
-            id="clip-menu-reveal"
-            onClick={() => void model.fileAction(item.id, "reveal")}
+          <ControlTooltip label={translate("More actions for {title}", model.view?.language, { title: item.title })}>
+            <DropdownMenuTrigger
+              render={<Button variant="secondary" size="icon-sm" />}
+              id={`clip-${item.id}-more`}
+              className="clip-more"
+              aria-label={translate(
+                "More actions for {title}",
+                model.view?.language,
+                { title: item.title },
+              )}
+            >
+              <MoreHorizontal />
+            </DropdownMenuTrigger>
+          </ControlTooltip>
+          <DropdownMenuContent
+            finalFocus={false}
+            id="clip-menu"
+            // As wide as its longest item, never wrapping one (as a macOS menu), whatever the ⋯ button's width.
+            className="clip-menu w-auto min-w-[196px] whitespace-nowrap"
+            align="end"
+            onKeyDown={(event) => {
+              if (event.key === "Tab") {
+                event.preventDefault();
+                event.stopPropagation();
+                model.closeMenu();
+              }
+            }}
           >
-            <Folder />
-            <span className="menu-label">
-              {t(p === "darwin" ? "Show in Finder" : "Open folder")}
-            </span>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            id="clip-menu-open"
-            onClick={() => void model.fileAction(item.id, "open")}
-          >
-            <Play />
-            <span className="menu-label">{t("Open")}</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            id="clip-menu-rename"
-            onClick={() => model.openRename(item.id)}
-          >
-            <FileText />
-            <span className="menu-label">{t("Rename…")}</span>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            id="clip-menu-trash"
-            variant="destructive"
-            onClick={() => void model.fileAction(item.id, "trash")}
-          >
-            <HardDrive />
-            <span className="menu-label">
-              {t(p === "darwin" ? "Move to Trash" : "Move to Recycle Bin")}
-            </span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </Card>
+            <ClipMenuActions item={item} />
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </ContextMenuTrigger>
+      <ContextMenuContent
+        id="clip-context-menu"
+        className="clip-menu w-auto min-w-[196px] whitespace-nowrap"
+        finalFocus={false}
+        onKeyDown={(event) => {
+          if (event.key === "Tab") {
+            event.preventDefault();
+            event.stopPropagation();
+            model.closeMenu();
+          }
+        }}
+      >
+        <ClipMenuActions item={item} context />
+      </ContextMenuContent>
+    </ContextMenu>
   );
 });
+
+function ClipMenuActions({ item, context = false }: { item: LibraryItemView; context?: boolean }) {
+  const Item = context ? ContextMenuItem : DropdownMenuItem;
+  const Separator = context ? ContextMenuSeparator : DropdownMenuSeparator;
+  const prefix = context ? "clip-context-menu" : "clip-menu";
+  const p = model.platform(), t = model.text;
+  return (
+    <>
+      <Item
+        id={`${prefix}-reveal`}
+        onClick={() => void model.fileAction(item.id, "reveal")}
+      >
+        <Folder />
+        <span className="menu-label">
+          {t(p === "darwin" ? "Show in Finder" : "Open folder")}
+        </span>
+      </Item>
+      <Item
+        id={`${prefix}-open`}
+        onClick={() => void model.fileAction(item.id, "open")}
+      >
+        <Play />
+        <span className="menu-label">{t("Open")}</span>
+      </Item>
+      <Item
+        id={`${prefix}-rename`}
+        onClick={() => model.openRename(item.id)}
+      >
+        <FileText />
+        <span className="menu-label">{t("Rename…")}</span>
+      </Item>
+      <Separator />
+      <Item
+        id={`${prefix}-trash`}
+        variant="destructive"
+        onClick={() => void model.fileAction(item.id, "trash")}
+      >
+        <HardDrive />
+        <span className="menu-label">
+          {t(p === "darwin" ? "Move to Trash" : "Move to Recycle Bin")}
+        </span>
+      </Item>
+    </>
+  );
+}
+
 export function Library() {
   const library = model.view?.library,
     items = library?.items ?? [],
@@ -226,22 +250,24 @@ export function Library() {
               void model.chooseLayout(value);
           }}
         >
-          <ToggleGroupItem
-            id="library-layout-grid"
-            value="grid"
-            aria-label={model.text("Grid")}
-            title={model.text("Grid")}
-          >
-            <Grid2X2 />
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            id="library-layout-list"
-            value="list"
-            aria-label={model.text("List")}
-            title={model.text("List")}
-          >
-            <List />
-          </ToggleGroupItem>
+          <ControlTooltip label={model.text("Grid")}>
+            <ToggleGroupItem
+              id="library-layout-grid"
+              value="grid"
+              aria-label={model.text("Grid")}
+            >
+              <Grid2X2 />
+            </ToggleGroupItem>
+          </ControlTooltip>
+          <ControlTooltip label={model.text("List")}>
+            <ToggleGroupItem
+              id="library-layout-list"
+              value="list"
+              aria-label={model.text("List")}
+            >
+              <List />
+            </ToggleGroupItem>
+          </ControlTooltip>
         </ToggleGroup>
         <Button
           id="library-reveal"
@@ -270,20 +296,22 @@ export function Library() {
       <p className="library-status" hidden={!library?.status}>
         {library?.status}
       </p>
-      <div
-        className="library-empty"
+      <Empty
+        className="library-empty py-10 text-muted-foreground [overflow-wrap:anywhere]"
         hidden={Boolean(items.length || library?.status || !library)}
       >
-        <Film className="empty-icon" />
-        <p className="library-empty-title">{model.text("No recordings yet")}</p>
-        <p className="library-empty-detail">
+        <EmptyHeader className="max-w-full">
+        <EmptyMedia><Film className="size-[38px]" /></EmptyMedia>
+        <EmptyTitle className="library-empty-title text-base">{model.text("No recordings yet")}</EmptyTitle>
+        <EmptyDescription className="library-empty-detail">
           {translate(
             "Recordings saved to {path} appear here.",
             model.view?.language,
             { path: library?.folder ?? "" },
           )}
-        </p>
-      </div>
+        </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
       <div className="library-days">
         {days.map((day) => (
           <section className="library-day" key={day}>
@@ -335,43 +363,49 @@ export function RenameDialog() {
           }
         }}
       >
-        <DialogTitle id="clip-rename-label">
-          {translate("New name for {title}", model.view?.language, {
-            title: item?.title ?? "",
-          })}
-        </DialogTitle>
-        <DialogDescription className="sr-only">
-          {model.text("Rename…")}
-        </DialogDescription>
-        <Label className="sr-only" htmlFor="clip-rename-input">
-          {model.text("Rename")}
-        </Label>
-        <span className="clip-rename-field">
-          <Input
-            id="clip-rename-input"
-            value={rename?.name ?? ""}
-            spellCheck={false}
-            autoComplete="off"
-            aria-describedby="clip-rename-error"
-            aria-invalid={Boolean(rename?.error)}
-            onInput={(event) => model.renameDraft(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void model.submitRename();
-              }
-            }}
-          />
-          <span className="clip-rename-extension">{rename?.extension}</span>
-        </span>
-        <p
-          id="clip-rename-error"
-          className="clip-rename-error"
-          hidden={!rename?.error}
-        >
-          {rename?.error}
-        </p>
-        <div className="clip-rename-buttons">
+        <DialogHeader>
+          <DialogTitle id="clip-rename-label">
+            {translate("New name for {title}", model.view?.language, {
+              title: item?.title ?? "",
+            })}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            {model.text("Rename…")}
+          </DialogDescription>
+        </DialogHeader>
+        <Field>
+          <FieldLabel className="sr-only" htmlFor="clip-rename-input">
+            {model.text("Rename")}
+          </FieldLabel>
+          <InputGroup className="clip-rename-field bg-card">
+            <InputGroupInput
+              id="clip-rename-input"
+              value={rename?.name ?? ""}
+              spellCheck={false}
+              autoComplete="off"
+              aria-describedby={rename?.error ? "clip-rename-error" : undefined}
+              aria-invalid={Boolean(rename?.error)}
+              onInput={(event) => model.renameDraft(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void model.submitRename();
+                }
+              }}
+            />
+            <InputGroupAddon align="inline-end">
+              <InputGroupText className="clip-rename-extension">{rename?.extension}</InputGroupText>
+            </InputGroupAddon>
+          </InputGroup>
+          <FieldError role={undefined}
+            id="clip-rename-error"
+            className="clip-rename-error"
+            hidden={!rename?.error}
+          >
+            {rename?.error}
+          </FieldError>
+        </Field>
+        <DialogFooter className="clip-rename-buttons">
           <Button
             id="clip-rename-cancel"
             variant="outline"
@@ -386,7 +420,7 @@ export function RenameDialog() {
           >
             {model.text("Rename")}
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -450,28 +484,30 @@ export function PlayerDialog() {
             fullScreen={() => void model.playFullScreen()}
             error={model.playerError}
             trailing={
-              <Button
-                variant="media"
-                size="icon-media"
-                id="player-fullscreen"
-                aria-label={model.text("Full screen")}
-                title={model.text("Full screen")}
-                onClick={() => void model.playFullScreen()}
-              >
-                <Maximize />
-              </Button>
+              <ControlTooltip label={model.text("Full screen")}>
+                <Button
+                  variant="media"
+                  size="icon-media"
+                  id="player-fullscreen"
+                  aria-label={model.text("Full screen")}
+                  onClick={() => void model.playFullScreen()}
+                >
+                  <Maximize />
+                </Button>
+              </ControlTooltip>
             }
             close={
-              <Button
-                variant="media"
-                size="icon-media"
-                id="player-close"
-                aria-label={model.text("Close")}
-                title={model.text("Close")}
-                onClick={() => model.closePlayer()}
-              >
-                <X />
-              </Button>
+              <ControlTooltip label={model.text("Close")}>
+                <Button
+                  variant="media"
+                  size="icon-media"
+                  id="player-close"
+                  aria-label={model.text("Close")}
+                  onClick={() => model.closePlayer()}
+                >
+                  <X />
+                </Button>
+              </ControlTooltip>
             }
           />
         )}

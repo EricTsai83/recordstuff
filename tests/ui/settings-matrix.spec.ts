@@ -134,8 +134,8 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       expect.soft(closed, `S031 ${lang}/${scheme}/${size}/player: Close closes it`).toBe(true);
       if (!closed) await page.locator("#player-close").click();
       // The card's file actions: a click on its ⋯ button, then a right-click on the card.
-      const menuState = (): Promise<{ open: boolean; items: string[]; fits: boolean; focused: string; expanded: string | null }> => read(page, `(() => {
-        const m = document.getElementById("clip-menu"), r = m?.getBoundingClientRect();
+      const menuState = (id = "clip-menu"): Promise<{ open: boolean; items: string[]; fits: boolean; focused: string; expanded: string | null }> => read(page, `(() => {
+        const m = document.getElementById("${id}"), r = m?.getBoundingClientRect();
         return { open: Boolean(m?.hasAttribute("data-open")), items: m ? [...m.querySelectorAll("[role=menuitem]")].map(i => i.textContent) : [],
           fits: Boolean(r && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight), focused: document.activeElement?.id ?? "",
           expanded: document.querySelector(".clip-more").getAttribute("aria-expanded") }; })()`);
@@ -172,9 +172,10 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       await page.waitForTimeout(100);
       const escaped = await menuState();
       await page.mouse.click(card.x, card.y, { button: "right" });
-      await until(page, `document.getElementById("clip-menu")?.hasAttribute("data-open")`, 2000);
-      const fromRightClick = await menuState();
-      await read(page, `document.getElementById("clip-menu").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+      await expect(page.locator("#clip-context-menu")).toBeVisible();
+      const fromRightClick = await menuState("clip-context-menu");
+      await page.keyboard.press("Escape");
+      await expect(page.locator("#clip-context-menu")).toBeHidden();
       const expectedItems = [translate("Show in Finder", lang), translate("Open", lang), translate("Rename…", lang), translate("Move to Trash", lang)];
       expect.soft(fromButton.open && JSON.stringify(fromButton.items) === JSON.stringify(expectedItems) && fromButton.fits
         && (fromButton.focused === "clip-menu" || fromButton.focused.startsWith("clip-menu-") || fromButton.focused.endsWith("-more")) && fromButton.expanded === "true"

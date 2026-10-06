@@ -40,7 +40,7 @@ it("reads out only news, as sentences of the panel's language, and keeps focus w
   document.getElementById("tab-general")!.click();
   const feedback = document.getElementById("feedback")!;
   // A radio group is named through aria-labelledby; a <label for> may only point at a labelable control.
-  expect(document.getElementById("setting-language-label")!.tagName).toBe("SPAN");
+  expect(document.getElementById("setting-language-label")!.tagName).not.toBe("LABEL");
   expect(document.getElementById("setting-language")!.getAttribute("aria-labelledby")).toBe("setting-language-label");
   expect(document.getElementById("setting-updateChecks-label")!.tagName).toBe("LABEL");
 

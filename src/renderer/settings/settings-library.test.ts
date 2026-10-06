@@ -45,33 +45,8 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   const first = document.getElementById("clip-a")!;
   expect([first.querySelector("img")!.getAttribute("src"), first.querySelector(".clip-meta")!.textContent, first.querySelector("button")!.getAttribute("aria-label")])
     .toEqual(["recordstuff-media://thumb/a?v=1", "2:02 PM · 180 MB", "Play Standup, Today, 2:02 PM, 1:23, 180 MB"]);
-  // Titled by its name (2026-10-06); its tooltip says what the card can do, not the name again.
-  expect([first.querySelector(".clip-title")!.textContent, first.getAttribute("title")]).toEqual(["Standup", "Drag into another app to share."]);
-  // Only a name cut short shows whole over itself: taller than its two lines in the grid, wider than its line in the list.
-  const name = first.querySelector<HTMLElement>(".clip-title")!;
-  const size = (scrollHeight: number, clientHeight: number, scrollWidth = 100, clientWidth = 100): void => {
-    for (const [key, value] of Object.entries({ scrollHeight, clientHeight, scrollWidth, clientWidth })) Object.defineProperty(name, key, { value, configurable: true });
-  };
-  size(36, 36);
-  name.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-  expect(name.hasAttribute("title")).toBe(false);
-  size(54, 36);
-  name.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-  expect(name.getAttribute("title")).toBe("Standup");
-  size(18, 18, 240, 180);
-  name.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-  expect(name.getAttribute("title")).toBe("Standup");
-  // The window resized while the pointer stays on the name: the next move over it says so, without another entry.
-  size(18, 18);
-  name.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
-  expect(name.hasAttribute("title")).toBe(false);
-  size(54, 36);
-  name.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
-  expect(name.getAttribute("title")).toBe("Standup");
-  size(18, 18);
-  name.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-  expect(name.hasAttribute("title")).toBe(false);
-  for (const key of ["scrollHeight", "clientHeight", "scrollWidth", "clientWidth"]) delete (name as unknown as Record<string, unknown>)[key];
+  expect(first.querySelector(".clip-title")!.textContent).toBe("Standup");
+  // Pointer/focus and truncation hints are exercised with real layout in components.spec.ts.
   // The length is on the thumbnail, so the line under it gives the size alone.
   expect(first.querySelector(".clip-duration")!.textContent).toBe("1:23");
 
@@ -233,7 +208,7 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   const more = document.getElementById("clip-a-more") as HTMLButtonElement;
   expect([more.getAttribute("aria-label"), more.getAttribute("aria-haspopup"), more.getAttribute("aria-expanded")]).toEqual(["More actions for Standup", "menu", "false"]);
   // Its tooltip says what it does, not the card's own about dragging.
-  expect(more.title).toBe("More actions for Standup");
+  expect(more.hasAttribute("title")).toBe(false);
   // Before any menu exists, no button points at one.
   expect([document.getElementById("clip-menu"), more.hasAttribute("aria-controls")]).toEqual([null, false]);
   await openMenu(more);
@@ -253,12 +228,15 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   expect([Boolean(document.getElementById("clip-menu")?.hasAttribute("data-open")), more.getAttribute("aria-expanded"), document.activeElement?.id, close.mock.calls.length]).toEqual([false, "false", "clip-a-more", 0]);
   expect(more.hasAttribute("aria-controls")).toBe(false);
-  // A right-click on the card opens the same menu; its choice reaches main as the file's action.
+  // Switching the same card from its button menu to its context menu redraws the memoized card.
+  await openMenu(more);
+  // A right-click on the card offers the same actions; its choice reaches main.
   first.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 50 }));
-  expect(Boolean(document.getElementById("clip-menu")?.hasAttribute("data-open"))).toBe(true);
-  click(document.getElementById("clip-menu-open")!);
+  await vi.waitFor(() => expect(Boolean(document.getElementById("clip-context-menu")?.hasAttribute("data-open"))).toBe(true));
+  expect(more.getAttribute("aria-expanded")).toBe("false");
+  click(document.getElementById("clip-context-menu-open")!);
   await vi.waitFor(() => expect(choose).toHaveBeenLastCalledWith("recordingFile:a", "open"));
-  expect(Boolean(document.getElementById("clip-menu")?.hasAttribute("data-open"))).toBe(false);
+  expect(Boolean(document.getElementById("clip-context-menu")?.hasAttribute("data-open"))).toBe(false);
   await openMenu(more);
   click(document.getElementById("clip-menu-reveal")!);
   await vi.waitFor(() => expect(choose).toHaveBeenLastCalledWith("recordingFile:a", "reveal"));
@@ -268,7 +246,8 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   document.getElementById("settings-panel")!.getBoundingClientRect = () => DOMRect.fromRect({ x: 0, y: 100, width: 500, height: 400 });
   first.getBoundingClientRect = () => DOMRect.fromRect({ x: 0, y: -300, width: 200, height: 150 });
   first.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 50 }));
-  expect([Boolean(document.getElementById("clip-menu")?.hasAttribute("data-open")), more.getAttribute("aria-expanded"), menu.contains(document.activeElement)]).toEqual([false, "false", false]);
+  await vi.waitFor(() => expect(Boolean(document.getElementById("clip-context-menu")?.hasAttribute("data-open"))).toBe(false));
+  expect([more.getAttribute("aria-expanded"), Boolean(document.activeElement?.closest(".clip-menu"))]).toEqual(["false", false]);
   // Partly above the window, the card keeps its menu, which stays inside the window (review pass 2, P2-1).
   first.getBoundingClientRect = () => DOMRect.fromRect({ x: 0, y: 60, width: 200, height: 150 });
   more.getBoundingClientRect = () => DOMRect.fromRect({ x: 160, y: -40, width: 28, height: 28 });
