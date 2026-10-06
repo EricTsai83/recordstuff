@@ -1,5 +1,5 @@
 name: Check
-# `pnpm check` on every push to main and every pull request, on the same
+# `pnpm check` and `pnpm test:ui` on every push to main and every pull request, on the same
 # runner images and Node/pnpm versions the release builds use, so a commit
 # that breaks the types, the tests or the build on either platform is caught
 # before a tag is pushed rather than by the release job. The Windows job also
@@ -53,6 +53,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - run: pnpm test:ui
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: ui-failures-${{ runner.os }}
+          path: |
+            playwright-report/
+            test-results/ui/
+          if-no-files-found: ignore
+          retention-days: 7
   check-windows:
     runs-on: windows-2025
     timeout-minutes: 30
@@ -71,6 +81,16 @@ jobs:
       - name: Install Electron runtime explicitly (Electron 44 has no postinstall)
         run: node node_modules/electron/install.js
       - run: pnpm check
+      - run: pnpm test:ui
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: ui-failures-${{ runner.os }}
+          path: |
+            playwright-report/
+            test-results/ui/
+          if-no-files-found: ignore
+          retention-days: 7
       - run: pnpm dist:win
       - name: Install, inspect and uninstall the installer on this runner
         run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts windows-smoke dist

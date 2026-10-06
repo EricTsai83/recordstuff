@@ -15,3 +15,7 @@ docs/verification/measurements/
 *.cer
 .env
 .env.*
+
+# Playwright run artifacts
+playwright-report/
+test-results/

@@ -35,19 +35,23 @@
 
 | 位置 | 職責 |
 | --- | --- |
-| `src/main/` | App 生命週期、錄影協調、檔案寫入、權限、設定、選單列與 log |
-| `src/renderer/` | 隱藏的擷取頁面、媒體串流與編碼 |
+| `src/main/` | `index.ts` 組裝整個 App；每個模組一個資料夾：`recording/`、`display/`、`permission/`、`library/`、`shortcuts/`、`app/`、`settings/`、`menus/`、`actions/`，共用工具放在 `lib/` |
+| `src/renderer/` | 每個頁面一個資料夾（`capture/`、`settings/`、`countdown/`、`video/`）、共用的 `player/`，以及 `components/ui/` 的 shadcn/ui primitive |
 | `src/preload/` | MessagePort 交接 |
 | `src/shared/` | 狀態、訊息協定、錄影品質與翻譯 |
-| `scripts/` | 建置、簽署與錄影驗證工具 |
+| `scripts/` | 建置、簽署與錄影驗證工具：入口檔在頂層，共用程式碼在 `lib/runner/`、`lib/acceptance/`、`lib/verification/`、`lib/audio/` 與 `lib/release/` |
 | `docs/system-design/` | 架構與模組文件 |
 | `website/` | Astro 網站，獨立套件，由根目錄 `pnpm site:*` 指令代為執行 |
 
-樹狀結構的其餘部分——打包輸入、文件、產生物，以及維持結構的設定——見[目錄結構](system-design/repository.md)。
+樹狀結構的其餘部分——打包輸入、文件、產生物，以及維持結構的設定——見[目錄結構](system-design/repository.md)。哪些模組資料夾可以匯入哪些，見[模組邊界](system-design/repository.md#模組邊界)，並由 `pnpm test` 強制執行。
 
 讓修改聚焦於要解決的問題，並沿用周邊程式碼的慣例。測試以 `*.test.ts` 放在原始碼旁。 同時需要瀏覽器 DOM 與 Node API 的跨程序測試放在 `tests/`，由 `tsconfig.tests.json` 檢查。`pnpm typecheck` 分別檢查 main、renderer 與整合測試，保留 renderer 不含 Node 型別的邊界。行為改變時，新增或更新相關測試；修正 bug 時，盡可能補上能重現問題的回歸測試。
 
 App 文案位於 `src/shared/i18n.ts`。新增或修改文案時，同步更新英文與繁體中文項目，保持具名 placeholder 一致；編譯器會檢查每次呼叫都傳入各 placeholder 的值。修改已記載的行為或指令時，更新相關文件及既有翻譯，並確認連結能從各文件所在目錄正確解析。
+
+可見的 renderer 使用 React、Tailwind CSS 4 與 shadcn/ui 的 Base UI 版本。`components.json` 設定 `base-mira` registry、alias 與共用的 `src/renderer/ui.css` token。透過 `pnpm dlx shadcn@latest add <component>` 加入元件；產生的原始碼放在 `src/renderer/components/ui/`，並確認 Base UI 的 data attribute 與安裝版本一致。產生的 `cn` import 必須使用 `@/lib/utils`，不要加入無關的 `cn` 套件。`settings-app.tsx` 畫出已提交的 view；`settings-controller.ts` 負責 IPC、非同步請求所有權、焦點與宣告。`player.tsx` 由設定視窗與全螢幕視窗共用。倒數字型與播放覆蓋層是功能專用的 React 呈現；原生 OS 選單及隱藏的擷取 host 使用各自的平台 API。
+
+`pnpm test:ui` 以 Playwright 在獨立、離屏的 Electron fixture 載入正式 build 的 renderer 與 sandbox preload。先執行 `pnpm build`，或使用已包含一次 build 與 UI suite 的 `pnpm acceptance:regression`，不需要另外下載瀏覽器。這些測試驗證 DOM 互動與位置；原生輸入、擷取、播放及音效仍需既有驗收 runner。更換 primitive 時保留測試案例，改寫選取器及瀏覽器輸入序列，而非移除斷言。失敗 trace 與截圖寫入 `test-results/ui/`、`playwright-report/`。
 
 ## 驗證修改
 
@@ -61,7 +65,7 @@ App 文案位於 `src/shared/i18n.ts`。新增或修改文案時，同步更新�
 | 錄影行為 | `pnpm check`，再用新 `pnpm start:app` 產物執行[錄影 smoke 案例](acceptance.md)。`pnpm acceptance` 自動開始／停止／存檔／verify，播放另行觀察 |
 | 網站 | `pnpm site:check`；視覺修改檢視受影響頁面 |
 
-每次修改都執行 `git diff --check`。開發中可按需單獨執行 `pnpm typecheck`、`pnpm test` 或 `pnpm build`；最終版本已被成功組合指令涵蓋的檢查不重跑，相同輸入也不建置兩次（[選定一次並對每個版本驗證一次](testing.md#選定一次並對每個版本驗證一次)）。每次推送到 main，以及每個改動不只是文件或網站的 pull request，GitHub Actions 都會在 macOS 與 Windows runner 上執行 `pnpm check`（[check.yml](../../.github/workflows/check.yml)），Windows job 另外建置未簽章的安裝檔並安裝、解除安裝一次。這會在打 release tag 之前先攔下型別、測試或建置的錯誤，但不證明擷取可用。網站由 [website.yml](../../.github/workflows/website.yml) 負責：改動 `website/**`、`scripts/lib/release-manifest*.mts`、`src/shared/version.ts` 或該 workflow 的 pull request，會在不使用 secrets 的情況下執行網站測試、`astro check`、離線 manifest 檢查、離線建置與離線連結檢查。線上 manifest 驗證與外部連結只由 `pnpm site:check` 以及合併後 Vercel 的正式建置檢查。
+每次修改都執行 `git diff --check`。開發中可按需單獨執行 `pnpm typecheck`、`pnpm test` 或 `pnpm build`；最終版本已被成功組合指令涵蓋的檢查不重跑，相同輸入也不建置兩次（[選定一次並對每個版本驗證一次](testing.md#選定一次並對每個版本驗證一次)）。每次推送到 main，以及每個改動不只是文件或網站的 pull request，GitHub Actions 都會在 macOS 與 Windows runner 上執行 `pnpm check` 與 `pnpm test:ui`（[check.yml](../../.github/workflows/check.yml)），Windows job 另外建置未簽章的安裝檔並安裝、解除安裝一次。這會在打 release tag 之前先攔下型別、測試或建置的錯誤，但不證明擷取可用。網站由 [website.yml](../../.github/workflows/website.yml) 負責：改動 `website/**`、`scripts/lib/release/release-manifest*.mts`、`src/shared/version.ts` 或該 workflow 的 pull request，會在不使用 secrets 的情況下執行網站測試、`astro check`、離線 manifest 檢查、離線建置與離線連結檢查。線上 manifest 驗證與外部連結只由 `pnpm site:check` 以及合併後 Vercel 的正式建置檢查。
 
 [驗收指南](acceptance.md)定義共用案例、收尾及報告；[工具指南](system-design/tooling.md)說明簽章、FFmpeg／ffprobe、媒體分析與專用 runner。完整 App 驗收保存錄影、還原設定並確認退出後，讓受測 App 保持關閉。開發期間已授權按需停止錄影、退出、重啟或重建 RecordStuff，不需另行確認。
 

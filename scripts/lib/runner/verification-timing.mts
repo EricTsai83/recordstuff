@@ -68,12 +68,12 @@ export const RECIPES: readonly Recipe[] = [
   {
     name: "settings", purpose: "Settings layout, controls, persistence, window lifecycle or settings IPC/preload",
     replaces: "pnpm acceptance:regression",
-    phases: [...CHECK, runner("settings fixture", "acceptance-settings.mts"), runner("shortcut integration", "acceptance-shortcut.mts")],
+    phases: [...CHECK, pnpm("UI interactions", "test:ui"), runner("settings fixture", "acceptance-settings.mts"), runner("shortcut integration", "acceptance-shortcut.mts")],
   },
   {
     name: "shortcut-registration", purpose: "Global shortcut registration or an Electron upgrade",
     replaces: "pnpm acceptance:regression && pnpm acceptance:shortcut-layout (which builds again)",
-    phases: [...CHECK, runner("settings fixture", "acceptance-settings.mts"), runner("shortcut integration", "acceptance-shortcut.mts"),
+    phases: [...CHECK, pnpm("UI interactions", "test:ui"), runner("settings fixture", "acceptance-settings.mts"), runner("shortcut integration", "acceptance-shortcut.mts"),
       runner("keyboard layout", "acceptance-shortcut-layout.mts")],
   },
   {

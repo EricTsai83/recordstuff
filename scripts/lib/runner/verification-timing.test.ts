@@ -159,7 +159,7 @@ describe("verification summary", () => {
 });
 
 describe("recipes", () => {
-  const root = path.resolve(import.meta.dirname, "../..");
+  const root = path.resolve(import.meta.dirname, "../../..");
   const scripts = (JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { scripts: Record<string, string> }).scripts;
   const runnerScripts = (name: string): string[] => findRecipe(name)!.phases.flatMap(phase => phase.args.filter(arg => arg.startsWith("scripts/")));
   const builds = (name: string): number => findRecipe(name)!.phases
@@ -171,8 +171,8 @@ describe("recipes", () => {
 
   it("cover the composites they replace", () => {
     expect(scripts.check).toBe("pnpm typecheck && pnpm test && pnpm build");
-    // acceptance:regression = check, then the settings runner (through its package script) and the shortcut runner.
-    expect(scripts["acceptance:regression"]).toContain("pnpm check && pnpm acceptance:settings && ");
+    // acceptance:regression = check, Playwright UI, settings fixture and shortcut integration.
+    expect(scripts["acceptance:regression"]).toContain("pnpm check && pnpm test:ui && pnpm acceptance:settings && ");
     expect(scripts["acceptance:regression"]).toContain("scripts/acceptance-shortcut.mts");
     expect(scripts["acceptance:settings"]).toContain("scripts/acceptance-settings.mts");
     expect(runnerScripts("settings")).toEqual(["scripts/acceptance-settings.mts", "scripts/acceptance-shortcut.mts"]);
@@ -182,7 +182,7 @@ describe("recipes", () => {
     expect(scripts.acceptance).toContain("scripts/acceptance-hotkey.mts");
     expect(runnerScripts("recording")).toEqual(["scripts/start-app.mjs", "scripts/acceptance-hotkey.mts"]);
     for (const name of ["settings", "shortcut-registration"]) {
-      expect(findRecipe(name)!.phases.slice(0, 3).map(phase => phase.args[0])).toEqual(["typecheck", "test", "build"]);
+      expect(findRecipe(name)!.phases.slice(0, 4).map(phase => phase.args[0])).toEqual(["typecheck", "test", "build", "test:ui"]);
     }
     expect(findRecipe("recording")!.phases.slice(0, 2).map(phase => phase.args[0])).toEqual(["typecheck", "test"]);
   });
