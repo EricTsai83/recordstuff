@@ -51,7 +51,7 @@ export const Clip = memo(function Clip({
   return (
     <Card
       id={`clip-${item.id}`}
-      className={`clip${arrived ? " arrived" : ""}`}
+      className={`clip gap-0 p-0${arrived ? " arrived" : ""}`}
       data-id={item.id}
       draggable
       title={t("Drag into another app to share.")}
@@ -70,7 +70,8 @@ export const Clip = memo(function Clip({
         variant="ghost"
         size="clip"
         id={`clip-${item.id}-open`}
-        className="clip-open"
+        // The list layout lays a card out in one line, leaving room on the right for its menu button.
+        className="clip-open in-data-[layout=list]:flex-row in-data-[layout=list]:items-center in-data-[layout=list]:pr-10"
         aria-label={translate(
           "Play {title}",
           language === "zh-TW" ? "zh-TW" : "en",
@@ -90,7 +91,7 @@ export const Clip = memo(function Clip({
         onClick={() => model.openPlayer(item)}
       >
         <span className={`clip-thumb${failed ? " no-thumb" : ""}`}>
-          <Film className="clip-fallback" />
+          <Film className="clip-fallback size-9" />
           <img
             alt=""
             src={item.thumbnail}
@@ -103,7 +104,7 @@ export const Clip = memo(function Clip({
             {item.duration}
           </span>
           <span className="clip-play" aria-hidden="true">
-            <Play className="play-icon" />
+            <Play className="play-icon size-[26px]" />
           </span>
         </span>
         <span className="clip-text">
@@ -401,7 +402,8 @@ export function PlayerDialog() {
     >
       <DialogContent
         keepMounted
-        className="player"
+        // The player's stage: as wide as the window allows at 16:9, black in both themes, below the title bar on macOS.
+        className="player aspect-video w-[min(860px,calc(100vw-48px),calc((100dvh-72px)*16/9))] max-w-none gap-0 overflow-hidden bg-media p-0 text-media-foreground sm:max-w-none darwin:top-[calc(50%+24px)]"
         data-id={item?.id}
         showCloseButton={false}
         initialFocus={() => model.playerVideo}

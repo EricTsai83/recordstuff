@@ -34,7 +34,7 @@ export function ZoomToast() {
   if (!notice) return null;
   const { zoom } = notice;
   return (
-    <Card ref={card} id="zoom-toast" className="zoom-toast"
+    <Card ref={card} id="zoom-toast" className="zoom-toast gap-2.5 bg-popover p-3 shadow-toast ring-0"
       onMouseOver={() => setPointer(true)}
       onMouseOut={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPointer(false); }}
       onFocus={() => setFocused(true)}

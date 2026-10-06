@@ -48,10 +48,15 @@ export function Action({
   group,
   choice,
   id = `setting-${group.id}-${choice.id}`,
+  wrap,
+  className,
 }: {
   group: SettingsGroup;
   choice: SettingsChoice;
   id?: string;
+  /** A row's button wraps its label rather than run past the card, which would hide its end (plan 067). */
+  wrap?: boolean;
+  className?: string | undefined;
 }) {
   const busy = Boolean(model.saving) || choice.busy === true;
   return (
@@ -59,6 +64,8 @@ export function Action({
       id={id}
       data-action={choice.id}
       variant={group.id === "localData" ? "destructive" : choice.id === "quit" ? "ghost" : "outline"}
+      wrap={wrap}
+      className={className}
       disabled={!group.enabled || !choice.enabled}
       aria-disabled={busy || !group.enabled || !choice.enabled}
       aria-label={group.id === "about" ? choice.label : undefined}
@@ -277,7 +284,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
           {group.kind === "actions" || group.control === "segmented" ? (
             <span
               id={`${id}-label`}
-              className="group-label"
+              className="group-label text-xs leading-[1.35]"
               hidden={!group.label}
             >
               {group.label}
@@ -285,7 +292,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
           ) : (
             <Label
               id={`${id}-label`}
-              className="group-label"
+              className="group-label text-xs leading-[1.35]"
               htmlFor={id}
               hidden={!group.label}
             >
@@ -301,7 +308,18 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
         >
           {group.kind === "actions" ? (
             actions.map((choice) => (
-              <Action key={choice.id} group={group} choice={choice} />
+              <Action
+                key={choice.id}
+                group={group}
+                choice={choice}
+                wrap
+                // The sidebar's own Quit stands in for this one where the sidebar shows.
+                className={
+                  group.id === "about" && choice.id === "quit"
+                    ? "wide:hidden"
+                    : undefined
+                }
+              />
             ))
           ) : group.control === "switch" ? (
             <Switch
@@ -376,6 +394,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
           ) : (
             <NativeSelect
               id={id}
+              className="max-w-[min(280px,100%)]"
               value={value}
               disabled={!group.enabled || busy}
               {...desc}
@@ -498,7 +517,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
       {group.kind !== "actions" && actions.length > 0 && (
         <div className="row-actions">
           {actions.map((choice) => (
-            <Action key={choice.id} group={group} choice={choice} />
+            <Action key={choice.id} group={group} choice={choice} wrap />
           ))}
         </div>
       )}
@@ -533,8 +552,9 @@ export function Preferences() {
       >
         {section.groups[0]!.sectionHeading}
       </h2>
-      <Card>
-        <CardContent className="inset-list">
+      {/* The rows' own 12px plus the card's 4px puts the first and last rows as far from its edge as its sides (14px). */}
+      <Card size="xs">
+        <CardContent className="inset-list px-3.5">
           {section.groups.map((group) => (
             <SettingRow key={group.id} group={group} />
           ))}

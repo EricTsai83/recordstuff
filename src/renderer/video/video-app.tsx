@@ -10,6 +10,7 @@ import {
 } from "../../shared/video-player";
 import { browserPlatform, isCloseChord } from "../lib/shortcut-capture";
 import { playbackOf } from "../player/player-state";
+import { useDarkClass } from "../lib/color-scheme";
 
 declare global {
   interface Window {
@@ -30,6 +31,7 @@ export function VideoApp() {
       value = raw ? Number(raw) : NaN;
     return Number.isFinite(value) ? value : fallback;
   };
+  useDarkClass();
   const start = useRef<PlaybackState>({
     time: Math.max(0, number(VIDEO_QUERY.time, 0)),
     playing: query.get(VIDEO_QUERY.playing) === "1",
@@ -123,10 +125,11 @@ export function VideoApp() {
       onMetadata={metadata}
       onDoubleClick={leave}
       fullScreen={leave}
+      large
       trailing={
         <Button
           variant="media"
-          size="icon"
+          size="icon-xl"
           id="exit"
           aria-label={label}
           title={label}

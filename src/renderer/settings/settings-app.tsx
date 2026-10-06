@@ -12,6 +12,7 @@ import { Action, Preferences } from "./tabs/preferences";
 import { Failures } from "./tabs/failures";
 import { Library, RenameDialog, PlayerDialog } from "./tabs/library";
 import { ToastHost } from "./undo-toast";
+import { useDarkClass } from "../lib/color-scheme";
 
 const tabIcons = {
   library: Film,
@@ -26,7 +27,7 @@ function Status() {
   return (
     <Card
       id="status"
-      className="status"
+      className="status gap-2.5 p-3"
       hidden={!status || status.tone === "ready"}
       data-tone={status?.tone}
     >
@@ -51,6 +52,7 @@ function Status() {
         <Button
           id="status-secondary"
           variant="link"
+          className="h-auto max-w-full justify-start px-0 text-left whitespace-normal"
           hidden={!status?.secondaryAction}
           data-action={status?.secondaryAction?.id}
           aria-disabled={Boolean(model.saving)}
@@ -90,15 +92,7 @@ export function SettingsApp() {
     panel = useRef<HTMLDivElement>(null),
     [overflow, setOverflow] = useState(false);
   useEffect(model.start, []);
-  useLayoutEffect(() => {
-    const query = matchMedia("(prefers-color-scheme: dark)"),
-      apply = (): void => {
-        document.documentElement.classList.toggle("dark", query.matches);
-      };
-    apply();
-    query.addEventListener("change", apply);
-    return () => query.removeEventListener("change", apply);
-  }, []);
+  useDarkClass();
   useEffect(() => {
     const query = matchMedia("(min-width: 600px)"),
       change = (): void => setVertical(query.matches);
@@ -137,7 +131,7 @@ export function SettingsApp() {
           <Tabs
             value={model.selectedTab}
             orientation={vertical ? "vertical" : "horizontal"}
-            className="settings-tabs"
+            className="settings-tabs h-full min-h-0 gap-3.5 wide:grid wide:grid-cols-[170px_minmax(0,1fr)] wide:grid-rows-[minmax(0,1fr)_auto] wide:gap-x-[22px] narrow:flex-col"
             onValueChange={(value) => {
               if (
                 value === "library" ||
@@ -151,7 +145,7 @@ export function SettingsApp() {
             <TabsList
               activateOnFocus
               aria-orientation={vertical ? "vertical" : "horizontal"}
-              className="tabs"
+              className="tabs flex-none items-stretch wide:col-start-1 wide:row-start-1 wide:w-[170px] wide:flex-col wide:self-start narrow:w-full"
               variant="line"
               aria-label={current?.title ?? "RecordStuff"}
               onKeyDown={(event) => {
@@ -191,15 +185,22 @@ export function SettingsApp() {
                     aria-label={tab.accessibleLabel ?? tab.label}
                     // A narrow window shows only the selected tab's name; the others name themselves on hover.
                     title={vertical ? undefined : tab.label}
+                    // Every tab stays in the window, even zoomed in at the smallest size: the icon-only tabs keep their
+                    // width and the selected tab's name gives way, with its full name on hover (plan 067).
+                    className="min-h-[34px] justify-start gap-2.5 narrow:justify-center narrow:px-2 narrow:min-w-9 narrow:aria-selected:min-w-0 narrow:aria-selected:flex-auto"
                   >
-                    <Icon className="tab-icon" />
+                    <Icon className="tab-icon size-[18px]" />
                     <span className="tab-name">
                       {count ? count[1] : tab.label}
                     </span>
                     {count && (
                       <>
                         <span className="sr-only">{count[2]}</span>
-                        <Badge className="tab-badge" variant="secondary">
+                        <Badge
+                          className="tab-badge ml-auto tabular-nums"
+                          variant="secondary"
+                          size="md"
+                        >
                           {count[3]}
                         </Badge>
                         <span className="sr-only">{count[4]}</span>
@@ -243,7 +244,12 @@ export function SettingsApp() {
         </form>
         <footer id="sidebar-about" className="sidebar-about" hidden={!quit}>
           {about && quit && (
-            <Action group={about} choice={quit} id="sidebar-about-quit" />
+            <Action
+              group={about}
+              choice={quit}
+              id="sidebar-about-quit"
+              className="w-full justify-start"
+            />
           )}
           <p
             className="sidebar-error"

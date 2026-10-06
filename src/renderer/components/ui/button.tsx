@@ -1,3 +1,8 @@
+/**
+ * App changes from the shadcn source (plan 069): the `media` variant (white controls over the player's black stage),
+ * the `clip` size (a library card's whole face is one button), the `icon-xl` size (the full-screen page's controls)
+ * and the `wrap` variant (a row's button wraps its label instead of running past the card, plan 067).
+ */
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
@@ -8,7 +13,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         media:
-          "rounded-full border-transparent bg-transparent text-white hover:bg-white/15 focus-visible:ring-white",
+          "rounded-full border-transparent bg-transparent text-media-foreground hover:bg-media-foreground/15 focus-visible:ring-media-foreground",
         default: "bg-primary text-primary-foreground hover:bg-primary/80",
         outline:
           "border-border hover:bg-input/50 hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:bg-input/30",
@@ -31,11 +36,17 @@ const buttonVariants = cva(
         "icon-xs": "size-5 rounded-sm [&_svg:not([class*='size-'])]:size-2.5",
         "icon-sm": "size-6 [&_svg:not([class*='size-'])]:size-3",
         "icon-lg": "size-8 [&_svg:not([class*='size-'])]:size-4",
+        "icon-xl": "size-13 [&_svg:not([class*='size-'])]:size-7",
+      },
+      wrap: {
+        true: "h-auto min-h-7 max-w-full text-left whitespace-normal",
+        false: "",
       },
     },
     defaultVariants: {
       variant: "default",
       size: "default",
+      wrap: false,
     },
   },
 );
@@ -44,12 +55,13 @@ function Button({
   className,
   variant = "default",
   size = "default",
+  wrap = false,
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
   return (
     <ButtonPrimitive
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(buttonVariants({ variant, size, wrap, className }))}
       {...props}
     />
   );

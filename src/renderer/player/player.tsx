@@ -37,6 +37,8 @@ interface PlayerProps {
   onDoubleClick: () => void;
   fullScreen: () => void;
   onMetadata?: (video: HTMLVideoElement) => void;
+  /** The full-screen page's larger controls; `trailing` sizes its own button to match. */
+  large?: boolean;
 }
 interface MediaView {
   playing: boolean;
@@ -66,6 +68,7 @@ export function Player({
   onDoubleClick,
   fullScreen,
   onMetadata,
+  large = false,
 }: PlayerProps) {
   const video = useRef<HTMLVideoElement>(null),
     root = useRef<HTMLDivElement>(null),
@@ -370,6 +373,8 @@ export function Player({
         <Slider
           id={`${id}-seek`}
           className="pc-seek"
+          variant="media"
+          growOnHover
           value={[media.time]}
           min={0}
           max={media.duration || 1}
@@ -403,7 +408,7 @@ export function Player({
         <div className="pc-row">
           <Button
             variant="media"
-            size="icon"
+            size={large ? "icon-xl" : "icon"}
             id={`${id}-play`}
             aria-label={t(media.playing ? "Pause" : "Play")}
             title={t(media.playing ? "Pause" : "Play")}
@@ -412,10 +417,10 @@ export function Player({
           >
             {media.playing ? <Pause /> : <Play />}
           </Button>
-          <div className="pc-volume">
+          <div className="pc-volume group/volume">
             <Button
               variant="media"
-              size="icon"
+              size={large ? "icon-xl" : "icon"}
               id={`${id}-mute`}
               aria-label={t(silent ? "Unmute" : "Mute")}
               title={t(silent ? "Unmute" : "Mute")}
@@ -426,7 +431,8 @@ export function Player({
             </Button>
             <Slider
               id={`${id}-volume`}
-              className="pc-level"
+              className="pc-level data-[orientation=horizontal]:w-0 group-hover/volume:data-[orientation=horizontal]:w-[60px] group-focus-within/volume:data-[orientation=horizontal]:w-[60px]"
+              variant="media"
               thumbAlignment="center"
               min={0}
               max={1}

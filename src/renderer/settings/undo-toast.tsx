@@ -14,7 +14,7 @@ export function UndoToast() {
   return (
     <Card
       id="toast"
-      className="undo-toast"
+      className="undo-toast flex-row gap-3 px-4 py-3.5"
       data-kind={state?.kind}
       data-state={state?.open ? "open" : "closed"}
       hidden={!state?.visible}
@@ -37,7 +37,7 @@ export function UndoToast() {
         id="toast-close"
         variant="outline"
         size="icon-xs"
-        className="toast-close"
+        className="toast-close rounded-full"
         aria-label={model.text("Close")}
         onClick={model.dismissToast}
       >
@@ -61,7 +61,7 @@ export function UndoToast() {
         <span className="toast-action-label">
           {model.view?.library?.trashed?.undo ?? model.text("Undo")}
         </span>
-        <Kbd className="toast-key">
+        <Kbd className="toast-key" variant="inline" size="md">
           {model.platform() === "darwin" ? "⌘Z" : "Ctrl+Z"}
         </Kbd>
       </Button>
