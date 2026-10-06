@@ -4,6 +4,24 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 069 結案 — 2026-10-06
+
+Plan 069 依維護者要求，把 renderer 的樣式移到 shadcn 的三層，保留 067 定下的所有值，預期畫面完全不變（[分層](../system-design/desktop.md#設定視窗)）。改動前，`ui.css` 的每條功能規則都沒有 layer，因此會蓋過 primitive 的 utilities；移進 `@layer components` 後會輸給它們，所以凡是與 primitive 自身 utility 設定同一屬性的規則，都改成呼叫端的 utilities 或 primitive 的 variant。證據保存在本機的 `measurements/2026-10-06T15-31-12Z-shadcn-layers/`（`before`、`before-repeat`，以及 HEAD 上成對的 `run-a`／`run-a2` 與變更後的 `run-b`／`run-b2`）。
+
+- **Token。** `light-dark()` 配對改為數值相同的 `:root` 與 `.dark` 區塊；`card-`、`popover-`、`secondary-`、`accent-foreground` 各有自己的變數；29 個寫死的顏色改為 `--indicator`、`--brand`、`--brand-foreground`、`--media`、`--media-foreground`、`--media-scrim`、`--media-veil`、`--media-hover` 與 `--toast-shadow`。全螢幕頁原本從未設定 `.dark`、依賴 `light-dark()`，現在以設定頁的 hook（`lib/color-scheme.ts`）設定它。
+- **Primitive。** Button 的 `wrap` 與 `icon-xl`（全螢幕頁 52px 的控制項，經由 Player 的 `large`）、Card 的 `size="xs"`、Badge 與 Kbd 的尺寸及 Kbd 的 `inline`、Slider 的 `variant="media"` 與 `growOnHover`、Switch 與 Toggle 的強制色彩狀態，以及 NativeSelect 的省略號，取代了 `.section > [data-slot="card"]`、`.controls > [data-slot="button"]`、`.pc [data-slot="slider-*"]`、強制色彩下的 `[data-slot="switch*"]` 規則，以及 `.tab-badge`、`.toast-key` 與 `.pc-row button` 的覆寫。每個改過的檔案開頭都寫明與 shadcn 的差異。
+- **Feature。** 頁面版面放在 `@layer components`；`wide`、`narrow`、`compact`、`darwin` variant 精確承接原本的 media query。非作用中視窗的焦點隱藏與失敗紀錄內的焦點外框維持 unlayered，旁邊寫明理由。
+- **前後對照。** Gallery 每次執行並不完全相同（輸出資料夾路徑、檔名範例的時間、影片畫格、動畫與縮圖），因此以 HEAD worktree 與變更後的程式成對同時繪製。252 張中有 190 張至少有一組前後完全相同；其餘 62 張在遮掉同一份程式兩次執行間本來就不同的部分後，剩下的只有路徑中每輪不同的字母、播放器移動中的畫格與提示圈，以及一個 hover 轉場中的分頁圖示，而它在 HEAD 自己的兩次執行間也會變動。`measurements.json`（字級、對比、點擊區、overflow、截斷）在 252 張全部相同。
+- **護欄。** `tests/style-guard.test.ts` 在 token 以外出現顏色（CSS 值、Tailwind 色票與任意顏色 utility、原始碼中的顏色字串；允許 shadcn 的 `bg-black/80` overlay 與 `bg-white` 滑桿把手），或樣式表出現 `[data-slot]` selector 時失敗，`countdown.css` 豁免。植入 `color: #ef4444`、`.section > [data-slot="card"]` 與 `text-white` 都會讓它失敗；還原後通過。
+- **Review。** Codex GPT-6.1 Sol 一輪（約 2 分鐘），確認沒有視覺回歸；[1] 護欄放過 inline 的 `rgb(…)` 或具名顏色。已接受並以植入 inline 案例修正；該修正只改測試，沒有再經 review。
+
+### 驗證
+
+- 最終 App 原始碼上的 `pnpm acceptance:regression`：typecheck、131 個檔案 1,743 項測試、建置，背景套件 63/63，含 `settings-layout` U067-0…3，36 張 matrix 基準未變。Review 修正 [1] 只改測試，之後護欄 2/2 與 typecheck 通過。
+- 維護者回覆準備好之後的桌面回合：`pnpm acceptance:player` 4/4，沒有 console 錯誤，cleanup `groupGone`（`2026-10-06T16-04-16-461Z-player-acceptance`）；全螢幕截圖顯示畫面上的白色控制項與漸層。
+
+未執行：錄影、matrix、CPU、通知與網站檢查（只改樣式），以及 `settings-shortcut --observe`（視窗選項與左上角繪製未變）。圖片未涵蓋：只在 hover 出現的狀態（進度列變粗、音量滑桿、卡片的播放遮罩）、強制色彩與非作用中視窗，這些依賴搬移後的規則與背景套件。
+
 ## Plan 067 結案 — 2026-10-06
 
 Plan 067 依維護者要求盤點整個設定視窗（四個分頁、側欄、狀態卡、頁尾、說明、選單、改名、內嵌播放器、全螢幕、對話框與暫時回饋），修正截圖與量測確認的問題。多數問題來自同一個 token：`ui.css` 把根字級設為 13px，而 shadcn 元件以 rem 計算尺寸，因此每個控制項都以 9.75px 的文字畫在 22.75px 的框內，badge 只有 8px。根字級現在是 16px，`text-xs` 重新定義為 13px（[字級](../system-design/desktop.md#設定視窗)）。證據保存在本機的 `measurements/2026-10-06T14-22-44Z-settings-ui-audit/`（before、各次迭代、after、`compare.html`、`regression.log`）。

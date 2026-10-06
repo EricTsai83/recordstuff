@@ -31,7 +31,7 @@ This document describes where things live and why. [Architecture](architecture.m
 | Directory | Runs in | Contents |
 | --- | --- | --- |
 | `src/main/` | Main process | `index.ts`, the composition root that builds and wires every module, and one folder per module ([below](#main-process-modules)) |
-| `src/renderer/` | Renderer processes | The four HTML entries (`index.html` for the hidden capture host, `settings.html`, `countdown.html`, `video.html`) and the shared Tailwind tokens in `ui.css` at the top; one folder per page and the parts pages share ([below](#renderer-pages)) |
+| `src/renderer/` | Renderer processes | The four HTML entries (`index.html` for the hidden capture host, `settings.html`, `countdown.html`, `video.html`) and `ui.css`, the shared tokens and feature layout, at the top; one folder per page and the parts pages share ([below](#renderer-pages)) |
 | `src/preload/` | Preload, sandboxed | One file per renderer: `index.ts` hands the MessagePort to the capture host and exposes no API; `settings.ts` carries the settings panel's IPC contract; `countdown.ts` exposes the overlay value subscription and its unsubscribe; `video.ts` carries fullscreen ready/exit |
 | `src/shared/` | Both | State (`state.ts`), the MessagePort protocol, recording quality arithmetic, the settings-panel contract, display preferences, appearance, shortcut validation, and translations (`i18n.ts`) |
 
@@ -59,7 +59,7 @@ This document describes where things live and why. [Architecture](architecture.m
 | `countdown/` | The countdown digit and its own `countdown.css` |
 | `video/` | The full-screen video page |
 | `player/` | The playback controls the settings page and the video page share |
-| `components/ui/` | shadcn/ui primitives |
+| `components/ui/` | shadcn/ui primitives; an app difference is a variant or prop, noted at the top of the file |
 | `lib/` | Page-independent helpers: `cn` (`utils.ts`), React mounting and shortcut capture |
 | `testing/` | Input helpers for renderer tests only |
 
@@ -163,6 +163,7 @@ The structure is enforced by configuration, not convention alone:
 - A new renderer page: its own folder under `src/renderer/`, with its HTML entry at the top of `src/renderer/` and in `electron.vite.config.ts`.
 - Types or pure functions both processes need: `src/shared/`, importing neither Electron nor DOM.
 - Anything a user reads: `src/shared/i18n.ts`, in both languages.
+- A renderer style ([three layers](desktop.md#settings-window)): a colour is a token in `ui.css` (`:root` and `.dark`); a change to a primitive is a variant or prop in `components/ui/`; a page's own layout is utilities at the call site or a rule in `ui.css`'s `@layer components`. `tests/style-guard.test.ts` keeps colours and `[data-slot]` selectors out of the rest.
 - A tool you run by hand or from CI: `scripts/` as an entry point, with the logic in the `scripts/lib/` group it belongs to so it can be tested.
 - A durable conclusion about behavior: `docs/system-design/`, with the Traditional Chinese mirror updated in the same change.
 - Evidence from a run: summarize in `docs/verification/README.md`; the raw output stays in the ignored `measurements/` directory.

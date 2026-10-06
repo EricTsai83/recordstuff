@@ -31,7 +31,7 @@
 | 目錄 | 執行於 | 內容 |
 | --- | --- | --- |
 | `src/main/` | 主程序 | `index.ts`：建立並接起所有模組的 composition root；其餘每個模組一個資料夾（[見下方](#主程序模組)） |
-| `src/renderer/` | Renderer 程序 | 頂層放四個 HTML 入口（隱藏擷取 host 的 `index.html`、`settings.html`、`countdown.html`、`video.html`）與共用 Tailwind token 的 `ui.css`；每個頁面一個資料夾，另有頁面共用的部分（[見下方](#renderer-頁面)） |
+| `src/renderer/` | Renderer 程序 | 頂層放四個 HTML 入口（隱藏擷取 host 的 `index.html`、`settings.html`、`countdown.html`、`video.html`）與放共用 token 及功能排版的 `ui.css`；每個頁面一個資料夾，另有頁面共用的部分（[見下方](#renderer-頁面)） |
 | `src/preload/` | Preload，sandbox | 每個 renderer 各一個：`index.ts` 只把 MessagePort 交給擷取頁面、不對外開放任何 API；`settings.ts` 承載設定面板的 IPC 契約；`countdown.ts` 提供 overlay 的數值訂閱與取消訂閱；`video.ts` 承載全螢幕 ready／exit |
 | `src/shared/` | 兩邊共用 | 狀態（`state.ts`）、MessagePort 協定、錄影品質運算、設定面板契約、螢幕偏好、外觀、快捷鍵驗證，以及翻譯（`i18n.ts`） |
 
@@ -59,7 +59,7 @@
 | `countdown/` | 倒數數字與它專用的 `countdown.css` |
 | `video/` | 全螢幕影片頁 |
 | `player/` | 設定頁與影片頁共用的播放控制 |
-| `components/ui/` | shadcn/ui primitive |
+| `components/ui/` | shadcn/ui primitive；app 的差異寫成 variant 或 prop，並記在檔案開頭 |
 | `lib/` | 與頁面無關的工具：`cn`（`utils.ts`）、React 掛載與快捷鍵擷取 |
 | `testing/` | 只給 renderer 測試使用的輸入工具 |
 
@@ -163,6 +163,7 @@ App 的更新檢查讀取本網站的 `release.json`，因此 `scripts/lib/relea
 - 新的 renderer 頁面：在 `src/renderer/` 下自成一個資料夾，HTML 入口放在 `src/renderer/` 頂層並登記於 `electron.vite.config.ts`。
 - 兩個程序都需要的型別或純函式：`src/shared/`，不得匯入 Electron 或 DOM。
 - 使用者會讀到的文字：`src/shared/i18n.ts`，雙語同步。
+- Renderer 樣式（[三層](desktop.md#設定視窗)）：顏色是 `ui.css` 的 token（`:root` 與 `.dark`）；對 primitive 的改動是 `components/ui/` 中的 variant 或 prop；頁面自己的版面是呼叫端的 utilities，或 `ui.css` `@layer components` 中的規則。`tests/style-guard.test.ts` 讓其他地方不出現顏色與 `[data-slot]` selector。
 - 手動或由 CI 執行的工具：入口放 `scripts/`，邏輯放進它所屬的 `scripts/lib/` 分組以便測試。
 - 關於行為的長期結論：`docs/system-design/`，並在同一次修改更新繁體中文鏡像。
 - 執行結果的證據：在 `docs/verification/README.md` 摘要；原始輸出留在已忽略的 `measurements/`。
