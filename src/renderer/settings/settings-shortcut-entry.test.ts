@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
+import { pick } from "../testing/test-interactions";
 import type { SettingsView } from "../../shared/settings-panel";
 import { DEFAULT_HOTKEY } from "../../shared/hotkey";
 
@@ -23,8 +24,7 @@ it("ends shortcut capture when a failures entry selects the failures tab", async
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
-  const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
-  select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
+  await pick("setting-hotkey", "custom");
   await vi.waitFor(() => expect(document.getElementById("shortcut-capture")?.textContent).toBe("Press a combination"));
 
   push({ ...structuredClone(current), resultFocus: 1 });

@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
+import { menuValue, pick } from "../testing/test-interactions";
 import type { SettingsView } from "../../shared/settings-panel";
 import { DEFAULT_HOTKEY } from "../../shared/hotkey";
 import { shortcutCandidate } from "../lib/shortcut-capture";
@@ -32,23 +33,22 @@ it("arms only after main acknowledges, captures a combination, cancels and obeys
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
-  const edit = () => {
-    const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
-    select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
+  const edit = async () => {
+    await pick("setting-hotkey", "custom");
   };
   const button = () => document.getElementById("shortcut-capture") as HTMLButtonElement;
-  edit();
+  await edit();
   await vi.waitFor(() => expect(button().textContent).toBe("Press a combination"));
-  edit();
+  // While it listens, Custom shortcut… is not offered again, so it cannot arm twice.
   expect(capture).toHaveBeenCalledTimes(1);
-  expect((document.getElementById("setting-hotkey") as HTMLSelectElement).value).toBe(DEFAULT_HOTKEY.accelerator);
+  expect(menuValue("setting-hotkey")).toBe(DEFAULT_HOTKEY.accelerator);
   button().dispatchEvent(new KeyboardEvent("keydown", { key: "R", code: "KeyR", bubbles: true }));
   expect(choose).not.toHaveBeenCalled();
   expect(document.querySelector(".save-error strong")?.textContent).toBe("Shortcut unavailable");
   expect(document.getElementById("feedback")!.textContent).toContain("Command or Control");
   button().dispatchEvent(new KeyboardEvent("keydown", { key: "r", code: "KeyR", ctrlKey: true, altKey: true, bubbles: true }));
   expect(choose).not.toHaveBeenCalled();
-  expect((document.getElementById("setting-hotkey") as HTMLSelectElement).value).toBe(DEFAULT_HOTKEY.accelerator);
+  expect(menuValue("setting-hotkey")).toBe(DEFAULT_HOTKEY.accelerator);
   button().dispatchEvent(new KeyboardEvent("keyup", { key: "Control", code: "ControlLeft", bubbles: true }));
   expect(button().textContent).toContain("R");
   // One box per part, not per character: a named key such as F12 stays one box.
@@ -71,16 +71,16 @@ it("arms only after main acknowledges, captures a combination, cancels and obeys
   await vi.waitFor(() => expect(current.groups[0]!.capturing).toBe(false));
   expect(document.getElementById("settings-panel")).toBe(panelBeforeCustom);
   expect(document.getElementById("setting-hotkey")).toBe(menuBeforeCustom);
-  expect((menuBeforeCustom as HTMLSelectElement).value).toBe("Control+Alt+R");
+  expect(menuBeforeCustom!.dataset.value).toBe("Control+Alt+R");
   expect(document.activeElement?.id).toBe("setting-hotkey");
-  edit();
+  await edit();
   await vi.waitFor(() => expect(button().textContent).toBe("Press a combination"));
   button().dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", ctrlKey: true, bubbles: true }));
   expect(choose).toHaveBeenCalledTimes(1);
   button().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
   await vi.waitFor(() => expect(current.groups[0]!.capturing).toBe(false));
   expect(choose).toHaveBeenCalledTimes(1);
-  edit();
+  await edit();
   await vi.waitFor(() => expect(button().textContent).toBe("Press a combination"));
   const tab = new KeyboardEvent("keydown", { key: "Tab", code: "Tab", bubbles: true, cancelable: true });
   button().dispatchEvent(tab);
@@ -108,7 +108,7 @@ it("arms only after main acknowledges, captures a combination, cancels and obeys
   const recovery = document.getElementById("setting-screen-recovery") as HTMLButtonElement;
   recovery.focus(); recovery.click(); recovery.click();
   expect(choose).toHaveBeenCalledTimes(2);
-  expect((document.getElementById("setting-screen") as HTMLSelectElement).value).toBe("2");
+  expect(menuValue("setting-screen")).toBe("2");
   finishSave();
   await vi.waitFor(() => expect(document.querySelector("#setting-screen-row .save-error")?.hasAttribute("hidden")).toBe(false));
   expect(document.querySelectorAll("#setting-screen-row .diagnostic")).toHaveLength(2);
@@ -133,7 +133,7 @@ it("arms only after main acknowledges, captures a combination, cancels and obeys
     return { view: current, applied: true };
   });
   recovery.focus(); recovery.click();
-  await vi.waitFor(() => expect((document.getElementById("setting-screen") as HTMLSelectElement).value).toBe("primary"));
+  await vi.waitFor(() => expect(menuValue("setting-screen")).toBe("primary"));
   expect(document.activeElement?.id).toBe("setting-screen");
   expect(document.getElementById("feedback")!.textContent).toBe("Switched to Primary display");
 

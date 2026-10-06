@@ -45,6 +45,17 @@ export default defineConfig({
         },
       },
       {
+        // Base UI's Select renders a style tag that hides its popup's scroll bar. The self-only CSP refuses it, so
+        // ui.css carries the same rule for the class and the tag is not rendered (2026-10-07).
+        name: "recordstuff-base-ui-csp",
+        transform(code, id) {
+          if (!/[\\/]@base-ui[\\/]react[\\/]utils[\\/]styles\.m?js$/.test(id)) return;
+          const replaced = code.replace(/getElement\(nonce\) \{[\s\S]*?\n  \}/, "getElement() {\n    return null;\n  }");
+          if (replaced === code) throw new Error("recordstuff-base-ui-csp: Base UI's style helper changed shape");
+          return replaced;
+        },
+      },
+      {
         // The shipped CSP allows no network at all; only the dev server's HMR
         // websocket needs an exception, and only while serving.
         name: "recordstuff-dev-csp",

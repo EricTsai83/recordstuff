@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
+import { pick } from "../testing/test-interactions";
 import type { SettingsView } from "../../shared/settings-panel";
 import { DEFAULT_HOTKEY } from "../../shared/hotkey";
 
@@ -24,9 +25,9 @@ it("shows and announces timeout, restores focus, translates and clears it on a n
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
   await vi.waitFor(() => expect(document.getElementById("setting-hotkey")).toBeTruthy());
-  const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
+  const select = document.getElementById("setting-hotkey") as HTMLButtonElement;
   const open = async () => {
-    select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
+    await pick("setting-hotkey", "custom");
     await vi.waitFor(() => expect(current.groups[0]!.capturing).toBe(true));
     await vi.waitFor(() => expect(document.activeElement?.id).toBe("shortcut-capture"));
   };

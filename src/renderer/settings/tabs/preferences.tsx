@@ -7,7 +7,7 @@ import { fileNameTemplateProblem, fileNameProblemText, formatFileName } from "..
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import { NativeSelect, NativeSelectOption } from "../../components/ui/native-select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { Card, CardContent } from "../../components/ui/card";
@@ -143,6 +143,7 @@ export function TextSetting({
   description: string;
 }) {
   const value = model.committed(group),
+    held = Boolean(group.enabled && model.saving && model.saving.group !== group.id),
     [draft, setDraft] = useState(value),
     field = useRef<HTMLInputElement>(null),
     submitted = useRef<string | undefined>(undefined),
@@ -182,7 +183,7 @@ export function TextSetting({
       <Input
         ref={field}
         id={`setting-${group.id}`}
-        className="text-field"
+        className={held ? "text-field disabled:cursor-default disabled:opacity-100" : "text-field"}
         value={draft}
         disabled={
           !group.enabled ||
@@ -230,6 +231,9 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
   const actions =
     group.kind === "actions" ? group.choices : (group.actions ?? []);
   const busy = Boolean(model.saving && model.saving.group !== group.id),
+    // While another setting saves, this row's controls hold still but keep their look: dimming every control on the
+    // page for each save read as the whole tab flickering (2026-10-07; the pre-shadcn page had .saving-disabled).
+    held = busy && group.enabled,
     value = model.committed(group),
     diagnosticVisible = Boolean(group.diagnostics?.length || ownFailure);
   const description = [
@@ -326,6 +330,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
               id={id}
               aria-labelledby={`${id}-label`}
               checked={value === "on"}
+              className={held ? "data-disabled:cursor-default data-disabled:opacity-100" : undefined}
               disabled={
                 !group.enabled ||
                 busy ||
@@ -377,6 +382,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
                       );
                   }}
                   disabled={!group.enabled || !choice.enabled || busy}
+                  className={held && choice.enabled ? "disabled:opacity-100" : undefined}
                   aria-label={choice.label}
                   title={group.iconChoices ? choice.label : undefined}
                 >
@@ -395,40 +401,60 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
               ))}
             </ToggleGroup>
           ) : (
-            <NativeSelect
+            <Select
               id={id}
-              className="max-w-[min(280px,100%)]"
               value={value}
+              items={[
+                ...group.choices.map((choice) => ({ value: choice.id, label: choice.label })),
+                ...(group.kind === "shortcut"
+                  ? [{ value: "custom", label: model.text("Custom shortcut…") }]
+                  : []),
+              ]}
               disabled={!group.enabled || busy}
-              {...desc}
-              onChange={(event) => {
-                const choice = event.currentTarget.value;
-                if (group.kind === "shortcut" && choice === "custom") {
-                  event.currentTarget.value = value;
+              onValueChange={(choice) => {
+                if (typeof choice !== "string" || choice === value) return;
+                // Custom… opens the shortcut editor; the menu keeps showing the shortcut in use.
+                if (group.kind === "shortcut" && choice === "custom")
                   void model.capture(true);
-                } else void model.choose(group.id, choice, id);
+                else void model.choose(group.id, choice, id);
               }}
             >
-              {group.choices.map((choice) => (
-                <NativeSelectOption
-                  key={choice.id}
-                  value={choice.id}
-                  disabled={!choice.enabled}
-                >
-                  {choice.label}
-                </NativeSelectOption>
-              ))}
-              {group.kind === "shortcut" && (
-                <NativeSelectOption
-                  value="custom"
-                  disabled={Boolean(
-                    model.saving || model.arming || group.capturing,
-                  )}
-                >
-                  {model.text("Custom shortcut…")}
-                </NativeSelectOption>
-              )}
-            </NativeSelect>
+              <SelectTrigger
+                id={id}
+                data-value={value}
+                className={
+                  held
+                    ? "max-w-[min(280px,100%)] disabled:cursor-default disabled:opacity-100"
+                    : "max-w-[min(280px,100%)]"
+                }
+                {...desc}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false} align="end">
+                {group.choices.map((choice) => (
+                  <SelectItem
+                    key={choice.id}
+                    value={choice.id}
+                    data-value={choice.id}
+                    disabled={!choice.enabled}
+                  >
+                    {choice.label}
+                  </SelectItem>
+                ))}
+                {group.kind === "shortcut" && (
+                  <SelectItem
+                    value="custom"
+                    data-value="custom"
+                    disabled={Boolean(
+                      model.saving || model.arming || group.capturing,
+                    )}
+                  >
+                    {model.text("Custom shortcut…")}
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
           )}
         </div>
       </div>

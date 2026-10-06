@@ -71,7 +71,7 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       await read(page, `document.getElementById("settings-panel").scrollTop = 0`);
       if (state === "listening") await page.locator("#shortcut-capture").focus();
       else if (state === "sound-off") await page.locator("#setting-countdownSound").focus();
-      else await read(page, `document.querySelector("#settings-panel select, #settings-panel input")?.focus()`);
+      else await read(page, `document.querySelector("#settings-panel [data-slot=select-trigger], #settings-panel input")?.focus()`);
       if (state === "sound-off" || state === "countdown-off") await read(page, `document.getElementById("setting-countdownSound-row").scrollIntoView({ block: "nearest" })`);
       await frames(page);
       const fits = await read<boolean>(page, `document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth && document.getElementById("settings-panel").scrollWidth <= document.getElementById("settings-panel").clientWidth`);

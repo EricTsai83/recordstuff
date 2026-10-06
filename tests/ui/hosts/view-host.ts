@@ -115,6 +115,8 @@ function fixtureView(language: Language, notifications: boolean): SettingsView {
         choices: [
           { id: "30", label: "30 fps", enabled: true, checked: true },
           { id: "60", label: zh ? "60 fps（此平台尚未驗證，暫不開放）" : "60 fps (unverified on this platform)", enabled: false, checked: false },
+          // Offered, but this host's main never commits a frame rate: a choice it refuses (S013).
+          { id: "24", label: "24 fps", enabled: true, checked: false },
         ],
       },
       {

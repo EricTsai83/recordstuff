@@ -47,3 +47,25 @@ export async function menu(element: HTMLElement): Promise<void> {
       throw new Error("Menu has not taken focus");
   });
 }
+
+/** The value a settings menu (shadcn Select) shows: its trigger carries it as data-value. */
+export const menuValue = (id: string): string | undefined =>
+  document.getElementById(id)?.dataset.value;
+
+/** Chooses `value` in a settings menu as the pointer does: opens it, then clicks the item. */
+export async function pick(id: string, value: string): Promise<void> {
+  const trigger = document.getElementById(id)!;
+  click(trigger);
+  const item = await vi.waitFor(() => {
+    const found = document.querySelector<HTMLElement>(
+      `[data-slot="select-item"][data-value="${value}"]`,
+    );
+    if (!found) throw new Error(`${id} has no item ${value} open`);
+    return found;
+  });
+  click(item);
+  await vi.waitFor(() => {
+    if (document.querySelector('[data-slot="select-content"][data-open]'))
+      throw new Error(`${id} is still open`);
+  });
+}

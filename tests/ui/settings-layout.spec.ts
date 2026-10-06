@@ -177,3 +177,28 @@ test("U070-1 the sidebar, a switch, the card menu and a card's play button look 
   const on = await read<string | null>(page, `(() => { const s = document.querySelector("[data-slot=switch][data-checked]"); return s && getComputedStyle(s).backgroundColor; })()`);
   expect.soft(on, "U070-1 a switch that is on is the chosen red").toBe(chosen);
 });
+
+test("U070-2 a settings menu is the app's own sheet: chosen with the pointer it leaves no focus ring, from the keyboard it keeps one, and Escape closes the menu, not the window", async () => {
+  await host.evaluate(h => { h.theme("light"); h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: "en" }); });
+  await page.locator("#tab-recording").click();
+  const trigger = page.locator("#setting-screen");
+  const ring = (): Promise<string> => read(page, `getComputedStyle(document.getElementById("setting-screen")).boxShadow`);
+  await trigger.click();
+  await expect(page.locator('[data-slot="select-content"][data-open]')).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(page.locator('[data-slot="select-content"][data-open]')).toHaveCount(0);
+  expect.soft(await read<boolean>(page, `document.visibilityState === "visible" && Boolean(document.getElementById("setting-screen"))`), "U070-2 Escape closes the menu and the window stays").toBe(true);
+  const value = await trigger.getAttribute("data-value");
+  await trigger.click();
+  await page.locator(`[data-slot="select-item"][data-value="${value}"]`).click();
+  await expect(page.locator('[data-slot="select-content"][data-open]')).toHaveCount(0);
+  // Focus goes back to the menu once its sheet has closed.
+  await expect.poll(() => read(page, `document.activeElement?.id`)).toBe("setting-screen");
+  const pointer = await ring();
+  expect.soft(await read<boolean>(page, `document.activeElement?.id === "setting-screen"`) && !/rgba?\([^)]*\) 0px 0px 0px 2px/.test(pointer),
+    `U070-2 chosen with the pointer, the menu keeps focus without a ring ${pointer}`).toBe(true);
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  const keyboard = await ring();
+  expect.soft(keyboard, "U070-2 reached by the keyboard, the menu shows its ring").toContain("0px 0px 0px 2px");
+});

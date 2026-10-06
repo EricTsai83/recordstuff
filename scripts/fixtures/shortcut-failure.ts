@@ -132,7 +132,15 @@ async function arm() {
   if (!panel) throw new Error('Settings window is not ready');
   panel.show(); panel.focus();
   await waitFor(() => panel?.isFocused(), 'settings focused');
-  await evaluate("(() => { const s = document.getElementById('setting-hotkey'); s.value = 'custom'; s.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  // The shortcut menu is a shadcn Select (2026-10-07): open it from its trigger and choose Custom shortcut…, as a click does.
+  await evaluate(`(async () => {
+    const press = el => { for (const [type, Kind] of [["pointerdown", PointerEvent], ["mousedown", MouseEvent], ["pointerup", PointerEvent], ["mouseup", MouseEvent]])
+      el.dispatchEvent(new Kind(type, { bubbles: true, button: 0, pointerType: "mouse" })); el.click(); };
+    press(document.getElementById('setting-hotkey'));
+    for (let i = 0; i < 100; i++) { const item = document.querySelector('[data-slot=select-item][data-value=custom]');
+      if (item) { press(item); return; } await new Promise(done => setTimeout(done, 20)); }
+    throw new Error('the shortcut menu did not open');
+  })()`);
   await waitFor(async () => (await group()).capturing, 'capture armed');
 }
 async function key(code: string, key: string, modifiers: Record<string, boolean> = {}) {

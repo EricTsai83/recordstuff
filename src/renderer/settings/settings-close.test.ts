@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
+import { menuValue, pick } from "../testing/test-interactions";
 import type { SettingsView } from "../../shared/settings-panel";
 import { DEFAULT_HOTKEY } from "../../shared/hotkey";
 import { isCloseChord, type ShortcutKey } from "../lib/shortcut-capture";
@@ -59,8 +60,7 @@ it("captures macOS Control+W as a shortcut while exact Command+W still closes", 
   document.getElementById("tab-general")!.click();
   const field = () => document.getElementById("shortcut-capture") as HTMLButtonElement;
   const arm = async () => {
-    const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
-    select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
+    await pick("setting-hotkey", "custom");
     await vi.waitFor(() => expect(field().textContent).toBe("Press a combination"));
   };
   const key = (target: EventTarget, init: KeyboardEventInit) => target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
@@ -72,7 +72,7 @@ it("captures macOS Control+W as a shortcut while exact Command+W still closes", 
   expect((document.getElementById("shortcut-confirm") as HTMLButtonElement).disabled).toBe(false);
   document.getElementById("shortcut-confirm")!.click();
   await vi.waitFor(() => expect(choose).toHaveBeenCalledWith("hotkey", "Control+W"));
-  await vi.waitFor(() => expect((document.getElementById("setting-hotkey") as HTMLSelectElement).value).toBe("Control+W"));
+  await vi.waitFor(() => expect(menuValue("setting-hotkey")).toBe("Control+W"));
 
   // An extra modifier makes it an ordinary candidate, not a close.
   await arm();

@@ -11,7 +11,7 @@ import { test, expect, type Launched } from "./fixtures";
 import type { Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { read, cdpKey, eventually } from "./helpers";
+import { read, cdpKey, eventually, pickMenu } from "./helpers";
 import { describeAccelerator, settingsShortcut } from "../../src/shared/hotkey";
 
 /** The Settings shortcut of this platform (hotkey.ts): ⌥⌘, on macOS, Ctrl+Shift+, elsewhere. */
@@ -67,7 +67,7 @@ class Session {
   group(): Promise<Group> { return this.page.evaluate(() => (window as unknown as { settings: { read: () => Promise<{ groups: Array<{ id: string }> }> } }).settings.read().then(v => v.groups.find(g => g.id === "hotkey"))) as Promise<Group>; }
   async checked(id: string): Promise<boolean> { return (await this.group()).choices.some(c => c.id === id && c.checked); }
   async arm(): Promise<void> {
-    await this.page.locator("#setting-hotkey").selectOption("custom");
+    await pickMenu(this.page, "setting-hotkey", "custom");
     await expect.poll(async () => (await this.group()).capturing, { message: "capture armed" }).toBe(true);
   }
   async commit(onPreview?: () => Promise<void>): Promise<void> {
@@ -82,7 +82,7 @@ class Session {
     await this.page.keyboard.press("Escape");
     await expect.poll(async () => (await this.group()).capturing, { message: "capture cancelled" }).toBe(false);
   }
-  /** A preference through its control: a segment, a switch or the native select. */
+  /** A preference through its control: a segment, a switch or the menu. */
   async choose(id: string, value: string): Promise<void> {
     const segment = this.page.locator(`#setting-${id}-${value}`);
     if (await segment.count() && await segment.getAttribute("aria-pressed") !== null) {
@@ -90,7 +90,7 @@ class Session {
     } else {
       const control = this.page.locator(`#setting-${id}`);
       if (await control.getAttribute("role") === "switch") { if ((await control.getAttribute("aria-checked") === "true") !== (value === "on")) await control.click(); }
-      else await control.selectOption(value);
+      else await pickMenu(this.page, `setting-${id}`, value);
     }
     await expect.poll(() => read(this.page, `!document.querySelector('.row[aria-busy="true"]')`), { message: "save settled" }).toBe(true);
   }

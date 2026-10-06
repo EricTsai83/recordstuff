@@ -2,9 +2,10 @@
 import { expect, it, vi } from "vitest";
 import type { SettingsView } from "../../shared/settings-panel";
 import { DEFAULT_HOTKEY } from "../../shared/hotkey";
+import { menuValue, pick } from "../testing/test-interactions";
 
-/** Custom shortcut… waits while the editor listens, and its disabled flag is written once, not again on every draw. */
-it("keeps Custom shortcut… disabled while listening without rewriting it on each redraw", async () => {
+/** Custom shortcut… in the menu opens the editor, and redraws while it listens leave it listening. */
+it("opens the editor from Custom shortcut… and keeps listening through redraws", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
   document.body.innerHTML = '<div id="root"></div>';
   let current: SettingsView = {
@@ -23,19 +24,14 @@ it("keeps Custom shortcut… disabled while listening without rewriting it on ea
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
-  const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
-  const custom = select.querySelector<HTMLOptionElement>('option[value="custom"]')!;
-  expect(custom.disabled).toBe(false);
-  select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
+  // The menu offers Custom shortcut…, and choosing it opens the editor without changing the shortcut it shows.
+  await pick("setting-hotkey", "custom");
   await vi.waitFor(() => expect(document.getElementById("shortcut-capture")?.textContent).toBe("Press a combination"));
-  expect(custom.disabled).toBe(true);
-
-  const flips: Array<string | null> = [];
-  const observer = new MutationObserver(records => { for (const record of records) flips.push(record.attributeName); });
-  observer.observe(custom, { attributes: true, attributeFilter: ["disabled"] });
+  expect(capture).toHaveBeenCalledWith(true);
+  expect(menuValue("setting-hotkey")).toBe(DEFAULT_HOTKEY.accelerator);
+  // Redraws while it listens leave the editor listening and the menu as it was.
   push(structuredClone(current));
   push(structuredClone(current));
   await Promise.resolve();
-  observer.disconnect();
-  expect([flips, custom.disabled]).toEqual([[], true]);
+  expect([document.getElementById("shortcut-capture")?.textContent, menuValue("setting-hotkey")]).toEqual(["Press a combination", DEFAULT_HOTKEY.accelerator]);
 });

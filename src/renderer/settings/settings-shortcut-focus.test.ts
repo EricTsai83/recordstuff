@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
+import { pick } from "../testing/test-interactions";
 import type { SettingsView } from "../../shared/settings-panel";
 import { DEFAULT_HOTKEY } from "../../shared/hotkey";
 
@@ -28,8 +29,7 @@ it("keeps a candidate when Tab or VoiceOver moves focus to Confirm, and ends cap
   document.getElementById("tab-general")!.click();
   const field = () => document.getElementById("shortcut-capture") as HTMLButtonElement;
   const confirm = () => document.getElementById("shortcut-confirm") as HTMLButtonElement;
-  const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
-  select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
+  await pick("setting-hotkey", "custom");
   await vi.waitFor(() => expect(field().textContent).toBe("Press a combination"));
   field().focus();
   field().dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", metaKey: true, shiftKey: true, bubbles: true, cancelable: true }));

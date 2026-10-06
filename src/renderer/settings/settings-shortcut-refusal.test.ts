@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
+import { pick } from "../testing/test-interactions";
 import type { SettingsView } from "../../shared/settings-panel";
 import { DEFAULT_HOTKEY } from "../../shared/hotkey";
 
@@ -29,8 +30,8 @@ it("names no internal key for an unusable one, and states a refused combination 
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
-  const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
-  select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
+  const select = document.getElementById("setting-hotkey") as HTMLButtonElement;
+  await pick("setting-hotkey", "custom");
   const field = () => document.getElementById("shortcut-capture") as HTMLButtonElement;
   await vi.waitFor(() => expect(field().textContent).toBe("Press a combination"));
 
@@ -60,7 +61,7 @@ it("names no internal key for an unusable one, and states a refused combination 
   expect(document.querySelector<HTMLElement>(".retry")?.hidden).toBe(true);
 
   // A key the editor refused belongs to that editor: cancelling leaves no "Change was not saved" behind.
-  select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
+  await pick("setting-hotkey", "custom");
   await vi.waitFor(() => expect(field().textContent).toBe("Press a combination"));
   field().dispatchEvent(new KeyboardEvent("keydown", { key: "1", code: "Numpad1", metaKey: true, bubbles: true }));
   expect(error.hidden).toBe(false);
@@ -75,7 +76,7 @@ it("names no internal key for an unusable one, and states a refused combination 
     ["zh-TW", "已結束編輯，快捷鍵未變更。"],
   ] as const) {
     current = { ...structuredClone(current), language }; push(current);
-    select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
+    await pick("setting-hotkey", "custom");
     await vi.waitFor(() => expect(current.groups[0]!.capturing).toBe(true));
     field().dispatchEvent(new KeyboardEvent("keydown", { key: "1", code: "Numpad1", metaKey: true, bubbles: true }));
     current = structuredClone(current); current.groups[0]!.capturing = false; push(current);

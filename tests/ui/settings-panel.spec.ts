@@ -9,7 +9,7 @@ import { test, expect, type Launched } from "./fixtures";
 import type { Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { read, until, centre, clickAt } from "./helpers";
+import { read, until, centre, clickAt, pickMenu } from "./helpers";
 
 let host: Launched, page: Page;
 test.beforeEach(async ({ launchView }) => {
@@ -28,12 +28,11 @@ const commitEnglish = async (): Promise<void> => {
 
 test("S002–S009 the shipped page and preload: CSP, bridge, sandbox, localized first render, committed values, unavailable option, refused-shortcut note", async () => {
   const rendered = await read<{ title: string; docTitle: string; lang: string; bridge: string[]; exposed: string[]; note: string | null;
-    controls: Array<{ id: string; value: string; disabled: boolean; label: string; describedBy: string | null; options: Array<{ text: string; disabled: boolean }> }> }>(page, `(() => ({
+    controls: Array<{ id: string; value: string; disabled: boolean; label: string; describedBy: string | null }> }>(page, `(() => ({
     title: document.querySelector("#title").textContent, docTitle: document.title, lang: document.documentElement.lang,
     bridge: Object.keys(window.settings ?? {}).sort(), exposed: [typeof window.require, typeof window.process, typeof window.module],
-    controls: [...document.querySelectorAll("select")].map(s => ({ id: s.id, value: s.value, disabled: s.disabled,
-      label: document.querySelector("label[for='" + s.id + "']").textContent, describedBy: s.getAttribute("aria-describedby"),
-      options: [...s.options].map(o => ({ text: o.textContent, disabled: o.disabled })) })),
+    controls: [...document.querySelectorAll("[data-slot=select-trigger]")].map(s => ({ id: s.id, value: s.dataset.value, disabled: s.disabled,
+      label: document.querySelector("label[for='" + s.id + "']").textContent, describedBy: s.getAttribute("aria-describedby") })),
     note: document.querySelector("#setting-hotkey-note")?.textContent ?? null,
   }))()`);
   expect.soft(rendered.controls.length, "S002 the shipped page loads under the shipped CSP (page errors fail at teardown)").toBe(2);
@@ -45,7 +44,13 @@ test("S002–S009 the shipped page and preload: CSP, bridge, sandbox, localized 
     "S006 the URL language localizes the first render").toEqual(["RecordStuff", "RecordStuff", "zh-Hant", "快捷鍵"]);
   expect.soft(rendered.controls.map(control => [control.id, control.value, control.disabled]), "S007 each group renders one live control showing the committed value")
     .toEqual([["setting-frameRate", "30", false], ["setting-hotkey", "CommandOrControl+Alt+Shift+R", false]]);
-  expect.soft(rendered.controls[0]?.options[1]?.disabled, "S008 an option unavailable on this platform is listed but not selectable").toBe(true);
+  await page.locator("#tab-recording").click();
+  await page.locator("#setting-frameRate").click();
+  await expect(page.locator('[data-slot="select-content"][data-open]')).toHaveCount(1);
+  const options = await read<Array<{ text: string; disabled: boolean }>>(page, `[...document.querySelectorAll("[data-slot=select-item]")].map(o => ({ text: o.textContent, disabled: o.hasAttribute("data-disabled") }))`);
+  await page.keyboard.press("Escape");
+  await expect(page.locator('[data-slot="select-content"][data-open]')).toHaveCount(0);
+  expect.soft(options[1]?.disabled, `S008 an option unavailable on this platform is listed but not selectable ${JSON.stringify(options)}`).toBe(true);
   expect.soft([rendered.note, rendered.controls[1]?.describedBy?.includes("setting-hotkey-note")], "S009 a refused shortcut shows its note and the control points at it")
     .toEqual(["這個快捷鍵可能被其他 App 佔用。", true]);
 });
@@ -58,10 +63,11 @@ test("S010–S013 a change reaches main as ids, re-renders in the committed lang
     hotkeyLabel: document.querySelector("label[for='setting-hotkey']").textContent, feedback: document.querySelector("#feedback").textContent })`);
   expect.soft([applied.title, applied.hotkeyLabel], "S011 the committed answer re-renders the whole panel in the new language").toEqual(["RecordStuff", "Shortcut"]);
   expect.soft(applied.feedback, "S012 a committed change shows no failure text").toBe("");
-  // A choice the page does not offer (the disabled 60 fps), sent as a stale page would: main does not commit it.
-  await read(page, `(() => { const select = document.querySelector("#setting-frameRate"); select.value = "60"; select.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+  // A choice main refuses to commit (this host never commits a frame rate).
+  await page.locator("#tab-recording").click();
+  await pickMenu(page, "setting-frameRate", "24");
   await expect(page.locator("#setting-frameRate-row .save-error p")).toHaveText("Could not apply this setting. Your current settings are shown.");
-  expect(await page.locator("#setting-frameRate").inputValue(), "S013 a choice that did not commit reports it and shows the committed value").toBe("30");
+  expect(await page.locator("#setting-frameRate").getAttribute("data-value"), "S013 a choice that did not commit reports it and shows the committed value").toBe("30");
 });
 
 test("S014–S015 two held saves and an older push: the pushed committed value shows with the lock kept, and the final completion unlocks", async () => {
@@ -210,7 +216,7 @@ for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {
     await page.locator("#tab-recording").click();
     const infoState = (id: string) => read<{ open: boolean; expanded: string | null; text: string; inside: boolean; describes: boolean }>(page, `(() => {
       const id = ${JSON.stringify(`setting-${id}`)}, popover = document.getElementById(id + "-info-popup"), r = popover?.getBoundingClientRect();
-      const control = document.querySelector("#" + id + "-row [role=switch], #" + id + "-row select, #" + id + "-row .segments button");
+      const control = document.querySelector("#" + id + "-row [role=switch], #" + id + "-row [data-slot=select-trigger], #" + id + "-row .segments button");
       return { open: Boolean(popover?.hasAttribute("data-open")), expanded: document.getElementById(id + "-info-button").getAttribute("aria-expanded"), text: document.getElementById(id + "-info").textContent,
         inside: Boolean(r && r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight),
         describes: (control?.getAttribute("aria-describedby") ?? "").split(" ").includes(id + "-info") }; })()`);
@@ -342,7 +348,7 @@ test("S053–S057 General's footer and Show log: wide and narrow layouts, a fail
 test("S058–S066 the shortcut editor by keyboard: Tab and Shift+Tab leave capture, focus rings, listening indicator, Control+F12, Confirm, forced colors and reduced motion", async () => {
   await host.evaluate(h => { h.setSize(560, 760); h.state.captureView = h.settingsView({ type: "idle" }, h.baseContext()); h.push(h.state.captureView); });
   await page.locator("#tab-general").click();
-  const arm = (): Promise<unknown> => read(page, `(() => { const s = document.getElementById("setting-hotkey"); s.value = "custom"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+  const arm = (): Promise<unknown> => pickMenu(page, "setting-hotkey", "custom");
   await arm();
   await page.waitForTimeout(100);
   await page.keyboard.press("Tab");

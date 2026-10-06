@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
+import { pick } from "../testing/test-interactions";
 import type { SettingsView } from "../../shared/settings-panel";
 import { DEFAULT_HOTKEY } from "../../shared/hotkey";
 
@@ -22,8 +23,7 @@ it("refuses Ctrl+Q and a chord without Ctrl in Windows words, and offers the mac
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
-  const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
-  select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
+  await pick("setting-hotkey", "custom");
   const field = () => document.getElementById("shortcut-capture") as HTMLButtonElement;
   await vi.waitFor(() => expect(field().textContent).toBe("Press a combination"));
   const error = () => document.querySelector(".save-error p")?.textContent;

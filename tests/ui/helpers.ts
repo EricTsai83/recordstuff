@@ -91,3 +91,13 @@ export async function cdpKey(page: Page, key: { key: string; code: string; keyCo
     }
   } finally { await session.detach(); }
 }
+
+/**
+ * Chooses `value` in a settings menu (shadcn Select, 2026-10-07) with Playwright's mouse: opens it from its trigger and
+ * clicks the item, which carries its value as data-value.
+ */
+export async function pickMenu(page: Page, id: string, value: string): Promise<void> {
+  await page.locator(`#${id}`).click();
+  await page.locator(`[data-slot="select-item"][data-value="${value}"]`).click();
+  await expect(page.locator('[data-slot="select-content"][data-open]')).toHaveCount(0);
+}

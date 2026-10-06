@@ -162,7 +162,7 @@ export function groupControl(
   choice?: string,
 ): HTMLElement | null {
   const own = document.getElementById(`setting-${groupId}`);
-  if (own?.matches("select, input, [role=switch]")) return own;
+  if (own?.matches("select, input, [role=switch], [data-slot=select-trigger]")) return own;
   const row = document.getElementById(`setting-${groupId}-row`);
   return (
     row?.querySelector<HTMLElement>('[aria-pressed="true"]') ??
@@ -608,6 +608,14 @@ export function start(): () => void {
       event.preventDefault();
       return;
     }
+    // An open settings menu (shadcn Select) takes Escape itself and closes; the window stays (2026-10-07).
+    if (
+      event.key === "Escape" &&
+      (document.querySelector('[data-slot="select-content"][data-open]') ||
+        (event.target instanceof Element &&
+          event.target.closest('[data-slot="select-content"]')))
+    )
+      return;
     if (event.key === "Escape" && playingItem) {
       event.preventDefault();
       markEscapeClosed();

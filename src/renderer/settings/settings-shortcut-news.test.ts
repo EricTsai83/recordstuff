@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
+import { pick } from "../testing/test-interactions";
 import type { SettingsGroup, SettingsView } from "../../shared/settings-panel";
 import { DEFAULT_HOTKEY } from "../../shared/hotkey";
 
@@ -37,10 +38,9 @@ it("reads a shortcut failure once and not again when the editor closes", async (
   current = failed(); push(current);
   expect(feedback.textContent).toBe(`Shortcut unavailable. ${NOTE} Choose another shortcut.`);
 
-  const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
   const field = () => document.getElementById("shortcut-capture") as HTMLButtonElement;
   const open = async (): Promise<void> => {
-    select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
+    await pick("setting-hotkey", "custom");
     await vi.waitFor(() => expect(field().textContent).toBe("Press a combination"));
   };
   const cancel = async (): Promise<void> => {
