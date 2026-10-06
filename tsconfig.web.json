@@ -1,8 +1,23 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "types": []
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [],
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": [
+        "./src/renderer/*"
+      ]
+    }
   },
-  "include": ["src/renderer/**/*.ts", "src/shared/**/*.ts", "scripts/fixtures/frame-cadence-renderer.ts"]
+  "include": [
+    "src/renderer/**/*.ts",
+    "src/renderer/**/*.tsx",
+    "src/shared/**/*.ts",
+    "scripts/fixtures/frame-cadence-renderer.ts"
+  ]
 }

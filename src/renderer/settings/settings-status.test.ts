@@ -1,14 +1,13 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../shared/settings-panel";
+import type { SettingsView } from "../../shared/settings-panel";
 
 /**
  * The status card speaks only when there is something to say (2026-10-04); the sidebar's foot is Quit alone
  * (2026-10-05); the tab strip turns an unread count into a badge without changing its text.
  */
 it("hides the card while ready, shows a problem with its fix and a recording with the lock, and puts Quit in the sidebar's foot", async () => {
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p><p id="status-error" hidden></p><button id="status-secondary" hidden></button><button id="status-action" hidden></button></div>'
-    + '<footer id="sidebar-about" hidden><p class="sidebar-error" hidden></p></footer><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   const ready: SettingsView = { language: "en", title: "RecordStuff", hint: "", failure: "",
     status: { tone: "ready", title: "Ready to record", detail: "" },
     tabs: [{ id: "recording", label: "Recording settings" }, { id: "failures", label: "Failures (2)", accessibleLabel: "Recording failures, 2 unread" }],
@@ -24,8 +23,8 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   expect(card.hidden).toBe(true);
   // In the page's order after the tabs and before their content, as the sidebar draws it under them: the first Tab
   // reaches the tabs, not the card at the sidebar's foot.
-  expect([...document.getElementById("settings")!.children].map(el => el.id || el.className)).toEqual(["tabs", "status", "settings-viewport"]);
-  expect(document.getElementById("settings")!.firstElementChild!.getAttribute("role")).toBe("tablist");
+  expect([...document.querySelector(".settings-tabs")!.children].map(el => el.id || (el.classList.contains("tabs") ? "tabs" : el.className))).toEqual(["tabs", "status", "settings-viewport"]);
+  expect(document.querySelector(".tabs")!.getAttribute("role")).toBe("tablist");
 
   // The sidebar's foot: Quit RecordStuff with its words and mark, and nothing else; the credit, version and links stay in General.
   const foot = document.getElementById("sidebar-about")!;
@@ -91,10 +90,12 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   // The sidebar lists the tabs in a column: Up and Down move between them as Left and Right do (review pass 1, F3).
   const strip = document.querySelector('[role="tablist"]')!;
   expect(["horizontal", "vertical"]).toContain(strip.getAttribute("aria-orientation"));
+  document.getElementById("tab-recording")!.focus();
   document.getElementById("tab-recording")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
-  expect(document.getElementById("tab-failures")!.getAttribute("aria-selected")).toBe("true");
+  await vi.waitFor(() => expect(document.getElementById("tab-failures")!.getAttribute("aria-selected")).toBe("true"));
+  document.getElementById("tab-failures")!.focus();
   document.getElementById("tab-failures")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
-  expect(document.getElementById("tab-recording")!.getAttribute("aria-selected")).toBe("true");
+  await vi.waitFor(() => expect(document.getElementById("tab-recording")!.getAttribute("aria-selected")).toBe("true"));
 
   push({ ...ready, revision: 3, hint: "Recording in progress; only language, appearance and icon click can change.",
     status: { tone: "recording", title: "Recording", detail: "" }, tabs: [ready.tabs[0]!, { id: "failures", label: "Failures" }] });

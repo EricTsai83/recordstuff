@@ -1,5 +1,5 @@
-import { RecordingResults } from "../../src/main/recording-result";
-import { settingsAction } from "../../src/main/settings-model";
+import { RecordingResults } from "../../src/main/recording/recording-result";
+import { settingsAction } from "../../src/main/settings/settings-model";
 /**
  * Electron main for `pnpm acceptance:settings`. Loads the built settings
  * preload and page in a real window, drives it, and writes the outcome.
@@ -16,17 +16,17 @@ import { app, BrowserWindow, ipcMain, nativeImage, nativeTheme, protocol, screen
 import { translate, type Language } from "../../src/shared/i18n";
 import type { SettingsView } from "../../src/shared/settings-panel";
 import fs from "node:fs";
-import { settingsView } from "../../src/main/settings-model";
+import { settingsView } from "../../src/main/settings/settings-model";
 import { DEFAULT_QUALITY } from "../../src/shared/quality";
 import { DEFAULT_HOTKEY } from "../../src/shared/hotkey";
-import type { AppContext } from "../../src/main/ui-model";
-import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "../../src/main/recordings-library";
-import { settingsWindowOptions } from "../../src/main/settings-window";
+import type { AppContext } from "../../src/main/app/ui-model";
+import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "../../src/main/library/recordings-library";
+import { settingsWindowOptions } from "../../src/main/settings/settings-window";
 import { TRAFFIC_LIGHT_ZONE } from "../../src/shared/window-controls";
-import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE } from "../../src/main/settings-window-state";
+import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE } from "../../src/main/settings/settings-window-state";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { activation, judgeActive, lsappinfoName, windowActive, type Activation, type FixtureFailure, type SettingsCase, type WindowState } from "../lib/settings-activation.mts";
+import { activation, judgeActive, lsappinfoName, windowActive, type Activation, type FixtureFailure, type SettingsCase, type WindowState } from "../lib/acceptance/settings-activation.mts";
 
 const [outDir, root] = (() => {
   const [output, repository] = process.argv.slice(-2);
@@ -333,7 +333,7 @@ async function run() {
     if (process.platform !== "darwin") return;
     const covered = await read<string[]>(window, `(() => {
       const clickable = 'button, select, input, a[href], summary, [tabindex]:not([tabindex="-1"])';
-      const modal = document.querySelector("dialog:modal");
+      const modal = document.querySelector('[role="dialog"][data-open]');
       const found = new Set();
       for (let x = 1; x < ${TRAFFIC_LIGHT_ZONE.width}; x += 2) for (let y = 1; y < ${TRAFFIC_LIGHT_ZONE.height}; y += 2) {
         for (const hit of document.elementsFromPoint(x, y)) {
@@ -390,8 +390,8 @@ async function run() {
   const compactHeader = await read<boolean>(window, `!document.querySelector(".app-icon") && document.getElementById("title").classList.contains("visually-hidden") && document.getElementById("hint").hidden`);
   record("content starts with tabs without duplicate branding or autosave hint", compactHeader, String(compactHeader));
   record(
-    "the preload exposes capture/read/choose/onChanged/onHidden/ready and nothing else",
-    JSON.stringify(rendered.bridge) === '["capture","choose","onChanged","onHidden","read","ready"]',
+    "the preload exposes only the settings and zoom APIs",
+    JSON.stringify(rendered.bridge) === '["capture","choose","onChanged","onHidden","onZoomChanged","read","ready","zoom"]',
     JSON.stringify(rendered.bridge),
   );
   record(
@@ -451,7 +451,7 @@ async function run() {
   await read(window, `(() => {
     const select = document.querySelector("#setting-frameRate");
     select.value = "60";
-    select.dispatchEvent(new Event("change"));
+    select.dispatchEvent(new Event("change", { bubbles: true }));
   })()`);
   await settle(700);
   const refused = await read<{ feedback: string; frameRate: string }>(window, `(() => ({
@@ -469,8 +469,7 @@ async function run() {
   holdSaves = true;
   const selectLanguage = (value: Language) => read(window, `(() => {
     const select = document.querySelector("#setting-language-" + ${JSON.stringify(value)});
-    select.checked = true;
-    select.dispatchEvent(new Event("change"));
+    select.click();
   })()`);
   await selectLanguage("zh-TW");
   await selectLanguage("en");
@@ -480,7 +479,7 @@ async function run() {
   window.webContents.send("settings:changed", view(language));
   await settle(100);
   const pending = await read<{ value: string; locked: boolean; feedback: string }>(window, `({
-    value: document.querySelector("#setting-language input:checked").value,
+    value: document.querySelector("#setting-language button[aria-pressed=true]").id.replace("setting-language-", ""),
     locked: document.querySelector("#setting-hotkey").disabled,
     feedback: document.querySelector("#feedback").textContent,
   })`);
@@ -489,7 +488,7 @@ async function run() {
   heldSaves.shift()!();
   await settle(100);
   const finished = await read<{ value: string; locked: boolean; lang: string; hotkeyLabel: string }>(window, `({
-    value: document.querySelector("#setting-language input:checked").value,
+    value: document.querySelector("#setting-language button[aria-pressed=true]").id.replace("setting-language-", ""),
     locked: document.querySelector("#setting-hotkey").disabled,
     lang: document.documentElement.lang,
     hotkeyLabel: document.querySelector("label[for='setting-hotkey']").textContent,
@@ -509,10 +508,10 @@ async function run() {
     const row = document.querySelector("#setting-notifications")?.closest(".row");
     const kids = row ? [...row.children].map(el => el.tagName.toLowerCase() + (el.id ? "#" + el.id : "." + el.className)) : [];
     return {
-      controls: [...document.querySelectorAll("input[role=switch]")].map(s => s.id),
+      controls: [...document.querySelectorAll("[role=switch]")].map(s => s.id),
       // The ⓘ beside the label has its own cases.
-      buttons: [...document.querySelectorAll(".row button:not(.info-button)")].filter(b => !b.closest("[hidden]")).map(b => ({ id: b.id, text: b.textContent, disabled: b.disabled })),
-      value: document.querySelector("#setting-notifications")?.value ?? null,
+      buttons: [...document.querySelectorAll(".row button:not([data-slot=popover-trigger]):not([role=switch])")].filter(b => !b.closest("[hidden]")).map(b => ({ id: b.id, text: b.textContent, disabled: b.disabled })),
+      value: document.querySelector("#setting-notifications")?.getAttribute("aria-checked") === "true" ? "on" : "off",
       order: kids,
     };
   })()`);
@@ -531,7 +530,7 @@ async function run() {
   await settle(700);
   const pane = await read<{ feedback: string; value: string }>(window, `({
     feedback: document.querySelector("#feedback").textContent,
-    value: document.querySelector("#setting-notifications").value,
+    value: document.querySelector("#setting-notifications").getAttribute("aria-checked") === "true" ? "on" : "off",
   })`);
   record(
     "the pane button reaches main as ids and its own outcome counts as applied",
@@ -542,14 +541,13 @@ async function run() {
   chooseCalls.length = 0;
   await read(window, `(() => {
     const select = document.querySelector("#setting-notifications");
-    select.checked = false;
-    select.dispatchEvent(new Event("change"));
+    select.click();
   })()`);
   await settle(700);
   const off = await read<{ value: string; feedback: string; buttons: Array<{ id: string; disabled: boolean }> }>(window, `(() => {
     const row = document.querySelector("#setting-notifications").closest(".row");
     return {
-      value: document.querySelector("#setting-notifications").value,
+      value: document.querySelector("#setting-notifications").getAttribute("aria-checked") === "true" ? "on" : "off",
       feedback: document.querySelector("#feedback").textContent,
       buttons: [...row.querySelectorAll("button:not([hidden])")].filter(b => !b.closest("[hidden]")).map(b => ({ id: b.id, disabled: b.disabled })),
     };
@@ -574,8 +572,7 @@ async function run() {
         scroll: window.scrollY,
         below: document.querySelector("#setting-updates-row")?.getBoundingClientRect().top,
       };
-      select.checked = ${JSON.stringify(value)} === "on";
-      select.dispatchEvent(new Event("change"));
+      select.click();
     })()`);
     await settle(100);
     window.webContents.send("settings:changed", view(language));
@@ -585,7 +582,7 @@ async function run() {
       samePanel: beforeToggle.panel === document.querySelector("#settings-panel"),
       focused: document.activeElement === beforeToggle.select,
       scrollStable: window.scrollY === beforeToggle.scroll && document.querySelector("#setting-updates-row")?.getBoundingClientRect().top === beforeToggle.below,
-      value: beforeToggle.select.value,
+      value: beforeToggle.select.getAttribute("aria-checked") === "true" ? "on" : "off",
       // Busy, not disabled (plan 053): the pane button stays focusable and ignores activation.
       buttonLocked: beforeToggle.button.getAttribute("aria-disabled") === "true" && !beforeToggle.button.disabled,
       buttonOpacity: getComputedStyle(beforeToggle.button).opacity,
@@ -600,7 +597,7 @@ async function run() {
       sameSelect: beforeToggle.select === document.querySelector("#setting-notifications"),
       focused: document.activeElement === beforeToggle.select,
       scrollStable: window.scrollY === beforeToggle.scroll && document.querySelector("#setting-updates-row")?.getBoundingClientRect().top === beforeToggle.below,
-      value: beforeToggle.select.value,
+      value: beforeToggle.select.getAttribute("aria-checked") === "true" ? "on" : "off",
       buttonLocked: beforeToggle.button.disabled || beforeToggle.button.getAttribute("aria-disabled") === "true",
     })`);
     record(`notification ${value}: completion preserves the control and unlocks the pane action`,
@@ -616,6 +613,8 @@ async function run() {
     disabled: document.querySelector("#setting-notifications").disabled,
     opacity: getComputedStyle(document.querySelector("#setting-notifications")).opacity,
   })`);
+  await until(() => read<boolean>(window, `getComputedStyle(document.querySelector("#setting-notifications")).opacity === "0.5"`));
+  restricted.opacity = await read<string>(window, `getComputedStyle(document.querySelector("#setting-notifications")).opacity`);
   record("recording restrictions still disable and dim the controls",
     restricted.disabled && restricted.opacity === "0.5", JSON.stringify(restricted));
   window.webContents.send("settings:changed", view(language));
@@ -696,7 +695,7 @@ async function run() {
           // app keeps its title in view at every size. The sidebar's foot is Quit RecordStuff alone when wide (2026-10-05).
           const card = await read<{ shown: boolean; tone: string; foot: boolean; buttons: number; quit: string }>(window, `(() => { const el = document.getElementById("status"), foot = document.getElementById("sidebar-about");
             return { shown: el.getBoundingClientRect().height > 0, tone: el.dataset.tone ?? "", foot: foot.getBoundingClientRect().height > 0, buttons: foot.querySelectorAll("button").length,
-              quit: foot.querySelector(".sidebar-quit")?.textContent ?? "" }; })()`);
+              quit: foot.querySelector("#sidebar-about-quit")?.textContent ?? "" }; })()`);
           const expected = (state === "locked" ? card.shown && card.tone === "busy" : !card.shown && card.tone === "ready")
             && (size === "default" ? card.foot && card.buttons === 1 && card.quit === translate("Quit RecordStuff", lang) : !card.foot);
           record(`${lang}/${scheme}/${size}/${state}: the status card speaks only when needed; Quit RecordStuff alone sits in the sidebar's foot when wide`, expected, JSON.stringify(card));
@@ -716,11 +715,11 @@ async function run() {
         if (state === "library") {
           // The player over the tab. The file is served, byte ranges and all, but holds no media, so it shows what a recording that cannot be played gets.
           await read(window, `document.querySelector(".clip-open").click()`);
-          const opened = await until(() => read<boolean>(window, `(() => { const p = document.querySelector("dialog.player"); return Boolean(p?.open && !p.querySelector(".player-error").hidden); })()`));
+          const opened = await until(() => read<boolean>(window, `(() => { const p = document.querySelector(".player"); return Boolean(p?.hasAttribute("data-open") && !p.querySelector(".player-error").hidden); })()`));
           // Its own controls over the picture (2026-10-05): Close by the title, play, volume and Full screen along the bar, each named, and none of Chromium's.
-          const player = await read<{ open: boolean; error: string; spoken: string; fits: boolean; buttons: string[]; named: boolean; native: boolean; barInside: boolean }>(window, `(() => { const p = document.querySelector("dialog.player"), r = p.getBoundingClientRect();
+          const player = await read<{ open: boolean; error: string; spoken: string; fits: boolean; buttons: string[]; named: boolean; native: boolean; barInside: boolean }>(window, `(() => { const p = document.querySelector(".player"), r = p.getBoundingClientRect();
             const buttons = [...p.querySelectorAll("button")], bar = p.querySelector(".pc-bottom").getBoundingClientRect();
-            return { open: p.open, error: p.querySelector(".player-error").hidden ? "" : p.querySelector(".player-error").textContent,
+            return { open: p.hasAttribute("data-open"), error: p.querySelector(".player-error").hidden ? "" : p.querySelector(".player-error").textContent,
               spoken: p.querySelector('[role="status"]').textContent, buttons: buttons.map(b => b.id), named: buttons.every(b => b.getAttribute("aria-label") && b.querySelector("svg")),
               native: p.querySelector("video").controls, barInside: bar.bottom <= r.bottom + 0.5 && bar.top >= r.top,
               fits: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight && p.scrollWidth <= p.clientWidth }; })()`);
@@ -730,14 +729,15 @@ async function run() {
           await underControls(`${lang}/${scheme}/${size}/player`);
           await shot(`player-${lang}-${scheme}-${size}.png`);
           await read(window, `document.getElementById("player-close").click()`);
-          const closed = await until(() => read<boolean>(window, `!document.querySelector("dialog.player").open`));
+          const closed = await until(() => read<boolean>(window, `(!document.querySelector(".player")?.hasAttribute("data-open") && Boolean(document.querySelector(".player")?.hidden))`));
           record(`${lang}/${scheme}/${size}/player: Close closes it`, closed, JSON.stringify({ closed }));
           // A Close that failed is recorded above; the next states must still start without a modal over them (review pass 1, F1).
-          if (!closed) await read(window, `document.querySelector("dialog.player").close()`);
+          if (!closed) await read(window, `document.getElementById("player-close").click()`);
           // The card's file actions (2026-10-04), with real input: a click on its ⋯ button, then a right-click on the card.
+          const menuSpan = await activeSpan();
           const menuState = (): Promise<{ open: boolean; items: string[]; fits: boolean; focused: string; expanded: string | null }> => read(window, `(() => {
             const m = document.getElementById("clip-menu"), r = m?.getBoundingClientRect();
-            return { open: Boolean(m?.matches(":popover-open")), items: m ? [...m.querySelectorAll("[role=menuitem]")].map(i => i.textContent) : [],
+            return { open: Boolean(m?.hasAttribute("data-open")), items: m ? [...m.querySelectorAll("[role=menuitem]")].map(i => i.textContent) : [],
               fits: Boolean(r && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight), focused: document.activeElement?.id ?? "",
               expanded: document.querySelector(".clip-more").getAttribute("aria-expanded") }; })()`);
           const target = await read<{ more: { x: number; y: number }; card: { x: number; y: number } }>(window, `(() => {
@@ -745,6 +745,8 @@ async function run() {
             const centre = el => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; };
             return { more: centre(card.querySelector(".clip-more")), card: centre(card.querySelector(".clip-thumb")) }; })()`);
           window.webContents.sendInputEvent({ type: "mouseMove", x: target.card.x, y: target.card.y });
+          window.webContents.sendInputEvent({ type: "mouseMove", x: target.more.x, y: target.more.y });
+          await settle(60);
           for (const type of ["mouseDown", "mouseUp"] as const) window.webContents.sendInputEvent({ type, button: "left", clickCount: 1, x: target.more.x, y: target.more.y });
           await until(async () => (await menuState()).open, 2000);
           const fromButton = await menuState();
@@ -753,22 +755,24 @@ async function run() {
           await underControls(`${lang}/${scheme}/${size}/card menu`);
           await shot(`clip-menu-${lang}-${scheme}-${size}.png`);
           // A real hover on the last item: it alone is lit, it takes focus from the first, and its words stay legible on the fill.
-          const last = await read<{ x: number; y: number }>(window, `(() => { const r = document.querySelector("#clip-menu [role=menuitem]:last-child").getBoundingClientRect();
+          const last = await read<{ x: number; y: number }>(window, `(() => { const r = document.getElementById("clip-menu-trash")?.getBoundingClientRect();
+            if (!r) return { x: 0, y: 0 };
             return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`);
           window.webContents.sendInputEvent({ type: "mouseMove", x: last.x, y: last.y }); await settle(150);
           const hovered = await read<{ lit: string[]; focused: string; contrast: number }>(window, `(() => {
-            const rgba = value => { const [r, g, b, a = 1] = value.match(/[\\d.]+/g).map(Number); return [r, g, b, a]; };
+            const rgba = value => { const ctx = new OffscreenCanvas(1, 1).getContext("2d"); ctx.fillStyle = value; ctx.fillRect(0, 0, 1, 1); const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data; return [r, g, b, a / 255]; };
             // The tint and the sheet are translucent: each is laid over what is under it, down to the window's own background.
             const over = (top, under) => top.slice(0, 3).map((c, i) => c * top[3] + under[i] * (1 - top[3])).concat(1);
             const luminance = ([r, g, b]) => [r, g, b].map(c => { c /= 255; return c <= .03928 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4; }).reduce((sum, c, i) => sum + c * [.2126, .7152, .0722][i], 0);
             const items = [...document.querySelectorAll("#clip-menu [role=menuitem]")];
+            if (!document.getElementById("clip-menu")) return { lit: [], focused: document.activeElement?.id ?? "", contrast: 0 };
             const lit = items.filter(i => rgba(getComputedStyle(i).backgroundColor)[3] > 0);
             const sheet = over(rgba(getComputedStyle(document.getElementById("clip-menu")).backgroundColor), rgba(getComputedStyle(document.documentElement).backgroundColor));
             const style = lit[0] && getComputedStyle(lit[0]);
             const [a, b] = style ? [luminance(rgba(style.color)), luminance(over(rgba(style.backgroundColor), sheet))] : [0, 0];
             return { lit: lit.map(i => i.id), focused: document.activeElement?.id ?? "", contrast: (Math.max(a, b) + .05) / (Math.min(a, b) + .05) }; })()`);
           await shot(`clip-menu-hover-${lang}-${scheme}-${size}.png`);
-          record(`${lang}/${scheme}/${size}/card menu: hovering an item lights it alone, focuses it and keeps its words legible`,
+          await recordActive(menuSpan, `${lang}/${scheme}/${size}/card menu: hovering an item lights it alone, focuses it and keeps its words legible`,
             hovered.lit.join() === "clip-menu-trash" && hovered.focused === "clip-menu-trash" && hovered.contrast >= 4.5, JSON.stringify({ last, hovered }));
           // An Escape with no menu open would close the window, ending every case after this one: only one that opened is answered.
           if ((await menuState()).open) window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
@@ -780,8 +784,8 @@ async function run() {
           await read(window, `document.getElementById("clip-menu").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
           const mac = ctx.platform === "darwin";
           const expectedItems = [translate(mac ? "Show in Finder" : "Open folder", lang), translate("Open", lang), translate("Rename…", lang), translate(mac ? "Move to Trash" : "Move to Recycle Bin", lang)].join("|");
-          record(`${lang}/${scheme}/${size}/card menu: ⋯ and a right-click open the file's actions inside the window; Escape closes it and gives focus back`,
-            fromButton.open && fromButton.items.join("|") === expectedItems && fromButton.fits && fromButton.focused.startsWith("clip-menu-") && fromButton.expanded === "true"
+          await recordActive(menuSpan, `${lang}/${scheme}/${size}/card menu: ⋯ and a right-click open the file's actions inside the window; Escape closes it and gives focus back`,
+            fromButton.open && fromButton.items.join("|") === expectedItems && fromButton.fits && (fromButton.focused === "clip-menu" || fromButton.focused.startsWith("clip-menu-") || fromButton.focused.endsWith("-more")) && fromButton.expanded === "true"
               && !escaped.open && escaped.expanded === "false" && escaped.focused.endsWith("-more") && !window.isDestroyed()
               && fromRightClick.open && fromRightClick.fits, JSON.stringify({ target, fromButton, escaped, fromRightClick }));
         }
@@ -799,12 +803,12 @@ async function run() {
     chooseCalls.length = 0;
     const target = await read<{ x: number; y: number; checked: boolean; disabled: boolean }>(window, `(() => {
       const el = document.getElementById("setting-countdownSound"); el.scrollIntoView({ block: "center" });
-      const r = el.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2), checked: el.checked, disabled: el.disabled };
+      const r = el.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2), checked: el.getAttribute("aria-checked") === "true", disabled: el.disabled };
     })()`);
     window.webContents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, x: target.x, y: target.y });
     window.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, x: target.x, y: target.y });
     await settle(150);
-    return { ...target, calls: JSON.stringify(chooseCalls), after: await read<boolean>(window, `document.getElementById("setting-countdownSound").checked`) };
+    return { ...target, calls: JSON.stringify(chooseCalls), after: await read<boolean>(window, `document.getElementById("setting-countdownSound").getAttribute("aria-checked") === "true"`) };
   };
   const enabledSound = await soundSwitch(3);
   record("countdown sound: a real click on the checked switch asks main for off and shows the committed off",
@@ -850,7 +854,7 @@ async function run() {
     const el = document.getElementById("status-secondary"), r = el.getBoundingClientRect(), card = document.getElementById("status").getBoundingClientRect();
     const detail = document.getElementById("status-detail").getBoundingClientRect();
     return { x: Math.round(r.x + Math.min(r.width / 2, 40)), y: Math.round(r.y + r.height / 2), label: el.hidden ? "" : el.textContent, button: document.getElementById("status-action").textContent,
-      below: r.top >= detail.bottom - 1, inside: r.width > 0 && r.left >= card.left && r.right <= card.right && r.bottom <= card.bottom }; })()`);
+      below: r.top >= detail.bottom - 1, inside: Boolean(r && r.width > 0 && r.left >= card.left && r.right <= card.right && r.bottom <= card.bottom) }; })()`);
   window.webContents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, x: relaunchLink.x, y: relaunchLink.y });
   window.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, x: relaunchLink.x, y: relaunchLink.y });
   await settle(150);
@@ -859,11 +863,11 @@ async function run() {
       && JSON.stringify(chooseCalls) === '[["status","relaunch"]]', JSON.stringify({ relaunchLink, chooseCalls }));
   // The ⓘ beside a label: real hover and real Tab show its explanation in the top layer, inside the window; Escape closes it before the window.
   const infoState = (id: string) => read<{ open: boolean; expanded: string | null; text: string; inside: boolean; describes: boolean }>(window, `(() => {
-    const id = ${JSON.stringify(`setting-${id}`)}, popover = document.getElementById(id + "-info"), r = popover.getBoundingClientRect();
-    const control = document.querySelector("#" + id + "-row .switch, #" + id + "-row select, #" + id + "-row .segments input");
-    return { open: popover.matches(":popover-open"), expanded: document.getElementById(id + "-info-button").getAttribute("aria-expanded"), text: popover.textContent,
-      inside: r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
-      describes: (control?.getAttribute("aria-describedby") ?? "").split(" ").includes(popover.id) }; })()`);
+    const id = ${JSON.stringify(`setting-${id}`)}, popover = document.getElementById(id + "-info-popup"), r = popover?.getBoundingClientRect();
+    const control = document.querySelector("#" + id + "-row [role=switch], #" + id + "-row select, #" + id + "-row .segments button");
+    return { open: Boolean(popover?.hasAttribute("data-open")), expanded: document.getElementById(id + "-info-button").getAttribute("aria-expanded"), text: document.getElementById(id + "-info").textContent,
+      inside: Boolean(r && r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight),
+      describes: (control?.getAttribute("aria-describedby") ?? "").split(" ").includes(id + "-info") }; })()`);
   for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {
     window.setSize(SNAPSHOT_SIZES[size][0], SNAPSHOT_SIZES[size][1]);
     window.webContents.send("settings:changed", settingsView({ type: "idle" }, { ...ctx, language: lang }));
@@ -878,7 +882,7 @@ async function run() {
     // It sits above the row it explains. The pointer may pause in the gap on the way, here just off the
     // button, longer than the leave grace, and stay on the explanation itself; leaving both hides it.
     const geometry = await read<{ above: boolean; gap: { x: number; y: number }; onto: { x: number; y: number } }>(window, `(() => {
-      const b = document.getElementById("setting-countdownSound-info-button").getBoundingClientRect(), r = document.getElementById("setting-countdownSound-info").getBoundingClientRect();
+      const b = document.getElementById("setting-countdownSound-info-button").getBoundingClientRect(), r = document.getElementById("setting-countdownSound-info-popup").getBoundingClientRect();
       return { above: r.bottom <= b.top, gap: { x: Math.round(b.x + b.width / 2), y: Math.floor(b.top) - 1 }, onto: { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) } }; })()`);
     window.webContents.sendInputEvent({ type: "mouseMove", x: geometry.gap.x, y: geometry.gap.y }); await settle(300);
     const inGap = await infoState("countdownSound");
@@ -890,7 +894,7 @@ async function run() {
       hovered.open && hovered.expanded === "true" && hovered.inside && hovered.describes && hovered.text === (lang === "en" ? "The tick is not recorded." : "提示音不會被錄進影片。")
       && geometry.above && inGap.open && kept.open && !left.open && left.expanded === "false", JSON.stringify({ hovered, geometry, inGap, kept, left }));
     const keySpan = await activeSpan();
-    await read(window, `document.querySelector("#setting-videoQuality input:checked").focus()`);
+    await read(window, `document.querySelector("#setting-videoQuality button[aria-pressed=true]").focus()`);
     window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" }); window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" }); await settle(150);
     const tabbed = { active: await read<string>(window, `document.activeElement.id`), ...await infoState("resolutionCap") };
     await shot(`info-focus-${lang}-light-${size}.png`);
@@ -935,7 +939,7 @@ async function run() {
   await settle(150);
   const busyCheck = await read<{ active: string; disabled: boolean; ariaDisabled: string | null; label: string; ring: string; windowFocused: boolean }>(window, `(() => {
     const el = document.getElementById("setting-updates-check");
-    return { active: document.activeElement.id, disabled: el.disabled, ariaDisabled: el.getAttribute("aria-disabled"), label: el.textContent, ring: getComputedStyle(el).outlineStyle, windowFocused: document.hasFocus() };
+    return { active: document.activeElement.id, disabled: el.disabled, ariaDisabled: el.getAttribute("aria-disabled"), label: el.textContent, ring: getComputedStyle(el).boxShadow, windowFocused: document.hasFocus() };
   })()`);
   await shot("update-check-busy.png");
   key("Return");
@@ -943,7 +947,7 @@ async function run() {
   const busyCalls = JSON.stringify(chooseCalls);
   record("real Tab reaches Check for updates… and Enter starts one check", tabbed === "setting-updates-check" && busyCalls === '[["updates","check"]]', JSON.stringify({ tabbed, busyCalls }));
   await recordActive(updateSpan, "a running check keeps keyboard focus and its ring on the busy, focusable button",
-    busyCheck.active === "setting-updates-check" && !busyCheck.disabled && busyCheck.ariaDisabled === "true" && busyCheck.label === "Checking for updates…" && busyCheck.ring === "solid",
+    busyCheck.active === "setting-updates-check" && !busyCheck.disabled && busyCheck.ariaDisabled === "true" && busyCheck.label === "Checking for updates…" && /0px 0px 0px 2px/.test(busyCheck.ring),
     JSON.stringify(busyCheck));
   updateContext = { ...updateContext, updates: { enabled: true, state: { kind: "current", checkedAt: 2000 } } };
   window.webContents.send("settings:changed", settingsView({ type: "idle" }, updateContext));
@@ -983,7 +987,7 @@ async function run() {
   const bottomHint = await read<boolean>(window, `document.getElementById("scroll-hint").hidden`);
   record("scroll cue disappears at the bottom", bottomHint, String(bottomHint));
   // Tall enough for the whole Recording tab, which may scroll at the 960 × 640 default in Traditional Chinese.
-  window.setSize(720, 800);
+  window.setSize(720, 900);
   await read(window, `document.getElementById("tab-recording").click()`);
   await settle(100);
   const fitting = await read<{ hidden: boolean; scrollHeight: number; clientHeight: number; tab: string }>(window, `({ hidden: document.getElementById("scroll-hint").hidden,
@@ -1023,7 +1027,7 @@ async function run() {
   // Focus comes back only to a focused document (settings.ts), so this needs an active window.
   await recordActive(retrySpan, "real key on a failed link's Retry keeps focus in its row, not on the page", retryFocus.retryShown && retryFocus.active.startsWith("setting-about-"), JSON.stringify(retryFocus));
   const tabSpan = await activeSpan();
-  await read(window, `(() => { const s = document.getElementById("setting-hotkey"); s.value = "custom"; s.dispatchEvent(new Event("change")); })()`);
+  await read(window, `(() => { const s = document.getElementById("setting-hotkey"); s.value = "custom"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`);
   await settle(100);
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });
@@ -1037,7 +1041,7 @@ async function run() {
   await recordActive(tabSpan, "real Tab exits capture to the next visible preference, its ⓘ and then its switch",
     tabExit === "setting-notifications-info-button" && tabNext === "setting-notifications", JSON.stringify({ tabExit, tabNext }));
   const backSpan = await activeSpan();
-  await read(window, `(() => { const s = document.getElementById("setting-hotkey"); s.value = "custom"; s.dispatchEvent(new Event("change")); })()`);
+  await read(window, `(() => { const s = document.getElementById("setting-hotkey"); s.value = "custom"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`);
   await settle(100);
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab", modifiers: ["shift"] });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab", modifiers: ["shift"] });
@@ -1045,14 +1049,14 @@ async function run() {
   const backExit = await read<string>(window, `document.activeElement.id`);
   // Recorded after the capture cases below, but judged on this interaction.
   const backActivation = await spanActivation(backSpan);
-  const keyboardRing = await read<boolean>(window, `getComputedStyle(document.getElementById("setting-hotkey")).outlineStyle === "solid"`);
+  const keyboardRing = await read<boolean>(window, `(() => { const el = document.getElementById("setting-hotkey"); return el.matches(":focus-visible") && getComputedStyle(el).boxShadow.includes("0px 0px 0px 2px"); })()`);
   await recordActive(backSpan, "keyboard navigation retains a visible focus ring", keyboardRing, String(keyboardRing));
   await read(window, `document.getElementById("setting-hotkey").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }))`);
   const pointerRing = await read<boolean>(window, `getComputedStyle(document.getElementById("setting-hotkey")).outlineStyle === "none"`);
   await recordActive(backSpan, "pointer interaction removes the ring without discarding DOM focus", pointerRing && backExit === "setting-hotkey", String(pointerRing));
   // One capture session: a blur cancels it, so its three cases share a span.
   const listenSpan = await activeSpan();
-  await read(window, `(() => { const s = document.getElementById("setting-hotkey"); s.value = "custom"; s.dispatchEvent(new Event("change")); })()`);
+  await read(window, `(() => { const s = document.getElementById("setting-hotkey"); s.value = "custom"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`);
   await settle(100);
   const listening = await read<boolean>(window, `document.querySelectorAll("#shortcut-capture .listening-indicator span").length === 3 && !document.querySelector(".capture-area").hidden`);
   await recordActive(listenSpan, "acknowledged capture displays a listening indicator", listening, String(listening));
@@ -1075,8 +1079,8 @@ async function run() {
   await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }] });
   window.setSize(560, 680);
   await settle(100);
-  const forced = await read<boolean>(window, `matchMedia("(forced-colors: active)").matches && getComputedStyle(document.getElementById("setting-notifications")).appearance === "auto" && getComputedStyle(document.getElementById("setting-language-en")).appearance === "auto"`);
-  record("forced colors restore native checkbox and radio appearance", forced, String(forced));
+  const forced = await read<boolean>(window, `matchMedia("(forced-colors: active)").matches && getComputedStyle(document.getElementById("setting-notifications")).borderTopStyle === "solid" && getComputedStyle(document.querySelector("#setting-language button[aria-pressed=true]")).outlineStyle === "solid"`);
+  record("forced colors distinguish the switch and the selected segment", forced, String(forced));
   await shot("panel-forced-colors.png");
   await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [] });
   await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
@@ -1100,15 +1104,16 @@ async function run() {
   /** Rows start collapsed (plan 047): open the one holding `selector` with a real Return on its header. */
   const openRowWith = async (selector: string): Promise<void> => {
     const rowId = await read<string>(window, `document.querySelector(${JSON.stringify(selector)})?.closest(".recording-result")?.id ?? ""`);
-    if (!rowId || await read<boolean>(window, `document.getElementById(${JSON.stringify(rowId)}).open`)) return;
-    await read(window, `document.getElementById(${JSON.stringify(rowId)}).querySelector(":scope > summary").focus()`);
+    if (!rowId || await read<boolean>(window, `document.getElementById(${JSON.stringify(rowId)})?.hasAttribute("data-open")`)) return;
+    await read(window, `document.getElementById(${JSON.stringify(rowId)}).querySelector(".result-summary").focus()`);
     window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Return" });
+    window.webContents.sendInputEvent({ type: "char", keyCode: "\r" });
     window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Return" });
-    if (!await until(() => read<boolean>(window, `document.getElementById(${JSON.stringify(rowId)}).open`))) throw new Error(`Could not open ${rowId}`);
+    if (!await until(() => read<boolean>(window, `document.getElementById(${JSON.stringify(rowId)})?.hasAttribute("data-open")`))) throw new Error(`Could not open ${rowId}`);
   };
   await pushResult("zh-TW", 1);
   record("recording failure visible immediately with notifications off; pending result cannot be acknowledged",
-    await read<boolean>(window, `document.querySelector(".recording-result").open && document.querySelector('.recording-result [data-action="acknowledge"]').disabled && document.querySelector(".result-outcome").textContent.includes("正在處理錄影") && document.activeElement === document.querySelector(".recording-result > summary")`), "pending and focus");
+    await read<boolean>(window, `document.querySelector(".recording-result")?.hasAttribute("data-open") && document.querySelector('.recording-result [data-action="acknowledge"]').disabled && document.querySelector(".result-outcome").textContent.includes("正在處理錄影") && document.activeElement === document.querySelector(".recording-result > .result-summary")`), "pending and focus");
   recordingResults.update({ ...failure, outcome: "partial", partialPath: "/tmp/錄影資料夾/2026-09-24 20-00-00.recording.mp4" });
   for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
     nativeTheme.themeSource = scheme;
@@ -1123,22 +1128,23 @@ async function run() {
   const click = await read<{ x: number; y: number }>(window, `(() => { const r = document.querySelector('.recording-result [data-action="acknowledge"]').getBoundingClientRect(); return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
   window.webContents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, ...click });
   window.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, ...click });
-  await until(async () => recordingResults.current?.acknowledged === true && await read<boolean>(window, `!document.querySelector(".recording-result").open && document.activeElement === document.querySelector(".recording-result > summary")`));
+  await until(async () => recordingResults.current?.acknowledged === true && await read<boolean>(window, `!document.querySelector(".recording-result")?.hasAttribute("data-open") && document.activeElement === document.querySelector(".recording-result > .result-summary")`));
   await recordActive(ackSpan, "real mouse Got it acknowledges only the offered result and collapses it",
-    recordingResults.current?.acknowledged === true && await read<boolean>(window, `!document.querySelector(".recording-result").open && document.activeElement === document.querySelector(".recording-result > summary")`),
-    JSON.stringify({ call: chooseCalls.at(-1), result: recordingResults.current, ui: await read(window, `({open: document.querySelector(".recording-result").open, active: document.activeElement.id, tag: document.activeElement.tagName, documentFocused: document.hasFocus(), windowFocused: ${window.isFocused()}})`) }));
+    recordingResults.current?.acknowledged === true && await read<boolean>(window, `!document.querySelector(".recording-result")?.hasAttribute("data-open") && document.activeElement === document.querySelector(".recording-result > .result-summary")`),
+    JSON.stringify({ call: chooseCalls.at(-1), result: recordingResults.current, ui: await read(window, `({open: document.querySelector(".recording-result")?.hasAttribute("data-open"), active: document.activeElement.id, tag: document.activeElement.tagName, documentFocused: document.hasFocus(), windowFocused: ${window.isFocused()}})`) }));
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Return" });
+  window.webContents.sendInputEvent({ type: "char", keyCode: "\r" });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Return" });
-  await recordActive(ackSpan, "acknowledged result can be reopened with keyboard", await until(() => read<boolean>(window, `document.querySelector(".recording-result").open`)), "Return on summary");
+  await recordActive(ackSpan, "acknowledged result can be reopened with keyboard", await until(() => read<boolean>(window, `document.querySelector(".recording-result")?.hasAttribute("data-open")`)), "Return on summary");
   // Explicit entry reopens an acknowledged result even after the user collapses it.
   await pushResult("zh-TW", 3);
   record("explicit result entry expands and focuses an acknowledged result",
-    await read<boolean>(window, `document.querySelector(".recording-result").open && document.activeElement === document.querySelector(".recording-result > summary")`), "focus token");
+    await read<boolean>(window, `document.querySelector(".recording-result")?.hasAttribute("data-open") && document.activeElement === document.querySelector(".recording-result > .result-summary")`), "focus token");
   recordingResults.update({ ...failure, id: "new-failure" });
   await pushResult("en", 3);
   // Without an entry the new row stays collapsed; it is unread, counted on the tab and still pending (plan 047).
   record("a new failure becomes unread while notifications are disabled",
-    !recordingResults.current!.acknowledged && await read<boolean>(window, `(() => { const row = document.querySelector(".recording-result"); return row.classList.contains("unread") && !row.open && row.querySelector('[data-action="acknowledge"]').disabled && document.getElementById("tab-failures").textContent === "Failures (1)"; })()`), "new identity");
+    !recordingResults.current!.acknowledged && await read<boolean>(window, `(() => { const row = document.querySelector(".recording-result"); return row.classList.contains("unread") && !row.hasAttribute("data-open") && row.querySelector('[data-action="acknowledge"]').disabled && document.getElementById("tab-failures").textContent === "Failures (1)"; })()`), "new identity");
   recordingResults.update({ ...failure, id: "new-failure", outcome: "empty" });
   await pushResult("en", 3);
   await openRowWith('.recording-result [data-action="acknowledge"]');
@@ -1162,7 +1168,7 @@ async function run() {
     const warning = await read<boolean>(window, `(() => { const el = document.querySelector(".result-persistence"); return !el.hidden && el.textContent.length > 0 && el.scrollWidth <= el.clientWidth; })()`);
     record(`persistence failure ${lang} stays readable at minimum size`, warning, warning ? "retention warning" : JSON.stringify({
       main: recordingResults.all.map(r => [r.id, r.acknowledged, r.saving, r.persistenceFailed]),
-      dom: await read(window, `[...document.querySelectorAll(".recording-result")].map(a => [a.dataset.resultId, a.open, !a.querySelector(".result-persistence").hidden, a.getAttribute("aria-busy")])`) }));
+      dom: await read(window, `[...document.querySelectorAll(".recording-result")].map(a => [a.dataset.resultId, a.hasAttribute("data-open"), !a.querySelector(".result-persistence").hidden, a.getAttribute("aria-busy")])`) }));
     await shot(`result-persistence-${lang}.png`);
   }
   /** Main's rows, in order, as the DOM must show them before a real click is aimed. */
@@ -1181,29 +1187,30 @@ async function run() {
     if (!await until(async () => chooseCalls.length > callsBefore && await expected()))
       throw new Error(`Timed out waiting for recording-result ${action} UI: ${JSON.stringify({ point, calls: chooseCalls.slice(callsBefore),
         main: recordingResults.all.map(r => [r.id, r.acknowledged, r.saving, r.persistenceFailed]),
-        dom: await read(window, `[...document.querySelectorAll(".recording-result")].map(a => ({ id: a.dataset.resultId, open: a.open, error: !a.querySelector(".result-error").hidden,
+        dom: await read(window, `[...document.querySelectorAll(".recording-result")].map(a => ({ id: a.dataset.resultId, open: a.hasAttribute("data-open"), error: !a.querySelector(".result-error").hidden,
           top: Math.round(a.getBoundingClientRect().top), actions: [...a.querySelectorAll(".result-actions button")].map(b => [b.dataset.action, b.getAttribute("aria-disabled"), Math.round(b.getBoundingClientRect().y)]) }))`),
         hit: await read(window, `(() => { const el = document.elementFromPoint(${point.x}, ${point.y}); return el ? (el.id || el.tagName) : null; })()`) })}`);
   };
   await clickAck(() => read<boolean>(window, `!document.querySelector(".result-error").hidden`));
   record("failed durable acknowledgement stays unread and expanded", !recordingResults.current?.acknowledged &&
-    await read<boolean>(window, `document.querySelector(".recording-result").open && !document.querySelector(".result-persistence").hidden && !document.querySelector(".result-error").hidden`), "failed save");
+    await read<boolean>(window, `document.querySelector(".recording-result")?.hasAttribute("data-open") && !document.querySelector(".result-persistence").hidden && !document.querySelector(".result-error").hidden`), "failed save");
   resultSaveFails = false;
-  await clickAck(() => read<boolean>(window, `document.querySelector(".result-persistence").hidden && document.querySelector(".recording-result").open`), "retry");
+  await clickAck(() => read<boolean>(window, `document.querySelector(".result-persistence").hidden && document.querySelector(".recording-result")?.hasAttribute("data-open")`), "retry");
   record("retry saving an unread failure does not acknowledge or collapse it", !recordingResults.current?.acknowledged && !recordingResults.current?.persistenceFailed, "independent persistence retry");
-  await clickAck(() => read<boolean>(window, `document.querySelector(".result-persistence").hidden && !document.querySelector(".recording-result").open`));
+  await clickAck(() => read<boolean>(window, `document.querySelector(".result-persistence").hidden && !document.querySelector(".recording-result")?.hasAttribute("data-open")`));
   record("retry durably acknowledges and clears the persistence warning", recordingResults.current?.acknowledged === true &&
-    await read<boolean>(window, `!document.querySelector(".recording-result").open && document.querySelector(".result-persistence").hidden`), "save recovered");
+    await read<boolean>(window, `!document.querySelector(".recording-result")?.hasAttribute("data-open") && document.querySelector(".result-persistence").hidden`), "save recovered");
   resultSaveFails = true;
   recordingResults.update({ ...failure, id: "persistence-failure", outcome: "unknown", detail: "recheck changed an acknowledged result" });
   await recordingResults.persist();
   for (const lang of ["en", "zh-TW"] as const) {
     await pushResult(lang, 5);
-    if (!await read<boolean>(window, `document.querySelector(".recording-result").open`)) {
-      await read(window, `document.querySelector(".recording-result > summary").focus()`);
+    if (!await read<boolean>(window, `document.querySelector(".recording-result")?.hasAttribute("data-open")`)) {
+      await read(window, `document.querySelector(".recording-result > .result-summary").focus()`);
       window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Return" });
+      window.webContents.sendInputEvent({ type: "char", keyCode: "\r" });
       window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Return" });
-      if (!await until(() => read<boolean>(window, `document.querySelector(".recording-result").open`))) throw new Error("History summary did not open");
+      if (!await until(() => read<boolean>(window, `document.querySelector(".recording-result")?.hasAttribute("data-open")`))) throw new Error("History summary did not open");
     }
     record(`acknowledged ${lang} result offers a readable save retry`, await read<boolean>(window, `(() => { const b = document.querySelector('.recording-result [data-action="retry"]'); return !b.disabled && b.scrollWidth <= b.clientWidth && b.textContent.includes(${JSON.stringify(lang === "en" ? "Retry saving the record" : "重試儲存紀錄")}); })()`), "acknowledged persistence failure");
     await shot(`result-retry-${lang}.png`);
@@ -1232,21 +1239,22 @@ async function run() {
     const count = recordingResults.all.length;
     const key = (keyCode: string): void => {
       window.webContents.sendInputEvent({ type: "keyDown", keyCode });
+      if (keyCode === "Return") window.webContents.sendInputEvent({ type: "char", keyCode: "\r" });
       window.webContents.sendInputEvent({ type: "keyUp", keyCode });
     };
     const lowest = `document.querySelectorAll(".recording-result")[${count - 1}]`;
     const lowestSpan = await activeSpan();
-    await read(window, `${lowest}.querySelector("summary").focus()`);
-    if (!await read<boolean>(window, `${lowest}.open`)) {
+    await read(window, `${lowest}.querySelector(".result-summary").focus()`);
+    if (!await read<boolean>(window, `${lowest}.hasAttribute("data-open")`)) {
       key("Return");
-      if (!await until(() => read<boolean>(window, `${lowest}.open`))) throw new Error("Could not open the lowest reviewed row");
+      if (!await until(() => read<boolean>(window, `${lowest}.hasAttribute("data-open")`))) throw new Error("Could not open the lowest reviewed row");
     }
     await read(window, `${lowest}.querySelector('[data-action="remove"]').focus()`);
     key("Space");
     const removed = await until(() => read<boolean>(window, `document.querySelectorAll(".recording-result").length === ${count - 1}`));
     await recordActive(lowestSpan, "removing the lowest row by keyboard moves focus to the row above it and keeps it in view",
       removed && await until(() => read<boolean>(window, `(() => {
-        const rows = document.querySelectorAll(".recording-result > summary");
+        const rows = document.querySelectorAll(".recording-result > .result-summary");
         const target = rows[rows.length - 1];
         const box = target?.getBoundingClientRect(), panel = document.getElementById("settings-panel").getBoundingClientRect();
         return document.activeElement === target && box.top >= panel.top && box.bottom <= panel.bottom;
@@ -1254,11 +1262,12 @@ async function run() {
   }
   const emptySpan = await activeSpan();
   while (recordingResults.all.length) {
-    if (!await read<boolean>(window, `document.querySelector(".recording-result").open`)) {
-      await read(window, `document.querySelector(".recording-result > summary").focus()`);
+    if (!await read<boolean>(window, `document.querySelector(".recording-result")?.hasAttribute("data-open")`)) {
+      await read(window, `document.querySelector(".recording-result > .result-summary").focus()`);
       window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Return" });
+      window.webContents.sendInputEvent({ type: "char", keyCode: "\r" });
       window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Return" });
-      if (!await until(() => read<boolean>(window, `document.querySelector(".recording-result").open`))) throw new Error("Could not open reviewed row");
+      if (!await until(() => read<boolean>(window, `document.querySelector(".recording-result")?.hasAttribute("data-open")`))) throw new Error("Could not open reviewed row");
     }
     const before = recordingResults.all.length;
     await clickAck(() => read<boolean>(window, `document.querySelectorAll(".recording-result").length === ${before - 1}`), "remove");
@@ -1292,7 +1301,7 @@ async function run() {
   const autoWarning = await read<boolean>(window, `!document.querySelector(".result-persistence").hidden && document.querySelector(".result-persistence").textContent.includes("keeps retrying")`);
   resultSaveFails = false;
   record("automatic retry clears the persistence warning without acknowledging", autoWarning && await until(async () => !recordingResults.current?.persistenceFailed
-    && await read<boolean>(window, `document.querySelector(".result-persistence").hidden && document.querySelector(".recording-result").open`)) && !recordingResults.current?.acknowledged, "300 ms controlled backoff");
+    && await read<boolean>(window, `document.querySelector(".result-persistence").hidden && document.querySelector(".recording-result")?.hasAttribute("data-open")`)) && !recordingResults.current?.acknowledged, "300 ms controlled backoff");
   retryDelays[0] = 3_600_000;
   await clear();
   const point = async (selector: string) => {
@@ -1304,7 +1313,7 @@ async function run() {
     window.webContents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, ...at });
     window.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, ...at });
   };
-  const press = (keyCode: string) => { window.webContents.sendInputEvent({ type: "keyDown", keyCode }); window.webContents.sendInputEvent({ type: "keyUp", keyCode }); };
+  const press = (keyCode: string) => { window.webContents.sendInputEvent({ type: "keyDown", keyCode }); if (keyCode === "Return") window.webContents.sendInputEvent({ type: "char", keyCode: "\r" }); window.webContents.sendInputEvent({ type: "keyUp", keyCode }); };
   const focusState = () => read(window, `({ active: document.activeElement.id || document.activeElement.tagName, documentFocused: document.hasFocus(), windowFocused: ${window.isFocused()} })`);
   for (const [delay, lang] of [[150, "en"], [2000, "zh-TW"]] as const) {
     saveDelayMs = delay;
@@ -1316,18 +1325,18 @@ async function run() {
     const delayedSpan = await activeSpan();
     await mouse(`${row(acked)} [data-action="acknowledge"]`);
     await settle(60);
-    const waiting = await read<{ busy: boolean; focused: boolean; text: string; unread: boolean }>(window, `(() => { const b = document.querySelector('${row(acked)} [data-action="acknowledge"]'); return { busy: b?.getAttribute("aria-disabled") === "true" && !b.disabled, focused: document.activeElement === b, text: document.querySelector('${row(acked)} .result-saving').textContent, unread: document.querySelector('${row(acked)}').open }; })()`);
+    const waiting = await read<{ busy: boolean; focused: boolean; text: string; unread: boolean }>(window, `(() => { const b = document.querySelector('${row(acked)} [data-action="acknowledge"]'); return { busy: b?.getAttribute("aria-disabled") === "true" && !b.disabled, focused: document.activeElement === b, text: document.querySelector('${row(acked)} .result-saving').textContent, unread: document.querySelector('${row(acked)}')?.hasAttribute("data-open") }; })()`);
     record(`${delay} ms save keeps the busy Got it focusable, unread and labelled (${lang})`, waiting.busy && waiting.focused && waiting.unread && waiting.text === saving[lang], JSON.stringify(waiting));
     if (delay === 2000) for (const scheme of ["light", "dark"] as const) {
       nativeTheme.themeSource = scheme; await settle(150);
       await shot(`result-saving-${lang}-${scheme}.png`);
     }
-    const collapsed = () => read<boolean>(window, `!document.querySelector('${row(acked)}').open && document.activeElement === document.querySelector('${row(acked)} > summary')`);
+    const collapsed = () => read<boolean>(window, `!document.querySelector('${row(acked)}')?.hasAttribute("data-open") && document.activeElement === document.querySelector('${row(acked)} > .result-summary')`);
     await recordActive(delayedSpan, `${delay} ms delayed real mouse Got it acknowledges only the offered result and collapses it`,
       await until(async () => recordingResults.all.find(r => r.id === acked)?.acknowledged === true && await collapsed(), delay + 3000),
       JSON.stringify({ result: recordingResults.all.find(r => r.id === acked), ui: await focusState() }));
     press("Return");
-    await recordActive(delayedSpan, `${delay} ms delayed acknowledged result can be reopened with keyboard`, await until(() => read<boolean>(window, `document.querySelector('${row(acked)}').open`)), "Return on summary");
+    await recordActive(delayedSpan, `${delay} ms delayed acknowledged result can be reopened with keyboard`, await until(() => read<boolean>(window, `document.querySelector('${row(acked)}')?.hasAttribute("data-open")`)), "Return on summary");
     recordingResults.update({ ...failure, id: moved }); recordingResults.update({ ...failure, id: moved, outcome: "empty" });
     await recordingResults.persist();
     await pushResult(lang, ++lastFocus);
@@ -1338,12 +1347,12 @@ async function run() {
     await mouse(`#${tab}`);
     await until(async () => recordingResults.all.find(r => r.id === moved)?.acknowledged === true, delay + 3000);
     await settle(200);
-    await recordActive(movedSpan, `${delay} ms focus moved during the wait is not stolen back`, await read<boolean>(window, `document.activeElement.id === ${JSON.stringify(tab)} && !document.querySelector('${row(moved)}').open`), JSON.stringify(await focusState()));
+    await recordActive(movedSpan, `${delay} ms focus moved during the wait is not stolen back`, await read<boolean>(window, `document.activeElement.id === ${JSON.stringify(tab)} && !document.querySelector('${row(moved)}')?.hasAttribute("data-open")`), JSON.stringify(await focusState()));
     const removalSpan = await activeSpan();
     for (const id of [moved, acked]) {
-      if (!await read<boolean>(window, `document.querySelector('${row(id)}').open`)) {
-        await read(window, `document.querySelector('${row(id)} > summary').focus()`); press("Return");
-        if (!await until(() => read<boolean>(window, `document.querySelector('${row(id)}').open`))) throw new Error(`Could not open ${id}`);
+      if (!await read<boolean>(window, `document.querySelector('${row(id)}')?.hasAttribute("data-open")`)) {
+        await read(window, `document.querySelector('${row(id)} > .result-summary').focus()`); press("Return");
+        if (!await until(() => read<boolean>(window, `document.querySelector('${row(id)}')?.hasAttribute("data-open")`))) throw new Error(`Could not open ${id}`);
       }
       await mouse(`${row(id)} [data-action="remove"]`);
       if (!await until(() => read<boolean>(window, `!document.querySelector('${row(id)}')`), delay + 3000)) throw new Error(`Could not remove ${id}`);
@@ -1380,7 +1389,7 @@ async function run() {
     // Lines are counted from the rendered text, since stretched buttons share a height even when one wraps.
     const strip = await read<{ fits: boolean; lines: number[]; labels: string[] }>(window, `(() => { const tabs = [...document.querySelectorAll('[role="tab"]')];
       // A narrow strip names only the open tab; the others show their icon and keep their name for assistive technology.
-      const shown = tabs.map(t => t.querySelector(".tab-name")).filter(name => name && getComputedStyle(name).clipPath === "none");
+      const shown = tabs.map(t => t.querySelector(".tab-name")).filter(name => name && name.getBoundingClientRect().width > 0 && getComputedStyle(name).clipPath === "none");
       const lines = shown.map(t => { const range = document.createRange(); range.selectNodeContents(t); return new Set([...range.getClientRects()].map(r => Math.round(r.top))).size; });
       return { fits: tabs.every(t => t.scrollWidth <= t.clientWidth), lines, labels: tabs.map(t => t.textContent) }; })()`);
     record(`${lang}: the four tabs fit the 380 pt window without wrapping or truncation, the open one by name`, strip.fits && strip.lines.length >= 1 && strip.lines.every(n => n === 1)
@@ -1401,19 +1410,19 @@ async function run() {
   // Day groups, collapsed rows, header navigation and one open row, all in English at the minimum size.
   await pushResult("en", lastFocus);
   const layout = await read<{ days: string[]; open: boolean[] }>(window, `({ days: [...document.querySelectorAll(".result-day-heading")].map(h => h.textContent),
-    open: [...document.querySelectorAll(".recording-result")].map(r => r.open) })`);
+    open: [...document.querySelectorAll(".recording-result")].map(r => r.hasAttribute("data-open")) })`);
   record("rows are grouped by day and all collapsed on a normal open", layout.days.length === 4 && layout.days[0] === "Today" && layout.days[1] === "Yesterday"
     && layout.days.slice(2).every(d => !/\d{4}/.test(d)) && layout.open.length === 7 && layout.open.every(open => !open), JSON.stringify(layout));
-  const headerIndex = () => read<number>(window, `[...document.querySelectorAll(".recording-result > summary")].indexOf(document.activeElement)`);
-  await read(window, `document.querySelector(".recording-result > summary").focus()`);
+  const headerIndex = () => read<number>(window, `[...document.querySelectorAll(".recording-result > .result-summary")].indexOf(document.activeElement)`);
+  await read(window, `document.querySelector(".recording-result > .result-summary").focus()`);
   const moves: number[] = [];
   for (const keyCode of ["Down", "Down", "Down", "Down", "End", "Up", "Home", "Up"]) { press(keyCode); await settle(40); moves.push(await headerIndex()); }
   record("Up, Down, Home and End move between row headers across day groups", JSON.stringify(moves) === JSON.stringify([1, 2, 3, 4, 6, 5, 0, 0]), JSON.stringify(moves));
   press("Return"); await settle(60);
   press("Down"); press("Return"); await settle(80);
-  const openRows = await read<boolean[]>(window, `[...document.querySelectorAll(".recording-result")].map(r => r.open)`);
+  const openRows = await read<boolean[]>(window, `[...document.querySelectorAll(".recording-result")].map(r => r.hasAttribute("data-open"))`);
   press("Space"); await settle(60);
-  const closed = await read<boolean[]>(window, `[...document.querySelectorAll(".recording-result")].map(r => r.open)`);
+  const closed = await read<boolean[]>(window, `[...document.querySelectorAll(".recording-result")].map(r => r.hasAttribute("data-open"))`);
   // Rows open on their own (2026-10-05): opening the second leaves the first open, and Space closes only the second.
   record("Enter and Space open and close a row, and opening another leaves the first open", JSON.stringify(openRows) === JSON.stringify([true, true, false, false, false, false, false])
     && JSON.stringify(closed) === JSON.stringify([true, false, false, false, false, false, false]), JSON.stringify({ openRows, closed }));
@@ -1427,7 +1436,7 @@ async function run() {
     const style = getComputedStyle(r); return { colour: style.borderTopColor, width: style.borderTopWidth, own: getComputedStyle(r, "::before").opacity, next: rows[${index + 1}] ? getComputedStyle(rows[${index + 1}], "::before").opacity : "none", input: document.documentElement.dataset.input }; })()`);
   // A middle row of a day, so both hairlines beside it exist.
   const headerSpan = await activeSpan();
-  await read(window, `document.querySelectorAll(".recording-result > summary")[1].focus()`); press("Down"); press("Up"); await settle(60);
+  await read(window, `document.querySelectorAll(".recording-result > .result-summary")[1].focus()`); press("Down"); press("Up"); await settle(60);
   const headerFocus = await rowFocus(1);
   const dpr = await read<number>(window, "devicePixelRatio");
   const expectedWidth = dpr >= 2 ? "1.5px" : "1px";
@@ -1440,7 +1449,7 @@ async function run() {
     headerFocus.colour === colours.accent && headerFocus.width === expectedWidth && headerFocus.own === "0" && headerFocus.next === "0", JSON.stringify({ headerFocus, colours }));
   nativeTheme.themeSource = "light"; await settle(100);
   const insideSpan = await activeSpan();
-  press("Return"); await settle(80); press("Tab"); await settle(80);
+  press("Return"); await settle(80); press("Tab"); await settle(240);
   const inside = await read<{ row: string; width: string; control: string; outline: string; style: string; tag: string }>(window, `(() => { const r = document.querySelectorAll(".recording-result")[1];
     const active = document.activeElement; const style = getComputedStyle(active); return { row: getComputedStyle(r).borderTopColor, width: getComputedStyle(r).borderTopWidth, control: active.dataset.action ?? active.tagName,
       outline: style.outlineColor, style: style.outlineStyle, tag: active.closest(".recording-result")?.id ?? "" }; })()`);
@@ -1448,10 +1457,10 @@ async function run() {
   await recordActive(insideSpan, "with focus on a control inside an open row, the row's border turns neutral at 1 px and the control's own border turns accent",
     inside.tag.endsWith("t-d2") && inside.row === colours.border && inside.width === "1px" && inside.outline === colours.accent && inside.style === "solid", JSON.stringify(inside));
   const pointerSpan = await activeSpan();
-  await mouse(".recording-result:nth-child(1) > summary"); await settle(80);
+  await mouse(".recording-result:nth-child(1) > .result-summary"); await settle(80);
   const clicked = await rowFocus(0);
   await recordActive(pointerSpan, "a pointer click shows no focus border", clicked.colour === "rgba(0, 0, 0, 0)" && clicked.input === "pointer", JSON.stringify(clicked));
-  await read(window, `document.querySelector(".recording-result > summary").focus()`); press("Down"); press("Up"); await settle(60);
+  await read(window, `document.querySelector(".recording-result > .result-summary").focus()`); press("Down"); press("Up"); await settle(60);
   const other = new BrowserWindow({ width: 240, height: 160, show: true });
   other.focus(); await settle(300);
   const inactive = await read<{ colour: string; window: string | undefined }>(window, `({ colour: getComputedStyle(document.querySelector(".recording-result")).borderTopColor, window: document.documentElement.dataset.window })`);
@@ -1471,12 +1480,12 @@ async function run() {
     day: document.activeElement.closest(".result-day")?.dataset.day ?? "" })`);
   // From collapsed rows: they open on their own since 2026-10-05, so a row an earlier check opened stays open, and the
   // Return below would close it instead of opening it.
-  await read(window, `document.querySelectorAll(".recording-result[open]").forEach(row => { row.open = false; })`); await settle(80);
-  await read(window, `document.querySelectorAll(".recording-result > summary")[1].focus()`); press("Down"); press("Up"); await settle(60);
+  await read(window, `document.querySelectorAll(".recording-result[data-open]").forEach(row => { row.querySelector(".result-summary").click(); })`); await settle(80);
+  await read(window, `document.querySelectorAll(".recording-result > .result-summary")[1].focus()`); press("Down"); press("Up"); await settle(60);
   const beforeRollover = await where();
   await rollover(1);
   const headerAfter = await where();
-  press("Return"); await settle(80); press("Tab"); await settle(80);
+  press("Return"); await settle(80); press("Tab"); await settle(240);
   const actionBefore = await where();
   await rollover(2);
   const actionAfter = await where();
@@ -1494,8 +1503,8 @@ async function run() {
   await recordActive(returned, "a day rollover while the window is inactive keeps the focused action for when it returns",
     inactiveRollover.active === actionBefore.active, JSON.stringify({ actionBefore, inactiveRollover }));
   await rollover(0);
-  let technical = await read<boolean>(window, `document.activeElement.matches(".result-technical > summary")`);
-  for (let i = 0; i < 4 && !technical; i += 1) { press("Tab"); await settle(60); technical = await read<boolean>(window, `document.activeElement.matches(".result-technical > summary")`); }
+  let technical = await read<boolean>(window, `document.activeElement.matches(".result-technical > .technical-summary")`);
+  for (let i = 0; i < 4 && !technical; i += 1) { press("Tab"); await settle(60); technical = await read<boolean>(window, `document.activeElement.matches(".result-technical > .technical-summary")`); }
   const disclosure = await read<{ style: string; colour: string; width: string }>(window, `(() => { const s = getComputedStyle(document.activeElement); return { style: s.outlineStyle, colour: s.outlineColor, width: s.outlineWidth }; })()`);
   await recordActive(returned, "keyboard focus on Technical details shows the shared focus line", technical && disclosure.style === "solid" && disclosure.colour === colours.accent && disclosure.width === expectedWidth,
     JSON.stringify({ technical, ...disclosure }));
@@ -1531,7 +1540,7 @@ async function run() {
   await pushResult("en", ++lastFocus);
   const entry = await read<{ tab: string; open: string[]; active: string; visible: boolean }>(window, `(() => { const rows = [...document.querySelectorAll(".recording-result")];
     const target = document.getElementById("recording-result-t-old-unread"); const box = target.getBoundingClientRect(), panel = document.getElementById("settings-panel").getBoundingClientRect();
-    return { tab: document.querySelector('[role="tab"][aria-selected="true"]').id, open: rows.filter(r => r.open).map(r => r.dataset.resultId), active: document.activeElement.id,
+    return { tab: document.querySelector('[role="tab"][aria-selected="true"]').id, open: rows.filter(r => r.hasAttribute("data-open")).map(r => r.dataset.resultId), active: document.activeElement.id,
       visible: box.top >= panel.top - 1 && box.top < panel.bottom }; })()`);
   record("an entry selects the failures tab, opens only the newest unread row, focuses its header and scrolls it into view, without acknowledging it",
     entry.tab === "tab-failures" && JSON.stringify(entry.open) === '["t-old-unread"]' && entry.active === "recording-result-t-old-unread-summary" && entry.visible
@@ -1541,43 +1550,40 @@ async function run() {
   await clickAck(() => read<boolean>(window, `!document.getElementById("recording-result-t-old-unread").classList.contains("unread")`));
   const after = await tabFailuresLabel();
   record("the tab count appears for unread failures and clears once they are acknowledged", before === "Failures (1)" && after === "Failures", JSON.stringify({ before, after }));
-  // The shared focus border on every kind of control: on the control's border, or 2 px off an accent fill.
+  // Preserve focus coverage for every control, both languages/themes at minimum size; shadcn uses shadows rather than the former inset hairline.
   window.setSize(380, 360);
-  /** Arrives at `selector` by real Tab and Shift+Tab, so the focus is keyboard focus. */
   const keyboardFocus = async (selector: string): Promise<boolean> => {
     await read(window, `document.querySelector(${JSON.stringify(selector)}).scrollIntoView({ block: "center" }); document.querySelector(${JSON.stringify(selector)}).focus()`);
     press("Tab"); await settle(40);
     window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab", modifiers: ["shift"] });
     window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab", modifiers: ["shift"] });
-    await settle(80);
+    // The shadcn focus shadow transitions; judge its settled width, not an intermediate frame.
+    await settle(240);
     return read<boolean>(window, `document.activeElement === document.querySelector(${JSON.stringify(selector)})`);
   };
+  const focusRing = () => read<{ keyboard: boolean; shadow: string; outline: string; colour: string }>(window, `(() => {
+    const el = document.activeElement, s = getComputedStyle(el);
+    return { keyboard: el.matches(":focus-visible"), shadow: s.boxShadow, outline: s.outlineStyle, colour: s.outlineColor };
+  })()`);
   for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
     nativeTheme.themeSource = scheme;
     await pushResult(lang, lastFocus);
     await mouse("#tab-recording"); await settle(80);
-    for (const [name, selector, offset] of [["tab", "#tab-recording", "-"], ["menu", "#setting-screen", "-"], ["segment", "#setting-countdown input:checked", "-"],
-      ["switch", "#setting-countdownSound", "gap"]] as const) {
+    for (const [name, selector, width] of [["tab", "#tab-recording", 3], ["menu", "#setting-screen", 2], ["segment", "#setting-countdown button[aria-pressed=true]", 3],
+      ["switch", "#setting-countdownSound", 2]] as const) {
       const span = await activeSpan();
-      const reached = await keyboardFocus(selector);
-      const ring = await read<{ style: string; width: string; offset: string }>(window, `(() => { const s = getComputedStyle(document.activeElement); return { style: s.outlineStyle, width: s.outlineWidth, offset: s.outlineOffset }; })()`);
-      const want = offset === "gap" ? "2px" : `-${expectedWidth}`;
+      const reached = await keyboardFocus(selector), ring = await focusRing();
       await shot(`focus-${name}-${lang}-${scheme}-minimum.png`);
-      await recordActive(span, `${lang}/${scheme}: the ${name} shows the ${expectedWidth} focus line ${offset === "gap" ? "2 px off its accent fill" : "on its own border"}`,
-        reached && ring.style === "solid" && ring.width === expectedWidth && ring.offset === want, JSON.stringify({ reached, ...ring }));
+      await recordActive(span, `${lang}/${scheme}: the ${name} shows its shadcn keyboard focus ring`,
+        reached && ring.keyboard && ring.shadow.includes(`0px 0px 0px ${width}px`), JSON.stringify({ reached, ...ring }));
     }
     await mouse("#tab-general"); await settle(80);
-    const buttonSpan = await activeSpan();
-    const buttonReached = await keyboardFocus("#setting-updates-check");
-    const buttonRing = await read<{ style: string; width: string; offset: string }>(window, `(() => { const s = getComputedStyle(document.activeElement); return { style: s.outlineStyle, width: s.outlineWidth, offset: s.outlineOffset }; })()`);
+    const buttonSpan = await activeSpan(), buttonReached = await keyboardFocus("#setting-updates-check"), buttonRing = await focusRing();
     await shot(`focus-button-${lang}-${scheme}-minimum.png`);
-    await recordActive(buttonSpan, `${lang}/${scheme}: a button shows the focus line on its own border`, buttonReached && buttonRing.style === "solid" && buttonRing.width === expectedWidth && buttonRing.offset === `-${expectedWidth}`, JSON.stringify({ buttonReached, ...buttonRing }));
-    // A row's extra action is a borderless text link, so its line sits just off the text.
-    const linkSpan = await activeSpan();
-    const linkReached = await keyboardFocus("#setting-notifications-openSettings");
-    const linkRing = await read<{ style: string; width: string; offset: string }>(window, `(() => { const s = getComputedStyle(document.activeElement); return { style: s.outlineStyle, width: s.outlineWidth, offset: s.outlineOffset }; })()`);
+    await recordActive(buttonSpan, `${lang}/${scheme}: a button shows its shadcn keyboard focus ring`, buttonReached && buttonRing.keyboard && buttonRing.shadow.includes("0px 0px 0px 2px"), JSON.stringify({ buttonReached, ...buttonRing }));
+    const linkSpan = await activeSpan(), linkReached = await keyboardFocus("#setting-notifications-openSettings"), linkRing = await focusRing();
     await shot(`focus-link-${lang}-${scheme}-minimum.png`);
-    await recordActive(linkSpan, `${lang}/${scheme}: a row's text-link action shows the focus line 2 px off its text`, linkReached && linkRing.style === "solid" && linkRing.width === expectedWidth && linkRing.offset === "2px", JSON.stringify({ linkReached, ...linkRing }));
+    await recordActive(linkSpan, `${lang}/${scheme}: a row action shows its shadcn keyboard focus ring`, linkReached && linkRing.keyboard && linkRing.shadow.includes("0px 0px 0px 2px"), JSON.stringify({ linkReached, ...linkRing }));
     await mouse("#tab-failures"); await settle(80);
     await shot(`failures-${lang}-${scheme}-minimum.png`);
   }

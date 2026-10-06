@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../shared/settings-panel";
-import { DEFAULT_HOTKEY } from "../shared/hotkey";
-import { shortcutCandidate } from "./shortcut-capture";
+import type { SettingsView } from "../../shared/settings-panel";
+import { DEFAULT_HOTKEY } from "../../shared/hotkey";
+import { shortcutCandidate } from "../lib/shortcut-capture";
 
 it("arms only after main acknowledges, captures a combination, cancels and obeys recording lock", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   let current: SettingsView = {
     language: "en", title: "Settings", hint: "", failure: "Save failed",
     tabs: [{ id: "recording", label: "Recording" }, { id: "general", label: "General" }],
@@ -34,7 +34,7 @@ it("arms only after main acknowledges, captures a combination, cancels and obeys
   document.getElementById("tab-general")!.click();
   const edit = () => {
     const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
-    select.value = "custom"; select.dispatchEvent(new Event("change"));
+    select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
   };
   const button = () => document.getElementById("shortcut-capture") as HTMLButtonElement;
   edit();

@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../shared/settings-panel";
-import { DEFAULT_HOTKEY } from "../shared/hotkey";
+import type { SettingsView } from "../../shared/settings-panel";
+import { DEFAULT_HOTKEY } from "../../shared/hotkey";
 
 /** The failures entry switches tabs like a click: an open shortcut editor must end, or main keeps both shortcuts suspended. */
 it("ends shortcut capture when a failures entry selects the failures tab", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   let current: SettingsView = {
     language: "en", title: "Settings", hint: "", failure: "Save failed",
     tabs: [{ id: "recording", label: "Recording" }, { id: "general", label: "General" }, { id: "failures", label: "Failures" }],
@@ -24,7 +24,7 @@ it("ends shortcut capture when a failures entry selects the failures tab", async
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
   const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
-  select.value = "custom"; select.dispatchEvent(new Event("change"));
+  select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
   await vi.waitFor(() => expect(document.getElementById("shortcut-capture")?.textContent).toBe("Press a combination"));
 
   push({ ...structuredClone(current), resultFocus: 1 });

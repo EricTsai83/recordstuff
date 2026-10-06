@@ -11,19 +11,19 @@
 import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE, fitSettingsSize, type SettingsWindowState, type WindowSize } from "./settings-window-state";
 import { BrowserWindow, app, ipcMain, screen, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent, type Rectangle, type WebContents } from "electron";
 import path from "node:path";
-import { SETTINGS_CHANNELS, SHORTCUT_CAPTURE_TIMEOUT_MS, isRenameChoice, type RenameChoice, type SettingsChoiceResult, type SettingsTab, type SettingsView } from "../shared/settings-panel";
-import { fileNameProblemText, fileNameTemplateProblem } from "../shared/file-name";
-import type { RenameProblem } from "./recordings-library";
-import type { RecordingState } from "../shared/state";
+import { SETTINGS_CHANNELS, SHORTCUT_CAPTURE_TIMEOUT_MS, isRenameChoice, type RenameChoice, type SettingsChoiceResult, type SettingsTab, type SettingsView } from "../../shared/settings-panel";
+import { fileNameProblemText, fileNameTemplateProblem } from "../../shared/file-name";
+import type { RenameProblem } from "../library/recordings-library";
+import type { RecordingState } from "../../shared/state";
 
 import { proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
-import { TRAFFIC_LIGHT_POSITION } from "../shared/window-controls";
-import { preferencesUnlocked } from "./ui-model";
-import { validateAccelerator, isSettingsShortcut, SETTINGS_SHORTCUT_RESERVED } from "../shared/hotkey";
-import { translate } from "../shared/i18n";
-import { isFullScreenChoice, type FullScreenChoice } from "../shared/video-player";
-import type { VideoFullScreen } from "./video-fullscreen";
-import type { AppAction, AppContext } from "./ui-model";
+import { TRAFFIC_LIGHT_POSITION } from "../../shared/window-controls";
+import { preferencesUnlocked } from "../recording/recording-lock";
+import { validateAccelerator, isSettingsShortcut, SETTINGS_SHORTCUT_RESERVED } from "../../shared/hotkey";
+import { translate } from "../../shared/i18n";
+import { isFullScreenChoice, type FullScreenChoice } from "../../shared/video-player";
+import type { VideoFullScreen } from "../library/video-fullscreen";
+import type { AppAction, AppContext } from "../app/ui-model";
 
 const HISTORY_PAGE_ROWS = 50;
 /** Escapes this soon after a video's fullscreen ended belong to the press that ended it. */
@@ -146,6 +146,7 @@ export class SettingsWindow {
   private reveal: (() => void) | undefined;
   private resizeTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingSize: WindowSize | undefined;
+  private currentZoom: number | undefined;
   /** One save at a time, in request order: a queued request is never a failure. */
   private queue: Promise<unknown> = Promise.resolve();
   /** The last view the page received by any route; an identical refresh is not pushed again. */
@@ -160,6 +161,11 @@ export class SettingsWindow {
       }
       return window;
     };
+    ipcMain.handle(SETTINGS_CHANNELS.zoom, (event, request: unknown) => {
+      authorize(event);
+      if (request !== "in" && request !== "out" && request !== "reset") throw new Error("Invalid zoom request");
+      this.zoom(request);
+    });
     ipcMain.handle(SETTINGS_CHANNELS.capture, (event, armed: unknown) => {
       const window = authorize(event);
       if (armed === false) this.release(this.leaseOf(window));
@@ -390,6 +396,7 @@ export class SettingsWindow {
     ipcMain.removeHandler(SETTINGS_CHANNELS.read);
     ipcMain.removeHandler(SETTINGS_CHANNELS.ready);
     ipcMain.removeHandler(SETTINGS_CHANNELS.choose);
+    ipcMain.removeHandler(SETTINGS_CHANNELS.zoom);
     this.window?.destroy();
     this.window = undefined;
   }
@@ -397,14 +404,20 @@ export class SettingsWindow {
   async flush(): Promise<void> { this.flushSize(); await this.options.geometry?.flush?.(); }
 
   /** The saved zoom, or 100%. */
-  private zoomFactor(): number { return this.options.geometry?.zoom ?? 1; }
+  private zoomFactor(): number { return this.currentZoom ?? this.options.geometry?.zoom ?? 1; }
 
   /** Zooms the open window's page one step in or out, or back to 100% (⌘+, ⌘-, ⌘0 and the View menu), and remembers it. */
   zoom(request: ZoomRequest): void {
     const window = this.window;
     const factor = nextZoom(this.zoomFactor(), request);
+    this.currentZoom = factor;
     this.options.geometry?.saveZoom?.(factor);
-    if (window && !window.isDestroyed()) window.webContents.setZoomFactor(factor);
+    if (window && !window.isDestroyed()) {
+      window.webContents.setZoomFactor(factor);
+      window.webContents.send(SETTINGS_CHANNELS.zoomChanged, {
+        factor, canZoomIn: factor < ZOOM_STEPS.at(-1)!, canZoomOut: factor > ZOOM_STEPS[0],
+      });
+    }
   }
 
   private flushSize(): void {

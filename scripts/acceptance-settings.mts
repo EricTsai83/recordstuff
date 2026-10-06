@@ -23,19 +23,20 @@
  * docs/verification/measurements/<timestamp>-settings-acceptance/.
  * Requires `pnpm build` output. Nothing here ships with the app.
  */
-import { scrubbedEnv } from "./lib/runner-env.mts";
-import { buildFixture } from "./lib/build-fixture.mts";
-import { runIsolatedProcess } from "./lib/isolated-process.mts";
-import { DesktopBlockedError, beginDesktopRound } from "./lib/desktop-session.mts";
-import { failureBlocked, settingsOutcome, type FixtureFailure, type SettingsCase } from "./lib/settings-activation.mts";
-import { roundExit } from "./lib/round-exit.mts";
+import { scrubbedEnv } from "./lib/runner/runner-env.mts";
+import { buildFixture } from "./lib/runner/build-fixture.mts";
+import { runIsolatedProcess } from "./lib/runner/isolated-process.mts";
+import { DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
+import { failureBlocked, settingsOutcome, type FixtureFailure, type SettingsCase } from "./lib/acceptance/settings-activation.mts";
+import { roundExit } from "./lib/runner/round-exit.mts";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ELECTRON = path.join(REPO_ROOT, "node_modules/.bin/electron");
-const TIMEOUT_MS = 90_000;
+// The preserved layout/focus matrix includes shadcn transition settling; bound the complete round separately from each input wait.
+const TIMEOUT_MS = 120_000;
 
 const argv = process.argv.slice(2).filter((arg, index) => !(index === 0 && arg === "--"));
 let outDir: string | undefined;

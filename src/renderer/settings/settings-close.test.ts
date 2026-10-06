@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../shared/settings-panel";
-import { DEFAULT_HOTKEY } from "../shared/hotkey";
-import { isCloseChord, type ShortcutKey } from "./shortcut-capture";
+import type { SettingsView } from "../../shared/settings-panel";
+import { DEFAULT_HOTKEY } from "../../shared/hotkey";
+import { isCloseChord, type ShortcutKey } from "../lib/shortcut-capture";
 
 const press = (key: string, code: string, modifiers: Partial<ShortcutKey> = {}): ShortcutKey =>
   ({ key, code, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...modifiers });
@@ -33,7 +33,7 @@ it("recognizes only the platform's exact close chord", () => {
 it("captures macOS Control+W as a shortcut while exact Command+W still closes", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
   const close = vi.spyOn(window, "close").mockImplementation(() => undefined);
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   let current: SettingsView = {
     language: "en", title: "Settings", hint: "", failure: "Save failed",
     tabs: [{ id: "recording", label: "Recording" }, { id: "general", label: "General" }],
@@ -60,7 +60,7 @@ it("captures macOS Control+W as a shortcut while exact Command+W still closes", 
   const field = () => document.getElementById("shortcut-capture") as HTMLButtonElement;
   const arm = async () => {
     const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
-    select.value = "custom"; select.dispatchEvent(new Event("change"));
+    select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
     await vi.waitFor(() => expect(field().textContent).toBe("Press a combination"));
   };
   const key = (target: EventTarget, init: KeyboardEventInit) => target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));

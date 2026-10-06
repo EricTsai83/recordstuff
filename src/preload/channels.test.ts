@@ -23,6 +23,8 @@ it("settings preload uses exactly the settings channels main handles and sends",
   await bridge.capture(true); await bridge.read(); await bridge.choose("hotkey", "off"); await bridge.ready();
   bridge.onChanged(() => {})();
   bridge.onHidden(() => {})();
+  await bridge.zoom("in");
+  bridge.onZoomChanged(() => {})();
   expect([...electron.used].sort()).toEqual(Object.values(SETTINGS_CHANNELS).sort());
 });
 

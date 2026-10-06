@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsGroup, SettingsView } from "../shared/settings-panel";
+import type { SettingsGroup, SettingsView } from "../../shared/settings-panel";
 
 /** A running action keeps the focus it was activated with (plan 053), driven through the real page module. */
 function view(checking: boolean): SettingsView {
@@ -21,7 +21,7 @@ function view(checking: boolean): SettingsView {
 
 it("keeps a running action focusable, ignores its second activation and leaves focus on it", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   let current = view(false);
   let push!: (next: SettingsView) => void;
   let finish: (() => void) | undefined;
@@ -41,7 +41,7 @@ it("keeps a running action focusable, ignores its second activation and leaves f
   await vi.waitFor(() => expect(check.textContent).toBe("Checking for updates…"));
   expect(check.disabled).toBe(false);
   expect(check.getAttribute("aria-disabled")).toBe("true");
-  expect(check.classList.contains("saving-disabled")).toBe(true);
+  expect(check.matches('[aria-disabled="true"]')).toBe(true);
   expect(document.activeElement).toBe(check);
   check.click();
   expect(choose).toHaveBeenCalledTimes(1);
@@ -49,7 +49,7 @@ it("keeps a running action focusable, ignores its second activation and leaves f
   expect((document.getElementById("setting-updates-unavailable") as HTMLButtonElement).disabled).toBe(true);
   current = view(false); push(current);
   expect(check.getAttribute("aria-disabled")).toBe("false");
-  expect(check.classList.contains("saving-disabled")).toBe(false);
+  expect(check.matches('[aria-disabled="true"]')).toBe(false);
   expect(document.activeElement).toBe(check);
 
   // A button beside a switch waits for its request the same way; every other action is busy with it.

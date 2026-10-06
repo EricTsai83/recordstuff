@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsGroup, SettingsView } from "../shared/settings-panel";
-import { DEFAULT_HOTKEY } from "../shared/hotkey";
+import type { SettingsGroup, SettingsView } from "../../shared/settings-panel";
+import { DEFAULT_HOTKEY } from "../../shared/hotkey";
 
 const NOTE = "Another app may be using this shortcut.";
 const diagnostic = (reason: string) => ({ kind: "current" as const, heading: "Shortcut unavailable", reason, guidance: "Choose another shortcut." });
@@ -18,7 +18,7 @@ const failed = (reason = NOTE): SettingsView => view({ note: reason, diagnostics
 /** A registration failure is read once, and the editor handing its note back on close is not news. */
 it("reads a shortcut failure once and not again when the editor closes", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   let current = view();
   let push!: (next: SettingsView) => void;
   /** What main shows once the editor closes. */
@@ -40,7 +40,7 @@ it("reads a shortcut failure once and not again when the editor closes", async (
   const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
   const field = () => document.getElementById("shortcut-capture") as HTMLButtonElement;
   const open = async (): Promise<void> => {
-    select.value = "custom"; select.dispatchEvent(new Event("change"));
+    select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
     await vi.waitFor(() => expect(field().textContent).toBe("Press a combination"));
   };
   const cancel = async (): Promise<void> => {

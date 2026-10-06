@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_QUALITY } from "../shared/quality";
-import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT, type HotkeySettings } from "../shared/hotkey";
-import type { RecordingState } from "../shared/state";
+import { DEFAULT_QUALITY } from "../../shared/quality";
+import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT, type HotkeySettings } from "../../shared/hotkey";
+import type { RecordingState } from "../../shared/state";
 
 const mock = vi.hoisted(() => {
   const handlers = new Map<string, (...args: any[]) => any>();
@@ -70,9 +70,10 @@ vi.mock("electron", () => ({
   },
 }));
 import { SettingsWindow, nextZoom, settingsWindowOptions, zoomRequest, type SettingsWindowOptions } from "./settings-window";
-import { TRAFFIC_LIGHT_POSITION, TRAFFIC_LIGHT_ZONE } from "../shared/window-controls";
-import { preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
-import { AppShortcuts } from "./shortcuts";
+import { TRAFFIC_LIGHT_POSITION, TRAFFIC_LIGHT_ZONE } from "../../shared/window-controls";
+import type { AppAction, AppContext } from "../app/ui-model";
+import { preferencesUnlocked } from "../recording/recording-lock";
+import { AppShortcuts } from "../shortcuts/shortcuts";
 
 const context: AppContext = {
   platform: "darwin",
@@ -1101,6 +1102,20 @@ describe("the page's zoom (2026-10-05)", () => {
     expect(event.preventDefault).toHaveBeenCalled();
     expect(saveZoom).toHaveBeenLastCalledWith(1.5);
     expect(contents.setZoomFactor).toHaveBeenLastCalledWith(1.5);
+    expect(contents.send).toHaveBeenLastCalledWith("settings:zoom-changed", { factor: 1.5, canZoomIn: false, canZoomOut: true });
+  });
+  it("authorizes toast actions, rejects arbitrary requests, and shares their factor with keyboard zoom", () => {
+    const s = setup();
+    s.panel.show();
+    const zoom = mock.handlers.get("settings:zoom")!;
+    expect(() => zoom({ ...s.event(), senderFrame: {} }, "in")).toThrow("Invalid settings sender");
+    expect(() => zoom(s.event(), 2)).toThrow("Invalid zoom request");
+    zoom(s.event(), "out");
+    expect(s.window().webContents.setZoomFactor).toHaveBeenLastCalledWith(0.9);
+    s.panel.zoom("out");
+    expect(s.window().webContents.send).toHaveBeenLastCalledWith("settings:zoom-changed", { factor: 0.8, canZoomIn: true, canZoomOut: false });
+    zoom(s.event(), "reset");
+    expect(s.window().webContents.setZoomFactor).toHaveBeenLastCalledWith(1);
   });
 });
 

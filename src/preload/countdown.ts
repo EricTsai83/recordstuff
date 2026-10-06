@@ -11,9 +11,11 @@ const CHANNEL = "countdown:value";
 
 const bridge: CountdownBridge = {
   onValue: (callback) => {
-    ipcRenderer.on(CHANNEL, (_event, value: unknown) => {
+    const listener = (_event: unknown, value: unknown): void => {
       if (value === null || (typeof value === "number" && Number.isInteger(value) && value > 0)) callback(value as CountdownValue);
-    });
+    };
+    ipcRenderer.on(CHANNEL, listener);
+    return () => { ipcRenderer.removeListener(CHANNEL, listener); };
   },
 };
 contextBridge.exposeInMainWorld("countdown", bridge);

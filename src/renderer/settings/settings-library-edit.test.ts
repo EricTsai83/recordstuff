@@ -1,16 +1,17 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { LibraryItemView, LibraryView, SettingsView } from "../shared/settings-panel";
+import { click, enter, menu } from "../testing/test-interactions";
+import type { LibraryItemView, LibraryView, SettingsView } from "../../shared/settings-panel";
 
 const item = (id: string, title: string, name = `${id}.mp4`): LibraryItemView => ({ id, day: "Today", title, name, time: "2:02 PM", duration: "1:23", size: "180 MB",
   thumbnail: `recordstuff-media://thumb/${id}?v=1`, video: `recordstuff-media://video/${id}?v=1` });
 
 /** The Recordings tab's layout switch, Move to Trash with Undo (the bar and ⌘Z), and a card's Rename… (2026-10-05). */
 it("switches layout, brings back a trashed recording, and renames one in place", async () => {
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p><button id="status-action" hidden></button></div><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
-  HTMLElement.prototype.showPopover = function (this: HTMLElement) { this.dataset.open = ""; };
-  HTMLElement.prototype.hidePopover = function (this: HTMLElement) { delete this.dataset.open; };
+
+
   const items = [item("a", "2:02 PM", "2026-10-05 14-02-11.mp4"), item("b", "Demo", "Demo.mp4")];
   const view = (library: Partial<LibraryView>, revision: number): SettingsView => ({ language: "en", title: "RecordStuff", hint: "", failure: "", revision,
     tabs: [{ id: "library", label: "Recordings" }, { id: "general", label: "General" }], groups: [],
@@ -48,7 +49,7 @@ it("switches layout, brings back a trashed recording, and renames one in place",
   expect(library.dataset.layout).toBe("grid");
   const list = document.getElementById("library-layout-list") as HTMLInputElement;
   expect([list.getAttribute("aria-label"), document.querySelector(".library-layout")!.getAttribute("aria-label")]).toEqual(["List", "Layout"]);
-  list.checked = true; list.dispatchEvent(new Event("change"));
+  click(list);
   expect(library.dataset.layout).toBe("list");
   await vi.waitFor(() => expect(choose).toHaveBeenCalledWith("library", "list"));
   expect(document.querySelector("#clip-a .clip-detail")!.textContent).toBe("2:02 PM · 1:23 · 180 MB");
@@ -56,39 +57,39 @@ it("switches layout, brings back a trashed recording, and renames one in place",
   // Move to Trash: the card leaves, the toast offers Undo with its ⌘Z, and the toast's Undo brings it back with the focus it had.
   const toastOf = () => document.getElementById("toast")!;
   const trash = async (id: string): Promise<void> => {
-    (document.getElementById(`clip-${id}-more`) as HTMLButtonElement).click();
-    document.getElementById("clip-menu-trash")!.click();
+    await menu(document.getElementById(`clip-${id}-more`)!);
+    click(document.getElementById("clip-menu-trash")!);
     await vi.waitFor(() => expect(document.getElementById(`clip-${id}`)).toBeNull());
   };
   await trash("a");
   const toastText = () => [toastOf().dataset.state, toastOf().querySelector(".toast-title")!.textContent, toastOf().querySelector(".toast-description")!.textContent,
     toastOf().querySelector<HTMLElement>(".toast-action")!.hidden, toastOf().querySelector(".toast-action-label")!.textContent, toastOf().querySelector(".toast-key")!.textContent];
-  expect(toastText()).toEqual(["open", "Moved to the Trash", "2026-10-05 14-02-11.mp4", false, "Undo", "⌘Z"]);
+  await vi.waitFor(() => expect(toastText()).toEqual(["open", "Moved to the Trash", "2026-10-05 14-02-11.mp4", false, "Undo", "⌘Z"]));
   expect(toastOf().querySelector(".toast-action")!.getAttribute("aria-keyshortcuts")).toBe("Meta+Z");
   expect(document.getElementById("feedback")!.textContent).toBe("Moved 2026-10-05 14-02-11.mp4 to the Trash.");
   // The old bar under the header is gone.
   expect(document.querySelector(".library-undo")).toBeNull();
   (document.getElementById("toast-action") as HTMLButtonElement).focus();
-  document.getElementById("toast-action")!.click();
+  click(document.getElementById("toast-action")!);
   await vi.waitFor(() => expect(document.getElementById("clip-a")).not.toBeNull());
   expect(choose).toHaveBeenLastCalledWith("library", "undoTrash");
   // A short "Restored" without a button replaces it; focus left the button for the card that came back.
-  expect(toastText().slice(0, 4)).toEqual(["open", "Restored", "2026-10-05 14-02-11.mp4", true]);
+  await vi.waitFor(() => expect(toastText().slice(0, 4)).toEqual(["open", "Restored", "2026-10-05 14-02-11.mp4", true]));
   expect([document.getElementById("feedback")!.textContent, document.activeElement?.id]).toEqual(["Restored 2026-10-05 14-02-11.mp4", "clip-a-open"]);
 
   // ⌘Z works on another tab too, toast or not: the card waits in Recordings, and the tab stays where it is.
   await trash("a");
-  document.getElementById("tab-general")!.click();
+  click(document.getElementById("tab-general")!);
   expect(toastOf().dataset.state).toBe("open");
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true, cancelable: true }));
   await vi.waitFor(() => expect(toastOf().querySelector(".toast-title")!.textContent).toBe("Restored"));
   expect([document.querySelector('[aria-selected="true"]')!.id, document.activeElement?.id]).toEqual(["tab-general", "tab-general"]);
-  document.getElementById("tab-library")!.click();
+  click(document.getElementById("tab-library")!);
   expect(document.getElementById("clip-a")).not.toBeNull();
 
   // × closes it at once without undoing anything; ⌘Z still brings the file back while it waits.
   await trash("a");
-  document.querySelector<HTMLButtonElement>(".toast-close")!.click();
+  click(document.querySelector<HTMLButtonElement>(".toast-close")!);
   expect(toastOf().dataset.state).toBe("closed");
   expect(document.getElementById("clip-a")).toBeNull();
   document.getElementById("tab-library")!.focus();
@@ -110,46 +111,48 @@ it("switches layout, brings back a trashed recording, and renames one in place",
   expect(choose.mock.calls.length).toBe(calls);
 
   // Rename…: a sheet with the name selected and the extension kept; a taken name says so in the sheet.
-  (document.getElementById("clip-b-more") as HTMLButtonElement).click();
-  document.getElementById("clip-menu-rename")!.click();
-  const sheet = document.getElementById("clip-rename")!;
-  const input = document.getElementById("clip-rename-input") as HTMLInputElement;
-  expect(["open" in sheet.dataset, input.value, sheet.querySelector(".clip-rename-extension")!.textContent, document.activeElement]).toEqual([true, "Demo", ".mp4", input]);
+  await menu(document.getElementById("clip-b-more")!);
+  click(document.getElementById("clip-menu-rename")!);
+  const sheet = () => document.getElementById("clip-rename");
+  const input = () => document.getElementById("clip-rename-input") as HTMLInputElement;
+  await vi.waitFor(() => expect(document.activeElement).toBe(input()));
+  expect([Boolean(sheet()?.hasAttribute("data-open")), input().value, sheet()!.querySelector(".clip-rename-extension")!.textContent, document.activeElement]).toEqual([true, "Demo", ".mp4", input()]);
   expect(document.getElementById("clip-rename-label")!.textContent).toBe("New name for Demo");
   // A name the folder cannot take is refused before anything is sent.
-  input.value = "a/b";
-  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-  expect(sheet.querySelector(".clip-rename-error")!.textContent).toBe("A name cannot contain / \\ : * ? \" < > |.");
+  enter(input(), "a/b");
+  input().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  expect(sheet()!.querySelector(".clip-rename-error")!.textContent).toBe("A name cannot contain / \\ : * ? \" < > |.");
   expect(choose).not.toHaveBeenCalledWith("recordingFile:b", expect.objectContaining({ action: "rename" }));
-  input.value = "Taken";
-  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-  await vi.waitFor(() => expect(sheet.querySelector(".clip-rename-error")!.textContent).toBe("A file with this name is already in the folder."));
-  expect("open" in sheet.dataset).toBe(true);
+  enter(input(), "Taken");
+  input().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await vi.waitFor(() => expect(sheet()!.querySelector(".clip-rename-error")!.textContent).toBe("A file with this name is already in the folder."));
+  expect(Boolean(sheet()?.hasAttribute("data-open"))).toBe(true);
   // Escape cancels, gives focus back to ⋯ and does not close the window.
   const close = vi.spyOn(window, "close").mockImplementation(() => {});
-  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
-  expect(["open" in sheet.dataset, document.activeElement?.id, close.mock.calls.length]).toEqual([false, "clip-b-more", 0]);
+  input().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+  expect([Boolean(sheet()?.hasAttribute("data-open")), document.activeElement?.id, close.mock.calls.length]).toEqual([false, "clip-b-more", 0]);
   // Renamed: the new card takes the focus, and it is said.
-  (document.getElementById("clip-b-more") as HTMLButtonElement).click();
-  document.getElementById("clip-menu-rename")!.click();
-  input.value = " Product demo ";
-  document.getElementById("clip-rename-confirm")!.click();
+  await menu(document.getElementById("clip-b-more")!);
+  click(document.getElementById("clip-menu-rename")!);
+  enter(input(), " Product demo ");
+  click(document.getElementById("clip-rename-confirm")!);
   await vi.waitFor(() => expect(document.getElementById("clip-c")).not.toBeNull());
   expect(choose).toHaveBeenLastCalledWith("recordingFile:b", { action: "rename", name: "Product demo" });
-  expect(["open" in sheet.dataset, document.activeElement?.id, document.getElementById("feedback")!.textContent])
+  expect([Boolean(sheet()?.hasAttribute("data-open")), document.activeElement?.id, document.getElementById("feedback")!.textContent])
     .toEqual([false, "clip-c-open", "Renamed to Product demo.mp4"]);
 
   // A slow rename answered after its sheet was closed and another card's opened: the newer sheet keeps the focus.
-  (document.getElementById("clip-a-more") as HTMLButtonElement).click();
-  document.getElementById("clip-menu-rename")!.click();
-  input.value = "Slow";
-  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await menu(document.getElementById("clip-a-more")!);
+  click(document.getElementById("clip-menu-rename")!);
+  enter(input(), "Slow");
+  input().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
   await vi.waitFor(() => expect(slow).toBeDefined());
-  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
-  (document.getElementById("clip-c-more") as HTMLButtonElement).click();
-  document.getElementById("clip-menu-rename")!.click();
-  expect([input.value, document.activeElement]).toEqual(["Product demo", input]);
+  input().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+  await menu(document.getElementById("clip-c-more")!);
+  click(document.getElementById("clip-menu-rename")!);
+  await vi.waitFor(() => expect(document.activeElement).toBe(input()));
+  expect([input().value, document.activeElement]).toEqual(["Product demo", input()]);
   slow!(undefined);
   await vi.waitFor(() => expect(document.getElementById("clip-d")).not.toBeNull());
-  expect(["open" in sheet.dataset, document.activeElement, input.value]).toEqual([true, input, "Product demo"]);
+  expect([Boolean(sheet()?.hasAttribute("data-open")), document.activeElement, input().value]).toEqual([true, input(), "Product demo"]);
 });

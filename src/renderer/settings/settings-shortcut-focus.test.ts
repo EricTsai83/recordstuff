@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../shared/settings-panel";
-import { DEFAULT_HOTKEY } from "../shared/hotkey";
+import type { SettingsView } from "../../shared/settings-panel";
+import { DEFAULT_HOTKEY } from "../../shared/hotkey";
 
 /**
  * Chromium clears the focused element before `focusout`, and a user-driven
@@ -10,7 +10,7 @@ import { DEFAULT_HOTKEY } from "../shared/hotkey";
  */
 it("keeps a candidate when Tab or VoiceOver moves focus to Confirm, and ends capture when focus leaves the editor", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   let current: SettingsView = {
     language: "en", title: "Settings", hint: "", failure: "Save failed",
     tabs: [{ id: "recording", label: "Recording" }, { id: "general", label: "General" }],
@@ -29,7 +29,7 @@ it("keeps a candidate when Tab or VoiceOver moves focus to Confirm, and ends cap
   const field = () => document.getElementById("shortcut-capture") as HTMLButtonElement;
   const confirm = () => document.getElementById("shortcut-confirm") as HTMLButtonElement;
   const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
-  select.value = "custom"; select.dispatchEvent(new Event("change"));
+  select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
   await vi.waitFor(() => expect(field().textContent).toBe("Press a combination"));
   field().focus();
   field().dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", metaKey: true, shiftKey: true, bubbles: true, cancelable: true }));

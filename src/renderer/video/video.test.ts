@@ -4,16 +4,16 @@ import { beforeEach, expect, it, vi } from "vitest";
 /** The fullscreen page (video.ts): loaded fresh for each case, with the query main gives it. */
 async function load(query: string): Promise<{ video: HTMLVideoElement; ready: ReturnType<typeof vi.fn>; exit: ReturnType<typeof vi.fn>; order: string[] }> {
   vi.resetModules();
-  document.body.innerHTML = '<video id="video"></video><button id="exit" hidden></button>';
+  document.body.innerHTML = '<div id="root"></div>';
   history.replaceState(null, "", `/video.html?${query}`);
   const order: string[] = [];
   const ready = vi.fn(() => { order.push("ready"); });
   const exit = vi.fn(() => { order.push("exit"); });
   window.video = { ready, exit };
-  const video = document.getElementById("video") as HTMLVideoElement;
-  vi.spyOn(video, "play").mockImplementation(async () => { order.push("play"); });
-  vi.spyOn(video, "pause").mockImplementation(() => { order.push("pause"); });
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(async () => { order.push("play"); });
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => { order.push("pause"); });
   await import("./video");
+  const video = document.getElementById("video") as HTMLVideoElement;
   return { video, ready, exit, order };
 }
 

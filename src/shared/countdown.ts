@@ -145,7 +145,7 @@ export type CountdownValue = number | null;
 
 /** What the overlay preload exposes: main sends values; the page only renders them. */
 export interface CountdownBridge {
-  onValue(callback: (value: CountdownValue) => void): void;
+  onValue(callback: (value: CountdownValue) => void): () => void;
 }
 
 export const COUNTDOWN_VALUE_CHANNEL = "countdown:value";

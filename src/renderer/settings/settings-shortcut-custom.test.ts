@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../shared/settings-panel";
-import { DEFAULT_HOTKEY } from "../shared/hotkey";
+import type { SettingsView } from "../../shared/settings-panel";
+import { DEFAULT_HOTKEY } from "../../shared/hotkey";
 
 /** Custom shortcut… waits while the editor listens, and its disabled flag is written once, not again on every draw. */
 it("keeps Custom shortcut… disabled while listening without rewriting it on each redraw", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   let current: SettingsView = {
     language: "en", title: "Settings", hint: "", failure: "Save failed",
     tabs: [{ id: "recording", label: "Recording" }, { id: "general", label: "General" }],
@@ -26,7 +26,7 @@ it("keeps Custom shortcut… disabled while listening without rewriting it on ea
   const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
   const custom = select.querySelector<HTMLOptionElement>('option[value="custom"]')!;
   expect(custom.disabled).toBe(false);
-  select.value = "custom"; select.dispatchEvent(new Event("change"));
+  select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
   await vi.waitFor(() => expect(document.getElementById("shortcut-capture")?.textContent).toBe("Press a combination"));
   expect(custom.disabled).toBe(true);
 

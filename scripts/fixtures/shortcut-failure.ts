@@ -27,7 +27,7 @@ const settingsKey = 'CommandOrControl+Alt+,';
 const settingsPhase = drill === 'settings';
 const accelerator = 'Control+Shift+F20';
 const owned = new Map<string, () => void>();
-/** The Settings shortcut editor's limit in src/main/settings-window.ts. */
+/** The Settings shortcut editor's limit in src/main/settings/settings-window.ts. */
 const SHORTCUT_EDITOR_LIMIT_MS = 15_000;
 /**
  * Names the app that took focus, so an interrupted round says so instead of failing without a reason. It runs
@@ -160,7 +160,7 @@ async function arm() {
   if (!panel) throw new Error('Settings window is not ready');
   panel.show(); panel.focus();
   await waitFor(() => panel?.isFocused(), 'settings focused');
-  await evaluate("(() => { const s = document.getElementById('setting-hotkey'); s.value = 'custom'; s.dispatchEvent(new Event('change')); })()");
+  await evaluate("(() => { const s = document.getElementById('setting-hotkey'); s.value = 'custom'; s.dispatchEvent(new Event('change', { bubbles: true })); })()");
   await waitFor(async () => (await group()).capturing, 'capture armed');
 }
 async function key(code: string, key: string, modifiers: Record<string, boolean> = {}) {
@@ -192,10 +192,14 @@ async function commit() {
   await waitFor(async () => !(await group()).capturing, 'capture committed');
 }
 async function choose(id: string, value: string) {
-  // A segmented row (Appearance since 2026-10-05) is chosen through its radio; a menu by its value; a switch by checking it.
-  await evaluate(`(() => { const radio = document.getElementById(${JSON.stringify(`setting-${id}-${value}`)});
-    if (radio?.type === "radio") { radio.checked = true; radio.dispatchEvent(new Event('change')); return; }
-    const select = document.getElementById(${JSON.stringify('setting-' + id)}); if (select.type === "checkbox") select.checked = ${JSON.stringify(value)} === "on"; else select.value = ${JSON.stringify(value)}; select.dispatchEvent(new Event('change')); })()`);
+  // Preserve committed-value coverage through shadcn toggles/switches and the native select.
+  await evaluate(`(() => {
+    const segment = document.getElementById(${JSON.stringify(`setting-${id}-${value}`)});
+    if (segment?.getAttribute("aria-pressed") !== null && segment) { if (segment.getAttribute("aria-pressed") !== "true") segment.click(); return; }
+    const control = document.getElementById(${JSON.stringify('setting-' + id)});
+    if (control.getAttribute("role") === "switch") { if ((control.getAttribute("aria-checked") === "true") !== (${JSON.stringify(value)} === "on")) control.click(); return; }
+    control.value = ${JSON.stringify(value)}; control.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
   await waitFor(() => evaluate(`!document.querySelector('.row[aria-busy="true"]')`), 'save settled');
 }
 function finish(error?: unknown) {
@@ -250,8 +254,8 @@ require(path.join(root, 'out/main/index.js'));
       await waitFor(() => evaluate(`matchMedia('(prefers-color-scheme: dark)').matches === ${electron.nativeTheme.shouldUseDarkColors}`), 'renderer appearance');
       record(`${appearance} appearance updates native theme, renderer and saved preference`,
         JSON.parse(fs.readFileSync(settingsFile, 'utf8')).appearance === appearance
-        // Appearance is three icon segments (2026-10-05): the chosen one is the checked radio.
-        && await evaluate(`document.getElementById('setting-appearance-${appearance}').checked`), electron.nativeTheme.themeSource);
+        // Appearance is three icon segments: the chosen shadcn toggle is pressed.
+        && await evaluate(`document.getElementById('setting-appearance-${appearance}').getAttribute('aria-pressed') === 'true'`), electron.nativeTheme.themeSource);
     }
     const opened = panel!;
     const count = BrowserWindow.getAllWindows().length;

@@ -5,33 +5,10 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' recordstuff-media:; media-src recordstuff-media:" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>RecordStuff</title>
-  <link rel="stylesheet" href="./settings.css" />
+  <link rel="stylesheet" href="./ui.css" />
 </head>
 <body>
-  <div class="titlebar" aria-hidden="true"></div>
-  <main>
-    <h1 id="title" class="visually-hidden"></h1>
-    <div class="brand" aria-hidden="true"><span class="brand-mark"></span><span class="brand-name">RecordStuff</span></div>
-    <!-- The script puts the status card between the tabs and their content (settings.ts `draw`). -->
-    <form id="settings">
-      <div id="status" class="status" hidden>
-        <span class="status-mark" aria-hidden="true"></span>
-        <div class="status-text">
-          <p id="status-title" class="status-title"></p>
-          <p id="status-detail" class="status-detail"></p>
-          <p id="hint" hidden></p>
-          <p id="status-error" class="status-error" hidden></p>
-          <button type="button" id="status-secondary" class="status-secondary" hidden></button>
-        </div>
-        <button type="button" id="status-action" class="status-action" hidden></button>
-      </div>
-    </form>
-    <!-- After the tabs and their content, as the sidebar shows it at its foot: Quit is never the first Tab stop. -->
-    <footer id="sidebar-about" class="sidebar-about" hidden>
-      <p class="sidebar-error" hidden></p>
-    </footer>
-    <p id="feedback" class="visually-hidden" role="status" aria-live="polite"></p>
-  </main>
-  <script type="module" src="./settings.ts"></script>
+  <div id="root"></div>
+  <script type="module" src="./settings/settings.ts"></script>
 </body>
 </html>

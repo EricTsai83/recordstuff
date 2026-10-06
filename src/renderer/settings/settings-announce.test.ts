@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsGroup, SettingsView } from "../shared/settings-panel";
+import type { SettingsGroup, SettingsView } from "../../shared/settings-panel";
 
 /** What the page reads out and where a retry leaves focus, driven through the real page module. */
 function view(language: "en" | "zh-TW", over: Partial<SettingsView> = {}): SettingsView {
@@ -23,7 +23,7 @@ function view(language: "en" | "zh-TW", over: Partial<SettingsView> = {}): Setti
 
 it("reads out only news, as sentences of the panel's language, and keeps focus when an action's retry hides", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   let current = view("en");
   let push!: (next: SettingsView) => void;
   let finish: (() => void) | undefined;
@@ -77,7 +77,7 @@ it("reads out only news, as sentences of the panel's language, and keeps focus w
 
   // A radio group has no focusable element of its own: its checked radio takes focus instead.
   const zhRadio = document.getElementById("setting-language-zh-TW") as HTMLInputElement;
-  zhRadio.focus(); zhRadio.checked = true; zhRadio.dispatchEvent(new Event("change"));
+  zhRadio.focus(); zhRadio.click();
   const languageRetry = document.getElementById("setting-language-retry") as HTMLButtonElement;
   await vi.waitFor(() => expect(languageRetry.hidden).toBe(false));
   languageRetry.focus(); languageRetry.click();
@@ -89,7 +89,7 @@ it("reads out only news, as sentences of the panel's language, and keeps focus w
 it("reads out a finished update check, even one whose result repeats the last", async () => {
   vi.resetModules();
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   const updates = (busy: boolean, note?: string): SettingsGroup => ({ id: "updates", label: "Updates", tab: "general", kind: "actions",
     noteKind: "status", enabled: true, ...(note ? { note } : {}), choices: [
       { id: "check", label: busy ? "Checking for updates…" : "Check for updates…", enabled: true, checked: false, ...(busy ? { busy } : {}) },
@@ -106,7 +106,8 @@ it("reads out a finished update check, even one whose result repeats the last", 
   expect(feedback.textContent).toBe("Could not check for updates.");
   // The same failure after a second check is still the answer to that press.
   push(current = view("en", { groups: [updates(true, "Could not check for updates.")] }));
-  feedback.textContent = "";
+  const firstAnswer = feedback.textContent;
   push(current = view("en", { groups: [updates(false, "Could not check for updates.")] }));
-  expect(feedback.textContent).toBe("Could not check for updates.");
+  expect(feedback.textContent?.trim()).toBe("Could not check for updates.");
+  expect(feedback.textContent).not.toBe(firstAnswer);
 });

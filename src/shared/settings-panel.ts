@@ -158,6 +158,8 @@ export interface SettingsView {
 /** How long a custom-shortcut capture stays armed; the editor's help and its timeout notice name the same limit. */
 export const SHORTCUT_CAPTURE_TIMEOUT_MS = 15_000;
 export const SETTINGS_CHANNELS = {
+  zoom: "settings:zoom",
+  zoomChanged: "settings:zoom-changed",
   capture: "settings:capture",
   read: "settings:read",
   choose: "settings:choose",
@@ -185,6 +187,9 @@ export interface SettingsChoiceResult {
 }
 /** What the preload exposes to the panel. */
 export interface SettingsBridge {
+  /** Uses the same persisted zoom as the window's keyboard and menu actions. */
+  zoom?(request: SettingsZoomRequest): Promise<void>;
+  onZoomChanged?(callback: (zoom: SettingsZoom) => void): () => void;
   read(): Promise<SettingsView>;
   capture(armed: boolean): Promise<SettingsView>;
   /** A choice is an offered option's id, a full-screen request for a recording (video-player.ts) or its new name. */
@@ -195,3 +200,6 @@ export interface SettingsBridge {
   /** The page has painted its first content (or its failed read): a new window may be shown now. */
   ready(): Promise<void>;
 }
+
+export type SettingsZoomRequest = "in" | "out" | "reset";
+export interface SettingsZoom { factor: number; canZoomIn: boolean; canZoomOut: boolean }

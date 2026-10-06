@@ -4,11 +4,10 @@
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; media-src recordstuff-media:" />
   <title>RecordStuff</title>
-  <link rel="stylesheet" href="./video.css" />
+  <link rel="stylesheet" href="./ui.css" />
 </head>
 <body>
-  <video id="video" playsinline disablepictureinpicture></video>
-  <button type="button" id="exit"></button>
-  <script type="module" src="./video.ts"></script>
+  <div id="root"></div>
+  <script type="module" src="./video/video.ts"></script>
 </body>
 </html>

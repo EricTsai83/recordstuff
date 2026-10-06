@@ -1,18 +1,32 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { COUNTDOWN_TICK, COUNTDOWN_TIMING } from "../shared/countdown";
-import { createCountdownView, overlayStyle, playTick, soundRequested, type TickContext } from "./countdown";
+import { COUNTDOWN_TICK, COUNTDOWN_TIMING } from "../../shared/countdown";
+import { createCountdownState, overlayStyle, playTick, soundRequested, type TickContext } from "./countdown-state";
+import { createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
+import { CountdownFaces } from "./countdown-app";
 
+const roots = new WeakMap<HTMLElement, ReturnType<typeof createRoot>>();
 function stage(): HTMLElement {
-  document.body.innerHTML = '<div id="stage" role="timer"><span class="face"></span><span class="face"></span></div>';
-  return document.getElementById("stage")!;
+ document.body.innerHTML = '<div id="root"></div>';
+ const root = createRoot(document.getElementById("root")!);
+ const frame = createCountdownState()(null);
+ flushSync(() => root.render(createElement(CountdownFaces, { frame })));
+ const element = document.getElementById("stage")!;
+ roots.set(element, root); return element;
+}
+function renderCountdown(element: HTMLElement, onDigit?: (digit: number) => void): (value: number | null) => void {
+ const root = roots.get(element)!;
+ const update = createCountdownState(onDigit);
+ return value => flushSync(() => root.render(createElement(CountdownFaces, { frame: update(value) })));
 }
 const faces = (el: HTMLElement) => Array.from(el.querySelectorAll<HTMLElement>(".face")).map((face) => [face.textContent, face.classList.contains("front")]);
 
 describe("countdown overlay page", () => {
   it("fades the first digit in, crossfades between digits and fades out on null", () => {
     const el = stage();
-    const render = createCountdownView(el);
+    const render = renderCountdown(el);
     expect(el.classList.contains("visible")).toBe(false);
     render(3);
     expect(el.classList.contains("visible")).toBe(true);
@@ -103,14 +117,14 @@ function fakeAudio(currentTime = 5) {
 describe("countdown tick (plan 046)", () => {
   it("plays one tick for each new digit and none for a repeated value or null", () => {
     const ticks: number[] = [];
-    const render = createCountdownView(stage(), (digit) => ticks.push(digit));
+    const render = renderCountdown(stage(), (digit) => ticks.push(digit));
     render(3); render(3); render(2); render(1); render(null); render(null);
     expect(ticks).toEqual([3, 2, 1]);
   });
 
   it("stays silent without a tick, as when the page was loaded without the sound flag", () => {
     const el = stage();
-    const render = createCountdownView(el);
+    const render = renderCountdown(el);
     render(3);
     expect(el.classList.contains("visible")).toBe(true);
     expect(soundRequested("")).toBe(false);

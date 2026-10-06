@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../shared/settings-panel";
-import { DEFAULT_HOTKEY } from "../shared/hotkey";
+import type { SettingsView } from "../../shared/settings-panel";
+import { DEFAULT_HOTKEY } from "../../shared/hotkey";
 
 /** The Windows editor reports Ctrl as Control; the reserved combinations and their wording follow the platform (plan 064). */
 it("refuses Ctrl+Q and a chord without Ctrl in Windows words, and offers the macOS screenshot chord", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   const current: SettingsView = {
     language: "en", title: "Settings", hint: "", failure: "Could not apply this setting.",
     tabs: [{ id: "recording", label: "Recording" }, { id: "general", label: "General" }],
@@ -23,7 +23,7 @@ it("refuses Ctrl+Q and a chord without Ctrl in Windows words, and offers the mac
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
   const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
-  select.value = "custom"; select.dispatchEvent(new Event("change"));
+  select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
   const field = () => document.getElementById("shortcut-capture") as HTMLButtonElement;
   await vi.waitFor(() => expect(field().textContent).toBe("Press a combination"));
   const error = () => document.querySelector(".save-error p")?.textContent;

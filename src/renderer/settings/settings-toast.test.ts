@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { LibraryItemView, LibraryView, SettingsView } from "../shared/settings-panel";
+import { click, menu } from "../testing/test-interactions";
+import type { LibraryItemView, LibraryView, SettingsView } from "../../shared/settings-panel";
 
 const item = (id: string): LibraryItemView => ({ id, day: "Today", title: id, name: `${id}.mp4`, time: "2:02 PM", duration: "1:23", size: "180 MB",
   thumbnail: `recordstuff-media://thumb/${id}?v=1`, video: `recordstuff-media://video/${id}?v=1` });
@@ -9,10 +10,10 @@ const item = (id: string): LibraryItemView => ({ id, day: "Today", title: id, na
 it("leaves after 8 s unless the pointer or focus holds it, and says Restored for 3 s", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   try {
-    document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p><button id="status-action" hidden></button></div><p id="feedback"></p><form id="settings"></form>';
+    document.body.innerHTML = '<div id="root"></div>';
     Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
-    HTMLElement.prototype.showPopover = function (this: HTMLElement) { this.dataset.open = ""; };
-    HTMLElement.prototype.hidePopover = function (this: HTMLElement) { delete this.dataset.open; };
+
+
     const items = [item("a"), item("b")];
     const view = (library: Partial<LibraryView>, revision: number): SettingsView => ({ language: "en", title: "RecordStuff", hint: "", failure: "", revision,
       tabs: [{ id: "library", label: "Recordings" }], groups: [], library: { folder: "~/Movies", items, ...library } });
@@ -31,8 +32,8 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
     await import("./settings");
     await vi.advanceTimersByTimeAsync(50);
     const trash = async (id: string): Promise<void> => {
-      (document.getElementById(`clip-${id}-more`) as HTMLButtonElement).click();
-      document.getElementById("clip-menu-trash")!.click();
+      await menu(document.getElementById(`clip-${id}-more`)!);
+      click(document.getElementById("clip-menu-trash")!);
       await vi.advanceTimersByTimeAsync(0);
     };
     const state = () => [document.getElementById("toast")!.dataset.state, document.getElementById("toast")!.hidden];
@@ -42,10 +43,10 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
     expect(state()).toEqual(["open", false]);
     // The pointer on it holds it however long, and leaving gives back only what was left.
     const toast = document.getElementById("toast")!;
-    toast.dispatchEvent(new MouseEvent("mouseenter"));
+    toast.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     await vi.advanceTimersByTimeAsync(20_000);
     expect(state()).toEqual(["open", false]);
-    toast.dispatchEvent(new MouseEvent("mouseleave"));
+    toast.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
     await vi.advanceTimersByTimeAsync(50);
     expect(state()).toEqual(["open", false]);
     await vi.advanceTimersByTimeAsync(100);
@@ -59,7 +60,7 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
     document.getElementById("toast-action")!.focus();
     await vi.advanceTimersByTimeAsync(15_000);
     expect(state()).toEqual(["open", false]);
-    document.getElementById("toast-action")!.click();
+    click(document.getElementById("toast-action")!);
     await vi.advanceTimersByTimeAsync(0);
     expect(document.querySelector("#toast .toast-title")!.textContent).toBe("Restored");
     // Focus went to the card that came back, so the count runs: Restored leaves after 3 s.
@@ -73,18 +74,18 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
     // pointer still holds it (review of 2026-10-06, F2).
     await vi.advanceTimersByTimeAsync(300);
     await trash("a");
-    toast.dispatchEvent(new MouseEvent("mouseenter"));
+    toast.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     const original = Element.prototype.matches;
     const matches = vi.spyOn(Element.prototype, "matches").mockImplementation(function (this: Element, selector: string) {
       return selector === ":hover" ? this.id === "toast" : original.call(this, selector);
     });
-    document.getElementById("toast-action")!.click();
+    click(document.getElementById("toast-action")!);
     await vi.advanceTimersByTimeAsync(0);
     matches.mockRestore();
     expect(document.querySelector("#toast .toast-title")!.textContent).toBe("Restored");
     await vi.advanceTimersByTimeAsync(10_000);
     expect(state()).toEqual(["open", false]);
-    toast.dispatchEvent(new MouseEvent("mouseleave"));
+    toast.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
     await vi.advanceTimersByTimeAsync(3_100);
     expect(state()[0]).toBe("closed");
 

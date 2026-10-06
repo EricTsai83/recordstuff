@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { RecordingResultView, SettingsView } from "../shared/settings-panel";
+import type { RecordingResultView, SettingsView } from "../../shared/settings-panel";
 
 /** Plan 047: the Recording failures tab, driven through the real page module with a fake bridge. */
 const row = (id: string, over: Partial<RecordingResultView> = {}): RecordingResultView => ({
@@ -36,14 +36,14 @@ function view(results: RecordingResultView[], over: Partial<SettingsView> = {}):
   };
 }
 const tab = (id: string) => document.getElementById(`tab-${id}`) as HTMLButtonElement;
-const rows = () => [...document.querySelectorAll<HTMLDetailsElement>(".recording-result")];
-const headers = () => rows().map((r) => r.querySelector<HTMLElement>(":scope > summary")!);
-const key = (target: Element, name: string) => target.dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true, cancelable: true }));
+const rows = () => [...document.querySelectorAll<HTMLElement>(".recording-result")];
+const headers = () => rows().map((r) => r.querySelector<HTMLElement>(".result-summary")!);
+const key = (target: Element, name: string) => { target.dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true, cancelable: true })); if (["Enter", " "].includes(name)) (target as HTMLElement).click(); };
 const show = async (next: SettingsView) => { current = next; push(next); await Promise.resolve(); };
 
 it("keeps the history in its own tab, as collapsed day-grouped rows that open independently", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   current = view([row("new"), reviewed("old", { day: "Yesterday", time: "9:12 AM", fileName: "2026-09-27 09-12-00.mp4",
     file: "/Users/me/Movies/RecordStuff/2026-09-27 09-12-00.mp4" }), reviewed("older", { day: "September 24" })]);
   window.settings = { read: async () => current, capture: async () => current, choose, ready: async () => {}, onChanged: (cb) => { push = cb; return () => {}; } };
@@ -65,7 +65,7 @@ it("keeps the history in its own tab, as collapsed day-grouped rows that open in
 
   tab("failures").click();
   expect([...document.querySelectorAll(".result-day-heading")].map((h) => h.textContent)).toEqual(["Today", "Yesterday", "September 24"]);
-  expect(rows().map((r) => [r.dataset.resultId, r.open])).toEqual([["new", false], ["old", false], ["older", false]]);
+  expect(rows().map((r) => [r.dataset.resultId, r.hasAttribute("data-open")])).toEqual([["new", false], ["old", false], ["older", false]]);
   // The header: the unread marker in its accessible name, the reason and time; the outcome beneath.
   const first = headers()[0]!;
   expect(first.querySelector(".result-unread-label")!.textContent).toBe("Unread, ");
@@ -82,11 +82,11 @@ it("keeps the history in its own tab, as collapsed day-grouped rows that open in
   expect(document.querySelector(".result-history-note")!.textContent).toContain("Keeps unreviewed failures and the 20 most recently reviewed.");
 
   // Each row opens on its own: opening another leaves the first open (2026-10-05).
-  rows()[0]!.open = true; rows()[0]!.dispatchEvent(new Event("toggle"));
-  rows()[1]!.open = true; rows()[1]!.dispatchEvent(new Event("toggle"));
-  expect(rows().map((r) => r.open)).toEqual([true, true, false]);
-  rows()[0]!.open = false; rows()[0]!.dispatchEvent(new Event("toggle"));
-  expect(rows().map((r) => r.open)).toEqual([false, true, false]);
+  headers()[0]!.click();
+  headers()[1]!.click();
+  expect(rows().map((r) => r.hasAttribute("data-open"))).toEqual([true, true, false]);
+  headers()[0]!.click();
+  expect(rows().map((r) => r.hasAttribute("data-open"))).toEqual([false, true, false]);
 
   // Up, Down, Home and End move between headers across day groups; Enter and Space open and close.
   headers()[0]!.focus();
@@ -101,9 +101,9 @@ it("keeps the history in its own tab, as collapsed day-grouped rows that open in
   key(headers()[0]!, "ArrowUp");
   expect(document.activeElement).toBe(headers()[0]);
   key(headers()[0]!, "Enter");
-  expect(rows()[0]!.open).toBe(true);
+  expect(rows()[0]!.hasAttribute("data-open")).toBe(true);
   key(headers()[0]!, " ");
-  expect(rows()[0]!.open).toBe(false);
+  expect(rows()[0]!.hasAttribute("data-open")).toBe(false);
 
   // Got it returns focus to its row's header and collapses the row.
   key(headers()[0]!, "Enter");
@@ -111,7 +111,7 @@ it("keeps the history in its own tab, as collapsed day-grouped rows that open in
   gotIt.focus(); gotIt.click();
   await vi.waitFor(() => expect(choose).toHaveBeenCalledWith("recordingResult:new", "acknowledge"));
   await vi.waitFor(() => expect(document.activeElement).toBe(headers()[0]));
-  expect(rows()[0]!.open).toBe(false);
+  expect(rows()[0]!.hasAttribute("data-open")).toBe(false);
   expect(tab("failures").textContent).toBe("Failures");
   expect(tab("failures").getAttribute("aria-label")).toBe("Recording failures");
 });
@@ -122,7 +122,7 @@ it("opens only the target of an explicit entry, in its tab, without acknowledgin
   tab("recording").click();
   await show(view([row("n1"), row("n2"), reviewed("r1")], { resultFocus: 2 }));
   expect(document.querySelector('[role="tab"][aria-selected="true"]')!.id).toBe("tab-failures");
-  expect(rows().map((r) => [r.dataset.resultId, r.open])).toEqual([["n1", true], ["n2", false], ["r1", false]]);
+  expect(rows().map((r) => [r.dataset.resultId, r.hasAttribute("data-open")])).toEqual([["n1", true], ["n2", false], ["r1", false]]);
   expect(document.activeElement).toBe(headers()[0]);
   expect(choose).not.toHaveBeenCalled();
   // A later push with the same token opens nothing more.
@@ -262,12 +262,13 @@ it("updates the scroll hint when technical details grow the content", async () =
   tab("failures").click();
   const panel = document.getElementById("settings-panel")!;
   const hint = document.getElementById("scroll-hint")!;
-  expect(hint.hidden).toBe(true);
+  panel.scrollTop = 0; Object.defineProperty(panel, "scrollHeight", { configurable: true, value: 0 }); panel.dispatchEvent(new Event("scroll"));
+  await vi.waitFor(() => expect(hint.hidden).toBe(true));
   Object.defineProperty(panel, "scrollHeight", { configurable: true, value: 2000 });
   Object.defineProperty(panel, "clientHeight", { configurable: true, value: 300 });
-  const technical = document.querySelector<HTMLDetailsElement>(".result-technical")!;
-  technical.open = true; technical.dispatchEvent(new Event("toggle"));
-  expect(hint.hidden).toBe(false);
+  const technical = document.querySelector<HTMLElement>(".result-technical")!;
+  technical.querySelector<HTMLElement>(".technical-summary")!.click();
+  await vi.waitFor(() => expect(hint.hidden).toBe(false));
 });
 
 it("describes a control only by the note and diagnostics that are shown", async () => {

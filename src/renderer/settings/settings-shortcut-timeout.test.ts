@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../shared/settings-panel";
-import { DEFAULT_HOTKEY } from "../shared/hotkey";
+import type { SettingsView } from "../../shared/settings-panel";
+import { DEFAULT_HOTKEY } from "../../shared/hotkey";
 
 it("shows and announces timeout, restores focus, translates and clears it on a new edit", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback" class="visually-hidden"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   let current: SettingsView = {
     language: "en", title: "Settings", hint: "", failure: "Save failed",
     tabs: [{ id: "general", label: "General" }],
@@ -26,7 +26,7 @@ it("shows and announces timeout, restores focus, translates and clears it on a n
   await vi.waitFor(() => expect(document.getElementById("setting-hotkey")).toBeTruthy());
   const select = document.getElementById("setting-hotkey") as HTMLSelectElement;
   const open = async () => {
-    select.value = "custom"; select.dispatchEvent(new Event("change"));
+    select.value = "custom"; select.dispatchEvent(new Event("change", { bubbles: true }));
     await vi.waitFor(() => expect(current.groups[0]!.capturing).toBe(true));
     await vi.waitFor(() => expect(document.activeElement?.id).toBe("shortcut-capture"));
   };

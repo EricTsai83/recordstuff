@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../shared/settings-panel";
+import type { SettingsView } from "../../shared/settings-panel";
 
 /**
  * A push that changes nothing rewrites none of the controls' states: no disabled flag flips off and on again, and
@@ -8,7 +8,7 @@ import type { SettingsView } from "../shared/settings-panel";
  * one, so only these attributes are watched.)
  */
 it("leaves controls untouched when the same view arrives again", async () => {
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p><button id="status-action" hidden></button></div><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   const view: SettingsView = { language: "en", title: "RecordStuff", hint: "", failure: "", revision: 1,
     tabs: [{ id: "recording", label: "Recording settings" }],
     groups: [
@@ -36,7 +36,7 @@ it("leaves controls untouched when the same view arrives again", async () => {
 it("leaves an open failure row, the tab list and the window title untouched when the same view arrives again", async () => {
   vi.resetModules();
   document.head.innerHTML = "";
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p><button id="status-action" hidden></button></div><p id="feedback"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   const view: SettingsView = { language: "en", title: "RecordStuff", hint: "", failure: "", revision: 1,
     tabs: [{ id: "recording", label: "Recording settings" }, { id: "failures", label: "Failures (1)", accessibleLabel: "Recording failures, 1 unread" }],
     groups: [{ id: "screen", label: "Screen", tab: "recording", enabled: true, choices: [{ id: "primary", label: "Primary display", enabled: true, checked: true }] }],

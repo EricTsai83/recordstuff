@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../shared/settings-panel";
+import type { SettingsView } from "../../shared/settings-panel";
 
 it("marks a failed first read's message with the requested language, not the page default", async () => {
   history.replaceState(null, "", "?lang=zh-TW");
   document.documentElement.lang = "en";
-  document.body.innerHTML = '<h1 id="title"></h1><div id="status"><p id="status-title"></p><p id="status-detail"></p><p id="hint"></p></div><p id="feedback" class="visually-hidden"></p><form id="settings"></form>';
+  document.body.innerHTML = '<div id="root"></div>';
   let push!: (view: SettingsView) => void;
   const ready = vi.fn(async () => { throw new Error("main refused"); });
   window.settings = { read: async () => { throw new Error("main unavailable"); }, capture: async () => { throw new Error("unused"); },
