@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { HistoryStorageError, RecordingResultStore, type ResultStorage } from "./recording-result-store";
 import { RETRY_DELAYS_MS, RecordingResults } from "./recording-result";
-import type { RecordingResult } from "../shared/recording-result";
+import type { RecordingResult } from "../../shared/recording-result";
 
 let dir: string, file: string;
 const failure: RecordingResult = { id: "failure-a", occurredAt: "2026-09-25T00:00:00Z", code: "disk_full", detail: "ENOSPC", outcome: "pending", acknowledged: false };
@@ -14,6 +14,17 @@ const stat = (file: string) => fs.promises.stat(file);
 const load = (target = file) => new RecordingResultStore(target).load();
 const io = { stat, refresh: vi.fn(), settled: () => true, platform: "darwin" as const,
   reveal: vi.fn(), folder: async () => {}, permission: async () => {}, relaunch: async () => {} };
+
+it("keeps corrupt legacy history visible as a load issue and refuses a new file that would hide it", async () => {
+  const legacy = path.join(dir, "legacy.json"), raw = "{ broken";
+  fs.writeFileSync(legacy, raw);
+  const store = new RecordingResultStore(file, vi.fn(), legacy);
+  expect(await store.load()).toEqual([]);
+  expect(store.loadIssue).toBe(true);
+  await expect(store.save([])).rejects.toBeInstanceOf(HistoryStorageError);
+  expect(fs.readFileSync(legacy, "utf8")).toBe(raw);
+  expect(fs.existsSync(file)).toBe(false);
+});
 /** A fresh controller over the same file, as after a restart. */
 async function open(storage: ResultStorage = new RecordingResultStore(file)): Promise<RecordingResults> {
   const results = new RecordingResults(storage); await results.ready; return results;

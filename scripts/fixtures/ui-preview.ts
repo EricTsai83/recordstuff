@@ -10,17 +10,17 @@ import { app, BrowserWindow, ipcMain, nativeImage, nativeTheme, protocol, screen
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { settingsView } from "../../src/main/settings-model";
+import { settingsView } from "../../src/main/settings/settings-model";
 import { DEFAULT_QUALITY } from "../../src/shared/quality";
 import { DEFAULT_HOTKEY } from "../../src/shared/hotkey";
-import type { AppContext } from "../../src/main/ui-model";
+import type { AppContext } from "../../src/main/app/ui-model";
 import type { RecordingState } from "../../src/shared/state";
 import type { SettingsTab } from "../../src/shared/settings-panel";
 import type { LibraryLayout } from "../../src/shared/appearance";
 import type { RecordingResult } from "../../src/shared/recording-result";
-import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "../../src/main/recordings-library";
-import { settingsWindowOptions } from "../../src/main/settings-window";
-import { DEFAULT_SETTINGS_SIZE } from "../../src/main/settings-window-state";
+import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "../../src/main/library/recordings-library";
+import { settingsWindowOptions } from "../../src/main/settings/settings-window";
+import { DEFAULT_SETTINGS_SIZE } from "../../src/main/settings/settings-window-state";
 import { VIDEO_CHANNELS, VIDEO_QUERY } from "../../src/shared/video-player";
 import type { Language } from "../../src/shared/i18n";
 
@@ -136,6 +136,10 @@ async function run(): Promise<void> {
     for (const each of ["library", "recording", "general", "failures"] as const) {
       await show(window, each);
       await shoot(window, `${each}-${lang}-${scheme}-${sizeName}.png`, `${each} · ${lang} · ${scheme} · ${sizeName}`);
+      if (each === "general") {
+        await window.webContents.executeJavaScript(`document.getElementById("setting-localData-row").scrollIntoView({ block: "center" })`);
+        await shoot(window, `local-data-${lang}-${scheme}-${sizeName}.png`, `local app data · ${lang} · ${scheme} · ${sizeName}`);
+      }
     }
     if (lang === "zh-TW" && sizeName === "default") {
       state = { type: "recording", startedAt: new Date().toISOString() };
@@ -158,7 +162,7 @@ async function run(): Promise<void> {
         { id: "folder", occurredAt: at(3), code: "output_open_failed", detail: "EACCES: permission denied", outcome: "empty", acknowledged: true },
       ];
       await show(window, "failures");
-      await window.webContents.executeJavaScript(`(() => { const row = document.querySelector("#recording-results .recording-result"); row.open = true; row.dispatchEvent(new Event("toggle")); })()`);
+      await window.webContents.executeJavaScript(`(() => { const row = document.querySelector("#recording-results .recording-result"); row.querySelector(".result-summary").click(); })()`);
       await shoot(window, `failures-open-${lang}-${scheme}.png`, `failures, newest open · ${lang} · ${scheme}`);
       recordingResults = [];
       await show(window, "library");
@@ -166,15 +170,15 @@ async function run(): Promise<void> {
       const playable = view().library?.items.find(item => item.name.startsWith("preview-"));
       if (playable) {
         await window.webContents.executeJavaScript(`document.getElementById(${JSON.stringify(`clip-${playable.id}-open`)}).click()`);
-        await until(() => window.webContents.executeJavaScript(`(() => { const v = document.querySelector("dialog.player video"); return v && !v.paused && v.currentTime > 0.5; })()`));
+        await until(() => window.webContents.executeJavaScript(`(() => { const v = document.querySelector(".player video"); return v && !v.paused && v.currentTime > 0.5; })()`));
         await shoot(window, `player-playing-${lang}-${scheme}.png`, `player playing · ${lang} · ${scheme}`);
-        await window.webContents.executeJavaScript(`(() => { const v = document.querySelector("dialog.player video"); v.pause(); v.currentTime = 3; })()`);
+        await window.webContents.executeJavaScript(`(() => { const v = document.querySelector(".player video"); v.pause(); v.currentTime = 3; })()`);
         await shoot(window, `player-paused-${lang}-${scheme}.png`, `player paused · ${lang} · ${scheme}`);
         // What → and ↑ flash over the picture (2026-10-06), caught a quarter of a second in.
-        await window.webContents.executeJavaScript(`(() => { const v = document.querySelector("dialog.player video"); v.volume = 0.5; v.muted = false;
+        await window.webContents.executeJavaScript(`(() => { const v = document.querySelector(".player video"); v.volume = 0.5; v.muted = false;
           for (const key of ["ArrowRight", "ArrowUp"]) v.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })); })()`);
         await shoot(window, `player-flash-${lang}-${scheme}.png`, `player after → and ↑ · ${lang} · ${scheme}`);
-        await window.webContents.executeJavaScript(`document.querySelector("dialog.player").close()`);
+        await window.webContents.executeJavaScript(`document.getElementById("player-close").click()`);
       }
     }
     // The toast after Move to Trash, in Traditional Chinese at both sizes, then undone so the folder is listed whole again.

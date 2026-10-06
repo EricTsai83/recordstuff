@@ -2,10 +2,10 @@ import { Worker } from "node:worker_threads";
 import fs from "node:fs";
 import path from "node:path";
 import { setImmediate as nextTurn } from "node:timers/promises";
-import { isErrorCode } from "../shared/state";
-import { writeFileAtomic } from "./atomic-file";
-import { errnoCode } from "./errors";
-import type { PersistenceIssue, RecordingResult } from "../shared/recording-result";
+import { isErrorCode } from "../../shared/state";
+import { writeFileAtomic } from "../lib/atomic-file";
+import { errnoCode } from "../lib/errors";
+import type { PersistenceIssue, RecordingResult } from "../../shared/recording-result";
 
 /** Every file operation is asynchronous (libuv threadpool); only small per-record JSON work runs on main. */
 export interface ResultStorage {
@@ -118,7 +118,10 @@ export class RecordingResultStore implements ResultStorage {
         this.requiresMigration = true;
         return [result];
       } catch (error) {
-        if (errnoCode(error) !== "ENOENT") this.log(`recording history: legacy load failed: ${String(error)}`);
+        if (errnoCode(error) !== "ENOENT") {
+          this.blocked = true;
+          this.log(`recording history: legacy load failed: ${String(error)}; refusing to create replacement history`);
+        }
       }
     }
     return [];
@@ -142,5 +145,6 @@ export class RecordingResultStore implements ResultStorage {
     chunks.push("]}");
     if (bytes > LIMIT) throw new HistoryStorageError("recording history too large", "tooLarge");
     await writeFileAtomic(this.file, chunks, { mode: 0o600 });
+    this.requiresMigration = false;
   }
 }

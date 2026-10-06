@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { replaceOnce } from "./replace-once.mts";
 import fs from "node:fs";
 import path from "node:path";
-import type { TrayModel } from "../../src/main/tray-model.ts";
-import type { SettingsView } from "../../src/shared/settings-panel.ts";
-import type { RecordingState } from "../../src/shared/state.ts";
+import type { TrayModel } from "../../../src/main/menus/tray-model.ts";
+import type { SettingsView } from "../../../src/shared/settings-panel.ts";
+import type { RecordingState } from "../../../src/shared/state.ts";
 
 export function instrumentUpdateAcceptance(source: string, runDir: string): string {
   source = replaceOnce(source, 'let appLanguage: () => Language = () => DEFAULT_LANGUAGE;',
@@ -60,7 +60,7 @@ export function safeCaptureShortcut(pid: number, runningPids: number[], hotkey: 
 export type BusyPolicy = "locked" | "available" | { lockedChoices: readonly string[] };
 export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
   screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
-  notifications: "locked", updateChecks: "locked", updates: "locked",
+  notifications: "locked", updateChecks: "locked", updates: "locked", localData: "locked",
   language: "available", appearance: "available", trayClick: "available", log: "available", about: "available",
 };
 export type LockSnapshot = { recording: RecordingState; model: TrayModel; settings: SettingsView };

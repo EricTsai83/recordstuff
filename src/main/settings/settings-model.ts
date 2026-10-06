@@ -10,10 +10,10 @@
  * while a capture is running; language, appearance and the icon click remain editable.
  * index.ts re-checks recording locks before saving.
  */
-import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure, persistenceWarning } from "./recording-result";
-import { displayLabel, displayFailureText, type DisplayInfo } from "../shared/display";
-import { displayResolution, primaryDisplayChoosable, uniqueDisplay } from "./display-source";
-import { translate as t, type Language, type PlainMessageKey } from "../shared/i18n";
+import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure, persistenceWarning } from "../recording/recording-result";
+import { displayLabel, displayFailureText, type DisplayInfo } from "../../shared/display";
+import { displayResolution, primaryDisplayChoosable, uniqueDisplay } from "../display/display-source";
+import { translate as t, type Language, type PlainMessageKey } from "../../shared/i18n";
 import {
   FRAME_RATES,
   RESOLUTION_CAPS,
@@ -25,19 +25,21 @@ import {
   isFrameRateAvailable,
   type ResolutionCap,
   type VideoQuality,
-} from "../shared/quality";
-import { DEFAULT_HOTKEY, settingsShortcut, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut, sameShortcut } from "../shared/hotkey";
-import { COUNTDOWN_CHOICES } from "../shared/countdown";
-import { DEFAULT_FILE_NAME_TEMPLATE, FILE_NAME_TOKEN_LIST, canonicalFileNameTemplate, formatFileName } from "../shared/file-name";
-import { isLibraryLayout } from "../shared/appearance";
-import { formatDuration } from "../shared/video-player";
-import type { LibraryView, RecordingResultView, SettingsChoice, SettingsGroup, SettingsStatus, SettingsView, StatusActionId } from "../shared/settings-panel";
-import { MEDIA_SCHEME, RECORDING_FILE_ACTIONS, type RecordingFileAction } from "./recordings-library";
-import type { RecordingResult, RecordingResultAction } from "../shared/recording-result";
-import type { RecordingState } from "../shared/state";
+} from "../../shared/quality";
+import { DEFAULT_HOTKEY, settingsShortcut, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut, sameShortcut } from "../../shared/hotkey";
+import { COUNTDOWN_CHOICES } from "../../shared/countdown";
+import { DEFAULT_FILE_NAME_TEMPLATE, FILE_NAME_TOKEN_LIST, canonicalFileNameTemplate, formatFileName } from "../../shared/file-name";
+import { isLibraryLayout } from "../../shared/appearance";
+import { formatDuration } from "../../shared/video-player";
+import type { LibraryView, RecordingResultView, SettingsChoice, SettingsGroup, SettingsStatus, SettingsView, StatusActionId } from "../../shared/settings-panel";
+import { MEDIA_SCHEME, RECORDING_FILE_ACTIONS, type RecordingFileAction } from "../library/recordings-library";
+import type { RecordingResult, RecordingResultAction } from "../../shared/recording-result";
+import type { RecordingState } from "../../shared/state";
 
 import path from "node:path";
-import { APP_NAME, QUITTING_TEXT, abbreviateHome, preferencesUnlocked, type AppAction, type AppContext } from "./ui-model";
+import { QUITTING_TEXT, abbreviateHome, type AppAction, type AppContext } from "../app/ui-model";
+import { APP_NAME } from "../lib/app-name";
+import { preferencesUnlocked } from "../recording/recording-lock";
 
 /** A group as main knows it: exactly the wire shape plus the action per choice. */
 interface Group extends SettingsGroup {
@@ -433,6 +435,9 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
     { ...group("log", t("Log file", ctx.language), true, [
       { id: "show", label: t("Show log", ctx.language), enabled: true, checked: false, action: "revealLog" },
     ]), kind: "actions" },
+    { ...group("localData", t("Local app data", ctx.language), unlocked, [
+      { id: "clear", label: t("Clear local app data and quit…", ctx.language), enabled: unlocked, checked: false, action: "clearAppData" },
+    ], t("Clears settings, failure history, cache and logs. Recordings are kept. You can then remove the app.", ctx.language)), kind: "actions" },
     { ...group("about", t("Built by Eric Tsai", ctx.language), true, [
       { id: "website", label: t("Official website", ctx.language), enabled: true, checked: false, action: "openWebsite" },
       { id: "source", label: t("GitHub source", ctx.language), enabled: true, checked: false, action: "openSource" },

@@ -130,3 +130,23 @@ it("lets the menu's Quit, chosen while a Relaunch waits on the same attempt, can
   expect(relaunch).not.toHaveBeenCalled();
   expect(app.quit).toHaveBeenCalledTimes(3);
 });
+
+it("prepares destructive cleanup only after media/history admission, and refuses exit when preparation fails", async () => {
+  let listener!: (event: { preventDefault(): void }) => void;
+  const order: string[] = [];
+  const app = { on: (_: "before-quit", fn: typeof listener) => { listener = fn; }, quit: vi.fn(() => { order.push("quit"); listener({ preventDefault() {} }); }) };
+  let safe = false, fail = true;
+  const resume = vi.fn(), error = vi.fn();
+  const beforeExit = vi.fn(async () => { order.push("prepare"); if (fail) throw new Error("helper failed"); });
+  installQuitCoordinator(app, { shutdown: async () => safe, history: async () => { order.push("history"); return true; },
+    beforeExit, resume, error, pending() {}, exit: async () => { order.push("flush"); } });
+  listener({ preventDefault() {} }); await new Promise(resolve => setTimeout(resolve, 0));
+  expect(beforeExit).not.toHaveBeenCalled();
+  safe = true;
+  listener({ preventDefault() {} }); await new Promise(resolve => setTimeout(resolve, 0));
+  expect(order).toEqual(["history", "prepare"]);
+  expect(error).toHaveBeenCalledOnce(); expect(resume).toHaveBeenCalledOnce(); expect(app.quit).not.toHaveBeenCalled();
+  fail = false;
+  listener({ preventDefault() {} }); await new Promise(resolve => setTimeout(resolve, 0));
+  expect(order).toEqual(["history", "prepare", "history", "prepare", "flush", "quit"]);
+});

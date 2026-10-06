@@ -2,8 +2,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_HOTKEY } from "../shared/hotkey";
-import { DEFAULT_QUALITY } from "../shared/quality";
+import { DEFAULT_HOTKEY } from "../../shared/hotkey";
+import { DEFAULT_QUALITY } from "../../shared/quality";
 import { KEPT_UNUSABLE_NAMES, SettingsStore, parseSettings, defaultSettings } from "./settings";
 
 let dir: string;
@@ -41,17 +41,63 @@ describe("SettingsStore", () => {
   });
 
   it("keeps an unusable file aside instead of replacing it with defaults", async () => {
-    const newer = JSON.stringify({ version: 4, outputDir: "/somewhere", future: true });
-    await fs.writeFile(filePath, newer);
+    const broken = "{ not valid JSON";
+    await fs.writeFile(filePath, broken);
     const first = store();
     // An automatic write, like the launch update check's attempt stamp.
     await first.setUpdates({ lastAttempt: 1 });
-    expect(await fs.readFile(`${filePath}.unreadable`, "utf8")).toBe(newer);
+    expect(await fs.readFile(`${filePath}.unreadable`, "utf8")).toBe(broken);
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: 3, outputDir: DEFAULT });
     expect(logs).toContainEqual(expect.stringContaining("kept the unusable file"));
     // Only the first write moves it; a later one keeps the file it wrote.
     await first.setNotifications(false);
-    expect(await fs.readFile(`${filePath}.unreadable`, "utf8")).toBe(newer);
+    expect(await fs.readFile(`${filePath}.unreadable`, "utf8")).toBe(broken);
+  });
+
+  it("never overwrites a newer schema on startup or an explicit preference change", async () => {
+    const newer = JSON.stringify({ version: 4, outputDir: "/somewhere", future: true });
+    await fs.writeFile(filePath, newer);
+    const first = store();
+    await first.migrate();
+    await expect(first.setUpdates({ lastAttempt: 1 })).rejects.toThrow(/newer app version/);
+    await expect(first.setOutputDir("/elsewhere")).rejects.toThrow(/newer app version/);
+    expect(await fs.readFile(filePath, "utf8")).toBe(newer);
+    expect(await fs.readdir(dir)).toEqual(["settings.json"]);
+  });
+
+  it.each([1, 2])("migrates v%i at startup, keeps the original, and does not repeat after restart", async version => {
+    const original = JSON.stringify({ version, outputDir: "/old-recordings", quality: DEFAULT_QUALITY });
+    await fs.writeFile(filePath, original);
+    const first = store();
+    await first.migrate();
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: 3, outputDir: "/old-recordings", trayClick: "record" });
+    expect(await fs.readFile(`${filePath}.migration-backup`, "utf8")).toBe(original);
+    await first.migrate(); await store().migrate();
+    expect(await fs.readdir(dir)).toEqual(["settings.json", "settings.json.migration-backup"]);
+  });
+
+  it("a failed startup migration retains old data and can retry without overwriting previous backups", async () => {
+    const original = JSON.stringify({ version: 1, outputDir: "/old-recordings" });
+    await fs.writeFile(filePath, original);
+    await fs.writeFile(`${filePath}.migration-backup`, "previous backup");
+    await fs.mkdir(`${filePath}.tmp`);
+    const first = store();
+    await expect(first.migrate()).rejects.toThrow();
+    expect(await fs.readFile(filePath, "utf8")).toBe(original);
+    await fs.rm(`${filePath}.tmp`, { recursive: true });
+    await first.migrate();
+    expect(JSON.parse(await fs.readFile(filePath, "utf8")).version).toBe(3);
+    expect(await fs.readFile(`${filePath}.migration-backup`, "utf8")).toBe("previous backup");
+    expect(await fs.readFile(`${filePath}.migration-backup.1`, "utf8")).toBe(original);
+    await expect(fs.access(`${filePath}.migration-backup.2`)).rejects.toThrow();
+  });
+
+  it("startup migration leaves absent and corrupt settings untouched", async () => {
+    await store().migrate();
+    expect(await fs.readdir(dir)).toEqual([]);
+    await fs.writeFile(filePath, "{ broken");
+    await store().migrate();
+    expect(await fs.readFile(filePath, "utf8")).toBe("{ broken");
   });
 
   it("does not move a missing or valid file aside", async () => {

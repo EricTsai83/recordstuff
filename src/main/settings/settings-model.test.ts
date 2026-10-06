@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_QUALITY } from "../shared/quality";
-import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT } from "../shared/hotkey";
+import { DEFAULT_QUALITY } from "../../shared/quality";
+import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT } from "../../shared/hotkey";
 
 /** Former defaults and suggestions: valid custom values, no longer offered. */
 const LEGACY_HOTKEYS = ["CommandOrControl+Alt+Shift+R", "CommandOrControl+Shift+R", "CommandOrControl+Alt+R"];
-import type { RecordingState } from "../shared/state";
-import { translate as t } from "../shared/i18n";
+import type { RecordingState } from "../../shared/state";
+import { translate as t } from "../../shared/i18n";
 import { dayHeading, shortTime, proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
-import type { LibraryState, RecordingFile } from "./recordings-library";
-import type { AppContext } from "./ui-model";
+import type { LibraryState, RecordingFile } from "../library/recordings-library";
+import type { AppContext } from "../app/ui-model";
 
 const context: AppContext = {
   platform: "darwin",
@@ -35,6 +35,19 @@ const checked = (state: RecordingState, ctx: AppContext, id: string) =>
   group(state, ctx, id)?.choices.find((choice) => choice.checked)?.id;
 
 describe("settingsView", () => {
+  it("offers data cleanup only when capture is settled, refuses forged and quitting requests, and translates its scope", () => {
+    expect(settingsAction(idle, context, "localData", "clear")).toBe("clearAppData");
+    expect(settingsAction({ type: "needsPermission", needsRelaunch: false }, context, "localData", "clear")).toBe("clearAppData");
+    for (const state of busy) {
+      expect(group(state, context, "localData")?.enabled).toBe(false);
+      expect(settingsAction(state, context, "localData", "clear")).toBeUndefined();
+    }
+    expect(settingsAction(idle, { ...context, quitting: true }, "localData", "clear")).toBeUndefined();
+    expect(settingsAction(idle, context, "localData", "deleteRecordings")).toBeUndefined();
+    const zh = group(idle, { ...context, language: "zh-TW" }, "localData")!;
+    expect(zh.choices[0]?.label).toBe("清除本機 App 資料並結束…");
+    expect(zh.note ?? zh.info).toContain("錄影檔會保留");
+  });
   it("titles the capture warning by what it is about and puts the macOS notification permission behind the ⓘ", () => {
     const zh = { ...context, language: "zh-TW" as const, captureWarning: "無法確認解析度上限。" };
     expect(group(idle, zh, "screen")?.diagnostics?.at(-1)).toMatchObject({ kind: "history", heading: "錄影解析度" });
@@ -76,6 +89,7 @@ describe("settingsView", () => {
       "updateChecks",
       "updates",
       "log",
+      "localData",
       "about",
     ]);
     for (const entry of view.groups) {
@@ -454,7 +468,7 @@ it("declares presentation without changing choice identities, and authorizes onl
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
     ["trayClick", "menu", "controls"], ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],
     ["language", "segmented", "display"], ["appearance", "segmented", "display"],
-    ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"], ["log", "menu", "support"], ["about", "menu", "about"],
+    ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"], ["log", "menu", "support"], ["localData", "menu", "localData"], ["about", "menu", "about"],
   ]);
   // Appearance is three icons, one click each (2026-10-05); no other row is.
   expect(groups.filter(g => g.iconChoices).map(g => [g.id, g.choices.map(c => c.id)])).toEqual([["appearance", ["system", "light", "dark"]]]);
@@ -688,7 +702,7 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
 
   it("orders General as the icon's click, Shortcut, Notifications, Language, Appearance, Updates and About, headings moving with their groups", () => {
     const general = settingsView(idle, context).groups.filter((g) => g.tab === "general");
-    expect(general.map((g) => g.id)).toEqual(["trayClick", "hotkey", "notifications", "language", "appearance", "updateChecks", "updates", "log", "about"]);
+    expect(general.map((g) => g.id)).toEqual(["trayClick", "hotkey", "notifications", "language", "appearance", "updateChecks", "updates", "log", "localData", "about"]);
     expect(general.find((g) => g.id === "updateChecks")?.sectionHeading).toBe("Updates");
   });
 
@@ -906,9 +920,9 @@ describe("the icon's left click (2026-10-04)", () => {
 });
 
 describe("the menu's support items in RecordStuff (2026-10-04)", () => {
-  it("gives Show log a row of its own under Troubleshooting, last before the credit, usable while recording", () => {
+  it("gives Show log a row of its own under Troubleshooting, before data cleanup and the credit, usable while recording", () => {
     const general = settingsView(idle, context).groups.filter(g => g.tab === "general").map(g => g.id);
-    expect(general.slice(-2)).toEqual(["log", "about"]);
+    expect(general.slice(-3)).toEqual(["log", "localData", "about"]);
     expect(group(idle, context, "log")).toMatchObject({ label: "Log file", kind: "actions", sectionHeading: "Troubleshooting", choices: [{ id: "show", label: "Show log" }] });
     expect(group(idle, { ...context, language: "zh-TW" }, "log")).toMatchObject({ label: "記錄檔（log）", sectionHeading: "疑難排解", choices: [{ label: "顯示 log" }] });
     expect(settingsAction(busy[2]!, context, "log", "show")).toBe("revealLog");

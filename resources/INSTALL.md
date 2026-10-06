@@ -59,6 +59,8 @@ prompt appears again, allow it and relaunch as described above.
 
 There is no separate uninstaller and no background service.
 
+To also remove local app data, first open **Settings → General → Local app data → Clear local app data and quit…**. Confirm the scope: RecordStuff exits, then clears settings, failure history, cache, logs and old data backups. Recordings and the output folder are kept. This does not remove the app or reset OS permissions. Wait for cleanup before reopening; a new launch waits automatically. If cleanup fails or is interrupted, the next launch reports it and lets you retry or remove the remaining data manually. An output folder containing an app-data root must be moved outside it before cleanup; an output folder nested inside app data is kept. Then remove the app as below.
+
 1. Stop any recording, then choose Quit from the RecordStuff menu bar icon.
 2. Open Applications, drag RecordStuff.app to the Trash, and empty the Trash.
    Ejecting the DMG does not remove an installed app.
@@ -158,7 +160,7 @@ Your settings and recordings are kept.
 1. Stop any recording, then choose Quit from the RecordStuff tray menu.
 2. Open Settings → Apps → Installed apps, find RecordStuff and choose Uninstall.
 
-Uninstalling never deletes your data. The app never deletes recordings. It keeps
+Uninstalling keeps your data by default. To clear local app data first, use **Settings → General → Local app data → Clear local app data and quit…**, then uninstall. Recordings are kept. Without that explicit cleanup, it keeps
 your data in these locations; delete them yourself only if you no longer need them:
 
 | Data | Location |

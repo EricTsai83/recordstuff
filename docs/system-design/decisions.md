@@ -44,3 +44,5 @@ Builds use electron-vite and electron-builder. Follow stable dependency releases
 There is no speculative Effect, schema framework, monorepo, React, Rust, or full PlatformRecorder layer. A future UI renderer should remain outside the media byte path. If Chromium proves inadequate, evaluate a replacement host while preserving Recorder's contract. Recording libraries, editing, shortcuts, automatic updating, Windows hardware verification and support for platforms beyond macOS and Windows x64 are not prerequisites for the current downloadable build.
 
 Third-party comparisons and native-engine candidates from historical planning are not current dependencies or commitments. Reevaluate their APIs and suitability if an actual need arises.
+
+2026-10-06: Updates and ordinary uninstall continue to retain user data. An explicit, confirmed “Clear local app data and quit” exit path removes app-owned data while retaining recordings and the output folder. Old settings migrate at startup; newer schemas refuse overwrite. Migration support and removal policy are independent: cleanup does not replace upgrade support. See [desktop design](desktop.md#local-app-data-cleanup).

@@ -16,6 +16,8 @@ export function installQuitCoordinator(app: QuitApp, deps: {
   relaunch?(): void;
   history?(): Promise<boolean>;
   resume?(): void;
+  /** Destructive exit work must be prepared successfully; unlike a final log flush, failure refuses exit. */
+  beforeExit?(): Promise<void>;
   /** Runs once exit is admitted, before `app.quit`: the last chance to flush what the quit itself logged. */
   exit?(): Promise<void>;
   /** A repeated request joined the running attempt. */
@@ -34,6 +36,7 @@ export function installQuitCoordinator(app: QuitApp, deps: {
       if (!await deps.shutdown()) { relaunchRequested = false; deps.pending(); return; }
       mediaSafe = true;
       if (deps.history && !await deps.history()) { relaunchRequested = false; deps.resume?.(); return; }
+      if (deps.beforeExit) await deps.beforeExit();
       // Exit is decided: a flush that fails or stalls must not keep the app open.
       await deps.exit?.().catch(() => undefined);
       // A resolved shutdown can continue inside the native before-quit stack.

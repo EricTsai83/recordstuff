@@ -10,9 +10,10 @@
  * `.2`… when that name is taken) before the first write, so a later save never
  * replaces the user's choices with defaults.
  *
- * Version 1 files (outputDir only) are read as-is and get the default
- * quality; version 1 and 2 files get the default shortcut. Both are rewritten
- * as version 3 on the next successful save.
+ * Version 1 files (outputDir only) get the default quality; version 1 and 2
+ * files get the default shortcut. Startup migrates them to version 3, keeping
+ * the original as `.migration-backup`. A failed migration keeps the original
+ * and retries on the next launch or save. A newer version is never overwritten.
  *
  * Every other field is read leniently rather than versioned: a file written
  * before it existed, or holding a value this version does not support, keeps
@@ -23,19 +24,19 @@
  * keeps the click that records, so an existing user's click does not change
  * under them.
  */
-import { isAppearance, isLibraryLayout, isTrayClick, type Appearance, type LibraryLayout, type TrayClick } from "../shared/appearance";
-import { DEFAULT_FILE_NAME_TEMPLATE, canonicalFileNameTemplate } from "../shared/file-name";
-import { DEFAULT_DISPLAY_PREFERENCE, isDisplayPreference, type DisplayPreference } from "../shared/display";
+import { isAppearance, isLibraryLayout, isTrayClick, type Appearance, type LibraryLayout, type TrayClick } from "../../shared/appearance";
+import { DEFAULT_FILE_NAME_TEMPLATE, canonicalFileNameTemplate } from "../../shared/file-name";
+import { DEFAULT_DISPLAY_PREFERENCE, isDisplayPreference, type DisplayPreference } from "../../shared/display";
 import fs from "node:fs";
 import path from "node:path";
-import { DEFAULT_QUALITY, isQualitySettings, type QualitySettings } from "../shared/quality";
-import { DEFAULT_COUNTDOWN, DEFAULT_COUNTDOWN_SOUND, isCountdownSeconds, type CountdownSeconds } from "../shared/countdown";
-import { DEFAULT_LANGUAGE, isLanguage, type Language } from "../shared/i18n";
-import { DEFAULT_HOTKEY, canonicalHotkeySettings, type HotkeySettings } from "../shared/hotkey";
-import { stableVersion } from "../shared/version";
-import { writeFileAtomic } from "./atomic-file";
-import { drainQueue } from "./drain-queue";
-import { errnoCode } from "./errors";
+import { DEFAULT_QUALITY, isQualitySettings, type QualitySettings } from "../../shared/quality";
+import { DEFAULT_COUNTDOWN, DEFAULT_COUNTDOWN_SOUND, isCountdownSeconds, type CountdownSeconds } from "../../shared/countdown";
+import { DEFAULT_LANGUAGE, isLanguage, type Language } from "../../shared/i18n";
+import { DEFAULT_HOTKEY, canonicalHotkeySettings, type HotkeySettings } from "../../shared/hotkey";
+import { stableVersion } from "../../shared/version";
+import { writeFileAtomic } from "../lib/atomic-file";
+import { drainQueue } from "../lib/drain-queue";
+import { errnoCode } from "../lib/errors";
 
 export const SETTINGS_VERSION = 3;
 /** Names tried for keeping an unusable file aside: `.unreadable`, then `.unreadable.1` and on. */
@@ -198,6 +199,9 @@ export class SettingsStore {
   readonly defaultOutputDir: string;
   /** The file on disk exists but could not be used; the first write moves it aside instead of replacing it. */
   private unusableOnDisk = false;
+  private newerOnDisk = false;
+  private migrationPending = false;
+  private migrationBackedUp = false;
 
   constructor(options: SettingsStoreOptions) {
     this.filePath = options.filePath;
@@ -205,6 +209,11 @@ export class SettingsStore {
     this.platform = options.platform ?? process.platform;
     this.defaultOutputDir = options.defaultOutputDir;
     this.settings = this.load(options.defaultOutputDir);
+  }
+
+  /** Startup only: use the same queue as edits, and never manufacture a file for a fresh install. */
+  async migrate(): Promise<void> {
+    if (this.migrationPending) await this.save(current => current);
   }
 
   get display(): DisplayPreference { return { ...this.settings.display }; }
@@ -355,10 +364,15 @@ export class SettingsStore {
     }
     const parsed = parseSettings(text, this.platform);
     if (!parsed) {
+      try {
+        const version = (JSON.parse(text) as { version?: unknown } | null)?.version;
+        this.newerOnDisk = typeof version === "number" && version > SETTINGS_VERSION;
+      } catch { /* Broken JSON follows the existing keep-before-write contract. */ }
       this.log(`settings: ${this.filePath} is invalid or has an unknown version; using defaults`);
       this.unusableOnDisk = true;
       return fallback;
     }
+    this.migrationPending = (JSON.parse(text) as { version: number }).version < SETTINGS_VERSION;
     for (const warning of parsed.warnings) this.log(`settings: ${warning}`);
     return parsed.settings;
   }
@@ -369,11 +383,17 @@ export class SettingsStore {
    * first. A failed keep rejects the save and leaves the file in place.
    */
   private async write(settings: Settings): Promise<void> {
+    if (this.newerOnDisk) throw new Error("Settings are from a newer app version; refusing to overwrite them");
+    if (this.migrationPending && !this.migrationBackedUp) {
+      await this.keepFile("migration-backup");
+      this.migrationBackedUp = true;
+    }
     if (this.unusableOnDisk) {
       await this.keepUnusable();
       this.unusableOnDisk = false;
     }
     await writeFileAtomic(this.filePath, JSON.stringify(settings, null, 2) + "\n");
+    this.migrationPending = false;
   }
 
   /**
@@ -385,11 +405,15 @@ export class SettingsStore {
    * publication does, instead of holding the save queue forever.
    */
   private async keepUnusable(): Promise<void> {
+    await this.keepFile("unreadable");
+  }
+
+  private async keepFile(suffix: string): Promise<void> {
     for (let index = 0; index < KEPT_UNUSABLE_NAMES; index++) {
-      const kept = `${this.filePath}.unreadable${index ? `.${index}` : ""}`;
+      const kept = `${this.filePath}.${suffix}${index ? `.${index}` : ""}`;
       try {
         await fs.promises.link(this.filePath, kept);
-        this.log(`settings: kept the unusable file as ${kept}`);
+        this.log(`settings: kept the ${suffix === "unreadable" ? "unusable" : "pre-migration"} file as ${kept}`);
         return;
       } catch (cause) {
         const code = errnoCode(cause);
@@ -397,6 +421,6 @@ export class SettingsStore {
         if (code !== "EEXIST") throw cause;
       }
     }
-    throw new Error(`every name up to ${path.basename(this.filePath)}.unreadable.${KEPT_UNUSABLE_NAMES - 1} is taken`);
+    throw new Error(`every name up to ${path.basename(this.filePath)}.${suffix}.${KEPT_UNUSABLE_NAMES - 1} is taken`);
   }
 }

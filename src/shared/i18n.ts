@@ -12,6 +12,14 @@ export function documentLanguage(language: Language | undefined): string {
 }
 
 export const ZH_TW = {
+  "Local app data": "本機 App 資料",
+  "Clear local app data and quit…": "清除本機 App 資料並結束…",
+  "Clears settings, failure history, cache and logs. Recordings are kept. You can then remove the app.": "清除設定、失敗紀錄、快取與 log，錄影檔會保留。之後可移除 App。",
+  "Clear local app data?": "要清除本機 App 資料嗎？",
+  "RecordStuff will quit, then permanently clear settings, failure history, cache, logs and old data backups. Recordings and your output folder are kept. This does not uninstall the app or reset system permissions.": "RecordStuff 會結束，然後永久清除設定、失敗紀錄、快取、log 與舊資料備份。錄影檔與儲存資料夾會保留。這不會移除 App 或重設系統權限。",
+  "Clear data and quit": "清除資料並結束",
+  "Could not clear local app data": "無法清除本機 App 資料",
+  "Local data cleanup did not finish. Some app data may remain. Your recordings were kept. You can retry from Settings or remove the remaining app data manually.": "本機資料清除未完成，部分 App 資料可能仍保留。錄影檔未刪除。可從設定重試，或手動移除剩餘 App 資料。",
   "Retry shortcut registration": "重試註冊快捷鍵",
   "The shortcut is still unavailable; another app may be using it.": "快捷鍵仍無法使用，可能被其他 App 佔用。",
   "Could not confirm the resolution cap. The recording may be larger.": "無法確認解析度上限，錄影尺寸可能較大。",
@@ -134,6 +142,8 @@ export const ZH_TW = {
   "Actual Size": "實際大小",
   "Zoom In": "放大",
   "Zoom Out": "縮小",
+  "Zoom": "縮放",
+  "Reset": "重設",
   "About {size} per minute at {width} × {height}, {fps} fps.": "每分鐘約 {size}（{width} × {height}、{fps} fps）。",
   "Official website": "官方網站",
   "GitHub source": "GitHub 原始碼",
@@ -230,7 +240,7 @@ export const ZH_TW = {
   "Open RecordStuff": "開啟 RecordStuff",
   "The shortcut for RecordStuff is the recording shortcut: open RecordStuff above to change it.": "開啟 RecordStuff 的快捷鍵與錄影快捷鍵相同：請從上方開啟 RecordStuff 更改。",
   "The shortcut for RecordStuff is unavailable: another app may use it. Open RecordStuff above.": "開啟 RecordStuff 的快捷鍵無法使用，可能被其他 App 佔用。請從上方開啟 RecordStuff。",
-  // Gone from the menu since 2026-10-04: kept for the tray runner, which checks it stays gone (scripts/lib/tray-driver.mts).
+  // Gone from the menu since 2026-10-04: kept for the tray runner, which checks it stays gone (scripts/lib/acceptance/tray-driver.mts).
   "Output folder: {path}": "儲存位置：{path}",
   "Start recording": "開始錄影",
   "Quit RecordStuff": "結束 RecordStuff",
