@@ -14,19 +14,20 @@ test.beforeEach(async ({ launchView }) => {
   await expect(page.getByRole("tab", { name: "Recordings", exact: true })).toBeVisible();
 });
 const setView = (view: SettingsView): Promise<void> => host.evaluate((h, next) => h.setView(next), view);
-test("zoom notification reflects applied zoom and its buttons change and reset it without stealing entry focus", async () => {
+test("zoom notification reflects applied zoom, has no close button, and dismisses automatically without stealing entry focus", async ({}, testInfo) => {
   const tab = page.getByRole("tab", { name: "Recordings", exact: true });
   await tab.focus();
   await host.evaluate(h => h.zoom("in"));
   const notice = page.locator("#zoom-toast");
   await expect(notice).toContainText("110%");
+  await expect(notice.getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
   await expect(tab).toBeFocused();
   await notice.hover();
-  await page.waitForTimeout(5100);
+  await page.waitForTimeout(1700);
   await expect(notice).toBeVisible();
   await notice.getByRole("button", { name: "Reset", exact: true }).focus();
   await page.mouse.move(10, 400);
-  await page.waitForTimeout(5100);
+  await page.waitForTimeout(1700);
   await expect(notice).toBeVisible();
   await notice.getByRole("button", { name: "Zoom In", exact: true }).click();
   await expect(notice).toContainText("125%");
@@ -42,10 +43,78 @@ test("zoom notification reflects applied zoom and its buttons change and reset i
   await expect(notice).toContainText("80%");
   await expect(notice.getByRole("button", { name: "Zoom Out", exact: true })).toBeDisabled();
   await notice.getByRole("button", { name: "Reset", exact: true }).click();
-  await notice.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(notice).toContainText("100%");
+  await notice.screenshot({ path: testInfo.outputPath("zoom-toast.png") });
+  const reset = notice.getByRole("button", { name: "Reset", exact: true });
+  await reset.hover();
+  await expect(reset).toBeFocused();
+  await page.waitForTimeout(1700);
+  await expect(notice).toBeVisible();
+  // Leave both pointer and focus on the clicked button, just as a person waiting would.
+  await expect(notice).toHaveCount(0, { timeout: 4000 });
+  await expect(tab).toBeFocused();
+  await page.mouse.move(10, 400);
+  await host.evaluate(h => h.zoom("in"));
+  await expect(notice).toContainText("110%");
+  await notice.getByRole("button", { name: "Reset", exact: true }).focus();
+  await page.keyboard.press("Escape");
   await expect(notice).toHaveCount(0);
   await expect(tab).toBeFocused();
+  await page.mouse.move(10, 400);
+  await host.evaluate(h => h.zoom("in"));
+  await expect(notice).toContainText("125%");
+  await expect(notice).toHaveCount(0, { timeout: 2500 });
+  await expect(tab).toBeFocused();
 });
+for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
+  test(`zoom notification horizontal layout ${language}/${scheme} fits the minimum window at every zoom limit`, async ({}, testInfo) => {
+    const view = await page.evaluate(() => (window as unknown as { settings: SettingsBridge }).settings.read());
+    await host.evaluate((h, args) => {
+      h.theme(args.scheme);
+      h.setSize(...h.SNAPSHOT_SIZES.minimum);
+      h.setView({ ...args.view, language: args.language });
+    }, { language, scheme, view });
+    await expect(page.locator("html")).toHaveClass(scheme === "dark" ? /dark/ : /^(?!.*\bdark\b)/);
+    const notice = page.locator("#zoom-toast");
+    for (const factor of [0.8, 1, 1.5]) {
+      await host.evaluate((h, target) => {
+        h.zoom("reset");
+        if (target === 0.8) { h.zoom("out"); h.zoom("out"); }
+        if (target === 1.5) { h.zoom("in"); h.zoom("in"); h.zoom("in"); }
+      }, factor);
+      await expect(notice).toContainText(`${Math.round(factor * 100)}%`);
+      await notice.hover();
+      const geometry = await notice.evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        const elements = [...node.querySelectorAll(".zoom-toast-value, button")].map((element) => {
+          const box = element.getBoundingClientRect();
+          return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, center: (box.top + box.bottom) / 2 };
+        });
+        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width,
+          height: rect.height, viewport: innerWidth, elements };
+      });
+      expect(geometry.left).toBeGreaterThanOrEqual(0);
+      expect(geometry.right).toBeLessThanOrEqual(geometry.viewport);
+      expect(geometry.width / geometry.height).toBeGreaterThan(4);
+      for (const [index, box] of geometry.elements.entries()) {
+        expect(Math.abs(box.center - geometry.elements[0]!.center)).toBeLessThan(1);
+        expect(box.left).toBeGreaterThanOrEqual(geometry.left);
+        expect(box.right).toBeLessThanOrEqual(geometry.right);
+        expect(box.top).toBeGreaterThanOrEqual(geometry.top);
+        expect(box.bottom).toBeLessThanOrEqual(geometry.bottom);
+        if (index) expect(box.left).toBeGreaterThanOrEqual(geometry.elements[index - 1]!.right);
+      }
+      await expect(notice.getByRole("button", { name: language === "en" ? "Reset" : "重設", exact: true })).toBeVisible();
+      const screenshotPath = testInfo.outputPath(`zoom-${language}-${scheme}-${Math.round(factor * 100)}.png`);
+      if (factor === 1) await notice.screenshot({ path: screenshotPath });
+      else {
+        // Chromium's locator clip uses unscaled coordinates at Electron zoom; retain the complete rendered frame instead.
+        const frame = await host.evaluate(async h => (await h.window().webContents.capturePage(undefined, { stayHidden: true })).toPNG().toString("base64"));
+        await fs.writeFile(screenshotPath, Buffer.from(frame, "base64"));
+      }
+    }
+  });
+}
 test("tabs, switch and icon segments retain their names, keyboard navigation and committed values", async () => {
   await page.getByRole("tab", { name: "Recording settings" }).click();
   const sound = page.getByRole("switch", { name: "Countdown sound" });

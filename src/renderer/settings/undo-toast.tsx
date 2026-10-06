@@ -1,137 +1,129 @@
 /**
- * The toast a move to the Trash and its undo show. Sonner owns its life on screen (2026-10-07): each show mounts it and
- * Sonner slides it up in, a dismissal slides it down out and unmounts it, and "Restored" updates the same toast in place.
- * The controller keeps the timing (held by the pointer or focus, Escape, ⌘Z); the card is ours, unstyled by Sonner.
+ * The toast a move to the Trash and its undo show, drawn by Sonner itself (2026-10-07): shadcn's Toaster gives it the
+ * app's popover, border and radius, and Sonner its title, description, action button and motion.
+ * Sonner owns its life on screen: each opening is one Sonner toast that slides in, "Restored" updates it in place, and a
+ * dismissal slides it out. The controller keeps the timing (held while the pointer or focus is on it), Escape and ⌘Z.
  */
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { X } from "lucide-react";
-import { Button } from "../components/ui/button";
-import { Card } from "../components/ui/card";
-import { Kbd } from "../components/ui/kbd";
 import { Toaster } from "../components/ui/sonner";
 import { toast } from "sonner";
 import * as model from "./settings-controller";
 
 /** Sonner's id for the toast of one opening (the controller's `show`). */
 const toastIdOf = (show: number): string => `recordstuff-undo-${show}`;
-/** The newest toast; an older one still sliding out under a newer one keeps what it said, without the ids. */
-export function UndoToast({ toastId }: { toastId: string | number }) {
-  useSyncExternalStore(model.subscribe, model.snapshot);
-  const live = model.toastState !== undefined && toastId === toastIdOf(model.toastState.show),
-    kept = useRef(model.toastState && { ...model.toastState });
-  if (live) kept.current = model.toastState && { ...model.toastState };
-  const state = live ? model.toastState : kept.current && { ...kept.current, open: false };
-  return (
-    <Card
-      id={live ? "toast" : undefined}
-      inert={!live}
-      // The close button sits on the card's corner, so the card does not clip; it fills Sonner's slot, which spans the
-      // window's foot when narrow.
-      className="undo-toast w-full flex-row gap-3 overflow-visible px-4 py-3.5 shadow-toast"
-      data-kind={state?.kind}
-      data-state={state?.open ? "open" : "closed"}
-      onMouseEnter={() => model.holdToast("pointer", true)}
-      onMouseLeave={() => model.holdToast("pointer", false)}
-      onFocus={() => model.holdToast("focus", true)}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget))
-          model.holdToast("focus", false);
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          event.stopPropagation();
-          model.dismissToast();
-        }
-      }}
-    >
-      <Button
-        id={live ? "toast-close" : undefined}
-        variant="outline"
-        size="icon-xs"
-        className="toast-close rounded-full"
-        aria-label={model.text("Close")}
-        onClick={model.dismissToast}
-      >
-        <X />
-      </Button>
-      <div className="toast-content">
-        <p className="toast-title">{state?.title}</p>
-        <p className="toast-description">{state?.description}</p>
-      </div>
-      <Button
-        id={live ? "toast-action" : undefined}
-        size="sm"
-        className="toast-action"
-        hidden={state?.kind !== "trashed"}
-        aria-disabled={model.undoPending()}
-        aria-keyshortcuts={
-          model.platform() === "darwin" ? "Meta+Z" : "Control+Z"
-        }
-        onClick={() => void model.undoTrash()}
-      >
-        <span className="toast-action-label">
-          {model.view?.library?.trashed?.undo ?? model.text("Undo")}
-        </span>
-        <Kbd className="toast-key" variant="inline" size="md">
-          {model.platform() === "darwin" ? "⌘Z" : "Ctrl+Z"}
-        </Kbd>
-      </Button>
-    </Card>
-  );
-}
+
 export function ToastHost() {
   useSyncExternalStore(model.subscribe, model.snapshot);
   const state = model.toastState,
-    open = Boolean(state?.open);
+    open = Boolean(state?.open),
+    undo = model.view?.library?.trashed?.undo ?? model.text("Undo"),
+    key = model.platform() === "darwin" ? "⌘Z" : "Ctrl+Z";
   // One Sonner toast per time it opens: "Restored" updates the open toast in place, while a toast shown as the last one
-  // slides out is a new one, which Sonner would otherwise merge into the leaving toast and remove with it (review of
-  // 2026-10-07).
+  // slides out is a new one, which Sonner would otherwise merge into the leaving toast and remove with it.
   const shown = useRef("");
   useEffect(() => {
     if (open && state) {
       shown.current = toastIdOf(state.show);
-      toast.custom((id) => <UndoToast toastId={id} />, {
+      toast(state.title, {
         id: shown.current,
+        description: state.description,
         duration: Infinity,
-        unstyled: true,
-        // The controller decides when it leaves; a swipe would end the Undo behind its back.
-        dismissible: false,
+        closeButton: false,
+        className: "undo-toast",
+        classNames: {
+          title: "toast-title",
+          description: "toast-description",
+          actionButton: "toast-action",
+        },
+        action:
+          state.kind === "trashed"
+            ? {
+                label: (
+                  <>
+                    <span className="toast-action-label">{undo}</span>
+                    <kbd className="toast-key">{key}</kbd>
+                  </>
+                ),
+                onClick: (event) => {
+                  // The toast stays: the controller turns it into "Restored" or leaves it when nothing waits.
+                  event.preventDefault();
+                  void model.undoTrash();
+                },
+              }
+            : undefined,
+        // A swipe ends it as the controller would; an older toast leaving (which Sonner also
+        // reports) must not close the one that replaced it.
+        onDismiss: () => {
+          if (model.toastState?.show === state.show) model.dismissToast();
+        },
       });
     } else if (shown.current) {
-      // It keeps its ids while it slides out, until a newer toast takes them.
       toast.dismiss(shown.current);
       shown.current = "";
     }
-  }, [open, state]);
+  }, [open, state, undo, key]);
   useEffect(
     () => () => {
       if (shown.current) toast.dismiss(shown.current);
     },
     [],
   );
+  // Sonner's action button takes no attributes: name its shortcut for assistive technology once it is drawn.
+  const host = useRef<HTMLDivElement>(null),
+    shortcut = model.platform() === "darwin" ? "Meta+Z" : "Control+Z";
+  useEffect(() => {
+    const node = host.current;
+    if (!node) return;
+    const name = (): void => {
+      for (const button of node.querySelectorAll(".undo-toast .toast-action"))
+        if (button.getAttribute("aria-keyshortcuts") !== shortcut) button.setAttribute("aria-keyshortcuts", shortcut);
+      // A toast sliding out under a newer one cannot be reached: its Undo would act on the newer trash (review of
+      // 2026-10-07).
+      for (const leaving of node.querySelectorAll<HTMLElement>('.undo-toast[data-removed="true"]:not([inert])'))
+        leaving.inert = true;
+    };
+    name();
+    const observer = new MutationObserver(name);
+    observer.observe(node, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-removed"] });
+    return () => observer.disconnect();
+  }, [shortcut]);
+  const inToast = (target: EventTarget | null): boolean =>
+    target instanceof Element && Boolean(target.closest('.undo-toast:not([data-removed="true"])'));
   return (
-    <Toaster
-      ref={(node) => {
-        node?.setAttribute("aria-live", "off");
+    <div
+      ref={host}
+      className="contents"
+      onMouseOver={(event) => {
+        if (inToast(event.target)) model.holdToast("pointer", true);
       }}
-      hotkey={[]}
-      theme="system"
-      // Sonner's own layer is above everything; the toast stays under the player and other dialogs, as before.
-      style={{ zIndex: 40 }}
-      position="bottom-right"
-      visibleToasts={1}
-      toastOptions={{
-        // Sonner sizes only its styled toasts: the unstyled one takes the toaster's width too, and narrow, Sonner's
-        // own rule still spans the window's foot (review of 2026-10-07).
-        className: "w-(--width)",
-        style: {
-          background: "transparent",
-          border: 0,
-          padding: 0,
-          boxShadow: "none",
-        },
+      onMouseOut={(event) => {
+        if (inToast(event.target) && !inToast(event.relatedTarget))
+          model.holdToast("pointer", false);
       }}
-    />
+      // Focus is the controller's: it holds the toast, and on closing it returns focus to the tab. Sonner's list would
+      // remember where focus came from and pull it back there as the toast leaves, so its focus events stop here
+      // (review of 2026-10-07).
+      onFocusCapture={(event) => {
+        event.stopPropagation();
+        if (inToast(event.target)) model.holdToast("focus", true);
+      }}
+      onBlurCapture={(event) => {
+        event.stopPropagation();
+        if (inToast(event.target) && !inToast(event.relatedTarget))
+          model.holdToast("focus", false);
+      }}
+    >
+      <Toaster
+        ref={(node) => {
+          node?.setAttribute("aria-live", "off");
+        }}
+        hotkey={[]}
+        theme="system"
+        // Sonner's own layer is above everything; the toast stays under the player and other dialogs.
+        style={{ zIndex: 40 }}
+        position="bottom-right"
+        visibleToasts={1}
+      />
+    </div>
   );
 }

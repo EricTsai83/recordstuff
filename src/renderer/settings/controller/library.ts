@@ -15,7 +15,7 @@ import {
   view,
 } from "./core";
 import { playingItem } from "./player";
-import { showToast } from "./toast";
+import { showToast, toastNode } from "./toast";
 
 export let libraryError: string | undefined;
 export let menuId: string | undefined;
@@ -238,9 +238,7 @@ export async function undoTrash(): Promise<void> {
   if (!trashed || undoing) return;
   undoing = true;
   draw();
-  const fromToast = document
-    .getElementById("toast")
-    ?.contains(document.activeElement);
+  const fromToast = toastNode()?.contains(document.activeElement);
   try {
     const result = await window.settings.choose("library", "undoTrash");
     render(result.view);

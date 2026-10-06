@@ -55,22 +55,25 @@ it("switches layout, brings back a trashed recording, and renames one in place",
   expect(document.querySelector("#clip-a .clip-detail")!.textContent).toBe("2:02 PM · 1:23 · 180 MB");
 
   // Move to Trash: the card leaves, the toast offers Undo with its ⌘Z, and the toast's Undo brings it back with the focus it had.
-  const toastOf = () => document.getElementById("toast")!;
+  // The toast is Sonner's own (2026-10-07): the one on screen, not one still sliding out; "closed" once it has gone.
+  const toastOf = () => document.querySelector<HTMLElement>('.undo-toast:not([data-removed="true"])');
+  const toastState = () => (toastOf() ? "open" : "closed");
   const trash = async (id: string): Promise<void> => {
     await menu(document.getElementById(`clip-${id}-more`)!);
     click(document.getElementById("clip-menu-trash")!);
     await vi.waitFor(() => expect(document.getElementById(`clip-${id}`)).toBeNull());
   };
   await trash("a");
-  const toastText = () => [toastOf().dataset.state, toastOf().querySelector(".toast-title")!.textContent, toastOf().querySelector(".toast-description")!.textContent,
-    toastOf().querySelector<HTMLElement>(".toast-action")!.hidden, toastOf().querySelector(".toast-action-label")!.textContent, toastOf().querySelector(".toast-key")!.textContent];
+  const toastText = () => { const t = toastOf()!, action = t.querySelector<HTMLElement>(".toast-action");
+    return [toastState(), t.querySelector(".toast-title")!.textContent, t.querySelector(".toast-description")!.textContent,
+      !action, action?.querySelector(".toast-action-label")?.textContent ?? null, action?.querySelector(".toast-key")?.textContent ?? null]; };
   await vi.waitFor(() => expect(toastText()).toEqual(["open", "Moved to the Trash", "2026-10-05 14-02-11.mp4", false, "Undo", "⌘Z"]));
-  expect(toastOf().querySelector(".toast-action")!.getAttribute("aria-keyshortcuts")).toBe("Meta+Z");
+  await vi.waitFor(() => expect(toastOf()!.querySelector(".toast-action")!.getAttribute("aria-keyshortcuts")).toBe("Meta+Z"));
   expect(document.getElementById("feedback")!.textContent).toBe("Moved 2026-10-05 14-02-11.mp4 to the Trash.");
   // The old bar under the header is gone.
   expect(document.querySelector(".library-undo")).toBeNull();
-  (document.getElementById("toast-action") as HTMLButtonElement).focus();
-  click(document.getElementById("toast-action")!);
+  toastOf()!.querySelector<HTMLButtonElement>(".toast-action")!.focus();
+  click(toastOf()!.querySelector<HTMLButtonElement>(".toast-action")!);
   await vi.waitFor(() => expect(document.getElementById("clip-a")).not.toBeNull());
   expect(choose).toHaveBeenLastCalledWith("library", "undoTrash");
   // A short "Restored" without a button replaces it; focus left the button for the card that came back.
@@ -80,17 +83,18 @@ it("switches layout, brings back a trashed recording, and renames one in place",
   // ⌘Z works on another tab too, toast or not: the card waits in Recordings, and the tab stays where it is.
   await trash("a");
   click(document.getElementById("tab-general")!);
-  expect(toastOf().dataset.state).toBe("open");
+  expect(toastState()).toBe("open");
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true, cancelable: true }));
-  await vi.waitFor(() => expect(toastOf().querySelector(".toast-title")!.textContent).toBe("Restored"));
+  await vi.waitFor(() => expect(toastOf()!.querySelector(".toast-title")!.textContent).toBe("Restored"));
   expect([document.querySelector('[aria-selected="true"]')!.id, document.activeElement?.id]).toEqual(["tab-general", "tab-general"]);
   click(document.getElementById("tab-library")!);
   expect(document.getElementById("clip-a")).not.toBeNull();
 
-  // × closes it at once without undoing anything; ⌘Z still brings the file back while it waits.
+  // Escape closes it without undoing anything; ⌘Z still brings the file back while it waits.
   await trash("a");
-  click(document.querySelector<HTMLButtonElement>(".toast-close")!);
-  expect(toastOf().dataset.state).toBe("closed");
+  document.getElementById("tab-library")!.focus();
+  document.getElementById("tab-library")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(toastState()).toBe("closed"));
   expect(document.getElementById("clip-a")).toBeNull();
   document.getElementById("tab-library")!.focus();
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true, cancelable: true }));
@@ -101,7 +105,8 @@ it("switches layout, brings back a trashed recording, and renames one in place",
   await trash("a");
   current = view({ items: [items[1]!] }, ++revision);
   push(current);
-  expect(toastOf().dataset.state).toBe("closed");
+  // Sonner slides it out on its next frame.
+  await vi.waitFor(() => expect(toastState()).toBe("closed"));
   current = view({ items }, ++revision);
   push(current);
 

@@ -319,12 +319,22 @@
     width: max-content;
     max-width: calc(100vw - 32px);
   }
-  .zoom-toast-value {
-    margin: 0;
-    font-size: 13px;
+  /* The undo toast is Sonner's own; only the shortcut beside its Undo is ours, quieter than the label. */
+  .toast-key {
+    margin-left: 6px;
+    font: inherit;
+    opacity: 0.6;
+  }
+  .zoom-toast-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: clamp(12px, 5vw, 24px);
+  }
+  .zoom-toast-value {
+    margin: 0;
+    min-width: 56px;
+    padding-left: 4px;
+    font-size: 13px;
     font-variant-numeric: tabular-nums;
   }
   .zoom-toast-controls {
@@ -1023,29 +1033,11 @@
     justify-content: flex-end;
     gap: 8px;
   }
-  .undo-toast {
-    position: relative;
-    align-items: center;
-  }
-  .toast-content {
-    min-width: 0;
-    flex: 1;
-  }
-  .toast-title {
-    font-weight: 500;
-  }
-  .toast-description {
-    font-size: 12px;
-    color: var(--muted-foreground);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .toast-close {
-    position: absolute;
-    top: -7px;
-    left: -7px;
-  }
+
+
+
+
+
   /* The player's controls, as YouTube's full screen lays them out: the title on a shade along the top, a seek bar the
      picture's width over play, volume and the time on a shade along the bottom. White on the picture. */
   .pc {
@@ -1443,15 +1435,6 @@
     }
   }
   @media (max-width: 420px) {
-    .undo-toast {
-      flex-wrap: wrap;
-    }
-    .toast-content {
-      flex-basis: 100%;
-    }
-    .toast-action {
-      margin-left: auto;
-    }
     .row-line {
       flex-wrap: wrap;
     }
@@ -1483,8 +1466,7 @@
   }
   @media (forced-colors: active) {
     .clip-thumb,
-    .player,
-    .undo-toast {
+    .player {
       border: 1px solid CanvasText;
     }
   }

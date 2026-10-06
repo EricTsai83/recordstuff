@@ -36,17 +36,17 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
       click(document.getElementById("clip-menu-trash")!);
       await vi.advanceTimersByTimeAsync(0);
     };
-    // Sonner mounts the toast for each show and unmounts it once it has slid out (2026-10-07): gone reads as closed and hidden.
-    const state = () => {
-      const node = document.getElementById("toast");
-      return node ? [node.dataset.state, node.hidden] : ["closed", true];
-    };
+    // The toast is Sonner's own (2026-10-07): the controller says whether it is open, and the page whether one is still on
+    // screen (Sonner slides a dismissed one out over a frame and 200 ms, then removes it).
+    const ctl = await import("./settings-controller");
+    const live = () => document.querySelector<HTMLElement>('.undo-toast:not([data-removed="true"])');
+    const state = () => [ctl.toastState?.open ? "open" : "closed", !live()];
     await trash("a");
     expect(state()).toEqual(["open", false]);
     await vi.advanceTimersByTimeAsync(7_900);
     expect(state()).toEqual(["open", false]);
     // The pointer on it holds it however long, and leaving gives back only what was left.
-    let toast = document.getElementById("toast")!;
+    let toast = live()!;
     toast.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     await vi.advanceTimersByTimeAsync(20_000);
     expect(state()).toEqual(["open", false]);
@@ -54,19 +54,19 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
     await vi.advanceTimersByTimeAsync(50);
     expect(state()).toEqual(["open", false]);
     await vi.advanceTimersByTimeAsync(100);
-    expect(state()).toEqual(["closed", false]);
+    expect(state()[0]).toBe("closed");
     // Gone once Sonner has slid it out (a frame, then its 200 ms), stepped so React's effects run between the timers.
     for (let step = 0; step < 4; step++) await vi.advanceTimersByTimeAsync(100);
     expect(state()).toEqual(["closed", true]);
 
     // Focus in it holds it too; a newer trash replaces the toast and starts its count again.
     await trash("b");
-    document.getElementById("toast-action")!.focus();
+    live()!.querySelector<HTMLElement>(".toast-action")!.focus();
     await vi.advanceTimersByTimeAsync(15_000);
     expect(state()).toEqual(["open", false]);
-    click(document.getElementById("toast-action")!);
+    click(live()!.querySelector<HTMLElement>(".toast-action")!);
     await vi.advanceTimersByTimeAsync(0);
-    expect(document.querySelector("#toast .toast-title")!.textContent).toBe("Restored");
+    expect(live()!.querySelector(".toast-title")!.textContent).toBe("Restored");
     // Focus went to the card that came back, so the count runs: Restored leaves after 3 s.
     expect(document.activeElement?.id).toBe("clip-b-open");
     await vi.advanceTimersByTimeAsync(2_900);
@@ -78,16 +78,16 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
     // pointer still holds it (review of 2026-10-06, F2).
     await vi.advanceTimersByTimeAsync(300);
     await trash("a");
-    toast = document.getElementById("toast")!;
+    toast = live()!;
     toast.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     const original = Element.prototype.matches;
     const matches = vi.spyOn(Element.prototype, "matches").mockImplementation(function (this: Element, selector: string) {
-      return selector === ":hover" ? this.id === "toast" : original.call(this, selector);
+      return selector === ":hover" ? this.classList.contains("undo-toast") : original.call(this, selector);
     });
-    click(document.getElementById("toast-action")!);
+    click(live()!.querySelector<HTMLElement>(".toast-action")!);
     await vi.advanceTimersByTimeAsync(0);
     matches.mockRestore();
-    expect(document.querySelector("#toast .toast-title")!.textContent).toBe("Restored");
+    expect(live()!.querySelector(".toast-title")!.textContent).toBe("Restored");
     await vi.advanceTimersByTimeAsync(10_000);
     expect(state()).toEqual(["open", false]);
     toast.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
@@ -112,11 +112,21 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
     document.getElementById("tab-library")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     for (let step = 0; step < 2; step++) await vi.advanceTimersByTimeAsync(50);
     await trash("b");
-    // The one leaving still says what it said, and only the new one has the toast's ids.
-    const cards = [...document.querySelectorAll<HTMLElement>(".undo-toast")].map(card => [card.id, card.querySelector(".toast-description")!.textContent]);
-    expect(cards).toEqual(expect.arrayContaining([["", "a.mp4"], ["toast", "b.mp4"]]));
+    // The one leaving still says what it said, and the new one is the toast on screen.
+    const cards = [...document.querySelectorAll<HTMLElement>(".undo-toast")].map(card => [card.getAttribute("data-removed") === "true" ? "leaving" : "live", card.querySelector(".toast-description")!.textContent]);
+    expect(cards).toEqual(expect.arrayContaining([["leaving", "a.mp4"], ["live", "b.mp4"]]));
+    // The one leaving cannot be reached, so its Undo cannot act on the newer trash.
+    expect([...document.querySelectorAll<HTMLElement>('.undo-toast[data-removed="true"]')].every(card => card.inert)).toBe(true);
     for (let step = 0; step < 10; step++) await vi.advanceTimersByTimeAsync(100);
     expect(state()).toEqual(["open", false]);
-    expect(document.querySelector("#toast .toast-description")!.textContent).toBe("b.mp4");
+    expect(live()!.querySelector(".toast-description")!.textContent).toBe("b.mp4");
+    // No close button is drawn; Escape from inside the toast returns focus to the tab,
+    // not to where Sonner saw focus come from (review of 2026-10-07).
+    expect(live()!.querySelector('[data-close-button="true"]')).toBeNull();
+    document.getElementById("clip-a-open")?.focus();
+    live()!.querySelector<HTMLElement>(".toast-action")!.focus();
+    live()!.querySelector<HTMLElement>(".toast-action")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    for (let step = 0; step < 5; step++) await vi.advanceTimersByTimeAsync(100);
+    expect([state(), document.activeElement?.id]).toEqual([["closed", true], "tab-library"]);
   } finally { vi.useRealTimers(); }
 });

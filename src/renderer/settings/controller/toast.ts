@@ -17,6 +17,9 @@ export let toastState:
     }
   | undefined;
 let toastShows = 0;
+/** The toast on screen: Sonner's (undo-toast.tsx), not one still sliding out. */
+export const toastNode = (): HTMLElement | null =>
+  document.querySelector<HTMLElement>('.undo-toast:not([data-removed="true"])');
 let toastFadeTimer: ReturnType<typeof setTimeout> | undefined;
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 export function showToast(
@@ -27,7 +30,7 @@ export function showToast(
 ): void {
   clearTimeout(toastTimer);
   clearTimeout(toastFadeTimer);
-  const node = document.getElementById("toast");
+  const node = toastNode();
   toastState = {
     kind,
     title,
@@ -64,7 +67,7 @@ export function holdToast(what: "pointer" | "focus", on: boolean): void {
 export function dismissToast(): void {
   if (!toastState?.open) return;
   clearTimeout(toastTimer);
-  if (document.getElementById("toast")?.contains(document.activeElement))
+  if (toastNode()?.contains(document.activeElement))
     focus(`tab-${selectedTab}`);
   const closing = toastState;
   closing.open = false;
