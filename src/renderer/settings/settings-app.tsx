@@ -102,7 +102,7 @@ function Status() {
               void model.choose("status", status.action.id, "status-action");
           }}
         >
-          {permission && status?.action?.id === "permission" && <Settings className="size-[18px] text-(--permission-icon-ink)" aria-hidden="true" />}
+          {permission && status?.action?.id === "permission" && <Settings className="size-[18px] text-foreground" aria-hidden="true" />}
           {permission ? (
             <span id="status-action-label" className={status?.action?.id === "permission" ? "min-w-0 flex-1 text-left" : undefined}>
               {status?.action?.label}
@@ -134,7 +134,7 @@ function Status() {
             <>
               <span id="status-secondary-hint" hidden={!hasAllowedHint}>{allowedHint}</span>
               {hasAllowedHint && " "}
-              <span id="status-secondary-label" className="font-bold text-(--permission-link-ink) decoration-current group-hover/button:underline underline-offset-3">
+              <span id="status-secondary-label" className="font-bold text-primary decoration-current group-hover/button:underline underline-offset-3">
                 {relaunchLabel}
               </span>
             </>
