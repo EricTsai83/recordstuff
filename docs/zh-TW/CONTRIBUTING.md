@@ -62,8 +62,10 @@ App 文案位於 `src/shared/i18n.ts`。新增或修改文案時，同步更新�
 | 常見修改 | 起點 |
 | --- | --- |
 | 僅文件 | 檢查受影響連結／錨點、指令與翻譯；`git diff --check`。不啟動 App、不錄影 |
-| App 程式 | `pnpm check`（TypeScript、Vitest、正式建置），加規則中依影響選取的檢查 |
-| 設定／快捷鍵整合 | `pnpm acceptance:regression`，已包含 `pnpm check`；檢視受影響 UI／截圖 |
+| 局部文案／外觀 | diff 與受影響介面檢視；具型別訊息改動加型別檢查，有幫助時才跑聚焦 UI 案例。不預設完整套件或建置 |
+| 獨立 App 邏輯／局部重構 | 相關測試，TypeScript 加 `pnpm typecheck`；有具體風險時才擴大檢查 |
+| 共用／大範圍 App 行為 | `pnpm check`（TypeScript、Vitest、正式建置），加規則中依影響選取的檢查 |
+| 低風險流程以外的設定／快捷鍵整合 | `pnpm acceptance:regression`，已包含 `pnpm check`；檢視受影響 UI／截圖 |
 | 錄影行為 | `pnpm check`，再用新 `pnpm start:app` 產物執行[錄影 smoke 案例](acceptance.md)。`pnpm acceptance` 自動開始／停止／存檔／verify，播放另行觀察 |
 | 網站 | `pnpm site:check`；視覺修改檢視受影響頁面 |
 

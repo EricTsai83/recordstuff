@@ -65,8 +65,10 @@ Use the [shared testing policy](docs/testing.md) to select checks by behavior, i
 | Typical change | Starting point |
 | --- | --- |
 | Documentation only | Check affected links/anchors, commands and translations; `git diff --check`. No app launch or recording |
-| App code | `pnpm check` (TypeScript, Vitest, production build), plus impact-specific checks from the policy |
-| Settings / shortcut integration | `pnpm acceptance:regression`, which already includes `pnpm check`; inspect affected UI/screenshots |
+| Local copy / appearance | Diff and affected-surface inspection; type checks for typed message changes, focused UI cases only when useful. No default full suite or build |
+| Isolated app logic / local refactor | Relevant tests and `pnpm typecheck` for TypeScript; broader checks only for a concrete risk |
+| Shared / broad app behavior | `pnpm check` (TypeScript, Vitest, production build), plus impact-specific checks from the policy |
+| Settings / shortcut integration outside the low-risk path | `pnpm acceptance:regression`, which already includes `pnpm check`; inspect affected UI/screenshots |
 | Recording behavior | `pnpm check`, then a fresh `pnpm start:app` bundle and the [recording smoke cases](docs/acceptance.md). `pnpm acceptance` automates start/stop/save/verify; observe playback separately |
 | Website | `pnpm site:check`; inspect affected pages for visual edits |
 

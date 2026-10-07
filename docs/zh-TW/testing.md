@@ -8,14 +8,22 @@
 
 先讀 diff 與受影響的呼叫端，再選測試。依行為及依賴分類，不只看檔名、修改行數或作者描述。重構仍可能影響執行；字串可能是 IPC key，不一定是顯示文案。符合多列時取聯集。使用者明確要求的驗收加入基本範圍；使用者豁免的項目保留為未測限制。計畫的驗證清單寫的是需要哪些證據：符合[沿用規則](#縮短錄影回合)的既有證據即可滿足該項，除非計畫明確要求重新執行。
 
+先選能確認預期結果的最小範圍。符合下列條件時，低風險流程優先於下表的一般 App、顯示文案及設定列；它不豁免受影響的錄影、OS、安全、生命週期、效能或建置邊界檢查。
+
+- **僅顯示文案或翻譯：**檢視 diff 的語意、雙語對應及 placeholder。只有訊息 key、placeholder 或具型別的呼叫端改變時，才跑 `pnpm typecheck`。文字長度或換行可能改變時，檢視受影響介面；不自動跑單元測試、建置、UI 套件或所有語言／主題／尺寸組合。需要新的渲染畫面時，建置一次，檢視該介面或跑其聚焦 UI 案例。
+- **僅局部外觀：**只影響單一介面的間距、顏色、字型或裝飾時，在相關尺寸／主題檢視該介面。自動視覺證據有幫助時，建置一次，只跑相關 UI 案例。不預設跑 `pnpm check` 或完整設定回歸。共用 token／元件、互動、焦點、點擊範圍、原生拖曳區及視窗控制不適用此例外。
+- **獨立邏輯或局部重構：**呼叫端與依賴能確認影響只限單一模組，且未改動上述高風險邊界時，跑相關既有測試（例如 `pnpm test -- src/path/example.test.ts`）；TypeScript 修改加 `pnpm typecheck`。能捕捉可重現失敗時才補回歸測試，不新增只照抄實作的測試。建置或完整套件須有具體整合／建置風險。沒有有用的既有測試時，採用聚焦行為檢查並回報限制，不以無關測試代替。
+
+共用執行期改動、跨模組行為、依賴／設定，或聚焦檢查無法解決的具體疑慮，才使用下表較廣的範圍。每項追加檢查都要說明可抓出哪種失敗；不因檔案位於 App 原始碼、組合指令方便，或工作樹有其他無關修改就擴大範圍。完整 CI 與發布閘門維持不變。使用者要求略過測試時，優先於本預設規則，記為未測，不反覆要求批准。
+
 執行前簡述受影響行為、選用檢查與略過高成本檢查的理由。這是範圍說明，不是要求批准。最後修改後，對該版本執行必要檢查；組合指令已包含的檢查不重跑。任何修改都執行 `git diff --check`。
 
 | 修改／影響 | 必要檢查 | 沒有符合其他列時，通常不需要 |
 | --- | --- | --- |
 | 僅文件、計畫、指示或 skill | 檢查受影響的相對連結／錨點、指令名稱與 package scripts、英繁中一致性；skill metadata 改動時驗證格式 | App 建置、單元測試、啟動 App、錄影。不因文件提到指令就執行它 |
-| App 原始碼、執行期資源或重構 | `pnpm check`；有意義時補行為測試，尤其可重現 bug 的回歸測試；更具體分類未涵蓋時，仍須檢視受影響的可見行為 | 未影響 OS 或需觀察的介面行為時，不需封裝／原生驗收 |
-| 僅顯示文案或翻譯 | `pnpm check`；檢視受影響語言／介面的語意與溢位。設定文案在 check 建置後跑背景套件（`pnpm acceptance:regression` 兩者都跑），並檢視 `test-results/ui/` 中相關的圖 | 錄影、原生快捷鍵送達、音訊／矩陣測試 |
-| 設定排版、外觀、控制項、持久化、視窗生命週期或設定 IPC／preload | `pnpm acceptance:regression`（check／build 與背景套件：在隱藏的離屏視窗以 Playwright 輸入，不需桌面回合）；視覺修改檢視相關的圖（`test-results/ui/`，選定的圖會與審核過的基準比對；`pnpm preview:ui` 另可畫出每個分頁、語言、外觀與尺寸的圖庫）；互動改動在背景套件以 Playwright 滑鼠／鍵盤輸入覆蓋。改動依賴 OS 啟用視窗、原生視窗框、跨視窗焦點或在螢幕上全螢幕時，在同一份建置上另跑對應的原生案例：啟用與視窗框用 `pnpm acceptance:settings-native`，錄影播放器或全螢幕影片的全螢幕與焦點交還用 `pnpm acceptance:player`（桌面回合）；`pnpm acceptance:recipe -- native-ui` 以一次建置跑完這些與 `pnpm acceptance:shortcut-native`。修改視窗選項（`settingsWindowOptions`）、`src/shared/window-controls.ts` 或頁面左上角畫的內容時，另需在新的 `pnpm start:app` 產物上執行 `pnpm acceptance:settings-shortcut -- --observe`，這是唯一檢查 macOS 所畫視窗按鈕的項目，並觀察其 `settings-window.png` | 純排版／外觀不需錄影。其他原生檢查只限受影響的 OS 邊界或 fixture 無法呈現的行為 |
+| 低風險流程以外的 App 原始碼、執行期資源或重構 | `pnpm check`；有意義時補行為測試，尤其可重現 bug 的回歸測試；更具體分類未涵蓋時，仍須檢視受影響的可見行為 | 未影響 OS 或需觀察的介面行為時，不需封裝／原生驗收 |
+| 僅顯示文案或翻譯 | 依上述低風險流程；只檢視受影響文字／介面，具型別的訊息改動時跑型別檢查 | 預設完整 check／build／UI 套件；錄影、原生快捷鍵送達、音訊／矩陣測試 |
+| 局部外觀例外以外的設定排版／外觀、控制項、持久化、視窗生命週期或設定 IPC／preload | `pnpm acceptance:regression`（check／build 與背景套件：在隱藏的離屏視窗以 Playwright 輸入，不需桌面回合）；視覺修改檢視相關的圖（`test-results/ui/`，選定的圖會與審核過的基準比對；`pnpm preview:ui` 另可畫出每個分頁、語言、外觀與尺寸的圖庫）；互動改動在背景套件以 Playwright 滑鼠／鍵盤輸入覆蓋。改動依賴 OS 啟用視窗、原生視窗框、跨視窗焦點或在螢幕上全螢幕時，在同一份建置上另跑對應的原生案例：啟用與視窗框用 `pnpm acceptance:settings-native`，錄影播放器或全螢幕影片的全螢幕與焦點交還用 `pnpm acceptance:player`（桌面回合）；`pnpm acceptance:recipe -- native-ui` 以一次建置跑完這些與 `pnpm acceptance:shortcut-native`。修改視窗選項（`settingsWindowOptions`）、`src/shared/window-controls.ts` 或頁面左上角畫的內容時，另需在新的 `pnpm start:app` 產物上執行 `pnpm acceptance:settings-shortcut -- --observe`，這是唯一檢查 macOS 所畫視窗按鈕的項目，並觀察其 `settings-window.png` | 純排版／外觀不需錄影。其他原生檢查只限受影響的 OS 邊界或 fixture 無法呈現的行為 |
 | 全域快捷鍵註冊／送達、Tray 操作、焦點、原生入口、應用程式選單或 OS 無障礙 | 設定／快捷鍵整合跑 `pnpm acceptance:regression`（背景，使用註冊 adapter），其他跑 `pnpm check`。在新建置的 App 操作受影響原生行為：Tray 操作與選單用 `pnpm acceptance:tray`，設定入口與應用程式選單的快捷鍵用 `pnpm acceptance:settings-shortcut -- --observe`，Electron 真正的註冊被拒與真實設定視窗狀態（最小化、還原、焦點、關閉鍵）用 `pnpm acceptance:shortcut-native`，外觀則觀察保存的截圖。註冊方式改動另需 `pnpm acceptance:shortcut-native` 與 `pnpm acceptance:shortcut-layout`；`pnpm acceptance:recipe -- shortcut-registration` 以一次建置跑完回歸與這兩者 | 完整原生狀態矩陣；不會開始／停止或干擾擷取的操作不需錄影 |
 | 錄影開始／停止、capture host／協定、編碼、檔案寫入、來源／品質選擇、錄影鎖定、權限或錄影中退出 | `pnpm check`，加新 `pnpm start:app` 產物的一輪錄影 smoke：開始、停止、存檔、媒體驗證與播放。追加改動案例，例如輸出資料夾或螢幕選擇；設定路徑也改動時加設定回歸 | 所有解析度／品質、長錄影、權限重設及實體拔插，除非影響該行為或需求指定 |
 | 幀時序、同步、解析度／fps 或音質 | 錄影列，加相關矩陣子集：`pnpm matrix -- quick`、`levels`、`fps` 或 `long`（依影響選案例）；音質使用工具指南中的相關 `pnpm audio:quality` 診斷 | 預設跑完整矩陣；沒有長錄需求時跑十分鐘錄影 |
@@ -27,7 +35,13 @@
 | 網站原始碼／資源／設定 | `pnpm site:check`（網站測試、診斷、線上 manifest 驗證、建置與產生頁面連結檢查）；視覺修改檢視受影響頁面 | 未改共用 App／發布輸入時，不需 App 測試與原生錄影 |
 | 發布工作流程或發布作業 | 相關發布工具測試及[發布指南](system-design/releases.md)要求；實際發布驗收綁定候選 SHA | 用發布來測試；程式／文件任務不代表允許推送 tag |
 
-例如設定 CSS 間距修改需設定回歸與截圖檢視，但不需錄影；錄影快捷鍵修改需整合、真正 OS 送鍵及錄影 smoke；輸出資料夾標籤修改只需文案檢查，資料夾持久化修改則需設定回歸及存檔落點檢查。權限說明文字不需重設權限，權限恢復邏輯則需對應原生案例。
+例如局部設定 CSS 間距修改需檢視該介面（或聚焦 UI 案例），但不需完整回歸或錄影；錄影快捷鍵修改需整合、真正 OS 送鍵及錄影 smoke；輸出資料夾標籤修改只需文案檢查，資料夾持久化修改則需設定回歸及存檔落點檢查。權限說明文字不需重設權限，權限恢復邏輯則需對應原生案例。
+
+## 測試 UI 與 App 保持一致
+
+UI 測試與預覽畫廊必須載入正式頁面，並共用 App 的元件、CSS、字型與設計 token。在相同語言、主題、視窗尺寸及縮放下，排版、字體、顏色、間距與控制項外觀必須和 App 一致。不要另外設計測試介面、把正式樣式複製到 fixture，或注入覆寫樣式讓視覺斷言通過；設計變更應修改共用的正式實作。
+
+Fixture 可以使用示範錄影、受控狀態與不同的版本文字，這些資料不必與使用者 App 完全相同。離屏繪製與 OS adapter 可以隔離桌面操作，但必須保留頁面設計。畫廊外圍的報告介面與其中呈現的 App 圖片分開處理。樣式變更後，先更新受影響圖片，再將它們作為目前 App 設計展示；OS 繪製的外觀則使用原生證據。
 
 ## 選定一次並對每個版本驗證一次
 
@@ -35,8 +49,8 @@
 
 | 情境 | 執行規則 |
 | --- | --- |
-| 編輯或除錯中 | 用聚焦測試與型別檢查回答當下的問題；這些不能取代最後的必要檢查 |
-| 最終版本 | 有涵蓋的組合指令時只跑一次，例如 `pnpm acceptance:regression`，不先單獨跑其中的 `check` 或建置 |
+| 編輯或除錯中 | 只以聚焦檢查回答具體問題。檢查通過且最終相關輸入未變時，也滿足選定的最終範圍；不只為標成最終檢查而重跑 |
+| 最終版本 | 只跑選定的檢查。整個範圍都必要時，才用 `pnpm acceptance:regression` 等組合指令，不先單獨跑其中的 `check` 或建置；否則用聚焦指令 |
 | 多個 runner 需要 `out/` | 最終輸入只建置一次，再依序讓各 runner 使用同一份 `out/`。`pnpm acceptance:regression && pnpm acceptance:shortcut-layout` 會建置兩次；`pnpm acceptance:recipe -- shortcut-registration` 以一次建置跑相同檢查 |
 | 原生驗收需要簽章 bundle | 以 `pnpm start:app` 為最終 runtime 輸入建置並簽章一次；`out/` 的證據不能取代簽章 bundle 的證據。之後的回合用 `pnpm open:app` 重開同一個 bundle；建置後 runtime 輸入有變時，它會拒絕開啟 |
 | 之後又修改或修正 review | 重新判斷影響範圍；作廢受影響的證據與產物，只重跑適用的檢查，不自動重跑整個桌面矩陣 |
