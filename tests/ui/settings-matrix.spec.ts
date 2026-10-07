@@ -89,12 +89,16 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
         else if (state === "library-empty") expect.soft(shown.cards === 0 && shown.empty && shown.status === "", `S035 ${key}: Recordings shows the empty folder ${JSON.stringify(shown)}`).toBe(true);
         else expect.soft(shown.cards === 0 && !shown.empty && shown.status === unreadable, `S036 ${key}: Recordings shows why the folder cannot be read ${JSON.stringify(shown)}`).toBe(true);
         if (state === "library" && size === "default") {
-          // Every card is in view at the default size, so each lazy image loads: two pictures over the scheme, one fallback.
+          // Windows has three day groups, so the last card can sit below the viewport even at the default size.
+          // Bring each thumbnail into view to trigger its production lazy loading, then restore the snapshot's scroll.
+          for (const thumb of await page.locator(".clip-thumb").all()) await thumb.scrollIntoViewIfNeeded();
           const thumbs = `(() => { const images = [...document.querySelectorAll(".clip-thumb img")];
             return { pictures: images.filter(i => i.complete && i.naturalWidth === 480).length, fallback: document.querySelectorAll(".clip-thumb.no-thumb").length, pending: images.filter(i => !i.complete).length }; })()`;
           await until(page, `(t => t.pending === 0 && t.pictures + t.fallback === 3)(${thumbs})`);
           expect.soft(await read(page, thumbs), `S028 ${key}: thumbnails arrive over recordstuff-media: under the shipped CSP, and a recording without one shows the fallback`)
             .toEqual({ pictures: 2, fallback: 1, pending: 0 });
+          await read(page, `document.getElementById("settings-panel").scrollTop = 0`);
+          await frames(page);
         }
       }
       if (state === "recording" || state === "locked") {

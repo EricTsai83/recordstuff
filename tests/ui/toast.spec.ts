@@ -46,7 +46,11 @@ test("T01–T03 the undo toast: no close button, automatic dismissal, Escape ret
   const drawn = await read<{ title: string; action: string; shortcut: string | null; close: string | null; styled: string | null }>(page, `(() => { const t = document.querySelector(${JSON.stringify(live)});
     return { title: t.querySelector(".toast-title").textContent, action: t.querySelector(".toast-action").textContent, shortcut: t.querySelector(".toast-action").getAttribute("aria-keyshortcuts"),
       close: t.querySelector('[data-close-button="true"]')?.getAttribute("aria-label") ?? null, styled: t.getAttribute("data-styled") }; })()`);
-  expect.soft(drawn, "T01 Sonner draws the toast: its title and Undo with ⌘Z, without a close button").toEqual({ title: "已丟到垃圾桶", action: "還原⌘Z", shortcut: "Meta+Z", close: null, styled: "true" });
+  const mac = process.platform === "darwin";
+  expect.soft(drawn, "T01 Sonner draws the toast: its platform-specific title and Undo shortcut, without a close button").toEqual({
+    title: mac ? "已丟到垃圾桶" : "已移到資源回收筒", action: mac ? "還原⌘Z" : "還原Ctrl+Z",
+    shortcut: mac ? "Meta+Z" : "Control+Z", close: null, styled: "true",
+  });
   await page.locator(live).screenshot({ path: testInfo.outputPath("undo-toast.png") });
   // From the selected tab, the keyboard reaches the toast's buttons; Escape there closes it and focus goes to the tab.
   await page.locator("#tab-library").focus();
