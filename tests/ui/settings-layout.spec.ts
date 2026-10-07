@@ -380,9 +380,8 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
         expect(spacing.belowNavigation).toBeLessThanOrEqual(32);
         expect(spacing.belowStatus).toBe(24);
       }
-      await expect(action.locator("svg")).toHaveCount(2);
+      await expect(action.locator("svg")).toHaveCount(1);
       await expect(action.locator("svg").first()).toBeVisible();
-      await expect(action.locator("svg").last()).toBeVisible();
       // The permission action uses a quiet outlined surface in both themes, with ordinary readable text.
       // Its previous saturated dark fill's 3:1 surface contrast is no longer the selected design.
       const minimum = (_at: string) => 4.5;
@@ -398,7 +397,13 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
         const control = document.getElementById(id), r = control.getBoundingClientRect(), card = document.getElementById("status").getBoundingClientRect();
         return r.top >= 0 && r.bottom <= innerHeight && r.top >= card.top && r.bottom <= card.bottom;
       }))()`), `${size}: both recovery controls are fully visible without scrolling`).toBe(true);
+      const actionBackground = await action.evaluate(el => getComputedStyle(el).backgroundColor);
+      const primaryColor = await page.locator('[id^="tab-"][aria-selected="true"]').evaluate(el => getComputedStyle(el, "::after").backgroundColor);
       await action.hover();
+      await expect(action).toHaveCSS("background-color", actionBackground);
+      await expect(action).toHaveCSS("border-top-color", primaryColor);
+      await expect(action).toHaveCSS("color", primaryColor);
+      await expect(action.locator("svg").first()).toHaveCSS("color", primaryColor);
       await page.waitForTimeout(170);
       const hovered = await read<UiMeasurement>(page, MEASURE_UI);
       expect(hovered.texts.find(entry => entry.at === "#status-action-label")?.contrast, `${size}: the action remains readable under the pointer`).toBeGreaterThanOrEqual(minimum("#status-action-label"));
@@ -410,15 +415,25 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       expect(resting.decoration).toBe("none");
       const relaunchLabel = page.locator("#status-secondary-label"), hint = page.locator("#status-secondary-hint");
       await expect(relaunchLabel).toHaveCSS("text-decoration-line", "none");
+      await expect(relaunchLabel).toHaveCSS("font-weight", "700");
+      await expect(action).toHaveCSS("font-weight", "600");
       const hintColor = await hint.evaluate(el => getComputedStyle(el).color);
       const relaunchColor = await relaunchLabel.evaluate(el => getComputedStyle(el).color);
       const primary = await page.locator('[id^="tab-"][aria-selected="true"]').evaluate(el => getComputedStyle(el, "::after").backgroundColor);
       expect(relaunchColor).toBe(primary);
       expect(relaunchColor).not.toBe(hintColor);
       await secondary.hover();
-      await expect(relaunchLabel).toHaveCSS("color", relaunchColor);
+      const fadedPrimary = await relaunchLabel.evaluate(el => {
+        const probe = document.createElement("span");
+        probe.style.color = "color-mix(in oklab, var(--primary) 85%, transparent)";
+        el.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      });
+      await expect(relaunchLabel).toHaveCSS("color", fadedPrimary);
       await expect(relaunchLabel).toHaveCSS("text-decoration-line", "underline");
-      await expect(relaunchLabel).toHaveCSS("text-decoration-color", primary);
+      await expect(relaunchLabel).toHaveCSS("text-decoration-color", fadedPrimary);
       await expect(hint).toHaveCSS("color", hintColor);
       await expect(hint).toHaveCSS("text-decoration-line", "none");
       await expect.poll(secondaryStyle, { message: `${size}: only the relaunch label changes on hover` }).toEqual(resting);

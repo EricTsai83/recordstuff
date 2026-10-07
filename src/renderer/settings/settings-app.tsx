@@ -1,6 +1,6 @@
 /** The settings window's shell: the tabs, the status card, the page each tab draws, the footer and the overlays. */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ArrowUpRight, Film, Wrench, Video, Settings } from "lucide-react";
+import { Film, Wrench, Video, Settings } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Card } from "../components/ui/card";
@@ -92,7 +92,7 @@ function Status() {
           variant={permission ? "outline" : "default"}
           wrap={permission}
           className={permission
-            ? `darwin:wide:window-no-drag w-full min-h-11 rounded-xl border-(--permission-action-border) bg-(--permission-action-bg) py-2 text-center font-semibold text-(--permission-action-ink) hover:bg-(--permission-action-hover) hover:text-(--permission-action-ink) dark:bg-(--permission-action-bg) ${status?.action?.id === "permission" ? "justify-start gap-2 px-2.5" : ""}`
+            ? `darwin:wide:window-no-drag w-full min-h-11 rounded-xl border-(--permission-action-border) bg-(--permission-action-bg) py-2 text-center font-semibold text-(--permission-action-ink) hover:bg-(--permission-action-bg) hover:border-primary hover:text-primary dark:bg-(--permission-action-bg) ${status?.action?.id === "permission" ? "justify-center gap-2 px-2.5" : ""}`
             : "darwin:wide:window-no-drag wide:w-full"}
           hidden={!status?.action}
           data-action={status?.action?.id}
@@ -102,13 +102,12 @@ function Status() {
               void model.choose("status", status.action.id, "status-action");
           }}
         >
-          {permission && status?.action?.id === "permission" && <Settings className="size-[18px] text-foreground" aria-hidden="true" />}
+          {permission && status?.action?.id === "permission" && <Settings className="size-[18px] text-foreground group-hover/button:text-primary" aria-hidden="true" />}
           {permission ? (
-            <span id="status-action-label" className={status?.action?.id === "permission" ? "min-w-0 flex-1 text-left" : undefined}>
+            <span id="status-action-label" className={status?.action?.id === "permission" ? "min-w-0 text-center" : undefined}>
               {status?.action?.label}
             </span>
           ) : status?.action?.label}
-          {permission && status?.action?.id === "permission" && <ArrowUpRight className="size-3.5" aria-hidden="true" />}
         </Button>
         <Button
           id="status-secondary"
@@ -132,9 +131,9 @@ function Status() {
         >
           {permission ? (
             <>
-              <span id="status-secondary-hint" hidden={!hasAllowedHint}>{allowedHint}</span>
+              <span id="status-secondary-hint" className="text-[color-mix(in_oklab,var(--muted-foreground)_80%,var(--foreground))]" hidden={!hasAllowedHint}>{allowedHint}</span>
               {hasAllowedHint && " "}
-              <span id="status-secondary-label" className="font-bold text-primary decoration-current group-hover/button:underline underline-offset-3">
+              <span id="status-secondary-label" className="font-bold text-primary group-hover/button:text-primary/85 decoration-current group-hover/button:underline underline-offset-3">
                 {relaunchLabel}
               </span>
             </>
