@@ -1,6 +1,22 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "sonner/dist/styles.css";
+
+/* Bundled variable fonts: loading never depends on an installed font or a network connection. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-latin-wght-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("./assets/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
+}
 @custom-variant dark (&:is(.dark *));
 /* The window states the pages set on <html>, and the width breakpoints the Settings layout switches at, as variants a
    call site can use beside the primitives' own utilities (plan 069). The breakpoints keep their exact queries: 600 px
@@ -24,34 +40,16 @@
   }
 }
 
-/* One keyboard focus style for every control (2026-10-07, as before shadcn): a single line in the chosen red,
-   one device pixel at 1x and 1.5px on a Retina display (--focus-width), drawn on the control's own edge, with no faint
-   halo around it. A filled control draws it just outside (--focus-offset), the player's in white (--focus-color). Only
-   for the keyboard: after a pointer the page sets data-input="pointer" and no line is drawn; a text field shows where
-   typing goes however it was reached (focus-ring-field). */
-@utility focus-ring {
-  &:focus-visible:where(:root:not([data-input="pointer"]):not([data-window="inactive"]) *) {
-    outline: var(--focus-width) solid var(--focus-color, var(--ring));
-    outline-offset: var(--focus-offset, calc(-1 * var(--focus-width)));
+/* Mark drag surfaces and controls at their call sites. Open overlays pause drag surfaces. */
+@utility window-drag {
+  -webkit-app-region: drag;
+  user-select: none;
+  &:where(:root:has(.player[data-open], [role="dialog"][data-open], [role="menu"][data-open], .info-popup[data-open]) *) {
+    -webkit-app-region: no-drag;
   }
 }
-@utility focus-ring-within {
-  &:has(:focus-visible):where(:root:not([data-input="pointer"]):not([data-window="inactive"]) *) {
-    outline: var(--focus-width) solid var(--focus-color, var(--ring));
-    outline-offset: var(--focus-offset, calc(-1 * var(--focus-width)));
-  }
-}
-@utility focus-ring-field {
-  &:focus-visible {
-    outline: var(--focus-width) solid var(--focus-color, var(--ring));
-    outline-offset: calc(-1 * var(--focus-width));
-  }
-}
-@utility focus-ring-field-within {
-  &:has(:focus-visible) {
-    outline: var(--focus-width) solid var(--focus-color, var(--ring));
-    outline-offset: calc(-1 * var(--focus-width));
-  }
+@utility window-no-drag {
+  -webkit-app-region: no-drag;
 }
 
 /* The type scale (plan 067): the root stays at the browser's 16px so the components' rem sizes keep their designed
@@ -62,20 +60,18 @@
   --text-xs--line-height: 1.45;
 }
 
-/* Shared palette: a Music-inspired white canvas, pale neutral surfaces and red accents. In light mode the reference
-   red is shared by icons, action labels and filled actions. Neutral groups
-   use hairlines and no elevation; only menus and dialogs lift above the page. shadcn's semantic variables carry them; the app adds its own meanings the way shadcn
-   adds --chart-* or --sidebar-*: --chosen, the recording and warning states, the brand mark, the selection raised in a
-   track, and the media surfaces of the player and the full-screen page, which stay dark in both themes. */
+/* Shared reference palette: stone-neutral surfaces and the same red primary in both themes.
+   The shadcn colour tokens retain the supplied OKLCH values. App-specific selections and quiet actions reuse those
+   roles; recording, warning and media surfaces keep their distinct status meanings. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
-  --color-card-border: var(--card-border);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
+  --color-selection: var(--selection);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -84,21 +80,25 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-ink: var(--destructive-ink);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-chosen: var(--chosen);
-  --color-chosen-foreground: var(--chosen-foreground);
-  --color-chosen-text: var(--chosen-text);
-  --color-chosen-text-foreground: var(--chosen-text-foreground);
-  --color-chosen-surface: var(--chosen-surface);
-  --color-chosen-surface-hover: var(--chosen-surface-hover);
-  --color-selected: var(--selected);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-selected-foreground: var(--sidebar-selected-foreground);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-sidebar: var(--sidebar);
   --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-selected: var(--sidebar-selected);
-  --color-sidebar-selected-foreground: var(--sidebar-selected-foreground);
-  --color-sidebar-selected-icon: var(--sidebar-selected-icon);
   --color-recording: var(--recording);
   --color-warning: var(--warning);
   --color-success: var(--success);
@@ -113,77 +113,95 @@
   --color-media-hover: var(--media-hover);
   --color-media-error: var(--media-error);
   --color-media-backdrop: var(--media-backdrop);
-  --color-dialog-backdrop: var(--dialog-backdrop);
   --color-recording-surface: var(--recording-surface);
   --color-recording-border: var(--recording-border);
   --color-warning-surface: var(--warning-surface);
   --color-warning-border: var(--warning-border);
+  --shadow-2xs: var(--shadow-2xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
   --shadow-player: var(--player-shadow);
-  --shadow-card: var(--card-shadow);
-  --shadow-selected: var(--selected-shadow);
-  --shadow-sidebar-selected: var(--sidebar-selected-shadow);
-  --shadow-toast: var(--toast-shadow);
-  --shadow-popup: var(--popup-shadow);
-  --shadow-chosen: var(--chosen-shadow);
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-mono: var(--font-mono);
+  --tracking-tighter: calc(var(--tracking-normal) - 0.05em);
+  --tracking-tight: calc(var(--tracking-normal) - 0.025em);
+  --tracking-normal: var(--tracking-normal);
+  --tracking-wide: calc(var(--tracking-normal) + 0.025em);
+  --tracking-wider: calc(var(--tracking-normal) + 0.05em);
+  --tracking-widest: calc(var(--tracking-normal) + 0.1em);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
 :root {
+  --window-titlebar-height: 40px;
+  --settings-sidebar-width: 190px;
+  --settings-content-top-gap: 32px;
+  --permission-card-ring: color-mix(in srgb, var(--primary) 12%, var(--card));
+  --permission-action-bg: color-mix(in srgb, var(--card) 85%, transparent);
+  --permission-action-hover: color-mix(in srgb, var(--primary) 5%, var(--card));
+  --permission-action-border: color-mix(in srgb, var(--primary) 14%, var(--card));
+  --permission-action-ink: var(--foreground);
+  --permission-card-gradient: linear-gradient(to bottom,
+    var(--card) 0%,
+    color-mix(in srgb, var(--primary) 1%, var(--card)) 5%,
+    color-mix(in srgb, var(--primary) 3%, var(--card)) 22%,
+    color-mix(in srgb, var(--primary) 6%, var(--card)) 55%,
+    color-mix(in srgb, var(--primary) 11%, var(--card)) 100%);
+  --permission-icon-ink: #b05d63;
+  --permission-link-ink: #955058;
+
+  --shadow-2xl: 0px 4px 12px 0px hsl(0 0% 0% / 0.20);
+  --shadow-xl: 0px 4px 12px 0px hsl(0 0% 0% / 0.08), 0px 8px 10px -1px hsl(0 0% 0% / 0.08);
+  --shadow-lg: 0px 4px 12px 0px hsl(0 0% 0% / 0.08), 0px 4px 6px -1px hsl(0 0% 0% / 0.08);
+  --shadow-md: 0px 4px 12px 0px hsl(0 0% 0% / 0.08), 0px 2px 4px -1px hsl(0 0% 0% / 0.08);
+  --shadow: 0px 4px 12px 0px hsl(0 0% 0% / 0.08), 0px 1px 2px -1px hsl(0 0% 0% / 0.08);
+  --shadow-sm: 0px 4px 12px 0px hsl(0 0% 0% / 0.08), 0px 1px 2px -1px hsl(0 0% 0% / 0.08);
+  --shadow-xs: 0px 4px 12px 0px hsl(0 0% 0% / 0.04);
+  --shadow-2xs: 0px 4px 12px 0px hsl(0 0% 0% / 0.04);
   color-scheme: light dark;
   --radius: 0.75rem;
-  --background: #ffffff;
-  --foreground: #1d1d1f;
-  --card: #ffffff;
-  --card-foreground: #1d1d1f;
-  --card-border: #e5e5ea;
-  --card-shadow: 0 0 transparent;
-  --popover: #ffffff;
-  --popover-foreground: #1d1d1f;
-  /* The single light-mode brand colour, sampled from the reference gear. Accent roles alias it below. */
-  --primary: #f31b34;
-  --primary-hover: #fa354b;
-  --primary-foreground: #fff;
-  /* A tile: a row's icon, an empty state's mark. */
-  --secondary: #f2f2f5;
-  --secondary-foreground: #1d1d1f;
+  --background: oklch(0.9699 0.0013 106.4238);
+  --foreground: oklch(0.2161 0.0061 56.0434);
+  --card: oklch(1.0000 0 0);
+  --card-foreground: oklch(0.2161 0.0061 56.0434);
+  --popover: oklch(1.0000 0 0);
+  --popover-foreground: oklch(0.2161 0.0061 56.0434);
+  /* The supplied red; action and selection roles alias it below. */
+  --primary: oklch(0.5858 0.2220 17.5846);
+  /* Tabs and grouped choices share a quiet red tint over their own surface. */
+  --selection: color-mix(in srgb, var(--primary) 8%, transparent);
+  --primary-foreground: oklch(1.0000 0 0);
+  /* Neutral secondary controls pair this fill with secondary-foreground. */
+  --secondary: oklch(0.9699 0.0013 106.4238);
+  --secondary-foreground: oklch(0.2161 0.0061 56.0434);
   /* The recessed track of the tab strip and segmented controls, and a slider's track. */
-  --muted: #efeff2;
+  --muted: oklch(0.9699 0.0013 106.4238);
   /* At least 4.5:1 on the page, the cards and the muted fills in both themes (plan 067). */
-  --muted-foreground: #636368;
+  --muted-foreground: oklch(0.5400 0.0116 58.0708);
   /* A control under the pointer, a menu's highlighted item. */
-  --accent: #eeeef1;
-  --accent-foreground: #1d1d1f;
-  --destructive: #b91c1c;
+  --accent: oklch(0.9699 0.0013 106.4238);
+  --accent-foreground: oklch(0.2161 0.0061 56.0434);
+  --destructive: oklch(0.6368 0.2078 25.3313);
   /* Hairlines between rows; --input is a control's own border. */
-  --border: #e5e5ea;
-  --input: #dcdce1;
-  --ring: var(--primary);
-  --chosen: var(--primary);
-  --chosen-foreground: var(--primary-foreground);
-  /* Main-colour text, selection icons and filled actions all use primary, with white text over the fill. */
-  --chosen-text: var(--primary);
-  --chosen-text-foreground: var(--primary-foreground);
-  /* Quiet actions use a light tint of the same red, with readable labels even under the pointer. */
-  --chosen-surface: #fff0f2;
-  --chosen-surface-hover: #ffe5e9;
-  --chosen-shadow: 0 4px 12px rgb(0 0 0 / 0.25);
-  /* The choice raised in a track (a segmented control, the narrow tab strip). */
-  --selected: #ffffff;
-  --selected-shadow: 0 1px 2px rgb(0 0 0 / 0.12), 0 0 0 0.5px rgb(0 0 0 / 0.06);
-  /* The wide window's sidebar, its hover and the open tab's raised tile. */
-  --sidebar: #f5f5f7;
-  --sidebar-accent: rgb(0 0 0 / 0.04);
-  /* A light neutral tile; the selected name and icon share the reference accent exactly. */
-  --sidebar-selected: #f0eff0;
-  --sidebar-selected-foreground: var(--primary);
-  --sidebar-selected-icon: var(--primary);
-  --sidebar-selected-shadow: 0 0 transparent;
+  --border: oklch(0.9232 0.0026 48.7171);
+  --input: oklch(0.9232 0.0026 48.7171);
+  --ring: oklch(0.5858 0.2220 17.5846);
+  /* Navigation belongs to the window backdrop; the content is the raised card surface. */
+  --sidebar: var(--background);
+  /* Keep hover feedback a step deeper than the sidebar surface. */
+  --sidebar-accent: color-mix(in oklch, var(--sidebar) 50%, var(--sidebar-border));
   /* Recording: the status title (4.5:1, plan 067), the status mark's tile and halo, and its card. */
   --recording: #d92020;
-  --recording-mark: var(--primary);
-  --recording-halo: color-mix(in srgb, var(--primary) 14%, transparent);
+  --recording-mark: var(--indicator);
+  --recording-halo: color-mix(in srgb, var(--recording-mark) 14%, transparent);
   --recording-surface: #fff3f2;
   --recording-border: #fbd5d2;
   /* Something to fix: the status card, its mark and a row's diagnostics, in amber. */
@@ -192,8 +210,8 @@
   --warning-border: #f5deb0;
   /* Ready: the wide sidebar's status light. */
   --success: #16a34a;
-  /* The record dot of the brand mark. */
-  --indicator: var(--primary);
+  /* Fixed brand red, matching build/icon.png (scripts/make-icons.mjs); never follows the UI theme. */
+  --indicator: #e63946;
   /* The brand and status mark's tile and ring, the same in both themes. */
   --brand: #18181b;
   --brand-foreground: #fff;
@@ -208,75 +226,124 @@
   --media-hover: rgb(0 0 0 / 0.22);
   --media-error: #ff8a80;
   --media-backdrop: rgb(0 0 0 / 0.45);
-  --dialog-backdrop: rgb(0 0 0 / 0.35);
   --media-shade-top: linear-gradient(rgb(0 0 0 / 0.62), rgb(0 0 0 / 0.28) 55%, transparent);
   --media-shade-bottom: linear-gradient(transparent, rgb(0 0 0 / 0.32) 40%, rgb(0 0 0 / 0.72));
   --media-text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
   --media-icon-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
   --media-thumb-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
   --player-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
-  --toast-shadow: 0 4px 12px rgb(0 0 0 / 0.1);
-  --popup-shadow: 0 8px 30px rgb(0 0 0 / 0.12), 0 2px 8px rgb(0 0 0 / 0.06);
   /* An opaque mask stop: a mask reads only its alpha. */
   --mask-opaque: #000;
-  /* The content's thin scroll bar thumb. */
-  --scrollbar: rgb(0 0 0 / 0.22);
-  /* Keyboard focus around a failure entry and inside it (plan 067): one device pixel at 1x, 1.5px on a Retina display. */
-  --focus: var(--ring);
-  --focus-width: 1px;
+  --destructive-foreground: oklch(0.9848 0.0013 106.4233);
+  --chart-1: oklch(0.5858 0.2220 17.5846);
+  --chart-2: oklch(0.6450 0.2154 16.4393);
+  --chart-3: oklch(0.7192 0.1690 13.4280);
+  --chart-4: oklch(0.8097 0.1061 11.6385);
+  --chart-5: oklch(0.8924 0.0559 10.0008);
+  --sidebar-foreground: oklch(0.2161 0.0061 56.0434);
+  --sidebar-primary: oklch(0.5858 0.2220 17.5846);
+  --sidebar-selected-foreground: var(--sidebar-primary);
+  --sidebar-primary-foreground: oklch(1.0000 0 0);
+  --sidebar-accent-foreground: oklch(0.2161 0.0061 56.0434);
+  --sidebar-border: oklch(0.9232 0.0026 48.7171);
+  --sidebar-ring: oklch(0.5858 0.2220 17.5846);
+  /* A companion ink for small error labels; the reference destructive fill stays exact. */
+  --destructive-ink: oklch(0.5200 0.1700 25.3313);
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-serif: "Georgia", serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --tracking-normal: -0.01em;
+  --spacing: 0.25rem;
+  --shadow-x: 0px;
+  --shadow-y: 4px;
+  --shadow-blur: 12px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.08;
+  --shadow-color: #000000;
 }
 /* The page sets .dark from the appearance setting (System follows the OS); color-scheme on :root keeps native controls
    and system colours in step with it. */
 .dark {
-  --background: #1c1c1e;
-  --foreground: #f5f5f7;
-  --card: #2c2c2e;
-  --card-foreground: #f5f5f7;
-  --card-border: #38383a;
-  --card-shadow: 0 0 transparent;
-  --popover: #2c2c2e;
-  --popover-foreground: #f5f5f7;
-  --primary: #ff7a80;
-  --primary-hover: #ff9196;
-  --primary-foreground: #18181b;
-  --secondary: #3a3a3c;
-  --secondary-foreground: #f5f5f7;
-  --muted: #3a3a3c;
-  --muted-foreground: #aeaeb2;
-  --accent: #3a3a3c;
-  --accent-foreground: #f5f5f7;
-  --destructive: #fca5a5;
-  --border: #38383a;
-  --input: #48484a;
-  --ring: var(--primary);
-  --chosen: var(--primary);
-  --chosen-text: var(--primary);
-  --chosen-text-foreground: var(--primary-foreground);
-  --chosen-surface: var(--secondary);
-  --chosen-surface-hover: var(--accent);
-  --selected: #636366;
-  --sidebar: #252527;
-  --sidebar-accent: rgb(255 255 255 / 0.05);
-  --sidebar-selected: #3a3a3c;
-  --sidebar-selected-foreground: var(--chosen-text);
-  --sidebar-selected-icon: var(--chosen);
-  --sidebar-selected-shadow: 0 0 transparent;
+  --permission-card-ring: color-mix(in srgb, var(--primary) 16%, var(--background));
+  --permission-action-bg: color-mix(in srgb, var(--background) 85%, transparent);
+  --permission-action-hover: color-mix(in srgb, var(--primary) 8%, var(--background));
+  --permission-action-border: color-mix(in srgb, var(--primary) 25%, var(--background));
+  --permission-action-ink: var(--foreground);
+  --permission-card-gradient: linear-gradient(to bottom,
+    var(--background) 0%,
+    color-mix(in srgb, var(--primary) 1%, var(--background)) 5%,
+    color-mix(in srgb, var(--primary) 2%, var(--background)) 22%,
+    color-mix(in srgb, var(--primary) 5%, var(--background)) 55%,
+    color-mix(in srgb, var(--primary) 9%, var(--background)) 100%);
+  --permission-icon-ink: #e3acb1;
+  --permission-link-ink: #ddb0b4;
+  --background: oklch(0.2161 0.0061 56.0434);
+  --foreground: oklch(0.9848 0.0013 106.4233);
+  --card: oklch(0.1469 0.0041 49.2499);
+  --card-foreground: oklch(0.9848 0.0013 106.4233);
+  --popover: oklch(0.1469 0.0041 49.2499);
+  --popover-foreground: oklch(0.9848 0.0013 106.4233);
+  /* The same red primary over the dark stone surfaces. */
+  --primary: oklch(0.5858 0.2220 17.5846);
+  --selection: color-mix(in srgb, var(--primary) 10%, transparent);
+  --primary-foreground: oklch(1.0000 0 0);
+  --secondary: oklch(0.2685 0.0063 34.2976);
+  --secondary-foreground: oklch(0.9848 0.0013 106.4233);
+  --muted: oklch(0.2685 0.0063 34.2976);
+  --muted-foreground: oklch(0.7161 0.0091 56.2590);
+  --accent: oklch(0.2685 0.0063 34.2976);
+  --accent-foreground: oklch(0.9848 0.0013 106.4233);
+  --destructive: oklch(0.3958 0.1331 25.7230);
+  --border: oklch(0.2685 0.0063 34.2976);
+  --input: oklch(0.2685 0.0063 34.2976);
+  --ring: oklch(0.5858 0.2220 17.5846);
+  --sidebar: var(--background);
+  --sidebar-accent: var(--accent);
   --recording: #f87171;
-  --recording-mark: var(--primary);
-  --recording-halo: color-mix(in srgb, var(--primary) 18%, transparent);
+  --recording-mark: var(--indicator);
+  --recording-halo: color-mix(in srgb, var(--recording-mark) 18%, transparent);
   --recording-surface: #2a1715;
   --recording-border: #4a2421;
   --warning: #f3ca82;
   --warning-surface: #2a2416;
   --warning-border: #4a3d20;
   --success: #4ade80;
-  --scrollbar: rgb(255 255 255 / 0.22);
-  --popup-shadow: 0 12px 36px rgb(0 0 0 / 0.35), 0 2px 8px rgb(0 0 0 / 0.2);
-}
-@media (min-resolution: 2dppx) {
-  :root {
-    --focus-width: 1.5px;
-  }
+  --destructive-foreground: oklch(0.9848 0.0013 106.4233);
+  --chart-1: oklch(0.5858 0.2220 17.5846);
+  --chart-2: oklch(0.6450 0.2154 16.4393);
+  --chart-3: oklch(0.7192 0.1690 13.4280);
+  --chart-4: oklch(0.8097 0.1061 11.6385);
+  --chart-5: oklch(0.8924 0.0559 10.0008);
+  --sidebar-foreground: oklch(0.9848 0.0013 106.4233);
+  --sidebar-primary: oklch(0.5858 0.2220 17.5846);
+  /* Selected navigation ink keeps the brand hue readable on the dark sidebar. */
+  --sidebar-selected-foreground: color-mix(in oklab, var(--sidebar-primary) 85%, var(--sidebar-foreground));
+  --sidebar-primary-foreground: oklch(1.0000 0 0);
+  --sidebar-accent-foreground: oklch(0.9848 0.0013 106.4233);
+  --sidebar-border: oklch(0.2685 0.0063 34.2976);
+  --sidebar-ring: oklch(0.5858 0.2220 17.5846);
+  /* A companion ink for small error labels; the reference destructive fill stays exact. */
+  --destructive-ink: oklch(0.7400 0.1400 25.7230);
+  --radius: 0.75rem;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-serif: "Georgia", serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --tracking-normal: -0.01em;
+  --spacing: 0.25rem;
+  --shadow-x: 0px;
+  --shadow-y: 8px;
+  --shadow-blur: 16px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.30;
+  --shadow-color: #000000;
+  --shadow-2xs: 0px 8px 16px 0px hsl(0 0% 0% / 0.15);
+  --shadow-xs: 0px 8px 16px 0px hsl(0 0% 0% / 0.15);
+  --shadow-sm: 0px 8px 16px 0px hsl(0 0% 0% / 0.30), 0px 1px 2px -1px hsl(0 0% 0% / 0.30);
+  --shadow: 0px 8px 16px 0px hsl(0 0% 0% / 0.30), 0px 1px 2px -1px hsl(0 0% 0% / 0.30);
+  --shadow-md: 0px 8px 16px 0px hsl(0 0% 0% / 0.30), 0px 2px 4px -1px hsl(0 0% 0% / 0.30);
+  --shadow-lg: 0px 8px 16px 0px hsl(0 0% 0% / 0.30), 0px 4px 6px -1px hsl(0 0% 0% / 0.30);
+  --shadow-xl: 0px 8px 16px 0px hsl(0 0% 0% / 0.30), 0px 8px 10px -1px hsl(0 0% 0% / 0.30);
+  --shadow-2xl: 0px 8px 16px 0px hsl(0 0% 0% / 0.75);
 }
 @layer base {
   /* Base UI's popups hide their own scroll bar with this class; its style tag is not rendered under the CSP
@@ -288,17 +355,13 @@
     display: none;
   }
   :root {
-    font:
-      16px/1.45 -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      sans-serif;
+    font: 16px/1.45 var(--font-sans);
     color: var(--foreground);
     background: var(--background);
     -webkit-font-smoothing: antialiased;
   }
   * {
-    @apply border-border;
+    @apply border-border outline-ring/50;
   }
   html,
   body,
@@ -310,12 +373,22 @@
   body {
     margin: 0;
     font-size: 13px;
+    letter-spacing: var(--tracking-normal);
   }
   [hidden] {
     display: none !important;
   }
   button {
     cursor: pointer;
+  }
+  /* Theme changes commit in one step; ordinary hover/press transitions resume in the same task. */
+  :root[data-theme-changing],
+  :root[data-theme-changing] *,
+  :root[data-theme-changing]::before,
+  :root[data-theme-changing]::after,
+  :root[data-theme-changing] *::before,
+  :root[data-theme-changing] *::after {
+    transition: none !important;
   }
   @media (prefers-reduced-motion: reduce) {
     *,
@@ -372,7 +445,7 @@
     align-items: center;
     gap: 9px;
     margin-bottom: 20px;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 650;
     letter-spacing: -0.01em;
   }
@@ -380,7 +453,7 @@
      --m so the ring and the dot share one centre at any size. */
   .brand-mark,
   .status-mark {
-    --m: 26px;
+    --m: 32px;
     flex: none;
     display: block;
     width: var(--m);
@@ -421,8 +494,8 @@
     background: var(--brand-foreground);
   }
   .status[data-tone="busy"] .status-mark {
-    background: var(--secondary);
-    box-shadow: inset 0 0 0 1px var(--card-border);
+    background: var(--muted);
+    box-shadow: inset 0 0 0 1px var(--border);
   }
   .status[data-tone="busy"] .status-mark::before {
     border-color: var(--muted-foreground);
@@ -443,89 +516,62 @@
     font-weight: 800;
     font-size: 13px;
   }
+  /* The right column is a fixed viewport; the card inside grows beyond it with the page. */
   .settings-content {
     display: flex;
     flex-direction: column;
     flex: 1;
     min-width: 0;
     min-height: 0;
+    margin-top: var(--settings-content-top-gap);
   }
   .settings-viewport {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
     flex: 1;
     min-width: 0;
     min-height: 0;
     position: relative;
-    overflow: hidden;
-  }
-  /* The content scrolls at the window's right edge, with a thin bar: the viewport reaches past main's padding and the
-     panel gives it back as its own (2026-10-07). */
-  .settings-viewport {
-    margin-right: calc(-1 * var(--main-right));
+    overflow: clip;
   }
   .settings-panel {
-    height: 100%;
+    min-height: 0;
     overflow: auto;
-    padding: 0 calc(var(--main-right) - 6px) 44px 2px;
-
+    /* The space after the card scrolls into view only at the end of an overflowing page. */
+    padding-bottom: 24px;
     scroll-padding-block: 36px 46px;
     overscroll-behavior: contain;
-    scrollbar-gutter: stable;
+    scrollbar-width: none;
+  }
+  .settings-card {
+    min-height: 100%;
+    background: var(--card);
+    color: var(--card-foreground);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xs);
+    overflow: clip;
+    padding: 12px var(--main-right) 44px;
   }
   .page-title {
     font-size: 26px;
     font-weight: 700;
-    letter-spacing: -0.025em;
+    letter-spacing: var(--tracking-tight);
     margin: 0 0 18px;
   }
   .section {
     margin-bottom: 18px;
   }
-  .support-summary {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 0 8px;
-    border-radius: 6px;
-    cursor: pointer;
-    list-style: none;
-    color: var(--muted-foreground);
+  .cleanup-section {
+    margin-top: 28px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
   }
-  .support-summary h2 {
-    margin: 0;
-    font-size: 12px;
-    font-weight: 500;
+  .cleanup-section .row-icon,
+  .cleanup-section .cleanup-warning {
+    color: var(--destructive-ink);
   }
-  .support-toggle {
-    display: inline-flex;
-    align-items: center;
-    flex: none;
-    gap: 6px;
-    min-height: 28px;
-    margin-left: auto;
-    padding: 3px 8px;
-    border: 1px solid transparent;
-    border-radius: var(--radius-md);
-    background: var(--secondary);
-    color: var(--chosen-text);
-    font-size: 13px;
-    font-weight: 500;
-  }
-  .support-summary:hover .support-toggle {
-    background: var(--accent);
-  }
-  .support-collapse,
-  .support-section[data-open] .support-expand {
-    display: none;
-  }
-  .support-section[data-open] .support-collapse {
-    display: inline;
-  }
-  .support-chevron {
-    width: 16px;
-    height: 16px;
-  }
-  .support-section[data-open] .support-chevron {
-    transform: rotate(180deg);
+  .cleanup-section .cleanup-warning {
+    margin-top: 6px;
   }
   .about {
     margin-top: 40px;
@@ -631,7 +677,7 @@
     margin-left: 0;
   }
   .text-note-error {
-    color: var(--destructive);
+    color: var(--destructive-ink);
   }
   /* A text field's row (plan 067): the field and its example share one right-hand column, and the label lines up with
      the field rather than with the middle of field and example together. */
@@ -676,7 +722,7 @@
   .clip-rename-error,
   .sidebar-error,
   .status-error {
-    color: var(--destructive);
+    color: var(--destructive-ink);
     overflow-wrap: anywhere;
   }
   .diagnostic p {
@@ -707,7 +753,7 @@
     width: 3px;
     height: 8px;
     border-radius: 2px;
-    background: var(--recording-mark);
+    background: var(--primary);
     animation: listening 1.2s ease-in-out infinite;
   }
   .listening-indicator span:nth-child(2) {
@@ -741,12 +787,28 @@
     align-items: stretch;
     flex: none;
     flex-wrap: nowrap;
+    /* The tint covers the card, fading to a small white strip at the top. */
+    background-image: var(--permission-card-gradient);
+  }
+  .permission-icon {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    margin-inline: auto;
+    color: var(--permission-icon-ink);
+  }
+  .permission-icon svg {
+    width: 44px;
+    height: 44px;
   }
   .status[data-permission] .status-title {
+    width: 100%;
+    text-align: center;
     font-size: 14px;
     line-height: 1.4;
     font-weight: 600;
-    letter-spacing: -0.015em;
+    letter-spacing: var(--tracking-normal);
   }
   .status[data-permission] :is(.status-text, .status-actions) {
     flex: none;
@@ -777,28 +839,19 @@
   .status[data-tone="recording"] .status-title {
     color: var(--recording);
   }
-  @media (max-width: 599px) {
-    .status[data-permission] .status-actions {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-    }
-    .status[data-permission] .status-actions:not(:has(#status-secondary:not([hidden]))) {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
   .sidebar-about {
     margin-top: auto;
     padding: 12px 0;
   }
   .titlebar {
-    -webkit-app-region: drag;
+    /* The empty top strip drags across both the sidebar and the content. */
     position: fixed;
     inset: 0 0 auto;
-    height: 40px;
+    height: var(--window-titlebar-height);
     z-index: 1;
   }
-  :root:has(.player[data-open]) .titlebar {
-    -webkit-app-region: no-drag;
+  .sidebar-background {
+    display: none;
   }
   /* Only macOS draws the page under its title bar (hiddenInset); elsewhere the native frame drags the window, and a
      strip here would lie over the page's first 40 px, the tabs of a narrow window among them. */
@@ -808,42 +861,33 @@
   /* A narrow window on macOS leaves the strip beside the window controls to the title (below). */
   @media (max-width: 599px) {
     :root[data-platform="darwin"] main {
-      --main-top: 52px;
+      --main-top: calc(var(--window-titlebar-height) + 12px);
     }
   }
-  /* A narrow scroll bar, a rounded thumb with no track, drawn at the window's edge. */
+  /* Hide the scroll chrome while retaining wheel, touchpad and keyboard scrolling. */
   .settings-panel::-webkit-scrollbar {
-    width: 7px;
+    display: none;
   }
-  .settings-panel::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .settings-panel::-webkit-scrollbar-thumb {
-    border: 1px solid transparent;
-    border-radius: 4px;
-    background: var(--scrollbar) padding-box;
-  }
-  /* The content's edges blur into the window where it runs on, as Apple Music's do; the scroll bar stays clear. */
+  /* Scroll fades blend into the content card; the scroll bar stays clear. */
   .scroll-hint {
     pointer-events: none;
     position: absolute;
-    inset: auto 12px 0 0;
-    height: 38px;
-    background: linear-gradient(transparent, var(--background));
+    inset: auto 0 0;
+    background: linear-gradient(transparent, var(--card));
     backdrop-filter: blur(4px);
     mask-image: linear-gradient(transparent, var(--mask-opaque) 65%);
+    transition: opacity 120ms ease-out;
   }
   .scroll-hint-top {
-    inset: 0 12px auto 0;
-    height: 30px;
-    background: linear-gradient(var(--background), transparent);
+    inset: 0 0 auto;
+    background: linear-gradient(var(--card), transparent);
     mask-image: linear-gradient(var(--mask-opaque) 35%, transparent);
   }
   @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
     .scroll-hint {
       backdrop-filter: none;
       mask-image: none;
-      background: var(--background);
+      background: var(--card);
       border-top: 1px solid var(--border);
     }
     .scroll-hint-top {
@@ -854,16 +898,24 @@
   /* Failures (2026-10-07): each day one card like a settings section, a row per failure with a cause tile, preservation
      badge, time and chevron; it opens inside the card, its guidance in a soft callout. */
   .result-summary {
+    --result-hover: color-mix(in srgb, var(--primary) 4%, var(--card));
     display: flex;
     align-items: flex-start;
     gap: 12px;
     width: 100%;
     text-align: left;
-    padding: 10px 12px;
-    border-radius: 8px;
+    padding: 10px 16px;
   }
+  /* Fill the transparent row border too; the card clips the first and last header's outer corners. */
   .result-summary:hover {
-    background: var(--accent);
+    background: var(--result-hover);
+    box-shadow: 0 0 0 1px var(--result-hover);
+  }
+  .recording-result:first-child > .result-summary {
+    padding-top: 14px;
+  }
+  .recording-result:last-child > .result-summary {
+    padding-bottom: 14px;
   }
   /* Cause icons stay neutral. Only the short preservation badge carries the outcome colour. */
   .result-mark {
@@ -873,8 +925,8 @@
     place-items: center;
     width: 28px;
     height: 28px;
-    border-radius: 7px;
-    background: var(--secondary);
+    border-radius: var(--radius-md);
+    background: var(--muted);
     color: var(--muted-foreground);
   }
   .result-mark svg {
@@ -942,18 +994,18 @@
     font-size: 12px;
   }
   .result-details {
-    padding: 2px 12px 12px 52px;
+    padding: 2px 16px 12px 56px;
   }
   .result-details p {
     margin: 6px 0;
   }
   .result-guidance {
     padding: 8px 10px;
-    border-radius: 8px;
-    background: var(--secondary);
+    border-radius: var(--radius-lg);
+    background: var(--muted);
   }
   .result-file {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
     color: var(--muted-foreground);
     overflow-wrap: anywhere;
@@ -968,19 +1020,38 @@
     margin-top: 8px;
   }
   .technical-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     min-height: 24px;
     font-size: 12px;
     color: var(--muted-foreground);
+    cursor: pointer;
+    text-underline-offset: 3px;
+  }
+  .technical-summary:is(:hover, :focus-visible) {
+    color: var(--primary);
+    text-decoration: underline;
+    text-decoration-color: var(--primary);
+  }
+  .technical-chevron {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    transition: transform 150ms ease;
+  }
+  .technical-summary[data-panel-open] .technical-chevron {
+    transform: rotate(180deg);
   }
   .result-technical pre {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
     margin-top: 8px;
     padding: 8px 10px;
-    border-radius: 7px;
-    background: var(--secondary);
+    border-radius: var(--radius-md);
+    background: var(--muted);
   }
   .result-day {
     margin-bottom: 18px;
@@ -1063,9 +1134,9 @@
     height: 40px;
     margin: -20px 0 0 -20px;
     border-radius: 50%;
-    background: var(--chosen);
-    color: var(--chosen-foreground);
-    box-shadow: var(--chosen-shadow);
+    background: var(--primary);
+    color: var(--primary-foreground);
+    box-shadow: var(--shadow-md);
     opacity: 0;
     transform: scale(0.9);
     transition:
@@ -1096,10 +1167,9 @@
     font-size: 13px;
     font-weight: 500;
     overflow: hidden;
-    overflow-wrap: anywhere;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    white-space: nowrap;
+    display: block;
+    text-overflow: ellipsis;
   }
   .clip-meta,
   .clip-detail {
@@ -1120,10 +1190,11 @@
   .clip-more[aria-expanded="true"] {
     opacity: 1;
   }
-  /* The recording a notification or the menu opened: outlined in the recording red, which then fades. */
+  /* The recording a notification or the menu opened: outlined in the primary accent, which then fades. */
   /* Both state lines follow the card's inner edge, touching its content without an outside gap. */
   .clip:has(> .clip-open:focus-visible):where(:root:not([data-input="pointer"]):not([data-window="inactive"]) *)::after {
-    border: var(--focus-width) solid var(--ring);
+    /* An opaque line stays visible over both light and dark thumbnail pixels. */
+    border: 2px solid var(--ring);
   }
   /* With keyboard focus on it the card keeps its focus line instead (review of 2026-10-07); its blur ends the highlight. */
   .clip.arrived:not(:has(> .clip-open:focus-visible))::after {
@@ -1133,7 +1204,7 @@
   @keyframes arrived {
     0%,
     60% {
-      border-color: var(--recording-mark);
+      border-color: var(--primary);
     }
     100% {
       border-color: transparent;
@@ -1147,11 +1218,6 @@
   #library[data-layout="list"] .clip-thumb {
     width: 110px;
     flex: none;
-  }
-  #library[data-layout="list"] .clip-title {
-    white-space: nowrap;
-    display: block;
-    text-overflow: ellipsis;
   }
   #library[data-layout="list"] .clip-meta {
     display: none;
@@ -1213,7 +1279,7 @@
   .pc-title {
     font-size: 15px;
     font-weight: 600;
-    letter-spacing: -0.005em;
+    letter-spacing: var(--tracking-normal);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1254,8 +1320,9 @@
     white-space: nowrap;
     text-shadow: var(--media-text-shadow);
   }
+  /* Keep the seek bar's entire pointer area on the control that handles track presses. */
   .pc-seek {
-    padding: 6px 0;
+    --seek-padding: 6px;
   }
   /* The volume slider opens beside the mute button on hover or focus. Its width is set at the call site, where it
      overrides the slider's own full width. */
@@ -1318,7 +1385,7 @@
     left: 50%;
     transform: translateX(-50%);
     padding: 6px 14px;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     background: var(--media-veil);
     font-size: 18px;
     font-weight: 500;
@@ -1390,7 +1457,7 @@
     padding: 64px 24px 10px;
   }
   :root[data-surface="video"] .pc-seek {
-    padding: 8px 0;
+    --seek-padding: 8px;
   }
   :root[data-surface="video"] .pc-row {
     height: 60px;
@@ -1442,13 +1509,13 @@
     }
     main {
       display: grid;
-      grid-template-columns: 170px minmax(0, 1fr);
+      grid-template-columns: var(--settings-sidebar-width) minmax(0, 1fr);
       grid-template-rows: auto auto minmax(0, 1fr) auto auto;
       column-gap: 22px;
     }
-    /* The sidebar's own grey, from the window's top edge (under the macOS controls) to its foot, as Apple Music's. */
-    main::before {
-      content: "";
+    /* The existing drag surface blends into the window backdrop; navigation has no raised shell. */
+    .sidebar-background {
+      display: block;
       grid-column: 1;
       grid-row: 1 / -1;
       margin: calc(-1 * var(--main-top)) -11px 0 -20px;
@@ -1463,14 +1530,10 @@
       grid-column: 1;
       grid-row: 1;
     }
-    /* On macOS the sidebar takes the window controls' corner: the brand sits under them, the content starts at the
-       top, and only the sidebar's top drags the window, so nothing in the content lies under a drag region. */
+    /* On macOS the sidebar takes the window controls' corner: the brand sits under them, and the content starts
+       below the full-width drag strip. */
     :root[data-platform="darwin"] .brand {
       margin-top: 30px;
-    }
-    :root[data-platform="darwin"] .titlebar {
-      right: auto;
-      width: calc(20px + 170px + 11px);
     }
     /* The form and the tabs lay their parts straight into this grid: the brand, the tabs, the status card and Quit down the
        sidebar, and the content beside them from the window's top to its foot. */
@@ -1486,6 +1549,7 @@
     .settings-content {
       grid-column: 2;
       grid-row: 1 / -1;
+      margin-right: calc(8px - var(--main-right));
     }
     .sidebar-about {
       grid-column: 1;
@@ -1493,14 +1557,39 @@
       position: relative;
     }
     /* The page title sits a little below the window's top, level with the brand across the sidebar. */
-    .settings-panel {
+    .settings-card {
       padding-top: 22px;
+    }
+    /* The scroll viewport stays below the drag strip, even after content scrolls. */
+    :root[data-platform="darwin"] main {
+      /* A short window can overflow the sidebar's grid rows; never scroll the whole page under the drag strip. */
+      overflow: clip;
+    }
+    :root[data-platform="darwin"] .settings-content {
+      padding-top: max(0px, calc(var(--window-titlebar-height) - var(--main-top) - var(--settings-content-top-gap)));
+    }
+    :root[data-platform="darwin"] .settings-card {
+      padding-top: 16px;
+    }
+    :root[data-platform="darwin"] .settings-viewport {
+      /* Unlike hidden, clip cannot scroll this outer viewport when a child is focused or scrolled into view. */
+      overflow: clip;
     }
     .page-title {
       margin-top: 0;
     }
   }
   @media (max-width: 599px) {
+    /* Keep navigation and card spacing explicit instead of stacking the flex gap and card margins. */
+    .tabs {
+      margin-bottom: 40px;
+    }
+    .status {
+      margin-bottom: 24px;
+    }
+    .settings-content {
+      margin-top: 0;
+    }
     main {
       --main-right: 12px;
       padding-left: 12px;
@@ -1514,16 +1603,16 @@
       position: fixed;
       inset: 0 0 auto;
       z-index: 2;
-      height: 40px;
+      height: var(--window-titlebar-height);
       display: flex;
       justify-content: center;
       gap: 7px;
       margin: 0;
-      font-size: 13px;
+      font-size: 15px;
       pointer-events: none;
     }
     :root[data-platform="darwin"] .brand-mark {
-      --m: 20px;
+      --m: 24px;
     }
     .tabs [role="tab"][aria-selected="false"] .tab-name {
       display: none;
@@ -1599,6 +1688,11 @@
     max-width: calc(100vw - 16px);
     max-height: min(320px, var(--available-height));
     overflow: auto;
+    /* Keep the hover bridge and height-constrained text from introducing a scrollbar at mount. */
+    scrollbar-width: none;
+  }
+  .info-popup::-webkit-scrollbar {
+    display: none;
   }
   .info-popup::after {
     content: "";
@@ -1615,53 +1709,19 @@
   }
   .recording-result {
     position: relative;
-    border: var(--focus-width) solid transparent;
+    border: 1px solid transparent;
     border-radius: var(--radius);
     overflow-wrap: anywhere;
   }
   .recording-result + .recording-result::before {
     content: "";
     position: absolute;
-    top: calc(-1 * var(--focus-width) - 0.5px);
-    left: 52px;
-    right: 12px;
+    z-index: 1;
+    pointer-events: none;
+    top: calc(-1 * 1px - 0.5px);
+    left: 56px;
+    right: 16px;
     border-top: 1px solid var(--border);
   }
-  .recording-result[data-open] .result-summary:hover {
-    background: none;
-  }
-  .recording-result[data-open]::before,
-  .recording-result[data-open] + .recording-result::before {
-    opacity: 0;
-  }
-  :root:not([data-input="pointer"]):not([data-window="inactive"])
-    .recording-result:has(> .result-summary:focus-visible) {
-    border-color: var(--focus);
-  }
-  :root:not([data-input="pointer"]):not([data-window="inactive"])
-    .recording-result:has(.result-details :focus-visible) {
-    border-color: var(--border);
-    border-width: 1px;
-    margin: calc(var(--focus-width) - 1px);
-  }
-  :root:not([data-input="pointer"]):not([data-window="inactive"])
-    .recording-result:has(:focus-visible)::before,
-  :root:not([data-input="pointer"]):not([data-window="inactive"])
-    .recording-result:has(:focus-visible)
-    + .recording-result::before {
-    opacity: 0;
-  }
-}
 
-/* Unlayered on purpose (plan 069): these two focus treatments are window-wide states that must win over every
-   primitive's own focus utilities (outline-none, focus-visible:ring-*), which a rule in a layer cannot. An inactive
-   window draws no focus at all, as macOS does; inside a failure entry, focus is a thin outline the entry's border
-   matches (plan 067). */
-:root[data-window="inactive"] :focus-visible {
-  outline: none;
-  box-shadow: none;
-}
-.result-details :focus-visible {
-  outline: var(--focus-width) solid var(--focus);
-  outline-offset: 2px;
 }

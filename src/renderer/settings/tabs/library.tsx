@@ -1,5 +1,5 @@
 /** The Recordings tab: cards or a list by day, a card's menu, renaming, and the embedded player dialog. */
-import { useEffect, useRef, useState, useSyncExternalStore, memo } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, memo } from "react";
 import { Film, MoreHorizontal, Play, Grid2X2, List, Folder, FileText, HardDrive, X, Maximize } from "lucide-react";
 import type { LibraryItemView } from "../../../shared/settings-panel";
 import { phrases, translate } from "../../../shared/i18n";
@@ -60,68 +60,68 @@ export const Clip = memo(function Clip({
         onAnimationEnd={() => setArrived(false)}
         onBlur={() => setArrived(false)}
       >
-        <ControlTooltip label={item.title} enabled={title.truncated}>
-          <Button
-            variant="ghost"
-            size="clip"
-            id={`clip-${item.id}-open`}
-            // The list layout lays a card out in one line, leaving room on the right for its menu button.
-            // Its focus line is drawn round the whole card (ui.css), not inside it.
-            className="clip-open rounded-none border-0 focus-visible:outline-none! in-data-[layout=list]:flex-row in-data-[layout=list]:items-center in-data-[layout=list]:pr-10"
-            aria-label={translate(
-              "Play {title}",
-              language === "zh-TW" ? "zh-TW" : "en",
-              {
-                title: phrases(
-                  [
-                    item.title,
-                    item.day,
-                    item.time,
-                    item.duration,
-                    item.size,
-                  ].filter((part): part is string => Boolean(part)),
-                  language === "zh-TW" ? "zh-TW" : "en",
-                ),
-              },
-            )}
-            onPointerEnter={() => flushSync(title.measure)}
-            onPointerMove={() => flushSync(title.measure)}
-            onFocus={() => flushSync(title.measure)}
-            onClick={() => model.openPlayer(item)}
-          >
-            <span className={`clip-thumb${failed ? " no-thumb" : ""}`}>
-              <Film className="clip-fallback size-9" />
-              <img
-                alt=""
-                src={item.thumbnail}
-                loading="lazy"
-                decoding="async"
-                onError={() => flushSync(() => setFailed(true))}
-                onLoad={() => flushSync(() => setFailed(false))}
-              />
-              <span className="clip-duration" hidden={!item.duration}>
-                {item.duration}
-              </span>
-              <span className="clip-play" aria-hidden="true">
-                <Play className="play-icon size-[18px] in-data-[layout=list]:size-[13px]" />
-              </span>
+        <Button
+          variant="ghost"
+          size="clip"
+          id={`clip-${item.id}-open`}
+          // The list layout lays a card out in one line, leaving room on the right for its menu button.
+          // Its focus line is drawn round the whole card (ui.css), not inside it.
+          // Only animate colours: animating the list's padding reflows every card on each frame.
+          className="clip-open transition-colors rounded-none border-0 focus-visible:outline-none! focus-visible:ring-0 in-data-[layout=list]:flex-row in-data-[layout=list]:items-center in-data-[layout=list]:pr-10"
+          aria-label={translate(
+            "Play {title}",
+            language === "zh-TW" ? "zh-TW" : "en",
+            {
+              title: phrases(
+                [
+                  item.title,
+                  item.day,
+                  item.time,
+                  item.duration,
+                  item.size,
+                ].filter((part): part is string => Boolean(part)),
+                language === "zh-TW" ? "zh-TW" : "en",
+              ),
+            },
+          )}
+          onClick={() => model.openPlayer(item)}
+        >
+          <span className={`clip-thumb${failed ? " no-thumb" : ""}`}>
+            <Film className="clip-fallback size-9" />
+            <img
+              alt=""
+              src={item.thumbnail}
+              loading="lazy"
+              decoding="async"
+              onError={() => flushSync(() => setFailed(true))}
+              onLoad={() => flushSync(() => setFailed(false))}
+            />
+            <span className="clip-duration" hidden={!item.duration}>
+              {item.duration}
             </span>
-            <span className="clip-text">
+            <span className="clip-play" aria-hidden="true">
+              <Play className="play-icon size-[18px] in-data-[layout=list]:size-[13px]" />
+            </span>
+          </span>
+          <span className="clip-text">
+            <ControlTooltip label={item.title} enabled={title.truncated} delay={1000}>
               <span
                 ref={title.ref}
                 className="clip-title"
+                onPointerEnter={() => flushSync(title.measure)}
+                onPointerMove={() => flushSync(title.measure)}
               >
                 {item.title}
               </span>
-              <span className="clip-meta">
-                {[item.time, item.size].join(" · ")}
-              </span>
-              <span className="clip-detail">
-                {[item.time, item.duration, item.size].filter(Boolean).join(" · ")}
-              </span>
+            </ControlTooltip>
+            <span className="clip-meta">
+              {[item.time, item.size].join(" · ")}
             </span>
-          </Button>
-        </ControlTooltip>
+            <span className="clip-detail">
+              {[item.time, item.duration, item.size].filter(Boolean).join(" · ")}
+            </span>
+          </span>
+        </Button>
         <DropdownMenu
           open={model.menuId === item.id && model.menuKind === "dropdown"}
           onOpenChange={(open) => {
@@ -177,7 +177,11 @@ export const Clip = memo(function Clip({
       </ContextMenuContent>
     </ContextMenu>
   );
-});
+}, (previous, next) => previous.language === next.language &&
+  // IPC clones the whole view when a layout preference is saved. Compare the file's
+  // values so unchanged cards keep their menus/tooltips without rendering them again.
+  (Object.keys(previous.item) as (keyof LibraryItemView)[]).length === Object.keys(next.item).length &&
+  (Object.keys(previous.item) as (keyof LibraryItemView)[]).every(key => previous.item[key] === next.item[key]));
 
 function ClipMenuActions({ item, context = false }: { item: LibraryItemView; context?: boolean }) {
   const Item = context ? ContextMenuItem : DropdownMenuItem;
@@ -226,11 +230,19 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
 
 export function Library() {
   const library = model.view?.library,
-    items = library?.items ?? [],
-    days = [...new Set(items.map((item) => item.day))],
+    items = library?.items,
     folder = model.view?.groups.find((group) => group.id === "outputFolder"),
     reveal = folder?.choices.find((choice) => choice.id === "reveal"),
     layout = model.optimisticLayout ?? library?.layout ?? "grid";
+  const days = useMemo(() => {
+    const groups = new Map<string, LibraryItemView[]>();
+    for (const item of items ?? []) {
+      const group = groups.get(item.day);
+      if (group) group.push(item);
+      else groups.set(item.day, [item]);
+    }
+    return [...groups];
+  }, [items]);
   return (
     <section id="library" aria-labelledby="tab-library" data-layout={layout}>
       <div className="library-head">
@@ -238,7 +250,7 @@ export function Library() {
           {library?.summary}
         </p>
         <ToggleGroup
-          className="library-layout segments rounded-[8px] bg-muted p-0.5"
+          className="library-layout segments"
           variant="segmented"
           size="segment"
           spacing={0.5}
@@ -298,7 +310,7 @@ export function Library() {
       </p>
       <Empty
         className="library-empty py-10 text-muted-foreground [overflow-wrap:anywhere]"
-        hidden={Boolean(items.length || library?.status || !library)}
+        hidden={Boolean(items?.length || library?.status || !library)}
       >
         <EmptyHeader className="max-w-full">
         <EmptyMedia><Film className="size-[38px]" /></EmptyMedia>
@@ -313,13 +325,11 @@ export function Library() {
         </EmptyHeader>
       </Empty>
       <div className="library-days">
-        {days.map((day) => (
+        {days.map(([day, dayItems]) => (
           <section className="library-day" key={day}>
             <h2 className="day-heading">{day}</h2>
             <div className="library-grid">
-              {items
-                .filter((item) => item.day === day)
-                .map((item) => (
+              {dayItems.map((item) => (
                   <Clip
                     key={item.id}
                     item={item}

@@ -377,7 +377,6 @@ for (const language of ["en", "zh-TW"] as const) {
     await setView(view as SettingsView);
     await page.locator("#tab-failures").click();
     await page.locator("#troubleshooting-tools-tab").click();
-    await page.locator("#settings-data-cleanup-toggle").click();
     const control = page.getByRole("button", { name: group.choices[0]!.label, exact: true });
     await expect(control).toBeDisabled();
     await expect(page.locator("#setting-localData-note")).toContainText(language === "en" ? "Recordings are kept" : "錄影檔會保留");
@@ -433,29 +432,57 @@ test("shadcn tooltips name icon controls on hover and focus, update language, an
   await clip.focus();
   await expect(clip).toBeFocused();
   await expect(tip).toHaveCount(0);
-  // Force actual two-line grid overflow; only a clipped name gets a tooltip.
+  const shortHeight = await page.locator("#clip-a").evaluate(node => node.getBoundingClientRect().height);
+  // A long grid title stays on one line, without growing the card.
   const longTitle = "Recording with a very long descriptive title ".repeat(8);
   const library = current.library!;
   await setView({ ...current, library: { ...library, items: library.items.map(item => item.id === "a" ? { ...item, title: longTitle } : item) } });
+  await expect.poll(() => page.locator("#clip-a").evaluate(node => node.getBoundingClientRect().height)).toBe(shortHeight);
+  await expect(title).toHaveCSS("white-space", "nowrap");
+  await expect(title).toHaveCSS("text-overflow", "ellipsis");
   await page.mouse.move(10, 400);
+  await clip.locator(".clip-thumb").hover();
+  await page.waitForTimeout(800);
+  await expect(tip).toHaveCount(0);
   await title.hover();
-  await expect.poll(() => title.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true);
+  await page.waitForTimeout(800);
+  await expect(tip).toHaveCount(0);
+  await expect.poll(() => title.evaluate(node => node.scrollWidth > node.clientWidth && node.scrollHeight === node.clientHeight)).toBe(true);
   await expect(tip).toHaveText(longTitle.trim());
+  const expectAboveTitle = async (): Promise<void> => {
+    // Text appears before the tooltip's slide-in animation has settled.
+    await expect.poll(async () => {
+      const titleBox = await title.boundingBox(), tipBox = await tip.boundingBox();
+      if (!titleBox || !tipBox) return false;
+      const gap = titleBox.y - (tipBox.y + tipBox.height);
+      return gap >= 0 && gap < 12;
+    }, { message: "The tooltip settles directly above the recording title" }).toBe(true);
+  };
+  await expectAboveTitle();
+  await page.screenshot({ path: testInfo.outputPath("recording-grid-tooltip.png"), animations: "disabled" });
   await page.locator("#library-layout-list").click();
   await title.hover();
   await expect.poll(() => title.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
   await expect(tip).toHaveText(longTitle.trim());
+  await expectAboveTitle();
   // A resize under the pointer is remeasured on movement, without another pointer entry.
-  await title.evaluate(node => { node.style.width = "6000px"; node.style.maxWidth = "none"; });
-  const box = await clip.boundingBox();
-  if (!box) throw new Error("Recording control is missing");
-  await page.mouse.move(box.x + 12, box.y + box.height / 2);
+  const resizeTitle = "Recording title that fits in a wider list row";
+  await host.evaluate(h => h.setSize(...h.SNAPSHOT_SIZES.minimum));
+  await setView({ ...current, library: { ...library, layout: "list", items: library.items.map(item => item.id === "a" ? { ...item, title: resizeTitle } : item) } });
+  await page.mouse.move(10, 20);
+  await title.hover({ position: { x: 10, y: 8 } });
+  await expect(tip).toHaveText(resizeTitle);
+  await host.evaluate(h => h.setSize(1200, 600));
+  await expect.poll(() => title.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+  const box = await title.boundingBox();
+  if (!box) throw new Error("Recording title is missing");
+  await page.mouse.move(box.x + 12, box.y + 8);
   await expect(tip).toHaveCount(0);
-  await title.evaluate(node => { node.style.width = ""; node.style.maxWidth = ""; });
+  await host.evaluate(h => h.setSize(...h.SNAPSHOT_SIZES.minimum));
   // With no hint for a complete name, start a fresh hover after it is clipped again.
   await page.mouse.move(10, 400);
   await title.hover();
-  await expect(tip).toHaveText(longTitle.trim());
+  await expect(tip).toHaveText(resizeTitle);
   await page.screenshot({ path: testInfo.outputPath("recording-tooltip.png"), animations: "disabled" });
   const unbroken = "Recording".repeat(30);
   await setView({ ...current, library: { ...library, layout: "list", items: library.items.map(item => item.id === "a" ? { ...item, title: unbroken } : item) } });
@@ -515,9 +542,9 @@ test("context menu opens at the pointer, shares file actions, and restores focus
   await expect(field).toBeFocused();
   await expect(page.locator(".clip-rename-extension")).toHaveText(".mp4");
   expect(await field.evaluate(node => ({
-    group: getComputedStyle(node.closest('[data-slot="input-group"]')!).outlineStyle,
+    group: /0px 0px 0px 2px/.test(getComputedStyle(node.closest('[data-slot="input-group"]')!).boxShadow),
     input: getComputedStyle(node).outlineStyle,
-  }))).toEqual({ group: "solid", input: "none" });
+  }))).toEqual({ group: true, input: "none" });
   await page.screenshot({ path: testInfo.outputPath("rename-input-group.png"), animations: "disabled" });
   await field.fill("Context menu recording");
   await field.press("Enter");
@@ -526,7 +553,7 @@ test("context menu opens at the pointer, shares file actions, and restores focus
 });
 
 for (const scheme of ["light", "dark"] as const) {
-  test(`rose actions keep readable labels in ${scheme} at rest and under the pointer`, async ({}, testInfo) => {
+  test(`accent actions and sidebar selections keep readable labels in ${scheme} at rest and under the pointer`, async ({}, testInfo) => {
     await host.evaluate((h, theme) => h.theme(theme), scheme);
     await expect(page.locator("html")).toHaveClass(scheme === "dark" ? /dark/ : /^(?!.*\bdark\b)/);
     // Read the actual painted foreground/background, including translucent ancestor fills.
@@ -551,15 +578,16 @@ for (const scheme of ["light", "dark"] as const) {
       const [low, high] = [luminance(background), luminance(foreground)].sort((a, b) => a - b);
       return (high! + .05) / (low! + .05);
     });
-    const check = async (selector: string, minimum = 4.5): Promise<void> => {
+    const check = async (selector: string, minimum = 4.5, hoverMinimum = minimum): Promise<void> => {
       expect(await contrast(selector), `${selector} at rest`).toBeGreaterThanOrEqual(minimum);
       await page.locator(selector).hover();
       await page.waitForTimeout(200);
-      expect(await contrast(selector), `${selector} hovered`).toBeGreaterThanOrEqual(minimum);
+      expect(await contrast(selector), `${selector} hovered`).toBeGreaterThanOrEqual(hoverMinimum);
     };
-    // Light labels and filled actions use the requested primary without a darker companion.
-    const accentMinimum = scheme === "light" ? 3 : 4.5;
-    const tabAccent = await page.locator("#tab-library").evaluate(node => getComputedStyle(node).color);
+    // Official base-mira primary/80 hover intentionally lightens the supplied red.
+    // Keep 4.5 at rest; the light hover retains the reference accent minimum of 3, rather than custom darkening.
+    const accentMinimum = 4.5;
+    const tab = page.locator("#tab-library");
     const primary = await page.evaluate(() => {
       const probe = document.createElement("span");
       probe.style.backgroundColor = "var(--primary)";
@@ -567,14 +595,89 @@ for (const scheme of ["light", "dark"] as const) {
       document.body.append(probe);
       const style = getComputedStyle(probe);
       const colors = { fill: style.backgroundColor, foreground: style.color };
+      probe.style.backgroundColor = "var(--selection)";
+      const selection = getComputedStyle(probe).backgroundColor;
+      probe.style.backgroundColor = "var(--muted)";
+      const hover = getComputedStyle(probe).backgroundColor;
+      probe.style.color = "var(--sidebar-foreground)";
+      const sidebarForeground = getComputedStyle(probe).color;
+      probe.style.color = "var(--sidebar-selected-foreground)";
+      const sidebarSelectedForeground = getComputedStyle(probe).color;
       probe.remove();
-      return colors;
+      return { ...colors, selection, hover, sidebarForeground, sidebarSelectedForeground };
     });
-    expect(tabAccent).toBe(primary.fill);
-    expect(await page.locator("#tab-library .tab-icon").evaluate(node => getComputedStyle(node).color)).toBe(primary.fill);
-    await check("#tab-library", accentMinimum);
+    await expect(tab).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(tab).toHaveCSS("color", primary.sidebarSelectedForeground);
+    await expect(tab.locator(".tab-icon")).toHaveCSS("color", primary.sidebarSelectedForeground);
+    await expect.poll(() => tab.evaluate(node => getComputedStyle(node, "::after").opacity)).toBe("1");
+    expect(await tab.evaluate(node => getComputedStyle(node, "::after").backgroundColor)).toBe(primary.fill);
+    // The chosen light brand red uses the reference accent minimum; dark ink retains 4.5:1.
+    await check("#tab-library", scheme === "light" ? 3 : 4.5);
+    await expect(tab).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    // Hover stays neutral; red ink and the leading line identify the selected sidebar item.
+    const general = page.locator("#tab-general");
+    const inactive = await general.evaluate(node => ({ fill: getComputedStyle(node).backgroundColor, foreground: getComputedStyle(node).color }));
+    await general.hover();
+    await expect(general).toHaveCSS("background-color", primary.hover);
+    await expect(general).toHaveCSS("color", inactive.foreground);
+    expect(await general.evaluate(node => getComputedStyle(node, "::after").opacity)).toBe("0");
+    await general.click();
+    await expect.poll(() => general.evaluate(node => getComputedStyle(node, "::after").opacity)).toBe("1");
+    await expect.poll(() => tab.evaluate(node => getComputedStyle(node, "::after").opacity)).toBe("0");
+    await expect(general).toHaveAttribute("aria-selected", "true");
+    await expect(general).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(general).toHaveCSS("color", primary.sidebarSelectedForeground);
+    await expect(general.locator(".tab-icon")).toHaveCSS("color", primary.sidebarSelectedForeground);
+    await expect(tab).toHaveCSS("color", primary.sidebarForeground);
+    await expect(tab.locator(".tab-icon")).toHaveCSS("color", primary.sidebarForeground);
+    await page.screenshot({ path: testInfo.outputPath(`sidebar-clicked-hover-${scheme}.png`), animations: "disabled" });
+    await page.mouse.move(300, 20);
+    await expect(general).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(general).toHaveCSS("color", primary.sidebarSelectedForeground);
+    await page.screenshot({ path: testInfo.outputPath(`sidebar-clicked-rest-${scheme}.png`), animations: "disabled" });
+    await tab.click();
+    await expect(tab).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(tab).toHaveCSS("color", primary.sidebarSelectedForeground);
+    await expect(tab.locator(".tab-icon")).toHaveCSS("color", primary.sidebarSelectedForeground);
+    await tab.focus();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowLeft");
+    await expect(tab).toBeFocused();
+    expect(await tab.evaluate(node => /0px 0px 0px 3px/.test(getComputedStyle(node).boxShadow))).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`sidebar-selected-${scheme}.png`), animations: "disabled" });
+    await host.evaluate(h => h.setSize(...h.SNAPSHOT_SIZES.narrow));
+    await page.mouse.move(10, 400);
+    await page.waitForTimeout(200);
+    await check("#tab-library");
+    await expect(tab).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await tab.hover();
+    await expect(tab).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await general.click();
+    await expect(general).toHaveAttribute("aria-selected", "true");
+    await expect(general).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await general.focus();
+    await page.keyboard.press("ArrowLeft");
+    await expect(page.locator("#tab-recording")).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("ArrowLeft");
+    await expect(tab).toHaveAttribute("aria-selected", "true");
+    await expect(tab).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect.poll(() => tab.evaluate(node => getComputedStyle(node, "::after").opacity)).toBe("1");
+    await page.mouse.move(10, 400);
+    await page.screenshot({ path: testInfo.outputPath(`narrow-selected-${scheme}.png`), animations: "disabled" });
+    await host.evaluate(h => h.setSize(...h.SNAPSHOT_SIZES.default));
     for (const layout of ["grid", "list"] as const) {
-      await page.locator(`#library-layout-${layout}`).click();
+      const layoutButton = page.locator(`#library-layout-${layout}`);
+      if (layout === "list") {
+        await layoutButton.focus();
+        await page.keyboard.press("Space");
+      } else await layoutButton.click();
+      await expect(layoutButton).toHaveAttribute("aria-pressed", "true");
+      await expect(layoutButton).toHaveCSS("background-color", primary.selection);
+      await expect(layoutButton.locator("svg")).toHaveCSS("color", primary.fill);
+      const otherLayout = page.locator(`#library-layout-${layout === "grid" ? "list" : "grid"}`);
+      await expect(otherLayout).toHaveAttribute("aria-pressed", "false");
+      await expect(otherLayout.locator("svg")).toHaveCSS("color", await otherLayout.evaluate(node => getComputedStyle(node).color));
+      await page.locator(".library-layout").screenshot({ path: testInfo.outputPath(`layout-icons-${scheme}-${layout}.png`), animations: "disabled" });
       const clip = page.locator("#clip-a-open"), play = clip.locator(".clip-play");
       await clip.hover();
       await expect(play).toHaveCSS("opacity", "1");
@@ -590,7 +693,7 @@ for (const scheme of ["light", "dark"] as const) {
     await on.evaluate(node => { node.focus(); });
     await page.keyboard.press("Tab");
     const focused = page.locator(":focus-visible").first();
-    await expect(focused).toHaveCSS("outline-color", primary.fill);
+    expect(await focused.evaluate(node => /0px 0px 0px [23]px/.test(getComputedStyle(node).boxShadow))).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`primary-controls-${scheme}.png`), animations: "disabled" });
     await page.locator("#tab-failures").click();
     await page.locator('[data-result-id="failure"] .result-summary').click();
@@ -598,11 +701,11 @@ for (const scheme of ["light", "dark"] as const) {
     await page.locator("#tab-library").click();
     await page.locator("#clip-a").click({ button: "right", position: { x: 30, y: 40 } });
     await page.locator("#clip-context-menu").getByRole("menuitem", { name: "Rename…", exact: true }).click();
-    await page.locator("#clip-rename-input").fill("Readable rose action");
+    await page.locator("#clip-rename-input").fill("Readable primary action");
     await expect(page.locator("#clip-rename-confirm")).toBeEnabled();
     await expect(page.locator("#clip-rename-confirm")).toHaveCSS("background-color", primary.fill);
-    await check("#clip-rename-confirm", accentMinimum);
-    await page.screenshot({ path: testInfo.outputPath(`rose-actions-${scheme}.png`), animations: "disabled" });
+    await check("#clip-rename-confirm", accentMinimum, scheme === "light" ? 3 : 4.5);
+    await page.screenshot({ path: testInfo.outputPath(`primary-actions-${scheme}.png`), animations: "disabled" });
     await page.keyboard.press("Escape");
   });
 }

@@ -55,15 +55,15 @@ describe("settingsView", () => {
     expect(group(idle, zh, "notifications")).toMatchObject({ info: t("macOS must also allow RecordStuff in System Settings → Notifications.", "zh-TW") });
     expect(group(idle, zh, "notifications")?.note).toBeUndefined();
     expect(group(idle, context, "notifications")?.info).toBe("macOS must also allow RecordStuff in System Settings → Notifications.");
-    // Off: the status stays on screen, and the permission no longer matters.
+    // Off: the same help trigger explains where failures remain; the permission no longer matters.
     const off = group(idle, { ...context, notifications: false }, "notifications")!;
-    expect([off.noteKind, off.info]).toEqual(["status", undefined]);
-    expect(off.note).toBe("Failures still appear in the menu bar and the Troubleshooting tab.");
+    expect(off.note).toBeUndefined();
+    expect(off.info).toBe("Failures still appear in the menu bar and the Troubleshooting tab.");
     expect(group(idle, { ...context, platform: "win32" }, "notifications")).not.toHaveProperty("info");
     expect(group(idle, { ...context, platform: "win32" }, "notifications")).not.toHaveProperty("note");
     // Windows has a system tray, not a menu bar (plan 064).
-    expect(group(idle, { ...context, platform: "win32", notifications: false }, "notifications")?.note).toBe("Failures still appear in the system tray and the Troubleshooting tab.");
-    expect(group(idle, { ...context, platform: "win32", notifications: false, language: "zh-TW" }, "notifications")?.note).toBe("失敗仍會顯示在系統匣與「疑難排解」分頁。");
+    expect(group(idle, { ...context, platform: "win32", notifications: false }, "notifications")?.info).toBe("Failures still appear in the system tray and the Troubleshooting tab.");
+    expect(group(idle, { ...context, platform: "win32", notifications: false, language: "zh-TW" }, "notifications")?.info).toBe("失敗仍會顯示在系統匣與「疑難排解」分頁。");
     // Only status notes stay visible; the remaining explanations sit behind an ⓘ.
     expect(group(idle, context, "screen")).not.toHaveProperty("note");
     expect(group(idle, context, "videoQuality")?.info).toBe("Higher quality keeps more detail but makes larger files.");
@@ -384,7 +384,7 @@ describe("notifications in General", () => {
 
   /** Off is obeyed, not compensated for: the cost is stated where the choice is. */
   it("states what turning it off costs and where to look instead", () => {
-    const off = group(idle, { ...context, notifications: false }, "notifications")?.note ?? "";
+    const off = group(idle, { ...context, notifications: false }, "notifications")?.info ?? "";
     expect(off).toContain(t("Failures still appear in the menu bar and the Troubleshooting tab.", "en"));
     // The macOS caveat is about a permission the user did not choose; it would
     // only confuse the reading of a switch the user did choose to turn off.
@@ -397,7 +397,7 @@ describe("notifications in General", () => {
     const info = group(idle, context, "notifications")?.info ?? "";
     expect(info).toContain("System Settings");
     expect(info).not.toMatch(/denied|authoriz/i);
-    expect(group(idle, { ...context, notifications: false }, "notifications")?.info).toBeUndefined();
+    expect(group(idle, { ...context, notifications: false }, "notifications")?.info).not.toContain("System Settings");
   });
 
   /** One card: changing the switch and checking the OS are one decision. */
@@ -472,7 +472,7 @@ it("declares presentation without changing choice identities, and authorizes onl
   ]);
   // Appearance is three icons, one click each (2026-10-05); no other row is.
   expect(groups.filter(g => g.iconChoices).map(g => [g.id, g.choices.map(c => c.id)])).toEqual([["appearance", ["system", "light", "dark"]]]);
-  expect(group(idle, { ...context, notifications: false }, "notifications")?.noteKind).toBe("status");
+  expect(group(idle, { ...context, notifications: false }, "notifications")?.noteKind).toBe("explanation");
   expect(group(idle, context, "videoQuality")?.noteKind).toBe("explanation");
   expect(group(idle, context, "updates")?.noteKind).toBe("status");
   expect(settingsAction(busy[0]!, context, "about", "website")).toBe("openWebsite");

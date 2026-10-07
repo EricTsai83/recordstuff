@@ -409,6 +409,7 @@ export function Player({
           <Slider
             id={`${id}-seek`}
             className="pc-seek"
+            controlClassName="py-[var(--seek-padding)]"
             variant="media"
             growOnHover
             value={[media.time]}

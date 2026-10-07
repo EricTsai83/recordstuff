@@ -1,14 +1,10 @@
 "use client";
-/**
- * App changes from the shadcn source (2026-10-07): a `sidebar` list variant, the wide window's tabs as a native
- * sidebar draws them: a faint fill under the pointer and the open tab raised on a light tile, with no indicator line;
- * and the open tab's name and line in the chosen red. Selection changes at once, as in a native sidebar: a fading tab
- * beside a fading-in one read as a flicker.
- */
+/** App extension: responsive navigation shares pressed-choice feedback and keeps its primary indicator. */
 
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
+import { selectionStyles } from "./selection-styles";
 
 function Tabs({
   className,
@@ -36,7 +32,7 @@ const tabsListVariants = cva(
       variant: {
         default: "bg-muted",
         line: "gap-1 bg-transparent",
-        sidebar: "gap-px bg-transparent",
+        sidebar: "gap-1 bg-transparent px-0",
       },
     },
     defaultVariants: {
@@ -65,12 +61,13 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
     <TabsPrimitive.Tab
       data-slot="tabs-trigger"
       className={cn(
-        "focus-ring relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-xs font-medium whitespace-nowrap text-foreground/60 group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start group-data-[orientation=vertical]/tabs:py-[calc(--spacing(1.25))] hover:text-foreground disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 dark:text-muted-foreground dark:hover:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
-        "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent",
-        "data-active:bg-background data-active:text-foreground dark:data-active:border-input dark:data-active:bg-input/30 dark:data-active:text-foreground",
-        "group-data-[variant=line]/tabs-list:data-active:text-chosen-text dark:group-data-[variant=line]/tabs-list:data-active:text-chosen-text",
-        "group-data-[variant=sidebar]/tabs-list:rounded-lg group-data-[variant=sidebar]/tabs-list:text-foreground group-data-[variant=sidebar]/tabs-list:hover:bg-sidebar-accent group-data-[variant=sidebar]/tabs-list:data-active:bg-sidebar-selected group-data-[variant=sidebar]/tabs-list:data-active:font-medium group-data-[variant=sidebar]/tabs-list:data-active:text-sidebar-selected-foreground group-data-[variant=sidebar]/tabs-list:data-active:shadow-sidebar-selected group-data-[variant=sidebar]/tabs-list:data-active:[&_.tab-icon]:text-sidebar-selected-icon dark:group-data-[variant=sidebar]/tabs-list:text-foreground dark:group-data-[variant=sidebar]/tabs-list:data-active:border-transparent dark:group-data-[variant=sidebar]/tabs-list:data-active:bg-sidebar-selected dark:group-data-[variant=sidebar]/tabs-list:data-active:text-sidebar-selected-foreground",
-        "after:absolute after:bg-chosen after:opacity-0 after:transition-opacity group-data-[orientation=horizontal]/tabs:after:inset-x-0 group-data-[orientation=horizontal]/tabs:after:bottom-[-5px] group-data-[orientation=horizontal]/tabs:after:h-0.5 group-data-[orientation=vertical]/tabs:after:inset-y-0 group-data-[orientation=vertical]/tabs:after:-right-1 group-data-[orientation=vertical]/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100",
+        selectionStyles,
+        // Navigation uses its indicator and icon colour without filling the selected tab.
+        "group-data-[variant=sidebar]/tabs-list:aria-selected:bg-transparent group-data-[variant=sidebar]/tabs-list:aria-selected:hover:bg-transparent",
+        "group-data-[variant=line]/tabs-list:aria-selected:bg-transparent group-data-[variant=line]/tabs-list:aria-selected:hover:bg-transparent",
+        "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-xs font-medium whitespace-nowrap text-foreground group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start group-data-[orientation=vertical]/tabs:py-[calc(--spacing(1.25))] hover:text-foreground disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 dark:text-foreground dark:hover:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+        "group-data-[variant=sidebar]/tabs-list:rounded-lg group-data-[variant=sidebar]/tabs-list:border-0 group-data-[variant=sidebar]/tabs-list:pl-4 group-data-[variant=sidebar]/tabs-list:text-sm group-data-[variant=sidebar]/tabs-list:font-bold group-data-[variant=sidebar]/tabs-list:text-sidebar-foreground group-data-[variant=sidebar]/tabs-list:data-active:font-bold group-data-[variant=sidebar]/tabs-list:data-active:text-sidebar-selected-foreground group-data-[variant=sidebar]/tabs-list:aria-selected:[&_svg]:text-sidebar-selected-foreground dark:group-data-[variant=sidebar]/tabs-list:text-sidebar-foreground dark:group-data-[variant=sidebar]/tabs-list:data-active:border-transparent dark:group-data-[variant=sidebar]/tabs-list:data-active:text-sidebar-selected-foreground group-data-[variant=sidebar]/tabs-list:after:inset-y-1.5 group-data-[variant=sidebar]/tabs-list:after:left-0 group-data-[variant=sidebar]/tabs-list:after:right-auto group-data-[variant=sidebar]/tabs-list:after:w-[3px] group-data-[variant=sidebar]/tabs-list:after:rounded-full group-data-[variant=sidebar]/tabs-list:after:bg-sidebar-primary group-data-[variant=sidebar]/tabs-list:data-active:after:opacity-100",
+        "after:absolute after:bg-primary after:opacity-0 after:transition-opacity after:duration-[80ms] after:ease-out group-data-[orientation=horizontal]/tabs:after:inset-x-0 group-data-[orientation=horizontal]/tabs:after:bottom-[-5px] group-data-[orientation=horizontal]/tabs:after:h-0.5 group-data-[orientation=vertical]/tabs:after:inset-y-0 group-data-[orientation=vertical]/tabs:after:-right-1 group-data-[orientation=vertical]/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100",
         className,
       )}
       {...props}

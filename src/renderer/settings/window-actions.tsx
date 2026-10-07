@@ -1,5 +1,5 @@
-/** Hide is one click; quitting takes the arrow menu, in the sidebar and the narrow About footer. */
-import { ChevronDown, PanelBottomClose, Power } from "lucide-react";
+/** Hide is one click; quitting takes the more-actions menu, in the sidebar and the narrow About footer. */
+import { Ellipsis, PanelBottomClose, Power } from "lucide-react";
 import type { SettingsGroup, SettingsChoice } from "../../shared/settings-panel";
 import { Button } from "../components/ui/button";
 import { ControlTooltip } from "../components/control-tooltip";
@@ -20,11 +20,11 @@ export function WindowActions({ group, quit, id = "setting-about-hide", sidebar 
   };
   return (
     <div role="group" aria-label={model.text("RecordStuff window actions")}
-      className={`inline-flex h-9 max-w-full items-stretch rounded-lg border border-border/70 bg-background/80 ${sidebar ? "w-full" : ""}`}>
+      className={`inline-flex h-9 max-w-full items-stretch rounded-lg border border-border/50 bg-secondary/60 text-secondary-foreground ${sidebar ? "w-full" : ""}`}>
       <ControlTooltip label={hide?.label ?? model.text("Hide RecordStuff")}>
         <Button id={id} data-action="hide" variant="ghost" aria-label={model.text("Hide interface")}
           disabled={!group.enabled || !hide?.enabled} aria-disabled={!enabled(hide)}
-          className="h-full flex-1 justify-start gap-2 rounded-none rounded-l-lg border-0 px-3 [&_svg]:text-muted-foreground"
+          className="darwin:wide:window-no-drag h-full flex-1 justify-start gap-2 rounded-none rounded-l-lg border-0 px-3"
           onClick={() => { if (hide) choose(hide); }}>
           <PanelBottomClose aria-hidden="true" />
           {model.text("Hide interface")}
@@ -33,12 +33,13 @@ export function WindowActions({ group, quit, id = "setting-about-hide", sidebar 
       <DropdownMenu>
         <DropdownMenuTrigger id={`${id}-menu`} aria-label={model.text("More window actions")}
           disabled={!enabled(quit)}
-          render={<Button variant="ghost" size="icon" className="h-full w-8 rounded-none rounded-r-lg border-0 border-l border-border/70 text-muted-foreground hover:text-foreground" />}>
-          <ChevronDown aria-hidden="true" />
+          render={<Button variant="ghost" size="icon" className="darwin:wide:window-no-drag relative h-full w-9 rounded-none rounded-r-lg border-0 before:absolute before:inset-y-2 before:left-0 before:w-px before:bg-border/70" />}>
+          <Ellipsis aria-hidden="true" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent id={`${id}-menu-content`} data-window-actions="" side="top" align="end" className="w-auto min-w-48">
-          <DropdownMenuItem id={`${id}-quit-option`} disabled={!enabled(quit)} onClick={() => choose(quit)}>
-            <Power aria-hidden="true" />{quit.label}
+        <DropdownMenuContent id={`${id}-menu-content`} data-window-actions="" side="top" sideOffset={8} align="end"
+          className={`min-w-0 rounded-lg p-1.5 ${sidebar ? "w-(--settings-sidebar-width)" : "w-44"}`}>
+          <DropdownMenuItem id={`${id}-quit-option`} className="min-h-8 gap-2 px-2.5" disabled={!enabled(quit)} onClick={() => choose(quit)}>
+            <Power aria-hidden="true" className="text-muted-foreground" />{quit.label}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

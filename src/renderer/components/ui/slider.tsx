@@ -14,11 +14,13 @@ function Slider({
   min = 0,
   max = 100,
   thumbProps,
+  controlClassName,
   variant = "default",
   growOnHover = false,
   ...props
 }: SliderPrimitive.Root.Props & {
   thumbProps?: SliderPrimitive.Thumb.Props;
+  controlClassName?: string;
   variant?: "default" | "media";
   growOnHover?: boolean;
 }) {
@@ -43,7 +45,7 @@ function Slider({
       thumbAlignment="edge"
       {...props}
     >
-      <SliderPrimitive.Control className="relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-40 data-[orientation=vertical]:w-auto data-[orientation=vertical]:flex-col">
+      <SliderPrimitive.Control className={cn("relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-40 data-[orientation=vertical]:w-auto data-[orientation=vertical]:flex-col", controlClassName)}>
         <SliderPrimitive.Track
           data-slot="slider-track"
           className={cn(
@@ -51,7 +53,7 @@ function Slider({
             variant === "media" &&
               "rounded-full bg-media-track data-[orientation=horizontal]:h-[3px]",
             growOnHover &&
-              "transition-[height] duration-100 ease-out group-hover/slider:data-[orientation=horizontal]:h-[5px] group-active/slider:data-[orientation=horizontal]:h-[5px]",
+              "origin-center transition-transform duration-100 ease-out group-hover/slider:data-[orientation=horizontal]:scale-y-200 group-active/slider:data-[orientation=horizontal]:scale-y-200",
           )}
         >
           <SliderPrimitive.Indicator
@@ -68,9 +70,9 @@ function Slider({
             key={index}
             {...thumbProps}
             className={cn(
-              "relative block size-3 shrink-0 rounded-md border border-ring bg-white transition-[color,box-shadow] select-none after:absolute after:-inset-2 focus-ring-within [--focus-offset:2px] disabled:pointer-events-none disabled:opacity-50",
+              "relative block size-3 shrink-0 rounded-md border border-ring bg-white transition-[color,box-shadow] select-none after:absolute after:-inset-2 has-[:focus-visible]:border-ring has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/30 disabled:pointer-events-none disabled:opacity-50",
               variant === "media" &&
-                "size-[13px] rounded-full border-0 bg-media-foreground shadow-[var(--media-thumb-shadow)]",
+                "size-[13px] rounded-full border-0 bg-media-foreground shadow-[var(--media-thumb-shadow)] has-[:focus-visible]:ring-media-foreground/30",
               growOnHover &&
                 "scale-0 transition-[scale,box-shadow] duration-100 ease-out group-hover/slider:scale-100 group-active/slider:scale-100 has-focus-visible:scale-100",
             )}

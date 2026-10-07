@@ -79,14 +79,14 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   const changed = { ...base.library!.items[0]!, thumbnail: "recordstuff-media://thumb/a?v=2" };
   push({ ...base, revision: 1.6, library: { ...base.library!, items: [changed, ...base.library!.items.slice(1)] } });
   await Promise.resolve();
-  expect([firstImage.getAttribute("src"), first.querySelector(".clip-thumb")!.classList.contains("no-thumb")]).toEqual(["recordstuff-media://thumb/a?v=2", false]);
+  await vi.waitFor(() => expect([firstImage.getAttribute("src"), first.querySelector(".clip-thumb")!.classList.contains("no-thumb")]).toEqual(["recordstuff-media://thumb/a?v=2", false]));
   push({ ...base, revision: 1.7 });
   await Promise.resolve();
 
   // A saved recording's entry (its notification) lands on its card and outlines it, without playing.
   push({ ...base, revision: 2, resultFocus: 1, entryTab: "library", libraryFocus: "c" });
   expect(document.activeElement?.id).toBe("clip-c-open");
-  expect(document.getElementById("clip-c")!.classList.contains("arrived")).toBe(true);
+  await vi.waitFor(() => expect(document.getElementById("clip-c")!.classList.contains("arrived")).toBe(true));
   expect(Boolean(document.querySelector(".player[data-open]"))).toBe(false);
   first.dispatchEvent(new Event("dragstart", { cancelable: true, bubbles: true }));
   expect(choose).toHaveBeenLastCalledWith("recordingFile:a", "drag");

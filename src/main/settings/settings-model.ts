@@ -359,11 +359,10 @@ function notificationsGroup(ctx: AppContext, enabled: boolean): Group {
   const language = ctx.language;
   // The switch controls OS notifications; in-app failure status stays available.
   const switchGroup = group("notifications", t("Notifications", language), enabled,
-    switchChoices(language, ctx.notifications, (value) => ({ setNotifications: value })),
-    ctx.notifications ? undefined : t(ctx.platform === "darwin" ? "Failures still appear in the menu bar and the Troubleshooting tab."
-      : "Failures still appear in the system tray and the Troubleshooting tab.", language));
-  switchGroup.noteKind = ctx.notifications ? "explanation" : "status";
-  if (ctx.notifications && ctx.platform === "darwin") switchGroup.info = t("macOS must also allow RecordStuff in System Settings → Notifications.", language);
+    switchChoices(language, ctx.notifications, (value) => ({ setNotifications: value })));
+  if (!ctx.notifications) switchGroup.info = t(ctx.platform === "darwin" ? "Failures still appear in the menu bar and the Troubleshooting tab."
+    : "Failures still appear in the system tray and the Troubleshooting tab.", language);
+  else if (ctx.platform === "darwin") switchGroup.info = t("macOS must also allow RecordStuff in System Settings → Notifications.", language);
   // Only macOS hides notifications behind a pane worth linking to. It sits in
   // this card so the switch and the permission that can override it read as
   // one decision rather than two unrelated settings.
@@ -433,14 +432,14 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
     }))),
     updateChecksGroup(ctx, unlocked),
     updateActions(ctx, unlocked),
-    // Troubleshooting: diagnostics stay visible, with destructive cleanup in a separate disclosure.
+    // Troubleshooting: diagnostics stay visible, with destructive cleanup in a separate section.
     // Never locked: showing a file touches nothing a recording holds.
     { ...group("log", t("Log file", ctx.language), true, [
       { id: "show", label: t("Show log", ctx.language), enabled: true, checked: false, action: "revealLog" },
     ]), kind: "actions" },
     { ...group("localData", t("Local app data", ctx.language), unlocked, [
       { id: "clear", label: t("Clear local app data and quit…", ctx.language), enabled: unlocked, checked: false, action: "clearAppData" },
-    ], t("Clears settings, failure history, cache and logs. Recordings are kept. You can then remove the app.", ctx.language)), kind: "actions" },
+    ], t("Clears settings, failure history, cache, logs and old data backups. Recordings are kept. RecordStuff will quit; reopen it to start with default settings.", ctx.language)), kind: "actions" },
     { ...group("about", t("Built by Eric Tsai", ctx.language), true, [
       { id: "website", label: t("Official website", ctx.language), enabled: true, checked: false, action: "openWebsite" },
       { id: "source", label: t("GitHub source", ctx.language), enabled: true, checked: false, action: "openSource" },

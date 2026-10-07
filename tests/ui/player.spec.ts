@@ -63,6 +63,38 @@ async function openCard(index: number): Promise<void> {
 const item = async (index: number): Promise<{ id: string; title: string; day: string; time: string; duration: string }> =>
   read(page, `window.settings.read().then(v => v.library.items[${index}])`);
 
+test("the seek bar's pointer area accepts clicks above and below the visible track in both players", async () => {
+  await openCard(0);
+  const checkEdges = async (target: Page): Promise<void> => {
+    const video = target.locator(".pc video");
+    await expect.poll(() => video.evaluate(el => (el as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
+    await video.evaluate(el => (el as HTMLVideoElement).pause());
+    const bar = target.locator(".pc-seek");
+    const seek = target.getByRole("slider", { name: label("Playback position") });
+    const duration = await video.evaluate(el => (el as HTMLVideoElement).duration);
+    for (const [fraction, edge] of [[0.75, "top"], [0.25, "bottom"]] as const) {
+      // Locator hover also waits for the dialog's opening geometry to settle.
+      await bar.hover();
+      const box = (await bar.boundingBox())!;
+      const x = box.x + box.width * fraction;
+      const y = edge === "top" ? box.y + 1 : box.y + box.height - 1;
+      await target.mouse.move(x, y);
+      expect(await target.evaluate(({ x, y }) => getComputedStyle(document.elementFromPoint(x, y)!).cursor, { x, y })).toBe("pointer");
+      await target.mouse.click(x, y);
+      const time = Math.round(duration * fraction * 10) / 10;
+      await expect(seek).toHaveAttribute("aria-valuenow", String(time));
+      expect(Math.abs(await video.evaluate(el => (el as HTMLVideoElement).currentTime) - time)).toBeLessThan(0.15);
+    }
+  };
+  await checkEdges(page);
+  const waiting = app.page("video.html");
+  await page.locator("#player-fullscreen").click();
+  const full = await waiting;
+  await checkEdges(full);
+  await full.locator("#exit").click();
+  await page.locator("#player-close").click();
+});
+
 /** A picture kept in the test's output folder for inspection, as the former runner kept its screenshots. */
 const keep = async (target: Page, name: string): Promise<void> => {
   fs.writeFileSync(test.info().outputPath(name), await target.screenshot({ caret: "hide" }));
@@ -200,10 +232,11 @@ test("P20 the player's pointer, focus and flashes, as before shadcn (2026-10-07)
   await openCard(0);
   await eventually(async () => !(await playback(page, ".player video")).paused, 5000);
   await read(page, `document.querySelector(".player video").pause()`);
-  const look = (): Promise<{ cursor: string; seekCursor: string; outline: string; thumb: string; track: number }> => read(page, `(() => {
+  const look = (): Promise<{ cursor: string; seekCursor: string; outline: string; thumb: string; track: number; top: number; bottom: number }> => read(page, `(() => {
     const v = document.querySelector(".player video"), seek = document.querySelector(".player .pc-seek");
+    const track = seek.querySelector("[data-slot=slider-track]").getBoundingClientRect();
     return { cursor: getComputedStyle(v).cursor, seekCursor: getComputedStyle(seek).cursor, outline: getComputedStyle(v).outlineStyle,
-      thumb: getComputedStyle(seek.querySelector("[data-slot=slider-thumb]")).scale, track: seek.querySelector("[data-slot=slider-track]").getBoundingClientRect().height }; })()`);
+      thumb: getComputedStyle(seek.querySelector("[data-slot=slider-thumb]")).scale, track: track.height, top: track.top, bottom: track.bottom }; })()`);
   await page.locator(".player video").hover();
   await expect.poll(async () => (await look()).thumb, { message: "P20 the seek thumb settles hidden away from the pointer" }).toBe("0");
   const atRest = await look();
@@ -211,9 +244,12 @@ test("P20 the player's pointer, focus and flashes, as before shadcn (2026-10-07)
   await page.locator(".player .pc-seek").hover();
   await expect.poll(async () => {
     const lookNow = await look();
-    return lookNow.thumb === "1" && lookNow.track > atRest.track;
+    return lookNow.thumb === "1" && Math.abs(lookNow.track - 6) < 0.05;
   }, { message: "P20 hovering reveals the thumb and thickens the seek track" }).toBe(true);
   const overSeek = await look();
+  expect(overSeek.top).toBeCloseTo(atRest.top - 1.5, 1);
+  expect(overSeek.bottom).toBeCloseTo(atRest.bottom + 1.5, 1);
+  await keep(page, "player-seek-hover.png");
   expect.soft(atRest.cursor === "pointer" && atRest.seekCursor === "pointer" && atRest.thumb === "0" && overSeek.thumb === "1" && overSeek.track > atRest.track,
     `P20 a pointing hand on the picture and the seek bar; the thumb grows in and the track thickens under the pointer ${JSON.stringify({ atRest, overSeek })}`).toBe(true);
   // From the keyboard: the picture has focus and → seeks, yet no ring is drawn around it; the seek flashes at its side.

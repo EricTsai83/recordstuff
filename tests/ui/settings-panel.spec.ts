@@ -278,12 +278,12 @@ test("S044–S048 update checks: repeated states keep nodes and geometry; Tab an
   await expect(page.locator("#setting-updates-check")).toHaveText("Checking for updates…");
   await page.waitForTimeout(150);
   const busy = await read<{ active: string; disabled: boolean; ariaDisabled: string | null; ring: string }>(page, `(() => { const el = document.getElementById("setting-updates-check");
-    return { active: document.activeElement.id, disabled: el.disabled, ariaDisabled: el.getAttribute("aria-disabled"), ring: getComputedStyle(el).outlineStyle }; })()`);
+    return { active: document.activeElement.id, disabled: el.disabled, ariaDisabled: el.getAttribute("aria-disabled"), ring: getComputedStyle(el).boxShadow }; })()`);
   await keep("update-check-busy.png");
   await page.keyboard.press("Enter");
   await page.waitForTimeout(100);
   expect.soft({ tabbed, calls: await calls() }, "S046 Tab reaches Check for updates… and Enter starts one check").toEqual({ tabbed: "setting-updates-check", calls: [["updates", "check"]] });
-  expect.soft({ active: busy.active, disabled: busy.disabled, ariaDisabled: busy.ariaDisabled, ring: busy.ring === "solid" },
+  expect.soft({ active: busy.active, disabled: busy.disabled, ariaDisabled: busy.ariaDisabled, ring: /0px 0px 0px 2px/.test(busy.ring) },
     "S047 a running check keeps keyboard focus and its ring on the busy, focusable button").toEqual({ active: "setting-updates-check", disabled: false, ariaDisabled: "true", ring: true });
   await host.evaluate(h => { h.state.updateContext = { ...h.state.updateContext, updates: { enabled: true, state: { kind: "current", checkedAt: 2000 } } }; h.push(h.settingsView({ type: "idle" }, h.state.updateContext)); });
   await expect(page.locator("#setting-updates-check")).toHaveAttribute("aria-disabled", "false");
@@ -297,9 +297,25 @@ test("S049–S052 the scroll cue: shown non-interactive on overflow, never over 
   await host.evaluate(h => { h.pushModel({ type: "idle" }); h.setSize(380, 360); });
   await page.waitForTimeout(100);
   await read(page, `document.getElementById("settings-panel").scrollTop = 0`);
-  await expect.poll(() => read(page, `!document.getElementById("scroll-hint").hidden && getComputedStyle(document.getElementById("scroll-hint")).pointerEvents === "none"`),
+  await expect.poll(() => read(page, `Number(getComputedStyle(document.getElementById("scroll-hint")).opacity) === 1 && getComputedStyle(document.getElementById("scroll-hint")).pointerEvents === "none"`),
     { message: "S049 overflow shows non-interactive glass scroll cue" }).toBe(true);
   await keep("panel-scroll-cue.png");
+  const viewportBottom = await read<number>(page, `innerHeight - document.querySelector(".settings-viewport").getBoundingClientRect().bottom`);
+  expect(viewportBottom, "the scroll viewport reaches the app bottom without a fixed blank strip").toBeLessThanOrEqual(1);
+  const cardBelowViewport = await read<boolean>(page, `document.querySelector(".settings-card").getBoundingClientRect().bottom > innerHeight`);
+  expect(cardBelowViewport, "before the end, the overflowing card continues past the app bottom").toBe(true);
+  const opacity = (id: string) => read<number>(page, `Number(getComputedStyle(document.getElementById("${id}")).opacity)`);
+  // Near either endpoint, the blur becomes partial before reaching zero, while its element stays mounted.
+  await read(page, `document.getElementById("settings-panel").scrollTop = 30`);
+  await expect.poll(() => opacity("scroll-hint-top")).toBeCloseTo(0.5, 1);
+  await keep("panel-top-partial-fade.png");
+  await read(page, `document.getElementById("settings-panel").scrollTop = 0`);
+  await expect.poll(() => opacity("scroll-hint-top")).toBe(0);
+  await read(page, `(() => { const p = document.getElementById("settings-panel"); p.scrollTop = p.scrollHeight - p.clientHeight - 38; })()`);
+  await expect.poll(() => opacity("scroll-hint")).toBeCloseTo(0.5, 1);
+  await keep("panel-bottom-partial-fade.png");
+  expect(await read<boolean>(page, `["scroll-hint", "scroll-hint-top"].every(id => !document.getElementById(id).hidden)`)).toBe(true);
+  await read(page, `document.getElementById("settings-panel").scrollTop = 0`);
   await page.locator('.tabs [role="tab"][aria-selected="true"]').focus();
   const covered: string[] = [];
   let scrolled = 0;
@@ -309,22 +325,28 @@ test("S049–S052 the scroll cue: shown non-interactive on overflow, never over 
     const focus = await read<{ id: string; covered: boolean; scrollTop: number }>(page, `(() => {
       const cue = document.getElementById("scroll-hint"), active = document.activeElement, panel = document.getElementById("settings-panel");
       const hint = cue.getBoundingClientRect(), box = active.getBoundingClientRect();
-      return { id: active.id || active.tagName, covered: panel.contains(active) && !cue.hidden && box.bottom > hint.top + 1 && box.top < hint.bottom, scrollTop: panel.scrollTop }; })()`);
+      return { id: active.id || active.tagName, covered: panel.contains(active) && Number(getComputedStyle(cue).opacity) > 0.01 && box.bottom > hint.top + 1 && box.top < hint.bottom, scrollTop: panel.scrollTop }; })()`);
     if (focus.covered) covered.push(focus.id);
     scrolled = Math.max(scrolled, focus.scrollTop);
   }
   expect.soft({ scrolled: scrolled > 0, covered }, "S050 a Tab never leaves the focused control under the scroll cue").toEqual({ scrolled: true, covered: [] });
   await read(page, `document.getElementById("settings-panel").scrollTop = document.getElementById("settings-panel").scrollHeight`);
-  await expect.poll(() => read(page, `document.getElementById("scroll-hint").hidden`), { message: "S051 scroll cue disappears at the bottom" }).toBe(true);
+  await expect.poll(() => read(page, `Number(getComputedStyle(document.getElementById("scroll-hint")).opacity) === 0`), { message: "S051 scroll cue disappears at the bottom" }).toBe(true);
+  const bottomGap = () => read<number>(page, `innerHeight - document.querySelector(".settings-card").getBoundingClientRect().bottom`);
+  expect(await bottomGap(), "a scrolled card leaves breathing room above the window bottom").toBeGreaterThanOrEqual(20);
+  await keep("panel-scroll-bottom.png");
   await host.evaluate(h => h.setSize(720, 900));
   await page.locator("#tab-recording").click();
   await page.waitForTimeout(100);
-  const fitting = await read<{ hidden: boolean; scrollHeight: number; clientHeight: number }>(page, `({ hidden: document.getElementById("scroll-hint").hidden,
+  await expect.poll(() => opacity("scroll-hint")).toBe(0);
+  const fitting = await read<{ hidden: boolean; scrollHeight: number; clientHeight: number }>(page, `({ hidden: Number(getComputedStyle(document.getElementById("scroll-hint")).opacity) === 0,
     scrollHeight: document.getElementById("settings-panel").scrollHeight, clientHeight: document.getElementById("settings-panel").clientHeight })`);
   expect.soft(fitting.hidden && fitting.scrollHeight <= fitting.clientHeight + 2, `S052 fitting content needs no scroll cue ${JSON.stringify(fitting)}`).toBe(true);
+  expect(await bottomGap(), "a fitting card also leaves breathing room above the window bottom").toBeGreaterThanOrEqual(20);
+  await keep("panel-fitting-bottom.png");
 });
 
-test("S053–S057 General's footer and Show log: wide and narrow layouts, a failed link's Retry keeps focus in its row", async () => {
+test("S053–S057 General's footer and the log link: wide and narrow layouts, a failed link's Retry keeps focus in its row", async () => {
   await host.evaluate(h => { h.setSize(720, 900); h.state.captureView = h.settingsView({ type: "idle" }, h.baseContext()); h.push(h.state.captureView); });
   await page.locator("#tab-general").click();
   await page.waitForTimeout(100);
@@ -340,8 +362,8 @@ test("S053–S057 General's footer and Show log: wide and narrow layouts, a fail
   await expect(page.locator("#setting-log-show")).toBeHidden();
   await page.locator("#tab-failures").click();
   await page.locator("#troubleshooting-tools-tab").click();
-  expect.soft(await read<boolean>(page, `(() => { const row = document.getElementById("setting-log-row"); const show = document.getElementById("setting-log-show"); return Boolean(row?.querySelector(".row-icon")) && row.querySelector(".group-label").textContent === "Log file" && show?.textContent === "Show log" && !show.disabled; })()`),
-    "S055 Show log is a labelled row of its own, with an icon and a text button").toBe(true);
+  expect.soft(await read<boolean>(page, `(() => { const row = document.getElementById("setting-log-row"); const show = document.getElementById("setting-log-show"); return !row.closest("[data-slot=card]") && !row.querySelector(".group-title") && Boolean(show?.querySelector(".row-icon[aria-hidden=true]")) && show?.textContent === "Log file" && !show.disabled; })()`),
+    "S055 the log file is a standalone text link with its icon, without a card or duplicate label").toBe(true);
   await page.locator("#tab-general").click();
   await page.locator("#setting-about-website").click();
   await expect.poll(() => read(page, `(() => { const retry = document.getElementById("setting-about-retry"); return !retry.hidden && retry.getBoundingClientRect().width > 32 && retry.scrollWidth <= retry.clientWidth && document.querySelector("#setting-about-website svg") !== null; })()`),
@@ -354,7 +376,7 @@ test("S053–S057 General's footer and Show log: wide and narrow layouts, a fail
 });
 
 for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
-  test(`Troubleshooting sections, cleanup disclosure and General footer: ${language}/${scheme}, mouse and keyboard`, async () => {
+  test(`Troubleshooting sections, always-visible cleanup warning and General footer: ${language}/${scheme}, mouse and keyboard`, async () => {
     await host.evaluate((h, args) => {
       h.theme(args.scheme);
       h.setSize(720, 900);
@@ -386,61 +408,53 @@ for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", 
     await expect(historyTab).toBeFocused();
     await expect(page.locator("#recording-results")).toBeVisible();
     await toolsTab.click();
-    const toggle = page.locator("#settings-data-cleanup-toggle");
-    const heading = language === "en" ? "Reset and cleanup" : "重設與清理",
-      expand = language === "en" ? "Expand" : "展開",
-      collapse = language === "en" ? "Collapse" : "收合";
-    await expect(toggle.locator("h2")).toHaveText(heading);
-    await expect(toggle.locator(".support-expand")).toHaveText(expand);
-    await expect(toggle.locator(".support-expand")).toBeVisible();
-    await expect(toggle.locator(".support-collapse")).toBeHidden();
-    await expect(toggle).toHaveAccessibleName(new RegExp(`${heading}.*${expand}`));
+    const cleanup = page.locator("#settings-data-cleanup");
+    await expect(cleanup).toHaveAccessibleName(language === "en" ? "Reset and cleanup" : "重設與清理");
+    await expect(page.locator("#settings-data-cleanup-warning")).toHaveText(language === "en"
+      ? "This permanently deletes the listed app data and cannot be undone."
+      : "上述 App 資料會永久刪除，無法復原。");
+    await expect(page.locator("#settings-data-cleanup-toggle")).toHaveCount(0);
+    await expect(cleanup.locator('[data-slot="card"]')).toHaveCount(0);
+    await expect(page.locator("#setting-localData-label")).toHaveText(language === "en" ? "Clear local app data" : "清除本機 App 資料");
+    await expect(page.locator("#setting-localData-row #settings-data-cleanup-warning")).toBeVisible();
+    await expect(page.locator("#setting-localData-clear")).toHaveAccessibleDescription(/cannot be undone|無法復原/);
     await expect(page.locator("#recording-results-heading")).toHaveText(language === "en" ? "Recording failures" : "失敗紀錄");
     await expect(page.locator("#setting-log-section-heading")).toHaveText(language === "en" ? "Diagnostic tools" : "診斷工具");
-    const aligned = await read<boolean>(page, `(() => { const log = document.getElementById("setting-log-section-heading").getBoundingClientRect(), cleanup = document.querySelector("#settings-data-cleanup-toggle h2").getBoundingClientRect(); return Math.abs(log.left - cleanup.left) < 1 && log.top < cleanup.top; })()`);
-    expect(aligned).toBe(true);
-    await expect(page.locator("#setting-log-show")).toBeVisible();
-    await expect(page.locator("#setting-localData-clear")).toBeHidden();
-    await page.locator("#setting-log-show").click();
+    const logLink = page.locator("#setting-log-show");
+    await expect(logLink).toHaveText(language === "en" ? "Log file" : "記錄檔（log）");
+    await expect(page.locator("#setting-log-row").locator("xpath=ancestor::*[@data-slot='card']")).toHaveCount(0);
+    await cleanup.locator("h2").hover();
+    await expect(logLink).toHaveCSS("border-bottom-color", "rgba(0, 0, 0, 0)");
+    // The icon and label share one bottom border, including when hovering the icon itself.
+    await logLink.locator("svg").hover();
+    await expect(logLink).toHaveCSS("border-bottom-color", await page.locator("#tab-failures").evaluate(el => getComputedStyle(el, "::after").backgroundColor));
+    const primary = await page.locator("#tab-failures").evaluate(el => getComputedStyle(el, "::after").backgroundColor);
+    await expect(logLink).toHaveCSS("color", primary);
+    await expect(logLink.locator("svg")).toHaveCSS("color", primary);
+    await expect(logLink).toHaveCSS("border-bottom-style", "solid");
+    await expect(logLink).toHaveCSS("border-bottom-width", "1px");
+    await expect(page.locator("#setting-localData-clear")).toBeVisible();
+    await logLink.click();
     await expect.poll(calls).toContainEqual(["log", "show"]);
     await expect(page.locator("#tab-failures")).toHaveAttribute("aria-selected", "true");
-    await keep(`troubleshooting-${language}-${scheme}-collapsed.png`);
-    await toggle.locator(".support-toggle").click();
-    await expect(toggle.locator(".support-collapse")).toHaveText(collapse);
-    await expect(toggle.locator(".support-collapse")).toBeVisible();
-    await expect(toggle.locator(".support-expand")).toBeHidden();
-    await expect(toggle).toHaveAccessibleName(new RegExp(`${heading}.*${collapse}`));
-    await expect(page.locator("#setting-log-show")).toBeVisible();
-    await expect(page.locator("#setting-localData-clear")).toBeVisible();
-    await keep(`troubleshooting-${language}-${scheme}-expanded.png`);
+    await keep(`troubleshooting-${language}-${scheme}-cleanup.png`);
     await historyTab.click();
     await expect(page.locator("#setting-localData-clear")).toBeHidden();
     await toolsTab.click();
     await expect(page.locator("#setting-localData-clear")).toBeVisible();
-    await toggle.focus();
-    await page.keyboard.press("Space");
-    await expect(toggle.locator(".support-expand")).toBeVisible();
-    await expect(page.locator("#setting-localData-clear")).toBeHidden();
-    await expect(toggle).toBeFocused();
-    await page.keyboard.press("Enter");
-    await expect(toggle.locator(".support-collapse")).toBeVisible();
-    await expect(page.locator("#setting-log-show")).toBeVisible();
+    await logLink.focus();
     await page.keyboard.press("Tab");
     await expect(page.locator("#setting-localData-clear")).toBeFocused();
-    // Model updates do not collapse the section or hide the action currently being used.
+    // Model updates keep the cleanup action visible and retain keyboard focus.
     await host.evaluate(h => h.push(h.state.captureView));
     await expect(page.locator("#setting-localData-clear")).toBeVisible();
     await expect(page.locator("#setting-localData-clear")).toBeFocused();
-    await toggle.click();
-    await toggle.focus();
     await page.keyboard.press("Shift+Tab");
-    await expect(page.locator("#setting-log-show")).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(toggle).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(page.locator("#setting-localData-clear")).not.toBeFocused();
+    await expect(logLink).toBeFocused();
+    await clearCalls();
+    await page.keyboard.press("Enter");
+    await expect.poll(calls).toContainEqual(["log", "show"]);
     await host.evaluate(h => h.setSize(360, 480));
-    await toggle.click();
     await page.locator("#setting-localData-row").scrollIntoViewIfNeeded();
     await keep(`troubleshooting-${language}-${scheme}-minimum.png`);
     expect(await read<boolean>(page, `document.getElementById("settings-panel").scrollWidth <= document.getElementById("settings-panel").clientWidth`)).toBe(true);
@@ -462,11 +476,11 @@ test("S058–S066 the shortcut editor by keyboard: Tab and Shift+Tab leave captu
   await page.waitForTimeout(100);
   await page.keyboard.press("Shift+Tab");
   const back = await read<string>(page, "document.activeElement.id");
-  expect.soft(await read<boolean>(page, `(() => { const el = document.getElementById("setting-hotkey"); return el.matches(":focus-visible") && getComputedStyle(el).outlineStyle === "solid"; })()`),
-    "S059 keyboard navigation retains a visible focus ring").toBe(true);
+  await expect.poll(() => read<boolean>(page, `(() => { const el = document.getElementById("setting-hotkey"); return el.matches(":focus-visible") && /0px 0px 0px 2px/.test(getComputedStyle(el).boxShadow); })()`),
+    { message: "S059 keyboard navigation retains a visible focus ring" }).toBe(true);
   await read(page, `document.getElementById("setting-hotkey").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }))`);
-  expect.soft(await read<boolean>(page, `getComputedStyle(document.getElementById("setting-hotkey")).outlineStyle === "none"`) && back === "setting-hotkey",
-    "S060 pointer interaction removes the ring without discarding DOM focus").toBe(true);
+  expect.soft(await read<boolean>(page, `(() => { const el = document.getElementById("setting-hotkey"); return document.activeElement === el && /0px 0px 0px 2px/.test(getComputedStyle(el).boxShadow) === el.matches(":focus-visible"); })()`) && back === "setting-hotkey",
+    "S060 pointer bookkeeping preserves DOM focus and follows browser focus-visible").toBe(true);
   await arm();
   await page.waitForTimeout(100);
   expect.soft(await read<boolean>(page, `document.querySelectorAll("#shortcut-capture .listening-indicator span").length === 3 && !document.querySelector(".capture-area").hidden`),

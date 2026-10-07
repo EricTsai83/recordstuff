@@ -15,13 +15,13 @@ export function Troubleshooting() {
     <Tabs.Root value={page} onValueChange={(value) => {
       if (value === "history" || value === "tools") setSelection({ page: value, entry });
     }} orientation="horizontal" className="flex min-w-0 flex-col gap-4">
-      <Tabs.List activateOnFocus aria-label={model.text("Troubleshooting sections")} className="inline-flex w-fit max-w-full gap-1 rounded-lg bg-muted p-[3px]">
+      <Tabs.List activateOnFocus aria-label={model.text("Troubleshooting sections")} className="flex min-w-0 gap-6 border-b border-border">
         {([["history", "Failure history"], ["tools", "Diagnostics and cleanup"]] as const).map(([value, label]) => (
           <Tabs.Tab
             key={value}
             value={value}
             id={`troubleshooting-${value}-tab`}
-            className="focus-ring flex min-h-8 min-w-0 flex-auto items-center justify-center rounded-md px-3 py-1 text-xs font-medium break-keep text-muted-foreground hover:text-foreground aria-selected:bg-selected aria-selected:text-foreground aria-selected:shadow-selected"
+            className="relative flex min-h-10 min-w-0 items-center justify-center pb-3 text-xs font-medium break-keep text-muted-foreground transition-colors duration-[80ms] ease-out hover:text-foreground aria-selected:font-semibold aria-selected:text-foreground focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-full after:bg-primary after:opacity-0 aria-selected:after:opacity-100"
           >
             {model.text(label)}
           </Tabs.Tab>

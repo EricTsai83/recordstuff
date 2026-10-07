@@ -60,7 +60,7 @@ export function FailureRow({ result }: { result: RecordingResultView }) {
     >
       <CollapsibleTrigger
         id={`${id}-summary`}
-        className="result-summary"
+        className="result-summary outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
         onKeyDown={(event) => {
           if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key))
             return;
@@ -160,8 +160,9 @@ export function FailureRow({ result }: { result: RecordingResultView }) {
           hidden={!technical}
           onOpenChange={() => model.draw()}
         >
-          <CollapsibleTrigger className="technical-summary">
+          <CollapsibleTrigger className="technical-summary outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30">
             {model.text("Technical details")}
+            <ChevronDown className="technical-chevron" aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent keepMounted>
             <pre>{technical}</pre>
@@ -191,7 +192,7 @@ export function Failures({ headingHidden = false }: { headingHidden?: boolean } 
         {days.map((day) => (
           <section className="result-day" data-day={day} key={day}>
             <h3 className="day-heading result-day-heading">{day}</h3>
-            <Card className="result-rows gap-0 p-1">
+            <Card className="result-rows gap-0 p-0">
               {results
                 .filter((result) => result.day === day)
                 .map((result) => (

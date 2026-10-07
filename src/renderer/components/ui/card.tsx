@@ -1,8 +1,4 @@
-/**
- * App changes from the shadcn source: the `xs` size, 4px of spacing, for a settings section whose rows bring their own
- * 12px, so its first and last rows sit as far from the edge as its sides (plan 069); and the app's card edge, a faint
- * `card-border` ring with the `card` shadow, so cards float on the slightly darker window (2026-10-07).
- */
+/** App extensions: compact settings spacing and softly rounded, hairline-bordered reference cards. */
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
@@ -16,7 +12,7 @@ function Card({
       data-slot="card"
       data-size={size}
       className={cn(
-        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-lg bg-card py-(--card-spacing) text-xs/relaxed text-card-foreground ring-1 shadow-card ring-card-border [--card-spacing:--spacing(4)] has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=xs]:[--card-spacing:--spacing(1)] *:[img:first-child]:rounded-t-lg *:[img:last-child]:rounded-b-lg",
+        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl bg-card dark:bg-background py-(--card-spacing) text-xs/relaxed text-card-foreground ring-1 ring-border shadow-xs dark:shadow-none [--card-spacing:--spacing(4)] has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=xs]:[--card-spacing:--spacing(1)] *:[img:first-child]:rounded-t-lg *:[img:last-child]:rounded-b-lg",
         className,
       )}
       {...props}

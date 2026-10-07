@@ -1,14 +1,11 @@
-/**
- * App changes from the shadcn source: a `chosen` variant, a count in the chosen red (2026-10-07); and (plan 069) a `size` variant. `default` keeps shadcn's 10px; `md` is the 12px the
- * app uses for metadata (plan 067), for a count beside a 13px label.
- */
+/** App extension: a readable metadata size. Counts use the standard primary variant. */
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const badgeVariants = cva(
-  "focus-ring group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border border-transparent px-2 py-0.5 font-medium whitespace-nowrap transition-all has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-2.5!",
+  "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border border-transparent px-2 py-0.5 font-medium whitespace-nowrap transition-all has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-2.5!",
   {
     variants: {
       variant: {
@@ -16,13 +13,12 @@ const badgeVariants = cva(
         secondary:
           "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80",
         destructive:
-          "bg-destructive/10 text-destructive dark:bg-destructive/20 [a]:hover:bg-destructive/20",
+          "bg-destructive/10 text-destructive-ink dark:bg-destructive/20 [a]:hover:bg-destructive/20",
         outline:
           "border-border bg-input/20 text-foreground dark:bg-input/30 [a]:hover:bg-muted [a]:hover:text-muted-foreground",
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
-        link: "text-primary underline-offset-4 hover:underline",
-        chosen: "bg-chosen-text font-semibold text-chosen-text-foreground",
+        link: "text-primary decoration-primary underline-offset-4 hover:underline hover:text-primary hover:[&>svg]:text-primary",
       },
       size: {
         default: "text-[0.625rem]",

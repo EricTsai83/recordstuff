@@ -1,12 +1,11 @@
 /** Model-driven preference, diagnostic and cleanup rows grouped into sections. */
 import { useLayoutEffect, useRef, useState } from "react";
-import { ChevronDown, CircleAlert, CircleHelp, Sun, Moon, Monitor, Keyboard, Settings2, Folder, Globe, Power, Bell, Timer, Volume2, Gauge, FileText, HardDrive, Info } from "lucide-react";
+import { CircleAlert, CircleHelp, Sun, Moon, Monitor, Keyboard, Settings2, Folder, Globe, Power, Bell, Timer, Volume2, Gauge, FileText, Info } from "lucide-react";
 import type { SettingsGroup, SettingsChoice } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Field, FieldLabel, FieldTitle, FieldDescription, FieldError } from "../../components/ui/field";
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "../../components/ui/collapsible";
 import { ControlTooltip } from "../../components/control-tooltip";
 import { useTextSetting } from "../use-text-setting";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
@@ -36,7 +35,7 @@ const icons = {
   updateChecks: Globe,
   updates: Globe,
   log: FileText,
-  localData: HardDrive,
+  localData: CircleAlert,
   about: Info,
 };
 export function GroupIcon({ id }: { id: string }) {
@@ -74,20 +73,22 @@ export function Action({
       <Button
         id={id}
         data-action={choice.id}
-        variant={group.id === "localData" ? "destructive" : group.id === "about" || choice.id === "quit" ? "ghost" : "outline"}
+        variant={group.id === "log" ? "link" : group.id === "localData" ? "destructive" : group.id === "about" || choice.id === "quit" ? "ghost" : "outline"}
         size={iconOnly ? "icon" : "default"}
         wrap={iconOnly ? false : wrap}
-        className={iconOnly ? `px-0 ${className ?? ""}` : className}
+        className={group.id === "log" ? `h-auto min-h-6 justify-start gap-2 rounded-none px-0 text-foreground hover:text-primary hover:[&>svg]:text-primary hover:border-b-primary hover:no-underline ${className ?? ""}` : iconOnly ? `px-0 ${className ?? ""}` : className}
         disabled={!group.enabled || !choice.enabled}
         aria-disabled={busy || !group.enabled || !choice.enabled}
         aria-label={group.id === "about" ? choice.label : undefined}
+        aria-describedby={group.id === "localData" ? "setting-localData-note settings-data-cleanup-warning" : undefined}
         onClick={() => {
           if (!busy && group.enabled && choice.enabled)
             void model.choose(group.id, choice.id, id);
         }}
       >
+        {group.id === "log" && <GroupIcon id={group.id} />}
         {group.id === "about" && <ActionIcon id={choice.id} />}
-        {!iconOnly && choice.label}
+        {!iconOnly && (group.id === "log" ? group.label : choice.label)}
       </Button>
     </ControlTooltip>
   );
@@ -260,7 +261,9 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
       aria-busy={model.saving?.group === group.id}
     >
       <div className="row-line">
-        {group.id === "about" ? (
+        {group.id === "log" ? (
+          <Action group={group} choice={group.choices[0]!} wrap />
+        ) : group.id === "about" ? (
           <div className="about-identity">
             <h2 id={`${id}-label`} className="about-title">
               RecordStuff
@@ -276,7 +279,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
               className="group-label text-xs leading-[1.35]"
               hidden={!group.label}
             >
-              {group.label}
+              {group.id === "localData" ? model.text("Clear local app data") : group.label}
             </FieldTitle>
           ) : (
             <FieldLabel
@@ -290,7 +293,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
           )}
           <Explanation group={group} />
         </div>}
-        <div
+        {group.id !== "log" && <div
           className="controls"
           role={group.kind === "actions" ? "group" : undefined}
           aria-labelledby={group.kind === "actions" ? `${id}-label` : undefined}
@@ -331,7 +334,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
           ) : group.control === "segmented" ? (
             <ToggleGroup
               id={id}
-              className="segments rounded-[8px] bg-muted p-0.5"
+              className="segments"
               variant="segmented"
               size="segment"
               spacing={0.5}
@@ -440,7 +443,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
               </SelectContent>
             </Select>
           )}
-        </div>
+        </div>}
       </div>
       {group.kind === "shortcut" && <ShortcutEditor group={group} />}
       <div
@@ -527,6 +530,11 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
           {group.note}
         </FieldDescription>
       )}
+      {group.id === "localData" && (
+        <p id="settings-data-cleanup-warning" className="note cleanup-warning">
+          {model.text("This permanently deletes the listed app data and cannot be undone.")}
+        </p>
+      )}
       {group.kind !== "actions" && actions.length > 0 && (
         <div className="row-actions">
           {actions.map((choice) => (
@@ -544,29 +552,13 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
   );
 }
 function CleanupSection({ groups }: { groups: SettingsGroup[] }) {
-  const [open, setOpen] = useState(false);
-  // A failed action remains visible even if the user collapsed the section while it was running.
-  useLayoutEffect(() => {
-    if (groups.some((group) => group.id === model.failure?.group)) setOpen(true);
-  }, [groups, model.failure]);
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="section support-section" id="settings-data-cleanup">
-      <CollapsibleTrigger id="settings-data-cleanup-toggle" className="support-summary focus-ring w-full text-left">
-        <h2>{groups[0]?.sectionHeading ?? model.text("Reset and cleanup")}</h2>
-        <span className="support-toggle">
-          <span className="support-expand">{model.text("Expand")}</span>
-          <span className="support-collapse">{model.text("Collapse")}</span>
-          <ChevronDown className="support-chevron" aria-hidden="true" />
-        </span>
-      </CollapsibleTrigger>
-      <CollapsibleContent keepMounted>
-        <Card size="xs">
-          <CardContent className="inset-list px-3.5">
-            {groups.map((group) => <SettingRow key={group.id} group={group} />)}
-          </CardContent>
-        </Card>
-      </CollapsibleContent>
-    </Collapsible>
+    <section className="section cleanup-section" id="settings-data-cleanup" aria-labelledby="settings-data-cleanup-heading" aria-describedby="settings-data-cleanup-warning">
+      <h2 className="section-heading" id="settings-data-cleanup-heading">
+        {groups[0]?.sectionHeading ?? model.text("Reset and cleanup")}
+      </h2>
+      {groups.map((group) => <SettingRow key={group.id} group={group} />)}
+    </section>
   );
 }
 
@@ -599,13 +591,15 @@ export function Preferences() {
         {section.groups[0]!.sectionHeading}
       </h2>
       {/* The rows' own 12px plus the card's 4px puts the first and last rows as far from its edge as its sides (14px). */}
-      <Card size="xs">
+      {section.id === "diagnostics" ? section.groups.map((group) => (
+        <SettingRow key={group.id} group={group} />
+      )) : <Card size="xs">
         <CardContent className="inset-list px-3.5">
           {section.groups.map((group) => (
             <SettingRow key={group.id} group={group} />
           ))}
         </CardContent>
-      </Card>
+      </Card>}
       <p
         className="section-footnote"
         hidden={!section.groups.some((group) => group.footnote)}

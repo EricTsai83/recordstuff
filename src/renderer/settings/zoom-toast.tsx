@@ -102,7 +102,7 @@ function ZoomNotice({
   return (
     <Card
       ref={attach}
-      className="zoom-toast gap-2 bg-popover p-2.5 text-popover-foreground shadow-toast"
+      className="zoom-toast gap-2 bg-popover p-2.5 text-popover-foreground shadow-md"
       onMouseOver={() => holdPointer(true)}
       onMouseOut={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null))
@@ -165,7 +165,7 @@ function ZoomNotice({
         </div>
       </div>
       {failed && (
-        <p role="alert" className="max-w-60 text-destructive">
+        <p role="alert" className="max-w-60 text-destructive-ink">
           {model.text("Could not complete this action. Try again.")}
         </p>
       )}

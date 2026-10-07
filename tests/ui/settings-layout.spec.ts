@@ -11,6 +11,7 @@
  * View host (hosts/view-host.ts); offscreen, no desktop round.
  */
 import { test, expect, type Launched } from "./fixtures";
+import fs from "node:fs/promises";
 import type { Page } from "@playwright/test";
 import { read } from "./helpers";
 import { MEASURE_UI, type UiMeasurement } from "../../scripts/fixtures/ui-measure";
@@ -26,6 +27,126 @@ test.beforeEach(async ({ launchView }) => {
 /** The app's last zoom step (src/main/settings/settings-window.ts ZOOM_STEPS), the most ⌘+ reaches. */
 const LAST_ZOOM = 1.5;
 const TABS = ["library", "recording", "general", "failures"] as const;
+
+test("the macOS top strip covers the window width without covering settings controls", async () => {
+  test.skip(process.platform !== "darwin", "Other platforms use the native title bar.");
+  await host.evaluate(h => h.pushModel({ type: "idle" }, { library: h.library().state }));
+  for (const zoom of [1, LAST_ZOOM]) for (const size of ["default", "minimum"] as const) {
+    await host.evaluate((h, args) => {
+      h.window().webContents.setZoomFactor(args.zoom);
+      h.setSize(...h.SNAPSHOT_SIZES[args.size]);
+      h.pushModel({ type: "idle" }, { library: h.library().state });
+    }, { zoom, size });
+    for (const tab of TABS) {
+      await page.locator(`#tab-${tab}`).click();
+      const geometry = await read<{ fullWidth: boolean; hit: boolean; covered: string[] }>(page, `(() => {
+        const strip = document.querySelector(".titlebar"), r = strip.getBoundingClientRect();
+        const covered = [...document.querySelectorAll("main button, main input, main select, main a, main [role=slider]")]
+          .filter(el => el.checkVisibility())
+          .filter(el => { const b = el.getBoundingClientRect(); return b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top; })
+          .map(el => el.id || el.tagName);
+        // innerWidth rounds CSS pixels at 150% zoom; compare both edges in DOM rectangle coordinates.
+        return { fullWidth: r.left === 0 && r.right === document.documentElement.getBoundingClientRect().right && r.top === 0 && r.height > 0,
+          hit: [0.25, 0.5, 0.9].every(x => document.elementFromPoint(innerWidth * x, r.height / 2) === strip), covered };
+      })()`);
+      expect(geometry, `${size}, zoom ${zoom}, ${tab}: drag anywhere along the top, leaving controls reachable`)
+        .toEqual({ fullWidth: true, hit: true, covered: [] });
+    }
+  }
+});
+
+test("the macOS sidebar's blank space drags while tabs, window actions and overlays stay clickable", async () => {
+  test.skip(process.platform !== "darwin", "Other platforms use the native title bar.");
+  const backdrop = page.locator(".sidebar-background"), region = "-webkit-app-region";
+  await host.evaluate(h => {
+    h.setSize(...h.SNAPSHOT_SIZES.default);
+    h.pushModel({ type: "needsPermission", needsRelaunch: false }, { library: h.library().state });
+  });
+  await expect(backdrop).toHaveCSS(region, "drag");
+  await expect(page.locator(".brand")).toHaveCSS("user-select", "none");
+  await expect(page.locator(".titlebar")).toHaveCSS("user-select", "none");
+  const coverage = await read<{ top: number; bottom: number; height: number; blank: boolean; brand: boolean }>(page, `(() => {
+    const box = document.querySelector(".sidebar-background").getBoundingClientRect(),
+      tabs = document.querySelector(".tabs").getBoundingClientRect(),
+      status = document.querySelector(".status").getBoundingClientRect(),
+      brand = document.querySelector(".brand").getBoundingClientRect();
+    const x = box.left + box.width / 2, y = (tabs.bottom + status.top) / 2;
+    return { top: box.top, bottom: box.bottom, height: innerHeight,
+      blank: y > tabs.bottom && y < status.top && x > box.left && x < box.right,
+      brand: brand.left >= box.left && brand.right <= box.right && brand.top >= box.top && brand.bottom <= box.bottom };
+  })()`);
+  expect(coverage.top).toBe(0);
+  expect(coverage.bottom).toBe(coverage.height);
+  expect(coverage.blank).toBe(true);
+  expect(coverage.brand).toBe(true);
+  for (const selector of ["#tab-library", "#status-action", "#status-secondary", "#sidebar-about-hide", "#sidebar-about-hide-menu"])
+    await expect(page.locator(selector)).toHaveCSS(region, "no-drag");
+  await page.locator("#tab-general").click();
+  await expect(page.locator("#tab-general")).toHaveAttribute("aria-selected", "true");
+  await page.locator("#sidebar-about-hide-menu").click();
+  await expect(page.locator("#sidebar-about-hide-menu-content")).toBeVisible();
+  await expect(backdrop).toHaveCSS(region, "no-drag");
+  await page.keyboard.press("Escape");
+  await expect(backdrop).toHaveCSS(region, "drag");
+  await page.locator("#tab-library").click();
+  await page.locator(".clip-more").first().click();
+  await page.locator("#clip-menu-rename").click();
+  await expect(page.locator("#clip-rename-input")).toBeFocused();
+  await expect(backdrop).toHaveCSS(region, "no-drag");
+  await page.locator("#clip-rename-cancel").click();
+  await expect(backdrop).toHaveCSS(region, "drag");
+  await host.evaluate(h => h.setSize(...h.SNAPSHOT_SIZES.minimum));
+  await expect(backdrop).toBeHidden();
+});
+
+test("settings hides its scrollbar while wheel and keyboard scrolling keep controls below the macOS drag strip", async ({}, testInfo) => {
+  test.skip(process.platform !== "darwin", "Other platforms use the native title bar.");
+  for (const zoom of [1, LAST_ZOOM]) {
+    await host.evaluate((h, factor) => {
+      h.window().webContents.setZoomFactor(factor);
+      h.setContentSize(960, 400);
+      h.pushModel({ type: "idle" }, { library: h.library().state });
+    }, zoom);
+    await page.locator("#tab-general").click();
+    const panel = page.locator("#settings-panel"), toggle = page.locator("#setting-notifications");
+    await toggle.evaluate(el => el.scrollIntoView({ block: "start" }));
+    const geometry = await read<{ stripBottom: number; panelTop: number; controlTop: number; hit: boolean; scrolled: number; ancestors: unknown[] }>(page, `(() => {
+      const strip = document.querySelector(".titlebar").getBoundingClientRect(),
+        panel = document.querySelector("#settings-panel"), p = panel.getBoundingClientRect(),
+        control = document.querySelector("#setting-notifications"), c = control.getBoundingClientRect();
+      return { stripBottom: strip.bottom, panelTop: p.top, controlTop: c.top,
+        hit: control.contains(document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2)), scrolled: panel.scrollTop,
+        ancestors: [...document.querySelectorAll("html, body, #root, main, .settings-content, .settings-viewport")].map(el => ({
+          node: el.id || el.className || el.tagName, top: el.getBoundingClientRect().top, scrollTop: el.scrollTop,
+          height: el.clientHeight, scrollHeight: el.scrollHeight, overflow: getComputedStyle(el).overflow })) };
+    })()`);
+    expect(geometry.scrolled, `zoom ${zoom}: exercise the scrolled state`).toBeGreaterThan(0);
+    expect(geometry.panelTop, `zoom ${zoom}: ${JSON.stringify(geometry)}`).toBeGreaterThanOrEqual(geometry.stripBottom);
+    expect(geometry.controlTop).toBeGreaterThanOrEqual(geometry.stripBottom);
+    expect(geometry.hit).toBe(true);
+    const checked = await toggle.getAttribute("aria-checked");
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-checked", checked === "true" ? "false" : "true");
+    // The host answers a saved toggle with its minimal view; restore the full production projection for scrolling.
+    await host.evaluate(h => h.pushModel({ type: "idle" }, { library: h.library().state }));
+    await expect.poll(() => panel.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+    await expect(panel).toHaveCSS("scrollbar-width", "none");
+    expect(await panel.evaluate(el => getComputedStyle(el, "::-webkit-scrollbar").display)).toBe("none");
+    await panel.evaluate(el => { el.scrollTop = 0; });
+    const bounds = await panel.boundingBox();
+    expect(bounds).not.toBeNull();
+    await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
+    await page.mouse.wheel(0, 300);
+    await expect.poll(() => panel.evaluate(el => el.scrollTop), { message: `zoom ${zoom}: wheel input still scrolls the panel` }).toBeGreaterThan(0);
+    await panel.evaluate(el => { el.scrollTop = 0; });
+    await panel.focus();
+    await page.keyboard.press("PageDown");
+    await expect.poll(() => panel.evaluate(el => el.scrollTop), { message: `zoom ${zoom}: keyboard input still scrolls the panel` }).toBeGreaterThan(0);
+    // Electron zoom makes Chromium's screenshot clip use unscaled coordinates; capture the whole hidden frame.
+    const frame = await host.evaluate(async h => (await h.window().webContents.capturePage(undefined, { stayHidden: true })).toPNG().toString("base64"));
+    await fs.writeFile(testInfo.outputPath(`scrolled-settings-${zoom}.png`), Buffer.from(frame, "base64"));
+  }
+});
 
 for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
   test(`Window actions ${language}/${scheme}: icon and label have breathing room in both placements, with mouse and keyboard access`, async ({}, testInfo) => {
@@ -64,7 +185,7 @@ for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", 
       await page.keyboard.press("Tab");
       await page.keyboard.press("Shift+Tab");
       await expect(hide).toBeFocused();
-      await expect(hide).toHaveCSS("outline-style", "solid");
+      await expect.poll(() => hide.evaluate(node => /0px 0px 0px 2px/.test(getComputedStyle(node).boxShadow))).toBe(true);
       await page.screenshot({ path: testInfo.outputPath(`window-actions-${size}-focus.png`), animations: "disabled" });
       await page.keyboard.press("Enter");
       await expect.poll(() => host.evaluate((h, offset) => h.chooseCalls.slice(offset), before)).toEqual([["about", "hide"], ["about", "hide"]]);
@@ -74,8 +195,19 @@ for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", 
       await expect(menu).toBeVisible();
       await expect(menu.getByRole("menuitem")).toHaveText(language === "en"
         ? ["Quit RecordStuff"] : ["結束 RecordStuff"]);
+      // Measure the settled popup, after its slide/scale entrance animation.
+      await expect.poll(async () => {
+        const popup = await menu.boundingBox(), control = await hide.locator("..").boundingBox();
+        return popup && control ? control.y - popup.y - popup.height : 0;
+      }, { message: `${size}: menu opens above with breathing room` }).toBeGreaterThanOrEqual(7);
       const bounds = await menu.boundingBox(), viewport = await read<{ width: number; height: number }>(page, `({ width: innerWidth, height: innerHeight })`);
       expect(bounds && bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= viewport.width && bounds.y + bounds.height <= viewport.height).toBe(true);
+      const actions = await hide.locator("..").boundingBox();
+      if (bounds && actions) {
+        expect(Math.abs(bounds.x + bounds.width - actions.x - actions.width), `${size}: menu aligns with the control's right edge`).toBeLessThanOrEqual(1);
+        expect(actions.y - bounds.y - bounds.height, `${size}: menu opens above with breathing room`).toBeGreaterThanOrEqual(7);
+        if (size === "default") expect(Math.abs(bounds.x - actions.x), "sidebar: menu stays within the sidebar control's width").toBeLessThanOrEqual(1);
+      }
       await page.screenshot({ path: testInfo.outputPath(`window-actions-${size}-menu.png`), animations: "disabled" });
       await page.keyboard.press("Escape");
       await expect(menu).toBeHidden();
@@ -84,6 +216,8 @@ for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", 
       await expect(hide).toBeVisible();
       await page.keyboard.press("ArrowDown");
       await expect(menu).toBeVisible();
+      // The popup becomes visible before its focus handoff completes; send navigation to its item, not the trigger.
+      await expect(menu.getByRole("menuitem")).toBeFocused();
       await page.keyboard.press("End");
       await page.keyboard.press("Enter");
       await expect.poll(() => host.evaluate((h, offset) => h.chooseCalls.slice(offset), before)).toEqual([["about", "hide"], ["about", "hide"], ["about", "quit"]]);
@@ -114,9 +248,8 @@ const measure = (page: Page): Promise<{ small: string[]; tiny: string[]; faint: 
   };
   const lum = ([r, g, b]) => [r, g, b].map(c => { c /= 255; return c <= .03928 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4; }).reduce((s, c, i) => s + c * [.2126, .7152, .0722][i], 0);
   const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
-  const reference = !document.documentElement.classList.contains("dark") && rgba(getComputedStyle(document.documentElement).getPropertyValue("--chosen-text"));
+  const reference = !document.documentElement.classList.contains("dark") && rgba(getComputedStyle(document.documentElement).getPropertyValue("--primary"));
   const primaryInk = rgba(getComputedStyle(document.documentElement).getPropertyValue("--primary-foreground"));
-  const primaryHover = rgba(getComputedStyle(document.documentElement).getPropertyValue("--primary-hover"));
   const small = [], tiny = [], faint = [], outside = [];
   for (const el of document.querySelectorAll("main *, [role=dialog] *")) {
     if (el instanceof SVGElement || !shown(el) || el.closest(":disabled, [data-disabled]")) continue;
@@ -130,7 +263,7 @@ const measure = (page: Page): Promise<{ small: string[]; tiny: string[]; faint: 
     if (size < 12) small.push(name(el) + " " + size + "px");
     const referenceLabel = reference && rgba(s.color).every((value, i) => value === reference[i]);
     const primaryLabel = reference && rgba(s.color).every((value, i) => value === primaryInk[i]) &&
-      [reference, primaryHover].some(fill => back.every((value, i) => value === fill[i]));
+      Boolean(el.closest('[data-slot="button"].bg-primary, [role=tab][aria-selected=true]'));
     const minimum = referenceLabel || primaryLabel || size >= 24 || (size >= 18.66 && Number(s.fontWeight) >= 700) ? 3 : 4.5;
     if (contrast < minimum) faint.push(name(el) + " " + contrast.toFixed(2));
   }
@@ -160,10 +293,32 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       await expect(secondary).toBeVisible();
       await expect(page.locator("#status-detail")).toBeHidden();
       await expect(action).toHaveText(lang === "en" ? "Open System Settings" : "開啟系統設定");
-      await expect(secondary).toHaveText(lang === "en" ? "Already allowed? Relaunch" : "已經允許了？重新啓動");
+      await expect(secondary).toHaveText(lang === "en" ? "Already allowed? Relaunch" : "已經允許了？ 重新啓動");
       await expect.poll(() => read(page, `document.documentElement.classList.contains("dark")`)).toBe(scheme === "dark");
-      // Guidance uses ordinary neutral text; only the light-mode accent action uses the chosen brand minimum.
-      const minimum = (at: string) => scheme === "light" && at === "#status-action" ? 3 : 4.5;
+      await expect(page.locator(".permission-icon")).toBeVisible();
+      await expect(page.locator(".permission-icon")).toHaveAttribute("aria-hidden", "true");
+      if (size !== "default") {
+        await expect(page.locator(".tabs")).toHaveAttribute("data-variant", "line");
+        const spacing = await page.evaluate(() => {
+          const status = document.getElementById("status")!.getBoundingClientRect();
+          const tab = document.querySelector('.tabs [aria-selected="true"]')!;
+          const marker = getComputedStyle(tab, "::after");
+          return {
+            belowNavigation: status.top - (tab.getBoundingClientRect().bottom - parseFloat(marker.bottom)),
+            belowStatus: document.querySelector(".settings-card")!.getBoundingClientRect().top - status.bottom,
+          };
+        });
+        expect(spacing.belowNavigation).toBeGreaterThanOrEqual(20);
+        // The line navigation leaves roughly 30px before the permission card.
+        expect(spacing.belowNavigation).toBeLessThanOrEqual(32);
+        expect(spacing.belowStatus).toBe(24);
+      }
+      await expect(action.locator("svg")).toHaveCount(2);
+      await expect(action.locator("svg").first()).toBeVisible();
+      await expect(action.locator("svg").last()).toBeVisible();
+      // The permission action uses a quiet outlined surface in both themes, with ordinary readable text.
+      // Its previous saturated dark fill's 3:1 surface contrast is no longer the selected design.
+      const minimum = (_at: string) => 4.5;
       // Theme changes animate control colours: judge their settled contrast, not a frame in the transition.
       await expect.poll(async () => {
         const found = await read<UiMeasurement>(page, MEASURE_UI);
@@ -179,18 +334,30 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       await action.hover();
       await page.waitForTimeout(170);
       const hovered = await read<UiMeasurement>(page, MEASURE_UI);
-      expect(hovered.texts.find(entry => entry.at === "#status-action")?.contrast, `${size}: the action remains readable under the pointer`).toBeGreaterThanOrEqual(minimum("#status-action"));
+      expect(hovered.texts.find(entry => entry.at === "#status-action-label")?.contrast, `${size}: the action remains readable under the pointer`).toBeGreaterThanOrEqual(minimum("#status-action-label"));
       const secondaryStyle = () => read<{ background: string; color: string; decoration: string }>(page, `(() => {
         const style = getComputedStyle(document.getElementById("status-secondary"));
         return { background: style.backgroundColor, color: style.color, decoration: style.textDecorationLine };
       })()`);
       const resting = await secondaryStyle();
       expect(resting.decoration).toBe("none");
+      const relaunchLabel = page.locator("#status-secondary-label"), hint = page.locator("#status-secondary-hint");
+      await expect(relaunchLabel).toHaveCSS("text-decoration-line", "none");
+      const hintColor = await hint.evaluate(el => getComputedStyle(el).color);
+      const relaunchColor = await relaunchLabel.evaluate(el => getComputedStyle(el).color);
+      const primary = await page.locator('[id^="tab-"][aria-selected="true"]').evaluate(el => getComputedStyle(el, "::after").backgroundColor);
+      expect(relaunchColor).not.toBe(primary);
+      expect(relaunchColor).not.toBe(hintColor);
       await secondary.hover();
-      await expect.poll(secondaryStyle, { message: `${size}: secondary hover adds only an underline` })
-        .toEqual({ ...resting, decoration: "underline" });
+      await expect(relaunchLabel).toHaveCSS("color", relaunchColor);
+      await expect(relaunchLabel).toHaveCSS("text-decoration-line", "underline");
+      await expect(hint).toHaveCSS("color", hintColor);
+      await expect(hint).toHaveCSS("text-decoration-line", "none");
+      await expect.poll(secondaryStyle, { message: `${size}: only the relaunch label changes on hover` }).toEqual(resting);
       await page.locator("#status").screenshot({ path: testInfo.outputPath(`permission-hover-card-${lang}-${scheme}-${size}.png`), animations: "disabled" });
       await page.mouse.move(0, 0);
+      await expect(relaunchLabel).toHaveCSS("text-decoration-line", "none");
+      await expect(relaunchLabel).toHaveCSS("color", relaunchColor);
       await action.focus();
       await page.keyboard.press("Tab");
       await expect(secondary).toBeFocused();
@@ -204,6 +371,7 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       await expect(action).toHaveText(lang === "en" ? "Relaunch" : "重新啟動");
       await expect(secondary).toBeHidden();
       await expect(action).toBeVisible();
+      await expect(action.locator("svg")).toHaveCount(0);
     }
   });
 
@@ -217,13 +385,36 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
         const history = await measure(page);
         expect.soft(history, `${lang}/${tab}: history also stays readable and inside its panel`).toEqual({ small: [], tiny: [], faint: [], outside: [] });
         await page.locator("#troubleshooting-tools-tab").click();
-        await page.locator("#settings-data-cleanup-toggle").click();
       }
       await page.waitForTimeout(120);
       const found = await measure(page);
       expect.soft(found.small, `U067-1 ${lang}/${scheme}/${tab}: no text below 12px`).toEqual([]);
       expect.soft(found.tiny, `U067-1 ${lang}/${scheme}/${tab}: no control below 24px`).toEqual([]);
       expect.soft(found.faint, `U067-1 ${lang}/${scheme}/${tab}: no text below its contrast minimum`).toEqual([]);
+      if (tab === "recording") {
+        const menus = page.locator('[data-slot="select-trigger"]:visible');
+        expect(await menus.count(), "the full settings model includes menus to exercise").toBeGreaterThan(0);
+        for (const id of await menus.evaluateAll(nodes => nodes.map(node => node.id))) {
+          const trigger = page.locator(`#${id}`);
+          await trigger.hover();
+          await page.waitForTimeout(200);
+          expect.soft((await measure(page)).faint, `${lang}/${scheme}/${id}: hovered menu stays readable`).toEqual([]);
+          await trigger.click();
+          await expect(trigger).toHaveAttribute("aria-expanded", "true");
+          await page.mouse.move(10, 400);
+          await page.waitForTimeout(200);
+          expect.soft((await measure(page)).faint, `${lang}/${scheme}/${id}: open menu stays readable`).toEqual([]);
+          await page.screenshot({ path: test.info().outputPath(`select-open-${lang}-${scheme}-${id}.png`), animations: "disabled" });
+          await page.keyboard.press("Escape");
+          await expect(trigger).toHaveAttribute("aria-expanded", "false");
+        }
+      }
+      if (tab === "failures") {
+        await page.locator("#settings-data-cleanup-heading").hover();
+        await page.waitForTimeout(200);
+        expect.soft((await measure(page)).faint, `U067-1 ${lang}/${scheme}: cleanup warning stays readable under the pointer`).toEqual([]);
+        await page.screenshot({ path: test.info().outputPath(`cleanup-warning-${lang}-${scheme}-hover.png`), animations: "disabled" });
+      }
     }
   });
 }
@@ -238,7 +429,6 @@ for (const lang of ["en", "zh-TW"] as const) {
         const history = await measure(page);
         expect.soft(history, `${lang}/${tab}: history also stays readable and inside its panel`).toEqual({ small: [], tiny: [], faint: [], outside: [] });
         await page.locator("#troubleshooting-tools-tab").click();
-        await page.locator("#settings-data-cleanup-toggle").click();
       }
       await page.waitForTimeout(150);
       const found = await measure(page);
@@ -256,7 +446,7 @@ test("U067-3 a file name format the app would refuse marks the field invalid and
   await field.fill("{date} {nonsense}");
   const refused = await read<{ invalid: string | null; note: string; red: boolean }>(page, `(() => { const note = document.getElementById("setting-fileName-note");
     return { invalid: document.getElementById("setting-fileName").getAttribute("aria-invalid"), note: note.textContent,
-      red: (() => { const probe = document.createElement("p"); probe.style.color = "var(--destructive)"; document.body.append(probe); const colour = getComputedStyle(probe).color; probe.remove();
+      red: (() => { const probe = document.createElement("p"); probe.style.color = "var(--destructive-ink)"; document.body.append(probe); const colour = getComputedStyle(probe).color; probe.remove();
         return getComputedStyle(note).color === colour; })() }; })()`);
   expect.soft(refused.invalid === "true" && refused.red && /\{date\}/.test(refused.note), `U067-3 the refused format is marked invalid with its reason ${JSON.stringify(refused)}`).toBe(true);
   await field.press("Escape");
@@ -283,25 +473,62 @@ test("U067-0 both measurements see what they claim to: faded text over a faded b
 });
 
 /**
- * The look and motion restored on 2026-10-07 from the pre-shadcn page, measured on the computed page: the sidebar
- * marks the open tab with a raised tile and no line (the narrow strip keeps its line, in the chosen red), a switch that
- * is on is the chosen red, a card's menu is one line per item at its natural width, and a card's red play button grows
- * in under the pointer.
+ * Semantic selection and product interactions: responsive navigation, switches, readable menus,
+ * and recording play affordances use production styles, without the former macOS appearance contract.
  */
-test("U070-1 the sidebar, a switch, the card menu and a card's play button look and move as before shadcn", async () => {
+test("sidebar indicators stay inside their items and align with the brand icon across themes, languages and zoom", async () => {
+  for (const scheme of ["light", "dark"] as const) for (const language of ["en", "zh-TW"] as const) for (const zoom of [1, LAST_ZOOM]) {
+    await host.evaluate((h, args) => {
+      h.theme(args.scheme);
+      h.setSize(...h.SNAPSHOT_SIZES.default);
+      h.window().webContents.setZoomFactor(args.zoom);
+      h.pushModel({ type: "idle" }, { language: args.language, library: h.library().state });
+    }, { scheme, language, zoom });
+    await expect(page.locator(".tabs")).toHaveAttribute("data-variant", "sidebar");
+    const geometry = await page.evaluate(() => {
+      const brand = document.querySelector(".brand-mark")!.getBoundingClientRect();
+      return [...document.querySelectorAll<HTMLElement>(".tabs [role=tab]")].map(tab => {
+        const bounds = tab.getBoundingClientRect(), style = getComputedStyle(tab), marker = getComputedStyle(tab, "::after");
+        const left = bounds.left + parseFloat(style.borderLeftWidth) + parseFloat(marker.left);
+        const right = left + parseFloat(marker.width);
+        const top = bounds.top + parseFloat(style.borderTopWidth) + parseFloat(marker.top);
+        const bottom = top + parseFloat(marker.height);
+        const icon = tab.querySelector(".tab-icon")!.getBoundingClientRect();
+        return { id: tab.id, alignment: Math.abs(left - brand.left),
+          inside: left >= bounds.left && right <= bounds.right && top >= bounds.top && bottom <= bounds.bottom,
+          clearOfIcon: right < icon.left };
+      });
+    });
+    expect(geometry).toHaveLength(TABS.length);
+    for (const item of geometry) {
+      const context = `${scheme}/${language}/${zoom}/${item.id}`;
+      expect(item.alignment, `${context}: indicator aligns with the brand icon's left edge`).toBeLessThanOrEqual(0.5);
+      expect(item.inside, `${context}: indicator is part of the item's bounds`).toBe(true);
+      expect(item.clearOfIcon, `${context}: indicator has its own space before the icon`).toBe(true);
+    }
+  }
+});
+
+test("U070-1 the sidebar, a switch, the card menu and a card's play button use semantic tokens and preserve recording interactions", async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: "zh-TW", library: h.library().state }); });
   await page.locator("#tab-library").click();
+  // Measure the resting selection; the component coverage checks the pointer-hover fill separately.
+  await page.mouse.move(500, 20);
   await page.waitForTimeout(200);
-  const chosen = await read<string>(page, `(() => { const probe = document.createElement("p"); probe.style.color = "var(--chosen)"; document.body.append(probe); const c = getComputedStyle(probe).color; probe.remove(); return c; })()`);
-  const tab = (): Promise<{ line: string; fill: string; colour: string }> => read(page, `(() => { const t = document.getElementById("tab-library");
-    return { line: getComputedStyle(t, "::after").opacity, fill: getComputedStyle(t).backgroundColor, colour: getComputedStyle(t).color }; })()`);
+  const chosen = await read<string>(page, `(() => { const probe = document.createElement("p"); probe.style.color = "var(--primary)"; document.body.append(probe); const c = getComputedStyle(probe).color; probe.remove(); return c; })()`);
+  const tab = (): Promise<{ line: string; fill: string; markerColour: string; markerWidth: number }> => read(page, `(() => { const t = document.getElementById("tab-library"), marker = getComputedStyle(t, "::after");
+    return { line: marker.opacity, fill: getComputedStyle(t).backgroundColor, markerColour: marker.backgroundColor, markerWidth: parseFloat(marker.width) }; })()`);
   const wide = await tab();
-  expect.soft(wide.line === "0" && wide.fill !== "rgba(0, 0, 0, 0)", `U070-1 the sidebar raises the open tab on a tile, with no line ${JSON.stringify(wide)}`).toBe(true);
+  expect.soft(wide.line === "1" && wide.fill === "rgba(0, 0, 0, 0)" && wide.markerColour === chosen && wide.markerWidth === 3,
+    `U070-1 the sidebar uses a primary leading line on a transparent item ${JSON.stringify(wide)}`).toBe(true);
   await host.evaluate(h => h.setSize(...h.SNAPSHOT_SIZES.narrow));
-  // Resize first changes the responsive tab layout, then starts the indicator's opacity transition.
-  await expect.poll(async () => (await tab()).line, { message: "U070-1 the narrow strip keeps the open tab's line" }).toBe("1");
+  await expect.poll(async () => (await tab()).markerWidth, { message: "U070-1 the narrow strip uses a horizontal indicator" }).toBeGreaterThan(3);
+  expect((await tab()).markerColour).toBe(chosen);
+  const gap = await read<number>(page, `(() => { const t = document.getElementById("tab-library"), marker = getComputedStyle(t, "::after");
+    return document.querySelector(".settings-content").getBoundingClientRect().top - (t.getBoundingClientRect().bottom - parseFloat(marker.bottom)); })()`);
+  expect(gap, "U070-1 the tab underline leaves breathing room before its content").toBeGreaterThanOrEqual(12);
   await host.evaluate(h => h.setSize(...h.SNAPSHOT_SIZES.default));
-  await expect.poll(async () => (await tab()).line, { message: "U070-1 the wide sidebar removes the indicator line" }).toBe("0");
+  await expect.poll(async () => (await tab()).markerWidth, { message: "U070-1 the wide sidebar restores the leading indicator" }).toBe(3);
   // A card's play button: hidden and a little small at rest, the chosen red, and it grows in under the pointer.
   const play = (): Promise<{ opacity: string; scale: string; fill: string; transition: string }> => read(page, `(() => { const p = getComputedStyle(document.querySelector(".clip-play"));
     return { opacity: p.opacity, scale: p.transform, fill: p.backgroundColor, transition: p.transitionDuration }; })()`);
@@ -325,11 +552,11 @@ test("U070-1 the sidebar, a switch, the card menu and a card's play button look 
   expect.soft(on, "U070-1 a switch that is on is the chosen red").toBe(chosen);
 });
 
-test("U070-2 a settings menu is the app's own sheet: chosen with the pointer it leaves no focus ring, from the keyboard it keeps one, and Escape closes the menu, not the window", async () => {
+test("U070-2 a settings menu follows focus-visible, preserves focus after selection and Escape closes only the menu", async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: "en" }); });
   await page.locator("#tab-recording").click();
   const trigger = page.locator("#setting-screen");
-  const ring = (): Promise<string> => read(page, `getComputedStyle(document.getElementById("setting-screen")).outlineStyle`);
+  const ring = (): Promise<boolean> => read(page, `/0px 0px 0px 2px/.test(getComputedStyle(document.getElementById("setting-screen")).boxShadow)`);
   await trigger.click();
   await expect(page.locator('[data-slot="select-content"][data-open]')).toHaveCount(1);
   await page.keyboard.press("Escape");
@@ -342,12 +569,11 @@ test("U070-2 a settings menu is the app's own sheet: chosen with the pointer it 
   // Focus goes back to the menu once its sheet has closed.
   await expect.poll(() => read(page, `document.activeElement?.id`)).toBe("setting-screen");
   const pointer = await ring();
-  expect.soft(await read<boolean>(page, `document.activeElement?.id === "setting-screen"`) && pointer === "none",
-    `U070-2 chosen with the pointer, the menu keeps focus without a ring ${pointer}`).toBe(true);
+  expect.soft(await read<boolean>(page, `document.activeElement?.id === "setting-screen"`) && pointer === await trigger.evaluate(node => node.matches(":focus-visible")),
+    `U070-2 after pointer selection, the menu keeps focus and follows browser focus-visible ${pointer}`).toBe(true);
   await page.keyboard.press("Shift+Tab");
   await page.keyboard.press("Tab");
-  const keyboard = await ring();
-  expect.soft(keyboard, "U070-2 reached by the keyboard, the menu shows its ring").toBe("solid");
+  await expect.poll(ring, { message: "U070-2 reached by the keyboard, the menu shows its ring" }).toBe(true);
 });
 
 /** Pixels at each edge must move toward the state colour, including the edges over the thumbnail. */
@@ -373,8 +599,8 @@ async function visibleCardEdges(before: Buffer, after: Buffer, colour: string): 
       return points.filter(({ at }) => Array.from({ length: Math.ceil(3 * scale) }, (_, i) => {
         const [px, py] = at(i), k = (py * w + px) * 4;
         const distance = (pixels: Uint8ClampedArray) => Math.hypot(...[0, 1, 2].map(c => pixels[k + c]! - expected[c]!));
-        // Allow antialiasing at fractional CSS edges, but require an actual visible change toward the state colour.
-        return distance(b) + 20 < distance(a);
+        // Allow antialiasing at fractional CSS edges, but require a clear, opaque state line over the picture.
+        return distance(b) <= 20 && distance(b) + 20 < distance(a);
       }).some(Boolean)).map(({ edge }) => edge);
     } finally { plain.close(); marked.close(); }
   }, { before: before.toString("base64"), after: after.toString("base64"), colour });
@@ -402,7 +628,7 @@ for (const scheme of ["light", "dark"] as const) for (const layout of ["grid", "
         gaps: [t.left - r.left, face.top - r.top, face.right - r.right,
           ...(card.closest("#library").dataset.layout === "grid" ? [t.top - r.top, t.right - r.right] : [])] }; })()`);
     const focus = await edge();
-    expect.soft(focus.active?.endsWith("-open") && focus.line === "solid" && [1, 1.5].includes(focus.width) && focus.radius > 0 && focus.button === "none",
+    expect.soft(focus.active?.endsWith("-open") && focus.line === "solid" && focus.width === 2 && focus.radius > 0 && focus.button === "none",
       `U070-3 ${scheme}/${layout}: one focus line follows the whole card's corners ${JSON.stringify(focus)}`).toBe(true);
     expect.soft(focus.inset, "the focus line lies against the card's inner edge").toEqual(["0px", "0px", "0px", "0px"]);
     expect.soft(focus.gaps.every(gap => Math.abs(gap) < 0.5), "the thumbnail and button meet the card edges without a transparent border").toBe(true);

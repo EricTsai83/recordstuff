@@ -258,17 +258,26 @@ it("pages older failures in without announcing them or dropping focus, and still
 });
 
 it("updates the scroll hint when technical details grow the content", async () => {
+  const callbacks: ResizeObserverCallback[] = [];
+  const resize = vi.spyOn(globalThis, "ResizeObserver").mockImplementation(class {
+    constructor(callback: ResizeObserverCallback) { callbacks.push(callback); }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as typeof ResizeObserver);
   await show(view([row("tech")]));
   tab("failures").click();
   const panel = document.getElementById("settings-panel")!;
   const hint = document.getElementById("scroll-hint")!;
   panel.scrollTop = 0; Object.defineProperty(panel, "scrollHeight", { configurable: true, value: 0 }); panel.dispatchEvent(new Event("scroll"));
-  await vi.waitFor(() => expect(hint.hidden).toBe(true));
+  await vi.waitFor(() => expect(hint.style.opacity).toBe("0"));
   Object.defineProperty(panel, "scrollHeight", { configurable: true, value: 2000 });
   Object.defineProperty(panel, "clientHeight", { configurable: true, value: 300 });
   const technical = document.querySelector<HTMLElement>(".result-technical")!;
   technical.querySelector<HTMLElement>(".technical-summary")!.click();
-  await vi.waitFor(() => expect(hint.hidden).toBe(false));
+  for (const callback of callbacks) callback([], {} as ResizeObserver);
+  await vi.waitFor(() => expect(hint.style.opacity).toBe("1"));
+  resize.mockRestore();
 });
 
 it("describes a control only by the note and diagnostics that are shown", async () => {
