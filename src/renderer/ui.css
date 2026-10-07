@@ -62,10 +62,9 @@
   --text-xs--line-height: 1.45;
 }
 
-/* Tokens, the one place a colour is written (plan 069). The values are Apple Music's (2026-10-07): white content beside a
-   light grey sidebar, near-black words with Apple's secondary grey, hairline-bordered groups without shadows, its neutral
-   dark greys, and its red only for what is chosen — the open tab, a switch that is on, a count, an unread failure, a recording's play
-   button and the keyboard's ring. shadcn's semantic variables carry them; the app adds its own meanings the way shadcn
+/* Shared palette: a Music-inspired white canvas, pale neutral surfaces and red accents. In light mode the reference
+   red is shared by icons, action labels and filled actions. Neutral groups
+   use hairlines and no elevation; only menus and dialogs lift above the page. shadcn's semantic variables carry them; the app adds its own meanings the way shadcn
    adds --chart-* or --sidebar-*: --chosen, the recording and warning states, the brand mark, the selection raised in a
    track, and the media surfaces of the player and the full-screen page, which stay dark in both themes. */
 @theme inline {
@@ -92,10 +91,14 @@
   --color-chosen-foreground: var(--chosen-foreground);
   --color-chosen-text: var(--chosen-text);
   --color-chosen-text-foreground: var(--chosen-text-foreground);
+  --color-chosen-surface: var(--chosen-surface);
+  --color-chosen-surface-hover: var(--chosen-surface-hover);
   --color-selected: var(--selected);
   --color-sidebar: var(--sidebar);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-selected: var(--sidebar-selected);
+  --color-sidebar-selected-foreground: var(--sidebar-selected-foreground);
+  --color-sidebar-selected-icon: var(--sidebar-selected-icon);
   --color-recording: var(--recording);
   --color-warning: var(--warning);
   --color-success: var(--success);
@@ -110,6 +113,7 @@
   --color-media-hover: var(--media-hover);
   --color-media-error: var(--media-error);
   --color-media-backdrop: var(--media-backdrop);
+  --color-dialog-backdrop: var(--dialog-backdrop);
   --color-recording-surface: var(--recording-surface);
   --color-recording-border: var(--recording-border);
   --color-warning-surface: var(--warning-surface);
@@ -119,6 +123,7 @@
   --shadow-selected: var(--selected-shadow);
   --shadow-sidebar-selected: var(--sidebar-selected-shadow);
   --shadow-toast: var(--toast-shadow);
+  --shadow-popup: var(--popup-shadow);
   --shadow-chosen: var(--chosen-shadow);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -127,7 +132,7 @@
 }
 :root {
   color-scheme: light dark;
-  --radius: 0.625rem;
+  --radius: 0.75rem;
   --background: #ffffff;
   --foreground: #1d1d1f;
   --card: #ffffff;
@@ -136,31 +141,33 @@
   --card-shadow: 0 0 transparent;
   --popover: #ffffff;
   --popover-foreground: #1d1d1f;
-  /* Ink: the one action a place is for, a dark fill with light words. */
-  --primary: #1d1d1f;
-  --primary-foreground: #ffffff;
+  /* The single light-mode brand colour, sampled from the reference gear. Accent roles alias it below. */
+  --primary: #f31b34;
+  --primary-hover: #fa354b;
+  --primary-foreground: #fff;
   /* A tile: a row's icon, an empty state's mark. */
-  --secondary: #f2f2f7;
+  --secondary: #f2f2f5;
   --secondary-foreground: #1d1d1f;
   /* The recessed track of the tab strip and segmented controls, and a slider's track. */
   --muted: #efeff2;
   /* At least 4.5:1 on the page, the cards and the muted fills in both themes (plan 067). */
   --muted-foreground: #636368;
   /* A control under the pointer, a menu's highlighted item. */
-  --accent: #f2f2f5;
+  --accent: #eeeef1;
   --accent-foreground: #1d1d1f;
   --destructive: #b91c1c;
   /* Hairlines between rows; --input is a control's own border. */
   --border: #e5e5ea;
-  --input: #d2d2d7;
-  --ring: #fa2d48;
-  /* The app's red for what is chosen, as before shadcn: Apple Music's pinkish red in light, a calmer, deeper red the
-     maintainer picked for dark (2026-10-05). */
-  --chosen: #fa2d48;
-  --chosen-foreground: #fff;
-  /* Words, and a count's fill, in the chosen red: a step deeper in light and lighter in dark, for 4.5:1 (plan 067). */
-  --chosen-text: #cc0e2c;
-  --chosen-text-foreground: #fff;
+  --input: #dcdce1;
+  --ring: var(--primary);
+  --chosen: var(--primary);
+  --chosen-foreground: var(--primary-foreground);
+  /* Main-colour text, selection icons and filled actions all use primary, with white text over the fill. */
+  --chosen-text: var(--primary);
+  --chosen-text-foreground: var(--primary-foreground);
+  /* Quiet actions use a light tint of the same red, with readable labels even under the pointer. */
+  --chosen-surface: #fff0f2;
+  --chosen-surface-hover: #ffe5e9;
   --chosen-shadow: 0 4px 12px rgb(0 0 0 / 0.25);
   /* The choice raised in a track (a segmented control, the narrow tab strip). */
   --selected: #ffffff;
@@ -168,12 +175,15 @@
   /* The wide window's sidebar, its hover and the open tab's raised tile. */
   --sidebar: #f5f5f7;
   --sidebar-accent: rgb(0 0 0 / 0.04);
-  --sidebar-selected: #e8e8ed;
+  /* A light neutral tile; the selected name and icon share the reference accent exactly. */
+  --sidebar-selected: #f0eff0;
+  --sidebar-selected-foreground: var(--primary);
+  --sidebar-selected-icon: var(--primary);
   --sidebar-selected-shadow: 0 0 transparent;
   /* Recording: the status title (4.5:1, plan 067), the status mark's tile and halo, and its card. */
   --recording: #d92020;
-  --recording-mark: #e5352b;
-  --recording-halo: rgb(229 53 43 / 0.14);
+  --recording-mark: var(--primary);
+  --recording-halo: color-mix(in srgb, var(--primary) 14%, transparent);
   --recording-surface: #fff3f2;
   --recording-border: #fbd5d2;
   /* Something to fix: the status card, its mark and a row's diagnostics, in amber. */
@@ -183,7 +193,7 @@
   /* Ready: the wide sidebar's status light. */
   --success: #16a34a;
   /* The record dot of the brand mark. */
-  --indicator: #ff3b30;
+  --indicator: var(--primary);
   /* The brand and status mark's tile and ring, the same in both themes. */
   --brand: #18181b;
   --brand-foreground: #fff;
@@ -198,6 +208,7 @@
   --media-hover: rgb(0 0 0 / 0.22);
   --media-error: #ff8a80;
   --media-backdrop: rgb(0 0 0 / 0.45);
+  --dialog-backdrop: rgb(0 0 0 / 0.35);
   --media-shade-top: linear-gradient(rgb(0 0 0 / 0.62), rgb(0 0 0 / 0.28) 55%, transparent);
   --media-shade-bottom: linear-gradient(transparent, rgb(0 0 0 / 0.32) 40%, rgb(0 0 0 / 0.72));
   --media-text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
@@ -205,6 +216,7 @@
   --media-thumb-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
   --player-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
   --toast-shadow: 0 4px 12px rgb(0 0 0 / 0.1);
+  --popup-shadow: 0 8px 30px rgb(0 0 0 / 0.12), 0 2px 8px rgb(0 0 0 / 0.06);
   /* An opaque mask stop: a mask reads only its alpha. */
   --mask-opaque: #000;
   /* The content's thin scroll bar thumb. */
@@ -224,8 +236,9 @@
   --card-shadow: 0 0 transparent;
   --popover: #2c2c2e;
   --popover-foreground: #f5f5f7;
-  --primary: #f5f5f7;
-  --primary-foreground: #1d1d1f;
+  --primary: #ff7a80;
+  --primary-hover: #ff9196;
+  --primary-foreground: #18181b;
   --secondary: #3a3a3c;
   --secondary-foreground: #f5f5f7;
   --muted: #3a3a3c;
@@ -235,18 +248,22 @@
   --destructive: #fca5a5;
   --border: #38383a;
   --input: #48484a;
-  --ring: #e85a62;
-  --chosen: #e85a62;
-  --chosen-text: #ff7a80;
-  --chosen-text-foreground: #18181b;
+  --ring: var(--primary);
+  --chosen: var(--primary);
+  --chosen-text: var(--primary);
+  --chosen-text-foreground: var(--primary-foreground);
+  --chosen-surface: var(--secondary);
+  --chosen-surface-hover: var(--accent);
   --selected: #636366;
   --sidebar: #252527;
   --sidebar-accent: rgb(255 255 255 / 0.05);
   --sidebar-selected: #3a3a3c;
+  --sidebar-selected-foreground: var(--chosen-text);
+  --sidebar-selected-icon: var(--chosen);
   --sidebar-selected-shadow: 0 0 transparent;
   --recording: #f87171;
-  --recording-mark: #ff5a4f;
-  --recording-halo: rgb(255 90 79 / 0.18);
+  --recording-mark: var(--primary);
+  --recording-halo: color-mix(in srgb, var(--primary) 18%, transparent);
   --recording-surface: #2a1715;
   --recording-border: #4a2421;
   --warning: #f3ca82;
@@ -254,6 +271,7 @@
   --warning-border: #4a3d20;
   --success: #4ade80;
   --scrollbar: rgb(255 255 255 / 0.22);
+  --popup-shadow: 0 12px 36px rgb(0 0 0 / 0.35), 0 2px 8px rgb(0 0 0 / 0.2);
 }
 @media (min-resolution: 2dppx) {
   :root {
@@ -447,8 +465,9 @@
     scrollbar-gutter: stable;
   }
   .page-title {
-    font-size: 24px;
-    font-weight: 600;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.025em;
     margin: 0 0 18px;
   }
   .section {
@@ -477,10 +496,10 @@
     min-height: 28px;
     margin-left: auto;
     padding: 3px 8px;
-    border: 1px solid var(--input);
-    border-radius: 6px;
-    background: var(--card);
-    color: var(--foreground);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    background: var(--secondary);
+    color: var(--chosen-text);
     font-size: 13px;
     font-weight: 500;
   }

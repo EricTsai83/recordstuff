@@ -21,7 +21,7 @@ export function Troubleshooting() {
             key={value}
             value={value}
             id={`troubleshooting-${value}-tab`}
-            className="focus-ring flex min-h-8 min-w-0 flex-auto items-center justify-center rounded-md px-3 py-1 text-xs font-medium break-keep text-muted-foreground hover:text-foreground aria-selected:bg-sidebar-selected aria-selected:text-chosen-text"
+            className="focus-ring flex min-h-8 min-w-0 flex-auto items-center justify-center rounded-md px-3 py-1 text-xs font-medium break-keep text-muted-foreground hover:text-foreground aria-selected:bg-selected aria-selected:text-foreground aria-selected:shadow-selected"
           >
             {model.text(label)}
           </Tabs.Tab>

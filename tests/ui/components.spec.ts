@@ -512,3 +512,85 @@ test("context menu opens at the pointer, shares file actions, and restores focus
   await expect(page.locator("#clip-a-renamed-open")).toBeFocused();
   await expect(page.locator("#feedback")).toContainText("Renamed to Context menu recording.mp4");
 });
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`rose actions keep readable labels in ${scheme} at rest and under the pointer`, async ({}, testInfo) => {
+    await host.evaluate((h, theme) => h.theme(theme), scheme);
+    await expect(page.locator("html")).toHaveClass(scheme === "dark" ? /dark/ : /^(?!.*\bdark\b)/);
+    // Read the actual painted foreground/background, including translucent ancestor fills.
+    const contrast = async (selector: string): Promise<number> => page.locator(selector).evaluate(element => {
+      const context = new OffscreenCanvas(1, 1).getContext("2d")!;
+      const rgba = (value: string): number[] => {
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = value;
+        context.fillRect(0, 0, 1, 1);
+        const pixel = context.getImageData(0, 0, 1, 1).data;
+        return [pixel[0]!, pixel[1]!, pixel[2]!, pixel[3]! / 255];
+      };
+      const over = (top: number[], under: number[]): number[] => top.slice(0, 3).map((value, i) => value * top[3]! + under[i]! * (1 - top[3]!)).concat(1);
+      const ancestors: Element[] = [];
+      for (let node: Element | null = element; node; node = node.parentElement) ancestors.unshift(node);
+      const background = ancestors.reduce((under, node) => over(rgba(getComputedStyle(node).backgroundColor), under), [255, 255, 255, 1]);
+      const foreground = over(rgba(getComputedStyle(element).color), background);
+      const luminance = (color: number[]): number => color.slice(0, 3).map(c => {
+        c /= 255;
+        return c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4;
+      }).reduce((total, value, i) => total + value * [.2126, .7152, .0722][i]!, 0);
+      const [low, high] = [luminance(background), luminance(foreground)].sort((a, b) => a - b);
+      return (high! + .05) / (low! + .05);
+    });
+    const check = async (selector: string, minimum = 4.5): Promise<void> => {
+      expect(await contrast(selector), `${selector} at rest`).toBeGreaterThanOrEqual(minimum);
+      await page.locator(selector).hover();
+      await page.waitForTimeout(200);
+      expect(await contrast(selector), `${selector} hovered`).toBeGreaterThanOrEqual(minimum);
+    };
+    // Light labels and filled actions use the requested primary without a darker companion.
+    const accentMinimum = scheme === "light" ? 3 : 4.5;
+    const tabAccent = await page.locator("#tab-library").evaluate(node => getComputedStyle(node).color);
+    const primary = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.style.backgroundColor = "var(--primary)";
+      probe.style.color = "var(--primary-foreground)";
+      document.body.append(probe);
+      const style = getComputedStyle(probe);
+      const colors = { fill: style.backgroundColor, foreground: style.color };
+      probe.remove();
+      return colors;
+    });
+    expect(tabAccent).toBe(primary.fill);
+    expect(await page.locator("#tab-library .tab-icon").evaluate(node => getComputedStyle(node).color)).toBe(primary.fill);
+    await check("#tab-library", accentMinimum);
+    for (const layout of ["grid", "list"] as const) {
+      await page.locator(`#library-layout-${layout}`).click();
+      const clip = page.locator("#clip-a-open"), play = clip.locator(".clip-play");
+      await clip.hover();
+      await expect(play).toHaveCSS("opacity", "1");
+      await expect(play).toHaveCSS("background-color", primary.fill);
+      await expect(play).toHaveCSS("color", primary.foreground);
+      await check("#clip-a-open .clip-play", accentMinimum);
+      await page.screenshot({ path: testInfo.outputPath(`primary-play-${scheme}-${layout}.png`), animations: "disabled" });
+    }
+    await page.locator("#tab-recording").click();
+    const on = page.getByRole("switch", { name: "Countdown sound" });
+    await expect(on).toHaveCSS("background-color", primary.fill);
+    await expect(on.locator('[data-slot="switch-thumb"]')).toHaveCSS("background-color", primary.foreground);
+    await on.evaluate(node => { node.focus(); });
+    await page.keyboard.press("Tab");
+    const focused = page.locator(":focus-visible").first();
+    await expect(focused).toHaveCSS("outline-color", primary.fill);
+    await page.screenshot({ path: testInfo.outputPath(`primary-controls-${scheme}.png`), animations: "disabled" });
+    await page.locator("#tab-failures").click();
+    await page.locator('[data-result-id="failure"] .result-summary').click();
+    await check('[data-result-id="failure"] [data-action="acknowledge"]', accentMinimum);
+    await page.locator("#tab-library").click();
+    await page.locator("#clip-a").click({ button: "right", position: { x: 30, y: 40 } });
+    await page.locator("#clip-context-menu").getByRole("menuitem", { name: "Rename…", exact: true }).click();
+    await page.locator("#clip-rename-input").fill("Readable rose action");
+    await expect(page.locator("#clip-rename-confirm")).toBeEnabled();
+    await expect(page.locator("#clip-rename-confirm")).toHaveCSS("background-color", primary.fill);
+    await check("#clip-rename-confirm", accentMinimum);
+    await page.screenshot({ path: testInfo.outputPath(`rose-actions-${scheme}.png`), animations: "disabled" });
+    await page.keyboard.press("Escape");
+  });
+}
