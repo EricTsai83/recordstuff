@@ -9,9 +9,6 @@ test("layout switching with 300 recordings preserves cards and applies updated f
     h.setView({ ...view, library: { ...view.library, layout: "list", items: Array.from({ length: 300 }, (_, i) => ({
       ...template, id: `perf-${i}`, title: `Recording ${i}`, name: `${i}.mp4`, day: `Day ${Math.floor(i / 10)}`,
     })) } });
-    const debug = h.window().webContents.debugger;
-    debug.attach("1.3");
-    await debug.sendCommand("Performance.enable");
   });
   await expect(page.locator(".clip")).toHaveCount(300);
   const transitions = await page.locator(".clip-open").first().evaluate(node => getComputedStyle(node).transitionProperty.split(",").map(value => value.trim()));
@@ -20,12 +17,8 @@ test("layout switching with 300 recordings preserves cards and applies updated f
   await page.evaluate(() => {
     (window as unknown as { originalCard: Element | null }).originalCard = document.querySelector(".clip");
   });
-  const metrics = () => host.evaluate(async h => {
-    const result = await h.window().webContents.debugger.sendCommand("Performance.getMetrics");
-    return Object.fromEntries(result.metrics.map((m: { name: string; value: number }) => [m.name, m.value])) as Record<string, number>;
-  });
-  const before = await metrics();
-  for (let i = 0; i < 6; i++) {
+  // A round trip covers both layouts; timing diagnostics without a budget are not a regression gate.
+  for (let i = 0; i < 2; i++) {
     const layout = i % 2 ? "list" : "grid";
     await page.locator(`#library-layout-${layout}`).click();
     await expect(page.locator("#library")).toHaveAttribute("data-layout", layout);
@@ -33,10 +26,6 @@ test("layout switching with 300 recordings preserves cards and applies updated f
     // Wait for the reply and a painted frame, including the second render after persistence.
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   }
-  const after = await metrics();
-  const timing = Object.fromEntries(["ScriptDuration", "LayoutDuration", "RecalcStyleDuration", "TaskDuration"].map(key => [key, (after[key]! - before[key]!) * 1000]));
-  await testInfo.attach("layout-timing-ms", { body: JSON.stringify(timing, null, 2), contentType: "application/json" });
-  console.log("layout-timing-ms", timing);
   expect(await page.evaluate(() => document.querySelector(".clip") === (window as unknown as { originalCard: Element }).originalCard)).toBe(true);
   await page.locator("#library-layout-grid").click();
   await expect(page.locator("#library")).toHaveAttribute("data-layout", "grid");

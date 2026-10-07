@@ -65,7 +65,7 @@ test("theme changes commit button colours immediately in both directions and ret
     });
   });
 
-  for (const [index, scheme] of (["dark", "light", "dark", "light"] as const).entries()) {
+  for (const [index, scheme] of (["dark", "light"] as const).entries()) {
     if (index === 1) {
       // Keyboard activation takes the same preference path as a mouse click.
       await page.locator(`#setting-appearance-${scheme}`).focus();

@@ -11,6 +11,10 @@ import type { Page, TestInfo } from "@playwright/test";
 import fs from "node:fs";
 import { read, until, clickAt, centre, eventually } from "./helpers";
 
+// Keep the focus-ring behavior without pinning the design system to a 2px or 3px spread.
+const hasFocusRing = (shadow: string): boolean =>
+  [...shadow.matchAll(/0px 0px 0px ([0-9.]+)px/g)].some(layer => Number(layer[1]) > 0);
+
 const FAILURE = { id: "fixture-failure", occurredAt: "2026-09-24T12:00:00Z", code: "disk_full", detail: "ENOSPC: controlled fixture", outcome: "pending" };
 type Failure = Partial<typeof FAILURE> & { partialPath?: string; recordingPath?: string };
 
@@ -406,7 +410,7 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
     await page.waitForTimeout(150);
     await shot(testInfo, `result-focus-header-en-${scheme}.png`);
   }
-  expect.soft(/0px 0px 0px 2px/.test(headerFocus.ring) && headerFocus.width === expectedWidth && headerFocus.own === "1" && headerFocus.next === "1",
+  expect.soft(hasFocusRing(headerFocus.ring) && headerFocus.width === expectedWidth && headerFocus.own === "1" && headerFocus.next === "1",
     `S100 keyboard focus on a header draws the standard ring on its control and keeps the hairlines beside it (devicePixelRatio ${dpr}) ${JSON.stringify({ headerFocus, colours })}`).toBe(true);
   await host.evaluate(h => h.theme("light"));
   await page.waitForTimeout(100);
@@ -415,7 +419,7 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
     const active = document.activeElement; const style = getComputedStyle(active); return { row: getComputedStyle(r).borderTopColor, width: getComputedStyle(r).borderTopWidth,
     outline: style.borderColor, style: style.boxShadow, tag: active.closest(".recording-result")?.id ?? "" }; })()`);
   await shot(testInfo, "result-focus-inside-en-light.png");
-  expect.soft(inside.tag.endsWith("t-d2") && inside.row === "rgba(0, 0, 0, 0)" && inside.width === "1px" && inside.outline === colours.accent && /0px 0px 0px 2px/.test(inside.style),
+  expect.soft(inside.tag.endsWith("t-d2") && inside.row === "rgba(0, 0, 0, 0)" && inside.width === "1px" && inside.outline === colours.accent && hasFocusRing(inside.style),
     `S101 with focus on a control inside an open row, the row stays neutral and the focused control shows the standard ring ${JSON.stringify(inside)}`).toBe(true);
   await clickAt(page, ".recording-result:nth-child(1) > .result-summary");
   await page.waitForTimeout(80);
@@ -445,7 +449,7 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
   let technical = await read<boolean>(page, `document.activeElement.matches(".result-technical > .technical-summary")`);
   for (let i = 0; i < 4 && !technical; i += 1) { await page.keyboard.press("Tab"); await page.waitForTimeout(60); technical = await read<boolean>(page, `document.activeElement.matches(".result-technical > .technical-summary")`); }
   const disclosure = await read<{ style: string; colour: string; width: string }>(page, `(() => { const s = getComputedStyle(document.activeElement); return { style: s.boxShadow, colour: s.borderColor, width: s.borderWidth }; })()`);
-  expect.soft(technical && /0px 0px 0px 2px/.test(disclosure.style),
+  expect.soft(technical && hasFocusRing(disclosure.style),
     `S106 keyboard focus on Technical details shows the standard focus ring ${JSON.stringify({ technical, ...disclosure })}`).toBe(true);
   // Each tab keeps its own scroll position through wheel scrolling; an entry scrolls to its row.
   const scrollTop = (): Promise<number> => read(page, `document.getElementById("settings-panel").scrollTop`);
@@ -509,11 +513,11 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       await page.waitForTimeout(40);
       return read<boolean>(page, `document.activeElement === document.querySelector(${JSON.stringify(selector)})`);
     };
-    // Primitive-specific shadcn rings replace the former thin-outline-only contract.
-    const ring = (): Promise<{ keyboard: boolean; line: boolean; halo: string }> => read(page, `(() => { const el = document.activeElement, s = getComputedStyle(el);
-      const probe = document.createElement("p"); probe.style.color = "var(--ring)"; document.body.append(probe); const red = getComputedStyle(probe).color; probe.remove();
-      return { keyboard: el.matches(":focus-visible"), line: /0px 0px 0px [23]px/.test(s.boxShadow),
-        halo: s.boxShadow.match(/0px 0px 0px [23]px/)?.[0] ?? "" }; })()`);
+    const ring = async (): Promise<{ keyboard: boolean; line: boolean; halo: string }> => {
+      const focus = await read<{ keyboard: boolean; shadow: string }>(page, `(() => { const el = document.activeElement;
+        return { keyboard: el.matches(":focus-visible"), shadow: getComputedStyle(el).boxShadow }; })()`);
+      return { keyboard: focus.keyboard, line: hasFocusRing(focus.shadow), halo: focus.shadow };
+    };
     await clickAt(page, "#tab-recording"); await page.waitForTimeout(80);
     for (const [id, name, selector] of [["S110", "tab", "#tab-recording"], ["S111", "menu", "#setting-screen"], ["S112", "segment", "#setting-countdown button[aria-pressed=true]"],
       ["S113", "switch", "#setting-countdownSound"]] as const) {

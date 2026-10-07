@@ -114,7 +114,9 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
         }
       }
       await picture(page, testInfo, `panel-${lang}-${scheme}-${size}-${state}.png`, BASELINED.includes(state));
-      if (state !== "library") continue;
+      // Geometry and reviewed pictures above retain the full matrix. Input behavior is independent of
+      // width; exercise overlays at the tightest size, in both languages and palettes (four runs, not twelve).
+      if (state !== "library" || size !== "minimum") continue;
       // The player over the tab. The file is served, byte ranges and all, but holds no media: what a recording that cannot be played gets.
       await page.locator(".clip-open").first().click();
       const opened = await until(page, `(() => { const p = document.querySelector(".player"); return Boolean(p?.hasAttribute("data-open") && !p.querySelector(".player-error").hidden); })()`);
