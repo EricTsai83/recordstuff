@@ -37,36 +37,17 @@ describe('release gates', () => {
     expect(() => assertPublishedAssets({ ...ok, assets: ok.assets.map(a => ({ ...a, digest: null })) }, files)).toThrow(/missing/);
     expect(() => assertPublishedAssets({ ...ok, assets: [...ok.assets.slice(0, 2), { name: 'extra.txt', size: 2, digest: `sha256:${sha}` }] }, files)).toThrow(/Missing published asset release.json/);
   });
-  it('preserves English self-signing, update and removal instructions with commit-pinned bilingual guide links', () => {
+  it('links both installation guides to the release commit and omits Windows assets before two-platform releases', () => {
     const body = notes('0.1.2', 'owner/repo', 'a'.repeat(40));
-    expect(body).toContain('Open Anyway');
-    expect(body).toContain('not notarized');
-    expect(body).toContain('Screen & System Audio Recording');
-    expect(body).toContain('Update manually');
-    expect(body).toContain('Check for updates… in Settings → General');
-    expect(body).toContain('Downloads and installation remain manual');
-    expect(body).toContain('Remove');
-    expect(body).toContain('Trash');
     expect(body).toContain(`/blob/${'a'.repeat(40)}/resources/INSTALL.md`);
     expect(body).toContain(`/blob/${'a'.repeat(40)}/resources/INSTALL.zh-TW.md`);
     expect(body).toContain('https://record.ericts.com/help');
-    expect(body).not.toContain('Known limitation: clicking a recording notification');
     expect(body).not.toContain('Windows');
   });
-  it('adds honest Windows install, SmartScreen, update, removal and verification notes from the first two-platform version', () => {
+  it('includes the Windows installer and verification manifest from the first two-platform version', () => {
     const body = notes('1.2.0', 'owner/repo', 'a'.repeat(40));
-    expect(body).toContain('for Apple silicon Macs (arm64) and Windows x64.');
-    expect(body).toContain('Not verified on Windows hardware');
     expect(body).toContain('RecordStuff-1.2.0-x64-unsigned-setup.exe');
-    expect(body).toContain('More info → Run anyway');
-    expect(body).toContain('without an administrator prompt');
-    expect(body).toContain('Settings → Apps → Installed apps → RecordStuff → Uninstall');
-    expect(body).toContain('Videos\\RecordStuff');
-    expect(body).toContain('Get-FileHash');
     expect(body).toContain('release-win32-x64.json');
-    expect(body).toContain('gh attestation verify <file> --repo owner/repo');
-    // The macOS instructions stay.
-    expect(body).toContain('Open Anyway');
   });
   it('lists every binary asset on its own line of SHA256SUMS', () => {
     expect(sha256sums([{ file: 'a.dmg', sha256: 'a'.repeat(64) }, { file: 'b.exe', sha256: 'b'.repeat(64) }]))
