@@ -266,6 +266,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
         ) : group.id === "about" ? (
           <div className="about-identity">
             <h2 id={`${id}-label`} className="about-title">
+              <span className="about-mark" aria-hidden="true" />
               RecordStuff
             </h2>
             <p id={`${id}-note`} className="about-version" hidden={!group.note}>{group.note}</p>

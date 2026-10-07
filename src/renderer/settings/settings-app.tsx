@@ -74,7 +74,7 @@ function Status() {
         </div>
         <p
           id="status-detail"
-          className="status-detail"
+          className={permission ? "status-detail text-center leading-relaxed" : "status-detail"}
           hidden={permission || !status?.detail || Boolean(current?.hint)}
         >
           {status?.detail}
@@ -114,7 +114,7 @@ function Status() {
           variant="link"
           wrap={permission}
           className={permission
-            ? "darwin:wide:window-no-drag w-full min-h-7 rounded-lg px-0 py-1 text-center font-normal text-muted-foreground hover:text-muted-foreground hover:no-underline underline-offset-3"
+            ? "darwin:wide:window-no-drag w-full min-h-7 flex-wrap gap-x-1 gap-y-0 rounded-lg px-0 py-1 text-center font-normal text-muted-foreground hover:text-muted-foreground hover:no-underline underline-offset-3"
             : "darwin:wide:window-no-drag h-auto min-h-6 max-w-full justify-start px-0 text-left font-normal whitespace-normal underline underline-offset-3 text-muted-foreground hover:text-primary"}
           hidden={!status?.secondaryAction}
           aria-label={permission ? status?.secondaryAction?.label : undefined}
@@ -131,9 +131,9 @@ function Status() {
         >
           {permission ? (
             <>
-              <span id="status-secondary-hint" className="text-[color-mix(in_oklab,var(--muted-foreground)_80%,var(--foreground))]" hidden={!hasAllowedHint}>{allowedHint}</span>
+              <span id="status-secondary-hint" className="whitespace-nowrap text-[color-mix(in_oklab,var(--muted-foreground)_80%,var(--foreground))]" hidden={!hasAllowedHint}>{allowedHint}</span>
               {hasAllowedHint && " "}
-              <span id="status-secondary-label" className="font-bold text-primary group-hover/button:text-primary/85 decoration-current group-hover/button:underline underline-offset-3">
+              <span id="status-secondary-label" className="whitespace-nowrap font-bold text-primary group-hover/button:text-primary/85 decoration-current group-hover/button:underline underline-offset-3">
                 {relaunchLabel}
               </span>
             </>

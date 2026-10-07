@@ -198,7 +198,7 @@ test("S039–S041 the status card: no Start when ready; Change output folder… 
   await host.evaluate(h => h.pushModel({ type: "needsPermission", needsRelaunch: false }));
   await expect(page.locator("#status-secondary")).toBeVisible();
   await expect(page.locator("#status-secondary")).toHaveText("Already allowed? Relaunch");
-  await expect(page.locator("#status-action")).toHaveText("Open System Settings");
+  await expect(page.locator("#status-action")).toHaveText("Open Settings");
   await clearCalls();
   const link = await read<{ x: number; y: number; label: string; button: string; below: boolean; inside: boolean }>(page, `(() => {
     const el = document.getElementById("status-secondary"), r = el.getBoundingClientRect(), card = document.getElementById("status").getBoundingClientRect();
@@ -209,7 +209,7 @@ test("S039–S041 the status card: no Start when ready; Change output folder… 
   await expect.poll(calls).toEqual([["status", "relaunch"]]);
   expect.soft({ label: link.label, button: link.button, below: link.below, inside: link.inside },
     "S041 status card: a missing permission offers Open System Settings, then Relaunch; a click on the link asks main for status/relaunch")
-    .toEqual({ label: "Already allowed? Relaunch", button: "Open System Settings", below: true, inside: true });
+    .toEqual({ label: "Already allowed? Relaunch", button: "Open Settings", below: true, inside: true });
 });
 
 for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {

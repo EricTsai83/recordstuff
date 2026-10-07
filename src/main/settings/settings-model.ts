@@ -560,7 +560,7 @@ export function settingsStatus(state: RecordingState, ctx: AppContext): Settings
  * recording. Start, Stop and Cancel stay with the menu bar icon, its menu and the shortcut, where recording begins.
  */
 const STATUS_ACTION_LABELS: Record<StatusActionId, PlainMessageKey> = {
-  permission: "Open System Settings", relaunch: "Relaunch", folder: "Change output folder…", primary: "Use Primary display",
+  permission: "Open Settings", relaunch: "Relaunch", folder: "Change output folder…", primary: "Use Primary display",
 };
 const STATUS_ACTIONS: Record<StatusActionId, AppAction> = {
   permission: "openPermissionSettings", relaunch: "relaunch", folder: "changeOutputDir", primary: { setDisplay: { kind: "primary" } },
@@ -584,7 +584,7 @@ function statusText(state: RecordingState, ctx: AppContext): SettingsStatus {
       return { tone: "attention", title: t("Screen recording access", language),
         detail: t(state.needsRelaunch
           ? "Relaunch RecordStuff after allowing access in System Settings."
-          : "Allow RecordStuff to record your screen.", language) };
+          : "Allow screen recording in System Settings.", language) };
     case "starting": return { tone: "busy", title: t("Starting… Check for system permission prompts", language), detail: "" };
     case "countdown": return { tone: "busy", title: t("Recording starts in {seconds} s", language, { seconds: state.remaining }), detail: "" };
     case "recording": return { tone: "recording", title: t("Recording", language), detail: "" };

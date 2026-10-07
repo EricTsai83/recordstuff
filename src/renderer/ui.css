@@ -232,6 +232,7 @@
   --media-icon-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
   --media-thumb-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
   --player-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
+  --settings-content-shadow: 0 2px 8px rgb(0 0 0 / 0.04), -3px 0 12px rgb(0 0 0 / 0.035);
   /* An opaque mask stop: a mask reads only its alpha. */
   --mask-opaque: #000;
   --destructive-foreground: oklch(0.9848 0.0013 106.4233);
@@ -452,6 +453,7 @@
   }
   /* The app mark, in the status card and the brand: a dark tile, a white ring and the red dot, every part sized from
      --m so the ring and the dot share one centre at any size. */
+  .about-mark,
   .brand-mark,
   .status-mark {
     --m: 32px;
@@ -467,8 +469,10 @@
   .status-mark {
     --m: 36px;
   }
+  .about-mark::before,
   .brand-mark::before,
   .status-mark::before,
+  .about-mark::after,
   .brand-mark::after,
   .status-mark::after {
     content: "";
@@ -476,11 +480,13 @@
     box-sizing: border-box;
     border-radius: 50%;
   }
+  .about-mark::before,
   .brand-mark::before,
   .status-mark::before {
     inset: calc(var(--m) * 0.22);
     border: calc(var(--m) * 0.0625) solid var(--brand-foreground);
   }
+  .about-mark::after,
   .brand-mark::after,
   .status-mark::after {
     inset: calc(var(--m) * 0.375);
@@ -533,6 +539,8 @@
     min-width: 0;
     min-height: 0;
     position: relative;
+    border-radius: var(--radius-xl);
+    box-shadow: var(--settings-content-shadow);
     overflow: clip;
   }
   .settings-panel {
@@ -596,13 +604,20 @@
   }
   .about-identity {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     flex-wrap: wrap;
     gap: 4px 10px;
     flex: 1 1 auto;
     min-width: 0;
   }
+  .about-mark {
+    --m: 16px;
+  }
   .about-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted-foreground);
     margin: 0;
     font-size: 12px;
     font-weight: 500;
