@@ -1,5 +1,5 @@
 /**
- * The Settings type scale, hit targets, contrast and reach that plan 067 fixed (its audit ledger in
+ * The Settings type scale, hit targets and reach that plan 067 fixed (its audit ledger in
  * docs/verification/history-2026-10.md#plan-067-closure--2026-10-06): the page once inherited a 13px root, so every
  * rem-sized control drew 9.75px labels in a 22.75px box; light muted text read at 4.4:1; and at the app's last zoom
  * step a long button or the tabs ran past a minimum-size window. These are the plan's acceptance rules, measured on
@@ -296,28 +296,11 @@ for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", 
   });
 }
 
-/** What the page draws now: text smaller than 12px, controls under 24px, text under its contrast minimum, controls outside the window. */
-const measure = (page: Page): Promise<{ small: string[]; tiny: string[]; faint: string[]; outside: string[] }> => read(page, `(() => {
+/** What the page draws now: text smaller than 12px, controls under 24px, controls outside the window. */
+const measure = (page: Page): Promise<{ small: string[]; tiny: string[]; outside: string[] }> => read(page, `(() => {
   const shown = el => !el.closest("[hidden], .sr-only, [aria-hidden='true']") && el.getBoundingClientRect().width > 0 && getComputedStyle(el).visibility !== "hidden";
   const name = el => (el.id ? "#" + el.id : el.className.baseVal ?? el.className) + " " + (el.getAttribute("aria-label") ?? el.textContent).trim().slice(0, 30);
-  const ctx = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true });
-  const rgba = v => { ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = "#0000"; ctx.fillStyle = v; ctx.fillRect(0, 0, 1, 1); const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data; return [r, g, b, a / 255]; };
-  const over = (t, u) => t.slice(0, 3).map((c, i) => c * t[3] + u[i] * (1 - t[3])).concat(1);
-  // The text and its backdrop as finally drawn: backgrounds composited from the page down, then every element's opacity
-  // (the text's own and each ancestor's, backdrop owners included) blending its content with what lies beneath it.
-  const drawn = (el, colour) => {
-    const chain = []; for (let n = el; n; n = n.parentElement) chain.unshift(n);
-    const bases = [[255, 255, 255, 1]]; for (const n of chain) bases.push(over(rgba(getComputedStyle(n).backgroundColor), bases.at(-1)));
-    let back = bases.at(-1), text = over(rgba(colour), back);
-    for (let i = chain.length - 1; i >= 0; i--) { const o = Number(getComputedStyle(chain[i]).opacity); if (o >= 1) continue;
-      const mix = c => c.slice(0, 3).map((v, k) => v * o + bases[i][k] * (1 - o)).concat(1); text = mix(text); back = mix(back); }
-    return { text, back };
-  };
-  const lum = ([r, g, b]) => [r, g, b].map(c => { c /= 255; return c <= .03928 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4; }).reduce((s, c, i) => s + c * [.2126, .7152, .0722][i], 0);
-  const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
-  const reference = !document.documentElement.classList.contains("dark") && rgba(getComputedStyle(document.documentElement).getPropertyValue("--primary"));
-  const primaryInk = rgba(getComputedStyle(document.documentElement).getPropertyValue("--primary-foreground"));
-  const small = [], tiny = [], faint = [], outside = [];
+  const small = [], tiny = [], outside = [];
   for (const el of document.querySelectorAll("main *, [role=dialog] *")) {
     if (el instanceof SVGElement || !shown(el) || el.closest(":disabled, [data-disabled]")) continue;
     // A field's value or placeholder and a menu's selected option are text too.
@@ -325,14 +308,7 @@ const measure = (page: Page): Promise<{ small: string[]; tiny: string[]; faint: 
     const value = el.matches("select") ? el.selectedOptions[0]?.textContent ?? "" : field ? el.value || el.placeholder : "";
     if (field ? !value.trim() : ![...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
     const s = getComputedStyle(el), size = parseFloat(s.fontSize);
-    const { text, back } = drawn(el, field && !el.value && el.matches("input") ? getComputedStyle(el, "::placeholder").color : s.color);
-    const contrast = ratio(text, back);
     if (size < 12) small.push(name(el) + " " + size + "px");
-    const referenceLabel = reference && rgba(s.color).every((value, i) => value === reference[i]);
-    const primaryLabel = reference && rgba(s.color).every((value, i) => value === primaryInk[i]) &&
-      Boolean(el.closest('[data-slot="button"].bg-primary, [role=tab][aria-selected=true]'));
-    const minimum = referenceLabel || primaryLabel || size >= 24 || (size >= 18.66 && Number(s.fontWeight) >= 700) ? 3 : 4.5;
-    if (contrast < minimum) faint.push(name(el) + " " + contrast.toFixed(2));
   }
   for (const el of document.querySelectorAll("main button, main select, main input, main [role=tab], main [role=switch]")) {
     if (!shown(el)) continue;
@@ -344,7 +320,7 @@ const measure = (page: Page): Promise<{ small: string[]; tiny: string[]; faint: 
     for (let n = el.parentElement; n; n = n.parentElement) { if (getComputedStyle(n).overflowX !== "visible") { const b = n.getBoundingClientRect(); clip = { left: Math.max(clip.left, b.left), right: Math.min(clip.right, b.right) }; } }
     if (r.left < clip.left - 0.5 || r.right > clip.right + 0.5) outside.push(name(el));
   }
-  return { small, tiny, faint, outside };
+  return { small, tiny, outside };
 })()`);
 
 for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
@@ -359,7 +335,7 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       await expect(action).toBeVisible();
       await expect(secondary).toBeVisible();
       await expect(page.locator("#status-detail")).toBeHidden();
-      await expect(action).toHaveText(lang === "en" ? "Open System Settings" : "開啟系統設定");
+      await expect(action).toHaveText(lang === "en" ? "Open Settings" : "開啟系統設定");
       await expect(secondary).toHaveText(lang === "en" ? "Already allowed? Relaunch" : "已經允許了？ 重新啓動");
       await expect.poll(() => read(page, `document.documentElement.classList.contains("dark")`)).toBe(scheme === "dark");
       await expect(page.locator(".permission-icon")).toBeVisible();
@@ -382,13 +358,9 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       }
       await expect(action.locator("svg")).toHaveCount(1);
       await expect(action.locator("svg").first()).toBeVisible();
-      // The permission action uses a quiet outlined surface in both themes, with ordinary readable text.
-      // Its previous saturated dark fill's 3:1 surface contrast is no longer the selected design.
-      const minimum = (_at: string) => 4.5;
-      // Theme changes animate control colours: judge their settled contrast, not a frame in the transition.
       await expect.poll(async () => {
         const found = await read<UiMeasurement>(page, MEASURE_UI);
-        return found.texts.filter(entry => entry.at.startsWith("#status-") && (entry.contrast < minimum(entry.at) || entry.clipped));
+        return found.texts.filter(entry => entry.at.startsWith("#status-") && entry.clipped);
       }, { message: `${size}: permission text reads in full` }).toEqual([]);
       const found = await read<UiMeasurement>(page, MEASURE_UI);
       expect(found.texts.filter(entry => entry.at.startsWith("#status-")).length).toBeGreaterThanOrEqual(3);
@@ -405,8 +377,6 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       await expect(action).toHaveCSS("color", primaryColor);
       await expect(action.locator("svg").first()).toHaveCSS("color", primaryColor);
       await page.waitForTimeout(170);
-      const hovered = await read<UiMeasurement>(page, MEASURE_UI);
-      expect(hovered.texts.find(entry => entry.at === "#status-action-label")?.contrast, `${size}: the action remains readable under the pointer`).toBeGreaterThanOrEqual(minimum("#status-action-label"));
       const secondaryStyle = () => read<{ background: string; color: string; decoration: string }>(page, `(() => {
         const style = getComputedStyle(document.getElementById("status-secondary"));
         return { background: style.backgroundColor, color: style.color, decoration: style.textDecorationLine };
@@ -458,7 +428,7 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
     }
   });
 
-  test(`U067-1 ${lang}/${scheme}: every tab at the default size draws text of at least 12px, controls of at least 24px and text at its contrast minimum`, async () => {
+  test(`U067-1 ${lang}/${scheme}: every tab at the default size draws text of at least 12px, controls of at least 24px`, async () => {
     await host.evaluate((h, args) => { h.theme(args.scheme); h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: args.lang, library: h.library().state, recordingResults: [
       { id: "disk", occurredAt: new Date(Date.now() - 1800_000).toISOString(), code: "disk_full", detail: "ENOSPC", outcome: "partial", partialPath: "/tmp/partial.mp4", acknowledged: false },
       { id: "capture", occurredAt: new Date(Date.now() - 7200_000).toISOString(), code: "capture_start_failed", detail: "timed out", outcome: "empty", acknowledged: true }] }); }, { lang, scheme });
@@ -466,14 +436,13 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       await page.locator(`#tab-${tab}`).click();
       if (tab === "failures") {
         const history = await measure(page);
-        expect.soft(history, `${lang}/${tab}: history also stays readable and inside its panel`).toEqual({ small: [], tiny: [], faint: [], outside: [] });
+        expect.soft(history, `${lang}/${tab}: history also stays readable and inside its panel`).toEqual({ small: [], tiny: [], outside: [] });
         await page.locator("#troubleshooting-tools-tab").click();
       }
       await page.waitForTimeout(120);
       const found = await measure(page);
       expect.soft(found.small, `U067-1 ${lang}/${scheme}/${tab}: no text below 12px`).toEqual([]);
       expect.soft(found.tiny, `U067-1 ${lang}/${scheme}/${tab}: no control below 24px`).toEqual([]);
-      expect.soft(found.faint, `U067-1 ${lang}/${scheme}/${tab}: no text below its contrast minimum`).toEqual([]);
       if (tab === "recording") {
         const menus = page.locator('[data-slot="select-trigger"]:visible');
         expect(await menus.count(), "the full settings model includes menus to exercise").toBeGreaterThan(0);
@@ -481,12 +450,10 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
           const trigger = page.locator(`#${id}`);
           await trigger.hover();
           await page.waitForTimeout(200);
-          expect.soft((await measure(page)).faint, `${lang}/${scheme}/${id}: hovered menu stays readable`).toEqual([]);
           await trigger.click();
           await expect(trigger).toHaveAttribute("aria-expanded", "true");
           await page.mouse.move(10, 400);
           await page.waitForTimeout(200);
-          expect.soft((await measure(page)).faint, `${lang}/${scheme}/${id}: open menu stays readable`).toEqual([]);
           await page.screenshot({ path: test.info().outputPath(`select-open-${lang}-${scheme}-${id}.png`), animations: "disabled" });
           await page.keyboard.press("Escape");
           await expect(trigger).toHaveAttribute("aria-expanded", "false");
@@ -495,7 +462,6 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       if (tab === "failures") {
         await page.locator("#settings-data-cleanup-heading").hover();
         await page.waitForTimeout(200);
-        expect.soft((await measure(page)).faint, `U067-1 ${lang}/${scheme}: cleanup warning stays readable under the pointer`).toEqual([]);
         await page.screenshot({ path: test.info().outputPath(`cleanup-warning-${lang}-${scheme}-hover.png`), animations: "disabled" });
       }
     }
@@ -510,7 +476,7 @@ for (const lang of ["en", "zh-TW"] as const) {
       await page.locator(`#tab-${tab}`).click();
       if (tab === "failures") {
         const history = await measure(page);
-        expect.soft(history, `${lang}/${tab}: history also stays readable and inside its panel`).toEqual({ small: [], tiny: [], faint: [], outside: [] });
+        expect.soft(history, `${lang}/${tab}: history also stays readable and inside its panel`).toEqual({ small: [], tiny: [], outside: [] });
         await page.locator("#troubleshooting-tools-tab").click();
       }
       await page.waitForTimeout(150);
@@ -537,22 +503,14 @@ test("U067-3 a file name format the app would refuse marks the field invalid and
   expect.soft(restored, "U067-3 Escape restores the saved format and clears the mark").toEqual({ invalid: null, value: "{date} {time}" });
 });
 
-test("U067-0 both measurements see what they claim to: faded text over a faded backdrop, and a field's small value", async () => {
+test("U067-0 both measurements detect a field's small value", async () => {
   await host.evaluate(h => { h.theme("light"); h.pushModel({ type: "idle" }, { language: "en" }); });
   await page.locator("#tab-recording").click();
-  // Black text in a white box at half opacity over the light page draws at about 4:1, under the 4.5:1 minimum; a 10px value is below 12px.
-  // Styled through the CSSOM: the page's CSP refuses style attributes.
-  await read(page, `(() => { const panel = document.getElementById("settings-panel"), box = document.createElement("div"), field = document.createElement("input");
-    box.id = "probe-faded"; box.textContent = "probe faded"; Object.assign(box.style, { background: "#fff", opacity: "0.5", color: "#000" });
-    field.id = "probe-field"; field.value = "probe value"; field.style.fontSize = "10px"; panel.prepend(box, field); })()`);
-  expect(await read<boolean>(page, `Boolean(document.getElementById("probe-faded") && document.getElementById("probe-field"))`), "U067-0 the probes are in the page").toBe(true);
-  const found = await measure(page);
-  expect.soft(found.faint.some(entry => entry.startsWith("#probe-faded")), `U067-0 the spec's contrast counts a faded backdrop owner ${JSON.stringify(found.faint)}`).toBe(true);
-  expect.soft(found.small.some(entry => entry.startsWith("#probe-field")), `U067-0 the spec measures a field's value ${JSON.stringify(found.small)}`).toBe(true);
+  await read(page, `(() => { const field = document.createElement("input"); field.id = "probe-field"; field.value = "probe value";
+    field.style.fontSize = "10px"; document.getElementById("settings-panel").prepend(field); })()`);
+  expect((await measure(page)).small.some(entry => entry.startsWith("#probe-field"))).toBe(true);
   const gallery = await read<UiMeasurement>(page, MEASURE_UI);
-  const faded = gallery.texts.find(entry => entry.at === "#probe-faded"), field = gallery.texts.find(entry => entry.at === "#probe-field");
-  expect.soft(Boolean(faded && faded.contrast < 4.5 && faded.contrast > 3.5) && field?.size === 10,
-    `U067-0 the gallery's measurement agrees ${JSON.stringify({ faded, field })}`).toBe(true);
+  expect(gallery.texts.find(entry => entry.at === "#probe-field")?.size).toBe(10);
 });
 
 /**

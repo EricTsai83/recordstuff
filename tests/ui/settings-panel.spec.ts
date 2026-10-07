@@ -276,7 +276,9 @@ test("S044–S048 update checks: repeated states keep nodes and geometry; Tab an
   const tabbed = await read<string>(page, "document.activeElement.id");
   await page.keyboard.press("Enter");
   await expect(page.locator("#setting-updates-check")).toHaveText("Checking for updates…");
-  await page.waitForTimeout(150);
+  // The button transitions its shadow; wait for the keyboard ring instead of sampling at 150ms.
+  await expect.poll(() => page.locator("#setting-updates-check").evaluate(el => getComputedStyle(el).boxShadow),
+    { message: "S047 the busy button settles with its keyboard focus ring" }).toMatch(/0px 0px 0px 2px/);
   const busy = await read<{ active: string; disabled: boolean; ariaDisabled: string | null; ring: string }>(page, `(() => { const el = document.getElementById("setting-updates-check");
     return { active: document.activeElement.id, disabled: el.disabled, ariaDisabled: el.getAttribute("aria-disabled"), ring: getComputedStyle(el).boxShadow }; })()`);
   await keep("update-check-busy.png");
@@ -284,7 +286,7 @@ test("S044–S048 update checks: repeated states keep nodes and geometry; Tab an
   await page.waitForTimeout(100);
   expect.soft({ tabbed, calls: await calls() }, "S046 Tab reaches Check for updates… and Enter starts one check").toEqual({ tabbed: "setting-updates-check", calls: [["updates", "check"]] });
   expect.soft({ active: busy.active, disabled: busy.disabled, ariaDisabled: busy.ariaDisabled, ring: /0px 0px 0px 2px/.test(busy.ring) },
-    "S047 a running check keeps keyboard focus and its ring on the busy, focusable button").toEqual({ active: "setting-updates-check", disabled: false, ariaDisabled: "true", ring: true });
+    `S047 a running check keeps keyboard focus and its ring on the busy, focusable button (${busy.ring})`).toEqual({ active: "setting-updates-check", disabled: false, ariaDisabled: "true", ring: true });
   await host.evaluate(h => { h.state.updateContext = { ...h.state.updateContext, updates: { enabled: true, state: { kind: "current", checkedAt: 2000 } } }; h.push(h.settingsView({ type: "idle" }, h.state.updateContext)); });
   await expect(page.locator("#setting-updates-check")).toHaveAttribute("aria-disabled", "false");
   await page.keyboard.press("Tab");
