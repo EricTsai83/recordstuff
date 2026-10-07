@@ -242,7 +242,8 @@
   --chart-5: oklch(0.8924 0.0559 10.0008);
   --sidebar-foreground: oklch(0.2161 0.0061 56.0434);
   --sidebar-primary: oklch(0.5858 0.2220 17.5846);
-  --sidebar-selected-foreground: var(--sidebar-primary);
+  /* Small navigation labels need a slightly deeper ink than the primary fill on the light backdrop. */
+  --sidebar-selected-foreground: color-mix(in oklab, var(--sidebar-primary) 95%, var(--sidebar-foreground));
   --sidebar-primary-foreground: oklch(1.0000 0 0);
   --sidebar-accent-foreground: oklch(0.2161 0.0061 56.0434);
   --sidebar-border: oklch(0.9232 0.0026 48.7171);

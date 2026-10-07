@@ -611,8 +611,8 @@ for (const scheme of ["light", "dark"] as const) {
     await expect(tab.locator(".tab-icon")).toHaveCSS("color", primary.sidebarSelectedForeground);
     await expect.poll(() => tab.evaluate(node => getComputedStyle(node, "::after").opacity)).toBe("1");
     expect(await tab.evaluate(node => getComputedStyle(node, "::after").backgroundColor)).toBe(primary.fill);
-    // The chosen light brand red uses the reference accent minimum; dark ink retains 4.5:1.
-    await check("#tab-library", scheme === "light" ? 3 : 4.5);
+    // The sidebar's companion ink keeps small navigation labels at 4.5:1 in both themes.
+    await check("#tab-library");
     await expect(tab).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     // Hover stays neutral; red ink and the leading line identify the selected sidebar item.
     const general = page.locator("#tab-general");
@@ -673,6 +673,7 @@ for (const scheme of ["light", "dark"] as const) {
       } else await layoutButton.click();
       await expect(layoutButton).toHaveAttribute("aria-pressed", "true");
       await expect(layoutButton).toHaveCSS("background-color", primary.selection);
+      await expect(layoutButton).toHaveCSS("color", primary.fill);
       await expect(layoutButton.locator("svg")).toHaveCSS("color", primary.fill);
       const otherLayout = page.locator(`#library-layout-${layout === "grid" ? "list" : "grid"}`);
       await expect(otherLayout).toHaveAttribute("aria-pressed", "false");
