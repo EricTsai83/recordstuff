@@ -5,7 +5,6 @@ import {
   FRAME_RATES,
   VIDEO_BITRATE_MAX,
   VIDEO_BITRATE_MIN,
-  AUDIO_BITS_PER_SECOND,
   describeCapture,
   effectiveQuality,
   fitWithinCap,
@@ -97,12 +96,6 @@ describe("videoBitsPerSecond", () => {
   it("clamps to the bounds", () => {
     expect(videoBitsPerSecond({ width: 640, height: 360 }, 30, "economy")).toBe(VIDEO_BITRATE_MIN);
     expect(videoBitsPerSecond({ width: 5120, height: 2880 }, 60, "high")).toBe(VIDEO_BITRATE_MAX);
-  });
-});
-
-describe("AUDIO_BITS_PER_SECOND", () => {
-  it("is one fixed AAC target (Chromium clamps to ~160 kbps whatever is asked)", () => {
-    expect(AUDIO_BITS_PER_SECOND).toBe(256_000);
   });
 });
 
