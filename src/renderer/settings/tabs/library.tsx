@@ -60,7 +60,7 @@ export const Clip = memo(function Clip({
         onAnimationEnd={() => setArrived(false)}
         onBlur={() => setArrived(false)}
       >
-        <ControlTooltip label={title.truncated ? item.title : model.text("Drag into another app to share.")}>
+        <ControlTooltip label={item.title} enabled={title.truncated}>
           <Button
             variant="ghost"
             size="clip"

@@ -4,7 +4,6 @@
  */
 import { test, expect, type Launched } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { translate } from "../../src/shared/i18n";
 import type { SettingsBridge, SettingsView } from "../../src/shared/settings-panel";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -422,8 +421,12 @@ test("shadcn tooltips name icon controls on hover and focus, update language, an
   await expect(tip).toBeHidden();
   const clip = page.locator("#clip-a-open"), title = clip.locator(".clip-title");
   await clip.hover();
-  await expect(tip).toHaveText(translate("Drag into another app to share.", "zh-TW"));
-  // Force actual two-line grid overflow; the popup shows the complete name rather than the drag hint.
+  await page.waitForTimeout(1700);
+  await expect(tip).toHaveCount(0);
+  await clip.focus();
+  await expect(clip).toBeFocused();
+  await expect(tip).toHaveCount(0);
+  // Force actual two-line grid overflow; only a clipped name gets a tooltip.
   const longTitle = "Recording with a very long descriptive title ".repeat(8);
   const library = current.library!;
   await setView({ ...current, library: { ...library, items: library.items.map(item => item.id === "a" ? { ...item, title: longTitle } : item) } });
@@ -440,8 +443,10 @@ test("shadcn tooltips name icon controls on hover and focus, update language, an
   const box = await clip.boundingBox();
   if (!box) throw new Error("Recording control is missing");
   await page.mouse.move(box.x + 12, box.y + box.height / 2);
-  await expect(tip).toHaveText("Drag into another app to share.");
+  await expect(tip).toHaveCount(0);
   await title.evaluate(node => { node.style.width = ""; node.style.maxWidth = ""; });
+  // With no hint for a complete name, start a fresh hover after it is clipped again.
+  await page.mouse.move(10, 400);
   await title.hover();
   await expect(tip).toHaveText(longTitle.trim());
   await page.screenshot({ path: testInfo.outputPath("recording-tooltip.png"), animations: "disabled" });

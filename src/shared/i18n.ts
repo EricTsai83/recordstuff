@@ -110,7 +110,6 @@ export const ZH_TW = {
   "Moved to the Trash": "已丟到垃圾桶",
   "Moved to the Recycle Bin": "已移到資源回收筒",
   "Close": "關閉",
-  "Drag into another app to share.": "拖曳到其他 App 即可分享。",
   "This recording is no longer in the folder.": "這個錄影已不在資料夾中。",
   "This recording cannot be played here. Choose Open from its ⋯ menu to play it in another app.": "無法在這裡播放這段錄影，可從它的「⋯」選單選「開啟」改用其他 App 播放。",
   "More actions for {title}": "{title} 的更多動作",
