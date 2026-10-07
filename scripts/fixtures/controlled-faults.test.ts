@@ -92,19 +92,18 @@ describe("controlled acceptance faults", () => {
     expect(faults.heldCounts.cleanup).toBe(0);
   });
 
-  it("holds the first history load, forwards migration, and holds or rejects saves until changed", async () => {
-    const legacy = path.join(dir, "recording-result.json"), history = path.join(dir, "recording-history.json");
-    await fs.writeFile(legacy, JSON.stringify({ version: 1, result: { id: "old", occurredAt: "2026-09-20T00:00:00.000Z",
-      code: "capture_failed", detail: "", outcome: "empty", acknowledged: false } }));
+  it("holds the first history load and holds or rejects saves until changed", async () => {
+    const history = path.join(dir, "recording-history.json");
+    await fs.writeFile(history, JSON.stringify({ version: 2, results: [{ id: "old", occurredAt: "2026-09-20T00:00:00.000Z",
+      code: "capture_failed", detail: "", outcome: "empty", acknowledged: false }] }));
     const faults = new ControlledFaults(undefined, true);
-    const storage = faults.storage(new RecordingResultStore(history, () => undefined, legacy));
+    const storage = faults.storage(new RecordingResultStore(history, () => undefined));
     const results = new RecordingResults(storage, () => undefined, () => undefined, [60_000]);
     await pause(20);
     expect(results.loading).toBe(true);
     expect(faults.heldCounts["history-load"]).toBe(1);
     faults.release("history-load");
     await results.ready;
-    expect(storage.requiresMigration).toBe(true);
     await until(() => !results.busy);
     expect(JSON.parse(await fs.readFile(history, "utf8")).results).toHaveLength(1);
 

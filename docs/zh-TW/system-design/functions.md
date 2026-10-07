@@ -31,7 +31,7 @@
 
 事件：uncaughtException 留 log，第一次另顯示對話框；unhandledRejection 留 log；`main()` 失敗時留 log、顯示對話框並結束程序。Recorder state／saved／captureStarted／failed／permissionRequested 分別更新 Tray、發通知、處理降級與失效授權。tray 左鍵與全域快捷鍵共用同一個 `toggle` closure。Recorder 取得 `fs.statfs` 可用空間與 `userData/recording-sessions` sentinel；啟動時經由歷史還原回報遺留 sentinel，`powerMonitor` 的 suspend／resume 連同進行中 session 寫入 log。before-quit 忙碌時等待 shutdown；will-quit 釋放快捷鍵與其他資源。
 
-[資料遷移與清除](../../../src/main/app/data-cleanup.ts)：`SettingsStore.migrate()` 在啟動時轉換 v1／v2 設定並保留原檔；較新版本拒絕覆寫。`DataCleanupRequest.request()` 管理原生確認與前後的 settle 檢查；`prepareDataCleanup()` 在退出已允許時提交一次性清除程序，等父程序退出才刪除 App 資料並保護錄影。`waitForDataCleanup()` 防止重新啟動與清除同時寫入。
+[資料重設與清除](../../../src/main/app/data-cleanup.ts)：`SettingsStore.resetOlderFormat()` 在啟動時將舊設定重設為目前預設值並保留原檔；較新版本拒絕覆寫。`DataCleanupRequest.request()` 管理原生確認與前後的 settle 檢查；`prepareDataCleanup()` 在退出已允許時提交一次性清除程序，等父程序退出才刪除 App 資料並保護錄影。`waitForDataCleanup()` 防止重新啟動與清除同時寫入。
 
 ## Action handler — main/actions/actions.ts
 
@@ -182,8 +182,9 @@
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
-| `parseSettings(text)` | v1／v2／v3 JSON → settings＋warnings；整體不合法回 undefined；壞 quality／hotkey 保留 outputDir |
-| `constructor(options)` / `load(defaultDir)` | 同步讀檔、檢查、fallback 與 log；不立刻把 fallback 回寫 |
+| `parseSettings(text)` | 只讀目前格式 JSON → settings＋warnings；整體不合法回 undefined；目前格式內壞 quality／hotkey 保留 outputDir |
+| `constructor(options)` / `load(defaultDir)` | 同步讀檔；較舊版本採完整預設值，較新版本拒絕覆寫 |
+| `resetOlderFormat()` | 啟動時備份舊設定，原子寫入目前預設值一次；寫入失敗可重試 |
 | `outputDir` / `quality` / `language` / `hotkey` getters | 讀目前已成功提交的設定 |
 | `defaultOutputDir` | 建構時給定的 fallback 資料夾；開啟儲存位置時唯一可能建立的資料夾 |
 | `setHotkey(hotkey)` | 驗 enabled 布林與自訂組合鍵，正規化後排隊保存 |

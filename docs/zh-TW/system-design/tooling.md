@@ -45,7 +45,7 @@ main、preload、renderer 分別建置，打包只納入 out、package metadata 
 - `out/` 由 `pnpm build` 產生；`dist/` 是 `pnpm start:app`（App bundle 在 `dist/mac-arm64/`）、`pnpm dist:mac`（同一個 bundle 加 DMG）與 `pnpm dist:win`（`RecordStuff-<version>-x64-unsigned-setup.exe`）共用的唯一輸出目錄。兩者都由 Git 忽略，可以重新產生。清理 `dist/` 前應保留仍需要的安裝檔；`pnpm open:app` 需要以目前 runtime 輸入建置的既有 App bundle。本機建的 DMG 用來檢查打包；發布的 DMG 與 Windows 安裝檔一律由 CI 從 tag 建置。
 - `node_modules/` 放已安裝的開發依賴，可透過 `pnpm install` 還原。
 
-品質選項與錯誤碼各自只維護一份常數清單，TypeScript 型別由清單推導，選單也共用品質清單。型別檢查會拒絕未使用的區域變數與參數。設定檔 v1 遷移仍保留，以延續既有的輸出資料夾偏好。
+品質選項與錯誤碼各自只維護一份常數清單，TypeScript 型別由清單推導，選單也共用品質清單。型別檢查會拒絕未使用的區域變數與參數。舊設定在啟動時備份並重設為目前預設值，只支援目前格式。
 
 `pnpm signing:create` 保留既有符合名稱的憑證，或依明確輸出位置與密碼建立加密身分檔，見 [身分設定](signing.md)。不匯入私鑰或設定信任。
 
@@ -465,7 +465,7 @@ Plan 035 的原生驗收需要一些真實故障無法隨時產生的失敗狀�
   - `throw` 在下一個 tick 從 timer 丟出一個合成的未捕捉例外，不在任何 promise 內，因此會像真正的程式錯誤一樣到達正式的未捕捉例外 handler（plan 056）。在錄影期間送出，可看出寫入、stall guard 與停止是否持續，以及錯誤對話框何時出現；`events.jsonl` 那一行會記下排程時的狀態與 `mediaPending`。它不是故障模式，不會留在啟用狀態。
 
 ```bash
-pnpm acceptance:controlled -- launch [--seed none|v1|retention] [--hold-history-load]   # 新 run：建置、簽章、開啟
+pnpm acceptance:controlled -- launch [--seed none|partial|retention] [--hold-history-load]   # 新 run：建置、簽章、開啟
 pnpm acceptance:controlled -- fault cleanup=hold write=enospc     # 另有 close=fail、history-save=hold|fail、prepare=hold、<name>=off
 pnpm acceptance:controlled -- release cleanup                     # 或 history-save、history-load、prepare
 pnpm acceptance:controlled -- status                              # 狀態、故障、暫停中的工作與每筆失敗歷史
@@ -476,7 +476,7 @@ pnpm acceptance:controlled -- clean                               # 退出後移
 pnpm acceptance:controlled -- selftest
 ```
 
-`quit` 不會解除已啟用的故障與暫停中的工作，因此可用來驗證被延後或被詢問的退出；要單純退出，先關閉故障並放行暫停的工作。`launch` 或 `reopen` 被中斷或失敗時，會最多等 15 秒看 `open` 是否已啟動 bundle：已回報 ready 的 App 會正常退出，始終沒有回報 ready 的程序會列出來請使用者從選單退出。除了 `launch` 與 `selftest`，其他指令預設作用於最新一次引導 run，可用 `--dir <run>` 指定。`--seed v1` 寫入一筆未讀的舊版 `recording-result.json`，其合成 partial 檔存在，用於遷移驗收。`--seed retention` 在兩筆未讀之間寫入二十筆已看過的紀錄，確認舊的未讀紀錄後即可驗證「保留最近看過的 20 筆」上限。Seed 檔案只含合成 bytes，不是可播放的錄影。`launch` 與 `reopen` 在任何 RecordStuff 執行中時拒絕執行，因為隔離的 userData 不共用單一實例鎖。Exit 0 表示成功、1 表示失敗、2 表示受阻或參數錯誤；`launch` 或 `reopen` 被 Ctrl-C 或 SIGTERM 中斷且沒有留下任何程序時，exit 130 或 143。啟用與放行事件會寫入 `events.jsonl` 與該 run 的 App log。
+`quit` 不會解除已啟用的故障與暫停中的工作，因此可用來驗證被延後或被詢問的退出；要單純退出，先關閉故障並放行暫停的工作。`launch` 或 `reopen` 被中斷或失敗時，會最多等 15 秒看 `open` 是否已啟動 bundle：已回報 ready 的 App 會正常退出，始終沒有回報 ready 的程序會列出來請使用者從選單退出。除了 `launch` 與 `selftest`，其他指令預設作用於最新一次引導 run，可用 `--dir <run>` 指定。`--seed partial` 寫入一筆未讀的目前格式歷史紀錄，其合成 partial 檔存在。`--seed retention` 在兩筆未讀之間寫入二十筆已看過的紀錄，確認舊的未讀紀錄後即可驗證「保留最近看過的 20 筆」上限。Seed 檔案只含合成 bytes，不是可播放的錄影。`launch` 與 `reopen` 在任何 RecordStuff 執行中時拒絕執行，因為隔離的 userData 不共用單一實例鎖。Exit 0 表示成功、1 表示失敗、2 表示受阻或參數錯誤；`launch` 或 `reopen` 被 Ctrl-C 或 SIGTERM 中斷且沒有留下任何程序時，exit 130 或 143。啟用與放行事件會寫入 `events.jsonl` 與該 run 的 App log。
 
 所有原生操作都由維護者執行；runner 只負責建置、放入 seed、啟用、放行、回報與退出。這支 runner 內唯一的例外是 `selftest`，它驗證的是工具而不是產品；[`pnpm acceptance:tray -- --long-start`](#tray-驗收) 則依 2026-10-02 對已提交 runner 的授權，操作已啟動受控 build 的真正狀態列項目與快捷鍵。它在獨立 run 中關閉通知與錄影快捷鍵，把隔離輸出資料夾設為不可寫，讓因此產生的開始失敗暫停清理，同時拒絕其儲存。接著檢查 pending 與未保存狀態，放行、重試、暫停「知道了」的儲存，退出，以暫停歷史載入的方式重開，再次退出；過程直接呼叫錄影器的 toggle 與正式 action handler。它不錄影，所以寫入與關檔故障只由使用真實 FileWriter 與 Recorder 的單元測試涵蓋。自測失敗或被中斷時，會先關閉所有故障並放行所有暫停的工作再退出。`report.md` 列出每個步驟，App 退出後會移除 workspace。
 

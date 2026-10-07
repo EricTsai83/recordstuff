@@ -3,13 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { isErrorCode } from "../../shared/state";
+import { keepFile } from "../lib/file-backup";
 import { writeFileAtomic } from "../lib/atomic-file";
 import { errnoCode } from "../lib/errors";
 import type { PersistenceIssue, RecordingResult } from "../../shared/recording-result";
 
 /** Every file operation is asynchronous (libuv threadpool); only small per-record JSON work runs on main. */
 export interface ResultStorage {
-  readonly requiresMigration?: boolean;
   readonly loadIssue?: boolean;
   load(): Promise<RecordingResult[]>;
   save(results: readonly RecordingResult[]): Promise<void>;
@@ -39,11 +39,10 @@ export async function sliced<T>(work: () => T): Promise<T> {
 }
 
 function decode(value: unknown): RecordingResult {
-  const envelope = value as { version?: unknown; result?: unknown } | null;
-  const result = envelope?.result as RecordingResult | undefined;
+  const result = value as RecordingResult | undefined;
   const validPath = (value: unknown) => value === undefined ||
     (typeof value === "string" && value.length < 32768 && !value.includes("\0") && path.isAbsolute(value));
-  if (envelope?.version !== 1 || !result || typeof result !== "object" ||
+  if (!result || typeof result !== "object" ||
       typeof result.id !== "string" || !result.id || result.id.length > 200 ||
       typeof result.occurredAt !== "string" || !Number.isFinite(Date.parse(result.occurredAt)) ||
       !isErrorCode(result.code) || typeof result.detail !== "string" || result.detail.length > 65536 ||
@@ -65,12 +64,10 @@ function decode(value: unknown): RecordingResult {
 /** Separate filename from v1 so an older app cannot overwrite history on downgrade. */
 export class RecordingResultStore implements ResultStorage {
   private blocked = false;
-  requiresMigration = false;
   get loadIssue(): boolean { return this.blocked; }
   /** Records are replaced, never mutated, so an unchanged record is encoded once. */
   private readonly encoded = new WeakMap<RecordingResult, { json: string; bytes: number }>();
-  constructor(private readonly file: string, private readonly log: (message: string) => void = () => {},
-    private readonly legacyFile?: string) {}
+  constructor(private readonly file: string, private readonly log: (message: string) => void = () => {}) {}
   /**
    * The file's JSON. A file of 1 MiB or more is parsed in a worker, and its `results` come back as one JSON string
    * per record (`encoded`): an object graph handed back costs main about what parsing it did (38 ms of 46 at the
@@ -98,10 +95,15 @@ export class RecordingResultStore implements ResultStorage {
     try {
       const read = await RecordingResultStore.read(this.file, LIMIT, "recording history too large");
       const value = read.value as { version?: unknown; results?: unknown } | null;
+      if (Number.isSafeInteger(value?.version) && (value!.version as number) >= 1 && (value!.version as number) < 2) {
+        await keepFile(this.file, "reset-backup");
+        await this.save([]);
+        return [];
+      }
       if (value?.version !== 2 || !Array.isArray(value.results)) throw new Error("invalid recording history");
       const results: RecordingResult[] = [];
       for (const result of value.results as unknown[]) {
-        results.push(await sliced(() => decode({ version: 1, result: read.encoded ? JSON.parse(result as string) : result })));
+        results.push(await sliced(() => decode(read.encoded ? JSON.parse(result as string) : result)));
       }
       if (new Set(results.map(r => r.id)).size !== results.length) throw new Error("duplicate recording identities");
       return results;
@@ -112,17 +114,12 @@ export class RecordingResultStore implements ResultStorage {
         return [];
       }
     }
-    if (this.legacyFile) {
-      try {
-        const result = decode((await RecordingResultStore.read(this.legacyFile, 1024 * 1024, "legacy result too large")).value);
-        this.requiresMigration = true;
-        return [result];
-      } catch (error) {
-        if (errnoCode(error) !== "ENOENT") {
-          this.blocked = true;
-          this.log(`recording history: legacy load failed: ${String(error)}; refusing to create replacement history`);
-        }
-      }
+    // Old single-result files are ignored. Publish the empty current format once,
+    // so future launches and user edits never depend on an old data path.
+    try { await this.save([]); }
+    catch (error) {
+      this.blocked = true;
+      this.log(`recording history: initialization failed: ${String(error)}`);
     }
     return [];
   }
@@ -134,7 +131,7 @@ export class RecordingResultStore implements ResultStorage {
       let entry = this.encoded.get(result);
       if (!entry) {
         entry = await sliced(() => {
-          const json = JSON.stringify(decode({ version: 1, result: { ...result, detail: result.detail.slice(0, 65536) } }));
+          const json = JSON.stringify(decode({ ...result, detail: result.detail.slice(0, 65536) }));
           return { json, bytes: Buffer.byteLength(json) };
         });
         this.encoded.set(result, entry);
@@ -145,6 +142,5 @@ export class RecordingResultStore implements ResultStorage {
     chunks.push("]}");
     if (bytes > LIMIT) throw new HistoryStorageError("recording history too large", "tooLarge");
     await writeFileAtomic(this.file, chunks, { mode: 0o600 });
-    this.requiresMigration = false;
   }
 }

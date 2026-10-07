@@ -57,7 +57,7 @@ export class RecordingResults {
   private results: RecordingResult[] = [];
   private restored: RecordingResult[] = [];
   private readonly seen = new Set<string>();
-  /** Fingerprints of the saved file in order; undefined until known, including a pending migration. */
+  /** Fingerprints of the saved file in order; undefined until known, including a failed load. */
   private persisted: string[] | undefined;
   private savedRows = new Map<string, string>();
   /** Records are replaced, never mutated, so a fingerprint is computed once per record. */
@@ -106,7 +106,7 @@ export class RecordingResults {
     let saved: RecordingResult[] = [];
     try { saved = await storage.load(); this.loadFailed = storage.loadIssue === true; }
     catch (error) { this.loadFailed = true; this.log(`recording history: load failed: ${String(error)}`); }
-    if (!storage.requiresMigration && !this.loadFailed) {
+    if (!this.loadFailed) {
       const persisted: string[] = [];
       for (const result of saved) persisted.push(await sliced(() => this.fingerprint(result)));
       this.persisted = persisted;
@@ -126,7 +126,7 @@ export class RecordingResults {
       if (known !== undefined) this.fingerprints.set(current, known);
       return current;
     });
-    const requested = arrived.size > 0 || storage.requiresMigration || this.waiters.length > 0 || this.pending.size > 0;
+    const requested = arrived.size > 0 || this.waiters.length > 0 || this.pending.size > 0;
     this.results = [...this.results, ...normalized];
     this.loaded = true;
     // A measurement waits for this before judging idle (plan 049).

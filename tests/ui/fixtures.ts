@@ -43,6 +43,8 @@ export interface SeedSettings {
 }
 
 export interface LaunchAppOptions {
+  /** Simulates an offline update check before production startup, avoiding live network requests. */
+  offline?: boolean;
   /** Written as settings.json before launch; `false` launches with no settings file at all. */
   settings?: SeedSettings | false;
   /** Saved Settings window size (settings-window.json). */
@@ -220,7 +222,7 @@ const timeoutAfter = <T = never>(ms: number, what: string): Promise<T> =>
 /** Default stored preferences for the app host: English, no network, no shortcut taken, notifications allowed. */
 export function seedSettings(data: string, seed: SeedSettings = {}): Record<string, unknown> {
   return {
-    version: 3,
+    version: 4,
     outputDir: path.join(data, "videos/RecordStuff"),
     quality: { videoQuality: "standard", resolutionCap: "source", frameRate: 30 },
     language: "en",
@@ -279,7 +281,7 @@ const launchers = base.extend<Fixtures>({
       }
       if (options.windowSize) fs.writeFileSync(path.join(data, "userData/settings-window.json"), JSON.stringify(options.windowSize));
       fs.rmSync(path.join(data, "logs/recordstuff.log"), { force: true });
-      const launched = await launch("app", data, { RECORDSTUFF_UI_FAILING_SHORTCUTS: (options.failingShortcuts ?? []).join(",") }, testInfo);
+      const launched = await launch("app", data, { RECORDSTUFF_UI_FAILING_SHORTCUTS: (options.failingShortcuts ?? []).join(","), RECORDSTUFF_UI_OFFLINE: options.offline ? "1" : "0" }, testInfo);
       launches.push(launched);
       const log = path.join(data, "logs/recordstuff.log");
       await expect.poll(() => fs.existsSync(log) && fs.readFileSync(log, "utf8").includes("ready;"), { message: "production main logged ready;", timeout: 15_000 }).toBe(true);

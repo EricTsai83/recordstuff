@@ -42,16 +42,14 @@ describe("controlled acceptance instrumentation", () => {
 
 describe("controlled acceptance seeds", () => {
   const now = Date.parse("2026-09-27T12:00:00.000Z");
-  it("seeds one unread legacy result whose partial exists, which the production store migrates and rechecks", async () => {
-    writeSeedFiles(dir, seedFiles("v1", dir, now));
-    const store = new RecordingResultStore(path.join(dir, "user-data/recording-history.json"), () => undefined,
-      path.join(dir, "user-data/recording-result.json"));
+  it("seeds a current-format partial result which the production store rechecks", async () => {
+    writeSeedFiles(dir, seedFiles("partial", dir, now));
+    const store = new RecordingResultStore(path.join(dir, "user-data/recording-history.json"), () => undefined);
     const results = new RecordingResults(store, () => undefined, () => undefined, [60_000]);
     await results.ready;
-    expect(store.requiresMigration).toBe(true);
     await results.restore(file => fs.promises.stat(file), () => undefined);
-    expect(results.all).toMatchObject([{ id: "seed-v1", outcome: "partial", acknowledged: false,
-      partialPath: path.join(dir, "recordings/seed-v1.recording.mp4") }]);
+    expect(results.all).toMatchObject([{ id: "seed-partial", outcome: "partial", acknowledged: false,
+      partialPath: path.join(dir, "recordings/seed-partial.recording.mp4") }]);
   });
   it("seeds twenty reviewed records between two unread ones, at the retention limit", async () => {
     writeSeedFiles(dir, seedFiles("retention", dir, now));

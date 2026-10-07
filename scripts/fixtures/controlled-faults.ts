@@ -118,7 +118,6 @@ export class ControlledFaults {
   storage(inner: ResultStorage): ResultStorage {
     const faults = this;
     return {
-      get requiresMigration() { return inner.requiresMigration === true; },
       async load(): Promise<RecordingResult[]> {
         if (faults.holdLoad) {
           faults.holdLoad = false;

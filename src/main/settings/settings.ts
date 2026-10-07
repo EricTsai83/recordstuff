@@ -2,7 +2,7 @@
  * Persistent preferences: output folder, recording display, quality, countdown
  * and its tick, shortcut, the menu bar icon's left click, notifications, update
  * checks, language and appearance, the recordings' file name pattern and the Recordings tab's layout.
- * See docs/system-design/desktop.md for the schema and migration rules.
+ * See docs/system-design/desktop.md for the schema and reset rules.
  * Writes replace the file atomically (`writeFileAtomic`), so a crash or power
  * loss mid-write leaves the previous file. Any read problem falls back to the
  * default and logs; a file that exists but cannot be used (unreadable, broken,
@@ -10,19 +10,11 @@
  * `.2`… when that name is taken) before the first write, so a later save never
  * replaces the user's choices with defaults.
  *
- * Version 1 files (outputDir only) get the default quality; version 1 and 2
- * files get the default shortcut. Startup migrates them to version 3, keeping
- * the original as `.migration-backup`. A failed migration keeps the original
- * and retries on the next launch or save. A newer version is never overwritten.
- *
- * Every other field is read leniently rather than versioned: a file written
- * before it existed, or holding a value this version does not support, keeps
- * working and takes the default (a present but unsupported value also logs a
- * warning). So older files without a language read as English, and existing
- * users also get the 3-second countdown and its tick. `trayClick` is the one
- * exception: a new install opens the menu, while a file from before the choice
- * keeps the click that records, so an existing user's click does not change
- * under them.
+ * Only the current format is read. An older numeric version starts with all
+ * defaults and is rewritten once at startup, keeping the original under
+ * `.reset-backup`. Failed writes retain the original and retry on launch or
+ * the next save. Newer formats are never overwritten.
+ * Missing or invalid fields within the current format use their defaults.
  */
 import { isAppearance, isLibraryLayout, isTrayClick, type Appearance, type LibraryLayout, type TrayClick } from "../../shared/appearance";
 import { DEFAULT_FILE_NAME_TEMPLATE, canonicalFileNameTemplate } from "../../shared/file-name";
@@ -34,11 +26,12 @@ import { DEFAULT_COUNTDOWN, DEFAULT_COUNTDOWN_SOUND, isCountdownSeconds, type Co
 import { DEFAULT_LANGUAGE, isLanguage, type Language } from "../../shared/i18n";
 import { DEFAULT_HOTKEY, canonicalHotkeySettings, type HotkeySettings } from "../../shared/hotkey";
 import { stableVersion } from "../../shared/version";
+import { keepFile } from "../lib/file-backup";
 import { writeFileAtomic } from "../lib/atomic-file";
 import { drainQueue } from "../lib/drain-queue";
 import { errnoCode } from "../lib/errors";
 
-export const SETTINGS_VERSION = 3;
+export const SETTINGS_VERSION = 4;
 /** Names tried for keeping an unusable file aside: `.unreadable`, then `.unreadable.1` and on. */
 export const KEPT_UNUSABLE_NAMES = 100;
 
@@ -67,7 +60,7 @@ export interface Settings {
   countdown: CountdownSeconds;
   /** A tick with each countdown digit (plan 046); kept while the countdown is Off. */
   countdownSound: boolean;
-  /** The icon's left click; a file from before the choice keeps the click that records. */
+  /** The icon's left click. */
   trayClick: TrayClick;
   /** How new recordings are named (file-name.ts); the default gives the names every recording had before the choice. */
   fileNameTemplate: string;
@@ -126,7 +119,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   if (typeof parsed !== "object" || parsed === null) return undefined;
   const record = parsed as Record<string, unknown>;
   const version = record["version"];
-  if (version !== 1 && version !== 2 && version !== SETTINGS_VERSION) return undefined;
+  if (version !== SETTINGS_VERSION) return undefined;
   const outputDir = record["outputDir"];
   if (typeof outputDir !== "string" || outputDir.length === 0 || !path.isAbsolute(outputDir)) {
     return undefined;
@@ -141,9 +134,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   };
   const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
   let quality: QualitySettings = DEFAULT_QUALITY;
-  if (version === 1) {
-    warnings.push("version 1 file: quality set to defaults");
-  } else if (isQualitySettings(record["quality"])) {
+  if (isQualitySettings(record["quality"])) {
     quality = {
       videoQuality: record["quality"].videoQuality,
       resolutionCap: record["quality"].resolutionCap,
@@ -157,9 +148,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const language = field("language", isLanguage, DEFAULT_LANGUAGE, "language is unsupported: using English");
   let hotkey: HotkeySettings = DEFAULT_HOTKEY;
   const storedHotkey = canonicalHotkeySettings(record["hotkey"], platform);
-  if (version !== SETTINGS_VERSION) {
-    warnings.push(`version ${version} file: shortcut set to default`);
-  } else if (storedHotkey) {
+  if (storedHotkey) {
     hotkey = storedHotkey;
   } else {
     warnings.push("hotkey is missing or has unsupported values: using the default shortcut");
@@ -177,8 +166,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const display = field("display", isDisplayPreference, DEFAULT_DISPLAY_PREFERENCE, "display is invalid: using primary display");
   const countdown = field("countdown", isCountdownSeconds, DEFAULT_COUNTDOWN, `countdown is unsupported: using ${DEFAULT_COUNTDOWN} seconds`);
   const countdownSound = field("countdownSound", isBoolean, DEFAULT_COUNTDOWN_SOUND, `countdownSound is not a boolean: using ${DEFAULT_COUNTDOWN_SOUND ? "on" : "off"}`);
-  // Everyone who used the app before the choice existed learned a click that records; an upgrade keeps it.
-  const trayClick = field("trayClick", isTrayClick, "record", "trayClick is unsupported: using record");
+  const trayClick = field("trayClick", isTrayClick, defaults.trayClick, `trayClick is unsupported: using ${defaults.trayClick}`);
   // Only a pattern stored as it would be saved: trimmed and usable.
   const isTemplate = (value: unknown): value is string => typeof value === "string" && canonicalFileNameTemplate(value) === value;
   const fileNameTemplate = field("fileNameTemplate", isTemplate, defaults.fileNameTemplate, `fileNameTemplate is unsupported: using ${defaults.fileNameTemplate}`);
@@ -200,8 +188,8 @@ export class SettingsStore {
   /** The file on disk exists but could not be used; the first write moves it aside instead of replacing it. */
   private unusableOnDisk = false;
   private newerOnDisk = false;
-  private migrationPending = false;
-  private migrationBackedUp = false;
+  private resetPending = false;
+  private resetBackedUp = false;
 
   constructor(options: SettingsStoreOptions) {
     this.filePath = options.filePath;
@@ -212,8 +200,8 @@ export class SettingsStore {
   }
 
   /** Startup only: use the same queue as edits, and never manufacture a file for a fresh install. */
-  async migrate(): Promise<void> {
-    if (this.migrationPending) await this.save(current => current);
+  async resetOlderFormat(): Promise<void> {
+    if (this.resetPending) await this.save(current => current);
   }
 
   get display(): DisplayPreference { return { ...this.settings.display }; }
@@ -367,12 +355,12 @@ export class SettingsStore {
       try {
         const version = (JSON.parse(text) as { version?: unknown } | null)?.version;
         this.newerOnDisk = typeof version === "number" && version > SETTINGS_VERSION;
+        this.resetPending = Number.isSafeInteger(version) && (version as number) >= 1 && (version as number) < SETTINGS_VERSION;
       } catch { /* Broken JSON follows the existing keep-before-write contract. */ }
       this.log(`settings: ${this.filePath} is invalid or has an unknown version; using defaults`);
-      this.unusableOnDisk = true;
+      this.unusableOnDisk = !this.resetPending;
       return fallback;
     }
-    this.migrationPending = (JSON.parse(text) as { version: number }).version < SETTINGS_VERSION;
     for (const warning of parsed.warnings) this.log(`settings: ${warning}`);
     return parsed.settings;
   }
@@ -384,16 +372,16 @@ export class SettingsStore {
    */
   private async write(settings: Settings): Promise<void> {
     if (this.newerOnDisk) throw new Error("Settings are from a newer app version; refusing to overwrite them");
-    if (this.migrationPending && !this.migrationBackedUp) {
-      await this.keepFile("migration-backup");
-      this.migrationBackedUp = true;
+    if (this.resetPending && !this.resetBackedUp) {
+      await this.keepFile("reset-backup");
+      this.resetBackedUp = true;
     }
     if (this.unusableOnDisk) {
       await this.keepUnusable();
       this.unusableOnDisk = false;
     }
     await writeFileAtomic(this.filePath, JSON.stringify(settings, null, 2) + "\n");
-    this.migrationPending = false;
+    this.resetPending = false;
   }
 
   /**
@@ -409,18 +397,7 @@ export class SettingsStore {
   }
 
   private async keepFile(suffix: string): Promise<void> {
-    for (let index = 0; index < KEPT_UNUSABLE_NAMES; index++) {
-      const kept = `${this.filePath}.${suffix}${index ? `.${index}` : ""}`;
-      try {
-        await fs.promises.link(this.filePath, kept);
-        this.log(`settings: kept the ${suffix === "unreadable" ? "unusable" : "pre-migration"} file as ${kept}`);
-        return;
-      } catch (cause) {
-        const code = errnoCode(cause);
-        if (code === "ENOENT") return;
-        if (code !== "EEXIST") throw cause;
-      }
-    }
-    throw new Error(`every name up to ${path.basename(this.filePath)}.${suffix}.${KEPT_UNUSABLE_NAMES - 1} is taken`);
+    const kept = await keepFile(this.filePath, suffix, KEPT_UNUSABLE_NAMES);
+    if (kept) this.log(`settings: kept the ${suffix === "unreadable" ? "unusable" : "pre-reset"} file as ${kept}`);
   }
 }

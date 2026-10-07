@@ -35,6 +35,12 @@ app.getAppPath = () => root;
 const settingsFile = path.join(data, "userData/settings.json");
 
 const boundary = createBoundary(electron, { trashDir: path.join(data, "trash"), violationsFile: path.join(data, "violations.jsonl") });
+if (process.env.RECORDSTUFF_UI_OFFLINE === "1") {
+  Object.defineProperty(boundary.electron, "net", { value: {
+    ...electron.net,
+    fetch: async () => { throw new Error("controlled offline update check"); },
+  } });
+}
 for (const accelerator of (process.env.RECORDSTUFF_UI_FAILING_SHORTCUTS ?? "").split(",").filter(Boolean)) boundary.shortcuts.failing.add(accelerator);
 
 /** Holds settings.json's final rename until released, so a confirmed save stays pending deterministically. */

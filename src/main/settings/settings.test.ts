@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_HOTKEY } from "../../shared/hotkey";
 import { DEFAULT_QUALITY } from "../../shared/quality";
-import { KEPT_UNUSABLE_NAMES, SettingsStore, parseSettings, defaultSettings } from "./settings";
+import { KEPT_UNUSABLE_NAMES, SettingsStore, parseSettings, defaultSettings, SETTINGS_VERSION } from "./settings";
 
 let dir: string;
 let filePath: string;
@@ -35,7 +35,7 @@ describe("SettingsStore", () => {
   });
 
   it("falls back on an unknown version", async () => {
-    await fs.writeFile(filePath, JSON.stringify({ version: 4, outputDir: "/somewhere" }));
+    await fs.writeFile(filePath, JSON.stringify({ version: SETTINGS_VERSION + 1, outputDir: "/somewhere" }));
     expect(store().outputDir).toBe(DEFAULT);
     expect(logs).toHaveLength(1);
   });
@@ -47,7 +47,7 @@ describe("SettingsStore", () => {
     // An automatic write, like the launch update check's attempt stamp.
     await first.setUpdates({ lastAttempt: 1 });
     expect(await fs.readFile(`${filePath}.unreadable`, "utf8")).toBe(broken);
-    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: 3, outputDir: DEFAULT });
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: SETTINGS_VERSION, outputDir: DEFAULT });
     expect(logs).toContainEqual(expect.stringContaining("kept the unusable file"));
     // Only the first write moves it; a later one keeps the file it wrote.
     await first.setNotifications(false);
@@ -55,48 +55,53 @@ describe("SettingsStore", () => {
   });
 
   it("never overwrites a newer schema on startup or an explicit preference change", async () => {
-    const newer = JSON.stringify({ version: 4, outputDir: "/somewhere", future: true });
+    const newer = JSON.stringify({ version: SETTINGS_VERSION + 1, outputDir: "/somewhere", future: true });
     await fs.writeFile(filePath, newer);
     const first = store();
-    await first.migrate();
+    await first.resetOlderFormat();
     await expect(first.setUpdates({ lastAttempt: 1 })).rejects.toThrow(/newer app version/);
     await expect(first.setOutputDir("/elsewhere")).rejects.toThrow(/newer app version/);
     expect(await fs.readFile(filePath, "utf8")).toBe(newer);
     expect(await fs.readdir(dir)).toEqual(["settings.json"]);
   });
 
-  it.each([1, 2])("migrates v%i at startup, keeps the original, and does not repeat after restart", async version => {
+  it.each([1, 2, 3])("resets v%i at startup, keeps the original, and does not repeat after restart", async version => {
     const original = JSON.stringify({ version, outputDir: "/old-recordings", quality: DEFAULT_QUALITY });
     await fs.writeFile(filePath, original);
     const first = store();
-    await first.migrate();
-    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: 3, outputDir: "/old-recordings", trayClick: "record" });
-    expect(await fs.readFile(`${filePath}.migration-backup`, "utf8")).toBe(original);
-    await first.migrate(); await store().migrate();
-    expect(await fs.readdir(dir)).toEqual(["settings.json", "settings.json.migration-backup"]);
+    await first.resetOlderFormat();
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual(defaultSettings(DEFAULT));
+    expect(await fs.readFile(`${filePath}.reset-backup`, "utf8")).toBe(original);
+    await first.setOutputDir("/new-choice");
+    await first.setLanguage("zh-TW");
+    const restarted = store();
+    await first.resetOlderFormat(); await restarted.resetOlderFormat();
+    expect(restarted.outputDir).toBe("/new-choice");
+    expect(restarted.language).toBe("zh-TW");
+    expect(await fs.readdir(dir)).toEqual(["settings.json", "settings.json.reset-backup"]);
   });
 
-  it("a failed startup migration retains old data and can retry without overwriting previous backups", async () => {
+  it("a failed startup reset retains old data and can retry without overwriting previous backups", async () => {
     const original = JSON.stringify({ version: 1, outputDir: "/old-recordings" });
     await fs.writeFile(filePath, original);
-    await fs.writeFile(`${filePath}.migration-backup`, "previous backup");
+    await fs.writeFile(`${filePath}.reset-backup`, "previous backup");
     await fs.mkdir(`${filePath}.tmp`);
     const first = store();
-    await expect(first.migrate()).rejects.toThrow();
+    await expect(first.resetOlderFormat()).rejects.toThrow();
     expect(await fs.readFile(filePath, "utf8")).toBe(original);
     await fs.rm(`${filePath}.tmp`, { recursive: true });
-    await first.migrate();
-    expect(JSON.parse(await fs.readFile(filePath, "utf8")).version).toBe(3);
-    expect(await fs.readFile(`${filePath}.migration-backup`, "utf8")).toBe("previous backup");
-    expect(await fs.readFile(`${filePath}.migration-backup.1`, "utf8")).toBe(original);
-    await expect(fs.access(`${filePath}.migration-backup.2`)).rejects.toThrow();
+    await first.resetOlderFormat();
+    expect(JSON.parse(await fs.readFile(filePath, "utf8")).version).toBe(SETTINGS_VERSION);
+    expect(await fs.readFile(`${filePath}.reset-backup`, "utf8")).toBe("previous backup");
+    expect(await fs.readFile(`${filePath}.reset-backup.1`, "utf8")).toBe(original);
+    await expect(fs.access(`${filePath}.reset-backup.2`)).rejects.toThrow();
   });
 
-  it("startup migration leaves absent and corrupt settings untouched", async () => {
-    await store().migrate();
+  it("startup reset leaves absent and corrupt settings untouched", async () => {
+    await store().resetOlderFormat();
     expect(await fs.readdir(dir)).toEqual([]);
     await fs.writeFile(filePath, "{ broken");
-    await store().migrate();
+    await store().resetOlderFormat();
     expect(await fs.readFile(filePath, "utf8")).toBe("{ broken");
   });
 
@@ -113,7 +118,7 @@ describe("SettingsStore", () => {
     await store().setNotifications(false);
     expect(await fs.readFile(`${filePath}.unreadable`, "utf8")).toBe("first");
     expect(await fs.readFile(`${filePath}.unreadable.2`, "utf8")).toBe("second");
-    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: 3, notifications: false });
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: SETTINGS_VERSION, notifications: false });
   });
 
   it("gives up keeping the unusable file once every name is taken, rejecting the save and keeping the file", async () => {
@@ -152,7 +157,7 @@ describe("SettingsStore", () => {
     await first.setOutputDir("/Volumes/External/Recordings");
     expect(first.outputDir).toBe("/Volumes/External/Recordings");
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
-      version: 3,
+      version: SETTINGS_VERSION,
       language: "en", appearance: "system",
       outputDir: "/Volumes/External/Recordings",
       quality: DEFAULT_QUALITY,
@@ -167,7 +172,7 @@ describe("SettingsStore", () => {
   });
 
   it("defaults notifications to on for a file written before the field existed", async () => {
-    await fs.writeFile(filePath, JSON.stringify({ version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY }));
+    await fs.writeFile(filePath, JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY }));
     expect(store().notifications).toBe(true);
     // A missing switch is not a broken file: nothing to warn about.
     expect(logs).toEqual([]);
@@ -179,7 +184,7 @@ describe("SettingsStore", () => {
     expect(first.notifications).toBe(false);
     expect(JSON.parse(await fs.readFile(filePath, "utf8")).notifications).toBe(false);
     expect(store().notifications).toBe(false);
-    await fs.writeFile(filePath, JSON.stringify({ version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, notifications: "off" }));
+    await fs.writeFile(filePath, JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, notifications: "off" }));
     expect(store().notifications).toBe(true);
   });
 
@@ -191,7 +196,7 @@ describe("SettingsStore", () => {
   });
 
   it("a leftover tmp file from a crashed write is ignored and then overwritten", async () => {
-    await fs.writeFile(filePath, JSON.stringify({ version: 1, outputDir: "/good" }));
+    await fs.writeFile(filePath, JSON.stringify({ ...defaultSettings("/good") }));
     await fs.writeFile(`${filePath}.tmp`, '{"version":1,"outputDir":"/half');
     const s = store();
     expect(s.outputDir).toBe("/good");
@@ -219,25 +224,23 @@ describe("SettingsStore", () => {
 describe("quality settings", () => {
   const custom = { videoQuality: "high", resolutionCap: "1080p", frameRate: 60 } as const;
 
-  it("a version 1 file keeps its outputDir, gets the default quality and logs the upgrade", async () => {
-    await fs.writeFile(filePath, JSON.stringify({ version: 1, outputDir: "/old" }));
+  it("an older file resets every preference, including folder, language and shortcut", async () => {
+    await fs.writeFile(filePath, JSON.stringify({ ...defaultSettings("/old"), version: 3,
+      language: "zh-TW", quality: custom, countdown: 0, notifications: false,
+      hotkey: { enabled: false, accelerator: "CommandOrControl+Shift+R" }, trayClick: "record" }));
     const s = store();
-    expect(s.outputDir).toBe("/old");
-    expect(s.quality).toEqual(DEFAULT_QUALITY);
-    expect(logs).toEqual([
-      "settings: version 1 file: quality set to defaults",
-      "settings: version 1 file: shortcut set to default",
-    ]);
+    await s.resetOlderFormat();
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual(defaultSettings(DEFAULT));
   });
 
-  it("round-trips a full quality block and persists it as version 2", async () => {
+  it("round-trips a full quality block and persists it in the current format", async () => {
     const first = store();
     await first.setQuality({ videoQuality: "high", resolutionCap: "1080p" });
     await first.setQuality({ frameRate: 60 });
     expect(first.quality).toEqual(custom);
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
       language: "en", appearance: "system",
-      version: 3,
+      version: SETTINGS_VERSION,
       outputDir: DEFAULT,
       quality: custom,
       hotkey: DEFAULT_HOTKEY,
@@ -256,7 +259,7 @@ describe("quality settings", () => {
     await s.setQuality({ videoQuality: "economy" });
     await s.setOutputDir("/elsewhere");
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
-      version: 3,
+      version: SETTINGS_VERSION,
       language: "en", appearance: "system",
       outputDir: "/elsewhere",
       quality: { ...DEFAULT_QUALITY, videoQuality: "economy" },
@@ -271,13 +274,13 @@ describe("quality settings", () => {
   it("an invalid quality block falls back to defaults but keeps the outputDir", async () => {
     await fs.writeFile(
       filePath,
-      JSON.stringify({ version: 3, outputDir: "/kept", quality: { ...custom, frameRate: 24 }, hotkey: DEFAULT_HOTKEY }),
+      JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/kept", quality: { ...custom, frameRate: 24 }, hotkey: DEFAULT_HOTKEY }),
     );
     const s = store();
     expect(s.outputDir).toBe("/kept");
     expect(s.quality).toEqual(DEFAULT_QUALITY);
     expect(logs).toEqual(["settings: quality is missing or has unsupported values: using defaults"]);
-    await fs.writeFile(filePath, JSON.stringify({ version: 3, outputDir: "/kept", hotkey: DEFAULT_HOTKEY }));
+    await fs.writeFile(filePath, JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/kept", hotkey: DEFAULT_HOTKEY }));
     expect(store().quality).toEqual(DEFAULT_QUALITY);
   });
 
@@ -311,7 +314,7 @@ describe("quality settings", () => {
     expect(s.outputDir).toBe("/picked");
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
       language: "en", appearance: "system",
-      version: 3,
+      version: SETTINGS_VERSION,
       outputDir: "/picked",
       quality: expected,
       hotkey: DEFAULT_HOTKEY,
@@ -334,7 +337,7 @@ describe("quality settings", () => {
 
   it("ignores unknown extra keys inside quality", () => {
     const parsed = parseSettings(
-      JSON.stringify({ version: 3, outputDir: "/a", quality: { ...custom, extra: 1 }, hotkey: DEFAULT_HOTKEY }),
+      JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: { ...custom, extra: 1 }, hotkey: DEFAULT_HOTKEY }),
     );
     expect(parsed?.settings.quality).toEqual(custom);
     expect(parsed?.warnings).toEqual([]);
@@ -342,38 +345,21 @@ describe("quality settings", () => {
 });
 
 describe("parseSettings", () => {
-  it("accepts versions 1 to 3 with an absolute string outputDir", () => {
-    expect(parseSettings('{"version":1,"outputDir":"/a"}')?.settings).toEqual({
-      version: 3,
-      language: "en", appearance: "system",
-      outputDir: "/a",
-      quality: DEFAULT_QUALITY,
-      hotkey: DEFAULT_HOTKEY,
-      updates: { enabled: true, lastAttempt: 0 },
-      notifications: true,
-      display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "record", fileNameTemplate: "{date} {time}", libraryLayout: "grid",
-    });
-    expect(parseSettings('{"version":2,"outputDir":"/a","quality":' + JSON.stringify(DEFAULT_QUALITY) + "}")).toEqual({
-      settings: { language: "en", appearance: "system", version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" }, countdown: 3, countdownSound: true, trayClick: "record", fileNameTemplate: "{date} {time}", libraryLayout: "grid" },
-      warnings: ["version 2 file: shortcut set to default"],
-    });
-    const v3 = { version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
-    expect(parseSettings(JSON.stringify(v3))).toEqual({ settings: { ...v3, language: "en", appearance: "system", updates: { enabled: true, lastAttempt: 0 }, notifications: true, display: { kind: "primary" }, countdown: 3, countdownSound: true, trayClick: "record", fileNameTemplate: "{date} {time}", libraryLayout: "grid" }, warnings: [] });
-    expect(parseSettings('{"version":1,"outputDir":""}')).toBeUndefined();
-    expect(parseSettings("null")).toBeUndefined();
-    expect(parseSettings("[]")).toBeUndefined();
+  it("only accepts the current version with an absolute outputDir", () => {
+    for (const version of [1, 2, 3, SETTINGS_VERSION + 1])
+      expect(parseSettings(JSON.stringify({ ...defaultSettings("/a"), version }))).toBeUndefined();
+    expect(parseSettings(JSON.stringify(defaultSettings("/a")))).toEqual({ settings: defaultSettings("/a"), warnings: [] });
+    for (const text of ["null", "[]", JSON.stringify({ version: SETTINGS_VERSION, outputDir: "" })])
+      expect(parseSettings(text)).toBeUndefined();
   });
 });
 
 describe("language settings", () => {
-  it("defaults existing v1/v2 files to English without losing their folder or quality", async () => {
-    for (const version of [1, 2]) {
-      await fs.writeFile(filePath, JSON.stringify({ version, outputDir: "/kept", quality: DEFAULT_QUALITY }));
-      const s = store();
-      expect(s.language).toBe("en");
-      expect(s.outputDir).toBe("/kept");
-      expect(s.quality).toEqual(DEFAULT_QUALITY);
+  it("uses default language and folder for older files", async () => {
+    for (const version of [1, 2, 3]) {
+      await fs.writeFile(filePath, JSON.stringify({ version, outputDir: "/kept", quality: DEFAULT_QUALITY, language: "zh-TW" }));
+      expect(store().language).toBe("en");
+      expect(store().outputDir).toBe(DEFAULT);
     }
   });
 
@@ -401,7 +387,7 @@ describe("language settings", () => {
   it("defaults corrupt language independently and rejects invalid mutations", async () => {
     await fs.writeFile(
       filePath,
-      JSON.stringify({ version: 3, outputDir: "/kept", quality: DEFAULT_QUALITY, language: "fr", hotkey: DEFAULT_HOTKEY }),
+      JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/kept", quality: DEFAULT_QUALITY, language: "fr", hotkey: DEFAULT_HOTKEY }),
     );
     const s = store();
     expect(s.language).toBe("en");
@@ -415,28 +401,19 @@ describe("language settings", () => {
 describe("hotkey settings (plan 016)", () => {
   const custom = { enabled: true, accelerator: "CommandOrControl+Shift+R" } as const;
 
-  it("v1 and v2 files get the default shortcut and keep folder, quality and language", async () => {
-    for (const version of [1, 2]) {
-      logs.length = 0;
-      await fs.writeFile(
-        filePath,
-        JSON.stringify({ version, outputDir: "/kept", quality: { ...DEFAULT_QUALITY, videoQuality: "high" }, language: "zh-TW" }),
-      );
-      const s = store();
-      expect(s.hotkey).toEqual(DEFAULT_HOTKEY);
-      expect(s.outputDir).toBe("/kept");
-      expect(s.language).toBe("zh-TW");
-      if (version === 2) expect(s.quality.videoQuality).toBe("high");
-      expect(logs).toContain(`settings: version ${version} file: shortcut set to default`);
+  it("uses the default shortcut for every older format", async () => {
+    for (const version of [1, 2, 3]) {
+      await fs.writeFile(filePath, JSON.stringify({ ...defaultSettings("/kept"), version, hotkey: custom }));
+      expect(store().hotkey).toEqual(DEFAULT_HOTKEY);
     }
   });
 
-  it("round-trips a preset and the disabled state as version 3", async () => {
+  it("round-trips a preset and the disabled state in the current format", async () => {
     const s = store();
     await s.setHotkey(custom);
     expect(s.hotkey).toEqual(custom);
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({
-      version: 3,
+      version: SETTINGS_VERSION,
       language: "en", appearance: "system",
       outputDir: DEFAULT,
       quality: DEFAULT_QUALITY,
@@ -455,21 +432,21 @@ describe("hotkey settings (plan 016)", () => {
   it("an unknown accelerator or a broken hotkey block falls back to the default and keeps the rest", async () => {
     await fs.writeFile(
       filePath,
-      JSON.stringify({ version: 3, outputDir: "/kept", quality: DEFAULT_QUALITY, hotkey: { enabled: true, accelerator: "F13" } }),
+      JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/kept", quality: DEFAULT_QUALITY, hotkey: { enabled: true, accelerator: "F13" } }),
     );
     const s = store();
     expect(s.hotkey).toEqual(DEFAULT_HOTKEY);
     expect(s.outputDir).toBe("/kept");
     expect(logs).toEqual(["settings: hotkey is missing or has unsupported values: using the default shortcut"]);
     // A hand-edited Command+W would take every app's close key; it is not registered.
-    await fs.writeFile(filePath, JSON.stringify({ version: 3, outputDir: "/kept", quality: DEFAULT_QUALITY, hotkey: { enabled: true, accelerator: "CommandOrControl+W" } }));
+    await fs.writeFile(filePath, JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/kept", quality: DEFAULT_QUALITY, hotkey: { enabled: true, accelerator: "CommandOrControl+W" } }));
     expect(store().hotkey).toEqual(DEFAULT_HOTKEY);
-    await fs.writeFile(filePath, JSON.stringify({ version: 3, outputDir: "/kept", quality: DEFAULT_QUALITY }));
+    await fs.writeFile(filePath, JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/kept", quality: DEFAULT_QUALITY }));
     expect(store().hotkey).toEqual(DEFAULT_HOTKEY);
   });
 
   it("validates a saved or chosen shortcut against the platform's reserved combinations (plan 064)", async () => {
-    const file = (accelerator: string) => JSON.stringify({ version: 3, outputDir: "/kept", quality: DEFAULT_QUALITY, hotkey: { enabled: true, accelerator } });
+    const file = (accelerator: string) => JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/kept", quality: DEFAULT_QUALITY, hotkey: { enabled: true, accelerator } });
     expect(parseSettings(file("CommandOrControl+Space"), "darwin")?.settings.hotkey).toEqual(DEFAULT_HOTKEY);
     expect(parseSettings(file("CommandOrControl+Space"), "win32")?.settings.hotkey).toEqual({ enabled: true, accelerator: "CommandOrControl+Space" });
     expect(parseSettings(file("Control+Q"), "darwin")?.settings.hotkey).toEqual({ enabled: true, accelerator: "Control+Q" });
@@ -506,8 +483,8 @@ describe("hotkey settings (plan 016)", () => {
 
 
 describe("update preferences", () => {
-  it("defaults legacy files to enabled without a previous attempt", () => {
-    expect(parseSettings('{"version":1,"outputDir":"/a"}')?.settings.updates).toEqual({ enabled: true, lastAttempt: 0 });
+  it("defaults missing fields to enabled without a previous attempt", () => {
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a" }))?.settings.updates).toEqual({ enabled: true, lastAttempt: 0 });
   });
   it("serializes concurrent update and language changes and persists across restart", async () => {
     const s = store();
@@ -527,22 +504,22 @@ describe("update preferences", () => {
     expect(store().updates.notifiedVersion).toBe("1.2.0");
   });
   it("defaults malformed timestamps and flags", () => {
-    expect(parseSettings(JSON.stringify({ version: 1, outputDir: "/a", updates: { enabled: "no", lastAttempt: -1 } }))?.settings.updates).toEqual({ enabled: true, lastAttempt: 0 });
-    expect(parseSettings(JSON.stringify({ version: 1, outputDir: "/a", updates: { enabled: false, lastAttempt: 5 } }))?.settings.updates).toEqual({ enabled: false, lastAttempt: 5 });
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", updates: { enabled: "no", lastAttempt: -1 } }))?.settings.updates).toEqual({ enabled: true, lastAttempt: 0 });
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", updates: { enabled: false, lastAttempt: 5 } }))?.settings.updates).toEqual({ enabled: false, lastAttempt: 5 });
     // The update fields are read from `updates` only, never from the top level.
-    expect(parseSettings(JSON.stringify({ version: 1, outputDir: "/a", enabled: false, lastAttempt: 5 }))?.settings.updates).toEqual({ enabled: true, lastAttempt: 0 });
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", enabled: false, lastAttempt: 5 }))?.settings.updates).toEqual({ enabled: true, lastAttempt: 0 });
   });
   it("says in the log when a spoiled switch or update record falls back, like every other field", () => {
-    const parsed = parseSettings(JSON.stringify({ version: 1, outputDir: "/a", notifications: "no", updates: { enabled: "no", lastAttempt: -1 } }));
+    const parsed = parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", notifications: "no", updates: { enabled: "no", lastAttempt: -1 } }));
     expect(parsed?.settings).toMatchObject({ notifications: true, updates: { enabled: true, lastAttempt: 0 } });
     expect(parsed?.warnings).toEqual(expect.arrayContaining([
       "notifications is not a boolean: using on", "updates.enabled is not a boolean: using on", "updates.lastAttempt is invalid: using 0"]));
-    expect(parseSettings(JSON.stringify({ version: 1, outputDir: "/a", updates: "off" }))?.warnings).toContain("updates is not an object: using defaults");
-    const told = parseSettings(JSON.stringify({ version: 1, outputDir: "/a", updates: { enabled: true, lastAttempt: 5, notifiedVersion: "1.2.0-rc.1" } }));
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", updates: "off" }))?.warnings).toContain("updates is not an object: using defaults");
+    const told = parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", updates: { enabled: true, lastAttempt: 5, notifiedVersion: "1.2.0-rc.1" } }));
     expect(told?.settings.updates).toEqual({ enabled: true, lastAttempt: 5 });
     expect(told?.warnings).toContain("updates.notifiedVersion is invalid: announcing the next newer version");
     // A file from before these fields existed is not spoiled: it takes the defaults silently.
-    expect(parseSettings(JSON.stringify({ version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY }))?.warnings).toEqual([]);
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY }))?.warnings).toEqual([]);
   });
 });
 
@@ -562,11 +539,11 @@ describe("display preference storage", () => {
     expect(store().display).toEqual(display);
     await settings.setDisplay({ kind: "primary" }); expect(store().display).toEqual({ kind: "primary" });
   });
-  it.each([1, 2, 3])("defaults missing display in version %s", (version) => {
-    expect(parseSettings(JSON.stringify({ version, outputDir: DEFAULT }))?.settings.display).toEqual({ kind: "primary" });
+  it("defaults missing display in the current format", () => {
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: DEFAULT }))?.settings.display).toEqual({ kind: "primary" });
   });
   it("warns about invalid data and rejects invalid saves", async () => {
-    const result = parseSettings(JSON.stringify({ version: 3, outputDir: DEFAULT, display: { kind: "display", id: "-1", label: "bad" } }));
+    const result = parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: DEFAULT, display: { kind: "display", id: "-1", label: "bad" } }));
     expect(result?.settings.display).toEqual({ kind: "primary" });
     expect(result?.warnings).toContain("display is invalid: using primary display");
     const settings = store(); await expect(settings.setDisplay({ kind: "display", id: "", label: "" })).rejects.toThrow();
@@ -576,9 +553,9 @@ describe("display preference storage", () => {
 
 
 describe("appearance", () => {
-  it("defaults old files to system and persists each explicit choice", async () => {
+  it("defaults missing appearance to system and persists each explicit choice", async () => {
     expect(store().appearance).toBe("system");
-    expect(parseSettings('{"version":1,"outputDir":"/a"}')?.settings.appearance).toBe("system");
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a" }))?.settings.appearance).toBe("system");
     for (const appearance of ["dark", "light", "system"] as const) {
       await store().setAppearance(appearance);
       expect(store().appearance).toBe(appearance);
@@ -592,16 +569,16 @@ describe("appearance", () => {
     await expect(s.setAppearance("light")).rejects.toThrow();
     expect(s.appearance).toBe("dark");
     expect(store().appearance).toBe("dark");
-    expect(parseSettings('{"version":1,"outputDir":"/a","appearance":"invalid"}')?.settings.appearance).toBe("system");
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", appearance: "invalid" }))?.settings.appearance).toBe("system");
   });
 });
 
 describe("countdown (plan 040)", () => {
-  const v3 = { version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
+  const current = { version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
 
   it("reads a file written before the field existed as 3 seconds, silently and without a version bump", async () => {
-    expect(parseSettings(JSON.stringify(v3))).toMatchObject({ settings: { countdown: 3, version: 3 }, warnings: [] });
-    await fs.writeFile(filePath, JSON.stringify(v3));
+    expect(parseSettings(JSON.stringify(current))).toMatchObject({ settings: { countdown: 3, version: SETTINGS_VERSION }, warnings: [] });
+    await fs.writeFile(filePath, JSON.stringify(current));
     expect(store().countdown).toBe(3);
     expect(logs).toEqual([]);
     expect(store().countdown).toBe(3);
@@ -609,11 +586,11 @@ describe("countdown (plan 040)", () => {
   });
 
   it.each([0, 3, 5, 10])("keeps a stored %i", (countdown) => {
-    expect(parseSettings(JSON.stringify({ ...v3, countdown }))).toMatchObject({ settings: { countdown }, warnings: [] });
+    expect(parseSettings(JSON.stringify({ ...current, countdown }))).toMatchObject({ settings: { countdown }, warnings: [] });
   });
 
   it.each([4, "3", null, -1, 3.5])("reads an unsupported %j as 3 with a warning and keeps the other fields", async (countdown) => {
-    const parsed = parseSettings(JSON.stringify({ ...v3, countdown }));
+    const parsed = parseSettings(JSON.stringify({ ...current, countdown }));
     expect(parsed).toMatchObject({ settings: { countdown: 3, outputDir: "/a" }, warnings: ["countdown is unsupported: using 3 seconds"] });
   });
 
@@ -621,7 +598,7 @@ describe("countdown (plan 040)", () => {
     const first = store();
     await first.setCountdown(10);
     expect(first.countdown).toBe(10);
-    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: 3, outputDir: DEFAULT, countdown: 10 });
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: SETTINGS_VERSION, outputDir: DEFAULT, countdown: 10 });
     expect(store().countdown).toBe(10);
     await first.setCountdown(0);
     expect(store().countdown).toBe(0);
@@ -631,22 +608,22 @@ describe("countdown (plan 040)", () => {
 });
 
 describe("countdown sound (plan 046)", () => {
-  const v3 = { version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
+  const current = { version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
 
   it("reads a file written before the field existed as on, the maintainer's default, silently and without a version bump", async () => {
-    expect(parseSettings(JSON.stringify(v3))).toMatchObject({ settings: { countdownSound: true, version: 3 }, warnings: [] });
-    await fs.writeFile(filePath, JSON.stringify(v3));
+    expect(parseSettings(JSON.stringify(current))).toMatchObject({ settings: { countdownSound: true, version: SETTINGS_VERSION }, warnings: [] });
+    await fs.writeFile(filePath, JSON.stringify(current));
     expect(store().countdownSound).toBe(true);
     expect(logs).toEqual([]);
     expect(new SettingsStore({ filePath: path.join(dir, "missing.json"), defaultOutputDir: DEFAULT }).countdownSound).toBe(true);
   });
 
   it.each([true, false])("keeps a stored %s, also with the countdown Off", (countdownSound) => {
-    expect(parseSettings(JSON.stringify({ ...v3, countdown: 0, countdownSound }))).toMatchObject({ settings: { countdown: 0, countdownSound }, warnings: [] });
+    expect(parseSettings(JSON.stringify({ ...current, countdown: 0, countdownSound }))).toMatchObject({ settings: { countdown: 0, countdownSound }, warnings: [] });
   });
 
   it.each(["off", 0, null, 1])("reads a non-boolean %j as on with a warning and keeps the other fields", (countdownSound) => {
-    expect(parseSettings(JSON.stringify({ ...v3, countdown: 5, countdownSound }))).toMatchObject({
+    expect(parseSettings(JSON.stringify({ ...current, countdown: 5, countdownSound }))).toMatchObject({
       settings: { countdownSound: true, countdown: 5, outputDir: "/a" }, warnings: ["countdownSound is not a boolean: using on"],
     });
   });
@@ -656,7 +633,7 @@ describe("countdown sound (plan 046)", () => {
     await first.setCountdown(5);
     await first.setCountdownSound(false);
     expect(first.countdownSound).toBe(false);
-    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: 3, outputDir: DEFAULT, countdown: 5, countdownSound: false });
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: SETTINGS_VERSION, outputDir: DEFAULT, countdown: 5, countdownSound: false });
     expect(store().countdownSound).toBe(false);
     await first.setCountdownSound(true);
     expect(store().countdownSound).toBe(true);
@@ -695,12 +672,12 @@ it("flush includes a save accepted while the earlier write is draining", async (
 });
 
 describe("the icon's left click (2026-10-04)", () => {
-  it("opens the menu on a new install, keeps the click that records on an upgrade, and round-trips the choice", async () => {
+  it("defaults to opening the menu and round-trips the choice", async () => {
     expect(defaultSettings("/a").trayClick).toBe("menu");
-    expect(parseSettings(JSON.stringify({ version: 3, outputDir: "/a", hotkey: DEFAULT_HOTKEY }))?.settings.trayClick).toBe("record");
-    expect(parseSettings(JSON.stringify({ version: 3, outputDir: "/a", hotkey: DEFAULT_HOTKEY, trayClick: "menu" }))?.settings.trayClick).toBe("menu");
-    expect(parseSettings(JSON.stringify({ version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, trayClick: "double" })))
-      .toMatchObject({ settings: { trayClick: "record" }, warnings: ["trayClick is unsupported: using record"] });
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", hotkey: DEFAULT_HOTKEY }))?.settings.trayClick).toBe("menu");
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", hotkey: DEFAULT_HOTKEY, trayClick: "menu" }))?.settings.trayClick).toBe("menu");
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, trayClick: "double" })))
+      .toMatchObject({ settings: { trayClick: "menu" }, warnings: ["trayClick is unsupported: using menu"] });
     const s = store();
     expect(s.trayClick).toBe("menu");
     await s.setTrayClick("record");
@@ -714,8 +691,8 @@ describe("the file name pattern and the Recordings layout (2026-10-05)", () => {
   it("defaults to the names recordings always had and the grid, and refuses a pattern that cannot name a file", async () => {
     expect(defaultSettings("/a")).toMatchObject({ fileNameTemplate: "{date} {time}", libraryLayout: "grid" });
     // A file from before the choice keeps both defaults, silently.
-    expect(parseSettings(JSON.stringify({ version: 3, outputDir: "/a", hotkey: DEFAULT_HOTKEY }))).toMatchObject({ settings: { fileNameTemplate: "{date} {time}", libraryLayout: "grid" } });
-    expect(parseSettings(JSON.stringify({ version: 3, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, fileNameTemplate: "Meeting {date}", libraryLayout: "shelf" })))
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", hotkey: DEFAULT_HOTKEY }))).toMatchObject({ settings: { fileNameTemplate: "{date} {time}", libraryLayout: "grid" } });
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, fileNameTemplate: "Meeting {date}", libraryLayout: "shelf" })))
       .toMatchObject({ settings: { fileNameTemplate: "{date} {time}", libraryLayout: "grid" },
         warnings: ["fileNameTemplate is unsupported: using {date} {time}", "libraryLayout is unsupported: using grid"] });
     const s = store();

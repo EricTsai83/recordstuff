@@ -47,7 +47,7 @@ for (const name of ['userData', 'logs', 'sessionData', 'videos'] as const) {
 app.setName('RecordStuff Shortcut Integration');
 app.getAppPath = () => root;
 fs.writeFileSync(settingsFile, JSON.stringify({
-  version: 3, outputDir: path.join(temporary, 'videos'),
+  version: 4, outputDir: path.join(temporary, 'videos'),
   quality: { videoQuality: 'standard', resolutionCap: 'source', frameRate: 30 },
   // Windows phase: the recording shortcut is the fixture's key, so ⌥⌘, is the Settings shortcut whose callback opens Settings.
   language: 'en', hotkey: settingsPhase ? { enabled: true, accelerator } : { enabled: false, accelerator },

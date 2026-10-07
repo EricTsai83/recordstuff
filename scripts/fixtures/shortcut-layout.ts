@@ -85,7 +85,7 @@ function check() {
   app.getAppPath = () => root;
   const logFile = path.join(temporary, 'app/logs/recordstuff.log');
   fs.writeFileSync(path.join(temporary, 'app/userData/settings.json'), JSON.stringify({
-    version: 3, outputDir: path.join(temporary, 'app/videos'),
+    version: 4, outputDir: path.join(temporary, 'app/videos'),
     quality: { videoQuality: 'standard', resolutionCap: 'source', frameRate: 30 },
     language: 'en', hotkey: { enabled: true, accelerator },
     appearance: 'system', notifications: false, updates: { enabled: false },

@@ -7,7 +7,7 @@ import type { RecordingResult } from "../../../src/shared/recording-result.ts";
 import { HOLD_TARGETS, isFaultMode, isFaultName, isHoldTarget, type FaultName, type HoldTarget } from "../../fixtures/controlled-modes.ts";
 
 export const CONTROLLED_TOOL = "acceptance:controlled";
-export const SEEDS = ["none", "v1", "retention"] as const;
+export const SEEDS = ["none", "partial", "retention"] as const;
 export type Seed = (typeof SEEDS)[number];
 /** Written beside the evidence so later commands find the run; self-tests are never the default target. */
 export interface RunMarker { tool: typeof CONTROLLED_TOOL; createdAt: string; seed: Seed; selftest: boolean }
@@ -20,8 +20,7 @@ const PUBLISH = `    publishFailure: result => recordingResults.receive(result, 
       notify: code => permissionNotices.failed(code),
     }),`;
 const RESULTS = `  const recordingResults = new RecordingResults(
-    new RecordingResultStore(path.join(app.getPath("userData"), "recording-history.json"), log,
-      path.join(app.getPath("userData"), "recording-result.json")), log, () => refreshUi());`;
+    new RecordingResultStore(path.join(app.getPath("userData"), "recording-history.json"), log), log, () => refreshUi());`;
 
 /**
  * Wires the controlled build into a throwaway copy of `src/main/index.ts`. Each anchor must
@@ -43,7 +42,7 @@ export function instrumentControlledAcceptance(source: string, runDir: string): 
     .replace(/\}\),$/, "}); },"));
   source = replaceOnce(source, RESULTS, RESULTS
     .replace("new RecordingResultStore(", "controlled.storage(new RecordingResultStore(")
-    .replace(`"recording-result.json")), log,`, `"recording-result.json"))), log,`));
+    .replace(`"recording-history.json"), log), log,`, `"recording-history.json"), log)), log,`));
   source = replaceOnce(source, "  updates.flush();\n  log(`ready;",
     "  controlled.attach({ recorder, recordingResults, settings, tray, handleAction, log });\n  updates.flush();\n  log(`ready;");
   return source;
@@ -60,16 +59,16 @@ function record(id: string, occurredAt: number, fields: Partial<RecordingResult>
 
 /**
  * Isolated data written before launch, keyed by path relative to the run directory.
- * `v1`: one unread legacy result whose partial exists, for migration (N23).
+ * `partial`: one unread current-format result whose partial exists.
  * `retention`: twenty reviewed records between two unread ones, so acknowledging the
  * old unread record exercises the 20-most-recently-reviewed limit without evicting unread ones (N22).
  */
 export function seedFiles(seed: Seed, runDir: string, now: number): Record<string, string> {
   if (seed === "none") return {};
-  if (seed === "v1") {
-    const partial = path.join(runDir, "recordings", "seed-v1.recording.mp4");
-    const result = record("seed-v1", now - 2 * HOUR, { code: "output_write_failed", outcome: "partial", partialPath: partial });
-    return { "user-data/recording-result.json": JSON.stringify({ version: 1, result }), "recordings/seed-v1.recording.mp4": SEED_BYTES };
+  if (seed === "partial") {
+    const partial = path.join(runDir, "recordings", "seed-partial.recording.mp4");
+    const result = record("seed-partial", now - 2 * HOUR, { code: "output_write_failed", outcome: "partial", partialPath: partial });
+    return { "user-data/recording-history.json": JSON.stringify({ version: 2, results: [result] }), "recordings/seed-partial.recording.mp4": SEED_BYTES };
   }
   const reviewed = Array.from({ length: 20 }, (_, i) => {
     const at = now - (i + 2) * HOUR;
@@ -85,7 +84,7 @@ export function seedFiles(seed: Seed, runDir: string, now: number): Record<strin
 }
 
 /** `SETTINGS_VERSION` in src/main/settings/settings.ts; a test keeps them equal. */
-export const SETTINGS_FILE_VERSION = 3;
+export const SETTINGS_FILE_VERSION = 4;
 
 /**
  * The self-test's isolated preferences: no notification banners, no global recording
@@ -116,7 +115,7 @@ export type ControlledArgs =
   | { command: "status" | "quit" | "clean" | "throw"; dir?: string };
 
 export const USAGE = `Usage: pnpm acceptance:controlled -- <command>
-  launch [--seed none|v1|retention] [--hold-history-load] [--out <new dir>]
+  launch [--seed none|partial|retention] [--hold-history-load] [--out <new dir>]
   reopen [--hold-history-load] [--dir <run>]
   fault <cleanup|write|close|history-save|prepare>=<mode> ... [--dir <run>]
   release <cleanup|history-save|history-load|prepare> [--dir <run>]

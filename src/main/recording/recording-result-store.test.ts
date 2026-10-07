@@ -8,22 +8,31 @@ import type { RecordingResult } from "../../shared/recording-result";
 
 let dir: string, file: string;
 const failure: RecordingResult = { id: "failure-a", occurredAt: "2026-09-25T00:00:00Z", code: "disk_full", detail: "ENOSPC", outcome: "pending", acknowledged: false };
-beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), "result-store-")); file = path.join(dir, "recording-result.json"); });
+beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), "result-store-")); file = path.join(dir, "recording-history.json"); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); fs.rmSync(dir, { recursive: true, force: true }); });
 const stat = (file: string) => fs.promises.stat(file);
 const load = (target = file) => new RecordingResultStore(target).load();
 const io = { stat, refresh: vi.fn(), settled: () => true, platform: "darwin" as const,
   reveal: vi.fn(), folder: async () => {}, permission: async () => {}, relaunch: async () => {} };
 
-it("keeps corrupt legacy history visible as a load issue and refuses a new file that would hide it", async () => {
-  const legacy = path.join(dir, "legacy.json"), raw = "{ broken";
+it("ignores a corrupt old single-result file and creates empty current history", async () => {
+  const legacy = path.join(dir, "recording-result.json"), raw = "{ broken";
   fs.writeFileSync(legacy, raw);
-  const store = new RecordingResultStore(file, vi.fn(), legacy);
+  const store = new RecordingResultStore(file);
+  expect(await store.load()).toEqual([]);
+  expect(store.loadIssue).toBe(false);
+  expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ version: 2, results: [] });
+  expect(fs.readFileSync(legacy, "utf8")).toBe(raw);
+});
+it("retains the initialization failure and retries on the next launch", async () => {
+  fs.mkdirSync(`${file}.tmp`);
+  const store = new RecordingResultStore(file);
   expect(await store.load()).toEqual([]);
   expect(store.loadIssue).toBe(true);
   await expect(store.save([])).rejects.toBeInstanceOf(HistoryStorageError);
-  expect(fs.readFileSync(legacy, "utf8")).toBe(raw);
-  expect(fs.existsSync(file)).toBe(false);
+  fs.rmSync(`${file}.tmp`, { recursive: true });
+  expect(await load()).toEqual([]);
+  expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ version: 2, results: [] });
 });
 /** A fresh controller over the same file, as after a restart. */
 async function open(storage: ResultStorage = new RecordingResultStore(file)): Promise<RecordingResults> {
@@ -34,7 +43,6 @@ function gated(store = new RecordingResultStore(file)) {
   const calls: Array<{ ids: string[]; release(error?: Error): void }> = [];
   let active = 0, peak = 0;
   const storage: ResultStorage = {
-    get requiresMigration() { return store.requiresMigration; },
     load: () => store.load(),
     save: results => new Promise((resolve, reject) => {
       active++; peak = Math.max(peak, active);
@@ -154,18 +162,18 @@ it("keeps a failed acknowledgement unread, exposes no false warning and permits 
 it("retains a new failure in memory when saving fails and leaves no temporary file", async () => {
   const log = vi.fn(), results = new RecordingResults(new RecordingResultStore(file, log), log);
   await results.ready;
-  fs.mkdirSync(file); // After loading: a destination that cannot be atomically replaced by a file.
+  fs.unlinkSync(file); fs.mkdirSync(file); // After loading: a destination that cannot be atomically replaced by a file.
   expect(() => results.update(failure)).not.toThrow();
   expect(results.current).toMatchObject({ id: failure.id, acknowledged: false });
   expect(await results.persist()).toBe(false);
   expect(results.current).toMatchObject({ id: failure.id, persistenceFailed: "io", acknowledged: false });
-  expect(fs.readdirSync(dir)).toEqual(["recording-result.json"]);
+  expect(fs.readdirSync(dir)).toEqual(["recording-history.json"]);
   expect(log).toHaveBeenCalled();
   results.close();
 });
-it.each([null, { version: 2, result: failure }, { version: 1, result: { ...failure, code: "bad" } },
-  { version: 1, result: { ...failure, partialPath: "relative" } }, { version: 1, result: { ...failure, acknowledged: true } },
-  { version: 1, result: { ...failure, occurredAt: "bad" } }])("ignores malformed/versioned records without deleting evidence: %j", async value => {
+it.each([null, { version: 2, result: failure }, { version: 2, results: [{ ...failure, code: "bad" }] },
+  { version: 2, results: [{ ...failure, partialPath: "relative" }] }, { version: 2, results: [{ ...failure, acknowledged: true }] },
+  { version: 2, results: [{ ...failure, occurredAt: "bad" }] }])("ignores malformed/versioned records without deleting evidence: %j", async value => {
   const raw = JSON.stringify(value); fs.writeFileSync(file, raw);
   const log = vi.fn(); expect((await new RecordingResultStore(file, log).load())[0]).toBeUndefined();
   expect(log).toHaveBeenCalled(); expect(fs.readFileSync(file, "utf8")).toBe(raw);
@@ -184,7 +192,7 @@ it("failed atomic replacement preserves the previous complete record", async () 
   vi.spyOn(fs.promises, "rename").mockRejectedValueOnce(new Error("replacement failed"));
   await expect(store.save([{ ...failure, id: "b", outcome: "empty" }])).rejects.toThrow("replacement failed");
   expect(fs.readFileSync(file, "utf8")).toBe(before);
-  expect(fs.readdirSync(dir)).toEqual(["recording-result.json"]);
+  expect(fs.readdirSync(dir)).toEqual(["recording-history.json"]);
 });
 
 it("writes the same JSON as one serialization, re-encoding only changed records", async () => {
@@ -267,17 +275,15 @@ it("persists both failures and retries unread storage without acknowledging eith
   expect(restarted.all.map(r => [r.id, r.acknowledged])).toEqual([["b", false], [failure.id, false]]);
   expect(restarted.all.every(r => !r.persistenceFailed)).toBe(true);
 });
-it("migrates v1 to a separate file once and does not resurrect legacy data after removing all history", async () => {
-  const legacy = path.join(dir, "legacy.json"), media = path.join(dir, "media.mp4");
+it("starts with empty history instead of importing old records and never touches media", async () => {
+  const legacy = path.join(dir, "recording-result.json"), media = path.join(dir, "media.mp4");
   fs.writeFileSync(media, "kept");
-  const raw = JSON.stringify({ version: 1, result: { ...failure, outcome: "partial", partialPath: media, acknowledged: true } });
+  const raw = JSON.stringify({ version: 1, result: { ...failure, outcome: "partial", partialPath: media } });
   fs.writeFileSync(legacy, raw);
-  const store = new RecordingResultStore(file, vi.fn(), legacy), results = await open(store);
-  await results.restore(stat, vi.fn());
-  expect(JSON.parse(fs.readFileSync(file, "utf8")).version).toBe(2);
-  expect((await load())[0]).toMatchObject({ id: failure.id, acknowledged: true, outcome: "partial" });
-  expect(await results.act(failure.id, "remove", io)).toBe(true);
-  expect(await new RecordingResultStore(file, vi.fn(), legacy).load()).toEqual([]);
+  const results = await open();
+  expect(results.all).toEqual([]);
+  expect(await load()).toEqual([]);
+  expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ version: 2, results: [] });
   expect(fs.readFileSync(legacy, "utf8")).toBe(raw);
   expect(fs.readFileSync(media, "utf8")).toBe("kept");
 });
@@ -550,9 +556,9 @@ it("a persist request made between a write's completion and the writer's release
 });
 
 it("recovers warnings for a very large unsaved history in linear time", async () => {
-  const rows: RecordingResult[] = Array.from({ length: 60_000 }, (_, i) => ({ ...failure, id: `row-${i}`, outcome: "empty", detail: "" }));
+  const rows: RecordingResult[] = Array.from({ length: 60_000 }, (_, i) => ({ ...failure, id: `row-${i}`, outcome: "pending", detail: "" }));
   let fail = true;
-  const results = new RecordingResults({ requiresMigration: true, load: async () => rows, save: async () => { if (fail) throw new Error("EIO"); } });
+  const results = new RecordingResults({ load: async () => rows, save: async () => { if (fail) throw new Error("EIO"); } });
   await results.ready;
   results.update({ ...failure, id: "new" });
   expect(await results.persist()).toBe(false);
@@ -576,4 +582,15 @@ it("loads a history larger than the main-thread parsing threshold without losing
   fs.writeFileSync(file, JSON.stringify({ ...text, results: [...text.results, { ...rows[0], id: "" }] }));
   const damaged = new RecordingResultStore(file);
   expect([await damaged.load(), damaged.loadIssue]).toEqual([[], true]);
+});
+
+it("backs up an older history format and writes empty current history once", async () => {
+  const raw = JSON.stringify({ version: 1, result: failure });
+  fs.writeFileSync(file, raw);
+  expect(await load()).toEqual([]);
+  expect(fs.readFileSync(`${file}.reset-backup`, "utf8")).toBe(raw);
+  const store = new RecordingResultStore(file);
+  await store.save([{ ...failure, outcome: "empty" }]);
+  expect(await load()).toMatchObject([{ id: failure.id }]);
+  expect(fs.readdirSync(dir)).toEqual(["recording-history.json", "recording-history.json.reset-backup"]);
 });

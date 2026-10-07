@@ -31,7 +31,7 @@ Named application and tool functions are grouped by source file. Follow source l
 
 Process callbacks log uncaught exceptions and rejections; the first uncaught exception also shows the error dialog, and a `main()` that rejects logs, shows it and exits. `savePreference` is the one place a preference write is awaited, logged and refreshed. Recorder events render state, notify saved/error/permission, and report clear frame-rate downgrades. The tray left click and the global shortcut share one `toggle` closure. Recorder receives `fs.statfs` free space and the `userData/recording-sessions` sentinels; launch reports leftover sentinels through the history restore, and `powerMonitor` suspend/resume are logged with the in-flight session. Before-quit coordinates shutdown; will-quit disposes the shortcut and releases resources. CurrentLanguage is updated only after a successful settings save and localizes unexpected-error dialogs.
 
-[Data migration and cleanup](../../src/main/app/data-cleanup.ts)：`SettingsStore.migrate()` upgrades v1/v2 settings at startup and keeps the original; newer schemas refuse writes. `DataCleanupRequest.request()` owns native consent and settled checks before/after it. `prepareDataCleanup()` commits a one-shot helper only once exit is admitted; it waits for parent exit before removing app data and protects recordings. `waitForDataCleanup()` prevents a new launch from writing during cleanup.
+[Data reset and cleanup](../../src/main/app/data-cleanup.ts)：`SettingsStore.resetOlderFormat()` resets older settings to current defaults at startup and keeps the original; newer schemas refuse writes. `DataCleanupRequest.request()` owns native consent and settled checks before/after it. `prepareDataCleanup()` commits a one-shot helper only once exit is admitted; it waits for parent exit before removing app data and protects recordings. `waitForDataCleanup()` prevents a new launch from writing during cleanup.
 
 ## Action handler
 
@@ -181,8 +181,9 @@ The page's window-message callback checks source/marker/port before creating the
 
 | Function/method | Contract |
 | --- | --- |
-| parseSettings | Validate v1/v2/v3 JSON; preserve valid folder when quality/language/hotkey need defaults; return warnings |
-| constructor / load | Read synchronously, validate, fall back and log; do not immediately rewrite defaults |
+| parseSettings | Validate only current-format JSON; preserve valid folder when current quality/language/hotkey need defaults; return warnings |
+| constructor / load | Read synchronously; older versions load all defaults, newer versions refuse writes |
+| resetOlderFormat | At startup, back up older settings and atomically save current defaults once; retry failed writes |
 | outputDir / quality / language / hotkey | Read successfully committed preferences |
 | defaultOutputDir | The fallback folder given at construction; the only folder opening may create |
 | setHotkey | Validate enabled flag and custom accelerator, canonicalize it, then enqueue update |

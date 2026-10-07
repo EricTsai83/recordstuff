@@ -209,7 +209,7 @@ async function main(): Promise<void> {
     defaultOutputDir: defaultOutputDir(),
     log,
   });
-  await settings.migrate().catch(cause => log(`settings: startup migration failed; original retained: ${String(cause)}`));
+  await settings.resetOlderFormat().catch(cause => log(`settings: startup reset failed; original retained: ${String(cause)}`));
   nativeTheme.themeSource = settings.appearance;
   // Without a menu Electron installs its default one, whose Reload and Developer Tools shortcuts work in Settings
   // even in a release build. It is installed before any window, in the saved language; while the window is open
@@ -389,8 +389,7 @@ async function main(): Promise<void> {
   });
   // Loads asynchronously; background save outcomes refresh both projections.
   const recordingResults = new RecordingResults(
-    new RecordingResultStore(path.join(app.getPath("userData"), "recording-history.json"), log,
-      path.join(app.getPath("userData"), "recording-result.json")), log, () => refreshUi());
+    new RecordingResultStore(path.join(app.getPath("userData"), "recording-history.json"), log), log, () => refreshUi());
   /** A quit waits for recording work or a history save; set shortly after it starts so a quick exit shows nothing. */
   let quitting = false;
   /** What that quit waits on, so the tray and the window name it (`AppContext.quitStep`). */

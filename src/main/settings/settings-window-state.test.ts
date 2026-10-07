@@ -21,7 +21,9 @@ it("falls back on invalid geometry and handles write failures without breaking t
   const log = vi.fn();
   for (const value of ["broken", '{"width":-1,"height":500}', '{"width":500.5,"height":500}', '{"width":500}']) {
     fs.writeFileSync(file, value);
-    expect(new SettingsWindowState(file, log).size).toEqual(DEFAULT_SETTINGS_SIZE);
+    const fallback = new SettingsWindowState(file, log);
+    expect(fallback.size).toEqual(DEFAULT_SETTINGS_SIZE);
+    await fallback.flush();
   }
   const store = new SettingsWindowState(file, log); store.save({ width: 600, height: 700 });
   await store.flush();
@@ -41,7 +43,10 @@ it("opens any size stored before the sidebar once at the new default, then keeps
   // Before the sidebar, and against its first 720 × 580 default (layout 2).
   for (const old of ['{"width":560,"height":680}', '{"width":380,"height":603}', '{"width":900,"height":700}', '{"width":874,"height":543,"layout":2}']) {
     fs.writeFileSync(file, old);
-    expect(new SettingsWindowState(file).size).toEqual({ width: 960, height: 640 });
+    const reset = new SettingsWindowState(file);
+    expect(reset.size).toEqual({ width: 960, height: 640 });
+    await reset.flush();
+    expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ width: 960, height: 640, layout: 3 });
   }
   const store = new SettingsWindowState(file);
   store.save({ width: 380, height: 603 });
@@ -56,7 +61,7 @@ it("remembers the page's zoom beside the size, and keeps each when the other is 
   store.saveZoom(1.25);
   await store.flush();
   // Zoomed before any resize: the file keeps the zoom alone, which reads back without a complaint.
-  expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ zoom: 1.25 });
+  expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ layout: 3, zoom: 1.25 });
   expect([new SettingsWindowState(file, log).zoom, new SettingsWindowState(file, log).size]).toEqual([1.25, DEFAULT_SETTINGS_SIZE]);
   expect(log).not.toHaveBeenCalled();
   store.save({ width: 700, height: 600 });
@@ -68,4 +73,38 @@ it("remembers the page's zoom beside the size, and keeps each when the other is 
   expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ width: 700, height: 600, layout: 3 });
   fs.writeFileSync(file, '{"width":700,"height":600,"layout":3,"zoom":40}');
   expect(new SettingsWindowState(file).zoom).toBe(1);
+});
+
+it("resets older zoom and dimensions once, keeps its backup and later user choices", async () => {
+  const raw = JSON.stringify({ width: 600, height: 500, layout: 2, zoom: 2 });
+  fs.writeFileSync(file, raw);
+  const store = new SettingsWindowState(file);
+  expect(store.zoom).toBe(1);
+  await store.flush();
+  expect(fs.readFileSync(`${file}.reset-backup`, "utf8")).toBe(raw);
+  store.save({ width: 700, height: 600 }); store.saveZoom(1.5);
+  await store.flush();
+  const restarted = new SettingsWindowState(file);
+  await restarted.flush();
+  expect([restarted.size, restarted.zoom]).toEqual([{ width: 700, height: 600 }, 1.5]);
+  expect(fs.readdirSync(dir)).toEqual(["settings-window.json", "settings-window.json.reset-backup"]);
+});
+it("never replaces window state from a newer layout", async () => {
+  const raw = JSON.stringify({ width: 700, height: 600, layout: 4, zoom: 2 });
+  fs.writeFileSync(file, raw);
+  const store = new SettingsWindowState(file);
+  store.save({ width: 600, height: 500 }); store.saveZoom(1.5);
+  await store.flush();
+  expect(fs.readFileSync(file, "utf8")).toBe(raw);
+});
+it("retains old window state after a failed reset and retries on restart", async () => {
+  const raw = JSON.stringify({ width: 600, height: 500, layout: 2, zoom: 2 });
+  fs.writeFileSync(file, raw); fs.mkdirSync(`${file}.tmp`);
+  const log = vi.fn(), store = new SettingsWindowState(file, log);
+  await store.flush();
+  expect(log).toHaveBeenCalledWith(expect.stringContaining("reset save failed"));
+  expect(fs.readFileSync(file, "utf8")).toBe(raw);
+  fs.rmSync(`${file}.tmp`, { recursive: true });
+  await new SettingsWindowState(file).flush();
+  expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ width: 960, height: 640, layout: 3 });
 });

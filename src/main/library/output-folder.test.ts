@@ -32,7 +32,7 @@ async function harness(options: {
   const defaultOutputDir = path.join(home, "Movies", "RecordStuff");
   const settingsFile = path.join(root, "settings.json");
   if (options.custom !== undefined || options.language !== undefined) {
-    await fs.writeFile(settingsFile, JSON.stringify({ version: 3, outputDir: options.custom ?? defaultOutputDir,
+    await fs.writeFile(settingsFile, JSON.stringify({ version: 4, outputDir: options.custom ?? defaultOutputDir,
       quality: { videoQuality: "standard", resolutionCap: "source", frameRate: 30 }, language: options.language ?? "en",
       hotkey: { enabled: true, accelerator: "CommandOrControl+Shift+1" } }));
   }

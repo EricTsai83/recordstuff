@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { keepFile } from "../lib/file-backup";
 import { writeFileAtomic } from "../lib/atomic-file";
 import { drainQueue } from "../lib/drain-queue";
 import { errnoCode } from "../lib/errors";
@@ -9,11 +10,7 @@ export interface WindowSize { width: number; height: number }
  * narrower windows put the tabs on top. A smaller work area still fits it down (`fitSettingsSize`).
  */
 export const DEFAULT_SETTINGS_SIZE: WindowSize = { width: 960, height: 640 };
-/**
- * The default a stored size was chosen against. One from before the sidebar (no `layout`) or from the first,
- * narrower sidebar default (`layout: 2`, 720 × 580) is ignored, so the window opens at the current default until
- * the user resizes it; sizes saved since keep the user's choice.
- */
+/** Only the current layout is read; older layouts are backed up and reset once. */
 const LAYOUT = 3;
 export const MIN_SETTINGS_SIZE: WindowSize = { width: 380, height: 360 };
 function validSize(value: unknown): value is WindowSize {
@@ -34,17 +31,29 @@ export class SettingsWindowState {
   /** The size the file holds, which an older default may keep from opening the window: a zoom saved alone keeps it. */
   private stored: WindowSize | undefined;
   private currentZoom = 1;
+  private resetPending = false;
+  private backedUp = false;
+  private newerOnDisk = false;
   constructor(private readonly file: string, private readonly log: (message: string) => void = () => {}) {
     try {
       const size: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (!size || typeof size !== "object" || Array.isArray(size)) throw new Error("invalid window state");
+      const layout = (size as { layout?: unknown } | null)?.layout;
+      this.newerOnDisk = typeof layout === "number" && layout > LAYOUT;
+      if (this.newerOnDisk) return;
+      if (layout !== LAYOUT) {
+        if (layout !== undefined && (!Number.isSafeInteger(layout) || (layout as number) < 1)) throw new Error("invalid window layout");
+        this.resetPending = true;
+        this.stored = { ...DEFAULT_SETTINGS_SIZE };
+        this.write("reset");
+        return;
+      }
       const zoom = (size as { zoom?: unknown } | null)?.zoom;
       if (validZoom(zoom)) this.currentZoom = zoom;
-      // A file that keeps only a zoom: the window has not been resized yet.
       const sized = typeof size === "object" && size !== null && ("width" in size || "height" in size);
-      if (!sized && validZoom(zoom)) return;
+      if (!sized) return;
       if (!validSize(size)) throw new Error("invalid window size");
-      if ((size as { layout?: unknown }).layout === LAYOUT) this.current = this.stored = { width: size.width, height: size.height };
-      else this.log(`settings window: ${size.width}×${size.height} was chosen against an earlier default; opening at the default`);
+      this.current = this.stored = { width: size.width, height: size.height };
     } catch (error) {
       if (errnoCode(error) !== "ENOENT") this.log(`settings window: size read failed, using default: ${String(error)}`);
     }
@@ -65,8 +74,13 @@ export class SettingsWindowState {
   }
   /** The size the user chose (none yet: the file keeps no size) and the zoom, written together so neither drops the other. */
   private write(what: string): void {
-    const snapshot = { ...(this.stored ? { width: this.stored.width, height: this.stored.height, layout: LAYOUT } : {}), ...(this.currentZoom !== 1 ? { zoom: this.currentZoom } : {}) };
-    this.queue = this.queue.then(() => writeFileAtomic(this.file, JSON.stringify(snapshot)))
+    const snapshot = { layout: LAYOUT, ...(this.stored ? { width: this.stored.width, height: this.stored.height } : {}), ...(this.currentZoom !== 1 ? { zoom: this.currentZoom } : {}) };
+    this.queue = this.queue.then(async () => {
+      if (this.newerOnDisk) throw new Error("Window state is from a newer app version; refusing to overwrite it");
+      if (this.resetPending && !this.backedUp) { await keepFile(this.file, "reset-backup"); this.backedUp = true; }
+      await writeFileAtomic(this.file, JSON.stringify(snapshot));
+      this.resetPending = false;
+    })
       .catch(error => this.log(`settings window: ${what} save failed: ${String(error)}`));
   }
   async flush(): Promise<void> {
