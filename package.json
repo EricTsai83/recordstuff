@@ -29,6 +29,7 @@
     "acceptance:settings-shortcut": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-settings-shortcut.mts",
     "acceptance:settings": "playwright test --project=background components settings-",
     "acceptance:settings-native": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-settings-native.mts",
+    "acceptance:cleanup-audit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-cleanup-audit.mts",
     "matrix": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/run-matrix.mts",
     "diagnose:cadence": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/diagnose-frame-cadence.mts",
     "measure:finalization": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/measure-finalization.mts",

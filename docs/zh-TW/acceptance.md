@@ -85,6 +85,8 @@ pnpm verify -- /absolute/path/recording.mp4 --test-material --json /absolute/pat
 
 記錄播放器既有視窗，只關閉測試影片及關閉後新增的「打開」對話框。測試啟動的播放器，確認沒有使用者文件才退出。沒有 App 視窗不等於程序退出。不能確認保存或收尾時，記 cleanup fail／blocked 及殘留狀態，不覆蓋該程序重建，也不能宣稱完整驗收通過。
 
+Agent 執行的回合也要在交還桌面前釋放本輪的 Computer Use session、測試頁籤與 REPL worker，依[工具收尾流程](../../.agents/skills/native-acceptance/SKILL.md#computer-use-工具收尾)執行。macOS 的 `pnpm acceptance:cleanup-audit -- --owned-pid <PID> --output <本輪目錄>/tool-cleanup.json` 以唯讀方式檢查可見的 `Software Cursor` 浮層與明確指定的本輪 PID（每個 worker 重複一次旗標）。Exit 0 表示該範圍清空，1 表示殘留（含 zombie），2 表示檢查受阻；省略 PID 只檢查已知游標浮層。它不關閉 session 或終止 App。保留共享服務及其他工作階段，另外回報未解決的工具收尾與基於歸屬的排除項；REPL reset 本身不能證明游標已消失。
+
 使用 `docs/verification/measurements/` 下的獨立目錄，不覆寫前次結果。保存實際截圖、本次 log、媒體路徑及 runner 報告；工具無法存圖或聽音時如實記錄。原始資料已 gitignore，新 clone 無法取得。值得保留的結論寫進[驗證索引](verification/README.md)及其歷史／發布紀錄。團隊 review 需要證據時，透過約定且可存取的附件／artifact 位置提供去識別資料；不把本機連結當共享證據，也不自動上傳私人錄影。
 
 ## 報告範本
@@ -105,7 +107,7 @@ pnpm verify -- /absolute/path/recording.mp4 --test-material --json /absolute/pat
 檢查：指令、退出碼、runner 報告位置；相關 skip
 排除：案例 → 不適用及影響範圍理由
 必要缺口：未執行／受阻案例 → 原因或明確豁免
-收尾：保存檔案、還原偏好、關閉 UI、最終程序狀態
+收尾：保存檔案、還原偏好、關閉 UI、最終程序狀態；本輪 Computer Use session／worker 與游標檢查、未解決殘留或排除項
 結論：通過／失敗／受阻／未執行數量，限於觀察範圍
 證據可取得性：僅本機／可存取 artifact 位置
 ```

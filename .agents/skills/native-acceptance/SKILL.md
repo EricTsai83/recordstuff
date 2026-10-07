@@ -197,3 +197,14 @@ pnpm acceptance     # 全螢幕開素材 → System Events 送快捷鍵 → 錄 
 - 保留測試影片與報告，不刪除使用者既有資料、不重設 TCC；報告明列 App 最終程序狀態、清理結果與未還原項目。
 - 除非指定其他位置，在專案 `docs/verification/measurements/<timestamp>-computer-use/` 寫入 `report.md` 及可保存的證據，不覆寫歷史紀錄。該目錄已 gitignore，報告只留本機；本文其他段落引用的 2026-09-19 目錄是維護者機器上的紀錄，其他機器上可能不存在，結論已摘要在 `docs/verification/README.md`。報告使用[共用範本](../../../docs/zh-TW/acceptance.md#報告範本)，包含驗收範圍、環境與產物路徑、案例結果表、影片／截圖／log 連結、失敗重現及限制。
 - 最終以使用者的語言提供整體結論、通過／失敗／受阻／未執行數量與報告連結。有受阻或未測項時限定通過範圍；不能把建置成功或自動化檢查通過寫成全面驗收通過。
+
+### Computer Use 工具收尾
+
+App 收尾與工具收尾都完成後才交還桌面；成功、失敗與中斷都適用。開始使用工具時記錄本輪建立的 session、頁籤與可確認歸屬的 worker PID（程序身分、父程序與建立時間），保留原有資源。不能只憑工作目錄相同就認定程序屬於本輪。
+
+1. 在工具仍可用時完成上面的 App／播放器收尾及最後證據，關閉本輪建立的測試頁籤。再透過工具文件提供的 session close／disconnect 或宿主的結束工作階段機制釋放本輪資源；有 REPL reset 工具時清除本輪執行環境。`cua_repl.js_reset` 只保證清除 JavaScript bindings，不保證關閉 App、頁籤、浮層或所有服務；不能單憑 reset 成功宣稱收尾完成。工具文件沒有關閉 API 時，不猜造 `cua.close()` 等方法。
+2. 最後停止本輪自行啟動的 caffeinate，等待自己啟動的子程序退出並回收；不要為取得最後快照再次初始化 Computer Use。以唯讀 shell 檢查作為最後證據。
+3. macOS 執行 `pnpm acceptance:cleanup-audit -- --owned-pid <本輪工具或 worker PID> --output <本輪報告目錄>/tool-cleanup.json`；每個已確認歸屬的 PID 各加一次 `--owned-pid`。沒有建立工具程序時可省略 PID，但報告必須說明只檢查已知 `Software Cursor` 浮層，沒有證明所有 worker 都已退出。這個指令不操作桌面、不啟動工具、不終止程序，也不覆寫既有報告。
+4. Exit 0 只表示列出的檢查範圍清空；1 是可見浮層或指定程序仍存在（含 zombie），2 是檢查受阻。任何本輪殘留都記 cleanup fail／blocked，列出 PID、父程序與浮層，不能宣稱完整驗收通過。若浮層屬於其他工作階段，保留它並明列歸屬及排除理由；不能把該次 audit 的 exit 1 改寫為 pass。
+
+共享的 Computer Use／cmux 服務存活不等於殘留；不要全域 kill、終止其他專案工具或退出 ChatGPT／T3 宿主。只能用正式 lifecycle 管理本輪 session，或正常退出已確認專屬本輪的輔助 App。若工具 transport 已關閉而浮層仍在，記錄受阻並提出具體恢復方式。Zombie 已停止執行，必須由父程序回收；不要重複 kill 或偷偷重啟使用者的宿主 App。這類供應商限制仍是收尾缺口，不能保證腳本自行修復。

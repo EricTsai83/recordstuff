@@ -85,6 +85,8 @@ Every complete app round, including failure/cancellation, saves recordings it st
 
 Record pre-existing player windows. Close only the test movie and any Open dialog created by closing it. Quit a player started for the test only if no user documents remain. No app window is not proof of process exit. If save completion or cleanup cannot be confirmed, record cleanup fail/blocked and remaining state; do not rebuild over that process or report full acceptance passed.
 
+Agent-run rounds also release their owned Computer Use sessions, test tabs and REPL workers before handing back the desktop; follow the [tool cleanup workflow](../.agents/skills/native-acceptance/SKILL.md#computer-use-工具收尾). On macOS, `pnpm acceptance:cleanup-audit -- --owned-pid <PID> --output <run-dir>/tool-cleanup.json` performs a read-only final check of visible `Software Cursor` windows and explicitly supplied owned PIDs (repeat the flag for each worker). Exit 0 means that scope is clear, 1 means remnants including zombies, and 2 means inspection is blocked. Without PIDs it checks only known cursor windows. It does not close sessions or terminate apps. Preserve shared services and other sessions; report unresolved tool cleanup separately, including ownership-based exclusions. A REPL reset alone does not prove the cursor disappeared.
+
 Use a unique directory under `docs/verification/measurements/`; do not overwrite prior runs. Save actual screenshots, scoped logs, media paths and runner reports. If tools cannot save a screenshot or hear audio, say so. These raw files are gitignored and unavailable in a fresh clone. Keep a durable conclusion in the [verification index](verification/README.md) and its linked history/release record when worth preserving. For team review, provide sanitized evidence through an agreed accessible attachment/artifact location; do not imply a local link is shared or automatically upload private recordings.
 
 ## Report template
@@ -105,7 +107,7 @@ Use pass / fail / blocked / not run for selected cases. Keep out-of-scope cases 
 Checks: commands, exit codes, runner report locations; relevant skips
 Exclusions: case → not applicable and impact-based reason
 Required gaps: not run/blocked case → reason or explicit waiver
-Cleanup: saved files, restored preferences, closed UI, final process state
+Cleanup: saved files, restored preferences, closed UI, final process state; owned Computer Use sessions/workers and cursor audit, unresolved remnants or exclusions
 Conclusion: pass/fail/blocked/not-run counts, limited to the observed scope
 Evidence availability: local only / accessible artifact location
 ```
