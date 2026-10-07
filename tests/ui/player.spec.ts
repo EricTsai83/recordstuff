@@ -204,13 +204,15 @@ test("P20 the player's pointer, focus and flashes, as before shadcn (2026-10-07)
     const v = document.querySelector(".player video"), seek = document.querySelector(".player .pc-seek");
     return { cursor: getComputedStyle(v).cursor, seekCursor: getComputedStyle(seek).cursor, outline: getComputedStyle(v).outlineStyle,
       thumb: getComputedStyle(seek.querySelector("[data-slot=slider-thumb]")).scale, track: seek.querySelector("[data-slot=slider-track]").getBoundingClientRect().height }; })()`);
-  const picture = await centre(page, ".player video", false);
-  await page.mouse.move(picture.x, picture.y);
-  await page.waitForTimeout(200);
+  await page.locator(".player video").hover();
+  await expect.poll(async () => (await look()).thumb, { message: "P20 the seek thumb settles hidden away from the pointer" }).toBe("0");
   const atRest = await look();
-  const bar = await read<{ x: number; y: number }>(page, `(() => { const r = document.querySelector(".player .pc-seek").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  await page.mouse.move(bar.x, bar.y);
-  await page.waitForTimeout(300);
+  // The opening dialog can still move the bar; locator hover waits for its current geometry to settle.
+  await page.locator(".player .pc-seek").hover();
+  await expect.poll(async () => {
+    const lookNow = await look();
+    return lookNow.thumb === "1" && lookNow.track > atRest.track;
+  }, { message: "P20 hovering reveals the thumb and thickens the seek track" }).toBe(true);
   const overSeek = await look();
   expect.soft(atRest.cursor === "pointer" && atRest.seekCursor === "pointer" && atRest.thumb === "0" && overSeek.thumb === "1" && overSeek.track > atRest.track,
     `P20 a pointing hand on the picture and the seek bar; the thumb grows in and the track thickens under the pointer ${JSON.stringify({ atRest, overSeek })}`).toBe(true);
@@ -225,14 +227,14 @@ test("P20 the player's pointer, focus and flashes, as before shadcn (2026-10-07)
   const volume = await read<{ bezel: string; text: string }>(page, `({ bezel: getComputedStyle(document.querySelector(".player .pc-bezel")).animationName, text: getComputedStyle(document.querySelector(".player .pc-bezel-text")).animationName })`);
   expect.soft(volume, "P20 a volume key grows a circle at the centre and holds its level, both fading").toEqual({ bezel: "media-bezel", text: "media-hold" });
   await page.waitForTimeout(900);
-  await page.mouse.click(picture.x, picture.y);
+  await page.locator(".player video").click();
   const clicked = await read<{ kind: string | undefined; hidden: boolean; animation: string }>(page, `(() => { const b = document.querySelector(".player .pc-bezel");
     return { kind: b.dataset.kind, hidden: b.hidden, animation: getComputedStyle(b).animationName }; })()`);
   expect.soft(clicked, "P20 a click on the picture flashes play at the centre").toEqual({ kind: "play", hidden: false, animation: "media-bezel" });
   // A click on the seek bar, then its arrows: the thumb stops their propagation, yet the page learns the keyboard came
   // last (review of 2026-10-07), so a focus line the browser then draws is not hidden. Chromium itself does not count a
   // range clicked with the pointer as focus-visible after its arrows, so no line is expected here.
-  await page.mouse.click(bar.x, bar.y);
+  await page.locator(".player .pc-seek").click();
   await page.keyboard.press("ArrowRight");
   expect.soft(await read<string | undefined>(page, "document.documentElement.dataset.input"), "P20 after a click, the seek bar's arrows mark keyboard input").toBe("keyboard");
   await page.locator("#player-close").click();

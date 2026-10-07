@@ -22,6 +22,10 @@ test("zoom notification reflects applied zoom, has no close button, and dismisse
   await expect(notice).toContainText("110%");
   await expect(notice.getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
   await expect(tab).toBeFocused();
+  // Sonner renders the text before sliding the toast into the viewport. Hover only its settled position.
+  const notification = page.locator('.zoom-notice:not([data-removed="true"]):not([inert])');
+  await expect(notification).toHaveAttribute("data-mounted", "true");
+  await expect(notification).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
   await notice.hover();
   await page.waitForTimeout(1700);
   await expect(notice).toBeVisible();
@@ -242,6 +246,9 @@ test.describe("an ⓘ explanation's placement (ported from the former placement 
     };
     await pauseInGap();
     await button.evaluate((element) => (element.style.left = "2px"));
+    // Moving the trigger leaves the pointer behind; open it at its new position before measuring the popup.
+    await button.hover();
+    await expect(page.locator("#setting-countdownSound-info-popup")).toBeVisible();
     await expect.poll(async () => (await rect()).x >= 8).toBe(true);
     await pauseInGap();
   });

@@ -298,11 +298,10 @@ test("U070-1 the sidebar, a switch, the card menu and a card's play button look 
   const wide = await tab();
   expect.soft(wide.line === "0" && wide.fill !== "rgba(0, 0, 0, 0)", `U070-1 the sidebar raises the open tab on a tile, with no line ${JSON.stringify(wide)}`).toBe(true);
   await host.evaluate(h => h.setSize(...h.SNAPSHOT_SIZES.narrow));
-  await page.waitForTimeout(250);
-  const narrow = await tab();
-  expect.soft(narrow.line, `U070-1 the narrow strip keeps the open tab's line ${JSON.stringify(narrow)}`).toBe("1");
+  // Resize first changes the responsive tab layout, then starts the indicator's opacity transition.
+  await expect.poll(async () => (await tab()).line, { message: "U070-1 the narrow strip keeps the open tab's line" }).toBe("1");
   await host.evaluate(h => h.setSize(...h.SNAPSHOT_SIZES.default));
-  await page.waitForTimeout(250);
+  await expect.poll(async () => (await tab()).line, { message: "U070-1 the wide sidebar removes the indicator line" }).toBe("0");
   // A card's play button: hidden and a little small at rest, the chosen red, and it grows in under the pointer.
   const play = (): Promise<{ opacity: string; scale: string; fill: string; transition: string }> => read(page, `(() => { const p = getComputedStyle(document.querySelector(".clip-play"));
     return { opacity: p.opacity, scale: p.transform, fill: p.backgroundColor, transition: p.transitionDuration }; })()`);
