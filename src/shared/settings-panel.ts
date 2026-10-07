@@ -85,7 +85,7 @@ export interface RecordingResultView {
   actions: SettingsChoice[];
 }
 /**
- * The status card, at the foot of the sidebar or between the tabs and the content in a narrow window: what the app is doing,
+ * Status cards sit at the sidebar's foot or below narrow tabs: what the app is doing,
  * shown only when there is something to say (2026-10-04), never while ready. It is not a live region;
  * `#feedback` stays the page's one announcer.
  */
@@ -101,7 +101,7 @@ export interface SettingsStatus {
   detail: string;
   /** What fixes a problem that blocks recording; chosen as group `status`. Starting stays with the tray and the shortcut. */
   action?: { id: StatusActionId; label: string };
-  /** A second way out, drawn as a text link under the detail: Relaunch once access may already be granted, as the tray offers. */
+  /** A secondary recovery action after the primary one: Relaunch once access may already be granted, as the tray offers. */
   secondaryAction?: { id: StatusActionId; label: string };
 }
 export type StatusActionId = "permission" | "relaunch" | "folder" | "primary";

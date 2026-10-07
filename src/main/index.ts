@@ -214,13 +214,19 @@ async function main(): Promise<void> {
   // Without a menu Electron installs its default one, whose Reload and Developer Tools shortcuts work in Settings
   // even in a release build. It is installed before any window, in the saved language; while the window is open
   // the menu bar shows it with a Record menu.
+  const hideSettings = (): void => {
+    settingsWindow.hide();
+    library.unwatch();
+    void library.flushTrash();
+    appMenu.windowClosed();
+  };
   const appMenu = new AppMenu({
     state: () => recorder.state, context: () => appContext(), language: () => settings.language,
     onAction: action => runAction(action, "app menu"), log,
     trayMenuOpen: () => tray.menuOpen,
     // Hiding leaves only the menu bar's icon, as closing does; Quit alone ends RecordStuff. The folder is not
     // followed out of sight either: showing the window again watches and lists it afresh (`activated`).
-    hide: () => { settingsWindow.hide(); library.unwatch(); void library.flushTrash(); appMenu.windowClosed(); },
+    hide: hideSettings,
     zoom: request => settingsWindow.zoom(request),
   });
   const library = new RecordingsLibrary({
@@ -622,7 +628,7 @@ async function main(): Promise<void> {
     quitRequested: () => quitRequested, settled, platform: process.platform, log, refresh: refreshUi,
     settings, recorder, library, recordingResults, tray, settingsWindow, shortcuts, updates, captureNotices, clearData,
     savePreference, changeOutputDir, openOutputDir, revealLog,
-    showLastRecording: () => showRecording(),
+    showLastRecording: () => showRecording(), hideSettings,
     displayPreferenceChanged: () => { displayMedia.failure = undefined; captureDegraded = false; },
     resolutionCapChanged: () => { captureDegraded = false; },
     applyAppearance: () => { nativeTheme.themeSource = settings.appearance; },

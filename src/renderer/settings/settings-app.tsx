@@ -8,8 +8,10 @@ import { Badge } from "../components/ui/badge";
 import { ControlTooltip } from "../components/control-tooltip";
 import { TooltipProvider } from "../components/ui/tooltip";
 import { ZoomToast } from "./zoom-toast";
+import type { SettingsStatus } from "../../shared/settings-panel";
 import * as model from "./settings-controller";
-import { Action, Preferences } from "./tabs/preferences";
+import { Preferences } from "./tabs/preferences";
+import { WindowActions } from "./window-actions";
 import { Troubleshooting } from "./tabs/troubleshooting";
 import { Library, RenameDialog, PlayerDialog } from "./tabs/library";
 import { ToastHost } from "./undo-toast";
@@ -21,27 +23,33 @@ const tabIcons = {
   general: Settings,
   failures: Wrench,
 };
+const isPermissionStatus = (status?: SettingsStatus): boolean => status?.tone === "attention" &&
+  (status.action?.id === "permission" || status.action?.id === "relaunch");
 function Status() {
   const current = model.view,
     status = current?.status,
-    failure = model.failure?.group === "status" ? model.failure.text : "";
+    failure = model.failure?.group === "status" ? model.failure.text : "",
+    permission = isPermissionStatus(status);
   return (
     <Card
       id="status"
-      // A plain card in every state: its words say what is happening and its button what to do (2026-10-07).
-      className="status gap-2.5 p-3"
+      // Stable action IDs identify the permission card in either language.
+      className={permission ? "status gap-3 rounded-xl p-3.5" : "status gap-2.5 p-3"}
       hidden={!status || status.tone === "ready"}
       data-tone={status?.tone}
+      data-permission={permission || undefined}
     >
-      <span className="status-mark" aria-hidden="true" />
+      <span className="status-mark" aria-hidden="true" hidden={permission} />
       <div className="status-text">
-        <p id="status-title" className="status-title">
-          {status?.title}
-        </p>
+        <div className="status-heading">
+          <p id="status-title" className="status-title">
+            {status?.title}
+          </p>
+        </div>
         <p
           id="status-detail"
           className="status-detail"
-          hidden={!status?.detail || Boolean(current?.hint)}
+          hidden={permission || !status?.detail || Boolean(current?.hint)}
         >
           {status?.detail}
         </p>
@@ -51,10 +59,32 @@ function Status() {
         <p id="status-error" className="status-error" hidden={!failure}>
           {failure}
         </p>
+      </div>
+      <div className={permission ? "status-actions narrow:grid" : "status-actions"}>
+        <Button
+          id="status-action"
+          variant={permission ? "outline" : "default"}
+          wrap={permission}
+          className={permission
+            ? "w-full min-h-8 rounded-lg py-1.5 text-center"
+            : "wide:w-full"}
+          hidden={!status?.action}
+          data-action={status?.action?.id}
+          aria-disabled={Boolean(model.saving)}
+          onClick={() => {
+            if (!model.saving && status?.action)
+              void model.choose("status", status.action.id, "status-action");
+          }}
+        >
+          {status?.action?.label}
+        </Button>
         <Button
           id="status-secondary"
           variant="link"
-          className="h-auto max-w-full justify-start px-0 text-left font-normal whitespace-normal text-muted-foreground underline underline-offset-3 hover:text-foreground"
+          wrap={permission}
+          className={permission
+            ? "w-full min-h-7 rounded-lg px-0 py-1 text-center font-normal text-muted-foreground underline-offset-3"
+            : "h-auto min-h-6 max-w-full justify-start px-0 text-left font-normal whitespace-normal underline underline-offset-3 text-muted-foreground hover:text-foreground"}
           hidden={!status?.secondaryAction}
           data-action={status?.secondaryAction?.id}
           aria-disabled={Boolean(model.saving)}
@@ -70,20 +100,6 @@ function Status() {
           {status?.secondaryAction?.label}
         </Button>
       </div>
-      <Button
-        id="status-action"
-        // In the sidebar the fix spans the card, under its words.
-        className="wide:w-full"
-        hidden={!status?.action}
-        data-action={status?.action?.id}
-        aria-disabled={Boolean(model.saving)}
-        onClick={() => {
-          if (!model.saving && status?.action)
-            void model.choose("status", status.action.id, "status-action");
-        }}
-      >
-        {status?.action?.label}
-      </Button>
     </Card>
   );
 }
@@ -220,51 +236,53 @@ export function SettingsApp() {
               })}
             </TabsList>
             <Status />
-            <div className="settings-viewport">
-              <TabsContent
-                ref={panel}
-                id="settings-panel"
-                tabIndex={-1}
-                value={model.selectedTab}
-                className="settings-panel"
-              >
-                <p id="page-title" className="page-title" aria-hidden="true">
-                  {current?.tabs
-                    .find((tab) => tab.id === model.selectedTab)
-                    ?.label.replace(/\s?[（(]\d+[)）]$/, "")}
-                </p>
-                <div hidden={model.selectedTab !== "library"}>
-                  <Library />
-                </div>
-                {model.selectedTab === "failures" ? (
-                  <Troubleshooting />
-                ) : model.selectedTab !== "library" ? (
-                  <Preferences />
-                ) : null}
-              </TabsContent>
-              {/* Soft, blurred edges where the content runs on: above once it has scrolled, below while more follows. */}
-              <div
-                id="scroll-hint-top"
-                className="scroll-hint scroll-hint-top"
-                aria-hidden="true"
-                hidden={!scrolled}
-              />
-              <div
-                id="scroll-hint"
-                className="scroll-hint"
-                aria-hidden="true"
-                hidden={!overflow}
-              />
+            <div className="settings-content">
+              <div className="settings-viewport">
+                <TabsContent
+                  ref={panel}
+                  id="settings-panel"
+                  tabIndex={-1}
+                  value={model.selectedTab}
+                  className="settings-panel"
+                >
+                  <p id="page-title" className="page-title" aria-hidden="true">
+                    {current?.tabs
+                      .find((tab) => tab.id === model.selectedTab)
+                      ?.label.replace(/\s?[（(]\d+[)）]$/, "")}
+                  </p>
+                  <div hidden={model.selectedTab !== "library"}>
+                    <Library />
+                  </div>
+                  {model.selectedTab === "failures" ? (
+                    <Troubleshooting />
+                  ) : model.selectedTab !== "library" ? (
+                    <Preferences />
+                  ) : null}
+                </TabsContent>
+                {/* Soft, blurred edges where the content runs on: above once it has scrolled, below while more follows. */}
+                <div
+                  id="scroll-hint-top"
+                  className="scroll-hint scroll-hint-top"
+                  aria-hidden="true"
+                  hidden={!scrolled}
+                />
+                <div
+                  id="scroll-hint"
+                  className="scroll-hint"
+                  aria-hidden="true"
+                  hidden={!overflow}
+                />
+              </div>
             </div>
           </Tabs>
         </form>
         <footer id="sidebar-about" className="sidebar-about" hidden={!quit}>
           {about && quit && (
-            <Action
+            <WindowActions
               group={about}
-              choice={quit}
-              id="sidebar-about-quit"
-              className="w-full justify-start"
+              quit={quit}
+              id="sidebar-about-hide"
+              sidebar
             />
           )}
           <p
@@ -272,11 +290,11 @@ export function SettingsApp() {
             hidden={
               !(
                 model.failure?.group === "about" &&
-                model.failure.choice === "quit"
+                (model.failure.choice === "quit" || model.failure.choice === "hide")
               )
             }
           >
-            {model.failure?.group === "about" && model.failure.choice === "quit"
+            {model.failure?.group === "about" && (model.failure.choice === "quit" || model.failure.choice === "hide")
               ? model.failure.text
               : ""}
           </p>

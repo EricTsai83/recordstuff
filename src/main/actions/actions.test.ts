@@ -26,6 +26,7 @@ function harness(overrides: Partial<ActionDeps> = {}) {
     openOutputDir: vi.fn(async () => true),
     revealLog: vi.fn(async () => true),
     showLastRecording: vi.fn(async () => {}),
+    hideSettings: vi.fn(),
     displayPreferenceChanged: vi.fn(),
     resolutionCapChanged: vi.fn(),
     applyAppearance: vi.fn(),
@@ -45,6 +46,8 @@ describe("createActionHandler", () => {
   it("refuses every action but quit while a quit runs", async () => {
     const { deps, act } = harness({ quitRequested: () => true });
     expect(await act("openSettings")).toBe(false);
+    expect(await act("hideSettings")).toBe(false);
+    expect(deps.hideSettings).not.toHaveBeenCalled();
     expect(await act({ setLanguage: "zh-TW" })).toBe(false);
     expect(await act({ recordingFile: { id: "a", action: "open" } })).toBe(false);
     expect(deps.settingsWindow.show).not.toHaveBeenCalled();
@@ -52,6 +55,15 @@ describe("createActionHandler", () => {
     expect(deps.library.act).not.toHaveBeenCalled();
     expect(await act("quit")).toBe(true);
     expect(deps.quit).toHaveBeenCalledOnce();
+  });
+
+  it("hides the interface without stopping or quitting a recording", async () => {
+    const { deps, act } = harness({ settled: () => false });
+    expect(await act("hideSettings")).toBe(true);
+    expect(deps.hideSettings).toHaveBeenCalledOnce();
+    expect(deps.quit).not.toHaveBeenCalled();
+    expect(deps.recorder.stop).not.toHaveBeenCalled();
+    expect(deps.recorder.cancelCountdown).not.toHaveBeenCalled();
   });
 
   it("locks the preferences a session holds and leaves the rest free to change", async () => {

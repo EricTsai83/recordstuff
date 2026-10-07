@@ -47,6 +47,8 @@ export interface ActionDeps {
   revealLog(): Promise<boolean>;
   /** The Recordings tab with the newest recording in view. */
   showLastRecording(): Promise<void>;
+  /** The same hide path as the application menu: release capture, pause playback and hide the Dock icon. */
+  hideSettings(): void;
   /** The display preference changed: the last screen's failure and unconfirmed cap no longer describe the next one. */
   displayPreferenceChanged(): void;
   /** Another resolution cap is the next recording's to confirm. */
@@ -179,6 +181,9 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
       case "openSettings":
         deps.settingsWindow.show();
         return;
+      case "hideSettings":
+        deps.hideSettings();
+        return true;
       case "showLastRecording":
         await deps.showLastRecording();
         return;

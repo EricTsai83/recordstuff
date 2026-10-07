@@ -3,47 +3,55 @@ import { expect, it, vi } from "vitest";
 import type { SettingsView } from "../../shared/settings-panel";
 
 /**
- * The status card speaks only when there is something to say (2026-10-04); the sidebar's foot is Quit alone
- * (2026-10-05); the tab strip turns an unread count into a badge without changing its text.
+ * The status card speaks only when there is something to say (2026-10-04); the sidebar's foot offers Quit and Hide
+ * (2026-10-07), with Hide as the primary action; the tab strip turns an unread count into a badge without changing its text.
  */
-it("hides the card while ready, shows a problem with its fix and a recording with the lock, and puts Quit in the sidebar's foot", async () => {
+it("hides the card while ready, shows a problem with its fix and a recording with the lock, and puts Hide in the sidebar's foot", async () => {
   document.body.innerHTML = '<div id="root"></div>';
   const ready: SettingsView = { language: "en", title: "RecordStuff", hint: "", failure: "",
     status: { tone: "ready", title: "Ready to record", detail: "" },
     tabs: [{ id: "recording", label: "Recording settings" }, { id: "failures", label: "Troubleshooting (2)", accessibleLabel: "Troubleshooting, 2 unread recording failures" }],
     groups: [{ id: "about", label: "Built by Eric Tsai", note: "Version 1.3.0", tab: "general", kind: "actions", enabled: true,
       choices: [{ id: "website", label: "Official website", enabled: true, checked: false }, { id: "source", label: "GitHub source", enabled: true, checked: false },
-        { id: "quit", label: "Quit RecordStuff", enabled: true, checked: false }] }] };
+        { id: "quit", label: "Quit RecordStuff", enabled: true, checked: false },
+        { id: "hide", label: "Hide RecordStuff", enabled: true, checked: false }] }] };
   let push!: (view: SettingsView) => void;
   const choose = vi.fn(async () => ({ view: ready, applied: true }));
   window.settings = { read: async () => ready, capture: async () => ready, choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
   await import("./settings");
   await vi.waitFor(() => expect(document.getElementById("tab-recording")).toBeTruthy());
-  const card = document.getElementById("status")!, detail = document.getElementById("status-detail")!, action = document.getElementById("status-action")!;
+  const statusElements = () => ({ card: document.getElementById("status")!, detail: document.getElementById("status-detail")!, action: document.getElementById("status-action")! });
+  let { card, detail, action } = statusElements();
   expect(card.hidden).toBe(true);
   // In the page's order after the tabs and before their content, as the sidebar draws it under them: the first Tab
   // reaches the tabs, not the card at the sidebar's foot.
-  expect([...document.querySelector(".settings-tabs")!.children].map(el => el.id || (el.classList.contains("tabs") ? "tabs" : el.className))).toEqual(["tabs", "status", "settings-viewport"]);
+  expect([...document.querySelector(".settings-tabs")!.children].map(el => el.id || (el.classList.contains("tabs") ? "tabs" : el.className))).toEqual(["tabs", "status", "settings-content"]);
   expect(document.querySelector(".tabs")!.getAttribute("role")).toBe("tablist");
 
-  // The sidebar's foot: Quit RecordStuff with its words and mark, and nothing else; the credit, version and links stay in General.
+  // The sidebar's split control keeps a named Hide action and a menu; credit, version and links stay in General.
   const foot = document.getElementById("sidebar-about")!;
-  const quit = foot.querySelector<HTMLButtonElement>("#sidebar-about-quit")!;
-  expect([foot.hidden, quit.textContent, Boolean(quit.querySelector("svg")), foot.querySelectorAll("button").length]).toEqual([false, "Quit RecordStuff", true, 1]);
-  quit.click();
-  expect(choose).toHaveBeenCalledWith("about", "quit");
+  const hide = foot.querySelector<HTMLButtonElement>("#sidebar-about-hide")!;
+  expect([foot.hidden, hide.textContent, hide.getAttribute("aria-label"), Boolean(hide.querySelector("svg")), foot.querySelectorAll("button").length]).toEqual([false, "Hide interface", "Hide interface", true, 2]);
+  hide.click();
+  expect(choose).toHaveBeenCalledWith("about", "hide");
   // One request at a time (settings.ts `choose`): the next click waits for this one to settle.
-  await vi.waitFor(() => expect(quit.getAttribute("aria-disabled")).toBe("false"));
-  // A quit that failed says so beside it: General's About row hides its own Quit beside a sidebar.
+  await vi.waitFor(() => expect(hide.getAttribute("aria-disabled")).toBe("false"));
+  // A hide that failed says so beside it: General's About row hides its own control beside a sidebar.
   const error = foot.querySelector<HTMLElement>(".sidebar-error")!;
   expect(error.hidden).toBe(true);
-  choose.mockImplementationOnce(async () => ({ view: ready, applied: false, failure: "Could not quit. Try again." }));
-  quit.click();
-  await vi.waitFor(() => expect([error.hidden, error.textContent]).toEqual([false, "Could not quit. Try again."]));
+  choose.mockImplementationOnce(async () => ({ view: ready, applied: false, failure: "Could not hide. Try again." }));
+  hide.click();
+  await vi.waitFor(() => expect([error.hidden, error.textContent]).toEqual([false, "Could not hide. Try again."]));
   // The failure reads under the row it came from.
-  expect(quit.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  quit.click();
+  expect(hide.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  hide.click();
   await vi.waitFor(() => expect(error.hidden).toBe(true));
+
+  // A failed Quit is visible beside the same split control, just as a failed Hide is.
+  choose.mockImplementationOnce(async () => ({ view: ready, applied: false, failure: "Could not quit. Try again." }));
+  const model = await import("./settings-controller");
+  await model.choose("about", "quit", "sidebar-about-hide");
+  expect([error.hidden, error.textContent]).toEqual([false, "Could not quit. Try again."]);
 
   push({ ...ready, revision: 2, status: { tone: "attention", title: "Output folder unavailable", detail: "Check the output folder.", action: { id: "folder", label: "Change output folder…" } } });
   expect([card.hidden, card.dataset.tone, detail.textContent, action.hidden, action.textContent]).toEqual([false, "attention", "Check the output folder.", false, "Change output folder…"]);
@@ -59,15 +67,20 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   // Main answers with the fixed, ready state: the card has nothing left to say.
   await vi.waitFor(() => expect(card.hidden).toBe(true));
 
-  // Permission: the system pane is the action, and Relaunch for access already granted is the link under the words.
-  const secondary = document.getElementById("status-secondary")!;
-  expect(secondary.hidden).toBe(true);
+  // Permission guidance stays below the tabs; the primary fix precedes the optional Relaunch link.
+  expect(document.getElementById("status-secondary")!.hidden).toBe(true);
   push({ ...ready, revision: 3, status: { tone: "attention", title: "Screen recording permission required", detail: "Check recording permissions in System Settings.",
     action: { id: "permission", label: "Open System Settings" }, secondaryAction: { id: "relaunch", label: "Already allowed? Relaunch RecordStuff" } } });
+  ({ card, detail, action } = statusElements());
+  const secondary = document.getElementById("status-secondary")!;
+  expect(detail.hidden).toBe(true);
+  expect(card.parentElement?.classList.contains("settings-tabs")).toBe(true);
+  expect(action.compareDocumentPosition(secondary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect([action.textContent, secondary.hidden, secondary.textContent]).toEqual(["Open System Settings", false, "Already allowed? Relaunch RecordStuff"]);
   secondary.click();
   expect(choose).toHaveBeenLastCalledWith("status", "relaunch");
-  await vi.waitFor(() => expect(card.hidden).toBe(true));
+  await vi.waitFor(() => expect(document.getElementById("status")!.hidden).toBe(true));
+  ({ card, detail, action } = statusElements());
 
   // A keyboard user's fix hides the card under their focus: the selected tab keeps the place, and the switch is said.
   push({ ...ready, revision: 2, status: { tone: "attention", title: "Selected display is unavailable", detail: "", action: { id: "primary", label: "Use Primary display" } } });

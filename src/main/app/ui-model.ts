@@ -22,6 +22,8 @@ import type { LibraryState, RecordingFileAction } from "../library/recordings-li
 
 export type AppAction =
   | "openSettings"
+  /** Return to the menu bar while keeping the Settings window's state. */
+  | "hideSettings"
   | "openRecordingResult"
   /** Settings on the General tab, where the shortcut card, its retry and the editor are. */
   | "openShortcutSettings"

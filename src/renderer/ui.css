@@ -443,6 +443,13 @@
     font-weight: 800;
     font-size: 13px;
   }
+  .settings-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+  }
   .settings-viewport {
     flex: 1;
     min-width: 0;
@@ -725,6 +732,38 @@
   .status-title {
     font-weight: 600;
   }
+  .status-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .status[data-permission] {
+    align-items: stretch;
+    flex: none;
+    flex-wrap: nowrap;
+  }
+  .status[data-permission] .status-title {
+    font-size: 14px;
+    line-height: 1.4;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+  .status[data-permission] :is(.status-text, .status-actions) {
+    flex: none;
+  }
+  .status-actions {
+    display: contents;
+  }
+  .status[data-permission] .status-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+  .status[data-permission] #status-secondary {
+    font-size: 12px;
+    line-height: 1.5;
+  }
   .status-text {
     min-width: 0;
     flex: 1;
@@ -737,6 +776,15 @@
   }
   .status[data-tone="recording"] .status-title {
     color: var(--recording);
+  }
+  @media (max-width: 599px) {
+    .status[data-permission] .status-actions {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .status[data-permission] .status-actions:not(:has(#status-secondary:not([hidden]))) {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
   .sidebar-about {
     margin-top: auto;
@@ -1389,7 +1437,7 @@
     }
   }
   @media (min-width: 600px) {
-    #setting-about-quit {
+    #setting-about-hide {
       display: none;
     }
     main {
@@ -1435,7 +1483,7 @@
       flex-wrap: wrap;
       margin-bottom: 6px;
     }
-    .settings-viewport {
+    .settings-content {
       grid-column: 2;
       grid-row: 1 / -1;
     }

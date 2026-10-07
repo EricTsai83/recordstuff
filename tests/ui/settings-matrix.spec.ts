@@ -98,19 +98,19 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
         }
       }
       if (state === "recording" || state === "locked") {
-        // The status card speaks only when there is something to say; the sidebar's foot is Quit RecordStuff alone when wide.
-        const card = await read<{ shown: boolean; tone: string; foot: boolean; buttons: number; quit: string }>(page, `(() => { const el = document.getElementById("status"), foot = document.getElementById("sidebar-about");
+        // The status card speaks only when needed; a split Hide/Quit control sits in the sidebar's foot when wide.
+        const card = await read<{ shown: boolean; tone: string; foot: boolean; buttons: number; hide: string }>(page, `(() => { const el = document.getElementById("status"), foot = document.getElementById("sidebar-about");
           return { shown: el.getBoundingClientRect().height > 0, tone: el.dataset.tone ?? "", foot: foot.getBoundingClientRect().height > 0, buttons: foot.querySelectorAll("button").length,
-            quit: foot.querySelector("#sidebar-about-quit")?.textContent ?? "" }; })()`);
+            hide: foot.querySelector("#sidebar-about-hide")?.getAttribute("aria-label") ?? "" }; })()`);
         const expected = (state === "locked" ? card.shown && card.tone === "busy" : !card.shown && card.tone === "ready")
-          && (size === "default" ? card.foot && card.buttons === 1 && card.quit === translate("Quit RecordStuff", lang) : !card.foot);
-        expect.soft(expected, `S025 ${key}: the status card speaks only when needed; Quit RecordStuff alone sits in the sidebar's foot when wide ${JSON.stringify(card)}`).toBe(true);
+          && (size === "default" ? card.foot && card.buttons === 2 && card.hide === translate("Hide interface", lang) : !card.foot);
+        expect.soft(expected, `S025 ${key}: the status card speaks only when needed; Hide/Quit sits in the sidebar's foot when wide ${JSON.stringify(card)}`).toBe(true);
         if (size === "default" && state === "recording") {
-          // From the top of the page the first Tab reaches the tabs, never Quit RecordStuff at the sidebar's foot.
+          // From the top of the page the first Tab reaches the tabs, never Hide interface at the sidebar's foot.
           await read(page, `(() => { document.body.tabIndex = -1; document.body.focus(); document.body.removeAttribute("tabindex"); })()`);
           await page.keyboard.press("Tab");
           const first = await read<string>(page, `document.activeElement?.id ?? ""`);
-          expect.soft(card.foot && first.startsWith("tab-"), `S026 ${key}: the first Tab from the top reaches the tabs, not Quit RecordStuff in the sidebar's foot (${first})`).toBe(true);
+          expect.soft(card.foot && first.startsWith("tab-"), `S026 ${key}: the first Tab from the top reaches the tabs, not Hide interface in the sidebar's foot (${first})`).toBe(true);
         }
       }
       await picture(page, testInfo, `panel-${lang}-${scheme}-${size}-${state}.png`, BASELINED.includes(state));

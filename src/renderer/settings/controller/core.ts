@@ -623,12 +623,12 @@ export function start(): () => void {
       event.preventDefault();
       return;
     }
-    // An open settings menu (shadcn Select) takes Escape itself and closes; the window stays (2026-10-07).
+    // An open settings or window-actions menu takes Escape itself and closes; the window stays.
     if (
       event.key === "Escape" &&
-      (document.querySelector('[data-slot="select-content"][data-open]') ||
+      (document.querySelector('[data-slot="select-content"][data-open], [data-window-actions][data-open]') ||
         (event.target instanceof Element &&
-          event.target.closest('[data-slot="select-content"]')))
+          event.target.closest('[data-slot="select-content"], [data-window-actions]')))
     )
       return;
     if (event.key === "Escape" && playingItem) {

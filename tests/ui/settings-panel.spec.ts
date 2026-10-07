@@ -188,7 +188,7 @@ test("S039–S041 the status card: no Start when ready; Change output folder… 
   await clickAt(page, "#status-action", { scroll: false });
   await expect.poll(calls, { message: "S040 status card: Change output folder… sits in the sidebar and a click asks main for status/folder" }).toEqual([["status", "folder"]]);
   expect.soft(fix.inSidebar, "S040 …in the sidebar").toBe(true);
-  // A missing permission: Open System Settings is the button and Relaunch a text link under the card's words.
+  // A missing permission: Open System Settings is the primary action, followed by the optional Relaunch link.
   for (const [lang, scheme, size] of [["en", "light", "default"], ["en", "dark", "narrow"], ["zh-TW", "light", "minimum"]] as const) {
     await host.evaluate((h, args) => { h.theme(args.scheme); h.setSize(...h.SNAPSHOT_SIZES[args.size]); h.pushModel({ type: "needsPermission", needsRelaunch: false }, { language: args.lang }); }, { lang, scheme, size });
     await page.waitForTimeout(150);
@@ -197,17 +197,19 @@ test("S039–S041 the status card: no Start when ready; Change output folder… 
   await host.evaluate(h => { h.theme("light"); h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]); });
   await host.evaluate(h => h.pushModel({ type: "needsPermission", needsRelaunch: false }));
   await expect(page.locator("#status-secondary")).toBeVisible();
+  await expect(page.locator("#status-secondary")).toHaveText("Already allowed? Relaunch");
+  await expect(page.locator("#status-action")).toHaveText("Open System Settings");
   await clearCalls();
   const link = await read<{ x: number; y: number; label: string; button: string; below: boolean; inside: boolean }>(page, `(() => {
     const el = document.getElementById("status-secondary"), r = el.getBoundingClientRect(), card = document.getElementById("status").getBoundingClientRect();
-    const detail = document.getElementById("status-detail").getBoundingClientRect();
+    const primary = document.getElementById("status-action").getBoundingClientRect();
     return { x: Math.round(r.x + Math.min(r.width / 2, 40)), y: Math.round(r.y + r.height / 2), label: el.hidden ? "" : el.textContent, button: document.getElementById("status-action").textContent,
-      below: r.top >= detail.bottom - 1, inside: Boolean(r.width > 0 && r.left >= card.left && r.right <= card.right && r.bottom <= card.bottom) }; })()`);
-  await page.mouse.click(link.x, link.y);
+      below: r.top >= primary.bottom - 1, inside: Boolean(r.width > 0 && r.left >= card.left && r.right <= card.right && r.bottom <= card.bottom) }; })()`);
+  await page.locator("#status-secondary").click();
   await expect.poll(calls).toEqual([["status", "relaunch"]]);
   expect.soft({ label: link.label, button: link.button, below: link.below, inside: link.inside },
-    "S041 status card: a missing permission offers Open System Settings and, under the words, Relaunch; a click on the link asks main for status/relaunch")
-    .toEqual({ label: "Already allowed? Relaunch RecordStuff", button: "Open System Settings", below: true, inside: true });
+    "S041 status card: a missing permission offers Open System Settings, then Relaunch; a click on the link asks main for status/relaunch")
+    .toEqual({ label: "Already allowed? Relaunch", button: "Open System Settings", below: true, inside: true });
 });
 
 for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {
@@ -330,11 +332,11 @@ test("S053–S057 General's footer and Show log: wide and narrow layouts, a fail
     const buttons = [...row.querySelectorAll(".controls button")].filter(b => b.getBoundingClientRect().height > 0), first = buttons[0].getBoundingClientRect(), last = buttons.at(-1).getBoundingClientRect();
     return { credit: credit.height > 0, shown: buttons.map(b => b.dataset.action), horizontal: credit.right <= first.left && Math.abs(credit.top + credit.height / 2 - first.top - first.height / 2) < 1 && Math.abs(last.right - row.getBoundingClientRect().right) < 1,
       icons: buttons.every(b => b.textContent.trim() === "" && b.querySelector("svg") && b.getAttribute("aria-label") && b.dataset.slot === "tooltip-trigger") }; })()`);
-  expect.soft(wide, "S053 General's footer keeps the credit on the left and accessible website/source icons on the right, with Quit in the sidebar").toEqual({ credit: true, shown: ["website", "source"], horizontal: true, icons: true });
+  expect.soft(wide, "S053 General's footer keeps the credit on the left and accessible website/source icons on the right, with Hide/Quit in the sidebar").toEqual({ credit: true, shown: ["website", "source"], horizontal: true, icons: true });
   await host.evaluate(h => h.setSize(560, 760));
   await page.waitForTimeout(100);
-  expect.soft(await read<boolean>(page, `(() => { const row = document.getElementById("setting-about-row"); const buttons = [...row.querySelectorAll(".controls button")]; const credit = row.querySelector(".group-label"), c = credit.getBoundingClientRect(), link = buttons[0].getBoundingClientRect(); return credit.textContent.includes("Eric Tsai") && buttons.map(b => b.dataset.action).join() === "website,source,quit" && buttons.every(b => b.querySelector("svg") && b.getAttribute("aria-label")) && buttons.slice(0, 2).every(b => b.textContent.trim() === "" && b.dataset.slot === "tooltip-trigger") && (c.right <= link.left || c.bottom <= link.top) && row.closest("footer") && !row.closest("[data-slot=card]"); })()`),
-    "S054 narrow footer keeps the credit and named link icons without overlap, and retains Quit outside the settings cards").toBe(true);
+  expect.soft(await read<boolean>(page, `(() => { const row = document.getElementById("setting-about-row"); const buttons = [...row.querySelectorAll(".controls button[data-action]")]; const credit = row.querySelector(".group-label"), c = credit.getBoundingClientRect(), link = buttons[0].getBoundingClientRect(); return credit.textContent.includes("Eric Tsai") && buttons.map(b => b.dataset.action).join() === "website,source,hide" && buttons.every(b => b.querySelector("svg") && b.getAttribute("aria-label")) && buttons.slice(0, 2).every(b => b.textContent.trim() === "" && b.dataset.slot === "tooltip-trigger") && (c.right <= link.left || c.bottom <= link.top) && row.closest("footer") && !row.closest("[data-slot=card]"); })()`),
+    "S054 narrow footer keeps the credit and named link icons without overlap, and retains Hide/Quit outside the settings cards").toBe(true);
   await expect(page.locator("#setting-log-show")).toBeHidden();
   await page.locator("#tab-failures").click();
   await page.locator("#troubleshooting-tools-tab").click();

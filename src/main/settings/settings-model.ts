@@ -446,6 +446,7 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
       { id: "source", label: t("GitHub source", ctx.language), enabled: true, checked: false, action: "openSource" },
       // Closing the window leaves RecordStuff in the menu bar: this ends it, as the tray's Quit does (2026-10-05).
       { id: "quit", label: t("Quit RecordStuff", ctx.language), enabled: true, checked: false, action: "quit" },
+      { id: "hide", label: t("Hide RecordStuff", ctx.language), enabled: true, checked: false, action: "hideSettings" },
     ], ctx.version ? t("Version {version}", ctx.language, { version: ctx.version }) : undefined), kind: "actions" },
   ];
 }
@@ -546,12 +547,12 @@ export function settingsStatus(state: RecordingState, ctx: AppContext): Settings
   const status = { ...statusText(state, ctx), phase: ctx.quitting ? "quitting" as const : state.type };
   if (ctx.quitting) return status;
   const id = statusActionId(state, ctx);
-  // The detail says to relaunch if access was just granted: the card offers it, as the tray's permission steps do.
+  // Keep an optional recovery action for access that may already have been granted.
   const relaunch = state.type === "needsPermission" && !state.needsRelaunch;
   return {
     ...status,
     ...(id ? { action: { id, label: t(STATUS_ACTION_LABELS[id], ctx.language) } } : {}),
-    ...(relaunch ? { secondaryAction: { id: "relaunch" as const, label: t("Already allowed? Relaunch RecordStuff", ctx.language) } } : {}),
+    ...(relaunch ? { secondaryAction: { id: "relaunch" as const, label: t("Already allowed? Relaunch", ctx.language) } } : {}),
   };
 }
 
@@ -581,8 +582,10 @@ function statusText(state: RecordingState, ctx: AppContext): SettingsStatus {
   if (ctx.quitting) return { tone: "busy", title: t(QUITTING_TEXT[ctx.quitStep ?? "media"], language), detail: "" };
   switch (state.type) {
     case "needsPermission":
-      return { tone: "attention", title: t("Screen recording permission required", language),
-        detail: t("Check recording permissions in System Settings. Relaunch if access was recently granted.", language) };
+      return { tone: "attention", title: t("Screen recording access", language),
+        detail: t(state.needsRelaunch
+          ? "Relaunch RecordStuff after allowing access in System Settings."
+          : "Allow RecordStuff to record your screen.", language) };
     case "starting": return { tone: "busy", title: t("Starting… Check for system permission prompts", language), detail: "" };
     case "countdown": return { tone: "busy", title: t("Recording starts in {seconds} s", language, { seconds: state.remaining }), detail: "" };
     case "recording": return { tone: "recording", title: t("Recording", language), detail: "" };

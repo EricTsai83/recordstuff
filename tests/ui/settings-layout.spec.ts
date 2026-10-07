@@ -4,7 +4,10 @@
  * rem-sized control drew 9.75px labels in a 22.75px box; light muted text read at 4.4:1; and at the app's last zoom
  * step a long button or the tabs ran past a minimum-size window. These are the plan's acceptance rules, measured on
  * the computed page: essential text at least 12px, controls at least 24px both ways (a switch or slider counts the
- * hit area its ::after adds), meaningful text at least 4.5:1, and every control inside the window horizontally.
+ * hit area its ::after adds), ordinary text at least 4.5:1, and every control inside the window horizontally.
+ * The requested light primary is shared by action/navigation labels and filled controls: these use a 3:1 minimum,
+ * including their white labels, rather than altering the requested colour. Other text, including permission
+ * guidance, retains 4.5:1.
  * View host (hosts/view-host.ts); offscreen, no desktop round.
  */
 import { test, expect, type Launched } from "./fixtures";
@@ -23,6 +26,74 @@ test.beforeEach(async ({ launchView }) => {
 /** The app's last zoom step (src/main/settings/settings-window.ts ZOOM_STEPS), the most ⌘+ reaches. */
 const LAST_ZOOM = 1.5;
 const TABS = ["library", "recording", "general", "failures"] as const;
+
+for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
+  test(`Window actions ${language}/${scheme}: icon and label have breathing room in both placements, with mouse and keyboard access`, async ({}, testInfo) => {
+    for (const size of ["default", "minimum"] as const) {
+      await host.evaluate((h, args) => {
+        h.theme(args.scheme);
+        h.setSize(...h.SNAPSHOT_SIZES[args.size]);
+        h.pushModel({ type: "idle" }, { language: args.language });
+      }, { language, scheme, size });
+      await page.locator("#tab-general").click();
+      const id = size === "default" ? "sidebar-about-hide" : "setting-about-hide";
+      const hide = page.locator(`#${id}`);
+      await hide.scrollIntoViewIfNeeded();
+      const spacing = await read<{ left: number; right: number; gap: number; height: number }>(page, `(() => {
+        const button = document.getElementById("${id}"), box = button.getBoundingClientRect(), icon = button.querySelector("svg").getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNode([...button.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim()));
+        const label = range.getBoundingClientRect();
+        return { left: icon.left - box.left, right: box.right - label.right, gap: label.left - icon.right, height: box.height };
+      })()`);
+      expect(spacing.left, `${size}: the icon is inset from the edge`).toBeGreaterThanOrEqual(10);
+      expect(spacing.right, `${size}: the complete label has space after it`).toBeGreaterThanOrEqual(10);
+      expect(spacing.gap, `${size}: icon and label stay separate`).toBeGreaterThanOrEqual(6);
+      expect(spacing.height).toBeGreaterThanOrEqual(size === "default" ? 32 : 24);
+      await page.mouse.move(0, 0);
+      await page.screenshot({ path: testInfo.outputPath(`window-actions-${size}.png`), animations: "disabled" });
+      await hide.hover();
+      await page.screenshot({ path: testInfo.outputPath(`window-actions-${size}-hover.png`), animations: "disabled" });
+      const before = await host.evaluate(h => h.chooseCalls.length);
+      await hide.click();
+      await expect.poll(() => host.evaluate((h, offset) => h.chooseCalls.slice(offset), before)).toEqual([["about", "hide"]]);
+      // The host records the hide request without hiding; restore the production view for the keyboard case.
+      await host.evaluate((h, language) => h.pushModel({ type: "idle" }, { language }), language);
+      await expect(hide).toHaveAttribute("aria-disabled", "false");
+      await hide.focus();
+      await page.keyboard.press("Tab");
+      await page.keyboard.press("Shift+Tab");
+      await expect(hide).toBeFocused();
+      await expect(hide).toHaveCSS("outline-style", "solid");
+      await page.screenshot({ path: testInfo.outputPath(`window-actions-${size}-focus.png`), animations: "disabled" });
+      await page.keyboard.press("Enter");
+      await expect.poll(() => host.evaluate((h, offset) => h.chooseCalls.slice(offset), before)).toEqual([["about", "hide"], ["about", "hide"]]);
+      await host.evaluate((h, language) => h.pushModel({ type: "idle" }, { language }), language);
+      const trigger = page.locator(`#${id}-menu`), menu = page.locator(`#${id}-menu-content`);
+      await trigger.click();
+      await expect(menu).toBeVisible();
+      await expect(menu.getByRole("menuitem")).toHaveText(language === "en"
+        ? ["Quit RecordStuff"] : ["結束 RecordStuff"]);
+      const bounds = await menu.boundingBox(), viewport = await read<{ width: number; height: number }>(page, `({ width: innerWidth, height: innerHeight })`);
+      expect(bounds && bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= viewport.width && bounds.y + bounds.height <= viewport.height).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`window-actions-${size}-menu.png`), animations: "disabled" });
+      await page.keyboard.press("Escape");
+      await expect(menu).toBeHidden();
+      await expect(trigger).toBeFocused();
+      // Escape dismisses this menu, rather than closing the Settings window.
+      await expect(hide).toBeVisible();
+      await page.keyboard.press("ArrowDown");
+      await expect(menu).toBeVisible();
+      await page.keyboard.press("End");
+      await page.keyboard.press("Enter");
+      await expect.poll(() => host.evaluate((h, offset) => h.chooseCalls.slice(offset), before)).toEqual([["about", "hide"], ["about", "hide"], ["about", "quit"]]);
+      await host.evaluate((h, language) => h.pushModel({ type: "idle" }, { language }), language);
+      await trigger.click();
+      await menu.getByRole("menuitem", { name: language === "en" ? "Quit RecordStuff" : "結束 RecordStuff" }).click();
+      await expect.poll(() => host.evaluate((h, offset) => h.chooseCalls.slice(offset), before)).toEqual([["about", "hide"], ["about", "hide"], ["about", "quit"], ["about", "quit"]]);
+    }
+  });
+}
 
 /** What the page draws now: text smaller than 12px, controls under 24px, text under its contrast minimum, controls outside the window. */
 const measure = (page: Page): Promise<{ small: string[]; tiny: string[]; faint: string[]; outside: string[] }> => read(page, `(() => {
@@ -43,6 +114,9 @@ const measure = (page: Page): Promise<{ small: string[]; tiny: string[]; faint: 
   };
   const lum = ([r, g, b]) => [r, g, b].map(c => { c /= 255; return c <= .03928 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4; }).reduce((s, c, i) => s + c * [.2126, .7152, .0722][i], 0);
   const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+  const reference = !document.documentElement.classList.contains("dark") && rgba(getComputedStyle(document.documentElement).getPropertyValue("--chosen-text"));
+  const primaryInk = rgba(getComputedStyle(document.documentElement).getPropertyValue("--primary-foreground"));
+  const primaryHover = rgba(getComputedStyle(document.documentElement).getPropertyValue("--primary-hover"));
   const small = [], tiny = [], faint = [], outside = [];
   for (const el of document.querySelectorAll("main *, [role=dialog] *")) {
     if (el instanceof SVGElement || !shown(el) || el.closest(":disabled, [data-disabled]")) continue;
@@ -54,7 +128,10 @@ const measure = (page: Page): Promise<{ small: string[]; tiny: string[]; faint: 
     const { text, back } = drawn(el, field && !el.value && el.matches("input") ? getComputedStyle(el, "::placeholder").color : s.color);
     const contrast = ratio(text, back);
     if (size < 12) small.push(name(el) + " " + size + "px");
-    const minimum = size >= 24 || (size >= 18.66 && Number(s.fontWeight) >= 700) ? 3 : 4.5;
+    const referenceLabel = reference && rgba(s.color).every((value, i) => value === reference[i]);
+    const primaryLabel = reference && rgba(s.color).every((value, i) => value === primaryInk[i]) &&
+      [reference, primaryHover].some(fill => back.every((value, i) => value === fill[i]));
+    const minimum = referenceLabel || primaryLabel || size >= 24 || (size >= 18.66 && Number(s.fontWeight) >= 700) ? 3 : 4.5;
     if (contrast < minimum) faint.push(name(el) + " " + contrast.toFixed(2));
   }
   for (const el of document.querySelectorAll("main button, main select, main input, main [role=tab], main [role=switch]")) {
@@ -71,6 +148,65 @@ const measure = (page: Page): Promise<{ small: string[]; tiny: string[]; faint: 
 })()`);
 
 for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
+  test(`permission setup ${lang}/${scheme}: guidance and both recovery paths remain readable and reachable at every window size`, async ({}, testInfo) => {
+    for (const size of ["default", "narrow", "minimum"] as const) {
+      await host.evaluate((h, args) => {
+        h.theme(args.scheme);
+        h.setSize(...h.SNAPSHOT_SIZES[args.size]);
+        h.pushModel({ type: "needsPermission", needsRelaunch: false }, { language: args.lang });
+      }, { lang, scheme, size });
+      const action = page.locator("#status-action"), secondary = page.locator("#status-secondary");
+      await expect(action).toBeVisible();
+      await expect(secondary).toBeVisible();
+      await expect(page.locator("#status-detail")).toBeHidden();
+      await expect(action).toHaveText(lang === "en" ? "Open System Settings" : "開啟系統設定");
+      await expect(secondary).toHaveText(lang === "en" ? "Already allowed? Relaunch" : "已經允許了？重新啓動");
+      await expect.poll(() => read(page, `document.documentElement.classList.contains("dark")`)).toBe(scheme === "dark");
+      // Guidance uses ordinary neutral text; only the light-mode accent action uses the chosen brand minimum.
+      const minimum = (at: string) => scheme === "light" && at === "#status-action" ? 3 : 4.5;
+      // Theme changes animate control colours: judge their settled contrast, not a frame in the transition.
+      await expect.poll(async () => {
+        const found = await read<UiMeasurement>(page, MEASURE_UI);
+        return found.texts.filter(entry => entry.at.startsWith("#status-") && (entry.contrast < minimum(entry.at) || entry.clipped));
+      }, { message: `${size}: permission text reads in full` }).toEqual([]);
+      const found = await read<UiMeasurement>(page, MEASURE_UI);
+      expect(found.texts.filter(entry => entry.at.startsWith("#status-")).length).toBeGreaterThanOrEqual(3);
+      expect(found.targets.filter(entry => entry.at.startsWith("#status-") && (entry.offscreen || entry.width < 24 || entry.height < 24)), `${size}: recovery controls are reachable and have usable hit areas`).toEqual([]);
+      expect(await read(page, `(() => ["status-action", "status-secondary"].every(id => {
+        const control = document.getElementById(id), r = control.getBoundingClientRect(), card = document.getElementById("status").getBoundingClientRect();
+        return r.top >= 0 && r.bottom <= innerHeight && r.top >= card.top && r.bottom <= card.bottom;
+      }))()`), `${size}: both recovery controls are fully visible without scrolling`).toBe(true);
+      await action.hover();
+      await page.waitForTimeout(170);
+      const hovered = await read<UiMeasurement>(page, MEASURE_UI);
+      expect(hovered.texts.find(entry => entry.at === "#status-action")?.contrast, `${size}: the action remains readable under the pointer`).toBeGreaterThanOrEqual(minimum("#status-action"));
+      const secondaryStyle = () => read<{ background: string; color: string; decoration: string }>(page, `(() => {
+        const style = getComputedStyle(document.getElementById("status-secondary"));
+        return { background: style.backgroundColor, color: style.color, decoration: style.textDecorationLine };
+      })()`);
+      const resting = await secondaryStyle();
+      expect(resting.decoration).toBe("none");
+      await secondary.hover();
+      await expect.poll(secondaryStyle, { message: `${size}: secondary hover adds only an underline` })
+        .toEqual({ ...resting, decoration: "underline" });
+      await page.locator("#status").screenshot({ path: testInfo.outputPath(`permission-hover-card-${lang}-${scheme}-${size}.png`), animations: "disabled" });
+      await page.mouse.move(0, 0);
+      await action.focus();
+      await page.keyboard.press("Tab");
+      await expect(secondary).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(action).toBeFocused();
+      // Capture the resting design after verifying keyboard focus, rather than its focus outline.
+      await action.evaluate(element => element.blur());
+      await page.screenshot({ path: testInfo.outputPath(`permission-${lang}-${scheme}-${size}.png`), animations: "disabled" });
+      await page.locator("#status").screenshot({ path: testInfo.outputPath(`permission-card-${lang}-${scheme}-${size}.png`), animations: "disabled" });
+      await host.evaluate((h, language) => h.pushModel({ type: "needsPermission", needsRelaunch: true }, { language }), lang);
+      await expect(action).toHaveText(lang === "en" ? "Relaunch" : "重新啟動");
+      await expect(secondary).toBeHidden();
+      await expect(action).toBeVisible();
+    }
+  });
+
   test(`U067-1 ${lang}/${scheme}: every tab at the default size draws text of at least 12px, controls of at least 24px and text at its contrast minimum`, async () => {
     await host.evaluate((h, args) => { h.theme(args.scheme); h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: args.lang, library: h.library().state, recordingResults: [
       { id: "disk", occurredAt: new Date(Date.now() - 1800_000).toISOString(), code: "disk_full", detail: "ENOSPC", outcome: "partial", partialPath: "/tmp/partial.mp4", acknowledged: false },

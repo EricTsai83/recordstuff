@@ -17,6 +17,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "../../components/ui/pop
 import { flushSync } from "react-dom";
 import * as model from "../settings-controller";
 import { ShortcutEditor } from "./shortcut-editor";
+import { WindowActions } from "../window-actions";
 
 const icons = {
   screen: Monitor,
@@ -76,7 +77,7 @@ export function Action({
         variant={group.id === "localData" ? "destructive" : group.id === "about" || choice.id === "quit" ? "ghost" : "outline"}
         size={iconOnly ? "icon" : "default"}
         wrap={iconOnly ? false : wrap}
-        className={group.id === "about" ? `px-0 ${className ?? ""}` : className}
+        className={iconOnly ? `px-0 ${className ?? ""}` : className}
         disabled={!group.enabled || !choice.enabled}
         aria-disabled={busy || !group.enabled || !choice.enabled}
         aria-label={group.id === "about" ? choice.label : undefined}
@@ -295,18 +296,16 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
           aria-labelledby={group.kind === "actions" ? `${id}-label` : undefined}
         >
           {group.kind === "actions" ? (
-            actions.map((choice) => (
+            actions.filter(choice => group.id !== "about" || choice.id !== "hide").map((choice) => group.id === "about" && choice.id === "quit" ? (
+              <div key={choice.id} className="wide:hidden">
+                <WindowActions group={group} quit={choice} />
+              </div>
+            ) : (
               <Action
                 key={choice.id}
                 group={group}
                 choice={choice}
                 wrap
-                // The sidebar's own Quit stands in for this one where the sidebar shows.
-                className={
-                  group.id === "about" && choice.id === "quit"
-                    ? "wide:hidden"
-                    : undefined
-                }
               />
             ))
           ) : group.control === "switch" ? (

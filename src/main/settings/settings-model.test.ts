@@ -786,8 +786,8 @@ describe("the status card", () => {
   it("turns to attention for what stops the next recording, with the fix as its action", () => {
     // Like the tray's permission steps: the system pane first, and Relaunch for access that may already be granted.
     expect(settingsView({ type: "needsPermission", needsRelaunch: false }, context).status).toMatchObject({ tone: "attention",
-      action: { id: "permission", label: "Open System Settings" }, secondaryAction: { id: "relaunch", label: "Already allowed? Relaunch RecordStuff" } });
-    expect(settingsView({ type: "needsPermission", needsRelaunch: false }, { ...context, language: "zh-TW" }).status?.secondaryAction?.label).toBe("已經允許了？重新啟動 RecordStuff");
+      action: { id: "permission", label: "Open System Settings" }, secondaryAction: { id: "relaunch", label: "Already allowed? Relaunch" } });
+    expect(settingsView({ type: "needsPermission", needsRelaunch: false }, { ...context, language: "zh-TW" }).status?.secondaryAction?.label).toBe("已經允許了？重新啓動");
     // Once only a relaunch can help, it is the action itself, offered once.
     expect(settingsView({ type: "needsPermission", needsRelaunch: true }, context).status).toMatchObject({ action: { id: "relaunch" } });
     expect(settingsView({ type: "needsPermission", needsRelaunch: true }, context).status?.secondaryAction).toBeUndefined();
@@ -931,11 +931,14 @@ describe("the menu's support items in RecordStuff (2026-10-04)", () => {
     expect(group(idle, context, "log")).toMatchObject({ label: "Log file", kind: "actions", tab: "failures", sectionHeading: "Diagnostic tools", choices: [{ id: "show", label: "Show log" }] });
     expect(group(idle, { ...context, language: "zh-TW" }, "log")).toMatchObject({ label: "記錄檔（log）", tab: "failures", sectionHeading: "診斷工具", choices: [{ label: "顯示 log" }] });
     expect(settingsAction(busy[2]!, context, "log", "show")).toBe("revealLog");
-    expect(group(idle, context, "about")?.choices.map(c => c.id)).toEqual(["website", "source", "quit"]);
+    expect(group(idle, context, "about")?.choices.map(c => c.id)).toEqual(["website", "source", "quit", "hide"]);
   });
   it("offers Quit RecordStuff in the window, since closing it leaves the menu-bar recorder running (2026-10-05)", () => {
     expect(group(idle, { ...context, language: "zh-TW" }, "about")?.choices.find(c => c.id === "quit")).toMatchObject({ label: "結束 RecordStuff", enabled: true });
     // Also while recording: the quit waits for the recording to be saved, as the tray's Quit does.
     expect(settingsAction(busy[2]!, context, "about", "quit")).toBe("quit");
+    expect(group(idle, { ...context, language: "zh-TW" }, "about")?.choices.find(c => c.id === "hide")).toMatchObject({ label: "隱藏 RecordStuff", enabled: true });
+    expect(settingsAction(busy[2]!, context, "about", "hide")).toBe("hideSettings");
+    expect(settingsAction(idle, { ...context, quitting: true }, "about", "hide")).toBeUndefined();
   });
 });
