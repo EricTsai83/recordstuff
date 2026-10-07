@@ -321,6 +321,16 @@ Runner 將原始碼與建置資源複製至專用報告目錄，只修改該副�
 
 點擊會移動真正的游標。改把事件直接送給程序（以 `CGEventPostToPid` 送給 RecordStuff 或控制中心，帶不帶視窗編號、先不先送移動事件）時游標不動，但在 macOS 26.6.2 上選單一次都沒有打開（2026-10-02）：控制中心依游標位置判定點擊。因此每一輪都需要桌面交接；期間若有人操作，仍可能關掉選單或改變選取，目前沒有偵測。
 
+### 視窗拖移驗收
+
+完成[桌面交接](../testing.md#測試前確認桌面交接)，並關閉 RecordStuff 與本 checkout 的開發版 Electron 後，執行 `pnpm acceptance:window-drag`。命令建置一次，啟動隔離的原生設定 fixture：使用正式的 `settingsWindowOptions`、建置好的 preload 與頁面，以及獨立的 idle model 和 userData。不啟動簽章 bundle、不改動既有偏好。需要 macOS、輔助使用權限、供 OS 截圖使用的螢幕錄製權限，以及未鎖定、工作區至少 1090×700 點的主螢幕。缺少前提記為 blocked（exit 2），不要求或更動隱私權限。
+
+runner 送出 CoreGraphics 滑鼠按下、十六個 `leftMouseDragged` 步驟、再放開。每個案例都透過輔助使用讀取自己的視窗前後座標：可拖移區必須移動 60×40 點（容許 2 點誤差），且不能改變大小。涵蓋寬版 100%、寬版 150% 與窄版 100% 頂端橫條的三個位置；兩種寬版的 sidebar 空白與品牌區；頁籤與視窗操作選單按鈕不拖動視窗、仍能點擊；以及選單開啟時停用頂端拖移。`setBounds` 與縮放只用於量測區間外的準備、還原，renderer input 或 CSS 計算值不能代替真正的視窗移動。
+
+`report.md`、`results.json`、`environment.json`、`cleanup.json`、`electron.log` 與 OS 前後截圖存入獨立的 `docs/verification/measurements/<timestamp>-window-drag/`。`-- --out <新目錄>` 可另選尚未使用的目錄。腳本檢查前景焦點及 blur，還原游標、釋放按住的滑鼠、關閉自己的視窗、正常退出並確認整個程序群組已結束。清理失敗為 exit 1；否則 Ctrl-C/SIGTERM 為 130/143，鎖定或無法使用桌面為 2，判定失敗為 1，全部 24 個案例通過為 0。已知桌面干擾會讓相關觀察無法下結論；目前不偵測所有實體輸入干擾。外觀證據須另外判讀截圖。此 fixture 驗證正式頁面與視窗設定在 OS 上的拖移，不代表簽章 bundle 的入口或錄影證據。
+
+取消／清理演練：先用正常命令建置一次，再對同一份未變更的 `out/` 執行 `node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-window-drag.mts --drill-cancel`。第一個拖移案例完成後會中斷；預期 exit 143 與 `groupGone: true` 是清理證據，不是產品通過。`node scripts/acceptance-window-drag.mts --help` 只印使用說明。
+
 ### Tray 驗收
 
 ```bash

@@ -322,6 +322,16 @@ By the maintainer's decision of 2026-10-02 ([acceptance cases](../acceptance.md#
 
 The click moves the real pointer. Events posted to the process instead (`CGEventPostToPid` to RecordStuff or Control Center, with or without the window number and a moved event) left the pointer alone but never opened the menu on macOS 26.6.2 (2026-10-02): Control Center hit-tests a click at the pointer. A round therefore needs the desktop handoff, and input from a person during it can still close a menu or change a selection; nothing detects that yet.
 
+### Window drag acceptance
+
+Run `pnpm acceptance:window-drag` after the [desktop handoff](../testing.md#confirm-desktop-handoff-before-testing), with RecordStuff and this checkout's development Electron closed. The command builds once and launches an isolated native Settings fixture using production `settingsWindowOptions`, the built preload and page, an idle model and private userData. It does not launch the signed bundle or alter existing preferences. It needs macOS, Accessibility, Screen Recording for OS screenshots, and an unlocked primary work area of at least 1090×700 points. Missing prerequisites are blocked (exit 2); no privacy permissions are changed or requested.
+
+The runner sends CoreGraphics mouse-down, sixteen `leftMouseDragged` steps, then mouse-up. Each case reads the owned process's Accessibility window bounds before and after: a draggable region must move exactly 60×40 points (2-point tolerance), with no resize. It covers the full-width top strip at three positions in wide 100%, wide 150% and narrow 100% layouts; sidebar blank space and the brand in both wide layouts; tabs and the window-actions menu button staying stationary and accepting clicks; and the open menu disabling top-strip dragging. Setup and restoration use `setBounds`/zoom outside the measured interval. Renderer input or computed CSS cannot stand in for the native movement.
+
+`report.md`, `results.json`, `environment.json`, `cleanup.json`, `electron.log` and OS before/after PNGs are saved under a unique `docs/verification/measurements/<timestamp>-window-drag/`. `-- --out <new-directory>` chooses another unused directory. The script checks foreground focus and blur, restores the pointer, releases any held mouse button, closes its window, quits normally and confirms its process group exited. Cleanup failure is exit 1, otherwise Ctrl-C/SIGTERM is 130/143, a locked/unavailable desktop is 2, judged failure is 1 and all 24 cases passing is 0. Known desktop interference makes affected observations inconclusive; not all physical interference is detected. Inspect screenshots separately for visual evidence. This fixture establishes OS window movement on the production page/window configuration, not signed-bundle entry or recording.
+
+For a cancellation/cleanup drill, build once with the normal command, then run `node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-window-drag.mts --drill-cancel` on the same unchanged `out/`. It interrupts after the first measured drag; expected exit 143 and `groupGone: true` are cleanup evidence, not a product pass. `node scripts/acceptance-window-drag.mts --help` only prints usage.
+
 ### Tray acceptance
 
 ```bash

@@ -14,6 +14,7 @@ import { command } from "./processes.mts";
  * Commands: `status <pid>`, `press <pid> <menu index>`, `mouse left|right <x> <y>`,
  * `key <code> [flags]`, `windows <pid>`, `layout <pid> <title> <zone json>`, `menubar <pid>`, `manual <pid>`, `banners`,
  * `pasteboard-save <dir>` and `pasteboard-restore <manifest json>`.
+ * `drag-events <event json>`, `release-mouse`, `move-mouse <x> <y>`, `screen-access` support native window dragging.
  * Any failed AX call is reported as its AXError code rather than thrown, so the
  * caller can tell a missing permission (-25211) from an element that is gone.
  */
@@ -29,6 +30,38 @@ function run(argv) {
   ObjC.bindFunction('CFCopyDescription', ['id', ['id']]);
   const [cmd, a, b, c] = argv;
   const out = value => JSON.stringify(value);
+  if (cmd === 'screen-access') {
+    ObjC.bindFunction('CGPreflightScreenCaptureAccess', ['bool', []]);
+    return out({ allowed: $.CGPreflightScreenCaptureAccess() });
+  }
+  if (cmd === 'drag-events') {
+    const events = JSON.parse(a);
+    let point = $.CGPointMake(events[0].x, events[0].y);
+    const post = type => {
+      const event = $.CGEventCreateMouseEvent($(), type, point, 0);
+      $.CGEventSetFlags(event, 0);
+      $.CGEventSetIntegerValueField(event, 1, 1); // kCGMouseEventClickState
+      $.CGEventPost(0, event);
+    };
+    try {
+      for (const event of events) {
+        point = $.CGPointMake(event.x, event.y);
+        post(event.type);
+        delay(event.delayMs / 1000);
+      }
+    } finally { post(2); } // Always release, including a JXA failure while held.
+    return out({ posted: true });
+  }
+  if (cmd === 'release-mouse' || cmd === 'move-mouse') {
+    const event = $.CGEventCreate($());
+    if (cmd === 'move-mouse') $.CGEventSetLocation(event, $.CGPointMake(Number(a), Number(b)));
+    $.CGEventSetType(event, cmd === 'release-mouse' ? 2 : 5);
+    $.CGEventSetFlags(event, 0);
+    $.CGEventPost(0, event);
+    delay(0.08);
+    const point = $.CGEventGetLocation($.CGEventCreate($()));
+    return out({ posted: true, point: { x: point.x, y: point.y }, leftDown: $.CGEventSourceButtonState(0, 0) });
+  }
   if (cmd === 'mouse') {
     const right = a === 'right';
     const point = $.CGPointMake(Number(b), Number(c));

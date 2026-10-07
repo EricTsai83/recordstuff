@@ -37,6 +37,8 @@
 
 例如局部設定 CSS 間距修改需檢視該介面（或聚焦 UI 案例），但不需完整回歸或錄影；錄影快捷鍵修改需整合、真正 OS 送鍵及錄影 smoke；輸出資料夾標籤修改只需文案檢查，資料夾持久化修改則需設定回歸及存檔落點檢查。權限說明文字不需重設權限，權限恢復邏輯則需對應原生案例。
 
+原生視窗拖移區改動另需 `pnpm acceptance:window-drag`（[範圍](system-design/tooling.md#視窗拖移驗收)）：在顯示中的正式頁面／視窗 fixture，以 CoreGraphics 真正拖曳並讀取 AX 座標。CSS 宣告與背景 renderer input 不能證明 OS 視窗移動。若其他必要檢查已建置同一份最終 `out/`，對該產物執行 `node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-window-drag.mts`，避免重複建置。僅 runner 改動時跑正常與取消／清理路徑，不增加無關的錄影或簽章 bundle 檢查。
+
 ## 測試 UI 與 App 保持一致
 
 UI 測試與預覽畫廊必須載入正式頁面，並共用 App 的元件、CSS、字型與設計 token。在相同語言、主題、視窗尺寸及縮放下，排版、字體、顏色、間距與控制項外觀必須和 App 一致。不要另外設計測試介面、把正式樣式複製到 fixture，或注入覆寫樣式讓視覺斷言通過；設計變更應修改共用的正式實作。

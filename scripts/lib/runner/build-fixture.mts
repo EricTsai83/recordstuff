@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { build, transformWithEsbuild } from "vite";
 
 export async function buildFixture(
-  name: "quit-dialog" | "recording-lifecycle" | "history-quit" | "settings-native" | "player-panel" | "ui-preview" | "shortcut-failure" | "shortcut-layout"
+  name: "quit-dialog" | "recording-lifecycle" | "history-quit" | "settings-native" | "window-drag" | "player-panel" | "ui-preview" | "shortcut-failure" | "shortcut-layout"
     | "release-record-network" | "frame-cadence" | "frame-cadence-renderer" | "publication-bench",
   outputDir: string,
 ): Promise<string> {
@@ -19,7 +19,7 @@ export async function buildFixture(
     return path.join(outputDir, `${name}.js`);
   }
   // Settings snapshots use the real model and its pure shared dependencies.
-  if (name === "settings-native" || name === "player-panel" || name === "ui-preview" || name === "recording-lifecycle" || name === "history-quit" || name === "quit-dialog" || name === "frame-cadence"
+  if (name === "window-drag" || name === "settings-native" || name === "player-panel" || name === "ui-preview" || name === "recording-lifecycle" || name === "history-quit" || name === "quit-dialog" || name === "frame-cadence"
     || name === "publication-bench") {
     await build({ configFile: false, logLevel: "error", build: {
       outDir: outputDir, emptyOutDir: false, minify: false,

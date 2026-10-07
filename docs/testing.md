@@ -37,6 +37,8 @@ Before execution, briefly state the affected behavior, selected checks and why e
 
 Examples: a local settings CSS spacing fix needs inspection of that surface (or a focused UI case), but no full regression or recording; changing a recording shortcut needs integration, real OS key delivery and recording smoke; changing an output-folder label needs copy checks, while changing folder persistence needs settings regression and a saved-file destination check. A permission explanation string does not require permission reset; changing permission recovery does require its affected native case.
 
+Changes to native window drag regions also need `pnpm acceptance:window-drag` ([scope](system-design/tooling.md#window-drag-acceptance)): real CoreGraphics dragging and AX bounds in a shown production-page/window fixture. CSS declarations and background renderer input do not prove OS movement. If another required check already built the same final `out/`, run `node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-window-drag.mts` on that artifact rather than rebuilding. Runner-only changes exercise its normal and cancellation/cleanup paths; they do not add unrelated recording or signed-bundle checks.
+
 ## Keep test UI aligned with the app
 
 UI tests and preview galleries must render the production pages and share the app's components, CSS, fonts and design tokens. At the same language, theme, window size and zoom, their layout, typography, colours, spacing and control appearance must match the app. Do not create a separate test design, copy production styles into fixtures or inject style overrides to make a visual assertion pass; fix the shared production implementation when the design changes.
