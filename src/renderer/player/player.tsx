@@ -420,7 +420,9 @@ export function Player({
               "aria-label": t("Playback position"),
               "aria-valuetext": reading,
             }}
-            onPointerDown={() => {
+            onPointerDownCapture={(event) => {
+              if (event.button !== 0) return;
+              // Start before the control's track press changes the value; bubbling here would overwrite its target.
               scrubbing.current = true;
               scrubTime.current = media.time;
             }}

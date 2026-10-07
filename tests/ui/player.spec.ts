@@ -63,6 +63,33 @@ async function openCard(index: number): Promise<void> {
 const item = async (index: number): Promise<{ id: string; title: string; day: string; time: string; duration: string }> =>
   read(page, `window.settings.read().then(v => v.library.items[${index}])`);
 
+test("track clicks keep the seek position through media updates before release", async () => {
+  await openCard(0);
+  const video = page.locator(".player video");
+  await expect.poll(() => video.evaluate(el => (el as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
+  await video.evaluate(el => (el as HTMLVideoElement).pause());
+  const control = page.locator(".player .pc-seek > div");
+  const seek = page.getByRole("slider", { name: label("Playback position") });
+  const duration = await video.evaluate(el => (el as HTMLVideoElement).duration);
+  for (const fraction of [0.75, 0.25, 0.6]) {
+    const box = (await control.boundingBox())!;
+    const target = Math.round(duration * fraction * 10) / 10;
+    await page.mouse.move(box.x + box.width * fraction, box.y + box.height / 2);
+    await page.mouse.down();
+    try {
+      await expect.poll(() => video.evaluate(el => (el as HTMLVideoElement).seeking)).toBe(false);
+      // The media event is a sync boundary that used to restore the pre-click slider value.
+      await video.evaluate(el => el.dispatchEvent(new Event("timeupdate")));
+      await expect(seek).toHaveAttribute("aria-valuenow", String(target));
+    } finally {
+      await page.mouse.up();
+    }
+    await expect(seek).toHaveAttribute("aria-valuenow", String(target));
+    expect(Math.abs((await playback(page, ".player video")).time - target)).toBeLessThan(0.15);
+  }
+  await page.locator("#player-close").click();
+});
+
 test("the seek bar's pointer area accepts clicks above and below the visible track in both players", async () => {
   await openCard(0);
   const checkEdges = async (target: Page): Promise<void> => {

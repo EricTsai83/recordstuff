@@ -220,6 +220,22 @@ it("moves to where the seek bar is dragged, and sets the volume from its slider,
   expect([video.volume, video.muted, level.getAttribute("aria-label"), level.getAttribute("aria-valuetext")]).toEqual([0.5, false, "Volume", "50%"]);
 });
 
+it("keeps a track click at its new position across media updates while the pointer is held", () => {
+  const { video, root, set } = setup();
+  set({ duration: 8 });
+  video.currentTime = 1;
+  video.dispatchEvent(new Event("timeupdate"));
+  const control = root.querySelector<HTMLElement>(".pc-seek > div")!;
+  vi.spyOn(control, "getBoundingClientRect").mockReturnValue(DOMRect.fromRect({ width: 100, height: 20 }));
+  flushSync(() => control.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, clientX: 75, clientY: 10, pointerType: "mouse" })));
+  expect(video.currentTime).toBe(6);
+  video.dispatchEvent(new Event("timeupdate"));
+  video.dispatchEvent(new Event("seeked"));
+  expect(slider(root, ".pc-seek").getAttribute("aria-valuenow")).toBe("6");
+  flushSync(() => control.dispatchEvent(new PointerEvent("pointerup", { button: 0, bubbles: true, clientX: 75, clientY: 10, pointerType: "mouse" })));
+  expect(slider(root, ".pc-seek").getAttribute("aria-valuenow")).toBe("6");
+});
+
 it("steps the controls aside while it plays and the pointer rests, never while paused, and brings them back on a move", async () => {
   const { video, root } = setup();
   flushSync(() => vi.advanceTimersByTime(VIDEO_TIMING.idleMs + 10));
