@@ -21,15 +21,26 @@ export function ScrollFades({
     const node = scrollRef.current;
     if (!node) return;
     const update = (): void => {
+      // Leave at least 120 CSS pixels clear between the fades. A short or zoomed window needs its
+      // small reading area more than it needs a scroll cue; below that height, omit the blur entirely.
+      const available = Math.max(0, (node.clientHeight - 120) / 2);
+      const topSize = Math.min(TOP_SIZE, available), bottomSize = Math.min(BOTTOM_SIZE, available);
       const amount = (distance: number, size: number): number => {
+        if (size === 0) return 0;
         // Start fading two blur heights from the edge so the visual transition approaches zero before the endpoint.
         const progress = Math.max(0, Math.min(1, distance / (size * 2)));
         return progress * progress * (3 - 2 * progress);
       };
-      const top = amount(node.scrollTop, TOP_SIZE);
-      const bottom = amount(node.scrollHeight - node.clientHeight - node.scrollTop, BOTTOM_SIZE);
-      if (topRef.current) topRef.current.style.opacity = String(top);
-      if (bottomRef.current) bottomRef.current.style.opacity = String(bottom);
+      const top = amount(node.scrollTop, topSize);
+      const bottom = amount(node.scrollHeight - node.clientHeight - node.scrollTop, bottomSize);
+      if (topRef.current) {
+        topRef.current.style.height = `${topSize}px`;
+        topRef.current.style.opacity = String(top);
+      }
+      if (bottomRef.current) {
+        bottomRef.current.style.height = `${bottomSize}px`;
+        bottomRef.current.style.opacity = String(bottom);
+      }
     };
     update();
     const observer = new ResizeObserver(update);

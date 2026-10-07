@@ -545,6 +545,7 @@
     scrollbar-width: none;
   }
   .settings-card {
+    container: settings-card / inline-size;
     min-height: 100%;
     background: var(--card);
     color: var(--card-foreground);
@@ -1649,6 +1650,17 @@
       --m: 30px;
     }
   }
+  @media (max-height: 480px) {
+    .settings-card {
+      padding-bottom: 24px;
+    }
+    @media (max-width: 599px) {
+      /* Status/recovery cards retain their breathing room; compact only an ordinary settings page. */
+      main:not(:has(.status:not([hidden]))) .tabs {
+        margin-bottom: 20px;
+      }
+    }
+  }
   @media (max-width: 420px) {
     .row-line {
       flex-wrap: wrap;
@@ -1662,6 +1674,31 @@
     }
     .pc-meta {
       display: none;
+    }
+  }
+  /* A sidebar or zoom can leave a small form inside a wide window. Reflow by the card's usable width,
+     keeping each label and its choices together instead of squeezing either into a narrow column. */
+  @container settings-card (max-width: 400px) {
+    .row:not(.about-row) .row-line:has(> .controls):not(:has([role="switch"])) {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+    }
+    .row:not(.about-row) .row-line:has(> .controls):not(:has([role="switch"])) > .controls {
+      flex: none;
+      align-self: stretch;
+      max-width: none;
+      margin-left: 26px;
+    }
+    .row:not(.about-row) .row-line:has(> .controls):not(:has([role="switch"])) > .group-title {
+      flex-shrink: 0;
+      max-width: 100%;
+    }
+    .row-line:has([role="switch"]) {
+      flex-wrap: nowrap;
+    }
+    .row-line:has([role="switch"]) > .controls {
+      margin-left: 0;
     }
   }
   @media (prefers-reduced-motion: reduce) {

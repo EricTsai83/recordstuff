@@ -28,6 +28,73 @@ test.beforeEach(async ({ launchView }) => {
 const LAST_ZOOM = 1.5;
 const TABS = ["library", "recording", "general", "failures"] as const;
 
+for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
+  test(`compact content ${language}/${scheme}: labels and choices reflow beside the sidebar and under zoom`, async () => {
+    for (const [width, zoom] of [[600, 1], [960, LAST_ZOOM], [380, LAST_ZOOM]] as const) {
+      await host.evaluate((h, args) => {
+        h.theme(args.scheme);
+        h.setContentSize(args.width, 640);
+        h.window().webContents.setZoomFactor(args.zoom);
+        h.pushModel({ type: "idle" }, { language: args.language });
+      }, { width, zoom, language, scheme });
+      await page.locator("#tab-recording").click();
+      const field = page.locator("#setting-fileName");
+      await field.scrollIntoViewIfNeeded();
+      const layout = await page.locator("#setting-fileName-row").evaluate(row => {
+        const label = row.querySelector(".group-title")!.getBoundingClientRect();
+        const controls = row.querySelector(".controls")!.getBoundingClientRect();
+        const field = row.querySelector("input")!.getBoundingClientRect();
+        return { below: controls.top >= label.bottom, aligned: Math.abs(field.left - label.left - 26) < 1,
+          fits: field.right <= row.getBoundingClientRect().right + 1 };
+      });
+      expect(layout, `${width}px at ${zoom * 100}%`).toEqual({ below: true, aligned: true, fits: true });
+      const measured = await read<UiMeasurement>(page, MEASURE_UI);
+      expect(measured.overflow).toEqual({ page: false, panel: false });
+      expect(measured.texts.filter(text => text.clipped && text.at.startsWith("setting-"))).toEqual([]);
+      // Reflow does not take the countdown sound switch away from its own label.
+      await page.locator("#setting-countdownSound").scrollIntoViewIfNeeded();
+      expect(await page.locator("#setting-countdownSound-row").evaluate(row => {
+        const label = row.querySelector(".group-title")!.getBoundingClientRect();
+        const control = row.querySelector(".controls")!.getBoundingClientRect();
+        return control.top < label.bottom && control.bottom > label.top;
+      })).toBe(true);
+    }
+  });
+
+  test(`long rename ${language}/${scheme}: an unbroken title fits and actions remain reachable in a zoomed minimum window`, async ({}, testInfo) => {
+    await host.evaluate((h, args) => {
+      h.theme(args.scheme);
+      h.setContentSize(380, 360);
+      h.window().webContents.setZoomFactor(1.5);
+      const view = h.settingsView({ type: "idle" }, { ...h.baseContext(), language: args.language, library: h.library().state });
+      view.library.items[0].title = "Recording".repeat(24);
+      h.push(view);
+    }, { language, scheme });
+    await page.locator("#tab-library").click();
+    await page.locator(".clip-more").first().click();
+    await page.locator("#clip-menu-rename").click();
+    const dialog = page.locator("#clip-rename");
+    await expect(page.locator("#clip-rename-input")).toBeFocused();
+    expect(await dialog.evaluate(el => {
+      const box = el.getBoundingClientRect();
+      return box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight
+        && el.scrollWidth <= el.clientWidth && el.scrollHeight > el.clientHeight;
+    })).toBe(true);
+    const picture = async (name: string): Promise<void> => {
+      // Chromium's page screenshot crops at unscaled coordinates under Electron zoom; capture the hidden frame.
+      const frame = await host.evaluate(async h => (await h.window().webContents.capturePage(undefined, { stayHidden: true })).toPNG().toString("base64"));
+      await fs.writeFile(testInfo.outputPath(name), Buffer.from(frame, "base64"));
+    };
+    await page.waitForTimeout(150);
+    await picture("long-rename-title.png");
+    await page.locator("#clip-rename-cancel").scrollIntoViewIfNeeded();
+    await picture("long-rename-actions.png");
+    await page.locator("#clip-rename-cancel").click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator(".clip-more").first()).toBeFocused();
+  });
+}
+
 test("the macOS top strip covers the window width without covering settings controls", async () => {
   test.skip(process.platform !== "darwin", "Other platforms use the native title bar.");
   await host.evaluate(h => h.pushModel({ type: "idle" }, { library: h.library().state }));
@@ -346,11 +413,12 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       const hintColor = await hint.evaluate(el => getComputedStyle(el).color);
       const relaunchColor = await relaunchLabel.evaluate(el => getComputedStyle(el).color);
       const primary = await page.locator('[id^="tab-"][aria-selected="true"]').evaluate(el => getComputedStyle(el, "::after").backgroundColor);
-      expect(relaunchColor).not.toBe(primary);
+      expect(relaunchColor).toBe(primary);
       expect(relaunchColor).not.toBe(hintColor);
       await secondary.hover();
       await expect(relaunchLabel).toHaveCSS("color", relaunchColor);
       await expect(relaunchLabel).toHaveCSS("text-decoration-line", "underline");
+      await expect(relaunchLabel).toHaveCSS("text-decoration-color", primary);
       await expect(hint).toHaveCSS("color", hintColor);
       await expect(hint).toHaveCSS("text-decoration-line", "none");
       await expect.poll(secondaryStyle, { message: `${size}: only the relaunch label changes on hover` }).toEqual(resting);

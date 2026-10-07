@@ -355,7 +355,7 @@ export function RenameDialog() {
     >
       <DialogContent
         id="clip-rename"
-        className="clip-rename"
+        className="clip-rename max-h-[calc(100dvh-32px)] overflow-y-auto"
         showCloseButton={false}
         initialFocus={() => {
           const field = document.getElementById(
@@ -374,7 +374,7 @@ export function RenameDialog() {
         }}
       >
         <DialogHeader>
-          <DialogTitle id="clip-rename-label">
+          <DialogTitle id="clip-rename-label" className="[overflow-wrap:anywhere]">
             {translate("New name for {title}", model.view?.language, {
               title: item?.title ?? "",
             })}

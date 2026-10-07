@@ -20,11 +20,11 @@ export function WindowActions({ group, quit, id = "setting-about-hide", sidebar 
   };
   return (
     <div role="group" aria-label={model.text("RecordStuff window actions")}
-      className={`inline-flex h-9 max-w-full items-stretch rounded-lg border border-border/50 bg-secondary/60 text-secondary-foreground ${sidebar ? "w-full" : ""}`}>
+      className={`inline-flex min-h-9 max-w-full items-stretch rounded-lg border border-border/50 bg-secondary/60 text-secondary-foreground ${sidebar ? "w-full" : ""}`}>
       <ControlTooltip label={hide?.label ?? model.text("Hide RecordStuff")}>
         <Button id={id} data-action="hide" variant="ghost" aria-label={model.text("Hide interface")}
           disabled={!group.enabled || !hide?.enabled} aria-disabled={!enabled(hide)}
-          className="darwin:wide:window-no-drag h-full flex-1 justify-start gap-2 rounded-none rounded-l-lg border-0 px-3"
+          className="darwin:wide:window-no-drag h-auto min-h-[34px] min-w-0 flex-1 justify-start gap-2 rounded-none rounded-l-lg border-0 px-3 py-1.5 text-left whitespace-normal"
           onClick={() => { if (hide) choose(hide); }}>
           <PanelBottomClose aria-hidden="true" />
           {model.text("Hide interface")}
@@ -33,7 +33,7 @@ export function WindowActions({ group, quit, id = "setting-about-hide", sidebar 
       <DropdownMenu>
         <DropdownMenuTrigger id={`${id}-menu`} aria-label={model.text("More window actions")}
           disabled={!enabled(quit)}
-          render={<Button variant="ghost" size="icon" className="darwin:wide:window-no-drag relative h-full w-9 rounded-none rounded-r-lg border-0 before:absolute before:inset-y-2 before:left-0 before:w-px before:bg-border/70" />}>
+          render={<Button variant="ghost" size="icon" className="darwin:wide:window-no-drag relative h-auto min-h-[34px] w-9 rounded-none rounded-r-lg border-0 before:absolute before:inset-y-2 before:left-0 before:w-px before:bg-border/70" />}>
           <Ellipsis aria-hidden="true" />
         </DropdownMenuTrigger>
         <DropdownMenuContent id={`${id}-menu-content`} data-window-actions="" side="top" sideOffset={8} align="end"
