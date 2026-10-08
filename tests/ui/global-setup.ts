@@ -6,29 +6,15 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createHash } from "node:crypto";
 import { build } from "vite";
 import { createRequire } from "node:module";
 import { staleOutReason } from "../../scripts/lib/runner/runtime-inputs.mjs";
+import { treeDigest } from "../../scripts/lib/runner/verification-timing.mts";
 
 export const REQUIRED_OUTPUTS = [
   "out/main/index.js", "out/preload/settings.js", "out/preload/video.js", "out/preload/countdown.js",
   "out/renderer/settings.html", "out/renderer/video.html", "out/renderer/countdown.html",
 ] as const;
-
-/** A digest of every file under `out/`, so a report names the build it tested. */
-export function outDigest(root: string): string {
-  const hash = createHash("sha256");
-  const walk = (dir: string): void => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-      const file = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(file);
-      else { hash.update(path.relative(root, file)); hash.update(fs.readFileSync(file)); }
-    }
-  };
-  walk(path.join(root, "out"));
-  return hash.digest("hex").slice(0, 12);
-}
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
   const root = path.resolve(__dirname, "../..");
@@ -63,7 +49,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     },
   });
   process.env.RECORDSTUFF_UI_HOSTS = hosts;
-  process.env.RECORDSTUFF_UI_OUT_DIGEST = outDigest(root);
-  console.log(`UI hosts compiled to ${hosts}; testing out/ ${process.env.RECORDSTUFF_UI_OUT_DIGEST}`);
+  // The same digest the verification recipes record (verification-timing.mts), so their reports name the same build.
+  process.env.RECORDSTUFF_UI_OUT_DIGEST = treeDigest(path.join(root, "out")) ?? "missing";
+  console.log(`UI hosts compiled to ${hosts}; testing out/ ${process.env.RECORDSTUFF_UI_OUT_DIGEST.slice(0, 12)}`);
   return async () => { fs.rmSync(hosts, { recursive: true, force: true }); };
 }
