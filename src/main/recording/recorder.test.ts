@@ -1501,6 +1501,37 @@ describe("Recorder rejects zero-byte output with real FileWriter", () => {
   const media = (sessionId: string, seq: number, ...values: number[]): HostMessage =>
     ({ type: "chunk", sessionId, seq, bytes: new Uint8Array(values).buffer });
 
+  it("reports a cancel after record as the cancel when capture stops before its first frame, and saves one that got frames", async () => {
+    const ctx = await real();
+    try {
+      ctx.host.autoStart = false;
+      await ctx.begin("empty-1");
+      await vi.waitFor(() => expect(ctx.host.recorded).toContain("empty-1"));
+      ctx.recorder.cancelCountdown("menu");
+      // A sleep after the cancel keeps the cancel as the reason.
+      ctx.recorder.systemWillSleep();
+      // Capture starts after the cancel, and is stopped at once, before any frame.
+      ctx.host.emit({ type: "started", sessionId: "empty-1" });
+      expect(ctx.host.stopped).toContain("empty-1");
+      ctx.host.emit({ type: "stopped", sessionId: "empty-1" });
+      await vi.waitFor(() => expect(ctx.of("cancelled")).toHaveLength(1));
+      expect(ctx.of("cancelled")[0]).toMatchObject({ reason: "menu", session: expect.objectContaining({ id: "empty-1" }) });
+      expect([ctx.of("failed"), ctx.of("failureStatus"), ctx.of("saved")]).toEqual([[], [], []]);
+      expect(ctx.recorder.state).toEqual({ type: "idle" });
+      expect(await fs.readdir(ctx.dir)).toEqual([]);
+
+      // The same cancel, but a frame made it out first: what was recorded is kept.
+      await ctx.begin("empty-2");
+      await vi.waitFor(() => expect(ctx.host.recorded).toContain("empty-2"));
+      ctx.recorder.cancelCountdown("menu");
+      ctx.host.emit({ type: "started", sessionId: "empty-2" });
+      ctx.host.emit(media("empty-2", 0, 5, 6, 7));
+      ctx.host.emit({ type: "stopped", sessionId: "empty-2" });
+      await vi.waitFor(() => expect(ctx.of("saved")).toHaveLength(1));
+      expect(ctx.of("cancelled")).toHaveLength(1);
+    } finally { await ctx.cleanup(); }
+  });
+
   it.each([["no chunks", 0], ["only empty chunks", 2]] as const)(
     "fails a stop with %s as capture_start_failed, removes the empty file and records again",
     async (_label, empty) => {

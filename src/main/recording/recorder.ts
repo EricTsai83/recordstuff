@@ -17,7 +17,7 @@ import { isErrorCode, type ErrorCode, type RecordingState } from "../../shared/s
 import { RECORDING_HEALTH, type RecordingHealth } from "./recording-health";
 import { SessionSentinelTracker, type SentinelStore } from "./session-sentinel";
 import { EARLY_STOP_TEXT, type EarlyStop, type FailureOutcome, type SessionTiming } from "../../shared/session-record";
-import type { FinishTimings } from "./file-writer";
+import { NO_MEDIA_DETAIL, type FinishTimings } from "./file-writer";
 import { errnoCode, messageOf } from "../lib/errors";
 
 export interface RecorderWriter {
@@ -208,7 +208,11 @@ interface Session {
    * a disk error from the writer can still fail it.
    */
   finalizing: boolean;
-  stopOnStart: boolean;
+  /**
+   * A cancel, quit or sleep that came after `record` went out: capture stops as soon as it starts. Should it stop
+   * before a single frame, nothing was recorded, and that is the cancel, not a failed start.
+   */
+  stopOnStart?: CancelReason;
   /** A nonempty chunk arrived; empty chunks neither satisfy the first-media deadline nor count as media. */
   hasMedia: boolean;
   writer?: RecorderWriter;
@@ -413,7 +417,7 @@ export class Recorder {
     if (session.phase === "opening" || session.phase === "preparing" || session.phase === "countdown") {
       this.cancel(session, reason);
     } else if (session.phase === "arming" && !session.stopOnStart) {
-      session.stopOnStart = true;
+      session.stopOnStart = reason;
       this.deps.log(`recorder: session ${session.id} cancel (${reason}) arrived after record was sent; stopping once capture starts`);
     }
   }
@@ -460,7 +464,7 @@ export class Recorder {
         return;
       case "arming":
         session.stoppedEarly = "sleep";
-        session.stopOnStart = true;
+        session.stopOnStart ??= "sleep";
         this.deps.log(`recorder: session ${session.id} the Mac is going to sleep after record was sent; stopping once capture starts`);
         return;
       case "opening":
@@ -483,7 +487,7 @@ export class Recorder {
     // stops once it starts.
     const pending = this.session;
     if (pending && (pending.phase === "opening" || pending.phase === "preparing")) pending.cancelOnPrepared ??= "quit";
-    if (pending && pending.phase === "arming") pending.stopOnStart = true;
+    if (pending && pending.phase === "arming") pending.stopOnStart ??= "quit";
     // Defer execution until the shared promise is installed (stop can emit synchronously).
     const attempt = Promise.resolve().then(() => new Promise<boolean>((resolve) => {
       let checking = false;
@@ -581,7 +585,6 @@ export class Recorder {
       overlay: false,
       requestedAt: this.monotonic(),
       finalizing: false,
-      stopOnStart: false,
       hasMedia: false,
       nextSeq: 0,
       writes: Promise.resolve(),
@@ -976,6 +979,17 @@ export class Recorder {
     try {
       finalPath = await session.writer.finish();
     } catch (cause) {
+      // The writer already removed the empty file: a stop that ended a cancelled start before its first frame recorded
+      // nothing, which is what the cancel asked for.
+      const reason = session.stopOnStart;
+      if (reason && cause instanceof Error && cause.cause === NO_MEDIA_DETAIL && this.session === session) {
+        this.deps.log(`recorder: session ${session.id} cancelled (${reason}) after record was sent; capture stopped before its first frame`);
+        this.session = undefined;
+        this.settle({ type: "idle" });
+        this.emit({ type: "cancelled", reason, session: this.trace(session) });
+        await session.sentinel.clear();
+        return;
+      }
       // Zero confirmed bytes arrive here as capture_start_failed; disk errors keep their code.
       await this.fail(session.id, errorCodeOf(cause, "output_write_failed"), messageOf(cause));
       return;
