@@ -30,6 +30,21 @@ const CLOSE_TIMEOUT_MS = 15_000;
 const EXIT_TIMEOUT_MS = 5_000;
 const SCAN_INTERVAL_MS = 1_000;
 
+/**
+ * A worker that dies between tests is reported by Playwright as "worker process exited unexpectedly" with nothing
+ * else (Windows runners, 2026-10-08). The monitor only records what ended it, beside the run's other evidence; it
+ * neither catches nor changes the crash.
+ */
+const WORKER_LOG = path.join(ROOT, "test-results", "ui", "worker-exits.log");
+const recordWorker = (line: string): void => {
+  try { fs.mkdirSync(path.dirname(WORKER_LOG), { recursive: true }); fs.appendFileSync(WORKER_LOG, `${new Date().toISOString()} pid ${process.pid} ${line}\n`); }
+  catch { /* Evidence only. */ }
+};
+process.on("uncaughtExceptionMonitor", (error, origin) => {
+  recordWorker(`${origin}: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+});
+process.on("exit", code => { if (code !== 0) recordWorker(`exit ${code}`); });
+
 /** Stored preferences the app host starts from; anything not given takes the production default. */
 export interface SeedSettings {
   language?: "en" | "zh-TW";
