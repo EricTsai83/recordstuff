@@ -132,6 +132,8 @@ export interface LibraryItemView {
   /** `1:23`, absent until its length is read. */
   duration?: string;
   size: string;
+  /** Recorded within the last 24 hours (`NEW_RECORDING_MS`): the card is marked New. */
+  fresh?: true;
   thumbnail: string;
   video: string;
 }

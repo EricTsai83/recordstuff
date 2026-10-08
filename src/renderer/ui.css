@@ -1414,6 +1414,22 @@
     height: 28px;
     margin: -14px 0 0 -14px;
   }
+  /* A recording from the last 24 hours. */
+  .clip-new {
+    position: absolute;
+    left: 8px;
+    top: 8px;
+    border-radius: 6px;
+    padding: 1px 6px;
+    color: var(--primary-foreground);
+    background: var(--primary);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  #library[data-layout="list"] .clip-new {
+    display: none;
+  }
   .clip-text {
     padding: 10px;
     display: flex;

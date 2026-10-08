@@ -622,6 +622,9 @@ function statusText(state: RecordingState, ctx: AppContext): SettingsStatus {
  * The Recordings tab (2026-10-04): the output folder's videos, newest first, grouped by day like the
  * failures, each with the URLs the page may load it by. Totals count every listed file.
  */
+/** How long a recording is marked New after it was recorded. */
+export const NEW_RECORDING_MS = 24 * 3600_000;
+
 function libraryView(ctx: AppContext, now: Date, format: DateFormats): LibraryView | undefined {
   const library = ctx.library;
   if (!library) return undefined;
@@ -655,6 +658,7 @@ function libraryView(ctx: AppContext, now: Date, format: DateFormats): LibraryVi
         title: file.name.replace(/\.[^.]+$/, ""), time: shortTime(at, language, format),
         ...(file.duration === undefined ? {} : { duration: formatDuration(file.duration) }),
         size: formatBytes(file.size),
+        ...(now.getTime() - at.getTime() < NEW_RECORDING_MS ? { fresh: true } : {}),
         thumbnail: `${MEDIA_SCHEME}://thumb/${file.id}?v=${file.version}`,
         video: `${MEDIA_SCHEME}://video/${file.id}?v=${file.version}`,
       };

@@ -6,7 +6,7 @@ import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT } from "../../shared/hotkey";
 const LEGACY_HOTKEYS = ["CommandOrControl+Alt+Shift+R", "CommandOrControl+Shift+R", "CommandOrControl+Alt+R"];
 import type { RecordingState } from "../../shared/state";
 import { translate as t } from "../../shared/i18n";
-import { dayHeading, shortTime, proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
+import { dayHeading, shortTime, proposesHotkey, settingsAction, settingsChecked, settingsView, NEW_RECORDING_MS } from "./settings-model";
 import type { LibraryState, RecordingFile } from "../library/recordings-library";
 import type { AppContext } from "../app/ui-model";
 
@@ -867,11 +867,18 @@ describe("the Recordings tab", () => {
     expect(view.folder).toBe("~/recordings");
     expect(view.items).toEqual([
       { id: "id-2026-10-04 14-02-11.mp4", name: "2026-10-04 14-02-11.mp4", day: "Today", title: "2026-10-04 14-02-11", time: new Date(2026, 9, 4, 14, 2).toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" }),
-        duration: "1:23", size: "180 MB", thumbnail: "recordstuff-media://thumb/id-2026-10-04 14-02-11.mp4?v=v1", video: "recordstuff-media://video/id-2026-10-04 14-02-11.mp4?v=v1" },
+        duration: "1:23", size: "180 MB", fresh: true, thumbnail: "recordstuff-media://thumb/id-2026-10-04 14-02-11.mp4?v=v1", video: "recordstuff-media://video/id-2026-10-04 14-02-11.mp4?v=v1" },
       expect.objectContaining({ day: "Yesterday", title: "Product demo", time: new Date(2026, 9, 3, 9, 30).toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" }), duration: "1:02:05", size: "2.2 GB" }),
     ]);
     expect(settingsView(idle, { ...library({}), language: "zh-TW" }).library!.summary).toBe("2 個錄影・2.4 GB");
     expect(settingsView(idle, library({ files: [files[0]!] })).library!.summary).toBe("1 recording · 180 MB");
+  });
+  it("marks a recording New for 24 hours after it was recorded, then no longer", () => {
+    const at = files[0]!.recordedAt, fresh = (offset: number): boolean | undefined =>
+      settingsView(idle, { ...library({ files: [files[0]!] }), now: new Date(at + offset) }).library!.items[0]!.fresh;
+    expect(fresh(0)).toBe(true);
+    expect(fresh(NEW_RECORDING_MS - 1)).toBe(true);
+    expect(fresh(NEW_RECORDING_MS)).toBeUndefined();
   });
   it("says it is loading or cannot read the folder instead of claiming it is empty", () => {
     expect(settingsView(idle, library({ loading: true, files: [] })).library).toEqual({ folder: "~/recordings", layout: "grid", status: "Loading recordings…", items: [] });
