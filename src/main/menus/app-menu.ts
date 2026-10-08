@@ -20,8 +20,8 @@ import type { ZoomRequest } from "../settings/settings-window";
 
 /**
  * The app, Edit and Window menus in the app's language, which Electron's roles would leave in English. They keep
- * the key equivalents the window relies on (Quit, Hide, copy and paste, Minimize); Close stays out, as the page
- * closes on ⌘W itself, and Zoom too, as the window is not maximizable. View lists the page's zoom keys (2026-10-05):
+ * the key equivalents the window relies on (Quit, Hide, copy and paste, Minimize, Zoom, full screen); Close stays out,
+ * as the page closes on ⌘W itself. View lists the page's zoom keys (2026-10-05):
  * the window handles them itself on every platform (settings-window.ts `zoomRequest`), so the items show their keys
  * without binding them, and a key is never handled twice.
  */
@@ -45,9 +45,10 @@ function systemMenus(language: Language, record: MenuItemConstructorOptions[], h
       { label: t("Actual Size"), accelerator: "Command+0", registerAccelerator: false, click: () => zoom("reset") },
       { label: t("Zoom In"), accelerator: "Command+Plus", registerAccelerator: false, click: () => zoom("in") },
       { label: t("Zoom Out"), accelerator: "Command+-", registerAccelerator: false, click: () => zoom("out") },
+      separator, { role: "togglefullscreen", label: t("Toggle Full Screen") },
     ] } satisfies MenuItemConstructorOptions] : []),
     ...record,
-    { label: t("Window"), role: "window", submenu: [{ role: "minimize", label: t("Minimize") }, separator, { role: "front", label: t("Bring All to Front") }] },
+    { label: t("Window"), role: "window", submenu: [{ role: "minimize", label: t("Minimize") }, { role: "zoom", label: t("Zoom") }, separator, { role: "front", label: t("Bring All to Front") }] },
   ];
 }
 

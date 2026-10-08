@@ -312,6 +312,7 @@ export const ZH_TW = {
   "Select All": "全選",
   Window: "視窗",
   Minimize: "縮到最小",
+  "Toggle Full Screen": "切換全螢幕",
   "Bring All to Front": "將此 App 的所有視窗移至最前",
   "Saving…": "儲存中…",
   "Recording starts in {seconds} s": "{seconds} 秒後開始錄影",

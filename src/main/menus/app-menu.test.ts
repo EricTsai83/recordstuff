@@ -69,7 +69,7 @@ describe("the app menu and Dock icon (2026-10-04)", () => {
 
   it("keeps the key equivalents the window relies on, in the app's language", () => {
     const keys = lastMenu().flatMap(entry => entry.submenu ?? []).flatMap(entry => entry.role ? [entry.role] : []);
-    expect(keys).toEqual(expect.arrayContaining(["quit", "hide", "copy", "paste", "selectAll", "minimize"]));
+    expect(keys).toEqual(expect.arrayContaining(["quit", "hide", "copy", "paste", "selectAll", "minimize", "zoom"]));
     expect(keys).not.toContain("close");
     const zh = new AppMenu({ state: () => state, context: () => ({ ...ctx, language: "zh-TW" }), language: () => "zh-TW", onAction });
     zh.windowOpened();
@@ -95,7 +95,10 @@ describe("the app menu and Dock icon (2026-10-04)", () => {
     expect(titles(lastMenu())).toEqual(["appMenu", "Edit", "View", "Record", "Window"]);
     const items = lastMenu()[2]!.submenu! as Array<Template & { registerAccelerator?: boolean }>;
     expect(items.map(entry => [entry.label, entry.accelerator, entry.registerAccelerator]))
-      .toEqual([["Actual Size", "Command+0", false], ["Zoom In", "Command+Plus", false], ["Zoom Out", "Command+-", false]]);
+      .toEqual([["Actual Size", "Command+0", false], ["Zoom In", "Command+Plus", false], ["Zoom Out", "Command+-", false],
+        [undefined, undefined, undefined], ["Toggle Full Screen", undefined, undefined]]);
+    // Full screen is the system's own, with its key (⌃⌘F).
+    expect(items[4]!.role).toBe("togglefullscreen");
     items[1]!.click!();
     expect(zoom).toHaveBeenCalledWith("in");
   });

@@ -64,8 +64,8 @@ export function settingsWindowOptions(options: {
     minHeight: Math.min(MIN_SETTINGS_SIZE.height, workArea.height),
     show: false,
     title: options.title,
-    maximizable: false,
-    fullscreenable: false,
+    // Zoom and full screen stay the system's own (2026-10-08, the maintainer's request): the green button, a double
+    // click on the page's drag regions as System Settings says, Window → Zoom and View → Toggle Full Screen.
     // macOS: the sidebar runs to the top edge with the window controls inset in it; the page draws
     // its own drag region and keeps the title for the window list and accessibility. Elsewhere the native frame stays.
     ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { ...TRAFFIC_LIGHT_POSITION } } : {}),
@@ -249,17 +249,35 @@ export class SettingsWindow {
 
   /**
    * Hide RecordStuff (⌘H, app-menu.ts): the window goes out of sight as it is, and comes back as it was the next
-   * time it is opened. A shortcut being recorded is let go, and a video playing full screen for it ends.
+   * time it is opened. A shortcut being recorded is let go, and a video playing full screen for it ends. A window in
+   * full screen leaves it first, as macOS leaves an empty Space behind a hidden one; it comes back windowed.
+   * Resolves once the window is out of sight, or false when it was opened again first.
    */
-  hide(): void {
+  hide(): Promise<boolean> {
     this.options.fullScreen?.close();
     const window = this.window;
-    if (!window || window.isDestroyed()) return;
+    if (!window || window.isDestroyed()) return Promise.resolve(true);
     this.hiddenByUser = true;
     this.release(this.leaseOf(window));
     // The player stops first: hidden, RecordStuff has no Dock icon, and a sound from nowhere would be hard to trace.
     window.webContents.send(SETTINGS_CHANNELS.hidden);
-    window.hide();
+    if (!window.isFullScreen()) {
+      window.hide();
+      return Promise.resolve(true);
+    }
+    return new Promise(resolve => {
+      const done = (): void => {
+        window.removeListener("leave-full-screen", done);
+        window.removeListener("closed", done);
+        if (window.isDestroyed()) return resolve(true);
+        if (this.window !== window || !this.hiddenByUser) return resolve(false);
+        window.hide();
+        resolve(true);
+      };
+      window.once("leave-full-screen", done);
+      window.once("closed", done);
+      window.setFullScreen(false);
+    });
   }
 
   show(resultEntry = false): void {
@@ -296,6 +314,12 @@ export class SettingsWindow {
     let lastSize = size;
     window.on("resize", () => {
       if (window.isMinimized()) return;
+      // A zoomed or full-screen window is not the size to reopen at; its animation's sizes are dropped with it.
+      if (window.isMaximized() || window.isFullScreen()) {
+        clearTimeout(this.resizeTimer);
+        this.pendingSize = undefined;
+        return;
+      }
       const [width, height] = window.getSize();
       if (width === undefined || height === undefined) return;
       if (width === lastSize.width && height === lastSize.height) return;

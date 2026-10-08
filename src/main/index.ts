@@ -216,10 +216,13 @@ async function main(): Promise<void> {
   // even in a release build. It is installed before any window, in the saved language; while the window is open
   // the menu bar shows it with a Record menu.
   const hideSettings = (): void => {
-    settingsWindow.hide();
-    library.unwatch();
-    void library.flushTrash();
-    appMenu.windowClosed();
+    void settingsWindow.hide().then(hidden => {
+      // Opened again while it was leaving full screen: it stays a Dock app that follows its folder.
+      if (!hidden) return;
+      library.unwatch();
+      void library.flushTrash();
+      appMenu.windowClosed();
+    });
   };
   const appMenu = new AppMenu({
     state: () => recorder.state, context: () => appContext(), language: () => settings.language,

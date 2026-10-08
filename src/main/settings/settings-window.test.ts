@@ -20,6 +20,7 @@ const mock = vi.hoisted(() => {
     };
     events = new Map<string, () => void>();
     isMinimized = vi.fn(() => false);
+    isMaximized = vi.fn(() => false);
     restore = vi.fn();
     show = vi.fn();
     focus = vi.fn();
@@ -42,6 +43,7 @@ const mock = vi.hoisted(() => {
     close = vi.fn(() => { this.events.get("close")?.(); this.destroy(); });
     once = (name: string, callback: () => void) => this.events.set(name, callback);
     on = this.once;
+    removeListener = (name: string, callback: () => void) => { if (this.events.get(name) === callback) this.events.delete(name); };
     constructor(public options: any) {
       windows.push(this);
     }
@@ -231,6 +233,25 @@ describe("settings window lifecycle", () => {
     s.panel.show();
     // The same window, not a new one, and the app is told it is opening again.
     expect([mock.windows.length, window.show.mock.calls.length, opened.mock.calls.length]).toEqual([1, 1, 2]);
+  });
+  it("leaves full screen before hiding, as macOS would leave an empty Space behind, unless opened again meanwhile (2026-10-08)", async () => {
+    const s = setup();
+    s.panel.show();
+    const window = s.window();
+    ready(window);
+    window.hide = vi.fn();
+    window.fullScreen = true;
+    const hiding = s.panel.hide();
+    expect([window.setFullScreen.mock.lastCall, window.hide.mock.calls.length]).toEqual([[false], 0]);
+    window.events.get("leave-full-screen")!();
+    expect([await hiding, window.hide.mock.calls.length]).toEqual([true, 1]);
+    // Opened again before full screen was left: it stays in sight, and the caller keeps it a Dock app.
+    s.panel.show();
+    window.fullScreen = true;
+    const reopened = s.panel.hide();
+    s.panel.show();
+    window.events.get("leave-full-screen")!();
+    expect([await reopened, window.hide.mock.calls.length]).toEqual([false, 1]);
   });
   it("keeps a window hidden while it was still loading hidden, and shows it on the next open (review pass 2, F2)", () => {
     const s = setup();
@@ -724,6 +745,25 @@ describe("settings window size", () => {
     s.panel.destroy();
     expect(geometry.save).toHaveBeenCalledExactlyOnceWith({ width: 700, height: 800 });
   });
+  it("keeps the size from before zoom or full screen, dropping the sizes their animations pass through (2026-10-08)", () => {
+    const geometry = { size: { width: 600, height: 700 }, save: vi.fn() };
+    const s = setup({ geometry }); s.panel.show();
+    const window = s.window();
+    // An animation's frame, then the zoomed frame: neither is saved.
+    window.getSize.mockReturnValue([900, 800]); window.events.get("resize")!();
+    window.isMaximized.mockReturnValue(true);
+    window.getSize.mockReturnValue([1440, 900]); window.events.get("resize")!();
+    window.isMaximized.mockReturnValue(false);
+    window.fullScreen = true;
+    window.getSize.mockReturnValue([1512, 982]); window.events.get("resize")!();
+    window.events.get("closed")!();
+    expect(geometry.save).not.toHaveBeenCalled();
+    // Back to a plain window, its size is saved again.
+    s.panel.show();
+    mock.windows[1].getSize.mockReturnValue([700, 800]); mock.windows[1].events.get("resize")!();
+    s.panel.destroy();
+    expect(geometry.save).toHaveBeenCalledExactlyOnceWith({ width: 700, height: 800 });
+  });
 });
 
 it("a new window shows the first page of failures again, however far the last one paged", async () => {
@@ -1062,7 +1102,10 @@ describe("the one Settings window description, shared with the Settings fixture"
   const base = { preloadPath: "/out/preload/settings.js", title: "RecordStuff", size: { width: 960, height: 640 }, workArea: { x: 100, y: 25, width: 1440, height: 875 } };
   it("insets the window controls in the page on macOS and keeps the native frame elsewhere", () => {
     const mac = settingsWindowOptions({ ...base, platform: "darwin" });
-    expect(mac).toMatchObject({ titleBarStyle: "hiddenInset", trafficLightPosition: TRAFFIC_LIGHT_POSITION, maximizable: false, fullscreenable: false, show: false,
+    // Zoom and full screen are the system's own (2026-10-08).
+    expect(mac).not.toHaveProperty("maximizable");
+    expect(mac).not.toHaveProperty("fullscreenable");
+    expect(mac).toMatchObject({ titleBarStyle: "hiddenInset", trafficLightPosition: TRAFFIC_LIGHT_POSITION, show: false,
       webPreferences: { preload: "/out/preload/settings.js", sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true } });
     const windows = settingsWindowOptions({ ...base, platform: "win32" });
     expect(windows).not.toHaveProperty("titleBarStyle");
