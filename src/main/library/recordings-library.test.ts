@@ -421,6 +421,23 @@ describe("RecordingsLibrary", () => {
       expect(fs.existsSync(second)).toBe(true);
     } finally { vi.useRealTimers(); }
   });
+  it("waits once for a file asked to go to the Trash twice, so Undo keeps it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const file = touch("clip.mp4");
+      const { library, deps } = setup();
+      await library.refresh();
+      const id = library.state.files[0]!.id;
+      // Two requests overlap: both found the file in the same listing.
+      expect(await Promise.all([library.act(id, "trash"), library.act(id, "trash")])).toEqual([true, true]);
+      expect(await library.undoTrash()).toBe(true);
+      expect(library.state.files.map(item => item.name)).toEqual(["clip.mp4"]);
+      await vi.advanceTimersByTimeAsync(UNDO_TRASH_MS);
+      await library.flushTrash();
+      expect(deps.trash).not.toHaveBeenCalled();
+      expect(fs.existsSync(file)).toBe(true);
+    } finally { vi.useRealTimers(); }
+  });
   it("lists a file again and says so when its delayed move to the Trash fails", async () => {
     const file = touch("clip.mp4");
     const { library, deps } = setup();

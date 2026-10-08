@@ -391,8 +391,12 @@ export class RecordingsLibrary {
         if (!error) return true;
         this.deps.log(`library: open ${file.path} failed: ${error}`);
       } else {
+        // Already waiting: a second entry for the same file would still move it after Undo brought the first back.
+        const waiting = (): boolean => this.pendingTrash.some(entry => entry.path === file.path);
+        if (waiting()) return true;
         // A file already gone fails now, while the page can still say so beside its card.
         const { ino, dev } = await fs.stat(file.path);
+        if (waiting()) return true;
         const entry: PendingTrash = { path: file.path, name: file.name, ino, dev, timer: setTimeout(() => void this.commitTrash(entry), UNDO_TRASH_MS) };
         this.pendingTrash.push(entry);
         this.deps.log(`library: ${file.path} goes to the Trash in ${UNDO_TRASH_MS / 1000} s unless undone`);
