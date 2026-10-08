@@ -15,9 +15,21 @@ test.beforeEach(async ({ launchView }) => {
 });
 const setView = (view: SettingsView): Promise<void> => host.evaluate((h, next) => h.setView(next), view);
 test("zoom notification reflects applied zoom, has no close button, and dismisses automatically without stealing entry focus", async ({}, testInfo) => {
+  // Install before reloading so every page timer uses the same clock. Keep assertion/CI time out of
+  // the notice's 1.5 s lifetime; CSS transitions and Playwright pointer/keyboard input remain real.
+  await page.clock.install({ time: new Date("2026-10-08T12:00:00Z") });
+  await page.reload();
   const tab = page.getByRole("tab", { name: "Recordings", exact: true });
+  await expect(tab).toBeVisible();
+  await page.clock.pauseAt(new Date("2026-10-08T12:01:00Z"));
+  const advance = async (ms: number) => {
+    await page.clock.runFor(ms);
+    // Sonner publishes the hook's presence changes with a zero-delay timer.
+    await page.clock.runFor(1);
+  };
   await tab.focus();
   await host.evaluate(h => h.zoom("in"));
+  await advance(50);
   const notice = page.locator('.zoom-notice:not([data-removed="true"]):not([inert]) .zoom-toast');
   await expect(notice).toContainText("110%");
   await expect(notice.getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
@@ -29,47 +41,62 @@ test("zoom notification reflects applied zoom, has no close button, and dismisse
   await expect.poll(() => notification.evaluate(el => getComputedStyle(el).transform))
     .toBe("matrix(1, 0, 0, 1, 0, 0)");
   await notice.hover();
-  await page.waitForTimeout(1700);
+  await advance(1700);
   await expect(notice).toBeVisible();
   await notice.getByRole("button", { name: "Reset", exact: true }).focus();
   await page.mouse.move(10, 400);
-  await page.waitForTimeout(1700);
+  await advance(1700);
   await expect(notice).toBeVisible();
   await notice.getByRole("button", { name: "Zoom In", exact: true }).click();
+  await advance(50);
   await expect(notice).toContainText("125%");
   expect(await host.evaluate(h => h.window().webContents.getZoomFactor())).toBe(1.25);
   await notice.getByRole("button", { name: "Zoom In", exact: true }).click();
+  await advance(50);
   await expect(notice).toContainText("150%");
   await expect(notice.getByRole("button", { name: "Zoom In", exact: true })).toBeDisabled();
   await notice.getByRole("button", { name: "Reset", exact: true }).click();
+  await advance(50);
   await expect(notice).toContainText("100%");
   await notice.getByRole("button", { name: "Zoom Out", exact: true }).click();
+  await advance(50);
   await expect(notice).toContainText("90%");
   await notice.getByRole("button", { name: "Zoom Out", exact: true }).click();
+  await advance(50);
   await expect(notice).toContainText("80%");
   await expect(notice.getByRole("button", { name: "Zoom Out", exact: true })).toBeDisabled();
   await notice.getByRole("button", { name: "Reset", exact: true }).click();
+  await advance(50);
   await expect(notice).toContainText("100%");
   await notice.screenshot({ path: testInfo.outputPath("zoom-toast.png") });
   const reset = notice.getByRole("button", { name: "Reset", exact: true });
   await reset.hover();
   await expect(reset).toBeFocused();
-  await page.waitForTimeout(1700);
+  await advance(1700);
   await expect(notice).toBeVisible();
   // Leave both pointer and focus on the clicked button, just as a person waiting would.
-  await expect(notice).toHaveCount(0, { timeout: 4000 });
-  await expect(tab).toBeFocused();
-  await page.mouse.move(10, 400);
-  await host.evaluate(h => h.zoom("in"));
-  await expect(notice).toContainText("110%");
-  await notice.getByRole("button", { name: "Reset", exact: true }).focus();
-  await page.keyboard.press("Escape");
+  await advance(3200);
+  await expect(notice).toBeVisible();
+  await advance(100);
   await expect(notice).toHaveCount(0);
   await expect(tab).toBeFocused();
   await page.mouse.move(10, 400);
   await host.evaluate(h => h.zoom("in"));
+  await advance(50);
+  await expect(notice).toContainText("110%");
+  await notice.getByRole("button", { name: "Reset", exact: true }).focus();
+  await page.keyboard.press("Escape");
+  await advance(1);
+  await expect(notice).toHaveCount(0);
+  await expect(tab).toBeFocused();
+  await page.mouse.move(10, 400);
+  await host.evaluate(h => h.zoom("in"));
+  await advance(50);
   await expect(notice).toContainText("125%");
-  await expect(notice).toHaveCount(0, { timeout: 2500 });
+  await advance(1400);
+  await expect(notice).toBeVisible();
+  await advance(50);
+  await expect(notice).toHaveCount(0);
   await expect(tab).toBeFocused();
 });
 for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
