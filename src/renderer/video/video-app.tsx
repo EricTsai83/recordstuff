@@ -83,10 +83,15 @@ export function VideoApp() {
     const element = video.current;
     if (left.current || !element) return;
     left.current = true;
-    const state = playbackOf(element);
+    // Left before the recording's length was known (shown after the ready timeout, or a file that will not load): the
+    // start position was never applied, so the player gets back where it came from instead of 0:00, paused.
+    const state =
+      element.readyState >= HTMLMediaElement.HAVE_METADATA
+        ? playbackOf(element)
+        : { ...start, volume: element.volume, muted: element.muted };
     element.pause();
     window.video?.exit(state);
-  }, []);
+  }, [start]);
   useEffect(() => {
     document.documentElement.lang = documentLanguage(language);
     document.documentElement.dataset.surface = "video";

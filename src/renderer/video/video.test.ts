@@ -76,6 +76,19 @@ it("starts at full volume from the beginning when main leaves the numbers out", 
   expect([video.volume, video.muted]).toEqual([1, false]);
 });
 
+it("hands back where the player was when left before the recording's length is known, and where it is after", async () => {
+  // happy-dom leaves out the ready-state constants Chromium defines.
+  if (HTMLMediaElement.HAVE_METADATA === undefined) Object.defineProperty(HTMLMediaElement, "HAVE_METADATA", { configurable: true, value: 1 });
+  const early = await load("src=s&t=300&play=1&vol=0.5&mute=0&lang=en");
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", cancelable: true }));
+  expect(early.exit).toHaveBeenCalledWith({ time: 300, playing: true, volume: 0.5, muted: false });
+  const loaded = await load("src=s&t=300&play=1&vol=0.5&mute=0&lang=en");
+  Object.defineProperty(loaded.video, "readyState", { configurable: true, get: () => HTMLMediaElement.HAVE_METADATA });
+  Object.defineProperty(loaded.video, "currentTime", { configurable: true, get: () => 312 });
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", cancelable: true }));
+  expect(loaded.exit).toHaveBeenCalledWith(expect.objectContaining({ time: 312 }));
+});
+
 it("says ready once the first frame is decoded, not when only the metadata is known", async () => {
   const { video, ready } = await load("src=s&t=0&play=0&vol=1&mute=0&lang=en");
   video.dispatchEvent(new Event("loadedmetadata"));
