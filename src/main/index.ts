@@ -748,12 +748,15 @@ async function main(): Promise<void> {
   });
   let historyPrompt = false;
   let quitDeferral: QuitDeferral = "media";
+  /** The last quit was refused because the Clear local app data prompt is open: its answer decides the quit. */
+  let cleanupPromptOpen = false;
   /** The metadata writes the last quit waited on; a line about them clears once they finish. */
   let metadataWritten: Promise<void> = Promise.resolve();
   const quitCoordinator = installQuitCoordinator(app, {
     relaunch: () => app.relaunch(),
     shutdown: async () => {
-      if (clearData.confirming) return false;
+      cleanupPromptOpen = clearData.confirming;
+      if (cleanupPromptOpen) return false;
       quitDeferral = quitStep = "media";
       clearQuitDeferred();
       beginQuitting();
@@ -770,6 +773,12 @@ async function main(): Promise<void> {
       return flushed;
     },
     pending: () => {
+      if (cleanupPromptOpen) {
+        // Nothing is pending: no banner or tray line about recording work, just the prompt to answer.
+        log("quit deferred: the Clear local app data prompt is still open");
+        focusApp();
+        return;
+      }
       clearData.cancel();
       recordingResults.resume();
       endQuitting();
