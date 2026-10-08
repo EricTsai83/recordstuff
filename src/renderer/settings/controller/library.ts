@@ -30,6 +30,8 @@ export let renaming:
     }
   | undefined;
 export let optimisticLayout: LibraryLayout | undefined;
+/** Only the latest layout request's answer ends the optimistic layout: an earlier one would flash back its choice. */
+let layoutRequest = 0;
 let undoing = false;
 const trashedCards: string[] = [];
 const fileActionsPending = new Set<string>();
@@ -49,6 +51,7 @@ export function forgetMissingItems(ids: Set<string>): void {
     renaming = undefined;
 }
 export async function chooseLayout(layout: LibraryLayout): Promise<void> {
+  const request = ++layoutRequest;
   optimisticLayout = layout;
   draw();
   try {
@@ -61,8 +64,10 @@ export async function chooseLayout(layout: LibraryLayout): Promise<void> {
   } catch {
     announce(text("Could not complete this action. Try again."));
   } finally {
-    optimisticLayout = undefined;
-    draw();
+    if (request === layoutRequest) {
+      optimisticLayout = undefined;
+      draw();
+    }
   }
 }
 export async function revealFolder(): Promise<void> {
