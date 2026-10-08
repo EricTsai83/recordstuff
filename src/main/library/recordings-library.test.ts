@@ -103,6 +103,26 @@ describe("RecordingsLibrary", () => {
     expect(seen).toEqual([[undefined, undefined, undefined], [3, undefined, undefined], [2, 3, undefined], [1, 2, 3]]);
   });
 
+  it("stops reading lengths when the window closes, and reads only the rest on the next listing", async () => {
+    for (const seconds of [1, 2, 3]) fs.writeFileSync(path.join(dir, `2026-10-0${seconds} 09-00-00.mp4`), movieOf(seconds));
+    let clock = 0;
+    const changed = vi.fn();
+    const library = new RecordingsLibrary({
+      dir: () => dir, changed, log: vi.fn(), thumbnail: vi.fn(), trash: vi.fn(), open: vi.fn(), reveal: vi.fn(),
+      now: () => (clock += LENGTHS_PUBLISH_MS),
+    });
+    const seen: (number | undefined)[][] = [];
+    // The window closes as the first length is published.
+    changed.mockImplementation(() => {
+      seen.push(library.state.files.map(file => file.duration).sort());
+      if (seen.length === 2) library.unwatch();
+    });
+    await library.refresh(); await library.lengths;
+    expect(seen).toEqual([[undefined, undefined, undefined], [3, undefined, undefined]]);
+    await library.refresh(); await library.lengths;
+    expect(seen.at(-1)).toEqual([1, 2, 3]);
+  });
+
   it("lists the folder newest first, skipping a recording still being written and anything not a video", async () => {
     touch("2026-10-03 09-00-00.mp4"); touch("2026-10-04 14-02-11.mp4"); touch("2026-10-04 15-00-00.recording.mp4"); touch("notes.txt");
     fs.mkdirSync(path.join(dir, "folder.mp4"));

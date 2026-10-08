@@ -155,6 +155,8 @@ export class RecordingsLibrary {
   private thumbnailsMaking = 0;
   private thumbnailsWaiting: Array<() => void> = [];
   private generation = 0;
+  /** Bumped as the window closes: lengths still to be read wait for the next listing instead of reading on unseen. */
+  private lengthsRun = 0;
   /** The listing being read, and the one requested meanwhile, which every later caller shares. */
   private listing: Promise<void> | undefined;
   private relisting: Promise<void> | undefined;
@@ -218,6 +220,7 @@ export class RecordingsLibrary {
 
   private async list(): Promise<void> {
     const generation = ++this.generation;
+    const run = this.lengthsRun;
     const dir = this.deps.dir();
     if (dir !== this.current.dir) this.current = { dir, loading: true, failed: false, files: [] };
     let files: RecordingFile[];
@@ -254,7 +257,7 @@ export class RecordingsLibrary {
     this.current = { dir, loading: false, failed: false, files };
     this.forget(files);
     this.deps.changed();
-    this.lengths = this.readLengths(generation, files);
+    this.lengths = this.readLengths(generation, run, files);
     // The output folder changed while the window watches, one that could not be watched now lists, or the folder at
     // this path was replaced (review pass 2, P2-2): follow it. After publishing, so the listing never waits for it.
     if (this.watching) {
@@ -315,9 +318,13 @@ export class RecordingsLibrary {
     this.unwatchable = dir;
   }
 
-  /** The window closed: no watcher and no pending listing remain. */
+  /**
+   * The window closed: no watcher and no pending listing remain, and no length is read for a card nobody sees, so a
+   * large folder is not still being read while the next recording writes. Lengths already read are kept.
+   */
   unwatch(): void {
     this.watching = false;
+    this.lengthsRun++;
     this.detach();
   }
 
@@ -342,12 +349,13 @@ export class RecordingsLibrary {
    * Reads the unknown lengths one file at a time. They are published every `LENGTHS_PUBLISH_MS` while
    * reading and once at the end, so a folder of long recordings fills in as it goes, not only once all are read.
    */
-  private async readLengths(generation: number, files: RecordingFile[]): Promise<void> {
+  private async readLengths(generation: number, run: number, files: RecordingFile[]): Promise<void> {
     const missing = files.filter(file => this.durations.get(file.path)?.version !== file.version);
     if (!missing.length) return;
     const now = this.deps.now ?? (() => performance.now());
     let published = now();
     for (const [index, file] of missing.entries()) {
+      if (run !== this.lengthsRun) return;
       const seconds = await mp4Duration(file.path);
       if (generation !== this.generation) return;
       this.durations.set(file.path, { version: file.version, seconds });
