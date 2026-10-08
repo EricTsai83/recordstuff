@@ -191,8 +191,29 @@ describe("RecordingsLibrary", () => {
     await vi.waitFor(() => expect(deps.thumbnail).toHaveBeenCalledTimes(THUMBNAILS_AT_ONCE + 2));
     expect(deps.thumbnail).toHaveBeenLastCalledWith(files[THUMBNAILS_AT_ONCE]!.path);
     for (const { resolve } of [...pending.values()]) resolve(Buffer.from("rest"));
-    expect((await Promise.all(jpegs)).map(jpeg => jpeg?.toString())).toEqual([undefined, "one", ...Array<string>(THUMBNAILS_AT_ONCE).fill("rest")]);
+    // The failed one is asked once more after a pause, as a request of its own.
+    await vi.waitFor(() => expect(pending.has(files[0]!.path)).toBe(true));
+    pending.get(files[0]!.path)!.resolve(Buffer.from("retried"));
+    expect((await Promise.all(jpegs)).map(jpeg => jpeg?.toString())).toEqual(["retried", "one", ...Array<string>(THUMBNAILS_AT_ONCE).fill("rest")]);
     expect(most).toBe(THUMBNAILS_AT_ONCE);
+  });
+  it("asks again for a picture the thumbnailer could not make, once after a pause and on the next request", async () => {
+    touch("clip.mp4");
+    const { library, deps } = setup();
+    await library.refresh();
+    const file = library.state.files[0]!;
+    deps.thumbnail.mockResolvedValueOnce(undefined).mockResolvedValueOnce(Buffer.from("second"));
+    expect((await library.thumbnail(file))?.toString()).toBe("second");
+    expect(deps.thumbnail).toHaveBeenCalledTimes(2);
+    // Made: kept, and not made again.
+    expect((await library.thumbnail(file))?.toString()).toBe("second");
+    expect(deps.thumbnail).toHaveBeenCalledTimes(2);
+    // Two failures leave no picture, and the next request tries again rather than keeping the failure.
+    touch("other.mp4"); await library.refresh();
+    const other = library.state.files.find(item => item.name === "other.mp4")!;
+    deps.thumbnail.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined).mockResolvedValueOnce(Buffer.from("later"));
+    expect(await library.thumbnail(other)).toBeUndefined();
+    expect((await library.thumbnail(other))?.toString()).toBe("later");
   });
   it("does not let the page keep a picture read after the file changed under its address", async () => {
     const file = touch("clip.mp4");

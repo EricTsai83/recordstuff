@@ -102,6 +102,8 @@ export const LENGTHS_PUBLISH_MS = 500;
  * How long a recording moved to the Trash can be brought back before it is really moved: longer than its toast stays
  * (2026-10-06, formerly 10 s), since ⌘Z still works once the toast has gone, and waiting only keeps the file in place.
  */
+/** How long a picture that could not be made waits before its one more attempt. */
+export const THUMBNAIL_RETRY_MS = 300;
 export const UNDO_TRASH_MS = 30_000;
 /** `2026-10-04 14-02-11.mp4`, or `-2` and on when a name was taken (recorder.ts formatTimestamp). */
 const STAMPED = /^(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})(?:-\d+)?\.mp4$/;
@@ -542,11 +544,18 @@ export class RecordingsLibrary {
     const cached = this.thumbnails.get(file.path);
     // Map order is use order: deleting and setting again makes this one the newest.
     this.thumbnails.delete(file.path);
-    if (cached?.version === file.version) {
+    // A picture that could not be made is asked for again: the OS's thumbnailer can fail for a moment (Windows).
+    if (cached?.version === file.version && cached.made !== false) {
       this.thumbnails.set(file.path, cached);
       return cached.jpeg;
     }
-    const jpeg = this.makeThumbnail(file.path);
+    // The OS's thumbnailer can fail for a moment (Windows Shell, 2026-10-09 on CI): once more after a pause, queued
+    // like any other request, so a failure still gives up its turn at once.
+    const jpeg = this.makeThumbnail(file.path).then(async made => {
+      if (made) return made;
+      await new Promise(resolve => setTimeout(resolve, THUMBNAIL_RETRY_MS));
+      return this.makeThumbnail(file.path);
+    });
     const entry: Thumbnail = { version: file.version, jpeg };
     void jpeg.then(made => { entry.made = made !== undefined; });
     this.thumbnails.set(file.path, entry);
