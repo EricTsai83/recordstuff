@@ -106,11 +106,16 @@ export class Launched {
       return (new Function("host", "arg", "electron", `return (${source})(host, arg, electron);`) as (host: unknown, arg: unknown, electron: unknown) => unknown)(host, value, electron);
     }, [fn.toString(), arg] as const) as Promise<R>;
   }
-  /** The next page whose URL contains `fragment`, or one already open. */
+  /**
+   * The next page whose URL contains `fragment`, or one already open, once its document has committed. Playwright
+   * reports a window by the URL it is loading, before main's `webContents.getURL()` has it, so a host control that
+   * finds the window by its URL (`settingsWindow`) could still miss it on a slow runner (2026-10-08, macOS CI).
+   */
   async page(fragment: string, timeout = 10_000): Promise<Page> {
-    const open = this.application.windows().find(page => page.url().includes(fragment));
-    if (open) return open;
-    return this.application.waitForEvent("window", { predicate: page => page.url().includes(fragment), timeout });
+    const page = this.application.windows().find(candidate => candidate.url().includes(fragment)) ??
+      await this.application.waitForEvent("window", { predicate: candidate => candidate.url().includes(fragment), timeout });
+    await page.waitForLoadState("domcontentloaded", { timeout });
+    return page;
   }
   calls(): Promise<AdapterCall[]> { return this.evaluate(host => host.boundary.calls); }
   /** Audits, quits normally and confirms the end of this launch now (a restart); its findings fail the test at teardown. */
