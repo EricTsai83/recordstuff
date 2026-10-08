@@ -650,6 +650,8 @@ describe("Recording failures tab (plan 047)", () => {
       .toEqual(["錄影檔", "錄影設定", "一般", "疑難排解（2）"]);
     expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs[3]!.accessibleLabel).toBe("疑難排解，2 筆未確認失敗紀錄");
     expect(settingsView(idle, { ...context, recordingResults: [results[2]!] }).tabs[3]).toEqual({ id: "failures", label: "Troubleshooting" });
+    // One unread failure is said in the singular.
+    expect(settingsView(idle, { ...context, recordingResults: [results[0]!] }).tabs[3]!.accessibleLabel).toBe("Troubleshooting, 1 unread recording failure");
   });
 
   it("names the day a row is grouped under: Today, Yesterday, then the date with the year only for an earlier year", () => {

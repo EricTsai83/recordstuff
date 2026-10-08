@@ -26,7 +26,7 @@ function view(results: RecordingResultView[], over: Partial<SettingsView> = {}):
   return {
     language: "en", title: "RecordStuff", hint: "", failure: "Could not apply this setting.",
     tabs: [{ id: "recording", label: "Recording settings" }, { id: "general", label: "General" },
-      unread ? { id: "failures", label: `Troubleshooting (${unread})`, accessibleLabel: `Troubleshooting, ${unread} unread recording failures` } : { id: "failures", label: "Troubleshooting", accessibleLabel: "Troubleshooting" }],
+      unread ? { id: "failures", label: `Troubleshooting (${unread})`, accessibleLabel: unread === 1 ? "Troubleshooting, 1 unread recording failure" : `Troubleshooting, ${unread} unread recording failures` } : { id: "failures", label: "Troubleshooting", accessibleLabel: "Troubleshooting" }],
     groups: [
       { id: "screen", label: "Screen", tab: "recording", enabled: true, choices: [{ id: "primary", label: "Primary display", enabled: true, checked: true }] },
       { id: "language", label: "Language", tab: "general", control: "segmented", enabled: true, choices: [{ id: "en", label: "English", enabled: true, checked: true }] },
@@ -54,7 +54,7 @@ it("keeps the history in its own tab, as collapsed day-grouped rows that open in
   expect(document.querySelector('[role="tab"][aria-selected="true"]')!.id).toBe("tab-recording");
   expect(document.getElementById("recording-results")).toBeNull();
   expect([tab("recording"), tab("general"), tab("failures")].map((t) => t.textContent)).toEqual(["Recording settings", "General", "Troubleshooting (1)"]);
-  expect(tab("failures").getAttribute("aria-label")).toBe("Troubleshooting, 1 unread recording failures");
+  expect(tab("failures").getAttribute("aria-label")).toBe("Troubleshooting, 1 unread recording failure");
   // The count is the tab's badge; the page's own title names the tab without it.
   expect([...tab("failures").querySelectorAll(".tab-badge")].map(badge => badge.textContent)).toEqual(["1"]);
   tab("failures").click();

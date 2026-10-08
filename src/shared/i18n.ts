@@ -64,6 +64,7 @@ export const ZH_TW = {
   "Could not confirm whether anything was kept. Check the output folder.": "無法確認是否保留了錄影，請檢查儲存位置。",
   "Recording failures": "失敗紀錄",
   "Troubleshooting ({count})": "疑難排解（{count}）",
+  "Troubleshooting, 1 unread recording failure": "疑難排解，1 筆未確認失敗紀錄",
   "Troubleshooting, {count} unread recording failures": "疑難排解，{count} 筆未確認失敗紀錄",
   "No recording failures.": "沒有失敗紀錄。",
   Today: "今天",

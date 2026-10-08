@@ -523,7 +523,9 @@ function failuresTab(ctx: AppContext): SettingsView["tabs"][number] {
   return {
     id: "failures",
     label: t("Troubleshooting ({count})", language, { count: String(unread) }),
-    accessibleLabel: t("Troubleshooting, {count} unread recording failures", language, { count: String(unread) }),
+    accessibleLabel: unread === 1
+      ? t("Troubleshooting, 1 unread recording failure", language)
+      : t("Troubleshooting, {count} unread recording failures", language, { count: String(unread) }),
   };
 }
 

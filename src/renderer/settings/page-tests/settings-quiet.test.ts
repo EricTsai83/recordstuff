@@ -38,7 +38,7 @@ it("leaves an open failure row, the tab list and the window title untouched when
   document.head.innerHTML = "";
   document.body.innerHTML = '<div id="root"></div>';
   const view: SettingsView = { language: "en", title: "RecordStuff", hint: "", failure: "", revision: 1,
-    tabs: [{ id: "recording", label: "Recording settings" }, { id: "failures", label: "Troubleshooting (1)", accessibleLabel: "Troubleshooting, 1 unread recording failures" }],
+    tabs: [{ id: "recording", label: "Recording settings" }, { id: "failures", label: "Troubleshooting (1)", accessibleLabel: "Troubleshooting, 1 unread recording failure" }],
     groups: [{ id: "screen", label: "Screen", tab: "recording", enabled: true, choices: [{ id: "primary", label: "Primary display", enabled: true, checked: true }] }],
     recordingResults: [{ id: "r1", code: "disk_full", outcomeState: "empty", reason: "The disk is full.", day: "Today", time: "2:05 PM", outcome: "No recording was kept.",
       guidance: "Free disk space.", detail: "ENOSPC", acknowledged: false, actions: [{ id: "acknowledge", label: "Got it", enabled: true, checked: false }] }] };
