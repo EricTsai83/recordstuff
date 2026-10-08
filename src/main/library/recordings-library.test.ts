@@ -516,6 +516,34 @@ describe("RecordingsLibrary", () => {
     expect(await library.rename(fileId(target), "Product demo")).toEqual({ id: fileId(target) });
     expect(deps.log).toHaveBeenCalledWith(`library: renamed ${file} to ${target}`);
   });
+  it("keeps a renamed file's length and thumbnail through a listing that began before the rename", async () => {
+    const file = touch("clip.mp4");
+    fs.writeFileSync(file, movieOf(2));
+    const { library, deps } = setup();
+    await library.refresh(); await library.lengths;
+    await library.thumbnail(library.state.files[0]!);
+    expect(deps.thumbnail).toHaveBeenCalledTimes(1);
+    // A listing (a focus, a folder event) reads the folder just before the rename, and finishes after it.
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const readdir = fsPromises.readdir;
+    vi.spyOn(fsPromises, "readdir").mockImplementationOnce((async (...args: Parameters<typeof readdir>) => {
+      const entries = await readdir(...args);
+      await gate;
+      return entries;
+    }) as typeof readdir);
+    const stale = library.refresh();
+    const target = path.join(dir, "Demo.mp4");
+    const renaming = library.rename(library.state.files[0]!.id, "Demo");
+    await vi.waitFor(() => expect([fs.existsSync(file), fs.existsSync(target)]).toEqual([false, true]));
+    release();
+    await stale;
+    expect(await renaming).toEqual({ id: fileId(target) });
+    const renamed = library.state.files.find(item => item.path === target)!;
+    expect(renamed.duration).toBe(2);
+    await library.thumbnail(renamed);
+    expect(deps.thumbnail).toHaveBeenCalledTimes(1);
+  });
   it("never replaces another file on a volume without hard links, reserving the new name first (review pass 1, F1)", async () => {
     const file = touch("clip.mp4");
     const { library } = setup();

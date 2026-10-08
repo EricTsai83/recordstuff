@@ -155,6 +155,11 @@ export class RecordingsLibrary {
   private thumbnailsMaking = 0;
   private thumbnailsWaiting: Array<() => void> = [];
   private generation = 0;
+  /**
+   * Paths a rename moved cached lengths and thumbnails to, with the last listing begun by then: that listing, read
+   * before the rename, does not list the new name, and must not take its caches away (`forget`).
+   */
+  private carried = new Map<string, number>();
   /** Bumped as the window closes: lengths still to be read wait for the next listing instead of reading on unseen. */
   private lengthsRun = 0;
   /** The listing being read, and the one requested meanwhile, which every later caller shares. */
@@ -255,7 +260,7 @@ export class RecordingsLibrary {
     }
     if (generation !== this.generation) return;
     this.current = { dir, loading: false, failed: false, files };
-    this.forget(files);
+    this.forget(files, generation);
     this.deps.changed();
     this.lengths = this.readLengths(generation, run, files);
     // The output folder changed while the window watches, one that could not be watched now lists, or the folder at
@@ -337,9 +342,11 @@ export class RecordingsLibrary {
   }
 
   /** Drops the lengths and thumbnails of files no longer listed: trashed, renamed or in a folder left behind. */
-  private forget(files: RecordingFile[]): void {
-    // A file waiting for the Trash keeps them, so Undo brings its card back as it was.
-    const listed = new Set([...files.map(file => file.path), ...this.pendingTrash.map(entry => entry.path)]);
+  private forget(files: RecordingFile[], generation: number): void {
+    // A file waiting for the Trash keeps them, so Undo brings its card back as it was, and a listing begun before a
+    // rename keeps what the rename carried to the new name; a later listing sees that name itself.
+    for (const [carried, since] of this.carried) if (since < generation) this.carried.delete(carried);
+    const listed = new Set([...files.map(file => file.path), ...this.pendingTrash.map(entry => entry.path), ...this.carried.keys()]);
     for (const cache of [this.durations, this.thumbnails]) {
       for (const filePath of cache.keys()) if (!listed.has(filePath)) cache.delete(filePath);
     }
@@ -525,6 +532,7 @@ export class RecordingsLibrary {
     const thumbnail = this.thumbnails.get(file.path);
     this.thumbnails.delete(file.path);
     if (thumbnail?.made) this.thumbnails.set(target, thumbnail);
+    this.carried.set(target, this.generation);
     await this.refresh();
     return { id: fileId(target) };
   }
