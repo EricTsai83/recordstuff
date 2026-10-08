@@ -130,6 +130,7 @@ function ZoomNotice({
           <span className="sr-only">{model.text("Zoom")} </span>
           <strong>{Math.round(zoom.factor * 100)}%</strong>
         </p>
+        {/* At 80% or 150% the step that went there stops, but keeps the focus it has, so Escape still reaches the card. */}
         <div
           className="zoom-toast-controls"
           role="group"
@@ -138,9 +139,10 @@ function ZoomNotice({
           <Button
             variant="ghost"
             size="icon"
-            className="rounded-full"
+            className="rounded-full data-disabled:pointer-events-none data-disabled:opacity-50"
             aria-label={model.text("Zoom Out")}
             disabled={!zoom.canZoomOut}
+            focusableWhenDisabled
             onClick={() => change("out")}
           >
             <Minus />
@@ -148,9 +150,10 @@ function ZoomNotice({
           <Button
             variant="ghost"
             size="icon"
-            className="rounded-full"
+            className="rounded-full data-disabled:pointer-events-none data-disabled:opacity-50"
             aria-label={model.text("Zoom In")}
             disabled={!zoom.canZoomIn}
+            focusableWhenDisabled
             onClick={() => change("in")}
           >
             <Plus />

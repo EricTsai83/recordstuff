@@ -78,6 +78,19 @@ it("refreshes repeated zoom, closes after 1.5 s or 5 s after a button, and clean
     expect(document.querySelector('[data-sonner-toast]:not([data-removed="true"]) .zoom-toast')).not.toBeNull();
     await advance(1);
     expect(document.querySelector('[data-sonner-toast]:not([data-removed="true"]) .zoom-toast')).toBeNull();
+    // Zoom In at the limit stops but keeps its focus: a disabled button would drop it to the page, out of Escape's reach.
+    await emit(1.4);
+    const atLimit = document.querySelector<HTMLButtonElement>('.zoom-notice:not([data-removed="true"]) .zoom-toast button[aria-label="Zoom In"]')!;
+    vi.mocked(window.settings.zoom!).mockClear();
+    await act(async () => { atLimit.focus(); atLimit.click(); });
+    expect(window.settings.zoom).toHaveBeenCalledWith("in");
+    await emit(1.5);
+    expect([atLimit.hasAttribute("disabled"), atLimit.getAttribute("aria-disabled"), document.activeElement]).toEqual([false, "true", atLimit]);
+    await act(async () => atLimit.click());
+    expect(window.settings.zoom).toHaveBeenCalledTimes(1);
+    await act(async () => { atLimit.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+    await advance(0);
+    expect(document.activeElement?.id).toBe("tab-library");
     await act(async () => root.unmount());
     unmount = undefined;
     expect(unsubscribe).toHaveBeenCalledOnce();
