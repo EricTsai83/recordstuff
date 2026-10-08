@@ -22,9 +22,12 @@ test("zoom notification reflects applied zoom, has no close button, and dismisse
   await expect(notice).toContainText("110%");
   await expect(notice.getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
   await expect(tab).toBeFocused();
-  // Wait for Sonner to mount; Playwright hover waits for a stable, actionable position.
+  // Mounted starts Sonner's entrance transition; wait for its final position before hovering.
+  // During entrance the toast can still be above the window, over the macOS drag strip.
   const notification = page.locator('.zoom-notice:not([data-removed="true"]):not([inert])');
   await expect(notification).toHaveAttribute("data-mounted", "true");
+  await expect.poll(() => notification.evaluate(el => getComputedStyle(el).transform))
+    .toBe("matrix(1, 0, 0, 1, 0, 0)");
   await notice.hover();
   await page.waitForTimeout(1700);
   await expect(notice).toBeVisible();

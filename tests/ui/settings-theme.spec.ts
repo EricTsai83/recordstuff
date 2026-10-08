@@ -177,9 +177,13 @@ test("the card fills the right viewport, grows beyond it and scrolls without mov
     await page.keyboard.press("PageDown");
     await page.mouse.wheel(0, 10000);
     await expect.poll(() => panel.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThanOrEqual(1);
-    const bottom = (await card.boundingBox())!;
     const endGap = await panel.evaluate(el => parseFloat(getComputedStyle(el).paddingBottom));
-    expect(bottom.y + bottom.height).toBeCloseTo(viewport.y + viewport.height - endGap, 0);
+    // scrollHeight/clientHeight round to whole CSS pixels, while card bounds retain fractions.
+    // Match the one-pixel end-of-scroll tolerance above and retry while wheel scrolling settles.
+    await expect.poll(async () => {
+      const bottom = (await card.boundingBox())!;
+      return Math.abs(bottom.y + bottom.height - (viewport.y + viewport.height - endGap));
+    }).toBeLessThanOrEqual(1);
     expect(await card.evaluate(el => parseFloat(getComputedStyle(el).borderBottomLeftRadius))).toBeGreaterThan(0);
     expect(await page.evaluate(() => [document.documentElement.scrollTop, document.querySelector("main")!.scrollTop])).toEqual([0, 0]);
     await page.screenshot({ path: testInfo.outputPath(`long-card-bottom-${scheme}.png`), animations: "disabled" });
