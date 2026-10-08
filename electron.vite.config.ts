@@ -2,13 +2,39 @@ import { resolve } from "node:path";
 import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import type { Plugin } from "vite";
+import { removeOutStamp, runtimeInputFiles, writeOutStamp } from "./scripts/lib/runner/runtime-inputs.mjs";
+
+/**
+ * The inputs `out/` is built from, recorded beside it (scripts/lib/runner/runtime-inputs.mjs), so the UI suite and the
+ * runners that load `out/` refuse a build older than the sources. Main builds first and drops the old record; the
+ * renderer, built last, writes the new one once its files are out. A dev run serves the renderer, so it leaves none,
+ * and a build into another folder (`--outDir`) never certifies the `out/` it did not write.
+ */
+let buildInputs: Record<string, string> | undefined;
+const builtInto = new Map<"main" | "preload" | "renderer", string>();
+const buildRecord = (target: "main" | "preload" | "renderer"): Plugin => ({
+  name: `recordstuff-build-inputs-${target}`, apply: "build",
+  configResolved(config) { builtInto.set(target, resolve(config.root, config.build.outDir)); },
+  buildStart() {
+    if (target !== "main") return;
+    buildInputs = runtimeInputFiles(__dirname);
+    removeOutStamp(__dirname);
+  },
+  writeBundle() {
+    if (target !== "renderer" || !buildInputs) return;
+    const canonical = (["main", "preload", "renderer"] as const).every(name => builtInto.get(name) === resolve(__dirname, "out", name));
+    if (canonical) writeOutStamp(__dirname, buildInputs);
+  },
+});
 
 // Main, one preload per renderer, and four renderer entries (hidden capture
 // host, settings panel, countdown overlay, fullscreen video).
 export default defineConfig({
   // electron-vite externalizes dependencies by default (`build.externalizeDeps`).
-  main: {},
+  main: { plugins: [buildRecord("main")] },
   preload: {
+    plugins: [buildRecord("preload")],
     build: {
       rollupOptions: {
         input: {
@@ -33,6 +59,7 @@ export default defineConfig({
       },
     },
     plugins: [
+      buildRecord("renderer"),
       react(),
       tailwindcss(),
       {

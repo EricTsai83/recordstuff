@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { runtimeInputDigest, runtimeInputFiles, staleBundleReason, writeBuildStamp } from "./runtime-inputs.mjs";
+import { outStampPath, removeOutStamp, runtimeInputDigest, runtimeInputFiles, staleBundleReason, staleOutReason, writeBuildStamp, writeOutStamp } from "./runtime-inputs.mjs";
 
 let root: string;
 const app = (): string => path.join(root, "dist/mac-arm64/RecordStuff.app");
@@ -45,6 +45,26 @@ describe("runtime inputs", () => {
     expect(staleBundleReason(root, app())).toBeUndefined();
     write("src/main/index.ts", "export const changed = 1;\n");
     expect(staleBundleReason(root, app())).toBe("runtime inputs changed since it was built: src/main/index.ts");
+  });
+
+  it("let runners load only the out/ the current inputs built", () => {
+    setup();
+    write("out/main/index.js", "built");
+    expect(staleOutReason(root)).toContain("no build record");
+    const files = runtimeInputFiles(root);
+    // Changed while building: no record, so the build cannot pass for the sources now in place.
+    write("src/main/index.ts", "export const midBuild = 1;\n");
+    expect(writeOutStamp(root, files)).toBeUndefined();
+    expect(writeOutStamp(root, runtimeInputFiles(root))?.inputs).toMatch(/^[\da-f]{64}$/);
+    expect(staleOutReason(root)).toBeUndefined();
+    write("src/main/index.test.ts", "test\n");
+    expect(staleOutReason(root)).toBeUndefined();
+    write("src/renderer/page.tsx", "export {};\n");
+    expect(staleOutReason(root)).toBe("out/ is stale: runtime inputs changed since it was built: src/renderer/page.tsx; run `pnpm build`");
+    fs.writeFileSync(outStampPath(root), "{");
+    expect(staleOutReason(root)).toContain("unreadable");
+    removeOutStamp(root);
+    expect(staleOutReason(root)).toContain("no build record");
   });
 
   it("refuse a bundle replaced after its record was written", () => {

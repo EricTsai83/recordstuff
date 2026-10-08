@@ -17,3 +17,13 @@ export interface BuildStamp {
 }
 export declare function writeBuildStamp(root: string, appPath: string, identityHash: string, files: Record<string, string>): BuildStamp | undefined;
 export declare function staleBundleReason(root: string, appPath: string): string | undefined;
+export interface OutStamp {
+  version: 1;
+  builtAt: string;
+  inputs: string;
+  files: Record<string, string>;
+}
+export declare function outStampPath(root: string): string;
+export declare function removeOutStamp(root: string): void;
+export declare function writeOutStamp(root: string, files: Record<string, string>): OutStamp | undefined;
+export declare function staleOutReason(root: string): string | undefined;

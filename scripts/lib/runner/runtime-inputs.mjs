@@ -89,6 +89,46 @@ export function writeBuildStamp(root, appPath, identityHash, files) {
   return stamp;
 }
 
+/** The names of the inputs that differ between a build record's `files` and the current ones, for a reason message. */
+function changedInputs(recorded, files) {
+  const changed = [...new Set([...Object.keys(files), ...Object.keys(recorded)])]
+    .filter((name) => files[name] !== recorded[name]).sort();
+  const shown = changed.slice(0, 5).join(", ");
+  return `runtime inputs changed since it was built: ${shown}${changed.length > 5 ? ` and ${changed.length - 5} more` : ""}`;
+}
+
+/** `electron-vite build`'s record of the inputs `out/` was built from (electron.vite.config.ts writes it). */
+export const outStampPath = (root) => path.join(root, "out", ".build-inputs.json");
+
+/** Removed as a build begins, so a build that fails or a dev run leaves `out/` without a record. */
+export function removeOutStamp(root) {
+  rmSync(outStampPath(root), { force: true });
+}
+
+/** Written once `out/` is complete; `files` were read as the build began, and inputs that changed during it write nothing. */
+export function writeOutStamp(root, files) {
+  if (runtimeInputDigest(runtimeInputFiles(root)) !== runtimeInputDigest(files)) return undefined;
+  const stamp = { version: 1, builtAt: new Date().toISOString(), inputs: runtimeInputDigest(files), files };
+  writeFileSync(outStampPath(root), `${JSON.stringify(stamp, null, 2)}\n`);
+  return stamp;
+}
+
+/** Why `out/` is not what the current inputs build, or undefined when it is: runners that load it test the sources in front of them. */
+export function staleOutReason(root) {
+  const file = outStampPath(root);
+  let stamp;
+  try { stamp = JSON.parse(readFileSync(file, "utf8")); } catch (error) {
+    return error?.code === "ENOENT"
+      ? "out/ has no build record (a dev run, a failed build or one from before the record existed); run `pnpm build`"
+      : `its build record ${file} is unreadable (${error instanceof Error ? error.message : String(error)})`;
+  }
+  if (stamp?.version !== 1 || typeof stamp.inputs !== "string" || !stamp.files || typeof stamp.files !== "object") {
+    return `its build record ${file} has an unknown format`;
+  }
+  const files = runtimeInputFiles(root);
+  return runtimeInputDigest(files) === stamp.inputs ? undefined : `out/ is stale: ${changedInputs(stamp.files, files)}; run \`pnpm build\``;
+}
+
 /** Why `appPath` is not the bundle the current inputs would build, or undefined when it is. */
 export function staleBundleReason(root, appPath) {
   const file = buildStampPath(appPath);
@@ -103,9 +143,5 @@ export function staleBundleReason(root, appPath) {
   }
   if (appArchiveDigest(appPath) !== stamp.app) return "its app.asar changed after it was built and verified";
   const files = runtimeInputFiles(root);
-  if (runtimeInputDigest(files) === stamp.inputs) return undefined;
-  const changed = [...new Set([...Object.keys(files), ...Object.keys(stamp.files)])]
-    .filter((name) => files[name] !== stamp.files[name]).sort();
-  const shown = changed.slice(0, 5).join(", ");
-  return `runtime inputs changed since it was built: ${shown}${changed.length > 5 ? ` and ${changed.length - 5} more` : ""}`;
+  return runtimeInputDigest(files) === stamp.inputs ? undefined : changedInputs(stamp.files, files);
 }

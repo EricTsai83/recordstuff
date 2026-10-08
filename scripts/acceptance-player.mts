@@ -23,6 +23,7 @@ import { recordStuffPids } from "./lib/runner/processes.mts";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { staleOutReason } from "./lib/runner/runtime-inputs.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ELECTRON = path.join(REPO_ROOT, "node_modules/.bin/electron");
@@ -45,6 +46,9 @@ function fail(message: string, code = 2): never {
 for (const required of ["out/preload/settings.js", "out/preload/video.js", "out/renderer/settings.html", "out/renderer/video.html"]) {
   if (!fs.existsSync(path.join(REPO_ROOT, required))) fail(`BLOCKED: ${required} is missing; run \`pnpm build\` first.`);
 }
+// Built from older sources, `out/` would be tested in place of the code in front of you.
+const staleBuild = staleOutReason(REPO_ROOT);
+if (staleBuild) fail(`BLOCKED: ${staleBuild}`);
 if (!fs.existsSync(ELECTRON)) fail("BLOCKED: node_modules/.bin/electron is missing; run `pnpm install` first.");
 for (const clip of ["landscape-8s.mp4", "portrait-4s.mp4"]) if (!fs.existsSync(path.join(MEDIA, clip))) fail(`BLOCKED: tests/ui/media/${clip} is missing.`);
 // A running RecordStuff takes focus and windows from the full-screen cases (2026-10-05: its rest case failed in every

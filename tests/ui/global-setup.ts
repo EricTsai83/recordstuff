@@ -9,6 +9,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { build } from "vite";
 import { createRequire } from "node:module";
+import { staleOutReason } from "../../scripts/lib/runner/runtime-inputs.mjs";
 
 export const REQUIRED_OUTPUTS = [
   "out/main/index.js", "out/preload/settings.js", "out/preload/video.js", "out/preload/countdown.js",
@@ -36,6 +37,9 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   let electron = "";
   try { electron = createRequire(__filename)("electron") as string; } catch (error) { electron = `unresolvable (${String(error)})`; }
   if (!fs.existsSync(electron)) missing.push(`the Electron runtime (${electron}; run \`node node_modules/electron/install.js\`)`);
+  // A build older than the sources would pass or fail for code that is no longer there.
+  const stale = REQUIRED_OUTPUTS.every(file => fs.existsSync(path.join(root, file))) ? staleOutReason(root) : undefined;
+  if (stale) missing.push(`a current build (${stale})`);
   if (missing.length) {
     // The run's summary says blocked, replacing an earlier run's, since the reporter never runs after this exit.
     fs.mkdirSync(path.join(root, "test-results"), { recursive: true });
