@@ -23,6 +23,9 @@ import {
 import { links, release } from "../lib/release";
 
 const H = "h2";
+const settingsTabs = [...new Set(settings.map((row) => row.tab))];
+/** Chinese in the English copy (繁體中文) is marked as such, as FeatureGrid does. */
+const runs = (text: string): string[] => text.split(/(\p{Script=Han}+)/u);
 ---
 
 <PlatformSwitch macIds={["open-anyway", "install", "use", "update", "remove"]} windowsIds={["windows", "windows-update", "windows-remove"]} />
@@ -46,18 +49,21 @@ const H = "h2";
     <ul>
       <li><strong>Start:</strong> click the menu bar icon and choose <em>Start recording</em>, or press <kbd>⇧</kbd><kbd>⌘</kbd><kbd>1</kbd>.</li>
       <li><strong>Cancel or stop:</strong> the same menu or shortcut. Cancelling during the countdown saves nothing.</li>
-      <li><strong>Find recordings:</strong> click the saved notification, or choose <em>Open RecordStuff</em> from the menu.</li>
+      <li><strong>Find recordings:</strong> click the saved notification, or choose <em>Show last recording</em> or <em>Open RecordStuff</em> from the menu. RecordStuff lists your recordings, where you can play, rename, reveal or delete them.</li>
     </ul>
-    <p>RecordStuff records one whole screen with system audio to an H.264/AAC MP4, without a microphone. Change these in the RecordStuff window:</p>
-    <div class="table-scroll" role="region" aria-label="Settings" tabindex="0">
-      <table>
-        <thead><tr><th>Setting</th><th>Options</th><th>Default</th></tr></thead>
-        <tbody>
-          {settings.map((row) => (<tr><td>{row.setting}</td><td>{row.options}</td><td>{row.fallback}</td></tr>))}
-        </tbody>
-      </table>
-    </div>
-    <p>Language (English or <span lang="zh-Hant">繁體中文</span>), appearance and Icon click are under General, and are the only settings you can change while recording.</p>
+    <p>RecordStuff records one whole screen with system audio to an H.264/AAC MP4, without a microphone. To change how, open RecordStuff (<kbd>⌥</kbd><kbd>⌘</kbd><kbd>,</kbd>):</p>
+    {settingsTabs.map((tab) => (
+      <div class="table-scroll" role="region" aria-label={`${tab} settings`} tabindex="0">
+        <table class="settings-table">
+          <caption>{tab}</caption>
+          <thead><tr><th>Setting</th><th>Options</th><th>Default</th></tr></thead>
+          <tbody>
+            {settings.filter((row) => row.tab === tab).map((row) => (<tr><td>{row.setting}</td><td>{runs(row.options).map((run, index) => index % 2 ? <span lang="zh-Hant">{run}</span> : run)}</td><td>{row.fallback}</td></tr>))}
+          </tbody>
+        </table>
+      </div>
+    ))}
+    <p>While recording, only Icon click, Language and Appearance can change.</p>
 
     <H id="update">Update</H>
     <p>By default RecordStuff checks for updates at launch and notifies you of a new version. To install it:</p>
@@ -107,5 +113,18 @@ const H = "h2";
   }
   .table-scroll table {
     margin: 0;
+  }
+  /* The Recording and General tables share column widths, so they read as one list. */
+  .settings-table {
+    table-layout: fixed;
+    width: 100%;
+    min-width: 36rem;
+  }
+  .settings-table th:nth-child(1) { width: 30%; }
+  .settings-table th:nth-child(2) { width: 44%; }
+  .table-scroll caption {
+    text-align: left;
+    font-weight: 600;
+    padding-bottom: 0.5rem;
   }
 </style>

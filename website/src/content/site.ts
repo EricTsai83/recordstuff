@@ -51,7 +51,7 @@ export interface Feature {
 }
 
 export const features: Feature[] = [
-  { title: "Lives in the menu bar", body: "One icon to start, stop and find your recordings." },
+  { title: "Watch it right away", body: "Play, rename, reveal or delete recordings in RecordStuff." },
   { title: "Your files stay yours", body: "Plain MP4s in Movies → RecordStuff, or any folder you pick." },
   { title: "Keeps what it can", body: "If a recording fails, it tries to save what was written." },
   { title: "English and 繁體中文", body: "Switch any time, even while recording." },
@@ -95,7 +95,7 @@ export const removeSteps: Step[] = [
   { title: "Quit RecordStuff from its menu bar icon", body: "" },
   {
     title: "Drag RecordStuff from Applications to the Trash",
-    body: "There is no uninstaller or background service. Your data stays where it is:",
+    body: "There is no uninstaller or background service. Your data stays where it is, unless you first choose Troubleshooting → Diagnostics and cleanup → Clear and quit… in RecordStuff, which removes everything but recordings:",
   },
 ];
 
@@ -153,15 +153,21 @@ export const windowsRetainedData = [
   { data: "Logs", location: "%APPDATA%\\recordstuff\\logs" },
 ] as const;
 
+/** RecordStuff's Recording and General tabs, in the app's order (src/main/settings/settings-model.ts). */
 export const settings = [
-  { setting: "Screen", options: "Primary or a connected display", fallback: "Primary" },
-  { setting: "Output folder", options: "Any folder", fallback: "Movies → RecordStuff" },
-  { setting: "Countdown", options: "Off / 3 / 5 / 10 s, with an optional tick", fallback: "3 s, tick on" },
-  { setting: "Video quality", options: "Economy / Standard / High", fallback: "Standard" },
-  { setting: "Resolution cap", options: "1080p / 1440p / 4K / Source", fallback: "Source" },
-  { setting: "Frame rate", options: "30 / 60 fps", fallback: "30 fps" },
-  { setting: "Shortcut", options: "⇧⌘1 / custom / off", fallback: "⇧⌘1" },
-  { setting: "Icon click", options: "Open the menu / Start or stop", fallback: "Open the menu" },
+  { tab: "Recording", setting: "Screen", options: "Primary or a connected display", fallback: "Primary" },
+  { tab: "Recording", setting: "Output folder", options: "Any folder", fallback: "Movies → RecordStuff" },
+  { tab: "Recording", setting: "File name format", options: "A pattern of {date}, {time} and other placeholders", fallback: "{date} {time}" },
+  { tab: "Recording", setting: "Countdown", options: "Off / 3 / 5 / 10 s, with an optional tick", fallback: "3 s, tick on" },
+  { tab: "Recording", setting: "Video quality", options: "Economy / Standard / High", fallback: "Standard" },
+  { tab: "Recording", setting: "Resolution cap", options: "1080p / 1440p / 4K / Source", fallback: "Source" },
+  { tab: "Recording", setting: "Frame rate", options: "30 / 60 fps", fallback: "30 fps" },
+  { tab: "General", setting: "Icon click", options: "Open the menu / Start or stop", fallback: "Open the menu" },
+  { tab: "General", setting: "Shortcut", options: "⇧⌘1 / custom / off", fallback: "⇧⌘1" },
+  { tab: "General", setting: "Notifications", options: "On / Off", fallback: "On" },
+  { tab: "General", setting: "Language", options: "English / 繁體中文", fallback: "English" },
+  { tab: "General", setting: "Appearance", options: "System / Light / Dark", fallback: "System" },
+  { tab: "General", setting: "Check for updates on launch", options: "On / Off", fallback: "On" },
 ] as const;
 
 export const permissionsTroubleshooting =
