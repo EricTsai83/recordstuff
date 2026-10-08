@@ -354,7 +354,8 @@ export class SettingsWindow {
     window.webContents.on("before-input-event", (event, input) => {
       if (input.type === "keyDown" && input.key === "Escape" && (input.isAutoRepeat || Date.now() < this.escapeQuietUntil)) event.preventDefault();
       // ⌘+, ⌘- and ⌘0 zoom this window's page on every platform; the View menu shows the same keys without binding them.
-      const zoom = zoomRequest(input, process.platform);
+      // While the shortcut editor records they are candidates like any other chord, so the page must receive them.
+      const zoom = this.leaseOf(window) ? undefined : zoomRequest(input, process.platform);
       if (zoom) { event.preventDefault(); this.zoom(zoom); }
     });
     // Zoom is this window's alone: by default Chromium shares it with every page of the same origin, the full-screen

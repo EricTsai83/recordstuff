@@ -1147,6 +1147,24 @@ describe("the page's zoom (2026-10-05)", () => {
     expect(contents.setZoomFactor).toHaveBeenLastCalledWith(1.5);
     expect(contents.send).toHaveBeenLastCalledWith("settings:zoom-changed", { factor: 1.5, canZoomIn: false, canZoomOut: true });
   });
+  it("leaves the zoom keys to the page while the shortcut editor records them", () => {
+    const s = setup();
+    s.panel.show();
+    const contents = s.window().webContents;
+    const input = contents.on.mock.calls.find((call: any[]) => call[0] === "before-input-event")[1];
+    const press = (key: string) => {
+      const event = { preventDefault: vi.fn() };
+      input(event, { type: "keyDown", key, meta: process.platform === "darwin", control: process.platform !== "darwin", alt: false });
+      return event.preventDefault.mock.calls.length > 0;
+    };
+    const arm = (armed: boolean) => mock.handlers.get("settings:capture")!(s.event(), armed);
+    arm(true);
+    expect(["=", "+", "-", "_", "0"].map(press)).toEqual([false, false, false, false, false]);
+    expect(contents.setZoomFactor).toHaveBeenLastCalledWith(1);
+    arm(false);
+    expect(press("=")).toBe(true);
+    expect(contents.setZoomFactor).toHaveBeenLastCalledWith(1.1);
+  });
   it("authorizes toast actions, rejects arbitrary requests, and shares their factor with keyboard zoom", () => {
     const s = setup();
     s.panel.show();
