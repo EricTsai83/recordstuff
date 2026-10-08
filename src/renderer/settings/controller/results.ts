@@ -125,8 +125,8 @@ export function toggleResult(id: string, open: boolean): void {
   }
 }
 export async function historyMore(): Promise<void> {
+  if (historyPending) return;
   const button = document.getElementById("history-more");
-  if (button?.getAttribute("aria-disabled") === "true") return;
   historyPending = true;
   draw();
   const known = new Set(view?.recordingResults?.map((r) => r.id));

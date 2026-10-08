@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, memo } from "react";
 import { Film, MoreHorizontal, Play, Grid2X2, List, Folder, FileText, HardDrive, X, Maximize } from "lucide-react";
 import type { LibraryItemView } from "../../../shared/settings-panel";
-import { phrases, translate } from "../../../shared/i18n";
+import { phrases, translate, type Language } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
 import { Field, FieldLabel, FieldError } from "../../components/ui/field";
 import { InputGroup, InputGroupInput, InputGroupAddon, InputGroupText } from "../../components/ui/input-group";
@@ -24,7 +24,7 @@ export const Clip = memo(function Clip({
   language,
 }: {
   item: LibraryItemView;
-  language: string;
+  language: Language;
 }) {
   useSyncExternalStore(
     model.subscribe,
@@ -74,7 +74,7 @@ export const Clip = memo(function Clip({
           className="clip-open transition-none rounded-none border-0 hover:bg-transparent dark:hover:bg-transparent active:not-aria-[haspopup]:translate-y-0 focus-visible:outline-none! focus-visible:ring-0 in-data-[layout=list]:flex-row in-data-[layout=list]:items-center in-data-[layout=list]:pr-10"
           aria-label={translate(
             "Play {title}",
-            language === "zh-TW" ? "zh-TW" : "en",
+            language,
             {
               title: phrases(
                 [
@@ -84,7 +84,7 @@ export const Clip = memo(function Clip({
                   item.duration,
                   item.size,
                 ].filter((part): part is string => Boolean(part)),
-                language === "zh-TW" ? "zh-TW" : "en",
+                language,
               ),
             },
           )}
