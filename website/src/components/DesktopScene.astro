@@ -5,8 +5,9 @@
  * click on the icon opens its menu): three seconds of stillness so the viewer
  * notices the screen first; the camera pushes in on the top-right corner as
  * the pointer arrives and clicks the ring; the menu the app shows while idle
- * drops down (tray-model.ts: Ready, Start recording with its shortcut, Open
- * RecordStuff, Quit RecordStuff) and the pointer chooses Start recording; a
+ * drops down (tray-model.ts: Start recording with its shortcut, Open
+ * RecordStuff, Show last recording, Quit RecordStuff; a plain Ready line is
+ * left to the tooltip) and the pointer chooses Start recording; a
  * brief hourglass while capture is prepared, then a stopwatch while a faint
  * 3, 2, 1 counts down at the screen's top-right (the digit leaves 0.3 s early)
  * and the pointer moves away; then the filled dot with "REC" beside it and the
@@ -117,25 +118,25 @@ const savedFile = "2026-09-20 21-14-33.mp4";
     <!-- the status item's menus, as tray-model.ts builds them while idle and while recording; the highlight is the item under the pointer -->
     <g class="ds-menu ds-menu-idle" transform="translate(1330 56)">
       <rect width="250" height="118" rx="9" class="ds-menu-bg" />
-      <rect x="5" y="27" width="240" height="22" rx="5" class="ds-menu-hl" />
-      <text x="14" y="16" class="ds-menu-text ds-menu-off">Ready</text>
-      <text x="14" y="38" class="ds-menu-text">Start recording</text>
-      <text x="236" y="38" class="ds-menu-key">⇧⌘1</text>
-      <line x1="12" x2="238" y1="54" y2="54" class="ds-menu-sep" />
-      <text x="14" y="70" class="ds-menu-text">Open RecordStuff</text>
-      <text x="236" y="70" class="ds-menu-key">⌥⌘,</text>
+      <rect x="5" y="5" width="240" height="22" rx="5" class="ds-menu-hl" />
+      <text x="14" y="16" class="ds-menu-text">Start recording</text>
+      <text x="236" y="16" class="ds-menu-key">⇧⌘1</text>
+      <line x1="12" x2="238" y1="32" y2="32" class="ds-menu-sep" />
+      <text x="14" y="48" class="ds-menu-text">Open RecordStuff</text>
+      <text x="236" y="48" class="ds-menu-key">⌥⌘,</text>
+      <text x="14" y="70" class="ds-menu-text">Show last recording</text>
       <line x1="12" x2="238" y1="86" y2="86" class="ds-menu-sep" />
       <text x="14" y="102" class="ds-menu-text">Quit RecordStuff</text>
     </g>
     <g class="ds-menu ds-menu-rec" transform="translate(1312 56)">
       <rect width="250" height="118" rx="9" class="ds-menu-bg" />
-      <rect x="5" y="27" width="240" height="22" rx="5" class="ds-menu-hl" />
-      <text x="14" y="16" class="ds-menu-text ds-menu-off">Recording</text>
-      <text x="14" y="38" class="ds-menu-text">Stop</text>
-      <text x="236" y="38" class="ds-menu-key">⇧⌘1</text>
-      <line x1="12" x2="238" y1="54" y2="54" class="ds-menu-sep" />
-      <text x="14" y="70" class="ds-menu-text">Open RecordStuff</text>
-      <text x="236" y="70" class="ds-menu-key">⌥⌘,</text>
+      <rect x="5" y="5" width="240" height="22" rx="5" class="ds-menu-hl" />
+      <text x="14" y="16" class="ds-menu-text">Stop</text>
+      <text x="236" y="16" class="ds-menu-key">⇧⌘1</text>
+      <line x1="12" x2="238" y1="32" y2="32" class="ds-menu-sep" />
+      <text x="14" y="48" class="ds-menu-text">Open RecordStuff</text>
+      <text x="236" y="48" class="ds-menu-key">⌥⌘,</text>
+      <text x="14" y="70" class="ds-menu-text">Show last recording</text>
       <line x1="12" x2="238" y1="86" y2="86" class="ds-menu-sep" />
       <text x="14" y="102" class="ds-menu-text">Quit RecordStuff</text>
     </g>
@@ -318,9 +319,6 @@ const savedFile = "2026-09-20 21-14-33.mp4";
     font-size: 15px;
     dominant-baseline: central;
   }
-  .ds-menu-off {
-    fill: rgba(255, 255, 255, 0.42);
-  }
   .ds-menu-key {
     fill: rgba(255, 255, 255, 0.55);
     font-size: 14px;
@@ -340,16 +338,16 @@ const savedFile = "2026-09-20 21-14-33.mp4";
     16.56%, 18.81% { transform: translate(1372px, 30px) scale(1); }
     19.26% { transform: translate(1372px, 30px) scale(0.85); }
     19.70% { transform: translate(1372px, 30px) scale(1); }
-    22.22%, 23.07% { transform: translate(1396px, 91px) scale(1); }
-    23.52% { transform: translate(1396px, 91px) scale(0.85); }
-    23.96%, 24.44% { transform: translate(1396px, 91px) scale(1); }
+    22.22%, 23.07% { transform: translate(1396px, 69px) scale(1); }
+    23.52% { transform: translate(1396px, 69px) scale(0.85); }
+    23.96%, 24.44% { transform: translate(1396px, 69px) scale(1); }
     30.74%, 55.56% { transform: translate(1180px, 330px) scale(1); }
     60%, 61.04% { transform: translate(1324px, 30px) scale(1); }
     61.48% { transform: translate(1324px, 30px) scale(0.85); }
     61.93% { transform: translate(1324px, 30px) scale(1); }
-    64.07%, 65.11% { transform: translate(1378px, 91px) scale(1); }
-    65.56% { transform: translate(1378px, 91px) scale(0.85); }
-    66%, 66.67% { transform: translate(1378px, 91px) scale(1); }
+    64.07%, 65.11% { transform: translate(1378px, 69px) scale(1); }
+    65.56% { transform: translate(1378px, 69px) scale(0.85); }
+    66%, 66.67% { transform: translate(1378px, 69px) scale(1); }
     73.70%, 100% { transform: translate(1040px, 520px) scale(1); }
   }
   /*
