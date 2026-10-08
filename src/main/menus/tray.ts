@@ -38,6 +38,8 @@ import type { AppAction, AppContext } from "../app/ui-model";
 import { APP_NAME } from "../lib/app-name";
 import type { EarlyStop } from "../../shared/session-record";
 
+/** How many shown notifications keep answering a click; older ones are let go (see `notifications`). */
+export const NOTIFICATIONS_KEPT = 20;
 /** After waking, how often to check whether the user is back before showing held notifications (plan 050). */
 export const WAKE_CHECK_MS = 1000;
 /**
@@ -83,6 +85,8 @@ export class AppTray {
   private currentTooltip: string | undefined;
   // Electron notifications are GC-owned. Keep callbacks alive until the user
   // handles/dismisses the notification, delivery fails, or the tray shuts down.
+  // `close` is not guaranteed (a banner left in Notification Center rarely sends it), so only the newest
+  // `NOTIFICATIONS_KEPT` are held: an app left running for weeks does not keep every one it ever showed.
   private readonly notifications = new Set<Notification>();
 
   constructor(private readonly options: TrayOptions) {
@@ -323,6 +327,11 @@ export class AppTray {
       }
       const notification = new Notification({ title: text.title, body: text.body, silent: true });
       this.notifications.add(notification);
+      // The oldest is let go, not closed: it stays in Notification Center, but a click on it is no longer answered.
+      for (const oldest of this.notifications) {
+        if (this.notifications.size <= NOTIFICATIONS_KEPT) break;
+        this.notifications.delete(oldest);
+      }
       notification.on("show", () => this.log(`notification: shown: ${text.body}`));
       notification.on("close", () => {
         this.notifications.delete(notification);

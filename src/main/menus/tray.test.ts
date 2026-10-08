@@ -85,7 +85,7 @@ vi.mock("electron", () => {
 import { app, Menu, Notification, shell } from "electron";
 import type { Language } from "../../shared/i18n";
 import { DEFAULT_QUALITY } from "../../shared/quality";
-import { AppTray, RETURN_IDLE_SECONDS, TRAY_ICON_FILES, WAKE_CHECK_MS } from "./tray";
+import { AppTray, NOTIFICATIONS_KEPT, RETURN_IDLE_SECONDS, TRAY_ICON_FILES, WAKE_CHECK_MS } from "./tray";
 
 const Fake = Notification as unknown as FakeNotificationCtor;
 
@@ -206,6 +206,16 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
     tray.destroy();
     expect(handled.close).not.toHaveBeenCalled();
     expect(pending.close).toHaveBeenCalledOnce();
+  });
+
+  it("holds only the newest notifications, letting older ones go without closing them", () => {
+    const { tray } = setup();
+    for (let index = 0; index < NOTIFICATIONS_KEPT + 3; index++) tray.notifySaved(`/tmp/${index}.mp4`);
+    const shown = [...Fake.instances];
+    tray.destroy();
+    // Only the ones still held are closed at shutdown; the three let go were never closed.
+    expect(shown.map(notification => notification.close.mock.calls.length))
+      .toEqual([...Array(3).fill(0), ...Array(NOTIFICATIONS_KEPT).fill(1)]);
   });
 
   it("releases a synchronous show failure and does not throw into recording", () => {
