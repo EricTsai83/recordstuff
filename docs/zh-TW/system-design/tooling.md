@@ -14,6 +14,7 @@
 | pnpm start:app | 建置、自簽、驗證、開啟 RecordStuff.app；印出各階段耗時，並記錄 bundle 的 runtime 輸入 |
 | pnpm open:app | 記錄的 runtime 輸入仍相符時，驗證並開啟既有開發包，不重建 |
 | pnpm check | typecheck、完整 Vitest、build |
+| pnpm test:changed | 開發中使用：直接或經其他模組 import 到未 commit 變更的 Vitest 檔案，加上以讀檔而非 import 檢查原始碼的模組邊界與樣式守門測試。變更 `package.json`、lockfile、`vitest.config.ts`、`tsconfig` 或共用測試 setup 時跑全部檔案。只 spawn 或讀取該檔的測試不會被選到，需指名執行（`pnpm test <路徑>`）。不取代[測試政策](../testing.md)要求的檢查 |
 | `pnpm test:ui` | 背景 UI 與整合套件（[詳見](#背景-ui-套件)）：Playwright 驅動隱藏的離屏 Electron，載入正式 `out/` 的頁面、preload 與 main，OS 效果換成會記錄的 adapter，因此不需桌面回合，維護者可以繼續工作。build 後執行；缺少建置或測試片段時為 blocked（exit 2）。圖、trace 與 log 在 `test-results/ui/`、`test-results/ui-summary.json` 與 `playwright-report/`。不需另外下載瀏覽器 |
 | `pnpm test:ui:drills` | 背景 host 自身的清理演練：啟動失敗、斷言失敗、逾時、main 卡住、renderer 崩潰、圍堵違規與 SIGINT，逐一證明該失敗時失敗，且不留下任何程序 |
 | pnpm icons | PNG／ICO（系統匣圖示與 Windows App 圖示 `build/icon.ico`）、DMG 背景圖（1x／2x）；macOS 額外產 native ICNS |

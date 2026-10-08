@@ -18,6 +18,7 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.tests.json",
     "test": "vitest run",
+    "test:changed": "vitest run --changed && vitest run tests/source-boundaries.test.ts tests/style-guard.test.ts",
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "icons": "node scripts/make-icons.mjs",
     "log": "tail -F \"$HOME/Library/Logs/recordstuff/recordstuff.log\"",
