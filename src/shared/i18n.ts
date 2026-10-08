@@ -269,7 +269,7 @@ export const ZH_TW = {
   "Open System Settings": "開啟系統設定",
   Relaunch: "重新啟動",
   "Already allowed?": "已經允許了？",
-  "Already allowed? Relaunch": "已經允許了？重新啓動",
+  "Already allowed? Relaunch": "已經允許了？重新啟動",
   "Already allowed? Relaunch RecordStuff": "已經允許了？重新啟動 RecordStuff",
   "Allow screen recording in System Settings.": "請在系統設定允許螢幕錄製。",
   "Screen recording access": "螢幕錄影權限請求",

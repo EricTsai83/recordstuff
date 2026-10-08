@@ -803,7 +803,7 @@ describe("the status card", () => {
     // Like the tray's permission steps: the system pane first, and Relaunch for access that may already be granted.
     expect(settingsView({ type: "needsPermission", needsRelaunch: false }, context).status).toMatchObject({ tone: "attention",
       action: { id: "permission", label: "Open Settings" }, secondaryAction: { id: "relaunch", label: "Already allowed? Relaunch" } });
-    expect(settingsView({ type: "needsPermission", needsRelaunch: false }, { ...context, language: "zh-TW" }).status?.secondaryAction?.label).toBe("已經允許了？重新啓動");
+    expect(settingsView({ type: "needsPermission", needsRelaunch: false }, { ...context, language: "zh-TW" }).status?.secondaryAction?.label).toBe("已經允許了？重新啟動");
     // Once only a relaunch can help, it is the action itself, offered once.
     expect(settingsView({ type: "needsPermission", needsRelaunch: true }, context).status).toMatchObject({ action: { id: "relaunch" } });
     expect(settingsView({ type: "needsPermission", needsRelaunch: true }, context).status?.secondaryAction).toBeUndefined();
