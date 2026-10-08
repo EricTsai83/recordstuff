@@ -27,7 +27,7 @@ const remember = (launched: Launched): void => {
 async function rememberedAreGone(): Promise<Array<{ pid: number; data: string; remaining: number[] }>> {
   const known = fs.existsSync(ledger) ? JSON.parse(fs.readFileSync(ledger, "utf8")) as Array<{ pid: number; data: string }> : [];
   fs.rmSync(ledger, { force: true });
-  return known.map(({ pid, data }) => ({ pid, data, remaining: ownedProcesses(pid, data).filter(alive) }));
+  return Promise.all(known.map(async ({ pid, data }) => ({ pid, data, remaining: (await ownedProcesses(pid, data)).filter(alive) })));
 }
 
 test("D01 a launch that fails before the app is up leaves no process and reports the failure", async () => {
@@ -43,7 +43,7 @@ test("D01 a launch that fails before the app is up leaves no process and reports
     // Connected before it exited: it must still end on its own, with its failure code.
     await expect.poll(() => application.process().exitCode, { timeout: 10_000 }).toBe(3);
   } catch (error) { failure = error; }
-  const remaining = pid ? ownedProcesses(pid, data).filter(alive) : ownedProcesses(-1, data).filter(alive);
+  const remaining = (await ownedProcesses(pid ?? -1, data)).filter(alive);
   expect(remaining, `no process of the failed launch remains${failure ? ` (launch rejected: ${String(failure).split("\n")[0]})` : ""}`).toEqual([]);
   fs.rmSync(data, { recursive: true, force: true });
 });
@@ -145,7 +145,7 @@ test("D10 a process of someone else that names the launch's folder is neither ad
   fs.appendFileSync(log, "");
   const watcher = spawn("tail", ["-f", log], { stdio: "ignore" });
   try {
-    expect(ownedProcesses(app.pid, app.data)).not.toContain(watcher.pid);
+    expect(await ownedProcesses(app.pid, app.data)).not.toContain(watcher.pid);
     const report = await tearDown(app);
     expect({ watcherAlive: alive(watcher.pid!), remaining: report.remaining, forced: report.forced }).toEqual({ watcherAlive: true, remaining: [], forced: false });
   } finally { watcher.kill("SIGTERM"); }
@@ -167,11 +167,11 @@ async function childRun(mode: "timeout" | "interrupt"): Promise<{ code: number |
   const exited = new Promise<number>(resolve => child.on("exit", (code, signal) => resolve(code ?? (signal ? 128 : -1))));
   if (!await eventually(() => fs.existsSync(marker), 60_000)) throw new Error(`the drill target never launched its app\n${output}`);
   const target = JSON.parse(fs.readFileSync(marker, "utf8")) as { pid: number; data: string };
-  const tree = ownedProcesses(target.pid, target.data);
+  const tree = await ownedProcesses(target.pid, target.data);
   if (mode === "interrupt") process.kill(-child.pid!, "SIGINT");
   const code = await Promise.race([exited, new Promise<"hung">(resolve => setTimeout(() => resolve("hung"), 60_000))]);
   if (code === "hung") { try { process.kill(process.platform === "win32" ? child.pid! : -child.pid!, "SIGKILL"); } catch { /* gone */ } }
-  const appGone = await eventually(() => [...tree, ...ownedProcesses(target.pid, target.data)].every(pid => !alive(pid)), 10_000);
+  const appGone = await eventually(async () => [...tree, ...await ownedProcesses(target.pid, target.data)].every(pid => !alive(pid)), 10_000);
   fs.rmSync(marker, { force: true });
   if (appGone) fs.rmSync(target.data, { recursive: true, force: true });
   return { code, appGone, output };

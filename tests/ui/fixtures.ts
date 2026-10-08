@@ -15,7 +15,7 @@
  * fails the test and keeps its temporary folder for diagnosis. Never touches a process it did not launch.
  */
 import { test as base, expect, _electron, type ElectronApplication, type Page, type TestInfo } from "@playwright/test";
-import { execFileSync, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
@@ -23,6 +23,7 @@ import path from "node:path";
 import { scrubbedEnv } from "../../scripts/lib/runner/runner-env.mts";
 import type { Boundary, AdapterCall, Violation } from "./hosts/boundary";
 import { DesktopProbe, type ProbeReport } from "./desktop-probe";
+import { processTableRows } from "./process-table";
 
 export { expect };
 export const ROOT = path.resolve(__dirname, "../..");
@@ -134,12 +135,8 @@ export interface HostGlobals {
  * process, and every process whose command line names its unique temporary folder (a helper that outlived main,
  * such as the local-data cleanup worker, is reparented away from it).
  */
-export function ownedProcesses(root: number, marker: string): number[] {
-  const rows = process.platform === "win32"
-    ? execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-      "Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CommandLine | ForEach-Object { \"$($_.ProcessId) $($_.ParentProcessId) $($_.CommandLine)\" }"],
-    { encoding: "utf8", timeout: 30_000, maxBuffer: 64 << 20, windowsHide: true })
-    : execFileSync("ps", ["-A", "-ww", "-o", "pid=,ppid=,command="], { encoding: "utf8", timeout: 10_000, maxBuffer: 64 << 20 });
+export async function ownedProcesses(root: number, marker: string): Promise<number[]> {
+  const rows = await processTableRows();
   const children = new Map<number, number[]>();
   const marked: number[] = [];
   const executable = electronExecutable().toLowerCase();
@@ -175,9 +172,9 @@ export const alive = (pid: number): boolean => {
   try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
 };
 
-const until = async (check: () => boolean, timeout: number): Promise<boolean> => {
+const until = async (check: () => boolean | Promise<boolean>, timeout: number): Promise<boolean> => {
   const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) { if (check()) return true; await new Promise(resolve => setTimeout(resolve, 50)); }
+  while (Date.now() < deadline) { if (await check()) return true; await new Promise(resolve => setTimeout(resolve, 50)); }
   return check();
 };
 
@@ -201,19 +198,19 @@ export async function tearDown(launched: Launched): Promise<Teardown> {
   const errors: string[] = [];
   /** Every process seen to belong to the launch, rescanned while it shuts down: a helper started by quit counts too. */
   const tree = new Set<number>([launched.pid]);
-  // Each Windows scan starts a PowerShell, so waiting for the end rescans about once a second rather than per poll.
+  // A read is a CIM query on Windows (process-table.ts), so waiting for the end rescans about once a second, not per poll.
   let scanned = 0;
-  const scan = (): void => {
+  const scan = async (): Promise<void> => {
     scanned = Date.now();
-    try { for (const pid of ownedProcesses(launched.pid, launched.data)) tree.add(pid); }
+    try { for (const pid of await ownedProcesses(launched.pid, launched.data)) tree.add(pid); }
     catch (error) { if (!errors.some(text => text.startsWith("process table"))) errors.push(`process table unreadable: ${describeFailure(error)}`); }
   };
-  scan();
+  await scan();
   result.desktop = await launched.probe.stop();
   if (alive(launched.pid) && !launched.closed) {
     try { await Promise.race([launched.evaluate(host => { host.prepareClose?.(); host.boundary.audit(); }), timeoutAfter(5000, "audit")]); }
     catch (error) { errors.push(`boundary audit failed: ${String(error)}`); }
-    scan();
+    await scan();
     try {
       await Promise.race([launched.application.close(), timeoutAfter(CLOSE_TIMEOUT_MS, "close")]);
       result.closedNormally = true;
@@ -227,11 +224,11 @@ export async function tearDown(launched: Launched): Promise<Teardown> {
   scanned = 0; // the first check after close always rescans: a helper started by quit counts too
   const ended = (): boolean => [...tree].every(pid => !alive(pid));
   // The end is only confirmed by a table read after every known process ended: one started late is found then.
-  const gone = (): boolean => {
+  const gone = async (): Promise<boolean> => {
     const before = scanned;
-    if (Date.now() - scanned >= SCAN_INTERVAL_MS) scan();
+    if (Date.now() - scanned >= SCAN_INTERVAL_MS) await scan();
     if (!ended()) return false;
-    if (scanned === before) scan();
+    if (scanned === before) await scan();
     return ended();
   };
   if (!await until(gone, EXIT_TIMEOUT_MS)) {
