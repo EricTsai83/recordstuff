@@ -296,13 +296,18 @@ test("S050 a Tab-focused control in an overflowing panel is scrolled into view a
   for (let step = 0; step < 24; step += 1) {
     await page.keyboard.press("Tab");
     await page.waitForTimeout(60);
-    const focus = await read<{ id: string; covered: boolean; scrollTop: number }>(page, `(() => {
+    const focus = await read<{ id: string; covered: boolean; scrollTop: number; seen: string }>(page, `(() => {
       const active = document.activeElement, panel = document.getElementById("settings-panel");
       const box = active.getBoundingClientRect(), view = panel.getBoundingClientRect();
       const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-      return { id: active.id || active.tagName, scrollTop: panel.scrollTop,
+      const name = el => el ? (el.id ? "#" + el.id : el.tagName.toLowerCase()) + (el.getAttribute("data-slot") ? "[" + el.getAttribute("data-slot") + "]" : "") +
+        (typeof el.className === "string" && el.className ? "." + el.className.trim().split(/\s+/).slice(0, 3).join(".") : "") : "nothing";
+      // What a failure says: the element at the control's centre, and where the control sat against the panel.
+      const seen = name(hit) + " in " + name(hit && hit.parentElement) + "; control " + Math.round(box.top) + "–" + Math.round(box.bottom) +
+        ", panel " + Math.round(view.top) + "–" + Math.round(view.bottom);
+      return { id: active.id || active.tagName, scrollTop: panel.scrollTop, seen,
         covered: panel.contains(active) && (box.top < view.top - 1 || box.bottom > view.bottom + 1 || !hit || !(active.contains(hit) || hit.contains(active))) }; })()`);
-    if (focus.covered) covered.push(focus.id);
+    if (focus.covered) covered.push(`${focus.id} (covered by ${focus.seen})`);
     scrolled = Math.max(scrolled, focus.scrollTop);
   }
   expect.soft({ scrolled: scrolled > 0, covered }, "S050 a Tab never leaves the focused control out of view or under something else").toEqual({ scrolled: true, covered: [] });
