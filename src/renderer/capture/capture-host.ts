@@ -61,8 +61,11 @@ export interface MeasureOptions {
   timeoutMs?: number;
   /**
    * After a constraint was applied the first frames may still be the old
-   * size: keep watching `resize` until the frames match this, or time out
-   * and return the last size seen.
+   * size: keep watching `resize` until the frames fit within this, or time out
+   * and return the last size seen. Within, not equal: the old size is always
+   * larger, and Chromium scales by the source's aspect ratio, which can land a
+   * pixel short of a target whose edges were each rounded to an even number
+   * (3024x1964 under the 1080p cap: 1662x1080 asked, 1662x1079 delivered).
    */
   expect?: Dimensions;
 }
@@ -88,7 +91,7 @@ export async function measureFrameSize(stream: MediaStream, options: MeasureOpti
   const current = (): Dimensions | undefined =>
     video.videoWidth > 0 && video.videoHeight > 0 ? { width: video.videoWidth, height: video.videoHeight } : undefined;
   const matches = (size: Dimensions | undefined): boolean =>
-    size !== undefined && (!options.expect || (size.width === options.expect.width && size.height === options.expect.height));
+    size !== undefined && (!options.expect || (size.width <= options.expect.width && size.height <= options.expect.height));
   try {
     return await new Promise<Dimensions | undefined>((resolve) => {
       let last: Dimensions | undefined;
