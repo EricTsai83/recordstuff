@@ -672,6 +672,14 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         captureNotices.hold("save slow", () => tray.notifySavingSlow(event.dir));
         return;
       case "saved":
+        // Finished while the next recording runs (a save in the background, 2026-10-09): nothing interrupts a
+        // recording, so the banner is held until it ends, as the capture notices are.
+        if (!preferencesUnlocked(recorder.state)) {
+          const { path: saved, stoppedEarly } = event;
+          captureNotices.hold(`saved ${saved}`, () => tray.notifySaved(saved, stoppedEarly));
+          void library.refreshIfWatched();
+          return;
+        }
         savedNotification.schedule(event.path, event.stoppedEarly);
         void library.refreshIfWatched();
         return;
