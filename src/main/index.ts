@@ -210,21 +210,27 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   // Without a menu Electron installs its default one, whose Reload and Developer Tools shortcuts work in Settings
   // even in a release build. It is installed before any window, in the saved language; while the window is open
   // the menu bar shows it with a Record menu.
+  /**
+   * Settings closed or hid, which end the same way: the folder is not followed out of sight (showing the window again
+   * watches and lists it afresh, `activated`), recordings waiting to go to the Trash go now, since nothing is left to
+   * undo them from, and the menu bar app gives back its window's menu.
+   */
+  const settingsGone = (): void => {
+    library.unwatch();
+    void library.flushTrash();
+    appMenu.windowClosed();
+  };
   const hideSettings = (): void => {
     void settingsWindow.hide().then(hidden => {
       // Opened again while it was leaving full screen: it stays a Dock app that follows its folder.
-      if (!hidden) return;
-      library.unwatch();
-      void library.flushTrash();
-      appMenu.windowClosed();
+      if (hidden) settingsGone();
     });
   };
   const appMenu = new AppMenu({
     state: () => recorder.state, context: () => appContext(), language: () => settings.language,
     onAction: action => runAction(action, "app menu"), log,
     trayMenuOpen: () => tray.menuOpen,
-    // Hiding leaves only the menu bar's icon, as closing does; Quit alone ends RecordStuff. The folder is not
-    // followed out of sight either: showing the window again watches and lists it afresh (`activated`).
+    // Hiding leaves only the menu bar's icon, as closing does; Quit alone ends RecordStuff.
     hide: hideSettings,
     zoom: request => settingsWindow.zoom(request),
   });
@@ -429,8 +435,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     activated: () => { library.watch(); void library.refresh(); },
     quitRequested: () => quit.requested,
     opened: () => appMenu.windowOpened(),
-    // Recordings waiting to go to the Trash go now: nothing is left to undo them from.
-    closed: () => { library.unwatch(); void library.flushTrash(); appMenu.windowClosed(); },
+    closed: settingsGone,
     rename: (id, name) => library.rename(id, name),
     drag: async (contents, id) => {
       const file = library.find(id);
