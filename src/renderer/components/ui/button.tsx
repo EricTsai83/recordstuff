@@ -1,4 +1,4 @@
-/** App extensions: white media controls, whole-card buttons, larger player controls and wrapping labels. Standard variants follow shadcn base-mira; destructive text retains a readable ink companion. */
+/** App extensions: white media controls, whole-card buttons, larger player controls and wrapping labels. Standard variants follow shadcn base-mira; destructive is an outline in red ink. */
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
@@ -17,9 +17,11 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         ghost:
           "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+        // The outline frame of every other action, in red ink; the primary fill is already the brand red.
         destructive:
-          "bg-destructive/10 text-destructive-ink hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
-        link: "text-primary decoration-primary underline-offset-4 hover:underline hover:text-primary hover:[&>svg]:text-primary",
+          "border-destructive-ink/50 text-destructive-ink hover:border-destructive-ink hover:bg-destructive/10 aria-expanded:bg-destructive/10 focus-visible:border-destructive-ink focus-visible:ring-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+        // Every text link: ink at rest, the brand red with an underline under the pointer.
+        link: "text-foreground decoration-current underline-offset-4 hover:underline hover:text-primary hover:[&>svg]:text-primary",
       },
       size: {
         clip: "h-auto w-full flex-col items-stretch justify-start whitespace-normal p-0 text-left font-normal text-foreground",

@@ -77,7 +77,7 @@ export function Action({
         variant={group.id === "log" ? "link" : group.id === "localData" ? "destructive" : group.id === "about" || choice.id === "quit" ? "ghost" : "outline"}
         size={iconOnly ? "icon" : "default"}
         wrap={iconOnly ? false : wrap}
-        className={group.id === "log" ? `h-auto min-h-6 justify-start gap-2 rounded-none px-0 text-foreground hover:text-primary hover:[&>svg]:text-primary hover:border-b-primary hover:no-underline ${className ?? ""}` : iconOnly ? `px-0 ${className ?? ""}` : className}
+        className={group.id === "log" ? `h-auto min-h-6 justify-start gap-2 rounded-none px-0 ${className ?? ""}` : iconOnly ? `px-0 ${className ?? ""}` : className}
         disabled={!group.enabled || !choice.enabled}
         aria-disabled={busy || !group.enabled || !choice.enabled}
         aria-label={group.id === "about" ? choice.label : undefined}

@@ -711,6 +711,21 @@
     gap: 7px;
     max-width: 60%;
   }
+  /* Grouped choices sit in a recessed track; the pressed one is a raised tile, a text choice marked by a red dot. */
+  .segments {
+    padding: 2px;
+    border-radius: 9px;
+    background: var(--muted);
+  }
+  .segments [aria-pressed="true"]:not(:has(svg))::before {
+    content: "";
+    flex: none;
+    width: 5px;
+    height: 5px;
+    margin-right: 2px;
+    border-radius: 50%;
+    background: var(--primary);
+  }
   /* A segmented control wraps rather than reach past the window when zoom leaves it no room (plan 067). */
   .controls .segments {
     flex-wrap: wrap;
