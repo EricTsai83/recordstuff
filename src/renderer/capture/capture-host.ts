@@ -482,8 +482,9 @@ async function applyQuality(stream: MediaStream, quality: QualitySettings, measu
   const video = stream.getVideoTracks()[0];
   const audio = stream.getAudioTracks()[0];
   const settings: MediaTrackSettings = video?.getSettings() ?? {};
+  // A track that reports no size, or 0x0, has none: the cap and the encoder targets cannot be derived from it.
   const reported =
-    finiteOrUndefined(settings.width) !== undefined && finiteOrUndefined(settings.height) !== undefined
+    (finiteOrUndefined(settings.width) ?? 0) > 0 && (finiteOrUndefined(settings.height) ?? 0) > 0
       ? { width: settings.width as number, height: settings.height as number }
       : undefined;
   const measured = video ? await measure(stream) : undefined;

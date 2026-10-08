@@ -516,6 +516,18 @@ describe("renderer CaptureHost", () => {
     expect(Object.keys(message.capture)).not.toContain("width");
   });
 
+  it("takes a 0x0 report for no size: the encoder assumes 1080p and a requested cap is unconfirmed", async () => {
+    const port = boot({ measureFrameSize: async () => undefined });
+    port.receive(start("s1", { ...DEFAULT_QUALITY, videoQuality: "economy", resolutionCap: "1080p" }));
+    const s = stream();
+    s.tracks[0]!.settings = { width: 0, height: 0 };
+    pendingStream!.resolve(s);
+    await flush();
+    expect(port.sent[0]).toMatchObject({ type: "prepared", capture: { videoBitsPerSecond: 4_400_000, capUnconfirmed: true,
+      warnings: ["video track has no dimensions; cannot apply resolution cap"] } });
+    expect(Object.keys((port.sent[0] as { capture: object }).capture)).not.toContain("width");
+  });
+
   it("a stop that lands while the constraint is being applied releases the stream", async () => {
     const port = boot();
     port.receive(start("s1", { ...DEFAULT_QUALITY, resolutionCap: "1080p" }));
