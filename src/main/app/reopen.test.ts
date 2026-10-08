@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
-import { NOTIFICATION_ACTIVATION_MS, watchReopen } from "./reopen";
+import { NOTIFICATION_ACTIVATION_MS, holdEarlyReopens, watchReopen } from "./reopen";
 
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
@@ -12,6 +12,32 @@ function setup(platform: string, open: () => Promise<boolean | void> = async () 
   const watcher = watchReopen({ events, platform, open: opened, log: (m) => logs.push(m), now: () => clock });
   return { events, opened, logs, watcher, advance: (ms: number) => { clock += ms; } };
 }
+
+describe("holdEarlyReopens", () => {
+  it("answers a second launch that arrived while the app was starting, once, and stops holding", async () => {
+    const events = new EventEmitter();
+    const early = holdEarlyReopens(events);
+    // The first launch's own macOS activation is not held.
+    events.emit("activate", {}, false);
+    events.emit("second-instance", {}, ["RecordStuff"], "/");
+    events.emit("second-instance", {}, ["RecordStuff"], "/");
+    const opened = vi.fn(async () => undefined);
+    const logs: string[] = [];
+    watchReopen({ events, platform: "darwin", open: opened, log: (m) => logs.push(m), now: () => 0, early });
+    await flush();
+    expect(opened).toHaveBeenCalledTimes(1);
+    expect(logs).toEqual(["reopen: second launch; Settings opened"]);
+    expect(events.listenerCount("second-instance")).toBe(1);
+  });
+
+  it("opens nothing when no second launch arrived", async () => {
+    const events = new EventEmitter();
+    const opened = vi.fn(async () => undefined);
+    watchReopen({ events, platform: "win32", open: opened, log: () => {}, now: () => 0, early: holdEarlyReopens(events) });
+    await flush();
+    expect(opened).not.toHaveBeenCalled();
+  });
+});
 
 describe("watchReopen", () => {
   it("opens Settings once per second launch", async () => {

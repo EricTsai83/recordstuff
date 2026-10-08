@@ -49,7 +49,7 @@ import { SessionSentinels, reportInterruptions } from "./recording/session-senti
 import { SavedNotification } from "./recording/saved-notification";
 import { CaptureNotices } from "./recording/capture-notices";
 import { PermissionNotices } from "./permission/permission-notices";
-import { watchReopen, type ReopenWatcher } from "./app/reopen";
+import { holdEarlyReopens, watchReopen, type EarlyReopens, type ReopenWatcher } from "./app/reopen";
 import { holdSessionEnd } from "./app/session-end";
 import { SettingsStore } from "./settings/settings";
 import { parseAutoRecord, runAutoRecord } from "./recording/autorecord";
@@ -179,7 +179,9 @@ async function start(): Promise<void> {
     app.quit();
     return;
   }
-  await main().catch(async (cause: unknown) => {
+  // From here a second launch reaches this process; it is answered once Settings can open.
+  const earlyReopens = holdEarlyReopens(app);
+  await main(earlyReopens).catch(async (cause: unknown) => {
     log(`start: failed: ${stackOf(cause)}; exiting`);
     await flushBeforeExit(log);
     dialog.showErrorBox(APP_NAME, translate("An unexpected error occurred. See the log for details.", appLanguage()));
@@ -187,7 +189,7 @@ async function start(): Promise<void> {
   });
 }
 
-async function main(): Promise<void> {
+async function main(earlyReopens: EarlyReopens): Promise<void> {
   app.setAppUserModelId(app.isPackaged ? APP_ID : process.execPath);
   // Closing Settings must leave the menu-bar recorder running.
   app.on("window-all-closed", () => undefined);
@@ -801,7 +803,7 @@ async function main(): Promise<void> {
   holdSessionEnd({ app, platform: process.platform, mediaPending: () => recorder.mediaPending, quit: () => quitCoordinator.quit(), log });
 
   // Opening the app again is the way in when its menu bar icon is hidden (plan 053).
-  reopen = watchReopen({ events: app, platform: process.platform, open: () => handleAction("openSettings"), log, now: () => performance.now() });
+  reopen = watchReopen({ events: app, platform: process.platform, open: () => handleAction("openSettings"), log, now: () => performance.now(), early: earlyReopens });
 
   app.on("will-quit", () => {
     quit.dispose();

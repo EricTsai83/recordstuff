@@ -24,6 +24,30 @@ export interface ReopenEvents {
   removeListener(event: "second-instance" | "activate", listener: () => void): unknown;
 }
 
+/** A second launch held from the single-instance lock until `watchReopen` takes over (`holdEarlyReopens`). */
+export interface EarlyReopens {
+  /** Stops holding; whether a second launch arrived meanwhile. */
+  take(): boolean;
+}
+
+/**
+ * The app takes the single-instance lock long before it can open Settings (ready, the settings read, every part
+ * built). Electron emits `second-instance` once, after ready, and never again, so one sent in between had no
+ * listener and the second launch did nothing. Held from the lock on, it is answered as the watcher starts. Only
+ * `second-instance`: macOS reports the first launch itself as `activate`, which must not open Settings.
+ */
+export function holdEarlyReopens(events: ReopenEvents): EarlyReopens {
+  let arrived = false;
+  const listener = (): void => { arrived = true; };
+  events.on("second-instance", listener);
+  return {
+    take: () => {
+      events.removeListener("second-instance", listener);
+      return arrived;
+    },
+  };
+}
+
 export interface ReopenWatcher {
   /** Called on every notification click, before its own action. */
   notificationClicked(): void;
@@ -38,6 +62,8 @@ export function watchReopen(options: {
   log: (message: string) => void;
   /** Monotonic milliseconds. */
   now: () => number;
+  /** A second launch that arrived while the app was starting, answered now. */
+  early?: EarlyReopens;
 }): ReopenWatcher {
   let clickedAt: number | undefined;
   const listen = (source: string) => (): void => {
@@ -53,6 +79,7 @@ export function watchReopen(options: {
   const subscriptions: Array<["second-instance" | "activate", () => void]> = [["second-instance", listen("second launch")]];
   if (options.platform === "darwin") subscriptions.push(["activate", listen("reopened from Finder or the Dock")]);
   for (const [event, listener] of subscriptions) options.events.on(event, listener);
+  if (options.early?.take()) subscriptions[0]![1]();
   return {
     notificationClicked: () => { clickedAt = options.now(); },
     stop: () => { for (const [event, listener] of subscriptions) options.events.removeListener(event, listener); },
