@@ -18,12 +18,15 @@ export const settlingEscape = (): boolean => {
 export function attachVideo(video: HTMLVideoElement | null): void {
   playerVideo = video;
 }
-export function openPlayer(item: LibraryItemView): void {
+/** Plays `item`, from `start` seconds when given (where its card's hover preview had reached). */
+export function openPlayer(item: LibraryItemView, start?: number): void {
   forgetMenu();
   playingItem = item;
   playerError = "";
   clearFeedback();
   draw();
+  // The source was set by the render above; a position set before its metadata is where playback starts.
+  if (start !== undefined && playerVideo) playerVideo.currentTime = start;
   playerVideo?.focus();
   void playerVideo?.play().catch(() => {});
 }

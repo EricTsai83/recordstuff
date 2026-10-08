@@ -1381,39 +1381,6 @@
     font-size: 12px;
     font-variant-numeric: tabular-nums;
   }
-  /* Hover or keyboard focus shows a red play button over the thumbnail, which grows in. */
-  .clip-play {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    display: grid;
-    place-items: center;
-    width: 40px;
-    height: 40px;
-    margin: -20px 0 0 -20px;
-    border-radius: 50%;
-    background: var(--primary);
-    color: var(--primary-foreground);
-    box-shadow: var(--shadow-md);
-    opacity: 0;
-    transform: scale(0.9);
-    transition:
-      opacity 0.15s ease,
-      transform 0.15s ease;
-  }
-  .clip-play svg {
-    fill: currentColor;
-  }
-  .clip-open:hover .clip-play,
-  .clip-open:focus-visible .clip-play {
-    opacity: 1;
-    transform: none;
-  }
-  #library[data-layout="list"] .clip-play {
-    width: 28px;
-    height: 28px;
-    margin: -14px 0 0 -14px;
-  }
   /* A recording from the last 24 hours. */
   .clip-new {
     position: absolute;
@@ -1484,6 +1451,155 @@
       border-color: transparent;
     }
   }
+  /* The hover preview (clip-preview.tsx): the recording plays muted over its picture, a seek bar along its foot. While
+     it shows, the badges step aside, as YouTube's do. */
+  .clip-thumb.previewing > :is(.clip-duration, .clip-new) {
+    visibility: hidden;
+  }
+  /* A container of the picture's size, which the frame picture measures to stay inside it. */
+  .clip-preview {
+    container-type: size;
+    position: absolute;
+    inset: 0;
+  }
+  .clip-preview > video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: var(--media);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .clip-preview[data-shown] > video {
+    opacity: 1;
+  }
+  /* Along the picture's foot, a strip of its own: with the pointer on it (or a press held) the bar rises and thickens,
+     leaving room beneath it, and the whole strip takes the pointer, as on YouTube's home page. */
+  .clip-scrub {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 28px;
+    cursor: pointer;
+  }
+  .clip-scrub::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(transparent, var(--media-scrim));
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+  .clip-scrub-track {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 3px;
+    overflow: hidden;
+    background: var(--media-track);
+    transition:
+      translate 0.12s ease,
+      height 0.12s ease;
+  }
+  .clip-scrub-fill,
+  .clip-scrub-ghost {
+    position: absolute;
+    inset: 0;
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  .clip-scrub-fill {
+    background: var(--primary);
+  }
+  .clip-scrub-ghost {
+    background: color-mix(in srgb, var(--media-foreground) 45%, transparent);
+    visibility: hidden;
+  }
+  /* The dot at the preview's moment, drawn only on the risen bar. */
+  .clip-scrub-knob {
+    position: absolute;
+    bottom: 8px;
+    width: 11px;
+    height: 11px;
+    margin-left: -5.5px;
+    border-radius: 50%;
+    background: var(--primary);
+    visibility: hidden;
+  }
+  :is(.clip-scrub:hover, .clip-scrub[data-pressed])::before {
+    opacity: 1;
+  }
+  :is(.clip-scrub:hover, .clip-scrub[data-pressed]) .clip-scrub-track {
+    height: 5px;
+    translate: 0 -11px;
+  }
+  :is(.clip-scrub:hover, .clip-scrub[data-pressed]) :is(.clip-scrub-ghost, .clip-scrub-knob) {
+    visibility: visible;
+  }
+  /* The frame at the moment a seek bar is pointed at (frame-peek.tsx), in a picture of a fixed size above the bar with
+     the moment named beneath it, on a card's preview and in the player alike. It keeps its size unless a picture is too
+    small to hold it whole (a narrow window under zoom), when it shrinks to fit: never wider than the stage less
+    `--peek-side`, never taller than the stage less `--peek-room`, the space its bar, time and margin take. */
+  .frame-peek {
+    --peek-width: min(164px, calc(100cqw - var(--peek-side)), calc((100cqh - var(--peek-room)) * 16 / 9));
+    position: absolute;
+    z-index: 2;
+    width: var(--peek-width);
+    /* Centred on the moment pointed at (`--peek-at`, a fraction of the bar), kept whole inside the bar. */
+    left: clamp(calc(var(--peek-width) / 2), calc(var(--peek-at, 0) * 100%), calc(100% - var(--peek-width) / 2));
+    translate: -50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    pointer-events: none;
+  }
+  .frame-peek-picture {
+    width: 100%;
+    aspect-ratio: 16/9;
+    overflow: hidden;
+    border: 2px solid var(--media-foreground);
+    border-radius: 8px;
+    background: var(--media);
+  }
+  .frame-peek-picture video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+  }
+  .frame-peek[data-ready] video {
+    opacity: 1;
+  }
+  .frame-peek-time {
+    border-radius: 6px;
+    padding: 1px 6px;
+    color: var(--media-foreground);
+    background: var(--media-scrim);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .frame-peek-time:empty {
+    visibility: hidden;
+  }
+  .clip-scrub .frame-peek {
+    --peek-side: 8px;
+    --peek-room: 60px;
+    bottom: 26px;
+  }
+  .pc-seek-area {
+    position: relative;
+  }
+  .pc-seek-area .frame-peek {
+    --peek-side: 32px;
+    --peek-room: 110px;
+    bottom: calc(100% + 4px);
+  }
   #library[data-layout="list"] .library-grid {
     display: flex;
     flex-direction: column;
@@ -1506,6 +1622,9 @@
   /* The player's controls, as YouTube's full screen lays them out: the title on a shade along the top, a seek bar the
      picture's width over play, volume and the time on a shade along the bottom. White on the picture. */
   .pc {
+    /* Sized by its dialog or the full-screen page, never by its content: the frame picture over the seek bar
+       (frame-peek.tsx) measures the stage to stay inside it. */
+    container-type: size;
     position: relative;
     width: 100%;
     height: 100%;
@@ -1514,7 +1633,7 @@
     background: var(--media);
     color: var(--media-foreground);
   }
-  .pc video {
+  .pc > video {
     width: 100%;
     height: 100%;
     object-fit: contain;
@@ -1974,6 +2093,12 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
+    /* A card's preview bar rises at once. */
+    .clip-scrub-track,
+    .clip-scrub::before,
+    .clip-preview > video {
+      transition: none;
+    }
     /* The flashes hold still and leave when their time is up. */
     .pc-bezel,
     .pc-bezel-text,

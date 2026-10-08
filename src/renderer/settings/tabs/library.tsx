@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogHeader, Di
 import { flushSync } from "react-dom";
 import { Player } from "../../player/player";
 import * as model from "../settings-controller";
+import { ClipPreview, hoverClip, leaveClip, pressedOnBar, previewing, previewTime, stopPreview, subscribePreview } from "./clip-preview";
 
 export const Clip = memo(function Clip({
   item,
@@ -30,6 +31,7 @@ export const Clip = memo(function Clip({
     () =>
       `${model.menuId === item.id ? model.menuKind : ""}/${model.view?.libraryFocus === item.id ? model.view.resultFocus : ""}`,
   );
+  const preview = useSyncExternalStore(subscribePreview, () => previewing() === item.id);
   const [failed, setFailed] = useState(false),
     [arrived, setArrived] = useState(false),
     title = useTruncated<HTMLSpanElement>();
@@ -55,7 +57,8 @@ export const Clip = memo(function Clip({
         draggable
         onDragStart={(event) => {
           event.preventDefault();
-          void model.fileAction(item.id, "drag");
+          // The drag starts at the card, wherever it was pressed; one pressed on the preview's seek bar seeks instead.
+          if (!pressedOnBar()) void model.fileAction(item.id, "drag");
         }}
         onAnimationEnd={() => setArrived(false)}
         onBlur={() => setArrived(false)}
@@ -84,9 +87,22 @@ export const Clip = memo(function Clip({
               ),
             },
           )}
-          onClick={() => model.openPlayer(item)}
+          // A card whose preview has moved plays on from the moment it shows.
+          onClick={() => {
+            const start = previewTime(item.id);
+            stopPreview();
+            model.openPlayer(item, start);
+          }}
         >
-          <span className={`clip-thumb${failed ? " no-thumb" : ""}`}>
+          <span
+            className={`clip-thumb${failed ? " no-thumb" : ""}${preview ? " previewing" : ""}`}
+            // Only a mouse resting on a grid card's picture previews it; a list row's picture is too small to watch.
+            onPointerEnter={(event) => {
+              if (event.pointerType === "mouse" && event.currentTarget.closest("#library")?.getAttribute("data-layout") === "grid")
+                hoverClip(item.id);
+            }}
+            onPointerLeave={() => leaveClip(item.id)}
+          >
             <Film className="clip-fallback size-9" />
             <img
               alt=""
@@ -101,9 +117,7 @@ export const Clip = memo(function Clip({
             <span className="clip-duration" hidden={!item.duration}>
               {item.duration}
             </span>
-            <span className="clip-play" aria-hidden="true">
-              <Play className="play-icon size-[18px] in-data-[layout=list]:size-[13px]" />
-            </span>
+            {preview && <ClipPreview item={item} />}
           </span>
           <span className="clip-text">
             <ControlTooltip label={item.title} enabled={title.truncated} delay={1000}>
@@ -245,6 +259,12 @@ export function Library() {
     }
     return [...groups];
   }, [items]);
+  // A preview belongs to the grid on a shown tab: switching to the list, or to another tab while the pointer stays
+  // where the picture was (this tab stays mounted, only hidden), ends it, and one waiting to start never does.
+  const shown = model.selectedTab === "library";
+  useEffect(() => {
+    if (layout !== "grid" || !shown) stopPreview();
+  }, [layout, shown]);
   return (
     <section id="library" aria-labelledby="tab-library" data-layout={layout}>
       <div className="library-head">

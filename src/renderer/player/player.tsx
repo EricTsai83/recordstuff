@@ -22,6 +22,7 @@ import { Slider } from "../components/ui/slider";
 import { VIDEO_TIMING, formatDuration } from "../../shared/video-player";
 import { translate, type Language } from "../../shared/i18n";
 import { playbackOf } from "./player-state";
+import { FramePeek, type FramePeekHandle } from "./frame-peek";
 
 interface PlayerProps {
   id: string;
@@ -97,7 +98,12 @@ export function Player({
     [seekHint, setSeekHint] = useState<
       { side: "back" | "forward"; seq: number } | undefined
     >(undefined),
-    flashes = useRef(0);
+    flashes = useRef(0),
+    // The frame at the moment the seek bar is pointed at, drawn above it while a mouse is on it.
+    [peeking, setPeeking] = useState(false),
+    peek = useRef<FramePeekHandle>(null),
+    seekArea = useRef<HTMLDivElement>(null),
+    pointerX = useRef(0);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
       undefined,
     ),
@@ -197,6 +203,16 @@ export function Player({
       el.load();
     };
   }, [sync, wake]);
+  // The frame picture is placed where the pointer came in, before it moves again, and once more when the recording's
+  // length is known if the pointer came in before it was.
+  useEffect(() => {
+    const el = video.current;
+    if (!peeking || !el) return;
+    const place = (): void => point(pointerX.current);
+    place();
+    el.addEventListener("loadedmetadata", place);
+    return () => el.removeEventListener("loadedmetadata", place);
+  }, [peeking]);
   useEffect(
     () => () => {
       for (const timer of [idleTimer, bezelTimer, textTimer, seekTimer])
@@ -317,6 +333,14 @@ export function Player({
     event.stopPropagation();
     wake();
   };
+  const point = (x: number): void => {
+    pointerX.current = x;
+    const el = video.current,
+      box = seekArea.current?.getBoundingClientRect();
+    if (!el || !box || box.width <= 0 || !Number.isFinite(el.duration) || el.duration <= 0) return;
+    const fraction = Math.min(1, Math.max(0, (x - box.left) / box.width));
+    peek.current?.point(fraction, fraction * el.duration);
+  };
   const silent = media.muted || media.volume === 0,
     percent = `${Math.round((silent ? 0 : media.volume) * 100)}%`,
     reading = `${formatDuration(media.time)} / ${formatDuration(media.duration)}`;
@@ -406,11 +430,25 @@ export function Player({
           </div>
         </div>
         <div className="pc-bottom">
+          <div
+            ref={seekArea}
+            className="pc-seek-area"
+            onPointerEnter={(event) => {
+              if (event.pointerType !== "mouse") return;
+              pointerX.current = event.clientX;
+              setPeeking(true);
+            }}
+            onPointerMove={(event) => {
+              if (event.pointerType === "mouse") point(event.clientX);
+            }}
+            onPointerLeave={() => setPeeking(false)}
+          >
+          {peeking && source && <FramePeek ref={peek} source={source} />}
           <Slider
             id={`${id}-seek`}
             className="pc-seek"
             controlClassName="py-[var(--seek-padding)]"
-            variant="media"
+            variant="seek"
             growOnHover
             value={[media.time]}
             min={0}
@@ -444,6 +482,7 @@ export function Player({
               sync();
             }}
           />
+          </div>
           <div className="pc-row">
             <ControlTooltip label={t(media.playing ? "Pause" : "Play")}>
               <Button

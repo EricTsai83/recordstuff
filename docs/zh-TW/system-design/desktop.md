@@ -37,7 +37,7 @@ TrayModel 是純函式產物，包含 icon、title、tooltip 與一份扁平的�
 
 ## 設定視窗
 
-兩種外觀的強調色控制項共用 `--primary`：滑鼠停留時的錄影播放按鈕、開啟的開關、徽章、鍵盤焦點框、新錄影外框及快捷鍵擷取的跳動條。填色控制項的圖示與開關圓點使用 `--primary-foreground`，錄影標記與光暈獨立使用固定的錄影紅色。
+兩種外觀的強調色控制項共用 `--primary`：開啟的開關、徽章、鍵盤焦點框、新錄影外框及快捷鍵擷取的跳動條。填色控制項的圖示與開關圓點使用 `--primary-foreground`，錄影標記與光暈獨立使用固定的錄影紅色。
 
 目前設計（2026-10-07）遵循維護者最新提供的 shadcn 紅色參考與[官方 base-mira 元件樣式](https://ui.shadcn.com/r/styles/base-mira/button.json)。[ui.css](../../../src/renderer/ui.css) 保留提供的明暗 tokens、字型、圓角、字距與陰影。主要按鈕使用 `hover:bg-primary/80`（淺色參考的 hover 白字對比約 3.75:1，低於小字 AA 的 4.5:1；不另加客製深色覆寫）；outline 按鈕使用 input 邊框與 hover；secondary、ghost 按鈕直接採用 registry 規則。輸入框與 Switch 使用 30% 不透明度的 2 px 焦點環，Toggle 與 Tabs 使用 registry 的 3 px 焦點環。偏好選項以 muted 表示選取，移除凸起底色與陰影；選取 icon 使用 primary token，文字維持 foreground；導覽試看版的窄版分頁使用 primary 底線，與內容保留 24 px 排版間距；sidebar 以前方的 sidebar-primary 直線表示選取，選取文字與 icon 使用 sidebar-selected-foreground；190 px 欄位採用 14 px 粗體、42 px 列高與 4 px 列間距，保留加粗 icon，hover 時不換色。原本的 `chosen`、`selected`、客製 hover／陰影別名、細線焦點 utilities 與無分層焦點覆寫均已移除；下文較早的外觀規則僅為歷史，不再覆蓋目前設計。保留的 App 擴充限於響應式排版、文字換行、錄影入口提示、影片對比、強制色彩與小字可讀性（控制文字 13 px、metadata 12 px、destructive ink 配對）。品牌顏色固定不變。Inter 與 JetBrains Mono 隨 App 本機提供，主題切換一次提交完整配色。
 
