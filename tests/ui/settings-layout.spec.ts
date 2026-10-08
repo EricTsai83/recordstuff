@@ -324,7 +324,7 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       await expect(action).toBeVisible();
       await expect(secondary).toBeVisible();
       await expect(action).toHaveText(lang === "en" ? "Open Settings" : "開啟系統設定");
-      await expect(secondary).toHaveText(lang === "en" ? "Already allowed? Relaunch" : "已經允許了？ 重新啓動");
+      await expect(secondary).toHaveText(lang === "en" ? "Already allowed? Relaunch" : "已經允許了？ 重新啟動");
       // Any decorative icon in the card stays out of the accessible text.
       expect(await page.locator("#status svg").evaluateAll(icons => icons.every(icon => icon.closest("[aria-hidden='true']"))),
         `${size}: decorative icons are hidden from assistive technology`).toBe(true);
