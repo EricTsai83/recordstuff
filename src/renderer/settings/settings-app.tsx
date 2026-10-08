@@ -222,9 +222,9 @@ export function SettingsApp() {
                       // A narrow window shows only the selected tab's name; the others name themselves on hover.
                       // Every tab stays in the window, even zoomed in at the smallest size: the icon-only tabs keep their
                       // width and the selected tab's name gives way, with its full name on hover (plan 067).
-                      className="darwin:wide:window-no-drag min-h-[34px] wide:min-h-[42px] wide:text-[15px] wide:gap-2 justify-start narrow:justify-center narrow:px-2 narrow:min-w-9 narrow:aria-selected:min-w-0 narrow:aria-selected:flex-auto"
+                      className="darwin:wide:window-no-drag min-h-[34px] wide:min-h-9 wide:gap-2.5 justify-start narrow:justify-center narrow:px-2 narrow:min-w-9 narrow:aria-selected:min-w-0 narrow:aria-selected:flex-auto"
                     >
-                      <Icon className="tab-icon size-[18px]" strokeWidth={vertical ? 2.5 : 2} />
+                      <Icon className="tab-icon size-4" strokeWidth={2} />
                       {count ? (
                         <span className="inline-flex min-w-0 items-center gap-1.5">
                           <span className="tab-name min-w-0 overflow-hidden text-ellipsis">{count[1]}</span>

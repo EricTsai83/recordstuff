@@ -1,8 +1,7 @@
 /** Hide is one click; quitting takes the more-actions menu, in the sidebar and the narrow About footer. */
-import { Ellipsis, PanelBottomClose, Power } from "lucide-react";
+import { Ellipsis, EyeOff, Power } from "lucide-react";
 import type { SettingsGroup, SettingsChoice } from "../../shared/settings-panel";
 import { Button } from "../components/ui/button";
-import { ControlTooltip } from "../components/control-tooltip";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "../components/ui/dropdown-menu";
 import * as model from "./settings-controller";
 
@@ -20,20 +19,18 @@ export function WindowActions({ group, quit, id = "setting-about-hide", sidebar 
   };
   return (
     <div role="group" aria-label={model.text("RecordStuff window actions")}
-      className={`inline-flex min-h-9 max-w-full items-stretch rounded-lg border border-border/50 bg-secondary/60 text-secondary-foreground ${sidebar ? "w-full" : ""}`}>
-      <ControlTooltip label={hide?.label ?? model.text("Hide RecordStuff")}>
-        <Button id={id} data-action="hide" variant="ghost" aria-label={model.text("Hide interface")}
-          disabled={!group.enabled || !hide?.enabled} aria-disabled={!enabled(hide)}
-          className="darwin:wide:window-no-drag h-auto min-h-[34px] min-w-0 flex-1 justify-start gap-2 rounded-none rounded-l-lg border-0 px-3 py-1.5 text-left whitespace-normal"
-          onClick={() => { if (hide) choose(hide); }}>
-          <PanelBottomClose aria-hidden="true" />
-          {model.text("Hide interface")}
-        </Button>
-      </ControlTooltip>
+      className={`inline-flex min-h-9 max-w-full items-stretch gap-1 text-muted-foreground ${sidebar ? "w-full" : ""}`}>
+      <Button id={id} data-action="hide" variant="ghost" aria-label={model.text("Hide interface")}
+        disabled={!group.enabled || !hide?.enabled} aria-disabled={!enabled(hide)}
+        className="darwin:wide:window-no-drag h-auto min-h-[34px] min-w-0 flex-1 justify-start gap-2 rounded-lg border-0 wide:hover:bg-sidebar-accent wide:aria-expanded:bg-sidebar-accent px-3 py-1.5 text-left whitespace-normal"
+        onClick={() => { if (hide) choose(hide); }}>
+        <EyeOff aria-hidden="true" />
+        {model.text("Hide interface")}
+      </Button>
       <DropdownMenu>
         <DropdownMenuTrigger id={`${id}-menu`} aria-label={model.text("More window actions")}
           disabled={!enabled(quit)}
-          render={<Button variant="ghost" size="icon" className="darwin:wide:window-no-drag relative h-auto min-h-[34px] w-9 rounded-none rounded-r-lg border-0 before:absolute before:inset-y-2 before:left-0 before:w-px before:bg-border/70" />}>
+          render={<Button variant="ghost" size="icon" className="darwin:wide:window-no-drag relative h-auto min-h-[34px] w-9 rounded-lg border-0 wide:hover:bg-sidebar-accent wide:aria-expanded:bg-sidebar-accent" />}>
           <Ellipsis aria-hidden="true" />
         </DropdownMenuTrigger>
         <DropdownMenuContent id={`${id}-menu-content`} data-window-actions="" side="top" sideOffset={8} align="end"
