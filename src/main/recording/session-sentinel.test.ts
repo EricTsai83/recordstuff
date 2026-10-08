@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecordingResultStore, type ResultStorage } from "./recording-result-store";
 import { RecordingResults, failureGuidance, failureReason, isOutputFolderFailure, isPermissionFailure } from "./recording-result";
-import { SessionSentinels, reportInterruptions, type SessionSentinel } from "./session-sentinel";
+import { SessionSentinelTracker, SessionSentinels, reportInterruptions, type SessionSentinel } from "./session-sentinel";
 
 let dir: string, sentinelDir: string, historyFile: string;
 beforeEach(() => {
@@ -203,4 +203,54 @@ it("does not report an interruption after the durable completion checkpoint", as
   const { results } = await launch();
   expect(results.all).toEqual([]);
   expect(remaining()).toEqual([]);
+});
+
+describe("SessionSentinelTracker", () => {
+  const fakeStore = () => {
+    const calls: string[] = [];
+    let failWrite = false;
+    const store = {
+      write: vi.fn(async (sentinel: SessionSentinel) => { calls.push(`write ${sentinel.recordingPath}${sentinel.failureId ? ` ${sentinel.failureId}` : ""}`); if (failWrite) throw new Error("disk full"); }),
+      remove: vi.fn(async (id: string) => { calls.push(`remove ${id}`); }),
+      complete: vi.fn(async (_id: string, finalPath: string) => { calls.push(`complete ${finalPath}`); }),
+      failing: vi.fn(async (_id: string, failureId: string) => { calls.push(`failing ${failureId}`); }),
+    };
+    return { store, calls, failNextWrites: () => { failWrite = true; } };
+  };
+
+  it("checkpoints and removes only what it wrote, in order, and has nothing to wait for otherwise", async () => {
+    const { store, calls } = fakeStore();
+    const tracker = new SessionSentinelTracker(store, { id: "s1", startedAt: "2026-10-09T00:00:00.000Z" }, () => {});
+    expect(tracker.complete("/r/a.mp4")).toBeUndefined();
+    expect(tracker.failing("f0")).toBeUndefined();
+    await tracker.clear();
+    await tracker.mark("/r/a.recording.mp4");
+    await tracker.complete("/r/a.mp4");
+    await tracker.clear();
+    await tracker.clear();
+    // A later write keeps the failure the session is reported under.
+    expect(calls).toEqual(["write /r/a.recording.mp4 f0", "complete /r/a.mp4", "remove s1"]);
+  });
+
+  it("logs a failed write once, drops an earlier attempt's sentinel, and skips checkpoints without a written one", async () => {
+    const { store, calls, failNextWrites } = fakeStore();
+    const logs: string[] = [];
+    const tracker = new SessionSentinelTracker(store, { id: "s2", startedAt: "2026-10-09T00:00:00.000Z" }, message => logs.push(message));
+    await tracker.mark("/r/a.recording.mp4");
+    failNextWrites();
+    await tracker.mark("/r/a-2.recording.mp4");
+    await tracker.mark("/r/a-3.recording.mp4");
+    await tracker.failing("f1");
+    expect(tracker.complete("/r/a-3.mp4")).toBeUndefined();
+    await tracker.clear();
+    expect(calls).toEqual(["write /r/a.recording.mp4", "write /r/a-2.recording.mp4", "remove s2", "write /r/a-3.recording.mp4", "remove s2"]);
+    expect(logs).toEqual(["recorder: session s2 interruption sentinel not written: disk full"]);
+  });
+
+  it("does nothing without a store", async () => {
+    const tracker = new SessionSentinelTracker(undefined, { id: "s3", startedAt: "2026-10-09T00:00:00.000Z" }, () => {});
+    await tracker.mark("/r/a.recording.mp4");
+    expect([tracker.complete("/r/a.mp4"), tracker.failing("f")]).toEqual([undefined, undefined]);
+    await tracker.clear();
+  });
 });

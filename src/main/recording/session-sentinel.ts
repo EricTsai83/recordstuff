@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { writeFileAtomic } from "../lib/atomic-file";
-import { errnoCode } from "../lib/errors";
+import { errnoCode, messageOf } from "../lib/errors";
 import type { RecordingFailure } from "../../shared/recording-result";
 
 export interface SessionSentinel {
@@ -191,4 +191,107 @@ export async function reportInterruptions(
   }
   await history.saved(entries.map(entry => entry.id));
   for (const sentinel of leftovers) await sentinels.remove(sentinel.sessionId);
+}
+
+/** Where a recorder keeps its sentinels: `SessionSentinels` in the app, a fake in tests. */
+export interface SentinelStore {
+  write(sentinel: SessionSentinel): Promise<void>;
+  remove(sessionId: string): Promise<void>;
+  complete?(sessionId: string, finalPath: string): Promise<void>;
+  /** Names the failure the session is about to be reported under, so a launch after a crash reports it once. */
+  failing?(sessionId: string, failureId: string): Promise<void>;
+}
+
+/**
+ * One recording session's sentinel, from before its temporary file exists to its terminal outcome. Every operation
+ * runs after the session's earlier ones, since they share the atomic writer's temporary file, and none fails the
+ * recording: a sentinel that cannot be written is logged once, and no sentinel is the accepted degraded state.
+ */
+export class SessionSentinelTracker {
+  /** A write was attempted, so the terminal outcome removes it. */
+  private attempted = false;
+  private failedOnce = false;
+  /** The latest write succeeded, so the file exists to be checkpointed; an earlier attempt's failure does not count. */
+  private written = false;
+  private ops: Promise<void> = Promise.resolve();
+  /** The failure this session is being reported under; every later write keeps it (`SessionSentinel.failureId`). */
+  private failureId: string | undefined;
+
+  constructor(
+    private readonly store: SentinelStore | undefined,
+    private readonly session: { id: string; startedAt: string },
+    private readonly log: (message: string) => void,
+  ) {}
+
+  /** Runs one operation after the earlier ones; the chain survives a failed one. */
+  private op(run: () => Promise<void>): Promise<void> {
+    const next = this.ops.then(run);
+    this.ops = next.catch(() => undefined);
+    return next;
+  }
+
+  /** Names `recordingPath` before it exists, so a crash never leaves a temporary file no sentinel names. */
+  mark(recordingPath: string): Promise<void> {
+    const store = this.store;
+    if (!store) return Promise.resolve();
+    this.attempted = true;
+    return this.op(async () => {
+      const earlier = this.written;
+      this.written = false;
+      try {
+        await store.write({ sessionId: this.session.id, startedAt: this.session.startedAt, recordingPath, ...(this.failureId ? { failureId: this.failureId } : {}) });
+        this.written = true;
+      } catch (cause) {
+        if (!this.failedOnce) this.log(`recorder: session ${this.session.id} interruption sentinel not written: ${messageOf(cause)}`);
+        this.failedOnce = true;
+        // The earlier attempt's sentinel names the colliding file, another session's
+        // partial: after a crash it would be reported as this one. No sentinel is the
+        // accepted degraded state; a wrong one is not.
+        if (earlier) {
+          try { await store.remove(this.session.id); }
+          catch (removal) { this.log(`recorder: session ${this.session.id} earlier interruption sentinel not removed: ${messageOf(removal)}`); }
+        }
+      }
+    });
+  }
+
+  /**
+   * The media is published under `finalPath`. Undefined, at once, when there is no checkpoint to wait for: without a
+   * written sentinel there is nothing to checkpoint, and the read would fail with ENOENT on every save.
+   */
+  complete(finalPath: string): Promise<void> | undefined {
+    const store = this.store;
+    if (!store?.complete || !this.written) return undefined;
+    return this.op(async () => {
+      try { await store.complete!(this.session.id, finalPath); }
+      catch (cause) { this.log(`recorder: completion checkpoint failed: ${messageOf(cause)}`); }
+    });
+  }
+
+  /**
+   * The session is about to be reported as failure `failureId`. Before the report: should the process end while its
+   * cleanup still runs, the launch reports the leftover sentinel under this id instead of as a second entry. After any
+   * write still running, and kept by any later one. Undefined, at once, when there is nothing to wait for.
+   */
+  failing(failureId: string): Promise<void> | undefined {
+    this.failureId = failureId;
+    const store = this.store;
+    if (!store?.failing || !this.attempted) return undefined;
+    return this.op(async () => {
+      if (!this.written) return;
+      try { await store.failing!(this.session.id, failureId); }
+      catch (cause) { this.log(`recorder: session ${this.session.id} failure checkpoint not written: ${messageOf(cause)}`); }
+    });
+  }
+
+  /** Every terminal outcome, including failures, removes the session's own sentinel. */
+  async clear(): Promise<void> {
+    const store = this.store;
+    if (!this.attempted || !store) return;
+    this.attempted = false;
+    await this.op(async () => {
+      try { await store.remove(this.session.id); }
+      catch (cause) { this.log(`recorder: session ${this.session.id} interruption sentinel not removed: ${messageOf(cause)}`); }
+    });
+  }
 }

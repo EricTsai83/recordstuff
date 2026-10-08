@@ -15,7 +15,7 @@ import { COUNTDOWN_TIMING, type CountdownSeconds } from "../../shared/countdown"
 import { describeCapture, type CaptureReport, type QualitySettings } from "../../shared/quality";
 import { isErrorCode, type ErrorCode, type RecordingState } from "../../shared/state";
 import { RECORDING_HEALTH, type RecordingHealth } from "./recording-health";
-import type { SessionSentinel } from "./session-sentinel";
+import { SessionSentinelTracker, type SentinelStore } from "./session-sentinel";
 import { EARLY_STOP_TEXT, type EarlyStop, type FailureOutcome, type SessionTiming } from "../../shared/session-record";
 import type { FinishTimings } from "./file-writer";
 import { errnoCode, messageOf } from "../lib/errors";
@@ -116,13 +116,7 @@ export interface RecorderDeps {
   /** Available bytes on the volume holding `dir`; absent disables the disk guard. */
   freeSpace?: (dir: string) => Promise<number>;
   /** Interruption evidence: written before the temporary file exists, removed on the terminal outcome. */
-  sentinels?: {
-    write(sentinel: SessionSentinel): Promise<void>;
-    remove(sessionId: string): Promise<void>;
-    complete?(sessionId: string, finalPath: string): Promise<void>;
-    /** Names the failure the session is about to be reported under, so a launch after a crash reports it once. */
-    failing?(sessionId: string, failureId: string): Promise<void>;
-  };
+  sentinels?: SentinelStore;
   /** Overrides for the `RECORDING_HEALTH` guards Recorder applies, for tests; FileWriter reads its own backlog limit. */
   health?: Partial<RecorderHealth>;
 }
@@ -235,15 +229,8 @@ interface Session {
   diskWarned: boolean;
   diskPollFailed: boolean;
   stoppedEarly?: EarlyStop;
-  /** A sentinel write was attempted, so the terminal outcome removes it. */
-  sentinel: boolean;
-  sentinelFailed: boolean;
-  /** The latest write succeeded, so the file exists to be checkpointed; an earlier attempt's failure does not count. */
-  sentinelWritten: boolean;
-  /** The sentinel's writes, checkpoint and removal, one at a time: they share the atomic writer's temporary file. */
-  sentinelOps: Promise<void>;
-  /** The failure this session is being reported under; every later sentinel write keeps it (`SessionSentinel.failureId`). */
-  failureId?: string;
+  /** Interruption evidence, from before the temporary file exists to the terminal outcome. */
+  sentinel: SessionSentinelTracker;
 }
 
 const DEFAULT_START_TIMEOUT_MS = 8000;
@@ -584,8 +571,9 @@ export class Recorder {
     const countdownSeconds = this.deps.countdownSeconds?.() ?? 0;
     // One instant names the file and dates the session's sentinel, even when the folder is slow to open.
     const requested = this.deps.now();
+    const id = this.deps.newSessionId(), startedAt = requested.toISOString();
     const session: Session = {
-      id: this.deps.newSessionId(),
+      id,
       phase: "opening",
       quality: this.deps.quality(),
       countdownSeconds,
@@ -598,13 +586,10 @@ export class Recorder {
       nextSeq: 0,
       writes: Promise.resolve(),
       dir,
-      startedAt: requested.toISOString(),
+      startedAt,
       diskWarned: false,
       diskPollFailed: false,
-      sentinel: false,
-      sentinelFailed: false,
-      sentinelWritten: false,
-      sentinelOps: Promise.resolve(),
+      sentinel: new SessionSentinelTracker(this.deps.sentinels, { id, startedAt }, this.deps.log),
     };
     this.session = session;
     session.opening = Promise.resolve().then(async () => {
@@ -692,7 +677,7 @@ export class Recorder {
       const name = attempt === 1 ? stamp : `${stamp}-${attempt}`;
       const recordingPath = path.join(session.dir, `${name}.recording.mp4`);
       // Named before it exists, so a crash never leaves a temporary file no sentinel names.
-      await this.markInFlight(session, recordingPath);
+      await session.sentinel.mark(recordingPath);
       try {
         return await this.deps.openWriter(recordingPath, path.join(session.dir, `${name}.mp4`));
       } catch (cause) {
@@ -702,51 +687,6 @@ export class Recorder {
         if (errno !== "EEXIST" || attempt >= MAX_NAME_ATTEMPTS || this.session !== session) throw cause;
       }
     }
-  }
-
-  /** Runs one sentinel operation after the session's earlier ones; the chain survives a failed one. */
-  private sentinelOp(session: Session, op: () => Promise<void>): Promise<void> {
-    const run = session.sentinelOps.then(op);
-    session.sentinelOps = run.catch(() => undefined);
-    return run;
-  }
-
-  /** A failed sentinel write is logged once and never blocks the recording. */
-  private markInFlight(session: Session, recordingPath: string): Promise<void> {
-    if (!this.deps.sentinels) return Promise.resolve();
-    session.sentinel = true;
-    return this.sentinelOp(session, () => this.writeSentinel(session, recordingPath));
-  }
-
-  private async writeSentinel(session: Session, recordingPath: string): Promise<void> {
-    const sentinels = this.deps.sentinels!;
-    const earlier = session.sentinelWritten;
-    session.sentinelWritten = false;
-    try {
-      await sentinels.write({ sessionId: session.id, startedAt: session.startedAt, recordingPath, ...(session.failureId ? { failureId: session.failureId } : {}) });
-      session.sentinelWritten = true;
-    } catch (cause) {
-      if (!session.sentinelFailed) this.deps.log(`recorder: session ${session.id} interruption sentinel not written: ${messageOf(cause)}`);
-      session.sentinelFailed = true;
-      // The earlier attempt's sentinel names the colliding file, another session's
-      // partial: after a crash it would be reported as this one. No sentinel is the
-      // accepted degraded state; a wrong one is not.
-      if (earlier) {
-        try { await sentinels.remove(session.id); }
-        catch (removal) { this.deps.log(`recorder: session ${session.id} earlier interruption sentinel not removed: ${messageOf(removal)}`); }
-      }
-    }
-  }
-
-  /** Every terminal outcome, including failures, removes the session's own sentinel. */
-  private async clearInFlight(session: Session): Promise<void> {
-    const sentinels = this.deps.sentinels;
-    if (!session.sentinel || !sentinels) return;
-    session.sentinel = false;
-    await this.sentinelOp(session, async () => {
-      try { await sentinels.remove(session.id); }
-      catch (cause) { this.deps.log(`recorder: session ${session.id} interruption sentinel not removed: ${messageOf(cause)}`); }
-    });
   }
 
   private handleHostMessage(message: HostMessage): void {
@@ -997,7 +937,7 @@ export class Recorder {
         this.deps.log(`recorder: cancelled session ${session.id} cleanup could not be confirmed: ${messageOf(cause)}`);
       }
       this.emit({ type: "cancelled", reason, session: this.trace(session) });
-      await this.clearInFlight(session);
+      await session.sentinel.clear();
     });
     // Only an opened writer proves the folder usable again; a cancel while it is still being checked keeps the flag.
     if (session.writer) {
@@ -1041,24 +981,17 @@ export class Recorder {
       return;
     }
     if (this.session !== session) return;
-    // Without a written sentinel there is nothing to checkpoint: the read would fail with ENOENT on every save.
     let checkpointMs: number | undefined;
-    const sentinels = this.deps.sentinels;
-    if (sentinels?.complete && session.sentinelWritten) {
-      const checkpointAt = this.monotonic();
-      await this.sentinelOp(session, async () => {
-        try { await sentinels.complete!(session.id, finalPath); }
-        catch (cause) { this.deps.log(`recorder: completion checkpoint failed: ${messageOf(cause)}`); }
-      });
-      checkpointMs = this.monotonic() - checkpointAt;
-    }
+    const checkpointAt = this.monotonic();
+    const checkpoint = session.sentinel.complete(finalPath);
+    if (checkpoint) { await checkpoint; checkpointMs = this.monotonic() - checkpointAt; }
     const early = session.stoppedEarly ? ` (stopped early: ${EARLY_STOP_TEXT[session.stoppedEarly]})` : "";
     this.deps.log(`recorder: session ${session.id} file finalized ${finalPath}${early}`);
     this.logFinalizeTiming(session, drainedAt, checkpointMs);
     this.session = undefined;
     this.settle({ type: "idle" });
     this.emit({ type: "saved", path: finalPath, ...(session.stoppedEarly ? { stoppedEarly: session.stoppedEarly } : {}), session: this.trace(session) });
-    await this.clearInFlight(session);
+    await session.sentinel.clear();
   }
 
   /** Where the wait between stop and saved went; stop-to-ready itself is the state lines' interval. */
@@ -1218,19 +1151,10 @@ export class Recorder {
     }
     const result: RecordingFailure = { id: randomUUID(), occurredAt,
       code, detail, outcome: "pending", ...(session.writer?.recordingPath ? { recordingPath: session.writer.recordingPath } : {}) };
-    // Before the report: should the process end while the cleanup below still runs (a stalled share, then a force
-    // quit), the launch reports the leftover sentinel under this id, the saved report's own, instead of a second
-    // entry saying it ended while recording.
-    // After any sentinel write still running, and kept by any later one (review pass 1, F1).
-    session.failureId = result.id;
-    const sentinels = this.deps.sentinels;
-    if (sentinels?.failing && session.sentinel) {
-      await this.sentinelOp(session, async () => {
-        if (!session.sentinelWritten) return;
-        try { await sentinels.failing!(session.id, result.id); }
-        catch (cause) { this.deps.log(`recorder: session ${session.id} failure checkpoint not written: ${messageOf(cause)}`); }
-      });
-    }
+    // Before the report, so a process that ends while the cleanup below still runs (a stalled share, then a force
+    // quit) has its leftover sentinel reported under this id, not as a second entry (review pass 1, F1).
+    const failing = session.sentinel.failing(result.id);
+    if (failing) await failing;
     await this.publishFailure(result);
     let partialPath: string | undefined;
     let outcome: FailureOutcome = "empty";
@@ -1252,7 +1176,7 @@ export class Recorder {
       ...(outcome === "unknown" && candidate ? { recordingPath: candidate } : {}),
     });
     this.emit({ type: "failed", code, detail, ...(partialPath === undefined ? {} : { partialPath }), outcome, session: this.trace(session) });
-    await this.clearInFlight(session);
+    await session.sentinel.clear();
     // A folder that answered only after the opening deadline (a drive waking, a slow share) is usable: the flag this
     // failure set would otherwise go on saying it is unavailable until another folder is chosen. Only while the flag is
     // still this failure's: a newer attempt, even one that failed on its own folder, decides (review pass 1, F1).
