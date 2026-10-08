@@ -12,6 +12,9 @@ describe("display vocabulary", () => {
     const d = { id: "1", label: "", logicalWidth: 100, logicalHeight: 100, scaleFactor: 2, internal: true, primary: true };
     expect(isDisplayInfo(d)).toBe(true);
     for (const key of ["logicalWidth", "logicalHeight", "scaleFactor"]) for (const n of [0, -1, NaN, Infinity]) expect(isDisplayInfo({ ...d, [key]: n })).toBe(false);
+    // A place on the desktop may be negative (left of or above the primary) but must be a finite number.
+    expect(isDisplayInfo({ ...d, x: -1080, y: -400 })).toBe(true);
+    for (const key of ["x", "y"]) for (const n of [NaN, Infinity, "0"]) expect(isDisplayInfo({ ...d, [key]: n })).toBe(false);
     expect(displayLabel(d, "en")).toBe("Display 1 (Primary)");
     expect(displayLabel(d, "zh-TW")).toBe("螢幕 1（主螢幕）");
   });

@@ -10,6 +10,9 @@ export interface DisplayInfo {
   scaleFactor: number;
   internal: boolean;
   primary: boolean;
+  /** The display's top-left in the desktop's logical coordinates, for drawing the arrangement; absent when unknown. */
+  x?: number;
+  y?: number;
 }
 export type DisplayFailure = "target_missing" | "source_missing" | "topology_changed" | "target_removed" | "track_ended";
 function isDisplayId(value: unknown): value is string {
@@ -24,7 +27,8 @@ export function isDisplayInfo(value: unknown): value is DisplayInfo {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
   return isDisplayId(v["id"]) && typeof v["label"] === "string" && typeof v["internal"] === "boolean" && typeof v["primary"] === "boolean"
-    && [v["logicalWidth"], v["logicalHeight"], v["scaleFactor"]].every((n) => typeof n === "number" && Number.isFinite(n) && n > 0);
+    && [v["logicalWidth"], v["logicalHeight"], v["scaleFactor"]].every((n) => typeof n === "number" && Number.isFinite(n) && n > 0)
+    && [v["x"], v["y"]].every((n) => n === undefined || (typeof n === "number" && Number.isFinite(n)));
 }
 export function displayLabel(display: { id: string; label: string; primary?: boolean }, language: Language): string {
   const label = display.label.trim() || t("Display {id}", language, { id: display.id });

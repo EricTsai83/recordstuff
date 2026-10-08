@@ -211,7 +211,7 @@ const version = (): string => (JSON.parse(fs.readFileSync(path.join(root, "packa
 const baseContext = (): AppContext => ({ platform: "darwin", language: "en", outputDir: "/tmp", homeDir: "/tmp", version: version(),
   quality: DEFAULT_QUALITY, countdown: 3, countdownSound: true, hotkey: { ...DEFAULT_HOTKEY, registered: true }, notifications: true,
   updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" },
-  displays: [{ id: "1", label: "Built-in Display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true }] });
+  displays: [{ id: "1", label: "Built-in Display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true, x: 0, y: 0 }] });
 /** Like SettingsWindow: every projection carries the current entry token. */
 const resultView = (): SettingsView => ({ ...settingsView({ type: "idle" }, { ...state.resultContext!, recordingResults: recordingResults.all,
   historyLoading: recordingResults.loading }), resultFocus: state.lastFocus });

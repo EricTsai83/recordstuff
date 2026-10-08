@@ -269,7 +269,7 @@ async function main(): Promise<void> {
   const displays = (): DisplayInfo[] => {
     const primary = screen.getPrimaryDisplay().id;
     return screen.getAllDisplays().map((d) => ({ id: String(d.id), label: d.label,
-      logicalWidth: d.size.width, logicalHeight: d.size.height, scaleFactor: d.scaleFactor,
+      logicalWidth: d.size.width, logicalHeight: d.size.height, scaleFactor: d.scaleFactor, x: d.bounds.x, y: d.bounds.y,
       internal: d.internal, primary: d.id === primary })).filter(isDisplayInfo);
   };
   const displayMedia = new DisplayMedia<DesktopCapturerSource>({

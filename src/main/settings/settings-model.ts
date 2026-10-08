@@ -114,15 +114,30 @@ function chosenDisplayUnavailable(ctx: AppContext): boolean {
   return ctx.display.kind === "display" && !displayResolution(ctx.displays, ctx.display).ok;
 }
 
+/** A screen choice's name with its size in pixels, as the display reports it: `Built-in Display · 3024×1964`. */
+function withResolution(label: string, display: DisplayInfo | undefined): string {
+  return display ? `${label} · ${pixels(display)}` : label;
+}
+function pixels(display: DisplayInfo): string {
+  return `${Math.round(display.logicalWidth * display.scaleFactor)}×${Math.round(display.logicalHeight * display.scaleFactor)}`;
+}
+/** Where a display stands on the desktop, when the OS said: the Screen row then draws the arrangement. */
+function displayFrame(display: DisplayInfo, language: Language): SettingsChoice["display"] {
+  if (display.x === undefined || display.y === undefined) return undefined;
+  return { x: display.x, y: display.y, width: display.logicalWidth, height: display.logicalHeight, primary: display.primary,
+    name: displayLabel({ id: display.id, label: display.label }, language), pixels: pixels(display) };
+}
+
 function screenGroup(ctx: AppContext, enabled: boolean): Group {
   const preference = ctx.display;
   // An id two displays share cannot be chosen.
   const unique = (display: DisplayInfo): boolean => uniqueDisplay(ctx.displays, display.id) !== undefined;
-  const choices: Group["choices"] = [{ id: "primary", label: t("Primary display", ctx.language), enabled: true,
+  const choices: Group["choices"] = [{ id: "primary", label: withResolution(t("Primary display", ctx.language), ctx.displays.find((display) => display.primary)), enabled: true,
     checked: preference.kind === "primary", action: { setDisplay: { kind: "primary" } } }];
   for (const display of ctx.displays.filter(unique)) {
-    choices.push({ id: display.id, label: displayLabel(display, ctx.language), enabled: true,
-      checked: preference.kind === "display" && preference.id === display.id,
+    const frame = displayFrame(display, ctx.language);
+    choices.push({ id: display.id, label: withResolution(displayLabel(display, ctx.language), display), enabled: true,
+      checked: preference.kind === "display" && preference.id === display.id, ...(frame ? { display: frame } : {}),
       action: { setDisplay: { kind: "display", id: display.id, label: display.label } } });
   }
   // The chosen display, when it is the one that cannot be recorded.
@@ -130,6 +145,9 @@ function screenGroup(ctx: AppContext, enabled: boolean): Group {
   if (missing) choices.push({ id: missing.id,
     label: t("{label} — Unavailable", ctx.language, { label: displayLabel(missing, ctx.language) }), enabled: false, checked: true, action: { setDisplay: missing } });
   const result = group("screen", t("Screen", ctx.language), enabled, choices);
+  // Drawn as the desktop's arrangement once every screen that can be chosen knows its place; otherwise a menu.
+  const placed = choices.filter((choice) => choice.id !== "primary" && choice.enabled);
+  if (placed.length > 0 && placed.every((choice) => choice.display)) result.control = "arrangement";
   result.diagnostics = [];
   if (missing) {
     result.diagnostics.push({ kind: "current", heading: t("Selected display is unavailable", ctx.language),

@@ -84,9 +84,14 @@ async function run(): Promise<void> {
   let recordingResults: RecordingResult[] = [];
   /** A folder state drawn in place of the real one: empty, or unreadable (plan 067). */
   let libraryOverride: LibraryState | undefined;
+  // A portrait screen beside a landscape primary, so the Screen row draws an arrangement (2026-10-08).
+  const PREVIEW_DISPLAYS: AppContext["displays"] = [
+    { id: "1", label: "BenQ BL2480T", logicalWidth: 1080, logicalHeight: 1920, scaleFactor: 1, internal: false, primary: false, x: -1080, y: -620 },
+    { id: "2", label: "BenQ GW2785TC", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 1, internal: false, primary: true, x: 0, y: 0 },
+  ];
   const context = (): AppContext => ({ platform: process.platform, language, outputDir: clips, homeDir: os.homedir(), version: "1.5.0",
     quality: DEFAULT_QUALITY, countdown: 3, countdownSound: true, hotkey: { ...DEFAULT_HOTKEY, registered: true }, notifications: true,
-    updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" }, displays: [], library: libraryOverride ?? library.state, libraryLayout, recordingResults });
+    updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" }, displays: PREVIEW_DISPLAYS, library: libraryOverride ?? library.state, libraryLayout, recordingResults });
   let entry = 0;
   let tab: SettingsTab = "library";
   const view = () => ({ ...settingsView(state, context()), resultFocus: entry, entryTab: tab });
@@ -242,6 +247,8 @@ async function run(): Promise<void> {
     await shoot(window, `file-name-invalid-${suffix}.png`, `file name template refused · ${lang} · ${scheme} · ${sizeName}`, { state: "file-name-invalid" });
     await run(window, `(f => { f.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); f.blur(); })(document.getElementById("setting-fileName"))`);
     await show(window, "library");
+    // An entry keeps the page's scroll; the file name above left it partway down the taller Recording page.
+    await toTop(window);
     await run(window, `document.querySelector(".clip-more").click()`);
     await settle(300);
     await shoot(window, `clip-menu-${suffix}.png`, `card menu · ${lang} · ${scheme} · ${sizeName}`, { state: "clip-menu" });

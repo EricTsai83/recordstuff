@@ -19,6 +19,19 @@ export interface SettingsChoice {
   checked: boolean;
   /** Offered, but its own work is running: the button keeps focus and ignores activation until it ends (plan 053). */
   busy?: boolean;
+  /** A screen choice's place in the desktop's arrangement, in logical pixels; presentation only. */
+  display?: DisplayFrame;
+}
+export interface DisplayFrame {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  primary: boolean;
+  /** The display's own name, without the label's Primary suffix or size. */
+  name: string;
+  /** Its size in pixels, `3024×1964`. */
+  pixels: string;
 }
 /** `failures` is the stable entry id for Troubleshooting, which also contains diagnostic and cleanup actions. */
 export type SettingsTab = "library" | "recording" | "general" | "failures";
@@ -30,8 +43,9 @@ export interface SettingsGroup {
   /**
    * Presentation only; omitted controls default to a native menu. `text` is a field whose committed value is the one
    * checked choice's id; the page sends what was typed as the choice, which main validates (the file name pattern).
+   * `arrangement` draws the screens where they stand on the desktop, from their choices' `display` frames.
    */
-  control?: "switch" | "segmented" | "menu" | "text";
+  control?: "switch" | "segmented" | "menu" | "text" | "arrangement";
   /** Segments drawn as icons named by their labels (Appearance's screen, sun and moon); presentation only. */
   iconChoices?: boolean;
   /** Consecutive rows with this id share an inset list. */

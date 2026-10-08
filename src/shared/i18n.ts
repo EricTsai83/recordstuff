@@ -167,6 +167,7 @@ export const ZH_TW = {
   "Screen capture ended unexpectedly. Retry or choose another screen.": "螢幕錄影非預期結束，請重試或選擇其他螢幕。",
   "Screen": "螢幕",
   "Primary display": "主螢幕",
+  "Follow the primary display": "跟隨主螢幕",
   "Display {id}": "螢幕 {id}",
   "{label} (Primary)": "{label}（主螢幕）",
   "Selected display is unavailable. Choose another screen.": "所選螢幕無法使用，請選擇其他螢幕。",

@@ -438,6 +438,10 @@ describe("screen choice", () => {
     expect(settingsAction(idle, selected, "screen", "unknown")).toBeUndefined();
     for (const state of busy) expect(settingsAction(state, selected, "screen", "primary")).toBeUndefined();
   });
+  it("names each live choice with its size in pixels; a missing display has none to give", () => {
+    expect(group(idle, selected, "screen")!.choices.map((c) => c.label)).toEqual(["Primary display · 3840×2160", "Studio (Primary) · 3840×2160"]);
+    expect(group(idle, { ...selected, displays: [] }, "screen")!.choices.map((c) => c.label)).toEqual(["Primary display", "Studio — Unavailable"]);
+  });
   it("retains one disabled stale choice, including duplicate ids", () => {
     for (const displays of [[], [d, d]]) {
       const ctx = { ...selected, displays };
@@ -449,6 +453,18 @@ describe("screen choice", () => {
       expect(screen.note).toBeUndefined();
       expect(settingsAction(idle, ctx, "screen", "primary")).toEqual({ setDisplay: { kind: "primary" } });
     }
+  });
+  it("draws the arrangement once every live screen knows its place, and a menu otherwise", () => {
+    const side = { id: "8", label: "", logicalWidth: 1080, logicalHeight: 1920, scaleFactor: 1, internal: false, primary: false, x: -1080, y: -400 };
+    const placed = { ...selected, displays: [{ ...d, x: 0, y: 0 }, side] };
+    const screen = group(idle, placed, "screen")!;
+    expect(screen.control).toBe("arrangement");
+    expect(screen.choices.map((c) => c.display)).toEqual([undefined,
+      { x: 0, y: 0, width: 1920, height: 1080, primary: true, name: "Studio", pixels: "3840×2160" },
+      { x: -1080, y: -400, width: 1080, height: 1920, primary: false, name: "Display 8", pixels: "1080×1920" }]);
+    // One screen without a place, or none at all to place, keeps the menu.
+    expect(group(idle, { ...placed, displays: [{ ...d, x: 0, y: 0 }, { ...d, id: "8" }] }, "screen")!.control).toBe("menu");
+    expect(group(idle, { ...placed, displays: [] }, "screen")!.control).toBe("menu");
   });
   it("keeps last source failure visible with notifications off without calling it disconnected", () => {
     const ctx = { ...selected, notifications: false, displayFailure: "source_missing" as const };

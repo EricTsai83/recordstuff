@@ -16,6 +16,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "../../components/ui/pop
 import { flushSync } from "react-dom";
 import * as model from "../settings-controller";
 import { ShortcutEditor } from "./shortcut-editor";
+import { DisplayArrangement } from "./display-arrangement";
 import { WindowActions } from "../window-actions";
 
 const icons = {
@@ -274,7 +275,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
           </div>
         ) : <div className="group-title">
           <GroupIcon id={group.id} />
-          {group.kind === "actions" || group.control === "segmented" ? (
+          {group.kind === "actions" || group.control === "segmented" || group.control === "arrangement" ? (
             <FieldTitle
               id={`${id}-label`}
               className="group-label text-xs leading-[1.35]"
@@ -332,6 +333,8 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
             />
           ) : group.control === "text" ? (
             <TextSetting group={group} description={description} />
+          ) : group.control === "arrangement" ? (
+            <DisplayArrangement group={group} value={value} disabled={!group.enabled || busy} held={held} describedBy={description || undefined} />
           ) : group.control === "segmented" ? (
             <ToggleGroup
               id={id}
@@ -412,12 +415,13 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
                 data-value={value}
                 className={
                   held
-                    ? "max-w-[min(280px,100%)] disabled:cursor-default disabled:opacity-100"
-                    : "max-w-[min(280px,100%)]"
+                    ? "max-w-[min(280px,100%)] whitespace-normal data-[size=default]:h-auto min-h-7 py-1 leading-[1.4] disabled:cursor-default disabled:opacity-100"
+                    : "max-w-[min(280px,100%)] whitespace-normal data-[size=default]:h-auto min-h-7 py-1 leading-[1.4]"
                 }
                 {...desc}
               >
-                <SelectValue />
+                {/* A block, not a flex box: a long choice (a screen with its size) wraps in full instead of running past the card. */}
+                <SelectValue className="block! whitespace-normal!" />
               </SelectTrigger>
               <SelectContent alignItemWithTrigger={false} align="end">
                 {group.choices.map((choice) => (

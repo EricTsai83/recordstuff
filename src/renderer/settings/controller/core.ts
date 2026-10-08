@@ -165,8 +165,10 @@ export function groupControl(
   if (own?.matches("select, input, [role=switch], [data-slot=select-trigger]")) return own;
   const row = document.getElementById(`setting-${groupId}-row`);
   return (
-    row?.querySelector<HTMLElement>('[aria-pressed="true"]') ??
+    // A checked radio that cannot be chosen (an unavailable screen) cannot take focus either: an enabled one can.
+    row?.querySelector<HTMLElement>('[aria-pressed="true"], [role="radio"][aria-checked="true"]:not(:disabled)') ??
     (choice ? document.getElementById(`setting-${groupId}-${choice}`) : null) ??
+    row?.querySelector<HTMLElement>('[role="radio"]:not(:disabled)') ??
     row?.querySelector<HTMLElement>(".controls button, .controls input") ??
     null
   );
