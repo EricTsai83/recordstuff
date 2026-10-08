@@ -23,7 +23,7 @@
 | 僅文件、計畫、指示或 skill | 檢查受影響的相對連結／錨點、指令名稱與 package scripts、英繁中一致性；skill metadata 改動時驗證格式 | App 建置、單元測試、啟動 App、錄影。不因文件提到指令就執行它 |
 | 低風險流程以外的 App 原始碼、執行期資源或重構 | `pnpm check`；有意義時補行為測試，尤其可重現 bug 的回歸測試；更具體分類未涵蓋時，仍須檢視受影響的可見行為 | 未影響 OS 或需觀察的介面行為時，不需封裝／原生驗收 |
 | 僅顯示文案或翻譯 | 依上述低風險流程；只檢視受影響文字／介面，具型別的訊息改動時跑型別檢查 | 預設完整 check／build／UI 套件；錄影、原生快捷鍵送達、音訊／矩陣測試 |
-| 局部外觀例外以外的設定排版／外觀、控制項、持久化、視窗生命週期或設定 IPC／preload | `pnpm acceptance:regression`（check／build 與背景套件：在隱藏的離屏視窗以 Playwright 輸入，不需桌面回合）；視覺修改檢視相關的圖（`test-results/ui/`，選定的圖會與審核過的基準比對；`pnpm preview:ui` 另可畫出每個分頁、語言、外觀與尺寸的圖庫）；互動改動在背景套件以 Playwright 滑鼠／鍵盤輸入覆蓋。改動依賴 OS 啟用視窗、原生視窗框、跨視窗焦點或在螢幕上全螢幕時，在同一份建置上另跑對應的原生案例：啟用與視窗框用 `pnpm acceptance:settings-native`，錄影播放器或全螢幕影片的全螢幕與焦點交還用 `pnpm acceptance:player`（桌面回合）；`pnpm acceptance:recipe -- native-ui` 以一次建置跑完這些與 `pnpm acceptance:shortcut-native`。修改視窗選項（`settingsWindowOptions`）、`src/shared/window-controls.ts` 或頁面左上角畫的內容時，另需在新的 `pnpm start:app` 產物上執行 `pnpm acceptance:settings-shortcut -- --observe`，這是唯一檢查 macOS 所畫視窗按鈕的項目，並觀察其 `settings-window.png` | 純排版／外觀不需錄影。其他原生檢查只限受影響的 OS 邊界或 fixture 無法呈現的行為 |
+| 局部外觀例外以外的設定排版／外觀、控制項、持久化、視窗生命週期或設定 IPC／preload | `pnpm acceptance:regression`（check／build 與背景套件：在隱藏的離屏視窗以 Playwright 輸入，不需桌面回合）；視覺修改檢視相關的圖（`test-results/ui/`；`pnpm preview:ui` 另可畫出每個分頁、語言、外觀與尺寸的圖庫）；互動改動在背景套件以 Playwright 滑鼠／鍵盤輸入覆蓋。改動依賴 OS 啟用視窗、原生視窗框、跨視窗焦點或在螢幕上全螢幕時，在同一份建置上另跑對應的原生案例：啟用與視窗框用 `pnpm acceptance:settings-native`，錄影播放器或全螢幕影片的全螢幕與焦點交還用 `pnpm acceptance:player`（桌面回合）；`pnpm acceptance:recipe -- native-ui` 以一次建置跑完這些與 `pnpm acceptance:shortcut-native`。修改視窗選項（`settingsWindowOptions`）、`src/shared/window-controls.ts` 或頁面左上角畫的內容時，另需在新的 `pnpm start:app` 產物上執行 `pnpm acceptance:settings-shortcut -- --observe`，這是唯一檢查 macOS 所畫視窗按鈕的項目，並觀察其 `settings-window.png` | 純排版／外觀不需錄影。其他原生檢查只限受影響的 OS 邊界或 fixture 無法呈現的行為 |
 | 全域快捷鍵註冊／送達、Tray 操作、焦點、原生入口、應用程式選單或 OS 無障礙 | 設定／快捷鍵整合跑 `pnpm acceptance:regression`（背景，使用註冊 adapter），其他跑 `pnpm check`。在新建置的 App 操作受影響原生行為：Tray 操作與選單用 `pnpm acceptance:tray`，設定入口與應用程式選單的快捷鍵用 `pnpm acceptance:settings-shortcut -- --observe`，Electron 真正的註冊被拒與真實設定視窗狀態（最小化、還原、焦點、關閉鍵）用 `pnpm acceptance:shortcut-native`，外觀則觀察保存的截圖。註冊方式改動另需 `pnpm acceptance:shortcut-native` 與 `pnpm acceptance:shortcut-layout`；`pnpm acceptance:recipe -- shortcut-registration` 以一次建置跑完回歸與這兩者 | 完整原生狀態矩陣；不會開始／停止或干擾擷取的操作不需錄影 |
 | 錄影開始／停止、capture host／協定、編碼、檔案寫入、來源／品質選擇、錄影鎖定、權限或錄影中退出 | `pnpm check`，加新 `pnpm start:app` 產物的一輪錄影 smoke：開始、停止、存檔、媒體驗證與播放。追加改動案例，例如輸出資料夾或螢幕選擇；設定路徑也改動時加設定回歸 | 所有解析度／品質、長錄影、權限重設及實體拔插，除非影響該行為或需求指定 |
 | 幀時序、同步、解析度／fps 或音質 | 錄影列，加相關矩陣子集：`pnpm matrix -- quick`、`levels`、`fps` 或 `long`（依影響選案例）；音質使用工具指南中的相關 `pnpm audio:quality` 診斷 | 預設跑完整矩陣；沒有長錄需求時跑十分鐘錄影 |
@@ -40,6 +40,8 @@
 原生視窗拖移區改動另需 `pnpm acceptance:window-drag`（[範圍](system-design/tooling.md#視窗拖移驗收)）：在顯示中的正式頁面／視窗 fixture，以 CoreGraphics 真正拖曳並讀取 AX 座標。CSS 宣告與背景 renderer input 不能證明 OS 視窗移動。若其他必要檢查已建置同一份最終 `out/`，對該產物執行 `node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-window-drag.mts`，避免重複建置。僅 runner 改動時跑正常與取消／清理路徑，不增加無關的錄影或簽章 bundle 檢查。
 
 ## 測試 UI 與 App 保持一致
+
+UI 測試不保護設計：排版、間距、尺寸、位置、顏色、陰影、圓角、字體、裝飾、class 名稱、元件 variant 與視覺用的 DOM 結構都可以隨時更改，不需要跟著改測試。Playwright 案例只斷言行為（輸入、狀態、持久化、IPC）、無障礙語意（role、名稱、狀態、焦點與鍵盤操作），以及與設計無關的底線（沒有外層或水平溢出、文字不被截斷、控制項看得到、點得到且沒有被遮住，包括被視窗按鈕遮住，以及 plan 067 的可讀性下限：文字至少 12 px、控制項點擊範圍至少 24 px）。不要加入像素基準或針對設計數值的斷言；視覺修改靠看圖判斷。
 
 UI 測試與預覽畫廊必須載入正式頁面，並共用 App 的元件、CSS、字型與設計 token。在相同語言、主題、視窗尺寸及縮放下，排版、字體、顏色、間距與控制項外觀必須和 App 一致。不要另外設計測試介面、把正式樣式複製到 fixture，或注入覆寫樣式讓視覺斷言通過；設計變更應修改共用的正式實作。
 

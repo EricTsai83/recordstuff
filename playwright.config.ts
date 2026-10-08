@@ -16,9 +16,7 @@ export default defineConfig({
   expect: { timeout: 5_000 },
   reporter: [["list"], ["html", { open: "never" }], ["json", { outputFile: "test-results/ui-report.json" }], ["./tests/ui/summary-reporter.ts"]],
   outputDir: "test-results/ui",
-  // Reviewed baselines are named by runtime in the test (settings-matrix.spec.ts), not by project or platform here.
-  snapshotPathTemplate: "{testDir}/{testFilePath}-snapshots/{arg}{ext}",
-  // A baseline is written only on request (`--update-snapshots`), after its picture was looked at; never by a plain run.
+  // UI tests keep no pixel baselines: the design may change freely (docs/testing.md).
   updateSnapshots: "none",
   use: { trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [
