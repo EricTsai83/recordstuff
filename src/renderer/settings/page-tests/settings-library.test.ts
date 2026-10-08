@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import { click, menu as openMenu } from "../testing/test-interactions";
-import type { LibraryItemView, SettingsView } from "../../shared/settings-panel";
+import { click, menu as openMenu } from "../../testing/test-interactions";
+import type { LibraryItemView, SettingsView } from "../../../shared/settings-panel";
 
 const item = (id: string, day: string, title: string): LibraryItemView => ({ id, day, title, name: `${id}.mp4`, time: "2:02 PM", duration: "1:23", size: "180 MB",
   thumbnail: `recordstuff-media://thumb/${id}?v=1`, video: `recordstuff-media://video/${id}?v=1` });
@@ -38,7 +38,7 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   let hidden!: () => void;
   window.settings = { read: async () => base, capture: async () => base, choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; },
     onHidden: cb => { hidden = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(3));
   expect([...document.querySelectorAll(".library-day")].map(day => [day.querySelector("h2")!.textContent, day.querySelectorAll(".clip").length])).toEqual([["Today", 2], ["Yesterday", 1]]);
   expect(document.querySelector(".library-summary")!.textContent).toBe("3 recordings · 400 MB");

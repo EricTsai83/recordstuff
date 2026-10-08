@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../../shared/settings-panel";
-import { DEFAULT_HOTKEY } from "../../shared/hotkey";
+import type { SettingsView } from "../../../shared/settings-panel";
+import { DEFAULT_HOTKEY } from "../../../shared/hotkey";
 
 /** A retry that works removes its own button; focus must return to the shortcut card, not the page. */
 it("moves focus to the shortcut select when a successful registration retry removes its button", async () => {
@@ -18,7 +18,7 @@ it("moves focus to the shortcut select when a successful registration retry remo
   delete registered.groups[0]!.actions;
   const choose = vi.fn(async () => ({ view: registered, applied: true }));
   window.settings = { read: async () => failed, capture: async () => failed, choose, ready: async () => {}, onChanged: () => () => {} };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
 

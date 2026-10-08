@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../../shared/settings-panel";
+import type { SettingsView } from "../../../shared/settings-panel";
 
 /** A recording that starts locks the control the keyboard is on; the tab keeps the place, as for a hidden one. */
 function view(enabled: boolean): SettingsView {
@@ -18,7 +18,7 @@ it("moves focus to the open tab when a push locks the focused control, so it nev
   let push!: (next: SettingsView) => void;
   window.settings = { read: async () => view(true), capture: async () => view(true), choose: async () => ({ view: view(true), applied: true }), ready: async () => {},
     onChanged: cb => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   const select = await vi.waitFor(() => { const el = document.getElementById("setting-videoQuality") as HTMLSelectElement | null; if (!el) throw new Error("not drawn"); return el; });
   select.focus();
   expect(document.activeElement).toBe(select);

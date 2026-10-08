@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import { menuValue, pick } from "../testing/test-interactions";
-import type { SettingsView } from "../../shared/settings-panel";
-import { DEFAULT_HOTKEY } from "../../shared/hotkey";
-import { shortcutCandidate } from "../lib/shortcut-capture";
+import { menuValue, pick } from "../../testing/test-interactions";
+import type { SettingsView } from "../../../shared/settings-panel";
+import { DEFAULT_HOTKEY } from "../../../shared/hotkey";
+import { shortcutCandidate } from "../../lib/shortcut-capture";
 
 it("arms only after main acknowledges, captures a combination, cancels and obeys recording lock", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
@@ -30,7 +30,7 @@ it("arms only after main acknowledges, captures a combination, cancels and obeys
     return { view: current, applied: true };
   });
   window.settings = { read: async () => current, capture, choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
   const edit = async () => {

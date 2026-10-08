@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsGroup, SettingsView } from "../../shared/settings-panel";
+import type { SettingsGroup, SettingsView } from "../../../shared/settings-panel";
 
 /** What the page reads out and where a retry leaves focus, driven through the real page module. */
 function view(language: "en" | "zh-TW", over: Partial<SettingsView> = {}): SettingsView {
@@ -35,7 +35,7 @@ it("reads out only news, as sentences of the panel's language, and keeps focus w
     return { view: current, applied: false };
   });
   window.settings = { read: async () => current, capture: async () => current, choose, ready: async () => {}, onChanged: (cb) => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
   const feedback = document.getElementById("feedback")!;
@@ -97,7 +97,7 @@ it("reads out a finished update check, even one whose result repeats the last", 
   let current = view("en", { groups: [updates(false)] });
   let push!: (next: SettingsView) => void;
   window.settings = { read: async () => current, capture: async () => current, choose: vi.fn(), ready: async () => {}, onChanged: (cb) => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
   const feedback = document.getElementById("feedback")!;

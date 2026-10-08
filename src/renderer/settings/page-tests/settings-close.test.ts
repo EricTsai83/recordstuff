@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import { menuValue, pick } from "../testing/test-interactions";
-import type { SettingsView } from "../../shared/settings-panel";
-import { DEFAULT_HOTKEY } from "../../shared/hotkey";
-import { isCloseChord, type ShortcutKey } from "../lib/shortcut-capture";
+import { menuValue, pick } from "../../testing/test-interactions";
+import type { SettingsView } from "../../../shared/settings-panel";
+import { DEFAULT_HOTKEY } from "../../../shared/hotkey";
+import { isCloseChord, type ShortcutKey } from "../../lib/shortcut-capture";
 
 const press = (key: string, code: string, modifiers: Partial<ShortcutKey> = {}): ShortcutKey =>
   ({ key, code, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...modifiers });
@@ -55,7 +55,7 @@ it("captures macOS Control+W as a shortcut while exact Command+W still closes", 
     return { view: current, applied: true };
   });
   window.settings = { read: async () => current, capture, choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
   const field = () => document.getElementById("shortcut-capture") as HTMLButtonElement;

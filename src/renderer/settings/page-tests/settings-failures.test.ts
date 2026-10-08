@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { RecordingResultView, SettingsView } from "../../shared/settings-panel";
+import type { RecordingResultView, SettingsView } from "../../../shared/settings-panel";
 
 /** Plan 047: the Recording failures tab, driven through the real page module with a fake bridge. */
 const row = (id: string, over: Partial<RecordingResultView> = {}): RecordingResultView => ({
@@ -47,7 +47,7 @@ it("keeps the history in its own tab, as collapsed day-grouped rows that open in
   current = view([row("new"), reviewed("old", { day: "Yesterday", time: "9:12 AM", fileName: "2026-09-27 09-12-00.mp4",
     file: "/Users/me/Movies/RecordStuff/2026-09-27 09-12-00.mp4" }), reviewed("older", { day: "September 24" })]);
   window.settings = { read: async () => current, capture: async () => current, choose, ready: async () => {}, onChanged: (cb) => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(tab("failures")).toBeTruthy());
 
   // A normal open shows Recording, which carries no history.

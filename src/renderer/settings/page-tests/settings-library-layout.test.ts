@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import { click } from "../testing/test-interactions";
-import type { LibraryView, SettingsView } from "../../shared/settings-panel";
+import { click } from "../../testing/test-interactions";
+import type { LibraryView, SettingsView } from "../../../shared/settings-panel";
 
 /** Quick clicks on the layout switch show the last choice throughout: an earlier answer never flashes its layout back. */
 it("keeps the latest layout while an earlier layout request answers", async () => {
@@ -21,7 +21,7 @@ it("keeps the latest layout while an earlier layout request answers", async () =
     });
   }));
   window.settings = { read: async () => current, capture: async () => current, choose, ready: async () => {}, onChanged: () => () => {} };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(1));
   const library = document.getElementById("library")!;
   const layout = (id: "grid" | "list") => document.getElementById(`library-layout-${id}`) as HTMLInputElement;

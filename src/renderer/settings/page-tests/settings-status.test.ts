@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../../shared/settings-panel";
+import type { SettingsView } from "../../../shared/settings-panel";
 
 /**
  * The status card speaks only when there is something to say (2026-10-04); the sidebar's foot offers Quit and Hide
@@ -18,7 +18,7 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   let push!: (view: SettingsView) => void;
   const choose = vi.fn(async () => ({ view: ready, applied: true }));
   window.settings = { read: async () => ready, capture: async () => ready, choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.getElementById("tab-recording")).toBeTruthy());
   const statusElements = () => ({ card: document.getElementById("status")!, detail: document.getElementById("status-detail")!, action: document.getElementById("status-action")! });
   let { card, detail, action } = statusElements();
@@ -49,7 +49,7 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
 
   // A failed Quit is visible beside the same split control, just as a failed Hide is.
   choose.mockImplementationOnce(async () => ({ view: ready, applied: false, failure: "Could not quit. Try again." }));
-  const model = await import("./settings-controller");
+  const model = await import("../settings-controller");
   await model.choose("about", "quit", "sidebar-about-hide");
   expect([error.hidden, error.textContent]).toEqual([false, "Could not quit. Try again."]);
 

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../../shared/settings-panel";
-import * as model from "./settings-controller";
+import type { SettingsView } from "../../../shared/settings-panel";
+import * as model from "../settings-controller";
 
 it("draws the screens where they stand, chooses one by click or arrow, and follows the primary by a switch that turns off", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
@@ -24,7 +24,7 @@ it("draws the screens where they stand, chooses one by click or arrow, and follo
     return { view: current, applied: true };
   });
   window.settings = { read: async () => current, capture: async () => current, choose, ready: async () => {}, onChanged: (cb) => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.getElementById("tab-recording")).toBeTruthy());
   document.getElementById("tab-recording")!.click();
   await vi.waitFor(() => expect(document.getElementById("setting-screen")).toBeTruthy());

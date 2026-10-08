@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import { pick } from "../testing/test-interactions";
-import type { SettingsView } from "../../shared/settings-panel";
-import { DEFAULT_HOTKEY } from "../../shared/hotkey";
+import { pick } from "../../testing/test-interactions";
+import type { SettingsView } from "../../../shared/settings-panel";
+import { DEFAULT_HOTKEY } from "../../../shared/hotkey";
 
 /**
  * Chromium clears the focused element before `focusout`, and a user-driven
@@ -24,7 +24,7 @@ it("keeps a candidate when Tab or VoiceOver moves focus to Confirm, and ends cap
     return current;
   });
   window.settings = { read: async () => current, capture, choose: vi.fn(), ready: async () => {}, onChanged: () => () => {} };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
   const field = () => document.getElementById("shortcut-capture") as HTMLButtonElement;

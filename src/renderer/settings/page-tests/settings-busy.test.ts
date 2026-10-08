@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsGroup, SettingsView } from "../../shared/settings-panel";
+import type { SettingsGroup, SettingsView } from "../../../shared/settings-panel";
 
 /** A running action keeps the focus it was activated with (plan 053), driven through the real page module. */
 function view(checking: boolean): SettingsView {
@@ -32,7 +32,7 @@ it("keeps a running action focusable, ignores its second activation and leaves f
     return { view: current, applied: true };
   });
   window.settings = { read: async () => current, capture: async () => current, choose, ready: async () => {}, onChanged: (cb) => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
 

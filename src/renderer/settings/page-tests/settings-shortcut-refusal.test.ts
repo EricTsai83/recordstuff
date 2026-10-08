@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import { pick } from "../testing/test-interactions";
-import type { SettingsView } from "../../shared/settings-panel";
-import { DEFAULT_HOTKEY } from "../../shared/hotkey";
+import { pick } from "../../testing/test-interactions";
+import type { SettingsView } from "../../../shared/settings-panel";
+import { DEFAULT_HOTKEY } from "../../../shared/hotkey";
 
 /** What the shortcut editor shows for a key it cannot use and for a combination main refuses. */
 it("names no internal key for an unusable one, and states a refused combination once without reselect guidance", async () => {
@@ -27,7 +27,7 @@ it("names no internal key for an unusable one, and states a refused combination 
   });
   let push!: (next: SettingsView) => void;
   window.settings = { read: async () => current, capture, choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
   const select = document.getElementById("setting-hotkey") as HTMLButtonElement;

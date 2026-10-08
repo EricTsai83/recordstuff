@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../../shared/settings-panel";
+import type { SettingsView } from "../../../shared/settings-panel";
 
 /** Appearance is three icons, one click each (2026-10-05): a radio group named by its labels, drawn as marks. */
 it("draws Appearance as three icon segments named by their labels, and a click chooses one", async () => {
@@ -11,7 +11,7 @@ it("draws Appearance as three icon segments named by their labels, and a click c
   let push!: (next: SettingsView) => void;
   const choose = vi.fn(async (_group: string, choice: unknown) => ({ view: view(String(choice)), applied: true }));
   window.settings = { read: async () => view("system"), capture: async () => view("system"), choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.getElementById("setting-appearance-dark")).toBeTruthy());
   const radios = [...document.querySelectorAll<HTMLInputElement>("#setting-appearance button")];
   // Each segment shows its mark and no words; its label names the radio and is its tooltip.

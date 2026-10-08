@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import { pick } from "../testing/test-interactions";
-import type { SettingsView } from "../../shared/settings-panel";
-import { DEFAULT_HOTKEY } from "../../shared/hotkey";
+import { pick } from "../../testing/test-interactions";
+import type { SettingsView } from "../../../shared/settings-panel";
+import { DEFAULT_HOTKEY } from "../../../shared/hotkey";
 
 /** The failures entry switches tabs like a click: an open shortcut editor must end, or main keeps both shortcuts suspended. */
 it("ends shortcut capture when a failures entry selects the failures tab", async () => {
@@ -21,7 +21,7 @@ it("ends shortcut capture when a failures entry selects the failures tab", async
     return current;
   });
   window.settings = { read: async () => current, capture, choose: vi.fn(), ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
   await pick("setting-hotkey", "custom");

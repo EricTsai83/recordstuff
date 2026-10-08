@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../../shared/settings-panel";
+import type { SettingsView } from "../../../shared/settings-panel";
 
 it("marks a failed first read's message with the requested language, not the page default", async () => {
   history.replaceState(null, "", "?lang=zh-TW");
@@ -10,7 +10,7 @@ it("marks a failed first read's message with the requested language, not the pag
   const ready = vi.fn(async () => { throw new Error("main refused"); });
   window.settings = { read: async () => { throw new Error("main unavailable"); }, capture: async () => { throw new Error("unused"); },
     choose: async () => { throw new Error("unused"); }, ready, onChanged: (cb) => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   const feedback = document.getElementById("feedback")!;
   await new Promise(resolve => setTimeout(resolve, 0));
   await new Promise(resolve => setTimeout(resolve, 0));

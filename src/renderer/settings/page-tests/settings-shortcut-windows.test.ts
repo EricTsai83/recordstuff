@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import { pick } from "../testing/test-interactions";
-import type { SettingsView } from "../../shared/settings-panel";
-import { DEFAULT_HOTKEY } from "../../shared/hotkey";
+import { pick } from "../../testing/test-interactions";
+import type { SettingsView } from "../../../shared/settings-panel";
+import { DEFAULT_HOTKEY } from "../../../shared/hotkey";
 
 /** The Windows editor reports Ctrl as Control; the reserved combinations and their wording follow the platform (plan 064). */
 it("refuses Ctrl+Q and a chord without Ctrl in Windows words, and offers the macOS screenshot chord", async () => {
@@ -20,7 +20,7 @@ it("refuses Ctrl+Q and a chord without Ctrl in Windows words, and offers the mac
   });
   const choose = vi.fn(async () => ({ view: structuredClone(current), applied: true }));
   window.settings = { read: async () => structuredClone(current), capture, choose, ready: async () => {}, onChanged: () => () => {} };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
   await pick("setting-hotkey", "custom");

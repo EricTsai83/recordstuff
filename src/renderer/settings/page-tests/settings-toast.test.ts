@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import { click, menu } from "../testing/test-interactions";
-import type { LibraryItemView, LibraryView, SettingsView } from "../../shared/settings-panel";
+import { click, menu } from "../../testing/test-interactions";
+import type { LibraryItemView, LibraryView, SettingsView } from "../../../shared/settings-panel";
 
 const item = (id: string): LibraryItemView => ({ id, day: "Today", title: id, name: `${id}.mp4`, time: "2:02 PM", duration: "1:23", size: "180 MB",
   thumbnail: `recordstuff-media://thumb/${id}?v=1`, video: `recordstuff-media://video/${id}?v=1` });
@@ -29,7 +29,7 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
       return { view: current, applied: true };
     });
     window.settings = { read: async () => current, capture: async () => current, choose, ready: async () => {}, onChanged: () => () => {} };
-    await import("./settings");
+    await import("../settings");
     await vi.advanceTimersByTimeAsync(50);
     const trash = async (id: string): Promise<void> => {
       await menu(document.getElementById(`clip-${id}-more`)!);
@@ -38,7 +38,7 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
     };
     // The toast is Sonner's own (2026-10-07): the controller says whether it is open, and the page whether one is still on
     // screen (Sonner slides a dismissed one out over a frame and 200 ms, then removes it).
-    const ctl = await import("./settings-controller");
+    const ctl = await import("../settings-controller");
     const live = () => document.querySelector<HTMLElement>('.undo-toast:not([data-removed="true"])');
     const state = () => [ctl.toastState?.open ? "open" : "closed", !live()];
     await trash("a");

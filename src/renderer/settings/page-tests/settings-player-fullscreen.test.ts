@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { LibraryItemView, SettingsChoiceResult, SettingsView } from "../../shared/settings-panel";
+import type { LibraryItemView, SettingsChoiceResult, SettingsView } from "../../../shared/settings-panel";
 
 const item: LibraryItemView = { id: "a", day: "Today", title: "a", time: "2:02 PM", name: "a.mp4", duration: "1:23", size: "180 MB",
   thumbnail: "recordstuff-media://thumb/a?v=1", video: "recordstuff-media://video/a?v=1" };
@@ -19,7 +19,7 @@ it("keeps the page's video paused while a full-screen play is on its way, and le
   let leave!: (result: SettingsChoiceResult) => void;
   const choose = vi.fn(() => new Promise<SettingsChoiceResult>(resolve => { leave = resolve; }));
   window.settings = { read: async () => view, capture: async () => view, choose, ready: async () => {}, onChanged: () => () => {}, onHidden: () => () => {} };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(1));
   document.getElementById("clip-a-open")!.click();
   const video = document.querySelector<HTMLVideoElement>(".player video")!;

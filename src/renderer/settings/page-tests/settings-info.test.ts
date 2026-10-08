@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsGroup, SettingsView } from "../../shared/settings-panel";
+import type { SettingsGroup, SettingsView } from "../../../shared/settings-panel";
 
 /** A group's secondary explanation sits behind an ⓘ beside its label, driven through the real page module. */
 function view(language: "en" | "zh-TW", info: string | undefined): SettingsView {
@@ -26,7 +26,7 @@ it("shows the explanation on hover and focus, pins it on click, closes it with E
   let push!: (next: SettingsView) => void;
   window.settings = { read: async () => current, capture: async () => current, choose: async () => ({ view: current, applied: true }),
     ready: async () => {}, onChanged: (cb) => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.getElementById("setting-countdownSound")).toBeTruthy());
 
   const info = document.getElementById("setting-countdownSound-info-button") as HTMLButtonElement;

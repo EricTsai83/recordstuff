@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsGroup, SettingsView } from "../../shared/settings-panel";
+import type { SettingsGroup, SettingsView } from "../../../shared/settings-panel";
 
 /** The file name pattern (2026-10-05): a typed row, previewed as it is typed, saved by Enter, put back by Escape. */
 it("previews a draft, saves it trimmed, says why main refused one, and keeps what is typed through a push", async () => {
@@ -21,7 +21,7 @@ it("previews a draft, saves it trimmed, says why main refused one, and keeps wha
   });
   let push!: (view: SettingsView) => void;
   window.settings = { read: async () => current, capture: async () => current, choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   const input = await vi.waitFor(() => document.getElementById("setting-fileName") as HTMLInputElement);
   const note = document.getElementById("setting-fileName-note")!;
   expect([input.value, input.getAttribute("aria-describedby")]).toEqual(["{date} {time}", "setting-fileName-note"]);

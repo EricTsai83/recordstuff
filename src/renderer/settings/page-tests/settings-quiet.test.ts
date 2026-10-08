@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import type { SettingsView } from "../../shared/settings-panel";
+import type { SettingsView } from "../../../shared/settings-panel";
 
 /**
  * A push that changes nothing rewrites none of the controls' states: no disabled flag flips off and on again, and
@@ -20,7 +20,7 @@ it("leaves controls untouched when the same view arrives again", async () => {
     ] };
   let push!: (next: SettingsView) => void;
   window.settings = { read: async () => view, capture: async () => view, choose: async () => ({ view, applied: true }), ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   const sound = await vi_waitFor(() => document.getElementById("setting-countdownSound") as HTMLInputElement | null);
   expect([sound.disabled, (document.getElementById("setting-countdown-3") as HTMLInputElement).disabled]).toEqual([true, true]);
   const changes: string[] = [];
@@ -44,7 +44,7 @@ it("leaves an open failure row, the tab list and the window title untouched when
       guidance: "Free disk space.", detail: "ENOSPC", acknowledged: false, actions: [{ id: "acknowledge", label: "Got it", enabled: true, checked: false }] }] };
   let push!: (next: SettingsView) => void;
   window.settings = { read: async () => view, capture: async () => view, choose: async () => ({ view, applied: true }), ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   (await vi_waitFor(() => document.getElementById("tab-failures"))).click();
   await vi_waitFor(() => document.querySelector(".recording-result[aria-busy]"));
   const changes: string[] = [];

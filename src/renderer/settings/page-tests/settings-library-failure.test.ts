@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import { click, menu } from "../testing/test-interactions";
-import type { LibraryItemView, SettingsView } from "../../shared/settings-panel";
+import { click, menu } from "../../testing/test-interactions";
+import type { LibraryItemView, SettingsView } from "../../../shared/settings-panel";
 
 const item = (id: string): LibraryItemView => ({ id, day: "Today", title: id, name: `${id}.mp4`, time: "2:02 PM", duration: "1:23", size: "180 MB",
   thumbnail: `recordstuff-media://thumb/${id}?v=1`, video: `recordstuff-media://video/${id}?v=1` });
@@ -21,7 +21,7 @@ it("shows the latest failed file action on the page until the next one, as well 
     : group === "outputFolder" ? { view, applied: false, failure: "Could not open the folder." }
     : { view, applied: false, failure: "Could not complete this action. Try again." });
   window.settings = { read: async () => view, capture: async () => view, choose, ready: async () => {}, onChanged: () => () => {}, onHidden: () => () => {} };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(1));
   const error = document.querySelector<HTMLElement>(".library-error")!;
   expect(error.hidden).toBe(true);

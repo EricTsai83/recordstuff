@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import { click, enter, menu } from "../testing/test-interactions";
-import type { LibraryItemView, LibraryView, SettingsView } from "../../shared/settings-panel";
+import { click, enter, menu } from "../../testing/test-interactions";
+import type { LibraryItemView, LibraryView, SettingsView } from "../../../shared/settings-panel";
 
 const item = (id: string, title: string, name = `${id}.mp4`): LibraryItemView => ({ id, day: "Today", title, name, time: "2:02 PM", duration: "1:23", size: "180 MB",
   thumbnail: `recordstuff-media://thumb/${id}?v=1`, video: `recordstuff-media://video/${id}?v=1` });
@@ -41,7 +41,7 @@ it("switches layout, brings back a trashed recording, and renames one in place",
   });
   let push!: (next: SettingsView) => void;
   window.settings = { read: async () => current, capture: async () => current, choose, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(2));
   const library = document.getElementById("library")!;
 

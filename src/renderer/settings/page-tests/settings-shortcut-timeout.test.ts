@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
-import { pick } from "../testing/test-interactions";
-import type { SettingsView } from "../../shared/settings-panel";
-import { DEFAULT_HOTKEY } from "../../shared/hotkey";
+import { pick } from "../../testing/test-interactions";
+import type { SettingsView } from "../../../shared/settings-panel";
+import { DEFAULT_HOTKEY } from "../../../shared/hotkey";
 
 it("shows and announces timeout, restores focus, translates and clears it on a new edit", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
@@ -21,7 +21,7 @@ it("shows and announces timeout, restores focus, translates and clears it on a n
       delete current.groups[0]!.captureTimedOut;
       return current;
     }, ready: async () => {}, onChanged: cb => { push = cb; return () => {}; } };
-  await import("./settings");
+  await import("../settings");
   await vi.waitFor(() => expect(document.getElementById("tab-general")).toBeTruthy());
   document.getElementById("tab-general")!.click();
   await vi.waitFor(() => expect(document.getElementById("setting-hotkey")).toBeTruthy());
