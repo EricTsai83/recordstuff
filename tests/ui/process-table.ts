@@ -19,8 +19,9 @@ const END_LINE = /^<<<process-table-end (\d+)$/;
 export const WINDOWS_SERVER_SCRIPT = [
   "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
   "while ($null -ne ($request = [Console]::In.ReadLine())) {",
-  "  try { Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CommandLine -ErrorAction Stop | ForEach-Object {",
-  "    \"$($_.ProcessId) $($_.ParentProcessId) $(($_.CommandLine -replace '[\\r\\n]+', ' '))\" } }",
+  "  try { Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate,CommandLine -ErrorAction Stop | ForEach-Object {",
+  "    $created = if ($_.CreationDate) { $_.CreationDate.ToFileTimeUtc() } else { 0 }",
+  "    \"$($_.ProcessId) $($_.ParentProcessId) @$created $(($_.CommandLine -replace '[\\r\\n]+', ' '))\" } }",
   `  catch { "ERROR $($_.Exception.Message)" }`,
   `  "${END} $request"`,
   "  [Console]::Out.Flush()",
@@ -124,7 +125,11 @@ export class ProcessTableServer {
 
 let windowsServer: ProcessTableServer | undefined;
 
-/** `pid ppid command` lines of every process. */
+/**
+ * `pid ppid command` lines of every process; on Windows `pid ppid @created command`, with the creation time as a
+ * FILETIME, since Windows keeps a dead parent's pid as the ppid of its children and later gives that pid to another
+ * process (fixtures.ts `ownedProcesses`).
+ */
 export function processTableRows(): Promise<string> {
   if (process.platform === "win32") {
     windowsServer ??= new ProcessTableServer("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", WINDOWS_SERVER_SCRIPT]);

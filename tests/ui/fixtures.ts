@@ -139,28 +139,43 @@ export interface HostGlobals {
 export async function ownedProcesses(root: number, marker: string): Promise<number[]> {
   const rows = await processTableRows();
   const children = new Map<number, number[]>();
+  const created = new Map<number, number>();
   const marked: number[] = [];
   const executable = electronExecutable().toLowerCase();
   for (const line of rows.split(/\r?\n/)) {
-    const match = /^\s*(\d+)\s+(\d+)\s?(.*)$/.exec(line);
+    const match = /^\s*(\d+)\s+(\d+)\s?(?:@(\d+)\s?)?(.*)$/.exec(line);
     if (!match) continue;
-    const pid = Number(match[1]), ppid = Number(match[2]), command = match[3]!;
+    const pid = Number(match[1]), ppid = Number(match[2]), command = match[4]!;
+    if (match[3] !== undefined) created.set(pid, Number(match[3]));
+    lastCommands.set(pid, command);
     children.set(ppid, [...(children.get(ppid) ?? []), pid]);
     // Only this checkout's Electron (a helper run as Node, such as the local-data cleanup worker) is adopted by
     // folder: a person's `tail -f` of the launch's log names the folder too, and is never this launch's to end.
     const runs = command.replace(/^"/, "").toLowerCase().startsWith(executable);
     if (runs && command.includes(marker) && pid !== process.pid) marked.push(pid);
   }
+  // Windows keeps a dead parent's pid as its children's ppid and gives that pid to later processes: a process is a
+  // child only if it was created after its parent, or an unrelated one (a system process) would be adopted, then
+  // signalled, and reported as surviving it (CI, 2026-10-09).
+  const childOf = (parent: number, child: number): boolean =>
+    !created.has(parent) || !created.has(child) || created.get(child)! >= created.get(parent)!;
   const tree: number[] = [];
   const queue = [root, ...marked];
   while (queue.length) {
     const pid = queue.shift()!;
     if (tree.includes(pid)) continue;
     tree.push(pid);
-    queue.push(...(children.get(pid) ?? []));
+    queue.push(...(children.get(pid) ?? []).filter(child => childOf(pid, child)));
   }
   return tree;
 }
+
+/** The command line each pid last had in a table read, to name a process a teardown could not end. */
+const lastCommands = new Map<number, string>();
+export const describeProcess = (pid: number): string => {
+  const command = lastCommands.get(pid);
+  return command ? `${pid} (${command.length > 160 ? `${command.slice(0, 160)}…` : command})` : String(pid);
+};
 
 /** The checkout's Electron executable, as its processes' command lines start (pnpm's symlinks resolved). */
 let executablePath: string | undefined;
@@ -373,7 +388,7 @@ export const test = launchers.extend<{ containment: void }>({
       ...(report.error && report.closedNormally ? [`${report.kind}: ${report.error}`] : []),
       ...(report.closedNormally ? [] : [`${report.kind}: did not close normally (${report.error ?? "unknown"})`]),
       ...(report.forced ? [`${report.kind}: process tree needed SIGKILL`] : []),
-      ...(report.remaining.length ? [`${report.kind}: processes still running: ${report.remaining.join(", ")}`] : []),
+      ...(report.remaining.length ? [`${report.kind}: processes still running: ${report.remaining.map(describeProcess).join(", ")}`] : []),
       ...report.pageErrors.map(error => `${report.kind}: page error ${error}`),
     ]);
     for (const report of reports) {
