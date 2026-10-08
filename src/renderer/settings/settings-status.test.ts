@@ -112,7 +112,8 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
 
   push({ ...ready, revision: 3, hint: "Recording in progress; only language, appearance and icon click can change.",
     status: { tone: "recording", title: "Recording", detail: "" }, tabs: [ready.tabs[0]!, { id: "failures", label: "Troubleshooting" }] });
-  expect([card.hidden, card.dataset.tone, detail.hidden, document.getElementById("hint")!.hidden, action.hidden]).toEqual([false, "recording", true, false, true]);
+  // A recording shows no card: the sidebar keeps it for what needs the user (2026-10-08).
+  expect([card.hidden, card.dataset.tone, detail.hidden, action.hidden]).toEqual([true, "recording", true, true]);
   // The card is no live region: a state it newly shows is read through #feedback, once, a recording begun from the shortcut included.
   const feedback = document.getElementById("feedback")!;
   expect(feedback.textContent).toBe("Recording.");

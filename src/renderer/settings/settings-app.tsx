@@ -1,6 +1,6 @@
 /** The settings window's shell: the tabs, the status card, the page each tab draws, the footer and the overlays. */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Film, Wrench, Video, Settings } from "lucide-react";
+import { Film, Wrench, Video, Settings, Lock } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Card } from "../components/ui/card";
@@ -40,30 +40,19 @@ function Status() {
     <Card
       id="status"
       // Stable action IDs identify the permission card in either language.
-      className={permission ? "status gap-3 rounded-[18px] p-3.5 ring-(--permission-card-ring)" : "status gap-2.5 p-3"}
-      hidden={!status || status.tone === "ready"}
+      // The permission card is an ink tile in both themes; a recording tints the card in the recording colours.
+      className={permission
+        ? "status grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-2 rounded-xl bg-(--permission-card-bg) p-3 text-(--permission-card-fg) shadow-(--permission-card-shadow) ring-0 dark:bg-(--permission-card-bg) dark:shadow-(--permission-card-shadow)"
+        : "status gap-2.5 p-3 shadow-none data-[tone=recording]:bg-recording-surface data-[tone=recording]:ring-recording-border dark:data-[tone=recording]:bg-recording-surface"}
+      // Only what needs the user: a ready app and a recording in progress show no card (#feedback still says the state).
+      hidden={!status || status.tone === "ready" || status.tone === "recording"}
       data-tone={status?.tone}
       data-permission={permission || undefined}
     >
       <span className="status-mark" aria-hidden="true" hidden={permission} />
       {permission && (
         <span className="permission-icon" aria-hidden="true">
-          <svg viewBox="0 0 48 48" fill="none">
-            <rect x="2" y="2" width="44" height="44" rx="12" fill="var(--brand)" />
-            <rect x="2.5" y="2.5" width="43" height="43" rx="11.5" stroke="var(--brand-foreground)" strokeOpacity="0.12" />
-            <rect x="10" y="11" width="28" height="21" rx="4.5" stroke="var(--brand-foreground)" strokeWidth="2" />
-            <path d="M24 32v5m-6 0h12" stroke="var(--brand-foreground)" strokeWidth="2" strokeLinecap="round" />
-            <circle cx="24" cy="21.5" r="5.2" stroke="var(--brand-foreground)" strokeWidth="1.5" />
-            <circle cx="24" cy="21.5" r="2.7" fill="var(--indicator)" />
-            <g fill="var(--brand)" strokeLinejoin="round">
-              <path d="m39 27.5 6.5 2.5v5.5c0 4-2.5 6.8-6.5 8.5-4-1.7-6.5-4.5-6.5-8.5V30l6.5-2.5Z" stroke="var(--brand)" strokeWidth="5" />
-              <path d="m39 27.5 6.5 2.5v5.5c0 4-2.5 6.8-6.5 8.5-4-1.7-6.5-4.5-6.5-8.5V30l6.5-2.5Z" stroke="var(--brand-foreground)" strokeWidth="1.8" />
-            </g>
-            <rect x="35.5" y="33.8" width="7" height="6.2" rx="1.3" fill="var(--brand-foreground)" />
-            <path d="M37.2 34v-1.3a1.8 1.8 0 0 1 3.6 0V34" stroke="var(--brand-foreground)" strokeWidth="1.5" strokeLinecap="round" />
-            <circle cx="39" cy="36.5" r="0.8" fill="var(--brand)" />
-            <path d="M39 37v1" stroke="var(--brand)" strokeWidth="1" strokeLinecap="round" />
-          </svg>
+          <Lock strokeWidth={2} />
         </span>
       )}
       <div className="status-text">
@@ -74,7 +63,7 @@ function Status() {
         </div>
         <p
           id="status-detail"
-          className={permission ? "status-detail text-center leading-relaxed" : "status-detail"}
+          className="status-detail"
           hidden={permission || !status?.detail || Boolean(current?.hint)}
         >
           {status?.detail}
@@ -89,10 +78,10 @@ function Status() {
       <div className="status-actions">
         <Button
           id="status-action"
-          variant={permission ? "outline" : "default"}
+          variant="default"
           wrap={permission}
           className={permission
-            ? `darwin:wide:window-no-drag w-full min-h-11 rounded-xl border-(--permission-action-border) bg-(--permission-action-bg) py-2 text-center font-semibold text-(--permission-action-ink) hover:bg-(--permission-action-bg) hover:border-primary hover:text-primary dark:bg-(--permission-action-bg) ${status?.action?.id === "permission" ? "justify-center gap-2 px-2.5" : ""}`
+            ? `darwin:wide:window-no-drag w-full min-h-8 rounded-lg py-1.5 text-center font-semibold ${status?.action?.id === "permission" ? "justify-center gap-2 px-2.5" : ""}`
             : "darwin:wide:window-no-drag wide:w-full"}
           hidden={!status?.action}
           data-action={status?.action?.id}
@@ -102,7 +91,7 @@ function Status() {
               void model.choose("status", status.action.id, "status-action");
           }}
         >
-          {permission && status?.action?.id === "permission" && <Settings className="size-[18px] text-foreground group-hover/button:text-primary" aria-hidden="true" />}
+          {permission && status?.action?.id === "permission" && <Settings className="size-4" aria-hidden="true" />}
           {permission ? (
             <span id="status-action-label" className={status?.action?.id === "permission" ? "min-w-0 text-center" : undefined}>
               {status?.action?.label}
@@ -114,8 +103,9 @@ function Status() {
           variant="link"
           wrap={permission}
           className={permission
-            ? "darwin:wide:window-no-drag w-full min-h-7 flex-wrap gap-x-1 gap-y-0 rounded-lg px-0 py-1 text-center font-normal text-muted-foreground hover:text-muted-foreground hover:no-underline underline-offset-3"
-            : "darwin:wide:window-no-drag h-auto min-h-6 max-w-full justify-start px-0 text-left font-normal whitespace-normal underline underline-offset-3 text-muted-foreground hover:text-primary"}
+            // The hint stays quiet; only the action itself follows the link style (the label below).
+            ? "darwin:wide:window-no-drag w-full min-h-7 flex-wrap gap-x-1 gap-y-0 rounded-lg px-0 py-1 text-center font-normal text-(--permission-card-muted) hover:text-(--permission-card-muted) hover:no-underline"
+            : "darwin:wide:window-no-drag h-auto min-h-6 max-w-full justify-start px-0 text-left font-normal whitespace-normal"}
           hidden={!status?.secondaryAction}
           aria-label={permission ? status?.secondaryAction?.label : undefined}
           data-action={status?.secondaryAction?.id}
@@ -131,9 +121,9 @@ function Status() {
         >
           {permission ? (
             <>
-              <span id="status-secondary-hint" className="whitespace-nowrap text-[color-mix(in_oklab,var(--muted-foreground)_80%,var(--foreground))]" hidden={!hasAllowedHint}>{allowedHint}</span>
+              <span id="status-secondary-hint" className="whitespace-nowrap" hidden={!hasAllowedHint}>{allowedHint}</span>
               {hasAllowedHint && " "}
-              <span id="status-secondary-label" className="whitespace-nowrap font-bold text-primary group-hover/button:text-primary/85 decoration-current group-hover/button:underline underline-offset-3">
+              <span id="status-secondary-label" className="whitespace-nowrap font-semibold text-(--permission-card-fg) decoration-current underline-offset-4 group-hover/button:text-primary group-hover/button:underline">
                 {relaunchLabel}
               </span>
             </>
