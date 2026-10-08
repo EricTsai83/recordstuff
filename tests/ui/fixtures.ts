@@ -28,6 +28,7 @@ export { expect };
 export const ROOT = path.resolve(__dirname, "../..");
 const CLOSE_TIMEOUT_MS = 15_000;
 const EXIT_TIMEOUT_MS = 5_000;
+const SCAN_INTERVAL_MS = 1_000;
 
 /** Stored preferences the app host starts from; anything not given takes the production default. */
 export interface SeedSettings {
@@ -115,8 +116,9 @@ export interface HostGlobals {
  */
 export function ownedProcesses(root: number, marker: string): number[] {
   const rows = process.platform === "win32"
-    ? execFileSync("powershell.exe", ["-NoProfile", "-Command",
-      "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId) $($_.ParentProcessId) $($_.CommandLine)\" }"], { encoding: "utf8", timeout: 30_000, maxBuffer: 64 << 20 })
+    ? execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+      "Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CommandLine | ForEach-Object { \"$($_.ProcessId) $($_.ParentProcessId) $($_.CommandLine)\" }"],
+    { encoding: "utf8", timeout: 30_000, maxBuffer: 64 << 20, windowsHide: true })
     : execFileSync("ps", ["-A", "-ww", "-o", "pid=,ppid=,command="], { encoding: "utf8", timeout: 10_000, maxBuffer: 64 << 20 });
   const children = new Map<number, number[]>();
   const marked: number[] = [];
@@ -179,9 +181,12 @@ export async function tearDown(launched: Launched): Promise<Teardown> {
   const errors: string[] = [];
   /** Every process seen to belong to the launch, rescanned while it shuts down: a helper started by quit counts too. */
   const tree = new Set<number>([launched.pid]);
+  // Each Windows scan starts a PowerShell, so waiting for the end rescans about once a second rather than per poll.
+  let scanned = 0;
   const scan = (): void => {
+    scanned = Date.now();
     try { for (const pid of ownedProcesses(launched.pid, launched.data)) tree.add(pid); }
-    catch (error) { if (!errors.some(text => text.startsWith("process table"))) errors.push(`process table unreadable: ${String(error)}`); }
+    catch (error) { if (!errors.some(text => text.startsWith("process table"))) errors.push(`process table unreadable: ${describeFailure(error)}`); }
   };
   scan();
   result.desktop = await launched.probe.stop();
@@ -199,7 +204,11 @@ export async function tearDown(launched: Launched): Promise<Teardown> {
     if (!result.closedNormally) errors.push(`exited before teardown (code ${launched.child.exitCode}, signal ${launched.child.signalCode})`);
   }
   launched.closed = true;
-  const gone = (): boolean => { scan(); return [...tree].every(pid => !alive(pid)); };
+  scanned = 0; // the first check after close always rescans: a helper started by quit counts too
+  const gone = (): boolean => {
+    if (Date.now() - scanned >= SCAN_INTERVAL_MS) scan();
+    return [...tree].every(pid => !alive(pid));
+  };
   if (!await until(gone, EXIT_TIMEOUT_MS)) {
     // Only processes this launch owns are ever signalled: its main's descendants and its own Electron helpers.
     result.forced = true;
@@ -215,6 +224,20 @@ export async function tearDown(launched: Launched): Promise<Teardown> {
   if (errors.length) result.error = errors.join("; ");
   return result;
 }
+
+/**
+ * A failed command with its exit status and stderr: 3221225794 (0xC0000142, STATUS_DLL_INIT_FAILED) means Windows
+ * could not start the process at all, a runner-wide condition rather than a fault in the launch under test.
+ */
+const describeFailure = (error: unknown): string => {
+  const { status, signal, stderr } = error as { status?: number | null; signal?: string | null; stderr?: string | Buffer };
+  const details = [
+    status != null ? `status ${status}${status > 0xffff ? ` (0x${status.toString(16).toUpperCase()})` : ""}` : "",
+    signal ? `signal ${signal}` : "",
+    String(stderr ?? "").trim().slice(0, 500),
+  ].filter(Boolean);
+  return `${String(error).split("\n")[0]}${details.length ? ` [${details.join("; ")}]` : ""}`;
+};
 
 const timeoutAfter = <T = never>(ms: number, what: string): Promise<T> =>
   new Promise((_resolve, reject) => setTimeout(() => reject(new Error(`${what} timed out after ${ms} ms`)), ms).unref());
