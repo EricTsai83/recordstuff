@@ -48,6 +48,11 @@ it("previews a draft, saves it trimmed, says why main refused one, and keeps wha
   await vi.waitFor(() => expect(document.querySelector("#setting-fileName-row .save-error p")!.textContent).toBe("Include {time} or {second} so each recording gets its own name."));
   expect(document.querySelector<HTMLElement>("#setting-fileName-row .reselect")!.hidden).toBe(true);
   expect(input.value).toBe("Meeting {date}");
+  // Leaving the field or Enter again does not send the refused pattern a second time.
+  input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(choose).toHaveBeenCalledTimes(1);
 
   // Escape puts the saved pattern back and keeps the window open; Enter saves a usable one, trimmed.
   const close = vi.spyOn(window, "close").mockImplementation(() => {});

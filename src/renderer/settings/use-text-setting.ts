@@ -30,10 +30,16 @@ export function useTextSetting(group: SettingsGroup) {
   }, [value, draft]);
   const submit = (): void => {
     const name = (field.current?.value ?? draft).trim();
+    // Main already refused this very value: leaving the field or Enter again would only repeat its answer.
+    const refusedAlready =
+      model.failure?.group === group.id &&
+      model.failure.refused &&
+      model.failure.choice === name;
     if (
       !group.enabled ||
       name === model.committed(group) ||
-      name === submitted.current
+      name === submitted.current ||
+      refusedAlready
     )
       return;
     submitted.current = name;
