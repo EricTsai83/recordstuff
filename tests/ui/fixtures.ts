@@ -44,7 +44,8 @@ const recordWorker = (line: string): void => {
 process.on("uncaughtExceptionMonitor", (error, origin) => {
   recordWorker(`${origin}: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
 });
-process.on("exit", code => { if (code !== 0) recordWorker(`exit ${code}`); });
+// Inside process.exit the stack names its caller; a worker that ran out of work names only Node's own frames.
+process.on("exit", code => { if (code !== 0) recordWorker(`exit ${code}: ${new Error("exit").stack ?? ""}`); });
 
 /** Stored preferences the app host starts from; anything not given takes the production default. */
 export interface SeedSettings {

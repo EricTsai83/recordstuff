@@ -200,9 +200,18 @@ test("P01–P10, P16–P19 the player: a card plays the clip; named controls; re
   const sought = await eventually(async () => { const p = await playback(page, ".player .pc > video"); return p.paused && Math.abs(p.time - p.duration * 0.75) < 0.6; });
   expect.soft(sought, `P08 a drag along the seek bar moves the video from 0.5 s to where it is let go ${JSON.stringify({ trace, ...await playback(page, ".player .pc > video") })}`).toBe(true);
   const mute = await centre(page, "#player-mute", false);
+  // Moved onto the button while the controls were still waking, the pointer can leave :hover with what was under it
+  // then; a person's pointer moves again, so each look nudges it by a pixel.
+  let nudge = 0;
+  const volumeLevel = (): Promise<{ width: number; height: number } | null> =>
+    read<{ width: number; height: number } | null>(page, `document.getElementById("player-volume")?.getBoundingClientRect().toJSON() ?? null`);
   await page.mouse.move(mute.x, mute.y);
-  await page.waitForTimeout(350);
-  const level = await read<{ width: number; height: number } | null>(page, `document.getElementById("player-volume")?.getBoundingClientRect().toJSON() ?? null`);
+  await eventually(async () => {
+    await page.mouse.move(mute.x + (nudge++ % 2), mute.y);
+    const level = await volumeLevel();
+    return (level?.width ?? 0) > 0 && (level?.height ?? 0) > 0;
+  }, 2000);
+  const level = await volumeLevel();
   expect.soft((level?.width ?? 0) > 0 && (level?.height ?? 0) > 0, `P09 with the pointer on the mute button the volume slider is there to use ${JSON.stringify(level)}`).toBe(true);
   if (await read(page, "document.documentElement.dataset.platform") === "darwin") {
     const corner = await read<{ covered: string[] }>(page, `(() => {
