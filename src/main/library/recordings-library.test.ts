@@ -3,7 +3,7 @@ import fsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LENGTHS_PUBLISH_MS, RecordingsLibrary, THUMBNAILS_KEPT, UNDO_TRASH_MS, WATCH_SETTLE_MS, fileId, isListedName, parseRange, stampedTime } from "./recordings-library";
+import { LENGTHS_PUBLISH_MS, RecordingsLibrary, THUMBNAILS_AT_ONCE, THUMBNAILS_KEPT, UNDO_TRASH_MS, WATCH_SETTLE_MS, fileId, isListedName, parseRange, stampedTime } from "./recordings-library";
 import { formatTimestamp } from "../recording/recorder";
 
 let dir: string;
@@ -14,7 +14,7 @@ function setup() {
   const changed = vi.fn();
   const deps = {
     dir: () => dir, changed, log: vi.fn(),
-    thumbnail: vi.fn(async () => Buffer.from("jpeg")),
+    thumbnail: vi.fn(async (_file: string): Promise<Buffer | undefined> => Buffer.from("jpeg")),
     trash: vi.fn(async (file: string) => fs.rmSync(file)),
     open: vi.fn(async () => ""), reveal: vi.fn(),
   };
@@ -136,6 +136,83 @@ describe("RecordingsLibrary", () => {
     expect((await library.handle(new Request(`recordstuff-media://other/${id}`))).status).toBe(404);
     const thumb = await library.handle(new Request(`recordstuff-media://thumb/${id}`));
     expect([thumb.status, thumb.headers.get("content-type"), await thumb.text()]).toEqual([200, "image/jpeg", "jpeg"]);
+  });
+  it("lets the page keep a thumbnail only under the address of the file's current version", async () => {
+    touch("clip.mp4");
+    const { library } = setup();
+    await library.refresh();
+    const { id, version } = library.state.files[0]!;
+    const cacheControl = async (query: string) =>
+      (await library.handle(new Request(`recordstuff-media://thumb/${id}${query}`))).headers.get("cache-control");
+    expect(await cacheControl(`?v=${version}`)).toBe("max-age=31536000, immutable");
+    expect(await cacheControl("?v=10-0")).toBe("no-cache");
+    expect(await cacheControl("")).toBe("no-cache");
+  });
+  it("makes at most a few thumbnails at once, then the newest asked first", async () => {
+    for (let index = 0; index < THUMBNAILS_AT_ONCE + 2; index++) touch(`clip-${index}.mp4`);
+    const { library, deps } = setup();
+    const pending = new Map<string, { resolve: (jpeg: Buffer) => void; reject: (cause: Error) => void }>();
+    let making = 0, most = 0;
+    deps.thumbnail.mockImplementation(file => new Promise<Buffer | undefined>((resolve, reject) => {
+      making++; most = Math.max(most, making);
+      const done = () => { making--; pending.delete(file); };
+      pending.set(file, { resolve: jpeg => { done(); resolve(jpeg); }, reject: cause => { done(); reject(cause); } });
+    }));
+    await library.refresh();
+    const files = library.state.files;
+    const jpegs = files.map(file => library.thumbnail(file));
+    await vi.waitFor(() => expect(deps.thumbnail).toHaveBeenCalledTimes(THUMBNAILS_AT_ONCE));
+    pending.get(files[1]!.path)!.resolve(Buffer.from("one"));
+    await vi.waitFor(() => expect(deps.thumbnail).toHaveBeenCalledTimes(THUMBNAILS_AT_ONCE + 1));
+    // After a fast scroll the newest asked are the cards in view; the ones asked on the way past wait.
+    expect(deps.thumbnail).toHaveBeenLastCalledWith(files[THUMBNAILS_AT_ONCE + 1]!.path);
+    // A failed one gives up its turn as well.
+    pending.get(files[0]!.path)!.reject(new Error("unreadable"));
+    await vi.waitFor(() => expect(deps.thumbnail).toHaveBeenCalledTimes(THUMBNAILS_AT_ONCE + 2));
+    expect(deps.thumbnail).toHaveBeenLastCalledWith(files[THUMBNAILS_AT_ONCE]!.path);
+    for (const { resolve } of [...pending.values()]) resolve(Buffer.from("rest"));
+    expect((await Promise.all(jpegs)).map(jpeg => jpeg?.toString())).toEqual([undefined, "one", ...Array<string>(THUMBNAILS_AT_ONCE).fill("rest")]);
+    expect(most).toBe(THUMBNAILS_AT_ONCE);
+  });
+  it("does not let the page keep a picture read after the file changed under its address", async () => {
+    const file = touch("clip.mp4");
+    const { library, deps } = setup();
+    await library.refresh();
+    const { id, version } = library.state.files[0]!;
+    // The picture is read once the file has changed, as when it waited its turn meanwhile.
+    deps.thumbnail.mockImplementationOnce(async () => { fs.writeFileSync(file, "longer content now"); return Buffer.from("new"); });
+    const thumb = await library.handle(new Request(`recordstuff-media://thumb/${id}?v=${version}`));
+    expect([thumb.status, thumb.headers.get("cache-control")]).toEqual([200, "no-cache"]);
+  });
+  it("makes a renamed file's thumbnail from its new name when the old one was not made yet", async () => {
+    for (let index = 0; index < THUMBNAILS_AT_ONCE + 1; index++) touch(`clip-${index}.mp4`);
+    const { library, deps } = setup();
+    // The first few are held until the rename; every later one reads at once.
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    deps.thumbnail.mockImplementation(async file => {
+      await held;
+      return fs.existsSync(file) ? Buffer.from(path.basename(file)) : undefined;
+    });
+    await library.refresh();
+    const waiting = library.state.files[THUMBNAILS_AT_ONCE]!;
+    const jpegs = library.state.files.map(file => library.thumbnail(file));
+    await vi.waitFor(() => expect(deps.thumbnail).toHaveBeenCalledTimes(THUMBNAILS_AT_ONCE));
+    const renamed = await library.rename(waiting.id, "Renamed");
+    expect(renamed).toEqual({ id: fileId(path.join(dir, "Renamed.mp4")) });
+    release();
+    await Promise.all(jpegs);
+    const listed = library.state.files.find(file => file.name === "Renamed.mp4")!;
+    expect((await library.thumbnail(listed))?.toString()).toBe("Renamed.mp4");
+  });
+  it("carries a made thumbnail over to a file's new name", async () => {
+    touch("clip.mp4");
+    const { library, deps } = setup();
+    await library.refresh();
+    await library.thumbnail(library.state.files[0]!);
+    await library.rename(library.state.files[0]!.id, "Renamed");
+    await library.thumbnail(library.state.files[0]!);
+    expect(deps.thumbnail).toHaveBeenCalledTimes(1);
   });
   it("makes a thumbnail once per version of a file", async () => {
     const file = touch("clip.mp4");

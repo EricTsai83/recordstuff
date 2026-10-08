@@ -58,6 +58,7 @@ export interface LibraryState {
   /** A file whose delayed move to the Trash failed: it is listed again, and the tab says so until the next action. */
   trashFailed?: string;
 }
+interface Thumbnail { version: string; jpeg: Promise<Buffer | undefined>; made?: boolean }
 /** `ino` and `dev`: the file chosen, so a different file at its path by the time it is moved is never the one moved. */
 interface PendingTrash { path: string; name: string; ino: number; dev: number; timer: ReturnType<typeof setTimeout>; moving?: Promise<void> }
 /** Why a rename did not happen; `fileNameProblem`'s reasons, a name already taken, or the file system refusing. */
@@ -75,6 +76,8 @@ export interface LibraryDeps {
   log: (message: string) => void;
   /** Milliseconds on a monotonic clock; paces publishing lengths. */
   now?: () => number;
+  /** Thumbnails made at once; `THUMBNAILS_AT_ONCE` unless a measurement compares another (`Infinity` for no limit). */
+  thumbnailsAtOnce?: number;
 }
 
 const VIDEO = /\.(mp4|m4v|mov)$/i;
@@ -83,6 +86,14 @@ const VIDEO = /\.(mp4|m4v|mov)$/i;
  * menu bar app stays running for days. The least recently shown goes first and is made again if shown.
  */
 export const THUMBNAILS_KEPT = 64;
+/**
+ * Thumbnails made at once: a fast scroll brings many cards near the view together, and each is a QuickLook read of
+ * the video; the rest wait their turn instead of all reading the disk and decoding at the same time. The newest asked
+ * goes first (2026-10-08): after a fast scroll those are the cards in view, while the ones asked on the way past wait.
+ * Four, measured on an M1 Pro (`pnpm measure:thumbnails`, 2026-10-08): QuickLook made 240 pictures as fast as with no
+ * limit, while three left them waiting several times longer.
+ */
+export const THUMBNAILS_AT_ONCE = 4;
 /** How long the folder stays quiet before it is listed again: a save, a copy or a move to the Trash is a burst of events. */
 export const WATCH_SETTLE_MS = 250;
 /** How often lengths read so far are published while a long folder is still being read. */
@@ -109,6 +120,11 @@ export function isListedName(name: string): boolean {
   return !name.startsWith(".") && VIDEO.test(name) && !name.endsWith(".recording.mp4");
 }
 
+/** Changes whenever the file's bytes do, as far as its size and modification time tell. */
+function fileVersion(stat: { size: number; mtimeMs: number }): string {
+  return `${stat.size}-${Math.round(stat.mtimeMs)}`;
+}
+
 /** Stable for a path, so the page keeps a card, its focus and its thumbnail across refreshes. */
 export function fileId(filePath: string): string {
   return createHash("sha256").update(filePath).digest("hex").slice(0, 20);
@@ -133,7 +149,11 @@ export function parseRange(header: string | null, size: number): { start: number
 export class RecordingsLibrary {
   private current: LibraryState;
   private durations = new Map<string, { version: string; seconds: number | undefined }>();
-  private thumbnails = new Map<string, { version: string; jpeg: Promise<Buffer | undefined> }>();
+  /** `made` once the picture exists: only then does it belong to the bytes rather than to a path still to be read. */
+  private thumbnails = new Map<string, Thumbnail>();
+  /** Thumbnails being made, at most `THUMBNAILS_AT_ONCE`, and the ones waiting their turn, newest last. */
+  private thumbnailsMaking = 0;
+  private thumbnailsWaiting: Array<() => void> = [];
   private generation = 0;
   /** The listing being read, and the one requested meanwhile, which every later caller shares. */
   private listing: Promise<void> | undefined;
@@ -213,7 +233,7 @@ export class RecordingsLibrary {
         } catch { return undefined; }
       }));
       files = stats.filter(item => item !== undefined).map(({ entry, filePath, stat }) => {
-        const version = `${stat.size}-${Math.round(stat.mtimeMs)}`;
+        const version = fileVersion(stat);
         const known = this.durations.get(filePath);
         return {
           id: fileId(filePath), path: filePath, name: entry.name, size: stat.size, version,
@@ -486,11 +506,13 @@ export class RecordingsLibrary {
       return { problem: errnoCode(cause) === "ENOENT" ? "missing" : "failed" };
     }
     this.deps.log(`library: renamed ${file.path} to ${target}`);
-    // The same bytes: its length and thumbnail carry over instead of being read again.
-    for (const cache of [this.durations, this.thumbnails] as Array<Map<string, unknown>>) {
-      const known = cache.get(file.path);
-      if (known !== undefined) { cache.delete(file.path); cache.set(target, known); }
-    }
+    // The same bytes: its length and thumbnail carry over instead of being read again. A thumbnail not made yet,
+    // waiting its turn or being read, would read the old path, so it is made again from the new one instead.
+    const seconds = this.durations.get(file.path);
+    if (seconds !== undefined) { this.durations.delete(file.path); this.durations.set(target, seconds); }
+    const thumbnail = this.thumbnails.get(file.path);
+    this.thumbnails.delete(file.path);
+    if (thumbnail?.made) this.thumbnails.set(target, thumbnail);
     await this.refresh();
     return { id: fileId(target) };
   }
@@ -504,16 +526,31 @@ export class RecordingsLibrary {
       this.thumbnails.set(file.path, cached);
       return cached.jpeg;
     }
-    const jpeg = this.deps.thumbnail(file.path).catch((cause: unknown) => {
-      this.deps.log(`library: no thumbnail for ${file.path}: ${String(cause)}`);
-      return undefined;
-    });
-    this.thumbnails.set(file.path, { version: file.version, jpeg });
+    const jpeg = this.makeThumbnail(file.path);
+    const entry: Thumbnail = { version: file.version, jpeg };
+    void jpeg.then(made => { entry.made = made !== undefined; });
+    this.thumbnails.set(file.path, entry);
     for (const oldest of this.thumbnails.keys()) {
       if (this.thumbnails.size <= THUMBNAILS_KEPT) break;
       this.thumbnails.delete(oldest);
     }
     return jpeg;
+  }
+
+  private async makeThumbnail(filePath: string): Promise<Buffer | undefined> {
+    if (this.thumbnailsMaking >= (this.deps.thumbnailsAtOnce ?? THUMBNAILS_AT_ONCE)) await new Promise<void>(resolve => this.thumbnailsWaiting.push(resolve));
+    else this.thumbnailsMaking++;
+    try {
+      return await this.deps.thumbnail(filePath);
+    } catch (cause) {
+      this.deps.log(`library: no thumbnail for ${filePath}: ${String(cause)}`);
+      return undefined;
+    } finally {
+      // The turn passes straight to the newest waiting, so the count stays as it is; with none waiting it drops.
+      const next = this.thumbnailsWaiting.pop();
+      if (next) next();
+      else this.thumbnailsMaking--;
+    }
   }
 
   /** `recordstuff-media://video/<id>` and `recordstuff-media://thumb/<id>`, for listed ids only. */
@@ -523,7 +560,15 @@ export class RecordingsLibrary {
     if (!file || request.method !== "GET") return new Response(null, { status: 404 });
     if (url.host === "thumb") {
       const jpeg = await this.thumbnail(file);
-      return jpeg ? new Response(new Uint8Array(jpeg), { headers: { "content-type": "image/jpeg", "cache-control": "no-cache" } }) : new Response(null, { status: 404 });
+      if (!jpeg) return new Response(null, { status: 404 });
+      // The address carries the file's version, so the picture for it never changes and the page may keep it. An
+      // address from an older listing, or a file changed since it was listed (perhaps while its picture waited its
+      // turn), is answered with whatever was read, which must not be kept under that address.
+      const current = url.searchParams.get("v") === file.version &&
+        await fs.stat(file.path).then(stat => fileVersion(stat) === file.version, () => false);
+      return new Response(new Uint8Array(jpeg), {
+        headers: { "content-type": "image/jpeg", "cache-control": current ? "max-age=31536000, immutable" : "no-cache" },
+      });
     }
     if (url.host !== "video") return new Response(null, { status: 404 });
     let size: number;

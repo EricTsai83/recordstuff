@@ -59,6 +59,7 @@ import { AppMenu } from "./menus/app-menu";
 import { VideoFullScreen } from "./library/video-fullscreen";
 import { SettingsWindow } from "./settings/settings-window";
 import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "./library/recordings-library";
+import { videoThumbnail } from "./library/video-thumbnail";
 import type { AppAction, AppContext } from "./app/ui-model";
 import { APP_NAME } from "./lib/app-name";
 import { preferencesUnlocked } from "./recording/recording-lock";
@@ -233,11 +234,7 @@ async function main(): Promise<void> {
     dir: () => settings.outputDir,
     // Only Settings shows the listing; the tray has nothing to redraw.
     changed: () => settingsWindow.refresh(),
-    thumbnail: async file => {
-      const image = await nativeImage.createThumbnailFromPath(file, { width: 480, height: 270 });
-      // A video frame: as JPEG it is several times smaller than as PNG, in the cache and on the way to the page.
-      return image.isEmpty() ? undefined : image.toJPEG(85);
-    },
+    thumbnail: file => videoThumbnail(nativeImage, file),
     trash: file => shell.trashItem(file),
     open: file => shell.openPath(file),
     reveal: file => shell.showItemInFolder(file),
