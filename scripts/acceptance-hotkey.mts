@@ -39,7 +39,7 @@
  * macOS only (`open`, `osascript`, `pgrep`). Nothing here ships with the app.
  */
 import { setTimeout as delay } from "node:timers/promises";
-import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings } from "./lib/runner/runner-env.mts";
+import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings, runnerArgs } from "./lib/runner/runner-env.mts";
 import { escapeRegExp, recordStuffPids, command } from "./lib/runner/processes.mts";
 import { confirmedIdle, quitIdleApp, sessionEnded, settleRecording, waitForLog, waitForRecord, type TerminalRecord } from "./lib/acceptance/acceptance-runtime.mts";
 import { inputDiagnostics } from "./lib/acceptance/acceptance-diagnostics.mts";
@@ -81,7 +81,7 @@ let openMaterial = true;
 let cancelCase = true;
 let countdownSound = false;
 let outDir: string | undefined;
-const argv = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--"));
+const argv = runnerArgs();
 for (let i = 0; i < argv.length; i += 1) {
   const arg = argv[i];
   if (arg === "--seconds") seconds = Number(argv[++i]);

@@ -6,7 +6,7 @@
  */
 import { command } from "./lib/runner/processes.mts";
 import { buildFixture } from "./lib/runner/build-fixture.mts";
-import { scrubbedEnv } from "./lib/runner/runner-env.mts";
+import { scrubbedEnv, runnerArgs } from "./lib/runner/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -25,7 +25,7 @@ import {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const usage = "Usage: pnpm acceptance:shortcut-layout [-- --source <input source id>] [-- --drill-layout-aware]";
-const args = process.argv.slice(2).filter(arg => arg !== "--");
+const args = runnerArgs();
 let requested: string | undefined;
 let drill = false;
 for (let i = 0; i < args.length; i++) {

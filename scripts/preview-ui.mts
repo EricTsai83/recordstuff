@@ -14,7 +14,7 @@
  * docs/verification/measurements/<timestamp>-ui-preview/. Requires `pnpm build` output. Exit 2 when a prerequisite is
  * missing, 1 when the render failed. Nothing here ships with the app.
  */
-import { scrubbedEnv } from "./lib/runner/runner-env.mts";
+import { scrubbedEnv, runnerArgs } from "./lib/runner/runner-env.mts";
 import { buildFixture } from "./lib/runner/build-fixture.mts";
 import { runIsolatedProcess } from "./lib/runner/isolated-process.mts";
 import { INTERRUPT_EXIT, interruptExitCode } from "./lib/runner/processes.mts";
@@ -27,7 +27,7 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ELECTRON = path.join(REPO_ROOT, "node_modules/.bin/electron");
 
-const argv = process.argv.slice(2).filter((arg, index) => !(index === 0 && arg === "--"));
+const argv = runnerArgs();
 let outDir: string | undefined;
 for (let i = 0; i < argv.length; i += 1) {
   if (argv[i] === "--out" && argv[i + 1] !== undefined && !argv[i + 1]!.startsWith("--")) outDir = argv[++i];

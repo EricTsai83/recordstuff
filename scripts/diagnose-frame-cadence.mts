@@ -23,7 +23,7 @@
  * handler can stop it.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { scrubbedEnv } from "./lib/runner/runner-env.mts";
+import { scrubbedEnv, runnerArgs } from "./lib/runner/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -406,7 +406,7 @@ function markdown(runs: RunReport[], env: Record<string, string | undefined>, op
 }
 
 async function main(): Promise<void> {
-  const options = parseArgs(process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--")));
+  const options = parseArgs(runnerArgs());
   if (process.platform !== "darwin") usage("the cadence diagnostic requires macOS");
   requireMediaTimeout();
   if (!hasTool("ffprobe")) { console.error("BLOCKED: ffprobe missing (brew install ffmpeg). Nothing was recorded."); process.exit(2); }

@@ -17,7 +17,7 @@
  * 130/143 after SIGINT/SIGTERM (the benchmark's own files are removed).
  */
 import { spawn } from "node:child_process";
-import { scrubbedEnv } from "./lib/runner/runner-env.mts";
+import { scrubbedEnv, runnerArgs } from "./lib/runner/runner-env.mts";
 import { MEASUREMENTS_DIR } from "./lib/verification/verify-recording.mts";
 import fs from "node:fs";
 import path from "node:path";
@@ -118,7 +118,7 @@ function requiredBytes(options: Pick<Options, "sizes" | "repeat" | "keep">): num
 }
 
 async function main(): Promise<void> {
-  const options = parseOptions(process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--")));
+  const options = parseOptions(runnerArgs());
   fs.mkdirSync(options.dir, { recursive: true });
   const needed = requiredBytes(options);
   const free = freeBytes(options.dir);

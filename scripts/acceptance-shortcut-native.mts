@@ -7,7 +7,7 @@
  * recording. The drills are intentional failures that exercise this runner's cleanup.
  */
 import { buildFixture } from "./lib/runner/build-fixture.mts";
-import { scrubbedEnv } from "./lib/runner/runner-env.mts";
+import { scrubbedEnv, runnerArgs } from "./lib/runner/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -21,7 +21,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 const reportDir = path.join(root, "docs/verification/measurements", `${stamp}-shortcut-native`);
-const args = process.argv.slice(2).filter(arg => arg !== "--");
+const args = runnerArgs();
 // Cleanup drills are intentional failures, not successful acceptance runs.
 const drill = args[0];
 // A usage error or a missing build is not a failed round: exit 2, as the other runners do.

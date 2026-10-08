@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import { auditToolCleanup } from "./lib/runner/tool-cleanup-audit.mts";
+import { runnerArgs } from "./lib/runner/runner-env.mts";
 
-const args = process.argv.slice(2);
-if (args[0] === "--") args.shift();
+const args = runnerArgs();
 if (args.includes("--help")) {
   console.log("Usage: pnpm acceptance:cleanup-audit [--owned-pid PID ...] [--output report.json]\nRead-only: checks known Software Cursor windows and supplied owned PIDs, including zombies.\nExit 0: audited scope clear; 1: remnants; 2: inspection unavailable/invalid arguments. No tools or apps are terminated.");
   process.exit(0);

@@ -32,7 +32,7 @@
  * 0 otherwise.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { APP_LOG_PATH, APP_SETTINGS_PATH, scrubbedEnv } from "./lib/runner/runner-env.mts";
+import { APP_LOG_PATH, APP_SETTINGS_PATH, scrubbedEnv, runnerArgs } from "./lib/runner/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -78,7 +78,7 @@ function usage(message?: string): never {
 }
 
 const roundStarted = Date.now();
-const argv = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--"));
+const argv = runnerArgs();
 const parsed = parseMatrixArgs(argv, Object.keys(MATRICES));
 if (!parsed.ok) usage(parsed.error);
 const { names, repeat, openMaterial, dryRun } = parsed.options;

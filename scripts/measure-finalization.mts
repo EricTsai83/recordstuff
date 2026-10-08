@@ -25,7 +25,7 @@
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { MEASUREMENTS_DIR } from "./lib/verification/verify-recording.mts";
-import { APP_LOG_PATH, scrubbedEnv } from "./lib/runner/runner-env.mts";
+import { APP_LOG_PATH, scrubbedEnv, runnerArgs } from "./lib/runner/runner-env.mts";
 import fs from "node:fs";
 import path from "node:path";
 import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance/acceptance.mts";
@@ -291,7 +291,7 @@ function summary(options: Options, volume: { mount: string; type: string }, take
 }
 
 async function main(): Promise<void> {
-  const options = parseOptions(process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--")));
+  const options = parseOptions(runnerArgs());
   if (process.platform !== "darwin") { console.error("measure:finalization requires macOS"); process.exit(2); }
   requireMediaTimeout();
   if (!hasTool("ffprobe")) { console.error("BLOCKED: ffprobe is required to verify each take"); process.exit(2); }

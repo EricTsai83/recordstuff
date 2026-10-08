@@ -4,6 +4,7 @@ import { X509Certificate, createPrivateKey, randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runnerArgs } from './lib/runner/runner-env.mts';
 
 const projectRoot = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
 const passwordVariable = 'RECORDSTUFF_P12_PASSWORD';
@@ -73,7 +74,7 @@ export function createIdentity(name: string, output: string, password: string, d
 }
 
 function main() {
-  const args = process.argv.slice(2);
+  const args = runnerArgs();
   if (args.length === 1 && args[0] === '--help') {
     console.log('Usage: pnpm signing:create [--name "RecordStuff Dev"] [--output /private/location/new-directory]\nExisting certificates are preserved; creation requires RECORDSTUFF_P12_PASSWORD (16+ characters).\nCreates encrypted identity.p12 + public certificate.pem + identity.json outside Git. Does not import or change Keychain trust.');
     return;

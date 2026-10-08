@@ -20,7 +20,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { escapeRegExp, pgrepPids, recordStuffPids } from "./lib/runner/processes.mts";
-import { scrubbedEnv } from "./lib/runner/runner-env.mts";
+import { scrubbedEnv, runnerArgs } from "./lib/runner/runner-env.mts";
 import {
   RECIPES, developmentAppPath, displayCommand, exitCode, findRecipe, identity, inputsChanged, quitOwnedApp, recipeOutcome, renderMarkdown,
   runPhases, summarize, type AppCleanup, type RecipeReport,
@@ -28,7 +28,7 @@ import {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const usage = `Usage: pnpm acceptance:recipe -- <${RECIPES.map(recipe => recipe.name).join("|")}> [--dry-run] [--out <new directory>] | --list`;
-const args = process.argv.slice(2).filter((arg, index) => !(index === 0 && arg === "--"));
+const args = runnerArgs();
 
 let name: string | undefined;
 let dryRun = false;

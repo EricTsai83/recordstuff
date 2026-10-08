@@ -195,7 +195,8 @@ function main() {
   if (process.platform !== "darwin" || !["arm64", "x64"].includes(process.arch)) {
     throw new Error("Local app builds require macOS arm64 or x64. On Windows, `pnpm dist:win` builds the unsigned x64 installer.");
   }
-  const args = process.argv.slice(2);
+  // `pnpm start:app -- --dmg` forwards the separator itself (runnerArgs in scripts/lib/runner/runner-env.mts).
+  const args = process.argv.slice(process.argv[2] === "--" ? 3 : 2);
   if (args[0] === "--verify-app") {
     const hash = process.env.RECORDSTUFF_SIGN_IDENTITY;
     if (args.length !== 2 || !/^[A-Fa-f0-9]{40}$/.test(hash ?? "")) {

@@ -8,7 +8,7 @@
  * Finder window creation finish their bounded command before cancellation.
  */
 import { setTimeout as delay } from "node:timers/promises";
-import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings } from "./lib/runner/runner-env.mts";
+import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings, runnerArgs } from "./lib/runner/runner-env.mts";
 import { escapeRegExp, pgrepPids, recordStuffPattern, command } from "./lib/runner/processes.mts";
 import { osascriptAx } from "./lib/runner/native-ax.mts";
 import { SAVED_LINE, savedPathOf, settleRecording, waitForLog } from "./lib/acceptance/acceptance-runtime.mts";
@@ -58,7 +58,7 @@ let finderStates: FinderState[] = ["closed"];
 let frontApp = "TextEdit";
 let keepRecordings = false;
 let outDir: string | undefined;
-const argv = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--"));
+const argv = runnerArgs();
 const usage = (): never => {
   console.error(
     "usage: pnpm acceptance:notification [-- --install] [--full] [--clicks N] [--languages en,zh-TW] [--finder closed,behind,minimized] [--seconds N] [--front <app>] [--keep-recordings] [--out <dir>]",

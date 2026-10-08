@@ -1,6 +1,6 @@
 /** Packaged handler/model integration + optional real capture. Native Tray clicks are explicitly not claimed. */
 import fs from 'node:fs';
-import { APP_SETTINGS_PATH, scrubbedEnv } from './lib/runner/runner-env.mts';
+import { APP_SETTINGS_PATH, runnerArgs, scrubbedEnv } from './lib/runner/runner-env.mts';
 import { escapeRegExp, groupAlive, recordStuffPids, stopGroup } from './lib/runner/processes.mts';
 import path from 'node:path';
 import os from 'node:os';
@@ -24,7 +24,7 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const DAY = 86_400_000;
 const { values } = (() => {
   try {
-    return parseArgs({ args: process.argv.slice(2).filter(a => a !== '--'), options: {
+    return parseArgs({ args: runnerArgs(), options: {
       full: { type: 'boolean', default: false },
       'logic-only': { type: 'boolean', default: false }, out: { type: 'string' },
       'require-native-ui': { type: 'boolean', default: false },

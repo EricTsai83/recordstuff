@@ -25,7 +25,7 @@ import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type Desk
 import { roundExit } from "./lib/runner/round-exit.mts";
 import { AccessibilityBlockedError, FLAG, KEY, captureRect, judgeAppMenu, judgeWindowLayout, osascriptAx, type PasteboardManifest, type WindowSnapshot } from "./lib/runner/native-ax.mts";
 import { TRAFFIC_LIGHT_ZONE } from "../src/shared/window-controls.ts";
-import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings } from "./lib/runner/runner-env.mts";
+import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, runnerArgs } from "./lib/runner/runner-env.mts";
 import { isLanguage, translate } from "../src/shared/i18n.ts";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -34,7 +34,7 @@ const appPath = path.join(root, "dist/mac-arm64/RecordStuff.app/Contents/MacOS/R
 /** The main process and every helper run from inside the bundle. */
 const bundleProcesses = `^${escapeRegExp(path.resolve(appPath, "../../.."))}/`;
 const logPath = APP_LOG_PATH;
-const args = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--"));
+const args = runnerArgs();
 const observe = args[0] === "--observe";
 const quit = observe && args[1] === "--quit";
 if (args.length !== (quit ? 2 : observe ? 1 : 0)) { console.error("usage: pnpm acceptance:settings-shortcut [-- --observe [--quit]]"); process.exit(2); }

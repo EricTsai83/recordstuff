@@ -8,8 +8,9 @@ import { fixture, wav, type AudioReport } from "./lib/audio/audio-quality.mts";
 import { inspectAudio, recordAudio } from "./lib/audio/audio-quality-tools.mts";
 import { DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
 import { summarize } from "./lib/audio/audio-quality-summary.mts";
+import { runnerArgs } from "./lib/runner/runner-env.mts";
 
-const args = process.argv.slice(2).filter((a, i) => !(i === 0 && a === "--"));
+const args = runnerArgs();
 const [mode, target, repeatFlag, count] = args;
 const repeats = count === undefined ? 1 : Number(count);
 if (!mode || !target || !["fixture", "verify", "record"].includes(mode) ||

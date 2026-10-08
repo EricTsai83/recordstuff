@@ -20,6 +20,15 @@ export const APP_SETTINGS_PATH = path.join(os.homedir(), "Library/Application Su
  */
 export const INHERITED_ELECTRON_KEYS = ["ELECTRON_RUN_AS_NODE", "ELECTRON_RENDERER_URL", "RECORDSTUFF_AUTORECORD", "NODE_OPTIONS"] as const;
 
+/**
+ * A runner's own arguments. `pnpm <script> -- --flag` forwards the separator itself, so a leading `--` is dropped;
+ * the arguments after it are the runner's, whatever they look like.
+ */
+export function runnerArgs(argv: readonly string[] = process.argv): string[] {
+  const args = argv.slice(2);
+  return args[0] === "--" ? args.slice(1) : args;
+}
+
 /** A copy of `process.env` without the inherited Electron variables. */
 export function scrubbedEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env = { ...base };

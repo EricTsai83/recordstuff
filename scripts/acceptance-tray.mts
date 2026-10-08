@@ -32,7 +32,7 @@ import { DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib
 import { LogReader, evidenceSince, type LogCursor } from "./lib/runner/log-reader.mts";
 import { AccessibilityBlockedError, FLAG, KEY, captureRect, osascriptAx, type Frame, type NativeMenuItem } from "./lib/runner/native-ax.mts";
 import { INTERRUPT_EXIT, escapeRegExp, pgrepPids, recordStuffPattern, recordStuffPids, command } from "./lib/runner/processes.mts";
-import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings } from "./lib/runner/runner-env.mts";
+import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings, runnerArgs } from "./lib/runner/runner-env.mts";
 import { StoredOverride } from "./lib/acceptance/stored-override.mts";
 import { TrayDriver, compareMenu, parseMenuLogLine, structureProblems, type TrayState } from "./lib/acceptance/tray-driver.mts";
 import { classifyTrayRound, recordingCardOpenId, renderTrayReport, type TrayCase } from "./lib/acceptance/tray-acceptance.mts";
@@ -55,7 +55,7 @@ Run after \`pnpm start:app\` (or \`pnpm open:app\`) with the app idle. Records t
 current display into the app's output folder and keeps them; quits the app at the end. --long-start records
 nothing: each start is held before capture and cancelled.`;
 
-const argv = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--"));
+const argv = runnerArgs();
 const option = (name: string): string | undefined => {
   const at = argv.indexOf(name);
   if (at < 0) return undefined;

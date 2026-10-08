@@ -30,7 +30,7 @@
  * Line Tools, a locked screen) and 130/143 when interrupted. macOS only; never shipped.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings } from "./lib/runner/runner-env.mts";
+import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings, runnerArgs } from "./lib/runner/runner-env.mts";
 import { INTERRUPT_EXIT, electronPattern, escapeRegExp, pgrepPids, recordStuffPids, signalPids, command } from "./lib/runner/processes.mts";
 import fs from "node:fs";
 import os from "node:os";
@@ -66,7 +66,7 @@ const SETTINGS_MINUTES = 3;
 const usage = "usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--out <dir>]";
 let minutes = 5, repeat = 1, with60 = false, skipRecording = false, skipSettings = false;
 let outDir: string | undefined;
-const argv = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--"));
+const argv = runnerArgs();
 for (let i = 0; i < argv.length; i += 1) {
   const arg = argv[i];
   if (arg === "--minutes") minutes = Number(argv[++i]);

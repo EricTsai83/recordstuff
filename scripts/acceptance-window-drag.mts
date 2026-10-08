@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { buildFixture } from "./lib/runner/build-fixture.mts";
 import { beginDesktopRound, DesktopBlockedError } from "./lib/runner/desktop-session.mts";
 import { runIsolatedProcess } from "./lib/runner/isolated-process.mts";
-import { scrubbedEnv } from "./lib/runner/runner-env.mts";
+import { scrubbedEnv, runnerArgs } from "./lib/runner/runner-env.mts";
 import { electronPattern, pgrepPids, recordStuffPids, command } from "./lib/runner/processes.mts";
 import { roundExit } from "./lib/runner/round-exit.mts";
 import { releaseNativeMouse, restorePointer, type Point } from "./lib/runner/native-drag.mts";
@@ -14,7 +14,7 @@ import { treeDigest, workingTreeIdentity } from "./lib/runner/verification-timin
 import { runtimeInputDigest, runtimeInputFiles } from "./lib/runner/runtime-inputs.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const args = process.argv.slice(2).filter((arg, index) => !(index === 0 && arg === "--"));
+const args = runnerArgs();
 function stop(message: string, code = 2): never { console.error(message); process.exit(code); }
 if (args.length === 1 && args[0] === "--help") {
   console.log("Usage: pnpm acceptance:window-drag [-- --out <new-directory>] [--drill-cancel]\n"

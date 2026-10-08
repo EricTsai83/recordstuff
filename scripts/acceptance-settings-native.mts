@@ -12,7 +12,7 @@
  * (plan 057), reported as not run. A report and screenshots go to
  * docs/verification/measurements/<timestamp>-settings-native/. Requires `pnpm build` output. Nothing here ships.
  */
-import { scrubbedEnv } from "./lib/runner/runner-env.mts";
+import { scrubbedEnv, runnerArgs } from "./lib/runner/runner-env.mts";
 import { buildFixture } from "./lib/runner/build-fixture.mts";
 import { runIsolatedProcess } from "./lib/runner/isolated-process.mts";
 import { DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
@@ -26,7 +26,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const ELECTRON = path.join(REPO_ROOT, "node_modules/.bin/electron");
 const TIMEOUT_MS = 60_000;
 
-const argv = process.argv.slice(2).filter((arg, index) => !(index === 0 && arg === "--"));
+const argv = runnerArgs();
 let outDir: string | undefined;
 for (let i = 0; i < argv.length; i += 1) {
   if (argv[i] === "--out" && argv[i + 1] !== undefined && !argv[i + 1]!.startsWith("--")) outDir = argv[++i];

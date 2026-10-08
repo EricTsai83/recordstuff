@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import { createHash } from "node:crypto";
-import { scrubbedEnv } from "./lib/runner/runner-env.mts";
+import { scrubbedEnv, runnerArgs } from "./lib/runner/runner-env.mts";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildFixture } from "./lib/runner/build-fixture.mts";
@@ -21,7 +21,7 @@ import { isLanguage, translate } from "../src/shared/i18n.ts";
 
 /** Copy, sign and verify take about two seconds; a keychain prompt waiting for a person must not hold the round. */
 const SETUP_TIMEOUT_MS = 60_000;
-const args = process.argv.slice(2).filter(arg => arg !== "--");
+const args = runnerArgs();
 if (args.length === 1 && args[0] === "--help") {
   console.log("pnpm acceptance:quit-dialog -- --language en|zh-TW\nIsolated synthetic data; no recording. Copies this checkout's Electron.app to a temporary directory, signs it with the RecordStuff Dev identity (or RECORDSTUFF_SIGN_IDENTITY) and verifies it before launch; a missing identity is blocked (exit 2) and a failed signature fails (exit 1), both without launching. About 3 seconds after launch the deferred-quit notification appears; observe the banner and its text. Nothing needs an answer. Exit 0 covers the signed app, lifecycle, the notification's shown event and cleanup; visual acceptance must be recorded separately. Ctrl+C cancels this fixture only.");
 } else {

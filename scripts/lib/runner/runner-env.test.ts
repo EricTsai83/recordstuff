@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { INHERITED_ELECTRON_KEYS, readAppSettings, scrubbedEnv, writeAppSettings } from "./runner-env.mts";
+import { INHERITED_ELECTRON_KEYS, readAppSettings, runnerArgs, scrubbedEnv, writeAppSettings } from "./runner-env.mts";
 
 let dir: string | undefined;
 afterEach(() => { if (dir) fs.rmSync(dir, { recursive: true, force: true }); dir = undefined; });
@@ -40,4 +40,13 @@ it("removes its temporary file when publication fails", () => {
   expect(() => writeAppSettings({ language: "en" }, file)).toThrow();
   expect(fs.readdirSync(dir)).toEqual(["settings.json"]);
   expect(fs.statSync(file).isDirectory()).toBe(true);
+});
+
+describe("runnerArgs", () => {
+  it("drops the separator pnpm forwards, and only that one", () => {
+    expect(runnerArgs(["node", "runner.mts", "--", "--out", "x"])).toEqual(["--out", "x"]);
+    expect(runnerArgs(["node", "runner.mts", "--out", "x"])).toEqual(["--out", "x"]);
+    expect(runnerArgs(["node", "runner.mts", "--", "--", "y"])).toEqual(["--", "y"]);
+    expect(runnerArgs(["node", "runner.mts"])).toEqual([]);
+  });
 });

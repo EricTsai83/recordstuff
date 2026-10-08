@@ -19,7 +19,7 @@
  * Development only (brew install ffmpeg); nothing here ships with the app.
  */
 import fs from "node:fs";
-import { APP_LOG_PATH } from "./lib/runner/runner-env.mts";
+import { APP_LOG_PATH, runnerArgs } from "./lib/runner/runner-env.mts";
 import path from "node:path";
 import { ToolMissingError, requireMediaTimeout } from "./lib/verification/media-tools.mts";
 import {
@@ -43,7 +43,7 @@ function usage(): never {
 }
 
 // `pnpm verify -- file` forwards the `--` itself.
-const argv = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--"));
+const argv = runnerArgs();
 const files: string[] = [];
 let logPath: string | undefined = fs.existsSync(DEFAULT_LOG) ? DEFAULT_LOG : undefined;
 let jsonPath: string | undefined;

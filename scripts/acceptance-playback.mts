@@ -17,12 +17,13 @@ import {
   judgePlayback, meanAbsDiff, parseBounds, parseDocumentState, parseVolumeSettings, playbackScript,
   type Check, type DocumentState, type PlaybackObservations,
 } from "./lib/verification/playback.mts";
+import { runnerArgs } from "./lib/runner/runner-env.mts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const QUICKTIME = "/System/Applications/QuickTime Player.app";
 const quickTimePids = (): number[] => pgrepPids(`^${escapeRegExp(`${QUICKTIME}/Contents/MacOS/QuickTime Player`)}( |$)`);
 
-const args = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--"));
+const args = runnerArgs();
 if (args.length !== 1 || args[0]!.startsWith("-")) {
   console.error("usage: pnpm acceptance:playback -- <recording.mp4>");
   process.exit(2);
