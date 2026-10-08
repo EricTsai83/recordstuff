@@ -1,14 +1,11 @@
 ---
-/** "What you get": the four features, then equal cells with icon + label + mono value, then a check-marked line. Values come from README.md and the release manifest. */
+/** "What you get": the four features, then four equal cells with icon + label + mono value, then a check-marked line. Values come from README.md; the shortcut and the installer size are in the hero and How it works, so they are not repeated here. */
 import FeatureGrid from "./FeatureGrid.astro";
-import { release } from "../lib/release";
 const cells = [
   { label: "Output", value: "H.264 / AAC MP4", icon: `<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M10 9.5v5l4-2.5z" fill="currentColor" stroke="none"/>` },
-  { label: "Resolution", value: "4K or source", icon: `<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16"/>` },
+  { label: "Resolution", value: "Up to source", icon: `<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16"/>` },
   { label: "Frame rate", value: "30 or 60 fps", icon: `<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>` },
   { label: "Audio", value: "256 kbps target", icon: `<path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4"/>` },
-  { label: "Shortcut", value: "⇧⌘1", icon: `<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/>` },
-  { label: "Installer", value: `${release.sizeLabel} · arm64`, icon: `<path d="M12 3v11m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>` },
 ];
 const checks = ["Free and MIT licensed.", "Verified on macOS 26, Apple silicon."];
 ---
@@ -49,7 +46,7 @@ const checks = ["Free and MIT licensed.", "Verified on macOS 26, Apple silicon."
   .cells {
     list-style: none;
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     border: 1px solid var(--border-strong);
     border-radius: 6px;
     overflow: hidden;
@@ -98,35 +95,20 @@ const checks = ["Free and MIT licensed.", "Verified on macOS 26, Apple silicon."
     align-items: center;
     gap: 0.5rem;
   }
-  @media (max-width: 1240px) {
+  @media (max-width: 900px) {
     .cells {
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: 1fr 1fr;
     }
-    .cell:nth-child(3n) {
+    .cell:nth-child(2n) {
       border-right: 0;
     }
-    .cell:nth-child(-n + 3) {
+    .cell:nth-child(-n + 2) {
       border-bottom: 1px solid var(--border-strong);
     }
   }
   @media (max-width: 640px) {
     .cell-value {
       white-space: normal;
-    }
-    .cells {
-      grid-template-columns: 1fr 1fr;
-    }
-    .cell:nth-child(3n) {
-      border-right: 1px solid var(--border-strong);
-    }
-    .cell:nth-child(2n) {
-      border-right: 0;
-    }
-    .cell:nth-child(-n + 3) {
-      border-bottom: 0;
-    }
-    .cell:nth-child(-n + 4) {
-      border-bottom: 1px solid var(--border-strong);
     }
   }
 </style>
