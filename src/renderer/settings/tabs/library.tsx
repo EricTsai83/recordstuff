@@ -359,7 +359,7 @@ export function Library() {
       <div className="library-days">
         {days.map(([day, dayItems]) => (
           <section className="library-day" key={day}>
-            <h2 className="day-heading">{day}</h2>
+            <h2 className="day-heading" data-count={dayItems.length}>{day}</h2>
             <div className="library-grid">
               {dayItems.map((item) => (
                   <Clip

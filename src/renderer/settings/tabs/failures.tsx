@@ -192,7 +192,7 @@ export function Failures({ headingHidden = false }: { headingHidden?: boolean } 
         {days.map((day) => (
           <section className="result-day" data-day={day} key={day}>
             <h3 className="day-heading result-day-heading">{day}</h3>
-            <Card className="result-rows gap-0 p-0">
+            <Card className="result-rows gap-0 overflow-visible rounded-none bg-transparent p-0 shadow-none ring-0 dark:bg-transparent">
               {results
                 .filter((result) => result.day === day)
                 .map((result) => (

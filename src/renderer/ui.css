@@ -634,12 +634,12 @@
   }
   .page-title {
     font-size: 26px;
-    font-weight: 700;
-    letter-spacing: var(--tracking-tight);
+    font-weight: 680;
+    letter-spacing: -0.03em;
     margin: 0 0 18px;
   }
   .section {
-    margin-bottom: 18px;
+    margin-bottom: 28px;
   }
   .cleanup-section {
     margin-top: 28px;
@@ -650,14 +650,14 @@
   .cleanup-section .cleanup-warning {
     color: var(--destructive-ink);
   }
+  /* The warning reads as the description's second line rather than a separate paragraph. */
   .cleanup-section .cleanup-warning {
-    margin-top: 6px;
+    margin-top: 2px;
   }
   .about {
-    margin-top: 40px;
+    margin-top: 44px;
     margin-bottom: 0;
-    padding-top: 28px;
-    border-top: 1px solid var(--border);
+    padding: 0 2px;
   }
   .settings-panel:has(> .about) {
     padding-bottom: 24px;
@@ -707,18 +707,66 @@
   .about-row .diagnostics {
     margin-left: 0;
   }
-  .section-heading,
+  /* A section's heading sits over its panel, led by the section's icon in the brand red. */
+  .section-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 620;
+    color: var(--foreground);
+    margin: 14px 0 10px 2px;
+  }
+  .section-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    color: var(--primary);
+  }
+  /* A day of recordings or failures: its name and, for recordings, the count beside it. Days are divided by one
+     separator between them, nothing beside or under the heading. */
   .day-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-size: 12px;
+    font-weight: 600;
+    color: var(--foreground);
+    margin: 18px 0 12px;
+  }
+  /* The count is drawn, not written: the heading's text and accessible name stay the day alone. */
+  /* The count shares the heading's font, so both centre on the same line box; tabular figures keep it steady. */
+  .day-heading[data-count]::after {
+    content: attr(data-count) / "";
+    order: 1;
     font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    line-height: inherit;
     color: var(--muted-foreground);
-    margin: 12px 0 7px;
+  }
+  .library-day + .library-day,
+  .result-day + .result-day {
+    margin-top: 28px;
+    border-top: 1px solid var(--border);
+  }
+  :is(.library-day, .result-day) + :is(.library-day, .result-day) > .day-heading {
+    margin-top: 22px;
+  }
+  /* Without a card under it, a muted label reads as a caption; sections of bare rows get a real heading. */
+  .plain-section > .section-heading {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--foreground);
+    margin: 12px 0 4px;
   }
   .row {
-    padding: 12px 0;
+    min-height: 56px;
+    padding: 14px 0;
   }
-  .row + .row {
-    border-top: 1px solid var(--border);
+  /* Rows in a panel are spaced, not ruled. */
+  .inset-list > .row {
+    min-height: 52px;
+    padding: 12px 0;
   }
   .row-line {
     display: flex;
@@ -737,6 +785,10 @@
     height: 18px;
     flex: none;
     color: var(--muted-foreground);
+  }
+  /* Labels stand on their own; the log link keeps its icon. */
+  .group-title > .row-icon {
+    display: none;
   }
   .controls {
     display: flex;
@@ -771,7 +823,7 @@
   .capture-timeout {
     font-size: 12px;
     color: var(--muted-foreground);
-    margin: 7px 0 0 26px;
+    margin: 6px 0 0;
     overflow-wrap: anywhere;
   }
   .text-note {
@@ -1030,10 +1082,10 @@
     display: flex;
     flex-wrap: wrap;
     gap: 7px;
-    margin: 7px 0 0 26px;
+    margin: 8px 0 0;
   }
   .diagnostics {
-    margin: 10px 0 0 26px;
+    margin: 10px 0 0;
   }
   .diagnostic + .diagnostic {
     margin-top: 9px;
@@ -1068,7 +1120,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 8px;
-    margin: 10px 0 0 26px;
+    margin: 10px 0 0;
   }
   .capture-help {
     flex-basis: 100%;
@@ -1229,24 +1281,17 @@
   /* Failures (2026-10-07): each day one card like a settings section, a row per failure with a cause tile, preservation
      badge, time and chevron; it opens inside the card, its guidance in a soft callout. */
   .result-summary {
-    --result-hover: color-mix(in srgb, var(--primary) 4%, var(--card));
+    --result-hover: var(--muted);
     display: flex;
     align-items: flex-start;
     gap: 12px;
     width: 100%;
     text-align: left;
-    padding: 10px 16px;
+    padding: 12px 10px;
+    border-radius: var(--radius-md);
   }
-  /* Fill the transparent row border too; the card clips the first and last header's outer corners. */
   .result-summary:hover {
     background: var(--result-hover);
-    box-shadow: 0 0 0 1px var(--result-hover);
-  }
-  .recording-result:first-child > .result-summary {
-    padding-top: 14px;
-  }
-  .recording-result:last-child > .result-summary {
-    padding-bottom: 14px;
   }
   /* Cause icons stay neutral. Only the short preservation badge carries the outcome colour. */
   .result-mark {
@@ -2163,7 +2208,7 @@
     }
     .controls {
       max-width: 100%;
-      margin-left: 26px;
+      margin-left: 0;
     }
     .controls:has(> .text-field) {
       flex-basis: 100%;
@@ -2183,8 +2228,8 @@
     .row:not(.about-row) .row-line:has(> .controls):not(:has([role="switch"])) > .controls {
       flex: none;
       align-self: stretch;
-      max-width: none;
-      margin-left: 26px;
+      max-width: 100%;
+      margin-left: 0;
     }
     .row:not(.about-row) .row-line:has(> .controls):not(:has([role="switch"])) > .group-title {
       flex-shrink: 0;
@@ -2259,8 +2304,8 @@
     z-index: 1;
     pointer-events: none;
     top: calc(-1 * 1px - 0.5px);
-    left: 56px;
-    right: 16px;
+    left: 50px;
+    right: 10px;
     border-top: 1px solid var(--border);
   }
 

@@ -1,6 +1,6 @@
 /** Model-driven preference, diagnostic and cleanup rows grouped into sections. */
 import { useLayoutEffect, useRef, useState } from "react";
-import { CircleAlert, CircleHelp, Sun, Moon, Monitor, Keyboard, Settings2, Folder, Globe, Power, Bell, Timer, Volume2, Gauge, FileText, Info } from "lucide-react";
+import { CircleAlert, CircleHelp, Sun, Moon, Monitor, Keyboard, Settings2, Folder, Globe, Power, Bell, Timer, Volume2, Gauge, FileText, Info, ScreenShare, Clapperboard, MousePointerClick, Palette, RefreshCw } from "lucide-react";
 import type { SettingsGroup, SettingsChoice } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
@@ -39,6 +39,19 @@ const icons = {
   localData: CircleAlert,
   about: Info,
 };
+/** A settings section is named by its icon and heading; the sections have no order, so nothing numbers them. */
+const sectionIcons = {
+  source: ScreenShare,
+  countdown: Timer,
+  video: Clapperboard,
+  controls: MousePointerClick,
+  display: Palette,
+  updates: RefreshCw,
+};
+function SectionIcon({ id }: { id: string }) {
+  const Icon = sectionIcons[id as keyof typeof sectionIcons];
+  return Icon ? <Icon className="section-icon" aria-hidden="true" /> : null;
+}
 export function GroupIcon({ id }: { id: string }) {
   const Icon = icons[id as keyof typeof icons] ?? Settings2;
   return <Icon className="row-icon" aria-hidden="true" />;
@@ -558,7 +571,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
 }
 function CleanupSection({ groups }: { groups: SettingsGroup[] }) {
   return (
-    <section className="section cleanup-section" id="settings-data-cleanup" aria-labelledby="settings-data-cleanup-heading" aria-describedby="settings-data-cleanup-warning">
+    <section className="section plain-section cleanup-section" id="settings-data-cleanup" aria-labelledby="settings-data-cleanup-heading" aria-describedby="settings-data-cleanup-warning">
       <h2 className="section-heading" id="settings-data-cleanup-heading">
         {groups[0]?.sectionHeading ?? model.text("Reset and cleanup")}
       </h2>
@@ -585,7 +598,7 @@ export function Preferences() {
     </footer>
   ) : (
     <section
-      className="section"
+      className={section.id === "diagnostics" ? "section plain-section" : "section"}
       key={section.id}
     >
       <h2
@@ -593,13 +606,14 @@ export function Preferences() {
         id={`setting-${section.groups[0]!.id}-section-heading`}
         hidden={!section.groups[0]!.sectionHeading}
       >
+        <SectionIcon id={section.id} />
         {section.groups[0]!.sectionHeading}
       </h2>
-      {/* The rows' own 12px plus the card's 4px puts the first and last rows as far from its edge as its sides (14px). */}
+      {/* A section's rows share one raised panel and are told apart by their spacing alone: no hairline between them. */}
       {section.id === "diagnostics" ? section.groups.map((group) => (
         <SettingRow key={group.id} group={group} />
-      )) : <Card size="xs">
-        <CardContent className="inset-list px-3.5">
+      )) : <Card size="xs" className="rounded-xl bg-card py-1 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_2px_10px_rgb(0_0_0/0.035)] ring-0 dark:bg-card dark:shadow-none">
+        <CardContent className="inset-list px-4">
           {section.groups.map((group) => (
             <SettingRow key={group.id} group={group} />
           ))}
