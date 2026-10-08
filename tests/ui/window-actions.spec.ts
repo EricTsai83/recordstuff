@@ -15,8 +15,10 @@ for (const language of ["en", "zh-TW"] as const) for (const size of ["default", 
     await pickMenu(page, "setting-hotkey", "custom");
     await expect(page.locator("#shortcut-capture")).toBeVisible();
     const windowId = await app.evaluate(h => h.settingsWindow().id);
-    const id = size === "default" ? "sidebar-about-hide" : "setting-about-hide";
-    await page.locator(`#${id}`).click();
+    // Whichever place this window size shows the window actions in, use the visible ones.
+    const actions = page.getByRole("group", { name: language === "en" ? "RecordStuff window actions" : "RecordStuff 視窗操作", exact: true })
+      .filter({ visible: true }).first();
+    await actions.getByRole("button", { name: language === "en" ? "Hide interface" : "隱藏介面", exact: true }).click();
     await expect.poll(() => app.evaluate(h => h.settingsState().visible)).toBe(false);
     expect(await app.evaluate((h, windowId) => h.settingsWindow().id === windowId && !h.settingsWindow().isDestroyed(), windowId)).toBe(true);
     expect(app.child.exitCode).toBeNull();
@@ -25,11 +27,12 @@ for (const language of ["en", "zh-TW"] as const) for (const size of ["default", 
     await expect.poll(() => app.evaluate(h => h.settingsState().visible)).toBe(true);
     await expect(page.locator("#tab-general")).toHaveAttribute("aria-selected", "true");
     expect(await app.evaluate(h => h.settingsWindow().id)).toBe(windowId);
-    await expect(page.locator(`#${id}-menu`)).toHaveAttribute("aria-expanded", "false");
+    const more = actions.getByRole("button", { name: language === "en" ? "More window actions" : "更多視窗操作", exact: true });
+    await expect(more).toHaveAttribute("aria-expanded", "false");
     // The last request uses the quit coordinator, rather than the hide path.
     const exited = new Promise<number | null>(resolve => app.child.once("exit", code => resolve(code)));
-    await page.locator(`#${id}-menu`).click();
-    await page.locator(`#${id}-quit-option`).click();
+    await more.click();
+    await page.getByRole("menuitem", { name: language === "en" ? "Quit RecordStuff" : "結束 RecordStuff", exact: true }).click();
     expect(await exited).toBe(0);
   });
 }

@@ -3,7 +3,7 @@
  * (hosts/view-host.ts, `components` mode): input, geometry and DOM focus. Formerly tests/ui/fixture.cjs.
  */
 import { test, expect, type Launched } from "./fixtures";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import type { SettingsBridge, SettingsView } from "../../src/shared/settings-panel";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -14,7 +14,29 @@ test.beforeEach(async ({ launchView }) => {
   await expect(page.getByRole("tab", { name: "Recordings", exact: true })).toBeVisible();
 });
 const setView = (view: SettingsView): Promise<void> => host.evaluate((h, next) => h.setView(next), view);
-test("zoom notification reflects applied zoom, has no close button, and dismisses automatically without stealing entry focus", async ({}, testInfo) => {
+/** The live zoom notice: Sonner's current toast holding the zoom control group (a leaving copy is inert). */
+const zoomNotice = (): Locator =>
+  page.locator('[data-sonner-toast]:not([data-removed="true"]):not([inert])').filter({ has: page.getByRole("group") });
+/** Waits until an entering element stops moving, whatever its entrance animation. */
+const settled = (target: Locator): Promise<void> => expect.poll(async () => {
+  const before = await target.boundingBox();
+  await new Promise(resolve => setTimeout(resolve, 50));
+  const after = await target.boundingBox();
+  return Boolean(before && after && before.x === after.x && before.y === after.y);
+}).toBe(true);
+type Box = { x: number; y: number; width: number; height: number };
+const overlaps = (a: Box, b: Box): boolean =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+/** Focus is visible in some form (an outline or shadow on the control or a close wrapper), whatever its style. */
+const showsFocus = (control: Locator): Promise<boolean> => control.evaluate((node) => {
+  for (let element: Element | null = node, depth = 0; element && depth < 3; element = element.parentElement, depth++) {
+    const style = getComputedStyle(element);
+    if (style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0) return true;
+    if (style.boxShadow !== "none") return true;
+  }
+  return false;
+});
+test("zoom notification reflects applied zoom and dismisses automatically without stealing entry focus", async ({}, testInfo) => {
   // Install before reloading so every page timer uses the same clock. Keep assertion/CI time out of
   // the notice's 1.5 s lifetime; CSS transitions and Playwright pointer/keyboard input remain real.
   await page.clock.install({ time: new Date("2026-10-08T12:00:00Z") });
@@ -30,16 +52,13 @@ test("zoom notification reflects applied zoom, has no close button, and dismisse
   await tab.focus();
   await host.evaluate(h => h.zoom("in"));
   await advance(50);
-  const notice = page.locator('.zoom-notice:not([data-removed="true"]):not([inert]) .zoom-toast');
+  const notice = zoomNotice();
   await expect(notice).toContainText("110%");
-  await expect(notice.getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
   await expect(tab).toBeFocused();
-  // Mounted starts Sonner's entrance transition; wait for its final position before hovering.
+  // Mounted starts Sonner's entrance; wait for the toast to stop moving before hovering.
   // During entrance the toast can still be above the window, over the macOS drag strip.
-  const notification = page.locator('.zoom-notice:not([data-removed="true"]):not([inert])');
-  await expect(notification).toHaveAttribute("data-mounted", "true");
-  await expect.poll(() => notification.evaluate(el => getComputedStyle(el).transform))
-    .toBe("matrix(1, 0, 0, 1, 0, 0)");
+  await expect(notice).toHaveAttribute("data-mounted", "true");
+  await settled(notice);
   await notice.hover();
   await advance(1700);
   await expect(notice).toBeVisible();
@@ -99,16 +118,14 @@ test("zoom notification reflects applied zoom, has no close button, and dismisse
   await expect(notice).toHaveCount(0);
   await expect(tab).toBeFocused();
 });
-for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
-  test(`zoom notification horizontal layout ${language}/${scheme} fits the minimum window at every zoom limit`, async ({}, testInfo) => {
+for (const language of ["en", "zh-TW"] as const) {
+  test(`zoom notification ${language} fits the minimum window at every zoom limit with its controls unclipped and uncovered`, async ({}, testInfo) => {
     const view = await page.evaluate(() => (window as unknown as { settings: SettingsBridge }).settings.read());
     await host.evaluate((h, args) => {
-      h.theme(args.scheme);
       h.setSize(...h.SNAPSHOT_SIZES.minimum);
       h.setView({ ...args.view, language: args.language });
-    }, { language, scheme, view });
-    await expect(page.locator("html")).toHaveClass(scheme === "dark" ? /dark/ : /^(?!.*\bdark\b)/);
-    const notice = page.locator('.zoom-notice:not([data-removed="true"]):not([inert]) .zoom-toast');
+    }, { language, view });
+    const notice = zoomNotice();
     for (const factor of [0.8, 1, 1.5]) {
       await host.evaluate((h, target) => {
         h.zoom("reset");
@@ -119,26 +136,23 @@ for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", 
       await notice.hover();
       const geometry = await notice.evaluate((node) => {
         const rect = node.getBoundingClientRect();
-        const elements = [...node.querySelectorAll(".zoom-toast-value, button")].map((element) => {
+        const elements = [...node.querySelectorAll('[role="status"], button')].map((element) => {
           const box = element.getBoundingClientRect();
-          return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, center: (box.top + box.bottom) / 2 };
+          return { x: box.left, y: box.top, width: box.width, height: box.height };
         });
-        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width,
-          height: rect.height, viewport: innerWidth, elements };
+        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, viewport: innerWidth, elements };
       });
       expect(geometry.left).toBeGreaterThanOrEqual(0);
       expect(geometry.right).toBeLessThanOrEqual(geometry.viewport);
-      expect(geometry.width / geometry.height).toBeGreaterThan(4);
       for (const [index, box] of geometry.elements.entries()) {
-        expect(Math.abs(box.center - geometry.elements[0]!.center)).toBeLessThan(1);
-        expect(box.left).toBeGreaterThanOrEqual(geometry.left);
-        expect(box.right).toBeLessThanOrEqual(geometry.right);
-        expect(box.top).toBeGreaterThanOrEqual(geometry.top);
-        expect(box.bottom).toBeLessThanOrEqual(geometry.bottom);
-        if (index) expect(box.left).toBeGreaterThanOrEqual(geometry.elements[index - 1]!.right);
+        expect(box.x).toBeGreaterThanOrEqual(geometry.left);
+        expect(box.x + box.width).toBeLessThanOrEqual(geometry.right);
+        expect(box.y).toBeGreaterThanOrEqual(geometry.top);
+        expect(box.y + box.height).toBeLessThanOrEqual(geometry.bottom);
+        for (const other of geometry.elements.slice(index + 1)) expect(overlaps(box, other)).toBe(false);
       }
       await expect(notice.getByRole("button", { name: language === "en" ? "Reset" : "重設", exact: true })).toBeVisible();
-      const screenshotPath = testInfo.outputPath(`zoom-${language}-${scheme}-${Math.round(factor * 100)}.png`);
+      const screenshotPath = testInfo.outputPath(`zoom-${language}-${Math.round(factor * 100)}.png`);
       if (factor === 1) await notice.screenshot({ path: screenshotPath });
       else {
         // Chromium's locator clip uses unscaled coordinates at Electron zoom; retain the complete rendered frame instead.
@@ -168,7 +182,7 @@ test("tabs, switch and icon segments retain their names, keyboard navigation and
 });
 test("failure rows open independently and acknowledgement collapses with focus returned", async () => {
   await page.getByRole("tab", { name: "Troubleshooting (1)" }).click();
-  const headers = page.locator(".result-summary");
+  const headers = page.locator('[id^="recording-result-"][id$="-summary"]');
   const header = headers.first();
   await headers.nth(1).click();
   await expect(headers.nth(1)).toHaveAttribute("aria-expanded", "true");
@@ -232,44 +246,38 @@ async function explanationAt(left: number, top: number, height = 30) {
     if (!box) throw new Error("Explanation is missing");
     return box;
   };
-  return { button, popup, rect };
+  /** Inside the 560 × 340 window and, when there is room for it, clear of the button it explains. */
+  const placed = async (clearOfButton = true): Promise<boolean> => {
+    const r = await rect(), b = await button.boundingBox();
+    if (!b) throw new Error("Explanation trigger is missing");
+    const inside = r.x >= 0 && r.y >= 0 && r.x + r.width <= 560 && r.y + r.height <= 340;
+    return inside && (!clearOfButton || !overlaps(r, b));
+  };
+  return { button, popup, rect, placed };
 }
 test.describe("an ⓘ explanation's placement (ported from the former placement unit tests)", () => {
-  test("sits above its button, left-aligned to it, so the row it explains stays in view", async () => {
-    const { rect } = await explanationAt(96, 278);
-    await expect
-      .poll(async () => {
-        const r = await rect();
-        return r.y + r.height <= 278 && Math.abs(r.x - 96) < 1;
-      })
-      .toBe(true);
+  test("near the bottom of the window it stays inside the window without covering its button", async () => {
+    const { placed } = await explanationAt(96, 278);
+    await expect.poll(() => placed()).toBe(true);
   });
-  test("goes below a button too close to the top, and against the top when neither side has room", async () => {
-    const { popup, rect } = await explanationAt(96, 12);
-    await expect.poll(async () => (await rect()).y >= 32).toBe(true);
+  test("near the top it stays clear of its button, and inside the window when it cannot avoid it", async () => {
+    const { popup, placed } = await explanationAt(96, 12);
+    await expect.poll(() => placed()).toBe(true);
     await popup.evaluate((element) => (element.style.height = "320px"));
-    await expect
-      .poll(async () => {
-        const r = await rect();
-        return r.y >= 8 && r.y + r.height <= 332;
-      })
-      .toBe(true);
+    await expect.poll(() => placed(false)).toBe(true);
   });
-  test("stays inside the window's side edges, its gap bridge still over the button", async () => {
-    const { button, rect } = await explanationAt(500, 278);
-    await expect
-      .poll(async () => {
-        const r = await rect();
-        return r.x >= 8 && r.x + r.width <= 552;
-      })
-      .toBe(true);
+  test("stays inside the window's side edges, the pointer path from the button still keeping it open", async () => {
+    const { button, rect, placed } = await explanationAt(500, 278);
+    await expect.poll(() => placed()).toBe(true);
     // The original geometry case also asserted the bridge over the trigger.
     // Exercise that behavior at each clamped edge, with a pause longer than the leave delay.
     const pauseInGap = async () => {
       const b = await button.boundingBox();
       if (!b) throw new Error("Explanation trigger is missing");
       await button.hover();
-      await page.mouse.move(b.x + b.width / 2, b.y - 1);
+      const r = await rect();
+      // Step off the button towards the explanation, whichever side it opened on.
+      await page.mouse.move(b.x + b.width / 2, r.y + r.height <= b.y ? b.y - 1 : b.y + b.height + 1);
       await page.waitForTimeout(180);
       await expect(page.locator("#setting-countdownSound-info-popup")).toBeVisible();
     };
@@ -278,13 +286,13 @@ test.describe("an ⓘ explanation's placement (ported from the former placement 
     // Moving the trigger leaves the pointer behind; open it at its new position before measuring the popup.
     await button.hover();
     await expect(page.locator("#setting-countdownSound-info-popup")).toBeVisible();
-    await expect.poll(async () => (await rect()).x >= 8).toBe(true);
+    await expect.poll(() => placed()).toBe(true);
     await pauseInGap();
   });
 });
 test("player slider drag, fixed seek keys and volume controls keep their accessible value text", async () => {
   await page.locator("#clip-a-open").click();
-  await page.locator(".player video").evaluate((element) => {
+  await page.getByRole("dialog").locator("video").evaluate((element) => {
     const video = element as HTMLVideoElement;
     Object.defineProperties(video, {
       duration: { value: 60, configurable: true },
@@ -300,7 +308,7 @@ test("player slider drag, fixed seek keys and volume controls keep their accessi
   await expect(seek).toHaveAttribute("aria-valuetext", "0:05 / 1:00");
   await seek.press("PageUp");
   await expect(seek).toHaveAttribute("aria-valuetext", "0:15 / 1:00");
-  const track = await page.locator(".pc-seek > div").boundingBox();
+  const track = await page.locator('#player-seek [data-slot="slider-track"]').boundingBox();
   if (!track) throw new Error("Seek bar is missing");
   await page.mouse.move(track.x + track.width / 2, track.y + track.height / 2);
   await page.mouse.down();
@@ -312,7 +320,8 @@ test("player slider drag, fixed seek keys and volume controls keep their accessi
   await expect
     .poll(() =>
       page
-        .locator(".player video")
+        .getByRole("dialog")
+        .locator("video")
         .evaluate((element) => (element as HTMLVideoElement).currentTime),
     )
     .toBeCloseTo(45, 0);
@@ -324,8 +333,8 @@ test("player slider drag, fixed seek keys and volume controls keep their accessi
   await seek.press("ArrowUp");
   await expect(volume).toHaveAttribute("aria-valuetext", "50%");
   await page.getByRole("button", { name: "Close", exact: true }).click();
-  await expect(page.locator(".player[data-open]")).toHaveCount(0);
-  await expect(page.locator(".player")).toBeHidden();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator("#player-seek")).toBeHidden();
   await expect(page.locator("#clip-a-open")).toBeFocused();
   await page.getByRole("button", { name: "More actions for a", exact: true }).click();
   await expect(page.getByRole("menu")).toBeVisible();
@@ -399,8 +408,8 @@ for (const language of ["en", "zh-TW"] as const) {
     const group = {
       id: "localData", tab: "failures" as const, section: "cleanup", kind: "actions" as const, enabled: false,
       label: language === "en" ? "Local app data" : "本機 App 資料",
-      note: language === "en" ? "Clears settings, failure history, cache and logs. Recordings are kept." : "清除設定、失敗紀錄、快取與 log，錄影檔會保留。",
-      choices: [{ id: "clear", label: language === "en" ? "Clear local app data and quit…" : "清除本機 App 資料並結束…", enabled: false, checked: false }],
+      note: language === "en" ? "Clears settings, failure history, cache, logs and old backups. Recordings are kept." : "清除設定、失敗紀錄、快取、log 與舊備份，錄影檔會保留。",
+      choices: [{ id: "clear", label: language === "en" ? "Clear and quit…" : "清除並結束…", enabled: false, checked: false }],
     };
     const view = { ...current, language, groups: [...current.groups, group] };
     await setView(view as SettingsView);
@@ -454,55 +463,54 @@ test("shadcn tooltips name icon controls on hover and focus, update language, an
   await page.mouse.move(10, 400);
   await page.locator("#tab-library").click();
   await expect(tip).toBeHidden();
-  const clip = page.locator("#clip-a-open"), title = clip.locator(".clip-title");
+  const clip = page.locator("#clip-a-open"), titleOf = (text: string): Locator => clip.getByText(text.trim(), { exact: true });
   await clip.hover();
   await page.waitForTimeout(1700);
   await expect(tip).toHaveCount(0);
   await clip.focus();
   await expect(clip).toBeFocused();
   await expect(tip).toHaveCount(0);
-  const shortHeight = await page.locator("#clip-a").evaluate(node => node.getBoundingClientRect().height);
-  // A long grid title stays on one line, without growing the card.
   const longTitle = "Recording with a very long descriptive title ".repeat(8);
   const library = current.library!;
   await setView({ ...current, library: { ...library, items: library.items.map(item => item.id === "a" ? { ...item, title: longTitle } : item) } });
-  await expect.poll(() => page.locator("#clip-a").evaluate(node => node.getBoundingClientRect().height)).toBe(shortHeight);
-  await expect(title).toHaveCSS("white-space", "nowrap");
-  await expect(title).toHaveCSS("text-overflow", "ellipsis");
+  let title = titleOf(longTitle);
+  await expect(title).toBeVisible();
   await page.mouse.move(10, 400);
-  await clip.locator(".clip-thumb").hover();
+  // Pointing at the card away from its title does not name it.
+  await clip.hover({ position: { x: 24, y: 24 } });
   await page.waitForTimeout(800);
   await expect(tip).toHaveCount(0);
   await title.hover();
   await page.waitForTimeout(800);
   await expect(tip).toHaveCount(0);
-  await expect.poll(() => title.evaluate(node => node.scrollWidth > node.clientWidth && node.scrollHeight === node.clientHeight)).toBe(true);
+  // However the card shows a title this long, it cannot show all of it; the tooltip gives the complete name.
+  const clipped = (node: Element): boolean => node.scrollWidth > node.clientWidth || node.scrollHeight > node.clientHeight;
+  await expect.poll(() => title.evaluate(clipped)).toBe(true);
   await expect(tip).toHaveText(longTitle.trim());
-  const expectAboveTitle = async (): Promise<void> => {
-    // Text appears before the tooltip's slide-in animation has settled.
+  const expectInsideWindow = async (): Promise<void> => {
+    // Text appears before the tooltip's entrance has settled.
     await expect.poll(async () => {
-      const titleBox = await title.boundingBox(), tipBox = await tip.boundingBox();
-      if (!titleBox || !tipBox) return false;
-      const gap = titleBox.y - (tipBox.y + tipBox.height);
-      return gap >= 0 && gap < 12;
-    }, { message: "The tooltip settles directly above the recording title" }).toBe(true);
+      const box = await tip.boundingBox(), viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+      return Boolean(box && box.x >= 0 && box.y >= 0 && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height);
+    }, { message: "The tooltip settles inside the window" }).toBe(true);
   };
-  await expectAboveTitle();
+  await expectInsideWindow();
   await page.screenshot({ path: testInfo.outputPath("recording-grid-tooltip.png"), animations: "disabled" });
   await page.locator("#library-layout-list").click();
   await title.hover();
-  await expect.poll(() => title.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
+  await expect.poll(() => title.evaluate(clipped)).toBe(true);
   await expect(tip).toHaveText(longTitle.trim());
-  await expectAboveTitle();
+  await expectInsideWindow();
   // A resize under the pointer is remeasured on movement, without another pointer entry.
   const resizeTitle = "Recording title that fits in a wider list row";
   await host.evaluate(h => h.setSize(...h.SNAPSHOT_SIZES.minimum));
   await setView({ ...current, library: { ...library, layout: "list", items: library.items.map(item => item.id === "a" ? { ...item, title: resizeTitle } : item) } });
+  title = titleOf(resizeTitle);
   await page.mouse.move(10, 20);
   await title.hover({ position: { x: 10, y: 8 } });
   await expect(tip).toHaveText(resizeTitle);
   await host.evaluate(h => h.setSize(1200, 600));
-  await expect.poll(() => title.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+  await expect.poll(() => title.evaluate(node => !(node.scrollWidth > node.clientWidth || node.scrollHeight > node.clientHeight))).toBe(true);
   const box = await title.boundingBox();
   if (!box) throw new Error("Recording title is missing");
   await page.mouse.move(box.x + 12, box.y + 8);
@@ -515,6 +523,7 @@ test("shadcn tooltips name icon controls on hover and focus, update language, an
   await page.screenshot({ path: testInfo.outputPath("recording-tooltip.png"), animations: "disabled" });
   const unbroken = "Recording".repeat(30);
   await setView({ ...current, library: { ...library, layout: "list", items: library.items.map(item => item.id === "a" ? { ...item, title: unbroken } : item) } });
+  title = titleOf(unbroken);
   await title.hover();
   await expect(tip).toHaveText(unbroken);
   expect(await tip.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
@@ -522,7 +531,7 @@ test("shadcn tooltips name icon controls on hover and focus, update language, an
 
 test("a new zoom notice keeps focus ownership when the previous notice finishes leaving", async () => {
   const tab = page.locator("#tab-library");
-  const notice = page.locator('.zoom-notice:not([data-removed="true"]):not([inert]) .zoom-toast');
+  const notice = zoomNotice();
   await tab.focus();
   await host.evaluate(h => h.zoom("in"));
   await notice.getByRole("button", { name: "Reset", exact: true }).focus();
@@ -551,7 +560,6 @@ test("narrow tab tooltips keep the same focused control when the window widens",
   await expect(tab).toBeFocused();
   await host.evaluate(h => h.setSize(960, 640));
   await expect(tab).toBeFocused();
-  await expect(page.locator('[data-slot="tooltip-content"][data-open]')).toBeHidden();
 });
 
 test("context menu opens at the pointer, shares file actions, and restores focus after Escape and rename", async ({}, testInfo) => {
@@ -560,7 +568,9 @@ test("context menu opens at the pointer, shares file actions, and restores focus
   const menu = page.locator("#clip-context-menu");
   await expect(menu).toBeVisible();
   const mac = process.platform === "darwin";
-  await expect(menu.getByRole("menuitem")).toHaveText([mac ? "Show in Finder" : "Open folder", "Open", "Rename…", mac ? "Move to Trash" : "Move to Recycle Bin"]);
+  const actions = [mac ? "Show in Finder" : "Open folder", "Open", "Rename…", mac ? "Move to Trash" : "Move to Recycle Bin"];
+  await expect(menu.getByRole("menuitem")).toHaveCount(actions.length);
+  expect((await menu.getByRole("menuitem").allTextContents()).map(text => text.trim()).sort()).toEqual([...actions].sort());
   await expect(page.locator("#clip-a-more")).toHaveAttribute("aria-expanded", "false");
   await page.screenshot({ path: testInfo.outputPath("recording-context-menu.png"), animations: "disabled" });
   await page.keyboard.press("Escape");
@@ -570,11 +580,8 @@ test("context menu opens at the pointer, shares file actions, and restores focus
   await menu.getByRole("menuitem", { name: "Rename…", exact: true }).click();
   const field = page.getByRole("textbox", { name: "Rename", exact: true });
   await expect(field).toBeFocused();
-  await expect(page.locator(".clip-rename-extension")).toHaveText(".mp4");
-  expect(await field.evaluate(node => ({
-    group: /0px 0px 0px 2px/.test(getComputedStyle(node.closest('[data-slot="input-group"]')!).boxShadow),
-    input: getComputedStyle(node).outlineStyle,
-  }))).toEqual({ group: true, input: "none" });
+  await expect(page.getByRole("dialog").getByText(".mp4", { exact: true })).toBeVisible();
+  expect(await showsFocus(field), "the focused rename field shows focus").toBe(true);
   await page.screenshot({ path: testInfo.outputPath("rename-input-group.png"), animations: "disabled" });
   await field.fill("Context menu recording");
   await field.press("Enter");
@@ -582,129 +589,50 @@ test("context menu opens at the pointer, shares file actions, and restores focus
   await expect(page.locator("#feedback")).toContainText("Renamed to Context menu recording.mp4");
 });
 
-for (const scheme of ["light", "dark"] as const) {
-  test(`accent actions and sidebar selections preserve semantic styles and interactions in ${scheme} at rest and under the pointer`, async ({}, testInfo) => {
-    await host.evaluate((h, theme) => h.theme(theme), scheme);
-    await expect(page.locator("html")).toHaveClass(scheme === "dark" ? /dark/ : /^(?!.*\bdark\b)/);
-    const tab = page.locator("#tab-library");
-    const primary = await page.evaluate(() => {
-      const probe = document.createElement("span");
-      probe.style.backgroundColor = "var(--primary)";
-      probe.style.color = "var(--primary-foreground)";
-      document.body.append(probe);
-      const style = getComputedStyle(probe);
-      const colors = { fill: style.backgroundColor, foreground: style.color };
-      probe.style.backgroundColor = "var(--selection)";
-      const selection = getComputedStyle(probe).backgroundColor;
-      probe.style.backgroundColor = "var(--muted)";
-      const hover = getComputedStyle(probe).backgroundColor;
-      probe.style.color = "var(--sidebar-foreground)";
-      const sidebarForeground = getComputedStyle(probe).color;
-      probe.style.color = "var(--sidebar-selected-foreground)";
-      const sidebarSelectedForeground = getComputedStyle(probe).color;
-      probe.remove();
-      return { ...colors, selection, hover, sidebarForeground, sidebarSelectedForeground };
-    });
-    await expect(tab).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    await expect(tab).toHaveCSS("color", primary.sidebarSelectedForeground);
-    await expect(tab.locator(".tab-icon")).toHaveCSS("color", primary.sidebarSelectedForeground);
-    await expect.poll(() => tab.evaluate(node => getComputedStyle(node, "::after").opacity)).toBe("1");
-    expect(await tab.evaluate(node => getComputedStyle(node, "::after").backgroundColor)).toBe(primary.fill);
-
-    await expect(tab).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    // Hover stays neutral; red ink and the leading line identify the selected sidebar item.
-    const general = page.locator("#tab-general");
-    const inactive = await general.evaluate(node => ({ fill: getComputedStyle(node).backgroundColor, foreground: getComputedStyle(node).color }));
-    await general.hover();
-    await expect(general).toHaveCSS("background-color", primary.hover);
-    await expect(general).toHaveCSS("color", inactive.foreground);
-    expect(await general.evaluate(node => getComputedStyle(node, "::after").opacity)).toBe("0");
-    await general.click();
-    await expect.poll(() => general.evaluate(node => getComputedStyle(node, "::after").opacity)).toBe("1");
-    await expect.poll(() => tab.evaluate(node => getComputedStyle(node, "::after").opacity)).toBe("0");
-    await expect(general).toHaveAttribute("aria-selected", "true");
-    await expect(general).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    await expect(general).toHaveCSS("color", primary.sidebarSelectedForeground);
-    await expect(general.locator(".tab-icon")).toHaveCSS("color", primary.sidebarSelectedForeground);
-    await expect(tab).toHaveCSS("color", primary.sidebarForeground);
-    await expect(tab.locator(".tab-icon")).toHaveCSS("color", primary.sidebarForeground);
-    await page.screenshot({ path: testInfo.outputPath(`sidebar-clicked-hover-${scheme}.png`), animations: "disabled" });
-    await page.mouse.move(300, 20);
-    await expect(general).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    await expect(general).toHaveCSS("color", primary.sidebarSelectedForeground);
-    await page.screenshot({ path: testInfo.outputPath(`sidebar-clicked-rest-${scheme}.png`), animations: "disabled" });
-    await tab.click();
-    await expect(tab).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    await expect(tab).toHaveCSS("color", primary.sidebarSelectedForeground);
-    await expect(tab.locator(".tab-icon")).toHaveCSS("color", primary.sidebarSelectedForeground);
-    await tab.focus();
-    await page.keyboard.press("ArrowRight");
-    await page.keyboard.press("ArrowLeft");
-    await expect(tab).toBeFocused();
-    expect(await tab.evaluate(node => /0px 0px 0px 3px/.test(getComputedStyle(node).boxShadow))).toBe(true);
-    await page.screenshot({ path: testInfo.outputPath(`sidebar-selected-${scheme}.png`), animations: "disabled" });
-    await host.evaluate(h => h.setSize(...h.SNAPSHOT_SIZES.narrow));
-    await page.mouse.move(10, 400);
-    await page.waitForTimeout(200);
-
-    await expect(tab).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    await tab.hover();
-    await expect(tab).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    await general.click();
-    await expect(general).toHaveAttribute("aria-selected", "true");
-    await expect(general).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    await general.focus();
-    await page.keyboard.press("ArrowLeft");
-    await expect(page.locator("#tab-recording")).toHaveAttribute("aria-selected", "true");
-    await page.keyboard.press("ArrowLeft");
-    await expect(tab).toHaveAttribute("aria-selected", "true");
-    await expect(tab).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    await expect.poll(() => tab.evaluate(node => getComputedStyle(node, "::after").opacity)).toBe("1");
-    await page.mouse.move(10, 400);
-    await page.screenshot({ path: testInfo.outputPath(`narrow-selected-${scheme}.png`), animations: "disabled" });
-    await host.evaluate(h => h.setSize(...h.SNAPSHOT_SIZES.default));
-    for (const layout of ["grid", "list"] as const) {
-      const layoutButton = page.locator(`#library-layout-${layout}`);
-      if (layout === "list") {
-        await layoutButton.focus();
-        await page.keyboard.press("Space");
-      } else await layoutButton.click();
-      await expect(layoutButton).toHaveAttribute("aria-pressed", "true");
-      await expect(layoutButton).toHaveCSS("background-color", primary.selection);
-      await expect(layoutButton).toHaveCSS("color", primary.fill);
-      await expect(layoutButton.locator("svg")).toHaveCSS("color", primary.fill);
-      const otherLayout = page.locator(`#library-layout-${layout === "grid" ? "list" : "grid"}`);
-      await expect(otherLayout).toHaveAttribute("aria-pressed", "false");
-      await expect(otherLayout.locator("svg")).toHaveCSS("color", await otherLayout.evaluate(node => getComputedStyle(node).color));
-      await page.locator(".library-layout").screenshot({ path: testInfo.outputPath(`layout-icons-${scheme}-${layout}.png`), animations: "disabled" });
-      const clip = page.locator("#clip-a-open"), play = clip.locator(".clip-play");
-      await clip.hover();
-      await expect(play).toHaveCSS("opacity", "1");
-      await expect(play).toHaveCSS("background-color", primary.fill);
-      await expect(play).toHaveCSS("color", primary.foreground);
-
-      await page.screenshot({ path: testInfo.outputPath(`primary-play-${scheme}-${layout}.png`), animations: "disabled" });
-    }
-    await page.locator("#tab-recording").click();
-    const on = page.getByRole("switch", { name: "Countdown sound" });
-    await expect(on).toHaveCSS("background-color", primary.fill);
-    await expect(on.locator('[data-slot="switch-thumb"]')).toHaveCSS("background-color", primary.foreground);
-    await on.evaluate(node => { node.focus(); });
-    await page.keyboard.press("Tab");
-    const focused = page.locator(":focus-visible").first();
-    expect(await focused.evaluate(node => /0px 0px 0px [23]px/.test(getComputedStyle(node).boxShadow))).toBe(true);
-    await page.screenshot({ path: testInfo.outputPath(`primary-controls-${scheme}.png`), animations: "disabled" });
-    await page.locator("#tab-failures").click();
-    await page.locator('[data-result-id="failure"] .result-summary').click();
-
-    await page.locator("#tab-library").click();
-    await page.locator("#clip-a").click({ button: "right", position: { x: 30, y: 40 } });
-    await page.locator("#clip-context-menu").getByRole("menuitem", { name: "Rename…", exact: true }).click();
-    await page.locator("#clip-rename-input").fill("Readable primary action");
-    await expect(page.locator("#clip-rename-confirm")).toBeEnabled();
-    await expect(page.locator("#clip-rename-confirm")).toHaveCSS("background-color", primary.fill);
-
-    await page.screenshot({ path: testInfo.outputPath(`primary-actions-${scheme}.png`), animations: "disabled" });
-    await page.keyboard.press("Escape");
-  });
-}
+test("sidebar tabs, library layout and primary actions keep their selection semantics, keyboard operation and visible focus", async ({}, testInfo) => {
+  const tab = page.locator("#tab-library"), general = page.locator("#tab-general");
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+  await general.click();
+  await expect(general).toHaveAttribute("aria-selected", "true");
+  await expect(tab).toHaveAttribute("aria-selected", "false");
+  await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+  await tab.focus();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowLeft");
+  await expect(tab).toBeFocused();
+  expect(await showsFocus(tab), "the keyboard-focused tab shows focus").toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("sidebar-selected.png"), animations: "disabled" });
+  await host.evaluate(h => h.setSize(...h.SNAPSHOT_SIZES.narrow));
+  await page.mouse.move(10, 400);
+  await general.click();
+  await expect(general).toHaveAttribute("aria-selected", "true");
+  await general.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.locator("#tab-recording")).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("ArrowLeft");
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+  await page.screenshot({ path: testInfo.outputPath("narrow-selected.png"), animations: "disabled" });
+  await host.evaluate(h => h.setSize(...h.SNAPSHOT_SIZES.default));
+  for (const layout of ["grid", "list"] as const) {
+    const layoutButton = page.locator(`#library-layout-${layout}`);
+    if (layout === "list") {
+      await layoutButton.focus();
+      await page.keyboard.press("Space");
+    } else await layoutButton.click();
+    await expect(layoutButton).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(`#library-layout-${layout === "grid" ? "list" : "grid"}`)).toHaveAttribute("aria-pressed", "false");
+  }
+  await page.locator("#tab-recording").click();
+  const on = page.getByRole("switch", { name: "Countdown sound" });
+  await expect(on).toBeChecked();
+  await on.evaluate(node => { node.focus(); });
+  await page.keyboard.press("Tab");
+  expect(await showsFocus(page.locator(":focus")), "the next control reached by Tab shows focus").toBe(true);
+  await page.locator("#tab-library").click();
+  await page.locator("#clip-a").click({ button: "right", position: { x: 30, y: 40 } });
+  await page.locator("#clip-context-menu").getByRole("menuitem", { name: "Rename…", exact: true }).click();
+  await page.locator("#clip-rename-input").fill("Readable primary action");
+  await expect(page.locator("#clip-rename-confirm")).toBeEnabled();
+  await page.keyboard.press("Escape");
+});

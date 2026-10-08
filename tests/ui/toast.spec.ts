@@ -30,43 +30,42 @@ test.beforeEach(async ({ launchApp }) => {
   const waiting = app.page("settings.html");
   await app.evaluate(h => h.clickTrayItem("^開啟 RecordStuff$"));
   page = await waiting;
-  await expect(page.locator(".clip-open")).toHaveCount(3);
+  await expect(page.getByRole("button", { name: /^播放 / })).toHaveCount(3);
 });
 
 const trashFirst = async (): Promise<void> => {
-  await page.locator(".clip").first().hover();
-  await page.locator(".clip-more").first().click();
+  await page.getByRole("button", { name: /^播放 / }).first().hover();
+  await page.getByRole("button", { name: / 的更多動作$/ }).first().click();
   await page.locator("#clip-menu-trash").click();
 };
-const live = '.undo-toast:not([data-removed="true"])';
+const live = '[data-sonner-toast]:not([data-removed="true"])';
 
 test("T01–T03 the undo toast: no close button, automatic dismissal, Escape returns focus to the tab, and a leaving toast cannot be reached", async ({}, testInfo) => {
   await trashFirst();
-  await expect(page.locator(live)).toHaveCount(1);
-  const drawn = await read<{ title: string; action: string; shortcut: string | null; close: string | null; styled: string | null }>(page, `(() => { const t = document.querySelector(${JSON.stringify(live)});
-    return { title: t.querySelector(".toast-title").textContent, action: t.querySelector(".toast-action").textContent, shortcut: t.querySelector(".toast-action").getAttribute("aria-keyshortcuts"),
-      close: t.querySelector('[data-close-button="true"]')?.getAttribute("aria-label") ?? null, styled: t.getAttribute("data-styled") }; })()`);
+  const toast = page.locator(live);
+  await expect(toast).toHaveCount(1);
   const mac = process.platform === "darwin";
-  expect.soft(drawn, "T01 Sonner draws the toast: its platform-specific title and Undo shortcut, without a close button").toEqual({
-    title: mac ? "已丟到垃圾桶" : "已移到資源回收筒", action: mac ? "還原⌘Z" : "還原Ctrl+Z",
-    shortcut: mac ? "Meta+Z" : "Control+Z", close: null, styled: "true",
-  });
-  await page.locator(live).screenshot({ path: testInfo.outputPath("undo-toast.png") });
+  const undo = toast.getByRole("button", { name: /^還原/ });
+  // T01 Sonner draws the toast: its platform-specific title and Undo with its shortcut.
+  await expect.soft(toast).toContainText(mac ? "已丟到垃圾桶" : "已移到資源回收筒");
+  await expect.soft(undo).toHaveText(mac ? "還原⌘Z" : "還原Ctrl+Z");
+  await expect.soft(undo).toHaveAttribute("aria-keyshortcuts", mac ? "Meta+Z" : "Control+Z");
+  await toast.screenshot({ path: testInfo.outputPath("undo-toast.png") });
   // From the selected tab, the keyboard reaches the toast's buttons; Escape there closes it and focus goes to the tab.
   await page.locator("#tab-library").focus();
-  await page.locator(`${live} .toast-action`).focus();
+  await undo.focus();
   await page.keyboard.press("Escape");
-  await expect(page.locator(live)).toHaveCount(0);
+  await expect(toast).toHaveCount(0);
   await page.waitForTimeout(400);
   expect.soft(await read<string>(page, "document.activeElement?.id"), "T02 Escape inside the toast closes it and gives focus to the tab").toBe("tab-library");
   // A newer trash while the last toast slides out: the leaving one is inert.
   await trashFirst();
-  await expect(page.locator(live)).toHaveCount(1);
+  await expect(toast).toHaveCount(1);
   await page.keyboard.press("Escape");
   await trashFirst();
-  const leaving = await read<boolean[]>(page, `[...document.querySelectorAll('.undo-toast[data-removed="true"]')].map(t => t.inert)`);
+  const leaving = await read<boolean[]>(page, `[...document.querySelectorAll('[data-sonner-toast][data-removed="true"]')].map(t => t.inert)`);
   expect.soft(leaving.every(Boolean), `T03 a toast sliding out under a newer one cannot be reached ${JSON.stringify(leaving)}`).toBe(true);
   await page.locator("#tab-library").focus();
   await page.mouse.move(10, 400);
-  await expect(page.locator(live)).toHaveCount(0, { timeout: 9500 });
+  await expect(toast).toHaveCount(0, { timeout: 9500 });
 });

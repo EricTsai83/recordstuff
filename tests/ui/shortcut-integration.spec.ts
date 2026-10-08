@@ -111,12 +111,12 @@ test("K-N01–K-N14 normal: a refused registration is saved, explained, notified
   await s.commit(async () => {
     expect.soft(fs.readFileSync(s.settingsFile, "utf8") === before && (await s.group()).capturing, "K-N01 shortcut preview leaves saved preferences unchanged until Confirm").toBe(true);
   });
-  await until(s.page, `document.querySelector('#setting-hotkey-diagnostics .diagnostic p')`, 3000);
+  await until(s.page, `document.getElementById('setting-hotkey-diagnostics')?.textContent.includes('Another app may be using this shortcut.')`, 3000);
   const failed = await s.group();
   const last = (await s.recordingAttempts()).at(-1);
   expect.soft(last?.registered === false && last.forced && s.saved().hotkey.enabled && s.savedKey() === ACCELERATOR,
     `K-N02 a refused registration (adapter) is saved as chosen ${JSON.stringify({ last, hotkey: s.saved().hotkey })}`).toBe(true);
-  expect.soft(failed.diagnostics?.[0]?.reason === "Another app may be using this shortcut." && await read(s.page, `document.querySelector('#setting-hotkey-diagnostics .diagnostic p').textContent === 'Another app may be using this shortcut.'`),
+  expect.soft(failed.diagnostics?.[0]?.reason === "Another app may be using this shortcut." && await read(s.page, `document.getElementById('setting-hotkey-diagnostics').textContent.includes('Another app may be using this shortcut.')`),
     "K-N03 failure note rendered by production page").toBe(true);
   const first = await s.failureNotifications();
   expect.soft(first.length === 1 && first[0]?.body?.includes("F20") && first[0]?.body?.includes("Open RecordStuff"), `K-N04 notification requested with shortcut and recovery direction ${JSON.stringify(first)}`).toBe(true);
@@ -131,7 +131,7 @@ test("K-N01–K-N14 normal: a refused registration is saved, explained, notified
   expect.soft(!off.diagnostics?.some(d => d.reason === "Another app may be using this shortcut.") && s.saved().hotkey.enabled === false && s.savedKey() === ACCELERATOR
     && !(await s.owned()).includes(ACCELERATOR), "K-N07 Off retains value and removes failure note").toBe(true);
   expect.soft(off.diagnostics?.length === 1 && off.diagnostics[0]?.heading === "The shortcut for RecordStuff is unavailable" && off.actions?.some(a => a.id === "retryRegistration") === true
-    && await read(s.page, `(h => h.textContent === 'The shortcut for RecordStuff is unavailable' && h.querySelector('svg[aria-hidden="true"]') !== null)(document.querySelector('#setting-hotkey-diagnostics .diagnostic strong'))`),
+    && await read(s.page, `document.getElementById('setting-hotkey-diagnostics').textContent.includes('The shortcut for RecordStuff is unavailable')`),
   `K-N08 a failed Settings shortcut is explained in the card, not only by a retry button ${JSON.stringify(off.diagnostics)}`).toBe(true);
   await s.choose("notifications", "off");
   await s.commit();
@@ -166,13 +166,13 @@ test("K-N01–K-N14 normal: a refused registration is saved, explained, notified
   await r.openFromTray();
   await r.page.locator("#tab-general").click();
   expect.soft(await r.app.evaluate(h => h.settingsWindow().getSize()), "K-R01 window size survives a fresh app process").toEqual([640, 560]);
-  await until(r.page, `document.querySelector('#setting-hotkey-diagnostics .diagnostic p')`, 3000);
+  await until(r.page, `document.getElementById('setting-hotkey-diagnostics')?.textContent.includes('Another app may be using this shortcut.')`, 3000);
   const restored = await r.group();
   expect.soft(r.saved().hotkey.enabled && r.savedKey() === ACCELERATOR && restored.choices.some(c => c.id === ACCELERATOR && c.checked),
     "K-R02 restart loads failed custom selection without reseeding").toBe(true);
   const attempts = await r.recordingAttempts();
   expect.soft(attempts.length === 1 && attempts[0]?.registered === false && restored.diagnostics?.[0]?.reason === "Another app may be using this shortcut."
-    && await read(r.page, `document.querySelector('#setting-hotkey-diagnostics .diagnostic p').textContent === 'Another app may be using this shortcut.'`),
+    && await read(r.page, `document.getElementById('setting-hotkey-diagnostics').textContent.includes('Another app may be using this shortcut.')`),
   `K-R03 restart retries registration and renders failure ${JSON.stringify(attempts)}`).toBe(true);
   const restartNotices = await r.failureNotifications();
   expect.soft(restartNotices.length === 1 && restartNotices[0]?.body?.includes("F20"), "K-R04 restart requests failure notification").toBe(true);

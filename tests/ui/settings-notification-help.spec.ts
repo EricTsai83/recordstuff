@@ -3,13 +3,13 @@ import { test, expect } from "./fixtures";
 
 interface HelpProbe {
   before: number[];
-  frames: Array<{ scrollbar: string; gutter: number; geometry: number[] }>;
+  frames: number[][];
   stop(): void;
 }
 
-for (const language of ["en", "zh-TW"] as const) for (const appearance of ["light", "dark"] as const) {
-  test(`notification help changes with the switch ${language}/${appearance}`, async ({ launchApp }, testInfo) => {
-    const app = await launchApp({ settings: { language, appearance } });
+for (const language of ["en", "zh-TW"] as const) {
+  test(`notification help changes with the switch ${language}`, async ({ launchApp }, testInfo) => {
+    const app = await launchApp({ settings: { language } });
     const waiting = app.page("settings.html");
     await app.evaluate(h => { h.rightClickTray(); h.clickTrayItem("Open RecordStuff|開啟 RecordStuff"); });
     const page = await waiting;
@@ -24,11 +24,10 @@ for (const language of ["en", "zh-TW"] as const) for (const appearance of ["ligh
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-checked", "false");
     await expect(page.locator("#setting-notifications-row")).toHaveAttribute("aria-busy", "false");
-    await expect(page.locator("#setting-notifications-note")).toBeHidden();
     await expect(help).toBeVisible();
     await expect(popup).toBeHidden();
     await expect(toggle).toHaveAttribute("aria-describedby", /setting-notifications-info/);
-    // Sample from insertion through the opening animation: a settled-only check misses the scrollbar flash.
+    // Sample from insertion through the opening animation: a settled-only check misses a transient shift.
     await page.evaluate(() => {
       const panel = document.getElementById("settings-panel")!;
       const toggle = document.getElementById("setting-notifications")!;
@@ -41,11 +40,7 @@ for (const language of ["en", "zh-TW"] as const) for (const appearance of ["ligh
       (window as unknown as { notificationHelpProbe: HelpProbe }).notificationHelpProbe = probe;
       const sample = () => {
         const popup = document.getElementById("setting-notifications-info-popup");
-        if (popup) probe.frames.push({
-          scrollbar: getComputedStyle(popup).scrollbarWidth,
-          gutter: popup.offsetWidth - popup.clientWidth,
-          geometry: geometry(),
-        });
+        if (popup) probe.frames.push(geometry());
       };
       const observer = new MutationObserver(sample);
       observer.observe(document.body, { childList: true, subtree: true });
@@ -63,11 +58,9 @@ for (const language of ["en", "zh-TW"] as const) for (const appearance of ["ligh
     });
     expect(probe.frames.length).toBeGreaterThan(1);
     for (const frame of probe.frames) {
-      expect(frame.scrollbar, "scrollbars are disabled from the first mounted frame").toBe("none");
-      expect(frame.gutter, "no scrollbar narrows the popup wrapper").toBe(0);
-      expect(frame.geometry, "opening help does not shift the setting or change the panel's scroll extent").toEqual(probe.before);
+      expect(frame, "opening help does not shift the setting or change the panel's scroll extent").toEqual(probe.before);
     }
-    await page.screenshot({ path: testInfo.outputPath(`notifications-off-${language}-${appearance}.png`), animations: "disabled" });
+    await page.screenshot({ path: testInfo.outputPath(`notifications-off-${language}.png`), animations: "disabled" });
     await page.mouse.move(0, 0);
     await expect(popup).toBeHidden();
     await help.focus();

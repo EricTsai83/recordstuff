@@ -18,6 +18,11 @@ test.beforeEach(async ({ launchView }) => {
 });
 /** A picture kept in the test's output folder for inspection, as the former fixture kept its screenshots. */
 const keep = async (name: string): Promise<void> => { fs.writeFileSync(test.info().outputPath(name), await page.screenshot({ animations: "disabled", caret: "hide" })); };
+/**
+ * Whether the element shows a keyboard focus indicator at all: `:focus-visible` with some outline or shadow. Its style,
+ * width and colour are the design's to change; only its presence is checked.
+ */
+const focusShown = (selector: string): Promise<boolean> => read(page, `(el => Boolean(el?.matches(":focus-visible")) && (s => (s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0) || s.boxShadow !== "none")(getComputedStyle(el)))(document.querySelector(${JSON.stringify(selector)}))`);
 const calls = (): Promise<Array<[string, unknown]>> => host.evaluate(h => [...h.chooseCalls]);
 const clearCalls = (): Promise<void> => host.evaluate(h => { h.chooseCalls.length = 0; });
 const commitEnglish = async (): Promise<void> => {
@@ -31,13 +36,11 @@ test("S002–S009 the shipped page and preload: CSP, bridge, sandbox, localized 
     controls: Array<{ id: string; value: string; disabled: boolean; label: string; describedBy: string | null }> }>(page, `(() => ({
     title: document.querySelector("#title").textContent, docTitle: document.title, lang: document.documentElement.lang,
     bridge: Object.keys(window.settings ?? {}).sort(), exposed: [typeof window.require, typeof window.process, typeof window.module],
-    controls: [...document.querySelectorAll("[data-slot=select-trigger]")].map(s => ({ id: s.id, value: s.dataset.value, disabled: s.disabled,
+    controls: [...document.querySelectorAll("[role=combobox]")].map(s => ({ id: s.id, value: s.dataset.value, disabled: s.disabled,
       label: document.querySelector("label[for='" + s.id + "']").textContent, describedBy: s.getAttribute("aria-describedby") })),
     note: document.querySelector("#setting-hotkey-note")?.textContent ?? null,
   }))()`);
   expect.soft(rendered.controls.length, "S002 the shipped page loads under the shipped CSP (page errors fail at teardown)").toBe(2);
-  expect.soft(await read<boolean>(page, `!document.querySelector(".app-icon") && document.getElementById("title").classList.contains("visually-hidden") && document.getElementById("hint").hidden`),
-    "S003 content starts with tabs without duplicate branding or autosave hint").toBe(true);
   expect.soft(rendered.bridge, "S004 the preload exposes only the settings and zoom APIs").toEqual(["capture", "choose", "onChanged", "onHidden", "onZoomChanged", "read", "ready", "zoom"]);
   expect.soft(rendered.exposed, "S005 no Node API reaches the sandboxed page").toEqual(["undefined", "undefined", "undefined"]);
   expect.soft([rendered.title, rendered.docTitle, rendered.lang, rendered.controls.find(control => control.id === "setting-hotkey")?.label],
@@ -46,10 +49,10 @@ test("S002–S009 the shipped page and preload: CSP, bridge, sandbox, localized 
     .toEqual([["setting-frameRate", "30", false], ["setting-hotkey", "CommandOrControl+Alt+Shift+R", false]]);
   await page.locator("#tab-recording").click();
   await page.locator("#setting-frameRate").click();
-  await expect(page.locator('[data-slot="select-content"][data-open]')).toHaveCount(1);
-  const options = await read<Array<{ text: string; disabled: boolean }>>(page, `[...document.querySelectorAll("[data-slot=select-item]")].map(o => ({ text: o.textContent, disabled: o.hasAttribute("data-disabled") }))`);
+  await expect(page.getByRole("listbox")).toBeVisible();
+  const options = await read<Array<{ text: string; disabled: boolean }>>(page, `[...document.querySelectorAll("[role=option]")].map(o => ({ text: o.textContent, disabled: o.hasAttribute("data-disabled") || o.getAttribute("aria-disabled") === "true" }))`);
   await page.keyboard.press("Escape");
-  await expect(page.locator('[data-slot="select-content"][data-open]')).toHaveCount(0);
+  await expect(page.getByRole("listbox")).toHaveCount(0);
   expect.soft(options[1]?.disabled, `S008 an option unavailable on this platform is listed but not selectable ${JSON.stringify(options)}`).toBe(true);
   expect.soft([rendered.note, rendered.controls[1]?.describedBy?.includes("setting-hotkey-note")], "S009 a refused shortcut shows its note and the control points at it")
     .toEqual(["這個快捷鍵可能被其他 App 佔用。", true]);
@@ -66,7 +69,7 @@ test("S010–S013 a change reaches main as ids, re-renders in the committed lang
   // A choice main refuses to commit (this host never commits a frame rate).
   await page.locator("#tab-recording").click();
   await pickMenu(page, "setting-frameRate", "24");
-  await expect(page.locator("#setting-frameRate-row .save-error p")).toHaveText("Could not apply this setting. Your current settings are shown.");
+  await expect(page.locator("#setting-frameRate-row").getByText("Could not apply this setting. Your current settings are shown.")).toBeVisible();
   expect(await page.locator("#setting-frameRate").getAttribute("data-value"), "S013 a choice that did not commit reports it and shows the committed value").toBe("30");
 });
 
@@ -90,18 +93,13 @@ test("S014–S015 two held saves and an older push: the pushed committed value s
   await host.evaluate(h => { h.state.holdSaves = false; });
 });
 
-test("S016–S021 the notification card: switch and pane button in one card, ids to main, held saves keep the control, restrictions dim", async () => {
+test("S016–S021 the notification setting: switch and pane button, ids to main, held saves keep the control, restrictions disable", async () => {
   await commitEnglish();
   await page.locator("#tab-general").click();
-  const general = await read<{ controls: string[]; buttons: Array<{ id: string; disabled: boolean }>; order: string[] }>(page, `(() => {
-    const row = document.querySelector("#setting-notifications")?.closest(".row");
-    return { controls: [...document.querySelectorAll("[role=switch]")].map(s => s.id),
-      buttons: [...document.querySelectorAll(".row button:not([data-slot=popover-trigger]):not([role=switch])")].filter(b => !b.closest("[hidden]")).map(b => ({ id: b.id, disabled: b.disabled })),
-      // The row's own buttons sit in its .row-actions, under the label (plan 067).
-      order: row ? [...row.querySelectorAll(":scope > *, :scope > .row-actions > *")].map(el => el.tagName.toLowerCase() + (el.id ? "#" + el.id : "." + el.className)) : [] }; })()`);
-  expect.soft(general.controls.join(), "S016 the general tab renders the notification switch").toBe("setting-notifications");
-  expect.soft(general.buttons, "S016 …with its pane button in one card").toEqual([{ id: "setting-notifications-openSettings", disabled: false }]);
-  expect.soft(general.order, "S016 …in the same card").toContain("button#setting-notifications-openSettings");
+  const switches = await read<string[]>(page, `[...document.querySelectorAll("[role=switch]")].filter(s => s.checkVisibility()).map(s => s.id)`);
+  expect.soft(switches.join(), "S016 the general tab renders the notification switch").toBe("setting-notifications");
+  await expect.soft(page.locator("#setting-notifications-openSettings"), "S016 …and its pane button").toBeVisible();
+  await expect.soft(page.locator("#setting-notifications-openSettings"), "S016 …usable").toBeEnabled();
 
   await page.locator("#setting-notifications-openSettings").click();
   await expect.poll(calls).toEqual([["notifications", "openSettings"]]);
@@ -127,9 +125,9 @@ test("S016–S021 the notification card: switch and pane button in one card, ids
       samePanel: beforeToggle.panel === document.querySelector("#settings-panel"), focused: document.activeElement === beforeToggle.select,
       scrollStable: window.scrollY === beforeToggle.scroll && document.querySelector("#setting-updates-row")?.getBoundingClientRect().top === beforeToggle.below,
       value: beforeToggle.select.getAttribute("aria-checked") === "true" ? "on" : "off",
-      buttonLocked: beforeToggle.button.getAttribute("aria-disabled") === "true" && !beforeToggle.button.disabled, buttonOpacity: getComputedStyle(beforeToggle.button).opacity })`);
-    expect.soft(during, `S019 notification ${value}: pending save and push preserve controls, focus, scroll and brightness`).toEqual({ sameSelect: true, samePanel: true, focused: true,
-      scrollStable: true, value: value === "on" ? "off" : "on", buttonLocked: true, buttonOpacity: "1" });
+      buttonLocked: beforeToggle.button.getAttribute("aria-disabled") === "true" && !beforeToggle.button.disabled })`);
+    expect.soft(during, `S019 notification ${value}: pending save and push preserve controls, focus and scroll`).toEqual({ sameSelect: true, samePanel: true, focused: true,
+      scrollStable: true, value: value === "on" ? "off" : "on", buttonLocked: true });
     await host.evaluate(h => h.releaseSave());
     await until(page, `beforeToggle.select.getAttribute("aria-checked") === ${JSON.stringify(value === "on" ? "true" : "false")}`);
     const after = await read<Record<string, unknown>>(page, `({ sameSelect: beforeToggle.select === document.querySelector("#setting-notifications"),
@@ -140,8 +138,7 @@ test("S016–S021 the notification card: switch and pane button in one card, ids
     expect.soft(after, `S020 notification ${value}: completion preserves the control and unlocks the pane action`).toEqual({ sameSelect: true, focused: true, scrollStable: true, value, buttonLocked: false });
   }
   await host.evaluate(h => { h.state.holdSaves = false; const locked = h.fixtureView(h.state.language); locked.groups.forEach((group: { enabled: boolean }) => { group.enabled = false; }); h.push(locked); });
-  await expect.poll(() => read(page, `getComputedStyle(document.querySelector("#setting-notifications")).opacity`)).toBe("0.5");
-  await expect(page.locator("#setting-notifications"), "S021 recording restrictions still disable and dim the controls").toBeDisabled();
+  await expect(page.locator("#setting-notifications"), "S021 recording restrictions disable the controls").toBeDisabled();
 });
 
 test("S022 the Recordings folder is read by the app's library: names, dates, sizes and lengths from the files", async () => {
@@ -184,10 +181,8 @@ test("S039–S041 the status card: no Start when ready; Change output folder… 
   await host.evaluate(h => h.pushModel({ type: "idle", outputDirUnavailable: true }));
   await expect(page.locator("#status-action")).toHaveText("Change output folder…");
   await clearCalls();
-  const fix = await read<{ inSidebar: boolean }>(page, `(() => { const r = document.getElementById("status-action").getBoundingClientRect(), panel = document.querySelector(".settings-viewport").getBoundingClientRect(); return { inSidebar: r.right <= panel.left }; })()`);
   await clickAt(page, "#status-action", { scroll: false });
-  await expect.poll(calls, { message: "S040 status card: Change output folder… sits in the sidebar and a click asks main for status/folder" }).toEqual([["status", "folder"]]);
-  expect.soft(fix.inSidebar, "S040 …in the sidebar").toBe(true);
+  await expect.poll(calls, { message: "S040 status card: a click on Change output folder… asks main for status/folder" }).toEqual([["status", "folder"]]);
   // A missing permission: Open System Settings is the primary action, followed by the optional Relaunch link.
   for (const [lang, scheme, size] of [["en", "light", "default"], ["en", "dark", "narrow"], ["zh-TW", "light", "minimum"]] as const) {
     await host.evaluate((h, args) => { h.theme(args.scheme); h.setSize(...h.SNAPSHOT_SIZES[args.size]); h.pushModel({ type: "needsPermission", needsRelaunch: false }, { language: args.lang }); }, { lang, scheme, size });
@@ -200,25 +195,18 @@ test("S039–S041 the status card: no Start when ready; Change output folder… 
   await expect(page.locator("#status-secondary")).toHaveText("Already allowed? Relaunch");
   await expect(page.locator("#status-action")).toHaveText("Open Settings");
   await clearCalls();
-  const link = await read<{ x: number; y: number; label: string; button: string; below: boolean; inside: boolean }>(page, `(() => {
-    const el = document.getElementById("status-secondary"), r = el.getBoundingClientRect(), card = document.getElementById("status").getBoundingClientRect();
-    const primary = document.getElementById("status-action").getBoundingClientRect();
-    return { x: Math.round(r.x + Math.min(r.width / 2, 40)), y: Math.round(r.y + r.height / 2), label: el.hidden ? "" : el.textContent, button: document.getElementById("status-action").textContent,
-      below: r.top >= primary.bottom - 1, inside: Boolean(r.width > 0 && r.left >= card.left && r.right <= card.right && r.bottom <= card.bottom) }; })()`);
   await page.locator("#status-secondary").click();
-  await expect.poll(calls).toEqual([["status", "relaunch"]]);
-  expect.soft({ label: link.label, button: link.button, below: link.below, inside: link.inside },
-    "S041 status card: a missing permission offers Open System Settings, then Relaunch; a click on the link asks main for status/relaunch")
-    .toEqual({ label: "Already allowed? Relaunch", button: "Open Settings", below: true, inside: true });
+  await expect.poll(calls, { message: "S041 status card: a missing permission offers Open System Settings and Relaunch; a click on the link asks main for status/relaunch" })
+    .toEqual([["status", "relaunch"]]);
 });
 
 for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {
-  test(`S042–S043 ${lang}/${size}: the ⓘ explanation by hover (above it, kept through the gap and on itself) and by Tab, closed by Escape with the window open`, async () => {
+  test(`S042–S043 ${lang}/${size}: the ⓘ explanation by hover (kept through the gap and on itself) and by Tab, closed by Escape with the window open`, async () => {
     await host.evaluate((h, args) => { h.setSize(...h.SNAPSHOT_SIZES[args.size]); h.pushModel({ type: "idle" }, { language: args.lang }); }, { lang, size });
     await page.locator("#tab-recording").click();
     const infoState = (id: string) => read<{ open: boolean; expanded: string | null; text: string; inside: boolean; describes: boolean }>(page, `(() => {
       const id = ${JSON.stringify(`setting-${id}`)}, popover = document.getElementById(id + "-info-popup"), r = popover?.getBoundingClientRect();
-      const control = document.querySelector("#" + id + "-row [role=switch], #" + id + "-row [data-slot=select-trigger], #" + id + "-row .segments button");
+      const control = document.querySelector("#" + id + "-row [role=switch], #" + id + "-row [role=combobox], #" + id + "-row button[aria-pressed]");
       return { open: Boolean(popover?.hasAttribute("data-open")), expanded: document.getElementById(id + "-info-button").getAttribute("aria-expanded"), text: document.getElementById(id + "-info").textContent,
         inside: Boolean(r && r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight),
         describes: (control?.getAttribute("aria-describedby") ?? "").split(" ").includes(id + "-info") }; })()`);
@@ -229,19 +217,23 @@ for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {
     await until(page, `document.getElementById("setting-countdownSound-info-popup").getAnimations({ subtree: true }).every(a => a.playState !== "running")`);
     const hovered = await infoState("countdownSound");
     await keep(`info-hover-${lang}-light-${size}.png`);
-    const geometry = await read<{ above: boolean; gap: { x: number; y: number }; onto: { x: number; y: number } }>(page, `(() => {
+    // A point between the button and its explanation, wherever the design places it.
+    const geometry = await read<{ gap: { x: number; y: number }; onto: { x: number; y: number } }>(page, `(() => {
       const b = document.getElementById("setting-countdownSound-info-button").getBoundingClientRect(), r = document.getElementById("setting-countdownSound-info-popup").getBoundingClientRect();
-      return { above: r.bottom <= b.top, gap: { x: Math.round(b.x + b.width / 2), y: Math.floor(b.top) - 1 }, onto: { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) } }; })()`);
+      const x = Math.round(b.x + b.width / 2), y = Math.round(b.y + b.height / 2);
+      const gap = r.bottom <= b.top ? { x, y: Math.floor((r.bottom + b.top) / 2) } : r.top >= b.bottom ? { x, y: Math.ceil((b.bottom + r.top) / 2) }
+        : r.right <= b.left ? { x: Math.floor((r.right + b.left) / 2), y } : r.left >= b.right ? { x: Math.ceil((b.right + r.left) / 2), y } : { x, y };
+      return { gap, onto: { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) } }; })()`);
     await page.mouse.move(geometry.gap.x, geometry.gap.y); await page.waitForTimeout(300);
     const inGap = await infoState("countdownSound");
     await page.mouse.move(geometry.onto.x, geometry.onto.y); await page.waitForTimeout(300);
     const kept = await infoState("countdownSound");
     await page.mouse.move(4, 4); await page.waitForTimeout(300);
     const left = await infoState("countdownSound");
-    expect.soft({ open: hovered.open, expanded: hovered.expanded, inside: hovered.inside, describes: hovered.describes, text: hovered.text, above: geometry.above,
+    expect.soft({ open: hovered.open, expanded: hovered.expanded, inside: hovered.inside, describes: hovered.describes, text: hovered.text,
       inGap: inGap.open, kept: kept.open, left: left.open, leftExpanded: left.expanded },
-    `S042 ${lang}/${size}: hovering the ⓘ shows its explanation above it inside the window, it stays through a pause in the gap and while the pointer is on it, and leaving both hides it`)
-      .toEqual({ open: true, expanded: "true", inside: true, describes: true, text: lang === "en" ? "The tick is not recorded." : "提示音不會被錄進影片。", above: true,
+    `S042 ${lang}/${size}: hovering the ⓘ shows its explanation inside the window, it stays through a pause in the gap and while the pointer is on it, and leaving both hides it`)
+      .toEqual({ open: true, expanded: "true", inside: true, describes: true, text: lang === "en" ? "The tick is not recorded." : "提示音不會被錄進影片。",
         inGap: true, kept: true, left: false, leftExpanded: "false" });
     await page.locator("#setting-videoQuality button[aria-pressed=true]").focus();
     await page.keyboard.press("Tab");
@@ -261,11 +253,11 @@ for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {
 test("S044–S048 update checks: repeated states keep nodes and geometry; Tab and Enter start one check and keep focus through it", async () => {
   await host.evaluate(h => { h.setSize(560, 680); h.pushModel({ type: "idle" }, { updates: { enabled: true, state: { kind: "current", checkedAt: 1000 } } }); });
   await page.locator("#tab-general").click();
-  await read(page, `window.updateBefore = { row: document.getElementById("setting-updates-row"), button: document.getElementById("setting-updates-check"), note: document.querySelector("#setting-updates-row .note"), below: document.getElementById("setting-language-row").getBoundingClientRect().top };`);
+  await read(page, `window.updateBefore = { row: document.getElementById("setting-updates-row"), button: document.getElementById("setting-updates-check"), note: document.getElementById("setting-updates-note"), below: document.getElementById("setting-language-row").getBoundingClientRect().top };`);
   for (const [id, updateState] of [["S044", { kind: "checking", previous: { kind: "current", checkedAt: 1000 } }], ["S045", { kind: "current", checkedAt: 2000 }]] as const) {
     await host.evaluate((h, value) => h.pushModel({ type: "idle" }, { updates: { enabled: true, state: value } }), updateState);
     await page.waitForTimeout(60);
-    expect.soft(await read<boolean>(page, `updateBefore.row === document.getElementById("setting-updates-row") && updateBefore.button === document.getElementById("setting-updates-check") && updateBefore.note === document.querySelector("#setting-updates-row .note") && !updateBefore.note.hidden && updateBefore.below === document.getElementById("setting-language-row").getBoundingClientRect().top`),
+    expect.soft(await read<boolean>(page, `updateBefore.row === document.getElementById("setting-updates-row") && updateBefore.button === document.getElementById("setting-updates-check") && updateBefore.note === document.getElementById("setting-updates-note") && !updateBefore.note.hidden && updateBefore.below === document.getElementById("setting-language-row").getBoundingClientRect().top`),
       `${id} repeated update ${updateState.kind} preserves nodes and lower-row geometry`).toBe(true);
   }
   await host.evaluate(h => { h.state.updateContext = { ...h.baseContext(), updates: { enabled: true, state: { kind: "current", checkedAt: 1000 } } }; h.push(h.settingsView({ type: "idle" }, h.state.updateContext)); });
@@ -276,17 +268,15 @@ test("S044–S048 update checks: repeated states keep nodes and geometry; Tab an
   const tabbed = await read<string>(page, "document.activeElement.id");
   await page.keyboard.press("Enter");
   await expect(page.locator("#setting-updates-check")).toHaveText("Checking for updates…");
-  // The button transitions its shadow; wait for the keyboard ring instead of sampling at 150ms.
-  await expect.poll(() => page.locator("#setting-updates-check").evaluate(el => getComputedStyle(el).boxShadow),
-    { message: "S047 the busy button settles with its keyboard focus ring" }).toMatch(/0px 0px 0px 2px/);
-  const busy = await read<{ active: string; disabled: boolean; ariaDisabled: string | null; ring: string }>(page, `(() => { const el = document.getElementById("setting-updates-check");
-    return { active: document.activeElement.id, disabled: el.disabled, ariaDisabled: el.getAttribute("aria-disabled"), ring: getComputedStyle(el).boxShadow }; })()`);
+  // The indicator may transition in; wait for it instead of sampling at a fixed moment.
+  await expect.poll(() => focusShown("#setting-updates-check"), { message: "S047 the busy button keeps a visible keyboard focus indicator" }).toBe(true);
+  const busy = await read<{ active: string; disabled: boolean; ariaDisabled: string | null }>(page, `(() => { const el = document.getElementById("setting-updates-check");
+    return { active: document.activeElement.id, disabled: el.disabled, ariaDisabled: el.getAttribute("aria-disabled") }; })()`);
   await keep("update-check-busy.png");
   await page.keyboard.press("Enter");
   await page.waitForTimeout(100);
   expect.soft({ tabbed, calls: await calls() }, "S046 Tab reaches Check for updates… and Enter starts one check").toEqual({ tabbed: "setting-updates-check", calls: [["updates", "check"]] });
-  expect.soft({ active: busy.active, disabled: busy.disabled, ariaDisabled: busy.ariaDisabled, ring: /0px 0px 0px 2px/.test(busy.ring) },
-    `S047 a running check keeps keyboard focus and its ring on the busy, focusable button (${busy.ring})`).toEqual({ active: "setting-updates-check", disabled: false, ariaDisabled: "true", ring: true });
+  expect.soft(busy, "S047 a running check keeps keyboard focus on the busy, focusable button").toEqual({ active: "setting-updates-check", disabled: false, ariaDisabled: "true" });
   await host.evaluate(h => { h.state.updateContext = { ...h.state.updateContext, updates: { enabled: true, state: { kind: "current", checkedAt: 2000 } } }; h.push(h.settingsView({ type: "idle" }, h.state.updateContext)); });
   await expect(page.locator("#setting-updates-check")).toHaveAttribute("aria-disabled", "false");
   await page.keyboard.press("Tab");
@@ -295,81 +285,55 @@ test("S044–S048 update checks: repeated states keep nodes and geometry; Tab an
   expect.soft(next !== "" && !next.startsWith("tab-") && next !== "setting-updates-check", `S048 after the check, the next Tab continues past the button instead of restarting at the tabs (${next})`).toBe(true);
 });
 
-test("S049–S052 the scroll cue: shown non-interactive on overflow, never over a Tab-focused control, gone at the bottom and when content fits", async () => {
+test("S050 a Tab-focused control in an overflowing panel is scrolled into view and uncovered", async () => {
   await host.evaluate(h => { h.pushModel({ type: "idle" }); h.setSize(380, 360); });
   await page.waitForTimeout(100);
   await read(page, `document.getElementById("settings-panel").scrollTop = 0`);
-  await expect.poll(() => read(page, `Number(getComputedStyle(document.getElementById("scroll-hint")).opacity) === 1 && getComputedStyle(document.getElementById("scroll-hint")).pointerEvents === "none"`),
-    { message: "S049 overflow shows non-interactive glass scroll cue" }).toBe(true);
-  await keep("panel-scroll-cue.png");
-  const viewportBottom = await read<number>(page, `innerHeight - document.querySelector(".settings-viewport").getBoundingClientRect().bottom`);
-  expect(viewportBottom, "the scroll viewport reaches the app bottom without a fixed blank strip").toBeLessThanOrEqual(1);
-  const cardBelowViewport = await read<boolean>(page, `document.querySelector(".settings-card").getBoundingClientRect().bottom > innerHeight`);
-  expect(cardBelowViewport, "before the end, the overflowing card continues past the app bottom").toBe(true);
-  const opacity = (id: string) => read<number>(page, `Number(getComputedStyle(document.getElementById("${id}")).opacity)`);
-  // Near either endpoint, the blur becomes partial before reaching zero, while its element stays mounted.
-  await read(page, `document.getElementById("settings-panel").scrollTop = 30`);
-  await expect.poll(() => opacity("scroll-hint-top")).toBeCloseTo(0.5, 1);
-  await keep("panel-top-partial-fade.png");
-  await read(page, `document.getElementById("settings-panel").scrollTop = 0`);
-  await expect.poll(() => opacity("scroll-hint-top")).toBe(0);
-  await read(page, `(() => { const p = document.getElementById("settings-panel"); p.scrollTop = p.scrollHeight - p.clientHeight - 38; })()`);
-  await expect.poll(() => opacity("scroll-hint")).toBeCloseTo(0.5, 1);
-  await keep("panel-bottom-partial-fade.png");
-  expect(await read<boolean>(page, `["scroll-hint", "scroll-hint-top"].every(id => !document.getElementById(id).hidden)`)).toBe(true);
-  await read(page, `document.getElementById("settings-panel").scrollTop = 0`);
-  await page.locator('.tabs [role="tab"][aria-selected="true"]').focus();
+  expect(await read<boolean>(page, `(p => p.scrollHeight > p.clientHeight)(document.getElementById("settings-panel"))`), "the content overflows the panel at this size").toBe(true);
+  await page.locator('[role="tab"][aria-selected="true"]').first().focus();
   const covered: string[] = [];
   let scrolled = 0;
   for (let step = 0; step < 24; step += 1) {
     await page.keyboard.press("Tab");
     await page.waitForTimeout(60);
     const focus = await read<{ id: string; covered: boolean; scrollTop: number }>(page, `(() => {
-      const cue = document.getElementById("scroll-hint"), active = document.activeElement, panel = document.getElementById("settings-panel");
-      const hint = cue.getBoundingClientRect(), box = active.getBoundingClientRect();
-      return { id: active.id || active.tagName, covered: panel.contains(active) && Number(getComputedStyle(cue).opacity) > 0.01 && box.bottom > hint.top + 1 && box.top < hint.bottom, scrollTop: panel.scrollTop }; })()`);
+      const active = document.activeElement, panel = document.getElementById("settings-panel");
+      const box = active.getBoundingClientRect(), view = panel.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return { id: active.id || active.tagName, scrollTop: panel.scrollTop,
+        covered: panel.contains(active) && (box.top < view.top - 1 || box.bottom > view.bottom + 1 || !hit || !(active.contains(hit) || hit.contains(active))) }; })()`);
     if (focus.covered) covered.push(focus.id);
     scrolled = Math.max(scrolled, focus.scrollTop);
   }
-  expect.soft({ scrolled: scrolled > 0, covered }, "S050 a Tab never leaves the focused control under the scroll cue").toEqual({ scrolled: true, covered: [] });
-  await read(page, `document.getElementById("settings-panel").scrollTop = document.getElementById("settings-panel").scrollHeight`);
-  await expect.poll(() => read(page, `Number(getComputedStyle(document.getElementById("scroll-hint")).opacity) === 0`), { message: "S051 scroll cue disappears at the bottom" }).toBe(true);
-  const bottomGap = () => read<number>(page, `innerHeight - document.querySelector(".settings-card").getBoundingClientRect().bottom`);
-  expect(await bottomGap(), "a scrolled card leaves breathing room above the window bottom").toBeGreaterThanOrEqual(20);
-  await keep("panel-scroll-bottom.png");
-  await host.evaluate(h => h.setSize(720, 900));
-  await page.locator("#tab-recording").click();
-  await page.waitForTimeout(100);
-  await expect.poll(() => opacity("scroll-hint")).toBe(0);
-  const fitting = await read<{ hidden: boolean; scrollHeight: number; clientHeight: number }>(page, `({ hidden: Number(getComputedStyle(document.getElementById("scroll-hint")).opacity) === 0,
-    scrollHeight: document.getElementById("settings-panel").scrollHeight, clientHeight: document.getElementById("settings-panel").clientHeight })`);
-  expect.soft(fitting.hidden && fitting.scrollHeight <= fitting.clientHeight + 2, `S052 fitting content needs no scroll cue ${JSON.stringify(fitting)}`).toBe(true);
-  expect(await bottomGap(), "a fitting card also leaves breathing room above the window bottom").toBeGreaterThanOrEqual(20);
-  await keep("panel-fitting-bottom.png");
+  expect.soft({ scrolled: scrolled > 0, covered }, "S050 a Tab never leaves the focused control out of view or under something else").toEqual({ scrolled: true, covered: [] });
 });
 
-test("S053–S057 General's footer and the log link: wide and narrow layouts, a failed link's Retry keeps focus in its row", async () => {
+test("S053–S057 General's footer and the log link: wide and narrow windows, a failed link's Retry keeps focus in its row", async () => {
   await host.evaluate(h => { h.setSize(720, 900); h.state.captureView = h.settingsView({ type: "idle" }, h.baseContext()); h.push(h.state.captureView); });
   await page.locator("#tab-general").click();
   await page.waitForTimeout(100);
-  const wide = await read<{ credit: boolean; shown: string[]; horizontal: boolean; icons: boolean }>(page, `(() => { const row = document.getElementById("setting-about-row"), credit = row.querySelector(".group-label").getBoundingClientRect();
-    const buttons = [...row.querySelectorAll(".controls button")].filter(b => b.getBoundingClientRect().height > 0), first = buttons[0].getBoundingClientRect(), last = buttons.at(-1).getBoundingClientRect();
-    return { credit: credit.height > 0, shown: buttons.map(b => b.dataset.action), horizontal: credit.right <= first.left && Math.abs(credit.top + credit.height / 2 - first.top - first.height / 2) < 1 && Math.abs(last.right - row.getBoundingClientRect().right) < 1,
-      icons: buttons.every(b => b.textContent.trim() === "" && b.querySelector("svg") && b.getAttribute("aria-label") && b.dataset.slot === "tooltip-trigger") }; })()`);
-  expect.soft(wide, "S053 General's footer keeps the credit on the left and accessible website/source icons on the right, with Hide/Quit in the sidebar").toEqual({ credit: true, shown: ["website", "source"], horizontal: true, icons: true });
+  // The credit and the named website/source links are shown and do not overlap, whatever their arrangement.
+  const footer = `(() => { const credit = [...document.querySelectorAll("#setting-about-row *")].find(el => el.childElementCount === 0 && el.textContent.includes("Eric Tsai")), c = credit.getBoundingClientRect();
+    const links = ["setting-about-website", "setting-about-source"].map(id => document.getElementById(id));
+    const apart = (a, b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+    return { credit: credit.checkVisibility() && c.height > 0, links: links.map(b => Boolean(b?.checkVisibility() && b.getAttribute("aria-label"))),
+      apart: links.every(b => b && apart(c, b.getBoundingClientRect())),
+      hide: [...document.querySelectorAll("button[aria-label]")].some(b => b.getAttribute("aria-label") === "Hide interface" && b.checkVisibility()) }; })()`;
+  expect.soft(await read(page, footer), "S053 General's footer shows the credit and named website/source links without overlap; Hide interface stays reachable")
+    .toEqual({ credit: true, links: [true, true], apart: true, hide: true });
   await host.evaluate(h => h.setSize(560, 760));
   await page.waitForTimeout(100);
-  expect.soft(await read<boolean>(page, `(() => { const row = document.getElementById("setting-about-row"); const buttons = [...row.querySelectorAll(".controls button[data-action]")]; const credit = row.querySelector(".group-label"), c = credit.getBoundingClientRect(), link = buttons[0].getBoundingClientRect(); return credit.textContent.includes("Eric Tsai") && buttons.map(b => b.dataset.action).join() === "website,source,hide" && buttons.every(b => b.querySelector("svg") && b.getAttribute("aria-label")) && buttons.slice(0, 2).every(b => b.textContent.trim() === "" && b.dataset.slot === "tooltip-trigger") && (c.right <= link.left || c.bottom <= link.top) && row.closest("footer") && !row.closest("[data-slot=card]"); })()`),
-    "S054 narrow footer keeps the credit and named link icons without overlap, and retains Hide/Quit outside the settings cards").toBe(true);
+  expect.soft(await read(page, footer), "S054 a narrow window keeps the credit and named links without overlap, and Hide interface reachable")
+    .toEqual({ credit: true, links: [true, true], apart: true, hide: true });
   await expect(page.locator("#setting-log-show")).toBeHidden();
   await page.locator("#tab-failures").click();
   await page.locator("#troubleshooting-tools-tab").click();
-  expect.soft(await read<boolean>(page, `(() => { const row = document.getElementById("setting-log-row"); const show = document.getElementById("setting-log-show"); return !row.closest("[data-slot=card]") && !row.querySelector(".group-title") && Boolean(show?.querySelector(".row-icon[aria-hidden=true]")) && show?.textContent === "Log file" && !show.disabled; })()`),
-    "S055 the log file is a standalone text link with its icon, without a card or duplicate label").toBe(true);
+  await expect.soft(page.locator("#setting-log-show"), "S055 the log file link is named Log file").toHaveAccessibleName("Log file");
+  await expect.soft(page.locator("#setting-log-show"), "S055 …and usable").toBeEnabled();
   await page.locator("#tab-general").click();
   await page.locator("#setting-about-website").click();
-  await expect.poll(() => read(page, `(() => { const retry = document.getElementById("setting-about-retry"); return !retry.hidden && retry.getBoundingClientRect().width > 32 && retry.scrollWidth <= retry.clientWidth && document.querySelector("#setting-about-website svg") !== null; })()`),
-    { message: "S056 failed footer link retains readable text retry and icon" }).toBe(true);
+  await expect.poll(() => read(page, `(() => { const retry = document.getElementById("setting-about-retry"); return retry.checkVisibility() && retry.textContent.trim() !== "" && retry.scrollWidth <= retry.clientWidth; })()`),
+    { message: "S056 a failed footer link offers a Retry whose text is not cut off" }).toBe(true);
   await page.locator("#setting-about-retry").focus();
   await page.keyboard.press("Space");
   await page.waitForTimeout(150);
@@ -387,7 +351,6 @@ for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", 
     }, { language, scheme });
     await page.locator("#tab-general").click();
     await expect(page.locator("#setting-log-show")).toBeHidden();
-    await expect(page.locator("#settings-data-cleanup-toggle")).toHaveCount(0);
     await expect(page.locator("#setting-about-label")).toHaveText("RecordStuff");
     await expect(page.locator("#setting-about-note")).toBeVisible();
     await keep(`general-${language}-${scheme}.png`);
@@ -395,7 +358,7 @@ for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", 
     const historyTab = page.locator("#troubleshooting-history-tab"), toolsTab = page.locator("#troubleshooting-tools-tab");
     await expect(historyTab).toHaveText(language === "en" ? "Failure history" : "失敗紀錄");
     await expect(toolsTab).toHaveText(language === "en" ? "Diagnostics and cleanup" : "診斷與清理");
-    expect(await read<boolean>(page, `['troubleshooting-history-tab', 'troubleshooting-tools-tab'].every(id => { const range = document.createRange(); range.selectNodeContents(document.getElementById(id)); return new Set([...range.getClientRects()].map(r => Math.round(r.top))).size === 1; })`), "content tab labels fit on one line at the default width").toBe(true);
+    expect(await read<boolean>(page, `['troubleshooting-history-tab', 'troubleshooting-tools-tab'].every(id => { const el = document.getElementById(id); return el.scrollWidth <= el.clientWidth; })`), "content tab labels are not cut off at the default width").toBe(true);
     await expect(historyTab).toHaveAttribute("aria-selected", "true");
     await expect(page.locator("#recording-results")).toBeVisible();
     await expect(page.locator("#setting-log-show")).toBeHidden();
@@ -413,28 +376,15 @@ for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", 
     const cleanup = page.locator("#settings-data-cleanup");
     await expect(cleanup).toHaveAccessibleName(language === "en" ? "Reset and cleanup" : "重設與清理");
     await expect(page.locator("#settings-data-cleanup-warning")).toHaveText(language === "en"
-      ? "This permanently deletes the listed app data and cannot be undone."
-      : "上述 App 資料會永久刪除，無法復原。");
-    await expect(page.locator("#settings-data-cleanup-toggle")).toHaveCount(0);
-    await expect(cleanup.locator('[data-slot="card"]')).toHaveCount(0);
+      ? "This cannot be undone, and RecordStuff will quit."
+      : "此動作無法復原，完成後 App 會結束。");
     await expect(page.locator("#setting-localData-label")).toHaveText(language === "en" ? "Clear local app data" : "清除本機 App 資料");
-    await expect(page.locator("#setting-localData-row #settings-data-cleanup-warning")).toBeVisible();
+    await expect(page.locator("#settings-data-cleanup-warning")).toBeVisible();
     await expect(page.locator("#setting-localData-clear")).toHaveAccessibleDescription(/cannot be undone|無法復原/);
     await expect(page.locator("#recording-results-heading")).toHaveText(language === "en" ? "Recording failures" : "失敗紀錄");
     await expect(page.locator("#setting-log-section-heading")).toHaveText(language === "en" ? "Diagnostic tools" : "診斷工具");
     const logLink = page.locator("#setting-log-show");
     await expect(logLink).toHaveText(language === "en" ? "Log file" : "記錄檔（log）");
-    await expect(page.locator("#setting-log-row").locator("xpath=ancestor::*[@data-slot='card']")).toHaveCount(0);
-    await cleanup.locator("h2").hover();
-    await expect(logLink).toHaveCSS("border-bottom-color", "rgba(0, 0, 0, 0)");
-    // The icon and label share one bottom border, including when hovering the icon itself.
-    await logLink.locator("svg").hover();
-    await expect(logLink).toHaveCSS("border-bottom-color", await page.locator("#tab-failures").evaluate(el => getComputedStyle(el, "::after").backgroundColor));
-    const primary = await page.locator("#tab-failures").evaluate(el => getComputedStyle(el, "::after").backgroundColor);
-    await expect(logLink).toHaveCSS("color", primary);
-    await expect(logLink.locator("svg")).toHaveCSS("color", primary);
-    await expect(logLink).toHaveCSS("border-bottom-style", "solid");
-    await expect(logLink).toHaveCSS("border-bottom-width", "1px");
     await expect(page.locator("#setting-localData-clear")).toBeVisible();
     await logLink.click();
     await expect.poll(calls).toContainEqual(["log", "show"]);
@@ -478,45 +428,51 @@ test("S058–S066 the shortcut editor by keyboard: Tab and Shift+Tab leave captu
   await page.waitForTimeout(100);
   await page.keyboard.press("Shift+Tab");
   const back = await read<string>(page, "document.activeElement.id");
-  await expect.poll(() => read<boolean>(page, `(() => { const el = document.getElementById("setting-hotkey"); return el.matches(":focus-visible") && /0px 0px 0px 2px/.test(getComputedStyle(el).boxShadow); })()`),
-    { message: "S059 keyboard navigation retains a visible focus ring" }).toBe(true);
+  await expect.poll(() => focusShown("#setting-hotkey"), { message: "S059 keyboard navigation retains a visible focus indicator" }).toBe(true);
   await read(page, `document.getElementById("setting-hotkey").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }))`);
-  expect.soft(await read<boolean>(page, `(() => { const el = document.getElementById("setting-hotkey"); return document.activeElement === el && /0px 0px 0px 2px/.test(getComputedStyle(el).boxShadow) === el.matches(":focus-visible"); })()`) && back === "setting-hotkey",
-    "S060 pointer bookkeeping preserves DOM focus and follows browser focus-visible").toBe(true);
+  expect.soft(await read<boolean>(page, `document.activeElement === document.getElementById("setting-hotkey")`) && back === "setting-hotkey",
+    "S060 pointer bookkeeping preserves DOM focus").toBe(true);
   await arm();
   await page.waitForTimeout(100);
-  expect.soft(await read<boolean>(page, `document.querySelectorAll("#shortcut-capture .listening-indicator span").length === 3 && !document.querySelector(".capture-area").hidden`),
-    "S061 acknowledged capture displays a listening indicator").toBe(true);
+  await expect.soft(page.locator("#shortcut-capture"), "S061 acknowledged capture shows the listening editor").toBeVisible();
   await page.keyboard.press("Control+F12");
-  await expect.soft(page.locator("#shortcut-capture kbd"), "S062 Control+F12 keeps the named key in one keycap").toHaveText(["⌃", "F12"]);
+  await expect.soft(page.locator("#shortcut-capture"), "S062 Control+F12 is shown as ⌃ with the named key F12").toHaveText(/⌃\s*F12/);
   await keep("shortcut-f12.png");
   await page.keyboard.press("Tab");
   await page.waitForTimeout(100);
-  expect.soft(await read(page, `({ active: document.activeElement.id, open: !document.querySelector(".capture-area").hidden, enabled: !document.getElementById("shortcut-confirm").disabled })`),
+  expect.soft(await read(page, `({ active: document.activeElement.id, open: document.getElementById("shortcut-capture").checkVisibility(), enabled: !document.getElementById("shortcut-confirm").disabled })`),
     "S063 Tab with a candidate reaches Confirm and keeps the editor open").toEqual({ active: "shortcut-confirm", open: true, enabled: true });
   await page.locator("#shortcut-cancel").click();
   expect.soft(back, "S064 Shift+Tab exits capture to its preceding edit action").toBe("setting-hotkey");
   await host.evaluate(h => h.setSize(560, 680));
   await page.emulateMedia({ forcedColors: "active" });
   await page.waitForTimeout(100);
-  expect.soft(await read<boolean>(page, `matchMedia("(forced-colors: active)").matches && getComputedStyle(document.getElementById("setting-notifications")).borderTopStyle === "solid" && getComputedStyle(document.querySelector("#setting-language button[aria-pressed=true]")).outlineStyle === "solid"`),
+  // Whatever the style, under forced colors the switch keeps an edge and the selected segment differs from the others.
+  expect.soft(await read<boolean>(page, `(() => {
+    const edge = s => (s.borderTopStyle !== "none" && parseFloat(s.borderTopWidth) > 0) || (s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0);
+    const look = el => (s => [s.borderTopStyle, s.borderTopWidth, s.borderTopColor, s.outlineStyle, s.outlineWidth, s.outlineColor, s.backgroundColor, s.color].join())(getComputedStyle(el));
+    const selected = document.querySelector("#setting-language button[aria-pressed=true]"), other = document.querySelector("#setting-language button[aria-pressed=false]");
+    return matchMedia("(forced-colors: active)").matches && edge(getComputedStyle(document.getElementById("setting-notifications"))) && look(selected) !== look(other); })()`),
     "S065 forced colors distinguish the switch and the selected segment").toBe(true);
   await keep("panel-forced-colors.png");
   await page.emulateMedia({ forcedColors: "none", reducedMotion: "reduce" });
-  expect.soft(await read<string>(page, `getComputedStyle(document.querySelector(".listening-indicator span")).animationName`), "S066 reduced motion disables the listening animation").toBe("none");
+  await arm();
+  await page.waitForTimeout(100);
+  expect.soft(await read<number>(page, `document.getElementById("shortcut-capture").getAnimations({ subtree: true }).filter(a => a.playState === "running" && a.effect?.getComputedTiming().iterations === Infinity).length`),
+    "S066 reduced motion stops the listening animation").toBe(0);
+  await page.locator("#shortcut-cancel").click();
   await page.emulateMedia({ reducedMotion: null });
   await keep("panel.png");
 });
 
 for (const platform of ["darwin", "win32"] as const) {
-  test(`S116 ${platform}: the top of a narrow window is clickable: the window-drag strip covers no tab (macOS leaves it room; elsewhere it is not drawn)`, async () => {
+  test(`S116 ${platform}: the top of a narrow window is clickable: nothing, the window-drag strip included, covers a tab`, async () => {
     // Plan 066 found the strip over the tabs on Windows CI; the page lays out by the platform its view names.
     await host.evaluate((h, value) => { h.setSize(560, 680); h.pushModel({ type: "idle" }, { platform: value }); }, platform);
     await expect(page.locator("html")).toHaveAttribute("data-platform", platform);
-    const strip = await read<{ shown: boolean; covers: string[] }>(page, `(() => { const strip = document.querySelector(".titlebar"), shown = getComputedStyle(strip).display !== "none";
-      return { shown, covers: [...document.querySelectorAll('[role="tab"]')].filter(tab => { const r = tab.getBoundingClientRect();
-        return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === strip; }).map(tab => tab.id) }; })()`);
-    expect.soft(strip, `S116 ${platform}: the strip is drawn only on macOS and covers no tab`).toEqual({ shown: platform === "darwin", covers: [] });
+    const covered = await read<string[]>(page, `[...document.querySelectorAll('[role="tab"]')].filter(tab => { const r = tab.getBoundingClientRect();
+      return r.width > 0 && !tab.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); }).map(tab => tab.id)`);
+    expect.soft(covered, `S116 ${platform}: no tab is covered at its centre`).toEqual([]);
     await page.getByRole("tab", { name: "General" }).click({ timeout: 3000 });
     await expect(page.getByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");
   });

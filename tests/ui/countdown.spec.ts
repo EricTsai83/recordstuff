@@ -13,9 +13,19 @@ import { COUNTDOWN_SOUND_QUERY, COUNTDOWN_TIMING, overlayBounds } from "../../sr
 let host: Launched;
 test.beforeEach(async ({ launchCountdown }) => { host = await launchCountdown(); });
 
-const faces = (page: Page): Promise<{ faces: string[]; front: string; visible: boolean }> => read(page, `(() => { const stage = document.getElementById("stage");
-  if (!stage) return { faces: [], front: "", visible: false };
-  return { faces: [...stage.querySelectorAll(".face")].map(face => face.textContent), front: stage.querySelector(".face.front")?.textContent ?? "", visible: stage.classList.contains("visible") }; })()`);
+/**
+ * What the timer shows, however it draws and fades its digits: `front` is the text of the most opaque visible text
+ * element, and `visible` whether the timer itself is shown. A running opacity fade counts as its end value, so a
+ * fade-out already reads as hidden.
+ */
+const faces = (page: Page): Promise<{ front: string; visible: boolean }> => read(page, `(() => { const stage = document.querySelector('[role="timer"]');
+  if (!stage) return { front: "", visible: false };
+  const opacity = el => { const s = getComputedStyle(el); if (s.display === "none" || s.visibility === "hidden") return 0;
+    const fade = el.getAnimations().find(a => a.playState === "running" && a.effect?.getKeyframes().some(k => "opacity" in k));
+    return Number(fade ? fade.effect.getKeyframes().at(-1).opacity : s.opacity); };
+  const texts = [...stage.querySelectorAll("*")].filter(el => !el.children.length && el.textContent.trim()).map(el => ({ text: el.textContent.trim(), opacity: opacity(el) }));
+  const front = stage.children.length ? texts.filter(t => t.opacity > 0).sort((a, b) => b.opacity - a.opacity)[0]?.text ?? "" : stage.textContent.trim();
+  return { front, visible: opacity(stage) > 0 }; })()`);
 
 test("C01–C04 a countdown shows its digits in a hidden, non-activating overlay sized for the display, fades out on dismissal and is destroyed on cancel", async () => {
   const waiting = host.page("countdown.html");

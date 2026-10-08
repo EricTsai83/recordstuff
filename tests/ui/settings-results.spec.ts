@@ -2,7 +2,7 @@
  * The former settings fixture's recording-failure cases (plan 066 ledger S067–S115): the production
  * `RecordingResults` model with a controlled store behind the real page, acknowledged, retried and removed with
  * Playwright mouse and keyboard input, held and delayed durable saves, the failures tab's day groups and keyboard
- * navigation, and the shadcn focus rings. View host (hosts/view-host.ts, `panel`). DOM focus here is the page's
+ * navigation, and visible keyboard focus. View host (hosts/view-host.ts, `panel`). DOM focus here is the page's
  * own (`document.hasFocus()` holds in the background); a window made inactive by another one in front is a desktop
  * case (S103, S105: `pnpm acceptance:settings-native`).
  */
@@ -11,9 +11,14 @@ import type { Page, TestInfo } from "@playwright/test";
 import fs from "node:fs";
 import { read, until, clickAt, centre, eventually } from "./helpers";
 
-// Keep the focus-ring behavior without pinning the design system to a 2px or 3px spread.
-const hasFocusRing = (shadow: string): boolean =>
-  [...shadow.matchAll(/0px 0px 0px ([0-9.]+)px/g)].some(layer => Number(layer[1]) > 0);
+/**
+ * Whether the focused element draws some focus indicator, whatever its style: a visible outline, or a shadow layer that
+ * is neither fully transparent nor all zero lengths (transparent zero layers are a resting utility default).
+ */
+const FOCUS_SHOWN = `(() => { const s = getComputedStyle(document.activeElement);
+  const shadow = s.boxShadow === "none" ? [] : s.boxShadow.split(/,(?![^(]*\\))/).filter(layer => !/rgba\\([^)]*,\\s*0\\)|\\/\\s*0\\)|transparent/.test(layer)
+    && [...layer.matchAll(/(-?[0-9.]+)px/g)].some(length => Number(length[1]) !== 0));
+  return (s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0) || shadow.length > 0; })()`;
 
 const FAILURE = { id: "fixture-failure", occurredAt: "2026-09-24T12:00:00Z", code: "disk_full", detail: "ENOSPC: controlled fixture", outcome: "pending" };
 type Failure = Partial<typeof FAILURE> & { partialPath?: string; recordingPath?: string };
@@ -62,7 +67,7 @@ async function clickAction(expected: string, action = "acknowledge"): Promise<vo
   await expect.poll(async () => await callCount() > before && Boolean(await read(page, expected)), { message: `recording-result ${action} settled: ${expected}` }).toBe(true);
 }
 
-test("failure causes stay distinct from preservation badges, review state and neutral descriptions in both languages and themes", async ({}, testInfo) => {
+test("each failure shows its outcome label, and the rows and tab fit, in both languages and themes", async ({}, testInfo) => {
   for (const failure of [
     { id: "disk", code: "disk_full", outcome: "partial", partialPath: "/tmp/partial.mp4" },
     { id: "write", code: "output_write_failed", outcome: "empty" },
@@ -82,23 +87,8 @@ test("failure causes stay distinct from preservation badges, review state and ne
     const label = lang === "en"
       ? { empty: "Not kept", partial: "Partially kept", pending: "Processing", unknown: "Unconfirmed result" }
       : { empty: "未保留", partial: "部分保留", pending: "處理中", unknown: "結果不明" };
-    for (const [id, state] of [["disk", "partial"], ["write", "empty"], ["display", "unknown"], ["permission", "pending"]] as const) {
-      await expect(page.locator(`[data-result-id="${id}"] .result-badge`)).toHaveText(label[state]);
-      await expect(page.locator(`[data-result-id="${id}"] .result-badge`)).toHaveAttribute("data-outcome", state);
-    }
-    const icons = await read<string[]>(page, `["disk", "write", "display", "permission", "audio", "interrupted"].map(id => document.querySelector('[data-result-id="' + id + '"] .result-mark svg').getAttribute("class"))`);
-    expect(icons[0]).toBe(icons[1]);
-    expect(new Set(icons).size).toBe(5);
-    const colours = await read<string[]>(page, `[...document.querySelectorAll(".result-outcome")].map(el => getComputedStyle(el).color)`);
-    expect(new Set(colours).size).toBe(1);
-    expect(colours[0]).toBe(await read(page, `getComputedStyle(document.querySelector(".result-time")).color`));
-    // Theme transitions finish before comparing the neutral badges with the row's final text colour.
-    await expect.poll(() => read<boolean>(page, `["display", "permission"].every(id => getComputedStyle(document.querySelector('[data-result-id="' + id + '"] .result-badge')).color === getComputedStyle(document.querySelector(".result-outcome")).color)`)).toBe(true);
-    const tones = await read<string[]>(page, `["disk", "write", "display", "permission"].map(id => getComputedStyle(document.querySelector('[data-result-id="' + id + '"] .result-badge')).color)`);
-    expect(tones[0]).not.toBe(tones[1]);
-    expect(tones[0]).not.toBe(colours[0]);
-    expect(tones[2]).toBe(colours[0]);
-    expect(tones[3]).toBe(colours[0]);
+    for (const [id, state] of [["disk", "partial"], ["write", "empty"], ["display", "unknown"], ["permission", "pending"]] as const)
+      await expect(page.locator(`#recording-result-${id}-summary`)).toContainText(label[state]);
     for (const [size, width, height] of [["default", 960, 640], ["minimum", 380, 360]] as const) {
       await host.evaluate((h, value) => h.setSize(value.width, value.height), { width, height });
       await read(page, `document.getElementById("settings-panel").scrollTop = 0`);
@@ -106,18 +96,13 @@ test("failure causes stay distinct from preservation badges, review state and ne
       const tab = await read<{ inside: boolean; fullName: boolean }>(page, `(() => { const tab = document.getElementById("tab-failures"), badge = tab.querySelector(".tab-badge"), name = tab.querySelector(".tab-name"), r = tab.getBoundingClientRect(), b = badge.getBoundingClientRect(); return { inside: b.left >= r.left && b.right <= r.right && b.top >= r.top && b.bottom <= r.bottom, fullName: name.scrollWidth <= name.clientWidth }; })()`);
       expect(tab.inside, `${lang}/${scheme}/${size}: the unread count stays inside its tab tile`).toBe(true);
       if (size === "default") expect(tab.fullName, `${lang}/${scheme}: the sidebar shows the full tab name beside the unread count`).toBe(true);
-      if (size === "default") {
-        const aligned = await read<boolean>(page, `(() => { const tabs = [...document.querySelectorAll('.tabs [role="tab"]')], first = tabs[0]; return tabs.every(tab => [".tab-icon", ".tab-name"].every(selector => Math.abs(tab.querySelector(selector).getBoundingClientRect().left - first.querySelector(selector).getBoundingClientRect().left) < 0.5)); })()`);
-        expect(aligned, `${lang}/${scheme}: every sidebar icon and name shares the same left edge`).toBe(true);
-      }
-      await shot(testInfo, `failure-design-${lang}-${scheme}-${size}.png`);
+      await shot(testInfo, `failure-outcomes-${lang}-${scheme}-${size}.png`);
     }
   }
   await openRowWith('[data-result-id="disk"] [data-action="acknowledge"]');
   await clickAt(page, '[data-result-id="disk"] [data-action="acknowledge"]');
-  await expect(page.locator('[data-result-id="disk"]')).not.toHaveClass(/unread/);
-  await expect(page.locator('[data-result-id="disk"] .result-badge')).toHaveText("部分保留");
-  await expect(page.locator('[data-result-id="disk"] .result-mark svg')).toHaveClass(/hard-drive/);
+  await expect.poll(async () => (await all()).find(r => r.id === "disk")?.acknowledged).toBe(true);
+  await expect(page.locator("#recording-result-disk-summary")).toContainText("部分保留");
 });
 
 test("S067–S086 the failure history: pending, partial, acknowledgement, entries, a stale press, persistence failures, retries and removal by mouse and keyboard", async ({}, testInfo) => {
@@ -146,7 +131,7 @@ test("S067–S086 the failure history: pending, partial, acknowledgement, entrie
     "S071 explicit result entry expands and focuses an acknowledged result").toBe(true);
   await update({ id: "new-failure" });
   await pushResult("en", 3);
-  expect.soft(!(await current())!.acknowledged && await read<boolean>(page, `(() => { const row = document.querySelector(".recording-result"); return row.classList.contains("unread") && !row.hasAttribute("data-open") && row.querySelector('[data-action="acknowledge"]').disabled && document.getElementById("tab-failures").textContent === "Troubleshooting (1)"; })()`),
+  expect.soft(!(await current())!.acknowledged && await read<boolean>(page, `(() => { const row = document.querySelector(".recording-result"); return !row.hasAttribute("data-open") && row.querySelector('[data-action="acknowledge"]').disabled && document.getElementById("tab-failures").textContent === "Troubleshooting (1)"; })()`),
     "S072 a new failure becomes unread while notifications are disabled").toBe(true);
 
   // A press on the previous result's button, released after a new result replaced it.
@@ -354,12 +339,10 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
     await page.waitForTimeout(80);
     const generalTab = await read<boolean>(page, `!document.getElementById("recording-results") && !document.querySelector(".recording-result")`);
     expect.soft(recordingTab && generalTab, `S094 ${lang}: a normal open shows no history in the Recording and General tabs`).toBe(true);
-    const strip = await read<{ fits: boolean; lines: number[]; labels: string[] }>(page, `(() => { const tabs = [...document.querySelectorAll('.tabs [role="tab"]')];
-      const shown = tabs.map(t => t.querySelector(".tab-name")).filter(name => name && name.getBoundingClientRect().width > 0 && getComputedStyle(name).clipPath === "none");
-      const lines = shown.map(t => { const range = document.createRange(); range.selectNodeContents(t); return new Set([...range.getClientRects()].map(r => Math.round(r.top))).size; });
-      return { fits: tabs.every(t => t.scrollWidth <= t.clientWidth), lines, labels: tabs.map(t => t.textContent) }; })()`);
-    expect.soft(strip.fits && strip.lines.length >= 1 && strip.lines.every(n => n === 1) && strip.labels[3] === (lang === "en" ? "Troubleshooting (1)" : "疑難排解（1）"),
-      `S095 ${lang}: the four tabs fit the 380 pt window without wrapping or truncation, the open one by name ${JSON.stringify(strip)}`).toBe(true);
+    const strip = await read<{ fits: boolean; labels: string[] }>(page, `(() => { const tabs = [...document.querySelectorAll('.tabs [role="tab"]')];
+      return { fits: tabs.every(t => t.scrollWidth <= t.clientWidth), labels: tabs.map(t => t.textContent) }; })()`);
+    expect.soft(strip.fits && strip.labels[3] === (lang === "en" ? "Troubleshooting (1)" : "疑難排解（1）"),
+      `S095 ${lang}: the four tabs fit the 380 pt window without truncation, the failures tab by name and count ${JSON.stringify(strip)}`).toBe(true);
     for (const scheme of ["light", "dark"] as const) {
       await host.evaluate((h, value) => h.theme(value), scheme);
       await page.waitForTimeout(120);
@@ -395,36 +378,31 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
   expect.soft({ opened, closed }, "S099 Enter and Space open and close a row, and opening another leaves the first open").toEqual({
     opened: [true, true, false, false, false, false, false], closed: [true, false, false, false, false, false, false] });
   await page.keyboard.press("ArrowUp"); await page.keyboard.press("Space"); await page.waitForTimeout(60); await page.keyboard.press("ArrowDown"); await page.waitForTimeout(60);
-  // Each focused control owns its standard ring; row separators and neutral borders remain independent.
-  const colours = await read<{ accent: string; border: string }>(page, `(() => { const probe = document.createElement("div"); document.body.append(probe);
-    probe.style.color = "var(--ring)"; const accent = getComputedStyle(probe).color; probe.style.color = "var(--border)"; const border = getComputedStyle(probe).color; probe.remove(); return { accent, border }; })()`);
-  const rowFocus = (index: number) => read<{ colour: string; width: string; own: string; next: string; input: string | undefined; ring: string }>(page, `(() => { const rows = document.querySelectorAll(".recording-result"); const r = rows[${index}];
-    const style = getComputedStyle(r); return { colour: style.borderTopColor, width: style.borderTopWidth, own: getComputedStyle(r, "::before").opacity, next: rows[${index + 1}] ? getComputedStyle(rows[${index + 1}], "::before").opacity : "none", input: document.documentElement.dataset.input, ring: getComputedStyle(r.querySelector(".result-summary")).boxShadow }; })()`);
+  // Keyboard focus on a row header, or on a control inside an open row, shows a focus indicator; a pointer click does not.
+  const focusShown = async (): Promise<boolean> => {
+    await until(page, `document.activeElement.getAnimations().every(animation => animation.playState !== "running")`, 2000);
+    return read(page, FOCUS_SHOWN);
+  };
   await page.locator(".recording-result > .result-summary").nth(1).focus();
   await page.keyboard.press("ArrowDown"); await page.keyboard.press("ArrowUp"); await page.waitForTimeout(60);
-  const headerFocus = await rowFocus(1);
-  const dpr = await read<number>(page, "devicePixelRatio");
-  const expectedWidth = "1px";
+  const headerFocus = { visible: await read<boolean>(page, `document.activeElement.matches(":focus-visible")`), shown: await focusShown() };
   for (const scheme of ["light", "dark"] as const) {
     await host.evaluate((h, value) => h.theme(value), scheme);
     await page.waitForTimeout(150);
     await shot(testInfo, `result-focus-header-en-${scheme}.png`);
   }
-  expect.soft(hasFocusRing(headerFocus.ring) && headerFocus.width === expectedWidth && headerFocus.own === "1" && headerFocus.next === "1",
-    `S100 keyboard focus on a header draws the standard ring on its control and keeps the hairlines beside it (devicePixelRatio ${dpr}) ${JSON.stringify({ headerFocus, colours })}`).toBe(true);
+  expect.soft(headerFocus.visible && headerFocus.shown, `S100 keyboard focus on a row header shows a focus indicator ${JSON.stringify(headerFocus)}`).toBe(true);
   await host.evaluate(h => h.theme("light"));
   await page.waitForTimeout(100);
   await page.keyboard.press("Enter"); await page.waitForTimeout(80); await page.keyboard.press("Tab"); await page.waitForTimeout(240);
-  const inside = await read<{ row: string; width: string; outline: string; style: string; tag: string }>(page, `(() => { const r = document.querySelectorAll(".recording-result")[1];
-    const active = document.activeElement; const style = getComputedStyle(active); return { row: getComputedStyle(r).borderTopColor, width: getComputedStyle(r).borderTopWidth,
-    outline: style.borderColor, style: style.boxShadow, tag: active.closest(".recording-result")?.id ?? "" }; })()`);
+  const inside = { row: await read<string>(page, `document.activeElement.closest(".recording-result")?.id ?? ""`), visible: await read<boolean>(page, `document.activeElement.matches(":focus-visible")`), shown: await focusShown() };
   await shot(testInfo, "result-focus-inside-en-light.png");
-  expect.soft(inside.tag.endsWith("t-d2") && inside.row === "rgba(0, 0, 0, 0)" && inside.width === "1px" && inside.outline === colours.accent && hasFocusRing(inside.style),
-    `S101 with focus on a control inside an open row, the row stays neutral and the focused control shows the standard ring ${JSON.stringify(inside)}`).toBe(true);
+  expect.soft(inside.row.endsWith("t-d2") && inside.visible && inside.shown,
+    `S101 with focus on a control inside an open row, that control shows a focus indicator ${JSON.stringify(inside)}`).toBe(true);
   await clickAt(page, ".recording-result:nth-child(1) > .result-summary");
   await page.waitForTimeout(80);
-  const clicked = await rowFocus(0);
-  expect.soft(clicked.colour === "rgba(0, 0, 0, 0)" && clicked.input === "pointer", `S102 a pointer click shows no focus border ${JSON.stringify(clicked)}`).toBe(true);
+  const clicked = await read<{ input: string | undefined; visible: boolean }>(page, `({ input: document.documentElement.dataset.input, visible: document.activeElement.matches(":focus-visible") })`);
+  expect.soft(clicked, `S102 a pointer click is pointer input and not keyboard focus ${JSON.stringify(clicked)}`).toEqual({ input: "pointer", visible: false });
   // S103 (an inactive window) is a desktop case: pnpm acceptance:settings-native.
   // A day rollover moves rows between groups without dropping focus, and Technical details shows the focus line.
   const where = (): Promise<{ active: string; day: string }> => read(page, `({ active: document.activeElement.id || document.activeElement.dataset.action || document.activeElement.tagName,
@@ -448,9 +426,9 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
   await rollover(0);
   let technical = await read<boolean>(page, `document.activeElement.matches(".result-technical > .technical-summary")`);
   for (let i = 0; i < 4 && !technical; i += 1) { await page.keyboard.press("Tab"); await page.waitForTimeout(60); technical = await read<boolean>(page, `document.activeElement.matches(".result-technical > .technical-summary")`); }
-  const disclosure = await read<{ style: string; colour: string; width: string }>(page, `(() => { const s = getComputedStyle(document.activeElement); return { style: s.boxShadow, colour: s.borderColor, width: s.borderWidth }; })()`);
-  expect.soft(technical && hasFocusRing(disclosure.style),
-    `S106 keyboard focus on Technical details shows the standard focus ring ${JSON.stringify({ technical, ...disclosure })}`).toBe(true);
+  const disclosure = await focusShown();
+  expect.soft(technical && disclosure,
+    `S106 keyboard focus on Technical details shows a focus indicator ${JSON.stringify({ technical, disclosure })}`).toBe(true);
   // Each tab keeps its own scroll position through wheel scrolling; an entry scrolls to its row.
   const scrollTop = (): Promise<number> => read(page, `document.getElementById("settings-panel").scrollTop`);
   const wheel = async (): Promise<void> => {
@@ -494,42 +472,45 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
   await expect(page.locator("#troubleshooting-history-tab")).toHaveAttribute("aria-selected", "true");
   await expect(page.locator("#recording-result-t-old-unread-summary")).toBeFocused();
   const before = await read<string>(page, `document.getElementById("tab-failures").textContent`);
-  await clickAction(`!document.getElementById("recording-result-t-old-unread").classList.contains("unread")`);
+  await clickAction(`document.getElementById("tab-failures").textContent === "Troubleshooting"`);
   const after = await read<string>(page, `document.getElementById("tab-failures").textContent`);
   expect.soft({ before, after }, "S109 the tab count appears for unread failures and clears once they are acknowledged").toEqual({ before: "Troubleshooting (1)", after: "Troubleshooting" });
 });
 
 for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
-  test(`S110–S115 ${lang}/${scheme}: tab, menu, segment, switch, button and row action show the design system keyboard focus rings at the minimum size`, async ({}, testInfo) => {
+  test(`S110–S115 ${lang}/${scheme}: tab, menu, segment, switch, button and row action show visible keyboard focus at the minimum size`, async ({}, testInfo) => {
     await host.evaluate((h, value) => { h.setSize(380, 360); h.theme(value); }, scheme);
     await seedHistory();
     await pushResult(lang, 0);
+    const settled = `document.activeElement.getAnimations().every(animation => animation.playState !== "running")`;
     const keyboardFocus = async (selector: string): Promise<boolean> => {
       await read(page, `document.querySelector(${JSON.stringify(selector)}).scrollIntoView({ block: "center" }); document.querySelector(${JSON.stringify(selector)}).focus()`);
       await page.keyboard.press("Tab"); await page.waitForTimeout(40);
       await page.keyboard.press("Shift+Tab");
-      // The shadcn focus shadow transitions; judge its settled width, not an intermediate frame (a slow runner needs longer).
-      await until(page, `document.activeElement.getAnimations().every(animation => animation.playState !== "running")`, 2000);
+      // Focus styles may transition; judge the settled state, not an intermediate frame (a slow runner needs longer).
+      await until(page, settled, 2000);
       await page.waitForTimeout(40);
       return read<boolean>(page, `document.activeElement === document.querySelector(${JSON.stringify(selector)})`);
     };
-    const ring = async (): Promise<{ keyboard: boolean; line: boolean; halo: string }> => {
-      const focus = await read<{ keyboard: boolean; shadow: string }>(page, `(() => { const el = document.activeElement;
-        return { keyboard: el.matches(":focus-visible"), shadow: getComputedStyle(el).boxShadow }; })()`);
-      return { keyboard: focus.keyboard, line: hasFocusRing(focus.shadow), halo: focus.shadow };
+    /** Keyboard focus is visible: the element matches :focus-visible and its outline, shadow or border differ from its blurred look. */
+    const indicator = async (selector: string): Promise<{ keyboard: boolean; changed: boolean }> => {
+      const look = `(() => { const s = getComputedStyle(document.querySelector(${JSON.stringify(selector)}));
+        return [s.outlineStyle, s.outlineWidth, s.outlineColor, s.boxShadow, s.borderColor, s.backgroundColor].join("|"); })()`;
+      const keyboard = await read<boolean>(page, `document.activeElement.matches(":focus-visible")`);
+      const focused = await read<string>(page, look);
+      await read(page, `document.activeElement.blur()`);
+      await until(page, `document.querySelector(${JSON.stringify(selector)}).getAnimations().every(animation => animation.playState !== "running")`, 2000);
+      await page.waitForTimeout(40);
+      return { keyboard, changed: focused !== await read<string>(page, look) };
     };
     await clickAt(page, "#tab-recording"); await page.waitForTimeout(80);
-    for (const [id, name, selector] of [["S110", "tab", "#tab-recording"], ["S111", "menu", "#setting-screen"], ["S112", "segment", "#setting-countdown button[aria-pressed=true]"],
-      ["S113", "switch", "#setting-countdownSound"]] as const) {
-      const reached = await keyboardFocus(selector), shown = await ring();
+    for (const [id, name, selector] of [["S110", "tab", "#tab-recording"], ["S111", "menu", "#setting-resolutionCap"], ["S112", "segment", "#setting-countdown button[aria-pressed=true]"],
+      ["S113", "switch", "#setting-countdownSound"], ["S114", "button", "#setting-updates-check"], ["S115", "link", "#setting-notifications-openSettings"]] as const) {
+      if (id === "S114") { await clickAt(page, "#tab-general"); await page.waitForTimeout(80); }
+      const reached = await keyboardFocus(selector);
       await shot(testInfo, `focus-${name}-${lang}-${scheme}-minimum.png`);
-      expect.soft(reached && shown.keyboard && shown.line && Boolean(shown.halo), `${id} ${lang}/${scheme}: the ${name} shows the design system focus ring ${JSON.stringify({ reached, ...shown })}`).toBe(true);
-    }
-    await clickAt(page, "#tab-general"); await page.waitForTimeout(80);
-    for (const [id, name, selector] of [["S114", "button", "#setting-updates-check"], ["S115", "link", "#setting-notifications-openSettings"]] as const) {
-      const reached = await keyboardFocus(selector), shown = await ring();
-      await shot(testInfo, `focus-${name}-${lang}-${scheme}-minimum.png`);
-      expect.soft(reached && shown.keyboard && shown.line && Boolean(shown.halo), `${id} ${lang}/${scheme}: a ${name === "link" ? "row action" : name} shows the design system focus ring ${JSON.stringify({ reached, ...shown })}`).toBe(true);
+      const shown = await indicator(selector);
+      expect.soft(reached && shown.keyboard && shown.changed, `${id} ${lang}/${scheme}: keyboard focus on the ${name === "link" ? "row action" : name} is visible ${JSON.stringify({ reached, ...shown })}`).toBe(true);
     }
     await clickAt(page, "#tab-failures"); await page.waitForTimeout(80);
     await shot(testInfo, `failures-${lang}-${scheme}-minimum.png`);

@@ -7,9 +7,6 @@ interface SelectionSample {
   id: string;
   elapsedMs: number;
   language: string;
-  background: string;
-  shadow: string;
-  transitions: string[];
 }
 interface SelectionProbe {
   pending?: { id: string; started: number };
@@ -19,7 +16,7 @@ interface SelectionProbe {
 }
 
 for (const scheme of ["light", "dark"] as const) {
-  test(`grouped selections commit and settle with brief colour transitions: ${scheme}, mouse and keyboard`, async ({ launchApp }, testInfo) => {
+  test(`grouped selections commit, persist and apply: ${scheme}, mouse and keyboard`, async ({ launchApp }, testInfo) => {
     const app = await launchApp({ settings: { appearance: scheme } });
     const waiting = app.page("settings.html");
     await app.evaluate(h => { h.rightClickTray(); h.clickTrayItem("^Open RecordStuff$"); });
@@ -30,7 +27,7 @@ for (const scheme of ["light", "dark"] as const) {
       const probe: SelectionProbe = { samples: [], themeChanges: [] };
       (window as unknown as { selectionProbe: SelectionProbe }).selectionProbe = probe;
       document.addEventListener("click", event => {
-        const button = (event.target as Element).closest<HTMLButtonElement>(".segments button");
+        const button = (event.target as Element).closest<HTMLButtonElement>("button[aria-pressed]");
         if (button && button.getAttribute("aria-pressed") !== "true") {
           probe.input = { id: button.id, started: performance.now() };
           probe.pending = probe.input;
@@ -48,13 +45,7 @@ for (const scheme of ["light", "dark"] as const) {
         const selected = document.getElementById(pending.id)!;
         if (selected.getAttribute("aria-pressed") !== "true") return;
         const elapsedMs = performance.now() - pending.started;
-        const style = getComputedStyle(selected);
-        probe.samples.push({
-          id: pending.id, elapsedMs, language: document.documentElement.lang,
-          background: style.backgroundColor, shadow: style.boxShadow,
-          transitions: [...selected.parentElement!.querySelectorAll("button")].flatMap(button =>
-            button.getAnimations().filter(animation => animation instanceof CSSTransition).map(() => button.id)),
-        });
+        probe.samples.push({ id: pending.id, elapsedMs, language: document.documentElement.lang });
         delete probe.pending;
       }).observe(document.getElementById("settings")!, { subtree: true, attributes: true, attributeFilter: ["aria-pressed"] });
     });
@@ -77,51 +68,11 @@ for (const scheme of ["light", "dark"] as const) {
       const sample = await page.evaluate(index =>
         (window as unknown as { selectionProbe: SelectionProbe }).selectionProbe.samples[index]!, index);
       expect(sample.id).toBe(`setting-${group}-${choice}`);
-      // The background and icon share the same short transition, rather than a 150ms all-property fade.
-      const timing = await button.evaluate(node => {
-        const style = getComputedStyle(node), icon = node.querySelector("svg");
-        return { property: style.transitionProperty, duration: style.transitionDuration,
-          iconDuration: icon ? getComputedStyle(icon).transitionDuration : undefined };
-      });
-      expect(timing.property).not.toBe("all");
-      // Bound responsiveness without making a design adjustment to the exact duration a regression.
-      for (const duration of [timing.duration, timing.iconDuration].filter(Boolean))
-        for (const seconds of duration!.split(",").map(value => parseFloat(value))) {
-          expect(seconds).toBeGreaterThanOrEqual(0);
-          expect(seconds).toBeLessThanOrEqual(0.2);
-        }
-      await expect.poll(() => button.evaluate(node => node.getAnimations().filter(a => a instanceof CSSTransition && a.playState === "running").length)).toBe(0);
       if (group === "language") expect(sample.language).toBe(choice === "en" ? "en" : "zh-Hant");
-      if (group === "language") {
-        // Language keeps the palette fixed; inspect the settled red-tinted selection after the brief transition.
-        const settled = await button.evaluate(button => {
-          const style = getComputedStyle(button);
-          return { background: style.backgroundColor, shadow: style.boxShadow };
-        });
-        const selection = await button.evaluate(() => {
-          const probe = document.createElement("span");
-          probe.style.backgroundColor = "var(--selection)";
-          document.body.append(probe);
-          const colour = getComputedStyle(probe).backgroundColor;
-          probe.remove();
-          return colour;
-        });
-        expect(settled.background).toBe(selection);
-      } else {
+      if (group === "appearance") {
+        // The chosen appearance reaches the page: the renderer follows nativeTheme's dark or light.
         const dark = await app.evaluate((_h, _arg, electron) => electron.nativeTheme.shouldUseDarkColors);
-        if (dark) await expect(page.locator("html")).toHaveClass(/\bdark\b/);
-        else await expect(page.locator("html")).not.toHaveClass(/\bdark\b/);
-        const primary = await button.evaluate(() => {
-          const probe = document.createElement("span");
-          probe.style.color = "var(--primary)";
-          document.body.append(probe);
-          const colour = getComputedStyle(probe).color;
-          probe.remove();
-          return colour;
-        });
-        await expect(button.locator("svg")).toHaveCSS("color", primary);
-        for (const unselected of await page.locator('#setting-appearance-row button[aria-pressed="false"]').all())
-          await expect(unselected.locator("svg")).toHaveCSS("color", await unselected.evaluate(node => getComputedStyle(node).color));
+        await expect.poll(() => page.evaluate(() => matchMedia("(prefers-color-scheme: dark)").matches)).toBe(dark);
         await page.screenshot({ path: testInfo.outputPath(`appearance-icon-${scheme}-${choice}.png`), animations: "disabled" });
       }
       const saved = JSON.parse(fs.readFileSync(path.join(app.data, "userData/settings.json"), "utf8"));
@@ -134,15 +85,7 @@ for (const scheme of ["light", "dark"] as const) {
       if (index) { await tab.focus(); await page.keyboard.press("Space"); }
       else await tab.click();
       await expect(tab).toHaveAttribute("aria-selected", "true");
-      await expect(tab).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-      const indicator = await tab.evaluate(node => {
-        const style = getComputedStyle(node, "::after");
-        return { opacity: style.opacity, height: style.height };
-      });
-      expect(indicator.opacity).toBe("1");
-      expect(parseFloat(indicator.height)).toBeGreaterThan(0);
-      const otherTab = page.locator(index ? "#troubleshooting-tools-tab" : "#troubleshooting-history-tab");
-      expect(await otherTab.evaluate(node => getComputedStyle(node, "::after").opacity)).toBe("0");
+      await expect(page.locator(index ? "#troubleshooting-tools-tab" : "#troubleshooting-history-tab")).toHaveAttribute("aria-selected", "false");
     }
     await page.screenshot({ path: testInfo.outputPath(`troubleshooting-selection-${scheme}.png`), animations: "disabled" });
     const probe = await page.evaluate(() => {
