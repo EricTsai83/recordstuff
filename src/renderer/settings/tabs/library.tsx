@@ -52,7 +52,7 @@ export const Clip = memo(function Clip({
     >
       <ContextMenuTrigger render={<Card />}
         id={`clip-${item.id}`}
-        className={`clip gap-0 p-0${arrived ? " arrived" : ""}`}
+        className={`clip gap-0 overflow-visible rounded-[14px] bg-transparent p-0 shadow-none ring-0 dark:bg-transparent${arrived ? " arrived" : ""}`}
         data-id={item.id}
         draggable
         onDragStart={(event) => {
@@ -69,8 +69,9 @@ export const Clip = memo(function Clip({
           id={`clip-${item.id}-open`}
           // The list layout lays a card out in one line, leaving room on the right for its menu button.
           // Its focus line is drawn round the whole card (ui.css), not inside it.
-          // Only animate colours: animating the list's padding reflows every card on each frame.
-          className="clip-open transition-colors rounded-none border-0 focus-visible:outline-none! focus-visible:ring-0 in-data-[layout=list]:flex-row in-data-[layout=list]:items-center in-data-[layout=list]:pr-10"
+          // No transition and no hover fill: a card stays still under the pointer, and animating the list's padding
+          // would reflow every card on each frame.
+          className="clip-open transition-none rounded-none border-0 hover:bg-transparent dark:hover:bg-transparent active:not-aria-[haspopup]:translate-y-0 focus-visible:outline-none! focus-visible:ring-0 in-data-[layout=list]:flex-row in-data-[layout=list]:items-center in-data-[layout=list]:pr-10"
           aria-label={translate(
             "Play {title}",
             language === "zh-TW" ? "zh-TW" : "en",
