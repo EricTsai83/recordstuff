@@ -41,3 +41,17 @@ it("keeps a row whose command line contains the end text, as the shell's own row
   const rows = (await server.read()).trim().split("\n");
   expect(rows).toEqual(["5 1 electron.exe", "7 1 powershell.exe -Command ... \"<<<process-table-end $request\" ..."]);
 });
+
+it("ends a shell whose input pipe failed, and answers the next read from a new one", async () => {
+  // The first read is answered at once; the second waits, so the pipe fails while it is outstanding.
+  server = fake(`setTimeout(() => process.stdout.write(process.pid + " 1 shell\\n<<<process-table-end " + request + "\\n"), request === "2" ? 2000 : 0);`);
+  const first = Number((await server.read()).split(" ")[0]);
+  const reading = server.read(5_000);
+  await new Promise(resolve => setTimeout(resolve, 50));
+  // As a write into a pipe the shell has just closed would.
+  (server as unknown as { child: { stdin: NodeJS.EventEmitter } }).child.stdin.emit("error", Object.assign(new Error("write EPIPE"), { code: "EPIPE" }));
+  await expect(reading).rejects.toThrow("EPIPE");
+  await expect.poll(() => { try { process.kill(first, 0); return true; } catch { return false; } }).toBe(false);
+  const next = Number((await server.read()).split(" ")[0]);
+  expect(next).not.toBe(first);
+});

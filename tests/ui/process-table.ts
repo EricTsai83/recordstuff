@@ -61,7 +61,12 @@ export class ProcessTableServer {
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => { if (this.child === child) this.receive(chunk); });
     // A request written as the shell ends fails on the pipe (EPIPE): that read fails, and the next starts a new shell.
-    child.stdin.on("error", error => { if (this.child === child) { ended(error); this.stop(); } });
+    child.stdin.on("error", error => {
+      if (this.child !== child) return;
+      ended(error);
+      // Retired here, not left running unreachable: the next read starts its replacement.
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+    });
     // Nothing reads stderr's meaning, but an unread pipe could fill and stall the shell.
     child.stderr.resume();
     child.on("error", error => ended(error));
