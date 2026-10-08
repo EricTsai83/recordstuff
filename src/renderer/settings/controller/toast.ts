@@ -1,4 +1,4 @@
-/** The Trash/Restored toast: its timer pauses while the pointer or focus is on it, and it fades before it hides. */
+/** The Trash/Restored toast: its timer pauses while the pointer or focus is on it; Sonner animates it out. */
 import { draw, focus, selectedTab } from "./core";
 
 export let toastState:
@@ -7,7 +7,6 @@ export let toastState:
       title: string;
       description: string;
       open: boolean;
-      visible: boolean;
       remaining: number;
       started: number;
       pointer: boolean;
@@ -20,7 +19,6 @@ let toastShows = 0;
 /** The toast on screen: Sonner's (undo-toast.tsx), not one still sliding out. */
 export const toastNode = (): HTMLElement | null =>
   document.querySelector<HTMLElement>('.undo-toast:not([data-removed="true"])');
-let toastFadeTimer: ReturnType<typeof setTimeout> | undefined;
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 export function showToast(
   kind: "trashed" | "restored",
@@ -29,14 +27,12 @@ export function showToast(
   ms: number,
 ): void {
   clearTimeout(toastTimer);
-  clearTimeout(toastFadeTimer);
   const node = toastNode();
   toastState = {
     kind,
     title,
     description,
     open: true,
-    visible: true,
     remaining: ms,
     started: Date.now(),
     pointer: node?.matches(":hover") === true,
@@ -69,17 +65,9 @@ export function dismissToast(): void {
   clearTimeout(toastTimer);
   if (toastNode()?.contains(document.activeElement))
     focus(`tab-${selectedTab}`);
-  const closing = toastState;
-  closing.open = false;
+  toastState.open = false;
   draw();
-  toastFadeTimer = setTimeout(() => {
-    if (toastState === closing) {
-      closing.visible = false;
-      draw();
-    }
-  }, 160);
 }
 export function disposeToast(): void {
   clearTimeout(toastTimer);
-  clearTimeout(toastFadeTimer);
 }

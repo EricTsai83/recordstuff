@@ -588,18 +588,6 @@ export function start(): () => void {
   );
   listen(document, "keydown", (raw) => {
     const event = raw as KeyboardEvent;
-    if (
-      [
-        "Tab",
-        "ArrowLeft",
-        "ArrowRight",
-        "ArrowUp",
-        "ArrowDown",
-        "Home",
-        "End",
-      ].includes(event.key)
-    )
-      document.documentElement.dataset.input = "keyboard";
     if (event.defaultPrevented) return;
     const command =
       platform() === "darwin"

@@ -239,7 +239,6 @@ export async function fileAction(
     if (libraryError) announce(libraryError);
   }
 }
-export const undoPending = (): boolean => undoing;
 export async function undoTrash(): Promise<void> {
   const trashed = view?.library?.trashed;
   if (!trashed || undoing) return;
