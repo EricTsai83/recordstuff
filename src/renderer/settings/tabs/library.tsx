@@ -244,11 +244,74 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
   );
 }
 
+/** The library's summary and folder controls, drawn in the page's fixed head above the scrolling recordings. */
+export function LibraryHead() {
+  const library = model.view?.library,
+    folder = model.view?.groups.find((group) => group.id === "outputFolder"),
+    reveal = folder?.choices.find((choice) => choice.id === "reveal"),
+    layout = model.optimisticLayout ?? library?.layout ?? "grid";
+  return (
+    <div className="library-head">
+      <p className="library-summary" hidden={!library?.summary}>
+        {library?.summary}
+      </p>
+      <ToggleGroup
+        className="library-layout segments darwin:wide:window-no-drag"
+        variant="segmented"
+        size="segment"
+        spacing={0.5}
+        aria-label={model.text("Layout")}
+        value={[layout]}
+        onValueChange={(values) => {
+          const value = values[0];
+          if (value === "grid" || value === "list")
+            void model.chooseLayout(value);
+        }}
+      >
+        <ControlTooltip label={model.text("Grid")}>
+          <ToggleGroupItem
+            id="library-layout-grid"
+            value="grid"
+            aria-label={model.text("Grid")}
+          >
+            <Grid2X2 />
+          </ToggleGroupItem>
+        </ControlTooltip>
+        <ControlTooltip label={model.text("List")}>
+          <ToggleGroupItem
+            id="library-layout-list"
+            value="list"
+            aria-label={model.text("List")}
+          >
+            <List />
+          </ToggleGroupItem>
+        </ControlTooltip>
+      </ToggleGroup>
+      <Button
+        id="library-reveal"
+        variant="outline"
+        className="darwin:wide:window-no-drag"
+        disabled={!folder?.enabled || !reveal?.enabled}
+        aria-disabled={
+          Boolean(model.saving) || !folder?.enabled || !reveal?.enabled
+        }
+        onClick={() => {
+          if (!model.saving && folder?.enabled && reveal?.enabled)
+            void model.revealFolder();
+        }}
+      >
+        {reveal?.label ??
+          model.text(
+            model.platform() === "darwin" ? "Show in Finder" : "Open folder",
+          )}
+      </Button>
+    </div>
+  );
+}
+
 export function Library() {
   const library = model.view?.library,
     items = library?.items,
-    folder = model.view?.groups.find((group) => group.id === "outputFolder"),
-    reveal = folder?.choices.find((choice) => choice.id === "reveal"),
     layout = model.optimisticLayout ?? library?.layout ?? "grid";
   const days = useMemo(() => {
     const groups = new Map<string, LibraryItemView[]>();
@@ -267,60 +330,6 @@ export function Library() {
   }, [layout, shown]);
   return (
     <section id="library" aria-labelledby="tab-library" data-layout={layout}>
-      <div className="library-head">
-        <p className="library-summary" hidden={!library?.summary}>
-          {library?.summary}
-        </p>
-        <ToggleGroup
-          className="library-layout segments"
-          variant="segmented"
-          size="segment"
-          spacing={0.5}
-          aria-label={model.text("Layout")}
-          value={[layout]}
-          onValueChange={(values) => {
-            const value = values[0];
-            if (value === "grid" || value === "list")
-              void model.chooseLayout(value);
-          }}
-        >
-          <ControlTooltip label={model.text("Grid")}>
-            <ToggleGroupItem
-              id="library-layout-grid"
-              value="grid"
-              aria-label={model.text("Grid")}
-            >
-              <Grid2X2 />
-            </ToggleGroupItem>
-          </ControlTooltip>
-          <ControlTooltip label={model.text("List")}>
-            <ToggleGroupItem
-              id="library-layout-list"
-              value="list"
-              aria-label={model.text("List")}
-            >
-              <List />
-            </ToggleGroupItem>
-          </ControlTooltip>
-        </ToggleGroup>
-        <Button
-          id="library-reveal"
-          variant="outline"
-          disabled={!folder?.enabled || !reveal?.enabled}
-          aria-disabled={
-            Boolean(model.saving) || !folder?.enabled || !reveal?.enabled
-          }
-          onClick={() => {
-            if (!model.saving && folder?.enabled && reveal?.enabled)
-              void model.revealFolder();
-          }}
-        >
-          {reveal?.label ??
-            model.text(
-              model.platform() === "darwin" ? "Show in Finder" : "Open folder",
-            )}
-        </Button>
-      </div>
       <p
         className="library-error"
         hidden={!model.libraryError && !library?.notice}

@@ -15,7 +15,7 @@ import * as model from "./settings-controller";
 import { Preferences } from "./tabs/preferences";
 import { WindowActions } from "./window-actions";
 import { Troubleshooting } from "./tabs/troubleshooting";
-import { Library, RenameDialog, PlayerDialog } from "./tabs/library";
+import { Library, LibraryHead, RenameDialog, PlayerDialog } from "./tabs/library";
 import { ToastHost } from "./undo-toast";
 import { useDarkClass } from "../lib/color-scheme";
 
@@ -139,7 +139,8 @@ export function SettingsApp() {
   const [vertical, setVertical] = useState(
       () => matchMedia("(min-width: 600px)").matches,
     ),
-    panel = useRef<HTMLDivElement>(null);
+    panel = useRef<HTMLDivElement>(null),
+    [head, setHead] = useState<HTMLDivElement | null>(null);
   useEffect(model.start, []);
   useDarkClass();
   useEffect(() => {
@@ -249,6 +250,18 @@ export function SettingsApp() {
             </TabsList>
             <Status />
             <div className="settings-content">
+              {/* The card's top stays put while the page under it scrolls: the page's name, the library's summary and
+                  folder controls, and Troubleshooting's section tabs. */}
+              <div ref={setHead} className="settings-head darwin:wide:window-drag">
+                <p id="page-title" className="page-title" aria-hidden="true">
+                  {current?.tabs
+                    .find((tab) => tab.id === model.selectedTab)
+                    ?.label.replace(/\s?[（(]\d+[)）]$/, "")}
+                </p>
+                <div className="settings-head-tools" hidden={model.selectedTab !== "library"}>
+                  <LibraryHead />
+                </div>
+              </div>
               <div className="settings-viewport">
                 <TabsContent
                   ref={panel}
@@ -258,16 +271,11 @@ export function SettingsApp() {
                   className="settings-panel"
                 >
                   <div className="settings-card">
-                    <p id="page-title" className="page-title" aria-hidden="true">
-                      {current?.tabs
-                        .find((tab) => tab.id === model.selectedTab)
-                        ?.label.replace(/\s?[（(]\d+[)）]$/, "")}
-                    </p>
                     <div hidden={model.selectedTab !== "library"}>
                       <Library />
                     </div>
                     {model.selectedTab === "failures" ? (
-                      <Troubleshooting />
+                      <Troubleshooting head={head} />
                     ) : model.selectedTab !== "library" ? (
                       <Preferences />
                     ) : null}

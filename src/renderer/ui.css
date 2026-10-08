@@ -551,7 +551,44 @@
     overscroll-behavior: contain;
     scrollbar-width: none;
   }
+  /* The page's top: it stays above the viewport on the same plane as the page, which scrolls under it. The title and
+     the library's summary share one line; the library's controls take its end, Troubleshooting's section tabs a line
+     of their own. */
+  .settings-head {
+    --content-x: var(--main-right);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    column-gap: 12px;
+    flex: none;
+    position: relative;
+    background: var(--background) var(--surface-grain) 0 0 / 256px 256px;
+    padding: 12px var(--content-x) 0;
+  }
+  .settings-head > [role="tablist"] {
+    flex-basis: 100%;
+  }
+  /* Room under Troubleshooting's section tabs for their focus ring, which the head's foot would cut. */
+  .settings-head:has(> [role="tablist"]) {
+    padding-bottom: 6px;
+  }
+  .settings-head-tools {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  /* The library's head ends in a hairline: the recordings scroll under it. */
+  .settings-head:has(> .settings-head-tools:not([hidden])) {
+    border-bottom: 1px solid var(--border);
+  }
+  /* The library's summary sits on the title's baseline rather than at the middle of its line. */
+  .settings-head:has(> .settings-head-tools:not([hidden])) > :is(.page-title, .settings-head-tools) {
+    align-self: last baseline;
+  }
+  .settings-head-tools .library-head {
+    align-items: last baseline;
+  }
   .settings-card {
+    --content-x: var(--main-right);
     container: settings-card / inline-size;
     min-height: 100%;
     background: var(--card);
@@ -559,7 +596,7 @@
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-xs);
     overflow: clip;
-    padding: 12px var(--main-right) 44px;
+    padding: 0 var(--content-x) 44px;
   }
   .page-title {
     font-size: 26px;
@@ -1940,27 +1977,38 @@
     .settings-content {
       grid-column: 2;
       grid-row: 1 / -1;
-      margin-right: calc(8px - var(--main-right));
+      margin-right: calc(-1 * var(--main-right));
     }
     .sidebar-about {
       grid-column: 1;
       grid-row: 5;
       position: relative;
     }
-    /* The page title sits a little below the window's top, level with the brand across the sidebar. */
+    /* The card rises to the window's top, inset as at its right; its head is the toolbar, the page title level with
+       the window controls. */
+    main {
+      --settings-content-top-gap: calc(8px - var(--main-top));
+    }
+    .settings-head,
     .settings-card {
-      padding-top: 22px;
+      --content-x: 40px;
+    }
+    /* The title sits below the window controls' strip, with the page's air above it. */
+    .settings-head {
+      padding-top: 34px;
+    }
+    .page-title {
+      font-size: 30px;
+      line-height: 1.1;
+      margin-bottom: 18px;
+    }
+    .settings-head-tools .library-head {
+      margin-bottom: 18px;
     }
     /* The scroll viewport stays below the drag strip, even after content scrolls. */
     :root[data-platform="darwin"] main {
       /* A short window can overflow the sidebar's grid rows; never scroll the whole page under the drag strip. */
       overflow: clip;
-    }
-    :root[data-platform="darwin"] .settings-content {
-      padding-top: max(0px, calc(var(--window-titlebar-height) - var(--main-top) - var(--settings-content-top-gap)));
-    }
-    :root[data-platform="darwin"] .settings-card {
-      padding-top: 16px;
     }
     :root[data-platform="darwin"] .settings-viewport {
       /* Unlike hidden, clip cannot scroll this outer viewport when a child is focused or scrolled into view. */
