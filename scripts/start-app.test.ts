@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { X509Certificate } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildStampPath, runtimeInputFiles, writeBuildStamp } from "./lib/runner/runtime-inputs.mjs";
@@ -30,7 +30,19 @@ const stamped = (root: string): void => {
   writeBuildStamp(root, appDir(root), hash, runtimeInputFiles(root));
 };
 
-function invoke(overrides: Record<string, string> = {}, args: string[] = [], prepare?: (root: string) => void) {
+/** Runs `command` to its end without blocking the worker, so the cases of this file can run side by side. */
+function run(command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { ...options, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "", stderr = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => { stdout += chunk; });
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
+    child.on("error", reject);
+    child.on("close", status => resolve({ status, stdout, stderr }));
+  });
+}
+
+async function invoke(overrides: Record<string, string> = {}, args: string[] = [], prepare?: (root: string) => void) {
   const dir = realpathSync(mkdtempSync(path.join(tmpdir(), "recordstuff-local-sign-")));
   const root = path.join(dir, "project with spaces");
   const bin = path.join(dir, "bin");
@@ -104,8 +116,8 @@ if (name === 'codesign' && args.includes('-r-')) {
     for (const name of ["pgrep", "security", "pnpm", "codesign", "open", "ditto"]) symlinkSync(wrapper, path.join(bin, name));
     const clock = path.join(dir, "clock.mjs");
     writeFileSync(clock, 'if (process.env.TEST_NOW) Date.now = () => Number(process.env.TEST_NOW);');
-    const result = spawnSync(process.execPath, ["--import", clock, path.join(root, "scripts/start-app.mjs"), ...args], {
-      encoding: "utf8", cwd: root,
+    const result = await run(process.execPath, ["--import", clock, path.join(root, "scripts/start-app.mjs"), ...args], {
+      cwd: root,
       env: {
         ...process.env, PATH: bin, CALLS: calls, ROOT: root, TEST_NODE: testNode, TEST_STUB: stub,
         HASH: hash, PUBLIC_CERT: path.join(fixtures, "selected.pem"), OTHER_CERT: path.join(fixtures, "other.pem"),
@@ -129,12 +141,12 @@ if (name === 'codesign' && args.includes('-r-')) {
   }
 }
 
-function expectNoDelivery(result: ReturnType<typeof invoke>) {
+function expectNoDelivery(result: Awaited<ReturnType<typeof invoke>>) {
   expect(result.status).toBe(1);
   expect(result.commands.some(call => call.name === "open" || call.args.includes("--prepackaged"))).toBe(false);
 }
 
-describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () => {
+describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", { concurrent: true }, () => {
   beforeAll(() => {
     fixtures = mkdtempSync(path.join(tmpdir(), "recordstuff-test-certificates-"));
     hash = certificate("selected");
@@ -156,93 +168,93 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () =
     "{root}/dist/mac-arm64/RecordStuff.app/Contents/MacOS/RecordStuff",
     "{root}/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron {root}",
     "{root}/node_modules/.pnpm/electron@fixture/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron {root}",
-  ])("blocks competing main process before touching the keychain: %s", (running) => {
-    const result = invoke({ RUNNING: running });
+  ])("blocks competing main process before touching the keychain: %s", async (running) => {
+    const result = await invoke({ RUNNING: running });
     expectNoDelivery(result);
     expect(result.commands.map(call => call.name)).toEqual(["pgrep"]);
   });
 
   it.each(["", '  1) FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF "Other"\n'])
-    ("refuses missing or invalid identities", identities => {
-      const result = invoke({ IDENTITIES: identities });
+    ("refuses missing or invalid identities", async identities => {
+      const result = await invoke({ IDENTITIES: identities });
       expectNoDelivery(result);
       expect(result.stderr).toContain("found 0");
       expect(result.commands.some(call => call.name === "pnpm")).toBe(false);
     });
 
-  it("rejects duplicate names even when selecting the exact fingerprint", () => {
+  it("rejects duplicate names even when selecting the exact fingerprint", async () => {
     const identities = ` 1) ${hash} "RecordStuff Dev"\n 2) ${otherHash} "RecordStuff Dev"\n`;
-    const ambiguous = invoke({ IDENTITIES: identities });
+    const ambiguous = await invoke({ IDENTITIES: identities });
     expectNoDelivery(ambiguous);
     expect(ambiguous.stderr).toContain("found 2");
-    const pinned = invoke({ IDENTITIES: identities, RECORDSTUFF_SIGN_IDENTITY: hash.toLowerCase() });
+    const pinned = await invoke({ IDENTITIES: identities, RECORDSTUFF_SIGN_IDENTITY: hash.toLowerCase() });
     expectNoDelivery(pinned);
     expect(pinned.stderr).toContain("name is duplicated");
     expect(pinned.commands.some(call => call.name === "pnpm")).toBe(false);
-    expect(invoke({ RECORDSTUFF_SIGN_IDENTITY: hash.toLowerCase() }).status).toBe(0);
+    expect((await invoke({ RECORDSTUFF_SIGN_IDENTITY: hash.toLowerCase() })).status).toBe(0);
   });
 
-  it("rejects an issued certificate even when security lists it as valid", () => {
-    const result = invoke({ IDENTITIES: ` 1) ${issuedHash} "RecordStuff Dev"\n`, PUBLIC_CERT: path.join(fixtures, "issued.pem") });
+  it("rejects an issued certificate even when security lists it as valid", async () => {
+    const result = await invoke({ IDENTITIES: ` 1) ${issuedHash} "RecordStuff Dev"\n`, PUBLIC_CERT: path.join(fixtures, "issued.pem") });
     expectNoDelivery(result);
     expect(result.stderr).toContain("require a self-signed certificate");
     expect(result.commands.some(call => call.name === "pnpm")).toBe(false);
   });
 
-  it("rejects a public certificate that does not match the selected identity", () => {
-    const result = invoke({ PUBLIC_CERT: path.join(fixtures, "other.pem") });
+  it("rejects a public certificate that does not match the selected identity", async () => {
+    const result = await invoke({ PUBLIC_CERT: path.join(fixtures, "other.pem") });
     expectNoDelivery(result);
     expect(result.stderr).toContain("Could not find the public certificate matching");
   });
 
-  it("rejects an empty explicit selector instead of using the default", () => {
-    expectNoDelivery(invoke({ RECORDSTUFF_SIGN_IDENTITY: " " }));
+  it("rejects an empty explicit selector instead of using the default", async () => {
+    expectNoDelivery(await invoke({ RECORDSTUFF_SIGN_IDENTITY: " " }));
   });
 
-  it("checks certificate validity independently of security output", () => {
+  it("checks certificate validity independently of security output", async () => {
     const cert = new X509Certificate(readFileSync(path.join(fixtures, "selected.pem")));
     for (const now of [Date.parse(cert.validFrom) - 1000, Date.parse(cert.validTo) + 1000]) {
-      const result = invoke({ TEST_NOW: String(now) });
+      const result = await invoke({ TEST_NOW: String(now) });
       expectNoDelivery(result);
       expect(result.stderr).toContain("expired or not yet valid");
       expect(result.commands.some(call => call.name === "pnpm")).toBe(false);
     }
   });
 
-  it.each(["outer", "helper"])("blocks a valid bundle signed with the wrong %s certificate", wrong => {
-    const result = invoke({ WRONG_CERT: wrong }, ["--dmg"]);
+  it.each(["outer", "helper"])("blocks a valid bundle signed with the wrong %s certificate", async wrong => {
+    const result = await invoke({ WRONG_CERT: wrong }, ["--dmg"]);
     expectNoDelivery(result);
     expect(result.stderr).toContain("Unexpected signing certificate");
   });
 
   it.each([
     { ADHOC: "1" }, { NO_RUNTIME: "1" }, { WRONG_ID: "com.other.app" }, { FAIL_VERIFY: "1" }, { WRONG_REQUIREMENT: "1" },
-  ])("rejects ad-hoc, missing runtime, wrong identifier or damaged signatures: %j", overrides => {
-    expectNoDelivery(invoke(overrides));
+  ])("rejects ad-hoc, missing runtime, wrong identifier or damaged signatures: %j", async overrides => {
+    expectNoDelivery(await invoke(overrides));
   });
 
-  it.each(["pgrep", "security", "pnpm"])("stops on a %s failure without opening an old app", command => {
-    expectNoDelivery(invoke({ FAIL_COMMAND: command }));
+  it.each(["pgrep", "security", "pnpm"])("stops on a %s failure without opening an old app", async command => {
+    expectNoDelivery(await invoke({ FAIL_COMMAND: command }));
   });
 
-  it("asks pgrep again after a passing internal error, and names the error when it persists", () => {
-    const passing = invoke({ PGREP_STATUS3: "2" });
+  it("asks pgrep again after a passing internal error, and names the error when it persists", async () => {
+    const passing = await invoke({ PGREP_STATUS3: "2" });
     expect(passing.status, passing.stderr).toBe(0);
     expect(passing.commands.filter(call => call.name === "pgrep")).toHaveLength(3);
-    const persistent = invoke({ PGREP_STATUS3: "3" });
+    const persistent = await invoke({ PGREP_STATUS3: "3" });
     expectNoDelivery(persistent);
     expect(persistent.stderr).toContain("Could not check for a running RecordStuff.app (pgrep exit 3: pgrep: Cannot get process list).");
     expect(persistent.commands.map(call => call.name)).toEqual(["pgrep", "pgrep", "pgrep"]);
   });
 
-  it("is not blocked by a process that only names this checkout's Electron in its arguments", () => {
-    const result = invoke({ RUNNING: "/usr/bin/tail -f {root}/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron" });
+  it("is not blocked by a process that only names this checkout's Electron in its arguments", async () => {
+    const result = await invoke({ RUNNING: "/usr/bin/tail -f {root}/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron" });
     expect(result.status, result.stderr).toBe(0);
     expect(result.commands.at(-1)?.name).toBe("open");
   });
 
-  it("opens verified outer and helper bundles, supports spaces, and excludes release credentials", () => {
-    const result = invoke({ RUNNING: "/Applications/Other.app/Contents/MacOS/Electron" });
+  it("opens verified outer and helper bundles, supports spaces, and excludes release credentials", async () => {
+    const result = await invoke({ RUNNING: "/Applications/Other.app/Contents/MacOS/Electron" });
     expect(result.status, result.stderr).toBe(0);
     expect(result.commands.at(-1)?.name).toBe("open");
     const guard = result.commands.find(call => call.name === "pgrep")!;
@@ -259,8 +271,8 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () =
     expect(result.commands.every(call => call.nodeMode === undefined && call.releaseSecret === undefined && call.discovery === "false")).toBe(true);
   });
 
-  it("builds a DMG from the verified app only and does not launch or publish", () => {
-    const result = invoke({}, ["--dmg"]);
+  it("builds a DMG from the verified app only and does not launch or publish", async () => {
+    const result = await invoke({}, ["--dmg"]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.commands.some(call => call.name === "open")).toBe(false);
     const final = result.commands.at(-1);
@@ -270,24 +282,24 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () =
     expect(final?.args).toContain("never");
   });
 
-  it("reopens a verified existing build without rebuilding its TCC identity", () => {
-    const result = invoke({}, ["--open"], stamped);
+  it("reopens a verified existing build without rebuilding its TCC identity", async () => {
+    const result = await invoke({}, ["--open"], stamped);
     expect(result.status, result.stderr).toBe(0);
     expect(result.commands.some(call => call.name === "pnpm")).toBe(false);
     expect(result.commands.at(-1)?.name).toBe("open");
     expect(result.stdout).toMatch(/Timing: preflight \d+\.\d\d s, freshness \d+\.\d\d s, verify \d+\.\d\d s, open \d+\.\d\d s/);
-    expectNoDelivery(invoke({ WRONG_CERT: "outer" }, ["--open"], stamped));
+    expectNoDelivery(await invoke({ WRONG_CERT: "outer" }, ["--open"], stamped));
   });
 
-  it("records the inputs of a verified build, and only after verification", () => {
-    const built = invoke();
+  it("records the inputs of a verified build, and only after verification", async () => {
+    const built = await invoke();
     expect(built.status, built.stderr).toBe(0);
     expect(built.stamp?.files["src/main.ts"]).toMatch(/^[\da-f]{64}$/);
     expect(built.stdout).toMatch(/Timing: preflight .* build .* package .* verify .* open /);
     expect(built.timing.map(({ runner, phase, ok }) => `${runner}:${phase}:${ok}`))
       .toEqual(["start-app:preflight:true", "start-app:build:true", "start-app:package:true", "start-app:verify:true", "start-app:open:true"]);
     // A stale record from an earlier build is removed before rebuilding, even when verification then fails.
-    const failed = invoke({ FAIL_VERIFY: "1" }, [], stamped);
+    const failed = await invoke({ FAIL_VERIFY: "1" }, [], stamped);
     expect(failed.stamp).toBeUndefined();
     expect(failed.timing.at(-1)).toMatchObject({ phase: "verify", ok: false });
   });
@@ -296,16 +308,16 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () =
     ["no build record", (): void => undefined, "has no build record"],
     ["a changed source", (root: string): void => { stamped(root); writeFileSync(path.join(root, "src/main.ts"), "export const changed = 1;\n"); }, "src/main.ts"],
     ["a new source", (root: string): void => { stamped(root); writeFileSync(path.join(root, "src/extra.ts"), "export {};\n"); }, "src/extra.ts"],
-  ])("refuses to reopen a bundle with %s", (_label, prepare, reason) => {
-    const result = invoke({}, ["--open"], prepare);
+  ])("refuses to reopen a bundle with %s", async (_label, prepare, reason) => {
+    const result = await invoke({}, ["--open"], prepare);
     expectNoDelivery(result);
     expect(result.stderr).toContain(reason);
     expect(result.stderr).toContain("pnpm start:app");
     expect(result.commands.some(call => call.name === "codesign")).toBe(false);
   });
 
-  it("reopens after a change that cannot reach the bundle", () => {
-    const result = invoke({}, ["--open"], (root) => {
+  it("reopens after a change that cannot reach the bundle", async () => {
+    const result = await invoke({}, ["--open"], (root) => {
       stamped(root);
       writeFileSync(path.join(root, "src/main.test.ts"), "// test only\n");
       writeFileSync(path.join(root, "scripts/helper.mts"), "// tooling only\n");
@@ -314,24 +326,24 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () =
     expect(result.commands.at(-1)?.name).toBe("open");
   });
 
-  it("verifies a packaged App without private keys, building or launching", () => {
+  it("verifies a packaged App without private keys, building or launching", async () => {
     const app = `dist/${process.arch === "arm64" ? "mac-arm64" : "mac"}/RecordStuff.app`;
-    const result = invoke({ RECORDSTUFF_SIGN_IDENTITY: hash }, ["--verify-app", app]);
+    const result = await invoke({ RECORDSTUFF_SIGN_IDENTITY: hash }, ["--verify-app", app]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.commands.every(call => call.name === "codesign")).toBe(true);
-    expectNoDelivery(invoke({ RECORDSTUFF_SIGN_IDENTITY: hash, WRONG_CERT: "helper" }, ["--verify-app", app]));
-    expectNoDelivery(invoke({ RECORDSTUFF_SIGN_IDENTITY: hash, FAIL_VERIFY: "1" }, ["--verify-app", app]));
-    expectNoDelivery(invoke({}, ["--verify-app", app]));
+    expectNoDelivery(await invoke({ RECORDSTUFF_SIGN_IDENTITY: hash, WRONG_CERT: "helper" }, ["--verify-app", app]));
+    expectNoDelivery(await invoke({ RECORDSTUFF_SIGN_IDENTITY: hash, FAIL_VERIFY: "1" }, ["--verify-app", app]));
+    expectNoDelivery(await invoke({}, ["--verify-app", app]));
   });
 
   describe("signed Electron copy for the quit-dialog fixture (plan 062)", () => {
     const fixtureArgs = ["--fixture-app", "round/Electron.app", "round/signature.json"];
     const round = (root: string): void => { mkdirSync(path.join(root, "round")); };
     const fixture = (overrides: Record<string, string> = {}) => invoke(overrides, fixtureArgs, round);
-    const signed = (result: ReturnType<typeof invoke>): boolean => result.commands.some(call => call.name === "codesign" && call.args[0] === "--force");
+    const signed = (result: Awaited<ReturnType<typeof invoke>>): boolean => result.commands.some(call => call.name === "codesign" && call.args[0] === "--force");
 
-    it("copies, fully signs and verifies the copy, then reports its provenance", () => {
-      const result = fixture();
+    it("copies, fully signs and verifies the copy, then reports its provenance", async () => {
+      const result = await fixture();
       expect(result.status, result.stderr).toBe(0);
       expect(result.commands.map(call => call.name)).toEqual(["security", "security", "ditto", "codesign", "codesign", "codesign", "codesign", "codesign"]);
       const ditto = result.commands.find(call => call.name === "ditto")!;
@@ -354,16 +366,16 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () =
       ["ambiguous", { IDENTITIES: ` 1) ${"A".repeat(40)} "RecordStuff Dev"\n 2) ${"B".repeat(40)} "RecordStuff Dev"\n` }, "found 2"],
       ["expired", { TEST_NOW: String(Date.now() + 365 * 86_400_000) }, "expired or not yet valid"],
       ["inaccessible", { FAIL_COMMAND: "security" }, "security failed"],
-    ])("is blocked (exit 2) by a %s identity before copying or signing", (_label, overrides, reason) => {
-      const result = fixture(overrides);
+    ])("is blocked (exit 2) by a %s identity before copying or signing", async (_label, overrides, reason) => {
+      const result = await fixture(overrides);
       expect(result.status).toBe(2);
       expect(result.stderr).toContain(reason);
       expect(result.commands.some(call => call.name === "ditto" || call.name === "codesign")).toBe(false);
       expect(result.fixtureReport).toBeUndefined();
     });
 
-    it("is blocked when codesign cannot use the key without user permission", () => {
-      const result = fixture({ FAIL_SIGN: "errSecInternalComponent" });
+    it("is blocked when codesign cannot use the key without user permission", async () => {
+      const result = await fixture({ FAIL_SIGN: "errSecInternalComponent" });
       expect(result.status).toBe(2);
       expect(result.stderr).toContain("not usable without user permission");
       expect(result.fixtureReport).toBeUndefined();
@@ -377,8 +389,8 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () =
       ["the wrong helper certificate", { WRONG_CERT: "helper" }, "Unexpected signing certificate"],
       ["a changed identifier", { WRONG_ID: "com.ericts.record" }, "incorrect bundle identifier"],
       ["the wrong designated requirement", { WRONG_REQUIREMENT: "1" }, "designated requirement"],
-    ])("fails (exit 1) after a valid identity on %s and writes no report", (_label, overrides, reason) => {
-      const result = fixture(overrides);
+    ])("fails (exit 1) after a valid identity on %s and writes no report", async (_label, overrides, reason) => {
+      const result = await fixture(overrides);
       expect(result.status).toBe(1);
       expect(result.stderr).toContain(reason);
       expect(signed(result)).toBe(true);
@@ -386,23 +398,23 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", () =
       expect(result.timing.at(-1)?.ok).toBe(false);
     });
 
-    it("does not require the hardened runtime the RecordStuff bundle needs", () => {
-      expect(fixture({ NO_RUNTIME: "1" }).status).toBe(0);
+    it("does not require the hardened runtime the RecordStuff bundle needs", async () => {
+      expect((await fixture({ NO_RUNTIME: "1" })).status).toBe(0);
     });
 
     it.each([
       [["--fixture-app", "round/Electron.app"]],
       [["--fixture-app", "round/Electron", "round/signature.json"]],
       [["--fixture-app", "missing/Electron.app", "round/signature.json"]],
-    ])("rejects bad arguments before the keychain: %j", args => {
-      const result = invoke({}, args, round);
+    ])("rejects bad arguments before the keychain: %j", async args => {
+      const result = await invoke({}, args, round);
       expect(result.status).toBe(1);
       expect(result.commands).toEqual([]);
     });
   });
 
-  it("rejects unsupported arguments without side effects", () => {
-    const result = invoke({}, ["--publish"]);
+  it("rejects unsupported arguments without side effects", async () => {
+    const result = await invoke({}, ["--publish"]);
     expectNoDelivery(result);
     expect(result.commands).toEqual([]);
   });
