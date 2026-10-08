@@ -120,6 +120,12 @@ test("zoom notification reflects applied zoom and dismisses automatically withou
 });
 for (const language of ["en", "zh-TW"] as const) {
   test(`zoom notification ${language} fits the minimum window at every zoom limit with its controls unclipped and uncovered`, async ({}, testInfo) => {
+    // A paused page clock keeps each notice past its 1.5 s lifetime however slow the runner is: this test measures
+    // geometry, and the lifetime is the test above's. CSS transitions and pointer input stay real.
+    await page.clock.install({ time: new Date("2026-10-08T12:00:00Z") });
+    await page.reload();
+    await expect(page.getByRole("tab", { name: "Recordings", exact: true })).toBeVisible();
+    await page.clock.pauseAt(new Date("2026-10-08T12:01:00Z"));
     const view = await page.evaluate(() => (window as unknown as { settings: SettingsBridge }).settings.read());
     await host.evaluate((h, args) => {
       h.setSize(...h.SNAPSHOT_SIZES.minimum);
@@ -132,6 +138,9 @@ for (const language of ["en", "zh-TW"] as const) {
         if (target === 0.8) { h.zoom("out"); h.zoom("out"); }
         if (target === 1.5) { h.zoom("in"); h.zoom("in"); h.zoom("in"); }
       }, factor);
+      // Sonner publishes the hook's presence changes with a zero-delay timer.
+      await page.clock.runFor(50);
+      await page.clock.runFor(1);
       await expect(notice).toContainText(`${Math.round(factor * 100)}%`);
       await notice.hover();
       const geometry = await notice.evaluate((node) => {
