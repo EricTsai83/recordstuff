@@ -35,6 +35,7 @@
     "diagnose:cadence": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/diagnose-frame-cadence.mts",
     "measure:finalization": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/measure-finalization.mts",
     "measure:cpu": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/measure-cpu.mts",
+    "measure:thumbnails": "playwright test --project=measure",
     "bench:publication": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/bench-publication.mts",
     "dist:mac": "node scripts/start-app.mjs --dmg",
     "dist:win": "electron-vite build && electron-builder --win nsis --x64 --publish never",

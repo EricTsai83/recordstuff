@@ -261,7 +261,8 @@ export interface Fixtures {
   /** Launches the production main; resolves once it has logged `ready;`. */
   launchApp: (options?: LaunchAppOptions) => Promise<Launched>;
   /** Launches the view host (`panel`: the former settings fixture; `components`: the synthetic view); resolves once its page has loaded. */
-  launchView: (options?: { mode?: "panel" | "components" }) => Promise<{ launched: Launched; page: Page }>;
+  /** `env`: the host's own variables, as the thumbnail measurement sets them (hosts/view-host.ts `measuredFolder`). */
+  launchView: (options?: { mode?: "panel" | "components"; env?: Record<string, string> }) => Promise<{ launched: Launched; page: Page }>;
   /** Launches the countdown host; resolves once the production overlay is constructed. */
   launchCountdown: () => Promise<Launched>;
   /** Every launch this test made, for tests that inspect teardown. */
@@ -300,7 +301,7 @@ const launchers = base.extend<Fixtures>({
   launchView: async ({ launches }, use, testInfo) => {
     await use(async (options = {}) => {
       const data = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-ui-view-"));
-      const launched = await launch("view", data, { RECORDSTUFF_UI_VIEW: options.mode ?? "panel" }, testInfo);
+      const launched = await launch("view", data, { ...options.env, RECORDSTUFF_UI_VIEW: options.mode ?? "panel" }, testInfo);
       launches.push(launched);
       const page = await launched.page("settings.html");
       await page.waitForLoadState("domcontentloaded");

@@ -94,6 +94,7 @@ pnpm measure:finalization -- --dir /Volumes/test/rs --seconds 15 --repeat 10   #
 pnpm bench:publication -- --dir /Volumes/test/rs --sizes 64m,2g                 # 依檔案大小量發布成本，不錄影
 pnpm measure:cpu                                         # 在已結束的打包 App 上量 CPU 預算：待機、一段 30 fps 錄影、錄影後待機、設定開著；約 15 分鐘
 pnpm measure:cpu -- --fps 60 --repeat 3                  # baseline 回合：兩種幀率各錄三次；約 25 分鐘
+pnpm measure:thumbnails                                  # 在隱藏的 view host 以數百支真實影片比較錄影檔縮圖的並行上限與快取；需要 out/；約 2 分鐘
 ```
 
 verify 支援多檔、log、來源尺寸、同步標記、Markdown／JSON 與指定 JSON 輸出。聲道能量是必要證據，帶 `--sync` 時閃光／短音標記也是；有檢查 fail、必要證據 incomplete 或檔案無法讀取時 exit 1，缺少必要工具（blocked）時 exit 2，其餘 exit 0（見[判定](#驗收門檻)）。結果預設存至 docs/verification/measurements（已 gitignore，原始執行只留本機，解讀後的結論才寫進驗證紀錄）；會讀所有保留的檔案（active log 與 `.1`～`.3`，由舊到新），並依身分配對錄影與 session（plan 029）：使用 [session record](desktop.md#log-與診斷) 的 run 與 session id，以檔案完整路徑查找；只有 log 中恰好一個 session 指名同名檔案時才退回用檔名（複製出去的檔案）。同一筆 record 記兩次仍是一個結果；同一 session 出現不同結果則是 conflict。沒有留下檔案的失敗不宣告任何路徑，因為同一秒的重試可能重用它的暫存檔名。session record 之前版本的啟動使用保守的舊版關聯：只有沒有其他可能擁有者時才接受（`file finalized` 行、唯一仍在錄影的 session，或文字相符且唯一未解決的失敗），因此兩個未解決的失敗絕不依印出順序分配。其餘情況報告會標出 metadata 為 ambiguous、conflict 或 unknown，不判定任何需要要求設定的檢查；媒體量測不依賴 metadata。`pnpm acceptance` 與 `pnpm matrix` 在 metadata 沒有配到自己 session 時判該案例失敗。2026-09-25 以 244 個保留 log 重播，舊的依順序讀法配到的 628 個檔案全部得到相同關聯；保留 log 中沒有舊讀法會出錯的「收尾順序顛倒」交錯。

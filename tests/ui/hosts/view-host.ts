@@ -24,6 +24,7 @@ import { DEFAULT_QUALITY } from "../../../src/shared/quality";
 import { DEFAULT_HOTKEY } from "../../../src/shared/hotkey";
 import type { AppContext } from "../../../src/main/app/ui-model";
 import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "../../../src/main/library/recordings-library";
+import { videoThumbnail } from "../../../src/main/library/video-thumbnail";
 import { settingsWindowOptions } from "../../../src/main/settings/settings-window";
 import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE } from "../../../src/main/settings/settings-window-state";
 import { prepareDataCleanup } from "../../../src/main/app/data-cleanup";
@@ -94,6 +95,42 @@ async function recordingsFolder(dir: string): Promise<RecordingsLibrary> {
   protocol.handle(MEDIA_SCHEME, request => library.handle(request));
   await library.refresh();
   await library.lengths;
+  return library;
+}
+
+/** What the thumbnail measurement reads: each picture made (start and end, ms since launch) and each one asked for. */
+const thumbnailStats = { made: [] as Array<{ start: number; end: number; ok: boolean }>, making: 0, most: 0, requests: 0 };
+
+/**
+ * The thumbnail measurement's folder (tests/ui/measure, `RECORDSTUFF_UI_RECORDINGS`): real videos, their pictures
+ * made by QuickLook as the app makes them, at most `RECORDSTUFF_UI_THUMBNAILS_AT_ONCE` at once (`0` for no limit),
+ * and served with the app's headers, or with `no-cache` as before 2026-10-08 under `RECORDSTUFF_UI_THUMBNAIL_CACHE`.
+ */
+async function measuredFolder(dir: string): Promise<RecordingsLibrary> {
+  const atOnce = Number(process.env.RECORDSTUFF_UI_THUMBNAILS_AT_ONCE ?? "");
+  const library = new RecordingsLibrary({
+    dir: () => dir, changed: () => {}, trash: async () => {}, open: async () => "", reveal: () => {}, log: message => console.log(message),
+    ...(Number.isInteger(atOnce) && process.env.RECORDSTUFF_UI_THUMBNAILS_AT_ONCE ? { thumbnailsAtOnce: atOnce === 0 ? Infinity : atOnce } : {}),
+    thumbnail: async file => {
+      const start = performance.now();
+      thumbnailStats.making++;
+      thumbnailStats.most = Math.max(thumbnailStats.most, thumbnailStats.making);
+      try {
+        const jpeg = await videoThumbnail(nativeImage, file);
+        thumbnailStats.made.push({ start, end: performance.now(), ok: jpeg !== undefined });
+        return jpeg;
+      } finally { thumbnailStats.making--; }
+    },
+  });
+  const noCache = process.env.RECORDSTUFF_UI_THUMBNAIL_CACHE === "no-cache";
+  protocol.handle(MEDIA_SCHEME, async request => {
+    const response = await library.handle(request);
+    if (new URL(request.url).host !== "thumb") return response;
+    thumbnailStats.requests++;
+    if (noCache && response.ok) response.headers.set("cache-control", "no-cache");
+    return response;
+  });
+  await library.refresh();
   return library;
 }
 
@@ -318,6 +355,7 @@ const hostControls: Record<string, unknown> = {
   fixtureView: (language: Language) => fixtureView(language, state.notifications),
   window: () => panel,
   library: () => library,
+  thumbnailStats,
   /** Pushes a view to the page, as main's refresh does. */
   push: (view: SettingsView): void => { panel!.webContents.send("settings:changed", view); },
   /** Pushes `settingsView(recordingState, base context + overrides)`. */
@@ -368,7 +406,8 @@ void app.whenReady().then(async () => {
   }
   installPanelHandlers();
   // Before any page loads, as in the app (index.ts): a frame takes the custom schemes registered when it navigates.
-  library = await recordingsFolder(path.join(data, "recordings"));
+  library = process.env.RECORDSTUFF_UI_RECORDINGS ? await measuredFolder(process.env.RECORDSTUFF_UI_RECORDINGS)
+    : await recordingsFolder(path.join(data, "recordings"));
   // The app's own window description (settings-window.ts): the same size rules; offscreen, so without the native frame.
   panel = new BrowserWindow(settingsWindowOptions({ platform: process.platform, preloadPath: path.join(out, "preload/settings.js"),
     title: "RecordStuff", size: { width: 460, height: 560 }, workArea: screen.getPrimaryDisplay().workArea }));

@@ -24,5 +24,7 @@ export default defineConfig({
   projects: [
     { name: "background", testMatch: "**/*.spec.ts", testIgnore: ["**/drills.spec.ts", "**/drill-target.spec.ts"] },
     { name: "drills", testMatch: ["**/drills.spec.ts", "**/drill-target.spec.ts"] },
+    // The thumbnail measurement (`pnpm measure:thumbnails`): timings for a comparison, never part of a regression run.
+    { name: "measure", testMatch: "**/*.measure.ts" },
   ],
 });
