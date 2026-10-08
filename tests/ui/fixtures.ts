@@ -205,9 +205,14 @@ export async function tearDown(launched: Launched): Promise<Teardown> {
   }
   launched.closed = true;
   scanned = 0; // the first check after close always rescans: a helper started by quit counts too
+  const ended = (): boolean => [...tree].every(pid => !alive(pid));
+  // The end is only confirmed by a table read after every known process ended: one started late is found then.
   const gone = (): boolean => {
+    const before = scanned;
     if (Date.now() - scanned >= SCAN_INTERVAL_MS) scan();
-    return [...tree].every(pid => !alive(pid));
+    if (!ended()) return false;
+    if (scanned === before) scan();
+    return ended();
   };
   if (!await until(gone, EXIT_TIMEOUT_MS)) {
     // Only processes this launch owns are ever signalled: its main's descendants and its own Electron helpers.
